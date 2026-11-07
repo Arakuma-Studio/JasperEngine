@@ -6,11 +6,23 @@
 // scenes whose names map to one identifier keep their own files.
 
 #include <gtest/gtest.h>
+#include "component/AlphaTweenComponent.h"
+#include "component/Transform.h"
+#include "component/TweenComponent.h"
+#include "script/ScriptProperty.h"
 
 #include "Factory.h"
 #include "Generator.h"
 #include "Scene.h"
 #include "component/MeshComponent.h"
+#include "component/CameraComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/SplineExtrudeComponent.h"
+#include "component/TerrainComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "object/Camera.h"
+#include "object/Mesh.h"
+#include "object/Sprite.h"
 #include "object/Terrain.h"
 #include "texture/Texture.h"
 
@@ -144,6 +156,127 @@ TEST(GeneratedScenes, ATexturePathStaysWhenItsLoadFailed) {
     EXPECT_EQ(Factory::formatTexture(8, texture, "clouds.weatherMap", fs::path()), before);
 }
 
+// A Sprite's frames are authored data, as the scene file holds them. They were normalised once the
+// texture's size was known, so the scene's code followed whether a frame had loaded the texture
+// before the save. The game normalises them when it shows a frame (MeshSystem::setSpriteFrameRect).
+TEST(GeneratedScenes, ASpriteFrameIsGeneratedAsAuthoredWhateverItsTextureLoaded) {
+    Scene scene;
+    Sprite sprite(&scene);
+    sprite.setTexture("no-such-sheet.png");
+    sprite.addFrame("right", 32.0f, 0.0f, 32.0f, 16.0f);
+    MeshComponent& mesh = scene.getComponent<MeshComponent>(sprite.getEntity());
+
+    const std::string unloaded = Factory::createSpriteComponent(8, &scene, sprite.getEntity());
+    EXPECT_NE(unloaded.find("sprite.framesRect[0].rect = Rect(32"), std::string::npos) << unloaded;
+
+    std::vector<unsigned char> pixels(64 * 32 * 4, 255);
+    mesh.submeshes[0].material.baseColorTexture.setData(
+        "sheet", TextureData(64, 32, (unsigned int)pixels.size(), ColorFormat::RGBA, 4, pixels.data()));
+    ASSERT_EQ(mesh.submeshes[0].material.baseColorTexture.getWidth(), 64u);
+    EXPECT_EQ(Factory::createSpriteComponent(8, &scene, sprite.getEntity()), unloaded);
+}
+
+// A Sprite makes its quad when it runs, as a Tilemap, Mesh Polygon or Terrain make theirs. The scene
+// file never held that geometry; the code held it when a frame had made it before the save.
+TEST(GeneratedScenes, AGeneratedMeshGeneratesTheSameBeforeAndAfterItsGeometryIsMade) {
+    Scene scene;
+    Sprite sprite(&scene);
+    MeshComponent& mesh = scene.getComponent<MeshComponent>(sprite.getEntity());
+    mesh.numSubmeshes = 1;
+    const std::string before = Factory::createMeshComponent(8, &scene, sprite.getEntity(), fs::path());
+
+    const float vertices[3] = {1.0f, 2.0f, 3.0f};
+    mesh.buffer.addAttribute(AttributeType::POSITION, 3);
+    mesh.buffer.importData(vertices, sizeof(vertices));
+    mesh.vertexCount = 4;
+    mesh.submeshes[0].vertexCount = 6;
+    mesh.submeshes[0].attributes[AttributeType::POSITION] = Attribute();
+    EXPECT_EQ(Factory::createMeshComponent(8, &scene, sprite.getEntity(), fs::path()), before);
+}
+
+// A Spline Extrude's Mesh is its chunks' template: SplineSystem gives it its one submesh when it
+// first runs, which the code holds whether or not that happened before the save
+TEST(GeneratedScenes, ASplineExtrudeTemplateGeneratesTheSameBeforeAndAfterItsSystemRan) {
+    Scene scene;
+    const Entity entity = scene.createEntity();
+    scene.addComponent<MeshComponent>(entity, MeshComponent());
+    scene.addComponent<SplineExtrudeComponent>(entity, SplineExtrudeComponent());
+    MeshComponent& mesh = scene.getComponent<MeshComponent>(entity);
+    ASSERT_EQ(mesh.numSubmeshes, 0u);
+    const std::string before = Factory::createMeshComponent(8, &scene, entity, fs::path());
+
+    mesh.numSubmeshes = 1;
+    EXPECT_EQ(Factory::createMeshComponent(8, &scene, entity, fs::path()), before);
+    EXPECT_NE(before.find("mesh.numSubmeshes = 1;"), std::string::npos) << before;
+}
+
+// A plain mesh keeps its data, and a load sets its vertexCount (RenderSystem::loadMesh), which the
+// file does not hold either
+TEST(GeneratedScenes, AnInlineMeshGeneratesItsDataButNoVertexCount) {
+    Scene scene;
+    Mesh object(&scene);
+    MeshComponent& mesh = scene.getComponent<MeshComponent>(object.getEntity());
+    mesh.numSubmeshes = 1;
+    const float vertices[3] = {1.0f, 2.0f, 3.0f};
+    mesh.buffer.addAttribute(AttributeType::POSITION, 3);
+    mesh.buffer.importData(vertices, sizeof(vertices));
+    mesh.vertexCount = 4;
+    const std::string code = Factory::createMeshComponent(8, &scene, object.getEntity(), fs::path());
+    EXPECT_NE(code.find("mesh.buffer.importData"), std::string::npos) << code;
+    EXPECT_EQ(code.find("mesh.vertexCount"), std::string::npos) << code;
+}
+
+// An auto-resizing camera's clips and aspect are the canvas's: the size of the view that drew last,
+// for any camera of the scene and not only its Default Camera
+TEST(GeneratedScenes, ACameraSizedByTheCanvasGeneratesNoSize) {
+    Scene scene;
+    Camera camera(&scene);
+    CameraComponent& component = scene.getComponent<CameraComponent>(camera.getEntity());
+    const std::string code = [&]() {
+        component.autoResize = true;
+        component.renderToTexture = false;
+        component.rightClip = 1280.0f;
+        component.aspect = 1.9f;
+        return Factory::createComponent(8, &scene, camera.getEntity(), ComponentType::CameraComponent, fs::path());
+    }();
+    for (const char* field : {"leftClip", "rightClip", "bottomClip", "topClip", "aspect"}) {
+        EXPECT_EQ(code.find(std::string("camera.") + field), std::string::npos) << field << ": " << code;
+    }
+    EXPECT_NE(code.find("camera.yfov"), std::string::npos) << code;
+
+    component.autoResize = false;
+    const std::string fixedSize = Factory::createComponent(8, &scene, camera.getEntity(), ComponentType::CameraComponent, fs::path());
+    EXPECT_NE(fixedSize.find("camera.rightClip = 1280"), std::string::npos) << fixedSize;
+}
+
+// A body's runtime flags are not authored: a frame clears them, a load and the game start with them on
+TEST(GeneratedScenes, ARigidbodyGeneratesNoRuntimeFlags) {
+    Scene scene;
+    Entity entity = scene.createEntity();
+    Rigidbody2DComponent body2d;
+    body2d.needReloadBody = false;
+    body2d.needUpdateColliders = false;
+    body2d.newBody = false;
+    scene.addComponent<Rigidbody2DComponent>(entity, body2d);
+    const std::string code = Factory::createComponent(8, &scene, entity, ComponentType::Rigidbody2DComponent, fs::path());
+    EXPECT_NE(code.find("Rigidbody2DComponent rigidbody2d;"), std::string::npos) << code;
+    EXPECT_EQ(code.find("needReloadBody"), std::string::npos) << code;
+    EXPECT_EQ(code.find("needUpdateColliders"), std::string::npos) << code;
+    EXPECT_EQ(code.find("newBody"), std::string::npos) << code;
+}
+
+// A Terrain's Auto Ranges are its camera's far clip
+TEST(GeneratedScenes, ATerrainUnderAutoRangesGeneratesNoRanges) {
+    Scene scene;
+    Terrain terrain(&scene);
+    TerrainComponent& component = scene.getComponent<TerrainComponent>(terrain.getEntity());
+    component.ranges = {8.0f, 4000.0f};
+    component.autoSetRanges = true;
+    EXPECT_EQ(Factory::createComponent(8, &scene, terrain.getEntity(), ComponentType::TerrainComponent, fs::path()).find("terrain.ranges"), std::string::npos);
+    component.autoSetRanges = false;
+    EXPECT_NE(Factory::createComponent(8, &scene, terrain.getEntity(), ComponentType::TerrainComponent, fs::path()).find("terrain.ranges"), std::string::npos);
+}
+
 // A terrain makes its geometry when it runs, so its mesh's vertices are not generated. It asked its
 // height map's empty(), which turns true once a load failed: the scene's code took the vertices of
 // the last load as bytes, whether or not a frame had tried the file before the save.
@@ -167,6 +300,23 @@ TEST(GeneratedScenes, ATerrainWhoseHeightMapFailedToLoadGeneratesNoVertices) {
     }
     ASSERT_TRUE(heightMap.empty());
     EXPECT_EQ(Factory::createMeshComponent(8, &scene, terrain.getEntity(), fs::path()), before);
+}
+
+// A sprite or tilemap sets hasTextureRect once its texture loads, so with async loading its buffers
+// (in the scene's code) can load first and pick a variant without the texture rect, which the
+// build may not ship. The cooked scenes keep the flag (Stream); the scene's code does too
+// (Doriax 33172858c, export-pipeline spec 6.13).
+TEST(GeneratedScenes, SpriteKeepsHasTextureRect) {
+    Scene scene;
+    Sprite sprite(&scene);
+    MeshComponent& mesh = scene.getComponent<MeshComponent>(sprite.getEntity());
+    ASSERT_GE(mesh.numSubmeshes, 1u);
+    mesh.submeshes[0].hasTextureRect = true;
+    const std::string code = Factory::createMeshComponent(8, &scene, sprite.getEntity(), fs::path());
+    EXPECT_NE(code.find("mesh.submeshes[0].hasTextureRect = true;"), std::string::npos) << code;
+
+    mesh.submeshes[0].hasTextureRect = false;
+    EXPECT_EQ(Factory::createMeshComponent(8, &scene, sprite.getEntity(), fs::path()).find("hasTextureRect"), std::string::npos);
 }
 
 // A Lua script's string property is generated as an assignment to a ScriptPropertyValue. Since

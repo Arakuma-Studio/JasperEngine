@@ -5,6 +5,7 @@
 // sub-selection, frame lists, particle modules).
 
 #include "InspectorWindow.h"
+#include "component/InstancedMeshComponent.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 #include "command/PlayChangeReview.h"
@@ -646,8 +647,15 @@ void editor::InspectorWindow::drawInstancedMeshComponent(ComponentType cpType, S
 
     beginTable(cpType, getLabelSize("Cylindrical Billboard"));
     propertyRow(RowPropertyType::UInt, cpType, "maxInstances", "Max Instances", sceneProject, entities, settingsUInt);
-    propertyRow(RowPropertyType::Bool, cpType, "instancedBillboard", "Billboard", sceneProject, entities);
-    propertyRow(RowPropertyType::Bool, cpType, "instancedCylindricalBillboard", "Cylindrical Billboard", sceneProject, entities);
+    RowSettings billboardSettings;
+    billboardSettings.help = "Every instance faces the camera (one rotation for the batch: the view's).";
+    propertyRow(RowPropertyType::Bool, cpType, "instancedBillboard", "Billboard", sceneProject, entities, billboardSettings);
+    RowSettings cylindricalSettings;
+    cylindricalSettings.indent = true;
+    cylindricalSettings.help = "Turn about the mesh's up axis only (trees, grass cards). Needs Billboard.";
+    ImGui::BeginDisabled(!sceneProject->scene->getComponent<InstancedMeshComponent>(entities[0]).instancedBillboard);
+    propertyRow(RowPropertyType::Bool, cpType, "instancedCylindricalBillboard", "Cylindrical Billboard", sceneProject, entities, cylindricalSettings);
+    ImGui::EndDisabled();
     RowSettings cullSettings;
     cullSettings.help = "Skip instances outside the camera and shadow views. Turn off for shaders that move instances away from their bounds.";
     propertyRow(RowPropertyType::Bool, cpType, "cullInstances", "Cull Instances", sceneProject, entities, cullSettings);
@@ -658,6 +666,12 @@ void editor::InspectorWindow::drawInstancedMeshComponent(ComponentType cpType, S
     if (sceneProject->scene->getComponent<InstancedMeshComponent>(entities[0]).distanceFade) {
         propertyRow(RowPropertyType::FloatPositive, cpType, "fadeStart", "Fade Start", sceneProject, entities, settingsUInt);
         propertyRow(RowPropertyType::FloatPositive, cpType, "fadeEnd", "Fade End", sceneProject, entities, settingsUInt);
+        RowSettings nearSettings = settingsUInt;
+        nearSettings.help = "Instances grow from nothing at Near Fade Start to full size at Near Fade End, by horizontal distance in the mesh's "
+                            "local space. With Fade Start and End it draws a distance band: a far level of detail whose Near Fade matches "
+                            "a nearer copy's Fade. Equal values turn it off.";
+        propertyRow(RowPropertyType::FloatPositive, cpType, "nearFadeStart", "Near Fade Start", sceneProject, entities, nearSettings);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "nearFadeEnd", "Near Fade End", sceneProject, entities, nearSettings);
     }
     endTable();
 

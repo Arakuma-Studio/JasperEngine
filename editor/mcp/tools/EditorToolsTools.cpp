@@ -10,9 +10,11 @@
 //   evaluate_curve      a curve, min-max curve or gradient property at given times
 //
 // list_project_templates and import_project are core tools (ProjectTools.cpp's neighbours here,
-// registered by registerHubTools), and create_project takes a template.
+// registered by registerHubTools), and create_project takes a template. registerHubTools also has
+// clear_project_leftovers (S66), which works over the hub and is in this group.
 
 #include "McpTools.h"
+#include "render/SceneRender.h"
 
 #include "App.h"
 #include "AppSettings.h"
@@ -45,7 +47,9 @@
 #include "window/GameWindow.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <future>
 
 namespace jasperengine::editor::mcp {
 
@@ -113,15 +117,24 @@ void recordGameTool(const CallPtr& call) {
         Json files = Json::array();
         for (const fs::path& file : result.files) files.push_back(FileUtils::pathToGenericUtf8(file));
         if (settings.kind == recorder::Kind::ImageSequence) data["files"] = files;
-        else data["movie"] = FileUtils::pathToGenericUtf8(result.output);
+        else if (result.ok) data["movie"] = FileUtils::pathToGenericUtf8(result.output);
         data["sidecar"] = FileUtils::pathToGenericUtf8(result.sidecar);
         if (result.overriddenFixedFps > 0.0) data["overrode_fixed_fps"] = result.overriddenFixedFps;
-        if (job->cancelRequested()) {
+        // (a failed write is a failure, stopped or not)
+        if (job->cancelRequested() && result.failedStep.empty()) {
             job->markCancelled("Stopped after " + std::to_string(result.frames) + " frame(s); the output is finalised.");
             return;
         }
-        if (result.ok) job->succeed("Recorded " + std::to_string(result.frames) + " frames to " + FileUtils::pathToGenericUtf8(result.output) + ".", data);
-        else job->fail("The recording failed: " + result.error + ".", data);
+        if (result.ok) {
+            job->succeed("Recorded " + std::to_string(result.frames) + " frames to " + FileUtils::pathToGenericUtf8(result.output) + ".", data);
+            return;
+        }
+        std::string message = "The recording failed: " + result.error + ".";
+        // (in the text: of an error, that is all a client like Claude Code shows the model)
+        if (!result.failedStep.empty()) {
+            message += " The output path holds nothing and Play is still running: stop it (play action stop), fix the cause, then record again.";
+        }
+        job->fail(message, data);
     });
     replyWhenJobDone(call, job, args.value("wait", true), args.value("timeout_seconds", 300.0), [](const McpJob& done) {
         Json result = done.result();
@@ -472,6 +485,99 @@ void listProjectTemplatesTool(const CallPtr& call) {
     call->ok(std::to_string(templates.size()) + " project template(s): create_project {template} makes a project from one.", data);
 }
 
+// A staging folder nothing removes by itself: the agent decides, as the Hub's user does (S66 R3)
+Json leftoversJson(const std::vector<hub::staging::Leftover>& leftovers) {
+    Json list = Json::array();
+    for (const hub::staging::Leftover& leftover : leftovers) {
+        list.push_back(Json{{"path", FileUtils::pathToGenericUtf8(leftover.folder)}, {"reason", leftover.reason}});
+    }
+    return list;
+}
+
+hub::staging::Scope leftoverScopeWith(const std::vector<fs::path>& folders) {
+    hub::staging::Scope scope = ProjectHubWindow::leftoverScope();
+    scope.parents.insert(scope.parents.end(), folders.begin(), folders.end());
+    return scope;
+}
+
+// import_project's and create_project's results: the leftovers beside the new project and known to the hub
+void reportLeftovers(const fs::path& parent, std::string& summary, Json& data) {
+    const std::vector<hub::staging::Leftover> leftovers = hub::staging::inspect(leftoverScopeWith({parent})).leftovers;
+    if (leftovers.empty()) return;
+    // the paths in the text too: a client may show the model the text alone
+    summary += " Kept as leftover(s):";
+    for (const hub::staging::Leftover& leftover : leftovers) summary += " " + FileUtils::pathToGenericUtf8(leftover.folder);
+    summary += ".";
+    data["next"] = "Leftovers may hold the user's files: tell the user. Once they agree, clear_project_leftovers {remove} (tool_groups: editor_tools) deletes one.";
+    data["leftovers"] = leftoversJson(leftovers);
+}
+
+void clearProjectLeftoversTool(const CallPtr& call) {
+    const Json& args = call->args();
+    std::vector<fs::path> requested;
+    std::vector<fs::path> parents;
+    if (args.contains("remove")) {
+        for (const Json& path : args["remove"]) {
+            const fs::path folder = FileUtils::pathFromUtf8(path.get<std::string>()).lexically_normal();
+            if (!folder.is_absolute()) {
+                call->fail("remove takes absolute paths: " + path.get<std::string>() + ".");
+                return;
+            }
+            requested.push_back(folder);
+            parents.push_back(folder.parent_path());
+        }
+    }
+    App& app = call->ctx().app();
+    hub::staging::Scope scope = leftoverScopeWith(parents);
+    if (const Project* project = call->ctx().project(); project && !project->getProjectPath().empty()) scope.projects.push_back(project->getProjectPath());
+    // a removal can take long: off the main thread, as the copies that made these folders
+    auto work = std::make_shared<std::future<Json>>(std::async(std::launch::async, [scope, requested]() {
+        hub::staging::Sweep swept = hub::staging::sweep(scope);
+        Json removed = Json::array();
+        for (const fs::path& folder : swept.removed) removed.push_back(FileUtils::pathToGenericUtf8(folder));
+        Json failed = Json::array();
+        for (const fs::path& folder : swept.failed) {
+            failed.push_back(Json{{"path", FileUtils::pathToGenericUtf8(folder)}, {"error", "the removal failed; it is retried at the next sweep"}});
+        }
+        bool removedAny = false;
+        for (const fs::path& folder : requested) {
+            // its owner had died: the sweep has just removed it, as asked
+            if (std::find(swept.removed.begin(), swept.removed.end(), folder) != swept.removed.end()) continue;
+            const auto listed = std::find_if(swept.leftovers.begin(), swept.leftovers.end(), [&](const hub::staging::Leftover& l) { return l.folder == folder; });
+            std::string error;
+            if (listed == swept.leftovers.end()) {
+                error = "not a leftover (see leftovers and in_use)";
+            } else if (hub::staging::removeLeftover(folder, error)) {
+                removed.push_back(FileUtils::pathToGenericUtf8(folder));
+                removedAny = true;
+                continue;
+            }
+            failed.push_back(Json{{"path", FileUtils::pathToGenericUtf8(folder)}, {"error", error}});
+        }
+        if (removedAny) swept = hub::staging::inspect(scope);
+        Json inUse = Json::array();
+        for (const fs::path& folder : swept.live) inUse.push_back(FileUtils::pathToGenericUtf8(folder));
+        return Json{{"removed", removed}, {"leftovers", leftoversJson(swept.leftovers)}, {"in_use", inUse}, {"failed", failed}};
+    }));
+    App* appPtr = &app;
+    call->waitUntil([work]() { return work->wait_for(std::chrono::seconds(0)) == std::future_status::ready; }, 600000,
+                    [call, work, appPtr, count = requested.size()](bool timedOut) {
+        if (timedOut) {
+            call->fail("The removal did not finish in 10 minutes; it goes on: call again to see what is left.");
+            return;
+        }
+        const Json data = work->get();
+        appPtr->refreshHubLeftovers();
+        const std::string summary = std::to_string(data["removed"].size()) + " staging folder(s) removed, " + std::to_string(data["leftovers"].size()) +
+                                    " leftover(s) kept, " + std::to_string(data["in_use"].size()) + " in use by a running editor.";
+        if (count > 0 && !data["failed"].empty()) {
+            call->fail(summary + " Not removed: " + data["failed"].dump() + ".", data);
+            return;
+        }
+        call->ok(summary, data);
+    });
+}
+
 void importProjectTool(const CallPtr& call) {
     McpContext& ctx = call->ctx();
     App& app = ctx.app();
@@ -511,7 +617,7 @@ void importProjectTool(const CallPtr& call) {
             return false;
         }
         return !appPtr->isProjectLoading();
-    }, (int)(timeout * 1000.0), [call, importer](bool timedOut) {
+    }, (int)(timeout * 1000.0), [call, importer, parent](bool timedOut) {
         if (timedOut) {
             importer->cancel();
             call->fail("The import did not finish in time; it was cancelled (nothing is left behind).");
@@ -520,15 +626,20 @@ void importProjectTool(const CallPtr& call) {
         Json log = Json::array();
         for (const std::string& line : importer->logTail(20)) log.push_back(line);
         if (!importer->succeeded()) {
-            call->fail("The import failed: " + importer->error() + ".", Json{{"log", log}});
+            std::string summary = "The import failed: " + importer->error() + ".";
+            Json data = {{"log", log}};
+            reportLeftovers(parent, summary, data);
+            call->fail(summary, data);
             return;
         }
         Project* project = call->ctx().project();
         const fs::path dir = importer->projectDir();
         std::error_code same;
         const bool open = fs::equivalent(project->getProjectPath(), dir, same);
-        call->ok(std::string("Imported ") + FileUtils::pathToGenericUtf8(dir) + (open ? " and opened it." : "; it did not open: see read_console."),
-                 Json{{"path", FileUtils::pathToGenericUtf8(dir)}, {"opened", open}, {"log", log}});
+        std::string summary = std::string("Imported ") + FileUtils::pathToGenericUtf8(dir) + (open ? " and opened it." : "; it did not open: see read_console.");
+        Json data = {{"path", FileUtils::pathToGenericUtf8(dir)}, {"opened", open}, {"log", log}};
+        reportLeftovers(parent, summary, data);
+        call->ok(summary, data);
     });
 }
 
@@ -565,8 +676,10 @@ bool createProjectFromTemplateTool(const CallPtr& call, const fs::path& path, co
         }
         Json scenes = Json::array();
         for (const SceneProject& scene : project->getScenes()) scenes.push_back(McpRefs::sceneJson(project, scene));
-        call->ok("Created " + FileUtils::pathToGenericUtf8(path) + " from the template \"" + templateId + "\" and opened it.",
-                 Json{{"path", FileUtils::pathToGenericUtf8(path)}, {"name", project->getName()}, {"template", templateId}, {"scenes", scenes}});
+        std::string summary = "Created " + FileUtils::pathToGenericUtf8(path) + " from the template \"" + templateId + "\" and opened it.";
+        Json data = {{"path", FileUtils::pathToGenericUtf8(path)}, {"name", project->getName()}, {"template", templateId}, {"scenes", scenes}};
+        reportLeftovers(path.parent_path(), summary, data);
+        call->ok(summary, data);
     });
     return true;
 }
@@ -697,6 +810,22 @@ void registerHubTools(McpRegistry& registry) {
         tool.activity = ToolActivity::ProjectSwitch;
         tool.allowedWhilePlaying = false;
         tool.handler = importProjectTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "clear_project_leftovers";
+        tool.title = "Clear Project Leftovers";
+        tool.group = "editor_tools";
+        tool.description =
+            "Removes what stopped imports and template copies left behind in their <name>.importing folders, beside known projects "
+            "and in the parents of `remove`. A folder that may hold a user's files stays until `remove` names it: ask the user first.";
+        tool.inputSchema = object({
+            {"remove", array(string(""), "Absolute paths of listed leftovers to delete.")},
+        });
+        tool.annotations.destructive = true;
+        tool.activity = ToolActivity::Control;
+        tool.handler = clearProjectLeftoversTool;
         registry.addTool(std::move(tool));
     }
 }

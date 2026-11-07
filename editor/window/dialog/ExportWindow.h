@@ -63,6 +63,7 @@ namespace jasperengine::editor {
         // Build And Run: launch the built player once the export finishes.
         bool m_runAfterBuild = false;
         bool m_allowMissingAssets = false;
+        bool m_iosSimulator = false;
         bool m_launchDone = false;
         bool m_playerSettingsRequested = false;
         // Nested inside this modal, so it can open without closing Build Settings.
@@ -70,6 +71,9 @@ namespace jasperengine::editor {
 
         // UI state
         fs::path m_targetDir;
+        // Exporter::outputFolderRefusal of m_targetDir, computed when it changes
+        fs::path m_refusalCheckedDir;
+        std::string m_outputRefusal;
         bool m_targetDirFromDefault = false;
         bool m_projectSettingsDirty = false;
 
@@ -85,6 +89,7 @@ namespace jasperengine::editor {
             bool fromScene = false;
         };
         std::vector<ShaderEntry> m_shaderEntries;
+        ShaderListStatus m_shaderListStatus;
         int m_selectedShaderIndex = -1;
         std::set<ShaderKey> m_shaderAdditions;
         std::set<ShaderKey> m_shaderExclusions;
@@ -136,6 +141,7 @@ namespace jasperengine::editor {
         std::string m_playerRuntimeId;
         std::string m_playerRuntimeError;
         std::vector<std::string> m_androidMissing;    // the SDK tools a prebuilt Android build lacks
+        std::string m_iosXcodeMissing;                // why this computer cannot build the Xcode project
         // the installed Android runtime's native libraries per selected ABI (the package sizes shown)
         std::vector<std::pair<std::string, uint64_t>> m_androidLibrarySizes;
         void refreshPlayerState();
@@ -201,6 +207,8 @@ namespace jasperengine::editor {
         const char* localExportMode() const;
         void refreshShaderSelection();
         void includeShader(ShaderKey key);
+        void applyShaderOverrides(const std::set<ShaderKey>& additions, const std::set<ShaderKey>& exclusions);
+        void syncShaderOverrides(bool force);
         void populateBackendList();
         void refreshEmsdkStatus();
         void selectMode(ExportMode mode);
@@ -212,6 +220,8 @@ namespace jasperengine::editor {
         static const char* platformIcon(BuildPlatform platform);
         bool platformCanBuildPlayer(BuildPlatform platform) const;
         std::set<ShaderBackend> platformBackends(BuildPlatform platform) const;
+        // the union of the presets of the platforms ticked on the Source Code page
+        std::set<ShaderBackend> selectedSourcePlatformBackends() const;
         void selectPlatform(BuildPlatform platform, bool buildPlayer);
         void setStartScene(uint32_t sceneId);
         void drawScenesInBuild(float height);
@@ -231,6 +241,8 @@ namespace jasperengine::editor {
         void drawTextureSection();
         void drawBackendSection();
         void applySourcePlatformPresets();
+        // a failed build's errors, each with a location a link that opens the file at the line
+        void drawBuildErrors(const ExportProgress& progress);
         void drawProgress();
         void drawAddShaderDialog();
         void drawOverwriteConfirmDialog();

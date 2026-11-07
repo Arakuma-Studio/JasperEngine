@@ -184,7 +184,7 @@ label, defaults to `name`), `type` (string, case-insensitive; default `float` if
 | any other string = a Lua script class name (e.g. `"Enemy"`) | that GameObject's `Enemy` script instance table (its `self`) | none |
 
 Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera`, `Light`,
-`Light2D`, `ShadowCaster2D`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
+`Light2D`, `ShadowCaster2D`, `CapsuleShadowCaster`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
 `MeshPolygon`, `Points`, `LineRenderer`, `TrailRenderer`, `Sprite`, `AudioSource`, `RectTransform`,
 `LayoutGroup`, `Polygon`, `Text`, `Image`, `Button`, `Panel`, `Scrollbar`, `Progressbar`,
 `InputField`, `Bone`, `Fog`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `FluidSimulation`, `Rigidbody2D`, `Joint2D`, `CharacterController2D`,
@@ -251,12 +251,13 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 | `onViewDestroyed` | none | view destroyed |
 | `onPause`, `onResume`, `onShutdown` | none | application lifecycle (pause = to the background; idempotent) |
 | `onFocus` | `hasFocus` | the app gained or lost focus (a dialog, the notification shade, another window); `onFocus(false)` comes before `onPause`, `onFocus(true)` after `onResume` |
+| `onVisibilityChanged` | `visible` | the window was hidden or shown again (minimized, unmapped, fully covered on macOS; a hidden web page): a hidden desktop game updates without drawing ([platform-services.md](platform-services.md)) |
 | `onOrientationChanged` | `orientation` (`ScreenOrientation`) | the interface rotated, after `onCanvasChanged` |
 | `onSafeAreaChanged` | none | `Screen.safeArea` changed (rotation, platform insets, `Screen.setExtraInsets`), after `onCanvasChanged` / `onOrientationChanged` |
-| `onLowMemory` | none | the system is short of memory (Android, iOS) |
+| `onLowMemory` | none | the system is short of memory (Android, iOS); `Device.onLowMemory` follows at the next frame, after the engine cleared its caches |
 | `onSceneLoaded` | none | a scene loaded by SceneManager is ready |
 | `onKeyDown`, `onKeyUp` | `key, isRepeat, mods` | key event (`key` is an `Input.KEY_*` value) |
-| `onCharInput` | `codepoint` | text char typed |
+| `onCharInput` | `char` | a character was typed: a one-character UTF-8 string, one call per character (an emoji is one call on every platform) |
 | `onMouseDown`, `onMouseUp` | `button, x, y, mods` | mouse button (`Input.MOUSE_BUTTON_*`) |
 | `onMouseMove` | `x, y, mods` | mouse moved |
 | `onMouseScroll` | `xoffset, yoffset, mods` | wheel |
@@ -277,8 +278,8 @@ RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onBeginContac
 
 | Source (wrapper + getter) | Event field | Handler args |
 |---|---|---|
-| `Button(...):getButtonComponent()` | `onPress`, `onRelease` | none |
-| `Image(...):getUIComponent()` (any UI element) | `onClick`, `onDoubleClick`, `onPointerDown`, `onPointerUp`, `onPointerMove`, `onPointerEnter`, `onPointerLeave`, `onDragStart`, `onDrag`, `onDragEnd` | `x, y` |
+| `Button(...):getButtonComponent()` | `onClick` (the click: released over it, or a Submit while selected), `onPress`, `onRelease` (fires on every release, wherever the pointer is: not a click) | none |
+| `Image(...):getUIComponent()` (any UI element) | `onClick` (released over the element while interactable: a button's click), `onDoubleClick`, `onPointerDown`, `onPointerUp`, `onPointerMove`, `onPointerEnter`, `onPointerLeave`, `onDragStart`, `onDrag`, `onDragEnd` | `x, y` |
 | same | `onGetFocus`, `onLostFocus` | none |
 | `Scrollbar(...):getScrollbarComponent()` | `onChange` | `step` |
 | `Panel(...):getPanelComponent()` | `onMove` / `onResize` | none / `width, height` |
@@ -480,6 +481,14 @@ return Slot
   takes it, or a press there holds it; check it before world clicks (Unity's
   `EventSystem.IsPointerOverGameObject`).
 - C++ scripts override `onPointerDown(PointerEventData& e)` ... on `ScriptBase`.
+
+The selection messages (keyboard, gamepad and TV menus, jasper://docs/ui): `onSelect(e)`,
+`onDeselect(e)` (the GameObject selected or deselected), `onMove(e)` (`e.moveDir`
+`MoveDirection.UP`..., `e.moveVector`; `e:use()` skips the Button's navigation), `onSubmit(e)`
+(`e:use()` skips its click) go to the selected Button's GameObject; `onCancel(e)` goes up its
+parents to the first script that defines it (otherwise the game gets Escape or B). `e`:
+`BaseEventData` (`target`, `selectedObject`, `used`, `use()`); onMove's is an `AxisEventData`. C++:
+`onSelect(BaseEventData&)` ... `onMove(AxisEventData&)`.
 - Gestures (pinch, rotate) are two pointers: keep each finger's `position` by `pointerId`.
 
 ---
@@ -502,7 +511,9 @@ return Slot
 | `framerate` | ro | fps (measured) |
 | `targetFrameRate` | rw | Unity's `Application.targetFrameRate`: -1 (default) = the platform's rate (60 on mobile, every animation frame on the web, vsync-paced on desktops); desktops and the editor ignore it while `vSyncCount > 0`. Kept across scene loads |
 | `vSyncCount` | rw | Unity's `QualitySettings.vSyncCount` 0..4 (present every Nth vblank); starts from the project's VSync; mobile and web ignore it |
+| `dynamicBatching` | rw | Dynamic Batching (Project Settings > Graphics, on by default): consecutive Sprites, small meshes and UI elements that share a material draw as one draw call, the same image. Starts from the project's setting and goes back to it when Play stops (`jasper://docs/profiling`, Dynamic Batching) |
 | `isFocused` | ro | Unity's `Application.isFocused` (true at start) |
+| `isVisible` | ro | false while the window can't be seen: the game updates without drawing (true at start, always on Android and iOS) |
 | `isDevelopmentBuild` | ro | Unity's `Debug.isDebugBuild`: true in the editor's Play and in exports built with the Debug build type |
 | `systemTime` | ro | |
 | `canvasWidth`, `canvasHeight` | ro | current canvas; can be 0 in `init()` of exported builds |
@@ -866,13 +877,11 @@ local price = Items.sword.price
 `setClipboardText(s)`, `getClipboardText()` (the system clipboard, UTF-8; on Web the text of
 the last copy or paste), `getDirSeparator()`, `getAssetPath()`, `getUserDataPath()`, `getLuaPath()`,
 `getShaderPath()`, `syncFileSystem()` (Web: stores the `data://` files in IndexedDB now; true),
-`isUserDataLoaded()` (Web: the saved files are restored; elsewhere true); ads/web: `initializeAdMob()`, `setMaxAdContentRating(AdMobRating.*)`,
-`loadInterstitialAd(id)`, `isInterstitialAdLoaded()`, `showInterstitialAd()` (Android/iOS; the
-export compiles Google Mobile Ads in only with the project settings `android.admob_enabled` /
-`ios.admob_enabled` and their `admob_app_id`, otherwise these do nothing),
+`isUserDataLoaded()` (Web: the saved files are restored; elsewhere true); web ads:
 `initializeCrazyGamesSDK()`, `showCrazyGamesAd(type)`, `happytimeCrazyGames()`,
 `gameplayStartCrazyGames()`, `gameplayStopCrazyGames()`, `loadingStartCrazyGames()`,
-`loadingStopCrazyGames()`.
+`loadingStopCrazyGames()`. Ads and purchases on Android and iOS: the native bridge
+([native-bridge.md](native-bridge.md), section 10).
 
 Platform services ([platform-services.md](platform-services.md) has the per-platform details):
 
@@ -925,6 +934,28 @@ Files (for saves prefer `File.readText` / `File.writeText` / `Json.readFile`, 2.
 `require("folder.module")` loads `folder/module.lua` from the Lua directory (or its `lua/`
 subfolder). Use it for shared helper modules.
 
+### 2.5.2 Device (static): Device Tier, thermal state, memory warnings
+
+| Name | Kind | Notes |
+|---|---|---|
+| `Device.tier` | ro | `DeviceTier.Low`, `Medium`, `High`, `Ultra`: the tier in effect (set, simulated or detected) |
+| `Device.gpuName`, `Device.tierReason` | ro | the renderer name, and why it got its tier |
+| `Device.tierApplied` | ro | false in the editor until the Game view simulates a tier or a script sets one |
+| `Device.thermalState` | ro | `ThermalState.Nominal`, `Fair`, `Serious`, `Critical` (desktops and the web: Nominal) |
+| `Device.setTier(tier)`, `Device.resetTier()` | fn | a graphics menu's tier for the rest of the run, and back |
+| `Device.onThermalStateChanged` | event | `function(state)` |
+| `Device.onLowMemory` | event | a low-memory warning was handled (caches cleared, streamed textures a mip lower) |
+
+```lua
+Device.onThermalStateChanged = function(state)
+    if state == ThermalState.Critical then
+        Device.setTier(DeviceTier.Low)
+    end
+end
+```
+
+Details: jasper://docs/device.
+
 ### 2.6 GameObject.instantiate / destroy (static, Unity-style)
 
 ```lua
@@ -940,7 +971,9 @@ GameObject.destroyImmediate(obj)
   (any wrapper), or a script instance (`self` of some script).
 - A rotation is REQUIRED with a position: use `Quaternion.IDENTITY` or `Quaternion(0, 0, deg)`.
 - Returns a `GameObject` wrapper of the new root. If `original` was a script instance, returns
-  the copy's script instance of the same class instead.
+  the copy's script instance of the same class instead. `nil` when nothing was made, or when the
+  copy's `init` / `onEnable` destroyed it with `destroyImmediate` (a deferred `destroy` there
+  returns the copy: it goes at the end of the frame).
 - Prefabs go to the active scene unless a parent or scene is given.
 - `obj` for destroy: any wrapper or a script `self` (destroys its GameObject). `nil` is ignored.
 
@@ -1011,6 +1044,8 @@ Component path fields (`AudioSource.filename`, `Model.filename`...) stay plain s
 `currentSceneName`, `loadPending`, `loadingSceneId`, `loading`, `loadingProgress`,
 `loadingDelay` (rw), `loadingTimeout` (rw), `persistentScene` (the DontDestroyOnLoad scene, nil
 until the first `DontDestroyOnLoad`). `moveGameObjectToScene(obj, scene)` (2.8.1).
+With a loading scene (Project Settings > Loading), it covers the game's start scene too: the start
+loads under it from the first frame, so the loading scene's scripts start first.
 
 ### 2.8.1 Persistent objects (DontDestroyOnLoad)
 
@@ -1108,8 +1143,10 @@ Entities are plain integers (`0` = none).
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
 | `physicsInterpolation` (bool, rw) | bodies drawn between their last two fixed steps (default true); the scene setting `physics_interpolation` |
 | `physics2DSubSteps` (integer, rw) | Box2D sub-steps of each fixed step, 1-16 (default 4); the scene setting `physics_2d_sub_steps` |
-| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
-| `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
+| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `capsuleShadowsEnabled`, `capsuleShadowIntensity` (0..1), `capsuleShadowSoftness` (0..2; `jasper://docs/lighting`), `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
+| `defaultMeshShader`, `defaultUIShader`, `defaultSkyShader`, `defaultPointsShader`, `defaultLinesShader` (string, rw) | the scene's default shader of each type ("" built-in) |
+| `setDefaultShaderUniform(ShaderType.MESH, name, float/Vector2/3/4)`, `getDefaultShaderUniform(type, name)` (-> Vector4), `hasDefaultShaderUniform(type, name)`, `removeDefaultShaderUniform(type, name)` (-> bool) | a property value of that default shader, inherited by every object without a shader of its own (an object's own value wins; `ShaderType.MESH`/`UI`/`SKYBOX`/`POINTS`/`LINES`; other types log an error). A value changed every frame belongs in `Shader.setGlobal*` |
+| `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects (below) |
 | `findEntitiesWith({"Transform", "MeshComponent"}[, {"UIComponent"}])` | -> table of Entity with every listed component and none of the excluded ones, in the order of the first one's array (parents before children for `Transform`); names are the component class names |
 | `getChangeTick()` | -> integer: the scene's change tick; a change made after the call is stamped with a newer one |
 | `findChangedEntities("Transform", sinceTick)` | -> table of Entity whose component changed after `sinceTick` (added, set through a wrapper setter, a component field, the editor or `markChanged`) |
@@ -1120,14 +1157,85 @@ Entities are plain integers (`0` = none).
 `PhysicsSystem` (from `self.scene:getPhysicsSystem()`): `gravity` / `gravity2D` /
 `gravity3D` (rw), `interpolation` (rw, as `scene.physicsInterpolation`), `pointsToMeterScale2D` (rw),
 `subSteps2D` (rw, 1-16, as `scene.physics2DSubSteps`), event objects (section 1.3),
-`createRigidbody2D(e)`, `removeRigidbody2D(e)`, `createRigidbody(e)`, `removeRigidbody(e)`
-(partial).
+`createRigidbody2D(e)`, `removeRigidbody2D(e)`, `createRigidbody(e)`, `removeRigidbody(e)`,
+`removeSubscriptionsByTag(substring)` (the scene's physics event callbacks whose tag holds it),
+`clearSubscriptions()` (all of them, every script's) (partial).
+
+The other subsystems (from `self.scene:getActionSystem()`, `getMeshSystem()`, ...):
+
+| Object | Members |
+|---|---|
+| `ActionSystem` | `actionStart(e [, newRun])` (newRun default true: a stopped action starts a new run; false resumes inside its old one), `actionStop(e)`, `actionPause(e)`, `getDuration(e)` (seconds: a tween, an animation's frames, a keyframe track), `getFrameDuration(frame)` (an `ActionFrame` of an animation) |
+| `AudioSystem` (on the scene) | `stopSceneSounds()`: this scene's sounds (`AudioSystem.stopAll()`: every scene's) |
+| `MeshSystem` | `loadGLTF(e, path [, async [, skipEntities [, changeRootTransform [, bakeSceneRoot]]]])` (changeRootTransform default true: the entity takes the file's root transform), `hasPendingAsyncModelLoads()`, `isAsyncModelLoadPending(e, path)`, `cancelAsyncModelLoad(e, path)`, `cancelAsyncModelLoads()` |
+| `RenderSystem` | `isAllLoaded()` (everything the scene waits for has loaded), `getLoadCount()` -> `loaded, total` (a loading screen's progress) |
+| `UISystem` | `parentToLayoutSpace(e, v2)`, `layoutToParentSpace(e, v2)` (an anchored element's offset is in its layout parent's space, its position in its parent's), `hasPendingImages()`, `resetButtonStates()` (every button unpressed, pointers released) |
 
 `AudioSystem` (static): `AudioSystem.stopAll()`, `pauseAll()` / `resumeAll()` (the mixer's Master
 bus holds, as in the app pause but apart from it; a source a script paused stays paused), `AudioSystem.globalVolume` (rw,
 = `AudioListener.volume`), `preload(path [, loadType])` (decode or open a clip ahead),
 `isOutputAvailable()` (false without an audio device: sounds still mix, meters still read),
 `getVoiceCount()`.
+
+`Audio` (static, free voices with no AudioSource): `Audio.play(eventOrClip [, opts])` -> `SoundHandle`
+(a Sound Event by GUID or `.soundevent` path, or a clip path; `opts = {target = GameObject (3D, follows
+it, stops when it is destroyed), position = Vector3 (3D, fixed), scene = Scene (the owner: it holds
+and stops with it; default the target's, else the main scene), volume = 1, pitch = 1, group = "SFX"
+(default the event's, else Master), delay = 0 (s), unscaled = false (the delay's time)}`; an unknown
+name gives an invalid handle and one warning per name per Play), `Audio.stopAll([group])` -> integer
+(the voices of `Audio.play`, triggers and one-shots, all or those on `group` or below it;
+`AudioSystem.stopAll()` also stops the sources' main voices). Inside a physics callback they run at
+the frame's audio update: the handle is valid at once, `stopAll` answers 0.
+`Audio.mark(label)` writes a marker line (at most 200 bytes) at this sample of an audio capture and does
+nothing without one; `Audio.isCapturing()` -> boolean. Both exist in every build (a release player: no-op
+and false), so a script behaves the same everywhere.
+
+```lua run
+Audio.mark("doc test")
+assert(type(Audio.isCapturing()) == "boolean")
+```
+
+The music (one track that survives scene loads; `jasper://docs/sound` Music): `Audio.playMusic(eventOrClip [, opts])`
+-> bool (a clip, or a Sound Event played as a playlist; `opts = {crossfade = 0 (s, equal power), sync = "now" | "beat"
+| "bar" | "section_end" (the playing track's next one), snapshot = "Combat" (reached at the switch), snapshotSeconds
+(default the crossfade), group (default the event's output, else `audio.music_group`), volume = 1,
+ignoreListenerPause = false}`; the playing track again does nothing; false for a `layer` event),
+`Audio.stopMusic([fade [, {sync}]])`, `Audio.advanceMusic()` -> bool (the section ends at its next loop end),
+`Audio.playStinger(eventOrClip [, sync = "beat"])` -> `SoundHandle` (on the next beat or bar, owned by the music),
+`Audio.getMusic()` -> string, `Audio.getMusicTime()` -> seconds, `Audio.getMusicPosition()` -> `{section, bar, beat,
+beatFraction, bpm, beatsPerBar}` or nil (no music or no tempo). `Audio.onMusicBeat` (bar, beat) and
+`Audio.onMusicSection` (section, clip) are called in the frame whose mix holds them: frame-accurate; a stinger or a
+synced switch is the sample-exact way. A time that is negative or not a number, or an unknown `sync`, is refused
+with one warning.
+
+```lua run
+assert(Audio.getMusic() == "")
+assert(Audio.getMusicPosition() == nil)
+assert(Audio.advanceMusic() == false)
+Audio.onMusicBeat:add("doc", function(bar, beat) end)
+Audio.onMusicBeat:remove("doc")
+```
+
+`SoundHandle` (a value naming one play): `isValid()`, `isPlaying()`, `stop()`, `pause()`, `resume()`,
+`fadeOut(seconds [, opts])` (`opts.pause`, `opts.unscaled`, as `AudioSource:fadeOut`),
+`fadeTo(volume, seconds [, opts])`; properties `volume`, `pitch`, `pan`, `position` (rw; setting it
+stops following), `time`, `voiceCount` (ro). Getters of an invalid handle give 0 or the zero vector,
+setters do nothing; a value that is not a number is refused with a warning.
+
+`AudioPlayOn` (flags, add them): `UIClick` 1, `UIPress` 2, `UIHover` 4, `Collision2D` 8, `Collision3D`
+16, `Sensor2D` 32, `Sensor3D` 64: what plays an AudioSource by itself (`AudioSource.playOn`).
+
+```lua
+-- a footstep that follows this object, a fade of one play, and a Button that clicks by itself
+local step = Audio.play("events/footstep.soundevent", {target = self, volume = 0.8, group = "SFX"})
+if step:isValid() then
+    step:fadeOut(0.2)
+end
+local sound = AudioSource(self.scene, self.entity)
+sound.event = "events/click.soundevent"
+sound.playOn = AudioPlayOn.UIClick + AudioPlayOn.UIHover
+Audio.stopAll("SFX")
+```
 
 `AudioListener` (static, Unity's): `pause` (rw: every source but the `ignoreListenerPause` ones
 holds; a pause menu), `volume` (rw, 0..1, everything).
@@ -1171,12 +1279,12 @@ if hit.hit then local e = hit.body end
 
 ### 2.10.1 Water (static)
 
-The water surfaces of a scene are its meshes drawn with `library:water` (enabled, active), each
-resting at the top of its world bounds and covering their XZ extent; with `WAVES` the heights
-follow the same waves the shader draws, on its clock (`Water.getTime()`, `frame.time.x`:
-seconds since the engine started, wall-clock latched once a frame, running in the editor and
-while the game is paused or time-scaled; with a fixed frame delta it advances by exactly that a
-frame), so a script and the screen agree. Where waters overlap the one whose
+The water surfaces of a scene are its meshes drawn with `library:water` or a fork of it (a
+manifest with `@role water`; enabled, active), each resting at the top of its world bounds and
+covering their XZ extent; with `WAVES` (and `GERSTNER`) the heights follow the same waves the
+shader draws, on its clock, the scene clock (`Water.getTime(scene)`: the seconds the scene has
+run, scaled by `Time.timeScale`, held while the game is paused, 0 when the scene starts; a
+stopped scene's follows the Scene view's Animate water), so a script and the screen agree. Where waters overlap the one whose
 bottom (the material's `buoyancyDepth` below its surface; none at 0) is highest wins. Each call
 looks through the scene's meshes: for many points a frame, keep the results.
 
@@ -1184,9 +1292,9 @@ looks through the scene's meshes: for many points a frame, keep the results.
 |---|---|
 | `Water.getHeight(scene, x, z)` | surface height (world Y, waves included) of the topmost water over (x, z); `nil` where none covers it |
 | `Water.getNormal(scene, x, z)` | its normal (`Vector3`; up without `WAVES`); `nil` where none |
-| `Water.isUnderwater(scene, point)` | `point` (`Vector3`) is under the surface of the water it is in |
-| `Water.getTime()` | the shader library's clock, seconds (one value a frame) |
-| `Water.sample(scene, point)` | a `WaterSample`: `inWater`, `surfaceHeight`, `normal`, `flowVelocity` (the volume's flow + the surface rising), `volume` (entity), `hasWater`; Water Volumes first, then the meshes above |
+| `Water.isUnderwater(scene, point)` | `point` (`Vector3`) is under the surface of the water it is in (false inside a Water Excluder) |
+| `Water.getTime(scene)` | the scene clock the waves run on, seconds (one value a frame); without `scene` the main scene's |
+| `Water.sample(scene, point)` | a `WaterSample`: `inWater`, `surfaceHeight`, `normal`, `flowVelocity` (the volume's flow + the surface's motion: rising and falling, and with `GERSTNER` rolling back and forth), `volume` (entity), `hasWater`; Water Volumes first, then the meshes above |
 | `Water.sampleHeight(scene, x, z)` | the surface height there, Water Volumes first; `nil` where no water is |
 
 A Water Volume (`go:getWaterVolume()`, `WaterVolume(scene, entity)`): `size` (Vector3, local: XZ
@@ -1195,9 +1303,32 @@ extent, Y depth), `surfaceOffset`, `infinite`, `density`, `flow`, `linearDrag`, 
 `Buoyancy(scene, entity)`): `columns` (`BuoyancyColumns.AUTO_2x2` / `AUTO_3x3` / `CUSTOM`),
 `customPoints` ({Vector3...}), `volumeScale`, `dragScale`, `enabled`.
 
+A `WaterSample` also tells `excluder` (the Water Excluder keeping the point dry: `inWater` is then
+false, the surface still reported), `excluded`, and the Water Wakes there: `wakeFoam` (0..1) and
+`wakeHeight` (metres of wake crest; both 0 without a wake).
+
+A Water Excluder (`go:getWaterExcluder()`, `WaterExcluder(scene, entity)`; keeps water out: no
+surface drawn, no underwater fade, nothing floats in it but the Rigidbody it belongs to): `enabled`,
+`shape` (`WaterExcluderShape.BOX` / `SPHERE` / `CONVEX_HULL`, the hull of the GameObject's mesh),
+`center`, `size` (Vector3, local, Box and Sphere), `hullStatus` (ro: `"ready"`, `"pending"`,
+`"no_mesh"`, `"flat"`, `"no_physics"`, `"none"` for the other shapes), `hullFaces` (ro),
+`contains(point)`. A Water Wake (`go:getWaterWake()`, `WaterWake(scene, entity)`; foam and waves
+behind it on the water while it moves): `enabled`, `foam`, `waves` (0..2), `width`, `length`
+(metres; 0: from the excluder or the mesh), `emitting` and `speed` (ro, the last step). The
+scene's wake map: `scene.waterWakeResolution` (`WaterWakeResolution.AUTO` / `LOW` / `MEDIUM` /
+`HIGH`: 128, 256, 512 texels; AUTO 256, 128 on mobile and web), `scene.waterWakeArea` (metres),
+`scene.waterWakeFade` (seconds).
+
 ```lua
 local y = Water.getHeight(self.scene, pos.x, pos.z)
 if y and pos.y < y then -- swimming
+end
+local hold = self.gameObject:getWaterExcluder()
+hold.shape = WaterExcluderShape.BOX
+hold.size = Vector3(2, 1, 5)
+local wake = self.gameObject:getWaterWake()
+wake.foam = 1.5
+if Water.sample(self.scene, pos).excluded then -- in the dry hold
 end
 ```
 
@@ -1253,6 +1384,9 @@ or `(r,g,b,a)`.
 `UI.canvasToUI(scene, Vector2)` / `UI.uiToCanvas(scene, Vector2)`: game canvas pixels (`Input`,
 touches) to a scene's UI units and back (they differ when its Canvas Scaler scales the UI);
 `UI.reducedMotion` (rw, default false): Text Effects skip their motion layers.
+`UI.getSelected(scene)` (a GameObject or nil) / `UI.setSelected(scene, obj)` (nil deselects; false
+when it cannot be selected): the scene's keyboard/gamepad selection, Unity's
+`EventSystem.currentSelectedGameObject` / `SetSelectedGameObject` (jasper://docs/ui).
 
 ### 2.13 Timer (static): delayed calls, repeats, coroutines
 
@@ -1304,6 +1438,7 @@ local path = Profiler.sample("Pathfind", function() return self:findPath() end) 
 Profiler.counter("Enemies alive", #self.enemies)   -- a monitor (the Monitors module, get_frame_times)
 Profiler.enabled = true                      -- start recording (read it to know whether it records)
 local s = Profiler.frameStats()              -- {drawCalls, instances, triangles, cpuMs, fps, gpuMs?}
+local r = scene:getRenderStats()             -- by pass: mainDrawCalls, shadowDrawCalls, mainTriangles, instancedDraws...
 ```
 
 - Samples nest. An `endSample` without its `beginSample` is ignored (logged once). An error in
@@ -1541,11 +1676,22 @@ end, {owner = self})
 | `/` | `v / number`, `number / v`, `v / v` | `v / number`, `number / v`, `v / v` | `v / number`, `number / v`, `v / v` |
 | unary `-`, `==`, `<`, `<=`, `>`, `>=`, `tostring` | yes | yes | yes |
 | Methods | `length() squaredLength() distance(v) squaredDistance(v) dotProduct(v) normalize() normalized() normalizeL() midPoint(v) makeFloor(v) makeCeil(v) perpendicular() crossProduct(v) normalizedCopy() reflect(n) swap(v) isValid()` | `length() squaredLength() dotProduct(v) absDotProduct(v) distance(v) squaredDistance(v) normalize() normalized() normalizeL() crossProduct(v) midPoint(v) makeFloor(v) makeCeil(v) perpendicular() reflect(n) isValid()` | `dotProduct(v) divideByW() swap(v) isNaN() isValid()` |
+| Unity's moves | `moveTowards(target, maxDelta) lerp(target, t) lerpUnclamped(target, t)` | same | same |
 
 Constants are static properties returning copies: `Vector3.ZERO` (no parentheses).
 `v * v`, `v / v` and `number / v` are component-wise. `<` is true when every component is
 smaller, `<=` when every component is smaller or equal (so `a < b` and `b < a` can both be
 false). `==` with a value of another class is `false`. There is no `v + number`.
+`lerp` is Unity's `Lerp`: `t` is clamped to 0..1 (`lerpUnclamped` extrapolates); `moveTowards`
+steps at most `maxDelta` toward the target and never past it (a negative delta moves away).
+`a:lerp(b, t)` and `Vector3.lerp(a, b, t)` are the same call:
+
+```lua run
+local a, b = Vector3(0, 0, 0), Vector3(10, 0, 0)
+assert(Vector3.lerp(a, b, 0.25) == Vector3(2.5, 0, 0))
+assert(a:lerp(b, 2) == b and a:lerpUnclamped(b, 2) == Vector3(20, 0, 0))
+assert(Vector2(0, 0):moveTowards(Vector2(3, 4), 2.5) == Vector2(1.5, 2))
+```
 
 ### 3.2 Quaternion
 
@@ -1572,7 +1718,7 @@ false). `==` with a value of another class is `false`. There is no `v + number`.
 | `EdgeInsets(left, top, right, bottom)` | rw `left top right bottom`; `isZero()`, `==`, `tostring` (Screen.safeAreaInsets) |
 | `Ray(origin, direction)` (Vector3) | rw `origin direction`; `getPoint(t)`; `intersects(AABB/OBB/Plane/Rigidbody2D/Rigidbody/...)`; `Ray.NO_HIT` |
 | `Matrix3`, `Matrix4` | `+ - == tostring`; `*` by a matrix, a number (either side) or a vector (`m * Vector3`, Matrix4 also `m * Vector4`; `Matrix4 * Vector3` applies the translation); `row column get set identity inverse transpose`; Matrix4 static `translateMatrix rotateMatrix rotateXMatrix rotateYMatrix rotateZMatrix scaleMatrix lookAtMatrix orthoMatrix perspectiveMatrix frustumMatrix` |
-| `Plane`, `AABB`, `OBB`, `Sphere` | geometry helpers (`intersects`, `contains`, `getCenter`, `getSize`, `merge`, ...) |
+| `Plane`, `AABB`, `OBB`, `Sphere` | geometry helpers (`intersects`, `contains`, `getCenter`, `getSize`, `merge`, ...); `AABB`/`OBB` `getCorner(c)` (`AABB.CornerEnum.*`), `getCorners()` -> table of 8 `Vector3` copies, `corners[i]` = `getCorner(i - 1)` (empty for a null or infinite box) |
 | `AnimationCurve()` | Unity's curve. Static `constant(v)`, `linear(t0, v0, t1, v1)`, `easeInOut(t0, v0, t1, v1)`; `evaluate(t)`; `addKey(time, value [, inTangent, outTangent])` / `addKey(CurveKey)` -> 1-based index (-1 when a key is at that time); `removeKey(i)`; `moveKey(i, time, value)` / `moveKey(i, CurveKey)` -> its new index; `getKey(i)` -> `CurveKey` (nil out of range); ro `keyCount`; rw `keys` (table of `CurveKey`), `preWrapMode`, `postWrapMode` (`CurveWrap.*`) |
 | `CurveKey(time, value [, inTangent, outTangent])` | rw `time value inTangent outTangent` (slopes; `math.huge` is a step) |
 | `Gradient()` | Unity's gradient (white, opaque). `setKeys(colorKeys, alphaKeys)`: `{{time, Vector3 sRGB}, ...}` (or `GradientColorKey`s), `{{time, alpha}, ...}`; `evaluate(t)` -> Vector4 **linear**; rw `mode` (`GradientMode.*`), `colorKeys`, `alphaKeys`; ro `colorKeyCount`, `alphaKeyCount`; `getColorKey(i)`, `getAlphaKey(i)` (1-based) |
@@ -1671,8 +1817,12 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `scale` | rw `Vector3` | |
 | `setScale(s)` | method | uniform float only; for non-uniform assign `obj.scale = Vector3(...)` |
 | `getWorldScale()` | method | |
-| `visible` | rw bool | setting it copies the value to the children (next frame); `setVisibleOnly(b)` changes only this one. A parent hidden in the editor does not hide its children until a script hides it; to hide a whole subtree reliably use `setActive(false)` |
-| `addChild(goOrEntity)`, `removeChild(goOrEntity)`, `removeParent()` | methods | |
+| `visible` | rw bool | setting it copies the value to the children (next frame); `setVisibleOnly(b)` changes only this one. Only setting it does: copies (`GameObject.instantiate`), scene moves (`DontDestroyOnLoad`) and reparenting keep each child's own value. A parent hidden in the editor does not hide its children until a script hides it; to hide a whole subtree reliably use `setActive(false)` |
+| `addChild(goOrEntity)`, `removeChild(goOrEntity)`, `removeParent()` | methods | keep the child's local values |
+| `parent` | rw `GameObject` or nil | Unity's `transform.parent`: assigning keeps the world placement (nil: to the root) |
+| `setParent(goOrScriptOrNil [, worldPositionStays])` | method | Unity's `SetParent` (default true keeps the world placement, false the local values); refused (logged) for itself, one of its children, another scene's GameObject |
+| `childCount`, `getChild(i)`, `getChildren()` | ro / methods | the direct children in Hierarchy order; `getChild` is 0-based (nil out of range), `getChildren` a table |
+| `findChild(path)` | method | Unity's `Transform.Find`: a child by name, or a path of names below it (`"Arm/Hand"`); nil when missing |
 | `moveToTop()`, `moveUp()`, `moveDown()`, `moveToBottom()` | methods | sibling order = 2D draw order (below) |
 | `billboard`, `fakeBillboard`, `cylindricalBillboard` (rw), `billboardRotation` (rw), `setBillboard(a,b,c)`, `setBillboardRotation(x,y,z)` | | |
 | `localMatrix` (rw), `modelMatrix` (ro), `normalMatrix` (ro), `updateTransform()` | | |
@@ -1688,6 +1838,20 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `getVertexAnimator()` | method | the GameObject's `VertexAnimator` (4.8.3), `nil` when it has none (it never adds one) |
 | `hasVertexAnimator()` | method | bool |
 | `GameObject.instantiate`, `GameObject.destroy`, `GameObject.destroyImmediate` | static | section 2.6 |
+
+```lua run
+local holder = GameObject(scene)
+holder.name = "Holder"
+local arm = GameObject(scene)
+arm.name = "Arm"
+arm:setParent(holder)
+assert(arm.parent.entity == holder.entity and holder.childCount == 1)
+assert(holder:findChild("Arm").entity == arm.entity and holder:getChild(0).entity == arm.entity)
+arm.parent = nil
+assert(arm.parent == nil and holder.childCount == 0)
+GameObject.destroy(holder)
+GameObject.destroy(arm)
+```
 
 There is no `getComponent`: wrap the same entity with the class you need
 (`Sprite(self.scene, self.entity)`).
@@ -1714,7 +1878,9 @@ sprites) sorted by their distance to the camera position, not by Z.
 | `setNormalTexture([submesh,] path)`, `setNormalTexture(id, TextureData)`, `getNormalTexture([submesh])` | methods: the normal map of submesh 0 or of a submesh (tangent-space, OpenGL convention, green up; on sprites, tilemaps and polygons it answers Light 2Ds whose `height` is above 0; same size and frame layout as the colour texture; a Tilemap's submesh `i` is the tileset of its colour texture `i`) |
 | `material` | rw `Material`; `getMaterial([submesh])`, `setMaterial([submesh,] mat)` |
 | `castShadows`, `receiveShadows`, `staticShadowCaster` (cached in the static shadow layer, `jasper://docs/shadows`), `receiveLights`, `transparent`, `faceCulling`, `cullingMode`, `customShader` | rw |
-| `getAABB()`, `getWorldAABB()`, `getNumSubmeshes()` | methods |
+| `allowGpuInstancing` (its draws may batch with those of the same mesh and material, `jasper://docs/meshes`) | rw |
+| `getAABB()`, `getWorldAABB()`, `getNumSubmeshes()` | methods (a model made of parts: 4.8) |
+| `vertexCount` | ro (Unity's `Mesh.vertexCount`) |
 | `setShaderUniform(name, float/Vector2/3/4)`, `getShaderUniform(name)`, `removeShaderUniform(name)` | methods |
 | instancing: `createInstancedMesh()`, `addInstance(...)`, `updateInstance(i, ...)`, `removeInstance(i)`, `getNumInstances()`, `clearInstances()` | methods |
 
@@ -1763,7 +1929,10 @@ compiles in only while its `...Enabled` is true, so animating a factor never rec
 `specularFactor`, `specularColor`, `ior`; `hexTilingEnabled`, `hexTilingRotation`,
 `hexTilingContrast`. Their maps read only: `clearcoatTexture`, `clearcoatNormalTexture`,
 `sheenTexture`, `anisotropyTexture`, `iridescenceTexture`, `transmissionTexture`,
-`specularTexture`. E.g. `local m = mesh:getMaterial(); m.clearcoatEnabled = true;
+`specularTexture`. The Shading Model: `shadingModel` (`ShadingModel.STANDARD` / `HAIR`), and the
+hair's `hairPrimaryColor`, `hairPrimaryShift`, `hairPrimaryWidth`, `hairSecondaryColor`,
+`hairSecondaryShift`, `hairSecondaryWidth`, `hairRotation` (radians), read only `hairFlowTexture`.
+E.g. `local m = mesh:getMaterial(); m.clearcoatEnabled = true;
 m.clearcoatFactor = 1; mesh:setMaterial(m)`. More: `jasper://docs/materials`.
 `extraPass` (`MaterialPass`, edited in place on the copy, then `setMaterial`): one more draw
 of the submesh after its mesh's main draws (`order = MaterialPassOrder.BEFORE`: ahead of
@@ -1818,9 +1987,21 @@ intervalMs, loop)`, plus Action: `start()`, `pause()`, `stop()`, `isRunning()`,
 `loadModel(path)`, `loadGLTF(path)`, `loadOBJ(path)`, `getAnimation(i)`,
 `findAnimation(name)`, `playAnimation(indexOrName [, fadeTime])`, `stopAnimations(fadeTime)`,
 `getBone(indexOrName)`, `getMorphWeight(indexOrName)`, `setMorphWeight(indexOrName, w)`,
-`resetToBindPose()`, `enabled` (rw), `getPoseAnimator()` (the model's PoseAnimator, added when missing),
+`resetToBindPose()`, `enabled` (rw), `filename` (ro, the file it loaded), `getAnimationCount()`,
+`getPoseAnimator()` (the model's PoseAnimator, added when missing),
 `getHumanoidInfo()` (`{humanoid, animationType ("generic"/"humanoid"), humanScale, missing = {slot names},
 extraMapped, error?}`: its Avatar; nil without bones).
+
+**A model made of parts.** A glTF with several mesh nodes loads each into a child GameObject
+(a part; the Model's own mesh stays empty), and the Mesh and Model API reaches the parts: a mesh-wide
+setter (`castShadows`, `receiveLights`, `customShader`, `setShaderUniform`, ...) writes every part
+and its getter reads the first (lowest node index); calls on "submesh 0" (`setColor`, `color`,
+`setTexture`, `material`, `setNormalTexture(path)`) act on each part's first submesh;
+an index (`setMaterial(i, m)`, `getMaterial(i)`) counts submeshes part after part
+(`getNumSubmeshes()` is their sum; past the end: logged, nothing changes); `getAABB()` and
+`vertexCount` cover all parts; `setMorphWeight(name, w)` goes to every part with a target of that
+name, `setMorphWeight(i, w)` to every part with that many targets. Instancing and `setAsMirror` are
+refused there (logged): call them on a part (`model:findChild("Body")`).
 
 With an Animation Player on the Model's GameObject (4.8.2), `playAnimation(name [, fadeTime])`
 crossfades to the player's state of that name (over the player's `defaultFadeTime` when no fade
@@ -1877,6 +2058,8 @@ missing; `GameObject:getAnimationPlayer()` returns `nil` without one. Players ru
 and in games (edit mode previews clips in the Animation window). Calls made before the clips load
 are kept. Clip tracks bind by path below the player's GameObject; renames and reparents rebind
 on the next frame. User guide: `docs/animation-clips.md`; agents: `jasper://docs/animation`.
+A clip's audio cues play by themselves (no Lua API; author them with `edit_animation {clip, audio}`):
+to play a sound from code use `Audio.play`, and react to clip events as below.
 
 | Member | Notes |
 |---|---|
@@ -2134,7 +2317,9 @@ end
 
 rw: `type` (`CameraType.*`), `enabled`, `nearClip`, `farClip`, `leftClip`, `rightClip`,
 `bottomClip`, `topClip`, `aspect`, `yfov`, `target` (Vector3), `up` (Vector3), `autoResize`,
-`renderToTexture`, `transparentSort`, `depthTest`, `cullingMask`.
+`renderToTexture`, `transparentSort`, `depthTest`, `cullingMask`, `transparencyMode`
+(`TransparencyMode.SORTED` / `ORDER_INDEPENDENT`: weighted blended OIT for alpha-blended materials),
+`oitWeightScale` (`jasper://docs/lighting`).
 Methods: `activate()`, `setOrtho(l, r, b, t, near, far)`, `setPerspective(yfov, aspect, near,
 far)`, `setType(t)`, `setTarget(x, y, z)`, `disableTarget()`, `isUsingTarget()`, `setUp(x,y,z)`,
 `getDirection()`, `getRight()`, `getUp()`, `getWorldDirection()`, `getWorldTarget()`,
@@ -2227,7 +2412,8 @@ CameraShake.shake("shock", {unscaled = true})
 
 ### 4.10 Light (GameObject) / Light2D (GameObject)
 
-Light rw: `type` (`LightType.*`), `enabled`, `direction` (Vector3), `color` (Vector3),
+Light rw: `type` (`LightType.*`), `enabled`, `direction` (Vector3; ro `worldDirection`, as of the
+last transform update), `color` (Vector3),
 `range`, `intensity`, `innerConeAngle`, `outerConeAngle`, `shadows`, `cameraNear`,
 `cameraFar`, `automaticShadowCamera`, `numCascades` (0: the quality tier's), `cullingMask`, `shading`
 (`LightShading.*`, the stage evaluating it on MIXED-lighting materials), `intensityUnit`
@@ -2243,7 +2429,9 @@ Shadows (`jasper://docs/shadows`) rw: `shadowType` (`ShadowType.NONE/HARD/SOFT`)
 `cascadeSplitMode` (`CascadeSplitMode.AUTO/MANUAL`), `cascadeSplits` (Vector3, fractions of the
 distance), `shadowDistance` (metres, 0: the scene's or the tier's), `shadowAngularDiameter`
 (degrees), `shadowSourceRadius` (metres), `shadowUpdateMode` (`ShadowUpdateMode.AUTO/EVERY_FRAME/ON_DEMAND`);
-`requestShadowUpdate()` redraws an On Demand light's maps.
+`requestShadowUpdate()` redraws an On Demand light's maps. Contact shadows (directional and spot
+lights with shadows): `contactShadows`, `contactShadowLength` (metres), `contactShadowThickness`
+(metres), `contactShadowSampleCount` (8..16; `jasper://docs/lighting`).
 
 Light2D rw: `enabled`, `color` (Vector3), `intensity`, `range`, `falloff`, `height`,
 `shadows`, `shadowBias`, `shadowSoftness`, `mapResolution`; methods `setColor(r,g,b)`,
@@ -2276,7 +2464,7 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 | `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all) | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
 | `TextEffect(scene, entity)` (adds the component) | `enabled`, `autoPlay`, `loop`, `useUnscaledTime` (default true), `startIndex`, `length` (-1 to the end), `forWords`; events `onComplete`, `onCharacterRevealed(index)` | `getLayer(i)` (1..4, a `TextEffectLayerRef` whose fields write through: `type` (`TextEffectType.Wave`/`Bounce`/`Shake`/`Pulse`/`Typewriter`/`FadeIn`/`Grow`/`Unfold`/`Rainbow`/`Gradient`/`None`), `enabled`, `amplitude`, `duration`, `spread`, `phaseStep`, `frequency`, `charactersPerSecond`, `fadeTime`, `gradient` (list of `TextEffectGradientStop` {`color` sRGB Vector4, `position`}), `mix` (`TextEffectMix.Multiply`/`Add`/`Replace`), `saturation`, `lightness`), `setLayer(i, layerOrTable)`, `play()`, `stop()` (plain text), `finish()`, `restart()`, `isFinished()`, `isPlaying()` (`jasper://docs/ui`) |
 | `Image` | `color` (Vector4), `alpha`, `textureScaleFactor`, `flipY`, `patchMarginLeft/Right/Top/Bottom` | `setTexture(path)`, `setColor(r,g,b[,a])`, `setPatchMargin(m)` / `(l,r,t,b)`, `getUIComponent()` |
-| `Button` (Image) | `label`, `labelColor`, `labelFont`, `labelFontSize`, `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled`, `disabled` | `getButtonComponent()`, `getLabelObject()`, `setTextureNormal/Hovered/Pressed/Disabled(path)`, `setColorNormal(r,g,b[,a])` (and Hovered/Pressed/Disabled), `setLabelColor(r,g,b,a)` |
+| `Button` (Image) | `label`, `labelColor`, `labelFont`, `labelFontSize`, `colorNormal`, `colorHovered`, `colorPressed`, `colorSelected`, `colorDisabled`, `disabled`, `interactable`, `color` (with a tinting transition: Normal's), `onClick`; `transition` (`ButtonTransition.*`), `fadeDuration`, `scaleHovered/Pressed/Selected`; `navigationMode` (`NavigationMode.*`), `wrapAround`, `selectOnUp/Down/Left/Right` (GameObject or nil), `selectOnEnable`; ro `selected`, `state` (`SelectionState.*`) | `getButtonComponent()`, `getLabelObject()`, `setTextureNormal/Hovered/Pressed/Selected/Disabled(path)`, `setTexture(path)` (with a swapping transition: Normal's), `setColorNormal(r,g,b[,a])` (and Hovered/Pressed/Selected/Disabled), `setLabelColor(r,g,b,a)`, `select()`, `findSelectableOnUp/Down/Left/Right()` (jasper://docs/ui) |
 | `Panel` (Image) | `title`, `titleColor`, `titleFont`, `titleFontSize`, `headerColor`, `minWidth`, `minHeight`, `canMove`, `canResize`, `canBringToFront` | `getPanelComponent()`, `setMinSize(w,h)` |
 | `Scrollbar` (Image) | `type` (`ScrollbarType.*`), `barSize`, `step`, `barColor`, `barAlpha` | `getScrollbarComponent()`, `setBarTexture(path)` |
 | `Progressbar` (Image) | `type`, `value` (0..1), `fillColor`, `fillAlpha` | `getProgressbarComponent()`, `setFillTexture(path)` |
@@ -2325,6 +2513,8 @@ end
 
 ### 4.12 AudioSource (EntityHandle)
 
+Clips that vary (footsteps, hits: no repeats, random pitch and volume) need no script: a Sound Event does it as data (`edit_sound_event`, group audio; then `event` on the AudioSource, `jasper://docs/sound`).
+
 Methods: `play()`, `pause()`, `stop()`, `seek(t)`, `loadSound(path)`, `destroySound()`,
 `isPlaying()`, `isPaused()`, `isStopped()`, `getLength()`, `getPlayingTime()`,
 `getGameObject()`, `setMinMaxDistance(min, max)`, `setInaudibleBehavior(mustTick, kill)`,
@@ -2335,7 +2525,14 @@ rw: `enabled`, `volume`, `speed` (`pitch` is the same), `pan`, `looping`, `loopi
 mixer group by name, "" = Master), `loadType` (`AudioLoadType.*`, Auto streams files of 1 MiB and
 more), `priority` (0 most important .. 256, default 128), `maxVoices` (1..64, default 8),
 `ignoreListenerPause`.
-Mixer and voices: `playOneShot(path [, volumeScale])` (an extra voice over what plays, Unity's
+Sound Events and triggers: `event` (rw: its path; assigning a path or GUID resolves it, `""` clears it;
+set, the source plays the event and its clip is ignored), `playOn` (rw, `AudioPlayOn` flags),
+`minImpactSpeed`, `fullVolumeImpactSpeed` (contact triggers: below the first nothing plays; below the
+second the volume scales with the speed, 0 = no scaling), `pitchRandomSemitones` (0..24),
+`volumeRandomDb` (0..60): clip mode's variation of each start.
+
+Mixer and voices: `playOneShot(path [, volumeScale])` (an extra voice over what plays, a clip or a
+Sound Event's pick by its `.soundevent` path or GUID, Unity's
 PlayOneShot; the oldest one-shot is stolen past `maxVoices`), `fadeIn(seconds [, opts])`,
 `fadeOut(seconds [, opts])` (`opts.pause` pauses instead of stopping; the volume comes back for
 the next play), `fadeTo(volume, seconds [, opts])`, `isFading()`, `getVoiceCount()`,
@@ -2364,12 +2561,12 @@ one clip at once.
 | `material` | rw | default material of the colliders without one: a `.physicsmaterial` path, a `PhysicsMaterial` or nil; reads a `PhysicsMaterial` or nil |
 | `pointsToMeterScale` | ro | default 64 |
 | `getRotationalInertia()`, `applyMassFromColliders()` | methods | |
-| `applyForce(forceV2, pointV2, wake)` | method | point in world points |
-| `applyForceToCenter(forceV2, wake)` | method | |
-| `applyTorque(t, wake)` | method | |
-| `applyLinearImpulse(impulseV2, pointV2, wake)` | method | |
-| `applyLinearImpulseToCenter(impulseV2, wake)` | method | |
-| `applyAngularImpulse(i, wake)` | method | |
+| `applyForce(forceV2, pointV2 [, wake])` | method | point in world points; `wake` (all six) defaults to true: a sleeping body wakes, as Unity's `AddForce` (false: Box2D skips a sleeping body) |
+| `applyForceToCenter(forceV2 [, wake])` | method | |
+| `applyTorque(t [, wake])` | method | |
+| `applyLinearImpulse(impulseV2, pointV2 [, wake])` | method | |
+| `applyLinearImpulseToCenter(impulseV2 [, wake])` | method | |
+| `applyAngularImpulse(i [, wake])` | method | |
 | `createBoxCollider(w, h)` | method | box from local (0,0) to (w,h); returns collider index |
 | `createCenteredBoxCollider(w, h [, centerV2, angle])` | method | centered box |
 | `createRoundedBoxCollider(w, h, radius)`, `createCircleCollider(centerV2, radius)`, `createCapsuleCollider(c1, c2, radius)`, `createSegmentCollider(p1, p2)`, `createPolygonCollider({Vector2...})`, `createChainCollider({Vector2...}, loop)` | methods | any number of colliders; a polygon of any number of points, concave too (split in convex pieces); a chain of 2+ points (2-3: segments) |
@@ -2492,9 +2689,12 @@ or `CharacterController2D(scene, entity)`. Points and points per second, as Rigi
 | `setColliderTrigger(i, on)`, `isColliderTrigger(i)` | methods | Unity Is Trigger per collider: passes through, sensor contacts, no mass |
 | `setColliderMaterial(i, m)` (a `PhysicsMaterial`, a path, or nil), `getColliderMaterial(i)`, `setColliderFriction(i, f)`, `setColliderBounciness(i, b)` and getters | methods | friction / bounciness give the collider its own copy of its material (Unity `collider.material`) |
 | `setAllowedDOFsAll()`, `setAllowedDOFs2DPlane()`, `setAllowedDOFs(...)`, `setOverrideMassAndInertia(...)` | methods | |
+| `getAllowedDOFs()` | method | -> translationX, translationY, translationZ, rotationX, rotationY, rotationZ (booleans, `setAllowedDOFs` order) |
+| `overrideMassProperties` | ro bool | `setOverrideMassAndInertia` was called |
 | `getPointVelocity(p)`, `getAccumulatedForce()`, `getCenterOfMassPosition()` | methods | |
 
-`Contact3D` (global events): `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
+`Contact3D` (global events): `getApproachSpeed()` (how fast the bodies came together along the
+normal before the solver), `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
 `getColliderIndex1()`, `getColliderIndex2()`, `getRelativeContactPointsOnA(i)` / `OnB(i)`,
 `numContactPoints`, `snapshot` (true after the step: setters apply from the next step), rw `combinedFriction`,
 `combinedRestitution`, `sensor`.
@@ -2575,7 +2775,13 @@ Action (EntityHandle): `start()`, `pause()`, `stop()`, `restart()` (stops a runn
 action and starts it from the beginning, in the same update), `isRunning()`, `isPaused()`,
 `isStopped()`, `getTimeCount()`, `getActionComponent()`; rw `target` (Entity),
 `ownedTarget`, `speed` (scales the action's own time: 2 plays twice as fast, a negative speed
-plays back to the start and holds there), `weight`; `setTarget(gameObjectOrEntity)`.
+plays back to the start and holds there), `startOffset` (seconds of the action's own time each new
+run starts at: `start()` from stopped, `restart()`; not a resume after `pause()`, not editor
+previews), `randomStart` (each new run starts at a random point of one cycle, overriding
+`startOffset`: copies of a looping tween or Animation stop moving in lockstep; the same every
+playthrough), `weight`; `setTarget(gameObjectOrEntity)`. A child of an Animation keeps its own
+offset across the Animation's loops; a Particle System's controller ignores both (its Start Delay
+and Prewarm do that).
 `stop()` also cancels a `start()` asked for earlier in the same frame.
 
 Tween (Action): rw `duration`, `loop`, `pingPong` (forward and then back, in twice the
@@ -2598,6 +2804,12 @@ tw:setAction(Vector3(0, 0, 0), Vector3(200, 0, 0), 1.0, false)
 tw:setFunctionType(EaseType.QUAD_OUT)
 tw:start()
 ```
+
+Audio actions (an action GameObject with an `AudioSourceComponent`) and Mixer Snapshot actions start
+and stop with the Action API above (their sound follows; a standalone audio action stops itself when its
+sound ends, so `onStop` fires). `GameObject:getAudioSnapshotComponent()` (nil without one) gives the
+`AudioSnapshotComponent`: rw `snapshot` (a mixer snapshot name), `seconds`, `unscaled`, `revert` (back to
+the previous snapshot on stop, while the mixer still shows this one), `revertSeconds` (-1: `seconds`).
 
 Animation (Action): rw `loop`, `ownedActions`, `blendWeight`, `defaultFadeTime`;
 `fadeIn(t)`, `fadeOut(t)`, `addActionFrame(...)`, `getActionFrameSize()`,
@@ -2778,6 +2990,12 @@ makes a GameObject with one.
   `wrapCellWidth`, `wrapCellHeight`; ro `contentWidth`, `contentHeight`; `resize()`.
 - `ShadowCaster2D`: rw `shape` (`ShadowCaster2DShape.AUTO_QUAD` / `POLYGON`), `closed`,
   `enabled`; `addVertex(x, y)`, `clearVertices()`, `getVertexCount()`.
+- `CapsuleShadowCaster` (capsule shadows, `jasper://docs/lighting`): rw `enabled`, `castShadows`
+  (`CapsuleCastShadows.ON` / `CAPSULES_ONLY`); ro `capsuleCount`; `addCapsule(bone, radius, length)`
+  (its index, -1 past 8), `removeCapsule(i)`, `clearCapsules()`, `get/setCapsuleBone(i)`,
+  `get/setCapsuleRadius(i)`, `get/setCapsuleLength(i)`, `get/setCapsuleOffset(i)`,
+  `get/setCapsuleDirection(i)` (`CapsuleDirection.X_AXIS/Y_AXIS/Z_AXIS`), `fitToSkeleton()` (false:
+  no humanoid bones under the GameObject).
 - `Fog`: rw `type` (`FogType.*`), `color`, `density`, `linearStart`, `linearEnd`. Height fog
   (`type = FogType.HEIGHT`, see `jasper://docs/atmosphere`): rw `colorMode` (`FogColorMode.*`),
   `attenuationDistance`, `baseHeight`, `maximumHeight`, `startDistance`, `maxFogDistance`,
@@ -2982,6 +3200,59 @@ a:setOnComplete(function() Log.print("arrived") end)   -- Once only
 | `play()`, `pause()`, `restart()`, `playing`, `completed`, `normalizedTime`, `distance` (rw: moves the follower) | constant world speed along the curve; a 2D spline turns the follower about Z |
 | `onComplete` (`FunctionSubscribe`), `setOnComplete(fn)` | Once: called at the end |
 
+### 4.21 Navigation: NavigationSystem, NavMeshQueryFilter, NavMeshAgent
+
+Navmesh queries take and return world positions (`jasper://docs/navigation`). Queries returning
+a hit return two values, `found, hit`; paths are plain tables (`NavMeshPath`).
+
+```lua
+local nav = self.scene:getNavigationSystem()
+local filter = NavMeshQueryFilter{agentType = "Humanoid", areaMask = NavAreas.All}
+filter:setAreaCost(3, 5)                      -- area 3 costs 5 per metre for this filter
+local path = nav:calculatePath(Vector3(0, 0, 0), Vector3(10, 0, 4), filter, {areaCrossings = true})
+local found, point = nav:randomPoint(filter, {center = Vector3(0, 0, 0), radius = 8})
+local moved, step = nav:moveAlongSurface(Vector3(0, 0, 0), Vector3(1, 0, 0))
+local near, edge = nav:findClosestEdge(Vector3(0, 0, 0), nil, 5.0)
+```
+
+| Member | Notes |
+|---|---|
+| `calculatePath(from, to[, filter[, options]])` | `status`, `corners`, `length`, `cost`, `cornerAreas`, `cornerFlags` (`NavCornerFlags`), `areaLengths[area]`, `corridor`; options `{areaCrossings = true}` |
+| `samplePosition(p, maxDistance[, filter])`, `raycast(a, b[, filter])`, `findClosestEdge(p[, filter[, maxDistance]])`, `isReachable(a, b[, filter])` | hit: `position`, `normal`, `distance`, `area`, `mask`, `hit`, `cost` (raycast) |
+| `randomPoint([filter[, options]])` | options `center` + `radius` (reachable within it, not uniform), `sameIslandAs`, `seed`; none: anywhere, uniform by area |
+| `moveAlongSurface(from, to[, filter])` | one step along the surface: hit `position`, `hit` (a wall stopped it), `distance`, `area` |
+| `randomSeed` | rw: restarts the stream (a scene starts at 0x5EED) |
+| NavMeshQueryFilter `agentType`, `areaMask`, `setAreaCost(area, cost)`, `getAreaCost(area)`, `resetAreaCost(area)` | costs >= 1; the areas it does not set cost the project's |
+| NavMeshAgent `setAreaCost(area, cost)`, `getAreaCost(area)`, `resetAreaCost(area)` | runtime only (gone at Stop) |
+| NavMeshAgent `calculatePath(target)`, `setPath(path)`, `path`, `steeringTarget`, `isPathStale` | `setPath` takes a path of `calculatePath` (false, and no path, when refused); `path` starts at the agent |
+| NavMeshAgent `nextPosition`, `velocity` (rw) | root motion: `nextPosition = p` moves it along the surface, `velocity = v` holds for the next fixed tick; neither writes the Transform |
+| NavMeshAgent `raycast(target)`, `findClosestEdge()`, `samplePathPosition(areaMask, maxDistance)`, `nextOffMeshLinkData` | from where it stands with its filter; two values like the system's queries |
+| NavMeshAgent `stuckDetection`, `stuckSpeedRatio`, `stuckTimeout`, `repathWhenStuck` (rw), `stuckTime`, `lastPathFailure` (read), `onStuck(agent)`, `onPathFailed(agent, reason)` | reasons are strings: `"none"`, `"no_surface"`, `"not_baked"`, `"end_off_mesh"`, `"disconnected"`, `"blocked_by_area"`, ... |
+| `NavAreas.All`, `Walkable`, `NotWalkable`, `Jump` (masks), `NavAreas.maskOf(area)`, `getAreaFromName(name)`, `getAreaName(area)`, `getAreaCost(area)` | areas are 0-15 |
+
+### 4.22 Navigation: NavMeshObstacle, NavMeshLink, NavMeshModifier, NavAreaOverride
+
+Unity's scripting names over the components (`jasper://docs/navigation`, "Script names"). A door
+is a NavMesh Modifier with Volume and Apply At Runtime; a script volume does the same from code.
+
+```lua
+local door = NavMeshModifier(self.scene, self.entity)
+door.enabled = false                                  -- the runtime volume stops applying: the door opens
+local bridge = NavMeshLink(self.scene, self.entity)
+bridge.activated = false                              -- paths and agents ignore it
+local nav = self.scene:getNavigationSystem()
+local gate = nav:setAreaInVolume(Vector3(0, 1, 0), Vector3(2, 3, 1), 1, {rotation = Quaternion()})
+gate.area = 0 ; gate:remove()
+```
+
+| Member | Notes |
+|---|---|
+| NavMeshObstacle `enabled`, `shape` (`NavMeshObstacleShape.CAPSULE` / `BOX`), `center`, `size`, `radius`, `height`, `carving`, `carveOnlyStationary`, `carvingMoveThreshold`, `carvingTimeToStationary` | rw; `velocity` read (from its transform each fixed tick) |
+| NavMeshLink `enabled`, `agentTypeID`, `startPoint`, `endPoint`, `width`, `costModifier`, `bidirectional`, `area`, `autoUpdate`, `activated` | rw; `occupied` read (an agent is crossing it); `updateLink()` moves its baked connections to its fields |
+| NavMeshModifier `enabled`, `area`, `center`, `size` | rw: a runtime volume applies again at once; `useVolume`, `applyAtRuntime`, `overrideArea`, `applyToChildren` read (bake inputs); `appliedPolygons` read |
+| NavigationSystem `setAreaInVolume(center, size, area[, {rotation, agentType}])` | a NavAreaOverride (nil for an area outside 0-15): the polygons whose centre lies in the box take `area` until `remove()`; ends at Stop |
+| NavAreaOverride `area`, `center`, `size`, `rotation` | rw; `valid`, `handle`, `appliedPolygons` read; `remove()` |
+
 ## 5. Enums (exact Lua spelling; values are integers)
 
 | Namespace | Values |
@@ -3069,12 +3340,16 @@ a:setOnComplete(function() Log.print("arrived") end)   -- Once only
 | `MaterialStencilOp` | `KEEP`, `ZERO`, `REPLACE`, `INCR_CLAMP`, `DECR_CLAMP`, `INVERT`, `INCR_WRAP`, `DECR_WRAP` |
 | `MaterialColorWrite` | `AUTO` (-1), `NONE` (0), `R` (1), `G` (2), `B` (4), `A` (8), `RGB` (7), `ALL` (15); any sum of `R`, `G`, `B`, `A` |
 | `ShadowCaster2DShape` | `AUTO_QUAD`, `POLYGON` |
+| `TransparencyMode` | `SORTED`, `ORDER_INDEPENDENT` |
+| `ShadingModel` | `STANDARD`, `HAIR` |
+| `CapsuleCastShadows` | `ON`, `CAPSULES_ONLY` |
+| `CapsuleDirection` | `X_AXIS`, `Y_AXIS`, `Z_AXIS` |
+| `LightMode` | `AUTOMATIC`, `PER_OBJECT`, `TILED` |
 | `ReflectionProbeMode` | `STATIC`, `DYNAMIC` |
 | `ReflectionProbeUpdateMode` | `ON_LOAD`, `ON_MOVE`, `INTERVAL`, `MANUAL` |
 | `FluidOutput` | `SCREEN`, `MATERIAL`, `TEXTURE` (`FluidSimulation.output`) |
 | `FrustumPlane` | `FRUSTUM_PLANE_NEAR`, `_FAR`, `_LEFT`, `_RIGHT`, `_TOP`, `_BOTTOM` |
 | `GraphicBackend` | `GLCORE`, `GLES3`, `D3D11`, `METAL`, `WGPU` |
-| `AdMobRating` | `General`, `ParentalGuidance`, `Teen`, `MatureAudience` |
 | `SystemLanguage` | Unity's names and values: `Afrikaans` (0), `Arabic`, `Basque`, `Belarusian`, `Bulgarian`, `Catalan`, `Chinese`, `Czech`, `Danish`, `Dutch`, `English` (10), `Estonian`, `Faroese`, `Finnish`, `French`, `German`, `Greek`, `Hebrew`, `Hungarian`, `Icelandic`, `Indonesian`, `Italian`, `Japanese`, `Korean`, `Latvian`, `Lithuanian`, `Norwegian`, `Polish`, `Portuguese`, `Romanian`, `Russian`, `SerboCroatian`, `Slovak`, `Slovenian`, `Spanish` (34), `Swedish`, `Thai`, `Turkish`, `Ukrainian`, `Vietnamese`, `ChineseSimplified` (40), `ChineseTraditional`, `Unknown` (42), `Hindi` |
 | `ScreenOrientation` | `Portrait` (1), `PortraitUpsideDown` (2), `LandscapeLeft` (3), `LandscapeRight` (4), `AutoRotation` (5) |
 | `DeviceOrientation` | `Unknown` (0), `Portrait`, `PortraitUpsideDown`, `LandscapeLeft`, `LandscapeRight`, `FaceUp`, `FaceDown` |
@@ -3145,10 +3420,10 @@ Rigidbody wrappers by index.
    `Time.deltaTime` is the fixed step there). Impulses are one-off and can be
    applied anywhere. 2D forces/impulses are in Box2D units (kg, meters); positions and
    velocities read/written through Rigidbody2D are in points (`pointsToMeterScale`, default 64).
-10. **Pass every argument.** LuaBridge ignores C++ default arguments. A missing trailing
-    `bool` silently becomes `false` (e.g. `wake` in `applyForceToCenter(f)` -> body not woken);
-    a missing number/vector raises an error. Write `applyForceToCenter(f, true)`,
-    `tween:setAction(a, b, 1.0, false)`.
+10. **Pass every argument the reference does not mark optional.** A missing trailing `bool`
+    reads as `false` unless the reference gives it a default (`[, wake]` of the Rigidbody2D forces
+    and `[, newRun]` default to true: `applyForceToCenter(f)` wakes the body); a missing
+    number/vector raises an error. Write `tween:setAction(a, b, 1.0, false)`.
 11. **Teleporting physics bodies**: set the body (`rb2d.position = Vector2(...)`,
     `rb.position = Vector3(...)`) rather than the GameObject transform; also reset
     `linearVelocity` if needed.
@@ -3226,6 +3501,9 @@ Rigidbody wrappers by index.
 34. **Pass `owner = self` to `Timer.*`**: a timer without an owner outlives its script (until
     Play stops) and calls into a script that is gone. With `owner = self` it dies with the
     script, like the script's event subscriptions.
+35. **Inspector fields come from the saved file.** A script whose saved file no longer has a
+    `properties` table has no fields; while you edit it in the code editor, a missing table keeps
+    them until you save (cutting and pasting the table loses no value).
 
 ## 7. Hot reload and editor scripts
 

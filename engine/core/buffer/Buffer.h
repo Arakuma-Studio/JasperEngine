@@ -40,6 +40,10 @@ namespace jasperengine {
         std::weak_ptr<const void> shareOwner;
         uint64_t shareId;
         bool shareSource;
+        // its bytes were freed by their owner (ModelCpuData): size, attributes and GPU buffer stay
+        bool dataReleased = false;
+        // the writes a renderer took (noteWrite): a copy of the bytes made before is stale once it moves
+        uint64_t writeCount = 0;
 
     public:
         Buffer();
@@ -136,6 +140,12 @@ namespace jasperengine {
         // a source is set and its owner is alive
         bool hasShareSource() const;
         const std::weak_ptr<const void>& getShareOwner() const;
+        bool isDataReleased() const { return dataReleased; }
+        // a write of its bytes was taken (RenderSystem, uploading a needUpdateBuffer): whoever copied
+        // the bytes before (a Dynamic Batching record) compares getWriteCount to see it, whichever
+        // pass uploaded it first
+        void noteWrite(){ writeCount++; }
+        uint64_t getWriteCount() const { return writeCount; }
         uint64_t getShareId() const;
     };
 

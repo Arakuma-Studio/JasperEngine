@@ -50,16 +50,20 @@ namespace jasperengine::nav {
         bool ok = true;
         std::string error;
         double milliseconds = 0.0;
+        // what Recast warned about (S74 R4) and the layers dropped past the cap
+        std::vector<std::string> warnings;
     };
 
     class JASPERENGINE_API NavMeshBuilder {
     public:
-        // The whole build of the tile at `index` (NavBakeInput::tileIndex)
-        static NavTileBuildResult buildTile(const NavBakeInput& input, uint32_t index);
+        // The whole build of the tile at `index` (NavBakeInput::tileIndex); configOverride (S75's
+        // probe) replaces the input's Recast limits for this build: walkableRadius, walkableClimb,
+        // walkableHeight, minRegionArea, mergeRegionArea (the tile grid and border stay the input's)
+        static NavTileBuildResult buildTile(const NavBakeInput& input, uint32_t index, const NavBuildConfig* configOverride = nullptr);
 
         class JASPERENGINE_API TileJob {
         public:
-            TileJob(std::shared_ptr<const NavBakeInput> input, uint32_t index);
+            TileJob(std::shared_ptr<const NavBakeInput> input, uint32_t index, const NavBuildConfig* configOverride = nullptr);
             ~TileJob();
             TileJob(TileJob&&) noexcept;
             TileJob& operator=(TileJob&&) noexcept;

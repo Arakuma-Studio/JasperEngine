@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LuaBinding.h"
+#include "component/TweenComponent.h"
 
 #include "lua.hpp"
 
@@ -95,6 +96,8 @@ void LuaBinding::registerActionClasses(lua_State *L){
             luabridge::overload<GameObject*>(&Action::setTarget),
             luabridge::overload<Entity>(&Action::setTarget))
         .addProperty("speed", &Action::getSpeed, &Action::setSpeed)
+        .addProperty("startOffset", &Action::getStartOffset, &Action::setStartOffset)
+        .addProperty("randomStart", &Action::isRandomStart, &Action::setRandomStart)
         .addProperty("weight", &Action::getWeight, &Action::setWeight)
         .addFunction("isRunning", &Action::isRunning)
         .addFunction("isStopped", &Action::isStopped)

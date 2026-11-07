@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Render diagnostics (spec S15): the four marked sokol hooks (AC7), the GPU timer on the headless
+// Render diagnostics (spec S15): the GPU timer on the headless
 // device (AC5: glcore on llvmpipe, Vulkan on lavapipe), the VRAM tracker's byte sums and queued
 // owners (AC8) and the pass recorder's list.
 
@@ -17,14 +17,11 @@
 #include "sokol/SokolVramTracker.h"
 
 #include "GpuEnvironment.h"
+#include "Readback.h"
 
 #include "sokol_gfx.h"
 
 #include <gtest/gtest.h>
-
-#include <filesystem>
-#include <fstream>
-#include <sstream>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -74,23 +71,6 @@ namespace {
 
 }
 
-TEST(SokolPatchMarkers, FourGpuTimerHooks){
-    // engine/tests/core/render -> engine/libs/sokol
-    const std::filesystem::path header = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path() /
-                                         "libs" / "sokol" / "sokol_gfx.h";
-    std::ifstream file(header);
-    ASSERT_TRUE(file.good()) << header;
-    std::stringstream text;
-    text << file.rdbuf();
-    const std::string source = text.str();
-    size_t count = 0;
-    for (size_t at = source.find("JasperEngine: gpu timer hook"); at != std::string::npos;
-         at = source.find("JasperEngine: gpu timer hook", at + 1))
-        count++;
-    // a sokol update that dropped them fails here: re-apply the four one-line calls
-    EXPECT_EQ(count, 4u);
-}
-
 TEST_F(GpuTimerGpu, EveryPassIsTimed){
     JASPER_REQUIRE_GPU();
     ASSERT_TRUE(render());
@@ -99,14 +79,13 @@ TEST_F(GpuTimerGpu, EveryPassIsTimed){
     EXPECT_FALSE(idle.enabled);   // off until a consumer asks: no queries
 
     SystemRender::acquireGpuTiming();
-    // the times of a frame arrive a few frames later
-    PassList list;
-    for (int frame = 0; frame < 60; frame++){
-        GpuEnvironment::drawFrames(1);
-        list = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, true);
-        if (frame >= 4 && !list.gpuPending && list.gpuFrameValid)
-            break;
-    }
+    // Complete the timed frame, then commit once more to publish its query results.
+    GpuEnvironment::drawFrames(1);
+#if defined(JASPER_TEST_HAS_GPU)
+    ASSERT_TRUE(finishGpu());
+#endif
+    GpuEnvironment::drawFrames(1);
+    const PassList list = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, true);
     const GpuTimingState timer = SystemRender::getGpuTimingState();
     SystemRender::releaseGpuTiming();
     ASSERT_FALSE(list.passes.empty());

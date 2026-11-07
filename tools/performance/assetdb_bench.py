@@ -21,7 +21,7 @@ database and the dependency index alone:
     tools/performance/assetdb_bench.py [--editor <cmd>] [--assets 10000] [--referrers 1000] [--check]
 
 --check exits 1 when a budget is exceeded (the nightly job); the budgets are for the desktop SSD
-reference machine. Runs on the build servers (rb.sh), never on a dev machine.
+reference machine.
 """
 
 from __future__ import annotations

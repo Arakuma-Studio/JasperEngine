@@ -86,3 +86,37 @@ safe. Every changed line in `sokol_gfx.h` carries `JasperEngine: pool lock`
 A draw takes no lock: a resource's lookup reads only the slot of a handle the caller owns.
 
 Status: local. Upstream's single-thread contract is intended; nothing to offer.
+
+## Flattened uniform arrays sized as the driver reports them
+
+On GL, GLES3 and WebGL2 the engine declares a uniform block as one array of vec4 (or ivec4) and
+uploads it with one `glUniform*v(location, count)` (`SokolShader.cpp`, `glsl_uniforms[0]` with
+`array_count = size / 16`). A driver may size that array to the elements the linked program reads
+(a variant that leaves the block's tail unused: the built-in Lit's `u_fs_texCoordSets` without a
+normal map) or report it as no array; a declared count above that is clamped by some drivers and
+rejected with `GL_INVALID_OPERATION` by others, the whole block with it (Doriax `ebd4b64e7`).
+Every changed line carries `JasperEngine: flattened uniform arrays` or the comment above it:
+
+- `_sg_gl_create_shader` (uniform resolution): for a uniform of more than one element found in the
+  program, `glGetUniformIndices` and `glGetActiveUniformsiv(GL_UNIFORM_SIZE)`; a smaller active size
+  becomes the count uploaded. The offsets keep the declared layout. Both functions are in the
+  Windows GL loader's list (`_SG_XMACRO`), with `GL_UNIFORM_SIZE` / `GL_INVALID_INDEX` fallbacks.
+- `sgj_query_gl_uniform_count(shader, ub_slot, u_index)`: the count a GL backend uploads, -1 on the
+  other backends (the engine's test `SokolGlUniformArray` reads it).
+
+Status: to be offered upstream (the clamp; the query is for the tests).
+
+## Invariant positions on Metal
+
+The engine's vertex shaders declare `invariant gl_Position` so a depth pre-pass, the shadow passes
+and the colour pass put a vertex at the same depth, and SPIRV-Cross writes it as
+`[[position, invariant]]`. Metal honours that only in a library compiled with
+`MTLCompileOptions.preserveInvariance`; with `options:nil` an instanced batch (its matrices read from
+a vertex buffer) and the same draw alone (from a uniform block) reached different depths in 11,436
+pixels of `InstancingGoldenGpu.ShadowAndDepthPassesBatch`, none with it.
+
+- `_sg_mtl_compile_options()` (once, never released) sets `preserveInvariance`; `_sg_mtl_compile_library`
+  and sokol_async's `newLibraryWithSource:options:completionHandler:` pass it instead of `nil`. Fast math
+  stays on. Marked `JasperEngine: invariant position`.
+
+Status: to be offered upstream (any sokol user with `invariant` positions has the same problem).

@@ -7,13 +7,21 @@
 #include "Project.h"
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
+#include "animation/ActionPreviewSnapshot.h"
 
 #include <memory>
 #include <unordered_set>
 
+namespace jasperengine{
+    struct ActionFrame;
+    struct AnimationComponent;
+}
+
 namespace jasperengine::editor{
 
     class AnimationWindowClip;
+    class TimelineAudioPreview;
+    enum class EntityCreationType;
 
     // editor/tests/AnimationWindowClipDriver.h: the editor tests' driver of the window (the
     // selection, entity Animation, clip, drop and entity preview actions, the explicit lane move)
@@ -119,12 +127,9 @@ namespace jasperengine::editor{
 
         // Animation preview
         bool isPreviewing;
-        struct PreviewEntityState {
-            Entity entity = NULL_ENTITY;
-            Entity parent = NULL_ENTITY;
-            YAML::Node components;
-        };
-        std::vector<PreviewEntityState> previewState;
+        // the authored state of what the preview writes; values commands write meanwhile are
+        // kept (runtime-core spec 6.6)
+        ActionPreviewSnapshot previewSnapshot;
 
         // Keying: right-click a track block or the empty tracks area to store the
         // target's current position/rotation/scale as a keyframe at the clicked
@@ -172,7 +177,9 @@ namespace jasperengine::editor{
         void collectPreviewEntitiesRecursive(Scene* scene, Entity entity, std::vector<Entity>& entities,
                              std::unordered_set<Entity>& visitedAnimations,
                              std::unordered_set<Entity>& collectedEntities) const;
-        PreviewEntityState buildPreviewEntityState(Scene* scene, Entity entity) const;
+        // takes `entity` into the preview's snapshot, without the Animation and the key data
+        // (the preview reads them, never writes them)
+        void snapshotPreviewEntity(Scene* scene, Entity entity);
         void restorePreviewState(Scene* scene) const;
         void applyPreviewModelBindPose(Scene* scene) const;
         float getAnimationDuration(const AnimationComponent& anim, Scene* scene) const;
@@ -210,6 +217,33 @@ namespace jasperengine::editor{
         void acceptClipDrop(SceneProject* sceneProject);
         void installClipHooks();
 
+        // ---- timeline audio of the entity mode (S40 R22, R23) ----
+        // the playing preview's audio actions (preview voices outside the mixer)
+        std::unique_ptr<TimelineAudioPreview> actionAudio;
+        // a new audio, Sound Event or Mixer Snapshot action (type) with its frame at `time`, one
+        // undo step; `content` is the sound (assets-relative) or the snapshot name ("" none)
+        bool addAudioAction(SceneProject* sceneProject, Entity animEntity, EntityCreationType type, const std::string& content, float time,
+                            uint32_t track, std::string* error);
+        // the commands the entity mode shares with clip mode (Align, Add ... action): run, or
+        // whether they can run
+        bool runAudioActionCommand(std::string_view id, bool run);
+        // where the selected audio action's frame starts after `align` ("" when it can; else why)
+        std::string alignActionProblem(int align, float* time) const;
+        // the audio actions the playhead crossed between two times of the playing preview
+        void previewAudioActions(Scene* scene, Entity animEntity, float from, float to, float dt);
+        // the Add Property menu's Sound submenu (true: an action was added)
+        bool drawSoundMenu(SceneProject* sceneProject, AnimationComponent& anim, uint32_t track);
+        // the Sound submenu's choice, added after the popup: adding the action's components moves
+        // the AnimationComponent the popup's caller holds (as Add Property's other actions do)
+        struct PendingSoundAction {
+            bool active = false;
+            EntityCreationType type{};
+            std::string content;
+            float time = 0.0f;
+            uint32_t track = 0;
+        };
+        PendingSoundAction pendingSoundAction;
+
     public:
         static constexpr const char* WINDOW_NAME = "Animation";
 
@@ -239,6 +273,8 @@ namespace jasperengine::editor{
         void externalStop();
         void externalPause();
         void seekPreviewExternal(Scene* scene, SceneProject* sceneProject, float time);
+        // the preview voices the playing entity preview started (tests)
+        uint64_t previewAudioStarts() const;
 
         // Restores the entity-mode preview's snapshot before a save, play, scene switch or close
         // (animation clips spec 9.R6); App::stopTransientPreviews calls it.

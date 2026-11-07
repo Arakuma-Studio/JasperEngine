@@ -36,7 +36,17 @@ counts and times, and a preview of one attachment (Color, Alpha, Depth, R, G, B;
 with a near/far, or through Levels).
 
 The Game view's **Stats** overlay shows the frame's CPU time, and its GPU time while something
-times the GPU.
+times the GPU. Next to **Draw calls** it shows **SetPass calls** (Unity's name): the pipelines the
+frame applied. A draw whose pipeline is the one its pass applied last applies none, and a draw
+whose buffers, textures and samplers are the ones applied last binds nothing either: every
+backend skips them, which matters most on D3D11 (every state set again) and Vulkan (a pipeline
+bind and a descriptor set each). The opaque queue of a 3D pass is culled first, then sorted by
+sort priority, distance band (one per doubling of the distance), render state and distance, so
+draws of one material and mesh run together within a band. SetPass calls well below draw calls
+mean that sharing works; close to them, the scene's meshes use too many different materials or
+shaders. Lua reads the count from `Profiler.frameStats().setPassCalls` and
+`DebugOverlay.getStats().setPassCalls`; agents read `pipelines_applied` and `bindings_applied` of
+`get_render_stats`.
 
 The panels change no project data; their layout is kept in the editor settings.
 
@@ -101,6 +111,21 @@ semantics, frameIsSum, frames, frameMs {median, p95, mean}, passes [{label, perF
 p95Ms, meanMs}]}`: each pass label's time summed per frame (a label used by several passes, the
 four cascades of a shadow map, counts them together; `perFrame` says how many). Run it on an idle
 machine and compare medians.
+
+Every run also writes `renderCpuMs {median, p95, mean}` (the scenes' draw and the commit: the
+render submission) and `render {mainDrawCalls, shadowDrawCalls, depthDrawCalls, otherDrawCalls,
+mainTriangles, shadowTriangles, instancedDraws, batchedInstances, visible, culled, uniformBytes,
+uniformBytesKept, bufferUploadBytes, pipelinesApplied, bindingsApplied, aliveBuffers, aliveImages,
+alivePipelines}`, the game frame's counters averaged over the measured frames (with `--play`, the
+frame the Game view shows). `drawBatch {offered, instancedDraws, batchedInstances, splitPipeline, splitElements, splitBindings,
+splitUniforms}` is GPU Instancing in the last measured frame: the draws that could batch, and why one
+did not join the batch before it. `--gpu-instancing on|off` overrides the project's GPU Instancing for
+the run. The mesh benchmark gate (spec S55) runs both:
+
+```sh
+python3 tools/fixtures/mesh-bench/generate.py /tmp/mesh-bench
+python3 tools/perf/mesh_bench.py --editor <jasperengine-editor> --project /tmp/mesh-bench --json mesh-bench.json --check
+```
 
 ## GPU timing per backend
 

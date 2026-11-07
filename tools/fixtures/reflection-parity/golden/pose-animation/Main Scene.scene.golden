@@ -54,11 +54,29 @@ shaderKeys:
     properties: 8589935704
   - type: mesh
     properties: 8623497304
+  - type: mesh
+    properties: 68719477848
+  - type: mesh
+    properties: 68753039448
+  - type: mesh
+    properties: 77309412440
+  - type: mesh
+    properties: 77342974040
+  - type: mesh
+    properties: 17592186045528
+  - type: mesh
+    properties: 17592219607128
+  - type: mesh
+    properties: 17600775980120
+  - type: mesh
+    properties: 17600809541720
   - type: sky
   - type: depth
   - type: depth
     properties: 2
   - type: blit
+  - type: blit
+    properties: 4096
   - type: shadowcache
 entities:
   - type: Entity

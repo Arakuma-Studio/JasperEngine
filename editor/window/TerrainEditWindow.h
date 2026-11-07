@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "component/TerrainComponent.h"
 #include "command/CommandHistory.h"
 #include "Project.h"
 #include "math/Ray.h"
@@ -14,6 +15,13 @@
 #include <random>
 #include <string>
 #include <vector>
+#include "io/watch/FileIdentity.h"
+
+namespace jasperengine{
+    struct TerrainComponent;
+    struct TerrainFoliageLayer;
+    struct TerrainSurfaceLayer;
+}
 
 namespace jasperengine::editor{
 
@@ -167,6 +175,10 @@ namespace jasperengine::editor{
         Project* project;
 
         bool windowOpen;
+        // the generation of the project's Terrain settings the members were read from (0: none). While
+        // it is not the project's, show() writes nothing back, so constructor defaults or another
+        // project's values never overwrite them
+        uint64_t loadedSettingsGeneration = 0;
         bool focusRequested;
         bool brushActive;
         bool normalizeBlendPaint;
@@ -329,6 +341,10 @@ namespace jasperengine::editor{
         void show();
         void open();
         void openForEntity(Entity entity, uint32_t sceneId);
+        // Reads the project's TerrainEditorSettings into the window when they were replaced since
+        void loadSettings();
+        // A project switch: the next project's settings are read on the next frame
+        void resetProjectState();
         void setOpen(bool open);
         bool isOpen() const;
 

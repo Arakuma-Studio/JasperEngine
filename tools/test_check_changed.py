@@ -1,6 +1,6 @@
 """Tests of tools/check-changed (tools/check_changed.py) and its coverage map (tools/mcp/coverage_map.py).
 
-    python3 -I tools/test_check_changed.py        # stdlib only: on a build server, or in the image
+    python3 -I tools/test_check_changed.py        # stdlib only
 
 On scratch git repositories and synthetic inputs: the diff (committed, staged, unstaged, untracked,
 deleted; the base and its fallbacks; rb.sh's diff and a stale one), the build plan, the unit test
@@ -133,11 +133,41 @@ class Builds(unittest.TestCase):
         p = self.plan("tools/check_changed.py")
         self.assertEqual((p.builds, p.self_tests, p.mcp_all), ([], ["tools/test_check_changed.py"], False))
         self.assertEqual(self.plan("tools/mcp/shard.py").self_tests, ["tools/mcp/test_shard.py"])
+        # navigation's runtime and the engine's CMake: the engine without Recast/Detour too (S74 R28)
+        for f in ("engine/core/navigation/NavMesh.cpp", "engine/libs/recastnavigation/Detour/Source/DetourNavMesh.cpp",
+                  "engine/core/subsystem/NavigationSystem.h", "engine/core/object/navigation/NavMeshAgent.cpp",
+                  "engine/core/component/NavMeshSurfaceComponent.h", "engine/CMakeLists.txt",
+                  "engine/tests/core/navigation/NavStubTest.cpp"):
+            self.assertIn("navigation-off", self.plan(f).builds, f)
+        self.assertEqual(self.plan("tools/check-navigation-off.sh").builds, ["navigation-off"])
+        for f in ("engine/core/Foo.cpp", "editor/navigation/NavigationEditor.cpp", "engine/core/component/Transform.h",
+                  "docs/navigation.md"):
+            self.assertNotIn("navigation-off", self.plan(f).builds, f)
+        # an engine shader: the shader lint and its tests
+        self.assertEqual(self.plan("engine/shaderlib/includes/lights.glsl").self_tests, ["tools/ci/test_check_shader_lod.py"])
+        self.assertEqual(self.plan("tools/check_shader_lod.py").self_tests, ["tools/ci/test_check_shader_lod.py"])
+        # an MCP test file (a new one too): classified for the CI suite, before anything is built
+        self.assertEqual(self.plan("tools/mcp/tests/test_new.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])
+        self.assertEqual(self.plan("tools/mcp/run_tests.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])
+        self.assertEqual(self.plan("tools/mcp/tests/helper.py").self_tests, [])
+        # an engine event's holder, or a clear walking them: the event clears lint
+        self.assertEqual(self.plan("engine/core/component/ButtonComponent.h").self_tests,
+                         ["tools/check_event_clears.py", "tools/check_apple_privacy.py"])
+        self.assertEqual(self.plan("engine/core/Engine.cpp").self_tests,
+                         ["tools/check_event_clears.py", "tools/check_apple_privacy.py"])
+        self.assertEqual(self.plan("engine/core/component/ButtonComponent.cpp").self_tests, ["tools/check_apple_privacy.py"])
         for trigger in ("CMakeLists.txt", "docker/linux.Dockerfile", "tools/build.sh", "engine/cmake/JasperPch.cmake",
                         "tools/mcp/requirements.txt"):
             p = self.plan(trigger)
             self.assertEqual(p.builds, ["linux", "unit-tests", "web", "android"], trigger)
             self.assertTrue(p.unit_all and p.mcp_all, trigger)
+
+    def test_the_engine_with_every_module_off(self):
+        for asks in ("engine/core/subsystem/PhysicsSystem.h", "engine/core/Foo.hpp", "engine/CMakeLists.txt",
+                     "tools/check-physics-off.sh", "engine/cmake/JasperPlayerVariants.cmake", "tools/build.sh"):
+            self.assertEqual(self.plan(asks, "docs/testing.md").modules_off, asks, asks)
+        for not_asks in ("engine/core/Foo.cpp", "editor/App.h", "engine/tests/core/Foo.h", "engine/renders/Foo.h", "docs/testing.md"):
+            self.assertEqual(self.plan(not_asks).modules_off, "", not_asks)
 
 
 DEPS = """\
@@ -219,6 +249,7 @@ SRC = {
     "test_fixture.py": "EDITOR = {'project': REPO / 'tools' / 'fixtures' / 'water'}\n",
     "test_build.py": "x\n",
     "test_call_cli.py": "x\n",
+    "test_saved_output_determinism.py": "x\n",
     "test_other.py": "y\n",
 }
 def mapfile(sources, tests=("test_render.py", "test_other.py"), editor_tests=None, seconds=None):
@@ -263,6 +294,13 @@ class Mcp(unittest.TestCase):
         self.assertEqual(self.plan(["editor/Other.h"]).mcp_files, ["test_other.py"])
         cmap = mapfile({"engine/core/Inline.h": ("b", [(1, 2, [0])])})
         self.assertEqual(self.plan(["engine/core/Inline.h"], cmap=cmap).mcp_files[0], "test_render.py")
+
+    def test_a_change_of_what_a_save_writes_runs_its_guard(self):
+        guard = "test_saved_output_determinism.py"
+        for f in ("editor/Factory.cpp", "editor/StreamComponents.cpp", "editor/stream/UpstreamParticles.cpp", "editor/reflect/Properties.cpp",
+                  "editor/Generator.cpp", "engine/core/serialization/RuntimeFields.gen.inc"):
+            self.assertIn(guard, self.plan([f]).mcp_files, f)
+        self.assertNotIn(guard, self.plan(["editor/App.cpp"]).mcp_files)
 
     def test_functions_from_hunks(self):
         cmap = mapfile({"editor/A.cpp": ("", [(10, 20, [0]), (30, 40, [1]), (50, 60, [])])})
@@ -489,6 +527,69 @@ class Runs(unittest.TestCase):
         self.assertIn("builds: linux", out)
         self.assertEqual(self.calls(), [])
 
+    def test_the_header_gates_run_after_the_editor_build(self):
+        (self.root / "tools/build.sh").write_text(FAKE_BUILD.replace(
+            "exit 0\n", '[[ "$1" != linux ]] || touch editor-ready\nexit 0\n'))
+        (self.root / "tools/check_fanout.py").write_text("import sys; sys.exit(1)\n")
+        (self.root / "tools/check_headers.py").write_text(
+            "import sys; from pathlib import Path; assert Path('editor-ready').is_file(); "
+            "open('headers.txt', 'w').write(' '.join(sys.argv[1:]))\n")
+        (self.root / "editor/App.h").write_text("int app();\n")
+        real = cc.in_image
+        cc.in_image = lambda: True
+        try:
+            code, out = self.run_main("--no-cache")
+        finally:
+            cc.in_image = real
+        self.assertEqual(code, 1, out)
+        self.assertIn("headers compile alone (1 edited)", out)
+        self.assertIn("FAIL (exit 1) header fan-out limits", out)
+        self.assertTrue((self.root / "headers.txt").is_file(), out)
+        self.assertEqual((self.root / "headers.txt").read_text(), "editor/App.h")
+
+    def test_a_core_header_builds_the_engine_with_every_module_off(self):
+        (self.root / "tools/check-physics-off.sh").write_text('echo "$@ WERROR=$WERROR" > args.txt\nexit "${MODULES_OFF_RC:-0}"\n')
+        sh(self.root, "git", "add", "-A")
+        sh(self.root, "git", "commit", "-qm", "the check")
+        sh(self.root, "git", "branch", "-qf", "oe-port", "HEAD")
+        (self.root / "engine/core").mkdir(parents=True, exist_ok=True)
+        (self.root / "engine/core/Module.h").write_text("int module();\n")
+        real = cc.in_image
+        cc.in_image = lambda: True
+        try:
+            code, out = self.run_main("--no-cache", "--no-mcp", "--keep-going")
+            self.assertIn("the engine with every module off (engine/core/Module.h changed)", out)
+            self.assertEqual(code, 0, out)
+            self.assertRegex((self.root / "args.txt").read_text(), r"^-j \d+ all-off WERROR=1$")
+            os.environ["MODULES_OFF_RC"] = "1"
+            code, out = self.run_main("--no-cache", "--no-mcp", "--keep-going")
+            self.assertEqual(code, 1, out)
+            self.assertIn("FAIL (exit 1) the engine with every module off", out)
+        finally:
+            cc.in_image = real
+            os.environ.pop("MODULES_OFF_RC", None)
+        # a source alone keeps it out
+        (self.root / "args.txt").unlink()
+        (self.root / "engine/core/Module.h").unlink()
+        (self.root / "engine/core/Module.cpp").write_text("int module = 2;\n")
+        code, out = self.run_main("--no-cache", "--no-mcp", "--keep-going")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("every module off", out)
+        self.assertFalse((self.root / "args.txt").exists())
+
+    def test_no_mcp_leaves_the_mcp_tests_out_and_is_not_cached(self):
+        (self.root / "editor/App.cpp").write_text("int app = 8;\n")
+        code, out = self.run_main("--no-mcp")
+        self.assertEqual(code, 0, out)
+        self.assertFalse([c for c in self.calls() if c.startswith("mcp-tests")])
+        self.assertIn("SKIP (--no-mcp)", out)
+        self.assertIn("the pass is not cached", out)
+        self.assertFalse((self.root / "build/.cache/check-changed.json").exists())
+        previous = len(self.calls())
+        code, out = self.run_main()
+        self.assertEqual(code, 0, out)
+        self.assertTrue([c for c in self.calls()[previous:] if c.startswith("mcp-tests")])
+
     def test_in_the_image_web_is_left_out_and_said_to_be(self):
         (self.root / "engine/core/Foo.cpp").write_text("int foo() { return 9; }\n")
         real = cc.in_image
@@ -503,6 +604,19 @@ class Runs(unittest.TestCase):
         self.assertFalse((self.root / "build/.cache/check-changed.json").exists())
         self.assertFalse([c for c in self.calls() if c.startswith("web")])
         self.assertTrue([c for c in self.calls() if c.startswith("linux")])
+
+    def test_navigation_off_runs_its_script(self):
+        nav = self.root / "engine/core/navigation/NavMesh.cpp"
+        nav.parent.mkdir(parents=True, exist_ok=True)
+        nav.write_text("int mesh;\n")
+        code, out = self.run_main()
+        self.assertEqual(code, 0, out)
+        self.assertIn("navigation-off (engine/core/navigation/NavMesh.cpp changed", out)
+        self.assertIn("exec linux tools/check-navigation-off.sh RUN= UNIT_SUITE= UNIT_TEST_ARGS=", self.calls())
+        os.environ["FAIL_TARGET"] = "exec"
+        code, out = self.run_main("--no-cache")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAIL (exit 1) navigation OFF", out)
 
     def test_failure_exits_1_and_is_not_cached(self):
         (self.root / "editor/App.cpp").write_text("int app = 3;\n")

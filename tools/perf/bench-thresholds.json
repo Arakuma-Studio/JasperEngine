@@ -66,17 +66,29 @@
     "query_path_p95_ms": {"max": 0.165, "spec": "R26 calculatePath p95 <= 0.15 ms desktop (connected pairs, up to 2048 nodes)"},
     "query_path_complete_share": {"min": 0.5, "spec": "R26 most random pairs are connected (the p95 times those; roofs are islands)"},
     "query_sample_p95_ms": {"max": 0.022, "spec": "R26 samplePosition p95 <= 0.02 ms"},
+    "query_random_p95_ms": {"max": 0.0055, "spec": "S76 R36 randomPoint anywhere, area table cached, p95 <= 0.005 ms"},
+    "query_random_first_ms": {"max": 0.55, "spec": "S76 R36 randomPoint anywhere, first call (builds the area table) <= 0.5 ms"},
+    "query_random_circle_p95_ms": {"max": 0.055, "spec": "S76 R36 randomPoint around, radius 10 m, p95 <= 0.05 ms"},
+    "query_wall_p95_ms": {"max": 0.033, "spec": "S76 R36 findClosestEdge, maxDistance 5 m, p95 <= 0.03 ms"},
+    "query_move_along_p95_ms": {"max": 0.011, "spec": "S76 R36 moveAlongSurface, step <= 2 m, p95 <= 0.01 ms"},
     "query_raycast_p95_ms": {"max": 0.022, "spec": "R26 raycast p95 <= 0.02 ms"},
     "crowd_100_tick_ms": {"max": 0.66, "spec": "R27 dtCrowd update + sync, 100 agents (Good) <= 0.6 ms"},
     "crowd_500_tick_ms": {"max": 3.3, "spec": "R27 500 agents <= 3 ms"},
-    "carve_tick_max_ms": {"max": 1.1, "spec": "R28 carving: <= 1 ms tile-cache work per tick"},
-    "carve_ticks_to_land": {"max": 2, "spec": "R28 an obstacle move lands within 2 fixed ticks"},
+    "stuck_100_extra_ms": {"max": 0.011, "spec": "S76 R38 stuck detection on 100 walking agents adds <= 0.01 ms per tick (median of paired ticks)"},
+    "carve_tick_max_ms": {"max": 1.1, "spec": "R28 carving: <= 1 ms tile-cache work per tick; S74 R19: at Carve Tiles Per Tick Auto (4 on desktop), the wall-clock ceiling off"},
+    "carve_ticks_to_land": {"max": 2, "spec": "R28 an obstacle move lands within 2 fixed ticks (S74 R19: at Carve Tiles Per Tick Auto)"},
     "grid_256_worst_ms": {"max": 2.2, "spec": "R29 A* on 256^2, worst reachable <= 2 ms"},
     "grid_reject_us": {"max": 5.5, "spec": "R29 unreachable reject <= 5 us"},
     "grid_batch_200_4t_ms": {"max": 4.4, "spec": "R29 200 paths on 128^2 on 4 threads <= 4 ms"},
     "grid_bytes_per_cell": {"max": 5.2, "spec": "R29 1 B/cell + the reachability index (4 B/cell, spec Deviations)"},
     "empty_tick_us": {"max": 1.1, "spec": "R25 empty scene fixedUpdate < 1 us"},
-    "empty_tick_allocations": {"max": 0, "spec": "R25 no allocation"}
+    "empty_tick_allocations": {"max": 0, "spec": "R25 no allocation"},
+    "city_islands_ms": {"max": 1.65, "spec": "S75 R21 island labelling of bench_nav_city <= 1.5 ms desktop"},
+    "islands_bytes_per_poly": {"max": 4.5, "spec": "S75 R21 labels <= 4 B per polygon (+ 48 B per island, a static_assert)"},
+    "query_reject_disconnected_us": {"max": 2.2, "spec": "S75 R22 a disconnected isReachable reject <= 2 us (islands current)"},
+    "query_reject_searches": {"max": 0, "spec": "S75 R6 the reject runs no search"},
+    "query_locate_p95_ms": {"max": 0.033, "spec": "S75 R22 locate p95 <= 0.03 ms (islands current)"},
+    "findings_city_ms": {"max": 2.2, "spec": "S75 R23 findings of bench_nav_city + 100 agents + 20 links, cached stale counts <= 2 ms"}
   },
   "je-bench-splines": {
     "evaluate_at_distance_ns": {"max": 60, "spec": "R18 evaluateAtDistance on a 100-knot spline"},
@@ -91,6 +103,11 @@
     "empty_scene_frame_us": {"max": 1, "spec": "R21 SplineSystem in a scene without spline components, mean of 10k frames"},
     "empty_scene_allocations": {"max": 0, "spec": "R21 no allocations without spline components (--count-allocs)"},
     "spline_animate_follower_us": {"max": 0.5, "spec": "R21 Spline Animate per follower per frame"}
+  },
+  "je-bench-audio": {
+    "meter_file_3min_ms": {"max": 300, "spec": "S38 R16 file mode, a 3-minute stereo file, CPU time"},
+    "meter_stream_core_pct": {"max": 1.5, "spec": "S38 R16 stream mode, 48 kHz stereo, of one core"},
+    "limiter_true_peak_core_pct": {"max": 2.5, "spec": "S38 R17 true peak and 1.5 ms lookahead, a stereo bus at 48 kHz (the budget is Android arm64's)"}
   },
   "je-bench-anim": {
     "crowd200_sampled": {"min": 200, "spec": "R19 every character of AnimBench.Crowd200 evaluated each frame"},
@@ -107,5 +124,17 @@
   "async-shaders": {
     "max_main_ms": {"max": 4.0, "spec": "S32 R21: the render thread's creation work (GPU create scopes) in the worst frame of the lobe toggles"},
     "r22_worst_over_bound": {"max": 1.0, "spec": "S32 R22: the worst frame of the toggles (edit frames apart) over max(2x the idle median, the idle median + 4 ms), driver cache warm"}
+  },
+  "mesh-bench": {
+    "_comment": "S55 R8 (tools/perf/mesh_bench.py): what the scene measured, as regression limits. They are not R9's targets, which this scene does not reach: docs/specs/S55-draw-submission.md, Results.",
+    "main_draw_calls": {"max": 230, "spec": "S55 R9: 28 grid + 200 unique + 2 terrain"},
+    "shadow_draw_calls": {"max": 380, "spec": "S55 R1: the shadow passes batch"},
+    "main_triangles": {"max": 171000, "spec": "S55 R8: the colour pass's detail levels"},
+    "shadow_triangles": {"max": 431000, "spec": "S55 R5: per-cascade terrain culling and S54's shadow detail levels"},
+    "uniform_bytes": {"max": 128000, "spec": "S55 R3: frame and pass blocks applied when they change"},
+    "batched_instances": {"min": 5200, "spec": "S55 R1: what GPU Instancing replaces"},
+    "main_draw_call_ratio": {"min": 7.0, "spec": "S55 R9, measured (target 10x, not met): GPU Instancing off to on"},
+    "shadow_triangle_drop": {"min": 0.11, "spec": "S54 R7, measured: Shadow LOD Bias 2.0 to 1.0"},
+    "uniform_byte_drop": {"min": 0.97, "spec": "S55 R3, measured: GPU Instancing off to on"}
   }
 }

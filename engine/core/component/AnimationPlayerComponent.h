@@ -121,6 +121,9 @@ namespace jasperengine{
         // with the Animator's onStateEnter / onStateExit)
         FunctionSubscribe<void(int, const std::string&)> onStateEnter;
         FunctionSubscribe<void(int, const std::string&)> onStateExit;
+
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) { f(onEvent); f(onFinish); f(onStateEnter); f(onStateExit); }
     };
 
 }

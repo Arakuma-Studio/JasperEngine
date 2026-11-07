@@ -4,16 +4,16 @@ Served as `jasper://docs/editor-tools`. The user documentation is `docs/editor/c
 `curves.md`, `project-hub.md` and `recorder.md`; the design is
 `docs/specs/S27-editor-tools.md`. `record_game`, `sample_view_color`, `edit_swatches`,
 `list_curve_presets` and `evaluate_curve` are the `editor_tools` group (`tool_groups` enable
-`["editor_tools"]` lists them); `create_project {template}`, `list_project_templates` and
-`import_project` are core.
+`["editor_tools"]` lists them), with `clear_project_leftovers`; `create_project {template}`,
+`list_project_templates` and `import_project` are core.
 
 ## Colours
 
 Any colour property (`set_properties`, `create_entity` values, `set_scene_settings`, material
 values) takes:
 
-- `[r, g, b(, a)]`: the field's own space, unchanged (most 3D colours are linear; UI and sprite
-  colours sRGB: `get_entity` shows what is stored).
+- `[r, g, b(, a)]`: the field's own space, unchanged (stored colours are linear, UI ones too:
+  `get_entity` shows what is stored).
 - `"#RRGGBB"` / `"#RRGGBBAA"`: sRGB, converted to linear for a linear field.
 - `{"srgb": [r, g, b(, a)]}` or `{"linear": [...]}`: say the space; converted to the field's.
 - `"intensity": stops` with any of the forms above (`{"hex": "#FF8000", "intensity": 2}`):
@@ -54,8 +54,11 @@ with sRGB 0-1 colours, at most 8 keys of each. Errors name the path (`keys[2][4]
 - `import_project {source, path}`: a `.zip` or a Git URL (`https://`, `ssh://`,
   `user@host:path`) into the folder `path`, then opens it. A refused archive (absolute paths,
   `..`, links, too big) or a failed clone leaves nothing behind.
+- A stopped editor's `<name>.importing` staging folders go by themselves at the next start, and a
+  running editor's are never touched. One with no owner marker may hold a user's files: results list
+  it in `leftovers`, and `clear_project_leftovers {remove}` deletes it once the user agrees.
 - While the editor shows the Project Hub without a project, project tools answer "No project is
-  open"; `create_project`, `open_project` and `import_project` work.
+  open"; `create_project`, `open_project`, `import_project` and `clear_project_leftovers` work.
 
 ## Recording the game
 

@@ -344,6 +344,15 @@ when they are not static archives), with their search paths; Swift turns on `SWI
 and a generated bridging header. Web: the scripts and the stub that queues registrations. A
 re-export with the same inputs writes the same files.
 
+**Prebuilt builds** (no compiler) carry what they can and name the rest as a reason to compile
+(docs/shipping.md, "Native plugins in prebuilt builds"): iOS adds the Objective-C/Swift plugins,
+SDKs, Swift packages, frameworks, Info.plist entries and entitlements to the player's Xcode
+project; Web adds the scripts; Android adds `extra_permissions` and the manifest XML. C++ plugins,
+Java/Kotlin, AARs, Gradle dependencies, CocoaPods and macOS plugins make the build compile (on
+Android and iOS: Export source). `build_project` and `get_build_info` list both (`carried`,
+`compile_reasons`). A mock that would answer in a shipped game for a plugin with no code on its
+platform is the build warning `W-NATIVE-MOCK`, and the game logs it once.
+
 ## 9. Project settings (SDK dependencies)
 
 Project Settings > Native Plugins, or `set_project_settings` (`get_project_settings {keys: [...],
@@ -364,6 +373,7 @@ describe: true}` explains each):
 | `ios.entitlements_xml` | the pairs of `ios/JasperEngine.entitlements` (`CODE_SIGN_ENTITLEMENTS`) |
 | `ios.deployment_target` | `IPHONEOS_DEPLOYMENT_TARGET` of every target (15.0 or later) |
 | `web.script_urls` | `<script src>` in `<head>`, before the plugin scripts |
+| `apple.privacy_*` | the Apple privacy manifest's additions (tracking, tracking domains, collected data, required-reason APIs); with the `PrivacyInfo.xcprivacy` files of static plugins in `apple/`, `ios/`, `macos/` (`native_plugins {action: "privacy_manifest"}` shows the result) |
 
 XML fragments are checked when set (MCP refuses, the window shows a red line) and again at export.
 Android's INTERNET permission is not implied by native plugins: set Internet Access to Require if
@@ -391,6 +401,156 @@ A wrapper of an ads or purchases SDK is written on top of this bridge alone:
   `ios.swift_packages`, `ios.plist_entries` (`NSUserTrackingUsageDescription`,
   `GADApplicationIdentifier`), `ios.plist_xml` (`SKAdNetworkItems`), `ios.frameworks`.
 - **Editor**: a Lua mock that answers the same calls (resolve after a delay, emit fake events).
+- **Privacy**: an ads SDK tracks: `apple.privacy_tracking` true, its domains in
+  `apple.privacy_tracking_domains`, what it collects in `apple.privacy_collected_data`, and
+  `NSUserTrackingUsageDescription` in `ios.plist_entries`. An SDK framework that is dynamic carries
+  its own manifest.
+
+### Worked example: interstitial ads with Google Mobile Ads
+
+The engine has no ads SDK of its own; this plugin is all a game needs (take the SDK versions from
+Google's release notes). The same shape fits any ads or purchases SDK.
+
+Lua, the same on both platforms (and in Play, with the mock):
+
+```lua
+local ads = {}
+
+function ads:init()
+    Native.callAsync("Ads", "start", nil, function(result, err, code)
+        if err then Log.warn("ads did not start: " .. err .. " (" .. code .. ")") end
+    end, {owner = self})
+end
+
+function ads:showBetweenLevels(unitId, done)
+    Native.callAsync("Ads", "showInterstitial", {unitId}, function(result, err, code)
+        if err then Log.warn("no ad: " .. err) end
+        done()                                   -- the game goes on either way
+    end, {owner = self, timeout = 60})
+end
+
+return ads
+```
+
+Android, `plugins/native/android/java/com/me/ads/Ads.java` (the consent form first, as Google
+requires in the EEA and the UK; the engine pauses while the ad covers the game):
+
+```java
+package com.me.ads;
+
+import android.app.Activity;
+import com.google.android.gms.ads.AdError;
+import com.google.android.gms.ads.AdRequest;
+import com.google.android.gms.ads.FullScreenContentCallback;
+import com.google.android.gms.ads.LoadAdError;
+import com.google.android.gms.ads.MobileAds;
+import com.google.android.gms.ads.interstitial.InterstitialAd;
+import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback;
+import com.google.android.ump.ConsentRequestParameters;
+import com.google.android.ump.UserMessagingPlatform;
+import com.jaspergameengine.bridge.JasperNative;
+import com.jaspergameengine.bridge.NativeCall;
+
+public class Ads {
+    public static void start(final NativeCall call) {
+        JasperNative.runOnUiThread(() -> {
+            Activity activity = JasperNative.getActivity();
+            UserMessagingPlatform.getConsentInformation(activity).requestConsentInfoUpdate(activity,
+                new ConsentRequestParameters.Builder().build(),
+                () -> UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity, formError -> {
+                    MobileAds.initialize(activity, status -> call.resolve(true));
+                }),
+                error -> call.reject("consent", error.getMessage()));
+        });
+    }
+
+    public static void showInterstitial(String unitId, final NativeCall call) {
+        JasperNative.runOnUiThread(() -> {
+            Activity activity = JasperNative.getActivity();
+            InterstitialAd.load(activity, unitId, new AdRequest.Builder().build(), new InterstitialAdLoadCallback() {
+                @Override public void onAdLoaded(InterstitialAd ad) {
+                    ad.setFullScreenContentCallback(new FullScreenContentCallback() {
+                        @Override public void onAdDismissedFullScreenContent() { JasperNative.resumeEngine(); call.resolve(true); }
+                        @Override public void onAdFailedToShowFullScreenContent(AdError e) { JasperNative.resumeEngine(); call.reject("show", e.getMessage()); }
+                    });
+                    JasperNative.pauseEngine();
+                    ad.show(activity);
+                }
+                @Override public void onAdFailedToLoad(LoadAdError e) { call.reject("no_fill", e.getMessage()); }
+            });
+        });
+    }
+}
+```
+
+Its settings: `android.gradle_dependencies` `["com.google.android.gms:play-services-ads:<version>"]`,
+`android.manifest_application_xml` `<meta-data android:name="com.google.android.gms.ads.APPLICATION_ID"
+android:value="ca-app-pub-...~..."/>` (the App ID from the AdMob console; Google's sample App ID
+serves test ads only), `android.extra_permissions` `["com.google.android.gms.permission.AD_ID"]`,
+and Internet Access set to Require. Java makes the Android build compile: Export source, then
+Android Studio.
+
+iOS, `plugins/native/ios/Ads.m` (+ `Ads.h`: `@interface Ads : NSObject <JasperNativePlugin>`):
+
+```objc
+#import "Ads.h"
+@import GoogleMobileAds;
+@import UserMessagingPlatform;
+
+@interface AdsDelegate : NSObject <GADFullScreenContentDelegate>
+@property(nonatomic, strong) JasperNativeCall* call;
+@property(nonatomic, strong) GADInterstitialAd* ad;
+@end
+@implementation AdsDelegate
+- (void)adDidDismissFullScreenContent:(id<GADFullScreenPresentingAd>)ad { [JasperNative resumeEngine]; [self.call resolve:@YES]; }
+- (void)ad:(id<GADFullScreenPresentingAd>)ad didFailToPresentFullScreenContentWithError:(NSError*)error {
+    [JasperNative resumeEngine];
+    [self.call reject:@"show" message:error.localizedDescription];
+}
+@end
+
+static AdsDelegate* current;
+
+@implementation Ads
++ (void)start:(NSArray*)args call:(JasperNativeCall*)call {
+    [UMPConsentInformation.sharedInstance requestConsentInfoUpdateWithParameters:[UMPRequestParameters new]
+        completionHandler:^(NSError* error) {
+            [UMPConsentForm loadAndPresentIfRequiredFromViewController:JasperNative.viewController completionHandler:^(NSError* formError) {
+                [GADMobileAds.sharedInstance startWithCompletionHandler:^(GADInitializationStatus* status) { [call resolve:@YES]; }];
+            }];
+        }];
+}
++ (void)showInterstitial:(NSArray*)args call:(JasperNativeCall*)call {
+    [GADInterstitialAd loadWithAdUnitID:args[0] request:[GADRequest request]
+        completionHandler:^(GADInterstitialAd* ad, NSError* error) {
+            if (error) { [call reject:@"no_fill" message:error.localizedDescription]; return; }
+            current = [AdsDelegate new];
+            current.call = call;
+            current.ad = ad;
+            ad.fullScreenContentDelegate = current;
+            [JasperNative pauseEngine];
+            [ad presentFromRootViewController:JasperNative.viewController];
+        }];
+}
+@end
+```
+
+Its settings: `ios.swift_packages` `[{url: "https://github.com/googleads/swift-package-manager-google-mobile-ads",
+version: "<version>", products: ["GoogleMobileAds"]}]` (the package brings the consent SDK too),
+`ios.plist_entries` `{"GADApplicationIdentifier": "ca-app-pub-...~...", "NSUserTrackingUsageDescription":
+"..."}`, `ios.plist_xml` with Google's `SKAdNetworkItems` list, and the privacy manifest:
+`apple.privacy_tracking` true plus the data the SDK collects (`apple.privacy_collected_data`,
+from Google's data disclosure). Google's frameworks are dynamic and carry their own manifests. The
+prebuilt iOS build carries all of it.
+
+The mock, `lua/native_mocks/Ads.lua`, for Play and desktop builds:
+
+```lua
+local Ads = {}
+function Ads.start(call) return true end
+function Ads.showInterstitial(unitId, call) return true end
+return Ads
+```
 
 ## 11. Unity and Godot equivalents
 

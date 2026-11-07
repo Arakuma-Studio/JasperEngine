@@ -367,17 +367,18 @@ in `tools/mcp/tests/test_reflection.py`.
   - the fallback is a member;
   - every non-`NoSave` field has a codec;
   - every `Proxy` resolves inside its owner.
-- **AC3** `ReflectParity.<Component>.EncodeMatchesLegacy`: for 500 seeded random instances
+- **AC3** `ReflectParity.<Component>.EncodeMatchesFrozen` (`EncodeMatchesLegacy` until S73 froze the
+  legacy output): for 500 seeded random instances
   (NaN/Inf included), `YAML::Dump(new)` equals `YAML::Dump(legacy)` byte for byte.
-- **AC4** `ReflectParity.<Component>.DecodeMatchesLegacy`: decoding legacy text, including random
+- **AC4** `ReflectParity.<Component>.DecodeMatchesFrozen`: decoding legacy text, including random
   key subsets over a random base, gives the same values as the legacy decoder, with floats
   compared bitwise. Malformed scalars produce a skip record and no exception.
-- **AC5** `test_reflection.py::test_golden_resave`: the editor opens each of the 18
+- **AC5** `test_reflection.py::test_golden_resave_<project>` (a test per project; see Deviations): the editor opens each of the 18
   `tools/fixtures/*/*.scene`, the prefab fixtures (`tools/prefab-fixtures.py`), and
   `tools/fixtures/reflection-parity/AllComponents.scene` (every component, non-default values),
   saves them, and the bytes equal `tools/fixtures/reflection-parity/golden/`. The goldens are
   captured with the pre-S08 editor in the first S08 PR.
-- **AC6** `test_reflection.py::test_codegen_golden`: the generated C++ for the parity fixtures
+- **AC6** `test_reflection.py::test_golden_resave_<project>`: the generated C++ for the parity fixtures
   equals the golden text captured before migration.
 - **AC7** `test_reflection.py::test_inspector_layout_parity`: for each migrated component,
   `get_inspector_layout` matches the JSON captured from the hand drawer (labels, order, groups,
@@ -534,9 +535,10 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   Upstream round 3 changes no scene or prefab format (it has no format versions; the Vertex
   Animator's keys are additive), so S29's scene 3 -> 4 and prefab 5 -> 6 steps (derived transform
   values dropped) stay the last ones; the goldens were taken on S29's formats.
-- **Legacy oracle kept.** `editor/tests/reflect/legacy/` (the deleted hand codecs, test-only)
-  stays so the parity fuzzers can keep running. D5 deletes it once S08 completes. Deleting it is
-  a follow-up for the integrator after merge, and the goldens do not depend on it.
+- **Legacy oracle deleted by S73.** `editor/tests/reflect/legacy/` (the deleted hand codecs,
+  test-only) stayed so the parity fuzzers could keep running. S73 froze its output for those
+  samples in `editor/tests/reflect/parity_golden/` and deleted it, and `ReflectCodecBench` holds
+  the codec to the hand codecs' frozen numbers (docs/specs/S73-code-cleanups.md, Deviations).
 - **R15.** The engine keeps `PostProcessingSettings::getFields()` as the single field table,
   because the runtime clamp and the Inspector post-processing panel read it. The editor builds
   the `StructDesc` from that table (`editor/reflect/PostProcessingReflect.cpp`), so the scene
@@ -581,6 +583,11 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   by 11 px and moved them all). The codegen golden's
   `rigidbody.solidBoxDensity`, an uninitialized member the editor before S08 exported as whatever
   memory held, is 0 (the reflection codec value-initializes components).
-- **Not done here.** `editor/asset/AssetRefSchema` is still hand-written (its header expects S08
-  to generate it from reflection; `visitAssetRefs` and the locators are ready for it).
+- **Done by S73, not here.** `editor/asset/AssetRefSchema` stayed hand-written until S73 generated
+  its component rows and walk from these tables.
 - **R29** (optional Lua field report) is not implemented.
+- **AC5 and AC6 are one test per project** (`test_golden_resave_<project>`, branch `tests/split-slow-mcp`).
+  One function re-saving every project, and a second comparing the code it left behind, took
+  175-970 s and timed out at 1800 s on loaded servers. Each test now opens one project in its own
+  editor and compares its files and its generated code; the file's `TESTS_INDEPENDENT` lets the
+  runner put them in separate chunks.

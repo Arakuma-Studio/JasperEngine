@@ -1,7 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "component/ButtonComponent.h"
 #include "util/ProjectChecks.h"
+#include "component/CanvasGroupComponent.h"
 #include "camera/ShakePresets.h"
 #include "camera/ShakePreset.h"
 #include "McpValues.h"
@@ -29,6 +31,7 @@
 #include "command/type/UnlinkMaterialCmd.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
+#include "component/TerrainComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TextComponent.h"
 #include "component/SafeAreaComponent.h"
@@ -50,6 +53,7 @@
 #include "util/VideoTextureLink.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "audio/SoundEvent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/CameraFollowComponent.h"
 #include "component/CameraShakerComponent.h"
@@ -68,11 +72,13 @@
 #include "reflect/Enums.h"
 #include "reflect/Reflect.h"
 #include "util/YamlNumbers.h"
+#include "util/TerrainDetailRules.h"
 
 #include <algorithm>
 #include <limits>
 #include <cctype>
 #include <cmath>
+#include <sstream>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -289,6 +295,7 @@ bool isPhysicsMaterialProperty(ComponentType component, const std::string& prope
 
 bool isAssetPathProperty(ComponentType component, const std::string& propertyName) {
     return propertyName == "filename" || (component == ComponentType::PoseAnimatorComponent && propertyName == "animation") ||
+           (component == ComponentType::AudioSourceComponent && propertyName == "event") ||
            (component == ComponentType::AnimatorComponent && propertyName == "controller") ||
            isPlayerClipProperty(component, propertyName) || isVertexAnimationProperty(component, propertyName) ||
            isPhysicsMaterialProperty(component, propertyName);
@@ -607,6 +614,26 @@ const EnumOptions& litQualityOptions() {
     return options;
 }
 
+const EnumOptions& planarReflectionResolutionOptions() {
+    static const EnumOptions options = {
+        {(int)PlanarReflectionResolution::OFF, "off", "Off"},
+        {(int)PlanarReflectionResolution::QUARTER, "quarter", "Quarter"},
+        {(int)PlanarReflectionResolution::HALF, "half", "Half"},
+        {(int)PlanarReflectionResolution::FULL, "full", "Full"}
+    };
+    return options;
+}
+
+const EnumOptions& waterWakeResolutionOptions() {
+    static const EnumOptions options = {
+        {(int)WaterWakeResolution::AUTO, "auto", "Auto"},
+        {(int)WaterWakeResolution::LOW, "low", "Low (128)"},
+        {(int)WaterWakeResolution::MEDIUM, "medium", "Medium (256)"},
+        {(int)WaterWakeResolution::HIGH, "high", "High (512)"}
+    };
+    return options;
+}
+
 const EnumOptions& sceneColorScaleOptions() {
     static const EnumOptions options = {
         {(int)SceneColorScale::FULL, "full", "Full"},
@@ -799,6 +826,8 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"shadow_debug_view", &shadowDebugViewOptions()},
         {"shadow_tier", &shadowTierOptions()},
         {"scene_color_scale", &sceneColorScaleOptions()},
+        {"planar_reflection_resolution", &planarReflectionResolutionOptions()},
+        {"water_wake_resolution", &waterWakeResolutionOptions()},
         {"lit_quality", &litQualityOptions()},
         {"light_unit", &tableOptions(reflect::enums::kLightUnit)},
         {"texture_filter", &tableOptions(reflect::enums::kTextureFilter)},
@@ -995,17 +1024,50 @@ Vector3 McpValues::eulerDegrees(const Quaternion& value) {
     return euler;
 }
 
-bool McpValues::parseQuaternion(const Json& value, Quaternion& out) {
+bool McpValues::parseQuaternion(const Json& value, Quaternion& out, std::string* error) {
+    std::string why;
+    auto fail = [&](std::string text) {
+        if (error) *error = std::move(text);
+        return false;
+    };
     auto fromEuler = [](const Json& euler, Quaternion& q) {
         float e[3] = {0.0f, 0.0f, 0.0f};
         if (!readComponents(euler, e, 3, XYZW)) return false;
         q = Quaternion(e[0], e[1], e[2]);
         return true;
     };
-    auto fromQuat = [](const Json& quat, Quaternion& q) {
+    // four numbers that must be a rotation: near-unit ones are normalized, others refused (an
+    // unnormalized quaternion scales and shears what it rotates)
+    auto fromQuat = [&why](const Json& quat, Quaternion& q) {
         float v[4] = {q.x, q.y, q.z, q.w};
+        if (quat.is_object()) {
+            for (const char* key : XYZW) {
+                if (!quat.contains(key)) {
+                    why = "a quaternion object needs all of x, y, z and w; for angles use {\"euler\": [x, y, z]} (degrees).";
+                    return false;
+                }
+            }
+        }
         if (!readComponents(quat, v, 4, XYZW)) return false;
-        q = Quaternion(v[3], v[0], v[1], v[2]);
+        const float length = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]);
+        if (!std::isfinite(length) || length < 1e-6f) {
+            why = "a zero quaternion is not a rotation; identity is [0, 0, 0, 1], angles are {\"euler\": [x, y, z]} (degrees).";
+            return false;
+        }
+        if (std::fabs(length - 1.0f) > 0.1f) {
+            std::ostringstream text;
+            const bool degrees = std::fabs(v[0]) > 2.0f || std::fabs(v[1]) > 2.0f || std::fabs(v[2]) > 2.0f;
+            if (degrees) {
+                text << "[" << v[0] << ", " << v[1] << ", " << v[2] << ", " << v[3] << "] looks like Euler degrees: use {\"euler\": ["
+                     << v[0] << ", " << v[1] << ", " << v[2] << "]}.";
+            } else {
+                text.precision(3);
+                text << "not a unit quaternion (length " << length << "): give [x, y, z, w] of length 1, or {\"euler\": [x, y, z]} (degrees).";
+            }
+            why = text.str();
+            return false;
+        }
+        q = Quaternion(v[3] / length, v[0] / length, v[1] / length, v[2] / length);
         return true;
     };
     if (value.is_object() && (value.contains("euler") || value.contains("quat"))) {
@@ -1013,18 +1075,28 @@ bool McpValues::parseQuaternion(const Json& value, Quaternion& out) {
         const bool hasQuat = value.contains("quat");
         Quaternion byEuler = out;
         Quaternion byQuat = out;
-        if (hasEuler && !fromEuler(value["euler"], byEuler)) return false;
-        if (hasQuat && !fromQuat(value["quat"], byQuat)) return false;
+        if (hasEuler && !fromEuler(value["euler"], byEuler)) return fail("euler must be [x, y, z] degrees.");
         if (hasEuler && hasQuat) {
-            // a read value written back with one of the two edited: the one that moved wins
-            const float dot = std::fabs(byQuat.x * out.x + byQuat.y * out.y + byQuat.z * out.z + byQuat.w * out.w);
-            out = dot > 0.99999f ? byEuler : byQuat;
-        } else {
-            out = hasEuler ? byEuler : byQuat;
+            // a read value written back with one of the two edited: the one that moved wins. The quat is
+            // compared before it is checked, so what a read returned (the stored value, normalized: even
+            // one stored off unit length) always writes back
+            float sent[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+            if (!readComponents(value["quat"], sent, 4, XYZW)) return fail("quat must be [x, y, z, w].");
+            const float sentLength = std::sqrt(sent[0] * sent[0] + sent[1] * sent[1] + sent[2] * sent[2] + sent[3] * sent[3]);
+            const float storedLength = std::sqrt(out.norm());
+            const float dot = sentLength > 0.0f && storedLength > 0.0f
+                ? std::fabs(sent[0] * out.x + sent[1] * out.y + sent[2] * out.z + sent[3] * out.w) / (sentLength * storedLength) : 0.0f;
+            if (dot > 0.99999f) {
+                out = byEuler;
+                return true;
+            }
         }
+        if (hasQuat && !fromQuat(value["quat"], byQuat)) return fail(why.empty() ? "quat must be [x, y, z, w]." : why);
+        out = hasQuat ? byQuat : byEuler;
         return true;
     }
-    return fromQuat(value, out);
+    if (!fromQuat(value, out)) return fail(why.empty() ? "a rotation is [x, y, z, w] or {\"euler\": [x, y, z]} (degrees)." : why);
+    return true;
 }
 
 double McpValues::number(float value) {
@@ -1114,7 +1186,11 @@ Json McpValues::toJson(const Vector4& value) {
     return Json::array({number(value.x), number(value.y), number(value.z), number(value.w)});
 }
 Json McpValues::toJson(const Quaternion& value) {
-    return Json{{"quat", Json::array({number(value.x), number(value.y), number(value.z), number(value.w)})},
+    // normalized, as every rotation a tool stores: a value stored off unit length (an older file, a
+    // script) reads as the rotation it draws and writes back as it reads (parseQuaternion)
+    Quaternion unit = value;
+    if (unit.norm() > 0.0f) unit.normalize();
+    return Json{{"quat", Json::array({number(unit.x), number(unit.y), number(unit.z), number(unit.w)})},
                 {"euler", toJson(eulerDegrees(value))}};
 }
 
@@ -2143,15 +2219,15 @@ bool McpValues::materialPbrFromJson(Project* project, SceneProject* scene, const
         return true;
     }
     if (!value.is_object()) {
-        error = "pbr is an object of lobes: clearcoat, sheen, anisotropy, iridescence, transmission, volume, specular, hex "
-                "(each {field: value}, partial values merge), or null for none.";
+        error = "pbr is an object of lobes: clearcoat, sheen, anisotropy, iridescence, transmission, volume, specular, hex, "
+                "hair (the Hair shading model: hair.enabled) (each {field: value}, partial values merge), or null for none.";
         return false;
     }
     for (auto lobeIt = value.begin(); lobeIt != value.end(); ++lobeIt) {
         const PbrLobeInfo* lobe = MaterialPbr::findLobe(lobeIt.key());
         if (!lobe) {
             error = "pbr: unknown lobe "" + lobeIt.key() + ""; valid: clearcoat, sheen, anisotropy, iridescence, transmission, "
-                    "volume, specular, hex.";
+                    "volume, specular, hex, hair.";
             return false;
         }
         if (!lobeIt.value().is_object()) {
@@ -2572,6 +2648,14 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         case PropertyType::Ease:
             return enumToJson((int)static_cast<Ease*>(ref)->getType(), easeOptions());
         case PropertyType::UInt:
+            if (ctx.component == ComponentType::AudioSourceComponent && name == "playOn") {
+                Json names = Json::array();
+                const unsigned int flags = *static_cast<unsigned int*>(ref);
+                for (uint32_t flag = 1; flag <= AudioPlayOn_Sensor3D; flag <<= 1) {
+                    if (flags & flag) names.push_back(audioPlayOnName(flag));
+                }
+                return names;
+            }
             return *static_cast<unsigned int*>(ref);
         case PropertyType::Font: {
             // the chain in use: the main font first, then its fallbacks
@@ -2921,6 +3005,21 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                     text = stored;
                 }
             }
+            if (component == ComponentType::AudioSourceComponent && propertyName == "event" && !text.empty()) {
+                // a .soundevent by its path or its GUID
+                if (Guid::isValidText(text)) {
+                    const fs::path found = project->getAssetDatabase().getPath(Guid::parse(text));
+                    if (found.empty()) {
+                        error = "event: no asset has the GUID " + text + ": pass a .soundevent path, or make one with edit_sound_event.";
+                        return nullptr;
+                    }
+                    text = FileUtils::pathToGenericUtf8(found);
+                }
+                if (!Util::isSoundEventFile(text)) {
+                    error = "event: '" + text + "' is no .soundevent: make one with edit_sound_event.";
+                    return nullptr;
+                }
+            }
             if (isAssetPathProperty(component, propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
             // an Asset script property is project-relative: a GUID given names its file
             if (stringType == PropertyType::Asset && propertyName.compare(0, 8, "scripts[") == 0 && Guid::isValidText(text)) {
@@ -3065,7 +3164,11 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
         }
         case PropertyType::Quat: {
             Quaternion q = property.ref ? *static_cast<Quaternion*>(property.ref) : Quaternion::IDENTITY;
-            if (!parseQuaternion(value, q)) return expect("[x,y,z,w], {\"euler\":[x,y,z]} in degrees or {\"quat\":[x,y,z,w]}");
+            std::string why;
+            if (!parseQuaternion(value, q, &why)) {
+                error = "Property " + propertyName + " is " + typeName + ": " + why;
+                return nullptr;
+            }
             return new PropertyCmd<Quaternion>(project, sceneId, entity, component, propertyName, q, onChanged);
         }
         case PropertyType::Int: {
@@ -3127,6 +3230,16 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                                          Ease(static_cast<EaseType>(parsed)), onChanged);
         }
         case PropertyType::UInt:
+            if (component == ComponentType::AudioSourceComponent && propertyName == "playOn") {
+                if (!value.is_array()) return expect("a list of names (ui_click, ui_press, ui_hover, collision_2d, collision_3d, sensor_2d, sensor_3d)");
+                unsigned int flags = 0;
+                for (const Json& item : value) {
+                    const uint32_t flag = item.is_string() ? audioPlayOnFromName(item.get<std::string>()) : 0;
+                    if (flag == 0) return expect("a list of names (ui_click, ui_press, ui_hover, collision_2d, collision_3d, sensor_2d, sensor_3d)");
+                    flags |= flag;
+                }
+                return new PropertyCmd<unsigned int>(project, sceneId, entity, component, propertyName, flags, onChanged);
+            }
             if (!isIntegral(value) || integralValue(value) < 0) return expect("a non-negative integer");
             return new PropertyCmd<unsigned int>(project, sceneId, entity, component, propertyName,
                                                  static_cast<unsigned int>(integralValue(value)), onChanged);
@@ -3612,6 +3725,26 @@ Json McpValues::canvasGroupStateToJson(Scene* scene, Entity entity) {
     return out;
 }
 
+Json McpValues::selectableToJson(Scene* scene, Entity entity, bool live) {
+    if (!scene || !scene->isEntityCreated(entity) || !scene->findComponent<ButtonComponent>(entity)) return nullptr;
+    UISystem& ui = *scene->getSystem<UISystem>();
+    auto target = [&](Entity other) -> Json {
+        return other == NULL_ENTITY ? Json(nullptr) : Json{{"id", other}, {"path", EntityPath::of(scene, other)}};
+    };
+    Json navigation = {{"up", target(ui.findSelectableOnDirection(entity, MoveDirection::UP))},
+                       {"down", target(ui.findSelectableOnDirection(entity, MoveDirection::DOWN))},
+                       {"left", target(ui.findSelectableOnDirection(entity, MoveDirection::LEFT))},
+                       {"right", target(ui.findSelectableOnDirection(entity, MoveDirection::RIGHT))},
+                       {"next", target(ui.findNextSelectable(entity, false))}};
+    Json out = {{"navigable", ui.isNavigable(entity)}, {"navigation", navigation}};
+    if (live) {
+        static const char* const states[] = {"normal", "highlighted", "pressed", "selected", "disabled"};
+        out["state"] = states[static_cast<int>(ui.getButtonState(entity))];
+        out["selected"] = ui.getSelected() == entity;
+    }
+    return out;
+}
+
 Json McpValues::fluidStatsToJson(Scene* scene, Entity entity) {
     if (!scene || !scene->isComponentRegistered<FluidSimulationComponent>()) return nullptr;
     FluidSimulationComponent* fluid = scene->findComponent<FluidSimulationComponent>(entity);
@@ -3815,6 +3948,19 @@ bool McpValues::checkReflectedChanges(std::vector<Change>& changes, std::vector<
     return true;
 }
 
+namespace {
+
+    const char* mcpButtonTransitionName(ButtonTransition transition) {
+        switch (transition) {
+            case ButtonTransition::NONE: return "none";
+            case ButtonTransition::COLOR_TINT: return "color_tint";
+            case ButtonTransition::SPRITE_SWAP: return "sprite_swap";
+            default: return "color_tint_and_sprite_swap";
+        }
+    }
+
+}
+
 bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, const std::vector<Entity>& entities,
                                      const std::vector<Change>& allChanges, MultiPropertyCmd& multi, std::string& error) {
     if (!scene || !scene->scene) {
@@ -3845,6 +3991,34 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                             std::to_string(layers) + "); add the layer first (layers, e.g. [{\"name\": \"Base Layer\"}, {\"name\": \"Upper\"}]).";
                     return false;
                 }
+            }
+        }
+        // a Button overwrites what its transition owns: an edit of ui.color / ui.texture would be
+        // lost at its next state change (ui-components decision 13)
+        if (const ButtonComponent* button = scene->scene->findComponent<ButtonComponent>(entity)) {
+            ButtonTransition transition = button->transition;
+            for (const Change& change : changes) {
+                if (change.component != ComponentType::ButtonComponent || change.property != "transition" || change.op != "set") continue;
+                if (change.value.is_string()) {
+                    const std::string name = change.value.get<std::string>();
+                    if (name == "none") transition = ButtonTransition::NONE;
+                    else if (name == "color_tint") transition = ButtonTransition::COLOR_TINT;
+                    else if (name == "sprite_swap") transition = ButtonTransition::SPRITE_SWAP;
+                    else if (name == "color_tint_and_sprite_swap") transition = ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP;
+                } else if (change.value.is_number_integer()) {
+                    transition = static_cast<ButtonTransition>(change.value.get<int>());
+                }
+            }
+            for (const Change& change : changes) {
+                if (change.component != ComponentType::UIComponent) continue;
+                const bool color = change.property == "color" && UISystem::transitionWritesColor(transition);
+                const bool texture = change.property == "texture" && UISystem::transitionWritesTexture(transition);
+                if (!color && !texture) continue;
+                error = "UIComponent." + change.property + " of " + label + " is set by its Button (transition " +
+                        mcpButtonTransitionName(transition) + "): set button." + (color ? "colorNormal (and colorHovered, colorPressed, colorSelected, colorDisabled)"
+                                                                                    : "textureNormal (and textureHovered, texturePressed, textureSelected, textureDisabled)") +
+                        ", or set button.transition to " + (color ? "sprite_swap or none" : "color_tint or none") + " first.";
+                return false;
             }
         }
         // components in order of first appearance
@@ -3990,7 +4164,8 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                     entryKeys[entryCollection].insert(entryKey);
                     continue;
                 }
-                const PropertyData property = Catalog::findProperty(scene->scene, entity, component, change.property);
+                // (a set writes: one past the last element appends it)
+                const PropertyData property = Catalog::findProperty(scene->scene, entity, component, change.property, change.op == "set");
                 const bool typedProperty = property.ref && change.op == "set" &&
                     (property.type != PropertyType::Custom || change.property == "shaderUniforms" ||
                      endsWith(change.property, "shaderParams") || endsWith(change.property, "shaderTextures") ||
@@ -4066,6 +4241,24 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                     if (!normalizeVertexAnimatorAttachments(scene, value, why)) {
                         error = componentLabel + " on " + label + ": " + why;
                         return false;
+                    }
+                }
+                // detail layers this call changes: the values edit_terrain_details accepts (the decoder would clamp them);
+                // a layer it leaves as it is never blocks the edit
+                if (component == ComponentType::TerrainComponent && value["foliageLayers"] && value["foliageLayers"].IsSequence()) {
+                    const TerrainComponent* current = scene->scene->findComponent<TerrainComponent>(entity);
+                    for (size_t i = 0; i < value["foliageLayers"].size(); i++) {
+                        const TerrainFoliageLayer edited = Stream::decodeTerrainFoliageLayer(value["foliageLayers"][i], false);
+                        if (current && i < current->foliageLayers.size() &&
+                            YAML::Dump(Stream::encodeTerrainFoliageLayer(edited)) == YAML::Dump(Stream::encodeTerrainFoliageLayer(current->foliageLayers[i]))) {
+                            continue;
+                        }
+                        const std::string why = editor::terrain::checkDetailLayer(edited);
+                        if (!why.empty()) {
+                            error = componentLabel + ".foliageLayers[" + std::to_string(i) + "] on " + label + ": " + why +
+                                    " (edit_terrain_details edits detail layers).";
+                            return false;
+                        }
                     }
                 }
                 auto clip = std::make_shared<ComponentClip>();

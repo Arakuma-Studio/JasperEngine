@@ -10,7 +10,7 @@ tool is callable by name without it.
 
 | Tool | What it answers |
 |---|---|
-| `get_render_stats` | the last frame of a view: draws, instances, triangles, passes, pipelines and bindings applied, uniform and upload bytes, alive resources, pipeline cache, `cpu_ms`, `fps`, `gpu {available, reason, frame_ms, semantics}` (also `jasper://stats`) |
+| `get_render_stats` | the last frame of a view: draws, instances, triangles, passes, pipelines and bindings applied, uniform and upload bytes, alive resources, pipeline cache, `cpu_ms`, `fps`, `gpu {available, reason, frame_ms, semantics}`, `batching` (Dynamic Batching, below) (also `jasper://stats`) |
 | `get_frame_times` | the always-on history of 600 frames: median/p95/p99/max of `frame_ms`, `cpu_ms`, `gpu_ms`, `fps`; spikes over `min_frame_ms` with `spike_interval_frames`; the newest frames; monitor series |
 | `capture_profile` | records N frames (views redraw meanwhile), then: `capture_id`, summaries, per-category ms, `worst_frame`, `overhead_note`, `path` when `save_path` is given |
 | `get_cpu_profile` | one frame of a capture (or of the live recording): the scope tree of a thread, flat rows over every thread, or each thread's busy % |
@@ -45,9 +45,35 @@ subsystem), `filter=shadow`. Bytes are estimates from sizes, formats, mips, slic
 (drivers pad, tile and compress); `driver` is what the driver reports (Vulkan
 VK_EXT_memory_budget, D3D11, Metal, GL NVX/ATI meminfo), null where it reports nothing.
 
+## Dynamic Batching
+
+Consecutive Sprites, small meshes (one submesh, at most 64 vertices, built-in shader) and UI
+elements (at most 256 vertices) that share a pipeline, textures and their unbaked values draw as
+one draw call. `get_render_stats` returns `batching`: `batches`, `batched_objects`,
+`saved_by_batching`, `drawn_alone`, `settled` (objects whose baked vertices were reused),
+`culled`, `reordered`, `upload_bytes` and `breaks` (counts by reason). `batch_breaks: N` lists the
+first N breaks of the frame with the entity, the object before it and the pass; `get_gpu_passes
+include_draws` marks batch draws with `batch_items` and `batch_break`. The setting is
+`graphics.dynamic_batching` (`set_project_settings`), `Engine.dynamicBatching` in Lua: on and off
+draw the same image (compare two `screenshot`s).
+
+| Reason | What to change |
+|---|---|
+| `texture` | the objects show other textures: put their frames in one sprite sheet, or group siblings by texture in the hierarchy (2D cameras also batch past objects that do not overlap) |
+| `pipeline` | another shader variant or render state (blend, alpha mode, lighting, cull) |
+| `color_factor`, `material_params`, `alpha_cutoff`, `uv_sets`, `depth_material` | per-object material values the variant does not read from vertices (a shader without vertex colour keys its colour) |
+| `object_lights` | lit objects reached by different lights (or over the light cap) |
+| `ui_color`, `text_params` | Texts of another colour or outline |
+| `scissor`, `origin_cell`, `mirrored`, `run_vertex_limit` | a clip rect, a 4,096-unit cell boundary, a mirroring scale, 65,536 vertices |
+| `foreign_draw` | something that never batches drew in between (Points, Lines, particles, video, HTML UI) |
+| `ineligible_*` | drawn alone: custom or library shader, extra pass, IBL, skinning, lattice, Vertex Animation, LODs, more than one submesh, too many vertices, a render-target texture, a fake billboard |
+
 ## Caveats
 
 - One frame is one sample: compare medians and percentiles, not single frames.
+- `pipelines_applied` is Unity's SetPass calls. A draw with its pass's last pipeline applies
+  none, and one with the last bindings binds nothing. Far below `draw_calls`: materials and meshes
+  are shared. Close to it in a 3D view: too many distinct materials, shaders or meshes.
 - Recording costs time: `overhead_note` estimates it (the measured cost of a scope pair times the
   events). The first frame after arming is partial and is not in a capture.
 - GPU time semantics differ per backend:

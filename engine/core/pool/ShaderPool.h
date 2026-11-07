@@ -165,7 +165,24 @@ namespace jasperengine{
         // the variant bit of a Vertex Animation (includes/vat.glsl; HAS_VAT, with `bones`
         // HAS_VAT_BONES) of MESH, DEPTH and GBUFFER, 0 for another type; getVatProperties: both
         static uint64_t getVatProperty(ShaderType shaderType, bool bones);
+        // MESH's LOD cross-fade bit ('Lfd', spec S54): the dithered variant of fading draws
+        static uint64_t getLodFadeProperty();
         static uint64_t getVatProperties(ShaderType shaderType);
+        // the variant bit of automatic GPU instancing (HAS_AUTO_INSTANCING: the object block per
+        // instance, spec S55) of MESH and DEPTH, 0 for another type
+        static uint64_t getAutoInstancingProperty(ShaderType shaderType);
+        // MESH's Water Excluder and Water Wake bits ('Wex' USE_WATER_EXCLUSION, 'Wwk'
+        // USE_WATER_WAKE): a shader requiring waterexclusion / waterwake, in a scene with such
+        // components (includes/water_interaction.glsl)
+        static uint64_t getWaterExclusionProperty();
+        static uint64_t getWaterWakeProperty();
+        // S57's MESH bits: 'Til' (Light Mode Tiled), 'Cap' (capsule shadows), 'Cts' (contact
+        // shadows) and 'Oit' (an alpha-blended submesh's OIT accumulation render)
+        enum class LightingFeature { TILED_LIGHTS, CAPSULE_SHADOWS, CONTACT_SHADOWS, OIT };
+        static uint64_t getLightingProperty(LightingFeature feature);
+        // MESH's 'Dlo': the built-in Lit of a scene whose lights are all directional
+        // (DIRECTIONAL_LIGHTS_ONLY: no point or spot path, spot mask or point shadow resources)
+        static uint64_t getDirectionalOnlyProperty();
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);
         static uint64_t getPropertiesFromKey(ShaderKey key);
@@ -268,7 +285,8 @@ namespace jasperengine{
         static uint64_t getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR = false,
                                                  bool stochasticTiling = false, bool lattice = false,
                                                  bool vertexColorVec3 = false, bool vertexColorVec4 = false,
-                                                 bool vat = false, bool vatBones = false);
+                                                 bool vat = false, bool vatBones = false,
+                                                 bool occlusionTexture = false, bool uvSet2 = false, bool instanceFade = false);
         // fontAtlasSdf: a Text with outline or shadow (with fontAtlasTexture only)
         static uint64_t getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4, bool fontAtlasSdf = false);
         static uint64_t getHtmlUIProperties(bool texture);

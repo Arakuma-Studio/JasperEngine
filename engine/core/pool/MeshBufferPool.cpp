@@ -16,11 +16,11 @@
 using namespace jasperengine;
 
 bool GpuBufferShareKey::operator<(const GpuBufferShareKey& rhs) const{
-    return std::tie(owner, id, size, type) < std::tie(rhs.owner, rhs.id, rhs.size, rhs.type);
+    return std::tie(owner, id, idHi, size, type) < std::tie(rhs.owner, rhs.id, rhs.idHi, rhs.size, rhs.type);
 }
 
 bool GpuBufferShareKey::operator==(const GpuBufferShareKey& rhs) const{
-    return owner == rhs.owner && id == rhs.id && size == rhs.size && type == rhs.type;
+    return owner == rhs.owner && id == rhs.id && idHi == rhs.idHi && size == rhs.size && type == rhs.type;
 }
 
 namespace{
@@ -60,7 +60,7 @@ namespace{
     }
 
     bool acquire(BufferRender& render, const GpuBufferShareKey& key, const std::weak_ptr<const void>& owner, const void* data){
-        if (!Engine::isViewLoaded() || !data || key.size == 0)
+        if (!Engine::isViewLoaded() || key.size == 0)
             return false;
 
         std::lock_guard<std::recursive_mutex> lock(getMutex());
@@ -79,6 +79,8 @@ namespace{
             return true;
 
         if (!entry){
+            if (!data)
+                return false; // (released bytes: only a buffer someone holds will do)
             entry = std::make_shared<SharedGpuBuffer>();
             entry->key = key;
             entry->owner = owner;
@@ -121,43 +123,70 @@ void MeshBufferPool::released(const SharedGpuBuffer* buffer){
 bool MeshBufferPool::isShareable(const Buffer& buffer){
     return buffer.getUsage() == BufferUsage::IMMUTABLE &&
            (buffer.getType() == BufferType::VERTEX_BUFFER || buffer.getType() == BufferType::INDEX_BUFFER) &&
-           buffer.getData() && buffer.getSize() > 0 && buffer.hasShareSource();
+           buffer.getSize() > 0 &&
+           // by source (whose bytes may be released: a buffer someone holds still serves), else by
+           // the bytes themselves
+           (buffer.hasShareSource() ? (buffer.getData() || buffer.isDataReleased()) : buffer.getData() != nullptr);
+}
+
+ContentHash128 MeshBufferPool::contentKey(const Buffer& buffer){
+    return hashContent128(buffer.getData(), buffer.getSize());
+}
+
+namespace{
+    GpuBufferShareKey contentShareKey(const ContentHash128& hash, size_t size, BufferType type){
+        GpuBufferShareKey key;
+        key.id = hash.lo;
+        key.idHi = hash.hi;
+        key.size = size;
+        key.type = type;
+        return key;
+    }
 }
 
 bool MeshBufferPool::createRender(Buffer& buffer){
     BufferRender& render = *buffer.getRender();
     if (isShareable(buffer)){
-        // kept alive while its bytes are uploaded
-        std::shared_ptr<const void> owner = buffer.getShareOwner().lock();
-        if (owner){
-            GpuBufferShareKey key;
-            key.owner = owner.get();
-            key.id = buffer.getShareId();
-            key.size = buffer.getSize();
-            key.type = buffer.getType();
-            return acquire(render, key, buffer.getShareOwner(), buffer.getData());
+        if (buffer.hasShareSource()){
+            // kept alive while its bytes are uploaded
+            std::shared_ptr<const void> owner = buffer.getShareOwner().lock();
+            if (owner){
+                GpuBufferShareKey key;
+                key.owner = owner.get();
+                key.id = buffer.getShareId();
+                key.size = buffer.getSize();
+                key.type = buffer.getType();
+                return acquire(render, key, buffer.getShareOwner(), buffer.getData());
+            }
+        }else{
+            const GpuBufferShareKey key = contentShareKey(contentKey(buffer), buffer.getSize(), buffer.getType());
+            return acquire(render, key, std::weak_ptr<const void>(), buffer.getData());
         }
     }
     if (render.isShared())
         render.destroyBuffer();
+    if (buffer.isDataReleased())
+        return false;
     return render.createBuffer((unsigned int)buffer.getSize(), buffer.getData(), buffer.getType(), buffer.getUsage());
 }
 
 bool MeshBufferPool::holdsSource(const BufferRender& render, const Buffer& buffer){
     if (!render.shared || !isShareable(buffer))
         return false;
-    std::shared_ptr<const void> owner = buffer.getShareOwner().lock();
     const GpuBufferShareKey& key = render.shared->key;
+    if (!buffer.hasShareSource()){
+        // a content key: the bytes it was made of are the buffer's now
+        return key.owner == nullptr && key == contentShareKey(contentKey(buffer), buffer.getSize(), buffer.getType());
+    }
+    std::shared_ptr<const void> owner = buffer.getShareOwner().lock();
     return owner && key.owner == owner.get() && key.id == buffer.getShareId() && key.size == buffer.getSize() &&
            key.type == buffer.getType() && sameOwner(render.shared->owner, buffer.getShareOwner());
 }
 
-bool MeshBufferPool::acquireContent(BufferRender& render, uint64_t hash, BufferType type, const void* data, size_t size){
-    GpuBufferShareKey key;
-    key.id = hash;
-    key.size = size;
-    key.type = type;
-    return acquire(render, key, std::weak_ptr<const void>(), data);
+bool MeshBufferPool::acquireContent(BufferRender& render, BufferType type, const void* data, size_t size){
+    if (!data || size == 0)
+        return false;
+    return acquire(render, contentShareKey(hashContent128(data, size), size, type), std::weak_ptr<const void>(), data);
 }
 
 size_t MeshBufferPool::getBufferCount(){

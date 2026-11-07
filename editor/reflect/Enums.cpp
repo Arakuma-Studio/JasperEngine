@@ -2,6 +2,26 @@
 // SPDX-License-Identifier: MIT
 
 #include "reflect/Enums.h"
+#include "component/ActionComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "component/FogComponent.h"
+#include "component/VolumetricCloudsComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/ProgressbarComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "particles/LegacyParticleSystem.h"
+#include "component/ScriptComponent.h"
+#include "component/ScrollbarComponent.h"
+#include "component/UISelectable.h"
+#include "component/ShadowCaster2DComponent.h"
+#include "component/UIDocumentComponent.h"
+#include "component/LightComponent.h"
+#include "component/LocalVolumetricFogComponent.h"
+#include "component/ReflectionProbeComponent.h"
+#include "component/SpriteComponent.h"
 
 #include "Project.h"
 #include "component/FluidSimulationComponent.h"
@@ -12,14 +32,18 @@
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/LineRendererComponent.h"
+#include "render/LodFade.h"
 #include "component/PhysicsCommon.h"
 #include "component/Rigidbody2DComponent.h"
 #include "component/Joint3DComponent.h"
 #include "component/AlphaTweenComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "render/LineRibbonBuilder.h"
+#include "render/OrderIndependentTransparency.h"
 
 #include <cctype>
 
@@ -415,6 +439,12 @@ namespace {
         {v(AnimatorIKType::FootLock), "foot_lock", "Foot Lock", "AnimatorIKType::FootLock"},
     };
 
+    constexpr EnumItem kWaterExcluderShapeItems[] = {
+        {v(WaterExcluderShape::BOX), "box", "Box", "WaterExcluderShape::BOX"},
+        {v(WaterExcluderShape::SPHERE), "sphere", "Sphere", "WaterExcluderShape::SPHERE"},
+        {v(WaterExcluderShape::CONVEX_HULL), "convex_hull", "Convex Hull", "WaterExcluderShape::CONVEX_HULL"},
+    };
+
     constexpr EnumItem kBuoyancyColumnsItems[] = {
         {v(BuoyancyColumns::AUTO_2x2), "auto_2x2", "Auto 2x2", "BuoyancyColumns::AUTO_2x2"},
         {v(BuoyancyColumns::AUTO_3x3), "auto_3x3", "Auto 3x3", "BuoyancyColumns::AUTO_3x3"},
@@ -476,6 +506,11 @@ namespace {
         {v(LightShading::BOTH), "BOTH", "Both", "LightShading::BOTH", "both"},
         {v(LightShading::PIXEL), "PIXEL", "Per Pixel", "LightShading::PIXEL", "pixel"},
         {v(LightShading::VERTEX), "VERTEX", "Per Vertex", "LightShading::VERTEX", "vertex"},
+    };
+
+    constexpr EnumItem kLodFadeModeItems[] = {
+        {v(LodFadeMode::NONE), "none", "None", "LodFadeMode::NONE"},
+        {v(LodFadeMode::CROSS_FADE), "cross_fade", "Cross Fade", "LodFadeMode::CROSS_FADE"},
     };
 
     constexpr EnumItem kLightTypeItems[] = {
@@ -618,6 +653,22 @@ namespace {
         {v(ScriptType::LUA), "lua", "Lua", "ScriptType::LUA", nullptr, kScriptLuaAliases},
     };
 
+    constexpr EnumItem kButtonTransitionItems[] = {
+        {v(ButtonTransition::NONE), "none", "None", "ButtonTransition::NONE"},
+        {v(ButtonTransition::COLOR_TINT), "color_tint", "Color Tint", "ButtonTransition::COLOR_TINT"},
+        {v(ButtonTransition::SPRITE_SWAP), "sprite_swap", "Sprite Swap", "ButtonTransition::SPRITE_SWAP"},
+        {v(ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP), "color_tint_and_sprite_swap", "Color Tint + Sprite Swap",
+         "ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP"},
+    };
+
+    constexpr EnumItem kNavigationModeItems[] = {
+        {v(NavigationMode::NONE), "none", "None", "NavigationMode::NONE"},
+        {v(NavigationMode::HORIZONTAL), "horizontal", "Horizontal", "NavigationMode::HORIZONTAL"},
+        {v(NavigationMode::VERTICAL), "vertical", "Vertical", "NavigationMode::VERTICAL"},
+        {v(NavigationMode::AUTOMATIC), "automatic", "Automatic", "NavigationMode::AUTOMATIC"},
+        {v(NavigationMode::EXPLICIT), "explicit", "Explicit", "NavigationMode::EXPLICIT"},
+    };
+
     constexpr EnumItem kScrollbarTypeItems[] = {
         {v(ScrollbarType::VERTICAL), "vertical", "Vertical", "ScrollbarType::VERTICAL"},
         {v(ScrollbarType::HORIZONTAL), "horizontal", "Horizontal", "ScrollbarType::HORIZONTAL"},
@@ -632,6 +683,24 @@ namespace {
         {v(ShadowUpdateMode::AUTO), "auto", "Auto", "ShadowUpdateMode::AUTO"},
         {v(ShadowUpdateMode::EVERY_FRAME), "everyFrame", "Every Frame", "ShadowUpdateMode::EVERY_FRAME", "every_frame"},
         {v(ShadowUpdateMode::ON_DEMAND), "onDemand", "On Demand", "ShadowUpdateMode::ON_DEMAND", "on_demand"},
+    };
+
+    // S57's: the tokens are the engine's transparency names
+    constexpr EnumItem kTransparencyModeItems[] = {
+        {v(TransparencyMode::SORTED), "sorted", "Sorted", "TransparencyMode::SORTED"},
+        {v(TransparencyMode::ORDER_INDEPENDENT), "order_independent", "Order Independent", "TransparencyMode::ORDER_INDEPENDENT"},
+    };
+
+    constexpr EnumItem kCapsuleCastShadowsItems[] = {
+        {v(CapsuleCastShadows::ON), "on", "On", "CapsuleCastShadows::ON"},
+        {v(CapsuleCastShadows::CAPSULES_ONLY), "capsules_only", "Capsules Only", "CapsuleCastShadows::CAPSULES_ONLY"},
+    };
+
+    // Unity's CapsuleCollider Direction names
+    constexpr EnumItem kCapsuleDirectionItems[] = {
+        {v(CapsuleDirection::X_AXIS), "x_axis", "X-Axis", "CapsuleDirection::X_AXIS"},
+        {v(CapsuleDirection::Y_AXIS), "y_axis", "Y-Axis", "CapsuleDirection::Y_AXIS"},
+        {v(CapsuleDirection::Z_AXIS), "z_axis", "Z-Axis", "CapsuleDirection::Z_AXIS"},
     };
 
     constexpr EnumItem kTextureAlphaBorderItems[] = {
@@ -704,6 +773,7 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kForceFieldKind{"ForceFieldKind", kForceFieldKindItems, v(ForceFieldKind::Directional)};
     const EnumDesc kWaterVolumeWaves{"WaterVolumeWaves", kWaterVolumeWavesItems, v(WaterVolumeWaves::FROM_MATERIAL)};
     const EnumDesc kBuoyancyColumns{"BuoyancyColumns", kBuoyancyColumnsItems, v(BuoyancyColumns::AUTO_2x2)};
+    const EnumDesc kWaterExcluderShape{"WaterExcluderShape", kWaterExcluderShapeItems, v(WaterExcluderShape::CONVEX_HULL)};
     const EnumDesc kLineRendererMode{"LineRendererMode", kLineRendererModeItems, v(LineRendererMode::Segments)};
     const EnumDesc kLineWidthUnit{"LineWidthUnit", kLineWidthUnitItems, v(LineWidthUnit::World)};
     const EnumDesc kLineAlignment{"LineAlignment", kLineAlignmentItems, v(LineAlignment::View)};
@@ -737,6 +807,7 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kLightUnit{"LightUnit", kLightUnitItems, v(LightUnit::ENGINE)};
     const EnumDesc kLightShading{"LightShading", kLightShadingItems, v(LightShading::BOTH)};
     const EnumDesc kLightType{"LightType", kLightTypeItems, v(LightType::DIRECTIONAL)};
+    const EnumDesc kLodFadeMode{"LodFadeMode", kLodFadeModeItems, v(LodFadeMode::CROSS_FADE)};
     const EnumDesc kMaterialAlphaMode{"MaterialAlphaMode", kMaterialAlphaModeItems, v(MaterialAlphaMode::AUTO)};
     const EnumDesc kMaterialBlendMode{"MaterialBlendMode", kMaterialBlendModeItems, v(MaterialBlendMode::AUTO)};
     const EnumDesc kMaterialCullMode{"MaterialCullMode", kMaterialCullModeItems, v(MaterialCullMode::AUTO)};
@@ -755,9 +826,14 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kRigidbodyMotionQuality{"RigidbodyMotionQuality", kRigidbodyMotionQualityItems, v(RigidbodyMotionQuality::DISCRETE), nullptr,
                                            kRigidbodyMotionQualityOrder};
     const EnumDesc kScriptType{"ScriptType", kScriptTypeItems, v(ScriptType::CPP)};
+    const EnumDesc kButtonTransition{"ButtonTransition", kButtonTransitionItems, v(ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP)};
+    const EnumDesc kNavigationMode{"NavigationMode", kNavigationModeItems, v(NavigationMode::AUTOMATIC)};
     const EnumDesc kScrollbarType{"ScrollbarType", kScrollbarTypeItems, v(ScrollbarType::VERTICAL)};
     const EnumDesc kShadowCaster2DShape{"ShadowCaster2DShape", kShadowCaster2DShapeItems, v(ShadowCaster2DShape::AUTO_QUAD)};
     const EnumDesc kShadowUpdateMode{"ShadowUpdateMode", kShadowUpdateModeItems, v(ShadowUpdateMode::AUTO)};
+    const EnumDesc kTransparencyMode{"TransparencyMode", kTransparencyModeItems, v(TransparencyMode::SORTED)};
+    const EnumDesc kCapsuleCastShadows{"CapsuleCastShadows", kCapsuleCastShadowsItems, v(CapsuleCastShadows::ON)};
+    const EnumDesc kCapsuleDirection{"CapsuleDirection", kCapsuleDirectionItems, v(CapsuleDirection::Y_AXIS)};
     const EnumDesc kTextureAlphaBorder{"TextureAlphaBorder", kTextureAlphaBorderItems, v(TextureAlphaBorder::AUTO), nullptr, kTextureAlphaBorderOrder};
     const EnumDesc kTextureFilter{"TextureFilter", kTextureFilterItems, v(TextureFilter::LINEAR)};
     const EnumDesc kTextureWrap{"TextureWrap", kTextureWrapItems, v(TextureWrap::REPEAT)};

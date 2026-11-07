@@ -188,6 +188,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::HTMLUI_PRIM;
         return true;
     }
+    if (typeToken == "lightingpass") {
+        shaderType = ShaderType::LIGHTING_PASS;
+        return true;
+    }
 
     return false;
 }
@@ -609,6 +613,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::PASS_PREVIEW: return lowerCase ? "passpreview" : "Pass Preview";
         case ShaderType::PARTICLES: return lowerCase ? "particles" : "Particles";
         case ShaderType::HTMLUI_PRIM: return lowerCase ? "htmluiprim" : "HTML UI Primitives";
+        case ShaderType::LIGHTING_PASS: return lowerCase ? "lightingpass" : "Lighting Pass";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -630,6 +635,42 @@ uint64_t ShaderPool::getVatProperty(ShaderType shaderType, bool bones){
     }
 }
 
+uint64_t ShaderPool::getAutoInstancingProperty(ShaderType shaderType){
+    switch (shaderType) {
+        case ShaderType::MESH:  return shaderPropertyBit(41);
+        case ShaderType::DEPTH: return shaderPropertyBit(18);
+        default:                return 0;
+    }
+}
+
+uint64_t ShaderPool::getLightingProperty(ShaderPool::LightingFeature feature){
+    switch (feature){
+        case LightingFeature::TILED_LIGHTS:    return shaderPropertyBit(36);
+        case LightingFeature::CAPSULE_SHADOWS: return shaderPropertyBit(37);
+        case LightingFeature::CONTACT_SHADOWS: return shaderPropertyBit(38);
+        case LightingFeature::OIT:             return shaderPropertyBit(39);
+    }
+    return 0;
+}
+
+uint64_t ShaderPool::getDirectionalOnlyProperty(){
+    return shaderPropertyBit(44);
+}
+
+// MESH's 'Lfd': the LOD cross-fade's dither (includes/lod_fade.glsl, spec S54 R6), only in the variant
+// fading draws use
+uint64_t ShaderPool::getLodFadeProperty(){
+    return shaderPropertyBit(40);
+}
+
+uint64_t ShaderPool::getWaterExclusionProperty(){
+    return shaderPropertyBit(42);
+}
+
+uint64_t ShaderPool::getWaterWakeProperty(){
+    return shaderPropertyBit(43);
+}
+
 uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
     return getVatProperty(shaderType, false) | getVatProperty(shaderType, true);
 }
@@ -649,9 +690,9 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 36;
-        case ShaderType::DEPTH:  return 18;
-        case ShaderType::GBUFFER: return 16;
+        case ShaderType::MESH:   return 45;
+        case ShaderType::DEPTH:  return 19;
+        case ShaderType::GBUFFER: return 19;
         case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
         // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
@@ -679,6 +720,8 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         // ShaderPool::getParticlesProperties
         case ShaderType::PARTICLES: return 11;
         case ShaderType::HTMLUI_PRIM: return 0;
+        // 'Oir': the OIT resolve, else the contact shadows' mask
+        case ShaderType::LIGHTING_PASS: return 1;
         default:                 return 0;
     }
 }
@@ -735,6 +778,25 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // and 34, after S10's 'Shq')
             case 34: return shortName ? "Vat" : "Vertex Animation";
             case 35: return shortName ? "Vab" : "Vertex Animation Bones";
+            // S57's lighting (getLightingProperty): the pixel lights from screen tiles
+            // (USE_TILED_LIGHTS), capsule and contact shadows of the shadowed lights
+            // (USE_CAPSULE_SHADOWS, USE_CONTACT_SHADOWS) and the OIT accumulation (USE_OIT)
+            case 36: return shortName ? "Til" : "Tiled Lights";
+            case 37: return shortName ? "Cap" : "Capsule Shadows";
+            case 38: return shortName ? "Cts" : "Contact Shadows";
+            case 39: return shortName ? "Oit" : "Order Independent Transparency";
+            // the LOD cross-fade's dither, for fading draws only (getLodFadeProperty)
+            case 40: return shortName ? "Lfd" : "Lod Fade";
+            // automatic GPU instancing (HAS_AUTO_INSTANCING, includes/object_params.glsl, S55):
+            // the object block per instance (getAutoInstancingProperty)
+            case 41: return shortName ? "Aui" : "Auto Instancing";
+            // what keeps water out and the wakes on it (includes/water_interaction.glsl): a
+            // shader requiring waterexclusion / waterwake in a scene with Water Excluders / Wakes
+            case 42: return shortName ? "Wex" : "Water Exclusion";
+            case 43: return shortName ? "Wwk" : "Water Wake";
+            // every light of the scene directional (getDirectionalOnlyProperty): the built-in Lit
+            // without the point and spot paths and their resources
+            case 44: return shortName ? "Dlo" : "Directional Lights Only";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -761,6 +823,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // a Vertex Animator's baked animation (includes/vat.glsl), as MESH 33/34
             case 16: return shortName ? "Vat" : "Vertex Animation";
             case 17: return shortName ? "Vab" : "Vertex Animation Bones";
+            // automatic GPU instancing (includes/object_depth_params.glsl, S55)
+            case 18: return shortName ? "Aui" : "Auto Instancing";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -784,6 +848,12 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // a Vertex Animator's baked animation (includes/vat.glsl), as MESH 33/34
             case 14: return shortName ? "Vat" : "Vertex Animation";
             case 15: return shortName ? "Vab" : "Vertex Animation Bones";
+            // the material's occlusion map, which the SSR composite weighs its swap by (color[3])
+            case 16: return shortName ? "Occ" : "Occlusion Texture";
+            // a map read on the second UV set, as the material names it (u_fs_gbufferMaterial.texCoordSets)
+            case 17: return shortName ? "Uv2" : "UV Set 2";
+            // the Instanced Mesh distance fade (includes/instance_fade.glsl), as MESH 26 and DEPTH 8
+            case 18: return shortName ? "Ifd" : "Instance Fade";
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {
@@ -812,6 +882,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
     } else if (shaderType == ShaderType::SHADOW_CACHE) {
         switch (bit) {
             case 0: return shortName ? "Vis" : "Atlas View";
+        }
+    } else if (shaderType == ShaderType::LIGHTING_PASS) {
+        switch (bit) {
+            case 0: return shortName ? "Oir" : "OIT Resolve";
         }
     } else if (shaderType == ShaderType::PASS_PREVIEW) {
         switch (bit) {
@@ -1126,9 +1200,13 @@ std::vector<uint64_t> ShaderPool::getFallbackProperties(ShaderType shaderType, u
     // block (Puc, Vtl, Lc4, L16), the u_fs_pbrParams layout (Ult, Ams, Sto), the output
     // encoding and litFrame prefix of the post colour (Pcl), nor the geometry (Ski, Mta,
     // Ter, Ist, Txr...).
-    static const int meshBits[] = {21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
+    // ('Wwk' and 'Wex' first: their block and textures are theirs alone, the water draws without
+    // wakes or holes; then 'Dlo': the general variant draws a directional-only scene the same, with
+    // the point and spot resources it binds by reflection. 'Dlo' is the built-in Lit's, the water
+    // bits a manifest shader's: never in one variant)
+    static const int meshBits[] = {43, 42, 44, 21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Wwk Wex Dlo Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
     static const int depthBits[] = {7, 0};                               // Ams Tex
-    static const int gbufferBits[] = {8, 0};                             // Mrt Bct
+    static const int gbufferBits[] = {16, 17, 8, 0};                     // Occ Uv2 Mrt Bct
 
     const int* bits = nullptr;
     size_t bitCount = 0;
@@ -1700,6 +1778,12 @@ ShaderKey ShaderPool::normalizeKey(ShaderKey key) {
     // the high-quality shadow filters only exist in a variant that receives shadows
     if (type == ShaderType::MESH && !(key.properties & shaderPropertyBit(4)))
         key.properties &= ~getShadowsHQProperty();
+    // the built-in Lit's unlit 2D light variant took 'Tan' without 'Nmp' until November 2026;
+    // the 2D lights read tangents only for a normal map. A shader with a custom id keeps it: a
+    // library shader may @require tangents on that path
+    if (type == ShaderType::MESH && key.customId == 0 && (key.properties & shaderPropertyBit(0)) &&
+            (key.properties & shaderPropertyBit(22)) && !(key.properties & shaderPropertyBit(7)))
+        key.properties &= ~shaderPropertyBit(8);
     return key;
 }
 
@@ -1785,7 +1869,7 @@ uint64_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool mo
 
 uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR,
                                               bool stochasticTiling, bool lattice, bool vertexColorVec3, bool vertexColorVec4,
-                                              bool vat, bool vatBones){
+                                              bool vat, bool vatBones, bool occlusionTexture, bool uvSet2, bool instanceFade){
     uint64_t prop = 0;
 
     prop |= baseColorTexture        ? shaderPropertyBit(0) : 0;
@@ -1804,6 +1888,9 @@ uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normal
     prop |= (lattice && vertexColorVec4) ? shaderPropertyBit(13) : 0;
     prop |= (vat && !vatBones)      ? shaderPropertyBit(14) : 0;
     prop |= vatBones                ? shaderPropertyBit(15) : 0;
+    prop |= occlusionTexture        ? shaderPropertyBit(16) : 0;
+    prop |= uvSet2                  ? shaderPropertyBit(17) : 0;
+    prop |= instanceFade            ? shaderPropertyBit(18) : 0;
 
     return prop;
 }

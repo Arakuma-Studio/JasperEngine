@@ -14,28 +14,12 @@
 #include <unordered_map>
 #include <vector>
 
-#include "component/RectTransformComponent.h"
-#include "component/LayoutGroupComponent.h"
-#include "component/SafeAreaComponent.h"
-#include "component/TextComponent.h"
-#include "component/TextEffectComponent.h"
-#include "component/ImageComponent.h"
-#include "component/UIComponent.h"
+#include "ecs/ComponentFwd.h"
+#include "component/UISelectable.h"
 #include "util/STBText.h"
-#include "component/ButtonComponent.h"
-#include "component/PanelComponent.h"
-#include "component/ScrollbarComponent.h"
-#include "component/ProgressbarComponent.h"
-#include "component/PolygonComponent.h"
-#include "component/InputFieldComponent.h"
-#include "component/Transform.h"
-#include "component/CameraComponent.h"
-#include "component/OnScreenControlComponents.h"
 #include "PointerEventData.h"
 #include "Input.h"
 
-#include "component/CanvasGroupComponent.h"
-#include "component/PointsComponent.h"
 
 namespace jasperengine{
 
@@ -209,8 +193,47 @@ namespace jasperengine{
         void createText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout);
 
         //Button
-        void applyButtonVisual(ButtonComponent& button, UIComponent& ui);
+        // the state shown: Unity's priority, Disabled > Pressed > Selected > Highlighted > Normal
+        SelectionState buttonState(const ButtonComponent& button, const UIComponent& ui) const;
+        // writes what the transition owns for the current state; animate eases colour and scale
+        // over fadeDuration (the Transform's scale is written by the update only)
+        void applyButtonVisual(Entity entity, ButtonComponent& button, UIComponent& ui, bool animate);
         void updateButton(Entity entity, ButtonComponent& button, ImageComponent& img, UIComponent& ui, RectTransformComponent& layout);
+        // the running colour and scale fades (UI clock); nothing when none runs
+        void updateButtonTransitions();
+        void applyButtonScale(Entity entity, ButtonComponent& button, float factor);
+        // every fade ends at its state and every scale factor goes back to 1
+        void endButtonTransitions();
+        // ---- Selectables (UISystemNavigation.cpp, ui-components spec 6.4): Unity's EventSystem
+        // selection of this scene
+        Entity selected = NULL_ENTITY;
+        // the earlier selections, oldest first: a lost selection returns to the latest one
+        // still navigable (a closed submenu gives it back to its button)
+        std::vector<Entity> selectionHistory;
+        // the Button a Submit holds pressed, and which key or pad button holds it
+        Entity submitButton = NULL_ENTITY;
+        int submitSource = 0;
+        // a setSelected inside onSelect / onDeselect wins over the one that sent them
+        unsigned int selectionRequest = 0;
+        // the selected GameObject was destroyed (onComponentRemoved): the history is asked next
+        bool selectionDestroyed = false;
+        std::vector<Entity> transitioningButtons;
+        // the editor's edit mode: no selection, no scale
+        bool editMode = false;
+
+        void changeSelection(Entity next, bool animate);
+        // the selection is no longer selectable: the latest navigable one of the history, or none
+        void loseSelection();
+        // the rect navigation measures (the hit test's: world rect, clipped to its panel and the canvas)
+        Rect navRect(Entity entity) const;
+        // the navigable Buttons in Hierarchy order
+        std::vector<Entity> navigationCandidates() const;
+        Entity findAutomatic(Entity from, MoveDirection dir, bool wrap) const;
+        // the selection messages; hierarchy: up the parents until one handles it. Returns whether
+        // a script handled it; used: whether one called use()
+        bool sendSelectionMessage(Entity target, ScriptMessage m, MoveDirection dir, bool hierarchy, bool* used);
+        // Select On Enable (the Button the update's loop picked) and the selection's loss, once per update
+        void updateSelection(Entity pickedOnEnable);
 
         //Panel
         void updatePanel(Entity entity, PanelComponent& panel, ImageComponent& img, UIComponent& ui, RectTransformComponent& layout);
@@ -224,7 +247,7 @@ namespace jasperengine{
         //InputField
         void updateInputField(Entity entity, InputFieldComponent& inputfield, ImageComponent& img, UIComponent& ui, RectTransformComponent& layout);
         void blinkCursorInputField(double dt, InputFieldComponent& inputfield, UIComponent& ui);
-        bool handleInputFieldCharInput(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, wchar_t codepoint);
+        bool handleInputFieldCharInput(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, char32_t codepoint);
         bool handleInputFieldKeyDown(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, int key, bool repeat, int mods);
         void setInputFieldCursorFromLocalX(InputFieldComponent& inputfield, TextComponent& text, ImageComponent& img, float localX, bool extendSelection);
         bool inputFieldHasSelection(const InputFieldComponent& inputfield) const;
@@ -355,6 +378,56 @@ namespace jasperengine{
 
         bool isInputFieldFocused();
 
+        // the editor's edit mode and Play pause (Project::pauseEngineScene): Select On Enable and
+        // pointer selection wait, scale transitions do not apply
+        void setEditMode(bool editMode);
+
+        // ---- Selectables (ui-components spec 6.4): Unity's EventSystem.currentSelectedGameObject
+        Entity getSelected() const;
+        // any selectable Button (interactable or not, any navigation mode, as Unity's Select());
+        // NULL_ENTITY deselects and forgets the history. False when it cannot be selected
+        bool setSelected(Entity entity);
+        // the selection is live (a lost one is first replaced from the history, which may call
+        // onSelect)
+        bool hasLiveSelection();
+        // the same without replacing a lost one (queries: Engine::wantsGamepadNavigation)
+        bool hasSelection() const;
+        // a focused InputField that takes typing (active, interactable): the typing guard
+        bool isInputFieldTyping() const;
+        // a live Button that is not an on-screen control
+        bool isSelectable(Entity entity) const;
+        // selectable, navigation mode not None, interactable, with a non-empty rect on the canvas
+        bool isNavigable(Entity entity) const;
+        // its navigation mode's target that way (Unity's FindSelectableOnUp...); NULL_ENTITY: none
+        Entity findSelectableOnDirection(Entity from, MoveDirection dir) const;
+        // the next (or previous) navigable Button in Hierarchy order, wrapping (Tab)
+        Entity findNextSelectable(Entity from, bool backwards) const;
+        // Unity's Button state of a Button (also while nothing redraws it)
+        SelectionState getButtonState(Entity entity) const;
+        // a Button's transition writes the UI colour / texture (the Inspector, MCP and Lua redirect
+        // or refuse edits of what it overwrites)
+        static bool buttonOwnsUIColor(const ButtonComponent& button);
+        static bool buttonOwnsUITexture(const ButtonComponent& button);
+        static bool transitionWritesColor(ButtonTransition transition);
+        static bool transitionWritesTexture(ButtonTransition transition);
+
+        // keyboard, gamepad and TV input of a live selection (Engine routes them); each returns
+        // whether it consumed the input
+        bool eventOnMove(MoveDirection dir);
+        bool eventOnTab(bool backwards);
+        // source: the key, or 1000 + pad * 32 + button; a second source while one holds is consumed
+        bool eventOnSubmitDown(int source);
+        bool eventOnSubmitUp(int source);
+        bool eventOnCancel();
+        // a Submit's hold ends without a click (onRelease)
+        void cancelSubmit();
+        // the editor's Play stop (the played scene's snapshot was restored over these Buttons): no
+        // selection, no history, every Button's runtime state reset and its authored look applied
+        void resetSelection();
+        // a primary pointer press (eventOnPointerDown): with a selection, a Button (or its label)
+        // is selected, an InputField keeps it, anything else deselects
+        void pointerSelects(Entity hit);
+
         // an image is still waiting for its texture to build its geometry
         bool hasPendingImages() const;
 
@@ -364,7 +437,8 @@ namespace jasperengine{
         // unpress, the on-screen controls release and clear their input sources
         void resetButtonStates();
 
-        bool eventOnCharInput(wchar_t codepoint);
+        // one whole character (Engine::systemCharInput combines UTF-16 pairs)
+        bool eventOnCharInput(char32_t codepoint);
         bool eventOnKeyDown(int key, bool repeat, int mods);
 
         // ---- pointers (ui-multitouch spec 7.1). pointerId: the mouse -1 / -2 / -3 (its left,

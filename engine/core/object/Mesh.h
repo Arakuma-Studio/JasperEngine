@@ -7,8 +7,15 @@
 #include "GameObject.h"
 #include "buffer/InterleavedBuffer.h"
 #include "buffer/IndexBuffer.h"
+#include "ecs/ComponentFwd.h"
+#include <vector>
+#include "texture/Material.h"
 
 namespace jasperengine{
+
+    struct InstanceData;
+
+    enum class LodFadeMode;
 
     class JASPERENGINE_API Mesh: public GameObject{
     public:
@@ -83,7 +90,11 @@ namespace jasperengine{
         AABB getVerticesAABB() const;
         AABB getWorldAABB() const;
 
+        // on a model made of parts (its geometry on child entities, one per glTF mesh node):
+        // the parts' submeshes, numbered part after part in node order
         unsigned int getNumSubmeshes() const;
+        // Unity's Mesh.vertexCount (a model made of parts: all of them)
+        unsigned int getVertexCount() const;
 
         void setReceiveLights(bool receiveLights);
         bool isReceiveLights() const;
@@ -105,6 +116,25 @@ namespace jasperengine{
 
         void setLodBias(float lodBias);
         float getLodBias() const;
+
+        // Allow GPU Instancing (spec S55): its draws may batch with those of its like
+        void setAllowGpuInstancing(bool allow);
+        bool isAllowGpuInstancing() const;
+        // spec S54 R9: Fade Mode, Animate Cross-fading, Fade Transition Width (0..1) and Cull
+        // Below Screen Height (share of the view, 0..1; 0 never culls)
+        void setLodFadeMode(LodFadeMode mode);
+        LodFadeMode getLodFadeMode() const;
+        void setLodAnimateCrossFading(bool animate);
+        bool isLodAnimateCrossFading() const;
+        void setLodFadeTransitionWidth(float width);
+        float getLodFadeTransitionWidth() const;
+        void setLodCullBelow(float share);
+        float getLodCullBelow() const;
+        // draws this level in every view (-1: automatic again); the level the main view drew
+        // last (LOD_CULLED: culled for its size)
+        void forceLod(int level);
+        int getForcedLod() const;
+        int getCurrentLod() const;
 
         void setRenderInReflectionProbes(bool renderInReflectionProbes);
         bool isRenderInReflectionProbes() const;
@@ -160,6 +190,13 @@ namespace jasperengine{
         float getFadeStart() const;
         void setFadeEnd(float fadeEnd);
         float getFadeEnd() const;
+        // instances grow from nothing at nearFadeStart to full size at nearFadeEnd (a far level of
+        // detail's inner edge; needs distanceFade); an empty range turns it off
+        void setNearFadeRange(float nearFadeStart, float nearFadeEnd);
+        void setNearFadeStart(float nearFadeStart);
+        float getNearFadeStart() const;
+        void setNearFadeEnd(float nearFadeEnd);
+        float getNearFadeEnd() const;
 
         void setCullInstances(bool cullInstances);
         bool isCullInstances() const;
@@ -192,6 +229,25 @@ namespace jasperengine{
         size_t getNumInstances();
 
         void clearInstances();
+
+        // A Mesh call on a model made of parts (MeshSystem::getModelParts) acts on its parts:
+        // mesh-wide setters write every part, getters read the first; calls on "submesh 0"
+        // act on each part's first submesh; a submesh index counts across the parts.
+        struct MeshTarget{
+            Entity entity;
+            MeshComponent* mesh;
+        };
+        // the parts, empty when it is not a model made of parts
+        std::vector<Entity> getModelParts() const;
+        // what a setter writes: every part, else its own mesh
+        std::vector<MeshTarget> getTargetMeshes() const;
+        // what a getter reads: the first part, else its own mesh
+        MeshTarget getFirstMesh() const;
+        // the mesh holding a model-wide submesh index (made local to it); entity NULL_ENTITY
+        // when out of range (logged with `what`)
+        MeshTarget findSubmesh(unsigned int& submesh, const char* what) const;
+        // refused on a model made of parts (logged once per GameObject)
+        bool refuseOnParts(const char* what) const;
     };
 }
 

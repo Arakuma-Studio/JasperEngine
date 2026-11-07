@@ -11,6 +11,7 @@
 		B7C16D6F6D893BAD98C18CB7 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = F300E525478E435B6F9311F3 /* Main.storyboard */; };
 		E75CA4ED209CEE8B7188A803 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 16921782D71381D23D29534A /* LaunchScreen.storyboard */; };
 		1292570F097720FE4AEA42DC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E04CEA74A9AE8F1FB0A9BC5C /* Assets.xcassets */; };
+		5A1E0F0C2F5A000000000011 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 5A1E0F0C2F5A000000000012 /* PrivacyInfo.xcprivacy */; };
 		CC24E15E75817A522665DA7E /* Stub.m in Sources */ = {isa = PBXBuildFile; fileRef = 38AA550468E7607909F14FEA /* Stub.m */; };
 		117A083FE2A9FEFC4B57EC1F /* JasperEnginePlayer.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = C38FC4B2D7DA490F6AF7C8B8 /* JasperEnginePlayer.xcframework */; };
 		98A2024DF8761FAC057E6652 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 890036A790E826DB3C21E187 /* Metal.framework */; };
@@ -23,6 +24,8 @@
 		F813E11342AE323807D5CEC9 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F6CA52BDA807A4859019FBCB /* CoreGraphics.framework */; };
 		45F735ED74F3B4FEB0B3C0D2 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6755ADE52797F7231ACF0C63 /* Foundation.framework */; };
 		DB3A2836D7EC855EE8BCD4BD /* CoreMotion.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5D34F0EA05C640D7B462DD88 /* CoreMotion.framework */; };
+		A1C47E20B3D5469F8E7A1B03 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1C47E20B3D5469F8E7A1B04 /* CoreVideo.framework */; };
+		A1C47E20B3D5469F8E7A1B01 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1C47E20B3D5469F8E7A1B02 /* CoreMedia.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +35,7 @@
 		F300E525478E435B6F9311F3 /* Main.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
 		16921782D71381D23D29534A /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		E04CEA74A9AE8F1FB0A9BC5C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		5A1E0F0C2F5A000000000012 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		38AA550468E7607909F14FEA /* Stub.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Stub.m; sourceTree = "<group>"; };
 		C38FC4B2D7DA490F6AF7C8B8 /* JasperEnginePlayer.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = JasperEnginePlayer.xcframework; sourceTree = "<group>"; };
 		890036A790E826DB3C21E187 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
@@ -44,6 +48,8 @@
 		F6CA52BDA807A4859019FBCB /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		6755ADE52797F7231ACF0C63 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		5D34F0EA05C640D7B462DD88 /* CoreMotion.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMotion.framework; path = System/Library/Frameworks/CoreMotion.framework; sourceTree = SDKROOT; };
+		A1C47E20B3D5469F8E7A1B04 /* CoreVideo.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreVideo.framework; path = System/Library/Frameworks/CoreVideo.framework; sourceTree = SDKROOT; };
+		A1C47E20B3D5469F8E7A1B02 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -62,6 +68,8 @@
 				F813E11342AE323807D5CEC9 /* CoreGraphics.framework in Frameworks */,
 				45F735ED74F3B4FEB0B3C0D2 /* Foundation.framework in Frameworks */,
 				DB3A2836D7EC855EE8BCD4BD /* CoreMotion.framework in Frameworks */,
+				A1C47E20B3D5469F8E7A1B03 /* CoreVideo.framework in Frameworks */,
+				A1C47E20B3D5469F8E7A1B01 /* CoreMedia.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -76,6 +84,7 @@
 				F300E525478E435B6F9311F3 /* Main.storyboard */,
 				16921782D71381D23D29534A /* LaunchScreen.storyboard */,
 				E04CEA74A9AE8F1FB0A9BC5C /* Assets.xcassets */,
+				5A1E0F0C2F5A000000000012 /* PrivacyInfo.xcprivacy */,
 				38AA550468E7607909F14FEA /* Stub.m */,
 				C38FC4B2D7DA490F6AF7C8B8 /* JasperEnginePlayer.xcframework */,
 				85CDD5C50F7F11A63D8DF59A /* Frameworks */,
@@ -96,6 +105,8 @@
 				F6CA52BDA807A4859019FBCB /* CoreGraphics.framework */,
 				6755ADE52797F7231ACF0C63 /* Foundation.framework */,
 				5D34F0EA05C640D7B462DD88 /* CoreMotion.framework */,
+				A1C47E20B3D5469F8E7A1B04 /* CoreVideo.framework */,
+				A1C47E20B3D5469F8E7A1B02 /* CoreMedia.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -164,6 +175,7 @@
 				B7C16D6F6D893BAD98C18CB7 /* Main.storyboard in Resources */,
 				E75CA4ED209CEE8B7188A803 /* LaunchScreen.storyboard in Resources */,
 				1292570F097720FE4AEA42DC /* Assets.xcassets in Resources */,
+				5A1E0F0C2F5A000000000011 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

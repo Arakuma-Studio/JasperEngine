@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "object/GameObject.h"
 #include "LuaBinding.h"
 #include <optional>
 #include "log/Logger.h"
@@ -14,6 +15,7 @@
 #include "LuaBridgeAddon.h"
 
 #include "Engine.h"
+#include "device/Device.h"
 
 #include <climits>
 #include <cmath>
@@ -36,6 +38,7 @@
 #include <set>
 #include <stdexcept>
 #include "System.h"
+#include "render/SystemRender.h"
 #include "player/RunControl.h"
 #include "Screen.h"
 #include "util/CanvasScalerRef.h"
@@ -92,6 +95,14 @@ namespace {
             MaterialPbr::clamp(pbr);
         }
     };
+
+    // Material.shadingModel: the Hair lobe's flag as the Lit's Shading Model
+    ShadingModel materialShadingModel(const Material* self){
+        return MaterialPbr::getShadingModel(self->pbr.get());
+    }
+    void setMaterialShadingModel(Material* self, ShadingModel model){
+        MaterialPbr::setShadingModel(self->pbr.edit(), model);
+    }
 
     // What Log.category(name) returns: a category's trace/debug/info/warn/error
     struct LuaLogCategory {
@@ -794,7 +805,7 @@ namespace{
         if (!luaBodyPairArgs<is2D>(L, function, scene, a, b)){
             return 0;
         }
-        const bool ignore = lua_isnoneornil(L, 3) ? true : lua_toboolean(L, 3) != 0;
+        [[maybe_unused]] const bool ignore = lua_isnoneornil(L, 3) ? true : lua_toboolean(L, 3) != 0;
         if constexpr (is2D){
 #ifdef JASPERENGINE_PHYSICS_2D
             scene->getSystem<PhysicsSystem>()->setIgnoreCollision2D(a, b, ignore);
@@ -1275,6 +1286,7 @@ namespace {
         number("frameMsMax", s.frameMsMax);
         number("frameMs1PercentLow", s.frameMs1PercentLow);
         integer("drawCalls", s.drawCalls);
+        integer("setPassCalls", s.setPassCalls);
         integer("instances", s.instances);
         integer("triangles", s.triangles);
         integer("processMemoryBytes", s.processMemoryBytes);
@@ -1448,6 +1460,31 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("canvasToUI", &UIStatics::canvasToUI)
         .addStaticFunction("uiToCanvas", &UIStatics::uiToCanvas)
         .addStaticProperty("reducedMotion", &UISystem::isReducedMotion, &UISystem::setReducedMotion)
+        // ui-components: the scene's selection (Unity's EventSystem.currentSelectedGameObject):
+        // a GameObject or nil
+        .addStaticFunction("getSelected", +[](Scene* scene) -> std::optional<GameObject> {
+            if (!scene) return std::nullopt;
+            const Entity entity = scene->getSystem<UISystem>()->getSelected();
+            if (entity == NULL_ENTITY || !scene->isEntityCreated(entity)) return std::nullopt;
+            return GameObject(scene, entity);
+        })
+        // Unity's SetSelectedGameObject: a Button (GameObject or entity), nil to deselect; false
+        // when it cannot be selected (not a Button, inactive, hidden, an on-screen control)
+        .addStaticFunction("setSelected", +[](Scene* scene, luabridge::LuaRef value) -> bool {
+            if (!scene) return false;
+            Entity entity = NULL_ENTITY;
+            if (value.isNumber()){
+                entity = (Entity)value.unsafe_cast<lua_Integer>();
+            }else if (!value.isNil()){
+                lua_State* Lv = value.state();
+                value.push(Lv);
+                auto handle = luabridge::get<EntityHandle*>(Lv, -1);
+                lua_pop(Lv, 1);
+                if (!handle || !handle.value()) return false;
+                entity = handle.value()->getEntity();
+            }
+            return scene->getSystem<UISystem>()->setSelected(entity);
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1529,6 +1566,24 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("LandscapeRight", DeviceOrientation::LandscapeRight)
         .addVariable("FaceUp", DeviceOrientation::FaceUp)
         .addVariable("FaceDown", DeviceOrientation::FaceDown)
+        .endNamespace();
+
+    // the quality tier a device gets (Device.tier, Device.setTier; docs/device-tiers.md)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("DeviceTier")
+        .addVariable("Low", DeviceTier::Low)
+        .addVariable("Medium", DeviceTier::Medium)
+        .addVariable("High", DeviceTier::High)
+        .addVariable("Ultra", DeviceTier::Ultra)
+        .endNamespace();
+
+    // the platform's thermal state (Device.thermalState, Device.onThermalStateChanged)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ThermalState")
+        .addVariable("Nominal", ThermalState::Nominal)
+        .addVariable("Fair", ThermalState::Fair)
+        .addVariable("Serious", ThermalState::Serious)
+        .addVariable("Critical", ThermalState::Critical)
         .endNamespace();
 
     // Unity's DeviceType (System.getDeviceType)
@@ -1615,6 +1670,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .beginNamespace("WindingOrder")
         .addVariable("CCW", WindingOrder::CCW)
         .addVariable("CW", WindingOrder::CW)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LodFadeMode")
+        .addVariable("NONE", LodFadeMode::NONE)
+        .addVariable("CROSS_FADE", LodFadeMode::CROSS_FADE)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -1746,14 +1807,6 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
-        .beginNamespace("AdMobRating")
-        .addVariable("General", AdMobRating::General)
-        .addVariable("ParentalGuidance", AdMobRating::ParentalGuidance)
-        .addVariable("Teen", AdMobRating::Teen)
-        .addVariable("MatureAudience", AdMobRating::MatureAudience)
-        .endNamespace();
-
-    luabridge::getGlobalNamespace(L)
         .beginNamespace("CursorType")
         .addVariable("ARROW", CursorType::ARROW)
         .addVariable("IBEAM", CursorType::IBEAM)
@@ -1812,6 +1865,35 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("SOFT", ShadowType::SOFT)
         .endNamespace();
 
+    // S57's lighting
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TransparencyMode")
+        .addVariable("SORTED", TransparencyMode::SORTED)
+        .addVariable("ORDER_INDEPENDENT", TransparencyMode::ORDER_INDEPENDENT)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ShadingModel")
+        .addVariable("STANDARD", ShadingModel::STANDARD)
+        .addVariable("HAIR", ShadingModel::HAIR)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CapsuleCastShadows")
+        .addVariable("ON", CapsuleCastShadows::ON)
+        .addVariable("CAPSULES_ONLY", CapsuleCastShadows::CAPSULES_ONLY)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CapsuleDirection")
+        .addVariable("X_AXIS", CapsuleDirection::X_AXIS)
+        .addVariable("Y_AXIS", CapsuleDirection::Y_AXIS)
+        .addVariable("Z_AXIS", CapsuleDirection::Z_AXIS)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LightMode")
+        .addVariable("AUTOMATIC", LightMode::AUTOMATIC)
+        .addVariable("PER_OBJECT", LightMode::PER_OBJECT)
+        .addVariable("TILED", LightMode::TILED)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("ShadowUpdateMode")
         .addVariable("AUTO", ShadowUpdateMode::AUTO)
@@ -1843,6 +1925,24 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .beginNamespace("SceneColorScale")
         .addVariable("FULL", SceneColorScale::FULL)
         .addVariable("HALF", SceneColorScale::HALF)
+        .endNamespace();
+
+    // the resolution of the water reflection passes (Scene.planarReflectionResolution)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PlanarReflectionResolution")
+        .addVariable("OFF", PlanarReflectionResolution::OFF)
+        .addVariable("QUARTER", PlanarReflectionResolution::QUARTER)
+        .addVariable("HALF", PlanarReflectionResolution::HALF)
+        .addVariable("FULL", PlanarReflectionResolution::FULL)
+        .endNamespace();
+
+    // the side of the Water Wakes' map (Scene.waterWakeResolution): AUTO 256, 128 on mobile and web
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("WaterWakeResolution")
+        .addVariable("AUTO", WaterWakeResolution::AUTO)
+        .addVariable("LOW", WaterWakeResolution::LOW)
+        .addVariable("MEDIUM", WaterWakeResolution::MEDIUM)
+        .addVariable("HIGH", WaterWakeResolution::HIGH)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -2184,6 +2284,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("setAtmosphereQuality", &Engine::setAtmosphereQuality)
         .addStaticFunction("getAtmosphereQuality", &Engine::getAtmosphereQuality)
         .addStaticFunction("resetAtmosphereQuality", &Engine::resetAtmosphereQuality)
+        .addStaticProperty("foliageDistanceScale", &Engine::getFoliageDistanceScale, &Engine::setFoliageDistanceScale)
+        .addStaticFunction("resetFoliageDistanceScale", &Engine::resetFoliageDistanceScale)
         .addStaticProperty("callMouseInTouchEvent", &Engine::isCallMouseInTouchEvent, &Engine::setCallMouseInTouchEvent)
         .addStaticProperty("callTouchInMouseEvent", &Engine::isCallTouchInMouseEvent, &Engine::setCallTouchInMouseEvent)
         .addStaticFunction("setCallTouchInMouseEvent", &Engine::setCallTouchInMouseEvent)
@@ -2192,6 +2294,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("ignoreEventsHandledByUI", &Engine::isIgnoreEventsHandledByUI, &Engine::setIgnoreEventsHandledByUI)
         .addStaticFunction("isUIEventReceived", &Engine::isUIEventReceived)
         .addStaticFunction("wantsGamepadNavigation", &Engine::wantsGamepadNavigation)
+        .addStaticFunction("wantsKeyboardNavigation", &Engine::wantsKeyboardNavigation)
         .addStaticProperty("updateTime", &Engine::getUpdateTime, &Engine::setUpdateTime)
         .addStaticFunction("setUpdateTimeMS", &Engine::setUpdateTimeMS)
         .addStaticProperty("interpolationAlpha", &Engine::getInterpolationAlpha)
@@ -2219,7 +2322,11 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("isDevelopmentBuild", &Engine::isDevelopmentBuild)
         .addStaticProperty("targetFrameRate", &Engine::getTargetFrameRate, &Engine::setTargetFrameRate)
         .addStaticProperty("vSyncCount", &Engine::getVSyncCount, &Engine::setVSyncCount)
+        // Dynamic Batching (Project Settings > Graphics): the same image, fewer draw calls
+        .addStaticProperty("dynamicBatching", &Engine::isDynamicBatching, &Engine::setDynamicBatching)
         .addStaticProperty("isFocused", &Engine::isFocused)
+        // false while the window can't be seen: the game updates without drawing (desktops)
+        .addStaticProperty("isVisible", &Engine::isVisible)
         .addStaticProperty("asyncLoading", &Engine::isAsyncLoading, &Engine::setAsyncLoading)
         .addStaticFunction("startAsyncThread", &Engine::startAsyncThread)
         .addStaticFunction("commitThreadQueue", &Engine::commitThreadQueue)
@@ -2243,6 +2350,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("onResume", [] () { return &Engine::onResume; }, [] (lua_State* L) { Engine::onResume = L; })
         .addStaticProperty("onShutdown", [] () { return &Engine::onShutdown; }, [] (lua_State* L) { Engine::onShutdown = L; })
         .addStaticProperty("onFocus", [] () { return &Engine::onFocus; }, [] (lua_State* L) { Engine::onFocus = L; })
+        .addStaticProperty("onVisibilityChanged", [] () { return &Engine::onVisibilityChanged; }, [] (lua_State* L) { Engine::onVisibilityChanged = L; })
         .addStaticProperty("onOrientationChanged", [] () { return &Engine::onOrientationChanged; }, [] (lua_State* L) { Engine::onOrientationChanged = L; })
         .addStaticProperty("onLowMemory", [] () { return &Engine::onLowMemory; }, [] (lua_State* L) { Engine::onLowMemory = L; })
         .addStaticProperty("onSafeAreaChanged", [] () { return &Engine::onSafeAreaChanged; }, [] (lua_State* L) { Engine::onSafeAreaChanged = L; })
@@ -2605,12 +2713,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<FunctionSubscribe<void(wchar_t)>>("FunctionSubscribe_V_W")
-        .addFunction("__call", &FunctionSubscribe<void(wchar_t)>::call)
-        .addFunction("call", &FunctionSubscribe<void(wchar_t)>::call)
-        .addFunction("add", (bool (FunctionSubscribe<void(wchar_t)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(wchar_t)>::add)
-        .addFunction("remove", &FunctionSubscribe<void(wchar_t)>::remove)
-        .addFunction("has", &FunctionSubscribe<void(wchar_t)>::has)
+        .beginClass<FunctionSubscribe<void(char32_t)>>("FunctionSubscribe_V_W")
+        .addFunction("__call", &FunctionSubscribe<void(char32_t)>::call)
+        .addFunction("call", &FunctionSubscribe<void(char32_t)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(char32_t)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(char32_t)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(char32_t)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(char32_t)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -2974,6 +3082,15 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         PBR_LUA_PROPERTY("hexTilingEnabled", hex, Hex, enabled)
         PBR_LUA_PROPERTY("hexTilingRotation", hex, Hex, rotation)
         PBR_LUA_PROPERTY("hexTilingContrast", hex, Hex, contrast)
+        // the Hair shading model (S57)
+        .addProperty("shadingModel", &materialShadingModel, &setMaterialShadingModel)
+        PBR_LUA_PROPERTY("hairPrimaryColor", hair, Hair, primaryColor)
+        PBR_LUA_PROPERTY("hairPrimaryShift", hair, Hair, primaryShift)
+        PBR_LUA_PROPERTY("hairPrimaryWidth", hair, Hair, primaryWidth)
+        PBR_LUA_PROPERTY("hairSecondaryColor", hair, Hair, secondaryColor)
+        PBR_LUA_PROPERTY("hairSecondaryShift", hair, Hair, secondaryShift)
+        PBR_LUA_PROPERTY("hairSecondaryWidth", hair, Hair, secondaryWidth)
+        PBR_LUA_PROPERTY("hairRotation", hair, Hair, rotation)
         PBR_LUA_TEXTURE("clearcoatTexture", clearcoat, Clearcoat, map)
         PBR_LUA_TEXTURE("clearcoatNormalTexture", clearcoat, Clearcoat, normalMap)
         PBR_LUA_TEXTURE("sheenTexture", sheen, Sheen, map)
@@ -2981,6 +3098,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         PBR_LUA_TEXTURE("iridescenceTexture", iridescence, Iridescence, map)
         PBR_LUA_TEXTURE("transmissionTexture", transmission, Transmission, map)
         PBR_LUA_TEXTURE("specularTexture", specular, Specular, map)
+        PBR_LUA_TEXTURE("hairFlowTexture", hair, Hair, flowMap)
         .addProperty("baseColorTexture", &Material::baseColorTexture)
         .addProperty("emissiveTexture", &Material::emissiveTexture)
         .addProperty("metallicRoughnessTexture", &Material::metallicRoughnessTexture)
@@ -3176,6 +3294,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         // physical units are drawn at (EV100)
         .addProperty("litQuality", &Scene::getLitQuality, &Scene::setLitQuality)
         .addProperty("physicalLightEV100", &Scene::getPhysicalLightEV100, &Scene::setPhysicalLightEV100)
+        .addProperty("capsuleShadowsEnabled", &Scene::isCapsuleShadowsEnabled, &Scene::setCapsuleShadowsEnabled)
+        .addProperty("capsuleShadowIntensity", &Scene::getCapsuleShadowIntensity, &Scene::setCapsuleShadowIntensity)
+        .addProperty("capsuleShadowSoftness", &Scene::getCapsuleShadowSoftness, &Scene::setCapsuleShadowSoftness)
         .addProperty("ambientLight2DColor", &Scene::getAmbientLight2DColor, (void (Scene::*)(Vector3))&Scene::setAmbientLight2D)
         .addProperty("ambientLight2DIntensity", &Scene::getAmbientLight2DIntensity, (void (Scene::*)(float))&Scene::setAmbientLight2D)
         .addFunction("getAmbientLight2DColorLinear", &Scene::getAmbientLight2DColorLinear)
@@ -3197,8 +3318,43 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("ssaoBias", &Scene::getSSAOBias, &Scene::setSSAOBias)
         .addProperty("meshLodEnabled", &Scene::isMeshLodEnabled, &Scene::setMeshLodEnabled)
         .addProperty("meshLodThreshold", &Scene::getMeshLodThreshold, &Scene::setMeshLodThreshold)
+        // the last frame's render statistics (spec S55 R7), read-only: draws, triangles and
+        // instances of every pass and by kind of pass, the GPU Instancing batches, what the
+        // visible lists kept and culled, uniform and upload bytes
+        .addFunction("getRenderStats", +[](const Scene*, lua_State* L) -> luabridge::LuaRef {
+            const RenderStats stats = SystemRender::getRenderStats(SystemRender::FRAME_STATS_FRAME);
+            luabridge::LuaRef table = luabridge::newTable(L);
+            table["drawCalls"] = stats.drawCalls;
+            table["instances"] = stats.instances;
+            table["triangles"] = (double)stats.triangles;
+            table["mainTriangles"] = (double)stats.mainTriangles;
+            table["shadowTriangles"] = (double)stats.shadowTriangles;
+            table["mainDrawCalls"] = stats.mainDraws;
+            table["shadowDrawCalls"] = stats.shadowDraws;
+            table["depthDrawCalls"] = stats.depthDraws;
+            table["otherDrawCalls"] = stats.otherDraws;
+            table["instancedDraws"] = stats.instancedDraws;
+            table["batchedInstances"] = stats.batchedInstances;
+            table["visible"] = stats.visible;
+            table["culled"] = stats.culled;
+            table["uniformBytes"] = stats.uniformBytes;
+            table["bufferUploadBytes"] = stats.bufferUploadBytes;
+            return table;
+        })
+        .addProperty("crossFade", &Scene::isMeshLodCrossFade, &Scene::setMeshLodCrossFade)
+        .addProperty("crossFadeDuration", &Scene::getMeshLodCrossFadeDuration, &Scene::setMeshLodCrossFadeDuration)
         .addProperty("depthPrepassEnabled", &Scene::isDepthPrepassEnabled, &Scene::setDepthPrepassEnabled)
         .addProperty("sceneColorScale", &Scene::getSceneColorScale, &Scene::setSceneColorScale)
+        // water planar reflections (library:water's PLANAR_REFLECTION; a quality menu sets OFF)
+        .addProperty("planarReflectionResolution", &Scene::getPlanarReflectionResolution, &Scene::setPlanarReflectionResolution)
+        .addProperty("planarReflectionLayers", &Scene::getPlanarReflectionLayers, &Scene::setPlanarReflectionLayers)
+        .addProperty("planarReflectionShadows", &Scene::getPlanarReflectionShadows, &Scene::setPlanarReflectionShadows)
+        .addProperty("planarReflectionFarClip", &Scene::getPlanarReflectionFarClip, &Scene::setPlanarReflectionFarClip)
+        .addProperty("planarReflectionClipOffset", &Scene::getPlanarReflectionClipOffset, &Scene::setPlanarReflectionClipOffset)
+        .addProperty("maxPlanarReflections", &Scene::getMaxPlanarReflections, &Scene::setMaxPlanarReflections)
+        .addProperty("waterWakeResolution", &Scene::getWaterWakeResolution, &Scene::setWaterWakeResolution)
+        .addProperty("waterWakeArea", &Scene::getWaterWakeArea, &Scene::setWaterWakeArea)
+        .addProperty("waterWakeFade", &Scene::getWaterWakeFade, &Scene::setWaterWakeFade)
         // a copy (edit it and assign it back, which applies it)
         .addProperty("postProcessing", [] (const Scene* self) { return PostProcessingSettings(self->getPostProcessing()); }, &Scene::setPostProcessing)
         .addProperty("ssaoDebug", &Scene::isSSAODebug, &Scene::setSSAODebug)
@@ -3220,6 +3376,15 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("defaultSkyShader", &Scene::getDefaultSkyShader, &Scene::setDefaultSkyShader)
         .addProperty("defaultPointsShader", &Scene::getDefaultPointsShader, &Scene::setDefaultPointsShader)
         .addProperty("defaultLinesShader", &Scene::getDefaultLinesShader, &Scene::setDefaultLinesShader)
+        // property values of a default shader, inherited by the objects that use it
+        .addFunction("setDefaultShaderUniform",
+            luabridge::overload<ShaderType, const std::string&, const Vector4&>(&Scene::setDefaultShaderUniform),
+            luabridge::overload<ShaderType, const std::string&, const Vector3&>(&Scene::setDefaultShaderUniform),
+            luabridge::overload<ShaderType, const std::string&, const Vector2&>(&Scene::setDefaultShaderUniform),
+            luabridge::overload<ShaderType, const std::string&, float>(&Scene::setDefaultShaderUniform))
+        .addFunction("getDefaultShaderUniform", &Scene::getDefaultShaderUniform)
+        .addFunction("hasDefaultShaderUniform", &Scene::hasDefaultShaderUniform)
+        .addFunction("removeDefaultShaderUniform", &Scene::removeDefaultShaderUniform)
         .addProperty("postProcessPasses", &Scene::getPostProcessPasses, &Scene::setPostProcessPasses)
         .addFunction("setPostProcessUniform",
             luabridge::overload<unsigned int, const std::string&, const Vector4&>(&Scene::setPostProcessUniform),
@@ -3801,12 +3966,6 @@ void LuaBinding::registerCoreClasses(lua_State *L){
 
         //UserSettings not need here
 
-        .addStaticFunction("initializeAdMob", [] () { return System::instance().initializeAdMob(); })
-        .addStaticFunction("setMaxAdContentRating", [] (AdMobRating rating) { return System::instance().setMaxAdContentRating(rating); })
-        .addStaticFunction("loadInterstitialAd", [] (const std::string& adUnitID) { return System::instance().loadInterstitialAd(adUnitID); })
-        .addStaticFunction("isInterstitialAdLoaded", [] () { return System::instance().isInterstitialAdLoaded(); })
-        .addStaticFunction("showInterstitialAd", [] () { return System::instance().showInterstitialAd(); })
-
         .addStaticFunction("initializeCrazyGamesSDK", [] () { return System::instance().initializeCrazyGamesSDK(); })
         .addStaticFunction("showCrazyGamesAd", [] (std::string type) { return System::instance().showCrazyGamesAd(type); })
         .addStaticFunction("happytimeCrazyGames", [] () { return System::instance().happytimeCrazyGames(); })
@@ -3814,6 +3973,30 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("gameplayStopCrazyGames", [] () { return System::instance().gameplayStopCrazyGames(); })
         .addStaticFunction("loadingStartCrazyGames", [] () { return System::instance().loadingStartCrazyGames(); })
         .addStaticFunction("loadingStopCrazyGames", [] () { return System::instance().loadingStopCrazyGames(); })
+        .endClass();
+
+    // The device the game runs on (docs/device-tiers.md): its GPU, the Device Tier it gets, the
+    // thermal state and memory warnings
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Device>("Device")
+        // the Device Tier in effect (DeviceTier): setTier's, else the detected one
+        .addStaticProperty("tier", &Device::getTier)
+        // the GPU's name, as detection read it ("Adreno (TM) 650", "Apple A15 GPU")
+        .addStaticProperty("gpuName", &Device::getGpuName)
+        // why the device got its tier: "Adreno (TM) 650, rule name (adreno 650), tier Medium"
+        .addStaticProperty("tierReason", [] () { return Device::getDetection().reason; })
+        // whether a tier's overrides apply (false in the editor until a tier is simulated or set)
+        .addStaticProperty("tierApplied", &Device::isTierApplied)
+        // the platform's thermal state (ThermalState); Nominal on desktops and the web
+        .addStaticProperty("thermalState", &Device::getThermalState)
+        // a graphics menu's choice: this tier's overrides for the rest of the run
+        .addStaticFunction("setTier", &Device::setTier)
+        // back to the detected tier
+        .addStaticFunction("resetTier", &Device::resetTier)
+        // the thermal state changed: function(state) with the new ThermalState
+        .addStaticProperty("onThermalStateChanged", [] () { return &Device::onThermalStateChanged; }, [] (lua_State* L) { Device::onThermalStateChanged = L; })
+        // a low-memory warning was handled: the caches were cleared and textures keep a mip off
+        .addStaticProperty("onLowMemory", [] () { return &Device::onLowMemory; }, [] (lua_State* L) { Device::onLowMemory = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

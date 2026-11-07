@@ -5,6 +5,10 @@
 // with the Gizmos popup's "Lattices"), the gizmo on the selected points and its drag.
 
 #include "render/SceneRender.h"
+#include "lattice/LatticeTypes.h"
+#include "component/Transform.h"
+#include "util/Angle.h"
+#include "component/CameraComponent.h"
 
 #include "AppSettings.h"
 #include "Backend.h"
@@ -510,6 +514,10 @@ void SceneRender::updateLatticeCages(const std::vector<Entity>& selEntities, con
             return;
         }
         if (!scene->findComponent<LatticeComponent>(entity) || !scene->findComponent<Transform>(entity)){
+            return;
+        }
+        // a lattice inactive in hierarchy draws no cage (hideEntityGizmos: Unity's gizmo rule)
+        if (!gizmoActive(entity)){
             return;
         }
         drawn.insert(entity);

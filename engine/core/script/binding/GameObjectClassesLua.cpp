@@ -2,6 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 #include "LuaBinding.h"
+#include "component/MeshComponent.h"
+#include "object/spline/Spline.h"
+#include "object/spline/SplineAnimate.h"
+#include "object/spline/SplineExtrude.h"
+#include "object/spline/SplineInstantiate.h"
+#include "component/AudioSnapshotComponent.h"
+#include "component/ButtonComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/PanelComponent.h"
+#include "component/SafeAreaComponent.h"
 #include "component/ActionComponent.h"
 
 #include "lua.hpp"
@@ -27,6 +37,7 @@
 #include "Light.h"
 #include "Light2D.h"
 #include "ShadowCaster2D.h"
+#include "CapsuleShadowCaster.h"
 #include "Mesh.h"
 #include "Primitive.h"
 #include "Mirror.h"
@@ -76,6 +87,8 @@
 #include "component/PhysicsCommon.h"
 #include <optional>
 #include "WaterVolume.h"
+#include "WaterExcluder.h"
+#include "WaterWake.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "CharacterController2D.h"
@@ -273,7 +286,7 @@ Entity entityOf(const luabridge::LuaRef& value, const char* field){
     const bool ok = luaObjectArg(L, -1, scene, entity, nullptr);
     lua_pop(L, 1);
     if (!ok){
-        Log::error("VideoPlayer.%s takes a GameObject or nil", field);
+        Log::error("%s takes a GameObject or nil", field);
         return NULL_ENTITY;
     }
     return entity;
@@ -315,6 +328,37 @@ bool luaObjectArg(lua_State* L, int index, Scene*& scene, Entity& entity, std::s
     }
     return false;
 }
+
+// GameObject:setParent / parent = : any GameObject handle, a script instance or nil (the root)
+static void luaSetParent(GameObject* self, const luabridge::LuaRef& value, bool worldPositionStays){
+    if (value.isNil()){
+        self->setParent(nullptr, worldPositionStays);
+        return;
+    }
+    lua_State* L = value.state();
+    value.push(L);
+    Scene* scene = nullptr;
+    Entity entity = NULL_ENTITY;
+    const bool ok = luaObjectArg(L, -1, scene, entity, nullptr);
+    lua_pop(L, 1);
+    if (!ok){
+        Log::error("GameObject.setParent takes a GameObject, a script or nil");
+        return;
+    }
+    const EntityHandle parent(scene, entity);
+    self->setParent(&parent, worldPositionStays);
+}
+
+#ifdef JASPERENGINE_PHYSICS_3D
+// Rigidbody:getAllowedDOFs() -> translationX, translationY, translationZ, rotationX, rotationY, rotationZ
+static int luaRigidbodyGetAllowedDOFs(lua_State* L){
+    Rigidbody* self = luabridge::detail::Userdata::get<Rigidbody>(L, 1, true);
+    bool dofs[6] = {true, true, true, true, true, true};
+    if (self) self->getAllowedDOFs(dofs[0], dofs[1], dofs[2], dofs[3], dofs[4], dofs[5]);
+    for (bool dof : dofs) lua_pushboolean(L, dof);
+    return 6;
+}
+#endif
 
 template<typename T>
 bool luaValueArg(lua_State* L, int index, T& value){
@@ -511,6 +555,7 @@ int luaDestroyImmediate(lua_State* L){
 
 namespace {
 
+#if defined(JASPERENGINE_PHYSICS_2D) || defined(JASPERENGINE_PHYSICS_3D)
     // a material argument: a .physicsmaterial path, a PhysicsMaterial or nil (none)
     bool luaMaterialArg(const luabridge::LuaRef& value, PhysicsMaterial& material, std::string& path){
         material = PhysicsMaterial();
@@ -528,6 +573,7 @@ namespace {
         }
         return false;
     }
+#endif
 
     std::optional<PhysicsMaterial> luaMaterialResult(const PhysicsMaterial& material){
         if (!material.valid()){
@@ -838,10 +884,13 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     // with when the material names none (the mesh's customShader, else the scene default)
     static luabridge::LuaRef (*meshMaterial)(const Mesh*, unsigned int, lua_State*) =
         +[](const Mesh* self, unsigned int submesh, lua_State* L) -> luabridge::LuaRef {
-            const MeshComponent& mesh = self->getComponent<MeshComponent>();
             luabridge::LuaRef ref(L, self->getMaterial(submesh));
-            if (submesh < mesh.numSubmeshes && mesh.submeshes[submesh].material.shader.empty() && self->getScene()) {
-                const std::string drawn = RenderSystem::getSubmeshShader(mesh, mesh.submeshes[submesh],
+            // the mesh holding it (a part of a model made of parts)
+            unsigned int local = submesh;
+            const Mesh::MeshTarget target = self->findSubmesh(local, nullptr);
+            if (target.mesh && local < target.mesh->numSubmeshes && target.mesh->submeshes[local].material.shader.empty() && self->getScene()) {
+                const MeshComponent& mesh = *target.mesh;
+                const std::string drawn = RenderSystem::getSubmeshShader(mesh, mesh.submeshes[local],
                     self->getScene()->getDefaultCustomShader(ShaderType::MESH));
                 ref.push(L);
                 LuaBinding::setMaterialDrawnShader(L, -1, drawn);
@@ -1113,7 +1162,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addStaticFunction("getHeight", &Water::getHeight)
         .addStaticFunction("getNormal", &Water::getNormal)
         .addStaticFunction("isUnderwater", &Water::isUnderwater)
-        .addStaticFunction("getTime", &Water::getTime)
+        // the scene clock the waves run on (Water.getTime(scene); the main scene's without one)
+        .addStaticFunction("getTime",
+            luabridge::overload<>(+[]() -> float { return Water::getTime(nullptr); }),
+            luabridge::overload<Scene*>(+[](Scene* scene) -> float { return Water::getTime(scene); }))
         .addStaticFunction("sample", &Water::sample)
         .addStaticFunction("sampleHeight", &Water::sampleHeight)
         .endClass();
@@ -1127,6 +1179,11 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("flowVelocity", &WaterSample::getFlowVelocity)
         .addProperty("volume", &WaterSample::getVolume)
         .addProperty("hasWater", &WaterSample::hasWater)
+        // the Water Excluder keeping the point dry (inWater false), and the Water Wakes there
+        .addProperty("excluder", &WaterSample::getExcluder)
+        .addProperty("excluded", &WaterSample::isExcluded)
+        .addProperty("wakeFoam", &WaterSample::getWakeFoam)
+        .addProperty("wakeHeight", &WaterSample::getWakeHeight)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1148,6 +1205,41 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("linearDrag", &WaterVolume::getLinearDrag, &WaterVolume::setLinearDrag)
         .addProperty("angularDrag", &WaterVolume::getAngularDrag, &WaterVolume::setAngularDrag)
         .addProperty("waves", &WaterVolume::getWaves, &WaterVolume::setWaves)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("WaterExcluderShape")
+        .addVariable("BOX", WaterExcluderShape::BOX)
+        .addVariable("SPHERE", WaterExcluderShape::SPHERE)
+        .addVariable("CONVEX_HULL", WaterExcluderShape::CONVEX_HULL)
+        .endNamespace();
+
+    // keeps water out: no surface drawn inside, no underwater fade, nothing floated but its own body
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<WaterExcluder, EntityHandle>("WaterExcluder")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &WaterExcluder::isValid)
+        .addProperty("enabled", &WaterExcluder::isEnabled, &WaterExcluder::setEnabled)
+        .addProperty("shape", &WaterExcluder::getShape, &WaterExcluder::setShape)
+        .addProperty("center", &WaterExcluder::getCenter, &WaterExcluder::setCenter)
+        .addProperty("size", &WaterExcluder::getSize, &WaterExcluder::setSize)
+        .addProperty("hullStatus", &WaterExcluder::getHullStatus)
+        .addProperty("hullFaces", &WaterExcluder::getHullFaces)
+        .addFunction("contains", &WaterExcluder::contains)
+        .endClass();
+
+    // foam and waves left on the water while it moves
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<WaterWake, EntityHandle>("WaterWake")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &WaterWake::isValid)
+        .addProperty("enabled", &WaterWake::isEnabled, &WaterWake::setEnabled)
+        .addProperty("foam", &WaterWake::getFoam, &WaterWake::setFoam)
+        .addProperty("waves", &WaterWake::getWaves, &WaterWake::setWaves)
+        .addProperty("width", &WaterWake::getWidth, &WaterWake::setWidth)
+        .addProperty("length", &WaterWake::getLength, &WaterWake::setLength)
+        .addProperty("emitting", &WaterWake::isEmitting)
+        .addProperty("speed", &WaterWake::getSpeed)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1226,6 +1318,18 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<GameObject*>(&GameObject::removeChild),
             luabridge::overload<Entity>(&GameObject::removeChild))
         .addFunction("removeParent", &GameObject::removeParent)
+        // Unity's Transform hierarchy: parent (nil at the root; assigning keeps the world placement),
+        // setParent(p [, worldPositionStays = true]), childCount, getChild(i) (0-based), getChildren(),
+        // findChild("Arm/Hand")
+        .addProperty("parent", &GameObject::getParent,
+            [](GameObject* self, luabridge::LuaRef value) { luaSetParent(self, value, true); })
+        .addFunction("setParent", [](GameObject* self, luabridge::LuaRef parent, std::optional<bool> worldPositionStays) {
+            luaSetParent(self, parent, worldPositionStays.value_or(true));
+        })
+        .addProperty("childCount", &GameObject::getChildCount)
+        .addFunction("getChild", &GameObject::getChild)
+        .addFunction("getChildren", &GameObject::getChildren)
+        .addFunction("findChild", &GameObject::findChild)
         .addFunction("moveToTop", &GameObject::moveToTop)
         .addFunction("moveUp", &GameObject::moveUp)
         .addFunction("moveDown", &GameObject::moveDown)
@@ -1254,6 +1358,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("normalMatrix", &GameObject::getNormalMatrix)
         .addFunction("updateTransform", &GameObject::updateTransform)
 #ifdef JASPERENGINE_PHYSICS_2D
+        // the Mixer Snapshot action's component (S40 R24), nil without one
+        .addFunction("getAudioSnapshotComponent", [] (GameObject* self) -> AudioSnapshotComponent* {
+            return self->getScene()->findComponent<AudioSnapshotComponent>(self->getEntity());
+        })
         .addFunction("getRigidbody2D", &GameObject::getRigidbody2D)
         .addFunction("removeRigidbody2D", &GameObject::removeRigidbody2D)
         .addFunction("getCharacterController2D", &GameObject::getCharacterController2D)
@@ -1294,6 +1402,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         })
 #endif
         .addFunction("getWaterVolume", &GameObject::getWaterVolume)
+        .addFunction("getWaterExcluder", &GameObject::getWaterExcluder)
+        .addFunction("getWaterWake", &GameObject::getWaterWake)
         .addFunction("getSpline", &GameObject::getSpline)
         .addFunction("getSplineExtrude", &GameObject::getSplineExtrude)
         .addFunction("getSplineInstantiate", &GameObject::getSplineInstantiate)
@@ -1515,6 +1625,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setFramebufferSize", &Camera::setFramebufferSize)
         .addFunction("setFramebufferFilter", &Camera::setFramebufferFilter)
         .addProperty("transparentSort", &Camera::isTransparentSort, &Camera::setTransparentSort)
+        .addProperty("transparencyMode", &Camera::getTransparencyMode, &Camera::setTransparencyMode)
+        .addProperty("oitWeightScale", &Camera::getOitWeightScale, &Camera::setOitWeightScale)
         .addProperty("depthTest", &Camera::isDepthTest, &Camera::setDepthTest)
         .addProperty("cullingMask", &getLuaCullingMask<Camera>, &setLuaCullingMask<Camera>)
         .addFunction("screenToRay", &Camera::screenToRay)
@@ -1533,6 +1645,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("type", &Light::getType, &Light::setType)
         .addFunction("setType", &Light::setType)
         .addProperty("direction", &Light::getDirection, (void(Light::*)(Vector3))&Light::setDirection)
+        .addProperty("worldDirection", &Light::getWorldDirection)
         .addFunction("setDirection", (void(Light::*)(const float, const float, const float))&Light::setDirection)
         .addProperty("color", &Light::getColor, (void(Light::*)(Vector3))&Light::setColor)
         .addFunction("setColor", (void(Light::*)(const float, const float, const float))&Light::setColor)
@@ -1580,6 +1693,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("shadowSourceRadius", &Light::getShadowSourceRadius, &Light::setShadowSourceRadius)
         .addProperty("shadowUpdateMode", &Light::getShadowUpdateMode, &Light::setShadowUpdateMode)
         .addFunction("requestShadowUpdate", &Light::requestShadowUpdate)
+        .addProperty("contactShadows", &Light::isContactShadows, &Light::setContactShadows)
+        .addProperty("contactShadowLength", &Light::getContactShadowLength, &Light::setContactShadowLength)
+        .addProperty("contactShadowThickness", &Light::getContactShadowThickness, &Light::setContactShadowThickness)
+        .addProperty("contactShadowSampleCount", &Light::getContactShadowSampleCount, &Light::setContactShadowSampleCount)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1608,6 +1725,29 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addVariable("AUTO_QUAD", ShadowCaster2DShape::AUTO_QUAD)
         .addVariable("POLYGON", ShadowCaster2DShape::POLYGON)
         .endNamespace();
+
+    // S57's capsule shadows
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<CapsuleShadowCaster, GameObject>("CapsuleShadowCaster")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &CapsuleShadowCaster::isEnabled, &CapsuleShadowCaster::setEnabled)
+        .addProperty("castShadows", &CapsuleShadowCaster::getCastShadows, &CapsuleShadowCaster::setCastShadows)
+        .addProperty("capsuleCount", &CapsuleShadowCaster::getCapsuleCount)
+        .addFunction("addCapsule", &CapsuleShadowCaster::addCapsule)
+        .addFunction("removeCapsule", &CapsuleShadowCaster::removeCapsule)
+        .addFunction("clearCapsules", &CapsuleShadowCaster::clearCapsules)
+        .addFunction("getCapsuleBone", &CapsuleShadowCaster::getCapsuleBone)
+        .addFunction("setCapsuleBone", &CapsuleShadowCaster::setCapsuleBone)
+        .addFunction("getCapsuleRadius", &CapsuleShadowCaster::getCapsuleRadius)
+        .addFunction("setCapsuleRadius", &CapsuleShadowCaster::setCapsuleRadius)
+        .addFunction("getCapsuleLength", &CapsuleShadowCaster::getCapsuleLength)
+        .addFunction("setCapsuleLength", &CapsuleShadowCaster::setCapsuleLength)
+        .addFunction("getCapsuleOffset", &CapsuleShadowCaster::getCapsuleOffset)
+        .addFunction("setCapsuleOffset", &CapsuleShadowCaster::setCapsuleOffset)
+        .addFunction("getCapsuleDirection", &CapsuleShadowCaster::getCapsuleDirection)
+        .addFunction("setCapsuleDirection", &CapsuleShadowCaster::setCapsuleDirection)
+        .addFunction("fitToSkeleton", &CapsuleShadowCaster::fitToSkeleton)
+        .endClass();
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<ShadowCaster2D, GameObject>("ShadowCaster2D")
@@ -1834,6 +1974,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getVerticesAABB", &Mesh::getVerticesAABB)
         .addFunction("getWorldAABB", &Mesh::getWorldAABB)
         .addFunction("getNumSubmeshes", &Mesh::getNumSubmeshes)
+        .addProperty("vertexCount", &Mesh::getVertexCount)
         .addProperty("receiveLights", &Mesh::isReceiveLights, &Mesh::setReceiveLights)
         .addProperty("receiveIBL", &Mesh::isReceiveIBL, &Mesh::setReceiveIBL)
         .addProperty("castShadows", &Mesh::isCastShadows, &Mesh::setCastShadows)
@@ -1841,6 +1982,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("receiveShadows", &Mesh::isReceiveShadows, &Mesh::setReceiveShadows)
         .addProperty("lodEnabled", &Mesh::isLodEnabled, &Mesh::setLodEnabled)
         .addProperty("lodBias", &Mesh::getLodBias, &Mesh::setLodBias)
+        .addProperty("allowGpuInstancing", &Mesh::isAllowGpuInstancing, &Mesh::setAllowGpuInstancing)
+        .addProperty("fadeMode", &Mesh::getLodFadeMode, &Mesh::setLodFadeMode)
+        .addProperty("animateCrossFade", &Mesh::isLodAnimateCrossFading, &Mesh::setLodAnimateCrossFading)
+        .addProperty("fadeTransitionWidth", &Mesh::getLodFadeTransitionWidth, &Mesh::setLodFadeTransitionWidth)
+        .addProperty("cullBelow", &Mesh::getLodCullBelow, &Mesh::setLodCullBelow)
+        .addFunction("forceLod", &Mesh::forceLod)
+        .addProperty("forcedLod", &Mesh::getForcedLod)
+        .addProperty("currentLod", &Mesh::getCurrentLod)
         .addProperty("renderInReflectionProbes", &Mesh::isRenderInReflectionProbes, &Mesh::setRenderInReflectionProbes)
         .addProperty("shadowsBillboard", &Mesh::isShadowsBillboard, &Mesh::setShadowsBillboard)
         .addProperty("transparent", &Mesh::isTransparent, &Mesh::setTransparent)
@@ -1870,6 +2019,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setFadeRange", &Mesh::setFadeRange)
         .addProperty("fadeStart", &Mesh::getFadeStart, &Mesh::setFadeStart)
         .addProperty("fadeEnd", &Mesh::getFadeEnd, &Mesh::setFadeEnd)
+        .addFunction("setNearFadeRange", &Mesh::setNearFadeRange)
+        .addProperty("nearFadeStart", &Mesh::getNearFadeStart, &Mesh::setNearFadeStart)
+        .addProperty("nearFadeEnd", &Mesh::getNearFadeEnd, &Mesh::setNearFadeEnd)
         .addProperty("cullDistance", &Mesh::getCullDistance, &Mesh::setCullDistance)
         .addProperty("cullInstances", &Mesh::isCullInstances, &Mesh::setCullInstances)
         .addFunction("addInstance",
@@ -2159,6 +2311,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("loadOBJ", &Model::loadOBJ)
         .addFunction("loadGLTF", &Model::loadGLTF)
         .addFunction("loadModel", &Model::loadModel)
+        .addProperty("filename", &Model::getFilename)
+        .addFunction("getAnimationCount", &Model::getAnimationCount)
         .addFunction("getAnimation", &Model::getAnimation)
         .addFunction("findAnimation", &Model::findAnimation)
         .addFunction("playAnimation",
@@ -3220,6 +3374,55 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const float, const float, const float>(&Button::setColorDisabled),
             luabridge::overload<const float, const float, const float, const float>(&Button::setColorDisabled))
         .addProperty("disabled", &Button::getDisabled, &Button::setDisabled)
+        // ui-components: Unity's Selectable. The image's colour and texture on a Button whose
+        // transition writes them are its Normal state's
+        .addProperty("interactable", &Button::isInteractable, &Button::setInteractable)
+        .addProperty("color", [](const Button* self) -> Vector4 { return self->getColor(); },
+                              [](Button* self, Vector4 color) { self->setColor(color); })
+        .addFunction("setColor",
+            luabridge::overload<const float, const float, const float>(&Button::setColor),
+            luabridge::overload<const float, const float, const float, const float>(&Button::setColor))
+        .addFunction("setTexture",
+            luabridge::overload<const std::string&>(&Button::setTexture),
+            luabridge::overload<Button*, const std::string&, TextureData>(
+                +[](Button* self, const std::string& id, TextureData data) { self->Image::setTexture(id, data); }),
+            luabridge::overload<Button*, Framebuffer*>(+[](Button* self, Framebuffer* framebuffer) { self->Image::setTexture(framebuffer); }))
+        .addFunction("setTextureSelected", (void(Button::*)(const std::string&))&Button::setTextureSelected)
+        .addProperty("colorSelected", &Button::getColorSelected, (void(Button::*)(Vector4))&Button::setColorSelected)
+        .addFunction("setColorSelected",
+            luabridge::overload<const float, const float, const float>(&Button::setColorSelected),
+            luabridge::overload<const float, const float, const float, const float>(&Button::setColorSelected))
+        .addProperty("transition", &Button::getTransition, &Button::setTransition)
+        .addProperty("fadeDuration", &Button::getFadeDuration, &Button::setFadeDuration)
+        .addProperty("scaleHovered", &Button::getScaleHovered, &Button::setScaleHovered)
+        .addProperty("scalePressed", &Button::getScalePressed, &Button::setScalePressed)
+        .addProperty("scaleSelected", &Button::getScaleSelected, &Button::setScaleSelected)
+        .addProperty("navigationMode", &Button::getNavigationMode, &Button::setNavigationMode)
+        .addProperty("wrapAround", &Button::getWrapAround, &Button::setWrapAround)
+        // a GameObject or nil (Explicit navigation)
+        .addProperty("selectOnUp",
+            [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getSelectOnUp()); },
+            [](Button* self, luabridge::LuaRef value) { self->setSelectOnUp(entityOf(value, "Button.selectOnUp")); })
+        .addProperty("selectOnDown",
+            [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getSelectOnDown()); },
+            [](Button* self, luabridge::LuaRef value) { self->setSelectOnDown(entityOf(value, "Button.selectOnDown")); })
+        .addProperty("selectOnLeft",
+            [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getSelectOnLeft()); },
+            [](Button* self, luabridge::LuaRef value) { self->setSelectOnLeft(entityOf(value, "Button.selectOnLeft")); })
+        .addProperty("selectOnRight",
+            [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getSelectOnRight()); },
+            [](Button* self, luabridge::LuaRef value) { self->setSelectOnRight(entityOf(value, "Button.selectOnRight")); })
+        .addProperty("selectOnEnable", &Button::getSelectOnEnable, &Button::setSelectOnEnable)
+        .addProperty("selected", &Button::isSelected)
+        .addProperty("state", &Button::getState)
+        .addFunction("select", &Button::select)
+        .addFunction("findSelectableOnUp", [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->findSelectableOnUp()); })
+        .addFunction("findSelectableOnDown", [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->findSelectableOnDown()); })
+        .addFunction("findSelectableOnLeft", [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->findSelectableOnLeft()); })
+        .addFunction("findSelectableOnRight", [](const Button* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->findSelectableOnRight()); })
+        // the click: released over it, or a Submit while selected (Unity's Button.onClick)
+        .addProperty("onClick", [] (Button* self, lua_State*) { return &self->getComponent<ButtonComponent>().onClick; },
+                                [] (Button* self, lua_State* L) { self->getComponent<ButtonComponent>().onClick = L; })
         .addFunction("getButtonComponent", &Button::getComponent<ButtonComponent>)
         .endClass();
 
@@ -4098,13 +4301,13 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // a GameObject with a Camera, nil: the main camera
         .addProperty("targetCamera",
             [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetCamera()); },
-            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetCamera(entityOf(value, "targetCamera")); })
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetCamera(entityOf(value, "VideoPlayer.targetCamera")); })
         .addProperty("targetCameraAlpha", &VideoPlayer::getTargetCameraAlpha, &VideoPlayer::setTargetCameraAlpha)
         .addProperty("aspectRatio", &VideoPlayer::getAspectRatio, &VideoPlayer::setAspectRatio)
         // a GameObject with a Mesh, Sprite or Image, nil: this one
         .addProperty("targetMaterialRenderer",
             [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetMaterialRenderer()); },
-            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetMaterialRenderer(entityOf(value, "targetMaterialRenderer")); })
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetMaterialRenderer(entityOf(value, "VideoPlayer.targetMaterialRenderer")); })
         // "baseColorTexture" (default), "emissiveTexture", ... or a shader @texture uniform
         .addProperty("targetMaterialProperty", &VideoPlayer::getTargetMaterialProperty, &VideoPlayer::setTargetMaterialProperty)
         // -1: every submesh
@@ -4117,7 +4320,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // a GameObject with an AudioSource, nil: this one
         .addProperty("targetAudioSource",
             [](const VideoPlayer* self) -> std::optional<GameObject> { return gameObjectOrNil(self->getScene(), self->getTargetAudioSource()); },
-            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetAudioSource(entityOf(value, "targetAudioSource")); })
+            [](VideoPlayer* self, luabridge::LuaRef value) { self->setTargetAudioSource(entityOf(value, "VideoPlayer.targetAudioSource")); })
         .addProperty("time", &VideoPlayer::getTime, &VideoPlayer::setTime)
         .addProperty("canSetTime", &VideoPlayer::canSetTime)
         .addProperty("frame", &VideoPlayer::getFrame, &VideoPlayer::setFrame)
@@ -4204,6 +4407,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("maxVoices", &AudioSource::getMaxVoices, &AudioSource::setMaxVoices)
         .addProperty("ignoreListenerPause", &AudioSource::isIgnoreListenerPause, &AudioSource::setIgnoreListenerPause)
         .addProperty("pitch", &AudioSource::getPitch, &AudioSource::setPitch)
+#if JASPERENGINE_SOUND_LAYER
+        .addProperty("event", &AudioSource::getEvent, &AudioSource::setEvent)
+        .addProperty("playOn", &AudioSource::getPlayOn, &AudioSource::setPlayOn)
+        .addProperty("minImpactSpeed", &AudioSource::getMinImpactSpeed, &AudioSource::setMinImpactSpeed)
+        .addProperty("fullVolumeImpactSpeed", &AudioSource::getFullVolumeImpactSpeed, &AudioSource::setFullVolumeImpactSpeed)
+        .addProperty("pitchRandomSemitones", &AudioSource::getPitchRandomSemitones, &AudioSource::setPitchRandomSemitones)
+        .addProperty("volumeRandomDb", &AudioSource::getVolumeRandomDb, &AudioSource::setVolumeRandomDb)
+#endif
         .addFunction("playOneShot", &luaAudioPlayOneShot)
         .addFunction("fadeIn", &luaAudioFadeIn)
         .addFunction("fadeOut", &luaAudioFadeOut)
@@ -4522,12 +4733,25 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setColliderTrigger", &Rigidbody2D::setColliderTrigger)
         .addFunction("isColliderTrigger", &Rigidbody2D::isColliderTrigger)
         .addFunction("getColliderPieceCount", &Rigidbody2D::getColliderPieceCount)
-        .addFunction("applyForce", &Rigidbody2D::applyForce)
-        .addFunction("applyForceToCenter", &Rigidbody2D::applyForceToCenter)
-        .addFunction("applyTorque", &Rigidbody2D::applyTorque)
-        .addFunction("applyLinearImpulse", &Rigidbody2D::applyLinearImpulse)
-        .addFunction("applyLinearImpulseToCenter", &Rigidbody2D::applyLinearImpulseToCenter)
-        .addFunction("applyAngularImpulse", &Rigidbody2D::applyAngularImpulse)
+        // wake defaults to true, as Unity's AddForce (Box2D ignores a force on a sleeping body)
+        .addFunction("applyForce", [] (Rigidbody2D* self, const Vector2& force, const Vector2& point, std::optional<bool> wake) {
+            self->applyForce(force, point, wake.value_or(true));
+        })
+        .addFunction("applyForceToCenter", [] (Rigidbody2D* self, const Vector2& force, std::optional<bool> wake) {
+            self->applyForceToCenter(force, wake.value_or(true));
+        })
+        .addFunction("applyTorque", [] (Rigidbody2D* self, float torque, std::optional<bool> wake) {
+            self->applyTorque(torque, wake.value_or(true));
+        })
+        .addFunction("applyLinearImpulse", [] (Rigidbody2D* self, const Vector2& impulse, const Vector2& point, std::optional<bool> wake) {
+            self->applyLinearImpulse(impulse, point, wake.value_or(true));
+        })
+        .addFunction("applyLinearImpulseToCenter", [] (Rigidbody2D* self, const Vector2& impulse, std::optional<bool> wake) {
+            self->applyLinearImpulseToCenter(impulse, wake.value_or(true));
+        })
+        .addFunction("applyAngularImpulse", [] (Rigidbody2D* self, float impulse, std::optional<bool> wake) {
+            self->applyAngularImpulse(impulse, wake.value_or(true));
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -4777,6 +5001,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setAllowedDOFsAll", &Rigidbody::setAllowedDOFsAll)
         .addFunction("setAllowedDOFs2DPlane", &Rigidbody::setAllowedDOFs2DPlane)
         .addFunction("setAllowedDOFs", &Rigidbody::setAllowedDOFs)
+        .addFunction("getAllowedDOFs", &luaRigidbodyGetAllowedDOFs)
         // Unity's mass fields: setting mass, centerOfMass or inertiaTensor turns its automatic off
         .addProperty("mass", &Rigidbody::getMass, &Rigidbody::setMass)
         .addProperty("automaticMass", &Rigidbody::isAutomaticMass, &Rigidbody::setAutomaticMass)
@@ -4808,6 +5033,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
                 else self->setMaterial(path);
             })
         .addFunction("setOverrideMassAndInertia", &Rigidbody::setOverrideMassAndInertia)
+        .addProperty("overrideMassProperties", &Rigidbody::isOverrideMassProperties)
         .addProperty("gravityFactor", &Rigidbody::getGravityFactor, &Rigidbody::setGravityFactor)
         .addProperty("collisionGroupID", &Rigidbody::getCollisionGroupID, &Rigidbody::setCollisionGroupID)
         .addFunction("setBitsFilter", &Rigidbody::setBitsFilter)
@@ -4992,6 +5218,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .beginClass<Contact3D>("Contact3D")
         .addFunction("getBaseOffset", &Contact3D::getBaseOffset)
         .addFunction("getWorldSpaceNormal", &Contact3D::getWorldSpaceNormal)
+#if JASPERENGINE_SOUND_LAYER
+        .addFunction("getApproachSpeed", &Contact3D::getApproachSpeed)
+#endif
         .addFunction("getPenetrationDepth", &Contact3D::getPenetrationDepth)
         .addFunction("getColliderIndex1", &Contact3D::getColliderIndex1)
         .addFunction("getColliderIndex2", &Contact3D::getColliderIndex2)

@@ -180,7 +180,7 @@ TextureLoadBench*:TextureCookBench*:TextureEncodeSize*:TextureEncodeQuality*' to
 unit-tests`: the generated corpus of `editor/tests/support/TextureCorpus.cpp`, Normal quality,
 bits per mip-0 texel with the mips.
 
-Per texture and family (`TextureCookBench.CorpusBitsPerTexelAndQuality`):
+Per texture and family (recorded benchmark run):
 
 | texture | family | format | VRAM bpt | disk bpt | quality |
 |---|---|---|---|---|---|
@@ -260,14 +260,12 @@ BUILD_TYPE=Release WEB_PROJECT=texture-formats tools/build.sh web
 GATE=texture-formats GATE_ARGS='--query=transcode_bench=1 --expect=transcode_web_budgets=pass --seconds 15' tools/build.sh web-gate
 ```
 
-`TextureBasisTranscodeBench.Uastc2048Chain` prints the native figures of the same chain.
-
 Sizes (R21, `tools/textures/runtime_size.py`): a linked Release game carries 97.3 KB of Zstandard's
 decoder (73.5), bcdec (9.8) and the KTX2 reader (14.0), budget 120 KB, and 31.3 KB more of CPU
 decodes, fallback plans and the cooked index. The web build adds 232.6 KB against R21's 250 KB
 (823 KB before S14b): Basis Universal's transcoder 145.2 KB (the D5 paths only, at `-O2`;
 `engine/libs/basisu/README.jasper.md`), Zstandard 37.3 KB and the texture runtime 50.1 KB (both at
-`-Os`); spec S14 deviation 23 has what was taken out. CI holds it to 240 KB.
+`-Os`); spec S14 deviation 23 has what was taken out. The limit is 240 KB.
 
 ## Libraries
 

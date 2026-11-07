@@ -53,7 +53,8 @@ return Player
 - Events: RegisterEngineEvent(self, "onUpdate" | "onFixedUpdate" | "onPostUpdate" |
   "onKeyDown" | "onMouseDown" | "onTouchStart" | ...); define the method first. Component
   events: RegisterEvent(self, Button(self.scene, self.entity):getButtonComponent().onPress,
-  "onPress"). No manual unregister. onDestroy runs on GameObject.destroy.
+  "onPress"). No manual unregister. onDestroy runs on GameObject.destroy. A button click is the
+  UI event onClick (Image(...):getUIComponent().onClick); Button onRelease fires on every release.
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
   Engine.deltatime. A non-existent method fails at runtime ("attempt to call a nil value").
   Check jasper://docs/lua-api (an index: read only the sections you need), the Lua stubs or
@@ -66,3 +67,6 @@ return Player
 - Lua has no C++ default arguments: pass every argument (e.g. the wake flag).
 - Lua has no on_start, getComponent or setProperty (timers: Timer.after/every). Never put
   editor property paths (submeshes[0]...) in scripts.
+- During play a saved Lua script reloads in place and keeps its instances (the next result's
+  external_changes.script_reload; a file that fails keeps its old code running). C++ waits for
+  Stop unless set_script_settings reload_cpp_during_play.

@@ -35,7 +35,7 @@ def main() -> int:
         digest = hashlib.sha256(archive.read_bytes()).hexdigest()
         entries.append(f'    {{"{match["id"]}", "{digest}", {archive.stat().st_size}ull}},')
         print(f"{match['id']}: {digest}")
-    text = ("// Written by the release workflow (.github/workflows/ci.yml, player-hashes job) for a v* tag: the\n"
+    text = ("// Written by tools/players/write_hashes.py for a v* tag: the\n"
             "// sha256 of every player runtime archive of that release (docs/specs/S30-shipping.md D5). A\n"
             "// development editor has none, so it trusts only players on this machine.\n"
             "#pragma once\n\n"

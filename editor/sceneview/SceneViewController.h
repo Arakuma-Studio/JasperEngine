@@ -132,6 +132,9 @@ namespace jasperengine::editor {
         // projection and orthographic size following the distance
         void lookFrom(SceneProject& sceneProject, const Vector3& position, const Vector3& target, const Vector3& up);
         bool isOrthographic(const SceneProject& sceneProject) const;
+        // The view state's projection on the camera of a 3D scene's Scene view, for a view of that
+        // size: also the scene's Default Camera (a scene with no Camera), which its code generates
+        static void projectCamera(SceneProject& sceneProject, int width, int height, bool force);
         void setProjection(SceneProject& sceneProject, bool orthographic);
         void toggleProjection(SceneProject& sceneProject);
         void setAxisView(SceneProject& sceneProject, SceneViewAxis axis);

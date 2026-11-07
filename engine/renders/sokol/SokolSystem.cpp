@@ -6,6 +6,7 @@
 #include "SokolAsyncCreate.h"
 
 #include <algorithm>
+#include <cassert>
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -17,6 +18,7 @@
 #include "sokol_gfx.h"
 #include "sokol_gpu_timer.h"
 #include "SokolCmdQueue.h"
+#include "SokolObject.h"
 #include "SokolPassPreview.h"
 #include "SokolPassRecorder.h"
 #include "SokolPipelineCache.h"
@@ -70,9 +72,16 @@ static const char* sokolLogItems[] = { _SG_LOG_ITEMS };
 
 // (sokol.cpp, where sokol's state is visible) slots of a resource pool in use and free
 extern "C" void jasperengine_sg_pool_usage(int kind, int* used, int* free);
+extern "C" void jasperengine_sg_wait_gpu_idle(void);
 // (sokol.cpp) Vulkan's per-frame buffers: 0 stream staging, 1 uniforms, 2 descriptors
 extern "C" bool jasperengine_sg_vk_frame_buffer_usage(int which, uint32_t* used, uint32_t* size, bool* overflown);
-extern "C" bool jasperengine_sg_vk_next_draw_descriptors(uint32_t limit, uint32_t* need, uint32_t* used, uint32_t* size);
+extern "C" bool jasperengine_sg_vk_next_draw_descriptors(uint32_t limit, bool bindings, uint32_t* need, uint32_t* used, uint32_t* size);
+// (sokol.cpp) the draw being set up is still valid (a failed sg_apply_bindings or uniform block turns
+// it off until the next sg_apply_pipeline)
+extern "C" bool jasperengine_sg_next_draw_valid(void);
+// (sokol.cpp) Vulkan: an upload past the stream staging buffer, through the copy staging path
+extern "C" bool jasperengine_sg_vk_update_buffer_alone(sg_buffer buf_id, const void* data, size_t size);
+extern "C" bool jasperengine_sg_vk_update_image_alone(sg_image img_id, const sg_image_data* data);
 
 namespace {
     // the pools, in GpuResourceKind order
@@ -109,6 +118,15 @@ namespace {
         uint64_t peak = 0;
         uint64_t skipped = 0;
         bool overflowLogged = false;
+        // An item larger than the whole limit (reserveAlone) never fits beside others: it is made
+        // alone, in a frame that took nothing before it, and fills that frame's budget (what comes
+        // after it waits for the next frame). One that finds the frame begun waits for the next,
+        // which keeps the budget for it (aloneWaiting). Before S55 R6 it was refused forever.
+        uint64_t frameAlone = 0;     // the bytes of the item made alone this frame
+        uint64_t frameDelayed = 0;   // the bytes of the items turned away for a later frame: not lost
+        bool aloneWaiting = false;   // one was turned away: the frame keeps the budget for it
+        bool aloneAsked = false;     // one asked this frame
+        bool aloneLogged = false;
 
         FrameBudget(const char* name, const char* contents, const char* items, const char* setting):
             name(name), contents(contents), items(items), setting(setting){}
@@ -119,15 +137,40 @@ namespace {
             enforced = hasBuffer;
             frameUsed = frameNeeded = frameSkipped = lastFrame = peak = skipped = 0;
             overflowLogged = false;
+            frameAlone = frameDelayed = 0;
+            aloneWaiting = aloneAsked = aloneLogged = false;
         }
 
         // an item placed at the end of what the frame took, the end then rounded up to `align`
-        // (sokol's shared buffers); false where enforced and it goes past the limit (not taken)
+        // (sokol's shared buffers); false where enforced and it goes past the limit (not taken),
+        // or while the frame keeps the budget for an item larger than the limit (reserveAlone)
         bool reserve(uint64_t size, uint64_t align){
             frameNeeded = roundUp(frameNeeded + size, align);
-            if (enforced && frameUsed + size > limit)
+            if (enforced && (frameUsed + size > limit || aloneWaiting || frameAlone > 0))
                 return false;
             frameUsed = roundUp(frameUsed + size, align);
+            return true;
+        }
+
+        // an item larger than the limit: true when it is made now, alone (the frame took nothing
+        // before it); it then fills the frame's budget
+        bool reserveAlone(uint64_t size){
+            aloneAsked = true;
+            if (frameUsed > 0 || frameAlone > 0){
+                aloneWaiting = true;
+                frameDelayed = roundUp(frameDelayed + size, 16);
+                return false;
+            }
+            aloneWaiting = false;
+            frameAlone = size;
+            frameUsed = limit;
+            if (!aloneLogged){
+                aloneLogged = true;
+                Log::warn("An upload of %llu bytes is larger than the GPU %s (%llu bytes a frame): it is made alone in "
+                          "its own frame, waiting for the GPU (slower). Raise Engine::GpuResourceLimits::%s "
+                          "(Engine::setGpuResourceLimits before the engine starts)\n",
+                          (unsigned long long)size, name, (unsigned long long)limit, setting);
+            }
             return true;
         }
 
@@ -152,9 +195,14 @@ namespace {
                               (unsigned long long)frameNeeded, contents, setting, (unsigned long long)limit, name, items);
                 }
             }
-            lastFrame = frameNeeded;
-            peak = std::max(peak, frameNeeded);
-            frameUsed = frameNeeded = frameSkipped = 0;
+            lastFrame = frameNeeded + frameAlone + frameDelayed;
+            peak = std::max(peak, lastFrame);
+            frameUsed = frameNeeded = frameSkipped = frameAlone = frameDelayed = 0;
+            // the item turned away is asked for again by its owner next frame; one not asked for
+            // again (its data went, or became smaller) keeps nothing waiting
+            if (!aloneAsked)
+                aloneWaiting = false;
+            aloneAsked = false;
         }
     };
 
@@ -246,6 +294,9 @@ void sokol_log(const char* tag,                // e.g. 'sg'
         }
         message_or_null = unnamed;
     }
+    // a call that failed can leave sokol skipping draws until the next sg_apply_pipeline
+    if (log_level <= 1 && !Engine::isAsyncThread())
+        SokolSystem::forgetAppliedState();
     if (log_level == 0){
         Log::print("(PANIC): %s\n", message_or_null);
     }else if (log_level == 1){
@@ -290,6 +341,8 @@ void SokolSystem::setup(){
     descriptorFrameSkippedBytes = 0;
 
     sg_setup(&desc);
+    // a new context: nothing of an earlier one is applied
+    forgetAppliedState();
 
     // diagnostics: the passes, draws and resources of each frame (getFrameStatsLine); with the
     // profiler, sokol's counters are always on (get_render_stats' upload bytes)
@@ -388,6 +441,49 @@ namespace{
     bool passOpen = false;
     uint64_t nestedPasses = 0;
 
+    uint64_t commitCount = 0;
+
+    // the batcher's held draws and the lazy scissor (setDeferredFlush)
+    SokolSystem::DeferredFlush deferredFlush = nullptr;
+    void* deferredOwner = nullptr;
+    bool inDeferredFlush = false;
+    SokolSystem::ScissorRect requestedScissor;
+    SokolSystem::ScissorRect appliedScissor;
+    // the open pass's render area: a rect covering it is the pass's own scissor (wholePass), so a
+    // reset to the whole target keeps a batch's runs together with the draws before any scissor
+    int passWidth = 0;
+    int passHeight = 0;
+
+    SokolSystem::ScissorRect wholePass(){
+        SokolSystem::ScissorRect rect;
+        rect.width = passWidth;
+        rect.height = passHeight;
+        rect.set = passWidth > 0 && passHeight > 0;
+        return rect;
+    }
+
+    void measurePass(const sg_pass& pass){
+        const sg_view view = pass.attachments.colors[0].id != SG_INVALID_ID ? pass.attachments.colors[0] : pass.attachments.depth_stencil;
+        if (view.id != SG_INVALID_ID){
+            const sg_view_desc desc = sg_query_view_desc(view);
+            const int mip = pass.attachments.colors[0].id != SG_INVALID_ID ? desc.color_attachment.mip_level : desc.depth_stencil_attachment.mip_level;
+            const sg_image image = sg_query_view_image(view);
+            passWidth = std::max(1, sg_query_image_width(image) >> mip);
+            passHeight = std::max(1, sg_query_image_height(image) >> mip);
+        }else{
+            passWidth = pass.swapchain.width;
+            passHeight = pass.swapchain.height;
+        }
+    }
+
+    void applyScissorRect(const SokolSystem::ScissorRect& rect){
+        // what the instancing batch holds was for the rect before
+        SokolDrawBatch::flush();
+        if (rect.set)
+            sg_apply_scissor_rect(rect.x, rect.y, rect.width, rect.height, rect.originTopLeft);
+        appliedScissor = rect;
+    }
+
     struct PendingInitialization{
         sg_attachments attachments;
         bool loadDepthStencil;
@@ -427,20 +523,102 @@ namespace{
     }
 }
 
+bool SokolSystem::ScissorRect::operator==(const ScissorRect& rhs) const{
+    if (set != rhs.set)
+        return false;
+    return !set || (x == rhs.x && y == rhs.y && width == rhs.width && height == rhs.height && originTopLeft == rhs.originTopLeft);
+}
+
+void SokolSystem::setDeferredFlush(DeferredFlush flush, void* owner){
+    if (!flush && deferredFlush){
+        flushDeferred();
+        // what was requested while deferring, for whatever draws next
+        if (passOpen && requestedScissor != appliedScissor && requestedScissor.set)
+            applyScissorRect(requestedScissor);
+    }
+    deferredFlush = flush;
+    deferredOwner = owner;
+}
+
+bool SokolSystem::isDeferringDraws(){
+    return deferredFlush != nullptr;
+}
+
+void SokolSystem::flushDeferred(){
+    if (!deferredFlush || inDeferredFlush)
+        return;
+    inDeferredFlush = true;
+    deferredFlush(deferredOwner);
+    inDeferredFlush = false;
+}
+
+void SokolSystem::beforeForeignDraw(){
+    if (!deferredFlush || inDeferredFlush)
+        return;
+    flushDeferred();
+    if (requestedScissor != appliedScissor){
+        if (requestedScissor.set){
+            applyScissorRect(requestedScissor);
+        }else{
+            // the pass's own scissor is never requested again once a rect was (a pass begins
+            // with it): nothing to restore it from, keep what is applied
+            requestedScissor = appliedScissor;
+        }
+    }
+}
+
+void SokolSystem::applyBatchScissor(const ScissorRect& rect){
+    if (rect != appliedScissor && rect.set)
+        applyScissorRect(rect);
+}
+
+void SokolSystem::applyScissor(int x, int y, int width, int height, bool originTopLeft){
+    ScissorRect rect;
+    rect.x = x;
+    rect.y = y;
+    rect.width = width;
+    rect.height = height;
+    rect.originTopLeft = originTopLeft;
+    rect.set = true;
+    if (passWidth > 0 && x <= 0 && y <= 0 && x + width >= passWidth && y + height >= passHeight)
+        rect = wholePass();
+    requestedScissor = rect;
+    if (!deferredFlush)
+        applyScissorRect(rect);
+}
+
+uint64_t SokolSystem::getCommitCount(){
+    return commitCount;
+}
+
+const SokolSystem::ScissorRect& SokolSystem::getRequestedScissor(){
+    return requestedScissor;
+}
+
 void SokolSystem::beginPass(const sg_pass& pass){
     if (passOpen){
         nestedPasses++;
         Log::error("Render pass '%s' begun inside another: passes do not nest (an engine bug)", pass.label ? pass.label : "pass");
     }
+    // what a batch holds belongs to the pass that ends (SokolDrawBatch: its scope never spans one)
+    SokolDrawBatch::flush();
     sg_begin_pass(pass);
     passOpen = true;
-    // a new pass has no pipeline applied (the dynamic path's "applied last")
-    SokolPipelineCache::invalidateApplied();
+    // sokol starts every pass with its whole target as the scissor
+    measurePass(pass);
+    requestedScissor = wholePass();
+    appliedScissor = requestedScissor;
+    // a new pass has no pipeline, uniforms or bindings applied
+    forgetAppliedState();
 }
 
 void SokolSystem::endPass(){
+    // the draws still held belong to this pass: the batcher's, then the instancing batch's
+    flushDeferred();
+    SokolDrawBatch::flush();
     sg_end_pass();
     passOpen = false;
+    forgetAppliedState();
     // the Frame Debugger's preview of the pass that ended, when it asked for it (S15; its blit is
     // a pass of its own, which does not preview itself)
     SokolPassPreview::afterEndPass();
@@ -492,6 +670,7 @@ void SokolSystem::commit(){
     descriptorFrameSkippedBytes = 0;
 
     sg_commit();
+    commitCount++;
     // the GPU times of earlier commits that resolved meanwhile (never waits)
     sgj_commit_times times;
     while (sgj_gpu_timer_pop(&times)){
@@ -503,6 +682,7 @@ void SokolSystem::commit(){
     uniformBudget.endFrame();
     streamBudget.endFrame();
     descriptorBudget.endFrame();
+    SokolDrawBatch::endFrame();
 }
 
 bool SokolSystem::reserveUniformBytes(unsigned int size){
@@ -541,17 +721,35 @@ namespace{
     }
 }
 
+// an upload larger than the whole stream budget (it can never fit beside others): alone in its own
+// frame (FrameBudget::reserveAlone); Vulkan makes it through the copy staging path, which it fits in
+// chunks, the other backends write the resource as always
 bool SokolSystem::updateBuffer(sg_buffer buffer, const sg_range& data){
+    // (a held draw may read it: drawn before)
+    SokolDrawBatch::flush();
+    // sokol may write another of the buffer's backend buffers (dynamic and stream ones rotate):
+    // the same handle in a draw's bindings names other memory
+    forgetAppliedBindings();
     if (streamUpdated(buffer)){
         const uint64_t size = data.size;
-        if (!reserveStreamBytes(&size, 1))
+        if (streamBudget.enforced && size > streamBudget.limit){
+            if (!streamBudget.reserveAlone(size)){
+                streamBudget.skip();
+                return false;
+            }
+            if (vulkanBuffers)
+                return jasperengine_sg_vk_update_buffer_alone(buffer, data.ptr, data.size);
+        }else if (!reserveStreamBytes(&size, 1)){
             return false;
+        }
     }
     sg_update_buffer(buffer, data);
     return true;
 }
 
 int SokolSystem::appendBuffer(sg_buffer buffer, const sg_range& data){
+    // (as updateBuffer)
+    forgetAppliedBindings();
     if (streamUpdated(buffer)){
         const uint64_t size = data.size;
         if (!reserveStreamBytes(&size, 1))
@@ -561,29 +759,127 @@ int SokolSystem::appendBuffer(sg_buffer buffer, const sg_range& data){
 }
 
 bool SokolSystem::updateImage(sg_image image, const sg_image_data& data){
+    SokolDrawBatch::flush();
+    // (as updateBuffer)
+    forgetAppliedBindings();
     if (sg_query_image_state(image) == SG_RESOURCESTATE_VALID && sg_query_image_usage(image).stream_update){
         // sokol stages the image's mip levels (each slice of one together)
         const int mips = std::min(std::max(sg_query_image_num_mipmaps(image), 1), (int)SG_MAX_MIPMAPS);
         uint64_t sizes[SG_MAX_MIPMAPS] = {};
-        for (int mip = 0; mip < mips; mip++)
+        uint64_t total = 0;
+        for (int mip = 0; mip < mips; mip++){
             sizes[mip] = data.mip_levels[mip].size;
-        if (!reserveStreamBytes(sizes, mips))
+            total = roundUp(total + sizes[mip], 16);
+        }
+        // (as updateBuffer: larger than the whole budget, alone in its own frame)
+        if (streamBudget.enforced && total > streamBudget.limit){
+            if (!streamBudget.reserveAlone(total)){
+                streamBudget.skip();
+                return false;
+            }
+            if (vulkanBuffers)
+                return jasperengine_sg_vk_update_image_alone(image, &data);
+        }else if (!reserveStreamBytes(sizes, mips)){
             return false;
+        }
     }
     sg_update_image(image, data);
     return true;
 }
 
-bool SokolSystem::reserveDescriptorBytes(){
+bool SokolSystem::reserveDescriptorBytes(bool bindings){
     if (!descriptorBudget.enforced)
         return true;
     uint32_t need = 0, used = 0, size = 0;
     const uint32_t limit = (uint32_t)std::min<uint64_t>(descriptorBudget.limit, UINT32_MAX);
-    if (jasperengine_sg_vk_next_draw_descriptors(limit, &need, &used, &size))
+    if (jasperengine_sg_vk_next_draw_descriptors(limit, bindings, &need, &used, &size))
         return true;
     descriptorFrameSkippedBytes += need;
     descriptorBudget.skip();
     return false;
+}
+
+namespace {
+    // what the current pass applied last (SokolSystem::applyPipeline, applyBindings)
+    struct AppliedDrawState {
+        uint32_t pipeline = SG_INVALID_ID;
+        uint32_t epoch = 1;
+        bool bindingsApplied = false;
+        sg_bindings bindings = {};
+        bool skipping = true;
+    };
+
+    AppliedDrawState& appliedDrawState(){
+        static AppliedDrawState state;
+        return state;
+    }
+}
+
+bool SokolSystem::applyPipeline(uint32_t pipelineId){
+    assert(!Engine::isAsyncThread() && "the applied state is the render thread's");
+    AppliedDrawState& state = appliedDrawState();
+    if (pipelineId == state.pipeline && state.skipping)
+        return false;
+    // recorded before the call: an error inside it forgets them again (sokol_log)
+    state.pipeline = pipelineId;
+    state.epoch++;
+    // sokol wants the bindings again after every sg_apply_pipeline
+    state.bindingsApplied = false;
+    sg_apply_pipeline({pipelineId});
+    Engine::addSetPassCall();
+    return true;
+}
+
+void SokolSystem::setRepeatedStateSkipped(bool skipped){
+    appliedDrawState().skipping = skipped;
+    forgetAppliedState();
+}
+
+bool SokolSystem::isBindingsApplied(const sg_bindings& bindings){
+    const AppliedDrawState& state = appliedDrawState();
+    return state.skipping && state.bindingsApplied && std::memcmp(&state.bindings, &bindings, sizeof(sg_bindings)) == 0;
+}
+
+void SokolSystem::applyBindings(const sg_bindings& bindings){
+    assert(!Engine::isAsyncThread() && "the applied state is the render thread's");
+    AppliedDrawState& state = appliedDrawState();
+    state.bindings = bindings;
+    state.bindingsApplied = true;
+    sg_apply_bindings(&bindings);
+    // a binding that is not ready (a buffer still being created) turns the pipeline's later draws
+    // off in sokol until it is applied again: the next draw applies both
+    if (!jasperengine_sg_next_draw_valid())
+        forgetAppliedState();
+}
+
+void SokolSystem::draw(int baseElement, int numElements, int numInstances){
+    sg_draw(baseElement, numElements, numInstances);
+    if (!jasperengine_sg_next_draw_valid())
+        forgetAppliedState();
+}
+
+void SokolSystem::forgetAppliedState(){
+    // (the render thread's state: a loading thread neither draws nor holds it)
+    if (Engine::isAsyncThread())
+        return;
+    AppliedDrawState& state = appliedDrawState();
+    state.pipeline = SG_INVALID_ID;
+    state.epoch++;
+    state.bindingsApplied = false;
+}
+
+void SokolSystem::forgetAppliedBindings(){
+    if (Engine::isAsyncThread())
+        return;
+    appliedDrawState().bindingsApplied = false;
+}
+
+uint32_t SokolSystem::appliedEpoch(){
+    return appliedDrawState().epoch;
+}
+
+uint32_t SokolSystem::appliedPipeline(){
+    return appliedDrawState().pipeline;
 }
 
 uint64_t SokolSystem::getBudgetLastFrame(int kind){
@@ -618,6 +914,7 @@ void SokolSystem::overrideBudget(int kind, uint64_t limit, bool enforced){
     budget->limit = limit;
     budget->enforced = enforced;
     budget->overflowLogged = false;
+    budget->aloneWaiting = false;
 }
 
 void SokolSystem::restoreBudgets(){
@@ -627,6 +924,7 @@ void SokolSystem::restoreBudgets(){
         FrameBudget* budget = budgetOf(kind);
         budget->limit = configured[kind];
         budget->enforced = budget->backendBuffer;
+        budget->aloneWaiting = false;
     }
 }
 
@@ -639,11 +937,17 @@ bool SokolSystem::getVulkanFrameBufferUsage(int which, uint64_t& used, uint64_t&
     return vulkan;
 }
 
+void SokolSystem::waitGpuIdle(){
+    jasperengine_sg_wait_gpu_idle();
+}
+
 void SokolSystem::shutdown(){
     // commands an async loader committed after the last frame (the Project window's
     // thumbnail job, an editor closing right after it opened): executed first, as the next
     // frame would have, or flush_commands waits forever for the render semaphore they hold
     SokolCmdQueue::execute_commands();
+    // and what the upload budget left for later frames
+    SokolCmdQueue::drain();
     SokolCmdQueue::flush_commands();
     SokolCmdQueue::wait_for_flush();
     SokolCmdQueue::finish();
@@ -651,6 +955,7 @@ void SokolSystem::shutdown(){
     SokolAsyncCreate::shutdown();
     SokolAsyncCreate::forgetWarmDraws();
     SokolPassPreview::destroy();
+    SokolDrawBatch::shutdown();
     SokolPipelineCache::clear();
     SokolTraceHub::uninstall();
 #if JASPERENGINE_PROFILER
@@ -660,6 +965,9 @@ void SokolSystem::shutdown(){
     sgj_gpu_timer_shutdown();
     pendingInitializations.clear();
     passOpen = false;
+    forgetAppliedState();
+    deferredFlush = nullptr;
+    deferredOwner = nullptr;
     sg_shutdown();
     featuresQueried = false;
     features = RenderFeatures();
@@ -691,6 +999,8 @@ const RenderFeatures& SokolSystem::getFeatures(){
         features.renderR16F = r16f.render;
         features.blendR16F = r16f.blend;
         features.filterR16F = r16f.filter;
+        features.msaaRGBA16F = rgba16f.msaa;
+        features.msaaR16F = r16f.msaa;
         features.maxTextureSize2D = sg_query_limits().max_image_size_2d;
         for (size_t f = 0; f < kGpuTextureFormatCount; f++)
             features.textureFormats.set((GpuTextureFormat)f, SokolTexture::isFormatSupported((GpuTextureFormat)f));

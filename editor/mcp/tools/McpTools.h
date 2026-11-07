@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,12 @@ namespace jasperengine::editor::mcp {
 
     class McpRegistry;
     class McpContext;
+    class McpCall;
+
+    // A search result's next step when its query matches editor tools this session does not list
+    // (a group it has not enabled): adds "editor_tools" [{tool, group, enable}] and "next" to data,
+    // and the next step to text (DocsTools.cpp). The searches agents look in call it.
+    void addUnlistedTools(const std::shared_ptr<McpCall>& call, const std::string& query, std::string& text, Json& data);
 
     // Every tool, resource and prompt of the editor, in tools/list order (McpTools.cpp).
     // Side-effect free: needs no App and does no I/O, so the CLI builds the same registry
@@ -41,12 +48,19 @@ namespace jasperengine::editor::mcp {
     void registerDataTools(McpRegistry& registry);
     // AudioTools.cpp: audio_mixer (the project's Audio Mixer asset)
     void registerAudioTools(McpRegistry& registry);
+    void registerAudioSessionTools(McpRegistry& registry);
+    void registerSoundTools(McpRegistry& registry);
+    // SoundEventTools.cpp: edit_sound_event (Sound Events, docs/specs/S37-sound-events.md)
+    void registerSoundEventTools(McpRegistry& registry);
+    // get_asset_info's block of a .soundevent
+    nlohmann::json soundEventInfo(Project* project, const std::filesystem::path& file);
     void registerScriptTools(McpRegistry& registry);
     void registerAssetTools(McpRegistry& registry);
     void registerMaterialsLightingTools(McpRegistry& registry);
     void registerAssetIdentityTools(McpRegistry& registry);
     // S14: texture import settings and cooks (in AssetTools.cpp)
     void registerTextureTools(McpRegistry& registry);
+    void registerMeshTools(McpRegistry& registry);
     void registerDocsTools(McpRegistry& registry);
     void registerBuildTools(McpRegistry& registry);
     void registerPublishTools(McpRegistry& registry);   // S30
@@ -78,6 +92,9 @@ namespace jasperengine::editor::mcp {
     void registerDiagnosticsTools(McpRegistry& registry);
     void registerAtmosphereTools(McpRegistry& registry);
     void registerProfilerTools(McpRegistry& registry);
+    // S54: capture_model_lods (group meshes, shared with S53's model import tools)
+    void registerMeshLodTools(McpRegistry& registry);
+    void registerDeviceTools(McpRegistry& registry);
     void registerScriptingTools(McpRegistry& registry);
     void registerGraphTools(McpRegistry& registry);
     void registerGameplayTools(McpRegistry& registry);

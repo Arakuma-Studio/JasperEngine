@@ -10,6 +10,7 @@
 #include "reload/HotReloadService.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
+#include "mcp/McpDialogs.h"
 #include "mcp/McpJobs.h"
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
@@ -21,6 +22,8 @@
 
 #include "App.h"
 #include "search/SearchPalette.h"
+#include "widget/ColorPickerWindow.h"
+#include "widget/CurveField.h"
 #include "EditorVersion.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
@@ -32,6 +35,8 @@
 #include "memory/MemoryStats.h"
 #include "physics/PlacementSession.h"
 #include "util/FileUtils.h"
+#include "util/SystemFonts.h"
+#include "AppSettings.h"
 #include "window/CodeEditor.h"
 #include "window/ProjectWindow.h"
 #include "window/AssetPanels.h"
@@ -618,7 +623,20 @@ Json fileWatcherJson() {
     };
 }
 
-void editorStatusTool(const CallPtr& call) {
+// The system fonts the editor's fonts fall back to for CJK and emoji (SystemFonts)
+Json editorFontsJson() {
+    static const char* const states[] = {"idle", "searching", "ready", "none"};
+    Json fallbacks = Json::array();
+    for (const SystemFonts::Font& font : SystemFonts::fonts()) {
+        fallbacks.push_back(Json{{"file", font.path}, {"face", font.faceIndex}, {"covers", font.covers}});
+    }
+    return Json{{"state", states[static_cast<int>(SystemFonts::state())]},
+                {"cjk_font_language", AppSettings::getCjkFontLanguage()},
+                {"effective_language", SystemFonts::languageTag(SystemFonts::effectiveLanguage())},
+                {"fallbacks", fallbacks}};
+}
+
+void reportEditorStatus(const CallPtr& call) {
     McpContext& ctx = call->ctx();
     Project* project = ctx.project();
     App& app = ctx.app();
@@ -627,6 +645,7 @@ void editorStatusTool(const CallPtr& call) {
     Json scenes = Json::array();
     Json unsavedScenes = Json::array();
     bool playing = false;
+    bool saving = false;
     for (SceneProject* scene : project->getScenesAndPrefabStages()) {
         Json item = McpRefs::sceneJson(project, *scene);
         item["selected"] = scene->id == project->getSelectedSceneId();
@@ -635,7 +654,9 @@ void editorStatusTool(const CallPtr& call) {
         item["entity_count"] = scene->entities.size();
         scenes.push_back(item);
         if (scene->isModified) unsavedScenes.push_back(scene->id);
-        if (scene->playState != ScenePlayState::STOPPED) playing = true;
+        // a scene the editor is saving is not playing: calls wait for the save (McpServer::execute)
+        if (scene->playState == ScenePlayState::SAVING) saving = true;
+        else if (scene->playState != ScenePlayState::STOPPED) playing = true;
     }
 
     Json jobs = Json::array();
@@ -653,7 +674,7 @@ void editorStatusTool(const CallPtr& call) {
     Json dialog = nullptr;
     EditorDialogInfo info;
     if (app.getOpenDialog(info)) {
-        dialog = {{"kind", info.kind}, {"title", info.title}, {"message", info.message}, {"choices", info.choices}};
+        dialog = dialogJson(info);
     }
 
     // What the asset windows show (S04), with the Project window's clickable rects in window
@@ -673,7 +694,8 @@ void editorStatusTool(const CallPtr& call) {
         }
         ui["project_window"] = {{"drawn", state.drawn}, {"directory", state.directory}, {"search", state.search},
                                 {"selected", state.selected}, {"search_box", rectJson(state.searchBox)},
-                                {"tree", tree}, {"entries", entries}, {"context_menu", menu}};
+                                {"tree", tree}, {"entries", entries}, {"context_menu", menu},
+                                {"clipboard", {{"files", state.clipboard}, {"cut", state.clipboardCut}}}};
     }
     if (AssetReferencesWindow* references = app.getAssetReferencesWindow()) {
         Json referrers = Json::array();
@@ -690,6 +712,13 @@ void editorStatusTool(const CallPtr& call) {
     if (SearchPalette* palette = app.getSearchPalette()) {
         const SearchPalette::UiState state = palette->uiState();
         ui["search_palette"] = {{"open", state.open}, {"query", state.query}, {"results", state.results}, {"selected", state.selected}};
+    }
+    {
+        const ui::CurveWindow::UiState state = ui::CurveWindow::get().uiState();
+        ui["curve_window"] = {{"open", state.open}, {"focused", state.focused}, {"selected_keys", state.selectedKeys}, {"clipboard_keys", state.clipboardKeys},
+                              {"view", {{"t0", state.view.t0}, {"t1", state.view.t1}, {"v0", state.view.v0}, {"v1", state.view.v1}}}};
+        const ui::ColorPickerWindow& picker = ui::ColorPickerWindow::get();
+        ui["color_picker"] = {{"open", picker.isOpen()}, {"focused", picker.isFocused()}, {"sampling", picker.isSampling()}};
     }
 
     const SceneProject* selected = project->getSelectedScene();
@@ -715,6 +744,7 @@ void editorStatusTool(const CallPtr& call) {
         }},
         {"scenes", scenes},
         {"playing", playing},
+        {"saving", saving},
         {"unsaved", {
             {"scene_ids", unsavedScenes},
             {"code_editor", ctx.codeEditor() && ctx.codeEditor()->hasUnsavedChanges()},
@@ -724,10 +754,13 @@ void editorStatusTool(const CallPtr& call) {
         {"waiting_calls", status.pendingCalls},
         {"auto_sync", McpAutoSync::get().stats()},
         {"file_watcher", fileWatcherJson()},
+        {"editor_fonts", editorFontsJson()},
         // the status bar's short message ("Preparing picking for Rock...", S26)
         {"status_message", StatusBar::getTransientMessage()},
         {"scripts", ScriptStatus::get().toJson()},
         {"frame_ms", app.takeFrameStats()},
+        // false: minimized or hidden, nothing is drawn (screenshots fail; a playing game updates)
+        {"window", {{"visible", app.isWindowVisible()}}},
         {"dialog", dialog},
         {"ui", ui},
         // S25: what the layouts and the palette change
@@ -751,34 +784,14 @@ void editorStatusTool(const CallPtr& call) {
     call->ok(text, data);
 }
 
-// ------------------------------------------------------------------ respond_dialog
-
-void respondDialogTool(const CallPtr& call) {
-    App& app = call->ctx().app();
-    EditorDialogInfo dialog;
-    if (!app.getOpenDialog(dialog)) {
-        call->ok("No dialog is open.");
+void editorStatusTool(const CallPtr& call) {
+    // a modal opened by the last frame is drawn by the next: a status sent right after it says so
+    if (EditorModal::settling()) {
+        call->ctx().app().requestRedraw();
+        call->afterFrames(1, [call]() { reportEditorStatus(call); });
         return;
     }
-    const std::string choice = call->args().value("choice", "");
-    std::string error;
-    if (!app.answerDialog(choice, error)) {
-        call->fail(error, Json{{"dialog", {{"kind", dialog.kind}, {"title", dialog.title},
-                                           {"message", dialog.message}, {"choices", dialog.choices}}}});
-        return;
-    }
-    // The answer is pressed on the next frame; report what the editor shows after it
-    call->afterFrames(2, [call, dialog, choice]() {
-        App& app = call->ctx().app();
-        EditorDialogInfo next;
-        Json data = {{"answered", {{"title", dialog.title}, {"choice", choice}}}};
-        std::string text = "Answered \"" + dialog.title + "\" with " + choice + ".";
-        if (app.getOpenDialog(next)) {
-            data["dialog"] = {{"kind", next.kind}, {"title", next.title}, {"message", next.message}, {"choices", next.choices}};
-            text += " Now open: \"" + next.title + "\": " + next.message;
-        }
-        call->ok(text, data);
-    });
+    reportEditorStatus(call);
 }
 
 // ------------------------------------------------------------------ tool_groups
@@ -1047,11 +1060,12 @@ void registerCoreTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Respond to Dialog";
         tool.description =
-            "Click a button of the open editor dialog (editor_status; edit tools are refused meanwhile). The message "
-            "says what yes/no mean (e.g. yes = Save, no = Discard Changes); save dialogs take cancel.";
+            "Answer the open editor dialog or file picker (editor_status.dialog): values fill its fields, then choice "
+            "presses a button. A refusal is an error and the dialog stays open.";
         tool.inputSchema = object({
-            {"choice", stringEnum("", {"ok", "yes", "no", "cancel"})}
-        }, {"choice"});
+            {"choice", string("A word of dialog.choices.")},
+            {"values", anyObject("{field: value} of dialog.fields; a file picker takes path.")}
+        });
         tool.handler = respondDialogTool;
         registry.addTool(std::move(tool));
     }
@@ -1062,8 +1076,8 @@ void registerCoreTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Tool Groups";
         tool.description =
-            "List the tool groups; enable/disable lists a group in this session's tools/list (core always is). "
-            "Every tool is callable by name whether listed or not, also in batch.";
+            "List the tool groups and what each holds; enable/disable lists a group's tools in this session (core "
+            "always is).";
         tool.inputSchema = object({
             {"enable", array(string(""), "")},
             {"disable", array(string(""), "")}

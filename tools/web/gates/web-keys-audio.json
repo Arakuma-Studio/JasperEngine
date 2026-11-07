@@ -1,0 +1,26 @@
+{
+  "description": "tools/test-projects/web-keys-audio (WEB_PROJECT=web-keys-audio tools/build.sh web): with Chrome's desktop autoplay policy the page's audio waits for a gesture; the first key press (CDP Input.dispatchKeyEvent, trusted) starts it, and Meta, ContextMenu and events without a code (legacy keyCode 224 and 8) reach the game as D_KEY_LEFT_SUPER, D_KEY_RIGHT_SUPER, D_KEY_MENU, D_KEY_LEFT_SUPER, D_KEY_BACKSPACE (platform-lifecycle spec D10, D11). No pixel check: the scene is empty.",
+  "isolated": true,
+  "chrome_flags": ["--autoplay-policy=user-gesture-required"],
+  "eval_before_input": "(window.miniaudio && window.miniaudio.devices || []).filter(d => d && d.webaudio).map(d => d.webaudio.state).join(',') || 'no audio device'",
+  "eval_before_input_expect": ["suspended"],
+  "keys": [
+    {"code": "KeyA", "key": "a", "key_code": 65},
+    {"code": "MetaLeft", "key": "Meta", "key_code": 91, "location": 1},
+    {"code": "MetaRight", "key": "Meta", "key_code": 92, "location": 2},
+    {"code": "ContextMenu", "key": "ContextMenu", "key_code": 93},
+    {"key": "Meta", "key_code": 224, "location": 1},
+    {"key": "Backspace", "key_code": 8}
+  ],
+  "eval": "(window.miniaudio && window.miniaudio.devices || []).filter(d => d && d.webaudio).map(d => d.webaudio.state).join(',') || 'no audio device'",
+  "eval_expect": ["running"],
+  "console": [
+    {"text": "[gate] key 65", "level": "log"},
+    {"text": "[gate] key 343", "level": "log"},
+    {"text": "[gate] key 347", "level": "log"},
+    {"text": "[gate] key 348", "level": "log"},
+    {"text": "[gate] key 343", "level": "log"},
+    {"text": "[gate] key 259", "level": "log"}
+  ],
+  "ordered": true
+}

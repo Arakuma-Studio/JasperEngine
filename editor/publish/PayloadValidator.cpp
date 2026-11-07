@@ -14,9 +14,11 @@
 #include "publish/BinaryInfo.h"
 #include "util/ZipArchive.h"
 #include "util/FileUtils.h"
+#include "util/ApplePrivacy.h"
 
 #include <algorithm>
 #include <fstream>
+#include <iterator>
 #include <set>
 
 using namespace jasperengine;
@@ -209,7 +211,15 @@ namespace {
                 return true;
             }};
         checkContent(content, relative + "!" + assets, findings);
-        if (!bundle) {
+        if (bundle) {
+            // bundles have no apksigner: jarsigner's signature block is what Google Play looks for
+            const bool isSigned = std::any_of(names.begin(), names.end(), [](const std::string& name) {
+                if (name.rfind("META-INF/", 0) != 0) return false;
+                const std::string extension = fs::path(name).extension().string();
+                return extension == ".RSA" || extension == ".EC" || extension == ".DSA";
+            });
+            if (!isSigned) findings.push_back(relative + ": the bundle is not signed (no signature block in META-INF)");
+        } else {
             std::string output;
             bool verified = false;
             if (target.verifyApk) {
@@ -316,6 +326,23 @@ bool publish::validatePayload(const fs::path& root, const ValidationTarget& targ
     } else if (target.platform == BuildPlatform::IOS) {
         for (const auto& entry : fs::directory_iterator(root, ec))
             if (fs::is_directory(entry.path() / "Content", ec)) contentRoot = entry.path() / "Content";
+    }
+    // an Apple app bundle (macOS .app, the iOS project) ships its privacy manifest: App Store
+    // Connect refuses apps that use required-reason APIs without one
+    if ((target.platform == BuildPlatform::MacOS || target.platform == BuildPlatform::IOS) && contentRoot != root) {
+        const fs::path manifest = target.platform == BuildPlatform::MacOS ? contentRoot / "PrivacyInfo.xcprivacy"
+                                                                          : contentRoot.parent_path() / "PrivacyInfo.xcprivacy";
+        const std::string where = editor::FileUtils::pathToGenericUtf8(manifest.lexically_relative(root));
+        std::ifstream in(manifest, std::ios::binary);
+        if (!in) {
+            findings.push_back("no " + where + " (the Apple privacy manifest)");
+        } else {
+            const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            editor::ApplePrivacy::Manifest parsed;
+            std::vector<std::string> warnings;
+            std::string error;
+            if (!editor::ApplePrivacy::parse(text, parsed, warnings, error)) findings.push_back(where + " does not parse: " + error);
+        }
     }
     if (target.platform != BuildPlatform::Android) {
         JPak pack;

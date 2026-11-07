@@ -2,6 +2,62 @@
 // SPDX-License-Identifier: MIT
 
 #include "CreateEntityCmd.h"
+#include "component/ActionComponent.h"
+#include "component/AlphaTweenComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/AudioSnapshotComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "component/ButtonComponent.h"
+#include "component/CameraComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/ColorTweenComponent.h"
+#include "component/FogComponent.h"
+#include "component/ForceFieldComponent.h"
+#include "component/ImageComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/KeyframeTracksComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/LatticeTracksComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/Light2DComponent.h"
+#include "component/LightComponent.h"
+#include "component/LocalVolumetricFogComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/MirrorComponent.h"
+#include "component/ModelComponent.h"
+#include "component/MorphTracksComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/PanelComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/PointsComponent.h"
+#include "component/PositionTweenComponent.h"
+#include "component/ProgressbarComponent.h"
+#include "component/ReflectionProbeComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "component/RotateTracksComponent.h"
+#include "component/RotationTweenComponent.h"
+#include "component/SafeAreaComponent.h"
+#include "component/ScaleTracksComponent.h"
+#include "component/ScaleTweenComponent.h"
+#include "component/ScrollbarComponent.h"
+#include "component/ShadowCaster2DComponent.h"
+#include "component/SkyboxComponent.h"
+#include "component/SpriteAnimationComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TextComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/Transform.h"
+#include "component/TranslateTracksComponent.h"
+#include "component/TweenComponent.h"
+#include "component/UIComponent.h"
+#include "component/UIDocumentComponent.h"
+#include "component/VolumetricCloudsComponent.h"
+#include "subsystem/MeshSystem.h"
+#include "subsystem/UISystem.h"
+#include "component/TrailRendererComponent.h"
 #include "spline/SplinePresets.h"
 
 #include "audio/AudioMixerDocument.h"
@@ -635,6 +691,23 @@ bool editor::CreateEntityCmd::execute(){
             scene->getComponent<ActionComponent>(entity).target = parent;
         }
 
+    }else if (type == EntityCreationType::AUDIO_ACTION || type == EntityCreationType::SOUND_EVENT_ACTION){
+
+        // no Transform: a 3D audio action plays at its target (S40 R17)
+        scene->addComponent<ActionComponent>(entity, {});
+        scene->addComponent<AudioSourceComponent>(entity, AudioMixerDocument::newAudioSource());
+        if (parent != NULL_ENTITY){
+            scene->getComponent<ActionComponent>(entity).target = parent;
+        }
+
+    }else if (type == EntityCreationType::MIXER_SNAPSHOT_ACTION){
+
+        scene->addComponent<ActionComponent>(entity, {});
+        scene->addComponent<AudioSnapshotComponent>(entity, {});
+        if (parent != NULL_ENTITY){
+            scene->getComponent<ActionComponent>(entity).target = parent;
+        }
+
     }else if (type == EntityCreationType::SPRITE_ANIMATION){
 
         scene->addComponent<ActionComponent>(entity, {});
@@ -899,8 +972,8 @@ bool editor::CreateEntityCmd::execute(){
     }else if (type == EntityCreationType::WATER){
 
         // a 20 x 20 grid fine enough for the waves, drawn with library:water: the engine's
-        // ripples and foam noise (no image files), waves, reflection, the underside, shore
-        // foam and refraction, lit per pixel
+        // ripples and foam noise (no image files), Gerstner waves, reflection, the underside,
+        // shore foam and refraction, lit per pixel
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
 
@@ -910,7 +983,7 @@ bool editor::CreateEntityCmd::execute(){
         Material& material = mesh.submeshes[0].material;
         material.name = "Water";
         material.shader = Water::SHADER;
-        material.shaderFeatures = {"BUILTIN_TEXTURES", "WAVES", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "REFRACTION"};
+        material.shaderFeatures = {"BUILTIN_TEXTURES", "WAVES", "GERSTNER", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "REFRACTION"};
         material.lighting = MaterialLighting::PIXEL;
         ShaderUniforms::set(material.shaderParams, "waveHeight", Vector4(0.1f, 0.0f, 0.0f, 0.0f));
         ShaderUniforms::set(material.shaderParams, "waveLength", Vector4(4.0f, 0.0f, 0.0f, 0.0f));
@@ -920,7 +993,7 @@ bool editor::CreateEntityCmd::execute(){
         addedUnderwaterPass = -1;
         std::vector<PostProcessPass> passes = scene->getPostProcessPasses();
         const bool hasUnderwater = std::any_of(passes.begin(), passes.end(), [](const PostProcessPass& pass){
-            return ShaderReference::getBase(pass.shader) == Water::UNDERWATER_SHADER;
+            return Water::isUnderwaterShader(pass.shader);
         });
         if (!hasUnderwater){
             PostProcessPass pass;
@@ -1011,7 +1084,7 @@ void editor::CreateEntityCmd::undo(){
         if (addedUnderwaterPass >= 0){
             std::vector<PostProcessPass> passes = sceneProject->scene->getPostProcessPasses();
             if (addedUnderwaterPass < (int)passes.size() &&
-                    ShaderReference::getBase(passes[addedUnderwaterPass].shader) == Water::UNDERWATER_SHADER){
+                    Water::isUnderwaterShader(passes[addedUnderwaterPass].shader)){
                 passes.erase(passes.begin() + addedUnderwaterPass);
                 sceneProject->scene->setPostProcessPasses(passes);
             }

@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include <cmath>
+#include "object/spline/Spline.h"
+#include "object/spline/SplineAnimate.h"
+#include "object/spline/SplineExtrude.h"
+#include "object/spline/SplineInstantiate.h"
 #include <unordered_map>
 #include "LuaBinding.h"
 #include "log/Logger.h"
@@ -48,6 +52,7 @@
 #include "object/Light.h"
 #include "object/Light2D.h"
 #include "object/ShadowCaster2D.h"
+#include "object/CapsuleShadowCaster.h"
 #include "object/Camera.h"
 #include "object/Bone.h"
 #include "object/environment/Fog.h"
@@ -505,14 +510,21 @@ static void noteUIPointerSubscription(lua_State* L, int eventIndex, int selfInde
     if (!methodName || !tag || !ScriptMessages::fromMethodName(methodName, message) || message < ScriptMessage::PointerDown) {
         return;
     }
-    if (!luabridge::isInstance<FunctionSubscribe<void(float,float)>>(L, eventIndex)) {
+    if (luabridge::isInstance<FunctionSubscribe<void(float,float)>>(L, eventIndex)) {
+        auto event = luabridge::get<FunctionSubscribe<void(float,float)>*>(L, eventIndex);
+        if (event && event.value()) {
+            ScriptMessages::noteLegacySubscription(lua_topointer(L, selfIndex), methodName, event.value()->subscriptionProbe(tag));
+        }
         return;
     }
-    auto event = luabridge::get<FunctionSubscribe<void(float,float)>*>(L, eventIndex);
-    if (!event || !event.value()) {
-        return;
+    // ui-components: the selection callbacks share names with argument-less component events
+    // (an InputField's onSubmit, a Panel's onMove): such a subscription is the old pattern too
+    if (message >= ScriptMessage::Select && luabridge::isInstance<FunctionSubscribe<void()>>(L, eventIndex)) {
+        auto event = luabridge::get<FunctionSubscribe<void()>*>(L, eventIndex);
+        if (event && event.value()) {
+            ScriptMessages::noteLegacySubscription(lua_topointer(L, selfIndex), methodName, event.value()->subscriptionProbe(tag));
+        }
     }
-    ScriptMessages::noteLegacySubscription(lua_topointer(L, selfIndex), methodName, event.value()->subscriptionProbe(tag));
 }
 
 // Common implementation for event registration
@@ -909,6 +921,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerGameObjectClasses(L);
     registerActionClasses(L);
     registerECSClasses(L);
+    registerAudioClasses(L);
     registerIOClasses(L);
     registerMathClasses(L);
     // after the GameObject and math classes: the module proxies on ParticleSystem (MinMaxCurve values)
@@ -1124,6 +1137,7 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(Light, "light");
     DISPATCH_TYPE(Light2D, "light2d");
     DISPATCH_TYPE(ShadowCaster2D, "shadowcaster2d");
+    DISPATCH_TYPE(CapsuleShadowCaster, "capsuleshadowcaster");
     DISPATCH_TYPE(Mesh, "mesh");
     DISPATCH_TYPE(Primitive, "primitive");
     DISPATCH_TYPE(Lattice, "lattice");

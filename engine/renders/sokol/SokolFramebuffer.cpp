@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "SokolFramebuffer.h"
+
+#include <algorithm>
 #include "Log.h"
 #include "SokolCmdQueue.h"
 #include "SokolSystem.h"
@@ -17,7 +19,9 @@ SokolFramebuffer::SokolFramebuffer(){
         }
     }
     depthAttachmentView.id = SG_INVALID_ID;
-    resolveAttachmentView.id = SG_INVALID_ID;
+    for (sg_view& view : resolveAttachmentViews){
+        view.id = SG_INVALID_ID;
+    }
     numColorAttachments = 1;
     sampleCount = 1;
     ownsDepthAttachment = true;
@@ -101,6 +105,7 @@ namespace{
             SokolCmdQueue::add_command_destroy_image(image);
         }else{
             sg_destroy_image(image);
+            SokolSystem::forgetAppliedBindings();
         }
     }
     void destroyView(sg_view view){
@@ -108,6 +113,7 @@ namespace{
             SokolCmdQueue::add_command_destroy_view(view);
         }else{
             sg_destroy_view(view);
+            SokolSystem::forgetAppliedBindings();
         }
     }
 }
@@ -308,34 +314,42 @@ bool SokolFramebuffer::createFramebuffer(const FramebufferDesc& desc){
 
     destroyFramebuffer();
 
-    numColorAttachments = 1;
+    numColorAttachments = std::clamp(desc.colorCount, 1, MAX_COLOR_ATTACHMENTS);
     sampleCount = (desc.sampleCount > 1) ? desc.sampleCount : 1;
     const bool msaa = sampleCount > 1;
 
-    // colour: the sampled image is the resolve image under MSAA
-    bool colorCreated = colorTexture[0].createFramebufferTexture(TextureType::TEXTURE_2D, false, false, desc.width, desc.height,
-                                                                 desc.minFilter, desc.magFilter, desc.wrapU, desc.wrapV, desc.color,
-                                                                 1, false, msaa);
-    if (colorCreated && msaa){
-        colorCreated = msaaColorTexture.createFramebufferTexture(TextureType::TEXTURE_2D, false, false, desc.width, desc.height,
-                                                                 desc.minFilter, desc.magFilter, desc.wrapU, desc.wrapV, desc.color,
-                                                                 sampleCount);
-    }
-    if (!colorCreated){
-        destroyFramebuffer();
-        return false;
-    }
+    for (int a = 0; a < numColorAttachments; a++){
+        const ColorFormat format = (a == 0) ? desc.color : desc.moreColors[a - 1];
+        if (format == ColorFormat::RED16){
+            Log::error("Framebuffer '%s': RED16 is not a colour attachment format", desc.label.c_str());
+            destroyFramebuffer();
+            return false;
+        }
+        // colour: the sampled image is the resolve image under MSAA
+        bool colorCreated = colorTexture[a].createFramebufferTexture(TextureType::TEXTURE_2D, false, false, desc.width, desc.height,
+                                                                     desc.minFilter, desc.magFilter, desc.wrapU, desc.wrapV, format,
+                                                                     1, false, msaa);
+        if (colorCreated && msaa){
+            colorCreated = msaaColorTexture[a].createFramebufferTexture(TextureType::TEXTURE_2D, false, false, desc.width, desc.height,
+                                                                        desc.minFilter, desc.magFilter, desc.wrapU, desc.wrapV, format,
+                                                                        sampleCount);
+        }
+        if (!colorCreated){
+            destroyFramebuffer();
+            return false;
+        }
 
-    sg_view_desc colorViewDesc = {};
-    colorViewDesc.color_attachment.image = msaa ? msaaColorTexture.backend.get() : colorTexture[0].backend.get();
-    colorViewDesc.label = "framebuffer-color-attachment-view";
-    colorAttachmentViews[0][0] = makeView(colorViewDesc);
+        sg_view_desc colorViewDesc = {};
+        colorViewDesc.color_attachment.image = msaa ? msaaColorTexture[a].backend.get() : colorTexture[a].backend.get();
+        colorViewDesc.label = "framebuffer-color-attachment-view";
+        colorAttachmentViews[a][0] = makeView(colorViewDesc);
 
-    if (msaa){
-        sg_view_desc resolveViewDesc = {};
-        resolveViewDesc.resolve_attachment.image = colorTexture[0].backend.get();
-        resolveViewDesc.label = "framebuffer-resolve-attachment-view";
-        resolveAttachmentView = makeView(resolveViewDesc);
+        if (msaa){
+            sg_view_desc resolveViewDesc = {};
+            resolveViewDesc.resolve_attachment.image = colorTexture[a].backend.get();
+            resolveViewDesc.label = "framebuffer-resolve-attachment-view";
+            resolveAttachmentViews[a] = makeView(resolveViewDesc);
+        }
     }
 
     if (desc.depth != DepthStencilFormat::NONE){
@@ -343,7 +357,7 @@ bool SokolFramebuffer::createFramebuffer(const FramebufferDesc& desc){
         if (desc.shareDepthStencil){
             // the view, not only the image: GLES keeps an MSAA attachment's storage in its view
             const SokolFramebuffer& shared = desc.shareDepthStencil->backend;
-            if (shared.depthAttachmentView.id == SG_INVALID_ID || shared.sampleCount != sampleCount){
+            if (shared.depthAttachmentView.id == SG_INVALID_ID || shared.getSampleCount() != sampleCount){
                 Log::error("Framebuffer '%s' cannot share a depth-stencil attachment of another sample count", desc.label.c_str());
                 destroyFramebuffer();
                 return false;
@@ -417,20 +431,26 @@ void SokolFramebuffer::destroyFramebuffer(){
                     SokolCmdQueue::add_command_destroy_view(colorAttachmentViews[a][i]);
                 }else{
                     sg_destroy_view(colorAttachmentViews[a][i]);
+                    SokolSystem::forgetAppliedBindings();
                 }
             }
         }
 
         // a shared depth-stencil view stays with its owner
-        for (sg_view view : {ownsDepthAttachment ? depthAttachmentView : sg_view{SG_INVALID_ID}, resolveAttachmentView}){
+        auto destroyAttachmentView = [](sg_view view){
             if (view.id == SG_INVALID_ID)
-                continue;
+                return;
             if (Engine::isAsyncThread()){
                 SokolCmdQueue::add_command_destroy_view(view);
             }else{
                 sg_destroy_view(view);
+                SokolSystem::forgetAppliedBindings();
             }
-        }
+        };
+        if (ownsDepthAttachment)
+            destroyAttachmentView(depthAttachmentView);
+        for (sg_view view : resolveAttachmentViews)
+            destroyAttachmentView(view);
     }
 
     if (sg_isvalid()){
@@ -458,7 +478,9 @@ void SokolFramebuffer::destroyFramebuffer(){
         colorTexture[a].destroyTexture();
     }
     depthTexture.destroyTexture();
-    msaaColorTexture.destroyTexture();
+    for (TextureRender& texture : msaaColorTexture){
+        texture.destroyTexture();
+    }
 
     for (int a = 0; a < MAX_COLOR_ATTACHMENTS; a++){
         for (int i = 0; i < 6; i++){
@@ -466,7 +488,9 @@ void SokolFramebuffer::destroyFramebuffer(){
         }
     }
     depthAttachmentView.id = SG_INVALID_ID;
-    resolveAttachmentView.id = SG_INVALID_ID;
+    for (sg_view& view : resolveAttachmentViews){
+        view.id = SG_INVALID_ID;
+    }
     numColorAttachments = 1;
     sampleCount = 1;
     ownsDepthAttachment = true;
@@ -498,8 +522,10 @@ bool SokolFramebuffer::isCreated(){
         }
     }
 
-    if (resolveAttachmentView.id != SG_INVALID_ID && sg_query_view_state(resolveAttachmentView) != SG_RESOURCESTATE_VALID) {
-        return false;
+    for (const sg_view& view : resolveAttachmentViews){
+        if (view.id != SG_INVALID_ID && sg_query_view_state(view) != SG_RESOURCESTATE_VALID) {
+            return false;
+        }
     }
 
     return hasAttachment;
@@ -558,14 +584,16 @@ sg_attachments SokolFramebuffer::get(size_t face){
     sg_attachments attachments = {};
 
     if (numColorAttachments > 1){
-        // MRT framebuffers are 2D (single face); bind every color attachment.
+        // MRT framebuffers are 2D (single face); bind every color attachment (and, under MSAA,
+        // the resolve of each)
         for (int a = 0; a < numColorAttachments; a++){
             attachments.colors[a] = colorAttachmentViews[a][0];
+            attachments.resolves[a] = resolveAttachmentViews[a];
         }
     }else if (numColorAttachments == 1){
         attachments.colors[0] = colorAttachmentViews[0][face];
         // MSAA: every pass ends with a resolve into colorTexture[0]
-        attachments.resolves[0] = resolveAttachmentView;
+        attachments.resolves[0] = resolveAttachmentViews[0];
     }
     attachments.depth_stencil = depthAttachmentView;
 

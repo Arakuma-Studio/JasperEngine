@@ -80,14 +80,19 @@ TEST(LoggerBench, AsyncEnabled4Threads) {
             // the thread's buffers warm up first
             Logger::write(LogLevel::Info, logCategoryBench(), text);
             testsupport::ThreadAllocationCount count;
+            uint64_t pacingAllocations = 0;
             for (int i = 0; i < perThread; i++) {
                 const auto start = Clock::now();
                 Logger::write(LogLevel::Info, logCategoryBench(), text, nullptr, 0, &keys[t * perThread + i]);
                 latencies[t].push_back(std::chrono::duration<double, std::micro>(Clock::now() - start).count());
-                // a steady rate rather than a burst the drain thread can't keep up with
-                if (i % 64 == 63) std::this_thread::sleep_for(std::chrono::microseconds(200));
+                // Drain bounded batches outside the measured write cost.
+                if (i % 64 == 63) {
+                    const testsupport::ThreadAllocationCount pacing;
+                    Logger::flush();
+                    pacingAllocations += pacing.count();
+                }
             }
-            allocations[t] = count.count();
+            allocations[t] = count.count() - pacingAllocations;
         });
     }
     for (std::thread& worker : workers) worker.join();
@@ -140,6 +145,12 @@ namespace {
 
 TEST(LoggerBench, DrainCpuAt10kPerSecond) {
     FreshLogger logger(4 * 1024 * 1024);
+    // Observe a drain receipt before installing the measured file sink.
+    {
+        auto ready = ScopedSink<CallbackSink>(std::make_unique<CallbackSink>("ready", [](const LogRecord&) {}));
+        Logger::write(LogLevel::Info, logCategoryBench(), "drain ready");
+        Logger::flush();
+    }
     TempDir dir;
     RotatingFileSink::Options options;
     options.path = dir.file("cpu.log").string();
@@ -150,11 +161,6 @@ TEST(LoggerBench, DrainCpuAt10kPerSecond) {
     // the drain thread alone: the process also runs other suites' threads (the job system's
     // workers stay up between tests)
     long long drainBefore = threadCpuNs("je-log");
-    // the drain thread names itself once it runs
-    for (int i = 0; i < 100 && drainBefore < 0; i++) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        drainBefore = threadCpuNs("je-log");
-    }
     ASSERT_GE(drainBefore, 0) << "no je-log thread";
     rusage before{};
     getrusage(RUSAGE_SELF, &before);

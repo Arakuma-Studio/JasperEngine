@@ -44,6 +44,7 @@
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
 #include "util/NativePlugins.h"
+#include "util/ApplePrivacy.h"
 #include "util/SafeWrite.h"
 #include "util/ShellEnv.h"
 #include "window/CodeEditor.h"
@@ -873,8 +874,11 @@ void getProjectSettingsTool(const CallPtr& call) {
             if (row->mcp) match["value"] = row->get(settings);
             matches.push_back(match);
         }
-        call->ok(std::to_string(matches.size()) + " setting(s) match. The ones with a value are keys for set_project_settings.",
-                 Json{{"matches", matches}});
+        // "game view resolution" is the Game view's toolbar (configure_game_view), not a setting
+        std::string text = std::to_string(matches.size()) + " setting(s) match. The ones with a value are keys for set_project_settings.";
+        Json data = {{"matches", matches}};
+        addUnlistedTools(call, args["search"].get<std::string>(), text, data);
+        call->ok(text, data);
         return;
     }
 
@@ -963,6 +967,10 @@ void setProjectSettingsTool(const CallPtr& call) {
     }
     const Json& values = args["values"];
     if (refuseDuringBuild(call)) return;
+    const bool dryRun = args.value("dry_run", false);
+    // what a setting did beyond its value (the asset roots' relocation)
+    Json report = Json::object();
+    settings.report = &report;
 
     // Validate everything first so a bad value changes nothing
     std::vector<std::pair<const Setting*, Json>> changes;
@@ -985,10 +993,22 @@ void setProjectSettingsTool(const CallPtr& call) {
                 for (const std::string& v : s->values) hint += " " + v;
                 hint += ".";
             }
-            call->fail(s->key + ": " + error + "." + hint + " Nothing was changed.");
+            call->fail(s->key + ": " + error + "." + hint + " Nothing was changed.", report);
             return;
         }
         changes.push_back({s, it.value()});
+    }
+    if (dryRun) {
+        Json data = report;
+        Json wouldSet = Json::object();
+        for (const auto& [setting, value] : changes) wouldSet[setting->key] = value;
+        data["settings"] = wouldSet;
+        std::string text = "Valid: " + std::to_string(changes.size()) + " setting(s); nothing was changed (dry_run).";
+        if (data.contains("relocation")) {
+            text += " The asset roots' change would move " + std::to_string(data["relocation"]["moved"].size()) + " file(s).";
+        }
+        call->ok(text, data);
+        return;
     }
 
     // Apply settings whose application depends on others (asset roots move files) last
@@ -996,12 +1016,14 @@ void setProjectSettingsTool(const CallPtr& call) {
         return change.first->key != "editor.assets_dir" && change.first->key != "scripting.lua_dir";
     });
 
+    // the plans the validation reported give way to what the change did
+    report = Json::object();
     Json applied = Json::object();
     bool projectChanged = false;
     for (const auto& [setting, value] : changes) {
         std::string error;
         if (!setting->set(settings, value, true, error)) {
-            call->fail(setting->key + ": " + error + ". Applied before it: " + applied.dump() + ".");
+            call->fail(setting->key + ": " + error + ". Applied before it: " + applied.dump() + ".", report);
             return;
         }
         applied[setting->key] = setting->get(settings);
@@ -1009,6 +1031,17 @@ void setProjectSettingsTool(const CallPtr& call) {
     }
 
     std::string text = "Set " + std::to_string(applied.size()) + " setting(s).";
+    if (report.contains("relocation")) {
+        const Json& relocation = report["relocation"];
+        text += " Moved " + std::to_string(relocation["moved"].size()) + " referenced file(s), rewrote " +
+                std::to_string(relocation["rewritten"].size()) + " file(s), removed " + std::to_string(relocation["removed_folders"].size()) +
+                " emptied folder(s).";
+        if (!relocation["failed_saves"].empty()) {
+            text += " Not saved, they keep the old paths on disk: " + relocation["failed_saves"].dump() +
+                    ". Fix what blocked them (permissions, a full disk), then save_project saves the scenes among them; a prefab "
+                    "or material there still finds its textures by GUID.";
+        }
+    }
     if (projectChanged) {
         // the standalone build's main.cpp bakes these settings in
         project->markGeneratedSourcesDirty();
@@ -1021,7 +1054,9 @@ void setProjectSettingsTool(const CallPtr& call) {
             text += " project.yaml saved.";
         }
     }
-    call->ok(text, Json{{"settings", applied}});
+    Json data = report;
+    data["settings"] = applied;
+    call->ok(text, data);
 }
 
 // ------------------------------------------------------------------ edit_build_scenes
@@ -1254,7 +1289,8 @@ const std::vector<std::string>& nativeSettingKeys() {
         "android.gradle_dependencies", "android.gradle_repositories", "android.gradle_properties", "android.extra_permissions",
         "android.manifest_xml", "android.manifest_application_xml", "ios.plist_entries", "ios.plist_xml", "ios.frameworks",
         "ios.cocoapods", "ios.swift_packages", "ios.entitlements_xml", "ios.deployment_target", "macos.plist_entries",
-        "macos.frameworks", "web.script_urls"};
+        "macos.frameworks", "web.script_urls", "apple.privacy_tracking", "apple.privacy_tracking_domains",
+        "apple.privacy_collected_data", "apple.privacy_accessed_apis"};
     return keys;
 }
 
@@ -1290,7 +1326,7 @@ void nativePluginsTool(const CallPtr& call) {
             const Json value = setting.get(rowContext);
             // only what is set (the defaults are empty, and 15.0)
             if ((value.is_string() && (value.get<std::string>().empty() || (setting.key == "ios.deployment_target" && value == "15.0"))) ||
-                ((value.is_array() || value.is_object()) && value.empty())) {
+                ((value.is_array() || value.is_object()) && value.empty()) || (value.is_boolean() && !value.get<bool>())) {
                 continue;
             }
             settings[setting.key] = value;
@@ -1302,8 +1338,45 @@ void nativePluginsTool(const CallPtr& call) {
         call->ok(text, data);
         return;
     }
+    if (action == "privacy_manifest") {
+        const std::string platform = args.value("platform", "ios");
+        if (platform != "ios" && platform != "macos") {
+            call->fail("platform must be \"ios\" or \"macos\".");
+            return;
+        }
+        std::vector<std::string> plistKeys;
+        for (const auto& [key, value] : project->getIOSProjectSettings().plistEntries) plistKeys.push_back(key);
+        const bool trackingUsage = ApplePrivacy::declaresTrackingUsage(plistKeys, project->getIOSProjectSettings().plistXml);
+        const ApplePrivacy::Composed composed = ApplePrivacy::compose(projectPath, project->getApplePrivacy(), platform, trackingUsage);
+        const ApplePrivacy::Manifest& m = composed.manifest;
+        Json data;
+        data["platform"] = platform;
+        data["xml"] = ApplePrivacy::toXml(m);
+        data["tracking"] = m.tracking;
+        data["tracking_domains"] = m.trackingDomains;
+        Json collected = Json::array();
+        for (const ApplePrivacy::CollectedData& item : m.collectedData) {
+            collected.push_back({{"type", item.type}, {"linked", item.linked}, {"tracking", item.tracking}, {"purposes", item.purposes}});
+        }
+        data["collected_data"] = collected;
+        Json apis = Json::array();
+        for (const ApplePrivacy::AccessedApi& api : m.accessedApis) apis.push_back({{"type", api.type}, {"reasons", api.reasons}});
+        data["accessed_apis"] = apis;
+        Json sources = Json::array();
+        for (const ApplePrivacy::Source& source : composed.sources) sources.push_back({{"what", source.what}, {"origin", source.origin}});
+        data["sources"] = sources;
+        data["plugin_manifests"] = composed.pluginManifests;
+        data["warnings"] = composed.warnings;
+        std::string text = std::string(platform == "ios" ? "iOS" : "macOS") + " privacy manifest: " + std::to_string(m.accessedApis.size()) +
+                           " API type(s), tracking " + (m.tracking ? "on (" + std::to_string(m.trackingDomains.size()) + " domain(s))" : "off") +
+                           ", " + std::to_string(m.collectedData.size()) + " collected data type(s), " +
+                           std::to_string(composed.pluginManifests.size()) + " plugin manifest(s)";
+        if (!composed.warnings.empty()) text += "; " + std::to_string(composed.warnings.size()) + " warning(s)";
+        call->ok(text + ".", data);
+        return;
+    }
     if (action != "create") {
-        call->fail("action must be \"list\" or \"create\".");
+        call->fail("action must be \"list\", \"create\" or \"privacy_manifest\".");
         return;
     }
     if (ctx.isPlaying()) {
@@ -1475,9 +1548,11 @@ void registerProjectTools(McpRegistry& registry) {
         tool.description =
             "plugins/native for Lua's Native.call (Java/Kotlin, ObjC/Swift, JS, C++). list: plugins, methods, Lua mocks, "
             "native settings. create: one plugin's files for the platforms plus its Lua mock; refuses to overwrite. SDK "
-            "settings: set_project_settings android.gradle_*, ios.cocoapods... jasper://docs/native-bridge.";
+            "settings: set_project_settings android.gradle_*, ios.cocoapods... privacy_manifest: the composed Apple "
+            "PrivacyInfo.xcprivacy (engine + apple.privacy_* + plugin manifests). jasper://docs/native-bridge.";
         tool.inputSchema = object({
-            {"action", stringEnum("", {"list", "create"})},
+            {"action", stringEnum("", {"list", "create", "privacy_manifest"})},
+            {"platform", stringEnum("privacy_manifest; default ios", {"ios", "macos"})},
             {"name", string("e.g. Device")},
             {"platforms", array(stringEnum("", {"android", "ios", "macos", "web", "cpp"}), "default android, ios, web, cpp")},
             {"android_language", stringEnum("", {"java", "kotlin"})},
@@ -1501,7 +1576,8 @@ void registerProjectTools(McpRegistry& registry) {
             "saved to project.yaml at once, NOT undoable. Lists are replaced; tags_and_layers.layers merges "
             "by index. Example: {\"values\": {\"player.window_width\": 800}}.";
         tool.inputSchema = object({
-            {"values", anyObject("")}
+            {"values", anyObject("")},
+            {"dry_run", withDefault(boolean("Only report."), false)}
         }, {"values"});
         tool.annotations.destructive = true;
         tool.annotations.idempotent = true;

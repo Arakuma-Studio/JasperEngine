@@ -15,6 +15,10 @@ Two ways to keyframe in JasperEngine, both edited with `edit_animation`:
 Pose animations (`.poseanim`, `jasper://docs/pose-animation`) are a third, humanoid-only
 format; `edit_pose_animation` can bake them into a clip (`bake: {model, clip: true}`).
 
+Motion that can be authored ahead of time (spins, bobs, patrols, doors, fades, UI transitions)
+belongs in a clip or an entity Animation that a script starts (`play`, `crossFade`, `stop`), not in
+script code that moves a transform every frame (`jasper://docs/authoring`).
+
 State machines, blend trees, layers, IK and humanoid retargeting over these clips are the
 **Animator** (Unity's Animator Controller): `edit_animator_controller`, `control_animator`,
 `jasper://docs/animator`.
@@ -203,7 +207,7 @@ List what a GameObject has with `get_animation {root, list_properties: "Panel/St
 | `gameobject` | `active` (bool) |
 | components with the checkbox | `enabled` (bool) |
 | `ui` (Image, Text, Button graphic) | `color` (sRGB) |
-| `button` | `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled`, `disabled` |
+| `button` | `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled`, `colorSelected`, `disabled` |
 | `canvasgroup` | `alpha` (0-1), `interactable`, `blocksRaycasts`, `ignoreParentGroups` |
 | `recttransform` | `positionOffset` (anchored position), `width`, `height`, `pivot`, `anchorPointLeft/Top/Right/Bottom`, `anchorOffsetLeft/Top/Right/Bottom` |
 | `mesh` | `submeshes[N].material.baseColorFactor` (a sprite's colour: N = 0), `.emissiveFactor`, `.metallicFactor`, `.roughnessFactor`, `.alphaCutoff`, `submeshes[N].textureRect`, `submeshes[N].material.shaderParams.<member>` |
@@ -223,7 +227,7 @@ List what a GameObject has with `get_animation {root, list_properties: "Panel/St
 - `active` changes apply after the other values, parents first; events run after the values (a
   handler at 0.5 sees the GameObject turned on at 0.5). A clip that turns off its own root stops
   its player until something turns it on.
-- A Button overwrites `ui.color` from its state colours: animate `button.colorNormal`.
+- A Button whose transition tints (the default) overwrites `ui.color` from its state colours: animate `button.colorNormal`, or set its transition to `none` or `sprite_swap`.
 - Bindings report `missing_component` (no such component, submesh, shader member or script field
   on the GameObject) and `unknown_property`. `preview_animation` lists `properties` (the first
   16 previewed values; `properties_total` counts them all); `get_runtime_entity` shows them in play.
@@ -270,6 +274,28 @@ An event with no subscriber and no method logs a warning once in play mode; `bin
 (`missing_handlers`) reports it at edit time against the root's Lua scripts (methods inherited
 through `setmetatable(T, {__index = Base})` / `setmetatable({}, Base)` count, with `Base` in the
 script or from `require`).
+
+## Audio cues
+
+To play a sound at a clip time, give the clip `audio` cues, not an event plus a Lua `Audio.play`:
+cues need no script and start on the exact sample of the crossing. Each cue has `time` and exactly
+one of:
+
+| key | plays | other keys |
+|---|---|---|
+| `sound` | an audio clip or a `.soundevent` (project path or GUID) as its own voice | `spatial: true` + `path` (a GameObject under the root it follows; `""` the root), `volume_db` (-60..12), `pitch_semitones` (-24..24), `group` (a mixer group; default the event's, else Master) |
+| `source` | `play()` of the AudioSource at that path (its clip or event, group, 3D settings): its `audiosource.volume/speed/pan` property tracks shape it | |
+| `snapshot` | the project mixer's snapshot of that name | `seconds` (transition), `unscaled` |
+
+Common keys: `stop` (`none`, the default, plays to its end; `state_exit` stops it with a 10 ms
+fade when its state stops, is left or finishes fading out), `follow_speed` (the state's speed
+also scales the pitch), `name`. `events_mode` applies to `audio` too (`merge`: same time and kind
+replaced). Cues fire with events' rules (Animation Player states, the Animator's leader clip per
+layer, montages; never in edit-mode previews). A clip with cues is saved as version 3.
+`get_animation {clip}` lists `audio: [{index, time, kind, sound {path, guid}, length, ...}]`
+(`length`: the sound's seconds, for placing an end). A cue that does not resolve warns once per
+Play (`Audio: cue 2 of ...: Body/LeftFoot binds nothing`). Recipes: jasper://docs/sound (Timeline
+audio).
 
 ## The Animation Player
 
@@ -390,18 +416,19 @@ player beside an Animator hands over to it, so scripts written for upstream keep
 |---|---|
 | `wrap`, `length`, `frame_rate`, `events`, `events_mode`, `root`, `create` | clip-file settings: pass `clip` |
 | `tracks[].path` | clip binding: pass `clip`; scene tracks use `target` |
+| `audio[].source`, `audio[].stop`, `audio[].follow_speed` | clip cue keys: an audio action lasts its frame (`duration`) |
 
 Clip mode arguments: `clip`, `create` (`{}` a new file; `{from: <entity Animation>}` converts
 its keyframe tracks into the file and gives the Animation's target, or `root`, an Animation
 Player playing it, and `remove_tracks: true` also removes the converted tracks from the
 Animation; `{from: "assets/models/hero.gltf#Walk"}` extracts a model clip into an editable
-file), `tracks`, `events`, `events_mode`, `wrap`, `frame_rate`, `length`, `root`, `scene` (of
+file), `tracks`, `events`, `audio`, `events_mode`, `wrap`, `frame_rate`, `length`, `root`, `scene` (of
 `root` / `from`), `max_keys`. `create` fails when the file exists; without it the file must
 exist. A call is all or nothing; a setting given with its current value is a no-change, not an
 error (retries are safe).
 
 Results: `{clip, created, read_only, length, explicit_length, wrap, frame_rate, tracks: [{index,
-path, channel, key_count, keys, loop, relative, points?}], events, preview_model?, source?,
+path, channel, key_count, keys, loop, relative, points?}], events, audio?, preview_model?, source?,
 changes, warnings, users, users_total?, bindings?}`. `users` lists the Animation Player entries
 in open scenes and loaded prefabs that play the file (`{scene, entity, entry, state}`; a prefab
 user is `{prefab, entry}`; at most 50, `users_total` counts them all; closed scenes are not
@@ -517,7 +544,18 @@ its last key; a `relative` track there offsets from the target's pose when it st
 anchored UI element moves by its layout offset). `add_actions` nests existing actions (`duration`
 0: the action's own); `set_frames` (`duration` 0: automatic) / `remove_actions` use the indices
 before the call; `loop`, `duration` (-1: until
-the actions end), `autoplay`, `speed` set the Animation. One scene undo step per call.
+the actions end), `autoplay`, `speed` and `random_start` (each new run in Play starts at a random point
+of one cycle: copies out of step) set the Animation; a fixed start is `set_properties {action:
+{startOffset}}` (seconds) on it or on a nested action; get_animation reports `start_offset` and
+`random_start` (a nested action's when set). `audio: [{time, sound | snapshot, path,
+duration, lane, volume_db, pitch_semitones, group, spatial, seconds, name}]` creates audio actions
+(an action GameObject with an AudioSource playing the clip or `.soundevent`) and Mixer Snapshot
+actions at frame start `time`; `path` names the action's target (where a `spatial` one plays);
+`duration` 0 is the sound's length (a snapshot's: `seconds`), a shorter one cuts it. They start
+once per loop pass, placed to the sample, and stop with the Animation; `remove_actions` removes
+them; `get_animation` lists them as `audio[]` with their frame `index`. One scene undo step per call.
+Values edited while `preview_animation` previews (set_properties, an undo) are kept when it seeks or
+stops; their undo goes back to the authored value, never a previewed pose.
 
 ## Common mistakes
 

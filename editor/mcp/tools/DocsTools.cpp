@@ -11,6 +11,7 @@
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpServer.h"
+#include "mcp/McpToolGroups.h"
 #include "mcp/EngineApiContext.h"
 
 #include "Generator.h"
@@ -254,6 +255,84 @@ ResourceResult notFound(const std::string& message) {
     return result;
 }
 
+// The words of a search query, lower-case, camelCase and snake_case split ("drawCalls" -> draw,
+// calls), without the verbs and nouns every tool description shares
+std::vector<std::string> queryWords(const std::string& query) {
+    static const std::set<std::string> skip = {"get", "set", "list", "add", "the", "and", "for", "with", "per", "how",
+                                               "gameobject", "gameobjects", "scene", "scenes", "component",
+                                               "components", "entity", "entities", "object", "value", "values",
+                                               "tool", "tools", "editor", "engine", "api", "lua", "script"};
+    std::vector<std::string> words;
+    std::string word;
+    auto flush = [&]() {
+        if (word.size() >= 3 && !skip.count(word)) words.push_back(word);
+        word.clear();
+    };
+    for (size_t i = 0; i < query.size(); i++) {
+        const unsigned char c = static_cast<unsigned char>(query[i]);
+        if (!std::isalnum(c)) {
+            flush();
+            continue;
+        }
+        if (std::isupper(c) && i > 0 && std::islower(static_cast<unsigned char>(query[i - 1]))) flush();
+        word += static_cast<char>(std::tolower(c));
+    }
+    flush();
+    return words;
+}
+
+// "profiler" also matches "profile", "calls" "call"
+bool hasWord(const std::string& haystack, const std::string& word) {
+    if (haystack.find(word) != std::string::npos) return true;
+    for (const char* suffix : {"s", "er", "ing", "ed"}) {
+        const size_t n = std::char_traits<char>::length(suffix);
+        if (word.size() > n + 3 && word.compare(word.size() - n, n, suffix) == 0 &&
+            haystack.find(word.substr(0, word.size() - n)) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Editor tools this session does not list (a tool group it has not enabled) that match the query:
+// agents look for frame times or the Game view size in the API search, and a client can only call
+// the tools it was listed (Claude Code's tool search never sees the others)
+Json unlistedToolHits(const CallPtr& call, const std::string& query) {
+    Json hits = Json::array();
+    const std::vector<std::string> words = queryWords(query);
+    if (words.size() < 1) return hits;
+    const std::set<std::string> listed = call->server().sessionToolGroups(call->session());
+    struct Hit {
+        size_t score;
+        const ToolDef* def;
+    };
+    std::vector<Hit> scored;
+    for (const ToolDef& def : call->server().registry().tools()) {
+        const std::string& group = McpRegistry::groupOf(def);
+        if (group == CORE_TOOL_GROUP || listed.count(group)) continue;
+        std::string name = lower(def.name);
+        std::replace(name.begin(), name.end(), '_', ' ');
+        const std::string haystack = name + " " + lower(def.description);
+        size_t matched = 0, inName = 0;
+        for (const std::string& word : words) {
+            if (!hasWord(haystack, word)) continue;
+            matched++;
+            if (hasWord(name, word)) inName++;
+        }
+        // most of the query, and at least two words of it (one when the query is one word)
+        if (matched < std::min<size_t>(2, words.size()) || matched * 2 < words.size()) continue;
+        scored.push_back({matched * 2 + inName, &def});
+    }
+    std::stable_sort(scored.begin(), scored.end(), [](const Hit& a, const Hit& b) { return a.score > b.score; });
+    for (const Hit& hit : scored) {
+        if (hits.size() >= 3) break;
+        const std::string& group = McpRegistry::groupOf(*hit.def);
+        hits.push_back({{"tool", hit.def->name}, {"group", group},
+                        {"enable", "tool_groups {\"enable\": [\"" + group + "\"]}"}});
+    }
+    return hits;
+}
+
 void searchEngineApiTool(const CallPtr& call) {
     const Json& args = call->args();
     const std::string query = args.value("query", "");
@@ -270,6 +349,9 @@ void searchEngineApiTool(const CallPtr& call) {
         if (item.contains("lua_call_hint")) compact["lua"] = item["lua_call_hint"];
         if (item.contains("lua_note")) compact["note"] = item["lua_note"];
         if (item.contains("lua_callable")) compact["lua_callable"] = item["lua_callable"];
+        // a Lua-only symbol (Engine.deltatime): what C++ calls instead
+        if (item.contains("cpp_callable")) compact["cpp_callable"] = item["cpp_callable"];
+        if (item.contains("cpp_note")) compact["cpp_note"] = item["cpp_note"];
         results.push_back(compact);
         text += "\n- " + compact["detail"].get<std::string>() + " [" + compact["kind"].get<std::string>() + "]";
         if (compact.contains("note")) text += " (" + compact["note"].get<std::string>() + ")";
@@ -286,7 +368,9 @@ void searchEngineApiTool(const CallPtr& call) {
             }
         }
     }
-    call->ok(text, Json{{"results", results}, {"docs", docHits}});
+    Json data = {{"results", results}, {"docs", docHits}};
+    addUnlistedTools(call, query, text, data);
+    call->ok(text, data);
 }
 
 // The engine's own source tree (headers and Lua bindings), as shipped with the editor
@@ -361,7 +445,10 @@ void searchEngineSourceTool(const CallPtr& call) {
         if (truncated) break;
     }
     const std::string header = std::to_string(matches.size()) + " match(es)" + (truncated ? " (truncated)" : "") + ".";
-    call->ok(header + text, Json{{"matches", matches}, {"count", matches.size()}, {"truncated", truncated}});
+    Json data = {{"matches", matches}, {"count", matches.size()}, {"truncated", truncated}};
+    text = header + text;
+    addUnlistedTools(call, args.value("query", ""), text, data);
+    call->ok(text, data);
 }
 
 void readEngineSourceTool(const CallPtr& call) {
@@ -402,6 +489,25 @@ void readEngineSourceTool(const CallPtr& call) {
 }
 
 } // namespace
+
+// McpTools.h
+void addUnlistedTools(const CallPtr& call, const std::string& query, std::string& text, Json& data) {
+    const Json hits = unlistedToolHits(call, query);
+    if (hits.empty()) return;
+    std::string names, groups;
+    std::set<std::string> seen;
+    for (const Json& hit : hits) {
+        names += (names.empty() ? "" : ", ") + hit["tool"].get<std::string>();
+        if (seen.insert(hit["group"].get<std::string>()).second) {
+            groups += (groups.empty() ? "\"" : ", \"") + hit["group"].get<std::string>() + "\"";
+        }
+    }
+    const std::string next = "Editor tools for this, not in your tool list yet: " + names + ". Call tool_groups {\"enable\": [" +
+                             groups + "]}, then use them.";
+    text += "\n" + next;
+    data["editor_tools"] = hits;
+    data["next"] = next;
+}
 
 void registerDocsTools(McpRegistry& registry) {
     using namespace schema;
@@ -633,8 +739,9 @@ void registerDocsTools(McpRegistry& registry) {
                 std::string(language == "Lua" ? "lua-api" : "cpp-scripting") + " you need. Confirm API names with search_engine_api.\n"
                 "2. Art: list_assets type texture; if nothing fits, make sprites with generate_placeholder_art under the assets "
                 "directory and look at them with view_asset.\n"
-                "3. Scene: create the GameObjects (sprites, a camera, UI text for the score) with the scene/entity tools, physics "
-                "bodies with colliders where things collide.\n"
+                "3. Scene: place every GameObject in the editor (sprites, a camera, physics bodies with colliders where things "
+                "collide); make what repeats a Prefab (create_prefab, instantiate_prefab); put the score in a UI scene attached "
+                "with set_child_scene; author motion with edit_animation. Read jasper://docs/authoring.\n"
                 "4. Scripts: create_script (kind " + std::string(language == "Lua" ? "lua" : "cpp_script") + ") attached to the "
                 "GameObjects; expose tunables as properties and set them with set_script_properties. " +
                 std::string(language == "Lua" ? "Edit the files with your own tools; fix the problems the next call reports "

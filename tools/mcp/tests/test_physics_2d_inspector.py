@@ -9,55 +9,31 @@ UI probe, editor/util/UIProbe.h), for the physics-2d review fixes in editor/wind
 from __future__ import annotations
 
 import asyncio
-import os
 import shutil
-import subprocess
 import time
 
 from harness import Editor
+from ui_input import Ui as FrameUi
 
 EDITOR = {"create": True, "name": "Physics 2D Inspector", "xvfb": "harness", "ui_probe": True}
+CI = True
 TIMEOUT = 900
 
 
-class Ui:
-    def __init__(self, ed: Editor):
-        self.ed = ed
-        self.env = dict(os.environ, DISPLAY=ed._xvfb.display)
-
-    def xdo(self, *args: str) -> str:
-        return subprocess.run(["xdotool", *args], env=self.env, capture_output=True, text=True, timeout=20).stdout
-
+class Ui(FrameUi):
     async def click(self, x: float, y: float, double: bool = False):
-        self.xdo("mousemove", str(int(x)), str(int(y)))
-        await asyncio.sleep(0.3)
-        self.xdo("click", "--repeat", "2" if double else "1", "--delay", "80", "1")
-        await asyncio.sleep(0.6)
-
-    async def drag(self, start, end, steps: int = 12):
-        self.xdo("mousemove", str(int(start[0])), str(int(start[1])))
-        await asyncio.sleep(0.3)
-        self.xdo("mousedown", "1")
-        for i in range(1, steps + 1):
-            x = start[0] + (end[0] - start[0]) * i / steps
-            y = start[1] + (end[1] - start[1]) * i / steps
-            self.xdo("mousemove", str(int(x)), str(int(y)))
-            await asyncio.sleep(0.08)
-        await asyncio.sleep(0.3)
-        self.xdo("mouseup", "1")
-        await asyncio.sleep(0.6)
-
-    async def frames(self, n: int = 3):
-        await self.ed.call("wait", frames=n)
+        if double:
+            await super().double_click((x, y))
+        else:
+            await super().click((x, y))
 
     def state(self):
         probe = self.ed.ui_probe_state()
         return probe.get("items", {}), probe.get("scroll", {}).get("inspector", [0.0, 0.0])
 
-    async def settled(self, limit: float = 30.0):
+    async def settled(self):
         last, same = None, 0
-        deadline = time.monotonic() + limit
-        while time.monotonic() < deadline:
+        for _ in range(60):
             await self.frames(2)
             now = self.state()
             same = same + 1 if now == last else 0
@@ -83,8 +59,7 @@ class Ui:
                 break
             before = scroll[0]
             self.xdo("click", "5")
-            deadline = time.monotonic() + 20
-            while time.monotonic() < deadline:
+            for _ in range(60):
                 await self.frames(2)
                 items, scroll = self.state()
                 if scroll[0] != before:
@@ -117,14 +92,12 @@ def center(rect):
 S: dict = {}
 
 
-async def test_setup(ed: Editor):
+async def test_add_point_acts_on_its_own_collider(ed: Editor):
     if not shutil.which("xdotool"):
         ed.fail("xdotool is needed for the real-input UI tests (apt install xdotool)")
     S["scene"] = (await ed.call("create_scene", name="Inspector2D", type="2D"))["scene"]["id"]
     await ed.call("wait", frames=10)
 
-
-async def test_add_point_acts_on_its_own_collider(ed: Editor):
     ui = Ui(ed)
     sid = S["scene"]
     body = (await ed.call("create_entity", scene=sid, name="Two", type="rigidbody2d"))["entity_id"]

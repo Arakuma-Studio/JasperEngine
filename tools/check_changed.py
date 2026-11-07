@@ -1,11 +1,12 @@
 """tools/check-changed: the per-commit gate of a stream. Builds what the change touches and runs the
-unit and MCP tests that can see it; the full suite stays the gate of batch landings and of main.
+unit and MCP tests that can see it; the full suite is for pushes to origin main that need it.
 
-    tools/check-changed                 # on a build server: rb.sh <S> tools/check-changed
+    tools/check-changed                 # build and test what the change touches
     tools/check-changed --dry-run       # the plan only
     tools/check-changed --base oe-port  # the diff against another base (default: the merge base
                                         # with oe-port, else main, else origin/main)
     tools/check-changed --no-cache      # run even when the same inputs passed before
+    tools/check-changed --no-mcp        # builds and unit tests only: the MCP selection stays the integrator's
     CHECK_CHANGED_VERBOSE=1 tools/check-changed   # every step's output, not only a failed one's
 
 1. The changed files: committed (since the merge base), staged, unstaged and untracked. Through
@@ -16,7 +17,9 @@ unit and MCP tests that can see it; the full suite stays the gate of batch landi
    tests for its code, web for engine/ code and its CMake, Android for its own platform code;
    everything for the root CMake, docker/, tools/build.sh, the toolchain and the lockfiles
    (ALL_TRIGGERS); nothing for a change that builds nothing (docs). This tool's and the harness's
-   own Python run their self-tests (SELF_TESTS).
+   own Python run their self-tests (SELF_TESTS). Navigation's runtime, Recast/Detour and the
+   engine's CMake also build the engine with navigation OFF and run its stub tests
+   (NAVIGATION_OFF_PATHS: tools/check-navigation-off.sh).
 3. Unit tests, exactly: Ninja's dependency database of the test trees (`ninja -t deps`) maps every
    changed file (a changed Foo.cpp through its Foo.h too) to the test translation units that
    include it; their gtest suites run (--gtest_filter), in the core and the editor binary. A
@@ -30,7 +33,8 @@ unit and MCP tests that can see it; the full suite stays the gate of batch landi
    files, the tests of a changed MCP tool (by its tool names), of a changed fixture, Lua, shader or
    asset (by path; a shader also test_shader_library.py and the CI suite), the files that run a
    prebuilt game when the engine changes, and those that compile a game when what the compile
-   path reads changes (COMPILE_PATHS). Fallbacks: no map, a
+   path reads changes (COMPILE_PATHS), and the guard of what a save writes when serialization or
+   code generation changes (SAVED_OUTPUT_PATHS, spec S63). Fallbacks: no map, a
    map older than MAP_MAX_AGE_DAYS or MAP_MAX_COMMITS, or a changed source the map does not know
    (new) or file no test names add the CI suite; a harness change runs the whole suite.
 5. A pass is cached (build/.cache/check-changed.json) by a hash of the base, the diff, the
@@ -38,6 +42,12 @@ unit and MCP tests that can see it; the full suite stays the gate of batch landi
    inputs reprint the last summary. A run during which the files changed caches nothing.
 6. Exit 1 when a step failed or a selected test could not run. Inside the Linux image the web and
    Android builds are left out, and said to be (their images are the host's to run).
+7. After the Linux editor's build: every header the change edits still compiles alone
+   (tools/check_headers.py) and no component header passes the fan-out limits (tools/check_fanout.py).
+8. When a header under engine/core, engine/CMakeLists.txt or what ALL_TRIGGERS names changes: the
+   engine builds with every optional module off (tools/check-physics-off.sh all-off). The editor's
+   engine has every module, so nothing else here sees a source that lost a header only a module's
+   code gave it; a game's Compile build and the smaller prebuilt players do.
 """
 
 from __future__ import annotations
@@ -64,13 +74,12 @@ CORE_TREE = ROOT / "build" / "linux" / "core-tests"
 EDITOR_TEST_TREE = ROOT / "build" / "linux" / "editor-tests"
 EDITOR_TREE = ROOT / "build" / "linux" / "editor"
 HTMLUI_TREE = ROOT / "build" / "linux" / "htmlui-tests-glcore"
-LARGE_SELECTION = 40
 COMMON_SHARE = 0.8      # of the files with an editor: a function that many execute is any editor's
 COMMON_SAMPLE = 10      # the quickest of those that a change of such a function selects
 MAP_MAX_AGE_DAYS = 14
 MAP_MAX_COMMITS = 400
 GAP = ("coverage gap: this is the change's own selection; the full gate is still the full suite "
-       "(batch landings and before main)")
+       "(before pushing to origin main, when the push needs it)")
 
 # a change here builds and runs everything
 ALL_TRIGGERS = ("CMakeLists.txt", "CMakePresets.json", "CopyEditorEngine.cmake", "docker/*", "tools/build.sh",
@@ -83,24 +92,51 @@ MCP_ALL_TRIGGERS = ("tools/mcp/harness.py", "tools/mcp/run_tests.py", "tools/mcp
 SELF_TESTS = {"tools/check_changed.py": "tools/test_check_changed.py", "tools/check-changed": "tools/test_check_changed.py",
               "tools/test_check_changed.py": "tools/test_check_changed.py", "tools/mcp/coverage_map.py": "tools/test_check_changed.py",
               "tools/mcp/shard.py": "tools/mcp/test_shard.py", "tools/mcp/test_shard.py": "tools/mcp/test_shard.py",
-              "tools/mcp/build_cache.py": "tools/mcp/test_build_cache.py", "tools/mcp/test_build_cache.py": "tools/mcp/test_build_cache.py"}
+              "tools/mcp/build_cache.py": "tools/mcp/test_build_cache.py", "tools/mcp/test_build_cache.py": "tools/mcp/test_build_cache.py",
+              "tools/check_fanout.py": "tools/test_check_fanout.py", "tools/test_check_fanout.py": "tools/test_check_fanout.py",
+              "tools/check_shader_lod.py": "tools/ci/test_check_shader_lod.py",
+              "tools/ci/test_check_shader_lod.py": "tools/ci/test_check_shader_lod.py"}
+# the shader lint, with its own tests, when an engine shader changes (.claude/rules/rendering.md)
+SHADER_LINT_TEST = "tools/ci/test_check_shader_lod.py"
+# an MCP test file, or what classifies it, changes: every file must stay classified for the CI suite
+CI_SUITE_GUARD = "tools/ci/check-mcp-ci-suite.py"
+CI_SUITE_GUARD_TRIGGERS = ("tools/mcp/tests/test_*.py", "tools/mcp/run_tests.py", CI_SUITE_GUARD)
+# an engine event's holder, or the clears that walk them, changes: every event must stay cleared at Stop
+EVENT_CLEARS_LINT = "tools/check_event_clears.py"
+EVENT_CLEARS_TRIGGERS = ("engine/core/component/*.h", "engine/core/subsystem/PhysicsSystem.h", "engine/core/Engine.h",
+                         "engine/core/Engine.cpp", EVENT_CLEARS_LINT)
+# the engine with every optional module off: a header's include can reach a source only through a
+# module's code, and the editor's engine, which has them all, never shows it
+MODULES_OFF_CHECK = "tools/check-physics-off.sh"
+# the required-reason APIs of engine code against the engine's Apple privacy manifest
+APPLE_PRIVACY_CHECK = "tools/check_apple_privacy.py"
 # C/C++ and what the engine's builds read
 CXX = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp", ".mm", ".m")
 HEADER = (".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp")
-BUILDS_NOTHING = ("docs/*", "*.md", "LICENSE", "NOTICE.md", ".claude/*", ".github/*")
+BUILDS_NOTHING = ("docs/*", "*.md", "LICENSE", "NOTICE.md", ".claude/*")
 # outside engine/ and editor/, compiled into the editor or embedded in it (CMakeLists.txt): the
 # vendored libraries, the MCP guide and the HTML UI example library, the Lua API tools
 EDITOR_INPUTS = ("libs/*", "docs/mcp/guide/*", "docs/unity-glossary.md", "tools/lua_api/*")
 HTMLUI_PATHS = ("engine/tests/htmlui/*", "engine/core/htmlui/*", "engine/libs/rmlui/*", "engine/libs/lexbor/*")
 WEB_DIRS = ("engine/platform/web/*", "engine/platform/emscripten/*", "tools/web/*")
 ANDROID_DIRS = ("engine/platform/android/*", "engine/project/android/*", "tools/android-*", "tools/ci/android_*")
+# what a JASPERENGINE_NAVIGATION=OFF build compiles differently: tools/check-navigation-off.sh
+# builds the engine that way and runs NavStubTest (compiled only then) and NavGridTest (S74 R28)
+NAVIGATION_OFF_PATHS = ("engine/core/navigation/*", "engine/libs/recastnavigation/*", "engine/core/subsystem/NavigationSystem.*",
+                        "engine/core/object/navigation/*", "engine/core/component/Nav*", "engine/CMakeLists.txt",
+                        "engine/tests/core/navigation/*", "tools/check-navigation-off.sh")
 # the MCP files that run a game built with a prebuilt player: the engine's runtime code runs in the
 # game, which no editor coverage sees; and those that compile one, for what the compile path reads
 # (the full gate compiles for every change)
 GAME_BUILD_FILES = ("test_html_ui_export.py", "test_html_ui_video_export.py", "test_call_cli.py")
-COMPILE_FILES = ("test_build.py", "test_html_ui_effects_export.py", "test_hub.py", "test_busy.py")
+COMPILE_FILES = ("test_build.py", "test_compile_without_modules.py", "test_html_ui_effects_export.py", "test_hub.py", "test_busy.py")
 COMPILE_PATHS = ("engine/CMakeLists.txt", "engine/project/*", "engine/player/*", "engine/platform/*", "engine/core/player/*",
                  "engine/core/diag/*", "editor/Exporter*", "editor/Generator*", "editor/players/*", "tools/players/*")
+# what a save writes (the scene files, the generated code): the guard that it does not depend on
+# what was drawn or loaded (spec S63); it runs the code the map sees through every other test file
+SAVED_OUTPUT_FILES = ("test_saved_output_determinism.py",)
+SAVED_OUTPUT_PATHS = ("editor/Factory*", "editor/Generator*", "editor/Stream*", "editor/stream/*", "editor/reflect/*",
+                      "engine/core/serialization/*")
 TEST_DEF = re.compile(r"^\s*(TEST|TEST_F|TEST_P|TYPED_TEST|TYPED_TEST_P)\s*\(\s*(\w+)\s*,", re.M)
 TOOL_NAME = re.compile(r"\b\w+\.name\s*=\s*\"([a-z][a-z0-9_]*)\"")
 
@@ -110,7 +146,7 @@ def match(path: str, patterns) -> bool:
 
 
 def git(*args: str, cwd: Path = ROOT, check: bool = True) -> str:
-    r = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True)
+    r = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, errors="replace")
     if check and r.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)}: {r.stderr.strip()}")
     return r.stdout
@@ -136,7 +172,7 @@ class Changes:
 def find_base(explicit: str | None, cwd: Path = ROOT) -> tuple[str, str]:
     candidates = [explicit] if explicit else ["oe-port", "main", "origin/main"]
     for ref in candidates:
-        r = subprocess.run(["git", "merge-base", "HEAD", ref], cwd=str(cwd), capture_output=True, text=True)
+        r = subprocess.run(["git", "merge-base", "HEAD", ref], cwd=str(cwd), capture_output=True, text=True, errors="replace")
         if r.returncode == 0 and r.stdout.strip():
             return r.stdout.strip(), f"merge base of HEAD and {ref}"
     raise LookupError(f"no merge base of HEAD and {' / '.join(candidates)}")
@@ -216,7 +252,7 @@ def read_changes(explicit_base: str | None, cwd: Path = ROOT, rb_file: Path = RB
             return git_changes(explicit_base, cwd)
         except (LookupError, RuntimeError):
             raise LookupError(f"{rb_file} is not this checkout's diff ({len(stale)} file(s) differ, e.g. {stale[0]}): "
-                              "run tools/check-changed through rb.sh, which sends it") from None
+                              "delete it to use git's diff") from None
     return git_changes(explicit_base, cwd)
 
 
@@ -224,7 +260,7 @@ def read_changes(explicit_base: str | None, cwd: Path = ROOT, rb_file: Path = RB
 
 @dataclass
 class Plan:
-    builds: list[str] = field(default_factory=list)          # linux, unit-tests, web, android, everything
+    builds: list[str] = field(default_factory=list)          # linux, unit-tests, web, android, navigation-off
     reasons: dict[str, str] = field(default_factory=dict)
     unit_all: bool = False
     unit_core: list[str] = field(default_factory=list)       # gtest suites
@@ -238,6 +274,7 @@ class Plan:
     mcp_files: list[str] = field(default_factory=list)
     mcp_reasons: dict[str, str] = field(default_factory=dict)
     mcp_notes: list[str] = field(default_factory=list)
+    modules_off: str = ""                                    # the file that asks for MODULES_OFF_CHECK
 
     def add_build(self, name: str, why: str) -> None:
         if name not in self.builds:
@@ -255,7 +292,17 @@ def plan_builds(files: list[str], plan: Plan) -> None:
         test = SELF_TESTS.get(f)
         if test and test not in plan.self_tests:
             plan.self_tests.append(test)
+        if match(f, CI_SUITE_GUARD_TRIGGERS) and CI_SUITE_GUARD not in plan.self_tests:
+            plan.self_tests.append(CI_SUITE_GUARD)
+        if match(f, EVENT_CLEARS_TRIGGERS) and EVENT_CLEARS_LINT not in plan.self_tests:
+            plan.self_tests.append(EVENT_CLEARS_LINT)
+    # engine code may call a required-reason API the Apple privacy manifest must declare
+    if any(f.startswith("engine/") and f.endswith(CXX) for f in files) or "engine/workspaces/xcode/ios/PrivacyInfo.xcprivacy" in files:
+        if APPLE_PRIVACY_CHECK not in plan.self_tests:
+            plan.self_tests.append(APPLE_PRIVACY_CHECK)
     everything = [f for f in files if match(f, ALL_TRIGGERS)]
+    plan.modules_off = next((f for f in files if f in ("engine/CMakeLists.txt", MODULES_OFF_CHECK)
+                             or (f.startswith("engine/core/") and f.endswith(HEADER))), everything[0] if everything else "")
     if everything:
         for b in ("linux", "unit-tests", "web", "android"):
             plan.add_build(b, f"{everything[0]} changed (builds everything)")
@@ -270,6 +317,8 @@ def plan_builds(files: list[str], plan: Plan) -> None:
     if engine or editor:
         plan.add_build("linux", f"{(cxx or engine or editor)[0]} changed")
     shaders = [f for f in engine if f.startswith(("engine/shaders/", "engine/shaderlib/"))]
+    if [f for f in shaders if f.startswith("engine/shaderlib/")] and SHADER_LINT_TEST not in plan.self_tests:
+        plan.self_tests.append(SHADER_LINT_TEST)
     # (a test's data: a golden, a fixture; no dependency database sees it)
     test_data = [f for f in files if f.startswith(("engine/tests/", "editor/tests/")) and not f.endswith(CXX)
                  and not f.startswith("engine/tests/htmlui/")]
@@ -289,6 +338,9 @@ def plan_builds(files: list[str], plan: Plan) -> None:
         plan.add_build("web", f"{web[0]} changed (the engine's web build)")
     if android:
         plan.add_build("android", f"{android[0]} changed (Android's own code)")
+    navigation = [f for f in files if match(f, NAVIGATION_OFF_PATHS)]
+    if navigation:
+        plan.add_build("navigation-off", f"{navigation[0]} changed (the engine without Recast/Detour: NavStubTest)")
 
 
 # ---------------------------------------------------------------------------------------- 3. unit tests
@@ -572,6 +624,10 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
     for t in COMPILE_FILES if compile_path else ():
         if t in sources:
             plan.add_mcp(t, f"compiles a game ({compile_path[0]} changed)")
+    saved_output = [f for f in files if match(f, SAVED_OUTPUT_PATHS)]
+    for t in SAVED_OUTPUT_FILES if saved_output else ():
+        if t in sources:
+            plan.add_mcp(t, f"guards what a save writes ({saved_output[0]} changed)")
     # the engine's and the editor's C++: the coverage map
     # (the unit tests' own sources are no editor code: nothing an MCP test could run)
     code = [f for f in files if f.startswith(("engine/", "editor/", "libs/")) and f.endswith(CXX)
@@ -770,6 +826,8 @@ def describe(changes: Changes, plan: Plan, cmap_info: str) -> str:
     lines += [f"  {n}" for n in plan.unit_notes if not plan.unit_all]
     if plan.self_tests:
         lines.append("tool tests: " + ", ".join(plan.self_tests))
+    if plan.modules_off:
+        lines.append(f"the engine with every module off ({plan.modules_off} changed)")
     if plan.htmlui_all or plan.unit_htmlui:
         lines.append("HTML UI tests: " + ("all" if plan.htmlui_all else f"suites {plan.unit_htmlui}"))
     if plan.mcp_all:
@@ -786,7 +844,7 @@ def commits_since(root: Path):
     def count(commit: str):
         if not commit:
             return None
-        r = subprocess.run(["git", "rev-list", "--count", f"{commit}..HEAD"], cwd=str(root), capture_output=True, text=True)
+        r = subprocess.run(["git", "rev-list", "--count", f"{commit}..HEAD"], cwd=str(root), capture_output=True, text=True, errors="replace")
         return int(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip().isdigit() else None
     return count
 
@@ -813,6 +871,8 @@ def main(argv: list[str], root: Path | None = None) -> int:
     ap.add_argument("--no-cache", action="store_true", help="run even when the same inputs passed before")
     ap.add_argument("-j", type=int, default=0, help="MCP editors at once (default: the CPUs / 2, at least 2)")
     ap.add_argument("--keep-going", action="store_true", help="run the tests after a failed step (the exit code stays 1)")
+    ap.add_argument("--no-mcp", action="store_true", help="leave the MCP tests out, and say so: for a change that selects "
+                    "the whole suite, which the integrator runs once per wave (the pass is not cached)")
     ap.add_argument("--list-mcp", type=Path, help="write the selected MCP test files here (one per line)")
     ap.add_argument("--root", type=Path, help="check this checkout instead of the one holding this script "
                     "(e.g. an older branch's worktree, with this check-changed)")
@@ -875,11 +935,27 @@ def main(argv: list[str], root: Path | None = None) -> int:
             continue
         if b in ("web", "android") and in_image():
             # (their images are not this one: the check goes on, its pass is not cached, and the summary says so)
-            runner.steps.append((f"build {b}", "SKIP (not in the Linux image: rb.sh <server> tools/check-changed builds it)", 0.0))
+            runner.steps.append((f"build {b}", "SKIP (not in the Linux image: tools/check-changed outside it builds it)", 0.0))
             runner.partial = True
+            continue
+        if b == "navigation-off":
+            # (a script of the Linux image, not a build.sh target)
+            script = ["tools/check-navigation-off.sh"]
+            runner.run("navigation OFF (NavStubTest, NavGridTest)", script if in_image() else ["tools/build.sh", "exec", "linux", *script])
             continue
         env = dict(build_env, SKIP_ENGINE="1") if b == "linux" else dict(build_env)
         runner.run(f"build {b}", ["tools/build.sh", b], env)
+    # the header gates: they read the Linux editor's tree, whose paths are the image's
+    # (a checkout without them: an older branch's, --root)
+    in_tree = (lambda *c: list(c)) if in_image() else (lambda *c: ["tools/build.sh", "exec", "linux", *c])
+    if "linux" in plan.builds and (ROOT / "tools/check_fanout.py").is_file() and (args.keep_going or not runner.failed):
+        headers = sorted(f for f in changes.files if f.endswith(HEADER) and f not in changes.deleted)
+        if headers:
+            runner.run(f"headers compile alone ({len(headers)} edited)", in_tree("python3", "-I", "tools/check_headers.py", *headers))
+        runner.run("header fan-out limits", in_tree("python3", "-I", "tools/check_fanout.py"))
+    if plan.modules_off and (ROOT / MODULES_OFF_CHECK).is_file() and (args.keep_going or not runner.failed):
+        jobs = os.environ["JOBS"] if os.environ.get("JOBS", "").isdigit() else str(os.cpu_count() or 4)
+        runner.run("the engine with every module off", in_tree("env", "WERROR=1", "bash", MODULES_OFF_CHECK, "-j", jobs, "all-off"))
     # 3. unit tests
     if (args.keep_going or not runner.failed) and "unit-tests" in plan.builds:
         if plan.unit_all:
@@ -896,7 +972,10 @@ def main(argv: list[str], root: Path | None = None) -> int:
             runner.run(f"HTML UI tests ({len(plan.unit_htmlui)} suite(s))", ["tools/build.sh", "htmlui-tests"],
                        dict(build_env, HTMLUI_TEST_ARGS=f"--gtest_filter={suite_filter(plan.unit_htmlui)}"))
     # 4. MCP tests
-    if (args.keep_going or not runner.failed) and (plan.mcp_all or plan.mcp_ci or plan.mcp_files):
+    if args.no_mcp and (plan.mcp_all or plan.mcp_ci or plan.mcp_files):
+        runner.steps.append(("MCP tests", "SKIP (--no-mcp)", 0.0))
+        runner.partial = True
+    elif (args.keep_going or not runner.failed) and (plan.mcp_all or plan.mcp_ci or plan.mcp_files):
         if "linux" not in plan.builds and not (ROOT / "build/linux/editor-install/bin/jasperengine-editor").exists():
             runner.run("build linux (the MCP tests' editor)", ["tools/build.sh", "linux"], dict(build_env, SKIP_ENGINE="1"))
         # (the container's CPUs, rb.sh's JOBS, for two each: LP_NUM_THREADS 2, docs/testing.md)
@@ -930,9 +1009,6 @@ def main(argv: list[str], root: Path | None = None) -> int:
                     runner.failed = True
                     files = [f for f in files if f != "test_mesh_raycast.py"]
                     mcp_env["MCP_SKIP_WEB_BUILD"] = "1"
-                if len(files) > LARGE_SELECTION:
-                    print(f"[check-changed] {len(files)} files: je-remote/mcp-shard.sh --select <--list-mcp's file> runs them "
-                          "across servers (from the machine that has rb.sh)", flush=True)
                 runner.run(f"MCP tests ({len(files)} file(s))", ["tools/build.sh", "mcp-tests", "-j", str(jobs),
                            *split, *[f"tools/mcp/tests/{f}" for f in files]], mcp_env)
                 runner.mcp_results(f"MCP tests ({len(files)} file(s))")
@@ -948,7 +1024,7 @@ def main(argv: list[str], root: Path | None = None) -> int:
     summary = "\n".join(lines)
     print(summary, flush=True)
     if runner.partial:
-        print("[check-changed] a build was left out (above): the pass is not cached", flush=True)
+        print("[check-changed] a step was left out (above): the pass is not cached", flush=True)
     elif not runner.failed:
         if inputs_hash(changes, cmap_version, options, ROOT) == key and \
                 read_changes(args.base, ROOT, RB_CHANGES).files == changes.files:

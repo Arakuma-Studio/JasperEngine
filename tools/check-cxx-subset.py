@@ -7,7 +7,7 @@ The subset is what every toolchain JasperEngine supports compiles: GCC 11's libs
 under the macOS 10.15 / iOS 13 deployment targets (docs/specs/S01-cxx20.md, D7). This finds the
 banned constructs a pattern can find: the library headers those standard libraries lack,
 std::format, std::jthread and its stop tokens, std::pmr, coroutines and modules. Vendored code
-(engine/libs, libs) is not checked.
+(engine/libs, editor/libs, libs) is not checked.
 
     tools/check-cxx-subset.py [<root>]
 
@@ -20,8 +20,8 @@ import re
 import sys
 
 SCANNED = ("engine", "editor")
-SKIPPED = ("engine/libs",)
-SKIPPED_PREFIXES = ("engine/platform/apple/GoogleMobileAds",)
+SKIPPED = ("engine/libs", "editor/libs")
+SKIPPED_PREFIXES: tuple[str, ...] = ()
 EXTENSIONS = {".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp", ".c", ".cc", ".cpp", ".cxx", ".m", ".mm"}
 
 BANNED_HEADERS = ("format", "semaphore", "latch", "barrier", "stop_token", "syncstream",

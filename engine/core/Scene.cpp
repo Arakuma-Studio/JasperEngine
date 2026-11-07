@@ -2,8 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "manager/ObjectManager.h"
+#include "component/ButtonComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/PanelComponent.h"
+#include "component/ScrollbarComponent.h"
 #include "script/ScriptRuntime.h"
 #include "Scene.h"
+#include "component/ComponentEvents.h"
 #include "shader/ShaderGlobals.h"
 #include "script/AsyncOwner.h"
 
@@ -30,9 +36,11 @@
 #include "picking/SceneBvh.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/SplineSystem.h"
+#include "subsystem/WaterInteractionSystem.h"
 #include "util/Color.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 
 using namespace jasperengine;
@@ -72,6 +80,9 @@ void Scene::init(){
     registerSystem<RenderSystem>();
     // after Render, whose update makes this frame's world transforms (the trails' heads)
     registerSystem<TrailSystem>();
+    // after Render too (this frame's world transforms): the Water Excluders the water draws test and
+    // the Water Wakes' map it uploads
+    registerSystem<WaterInteractionSystem>();
     // before physics: agents set their bodies' velocities before the world steps (S19 D2)
     registerSystem<NavigationSystem>();
     registerSystem<PhysicsSystem>();
@@ -103,15 +114,6 @@ Scene::~Scene(){
     destroy();
 }
 
-template<typename Component, typename Callback>
-static void removeComponentSubscriptionsByTag(Scene* scene, const std::string& substring, Callback callback) {
-    auto components = scene->getComponentArray<Component>();
-
-    for (size_t i = 0; i < components->size(); i++) {
-        callback(components->getComponentFromIndex(i), substring);
-    }
-}
-
 bool Scene::isActivationObserved() const{
     return ScriptRuntime::hasStarted(const_cast<Scene*>(this));
 }
@@ -125,98 +127,8 @@ std::weak_ptr<char> Scene::getLifetime() const{
 }
 
 void Scene::removeSubscriptionsByTag(const std::string& substring) {
-    removeComponentSubscriptionsByTag<ActionComponent>(this, substring, [](ActionComponent& action, const std::string& tag) {
-        action.onStart.removeByTagSubstring(tag);
-        action.onPause.removeByTagSubstring(tag);
-        action.onStop.removeByTagSubstring(tag);
-        action.onStep.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<SplineAnimateComponent>(this, substring, [](SplineAnimateComponent& animate, const std::string& tag) {
-        animate.onComplete.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<AudioSourceComponent>(this, substring, [](AudioSourceComponent& sound, const std::string& tag) {
-        sound.onStart.removeByTagSubstring(tag);
-        sound.onPause.removeByTagSubstring(tag);
-        sound.onStop.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<PoseAnimatorComponent>(this, substring, [](PoseAnimatorComponent& animator, const std::string& tag) {
-        animator.onFinish.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<AnimationPlayerComponent>(this, substring, [](AnimationPlayerComponent& player, const std::string& tag) {
-        player.onEvent.removeByTagSubstring(tag);
-        player.onFinish.removeByTagSubstring(tag);
-        player.onStateEnter.removeByTagSubstring(tag);
-        player.onStateExit.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<VertexAnimatorComponent>(this, substring, [](VertexAnimatorComponent& animator, const std::string& tag) {
-        animator.onEvent.removeByTagSubstring(tag);
-        animator.onFinish.removeByTagSubstring(tag);
-        animator.onInstanceEvent.removeByTagSubstring(tag);
-        animator.onInstanceFinish.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<AnimatorComponent>(this, substring, [](AnimatorComponent& animator, const std::string& tag) {
-        animator.onEvent.removeByTagSubstring(tag);
-        animator.onStateEnter.removeByTagSubstring(tag);
-        animator.onStateExit.removeByTagSubstring(tag);
-        animator.onMontageEnded.removeByTagSubstring(tag);
-        animator.onAnimatorMove.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<UIComponent>(this, substring, [](UIComponent& ui, const std::string& tag) {
-        ui.onGetFocus.removeByTagSubstring(tag);
-        ui.onLostFocus.removeByTagSubstring(tag);
-        ui.onPointerEnter.removeByTagSubstring(tag);
-        ui.onPointerLeave.removeByTagSubstring(tag);
-        ui.onPointerMove.removeByTagSubstring(tag);
-        ui.onPointerDown.removeByTagSubstring(tag);
-        ui.onPointerUp.removeByTagSubstring(tag);
-        ui.onClick.removeByTagSubstring(tag);
-        ui.onDoubleClick.removeByTagSubstring(tag);
-        ui.onDragStart.removeByTagSubstring(tag);
-        ui.onDrag.removeByTagSubstring(tag);
-        ui.onDragEnd.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<ButtonComponent>(this, substring, [](ButtonComponent& button, const std::string& tag) {
-        button.onPress.removeByTagSubstring(tag);
-        button.onRelease.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<PanelComponent>(this, substring, [](PanelComponent& panel, const std::string& tag) {
-        panel.onMove.removeByTagSubstring(tag);
-        panel.onResize.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<ScrollbarComponent>(this, substring, [](ScrollbarComponent& scrollbar, const std::string& tag) {
-        scrollbar.onChange.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<InputFieldComponent>(this, substring, [](InputFieldComponent& inputField, const std::string& tag) {
-        inputField.onChange.removeByTagSubstring(tag);
-        inputField.onSubmit.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<OnScreenStickComponent>(this, substring, [](OnScreenStickComponent& stick, const std::string& tag) {
-        stick.onValueChanged.removeByTagSubstring(tag);
-        stick.onPress.removeByTagSubstring(tag);
-        stick.onRelease.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<OnScreenButtonComponent>(this, substring, [](OnScreenButtonComponent& button, const std::string& tag) {
-        button.onPress.removeByTagSubstring(tag);
-        button.onRelease.removeByTagSubstring(tag);
-    });
-
-    removeComponentSubscriptionsByTag<TouchAreaComponent>(this, substring, [](TouchAreaComponent& area, const std::string& tag) {
-        area.onDrag.removeByTagSubstring(tag);
-    });
-
+    // every event of every component (ComponentEvents.h), then the physics system's
+    forEachComponentEvent(*this, [&substring](auto& event) { event.removeByTagSubstring(substring); });
     getSystem<PhysicsSystem>()->removeSubscriptionsByTag(substring);
 }
 
@@ -348,6 +260,22 @@ float Scene::getMeshLodThreshold() const{
     return settings.meshLodThreshold;
 }
 
+void Scene::setMeshLodCrossFade(bool crossFade){
+    settings.meshLodCrossFade = crossFade;
+}
+
+bool Scene::isMeshLodCrossFade() const{
+    return settings.meshLodCrossFade;
+}
+
+void Scene::setMeshLodCrossFadeDuration(float seconds){
+    settings.meshLodCrossFadeDuration = std::isfinite(seconds) ? std::clamp(seconds, 0.05f, 2.0f) : settings.meshLodCrossFadeDuration;
+}
+
+float Scene::getMeshLodCrossFadeDuration() const{
+    return settings.meshLodCrossFadeDuration;
+}
+
 void Scene::setDepthPrepassEnabled(bool enabled){
     if (settings.depthPrepassEnabled != enabled){
         settings.depthPrepassEnabled = enabled;
@@ -367,6 +295,100 @@ void Scene::setSceneColorScale(SceneColorScale scale){
 
 SceneColorScale Scene::getSceneColorScale() const{
     return settings.sceneColorScale;
+}
+
+void Scene::setPlanarReflectionResolution(PlanarReflectionResolution resolution){
+    settings.planarReflectionResolution = resolution;
+}
+
+PlanarReflectionResolution Scene::getPlanarReflectionResolution() const{
+    return settings.planarReflectionResolution;
+}
+
+void Scene::setPlanarReflectionLayers(uint32_t layers){
+    settings.planarReflectionLayers = layers;
+}
+
+uint32_t Scene::getPlanarReflectionLayers() const{
+    return settings.planarReflectionLayers;
+}
+
+void Scene::setPlanarReflectionShadows(bool shadows){
+    settings.planarReflectionShadows = shadows;
+}
+
+bool Scene::getPlanarReflectionShadows() const{
+    return settings.planarReflectionShadows;
+}
+
+void Scene::setPlanarReflectionFarClip(float farClip){
+    settings.planarReflectionFarClip = std::isfinite(farClip) ? std::max(farClip, 0.0f) : 0.0f;
+}
+
+float Scene::getPlanarReflectionFarClip() const{
+    return settings.planarReflectionFarClip;
+}
+
+void Scene::setPlanarReflectionClipOffset(float offset){
+    settings.planarReflectionClipOffset = std::isfinite(offset) ? offset : 0.0f;
+}
+
+float Scene::getPlanarReflectionClipOffset() const{
+    return settings.planarReflectionClipOffset;
+}
+
+void Scene::setMaxPlanarReflections(int count){
+    settings.maxPlanarReflections = std::clamp(count, 1, 4);
+}
+
+int Scene::getMaxPlanarReflections() const{
+    return settings.maxPlanarReflections;
+}
+
+void Scene::setWaterWakeResolution(WaterWakeResolution resolution){
+    settings.waterWakeResolution = resolution;
+}
+
+WaterWakeResolution Scene::getWaterWakeResolution() const{
+    return settings.waterWakeResolution;
+}
+
+void Scene::setWaterWakeArea(float area){
+    settings.waterWakeArea = std::isfinite(area) ? std::clamp(area, 8.0f, 1024.0f) : SceneSettings().waterWakeArea;
+}
+
+float Scene::getWaterWakeArea() const{
+    return settings.waterWakeArea;
+}
+
+void Scene::setWaterWakeFade(float fade){
+    settings.waterWakeFade = std::isfinite(fade) ? std::clamp(fade, 0.1f, 120.0f) : SceneSettings().waterWakeFade;
+}
+
+float Scene::getWaterWakeFade() const{
+    return settings.waterWakeFade;
+}
+
+double Scene::getSceneTime() const{
+    return Engine::hasPinnedShaderTime() ? Engine::getPinnedShaderTime() : sceneTime;
+}
+
+void Scene::setSceneTime(double seconds){
+    if (std::isfinite(seconds))
+        sceneTime = seconds;
+}
+
+void Scene::advanceSceneTime(double delta, bool evenWhenPaused){
+    if ((!sceneTimePaused || evenWhenPaused) && std::isfinite(delta) && delta > 0.0)
+        sceneTime += delta;
+}
+
+void Scene::setSceneTimePaused(bool paused){
+    sceneTimePaused = paused;
+}
+
+bool Scene::isSceneTimePaused() const{
+    return sceneTimePaused;
 }
 
 void Scene::setSSAOEnabled(bool ssaoEnabled){
@@ -584,6 +606,33 @@ float Scene::getPhysicalLightEV100() const{
     return settings.physicalLightEV100;
 }
 
+void Scene::setCapsuleShadowsEnabled(bool enabled){
+    // the lit variants take capsule shadows or leave them (RenderSystem::updateLightingFeatures)
+    settings.capsuleShadowsEnabled = enabled;
+}
+
+bool Scene::isCapsuleShadowsEnabled() const{
+    return settings.capsuleShadowsEnabled;
+}
+
+void Scene::setCapsuleShadowIntensity(float intensity){
+    if (std::isfinite(intensity))
+        settings.capsuleShadowIntensity = std::clamp(intensity, 0.0f, 1.0f);
+}
+
+float Scene::getCapsuleShadowIntensity() const{
+    return settings.capsuleShadowIntensity;
+}
+
+void Scene::setCapsuleShadowSoftness(float softness){
+    if (std::isfinite(softness))
+        settings.capsuleShadowSoftness = std::clamp(softness, 0.0f, 2.0f);
+}
+
+float Scene::getCapsuleShadowSoftness() const{
+    return settings.capsuleShadowSoftness;
+}
+
 void Scene::setAmbientLight2D(float intensity, Vector3 color){
     settings.ambientLight2DIntensity = intensity;
     settings.ambientLight2DColor = Color::sRGBToLinear(color);
@@ -766,6 +815,88 @@ void Scene::setDefaultShaderRef(ShaderType type, const ShaderRef& ref){
         case ShaderType::LINES:  settings.defaultLinesShader = ref;  break;
         default: break;
     }
+}
+
+// null for the types without a scene default
+static ShaderUniformValues* defaultShaderUniformsField(SceneSettings& settings, ShaderType type){
+    switch (type){
+        case ShaderType::MESH:   return &settings.defaultMeshShaderUniforms;
+        case ShaderType::UI:     return &settings.defaultUIShaderUniforms;
+        case ShaderType::SKYBOX: return &settings.defaultSkyShaderUniforms;
+        case ShaderType::POINTS: return &settings.defaultPointsShaderUniforms;
+        case ShaderType::LINES:  return &settings.defaultLinesShaderUniforms;
+        default: return nullptr;
+    }
+}
+
+// `logged`: the caller's own flag, so a script calling it every frame says so once per call site
+static ShaderUniformValues* writableDefaultShaderUniforms(SceneSettings& settings, ShaderType type, std::atomic<bool>& logged){
+    ShaderUniformValues* field = defaultShaderUniformsField(settings, type);
+    if (!field && !logged.exchange(true))
+        Log::error("Shader type %i has no scene default shader: only mesh, UI, sky, points and lines do", (int)type);
+    return field;
+}
+
+void Scene::setDefaultShaderUniforms(ShaderType type, const ShaderUniformValues& values){
+    static std::atomic<bool> logged{false};
+    ShaderUniformValues* field = writableDefaultShaderUniforms(settings, type, logged);
+    if (!field || *field == values)
+        return;
+    *field = values;
+    getSystem<RenderSystem>()->needUpdateDefaultShaderUniforms(type);
+}
+
+const ShaderUniformValues& Scene::getDefaultShaderUniforms(ShaderType type) const{
+    static const ShaderUniformValues empty;
+    const ShaderUniformValues* field = defaultShaderUniformsField(const_cast<SceneSettings&>(settings), type);
+    return field ? *field : empty;
+}
+
+void Scene::setDefaultShaderUniform(ShaderType type, const std::string& name, const Vector4& value){
+    static std::atomic<bool> logged{false};
+    ShaderUniformValues* field = writableDefaultShaderUniforms(settings, type, logged);
+    if (!field)
+        return;
+    if (ShaderUniforms::has(*field, name) && ShaderUniforms::get(*field, name) == value)
+        return;
+    if (ShaderUniforms::set(*field, name, value))
+        getSystem<RenderSystem>()->needUpdateDefaultShaderUniforms(type);
+}
+
+void Scene::setDefaultShaderUniform(ShaderType type, const std::string& name, const Vector3& value){
+    setDefaultShaderUniform(type, name, Vector4(value.x, value.y, value.z, 0.0f));
+}
+
+void Scene::setDefaultShaderUniform(ShaderType type, const std::string& name, const Vector2& value){
+    setDefaultShaderUniform(type, name, Vector4(value.x, value.y, 0.0f, 0.0f));
+}
+
+void Scene::setDefaultShaderUniform(ShaderType type, const std::string& name, float value){
+    setDefaultShaderUniform(type, name, Vector4(value, 0.0f, 0.0f, 0.0f));
+}
+
+Vector4 Scene::getDefaultShaderUniform(ShaderType type, const std::string& name) const{
+    return ShaderUniforms::get(getDefaultShaderUniforms(type), name);
+}
+
+bool Scene::hasDefaultShaderUniform(ShaderType type, const std::string& name) const{
+    return ShaderUniforms::has(getDefaultShaderUniforms(type), name);
+}
+
+bool Scene::removeDefaultShaderUniform(ShaderType type, const std::string& name){
+    static std::atomic<bool> logged{false};
+    ShaderUniformValues* field = writableDefaultShaderUniforms(settings, type, logged);
+    if (!field || !ShaderUniforms::remove(*field, name))
+        return false;
+    getSystem<RenderSystem>()->needUpdateDefaultShaderUniforms(type);
+    return true;
+}
+
+const ShaderUniformValues* Scene::getInheritedShaderUniforms(ShaderType type, const std::string& ownShader) const{
+    if (!ownShader.empty() || getDefaultCustomShader(type).empty())
+        return nullptr;
+    const ShaderUniformValues& values = getDefaultShaderUniforms(type);
+    return values.empty() ? nullptr : &values;
 }
 
 const std::vector<PostProcessPass>& Scene::getPostProcessPasses() const{

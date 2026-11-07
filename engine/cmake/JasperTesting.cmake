@@ -10,6 +10,11 @@ include(GoogleTest)
 include(${CMAKE_CURRENT_LIST_DIR}/JasperWarnings.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/JasperSanitizers.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/JasperUnityBuild.cmake)
+# the UTF-8 code page and DPI awareness of the editor and games (engine/platform/win/jasperengine.manifest):
+# tests run in the code page users run in
+if(WIN32)
+    include(${CMAKE_CURRENT_LIST_DIR}/../platform/win/WindowsManifest.cmake)
+endif()
 
 set(JASPERENGINE_GOOGLETEST_DIR "${CMAKE_CURRENT_LIST_DIR}/../../libs/googletest")
 set(JASPERENGINE_TEST_SUPPORT_DIR "${CMAKE_CURRENT_LIST_DIR}/../tests/support")
@@ -166,6 +171,9 @@ function(jasperengine_add_test_target name)
         jasperengine_stage_asan_runtime(${name})
     endif()
     set_target_properties(${name} PROPERTIES FOLDER "tests")
+    if(WIN32)
+        jasperengine_add_windows_manifest(${name})
+    endif()
 
     # CTest: discovered when ctest runs (PRE_TEST), so a build needs no display
     file(MAKE_DIRECTORY ${testBinaryDir})

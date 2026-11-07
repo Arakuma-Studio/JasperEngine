@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneWindow.h"
+#include "audio/SoundDrop.h"
+#include "component/TextComponent.h"
+#include "component/TranslateTracksComponent.h"
+#include "window/PhysicsPlacementWindow.h"
+#include "component/MeshPolygonComponent.h"
 #include "widget/ColorField.h"
 #include "util/EditorScripts.h"
 #include "DocumentFile.h"
@@ -16,6 +21,10 @@
 #include "external/IconsFontAwesome6.h"
 #include "Backend.h"
 #include "subsystem/RenderSystem.h"
+#include "render/SystemRender.h"
+#include "render/RenderStats.h"
+#include "render/SceneDrawModes.h"
+#include "render/RenderUtil.h"
 #include "util/Util.h"
 #include "util/EntityPayload.h"
 #include "command/CommandHandle.h"
@@ -48,6 +57,7 @@
 #include "sceneview/SurfacePlacement.h"
 #include "util/FluidEditorTools.h"
 #include "util/UIProbe.h"
+#include "navigation/NavPathTester.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/CameraFollowComponent.h"
 #include "subsystem/CameraControlSystem.h"
@@ -524,6 +534,23 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
 
     if (ImGui::BeginDragDropTarget()) {
         const ImGuiPayload* peekPayload = ImGui::GetDragDropPayload();
+        // a sound: a new GameObject with an AudioSource, where it lands in a 3D scene
+        if (SoundDrop::accepts(peekPayload)) {
+            if (const ImGuiPayload* dropped = ImGui::AcceptDragDropPayload(peekPayload->DataType)) {
+                std::vector<std::string> sounds;
+                std::string error;
+                if (SoundDrop::resolve(project, dropped, sounds, error)) {
+                    const bool is3D = sceneProject->sceneType == SceneType::SCENE_3D;
+                    float x = ImGui::GetIO().MousePos.x - ImGui::GetWindowPos().x;
+                    float y = ImGui::GetIO().MousePos.y - ImGui::GetWindowPos().y;
+                    toEngineCanvas(sceneProject->id, x, y);
+                    const Vector3 place = is3D ? getDropSurface(sceneProject, x, y, {}).point : Vector3(0, 0, 0);
+                    for (const std::string& sound : sounds) SoundDrop::createSource(project, sceneProject->id, sound, is3D, place, error);
+                    focusSceneWindow(*sceneProject);
+                }
+                if (!error.empty()) Out::warning("Sound drop: %s", error.c_str());
+            }
+        }
         if (peekPayload && peekPayload->IsDataType("resource_files")) {
             std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(peekPayload);
             if (receivedStrings.size() > 0) {
@@ -1115,7 +1142,8 @@ void editor::SceneWindow::handleTileRectDragDrop(SceneProject* sceneProject) {
                             }
 
                             int freeSlot = (int)tilemap->numTiles;
-                            if (freeSlot < (int)tilemap->tiles.size()) {
+                            // (a Tilemap draws at most MAX_TILEMAP_RENDERED_TILES)
+                            if (freeSlot < MAX_TILEMAP_RENDERED_TILES) {
                                 std::string tilePrefix = "tiles[" + std::to_string(freeSlot) + "]";
                                 MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
                                 multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entity, ComponentType::TilemapComponent,
@@ -1531,6 +1559,29 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 }
             }
 
+            // Capsule Shadow Caster handles of a selected caster: the capsules' ends and radius
+            // (3D translate; the same side guard as the blocks above)
+            if (gizmoSelected == GizmoSelected::TRANSLATE && !sceneProject->sceneRender->hasEditLayer()) {
+                std::vector<Entity> selEntities = project->getSelectedEntities(sceneId);
+                if (selEntities.size() == 1 && !io.KeyShift && sceneProject->scene->findComponent<CapsuleShadowCasterComponent>(selEntities[0])) {
+                    Entity selEntity = selEntities[0];
+                    if (!sceneProject->sceneRender->isAnyGizmoSideSelected()) {
+                        int handleHit = sceneProject->sceneRender->hitTestCapsuleHandle(selEntity, x, y);
+                        if (handleHit >= 0) {
+                            sceneProject->sceneRender->selectCapsuleHandle(selEntity, handleHit);
+                            subSelectionClickConsumesRelease[sceneId] = true;
+                            // Re-update so the gizmo jumps to the handle
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
+                        } else if (sceneProject->sceneRender->getSelectedCapsuleHandleIndex() >= 0) {
+                            sceneProject->sceneRender->clearCapsuleHandleSelection();
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
+                        }
+                    }
+                }
+            }
+
             // TranslateTracks keyframe point sub-selection within a selected tracks entity
             // (2D gizmo or 3D translate; same side guards as the line block above)
             if (gizmoSelected == GizmoSelected::OBJECT2D || gizmoSelected == GizmoSelected::TRANSLATE) {
@@ -1750,6 +1801,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 Entity prevTrackPointEntity = sceneProject->sceneRender->getSelectedTrackPointEntity();
                 int prevJointAnchorIndex = sceneProject->sceneRender->getSelectedJointAnchorIndex();
                 Entity prevJointAnchorEntity = sceneProject->sceneRender->getSelectedJointAnchorEntity();
+                int prevCapsuleHandleIndex = sceneProject->sceneRender->getSelectedCapsuleHandleIndex();
+                Entity prevCapsuleHandleEntity = sceneProject->sceneRender->getSelectedCapsuleHandleEntity();
 
                 // a click on empty space while lattice points are selected clears the points
                 // and keeps the lattice (the next one deselects it as usual); the same for the
@@ -1800,6 +1853,9 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 }
                 if (prevJointAnchorIndex >= 0 && !(soleHost && selAfter[0] == prevJointAnchorEntity)){
                     sceneProject->sceneRender->clearJointAnchorSelection();
+                }
+                if (prevCapsuleHandleIndex >= 0 && !(soleHost && selAfter[0] == prevCapsuleHandleEntity)){
+                    sceneProject->sceneRender->clearCapsuleHandleSelection();
                 }
             }
             subSelectionClickConsumesRelease[sceneId] = false;
@@ -1855,6 +1911,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 sceneProject->sceneRender->clearPolygonPointSelection();
                 sceneProject->sceneRender->clearTrackPointSelection();
                 sceneProject->sceneRender->clearJointAnchorSelection();
+                sceneProject->sceneRender->clearCapsuleHandleSelection();
                 project->selectObjectsByRect(sceneId, clickStartPos, clickEndPos);
                 project->clearInspectedAsset();
                 project->syncSceneRenderEditLayer(sceneId);
@@ -2151,6 +2208,14 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         escapeTaken = physics->cancelGesture((uint32_t)sceneId);
     }
 
+    // the Path Tester: Esc ends it (it edits nothing, there is nothing to cancel)
+    if (NavPathTester::get().isActive((uint32_t)sceneId) && sceneViewInput && !popupOpen && !escapeTaken && !io.WantTextInput &&
+            !ImGui::IsAnyItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        NavPathTester::get().stop();
+        sceneProject->needUpdateRender = true;
+        escapeTaken = true;
+    }
+
     // Paint Dye: Esc puts the brush down ([ / ] scale it: sceneView.brushSmaller/Larger), while the
     // view is focused or under the pointer and nothing is being typed
     if (sceneProject->sceneRender->isFluidPainting() && !ImGui::IsAnyItemActive() && !io.WantTextInput &&
@@ -2285,6 +2350,90 @@ void editor::SceneWindow::focusOnEntities(SceneProject* sceneProject, const std:
         }
     }
     focusOnBounds(sceneProject, bounds);
+}
+
+bool editor::SceneWindow::pathTesterInput(SceneProject& sceneProject, float x, float y, bool hovered) {
+    NavPathTester& tester = NavPathTester::get();
+    if (!tester.isActive(sceneProject.id) || !sceneProject.sceneRender) return false;
+    // a bake landed, a surface moved: the answer follows
+    tester.refresh(sceneProject);
+    const ImGuiIO& io = ImGui::GetIO();
+    SceneRender* sceneRender = sceneProject.sceneRender;
+    auto toView = [sceneRender](const Vector3& world, Vector2& screen) { return sceneRender->worldToScreen(world, screen); };
+    bool used = false;
+    if (hovered && !io.KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        // the handles' reach is in view pixels, the pointer in engine pixels
+        const float grab = NavPathTester::HANDLE_PIXELS * canvasEngineScale(sceneProject.id).x;
+        const SceneSurfaceHit hit = viewController->surfaceAt(sceneProject, x, y, {}, true);
+        if (hit.source != SceneSurfaceHit::Source::NONE) tester.press(sceneProject, hit.point, Vector2(x, y), io.KeyShift, toView, grab);
+        used = true;
+    } else if (tester.getDragged() != NavPathTester::Handle::None && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        const SceneSurfaceHit hit = viewController->surfaceAt(sceneProject, x, y, {}, true);
+        if (hit.source != SceneSurfaceHit::Source::NONE) tester.drag(sceneProject, hit.point);
+        used = true;
+    }
+    if (tester.getDragged() != NavPathTester::Handle::None && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) tester.release(sceneProject);
+    return used;
+}
+
+void editor::SceneWindow::drawNavigationHud(SceneProject& sceneProject, ImVec2 canvasMin, ImVec2 canvasSize) {
+    SceneRender* sceneRender = sceneProject.sceneRender;
+    if (!sceneRender) return;
+    const ImVec2 engineScale = canvasEngineScale(sceneProject.id);
+    auto toScreen = [&](const Vector3& world, float& sx, float& sy) {
+        Vector2 engine;
+        if (!sceneRender->worldToScreen(world, engine)) return false;
+        sx = canvasMin.x + engine.x / engineScale.x;
+        sy = canvasMin.y + engine.y / engineScale.y;
+        return true;
+    };
+    // Show Tile Labels: each visible tile's last build at its top (dirty tiles orange)
+    const NavOverlaySettings& nav = sceneProject.displaySettings.navigation;
+    NavigationOverlay* overlay = sceneRender->getNavigationOverlay();
+    if (overlay && nav.enabled && nav.showTileLabels) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const ImVec2 pad = Theme::dpi(ImVec2(4.0f, 2.0f));
+        for (const NavTileLabel& label : overlay->getTileLabels()) {
+            float sx = 0.0f, sy = 0.0f;
+            if (!toScreen(label.world, sx, sy) || sx < canvasMin.x || sy < canvasMin.y || sx > canvasMin.x + canvasSize.x ||
+                    sy > canvasMin.y + canvasSize.y) {
+                continue;
+            }
+            const ImVec2 size = ImGui::CalcTextSize(label.text.c_str());
+            const ImVec2 at(sx - size.x * 0.5f - pad.x, sy - size.y * 0.5f - pad.y);
+            drawList->AddRectFilled(at, ImVec2(at.x + size.x + pad.x * 2.0f, at.y + size.y + pad.y * 2.0f), IM_COL32(20, 20, 24, 190),
+                                    Theme::dpi(4.0f));
+            drawList->AddText(ImVec2(at.x + pad.x, at.y + pad.y), label.dirty ? IM_COL32(255, 160, 60, 255) : IM_COL32(235, 235, 235, 255),
+                              label.text.c_str());
+        }
+    }
+    // the Path Tester's handles: a ring of the reach a press grabs them in, brighter under the pointer
+    NavPathTester& tester = NavPathTester::get();
+    if (tester.isActive(sceneProject.id)) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const ImVec2 mouse = ImGui::GetIO().MousePos;
+        auto handle = [&](bool set, const Vector3& world, ImU32 color, NavPathTester::Handle which) {
+            float sx = 0.0f, sy = 0.0f;
+            if (!set || !toScreen(world, sx, sy)) return;
+            const float reach = NavPathTester::HANDLE_PIXELS;
+            const float dx = mouse.x - sx, dy = mouse.y - sy;
+            const bool hot = tester.getDragged() == which || dx * dx + dy * dy <= reach * reach;
+            drawList->AddCircleFilled(ImVec2(sx, sy), reach * 0.45f, color);
+            drawList->AddCircle(ImVec2(sx, sy), reach, hot ? IM_COL32(255, 255, 255, 255) : (color & 0x00FFFFFF) | 0xA0000000u, 0,
+                                hot ? Theme::dpi(2.0f) : Theme::dpi(1.0f));
+        };
+        handle(tester.hasStart(), tester.getStart(), IM_COL32(60, 240, 80, 255), NavPathTester::Handle::Start);
+        if (tester.usesEnd()) handle(tester.hasEnd(), tester.getEnd(), IM_COL32(255, 60, 60, 255), NavPathTester::Handle::End);
+    }
+
+    // the Path Tester's panel at the top right, under the view gizmo
+    float top = canvasMin.y + Theme::dpi(8.0f);
+    if (sceneProject.sceneType == SceneType::SCENE_3D) top += VIEWPORT_GIZMO_SIZE * getOverlayScale(sceneProject.id) / engineScale.y;
+    NavPathTester::get().drawPanel(sceneProject, canvasMin.x, canvasSize.x, top, toScreen);
+}
+
+void editor::SceneWindow::frameBounds(uint32_t sceneId, const AABB& worldBounds) {
+    focusOnBounds(project->getScene(sceneId), worldBounds);
 }
 
 void editor::SceneWindow::focusOnBounds(SceneProject* sceneProject, const AABB& bounds) {
@@ -2446,6 +2595,7 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         drawSettingRow("    Show NavGrid", nav.showGrid, !nav.enabled);
         drawSettingRow("    Show Links", nav.showLinks, !nav.enabled);
         drawSettingRow("    Show Obstacles", nav.showObstacles, !nav.enabled);
+        drawSettingRow("    Show Area Overrides", nav.showAreaOverrides, !nav.enabled);
         drawSettingRow("    Show Avoidance", nav.showAvoidance, !nav.enabled);
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
@@ -2460,7 +2610,34 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
             sceneProject.needUpdateRender = true;
             project->saveWorkspaceFile();
         }
+        // S75 diagnostics: what tints the navmesh, the steep collected ground, the tiles' builds
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("    Color By");
+        ImGui::SetItemTooltip("Areas: the area colours; Islands: each connected part (grey: what the Path Tester's start "
+                              "cannot reach); Tiles: each navmesh tile");
+        ImGui::TableSetColumnIndex(1);
+        int colorBy = (int)nav.colorBy;
+        const char* colorNames[] = {"Areas", "Islands", "Tiles"};
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::Combo("##navcolorby", &colorBy, colorNames, 3)) {
+            nav.colorBy = (NavOverlaySettings::ColorBy)colorBy;
+            sceneProject.needUpdateRender = true;
+            project->saveWorkspaceFile();
+        }
         ImGui::EndDisabled();
+        drawSettingRow("    Show Steep Slopes", nav.showSteepSlopes, !nav.enabled);
+        ImGui::SetItemTooltip("Tint the collected ground steeper than the agent type's Max Slope (red)");
+        drawSettingRow("    Show Tile Labels", nav.showTileLabels, !nav.enabled);
+        ImGui::SetItemTooltip("Each visible tile's last build: time, polygons, size; tiles changed since the bake are orange");
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted(ICON_FA_ROUTE " Path Tester");
+        ImGui::SetItemTooltip("Query paths in the Scene view: Shift+click sets the start, click the end (Esc ends it)");
+        ImGui::TableSetColumnIndex(1);
+        NavPathTester& tester = NavPathTester::get();
+        const bool testing = tester.isActive(sceneProject.id);
+        if (ImGui::Button(testing ? "Stop##navtester" : "Start##navtester", ImVec2(-1, 0))) tester.toggle(sceneProject);
         ImGui::EndTable();
     }
 
@@ -2508,6 +2685,9 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         if (sceneProject.sceneType != SceneType::SCENE_UI) {
             drawSettingRow(ICON_FA_WAND_MAGIC_SPARKLES " Show post-processing", sceneProject.displaySettings.showPostProcessing);
         }
+        drawSettingRow(ICON_FA_WATER " Animate water", sceneProject.displaySettings.animateWater);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Water and shaders on the scene clock move while the scene is stopped (Play always animates them)");
 
         ImGui::EndTable();
     }
@@ -2711,6 +2891,45 @@ void editor::SceneWindow::show() {
             ImGui::TextDisabled("%s", sceneKindLabel);
             ImGui::SetItemTooltip("%s scene", sceneKindLabel);
 
+            // the Draw Mode and the Stats overlay (spec S54 R11, R12): editor only, saved with
+            // the workspace; a game always draws Shaded
+            if (sceneProject.sceneType == SceneType::SCENE_3D) {
+                ImGui::SameLine();
+                ViewDrawMode& drawMode = sceneProject.displaySettings.drawMode;
+                ImGui::SetNextItemWidth(Theme::dpi(140.0f));
+                if (ImGui::BeginCombo(("##DrawMode" + std::to_string(sceneProject.id)).c_str(), drawModeLabel(drawMode))) {
+                    static const char* const help[SCENE_DRAW_MODE_COUNT] = {
+                        "The scene as the game draws it",
+                        "Only the meshes' edges, at the detail level each draws",
+                        "The shaded scene with the meshes' edges over it",
+                        "Each mesh tinted by the detail level it draws: LOD 0 green, 1 blue, 2 amber, 3 red; a cross-fade dithers two",
+                        "Every layer of the meshes adds heat, nothing hides another: bright areas draw their pixels many times",
+                    };
+                    for (int mode = 0; mode < SCENE_DRAW_MODE_COUNT; mode++) {
+                        if (mode == (int)ViewDrawMode::LOD_LEVEL)
+                            ImGui::SeparatorText("Mesh Analysis");
+                        const ViewDrawMode item = (ViewDrawMode)mode;
+                        if (ImGui::Selectable(drawModeLabel(item), item == drawMode)) {
+                            drawMode = item;
+                            sceneProject.needUpdateRender = true;
+                            project->saveWorkspaceFile();
+                        }
+                        ImGui::SetItemTooltip("%s", help[mode]);
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::SetItemTooltip("Draw Mode of this Scene view (editor only)");
+                ImGui::SameLine();
+                bool& showStats = sceneProject.displaySettings.showStats;
+                ImGui::PushStyleColor(ImGuiCol_Button, showStats ? Theme::Colors::ButtonActivated : ImGui::GetStyle().Colors[ImGuiCol_Button]);
+                if (ImGui::Button((std::string(ICON_FA_CHART_SIMPLE) + "##SceneStats" + std::to_string(sceneProject.id)).c_str())) {
+                    showStats = !showStats;
+                    project->saveWorkspaceFile();
+                }
+                ImGui::PopStyleColor();
+                ImGui::SetItemTooltip("Stats: draw calls, triangles, vertices, detail levels and mesh memory of this view");
+            }
+
             // Physics (G) on: the orange badge
             if (PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow()) {
                 physics->drawSceneBadge(sceneProject.id);
@@ -2892,6 +3111,8 @@ void editor::SceneWindow::show() {
                     ui::registerViewImage(ImGui::GetWindowViewport()->ID, canvasMin,
                                           ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y), sceneProject.sceneRender->getFramebuffer());
                     particleOverlay.draw(project, &sceneProject, canvasMin, canvasAvail);
+                    drawNavigationHud(sceneProject, canvasMin, canvasAvail);
+                    drawDrawModeOverlays(sceneProject, canvasMin, ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y));
                     // an item over the image again, after the panel's widgets: the drop targets
                     // below (BeginDragDropTarget) take the last item, and an empty one a line
                     // lower would make them unreachable and give the canvas a scrollbar (which
@@ -2996,6 +3217,10 @@ void editor::SceneWindow::show() {
                     const bool viewHovered = ImGui::IsWindowHovered();
                     const bool viewFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && project->getSelectedSceneId() == sceneProject.id;
                     const bool pressed = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+                    // the Path Tester takes the left button first (its press is no pick)
+                    if (pathTesterInput(sceneProject, pointerX, pointerY, viewHovered) && pressed) {
+                        suppressLeftMouseUntilRelease[sceneProject.id] = true;
+                    }
                     if (viewController->handleInput(sceneProject, pointerX, pointerY, viewHovered, viewFocused) && pressed) {
                         suppressLeftMouseUntilRelease[sceneProject.id] = true;
                     }
@@ -3075,6 +3300,31 @@ void editor::SceneWindow::probeSceneView(SceneProject* sceneProject){
         max = ImVec2(std::max(max.x, screen.x), std::max(max.y, screen.y));
     }
     UIProbe::rect("scene.fluidSprite", min.x, min.y, max.x, max.y);
+}
+
+// the LOD Level legend and the Stats box over the Scene view (spec S54 R11, R12)
+void editor::SceneWindow::drawDrawModeOverlays(SceneProject& sceneProject, ImVec2 imageMin, ImVec2 imageMax){
+    if (sceneProject.sceneType != SceneType::SCENE_3D || !sceneProject.scene)
+        return;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    if (sceneProject.displaySettings.drawMode == ViewDrawMode::LOD_LEVEL)
+        drawLodLegend(drawList, imageMin, imageMax);
+    if (!sceneProject.displaySettings.showStats)
+        return;
+    // in Edit mode the Scene view is the engine's frame, while playing a view of its own
+    const bool playing = project->isPlaySessionActive();
+    const uint32_t tag = playing ? SCENE_VIEW_ID : SystemRender::FRAME_STATS_FRAME;
+    const RenderStats stats = SystemRender::getRenderStats(tag);
+    RenderSystem* render = sceneProject.scene->getSystem<RenderSystem>().get();
+    const LodFrameStats lod = !render ? LodFrameStats() : (playing ? render->getViewLodStats(SCENE_VIEW_ID) : render->getLodStats());
+    std::vector<std::string> lines = {"Statistics"};
+    char line[160];
+    std::snprintf(line, sizeof(line), "Draw calls: %u   Tris: %llu", stats.drawCalls, (unsigned long long)stats.triangles);
+    lines.push_back(line);
+    appendMeshStatsLines(lines, stats.vertices, lod, sceneProject.scene->isMeshLodEnabled());
+    if (drawModeHasWires(sceneProject.displaySettings.drawMode) && sceneProject.sceneRender && sceneProject.sceneRender->isWireframeTruncated())
+        lines.push_back("Wires: the nearest meshes only");
+    drawStatsBox(drawList, imageMin, imageMax, lines);
 }
 
 void editor::SceneWindow::drawFluidBrushCursor(SceneProject* sceneProject){

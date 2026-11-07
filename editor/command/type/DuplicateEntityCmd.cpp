@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "DuplicateEntityCmd.h"
+#include "component/Transform.h"
+#include "component/PrefabComponent.h"
 #include "pose/PoseEditSession.h"
 
 #include "command/PlayChangeReview.h"
@@ -174,6 +176,9 @@ bool editor::DuplicateEntityCmd::execute(){
         }
         entities.swap(ordered);
     }
+    // the copies' descendants were decoded at the end of the list: they join their branch,
+    // parents before children as the Transform array has them
+    ProjectUtils::sortEntitiesByTransformOrder(scene, sceneProject->entities);
 
     // Update all created entities (exclude scene-wide flags which reload ALL meshes and recapture ALL probes)
     for (Entity entity : createdEntities) {

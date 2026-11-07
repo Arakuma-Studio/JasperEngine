@@ -509,6 +509,13 @@ in `tools/mcp/tests/`.
 
 ## Deviations (implementation)
 
+- **One contributor manual.** R24's 120 lines and sections and R25's `CLAUDE.md` are replaced:
+  `AGENTS.md` holds every repository-wide rule (at most 350 lines, DON'Ts section included) and
+  `CLAUDE.md` is exactly the line `@AGENTS.md`. R26's rule files hold only what applies under their
+  `paths:`. AC13's sizes follow; R27's `CLAUDE.md` check is now exact.
+  `tools/check_agent_docs.py` and `test_agent_docs.py` enforce this shape.
+- **No build-server rule.** R24's "build where your brief says" is gone: builds and tests run on
+  whatever machine the agent is on.
 - **Group limits live in `tools/mcp/budget.json` only.** R17 put a budget in the group table of
   `McpToolGroups.cpp`; R21 makes budget.json the single source of the limits. The table holds
   name and description; budget.json `groups` holds a group's limits when they differ from the

@@ -57,6 +57,9 @@
 #include "json.hpp"
 #include "render/RenderBackendTime.h"
 
+// (the timer exists only in the builds with the tests: one without it would measure 0)
+static_assert(JASPERENGINE_BACKEND_TIME, "these tests need RenderBackendTime (JASPERENGINE_BACKEND_TIME)");
+
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -730,8 +733,9 @@ TEST(EffectPerfTest, CostTable){
             row["state_bytes"] = stateBytes;
         }
         effects.push_back(row);
-        if (bound > 0.0)
+        if (bound > 0.0){
             EXPECT_LE(ratio, bound) << m->name << " (" << effectCostName(m->cost) << ") costs " << ratio << " x the fill";
+        }
     }
     std::printf("[ effects  ] %zu of the %zu effects of the catalogue measured; the highest low x%.2f, medium x%.2f\n", measured.size(),
                 catalogue.size(), highestLow, highestMedium);

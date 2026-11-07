@@ -20,6 +20,9 @@
 #include "WindowMac.h"
 
 #include "Engine.h"
+#include "device/Device.h"
+
+#include <algorithm>
 #include "PlatformConfig.h"
 #include "player/RunControl.h"
 #include "util/FrameLimiter.h"
@@ -34,8 +37,17 @@
 using namespace jasperengine;
 
 namespace {
+    // A timer-driven loop keeps the run loop live, so Cocoa still delivers input and window
+    // events between frames. VSync paces the actual rate.
+    constexpr NSTimeInterval FRAME_PERIOD = 1.0 / 240.0;
+
     // Engine.targetFrameRate without vsync: frames the timer below skips
     FrameLimiter frameLimiter;
+
+    // the window can't be seen (occluded, minimized, another Space, the app hidden): the timer
+    // runs at Engine::getHiddenUpdateFps and the game updates without drawing
+    bool hidden = false;
+    double hiddenTimerFps = 0.0;
 
 #if defined(SOKOL_METAL)
     MacViewMetal* gameView = nil;
@@ -83,6 +95,21 @@ namespace {
 
     WindowMac::create(config);
     WindowMac::setWindowDelegate((__bridge void*)self);
+
+    // Device.thermalState (spec S56): NSProcessInfo's, read now (which makes the notifications
+    // come) and on every change; the thermal response is off on desktops unless the project
+    // turns it on
+    auto reportThermal = []() {
+        const NSProcessInfoThermalState state = [[NSProcessInfo processInfo] thermalState];
+        Device::reportThermalState((ThermalState)std::clamp((int)state, 0, THERMAL_STATE_COUNT - 1));
+    };
+    reportThermal();
+    [[NSNotificationCenter defaultCenter] addObserverForName:NSProcessInfoThermalStateDidChangeNotification object:nil
+                                                       queue:[NSOperationQueue mainQueue]
+                                                  usingBlock:^(NSNotification* note) {
+        (void)note;
+        reportThermal();
+    }];
     WindowMac::setDrawableResizeCallback([](int, int) {
         Engine::systemViewChanged();
     });
@@ -149,16 +176,35 @@ namespace {
         WindowMac::applyInitialWindowMode(platform.windowMode == 1, platform.windowMode == 2);
     }
 
-    // A timer-driven loop keeps the run loop live, so Cocoa still delivers
-    // input and window events between frames. VSync paces the actual rate.
-    self.frameTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 240.0
-                                                      repeats:YES
-                                                        block:^(NSTimer*){ [self renderFrame]; }];
+    [self startFrameTimer:FRAME_PERIOD];
+    // a window opened behind others gets no occlusion change
+    [self updateVisibility];
+}
+
+- (void)startFrameTimer:(NSTimeInterval)period {
+    [self.frameTimer invalidate];
+    self.frameTimer = [NSTimer timerWithTimeInterval:period
+                                             repeats:YES
+                                               block:^(NSTimer*){ [self renderFrame]; }];
     [[NSRunLoop currentRunLoop] addTimer:self.frameTimer forMode:NSRunLoopCommonModes];
 }
 
 - (void)renderFrame {
     if (!gameView) return;
+    if (hidden) {
+#if !defined(SOKOL_METAL) && !defined(SOKOL_VULKAN)
+        [gameView makeContextCurrent];
+#endif
+        // waits for the GPU on Metal first (Engine::systemUpdate)
+        Engine::systemUpdate();
+        // a script changed Engine.targetFrameRate or vSyncCount meanwhile
+        const double fps = Engine::getHiddenUpdateFps();
+        if (hidden && fps != hiddenTimerFps) {
+            hiddenTimerFps = fps;
+            [self startFrameTimer:1.0 / fps];
+        }
+        return;
+    }
     // the timer runs at 240 Hz; a frame rate cap draws only the frames due
     if (!frameLimiter.isDue(Engine::getFramePacing().limiterFps)) return;
 #if defined(SOKOL_METAL)
@@ -192,6 +238,30 @@ namespace {
 - (void)windowDidResize:(NSNotification*)notification {
     (void)notification;
     WindowMac::refreshDrawableSize();
+}
+
+// Also sent on minimize and restore, Space changes and the app hidden
+- (void)windowDidChangeOcclusionState:(NSNotification*)notification {
+    (void)notification;
+    [self updateVisibility];
+}
+
+- (void)updateVisibility {
+    // quitting stops the loop for good; a headless run renders its frames behind everything
+    if (!self.frameTimer || platformConfig().headless) return;
+
+    NSWindow* window = (__bridge NSWindow*)WindowMac::nativeWindow();
+    if (!window) return;
+    const bool nowHidden = (window.occlusionState & NSWindowOcclusionStateVisible) == 0;
+    if (nowHidden == hidden) return;
+    hidden = nowHidden;
+
+    // a hidden game keeps updating, but the pads are no longer read: what they hold comes up
+    // before the game hears of it
+    [JasperEngineGameController setSuspended:hidden ? YES : NO];
+    Engine::systemVisibilityChanged(!hidden);
+    hiddenTimerFps = hidden ? Engine::getHiddenUpdateFps() : 0.0;
+    [self startFrameTimer:hidden ? 1.0 / hiddenTimerFps : FRAME_PERIOD];
 }
 
 // Unity's OnApplicationFocus: the game window is the key window; held keys and buttons come

@@ -5,6 +5,7 @@
 #include "Engine.h"
 #include "Scene.h"
 #include "Log.h"
+#include "memory/HeapTrim.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/MeshSystem.h"
@@ -27,6 +28,7 @@
 #include "component/CameraComponent.h"
 #include "component/ScriptComponent.h"
 #include "ecs/EntityManager.h"
+#include "audio/AudioMarkers.h"
 
 #include <algorithm>
 
@@ -161,6 +163,10 @@ void SceneManager::runFactory(uint32_t id) {
     SceneEntry* entry = findEntry(id);
     if (!entry) return;
 
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::sceneLoad(entry->name, "load");
+#endif
+
     // Copied for the same reason as in addChildScene: the factory runs scripts
     std::function<void()> loadFactory = entry->loadFactory;
 
@@ -227,8 +233,10 @@ bool SceneManager::loadScene(uint32_t id) {
 
     // input callbacks run between frames, but still inside the scenes being replaced; a
     // script's init asking from inside a load factory (the first scene's, before any frame and
-    // before it is the main scene) would have the scene it runs in deleted under it
-    if (Engine::isFrameRunning() || Engine::getMainScene() || factoryRunning) {
+    // before it is the main scene) would have the scene it runs in deleted under it. The start
+    // scene waits for the first frame too when a loading scene can cover it (applyPendingLoad)
+    const bool coverStart = loadingSceneId != 0 && canShowLoadingScene(id);
+    if (Engine::isFrameRunning() || Engine::getMainScene() || factoryRunning || coverStart) {
         if (pendingId && *pendingId != id) {
             Log::warn("SceneManager: scene %u replaces pending scene %u", id, *pendingId);
         }
@@ -761,6 +769,8 @@ void SceneManager::updateLoading() {
 
     // the new scenes hold their own files now
     cancelPreload(currentId);
+    // what the replaced scenes and the decoders freed goes back to the system
+    memory::requestHeapTrim();
 }
 
 bool SceneManager::addChildScene(uint32_t id) {
@@ -769,6 +779,10 @@ bool SceneManager::addChildScene(uint32_t id) {
         Log::error("SceneManager: scene id %u not found", id);
         return false;
     }
+
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::sceneLoad(entry->name, "add");
+#endif
 
     // The factory runs scripts, which can register scenes and reallocate entries
     std::vector<uint32_t> sceneIds = entry->sceneIds;

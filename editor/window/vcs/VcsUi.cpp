@@ -22,6 +22,7 @@
 #include "window/vcs/VcsOverlay.h"
 
 #include "imgui.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 
@@ -119,14 +120,17 @@ void VcsUi::drawDialogs() {
     bool close = false;
     std::function<void()> chosen;
     ImGui::SetNextWindowSizeConstraints(ImVec2(Theme::dpi(320.0f), 0.0f), ImVec2(Theme::dpi(640.0f), FLT_MAX));
-    if (ImGui::BeginPopupModal(popupId.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin(popupId.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        EditorModal::message(dialog.message);
         ImGui::PushTextWrapPos(Theme::dpi(600.0f));
         ImGui::TextUnformatted(dialog.message.c_str());
         ImGui::PopTextWrapPos();
         ImGui::Spacing();
         for (size_t i = 0; i < dialog.choices.size(); i++) {
             if (i > 0) ImGui::SameLine();
-            if (ImGui::Button(dialog.choices[i].first.c_str())) {
+            // a null action is the Cancel of ask(); the others answer by their label's words
+            const std::string choice = dialog.choices[i].second ? EditorModal::choiceOf(dialog.choices[i].first) : std::string("cancel");
+            if (EditorModal::button(dialog.choices[i].first.c_str(), choice.c_str())) {
                 chosen = dialog.choices[i].second;
                 close = true;
             }
@@ -400,17 +404,36 @@ void VcsUi::drawStatusBarSegment() {
     const VcsService& service = project->getVcs();
     if (service.state() == VcsState::Off || service.state() == VcsState::NoRepository) return;
     std::string label;
+    size_t conflicts = 0, staged = 0, modified = 0, untracked = 0;
+    VcsOperation operation = VcsOperation::None;
     if (!service.active()) {
         label = ICON_FA_CODE_BRANCH " " + std::string(service.state() == VcsState::Detecting ? "..." : "Version control: not available");
     } else {
-        label = ICON_FA_CODE_BRANCH " " + service.caps().provider;
-        if (const SnapshotPtr& snapshot = service.snapshot()) {
-            const VcsBranchInfo& branch = snapshot->branch;
-            label += " " + (branch.detached ? std::string("(detached)") : branch.name);
-            if (branch.ahead > 0) label += " " ICON_FA_ARROW_UP + std::to_string(branch.ahead);
-            if (branch.behind > 0) label += " " ICON_FA_ARROW_DOWN + std::to_string(branch.behind);
+        const SnapshotPtr& snapshot = service.snapshot();
+        if (snapshot) {
+            for (const VcsChange& change : snapshot->entries) {
+                if (change.conflict) conflicts++;
+                else if (change.index == FileState::Untracked) untracked++;
+                else {
+                    if (change.index != FileState::Unmodified) staged++;
+                    if (change.worktree != FileState::Unmodified) modified++;
+                }
+            }
+        }
+        // a tag, a bare commit or a branch, as git's prompt names them
+        const VcsBranchInfo* branch = snapshot ? &snapshot->branch : nullptr;
+        const char* icon = ICON_FA_CODE_BRANCH;
+        if (branch && branch->operation != VcsOperation::Rebase && !branch->tag.empty()) icon = ICON_FA_TAG;
+        else if (branch && branch->detached && branch->operation != VcsOperation::Rebase) icon = ICON_FA_CODE_COMMIT;
+        label = std::string(icon) + " " + service.caps().provider;
+        if (branch) {
+            operation = branch->operation;
+            label += " " + headLabel(*branch);
+            if (branch->ahead > 0) label += " " ICON_FA_ARROW_UP + std::to_string(branch->ahead);
+            if (branch->behind > 0) label += " " ICON_FA_ARROW_DOWN + std::to_string(branch->behind);
             const size_t changed = snapshot->changedCount();
-            if (changed > 0) label += "  " + std::to_string(changed) + (changed == 1 ? " change" : " changes");
+            if (conflicts > 0) label += "  " + std::to_string(conflicts) + (conflicts == 1 ? " conflict" : " conflicts");
+            else if (changed > 0) label += "  " + std::to_string(changed) + (changed == 1 ? " change" : " changes");
         }
         if (service.busy()) label += "  " + service.busyLabel();
     }
@@ -418,20 +441,56 @@ void VcsUi::drawStatusBarSegment() {
     if (error) label += "  " ICON_FA_TRIANGLE_EXCLAMATION;
     ImGui::AlignTextToFramePadding();
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-    if (error) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(colorOf(Badge::Deleted)));
-    if (ImGui::SmallButton((label + "##vcs_status").c_str()) && service.active()) openCommit();
-    if (error) ImGui::PopStyleColor();
+    // conflicts and errors in red, an unfinished merge or rebase in the modified amber
+    const bool colored = error || conflicts > 0 || operation != VcsOperation::None;
+    if (colored) {
+        const ImU32 color = (error || conflicts > 0) ? colorOf(Badge::Conflict) : colorOf(Badge::Modified);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(color));
+    }
+    if (ImGui::SmallButton((label + "##vcs_status").c_str()) && service.active()) {
+        if (conflicts > 0) openConflicts();
+        else openCommit();
+    }
+    if (colored) ImGui::PopStyleColor();
     ImGui::PopStyleColor();
     if (ImGui::BeginItemTooltip()) {
         ImGui::TextUnformatted(service.stateMessage().c_str());
         if (const SnapshotPtr& snapshot = service.snapshot()) {
-            if (!snapshot->branch.upstream.empty()) ImGui::Text("Upstream %s: %d ahead, %d behind", snapshot->branch.upstream.c_str(),
-                                                               snapshot->branch.ahead, snapshot->branch.behind);
+            const VcsBranchInfo& branch = snapshot->branch;
+            if (branch.detached && branch.operation != VcsOperation::Rebase) {
+                ImGui::Text("Detached HEAD at %s%s", branch.headOid.substr(0, 8).c_str(),
+                            branch.tag.empty() ? "" : (" (tag " + branch.tag + ")").c_str());
+            }
+            if (!branch.upstream.empty()) ImGui::Text("Upstream %s: %d ahead, %d behind", branch.upstream.c_str(), branch.ahead, branch.behind);
+            ImGui::Text("Changes: %zu staged, %zu modified, %zu untracked, %zu conflicted", staged, modified, untracked, conflicts);
+            switch (branch.operation) {
+                case VcsOperation::None: break;
+                case VcsOperation::Merge:
+                    ImGui::TextUnformatted("Merging: resolve the conflicts, then commit to finish the merge.");
+                    break;
+                case VcsOperation::Rebase:
+                    if (branch.operationTotal > 0) {
+                        ImGui::Text("Rebasing %s: step %d of %d. Resolve conflicts, then continue the rebase in a terminal.",
+                                    branch.operationBranch.c_str(), branch.operationStep, branch.operationTotal);
+                    } else {
+                        ImGui::Text("Rebasing %s. Resolve conflicts, then continue the rebase in a terminal.", branch.operationBranch.c_str());
+                    }
+                    break;
+                case VcsOperation::CherryPick:
+                    ImGui::TextUnformatted("Cherry-picking: resolve the conflicts, then continue in a terminal.");
+                    break;
+                case VcsOperation::Revert:
+                    ImGui::TextUnformatted("Reverting a commit: resolve the conflicts, then continue in a terminal.");
+                    break;
+                case VcsOperation::Bisect:
+                    ImGui::TextUnformatted("Bisecting: git bisect reset in a terminal ends it.");
+                    break;
+            }
             if (snapshot->mergeDriverMissing) ImGui::TextDisabled("Smart merge: not set up (Preferences > Version Control)");
         }
         if (!service.lockError().empty()) ImGui::Text("Locks may be out of date: %s", service.lockError().c_str());
         if (!service.lastError().empty()) ImGui::Text("Last error: %s", service.lastError().c_str());
-        if (service.active()) ImGui::TextDisabled("Click to open the Commit window");
+        if (service.active()) ImGui::TextDisabled(conflicts > 0 ? "Click to open the Conflicts window" : "Click to open the Commit window");
         ImGui::EndTooltip();
     }
     ImGui::SameLine();

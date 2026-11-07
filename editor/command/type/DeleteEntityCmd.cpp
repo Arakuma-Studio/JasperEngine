@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "DeleteEntityCmd.h"
+#include "component/CameraComponent.h"
+#include "component/FogComponent.h"
+#include "component/LightComponent.h"
+#include "component/Transform.h"
+#include "component/PrefabComponent.h"
 #include "pose/PoseEditSession.h"
 
 #include "command/CommandMemory.h"
@@ -11,6 +16,7 @@
 #include "util/CameraTextureLink.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/SkyboxComponent.h"
 #include "util/ProjectUtils.h"
 #include "util/BackgroundRelease.h"
 #include "util/EntityClipboard.h"
@@ -899,6 +905,9 @@ void editor::DeleteEntityCmd::undo(){
             }
         }
         tracked.swap(restored);
+        // the Skyboxes came back in the order they were restored in: the scene's sky is the first
+        // one in the list again
+        sceneProject->scene->sortComponentsByEntityOrder<SkyboxComponent>(tracked);
     }
 
     if (lastSelected.size() > 0){

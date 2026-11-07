@@ -3,6 +3,8 @@
 
 #include "Vector3.h"
 
+#include <algorithm>
+
 #include "Vector2.h"
 #include "Vector4.h"
 
@@ -109,6 +111,10 @@ Vector3 Vector3::moveTowards( const Vector3& target, float maxDistanceDelta ) co
 }
 
 Vector3 Vector3::lerp( const Vector3& target, float t ) const {
+    return lerpUnclamped(target, std::clamp(t, 0.0f, 1.0f));
+}
+
+Vector3 Vector3::lerpUnclamped( const Vector3& target, float t ) const {
     return *this + (target - *this) * t;
 }
 

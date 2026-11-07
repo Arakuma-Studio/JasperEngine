@@ -35,6 +35,7 @@ namespace jasperengine{
         void setClearDepth(float clearDepth = 1.0f);
         void setLoadActionLoad();
         void setColorActions(LoadAction load, StoreAction store, Vector4 clearColor);
+        void setColorActions(int attachment, LoadAction load, StoreAction store, Vector4 clearColor);
         void setDepthStencilActions(LoadAction load, StoreAction store, float clearDepth, uint8_t clearStencil);
         // Draws the passes started from now on into a multisampled target (FramebufferRender::
         // createMultisampleFramebuffer, same size) that resolves into the framebuffer they name at

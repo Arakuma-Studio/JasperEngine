@@ -2,6 +2,38 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "render/ViewCameraMirror.h"
+#include "component/Transform.h"
+#include "component/CameraShakerComponent.h"
+#include "pool/ShaderPool.h"
+#include "render/SceneRender.h"
+#include "spritenormals/SpriteNormalsWatcher.h"
+#include "window/AnimationWindow.h"
+#include "window/AnimatorWindow.h"
+#include "window/AssetPanels.h"
+#include "window/AudioMixerWindow.h"
+#include "window/AudioCapturesWindow.h"
+#include "window/SoundBrowserWindow.h"
+#include "window/AvatarWindow.h"
+#include "window/CodeEditor.h"
+#include "window/GameWindow.h"
+#include "window/HierarchyWindow.h"
+#include "window/ImageViewerWindow.h"
+#include "window/InspectorWindow.h"
+#include "window/LoadingWindow.h"
+#include "window/MainToolbar.h"
+#include "window/PhysicsPlacementWindow.h"
+#include "window/PlayInput.h"
+#include "window/PoseAnimationWindow.h"
+#include "window/ProjectWindow.h"
+#include "window/SceneWindow.h"
+#include "window/SpriteNormalsWindow.h"
+#include "window/StatusBar.h"
+#include "window/SystemsWindow.h"
+#include "window/TerrainEditWindow.h"
+#include "window/TextureSynthesisWindow.h"
+#include "window/VertexAnimationBakerWindow.h"
+#include "component/TilemapComponent.h"
 #include "spline/SplineSceneTools.h"
 #include "spline/SplineEditor.h"
 #include "particles/ParticleEffectLibrary.h"
@@ -23,10 +55,13 @@
 #include "Backend.h"
 #include "manager/SceneManager.h"
 #include "Engine.h"
+#include "device/Device.h"
 #include "cli/CommandLine.h"
 #include "render/SystemRender.h"
 
 #include "external/IconsFontAwesome6.h"
+#include "audio/AudioMixerDocument.h"
+#include "audio/LoudnessMonitor.h"
 #include "command/CommandHandle.h"
 #include "command/UndoTimeline.h"
 #include "command/type/AddComponentCmd.h"
@@ -38,6 +73,9 @@
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "window/JobsMemoryWindow.h"
+#include "window/MeshAuditWindow.h"
+#include "window/BuildReportWindow.h"
+#include "window/ImporterFields.h"
 #include "window/profiler/FrameDebuggerWindow.h"
 #include "window/profiler/ProfilerWindow.h"
 #include "profiler/FrameTimes.h"
@@ -59,20 +97,25 @@
 #include "widget/GradientField.h"
 #include "widget/FieldEdit.h"
 #include "mcp/McpServer.h"
+#include "window/EditorFilePicker.h"
+#include "window/EditorModal.h"
 #include "mcp/McpAutoSync.h"
 #include "mcp/tools/McpTools.h"
 #include "reload/HotReloadService.h"
 #include "search/SearchPalette.h"
 #include "shortcuts/DefaultCommands.h"
+#include "shortcuts/PanelClaims.h"
 #include "shortcuts/ShortcutsWindow.h"
 #include "window/BookmarksWindow.h"
 #include "texture/TextureCookQueue.h"
+#include "model/ModelCookQueue.h"
 
 #include "util/CrashHandler.h"
 #include "util/EditorDiagnostics.h"
 #include "diag/HangWatchdog.h"
 #include "util/FileDialogs.h"
 #include "util/ProjectUtils.h"
+#include "util/UIProbe.h"
 #include "util/Util.h"
 
 #include "EditorVersion.h"
@@ -196,6 +239,8 @@ editor::App::App(){
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     audioMixerWindow = new AudioMixerWindow(&project);
+    soundBrowserWindow = new SoundBrowserWindow(&project);
+    audioCapturesWindow = new AudioCapturesWindow(&project);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
@@ -206,6 +251,8 @@ editor::App::App(){
     missingAssetsWindow = new MissingAssetsWindow(&project);
     assetReferencesWindow = new AssetReferencesWindow(&project);
     jobsMemoryWindow = new JobsMemoryWindow();
+    meshAuditWindow = new MeshAuditWindow(&project);
+    buildReportWindow = new BuildReportWindow(&project);
     profilerWindow = new ProfilerWindow(this);
     frameDebuggerWindow = new FrameDebuggerWindow(this);
     undoHistoryWindow = new UndoHistoryWindow(&project);
@@ -216,6 +263,10 @@ editor::App::App(){
     playModeChangesWindow = new PlayModeChangesWindow(&project);
     searchPalette = new SearchPalette(this);
     shortcutsWindow = new ShortcutsWindow(CommandCatalog::editor(), shortcutDispatcher);
+    // Ctrl+S while playing, and any key whose command cannot run now: the status bar says why
+    shortcutDispatcher.setDisabledHandler([](const CommandDef& def, const std::string& reason) {
+        StatusBar::setTransientMessage(def.name + ": " + reason, 4.0);
+    });
     bookmarksWindow = new BookmarksWindow(&project);
     // Stop found edits that can be kept: the window opens, or after an agent's Stop the
     // Console says where they are (S24 R30)
@@ -260,7 +311,7 @@ void editor::App::saveFunc(){
     }
 }
 
-void editor::App::saveAllFunc(std::function<void(bool)> callback){
+void editor::App::saveAllFunc(std::function<void(bool)> callback, bool includeUntitled){
     if (project.isAnyScenePlaying() || saveDialogInProgress) {
         if (callback) callback(false);
         return;
@@ -277,13 +328,13 @@ void editor::App::saveAllFunc(std::function<void(bool)> callback){
             return;
         }
         if (project.isTempProject()) {
-            registerProjectSaveDialog([callback]() { if (callback) callback(true); });
+            registerProjectSaveDialog([callback](bool saved) { if (callback) callback(saved); });
         } else {
             const bool saved = project.saveProject(true);
             if (!saved) registerAlert("Save Failed", "The project could not be saved. Check its directory and try again.");
             if (callback) callback(saved);
         }
-    });
+    }, includeUntitled);
 }
 
 void editor::App::saveAllAndProject(std::function<void()> onSuccess){
@@ -340,7 +391,7 @@ editor::PlatformMenuItem catalogItem(const char* id, std::string label = {}, boo
                        !def->enabled || def->enabled());
     if (!item.enabled && def->disabledReason) item.tooltip = def->disabledReason();
     item.command.payload = def->menuPayload;
-    item.shortcut = catalog.menuShortcutText(id);
+    item.shortcut = catalog.menuShortcutText(editor::PanelClaims::editor().shownCommand(id));
     item.checked = checked;
     return item;
 }
@@ -586,6 +637,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("edit.pause", "Pause", mainToolbar->isPaused()),
         catalogItem("edit.step"),
         catalogItem("edit.stop"),
+        catalogItem("playmode.maximizeOnPlay", "Maximize On Play", gameWindow->isMaximizeOnPlay()),
         menuSeparator(),
         catalogItem("edit.projectSettings"),
         catalogItem("edit.clearUserSettings"),
@@ -593,41 +645,31 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("edit.shortcuts")
     }));
 
-    std::vector<PlatformMenuItem> assetsCreateItems = {
-        catalogItem("assets.createFolder", "Folder"),
-        menuSeparator(),
-        catalogItem("assets.createLuaScript", "Lua Script"),
-        catalogItem("assets.createCppScript", "C++ Script"),
-        menuSeparator(),
-        catalogItem("assets.createHtmlDocument", "HTML Document"),
-        menuSeparator(),
-        catalogItem("assets.createAudioMixer", "Audio Mixer"),
-        menuSeparator(),
-        catalogItem("assets.createPoseAnimation", "Pose Animation"),
-        menuSeparator(),
-        catalogItem("assets.createNativePlugin", "Native Plugin...")
-    };
-    // Animation Clip: once the clip asset task set its hook
-    if (animationClipAppHooks().createClipAsset) {
-        assetsCreateItems.push_back(catalogItem("assets.createAnimationClip", "Animation Clip"));
+    // the one Create list (AssetCreateMenu: the Project window shows the same), then what only
+    // the main menu makes: a new scene, a native plugin
+    std::vector<PlatformMenuItem> assetsCreateItems;
+    for (const AssetCreateItem& item : assetCreateItems()) {
+        // Animation Clip: once the clip asset task set its hook
+        if (item.kind == AssetCreateKind::AnimationClip && !animationClipAppHooks().createClipAsset) continue;
+        if (item.separatorBefore) assetsCreateItems.push_back(menuSeparator());
+        assetsCreateItems.push_back(catalogItem(item.commandId, item.label));
     }
-    assetsCreateItems.push_back(catalogItem("assets.createAnimatorController", "Animator Controller"));
-    assetsCreateItems.push_back(catalogItem("assets.createAvatarMask", "Avatar Mask"));
-    assetsCreateItems.push_back(catalogItem("assets.createAnimationMontage", "Animation Montage"));
-    assetsCreateItems.push_back(catalogItem("assets.createShakePreset", "Shake Preset"));
     assetsCreateItems.push_back(menuSeparator());
     assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
+    assetsCreateItems.push_back(catalogItem("assets.createNativePlugin", "Native Plugin..."));
 
     menu.menus.push_back(menuSubmenu("Assets", {
         menuSubmenu("Create", assetsCreateItems),
         catalogItem("assets.showInFileManager"),
         catalogItem("assets.open"),
         catalogItem("assets.rename", "Rename"),
+        catalogItem("assets.duplicate", "Duplicate"),
         catalogItem("assets.delete", "Delete"),
         menuSeparator(),
         catalogItem("assets.import"),
         catalogItem("assets.refresh"),
         catalogItem("assets.reimportTextures"),
+        catalogItem("assets.importSoundEssentials"),
         menuSubmenu("Version Control", {
             catalogItem("assets.vcs.commit"),
             catalogItem("assets.vcs.revert"),
@@ -690,7 +732,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.vertexAnimationBaker", windowMenuLabel(VertexAnimationBakerWindow::WINDOW_NAME))
         }),
         menuSubmenu("Audio", {
-            catalogItem("window.audioMixer", windowMenuLabel(AudioMixerWindow::WINDOW_NAME))
+            catalogItem("window.audioMixer", windowMenuLabel(AudioMixerWindow::WINDOW_NAME)),
+            catalogItem("window.audioCaptures", windowMenuLabel(AudioCapturesWindow::WINDOW_NAME)),
+            catalogItem("window.soundBrowser", windowMenuLabel(SoundBrowserWindow::WINDOW_NAME))
         }),
         catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
@@ -705,7 +749,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.profiler", windowMenuLabel(ProfilerWindow::WINDOW_NAME)),
             catalogItem("window.frameDebugger", windowMenuLabel(FrameDebuggerWindow::WINDOW_NAME)),
             catalogItem("window.systems", windowMenuLabel(SystemsWindow::WINDOW_NAME)),
-            catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME))
+            catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME)),
+            catalogItem("window.meshAudit", windowMenuLabel(MeshAuditWindow::WINDOW_NAME)),
+            catalogItem("window.buildReport", windowMenuLabel(BuildReportWindow::WINDOW_NAME))
         }),
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
@@ -787,6 +833,11 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
     if (projectHub.isOpen() && action != AppMenuCommand::NewProject && action != AppMenuCommand::OpenProject &&
         action != AppMenuCommand::ProjectHub && action != AppMenuCommand::Exit) {
         return;
+    }
+    // an Edit item picked in the menu: the focused panel's claim has it (the keys, the palette and
+    // agents come through the command, which asks the same)
+    if (const CommandDef* def = CommandCatalog::editor().findByMenuCommand(command.id, command.payload)) {
+        if (PanelClaims::editor().route(def->id)) return;
     }
     switch (action) {
         case AppMenuCommand::NewProject: {
@@ -873,13 +924,13 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::SaveProjectAs:
             if (project.isAnyScenePlaying() || saveDialogInProgress) return;
-            registerProjectSaveDialog([](){});
+            registerProjectSaveDialog();
             break;
         case AppMenuCommand::Save:
             saveFunc();
             break;
         case AppMenuCommand::SaveAll:
-            saveAllFunc();
+            saveAllFunc(nullptr, true);
             break;
         case AppMenuCommand::ExportProject:
             exportWindow.open(&project);
@@ -952,6 +1003,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleJobsMemory:
             showEditorWindow(jobsMemoryWindow);
             break;
+        case AppMenuCommand::ToggleMeshAudit:
+            showEditorWindow(meshAuditWindow);
+            break;
+        case AppMenuCommand::ToggleBuildReport:
+            showEditorWindow(buildReportWindow);
+            break;
         case AppMenuCommand::ToggleUndoHistory:
             showEditorWindow(undoHistoryWindow);
             break;
@@ -966,6 +1023,15 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleTextureSynthesis:
             textureSynthesisWindow->open();
+            break;
+        case AppMenuCommand::ToggleSoundBrowser:
+            soundBrowserWindow->open();
+            break;
+        case AppMenuCommand::ToggleAudioCaptures:
+            audioCapturesWindow->open();
+            break;
+        case AppMenuCommand::ResetLoudness:
+            LoudnessMonitor::get().reset();
             break;
         case AppMenuCommand::ToggleAudioMixer:
             audioMixerWindow->open();
@@ -1113,26 +1179,60 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 inspectorWindow->requestAddComponent();
             break;
         }
+        // Assets > Create: in the folder the Project window shows (the one Create list, AssetCreateMenu)
         case AppMenuCommand::AssetsCreateFolder:
-            projectWindow->assetsCreateFolder();
+            projectWindow->createAsset(AssetCreateKind::Folder, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateLuaScript:
-            projectWindow->assetsCreateScript(true);
+            projectWindow->createAsset(AssetCreateKind::LuaScript, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateCppScript:
-            projectWindow->assetsCreateScript(false);
+            projectWindow->createAsset(AssetCreateKind::CppScript, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateCppSource:
+            projectWindow->createAsset(AssetCreateKind::CppSource, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateCppHeader:
+            projectWindow->createAsset(AssetCreateKind::CppHeader, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateHtmlDocument:
-            projectWindow->assetsCreateHtmlDocument();
+            projectWindow->createAsset(AssetCreateKind::HtmlDocument, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsImportSoundEssentials:
+            projectWindow->assetsImportSoundEssentials();
+            break;
+        case AppMenuCommand::AssetsCreatePlaceholderSound:
+            projectWindow->createAsset(AssetCreateKind::PlaceholderSound, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsReanalyzeAudio:
+            projectWindow->assetsReanalyzeAudio(projectWindow->getSelectedFiles());
             break;
         case AppMenuCommand::AssetsCreateAudioMixer:
-            projectWindow->assetsCreateAudioMixer();
+            projectWindow->createAsset(AssetCreateKind::AudioMixer, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateSoundEvent:
+            projectWindow->createAsset(AssetCreateKind::SoundEvent, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateSoundEventFromClips:
+            projectWindow->assetsCreateSoundEventFromClips();
             break;
         case AppMenuCommand::AssetsCreatePoseAnimation:
-            projectWindow->assetsCreatePoseAnimation();
+            projectWindow->createAsset(AssetCreateKind::PoseAnimation, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateShakePreset:
-            projectWindow->assetsCreateShakePreset();
+            projectWindow->createAsset(AssetCreateKind::ShakePreset, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreatePhysicsMaterial:
+            projectWindow->createAsset(AssetCreateKind::PhysicsMaterial, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreatePhysicsMaterial2D:
+            projectWindow->createAsset(AssetCreateKind::PhysicsMaterial2D, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsDuplicate:
+            projectWindow->duplicateSelection();
+            break;
+        case AppMenuCommand::ToggleMaximizeOnPlay:
+            gameWindow->toggleMaximizeOnPlay();
             break;
         case AppMenuCommand::AddCameraShakerToMainCamera: {
             SceneProject* scene = project.getSelectedScene();
@@ -1151,17 +1251,16 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreateAnimationClip:
             if (animationClipAppHooks().createClipAsset) {
                 animationClipAppHooks().createClipAsset(&project);
-                projectWindow->refreshCurrentDirectory();
             }
             break;
         case AppMenuCommand::AssetsCreateAnimatorController:
-            projectWindow->assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Controller);
+            projectWindow->createAsset(AssetCreateKind::AnimatorController, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateAvatarMask:
-            projectWindow->assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Mask);
+            projectWindow->createAsset(AssetCreateKind::AvatarMask, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateAnimationMontage:
-            projectWindow->assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Montage);
+            projectWindow->createAsset(AssetCreateKind::AnimationMontage, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsShowInFileManager:
             projectWindow->assetsShowInFileManager();
@@ -1253,11 +1352,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             duplicateSelection();
             break;
         case AppMenuCommand::DeleteSelection:
-            if (inputActionsWindow->canDelete()) inputActionsWindow->requestDelete();
-            // the Animator window's selected state, sub-state machine, transition or layer
-            else if (animatorWindow->canDelete()) animatorWindow->removeSelection();
             // the Draw Spline tool's last knot, the edited spline's knots
-            else if (!SplineSceneTools::deleteRequested(&project)) deleteSelection();
+            if (!SplineSceneTools::deleteRequested(&project)) deleteSelection();
             break;
         case AppMenuCommand::Documentation:
         case AppMenuCommand::ReportIssue: {
@@ -1464,7 +1560,8 @@ void editor::App::recordMenuItems(const PlatformMenuModel& menu){
                 }
                 const CommandDef* def = catalog.findByMenuCommand(item.command.id, item.command.payload);
                 if (!def || !catalog.menuPath(def->id).empty()) continue;
-                catalog.setMenuItem(def->id, itemPath, item.shortcut.empty() ? Chord() : catalog.bindings(def->id).front());
+                catalog.setMenuItem(def->id, itemPath,
+                                    item.shortcut.empty() ? Chord() : catalog.bindings(PanelClaims::editor().shownCommand(def->id)).front());
             }
         };
     walk(menu.menus, "");
@@ -1796,7 +1893,7 @@ void editor::App::showAlert(){
         alertPendingChoice.clear();
         const std::string popupName = alert.title + "##AlertModal";
         alert.needShow = false;
-        if (ImGui::IsPopupOpen(popupName.c_str()) && ImGui::BeginPopupModal(popupName.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (ImGui::IsPopupOpen(popupName.c_str()) && EditorModal::begin(popupName.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
@@ -1818,7 +1915,7 @@ void editor::App::showAlert(){
                                 ImGuiWindowFlags_NoSavedSettings |
                                 ImGuiWindowFlags_Modal;
 
-        if (ImGui::BeginPopupModal((alert.title + "##AlertModal").c_str(), nullptr, flags)) {
+        if (EditorModal::begin((alert.title + "##AlertModal").c_str(), nullptr, flags)) {
             ImGui::Text("%s", alert.message.c_str());
             if (!alert.note.empty()) {
                 ImGui::Spacing();
@@ -2443,6 +2540,13 @@ void editor::App::setup() {
     configCodeArabic.OversampleV = 2;
     io.Fonts->AddFontFromMemoryTTF(noto_sans_arabic_ttf, noto_sans_arabic_ttf_len, 16.0f, &configCodeArabic);
 
+    // the system's CJK and emoji fonts, merged into these when a background search (started
+    // with the job system, engineInit) has found them (applySystemFonts): CJK names and text
+    // show as glyphs, and the start is not slower
+    systemFontTargets = {{font1, uiFontSize, config1.RasterizerMultiply},
+                         {boldFont, uiFontSize, configBold.RasterizerMultiply},
+                         {codeFont, 16.0f, config3.RasterizerMultiply}};
+
     io.FontDefault = font1;
 
     io.ConfigDragClickToInputText = true;
@@ -2670,15 +2774,17 @@ void editor::App::show(){
 
     // S27: the Project Hub alone (as the loading window above): the editor's windows wait
     updateHubCreation();
+    if (projectHub.pollSweep()) requestRedraw();
     if (projectHub.isOpen()) {
         if (isInitialized) {
             ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_KeepAliveOnly);
         }
         projectHub.show();
+        UIProbe::flush();   // the Inspector flushes it otherwise, and it is not drawn here
         if (hubCreation) {
             ImGui::OpenPopup("Creating Project##hub");
         }
-        if (ImGui::BeginPopupModal("Creating Project##hub", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
+        if (EditorModal::begin("Creating Project##hub", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove, EditorModal::Role::Progress)) {
             if (!hubCreation) ImGui::CloseCurrentPopup();
             else ImGui::Text("Creating %s from %s...", hubCreation->name.c_str(), hubCreation->info.name.c_str());
             ImGui::EndPopup();
@@ -2732,6 +2838,7 @@ void editor::App::show(){
         }else{
             lastFocusedWindow = LastFocusedWindow::AnySceneWindow;
         }
+        PanelClaims::editor().refresh();
     }
 
     // the selection changes of one frame are one undo step
@@ -2784,6 +2891,8 @@ void editor::App::show(){
     showAlert();
 
     sceneSaveDialog.show();
+    // the importers' edits not applied, asked about before a selection change, Play or the close
+    ImporterPrompt::draw();
     projectSaveDialog.show();
     dataSafetyDialogs.show(project);
     exportWindow.show();
@@ -2822,6 +2931,8 @@ void editor::App::show(){
     terrainEditWindow->show();
     textureSynthesisWindow->show();
     audioMixerWindow->show();
+    soundBrowserWindow->show();
+    audioCapturesWindow->show();
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
@@ -2834,6 +2945,8 @@ void editor::App::show(){
     missingAssetsWindow->show();
     assetReferencesWindow->show();
     jobsMemoryWindow->show();
+    meshAuditWindow->show();
+    buildReportWindow->show();
     profilerWindow->show();
     frameDebuggerWindow->show();
     undoHistoryWindow->show();
@@ -2886,6 +2999,8 @@ void editor::App::show(){
     shortcutsWindow->show();
     layouts.drawDialogs();
     layouts.endFrame();
+
+    LoudnessMonitor::get().update(project.isAnyScenePlaying());
 
     // MCP calls waiting on a condition or on frames (waitUntil / afterFrames)
     mcp::McpServer::get().tick();
@@ -2968,6 +3083,10 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
         } else if (arg == "--mesh-lod") {
             if (const char* value = requireValue(i, "--mesh-lod"))
                 benchmarkMeshLod = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
+        } else if (arg == "--gpu-instancing") {
+            // the project's GPU Instancing for this run (not saved): S55's before and after
+            if (const char* value = requireValue(i, "--gpu-instancing"))
+                benchmarkGpuInstancing = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
         } else if (arg == "--depth-prepass") {
             if (const char* value = requireValue(i, "--depth-prepass"))
                 benchmarkDepthPrepass = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
@@ -3071,6 +3190,8 @@ void editor::App::engineInit(int argc, char** argv) {
     for (std::string& flag : profilerFlags)
         engineArgs.push_back(flag.data());
     Engine::systemInit((int)engineArgs.size(), engineArgs.data(), new editor::Platform(&project));
+    // the system's CJK and emoji fonts, looked for on the jobs' Background lane (setup's targets)
+    SystemFonts::startSearch(SystemFonts::fromSettingName(AppSettings::getCjkFontLanguage()));
 
     Engine::pauseGameEvents(true);
 
@@ -3202,6 +3323,10 @@ void editor::App::loadStartupProject() {
         return;
     }
 
+    // S66: what an editor killed during an import or a template copy left, whatever opens now
+    hub::staging::setJournalDirectory(AppSettings::getConfigDirectory() / "hub-staging");
+    projectHub.startSweep(false);
+
     const mcp::McpLaunchOptions& mcpOptions = mcp::mcpLaunchOptions();
     if (!mcpOptions.project.empty() || !mcpOptions.createDir.empty()) {
         // `jasperengine-editor mcp --project/--create`: no fallback to the last project
@@ -3214,11 +3339,16 @@ void editor::App::loadStartupProject() {
                 std::fprintf(stderr, "[mcp] project_locked: closing the editor\n");
                 startupExitCode = 3;
                 // the main loop exits after the next frame (consumeBenchmarkExit): closing
-                // before the first frame leaves the render queue waiting on shutdown, and that
-                // frame wants a project (the empty temporary one, as when a load fails)
+                // before the first frame leaves the render queue waiting on shutdown. That frame
+                // is the loading window (projectLoading stays set, as for a failed benchmark): a
+                // refused editor opens nothing, and the temporary project is one directory
+                // shared by every editor, so other refused editors may hold its lock
                 benchmarkExit = true;
+                return;
             }
-            project.createTempProject("MyJasperEngineProject");
+            if (!project.createTempProject("MyJasperEngineProject")) {
+                std::fprintf(stderr, "[mcp] the temporary project could not be opened either: no project is open\n");
+            }
         }
         projectLoading = false;
         requestRedraw();
@@ -3297,6 +3427,10 @@ void editor::App::setupRecorder() {
     };
     host.stopPlay = [this]() { mainToolbar->stopSession(); };
     host.gameFramebuffer = [this]() { return gameWindow->getFramebuffer(); };
+    host.gameScene = [playScene]() -> Scene* {
+        const SceneProject* scene = playScene();
+        return scene ? scene->scene : nullptr;
+    };
     host.setGameRenderSize = [this](int w, int h) { gameWindow->setRenderSizeOverride(w, h); };
     host.gameViewSize = [this](int& w, int& h) {
         w = gameWindow->getWidth();
@@ -3399,6 +3533,8 @@ void editor::App::hubCreateProject(const hub::ProjectTemplate& info, const std::
     creation->copy = std::async(std::launch::async, [copyOf, target]() {
         std::string error;
         if (!hub::templates::materialize(copyOf, target, error)) return error.empty() ? std::string("the copy failed") : error;
+        // a template with no audio node of its own starts like any new project
+        if (!AudioMixerDocument::writeNewProjectAudio(target, &error)) return error;
         return std::string();
     });
     hubCreation = std::move(creation);
@@ -3477,11 +3613,12 @@ void editor::App::drawSaveProjectAsTemplate() {
         ImGui::OpenPopup("Save Project as Template##saveTemplate");
         saveTemplatePopup = false;
     }
-    if (!ImGui::BeginPopupModal("Save Project as Template##saveTemplate", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    if (!EditorModal::begin("Save Project as Template##saveTemplate", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
     ImGui::TextUnformatted("Name");
     ImGui::SetNextItemWidth(Theme::dpi(320.0f));
-    ImGui::InputText("##templateName", saveTemplateName.data(), saveTemplateName.size());
+    EditorModal::inputText("##templateName", "name", saveTemplateName.data(), saveTemplateName.size());
     ImGui::TextUnformatted("Description");
+    EditorModal::field("description", saveTemplateDescription.data(), saveTemplateDescription.size());
     ImGui::InputTextMultiline("##templateDescription", saveTemplateDescription.data(), saveTemplateDescription.size(),
                               ImVec2(Theme::dpi(320.0f), Theme::dpi(70.0f)));
     const std::string id = hub::slugify(saveTemplateName.data());
@@ -3489,11 +3626,13 @@ void editor::App::drawSaveProjectAsTemplate() {
     std::error_code ec;
     std::string problem = !hub::isValidCatalogId(id) ? "The name needs letters or digits." : std::string();
     if (problem.empty() && std::filesystem::exists(userDir / id, ec)) problem = "A template \"" + id + "\" exists.";
+    EditorModal::message("Save this project as a template of the Project Hub.");
+    EditorModal::error(!saveTemplateMessage.empty() ? saveTemplateMessage : problem);
     if (!problem.empty()) ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", problem.c_str());
     else ImGui::TextDisabled("%s", (userDir / id).string().c_str());
     if (!saveTemplateMessage.empty()) ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", saveTemplateMessage.c_str());
     ImGui::BeginDisabled(!problem.empty());
-    if (ImGui::Button("Save", ImVec2(Theme::dpi(100.0f), 0))) {
+    if (EditorModal::button("Save", "ok", ImVec2(Theme::dpi(100.0f), 0))) {
         // the thumbnail is the Scene view (480 wide)
         std::vector<uint8_t> png;
         if (SceneProject* scene = project.getSelectedScene(); scene && scene->sceneRender) {
@@ -3512,7 +3651,7 @@ void editor::App::drawSaveProjectAsTemplate() {
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(Theme::dpi(100.0f), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
+    if (EditorModal::button("Cancel", "cancel", ImVec2(Theme::dpi(100.0f), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
 }
 
@@ -3566,6 +3705,8 @@ void editor::App::quitWithoutPrompts(const std::string& reason) {
 
 bool editor::App::getOpenDialog(EditorDialogInfo& out) const {
     out = EditorDialogInfo();
+    // it holds the main thread, so nothing below can change while it is open
+    if (EditorFilePicker::info(out)) return true;
     if (alert.needShow) {
         out.kind = "alert";
         out.title = alert.title;
@@ -3585,50 +3726,50 @@ bool editor::App::getOpenDialog(EditorDialogInfo& out) const {
         }
         return true;
     }
-    if (sceneSaveDialog.isOpen() || projectSaveDialog.isOpen()) {
-        out.kind = "save_dialog";
-        out.title = sceneSaveDialog.isOpen() ? "Save Scene" : "Save Project";
-        out.message = "asks a human where to save; cancel it and save with an explicit path instead";
+    // Every other modal, as the last frame drew it (MCP calls run before this frame's windows)
+    const bool modal = EditorModal::topModal(out);
+    if (!sceneSaveDialog.isOpen() && !projectSaveDialog.isOpen()) return modal;
+    const std::string saveTitle = sceneSaveDialog.isOpen() ? "Save Scene" : "Save Project";
+    // something it opened, on top of it
+    if (modal && out.title != saveTitle) return true;
+    out.kind = "save_dialog";
+    out.title = saveTitle;
+    // a save dialog no frame has drawn yet has only its cancel, which needs no frame
+    if (!modal) {
+        out.message = "asks where to save; cancel it and save with an explicit path instead";
         out.choices = {"cancel"};
-        return true;
     }
-    if (ImGuiWindow* modal = ImGui::GetTopMostAndVisiblePopupModal()) {
-        std::string name = modal->Name ? modal->Name : "";
-        const size_t idPos = name.find("##");
-        if (idPos != std::string::npos) name.resize(idPos);
-        // LoadingWindow's progress of the shader, texture and model builds: no answer, it
-        // closes when they are done
-        out.kind = name == "Loading" && ResourceProgress::hasActiveBuilds() ? "progress" : "modal";
-        out.title = name;
-        return true;
-    }
-    return false;
+    return true;
 }
 
-bool editor::App::answerDialog(const std::string& choice, std::string& error) {
+bool editor::App::answerDialog(const std::string& choice, const std::map<std::string, EditorDialogValue>& values, std::string& error) {
     EditorDialogInfo dialog;
     if (!getOpenDialog(dialog)) {
         error = "No dialog is open.";
         return false;
     }
-    if (std::find(dialog.choices.begin(), dialog.choices.end(), choice) == dialog.choices.end()) {
-        if (dialog.kind == "progress") {
-            error = "The editor is building shaders, textures or models (\"" + dialog.title + "\"): it closes by itself when they are done.";
-        } else if (dialog.choices.empty()) {
-            error = "The dialog \"" + dialog.title + "\" can only be closed by a human in the editor window.";
-        } else {
+    if (dialog.kind == "alert") {
+        if (!values.empty()) {
+            error = "The alert \"" + dialog.title + "\" has no fields to fill.";
+            return false;
+        }
+        if (std::find(dialog.choices.begin(), dialog.choices.end(), choice) == dialog.choices.end()) {
             error = "Choice must be one of:";
             for (const std::string& valid : dialog.choices) error += " " + valid;
             error += ".";
+            return false;
         }
-        return false;
-    }
-    if (dialog.kind == "alert") {
         // Pressed in showAlert on the next frame, through the button's own code path
         alertPendingChoice = choice;
-    } else if (dialog.kind == "save_dialog") {
+    } else if (dialog.kind == "save_dialog" && choice == "cancel") {
         sceneSaveDialog.requestCancel();
         projectSaveDialog.requestCancel();
+    } else if (dialog.choices.empty() && dialog.disabledChoices.empty() && dialog.fields.empty()) {
+        error = "The dialog \"" + dialog.title + "\" can only be closed by a human in the editor window.";
+        return false;
+    } else if (!EditorModal::answer(choice, values, error)) {
+        // pressed when the modal is next drawn, through the button's own code path
+        return false;
     }
     requestRedraw();
     return true;
@@ -3658,9 +3799,13 @@ void editor::App::beforeFrame() {
 
 void editor::App::processProjectChange() {
     if (projectLoading || !pendingProjectChange) return;
+    // a scene save in flight finishes into the project it started in
+    if (project.isAnySceneSaving()) return;
     auto change = std::move(pendingProjectChange);
     pendingProjectChange = nullptr;
     if (project.isAnyScenePlaying()) return;
+    // the old project's save dialogs never act on the next one
+    cancelSaveDialogs();
 
     // Menu and dialog callbacks queue the change. Run it between frames so the
     // loading pump can draw without nesting ImGui frames or invalidating scene UI.
@@ -3698,6 +3843,10 @@ void editor::App::pollExternalChanges(){
         TextureCookQueue& cooks = TextureCookQueue::get();
         if (cooks.getProject() != &project) cooks.attach(&project);
         wake = cooks.update() || wake;
+        // and model cooks (S53 R13): cooked on the Background lane, the models showing them reloaded here
+        ModelCookQueue& models = ModelCookQueue::get();
+        if (models.getProject() != &project) models.attach(&project);
+        wake = models.update() || wake;
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -3734,6 +3883,10 @@ bool editor::App::wantsHtmlUIRedraw(const SceneProject& sceneProject){
         return true;
     }
     return false;
+}
+
+void editor::App::applySystemFonts(){
+    SystemFonts::applyPending(systemFontTargets);
 }
 
 void editor::App::engineRender(){
@@ -3867,6 +4020,12 @@ void editor::App::engineRender(){
         // The running game renders into the Game view's framebuffer, shown or not, and
         // the Scene view is a second, draw-only view of the same frame
         if (gameWindow->hostsScene(sceneProject.id)) {
+            // send_input app hide: the game updates without drawing, its Game view keeps the
+            // last frame
+            if (Platform::isGameHiddenSimulated() && runningGameScene() == &sceneProject) {
+                runHiddenGameFrame();
+                continue;
+            }
             if (sceneNeedsRender(sceneProject, isSelected)) {
                 renderRunningScene(sceneProject);
             }
@@ -4070,31 +4229,11 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     // the frame is the game: it runs at the Game view's Preview Atmosphere Quality
     if (sceneProject.scene)
         sceneProject.scene->getSystem<RenderSystem>()->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
+    // and with the Game view's simulated Device Tier, platform family and thermal state (Play
+    // stop ends it: Engine::resetApplicationState)
+    Device::setSimulation(gameWindow->getDeviceSimulation());
 
-    bool viewChanged = false;
-    if (lastActivatedScene != sceneProject.id || !lastActivatedGame){
-        // Collected before activateGame(): it drops every engine layer, and a dropped
-        // layer no longer counts as running, so this would come back empty.
-        std::vector<Scene*> runtimeLayers = project.getRunningRuntimeLayers(sceneProject.id);
-        sceneRender->activateGame(gameTarget);
-
-        if (project.isPlayedSceneReplaced(sceneProject.id)) {
-            // a scene load replaced the played scene (or rebuilt it, Restart): the game is the
-            // stack that load made, its main scene first
-            Engine::removeScene(sceneProject.scene);
-            Scene* loadedMain = SceneManager::getScenePtr(SceneManager::getCurrentSceneId());
-            if (loadedMain && std::find(runtimeLayers.begin(), runtimeLayers.end(), loadedMain) != runtimeLayers.end()) {
-                Engine::setScene(loadedMain);
-            }
-        }
-        for (Scene* runtimeLayer : runtimeLayers) {
-            Engine::addSceneLayer(runtimeLayer);
-        }
-
-        lastActivatedScene = sceneProject.id;
-        lastActivatedGame = true;
-        viewChanged = true;
-    }
+    bool viewChanged = activateRunningGame(sceneProject);
 
     if (pendingResizeScene == sceneProject.id) {
         viewChanged = true;
@@ -4138,7 +4277,19 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     // the gizmos follow the objects where this frame's update left them
     if (sceneViewShown){
         project.updateSceneRender(sceneProject.id);
-        sceneRender->drawSceneView(sceneWidth, sceneHeight, project.getRunningRuntimeLayers(sceneProject.id), true);
+        // after a game load replaced the played scene, the Scene view shows the scene the game
+        // runs now, through a copy of the editor camera placed in it
+        Scene* replacingBase = nullptr;
+        Entity replacingCamera = NULL_ENTITY;
+        if (SceneProject* loaded = project.getReplacingMainScene(sceneProject.id); loaded && loaded->scene && sceneRender->getCamera()) {
+            replacingCamera = ViewCameraMirror::ensure(loaded->scene, loaded->sceneViewMirror, "Scene View Camera");
+            if (ViewCameraMirror::copy(sceneProject.scene, sceneRender->getCamera()->getEntity(), loaded->scene, replacingCamera)) {
+                loaded->scene->getSystem<RenderSystem>()->updateTransform(loaded->scene->getComponent<Transform>(replacingCamera), replacingCamera);
+                replacingBase = loaded->scene;
+            }
+        }
+        sceneRender->drawSceneView(sceneWidth, sceneHeight, project.getRunningRuntimeLayers(sceneProject.id), true,
+                                   replacingBase, replacingBase ? replacingCamera : NULL_ENTITY);
         sceneWindow->renderInactivePanes(sceneProject);
     }
 
@@ -4148,6 +4299,72 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
 
     renderedSceneThisFrame = true;
     sceneProject.needUpdateRender = false;
+}
+
+bool editor::App::activateRunningGame(SceneProject& sceneProject) {
+    if (lastActivatedScene == sceneProject.id && lastActivatedGame)
+        return false;
+
+    // Collected before activateGame(): it drops every engine layer, and a dropped
+    // layer no longer counts as running, so this would come back empty.
+    std::vector<Scene*> runtimeLayers = project.getRunningRuntimeLayers(sceneProject.id);
+    sceneProject.sceneRender->activateGame(gameWindow->getFramebuffer());
+
+    if (project.isPlayedSceneReplaced(sceneProject.id)) {
+        // a scene load replaced the played scene (or rebuilt it, Restart): the game is the
+        // stack that load made, its main scene first
+        Engine::removeScene(sceneProject.scene);
+        Scene* loadedMain = SceneManager::getScenePtr(SceneManager::getCurrentSceneId());
+        if (loadedMain && std::find(runtimeLayers.begin(), runtimeLayers.end(), loadedMain) != runtimeLayers.end()) {
+            Engine::setScene(loadedMain);
+        }
+    }
+    for (Scene* runtimeLayer : runtimeLayers) {
+        Engine::addSceneLayer(runtimeLayer);
+    }
+
+    lastActivatedScene = sceneProject.id;
+    lastActivatedGame = true;
+    return true;
+}
+
+const editor::SceneProject* editor::App::runningGameScene() const {
+    if (projectLoading || Engine::isSimulationHeld())
+        return nullptr;
+    const SceneProject* sceneProject = project.getScene(project.getPlaySessionSceneId());
+    if (!sceneProject || sceneProject->playState != ScenePlayState::PLAYING || !sceneProject->scene || !sceneProject->sceneRender)
+        return nullptr;
+    return sceneProject;
+}
+
+bool editor::App::isHiddenGameRunning() const {
+    return (!windowVisible || Platform::isGameHiddenSimulated()) && runningGameScene();
+}
+
+// An exported game minimized keeps running without drawing (Engine::getHiddenUpdateFps), and so
+// does Play while the editor window can't be seen or the game is hidden by send_input. Only the
+// game's own frame: no Scene view, no Step, no Recorder capture, no view size change.
+bool editor::App::runHiddenGameFrame() {
+    const SceneProject* running = runningGameScene();
+    if (!running) {
+        hiddenGameClock.reset();
+        return false;
+    }
+    SceneProject* sceneProject = project.getScene(running->id);
+    // a wake-up a millisecond early counts (the loop sleeps until this deadline)
+    if (!hiddenGameClock.isDue(Engine::getHiddenUpdateFps(), 0.001))
+        return false;
+
+    // scripts saved meanwhile swap in at the frame boundary, as in engineRender
+    ScriptStatus::get().update();
+    ScriptReloadService::get().update();
+    if (activateRunningGame(*sceneProject)) {
+        // the view of the stack activated here is set when the game draws again
+        pendingResizeScene = sceneProject->id;
+    }
+    // waits for the GPU on Metal first
+    Engine::systemUpdate();
+    return true;
 }
 
 // A stopped scene's Scene view while another scene plays: its systems update here (the
@@ -4170,6 +4387,8 @@ void editor::App::renderSceneBesideGame(SceneProject& sceneProject) {
             if (childScene->sceneRender) {
                 childScene->sceneRender->hideAllGizmos();
             }
+            // nothing activates a view beside the game: its camera comes from here
+            Project::prepareInlineChildForView(childScene->scene);
             childScene->scene->update(Engine::getDeltatime());
             childScene->needUpdateRender = false;
         }
@@ -4389,6 +4608,8 @@ void editor::App::tickBenchmark() {
         }
         if (benchmarkMeshLod >= 0)
             selected->scene->setMeshLodEnabled(benchmarkMeshLod != 0);
+        if (benchmarkGpuInstancing >= 0)
+            Engine::setGpuInstancingEnabled(benchmarkGpuInstancing != 0);
         if (benchmarkDepthPrepass >= 0)
             selected->scene->setDepthPrepassEnabled(benchmarkDepthPrepass != 0);
         if (benchmarkLitQuality >= 0)
@@ -4438,6 +4659,8 @@ void editor::App::tickBenchmark() {
             benchmarkPhaseFrames = 0;
             benchmarkFps.clear();
             benchmarkDraws.clear();
+            benchmarkRenderStats.clear();
+            benchmarkRenderCpuMs.clear();
             benchmarkInstances.clear();
             benchmarkTris.clear();
             benchmarkUiTotals.clear();
@@ -4467,6 +4690,8 @@ void editor::App::tickBenchmark() {
         benchmarkDraws.push_back(stats.drawCalls);
         benchmarkInstances.push_back(stats.instances);
         benchmarkTris.push_back(stats.triangles);
+        benchmarkRenderStats.push_back(SystemRender::getRenderStats(SystemRender::FRAME_STATS_FRAME));
+        benchmarkRenderCpuMs.push_back(Engine::getFrameDrawCpuTime() * 1000.0);
         if (benchmarkUiStats) {
             // the scene's documents (screen and texture-mode contexts), this frame
             std::shared_ptr<UIDocumentSystem> documents = selected->scene->getSystem<UIDocumentSystem>();
@@ -4621,6 +4846,51 @@ void editor::App::finishBenchmark() {
     json.precision(3);
     json << "  \"cpuMs\": {\"median\": " << stat(benchmarkCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkCpuMs, 0.95)
          << ", \"mean\": " << mean(benchmarkCpuMs) << "}";
+    // the scenes' draw and the commit of each measured frame (the render submission, S55 R9)
+    json << ",\n  \"renderCpuMs\": {\"median\": " << stat(benchmarkRenderCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkRenderCpuMs, 0.95)
+         << ", \"mean\": " << mean(benchmarkRenderCpuMs) << "}";
+    {
+        // the game frame's render counters averaged over the measured frames (S55 R7; with --play
+        // the frame the Game view shows): deterministic for a still scene
+        const struct { const char* name; double (*value)(const RenderStats&); } counters[] = {
+            {"mainDrawCalls", [](const RenderStats& r) { return (double)r.mainDraws; }},
+            {"shadowDrawCalls", [](const RenderStats& r) { return (double)r.shadowDraws; }},
+            {"depthDrawCalls", [](const RenderStats& r) { return (double)r.depthDraws; }},
+            {"otherDrawCalls", [](const RenderStats& r) { return (double)r.otherDraws; }},
+            {"mainTriangles", [](const RenderStats& r) { return (double)r.mainTriangles; }},
+            {"shadowTriangles", [](const RenderStats& r) { return (double)r.shadowTriangles; }},
+            {"instancedDraws", [](const RenderStats& r) { return (double)r.instancedDraws; }},
+            {"batchedInstances", [](const RenderStats& r) { return (double)r.batchedInstances; }},
+            {"visible", [](const RenderStats& r) { return (double)r.visible; }},
+            {"culled", [](const RenderStats& r) { return (double)r.culled; }},
+            {"uniformBytes", [](const RenderStats& r) { return (double)r.uniformBytes; }},
+            {"uniformBytesKept", [](const RenderStats& r) { return (double)r.uniformBytesKept; }},
+            {"bufferUploadBytes", [](const RenderStats& r) { return (double)r.bufferUploadBytes; }},
+            {"pipelinesApplied", [](const RenderStats& r) { return (double)r.pipelinesApplied; }},
+            {"bindingsApplied", [](const RenderStats& r) { return (double)r.bindingsApplied; }},
+            {"aliveBuffers", [](const RenderStats& r) { return (double)r.aliveBuffers; }},
+            {"aliveImages", [](const RenderStats& r) { return (double)r.aliveImages; }},
+            {"alivePipelines", [](const RenderStats& r) { return (double)r.alivePipelines; }},
+        };
+        json << ",\n  \"render\": {";
+        bool first = true;
+        for (const auto& counter : counters) {
+            double sum = 0.0;
+            for (const RenderStats& frameStats : benchmarkRenderStats)
+                sum += counter.value(frameStats);
+            json << (first ? "" : ", ") << "\"" << counter.name << "\": "
+                 << (benchmarkRenderStats.empty() ? 0.0 : sum / static_cast<double>(benchmarkRenderStats.size()));
+            first = false;
+        }
+        json << "}";
+        // GPU Instancing in the last measured frame: the draws that could batch, and why one did
+        // not join the batch before it (S55 R7)
+        const DrawBatchStats batch = SystemRender::getDrawBatchStats();
+        json << ",\n  \"drawBatch\": {\"offered\": " << batch.offeredDraws << ", \"instancedDraws\": " << batch.instancedDraws
+             << ", \"batchedInstances\": " << batch.batchedInstances << ", \"splitPipeline\": " << batch.splitPipeline
+             << ", \"splitElements\": " << batch.splitElements << ", \"splitBindings\": " << batch.splitBindings
+             << ", \"splitUniforms\": " << batch.splitUniforms << "}";
+    }
     if (benchmarkUiStats) {
         // HtmlUIRenderStats averaged over the measured frames
         json << ",\n  \"htmlUi\": {";
@@ -4694,7 +4964,11 @@ bool editor::App::hasPendingMainThreadTasks() {
 
 double editor::App::idleWaitSeconds(double maxSeconds) const {
     const double next = scheduler().nextDueRealTime();
-    return next < 0.0 ? maxSeconds : std::min(maxSeconds, next);
+    double wait = next < 0.0 ? maxSeconds : std::min(maxSeconds, next);
+    // a hidden game's next update (runHiddenGameFrame); a paused or held one keeps the idle sleep
+    if (isHiddenGameRunning())
+        wait = std::min(wait, hiddenGameClock.secondsUntilDue());
+    return wait;
 }
 
 // Counts as activity, so the loop also keeps drawing for the idle delay past the
@@ -4879,6 +5153,8 @@ void editor::App::prepareForProjectSwitch() {
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
     audioMixerWindow->resetForProjectSwitch();
+    soundBrowserWindow->resetForProjectSwitch();
+    audioCapturesWindow->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
     spriteNormalsWatcher->reset();
@@ -4899,6 +5175,8 @@ void editor::App::prepareForProjectSwitch() {
     consoleWindow->clear();
     sceneWindow->resetProjectState();
     gameWindow->resetProjectState();
+    // the next project's Terrain settings are read before the window writes any back
+    terrainEditWindow->resetProjectState();
     inputActionsWindow->reset();
     // the next project's .particles files are other files under the same paths
     particles::ParticleEffectLibrary::clear();
@@ -4967,6 +5245,11 @@ void editor::App::resetLastActivatedScene(){
 
 bool editor::App::shouldSyncEngineApi() const {
     return true;
+}
+
+bool editor::App::recordsRecentProjects() const {
+    const mcp::McpLaunchOptions& options = mcp::mcpLaunchOptions();
+    return !options.stdio && !options.headless && !benchmarkEnabled;
 }
 
 void editor::App::updateResourcesPath(){
@@ -5171,7 +5454,7 @@ bool editor::App::confirmOpenLockedProject(const ProjectLockInfo& info) {
     return false;
 }
 
-void editor::App::registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback) {
+void editor::App::registerSaveSceneDialog(uint32_t sceneId, std::function<void(bool)> callback) {
     // Add scene to the save dialog queue with callback
     SaveDialogQueueItem item = {SaveDialogType::Scene, sceneId, callback};
     saveDialogQueue.push(item);
@@ -5183,7 +5466,7 @@ void editor::App::registerSaveSceneDialog(uint32_t sceneId, std::function<void()
     // If queue has more items or another dialog is open, they'll be processed later
 }
 
-void editor::App::registerProjectSaveDialog(std::function<void()> callback) {
+void editor::App::registerProjectSaveDialog(std::function<void(bool)> callback) {
     // Add project save to the dialog queue with callback
     SaveDialogQueueItem item = {SaveDialogType::Project, 0, callback};  // sceneId is unused for Project saves
     saveDialogQueue.push(item);
@@ -5362,7 +5645,28 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      LIGHT2D_SURFACE_NORMALS), @require normalmap (library/sprite.frag) and stochastic.glsl.
     // v44: upstream's sprite normal maps and shader globals (u_vs_globals / u_fs_globals, its v40)
     //      with oe-port's v43: either side's v40-v43 cache holds other variants.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v44";
+    // v45: S57's lighting (MESH 'Til', 'Cap', 'Cts', 'Oit' at bits 36-39, the Hair lobe's
+    //      PBR_HAIR in u_fs_pbrParams, includes/lights.glsl's tiled and occlusion forms).
+    // v46: S54's LOD cross-fade: MESH 'Lfd' (includes/lod_fade.glsl in mesh.vert and mesh.frag), and
+    //      every instance matrix read with its first column's w as 0.
+    // v47: S55's automatic GPU instancing: mesh and depth programs take their object block from
+    //      includes/object_params.glsl / object_depth_params.glsl, 'Aui' (MESH 41, DEPTH 18).
+    // v48: the fade variant reads its LOD fade in main (objectLodFade() a macro): under v47 a
+    //      skinned fade variant's uniform block slots differed from its base's.
+    // v49: SSR reflection sources (doriax-catchup ssr-probes): GBUFFER 'Occ'/'Uv2', the G-buffer's
+    //      fourth attachment (occlusion) and its reflection source code; the composite rebuilds
+    //      probes and the ambient, reads SSAO and the fog; ssr.frag reads the source.
+    // v50: render-correctness: includes/instance_fade.glsl (the near fade, the G-buffer's 'Ifd'),
+    //      lighting2d's and the SSAO's explicit-LOD lookups, mesh.frag's shadow derivatives before
+    //      the light loop (lightShadowD), pbr.glsl's derived (flat) normals turned toward the eye.
+    // v51: water-reflections: library:water on the scene clock (sceneTime), GERSTNER,
+    //      PLANAR_REFLECTION (includes/planar_reflection.glsl), its shadow lookup with the smooth
+    //      normal and shadowed caustics; @role in water.frag and underwater.frag.
+    // v52: water-boats: MESH 'Wex' and 'Wwk' (42, 43), includes/water_interaction.glsl and the
+    //      engine-written WATER_INTERACTION_PARAMS at the end of water.frag's custom block.
+    // v53: draw-perf's directional-only Lit: MESH 'Dlo' (44; DIRECTIONAL_LIGHTS_ONLY in
+    //      includes/lights.glsl and punctual.glsl)
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v53";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -5495,6 +5799,18 @@ void editor::App::openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, un
 
 editor::MainToolbar* editor::App::getMainToolbar() const{
     return mainToolbar;
+}
+
+void editor::App::openBuildReport(const std::filesystem::path& report){
+    buildReportWindow->open(report);
+}
+
+void editor::App::openMeshAudit(){
+    showEditorWindow(meshAuditWindow);
+}
+
+void editor::App::openConsole(){
+    showEditorWindow(consoleWindow);
 }
 
 void editor::App::openAudioMixerWindow(const std::filesystem::path& mixer){
@@ -5666,28 +5982,30 @@ void editor::App::resetLayout(){
 }
 
 void editor::App::processNextSaveDialog() {
-    // Check if there's anything to process and no dialogs are currently open
     if (saveDialogInProgress || saveDialogQueue.empty() || sceneSaveDialog.isOpen() || projectSaveDialog.isOpen()) {
         return;
     }
 
-    // Get the next item from the queue
     SaveDialogQueueItem item = saveDialogQueue.front();
-    // Store the callback to use it later
-    std::function<void()> completionCallback = item.callback;
+    // every way out answers the caller once: true only when the file was written
+    std::function<void(bool)> completion = item.callback;
+    auto finish = [this, completion](bool saved) {
+        saveDialogInProgress = false;
+        popSaveDialogQueueItem();
+        if (completion) completion(saved);
+        processNextSaveDialog();
+    };
 
     if (item.type == SaveDialogType::Scene) {
-        // Process scene save dialog
-        uint32_t sceneId = item.sceneId;
+        const uint32_t sceneId = item.sceneId;
         SceneProject* sceneProject = project.getScene(sceneId);
         if (!sceneProject) {
-            // Invalid scene, remove from queue and try next item
             popSaveDialogQueueItem();
+            if (completion) completion(false);
             processNextSaveDialog();
             return;
         }
 
-        // Set default filename
         std::string defaultName = sceneProject->name + ".scene";
         fs::path initialDirectory = project.getProjectPath();
         if (projectWindow) {
@@ -5698,103 +6016,55 @@ void editor::App::processNextSaveDialog() {
         }
 
         saveDialogInProgress = true;
-
-        // Open dialog for the current scene
         sceneSaveDialog.open(
             project.getProjectPath(),
             initialDirectory,
             defaultName,
-            // Save callback
-            [this, sceneId, completionCallback](const fs::path& fullPath) {
-                bool saveStarted = false;
-                SceneProject* sceneProject = project.getScene(sceneId);
-                if (sceneProject) {
-                    // Create directory if it doesn't exist
-                    std::filesystem::create_directories(fullPath.parent_path());
-
-                    // Save the scene
-                    std::error_code ec;
-                    fs::path relPath = fs::relative(fullPath, project.getProjectPath(), ec);
-                    if (ec || relPath.empty()) {
-                        Out::error("Scene filepath must be relative to project path: %s", fullPath.string().c_str());
-                        Backend::getApp().registerAlert("Error", "Scene file must be inside the project folder.");
-                    } else {
-                        sceneProject->filepath = relPath;
-                        saveStarted = true;
-                        project.saveSceneToPathAsync(sceneId, fullPath, [this, completionCallback](bool success) {
-                            saveDialogInProgress = false;
-                            popSaveDialogQueueItem();
-
-                            if (success && completionCallback) {
-                                completionCallback();
-                            }
-
-                            processNextSaveDialog();
-                        });
-                    }
+            [this, sceneId, finish](const fs::path& fullPath) {
+                // the scene takes the path only once the file is written (saveSceneFile)
+                if (!project.getScene(sceneId)) {
+                    finish(false);
+                    return;
                 }
-
-                if (!saveStarted) {
-                    saveDialogInProgress = false;
-                    popSaveDialogQueueItem();
-                    processNextSaveDialog();
-                }
+                project.saveSceneToPathAsync(sceneId, fullPath, finish);
             },
-            // Cancel callback
-            [this, completionCallback]() {
-                // Remove the current item from the queue without saving
-                saveDialogInProgress = false;
-                popSaveDialogQueueItem();
-
-                // Process the next item if available
-                processNextSaveDialog();
-            }
+            [finish]() { finish(false); },
+            [this, sceneId](const fs::path& fullPath) { return project.sceneSavePathProblem(sceneId, fullPath); }
         );
     }
     else if (item.type == SaveDialogType::Project) {
-        // Process project save dialog
         std::string defaultName = project.getName();
         if (defaultName.empty()) {
             defaultName = "MyProject";
         }
 
         saveDialogInProgress = true;
-
         projectSaveDialog.open(
             defaultName,
-            // Save callback
-            [this, completionCallback](const std::string& projectName, const fs::path& projectPath) {
-                // Set the project name if provided
+            [this, finish](const std::string& projectName, const fs::path& projectPath) {
                 if (!projectName.empty()) {
                     project.setName(projectName);
                 }
-
-                // Save the project to the selected path
                 const bool saved = project.saveProjectToPath(projectPath);
                 if (!saved) registerAlert("Save Failed", "The project could not be saved. Check its directory and try again.");
-
-                // Remove this item from the queue
-                saveDialogInProgress = false;
-                popSaveDialogQueueItem();
-
-                // Execute the completion callback if provided
-                if (saved && completionCallback) {
-                    completionCallback();
-                }
-
-                // Process the next item if available
-                processNextSaveDialog();
+                finish(saved);
             },
-            // Cancel callback
-            [this, completionCallback]() {
-                // Remove the current item from the queue without saving
-                saveDialogInProgress = false;
-                popSaveDialogQueueItem();
-
-                // Process the next item if available
-                processNextSaveDialog();
-            }
+            [finish]() { finish(false); }
         );
+    }
+}
+
+void editor::App::cancelSaveDialogs() {
+    std::queue<SaveDialogQueueItem> pending;
+    std::swap(pending, saveDialogQueue);
+    sceneSaveDialog.abandon();
+    projectSaveDialog.abandon();
+    saveDialogInProgress = false;
+    // answered after the queue is empty, so none of them opens another dialog
+    while (!pending.empty()) {
+        std::function<void(bool)> callback = std::move(pending.front().callback);
+        pending.pop();
+        if (callback) callback(false);
     }
 }
 
@@ -5843,6 +6113,7 @@ void editor::App::applyPanelVisibilitySettings() {
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
     audioMixerWindow->setOpen(visibility.audioMixer);
+    soundBrowserWindow->setOpen(visibility.soundBrowser);
     spriteNormalsWindow->setOpen(visibility.spriteNormals);
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
@@ -5863,6 +6134,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
     visibility.audioMixer = audioMixerWindow->isOpen();
+    visibility.soundBrowser = soundBrowserWindow->isOpen();
     visibility.spriteNormals = spriteNormalsWindow->isOpen();
     visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();
@@ -5905,6 +6177,8 @@ void editor::App::exit() {
         Backend::closeWindow();
         return;
     }
+    // import settings edited and not applied (S53 R17): asked first, the close follows Apply or Revert
+    if (ImporterPrompt::guard([this]() { exit(); })) return;
 
     // Check if any modal popup is currently open (including ComponentAddDialog, ScriptCreateDialog, etc.)
     ImGuiWindow* modal = ImGui::GetTopMostAndVisiblePopupModal();
@@ -5914,9 +6188,9 @@ void editor::App::exit() {
         return;  // Don't proceed with exit yet, user needs to click close again
     }
 
-    // Also check if the scene save dialog is specifically open
-    if (sceneSaveDialog.isOpen()) {
-        sceneSaveDialog.close();
+    // An open save dialog is cancelled first (with the ones queued behind it)
+    if (sceneSaveDialog.isOpen() || projectSaveDialog.isOpen()) {
+        cancelSaveDialogs();
         return;
     }
 

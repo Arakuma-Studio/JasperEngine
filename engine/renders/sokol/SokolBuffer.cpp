@@ -139,6 +139,7 @@ void SokolBuffer::destroyBuffer(){
             SokolCmdQueue::add_command_destroy_view(view);
         }else{
             sg_destroy_view(view);
+            SokolSystem::forgetAppliedBindings();
         }
     }
     if (buffer.id != SG_INVALID_ID)
@@ -148,6 +149,7 @@ void SokolBuffer::destroyBuffer(){
             SokolCmdQueue::add_command_destroy_buffer(buffer);
         }else{
             sg_destroy_buffer(buffer);
+            SokolSystem::forgetAppliedBindings();
         }
     }
 

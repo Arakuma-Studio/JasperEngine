@@ -21,13 +21,6 @@
 namespace jasperengine {
     class Engine;
 
-    enum class AdMobRating{
-        General,
-        ParentalGuidance,
-        Teen,
-        MatureAudience
-    };
-
     enum class CursorType{
         ARROW, // default
         IBEAM,
@@ -333,6 +326,9 @@ namespace jasperengine {
         virtual DeviceType getDeviceType();
         // physical memory in MiB, 0 when unknown
         virtual int getSystemMemorySize();
+        // the GPU's name where the render device's own is masked (the web: WebGL's unmasked
+        // renderer, WEBGL_debug_renderer_info); "" elsewhere, where Device reads the device name
+        virtual std::string getGpuRendererName();
         // logical processors, at least 1
         int getProcessorCount();
         // true only in the editor's Play mode
@@ -450,13 +446,6 @@ namespace jasperengine {
         virtual void removeAllKeys();
         // UserSettings: what is unsaved is written to disk now (the platform's synchronous write)
         virtual void saveUserSettings();
-
-        // Google AdMob SDK
-        virtual void initializeAdMob(bool tagForChildDirectedTreatment = false, bool tagForUnderAgeOfConsent = false);
-        virtual void setMaxAdContentRating(AdMobRating rating);
-        virtual void loadInterstitialAd(const std::string& adUnitID);
-        virtual bool isInterstitialAdLoaded();
-        virtual void showInterstitialAd();
 
         // CrazyGames SDK
         virtual void initializeCrazyGamesSDK();

@@ -2,6 +2,49 @@
 // SPDX-License-Identifier: MIT
 
 #include "Factory.h"
+#include "component/AudioSourceComponent.h"
+#include "component/BuoyancyComponent.h"
+#include "component/CameraComponent.h"
+#include "component/CameraFollowComponent.h"
+#include "component/CameraShakerComponent.h"
+#include "component/CharacterController2DComponent.h"
+#include "component/CharacterControllerComponent.h"
+#include "component/ForceFieldComponent.h"
+#include "component/InstancedMeshComponent.h"
+#include "component/KeyframeTracksComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/LatticeFollowerComponent.h"
+#include "component/LatticeModifierComponent.h"
+#include "component/LatticeTracksComponent.h"
+#include "component/MeshComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/ModelComponent.h"
+#include "component/MorphTracksComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/PointsComponent.h"
+#include "component/PoseAnimatorComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "component/RotateTracksComponent.h"
+#include "component/SafeAreaComponent.h"
+#include "component/ScaleTracksComponent.h"
+#include "component/SkyboxComponent.h"
+#include "component/SpriteAnimationComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TerrainComponent.h"
+#include "component/TextComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/Transform.h"
+#include "component/TranslateTracksComponent.h"
+#include "component/UIComponent.h"
+#include "component/VertexAnimatorComponent.h"
+#include "component/WaterVolumeComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/PrefabComponent.h"
+#include "component/ScriptComponent.h"
+#include "component/TextEffectComponent.h"
+#include "component/TrailRendererComponent.h"
+#include "component/VideoPlayerComponent.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 
@@ -9,6 +52,7 @@
 #include "Catalog.h"
 #include "Configs.h"
 #include "Stream.h"
+#include "util/ProjectUtils.h"
 #include "particles/ParticleEffectCodec.h"
 #include "util/CameraTextureLink.h"
 #include "util/FluidTextureLink.h"
@@ -1071,8 +1115,8 @@ std::string editor::Factory::formatBufferContents(const std::string& ind, const 
 }
 
 std::string editor::Factory::beginHeapComponentCode(std::ostringstream& code, const std::string& ind, const std::string& componentType, const std::string& varName) {
-    // HybridArray uses fixed-capacity inline storage in standalone exports, so
-    // large components must not become automatic variables in scene factories.
+    // A component holds render objects and materials (kilobytes for a mesh), and a scene
+    // factory makes many: they are built on the heap, not as automatic variables.
     const std::string storageName = varName + "Storage";
     code << ind << "auto " << storageName << " = std::make_unique<" << componentType << ">();\n";
     code << ind << componentType << "& " << varName << " = *" << storageName << ";\n";
@@ -1148,10 +1192,14 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
     // Keep it off the scene factory's stack and move it directly into the ECS.
     const std::string meshValue = beginHeapComponentCode(code, ind, "MeshComponent", "mesh");
 
-    // Model and heightmapped terrain rebuild their mesh data at runtime, so what the loaders
-    // regenerate is not emitted. An empty model filename and a terrain without a heightmap are
-    // not runtime geometry sources and keep their inline data.
+    // A model's load and a Sprite, Tilemap, Mesh Polygon, Terrain or Spline Extrude make their
+    // geometry when they run, so it is not emitted: as in the scene file (Stream::encodeComponents),
+    // it exists here only if a frame made it before this save. An empty model filename is no
+    // geometry source and keeps its inline data.
     const bool hasModel = Stream::isModelBackedMesh(entity, scene, scene->getSignature(entity));
+    const bool hasGeneratedGeometry = Stream::isGeneratedMesh(scene, scene->getSignature(entity));
+    const bool hasRuntimeGeometrySource = hasModel || hasGeneratedGeometry;
+    const unsigned int numSubmeshes = Stream::savedSubmeshCount(mesh, scene, scene->getSignature(entity));
 
     // receiveLights picks the lit or the unlit shader variant: the export only ships the
     // variants the editor's scene used, so a mesh generated lit that was unlit there asks
@@ -1165,6 +1213,17 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.staticShadowCaster = true;\n";
     code << ind << "mesh.lodEnabled = " << formatBool(mesh.lodEnabled) << ";\n";
     code << ind << "mesh.lodBias = " << formatFloat(mesh.lodBias) << ";\n";
+    if (!mesh.allowGpuInstancing)
+        code << ind << "mesh.allowGpuInstancing = false;\n";
+    // the fade settings only away from their defaults (spec S54 R9)
+    if (mesh.lodFadeMode != LodFadeMode::CROSS_FADE)
+        code << ind << "mesh.lodFadeMode = LodFadeMode::NONE;\n";
+    if (!mesh.lodAnimateCrossFading)
+        code << ind << "mesh.lodAnimateCrossFading = false;\n";
+    if (mesh.lodFadeTransitionWidth != 0.1f)
+        code << ind << "mesh.lodFadeTransitionWidth = " << formatFloat(mesh.lodFadeTransitionWidth) << ";\n";
+    if (mesh.lodCullBelow != 0.0f)
+        code << ind << "mesh.lodCullBelow = " << formatFloat(mesh.lodCullBelow) << ";\n";
     code << ind << "mesh.renderInReflectionProbes = " << formatBool(mesh.renderInReflectionProbes) << ";\n";
     code << ind << "mesh.transparent = " << formatBool(mesh.transparent) << ";\n";
     code << ind << "mesh.autoTransparency = " << formatBool(mesh.autoTransparency) << ";\n";
@@ -1195,10 +1254,9 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.customDepthShader = " << formatString(mesh.customDepthShader) << ";\n";
     if (!mesh.shaderUniforms.empty())
         code << ind << "mesh.shaderUniforms = " << formatShaderUniforms(mesh.shaderUniforms) << ";\n";
-    code << ind << "mesh.vertexCount = " << formatUInt(mesh.vertexCount) << ";\n";
     // Kept for a model too: its load reads the count to find the edited submeshes.
-    code << ind << "mesh.numSubmeshes = " << formatUInt(mesh.numSubmeshes) << ";\n";
-    for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+    code << ind << "mesh.numSubmeshes = " << formatUInt(numSubmeshes) << ";\n";
+    for (unsigned int s = 0; s < numSubmeshes; s++){
         // A model load rewrites every submesh, so only the edited ones are worth emitting.
         if (hasModel && mesh.submeshes[s].overrideFields == 0){
             continue;
@@ -1250,10 +1308,15 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << formatMaterialPbr(indentSpaces, submeshMaterial, "mesh.submeshes[" + idx + "].material", projectPath);
 
         code << ind << "mesh.submeshes[" << idx << "].primitiveType = " << formatPrimitiveType(mesh.submeshes[s].primitiveType) << ";\n";
-        code << ind << "mesh.submeshes[" << idx << "].vertexCount = " << formatUInt(mesh.submeshes[s].vertexCount) << ";\n";
+        if (!hasGeneratedGeometry)
+            code << ind << "mesh.submeshes[" << idx << "].vertexCount = " << formatUInt(mesh.submeshes[s].vertexCount) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].faceCulling = " << formatBool(mesh.submeshes[s].faceCulling) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].textureShadow = " << formatBool(mesh.submeshes[s].textureShadow) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].textureRect = " << formatRect(mesh.submeshes[s].textureRect) << ";\n";
+        // a sprite or tilemap sets it once its texture loads: a mesh whose buffers load first would
+        // pick a variant without the texture rect (the cooked scenes keep it too, Stream)
+        if (mesh.submeshes[s].hasTextureRect)
+            code << ind << "mesh.submeshes[" << idx << "].hasTextureRect = true;\n";
 
         // The model load puts these fields back over the ones the file gives the new submesh.
         if (mesh.submeshes[s].overrideFields != 0){
@@ -1262,7 +1325,7 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
             code << ind << "mesh.submeshes[" << idx << "].overrideFields = " << (fields > 0xFFFFFFFFull ? std::to_string(fields) + "ull" : formatUInt((unsigned int)fields)) << ";\n";
         }
 
-        if (hasModel){ // the load rebuilds the attributes
+        if (hasRuntimeGeometrySource){ // what makes the geometry makes the attributes
             continue;
         }
 
@@ -1286,13 +1349,6 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
             code << ind << "}\n";
         }
     }
-
-    bool hasTerrain = false;
-    if (scene->findComponent<TerrainComponent>(entity)) {
-        hasTerrain = isTextureExported(scene->getComponent<TerrainComponent>(entity).heightMap);
-    }
-
-    const bool hasRuntimeGeometrySource = hasModel || hasTerrain;
 
     if (!hasRuntimeGeometrySource && mesh.buffer.getSize() > 0){
         code << ind << "mesh.buffer.clearAll();\n";
@@ -1393,11 +1449,12 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
 
     // Saved for a mesh whose geometry is neither loaded from a model nor generated by its
     // component (Stream::encodeComponents); without a skeleton driving them they pose the mesh.
-    if (!hasRuntimeGeometrySource && !Stream::isGeneratedMesh(scene, scene->getSignature(entity))){
+    if (!hasRuntimeGeometrySource){
         bool hasBones = false;
-        for (size_t b = 0; b < mesh.bonesMatrix.size(); b++){
+        for (size_t b = 0; b < mesh.bonesMatrix.stored(); b++){
             const Matrix4& bone = mesh.bonesMatrix[b];
-            if (bone == Matrix4())
+            // (the last one always: the palette's length is its index plus one)
+            if (bone == Matrix4() && b + 1 < mesh.bonesMatrix.stored())
                 continue;
             code << ind << "mesh.bonesMatrix[" << b << "] = " << formatMatrix4(bone) << ";\n";
             hasBones = true;
@@ -1566,21 +1623,13 @@ std::string editor::Factory::createSpriteComponent(int indentSpaces, EntityRegis
     code << ind << "sprite.flipY = " << formatBool(sprite.flipY) << ";\n";
     code << ind << "sprite.pivotPreset = " << formatPivotPreset(sprite.pivotPreset) << ";\n";
     code << ind << "sprite.textureScaleFactor = " << formatFloat(sprite.textureScaleFactor) << ";\n";
-    float texW = 0.0f, texH = 0.0f;
-    MeshComponent* meshComp = scene->findComponent<MeshComponent>(entity);
-    if (meshComp && meshComp->numSubmeshes > 0) {
-        texW = (float)meshComp->submeshes[0].material.baseColorTexture.getWidth();
-        texH = (float)meshComp->submeshes[0].material.baseColorTexture.getHeight();
-    }
+    // as authored, in pixels or normalised: the game normalises a frame when it shows it
+    // (MeshSystem::setSpriteFrameRect), once its texture's size is known
     for (unsigned int i = 0; i < sprite.numFramesRect; i++) {
         if (!sprite.framesRect[i].name.empty()) {
             code << ind << "sprite.framesRect[" << i << "].name = " << formatString(sprite.framesRect[i].name) << ";\n";
         }
-        Rect rect = sprite.framesRect[i].rect;
-        if (!rect.isNormalized() && texW > 0.0f && texH > 0.0f) {
-            rect = Rect(rect.getX() / texW, rect.getY() / texH, rect.getWidth() / texW, rect.getHeight() / texH);
-        }
-        code << ind << "sprite.framesRect[" << i << "].rect = " << formatRect(rect) << ";\n";
+        code << ind << "sprite.framesRect[" << i << "].rect = " << formatRect(sprite.framesRect[i].rect) << ";\n";
     }
     if (sprite.numFramesRect > 0) {
         code << ind << "sprite.numFramesRect = " << sprite.numFramesRect << ";\n";
@@ -1692,7 +1741,8 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
     code << ind << "terrain.textureDetailTiles = " << formatFloat(terrain.textureDetailTiles) << ";\n";
     code << ind << "terrain.rootGridSize = " << formatInt(terrain.rootGridSize) << ";\n";
     code << ind << "terrain.levels = " << formatInt(terrain.levels) << ";\n";
-    if (!terrain.ranges.empty()) {
+    // (Auto Ranges: the terrain sets them from the camera's far clip when it runs)
+    if (!terrain.autoSetRanges && !terrain.ranges.empty()) {
         code << ind << "terrain.ranges = {";
         for (size_t i = 0; i < terrain.ranges.size(); i++) {
             if (i > 0) code << ", ";
@@ -1716,6 +1766,8 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
         code << ind << var << ".minHeight = " << formatFloat(layer.minHeight) << ";\n";
         code << ind << var << ".maxHeight = " << formatFloat(layer.maxHeight) << ";\n";
         code << ind << var << ".drawDistance = " << formatFloat(layer.drawDistance) << ";\n";
+        if (layer.minDrawDistance != 0.0f)
+            code << ind << var << ".minDrawDistance = " << formatFloat(layer.minDrawDistance) << ";\n";
         code << ind << var << ".seed = " << formatUInt(layer.seed) << ";\n";
         code << ind << var << ".castShadows = " << formatBool(layer.castShadows) << ";\n";
         code << ind << "terrain.foliageLayers.push_back(" << var << ");\n";
@@ -1877,9 +1929,6 @@ std::string editor::Factory::createRigidbody2DComponent(int indentSpaces, Entity
     const Collider2D defCollider;
     code << ind << "Rigidbody2DComponent rigidbody2d;\n";
     code << ind << "rigidbody2d.type = " << formatBodyType(body.type) << ";\n";
-    code << ind << "rigidbody2d.needReloadBody = " << formatBool(body.needReloadBody) << ";\n";
-    code << ind << "rigidbody2d.needUpdateColliders = " << formatBool(body.needUpdateColliders) << ";\n";
-    code << ind << "rigidbody2d.newBody = " << formatBool(body.newBody) << ";\n";
 
     // the body fields that differ from the defaults
     if (body.gravityScale != def.gravityScale) code << ind << "rigidbody2d.gravityScale = " << formatFloat(body.gravityScale) << ";\n";
@@ -1963,9 +2012,6 @@ std::string editor::Factory::createRigidbodyComponent(int indentSpaces, EntityRe
     code << ind << "rigidbody.waterAngularDrag = " << formatFloat(body.waterAngularDrag) << ";\n";
     // The bit mask, rather than six OR'd enumerators in the generated source.
     code << ind << "rigidbody.allowedDOFs = " << static_cast<unsigned int>(body.allowedDOFs) << ";\n";
-    code << ind << "rigidbody.needReloadBody = " << formatBool(body.needReloadBody) << ";\n";
-    code << ind << "rigidbody.needUpdateColliders = " << formatBool(body.needUpdateColliders) << ";\n";
-    code << ind << "rigidbody.newBody = " << formatBool(body.newBody) << ";\n";
     code << ind << "rigidbody.overrideMassProperties = " << formatBool(body.overrideMassProperties) << ";\n";
     code << ind << "rigidbody.solidBoxSize = " << formatVector3(body.solidBoxSize) << ";\n";
     code << ind << "rigidbody.solidBoxDensity = " << formatFloat(body.solidBoxDensity) << ";\n";
@@ -2603,7 +2649,7 @@ std::string editor::Factory::createVertexAnimatorComponent(int indentSpaces, Ent
     return code.str();
 }
 
-std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames, bool defaultCamera) {
+std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     // the component's exported code from its reflection table (editor/reflect/Codegen.cpp), or
     // its own writer for those the table does not describe
     const reflect::ComponentDesc* desc = reflect::find(componentType);
@@ -2617,14 +2663,6 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
     ctx.entityName = entityName;
     ctx.assignExisting = assignExisting;
     ctx.entityVarNames = entityVarNames;
-    // A scene's Default Camera (not one of its GameObjects) follows the editor's view (its clips
-    // and aspect are the editor window's at export time); the game's setCamera sizes it from the
-    // game's canvas before anything draws, so they are left out
-    static constexpr const char* kCanvasSizedCameraFields[] = {"left", "right", "bottom", "top", "aspect"};
-    if (defaultCamera && componentType == ComponentType::CameraComponent) {
-        const CameraComponent* camera = static_cast<const CameraComponent*>(comp);
-        if (camera->autoResize && !camera->renderToTexture) ctx.omit = kCanvasSizedCameraFields;
-    }
     std::string code;
     if (desc->codegen) {
         code = desc->codegen(scene, entity, ctx);
@@ -2639,7 +2677,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
     return desc->codegenGuard ? guardPhysicsCode(code, desc->codegenGuard) : code;
 }
 
-std::string editor::Factory::createAllComponents(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, const std::unordered_map<Entity, std::string>* entityVarNames, bool defaultCamera) {
+std::string editor::Factory::createAllComponents(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, const std::unordered_map<Entity, std::string>* entityVarNames) {
     // Find all components for this entity
     std::vector<ComponentType> components = Catalog::findComponents(scene, entity);
 
@@ -2649,7 +2687,7 @@ std::string editor::Factory::createAllComponents(int indentSpaces, EntityRegistr
 
     bool first = true;
     for (ComponentType componentType : components) {
-        std::string componentCode = createComponent(indentSpaces, scene, entity, componentType, projectPath, sceneName, entityName, false, entityVarNames, defaultCamera);
+        std::string componentCode = createComponent(indentSpaces, scene, entity, componentType, projectPath, sceneName, entityName, false, entityVarNames);
         if (!componentCode.empty()) {
             if (!first) {
                 code << "\n";
@@ -2662,10 +2700,15 @@ std::string editor::Factory::createAllComponents(int indentSpaces, EntityRegistr
     return code.str();
 }
 
-const char* const editor::Factory::sceneSourceHeader = "// This file is auto-generated by JasperEngine Editor (scene source 3). Do not edit manually.";
+// "scene source 4": parents are created before their children (sources of older editors regenerate)
+const char* const editor::Factory::sceneSourceHeader = "// This file is auto-generated by JasperEngine Editor (scene source 4). Do not edit manually.";
 
 std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_t sceneId, std::string name, std::vector<Entity> entities, Entity camera, const fs::path& projectPath, const fs::path& generatedPath, const std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources) {
     std::ostringstream out;
+
+    // parents first, whatever order the list came in: the game propagates transforms in the
+    // order it adds them, and a child added before its parent moves from a stale parent matrix
+    ProjectUtils::sortEntitiesByTransformOrder(scene, entities);
 
     std::string funcId = sceneToFileName(sceneId, name);
     const std::string ind = indentation(indentSpaces);
@@ -2910,7 +2953,7 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
             cameraCode << ind2 << "// Default Camera " << camera << "\n";
             cameraCode << ind2 << "Entity cameraEntity = scene->createSystemEntity();\n";
             cameraCode << "\n";
-            cameraCode << createAllComponents(indentSpaces+4, scene, camera, projectPath, "scene", "cameraEntity", nullptr, true);
+            cameraCode << createAllComponents(indentSpaces+4, scene, camera, projectPath, "scene", "cameraEntity", nullptr);
         }else{
             cameraCode << "\n";
             cameraCode << ind2 << "Entity cameraEntity = " << formatEntity(camera, &memberVarNames) << ";\n";
@@ -3039,9 +3082,40 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
         out << ind2 << "scene->setShadowCascadeBlend(" << formatBool(scene->isShadowCascadeBlend()) << ");\n";
     out << ind2 << "scene->setMeshLodEnabled(" << formatBool(scene->isMeshLodEnabled()) << ");\n";
     out << ind2 << "scene->setMeshLodThreshold(" << formatFloat(scene->getMeshLodThreshold()) << ");\n";
+    if (scene->isMeshLodCrossFade() != SceneSettings().meshLodCrossFade)
+        out << ind2 << "scene->setMeshLodCrossFade(" << formatBool(scene->isMeshLodCrossFade()) << ");\n";
+    if (scene->getMeshLodCrossFadeDuration() != SceneSettings().meshLodCrossFadeDuration)
+        out << ind2 << "scene->setMeshLodCrossFadeDuration(" << formatFloat(scene->getMeshLodCrossFadeDuration()) << ");\n";
     out << ind2 << "scene->setDepthPrepassEnabled(" << formatBool(scene->isDepthPrepassEnabled()) << ");\n";
     if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
         out << ind2 << "scene->setSceneColorScale(" << formatSceneColorScale(scene->getSceneColorScale()) << ");\n";
+    // planar reflections, away from their defaults
+    {
+        const SceneSettings defaults;
+        if (scene->getPlanarReflectionResolution() != defaults.planarReflectionResolution){
+            static const char* const names[] = {"OFF", "QUARTER", "HALF", "FULL"};
+            out << ind2 << "scene->setPlanarReflectionResolution(PlanarReflectionResolution::" << names[(int)scene->getPlanarReflectionResolution()] << ");\n";
+        }
+        if (scene->getPlanarReflectionLayers() != defaults.planarReflectionLayers)
+            out << ind2 << "scene->setPlanarReflectionLayers(" << scene->getPlanarReflectionLayers() << "u);\n";
+        if (scene->getPlanarReflectionShadows() != defaults.planarReflectionShadows)
+            out << ind2 << "scene->setPlanarReflectionShadows(" << formatBool(scene->getPlanarReflectionShadows()) << ");\n";
+        if (scene->getPlanarReflectionFarClip() != defaults.planarReflectionFarClip)
+            out << ind2 << "scene->setPlanarReflectionFarClip(" << formatFloat(scene->getPlanarReflectionFarClip()) << ");\n";
+        if (scene->getPlanarReflectionClipOffset() != defaults.planarReflectionClipOffset)
+            out << ind2 << "scene->setPlanarReflectionClipOffset(" << formatFloat(scene->getPlanarReflectionClipOffset()) << ");\n";
+        if (scene->getMaxPlanarReflections() != defaults.maxPlanarReflections)
+            out << ind2 << "scene->setMaxPlanarReflections(" << scene->getMaxPlanarReflections() << ");\n";
+        // the Water Wakes' map
+        if (scene->getWaterWakeResolution() != defaults.waterWakeResolution){
+            static const char* const names[] = {"AUTO", "LOW", "MEDIUM", "HIGH"};
+            out << ind2 << "scene->setWaterWakeResolution(WaterWakeResolution::" << names[(int)scene->getWaterWakeResolution()] << ");\n";
+        }
+        if (scene->getWaterWakeArea() != defaults.waterWakeArea)
+            out << ind2 << "scene->setWaterWakeArea(" << formatFloat(scene->getWaterWakeArea()) << ");\n";
+        if (scene->getWaterWakeFade() != defaults.waterWakeFade)
+            out << ind2 << "scene->setWaterWakeFade(" << formatFloat(scene->getWaterWakeFade()) << ");\n";
+    }
     out << ind2 << "scene->setGlobalIllumination(" << formatFloat(scene->getGlobalIlluminationIntensity()) << ");\n";
     out << ind2 << "scene->setGlobalIllumination(" << formatVector3(scene->getGlobalIlluminationColor()) << ");\n";
     if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)
@@ -3050,6 +3124,12 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     out << ind2 << "scene->setLitQuality(" << (scene->getLitQuality() == LitQuality::HIGH ? "LitQuality::HIGH" : "LitQuality::STANDARD") << ");\n";
     if (scene->getPhysicalLightEV100() != SceneSettings().physicalLightEV100)
         out << ind2 << "scene->setPhysicalLightEV100(" << formatFloat(scene->getPhysicalLightEV100()) << ");\n";
+    if (scene->isCapsuleShadowsEnabled() != SceneSettings().capsuleShadowsEnabled)
+        out << ind2 << "scene->setCapsuleShadowsEnabled(" << formatBool(scene->isCapsuleShadowsEnabled()) << ");\n";
+    if (scene->getCapsuleShadowIntensity() != SceneSettings().capsuleShadowIntensity)
+        out << ind2 << "scene->setCapsuleShadowIntensity(" << formatFloat(scene->getCapsuleShadowIntensity()) << ");\n";
+    if (scene->getCapsuleShadowSoftness() != SceneSettings().capsuleShadowSoftness)
+        out << ind2 << "scene->setCapsuleShadowSoftness(" << formatFloat(scene->getCapsuleShadowSoftness()) << ");\n";
     out << ind2 << "scene->setAmbientLight2D(" << formatFloat(scene->getAmbientLight2DIntensity()) << ");\n";
     out << ind2 << "scene->setAmbientLight2D(" << formatVector3(scene->getAmbientLight2DColor()) << ");\n";
     out << ind2 << "scene->setShadow2DQuality(" << formatShadowQuality(scene->getShadow2DQuality()) << ");\n";
@@ -3089,6 +3169,15 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
         out << ind2 << "scene->setDefaultPointsShader(" << formatString(scene->getDefaultPointsShader()) << ");\n";
     if (!scene->getDefaultLinesShader().empty())
         out << ind2 << "scene->setDefaultLinesShader(" << formatString(scene->getDefaultLinesShader()) << ");\n";
+    // the default shaders' property values, only when set (scenes without them generate as before)
+    const std::pair<ShaderType, const char*> defaultShaderTypes[] = {
+        {ShaderType::MESH, "MESH"}, {ShaderType::UI, "UI"}, {ShaderType::SKYBOX, "SKYBOX"},
+        {ShaderType::POINTS, "POINTS"}, {ShaderType::LINES, "LINES"}};
+    for (const auto& [type, token] : defaultShaderTypes) {
+        const ShaderUniformValues& values = scene->getDefaultShaderUniforms(type);
+        if (!values.empty())
+            out << ind2 << "scene->setDefaultShaderUniforms(ShaderType::" << token << ", " << formatShaderUniforms(values) << ");\n";
+    }
     if (!scene->getPostProcessPasses().empty()) {
         out << ind2 << "{\n";
         out << ind3 << "std::vector<PostProcessPass> postProcess;\n";
@@ -3620,6 +3709,10 @@ std::string editor::Factory::createInstancedMeshComponent(int indentSpaces, Enti
     code << ind << "instmesh.cullDistance = " << formatFloat(p.cullDistance) << ";\n";
     code << ind << "instmesh.fadeStart = " << formatFloat(p.fadeStart) << ";\n";
     code << ind << "instmesh.fadeEnd = " << formatFloat(p.fadeEnd) << ";\n";
+    if (p.nearFadeStart != 0.0f || p.nearFadeEnd != 0.0f) {
+        code << ind << "instmesh.nearFadeStart = " << formatFloat(p.nearFadeStart) << ";\n";
+        code << ind << "instmesh.nearFadeEnd = " << formatFloat(p.nearFadeEnd) << ";\n";
+    }
     code << ind << "instmesh.instancedBillboard = " << formatBool(p.instancedBillboard) << ";\n";
     code << ind << "instmesh.instancedCylindricalBillboard = " << formatBool(p.instancedCylindricalBillboard) << ";\n";
 

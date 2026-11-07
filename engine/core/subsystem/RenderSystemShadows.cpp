@@ -8,6 +8,8 @@
 
 #include "RenderSystem.h"
 #include "RenderSystemShared.h"
+#include "render/SystemRender.h"
+#include "device/QualityResolver.h"
 #include "Scene.h"
 #include "Engine.h"
 #include "Log.h"
@@ -110,6 +112,8 @@ void RenderSystem::updateShadowTier(){
             shadowTier = ShadowTiers::getPlatformTier(static_cast<int>(Engine::getPlatform()));
             break;
     }
+    // the device tier's cap (and a Critical thermal step's, the tier below's)
+    shadowTier = QualityResolver::shadowTier(shadowTier);
 
     // a build with no shader compiler has the High filters only where its export cooked them
     // (spec S10 R25): above that it renders the Medium tier
@@ -169,6 +173,7 @@ float RenderSystem::lightShadowDistance(const LightComponent& light, const Camer
         distance = scene->getShadowDistance();
     if (!(distance > 0.0f))
         distance = shadowTierSettings().shadowDistance;
+    distance = QualityResolver::shadowDistance(distance);
     if (camera.farClip > camera.nearClip)
         distance = std::min(distance, camera.farClip);
     return distance;
@@ -459,7 +464,7 @@ void RenderSystem::ensureCasterLayers(){
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < meshes->size(); i++){
         MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        if (!mesh.loaded || mesh.needReload || !mesh.castShadows)
+        if (!mesh.loaded || mesh.needReload || !mesh.castsShadowMaps())
             continue;
         Entity entity = meshes->getEntity(i);
         Transform* transform = scene->findComponent<Transform>(entity);
@@ -476,10 +481,10 @@ void RenderSystem::ensureCasterLayers(){
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
         if (instmesh){
             unbounded = unbounded || instmesh->instancedBillboard ||
-                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f ||
+                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f || instanceFadeCullNear(*instmesh, mesh, *scene) > 0.0f ||
                 (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
         }
-        if (terrain || unbounded){
+        if ((terrain && !mesh.staticShadowCaster) || unbounded){
             cameraCasterLayers |= layerBit;
         }
 
@@ -552,15 +557,16 @@ void RenderSystem::updateShadowCasters(){
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < meshes->size(); i++){
         MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        if (!mesh.loaded || mesh.needReload || !mesh.castShadows)
+        if (!mesh.loaded || mesh.needReload || !mesh.castsShadowMaps())
             continue;
         const Entity entity = meshes->getEntity(i);
         Transform* transform = scene->findComponent<Transform>(entity);
         if (!transform || !transform->visible || !isRenderActive(entity))
             continue;
 
-        // its buffers or alpha-clip textures update this frame
-        bool contentChanged = mesh.needUpdateBuffer;
+        // its buffers or alpha-clip textures update this frame (a terrain: its heights)
+        TerrainComponent* terrainComponent = scene->findComponent<TerrainComponent>(entity);
+        bool contentChanged = mesh.needUpdateBuffer || (terrainComponent && terrainComponent->needUpdateTexture);
         for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
             contentChanged = contentChanged || mesh.submeshes[s].needUpdateDepthTexture;
         }
@@ -578,6 +584,7 @@ void RenderSystem::updateShadowCasters(){
         revision.add(mesh.shadowCasterRevision);
         revision.add(mesh.lodEnabled);
         revision.add(mesh.lodBias);
+        revision.add(QualityResolver::lodBias() * QualityResolver::shadowLodBias());
         revision.add(mesh.shadowsBillboard);
         revision.add(transform->billboard);
         bool morphs = false;
@@ -596,15 +603,17 @@ void RenderSystem::updateShadowCasters(){
         }
         state.revision = (uint32_t)(revision.value ^ (revision.value >> 32));
 
-        const bool terrain = scene->findComponent<TerrainComponent>(entity) != nullptr;
+        const bool terrain = terrainComponent != nullptr;
         bool unbounded = transform->billboard && !transform->fakeBillboard && !mesh.shadowsBillboard;
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
         if (instmesh){
             unbounded = unbounded || instmesh->instancedBillboard ||
-                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f ||
+                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f || instanceFadeCullNear(*instmesh, mesh, *scene) > 0.0f ||
                 (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
         }
-        state.cameraDependent = terrain || unbounded;
+        // a static terrain draws a cut of its own in each slot (shadowTerrainCut): the camera
+        // does not move it
+        state.cameraDependent = (terrain && !mesh.staticShadowCaster) || unbounded;
         // skinned meshes whose bones moved this update
         state.animated = mesh.needUpdateBones;
 
@@ -678,7 +687,7 @@ void RenderSystem::computeLightCameras(const LightComponent& light, const Transf
         input.aspect = (projection[0][0] != 0.0f) ? projection[1][1] / projection[0][0] : 1.0f;
         input.orthoHalfWidth = (projection[0][0] != 0.0f) ? 1.0f / std::abs(projection[0][0]) : 1.0f;
         input.orthoHalfHeight = (projection[1][1] != 0.0f) ? 1.0f / std::abs(projection[1][1]) : 1.0f;
-        input.nearClip = input.orthographic ? std::max(camera.nearClip, 0.0f) : camera.nearClip;
+        input.nearClip = input.orthographic ? std::max(camera.nearClip, 0.0f) : getCameraNearFar(camera).x;
         input.shadowDistance = lightShadowDistance(light, camera);
         input.lightDir = light.worldDirection;
         input.cascades = std::max(numCascades, 1u);
@@ -1032,7 +1041,11 @@ bool RenderSystem::bindViewShadowMaps(ShaderData& shaderData, ObjectRender& rend
 RenderSystem::LodView RenderSystem::shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const{
     LodView view;
     view.enabled = scene->isMeshLodEnabled();
-    view.threshold = SHADOW_LOD_TEXELS;
+    // shadow LOD (spec S54 R7): the light's own error budget, about one level coarser than the
+    // camera's rule (SHADOW_LOD_COARSER) over the project's and the device tier's Shadow LOD Bias
+    // (QualityResolver, contract C4: above 1 keeps detail); casters snap, never fade
+    view.threshold = SHADOW_LOD_TEXELS * SHADOW_LOD_COARSER / std::max(QualityResolver::shadowLodBias(), 0.001f);
+    view.bias = QualityResolver::lodBias();
 
     const LightCamera& shadowCamera = lightCamera(lightIndex, light, cameraIndex);
     const Matrix4& projection = shadowCamera.lightProjectionMatrix;
@@ -1044,6 +1057,92 @@ RenderSystem::LodView RenderSystem::shadowLodView(const LightComponent& light, i
         view.perUnit = texel;
     }
     return view;
+}
+
+RenderSystem::LodView RenderSystem::pointFaceLodView(const LightComponent& light, int lightIndex, int face) const{
+    LodView view;
+    view.enabled = scene->isMeshLodEnabled();
+    // as a shadow slot's: the light's own budget, over the Shadow LOD Bias (QualityResolver, C4)
+    view.threshold = SHADOW_LOD_TEXELS * SHADOW_LOD_COARSER / std::max(QualityResolver::shadowLodBias(), 0.001f);
+    view.bias = QualityResolver::lodBias();
+    const LightCamera& faceCamera = lightCamera(lightIndex, light, face);
+    const Matrix4& projection = faceCamera.lightProjectionMatrix;
+    const int slot = std::max(light.shadowMapIndex, 0) + face;
+    view.origin = faceCamera.lightViewMatrix.inverse() * Vector3(0, 0, 0);
+    view.perUnit = 2.0f / (std::abs(projection[1][1]) * std::max(getShadowPointAtlasSlotRect(slot).getHeight(), 1.0f));
+    return view;
+}
+
+RenderSystem::ShadowTerrainCut& RenderSystem::shadowTerrainCut(Entity entity, TerrainComponent& terrain, Transform& transform, const MeshComponent& mesh,
+                                                              const LightCamera& shadowCamera){
+    ShadowTerrainCut& cut = shadowTerrainScratch;
+    cut.nodes[0].clear();
+    cut.nodes[1].clear();
+    if (!terrain.heightMapLoaded)
+        return cut;
+
+    if (mesh.staticShadowCaster){
+        // from above the slot's centre by its size (a directional cascade: the bigger its
+        // texels, the coarser its nodes) or the light (a spot), whatever the camera
+        const Matrix4 inverseViewProjection = shadowCamera.lightViewProjectionMatrix.inverse();
+        const bool orthographic = shadowCamera.lightProjectionMatrix[3][3] == 1.0f;
+        if (orthographic){
+            const Vector3 centre = inverseViewProjection * Vector3(0, 0, 0);
+            const float radius = (inverseViewProjection * Vector3(1, 1, 0) - centre).length();
+            cut.eye = Vector3(centre.x, transform.worldPosition.y + radius, centre.z);
+        }else{
+            cut.eye = shadowCamera.lightViewMatrix.inverse() * Vector3(0, 0, 0);
+        }
+        for (int i = 0; i < terrain.rootGridSize * terrain.rootGridSize; i++){
+            selectShadowTerrainNode(terrain, transform, cut.eye, shadowCamera.nearFar.y, shadowCamera.frustumPlanes,
+                                    terrain.nodes[terrain.grid[i]], terrain.levels - 1, cut);
+        }
+        return cut;
+    }
+
+    // the camera's cut, node by node against the slot's frustum
+    TerrainView& view = terrainViewData(entity, terrain, mainTerrainView());
+    cut.eye = view.nodesEyePos;
+    for (int s = 0; s < 2; s++){
+        const InterleavedBuffer& records = view.nodesbuffer[s];
+        const size_t count = std::min<size_t>(view.nodeIndices[s].size(), records.getCount());
+        if (records.getStride() != 5 * sizeof(float) || !records.getData())
+            continue;
+        for (size_t k = 0; k < count; k++){
+            const uint32_t index = view.nodeIndices[s][k];
+            if (index >= terrain.nodes.size())
+                continue;
+            const AABB box = getTerrainNodeAABB(transform, terrain.nodes[index]);
+            if (!isInsideCamera(shadowCamera.nearFar.y, shadowCamera.frustumPlanes, box))
+                continue;
+            const float* record = reinterpret_cast<const float*>(records.getData() + k * records.getStride());
+            cut.nodes[s].insert(cut.nodes[s].end(), record, record + 5);
+        }
+    }
+    return cut;
+}
+
+bool RenderSystem::selectShadowTerrainNode(TerrainComponent& terrain, const Transform& transform, const Vector3& eye, float cameraFar,
+                                           const Plane frustumPlanes[6], TerrainNode& node, int lodLevel, ShadowTerrainCut& cut){
+    const float range = terrain.ranges[lodLevel];
+    const AABB box = getTerrainNodeAABB(transform, node);
+    if (!isTerrainNodeInSphere(eye, range, box))
+        return false;
+    if (!isInsideCamera(cameraFar, frustumPlanes, box))
+        return true;
+    auto append = [&cut](int buffer, const TerrainNode& selected, float selectedRange, float resolution){
+        cut.nodes[buffer].insert(cut.nodes[buffer].end(), {selected.position.x, selected.position.y, selected.size, selectedRange, resolution});
+    };
+    if (lodLevel == 0 || !isTerrainNodeInSphere(eye, terrain.ranges[lodLevel - 1], box)){
+        append(0, node, range, (float)terrain.resolution);
+        return true;
+    }
+    for (int i = 0; i < 4; i++){
+        TerrainNode& child = terrain.nodes[node.childs[i]];
+        if (!selectShadowTerrainNode(terrain, transform, eye, cameraFar, frustumPlanes, child, lodLevel - 1, cut))
+            append(1, child, range, (float)(terrain.resolution / 2));
+    }
+    return true;
 }
 
 // projective atlas slots the shadow pass draws this frame
@@ -1451,7 +1550,7 @@ void RenderSystem::buildCameraShadowInstances(CameraShadows& target){
         CameraShadows::InstanceRanges& ranges = target.instanceRanges[entity];
         ranges.build = target.instanceBuild;
         ranges.slots.fill(InstanceViewRange());
-        if (!mesh || !transform || !mesh->loaded || !mesh->castShadows)
+        if (!mesh || !transform || !mesh->loaded || !mesh->castsShadowMaps())
             continue;
 
         // the frame's list, the one this camera's color pass draws
@@ -1600,46 +1699,62 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
     // as in Unity, a layer the rendering camera or the light culls casts no shadow
     const uint32_t shadowCameraMask = target.cameraMask;
 
+    // the casters the slots draw from, looked up once for every slot (spec S55 R4)
+    struct Caster {
+        Entity entity;
+        MeshComponent* mesh;
+        Transform* transform;
+        InstancedMeshComponent* instmesh;
+        TerrainComponent* terrain;
+        TilemapComponent* tilemap;
+    };
+    std::vector<Caster> casterList;
+    casterList.reserve(meshes->size());
+    for (int i = 0; i < meshes->size(); i++){
+        MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        Entity entity = meshes->getEntity(i);
+        if (!mesh.castShadows)
+            continue;
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!transform || !transform->visible || !isRenderActive(entity))
+            continue;
+        casterList.push_back({entity, &mesh, transform, scene->findComponent<InstancedMeshComponent>(entity),
+                              scene->findComponent<TerrainComponent>(entity), scene->findComponent<TilemapComponent>(entity)});
+    }
+
     // casters: 1 static, 2 dynamic, 3 both; a projective slot has its own culled instance
     // view, point faces draw everything
     auto drawShadowCasters = [&](LightComponent& light, int lightIndex, int cameraIndex, int instanceView, int casters){
         const LightCamera& shadowCamera = lightCamera(lightIndex, light, cameraIndex);
-        const LodView shadowLod = (instanceView >= 0) ? shadowLodView(light, lightIndex, cameraIndex, instanceView - 1) : LodView();
-        const LodView* lodView = (instanceView >= 0) ? &shadowLod : nullptr;
+        const LodView shadowLod = (instanceView >= 0) ? shadowLodView(light, lightIndex, cameraIndex, instanceView - 1) : pointFaceLodView(light, lightIndex, cameraIndex);
+        const LodView* lodView = &shadowLod;
         const uint32_t casterMask = shadowCameraMask & light.cullingMask;
-        for (int i = 0; i < meshes->size(); i++){
-            MeshComponent& mesh = meshes->getComponentFromIndex(i);
-            if (!(casters & (mesh.staticShadowCaster ? 1 : 2)))
-                continue;
-            Entity entity = meshes->getEntity(i);
-            Transform* transform = scene->findComponent<Transform>(entity);
+        // Dynamic Batching: casters of one depth state draw as one (depth only: in any order)
+        beginBatchPass(BatchPass::SHADOW, BatchMode::GROUP, nullptr, nullptr, PIP_SHADOW_DEPTH, shadowCamera.lightViewProjectionMatrix,
+                       shadowCamera.nearFar.y, shadowCamera.frustumPlanes);
+        batchPass.instanceView = instanceView;
+        batchPass.lodView = lodView;
 
-            if (!transform || !transform->visible || !isRenderActive(entity) || !isLayerVisible(entity, casterMask)){
-                continue;
-            }
-
-            InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
-            TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
-            TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
-
-            const Matrix4& model = objectModel(*transform);
+        auto drawCaster = [&](Entity entity, MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh,
+                              TerrainComponent* terrain, TilemapComponent* tilemap){
+            const Matrix4& model = objectModel(transform);
             vs_depth_t vsDepthParams;
-            if (transform->billboard && mesh.shadowsBillboard){
+            if (transform.billboard && mesh.shadowsBillboard){
                 Matrix4 modelViewMatrix = shadowCamera.lightViewMatrix * model;
 
-                modelViewMatrix.set(0, 0, transform->worldScale.x);
+                modelViewMatrix.set(0, 0, transform.worldScale.x);
                 modelViewMatrix.set(0, 1, 0.0);
                 modelViewMatrix.set(0, 2, 0.0);
 
-                if (!transform->cylindricalBillboard) {
+                if (!transform.cylindricalBillboard) {
                     modelViewMatrix.set(1, 0, 0.0);
-                    modelViewMatrix.set(1, 1, transform->worldScale.y);
+                    modelViewMatrix.set(1, 1, transform.worldScale.y);
                     modelViewMatrix.set(1, 2, 0.0);
                 }
 
                 modelViewMatrix.set(2, 0, 0.0);
                 modelViewMatrix.set(2, 1, 0.0);
-                modelViewMatrix.set(2, 2, transform->worldScale.z);
+                modelViewMatrix.set(2, 2, transform.worldScale.z);
 
                 const Matrix4& projectionMatrix = shadowCamera.lightProjectionMatrix;
                 vsDepthParams = {modelViewMatrix, projectionMatrix, projectionMatrix * modelViewMatrix};
@@ -1648,9 +1763,54 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
                 vsDepthParams = {model, lightVP, lightVP * model};
             }
 
-            drawMeshDepth(entity, mesh, *transform, shadowCamera.nearFar.y, shadowCamera.frustumPlanes, vsDepthParams,
-                          instmesh, terrain, tilemap, false, PIP_SHADOW_DEPTH, instanceView, lodView);
+            passShadowTerrain = terrain ? &shadowTerrainCut(entity, *terrain, transform, mesh, shadowCamera) : nullptr;
+            // (a billboard's shadow faces the light: its own view matrix, drawn alone)
+            if (transform.billboard && mesh.shadowsBillboard){
+                drawMeshDepth(entity, mesh, transform, shadowCamera.nearFar.y, shadowCamera.frustumPlanes, vsDepthParams,
+                              instmesh, terrain, tilemap, false, PIP_SHADOW_DEPTH, instanceView, lodView);
+            }else{
+                submitMeshDepth(entity, mesh, transform, shadowCamera.nearFar.y, shadowCamera.frustumPlanes, vsDepthParams,
+                                instmesh, terrain, tilemap, false, PIP_SHADOW_DEPTH, instanceView, lodView);
+            }
+            passShadowTerrain = nullptr;
+        };
+
+        // GPU Instancing: the slot's casters culled at once (on jobs) and drawn in batches, in
+        // component order (spec S55); else one by one, as before
+        const bool batching = SystemRender::isDrawBatching();
+        depthQueue.clear();
+        const Vector3 eye = shadowCamera.lightViewMatrix.inverse() * Vector3(0, 0, 0);
+        for (const Caster& caster : casterList){
+            MeshComponent& mesh = *caster.mesh;
+            if (!(casters & (mesh.staticShadowCaster ? 1 : 2)))
+                continue;
+            if (!isLayerVisible(caster.entity, casterMask))
+                continue;
+            if (batching){
+                const float distance = mesh.worldAABB.isNull() ? 0.0f : mesh.worldAABB.squaredDistance(eye);
+                depthQueue.push_back({caster.entity, caster.mesh, caster.instmesh, caster.terrain, caster.tilemap, caster.transform,
+                                      distance, 0, (uint32_t)depthQueue.size()});
+                continue;
+            }
+            drawCaster(caster.entity, mesh, *caster.transform, caster.instmesh, caster.terrain, caster.tilemap);
         }
+        if (batching){
+            VisibleFrustum frustum;
+            frustum.planes = shadowCamera.frustumPlanes;
+            frustum.farClip = shadowCamera.nearFar.y;
+            frustum.eye = eye;
+            buildVisibleQueue(depthQueue, frustum, PIP_SHADOW_DEPTH, true);
+            SystemRender::beginDrawBatch();
+            for (const OpaqueRenderData& entry : depthQueue){
+                passSubmeshMask = entry.submeshMask;
+                passPreCulled = entry.preCulled;
+                drawCaster(entry.entity, *entry.mesh, *entry.transform, entry.instmesh, entry.terrain, entry.tilemap);
+            }
+            SystemRender::endDrawBatch();
+            passSubmeshMask = 0xFFFFFFFFu;
+            passPreCulled = false;
+        }
+        endBatchPass();
     };
 
     // what one slot of an atlas does this frame

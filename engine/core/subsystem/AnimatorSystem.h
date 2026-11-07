@@ -112,6 +112,9 @@ namespace jasperengine{
         void ikInputs(AnimatorComponent& component, anim::AnimatorInstance& instance, const anim::AnimatorUpdateContext& context);
         void writePose(const AnimatorComponent& component, anim::AnimatorInstance& instance);
         void finalize(Job& job, float dt);
+        // the update's audio cues, then the state_exit stops of the states and montages that ended (S40 R4-R7)
+        void fireCues(Entity entity, anim::AnimatorInstance& instance);
+        bool warnedNoSoundLayer = false;
         void release(Entity entity, anim::AnimatorInstance& instance);
         void setSkinsDriven(anim::AnimatorInstance& instance, bool driven);
         std::string modelPathOf(Entity entity) const;

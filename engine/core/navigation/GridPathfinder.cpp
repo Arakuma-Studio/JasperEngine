@@ -46,25 +46,31 @@ void GridReservations::reset(int cellCount) {
 }
 
 void GridReservations::release(uint32_t agent) {
-    for (auto it = held.begin(); it != held.end(); ++it) {
-        if (it->first != agent)
-            continue;
-        for (int cell : it->second) {
-            if (cell >= 0 && (size_t)cell < holders.size() && holders[(size_t)cell] == agent) {
-                holders[(size_t)cell] = 0;
-                until[(size_t)cell] = 0;
-            }
-        }
-        held.erase(it);
+    auto it = held.find(agent);
+    if (it == held.end())
         return;
+    for (int cell : it->second) {
+        if (cell >= 0 && (size_t)cell < holders.size() && holders[(size_t)cell] == agent) {
+            holders[(size_t)cell] = 0;
+            until[(size_t)cell] = 0;
+        }
     }
+    held.erase(it);
 }
 
 void GridReservations::reserve(uint32_t agent, const std::vector<int>& cells, uint32_t untilTick) {
     if (agent == 0)
         return;
-    release(agent);
-    std::vector<int> taken;
+    std::vector<int>& taken = held[agent];
+    // Keep the agent's path storage while replacing its claims. A transferred cell belongs
+    // to its new holder even if it is still in this agent's previous path.
+    for (int cell : taken) {
+        if (cell >= 0 && (size_t)cell < holders.size() && holders[(size_t)cell] == agent) {
+            holders[(size_t)cell] = 0;
+            until[(size_t)cell] = 0;
+        }
+    }
+    taken.clear();
     taken.reserve(cells.size());
     for (int cell : cells) {
         if (cell < 0 || (size_t)cell >= holders.size())
@@ -76,7 +82,6 @@ void GridReservations::reserve(uint32_t agent, const std::vector<int>& cells, ui
         until[(size_t)cell] = untilTick;
         taken.push_back(cell);
     }
-    held.emplace_back(agent, std::move(taken));
 }
 
 bool GridReservations::isReservedByOther(int cell, uint32_t agent, uint32_t tick) const {
@@ -126,6 +131,26 @@ bool GridSolver::passable(const NavGridMap& map, int cell, const GridQuery& quer
 }
 
 GridPath GridSolver::solve(const NavGridMap& map, GridCell start, GridCell goal, const GridQuery& query, const float* areaCosts) {
+    GridPath path = search(map, start, goal, query, areaCosts);
+    // S75: the reason, from the ends first (as the navmesh's R3 orders them)
+    auto endFailure = [&](GridCell cell, PathFailure offMesh, PathFailure filtered) {
+        if (!map.contains(cell) || map.getAreaAt(map.index(cell)) == AREA_NOT_WALKABLE)
+            return offMesh;
+        return passable(map, map.index(cell), query) ? PathFailure::None : filtered;
+    };
+    if (path.status == PathStatus::Complete) {
+        path.failure = PathFailure::None;
+    } else {
+        path.failure = endFailure(start, PathFailure::StartOffMesh, PathFailure::StartFiltered);
+        if (path.failure == PathFailure::None)
+            path.failure = endFailure(goal, PathFailure::EndOffMesh, PathFailure::EndFiltered);
+        if (path.failure == PathFailure::None)
+            path.failure = PathFailure::Disconnected;
+    }
+    return path;
+}
+
+GridPath GridSolver::search(const NavGridMap& map, GridCell start, GridCell goal, const GridQuery& query, const float* areaCosts) {
     GridPath path;
     if (!map.contains(start) || !map.contains(goal))
         return path;
@@ -151,7 +176,7 @@ GridPath GridSolver::solve(const NavGridMap& map, GridCell start, GridCell goal,
         if (target >= 0) {
             GridQuery exact = query;
             exact.allowPartial = false;
-            GridPath partial = solve(map, start, map.cellOf(target), exact, areaCosts);
+            GridPath partial = search(map, start, map.cellOf(target), exact, areaCosts);
             if (partial.status == PathStatus::Complete) {
                 partial.status = PathStatus::Partial;
                 return partial;
@@ -259,7 +284,7 @@ GridPath GridSolver::solve(const NavGridMap& map, GridCell start, GridCell goal,
     int end = goalIndex;
     if (!found) {
         if (!query.allowPartial)
-            return GridPath{PathStatus::Invalid, {}, {}, 0.0f, path.expanded};
+            return GridPath{PathStatus::Invalid, {}, {}, 0.0f, path.expanded, PathFailure::Disconnected};
         end = best;
     }
     for (int cell = end; cell >= 0; cell = parent[(size_t)cell])
@@ -466,7 +491,7 @@ GridPath GridSolver::solveJps(const NavGridMap& map, GridCell start, GridCell go
         }
     }
     if (!found)
-        return GridPath{PathStatus::Invalid, {}, {}, 0.0f, path.expanded};
+        return GridPath{PathStatus::Invalid, {}, {}, 0.0f, path.expanded, PathFailure::Disconnected};
     // the jump points, then every cell between them (straight or diagonal runs)
     std::vector<int> points;
     for (int cell = goalIndex; cell >= 0; cell = parent[(size_t)cell])

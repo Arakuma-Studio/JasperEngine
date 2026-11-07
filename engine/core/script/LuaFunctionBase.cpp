@@ -156,7 +156,7 @@ void LuaFunctionBase::push_value(lua_State *vm, const std::string &s){
     lua_pushstring(vm, s.c_str());
 }
 
-void LuaFunctionBase::push_value(lua_State *vm, wchar_t s){
+void LuaFunctionBase::push_value(lua_State *vm, char32_t s){
     lua_pushstring(vm, StringUtils::toUTF8(s).c_str());
 }
 
@@ -246,6 +246,10 @@ void LuaFunctionBase::push_value(lua_State *vm, NavMeshAgent o){
 void LuaFunctionBase::push_value(lua_State *vm, NavMeshSurface o){
     if (!luabridge::push<NavMeshSurface>(vm, o))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
+}
+
+void LuaFunctionBase::push_value(lua_State *vm, nav::PathFailure o){
+    lua_pushstring(vm, nav::pathFailureName(o));
 }
 
 void LuaFunctionBase::push_value(lua_State *vm, const VideoPlayer &o){

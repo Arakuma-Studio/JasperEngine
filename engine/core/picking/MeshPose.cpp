@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "MeshPose.h"
+#include "model/ModelCpuData.h"
 
 #include "component/MeshComponent.h"
 #include "jobs/JobSystem.h"
@@ -64,6 +65,7 @@ namespace {
     // the buffer and attribute a submesh draws `type` from: its own attribute, else the
     // render-attribute buffers' (the last in name order), as RenderSystem binds them
     AttributeSource findAttribute(const MeshComponent& mesh, const Submesh& submesh, AttributeType type){
+        ModelCpuData::ensure(mesh, "picking");
         AttributeSource found;
         auto byName = [&](const std::string& name) -> const Buffer* {
             if (name == "vertices") return mesh.buffer.getSize() > 0 ? &mesh.buffer : nullptr;
@@ -324,8 +326,8 @@ bool picking::isPosed(const MeshComponent& mesh){
 
 uint64_t picking::poseHash(const MeshComponent& mesh){
     uint64_t h = hashBytes(mesh.morphWeights, sizeof(mesh.morphWeights), 0x5ca1ab1eull);
-    if (mesh.bonesMatrix.size() > 0){
-        h = hashBytes(mesh.bonesMatrix.data(), mesh.bonesMatrix.size() * sizeof(Matrix4), h);
+    if (mesh.bonesMatrix.stored() > 0){
+        h = hashBytes(mesh.bonesMatrix.data(), mesh.bonesMatrix.stored() * sizeof(Matrix4), h);
     }
     const float adjust[2] = {mesh.normAdjustJoint, mesh.normAdjustWeight};
     return hashBytes(adjust, sizeof(adjust), h);
@@ -333,7 +335,7 @@ uint64_t picking::poseHash(const MeshComponent& mesh){
 
 PoseParameters picking::poseParameters(const MeshComponent& mesh, uint32_t submesh){
     PoseParameters parameters;
-    parameters.bones = std::span<const Matrix4>(mesh.bonesMatrix.data(), mesh.bonesMatrix.size());
+    parameters.bones = std::span<const Matrix4>(mesh.bonesMatrix.data(), mesh.bonesMatrix.stored());
     parameters.morphWeights = mesh.morphWeights;
     const Submesh& s = mesh.submeshes[submesh];
     // applySkinningUniform (RenderSystem.cpp)

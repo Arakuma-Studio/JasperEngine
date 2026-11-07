@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 #include "media/VideoFormats.h"
+#include "htmlui/compat/CompatApi.h"
+#include "component/PrefabComponent.h"
 #include "media/VideoSourceFactory.h"
 #include "CommandLine.h"
 #include "log/Logger.h"
 #include "io/AtomicFile.h"
-#include "navigation/NavigationEditor.h"
+#include "navigation/NavigationFindings.h"
 #include "util/FileUtils.h"
 
 #include "AppSettings.h"
@@ -38,6 +40,7 @@
 #include "command/type/PropertyCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/CommandHandle.h"
+#include "util/TextEncoding.h"
 #include "command/type/ReplacePrefabCmd.h"
 #include "command/type/UnpackPrefabCmd.h"
 #include "command/type/CreatePrefabVariantAssetCmd.h"
@@ -294,6 +297,10 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " generate-sprite-normals [options]  Normal maps for sprites, sheets, GIF/APNG animations and tiles.\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
+        << "  " << commandName << " audio-analyze [options] <file|essentials:id|library:id>...\n"
+        << "                                                     Measure audio files (the analyze_audio numbers; exit 0/2).\n"
+        << "  " << commandName << " sound-library verify|list [options]\n"
+        << "                                                     Check or list the starter library (exit 0/1/2).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
         << "  " << commandName << " call [options] <tool> ...  Run one MCP tool of an editor from the shell.\n"
         << "  " << commandName << " batch [options] < calls  Run MCP tool calls from stdin (one JSON per line).\n"
@@ -346,6 +353,7 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --frames <n>       Measured frames after warmup. Default: 180.\n"
         << "      --warmup <n>       Warmup frames after resources load. Default: 90.\n"
         << "      --mesh-lod <on|off>      Override the scene's mesh LOD setting.\n"
+        << "      --gpu-instancing <on|off> Override the project's GPU Instancing for the run.\n"
         << "      --depth-prepass <on|off> Override the scene's depth prepass setting.\n"
         << "      --lit-quality <standard|high> Override the scene's Lit Quality.\n"
         << "      --play             Measure the scene playing (Play: scripts, animation, physics run)\n"
@@ -617,6 +625,8 @@ static void attachHostConsoleIfNeeded() {
         (void)freopen_s(&stdoutFile, "CONOUT$", "w", stdout);
         (void)freopen_s(&stderrFile, "CONOUT$", "w", stderr);
         (void)freopen_s(&stdinFile,  "CONIN$",  "r", stdin);
+        // the console exists only now: it shows the UTF-8 output too
+        TextEncoding::useUtf8Console();
     }
 #endif
 }
@@ -698,11 +708,23 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     const ExportProgress progress = exporter.getProgress();
 
     if (!success) {
+        // the build's errors, then what failed
+        for (const BuildDiagnostic& error : progress.errors) std::cerr << error.text << "\n";
+        if (progress.errorCount > progress.errors.size()) {
+            std::cerr << "(and " << progress.errorCount - progress.errors.size() << " more error(s))\n";
+        }
         if (!progress.errorMessage.empty()) {
             std::cerr << commandName << " export: " << progress.errorMessage << "\n";
         }
         return 1;
     }
+
+    const ExportResult result = exporter.getResult();
+    if (!result.warnings.empty()) {
+        std::cerr << commandName << " export: completed with " << result.warnings.size() << " warning(s):\n";
+        for (const BuildWarning& warning : result.warnings) std::cerr << "  " << warning.code << ": " << warning.message << "\n";
+    }
+    for (const std::string& note : result.notes) std::cout << note << "\n";
 
     return 0;
 }
@@ -1105,7 +1127,7 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
                 if (name == "playStart") {
                     // Play does not start on a snapshot that would lose a GameObject
                     try {
-                        played.playStateSnapshot = Stream::encodeSceneProject(nullptr, &played);
+                        played.playStateSnapshot = Stream::encodePlaySnapshot(nullptr, &played);
                     } catch (const std::exception& e) {
                         Out::error("Failed to start scene: %s", e.what());
                         return false;
@@ -2028,8 +2050,10 @@ static int runAssets(int argc, char** argv, const std::string& commandName) {
     for (const AssetDatabase::OrphanMeta& orphan : tracker.getOrphanMetas()) {
         orphans.push_back({{"meta", orphan.metaPath}, {"asset", orphan.assetPath}, {"guid", orphan.guid.str()}});
     }
-    std::cout << Json{{"assets", project.getAssetDatabase().assetCount()}, {"missing", missing},
-                      {"resolved_by_path", healed}, {"orphan_metas", orphans}}.dump(2) << "\n";
+    Json report{{"assets", project.getAssetDatabase().assetCount()}, {"missing", missing},
+                {"resolved_by_path", healed}, {"orphan_metas", orphans}};
+    if (!tracker.getReadOnlyLinked().empty()) report["read_only_linked"] = tracker.getReadOnlyLinked();
+    std::cout << report.dump(2) << "\n";
     return missing.empty() ? 0 : 1;
 }
 
@@ -2562,7 +2586,7 @@ bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const
     std::string extension = model.extension().string();
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return (char)std::tolower(c); });
     if (extension == ".fbx") {
-        // MeshSystem::getImportedModelPath: the project's import folder mirrors the assets folder
+        // MeshSystem::getFbxImportPath: the project's import folder mirrors the assets folder
         file = root / ".jasperengine" / "imported" / (model.lexically_relative(assets).generic_string() + ".glb");
         extension = ".glb";
     }
@@ -3039,11 +3063,14 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         run.vatRan = true;
     }
 
-    // S19 R42: the scenes' NavMesh Surfaces that are not baked or out of date (whole-project checks)
+    // S19 R42, S75 R36: the scenes' navigation findings with their severities (an error fails the
+    // check; whole-project checks)
     if (shadersWanted && shadersAll) {
         size_t surfaces = 0;
-        for (const NavigationEditor::Finding& finding : NavigationEditor::checkSurfaces(&project, &surfaces))
-            run.findings.push_back({"navigation", finding.scenePath, 0, 0, "warning", finding.message});
+        for (const ProjectNavFinding& item : collectProjectFindings(&project, &surfaces)) {
+            run.findings.push_back({"navigation", item.scenePath, 0, 0, nav::findingSeverityName(item.finding.severity),
+                                    item.finding.message, item.finding.code, ""});
+        }
         run.checked.push_back({"navigation", surfaces});
     }
 
@@ -3075,6 +3102,9 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         if (shadersAll) {
             const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(&project);
             run.findings.insert(run.findings.end(), stochastic.begin(), stochastic.end());
+            // water forks without @role, planar reflections on sloped meshes
+            const std::vector<ProjectChecks::Finding> water = ProjectChecks::waterFindings(&project);
+            run.findings.insert(run.findings.end(), water.begin(), water.end());
             // Line and Trail Renderers drawing nothing or reading no texture coordinates
             const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(&project);
             run.findings.insert(run.findings.end(), lines.begin(), lines.end());

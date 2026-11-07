@@ -21,7 +21,9 @@
 #include "component/SplineComponent.h"
 #include "component/SplineExtrudeComponent.h"
 #include "component/SplineInstantiateComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterWakeComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/CameraComponent.h"
 #include "component/CameraFollowComponent.h"
@@ -51,6 +53,7 @@
 #include "component/SafeAreaComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/ShadowCaster2DComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
@@ -284,8 +287,7 @@ namespace {
 
     MeshComponent* meshOf(Scene* scene, Entity entity, const PropertyParams& params){
         MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
-        if (!mesh || params.submesh < 0 || (unsigned int)params.submesh >= std::max(1u, mesh->numSubmeshes) ||
-            (size_t)params.submesh >= MAX_SUBMESHES){
+        if (!mesh || params.submesh < 0 || (unsigned int)params.submesh >= std::max(1u, mesh->numSubmeshes)){
             return nullptr;
         }
         return mesh;
@@ -293,8 +295,7 @@ namespace {
 
     bool hasSubmesh(EntityRegistry* registry, Entity entity, const PropertyParams& params){
         MeshComponent* mesh = registry ? registry->findComponent<MeshComponent>(entity) : nullptr;
-        return mesh && params.submesh >= 0 && (unsigned int)params.submesh < std::max(1u, mesh->numSubmeshes) &&
-               (size_t)params.submesh < MAX_SUBMESHES;
+        return mesh && params.submesh >= 0 && (unsigned int)params.submesh < std::max(1u, mesh->numSubmeshes);
     }
 
     template<typename T, T Material::*Field>
@@ -508,6 +509,7 @@ namespace {
         rows.push_back(fieldRow<ButtonComponent, Vector4, &ButtonComponent::colorHovered, &buttonDirty>("button", "colorHovered", "Color Hovered", "m_Colors.m_HighlightedColor", C4, SRGB));
         rows.push_back(fieldRow<ButtonComponent, Vector4, &ButtonComponent::colorPressed, &buttonDirty>("button", "colorPressed", "Color Pressed", "m_Colors.m_PressedColor", C4, SRGB));
         rows.push_back(fieldRow<ButtonComponent, Vector4, &ButtonComponent::colorDisabled, &buttonDirty>("button", "colorDisabled", "Color Disabled", "m_Colors.m_DisabledColor", C4, SRGB));
+        rows.push_back(fieldRow<ButtonComponent, Vector4, &ButtonComponent::colorSelected, &buttonDirty>("button", "colorSelected", "Color Selected", "m_Colors.m_SelectedColor", C4, SRGB));
         rows.push_back(fieldRow<ButtonComponent, bool, &ButtonComponent::disabled, &buttonDirty>("button", "disabled", "Disabled", "m_Interactable", B));
 
         // Rect Transform (the RectTransform Lua setters)
@@ -624,12 +626,15 @@ namespace {
         rows.push_back(enabledRow<TextEffectComponent>("texteffect"));
         rows.push_back(enabledRow<VideoPlayerComponent>("videoplayer"));
         rows.push_back(enabledRow<SafeAreaComponent>("safearea"));
+        rows.push_back(enabledRow<CapsuleShadowCasterComponent>("capsuleshadowcaster"));
         // oe-port's components with the Inspector's enabled checkbox (their Lua setters, where they
         // have one, only set the flag)
         rows.push_back(enabledRow<ForceFieldComponent>("forcefield"));
         rows.push_back(enabledRow<CharacterController2DComponent>("charactercontroller2d"));
         rows.push_back(enabledRow<CharacterControllerComponent>("charactercontroller"));
         rows.push_back(enabledRow<WaterVolumeComponent>("watervolume"));
+        rows.push_back(enabledRow<WaterExcluderComponent>("waterexcluder"));
+        rows.push_back(enabledRow<WaterWakeComponent>("waterwake"));
         rows.push_back(enabledRow<BuoyancyComponent>("buoyancy"));
         rows.push_back(enabledRow<NavMeshSurfaceComponent>("navmeshsurface"));
         rows.push_back(enabledRow<NavMeshAgentComponent>("navmeshagent"));
@@ -1370,7 +1375,7 @@ std::vector<anim::AnimatablePropertyInfo> anim::listAnimatableProperties(Scene* 
         if (pattern.find("submeshes[N]") != std::string::npos){
             MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
             if (!mesh) continue;
-            const unsigned int count = std::min<unsigned int>(std::max(1u, mesh->numSubmeshes), MAX_SUBMESHES);
+            const unsigned int count = std::max(1u, mesh->numSubmeshes);
             for (unsigned int s = 0; s < count; s++){
                 const std::string prefix = "submeshes[" + std::to_string(s) + "]";
                 const std::string property = prefix + pattern.substr(std::strlen("submeshes[N]"));

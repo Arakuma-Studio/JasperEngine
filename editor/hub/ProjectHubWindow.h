@@ -8,11 +8,13 @@
 // does while a project loads). Projects (recent projects: thumbnail, name, path, last opened,
 // pin, search, sort; missing ones greyed with Locate... and Remove from List), New Project
 // (Built-in and My Templates cards, Project Name, Location), Open (a folder with project.yaml)
-// and Import (zip or Git URL, progress, log tail, Cancel). What it does to the editor goes
-// through Actions (App: requestProjectChange, the loading window).
+// and Import (zip or Git URL, progress, log tail, Cancel), with the leftover staging folders of
+// stopped copies on Projects and Import (S66). What it does to the editor goes through Actions (App:
+// requestProjectChange, the loading window).
 
 #include "hub/ProjectImporter.h"
 #include "hub/RecentProjects.h"
+#include "hub/StagingFolders.h"
 #include "hub/TemplateCatalog.h"
 
 #include "texture/Texture.h"
@@ -70,6 +72,15 @@ namespace jasperengine::editor {
         // why Create is disabled for <location>/<name> ("" when it is not)
         static std::string createProblem(const std::string& name, const std::filesystem::path& location);
         hub::ProjectImporter& importer() { return import; }
+        // what a sweep of staging folders looks at (S66 R5): the folders projects are known to be
+        // in, and the user templates' staging folder
+        static hub::staging::Scope leftoverScope();
+        // Sweeps off the main thread, so start-up never waits for a removal: with `knownParents`
+        // the whole scope, else the journal alone (a start without the hub: one folder listing)
+        void startSweep(bool knownParents);
+        // every loop iteration: true when a sweep ended and the window has something new to show
+        bool pollSweep();
+        const std::vector<hub::staging::Leftover>& getLeftovers() const { return leftovers; }
 
     private:
         struct Thumbnail {
@@ -104,6 +115,18 @@ namespace jasperengine::editor {
         std::array<char, 512> importLocation{};
         bool importOpened = false;
 
+        // Leftover staging folders
+        struct SweepDone {
+            std::vector<hub::staging::Leftover> leftovers;
+            std::string removalError;
+        };
+        std::future<SweepDone> sweepTask;
+        bool sweepAgain = false;
+        std::vector<std::filesystem::path> removalRequests;
+        std::vector<hub::staging::Leftover> leftovers;
+        std::filesystem::path removalToConfirm;
+        std::string leftoverMessage;
+
         // thumbnails by file (projects and templates), decoded off the main thread (R38)
         std::map<std::string, Thumbnail> thumbnails;
 
@@ -115,6 +138,7 @@ namespace jasperengine::editor {
         void drawNewProject();
         void drawOpen();
         void drawImport();
+        void drawLeftovers();
         void openFolder(const std::filesystem::path& dir);
     };
 

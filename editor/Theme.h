@@ -50,6 +50,9 @@ namespace jasperengine::editor {
             static ImVec4 PlayModeTint;         // multiplied into backgrounds while playing
             static ImVec4 PhysicsAccent;        // Physics (G): the lit toolbar toggle, the Scene view badge
             static ImVec4 PhysicsAccentHovered;
+            // the Animation window's timeline audio (S40): sound blocks and Mixer Snapshot flags
+            static ImVec4 AnimationAudio;
+            static ImVec4 AnimationSnapshot;
         };
 
         static void apply();

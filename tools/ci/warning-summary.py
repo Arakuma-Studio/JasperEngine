@@ -2,7 +2,7 @@
 """Counts compiler warnings per CMake target in a Ninja build log (docs/testing.md, "Warnings").
 
     WERROR=1 tools/build.sh unit-tests 2>&1 | tee build/test-results/unit-build.log
-    python3 tools/ci/warning-summary.py build/test-results/unit-build.log >> "$GITHUB_STEP_SUMMARY"
+    python3 tools/ci/warning-summary.py build/test-results/unit-build.log
 
 Ninja prints each step's description ("[12/900] Building CXX object CMakeFiles/jasperengine.dir/
 core/Engine.cpp.o") before the output of its command, so every "warning:" line belongs to the step

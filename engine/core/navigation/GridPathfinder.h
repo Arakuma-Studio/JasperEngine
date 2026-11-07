@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <unordered_map>
 #include <vector>
 
 namespace jasperengine::nav {
@@ -48,8 +49,8 @@ namespace jasperengine::nav {
     private:
         std::vector<uint32_t> holders;
         std::vector<uint32_t> until;
-        // the cells each agent holds (to release them)
-        std::vector<std::pair<uint32_t, std::vector<int>>> held;
+        // keyed by agent: moving agents replace their claims every fixed tick
+        std::unordered_map<uint32_t, std::vector<int>> held;
     };
 
     struct GridQuery {
@@ -75,6 +76,10 @@ namespace jasperengine::nav {
         float cost = 0.0f;
         // nodes the search expanded (0 for an O(1) reject)
         uint32_t expanded = 0;
+        // S75: None when Complete; an end outside the grid or on a Not Walkable cell is
+        // *OffMesh, on a cell the mask leaves out *Filtered (also when allowPartial gives a
+        // Partial path to it), else Disconnected
+        PathFailure failure = PathFailure::NoSurface;
     };
 
     // One solver's scratch: 11 bytes per cell (g, parent, generation, state), reused across
@@ -90,6 +95,8 @@ namespace jasperengine::nav {
         size_t scratchBytes() const;
 
     private:
+        // solve without the failure classification (its partial searches recurse here)
+        GridPath search(const NavGridMap& map, GridCell start, GridCell goal, const GridQuery& query, const float* areaCosts);
         void prepare(int cells);
         bool jpsApplies(const NavGridMap& map, const GridQuery& query, const float* areaCosts) const;
         GridPath solveJps(const NavGridMap& map, GridCell start, GridCell goal, const GridQuery& query, const float* areaCosts);

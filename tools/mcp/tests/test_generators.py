@@ -35,6 +35,10 @@ async def test_rcss_properties_keep_loop_registered_names():
         raise TestFailure(f"missing author-facing CSS completion keys: {sorted(required - names)}")
 
 
+# The generated AGENTS.md's size limit: the ratchet of what it costs every agent session in a game
+AGENTS_MD_BYTES = 5000
+
+
 async def test_project_agents_file(ed: Editor):
     target = ed.scratch.root / "made-by-create-project"
     await ed.call("create_project", path=str(target), name="AgentsDoc", unsaved="discard")
@@ -46,6 +50,10 @@ async def test_project_agents_file(ed: Editor):
     agents = (target / "AGENTS.md").read_text(encoding="utf-8")
     ed.check_eq(agents.splitlines()[0], "# JasperEngine Project Context", "the generated AGENTS.md")
     ed.check("`jasperengine-editor call <tool> [--flags]`" in agents, "it names the call CLI")
+    # S53 R26: the model cook's tools, where an agent of the game finds them
+    ed.check("inspect_models" in agents and "check_render_budgets" in agents, "AGENTS.md names inspect_models and check_render_budgets")
+    # every agent working in the game reads it (CLAUDE.md imports it): the MCP guide holds the rest
+    ed.check(len(agents.encode()) <= AGENTS_MD_BYTES, f"AGENTS.md is {len(agents.encode())} bytes, over {AGENTS_MD_BYTES}")
     ed.check_eq((target / "CLAUDE.md").read_text(encoding="utf-8"), "@AGENTS.md\n", "CLAUDE.md imports it")
     ed.check_eq(served, agents, "jasper://project/AGENTS.md serves the project's file")
     repo = (harness.REPO / "AGENTS.md").read_text(encoding="utf-8")

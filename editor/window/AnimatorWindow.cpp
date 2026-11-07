@@ -3,6 +3,8 @@
 
 #include "AnimatorWindow.h"
 
+#include "shortcuts/CommandCatalog.h"
+
 #include "App.h"
 #include "Backend.h"
 #include "Project.h"
@@ -1575,7 +1577,7 @@ void AnimatorWindow::drawGraph(){
         else if (result.contextLink) ImGui::OpenPopup("##animator_link_menu");
         else ImGui::OpenPopup("##animator_canvas_menu");
     }
-    // (Delete is the command catalog's edit.delete: App runs removeSelection while canDelete)
+    // (Delete is the command catalog's edit.delete: App's claim runs removeSelection while canDelete)
 
     // clips dropped from the Project window become states (a model offers its clips)
     // (the canvas is not "hovered" while a payload drags: the target is the graph child's rect)
@@ -1661,11 +1663,11 @@ void AnimatorWindow::drawContextMenus(){
             canvas.frame({});
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("Delete", "Del", false, isState || isMachine)) removeSelection();
+        if (ImGui::MenuItem("Delete", CommandCatalog::editor().menuShortcutText("edit.delete").c_str(), false, isState || isMachine)) removeSelection();
         ImGui::EndPopup();
     }
     if (ImGui::BeginPopup("##animator_link_menu")){
-        if (ImGui::MenuItem("Delete", "Del")) removeSelection();
+        if (ImGui::MenuItem("Delete", CommandCatalog::editor().menuShortcutText("edit.delete").c_str())) removeSelection();
         ImGui::EndPopup();
     }
     if (ImGui::BeginPopup("##animator_model_clips")){

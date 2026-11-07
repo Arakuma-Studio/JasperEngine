@@ -15,13 +15,15 @@ if(NOT SHADERLIB_DIR OR NOT OUTPUT)
     message(FATAL_ERROR "embed_shaderlib.cmake needs SHADERLIB_DIR and OUTPUT")
 endif()
 
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/JasperEnginePaths.cmake)
+jasperengine_glob_escape(shaderlib_glob_dir "${SHADERLIB_DIR}")
 if(MANIFESTS)
     file(GLOB_RECURSE shaderlib_files RELATIVE "${SHADERLIB_DIR}"
-        "${SHADERLIB_DIR}/library/*.vert" "${SHADERLIB_DIR}/library/*.frag")
+        "${shaderlib_glob_dir}/library/*.vert" "${shaderlib_glob_dir}/library/*.frag")
     set(shaderlib_namespace shaderlib_manifests)
 else()
     file(GLOB_RECURSE shaderlib_files RELATIVE "${SHADERLIB_DIR}"
-        "${SHADERLIB_DIR}/*.glsl" "${SHADERLIB_DIR}/*.vert" "${SHADERLIB_DIR}/*.frag")
+        "${shaderlib_glob_dir}/*.glsl" "${shaderlib_glob_dir}/*.vert" "${shaderlib_glob_dir}/*.frag")
     set(shaderlib_namespace shaderlib)
 endif()
 list(SORT shaderlib_files)

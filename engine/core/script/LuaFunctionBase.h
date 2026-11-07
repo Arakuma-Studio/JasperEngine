@@ -4,6 +4,7 @@
 #ifndef LUA_FUNCTIONBASE_H
 #define LUA_FUNCTIONBASE_H
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -29,6 +30,7 @@ namespace jasperengine{
     struct ParticleSubEmitInfo;
     struct AnimationEvent;
     class VideoPlayer;
+    namespace nav { enum class PathFailure : uint8_t; }
 
     namespace lua_reload { struct CallbackRecord; }
 
@@ -70,7 +72,8 @@ namespace jasperengine{
         void push_value(lua_State *vm, unsigned long n);
         void push_value(lua_State *vm, bool b);
         void push_value(lua_State *vm, const std::string &s);
-        void push_value(lua_State *vm, wchar_t s);
+        // a typed character (Engine.onCharInput): its UTF-8 string
+        void push_value(lua_State *vm, char32_t s);
         void push_value(lua_State *vm, Vector2 o);
         void push_value(lua_State *vm, Vector3 o);
         // the Animator's onAnimatorMove (delta position, delta rotation)
@@ -90,6 +93,8 @@ namespace jasperengine{
         void push_value(lua_State *vm, ControllerColliderHit o);
         void push_value(lua_State *vm, NavMeshAgent o);
         void push_value(lua_State *vm, NavMeshSurface o);
+        // onPathFailed's reason: its snake_case name ("blocked_by_area", S75 D4)
+        void push_value(lua_State *vm, nav::PathFailure o);
         // an input action's callback gets the event itself: event:consume() reaches it
         void push_value(lua_State *vm, const InputActionEvent& o);
         // the Video Player of an event (onPrepareCompleted, ...)

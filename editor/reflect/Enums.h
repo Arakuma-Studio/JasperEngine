@@ -38,6 +38,7 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kForceFieldShape;
     extern const EnumDesc kForceFieldKind;
     extern const EnumDesc kWaterVolumeWaves;
+    extern const EnumDesc kWaterExcluderShape;
     extern const EnumDesc kBuoyancyColumns;
     // upstream's components (UpstreamReflect.cpp: Trail Renderer, Canvas Group, on-screen controls)
     extern const EnumDesc kLineRendererMode;
@@ -72,6 +73,7 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kLightUnit;
     extern const EnumDesc kLightShading;
     extern const EnumDesc kLightType;
+    extern const EnumDesc kLodFadeMode;
     extern const EnumDesc kMaterialAlphaMode;
     extern const EnumDesc kMaterialBlendMode;
     extern const EnumDesc kMaterialCullMode;
@@ -89,9 +91,15 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kReflectionProbeUpdateMode;
     extern const EnumDesc kRigidbodyMotionQuality;
     extern const EnumDesc kScriptType;
+    extern const EnumDesc kButtonTransition;
+    extern const EnumDesc kNavigationMode;
     extern const EnumDesc kScrollbarType;
     extern const EnumDesc kShadowCaster2DShape;
     extern const EnumDesc kShadowUpdateMode;
+    extern const EnumDesc kTransparencyMode;
+    // the Capsule Shadow Caster's (S57, LightingReflect.cpp)
+    extern const EnumDesc kCapsuleCastShadows;
+    extern const EnumDesc kCapsuleDirection;
     extern const EnumDesc kTextureAlphaBorder;
     extern const EnumDesc kTextureFilter;
     extern const EnumDesc kTextureWrap;

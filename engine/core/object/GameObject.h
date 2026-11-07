@@ -5,6 +5,8 @@
 #define GAMEOBJECT_H
 
 #include "EntityHandle.h"
+// the classes its getters return (EntityRegistry.h has the reason)
+#ifndef JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "CharacterController2D.h"
@@ -15,14 +17,34 @@
 #include "Buoyancy.h"
 #endif
 #include "WaterVolume.h"
+#include "WaterExcluder.h"
+#include "WaterWake.h"
 #include "object/spline/Spline.h"
 #include "object/spline/SplineExtrude.h"
 #include "object/spline/SplineInstantiate.h"
 #include "object/spline/SplineAnimate.h"
+#endif
 #include "math/Ray.h"
 #include "manager/PrefabAsset.h"
 
+#include <optional>
+#include <string>
+#include <vector>
+
 namespace jasperengine{
+
+    class Rigidbody2D;
+    class CharacterController2D;
+    class Rigidbody;
+    class CharacterController;
+    class Buoyancy;
+    class WaterVolume;
+    class WaterExcluder;
+    class WaterWake;
+    class Spline;
+    class SplineExtrude;
+    class SplineInstantiate;
+    class SplineAnimate;
 
     class JASPERENGINE_API GameObject: public EntityHandle{
     public:
@@ -66,6 +88,20 @@ namespace jasperengine{
         void removeChild(Entity child);
 
         void removeParent();
+
+        // Unity's Transform hierarchy. The parent: none for a root or a Transform-less object
+        std::optional<GameObject> getParent() const;
+        // Unity's SetParent; nullptr moves it to the root. worldPositionStays keeps its world
+        // placement (the local one changes), else its local values. A parent in another scene,
+        // itself, one of its descendants or one without a Transform is refused (logged)
+        void setParent(const EntityHandle* parent, bool worldPositionStays = true);
+        // the direct children with a Transform, in Hierarchy order
+        size_t getChildCount() const;
+        // 0-based; none out of range
+        std::optional<GameObject> getChild(size_t index) const;
+        std::vector<GameObject> getChildren() const;
+        // Unity's Transform.Find: a child by name, or a path of names below this one ("Arm/Hand")
+        std::optional<GameObject> findChild(const std::string& path) const;
 
         void moveToTop();
         void moveUp();
@@ -133,6 +169,9 @@ namespace jasperengine{
 #endif
         // the GameObject's Water Volume, added with its defaults when it has none
         WaterVolume getWaterVolume();
+        // the GameObject's Water Excluder and Water Wake, each added with its defaults when it has none
+        WaterExcluder getWaterExcluder();
+        WaterWake getWaterWake();
         // the GameObject's Spline, Spline Extrude (with a Mesh), Spline Instantiate and Spline
         // Animate, each added with its defaults when it has none
         Spline getSpline();

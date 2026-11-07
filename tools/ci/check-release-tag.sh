@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The release job's tag check (.github/workflows/ci.yml): a release ships only when its tag is a
+# A release's tag check: a release ships only when its tag is a
 # version (vX.Y or vX.Y.Z) and a tag of exactly the commit that was built, the commit whose
 # git describe named every binary (CMakeLists.txt). There is no VERSION file: git is the one
 # source of the version (docs/testing.md).

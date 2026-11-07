@@ -32,7 +32,7 @@
 # DOCKER_GPU=1 runs the container with the host's NVIDIA GPU (see below and tools/gpu/env.sh).
 # GRAPHIC_BACKEND=vulkan builds the linux editor for Vulkan (build/linux/editor-vulkan), and
 # runs the core tests' GPU suites on Vulkan (lavapipe) for unit-tests.
-# SANITIZE=address,undefined or SANITIZE=thread (linux, unit-tests, htmlui-tests) builds with
+# SANITIZE=address,undefined or SANITIZE=thread (linux, unit-tests, htmlui-tests, mcp-tests) builds with
 # those sanitizers into build/linux/<dir>-<sanitizers>; UNITY=1 unity-builds (<dir>-unity);
 # WERROR=1 makes warnings of our targets errors. JASPER_DOCKER_IMAGE=<id|tag> runs that image
 # instead of building docker/<target>.Dockerfile (CI's prebuilt images).
@@ -43,8 +43,8 @@
 # JASPER_BENCH_ENTITIES sets the reflection codec benchmark's scene size (ReflectCodecBench).
 # linux, web, unit-tests, htmlui-tests: CXX_STANDARD=<n> builds at another supported C++ standard
 # than the default (JASPERENGINE_CXX_STANDARD), next to the default build (build/linux/editor-cxx<n>,
-# build/web/cxx<n>, ...). linux first checks engine/ and editor/ with tools/check-cxx-subset.py and
-# tools/check-pollers.py.
+# build/web/cxx<n>, ...). linux first checks engine/ and editor/ with tools/check-cxx-subset.py,
+# tools/check-pollers.py and tools/check_event_clears.py.
 # htmlui-tests: HTMLUI_BACKEND=glcore|vulkan (default glcore), RUN=0 builds only,
 # HTMLUI_TEST_ARGS goes to the test binary (e.g. --gtest_filter=Golden*),
 # JASPER_HTMLUI_UPDATE_GOLDEN=1 rewrites the golden images (glcore only).
@@ -203,8 +203,8 @@ SANITIZE_LIST=""
 SANITIZE_SUFFIX=""
 if [[ -n "${SANITIZE:-}" ]]; then
     case "$TARGET" in
-        linux|unit-tests|htmlui-tests) ;;
-        *) echo "SANITIZE is for linux, unit-tests and htmlui-tests" >&2; exit 1 ;;
+        linux|unit-tests|htmlui-tests|mcp-tests) ;;
+        *) echo "SANITIZE is for linux, unit-tests, htmlui-tests and mcp-tests" >&2; exit 1 ;;
     esac
     IFS=', ' read -r -a sanitizers <<< "$SANITIZE"
     for s in "${sanitizers[@]}"; do
@@ -403,14 +403,20 @@ linux)
     fi
     EDITOR_DIR="$EDITOR_DIR$VARIANT"
     ENGINE_DIR="engine$VARIANT"
+    # (a sanitizer's reports need the symbols)
+    INSTALL_STRIP="--strip"
+    [[ -n "$SANITIZE_LIST" ]] && INSTALL_STRIP=""
     run bash -euo pipefail -c "
         python3 tools/check-cxx-subset.py
         python3 tools/check-pollers.py
+        python3 tools/check_event_clears.py
         cmake --preset $PRESET -B $OUT/$EDITOR_DIR -DCMAKE_BUILD_TYPE=$BT $OPTION_FLAGS \
             -DJASPERENGINE_WERROR=$WERROR_VALUE \
             -DCMAKE_INSTALL_PREFIX=$OUT/$EDITOR_DIR-install $CCACHE_FLAGS
         cmake --build $OUT/$EDITOR_DIR --target $EDITOR_TARGET $JOBS_FLAG
-        cmake --install $OUT/$EDITOR_DIR --strip
+        cmake --install $OUT/$EDITOR_DIR $INSTALL_STRIP
+        # (a sanitizer build ships nothing, and at -O0 exports the std templates it instantiates on these types)
+        if [[ -z '$SANITIZE_LIST' ]]; then
         # RmlUi stays inside the shared engine (engine/libs/rmlui/hidden-symbols.map)
         leaked=\$(nm -D -C $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep -c 'Rml::' || true)
         if [[ \$leaked != 0 ]]; then
@@ -431,6 +437,7 @@ linux)
             echo \"libjasperengine.so exports \$leaked video decoder symbols:\" >&2
             nm -D -C $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep -E ' (dav1d|opus)_|mkvparser::' | head -20 >&2
             exit 1
+        fi
         fi
         [[ '${SKIP_ENGINE:-0}' == 1 ]] && exit 0
         cmake --preset engine-linux-release -S engine -B $OUT/$ENGINE_DIR -DCMAKE_BUILD_TYPE=$BT $OPTION_FLAGS \
@@ -531,9 +538,9 @@ players)
         "
         ;;
     android)
-        PLAYER_BACKENDS="${PLAYER_BACKENDS:-gles3 vulkan}"
+        PLAYER_BACKENDS="${PLAYER_BACKENDS:-gles3}"
         for backend in $PLAYER_BACKENDS; do
-            [[ "$backend" =~ ^(gles3|vulkan)$ ]] || { echo "PLAYER_BACKENDS lists gles3 and vulkan for android (got $backend)" >&2; exit 1; }
+            [[ "$backend" == gles3 ]] || { echo "PLAYER_BACKENDS is gles3 for android: its platform layer makes an EGL context only (got $backend)" >&2; exit 1; }
         done
         run bash -euo pipefail -c "
             for flavour in $PLAYER_FLAVOURS; do
@@ -551,7 +558,7 @@ players)
             done
         "
         ;;
-    *) echo "PLAYER_PLATFORM is linux, web or android here (Windows, macOS and iOS runtimes build in CI: .github/workflows)" >&2; exit 1 ;;
+    *) echo "PLAYER_PLATFORM is linux, web or android here (Windows, macOS and iOS runtimes have no build target)" >&2; exit 1 ;;
     esac
     ;;
 unit-tests)
@@ -656,7 +663,13 @@ mcp-tests)
     SUITE="${MCP_SUITE:-ci}"
     [[ "$SUITE" == ci || "$SUITE" == all ]] || { echo "MCP_SUITE must be ci or all" >&2; exit 1; }
     [[ "$SUITE" == all && -z "${JASPER_FIXTURE:-}" ]] && { echo "MCP_SUITE=all needs the fixture project: JASPER_FIXTURE, build/fixture-unity or ~/je/fixture-unity" >&2; exit 1; }
-    [[ -x "$ROOT/build/linux/editor-install/bin/jasperengine-editor" ]] || { echo "No editor at build/linux/editor-install; run tools/build.sh linux" >&2; exit 1; }
+    # (SANITIZE: the install of that build, `SANITIZE=... tools/build.sh linux`; TSan's start needs its wrapper)
+    EDITOR_INSTALL="build/linux/editor$SANITIZE_SUFFIX-install"
+    [[ -x "$ROOT/$EDITOR_INSTALL/bin/jasperengine-editor" ]] || { echo "No editor at $EDITOR_INSTALL; run ${SANITIZE:+SANITIZE=$SANITIZE }tools/build.sh linux" >&2; exit 1; }
+    [[ -n "$SANITIZE_SUFFIX" ]] && ENV_FLAGS+=(-e "JASPER_EDITOR=${TEST_WRAP:+$TEST_WRAP }/src/$EDITOR_INSTALL/bin/jasperengine-editor")
+    # (no leak check here: an editor's exit reports what the GL driver it unloaded kept, frames of an unmapped
+    # module that no suppression can name; the unit tests hold the leak check)
+    [[ -n "$SANITIZE_SUFFIX" ]] && ENV_FLAGS+=(-e "ASAN_OPTIONS=abort_on_error=1:detect_leaks=0:strict_string_checks=1")
     SUITE_FLAGS="--suite $SUITE"
     [[ "$SUITE" == all ]] && SUITE_FLAGS=""
     # (each argument quoted once more: the command runs through bash -c)
@@ -715,10 +728,13 @@ android)
         PROJECT_ENV="$PROJECT_ENV JASPERENGINE_ANDROID_ABIS=$ANDROID_ABIS"
     fi
     mkdir -p "$ROOT/$APK_DIR"
+    # Gradle's output also goes to gradle.log: a deprecation in our Gradle files fails the build
+    # (tools/ci/check_gradle_warnings.py; the template sets --warning-mode all)
     run bash -euo pipefail -c "
         cd engine/workspaces/androidstudio
-        env $PROJECT_ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon assembleDebug
+        env $PROJECT_ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon assembleDebug 2>&1 | tee /src/$APK_DIR/gradle.log
         cp app/build/outputs/apk/debug/*.apk /src/$APK_DIR/
+        python3 /src/tools/ci/check_gradle_warnings.py /src/$APK_DIR/gradle.log
     "
     ls -l "$ROOT/$APK_DIR"/*.apk
     ;;

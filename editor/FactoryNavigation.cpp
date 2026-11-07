@@ -6,6 +6,12 @@
 // by path; the components' runtime state is not exported.
 
 #include "Factory.h"
+#include "component/NavGridComponent.h"
+#include "component/NavMeshAgentComponent.h"
+#include "component/NavMeshLinkComponent.h"
+#include "component/NavMeshModifierComponent.h"
+#include "component/NavMeshObstacleComponent.h"
+#include "component/NavMeshSurfaceComponent.h"
 #include "reflect/Enums.h"
 
 #include <sstream>
@@ -47,6 +53,7 @@ std::string editor::Factory::createNavMeshSurfaceComponent(int indentSpaces, Ent
     code << ind << "navSurface.minRegionArea = " << formatFloat(surface.minRegionArea) << ";\n";
     code << ind << "navSurface.plane = " << enumCode(editor::reflect::enums::kNavPlane, surface.plane) << ";\n";
     code << ind << "navSurface.runtimeCarving = " << formatBool(surface.runtimeCarving) << ";\n";
+    code << ind << "navSurface.maxCarvingObstacles = " << surface.maxCarvingObstacles << ";\n";
     code << ind << "navSurface.navMeshData = " << formatString(surface.navMeshData.path) << ";\n";
     if (!surface.enabled) code << ind << "navSurface.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "NavMeshSurfaceComponent", "navSurface", assignExisting);
@@ -79,6 +86,10 @@ std::string editor::Factory::createNavMeshAgentComponent(int indentSpaces, Entit
     code << ind << "navAgent.updateRotation = " << formatBool(agent.updateRotation) << ";\n";
     code << ind << "navAgent.driver = " << enumCode(editor::reflect::enums::kNavAgentDriver, agent.driver) << ";\n";
     code << ind << "navAgent.surface = " << formatEntity(agent.surface, entityVarNames) << ";\n";
+    code << ind << "navAgent.stuckDetection = " << formatBool(agent.stuckDetection) << ";\n";
+    code << ind << "navAgent.stuckSpeedRatio = " << formatFloat(agent.stuckSpeedRatio) << ";\n";
+    code << ind << "navAgent.stuckTimeout = " << formatFloat(agent.stuckTimeout) << ";\n";
+    code << ind << "navAgent.repathWhenStuck = " << formatBool(agent.repathWhenStuck) << ";\n";
     if (!agent.enabled) code << ind << "navAgent.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "NavMeshAgentComponent", "navAgent", assignExisting);
     return code.str();
@@ -124,6 +135,7 @@ std::string editor::Factory::createNavMeshLinkComponent(int indentSpaces, Entity
     code << ind << "navLink.bidirectional = " << formatBool(link.bidirectional) << ";\n";
     code << ind << "navLink.autoUpdatePosition = " << formatBool(link.autoUpdatePosition) << ";\n";
     code << ind << "navLink.area = " << link.area << ";\n";
+    if (!link.activated) code << ind << "navLink.activated = false;\n";
     if (!link.enabled) code << ind << "navLink.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "NavMeshLinkComponent", "navLink", assignExisting);
     return code.str();
@@ -145,6 +157,7 @@ std::string editor::Factory::createNavMeshModifierComponent(int indentSpaces, En
     code << ind << "navModifier.useVolume = " << formatBool(modifier.useVolume) << ";\n";
     code << ind << "navModifier.volumeCenter = " << formatVector3(modifier.volumeCenter) << ";\n";
     code << ind << "navModifier.volumeSize = " << formatVector3(modifier.volumeSize) << ";\n";
+    if (modifier.applyAtRuntime) code << ind << "navModifier.applyAtRuntime = true;\n";
     if (!modifier.enabled) code << ind << "navModifier.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "NavMeshModifierComponent", "navModifier", assignExisting);
     return code.str();

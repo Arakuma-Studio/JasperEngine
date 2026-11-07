@@ -5,8 +5,13 @@
 #define LIGHT_H
 
 #include "GameObject.h"
+#include "render/shadow/ShadowTypes.h"
 
 namespace jasperengine{
+
+    enum class LightType;
+    enum class LightShading;
+    enum class LightUnit;
 
     class JASPERENGINE_API Light: public GameObject{
     public:
@@ -43,6 +48,8 @@ namespace jasperengine{
         void setDirection(Vector3 direction);
         void setDirection(const float x, const float y, const float z);
         Vector3 getDirection() const;
+        // the direction in world space, as of the last transform update (Camera::getWorldDirection)
+        Vector3 getWorldDirection() const;
 
         void setColor(Vector3 color);
         void setColor(const float r, const float g, const float b);
@@ -128,6 +135,17 @@ namespace jasperengine{
         ShadowUpdateMode getShadowUpdateMode() const;
         // redraws the light's shadow maps (On Demand lights)
         void requestShadowUpdate();
+
+        // contact shadows (directional and spot lights with shadows): the march's reach and the
+        // surfaces' thickness in metres, its samples (8..16)
+        void setContactShadows(bool contactShadows);
+        bool isContactShadows() const;
+        void setContactShadowLength(float length);
+        float getContactShadowLength() const;
+        void setContactShadowThickness(float thickness);
+        float getContactShadowThickness() const;
+        void setContactShadowSampleCount(int samples);
+        int getContactShadowSampleCount() const;
     };
 }
 

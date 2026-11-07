@@ -117,7 +117,9 @@ dynamic casters alone changed gets its static casters' depths copied back from t
 inside the rect those casters covered (before and after) and only them redrawn; one whose static
 casters changed redraws its static layer. Casters drawn per camera (a terrain's cut, turned
 billboards, culled instances) keep their slots uncached. With a still scene and camera the shadow
-passes are skipped entirely.
+passes are skipped entirely. Casters are culled against each slot's light frustum only, not against
+the camera's receivers: a cached slot outlives the view it was drawn for, and the frame's atlas is
+also read by reflection probes, render-to-texture cameras and other views.
 
 Invalidation: a light's slots are redrawn when its type, direction, position, range, cone, near
 plane, resolution, cascades, splits, shadow distance, culling mask, update mode or enable change,
@@ -139,7 +141,13 @@ view's corner). The views replace the built-in Lit's shading; library shaders dr
 ## Shader interface
 
 Lit and the shader library call `lightShadow(index, worldPos, worldNormal)` (`includes/lights.glsl`,
-in uniform control flow: it takes the position's derivatives for the receiver-plane bias). The
+in uniform control flow: it takes the position's derivatives for the receiver-plane bias). A shader
+that looks the shadow up inside a per-fragment branch (Lit only for surfaces facing the light) takes
+`dFdx`/`dFdy` of the position before the branch and calls `lightShadowD(index, worldPos,
+worldNormal, dpdx, dpdy)`. Every shadow atlas lookup, the 2D lights' too, takes explicit LOD 0, so
+the PCF loops have the same radius on every backend (2D shadows: up to 13 taps at High, D3D11
+included); `tools/check_shader_lod.py` fails on an implicit-derivative call in a loop with a
+per-fragment exit. The
 shadow coordinates are computed in the fragment stage from the blocks of
 `includes/shadow_data.glsl`; no vertex varyings carry them.
 

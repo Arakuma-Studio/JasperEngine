@@ -35,6 +35,43 @@ goes wrong, and the rules code that writes files or adds serialized data follows
   crashed between writing and renaming are moved to `.jasperengine/backup/orphans/` (they can
   hold the newest copy of a document) and deleted after 7 days.
 
+## Scene files and identity
+
+A scene is one `.scene` file, and the file says which scene it is: its `id` (what child scenes,
+the build list and the generated code name it by) and its `name` (unique in a project, it names
+the generated code and `SceneManager.loadScene("Level1")`).
+
+- **One file per scene.** No save writes a scene over the file of another scene of the project:
+  the Save Scene dialog shows *"Level1.scene is the file of scene "Level1": choose another name"*
+  and disables Save, and every other route (Save All, MCP `save_scene`, the background save)
+  refuses with the same reason. Two spellings of one file count as one on a volume that ignores
+  case (Windows, macOS by default). `project.yaml` lists each scene file once; a second entry for
+  a file (an old project, a hand edit) is ignored at load with a warning and dropped at the next
+  save.
+- **Scenes stay inside the project.** The Save Scene dialog takes a name, not a path: `/`, `\`,
+  `..`, a drive and names Windows refuses (`CON`, `a?b`, a trailing dot) are refused there, so a
+  project moves between systems. A scene file from outside the project is not opened into it:
+  copy it in first (drag it into the Project window). A scene an older project lists outside its
+  folder still loads (with a warning) and saves where it is.
+- **A copy is a new scene.** Duplicating or copying a `.scene` (the Project window, MCP
+  `move_asset copy`, a copied folder) gives the copy its own scene id, and the scene name of its
+  file (`Level1 1.scene` is scene "Level1 1"; a name given by hand gets a number). Undo and redo of
+  the copy give it the same id again. References inside copied scenes are not redirected to the
+  other copies: a copied parent scene keeps its original child scenes, as every other reference
+  in a copied folder keeps its original asset. Copying over an existing scene file keeps that
+  file's id and name: it stays the scene it was.
+- **Two files claiming one id.** A copy made outside the editor, or a merge, can still bring two
+  files with one id. As Unity regenerates a duplicate GUID, the scene listed first in
+  `project.yaml` (or open first) keeps it, and the other gets a fresh id written into its file at
+  once; the Console names the file and both ids. A read-only file (a version control lock) keeps
+  the fresh id in the editor until the next save writes it.
+- **Save All saves every scene.** File > Save All saves the scenes with changes, then asks where
+  to save each scene that was never saved (Ctrl+S on an untitled scene asks too, changed or not).
+  Cancel stops there. The save before quitting or switching projects leaves out an untitled scene
+  with no changes (there is nothing in it to keep). The first scene saved becomes the project's
+  start scene when it has none.
+- **Every failed save says why**, in an alert and in the Console, whatever the route.
+
 ## Auto Save and crash recovery
 
 Auto Save never writes your scene file. Every minute (Editor Settings > General > Auto Save
@@ -139,7 +176,7 @@ Editor helpers on top: `DocumentFiles::write` (Document writes of documents, wit
 message), `FileUtils::writeFile` / `writeIfChanged` (Cache, skip if unchanged),
 `FileUtils::copyFileAtomic`, `util/PngWriter.h` `writePng` (PNG encoded in memory),
 `util/AtomicFileStream.h` (an `ostringstream` written atomically when it goes out of scope).
-`tools/check_raw_writes.py` fails CI on a new `std::ofstream`, `fopen("w")`, `stbi_write_*` to a
+`tools/check_raw_writes.py` fails on a new `std::ofstream`, `fopen("w")`, `stbi_write_*` to a
 path or `copy_file(..., overwrite_existing)` under `editor/` and `engine/core/`; the few raw
 writes left (append-only logs, private temp files, export and import staging) are listed with a reason in
 `tools/raw_writes_allowlist.txt`. A file watcher ignores `io::isTemporarySiblingName()` names

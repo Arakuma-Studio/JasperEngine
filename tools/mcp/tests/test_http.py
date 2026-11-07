@@ -20,6 +20,7 @@ from harness import Editor
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "Http Test"}
+CI = True
 TIMEOUT = 600
 
 

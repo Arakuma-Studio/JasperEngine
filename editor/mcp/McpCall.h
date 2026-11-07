@@ -72,6 +72,12 @@ namespace jasperengine::editor::mcp {
         // The handler completes the call later from elsewhere (a job, a worker posting back).
         void detach() { isDetached = true; }
         bool detached() const { return isDetached; }
+        // The main thread has begun running it (a queued call has not)
+        void markStarted() { hasStarted = true; }
+        bool started() const { return hasStarted.load(); }
+        // Instead of its frames, if a file picker opens and holds the main thread meanwhile
+        void setOnFilePicker(std::function<void()> fn) { onFilePicker = std::move(fn); }
+        std::function<void()> takeOnFilePicker() { auto fn = std::move(onFilePicker); onFilePicker = nullptr; return fn; }
 
         // notifications/progress to the client, when it sent a progressToken. Best effort,
         // thread-safe; `total` <= 0 means unknown.
@@ -117,6 +123,9 @@ namespace jasperengine::editor::mcp {
         void setClient(std::string name, std::string requestId) { clientName = std::move(name); callRequestId = std::move(requestId); }
         const std::string& client() const { return clientName; }
         const std::string& requestId() const { return callRequestId; }
+        // How long the call waited for a scene save the editor started (McpServer::execute)
+        void addSaveWait(double ms) { saveWaitMs += ms; }
+        double saveWait() const { return saveWaitMs; }
 
     private:
         McpServer& owner;
@@ -130,6 +139,8 @@ namespace jasperengine::editor::mcp {
         std::mutex progressMutex;
         std::atomic<bool> isCompleted{false};
         std::atomic<bool> isCancelled{false};
+        std::atomic<bool> hasStarted{false};
+        std::function<void()> onFilePicker;     // main thread only
         bool isDetached = false;
         bool gatedChanges = false;
         std::weak_ptr<McpCall> parentCall;
@@ -138,6 +149,7 @@ namespace jasperengine::editor::mcp {
         UndoOrigin undoOrigin;
         std::string clientName;
         std::string callRequestId;
+        double saveWaitMs = 0.0;
     };
 
     using CallPtr = std::shared_ptr<McpCall>;

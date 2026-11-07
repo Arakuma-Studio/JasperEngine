@@ -19,6 +19,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -101,6 +117,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -146,6 +178,30 @@
    "kind": "Enum",
    "label": "State",
    "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "",
+   "kind": "Asset",
+   "label": "Event",
+   "path": "event",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Variation",
+   "kind": "FloatPositive",
+   "label": "Random Pitch (st)",
+   "path": "pitchRandomSemitones",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Variation",
+   "kind": "FloatPositive",
+   "label": "Random Volume (dB)",
+   "path": "volumeRandomDb",
    "read_only": false
   },
   {
@@ -300,6 +356,30 @@
    "kind": "Enum",
    "label": "State",
    "path": "state",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "",
+   "kind": "Asset",
+   "label": "Event",
+   "path": "event",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Variation",
+   "kind": "FloatPositive",
+   "label": "Random Pitch (st)",
+   "path": "pitchRandomSemitones",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Variation",
+   "kind": "FloatPositive",
+   "label": "Random Volume (dB)",
+   "path": "volumeRandomDb",
    "read_only": false
   },
   {
@@ -498,6 +578,30 @@
   },
   {
    "component": "audiosource",
+   "group": "",
+   "kind": "Asset",
+   "label": "Event",
+   "path": "event",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Variation",
+   "kind": "FloatPositive",
+   "label": "Random Pitch (st)",
+   "path": "pitchRandomSemitones",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
+   "group": "Variation",
+   "kind": "FloatPositive",
+   "label": "Random Volume (dB)",
+   "path": "volumeRandomDb",
+   "read_only": false
+  },
+  {
+   "component": "audiosource",
    "group": "Playback",
    "kind": "DoublePositive",
    "label": "Volume",
@@ -688,7 +792,7 @@
    "kind": "Color4L",
    "label": "Color",
    "path": "color",
-   "read_only": false
+   "read_only": true
   },
   {
    "component": "ui",
@@ -696,7 +800,7 @@
    "kind": "Texture",
    "label": "Texture",
    "path": "texture",
-   "read_only": false
+   "read_only": true
   },
   {
    "component": "ui",
@@ -773,6 +877,14 @@
   {
    "component": "button",
    "group": "",
+   "kind": "Bool",
+   "label": "Interactable",
+   "path": "disabled",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Label",
    "path": "label",
@@ -780,74 +892,146 @@
   },
   {
    "component": "button",
-   "group": "",
-   "kind": "Bool",
-   "label": "Disabled",
-   "path": "disabled",
+   "group": "Transition",
+   "kind": "Enum",
+   "label": "Transition",
+   "path": "transition",
    "read_only": false
   },
   {
    "component": "button",
-   "group": "",
-   "kind": "Texture",
-   "label": "Texture Normal",
-   "path": "textureNormal",
-   "read_only": false
-  },
-  {
-   "component": "button",
-   "group": "",
-   "kind": "Texture",
-   "label": "Texture Hovered",
-   "path": "textureHovered",
-   "read_only": false
-  },
-  {
-   "component": "button",
-   "group": "",
-   "kind": "Texture",
-   "label": "Texture Pressed",
-   "path": "texturePressed",
-   "read_only": false
-  },
-  {
-   "component": "button",
-   "group": "",
-   "kind": "Texture",
-   "label": "Texture Disabled",
-   "path": "textureDisabled",
-   "read_only": false
-  },
-  {
-   "component": "button",
-   "group": "",
+   "group": "Transition",
    "kind": "Color4L",
-   "label": "Color Normal",
+   "label": "Normal Color",
    "path": "colorNormal",
    "read_only": false
   },
   {
    "component": "button",
-   "group": "",
+   "group": "Transition",
    "kind": "Color4L",
-   "label": "Color Hovered",
+   "label": "Highlighted Color",
    "path": "colorHovered",
    "read_only": false
   },
   {
    "component": "button",
-   "group": "",
+   "group": "Transition",
    "kind": "Color4L",
-   "label": "Color Pressed",
+   "label": "Pressed Color",
    "path": "colorPressed",
    "read_only": false
   },
   {
    "component": "button",
-   "group": "",
+   "group": "Transition",
    "kind": "Color4L",
-   "label": "Color Disabled",
+   "label": "Selected Color",
+   "path": "colorSelected",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Color4L",
+   "label": "Disabled Color",
    "path": "colorDisabled",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Float",
+   "label": "Fade Duration",
+   "path": "fadeDuration",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Texture",
+   "label": "Normal Texture",
+   "path": "textureNormal",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Texture",
+   "label": "Highlighted Texture",
+   "path": "textureHovered",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Texture",
+   "label": "Pressed Texture",
+   "path": "texturePressed",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Texture",
+   "label": "Selected Texture",
+   "path": "textureSelected",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Texture",
+   "label": "Disabled Texture",
+   "path": "textureDisabled",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Float",
+   "label": "Highlighted Scale",
+   "path": "scaleHovered",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Float",
+   "label": "Pressed Scale",
+   "path": "scalePressed",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Transition",
+   "kind": "Float",
+   "label": "Selected Scale",
+   "path": "scaleSelected",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Navigation",
+   "kind": "Enum",
+   "label": "Navigation",
+   "path": "navigationMode",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Navigation",
+   "kind": "Bool",
+   "label": "Wrap Around",
+   "path": "wrapAround",
+   "read_only": false
+  },
+  {
+   "component": "button",
+   "group": "Navigation",
+   "kind": "Bool",
+   "label": "Select On Enable",
+   "path": "selectOnEnable",
    "read_only": false
   },
   {
@@ -1011,6 +1195,14 @@
    "label": "Auto Resize",
    "path": "autoResize",
    "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Enum",
+   "label": "Transparency Mode",
+   "path": "transparencyMode",
+   "read_only": false
   }
  ],
  "camera#1": [
@@ -1156,6 +1348,14 @@
    "kind": "Bool",
    "label": "Auto Resize",
    "path": "autoResize",
+   "read_only": false
+  },
+  {
+   "component": "camera",
+   "group": "",
+   "kind": "Enum",
+   "label": "Transparency Mode",
+   "path": "transparencyMode",
    "read_only": false
   }
  ],
@@ -1306,6 +1506,14 @@
   },
   {
    "component": "camera",
+   "group": "",
+   "kind": "Enum",
+   "label": "Transparency Mode",
+   "path": "transparencyMode",
+   "read_only": false
+  },
+  {
+   "component": "camera",
    "group": "Render Target",
    "kind": "UInt",
    "label": "Width",
@@ -1344,6 +1552,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {
@@ -1514,6 +1738,46 @@
    "kind": "Bool",
    "label": "Detail Levels",
    "path": "lodEnabled",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Detail Bias",
+   "path": "lodBias",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Fade Mode",
+   "path": "lodFadeMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Animate Cross-fading",
+   "path": "lodAnimateCrossFading",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Cull Below Screen Height",
+   "path": "lodCullBelow",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Allow GPU Instancing",
+   "path": "allowGpuInstancing",
    "read_only": false
   },
   {
@@ -4243,6 +4507,46 @@
   {
    "component": "mesh",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Detail Bias",
+   "path": "lodBias",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Fade Mode",
+   "path": "lodFadeMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Animate Cross-fading",
+   "path": "lodAnimateCrossFading",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Cull Below Screen Height",
+   "path": "lodCullBelow",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Allow GPU Instancing",
+   "path": "allowGpuInstancing",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
    "kind": "Bool",
    "label": "Render in Probes",
    "path": "renderInReflectionProbes",
@@ -4405,6 +4709,46 @@
   {
    "component": "mesh",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Detail Bias",
+   "path": "lodBias",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Fade Mode",
+   "path": "lodFadeMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Animate Cross-fading",
+   "path": "lodAnimateCrossFading",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Cull Below Screen Height",
+   "path": "lodCullBelow",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Allow GPU Instancing",
+   "path": "allowGpuInstancing",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
    "kind": "Bool",
    "label": "Render in Probes",
    "path": "renderInReflectionProbes",
@@ -4482,6 +4826,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {
@@ -5227,6 +5587,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -5927,6 +6303,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -5980,6 +6372,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {
@@ -6083,6 +6491,22 @@
   {
    "component": "action",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
    "kind": "LocalEntity",
    "label": "Target",
    "path": "target",
@@ -6136,6 +6560,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {
@@ -6841,6 +7281,46 @@
   {
    "component": "mesh",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Detail Bias",
+   "path": "lodBias",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Fade Mode",
+   "path": "lodFadeMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Animate Cross-fading",
+   "path": "lodAnimateCrossFading",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Cull Below Screen Height",
+   "path": "lodCullBelow",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Allow GPU Instancing",
+   "path": "allowGpuInstancing",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
    "kind": "Bool",
    "label": "Render in Probes",
    "path": "renderInReflectionProbes",
@@ -6950,6 +7430,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {
@@ -7088,6 +7584,46 @@
    "kind": "Bool",
    "label": "Detail Levels",
    "path": "lodEnabled",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Detail Bias",
+   "path": "lodBias",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Fade Mode",
+   "path": "lodFadeMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Animate Cross-fading",
+   "path": "lodAnimateCrossFading",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Cull Below Screen Height",
+   "path": "lodCullBelow",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Allow GPU Instancing",
+   "path": "allowGpuInstancing",
    "read_only": false
   },
   {
@@ -7553,6 +8089,46 @@
   {
    "component": "mesh",
    "group": "",
+   "kind": "FloatPositive",
+   "label": "Detail Bias",
+   "path": "lodBias",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Fade Mode",
+   "path": "lodFadeMode",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Animate Cross-fading",
+   "path": "lodAnimateCrossFading",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Float_0_1",
+   "label": "Cull Below Screen Height",
+   "path": "lodCullBelow",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Allow GPU Instancing",
+   "path": "allowGpuInstancing",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
    "kind": "Bool",
    "label": "Render in Probes",
    "path": "renderInReflectionProbes",
@@ -7662,6 +8238,22 @@
    "kind": "Float",
    "label": "Speed",
    "path": "speed",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Start Offset",
+   "path": "startOffset",
+   "read_only": false
+  },
+  {
+   "component": "action",
+   "group": "",
+   "kind": "Bool",
+   "label": "Random Start",
+   "path": "randomStart",
    "read_only": false
   },
   {

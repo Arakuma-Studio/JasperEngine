@@ -1,8 +1,8 @@
 """The contributor docs for agents (S31 R24-R28): tools/check_agent_docs.py passes on the repository
 and fails on a scratch copy whose AGENTS.md names a path that does not exist, whose CLAUDE.md
-lost its @AGENTS.md include, whose rules file has no paths: front matter, or that names a
-tools/build.sh target the script lacks (red controls). The size rules: AGENTS.md at most 120
-lines, CLAUDE.md at most 80 after the include, every R24 section present.
+is anything but the @AGENTS.md include, whose rules file has no paths: front matter, or that names
+a tools/build.sh target the script lacks (red controls). The shape rules: AGENTS.md at most 350
+lines, CLAUDE.md exactly the include, every section present.
 
 The per-project AGENTS.md the editor generates is separate (test_generators.py).
 """
@@ -21,8 +21,9 @@ from harness import TestFailure
 CI = True
 
 CHECKER = harness.REPO / "tools" / "check_agent_docs.py"
-SECTIONS = ["## Map", "## What lives where", "## Build", "## Run an editor", "## Test", "## Evidence",
-            "## Worktrees", "## Land", "## Adding an MCP tool"]
+SECTIONS = ["## Map", "## Invariants", "## What lives where", "## Generated files", "## Build", "## Run an editor",
+            "## Debugging", "## Test", "## Evidence", "## Code", "## Worktrees", "## Land", "## Adding an MCP tool",
+            "## MCP text", "## Reporting", "## DON'Ts"]
 
 
 async def run_checker(root: Path) -> tuple[int, str]:
@@ -54,10 +55,10 @@ async def test_check_passes():
 async def test_sizes_and_sections():
     agents = (harness.REPO / "AGENTS.md").read_text(encoding="utf-8")
     claude = (harness.REPO / "CLAUDE.md").read_text(encoding="utf-8").splitlines()
-    if len(agents.splitlines()) > 120:
-        raise TestFailure(f"AGENTS.md has {len(agents.splitlines())} lines, over 120")
-    if claude[0] != "@AGENTS.md" or len(claude) - 1 > 80:
-        raise TestFailure(f"CLAUDE.md: @AGENTS.md first, then at most 80 lines ({len(claude) - 1})")
+    if len(agents.splitlines()) > 350:
+        raise TestFailure(f"AGENTS.md has {len(agents.splitlines())} lines, over 350")
+    if claude != ["@AGENTS.md"]:
+        raise TestFailure(f"CLAUDE.md is the single line @AGENTS.md, got {len(claude)} lines")
     scope = "For engine contributors. Inside a game project (a directory with `project.yaml`),"
     if scope not in agents.replace("\n", " "):
         raise TestFailure("AGENTS.md opens with the scope line")
@@ -70,12 +71,20 @@ async def test_sizes_and_sections():
 
 
 async def test_red_controls():
+    root = scratch_copy()
+    try:
+        code, out = await run_checker(root)
+        if code != 0:
+            raise TestFailure(f"an unedited scratch copy must pass, or the red controls prove nothing:\n{out}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
     cases = {
         "a path that does not exist": ("AGENTS.md", lambda t: t + "\nSee `engine/core/NoSuchFile.cpp`.\n",
                                        "NoSuchFile.cpp"),
         "a build target the script lacks": ("AGENTS.md", lambda t: t + "\nRun `tools/build.sh nosuchtarget`.\n",
                                             "nosuchtarget"),
         "CLAUDE.md without the include": ("CLAUDE.md", lambda t: t.replace("@AGENTS.md\n", "", 1), "@AGENTS.md"),
+        "CLAUDE.md with a rule after the include": ("CLAUDE.md", lambda t: t + "- Always do X.\n", "@AGENTS.md"),
         "a rules file without paths": (".claude/rules/mcp.md", lambda t: t.replace("paths:", "scope:", 1), "paths:"),
     }
     for label, (rel, edit, needle) in cases.items():

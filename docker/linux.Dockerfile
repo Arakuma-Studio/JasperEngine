@@ -1,5 +1,4 @@
-# Linux build image for the engine and editor. Mirrors the Ubuntu jobs in
-# .github/workflows so a local build fails the same way CI would.
+# Linux build image for the engine and editor.
 FROM ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
