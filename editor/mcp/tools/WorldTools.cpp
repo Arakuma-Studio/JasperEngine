@@ -4644,6 +4644,11 @@ struct UiBuild {
     UndoStep* step = nullptr;
     int count = 0;
     bool layoutGroup = false;
+    // the GameObjects made by name, and the Explicit navigation targets that name one of them
+    // (resolved once the whole tree exists)
+    std::map<std::string, Entity> byName;
+    struct NavTarget { Entity entity; const char* property; Json ref; std::string where; };
+    std::vector<NavTarget> navTargets;
 };
 
 const std::vector<std::pair<const char*, EntityCreationType>>& uiTypes() {
@@ -4667,6 +4672,103 @@ bool readActionPair(const Json& node, const std::string& where, std::string& hor
     }
     horizontal = actions[0].get<std::string>();
     vertical = actions[1].get<std::string>();
+    return true;
+}
+
+// a button node's Selectable keys (ui-components): textures, transition, fade_duration, scale,
+// navigation (a mode, or {mode, wrap_around, up, down, left, right}), select_on_enable
+bool addButtonNodeKeys(UiBuild& build, const Json& node, Entity entity, const std::string& where, MultiPropertyCmd& multi, std::string& error) {
+    static const char* const keys[] = {"textures", "transition", "fade_duration", "scale", "navigation", "select_on_enable"};
+    bool any = false;
+    for (const char* key : keys) any = any || has(node, key);
+    if (!any) return true;
+    const Target& target = build.target;
+    Scene* scene = target.engineScene();
+    if (!scene->findComponent<ButtonComponent>(entity)) {
+        error = where + ": textures, transition, fade_duration, scale, navigation and select_on_enable are for buttons.";
+        return false;
+    }
+    const ComponentType bc = ComponentType::ButtonComponent;
+    Json values = Json::object();
+    if (has(node, "textures")) {
+        static const std::vector<std::pair<const char*, const char*>> states = {
+            {"normal", "textureNormal"}, {"hovered", "textureHovered"}, {"pressed", "texturePressed"}, {"selected", "textureSelected"},
+            {"disabled", "textureDisabled"}};
+        const Json& textures = node["textures"];
+        if (!textures.is_object()) {
+            error = where + ".textures must be {normal, hovered, pressed, selected, disabled} asset paths.";
+            return false;
+        }
+        for (auto it = textures.begin(); it != textures.end(); ++it) {
+            auto state = std::find_if(states.begin(), states.end(), [&](const auto& entry) { return it.key() == entry.first; });
+            if (state == states.end()) {
+                error = where + ".textures: unknown state '" + it.key() + "' (normal, hovered, pressed, selected, disabled).";
+                return false;
+            }
+            values[state->second] = it.value();
+        }
+        if (textures.contains("normal") &&
+            !addCatalogProperties(target.project, target.scene, entity, ComponentType::UIComponent, Json{{"texture", textures["normal"]}}, multi, error)) {
+            error = where + ".textures.normal: " + error;
+            return false;
+        }
+    }
+    if (has(node, "transition")) values["transition"] = node["transition"];
+    if (has(node, "fade_duration")) values["fadeDuration"] = node["fade_duration"];
+    if (has(node, "select_on_enable")) values["selectOnEnable"] = node["select_on_enable"];
+    if (has(node, "scale")) {
+        const Json& scale = node["scale"];
+        static const std::vector<std::pair<const char*, const char*>> states = {
+            {"hovered", "scaleHovered"}, {"pressed", "scalePressed"}, {"selected", "scaleSelected"}};
+        if (!scale.is_object()) {
+            error = where + ".scale must be {hovered, pressed, selected} factors (1: none).";
+            return false;
+        }
+        for (auto it = scale.begin(); it != scale.end(); ++it) {
+            auto state = std::find_if(states.begin(), states.end(), [&](const auto& entry) { return it.key() == entry.first; });
+            if (state == states.end()) {
+                error = where + ".scale: unknown state '" + it.key() + "' (hovered, pressed, selected).";
+                return false;
+            }
+            values[state->second] = it.value();
+        }
+    }
+    if (has(node, "navigation")) {
+        const Json& navigation = node["navigation"];
+        if (navigation.is_string()) {
+            values["navigationMode"] = navigation;
+        } else if (navigation.is_object()) {
+            static const std::vector<std::pair<const char*, const char*>> targets = {
+                {"up", "selectOnUp"}, {"down", "selectOnDown"}, {"left", "selectOnLeft"}, {"right", "selectOnRight"}};
+            for (auto it = navigation.begin(); it != navigation.end(); ++it) {
+                if (it.key() == "mode") {
+                    values["navigationMode"] = it.value();
+                } else if (it.key() == "wrap_around") {
+                    values["wrapAround"] = it.value();
+                } else {
+                    auto dir = std::find_if(targets.begin(), targets.end(), [&](const auto& entry) { return it.key() == entry.first; });
+                    if (dir == targets.end()) {
+                        error = where + ".navigation: unknown key '" + it.key() + "' (mode, wrap_around, up, down, left, right).";
+                        return false;
+                    }
+                    // a node name of this call, or a GameObject already in the scene: once the tree exists
+                    build.navTargets.push_back({entity, dir->second, it.value(), where + ".navigation." + it.key()});
+                }
+            }
+            // targets mean Explicit unless the mode says otherwise
+            if (!navigation.contains("mode") && (navigation.contains("up") || navigation.contains("down") || navigation.contains("left") ||
+                                                 navigation.contains("right"))) {
+                values["navigationMode"] = "explicit";
+            }
+        } else {
+            error = where + ".navigation must be a mode (none, horizontal, vertical, automatic, explicit) or {mode, wrap_around, up, down, left, right}.";
+            return false;
+        }
+    }
+    if (!values.empty() && !addCatalogProperties(target.project, target.scene, entity, bc, values, multi, error)) {
+        error = where + ": " + error;
+        return false;
+    }
     return true;
 }
 
@@ -4810,11 +4912,12 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
     }
     if (has(node, "colors")) {
         if (!scene->findComponent<ButtonComponent>(entity) || !node["colors"].is_object()) {
-            error = where + ".colors {normal, hovered, pressed, disabled} is for buttons.";
+            error = where + ".colors {normal, hovered, pressed, selected, disabled} is for buttons.";
             return false;
         }
         static const std::vector<std::pair<const char*, const char*>> states = {
-            {"normal", "colorNormal"}, {"hovered", "colorHovered"}, {"pressed", "colorPressed"}, {"disabled", "colorDisabled"}};
+            {"normal", "colorNormal"}, {"hovered", "colorHovered"}, {"pressed", "colorPressed"}, {"selected", "colorSelected"},
+            {"disabled", "colorDisabled"}};
         for (const auto& state : states) {
             if (!has(node["colors"], state.first)) continue;
             if (!parseColor4(node["colors"][state.first], color)) {
@@ -4830,7 +4933,14 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
             error = where + ".texture: " + (error.empty() ? std::string("this element has no image.") : error);
             return false;
         }
+        // a Button draws its Normal texture: the image's alone would be replaced at its first state change
+        if (scene->findComponent<ButtonComponent>(entity) &&
+            !addCatalogProperties(target.project, target.scene, entity, ComponentType::ButtonComponent, Json{{"textureNormal", node["texture"]}}, *multi, error)) {
+            error = where + ".texture: " + error;
+            return false;
+        }
     }
+    if (!addButtonNodeKeys(build, node, entity, where, *multi, error)) return false;
     if (has(node, "value")) {
         if (scene->findComponent<OnScreenButtonComponent>(entity)) {
             addProp<float>(*multi, target, entity, ComponentType::OnScreenButtonComponent, "value", std::clamp(numberOr(node, "value", 1.0f), -1.0f, 1.0f));
@@ -4937,6 +5047,7 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
         return false;
     }
 
+    if (!name.empty()) build.byName.emplace(name, entity);
     out = entityJson(target, entity);
     out["type"] = typeName;
     if (textEntity != NULL_ENTITY && textEntity != entity) out["text_entity"] = entityJson(target, textEntity);
@@ -4984,6 +5095,25 @@ void createUiTool(const CallPtr& call) {
     if (!buildUiNode(build, args["root"], parent, "root", tree, error)) {
         step.fail(call, error);
         return;
+    }
+    // Explicit navigation targets: a node of this call by name, else a GameObject of the scene
+    if (!build.navTargets.empty()) {
+        auto* multi = new MultiPropertyCmd();
+        std::unique_ptr<MultiPropertyCmd> guard(multi);
+        for (const UiBuild::NavTarget& nav : build.navTargets) {
+            Entity targetEntity = NULL_ENTITY;
+            if (nav.ref.is_string() && build.byName.count(nav.ref.get<std::string>())) {
+                targetEntity = build.byName[nav.ref.get<std::string>()];
+            } else if ((targetEntity = resolveRef(target.scene, nav.ref, error)) == NULL_ENTITY) {
+                step.fail(call, nav.where + ": " + error + " (a node name of this call or a GameObject of the scene).");
+                return;
+            }
+            addProp<Entity>(*multi, target, nav.entity, ComponentType::ButtonComponent, nav.property, targetEntity);
+        }
+        if (!step.add(guard.release())) {
+            step.fail(call, "The editor rejected the navigation targets.");
+            return;
+        }
     }
     step.commit();
     std::string text = "Created " + std::to_string(build.count) + " UI element(s) under \"" + tree["name"].get<std::string>() + "\" (one undo step).";
@@ -6261,7 +6391,7 @@ void registerWorldTools(McpRegistry& registry) {
         "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, outline {width, "
         "color}, shadow {offset, color, softness}, color, colors, texture, value, placeholder, direction, multiline, "
         "properties, children}. Types: panel (text = "
-        "title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
+        "title), image, text, button (text = label, select_on_enable), input_field, progress_bar (value 0-1), scrollbar, "
         "layout_group (direction), container, polygon, safe_area (fits Screen.safeArea); touch controls feeding Input actions: onscreen_stick, "
         "onscreen_button, touch_area. layout {anchor, size, position, pivot, margins}: px, y "
         "DOWN from the parent's top-left; an anchor (top_left, center, top_wide, ..., stretch) pins to the "

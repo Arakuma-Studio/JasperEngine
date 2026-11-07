@@ -2026,6 +2026,60 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_ui_button_gamepad_menu",
+        "kind": "guard",
+        "what_happened": "Component UI Buttons got keyboard, gamepad and TV navigation only for a selected Button "
+                         "(ui-components): a native menu needs one Button with select_on_enable, which create_ui's "
+                         "description names.",
+        "text_at_issue": "create_ui's description: 'button (text = label, select_on_enable)'",
+        "source": "spec docs/superpowers/specs/2026-11-04-ui-components-design.md decision 1; no failure on record",
+        "prompt": "The Hud scene uses the native UI (create_ui). Add a pause menu there: Resume, Options and Quit buttons "
+                  "stacked vertically in the middle of the screen. Players use a gamepad or a TV remote, so the menu must "
+                  "work without a mouse, with Resume selected when it shows.",
+        "mocks": [
+            {"tool": "editor_status", "result": ok(
+                "Project \"Space Dodge\" at the current directory. 2 scene(s), selected: 2 \"Hud\" (UI). Edit mode.",
+                {"project": {"name": "Space Dodge"}, "playing": False, "scenes": [
+                    {"id": 1, "name": "Main", "path": "scenes/Main.scene", "opened": True},
+                    {"id": 2, "name": "Hud", "path": "scenes/Hud.scene", "selected": True, "opened": True}]})},
+            {"tool": "create_ui", "result": ok(
+                "Created 7 UI element(s) under \"PauseMenu\" (one undo step).",
+                {"root": {"id": 50, "path": "PauseMenu", "type": "layout_group"}, "count": 7})},
+            {"tool": "save_scene", "result": ok("Saved scene 2 \"Hud\" (scenes/Hud.scene).", {"scene": {"id": 2}})},
+            {"tool": "get_entity", "result": ok(
+                "GameObject 51 \"Resume\": button. selectable: {navigable: true, navigation: {down: Options}}",
+                {"id": 51, "selectable": {"navigable": True, "navigation": {"up": None, "down": {"id": 53, "path": "PauseMenu/Options"}}}})},
+        ],
+        "checks": {"calls": [{"tool": "create_ui", "args": {"root": {"children": [{"select_on_enable": True}]}}}],
+                   "must_not_call": ["create_ui_document"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_ui_button_color_refusal",
+        "kind": "guard",
+        "what_happened": "An edit of a Button's ui.color reported success and was lost at its next state change; "
+                         "set_properties now refuses it and names the Button field (Doriax 88198667b, ui-components).",
+        "text_at_issue": "McpValues::appendChangeCommands: 'UIComponent.color of ... is set by its Button (transition ...): "
+                         "set button.colorNormal ...'",
+        "source": "Doriax 88198667b; spec 2026-11-04-ui-components decision 13",
+        "prompt": "Make the Play button (GameObject 12 in the open scene) red.",
+        "mocks": [
+            {"tool": "set_properties", "args": {"component": "re:^ui$|UIComponent"}, "result": err(
+                "UIComponent.color of GameObject 12 \"Play\" is set by its Button (transition color_tint_and_sprite_swap): set "
+                "button.colorNormal (and colorHovered, colorPressed, colorSelected, colorDisabled), or set button.transition "
+                "to sprite_swap or none first.")},
+            {"tool": "set_properties", "result": ok("Set button.colorNormal on GameObject 12 \"Play\" (one undo step).",
+                                                    {"entities": [{"id": 12}]})},
+            {"tool": "get_entity", "result": ok("GameObject 12 \"Play\": recttransform, ui, image, button.",
+                                               {"id": 12, "components": ["recttransform", "ui", "image", "button"]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"component": "button"}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"values": {"button": "*"}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"component": "button"}]}}]}],
+                   "max_calls": {"set_properties": 3}},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_copied_scene_ids",
         "kind": "guard",
         "what_happened": "A copied .scene used to keep its original's scene id; copies get their own now, and the result says "

@@ -309,6 +309,25 @@ Details: jasper://docs/native-bridge.
 | `PrivacyInfo.xcprivacy` in `Assets/Plugins/iOS` (Unity copies plugin privacy manifests into the Xcode project) | `PrivacyInfo.xcprivacy` in `plugins/native/ios` (or `apple`, `macos`), merged into the app's; the game's own entries: Project Settings > Player > iOS > Privacy Manifest (`apple.privacy_*`) |
 | Google Mobile Ads Unity plugin, Unity IAP | a native plugin (`plugins/native`): docs/mcp/guide/native-bridge.md section 10 has an interstitial ads example |
 
+## UI (Selectable, Button)
+
+Details: [mcp/guide/ui.md](mcp/guide/ui.md) (Buttons, Keyboard, gamepad and TV navigation).
+
+| Unity term | JasperEngine name |
+|---|---|
+| `Button.onClick` | `button.onClick` (Lua), `REGISTER_BUTTON_EVENT(onClick, method)` (C++): released over it, or a Submit while selected |
+| `Selectable.interactable` | `Button.interactable` (the stored field is `disabled`; Inspector "Interactable") |
+| `Selectable.transition` (`None`, `ColorTint`, `SpriteSwap`; `Animation` not built) | `Button.transition` (`NONE`, `COLOR_TINT`, `SPRITE_SWAP`, and `COLOR_TINT_AND_SPRITE_SWAP`, the default) |
+| `ColorBlock.normalColor`, `highlightedColor`, `pressedColor`, `selectedColor`, `disabledColor`, `fadeDuration` | `colorNormal`, `colorHovered` (Inspector "Highlighted Color"), `colorPressed`, `colorSelected`, `colorDisabled`, `fadeDuration` (the colours replace the image colour; Unity multiplies) |
+| `SpriteState.highlightedSprite`, `pressedSprite`, `selectedSprite`, `disabledSprite` | `textureHovered`, `texturePressed`, `textureSelected`, `textureDisabled` (`textureNormal` is the image's sprite) |
+| `Navigation.mode` (`None`, `Horizontal`, `Vertical`, `Automatic`, `Explicit`), `wrapAround`, `selectOnUp/Down/Left/Right`, Visualize | `navigationMode` (`NavigationMode.*`), `wrapAround`, `selectOnUp/Down/Left/Right`, the Inspector's Visualize |
+| `EventSystem.firstSelectedGameObject` | the Button's **Select On Enable** (`selectOnEnable`; also a menu shown later) |
+| `EventSystem.current.currentSelectedGameObject`, `SetSelectedGameObject(go)`, `Selectable.Select()` | `UI.getSelected(scene)`, `UI.setSelected(scene, go)`, `button:select()` |
+| `Selectable.FindSelectableOnUp()` ... | `button:findSelectableOnUp()` ... |
+| `ISelectHandler.OnSelect`, `IDeselectHandler`, `IMoveHandler` (`AxisEventData.moveDir`), `ISubmitHandler`, `ICancelHandler` | script methods `onSelect(e)`, `onDeselect(e)`, `onMove(e)` (`e.moveDir`), `onSubmit(e)`, `onCancel(e)` |
+| StandaloneInputModule: Submit (Enter, keypad Enter, Space, joystick button 0), Cancel (Escape, joystick button 1), Horizontal/Vertical | the same keys and gamepad A, B, d-pad and left stick, plus Tab / Shift+Tab and Android TV's remote |
+| A pointer click selects a Selectable | only while its scene has a selection (a clicked HUD button never takes Space or the arrows from the game) |
+
 ## UI (Canvas Group)
 
 | Unity term | JasperEngine name |

@@ -1017,3 +1017,58 @@ guide.
 | `mobile-shipping` | Android sources | `NativeEngine.cpp` key map only; AdMob removal does not touch it |
 | `export-pipeline`, `build-toolchain`, `water-*`, `ssr-probes`, `code-editor-git` | none | |
 
+
+## Deviations (implementation, 2026-11-06)
+
+Recorded while implementing on `dc/ui-components` (main had moved: unicode-text's `char32_t` input, the
+lean MCP rules, the sound layer).
+
+1. **Submit hold when a scene leaves the layers** (6.4, 7.4, test `SubmitReleasedWhenSceneLeaves`): the hold ends
+   without `onRelease`, as pointer presses already do there ("no callbacks into a scene being removed",
+   `resetButtonStates`). The test is `SubmitHoldEndsWhenTheSceneLeaves`. App pause and focus loss
+   (`cancelAllPointers`) still send `onRelease`.
+2. **A lost selection** is one that is no longer selectable (destroyed, inactive, hidden, UIComponent off, no
+   Button). Navigation set to None does not lose it: `UI.setSelected` selects any Button, as Unity's `Select()`.
+3. **New Buttons keep white state colours and Fade Duration 0** (decision 10 reversed). Jasper's state colours
+   replace the image colour; Unity's tint defaults (245/200 grey) would turn a coloured button grey on hover.
+   `ui.md` gives Unity's 0.1 s fade as the suggestion; the `create_ui` keys set any of them.
+4. **No animation binding warning** for a `ui.color` track on a Button (decision 13, last row): it needs a new
+   `TrackBindingStatus`; the docs (animation.md), the read-only rows and Transition None cover it. A
+   `colorSelected` property row was added.
+5. **Agent guide:** no line added. The guide steers menus to the HTML UI (`create_ui_document`, eval case
+   `guard_html_ui_template`); the component UI's navigation is in `jasper://docs/ui` and named by `create_ui`'s
+   description. New eval cases: `guard_ui_button_gamepad_menu`, `guard_ui_button_color_refusal`.
+6. **`Engine::wantsKeyboardNavigation()`** (C++ and Lua) added: the Input actions' suppression of the arrows,
+   Tab, Enter and Space (`InputSuppression::keyboardNavigation`) and games that poll keys need it.
+7. **Edit mode** is `UISystem::setEditMode`, called by `Project::pauseEngineScene`, which is also the editor's
+   Play pause: while paused no Select On Enable runs and no scale applies; what shows stays.
+8. **Tests:** the drag-preview test checks the update flags the preview now uses (`ButtonFieldEditsRefreshFromAnyPath`;
+   the helper is file-static in `InspectorWindow.cpp`). `LoadingNormalTextureIsNotReplaced` and the GPU test
+   `TextOutgrowingItsBufferReloads` are not written: the unit harness cannot hold a texture in `Loading`, and
+   no GPU harness loads component UI; both fixes are covered by reading (inferred). The UBSan run of the
+   inactive layout child is not run (no sanitizer tree built, per the brief's build rules). The MCP tests are one
+   file, `tools/mcp/tests/test_ui_buttons.py`; it also checks a label clipped by its ancestor (AC3, green only:
+   the clip by ancestors is unchanged code), the runtime state while held and disabled, the Selected tint in Game
+   view pixels, the undo of a Button edit, and Play/Stop/Play.
+9. **A pointer press on a Button whose Navigation is None** (with a selection elsewhere) deselects, as a press on
+   any non-selectable element.
+10. **`get_entity` / `get_runtime_entity`** return `selectable {navigable, navigation {up, down, left, right, next}}`
+    (+ `state`, `selected` in Play) with `{id, path}` targets; `get_play_state.input.ui_selected` is
+    `[{scene, entity {id, path}}]`.
+11. **The four Selectable enums are int-sized** (6.1 said `uint8_t`): the reflection and the cooked format read
+    an enum field as an int.
+12. **Navigation measures in the hit test's space** (y down) whatever the scene's current camera: in the
+    editor a UI scene's view camera is not a UI camera, and pointer input already assumes a UI camera.
+13. **Typing guard for documents, key releases too:** while a document's text field is typed in, the other
+    documents get neither a typing key's press nor its release (a focused HTML button clicks on Space's
+    release); Escape and F1-F25 still reach them. A disconnected pad's held axes are dropped (found by
+    `InputGamepadTest.ButtonsAndTriggersAsKeys`).
+14. **A transition that stops writing a property** gives Normal back only while a state's value still shows,
+    so an edit made together with the change stays.
+15. **MCP text within the core budget:** `create_ui`'s description names `select_on_enable` only (the rest is
+    in jasper://docs/ui); `get_play_state`'s description is unchanged (its `input.ui_selected` is documented
+    in jasper://docs/ui).
+16. **Review fixes:** Play stop resets the played scene's selection and every Button's runtime state
+    (`UISystem::resetSelection`, called by `Project::stop`); clones and moves remap Explicit navigation; a lost
+    selection shows its unselected look; a key the selection took keeps its release and its typed character from
+    the game; `Engine::getUINavigationWants` gives `Input::beginFrame` both wants from one look at the scenes.
