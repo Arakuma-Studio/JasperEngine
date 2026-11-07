@@ -91,6 +91,9 @@ namespace terrainprojecttest {
             component.needUpdateFoliage = false;
             component.heightMapLoaded = true;
             s->addComponent<TerrainComponent>(entity, component);
+            // listed as the editor lists every GameObject: what a save writes and the map
+            // collector keeps
+            scene->entities.push_back(entity);
             return entity;
         }
 

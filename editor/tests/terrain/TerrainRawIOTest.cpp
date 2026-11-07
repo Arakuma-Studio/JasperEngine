@@ -95,8 +95,9 @@ TEST(TerrainRawIO, RoundTripEveryFormat) {
         const char* name;
         float tolerance;
     };
-    for (const Case& c : {Case{HeightFileFormat::R8, "h.r8", 0.5f / 255.0f}, Case{HeightFileFormat::R16, "h.r16", 0.5f / 65535.0f},
-                          Case{HeightFileFormat::R32F, "h.r32", 1e-7f}, Case{HeightFileFormat::Png, "h.png", 0.5f / 65535.0f}}) {
+    // half a step, and a float's rounding on top
+    for (const Case& c : {Case{HeightFileFormat::R8, "h.r8", 0.5f / 255.0f + 1e-6f}, Case{HeightFileFormat::R16, "h.r16", 0.5f / 65535.0f + 1e-6f},
+                          Case{HeightFileFormat::R32F, "h.r32", 1e-7f}, Case{HeightFileFormat::Png, "h.png", 0.5f / 65535.0f + 1e-6f}}) {
         HeightExportOptions out;
         out.format = c.format;
         std::vector<uint8_t> bytes;

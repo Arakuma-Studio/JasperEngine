@@ -173,7 +173,7 @@ TEST_F(TerrainMapDeltaCmdTest, MemoryBound) {
     std::mt19937 random(11);
     const terrain::TexelRect rect{0, 0, 192, 192};
     std::vector<uint8_t> noise(static_cast<size_t>(rect.area()) * 2);
-    for (uint8_t& byte : noise) byte = static_cast<uint8_t>(random() | 1u);
+    for (uint8_t& byte : noise) byte = static_cast<uint8_t>(random());
     ASSERT_TRUE(overlay.writeBytes(HEIGHT_MAP, rect, noise).ok);
     ASSERT_EQ(overlay.tileCount(), 9u);
 
