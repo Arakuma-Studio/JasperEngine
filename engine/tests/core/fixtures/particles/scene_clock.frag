@@ -2,8 +2,8 @@
 
 // ParticlesGpu.CustomBlockReadsTheSceneClock: a project's particle shader (fragment only, over the
 // engine's particles.vert) that draws its custom block's engine-written scene clock: red the
-// fraction of sceneTime, written as it is, alpha 1. It reads the particle's inputs as the
-// library's particles.frag does, so its stages link the same way.
+// fraction of sceneTime with no display encoding (0.25 is 64 of 255), alpha 1. It reads the
+// particle's inputs as the library's particles.frag does, so its stages link the same way.
 
 uniform u_fs_customParams {
     float sceneTime;

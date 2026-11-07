@@ -105,6 +105,14 @@ namespace {
         }
     };
 
+    // puts the frame clock and the time scale back when the test leaves, an ASSERT's return too
+    struct ParticleClockRestore{
+        ~ParticleClockRestore(){
+            Engine::setTimeScale(1.0f);
+            Engine::setFixedDeltatime(0.0);
+        }
+    };
+
     // a burst of particles flying out, seed fixed (the mode and the extra keys of `renderer`)
     std::string burst(const std::string& renderer, const std::string& extraModules = "", int count = 24, float speed = 0.8f){
         return R"({"version": 1, "duration": 5, "looping": false, "seed": 17, "maxParticles": 200, "modules": [
@@ -278,11 +286,15 @@ TEST_F(ParticlesGpu, PlayOnAwakeSystemsShowWithoutASeek){
     EXPECT_GT(lit, 100) << "its particles are drawn";
 }
 
-// a particle shader's custom block holds the scene clock (sceneTime), as every custom block does:
-// it holds while the scene is paused and is the scene's, not the frame clock
+// a particle shader's custom block holds the scene clock (sceneTime), as every custom block does,
+// not the frame clock: with a fixed 0.1 s frame at time scale 0.5 the frame clock runs 0.1 s a
+// frame and the scene clock 0.05 s, or not at all while the scene is paused
 TEST_F(ParticlesGpu, CustomBlockReadsTheSceneClock){
     JASPER_REQUIRE_GPU();
+    ParticleClockRestore clocks;
     Engine::setPinnedShaderTime(-1.0);
+    Engine::setFixedDeltatime(0.1);
+    Engine::setTimeScale(0.5f);
     scene.setBackgroundColor(0.0f, 0.0f, 0.0f, 1.0f);
     system(Vector3(0.0f, 1.0f, 0.0f), R"({"version": 1, "duration": 5, "looping": false, "seed": 17, "maxParticles": 4, "modules": [
         {"type": "main", "startLifetime": 5, "startSpeed": 0, "startSize": 2, "startColor": [1, 1, 1, 1]},
@@ -311,21 +323,38 @@ TEST_F(ParticlesGpu, CustomBlockReadsTheSceneClock){
         }
         return count > 0 ? sum / count : -1;
     };
+    // the red of a clock value: its fraction of 255, as the shader writes it
+    auto redOf = [](double seconds){ return (int)std::lround((seconds - std::floor(seconds)) * 255.0); };
 
     ASSERT_TRUE(render(1.0));
+
+    // paused at 0.25 s: the same red every frame while the frame clock runs on
     scene.setSceneTimePaused(true);
     scene.setSceneTime(0.25);
-    GpuEnvironment::drawFrames(2);
-    const int quarter = clockRed();
-    GpuEnvironment::drawFrames(3);
-    const int held = clockRed();
-    scene.setSceneTime(0.75);
-    GpuEnvironment::drawFrames(2);
-    const int threeQuarters = clockRed();
-    std::printf("[gpu] the particle shader's sceneTime as red: %d at 0.25, %d three frames later, %d at 0.75 (frame clock %.2f s)\n",
-                quarter, held, threeQuarters, Engine::getShaderTime());
-    EXPECT_NEAR(quarter, 64, 3) << "the particle's custom block does not hold the scene clock";
-    EXPECT_NEAR(held, 64, 3) << "the scene clock moved while the scene is paused";
-    EXPECT_NEAR(threeQuarters, 191, 3) << "the particle's custom block does not follow the scene clock";
+    GpuEnvironment::drawFrames(1);
+    const double frameClockStart = Engine::getShaderTimeSeconds();
+    for (int frame = 0; frame < 4; frame++){
+        GpuEnvironment::drawFrames(1);
+        const int red = clockRed();
+        std::printf("[gpu] paused: sceneTime red %d (scene %.3f s, frame clock %.3f s)\n", red, scene.getSceneTime(), Engine::getShaderTimeSeconds());
+        EXPECT_NEAR(red, 64, 1) << "frame " << frame << ": the particle's custom block does not hold the paused scene clock";
+    }
+    EXPECT_GT(Engine::getShaderTimeSeconds() - frameClockStart, 0.25) << "the frame clock did not run (the test tells the clocks apart by it)";
+
+    // running at time scale 0.5: the scene clock's 0.05 s a frame, not the frame clock's 0.1 s
+    scene.setSceneTimePaused(false);
+    scene.setSceneTime(0.1);
+    const double sceneStart = scene.getSceneTime();
+    const double frameStart = Engine::getShaderTimeSeconds();
+    for (int frame = 0; frame < 4; frame++){
+        GpuEnvironment::drawFrames(1);
+        const int red = clockRed();
+        std::printf("[gpu] running: sceneTime red %d (scene %.3f s, frame clock %.3f s)\n", red, scene.getSceneTime(), Engine::getShaderTimeSeconds());
+        EXPECT_NEAR(red, redOf(scene.getSceneTime()), 1) << "frame " << frame << ": the particle's custom block does not follow the scene clock";
+    }
+    const double frameRan = Engine::getShaderTimeSeconds() - frameStart;
+    std::printf("[gpu] running: the scene clock ran %.3f s, the frame clock %.3f s\n", scene.getSceneTime() - sceneStart, frameRan);
+    EXPECT_GT(frameRan, 0.25) << "the frame clock did not run (the test tells the clocks apart by it)";
+    EXPECT_GT(scene.getSceneTime() - sceneStart, 0.1) << "the scene clock did not run";
     EXPECT_NO_ENGINE_ERRORS();
 }

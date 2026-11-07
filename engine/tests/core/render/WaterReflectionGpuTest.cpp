@@ -6,7 +6,7 @@
 // the water, one pass per water height (nearest first up to Max Planes), none with the scene's
 // resolution Off (the environment reflection instead), for perspective and orthographic cameras.
 // The water is a black mirror (opaque, its reflection unbent), so the pixels it draws are its
-// reflection times Schlick's fresnel. Each pass selects the terrain for its own mirrored camera,
+// reflection times Schlick's fresnel. Each pass draws the terrain cut of its own mirrored camera,
 // the frame rewrites the shared MVPs per camera only while a reflection pass draws, and the
 // passes' targets are the size the viewer's pass draws at (fixed resolution, render scale).
 
@@ -21,6 +21,7 @@
 #include "object/Sprite.h"
 #include "object/Terrain.h"
 #include "pool/TextureDataPool.h"
+#include "render/SystemRender.h"
 #include "shader/ShaderUniforms.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/Material.h"
@@ -36,7 +37,10 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace jasperengine;
@@ -45,6 +49,15 @@ using namespace jasperengine::test;
 namespace {
 
     constexpr double REFLECTION_PINNED_TIME = 2.0;
+
+    // runs its function when the test leaves its scope, an ASSERT's early return too
+    struct ReflectionRestore{
+        std::function<void()> restore;
+        explicit ReflectionRestore(std::function<void()> f): restore(std::move(f)){}
+        ~ReflectionRestore(){ restore(); }
+        ReflectionRestore(const ReflectionRestore&) = delete;
+        ReflectionRestore& operator=(const ReflectionRestore&) = delete;
+    };
     constexpr int REFLECTION_TERRAIN_TEXELS = 33;
     const char* const REFLECTION_TERRAIN_HEIGHTS = "water-reflection-terrain-height";
 
@@ -267,11 +280,14 @@ TEST_F(WaterReflectionGpu, OrthographicViewer){
 }
 
 // two heights, two passes: each selects the terrain's node cut for its own mirrored camera, in a
-// terrain view of its own (a view's node buffer is uploaded once a frame: one view shared by the
-// passes draws the last pass's cut in all of them on Vulkan, Metal and D3D11)
-TEST_F(WaterReflectionGpu, EachPassSelectsTheTerrainForItsOwnCamera){
+// terrain view of its own, and draws that view (a view's node buffer is uploaded once a frame:
+// one view shared by the passes draws the last pass's cut in all of them on Vulkan, Metal and
+// D3D11). The terrain is the only thing a reflection pass draws here, so its instances are the
+// nodes of the cut it drew.
+TEST_F(WaterReflectionGpu, EachPassDrawsTheTerrainOfItsOwnCamera){
     JASPER_REQUIRE_GPU();
-    const Vector3 eye(0.0f, 10.0f, 20.0f);
+    ReflectionRestore poolEntry([](){ TextureDataPool::remove(REFLECTION_TERRAIN_HEIGHTS); });
+    const Vector3 eye(0.0f, 12.0f, 20.0f);
     camera.setPosition(eye.x, eye.y, eye.z);
     camera.setTarget(0.0f, 0.0f, 0.0f);
     camera.activate();
@@ -289,43 +305,66 @@ TEST_F(WaterReflectionGpu, EachPassSelectsTheTerrainForItsOwnCamera){
     component.needUpdateTexture = true;
     component.needUpdateTerrain = true;
 
-    Primitive low(&scene);
-    low.createPlane(6.0f, 6.0f);
-    low.setPosition(-4.0f, 2.0f, 0.0f);
-    low.setMaterial(mirrorWater());
-    Primitive high(&scene);
-    high.createPlane(6.0f, 6.0f);
-    high.setPosition(4.0f, 4.0f, 0.0f);
-    high.setMaterial(mirrorWater());
+    // two waters under it (the terrain is above both planes, so both reflections hold it), at
+    // heights far apart: their mirrored cameras, 14 and 32 m under the terrain, select other cuts
+    Primitive shallow(&scene);
+    shallow.createPlane(6.0f, 6.0f);
+    shallow.setPosition(-4.0f, -1.0f, 0.0f);
+    shallow.setMaterial(mirrorWater());
+    Primitive deep(&scene);
+    deep.createPlane(20.0f, 20.0f);
+    deep.setPosition(6.0f, -10.0f, 0.0f);
+    deep.setMaterial(mirrorWater());
 
     ASSERT_TRUE(render()) << "the scene never finished loading";
     GpuEnvironment::drawFrames(2);
     ASSERT_TRUE(component.heightMapLoaded) << "the terrain never loaded";
     ASSERT_EQ(stats().passes, 2u) << "the two heights are not two passes";
 
-    // the reflection passes' cameras: the eye mirrored about each water's height
-    const Vector3 mirrored[2] = {Vector3(eye.x, 2.0f * 4.0f - eye.y, eye.z), Vector3(eye.x, 2.0f * 2.0f - eye.y, eye.z)};
-    for (const Vector3& expected : mirrored){
-        bool selected = false;
-        for (int v = 1; v < MAX_TERRAIN_VIEWS; v++){
-            const Vector3& at = component.views[v].nodesEyePos;
-            std::printf("[gpu] terrain view %d selected from (%.2f, %.2f, %.2f)\n", v, at.x, at.y, at.z);
-            if ((at - expected).length() < 1e-3f)
-                selected = true;
-        }
-        EXPECT_TRUE(selected) << "no terrain view holds the cut of the reflection camera at (" << expected.x << ", "
-                              << expected.y << ", " << expected.z << ")";
+    // the reflection passes of the last frame, in the order they drew (the nearest height first)
+    const PassList list = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
+    std::vector<uint32_t> drawnInstances;
+    for (const PassRecord& pass : list.passes){
+        if (pass.executed && std::strcmp(pass.label, "camera rtt") == 0)
+            drawnInstances.push_back(pass.instances);
     }
+    ASSERT_EQ(drawnInstances.size(), 2u) << "not two reflection passes in the pass list";
+
+    // each pass's camera (the eye mirrored about its height), the view holding its cut, the nodes
+    // of that cut, and the terrain instances the pass drew
+    const float levels[2] = {-1.0f, -10.0f};
+    uint32_t cutNodes[2] = {0, 0};
+    for (int p = 0; p < 2; p++){
+        const Vector3 mirrored(eye.x, 2.0f * levels[p] - eye.y, eye.z);
+        int selected = -1;
+        for (int v = 1; v < MAX_TERRAIN_VIEWS; v++){
+            if ((component.views[v].nodesEyePos - mirrored).length() < 1e-3f)
+                selected = v;
+        }
+        ASSERT_NE(selected, -1) << "no terrain view holds the cut of the reflection camera at (" << mirrored.x << ", "
+                                << mirrored.y << ", " << mirrored.z << ")";
+        for (int b = 0; b < 2; b++)
+            cutNodes[p] += (uint32_t)component.views[selected].nodesbuffer[b].getCount();
+        std::printf("[gpu] reflection pass %d: its camera's cut in terrain view %d, %u nodes; the pass drew %u instances\n",
+                    p, selected, cutNodes[p], drawnInstances[p]);
+    }
+    // (the pass list counts a draw of no instance as one: the terrain's two node buffers, one may be empty)
+    auto apart = [](uint32_t a, uint32_t b){ return a > b ? a - b : b - a; };
+    auto near = [&apart](uint32_t a, uint32_t b){ return apart(a, b) <= 2u; };
+    ASSERT_GT(apart(cutNodes[0], cutNodes[1]), 4u) << "the two cameras select cuts of about one size: the test cannot tell them apart";
+    EXPECT_TRUE(near(drawnInstances[0], cutNodes[0])) << "the first reflection pass did not draw its own camera's cut";
+    EXPECT_TRUE(near(drawnInstances[1], cutNodes[1])) << "the second reflection pass did not draw its own camera's cut";
     EXPECT_NO_ENGINE_ERRORS();
-    TextureDataPool::remove(REFLECTION_TERRAIN_HEIGHTS);
 }
 
 // the MVPs are made per camera only in a frame that draws a reflection pass: with the planar
-// water out of the camera's sight (the eye under its surface) a batched mesh's MVP waits for a
-// draw alone, as in any one-camera frame (dynamic batching's lazy MVP), so a camera move leaves it
+// water in view but seen from below (the eye under its surface: no reflection pass) a batched
+// mesh's MVP waits for a draw alone, as in any one-camera frame (dynamic batching's lazy MVP), so
+// a camera move leaves it
 TEST_F(WaterReflectionGpu, MVPsPerCameraOnlyWhileAReflectionDraws){
     JASPER_REQUIRE_GPU();
     const bool batching = Engine::isDynamicBatching();
+    ReflectionRestore batchingMode([batching](){ Engine::setDynamicBatching(batching); });
     Engine::setDynamicBatching(true);
     camera.setPosition(0.0f, -2.0f, 8.0f);
     camera.setTarget(0.0f, -2.0f, 0.0f);
@@ -371,7 +410,6 @@ TEST_F(WaterReflectionGpu, MVPsPerCameraOnlyWhileAReflectionDraws){
     GpuEnvironment::drawFrames(1);
     EXPECT_EQ(stats().passes, 1u);
     EXPECT_FALSE(transform.modelViewProjectionMatrix == above) << "a reflection pass drew and the MVPs were not made per camera";
-    Engine::setDynamicBatching(batching);
     EXPECT_NO_ENGINE_ERRORS();
 }
 

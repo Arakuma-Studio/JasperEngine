@@ -292,7 +292,7 @@ TEST_F(WaterLayeringGpu, OverlappingRefractingWatersSeeEachOther){
 // the UI drawn in the camera's pass (a HUD element; here one lying under the water, where the
 // water covers it) is not in the scene colour the water refracts: the copy is taken before the
 // hierarchy loop's UI, and the transparent queue takes no copy again once the UI drew (a glass
-// under the water elsewhere asks for one), its held batched draws counted
+// under the water elsewhere asks for one), including UI draws the batcher still holds
 TEST_F(WaterLayeringGpu, UIStaysOutOfTheRefraction){
     JASPER_REQUIRE_GPU();
     camera.setPosition(0.0f, 5.0f, 3.0f);
@@ -346,6 +346,8 @@ TEST_F(WaterLayeringGpu, UIStaysOutOfTheRefraction){
     int samples = 0;
     for (int y = cy - 4; y <= cy + 4; y++){
         for (int x = cx - 4; x <= cx + 4; x++){
+            if (x < 0 || y < 0 || x >= width || y >= height)
+                continue;
             const uint8_t* p = &refracted[((size_t)y * width + x) * 4];
             over.r += p[0];
             over.g += p[1];
@@ -353,6 +355,7 @@ TEST_F(WaterLayeringGpu, UIStaysOutOfTheRefraction){
             samples++;
         }
     }
+    ASSERT_GT(samples, 0);
     over.r /= samples;
     over.g /= samples;
     over.b /= samples;

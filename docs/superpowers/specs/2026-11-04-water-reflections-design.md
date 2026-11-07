@@ -738,11 +738,15 @@ Branch `fu/water-tests` (docs/doriax-catchup/FOLLOWUPS.md, water-tests).
    `resolution` into a particle shader's custom blocks, so a particle fork's `sceneTime` read 0 while every other
    custom block (meshes, UI, points, lines, sky, post passes) got the scene clock. It now writes `sceneTime` too, so
    pause, time scale and the editor's clock act on particle shaders as on the rest.
-   `ParticlesGpu.CustomBlockReadsTheSceneClock` (fixture `particles/scene_clock.frag`) draws the clock as red.
+   `ParticlesGpu.CustomBlockReadsTheSceneClock` (fixture `particles/scene_clock.frag`) draws the clock as red, with
+   a fixed 0.1 s frame at time scale 0.5, paused and running, so the frame clock cannot pass for it. The built-in
+   `particles.frag` and `lines.frag` list the engine-written members, `sceneTime` included.
 2. **Regression tests for the review fixes of deviation 15 and 6**, each red with its fix reverted:
-   - per-pass terrain cut: `WaterReflectionGpu.EachPassSelectsTheTerrainForItsOwnCamera` (two heights: each pass's
-     terrain view holds the cut selected from its own mirrored eye). On glcore a shared view still draws right (GL
-     uploads in order); the test pins the per-view selection that Vulkan, Metal and D3D11 need, not pixels;
+   - per-pass terrain cut: `WaterReflectionGpu.EachPassDrawsTheTerrainOfItsOwnCamera` (two heights: each pass's
+     terrain view holds the cut selected from its own mirrored eye, and the pass draws that cut's nodes, read from
+     the pass list's instances). On glcore a shared view still draws right (GL uploads in order); the test pins the
+     per-pass views Vulkan, Metal and D3D11 need, not pixels. The pass's `shadows.terrainView` (the cut its depth
+     and shadow draws would read) is not observable: a reflection pass draws no depth or shadow pass of its own;
    - HUD refraction: `WaterLayeringGpu.UIStaysOutOfTheRefraction` (a UI image under a refracting water, a glass
      under it elsewhere asking for a re-copy: the water shows the floor, not the image); red both with the whole
      fix reverted and with only the held-batch flush before the re-copy decision reverted;
