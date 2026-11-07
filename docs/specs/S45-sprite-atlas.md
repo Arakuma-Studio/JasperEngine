@@ -486,4 +486,55 @@ inline rects; `RuntimeFields.gen.inc` is regenerated. `MAX_SPRITE_FRAMES` keeps 
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+Recorded by the implementation (`feature/s45-sprite-atlas`):
+
+- **Growable inline frames (R8).** The mesh-memory program made `framesRect` a `GrowArray` before
+  S45 (no capacity, empty by default). S45 adds the generated code's `framesRect.resize(n)` before
+  the rects and the 300-frame test.
+- **Texture sheets ship as records.** Metas do not ship, so a texture's Sprite Mode (and a
+  `name@WxH` grid) reaches the runtime as a `jasperengine.spritesheet` record through
+  `ImportedAssets` (`<texture>#sheet`): the editor writes it to `.jasperengine/cache/imported/v1/sheets/`
+  (`SpriteSheetBuilder`), exports copy it to `je-imported/sheets/`. A `name@WxH` file loaded with no
+  record (a game without an editor) is decoded and gridded by the engine itself.
+- **Texture frame keys.** A texture sheet's frames carry `key: "rect:<x>,<y>,<w>,<h>"` (their place
+  in the texture), kept by the atlas remap, so a legacy inline rect maps into the page through a
+  grid or multiple texture too (`mapInlineRect`); a single texture is mapped through its one frame.
+- **The atlas remap of legacy sprites (R8)** is runtime state (`SpriteComponent::inlineAtlas`): the
+  mesh draws the page while the scene encoder, the cooked scenes and the generated code write the
+  source texture and its rect.
+- **Auto compression (R16).** Texture import settings have no filter (the sampler is each
+  sprite's), so Auto is lossless when a member is an `.aseprite` file, a texture with S14 quality
+  `none`, or a texture with a Sprite Mode. S42's Pixel Art Mode is not on `main`.
+- **Incremental builds (R17).** A rebuild reuses each unchanged member's decoded frames (cached by
+  its content stamp) and lets S44's deterministic `pack()` lay out and draw the pages again (a few
+  ms); the same sizes give the same layout, so the observable rules hold: unchanged members are not
+  read again, page files are named by their bytes, and only pages whose bytes changed are written
+  and cooked. `relayout` in the build tells whether the layout moved. A build whose inputs match
+  `build.json` is adopted without packing.
+- **Menus.** The editor has no Tools menu: the project-wide conversion is **Assets > Convert Inline
+  Sprite Frames...**. The Project window's Create list is flat (its own **Sprite Atlas** item); the
+  main menu has **Assets > Create > 2D > Sprite Atlas / Sprite Atlas from Selection**.
+- **Project Settings > 2D** is a new page (S41's Pixels Per Unit is on Graphics); the MCP key is
+  `sprite_atlas.mode`.
+- **Families of a source export (R19).** A source export carries every platform: its atlases take
+  the desktop layout, or the web one when its only backend is GLES3 / WebGL2 (`build_project mode
+  source platform web`).
+- **Include in Build off** atlases are not used by the editor either (no remaps anywhere); they
+  ship and load by path.
+- **VRAM (R29).** Lossless pages count 4 bytes a pixel, the platforms' sprite formats 1.
+- **Sliced and lattices.** A Sliced sprite draws its 9-slice whatever grid a lattice asks for.
+- **`set_sprite_frames` slicing (R35)** writes the texture's Sprite Mode as Multiple (the names
+  given); the Slicer writes Grid when the cells are uniform and unedited. Existing MCP tests that pin
+  per-sprite slicing (sprite normals, `test_world`, `test_saved_output_determinism`) now pass
+  `inline: true`, and the sprite-normals wiring calls it with `inline: true` (its normal map pairs
+  with the mesh texture).
+- **`edit_sprite_atlas` `settings`** also takes `include_in_build`.
+- **Guide.** The upstream MCP rules give the area one "Other areas" entry (S44's `sprites`); S45's
+  agent text is in `docs/mcp/guide/sprites.md` (Sheets, Atlases, Legacy inline frames) with eval
+  cases `bad_atlas_by_hand` and `bad_inline_frames_retyped`.
+- **AC2/AC3 suites** are `SpriteAtlasRenderGpu.AtlasEqualsSources` and
+  `SpriteAtlasRenderGpu.SlicedKeepsItsCorners` (the naming rule wants `*Gpu` suites); both compare
+  two renders (or exact pixels) instead of a committed golden image.
+- **AC15** saves `screenshot view: editor` images of the harness' display instead of running
+  `tools/editor-shot.sh`.
+

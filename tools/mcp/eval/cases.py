@@ -799,6 +799,64 @@ CASES = [
         "max_turns": 10,
     },
 
+    {
+        "id": "bad_atlas_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked to pack the item icons into one texture so they batch, agents stitched a PNG with a shell "
+                         "script and re-sliced every sprite onto it with set_sprite_frames {texture, frames}: every scene "
+                         "changed and a new icon meant doing it again; the editor packs .spriteatlas files itself and sprites "
+                         "keep their own textures (S45).",
+        "text_at_issue": "edit_sprite_atlas description ('Without output: an in-memory pack ... output: true writes it'); "
+                         "its result's next",
+        "source": "S45 design review (pixel-art trial sessions, paraphrased)",
+        "files": {"assets/items/sword.png": "binary placeholder", "assets/items/shield.png": "binary placeholder",
+                  "assets/items/gem.png": "binary placeholder"},
+        "prompt": "The item icons in assets/items each cost a draw call. Pack them into one atlas so they batch.",
+        "mocks": [
+            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "edit_sprite_atlas", "args": {"output": True}, "result": ok(
+                "Created assets/items.spriteatlas: 1 page \u00b7 3 frames \u00b7 81 % used \u00b7 0.0 MB VRAM (desktop).",
+                {"written": True, "path": "assets/items.spriteatlas", "frame_count": 3, "usage_percent": 81,
+                 "next": "Created and built assets/items.spriteatlas (undo with scope project). Sprites keep referencing their "
+                         "sources; they now draw from its pages."})},
+            {"tool": "edit_sprite_atlas", "args": {}, "result": ok(
+                "Preview of assets/items.spriteatlas: 1 page \u00b7 3 frames \u00b7 81 % used. Nothing written.",
+                {"written": False, "frame_count": 3, "usage_percent": 81, "pages": [{"index": 0, "size": [64, 32], "frames": 3}],
+                 "next": "Nothing written. The same arguments plus output: true write assets/items.spriteatlas and build it."})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sprite_atlas", "args": {"output": True}}],
+                   "must_not_call": [{"tool": "set_sprite_frames", "args": {"frames": "*"}},
+                                     {"tool": "set_sprite_frames", "args": {"slice": "*"}}, {"tool": "write_file"}],
+                   "shell_must_not": [r"montage|convert\s+.*\+append|PIL|Image\.new"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_inline_frames_retyped",
+        "kind": "bad",
+        "what_happened": "Asked to move an old sprite's frames into its texture so other sprites can share them, agents read "
+                         "the inline rects and typed them back into set_sprite_frames {texture, frames} on each sprite, "
+                         "missing the ones in closed scenes; set_sprite_frames {convert, all_users} does it in one undo step (S45).",
+        "text_at_issue": "set_sprite_frames parameters convert, all_users; guide sprites 'Legacy inline frames'",
+        "source": "S45 design review (paraphrased)",
+        "files": {"assets/legacy/walk.png": "binary placeholder"},
+        "prompt": "The Walker sprite still keeps its own frame rects. Move them into walk.png so every sprite using that "
+                  "texture shares them, closed scenes included.",
+        "mocks": [
+            {"tool": "get_entity", "args": {}, "result": ok(
+                "Walker: Sprite Renderer (3 inline frames of assets/legacy/walk.png).",
+                {"components": {"sprite": {"framesRect": [{"name": "walk_0", "rect": [0, 0, 16, 16]},
+                                                          {"name": "walk_1", "rect": [16, 0, 16, 16]},
+                                                          {"name": "walk_2", "rect": [32, 0, 16, 16]}], "numFramesRect": 3}}})},
+            {"tool": "set_sprite_frames", "args": {"convert": True}, "result": ok(
+                "Converted 4 sprite(s) to frames of assets/legacy/walk.png's Sprite Mode (3 frames, indices kept).",
+                {"texture": "assets/legacy/walk.png", "frames": 3, "converted": [{"owner": "scenes/Main.scene", "game_object": "Walker"}],
+                 "next": "One undo (scope project) restores the sprites, their files and the texture's meta."})},
+        ],
+        "checks": {"calls": [{"tool": "set_sprite_frames", "args": {"convert": True, "all_users": True}}],
+                   "must_not_call": [{"tool": "set_sprite_frames", "args": {"frames": "*"}}, {"tool": "write_file"}]},
+        "max_turns": 10,
+    },
+
     # -- guards: good behaviour seen in the sessions ---------------------------------------------
     {
         "id": "guard_play_and_look",

@@ -308,10 +308,11 @@ async def test_clip_on_atlas(ed: Editor):
     """AC12: a clip keying sprite.frame on a packed sheet shows the frames it shows unpacked"""
     sid = S["view"]
     clip = "assets/anim/hero_frames.anim"
-    await ed.call("edit_animation", clip=clip, create={"length": 1.0, "frame_rate": 4}, tracks=[
-        {"path": "", "component": "sprite", "property": "frame", "keys": [[0.0, 0], [0.25, 1], [0.5, 2], [0.75, 3]], "interpolation": "step"}])
+    keys = [{"time": i * 0.25, "value": i} for i in range(4)]
+    await ed.call("edit_animation", clip=clip, create={}, wrap="once", length=1.0, tracks=[
+        {"path": "", "channel": "property", "component": "sprite", "property": "frame", "keys": keys}])
     await ed.call("add_component", scene=sid, entity="Hero", component="animationplayer",
-                  values={"clips": [{"clip": clip}], "defaultClip": "hero_frames", "playAutomatically": True})
+                  values={"animationplayer": {"clips": [{"clip": clip}], "playAutomatically": True}})
     samples = {}
     for mode in ("disabled", "enabled"):
         await set_mode(ed, mode)
@@ -320,11 +321,11 @@ async def test_clip_on_atlas(ed: Editor):
         await ed.call("select_scene", scene=sid)
         await ed.call("play", action="start", fixed_fps=60, auto_pause=True)
         try:
-            seen = []
-            for t in (0.1, 0.35, 0.6, 0.85):
-                await ed.call("wait", game_seconds=0.25 if seen else 0.1)
-                got = (await ed.call("eval_lua", code="local s = object('Hero', 'Sprite') return {s.frame, s.frameName}"))["values"][0]
-                seen.append(got)
+            seen, t = [], 0.0
+            for at in (0.125, 0.375, 0.625, 0.875):
+                await ed.call("wait", game_seconds=round(at - t, 6))
+                t = at
+                seen.append((await ed.call("eval_lua", code="local s = object('Hero', 'Sprite') return s.frame, s.frameName"))["values"])
             samples[mode] = seen
         finally:
             await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
@@ -402,8 +403,8 @@ async def test_lua(ed: Editor):
                 "local sword = atlas:getFrame('sword') "
                 "local s = object('Sword', 'Sprite') s.sheet = '" + ATLAS + "' s.frameName = 'sword' "
                 "print('atlas frames', atlas.frameCount, 'sword', sword.rect.width, sword.rect.height, 'sprite', s.frameCount, s.frameName) "
-                "return {atlas.frameCount, atlas:findFrame('sword') >= 0, s.frameName, s.frameCount, sword.rect.width}")
-        values = (await ed.call("eval_lua", code=code))["values"][0]
+                "return atlas.frameCount, atlas:findFrame('sword') >= 0, s.frameName, s.frameCount, sword.rect.width")
+        values = (await ed.call("eval_lua", code=code))["values"]
     finally:
         await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
     got = await ed.call("get_sprite_atlas", path=ATLAS, search="sword")
