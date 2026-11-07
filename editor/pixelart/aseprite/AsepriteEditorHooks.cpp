@@ -13,6 +13,7 @@
 #include "Project.h"
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
+#include "window/EditorModal.h"
 
 #include "imgui.h"
 
@@ -87,19 +88,21 @@ namespace {
             state.showDialog = false;
         }
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-        if (!ImGui::BeginPopupModal(kAsepriteNotFoundPopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
+        if (!EditorModal::begin(kAsepriteNotFoundPopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
             return;
+        constexpr const char* kLocateHint = "Locate its executable (it is kept in Preferences > External Tools > Aseprite), or install it from:";
+        EditorModal::message(state.message + " " + kLocateHint + " " + kAsepriteSite);
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 32.0f);
         ImGui::TextUnformatted(state.message.c_str());
         ImGui::Spacing();
-        ImGui::TextUnformatted("Locate its executable (it is kept in Preferences > External Tools > Aseprite), or install it from:");
+        ImGui::TextUnformatted(kLocateHint);
         ImGui::PopTextWrapPos();
         if (ImGui::TextLink(kAsepriteSite)) {
             std::string error;
             if (!Platform::openWithSystemDefault(kAsepriteSite, &error)) Out::warning("[Aseprite] %s", error.c_str());
         }
         ImGui::Separator();
-        if (ImGui::Button("Locate...")) {
+        if (EditorModal::button("Locate...", "locate")) {
             const std::string chosen = FileDialogs::openFileDialog("", FILE_DIALOG_ALL, false);
             if (!chosen.empty()) {
                 AppSettings::setExternalToolPath(kAsepriteToolKey, chosen);
@@ -111,7 +114,7 @@ namespace {
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Close")) {
+        if (EditorModal::button("Close", "cancel")) {
             state.failed.reset();
             ImGui::CloseCurrentPopup();
         }
