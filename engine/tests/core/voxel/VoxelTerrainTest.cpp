@@ -405,10 +405,15 @@ TEST_F(VoxelTerrain, RimHasNoStep) {
     const EditOp bowl = digOp(sphereShape(40.0, surface + 2.0, 40.0, 4.0));
     ASSERT_TRUE(system->edit(owner, std::span<const EditOp>(&dish, 1), EditOptions{}).ok);
     ASSERT_TRUE(system->edit(owner, std::span<const EditOp>(&bowl, 1), EditOptions{}).ok);
-    for (int tick = 0; tick < 1800 && (holeCount() == 0 || !system->isCollisionReady(owner, AABB(Vector3(52, 0, 52), Vector3(80, 40, 80)))); tick++) steps(1);
-    for (int i = 0; i < 60; i++) steps(1);
-    system->finishPendingWork();
-    ASSERT_GT(holeCount(), 0);
+    // until the hole opens and a second after it, in game time
+    int openedAt = -1;
+    for (int tick = 0; tick < 1800 && (openedAt < 0 || tick < openedAt + 60); tick++) {
+        steps(1);
+        if (openedAt < 0 && holeCount() > 0) openedAt = tick;
+    }
+    ASSERT_GE(openedAt, 0);
+    std::printf("[bench] rim: hole opened after %d ticks, %d texels; ground through the mouth %.3f drawn, %.3f colliding\n", openedAt, holeCount(),
+                voxel::sampleGround(scene.get(), 64.0f, 64.0f, 60.0f).height, groundAt(64.0f, 64.0f));
 
     // radial paths, 5 mm apart: a slope moves at most a few mm between samples, a step all at once
     const float spacing = 0.005f;
