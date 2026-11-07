@@ -2006,8 +2006,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "set_child_scene";
         tool.title = "Set Child Scene";
         tool.description =
-            "Attach (attached=false: detach) `child` as an additive child scene of `scene` (open). start_active: active "
-            "when the parent starts; loaded_inline: shown inside the parent in the editor (also during Play). Not undoable.";
+            "Attach (attached=false: detach) `child` as additive child scene of `scene`. start_active: on when the "
+            "parent starts; loaded_inline: shown inside the parent, also in Play. Not undoable.";
         tool.inputSchema = object({
             {"scene", sceneRef("Parent (default: selected).")},
             {"child", sceneRef()},
