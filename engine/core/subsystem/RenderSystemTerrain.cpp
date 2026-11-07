@@ -129,7 +129,10 @@ uint64_t RenderSystem::getTerrainDefineBits(const MeshShaderEnvironment& environ
 
     if (tier == terrain::TerrainQuality::MEDIUM) bits |= bit("TERRAIN_QUALITY_MEDIUM");
     if (tier == terrain::TerrainQuality::LOW) bits |= bit("TERRAIN_QUALITY_LOW");
-    if (tier == terrain::TerrainQuality::HIGH && inputs.limitLayers) bits |= bit("TERRAIN_LAYER_LIMIT");
+    // A cap that keeps every layer is no cap: the same image without the selection. And llvmpipe's GL path
+    // (Mesa 23.2) dies on an illegal instruction in the colour-only High variant with the cap, which every
+    // new terrain (no layers, R53's limit on) would draw (spec Deviations)
+    if (tier == terrain::TerrainQuality::HIGH && inputs.limitLayers && inputs.layerCount > info.limitedLayersPerPixel) bits |= bit("TERRAIN_LAYER_LIMIT");
     if (info.trimBlendMaps){
         const int maps = terrain::terrainBlendMapCount(inputs.layerCount);
         if (maps <= 1) bits |= bit("TERRAIN_BLENDMAPS_1");

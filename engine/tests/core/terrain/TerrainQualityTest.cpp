@@ -8,6 +8,8 @@
 #include "terrain/TerrainMacroNormal.h"
 #include "terrain/TerrainMaterialCost.h"
 #include "terrain/TerrainQuality.h"
+#include "subsystem/RenderSystem.h"
+#include "texture/MaterialPbr.h"
 
 #include <gtest/gtest.h>
 
@@ -32,6 +34,28 @@ TEST(TerrainQuality, Table) {
     EXPECT_EQ(parsed, TerrainQuality::LOW);
     EXPECT_FALSE(terrainQualityFromName("ultra", parsed));
     EXPECT_STREQ(terrainQualityName(TerrainQuality::MEDIUM), "medium");
+}
+
+// R53 with the cap: a terrain with no more layers than High's limited count keeps them all, so it takes no
+// TERRAIN_LAYER_LIMIT (the same image, and llvmpipe's GL path dies in that variant without layers)
+TEST(TerrainQuality, LayerLimitOnlyWhenItCuts) {
+    jasperengine::MeshShaderEnvironment environment;
+    environment.terrainForced = true;
+    environment.terrainForcedTier = TerrainQuality::HIGH;
+    TerrainVariantInputs inputs;
+    inputs.limitLayers = true;
+    const uint64_t limitBit = jasperengine::MaterialPbr::getDefineBit("TERRAIN_LAYER_LIMIT");
+    const int cap = terrainTierInfo(TerrainQuality::HIGH).limitedLayersPerPixel;
+    for (int layers = 0; layers <= 12; layers++) {
+        inputs.layerCount = layers;
+        for (bool surface : {false, true}) {
+            const bool limited = (jasperengine::RenderSystem::getTerrainDefineBits(environment, inputs, surface, false, true) & limitBit) != 0;
+            EXPECT_EQ(limited, layers > cap) << layers << " layers, surface " << surface;
+        }
+    }
+    inputs.limitLayers = false;
+    inputs.layerCount = 9;
+    EXPECT_EQ(jasperengine::RenderSystem::getTerrainDefineBits(environment, inputs, true, false, true) & limitBit, 0u) << "off is off";
 }
 
 TEST(TerrainQuality, Resolution) {
