@@ -96,6 +96,11 @@ Projects made before the rename are migrated once with
 | `Update` / `FixedUpdate` / `LateUpdate` -> `onUpdate` / `onFixedUpdate` / `onPostUpdate` registered with `RegisterEngineEvent(self, "onUpdate")` (C++ `REGISTER_ENGINE_EVENT`) | unchanged |
 | `MonoBehaviour.enabled` -> `self.enabled` (Lua, rw: fires `onEnable`/`onDisable`), `isEnabled()` / `setEnabled(bool)` (C++); `isActiveAndEnabled` -> `self.isActiveAndEnabled` / `isActiveAndEnabled()`; `gameObject` -> `self.gameObject` | none (new) |
 | `GetComponent<Enemy>()`, `GetComponents`, `GetComponentInChildren`, `GetComponentsInChildren`, `GetComponentInParent` (for scripts) -> `go:getScript("Enemy")`, `getScripts`, `getScriptInChildren`, `getScriptsInChildren`, `getScriptInParent` (also on `self`); C++ `getScript<T>()` | none (new): a script property typed with the script's class |
+| `transform.parent`, `SetParent(p, worldPositionStays)`, `childCount`, `GetChild(i)`, `Find("a/b")` -> `go.parent`, `go:setParent(p [, worldPositionStays])`, `go.childCount`, `go:getChild(i)` (0-based), `go:findChild("a/b")`, plus `go:getChildren()`; C++ `getParent()`, `setParent`, `getChildCount()`, `getChild`, `getChildren`, `findChild` | `addChild`, `removeParent` only (no way to read the parent or the children) |
+| `Vector3.Lerp` (t clamped), `Vector3.LerpUnclamped`, `Vector3.MoveTowards` (also Vector2, Vector4) -> `a:lerp(b, t)` / `Vector3.lerp(a, b, t)`, `lerpUnclamped`, `moveTowards`; C++ the same | `Vector3::lerp` unclamped, C++ only |
+| `Bounds` corners (`GetCorners` of a hand-written helper) -> `AABB:getCorners()` / `OBB:getCorners()` (8 `Vector3`) | one corner |
+| `Rigidbody2D.AddForce` (always wakes the body) -> `applyForce(f, p [, wake = true])` and the other force/impulse methods | `wake` read as false when left out |
+| Add Component > Scripts > a script, dragging a script onto a GameObject (Inspector or Hierarchy) -> the same: Add Component and the Script component's Add Script list the project's scripts; drops attach | Add Script added an empty C++ entry |
 | `GameObject.Find`, `GameObject.FindWithTag`, `FindGameObjectsWithTag`, `Object.FindObjectOfType<T>()`, `FindObjectsOfType<T>(includeInactive)` -> `GameObject.find`, `findWithTag`, `findGameObjectsWithTag`, `findObjectOfType("T")`, `findObjectsOfType("T", includeInactive)` (every running scene) | `scene:findEntity`, `scene:findByTag` (one scene) |
 | `Object.DontDestroyOnLoad(gameObject)` -> `DontDestroyOnLoad(self)` (global) or `GameObject.dontDestroyOnLoad(obj)`; C++ `ScriptBase::dontDestroyOnLoad()`; root GameObjects only, the whole hierarchy moves with its running state ([lua-api.md](mcp/guide/lua-api.md) 2.8.1) | none (new) |
 | The "DontDestroyOnLoad" scene (Hierarchy in Play) -> the persistent scene `SceneManager.persistentScene`, a scene layer above the loaded scenes (Hierarchy row "DontDestroyOnLoad" in Play; MCP running scene with `persistent: true`) | none (new) |
@@ -280,6 +285,9 @@ Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
 | `Debug.isDebugBuild`, the Development Build checkbox | `Engine.isDevelopmentBuild`: the editor's Play and exports built with the Debug build type |
 | IngameDebugConsole (`DebugLogManager`, `DebugLogConsole.AddCommand`, `ExecuteCommand`, the popup) | `DebugOverlay` (`showConsole`, `toggleConsole`, `addCommand`, `executeCommand`; the popup and the backquote key), Project Settings > Debug |
 | Graphy (FPS, RAM, audio monitors) | the debug overlay's stats panel (`DebugOverlay.statsMode`, F3) and `DebugOverlay.getStats()` |
+| Dynamic Batching (Player Settings), SpriteRenderer batching | Dynamic Batching (Project Settings > Graphics, on by default; `Engine.dynamicBatching`): Sprites, small meshes and UI elements, [rendering/batching.md](rendering/batching.md) |
+| Game view Stats: Batches, Saved by batching | the same lines in the Game view's Stats; MCP `get_render_stats` `batching` |
+| Frame Debugger: "Why this draw call can't be batched with the previous one" | the Frame Debugger's Dynamic Batch rows (hover: the reason); MCP `get_render_stats batch_breaks` |
 
 See [mcp/guide/debugging.md](mcp/guide/debugging.md).
 

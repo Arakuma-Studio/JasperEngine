@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "util/ScriptPropertyCache.h"
+#include "util/ProjectChecks.h"
 #include "memory/HeapTrim.h"
 #include "render/LayerViewCamera.h"
 #include "component/MirrorComponent.h"
@@ -1675,6 +1677,15 @@ bool editor::Project::isVSyncEnabled() const{
     return vsyncEnabled;
 }
 
+void editor::Project::setDynamicBatching(bool enabled){
+    dynamicBatching = enabled;
+    Engine::setDynamicBatchingDefault(enabled);
+}
+
+bool editor::Project::isDynamicBatching() const{
+    return dynamicBatching;
+}
+
 void editor::Project::setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality){
     atmosphereQuality = quality;
     Engine::setAtmosphereQualityDefaults(quality[0], quality[1], quality[2]);
@@ -2930,6 +2941,7 @@ editor::PlayerSettings editor::Project::getPlayerSettings() const{
     settings.allowedOrientations = presentationSettings.effectiveAllowedOrientations();
     settings.keepScreenOn = presentationSettings.keepScreenOn;
     settings.targetFrameRate = presentationSettings.targetFrameRate;
+    settings.dynamicBatching = dynamicBatching;
     auto app = [this](const std::string& name, const std::string& identifier, const std::string& version, const std::string& build) {
         ApplicationInfo info;
         info.name = getApplicationName(name);
@@ -2951,6 +2963,7 @@ void editor::Project::applyPresentationSettings(){
     Engine::resetApplicationState();
     editor::Platform::resetPlayRecords();
     Engine::setVSyncCount(vsyncEnabled ? 1 : 0);
+    Engine::setDynamicBatchingDefault(dynamicBatching);
     Engine::setTargetFrameRate(presentationSettings.targetFrameRate);
     Screen::initialize(presentationSettings.defaultOrientation, presentationSettings.effectiveAllowedOrientations(),
                        presentationSettings.keepScreenOn);
@@ -4408,6 +4421,15 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
                 }
             }
 
+            // the fields its scripts declare now: they may have changed since the scene was saved
+            // (written with the next save, the scene is not marked modified for it)
+            ScriptPropertyCache scriptCache;
+            for (Entity entity : targetScene->entities) {
+                if (ScriptComponent* scripts = targetScene->scene->findComponent<ScriptComponent>(entity)) {
+                    updateScriptProperties(targetScene, entity, scripts->scripts, "", "", &scriptCache);
+                }
+            }
+
             setSelectedSceneId(targetScene->id);
 
             editor::getEditorHost().addNewSceneToDock(targetScene->id);
@@ -5777,6 +5799,7 @@ void editor::Project::resetConfigs() {
     Engine::setDefaultCanvasScaler(uiScale);
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
+    setDynamicBatching(defaultDynamicBatching);
     setAtmosphereQuality(defaultAtmosphereQuality);
     setFoliageDistanceScale(defaultFoliageDistanceScale);
     playerLogging = PlayerLoggingSettings();
@@ -9304,63 +9327,83 @@ bool editor::Project::hasUnsavedPrefabs() const{
 }
 
 
-void editor::Project::updateAllScriptsProperties(uint32_t sceneId){
+void editor::Project::updateAllScriptsProperties(uint32_t sceneId, ScriptPropertyCache* cache){
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) return;
 
+    ScriptPropertyCache passCache;
+    if (!cache) cache = &passCache;
     for (Entity entity : sceneProject->entities) {
         Signature signature = sceneProject->scene->getSignature(entity);
         if (signature.test(sceneProject->scene->getComponentId<ScriptComponent>())) {
             ScriptComponent& scriptComponent = sceneProject->scene->getComponent<ScriptComponent>(entity);
-            updateScriptProperties(sceneProject, entity, scriptComponent.scripts);
+            updateScriptProperties(sceneProject, entity, scriptComponent.scripts, "", "", cache);
         }
     }
 }
 
-bool editor::Project::updateScriptProperties(SceneProject* sceneProject, Entity entity, std::vector<ScriptEntry>& scripts, const std::string& inMemoryContent, const std::string& inMemoryPath) {
+fs::path editor::Project::scriptPropertyFile(const ScriptEntry& entry) const {
+    if (entry.type == ScriptType::LUA) {
+        return entry.path.empty() ? fs::path() : resolveLuaPath(entry.path).lexically_normal();
+    }
+    if (entry.headerPath.empty()) return {};
+    fs::path header = entry.headerPath;
+    if (header.is_relative()) header = getProjectPath() / header;
+    return header.lexically_normal();
+}
+
+fs::path editor::Project::scriptSourceFile(const ScriptEntry& entry) const {
+    if (entry.type == ScriptType::LUA) return scriptPropertyFile(entry);
+    if (entry.path.empty()) return {};
+    fs::path source = entry.path;
+    if (source.is_relative()) source = getProjectPath() / source;
+    return source.lexically_normal();
+}
+
+bool editor::Project::scriptEntryUsesFile(const ScriptEntry& entry, const fs::path& absolute) const {
+    const fs::path file = absolute.lexically_normal();
+    if (file.empty()) return false;
+    return scriptPropertyFile(entry) == file || scriptSourceFile(entry) == file;
+}
+
+bool editor::Project::updateScriptProperties(SceneProject* sceneProject, Entity entity, std::vector<ScriptEntry>& scripts, const std::string& inMemoryContent,
+                                             const std::string& inMemoryPath, ScriptPropertyCache* cache) {
     bool hasChanges = false;
+    const fs::path inMemoryFile = inMemoryContent.empty() ? fs::path() : fs::path(inMemoryPath).lexically_normal();
 
-    // Update properties for each script in the component
     for (auto& scriptEntry : scripts) {
-        // C++ scripts: keep existing behavior
+        const fs::path fullPath = scriptPropertyFile(scriptEntry);
+        if (fullPath.empty()) continue;
+        const bool edited = !inMemoryFile.empty() && fullPath == inMemoryFile;
+
         if (scriptEntry.type == ScriptType::CPP) {
-
-            if (scriptEntry.headerPath.empty()) continue;
-
-            fs::path fullPath = scriptEntry.headerPath;
-            if (fullPath.is_relative()) {
-                fullPath = getProjectPath() / fullPath;
-            }
-
             std::vector<ScriptProperty> parsedProperties;
-            if (!inMemoryContent.empty() && fullPath.string() == fs::path(inMemoryPath).string()) {
+            if (edited) {
                 parsedProperties = ScriptParser::parseScriptPropertiesFromString(inMemoryContent, fullPath.string());
+            } else if (cache) {
+                const std::optional<std::vector<ScriptProperty>> cached = cache->cppProperties(fullPath);
+                // a header gone or unreadable says nothing about its fields: they stay
+                if (!cached) continue;
+                parsedProperties = *cached;
             } else {
-                parsedProperties = ScriptParser::parseScriptProperties(fullPath);
+                std::string code;
+                if (!ProjectChecks::readFile(fullPath, code)) continue;
+                parsedProperties = ScriptParser::parseScriptPropertiesFromString(code, fullPath.string());
             }
-
             hasChanges |= mergeScriptProperties(scriptEntry.properties, parsedProperties);
-
             continue;
         }
 
-        // Lua scripts: load properties from Lua file
         if (scriptEntry.type == ScriptType::LUA) {
-            if (scriptEntry.path.empty()) continue;
-
-            fs::path fullPath = resolveLuaPath(scriptEntry.path);
-
             ScriptEntry parsedEntry = scriptEntry;
-
-            if (!inMemoryContent.empty() && fullPath.string() == fs::path(inMemoryPath).string()) {
+            if (edited) {
                 ProjectUtils::loadLuaScriptPropertiesFromString(parsedEntry, inMemoryContent, fullPath.string());
+            } else if (cache) {
+                cache->loadLua(parsedEntry, fullPath);
             } else {
                 ProjectUtils::loadLuaScriptProperties(parsedEntry, fullPath.string());
             }
-
             hasChanges |= mergeScriptProperties(scriptEntry.properties, parsedEntry.properties);
-
-            continue;
         }
     }
 

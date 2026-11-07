@@ -4475,6 +4475,17 @@
 		4A534E474A059AA31BFFE059 /* ComponentEvents.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D9914C150209E5CB /* ComponentEvents.h */; };
 		4A534E477B0DA4FEC296B1C7 /* HashRandom.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D02364B83FAFB4BA /* HashRandom.h */; };
 		4A534E47D0AB41A2D07C3A21 /* VulkanRobustness.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */; };
+		4A534E47F783FD15C20796BA /* FrustumCull.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4706670F9B31416A92 /* FrustumCull.cpp */; };
+		4A534E47955278D4A6E349A7 /* FrustumCull.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4706670F9B31416A92 /* FrustumCull.cpp */; };
+		4A534E4771794B0938C50F3F /* DrawBatcher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4796F6995CA27FA950 /* DrawBatcher.cpp */; };
+		4A534E47C1EDEEFB7A4DB287 /* DrawBatcher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4796F6995CA27FA950 /* DrawBatcher.cpp */; };
+		4A534E47780F1FB63C92E44A /* RenderSystemBatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */; };
+		4A534E47C54C9AAC683562BB /* RenderSystemBatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */; };
+		4A534E47EC1527BD9215708F /* ContentHash.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477812D37EDE027E54 /* ContentHash.cpp */; };
+		4A534E474E1AD9E2E230BD31 /* ContentHash.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477812D37EDE027E54 /* ContentHash.cpp */; };
+		4A534E47D9D64A1F2922561D /* DrawBatcher.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475065F0D282851FFA /* DrawBatcher.h */; };
+		4A534E4753AE5E337EEF8298 /* FrustumCull.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E7BE6C143B079A81 /* FrustumCull.h */; };
+		4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477B2FB8E9277F0AE4 /* ContentHash.h */; };
 		4A534E47F2CD91899A5516E7 /* PixelPerfectLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */; };
 		4A534E47F6F783BAE5B25B2E /* PixelPerfectLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */; };
 		4A534E47FC51F1B3A7B60422 /* PixelRotation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4729B77C264D072B9E /* PixelRotation.cpp */; };
@@ -8767,6 +8778,13 @@
 		4A534E47D9914C150209E5CB /* ComponentEvents.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ComponentEvents.h; sourceTree = "<group>"; };
 		4A534E47D02364B83FAFB4BA /* HashRandom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HashRandom.h; sourceTree = "<group>"; };
 		4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VulkanRobustness.h; sourceTree = "<group>"; };
+		4A534E4706670F9B31416A92 /* FrustumCull.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FrustumCull.cpp; sourceTree = "<group>"; };
+		4A534E4796F6995CA27FA950 /* DrawBatcher.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DrawBatcher.cpp; sourceTree = "<group>"; };
+		4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemBatch.cpp; sourceTree = "<group>"; };
+		4A534E477812D37EDE027E54 /* ContentHash.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContentHash.cpp; sourceTree = "<group>"; };
+		4A534E475065F0D282851FFA /* DrawBatcher.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DrawBatcher.h; sourceTree = "<group>"; };
+		4A534E47E7BE6C143B079A81 /* FrustumCull.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrustumCull.h; sourceTree = "<group>"; };
+		4A534E477B2FB8E9277F0AE4 /* ContentHash.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ContentHash.h; sourceTree = "<group>"; };
 		4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelPerfectLayout.cpp; sourceTree = "<group>"; };
 		4A534E4729B77C264D072B9E /* PixelRotation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelRotation.cpp; sourceTree = "<group>"; };
 		4A534E472B25A401BD02EB09 /* PixelsPerUnit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelsPerUnit.cpp; sourceTree = "<group>"; };
@@ -10802,6 +10820,8 @@
 				4A534E47778D99DE934432D4 /* PlatformRules.h */,
 				4A534E4799EC5AF629083BC1 /* GrowArray.h */,
 				4A534E47C4F45D33EE25F2E9 /* StableArray.h */,
+				4A534E477812D37EDE027E54 /* ContentHash.cpp */,
+				4A534E477B2FB8E9277F0AE4 /* ContentHash.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -10896,6 +10916,10 @@
 				4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */,
 				4A534E47FA1901109EC2D231 /* SSRProbeSlots.h */,
 				4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */,
+				4A534E4706670F9B31416A92 /* FrustumCull.cpp */,
+				4A534E4796F6995CA27FA950 /* DrawBatcher.cpp */,
+				4A534E475065F0D282851FFA /* DrawBatcher.h */,
+				4A534E47E7BE6C143B079A81 /* FrustumCull.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -11277,6 +11301,7 @@
 				4A534E479D83C26E146CE8A0 /* GltfNormalize.h */,
 				4A534E47F7FB625C23466BAF /* RenderSystemLighting.cpp */,
 				4A534E472FCC66B498BDDE06 /* RenderSystemLighting.h */,
+				4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */,
 				4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */,
 			);
 			path = subsystem;
@@ -15608,6 +15633,9 @@
 				4A534E474A059AA31BFFE059 /* ComponentEvents.h in Headers */,
 				4A534E477B0DA4FEC296B1C7 /* HashRandom.h in Headers */,
 				4A534E47D0AB41A2D07C3A21 /* VulkanRobustness.h in Headers */,
+				4A534E47D9D64A1F2922561D /* DrawBatcher.h in Headers */,
+				4A534E4753AE5E337EEF8298 /* FrustumCull.h in Headers */,
+				4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */,
 				4A534E47121FD6387E508980 /* PixelPerfectCameraComponent.h in Headers */,
 				4A534E4796FEBF33733E2DFB /* PixelPerfectCamera.h in Headers */,
 				4A534E473C40ED72D5D87706 /* PixelPerfectLayout.h in Headers */,
@@ -18138,6 +18166,10 @@
 				4A534E47670206F6BE79EF39 /* AudioClassesLua.cpp in Sources */,
 				4A534E4733689B48DEC9E956 /* HeapTrim.cpp in Sources */,
 				4A534E476CC9A23083687A69 /* SSRProbeSlots.cpp in Sources */,
+				4A534E47F783FD15C20796BA /* FrustumCull.cpp in Sources */,
+				4A534E4771794B0938C50F3F /* DrawBatcher.cpp in Sources */,
+				4A534E47780F1FB63C92E44A /* RenderSystemBatch.cpp in Sources */,
+				4A534E47EC1527BD9215708F /* ContentHash.cpp in Sources */,
 				4A534E47F2CD91899A5516E7 /* PixelPerfectLayout.cpp in Sources */,
 				4A534E47FC51F1B3A7B60422 /* PixelRotation.cpp in Sources */,
 				4A534E47BAE152DFB7C3B8C0 /* PixelsPerUnit.cpp in Sources */,
@@ -18963,6 +18995,10 @@
 				4A534E474DEE448FA99C20CF /* AudioClassesLua.cpp in Sources */,
 				4A534E474586B68050D02466 /* HeapTrim.cpp in Sources */,
 				4A534E47C60D2786A6CDB1B0 /* SSRProbeSlots.cpp in Sources */,
+				4A534E47955278D4A6E349A7 /* FrustumCull.cpp in Sources */,
+				4A534E47C1EDEEFB7A4DB287 /* DrawBatcher.cpp in Sources */,
+				4A534E47C54C9AAC683562BB /* RenderSystemBatch.cpp in Sources */,
+				4A534E474E1AD9E2E230BD31 /* ContentHash.cpp in Sources */,
 				4A534E47F6F783BAE5B25B2E /* PixelPerfectLayout.cpp in Sources */,
 				4A534E478CE6807E3A08DEE2 /* PixelRotation.cpp in Sources */,
 				4A534E47D9601CF893F61A9F /* PixelsPerUnit.cpp in Sources */,

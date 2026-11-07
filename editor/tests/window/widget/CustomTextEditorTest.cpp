@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "window/widget/CustomTextEditor.h"
+#include "window/widget/SemanticSuggestions.h"
 
 #include "imgui_internal.h"
 
@@ -411,4 +412,27 @@ TEST(CustomTextEditorDiff, KeysAndMarkerClick) {
     // Esc closes it
     input.key(editor, ImGuiKey_Escape, false, false);
     EXPECT_EQ(editor.GetDiffPeekChange(), -1);
+}
+
+namespace {
+
+    bool suggests(SyntaxLanguage language, const std::string& text, const std::string& label) {
+        Editor editor(language, text);
+        editor.SetAutoComplete(true);
+        editor.SetCursorPosition(0, static_cast<int>(text.size()));
+        editor.TriggerAutoComplete(true);
+        for (const SuggestionItem& item : editor.GetCurrentSuggestions()) {
+            if (item.label == label) return true;
+        }
+        return false;
+    }
+
+}
+
+// C++ completion offers what C++ has (Doriax 755972f92): Engine.deltatime is a Lua property backed
+// by Engine::getDeltatime(); Engine::deltatime does not compile
+TEST(CustomTextEditorCompletion, CppHidesLuaOnlyMembers) {
+    EXPECT_FALSE(suggests(SyntaxLanguage::Cpp, "jasperengine::Engine::delta", "deltatime"));
+    EXPECT_TRUE(suggests(SyntaxLanguage::Cpp, "jasperengine::Engine::getDelta", "getDeltatime"));
+    EXPECT_TRUE(suggests(SyntaxLanguage::Lua, "Engine.delta", "deltatime"));
 }

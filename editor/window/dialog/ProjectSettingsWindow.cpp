@@ -1002,6 +1002,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     }
     m_physics3DWorld = project->getPhysics3DWorldSettings();
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
+    m_dynamicBatching = project->isDynamicBatching();
     m_mobilePbrTierIndex = findMobilePbrTierIndex(project->getMobilePbrTier());
     m_lightModeIndex = static_cast<int>(project->getLightMode());
 
@@ -1946,6 +1947,16 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
 
         drawShaderCreationSettings();
 
+        if (settingsui::beginRow("graphics.dynamic_batching")) {
+            if (projectBeginSettingsRow("Dynamic Batching", m_dynamicBatching != Project::defaultDynamicBatching)) {
+                m_dynamicBatching = Project::defaultDynamicBatching;
+            }
+            ImGui::Checkbox("##DynamicBatching", &m_dynamicBatching);
+            endSettingsRow("Consecutive Sprites, small meshes (64 vertices at most) and UI elements that share a material, textures "
+                "and render state draw as one draw call: their vertices are placed on the CPU and drawn together. The image is the same; "
+                "turn it off to compare. The Game view's Stats show Batches and Saved by batching, the Frame Debugger why a draw "
+                "was not batched with the previous one.");
+        }
         drawUploadBudgetSettings();
 
         if (settingsui::beginRow("graphics.runtime_shaders")) {
@@ -4982,6 +4993,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setInputDeadzone(m_inputDeadzone);
     m_project->setPhysics3DWorldSettings(m_physics3DWorld);
     m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
+    m_project->setDynamicBatching(m_dynamicBatching);
     m_project->setMobilePbrTier(mobilePbrTierValues[m_mobilePbrTierIndex]);
     m_project->setLightMode(static_cast<LightMode>(std::clamp(m_lightModeIndex, 0, lightModeCount - 1)));
 

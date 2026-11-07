@@ -99,6 +99,7 @@ json PlayerConfig::toJson() const {
     out["htmlUi"] = {{"msaa", htmlUiMsaa}, {"glyphAtlasMiB", glyphAtlasMiB}, {"sdfPrimitives", sdfPrimitives},
                      {"transformAwareText", transformAwareText}};
     out["mobilePbrTier"] = nameOf(kPbrTier, mobilePbrTier);
+    out["dynamicBatching"] = dynamicBatching;
     out["lightMode"] = LightingTiers::getModeName(lightMode);
     json tiers = json::array();
     for (ShadowTier tier : shadowTiers) tiers.push_back(nameOf(kShadowTier, tier));
@@ -238,6 +239,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.transformAwareText = htmlUi->value("transformAwareText", config.transformAwareText);
         }
         valueOf(kPbrTier, in.value("mobilePbrTier", "reduced"), config.mobilePbrTier);
+        config.dynamicBatching = in.value("dynamicBatching", config.dynamicBatching);
         // absent (a config written before it) or unknown: Automatic
         const std::string lightMode = in.value("lightMode", "automatic");
         if (!LightingTiers::modeFromName(lightMode.c_str(), config.lightMode)) config.lightMode = LightMode::AUTOMATIC;

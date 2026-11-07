@@ -1305,6 +1305,37 @@ CASES = [
                    "must_not_call": ["fork_shader", "set_scene_settings", "write_file"]},
         "max_turns": 10,
     },
+    {
+        "id": "bad_batch_breaks",
+        "kind": "bad",
+        "playing": True,
+        "what_happened": "Asked why a 2D level makes hundreds of draw calls, agents read get_render_stats' draw count and "
+                         "guessed (texture sizes, overdraw) instead of asking which objects break Dynamic Batching and why.",
+        "text_at_issue": "get_render_stats description '... batching.'; batch_breaks param: 'Lists the first N draws that did not "
+                         "batch and why.'",
+        "source": "sprite-batching spec, story 'Agent' (synthetic from the spec's user stories)",
+        "prompt": "The 2D level in the running game makes about 900 draw calls. Find out which sprites keep it from batching "
+                  "and why, and tell me what to change. Measure, don't guess.",
+        "mocks": [
+            {"tool": "get_render_stats", "args": {"batch_breaks": "*"}, "result": ok(
+                "Render stats (game): 905 draws, 3 passes, CPU 9.1 ms, 300 batches (saved by batching: 700).",
+                {"view": "game", "draw_calls": 905, "batching": {
+                    "enabled": True, "batches": 300, "batched_objects": 1000, "saved_by_batching": 700,
+                    "breaks": {"texture": 898},
+                    "batch_breaks": [{"reason": "texture", "pass": "color", "entity": 41, "entity_name": "Enemy (12)",
+                                      "previous": 40, "previous_name": "Coin (40)"},
+                                     {"reason": "texture", "pass": "color", "entity": 42, "entity_name": "Coin (41)",
+                                      "previous": 41, "previous_name": "Enemy (12)"}]}})},
+            {"tool": "get_render_stats", "result": ok(
+                "Render stats (game): 905 draws, 3 passes, CPU 9.1 ms, 300 batches (saved by batching: 700).",
+                {"view": "game", "draw_calls": 905, "batching": {"enabled": True, "batches": 300, "saved_by_batching": 700,
+                                                                 "breaks": {"texture": 898}}})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\").", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+        ],
+        "checks": {"calls": [{"tool": "get_render_stats", "args": {"batch_breaks": "*"}}],
+                   "reply_must": [r"(?i)texture", r"(?i)enemy|coin"]},
+        "max_turns": 14,
+    },
     # -- dialogs (S69): results as the editor sends them; the model sees their structuredContent ---
     {
         "id": "dialog_fills_a_name_prompt",
@@ -1995,6 +2026,84 @@ CASES = [
         ],
         "checks": {"calls": ["get_play_state"], "reply_must": [r"(?i)(given back|released|editor (has|holds))"]},
         "max_turns": 6,
+    },
+    {
+        "id": "guard_model_parts_mesh",
+        "kind": "guard",
+        "what_happened": "A glTF with several mesh nodes keeps its geometry on child parts; an agent turned shadows off on the "
+                         "model's own (empty) mesh and reported success. set_properties now warns and names the parts.",
+        "text_at_issue": "set_properties result warning: '\"Robot\" draws 2 part(s) (Robot/Body, Robot/Eyes): set the mesh "
+                         "on them, or use the Model API in Lua'",
+        "source": "Doriax cc550567a; docs/superpowers/specs/2026-11-04-scripting-design.md 5.9",
+        "prompt": "The Robot model (GameObject 1003) should not cast shadows. Turn its shadow casting off.",
+        "mocks": [
+            {"tool": "set_properties", "args": {"entity": "re:^(1003|Robot)$"}, "result": ok(
+                "Set 1 property on 1 GameObject(s) (one undo step). New values: {\"mesh\":{\"castShadows\":false}} Warning: "
+                "\"Robot\" draws 2 part(s) (Robot/Body, Robot/Eyes): set the mesh on them, or use the Model API in Lua.",
+                {"scene_id": 1, "entities": [{"id": 1003, "path": "Robot"}], "values": {"mesh": {"castShadows": False}},
+                 "warnings": ["\"Robot\" draws 2 part(s) (Robot/Body, Robot/Eyes): set the mesh on them, or use the Model API in Lua"]})},
+            {"tool": "set_properties", "result": ok(
+                "Set 1 property on 1 GameObject(s) (one undo step). New values: {\"mesh\":{\"castShadows\":false}}",
+                {"scene_id": 1, "entities": [{"id": 1004, "path": "Robot/Body"}], "values": {"mesh": {"castShadows": False}}})},
+        ],
+        "checks": {"calls": [{"tool": "set_properties", "args": {"entity": "re:Body|1004"}},
+                             {"tool": "set_properties", "args": {"entity": "re:Eyes|1005"}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_cpp_lua_only_static",
+        "kind": "guard",
+        "what_happened": "Completion and the API search offered Engine::deltatime to a C++ script: it is a Lua property backed by "
+                         "Engine::getDeltatime(), and the C++ does not compile. search_engine_api now marks it cpp_callable false.",
+        "text_at_issue": "search_engine_api result: cpp_callable false, cpp_note 'Lua only. C++: Engine::getDeltatime()'",
+        "source": "Doriax 755972f92; docs/superpowers/specs/2026-11-04-scripting-design.md 5.12",
+        "prompt": "In scripts/Mover.cpp, make Mover::update move the GameObject along x by speed times the frame's delta time. "
+                  "Check the engine API name first.",
+        "files": {
+            "scripts/Mover.h": "#pragma once\n#include \"ScriptBase.h\"\n\nclass Mover : public jasperengine::ScriptBase {\n"
+                               "public:\n    float speed = 2.0f;\n    void update();\n};\n",
+            "scripts/Mover.cpp": "#include \"Mover.h\"\n#include \"Engine.h\"\n\nvoid Mover::update() {\n}\n",
+        },
+        "mocks": [
+            {"tool": "search_engine_api", "result": ok(
+                "API symbols for \"deltatime\":\n- Engine.deltatime [Constant]\n- Engine.getDeltatime() -> float [Function]",
+                {"results": [{"detail": "Engine.deltatime", "kind": "Constant", "cpp_callable": False,
+                              "cpp_note": "Lua only. C++: Engine::getDeltatime()"},
+                             {"detail": "Engine.getDeltatime() -> float", "kind": "Function"}], "docs": []})},
+        ],
+        "checks": {"file_must": {"scripts/Mover.cpp": [r"Engine::getDeltatime\(\)"]},
+                   "file_must_not": {"scripts/Mover.cpp": [r"Engine::deltatime\b"]}},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_lua_api_hierarchy_and_defaults",
+        "kind": "guard",
+        "what_happened": "Lua had no way to read a GameObject's parent or children, and an omitted Rigidbody2D wake read as false; "
+                         "the Lua API guide now lists Unity's hierarchy members and the wake default.",
+        "text_at_issue": "docs/mcp/guide/lua-api.md 4.2 (parent, setParent, childCount, getChild, findChild) and 4.13 (wake "
+                         "defaults to true)",
+        "source": "docs/superpowers/specs/2026-11-04-scripting-design.md 6.4.2, 6.4.4",
+        "prompt": "Going by the editor's Lua API guide: in a Lua script, how do I get my GameObject's parent and its first child, "
+                  "and does rb2d:applyForceToCenter(f) without a second argument wake a sleeping body? Answer in a few lines, "
+                  "change nothing.",
+        "checks": {"must_not_call": ["write_file", "eval_lua"],
+                   "reply_must": [r"\.parent\b", r"getChild\(\s*0\s*\)", r"wak(e|es)"],
+                   "reply_must_not": [r"(stays?|remains?|left) asleep", r"does(n.?t| not) wake"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_lua_api_model_parts",
+        "kind": "guard",
+        "what_happened": "On a model imported from a glTF with several mesh nodes, Mesh/Model calls changed the root's empty mesh; "
+                         "they now reach the parts, and the Lua API guide says how.",
+        "text_at_issue": "docs/mcp/guide/lua-api.md 4.8 'A model made of parts'",
+        "source": "Doriax cc550567a; docs/superpowers/specs/2026-11-04-scripting-design.md 5.8",
+        "prompt": "Going by the editor's Lua API guide: on a Model loaded from a glTF with several mesh nodes, does "
+                  "model:setColor(1, 0, 0) tint every part, and which part does model:getMaterial(2) read? Answer in a few lines, "
+                  "change nothing.",
+        "checks": {"must_not_call": ["write_file", "eval_lua"],
+                   "reply_must": [r"(each|every|all( the)?) parts?", r"(first|0) submesh|submesh 0", r"(across|part after part|counts?)"]},
+        "max_turns": 10,
     },
     {
         "id": "guard_pixel_perfect_camera",

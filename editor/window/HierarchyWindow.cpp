@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "HierarchyWindow.h"
+#include "util/ScriptAttach.h"
 #include "audio/SoundDrop.h"
 #include "util/UIProbe.h"
 #include "component/ActionComponent.h"
@@ -2087,6 +2088,19 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             }
             if (!clips.empty() && ImGui::AcceptDragDropPayload("resource_files")) {
                 Backend::getApp().dispatchClipDrop(getNodeSceneId(node), node.id, clips);
+                ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
+            }
+        }
+
+        // a script onto a GameObject (Unity): attached to it, one step
+        if (!allowResourceDragDrop && !node.isScene && !node.isPlayCreated && !project->isAnyScenePlaying()) {
+            const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+            std::vector<std::string> received;
+            if (peek && peek->IsDataType("resource_files")) received = Util::getStringsFromPayload(peek);
+            if (!received.empty() && ScriptAttach::isScriptFile(received[0]) && ImGui::AcceptDragDropPayload("resource_files")) {
+                if (SceneProject* target = project->getScene(getNodeSceneId(node))) {
+                    ScriptAttach::attachFile(project, target, {node.id}, received[0]);
+                }
                 ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
             }
         }

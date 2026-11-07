@@ -611,6 +611,7 @@ bool editor::Exporter::writeGameConfig() {
     game.sdfPrimitives = project->getHtmlUiRenderSettings().sdfPrimitives;
     game.transformAwareText = project->getHtmlUiRenderSettings().transformAwareText;
     game.mobilePbrTier = project->getMobilePbrTier();
+    game.dynamicBatching = project->isDynamicBatching();
     game.lightMode = project->getLightMode();
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) game.shadowTiers[platform] = ShadowTiers::getPlatformTier(platform);
     game.device = project->getDeviceSettings();

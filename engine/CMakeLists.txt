@@ -1701,6 +1701,8 @@ set(JASPERENGINE_SRCS
     core/render/DynamicResolutionController.cpp
     core/render/CpuSkin.cpp
     core/render/FramebufferRender.cpp
+    core/render/FrustumCull.cpp
+    core/render/DrawBatcher.cpp
     core/render/LineRibbonBuilder.cpp
     core/render/LodFade.cpp
     core/render/ObjectRender.cpp
@@ -1797,6 +1799,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystemDebugDraw.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp
+    core/subsystem/RenderSystemBatch.cpp
     core/subsystem/RenderSystemLighting.cpp
     core/subsystem/RenderSystemPixelArt.cpp
     core/subsystem/UISystem.cpp
@@ -1850,6 +1853,7 @@ set(JASPERENGINE_SRCS
     core/util/Base64.cpp
     core/util/Color.cpp
     core/util/CrashHook.cpp
+    core/util/ContentHash.cpp
     core/util/CubeLut.cpp
     core/util/FontFace.cpp
     core/util/FontRegistry.cpp

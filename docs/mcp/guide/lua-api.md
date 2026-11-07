@@ -503,6 +503,7 @@ return Slot
 | `framerate` | ro | fps (measured) |
 | `targetFrameRate` | rw | Unity's `Application.targetFrameRate`: -1 (default) = the platform's rate (60 on mobile, every animation frame on the web, vsync-paced on desktops); desktops and the editor ignore it while `vSyncCount > 0`. Kept across scene loads |
 | `vSyncCount` | rw | Unity's `QualitySettings.vSyncCount` 0..4 (present every Nth vblank); starts from the project's VSync; mobile and web ignore it |
+| `dynamicBatching` | rw | Dynamic Batching (Project Settings > Graphics, on by default): consecutive Sprites, small meshes and UI elements that share a material draw as one draw call, the same image. Starts from the project's setting and goes back to it when Play stops (`jasper://docs/profiling`, Dynamic Batching) |
 | `isFocused` | ro | Unity's `Application.isFocused` (true at start) |
 | `isVisible` | ro | false while the window can't be seen: the game updates without drawing (true at start, always on Android and iOS) |
 | `isDevelopmentBuild` | ro | Unity's `Debug.isDebugBuild`: true in the editor's Play and in exports built with the Debug build type |
@@ -1138,7 +1139,7 @@ Entities are plain integers (`0` = none).
 | `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `capsuleShadowsEnabled`, `capsuleShadowIntensity` (0..1), `capsuleShadowSoftness` (0..2; `jasper://docs/lighting`), `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `defaultMeshShader`, `defaultUIShader`, `defaultSkyShader`, `defaultPointsShader`, `defaultLinesShader` (string, rw) | the scene's default shader of each type ("" built-in) |
 | `setDefaultShaderUniform(ShaderType.MESH, name, float/Vector2/3/4)`, `getDefaultShaderUniform(type, name)` (-> Vector4), `hasDefaultShaderUniform(type, name)`, `removeDefaultShaderUniform(type, name)` (-> bool) | a property value of that default shader, inherited by every object without a shader of its own (an object's own value wins; `ShaderType.MESH`/`UI`/`SKYBOX`/`POINTS`/`LINES`; other types log an error). A value changed every frame belongs in `Shader.setGlobal*` |
-| `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
+| `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects (below) |
 | `findEntitiesWith({"Transform", "MeshComponent"}[, {"UIComponent"}])` | -> table of Entity with every listed component and none of the excluded ones, in the order of the first one's array (parents before children for `Transform`); names are the component class names |
 | `getChangeTick()` | -> integer: the scene's change tick; a change made after the call is stamped with a newer one |
 | `findChangedEntities("Transform", sinceTick)` | -> table of Entity whose component changed after `sinceTick` (added, set through a wrapper setter, a component field, the editor or `markChanged`) |
@@ -1149,8 +1150,19 @@ Entities are plain integers (`0` = none).
 `PhysicsSystem` (from `self.scene:getPhysicsSystem()`): `gravity` / `gravity2D` /
 `gravity3D` (rw), `interpolation` (rw, as `scene.physicsInterpolation`), `pointsToMeterScale2D` (rw),
 `subSteps2D` (rw, 1-16, as `scene.physics2DSubSteps`), event objects (section 1.3),
-`createRigidbody2D(e)`, `removeRigidbody2D(e)`, `createRigidbody(e)`, `removeRigidbody(e)`
-(partial).
+`createRigidbody2D(e)`, `removeRigidbody2D(e)`, `createRigidbody(e)`, `removeRigidbody(e)`,
+`removeSubscriptionsByTag(substring)` (the scene's physics event callbacks whose tag holds it),
+`clearSubscriptions()` (all of them, every script's) (partial).
+
+The other subsystems (from `self.scene:getActionSystem()`, `getMeshSystem()`, ...):
+
+| Object | Members |
+|---|---|
+| `ActionSystem` | `actionStart(e [, newRun])` (newRun default true: a stopped action starts a new run; false resumes inside its old one), `actionStop(e)`, `actionPause(e)`, `getDuration(e)` (seconds: a tween, an animation's frames, a keyframe track), `getFrameDuration(frame)` (an `ActionFrame` of an animation) |
+| `AudioSystem` (on the scene) | `stopSceneSounds()`: this scene's sounds (`AudioSystem.stopAll()`: every scene's) |
+| `MeshSystem` | `loadGLTF(e, path [, async [, skipEntities [, changeRootTransform [, bakeSceneRoot]]]])` (changeRootTransform default true: the entity takes the file's root transform), `hasPendingAsyncModelLoads()`, `isAsyncModelLoadPending(e, path)`, `cancelAsyncModelLoad(e, path)`, `cancelAsyncModelLoads()` |
+| `RenderSystem` | `isAllLoaded()` (everything the scene waits for has loaded), `getLoadCount()` -> `loaded, total` (a loading screen's progress) |
+| `UISystem` | `parentToLayoutSpace(e, v2)`, `layoutToParentSpace(e, v2)` (an anchored element's offset is in its layout parent's space, its position in its parent's), `hasPendingImages()`, `resetButtonStates()` (every button unpressed, pointers released) |
 
 `AudioSystem` (static): `AudioSystem.stopAll()`, `pauseAll()` / `resumeAll()` (the mixer's Master
 bus holds, as in the app pause but apart from it; a source a script paused stays paused), `AudioSystem.globalVolume` (rw,
@@ -1631,11 +1643,22 @@ end, {owner = self})
 | `/` | `v / number`, `number / v`, `v / v` | `v / number`, `number / v`, `v / v` | `v / number`, `number / v`, `v / v` |
 | unary `-`, `==`, `<`, `<=`, `>`, `>=`, `tostring` | yes | yes | yes |
 | Methods | `length() squaredLength() distance(v) squaredDistance(v) dotProduct(v) normalize() normalized() normalizeL() midPoint(v) makeFloor(v) makeCeil(v) perpendicular() crossProduct(v) normalizedCopy() reflect(n) swap(v) isValid()` | `length() squaredLength() dotProduct(v) absDotProduct(v) distance(v) squaredDistance(v) normalize() normalized() normalizeL() crossProduct(v) midPoint(v) makeFloor(v) makeCeil(v) perpendicular() reflect(n) isValid()` | `dotProduct(v) divideByW() swap(v) isNaN() isValid()` |
+| Unity's moves | `moveTowards(target, maxDelta) lerp(target, t) lerpUnclamped(target, t)` | same | same |
 
 Constants are static properties returning copies: `Vector3.ZERO` (no parentheses).
 `v * v`, `v / v` and `number / v` are component-wise. `<` is true when every component is
 smaller, `<=` when every component is smaller or equal (so `a < b` and `b < a` can both be
 false). `==` with a value of another class is `false`. There is no `v + number`.
+`lerp` is Unity's `Lerp`: `t` is clamped to 0..1 (`lerpUnclamped` extrapolates); `moveTowards`
+steps at most `maxDelta` toward the target and never past it (a negative delta moves away).
+`a:lerp(b, t)` and `Vector3.lerp(a, b, t)` are the same call:
+
+```lua run
+local a, b = Vector3(0, 0, 0), Vector3(10, 0, 0)
+assert(Vector3.lerp(a, b, 0.25) == Vector3(2.5, 0, 0))
+assert(a:lerp(b, 2) == b and a:lerpUnclamped(b, 2) == Vector3(20, 0, 0))
+assert(Vector2(0, 0):moveTowards(Vector2(3, 4), 2.5) == Vector2(1.5, 2))
+```
 
 ### 3.2 Quaternion
 
@@ -1662,7 +1685,7 @@ false). `==` with a value of another class is `false`. There is no `v + number`.
 | `EdgeInsets(left, top, right, bottom)` | rw `left top right bottom`; `isZero()`, `==`, `tostring` (Screen.safeAreaInsets) |
 | `Ray(origin, direction)` (Vector3) | rw `origin direction`; `getPoint(t)`; `intersects(AABB/OBB/Plane/Rigidbody2D/Rigidbody/...)`; `Ray.NO_HIT` |
 | `Matrix3`, `Matrix4` | `+ - == tostring`; `*` by a matrix, a number (either side) or a vector (`m * Vector3`, Matrix4 also `m * Vector4`; `Matrix4 * Vector3` applies the translation); `row column get set identity inverse transpose`; Matrix4 static `translateMatrix rotateMatrix rotateXMatrix rotateYMatrix rotateZMatrix scaleMatrix lookAtMatrix orthoMatrix perspectiveMatrix frustumMatrix` |
-| `Plane`, `AABB`, `OBB`, `Sphere` | geometry helpers (`intersects`, `contains`, `getCenter`, `getSize`, `merge`, ...) |
+| `Plane`, `AABB`, `OBB`, `Sphere` | geometry helpers (`intersects`, `contains`, `getCenter`, `getSize`, `merge`, ...); `AABB`/`OBB` `getCorner(c)` (`AABB.CornerEnum.*`), `getCorners()` -> table of 8 `Vector3` copies, `corners[i]` = `getCorner(i - 1)` (empty for a null or infinite box) |
 | `AnimationCurve()` | Unity's curve. Static `constant(v)`, `linear(t0, v0, t1, v1)`, `easeInOut(t0, v0, t1, v1)`; `evaluate(t)`; `addKey(time, value [, inTangent, outTangent])` / `addKey(CurveKey)` -> 1-based index (-1 when a key is at that time); `removeKey(i)`; `moveKey(i, time, value)` / `moveKey(i, CurveKey)` -> its new index; `getKey(i)` -> `CurveKey` (nil out of range); ro `keyCount`; rw `keys` (table of `CurveKey`), `preWrapMode`, `postWrapMode` (`CurveWrap.*`) |
 | `CurveKey(time, value [, inTangent, outTangent])` | rw `time value inTangent outTangent` (slopes; `math.huge` is a step) |
 | `Gradient()` | Unity's gradient (white, opaque). `setKeys(colorKeys, alphaKeys)`: `{{time, Vector3 sRGB}, ...}` (or `GradientColorKey`s), `{{time, alpha}, ...}`; `evaluate(t)` -> Vector4 **linear**; rw `mode` (`GradientMode.*`), `colorKeys`, `alphaKeys`; ro `colorKeyCount`, `alphaKeyCount`; `getColorKey(i)`, `getAlphaKey(i)` (1-based) |
@@ -1762,7 +1785,11 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `setScale(s)` | method | uniform float only; for non-uniform assign `obj.scale = Vector3(...)` |
 | `getWorldScale()` | method | |
 | `visible` | rw bool | setting it copies the value to the children (next frame); `setVisibleOnly(b)` changes only this one. Only setting it does: copies (`GameObject.instantiate`), scene moves (`DontDestroyOnLoad`) and reparenting keep each child's own value. A parent hidden in the editor does not hide its children until a script hides it; to hide a whole subtree reliably use `setActive(false)` |
-| `addChild(goOrEntity)`, `removeChild(goOrEntity)`, `removeParent()` | methods | |
+| `addChild(goOrEntity)`, `removeChild(goOrEntity)`, `removeParent()` | methods | keep the child's local values |
+| `parent` | rw `GameObject` or nil | Unity's `transform.parent`: assigning keeps the world placement (nil: to the root) |
+| `setParent(goOrScriptOrNil [, worldPositionStays])` | method | Unity's `SetParent` (default true keeps the world placement, false the local values); refused (logged) for itself, one of its children, another scene's GameObject |
+| `childCount`, `getChild(i)`, `getChildren()` | ro / methods | the direct children in Hierarchy order; `getChild` is 0-based (nil out of range), `getChildren` a table |
+| `findChild(path)` | method | Unity's `Transform.Find`: a child by name, or a path of names below it (`"Arm/Hand"`); nil when missing |
 | `moveToTop()`, `moveUp()`, `moveDown()`, `moveToBottom()` | methods | sibling order = 2D draw order (below) |
 | `billboard`, `fakeBillboard`, `cylindricalBillboard` (rw), `billboardRotation` (rw), `setBillboard(a,b,c)`, `setBillboardRotation(x,y,z)` | | |
 | `localMatrix` (rw), `modelMatrix` (ro), `normalMatrix` (ro), `updateTransform()` | | |
@@ -1778,6 +1805,20 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `getVertexAnimator()` | method | the GameObject's `VertexAnimator` (4.8.3), `nil` when it has none (it never adds one) |
 | `hasVertexAnimator()` | method | bool |
 | `GameObject.instantiate`, `GameObject.destroy`, `GameObject.destroyImmediate` | static | section 2.6 |
+
+```lua run
+local holder = GameObject(scene)
+holder.name = "Holder"
+local arm = GameObject(scene)
+arm.name = "Arm"
+arm:setParent(holder)
+assert(arm.parent.entity == holder.entity and holder.childCount == 1)
+assert(holder:findChild("Arm").entity == arm.entity and holder:getChild(0).entity == arm.entity)
+arm.parent = nil
+assert(arm.parent == nil and holder.childCount == 0)
+GameObject.destroy(holder)
+GameObject.destroy(arm)
+```
 
 There is no `getComponent`: wrap the same entity with the class you need
 (`Sprite(self.scene, self.entity)`).
@@ -1805,7 +1846,8 @@ sprites) sorted by their distance to the camera position, not by Z.
 | `material` | rw `Material`; `getMaterial([submesh])`, `setMaterial([submesh,] mat)` |
 | `castShadows`, `receiveShadows`, `staticShadowCaster` (cached in the static shadow layer, `jasper://docs/shadows`), `receiveLights`, `transparent`, `faceCulling`, `cullingMode`, `customShader` | rw |
 | `allowGpuInstancing` (its draws may batch with those of the same mesh and material, `jasper://docs/meshes`) | rw |
-| `getAABB()`, `getWorldAABB()`, `getNumSubmeshes()` | methods |
+| `getAABB()`, `getWorldAABB()`, `getNumSubmeshes()` | methods (a model made of parts: 4.8) |
+| `vertexCount` | ro (Unity's `Mesh.vertexCount`) |
 | `setShaderUniform(name, float/Vector2/3/4)`, `getShaderUniform(name)`, `removeShaderUniform(name)` | methods |
 | instancing: `createInstancedMesh()`, `addInstance(...)`, `updateInstance(i, ...)`, `removeInstance(i)`, `getNumInstances()`, `clearInstances()` | methods |
 
@@ -1915,9 +1957,21 @@ intervalMs, loop)`, plus Action: `start()`, `pause()`, `stop()`, `isRunning()`,
 `loadModel(path)`, `loadGLTF(path)`, `loadOBJ(path)`, `getAnimation(i)`,
 `findAnimation(name)`, `playAnimation(indexOrName [, fadeTime])`, `stopAnimations(fadeTime)`,
 `getBone(indexOrName)`, `getMorphWeight(indexOrName)`, `setMorphWeight(indexOrName, w)`,
-`resetToBindPose()`, `enabled` (rw), `getPoseAnimator()` (the model's PoseAnimator, added when missing),
+`resetToBindPose()`, `enabled` (rw), `filename` (ro, the file it loaded), `getAnimationCount()`,
+`getPoseAnimator()` (the model's PoseAnimator, added when missing),
 `getHumanoidInfo()` (`{humanoid, animationType ("generic"/"humanoid"), humanScale, missing = {slot names},
 extraMapped, error?}`: its Avatar; nil without bones).
+
+**A model made of parts.** A glTF with several mesh nodes loads each into a child GameObject
+(a part; the Model's own mesh stays empty), and the Mesh and Model API reaches the parts: a mesh-wide
+setter (`castShadows`, `receiveLights`, `customShader`, `setShaderUniform`, ...) writes every part
+and its getter reads the first (lowest node index); calls on "submesh 0" (`setColor`, `color`,
+`setTexture`, `material`, `setNormalTexture(path)`) act on each part's first submesh;
+an index (`setMaterial(i, m)`, `getMaterial(i)`) counts submeshes part after part
+(`getNumSubmeshes()` is their sum; past the end: logged, nothing changes); `getAABB()` and
+`vertexCount` cover all parts; `setMorphWeight(name, w)` goes to every part with a target of that
+name, `setMorphWeight(i, w)` to every part with that many targets. Instancing and `setAsMirror` are
+refused there (logged): call them on a part (`model:findChild("Body")`).
 
 With an Animation Player on the Model's GameObject (4.8.2), `playAnimation(name [, fadeTime])`
 crossfades to the player's state of that name (over the player's `defaultFadeTime` when no fade
@@ -2362,7 +2416,8 @@ CameraShake.shake("shock", {unscaled = true})
 
 ### 4.10 Light (GameObject) / Light2D (GameObject)
 
-Light rw: `type` (`LightType.*`), `enabled`, `direction` (Vector3), `color` (Vector3),
+Light rw: `type` (`LightType.*`), `enabled`, `direction` (Vector3; ro `worldDirection`, as of the
+last transform update), `color` (Vector3),
 `range`, `intensity`, `innerConeAngle`, `outerConeAngle`, `shadows`, `cameraNear`,
 `cameraFar`, `automaticShadowCamera`, `numCascades` (0: the quality tier's), `cullingMask`, `shading`
 (`LightShading.*`, the stage evaluating it on MIXED-lighting materials), `intensityUnit`
@@ -2510,12 +2565,12 @@ one clip at once.
 | `material` | rw | default material of the colliders without one: a `.physicsmaterial` path, a `PhysicsMaterial` or nil; reads a `PhysicsMaterial` or nil |
 | `pointsToMeterScale` | ro | default 64 |
 | `getRotationalInertia()`, `applyMassFromColliders()` | methods | |
-| `applyForce(forceV2, pointV2, wake)` | method | point in world points |
-| `applyForceToCenter(forceV2, wake)` | method | |
-| `applyTorque(t, wake)` | method | |
-| `applyLinearImpulse(impulseV2, pointV2, wake)` | method | |
-| `applyLinearImpulseToCenter(impulseV2, wake)` | method | |
-| `applyAngularImpulse(i, wake)` | method | |
+| `applyForce(forceV2, pointV2 [, wake])` | method | point in world points; `wake` (all six) defaults to true: a sleeping body wakes, as Unity's `AddForce` (false: Box2D skips a sleeping body) |
+| `applyForceToCenter(forceV2 [, wake])` | method | |
+| `applyTorque(t [, wake])` | method | |
+| `applyLinearImpulse(impulseV2, pointV2 [, wake])` | method | |
+| `applyLinearImpulseToCenter(impulseV2 [, wake])` | method | |
+| `applyAngularImpulse(i [, wake])` | method | |
 | `createBoxCollider(w, h)` | method | box from local (0,0) to (w,h); returns collider index |
 | `createCenteredBoxCollider(w, h [, centerV2, angle])` | method | centered box |
 | `createRoundedBoxCollider(w, h, radius)`, `createCircleCollider(centerV2, radius)`, `createCapsuleCollider(c1, c2, radius)`, `createSegmentCollider(p1, p2)`, `createPolygonCollider({Vector2...})`, `createChainCollider({Vector2...}, loop)` | methods | any number of colliders; a polygon of any number of points, concave too (split in convex pieces); a chain of 2+ points (2-3: segments) |
@@ -2638,6 +2693,8 @@ or `CharacterController2D(scene, entity)`. Points and points per second, as Rigi
 | `setColliderTrigger(i, on)`, `isColliderTrigger(i)` | methods | Unity Is Trigger per collider: passes through, sensor contacts, no mass |
 | `setColliderMaterial(i, m)` (a `PhysicsMaterial`, a path, or nil), `getColliderMaterial(i)`, `setColliderFriction(i, f)`, `setColliderBounciness(i, b)` and getters | methods | friction / bounciness give the collider its own copy of its material (Unity `collider.material`) |
 | `setAllowedDOFsAll()`, `setAllowedDOFs2DPlane()`, `setAllowedDOFs(...)`, `setOverrideMassAndInertia(...)` | methods | |
+| `getAllowedDOFs()` | method | -> translationX, translationY, translationZ, rotationX, rotationY, rotationZ (booleans, `setAllowedDOFs` order) |
+| `overrideMassProperties` | ro bool | `setOverrideMassAndInertia` was called |
 | `getPointVelocity(p)`, `getAccumulatedForce()`, `getCenterOfMassPosition()` | methods | |
 
 `Contact3D` (global events): `getApproachSpeed()` (how fast the bodies came together along the
@@ -3317,10 +3374,10 @@ Rigidbody wrappers by index.
    `Time.deltaTime` is the fixed step there). Impulses are one-off and can be
    applied anywhere. 2D forces/impulses are in Box2D units (kg, meters); positions and
    velocities read/written through Rigidbody2D are in points (`pointsToMeterScale`, default 64).
-10. **Pass every argument.** LuaBridge ignores C++ default arguments. A missing trailing
-    `bool` silently becomes `false` (e.g. `wake` in `applyForceToCenter(f)` -> body not woken);
-    a missing number/vector raises an error. Write `applyForceToCenter(f, true)`,
-    `tween:setAction(a, b, 1.0, false)`.
+10. **Pass every argument the reference does not mark optional.** A missing trailing `bool`
+    reads as `false` unless the reference gives it a default (`[, wake]` of the Rigidbody2D forces
+    and `[, newRun]` default to true: `applyForceToCenter(f)` wakes the body); a missing
+    number/vector raises an error. Write `tween:setAction(a, b, 1.0, false)`.
 11. **Teleporting physics bodies**: set the body (`rb2d.position = Vector2(...)`,
     `rb.position = Vector3(...)`) rather than the GameObject transform; also reset
     `linearVelocity` if needed.
@@ -3398,6 +3455,9 @@ Rigidbody wrappers by index.
 34. **Pass `owner = self` to `Timer.*`**: a timer without an owner outlives its script (until
     Play stops) and calls into a script that is gone. With `owner = self` it dies with the
     script, like the script's event subscriptions.
+35. **Inspector fields come from the saved file.** A script whose saved file no longer has a
+    `properties` table has no fields; while you edit it in the code editor, a missing table keeps
+    them until you save (cutting and pasting the table loses no value).
 
 ## 7. Hot reload and editor scripts
 

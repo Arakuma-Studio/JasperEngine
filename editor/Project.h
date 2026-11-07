@@ -75,6 +75,8 @@ namespace jasperengine::editor{
 
     class SceneRender;
     namespace prefabinternal { struct ScratchEntity; }
+    class ScriptPropertyCache;  // editor/util/ScriptPropertyCache.h
+    class ScriptAttach;         // editor/util/ScriptAttach.h
     struct BakedPrefab;
     namespace vcs {
         class VcsService;
@@ -870,6 +872,7 @@ namespace jasperengine::editor{
         float editViewDpi = 0.0f;
         TextureStrategy textureStrategy;
         bool vsyncEnabled;
+        bool dynamicBatching = true;
         // Quality > Atmosphere Quality: desktop, mobile, web
         std::array<AtmosphereQuality, 3> atmosphereQuality;
         std::array<float, 3> foliageDistanceScale = defaultFoliageDistanceScale;
@@ -1148,6 +1151,7 @@ namespace jasperengine::editor{
         friend class cook::SceneCooker;
         // and the modules a build needs, what the build ships (S34)
         friend class ModuleUsageDetector;
+        friend class ScriptAttach;
         std::shared_ptr<PlaySession> buildRuntimeSceneStack(uint32_t sceneId, std::vector<size_t>& stackIndices);
         Entity getSceneCamera(const SceneProject* sceneProject) const;
         void cleanupPlaySession(const std::shared_ptr<PlaySession>& session);
@@ -1517,6 +1521,7 @@ namespace jasperengine::editor{
         static constexpr Scaling defaultScalingMode = Scaling::FITWIDTH;
         static constexpr TextureStrategy defaultTextureStrategy = TextureStrategy::NONE;
         static constexpr bool defaultVSyncEnabled = true;
+        static constexpr bool defaultDynamicBatching = true;
         static constexpr std::array<AtmosphereQuality, 3> defaultAtmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
         static constexpr std::array<float, 3> defaultFoliageDistanceScale = {1.0f, 1.0f, 1.0f};
         static constexpr int defaultHtmlUiMsaaSamples = 4;
@@ -1625,6 +1630,12 @@ namespace jasperengine::editor{
 
         void setVSyncEnabled(bool enabled);
         bool isVSyncEnabled() const;
+
+        // Graphics > Dynamic Batching (on by default): consecutive Sprites, small meshes and UI
+        // elements that share a material draw as one draw call; applied to the editor at once
+        // (the game's Engine.dynamicBatching starts from it) and written into exports
+        void setDynamicBatching(bool enabled);
+        bool isDynamicBatching() const;
 
         // Quality > Atmosphere Quality (volumetric fog and clouds) of desktop, mobile and web
         // games; the editor's views run the desktop one (Engine::setAtmosphereQualityDefaults)
@@ -2462,9 +2473,20 @@ namespace jasperengine::editor{
         bool hasScenesUnsavedChanges() const;
         bool hasUnsavedPrefabs() const;
 
-        void updateAllScriptsProperties(uint32_t sceneId);
-        // Returns true when a script property definition changed.
-        bool updateScriptProperties(SceneProject* sceneProject, Entity entity, std::vector<ScriptEntry>& scripts, const std::string& inMemoryContent = "", const std::string& inMemoryPath = "");
+        // the declared properties of every script in the scene, from the saved files (one cache
+        // for the pass when none is given)
+        void updateAllScriptsProperties(uint32_t sceneId, ScriptPropertyCache* cache = nullptr);
+        // Returns true when a script property definition changed. inMemoryContent: the code being
+        // edited of the file at inMemoryPath. cache: shared by the calls of one pass
+        bool updateScriptProperties(SceneProject* sceneProject, Entity entity, std::vector<ScriptEntry>& scripts, const std::string& inMemoryContent = "",
+                                    const std::string& inMemoryPath = "", ScriptPropertyCache* cache = nullptr);
+        // Where a script entry's properties come from (absolute, normalised): the Lua file, or the
+        // C++ header; empty when it names none
+        std::filesystem::path scriptPropertyFile(const ScriptEntry& entry) const;
+        // the C++ source of an entry (the Lua file of a Lua one), absolute and normalised
+        std::filesystem::path scriptSourceFile(const ScriptEntry& entry) const;
+        // entry reads its properties from, or runs, the file at `absolute`
+        bool scriptEntryUsesFile(const ScriptEntry& entry, const std::filesystem::path& absolute) const;
 
         static std::vector<Entity> getTopLevelEntities(const EntityRegistry* registry, const std::vector<Entity>& orderedEntities);
         // Remaps every entity reference across a set of entities. References to a mapped

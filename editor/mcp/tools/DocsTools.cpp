@@ -349,6 +349,9 @@ void searchEngineApiTool(const CallPtr& call) {
         if (item.contains("lua_call_hint")) compact["lua"] = item["lua_call_hint"];
         if (item.contains("lua_note")) compact["note"] = item["lua_note"];
         if (item.contains("lua_callable")) compact["lua_callable"] = item["lua_callable"];
+        // a Lua-only symbol (Engine.deltatime): what C++ calls instead
+        if (item.contains("cpp_callable")) compact["cpp_callable"] = item["cpp_callable"];
+        if (item.contains("cpp_note")) compact["cpp_note"] = item["cpp_note"];
         results.push_back(compact);
         text += "\n- " + compact["detail"].get<std::string>() + " [" + compact["kind"].get<std::string>() + "]";
         if (compact.contains("note")) text += " (" + compact["note"].get<std::string>() + ")";

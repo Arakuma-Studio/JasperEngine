@@ -2302,6 +2302,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("isDevelopmentBuild", &Engine::isDevelopmentBuild)
         .addStaticProperty("targetFrameRate", &Engine::getTargetFrameRate, &Engine::setTargetFrameRate)
         .addStaticProperty("vSyncCount", &Engine::getVSyncCount, &Engine::setVSyncCount)
+        // Dynamic Batching (Project Settings > Graphics): the same image, fewer draw calls
+        .addStaticProperty("dynamicBatching", &Engine::isDynamicBatching, &Engine::setDynamicBatching)
         .addStaticProperty("isFocused", &Engine::isFocused)
         // false while the window can't be seen: the game updates without drawing (desktops)
         .addStaticProperty("isVisible", &Engine::isVisible)

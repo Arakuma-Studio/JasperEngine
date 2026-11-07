@@ -225,6 +225,41 @@ class Emitters(unittest.TestCase):
                 missing.append(line)
         self.assertEqual(missing, [], 'symbols the regex parser listed and the one parser does not')
 
+    def test_lua_only_marked(self):
+        """C++ completion offers Engine::deltatime only if C++ has it (Doriax 755972f92): a static
+        property backed by an accessor or a lambda, and a method bound to a helper, are Lua only"""
+        classes = {c['name']: c for c in api()['classes']}
+
+        def prop(cls, name):
+            return next(p for p in classes[cls]['properties'] if p['name'] == name)
+
+        def method(cls, name):
+            return next(m for m in classes[cls]['methods'] if m['name'] == name)
+        self.assertTrue(prop('Engine', 'deltatime').get('luaOnly'))
+        self.assertTrue(prop('Input', 'KEY_SPACE').get('luaOnly'))
+        self.assertFalse(prop('Vector3', 'ZERO').get('luaOnly'))
+        self.assertTrue(method('GameObject', 'getParticleSystemsInChildren').get('luaOnly'))
+        self.assertFalse(method('Vector3', 'lerp').get('luaOnly'))
+        only = suggestions.lua_only(api())
+        self.assertIn(('Engine', 'deltatime', 'Constant'), only)
+        self.assertIn('{"deltatime", "Constant", "Engine.deltatime", "Engine", true}', suggestions.header_text(api()))
+
+    def test_no_bool_true_default_lost(self):
+        """LuaBridge reads a missing bool as false: a method bound straight to a C++ function whose
+        bool parameter defaults to true loses the default from Lua (actionStart's newRun, loadGLTF's
+        changeRootTransform). Such a binding takes std::optional<bool> and value_or(true)."""
+        lost = []
+        for c in api()['classes']:
+            for m in c['methods']:
+                # an overload set picks by argument count: its full form gets every argument
+                if len(m['overloads']) != 1:
+                    continue
+                cpp = m['overloads'][0].get('cpp') or {}
+                for q in cpp.get('params', []):
+                    if q['type'] == 'bool' and q.get('default') == 'true':
+                        lost.append(f"{c['name']}.{m['name']}({q['name']})")
+        self.assertEqual(lost, [])
+
     def test_suggestions_header(self):
         text = suggestions.header_text(api())
         self.assertIn('getEngineAPISymbols', text)

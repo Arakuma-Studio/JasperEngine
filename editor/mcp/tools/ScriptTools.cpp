@@ -52,6 +52,7 @@
 #include "vat/VatBakeSession.h"
 #include "animation/VertexAnimation.h"
 #include "util/ProjectUtils.h"
+#include "util/ScriptAttach.h"
 #include "util/ScriptParser.h"
 #include "util/Util.h"
 #include "window/CodeEditor.h"
@@ -634,110 +635,21 @@ std::string luaRootRelative(Project* project) {
     return rel.empty() ? "." : rel;
 }
 
-// A ScriptEntry for a script file (absolute path of a .lua, .h/.hpp or .cpp)
+// A ScriptEntry for a script file (absolute path of a .lua, .h/.hpp or .cpp): ScriptAttach's, as
+// the Inspector makes it
 bool makeEntry(Project* project, const fs::path& file, const std::string& classNameArg, ScriptEntry& entry, Json& warnings,
                std::string& error) {
-    const std::string ext = extensionOf(file);
-    std::error_code ec;
-    entry = ScriptEntry();
-    entry.enabled = true;
-    if (ext == ".lua") {
-        if (!Util::isInsidePath(file, project->getLuaPath())) {
-            error = "Lua scripts must be inside the project's Lua directory \"" + luaRootRelative(project) +
-                    "\" (Project Settings > Directories); move the file there first (move_asset).";
-            return false;
-        }
-        entry.type = ScriptType::LUA;
-        entry.path = project->normalizeToLuaRelative(file).generic_string();
-        entry.className = file.stem().string();
-        if (!classNameArg.empty() && classNameArg != entry.className) {
-            warnings.push_back("A Lua script's name is its file name: using \"" + entry.className + "\".");
-        }
-        return true;
-    }
-    fs::path header, source;
-    if (Util::isHeaderFile(file.string())) {
-        header = file;
-        for (const char* candidate : {".cpp", ".cc", ".cxx"}) {
-            fs::path s = file;
-            s.replace_extension(candidate);
-            if (fs::is_regular_file(s, ec)) {
-                source = s;
-                break;
-            }
-        }
-        if (source.empty()) {
-            error = "No source file next to " + projectRelative(project, file) + " (expected " + FileUtils::pathToUtf8(file.stem()) + ".cpp).";
-            return false;
-        }
-    } else if (Util::isSourceFile(file.string())) {
-        source = file;
-        for (const char* candidate : {".h", ".hpp", ".hh", ".hxx"}) {
-            fs::path h = file;
-            h.replace_extension(candidate);
-            if (fs::is_regular_file(h, ec)) {
-                header = h;
-                break;
-            }
-        }
-        if (header.empty()) {
-            error = "No header next to " + projectRelative(project, file) + " (expected " + FileUtils::pathToUtf8(file.stem()) + ".h).";
-            return false;
-        }
-    } else {
-        error = "path must be a .lua script or a C++ script (.h/.hpp header or .cpp source).";
-        return false;
-    }
-    entry.type = ScriptType::CPP;
-    // Stored as the editor stores them (projectRelative is the agent's UTF-8)
-    entry.headerPath = ProjectChecks::projectRelative(project->getProjectPath(), header);
-    entry.path = ProjectChecks::projectRelative(project->getProjectPath(), source);
-    std::string className = classNameArg;
-    if (className.empty()) {
-        if (auto found = ScriptParser::findScriptClassName(header)) className = *found;
-    }
-    if (className.empty()) {
-        error = "Couldn't tell the script class in " + entry.headerPath + " (several or none); pass class_name.";
-        return false;
-    }
-    if (!ScriptParser::inheritsScriptBase(header, className).has_value()) {
-        warnings.push_back("Class " + className + " was not found in " + entry.headerPath + "; the build will fail until it exists.");
-    }
-    entry.className = className;
-    return true;
+    std::vector<std::string> notes;
+    const bool ok = ScriptAttach::makeEntry(project, file, classNameArg, entry, notes, error);
+    for (const std::string& note : notes) warnings.push_back(note);
+    return ok;
 }
 
 // Attaches `entry` (AddComponent if needed) as one undo step. index < 0 appends.
 bool attachEntry(const CallPtr& call, SceneProject* sceneProject, Entity entity, ScriptEntry entry, long long position,
                  size_t& outIndex, std::string& error) {
-    Project* project = call->ctx().project();
-    ScriptComponent* component = sceneProject->scene->findComponent<ScriptComponent>(entity);
-    std::vector<ScriptEntry> scripts = component ? component->scripts : std::vector<ScriptEntry>();
-    for (size_t i = 0; i < scripts.size(); i++) {
-        const bool samePath = entryPath(project, scripts[i]) == entryPath(project, entry);
-        if (samePath && scripts[i].type == entry.type) {
-            error = "The GameObject already has " + entry.className + " (script " + std::to_string(i) +
-                    "); change it with update_script_entry or set_script_properties.";
-            return false;
-        }
-    }
-    size_t index = scripts.size();
-    if (position >= 0 && static_cast<size_t>(position) < scripts.size()) index = static_cast<size_t>(position);
-    scripts.insert(scripts.begin() + static_cast<std::ptrdiff_t>(index), entry);
-    project->updateScriptProperties(sceneProject, entity, scripts);
-
-    auto* multi = new MultiPropertyCmd();
-    if (!component) {
-        multi->addCommand(std::make_unique<AddComponentCmd>(project, sceneProject->id, entity, ComponentType::ScriptComponent));
-    }
-    multi->addCommand(std::make_unique<PropertyCmd<std::vector<ScriptEntry>>>(
-        project, sceneProject->id, entity, ComponentType::ScriptComponent, "scripts", scripts));
-    if (!addSceneCommand(sceneProject->id, multi)) {
-        error = "The editor refused the change (is the GameObject part of a prefab instance that can't take it?).";
-        return false;
-    }
-    outIndex = index;
-    return true;
+    std::vector<Entity> skipped;
+    return ScriptAttach::attach(call->ctx().project(), sceneProject, {entity}, entry, position, skipped, error, &outIndex);
 }
 
 Json lintFile(Project* project, const fs::path& file) {
