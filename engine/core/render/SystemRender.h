@@ -167,6 +167,8 @@ namespace jasperengine{
         // "OpenGL 3.3 core", "Vulkan" ... and the device sokol runs on ("llvmpipe (LLVM 15.0.7, 256 bits)")
         static const char* getBackendName();
         static std::string getDeviceName();
+        // the API reports the device as the CPU (Vulkan's device type); GL has no such property
+        static bool isCpuDevice();
         static std::string getApiVersion();
         // per-draw records in the pass lists from now (a capture, the Frame Debugger)
         static void setDrawListEnabled(bool enabled);
