@@ -242,10 +242,11 @@ async def test_overlay_golden(ed: Editor):
 
 async def test_tree_obstacle_path_goes_around(ed: Editor):
     """T5 AC26: a tree with Nav Obstacle is in the bake whatever its LOD: a path goes round it."""
+    # the first call lands after the editor has made its project, so the folder exists from here on
+    await ed.call("tool_groups", enable=["terrain"])
     (ed.project / "assets").mkdir(exist_ok=True)
     (ed.project / "assets" / "trunk.obj").write_text(
         "v -1 0 0\nv 1 0 0\nv 1 6 0\nv -1 6 0\nvn 0 0 1\nf 1//1 2//1 3//1\nf 1//1 3//1 4//1\n")
-    await ed.call("tool_groups", enable=["terrain"])
     sid = (await ed.call("create_scene", name="NavTrees", type="3D", path="scenes/NavTrees"))["scene"]["id"]
     terrain = (await ed.call("create_entity", scene=sid, name="Land", type="terrain"))["entity_id"]
     await ed.call("set_terrain_maps", scene=sid, entity=terrain, heightmap={"generate": "flat", "base_height": 0.0, "resolution": 65})
