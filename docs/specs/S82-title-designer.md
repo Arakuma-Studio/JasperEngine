@@ -1476,4 +1476,4 @@ rest of S82 lands in 6B.
     left under its 99,000 limit, less than the window enum values and the `title_designer` object
     need (95). `focus_window` paid for them inside the tool: its description is shorter, and
     `page` no longer lists the Preferences pages (a wrong page still fails listing them). Core
-    grows by about 18 characters (R81 allows 120).
+    grows by 21 characters, to 98,983 (`tool_budget.py`; R81 allows 120).
