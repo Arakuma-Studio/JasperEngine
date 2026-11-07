@@ -287,8 +287,10 @@ void ModelClipSettingsView::drawTable(){
     const bool bakeColumn = vatbakeentry::available();
     const int columns = bakeColumn ? 8 : 7;
     // the Inspector's width and every row, no scrolling of its own: a row is a whole item in the
-    // Inspector (find_ui_item, clicks), which scrolls a long list
-    const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp;
+    // Inspector (find_ui_item, clicks), which scrolls a long list. A narrow Inspector truncates the
+    // cells: columns resize, and hide from the header's menu
+    const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp |
+                                  ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable;
     if (!ImGui::BeginTable("model_clip_settings_table", columns, flags)) return;
     ImGui::TableSetupColumn("Clip", ImGuiTableColumnFlags_WidthStretch, 2.0f);
     ImGui::TableSetupColumn("Length");
