@@ -7,10 +7,12 @@
 // system is seeked to a fixed time with a fixed seed and paused, so every frame draws the same
 // particles. Goldens in engine/tests/core/golden/particles_*.png, made on glcore
 // (JASPER_TEST_UPDATE_GOLDEN=1) and matched on the other backends within the cross-backend bound.
-// The textures are tools/particles/make_test_textures.py's (fixtures/particles/textures).
+// The textures are tools/particles/make_test_textures.py's (fixtures/particles/textures). A
+// particle shader's custom block gets the engine-written scene clock as a mesh's does.
 
 #include "Engine.h"
 #include "Scene.h"
+#include "component/CameraComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "object/Camera.h"
 #include "object/Light.h"
@@ -27,6 +29,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -272,4 +276,56 @@ TEST_F(ParticlesGpu, PlayOnAwakeSystemsShowWithoutASeek){
         if (rgba[i] > 120) lit++;
     }
     EXPECT_GT(lit, 100) << "its particles are drawn";
+}
+
+// a particle shader's custom block holds the scene clock (sceneTime), as every custom block does:
+// it holds while the scene is paused and is the scene's, not the frame clock
+TEST_F(ParticlesGpu, CustomBlockReadsTheSceneClock){
+    JASPER_REQUIRE_GPU();
+    Engine::setPinnedShaderTime(-1.0);
+    scene.setBackgroundColor(0.0f, 0.0f, 0.0f, 1.0f);
+    system(Vector3(0.0f, 1.0f, 0.0f), R"({"version": 1, "duration": 5, "looping": false, "seed": 17, "maxParticles": 4, "modules": [
+        {"type": "main", "startLifetime": 5, "startSpeed": 0, "startSize": 2, "startColor": [1, 1, 1, 1]},
+        {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 1}]},
+        {"type": "shape", "shape": "sphere", "radius": 0.01},
+        {"type": "renderer", "renderMode": "billboard", "shader": "particles/scene_clock.frag"}]})");
+
+    // the red the shader draws at the particle's centre (0..255)
+    auto clockRed = [this](){
+        Framebuffer& target = GpuEnvironment::target();
+        const int width = (int)target.getWidth(), height = (int)target.getHeight();
+        std::vector<uint8_t> rgba;
+        EXPECT_TRUE(readTexture(target.getRender().getColorTexture(), width, height, rgba));
+        const CameraComponent& view = scene.getComponent<CameraComponent>(scene.getCamera());
+        const Vector4 clip = view.viewProjectionMatrix * Vector4(0.0f, 1.0f, 0.0f, 1.0f);
+        const int cx = (int)std::lround((clip.x / clip.w * 0.5f + 0.5f) * (float)width);
+        const int cy = (int)std::lround((0.5f - clip.y / clip.w * 0.5f) * (float)height);
+        int sum = 0, count = 0;
+        for (int y = cy - 2; y <= cy + 2; y++){
+            for (int x = cx - 2; x <= cx + 2; x++){
+                if (x < 0 || y < 0 || x >= width || y >= height)
+                    continue;
+                sum += rgba[((size_t)y * width + x) * 4];
+                count++;
+            }
+        }
+        return count > 0 ? sum / count : -1;
+    };
+
+    ASSERT_TRUE(render(1.0));
+    scene.setSceneTimePaused(true);
+    scene.setSceneTime(0.25);
+    GpuEnvironment::drawFrames(2);
+    const int quarter = clockRed();
+    GpuEnvironment::drawFrames(3);
+    const int held = clockRed();
+    scene.setSceneTime(0.75);
+    GpuEnvironment::drawFrames(2);
+    const int threeQuarters = clockRed();
+    std::printf("[gpu] the particle shader's sceneTime as red: %d at 0.25, %d three frames later, %d at 0.75 (frame clock %.2f s)\n",
+                quarter, held, threeQuarters, Engine::getShaderTime());
+    EXPECT_NEAR(quarter, 64, 3) << "the particle's custom block does not hold the scene clock";
+    EXPECT_NEAR(held, 64, 3) << "the scene clock moved while the scene is paused";
+    EXPECT_NEAR(threeQuarters, 191, 3) << "the particle's custom block does not follow the scene clock";
+    EXPECT_NO_ENGINE_ERRORS();
 }
