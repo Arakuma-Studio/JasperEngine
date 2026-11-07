@@ -292,6 +292,7 @@ Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
 | `Debug.isDebugBuild`, the Development Build checkbox | `Engine.isDevelopmentBuild`: the editor's Play and exports built with the Debug build type |
 | IngameDebugConsole (`DebugLogManager`, `DebugLogConsole.AddCommand`, `ExecuteCommand`, the popup) | `DebugOverlay` (`showConsole`, `toggleConsole`, `addCommand`, `executeCommand`; the popup and the backquote key), Project Settings > Debug |
 | Graphy (FPS, RAM, audio monitors) | the debug overlay's stats panel (`DebugOverlay.statsMode`, F3) and `DebugOverlay.getStats()` |
+| Game view Stats: SetPass calls (`UnityStats.setPassCalls`) | the Game view's Stats overlay and the debug overlay's "SetPass calls", `Profiler.frameStats().setPassCalls`, `DebugOverlay.getStats().setPassCalls`, `pipelines_applied` of `get_render_stats` |
 | Dynamic Batching (Player Settings), SpriteRenderer batching | Dynamic Batching (Project Settings > Graphics, on by default; `Engine.dynamicBatching`): Sprites, small meshes and UI elements, [rendering/batching.md](rendering/batching.md) |
 | Game view Stats: Batches, Saved by batching | the same lines in the Game view's Stats; MCP `get_render_stats` `batching` |
 | Frame Debugger: "Why this draw call can't be batched with the previous one" | the Frame Debugger's Dynamic Batch rows (hover: the reason); MCP `get_render_stats batch_breaks` |

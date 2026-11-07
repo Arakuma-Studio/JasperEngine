@@ -1286,6 +1286,7 @@ namespace {
         number("frameMsMax", s.frameMsMax);
         number("frameMs1PercentLow", s.frameMs1PercentLow);
         integer("drawCalls", s.drawCalls);
+        integer("setPassCalls", s.setPassCalls);
         integer("instances", s.instances);
         integer("triangles", s.triangles);
         integer("processMemoryBytes", s.processMemoryBytes);

@@ -409,6 +409,7 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (vat) defs.push_back({"HAS_VAT", "1"});                                              // 'Vat', 'Vab'
     if (vat && (prop & ShaderPool::getVatProperty(ShaderType::MESH, true))) defs.push_back({"HAS_VAT_BONES", "1"}); // 'Vab'
     if (prop & ShaderPool::getAutoInstancingProperty(ShaderType::MESH)) defs.push_back({"HAS_AUTO_INSTANCING", "1"}); // 'Aui'
+    if (prop & ShaderPool::getDirectionalOnlyProperty()) defs.push_back({"DIRECTIONAL_LIGHTS_ONLY", "1"}); // 'Dlo'
     if (prop & ShaderPool::getLodFadeProperty()) defs.push_back({"USE_LOD_FADE", "1"});    // 'Lfd'
     if (prop & ShaderPool::getWaterExclusionProperty()) defs.push_back({"USE_WATER_EXCLUSION", "1"}); // 'Wex'
     if (prop & ShaderPool::getWaterWakeProperty()) defs.push_back({"USE_WATER_WAKE", "1"});           // 'Wwk'

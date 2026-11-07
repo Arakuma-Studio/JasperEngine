@@ -50,6 +50,14 @@ shaderKeys:
     properties: 1112
   - type: mesh
     properties: 8589935704
+  - type: mesh
+    properties: 68719477848
+  - type: mesh
+    properties: 77309412440
+  - type: mesh
+    properties: 17592186045528
+  - type: mesh
+    properties: 17600775980120
   - type: sky
   - type: depth
   - type: blit

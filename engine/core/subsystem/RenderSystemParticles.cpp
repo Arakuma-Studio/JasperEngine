@@ -607,7 +607,10 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
     ParticleRenderData& rd = state.render;
     if (!rd.loaded || state.runtime.isPrewarming())
         return;
+#if JASPERENGINE_PROFILER
+    // (the editor's and the profiler's statistic: a release game reads no clock here)
     const auto start = std::chrono::steady_clock::now();
+#endif
     const ParticleEffectDocument& d = state.effect->document;
     const ParticleProgram& prog = state.effect->program;
     const RenderParams& rp = prog.render;
@@ -824,5 +827,7 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
     state.drawnViews += drawn;
     if (view.sort && drawn > 0)
         state.sortedViews++;
+#if JASPERENGINE_PROFILER
     state.renderMicros += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
+#endif
 }

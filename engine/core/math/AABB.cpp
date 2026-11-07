@@ -3,6 +3,8 @@
 
 #include "AABB.h"
 
+#include <algorithm>
+
 #include "Plane.h"
 #include "Log.h"
 #include "OBB.h"
@@ -260,6 +262,31 @@ AABB& AABB::merge( const Vector3& point ) {
 AABB& AABB::transform( const Matrix4& matrix ) {
     if( mBoxType != BOXTYPE_FINITE )
         return *this;
+
+    // an affine matrix maps each axis interval on its own (Arvo): the translation plus, per
+    // axis, the smaller and larger of each input axis's two products; projective matrices and
+    // a result that is not a number keep the corner loop below
+    if (matrix.isAffine()){
+        const float oldMin[3] = {mMinimum.x, mMinimum.y, mMinimum.z};
+        const float oldMax[3] = {mMaximum.x, mMaximum.y, mMaximum.z};
+        float newMin[3] = {matrix[3][0], matrix[3][1], matrix[3][2]};
+        float newMax[3] = {matrix[3][0], matrix[3][1], matrix[3][2]};
+        for (int col = 0; col < 3; col++){
+            for (int row = 0; row < 3; row++){
+                const float a = matrix[col][row] * oldMin[col];
+                const float b = matrix[col][row] * oldMax[col];
+                newMin[row] += std::min(a, b);
+                newMax[row] += std::max(a, b);
+            }
+        }
+        bool numbers = true;
+        for (int i = 0; i < 3; i++)
+            numbers = numbers && newMin[i] == newMin[i] && newMax[i] == newMax[i];
+        if (numbers){
+            setExtents(newMin[0], newMin[1], newMin[2], newMax[0], newMax[1], newMax[2]);
+            return *this;
+        }
+    }
 
     Vector3 oldMin, oldMax, currentCorner;
 
