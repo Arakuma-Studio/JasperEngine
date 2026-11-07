@@ -6,14 +6,21 @@
 // the water, one pass per water height (nearest first up to Max Planes), none with the scene's
 // resolution Off (the environment reflection instead), for perspective and orthographic cameras.
 // The water is a black mirror (opaque, its reflection unbent), so the pixels it draws are its
-// reflection times Schlick's fresnel.
+// reflection times Schlick's fresnel. Each pass selects the terrain for its own mirrored camera,
+// the frame rewrites the shared MVPs per camera only while a reflection pass draws, and the
+// passes' targets are the size the viewer's pass draws at (fixed resolution, render scale).
 
 #include "Engine.h"
 #include "Scene.h"
 #include "component/CameraComponent.h"
 #include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
+#include "component/Transform.h"
 #include "object/Camera.h"
 #include "object/Primitive.h"
+#include "object/Sprite.h"
+#include "object/Terrain.h"
+#include "pool/TextureDataPool.h"
 #include "shader/ShaderUniforms.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/Material.h"
@@ -38,6 +45,8 @@ using namespace jasperengine::test;
 namespace {
 
     constexpr double REFLECTION_PINNED_TIME = 2.0;
+    constexpr int REFLECTION_TERRAIN_TEXELS = 33;
+    const char* const REFLECTION_TERRAIN_HEIGHTS = "water-reflection-terrain-height";
 
     struct ReflectionPixel{ int r = 0, g = 0, b = 0; };
 
@@ -254,5 +263,165 @@ TEST_F(WaterReflectionGpu, OrthographicViewer){
     printReflectionPixel("the cube mirrored (orthographic)", mirrored);
     EXPECT_EQ(stats().passes, 1u);
     EXPECT_GT(mirrored.r, 2 * std::max(mirrored.g, mirrored.b) + 10) << "no reflection of the cube for an orthographic camera";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// two heights, two passes: each selects the terrain's node cut for its own mirrored camera, in a
+// terrain view of its own (a view's node buffer is uploaded once a frame: one view shared by the
+// passes draws the last pass's cut in all of them on Vulkan, Metal and D3D11)
+TEST_F(WaterReflectionGpu, EachPassSelectsTheTerrainForItsOwnCamera){
+    JASPER_REQUIRE_GPU();
+    const Vector3 eye(0.0f, 10.0f, 20.0f);
+    camera.setPosition(eye.x, eye.y, eye.z);
+    camera.setTarget(0.0f, 0.0f, 0.0f);
+    camera.activate();
+
+    // a flat terrain at height 0 (its heights in memory: the pool holds a pointer to them)
+    static std::vector<unsigned char> heights((size_t)REFLECTION_TERRAIN_TEXELS * REFLECTION_TERRAIN_TEXELS * 2, 0);
+    Terrain terrain(&scene);
+    terrain.setSize(64.0f);
+    terrain.setMaxHeight(1.0f);
+    terrain.setColor(0.4f, 0.5f, 0.3f);
+    TerrainComponent& component = scene.getComponent<TerrainComponent>(terrain.getEntity());
+    component.heightMap.setData(REFLECTION_TERRAIN_HEIGHTS, TextureData(REFLECTION_TERRAIN_TEXELS, REFLECTION_TERRAIN_TEXELS,
+                                (unsigned int)heights.size(), ColorFormat::RED16, 1, heights.data()));
+    component.heightMap.setReleaseDataAfterLoad(false);
+    component.needUpdateTexture = true;
+    component.needUpdateTerrain = true;
+
+    Primitive low(&scene);
+    low.createPlane(6.0f, 6.0f);
+    low.setPosition(-4.0f, 2.0f, 0.0f);
+    low.setMaterial(mirrorWater());
+    Primitive high(&scene);
+    high.createPlane(6.0f, 6.0f);
+    high.setPosition(4.0f, 4.0f, 0.0f);
+    high.setMaterial(mirrorWater());
+
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    GpuEnvironment::drawFrames(2);
+    ASSERT_TRUE(component.heightMapLoaded) << "the terrain never loaded";
+    ASSERT_EQ(stats().passes, 2u) << "the two heights are not two passes";
+
+    // the reflection passes' cameras: the eye mirrored about each water's height
+    const Vector3 mirrored[2] = {Vector3(eye.x, 2.0f * 4.0f - eye.y, eye.z), Vector3(eye.x, 2.0f * 2.0f - eye.y, eye.z)};
+    for (const Vector3& expected : mirrored){
+        bool selected = false;
+        for (int v = 1; v < MAX_TERRAIN_VIEWS; v++){
+            const Vector3& at = component.views[v].nodesEyePos;
+            std::printf("[gpu] terrain view %d selected from (%.2f, %.2f, %.2f)\n", v, at.x, at.y, at.z);
+            if ((at - expected).length() < 1e-3f)
+                selected = true;
+        }
+        EXPECT_TRUE(selected) << "no terrain view holds the cut of the reflection camera at (" << expected.x << ", "
+                              << expected.y << ", " << expected.z << ")";
+    }
+    EXPECT_NO_ENGINE_ERRORS();
+    TextureDataPool::remove(REFLECTION_TERRAIN_HEIGHTS);
+}
+
+// the MVPs are made per camera only in a frame that draws a reflection pass: with the planar
+// water out of the camera's sight (the eye under its surface) a batched mesh's MVP waits for a
+// draw alone, as in any one-camera frame (dynamic batching's lazy MVP), so a camera move leaves it
+TEST_F(WaterReflectionGpu, MVPsPerCameraOnlyWhileAReflectionDraws){
+    JASPER_REQUIRE_GPU();
+    const bool batching = Engine::isDynamicBatching();
+    Engine::setDynamicBatching(true);
+    camera.setPosition(0.0f, -2.0f, 8.0f);
+    camera.setTarget(0.0f, -2.0f, 0.0f);
+    camera.activate();
+
+    Primitive water(&scene);
+    water.createPlane(30.0f, 30.0f);
+    water.setMaterial(mirrorWater());
+
+    // two cards of one texture (dynamic batching's sprites, of two sizes: no GPU instancing)
+    static std::vector<uint8_t> pixels(4 * 4 * 4, 200);
+    const TextureData card(4, 4, (unsigned int)pixels.size(), ColorFormat::RGBA, 4, pixels.data());
+    Sprite left(&scene);
+    left.setTexture("water-reflection-card", card);
+    left.setSize(1, 1);
+    left.setPosition(-1.5f, -2.5f, 0.0f);
+    Sprite right(&scene);
+    right.setTexture("water-reflection-card", card);
+    right.setSize(2, 1);
+    right.setPosition(0.5f, -2.5f, 0.0f);
+
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    GpuEnvironment::drawFrames(2);
+    ASSERT_TRUE(scene.getSystem<RenderSystem>()->hasBatchRecord(left.getEntity()))
+        << "the cards are not batched: " << getBatchBreakName(scene.getSystem<RenderSystem>()->getBatchEligibility(left.getEntity()));
+    EXPECT_EQ(stats().passes, 0u);
+    const Transform& transform = left.getComponent<Transform>();
+
+    // under the water: one camera, the batched card's MVP left as it was
+    const Matrix4 under = transform.modelViewProjectionMatrix;
+    camera.setPosition(0.5f, -2.0f, 8.0f);
+    GpuEnvironment::drawFrames(1);
+    EXPECT_EQ(stats().passes, 0u);
+    EXPECT_TRUE(transform.modelViewProjectionMatrix == under) << "the MVPs were made per camera with no reflection pass drawn";
+
+    // above it, the water in sight: its reflection pass draws, and every camera makes its MVPs
+    camera.setPosition(0.0f, 3.0f, 8.0f);
+    camera.setTarget(0.0f, -2.0f, 0.0f);
+    GpuEnvironment::drawFrames(2);
+    ASSERT_EQ(stats().passes, 1u);
+    const Matrix4 above = transform.modelViewProjectionMatrix;
+    camera.setPosition(0.5f, 3.0f, 8.0f);
+    GpuEnvironment::drawFrames(1);
+    EXPECT_EQ(stats().passes, 1u);
+    EXPECT_FALSE(transform.modelViewProjectionMatrix == above) << "a reflection pass drew and the MVPs were not made per camera";
+    Engine::setDynamicBatching(batching);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// the reflection target is the scene's resolution (Half here) of what the viewer's pass draws
+// at: the fixed resolution's size, the render scale's (not the 640 x 360 view's)
+TEST_F(WaterReflectionGpu, TargetSizeIsThePassSize){
+    JASPER_REQUIRE_GPU();
+    camera.setPosition(0.0f, 0.6f, 8.0f);
+    camera.setTarget(0.0f, -0.2f, 0.0f);
+    camera.activate();
+
+    Primitive water(&scene);
+    water.createPlane(30.0f, 30.0f);
+    water.setMaterial(mirrorWater());
+    Primitive cube(&scene);
+    makeRedCube(cube);
+    cube.setPosition(0.0f, 1.0f, 0.0f);
+    ASSERT_EQ(scene.getPlanarReflectionResolution(), PlanarReflectionResolution::HALF);
+
+    // the view itself
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    const Rect view = Engine::getViewRect();
+    std::printf("[gpu] view %.0f x %.0f: reflection %u x %u\n", view.getWidth(), view.getHeight(), stats().width, stats().height);
+    EXPECT_EQ(stats().width, (unsigned int)std::floor(view.getWidth() * 0.5f));
+    EXPECT_EQ(stats().height, (unsigned int)std::floor(view.getHeight() * 0.5f));
+
+    // a fixed resolution of the view's aspect
+    scene.setFixedResolutionSize(400, 225);
+    scene.setFixedResolutionEnabled(true);
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    GpuEnvironment::drawFrames(1);
+    std::printf("[gpu] fixed 400 x 225: reflection %u x %u\n", stats().width, stats().height);
+    EXPECT_EQ(stats().width, 200u) << "the reflection target is not the fixed resolution's";
+    EXPECT_EQ(stats().height, 112u);
+    const ReflectionPixel fixed = reflectionPixelAt(scene, Vector3(0.0f, -1.0f, 0.0f));
+    printReflectionPixel("the cube mirrored (fixed resolution)", fixed);
+    EXPECT_GT(fixed.r, 2 * std::max(fixed.g, fixed.b) + 10) << "no reflection of the cube at the fixed resolution";
+    scene.setFixedResolutionEnabled(false);
+
+    // half the render scale (the uber pass draws the scene at it)
+    PostProcessingSettings post = scene.getPostProcessing();
+    post.renderScale = 0.5f;
+    scene.setPostProcessing(post);
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    GpuEnvironment::drawFrames(1);
+    std::printf("[gpu] render scale 0.5: reflection %u x %u\n", stats().width, stats().height);
+    EXPECT_EQ(stats().width, (unsigned int)std::floor(view.getWidth() * 0.5f * 0.5f)) << "the reflection target is not the render scale's";
+    EXPECT_EQ(stats().height, (unsigned int)std::floor(view.getHeight() * 0.5f * 0.5f));
+    const ReflectionPixel scaled = reflectionPixelAt(scene, Vector3(0.0f, -1.0f, 0.0f));
+    printReflectionPixel("the cube mirrored (render scale 0.5)", scaled);
+    EXPECT_GT(scaled.r, 2 * std::max(scaled.g, scaled.b) + 10) << "no reflection of the cube at the render scale";
     EXPECT_NO_ENGINE_ERRORS();
 }
