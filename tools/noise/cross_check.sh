@@ -133,7 +133,8 @@ for abi in arm64-v8a armeabi-v7a x86_64 x86; do
         esac
         if command -v "$cross-g++" >/dev/null; then
             dir="$OUT/$abi-ubuntu"
-            if "$CMAKE" -S "$SOURCE" -B "$dir" -G Ninja --fresh -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_C_COMPILER="$cross-gcc" -DCMAKE_CXX_COMPILER="$cross-g++" \
+            rm -rf "$dir"
+            if "$CMAKE" -S "$SOURCE" -B "$dir" -G Ninja -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_C_COMPILER="$cross-gcc" -DCMAKE_CXX_COMPILER="$cross-g++" \
                     -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_NOISE_STATIC=ON >"$dir.configure.log" 2>&1 && "$CMAKE" --build "$dir" >"$dir.build.log" 2>&1; then
                 run_tool "$runner" "$dir/jasperengine-noise-golden"
                 if [[ $RUN_STATUS -eq 0 ]]; then
@@ -146,6 +147,8 @@ for abi in arm64-v8a armeabi-v7a x86_64 x86; do
                 fi
                 continue
             fi
+            echo "cross-check $abi: UNVERIFIED (static bionic would not start under $runner, and $cross-g++ failed to build: see $dir.build.log)"
+            continue
         fi
         echo "cross-check $abi: UNVERIFIED (static bionic would not start under $runner, and no cross compiler)"
     else
