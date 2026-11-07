@@ -71,6 +71,100 @@ comparison of the old golden against the new image (before) and after the update
 | `text/standard` | The standard title (確定, Dela Gothic One, the classic style) on a 640 x 360 canvas (§7) |
 | `text/rim_miter` | A star with a mitred rim (AC22) |
 | `text/rim_round` | The same star with a round rim (AC22) |
+| `effects/brush_stroke` | Ink Brush Stroke at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/brush_stroke-marker` | Ink Brush Stroke with its `marker` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/brush_stroke-sumi` | Ink Brush Stroke with its `sumi` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/chalk` | Chalk at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/chalk-pastel` | Chalk with its `pastel` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/chromatic_aberration` | Chromatic Aberration at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/chromatic_aberration-rgb_split` | Chromatic Aberration with its `rgb_split` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/contour_lines` | Contour Lines at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/contour_lines-outside_rings` | Contour Lines with its `outside_rings` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/distress` | Distress at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/distress-dry_brush` | Distress with its `dry_brush` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/drips` | Drips at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/drips-slime` | Drips with its `slime` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/extrude` | Extrude at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/extrude-block_letters` | Extrude with its `block_letters` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/extrude-long_shadow` | Extrude with its `long_shadow` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/floor_reflection` | Floor Reflection at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/floor_reflection-glossy_floor` | Floor Reflection with its `glossy_floor` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/frost` | Frost at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/frost-frozen_solid` | Frost with its `frozen_solid` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/glitch` | Glitch at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/glitch-digital` | Glitch with its `digital` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/glitch-vhs` | Glitch with its `vhs` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/grain` | Grain at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/grain-film` | Grain with its `film` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/halftone` | Halftone at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/halftone-ben_day` | Halftone with its `ben_day` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/halftone-comic_dots` | Halftone with its `comic_dots` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/holographic` | Holographic Foil at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/holographic-foil` | Holographic Foil with its `foil` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/holographic-rainbow_sticker` | Holographic Foil with its `rainbow_sticker` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/lens_blur` | Lens Blur at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/lens_blur-bokeh_highlights` | Lens Blur with its `bokeh_highlights` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/light_glow` | Light Glow at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/light_glow-jackpot_flash` | Light Glow with its `jackpot_flash` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/light_glow-soft_bloom` | Light Glow with its `soft_bloom` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/material` | Material at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/material-chrome` | Material with its `chrome` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/motion_blur` | Motion Blur at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/motion_blur-speed` | Motion Blur with its `speed` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/motion_trail` | Motion Trail at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/motion_trail-echo` | Motion Trail with its `echo` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/neon_tube` | Neon Tube at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/neon_tube-cyan_neon` | Neon Tube with its `cyan_neon` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/pattern_fill-brick` | Pattern Fill with S83's `brick` procedural kind (§6.6.28), reviewed by eye |
+| `effects/pattern_fill-brushed_metal` | Pattern Fill with S83's `brushed_metal` procedural kind (§6.6.28), reviewed by eye |
+| `effects/pattern_fill-camo` | Pattern Fill with S83's `camo` procedural kind (§6.6.28), reviewed by eye |
+| `effects/pattern_fill-carbon_fiber` | Pattern Fill with S83's `carbon_fiber` procedural kind (§6.6.28), reviewed by eye |
+| `effects/pattern_fill-circuit` | Pattern Fill with S83's `circuit` procedural kind (§6.6.28), reviewed by eye |
+| `effects/pattern_fill-concrete` | Pattern Fill with S83's `concrete` procedural kind (§6.6.28), reviewed by eye |
+| `effects/pattern_fill-diamond_plate` | Pattern Fill with S83's `diamond_plate` procedural kind (§6.6.28), reviewed by eye |
+| `effects/pattern_fill-granite` | Pattern Fill with S83's `granite` procedural kind (§6.6.28), reviewed by eye |
+| `effects/pattern_fill-leather` | Pattern Fill with S83's `leather` procedural kind (§6.6.28), reviewed by eye |
+| `effects/pattern_fill-marble` | Pattern Fill with S83's `marble` procedural kind (§6.6.28), reviewed by eye |
+| `effects/pattern_fill-rust` | Pattern Fill with S83's `rust` procedural kind (§6.6.28), reviewed by eye |
+| `effects/pattern_fill-wood` | Pattern Fill with S83's `wood` procedural kind (§6.6.28), reviewed by eye |
+| `effects/perspective_shadow` | Perspective Shadow at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/perspective_shadow-low_sun` | Perspective Shadow with its `low_sun` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/pixelate` | Pixelate at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/pixelate-led_board` | Pixelate with its `led_board` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/pixelate-retro_8bit` | Pixelate with its `retro_8bit` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/radial_blur` | Radial Blur at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/radial_blur-impact_zoom` | Radial Blur with its `impact_zoom` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/radial_blur-spin` | Radial Blur with its `spin` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/scanlines` | Scanlines at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/scanlines-crt` | Scanlines with its `crt` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/shatter` | Shatter at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/shatter-cracks` | Shatter with its `cracks` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/stitch` | Stitch at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/stitch-cross_stitch` | Stitch with its `cross_stitch` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/stitch-patch_border` | Stitch with its `patch_border` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/tilt_shift` | Tilt-Shift Blur at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/tilt_shift-miniature` | Tilt-Shift Blur with its `miniature` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/wave_warp` | Wave Warp at defaults (S83 §6.6), on the standard title, reviewed by eye |
+| `effects/wave_warp-heat_haze` | Wave Warp with its `heat_haze` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `effects/wave_warp-ripple` | Wave Warp with its `ripple` preset (S83 §6.8), on the standard title, reviewed by eye |
+| `pachislop/PROVENANC` | copied unchanged from Pachislop's `tests/golden/refs/effect/PROVENANC.png` (S83 parity reference, AC4) |
+| `pachislop/effect/chromaticAberration` | copied unchanged from Pachislop's `tests/golden/refs/effect/chromaticAberration.png` (S83 parity reference, AC4) |
+| `pachislop/effect/contourLines` | copied unchanged from Pachislop's `tests/golden/refs/effect/contourLines.png` (S83 parity reference, AC4) |
+| `pachislop/effect/deepGlow` | copied unchanged from Pachislop's `tests/golden/refs/effect/deepGlow.png` (S83 parity reference, AC4) |
+| `pachislop/effect/extrude2d` | copied unchanged from Pachislop's `tests/golden/refs/effect/extrude2d.png` (S83 parity reference, AC4) |
+| `pachislop/effect/floorReflection` | copied unchanged from Pachislop's `tests/golden/refs/effect/floorReflection.png` (S83 parity reference, AC4) |
+| `pachislop/effect/glitch` | copied unchanged from Pachislop's `tests/golden/refs/effect/glitch.png` (S83 parity reference, AC4) |
+| `pachislop/effect/grain` | copied unchanged from Pachislop's `tests/golden/refs/effect/grain.png` (S83 parity reference, AC4) |
+| `pachislop/effect/halftone` | copied unchanged from Pachislop's `tests/golden/refs/effect/halftone.png` (S83 parity reference, AC4) |
+| `pachislop/effect/lensBlur` | copied unchanged from Pachislop's `tests/golden/refs/effect/lensBlur.png` (S83 parity reference, AC4) |
+| `pachislop/effect/material` | copied unchanged from Pachislop's `tests/golden/refs/effect/material.png` (S83 parity reference, AC4) |
+| `pachislop/effect/motionBlur` | copied unchanged from Pachislop's `tests/golden/refs/effect/motionBlur.png` (S83 parity reference, AC4) |
+| `pachislop/effect/motionTrail` | copied unchanged from Pachislop's `tests/golden/refs/effect/motionTrail.png` (S83 parity reference, AC4) |
+| `pachislop/effect/perspectiveShadow` | copied unchanged from Pachislop's `tests/golden/refs/effect/perspectiveShadow.png` (S83 parity reference, AC4) |
+| `pachislop/effect/radialBlur` | copied unchanged from Pachislop's `tests/golden/refs/effect/radialBlur.png` (S83 parity reference, AC4) |
+| `pachislop/effect/shatter` | copied unchanged from Pachislop's `tests/golden/refs/effect/shatter.png` (S83 parity reference, AC4) |
+| `pachislop/effect/tiltShift` | copied unchanged from Pachislop's `tests/golden/refs/effect/tiltShift.png` (S83 parity reference, AC4) |
+| `pachislop/effect/wave` | copied unchanged from Pachislop's `tests/golden/refs/effect/wave.png` (S83 parity reference, AC4) |
 
 ## Updated goldens
 

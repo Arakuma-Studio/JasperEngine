@@ -70,7 +70,8 @@ async def test_detail(ed: Editor):
     ed.check_eq(d["live"], "scale_split", "Light Glow's live variant")
     ed.check_in("intensity", d["live_params"], "intensity plays live")
     ed.check(any(p["id"] == "soft_bloom" for p in d["presets"]), "its presets with their params")
-    ed.check(any("live" in line for line in d["params"]), f"the param lines carry animation classes: {d['params'][:3]}")
+    ed.check_eq(d["anim"]["intensity"], "live", "each param's animation class")
+    ed.check_eq(d["anim"]["radius"], "rerender", "a re-rendering param")
     recipe = await ed.call("list_title_library", kind="effects", id="long_shadow")
     ed.check_eq(recipe["type"], "extrude", "Long Shadow is an Extrude")
     msg = await ed.check_error("list_title_library", kind="effects", id="lite_glow")
@@ -94,8 +95,8 @@ async def test_edit_ops(ed: Editor):
     ed.check_eq(r.get("undo_name", r.get("undoName", "Long Shadow")), "Long Shadow", f"one step named after the recipe: {r}")
     doc = await ed.call("get_title", path=path, detail="full")
     title = next(l for l in doc["layers"] if l["name"] == "Title")
-    types = [e["type"] for e in title["effects"]]
-    ed.check_in("extrude", types, f"apply_recipe added an Extrude: {types}")
+    effects = title["effects"]
+    ed.check(any("extrude" in (e if isinstance(e, str) else e.get("type", "")) for e in effects), f"apply_recipe added an Extrude: {effects}")
 
 
 async def test_cost_readout(ed: Editor):

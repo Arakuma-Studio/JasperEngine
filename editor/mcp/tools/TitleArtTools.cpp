@@ -230,6 +230,9 @@ void listTitleLibraryTool(const CallPtr& call) {
                 detail["entry"] = "effect";
                 detail["presets"] = presetsOf(def->type, true);
                 detail["live_params"] = liveParams(def->live);
+                Json anim = Json::object();
+                for (const titleart::ParamDef& q : def->params) anim[q.key] = titleart::fxAnimName(q.anim);
+                detail["anim"] = anim;
                 detail["docs"] = std::string("docs/mcp/guide/title-art-effects.md#") + def->type;
                 call->ok(std::string(def->label) + " (" + def->type + ")", detail);
                 return;
