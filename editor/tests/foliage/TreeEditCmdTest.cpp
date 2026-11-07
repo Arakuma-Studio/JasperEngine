@@ -9,18 +9,25 @@
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/type/TreeEditCmd.h"
+#include "EditorHost.h"
+#include "foliage/FoliageOpRunner.h"
 #include "component/TerrainComponent.h"
 #include "object/Terrain.h"
 #include "subsystem/FoliageSystem.h"
 #include "AppSettings.h"
 #include "Engine.h"
 #include "support/EditorTestSupport.h"
+#include "terrain/FoliageOps.h"
 #include "terrain/FoliageTypes.h"
 #include "terrain/TreeStore.h"
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstring>
+#include <functional>
+#include <mutex>
+#include <thread>
 #include <filesystem>
 #include <fstream>
 #include <unistd.h>
@@ -177,4 +184,68 @@ TEST(TreeEditCmdTests, ConvertHostIsOneUndoStep) {
     ASSERT_TRUE(command.execute());
     EXPECT_EQ(hostRuns, 1);
     EXPECT_EQ(scene.store->size(), after);
+}
+
+// An edit_terrain or Mass Place job lands through the editor's main-thread queue, which runs every loop
+// and wakes an idle editor; nothing here draws a frame or calls FoliageOpRunner::updateAll itself
+TEST(TreeEditCmdTests, OpRunnerLandsThroughTheMainThreadQueue) {
+    TreeScene scene;
+    registerFoliageOps();
+
+    struct QueueHost : EditorHost {
+        std::mutex mutex;
+        std::vector<std::function<void()>> tasks;
+        void enqueueMainThreadTask(std::function<void()> task) override {
+            std::lock_guard<std::mutex> lock(mutex);
+            tasks.push_back(std::move(task));
+        }
+        std::vector<std::function<void()>> take() {
+            std::lock_guard<std::mutex> lock(mutex);
+            return std::move(tasks);
+        }
+    } host;
+    setEditorHost(&host);
+
+    Op op;
+    op.type = OpType::Registered;
+    op.registeredName = "place_trees";
+    op.params.kind = OpParam::Kind::Object;
+    OpParam prototype;
+    prototype.kind = OpParam::Kind::Number;
+    OpParam point;
+    point.kind = OpParam::Kind::List;
+    point.items.resize(2);
+    for (OpParam& coordinate : point.items) coordinate.kind = OpParam::Kind::Number;
+    OpParam points;
+    points.kind = OpParam::Kind::List;
+    points.items.push_back(point);
+    op.params.fields.emplace_back("prototype", prototype);
+    op.params.fields.emplace_back("points", points);
+
+    FoliageOpRunner::Request request;
+    request.sceneId = scene.sceneId;
+    request.terrain = scene.entity;
+    request.ops.push_back(op);
+    request.undoName = "Paint Trees";
+    bool landed = false;
+    FoliageOpRunner::Outcome outcome;
+    std::shared_ptr<FoliageOpRunner> runner = FoliageOpRunner::start(&scene.project, std::move(request), [&](const FoliageOpRunner::Outcome& done) {
+        landed = true;
+        outcome = done;
+    });
+
+    // the work's end posts the landing: wait for that post, then run it as the editor's loop would
+    std::vector<std::function<void()>> posted;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    while (posted.empty() && std::chrono::steady_clock::now() < deadline) {
+        posted = host.take();
+        if (posted.empty()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    for (std::function<void()>& task : posted) task();
+    setEditorHost(nullptr);
+
+    ASSERT_FALSE(posted.empty()) << "the job posted nothing to the editor's main-thread queue";
+    EXPECT_TRUE(landed) << "the posted task did not land the result";
+    EXPECT_TRUE(outcome.error.empty()) << outcome.error;
+    EXPECT_EQ(outcome.treesAfter, 1);
 }

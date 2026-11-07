@@ -149,22 +149,6 @@ async def test_mass_place_does_not_stall(ed: Editor):
     ed.check(await tree_count(ed, sid, terrain) > 0, "planted")
 
 
-async def test_job_lands_in_an_idle_editor(ed: Editor):
-    sid, terrain = await terrain_scene(ed, "Idle")
-    started = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[scatter()], wait=False)
-    # Nothing calls the editor meanwhile, so nothing makes it draw: idle is the condition under test.
-    # The job ends when its result lands, so it must end during the quiet, not at the next call.
-    quiet = 5.0
-    await asyncio.sleep(quiet)
-    for _ in range(600):
-        job = await ed.call("get_job", job_id=started["job_id"])
-        if job["status"] != "running":
-            break
-        await asyncio.sleep(0.05)
-    ed.check_eq(job["status"], "succeeded", f"{job}")
-    ed.check(job["elapsed_seconds"] < quiet - 1.0, f"the result landed while the editor was idle: {job}")
-
-
 async def test_stats_match_a_count(ed: Editor):
     sid, terrain = await terrain_scene(ed, "Stats")
     real = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[scatter()])

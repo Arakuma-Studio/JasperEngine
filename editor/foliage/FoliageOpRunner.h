@@ -50,8 +50,8 @@ namespace jasperengine::editor {
         using Finished = std::function<void(const Outcome&)>;
         using Progress = std::function<void(double share)>;
 
-        // The T1 store's bytes for what a list reads, then the list. Polled by the caller's frame:
-        // the runner polls itself through update(), called by the editor each frame.
+        // The T1 store's bytes for what a list reads, then the list, on a job; its end posts the
+        // landing to the editor's main-thread queue (updateAll).
         static std::shared_ptr<FoliageOpRunner> start(Project* project, Request request, Finished finished, Progress progress = nullptr);
 
         // Everything a running job needs from the main thread; false once finished
