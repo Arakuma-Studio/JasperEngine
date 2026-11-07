@@ -592,8 +592,9 @@ void WaterInteractionSystem::stepWakes(float dt){
     Vector2 forward;
     if (const Transform* camera = scene->findComponent<Transform>(scene->getCamera())){
         eye = camera->worldPosition;
+        // (worldDirection is the view's backward axis)
         if (const CameraComponent* component = scene->findComponent<CameraComponent>(scene->getCamera()))
-            forward = Vector2(component->worldDirection.x, component->worldDirection.z);
+            forward = Vector2(-component->worldDirection.x, -component->worldDirection.z);
     }
     const float reach = 0.25f * (float)size * texel;
     forward = forward.squaredLength() > 1.0e-6f ? forward.normalized() * reach : Vector2(0.0f, 0.0f);

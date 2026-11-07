@@ -8,6 +8,7 @@
 
 #include "Engine.h"
 #include "Scene.h"
+#include "component/CameraComponent.h"
 #include "component/MeshComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "component/Transform.h"
@@ -239,6 +240,28 @@ TEST_F(WaterInteractionTest, WakeBehindAMovingHull){
     EXPECT_GT(foamAt(0.0f, -3.5f, water), 0.1f);
     EXPECT_EQ(foamAt(0.0f, 8.0f, water), 0.0f);
     EXPECT_EQ(foamAt(10.0f, -5.0f, water), 0.0f);
+}
+
+TEST_F(WaterInteractionTest, WakeMapReachesAheadOfTheCamera){
+    const Entity water = lake();
+    // a chase camera 24 m behind the start, looking along +Z and down (its worldDirection is the
+    // view's backward axis, as RenderSystem sets it)
+    const Entity camera = place(Vector3(0.0f, 9.0f, -24.0f));
+    CameraComponent view;
+    view.worldDirection = Vector3(0.0f, 0.47f, -0.88f);
+    scene->addComponent<CameraComponent>(camera, view);
+    scene->setCamera(camera);
+    const Entity boat = hull(Vector3(0.0f, 0.0f, -12.0f));
+    Engine::setScene(scene.get());
+    for (int i = 0; i < 72; i++){
+        move(boat, Vector3(0.0f, 0.0f, -12.0f + 5.0f * STEP * (float)i));
+        frame();
+    }
+    ASSERT_TRUE(system->isWakeActive());
+    const WaterInteractionSystem::WakeMapInfo map = system->getWakeMapInfo();
+    // the map's centre is ahead of the camera, so the wake the camera sees is on it
+    EXPECT_GT(map.corner.y + 0.5f * map.area, -24.0f);
+    EXPECT_GT(foamAt(0.0f, -3.5f, water), 0.1f);
 }
 
 TEST_F(WaterInteractionTest, WakesStayOnTheirWater){
