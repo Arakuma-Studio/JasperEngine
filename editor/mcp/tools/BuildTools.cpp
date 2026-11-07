@@ -570,6 +570,7 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
         result["platform"] = buildPlatformName(r.config.platform);
         result["method_used"] = buildMethodName(report.methodUsed);
         result["compile_reasons"] = report.compileReasons;
+        result["carried"] = report.carried;
         result["player_id"] = report.playerId;
         // S34: the engine modules the build ships, and the first reason of each
         result["modules"] = report.modules;
@@ -1370,6 +1371,7 @@ void getBuildInfoTool(const CallPtr& call) {
         const BuildMethodChoice choice = Exporter::chooseBuildMethod(project, config, runtime ? &*runtime : nullptr);
         platforms[buildPlatformName(target)] = {{"method", buildMethodName(choice.method)},
                                                 {"compile_reasons", choice.reasons},
+                                                {"carried", choice.method == BuildMethod::Prebuilt ? choice.carried : std::vector<std::string>{}},
                                                 {"tools_missing", missingTools},
                                                 {"output_dir", FileUtils::pathToGenericUtf8(defaultPlayerDir(project, target))}};
     }

@@ -16,7 +16,8 @@ macOS, Android, iOS or the web. It picks one of two methods:
   the game, as before. It is needed when the project has
   - C++ scripts,
   - a `ProjectBuild.cmake`,
-  - Google Mobile Ads (AdMob),
+  - native plugins the prebuilt player cannot carry (Java/Kotlin, Gradle dependencies, C++ plugins:
+    see "Native plugins in prebuilt builds" below),
   - or when Build Settings > Build Method says Compile.
 
   Content size is never a reason: meshes, sprites and tilemaps hold as many submeshes, bones,
@@ -238,6 +239,63 @@ startup and every export use the same list.
   version 1903 or later, which runs them in the UTF-8 code page so file names in any language
   work; on older Windows (Server 2019 too) they stop with a message. Windows games run on older
   Windows as well. See [editor/text-and-languages.md](editor/text-and-languages.md).
+
+## Native plugins in prebuilt builds
+
+A prebuilt build never drops `plugins/native` or a native setting silently. For the platform it
+builds, each one is either **carried** into the build (Build Settings > Native Plugins lists them,
+`get_build_info` and `build_project` say `carried`) or makes the build **compile from source**,
+with a reason that names the files:
+
+| Platform | Carried by a prebuilt build | Compiles from source |
+|---|---|---|
+| Linux, Windows | (nothing native applies) | C++ plugins (`plugins/native/cpp`) |
+| macOS | `macos.plist_entries`, the privacy manifest | C++ plugins, Objective-C/Swift plugins and SDKs of `apple/` and `macos/`, `macos.frameworks` |
+| iOS | Objective-C/Swift plugins and SDKs of `apple/` and `ios/`, `ios.swift_packages`, `ios.frameworks`, `ios.plist_entries`, `ios.plist_xml`, `ios.entitlements_xml`, `ios.deployment_target`, the privacy manifest | C++ plugins, `ios.cocoapods` (they need `pod install`), an iOS player runtime too old to take plugins |
+| Android | `android.extra_permissions`, `android.manifest_xml`, `android.manifest_application_xml` | C++ plugins, Java/Kotlin, `libs/` AARs and JARs, `res/`, the plugin `AndroidManifest.xml`, `proguard-rules.pro`, `android.gradle_*`, manifest XML with `tools:` merge rules |
+| Web | `plugins/native/web/*.js`, `web.script_urls` | C++ plugins |
+
+The prebuilt iOS build is an Xcode project, so the game's Objective-C and Swift plugins are added
+to it as the source export adds them. Android and macOS players are finished packages: their
+native code needs Gradle or a compiler, so an Android or iOS build that must compile says to
+export the source project (File > Build Settings > Export source, then Android Studio or Xcode;
+Xcode on a Mac for macOS plugins).
+
+A Lua mock (`native_mocks/<Plugin>.lua`) answers where a plugin has no code. When a build would
+ship one in place of real code (an Android-only ads plugin in a Windows build), the build warns
+`W-NATIVE-MOCK`, and the game logs once, the first time the mock answers. A macOS build without
+Xcode compiles no Swift: `W-NATIVE-SWIFT-CMAKE` says so.
+
+## Privacy manifest (iOS and macOS)
+
+Every iOS and macOS build ships a privacy manifest, `PrivacyInfo.xcprivacy` (the app's root on
+iOS, `Contents/Resources` on macOS). App Store Connect refuses an app that calls a required-reason
+API without declaring it. The manifest is made at each build from three parts:
+
+1. **The engine's entries**, always there: UserDefaults `CA92.1` (UserSettings: only the game
+   reads what it saves), file timestamps `C617.1` (the game's own files), system boot time
+   `35F9.1` (frame and physics timers). The engine tracks nobody and collects no data.
+   `tools/check_apple_privacy.py` (run by `tools/check-changed`) fails when engine code starts to
+   use a category the manifest does not declare.
+2. **The project's additions**, in Project Settings > Player > iOS (or macOS) > Privacy Manifest,
+   shared by both platforms: Tracking, Tracking Domains, Collected Data (type, linked, tracking,
+   purposes) and Required Reason APIs your own native code adds. OK makes them one undoable step.
+   Agents: `set_project_settings` `apple.privacy_tracking`, `apple.privacy_tracking_domains`,
+   `apple.privacy_collected_data`, `apple.privacy_accessed_apis`.
+3. **The plugins' manifests**: every `PrivacyInfo.xcprivacy` in `plugins/native/apple` and
+   `plugins/native/ios` (or `macos`), the one inside a static `.framework` or `.xcframework`, and
+   the one inside an SDK's resource `.bundle` (the bundle is copied into the app). A dynamic
+   framework is embedded with its own manifest and is left alone.
+
+Lists are joined: tracking is on when any part tracks, and domains, data types, purposes and
+reasons are merged. Preview shows the result; `native_plugins {action: "privacy_manifest"}` gives
+it to agents with where each entry came from. The build warns `W-PRIVACY-DOMAINS` when tracking is
+on without a domain, and `W-PRIVACY-ATT` when iOS tracks without `NSUserTrackingUsageDescription`
+in Project Settings > Native Plugins > iOS > Info.plist Entries or Info.plist XML. Apple names iOS, iPadOS, tvOS,
+visionOS and watchOS for the required-reason rule; macOS builds ship the manifest too.
+
+Ads and in-app purchases go through the native bridge: docs/mcp/guide/native-bridge.md, section
+10, has a complete ads example.
 
 ## Running a player from scripts and CI
 

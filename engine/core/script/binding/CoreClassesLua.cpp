@@ -1780,14 +1780,6 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
-        .beginNamespace("AdMobRating")
-        .addVariable("General", AdMobRating::General)
-        .addVariable("ParentalGuidance", AdMobRating::ParentalGuidance)
-        .addVariable("Teen", AdMobRating::Teen)
-        .addVariable("MatureAudience", AdMobRating::MatureAudience)
-        .endNamespace();
-
-    luabridge::getGlobalNamespace(L)
         .beginNamespace("CursorType")
         .addVariable("ARROW", CursorType::ARROW)
         .addVariable("IBEAM", CursorType::IBEAM)
@@ -3917,12 +3909,6 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("hapticFeedback", [] (HapticFeedback type) { return System::instance().hapticFeedback(type); })
 
         //UserSettings not need here
-
-        .addStaticFunction("initializeAdMob", [] () { return System::instance().initializeAdMob(); })
-        .addStaticFunction("setMaxAdContentRating", [] (AdMobRating rating) { return System::instance().setMaxAdContentRating(rating); })
-        .addStaticFunction("loadInterstitialAd", [] (const std::string& adUnitID) { return System::instance().loadInterstitialAd(adUnitID); })
-        .addStaticFunction("isInterstitialAdLoaded", [] () { return System::instance().isInterstitialAdLoaded(); })
-        .addStaticFunction("showInterstitialAd", [] () { return System::instance().showInterstitialAd(); })
 
         .addStaticFunction("initializeCrazyGamesSDK", [] () { return System::instance().initializeCrazyGamesSDK(); })
         .addStaticFunction("showCrazyGamesAd", [] (std::string type) { return System::instance().showCrazyGamesAd(type); })

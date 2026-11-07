@@ -114,13 +114,10 @@ android {
         main {
             java.srcDirs = [jasperengineRootAbs+'/platform/android/java']
             if (jasperPlayer) {
-                // a player has no ads (a project with AdMob compiles) and no content of its own:
-                // the editor links the game's as assets/game
+                // a player has no content of its own: the editor links the game's as assets/game
                 res.srcDir jasperengineRootAbs+'/platform/android/player/res'
                 assets.srcDirs = []
             } else {
-                // the editor export drops this and the ads SDK below unless the project enables AdMob
-                java.srcDir jasperengineRootAbs+'/platform/android/java-admob'
                 // the project's assets without the cooked textures other platforms load (S14 R9)
                 assets.srcDirs = [jasperengineAssetsDir,projectSourceRootAbs+'/lua']
             }
@@ -136,9 +133,6 @@ dependencies {
     implementation "androidx.appcompat:appcompat:1.6.1"
     implementation "androidx.games:games-activity:2.0.2"
     implementation "androidx.games:games-frame-pacing:2.0.0"
-    if (!jasperPlayer) {
-        implementation "com.google.android.gms:play-services-ads:22.6.0"
-    }
 }
 
 if (jasperPlayer) {
