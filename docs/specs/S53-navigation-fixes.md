@@ -746,6 +746,9 @@ P2 order:
     `test_bake_failures_reported` (0 Console lines for a refused start), `test_carving_settings_undo`
     (no field), `test_bake_failure_shown` (no `last_bake`), the old `test_overlay_golden` passing
     and writing a missing golden, `test_check_changed.py` against the old `check_changed.py`.
-  - Waits on P1: `test_bake_failures_reported` case (b) needs the engine to set
-    `NavBakeResult::logged` (two lines until then), and `test_bake_warnings` needs R4's Recast
-    warnings.
+  - With P1's runtime and S54 merged, the gate passes: the editor's Nav*/Navigation*/
+    ReflectRegistry* unit tests, `test_navigation.py`, `test_navigation_ui.py`,
+    `test_navigation_export.py` (prebuilt glcore player), `test_protocol.py`, `test_docs.py`,
+    `test_tool_budget.py`, `tools/check-navigation-off.sh` (3 NavStubTest tests). After the S54
+    merge `last_bake` is S54's engine report overlaid with the editor's session outcome, and the
+    Inspector shows a failure once ("Bake failed: ..." plus S54's hint).
