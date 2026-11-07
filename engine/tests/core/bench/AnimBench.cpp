@@ -14,7 +14,8 @@
 // thread's share (prepare + finalize), and with --count-allocs the heap allocations of the
 // steady-state frames.
 // AnimBench.Micro*: a two-pose blend at 128 bones (Native and Scalar), one 65-bone clip sample,
-// a state-machine update (20 states, 60 transitions, no pose), an Animator's runtime state.
+// a state-machine update (20 states, 60 transitions, no pose), an Animator's runtime state, a
+// Look At solve over 3 bones of a leaning chain (S74 R33, information).
 // Each is the median of N runs. tools/perf/check_bench.py gates the JSON with
 // tools/perf/bench-thresholds.json.
 
@@ -27,6 +28,7 @@
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimatorAssetIO.h"
+#include "animation/AnimatorIK.h"
 #include "animation/AnimatorInstance.h"
 #include "animation/AnimatorPose.h"
 #include "animation/AnimatorRig.h"
@@ -547,6 +549,8 @@ int main(int argc, char** argv){
         auto each = [&](auto&& change){
             for (Entity root : crowd->roots) change(crowd->scene->getComponent<AnimatorComponent>(root));
         };
+        each([](AnimatorComponent& c){ for (AnimatorIKConstraint& k : c.ik) k.enabled = k.type != AnimatorIKType::LookAt; });
+        results.add("crowd200_serial_no_look_at_p50_ms", runCrowd(*crowd, false, 120, false).p50, "ms");
         each([](AnimatorComponent& c){ for (AnimatorIKConstraint& k : c.ik) k.enabled = false; });
         results.add("crowd200_serial_no_ik_p50_ms", runCrowd(*crowd, false, 120, false).p50, "ms");
         each([](AnimatorComponent& c){ c.runtime->setLayerWeight(1, 0.0f); c.runtime->setLayerWeight(2, 0.0f); });
@@ -628,6 +632,34 @@ int main(int argc, char** argv){
         for (int i = 0; i < 10; i++) instance.update(component, context);
         const double update = microUs([&](int){ instance.update(component, context); }, 20000);
         results.add("micro_state_machine_update_us", update, "us");
+    }
+
+    // ---- a Look At solve: upper chest, neck and head of a chain leaning 30 degrees, the target
+    // going round it; each call starts from the animated pose, as in an Animator
+    {
+        constexpr int kBones = 3;
+        Pose animated, local;
+        animated.resize(kBones, 0);
+        const float half = 15.0f * 0.0174532925f;
+        animated.setRotation(0, Quaternion(std::cos(half), std::sin(half), 0, 0));
+        animated.setPosition(1, Vector3(0, 0.18f, 0));
+        animated.setPosition(2, Vector3(0, 0.08f, 0));
+        local.resize(kBones, 0);
+        const int parents[kBones] = {-1, 0, 1};
+        Affine world[kBones];
+        Vector3 positions[kBones], scales[kBones];
+        Quaternion rotations[kBones];
+        IKContext context{&local, parents, RigSpace{world, positions, rotations, scales}};
+        const int chain[kBones] = {0, 1, 2};
+        const float weights[kBones] = {0.2f, 0.3f, 0.5f};
+        const double lookAt = microUs([&](int i){
+            local.copyFrom(animated);
+            refreshRigSpace(context, 0);
+            const float angle = (float)(i % 360) * 0.0174532925f;
+            solveLookAt(context, chain, weights, kBones, Vector3(0, 0, 1), Vector3(std::sin(angle), 0.6f, std::cos(angle)), 60.0f, 1.0f);
+            sink = rotations[2].w;
+        }, 20000);
+        results.add("micro_look_at3_us", lookAt, "us");
     }
 
     const char* path = bench::jsonPath(argc, argv, "anim.json");

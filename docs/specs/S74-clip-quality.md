@@ -321,6 +321,11 @@ Read-only, MIT. Study, re-implement in our style, credit in `NOTICE.md`.
   cannot throw a leg.
 - **R32, scope.** `soften`, `hingeAxis` and `twist` also apply to Foot IK and Foot Lock legs, since both are
   two-bone solves and the near-straight knee is theirs too. All default to off.
+- **R32-R33, Inspector rows.** The fields carry `visibleIf` (Soften, Hinge Axis, Twist on legs; Aim Offset on Look At),
+  but the default Inspector draws every member of a list element (`drawDefaultArray`), so each constraint shows all of
+  them, as it already showed Bone Weights on a Two Bone. `test_animator_ik.py` checks the labels, not the per-type
+  hiding. Out-of-range values through `set_properties` are stored as given (a `Clamped` field is not refused); the
+  solver and Lua's setters clamp `soften` to 0..1.
 - **R57 and the brief's MCP path.** A controller holds no constraints, so `edit_animator_controller` has no
   field to add: constraints are set by `set_properties` (reflection), and `control_animator`'s `ik` takes the new
   fields in play mode and refuses them in edit preview, which has no undo. Lua has no constraint object, so

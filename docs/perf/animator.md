@@ -24,14 +24,15 @@ python3 tools/perf/check_bench.py anim.json
   frames after 120 warm-up frames) with the workers and serially (`setParallel(false)`: the S06
   0-worker path), the main thread's part (prepare: loads, bindings, IK raycasts; finalize: root
   motion, events, callbacks) and, with `--count-allocs`, the heap allocations of 600 steady-state
-  frames. Then, as information, where the serial time goes: the same run without the IK, without
-  the two upper layers, without the crossfades and without root motion.
+  frames. Then, as information, where the serial time goes: the same run without the Look At,
+  without the IK, without the two upper layers, without the crossfades and without root motion.
 - **Micro** (R20, median of 15 runs): a two-pose blend of 128 bones with the native kernels
   (SSE2 / NEON / simd128) and the scalar ones; one sample of a 65-bone clip into a bound rig; a
   state-machine update of 20 states and 60 transitions (no pose); an Animator's runtime state
   (`AnimatorInstance::runtimeStateBytes`: the instance, parameters, layer / montage / IK runs and
   output buffers; the rig, poses and clip bindings scale with bones and clips and are part of
-  the crowd's cost instead, spec deviation 8).
+  the crowd's cost instead, spec deviation 8); one Look At solve over 3 bones of a chain leaning 30
+  degrees, from its animated pose each call (S74 R33, information).
 
 ## Results
 
@@ -83,6 +84,29 @@ cache (a rig is in parents-first depth-first order, so a subtree is a contiguous
 root-motion lap of a looping clip (its root at 0 and at its length) is sampled once at bind
 instead of every frame. A handled clip event builds no string (the "no handler" warning's key is
 hashed in place): before, each event cost two allocations.
+
+### S74's IK solvers: an A/B on this repository's host
+
+The chain-walk Look At, the slope-corrected Foot IK and the `reached` measurement against the same
+tree without them (`feat/s74-clip-quality`'s `engine/core`), in one build, on the S74 host (AMD
+EPYC-Genoa, 8 vCPUs, shared, the linux image's RelWithDebInfo core-tests build, `--workers 3
+--count-allocs`; three runs each, the median with the range). This host is about twice as slow as
+E: the same five budgets miss with and without the change, so only the difference counts here.
+
+| Metric | Before | After |
+|---|---|---|
+| Look At solve, 3 bones | 1.33 µs (1.31-1.34) | 2.86 µs (2.85-2.88) |
+| Crowd200, wall time p50, 3 workers + main | 4.08 ms (3.96-4.12) | 4.13 ms (4.04-4.15) |
+| Crowd200, wall time p95 | 4.48 ms (4.46-4.82) | 4.70 ms (4.51-4.75) |
+| Crowd200, main thread p95 | 0.67 ms (0.65-0.71) | 0.63 ms (0.56-0.68) |
+| Crowd200, serial p50 | 10.63 ms (10.48-10.70) | 11.28 ms (10.80-11.34) |
+| Crowd200, serial p95 | 11.46 ms (11.09-11.56) | 11.87 ms (11.75-12.01) |
+| Crowd200, heap allocations, 600 frames | 0 | 0 |
+| Runtime state of an Animator | 5 080 B | 5 120 B |
+
+The parallel times stay within their ranges; the serial ones do not: about 0.4 to 0.65 ms over 200
+characters, 2 to 3 µs a character, of which the Look At's 1.5 µs. Without the IK the serial p50 is
+the same (8.70 and 8.77 ms). ARM and web are unmeasured.
 
 ## GPU skinning on a GPU (GPU campaign)
 

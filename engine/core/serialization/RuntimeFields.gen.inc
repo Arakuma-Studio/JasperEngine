@@ -561,6 +561,7 @@ const FieldEntry kStruct_TerrainFoliageLayer_fields[] = {
     JE_RF(TerrainFoliageLayer, minHeight, 0xa922f6d3u, Float),
     JE_RF(TerrainFoliageLayer, maxHeight, 0x1dc468f1u, Float),
     JE_RF(TerrainFoliageLayer, drawDistance, 0xbd8cf49du, Float),
+    JE_RF(TerrainFoliageLayer, minDrawDistance, 0x7a0a24b1u, Float),
     JE_RF(TerrainFoliageLayer, seed, 0x4cccda81u, UInt),
     JE_RF(TerrainFoliageLayer, castShadows, 0x0656f2b8u, Bool),
 };
@@ -1315,6 +1316,8 @@ const FieldEntry kBody_InstancedMeshComponent_fields[] = {
     JE_RF(InstancedMeshComponent, fadeStart, 0x538dcdd3u, Float),
     JE_RF(InstancedMeshComponent, cullDistance, 0xd41385ecu, Float),
     JE_RF(InstancedMeshComponent, fadeEnd, 0x3edf6206u, Float),
+    JE_RF(InstancedMeshComponent, nearFadeStart, 0xf6452e8du, Float),
+    JE_RF(InstancedMeshComponent, nearFadeEnd, 0x50cc90f4u, Float),
     JE_RF(InstancedMeshComponent, instancedBillboard, 0x9acf0bdbu, Bool),
     JE_RF(InstancedMeshComponent, instancedCylindricalBillboard, 0x50bfb9e3u, Bool),
     JE_RF(InstancedMeshComponent, instances, 0xdb94d2bdu, Array),
