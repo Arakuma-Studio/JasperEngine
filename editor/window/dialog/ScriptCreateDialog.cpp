@@ -59,7 +59,8 @@ void ScriptCreateDialog::open(Scene* scene,
                               const fs::path& luaPath,
                               const std::string& defaultBaseName,
                               std::function<void(const fs::path&, const fs::path&, const std::string&, ScriptType)> onCreate,
-                              std::function<void()> onCancel) {
+                              std::function<void()> onCancel,
+                              bool startWithExisting) {
     m_isOpen = true;
     m_scene = scene;
     m_entity = entity;
@@ -68,7 +69,7 @@ void ScriptCreateDialog::open(Scene* scene,
     m_selectedPath = projectPath.string();
     m_creationKind = CreationKind::CPP_SUBCLASS;
     m_existingScriptType = ScriptType::CPP;
-    m_attachExisting = false;
+    m_attachExisting = startWithExisting;
     m_existingHeaderPath.clear();
     m_existingSourcePath.clear();
     m_attachError.clear();

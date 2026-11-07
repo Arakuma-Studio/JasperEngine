@@ -198,6 +198,8 @@ bool Engine::gameEventsPaused = false;
 bool Engine::osPaused = false;
 bool Engine::nativePaused = false;
 std::atomic<bool> Engine::focused = true;
+bool Engine::dynamicBatching = true;
+bool Engine::dynamicBatchingDefault = true;
 std::atomic<bool> Engine::visible = true;
 int Engine::targetFrameRate = -1;
 int Engine::textureQuality = 0;
@@ -475,6 +477,10 @@ bool Engine::hasScenesToExecuteOnce(){
 
 Scene* Engine::getMainScene(){
     return mainScene;
+}
+
+Scene* Engine::getBaseScene(){
+    return mainScene ? mainScene : getScene();
 }
 
 Scene* Engine::getLastScene(){
@@ -1420,8 +1426,10 @@ void Engine::endCompositeFramebuffer(){
 
     framebuffer = nullptr;
 
-    if (mainScene)
-        mainScene->getSystem<RenderSystem>()->presentFramebufferToSwapchain(&compositeFramebuffer);
+    // the loading scene covers the start as a layer, before there is a main scene
+    Scene* scene = getBaseScene();
+    if (scene)
+        scene->getSystem<RenderSystem>()->presentFramebufferToSwapchain(&compositeFramebuffer);
 }
 
 void Engine::clearPools(){
@@ -2821,6 +2829,7 @@ void Engine::resetApplicationState(){
     // no tier a script set, no Game view simulation, the thermal and memory response at rest
     Device::resetSession();
     applyFramePacing();
+    dynamicBatching = dynamicBatchingDefault;
     // no extra insets, and the next safe area is where the game starts (no event)
     Screen::resetSafeAreaState();
 }
@@ -2831,6 +2840,19 @@ bool Engine::isFocused(){
 
 bool Engine::isPaused(){
     return paused;
+}
+
+void Engine::setDynamicBatchingDefault(bool enabled){
+    dynamicBatchingDefault = enabled;
+    dynamicBatching = enabled;
+}
+
+void Engine::setDynamicBatching(bool enabled){
+    dynamicBatching = enabled;
+}
+
+bool Engine::isDynamicBatching(){
+    return dynamicBatching;
 }
 
 bool Engine::isVisible(){

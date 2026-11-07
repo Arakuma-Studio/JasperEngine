@@ -719,8 +719,7 @@ void editor::CodeEditor::updateScriptProperties(const EditorInstance& instance, 
 }
 
 void editor::CodeEditor::updateScriptPropertiesForPath(const fs::path& relFilepath, const std::string& inMemoryContent){
-    const std::string relPathStr = relFilepath.string();
-    const fs::path fullPath = resolveFilepath(relFilepath);
+    const fs::path fullPath = resolveFilepath(relFilepath).lexically_normal();
 
     // Several entities can share the same script, so every one of them is refreshed (the
     // prefab stages' too)
@@ -735,8 +734,8 @@ void editor::CodeEditor::updateScriptPropertiesForPath(const fs::path& relFilepa
                 continue;
 
             for (const auto& scriptEntry : scriptComponent->scripts) {
-                bool matchesFile = (scriptEntry.type == ScriptType::CPP) ? (scriptEntry.headerPath == relPathStr)
-                                                                        : (scriptEntry.path == relPathStr);
+                // by resolved file: a Lua entry's path is relative to the Lua directory
+                const bool matchesFile = project->scriptPropertyFile(scriptEntry) == fullPath;
                 if (!matchesFile)
                     continue;
 

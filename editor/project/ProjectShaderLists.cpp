@@ -422,7 +422,7 @@ editor::ShaderListStatus editor::Project::refreshClosedSceneShaderKeys(const Sha
     return status;
 }
 
-void editor::Project::collectBuildShaderKeys(std::set<ShaderKey>& keys) const {
+void editor::Project::collectBuildShaderKeys(std::set<ShaderKey>& keys, std::set<std::string>* deadForks) const {
     // the generated main.cpp registers every scene stack, so any of them can be loaded
     for (const SceneProject& sceneProject : scenes) {
         std::set<ShaderKey> sceneKeys = sceneProject.shaderKeys;
@@ -433,10 +433,11 @@ void editor::Project::collectBuildShaderKeys(std::set<ShaderKey>& keys) const {
             keys.insert(ShaderPool::normalizeKey(key));
         }
     }
+    dropDeadForkKeys(keys, deadForks);
 }
 
 std::set<ShaderKey> editor::Project::finishBuildShaderKeys(const std::set<ShaderKey>& sceneKeys, const std::set<ShaderKey>& additions,
-                                                           const std::set<ShaderKey>& exclusions) const {
+                                                           const std::set<ShaderKey>& exclusions, std::set<std::string>* deadForks) const {
     std::set<ShaderKey> keys = sceneKeys;
     // what every build ships (the FLATTEN Canvas Group composite), whatever the scenes hold
     std::set<ShaderKey> required;
@@ -464,6 +465,8 @@ std::set<ShaderKey> editor::Project::finishBuildShaderKeys(const std::set<Shader
     }
     // (a scene saved while its lights were all directional holds the 'Dlo' variants alone)
     ShaderVariantCollector::addDirectionalOnlyTwins(keys);
+    // a deleted fork's variants the additions or the warm-up list still name
+    dropDeadForkKeys(keys, deadForks);
     for (ShaderKey key : exclusions) {
         keys.erase(ShaderPool::normalizeKey(key));
     }

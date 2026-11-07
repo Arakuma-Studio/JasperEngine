@@ -200,6 +200,8 @@ namespace jasperengine::editor {
         void SetAutoComplete(bool enable) { autoComplete = enable; }
         void TriggerAutoComplete(bool manualInvoke = false);
         void CloseAutoComplete();
+        // what the completion popup lists now (empty when closed)
+        const std::vector<SuggestionItem>& GetCurrentSuggestions() const { return currentSuggestions; }
 
         struct ProjectSymbol {
             std::string name;

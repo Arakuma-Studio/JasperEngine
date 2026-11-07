@@ -80,7 +80,6 @@ namespace jasperengine::editor {
         void handleFileChangePopup();
         std::string getWindowTitle(const EditorInstance& instance) const;
         void updateScriptProperties(const EditorInstance& instance, const std::string& inMemoryContent = "");
-        void updateScriptPropertiesForPath(const fs::path& relFilepath, const std::string& inMemoryContent = "");
 
         void updateAllProjectSymbols();
         void applyParsedProjectSymbols();
@@ -104,6 +103,9 @@ namespace jasperengine::editor {
         void addScriptEvent(const std::string& filepath, size_t event);
 
     public:
+        // the script entries reading their properties from this file (a path relative to the project,
+        // or absolute) take the file's, or the code being edited
+        void updateScriptPropertiesForPath(const fs::path& relFilepath, const std::string& inMemoryContent = "");
         CodeEditor(Project* project);
         ~CodeEditor();
 

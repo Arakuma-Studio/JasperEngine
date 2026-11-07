@@ -4,7 +4,9 @@ Longer references behind the agent guide (`editor/mcp/McpInstructions.cpp`, sent
 `initialize.instructions` and served as `jasper://guide`). They are embedded in the editor at
 build time (`CMakeLists.txt` generates `mcp_docs.h`; `editor/mcp/tools/DocsTools.cpp` serves
 them), so a new file here becomes `jasper://docs/<file name>` after a rebuild. This README is
-not served; `jasper://docs` lists the served documents. The guide refers to them by these URIs:
+not served; `jasper://docs` lists the served documents. Clients without MCP resources (and the
+CLI) read any of them with `read_file` (`read_file jasper://docs/<area>`, `read_file jasper://guide`).
+The guide refers to them by these URIs:
 
 Paths in every guide are project-relative. Reads follow symbolic links; writes, creates, deletes
 and moves refuse a path that a link leads out of the project's trusted roots (the project folder
@@ -42,6 +44,8 @@ the sandbox stops misdirected writes and link tricks, not a malicious agent, sin
 | [audio.md](audio.md) | `jasper://docs/audio` | the Audio Mixer: the `.mixer` format, groups, the effects table with every parameter, exposed parameters and `remember`, snapshots and transitions (scaled / unscaled), `audio_mixer` ops, the Lua API (AudioMixer, AudioMixerGroup, AudioListener, AudioSource one-shots, fades, load types, priorities), headless meters, recipes for Unity's VolumeController and MinigameSongs |
 | [sound.md](sound.md) | `jasper://docs/sound` | Measuring sounds, import settings, placeholders, the libraries, Sound Events, capturing a Play (`audio_session`), the checks and their rules |
 | [debugging.md](debugging.md) | `jasper://docs/debugging` | the log and the on-device debug overlay: enabling it (Project Settings > Debug, `DebugOverlay.enabled`), opening the console (keys, gestures, popup), filters, search, collapse, copy, save, commands (`DebugOverlay.addCommand`), the stats panel and `DebugOverlay.getStats()` fields, Lua log listeners (`Log.onMessageReceived`, `Log.getEntries`), C++ listeners and threads, MCP, costs |
+| [terrain.md](terrain.md) | `jasper://docs/terrain` | the terrain group: the Terrain component's maps, heights (`sculpt_terrain`, `set_terrain_maps heightmap`), Terrain Layers and blend map slots with their factors, details (`edit_terrain_details`: fields, ranges, density maps, `drawn`), the Terrain window's saved settings, budgets, common mistakes |
+| [authoring.md](authoring.md) | `jasper://docs/authoring` | building scenes and games: assemble in the editor, script properties for references, spawning from Prefabs, build once as a Prefab, HUDs and menus, native animation instead of script tweens, button clicks (`onClick`), choosing Lua or C++, anti-patterns (the guide's Building scenes section is its digest) |
 | [prefabs.md](prefabs.md) | `jasper://docs/prefabs` | overrides, Apply/Revert, Prefab Mode, variants, Instantiate/Destroy, the build's prefabs |
 | [shipping.md](shipping.md) | `jasper://docs/shipping` | building games for every platform (prebuilt players or compiled), the run options of a player (headless, quit_after, screenshots), player runtimes, releases (publishing.json, prepare, verify), SteamPipe scripts and Steam Deck deploys |
 | [assets.md](assets.md) | `jasper://docs/assets` | asset GUIDs and .meta files, references by GUID, renames and moves, Missing Assets, Find References, the Asset Lua API, migration |

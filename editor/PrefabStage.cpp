@@ -9,6 +9,7 @@
 
 #include "PrefabStage.h"
 #include "render/ViewCameraMirror.h"
+#include "util/ScriptPropertyCache.h"
 #include "component/PrefabComponent.h"
 
 #include "Project.h"
@@ -476,6 +477,18 @@ bool editor::Project::pushPrefabStage(const std::filesystem::path& named, uint32
         editor::getEditorHost().registerAlert("Open Prefab", "The prefab \"" + relative.generic_string() + "\" could not be opened.");
         popPrefabStage();
         return false;
+    }
+
+    // the fields its scripts declare now (as a scene opened); not an edit of the prefab
+    {
+        const bool modified = sceneProject.isModified;
+        ScriptPropertyCache scriptCache;
+        for (Entity entity : sceneProject.entities) {
+            if (ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity)) {
+                updateScriptProperties(&sceneProject, entity, scripts->scripts, "", "", &scriptCache);
+            }
+        }
+        sceneProject.isModified = modified;
     }
 
     // In context the stage's view starts where the context's was (Unity keeps the camera)

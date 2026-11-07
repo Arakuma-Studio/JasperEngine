@@ -5168,6 +5168,8 @@ void editor::App::prepareForProjectSwitch() {
     consoleWindow->clear();
     sceneWindow->resetProjectState();
     gameWindow->resetProjectState();
+    // the next project's Terrain settings are read before the window writes any back
+    terrainEditWindow->resetProjectState();
     inputActionsWindow->reset();
     // the next project's .particles files are other files under the same paths
     particles::ParticleEffectLibrary::clear();

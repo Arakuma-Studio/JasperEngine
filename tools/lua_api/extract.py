@@ -81,9 +81,15 @@ def _sig(s, cpp=None):
     if s.vararg:
         out['vararg'] = s.vararg
     if cpp is not None:
-        params, ret = cpp
-        out['cpp'] = {'params': [{'type': p.normalize_type(t), 'name': n or ''} for t, n in params],
-                      'returns': p.normalize_type(ret) if ret else ''}
+        params, ret = cpp[0], cpp[1]
+        defaults = cpp[2] if len(cpp) > 2 else [None] * len(params)
+        cpp_params = []
+        for (t, n), d in zip(params, defaults):
+            param = {'type': p.normalize_type(t), 'name': n or ''}
+            if d is not None:
+                param['default'] = d  # the C++ default argument (a direct binding: Lua passes nil)
+            cpp_params.append(param)
+        out['cpp'] = {'params': cpp_params, 'returns': p.normalize_type(ret) if ret else ''}
     return out
 
 
@@ -147,6 +153,8 @@ def _class(bd, c, repo_root):
                 'unresolved': list(m.unresolved)}
         if handler:
             prop['eventHandler'] = handler
+        if m.kind == 'StaticProperty' and not getattr(m, 'is_event', False) and not getattr(m, 'cpp_visible', False):
+            prop['luaOnly'] = True  # no Class::name in C++ (an accessor or a lambda backs it)
         if getattr(m, 'assign_fn', None):
             prop['eventAssignAdds'] = True
         cpp_type = getattr(m, 'cpp_type', None)
@@ -182,6 +190,12 @@ def _class(bd, c, repo_root):
     for m in c.members:
         if m.kind in ('Method', 'StaticMethod') and not m.name.startswith('__'):
             emitted[m.name] = m
+    # the C++ methods of the class and its bases (None: a Lua-only class, nothing to mark)
+    cpp_names = None
+    if c.cpp_class is not None:
+        cpp_names = set()
+        for k in bd.model.mro(c.cpp_class):
+            cpp_names |= set(k.methods)
     methods = []
     for m in c.members:
         if m.kind not in ('Method', 'StaticMethod') or m.name.startswith('__') or emitted.get(m.name) is not m:
@@ -194,6 +208,8 @@ def _class(bd, c, repo_root):
                   'unresolved': list(m.unresolved)}
         if getattr(m, 'is_async', False):
             method['async'] = True   # it yields the running engine coroutine (LuaLS ---@async)
+        if cpp_names is not None and m.name not in cpp_names:
+            method['luaOnly'] = True  # bound to a lambda or a helper: C++ has no Class::name
         methods.append(method)
     out['methods'] = methods
 

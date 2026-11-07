@@ -1008,6 +1008,12 @@ void RenderSystem::destroy(){
     activeView = &primaryView;
 #endif
 
+    // Dynamic Batching's records (their objects are destroyed with the scene) and buffers
+    endBatchPass();
+    dropBatchRecords();
+    batchStaleMVPs.clear();
+    destroyBatchChunks();
+    batchFrames.clear();
     // S57's passes, targets and lists, before the views go
     releaseLightingFeatures(true);
     destroySSAO();
@@ -8166,8 +8172,8 @@ bool RenderSystem::bindSmoothNormals(ObjectRender& render, ShaderData& shaderDat
     // until then, and the other renders of the submesh bind the same buffer
     if (!entry.created){
         JE_GPU_ALLOC_SCOPE(Meshes, "Smooth normals");
-        // one buffer for every mesh of the same geometry (keyed by what it is made of)
-        if (entry.data.empty() || !MeshBufferPool::acquireContent(entry.buffer, entry.key, BufferType::VERTEX_BUFFER, entry.data.data(), entry.data.size()))
+        // one buffer for every mesh of the same normals (keyed by their bytes)
+        if (entry.data.empty() || !MeshBufferPool::acquireContent(entry.buffer, BufferType::VERTEX_BUFFER, entry.data.data(), entry.data.size()))
             return false;
         entry.created = true;
     }
@@ -9772,7 +9778,7 @@ void RenderSystem::drawSubmeshFade(ObjectRender& render, Entity entity, MeshComp
 // rebuilt tilemap reorders its indices, so a shadow or G-buffer pass drawing chunk
 // ranges would slice the previous upload with the new offsets. Sokol allows a single
 // update per buffer per frame, which the flag already guarantees.
-void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
+void RenderSystem::updateMeshBuffers(Entity entity, MeshComponent& mesh){
     if (mesh.needUpdateBones && mesh.bonesUploadRows != mesh.bonesMatrix.stored() && mesh.bonesUploadRows != 0){
         // the palette changed size since its resource was made (a scene or cooked read): the
         // reload makes the resource again, which uploads then
@@ -9813,6 +9819,17 @@ void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
 
     // what picking hashed may be gone (a script edits the vertices, a tilemap rebuilds)
     mesh.pickGeometryHash = 0;
+    // (a batch record baked before sees it, whichever pass uploads it: noteWrite)
+    mesh.buffer.noteWrite();
+    mesh.indices.noteWrite();
+
+    // an immutable buffer shared by content whose bytes changed: the shared buffer of its new
+    // bytes, or a private dynamic one once it changes often
+    refreshImmutableBuffer(entity, mesh, mesh.buffer);
+    refreshImmutableBuffer(entity, mesh, mesh.indices);
+    for (int i = 0; i < mesh.numExternalBuffers; i++){
+        refreshImmutableBuffer(entity, mesh, mesh.eBuffers[i]);
+    }
 
     // a STREAM upload past the frame's stream staging buffer is tried again next frame
     bool refused = false;
@@ -9832,6 +9849,55 @@ void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
     }
 
     mesh.needUpdateBuffer = refused;
+}
+
+void RenderSystem::retargetMeshBuffer(MeshComponent& mesh, uint32_t oldId, BufferRender* replacement, bool index){
+    auto retarget = [&](ObjectRender& render){
+        if (index)
+            render.retargetIndexBuffer(oldId, replacement);
+        else
+            render.retargetVertexBuffer(oldId, replacement);
+    };
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+        Submesh& submesh = mesh.submeshes[s];
+        retarget(submesh.render);
+        retarget(submesh.depthRender);
+        retarget(submesh.gbufferRender);
+        if (submesh.extraPass)
+            retarget(submesh.extraPass->render);
+    }
+}
+
+void RenderSystem::refreshImmutableBuffer(Entity entity, MeshComponent& mesh, Buffer& buffer){
+    BufferRender& render = *buffer.getRender();
+    if (buffer.getUsage() != BufferUsage::IMMUTABLE || !render.isShared() || !MeshBufferPool::isShareable(buffer) ||
+            MeshBufferPool::holdsSource(render, buffer))
+        return;
+
+    const uint32_t oldId = render.backend.get().id;
+    // a second change within IMMUTABLE_CHANGE_WINDOW updates: a buffer of its own that is
+    // updated in place, so no immutable buffer (on Vulkan a blocking staging copy) is made per frame
+    uint32_t& last = immutableChanges[entity];
+    const bool volatileBytes = last != 0 && updateSerial - last <= IMMUTABLE_CHANGE_WINDOW;
+    last = updateSerial;
+
+    BufferRender previous = render; // holds the old shared buffer until the renders let go of it
+    render.destroyBuffer();
+    bool made;
+    if (volatileBytes){
+        buffer.setUsage(BufferUsage::DYNAMIC);
+        made = render.createBuffer((unsigned int)buffer.getSize(), buffer.getData(), buffer.getType(), BufferUsage::DYNAMIC);
+        Log::verbose("Mesh entity %u changes its geometry often: it draws from a buffer of its own", entity);
+    }else{
+        made = MeshBufferPool::createRender(buffer);
+    }
+    if (!made){
+        // a pool is full (logged): drawn again once it has room
+        render = previous;
+        mesh.needReload = true;
+        return;
+    }
+    retargetMeshBuffer(mesh, oldId, &render, buffer.getType() == BufferType::INDEX_BUFFER);
 }
 
 // Once per frame, before any pass: the depth passes take their instance count from here.
@@ -9939,15 +10005,22 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             return false;
         }
 
-        // (a visible list culled it already: passPreCulled)
-        if (!passPreCulled && !isBatchVisible(entity, mesh, transform, instmesh, instanceView, camera.farClip, camera.frustumPlanes)) {
-            return false;
-        }
-
-        // Buffers already uploaded this frame by updateInstanceBuffers().
+        // a batch (passBatchGeometry, RenderSystemBatch.cpp) drawn with this object, its first:
+        // culled, selected and uploaded by the batcher
+        const BatchGeometry* batch = passBatchGeometry;
         MeshDraw draw;
-        if (!selectMeshDraw(entity, mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
-            return false;
+        if (!batch){
+            ensureBatchMVP(entity, transform);
+
+            // (a visible list culled it already: passPreCulled)
+            if (!passPreCulled && !isBatchVisible(entity, mesh, transform, instmesh, instanceView, camera.farClip, camera.frustumPlanes)) {
+                return false;
+            }
+
+            // Buffers already uploaded this frame by updateInstanceBuffers().
+            if (!selectMeshDraw(entity, mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
+                return false;
+            }
         }
         unsigned int instanceCount = draw.instanceCount;
 
@@ -9999,7 +10072,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         auto drawModeMaterial = [](const Material& material, unsigned int) -> const Material&{ return material; };
 #endif
 
-        updateMeshBuffers(mesh);
+        updateMeshBuffers(entity, mesh);
         writeCustomUniforms(scene, mesh);
 
         TerrainView* terrainNodes = nullptr;
@@ -10013,13 +10086,13 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 
         // model, normal and mvp matrices of this pass (one uniform block)
         Matrix4 objectScratch[3];
-        const Matrix4* objectBlock = objectMatrices(transform, objectScratch);
+        const Matrix4* objectBlock = batch ? batch->objectBlock : objectMatrices(transform, objectScratch);
         // a mirroring model matrix draws with the face winding reversed (front faces stay front)
-        const bool mirroredDraw = isMirroredDraw(mesh, objectBlock[0]);
+        const bool mirroredDraw = batch ? batch->mirrored : isMirroredDraw(mesh, objectBlock[0]);
         // Transform::normalMatrix is kept only while the scene has lights (and is saved with
         // the scene), but library shaders read it whatever the lighting (outline widths,
         // fresnel, matcap, rim): without lights theirs is made here
-        if (!hasLights){
+        if (!hasLights && !batch){
             bool libraryShader = false;
             for (int s = 0; s < mesh.numSubmeshes && !libraryShader; s++){
                 libraryShader = mesh.submeshes[s].manifest || (mesh.submeshes[s].extraPass && mesh.submeshes[s].extraPass->loaded);
@@ -10133,20 +10206,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             const ShaderLibraryBindings& libraryBindings = mesh.submeshes[i].libraryBindings;
-            bool needUpdateFramebuffer = pbrFramebufferOutdated ||
-                (!libraryBindings.textures.empty() && shaderTexturesOutdated(libraryBindings, mesh.submeshes[i].material.shaderTextures));
-
-            if (mesh.submeshes[i].needUpdateTexture || needUpdateFramebuffer){
-                ShaderData& shaderData = mesh.submeshes[i].shader.get()->shaderData;
-                const TextureBindMark bindMark = markTextureBinding();
-                if (loadPBRTextures(mesh.submeshes[i].material, shaderData, mesh.submeshes[i].render, mesh.receiveLights) &&
-                        loadPbrExtTextures(mesh.submeshes[i], shaderData, mesh.submeshes[i].render) &&
-                        bindShaderTextures(libraryBindings, mesh.submeshes[i].render, mesh.submeshes[i].material.shaderTextures)){
-                    mesh.submeshes[i].needUpdateTexture = false;
-                    mesh.submeshes[i].needRebindTexture = false;
-                    noteTextureBinding(mesh.submeshes[i], bindMark);
-                }
-            }
+            refreshSubmeshTextures(mesh.submeshes[i], mesh.receiveLights, pbrFramebufferOutdated);
             if (oitDraw)
                 render.shareBindings(mesh.submeshes[i].render);
             // a FluidSimulation shown on this mesh (output MATERIAL): its image as submesh 0's
@@ -10283,7 +10343,10 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             if (mesh.submeshes[i].hasTextureRect){
-                render.applyUniformBlock(mesh.submeshes[i].slotVSSprite, sizeof(float) * 4, &mesh.submeshes[i].textureRect);
+                // (a batch's UVs have the rect in them)
+                static const Rect fullRect(0.0f, 0.0f, 1.0f, 1.0f);
+                render.applyUniformBlock(mesh.submeshes[i].slotVSSprite, sizeof(float) * 4,
+                                         (void*)(batch ? &fullRect : &mesh.submeshes[i].textureRect));
             }
 
             if (mesh.submeshes[i].hasSkinning){
@@ -10356,6 +10419,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     }
                     writePbrHairBlock(sub, block, size);
                     render.applyUniformBlock(sub.slotFSParams, size, block);
+                }else if (sub.pbrParamsSize == 0 && batch && batch->neutralColor){
+                    // a batch's vertex colours carry each object's colour factor
+                    applyMaterialPrefix(render, sub.slotFSParams, material, paramsSize, submeshLit, true);
                 }else if (sub.pbrParamsSize == 0 && submeshLit){
                     applyLitMaterialBlock(render, sub.slotFSParams, material, paramsSize);
                 }else if (sub.pbrParamsSize == 0){
@@ -10388,7 +10454,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             applyCustomUniforms(render, mesh.submeshes[i].customVSParams, frameTime, passResolution);
             applyCustomUniforms(render, mesh.submeshes[i].customFSParams, frameTime, passResolution);
 
-            if (tilemap && !tilemapDrawRanges.empty()){
+            if (batch){
+                drawBatchGeometry(render, mesh.buffer, *batch);
+            }else if (tilemap && !tilemapDrawRanges.empty()){
                 if (instmesh){
                     bindInstances(render, *instmesh, instanceView, draw.instanceFirst, draw.vatFirst);
                 }
@@ -10435,14 +10503,18 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             return false;
         }
 
-        // (a visible list culled it already: passPreCulled)
-        if (!passPreCulled && !isBatchVisible(entity, mesh, transform, instmesh, instanceView, cameraFar, frustumPlanes)) {
-            return false;
-        }
-
+        // a batch drawn with this object, its first (RenderSystemBatch.cpp)
+        const BatchGeometry* batch = passBatchGeometry;
         MeshDraw draw;
-        if (!selectMeshDraw(entity, mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
-            return false;
+        if (!batch){
+            // (a visible list culled it already: passPreCulled)
+            if (!passPreCulled && !isBatchVisible(entity, mesh, transform, instmesh, instanceView, cameraFar, frustumPlanes)) {
+                return false;
+            }
+
+            if (!selectMeshDraw(entity, mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
+                return false;
+            }
         }
         unsigned int instanceCount = draw.instanceCount;
         // the depth pre-pass leaves a fading mesh out: a pre-pass of both levels would hold the
@@ -10452,12 +10524,12 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             return false;
         }
 
-        updateMeshBuffers(mesh);
+        updateMeshBuffers(entity, mesh);
         writeCustomUniforms(scene, mesh);
 
         // a mirroring model matrix draws with the face winding reversed (the shadow and depth
         // passes cull as the colour pass)
-        const bool mirroredDraw = isMirroredDraw(mesh, objectModel(transform));
+        const bool mirroredDraw = batch ? batch->mirrored : isMirroredDraw(mesh, objectModel(transform));
 
         // the depth pass renders the view camera's selection (view 0 in draw())
         TerrainView* terrainNodes = nullptr;
@@ -10495,15 +10567,7 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
 
             ObjectRender& depthRender = mesh.submeshes[i].depthRender;
 
-            if (mesh.submeshes[i].needUpdateDepthTexture &&
-                (mesh.submeshes[i].depthShaderProperties & (1u << 0))){
-                ShaderData& depthShaderData = mesh.submeshes[i].depthShader.get()->shaderData;
-                if (loadDepthTexture(mesh.submeshes[i].material, depthShaderData, mesh.submeshes[i].depthRender)){
-                    mesh.submeshes[i].needUpdateDepthTexture = false;
-                }
-            }else if (mesh.submeshes[i].needUpdateDepthTexture){
-                mesh.submeshes[i].needUpdateDepthTexture = false;
-            }
+            refreshDepthTextures(mesh.submeshes[i]);
 
             const ShaderLibraryBindings& depthBindings = mesh.submeshes[i].depthLibraryBindings;
             if (!depthBindings.textures.empty() && (mesh.submeshes[i].needUpdateTexture ||
@@ -10552,7 +10616,10 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                 applyInstanceFadeUniform(depthRender, mesh.submeshes[i].slotVSDepthFade, *instmesh, instanceFadeEye(entity, *instmesh, instanceView));
             }
             if (mesh.submeshes[i].slotVSDepthSprite != -1){
-                depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthSprite, sizeof(float) * 4, &mesh.submeshes[i].textureRect);
+                // (a batch's UVs have the rect in them)
+                static const Rect fullRect(0.0f, 0.0f, 1.0f, 1.0f);
+                depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthSprite, sizeof(float) * 4,
+                                              (void*)(batch ? &fullRect : &mesh.submeshes[i].textureRect));
             }
 
             if (mesh.submeshes[i].slotFSDepthMaterial != -1){
@@ -10590,7 +10657,9 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                 depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthTerrain, sizeof(float) * 8, &(terrain->eyePos));
             }
 
-            if (tilemap && !tilemapDrawRanges.empty()){
+            if (batch){
+                drawBatchGeometry(depthRender, mesh.buffer, *batch);
+            }else if (tilemap && !tilemapDrawRanges.empty()){
                 if (instmesh){
                     bindInstances(depthRender, *instmesh, instanceView, draw.instanceFirst, draw.vatFirst);
                 }
@@ -10865,6 +10934,11 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
     ssaoPassRender.startRenderPass(&target.getRender());
     passResolution = Vector2((float)width, (float)height);
 
+    // (depth only: its draws group by state, in any order)
+    beginBatchPass(BatchPass::SCENE_DEPTH, BatchMode::GROUP, &camera, perCameraTransform, PIP_DEPTH, renderVP, camera.farClip, camera.frustumPlanes);
+    batchPass.forSSAO = true;
+    batchPass.instanceView = instanceView;
+    batchPass.lodView = lodView;
     // GPU Instancing: the meshes are listed, then culled and drawn in batches (spec S55)
     const bool batching = SystemRender::isDrawBatching();
     depthQueue.clear();
@@ -10905,7 +10979,7 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
         const Matrix4& model = objectModel(transform);
         vs_depth_t params = {model, renderVP, renderVP * model};
         passSubmeshQueue = mesh.isTransparent() ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
-        drawMeshDepth(entity, mesh, transform, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true, PIP_DEPTH, instanceView, lodView);
+        submitMeshDepth(entity, mesh, transform, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true, PIP_DEPTH, instanceView, lodView);
     }
     if (batching){
         // GPU Instancing: culled once and drawn in batches (spec S55)
@@ -10921,12 +10995,13 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
             passSubmeshQueue = opaque.mesh->isTransparent() ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
             passSubmeshMask = opaque.submeshMask;
             passPreCulled = opaque.preCulled;
-            drawMeshDepth(opaque.entity, *opaque.mesh, *opaque.transform, camera.farClip, camera.frustumPlanes, params, opaque.instmesh, opaque.terrain, opaque.tilemap, true, PIP_DEPTH, instanceView, lodView);
+            submitMeshDepth(opaque.entity, *opaque.mesh, *opaque.transform, camera.farClip, camera.frustumPlanes, params, opaque.instmesh, opaque.terrain, opaque.tilemap, true, PIP_DEPTH, instanceView, lodView);
         }
         SystemRender::endDrawBatch();
         passSubmeshMask = 0xFFFFFFFFu;
         passPreCulled = false;
     }
+    endBatchPass();
     passSubmeshQueue = SubmeshQueue::ALL;
     ssaoPassRender.endRenderPass();
 }
@@ -11420,7 +11495,7 @@ void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, c
         environmentCode = slot >= 0 ? SSRCode::probe(slot, record.probeWeight) : SSRCode::PROBE_NO_SLOT;
     }
 
-    updateMeshBuffers(mesh);
+    updateMeshBuffers(entity, mesh);
 
     // a mirroring model matrix draws with the face winding reversed (as the colour pass)
     const bool mirroredDraw = isMirroredDraw(mesh, objectModel(transform));
@@ -12432,6 +12507,8 @@ void RenderSystem::presentFramebufferToSwapchain(Framebuffer* source){
 }
 
 void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAssets){
+    // (its draws in batch form are baked again from the mesh it loads next)
+    dropBatchRecord(entity);
     InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
     TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
     const bool preserveAssets = mesh.needReload && !clearAssets;
@@ -12791,33 +12868,14 @@ bool RenderSystem::lendsTransparentFluid(Entity entity, const Submesh& submesh) 
 bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride, bool inCanvasLayer){
     if (ui.loaded && ui.buffer.getSize() > 0){
 
-        if (ui.needUpdateTexture || ui.texture.isFramebufferOutdated()){
-            ShaderData& shaderData = ui.shader.get()->shaderData;
-            ui.texture.setAlphaBorderAuto(true);
-            if (TextureRender* textureRender = ui.texture.getRender(&emptyWhite))
-                if (textureRender->isCreated()){
-                    ui.render.addTexture(shaderData.getTextureIndex(TextureShaderType::UI), ShaderStageType::FRAGMENT, textureRender);
-                    ui.needUpdateTexture = false;
-                }
-        }
+        refreshUITexture(ui);
         if (textureOverride && textureOverride->isCreated())
             ui.render.addTexture(ui.shader.get()->shaderData.getTextureIndex(TextureShaderType::UI), ShaderStageType::FRAGMENT, textureOverride);
         if (!ui.libraryBindings.textures.empty() && (ui.needUpdateTexture || shaderTexturesOutdated(ui.libraryBindings, ui.shaderTextures))){
             bindShaderTextures(ui.libraryBindings, ui.render, ui.shaderTextures);
         }
 
-        if (ui.needUpdateBuffer){
-            ui.buffer.getRender()->updateBuffer(ui.buffer.getSize(), ui.buffer.getData());
-
-            if (ui.indices.getCount() > 0){
-                ui.indices.getRender()->updateBuffer(ui.indices.getSize(), ui.indices.getData());
-                ui.vertexCount = ui.indices.getCount();
-            }else{
-                ui.vertexCount = ui.buffer.getCount();
-            }
-
-            ui.needUpdateBuffer = false;
-        }
+        uploadUIBuffers(ui);
 
         ObjectRender& render = ui.render;
 
@@ -12827,11 +12885,12 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
                 ui.needReload = true;
             return false;
         }
-        render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
+        // a batch drawn with this element, its first (RenderSystemBatch.cpp)
+        const BatchGeometry* batch = passBatchGeometry;
+        render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)(batch ? &batch->objectBlock[2] : &objectMVP(transform)));
         //Color, faded by the element's Canvas Groups (a Text Effect writes each glyph's colour in its
-        // vertices: then only the alpha here)
-        const Vector4 baseColor = ui.vertexColorAbsolute ? Vector4(1.0f, 1.0f, 1.0f, ui.color.w) : ui.color;
-        Vector4 drawColor = uiDrawColor(baseColor, inCanvasLayer ? ui.groupLayerAlpha : ui.groupAlpha, ui.drawBlendMode);
+        // vertices: then only the alpha here); a batch's vertex colours carry each element's
+        Vector4 drawColor = (batch && batch->neutralColor) ? Vector4(1.0f, 1.0f, 1.0f, 1.0f) : uiElementColor(ui, inCanvasLayer);
         render.applyUniformBlock(ui.slotFSParams, sizeof(float) * 4, &drawColor);
         if (ui.slotFSTextParams >= 0){
             render.applyUniformBlock(ui.slotFSTextParams, sizeof(float) * 16, ui.textParams);
@@ -12840,7 +12899,11 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
                                scene->getInheritedShaderUniforms(ShaderType::UI, ui.customShader.path), ui.needUpdateShaderUniforms,
                                ui.shaderGlobalBindings, ui.globalsVersionSeen, frameTime, passResolution);
         applyFrameBlock(render, ui.libraryBindings);
-        render.draw(0, ui.vertexCount, 1);
+        if (batch){
+            drawBatchGeometry(render, ui.buffer, *batch);
+        }else{
+            render.draw(0, ui.vertexCount, 1);
+        }
 
     }
 
@@ -12848,6 +12911,7 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
 }
 
 void RenderSystem::destroyUI(Entity entity, UIComponent& ui){
+    dropBatchRecord(entity);
     TextComponent* text = scene->findComponent<TextComponent>(entity);
 
     if (!ui.loaded)
@@ -14285,15 +14349,17 @@ void RenderSystem::updateCamera(CameraComponent& camera, Transform& transform){
     }
 
     if (camera.useTarget){
+        // aimed straight up or down the stored up is parallel to the view: lookAt needs another
+        const Vector3 up = cameraUpFor(camera.target - transform.position, camera.up);
         camera.direction = (transform.position - camera.target).normalize();
-        camera.right = (camera.up.crossProduct(camera.direction)).normalize();
+        camera.right = (up.crossProduct(camera.direction)).normalize();
 
         if (transform.parent != NULL_ENTITY){
             camera.worldTarget = transform.modelMatrix * (camera.target - transform.position);
-            camera.worldUp = ((transform.modelMatrix * camera.up) - (transform.modelMatrix * Vector3(0,0,0))).normalize();
+            camera.worldUp = ((transform.modelMatrix * up) - (transform.modelMatrix * Vector3(0,0,0))).normalize();
         }else{
             camera.worldTarget = camera.target;
-            camera.worldUp = camera.up;
+            camera.worldUp = up;
         }
 
         //Update ViewMatrix
@@ -15543,7 +15609,7 @@ bool RenderSystem::isBaseLayer() const{
     if (rv().secondary)
         return rv().baseLayer;
 #endif
-    return Engine::getMainScene() == scene;
+    return Engine::getBaseScene() == scene;
 }
 
 const LightCamera& RenderSystem::lightCamera(int lightIndex, const LightComponent& light, int cameraIndex) const{
@@ -15782,7 +15848,7 @@ bool RenderSystem::isFixedResolutionActive() const{
         return rv().fixedResolution && rv().baseLayer;
 #endif
     // main scene only: layer scenes keep rendering at native resolution on top
-    return !disableFixedResolution && Engine::getMainScene() == scene;
+    return !disableFixedResolution && Engine::getBaseScene() == scene;
 }
 
 void RenderSystem::updateSwapchainRedirect(){
@@ -15793,7 +15859,7 @@ void RenderSystem::updateSwapchainRedirect(){
     bool redirect = false;
 
     if (!Engine::getFramebuffer() && !isFixedResolutionActive()
-            && Engine::getMainScene() == scene && Engine::isViewLoaded()){
+            && Engine::getBaseScene() == scene && Engine::isViewLoaded()){
         unsigned int w = (unsigned int)Engine::getViewRect().getWidth();
         unsigned int h = (unsigned int)Engine::getViewRect().getHeight();
 
@@ -16079,7 +16145,19 @@ void RenderSystem::update(double dt){
 #endif
     // shadow maps drawn before this update hold another scene
     shadowEpoch++;
+    updateSerial = updateSerial + 1 ? updateSerial + 1 : 1;
 
+    // Dynamic Batching turned off: every object draws alone again, with its own MVP and buffers
+    if (!Engine::isDynamicBatching()){
+        if (!batchRecords.empty())
+            dropBatchRecords();
+        if (batchingSeen){
+            destroyBatchChunks();
+            batchingSeen = false;
+        }
+    }else{
+        batchingSeen = true;
+    }
     if (paused) {
         return;
     }
@@ -16306,6 +16384,35 @@ void RenderSystem::update(double dt){
     // create reflection camera entities (reallocating the camera/transform arrays),
     // so fetch mainCamera/mainCameraTransform references AFTER it returns.
     updateMirrors(mainCameraEntity);
+
+    // the MVP of batched meshes waits for a draw alone only while every pass draws with the main
+    // camera's (a probe or another camera makes its own per pass): decided once the cameras of
+    // this update are counted (a mirror's too)
+    {
+        const bool lazy = Engine::isDynamicBatching() && !hasReflectionProbes && !hasMultipleCameras;
+        if (!lazy && batchLazyMVP){
+            // the stale ones made now with the main camera (ensureBatchMVP would leave them to
+            // the per-camera passes)
+            const Entity cameraEntity = scene->getCamera();
+            CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
+            Transform* cameraTransform = scene->findComponent<Transform>(cameraEntity);
+            auto refresh = [&](Entity entity){
+                Transform* transform = scene->findComponent<Transform>(entity);
+                if (transform && camera && cameraTransform)
+                    updateMVP(0, *transform, *camera, *cameraTransform);
+            };
+            for (BatchRecord& record : batchRecords){
+                if (record.mvpStale){
+                    record.mvpStale = false;
+                    refresh(record.entity);
+                }
+            }
+            for (Entity entity : batchStaleMVPs)
+                refresh(entity);
+            batchStaleMVPs.clear();
+        }
+        batchLazyMVP = lazy;
+    }
 
     // the rest of the frame is built from the main camera view
     CameraComponent* mainCameraPtr = scene->findComponent<CameraComponent>(mainCameraEntity);
@@ -16917,7 +17024,15 @@ void RenderSystem::update(double dt){
 
             // need to be updated for every camera
             if (!hasMultipleCameras){
-                updateMVP(i, transform, mainCamera, mainCameraTransform);
+                // a batched mesh draws without its MVP: made when a draw of it alone reads it
+                // (ensureBatchMVP); its distance still sorts it
+                BatchRecord* lazy = batchLazyMVP ? findBatchRecord(entity) : nullptr;
+                if (lazy && !lazy->ui && !transform.billboard){
+                    lazy->mvpStale = true;
+                    transform.distanceToCamera = (mainCameraTransform.worldPosition - transform.worldPosition).length();
+                }else{
+                    updateMVP(i, transform, mainCamera, mainCameraTransform);
+                }
             }
 
             // Select the main camera's CDLOD cut (view 0) once per frame; both the
@@ -17200,8 +17315,10 @@ void RenderSystem::draw(){
     // UI particles whose Canvas Group alpha changed after this frame's update (the UI draw
     // synced it): their render points again, so this frame shows it
     refreshGroupFadedPoints();
+    beginBatchFrame();
     drawFramePasses();
     drawCameras(true);
+    endBatchFrame();
 
 #ifdef JASPERENGINE_EDITOR
     frameDrawn = true;
@@ -17984,14 +18101,23 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
 
+    // the view-projection the pass's MVPs are made of (Y-flipped as updateMVP flips them): the
+    // pre-pass's and the batched draws' (whose model is their origin cell)
+    Matrix4 renderVP = camera.viewProjectionMatrix;
+    if (isRenderingFlipped(camera)){
+        renderVP = Matrix4::scaleMatrix(Vector3(1, -1, 1)) * renderVP;
+    }
+
     // the same draws, depth only, with the color pass's own MVP; a color fork
     // without a depth fork is left out since its vertices may not match
     if (depthPrepass){
         const PipelineType prepassPip = passMsaa > 1 ? PIP_ZPREPASS_MSAA : (offscreenTarget ? PIP_ZPREPASS_RTT : PIP_ZPREPASS);
-        Matrix4 renderVP = camera.viewProjectionMatrix;
-        if (isRenderingFlipped(camera)){
-            renderVP = Matrix4::scaleMatrix(Vector3(1, -1, 1)) * renderVP;
-        }
+        // (depth only: its draws group by state, in any order)
+        beginBatchPass(BatchPass::DEPTH_PREPASS, BatchMode::GROUP, &camera, &cameraTransform, prepassPip, renderVP, camera.farClip, camera.frustumPlanes);
+        batchPass.colorPipType = colorPip;
+        batchPass.forSSAO = true;
+        batchPass.instanceView = instanceView;
+        batchPass.lodView = lodView;
         SystemRender::beginDrawBatch();
         passLodFade = LodFadePass::PLAIN;
         for (const OpaqueRenderData& opaque : opaqueRenders){
@@ -17999,12 +18125,17 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             // the fading draws are drawn by the colour pass alone
             if (opaque.mesh->skipsDepthPrepass || opaque.lodPass == LodFadePass::FADE)
                 continue;
+            // a batched mesh's MVP may wait: submitMeshDepth makes it for a draw alone (batching
+            // off, no batch pass: made here)
+            if (!Engine::isDynamicBatching())
+                ensureBatchMVP(opaque.entity, *opaque.transform);
             vs_depth_t params = {objectModel(*opaque.transform), renderVP, objectMVP(*opaque.transform)};
             passSubmeshQueue = opaque.mesh->isTransparent() ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
             passSubmeshMask = opaque.submeshMask;
             passPreCulled = opaque.preCulled;
-            drawMeshDepth(opaque.entity, *opaque.mesh, *opaque.transform, camera.farClip, camera.frustumPlanes, params, opaque.instmesh, opaque.terrain, opaque.tilemap, true, prepassPip, instanceView, lodView);
+            submitMeshDepth(opaque.entity, *opaque.mesh, *opaque.transform, camera.farClip, camera.frustumPlanes, params, opaque.instmesh, opaque.terrain, opaque.tilemap, true, prepassPip, instanceView, lodView);
         }
+        endBatchPass();
         SystemRender::endDrawBatch();
         passSubmeshQueue = SubmeshQueue::ALL;
         passSubmeshMask = 0xFFFFFFFFu;
@@ -18053,6 +18184,17 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         videoPlanes->drawCameraPlanes(videoCamera, false, targetFormatFor(colorPip, passMsaa), camera.render, colorPassViewport, videoFlipY);
     };
 
+    // Dynamic Batching: the meshes and UI elements below are held and drawn in runs (any other
+    // draw of the pass draws the runs first). An orthographic camera looking along Z lets a draw
+    // join an earlier run past draws its bounds do not touch (disjoint on screen)
+    {
+        const float viewAxis = camera.viewMatrix[2][2];
+        const bool alongZ = camera.type != CameraType::CAMERA_PERSPECTIVE && std::fabs(viewAxis) > 1.0f - 1e-6f &&
+            camera.viewMatrix[0][2] == 0.0f && camera.viewMatrix[1][2] == 0.0f;
+        beginBatchPass(BatchPass::COLOR, alongZ ? BatchMode::REORDER : BatchMode::STRICT, &camera, &cameraTransform, colorPip, renderVP,
+                       camera.farClip, camera.frustumPlanes);
+    }
+
     if (distanceSort){
         // (GPU Instancing: consecutive draws of one mesh, material and pipeline drawn as one)
         SystemRender::beginDrawBatch();
@@ -18062,7 +18204,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             passSubmeshMask = opaque.submeshMask;
             passPreCulled = opaque.preCulled;
             passLodFade = opaque.lodPass;
-            drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, camera, cameraTransform, colorPip, opaque.instmesh, opaque.terrain, opaque.tilemap, terrainView, instanceView, lodView);
+            submitMesh(opaque.entity, *opaque.mesh, *opaque.transform, camera, cameraTransform, colorPip, opaque.instmesh, opaque.terrain, opaque.tilemap, terrainView, instanceView, lodView);
         }
         SystemRender::endDrawBatch();
         passSubmeshQueue = SubmeshQueue::ALL;
@@ -18235,7 +18377,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 // ones refreshed in update()
                 TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
 
-                drawMesh(entity, mesh, transform, camera, cameraTransform, colorPip, instmesh, terrain, tilemap, terrainView, instanceView, lodView);
+                submitMesh(entity, mesh, transform, camera, cameraTransform, colorPip, instmesh, terrain, tilemap, terrainView, instanceView, lodView);
             }
 
         }else if (signature.test(scene->getComponentId<UIComponent>())){
@@ -18243,8 +18385,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
             if (transform.visible && renderActive && !canvasSkipped && !samplesCameraTarget(camera, ui.texture) &&
                     !uiDrawSkipped(ui.color, ui.groupAlpha, ui.drawBlendMode, ui.writesStencil))
-                drawUI(ui, transform, colorPip,
-                       (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr);
+                submitUI(entity, ui, transform, colorPip,
+                         (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr);
 
         }else if (signature.test(scene->getComponentId<PointsComponent>())){
             PointsComponent& points = scene->getComponent<PointsComponent>(entity);
@@ -18337,7 +18479,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             // a split mesh: its blended submeshes (the opaque ones were drawn in the opaque queue)
             passSubmeshQueue = renderData.mesh->splitQueues ? SubmeshQueue::TRANSPARENT : SubmeshQueue::ALL;
             passPreCulled = true;
-            drawMesh(renderData.entity, *renderData.mesh, *renderData.transform, camera, cameraTransform, colorPip, renderData.instmesh, renderData.terrain, renderData.tilemap, terrainView, instanceView, lodView);
+            submitMesh(renderData.entity, *renderData.mesh, *renderData.transform, camera, cameraTransform, colorPip, renderData.instmesh, renderData.terrain, renderData.tilemap, terrainView, instanceView, lodView);
             passPreCulled = false;
             passSubmeshQueue = SubmeshQueue::ALL;
         }else if (renderData.type == TransparentRenderType::POINTS){
@@ -18358,6 +18500,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     //---------Draw HTML UI documents (in front of everything, including component UI)----------
     // UI and 2D cameras draw the canvas in world space, the editor's Scene view included; a
     // 3D camera fills its viewport, in the game camera only
+    // (the documents draw over every run)
+    endBatchPass();
+
     bool drawDocuments = isMainCamera && !pass.renderToTexture;
 #ifdef JASPERENGINE_EDITOR
     drawDocuments = drawDocuments && (!passDrawsOverlays || camera.type != CameraType::CAMERA_PERSPECTIVE);
@@ -18894,6 +19039,10 @@ void RenderSystem::onComponentAdded(Entity entity, ComponentId componentId) {
 }
 
 void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
+    // the entity goes (every one has a Transform), or something it was batched as
+    if (componentId == scene->getComponentId<Transform>())
+        dropBatchRecord(entity);
+
 #ifdef JASPERENGINE_EDITOR
     forgetEntityInViews(entity, componentId);
     // the entity goes (every one has a Transform): its id may come back as something else
@@ -18911,12 +19060,15 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     } else if (componentId == scene->getComponentId<MeshComponent>()) {
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         destroyMesh(entity, mesh);
+        dropBatchRecord(entity);
+        immutableChanges.erase(entity);
         // (kept over reloads, which load it again)
         setSceneInputUser(entity, false, 0);
         setGBufferDepthMismatch(entity, false);
     } else if (componentId == scene->getComponentId<UIComponent>()) {
         UIComponent& ui = scene->getComponent<UIComponent>(entity);
         destroyUI(entity, ui);
+        dropBatchRecord(entity);
     } else if (componentId == scene->getComponentId<PointsComponent>()) {
         PointsComponent& points = scene->getComponent<PointsComponent>(entity);
         destroyPoints(entity, points);
@@ -19749,6 +19901,8 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     if (!desc.editorOverlays)
         scene->getSystem<UIDocumentSystem>()->renderOffscreen(desc.viewRect);
 
+    beginBatchFrame();
+
     // a scene drawn only through views does the frame's shared work here: uploads,
     // 2D shadows, probe faces and its render-to-texture cameras
     if (!frameDrawn){
@@ -19889,6 +20043,8 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     passExcludedEntity = NULL_ENTITY;
     passDrawsOverlays = true;
     activeView = &primaryView;
+
+    endBatchFrame();
 }
 
 #endif

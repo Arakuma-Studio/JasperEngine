@@ -22,16 +22,25 @@
 
 namespace jasperengine{
 
+    // A vertex bind slot: the buffer, its offset, and the layout the slot steps it with. Two
+    // attributes of the same GPU buffer at the same offset share a slot only when they also step it
+    // the same way: buffers shared by content (MeshBufferPool) give equal bytes of different
+    // attributes one GPU buffer, which must not fold an 8-byte stride into a 16-byte one.
     struct BufferInfo{
         uint32_t id;
         size_t offset;
+        unsigned int stride = 0;
+        bool perInstance = false;
 
         bool operator==(const BufferInfo &o) const {
-            return id == o.id && offset == o.offset;
+            return id == o.id && offset == o.offset && stride == o.stride && perInstance == o.perInstance;
         }
 
         bool operator<(const BufferInfo &o) const {
-            return id < o.id || (id == o.id && offset < o.offset);
+            if (id != o.id) return id < o.id;
+            if (offset != o.offset) return offset < o.offset;
+            if (stride != o.stride) return stride < o.stride;
+            return perInstance < o.perInstance;
         }
     };
 
@@ -364,6 +373,15 @@ namespace jasperengine{
         void replaceVertexBuffer(uint32_t fromBufferId, sg_buffer toBuffer, size_t byteOffset);
         void setIndexBuffer(sg_buffer buffer, size_t byteOffset = 0);
         void resetIndexBuffer();
+        // for good (the buffer the load bound was replaced: a shared buffer of new bytes, a private
+        // one): every vertex bind slot of fromBufferId now binds toBuffer with the same layout and
+        // offsets, and replaceVertexBuffer finds it by toBuffer's id; the index buffer the same
+        void retargetVertexBuffer(uint32_t fromBufferId, sg_buffer toBuffer);
+        void retargetIndexBuffer(uint32_t fromBufferId, sg_buffer toBuffer);
+        // the vertex buffer bind slots the attributes added so far use (diagnostics, tests)
+        size_t getVertexBindSlotCount() const { return bindSlotIndex; }
+        // the view and sampler ids bound at a texture slot (0, 0 when the slot is -1)
+        void getTextureBinding(std::pair<int, int> slot, uint32_t& view, uint32_t& sampler) const;
         void addStorageBuffer(int slot, ShaderStageType stage, BufferRender* buffer);
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture, TextureRender* samplerOf);

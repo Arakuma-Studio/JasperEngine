@@ -915,7 +915,7 @@ void PhysicsSystem::updateTransformFromRigidbody(Entity entity, RigidbodyCompone
     // a body that never stepped has no pose before the step to draw from
     const RigidbodyInterpolation mode = interpolationOf(body.interpolation);
     if (mode == RigidbodyInterpolation::INTERPOLATE && alpha < 1.0f && !body.newBody){
-        position = body.previousPosition.lerp(position, alpha);
+        position = body.previousPosition.lerpUnclamped(position, alpha);
         if (body.previousRotation != rotation){
             rotation = Quaternion::slerp(alpha, body.previousRotation, rotation);
         }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Model.h"
+#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 
 #include "io/FileData.h"
@@ -414,53 +415,110 @@ Bone Model::getBone(int id){
 	}
 }
 
-float Model::getMorphWeight(const std::string& name){
-    ModelComponent& model = getComponent<ModelComponent>();
-
-    if (model.morphNameMapping.count(name)){
-        return getMorphWeight(model.morphNameMapping.at(name));
-    }else{
-        Log::error("Retrieving non-existent morph weight '%s'", name.c_str());
+namespace {
+    // a morph weight of one mesh written by a script: kept by loads (also one still running) up to
+    // this target; targets past the count get the file's defaults (MeshComponent::morphTargetCount)
+    void writeMorphWeight(MeshComponent& mesh, int id, float value){
+        mesh.morphWeights[id] = value;
+        mesh.morphWeightsSet = true;
+        mesh.morphTargetCount = std::max(mesh.morphTargetCount, id + 1);
     }
+
+    int morphIndexOf(const MeshComponent& mesh, const std::string& name){
+        for (size_t t = 0; t < mesh.morphTargetNames.size() && t < MAX_MORPHTARGETS; t++){
+            if (mesh.morphTargetNames[t] == name)
+                return static_cast<int>(t);
+        }
+        return -1;
+    }
+}
+
+// A model made of parts (one mesh per glTF mesh node): each part has its own targets and names,
+// so a name is looked up per part and an index is the one of each part
+float Model::getMorphWeight(const std::string& name){
+    const std::vector<Entity> parts = getModelParts();
+    if (!parts.empty()){
+        for (Entity part : parts){
+            const MeshComponent& mesh = scene->getComponent<MeshComponent>(part);
+            const int index = morphIndexOf(mesh, name);
+            if (index >= 0)
+                return mesh.morphWeights[index];
+        }
+    }else{
+        ModelComponent& model = getComponent<ModelComponent>();
+        if (model.morphNameMapping.count(name)){
+            return getMorphWeight(model.morphNameMapping.at(name));
+        }
+    }
+    Log::error("Retrieving non-existent morph weight '%s'", name.c_str());
 
     return 0;
 }
 
 float Model::getMorphWeight(int id){
-    MeshComponent& mesh = getComponent<MeshComponent>();
-
-    if (id >= 0 && id < MAX_MORPHTARGETS){
-        return mesh.morphWeights[id];
-    }else{
+    if (id < 0 || id >= MAX_MORPHTARGETS){
         Log::error("Retrieving non-existent morph weight '%i'", id);
+        return 0;
     }
-
-    return 0;
+    const std::vector<Entity> parts = getModelParts();
+    for (Entity part : parts){
+        const MeshComponent& mesh = scene->getComponent<MeshComponent>(part);
+        if (id < mesh.morphTargetCount)
+            return mesh.morphWeights[id];
+    }
+    return getFirstMesh().mesh->morphWeights[id];
 }
 
 void Model::setMorphWeight(const std::string& name, float value){
-    ModelComponent& model = getComponent<ModelComponent>();
-
-    if (model.morphNameMapping.count(name)){
-        setMorphWeight(model.morphNameMapping.at(name), value);
+    bool found = false;
+    if (!getModelParts().empty()){
+        for (const MeshTarget& part : getTargetMeshes()){
+            const int index = morphIndexOf(*part.mesh, name);
+            if (index >= 0){
+                writeMorphWeight(*part.mesh, index, value);
+                found = true;
+            }
+        }
     }else{
+        ModelComponent& model = getComponent<ModelComponent>();
+        if (model.morphNameMapping.count(name)){
+            setMorphWeight(model.morphNameMapping.at(name), value);
+            found = true;
+        }
+    }
+    if (!found){
         Log::error("Retrieving non-existent morph weight '%s'", name.c_str());
     }
 }
 
 void Model::setMorphWeight(int id, float value){
-    MeshComponent& mesh = getComponent<MeshComponent>();
-
-    if (id >= 0 && id < MAX_MORPHTARGETS){
-        mesh.morphWeights[id] = value;
-        // the weights are the mesh's own now, up to this target at least: a load (also one still
-        // running) keeps them; targets past the count get the file's defaults
-        // (MeshComponent::morphTargetCount)
-        mesh.morphWeightsSet = true;
-        mesh.morphTargetCount = std::max(mesh.morphTargetCount, id + 1);
-    }else{
+    if (id < 0 || id >= MAX_MORPHTARGETS){
+        Log::error("Retrieving non-existent morph weight '%i'", id);
+        return;
+    }
+    const std::vector<Entity> parts = getModelParts();
+    if (parts.empty()){
+        writeMorphWeight(getComponent<MeshComponent>(), id, value);
+        return;
+    }
+    bool found = false;
+    for (const MeshTarget& part : getTargetMeshes()){
+        if (id < part.mesh->morphTargetCount){
+            writeMorphWeight(*part.mesh, id, value);
+            found = true;
+        }
+    }
+    if (!found){
         Log::error("Retrieving non-existent morph weight '%i'", id);
     }
+}
+
+std::string Model::getFilename() const{
+    return getComponent<ModelComponent>().filename.str();
+}
+
+int Model::getAnimationCount() const{
+    return static_cast<int>(getComponent<ModelComponent>().animations.size());
 }
 
 void Model::resetToBindPose(){

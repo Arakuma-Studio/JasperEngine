@@ -30,6 +30,7 @@
 #include "command/type/UnlinkMaterialCmd.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
+#include "component/TerrainComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TextComponent.h"
 #include "component/SafeAreaComponent.h"
@@ -70,11 +71,13 @@
 #include "reflect/Enums.h"
 #include "reflect/Reflect.h"
 #include "util/YamlNumbers.h"
+#include "util/TerrainDetailRules.h"
 
 #include <algorithm>
 #include <limits>
 #include <cctype>
 #include <cmath>
+#include <sstream>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -998,17 +1001,50 @@ Vector3 McpValues::eulerDegrees(const Quaternion& value) {
     return euler;
 }
 
-bool McpValues::parseQuaternion(const Json& value, Quaternion& out) {
+bool McpValues::parseQuaternion(const Json& value, Quaternion& out, std::string* error) {
+    std::string why;
+    auto fail = [&](std::string text) {
+        if (error) *error = std::move(text);
+        return false;
+    };
     auto fromEuler = [](const Json& euler, Quaternion& q) {
         float e[3] = {0.0f, 0.0f, 0.0f};
         if (!readComponents(euler, e, 3, XYZW)) return false;
         q = Quaternion(e[0], e[1], e[2]);
         return true;
     };
-    auto fromQuat = [](const Json& quat, Quaternion& q) {
+    // four numbers that must be a rotation: near-unit ones are normalized, others refused (an
+    // unnormalized quaternion scales and shears what it rotates)
+    auto fromQuat = [&why](const Json& quat, Quaternion& q) {
         float v[4] = {q.x, q.y, q.z, q.w};
+        if (quat.is_object()) {
+            for (const char* key : XYZW) {
+                if (!quat.contains(key)) {
+                    why = "a quaternion object needs all of x, y, z and w; for angles use {\"euler\": [x, y, z]} (degrees).";
+                    return false;
+                }
+            }
+        }
         if (!readComponents(quat, v, 4, XYZW)) return false;
-        q = Quaternion(v[3], v[0], v[1], v[2]);
+        const float length = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]);
+        if (!std::isfinite(length) || length < 1e-6f) {
+            why = "a zero quaternion is not a rotation; identity is [0, 0, 0, 1], angles are {\"euler\": [x, y, z]} (degrees).";
+            return false;
+        }
+        if (std::fabs(length - 1.0f) > 0.1f) {
+            std::ostringstream text;
+            const bool degrees = std::fabs(v[0]) > 2.0f || std::fabs(v[1]) > 2.0f || std::fabs(v[2]) > 2.0f;
+            if (degrees) {
+                text << "[" << v[0] << ", " << v[1] << ", " << v[2] << ", " << v[3] << "] looks like Euler degrees: use {\"euler\": ["
+                     << v[0] << ", " << v[1] << ", " << v[2] << "]}.";
+            } else {
+                text.precision(3);
+                text << "not a unit quaternion (length " << length << "): give [x, y, z, w] of length 1, or {\"euler\": [x, y, z]} (degrees).";
+            }
+            why = text.str();
+            return false;
+        }
+        q = Quaternion(v[3] / length, v[0] / length, v[1] / length, v[2] / length);
         return true;
     };
     if (value.is_object() && (value.contains("euler") || value.contains("quat"))) {
@@ -1016,18 +1052,28 @@ bool McpValues::parseQuaternion(const Json& value, Quaternion& out) {
         const bool hasQuat = value.contains("quat");
         Quaternion byEuler = out;
         Quaternion byQuat = out;
-        if (hasEuler && !fromEuler(value["euler"], byEuler)) return false;
-        if (hasQuat && !fromQuat(value["quat"], byQuat)) return false;
+        if (hasEuler && !fromEuler(value["euler"], byEuler)) return fail("euler must be [x, y, z] degrees.");
         if (hasEuler && hasQuat) {
-            // a read value written back with one of the two edited: the one that moved wins
-            const float dot = std::fabs(byQuat.x * out.x + byQuat.y * out.y + byQuat.z * out.z + byQuat.w * out.w);
-            out = dot > 0.99999f ? byEuler : byQuat;
-        } else {
-            out = hasEuler ? byEuler : byQuat;
+            // a read value written back with one of the two edited: the one that moved wins. The quat is
+            // compared before it is checked, so what a read returned (the stored value, normalized: even
+            // one stored off unit length) always writes back
+            float sent[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+            if (!readComponents(value["quat"], sent, 4, XYZW)) return fail("quat must be [x, y, z, w].");
+            const float sentLength = std::sqrt(sent[0] * sent[0] + sent[1] * sent[1] + sent[2] * sent[2] + sent[3] * sent[3]);
+            const float storedLength = std::sqrt(out.norm());
+            const float dot = sentLength > 0.0f && storedLength > 0.0f
+                ? std::fabs(sent[0] * out.x + sent[1] * out.y + sent[2] * out.z + sent[3] * out.w) / (sentLength * storedLength) : 0.0f;
+            if (dot > 0.99999f) {
+                out = byEuler;
+                return true;
+            }
         }
+        if (hasQuat && !fromQuat(value["quat"], byQuat)) return fail(why.empty() ? "quat must be [x, y, z, w]." : why);
+        out = hasQuat ? byQuat : byEuler;
         return true;
     }
-    return fromQuat(value, out);
+    if (!fromQuat(value, out)) return fail(why.empty() ? "a rotation is [x, y, z, w] or {\"euler\": [x, y, z]} (degrees)." : why);
+    return true;
 }
 
 double McpValues::number(float value) {
@@ -1117,7 +1163,11 @@ Json McpValues::toJson(const Vector4& value) {
     return Json::array({number(value.x), number(value.y), number(value.z), number(value.w)});
 }
 Json McpValues::toJson(const Quaternion& value) {
-    return Json{{"quat", Json::array({number(value.x), number(value.y), number(value.z), number(value.w)})},
+    // normalized, as every rotation a tool stores: a value stored off unit length (an older file, a
+    // script) reads as the rotation it draws and writes back as it reads (parseQuaternion)
+    Quaternion unit = value;
+    if (unit.norm() > 0.0f) unit.normalize();
+    return Json{{"quat", Json::array({number(unit.x), number(unit.y), number(unit.z), number(unit.w)})},
                 {"euler", toJson(eulerDegrees(value))}};
 }
 
@@ -3091,7 +3141,11 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
         }
         case PropertyType::Quat: {
             Quaternion q = property.ref ? *static_cast<Quaternion*>(property.ref) : Quaternion::IDENTITY;
-            if (!parseQuaternion(value, q)) return expect("[x,y,z,w], {\"euler\":[x,y,z]} in degrees or {\"quat\":[x,y,z,w]}");
+            std::string why;
+            if (!parseQuaternion(value, q, &why)) {
+                error = "Property " + propertyName + " is " + typeName + ": " + why;
+                return nullptr;
+            }
             return new PropertyCmd<Quaternion>(project, sceneId, entity, component, propertyName, q, onChanged);
         }
         case PropertyType::Int: {
@@ -4103,6 +4157,24 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                     if (!normalizeVertexAnimatorAttachments(scene, value, why)) {
                         error = componentLabel + " on " + label + ": " + why;
                         return false;
+                    }
+                }
+                // detail layers this call changes: the values edit_terrain_details accepts (the decoder would clamp them);
+                // a layer it leaves as it is never blocks the edit
+                if (component == ComponentType::TerrainComponent && value["foliageLayers"] && value["foliageLayers"].IsSequence()) {
+                    const TerrainComponent* current = scene->scene->findComponent<TerrainComponent>(entity);
+                    for (size_t i = 0; i < value["foliageLayers"].size(); i++) {
+                        const TerrainFoliageLayer edited = Stream::decodeTerrainFoliageLayer(value["foliageLayers"][i], false);
+                        if (current && i < current->foliageLayers.size() &&
+                            YAML::Dump(Stream::encodeTerrainFoliageLayer(edited)) == YAML::Dump(Stream::encodeTerrainFoliageLayer(current->foliageLayers[i]))) {
+                            continue;
+                        }
+                        const std::string why = editor::terrain::checkDetailLayer(edited);
+                        if (!why.empty()) {
+                            error = componentLabel + ".foliageLayers[" + std::to_string(i) + "] on " + label + ": " + why +
+                                    " (edit_terrain_details edits detail layers).";
+                            return false;
+                        }
                     }
                 }
                 auto clip = std::make_shared<ComponentClip>();

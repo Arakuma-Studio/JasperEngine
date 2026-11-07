@@ -25,6 +25,7 @@
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
+#include "mcp/McpServer.h"
 #include "mcp/McpValues.h"
 
 #include "App.h"
@@ -1158,7 +1159,58 @@ void viewAssetTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ read_file / write_file
 
+// Lines start_line.. of text, as read_file returns them: the header line and the window
+std::string lineWindow(const std::string& name, const std::string& content, const Json& args, Json& data) {
+    const int start = std::max(1, args.value("start_line", 1));
+    const int maxLines = std::clamp(args.value("max_lines", 2000), 1, 20000);
+    std::istringstream in(content);
+    std::string line, out;
+    int number = 0, emitted = 0;
+    while (std::getline(in, line)) {
+        number++;
+        if (number < start || emitted >= maxLines) continue;
+        out += line + "\n";
+        emitted++;
+    }
+    if (out.size() > 400 * 1024) {
+        out = out.substr(0, 400 * 1024) + "\n... (truncated: read a smaller line range)";
+    }
+    data = Json{{"path", name}, {"total_lines", number}, {"start_line", start}, {"lines", emitted}};
+    return name + " lines " + std::to_string(start) + "-" + std::to_string(start + emitted - 1) + " of " +
+           std::to_string(number) + ":\n" + out;
+}
+
+// read_file of a jasper:// resource: the guide and docs for clients that list no resources (or cut
+// the server instructions: Claude Code keeps 4096 characters of them)
+void readResourceFile(const CallPtr& call, const std::string& uri) {
+    // a resource that writes (project-agents makes AGENTS.md / CLAUDE.md) stays beneath the project
+    McpWriteScope writeScope;
+    bool found = false;
+    const ResourceResult result = McpServer::get().registry().readResource(uri, found);
+    if (!found || !result.ok) {
+        call->fail((result.error.empty() ? "Resource not found: " + uri : result.error) +
+                   (found ? std::string() : " The documents: read_file jasper://docs."));
+        return;
+    }
+    std::string content;
+    for (const ResourceContent& part : result.contents) {
+        if (part.text.empty() && !part.blobBase64.empty()) {
+            call->fail(uri + " is a binary resource: read it through resources/read.");
+            return;
+        }
+        content += part.text;
+    }
+    Json data;
+    const std::string text = lineWindow(uri, content, call->args(), data);
+    call->reply(ToolResult::success(text, data));
+}
+
 void readFileTool(const CallPtr& call) {
+    const std::string path = call->args().value("path", "");
+    if (path.rfind("jasper://", 0) == 0) {
+        readResourceFile(call, path);
+        return;
+    }
     fs::path file;
     if (!resolveExisting(call, "path", file)) return;
     Project* project = call->ctx().project();
@@ -1177,33 +1229,14 @@ void readFileTool(const CallPtr& call) {
         call->fail("Can't read " + rel + ".");
         return;
     }
-    const Json& args = call->args();
-    const int start = std::max(1, args.value("start_line", 1));
-    const int maxLines = std::clamp(args.value("max_lines", 2000), 1, 20000);
-    std::istringstream in(content);
-    std::string line, out;
-    int number = 0, emitted = 0, total = 0;
-    while (std::getline(in, line)) {
-        number++;
-        if (number < start || emitted >= maxLines) continue;
-        out += line + "\n";
-        emitted++;
-    }
-    total = number;
-    if (out.size() > 400 * 1024) {
-        out = out.substr(0, 400 * 1024) + "\n... (truncated: read a smaller line range)";
-    }
-    Json data = {{"path", rel}, {"total_lines", total}, {"start_line", start}, {"lines", emitted}, {"content", out}};
+    Json data;
+    const std::string text = lineWindow(rel, content, call->args(), data);
+    ToolResult result = ToolResult::success(text, data);
     if (CodeEditor* editor = call->ctx().codeEditor()) {
         if (editor->isFileModified(file.string())) {
-            data["warning"] = "The code editor has unsaved edits of this file; this is the version on disk.";
+            result.structured["warning"] = "The code editor has unsaved edits of this file; this is the version on disk.";
         }
     }
-    // The text is the content itself (agents read it), the rest is in structured
-    std::string header = rel + " lines " + std::to_string(start) + "-" + std::to_string(start + emitted - 1) + " of " +
-                         std::to_string(total) + ":\n";
-    ToolResult result = ToolResult::success(header + out, Json{{"path", rel}, {"total_lines", total}, {"start_line", start}, {"lines", emitted}});
-    if (data.contains("warning")) result.structured["warning"] = data["warning"];
     call->reply(std::move(result));
 }
 
@@ -4011,7 +4044,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "read_file";
         tool.title = "Read File";
         tool.description =
-            "Read a project text file (as on disk); the result text is the content.";
+            "Read a project text file (as on disk) or a jasper:// doc (jasper://guide); the text is the content.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"start_line", withDefault(integer("1-based.", 1, 100000000), 1)},

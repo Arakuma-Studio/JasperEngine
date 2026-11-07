@@ -46,6 +46,8 @@
 #include "util/PostColorLut.h"
 #include "lattice/LatticeRender.h"
 #include "render/DynamicResolutionController.h"
+#include "render/DrawBatcher.h"
+#include "render/FrustumCull.h"
 #include "render/SSRProbeSlots.h"
 #include "Engine.h"
 #include <map>
@@ -1532,6 +1534,12 @@ namespace jasperengine{
 		static constexpr size_t CASTER_CHANGE_LOG_MAX = 16384;
 		// update() clock of the shadow caches
 		uint64_t shadowFrame = 0;
+		// counts the updates (never 0 after the first), the clock of immutableChanges
+		uint32_t updateSerial = 0;
+		// the update a content-shared immutable buffer of the entity's mesh last took new bytes in
+		// (refreshImmutableBuffer); a second change within the window goes private
+		std::unordered_map<Entity, uint32_t> immutableChanges;
+		static constexpr uint32_t IMMUTABLE_CHANGE_WINDOW = 30;
 		// the update a dynamic shadow caster was last seen in (static layers are kept a while after)
 		uint64_t shadowDynamicSeen = 0;
 		// the quality tier this update (Scene Quality, else the project's tier of the platform)
@@ -2623,9 +2631,213 @@ namespace jasperengine{
 		void forgetEntityInViews(Entity entity, ComponentId componentId);
 #endif
 
+	//-----Dynamic Batching (RenderSystemBatch.cpp, docs/rendering/batching.md)-----
+	public:
+		// the counters and breaks of the last frame of a view (SokolSystem view tag)
+		struct BatchFrame{
+			BatchStats stats;
+			std::vector<BatchBreakEvent> breaks;
+		};
+		const BatchFrame* getBatchFrame(uint32_t viewTag) const;
+		// the entity has a batch record (its baked vertices are kept between frames: tests, tools)
+		bool hasBatchRecord(Entity entity) const;
+		// the batch form of the entity's draws or why it has none
+		BatchBreak getBatchEligibility(Entity entity);
+		// Pixel-art S52 hook: per-vertex attributes beyond the ones the bake knows (position,
+		// normal, tangent, UV sets, colour) are copied as they are; a type set here is baked like
+		// a position (an object-space point: transformed to the batch's space) or a direction (a
+		// normal-like vector: transformed by the normal matrix, normalized). A per-object value
+		// that must not break batches lives in such an attribute, the same at every vertex.
+		enum class BatchAttributeRole : uint8_t { VALUE, POINT, DIRECTION };
+		static void setBatchAttributeRole(AttributeType type, BatchAttributeRole role);
+		static BatchAttributeRole getBatchAttributeRole(AttributeType type);
+
+	private:
+		// what a batch draws with in place of its first object's own (passBatchGeometry)
+		struct BatchGeometry{
+			BufferRender* vertexBuffer = nullptr;
+			size_t vertexOffset = 0;
+			BufferRender* indexBuffer = nullptr;
+			size_t indexOffset = 0;
+			uint32_t indexCount = 0;
+			// model (the cell's translation), normal (identity: normals are baked) and mvp
+			Matrix4 objectBlock[3];
+			bool mirrored = false;
+			// the colour factor is in the vertex colours: the draw's is white
+			bool neutralColor = false;
+		};
+		// the baked vertices of an object, kept while its inputs do not change (settled)
+		struct BatchRecord{
+			Entity entity = NULL_ENTITY;
+			bool ui = false;
+			unsigned int stride = 0;
+			uint32_t vertexCount = 0;
+			uint32_t indexCount = 0;
+			int positionOffset = -1;
+			int normalOffset = -1;
+			int tangentOffset = -1;
+			int uv1Offset = -1;
+			int uv2Offset = -1;
+			int colorOffset = -1;
+			// other attributes baked by role (setBatchAttributeRole)
+			std::vector<std::pair<int, BatchAttributeRole>> extraAttributes;
+			// object space, the texture rect and colour applied
+			std::vector<unsigned char> local;
+			// placed: positions relative to the origin cell, normals and tangents in world space
+			std::vector<unsigned char> placed;
+			std::vector<uint16_t> indices;
+			// what the bake read (a difference bakes again)
+			const unsigned char* source = nullptr;
+			size_t sourceSize = 0;
+			// the vertex and index buffers' write counts (Buffer::noteWrite)
+			uint64_t sourceWrites = 0;
+			uint64_t indexWrites = 0;
+			Rect rect;
+			bool hasRect = false;
+			Vector4 color;
+			bool bakesColor = false;
+			bool bakesNormals = false;
+			bool localValid = false;
+			// what the placement read
+			Matrix4 placedWith;
+			bool placedValid = false;
+			int32_t cell[3] = {0, 0, 0};
+			float lo[3] = {0.0f, 0.0f, 0.0f};
+			float hi[3] = {0.0f, 0.0f, 0.0f};
+			uint32_t cullSerial = 0;
+			bool inside = false;
+			// RenderSystem::update left its Transform's MVP as it was (ensureBatchMVP)
+			bool mvpStale = false;
+		};
+		struct BatchPassContext{
+			BatchPass pass = BatchPass::COLOR;
+			CameraComponent* camera = nullptr;
+			Transform* cameraTransform = nullptr;
+			PipelineType pipType = PIP_DEFAULT;
+			// the camera pre-pass: the colour pass's pipeline type (what decides the batch form)
+			PipelineType colorPipType = PIP_DEFAULT;
+			// what the pass's MVPs are made of (Y-flipped like updateMVP when the target is)
+			Matrix4 viewProjection;
+			float farClip = 0.0f;
+			const Plane* frustumPlanes = nullptr;
+			bool forSSAO = false;
+			bool culls = true;
+			int terrainView = 0;
+			int instanceView = -1;
+			const LodView* lodView = nullptr;
+			bool inCanvasLayer = false;
+			// (cell, mvp) of the last cell asked for in the pass
+			int32_t mvpCell[3] = {INT32_MIN, 0, 0};
+			Matrix4 cellMVP;
+		};
+		struct BatchChunk{
+			BufferRender buffer;
+			size_t capacity = 0;
+			size_t used = 0;
+		};
+
+		static constexpr float BATCH_CELL_SIZE = 4096.0f;
+		static constexpr uint32_t BATCH_MAX_MESH_VERTICES = 64;
+		static constexpr uint32_t BATCH_MAX_UI_VERTICES = 256;
+		static constexpr uint32_t BATCH_QUADS = 16384;
+		static constexpr uint32_t BATCH_SHRINK_FRAMES = 300;
+
+		DrawBatcher batcher;
+		BatchPassContext batchPass;
+		bool batchPassActive = false;
+		const BatchGeometry* passBatchGeometry = nullptr;
+		// the camera passes' planes (colour, pre-pass: their verdicts are kept between frames) and
+		// the other depth passes' (shadow slots, scene depth: tested each time)
+		FrustumCull batchCull;
+		FrustumCull batchDepthCull;
+		std::vector<BatchRecord> batchRecords;
+		// entity -> record index + 1 (0: none), in pages of BATCH_PAGE entities freed when empty:
+		// entity ids only grow
+		static constexpr Entity BATCH_PAGE = 1024;
+		struct BatchPage{
+			uint32_t index[BATCH_PAGE];
+			uint32_t count = 0;
+		};
+		std::vector<std::unique_ptr<BatchPage>> batchPages;
+		std::map<uint32_t, BatchFrame> batchFrames;
+		std::vector<BatchChunk> batchVertexChunks;
+		std::vector<BatchChunk> batchIndexChunks;
+		size_t batchVertexDemand = 0;
+		size_t batchIndexDemand = 0;
+		size_t batchVertexCursor = 0;
+		size_t batchIndexCursor = 0;
+		// frames the chunks were mostly unused, each kind its own
+		uint32_t batchSmallVertexFrames = 0;
+		uint32_t batchSmallIndexFrames = 0;
+		uint64_t batchChunkCommit = 0;
+		BufferRender batchQuadIndices;
+		bool batchLazyMVP = false;
+		// objects whose record went while their MVP was stale: made by their next draw alone
+		// (ensureBatchMVP), as a record's is
+		std::unordered_set<Entity> batchStaleMVPs;
+		bool batchingSeen = true;
+
+		BatchRecord* findBatchRecord(Entity entity);
+		BatchRecord& addBatchRecord(Entity entity);
+		void dropBatchRecord(Entity entity);
+		void dropBatchRecords();
+
+		// NONE when the mesh draws in batch form with pipType (its depth program's with depthPass),
+		// else why it is drawn alone
+		BatchBreak meshBatchForm(Entity entity, Signature signature, MeshComponent& mesh, Transform& transform, PipelineType pipType, bool depthPass);
+		BatchBreak uiBatchForm(UIComponent& ui, TextureRender* textureOverride);
+		bool bakeMeshRecord(BatchRecord& record, MeshComponent& mesh);
+		bool bakeUIRecord(BatchRecord& record, UIComponent& ui, const Vector4& drawColor, bool bakesColor);
+		void placeBatchRecord(BatchRecord& record, const Matrix4& model, const Matrix4* normalMatrix);
+		const Matrix4& batchCellMVP(const int32_t cell[3]);
+		bool cullBatchRecord(BatchRecord& record);
+		void appendBatchItem(BatchRun& run, const BatchRecord& record);
+		void beginBatchPass(BatchPass pass, BatchMode mode, CameraComponent* camera, Transform* cameraTransform, PipelineType pipType,
+		                    const Matrix4& viewProjection, float farClip, const Plane* frustumPlanes);
+		void endBatchPass();
+		bool batchingActive() const { return batchPassActive; }
+		// colour pass: drawn alone (drawMesh) or held for a batch
+		bool submitMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType,
+		                InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView, int instanceView, const LodView* lodView);
+		bool submitUI(Entity entity, UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride);
+		// depth passes (pre-pass, scene depth, shadow casters): params are what drawMeshDepth takes alone
+		bool submitMeshDepth(Entity entity, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const vs_depth_t& params,
+		                     InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO, PipelineType pipelineType,
+		                     int instanceView, const LodView* lodView);
+		bool fillMeshKey(BatchKey& key, Entity entity, MeshComponent& mesh, const BatchRecord& record, bool mirrored);
+		void drawBatchRun(BatchRun& run);
+		static void flushBatches(void* owner);
+		static void drawBatchRunCallback(void* owner, BatchRun& run);
+		bool uploadBatch(const void* data, size_t size, bool index, BufferRender*& buffer, size_t& offset);
+		void prepareBatchChunks();
+		void destroyBatchChunks();
+		void drawBatchGeometry(ObjectRender& render, Buffer& vertices, const BatchGeometry& batch);
+		// the MVP update() left as it was for a batched mesh, made before a draw of it alone reads it
+		void ensureBatchMVP(Entity entity, Transform& transform);
+		void beginBatchFrame();
+		void endBatchFrame();
+
+		// the texture (re)binding drawMesh and the batcher do before a draw
+		void refreshSubmeshTextures(Submesh& submesh, bool receiveLights, bool pbrFramebufferOutdated);
+		void refreshDepthTextures(Submesh& submesh);
+		void refreshUITexture(UIComponent& ui);
+		void uploadUIBuffers(UIComponent& ui);
+		// the draw colour of a UI element: its colour (a Text Effect's alpha only), faded by its
+		// Canvas Groups
+		Vector4 uiElementColor(const UIComponent& ui, bool inCanvasLayer) const;
+		// the material's u_fs_pbrParams prefix (lit 12 floats with the emission intensity, unlit
+		// 4 or 8), its colour factor white when neutralColor
+		static void applyMaterialPrefix(ObjectRender& render, int slot, const Material& material, unsigned int size, bool lit, bool neutralColor);
+
 	protected:
 
-		void updateMeshBuffers(MeshComponent& mesh);
+		void updateMeshBuffers(Entity entity, MeshComponent& mesh);
+		// an immutable buffer shared by content (MeshBufferPool) whose bytes changed takes the
+		// shared buffer of its new bytes, or after a second change within
+		// IMMUTABLE_CHANGE_WINDOW updates a dynamic buffer of its own; every render of the mesh
+		// is retargeted to it
+		void refreshImmutableBuffer(Entity entity, MeshComponent& mesh, Buffer& buffer);
+		void retargetMeshBuffer(MeshComponent& mesh, uint32_t oldId, BufferRender* replacement, bool index);
 		void updateTerrainNodesBuffer(TerrainView& view);
 		// instanceView -1 draws every instance from the component buffer; lodView null is full detail
 		bool drawMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView = 0, int instanceView = -1, const LodView* lodView = nullptr);
