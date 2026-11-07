@@ -4,6 +4,7 @@
 // W1: scenes (list, create, open, close, select, save, rename, delete), child scenes, main
 // camera, scene settings
 #include "McpTools.h"
+#include "component/CameraComponent.h"
 #include "shader/ShaderGlobals.h"
 
 #include "mcp/McpCall.h"
@@ -116,7 +117,9 @@ Json sceneInfo(Project* project, SceneProject& scene) {
     if (project->isPrefabStage(scene.id)) item["prefab_stage"] = true;
     if (scene.scene) {
         item["entity_count"] = scene.entities.size();
-        item["main_camera"] = McpValues::entityToJson(&scene, scene.mainCamera);
+        // a main camera whose Camera was removed is none (the game uses the default camera)
+        const bool hasCamera = scene.mainCamera != NULL_ENTITY && scene.scene->findComponent<CameraComponent>(scene.mainCamera);
+        item["main_camera"] = McpValues::entityToJson(&scene, hasCamera ? scene.mainCamera : NULL_ENTITY);
     }
     if (!scene.childScenes.empty()) item["child_scenes"] = childScenesJson(project, scene);
     // what its file's load could not read (docs/data-safety.md); a scene with dropped values
@@ -349,11 +352,13 @@ void saveSceneTool(const CallPtr& call) {
         Json failed = Json::array();
         Json refused = Json::array();
         for (SceneProject* scene : project->getScenesAndPrefabStages()) {
-            if (!scene->scene || !project->hasSceneUnsavedChanges(scene->id)) continue;
-            if (scene->filepath.empty() && !project->isPrefabStage(scene->id)) {
+            if (!scene->scene) continue;
+            // listed changed or not: an untitled scene is lost when the editor closes
+            if (scene->filepath.empty() && !project->isPrefabStage(scene->id) && !project->isPlayRuntimeScene(scene->id)) {
                 skipped.push_back(Json{{"id", scene->id}, {"name", scene->name}, {"reason", "never saved: save_scene with a path"}});
                 continue;
             }
+            if (!project->hasSceneUnsavedChanges(scene->id)) continue;
             const uint32_t id = scene->id;
             const std::string name = scene->name;
             SaveResult result = SaveResult::Failed;
@@ -588,7 +593,7 @@ private:
     void restore() {
         if (scenePath.empty()) return;
         if (project->findSceneByPath(scenePath) == NULL_PROJECT_SCENE) {
-            project->loadScene(scenePath, wasOpened, true, wasOpened);
+            project->loadScene(scenePath, wasOpened, true, wasOpened, true);
         }
         const uint32_t restored = project->findSceneByPath(scenePath);
         if (previousSelected != NULL_PROJECT_SCENE && project->getScene(previousSelected)) {
@@ -689,6 +694,25 @@ void setChildSceneTool(const CallPtr& call) {
     }
     const bool attachedNow = project->hasChildScene(parentId, childId);
     const bool attach = args.contains("attached") ? args["attached"].get<bool>() : true;
+    // a closed scene saves nothing and reads its child scenes from its file when it opens: an
+    // edit there would report success and be lost
+    if (!parent->scene) {
+        call->fail("Scene \"" + parent->name + "\" is not open: open_scene it first (child scenes are edited on an open scene).");
+        return;
+    }
+    // during Play only what the Hierarchy offers: showing a stopped scene's child inline
+    if (project->isPlaySessionActive()) {
+        const bool changes = attach != attachedNow ||
+            (attach && args.contains("start_active") && project->isChildSceneStartActive(parentId, childId) != args["start_active"].get<bool>());
+        if (changes) {
+            call->fail("Child scenes cannot change during Play: stop first (loaded_inline works on a scene that is not playing).");
+            return;
+        }
+        if (args.contains("loaded_inline") && (parent->playState != ScenePlayState::STOPPED || project->isPlayRuntimeScene(parentId))) {
+            call->fail("\"" + parent->name + "\" is playing: its child scenes run as the game loads them.");
+            return;
+        }
+    }
     if (attach && !attachedNow && project->wouldCreateChildSceneCycle(parentId, childId)) {
         call->fail("\"" + child->name + "\" already contains \"" + parent->name + "\" as a child scene (directly or "
                    "deeper), so adding it would make a cycle.");
@@ -778,7 +802,7 @@ void setMainCameraTool(const CallPtr& call) {
 // ------------------------------------------------------------------ scene settings
 
 enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, LitQuality, Filter, PostProcess,
-                         PostProcessing, PostProcessingField, ShadowDebugView, CanvasScaler };
+                         PostProcessing, PostProcessingField, ShadowDebugView, CanvasScaler, ShaderUniforms };
 
 struct SceneSetting {
     std::string name;
@@ -789,6 +813,11 @@ struct SceneSetting {
     bool listed = true;
     const PostProcessingSettings::Field* field = nullptr;
 };
+
+// the scene default shaders' property values (set_shader_uniform shader_type edits one)
+constexpr const char* kDefaultUniformsHelp =
+    "property values of that default shader, inherited by objects without a shader of their own: {member: number | [x,y,z,w] | "
+    "\"#RRGGBB[AA]\" | null}; an object merges (null removes a member), null clears all";
 
 const std::vector<SceneSetting>& sceneSettings() {
     static const std::vector<SceneSetting> settings = {
@@ -852,6 +881,11 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"default_sky_shader", SettingKind::String, "library:<name> or forked shader base path for the sky (\"\" built-in)"},
         {"default_points_shader", SettingKind::String, "library:<name> or forked shader base path for points (\"\" built-in)"},
         {"default_lines_shader", SettingKind::String, "library:<name> or forked shader base path for lines (\"\" built-in)"},
+        {"default_mesh_shader_uniforms", SettingKind::ShaderUniforms, kDefaultUniformsHelp},
+        {"default_ui_shader_uniforms", SettingKind::ShaderUniforms, kDefaultUniformsHelp},
+        {"default_sky_shader_uniforms", SettingKind::ShaderUniforms, kDefaultUniformsHelp},
+        {"default_points_shader_uniforms", SettingKind::ShaderUniforms, kDefaultUniformsHelp},
+        {"default_lines_shader_uniforms", SettingKind::ShaderUniforms, kDefaultUniformsHelp},
         {"post_process", SettingKind::PostProcess,
          "post-process passes in order: [{shader: \"library:<name>\" (list_shaders type=\"postprocess\") or a fork base path, "
          "enabled: bool, uniforms: {name: [x,y,z,w]}, textures: {uniform: image path}, scale: 0.1..1 (output resolution)}]"},
@@ -1041,6 +1075,7 @@ const char* kindName(SettingKind kind) {
         case SettingKind::PostProcessing: return "post_processing";
         case SettingKind::PostProcessingField: return "post_processing_field";
         case SettingKind::CanvasScaler: return "canvas_scaler";
+        case SettingKind::ShaderUniforms: return "shader_uniforms";
     }
     return "unknown";
 }
@@ -1138,6 +1173,9 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
         case SettingKind::PostProcess:
             return postProcessToJson(defaults ? Catalog::getScenePropertyDefault<std::vector<PostProcessPass>>(setting.name)
                                               : Catalog::getSceneProperty<std::vector<PostProcessPass>>(scene, setting.name), project);
+        case SettingKind::ShaderUniforms:
+            return McpValues::shaderUniformsToJson(defaults ? Catalog::getScenePropertyDefault<ShaderUniformValues>(setting.name)
+                                                            : Catalog::getSceneProperty<ShaderUniformValues>(scene, setting.name));
         case SettingKind::CanvasScaler: {
             const SceneCanvasScaler value = defaults ? Catalog::getScenePropertyDefault<SceneCanvasScaler>(setting.name)
                                                      : Catalog::getSceneProperty<SceneCanvasScaler>(scene, setting.name);
@@ -1264,6 +1302,37 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             break; // setSceneSettingsTool gathers them (applyPostProcessingSetting)
         case SettingKind::ShadowDebugView:
             break; // editor state, applied by setSceneSettingsTool without an undo step
+        case SettingKind::ShaderUniforms: {
+            if (value.is_null()) return new ScenePropertyCmd<ShaderUniformValues>(project, id, name, ShaderUniformValues());
+            if (!value.is_object()) return expect("an object {member: number | [x,y,z,w] | \"#RRGGBB\" | null}, or null to clear");
+            ShaderType type = ShaderType::MESH;
+            Catalog::getDefaultShaderUniformsType(name, type);
+            // a library default shader takes its manifest's parameters only (colours may be "#RRGGBB")
+            const std::string shader = scene->scene->getDefaultCustomShader(type);
+            const std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
+            const ShaderManifest* declared = manifest && manifest->present ? manifest.get() : nullptr;
+            ShaderUniformValues values = scene->scene->getDefaultShaderUniforms(type);
+            for (auto it = value.begin(); it != value.end(); ++it) {
+                if (it.value().is_null()) {
+                    ShaderUniforms::remove(values, it.key());
+                    continue;
+                }
+                if (ShaderUniforms::isReserved(it.key())) return expect("an object without " + it.key() + " (written by the engine)");
+                const ShaderManifestProperty* property = declared ? declared->findProperty(it.key()) : nullptr;
+                if (declared && ShaderReference::isLibrary(shader) && !property) {
+                    error = name + ": " + shader + " has no parameter '" + it.key() + "'.";
+                    return nullptr;
+                }
+                Vector4 parsed;
+                std::string why;
+                if (!McpValues::shaderParamFromJson(property, it.key(), it.value(), parsed, why)) {
+                    error = name + "." + it.key() + ": " + why;
+                    return nullptr;
+                }
+                ShaderUniforms::set(values, it.key(), parsed);
+            }
+            return new ScenePropertyCmd<ShaderUniformValues>(project, id, name, values);
+        }
         case SettingKind::CanvasScaler: {
             if (!value.is_object()) return expect("an object {use_project_default, mode, reference, match_mode, match, ...}");
             SceneCanvasScaler scaler = Catalog::getSceneProperty<SceneCanvasScaler>(scene->scene, name);
@@ -1982,8 +2051,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "set_child_scene";
         tool.title = "Set Child Scene";
         tool.description =
-            "Attach (attached=false: detach) `child` as an additive child scene of `scene`. start_active: active "
-            "when the parent starts; loaded_inline: shown inside the parent in the editor. Not undoable.";
+            "Attach (attached=false: detach) `child` as additive child scene of `scene`. start_active: on when the "
+            "parent starts; loaded_inline: shown inside the parent, also in Play. Not undoable.";
         tool.inputSchema = object({
             {"scene", sceneRef("Parent (default: selected).")},
             {"child", sceneRef()},
@@ -1991,7 +2060,7 @@ void registerSceneTools(McpRegistry& registry) {
             {"start_active", boolean("")},
             {"loaded_inline", boolean("")}
         }, {"child"});
-        tool.allowedWhilePlaying = false;
+        tool.allowedWhilePlaying = true;  // loaded_inline only (the handler refuses edits)
         tool.annotations.idempotent = true;
         tool.handler = setChildSceneTool;
         registry.addTool(std::move(tool));

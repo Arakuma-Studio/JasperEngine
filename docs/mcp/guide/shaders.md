@@ -53,7 +53,7 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
     less, less_equal, equal, greater_equal, greater, not_equal, always), `depthOffsetFactor` /
     `depthOffsetUnits` (polygon offset; negative pulls towards the camera), `sortPriority`
     (draw order within the opaque or the transparent queue, lower first, before distance). `auto` takes the shader's default state, else the
-    engine's. UI, Points, Lines and Trails have `blendMode` and `depthWrite` (a thick line's or a trail's auto: alpha, no depth write).
+    engine's. UI, Points, Lines and Trails have `blendMode` and `depthWrite` (a thick line's or a trail's auto: alpha, no depth write; Points' auto: depth written only when opaque).
   - `lighting`: auto, pixel, vertex, mixed or none (unlit), only the modes the shader lists
     (`list_shaders` gives them, the default first; the built-in Lit takes pixel, vertex, mixed
     and none, which draws the base colour only: a glTF material with `KHR_materials_unlit`
@@ -306,6 +306,29 @@ uniform u_fs_customParams {
   `@feature`, `@state`, ...; read `engine/shaderlib/library/unlit.frag` with
   `read_engine_source`): its parameters then get labels and defaults, and it takes
   `shaderTextures` and `shaderFeatures` like a library shader.
+
+## Scene default values
+
+A scene's default shader of a type (`default_mesh_shader`, `default_ui_shader`, `default_sky_shader`,
+`default_points_shader`, `default_lines_shader`) draws every object of that type without a shader of
+its own (a mesh: every submesh whose material names none). Its property values can be set once for
+the scene, and those objects inherit them:
+
+- `set_shader_uniform` with `shader_type` (`mesh`, `ui`, `sky`, `points`, `lines`) and no
+  `entity` sets one; `remove: true` drops it. `get_shader_uniforms` with `shader_type` lists the
+  values, `used_by` (how many objects draw with it), the members, `unused_values` (kept from
+  another shader). The whole map is also the scene setting `default_<type>_shader_uniforms`
+  (`{member: value | null}` merges, `null` clears). Each edit is one undo step; the values are
+  saved in the scene and reach exported games.
+- What a member renders with, first to last: the global it is bound to, the object's own value
+  (a mesh's material, then the mesh), the scene default value, the shader's `@property` default,
+  zero. `get_shader_uniforms` on an object gives each member (and each library parameter) its
+  `effective` value and `source` (`global`, `own`, `fallback`, `scene_default`,
+  `shader_default`, `zero`): use it to check which layer wins.
+- A value the whole scene shares (a palette, a stylised rim colour) goes here once, not on each
+  object. A value that changes every frame or is shared by every scene is a Shader Global (below).
+- Lua: `scene:setDefaultShaderUniform(ShaderType.MESH, "rimColor", Vector4(1, 0.2, 0, 1))`,
+  `getDefaultShaderUniform`, `hasDefaultShaderUniform`, `removeDefaultShaderUniform`.
 
 ## Global values
 

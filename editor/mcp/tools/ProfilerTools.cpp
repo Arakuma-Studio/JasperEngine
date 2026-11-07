@@ -175,6 +175,9 @@ Json renderStatsJson(uint32_t tag, const std::string& viewName){
     // the device the frames render on (GL_RENDERER or the Vulkan device): benches record it
     gpuJson["backend"] = SystemRender::getBackendName();
     gpuJson["device"] = SystemRender::getDeviceName();
+    // Vulkan: whether the device reads out-of-range buffers as zeros (null elsewhere)
+    const int robust = SystemRender::getVulkanRobustBufferAccess();
+    gpuJson["robust_buffer_access"] = robust < 0 ? Json(nullptr) : Json(robust == 1);
     return Json{
         {"view", viewName},
         {"view_tag", tag == FRAME_TAG ? -1 : (long long)tag},

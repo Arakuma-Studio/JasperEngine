@@ -428,6 +428,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         // bits 16-17: the SSR composite's occlusion map and the second UV set
         {ShaderType::GBUFFER, shaderPropertyBit(16), "gbuffer_Occ"},
         {ShaderType::GBUFFER, shaderPropertyBit(1) | shaderPropertyBit(16) | shaderPropertyBit(17), "gbuffer_NorOccUv2"},
+        {ShaderType::GBUFFER, shaderPropertyBit(18), "gbuffer_Ifd"},
         // S55's automatic GPU instancing: MESH bit 41 (40 is S54's), DEPTH bit 18
         {ShaderType::MESH, 0x41 | shaderPropertyBit(41), "mesh_UltNorAui"},
         {ShaderType::DEPTH, shaderPropertyBit(18), "depth_Aui"},

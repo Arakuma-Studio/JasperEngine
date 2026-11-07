@@ -81,21 +81,21 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | impl |
 | 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | impl |
 | 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | merged |
-| 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | impl |
+| 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | merged |
 | 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | impl |
 | 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | impl |
-| 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | impl |
+| 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | merged |
 | 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | impl |
-| 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | impl |
+| 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | merged |
 | 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | merged |
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
 | 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | impl |
 | 14 | `ssr-probes` | SSR under local probes and AO, early-out | merged |
 | 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | impl |
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
-| 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | impl |
+| 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | merged |
 | 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | impl |
-| 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | impl |
+| 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | merged |
 
 ## Log
 
@@ -186,3 +186,27 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   Box B/F rounds: WERROR editor, core SSR* 23/23, editor variants 43/43, test_ssr_reflections 4/4, lints; red
   controls failed as they should. GBUFFER bits 16/17 are ssr-probes'; render-correctness moves 'Ifd' to bit 18.
   Shader cache v49 is now taken: later landings bump it.
+- 2026-11-07 00:xx: **render-correctness merged** after an independent review (flat normals turned toward the eye on
+  every backend, catalog snapshot regenerated, foliage refills on a distance-scale change, scaled cylindrical
+  billboards, near clip clamped only at <= 0 with matching near/far everywhere, LOD lint widened, render-texture
+  rebinds without variant checks). Box C: WERROR editor, core 113 / editor 57 filtered, test_render_correctness 4,
+  red run failed as it should. GBUFFER 'Ifd' is bit 18; shader cache v50. Vulkan, web, Windows, macOS, iOS not run.
+- 2026-11-07 00:xx: **code-editor-git merged** after an independent review (revert is its own undo step, editor-buffer
+  diffs match git byte for byte, renamed files diff from their old path, svn '@' paths, restored MCP warnings, core
+  budget kept at 99000 by trimming). Landing check on main + branch (box C): WERROR editor, gen_tool_docs and
+  tool_budget, unit (scene defaults, cooked, editor diff, VCS, render-correctness suites), MCP 3 files +
+  render_correctness/budget/docs/protocol, lints: all green. Cooked scene format 1.3 is code-editor-git's;
+  water-reflections takes 1.4.
+- 2026-11-07 01:xx: **runtime-core, platform-lifecycle and scene-integrity merged as one batch** (`f0fc338d9`), each
+  after an independent review and its fixes. They share Engine.cpp, App.cpp, Project.cpp and InspectorWindow.cpp,
+  so one landing check covered the three on main: WERROR editor, unit filters of all three plus render-correctness
+  and code-editor-git suites (343), MCP files of all three plus budget/docs/protocol (57 and 75), Android compile,
+  lints. Integration fixes made at landing: onVisibilityChanged cleared with the other lifecycle events
+  (runtime-core's event-clear lint meets platform-lifecycle's new event); set_child_scene description trimmed to keep
+  core at 99000; RuntimeFields.gen.inc regenerated (runtime-core's action fields and render-correctness' foliage and
+  instanced fade fields were not in cooked scenes, so prebuilt exports dropped them).
+- Lesson for every landing check: a branch that adds component fields runs `RuntimeFields.*:CookedScene.*`.
+- Open, not ours: a many-material OBJ drops submeshes on main since mesh-memory (S55's per-submesh culling assumed
+  contiguous submeshes, `VisibleList.cpp:50`); the follow-ups program fixes it on `fix/submesh-drop` with our
+  diagnosis. `UIParticleSystemsClippedByAPanel` fails only when run with the other scissor tests (older than this
+  program). An FBX foliage layer draws no instances in the headless editor (unverified).

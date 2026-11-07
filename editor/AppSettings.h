@@ -41,11 +41,13 @@ struct VersionControlSettings {
     int autoFetchMinutes = 0;       // 0 off
     bool commitAndPush = false;     // the Commit window's "Commit and Push", remembered
     bool showChanges = true;        // the Hierarchy's "Show VCS Changes"
+    bool codeEditorChanges = true;  // the code editor's change markers
 
     bool operator==(const VersionControlSettings& other) const {
         return gitPath == other.gitPath && svnPath == other.svnPath && lockOnEdit == other.lockOnEdit &&
                pollSeconds == other.pollSeconds && lockPollSeconds == other.lockPollSeconds &&
-               autoFetchMinutes == other.autoFetchMinutes && commitAndPush == other.commitAndPush && showChanges == other.showChanges;
+               autoFetchMinutes == other.autoFetchMinutes && commitAndPush == other.commitAndPush && showChanges == other.showChanges &&
+               codeEditorChanges == other.codeEditorChanges;
     }
     bool operator!=(const VersionControlSettings& other) const { return !(*this == other); }
 };

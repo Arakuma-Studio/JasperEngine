@@ -35,6 +35,7 @@
 #include "imgui_internal.h"
 
 #include "util/Util.h"
+#include "util/Fnv.h"
 #include "util/UIUtils.h"
 #include "util/FileDialogs.h"
 #include "script/ScriptScheduler.h"
@@ -146,6 +147,7 @@
 
 #include <map>
 #include <type_traits>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <cctype>
@@ -816,7 +818,7 @@ void editor::InspectorWindow::clearSceneState(uint32_t sceneId) {
 
     if (actionPreviewing && actionPreviewSceneId == sceneId) {
         // The scene is already deleted, drop the snapshots instead of restoring them
-        actionPreviewStates.clear();
+        actionPreviewSnapshot.clear();
         releaseActionPreviewOwners();
         actionPreviewing = false;
         actionPreviewPlaying = false;
@@ -1510,7 +1512,7 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
         // camera entity dragged from the structure window (render to texture)
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity")) {
             const EntityPayload* entityPayload = reinterpret_cast<const EntityPayload*>(payload->Data);
-            bool sameScene = (entityPayload->entitySceneId == 0 || entityPayload->entitySceneId == sceneProject->id);
+            bool sameScene = sameSceneDropProblem(*project, *entityPayload, sceneProject->id).empty();
             if (sameScene && sceneProject->scene->findComponent<CameraComponent>(entityPayload->entity)) {
                 applyCameraTexture(entityPayload->entity, cpType, id, sceneProject, entities, nullptr);
                 finishProperty = true;
@@ -2593,10 +2595,15 @@ void editor::InspectorWindow::syncSubSelection(SceneProject* sceneProject, Entit
 }
 
 
-void editor::InspectorWindow::beginTable(ComponentType cpType, float firstColSize, std::string nameAddon){
+void editor::InspectorWindow::beginTable(ComponentType cpType, float firstColSize, std::string nameAddon, uint64_t widthKey){
     ImGui::PushItemWidth(-1);
     if (!nameAddon.empty()){
         nameAddon = "_"+nameAddon;
+    }
+    if (widthKey != 0){
+        char key[24];
+        std::snprintf(key, sizeof(key), "_%016llx", static_cast<unsigned long long>(widthKey));
+        nameAddon += key;
     }
     // Unity keeps one label width (about 40% of the Inspector) so values line up across
     // components; a longer label still widens its own table
@@ -2638,7 +2645,7 @@ bool editor::InspectorWindow::drawSummaryAddButton(const std::string& label, flo
 
 editor::InspectorWindow::EntityPickerResult editor::InspectorWindow::drawEntityPickerPopup(
         const std::string& popupId, const Signature& filter,
-        SceneProject* owningScene, bool includeChildScenes,
+        SceneProject* owningScene, bool includeRelatedScenes,
         Entity currentValue, uint32_t currentValueSceneId,
         const std::vector<Entity>& excludeEntities) {
 
@@ -2656,31 +2663,38 @@ editor::InspectorWindow::EntityPickerResult editor::InspectorWindow::drawEntityP
         std::string searchStr = entityPickerSearchBuffer;
         for (char& c : searchStr) c = (char)tolower((unsigned char)c);
 
-        // Build list of (SceneProject*, storedSceneId) to display
-        // storedSceneId = 0 for owning scene entities, actual scene ID for child scene entities
+        // Build list of (SceneProject*, storedSceneId) to display: storedSceneId = 0 for the owning
+        // scene's GameObjects, the scene's id for those of the scenes loaded with it (its parents,
+        // children and siblings: Project::getRelatedScenes), which the runtime resolves together
         std::vector<std::pair<SceneProject*, uint32_t>> scenesToShow;
         scenesToShow.emplace_back(owningScene, (uint32_t)0);
+        std::vector<std::string> notOpen;
 
-        if (includeChildScenes) {
-            std::unordered_set<uint32_t> visited;
-            visited.insert(owningScene->id);
-            std::vector<uint32_t> toVisit;
-            for (uint32_t childId : project->getChildScenes(owningScene->id))
-                toVisit.push_back(childId);
-            while (!toVisit.empty()) {
-                uint32_t sid = toVisit.back(); toVisit.pop_back();
-                if (visited.count(sid)) continue;
-                visited.insert(sid);
-                SceneProject* child = project->getScene(sid);
-                if (child && child->scene)
-                    scenesToShow.emplace_back(child, sid);
-                for (uint32_t childId : project->getChildScenes(sid))
-                    if (!visited.count(childId)) toVisit.push_back(childId);
+        if (includeRelatedScenes) {
+            for (uint32_t sid : project->getRelatedScenes(owningScene->id)) {
+                if (sid == owningScene->id) continue;
+                SceneProject* related = project->getScene(sid);
+                if (!related) continue;
+                if (related->scene) {
+                    scenesToShow.emplace_back(related, sid);
+                } else {
+                    notOpen.push_back(related->name);
+                }
             }
         }
+        const std::vector<uint32_t> ownChildren = project->getChildScenes(owningScene->id);
+        auto relation = [&](uint32_t sid) -> const char* {
+            if (std::find(ownChildren.begin(), ownChildren.end(), sid) != ownChildren.end()) return "child";
+            const std::vector<uint32_t> itsChildren = project->getChildScenes(sid);
+            if (std::find(itsChildren.begin(), itsChildren.end(), owningScene->id) != itsChildren.end()) return "parent";
+            return "related";
+        };
 
         bool anyVisible = false;
         for (auto& [sp, storedSceneId] : scenesToShow) {
+            if (storedSceneId != 0) {
+                ImGui::SeparatorText((std::string(ICON_FA_LAYER_GROUP "  ") + sp->name + " (" + relation(storedSceneId) + ")").c_str());
+            }
             bool sceneMatches = false;
             if (!searchStr.empty() && storedSceneId != 0) {
                 std::string slow = sp->name;
@@ -2714,6 +2728,7 @@ editor::InspectorWindow::EntityPickerResult editor::InspectorWindow::drawEntityP
                     result.sceneId = storedSceneId;
                     ImGui::CloseCurrentPopup();
                 }
+                UIProbe::item("entityPicker." + std::to_string(sp->id) + "." + std::to_string(e));
                 ImGui::SameLine();
                 if (storedSceneId != 0)
                     ImGui::Text("%s  %s  [%s]  (%u)", eicon.c_str(), ename.c_str(), sp->name.c_str(), static_cast<unsigned int>(e));
@@ -2723,6 +2738,9 @@ editor::InspectorWindow::EntityPickerResult editor::InspectorWindow::drawEntityP
         }
 
         if (!anyVisible) ImGui::TextDisabled("No GameObjects found");
+        for (const std::string& name : notOpen) {
+            ImGui::TextDisabled("%s  %s (not open)", ICON_FA_LAYER_GROUP, name.c_str());
+        }
     }
     ImGui::EndChild();
     ImGui::EndPopup();
@@ -5604,10 +5622,14 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
                 const EntityPayload* entityPayload = static_cast<const EntityPayload*>(payload->Data);
                 Entity droppedEntity = entityPayload->entity;
+                // the id means a GameObject of this scene only
+                const std::string otherScene = sameSceneDropProblem(*project, *entityPayload, sceneProject->id);
                 bool excluded = std::find(settings.excludeEntities.begin(), settings.excludeEntities.end(), droppedEntity) != settings.excludeEntities.end();
-                bool valid = sceneProject->scene->isEntityCreated(droppedEntity) && !excluded;
+                bool valid = otherScene.empty() && sceneProject->scene->isEntityCreated(droppedEntity) && !excluded;
 
-                if (!valid && ImGui::IsItemHovered()){
+                if (!otherScene.empty()){
+                    ImGui::SetTooltip("%s", otherScene.c_str());
+                }else if (!valid && ImGui::IsItemHovered()){
                     ImGui::SetTooltip(excluded ? "Cannot reference this GameObject here" : "Invalid GameObject");
                 }
 
@@ -5801,19 +5823,18 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
                 const EntityPayload* entityPayload = static_cast<const EntityPayload*>(payload->Data);
                 Entity droppedEntity = entityPayload->entity;
-                uint32_t droppedSceneId = entityPayload->entitySceneId;
+                uint32_t droppedSceneId = payloadSceneId(*entityPayload, project->getSelectedSceneId());
 
-                bool valid = false;
-                SceneProject* sourceScene = project->getScene(droppedSceneId);
-                if (sourceScene && sourceScene->scene) {
-                    valid = sourceScene->scene->isEntityCreated(droppedEntity);
-                }
+                // a scene loaded with this one (its parents, children and siblings), else the
+                // reference would find nothing when the game runs
+                const std::string problem = referenceDropProblem(*project, *entityPayload, sceneProject->id);
+                const bool valid = problem.empty();
 
                 // Determine sceneId to store: 0 if same scene, source scene ID if cross-scene
                 uint32_t storedSceneId = (droppedSceneId != sceneProject->id) ? droppedSceneId : 0;
 
-                if (!valid && ImGui::IsItemHovered()){
-                    ImGui::SetTooltip("Invalid GameObject");
+                if (!valid){
+                    ImGui::SetTooltip("%s", problem.c_str());
                 }
 
                 if (payload->IsDelivery() && valid) {
@@ -6329,6 +6350,47 @@ void editor::InspectorWindow::commitShaderFork(uint32_t sceneId, std::unique_ptr
         resources->refreshCurrentDirectory();
 }
 
+namespace {
+    // A shader as a header names it: a library shader's manifest name (or its id), a fork's
+    // file name ("WaterTint" for shaders/WaterTint or shaders/a.vert|shaders/WaterTint.frag)
+    std::string shaderHeaderName(const std::string& shader) {
+        if (ShaderReference::isLibrary(shader)) {
+            const std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+            if (manifest && manifest->present && !manifest->name.empty())
+                return manifest->name;
+            return shader.substr(shader.find(':') + 1);
+        }
+        return std::filesystem::path(editor::Util::resolveCustomShaderPaths(shader).frag).stem().string();
+    }
+}
+
+float editor::InspectorWindow::getShaderPropertiesLabelSize(const std::vector<ShaderUniform>& members, const ShaderManifest* manifest){
+    // every row may show a revert arrow
+    float width = 0.0f;
+    for (const ShaderUniform& uniform : members)
+        width = std::max(width, getLabelSize(uniform.name, true));
+    if (manifest) {
+        for (const ShaderManifestProperty& property : manifest->properties)
+            width = std::max(width, getLabelSize(property.label.empty() ? property.member : property.label, true));
+        for (const ShaderManifestTexture& texture : manifest->textures)
+            width = std::max(width, getLabelSize(texture.label.empty() ? texture.uniform : texture.label, true));
+        for (const ShaderManifestFeature& feature : manifest->features)
+            width = std::max(width, getLabelSize(feature.label.empty() ? feature.define : feature.label, true));
+    }
+    return width;
+}
+
+uint64_t editor::InspectorWindow::shaderMembersKey(const std::vector<ShaderUniform>& members, const ShaderManifest* manifest){
+    uint64_t hash = FNV1A64_SEED;
+    for (const ShaderUniform& uniform : members)
+        hash = fnv1a64(uniform.name + "\n", hash);
+    if (manifest) {
+        for (const ShaderManifestProperty& property : manifest->properties)
+            hash = fnv1a64(property.member + "\n", hash);
+    }
+    return hash;
+}
+
 void editor::InspectorWindow::drawCustomShaderRow(ComponentType cpType, ShaderType shaderType, SceneProject* sceneProject, std::vector<Entity> entities){
     // The custom shader is per-component. The fork dialog chooses its project-relative
     // destination; engine includes still resolve through the embedded library unless the
@@ -6340,16 +6402,20 @@ void editor::InspectorWindow::drawCustomShaderRow(ComponentType cpType, ShaderTy
     if (!Catalog::getPropertyRef<std::string>(sceneProject->scene, shaderEntity, cpType, "customShader"))
         return;
 
-    // the uniform rows share the table, so the label column fits their names
+    // the Shader rows have a table of their own, so long member names never widen it
     ShaderUniformRows uniformRows = resolveShaderUniformRows(cpType, sceneProject, shaderEntity);
-    float labelSize = getLabelSize(cpType == ComponentType::MeshComponent ? "Depth Shader" : "Shader", false);
-    for (const ShaderUniform& uniform : uniformRows.members)
-        labelSize = std::max(labelSize, getLabelSize(uniform.name, false));
+    const float labelSize = getLabelSize(cpType == ComponentType::MeshComponent ? "Depth Shader" : "Shader", false);
 
     beginTable(cpType, labelSize, "custom_shader_table");
     prefabRowProperty = "customShader";
     propertyHeader("Shader");
     drawComponentShaderRow(cpType, shaderType, sceneProject, shaderEntity, "customShader", "custom_shader");
+    if (uniformRows.buildFailed) {
+        // a failed fork keeps rendering, the runtime falls back to the built-in
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextDisabled("Shader failed to build");
+    }
 
     // shadow maps and the depth pre-pass have their own fork, so a mesh fork that displaces
     // vertices or discards can keep its shadows in step
@@ -6365,23 +6431,29 @@ void editor::InspectorWindow::drawCustomShaderRow(ComponentType cpType, ShaderTy
         }
     }
 
-    // a shader with a manifest (a library shader) gets its labelled rows: parameters in
-    // shaderUniforms, textures, features. A mesh keeps those on its materials.
-    bool manifestRows = false;
-    if (cpType != ComponentType::MeshComponent) {
-        const std::string shader = Catalog::getShaderReferenceForProperty(sceneProject->scene, shaderEntity, cpType, "customShader");
-        manifestRows = drawShaderManifestRows(cpType, sceneProject, shaderEntity, shader, "shaderUniforms", "shaderTextures", "shaderFeatures", nullptr);
-        if (manifestRows && uniformRows.buildFailed) {
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextDisabled("Shader failed to build");
-        }
-    }
-    if (!manifestRows)
-        drawShaderUniformRows(cpType, sceneProject, shaderEntity, uniformRows);
-
     drawComponentStateRows(cpType, sceneProject, entities);
 
+    endTable();
+
+    // the shader's properties under a header naming it: a library shader's labelled rows
+    // (parameters in shaderUniforms, textures, features; a mesh keeps those on its materials),
+    // else the members of the loaded fork
+    const std::string shader = Catalog::getShaderReferenceForProperty(sceneProject->scene, shaderEntity, cpType, "customShader");
+    std::shared_ptr<const ShaderManifest> manifest = shader.empty() || cpType == ComponentType::MeshComponent ? nullptr : ShaderManifests::get(shader);
+    if (manifest && !manifest->present)
+        manifest.reset();
+    const bool manifestRows = manifest && (!manifest->properties.empty() || !manifest->textures.empty() ||
+                                           !manifest->features.empty() || !manifest->keywords.empty());
+    // (block warnings come with the members they are about)
+    if (!manifestRows && uniformRows.members.empty())
+        return;
+    ImGui::SeparatorText((shaderHeaderName(shader) + " Properties").c_str());
+    beginTable(cpType, getShaderPropertiesLabelSize(uniformRows.members, manifest.get()), "custom_shader_properties",
+               shaderMembersKey(uniformRows.members, manifest.get()));
+    if (manifestRows)
+        drawShaderManifestRows(cpType, sceneProject, shaderEntity, shader, "shaderUniforms", "shaderTextures", "shaderFeatures", nullptr);
+    else
+        drawShaderUniformRows(cpType, sceneProject, shaderEntity, uniformRows);
     endTable();
 }
 
@@ -6519,12 +6591,26 @@ namespace {
 }
 
 bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue,
-                                                   float reserveRight){
+                                                   float reserveRight, const UniformChain* chain, bool* revert, const char* revertTooltip){
     const std::string& name = uniform.name;
 
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
+    ImGui::AlignTextToFramePadding();
     ImGui::Text("%s", name.c_str());
+    // an own value the caller can drop (back to the scene's value, or the shader's default)
+    const bool ownValue = ShaderUniforms::has(values, name);
+    if (revert && revertTooltip && ownValue && !ShaderUniforms::isReserved(name) && ShaderUniforms::isEditable(uniform)) {
+        ImGui::SameLine();
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, ImGui::GetStyle().FramePadding.y));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        *revert = ImGui::Button((ICON_FA_ROTATE_LEFT "##revert_" + name).c_str());
+        ImGui::SetItemTooltip("%s", revertTooltip);
+        ImGui::PopStyleColor(2);
+        ImGui::PopStyleVar(2);
+    }
     ImGui::TableSetColumnIndex(1);
 
     // RenderSystem rewrites these every frame
@@ -6560,7 +6646,10 @@ bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform,
         default: return false;
     }
 
+    UniformSource source = UniformSource::Own;
     Vector4 value = ShaderUniforms::get(values, name);
+    if (chain && !ownValue)
+        value = ShaderUniforms::resolve(*chain, name, &source);
     float fields[4] = {value.x, value.y, value.z, value.w};
     bool changed = false;
     std::string uniformId = idPrefix + name;
@@ -6573,6 +6662,8 @@ bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform,
     }else{
         changed = ImGui::DragScalarN(uniformId.c_str(), ImGuiDataType_Float, fields, components, 0.01f);
     }
+    if (source == UniformSource::SceneDefault && ImGui::IsItemHovered() && !ImGui::IsItemActive())
+        ImGui::SetTooltip("From the scene's default shader values (Scene > Default Shaders)");
 
     if (changed)
         newValue = Vector4(fields[0], fields[1], fields[2], fields[3]);
@@ -6581,14 +6672,6 @@ bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform,
 }
 
 void editor::InspectorWindow::drawShaderUniformRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const ShaderUniformRows& rows){
-    if (rows.buildFailed) {
-        ImGui::TableNextRow();
-        ImGui::TableSetColumnIndex(1);
-        // a failed fork keeps rendering, the runtime falls back to the built-in
-        // (members left are the depth fork's, when a mesh has one)
-        ImGui::TextDisabled("Shader failed to build");
-    }
-
     if (rows.members.empty())
         return;
 
@@ -6597,6 +6680,9 @@ void editor::InspectorWindow::drawShaderUniformRows(ComponentType cpType, SceneP
         return;
     const ShaderUniformValues values = *valuesRef;
     const uint32_t sceneId = sceneProject->id;
+    // what an unset member renders with (the scene's default-shader value, ...), as the engine
+    Catalog::UniformChainRefs chain = Catalog::getShaderUniformChain(sceneProject->scene, entity, cpType);
+    chain.chain.values = &values;
     // members that follow a global shader value (a mesh keeps them on its materials)
     ShaderGlobalBindings* bindingsRef = cpType == ComponentType::MeshComponent ? nullptr
         : Catalog::getPropertyRef<ShaderGlobalBindings>(sceneProject->scene, entity, cpType, "shaderGlobalBindings");
@@ -6623,7 +6709,21 @@ void editor::InspectorWindow::drawShaderUniformRows(ComponentType cpType, SceneP
             continue;
         }
         Vector4 newValue;
-        if (drawShaderUniformRow(uniform, values, "##shader_uniform_", newValue, components > 0 ? linkWidth : 0.0f)) {
+        bool revert = false;
+        // an own value over the scene's default-shader value can go back to it
+        const bool overScene = chain.chain.sceneDefault && ShaderUniforms::has(*chain.chain.sceneDefault, uniform.name);
+        const bool changed = drawShaderUniformRow(uniform, values, "##shader_uniform_", newValue, components > 0 ? linkWidth : 0.0f,
+                                                  &chain.chain, &revert, overScene ? "Revert to Scene Default" : nullptr);
+        if (revert) {
+            // back to the scene's value: the own one goes
+            ShaderUniformValues newValues = values;
+            ShaderUniforms::remove(newValues, uniform.name);
+            CommandHandle::get(sceneId)->addCommandNoMerge(
+                new PropertyCmd<ShaderUniformValues>(project, sceneId, entity, cpType, "shaderUniforms", newValues));
+            ImGui::PopID();
+            continue;
+        }
+        if (changed) {
             ShaderUniformValues newValues = values;
             ShaderUniforms::set(newValues, uniform.name, newValue);
 
@@ -6681,6 +6781,164 @@ void editor::InspectorWindow::drawSceneShaderRow(SceneProject* sceneProject, Sha
 
     drawLibraryShaderCombo(currentShader, shaderType, setShader, std::string("Edit Shader Files##") + scenePropertyName);
     drawShaderRowContents(currentShader, setShader, onFork, scenePropertyName);
+}
+
+void editor::InspectorWindow::drawSceneDefaultShader(SceneProject* sceneProject, ShaderType shaderType, const char* scenePropertyName, const char* label){
+    Scene* scene = sceneProject->scene;
+    const uint32_t sceneId = sceneProject->id;
+    const std::string shader = scene->getDefaultCustomShader(shaderType);
+    const ImGuiTableFlags tableFlags = ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchSame;
+    const Catalog::DefaultShaderUse use = shader.empty() ? Catalog::DefaultShaderUse() : Catalog::getDefaultShaderUse(scene, shaderType);
+
+    ImGui::PushID(scenePropertyName);
+    if (ImGui::BeginTable("default_shader_table", 2, tableFlags)) {
+        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Points").x);
+        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+        drawSceneShaderRow(sceneProject, shaderType, scenePropertyName, label);
+        if (!shader.empty()) {
+            // who draws with it: a fork that failed everywhere renders the built-in
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+            if (use.users > 0 && use.failed == use.users)
+                ImGui::TextDisabled("Shader failed to build");
+            else if (use.users == 0)
+                ImGui::TextDisabled("Not used by any object");
+            else
+                ImGui::TextDisabled("Used by %d object%s", use.users, use.users == 1 ? "" : "s");
+            drawShaderUniformWarnings(Catalog::getShaderUniformWarnings(use.blocks));
+        }
+        ImGui::EndTable();
+    }
+    if (shader.empty()) {
+        ImGui::PopID();
+        return;
+    }
+
+    // the members the objects drawing with it declare (each name once, engine-written first),
+    // or the manifest's parameters of a library shader
+    std::vector<ShaderUniform> members;
+    for (bool reserved : {true, false}) {
+        for (const CustomUniformBlock* block : use.blocks) {
+            for (const ShaderUniform& uniform : block->members) {
+                if (ShaderUniforms::isReserved(uniform.name) != reserved)
+                    continue;
+                if (std::none_of(members.begin(), members.end(), [&](const ShaderUniform& m) { return m.name == uniform.name; }))
+                    members.push_back(uniform);
+            }
+        }
+    }
+    std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+    if (manifest && (!manifest->present || manifest->properties.empty()))
+        manifest.reset();
+    const char* property = Catalog::getDefaultShaderUniformsProperty(shaderType);
+    const ShaderUniformValues values = scene->getDefaultShaderUniforms(shaderType);
+
+    ImGui::SeparatorText((shaderHeaderName(shader) + " Properties").c_str());
+    if (!manifest && members.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::TextWrapped("%s", use.users == 0 ? "Properties show once an object uses this shader"
+                                                : "This shader declares no properties (u_vs_customParams / u_fs_customParams)");
+        ImGui::PopStyleColor();
+        ImGui::PopID();
+        return;
+    }
+
+    // a discrete change is its own undo step; a drag merges until released
+    auto setValues = [&](const ShaderUniformValues& newValues, bool continuous) {
+        Command* valuesCmd = new ScenePropertyCmd<ShaderUniformValues>(project, sceneId, property, newValues);
+        if (continuous) {
+            cmd = valuesCmd;
+            CommandHandle::get(sceneId)->addCommand(valuesCmd);
+        } else {
+            CommandHandle::get(sceneId)->addCommandNoMerge(valuesCmd);
+        }
+    };
+    auto finishDrag = [&]() {
+        if (ImGui::IsItemDeactivatedAfterEdit() && cmd) {
+            cmd->setNoMerge();
+            cmd = nullptr;
+        }
+    };
+
+    char tableId[48];
+    std::snprintf(tableId, sizeof(tableId), "default_shader_properties_%016llx",
+                  static_cast<unsigned long long>(shaderMembersKey(members, manifest.get())));
+    if (ImGui::BeginTable(tableId, 2, tableFlags)) {
+        ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getShaderPropertiesLabelSize(members, manifest.get()));
+        ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+        prefabRowProperty.clear();
+        if (manifest) {
+            for (const ShaderManifestProperty& declared : manifest->properties) {
+                ImGui::PushID(("param_" + declared.member).c_str());
+                const bool hasValue = ShaderUniforms::has(values, declared.member);
+                const Vector4 value = hasValue ? ShaderUniforms::get(values, declared.member) : declared.defaultValue;
+                const bool reset = propertyHeader(declared.label.empty() ? declared.member : declared.label, -1, hasValue);
+                if (hasValue && ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Reset to the shader's default");
+                if (reset) {
+                    ShaderUniformValues changed = values;
+                    ShaderUniforms::remove(changed, declared.member);
+                    setValues(changed, false);
+                    ImGui::PopID();
+                    continue;
+                }
+                Vector4 edited = value;
+                bool continuous = true;
+                if (drawShaderPropertyValue(declared, "##scene_param_" + declared.member, value, edited, continuous)) {
+                    ShaderUniformValues changed = values;
+                    ShaderUniforms::set(changed, declared.member, edited);
+                    setValues(changed, continuous);
+                }
+                finishDrag();
+                if (ImGui::IsItemHovered() && !ImGui::IsItemActive())
+                    ImGui::SetTooltip("%s\nInherited by every object without a shader of its own", declared.member.c_str());
+                ImGui::PopID();
+            }
+        } else {
+            UniformChain chain;
+            chain.values = &values;
+            for (const ShaderUniform& uniform : members) {
+                ImGui::PushID(("uniform_" + uniform.name).c_str());
+                Vector4 newValue;
+                bool reset = false;
+                const bool changed = drawShaderUniformRow(uniform, values, "##scene_uniform_", newValue, 0.0f, &chain, &reset,
+                                                          "Reset to the shader's default (zero)");
+                if (reset) {
+                    ShaderUniformValues next = values;
+                    ShaderUniforms::remove(next, uniform.name);
+                    setValues(next, false);
+                } else if (changed) {
+                    ShaderUniformValues next = values;
+                    ShaderUniforms::set(next, uniform.name, newValue);
+                    setValues(next, true);
+                }
+                finishDrag();
+                ImGui::PopID();
+            }
+        }
+
+        // values kept from another shader (or set before any object used this one), unused
+        ShaderUniformValues used;
+        size_t unused = 0;
+        for (const auto& value : values) {
+            const bool declared = manifest ? manifest->findProperty(value.first) != nullptr
+                                           : std::any_of(members.begin(), members.end(), [&](const ShaderUniform& m) { return m.name == value.first; });
+            if (declared) used.push_back(value);
+            else unused++;
+        }
+        if (unused > 0 && (manifest || use.users > 0)) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("Unused values (%zu)", unused);
+            ImGui::TableSetColumnIndex(1);
+            if (ImGui::SmallButton("Remove##unused_values"))
+                setValues(used, false);
+            ImGui::SetItemTooltip("Values this shader does not declare (kept from another shader)");
+        }
+        ImGui::EndTable();
+    }
+    ImGui::PopID();
 }
 
 editor::InspectorWindow::PostProcessShader editor::InspectorWindow::resolvePostProcessShader(const PostProcessPass& pass){
@@ -6852,9 +7110,9 @@ void editor::InspectorWindow::drawScenePostProcess(SceneProject* sceneProject){
             new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", value));
     };
 
-    // not resizable: the label column is sized from the pass uniform names, and a saved
-    // width would freeze it at whatever was known while the shader was still compiling
-    ImGuiTableFlags tableFlags = ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchSame;
+    // resizable: the table's id carries a hash of the pass's members, so a width saved while the
+    // shader was still compiling (or before a member was added) never sticks to the new rows
+    ImGuiTableFlags tableFlags = ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchSame;
 
     for (size_t i = 0; i < passes.size(); i++){
         ImGui::PushID((int)i);
@@ -6919,7 +7177,10 @@ void editor::InspectorWindow::drawScenePostProcess(SceneProject* sceneProject){
 
         PostProcessShader resolved = resolvePostProcessShader(passes[i]);
 
-        if (ImGui::BeginTable("scene_post_process_pass_table", 2, tableFlags)){
+        char passTableId[48];
+        std::snprintf(passTableId, sizeof(passTableId), "scene_post_process_pass_table_%016llx",
+                      static_cast<unsigned long long>(shaderMembersKey(resolved.block.members, resolved.manifest.get())));
+        if (ImGui::BeginTable(passTableId, 2, tableFlags)){
             ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getPostProcessLabelSize(resolved, passes[i]));
             ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
@@ -12380,7 +12641,7 @@ void editor::InspectorWindow::startActionPreview(Entity entity, Scene* scene, Sc
         return;
     }
 
-    actionPreviewStates.clear();
+    actionPreviewSnapshot.clear();
     actionPreviewEntity = entity;
     actionPreviewSceneId = sceneProject->id;
 
@@ -12391,13 +12652,7 @@ void editor::InspectorWindow::startActionPreview(Entity entity, Scene* scene, Sc
         if (e == NULL_ENTITY || !scene->isEntityCreated(e) || !collected.insert(e).second) return;
 
         // Save this entity's state
-        ActionPreviewState state;
-        state.entity = e;
-        if (Transform* transform = scene->findComponent<Transform>(e)) {
-            state.parent = transform->parent;
-        }
-        state.components = Stream::encodeComponents(e, scene, scene->getSignature(e));
-        actionPreviewStates.push_back(state);
+        actionPreviewSnapshot.add(sceneProject->id, scene, e);
 
         // If entity has an ActionComponent with a target, save the target too
         if (ActionComponent* ac = scene->findComponent<ActionComponent>(e)) {
@@ -12448,7 +12703,7 @@ void editor::InspectorWindow::stopActionPreviewIfActive() {
         return;
     }
 
-    actionPreviewStates.clear();
+    actionPreviewSnapshot.clear();
     actionPreviewing = false;
     actionPreviewPlaying = false;
     actionPreviewEntity = NULL_ENTITY;
@@ -12459,47 +12714,10 @@ void editor::InspectorWindow::stopActionPreviewIfActive() {
 void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* sceneProject) {
     if (!actionPreviewing) return;
 
-    // Update snapshots with current user-editable config values before restoring
-    for (ActionPreviewState& state : actionPreviewStates) {
-        if (state.entity == NULL_ENTITY || !scene->isEntityCreated(state.entity) || !state.components || state.components.IsNull()) {
-            continue;
-        }
-        for (ComponentType type : {ComponentType::TweenComponent, ComponentType::PositionTweenComponent, ComponentType::RotationTweenComponent,
-                                   ComponentType::ScaleTweenComponent, ComponentType::ColorTweenComponent, ComponentType::AlphaTweenComponent}) {
-            const reflect::ComponentDesc* desc = reflect::find(type);
-            if (void* comp = desc->find(scene, state.entity)) {
-                state.components[desc->key] = reflect::encode(*desc, comp, reflect::EncodeContext{});
-            }
-        }
-        if (auto* comp = scene->findComponent<ParticleSystemComponent>(state.entity)) {
-            state.components[Catalog::getComponentName(ComponentType::ParticleSystemComponent, true)] = reflect::encodeValue(ComponentType::ParticleSystemComponent, comp);
-        }
-        if (auto* comp = scene->findComponent<KeyframeTracksComponent>(state.entity)) {
-            // the keys and their settings (loop, relative) edited during the preview are kept,
-            // the playhead the preview moved (index, interpolation) goes back
-            const std::string componentName = Catalog::getComponentName(ComponentType::KeyframeTracksComponent, true);
-            YAML::Node encoded = reflect::encodeValue(ComponentType::KeyframeTracksComponent, comp);
-            const YAML::Node originalNode = state.components[componentName];
-            if (originalNode && !originalNode.IsNull()) {
-                for (const char* key : {"index", "interpolation"}) {
-                    if (originalNode[key]) {
-                        encoded[key] = originalNode[key];
-                    }
-                }
-            }
-            state.components[componentName] = encoded;
-        }
-    }
+    // the authored state back, with what commands wrote during the preview
+    actionPreviewSnapshot.restore(scene);
 
-    for (const ActionPreviewState& state : actionPreviewStates) {
-        if (state.entity == NULL_ENTITY || !scene->isEntityCreated(state.entity) || !state.components || state.components.IsNull()) {
-            continue;
-        }
-        Stream::decodeComponents(state.entity, state.parent, scene, state.components);
-        ProjectUtils::clearPreviewParticles(scene, state.entity);
-    }
-
-    actionPreviewStates.clear();
+    actionPreviewSnapshot.clear();
     actionPreviewing = false;
     actionPreviewPlaying = false;
     actionPreviewEntity = NULL_ENTITY;
@@ -13299,22 +13517,17 @@ void editor::InspectorWindow::show(){
             // empty (priority: component shader > scene default > built-in).
             ImGui::SeparatorText("Default Shaders");
 
-            if (ImGui::BeginTable("scene_default_shaders_table", 2, tableFlags)) {
-                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Points").x);
-                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
-
-                if (sceneProject->sceneType != SceneType::SCENE_UI) {
-                    drawSceneShaderRow(sceneProject, ShaderType::MESH, "default_mesh_shader", "Mesh");
-                    if (sceneProject->sceneType == SceneType::SCENE_3D)
-                        drawSceneShaderRow(sceneProject, ShaderType::SKYBOX, "default_sky_shader", "Skybox");
-                }
-                drawSceneShaderRow(sceneProject, ShaderType::UI, "default_ui_shader", "UI");
-                if (sceneProject->sceneType != SceneType::SCENE_UI) {
-                    drawSceneShaderRow(sceneProject, ShaderType::POINTS, "default_points_shader", "Points");
-                    drawSceneShaderRow(sceneProject, ShaderType::LINES, "default_lines_shader", "Lines");
-                }
-
-                ImGui::EndTable();
+            // each type in a table of its own, with the properties of a set default under it:
+            // the scene's values, inherited by the objects without a shader of their own
+            if (sceneProject->sceneType != SceneType::SCENE_UI) {
+                drawSceneDefaultShader(sceneProject, ShaderType::MESH, "default_mesh_shader", "Mesh");
+                if (sceneProject->sceneType == SceneType::SCENE_3D)
+                    drawSceneDefaultShader(sceneProject, ShaderType::SKYBOX, "default_sky_shader", "Skybox");
+            }
+            drawSceneDefaultShader(sceneProject, ShaderType::UI, "default_ui_shader", "UI");
+            if (sceneProject->sceneType != SceneType::SCENE_UI) {
+                drawSceneDefaultShader(sceneProject, ShaderType::POINTS, "default_points_shader", "Points");
+                drawSceneDefaultShader(sceneProject, ShaderType::LINES, "default_lines_shader", "Lines");
             }
         }
 

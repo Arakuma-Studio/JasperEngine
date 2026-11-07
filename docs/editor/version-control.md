@@ -14,9 +14,14 @@ and who locked what in the Project window, the Hierarchy and the Inspector, comm
   Version Control can name each executable.
 - Open a project inside a checkout: the editor looks for `.git` or `.svn` from the project folder
   up. Project Settings > Editor > Version Control picks Auto (default), Git, Subversion or None.
-  The status bar shows the branch, commits ahead (↑) and behind (↓), and the last error; it says
-  "Version control: not available (...)" when the programs are missing, and the editor works as
-  without version control.
+  The status bar shows the branch, commits ahead (↑) and behind (↓), the changes, and the last
+  error; it says "Version control: not available (...)" when the programs are missing, and the
+  editor works as without version control. A detached HEAD shows its tag ("tag v1.2", tag icon)
+  or its short commit (commit icon). An operation left unfinished shows in git's prompt words, in
+  amber: "main | MERGING", "feature | REBASE 2/5", "| CHERRY-PICKING", "| REVERTING",
+  "| BISECTING"; conflicts show as "2 conflicts" in red, and a click then opens the Conflicts
+  window instead of Commit. The tooltip splits the changes into staged, modified, untracked and
+  conflicted and says how to finish the operation.
 - Credentials are yours: the editor never shows a password prompt (it runs git with
   `GIT_TERMINAL_PROMPT=0`), so use a credential manager or SSH keys. A remote that asks for a
   password fails with git's message.
@@ -50,6 +55,20 @@ and who locked what in the Project window, the Hierarchy and the Inspector, comm
   last commit; its tooltip is "Baseline: <value>" and its context menu has Revert to Baseline and
   Copy Baseline Value. A component's menu has Revert Component to Baseline. Each revert is one
   undo step ("Revert transform.position to Baseline"), so Ctrl+Z brings the edit back.
+- **Code editor**: lines changed since the last commit (HEAD; Subversion: BASE) are marked in the
+  gutter between the line numbers and the text: a green bar for added lines, an amber striped bar
+  for changed ones, a red triangle where lines were removed; the same marks are in the left third
+  of the vertical scrollbar. Hover a mark (or click it, which keeps it open) for the old lines and
+  the new ones, highlighted, with the changed characters tinted; its buttons go to the previous
+  or next change and Revert Change puts the old lines back (one undo step: Ctrl+Z brings your
+  edit back). The context menu has Revert Change (at the caret), Next Change (Alt+F5) and
+  Previous Change (Shift+Alt+F5). The status row under the tabs says "3 changes" (its menu: Next
+  and Previous Change, Show Diff, Show History, Revert File...), or why a file has no marks: New
+  file, Untracked, Ignored, Outside the repository, Not compared (binary, a Git LFS file, over 4
+  MiB). The marks follow your edits as you type, unsaved ones included; a CRLF checkout of an LF
+  file shows no false changes, and a renamed file compares with its old path. Preferences >
+  Version Control > Show Changes in Code Editor turns them off (no version control process runs
+  for them then).
 - **Scene Diff** (Window > Version Control > Scene Diff): the tree of GameObjects, components and
   properties that differ, against HEAD or a revision from History. Changed Only filters; a click
   selects the GameObject; each row has Revert to Baseline. Values the engine computes on load
@@ -119,7 +138,10 @@ LFS locks or Subversion's `svn:needs-lock`.
 The same features, with Subversion's names: Commit commits the checked files (new ones are
 added first), Revert reverts, Pull is Update (conflicts are postponed to the Conflicts window),
 Fetch and Push do not exist. Locks are Subversion locks on `svn:needs-lock` files; the Conflicts
-window reads the `.mine`/`.rOLD`/`.rNEW` files.
+window reads the `.mine`/`.rOLD`/`.rNEW` files. The baseline is BASE, the revision checked out:
+HEAD given anywhere (the Scene Diff, Diff Against Baseline, the tools) reads BASE, so another
+user's newer commit never shows as a change of yours; a revision number compares with that
+revision. A working copy of `^/tags/<tag>` shows its tag in the status bar.
 
 ## Checking it by hand
 

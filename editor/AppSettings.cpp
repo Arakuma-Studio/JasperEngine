@@ -669,6 +669,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (vcsNode["auto_fetch_minutes"]) vcs.autoFetchMinutes = vcsNode["auto_fetch_minutes"].as<int>();
             if (vcsNode["commit_and_push"]) vcs.commitAndPush = vcsNode["commit_and_push"].as<bool>();
             if (vcsNode["show_changes"]) vcs.showChanges = vcsNode["show_changes"].as<bool>();
+            if (vcsNode["code_editor_changes"]) vcs.codeEditorChanges = vcsNode["code_editor_changes"].as<bool>();
         }
         versionControlSettings = vcs;
         versionControlSettings = getVersionControlSettings();
@@ -953,6 +954,7 @@ bool AppSettings::saveSettings() {
             vcsNode["auto_fetch_minutes"] = vcs.autoFetchMinutes;
             vcsNode["commit_and_push"] = vcs.commitAndPush;
             vcsNode["show_changes"] = vcs.showChanges;
+            vcsNode["code_editor_changes"] = vcs.codeEditorChanges;
             settingsData["version_control"] = vcsNode;
         }
         if (settingsData["ai_assistant"]) settingsData.remove("ai_assistant");

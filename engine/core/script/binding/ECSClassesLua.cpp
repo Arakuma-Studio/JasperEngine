@@ -689,6 +689,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("state", &ActionComponent::state)
         .addProperty("timecount", &ActionComponent::timecount)
         .addProperty("speed", &ActionComponent::speed, &setTrackedMember<&ActionComponent::speed>)
+        .addProperty("startOffset", &ActionComponent::startOffset, &setTrackedMember<&ActionComponent::startOffset>)
+        .addProperty("randomStart", &ActionComponent::randomStart, &setTrackedMember<&ActionComponent::randomStart>)
         .addProperty("startTrigger", &ActionComponent::startTrigger, &setTrackedMember<&ActionComponent::startTrigger>)
         .addProperty("stopTrigger", &ActionComponent::stopTrigger, &setTrackedMember<&ActionComponent::stopTrigger>)
         .addProperty("pauseTrigger", &ActionComponent::pauseTrigger, &setTrackedMember<&ActionComponent::pauseTrigger>)

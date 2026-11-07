@@ -649,6 +649,7 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "        list(APPEND PLATFORM_SOURCE\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/JasperEngineLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/WindowLinux.cpp\n";
+    content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/X11Visibility.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/SystemLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/HostServicesLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/LinuxInputRouter.cpp\n";
@@ -2557,6 +2558,11 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     };
     mainContent += "    Engine::setAtmosphereQualityDefaults(" + qualityName(atmosphereQuality[0]) + ", " + qualityName(atmosphereQuality[1]) + ", " +
                    qualityName(atmosphereQuality[2]) + ");\n";
+    // Foliage Distance per platform group, written only when the project changed it
+    if (foliageDistanceScale != std::array<float, 3>{1.0f, 1.0f, 1.0f}) {
+        mainContent += "    Engine::setFoliageDistanceScaleDefaults(" + Factory::formatFloat(foliageDistanceScale[0]) + ", " +
+                       Factory::formatFloat(foliageDistanceScale[1]) + ", " + Factory::formatFloat(foliageDistanceScale[2]) + ");\n";
+    }
 
     // Project Settings > Input: the deadzone, then the default Input Actions asset
     mainContent += inputSettingsInitSource(inputActionsAsset, inputDeadzone);

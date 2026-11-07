@@ -5,6 +5,8 @@
 
 #include "imgui.h"
 #include "HtmlCssLexer.h"
+#include "util/LineDiff.h"
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <unordered_set>
@@ -210,6 +212,37 @@ namespace jasperengine::editor {
         // Project symbols (scanned from sibling files at runtime)
         void UpdateProjectSymbols(const std::vector<ProjectSymbol>& symbols);
 
+        // Version control changes: gutter marks for the lines that differ from a baseline, the
+        // same marks on the scrollbar, the old lines on hover and Revert Change
+        // (docs/superpowers/specs/2026-11-04-code-editor-git-design.md 6.3)
+        struct DiffColors {
+            ImU32 added;
+            ImU32 modified;
+            ImU32 deleted;
+        };
+        void SetDiffColors(const DiffColors& colors) { diffColors = colors; }
+        // The baseline's lines (shared, never copied) and its revision for tooltips ("HEAD")
+        void SetDiffBase(std::shared_ptr<const std::vector<std::string>> baseLines, const std::string& revision);
+        void ClearDiffBase();
+        bool HasDiffBase() const { return diffBase != nullptr; }
+        // The changes, brought up to date with the text first; empty without a baseline
+        const std::vector<LineChange>& GetDiffChanges();
+        // The changes as last drawn (no diff runs: a slow diff keeps its pace)
+        const std::vector<LineChange>& GetDrawnDiffChanges() const { return diffChanges; }
+        // The change covering a 0-based line, or the deletion marked at it; -1 for none
+        int GetDiffChangeAt(int line);
+        // Puts the baseline's lines of a change back as one undo step of its own
+        bool RevertDiffChange(int index);
+        // The caret to the next / previous change (wrapping); false when there is none
+        bool GoToNextChange();
+        bool GoToPreviousChange();
+        // The change whose diff popup shows, -1 when closed
+        int GetDiffPeekChange() const { return diffPeekChange; }
+        // The highlight of the character at (line, column), Default between tokens
+        TokenType GetTokenTypeAt(int line, int column) const;
+        // The same for a line of the baseline, as the diff popup draws its removed lines
+        TokenType GetDiffBaseTokenTypeAt(int line, int column) const;
+
         // Rendering
         void Render(const char* title, const ImVec2& size = ImVec2(0, 0), bool border = false);
 
@@ -317,6 +350,36 @@ namespace jasperengine::editor {
 
         FontZoomCallback onFontZoom;
 
+        // Changes against the baseline, recomputed after edits
+        std::shared_ptr<const std::vector<std::string>> diffBase;
+        std::vector<std::vector<Token>> diffBaseTokens;   // the baseline highlighted once, its own multi-line state
+        std::string diffRevision;
+        std::vector<LineChange> diffChanges;
+        bool diffDirty = false;
+        std::chrono::steady_clock::time_point diffNextTime{}; // a slow diff waits, so typing stays smooth
+        uint64_t diffVersion = 1;
+        DiffColors diffColors{IM_COL32(90, 200, 100, 255), IM_COL32(240, 176, 40, 255), IM_COL32(230, 80, 70, 255)};
+
+        // The popup with the diff of the change under the mouse (or pinned by a click)
+        struct DiffPeekRow {
+            bool added = false;
+            std::string text;
+            std::vector<Token> tokens;
+            int changedStart = 0;   // bytes that differ from the paired line
+            int changedEnd = 0;
+        };
+        int diffHoverChange = -1;
+        double diffHoverStart = 0.0;
+        int diffPeekChange = -1;
+        LineChange diffPeekKey;
+        double diffPeekLeaveTime = -1.0;   // < 0 while the mouse is on the marker or the popup
+        bool diffPeekHovered = false;
+        bool diffPeekPinned = false;
+        bool diffMarkerClicked = false;    // this frame's click went to a marker, not the text
+        uint64_t diffPeekVersion = 0;      // diffVersion of the rows, 0 to rebuild them
+        std::vector<DiffPeekRow> diffPeekRows;
+        float diffPeekTextWidth = 0.0f;
+
         // Semantic suggestions engine
         std::unique_ptr<SemanticSuggestions> suggestions;
         std::vector<SuggestionItem> currentSuggestions;
@@ -384,7 +447,9 @@ namespace jasperengine::editor {
         void moveSelectedText(const TextPosition& destPos);
         std::string getRange(const TextPosition& start, const TextPosition& end) const;
 
-        void addUndoRecord();
+        // mergeable: may join the previous record when it is recent (typing); a revert never does,
+        // and nothing typed right after it joins the revert's
+        void addUndoRecord(bool mergeable = true);
         void finalizeUndoRecord();
 
         int getLineIndent(int lineIndex) const;
@@ -400,6 +465,19 @@ namespace jasperengine::editor {
 
         void renderLineNumbers(ImDrawList* drawList, const ImVec2& origin, int startLine, int endLine);
         void renderText(ImDrawList* drawList, const ImVec2& origin, int startLine, int endLine);
+        void renderLineTokens(ImDrawList* drawList, ImVec2 pos, const std::string& line, const std::vector<Token>& tokens) const;
+        // force: now, whatever the time the last one took
+        void updateDiff(bool force);
+        float diffGutterX(const ImVec2& origin) const;
+        // the change whose marker is under the point, -1 for none
+        int diffChangeAt(const ImVec2& point, const ImVec2& origin) const;
+        void renderDiffGutter(ImDrawList* drawList, const ImVec2& origin, int startLine, int endLine);
+        void renderDiffOverview();
+        void updateDiffPeek(const ImVec2& origin);
+        void buildDiffPeekRows(const LineChange& change);
+        void renderDiffPeek(const ImVec2& origin);
+        void goToChange(int index);
+        void closeDiffPeek();
         void renderSelections(ImDrawList* drawList, const ImVec2& origin, int startLine, int endLine);
         void renderCursors(ImDrawList* drawList, const ImVec2& origin);
         void renderMatchingBrackets(ImDrawList* drawList, const ImVec2& origin);

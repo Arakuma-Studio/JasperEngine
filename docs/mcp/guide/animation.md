@@ -540,13 +540,18 @@ its last key; a `relative` track there offsets from the target's pose when it st
 anchored UI element moves by its layout offset). `add_actions` nests existing actions (`duration`
 0: the action's own); `set_frames` (`duration` 0: automatic) / `remove_actions` use the indices
 before the call; `loop`, `duration` (-1: until
-the actions end), `autoplay`, `speed` set the Animation. `audio: [{time, sound | snapshot, path,
+the actions end), `autoplay`, `speed` and `random_start` (each new run in Play starts at a random point
+of one cycle: copies out of step) set the Animation; a fixed start is `set_properties {action:
+{startOffset}}` (seconds) on it or on a nested action; get_animation reports `start_offset` and
+`random_start` (a nested action's when set). `audio: [{time, sound | snapshot, path,
 duration, lane, volume_db, pitch_semitones, group, spatial, seconds, name}]` creates audio actions
 (an action GameObject with an AudioSource playing the clip or `.soundevent`) and Mixer Snapshot
 actions at frame start `time`; `path` names the action's target (where a `spatial` one plays);
 `duration` 0 is the sound's length (a snapshot's: `seconds`), a shorter one cuts it. They start
 once per loop pass, placed to the sample, and stop with the Animation; `remove_actions` removes
 them; `get_animation` lists them as `audio[]` with their frame `index`. One scene undo step per call.
+Values edited while `preview_animation` previews (set_properties, an undo) are kept when it seeks or
+stops; their undo goes back to the authored value, never a previewed pose.
 
 ## Common mistakes
 

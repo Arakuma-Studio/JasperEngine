@@ -26,6 +26,7 @@
 #include "reflect/Reflect.h"
 #include "util/EntityClipboard.h"
 #include "util/CameraTextureLink.h"
+#include "util/ProjectChecks.h"
 #include "subsystem/RenderSystem.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/SplineComponent.h"
@@ -559,6 +560,123 @@ bool editor::Catalog::isCustomShaderBuildFailed(Scene* scene, Entity entity, Com
     }
 
     return false;
+}
+
+const char* editor::Catalog::getDefaultShaderUniformsProperty(ShaderType type){
+    switch (type){
+        case ShaderType::MESH:   return "default_mesh_shader_uniforms";
+        case ShaderType::UI:     return "default_ui_shader_uniforms";
+        case ShaderType::SKYBOX: return "default_sky_shader_uniforms";
+        case ShaderType::POINTS: return "default_points_shader_uniforms";
+        case ShaderType::LINES:  return "default_lines_shader_uniforms";
+        default: return "";
+    }
+}
+
+bool editor::Catalog::getDefaultShaderUniformsType(const std::string& propertyName, ShaderType& type){
+    for (ShaderType candidate : {ShaderType::MESH, ShaderType::UI, ShaderType::SKYBOX, ShaderType::POINTS, ShaderType::LINES}){
+        if (propertyName == getDefaultShaderUniformsProperty(candidate)){
+            type = candidate;
+            return true;
+        }
+    }
+    return false;
+}
+
+editor::Catalog::UniformChainRefs editor::Catalog::getShaderUniformChain(Scene* scene, Entity entity, ComponentType component, int submesh){
+    UniformChainRefs refs;
+    ShaderType type;
+    if (!scene || !ProjectChecks::shaderTypeForComponent(component, type))
+        return refs;
+    auto manifestOf = [](const std::string& shader) -> std::shared_ptr<const ShaderManifest> {
+        std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
+        return manifest && manifest->present ? manifest : nullptr;
+    };
+    if (component == ComponentType::MeshComponent && submesh >= 0){
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        if (!mesh || submesh >= (int)mesh->numSubmeshes)
+            return refs;
+        Submesh& sub = mesh->submeshes[submesh];
+        refs.chain.values = &sub.material.shaderParams;
+        refs.chain.fallback = &mesh->shaderUniforms;
+        refs.chain.sceneDefault = sub.material.shader.empty() ? scene->getInheritedShaderUniforms(type, mesh->customShader.path) : nullptr;
+        refs.chain.bindings = sub.material.shaderGlobalBindings.empty() ? nullptr : &sub.material.shaderGlobalBindings;
+        refs.manifest = manifestOf(RenderSystem::getSubmeshShader(*mesh, sub, scene->getDefaultCustomShader(type)));
+    }else{
+        const std::string* custom = getPropertyRef<std::string>(scene, entity, component, "customShader");
+        refs.chain.values = getPropertyRef<ShaderUniformValues>(scene, entity, component, "shaderUniforms");
+        if (!custom || !refs.chain.values)
+            return refs;
+        refs.chain.sceneDefault = scene->getInheritedShaderUniforms(type, *custom);
+        // a mesh keeps its global bindings on its materials
+        if (component != ComponentType::MeshComponent){
+            const ShaderGlobalBindings* bindings = getPropertyRef<ShaderGlobalBindings>(scene, entity, component, "shaderGlobalBindings");
+            refs.chain.bindings = bindings && !bindings->empty() ? bindings : nullptr;
+        }
+        refs.manifest = manifestOf(custom->empty() ? scene->getDefaultCustomShader(type) : *custom);
+    }
+    refs.chain.manifest = refs.manifest.get();
+    return refs;
+}
+
+namespace {
+    // the components of a type without a shader of their own, for getDefaultShaderUse
+    template<typename T>
+    void collectDefaultShaderUsers(Scene* scene, ComponentType component, editor::Catalog::DefaultShaderUse& use){
+        auto components = scene->getComponentArray<T>();
+        for (size_t i = 0; i < components->size(); i++){
+            T& item = components->getComponentFromIndex(i);
+            if (!item.customShader.empty())
+                continue;
+            const Entity entity = components->getEntity(i);
+            use.users++;
+            if (editor::Catalog::isCustomShaderBuildFailed(scene, entity, component))
+                use.failed++;
+            for (const CustomUniformBlock* block : editor::Catalog::getShaderUniformBlocks(scene, entity, component))
+                use.blocks.push_back(block);
+        }
+    }
+}
+
+editor::Catalog::DefaultShaderUse editor::Catalog::getDefaultShaderUse(Scene* scene, ShaderType type){
+    DefaultShaderUse use;
+    if (!scene || scene->getDefaultCustomShader(type).empty())
+        return use;
+    switch (type){
+        case ShaderType::MESH: {
+            auto meshes = scene->getComponentArray<MeshComponent>();
+            for (size_t i = 0; i < meshes->size(); i++){
+                MeshComponent& mesh = meshes->getComponentFromIndex(i);
+                if (!mesh.customShader.empty())
+                    continue;
+                // the submeshes whose material names no shader draw with the scene's
+                bool uses = false;
+                for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+                    const Submesh& sub = mesh.submeshes[s];
+                    if (!sub.material.shader.empty())
+                        continue;
+                    uses = true;
+                    for (const CustomUniformBlock* block : {&sub.customVSParams, &sub.customFSParams, &sub.customVSDepthParams, &sub.customFSDepthParams})
+                        use.blocks.push_back(block);
+                }
+                if (!uses)
+                    continue;
+                use.users++;
+                if (isCustomShaderBuildFailed(scene, meshes->getEntity(i), ComponentType::MeshComponent))
+                    use.failed++;
+            }
+            break;
+        }
+        case ShaderType::UI: collectDefaultShaderUsers<UIComponent>(scene, ComponentType::UIComponent, use); break;
+        case ShaderType::SKYBOX: collectDefaultShaderUsers<SkyboxComponent>(scene, ComponentType::SkyboxComponent, use); break;
+        case ShaderType::POINTS: collectDefaultShaderUsers<PointsComponent>(scene, ComponentType::PointsComponent, use); break;
+        case ShaderType::LINES:
+            collectDefaultShaderUsers<LineRendererComponent>(scene, ComponentType::LineRendererComponent, use);
+            collectDefaultShaderUsers<TrailRendererComponent>(scene, ComponentType::TrailRendererComponent, use);
+            break;
+        default: break;
+    }
+    return use;
 }
 
 bool editor::Catalog::isCustomDepthShaderBuildFailed(Scene* scene, Entity entity) {
