@@ -1698,8 +1698,23 @@ void moveAssetTool(const CallPtr& call) {
     // a copy only reads its source (a copy out of a linked-in library is fine); a move moves the entry
     const bool copying = call->args().value("copy", false);
     if (!resolveExisting(call, "path", from, true, copying ? PathFor::Read : PathFor::Entry)) return;
-    if (!resolveExisting(call, "to", to, false, PathFor::Write)) return;
     Project* project = call->ctx().project();
+    const bool hasTo = call->args().contains("to") && call->args()["to"].is_string() && !call->args()["to"].get<std::string>().empty();
+    if (!hasTo && copying) {
+        // Unity's Duplicate: beside the source, under its free name ("hero 1.png")
+        std::string error;
+        const std::string beside = projectRelative(project, CopyFileCmd::freeName(from));
+        if (!McpRefs::resolveProjectWritePath(project, beside, to, error, false)) {
+            call->fail(error);
+            return;
+        }
+        to = to.lexically_normal();
+    } else if (!hasTo) {
+        call->fail("to is required for a move (folder + name); a copy without to is a Duplicate beside the source.");
+        return;
+    } else if (!resolveExisting(call, "to", to, false, PathFor::Write)) {
+        return;
+    }
     const std::string fromRel = projectRelative(project, from), toRel = projectRelative(project, to);
     std::string why;
     // not the project root, its project.yaml or a hidden folder's contents, nor a file named
@@ -1773,8 +1788,8 @@ void moveAssetTool(const CallPtr& call) {
         call->fail("The destination folder " + projectRelative(project, to.parent_path()) + " does not exist; create it with create_folder.");
         return;
     }
-    if (Util::isInsidePath(to, from)) {
-        call->fail("Can't move a folder into itself.");
+    if (const std::string refusal = copying ? AssetOps::copyRefusal(from, to) : AssetOps::moveRefusal(from, to); !refusal.empty()) {
+        call->fail(refusal);
         return;
     }
     const bool copy = call->args().value("copy", false);
@@ -2678,10 +2693,25 @@ void applyMaterialPresetTool(const CallPtr& call) {
 void forkShaderTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
-    const std::string target = args.value("target", args.contains("entity") ? "component" : "");
+    // source: a library shader to copy instead of the built-in one of the target's type
+    const std::string source = args.contains("source") && args["source"].is_string()
+        ? ShaderReference::getBase(args["source"].get<std::string>()) : std::string();
+    std::shared_ptr<const ShaderManifest> sourceManifest;
+    if (!source.empty()) {
+        sourceManifest = ShaderReference::isLibrary(source) ? ShaderManifests::get(source) : nullptr;
+        if (!sourceManifest || !sourceManifest->present) {
+            call->fail("source must be a library shader, \"library:<name>\" (list_shaders).");
+            return;
+        }
+    }
+    const std::string target = args.value("target", args.contains("entity") ? (sourceManifest && sourceManifest->type == ShaderType::MESH ? "material" : "component") : "");
     Target where;
-    if (!resolveTarget(call, where, target == "component" || target == "depth")) return;
+    if (!resolveTarget(call, where, target == "component" || target == "depth" || target == "material")) return;
     SceneProject* sceneProject = where.scene;
+    if (sourceManifest && target == "depth") {
+        call->fail("A library shader's depth program is the engine's: fork it with target material (its colour program).");
+        return;
+    }
 
     auto finish = [call](const std::string& base, Json data, const std::string& text) {
         data["vert_path"] = Util::resolveCustomShaderPaths(base).vert;
@@ -2723,6 +2753,71 @@ void forkShaderTool(const CallPtr& call) {
         return true;
     };
 
+    // a library shader of the target's type, copied with its manifest (its rows, features and @role)
+    auto checkSourceType = [&](ShaderType wanted) {
+        if (sourceManifest->type == wanted)
+            return true;
+        call->fail(source + " is a " + ShaderManifest::getShaderTypeToken(sourceManifest->type) + " shader; this target takes " +
+                   ShaderManifest::getShaderTypeToken(wanted) + " shaders.");
+        return false;
+    };
+    auto sourceName = [&](const std::string& fallback) {
+        return args.value("name", sourceManifest && !sourceManifest->name.empty() ? sourceManifest->name : fallback);
+    };
+    if (target == "material") {
+        if (!sourceManifest) {
+            call->fail("target material forks a library mesh shader: give source (e.g. \"library:water\").");
+            return;
+        }
+        if (!checkSourceType(ShaderType::MESH)) return;
+        const uint32_t sceneId = sceneProject->id;
+        const std::string name = ProjectUtils::makeUniqueShaderName(project->getProjectPath() / directory, ShaderType::MESH, sourceName("shader"));
+        std::string base;
+        Json data;
+        {
+            const MeshComponent* mesh = McpRefs::hasComponent(sceneProject, where.entity, ComponentType::MeshComponent)
+                ? sceneProject->scene->findComponent<MeshComponent>(where.entity) : nullptr;
+            if (!mesh) {
+                call->fail("The GameObject has no Mesh component.");
+                return;
+            }
+            std::vector<unsigned int> submeshes;
+            if (args.contains("submesh") && args["submesh"].is_number_integer()) {
+                const long long index = args["submesh"].get<long long>();
+                if (index < 0 || index >= (long long)mesh->numSubmeshes) {
+                    call->fail("submesh must be 0.." + std::to_string((int)mesh->numSubmeshes - 1) + ".");
+                    return;
+                }
+                submeshes.push_back((unsigned int)index);
+            } else {
+                for (unsigned int i = 0; i < mesh->numSubmeshes; i++) {
+                    if (ShaderReference::getBase(mesh->submeshes[i].material.shader) == source)
+                        submeshes.push_back(i);
+                }
+            }
+            if (submeshes.empty()) {
+                call->fail("No submesh of the GameObject draws with " + source + ": give submesh.");
+                return;
+            }
+            const Entity entity = where.entity;
+            auto makePropertyCmd = [project, sceneId, entity, submeshes](const std::string& forkBase) {
+                auto multi = std::make_unique<MultiPropertyCmd>();
+                for (unsigned int i : submeshes)
+                    multi->addPropertyCmd<std::string>(project, sceneId, entity, ComponentType::MeshComponent,
+                                                       "submeshes[" + std::to_string(i) + "].material.shader", forkBase);
+                return std::unique_ptr<Command>(std::move(multi));
+            };
+            if (!runFork(new ForkShaderCmd(project, ShaderType::MESH, makePropertyCmd, directory, name, forkIncludes, source), base)) return;
+            Json indices = Json::array();
+            for (unsigned int i : submeshes) indices.push_back(i);
+            data = Json{{"custom_shader", base}, {"entity", McpRefs::entityJson(sceneProject, entity)}, {"submeshes", indices}};
+        }
+        data["source"] = source;
+        if (sourceManifest->depth)
+            data["note"] = "Its depth passes use the engine's depth program (a fork has none of its own).";
+        finish(base, data, "Forked " + source + " to " + base + " (.vert/.frag, with its manifest) and pointed the material at it.");
+        return;
+    }
     if (target == "scene_default") {
         static const std::map<std::string, ShaderType> types = {
             {"mesh", ShaderType::MESH}, {"ui", ShaderType::UI}, {"sky", ShaderType::SKYBOX},
@@ -2747,7 +2842,14 @@ void forkShaderTool(const CallPtr& call) {
         const std::string name = ProjectUtils::makeUniqueShaderName(project->getProjectPath() / directory, type->second,
                                                                     args.value("name", sceneProject->name + " " + typeName));
         std::string base;
-        if (!runFork(new ForkShaderCmd(project, sceneProject, type->second, property, directory, name, forkIncludes), base)) return;
+        if (sourceManifest) {
+            if (!checkSourceType(type->second)) return;
+            const uint32_t sceneId = sceneProject->id;
+            auto makePropertyCmd = [project, sceneId, property](const std::string& forkBase) {
+                return std::unique_ptr<Command>(new ScenePropertyCmd<std::string>(project, sceneId, property, forkBase));
+            };
+            if (!runFork(new ForkShaderCmd(project, type->second, makePropertyCmd, directory, name, forkIncludes, source), base)) return;
+        } else if (!runFork(new ForkShaderCmd(project, sceneProject, type->second, property, directory, name, forkIncludes), base)) return;
         finish(base, Json{{"custom_shader", base}, {"scene_property", property}},
                "Forked the scene default " + typeName + " shader to " + base + " (.vert/.frag) and set " + property + ".");
         return;
@@ -2775,8 +2877,17 @@ void forkShaderTool(const CallPtr& call) {
                                                      (shaderType == ShaderType::DEPTH ? "_depth" : ""));
         const std::string name = ProjectUtils::makeUniqueShaderName(project->getProjectPath() / directory, shaderType, desired);
         std::string base;
-        if (!runFork(new ForkShaderCmd(project, sceneProject->id, where.entity, where.component, shaderType, directory, name,
-                                       forkIncludes), base)) return;
+        if (sourceManifest) {
+            if (!checkSourceType(shaderType)) return;
+            const uint32_t sceneId = sceneProject->id;
+            const Entity entity = where.entity;
+            const ComponentType component = where.component;
+            auto makePropertyCmd = [project, sceneId, entity, component, property](const std::string& forkBase) {
+                return std::unique_ptr<Command>(new PropertyCmd<std::string>(project, sceneId, entity, component, property, forkBase));
+            };
+            if (!runFork(new ForkShaderCmd(project, shaderType, makePropertyCmd, directory, name, forkIncludes, source), base)) return;
+        } else if (!runFork(new ForkShaderCmd(project, sceneProject->id, where.entity, where.component, shaderType, directory, name,
+                                              forkIncludes), base)) return;
         finish(base, Json{{"custom_shader", base}, {"property", property}, {"entity", McpRefs::entityJson(sceneProject, where.entity)},
                           {"component", McpRefs::componentName(where.component)}},
                "Forked the shader to " + base + " (.vert/.frag) and pointed " + property + " at it.");
@@ -2789,7 +2900,9 @@ void forkShaderTool(const CallPtr& call) {
             call->fail("pass_index must be 0.." + std::to_string(static_cast<long long>(passes.size()) - 1) + ", or omitted to add a new pass.");
             return;
         }
-        if (index >= 0 && !passes[index].shader.empty()) {
+        if (sourceManifest && !checkSourceType(ShaderType::POSTPROCESS)) return;
+        // a pass on the library shader takes its fork (its values kept); any other shader stays
+        if (index >= 0 && !passes[index].shader.empty() && !(sourceManifest && ShaderReference::getBase(passes[index].shader) == source)) {
             call->fail("Pass " + std::to_string(index) + " already uses " + passes[index].shader + "; edit that fork.");
             return;
         }
@@ -2798,7 +2911,7 @@ void forkShaderTool(const CallPtr& call) {
             passes.push_back(PostProcessPass());
             index = static_cast<long long>(passes.size()) - 1;
         }
-        const std::string desired = args.value("name", sceneProject->name + " Post " + std::to_string(index + 1));
+        const std::string desired = sourceName(sceneProject->name + " Post " + std::to_string(index + 1));
         const std::string name = ProjectUtils::makeUniqueShaderName(project->getProjectPath() / directory, ShaderType::POSTPROCESS, desired);
         const uint32_t sceneId = sceneProject->id;
         auto makePropertyCmd = [project, sceneId, index, passes](const std::string& base) mutable {
@@ -2806,14 +2919,15 @@ void forkShaderTool(const CallPtr& call) {
             return std::make_unique<ScenePropertyCmd<std::vector<PostProcessPass>>>(project, sceneId, "post_process", passes);
         };
         std::string base;
-        if (!runFork(new ForkShaderCmd(project, ShaderType::POSTPROCESS, makePropertyCmd, directory, name, forkIncludes), base)) return;
+        if (!runFork(new ForkShaderCmd(project, ShaderType::POSTPROCESS, makePropertyCmd, directory, name, forkIncludes, source), base)) return;
         finish(base, Json{{"custom_shader", base}, {"pass_index", index}, {"new_pass", append}},
                "Forked the post-process shader to " + base + " for pass " + std::to_string(index) + (append ? " (new pass)" : "") +
                    ". Its parameters are a u_fs_postParams block, set with set_shader_uniform (pass_index).");
         return;
     }
     call->fail("target must be component (a GameObject's renderable component), depth (a Mesh's depth/shadow pass), "
-               "scene_default (shader_type for the whole scene) or post_process (a scene post-process pass).");
+               "material (a Mesh's submesh material, with source), scene_default (shader_type for the whole scene) or "
+               "post_process (a scene post-process pass).");
 }
 
 const char* uniformTypeName(ShaderUniformType type) {
@@ -3501,6 +3615,8 @@ void checkShaderTool(const CallPtr& call) {
             // no shader to compile: the scenes' own findings still apply (Stochastic Tiling,
             // Line and Trail Renderers)
             std::vector<ProjectChecks::Finding> sceneFindings = ProjectChecks::stochasticTilingFindings(project);
+            const std::vector<ProjectChecks::Finding> water = ProjectChecks::waterFindings(project);
+            sceneFindings.insert(sceneFindings.end(), water.begin(), water.end());
             const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(project);
             sceneFindings.insert(sceneFindings.end(), lines.begin(), lines.end());
             const std::vector<ProjectChecks::Finding> particleChecks = ProjectChecks::particleFindings(project);
@@ -3522,6 +3638,9 @@ void checkShaderTool(const CallPtr& call) {
     if (!args.contains("shader")) {
         const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(project);
         stateFindings.insert(stateFindings.end(), stochastic.begin(), stochastic.end());
+        // water forks without @role, planar reflections on sloped meshes
+        const std::vector<ProjectChecks::Finding> water = ProjectChecks::waterFindings(project);
+        stateFindings.insert(stateFindings.end(), water.begin(), water.end());
         // Line and Trail Renderers: a hairline sampling a texture, a trail with Time 0
         const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(project);
         stateFindings.insert(stateFindings.end(), lines.begin(), lines.end());
@@ -4096,14 +4215,13 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "move_asset";
         tool.title = "Move / Rename / Copy Asset";
         tool.description =
-            "Rename/move a file or folder, updating references in scenes, prefabs, materials, script entries and "
-            "shader forks, Animation Players (as the Project window does); or copy it (a copied prefab or clip gets a new GUID). The "
-            "destination must not exist; its folder must.";
+            "Rename/move a file or folder, updating references (scenes, prefabs, materials, scripts, shader forks, "
+            "Animation Players); or copy it (a copied prefab or clip gets a new GUID).";
         tool.inputSchema = object({
             {"path", assetPath("")},
-            {"to", assetPath("New path (folder + name).")},
+            {"to", assetPath("New path; omit with copy to duplicate.")},
             {"copy", withDefault(boolean(""), false)}
-        }, {"path", "to"});
+        }, {"path"});
         tool.allowedWhilePlaying = false;
         tool.handler = moveAssetTool;
         registry.addTool(std::move(tool));
@@ -4253,12 +4371,14 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "fork_shader";
         tool.title = "Fork Shader";
         tool.description =
-            "Copy a built-in shader to <directory>/<name>.vert/.frag and point a target at it: "
-            "component (a renderable's customShader), depth (a mesh's shadow/depth pass; needed when a mesh fork "
-            "displaces or discards), scene_default (shader_type, for components without their own), post_process "
-            "(pass_index, or omit to add a pass). Parameters: set_shader_uniform.";
+            "Copy a built-in or library (source) shader to <directory>/<name>.vert/.frag and point a target at it: "
+            "component (customShader), depth (a mesh's shadow pass; needed when a fork displaces or discards), "
+            "scene_default (shader_type), post_process (pass_index; none adds one). Parameters: set_shader_uniform.";
         tool.inputSchema = object({
-            {"target", stringEnum("Default: component when entity is given.", {"component", "depth", "scene_default", "post_process"})},
+            {"target", stringEnum("Default: component when entity is given.",
+                                  {"component", "depth", "material", "scene_default", "post_process"})},
+            {"source", string("")},
+            {"submesh", integer("")},
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},

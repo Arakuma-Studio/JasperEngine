@@ -1700,6 +1700,56 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "bad_water_fork_role",
+        "kind": "bad",
+        "what_happened": "Forking library:water by copying its files left out the engine's water wiring (nothing floated, "
+                         "Water.getHeight answered nil); fork_shader now copies a library shader with its manifest and @role.",
+        "text_at_issue": "fork_shader: 'Copy a built-in or library (source) shader to <directory>/<name>.vert/.frag'; the target enum's "
+                         "material",
+        "source": "water-reflections spec F10 (Doriax d62f09407)",
+        "prompt": "I want to customise the Lake's water shader (it uses library:water) to give the foam a pink tint. "
+                  "The boats must keep floating on it. Set up an editable copy of the shader for me.",
+        "mocks": [
+            {"tool": "get_entity", "args": {"entity": "re:(?i)lake"}, "result": ok(
+                "Lake [12] components: mesh transform; mesh: submeshes[0].material.shader library:water, shaderFeatures "
+                "[BUILTIN_TEXTURES, WAVES, GERSTNER, REFLECTION]", {"id": 12})},
+            {"tool": "fork_shader", "args": {"source": "re:water"}, "result": ok(
+                "Forked library:water to shaders/Water (.vert/.frag, with its manifest) and pointed the material at it. "
+                "Read the files and change only the shading math; your edits are compiled before your next call (errors "
+                "in external_changes), or check them now with check_shader.",
+                {"custom_shader": "shaders/Water", "source": "library:water", "submeshes": [0],
+                 "vert_path": "shaders/Water.vert", "frag_path": "shaders/Water.frag"})},
+        ],
+        "checks": {"calls": [{"tool": "fork_shader", "args": {"source": "re:water"}}],
+                   "must_not_call": [{"tool": "write_file", "args": {"path": "re:\\.(frag|vert)$"}}]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_water_planar_reflection",
+        "kind": "guard",
+        "what_happened": "A mirror-like lake is library:water's PLANAR_REFLECTION feature (one camera pass per water height), "
+                         "not a Mirror component or a forked shader.",
+        "text_at_issue": "library:water feature PLANAR_REFLECTION 'Planar reflection (with REFLECTION: the scene mirrored; a "
+                         "camera pass per water height)'",
+        "source": "water-reflections spec (Doriax 2247e891f)",
+        "prompt": "The Lake (library:water) should mirror the trees and hills around it, like a calm lake does.",
+        "mocks": [
+            {"tool": "list_shaders", "args": {"name": "re:water"}, "result": ok(
+                "library:water (mesh, Nature): Stylised water ... Features: WAVES, GERSTNER, BUILTIN_TEXTURES, REFLECTION, "
+                "PLANAR_REFLECTION (with REFLECTION: the scene mirrored; a camera pass per water height), UNDERSIDE, DEPTH_FOAM, "
+                "ABSORPTION, REFRACTION, CAUSTICS, FLOW, MESH_DEPTH",
+                {"shaders": [{"shader": "library:water", "role": "water", "features": [
+                    "WAVES", "GERSTNER", "BUILTIN_TEXTURES", "REFLECTION", "PLANAR_REFLECTION", "UNDERSIDE"]}]})},
+            {"tool": "get_entity", "args": {"entity": "re:(?i)lake"}, "result": ok(
+                "Lake [12] components: mesh transform; mesh: submeshes[0].material.shader library:water, shaderFeatures "
+                "[BUILTIN_TEXTURES, WAVES, REFLECTION]", {"id": 12})},
+            {"tool": "set_properties", "result": ok("Set 1 property on GameObject 12 \"Lake\".", {"entity": {"id": 12}})},
+        ],
+        "checks": {"calls": [{"tool": "set_properties"}],
+                   "must_not_call": ["fork_shader", {"tool": "add_component", "args": {"component": "re:(?i)mirror"}}]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_ssr_reflection_source",
         "kind": "guard",
         "what_happened": "A floor under a reflection probe looked doubly bright with SSR on; the check is the SSR debug view "
@@ -1783,6 +1833,51 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "move_entity", "args": {"index": 0}}]},
         "max_turns": 14,
+    },
+    {
+        "id": "guard_duplicate_asset_beside",
+        "kind": "guard",
+        "what_happened": "Duplicating an asset: move_asset copy without `to` lands beside it under Unity's free name "
+                         "(hero 1.png); the agent need not list the folder to invent a free name (project-window spec 6.14).",
+        "text_at_issue": "AssetTools.cpp move_asset `to`: 'New path; omit with copy to duplicate.'",
+        "source": "docs/superpowers/specs/2026-11-04-project-window-design.md (Doriax 37d7cdc41)",
+        "prompt": "Duplicate assets/sprites/hero.png.",
+        "mocks": [
+            {"tool": "move_asset", "args": {"path": "assets/sprites/hero.png", "copy": True}, "result": ok(
+                "Copied assets/sprites/hero.png to assets/sprites/hero 1.png (new GUIDs).",
+                {"from": "assets/sprites/hero.png", "to": "assets/sprites/hero 1.png", "copy": True})},
+        ],
+        "checks": {"calls": [{"tool": "move_asset", "args": {"path": "assets/sprites/hero.png", "copy": True}}],
+                   "must_not_call": ["list_assets", "search_files", "import_files"], "max_calls": {"move_asset": 1}},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_asset_root_dry_run",
+        "kind": "guard",
+        "what_happened": "Changing the assets directory moves every referenced file; asked to check first, the agent asks "
+                         "set_project_settings with dry_run, then applies (project-window spec 6.9).",
+        "text_at_issue": "ProjectTools.cpp set_project_settings dry_run: 'Only report.'",
+        "source": "docs/superpowers/specs/2026-11-04-project-window-design.md (Doriax 35c8e31da)",
+        "prompt": "Make the project's assets directory a folder called content. First show me what would move, then do it.",
+        "mocks": [
+            {"tool": "set_project_settings", "args": {"dry_run": True}, "result": ok(
+                "Valid: 1 setting(s); nothing was changed (dry_run). The asset roots' change would move 2 file(s).",
+                {"settings": {"editor.assets_dir": "content"}, "relocation": {
+                    "moved": [{"from": "assets/sprites/hero.png", "to": "content/sprites/hero.png"},
+                              {"from": "assets/sounds/jump.wav", "to": "content/sounds/jump.wav"}],
+                    "rewritten": ["scenes/Main.scene", "project.yaml"], "failed_saves": [], "removed_folders": []}})},
+            {"tool": "set_project_settings", "args": {"values": {"editor.assets_dir": "content"}}, "result": ok(
+                "Set 1 setting(s). Moved 2 referenced file(s), rewrote 2 file(s), removed 2 emptied folder(s). project.yaml saved.",
+                {"settings": {"editor.assets_dir": "content"}, "relocation": {
+                    "moved": [{"from": "assets/sprites/hero.png", "to": "content/sprites/hero.png"},
+                              {"from": "assets/sounds/jump.wav", "to": "content/sounds/jump.wav"}],
+                    "rewritten": ["scenes/Main.scene", "project.yaml"], "failed_saves": [],
+                    "removed_folders": ["assets/sprites", "assets/sounds"]}})},
+        ],
+        "checks": {"order": [[{"tool": "set_project_settings", "args": {"dry_run": True}},
+                              {"tool": "set_project_settings", "args": {"values": {"editor.assets_dir": "content"}}}]],
+                   "reply_must": [r"hero\.png"], "max_calls": {"set_project_settings": 3}},
+        "max_turns": 10,
     },
     {
         "id": "guard_typing_utf16_units",
@@ -2024,6 +2119,60 @@ CASES = [
                               "args": {"values": {"quality.device_tiers.mobile.low": {"render_scale": 0.6}}}}],
                    "must_not_call": ["set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
         "max_turns": 12,
+    },
+    {
+        "id": "guard_ui_button_gamepad_menu",
+        "kind": "guard",
+        "what_happened": "Component UI Buttons got keyboard, gamepad and TV navigation only for a selected Button "
+                         "(ui-components): a native menu needs one Button with select_on_enable, which create_ui's "
+                         "description names.",
+        "text_at_issue": "create_ui's description: 'button (text = label, select_on_enable)'",
+        "source": "spec docs/superpowers/specs/2026-11-04-ui-components-design.md decision 1; no failure on record",
+        "prompt": "The Hud scene uses the native UI (create_ui). Add a pause menu there: Resume, Options and Quit buttons "
+                  "stacked vertically in the middle of the screen. Players use a gamepad or a TV remote, so the menu must "
+                  "work without a mouse, with Resume selected when it shows.",
+        "mocks": [
+            {"tool": "editor_status", "result": ok(
+                "Project \"Space Dodge\" at the current directory. 2 scene(s), selected: 2 \"Hud\" (UI). Edit mode.",
+                {"project": {"name": "Space Dodge"}, "playing": False, "scenes": [
+                    {"id": 1, "name": "Main", "path": "scenes/Main.scene", "opened": True},
+                    {"id": 2, "name": "Hud", "path": "scenes/Hud.scene", "selected": True, "opened": True}]})},
+            {"tool": "create_ui", "result": ok(
+                "Created 7 UI element(s) under \"PauseMenu\" (one undo step).",
+                {"root": {"id": 50, "path": "PauseMenu", "type": "layout_group"}, "count": 7})},
+            {"tool": "save_scene", "result": ok("Saved scene 2 \"Hud\" (scenes/Hud.scene).", {"scene": {"id": 2}})},
+            {"tool": "get_entity", "result": ok(
+                "GameObject 51 \"Resume\": button. selectable: {navigable: true, navigation: {down: Options}}",
+                {"id": 51, "selectable": {"navigable": True, "navigation": {"up": None, "down": {"id": 53, "path": "PauseMenu/Options"}}}})},
+        ],
+        "checks": {"calls": [{"tool": "create_ui", "args": {"root": {"children": [{"select_on_enable": True}]}}}],
+                   "must_not_call": ["create_ui_document"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_ui_button_color_refusal",
+        "kind": "guard",
+        "what_happened": "An edit of a Button's ui.color reported success and was lost at its next state change; "
+                         "set_properties now refuses it and names the Button field (Doriax 88198667b, ui-components).",
+        "text_at_issue": "McpValues::appendChangeCommands: 'UIComponent.color of ... is set by its Button (transition ...): "
+                         "set button.colorNormal ...'",
+        "source": "Doriax 88198667b; spec 2026-11-04-ui-components decision 13",
+        "prompt": "Make the Play button (GameObject 12 in the open scene) red.",
+        "mocks": [
+            {"tool": "set_properties", "args": {"component": "re:^ui$|UIComponent"}, "result": err(
+                "UIComponent.color of GameObject 12 \"Play\" is set by its Button (transition color_tint_and_sprite_swap): set "
+                "button.colorNormal (and colorHovered, colorPressed, colorSelected, colorDisabled), or set button.transition "
+                "to sprite_swap or none first.")},
+            {"tool": "set_properties", "result": ok("Set button.colorNormal on GameObject 12 \"Play\" (one undo step).",
+                                                    {"entities": [{"id": 12}]})},
+            {"tool": "get_entity", "result": ok("GameObject 12 \"Play\": recttransform, ui, image, button.",
+                                               {"id": 12, "components": ["recttransform", "ui", "image", "button"]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_properties", "args": {"component": "button"}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"values": {"button": "*"}}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"changes": [{"component": "button"}]}}]}],
+                   "max_calls": {"set_properties": 3}},
+        "max_turns": 10,
     },
     {
         "id": "guard_copied_scene_ids",

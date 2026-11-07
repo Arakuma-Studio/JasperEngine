@@ -2184,7 +2184,7 @@ const char* const sceneDisplayKeys[] = {
     "hideLightIcons", "hideSoundIcons", "hideContainerGuides", "showOrigin",
     "showGrid3D", "hideSelectionOutline", "disableFaceCulling", "showGrid2D",
     "gridSpacing2D", "gridSpacing3D", "snapToGrid", "snapTile", "snapRotation",
-    "rotationSnapDegrees",
+    "rotationSnapDegrees", "animateWater",
 };
 
 } // namespace
@@ -2212,6 +2212,9 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
     sceneNode["disableFaceCulling"]   = ds.disableFaceCulling;
     sceneNode["disableFog"]           = ds.disableFog;
     sceneNode["disableClouds"]        = ds.disableClouds;
+    // written only when off (the default is on)
+    if (!ds.animateWater)
+        sceneNode["animateWater"] = ds.animateWater;
     if (ds.showPostProcessing)
         sceneNode["showPostProcessing"] = ds.showPostProcessing;
     if (ds.showAllLattices)
@@ -2249,6 +2252,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["disableFaceCulling"])   ds.disableFaceCulling   = YamlNumbers::as<bool>(node["disableFaceCulling"]);
     if (node["disableFog"])           ds.disableFog           = YamlNumbers::as<bool>(node["disableFog"]);
     if (node["disableClouds"])        ds.disableClouds        = YamlNumbers::as<bool>(node["disableClouds"]);
+    if (node["animateWater"])         ds.animateWater         = YamlNumbers::as<bool>(node["animateWater"]);
     ds.showPostProcessing = node["showPostProcessing"] ? YamlNumbers::as<bool>(node["showPostProcessing"]) : false;
     ds.showAllLattices = node["showAllLattices"] ? YamlNumbers::as<bool>(node["showAllLattices"]) : false;
     ds.drawMode = ViewDrawMode::SHADED;
@@ -4539,6 +4543,19 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     // written only when not the default (half), so scenes saved before it existed re-save unchanged
     if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
         sceneNode["sceneColorScale"] = sceneColorScaleToString(scene->getSceneColorScale());
+    // planar reflections: written only away from their defaults
+    if (scene->getPlanarReflectionResolution() != SceneSettings().planarReflectionResolution)
+        sceneNode["planarReflectionResolution"] = StreamSchema::planarReflectionResolution().toString(scene->getPlanarReflectionResolution());
+    if (scene->getPlanarReflectionLayers() != SceneSettings().planarReflectionLayers)
+        sceneNode["planarReflectionLayers"] = scene->getPlanarReflectionLayers();
+    if (scene->getPlanarReflectionShadows() != SceneSettings().planarReflectionShadows)
+        sceneNode["planarReflectionShadows"] = scene->getPlanarReflectionShadows();
+    if (scene->getPlanarReflectionFarClip() != SceneSettings().planarReflectionFarClip)
+        sceneNode["planarReflectionFarClip"] = scene->getPlanarReflectionFarClip();
+    if (scene->getPlanarReflectionClipOffset() != SceneSettings().planarReflectionClipOffset)
+        sceneNode["planarReflectionClipOffset"] = scene->getPlanarReflectionClipOffset();
+    if (scene->getMaxPlanarReflections() != SceneSettings().maxPlanarReflections)
+        sceneNode["maxPlanarReflections"] = scene->getMaxPlanarReflections();
     sceneNode["lightState"] = lightStateToString(scene->getLightState());
     sceneNode["globalIlluminationIntensity"] = scene->getGlobalIlluminationIntensity();
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
@@ -4678,6 +4695,17 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     }
     // absent = the default (half): it is only written when it differs
     scene->setSceneColorScale(node["sceneColorScale"] ? decodeEnum(node, "sceneColorScale", StreamSchema::sceneColorScale()) : SceneSettings().sceneColorScale);
+    // planar reflections: absent = the defaults
+    const SceneSettings planarDefaults;
+    scene->setPlanarReflectionResolution(node["planarReflectionResolution"]
+        ? decodeEnum(node, "planarReflectionResolution", StreamSchema::planarReflectionResolution()) : planarDefaults.planarReflectionResolution);
+    scene->setPlanarReflectionLayers(node["planarReflectionLayers"] ? YamlNumbers::as<uint32_t>(node["planarReflectionLayers"]) : planarDefaults.planarReflectionLayers);
+    scene->setPlanarReflectionShadows(node["planarReflectionShadows"] ? YamlNumbers::as<bool>(node["planarReflectionShadows"]) : planarDefaults.planarReflectionShadows);
+    scene->setPlanarReflectionFarClip(node["planarReflectionFarClip"] ? decodeFinite(node["planarReflectionFarClip"], planarDefaults.planarReflectionFarClip)
+                                                                      : planarDefaults.planarReflectionFarClip);
+    scene->setPlanarReflectionClipOffset(node["planarReflectionClipOffset"] ? decodeFinite(node["planarReflectionClipOffset"], planarDefaults.planarReflectionClipOffset)
+                                                                            : planarDefaults.planarReflectionClipOffset);
+    scene->setMaxPlanarReflections(node["maxPlanarReflections"] ? YamlNumbers::as<int>(node["maxPlanarReflections"]) : planarDefaults.maxPlanarReflections);
 
     if (node["lightState"]) {
         scene->setLightState(decodeEnum(node, "lightState", StreamSchema::lightState()));
@@ -5569,6 +5597,10 @@ unsigned int editor::Stream::savedSubmeshCount(const MeshComponent& mesh, const 
     // a Terrain has its two (full and half resolution) only once it first ran (MeshSystem::createTerrain)
     if (signature.test(registry->getComponentId<TerrainComponent>())) {
         return std::max(mesh.numSubmeshes, 2u);
+    }
+    // a Spline Extrude's template has the one holding its chunks' material only once SplineSystem ran
+    if (signature.test(registry->getComponentId<SplineExtrudeComponent>())) {
+        return std::max(mesh.numSubmeshes, 1u);
     }
     return mesh.numSubmeshes;
 }

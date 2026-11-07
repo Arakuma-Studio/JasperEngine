@@ -1797,6 +1797,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/RenderSystemLighting.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp
+    core/subsystem/UISystemNavigation.cpp
     core/subsystem/UIDocumentSystem.cpp
     core/subsystem/UIDocumentSystemRender.cpp
     core/subsystem/UIDocumentSystemInput.cpp

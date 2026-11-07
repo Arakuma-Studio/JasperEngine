@@ -103,7 +103,8 @@ namespace jasperengine {
 
         // Lengyel oblique near-plane: returns this projection with its near plane
         // moved onto clipPlane (given in view space). Only the depth (3rd) row
-        // changes, so clip x/y/w are preserved. Used for planar-reflection clipping.
+        // changes, so clip x/y/w are preserved. Perspective or orthographic. Used for
+        // planar-reflection clipping.
         Matrix4 obliqueNearClip(const Vector4& clipPlane) const;
         static Matrix4 frustumMatrix(float left, float right, float bottom, float top, float near, float far);
         static Matrix4 orthoMatrix(float l, float r, float b, float t, float n, float f);

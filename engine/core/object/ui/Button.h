@@ -6,6 +6,7 @@
 
 #include "Image.h"
 #include "Text.h"
+#include "component/UISelectable.h"
 
 namespace jasperengine{
     class JASPERENGINE_API Button: public Image{
@@ -65,6 +66,60 @@ namespace jasperengine{
 
         void setDisabled(bool disabled);
         bool getDisabled() const;
+        // Unity's Selectable.interactable (not disabled)
+        void setInteractable(bool interactable);
+        bool isInteractable() const;
+
+        // the image's colour and texture: on a Button whose transition writes them, its Normal
+        // state's (what the state changes would otherwise overwrite)
+        void setColor(Vector4 color);
+        void setColor(const float red, const float green, const float blue, const float alpha);
+        void setColor(const float red, const float green, const float blue);
+        using Image::setTexture;
+        void setTexture(const std::string& path);
+
+        void setTextureSelected(const std::string& path);
+        void setColorSelected(Vector4 color);
+        void setColorSelected(const float red, const float green, const float blue, const float alpha);
+        void setColorSelected(const float red, const float green, const float blue);
+        Vector4 getColorSelected() const;
+
+        // ui-components: Unity's transitions
+        void setTransition(ButtonTransition transition);
+        ButtonTransition getTransition() const;
+        void setFadeDuration(float seconds);
+        float getFadeDuration() const;
+        void setScaleHovered(float scale);
+        float getScaleHovered() const;
+        void setScalePressed(float scale);
+        float getScalePressed() const;
+        void setScaleSelected(float scale);
+        float getScaleSelected() const;
+
+        // Unity's Navigation and selection (keyboard, gamepad, TV remote)
+        void setNavigationMode(NavigationMode mode);
+        NavigationMode getNavigationMode() const;
+        void setWrapAround(bool wrapAround);
+        bool getWrapAround() const;
+        void setSelectOnUp(Entity entity);
+        Entity getSelectOnUp() const;
+        void setSelectOnDown(Entity entity);
+        Entity getSelectOnDown() const;
+        void setSelectOnLeft(Entity entity);
+        Entity getSelectOnLeft() const;
+        void setSelectOnRight(Entity entity);
+        Entity getSelectOnRight() const;
+        void setSelectOnEnable(bool selectOnEnable);
+        bool getSelectOnEnable() const;
+        // becomes its scene's selection (Unity's Select); false when it cannot be (inactive, hidden)
+        bool select();
+        bool isSelected() const;
+        SelectionState getState() const;
+        // where navigation goes from it that way (Unity's FindSelectableOnUp...): NULL_ENTITY for none
+        Entity findSelectableOnUp() const;
+        Entity findSelectableOnDown() const;
+        Entity findSelectableOnLeft() const;
+        Entity findSelectableOnRight() const;
     };
 }
 

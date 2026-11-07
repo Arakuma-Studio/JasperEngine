@@ -82,8 +82,8 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | merged |
 | 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | merged |
 | 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | merged |
-| 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | impl |
-| 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | impl |
+| 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | merged |
+| 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | merged |
 | 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | merged |
 | 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | merged |
 | 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | merged |
@@ -91,7 +91,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
 | 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | merged |
 | 14 | `ssr-probes` | SSR under local probes and AO, early-out | merged |
-| 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | impl |
+| 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | merged |
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
 | 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | merged |
 | 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | merged |
@@ -237,3 +237,20 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   changed, a failed write names the file; every web export keeps its favicon and carries native web scripts),
   StreamSchema keys, check-changed rules. Box: WERROR editor, budget, unit 294, MCP 57, web compile, lints, Apple
   privacy check. No Apple code compiled here.
+- 2026-11-07 04:xx: **main's MCP goldens fixed** (`fix/main-goldens`): four MCP tests had failed on main since the
+  landings (reported by the pixel-art program). Intended changes regenerated per suite (scene-integrity's
+  startSceneId and scene source 4, render-correctness' normal-less shader keys, runtime-core's action rows,
+  export-pipeline's hasTextureRect in generated scenes); one real bug fixed with a red control: a spline road saved
+  before its first frame lost its template submesh (save determinism). Checked on main: test_reflection +
+  test_saved_output_determinism 11/11, GeneratedScenes/SplineStream/Compat unit tests. Open: three prefab codegen
+  goldens that need the external fixture project.
+- 2026-11-07 05:xx: **project-window, water-reflections and ui-components merged** (landing trains 3 and 4), each
+  after an independent review and its fixes. Integration fixes at landing: the Privacy Manifest Preview became an
+  EditorModal (mobile-shipping's raw modal failed check-editor-modals on main; test table 72 sites); move_asset
+  text trimmed (core back at 99000); a GPU-harness view leak in sprite-batching's tests reset (water goldens were
+  drawn at 256x256); held batch draws flushed before water's scene-colour re-copy; reflection goldens for the
+  Button's new fields and the editor's extra 2D line renderer (camera id 9 -> 10, editor only). Cooked format 1.4
+  (water's planar settings), shader cache v51. Box C: WERROR editor, budget, unit 105 + earlier 294-run, MCP 125 +
+  55 + reflection/determinism 11/11, HTML UI input, web compile, lints, test_grade.
+- Box tool: rsync now compares contents and never copies times (a stale object after a cancelled build crashed
+  the editor in one landing check).

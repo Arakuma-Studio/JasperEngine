@@ -720,25 +720,25 @@ Matrix4 Matrix4::obliqueNearClip(const Vector4& clipPlane) const {
 
     auto sgn = [](float v) -> float { return (v > 0.0f) - (v < 0.0f); };
 
-    // clip-space corner opposite the clip plane, transformed to view space
-    Vector4 q;
-    q.x = (sgn(clipPlane.x) + get(2, 0)) / get(0, 0);
-    q.y = (sgn(clipPlane.y) + get(2, 1)) / get(1, 1);
-    q.z = -1.0f;
-    q.w = (1.0f + get(2, 2)) / get(3, 2);
+    // the view-space point of the far clip-space corner opposite the clip plane, from the
+    // inverse projection, so perspective and orthographic projections both work (the
+    // perspective-only shortcut divides by a w that an orthographic matrix does not have)
+    Vector4 q = inverse() * Vector4(sgn(clipPlane.x), sgn(clipPlane.y), 1.0f, 1.0f);
+    // the projection's w row: (0, 0, -1, 0) perspective, (0, 0, 0, 1) orthographic
+    Vector4 wRow(get(0, 3), get(1, 3), get(2, 3), get(3, 3));
 
-    // scale the plane so the new near plane lands exactly on it
+    // scale the plane so the new near plane lands exactly on it and that corner stays at far
     float denom = clipPlane.dotProduct(q);
     if (std::fabs(denom) < 1e-6f) {
         return m; // plane nearly parallel to view direction (mirror edge-on)
     }
-    Vector4 c = clipPlane * (2.0f / denom);
+    Vector4 c = clipPlane * (2.0f * wRow.dotProduct(q) / denom);
 
-    // replace the projection's depth (3rd) row; x/y/w rows untouched
-    m.set(0, 2, c.x);
-    m.set(1, 2, c.y);
-    m.set(2, 2, c.z + 1.0f);
-    m.set(3, 2, c.w);
+    // replace the projection's depth (3rd) row with c - w; x/y/w rows untouched
+    m.set(0, 2, c.x - wRow.x);
+    m.set(1, 2, c.y - wRow.y);
+    m.set(2, 2, c.z - wRow.z);
+    m.set(3, 2, c.w - wRow.w);
 
     return m;
 }
