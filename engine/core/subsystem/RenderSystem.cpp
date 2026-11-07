@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RenderSystem.h"
+#include "TerrainRenderInfo.h"
 #include "component/CameraComponent.h"
 #include "model/ModelCpuData.h"
 #include "device/QualityResolver.h"

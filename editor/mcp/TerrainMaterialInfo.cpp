@@ -7,7 +7,7 @@
 #include "component/LightComponent.h"
 #include "object/TerrainEdit.h"
 #include "physics/JoltShapeBuilder.h"
-#include "subsystem/RenderSystem.h"
+#include "subsystem/TerrainRenderInfo.h"
 #include "terrain/TerrainHoles.h"
 #include "terrain/TerrainLayers.h"
 #include "texture/TextureData.h"
@@ -92,7 +92,7 @@ terrain::TerrainQualityResolved jasperengine::editor::mcp::terrainEffectiveTier(
         request.hasOverride = true;
         request.globalOverride = forced;
     }
-    const terrain::TerrainVariantInputs variant = RenderSystem::getTerrainVariantInputs(component);
+    const terrain::TerrainVariantInputs variant = getTerrainVariantInputs(component);
     request.hasComponent = variant.hasComponentQuality;
     request.component = variant.componentQuality;
     request.project = terrain::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
@@ -115,13 +115,11 @@ Json jasperengine::editor::mcp::terrainMaterialJson(Scene* scene, Entity entity)
     fetches["by_tier"] = byTier;
 
     Json detail = nullptr;
-    if (std::shared_ptr<RenderSystem> render = scene->getSystem<RenderSystem>()) {
-        GpuTextureFormat format = GpuTextureFormat::RGBA8;
-        int slices = 0;
-        uint64_t bytes = 0;
-        if (render->getTerrainDetailInfo(entity, format, slices, bytes)) {
-            detail = Json{{"format", gpuFormatInfo(format).name}, {"slices", slices}, {"bytes", bytes}};
-        }
+    GpuTextureFormat format = GpuTextureFormat::RGBA8;
+    int slices = 0;
+    uint64_t bytes = 0;
+    if (getTerrainDetailArrayInfo(scene, entity, format, slices, bytes)) {
+        detail = Json{{"format", gpuFormatInfo(format).name}, {"slices", slices}, {"bytes", bytes}};
     }
 
     const terrain::TerrainTierInfo& tier = terrain::terrainTierInfo(resolved.quality);

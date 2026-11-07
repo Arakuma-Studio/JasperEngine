@@ -2452,7 +2452,6 @@ namespace jasperengine{
 		// T3 D1 (RenderSystemTerrain.cpp)
 		void applyTerrainMacroVertexUniform(ObjectRender& render, int slot, const TerrainComponent& terrain);
 	public:
-		static terrain::TerrainVariantInputs getTerrainVariantInputs(const TerrainComponent& terrain);
 		static uint64_t getTerrainDefineBits(const MeshShaderEnvironment& environment, const terrain::TerrainVariantInputs& inputs, bool surfacePath, bool unlit, bool hasNormals);
 		static terrain::TerrainQualityResolved resolveTerrainTier(const MeshShaderEnvironment& environment, const terrain::TerrainVariantInputs& inputs);
 	private:

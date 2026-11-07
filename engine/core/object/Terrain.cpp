@@ -7,6 +7,7 @@
 
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "subsystem/TerrainRenderInfo.h"
 #include "object/TerrainEdit.h"
 
 using namespace jasperengine;
@@ -316,7 +317,7 @@ namespace {
             request.hasOverride = true;
             request.globalOverride = forced;
         }
-        const terrain::TerrainVariantInputs variant = RenderSystem::getTerrainVariantInputs(component);
+        const terrain::TerrainVariantInputs variant = getTerrainVariantInputs(component);
         request.hasComponent = variant.hasComponentQuality;
         request.component = variant.componentQuality;
         request.project = terrain::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
