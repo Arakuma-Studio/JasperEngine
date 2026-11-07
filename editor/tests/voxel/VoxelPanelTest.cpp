@@ -7,6 +7,7 @@
 #include "VoxelTestScene.h"
 
 #include "Out.h"
+#include "render/SceneRender.h"
 #include "voxel/VoxelCreate.h"
 #include "voxel/VoxelMaterials.h"
 #include "voxel/VoxelProblems.h"
@@ -460,4 +461,20 @@ TEST_F(VoxelMaterials, RemoveRefusedInUse) {
     EXPECT_EQ(scene->getComponent<VoxelVolumeComponent>(owner).materialSlots[0].linkedTerrainLayer, 4);
     ASSERT_TRUE(history->undo());
     EXPECT_EQ(scene->getComponent<VoxelVolumeComponent>(owner).materialSlots[0].linkedTerrainLayer, -1);
+}
+
+// R59: Frame Selected and the selection outline take the volume's whole box, which its chunks fill, not
+// its GameObject's point
+TEST_F(VoxelPanel, FramesTheWholeVolume) {
+    addVolume();
+    ASSERT_NE(sceneProject->sceneRender, nullptr);
+    SceneRender& render = *sceneProject->sceneRender;
+    const AABB box = render.getAABB(sceneProject->scene, owner, false);
+    ASSERT_FALSE(box.isNull());
+    EXPECT_NEAR(box.getMinimum().x, 0.0f, 1e-4f);
+    EXPECT_NEAR(box.getMaximum().x, 64.0f, 1e-4f);
+    EXPECT_NEAR(box.getMaximum().y, 64.0f, 1e-4f);
+    EXPECT_NEAR(box.getMaximum().z, 64.0f, 1e-4f);
+    EXPECT_NEAR(render.getAABB(sceneProject->scene, owner, true).getMaximum().x, 64.0f, 1e-4f);
+    EXPECT_NEAR(render.getEntitiesAABB({owner}).getMaximum().z, 64.0f, 1e-4f);
 }

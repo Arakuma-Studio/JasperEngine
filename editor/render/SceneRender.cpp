@@ -51,8 +51,10 @@ extern unsigned int bulb_icon_png_len;
 #include "util/FluidEditorTools.h"
 #include "pose/PoseViewport.h"
 #include "component/ParticleSystemComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "particles/ParticleCompiler.h"
 #include "subsystem/ParticleSubsystem.h"
+#include "subsystem/VoxelSystem.h"
 
 #include <algorithm>
 #include <cmath>
@@ -212,6 +214,15 @@ AABB editor::SceneRender::getMeshLocalAABB(const MeshComponent& mesh){
 
 AABB editor::SceneRender::getAABB(Scene* target, Entity entity, bool local){
     Signature signature = target->getSignature(entity);
+    // a Voxel Volume is its whole box, which its chunks fill (T6 R59): Frame Selected and the outline
+    if (signature.test(target->getComponentId<VoxelVolumeComponent>())){
+        std::shared_ptr<VoxelSystem> voxels = target->findSystem<VoxelSystem>();
+        const AABB box = voxels ? voxels->getGeneratedBounds(entity) : AABB();
+        const Transform* transform = target->findComponent<Transform>(entity);
+        if (!box.isNull() && transform){
+            return local ? transform->modelMatrix.inverse() * box : box;
+        }
+    }
     if (signature.test(target->getComponentId<MeshComponent>())){
         MeshComponent& mesh = target->getComponent<MeshComponent>(entity);
         if (local){
