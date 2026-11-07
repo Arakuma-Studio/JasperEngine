@@ -1047,8 +1047,74 @@ namespace {
 
 // ---- the program's registrations ----
 
-void jasperengine::titleart::registerProgramMembers(TitleArtSchema&) {
+namespace {
+
+    // S81 §6.2: the presets of runtime.characters (TitleCharacters.h expands them)
+    const std::vector<std::string>& characterPresetNames() {
+        static const std::vector<std::string> names = {"digits", "latin", "latin_extended", "kana", "joyo_kanji"};
+        return names;
+    }
+
+    // unknown presets are dropped with a warning, repeats once, in the table's order
+    void finishRuntimeCharacters(Json& characters, const std::string& path, NormalizeContext& context) {
+        Json& presets = characters["presets"];
+        if (!presets.is_array()) return;
+        const std::vector<std::string>& names = characterPresetNames();
+        std::vector<bool> on(names.size(), false);
+        for (size_t i = 0; i < presets.size(); i++) {
+            const std::string name = presets[i].get<std::string>();
+            auto it = std::find(names.begin(), names.end(), name);
+            if (it == names.end()) {
+                const std::string near = nearestName(name, names);
+                context.warn(jsonPathIndex(jsonPathMember(path, "presets"), i),
+                             "unknown preset '" + name + "' dropped" + (near.empty() ? "" : " (did you mean '" + near + "'?)"));
+                continue;
+            }
+            on[(size_t)(it - names.begin())] = true;
+        }
+        Json out = Json::array();
+        for (size_t i = 0; i < names.size(); i++) if (on[i]) out.push_back(names[i]);
+        presets = std::move(out);
+    }
+
+    // S81 §6.2: the document's `runtime` member (Realtime and Glyph Atlas settings; no render
+    // reads it, so it hashes as identity and changes no bake)
+    void registerS81Members(TitleArtSchema& schema) {
+        {
+            KindBuilder k(schema, "runtime_characters", "Characters", HashScope::Identity);
+            k.anim(FxAnim::None).hash(HashScope::Identity);
+            SchemaMember& presets = k.add("presets", ValueType::StringList, Json::array({"latin"}));
+            presets.options = characterPresetNames();
+            k.string("custom", "");
+            k.asset("custom_file").label = "Custom File";
+            k.boolean("document_text", true).label = "Characters Used by the Document";
+            k.kind().finish = &finishRuntimeCharacters;
+            for (SchemaMember& m : k.kind().members) m.owner = "S81";
+        }
+        {
+            KindBuilder k(schema, "runtime", "Runtime", HashScope::Identity);
+            k.anim(FxAnim::None).hash(HashScope::Identity);
+            k.object("characters", "runtime_characters").hash = HashScope::Identity;
+            k.add("glyph_layer", ValueType::LayerRef, "").label = "Glyph Layer";
+            for (SchemaMember& m : k.kind().members) m.owner = "S81";
+        }
+        SchemaMember runtime;
+        runtime.key = "runtime";
+        runtime.type = ValueType::Object;
+        runtime.kind = "runtime";
+        runtime.label = "Runtime";
+        runtime.anim = FxAnim::None;
+        runtime.interp = ParamInterp::Stepped;
+        runtime.hash = HashScope::Identity;
+        runtime.owner = "S81";
+        schema.addMember("document", std::move(runtime));
+    }
+
+}
+
+void jasperengine::titleart::registerProgramMembers(TitleArtSchema& schema) {
     // each later title spec adds one call here (S81, S84-S87), after S80's table
+    registerS81Members(schema);
 }
 
 // ---- TitleArtSchema ----
