@@ -45,8 +45,10 @@ using namespace terrain_uniform_budget_test;
 
 // the Lit matrix's painted terrains, and the painted terrain at each light capacity in the scene
 // with everything that adds to its fragment uniforms: shadows with the High filters, the sky's and
-// a probe's reflections, SSAO, the post colour, with and without fog (the height fog's block)
-TEST(TerrainUniformBudget, PaintedTerrainFitsAtEveryLightCapacity){
+// a probe's reflections, SSAO, the post colour, with and without fog (the height fog's block); and
+// its material normal-mapped (16 fragment textures and 16 samplers before its lights' records),
+// with point and spot lights possible or directional only, at the High and the Medium tier
+TEST(TerrainUniformBudgetSlow, PaintedTerrainFitsAtEveryLightCapacity){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
     std::vector<ShaderLibraryMatrix::Variant> variants;
     for (const ShaderLibraryMatrix::Variant& variant : ShaderLibraryMatrix::buildBuiltinLitVariants()){
@@ -82,6 +84,34 @@ TEST(TerrainUniformBudget, PaintedTerrainFitsAtEveryLightCapacity){
         }
     }
 
+    SubmeshShaderInputs normalMapped = terrain;
+    normalMapped.texCoord1 = true;
+    normalMapped.tangent = true;
+    normalMapped.normalTexture = true;
+    for (int capacity : {8, 16}){
+        for (bool high : {true, false}){
+            for (bool directionalOnly : {false, true}){
+                MeshShaderEnvironment environment;
+                environment.lights = true;
+                environment.shadows = true;
+                environment.shadowsHQ = high;
+                environment.ibl = true;
+                environment.reflectionProbes = true;
+                environment.ssao = true;
+                environment.postColor = true;
+                environment.fog = true;
+                environment.directionalLightsOnly = directionalOnly;
+                environment.lightCapacity = capacity;
+                const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, normalMapped);
+                ASSERT_TRUE(variant.properties & shaderPropertyBit(27)) << "not the painted terrain";
+                variants.push_back({"normal-mapped, " + std::to_string(capacity) + " lights, fog" + (high ? ", high filters" : "") +
+                                    (directionalOnly ? ", directional only" : ""),
+                                    variant.litDefines.empty() ? std::string() : ShaderReference::withFeatures(ShaderReference::BUILTIN_LIT, variant.litDefines),
+                                    ShaderType::MESH, variant.properties});
+            }
+        }
+    }
+
     size_t worst = 0;
     std::string worstName;
     for (const ShaderLibraryMatrix::Variant& variant : variants){
@@ -98,7 +128,17 @@ TEST(TerrainUniformBudget, PaintedTerrainFitsAtEveryLightCapacity){
         std::string fragmentBlocks, vertexBlocks;
         const size_t fragment = terrainStageVectors(data, ShaderStageType::FRAGMENT, fragmentBlocks);
         const size_t vertex = terrainStageVectors(data, ShaderStageType::VERTEX, vertexBlocks);
+        // (16 samplers across the stages, 16 fragment textures: checkResourceBudget)
         EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), "") << name;
+        // the lights' records on every lit one; the spot lights' masks left out only where
+        // the records would not fit otherwise, and the log says so
+        if (variant.properties & shaderPropertyBit(3)){
+            EXPECT_NE(data.getTextureIndexByName("u_lightRecords").first, -1) << name;
+        }
+        if ((variant.properties & shaderPropertyBit(3)) && data.getTextureIndex(TextureShaderType::SPOTMASKATLAS).first == -1 &&
+                !(variant.properties & ShaderPool::getDirectionalOnlyProperty())){
+            EXPECT_NE(log.find(ShaderVariantCompiler::SPOT_MASKS_LEFT_OUT), std::string::npos) << name << ": " << log;
+        }
         EXPECT_LE(fragment, 224u) << name << "; fragment blocks: " << fragmentBlocks;
         EXPECT_LE(vertex, 256u) << name << "; vertex blocks: " << vertexBlocks;
         if (fragment > worst){

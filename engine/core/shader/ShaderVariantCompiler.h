@@ -50,6 +50,8 @@ namespace jasperengine {
     public:
         // what starts the log line of a variant built without PCSS (compile)
         static constexpr const char* PCSS_LEFT_OUT = "pcss-left-out";
+        // what starts the log line of a variant built without the spot lights' masks (compile)
+        static constexpr const char* SPOT_MASKS_LEFT_OUT = "spot-masks-left-out";
 
         using FileReader = std::function<bool(const std::string& path, std::string& content)>;
         using ProgressFn = std::function<void(float progress)>;
@@ -98,7 +100,9 @@ namespace jasperengine {
         // is told how far the build is (0..1); cancelled, when set, stops it between steps.
         // A variant the raw-depth shadow view (PCSS) would take past 16 samplers (both stages) or
         // 16 fragment textures is built without it (SHADOW_RAW_VIEW_OFF), on every backend; log
-        // then has a PCSS_LEFT_OUT line (preprocess gives the source before that fallback).
+        // then has a PCSS_LEFT_OUT line (preprocess gives the source before that fallback). One
+        // reading its lights' records (u_lightRecords) still over them is then built without the
+        // spot lights' masks (SPOT_MASKS_OFF), with a SPOT_MASKS_LEFT_OUT line.
         static bool compile(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
                             ShaderData& out, std::string* error = nullptr, std::string* log = nullptr,
                             const ProgressFn& progress = {}, const std::function<bool()>& cancelled = {});
