@@ -57,17 +57,13 @@ namespace {
         return out;
     }
 
-    void addTerrain(Scene& scene){
-        Terrain terrain(&scene);
-        TerrainComponent& component = scene.getComponent<TerrainComponent>(terrain.getEntity());
-        component.heightMap.setPath("height.png");
-    }
-
 }
 
 TEST(ShaderVariantCollectorTerrain, TiersReachable){
     Scene scene;
-    addTerrain(scene);
+    // the handle owns its entity: it lives as long as the collection
+    Terrain terrain(&scene);
+    scene.getComponent<TerrainComponent>(terrain.getEntity()).heightMap.setPath("height.png");
     // a project at Low on Android: Low's keys, and no High's
     const TierKeys low = collect(scene, terrain::terrainQualityBit(terrain::TerrainQuality::LOW));
     EXPECT_TRUE(low.low);
