@@ -5787,8 +5787,8 @@ void registerWorldTools(McpRegistry& registry) {
     // a key takes the channel-specific keys too (in/out tangents...): free-form, said so (S31)
     openKeyItem["additionalProperties"] = true;
     add("edit_animation", "Edit Animation",
-        "Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from the root whose "
-        "Animation Player plays it; create {from?, humanoid {model?}}; one project undo step. No clip: an entity "
+        "Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from its player's root; "
+        "create {from?, humanoid {model?}}; one project undo step. No clip: an entity "
         "Animation under target (tweens, actions; a scene step). tracks: channel + keys {time, value|points, ease}; "
         "property: component + property; humanoid: bone. audio: sound cues (no clip: audio actions).",
         object({
@@ -5818,6 +5818,7 @@ void registerWorldTools(McpRegistry& registry) {
             // the cue's other keys (path, spatial, volume_db, stop, duration...) are the guide's; the handler checks them
             {"audio", array(object({{"time", number("")}, {"sound", any("")}, {"source", string("")}, {"snapshot", string("")}}, {"time"}, true), "")},
             {"wrap", stringEnum("", {"once", "loop", "ping_pong", "clamp_forever"})},
+            {"root_motion", any("")},
             {"frame_rate", number("")},
             {"length", number("")},
             {"tweens", array(object({

@@ -261,7 +261,8 @@ async def test_file_mode_rejections(ed: Editor):
     r = await ed.call_raw("edit_animation", {"clip": "assets/failfolder/deeper/" + "x" * 300 + ".anim", "create": {}})
     ed.check(r.is_error, f"the write fails: {r.text[:300]}")
     ed.check(not (ed.project / "assets" / "failfolder").exists(), f"the folders made for it are removed: {r.text[:300]}")
-    await refused(ed, "edit_animation", {"clip": WALK_SUB, "wrap": "loop"}, "read-only")
+    # a model clip's keys and events are read-only (its wrap and root_motion are settings: test_model_clip_settings)
+    await refused(ed, "edit_animation", {"clip": WALK_SUB, "events": [{"time": 0, "function": "onStep"}]}, "read-only")
     # all or nothing: a valid track and a bad event change nothing
     await refused(ed, "edit_animation", {"clip": BOB, "tracks": [{"path": "Arm", "channel": "scale", "keys": [{"time": 0, "value": [2, 2, 2]}]}],
                                          "events": [{"time": 0, "function": "1bad"}]}, "nothing was changed")
@@ -1109,7 +1110,9 @@ async def test_guide_names_exist(ed: Editor):
               "humanoid_position", "left_upper_arm", "left_index_proximal", "left_eye", "right_eye", "right_toes",
               "left_foot", "right_foot",
               # audio cues (S40): the .anim audio item's keys, which edit_animation takes (its lean schema leaves them out)
-              "follow_speed", "pitch_semitones", "state_exit", "volume_db"}
+              "follow_speed", "pitch_semitones", "state_exit", "volume_db",
+              # root_motion's members (S74 R53): a free-form object in edit_animation's lean schema
+              "bake_rotation", "bake_position_y", "bake_position_xz"}
     words = set(re.findall(r"(?<![\w./:-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(])", text))
     unknown = sorted(w for w in words if w not in known)
     ed.check(not unknown, f"the guide names unknown things: {unknown}")
