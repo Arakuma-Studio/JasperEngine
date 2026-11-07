@@ -11,11 +11,11 @@
 // @image_sample_type u_taVertexData unfilterable_float
 // @sampler_type u_taVertexData_smp nonfiltering
 
-#if TA_PROGRAM == TA_GEN_QUADS_PARTICLES
-    #define TFX_QUAD_MOTION 1
 #ifndef TITLEART_GEN_TFX_QUADS_GLSL
 #define TITLEART_GEN_TFX_QUADS_GLSL
 
+#if TA_PROGRAM == TA_GEN_QUADS_PARTICLES
+    #define TFX_QUAD_MOTION 1
 uniform u_vs_titleart {
     vec4 p[16];
 } tv;
