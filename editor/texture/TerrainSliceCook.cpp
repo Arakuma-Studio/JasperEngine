@@ -20,7 +20,7 @@ namespace {
     // The fixed settings of a slice (R16): one format per family, so an array's slices can concatenate,
     // and at most the tier table's largest for that family
     void sliceSettings(TextureImportSettings& settings, terrain::DetailSliceKind kind) {
-        settings.type = kind == terrain::DetailSliceKind::NORMAL ? TextureImportType::NormalMap : TextureImportType::Default;
+        settings.type = kind == terrain::DetailSliceKind::NORMAL ? TextureImportType::Normal : TextureImportType::Default;
         // data to the array: the shader decodes a colour itself (terrain_fs.glsl), and one sampler reads them all
         settings.srgb = false;
         settings.mipmaps = true;
