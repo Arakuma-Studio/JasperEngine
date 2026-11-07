@@ -252,6 +252,10 @@ namespace jasperengine::editor {
         void restage();
         const particles::ParticleEffectDocument* sourceDocument(int node, particles::ParticleEffectDocument& scratch) const;
         void wrapLoop();
+        // A looping effect's clock (no Loop Range): its Duration, and the time it is steady from (a
+        // whole number of Durations covering the longest life plus one Duration). The clock runs to
+        // steady + Duration, then goes back one Duration. False for a one-shot effect.
+        bool loopingClock(double& duration, double& steady) const;
         void pushEdit(CommandHistory* history, Command* command, bool commit);
 
         void drawToolbar();

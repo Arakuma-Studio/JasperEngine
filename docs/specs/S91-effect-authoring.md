@@ -295,9 +295,13 @@ The Particle Effect window (R17 to R23, R25, D3, D4, AC14; branch `feature/s91-w
   runs of the old effect, so the re-simulation after an edit starts from 0, at most 4 ms a frame
   with its progress shown. Scrubs and loops use the checkpoints. With the moving emitter on, a seek
   replays the motion tick by tick from 0, because a checkpoint does not hold the emitter's path.
-- **A looping effect's clock wraps** at the end of its timing bars (two of its longest lifetimes) when
-  no Loop Range is set, so the time an edit re-simulates, and the bars' scale, stay bounded (review
-  I2). While a game plays the stage holds its frame and queues none; a paused, settled stage queues
+- **A looping effect's clock goes back by whole Durations** when no Loop Range is set (review I2 and
+  N1, the lead's ruling): it runs to S + D, then back by D, where S is the first whole number of
+  Durations D covering the longest particle life plus one Duration (the steady state). The stage seeks
+  to the time it shows, from the checkpoints, so the preview at a displayed time is the game at that
+  time, the timeline holds the whole Duration, and an edit re-simulates at most S + D. With Per-Loop
+  Seed on, the step back also takes a new seed and seeks with it (from 0, at most S). Several looping
+  systems step back by the longest Duration. While a game plays the stage holds its frame and queues none; a paused, settled stage queues
   no frame either (D4).
 - **R20's per-loop seed** applies to the window's own loops (the Loop Range, or a one-shot effect
   starting again). It does not apply to a looping effect's internal Duration cycles, which the

@@ -463,26 +463,100 @@ TEST(ParticleEffectWindow, ThePreviewWaitsWhileTheGamePlays) {
     EXPECT_GT(window.getTime(), time);
 }
 
-TEST(ParticleEffectWindow, ALoopingEffectsClockWrapsAtItsSpan) {
+// a looping effect's clock (review round 2): the preview at a displayed time is the game at that time
+TEST(ParticleEffectWindow, ALongLoopingEffectIsReachableToItsWholeDuration) {
     ASSERT_TRUE(headless().ready);
-    const std::string path = writeEffect("fx/looping_wrap.particles", fountain());
+    ParticleEffectDocument d = fountain();
+    d.duration = 10.0f;
+    d.main.startLifetime = MinMaxCurve(1.0f);
+    const std::string path = writeEffect("fx/long_loop.particles", d);
     ParticleEffectWindow window(project());
     window.openEffect(path);
+    window.setSeed(5);
     settle(window);
-    const float span = window.timelineSpan();
-    ASSERT_FLOAT_EQ(span, 1.6f);   // two of its longest lifetimes
+    // the bars reach past the Duration
+    EXPECT_GE(window.timelineSpan(), 10.0f);
+    // scrubbed to 7 s it plays on from 7 s, as the game does
+    window.seek(6.9);
+    settle(window);
+    play(window, 6);
+    EXPECT_GT(window.getTime(), 7.0);
+    window.pause();
+    settle(window);
+    const double time = window.getTime();
+    const uint64_t hash = window.stageStats().stateHash;
+    ParticleEffectWindow fresh(project());
+    fresh.openEffect(path);
+    fresh.setSeed(5);
+    fresh.seek(time);
+    settle(fresh);
+    EXPECT_EQ(hash, fresh.stageStats().stateHash);
+}
+
+TEST(ParticleEffectWindow, ALoopingEffectWrapsByWholeDurationsOnceSteady) {
+    ASSERT_TRUE(headless().ready);
+    ParticleEffectDocument d = fountain();
+    d.duration = 1.0f;
+    d.main.startLifetime = MinMaxCurve(0.5f);
+    const std::string path = writeEffect("fx/steady_loop.particles", d);
+    ParticleEffectWindow window(project());
+    window.openEffect(path);
+    window.setSeed(7);
+    settle(window);
+    // steady after two Durations (2 x 1 s >= 0.5 s of life + 1 s): the clock runs to 3 s, then back by 1 s
+    EXPECT_FLOAT_EQ(window.timelineSpan(), 3.0f);
     bool wrapped = false;
     double last = 0.0;
     window.play();
     for (int i = 0; i < 150; i++) {
         window.update(1.0 / 30.0);
-        EXPECT_LE(window.getTime(), span + 1e-6) << i;
-        wrapped = wrapped || window.getTime() < last;
+        if (window.getTime() < last) {
+            wrapped = true;
+            // never back into the warm-up: a whole Duration back, at or past the steady state
+            EXPECT_NEAR(last - window.getTime(), 1.0, 1.0 / 30.0 + 1e-6) << i;
+            EXPECT_GE(window.getTime(), 2.0 - 1e-6) << i;
+        }
+        EXPECT_LE(window.getTime(), 3.0 + 1e-6) << i;
         last = window.getTime();
     }
-    EXPECT_TRUE(wrapped);
-    // the bars keep their scale
-    EXPECT_FLOAT_EQ(window.timelineSpan(), span);
+    ASSERT_TRUE(wrapped);
+    // the wrapped stage is the game at the displayed time
+    window.pause();
+    settle(window);
+    const double time = window.getTime();
+    ParticleEffectWindow fresh(project());
+    fresh.openEffect(path);
+    fresh.setSeed(7);
+    fresh.seek(time);
+    settle(fresh);
+    EXPECT_EQ(window.stageStats().stateHash, fresh.stageStats().stateHash) << time;
+    EXPECT_EQ(window.getSeed(), 7u);
+}
+
+TEST(ParticleEffectWindow, PerLoopSeedOnALoopingEffectSeeksWithTheNewSeed) {
+    ASSERT_TRUE(headless().ready);
+    ParticleEffectDocument d = fountain();
+    d.duration = 1.0f;
+    d.main.startLifetime = MinMaxCurve(0.5f);
+    const std::string path = writeEffect("fx/seeded_loop.particles", d);
+    ParticleEffectWindow window(project());
+    window.openEffect(path);
+    window.setSeed(7);
+    window.setPerLoopSeed(true);
+    settle(window);
+    play(window, 150);
+    // the clock stays within its bounds and the seed moved on
+    EXPECT_LE(window.getTime(), 3.0 + 1e-6);
+    EXPECT_NE(window.getSeed(), 7u);
+    window.pause();
+    settle(window);
+    const double time = window.getTime();
+    ParticleEffectWindow fresh(project());
+    fresh.openEffect(path);
+    fresh.setSeed(window.getSeed());
+    fresh.seek(time);
+    settle(fresh);
+    EXPECT_EQ(window.stageStats().stateHash, fresh.stageStats().stateHash) << time;
 }
 
 TEST(ParticleEffectWindow, ClosingTheWindowReleasesTheStage) {

@@ -43,8 +43,11 @@ The preview plays the effect in a scene of its own, with its own clock:
 - **Seed**: the seed every system plays with. **Reroll** picks another one at the same time.
   **Per-Loop Seed** gives each loop a new seed; otherwise the seed changes only when you ask.
 - **Loop Range**: the clock loops between two times. Without it, a one-shot effect starts again shortly
-  after its last particle dies, and a looping effect starts again at the end of the timing bars (two of its
-  longest lifetimes), so an edit never has more than that to simulate again.
+  after its last particle dies. A looping effect's clock runs through whole Durations: once it is steady (enough
+  loops for its longest-lived particle, plus one), it goes back one Duration at a time, and the preview simulates
+  to the time it shows. So what you see at a time is what the game shows at that time, the whole Duration stays
+  on the timeline, and an edit never has more than that to simulate again. With Per-Loop Seed on, each step back
+  also takes a new seed.
 - While the game plays, the preview holds its frame and spends nothing; it goes on after Stop. A closed
   window keeps no preview scene.
 - **Background**: Dark, Light, Checker (to judge alpha), or Scene Sky (the open scene's sky).

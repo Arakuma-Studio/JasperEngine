@@ -393,16 +393,17 @@ void ParticleEffectWindow::wrapLoop() {
     if (loopRange) {
         if (clock >= loopEnd || clock < loopStart) from = loopStart;
     } else {
-        // a one-shot effect plays again once its last particle is gone; a looping one at the end of
-        // the bars (two lifetimes): its clock, and so what an edit re-simulates, stays that short
-        bool finite = !rows.empty();
-        double end = 0.0;
-        for (const ParticleTimingRow& row : rows) {
-            if (std::isinf(row.end)) finite = false;
-            else end = std::max(end, (double)row.end);
+        double duration = 0.0, steady = 0.0;
+        if (loopingClock(duration, steady)) {
+            // a whole Duration back, once steady: the stage seeks there, so what it shows at the
+            // displayed time is the game at that time, and an edit re-simulates at most this far
+            if (clock >= steady + duration) from = clock - duration;
+        } else {
+            // a one-shot effect plays again once its last particle is gone
+            double end = 0.0;
+            for (const ParticleTimingRow& row : rows) end = std::max(end, (double)row.end);
+            if (!rows.empty() && clock >= end + kOneShotRest) from = 0.0;
         }
-        if (finite && clock >= end + kOneShotRest) from = 0.0;
-        if (!finite && clock >= (double)ParticleEffectTiming::span(rows, 1.0f)) from = 0.0;
     }
     if (from < 0.0) return;
     if (perLoopSeed) {
@@ -471,8 +472,28 @@ void ParticleEffectWindow::setLoopRange(bool enabled, float start, float end) {
     }
 }
 
+bool ParticleEffectWindow::loopingClock(double& duration, double& steady) const {
+    duration = 0.0;
+    double life = 0.0;
+    bool looping = false;
+    for (size_t i = 0; i < nodes.size() && i < rows.size(); i++) {
+        const ParticleTimingRow& row = rows[i];
+        if (std::isinf(row.end)) looping = true;
+        // the longest a particle anywhere in the tree can still be alive for
+        life = std::max(life, (double)row.startMax + (double)row.lifetimeMax);
+        if (row.depth != 0 || !row.looping) continue;
+        ParticleEffectDocument scratch;
+        if (const ParticleEffectDocument* document = sourceDocument((int)i, scratch)) duration = std::max(duration, (double)document->duration);
+    }
+    if (!looping || duration <= 0.0) return false;
+    steady = std::ceil((life + duration) / duration - 1e-9) * duration;
+    return true;
+}
+
 float ParticleEffectWindow::timelineSpan() const {
     float span = ParticleEffectTiming::span(rows, 1.0f);
+    double duration = 0.0, steady = 0.0;
+    if (!loopRange && loopingClock(duration, steady)) span = (float)(steady + duration);
     if (loopRange) span = std::max(span, loopEnd);
     return span;
 }
