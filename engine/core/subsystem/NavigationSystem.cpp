@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "NavigationSystem.h"
+#include "NavigationAreas.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -184,6 +185,8 @@ struct NavigationSystem::Runtime {
         Vector3 carvedPosition;
         Quaternion carvedRotation;
         Vector3 lastPosition;
+        // S55 R30: from its transform, per fixed tick
+        Vector3 velocity;
         float stationaryTime = 0.0f;
         bool carved = false;
         bool hasLast = false;
@@ -232,6 +235,9 @@ struct NavigationSystem::Runtime {
     void moveGridAgent(NavigationSystem& system, Scene* scene, Agent& agent, NavMeshAgentComponent& component, float dt, uint32_t tick);
     void dispatch(Scene* scene);
     std::vector<Entity> sortedAgents(Scene* scene) const;
+    // S55 step 1b: the agents whose path an area change touches ask again (R15)
+    void replanAreaChanges(NavigationSystem& system, Scene* scene);
+    std::vector<int> replanned;
     // ---- S55 queries: an agent whose area mask and costs found no free crowd filter
     void warnFilterFallback(Scene* scene, Surface& surface, Entity entity, int crowdIndex);
 };
@@ -263,6 +269,8 @@ void NavigationSystem::load() {
 }
 
 void NavigationSystem::destroy() {
+    // S55: script volumes end with the system (Stop)
+    areas.reset();
     if (!runtime)
         return;
     for (auto& entry : runtime->surfaces) {
@@ -426,6 +434,7 @@ bool NavigationSystem::reloadNavMesh(Entity surface, std::string& error) {
         return false;
     }
     state.mesh = std::move(mesh);
+    onAreaMeshReplaced(surface);
     return true;
 }
 
@@ -457,6 +466,7 @@ bool NavigationSystem::setNavMeshData(Entity surface, NavMeshData data, std::str
     state.loadError.clear();
     state.dirtyTiles = -1;
     state.tileMs.clear();
+    onAreaMeshReplaced(surface);
     return true;
 }
 
@@ -923,6 +933,9 @@ void NavigationSystem::processBakes(double budgetMs) {
         state.loaded = true;
         if (NavMeshSurfaceComponent* component = surfaceComponent(scene, entry.first))
             state.loadedPath = component->navMeshData.path;
+        // S55 R14: a full bake's new navmesh gets the overrides before anything queries it
+        if (newMesh)
+            onAreaMeshReplaced(entry.first);
         state.lastResult = std::move(result);
         r.events.push_back(Event{entry.first, EventType::BakeCompleted});
     }
@@ -2783,6 +2796,7 @@ void NavigationSystem::Runtime::syncObstacles(NavigationSystem& system, Scene* s
         else
             obstacle.stationaryTime = 0.0f;
         obstacle.lastPosition = position;
+        obstacle.velocity = velocity;
         obstacle.hasLast = true;
 
         for (auto& entry : surfaces) {
@@ -3353,6 +3367,123 @@ void NavigationSystem::Runtime::dispatch(Scene* scene) {
     }
 }
 
+// ---------------------------------------------------------------- S55 areas
+
+NavMesh* NavigationSystem::editableNavMesh(Entity surface) {
+    if (!surfaceComponent(scene, surface))
+        return nullptr;
+    getNavMesh(surface);
+    auto found = rt().surfaces.find(surface);
+    return found != runtime->surfaces.end() ? found->second.mesh.get() : nullptr;
+}
+
+bool NavigationSystem::hasAreaCrowd(Entity surface) const {
+    if (!runtime)
+        return false;
+    auto found = runtime->surfaces.find(surface);
+    return found != runtime->surfaces.end() && found->second.crowd && found->second.crowd->getAgentCount() > 0;
+}
+
+bool NavigationSystem::isLinkOccupied(Entity link) const {
+    if (!runtime)
+        return false;
+    for (const auto& entry : runtime->agents) {
+        if (entry.second.placed && entry.second.onLink && entry.second.link == link)
+            return true;
+    }
+    return false;
+}
+
+Vector3 NavigationSystem::getObstacleVelocity(Entity obstacle) const {
+    if (!runtime)
+        return Vector3();
+    auto found = runtime->obstacles.find(obstacle);
+    return found != runtime->obstacles.end() ? found->second.velocity : Vector3();
+}
+
+bool NavigationSystem::updateLink(Entity link) {
+    const NavMeshLinkComponent* component = scene->findComponent<NavMeshLinkComponent>(link);
+    if (!component)
+        return false;
+    bool ok = true;
+    std::vector<NavLinkState> states;
+    for (Entity surface : surfacesOf(scene, component->agentType)) {
+        NavMesh* mesh = editableNavMesh(surface);
+        if (!mesh || !mesh->isValid())
+            continue;
+        // the surfaces whose navmesh holds the link
+        mesh->getLinkStates(states);
+        if (std::none_of(states.begin(), states.end(), [&](const NavLinkState& state) { return state.userId == (uint32_t)link; }))
+            continue;
+        std::vector<float> costs = mesh->getHeader().linkAreaCosts;
+        const size_t baked = costs.size();
+        std::vector<NavLinkInput> connections;
+        NavBakeCollector::linkConnections(scene, link, NavBakeCollector::frameOf(scene, surface), mesh->getHeader().config.agentRadius,
+                                          &costs, connections);
+        // a cost the bake did not see: the area's (a rebake gives it its own)
+        for (NavLinkInput& connection : connections) {
+            if (connection.polyArea >= FIRST_LINK_COST_AREA + (int)baked)
+                connection.polyArea = connection.area;
+        }
+        std::string error;
+        if (!mesh->updateLink((uint32_t)link, connections, error)) {
+            Log::warn("NavMeshLink '%s' on NavMeshSurface '%s': %s", scene->getEntityName(link).c_str(),
+                      scene->getEntityName(surface).c_str(), error.c_str());
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+void NavigationSystem::Runtime::replanAreaChanges(NavigationSystem& system, Scene* scene) {
+    if (!system.areas)
+        return;
+    for (auto& entry : system.areas->changed) {
+        if (entry.second.empty())
+            continue;
+        auto found = surfaces.find(entry.first);
+        if (found == surfaces.end() || !found->second.crowd) {
+            entry.second.clear();
+            continue;
+        }
+        Surface& surface = found->second;
+        NavCrowd& crowd = *surface.crowd;
+        crowd.replanCrossing(entry.second, replanned);
+        entry.second.clear();
+        for (auto& agentEntry : agents) {
+            Agent& agent = agentEntry.second;
+            if (agent.surface != entry.first || agent.onGrid || !agent.placed || agent.crowdIndex < 0 || !agent.requested || agent.arrived)
+                continue;
+            NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(agentEntry.first);
+            if (!component)
+                continue;
+            if (std::binary_search(replanned.begin(), replanned.end(), agent.crowdIndex)) {
+                if (!component->autoRepath) {
+                    // a path crossing a changed polygon is dropped without Auto Repath (R15)
+                    crowd.resetMoveTarget(agent.crowdIndex);
+                    agent.requested = false;
+                    component->hasPath = false;
+                    component->pathPending = false;
+                    component->pathStatus = PathStatus::Invalid;
+                    events.push_back(Event{agentEntry.first, EventType::PathFailed});
+                    continue;
+                }
+                // its new path's status is taken when it lands, and a failure fires again
+                agent.failed = false;
+                agent.wasPending = true;
+                component->pathPending = true;
+                continue;
+            }
+            // a path that stopped short, or a target that failed, may go through now
+            const bool stoppedShort = component->pathStatus == PathStatus::Partial || crowd.getTargetState(agent.crowdIndex) == NavCrowdTarget::Failed;
+            if (stoppedShort && component->autoRepath && !agent.onLink && crowd.requestMoveTarget(agent.crowdIndex, surface.frame.toNav(agent.destination))) {
+                agent.wasPending = true;
+                component->pathPending = true;
+            }
+        }
+    }
+}
+
 void NavigationSystem::fixedUpdate(double dt) {
     fixedTick++;
     // nothing to do, nothing allocated (spec R25)
@@ -3383,6 +3514,9 @@ void NavigationSystem::fixedUpdate(double dt) {
     r.syncSurfaces(*this, scene);
     // grids that follow their tilemap or terrain
     updateGridSources();
+    // 1b. runtime area volumes and link states (S55 D9); agents whose path they touch ask again
+    syncAreaOverrides();
+    r.replanAreaChanges(*this, scene);
     // 2. transforms -> agents and obstacles
     r.syncAgents(*this, scene);
     r.syncObstacles(*this, scene, step);

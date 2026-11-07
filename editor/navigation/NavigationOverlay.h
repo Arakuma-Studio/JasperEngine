@@ -52,7 +52,9 @@ namespace jasperengine::editor {
         bool showAvoidance = false;
         bool showLinks = true;
         bool showObstacles = true;
-        // ---- S42 diagnostics (R27, R38: written only when not default)
+        // ---- S55 areas: runtime modifier volumes always, script volumes in play (R41)
+        bool showAreaOverrides = true;
+        // ---- S54 diagnostics (R27, R38: written only when not default)
         ColorBy colorBy = ColorBy::Areas;
         // collected triangles steeper than the agent type's Max Slope
         bool showSteepSlopes = false;
@@ -63,7 +65,8 @@ namespace jasperengine::editor {
             return enabled == other.enabled && showNavMesh == other.showNavMesh && showTileBounds == other.showTileBounds &&
                    showHeightMesh == other.showHeightMesh && showGrid == other.showGrid && showPaths == other.showPaths &&
                    showAvoidance == other.showAvoidance && showLinks == other.showLinks && showObstacles == other.showObstacles &&
-                   colorBy == other.colorBy && showSteepSlopes == other.showSteepSlopes && showTileLabels == other.showTileLabels;
+                   showAreaOverrides == other.showAreaOverrides && colorBy == other.colorBy && showSteepSlopes == other.showSteepSlopes &&
+                   showTileLabels == other.showTileLabels;
         }
         bool operator!=(const NavOverlaySettings& other) const { return !(*this == other); }
     };
@@ -120,6 +123,15 @@ namespace jasperengine::editor {
         // "12.4 ms · 210 polys · 18.5 KB" ("– ms" when not built since the navmesh loaded)
         static std::string tileLabelText(const nav::NavTileReport& report);
 
+        // ---- S55 areas: each area override box the last update drew, and its colour (tests)
+        struct AreaOverrideDraw {
+            Entity modifier = NULL_ENTITY;
+            uint32_t handle = 0;
+            Vector4 color;
+            size_t lines = 0;
+        };
+        const std::vector<AreaOverrideDraw>& getAreaOverrideDraws() const { return areaOverrideDraws; }
+
     private:
         struct SurfaceDraw {
             std::vector<Mesh*> meshes;
@@ -161,6 +173,7 @@ namespace jasperengine::editor {
         LineRenderer* lines = nullptr;
         size_t drawnTriangles = 0;
         size_t drawnLines = 0;
+        std::vector<AreaOverrideDraw> areaOverrideDraws;
         size_t drawnSlopeTriangles = 0;
         std::vector<NavTileLabel> tileLabels;
 

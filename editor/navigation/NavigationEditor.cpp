@@ -249,6 +249,8 @@ void NavigationEditor::update(Project* project) {
         if (system && sceneProject.scene->getComponentArray<NavGridComponent>()->size() > 0) {
             system->updateGridSources();
         }
+        // runtime area volumes and link Activated show in edit-mode queries and overlays (S55 D9)
+        if (system && system->syncAreaOverrides()) sceneProject.needUpdateRender = true;
     }
     for (size_t i = 0; i < pending.size();) {
         Pending& entry = pending[i];

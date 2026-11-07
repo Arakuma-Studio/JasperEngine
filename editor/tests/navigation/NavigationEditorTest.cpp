@@ -6,10 +6,20 @@
 // what differs from the defaults and reads back sanitized, the generated main.cpp sets the
 // settings, and the nav-grid brush's stamps, lines, fills and strokes. (The overlay's settings:
 // NavigationOverlayTest.cpp.)
+// S55 (docs/specs/S55-navigation-gameplay-api.md R40, R41, R47): the Link and Modifier fields of
+// old scenes, their Inspector rows' undo, and the overlay's area override boxes.
 
+#include "Project.h"
 #include "Stream.h"
+#include "command/CommandHandle.h"
+#include "command/UndoFakeCommand.h"
+#include "command/type/PropertyCmd.h"
 #include "navigation/NavGridBrush.h"
 #include "navigation/NavigationProjectSettings.h"
+#include "object/Primitive.h"
+#include "subsystem/NavigationSystem.h"
+#include "support/EditorTestSupport.h"
+#include "support/TestTempDir.h"
 
 #include "LogCapture.h"
 
@@ -17,6 +27,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <functional>
 
 using namespace jasperengine;
@@ -56,9 +67,10 @@ NAV_STABLE(NavMeshAgentComponent, component.speed = 5.0f; component.autoBraking 
 NAV_STABLE(NavMeshObstacleComponent, component.shape = NavObstacleShape::CAPSULE; component.radius = 2.0f; component.carve = true;
            component.carveOnlyStationary = false; component.moveThreshold = 0.3f)
 NAV_STABLE(NavMeshLinkComponent, component.startPoint = Vector3(-1, 0, 2); component.endPoint = Vector3(3, 1, 2);
-           component.width = 2.0f; component.costModifier = 4.0f; component.bidirectional = false; component.area = 4)
+           component.width = 2.0f; component.costModifier = 4.0f; component.bidirectional = false; component.area = 4;
+           component.activated = false)
 NAV_STABLE(NavMeshModifierComponent, component.overrideInclusion = NavModifierInclusion::EXCLUDE; component.overrideArea = true;
-           component.area = 1; component.useVolume = true; component.volumeSize = Vector3(2, 2, 2))
+           component.area = 1; component.useVolume = true; component.volumeSize = Vector3(2, 2, 2); component.applyAtRuntime = true)
 NAV_STABLE(NavGridComponent, component.layout = nav::GridLayout::Hex; component.width = 20; component.height = 9;
            component.cellSize = 0.5f; component.source = NavGridSource::TILEMAP; component.emptyCellArea = 0;
            component.tileAreas = {{"water", 3}, {"wall", 1}}; component.collidersBlock = true;
@@ -148,4 +160,163 @@ TEST(NavGridBrush, StrokeRecordsFirstOldAndLastNew){
     stroke.revert(map);
     EXPECT_EQ(map.countOverrides(), 0);
     for (int i = 0; i < map.getCellCount(); i++) EXPECT_EQ(map.getAreaAt(i), nav::AREA_WALKABLE);
+}
+
+// ---------------------------------------------------------------- S55 runtime areas and links
+
+namespace {
+
+    // tools/fixtures/prefab-runtime, loaded headless: its Main Scene takes the GameObjects
+    class NavigationEditorTest : public ::testing::Test {
+    protected:
+        editor::test::UndoStatics statics;
+        jasperengine::test::TestTempDir dir{"nav-rows"};
+        std::unique_ptr<Project> project;
+        SceneProject* scene = nullptr;
+        uint32_t sceneId = 0;
+
+        void SetUp() override {
+            std::filesystem::copy(std::filesystem::path(JASPER_TEST_REPO_DIR) / "tools/fixtures/prefab-runtime", dir.path(),
+                                  std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
+            project = std::make_unique<Project>();
+            project->setSkipProjectLock(true);
+            ASSERT_TRUE(project->loadProject(dir.path(), false));
+            for (SceneProject& candidate : project->getScenes()) {
+                if (!candidate.filepath.empty() && !candidate.scene) project->loadScene(candidate.filepath, false, false, true);
+            }
+            for (SceneProject& candidate : project->getScenes()) {
+                if (candidate.scene && candidate.name == "Main Scene") scene = &candidate;
+            }
+            ASSERT_NE(scene, nullptr);
+            sceneId = scene->id;
+            project->setSelectedSceneId(sceneId);
+        }
+        void TearDown() override {
+            if (project) editor::test::closeProject(*project);
+            project.reset();
+        }
+        CommandHistory* history() { return CommandHandle::get(sceneId); }
+
+        Entity addObject(const char* name) {
+            Scene* s = scene->scene;
+            const Entity entity = s->createEntity();
+            s->setEntityName(entity, name);
+            s->addComponent<Transform>(entity, {});
+            scene->entities.push_back(entity);
+            return entity;
+        }
+    };
+
+}
+
+// AC29 (R47): a scene saved before S55 has no Activated or Apply At Runtime: they load as their
+// defaults and the next save writes them
+TEST_F(NavigationEditorTest, OldSceneLoadsDefaults){
+    const YAML::Node link = YAML::Load("enabled: true\nagentType: 0\nstartPoint: [0, 0, -2.5]\nendPoint: [0, 0, 2.5]\nwidth: 0\n"
+                                       "costModifier: -1\nbidirectional: true\nautoUpdatePosition: false\narea: 2\n");
+    const NavMeshLinkComponent decodedLink = Stream::decodeNavMeshLinkComponent(link);
+    EXPECT_TRUE(decodedLink.activated);
+    const YAML::Node linkAgain = Stream::encodeNavMeshLinkComponent(decodedLink);
+    ASSERT_TRUE(linkAgain["activated"]);
+    EXPECT_TRUE(linkAgain["activated"].as<bool>());
+
+    const YAML::Node modifier = YAML::Load("enabled: true\noverrideInclusion: auto\noverrideArea: true\narea: 1\napplyToChildren: true\n"
+                                           "useVolume: true\nvolumeCenter: [0, 1, 0]\nvolumeSize: [4, 3, 4]\n");
+    const NavMeshModifierComponent decodedModifier = Stream::decodeNavMeshModifierComponent(modifier);
+    EXPECT_FALSE(decodedModifier.applyAtRuntime);
+    EXPECT_TRUE(decodedModifier.useVolume);
+    const YAML::Node modifierAgain = Stream::encodeNavMeshModifierComponent(decodedModifier);
+    ASSERT_TRUE(modifierAgain["applyAtRuntime"]);
+    EXPECT_FALSE(modifierAgain["applyAtRuntime"].as<bool>());
+
+    // set, they round trip
+    NavMeshLinkComponent off;
+    off.activated = false;
+    EXPECT_FALSE(Stream::decodeNavMeshLinkComponent(YAML::Load(YAML::Dump(Stream::encodeNavMeshLinkComponent(off)))).activated);
+    NavMeshModifierComponent runtime;
+    runtime.applyAtRuntime = true;
+    EXPECT_TRUE(Stream::decodeNavMeshModifierComponent(YAML::Load(YAML::Dump(Stream::encodeNavMeshModifierComponent(runtime)))).applyAtRuntime);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// AC29 (R40): Activated and Apply At Runtime are Inspector rows (PropertyCmd, undoable)
+TEST_F(NavigationEditorTest, GameplayRowsUndo){
+    Scene* s = scene->scene;
+    const Entity bridge = addObject("Bridge");
+    s->addComponent<NavMeshLinkComponent>(bridge, {});
+    const Entity door = addObject("Door");
+    NavMeshModifierComponent volume;
+    volume.useVolume = true;
+    s->addComponent<NavMeshModifierComponent>(door, volume);
+
+    ASSERT_TRUE(history()->addCommand(new PropertyCmd<bool>(project.get(), sceneId, bridge, ComponentType::NavMeshLinkComponent, "activated", false)));
+    EXPECT_FALSE(s->getComponent<NavMeshLinkComponent>(bridge).activated);
+    ASSERT_TRUE(history()->addCommand(new PropertyCmd<bool>(project.get(), sceneId, door, ComponentType::NavMeshModifierComponent, "applyAtRuntime", true)));
+    EXPECT_TRUE(s->getComponent<NavMeshModifierComponent>(door).applyAtRuntime);
+
+    ASSERT_TRUE(history()->undo());
+    EXPECT_FALSE(s->getComponent<NavMeshModifierComponent>(door).applyAtRuntime);
+    ASSERT_TRUE(history()->undo());
+    EXPECT_TRUE(s->getComponent<NavMeshLinkComponent>(bridge).activated);
+}
+
+// AC30 (R41): a runtime modifier volume is drawn whether selected or not, its 12 box lines in its
+// area's colour: solid while applied, at 35 % alpha while disabled
+TEST_F(NavigationEditorTest, OverlayDrawsAreaOverrides){
+    nav::NavigationSettings settings = nav::NavigationSettings::defaults();
+    settings.areas[4].color = Vector4(0.9f, 0.2f, 0.1f, 1.0f);
+    nav::setSettings(settings);
+    {
+        Scene sceneValue;
+        Scene* s = &sceneValue;
+        Primitive floor(s);
+        floor.createPlane(20.0f, 20.0f);
+        s->addComponent<NavMeshSurfaceComponent>(floor.getEntity(), NavMeshSurfaceComponent());
+        const Entity door = s->createEntity();
+        s->addComponent<Transform>(door, {});
+        NavMeshModifierComponent modifier;
+        modifier.useVolume = true;
+        modifier.applyAtRuntime = true;
+        modifier.area = 4;
+        modifier.volumeCenter = Vector3(0.0f, 0.0f, 0.0f);
+        modifier.volumeSize = Vector3(2.0f, 2.0f, 2.0f);
+        s->addComponent<NavMeshModifierComponent>(door, modifier);
+        NavigationSystem* system = s->getSystem<NavigationSystem>().get();
+        system->setKeepBakeData(true);
+        ASSERT_TRUE(system->bakeNow(floor.getEntity(), NavBakeMode::FULL).ok);
+        system->syncAreaOverrides();
+
+        SceneProject sceneProject;
+        sceneProject.id = 1;
+        sceneProject.scene = s;
+        NavOverlaySettings overlaySettings;
+        // no navmesh triangles: no camera is needed
+        overlaySettings.showNavMesh = false;
+        NavigationOverlay overlay(s);
+        overlay.update(sceneProject, nullptr, {}, overlaySettings);
+        ASSERT_EQ(overlay.getAreaOverrideDraws().size(), 1u);
+        NavigationOverlay::AreaOverrideDraw drawn = overlay.getAreaOverrideDraws()[0];
+        EXPECT_EQ(drawn.modifier, door);
+        EXPECT_EQ(drawn.lines, 12u);
+        EXPECT_FLOAT_EQ(drawn.color.x, 0.9f);
+        EXPECT_FLOAT_EQ(drawn.color.y, 0.2f);
+        EXPECT_FLOAT_EQ(drawn.color.w, 1.0f);
+
+        // disabled: still drawn, faint
+        s->getComponent<NavMeshModifierComponent>(door).enabled = false;
+        system->syncAreaOverrides();
+        overlay.update(sceneProject, nullptr, {}, overlaySettings);
+        ASSERT_EQ(overlay.getAreaOverrideDraws().size(), 1u);
+        drawn = overlay.getAreaOverrideDraws()[0];
+        EXPECT_EQ(drawn.lines, 12u);
+        EXPECT_FLOAT_EQ(drawn.color.w, 0.35f);
+
+        // Show Area Overrides off: none
+        overlaySettings.showAreaOverrides = false;
+        overlay.update(sceneProject, nullptr, {}, overlaySettings);
+        EXPECT_TRUE(overlay.getAreaOverrideDraws().empty());
+        overlay.hide();
+        sceneProject.scene = nullptr;
+    }
+    nav::setSettings(nav::NavigationSettings::defaults());
 }

@@ -93,6 +93,8 @@ namespace jasperengine {
         static void registerProfilerClasses(lua_State *L);
         static void registerGameplayClasses(lua_State *L);
         static void registerNavigationClasses(lua_State *L);
+        // S55: NavMeshObstacle, NavMeshLink, NavMeshModifier, NavAreaOverride (NavigationComponentsLua.cpp)
+        static void registerNavigationComponentClasses(lua_State *L);
         static void registerSplineClasses(lua_State *L);
         static void registerCrashClasses(lua_State *L);
 #if JASPERENGINE_HTMLUI

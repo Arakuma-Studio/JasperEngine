@@ -36,6 +36,9 @@ using namespace jasperengine::editor;
 
 namespace {
 
+    // the alpha of what is drawn but not in effect: a deactivated link, an area override not applied
+    constexpr float DEACTIVATED_ALPHA = 0.35f;
+
     const char* pathsName(NavOverlaySettings::Paths paths) {
         switch (paths) {
             case NavOverlaySettings::Paths::None: return "none";
@@ -156,6 +159,7 @@ YAML::Node editor::encodeNavOverlaySettings(const NavOverlaySettings& settings) 
     if (settings.showAvoidance != defaults.showAvoidance) node["showAvoidance"] = settings.showAvoidance;
     if (settings.showLinks != defaults.showLinks) node["showLinks"] = settings.showLinks;
     if (settings.showObstacles != defaults.showObstacles) node["showObstacles"] = settings.showObstacles;
+    if (settings.showAreaOverrides != defaults.showAreaOverrides) node["showAreaOverrides"] = settings.showAreaOverrides;
     if (settings.colorBy != defaults.colorBy) node["colorBy"] = colorByName(settings.colorBy);
     if (settings.showSteepSlopes != defaults.showSteepSlopes) node["showSteepSlopes"] = settings.showSteepSlopes;
     if (settings.showTileLabels != defaults.showTileLabels) node["showTileLabels"] = settings.showTileLabels;
@@ -179,6 +183,7 @@ void editor::decodeNavOverlaySettings(const YAML::Node& node, NavOverlaySettings
     readBool("showAvoidance", settings.showAvoidance);
     readBool("showLinks", settings.showLinks);
     readBool("showObstacles", settings.showObstacles);
+    readBool("showAreaOverrides", settings.showAreaOverrides);
     readBool("showSteepSlopes", settings.showSteepSlopes);
     readBool("showTileLabels", settings.showTileLabels);
     try {
@@ -764,7 +769,12 @@ void NavigationOverlay::drawGizmos(SceneProject& sceneProject, const std::set<En
             if (!transform) continue;
             const Vector3 a = transform->modelMatrix * link.startPoint;
             const Vector3 b = transform->modelMatrix * link.endPoint;
-            const Vector4 color = link.enabled ? areaColor(link.area, 1.0f) : Vector4(0.6f, 0.6f, 0.6f, 0.8f);
+            Vector4 color = link.enabled ? areaColor(link.area, 1.0f) : Vector4(0.6f, 0.6f, 0.6f, 0.8f);
+            // S55: a deactivated link is faint, one an agent is crossing is white (R41)
+            if (!link.activated)
+                color.w *= DEACTIVATED_ALPHA;
+            else if (playing && system && system->isLinkOccupied(entity))
+                color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
             reserve(40);
             const Vector3 up = transform->worldRotation * Vector3(0, 1, 0);
             addArc(lines, a, b, up, link.bidirectional, color);
@@ -821,10 +831,29 @@ void NavigationOverlay::drawGizmos(SceneProject& sceneProject, const std::set<En
         const Entity entity = modifiers->getEntity(i);
         const NavMeshModifierComponent& modifier = modifiers->getComponentFromIndex(i);
         const Transform* transform = scene->findComponent<Transform>(entity);
-        if (!transform || !modifier.useVolume || !selected.count(entity)) continue;
+        // a runtime volume is drawn with the area overrides
+        if (!transform || !modifier.useVolume || !selected.count(entity) || (modifier.applyAtRuntime && settings.showAreaOverrides)) continue;
         reserve(12);
         const Vector4 color = modifier.overrideArea ? areaColor(modifier.area, 1.0f) : Vector4(0.8f, 0.8f, 0.8f, 1.0f);
         addBox(lines, transform->modelMatrix, modifier.volumeCenter, modifier.volumeSize, color);
+    }
+
+    // ---- S55 areas: runtime modifier volumes always, script volumes in play, in their area's colour:
+    // solid while applied, faint while not (R41)
+    areaOverrideDraws.clear();
+    if (settings.showAreaOverrides && system) {
+        for (const NavigationSystem::AreaOverrideStatus& status : system->getAreaOverrides()) {
+            if (status.handle != 0 && !playing) continue;
+            AreaOverrideDraw draw;
+            draw.modifier = status.modifier;
+            draw.handle = status.handle;
+            draw.color = areaColor(status.area, status.applied ? 1.0f : DEACTIVATED_ALPHA);
+            reserve(12);
+            const size_t before = lines->getComponent<LineRendererComponent>().lines.size();
+            addBox(lines, status.box, Vector3(), Vector3(1.0f, 1.0f, 1.0f), draw.color);
+            draw.lines = lines->getComponent<LineRendererComponent>().lines.size() - before;
+            areaOverrideDraws.push_back(draw);
+        }
     }
 
     // the query of the Path Tester or visualize_navigation: start green, end red, a Complete

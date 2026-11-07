@@ -33957,6 +33957,7 @@
    "icon": "ee9388",
    "key": "navmeshlink",
    "known_keys": [
+    "activated",
     "agentType",
     "area",
     "autoUpdatePosition",
@@ -33969,6 +33970,11 @@
    ],
    "name": "NavMeshLinkComponent",
    "properties_of_default": {
+    "activated": [
+     0,
+     0,
+     true
+    ],
     "agentType": [
      8,
      0,
@@ -34016,6 +34022,11 @@
     ]
    },
    "properties_without_component": {
+    "activated": [
+     0,
+     0,
+     true
+    ],
     "agentType": [
      8,
      0,
@@ -34092,6 +34103,7 @@
    "icon": "ef97ae",
    "key": "navmeshmodifier",
    "known_keys": [
+    "applyAtRuntime",
     "applyToChildren",
     "area",
     "enabled",
@@ -34103,6 +34115,11 @@
    ],
    "name": "NavMeshModifierComponent",
    "properties_of_default": {
+    "applyAtRuntime": [
+     0,
+     0,
+     true
+    ],
     "applyToChildren": [
      0,
      0,
@@ -34145,6 +34162,11 @@
     ]
    },
    "properties_without_component": {
+    "applyAtRuntime": [
+     0,
+     0,
+     true
+    ],
     "applyToChildren": [
      0,
      0,
@@ -43767,6 +43789,11 @@
    ]
   },
   "NavMeshLinkComponent": {
+   "activated": [
+    0,
+    0,
+    true
+   ],
    "agentType": [
     8,
     0,
@@ -43814,6 +43841,11 @@
    ]
   },
   "NavMeshModifierComponent": {
+   "applyAtRuntime": [
+    0,
+    0,
+    true
+   ],
    "applyToChildren": [
     0,
     0,

@@ -535,6 +535,8 @@ void editor::InspectorWindow::drawNavMeshLinkComponent(ComponentType cpType, Sce
     settingsAuto.help = "Follow the GameObject when it moves (the link is updated at runtime)";
     RowSettings settingsArea;
     settingsArea.enumEntries = &areaEntries().entries;
+    RowSettings settingsActivated;
+    settingsActivated.help = "Agents may use it; off: paths and agents ignore it (an agent on it finishes). Not baked";
 
     beginTable(cpType, getLabelSize("Auto Update Positions"));
     propertyRow(RowPropertyType::Enum, cpType, "agentType", "Agent Type", sceneProject, entities, settingsAgent);
@@ -545,7 +547,13 @@ void editor::InspectorWindow::drawNavMeshLinkComponent(ComponentType cpType, Sce
     propertyRow(RowPropertyType::Bool, cpType, "autoUpdatePosition", "Auto Update Positions", sceneProject, entities, settingsAuto);
     propertyRow(RowPropertyType::Bool, cpType, "bidirectional", "Bidirectional", sceneProject, entities, settingsBidirectional);
     propertyRow(RowPropertyType::Enum, cpType, "area", "Area Type", sceneProject, entities, settingsArea);
+    propertyRow(RowPropertyType::Bool, cpType, "activated", "Activated", sceneProject, entities, settingsActivated);
     endTable();
+
+    // ---- S55 areas: in play, whether an agent is crossing it (R17)
+    NavigationSystem* system = NavigationEditor::systemOf(*sceneProject);
+    if (entities.size() == 1 && system && sceneProject->playState != ScenePlayState::STOPPED)
+        ImGui::TextDisabled("Occupied: %s", system->isLinkOccupied(entities[0]) ? "yes" : "no");
 
     if (entities.size() == 1) {
         const NavMeshLinkComponent& link = scene->getComponent<NavMeshLinkComponent>(entities[0]);
@@ -581,11 +589,17 @@ void editor::InspectorWindow::drawNavMeshModifierComponent(ComponentType cpType,
     settingsChildren.help = "Its descendants too (the nearest modifier wins)";
     RowSettings settingsVolume;
     settingsVolume.help = "Mark a box (this GameObject's space) instead of the GameObject's geometry";
+    RowSettings settingsRuntime;
+    settingsRuntime.indent = true;
+    settingsRuntime.help = "The bake only splits the navmesh along the volume; while enabled, the polygons inside take its Area Type "
+                           "(a door, a bridge), in edit mode and in play";
+    // a runtime volume always marks its Area Type (S55 R40)
+    const bool runtimeVolume = modifier.useVolume && modifier.applyAtRuntime;
 
-    beginTable(cpType, getLabelSize("Apply To Children"));
+    beginTable(cpType, getLabelSize("Apply At Runtime"));
     propertyRow(RowPropertyType::Enum, cpType, "overrideInclusion", "Mode", sceneProject, entities, settingsInclusion);
     propertyRow(RowPropertyType::Bool, cpType, "overrideArea", "Override Area", sceneProject, entities, settingsOverride);
-    if (modifier.overrideArea) propertyRow(RowPropertyType::Enum, cpType, "area", "Area Type", sceneProject, entities, settingsArea);
+    if (modifier.overrideArea || runtimeVolume) propertyRow(RowPropertyType::Enum, cpType, "area", "Area Type", sceneProject, entities, settingsArea);
     propertyRow(RowPropertyType::Bool, cpType, "applyToChildren", "Apply To Children", sceneProject, entities, settingsChildren);
     propertyRow(RowPropertyType::Bool, cpType, "useVolume", "Volume", sceneProject, entities, settingsVolume);
     if (modifier.useVolume) {
@@ -593,8 +607,14 @@ void editor::InspectorWindow::drawNavMeshModifierComponent(ComponentType cpType,
         child.indent = true;
         propertyRow(RowPropertyType::Vector3, cpType, "volumeCenter", "Center", sceneProject, entities, child);
         propertyRow(RowPropertyType::Vector3, cpType, "volumeSize", "Size", sceneProject, entities, child);
+        propertyRow(RowPropertyType::Bool, cpType, "applyAtRuntime", "Apply At Runtime", sceneProject, entities, settingsRuntime);
     }
     endTable();
+
+    // ---- S55 areas: in play, the polygons the runtime volume holds now
+    NavigationSystem* system = NavigationEditor::systemOf(*sceneProject);
+    if (entities.size() == 1 && runtimeVolume && system && sceneProject->playState != ScenePlayState::STOPPED)
+        ImGui::TextDisabled("Applied Polygons: %d", system->getModifierAppliedPolygons(entities[0]));
 }
 
 void editor::InspectorWindow::drawNavGridComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities) {

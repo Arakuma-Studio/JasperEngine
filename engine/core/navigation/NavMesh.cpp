@@ -386,6 +386,7 @@ bool NavMeshFile::read(const uint8_t* bytes, size_t size, NavMeshData& out, std:
 #if JASPERENGINE_NAVIGATION
 
 #include "NavDetourSupport.h"
+#include "NavPolyState.h"
 
 #include "DetourAlloc.h"
 #include "DetourCommon.h"
@@ -603,6 +604,8 @@ struct NavMesh::Impl {
     mutable NavIslandLabels islands;
     mutable uint64_t labelledRevision = 0;
     mutable uint64_t searches = 0;
+    // S55: runtime overrides and link states, made on the first one (R18)
+    std::unique_ptr<detail::NavPolyState> polyState;
     // ---- S55 queries: the passable polygons of a mask (and island) with their cumulative areas,
     // for random points uniform by area; dropped when the revision changes
     struct RandomTable {
@@ -618,7 +621,31 @@ struct NavMesh::Impl {
 
     ~Impl() { release(); }
 
+    // S55 R14: overrides and link states over the tiles just added or rebuilt; true when a
+    // polygon changed (the caller bumps the revision)
+    bool tilesChanged() {
+        if (!polyState)
+            return false;
+        bindPolyState();
+        return polyState->onTilesChanged();
+    }
+
+    void bindPolyState() {
+        const NavBuildConfig& c = header.config;
+        // a polygon's centroid within a step of a volume's height range is in it
+        polyState->bind(navMesh, c.tileWorldSize(), std::max(c.agentClimb, c.cellHeight));
+    }
+
+    detail::NavPolyState& polys() {
+        if (!polyState)
+            polyState = std::make_unique<detail::NavPolyState>();
+        bindPolyState();
+        return *polyState;
+    }
+
     void release() {
+        if (polyState)
+            polyState->forget();
         islands = NavIslandLabels();
         labelledRevision = 0;
         if (query) dtFreeNavMeshQuery(query);
@@ -951,6 +978,7 @@ bool NavMesh::create(NavMeshData data, bool keepData, std::string& error) {
     if (keepData)
         impl->data = std::move(data);
     impl->valid = true;
+    impl->tilesChanged();
     impl->bump();
     return true;
 }
@@ -1024,6 +1052,7 @@ bool NavMesh::replaceTiles(const std::vector<NavTileCoord>& coords, std::vector<
         }
     }
     impl->data = std::move(next);
+    impl->tilesChanged();
     impl->bump();
     return true;
 }
@@ -1076,6 +1105,8 @@ size_t NavMesh::getMemoryBytes() const {
         bytes += table.refs.capacity() * sizeof(dtPolyRef) + table.cumulative.capacity() * sizeof(float);
     if (impl->keepData)
         bytes += impl->data.memoryBytes();
+    if (impl->polyState)
+        bytes += impl->polyState->memoryBytes();
     return bytes;
 }
 
@@ -1548,7 +1579,10 @@ bool NavMesh::updateCarving(double budgetMs, bool& upToDate, int& tilesRebuilt) 
         if (elapsed >= budgetMs)
             break;
     }
-    if (changed)
+    // S55 R14: Detour reports the cache up to date in the call that builds its last touched tile,
+    // which the loop does not count: the overrides check every tile's reference instead
+    const bool overridden = impl->tilesChanged();
+    if (changed || overridden)
         impl->bump();
     return true;
 }
@@ -1586,12 +1620,19 @@ bool NavMesh::updateLink(uint32_t userId, const std::vector<NavLinkInput>& conne
         }
         if (!impl->buildCarvedTiles(touched, error))
             return false;
+        impl->tilesChanged();
         impl->bump();
         return true;
     }
 
-    // static tiles: patch the connections in a copy of their tile and re-add it
+    // static tiles: patch the connections in a copy of their tile and re-add it. A tile is copied
+    // in its baked state (S55): its overrides and link states apply again on the way out
     dtNavMesh* mesh = impl->navMesh;
+    auto refuse = [&](const char* why) {
+        error = why;
+        impl->tilesChanged();
+        return false;
+    };
     size_t next = 0;
     std::vector<std::pair<dtTileRef, std::vector<unsigned char>>> patched;
     for (int i = 0; i < mesh->getMaxTiles() && next <= connections.size(); i++) {
@@ -1602,20 +1643,19 @@ bool NavMesh::updateLink(uint32_t userId, const std::vector<NavLinkInput>& conne
         for (int c = 0; c < tile->header->offMeshConCount; c++) {
             if (tile->offMeshCons[c].userId != userId)
                 continue;
-            if (next >= connections.size()) {
-                error = "the link has fewer connections than it was baked with; rebake the surface";
-                return false;
-            }
+            if (next >= connections.size())
+                return refuse("the link has fewer connections than it was baked with; rebake the surface");
             const NavLinkInput& link = connections[next++];
             const float* bmin = tile->header->bmin;
             const float* bmax = tile->header->bmax;
             if (link.start[0] < bmin[0] || link.start[0] >= bmax[0] || link.start[2] < bmin[2] || link.start[2] >= bmax[2] ||
-                link.start[1] < bmin[1] || link.start[1] > bmax[1]) {
-                error = "the link's start left its baked tile; rebake the surface";
-                return false;
-            }
-            if (copy.empty())
+                link.start[1] < bmin[1] || link.start[1] > bmax[1])
+                return refuse("the link's start left its baked tile; rebake the surface");
+            if (copy.empty()) {
+                if (impl->polyState)
+                    impl->polyState->restoreTile(tile);
                 copy.assign(tile->data, tile->data + tile->dataSize);
+            }
             const size_t offMeshOffset = (size_t)((const unsigned char*)tile->offMeshCons - tile->data);
             const size_t vertsOffset = (size_t)((const unsigned char*)tile->verts - tile->data);
             const size_t polysOffset = (size_t)((const unsigned char*)tile->polys - tile->data);
@@ -1638,20 +1678,18 @@ bool NavMesh::updateLink(uint32_t userId, const std::vector<NavLinkInput>& conne
         if (!copy.empty())
             patched.emplace_back(mesh->getTileRef(tile), std::move(copy));
     }
-    if (next != connections.size()) {
-        error = "the link has more connections than it was baked with; rebake the surface";
-        return false;
-    }
+    if (next != connections.size())
+        return refuse("the link has more connections than it was baked with; rebake the surface");
     for (auto& entry : patched) {
         mesh->removeTile(entry.first, nullptr, nullptr);
         unsigned char* data = (unsigned char*)dtAlloc(entry.second.size(), DT_ALLOC_PERM);
         std::memcpy(data, entry.second.data(), entry.second.size());
         if (dtStatusFailed(mesh->addTile(data, (int)entry.second.size(), DT_TILE_FREE_DATA, 0, nullptr))) {
             dtFree(data);
-            error = "Detour refused a patched tile";
-            return false;
+            return refuse("Detour refused a patched tile");
         }
     }
+    impl->tilesChanged();
     impl->bump();
     return true;
 }
@@ -2014,6 +2052,76 @@ bool NavMesh::tileCovers(const NavTileBlob& staticTile, const NavBuildConfig& co
     return covered;
 }
 
+// ---------------------------------------------------------------- S55 areas
+
+uint32_t NavMesh::addAreaOverride(const NavConvexVolume& volume, uint8_t area, uint64_t order) {
+    bool changed = false;
+    const uint32_t id = impl->polys().add(volume, area, order, changed);
+    if (changed)
+        impl->bump();
+    return id;
+}
+
+bool NavMesh::updateAreaOverride(uint32_t id, const NavConvexVolume& volume, uint8_t area) {
+    if (!impl->polyState)
+        return false;
+    bool changed = false;
+    const bool found = impl->polys().update(id, volume, area, changed);
+    if (changed)
+        impl->bump();
+    return found;
+}
+
+bool NavMesh::removeAreaOverride(uint32_t id) {
+    if (!impl->polyState)
+        return false;
+    bool changed = false;
+    const bool found = impl->polys().remove(id, changed);
+    if (changed)
+        impl->bump();
+    return found;
+}
+
+int NavMesh::getAreaOverridePolyCount(uint32_t id) const {
+    if (!impl->polyState || !impl->valid)
+        return impl->polyState && impl->polyState->has(id) ? 0 : -1;
+    return impl->polyState->polyCount(id);
+}
+
+void NavMesh::setLinkActive(uint32_t userId, bool active) {
+    // every link starts active: nothing to make for it
+    if (active && !impl->polyState)
+        return;
+    if (impl->polys().setLinkActive(userId, active))
+        impl->bump();
+}
+
+bool NavMesh::isLinkActive(uint32_t userId) const {
+    return !impl->polyState || impl->polyState->isLinkActive(userId);
+}
+
+void NavMesh::takeChangedPolys(std::vector<uint32_t>& out) {
+    out.clear();
+    if (impl->polyState)
+        impl->polyState->takeChanged(out);
+}
+
+size_t NavMesh::getPolyStateTileCount() const {
+    return impl->polyState ? impl->polyState->snapshotCount() : 0;
+}
+
+std::vector<uint8_t> NavMesh::getTileStateBytes(int x, int y, int layer) const {
+    std::vector<uint8_t> bytes;
+    if (!impl->valid)
+        return bytes;
+    const dtMeshTile* tile = static_cast<const dtNavMesh*>(impl->navMesh)->getTileAt(x, y, layer);
+    if (!tile || !tile->header)
+        return bytes;
+    bytes.resize((size_t)impl->navMesh->getTileStateSize(tile));
+    impl->navMesh->storeTileState(tile, bytes.data(), (int)bytes.size());
+    return bytes;
+}
+
 #else // JASPERENGINE_NAVIGATION
 
 // Without Recast/Detour: the data model and its file format work (an editor can read and write
@@ -2109,6 +2217,15 @@ void NavMesh::getLinkStates(std::vector<NavLinkState>& out) const { out.clear();
 void NavMesh::getTileInfos(std::vector<NavTileInfo>& out) const { out.clear(); }
 uint32_t NavMesh::getPolyAt(const Vector3&, const NavFilter&, const Vector3&) const { return 0; }
 bool NavMesh::setPolyFlags(uint32_t, uint16_t) { logUnavailable(); return false; }
+uint32_t NavMesh::addAreaOverride(const NavConvexVolume&, uint8_t, uint64_t) { logUnavailable(); return 0; }
+bool NavMesh::updateAreaOverride(uint32_t, const NavConvexVolume&, uint8_t) { return false; }
+bool NavMesh::removeAreaOverride(uint32_t) { return false; }
+int NavMesh::getAreaOverridePolyCount(uint32_t) const { return -1; }
+void NavMesh::setLinkActive(uint32_t, bool) {}
+bool NavMesh::isLinkActive(uint32_t) const { return true; }
+void NavMesh::takeChangedPolys(std::vector<uint32_t>& out) { out.clear(); }
+size_t NavMesh::getPolyStateTileCount() const { return 0; }
+std::vector<uint8_t> NavMesh::getTileStateBytes(int, int, int) const { return {}; }
 bool NavMesh::tileCovers(const NavTileBlob&, const NavBuildConfig&, const Vector3&, const Vector3&) { logUnavailable(); return false; }
 
 #endif // JASPERENGINE_NAVIGATION

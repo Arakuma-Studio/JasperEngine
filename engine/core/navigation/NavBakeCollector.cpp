@@ -447,7 +447,7 @@ namespace {
         void collectColliders2D();
         void collectVolumes();
         void collectLinks();
-        void addVolume(const Matrix4& worldOf, const Vector3& center, const Vector3& size, uint8_t recastArea);
+        void addVolume(const Matrix4& worldOf, const Vector3& center, const Vector3& size, uint8_t recastArea, bool boundaryOnly = false);
 #ifdef JASPERENGINE_PHYSICS_2D
         void addFootprint(const std::vector<Vector2>& worldPolygon, uint8_t recastArea);
 #endif
@@ -978,33 +978,12 @@ namespace {
 #endif
     }
 
-    void Collector::addVolume(const Matrix4& worldOf, const Vector3& center, const Vector3& size, uint8_t recastArea) {
-        // the box's footprint in nav space (the hull of its corners) and its height range
-        std::vector<Vector2> footprint;
-        float minY = std::numeric_limits<float>::max(), maxY = -std::numeric_limits<float>::max();
-        for (int c = 0; c < 8; c++) {
-            const Vector3 local(center.x + ((c & 1) ? 0.5f : -0.5f) * size.x, center.y + ((c & 2) ? 0.5f : -0.5f) * size.y,
-                                center.z + ((c & 4) ? 0.5f : -0.5f) * size.z);
-            const Vector3 nav = frame.toNav(worldOf * local);
-            footprint.push_back(Vector2(nav.x, nav.z));
-            minY = std::min(minY, nav.y);
-            maxY = std::max(maxY, nav.y);
-        }
-        const std::vector<Vector2> hull = convexHull2D(footprint);
-        if (hull.size() < 3)
-            return;
+    void Collector::addVolume(const Matrix4& worldOf, const Vector3& center, const Vector3& size, uint8_t recastArea, bool boundaryOnly) {
         NavConvexVolume volume;
-        for (const Vector2& p : hull) {
-            volume.points.push_back(p.x);
-            volume.points.push_back(p.y);
-        }
-        if (frame.plane == NavPlane::XY) {
-            minY = -std::numeric_limits<float>::max() * 0.5f;
-            maxY = std::numeric_limits<float>::max() * 0.5f;
-        }
-        volume.minY = minY;
-        volume.maxY = maxY;
+        if (!NavBakeCollector::boxVolume(frame, worldOf, center, size, volume))
+            return;
         volume.recastArea = recastArea;
+        volume.boundaryOnly = boundaryOnly;
         input->volumes.push_back(std::move(volume));
         if (options.recordSources)
             input->volumeSources.push_back(source);
@@ -1021,7 +1000,7 @@ namespace {
         std::vector<std::pair<int, Entity>> ordered;
         for (Entity entity : entities) {
             const NavMeshModifierComponent& modifier = scene->getComponent<NavMeshModifierComponent>(entity);
-            if (!modifier.enabled || !modifier.useVolume || !inScope(entity))
+            if (!modifier.enabled || !modifier.useVolume || modifier.applyAtRuntime || !inScope(entity))
                 continue;
             const uint8_t area = areaIndex(modifier.overrideArea ? modifier.area : surface.defaultArea);
             ordered.emplace_back(area == AREA_NOT_WALKABLE ? AREA_COUNT : area, entity);
@@ -1036,6 +1015,16 @@ namespace {
             const uint8_t area = entry.first == AREA_COUNT ? AREA_NOT_WALKABLE : (uint8_t)entry.first;
             addVolume(transform->modelMatrix, modifier.volumeCenter, modifier.volumeSize,
                       area == AREA_NOT_WALKABLE ? RECAST_NULL_AREA : (uint8_t)(area + 1));
+        }
+        // S55 R11, D4: runtime volumes last, enabled or not: the bake splits the polygons along
+        // them and keeps their areas; NavigationSystem applies their area at runtime
+        for (Entity entity : entities) {
+            const NavMeshModifierComponent& modifier = scene->getComponent<NavMeshModifierComponent>(entity);
+            const Transform* transform = scene->findComponent<Transform>(entity);
+            if (!modifier.useVolume || !modifier.applyAtRuntime || !transform || !inScope(entity))
+                continue;
+            source = entity;
+            addVolume(transform->modelMatrix, modifier.volumeCenter, modifier.volumeSize, RECAST_NULL_AREA, true);
         }
     }
 
@@ -1220,6 +1209,42 @@ NavBuildConfig NavBakeCollector::configOf(Scene* scene, const NavMeshSurfaceComp
 #endif
     return NavBuildConfig::derive(agent, surface.plane, surface.overrideCellSize ? surface.cellSize : 0.0f, tileSize,
                                   surface.minRegionArea, surface.runtimeCarving, unitScaleOf(scene, surface));
+}
+
+bool NavBakeCollector::boxVolume(const NavFrame& frame, const Matrix4& worldOf, const Vector3& center, const Vector3& size,
+                                 NavConvexVolume& out) {
+    // the box's footprint in nav space (the hull of its corners) and its height range
+    std::vector<Vector2> footprint;
+    float minY = std::numeric_limits<float>::max(), maxY = -std::numeric_limits<float>::max();
+    for (int c = 0; c < 8; c++) {
+        const Vector3 local(center.x + ((c & 1) ? 0.5f : -0.5f) * size.x, center.y + ((c & 2) ? 0.5f : -0.5f) * size.y,
+                            center.z + ((c & 4) ? 0.5f : -0.5f) * size.z);
+        const Vector3 nav = frame.toNav(worldOf * local);
+        footprint.push_back(Vector2(nav.x, nav.z));
+        minY = std::min(minY, nav.y);
+        maxY = std::max(maxY, nav.y);
+    }
+    const std::vector<Vector2> hull = convexHull2D(footprint);
+    if (hull.size() < 3)
+        return false;
+    out = NavConvexVolume();
+    out.bmin[0] = out.bmin[2] = std::numeric_limits<float>::max();
+    out.bmax[0] = out.bmax[2] = -std::numeric_limits<float>::max();
+    for (const Vector2& p : hull) {
+        out.points.push_back(p.x);
+        out.points.push_back(p.y);
+        out.bmin[0] = std::min(out.bmin[0], p.x);
+        out.bmax[0] = std::max(out.bmax[0], p.x);
+        out.bmin[2] = std::min(out.bmin[2], p.y);
+        out.bmax[2] = std::max(out.bmax[2], p.y);
+    }
+    if (frame.plane == NavPlane::XY) {
+        minY = -std::numeric_limits<float>::max() * 0.5f;
+        maxY = std::numeric_limits<float>::max() * 0.5f;
+    }
+    out.minY = out.bmin[1] = minY;
+    out.maxY = out.bmax[1] = maxY;
+    return true;
 }
 
 void NavBakeCollector::linkConnections(Scene* scene, Entity entity, const NavFrame& frame, float agentRadius,

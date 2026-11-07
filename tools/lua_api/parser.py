@@ -2917,6 +2917,14 @@ OVERRIDES[('UIDocument', 'reload')] = {
     'overloads': [([], ''), ([('options', '{mode: "patch"|"rebuild"}')], '')]}
 PROPERTY_OVERRIDES[('UIDocument', 'onReload')] = ('fun(report: UIReloadReport)|nil', False)
 
+# S55 runtime areas (NavigationComponentsLua.cpp): script volumes
+OVERRIDES[('NavigationSystem', 'setAreaInVolume')] = {
+    'doc': ['A script volume (a world box): the navmesh polygons whose centre lies in it take `area` (1 Not',
+            'Walkable: nothing walks there) until `remove()`, on every surface of `options.agentType` (all by',
+            'default); it ends at Stop. nil for an area outside 0-15.'],
+    'overloads': [([('center', 'Vector3'), ('size', 'Vector3'), ('area', 'integer'),
+                    ('options?', '{rotation: Quaternion|nil, agentType: string|integer|nil}')], 'NavAreaOverride|nil')]}
+
 # S19 navigation: the queries returning (bool, hit) and the link data table
 _NAV_FILTER = 'NavMeshQueryFilter|integer'
 OVERRIDES[('NavigationSystem', 'samplePosition')] = {

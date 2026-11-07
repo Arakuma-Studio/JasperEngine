@@ -85,6 +85,54 @@ namespace {
         }
     }
 
+    // whether the xz point lies in the polygon (xyz triplets; crossings of a ray along +x)
+    bool insidePolygonXZ(const std::vector<float>& polygon, float x, float z) {
+        bool inside = false;
+        const size_t count = polygon.size() / 3;
+        for (size_t i = 0, j = count - 1; i < count; j = i++) {
+            const float xi = polygon[i * 3], zi = polygon[i * 3 + 2];
+            const float xj = polygon[j * 3], zj = polygon[j * 3 + 2];
+            if ((zi > z) != (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi)
+                inside = !inside;
+        }
+        return inside;
+    }
+
+    // S55 D4: a runtime volume's boundary on the compact heightfield. A walkable span of the
+    // areas (Recast ids 1-16) whose cell centre lies in the prism keeps its area, moved to the
+    // runtime volume ids, so region building splits the polygons along the volume. Our own
+    // loop over the prism's cells, as rcMarkConvexPolyArea walks them.
+    void markRuntimeVolume(const std::vector<float>& polygon, float low, float high, rcCompactHeightfield& chf) {
+        float minX = polygon[0], maxX = polygon[0], minZ = polygon[2], maxZ = polygon[2];
+        for (size_t i = 3; i + 2 < polygon.size(); i += 3) {
+            minX = std::min(minX, polygon[i]);
+            maxX = std::max(maxX, polygon[i]);
+            minZ = std::min(minZ, polygon[i + 2]);
+            maxZ = std::max(maxZ, polygon[i + 2]);
+        }
+        const int x0 = std::max(0, (int)std::floor((minX - chf.bmin[0]) / chf.cs));
+        const int x1 = std::min(chf.width - 1, (int)std::floor((maxX - chf.bmin[0]) / chf.cs));
+        const int z0 = std::max(0, (int)std::floor((minZ - chf.bmin[2]) / chf.cs));
+        const int z1 = std::min(chf.height - 1, (int)std::floor((maxZ - chf.bmin[2]) / chf.cs));
+        const int y0 = (int)std::floor((low - chf.bmin[1]) / chf.ch);
+        const int y1 = (int)std::floor((high - chf.bmin[1]) / chf.ch);
+        for (int z = z0; z <= z1; z++) {
+            for (int x = x0; x <= x1; x++) {
+                const float px = chf.bmin[0] + ((float)x + 0.5f) * chf.cs;
+                const float pz = chf.bmin[2] + ((float)z + 0.5f) * chf.cs;
+                if (!insidePolygonXZ(polygon, px, pz))
+                    continue;
+                const rcCompactCell& cell = chf.cells[x + z * chf.width];
+                for (unsigned int i = cell.index, end = cell.index + cell.count; i < end; i++) {
+                    const unsigned char area = chf.areas[i];
+                    const int y = (int)chf.spans[i].y;
+                    if (area >= 1 && area <= AREA_COUNT && y >= y0 && y <= y1)
+                        chf.areas[i] = (unsigned char)(area + RUNTIME_VOLUME_AREA_OFFSET);
+                }
+            }
+        }
+    }
+
 }
 
 struct NavMeshBuilder::TileJob::State {
@@ -336,7 +384,10 @@ void NavMeshBuilder::TileJob::State::markAreas() {
             const float high = std::min(volume.maxY, chf.bmax[1] + chf.ch);
             if (low > high)
                 continue;
-            rcMarkConvexPolyArea(&context, polygon.data(), (int)(polygon.size() / 3), low, high, volume.recastArea, chf);
+            if (volume.boundaryOnly)
+                markRuntimeVolume(polygon, low, high, chf);
+            else
+                rcMarkConvexPolyArea(&context, polygon.data(), (int)(polygon.size() / 3), low, high, volume.recastArea, chf);
         }
         return;
     }

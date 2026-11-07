@@ -203,11 +203,12 @@ namespace {
         JE_FIELD(NavMeshLinkComponent, bidirectional, .tooltip = "Agents may cross it both ways."),
         JE_FIELD(NavMeshLinkComponent, autoUpdatePosition, .label = "Auto Update Positions", .tooltip = "Follow the GameObject when it moves (the link is updated at runtime)."),
         JE_FIELD(NavMeshLinkComponent, area, .label = "Area Type"),
+        JE_FIELD(NavMeshLinkComponent, activated, .tooltip = "Agents may use it; off: paths and agents ignore it (an agent on it finishes). Not baked."),
     };
 
     const ComponentCodec kNavMeshLinkCodec = JE_STREAM_CODEC(NavMeshLinkComponent, encodeNavMeshLinkComponent, decodeNavMeshLinkComponent);
 
-    constexpr const char* kNavMeshLinkKnownKeys[] = {"agentType", "area", "autoUpdatePosition", "bidirectional", "costModifier", "enabled",
+    constexpr const char* kNavMeshLinkKnownKeys[] = {"activated", "agentType", "area", "autoUpdatePosition", "bidirectional", "costModifier", "enabled",
         "endPoint", "startPoint", "width"};
 
     // ---------------------------------------------------------------- NavMesh Modifier
@@ -222,12 +223,13 @@ namespace {
         JE_FIELD(NavMeshModifierComponent, useVolume, .label = "Volume", .tooltip = "Mark a box (this GameObject's space) instead of the GameObject's geometry."),
         JE_FIELD(NavMeshModifierComponent, volumeCenter, .unit = Unit::Meters, .label = "Center"),
         JE_FIELD(NavMeshModifierComponent, volumeSize, .unit = Unit::Meters, .label = "Size"),
+        JE_FIELD(NavMeshModifierComponent, applyAtRuntime, .tooltip = "The bake only splits the navmesh along the volume; while enabled, the polygons inside take its Area Type (a door, a bridge)."),
     };
 
     const ComponentCodec kNavMeshModifierCodec = JE_STREAM_CODEC(NavMeshModifierComponent, encodeNavMeshModifierComponent,
                                                                  decodeNavMeshModifierComponent);
 
-    constexpr const char* kNavMeshModifierKnownKeys[] = {"applyToChildren", "area", "enabled", "overrideArea", "overrideInclusion",
+    constexpr const char* kNavMeshModifierKnownKeys[] = {"applyAtRuntime", "applyToChildren", "area", "enabled", "overrideArea", "overrideInclusion",
         "useVolume", "volumeCenter", "volumeSize"};
 
     // ---------------------------------------------------------------- Nav Grid

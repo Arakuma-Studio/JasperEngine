@@ -2539,6 +2539,7 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         drawSettingRow("    Show NavGrid", nav.showGrid, !nav.enabled);
         drawSettingRow("    Show Links", nav.showLinks, !nav.enabled);
         drawSettingRow("    Show Obstacles", nav.showObstacles, !nav.enabled);
+        drawSettingRow("    Show Area Overrides", nav.showAreaOverrides, !nav.enabled);
         drawSettingRow("    Show Avoidance", nav.showAvoidance, !nav.enabled);
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);

@@ -29,6 +29,9 @@ namespace jasperengine{
         // moving it at runtime moves its connections
         bool autoUpdatePosition = false;
         int area = nav::AREA_JUMP;
+        // ---- S55: agents may use it (Unity 2.0's activated). Not a bake input: off, its baked
+        // connections pass nothing until it is on again, in edit mode and in play
+        bool activated = true;
     };
 
 }

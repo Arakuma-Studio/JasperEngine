@@ -744,6 +744,27 @@ size_t NavCrowd::getMemoryBytes() const {
            (size_t)impl->capacity * 4 * sizeof(unsigned short) + 4096 * 48 + impl->params.capacity() * sizeof(NavCrowdAgentParams);
 }
 
+void NavCrowd::replanCrossing(const std::vector<uint32_t>& changedPolys, std::vector<int>& replanned) {
+    replanned.clear();
+    if (!impl->crowd || changedPolys.empty())
+        return;
+    for (int index = 0; index < impl->capacity; index++) {
+        const dtCrowdAgent* ag = impl->agent(index);
+        if (!ag->active || impl->params[(size_t)index].obstacle || impl->onLink[(size_t)index] || ag->state != DT_CROWDAGENT_STATE_WALKING ||
+            ag->targetState != DT_CROWDAGENT_TARGET_VALID)
+            continue;
+        const dtPolyRef* path = ag->corridor.getPath();
+        const int count = ag->corridor.getPathCount();
+        for (int i = 0; i < count; i++) {
+            if (std::binary_search(changedPolys.begin(), changedPolys.end(), (uint32_t)path[i])) {
+                impl->crowd->requestMoveTarget(index, ag->targetRef, ag->targetPos);
+                replanned.push_back(index);
+                break;
+            }
+        }
+    }
+}
+
 #else // JASPERENGINE_NAVIGATION
 
 namespace {
@@ -798,5 +819,6 @@ int NavCrowd::getFilterCount() const { return 0; }
 int NavCrowd::getFilterOverflowCount() const { return 0; }
 bool NavCrowd::isFilterFallback(int) const { return false; }
 size_t NavCrowd::getMemoryBytes() const { return 0; }
+void NavCrowd::replanCrossing(const std::vector<uint32_t>&, std::vector<int>& replanned) { replanned.clear(); }
 
 #endif // JASPERENGINE_NAVIGATION

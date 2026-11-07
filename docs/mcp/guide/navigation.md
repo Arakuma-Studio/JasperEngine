@@ -160,6 +160,24 @@ agent:setDestination(Vector3(10, 0, 5))
 `get_runtime_entity` on an agent shows destination, pathStatus, pathPending, remainingDistance,
 velocity, isOnNavMesh and isOnOffMeshLink. Events fire after the fixed step, in entity order.
 
+Doors and bridges in play (no rebake): a door is a `navmeshmodifier` with `useVolume` and
+`applyAtRuntime` (its `area`, e.g. 1 Not Walkable, applies while it is enabled); a bridge is a
+`navmeshlink` with `activated`. Toggle them, then check the path:
+
+```json
+{"tool": "set_runtime_property", "args": {"entity": "Door", "component": "navmeshmodifier", "property": "enabled", "value": true}}
+{"tool": "query_navigation", "args": {"op": "path", "from": [-10, 0, 0], "to": [14, 0, 0]}}
+{"tool": "set_runtime_property", "args": {"entity": "Bridge", "component": "navmeshlink", "property": "activated", "value": false}}
+{"tool": "get_navigation_info", "args": {}}
+```
+
+- The path's `status` turns `partial` while the door is closed. `get_navigation_info` lists
+  `area_overrides` (`source`, `area`, `applied`, `polygons`) and each link's `activated` (and
+  `occupied` in play); `get_runtime_entity` shows a modifier's `appliedPolygons`, a link's `occupied`
+  and an obstacle's `velocity`. `visualize_navigation` `show.area_overrides` draws the volumes.
+- Agents whose path crosses the change ask again at the next fixed tick. Script volumes are Lua
+  (`nav:setAreaInVolume`, through `eval_lua`).
+
 Grids (2D, tilemaps, strategy):
 
 ```json

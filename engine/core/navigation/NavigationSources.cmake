@@ -17,11 +17,17 @@ set(JASPERENGINE_NAVIGATION_SRCS
     core/navigation/GridPathfinder.cpp
     core/util/MeshTriangles.cpp
     core/subsystem/NavigationSystem.cpp
+    core/subsystem/NavigationAreas.cpp
     core/object/navigation/NavMeshAgent.cpp
     core/object/navigation/NavMeshSurface.cpp
     core/object/navigation/NavGrid.cpp
+    core/object/navigation/NavMeshObstacle.cpp
+    core/object/navigation/NavMeshLink.cpp
+    core/object/navigation/NavMeshModifier.cpp
+    core/object/navigation/NavAreaOverride.cpp
     core/script/binding/NavigationClassesLua.cpp
+    core/script/binding/NavigationComponentsLua.cpp
 )
 if(JASPERENGINE_NAVIGATION)
-    list(APPEND JASPERENGINE_NAVIGATION_SRCS core/navigation/NavDetourSupport.cpp)
+    list(APPEND JASPERENGINE_NAVIGATION_SRCS core/navigation/NavDetourSupport.cpp core/navigation/NavPolyState.cpp)
 endif()

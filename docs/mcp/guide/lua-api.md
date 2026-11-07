@@ -3008,6 +3008,29 @@ local near, edge = nav:findClosestEdge(Vector3(0, 0, 0), nil, 5.0)
 | NavMeshAgent `setAreaCost(area, cost)`, `getAreaCost(area)`, `resetAreaCost(area)` | runtime only (gone at Stop) |
 | `NavAreas.All`, `Walkable`, `NotWalkable`, `Jump` (masks), `NavAreas.maskOf(area)`, `getAreaFromName(name)`, `getAreaName(area)`, `getAreaCost(area)` | areas are 0-15 |
 
+### 4.22 Navigation: NavMeshObstacle, NavMeshLink, NavMeshModifier, NavAreaOverride
+
+Unity's scripting names over the components (`jasper://docs/navigation`, "Script names"). A door
+is a NavMesh Modifier with Volume and Apply At Runtime; a script volume does the same from code.
+
+```lua
+local door = NavMeshModifier(self.scene, self.entity)
+door.enabled = false                                  -- the runtime volume stops applying: the door opens
+local bridge = NavMeshLink(self.scene, self.entity)
+bridge.activated = false                              -- paths and agents ignore it
+local nav = self.scene:getNavigationSystem()
+local gate = nav:setAreaInVolume(Vector3(0, 1, 0), Vector3(2, 3, 1), 1, {rotation = Quaternion()})
+gate.area = 0 ; gate:remove()
+```
+
+| Member | Notes |
+|---|---|
+| NavMeshObstacle `enabled`, `shape` (`NavMeshObstacleShape.CAPSULE` / `BOX`), `center`, `size`, `radius`, `height`, `carving`, `carveOnlyStationary`, `carvingMoveThreshold`, `carvingTimeToStationary` | rw; `velocity` read (from its transform each fixed tick) |
+| NavMeshLink `enabled`, `agentTypeID`, `startPoint`, `endPoint`, `width`, `costModifier`, `bidirectional`, `area`, `autoUpdate`, `activated` | rw; `occupied` read (an agent is crossing it); `updateLink()` moves its baked connections to its fields |
+| NavMeshModifier `enabled`, `area`, `center`, `size` | rw: a runtime volume applies again at once; `useVolume`, `applyAtRuntime`, `overrideArea`, `applyToChildren` read (bake inputs); `appliedPolygons` read |
+| NavigationSystem `setAreaInVolume(center, size, area[, {rotation, agentType}])` | a NavAreaOverride (nil for an area outside 0-15): the polygons whose centre lies in the box take `area` until `remove()`; ends at Stop |
+| NavAreaOverride `area`, `center`, `size`, `rotation` | rw; `valid`, `handle`, `appliedPolygons` read; `remove()` |
+
 ## 5. Enums (exact Lua spelling; values are integers)
 
 | Namespace | Values |

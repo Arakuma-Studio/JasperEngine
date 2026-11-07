@@ -326,6 +326,8 @@ void NavBakeInput::finalize() {
             hasher.f32(volume.minY);
             hasher.f32(volume.maxY);
             hasher.u8(volume.recastArea);
+            if (volume.boundaryOnly)
+                hasher.boolean(true);
         }
 
         for (uint32_t l : tileLinks[index]) {

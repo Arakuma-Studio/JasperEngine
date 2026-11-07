@@ -6,10 +6,16 @@ Scene Gameplay (3D): a 40 x 40 floor (plane x 4) with a NavMesh Surface, a strip
 Agent. test_query_ops (S55 P1): query_navigation's random (seeded, around a point, on an island),
 move_along, closest_edge with max_distance, and the path's cost, corner areas and flags and lengths
 per area, in edit mode and in play.
+
+Scene Doors (S55 P2, nav_doors): two rooms split by a wall with a doorway whose NavMesh Modifier is a
+runtime volume, and a bridge link to a platform. test_door_and_bridge_in_play,
+test_lua_component_handles and test_overlay_screenshot: the door and the bridge toggled in play, the
+Obstacle / Link / Modifier handles and script volumes, and the overlay's area override boxes.
 """
 
 import math
 
+import pngdiff
 from harness import Editor
 
 CI = True
@@ -147,3 +153,197 @@ async def test_query_ops(ed: Editor):
         ed.check(abs(values[9] - 1.0) < 1e-3, f"{got}")
     finally:
         await ed.call("play", action="stop")
+
+
+# ---- S55 P2: runtime areas and links, the component handles, the overlay (AC26, AC28, AC30)
+#
+# Scene Doors (nav_doors): two rooms of a 40 x 12 floor split by a wall at x = 0 with a 2.5 m doorway,
+# a NavMesh Modifier "Door" over the gap with Use Volume and Apply At Runtime (Not Walkable, disabled:
+# the door is open), and a platform beyond a 3 m gap reached only by the "Bridge" link.
+
+D: dict = {}
+
+WEST = [-10, 0, 0]
+EAST = [14, 0, 0]
+ISLAND = [28, 0, 0]
+
+
+async def setup_doors(ed: Editor) -> dict:
+    """The Doors scene, baked once per editor."""
+    if D.get("ed") is ed:
+        return D
+    D.clear()
+    D["ed"] = ed
+    made = await ed.call("create_scene", name="Doors", type="3D", path="scenes/Doors")
+    D["scene"] = sc = made["scene"]["id"]
+    floor = await ed.call("create_entity", scene=sc, type="plane", name="Floor", scale=[4, 1, 1.2])
+    D["floor"] = floor["entity_id"]
+    await ed.call("create_entity", scene=sc, type="plane", name="Platform", position=[27, 0, 0], scale=[0.8, 1, 0.8])
+    for name, z in (("Wall South", -3.625), ("Wall North", 3.625)):
+        await ed.call("create_entity", scene=sc, type="cube", name=name, position=[0, 1.5, z], scale=[1, 3, 4.75])
+    door = await ed.call("create_entity", scene=sc, type="empty", name="Door", position=[0, 1.5, 0])
+    D["door"] = door["entity_id"]
+    await ed.call("add_component", scene=sc, entity=D["door"], component="navmeshmodifier",
+                  values={"navmeshmodifier": {"enabled": False, "useVolume": True, "applyAtRuntime": True, "area": 1,
+                                              "volumeCenter": [0, 0, 0], "volumeSize": [2, 3, 3]}})
+    bridge = await ed.call("create_entity", scene=sc, type="empty", name="Bridge", position=[21.5, 0, 0])
+    D["bridge"] = bridge["entity_id"]
+    await ed.call("add_component", scene=sc, entity=D["bridge"], component="navmeshlink",
+                  values={"navmeshlink": {"startPoint": [-2.5, 0, 0], "endPoint": [2.5, 0, 0]}})
+    crate = await ed.call("create_entity", scene=sc, type="empty", name="Crate", position=[-6, 0.5, 4])
+    D["crate"] = crate["entity_id"]
+    await ed.call("add_component", scene=sc, entity=D["crate"], component="navmeshobstacle")
+    await ed.call("add_component", scene=sc, entity=D["floor"], component="navmeshsurface")
+    await ed.call("save_scene", scene=sc)
+    baked = await ed.call("bake_navigation", scene=sc, mode="full")
+    ed.check(baked["surfaces"][0]["polys"] > 0, f"baked: {baked}")
+    return D
+
+
+async def path_status(ed: Editor, start, end, scene=None) -> str:
+    q = {"scene": scene} if scene is not None else {}
+    path = await ed.call("query_navigation", op="path", **q, **{"from": start}, to=end)
+    return path["status"]
+
+
+def door_override(info: dict, door: int) -> dict:
+    found = [o for o in info["area_overrides"] if o["source"].get("entity", {}).get("id") == door]
+    assert len(found) == 1, f"one area override for the door: {info['area_overrides']}"
+    return found[0]
+
+
+async def test_door_and_bridge_in_play(ed: Editor):
+    """AC28 (R43-R45): the door and the bridge toggled through set_runtime_property in play; the
+    path status, get_navigation_info and get_runtime_entity follow; in edit mode too."""
+    d = await setup_doors(ed)
+    # edit mode: the open door, then closed in the Inspector's field
+    ed.check_eq(await path_status(ed, WEST, EAST, d["scene"]), "complete", "the door is open")
+    info = await ed.call("get_navigation_info", scene=d["scene"])
+    ed.check(not door_override(info, d["door"])["applied"], f"{info['area_overrides']}")
+    bridge = [l for l in info["links"] if l["entity"]["id"] == d["bridge"]][0]
+    ed.check(bridge["activated"] and "occupied" not in bridge, f"{bridge}")
+    door = [m for m in info["modifiers"] if m["entity"]["id"] == d["door"]][0]
+    ed.check(door["apply_at_runtime"] is True, f"{door}")
+
+    st = await ed.call("get_play_state")
+    if st["state"] != "stopped":
+        await ed.call("play", action="stop")
+    started = await ed.call("play", action="start", scene=d["scene"], fixed_fps=60)
+    ed.check_eq(started["state"], "playing", f"{started}")
+    try:
+        await ed.call("set_runtime_property", entity="Door", component="navmeshmodifier", property="enabled", value=True)
+        await ed.call("wait", seconds=60, game_seconds=0.1)
+        ed.check_eq(await path_status(ed, WEST, EAST), "partial", "the closed door blocks the only way east")
+        info = await ed.call("get_navigation_info")
+        closed = door_override(info, d["door"])
+        ed.check(closed["applied"] and closed["polygons"] > 0 and closed["area"] == 1, f"{closed}")
+        live = await ed.call("get_runtime_entity", entity=d["door"], components=["navmeshmodifier"])
+        ed.check(live["components"]["navmeshmodifier"]["appliedPolygons"] == closed["polygons"], f"{live}")
+
+        await ed.call("set_runtime_property", entity="Door", component="navmeshmodifier", property="enabled", value=False)
+        await ed.call("wait", seconds=60, game_seconds=0.1)
+        ed.check_eq(await path_status(ed, WEST, EAST), "complete", "opened again")
+        info = await ed.call("get_navigation_info")
+        ed.check(not door_override(info, d["door"])["applied"], f"{info['area_overrides']}")
+
+        ed.check_eq(await path_status(ed, EAST, ISLAND), "complete", "the bridge leads to the platform")
+        await ed.call("set_runtime_property", entity="Bridge", component="navmeshlink", property="activated", value=False)
+        await ed.call("wait", seconds=60, game_seconds=0.1)
+        ed.check_eq(await path_status(ed, EAST, ISLAND), "partial", "a deactivated bridge is ignored")
+        info = await ed.call("get_navigation_info")
+        bridge = [l for l in info["links"] if l["entity"]["id"] == d["bridge"]][0]
+        ed.check(not bridge["activated"] and bridge["occupied"] is False, f"{bridge}")
+        live = await ed.call("get_runtime_entity", entity=d["bridge"], components=["navmeshlink"])
+        ed.check(live["components"]["navmeshlink"]["occupied"] is False, f"{live}")
+        live = await ed.call("get_runtime_entity", entity=d["crate"], components=["navmeshobstacle"])
+        ed.check_eq(live["components"]["navmeshobstacle"]["velocity"], [0, 0, 0], f"a crate standing still: {live}")
+    finally:
+        await ed.call("play", action="stop")
+    # Stop restores the edited scene: the bridge is active, the door open
+    ed.check_eq(await path_status(ed, EAST, ISLAND, d["scene"]), "complete", "after Stop")
+
+
+async def test_lua_component_handles(ed: Editor):
+    """AC26 (R30-R33): the NavMeshObstacle, NavMeshLink and NavMeshModifier handles read and write each
+    member with Unity's names, setAreaInVolume's NavAreaOverride, and jasper://lua-api lists them."""
+    d = await setup_doors(ed)
+    st = await ed.call("get_play_state")
+    if st["state"] != "stopped":
+        await ed.call("play", action="stop")
+    started = await ed.call("play", action="start", scene=d["scene"], fixed_fps=60)
+    ed.check_eq(started["state"], "playing", f"{started}")
+    try:
+        got = await ed.call("eval_lua", code=(
+            "local o = NavMeshObstacle(scene, entity('Crate')) "
+            "o.shape = NavMeshObstacleShape.CAPSULE o.radius = 0.75 o.height = 1.5 o.center = Vector3(0, 0.5, 0) "
+            "o.size = Vector3(2, 1, 2) o.carving = true o.carveOnlyStationary = false o.carvingMoveThreshold = 0.3 "
+            "o.carvingTimeToStationary = 0.25 "
+            "local obstacle = {o.valid, o.enabled, o.shape == NavMeshObstacleShape.CAPSULE, o.radius, o.height, o.center.y, "
+            "o.size.x, o.carving, o.carveOnlyStationary, o.carvingMoveThreshold, o.carvingTimeToStationary, o.velocity.x} "
+            "o.carving = false "
+            "local l = NavMeshLink(scene, entity('Bridge')) "
+            "l.width = 1 l.costModifier = 3 l.bidirectional = false l.area = 2 l.autoUpdate = true l.agentTypeID = 0 "
+            "l.startPoint = Vector3(-2.5, 0, 0) l.endPoint = Vector3(2.5, 0, 0) "
+            "local link = {l.valid, l.enabled, l.width, l.costModifier, l.bidirectional, l.area, l.autoUpdate, l.agentTypeID, "
+            "l.startPoint.x, l.endPoint.x, l.activated, l.occupied} "
+            "l.width = 0 l.costModifier = -1 l.bidirectional = true l.autoUpdate = false "
+            "l.activated = false local off = scene:getNavigationSystem():calculatePath(Vector3(14, 0, 0), Vector3(28, 0, 0)).status "
+            "l.activated = true local on = scene:getNavigationSystem():calculatePath(Vector3(14, 0, 0), Vector3(28, 0, 0)).status "
+            "local m = NavMeshModifier(scene, entity('Door')) "
+            "local before = m.appliedPolygons m.enabled = true local applied = m.appliedPolygons "
+            "local shut = scene:getNavigationSystem():calculatePath(Vector3(-10, 0, 0), Vector3(14, 0, 0)).status "
+            "m.area = 4 local muddy = scene:getNavigationSystem():calculatePath(Vector3(-10, 0, 0), Vector3(14, 0, 0)).status "
+            "m.enabled = false m.area = 1 m.center = Vector3(0, 0, 0) m.size = Vector3(2, 3, 3) "
+            "local modifier = {m.valid, m.useVolume, m.applyAtRuntime, m.overrideArea, m.applyToChildren, before, applied > 0, "
+            "shut == NavMeshPathStatus.Partial, muddy == NavMeshPathStatus.Complete, m.area, m.size.z} "
+            "local nav = scene:getNavigationSystem() "
+            "local v = nav:setAreaInVolume(Vector3(0, 1.5, 0), Vector3(2, 3, 3), NavAreas.getAreaFromName('Not Walkable'), {rotation = Quaternion()}) "
+            "local blocked = nav:calculatePath(Vector3(-10, 0, 0), Vector3(14, 0, 0)).status "
+            "local volume = {v.valid, v.area, v.size.x, v.appliedPolygons > 0, blocked == NavMeshPathStatus.Partial} "
+            "v.area = 0 local walked = nav:calculatePath(Vector3(-10, 0, 0), Vector3(14, 0, 0)).status "
+            "v:remove() "
+            "local bad = nav:setAreaInVolume(Vector3(0, 0, 0), Vector3(1, 1, 1), 16) "
+            "return obstacle, link, off == NavMeshPathStatus.Partial, on == NavMeshPathStatus.Complete, modifier, volume, "
+            "walked == NavMeshPathStatus.Complete, v.valid, bad == nil, l:updateLink()"))
+        values = got["values"]
+        obstacle = values[0]
+        ed.check_eq(obstacle[:3] + obstacle[7:9], [True, True, True, True, False], f"obstacle: {got}")
+        for got_value, want in zip(obstacle[3:7] + obstacle[9:], [0.75, 1.5, 0.5, 2, 0.3, 0.25, 0]):
+            ed.check(abs(got_value - want) < 1e-5, f"obstacle {want}: {obstacle}")
+        ed.check_eq(values[1], [True, True, 1, 3, False, 2, True, 0, -2.5, 2.5, True, False], f"link: {got}")
+        ed.check_eq(values[2:4], [True, True], f"activated: {got}")
+        ed.check_eq(values[4], [True, True, True, False, True, 0, True, True, True, 1, 3], f"modifier: {got}")
+        ed.check_eq(values[5], [True, 1, 2, True, True], f"script volume: {got}")
+        ed.check_eq(values[6:], [True, False, True, True], f"{got}")
+    finally:
+        await ed.call("play", action="stop")
+    for cls, members in (("NavMeshObstacle", ["carving", "carvingMoveThreshold", "carvingTimeToStationary", "velocity"]),
+                         ("NavMeshLink", ["activated", "occupied", "autoUpdate", "agentTypeID", "updateLink"]),
+                         ("NavMeshModifier", ["applyAtRuntime", "appliedPolygons", "useVolume"]),
+                         ("NavAreaOverride", ["area", "remove", "valid", "appliedPolygons"]),
+                         ("NavigationSystem", ["setAreaInVolume"])):
+        got = await ed.session.read_resource(f"jasper://lua-api?class={cls}")
+        text = "".join(getattr(c, "text", "") or "" for c in got.contents)
+        for member in members:
+            ed.check(member in text, f"jasper://lua-api?class={cls} lists {member}")
+
+
+async def test_overlay_screenshot(ed: Editor):
+    """AC30 (R41): with show.area_overrides the Scene view shows the door's volume: a PNG that is not
+    one colour, and differs from the same view without it."""
+    d = await setup_doors(ed)
+    await ed.call("select_entities", scene=d["scene"], entities=[])
+    await ed.call("set_scene_camera", {"scene": d["scene"], "position": [0.0, 12.0, 10.0], "target": [0.0, 0.0, 0.0],
+                                       "display": {"show_grid_3d": False, "hide_light_icons": True}})
+    shown = await ed.call("visualize_navigation", scene=d["scene"], show={"navmesh": False, "area_overrides": True})
+    ed.check(shown["overlay"]["area_overrides"] is True, f"{shown}")
+    r = await ed.call_raw("visualize_navigation", {"scene": d["scene"], "show": {"navmesh": False, "area_overrides": True},
+                                                   "screenshot": True})
+    ed.check(not r.is_error and r.images, r.text)
+    with_volume = pngdiff.decode(r.images[0][0])
+    ed.check(not pngdiff.flat(with_volume), "the image is not one colour")
+    await ed.call("visualize_navigation", scene=d["scene"], show={"area_overrides": False})
+    without = pngdiff.decode(await ed.screenshot("scene", scene=d["scene"], max_width=1024))
+    same, fraction, _ = pngdiff.compare(with_volume, without, max_fraction=0.0005)
+    ed.check(not same, f"the door's volume draws ({fraction:.5f} of the pixels differ)")
+    await ed.call("visualize_navigation", scene=d["scene"], show={"area_overrides": True})

@@ -9,6 +9,7 @@
 //   bench_nav_city  a 256 x 256 m terrain with 200 static buildings (cell 0.2 m, 400 tiles)
 //   nav_2d_topdown  a 2D scene (plane XY, points) with static Box2D polygons and circles
 //   nav_tilemap     a tilemap whose rects map to grid areas
+//   nav_doors       two rooms, a doorway, a mud strip and a bridge link to a platform (S55)
 // Scenes are plain Scenes with no view: MeshSystem builds the primitives' CPU buffers, which is all
 // a bake reads.
 
@@ -17,6 +18,8 @@
 #include "component/MeshComponent.h"
 #include "component/NavGridComponent.h"
 #include "component/NavMeshAgentComponent.h"
+#include "component/NavMeshLinkComponent.h"
+#include "component/NavMeshModifierComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/TilemapComponent.h"
@@ -169,6 +172,72 @@ namespace jasperengine::navtest {
         addSurface(scene, city.surface, 0.2f, 64);
         resolveTransforms(scene);
         return city;
+    }
+
+    // nav_doors (S55): two rooms of a 40 x 12 m floor split by a wall at x = 0 with a 2.5 m doorway
+    // (z in [-1.25, 1.25]), a strip of area 3 across the east room (x in [8, 10]), and a platform
+    // (x in [23, 31]) beyond a 3 m gap, reached only by the bridge link from (19, 0, 0) to
+    // (24, 0, 0): without the bridge the platform is a second island. Cell 0.2 m, tiles of 32
+    // cells (6.4 m). The doorway's runtime volume is added by its tests.
+    struct Doors {
+        Entity surface = NULL_ENTITY;
+        Entity floor = NULL_ENTITY;
+        Entity platform = NULL_ENTITY;
+        Entity mud = NULL_ENTITY;
+        Entity bridge = NULL_ENTITY;
+        // the doorway's centre and size (the wall's thickness, the gap's width, 3 m up)
+        Vector3 doorCenter = Vector3(0.0f, 1.5f, 0.0f);
+        Vector3 doorSize = Vector3(2.0f, 3.0f, 3.0f);
+        // a point in each room and on the platform
+        Vector3 west = Vector3(-10.0f, 0.0f, 0.0f);
+        Vector3 east = Vector3(14.0f, 0.0f, 0.0f);
+        Vector3 island = Vector3(28.0f, 0.0f, 0.0f);
+    };
+
+    inline Doors doors(Scene& scene) {
+        Doors fixture;
+        fixture.floor = plane(scene, Vector3(), 40.0f, 12.0f);
+        fixture.platform = plane(scene, Vector3(27.0f, 0.0f, 0.0f), 8.0f, 8.0f);
+        // the wall, either side of the doorway
+        box(scene, Vector3(0.0f, 1.5f, -3.625f), Vector3(1.0f, 3.0f, 4.75f));
+        box(scene, Vector3(0.0f, 1.5f, 3.625f), Vector3(1.0f, 3.0f, 4.75f));
+
+        fixture.mud = transformEntity(scene, Vector3(9.0f, 0.0f, 0.0f), NULL_ENTITY, "Mud");
+        NavMeshModifierComponent mud;
+        mud.useVolume = true;
+        mud.overrideArea = true;
+        mud.area = 3;
+        mud.volumeCenter = Vector3(0.0f, 0.0f, 0.0f);
+        mud.volumeSize = Vector3(2.0f, 4.0f, 14.0f);
+        scene.addComponent<NavMeshModifierComponent>(fixture.mud, mud);
+
+        fixture.bridge = transformEntity(scene, Vector3(21.5f, 0.0f, 0.0f), NULL_ENTITY, "Bridge");
+        NavMeshLinkComponent bridge;
+        bridge.startPoint = Vector3(-2.5f, 0.0f, 0.0f);
+        bridge.endPoint = Vector3(2.5f, 0.0f, 0.0f);
+        bridge.bidirectional = true;
+        scene.addComponent<NavMeshLinkComponent>(fixture.bridge, bridge);
+
+        fixture.surface = transformEntity(scene, Vector3(), NULL_ENTITY, "Doors Surface");
+        addSurface(scene, fixture.surface, 0.2f, 32);
+        resolveTransforms(scene);
+        return fixture;
+    }
+
+    // nav_doors' doorway as a runtime volume (S55 R11): a NavMesh Modifier with Use Volume and
+    // Apply At Runtime over the gap, Not Walkable (a closed door) unless told otherwise
+    inline Entity doorway(Scene& scene, const Doors& fixture, bool closed = true, int area = nav::AREA_NOT_WALKABLE) {
+        const Entity door = transformEntity(scene, fixture.doorCenter, NULL_ENTITY, "Door");
+        NavMeshModifierComponent modifier;
+        modifier.enabled = closed;
+        modifier.useVolume = true;
+        modifier.applyAtRuntime = true;
+        modifier.area = area;
+        modifier.volumeCenter = Vector3(0.0f, 0.0f, 0.0f);
+        modifier.volumeSize = fixture.doorSize;
+        scene.addComponent<NavMeshModifierComponent>(door, modifier);
+        resolveTransforms(scene);
+        return door;
     }
 
     // nav_2d_topdown: a 2D surface (plane XY, scene points) over 1280 x 960 points with static

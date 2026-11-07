@@ -19,6 +19,8 @@
 #include "Export.h"
 #include "ecs/SubSystem.h"
 #include "math/AABB.h"
+#include "math/Matrix4.h"
+#include "math/Quaternion.h"
 #include "math/Vector3.h"
 #include "navigation/GridPathfinder.h"
 #include "navigation/NavBakeCollector.h"
@@ -283,6 +285,46 @@ namespace jasperengine{
         // The scene's navigation problems (R13, R14), error first, then by entity and code
         std::vector<nav::NavFinding> getFindings(const nav::NavFindingOptions& options = {});
 
+        // ---- S55 areas (docs/specs/S55-navigation-gameplay-api.md R11-R17; NavigationAreas.cpp).
+        // A script volume (a world box): on every surface of the agent type (< 0: all), the
+        // polygons whose centroid lies in it take `area` (Not Walkable: nothing walks there) until
+        // removeAreaOverride. Handles end with the system (Stop). 0 for an area outside 0-15.
+        uint32_t setAreaInVolume(const Vector3& center, const Vector3& size, const Quaternion& rotation, uint8_t area, int agentType = -1);
+        bool updateAreaOverride(uint32_t handle, const Vector3& center, const Vector3& size, const Quaternion& rotation, uint8_t area);
+        bool removeAreaOverride(uint32_t handle);
+        bool hasAreaOverride(uint32_t handle) const;
+        bool getAreaOverride(uint32_t handle, Vector3& center, Vector3& size, Quaternion& rotation, uint8_t& area) const;
+        // Samples the runtime modifier volumes (Use Volume + Apply At Runtime) and link Activated
+        // into the navmeshes: the editor every frame, fixedUpdate as step 1b in play. True when a
+        // polygon changed.
+        bool syncAreaOverrides();
+        // a runtime modifier volume or a script volume (the overlay, get_navigation_info)
+        struct AreaOverrideStatus {
+            Entity modifier = NULL_ENTITY;
+            uint32_t handle = 0;
+            uint8_t area = 0;
+            int agentType = -1;
+            // on a navmesh now, and the ground polygons in it
+            bool applied = false;
+            int polygons = 0;
+            // world from the unit box [-0.5, 0.5]^3
+            Matrix4 box;
+        };
+        // the runtime modifier volumes by entity, then the script volumes by handle
+        std::vector<AreaOverrideStatus> getAreaOverrides();
+        // the polygons a runtime modifier volume or a script volume holds now (0: not applied)
+        int getModifierAppliedPolygons(Entity modifier);
+        int getAreaOverridePolygons(uint32_t handle);
+        // R16, R17: whether agents may use the link, and whether one is crossing it now
+        bool isLinkActive(Entity link) const;
+        bool isLinkOccupied(Entity link) const;
+        // the link's baked connections follow its current fields; false (logged) when a surface
+        // must be rebaked
+        bool updateLink(Entity link);
+        // world, from its transform at the last fixed tick
+        Vector3 getObstacleVelocity(Entity obstacle) const;
+        Scene* getScene() const { return scene; }
+
         // ---- statistics
         int getCrowdCount() const;
         int getAgentCount() const;
@@ -303,6 +345,10 @@ namespace jasperengine{
         struct Runtime;
         // made on the first navigation component or query; null otherwise (spec R25)
         std::unique_ptr<Runtime> runtime;
+        // S55: made on the first runtime volume, script volume or deactivated link (R18)
+        struct AreaState;
+        std::unique_ptr<AreaState> areas;
+        bool areaSyncing = false;
         bool keepBakeData = false;
         bool bakeInBackground = false;
         uint64_t workingTicks = 0;
@@ -318,6 +364,12 @@ namespace jasperengine{
 
         bool hasNavigationComponents() const;
         Runtime& rt();
+        // ---- S55 areas
+        nav::NavMesh* editableNavMesh(Entity surface);
+        // its crowd has agents (they replan on area changes)
+        bool hasAreaCrowd(Entity surface) const;
+        // the surface's navmesh was replaced: its overrides and link states go to the new one now
+        void onAreaMeshReplaced(Entity surface);
     };
 
 }

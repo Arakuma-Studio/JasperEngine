@@ -153,6 +153,11 @@ namespace jasperengine::nav {
         // what the crowd holds (agents, grids, path queue), approximately
         size_t getMemoryBytes() const;
 
+        // ---- S55 areas (R15): every walking agent whose whole corridor (not dtCrowd's 10-polygon
+        // lookahead) holds one of the changed polygons (sorted) requests its target again; their
+        // indices, ascending. Agents on a link finish it.
+        void replanCrossing(const std::vector<uint32_t>& changedPolys, std::vector<int>& replanned);
+
     private:
         struct Impl;
         std::unique_ptr<Impl> impl;
