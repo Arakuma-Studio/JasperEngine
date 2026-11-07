@@ -3,6 +3,7 @@
 
 #include "Catalog.h"
 #include "component/ButtonComponent.h"
+#include "component/Transform.h"
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/CanvasGroupComponent.h"

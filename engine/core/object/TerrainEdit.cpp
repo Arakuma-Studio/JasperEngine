@@ -345,6 +345,18 @@ uint64_t jasperengine::terrainUploadInterval(size_t mapBytes, size_t budget) {
     return static_cast<uint64_t>((mapBytes + budget - 1) / budget);
 }
 
+TerrainWorldPlacement jasperengine::terrainWorldPlacement(Scene* scene, Entity entity) {
+    TerrainWorldPlacement placement;
+    const Transform* transform = scene ? scene->findComponent<Transform>(entity) : nullptr;
+    if (!transform) return placement;
+    placement.valid = true;
+    placement.model = transform->modelMatrix;
+    placement.position = transform->worldPosition;
+    placement.scale = transform->worldScale;
+    placement.rotated = transform->worldRotation != Quaternion::IDENTITY;
+    return placement;
+}
+
 std::string jasperengine::terrainRuntimeEditRefusal(TerrainComponent& terrain) {
     Texture& height = terrain.heightMap;
     if (height.empty() || height.isFramebuffer()) return std::string();

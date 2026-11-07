@@ -3,6 +3,7 @@
 
 #include "animation/AnimatorEditorHooks.h"
 #include "component/ShadowCaster2DComponent.h"
+#include "component/Transform.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
 #include "component/CanvasGroupComponent.h"
