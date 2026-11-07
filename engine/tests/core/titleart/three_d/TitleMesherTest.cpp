@@ -61,10 +61,13 @@ namespace {
     }
 
     // every triangle's geometric normal against its vertex normals: false when one points away
-    bool facesAgreeWithNormals(const RawMesh& mesh) {
+    // (capsOnly: the flat caps' triangles alone, the ones whose normals are all +-z)
+    bool facesAgreeWithNormals(const RawMesh& mesh, bool capsOnly = false) {
+        auto flat = [](const RawVertex& v) { return v.nx == 0 && v.ny == 0 && std::abs(v.nz) == 1; };
         for (const auto& slot : mesh.slots) {
             for (size_t t = 0; t + 2 < slot.size(); t += 3) {
                 const RawVertex &a = slot[t], &b = slot[t + 1], &c = slot[t + 2];
+                if (capsOnly && !(flat(a) && flat(b) && flat(c))) continue;
                 const double ux = b.x - a.x, uy = b.y - a.y, uz = b.z - a.z;
                 const double vx = c.x - a.x, vy = c.y - a.y, vz = c.z - a.z;
                 const double nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
@@ -279,9 +282,9 @@ TEST(RingExtruderTest, CapsOnTheOutlineFoldTheInsideBevel) {
     TitleSolidsOptions options;
     const TitleSolids own = buildTitleSolids(shapes, s, {}, options, nullptr);
     EXPECT_TRUE(checkRaw(own.mesh).closed);
-    EXPECT_TRUE(facesAgreeWithNormals(own.mesh));
+    EXPECT_TRUE(facesAgreeWithNormals(own.mesh, true));
     options.testFlags = MESHER_TEST_CAP_ON_OUTLINE;
-    EXPECT_FALSE(facesAgreeWithNormals(buildTitleSolids(shapes, s, {}, options, nullptr).mesh));
+    EXPECT_FALSE(facesAgreeWithNormals(buildTitleSolids(shapes, s, {}, options, nullptr).mesh, true));
 }
 
 TEST(RingExtruderTest, ClampAndUntangle) {

@@ -324,20 +324,26 @@ namespace {
         double A[4];
     };
 
-    void emitQuad(RawMesh& mesh, int slot, const Corners& c) {
+    // the quad's area normal (a x b + b x c, for a possibly non-planar quad) against its corner
+    // normals: positive when the corner order 0 1 2 3 faces them
+    double quadFacing(const Corners& c) {
         const double* P = c.P;
         const double* N = c.N;
         const double ax = P[3] - P[0], ay = P[4] - P[1], az = P[5] - P[2];
         const double bx = P[6] - P[0], by = P[7] - P[1], bz = P[8] - P[2];
         const double cx = P[9] - P[0], cy = P[10] - P[1], cz = P[11] - P[2];
-        // (a x b) + (b x c): the area normal of the (possibly non-planar) quad
         const double nx = ay * bz - az * by + (by * cz - bz * cy);
         const double ny = az * bx - ax * bz + (bz * cx - bx * cz);
         const double nz = ax * by - ay * bx + (bx * cy - by * cx);
-        const double ndot = nx * (N[0] + N[3] + N[6] + N[9]) + ny * (N[1] + N[4] + N[7] + N[10]) + nz * (N[2] + N[5] + N[8] + N[11]);
+        return nx * (N[0] + N[3] + N[6] + N[9]) + ny * (N[1] + N[4] + N[7] + N[10]) + nz * (N[2] + N[5] + N[8] + N[11]);
+    }
+
+    void emitQuad(RawMesh& mesh, int slot, const Corners& c, bool front) {
+        const double* P = c.P;
+        const double* N = c.N;
         static const int FRONT[6] = {0, 1, 2, 0, 2, 3};
         static const int FLIPPED[6] = {0, 2, 1, 0, 3, 2};
-        const int* order = ndot >= 0 ? FRONT : FLIPPED;
+        const int* order = front ? FRONT : FLIPPED;
         for (int q = 0; q < 6; q++) {
             const int o = order[q] * 3;
             mesh.push(slot, P[o], P[o + 1], P[o + 2], N[o], N[o + 1], N[o + 2], c.A[order[q]]);
@@ -405,18 +411,78 @@ namespace {
         return true;
     }
 
-    // `fallback`: the triangulation source when the ring's own does not cover its area or skips
-    // some of its vertices (a ring that touches itself where untangle pinned it: earcut then drops
-    // triangles or vertices and the cap opens)
+    // puts back the ring vertices earcut filtered out (duplicates and exactly collinear points lie
+    // on the edge between the kept vertices around them): the triangle on that edge becomes a fan
+    // through them, in its own winding. False when a run of them has no such triangle.
+    bool restoreRingVertices(const std::vector<Contour>& contours, std::vector<uint32_t>& tris) {
+        std::vector<char> used;
+        uint32_t total = 0;
+        for (const Contour& c : contours) total += (uint32_t)c.size();
+        used.assign(total, 0);
+        for (uint32_t v : tris) used[v] = 1;
+        uint32_t first = 0;
+        for (const Contour& c : contours) {
+            const uint32_t n = (uint32_t)c.size();
+            std::vector<uint32_t> kept;
+            for (uint32_t i = 0; i < n; i++) {
+                if (used[first + i]) kept.push_back(i);
+            }
+            if (kept.size() == n) {
+                first += n;
+                continue;
+            }
+            if (kept.size() < 2) return false;
+            for (size_t k = 0; k < kept.size(); k++) {
+                const uint32_t ia = kept[k], ib = kept[(k + 1) % kept.size()];
+                if ((ia + 1) % n == ib) continue;
+                const uint32_t a = first + ia, b = first + ib;
+                std::vector<uint32_t> chain{a};
+                for (uint32_t i = (ia + 1) % n; i != ib; i = (i + 1) % n) chain.push_back(first + i);
+                chain.push_back(b);
+                size_t t = 0;
+                bool forward = false;
+                for (; t + 2 < tris.size(); t += 3) {
+                    int ka = -1, kb = -1;
+                    for (int e = 0; e < 3; e++) {
+                        if (tris[t + e] == a) ka = e;
+                        if (tris[t + e] == b) kb = e;
+                    }
+                    if (ka < 0 || kb < 0) continue;
+                    forward = (ka + 1) % 3 == kb;
+                    break;
+                }
+                if (t + 2 >= tris.size()) return false;
+                uint32_t apex = tris[t];
+                for (int e = 0; e < 3; e++) {
+                    if (tris[t + e] != a && tris[t + e] != b) apex = tris[t + e];
+                }
+                std::vector<uint32_t> fan;
+                for (size_t q = 0; q + 1 < chain.size(); q++) {
+                    const uint32_t u = forward ? chain[q] : chain[q + 1], w = forward ? chain[q + 1] : chain[q];
+                    fan.insert(fan.end(), {u, w, apex});
+                }
+                tris.erase(tris.begin() + (long)t, tris.begin() + (long)t + 3);
+                tris.insert(tris.end(), fan.begin(), fan.end());
+            }
+            first += n;
+        }
+        return true;
+    }
+
+    // `fallback`: the triangulation source when the ring's own does not cover its area or still
+    // skips some of its vertices (a ring that touches itself where untangle pinned it: earcut then
+    // drops triangles and the cap opens)
     void emitCap(RawMesh& mesh, const std::vector<Contour>& ring, const std::vector<Contour>& own, int slot, double z, int nz,
                  const std::vector<Contour>* fallback = nullptr) {
         if (ring.empty() || ring[0].size() < 3) return;
         const std::vector<Contour>* tri = &own;
         std::vector<uint32_t> tris = triangulatePolygon(own[0], std::vector<Contour>(own.begin() + 1, own.end()));
         const double expected = polygonArea(own);
-        if (fallback && (std::abs(coveredArea(own, tris) - expected) > 1e-3 * std::abs(expected) || !keepsRingEdges(own, tris))) {
+        const bool restored = restoreRingVertices(own, tris) && keepsRingEdges(own, tris);
+        if (fallback && (!restored || std::abs(coveredArea(own, tris) - expected) > 1e-3 * std::abs(expected))) {
             tri = fallback;
             tris = triangulatePolygon((*fallback)[0], std::vector<Contour>(fallback->begin() + 1, fallback->end()));
+            restoreRingVertices(*fallback, tris);
         }
         std::vector<TitleVec2> base, pts;
         for (const Contour& c : *tri) base.insert(base.end(), c.begin(), c.end());
@@ -451,14 +517,20 @@ namespace {
     }
 
     // quad strips between profile points A and B along every ring
+    // One winding per ring's strip (the one most of its area faces its normals with), never per
+    // quad: a quad that a clamped vertex folds keeps its neighbours' orientation, so the strip
+    // stays a consistently oriented surface whose edges meet the caps' and the next strip's
     void emitStrip(RawMesh& mesh, const std::vector<Ring>& rings, int slot, const ProfilePoint& A, const ProfilePoint& B) {
         const auto nf = norm2(A.z - B.z, B.off - A.off);    // faceted (radial, z)
         const auto nA = profileNormal(A, nf);
         const auto nB = profileNormal(B, nf);
-        Corners c;
+        std::vector<Corners> quads;
         for (const Ring& r : rings) {
             const size_t n = r.pts.size();
+            quads.resize(n);
+            double facing = 0;
             for (size_t i = 0; i < n; i++) {
+                Corners& c = quads[i];
                 const size_t j = (i + 1) % n;
                 const V2 ni = r.crease[i] ? r.edgeN[i] : r.smoothN[i];
                 const V2 nj = r.crease[j] ? r.edgeN[i] : r.smoothN[j];
@@ -477,8 +549,9 @@ namespace {
                 N[9] = ni.x * nB[0]; N[10] = ni.y * nB[0]; N[11] = nB[1];
                 const double ai = r.arc[i], aj = j == 0 ? r.length : r.arc[j];
                 c.A[0] = ai; c.A[1] = aj; c.A[2] = aj; c.A[3] = ai;
-                emitQuad(mesh, slot, c);
+                facing += quadFacing(c);
             }
+            for (const Corners& c : quads) emitQuad(mesh, slot, c, facing >= 0);
         }
     }
 
