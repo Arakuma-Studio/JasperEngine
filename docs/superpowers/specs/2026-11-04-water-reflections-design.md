@@ -758,3 +758,9 @@ the library's compile matrix builds (`WaterUniformBudgetSlow`), a fragment stage
 5. **Not covered:** S57's capsule and contact shadows. Their `u_fs_lightOcclusion` is a ninth block with fog, and with
    capsules 67 vectors: the built-in Lit with capsule shadows, 2D lights and fog is at 9 blocks and 307 to 339 vectors
    too, so that is the S57 feature's GLES3 budget, not the water's.
+6. **The built-in Lit's painted Terrain** ('Tpb', the lead's addition; measured by the pcss-gles workstream): its nine
+   layers' `u_fs_terrainLayers` takes 45 vectors, so at 8 lights with shadows, the sky's and a probe's reflections,
+   SSAO, the post colour and fog it took 235 (253 and 267 at 16 lights, without and with fog), in 8 blocks and 15 of
+   16 textures. `mesh.frag` gives it the records form (not with a 2D shadow atlas, which takes the 16th texture
+   then; it never takes the Tiled form): 211 at most (`TerrainUniformBudget`). Its golden
+   (`TerrainLightRecordsGpu`) was captured with the block form and matches the records form exactly.
