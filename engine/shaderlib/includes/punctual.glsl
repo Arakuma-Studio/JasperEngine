@@ -87,6 +87,8 @@ int getSpotMaskTile(int lightIndex)
 {
     #if defined(LIGHTS_SPOT_MASKS) && defined(LIGHTS_TILED)
         return (int(tiledLightsTexel(tiledLightRecord(lightIndex) + 3).w) >> 9) & 7;
+    #elif defined(LIGHTS_SPOT_MASKS) && defined(LIGHTS_RECORDS)
+        return (int(lightRecordEntry(lightIndex).y) >> 9) & 7;
     #elif defined(LIGHTS_SPOT_MASKS)
         return (int(objectLights.spot_shadow[lightIndex].w) >> 9) & 7;
     #else

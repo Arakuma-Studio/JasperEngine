@@ -36,6 +36,8 @@
 //     block). Add it as is: light += v_vertexLight.
 //   - USE_SHADOWS (pixel lights that receive shadows): call lightShadow for the pixel
 //     lights; it computes the shadow coordinates from the world position (no varyings).
+//   - LIGHTS_FS_RECORDS (defined with LIGHTS_FS): the records form of the fragment block
+//     below, for a shader near GLES3's 224 fragment uniform vectors; the same functions.
 //
 // Light Mode Tiled (USE_TILED_LIGHTS, includes/tiled_lights.glsl): the fragment stage's pixel
 // lights are the lights of its screen tile, up to 32 (LIGHT_CAPACITY is that cap there), in
@@ -91,6 +93,39 @@ uniform u_vs_objectLights {
 #define LIGHTS_FS_DECLARED
 #define LIGHTS_TILED
 #include "includes/tiled_lights.glsl"
+#endif
+
+#if defined(LIGHTS_FS) && !defined(LIGHTS_FS_DECLARED) && defined(LIGHTS_FS_RECORDS)
+// The records form (a shader defining LIGHTS_FS_RECORDS with LIGHTS_FS): the same lights, with
+// their four vectors read from the frame's light records (u_lightRecords, RGBA32F, 128 lights a
+// row of 512 texels, four texels a scene light: position_type, direction_inner, color_outer and
+// spot_shadow's xyz) and only two floats a light in the block, so a shader near GLES3 / WebGL2's
+// 224 fragment uniform vectors (library:water with shadows) holds sixteen lights. It draws what
+// the block form draws on every backend; Light Mode Tiled keeps its own form.
+#define LIGHTS_FS_DECLARED
+#define LIGHTS_RECORDS
+uniform u_fs_objectLights {
+    vec4 counts;                          // x pixel lights, y vertex lights (as floats)
+    vec4 shR;                             // L1 SH ambient: rgb_c(n) = dot(sh_c.xyz, n) + sh_c.w
+    vec4 shG;
+    vec4 shB;
+    // per pixel light, two a vector (xy, zw): its scene light (the record), its spot_shadow.w
+    vec4 records[(LIGHT_CAPACITY + 1) / 2];
+} objectLights;
+// @image_sample_type u_lightRecords unfilterable_float
+uniform texture2D u_lightRecords;
+// @sampler_type u_lightRecords_smp nonfiltering
+uniform sampler u_lightRecords_smp;
+
+// a pixel light's two floats: x its scene light, y its packed shadow, mask tile and occlusion
+vec2 lightRecordEntry(int index){
+    vec4 pair = objectLights.records[index >> 1];
+    return ((index & 1) == 0) ? pair.xy : pair.zw;
+}
+
+vec4 lightRecordTexel(int light, int texel){
+    return texelFetch(sampler2D(u_lightRecords, u_lightRecords_smp), ivec2((light & 127) * 4 + texel, light >> 7), 0);
+}
 #endif
 
 #if defined(LIGHTS_FS) && !defined(LIGHTS_FS_DECLARED)
@@ -189,6 +224,13 @@ Light getLightData(int index){
         colorOuter.xyz = vec3(0.0);
         tiledSpotShadow.w = 0.0;
     }
+#elif defined(LIGHTS_RECORDS)
+    vec2 entry = lightRecordEntry(index);
+    int record = int(entry.x + 0.5);
+    vec4 positionType = lightRecordTexel(record, 0);
+    vec4 directionInner = lightRecordTexel(record, 1);
+    vec4 colorOuter = lightRecordTexel(record, 2);
+    vec4 recordSpotShadow = vec4(lightRecordTexel(record, 3).xyz, entry.y);
 #else
     vec4 positionType = objectLights.position_type[index];
     vec4 directionInner = objectLights.direction_inner[index];
@@ -205,8 +247,10 @@ Light getLightData(int index){
     int shadowMapIndex = -1;
     int cascades = 0;
     #ifdef LIGHTS_FS_DECLARED
-        #ifdef LIGHTS_TILED
+        #if defined(LIGHTS_TILED)
         vec4 spotShadow = tiledSpotShadow;
+        #elif defined(LIGHTS_RECORDS)
+        vec4 spotShadow = recordSpotShadow;
         #else
         vec4 spotShadow = objectLights.spot_shadow[index];
         #endif

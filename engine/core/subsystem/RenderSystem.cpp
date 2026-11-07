@@ -1073,6 +1073,11 @@ void RenderSystem::destroy(){
     sceneInputMeshes.clear();
     waterMeshes.clear();
     planarReflectionMeshes.clear();
+    lightRecordMeshes.clear();
+    if (lightRecords.isCreated())
+        lightRecords.destroyTexture();
+    lightRecordTexels = std::vector<Vector4>();
+    lightRecordsFrame = UINT64_MAX;
     sceneInputPoints.clear();
     sceneInputUsage = 0;
     sceneDepthPrograms = false;
@@ -2274,15 +2279,83 @@ void RenderSystem::buildObjectLights(const MeshComponent& mesh, uint64_t propert
         spotShadow[n] = light.packed[3];
         // vertex lights take the cone, never the mask or a shadow
         const bool perPixel = n < pixelCount;
-        const int tile = (perPixel && light.spotMaskTile >= 0) ? light.spotMaskTile : 7;
-        const int shadowSlot = perPixel ? (int)light.cone_shadow.z : -1;
-        const int cascades = perPixel ? passLightCascades(light) : 0;
         if (!perPixel)
             spotShadow[n].z = 0.0f;
-        // (bits 12-13: the capsule and contact shadows a shadowed pixel light takes, S57)
-        const int occlusion = perPixel ? lightOcclusionBits(order[n]) : 0;
-        spotShadow[n].w = (float)((std::max(shadowSlot + 1, 0) & 63) | ((cascades & 7) << 6) | ((tile & 7) << 9) | (occlusion << 12));
+        spotShadow[n].w = packObjectLightShadow(order[n], perPixel);
     }
+}
+
+float RenderSystem::packObjectLightShadow(int sceneLight, bool perPixel) const{
+    const SceneLight& light = sceneLights[sceneLight];
+    const int tile = (perPixel && light.spotMaskTile >= 0) ? light.spotMaskTile : 7;
+    const int shadowSlot = perPixel ? (int)light.cone_shadow.z : -1;
+    const int cascades = perPixel ? passLightCascades(light) : 0;
+    // (bits 12-13: the capsule and contact shadows a shadowed pixel light takes, S57)
+    const int occlusion = perPixel ? lightOcclusionBits(sceneLight) : 0;
+    return (float)((std::max(shadowSlot + 1, 0) & 63) | ((cascades & 7) << 6) | ((tile & 7) << 9) | (occlusion << 12));
+}
+
+// The records form of the block: the counts and the SH as the block form has them, then each
+// pixel light's scene light (its row of u_lightRecords, which holds the block form's
+// position_type, direction_inner, color_outer and spot_shadow.xyz) and its spot_shadow.w
+void RenderSystem::buildObjectLightRecords(const MeshComponent& mesh, uint64_t properties, object_light_records_t& block) const{
+    const MeshLights& picked = mesh.lights;
+    int order[MAX_LIGHTS_PER_OBJECT];
+    int pixelCount = 0;
+    int vertexCount = 0;
+    orderObjectLights(mesh, properties, order, pixelCount, vertexCount);
+
+    block.counts = Vector4((float)pixelCount, (float)vertexCount, 0.0f, 0.0f);
+    for (int c = 0; c < 3; c++){
+        block.sh[c] = (picked.epoch != 0) ? picked.sh[c] : Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
+    }
+    for (int n = 0; n < pixelCount; n++){
+        Vector4& pair = block.records[n >> 1];
+        const size_t lane = (size_t)(n & 1) * 2;
+        pair[lane] = (float)order[n];
+        pair[lane + 1] = packObjectLightShadow(order[n], true);
+    }
+}
+
+void RenderSystem::setLightRecordsMesh(Entity entity, bool records){
+    if (records)
+        lightRecordMeshes.insert(entity);
+    else if (!lightRecordMeshes.empty())
+        lightRecordMeshes.erase(entity);
+}
+
+bool RenderSystem::ensureLightRecords(int rows){
+    rows = std::max(rows, 1);
+    if (lightRecords.isCreated() && lightRecords.getHeight() >= rows)
+        return true;
+    if (lightRecords.isCreated())
+        lightRecords.destroyTexture();
+    // (made again: this frame's records go into the new one)
+    lightRecordsFrame = UINT64_MAX;
+    return lightRecords.createDynamicTexture("light records", LIGHT_RECORDS_WIDTH, rows);
+}
+
+// Once a frame before the passes, while a mesh draws with the records form: every scene light's
+// first four vectors of the block form, at 4 * index texels (128 lights a row). The pass-dependent
+// spot_shadow.w is the per-object block's.
+void RenderSystem::syncLightRecords(){
+    // (the texture stays with the scene once made: a loaded variant binds it)
+    if (lightRecordMeshes.empty())
+        return;
+    const uint64_t frame = SystemRender::getFrameCount();
+    if (frame == lightRecordsFrame)
+        return;
+    const int lightsPerRow = LIGHT_RECORDS_WIDTH / 4;
+    const int rows = std::max(1, ((int)sceneLights.size() + lightsPerRow - 1) / lightsPerRow);
+    if (!ensureLightRecords(rows))
+        return;
+    lightRecordTexels.assign((size_t)LIGHT_RECORDS_WIDTH * (size_t)lightRecords.getHeight(), Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+    for (size_t i = 0; i < sceneLights.size(); i++){
+        for (int t = 0; t < 4; t++)
+            lightRecordTexels[i * 4 + (size_t)t] = sceneLights[i].packed[t];
+    }
+    if (lightRecords.updateTexture(lightRecordTexels.data(), lightRecordTexels.size() * sizeof(Vector4)))
+        lightRecordsFrame = frame;
 }
 
 // An older fork's u_fs_lighting: the camera's part, then the object's first MAX_LIGHTS
@@ -4307,6 +4380,12 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
         render.addTexture(bindings.slotSceneColor, ShaderStageType::FRAGMENT, &emptyBlack);
     // the reflection environment (includes/environment.glsl), black until a draw binds its own
     bindings.slotFSEnvironment = shaderData.getUniformBlockIndexByName("u_fs_environment");
+    if (bindings.slotFSEnvironment != -1){
+        unsigned int sizeBytes = 0;
+        if (!shaderData.getUniformBlockMembers("u_fs_environment", sizeBytes))
+            sizeBytes = 0;
+        bindings.environmentSize = std::min((unsigned int)sizeof(fs_environment_planar_t), sizeBytes);
+    }
     bindings.slotEnvironment = shaderData.getTextureIndexByName("u_environmentTexture");
     if (bindings.slotEnvironment.first != -1)
         render.addTexture(bindings.slotEnvironment, ShaderStageType::FRAGMENT, &emptyCubeBlack);
@@ -5381,7 +5460,7 @@ void RenderSystem::applySceneInputs(ObjectRender& render, const ShaderLibraryBin
         render.addTexture(bindings.slotSceneColor, ShaderStageType::FRAGMENT, passSceneColor ? passSceneColor : &emptyBlack);
 }
 
-void RenderSystem::applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, const MeshComponent& mesh, const Transform& transform){
+void RenderSystem::applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity, const MeshComponent& mesh, const Transform& transform){
     if (bindings.slotFSEnvironment == -1 && bindings.slotEnvironment.first == -1)
         return;
     fs_environment_t block;
@@ -5409,8 +5488,16 @@ void RenderSystem::applyEnvironment(ObjectRender& render, const ShaderLibraryBin
             }
         }
     }
-    if (bindings.slotFSEnvironment != -1)
-        render.applyUniformBlock(bindings.slotFSEnvironment, sizeof(fs_environment_t), &block);
+    if (bindings.slotFSEnvironment != -1){
+        // with the planar reflection's values after it when the shader reads both (one block)
+        fs_environment_planar_t full;
+        full.environment = block;
+        if (bindings.environmentSize > sizeof(fs_environment_t)){
+            TextureRender* planarTexture = nullptr;
+            getPlanarReflection(entity, full.planar, planarTexture);
+        }
+        render.applyUniformBlock(bindings.slotFSEnvironment, std::max(bindings.environmentSize, (unsigned int)sizeof(fs_environment_t)), &full);
+    }
     if (bindings.slotEnvironment.first != -1)
         render.addTexture(bindings.slotEnvironment, ShaderStageType::FRAGMENT, texture);
 }
@@ -7517,6 +7604,14 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         planarReflection = planarReflection || reads;
     }
     setWaterMesh(entity, water, planarReflection);
+    // a mesh drawing a shader with the lights' records form (the frame's records, syncLightRecords)
+    bool lightRecordsForm = false;
+    for (int i = 0; i < mesh.numSubmeshes; i++){
+        const Submesh& submesh = mesh.submeshes[i];
+        lightRecordsForm = lightRecordsForm || submesh.slotLightRecords.first != -1 ||
+            (submesh.extraPass && submesh.extraPass->loaded && submesh.extraPass->slotLightRecords.first != -1);
+    }
+    setLightRecordsMesh(entity, lightRecordsForm);
     // a mixed mesh whose blended submeshes read the scene keeps its opaque ones in the opaque
     // queue: the basin under a water surface is in the depth and colour the water reads
     mesh.splitQueues = mesh.autoTransparency && mesh.isTransparent() && hasOpaqueSubmesh && hasTransparentSubmesh &&
@@ -9017,6 +9112,7 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     extra.slotFSObjectLights = -1;
     extra.sizeVSObjectLights = 0;
     extra.sizeFSObjectLights = 0;
+    extra.slotLightRecords = {-1, -1};
     extra.slotFSLitFrame = -1;
     extra.sizeFSLitFrame = 0;
     extra.slotFSLighting = -1;
@@ -9027,6 +9123,9 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
         shaderData.getUniformBlockMembers("u_fs_objectLights", extra.sizeFSObjectLights);
         extra.sizeVSObjectLights = std::min(extra.sizeVSObjectLights, (unsigned int)sizeof(object_lights_t));
         extra.sizeFSObjectLights = std::min(extra.sizeFSObjectLights, (unsigned int)sizeof(object_lights_t));
+        extra.slotLightRecords = shaderData.getTextureIndexByName("u_lightRecords");
+        if (extra.slotLightRecords.first != -1 && ensureLightRecords(1))
+            extra.render.addTexture(extra.slotLightRecords, ShaderStageType::FRAGMENT, &lightRecords);
         extra.slotFSLitFrame = shaderData.getUniformBlockIndexByName("u_fs_litFrame");
         shaderData.getUniformBlockMembers("u_fs_litFrame", extra.sizeFSLitFrame);
         extra.sizeFSLitFrame = std::min(extra.sizeFSLitFrame, (unsigned int)sizeof(lit_frame_block_t));
@@ -9110,7 +9209,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
 
     applyFrameBlock(render, extra.libraryBindings);
     applySceneInputs(render, extra.libraryBindings);
-    applyEnvironment(render, extra.libraryBindings, mesh, transform);
+    applyEnvironment(render, extra.libraryBindings, entity, mesh, transform);
     applyPlanarReflection(render, extra.libraryBindings, entity);
     applyWaterInteraction(render, extra.libraryBindings, entity, mesh, submesh.material, extra.customFSParams);
 
@@ -9128,7 +9227,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
         loadSpotMaskTexture(shaderData, render);
         if (extra.slotVSObjectLights != -1 || extra.slotFSObjectLights != -1){
             applyObjectLights(render, extra.slotVSObjectLights, extra.sizeVSObjectLights, extra.slotFSObjectLights, extra.sizeFSObjectLights,
-                              mesh, properties, builtLightBits);
+                              extra.slotLightRecords, mesh, properties, builtLightBits);
             // a Tiled variant's lists (S57)
             if (properties & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS)){
                 const TiledLightsView* tiles = ps().tiledLights.get();
@@ -10330,7 +10429,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 
             applyFrameBlock(render, libraryBindings);
             applySceneInputs(render, libraryBindings);
-            applyEnvironment(render, libraryBindings, mesh, transform);
+            applyEnvironment(render, libraryBindings, entity, mesh, transform);
             applyPlanarReflection(render, libraryBindings, entity);
             applyWaterInteraction(render, libraryBindings, entity, mesh, mesh.submeshes[i].material, mesh.submeshes[i].customFSParams);
 
@@ -10386,7 +10485,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 if (mesh.submeshes[i].slotVSObjectLights != -1 || mesh.submeshes[i].slotFSObjectLights != -1){
                     applyObjectLights(render, mesh.submeshes[i].slotVSObjectLights, mesh.submeshes[i].sizeVSObjectLights,
                                       mesh.submeshes[i].slotFSObjectLights, mesh.submeshes[i].sizeFSObjectLights,
-                                      mesh, mesh.submeshes[i].shaderProperties, builtLightBits);
+                                      mesh.submeshes[i].slotLightRecords, mesh, mesh.submeshes[i].shaderProperties, builtLightBits);
                 }
                 if (mesh.submeshes[i].slotFSLitFrame != -1){
                     // a variant with the post colour has its parameters first (lit_frame_block_t)
@@ -12797,6 +12896,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotFSLightOcclusion = -1;
         submesh.sizeFSLightOcclusion = 0;
         submesh.slotTiledLights = {-1, -1};
+        submesh.slotLightRecords = {-1, -1};
         submesh.slotContactShadows = {-1, -1};
         submesh.slotVSFade = -1;
         // set only when the variant has them (loadMesh): a reload without must not keep them
@@ -14982,8 +15082,18 @@ void RenderSystem::applyPlanarReflection(ObjectRender& render, const ShaderLibra
     if (bindings.slotFSPlanarReflection == -1 && bindings.slotPlanarReflection.first == -1)
         return;
     fs_planar_reflection_t block;
+    TextureRender* texture = nullptr;
+    getPlanarReflection(entity, block, texture);
+    // (a shader reading the environment too has these values in its block: applyEnvironment)
+    if (bindings.slotFSPlanarReflection != -1)
+        render.applyUniformBlock(bindings.slotFSPlanarReflection, sizeof(fs_planar_reflection_t), &block);
+    if (bindings.slotPlanarReflection.first != -1)
+        render.addTexture(bindings.slotPlanarReflection, ShaderStageType::FRAGMENT, texture);
+}
+
+void RenderSystem::getPlanarReflection(Entity entity, fs_planar_reflection_t& block, TextureRender*& texture){
     block.params = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
-    TextureRender* texture = &emptyBlack;
+    texture = &emptyBlack;
 
     // the reflection the view's camera has for this mesh's height, in its own pass only
     RenderView& view = rv();
@@ -14999,10 +15109,6 @@ void RenderSystem::applyPlanarReflection(ObjectRender& render, const ShaderLibra
             }
         }
     }
-    if (bindings.slotFSPlanarReflection != -1)
-        render.applyUniformBlock(bindings.slotFSPlanarReflection, sizeof(fs_planar_reflection_t), &block);
-    if (bindings.slotPlanarReflection.first != -1)
-        render.addTexture(bindings.slotPlanarReflection, ShaderStageType::FRAGMENT, texture);
 }
 
 void RenderSystem::applyWaterInteraction(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity, const MeshComponent& mesh,
@@ -18031,6 +18137,8 @@ void RenderSystem::draw(){
     refreshGroupFadedPoints();
     // the Water Excluders' hull maps and the Water Wakes' map, before any pass draws a water
     syncWaterInteraction();
+    // the scene lights' records, before any pass draws a mesh reading them
+    syncLightRecords();
     beginBatchFrame();
     drawFramePasses();
     drawCameras(true);
@@ -19868,6 +19976,7 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
         // (kept over reloads, which load it again)
         setSceneInputUser(entity, false, 0);
         setWaterMesh(entity, false, false);
+        setLightRecordsMesh(entity, false);
         setGBufferDepthMismatch(entity, false);
     } else if (componentId == scene->getComponentId<UIComponent>()) {
         UIComponent& ui = scene->getComponent<UIComponent>(entity);
