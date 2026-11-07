@@ -100,12 +100,18 @@ namespace jasperengine::titleart {
         plan->layerId = node.layerId;
         plan->style = decodeStyle3D(layer);
         plan->tier = tierOf(req.tier);
+        plan->debugView = std::clamp(req.debugView3D, 0, 2);
         plan->canvasWidth = doc.canvasWidth();
         plan->canvasHeight = doc.canvasHeight();
         plan->size = layerSourceSize(layer);
         const Scene3D scene = decodeScene3D(doc.root);
         plan->supersample = scene.supersample;
         plan->lighting = resolveLighting(scene, plan->style);
+        if (plan->debugView != 0) {
+            // a debug view shows its values as they are
+            plan->lighting.toneMapping = ToneMapping3D::None;
+            plan->lighting.exposure = 1;
+        }
         plan->camera = plan->style.camera ? *plan->style.camera : scene.camera;
         if (countNonAmbientLights(plan->lighting.lights) > TITLE_3D_MAX_LIGHTS) {
             TitleProblem p;
@@ -170,6 +176,7 @@ namespace jasperengine::titleart {
             if (!mesh.rigs.empty()) bits |= TitleLitBits::RIGS;
             if (plan->lighting.environment.preset == "matcap") bits |= TitleLitBits::MATCAP;
             if (bits & TitleLitBits::WRAP_UV && mesh.wrap.empty()) bits &= ~TitleLitBits::WRAP_UV;
+            bits |= (uint32_t)plan->debugView << TitleLitBits::OUTPUT_SHIFT;
             plan->slots[s].bits = bits;
         }
         // base textures per material

@@ -4,8 +4,8 @@
 // S86 AC9, AC10 (partly), AC13 (CPU twin), AC15, AC27 (zero cost): a Dimension 3D layer through
 // the S80 renderer on the headless device. A gold 3D plate draws lit pixels where its 2D twin
 // does and nothing outside its region; the ramp's bend changes the image (red control: bend 0);
-// the compressed-light path agrees with the float path; a 2D document makes no 3D renderer; the
-// environment's level map and CPU scene evaluation.
+// the compressed-light path agrees with the float path; the normals and environment debug views;
+// a 2D document makes no 3D renderer; the environment's level map and CPU scene evaluation.
 
 #include "titleart/render/TitleRenderTestSupport.h"
 
@@ -114,6 +114,25 @@ TEST_F(Title3DRendererGpu, The3DRegionIsTheProjectedMesh) {
     }
     EXPECT_EQ(rightAlpha, 0.0);
     EXPECT_GT(p.at(256 - 150, 128 - 60)[3], 0.99f);
+}
+
+TEST_F(Title3DRendererGpu, DebugViewsShowNormalsAndTheEnvironment) {
+    // render_title options.debug_view: the face's normal is +z, so the normals view is blue with
+    // equal red and green where the gold render is red over blue
+    auto renderer = geometryRenderer();
+    RenderRequest normals = requestOf(doc3D(plate3D()));
+    normals.debugView3D = 1;
+    const Pixels n = render(*renderer, normals);
+    const float* centre = n.at(256, 128);
+    EXPECT_GT(centre[3], 0.99f);
+    EXPECT_GT(centre[2], centre[0] + 0.1f);
+    EXPECT_NEAR(centre[0], centre[1], 0.02f);
+    RenderRequest environment = requestOf(doc3D(plate3D()));
+    environment.debugView3D = 2;
+    const Pixels e = render(*renderer, environment);
+    const Pixels lit = render(*renderer, requestOf(doc3D(plate3D())));
+    EXPECT_GT(e.at(256, 128)[3], 0.99f);
+    EXPECT_GT(compare(e, lit, 8.0).overFraction, 0.05) << "the environment view is not the render";
 }
 
 TEST(Title3DEnvironmentTest, LevelMapAndSceneTwin) {

@@ -70,6 +70,7 @@ namespace jasperengine::titleart {
         std::vector<std::string> keepSplits;        // layer ids whose own composite is kept as a split
         std::optional<GlyphCellRequest> glyphCell;
         int tier = 0;                               // 0 = bake quality; S86's TitleTier for Realtime 3D
+        int debugView3D = 0;                        // S86 render_title debug_view: 0 none, 1 normals, 2 environment
         bool includeGuides = false;                 // the editor's views draw guides; outputs never do
         // the output pass (§6.9): 8 writes straight-alpha sRGB with dither into RGBA8; 16 writes
         // straight sRGB-encoded half floats into RGBA16F (16-bit bakes, read back with 8 bytes

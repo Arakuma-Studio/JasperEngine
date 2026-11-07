@@ -717,8 +717,11 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
         key = hashCombine(key, fnv1a64(svc.caps.pathName()));
         key = hashCombine(key, inkOnly ? 1 : 2);
 #if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
-        // a 3D layer's pixels depend on the tier and the 3D path's test flags too (S86)
-        if (is3D(node)) key = hashCombine(hashCombine(key, (uint64_t)(req.tier + 1)), (uint64_t)req.testFlags + 1);
+        // a 3D layer's pixels depend on the tier, the 3D path's test flags and the debug view too (S86)
+        if (is3D(node)) {
+            key = hashCombine(hashCombine(key, (uint64_t)(req.tier + 1)), (uint64_t)req.testFlags + 1);
+            key = hashCombine(key, (uint64_t)req.debugView3D + 1);
+        }
 #endif
         // the ancestors' rotation, scale and flips shape the pixels
         const geometry::Affine& m = place.toDocument;

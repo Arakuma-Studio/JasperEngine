@@ -26,11 +26,11 @@
 #include "command/UndoOrigin.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
-
-#include <cstring>
 #include "util/ImageDiff.h"
 #include "util/PngWriter.h"
 #include "util/SafeWrite.h"
+
+#include <cstring>
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -624,7 +624,7 @@ bool checkRenderOptions(const Json& options, std::string& error) {
         return false;
     }
     for (auto it = options.begin(); it != options.end(); ++it) {
-        // S86's keys: the tier to render 3D layers at, and the intermediate image (none: the render)
+        // S86's keys: the tier to render 3D layers at, and the intermediate image of 3D layers
         if (it.key() == "quality") {
             titleart::TitleTier tier;
             if (!it.value().is_string() || !titleart::titleTierFromName(it.value().get<std::string>(), tier)) {
@@ -635,10 +635,10 @@ bool checkRenderOptions(const Json& options, std::string& error) {
         }
         if (it.key() == "debug_view") {
             const std::string view = it.value().is_string() ? it.value().get<std::string>() : std::string();
-            if (view == "none") continue;
-            static const char* const VIEWS[] = {"normals", "ao", "glint", "environment", "ink", "wireframe"};
+            if (view == "none" || view == "normals" || view == "environment") continue;
+            static const char* const VIEWS[] = {"ao", "glint", "ink", "wireframe"};
             if (std::find(std::begin(VIEWS), std::end(VIEWS), view) != std::end(VIEWS)) {
-                error = "not_available: render_title debug_view '" + view + "' is not in this build; it serves none.";
+                error = "not_available: render_title debug_view '" + view + "' is not in this build; it serves none, normals and environment.";
             } else {
                 error = "bad_option: `options.debug_view` is none, normals, ao, glint, environment, ink or wireframe.";
             }
@@ -766,6 +766,11 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
     if (args.contains("options") && args["options"].is_object() && args["options"].contains("quality")) {
         titleart::titleTierFromName(args["options"].value("quality", std::string("bake")), tier);
     }
+    int debugView = 0;
+    if (args.contains("options") && args["options"].is_object()) {
+        const std::string view = args["options"].value("debug_view", std::string("none"));
+        debugView = view == "normals" ? 1 : view == "environment" ? 2 : 0;
+    }
     for (size_t v = 0; v < s->variants.size(); v++) {
         PendingRender r;
         r.variant = static_cast<int>(v);
@@ -778,6 +783,7 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
         r.request.contentLayers = contentLayers;
         r.request.testFlags = flags;
         r.request.tier = static_cast<int>(tier);
+        r.request.debugView3D = debugView;
         s->renders.push_back(r);
         if (v == 0 && s->fallback == "compare") {
             PendingRender forced = s->renders.back();

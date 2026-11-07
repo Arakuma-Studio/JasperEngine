@@ -69,6 +69,7 @@ namespace jasperengine::titleart {
         int canvasWidth = 0, canvasHeight = 0;
         double size = 200;
         TitleTier tier = TitleTier::Bake;
+        int debugView = 0;                              // RenderRequest::debugView3D (no tone map, no shoulder)
         int k = 1;                                      // supersampling
         int supersample = 3;                            // the document's (Bake's k cap)
         int environmentFace = 1024;

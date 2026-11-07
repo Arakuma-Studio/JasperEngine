@@ -454,6 +454,9 @@ Json editor::title3DStats(const titleart::TitleArtDoc& doc, const titleart::Asse
                 row["solids"] = mesh->stats.solids;
                 row["build_ms"] = std::round(mesh->stats.buildMs * 10) / 10;
                 row["tier"] = titleart::titleTierName(tier);
+                // the supersampling the tier asks for (a render lowers it when region x k^2 passes the tier's cap)
+                row["k"] = tier == titleart::TitleTier::Bake ? std::clamp(titleart::decodeScene3D(doc.root).supersample, 1, 3)
+                                                              : titleart::titleTierLimits(tier).k;
                 row["environment_face"] = titleart::titleEnvironmentFace(
                     titleart::resolveLighting(titleart::decodeScene3D(doc.root), request.style).environment, 1.0, tier);
                 row["fallback_used"] = mesh->stats.fallbackUsed;

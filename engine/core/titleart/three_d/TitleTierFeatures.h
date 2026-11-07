@@ -45,7 +45,8 @@ namespace jasperengine::titleart {
         constexpr uint32_t RIGS = 1u << 16;
         constexpr uint32_t LIGHTS = 1u << 17;
         constexpr uint32_t HDR_COMPRESS = 1u << 18;
-        constexpr uint32_t OUTPUT_SHIFT = 19;          // 2 bits: 0 colour, 1 normal + depth, 2 depth only
+        constexpr uint32_t OUTPUT_SHIFT = 19;          // 2 bits: 0 colour, 1 the normals, 2 the reflected environment
+                                                       // (render_title debug_view)
         constexpr uint32_t OUTPUT_MASK = 3u << 19;
         constexpr uint32_t MATCAP = 1u << 21;
         constexpr uint32_t SPECULAR_AA = 1u << 22;

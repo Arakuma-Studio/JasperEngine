@@ -14,7 +14,8 @@ precision highp int;
 // TL_HDR_COMPRESS writes the compressed light of the RGBA8 path (hdr_compress.glsl); otherwise
 // `frame.z` asks for the tone-map-aware shoulder on MSAA samples. Variants: the TL_* bits of
 // TitleTierFeatures.h. A slot's material comes from the slot table, so one draw can cover the
-// opaque slots of a variant (v_ids.w low 12 bits).
+// opaque slots of a variant (v_ids.w low 12 bits). TL_OUTPUT 1 and 2 are render_title's
+// debug views: the shading normal (world, 0..1) and the reflected environment, unweighted.
 
 const float M_PI = 3.141592653589793;
 
@@ -230,6 +231,12 @@ void main() {
     color = vec4(diffuse * a + added, a + (1.0 - a) * clamp(max(added.r, max(added.g, added.b)), 0.0, 1.0));
 #else
     color = vec4(diffuse + added, 1.0);
+#endif
+
+#if TL_OUTPUT == 1
+    color = vec4(N * 0.5 + 0.5, 1.0);
+#elif TL_OUTPUT == 2
+    color = vec4(specLight, 1.0);
 #endif
 
 #ifdef TL_HDR_COMPRESS

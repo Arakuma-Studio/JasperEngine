@@ -559,7 +559,7 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
     const double exposure = plan.lighting.exposure;
     const Environment3D& e = plan.lighting.environment;
     set4(fs.camera, camera.position[0], camera.position[1], camera.position[2], (float)exposure);
-    const bool shoulder = !compressed && samples > 1 && k == 1;
+    const bool shoulder = !compressed && samples > 1 && k == 1 && plan.debugView == 0;
     set4(fs.frame, (float)e.intensity, (float)(e.rotation * 3.14159265358979323846 / 180.0), shoulder ? 1.0f : 0.0f, (float)(plan.size / 100.0));
     const int face = env ? env->face : 512;
     set4(fs.env, (float)std::log2(face / 512.0), (float)((env ? env->levels : 1) - 1), (float)e.blur,
