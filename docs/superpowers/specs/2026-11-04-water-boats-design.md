@@ -884,3 +884,7 @@ Recorded during implementation (branch `dc/water-boats`, built on `dc/water-refl
    no root or cosine per texel; the RGBA texels are packed in a loop that vectorizes.
 10. **Opaque water's 'Aui' key is gone from exports** (deviation 4): the `shader-library-export/Blend`
     reflection golden loses the auto-instanced key of its `BLEND_NONE` water.
+11. **The wake bench's desktop budget is not met on a build box.** On shared box D (other builds
+    running) `Step128x4` measured 140 us (budget 200) and `Step256x4` 570 us (budget 300). The
+    budgets are enforced only with `JASPER_TEST_PERF_SLACK` on a quiet machine
+    (`docs/testing.md`), and that run has not been made.
