@@ -42,6 +42,7 @@ namespace jasperengine{
 namespace jasperengine{
     enum class ActionState;
     enum class AnchorPreset;
+    enum class SpriteDrawMode;
     enum class BuoyancyColumns;
     enum class CloudsPreset;
     enum class Collider2DType;

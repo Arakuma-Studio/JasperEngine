@@ -32,6 +32,7 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/sprite/SpriteSheetBuilder.cpp
     ${EDITOR_DIR}/sprite/SpriteAtlasDocument.cpp
     ${EDITOR_DIR}/sprite/SpriteAtlasBuilder.cpp
+    ${EDITOR_DIR}/mcp/tools/SpriteAtlasTools.cpp
 )
 jasperengine_skip_unity_build(
     REASON "S45's sprite modules: file-local helpers (problemJson, readText, invalid) shared in name with the Aseprite importer's"
@@ -39,6 +40,7 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/sprite/SpriteSheetBuilder.cpp
         ${EDITOR_DIR}/sprite/SpriteAtlasDocument.cpp
         ${EDITOR_DIR}/sprite/SpriteAtlasBuilder.cpp
+        ${EDITOR_DIR}/mcp/tools/SpriteAtlasTools.cpp
 )
 
 # Unity build: the codec's sources keep file-local reader, writer and composer types, its
