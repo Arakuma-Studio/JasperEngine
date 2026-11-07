@@ -11,6 +11,7 @@
 
 #include "Project.h"
 #include "external/IconsFontAwesome6.h"
+#include "titleart/TitleArtBuiltinChecks.h"
 #include "titleart/TitleArtChecks.h"
 #include "titleart/TitleArtRenderHost.h"
 #include "titleart/designer/TitlePages.h"
@@ -318,6 +319,10 @@ void TitleDesignerWindow::drawPropertiesHeader() {
 }
 
 void TitleDesignerWindow::drawProperties() {
+    if (newerVersion()) {
+        ImGui::TextDisabled("Written by a newer JasperEngine: nothing to show here");
+        return;
+    }
     if (!doc.isOpen()) {
         ImGui::TextDisabled("No Title Art open");
         return;
@@ -346,7 +351,8 @@ void TitleDesignerWindow::drawProperties() {
 void TitleDesignerWindow::refreshLint(bool pixels) {
     findings.clear();
     checksRun = 0;
-    if (!doc.isOpen()) return;
+    if (!doc.isOpen() || newerVersion()) return;
+    registerBuiltinTitleChecks();
     TitleCheckContext context(doc.shown(), doc.document()->projectPath());
     context.file = doc.document()->absolutePath();
     context.assets = TitleArtRenderHost::editor().resolver(project);

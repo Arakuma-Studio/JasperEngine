@@ -73,6 +73,7 @@ namespace {
     bool vectorShape(const ta::Json& o) { return o.value("mode", std::string("shape")) == "shape"; }
     bool textVertical(const ta::Json& o) { return o.value("vertical", false); }
     bool canvasOpaque(const ta::Json& o) { return !o.value("transparent", true); }
+    bool exposedNumber(const ta::Json& o) { return o.value("type", std::string()) == "number"; }
 
     const std::map<std::string, RowSpec>& table() {
         static const std::map<std::string, RowSpec> rows = [] {
@@ -195,6 +196,9 @@ namespace {
             t["global_light.angle"] = {.uiMin = -180, .uiMax = 180, .aliases = "light|光源"};
             t["document.seed"] = {.noSlider = true, .aliases = "random|variation"};
             t["output.scale"] = {.uiMin = 0.25, .uiMax = 4, .slider = SliderMap::Log};
+            // an exposed number's range (other types have none)
+            t["exposed.min"] = {.noSlider = true, .when = exposedNumber};
+            t["exposed.max"] = {.noSlider = true, .when = exposedNumber};
             // generators and adjustments: their own pages
             t["generator_ref.type"] = {.hidden = true};
             t["generator_ref.params"] = {.hidden = true};
@@ -769,6 +773,10 @@ void jasperengine::editor::titledesigner::fieldRow(RowContext& ctx, const std::v
         ctx.host->rowScrolled();
     }
 
+    if (rule && !ctx.legendShown) {
+        ui::docRowSourceLegend(rule->sourceName.c_str());
+        ctx.legendShown = true;
+    }
     if (link) {
         if (ui::docRowLink(rowId.c_str(), options, "Edit on its page" "##link") && ctx.host) ctx.host->selectNode(ctx.node);
         return;

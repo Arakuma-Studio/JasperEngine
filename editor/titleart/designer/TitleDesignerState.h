@@ -102,6 +102,10 @@ namespace jasperengine::editor::titledesigner {
         bool commitText(const std::string& text, const std::string& stepName, std::string* error);
         // the last commit's result (new ids, changes, problems)
         const TitleOpsResult& lastResult() const { return result; }
+        // the id op `opIndex` of the last commit made ("layer", "effect", "rim"), "" when none
+        std::string newId(size_t opIndex, const char* key) const;
+        // every id of `key` the last commit made, in op order
+        std::vector<std::string> newIds(const char* key) const;
 
         // ---- previews (R42) ----
         bool setPreview(const PreviewItem& item, std::string* error);

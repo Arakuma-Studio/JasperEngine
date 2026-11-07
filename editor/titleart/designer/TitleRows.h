@@ -80,6 +80,7 @@ namespace jasperengine::editor::titledesigner {
         std::string readOnlyReason;
         bool allOpen = false;                       // Collect: every section open
         std::vector<std::string> forceOpen;         // section titles a search landing opens (R26)
+        bool legendShown = false;                   // the source-dot legend is drawn once per page (R23)
         bool collecting() const { return mode == RowMode::Collect; }
     };
 

@@ -93,6 +93,8 @@ namespace jasperengine::editor {
         bool canvasHasKeys() const { return focused && canvasFocused; }
         // a text field, the text editor or the search takes the keys
         bool typing() const;
+        // a file of a newer version is open: S80 renders nothing of it and its tree is not normalized
+        bool newerVersion() const { return doc.isOpen() && !doc.document()->versionError().empty(); }
         // the ImGui rect of the window last frame (MCP's focus_window / screenshot)
         bool windowRect(ImVec2& min, ImVec2& max) const;
         void requestFocus() { focusRequested = true; }
@@ -101,6 +103,8 @@ namespace jasperengine::editor {
         // a render, a settle or a preview is in progress: the editor keeps drawing frames
         bool needsFrames() const;
         void resetForProjectSwitch();
+        // the editor settings were read: reopen as the window was (R64)
+        void restoreFromSettings();
 
         // ---- the scripted API: every UI entry and MCP call goes through these ----
         bool open(const std::filesystem::path& file, std::string* error = nullptr);

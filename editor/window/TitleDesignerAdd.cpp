@@ -270,13 +270,12 @@ void TitleDesignerWindow::drawAddPalette() {
         std::string error;
         if (doc.commit(ops, chosen->stepName, &error)) {
             // a new layer is selected; a new text starts editing (R36)
-            const ta::Json& ids = doc.lastResult().newIds;
-            if (chosen->section != "Effects" && ids.contains("0") && ids["0"].is_string()) {
-                const std::string id = ids["0"].get<std::string>();
-                doc.selectOne({NodeKind::Layer, id, {}, {}});
-                if (chosen->id == "layer:text") beginTextEdit(id, true);
-            } else if (chosen->section == "Effects" && ids.contains("0")) {
-                const std::string effectId = ids["0"].is_string() ? ids["0"].get<std::string>() : std::string();
+            const std::string layerId = doc.newId(0, "layer");
+            if (chosen->section != "Effects" && !layerId.empty()) {
+                doc.selectOne({NodeKind::Layer, layerId, {}, {}});
+                if (chosen->id == "layer:text") beginTextEdit(layerId, true);
+            } else if (chosen->section == "Effects") {
+                const std::string effectId = doc.newId(0, "effect");
                 if (!effectId.empty() && !layers.empty()) doc.selectOne({NodeKind::Effect, layers.back(), partsSelected && addToParts ? primary.part : std::string(), effectId});
             }
         } else {

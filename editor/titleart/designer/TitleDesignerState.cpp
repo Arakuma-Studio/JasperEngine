@@ -604,6 +604,26 @@ bool TitleDesignerState::commitPreview(std::string* error) {
     return commit(item.ops, item.stepName, error, {}, seed);
 }
 
+std::string TitleDesignerState::newId(size_t opIndex, const char* key) const {
+    const auto it = result.newIds.find(std::to_string(opIndex));
+    if (it == result.newIds.end() || !it->is_object()) return {};
+    const auto id = it->find(key);
+    return id != it->end() && id->is_string() ? id->get<std::string>() : std::string();
+}
+
+std::vector<std::string> TitleDesignerState::newIds(const char* key) const {
+    std::vector<std::pair<size_t, std::string>> found;
+    for (auto it = result.newIds.begin(); it != result.newIds.end(); ++it) {
+        if (!it->is_object()) continue;
+        const auto id = it->find(key);
+        if (id != it->end() && id->is_string()) found.push_back({(size_t)std::stoul(it.key()), id->get<std::string>()});
+    }
+    std::sort(found.begin(), found.end());
+    std::vector<std::string> out;
+    for (auto& f : found) out.push_back(f.second);
+    return out;
+}
+
 void TitleDesignerState::documentChanged(TitleArtChangeOrigin origin) {
     if (committing) return;
     ExternalChange change;

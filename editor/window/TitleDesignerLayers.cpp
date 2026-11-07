@@ -192,6 +192,10 @@ void TitleDesignerWindow::layerContextMenu(const std::string& layerId) {
 }
 
 void TitleDesignerWindow::drawLayers() {
+    if (newerVersion()) {
+        ImGui::TextDisabled("Written by a newer JasperEngine: nothing to show here");
+        return;
+    }
     if (!doc.isOpen()) {
         ImGui::TextDisabled("No Title Art open");
         return;

@@ -19,6 +19,7 @@
 #include "ScriptDataTestSupport.h"
 #include "command/CommandHistory.h"
 #include "shortcuts/CommandCatalog.h"
+#include "shortcuts/DefaultCommands.h"
 #include "titleart/TitleArtDocument.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitlePreviewQueue.h"
@@ -33,6 +34,7 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -380,8 +382,9 @@ TEST(TitleDesignerWindowDeathTest, ShortcutContext) {
                                "titleDesigner.group", "titleDesigner.ungroup", "titleDesigner.clip", "titleDesigner.forward", "titleDesigner.backward",
                                "titleDesigner.toFront", "titleDesigner.toBack", "titleDesigner.toggleVisible", "titleDesigner.toggleLock",
                                "titleDesigner.nudgeLeft", "titleDesigner.up", "titleDesigner.bake"}) {
-            const CommandDef* def = CommandCatalog::editor().find(id);
-            ASSERT_NE(def, nullptr) << id;
+            const std::vector<CommandDef> defaults = defaultCommands();
+            auto def = std::find_if(defaults.begin(), defaults.end(), [&](const CommandDef& d) { return d.id == id; });
+            ASSERT_NE(def, defaults.end()) << id;
             EXPECT_EQ(def->context, ShortcutContext::TitleDesigner) << id;
         }
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();

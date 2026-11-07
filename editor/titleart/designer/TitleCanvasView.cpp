@@ -46,6 +46,8 @@ namespace {
 
     // a 2 x 2 checker; the sprite repeats it so a square is `checkerPixels` on screen
     const uint8_t CHECKER[16] = {204, 204, 204, 255, 255, 255, 255, 255, 255, 255, 255, 255, 204, 204, 204, 255};
+    // solid backdrops: white tinted by the sprite's colour
+    const uint8_t WHITE[4] = {255, 255, 255, 255};
 
     void setBlended(Scene* scene, Entity entity) {
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
@@ -79,6 +81,8 @@ void TitleCanvasView::createScene() {
     camera = new Camera(scene);
     camera->setType(CameraType::CAMERA_ORTHO);
     camera->setAutoResize(false);
+    // the scene's camera: sprites build their quads for its type (a UI camera flips them)
+    scene->setCamera(camera->getEntity());
     scene->setLightState(LightState::OFF);
     scene->setBackgroundColor(Vector4(0.13f, 0.13f, 0.14f, 1.0f));
 
@@ -303,7 +307,7 @@ void TitleCanvasView::updateScene() {
                                        TextureData(backdrop.imageWidth, backdrop.imageHeight, (unsigned int)backdrop.imageRgba.size(),
                                                    ColorFormat::RGBA, 4, backdrop.imageRgba.data()));
         } else {
-            backdropSprite->setTexture(std::string());
+            backdropSprite->setTexture("editor:titledesigner-white", TextureData(1, 1, sizeof(WHITE), ColorFormat::RGBA, 4, (void*)WHITE));
         }
         MeshComponent& mesh = scene->getComponent<MeshComponent>(backdropSprite->getEntity());
         Texture& texture = mesh.submeshes[0].material.baseColorTexture;

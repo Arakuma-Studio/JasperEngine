@@ -110,7 +110,8 @@ TEST(RampFieldTest, ClickOnTheBarAddsAStopWithTheColourThere) {
     ta::TitleGradient value;
     EXPECT_EQ(drain(editor, &value), (Phases{EditPhase::Applied}));
     ASSERT_EQ(value.stops.size(), 4u);
-    EXPECT_EQ(editor.selected(), 2);
+    EXPECT_EQ(editor.selected(), 2) << "stops at " << value.stops[0].pos << " " << value.stops[1].pos << " " << value.stops[2].pos << " "
+                                    << value.stops[3].pos << "; pressed at pos " << ramp::posAt(10.0f, 200.0f, xOf(0.5));
     const ta::TitleGradientStop& added = value.stops[2];
     EXPECT_DOUBLE_EQ(added.pos, 0.5);
     const ramp::Rgba expected = ramp::sample(original, 0.5);

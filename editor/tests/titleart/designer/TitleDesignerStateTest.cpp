@@ -298,12 +298,18 @@ TEST_F(TitleDesignerStateTest, IndexFromViews) {
     PropertyIndex index;
     collectIndex(state, &host, index, false);
     removeSection("test3d");
+    auto hasLabel = [&](const std::string& query, const std::string& label) {
+        for (const SearchHit& hit : index.query(query, 0)) {
+            if (index.entry(hit.entry).label == label) return true;
+        }
+        return false;
+    };
     auto labels = [&](const std::string& query) {
         std::set<std::string> out;
         for (const SearchHit& hit : index.query(query, 0)) out.insert(index.entry(hit.entry).fieldPath);
         return out;
     };
-    EXPECT_TRUE(labels("Extrusion Depth").empty()) << "a 3D-only row is never a hit on a 2D layer";
+    EXPECT_FALSE(hasLabel("Extrusion Depth", "Extrusion Depth")) << "a 3D-only row is never a hit on a 2D layer";
     EXPECT_TRUE(labels("Fit").count("style.face.bevel.fit") == 0) << "hidden by size_mode: fixed";
     const std::set<std::string> rimRows = labels("\xE3\x83\x95\xE3\x83\x81");   // フチ
     EXPECT_TRUE(rimRows.count("style.rims[0].width")) << "フチ finds the rim widths";

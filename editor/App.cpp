@@ -6128,6 +6128,7 @@ void editor::App::applyPanelVisibilitySettings() {
     audioMixerWindow->setOpen(visibility.audioMixer);
     soundBrowserWindow->setOpen(visibility.soundBrowser);
     spriteNormalsWindow->setOpen(visibility.spriteNormals);
+    titleDesignerWindow->restoreFromSettings();
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
     mcpActivityWindow->setOpen(visibility.mcp);

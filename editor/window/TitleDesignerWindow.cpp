@@ -150,6 +150,14 @@ void TitleDesignerWindow::setOpen(bool open) {
     }
 }
 
+void TitleDesignerWindow::restoreFromSettings() {
+    settings = TitleDesignerSettings::load();
+    if (settings.windowOpen && !windowOpen) {
+        windowOpen = true;
+        focusRequested = true;
+    }
+}
+
 void TitleDesignerWindow::resetForProjectSwitch() {
     saveView();
     destroyLive();
@@ -581,9 +589,7 @@ bool TitleDesignerWindow::addLayer(const std::string& type, const ta::Json& valu
         reportError(error);
         return false;
     }
-    const ta::Json& ids = doc.lastResult().newIds;
-    std::string newId;
-    if (ids.contains("0")) newId = ids["0"].is_string() ? ids["0"].get<std::string>() : ids["0"].is_array() && !ids["0"].empty() ? ids["0"][0].get<std::string>() : std::string();
+    const std::string newId = doc.newId(0, "layer");
     if (!newId.empty()) {
         doc.selectOne({NodeKind::Layer, newId, {}, {}});
         // a new text starts editing with its placeholder selected (R36)
@@ -639,11 +645,7 @@ bool TitleDesignerWindow::duplicateSelection() {
         return false;
     }
     std::vector<NodeRef> made;
-    const ta::Json& ids = doc.lastResult().newIds;
-    for (auto it = ids.begin(); it != ids.end(); ++it) {
-        if (it->is_string()) made.push_back({NodeKind::Layer, it->get<std::string>(), {}, {}});
-        else if (it->is_array() && !it->empty() && (*it)[0].is_string()) made.push_back({NodeKind::Layer, (*it)[0].get<std::string>(), {}, {}});
-    }
+    for (const std::string& id : doc.newIds("layer")) made.push_back({NodeKind::Layer, id, {}, {}});
     if (!made.empty()) doc.select(made);
     return true;
 }
@@ -658,8 +660,8 @@ bool TitleDesignerWindow::groupSelection() {
         reportError(error);
         return false;
     }
-    const ta::Json& ids = doc.lastResult().newIds;
-    if (ids.contains("0") && ids["0"].is_string()) doc.selectOne({NodeKind::Layer, ids["0"].get<std::string>(), {}, {}});
+    const std::string group = doc.newId(0, "layer");
+    if (!group.empty()) doc.selectOne({NodeKind::Layer, group, {}, {}});
     return true;
 }
 
@@ -980,7 +982,7 @@ void TitleDesignerWindow::tick() {
         gpuTimingHeld = false;
     }
     // lint: document checks 300 ms after the last change, while Properties shows (R53)
-    if (doc.isOpen() && lintChange != doc.changeCount()) {
+    if (doc.isOpen() && !newerVersion() && lintChange != doc.changeCount()) {
         if (lintDirtyAt < 0.0) lintDirtyAt = now();
         if (now() - lintDirtyAt >= 0.3 && !doc.gestureActive()) {
             refreshLint(false);
@@ -1026,8 +1028,8 @@ void TitleDesignerWindow::show() {
     const bool hasLibrary = libraryProvider() != nullptr;
     const float scale = ImGui::GetFontSize() / 16.0f;
     // R3: narrow windows
-    const bool narrow = width < 960.0f * scale;
-    const bool tiny = width < 480.0f * scale;
+    const bool narrow = width < 960.0f * std::max(1.0f, scale);
+    const bool tiny = width < 480.0f * std::max(1.0f, scale);
     const float libraryHeight = !hasLibrary ? 0.0f : (settings.libraryCollapsed || narrow) ? ImGui::GetFrameHeightWithSpacing() * 1.2f
                                                                                            : settings.libraryHeight * scale;
     const float mainHeight = std::max(120.0f, avail.y - libraryHeight - statusHeight);

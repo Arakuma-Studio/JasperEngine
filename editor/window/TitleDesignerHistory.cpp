@@ -38,6 +38,10 @@ namespace {
 }
 
 void TitleDesignerWindow::drawHistory() {
+    if (newerVersion()) {
+        ImGui::TextDisabled("Written by a newer JasperEngine: nothing to show here");
+        return;
+    }
     if (!doc.isOpen() || !project) {
         ImGui::TextDisabled("No Title Art open");
         return;

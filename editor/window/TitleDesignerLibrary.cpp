@@ -138,10 +138,9 @@ bool TitleDesignerWindow::applyLibraryItem(LibraryTab tab, const LibraryItem& it
         doc.select(kept);
     } else {
         // a Look with nothing to apply to added a text: select it
-        const ta::Json& ids = doc.lastResult().newIds;
-        for (auto it = ids.begin(); it != ids.end(); ++it) {
-            if (it->is_string() && layerById(doc.committed(), it->get<std::string>())) {
-                doc.selectOne({NodeKind::Layer, it->get<std::string>(), {}, {}});
+        for (const std::string& id : doc.newIds("layer")) {
+            if (layerById(doc.committed(), id)) {
+                doc.selectOne({NodeKind::Layer, id, {}, {}});
                 break;
             }
         }
@@ -151,7 +150,7 @@ bool TitleDesignerWindow::applyLibraryItem(LibraryTab tab, const LibraryItem& it
 
 void TitleDesignerWindow::drawLibrary(float width, float height) {
     TitleLibraryProvider* library = libraryProvider();
-    if (!library || !doc.isOpen()) return;
+    if (!library || !doc.isOpen() || newerVersion()) return;
     DocumentView& v = view();
     LibraryTab tab = LibraryTab::Looks;
     libraryTabFromName(v.libraryTab, tab);
@@ -170,7 +169,7 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
     } else {
         applies = "Applies to " + std::to_string(options.layers.size()) + " layers";
     }
-    const bool collapsed = settings.libraryCollapsed || width < 960.0f * ImGui::GetFontSize() / 16.0f;
+    const bool collapsed = settings.libraryCollapsed || width < 960.0f * std::max(1.0f, ImGui::GetFontSize() / 16.0f);
     if (ImGui::ArrowButton("##libcollapse", collapsed ? ImGuiDir_Up : ImGuiDir_Down)) {
         settings.libraryCollapsed = !settings.libraryCollapsed;
         settings.save();

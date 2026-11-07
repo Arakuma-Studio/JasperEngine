@@ -124,7 +124,7 @@ void TitleDesignerWindow::drawToolbar() {
     if (!editable) ImGui::EndDisabled();
     tooltip(editable ? "Add a layer, generator or effect (Ctrl+Shift+N)" : doc.readOnlyReason().c_str());
 
-    if (!open) return;
+    if (!open || newerVersion()) return;
     DocumentView& v = view();
 
     // Preview As (S81's Render Modes; S86 adds its tiers through the hooks)
@@ -344,7 +344,7 @@ void TitleDesignerWindow::drawToolbar() {
 
 void TitleDesignerWindow::drawStatusBar() {
     ImGui::Separator();
-    if (!doc.isOpen()) {
+    if (!doc.isOpen() || newerVersion()) {
         ImGui::TextDisabled("Open a Title Art: double-click one in the Project window, or Assets > Create > Title Art");
         return;
     }

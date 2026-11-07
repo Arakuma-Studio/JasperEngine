@@ -259,7 +259,10 @@ int ui::ramp::insertStop(TitleGradient& gradient, double pos, std::string* error
     stop.mid = 0.5;
     sortStops(gradient);
     const auto at = std::upper_bound(gradient.stops.begin(), gradient.stops.end(), stop, byPosition);
-    return (int)(gradient.stops.insert(at, stop) - gradient.stops.begin());
+    // the index before inserting: insert() may reallocate, and `begin()` would be read before or after it
+    const int index = (int)(at - gradient.stops.begin());
+    gradient.stops.insert(at, stop);
+    return index;
 }
 
 bool ui::ramp::removeStop(TitleGradient& gradient, size_t index) {
@@ -275,7 +278,10 @@ int ui::ramp::moveStop(TitleGradient& gradient, size_t index, double pos) {
     gradient.stops.erase(gradient.stops.begin() + (std::ptrdiff_t)index);
     sortStops(gradient);
     const auto at = std::upper_bound(gradient.stops.begin(), gradient.stops.end(), stop, byPosition);
-    return (int)(gradient.stops.insert(at, stop) - gradient.stops.begin());
+    // the index before inserting: insert() may reallocate, and `begin()` would be read before or after it
+    const int placed = (int)(at - gradient.stops.begin());
+    gradient.stops.insert(at, stop);
+    return placed;
 }
 
 void ui::ramp::setMidpoint(TitleGradient& gradient, size_t left, double mid) {
@@ -310,12 +316,13 @@ TitleGradient ui::ramp::fromPreset(const Gradient& preset) {
 
     TitleGradient gradient;
     for (float time : times) {
-        // evaluate() is linear: the stops are sRGB as the file stores them
-        const Vector4 linear = preset.evaluate(time);
+        // the colour as the preset blends it (sRGB, the file's form): evaluate()'s linear value
+        // went through the engine's approximate sRGB curve and would not come back exactly
+        const Vector3 encoded = preset.evaluateEncoded(time);
         TitleGradientStop stop;
         stop.pos = time;
-        stop.color = {ta::linearToSrgb(linear.x), ta::linearToSrgb(linear.y), ta::linearToSrgb(linear.z)};
-        stop.alpha = std::clamp((double)linear.w, 0.0, 1.0);
+        stop.color = {std::clamp(encoded.x, 0.0f, 1.0f), std::clamp(encoded.y, 0.0f, 1.0f), std::clamp(encoded.z, 0.0f, 1.0f)};
+        stop.alpha = std::clamp((double)preset.evaluateAlpha(time), 0.0, 1.0);
         gradient.stops.push_back(stop);
     }
     return gradient;

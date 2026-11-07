@@ -625,7 +625,14 @@ void TitleDesignerWindow::drawEmptyState(ImDrawList* dl) {
     if (ImGui::Button(ICON_FA_FONT " Add Text###emptyaddtext", ImVec2(140.0f * scale, 0.0f))) addLayer("text", ta::Json::object());
     ImGui::PopStyleColor();
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Add a Text layer and type (Enter)");
-    ImGui::SameLine();
+    // the buttons wrap inside the card on a narrow canvas
+    const float cardRight = min.x + size.x - 16.0f;
+    auto next = [cardRight](const char* label) {
+        ImGui::SameLine();
+        const float w = ImGui::CalcTextSize(label, nullptr, true).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        if (ImGui::GetCursorScreenPos().x + w > cardRight) ImGui::NewLine();
+    };
+    next("Shape " ICON_FA_CARET_DOWN);
     if (ImGui::Button("Shape " ICON_FA_CARET_DOWN "###emptyshape")) ImGui::OpenPopup("##emptyshapes");
     if (ImGui::BeginPopup("##emptyshapes")) {
         for (const char* shape : {"rect", "parallelogram", "ellipse", "orb", "polygon", "star", "burst", "shield", "speech", "shout", "ribbon"}) {
@@ -633,9 +640,9 @@ void TitleDesignerWindow::drawEmptyState(ImDrawList* dl) {
         }
         ImGui::EndPopup();
     }
-    ImGui::SameLine();
+    next("Image...");
     if (ImGui::Button("Image...###emptyimage")) openAddPalette("layers");
-    ImGui::SameLine();
+    next("Vector (SVG)...");
     if (ImGui::Button("Vector (SVG)...###emptysvg")) openAddPalette("layers");
     if (!editable) ImGui::EndDisabled();
     if (library) {
@@ -764,6 +771,11 @@ void TitleDesignerWindow::drawCanvasOverlays(ImDrawList* dl) {
 
 void TitleDesignerWindow::drawCanvas(float width, float height) {
     ImGui::BeginChild("##canvas", ImVec2(width, height), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    if (newerVersion()) {
+        ImGui::TextDisabled("%s", doc.readOnlyReason().c_str());
+        ImGui::EndChild();
+        return;
+    }
     if (!doc.isOpen()) {
         const ImVec2 p = ImGui::GetCursorScreenPos();
         ImGui::SetCursorScreenPos(ImVec2(p.x + 20.0f, p.y + height * 0.4f));
