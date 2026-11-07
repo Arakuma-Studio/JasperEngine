@@ -295,6 +295,10 @@ The Particle Effect window (R17 to R23, R25, D3, D4, AC14; branch `feature/s91-w
   runs of the old effect, so the re-simulation after an edit starts from 0, at most 4 ms a frame
   with its progress shown. Scrubs and loops use the checkpoints. With the moving emitter on, a seek
   replays the motion tick by tick from 0, because a checkpoint does not hold the emitter's path.
+- **A looping effect's clock wraps** at the end of its timing bars (two of its longest lifetimes) when
+  no Loop Range is set, so the time an edit re-simulates, and the bars' scale, stay bounded (review
+  I2). While a game plays the stage holds its frame and queues none; a paused, settled stage queues
+  no frame either (D4).
 - **R20's per-loop seed** applies to the window's own loops (the Loop Range, or a one-shot effect
   starting again). It does not apply to a looping effect's internal Duration cycles, which the
   runtime keeps on one seed.
@@ -307,9 +311,9 @@ The Particle Effect window (R17 to R23, R25, D3, D4, AC14; branch `feature/s91-w
   would have to invent one. Trigger buttons list the Trigger sub-emitters' names. R9's declared
   triggers and R10's cheap updates come from `feature/s91-runtime`, and `triggerNames()` and
   `setExposedValue()` are where they plug in.
-- **R23's playhead** is the window's clock as a fraction of the selected system's Duration (the axis
-  of curves over the emitter's time). It shows only while the Curve window edits a field of this
-  window. Smooth is Unity's SmoothTangents (Free, joined, the neighbours' mean slope), since Clamped
+- **R23's playhead** is the window's clock as a fraction of the selected system's Duration. It shows
+  only while the Curve window edits a curve of this window that is read over the emitter's time
+  (`particlerows::curveOverEmitterTime`). Smooth is Unity's SmoothTangents (Free, joined, the neighbours' mean slope), since Clamped
   Auto already has its own menu entry.
 - **R22's help links** open `docs/editor/particle-effect.md#<module>` on GitHub.
 - **A `.particles` double-click opens the window** instead of BF23's interim Inspector routing. A

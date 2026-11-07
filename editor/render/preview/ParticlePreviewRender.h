@@ -82,6 +82,7 @@ namespace jasperengine::editor{
         float zoomFactor = 1.0f;
         Background background = Background::Dark;
         Vector4 skyColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+        uint64_t queued = 0;
 
         void createScene(unsigned int width, unsigned int height);
         void placeRoot(double at);
@@ -152,8 +153,10 @@ namespace jasperengine::editor{
         void setExposed(const std::string& name, const Vector4& value);
         void sendTrigger(const std::string& name);
 
-        // frames the camera and queues the stage's frame
-        void render();
+        // frames the camera (following the particles' bounds, or held) and queues the stage's frame
+        void render(bool follow = true);
+        // the frames render() queued since the stage was made
+        uint64_t queuedFrames() const { return queued; }
     };
 
 }

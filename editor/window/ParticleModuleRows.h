@@ -36,6 +36,10 @@ namespace jasperengine::editor {
             std::string prefix;
             bool changed = false;
             bool commit = false;
+            // a curve field opened the Curve window this frame: its path and driver
+            bool curveOpened = false;
+            std::string curveField;
+            particles::CurveDriver curveDriver = particles::CurveDriver::NormalizedAge;
         };
 
         // The whole effect: Main always open, a foldout per present module, Add Module, the
@@ -57,6 +61,9 @@ namespace jasperengine::editor {
         // Paste Module: the clipboard's module as copied (added when absent, its enabled state too).
         // Paste Values (valuesOnly): onto that module only when present, its enabled state kept.
         bool pasteModule(particles::ParticleEffectDocument& document, const std::string& text, bool valuesOnly, std::string* error = nullptr);
+        // whether a curve's time axis is the emitter's (a field read over the emitter time, or the
+        // Emitter Time driver): the Particle Effect window's playhead means something on it
+        bool curveOverEmitterTime(const std::string& fieldPath, particles::CurveDriver driver);
         // the module's section of docs/editor/particle-effect.md
         std::string moduleHelpUrl(const particles::ModuleDesc& module);
 

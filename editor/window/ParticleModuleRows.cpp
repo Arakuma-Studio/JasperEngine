@@ -82,15 +82,23 @@ bool editor::particlerows::resetModule(ParticleEffectDocument& document, ModuleI
     for (auto it = body.begin(); it != body.end(); ++it) {
         if (it.key() != "enabled") reset[it.key()] = nullptr;
     }
+    // the Main header holds the effect's own fields too (Duration, Looping, ...)
+    Json effectFields = Json::object();
+    if (id == ModuleId::Main) {
+        const Json keyed = ParticleEffectCodec::toKeyedJson(document);
+        for (auto it = keyed.begin(); it != keyed.end(); ++it) {
+            if (documentField(it.key())) effectFields[it.key()] = nullptr;
+        }
+    }
     // the sub-emitter list is the module's too
     bool changed = false;
     if (id == ModuleId::SubEmitters && !document.subEmitters.empty()) {
         document.subEmitters.clear();
         changed = true;
     }
-    if (reset.empty()) return changed;
-    Json patch = Json::object();
-    patch["modules"][module.key] = reset;
+    if (reset.empty() && effectFields.empty()) return changed;
+    Json patch = effectFields;
+    if (!reset.empty()) patch["modules"][module.key] = reset;
     return applyPatch(document, patch) || changed;
 }
 
@@ -99,6 +107,11 @@ std::string editor::particlerows::copyModule(const ParticleEffectDocument& docum
     Json clip = Json::object();
     clip[kClipboardKey] = module.key;
     clip["values"] = moduleBody(document, module);
+    // the sub-emitter list lives beside the modules, but it is this module's
+    if (id == ModuleId::SubEmitters) {
+        const Json keyed = ParticleEffectCodec::toKeyedJson(document);
+        clip["list"] = keyed.contains("subEmitters") ? keyed["subEmitters"] : Json::array();
+    }
     return clip.dump();
 }
 
@@ -134,6 +147,8 @@ bool editor::particlerows::pasteModule(ParticleEffectDocument& document, const s
     }
     Json patch = Json::object();
     patch["modules"][module->key] = body;
+    const Json clip = Json::parse(text);
+    if (module->id == ModuleId::SubEmitters && clip.contains("list") && clip["list"].is_array()) patch["subEmitters"] = clip["list"];
     std::vector<Diagnostic> diagnostics;
     ParticleEffectDocument patched = document;
     if (!ParticleEffectCodec::applyMergePatch(patched, patch, diagnostics)) {
@@ -145,6 +160,16 @@ bool editor::particlerows::pasteModule(ParticleEffectDocument& document, const s
     const bool changed = ParticleEffectCodec::write(patched) != ParticleEffectCodec::write(document);
     document = patched;
     return changed;
+}
+
+bool editor::particlerows::curveOverEmitterTime(const std::string& fieldPath, CurveDriver driver) {
+    if (driver == CurveDriver::EmitterTime) return true;
+    // the fields the kernels read at the emitter's time (their tooltips say so), whatever their driver
+    static const char* const kFields[] = {"emission.rateOverTime", "noise.scrollSpeed", "shape.radiusSpeed", "shape.arcSpeed"};
+    for (const char* field : kFields) {
+        if (fieldPath == field) return true;
+    }
+    return fieldPath.rfind("emission.bursts[", 0) == 0 && fieldPath.size() > 6 && fieldPath.compare(fieldPath.size() - 6, 6, ".count") == 0;
 }
 
 std::string editor::particlerows::moduleHelpUrl(const ModuleDesc& module) {

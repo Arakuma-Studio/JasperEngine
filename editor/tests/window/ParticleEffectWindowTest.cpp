@@ -436,3 +436,230 @@ TEST(ParticleEffectWindow, EveryPanelDrawsInAFrame) {
     window.close();
     frames.frame(window);
 }
+
+// ---------------------------------------------------------------- review fix round 1
+
+TEST(ParticleEffectWindow, ThePreviewWaitsWhileTheGamePlays) {
+    ASSERT_TRUE(headless().ready);
+    const std::string path = writeEffect("fx/play_wait.particles", fountain());
+    Project* p = project();
+    p->createNewScene("PlayWait", SceneType::SCENE_3D);
+    SceneProject* sceneProject = p->getScene(p->getSelectedSceneId());
+    ParticleEffectWindow window(p);
+    window.openEffect(path);
+    settle(window);
+    play(window, 5);
+    const double time = window.getTime();
+    const uint64_t hash = window.stageStats().stateHash;
+    // Play: the stage keeps what it shows and spends no frames
+    sceneProject->playState = ScenePlayState::PLAYING;
+    play(window, 10);
+    EXPECT_DOUBLE_EQ(window.getTime(), time);
+    EXPECT_TRUE(window.getStage().isStage());
+    EXPECT_EQ(window.stageStats().stateHash, hash);
+    // Stop: it goes on from there
+    sceneProject->playState = ScenePlayState::STOPPED;
+    play(window, 10);
+    EXPECT_GT(window.getTime(), time);
+}
+
+TEST(ParticleEffectWindow, ALoopingEffectsClockWrapsAtItsSpan) {
+    ASSERT_TRUE(headless().ready);
+    const std::string path = writeEffect("fx/looping_wrap.particles", fountain());
+    ParticleEffectWindow window(project());
+    window.openEffect(path);
+    settle(window);
+    const float span = window.timelineSpan();
+    ASSERT_FLOAT_EQ(span, 1.6f);   // two of its longest lifetimes
+    bool wrapped = false;
+    double last = 0.0;
+    window.play();
+    for (int i = 0; i < 150; i++) {
+        window.update(1.0 / 30.0);
+        EXPECT_LE(window.getTime(), span + 1e-6) << i;
+        wrapped = wrapped || window.getTime() < last;
+        last = window.getTime();
+    }
+    EXPECT_TRUE(wrapped);
+    // the bars keep their scale
+    EXPECT_FLOAT_EQ(window.timelineSpan(), span);
+}
+
+TEST(ParticleEffectWindow, ClosingTheWindowReleasesTheStage) {
+    ASSERT_TRUE(headless().ready);
+    const std::string path = writeEffect("fx/close_release.particles", fountain());
+    ParticleEffectWindow window(project());
+    window.openEffect(path);
+    settle(window);
+    ASSERT_TRUE(window.getStage().isStage());
+    window.setOpen(false);
+    EXPECT_FALSE(window.getStage().isStage());
+    // shown again: the same effect at the same time
+    const double time = window.getTime();
+    window.setOpen(true);
+    settle(window);
+    EXPECT_TRUE(window.getStage().isStage());
+    EXPECT_DOUBLE_EQ(window.getTime(), time);
+}
+
+TEST(ParticleEffectWindow, APausedSettledStageQueuesNoMoreFrames) {
+    ASSERT_TRUE(headless().ready);
+    const std::string path = writeEffect("fx/paused_frames.particles", fountain());
+    ParticleEffectWindow window(project());
+    Frames frames;
+    window.openEffect(path);
+    frames.frame(window);
+    window.pause();
+    for (int i = 0; i < 400 && window.isResimulating(); i++) frames.frame(window);
+    frames.frame(window);
+    frames.frame(window);
+    const uint64_t queued = window.getStage().queuedFrames();
+    for (int i = 0; i < 5; i++) frames.frame(window);
+    EXPECT_EQ(window.getStage().queuedFrames(), queued);
+    // a step changes what it shows: one more frame
+    window.stepFrame();
+    frames.frame(window);
+    EXPECT_GT(window.getStage().queuedFrames(), queued);
+    window.close();
+}
+
+TEST(ParticleEffectWindow, MovingTheSubtreeRootKeepsTheStage) {
+    ASSERT_TRUE(headless().ready);
+    Project* p = project();
+    p->createNewScene("MoveRoot", SceneType::SCENE_3D);
+    SceneProject* sceneProject = p->getScene(p->getSelectedSceneId());
+    Scene* scene = sceneProject->scene;
+    const Entity root = scene->createUserEntity();
+    scene->setEntityName(root, "Root");
+    scene->addComponent<Transform>(root, {});
+    const Entity child = scene->createUserEntity();
+    scene->setEntityName(child, "Fire");
+    Transform transform;
+    transform.position = Vector3(1.0f, 0.0f, 0.0f);
+    transform.worldPosition = Vector3(1.0f, 0.0f, 0.0f);
+    scene->addComponent<Transform>(child, transform);
+    scene->addEntityChild(root, child, false);
+    sceneProject->entities.push_back(root);
+    sceneProject->entities.push_back(child);
+    ParticleSystemComponent system;
+    system.inlineEffect = fountain();
+    scene->addComponent<ParticleSystemComponent>(child, system);
+
+    ParticleEffectWindow window(p);
+    window.openSubtree(sceneProject->id, root);
+    settle(window);
+    const std::string key = std::string(ParticleEffectWindow::STAGE_KEY_PREFIX) + "0.particles";
+    const uint64_t version = ParticleEffectLibrary::version(key);
+    // the whole subtree moves: the systems' places under the root are the same
+    for (Entity e : {root, child}) {
+        Transform& t = scene->getComponent<Transform>(e);
+        t.worldPosition = t.worldPosition + Vector3(5.0f, 0.0f, 2.0f);
+        if (e == root) t.position = t.worldPosition;
+    }
+    window.update(1.0 / 60.0);
+    EXPECT_EQ(ParticleEffectLibrary::version(key), version);
+    // the child moving under it is a change
+    Transform& t = scene->getComponent<Transform>(child);
+    t.worldPosition = t.worldPosition + Vector3(0.0f, 1.0f, 0.0f);
+    t.position = t.position + Vector3(0.0f, 1.0f, 0.0f);
+    window.update(1.0 / 60.0);
+    EXPECT_NE(ParticleEffectLibrary::version(key), version);
+}
+
+TEST(ParticleEffectWindow, ExposedValuesStartTheCheckpointsOver) {
+    ASSERT_TRUE(headless().ready);
+    ParticleEffectDocument d = fountain();
+    ExposedParameter rate;
+    rate.name = "Rate";
+    rate.path = "emission.rateOverTime";
+    d.exposed.push_back(rate);
+    const std::string path = writeEffect("fx/exposed_checkpoints.particles", d);
+    ParticleEffectWindow window(project());
+    window.openEffect(path);
+    window.setSeed(9);
+    settle(window);
+    window.seek(1.5);   // a seek keeps a checkpoint each second: one at 1 s, at Rate 40
+    settle(window);
+    window.setExposedValue("Rate", Vector4(5.0f, 0.0f, 0.0f, 0.0f));
+    window.seek(1.2);
+    settle(window);
+    const uint64_t scrubbed = window.stageStats().stateHash;
+
+    ParticleEffectWindow fresh(project());
+    fresh.openEffect(path);
+    fresh.setSeed(9);
+    fresh.setExposedValue("Rate", Vector4(5.0f, 0.0f, 0.0f, 0.0f));
+    fresh.seek(1.2);
+    settle(fresh);
+    EXPECT_EQ(scrubbed, fresh.stageStats().stateHash);
+}
+
+TEST(ParticleEffectWindow, SelectionAndTheEyeFollowTheirNodes) {
+    ASSERT_TRUE(headless().ready);
+    const std::string child = writeEffect("fx/follow_flash.particles", flash());
+    Project* p = project();
+    p->createNewScene("Follow", SceneType::SCENE_3D);
+    SceneProject* sceneProject = p->getScene(p->getSelectedSceneId());
+    Scene* scene = sceneProject->scene;
+    const Entity root = scene->createUserEntity();
+    scene->setEntityName(root, "Root");
+    scene->addComponent<Transform>(root, {});
+    sceneProject->entities.push_back(root);
+    std::vector<Entity> systems;
+    for (const char* name : {"A", "C", "D"}) {
+        const Entity e = scene->createUserEntity();
+        scene->setEntityName(e, name);
+        scene->addComponent<Transform>(e, {});
+        scene->addEntityChild(root, e, false);
+        sceneProject->entities.push_back(e);
+        ParticleSystemComponent system;
+        system.inlineEffect = fountain(std::string(name) == "A" ? child : std::string());
+        scene->addComponent<ParticleSystemComponent>(e, system);
+        systems.push_back(e);
+    }
+    ParticleEffectWindow window(p);
+    window.openSubtree(sceneProject->id, root);
+    settle(window);
+    ASSERT_EQ(window.getNodes().size(), 4u);   // A, its child, C, D
+    window.select(2);
+    window.setHidden(2, true);
+    ASSERT_EQ(window.getNodes()[2].name, "C");
+
+    // A loses its sub-emitter: C moves up a row
+    ParticleSystemComponent& a = scene->getComponent<ParticleSystemComponent>(systems[0]);
+    a.inlineEffect.subEmitters.clear();
+    a.inlineEffect.subEmittersModule.present = false;
+    settle(window);
+    ASSERT_EQ(window.getNodes().size(), 3u);
+    ASSERT_GE(window.getSelected(), 0);
+    EXPECT_EQ(window.getNodes()[(size_t)window.getSelected()].name, "C");
+    EXPECT_TRUE(window.isHidden(1));
+    EXPECT_FALSE(window.isHidden(2));
+    EXPECT_EQ(window.uiState().hidden, std::vector<std::string>{"C"});
+}
+
+TEST(ParticleEffectWindow, RedoAfterUndoGivesTheEditBackToTheStage) {
+    ASSERT_TRUE(headless().ready);
+    const std::string path = writeEffect("fx/redo.particles", fountain());
+    ParticleEffectWindow window(project());
+    window.openEffect(path);
+    window.setSeed(3);
+    settle(window);
+    play(window, 20);
+    window.pause();
+    settle(window);
+    const uint64_t before = window.stageStats().stateHash;
+    ASSERT_TRUE(window.editSelected([](ParticleEffectDocument& d) {
+        d.main.startSpeed = MinMaxCurve(8.0f);
+        return true;
+    }));
+    settle(window);
+    const uint64_t edited = window.stageStats().stateHash;
+    ASSERT_NE(edited, before);
+    ASSERT_TRUE(history()->undo());
+    settle(window);
+    EXPECT_EQ(window.stageStats().stateHash, before);
+    ASSERT_TRUE(history()->redo());
+    settle(window);
+    EXPECT_EQ(window.stageStats().stateHash, edited);
+}

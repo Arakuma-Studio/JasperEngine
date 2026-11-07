@@ -112,6 +112,11 @@ ParticleEffectWindow::~ParticleEffectWindow() = default;
 
 void ParticleEffectWindow::setOpen(bool open) {
     windowOpen = open;
+    // a closed window holds no scene or render target; it comes back at the same time
+    if (!open && stage.isStage()) {
+        stage.clear();
+        staged = false;
+    }
 }
 
 void ParticleEffectWindow::requestFocus() {
@@ -160,6 +165,7 @@ void ParticleEffectWindow::close() {
     hidden.clear();
     exposedOverrides.clear();
     selected = 0;
+    selectedKey.clear();
     staged = false;
     stagedSignature = 0;
     clock = 0.0;
@@ -185,18 +191,13 @@ void ParticleEffectWindow::clearSceneState(uint32_t sceneId) {
     close();
 }
 
-void ParticleEffectWindow::stopPreview() {
-    // the stage is rebuilt (at the same time) when the window shows again
-    stage.clear();
-    staged = false;
-}
-
 // ---------------------------------------------------------------- the nodes
 
 std::string ParticleEffectWindow::nodeKey(int node) const {
     if (node < 0 || node >= (int)nodes.size()) return std::string();
     const Node& n = nodes[(size_t)node];
-    if (n.parent < 0) return (n.effect.empty() ? "entity:" + std::to_string(n.entity) : n.effect) + "#" + std::to_string(node);
+    // a system by its GameObject (or the opened file), a child by its entry under its parent
+    if (n.parent < 0) return n.entity != NULL_ENTITY ? "entity:" + std::to_string(n.entity) : n.effect;
     return nodeKey(n.parent) + "/" + std::to_string(n.subEmitter);
 }
 
@@ -253,7 +254,14 @@ bool ParticleEffectWindow::collectNodes() {
         next.push_back(node);
     }
     nodes = std::move(next);
+    // the selected node where it is now
+    int found = -1;
+    for (size_t i = 0; i < nodes.size() && found < 0 && !selectedKey.empty(); i++) {
+        if (nodeKey((int)i) == selectedKey) found = (int)i;
+    }
+    if (found >= 0) selected = found;
     if (selected >= (int)nodes.size()) selected = nodes.empty() ? 0 : (int)nodes.size() - 1;
+    if (!nodes.empty()) selectedKey = nodeKey(selected);
     return !nodes.empty();
 }
 
@@ -283,19 +291,32 @@ uint64_t ParticleEffectWindow::sourceSignature() const {
             ParticleEffectDocument scratch;
             if (const ParticleEffectDocument* document = sourceDocument((int)i, scratch)) h = mixHash(h, textHash(ParticleEffectCodec::write(*document)));
         }
-        // a subtree system's place under the root
-        if (n.entity != NULL_ENTITY) {
-            SceneProject* sceneProject = project->getScene(n.sceneId);
-            if (sceneProject && sceneProject->scene && sceneProject->scene->isEntityCreated(n.entity)) {
-                const GameObject object(sceneProject->scene, n.entity);
-                const Vector3 position = object.getWorldPosition(), scale = object.getWorldScale();
-                const Quaternion rotation = object.getWorldRotation();
-                const float values[] = {position.x, position.y, position.z, rotation.w, rotation.x, rotation.y, rotation.z, scale.x, scale.y, scale.z};
-                for (float v : values) h = mixHash(h, std::hash<float>()(v));
-            }
+        // a subtree system's place under the root (the root moving changes nothing on the stage)
+        Vector3 position, scale;
+        Quaternion rotation;
+        if (placement(n, position, rotation, scale)) {
+            const float values[] = {position.x, position.y, position.z, rotation.w, rotation.x, rotation.y, rotation.z, scale.x, scale.y, scale.z};
+            for (float v : values) h = mixHash(h, std::hash<float>()(v));
         }
     }
     return h;
+}
+
+bool ParticleEffectWindow::placement(const Node& node, Vector3& position, Quaternion& rotation, Vector3& scale) const {
+    if (subtreeRoot == NULL_ENTITY || node.entity == NULL_ENTITY) return false;
+    SceneProject* sceneProject = project->getScene(subtreeScene);
+    Scene* scene = sceneProject ? sceneProject->scene : nullptr;
+    if (!scene || !scene->isEntityCreated(node.entity) || !scene->isEntityCreated(subtreeRoot)) return false;
+    // the place under the subtree's root (the root itself at the stage's centre)
+    const GameObject root(scene, subtreeRoot), object(scene, node.entity);
+    const Quaternion inverse = root.getWorldRotation().inverse();
+    const Vector3 offset = inverse * (object.getWorldPosition() - root.getWorldPosition());
+    const Vector3 rootScale = root.getWorldScale(), worldScale = object.getWorldScale();
+    auto divide = [](float a, float b) { return std::fabs(b) > 1e-6f ? a / b : a; };
+    position = Vector3(divide(offset.x, rootScale.x), divide(offset.y, rootScale.y), divide(offset.z, rootScale.z));
+    rotation = inverse * object.getWorldRotation();
+    scale = Vector3(divide(worldScale.x, rootScale.x), divide(worldScale.y, rootScale.y), divide(worldScale.z, rootScale.z));
+    return true;
 }
 
 void ParticleEffectWindow::restage() {
@@ -318,25 +339,12 @@ void ParticleEffectWindow::restage() {
     }
 
     std::vector<ParticlePreviewRender::StageSystem> list;
-    SceneProject* subtreeProject = subtreeRoot != NULL_ENTITY ? project->getScene(subtreeScene) : nullptr;
-    Scene* subtreeScenePtr = subtreeProject ? subtreeProject->scene : nullptr;
     for (size_t i = 0; i < nodes.size(); i++) {
         if (nodes[i].depth != 0) continue;
         ParticlePreviewRender::StageSystem system;
         system.name = nodes[i].name;
         system.effect = stageKey((int)i);
-        if (subtreeScenePtr && nodes[i].entity != NULL_ENTITY && subtreeScenePtr->isEntityCreated(nodes[i].entity) &&
-            subtreeScenePtr->isEntityCreated(subtreeRoot)) {
-            // the place under the subtree's root (the root itself at the stage's centre)
-            const GameObject root(subtreeScenePtr, subtreeRoot), object(subtreeScenePtr, nodes[i].entity);
-            const Quaternion inverse = root.getWorldRotation().inverse();
-            const Vector3 offset = inverse * (object.getWorldPosition() - root.getWorldPosition());
-            const Vector3 rootScale = root.getWorldScale(), scale = object.getWorldScale();
-            auto divide = [](float a, float b) { return std::fabs(b) > 1e-6f ? a / b : a; };
-            system.position = Vector3(divide(offset.x, rootScale.x), divide(offset.y, rootScale.y), divide(offset.z, rootScale.z));
-            system.rotation = inverse * object.getWorldRotation();
-            system.scale = Vector3(divide(scale.x, rootScale.x), divide(scale.y, rootScale.y), divide(scale.z, rootScale.z));
-        }
+        placement(nodes[i], system.position, system.rotation, system.scale);
         list.push_back(system);
     }
     const bool fresh = !stage.isStage() || !(stage.getStageSystems() == list);
@@ -353,15 +361,24 @@ void ParticleEffectWindow::restage() {
     // the same time, the same seed (R17, R20): the checkpoints held the old effect's runs
     stage.invalidate();
     stage.seek(clock);
+    stageChanged();
 }
 
 // ---------------------------------------------------------------- the clock
 
 void ParticleEffectWindow::update(double dt) {
-    if (!collectNodes()) return;
+    // the game has the frames while it plays: the stage holds what it shows
+    if (project->isAnyScenePlaying()) return;
+    if (!collectNodes()) {
+        // the effect is gone (deleted, renamed, the subtree emptied): its stage goes too
+        if (stage.isStage()) stage.clear();
+        staged = false;
+        return;
+    }
     if (!staged || sourceSignature() != stagedSignature) restage();
     if (stage.isSeeking()) {
-        stage.updateSeek(kResimulateBudgetMs);
+        // the last slice of a seek leaves a new frame to show
+        if (stage.updateSeek(kResimulateBudgetMs)) stageChanged();
         return;
     }
     if (playing && !scrubbing) {
@@ -376,7 +393,8 @@ void ParticleEffectWindow::wrapLoop() {
     if (loopRange) {
         if (clock >= loopEnd || clock < loopStart) from = loopStart;
     } else {
-        // a one-shot effect plays again once its last particle is gone; a looping one plays on
+        // a one-shot effect plays again once its last particle is gone; a looping one at the end of
+        // the bars (two lifetimes): its clock, and so what an edit re-simulates, stays that short
         bool finite = !rows.empty();
         double end = 0.0;
         for (const ParticleTimingRow& row : rows) {
@@ -384,6 +402,7 @@ void ParticleEffectWindow::wrapLoop() {
             else end = std::max(end, (double)row.end);
         }
         if (finite && clock >= end + kOneShotRest) from = 0.0;
+        if (!finite && clock >= (double)ParticleEffectTiming::span(rows, 1.0f)) from = 0.0;
     }
     if (from < 0.0) return;
     if (perLoopSeed) {
@@ -411,6 +430,7 @@ void ParticleEffectWindow::stepFrame() {
     if (stage.isSeeking()) return;
     stage.step();
     clock = stage.getTime();
+    stageChanged();
 }
 
 void ParticleEffectWindow::restart() {
@@ -454,7 +474,7 @@ void ParticleEffectWindow::setLoopRange(bool enabled, float start, float end) {
 float ParticleEffectWindow::timelineSpan() const {
     float span = ParticleEffectTiming::span(rows, 1.0f);
     if (loopRange) span = std::max(span, loopEnd);
-    return std::max(span, (float)clock);
+    return span;
 }
 
 // ---------------------------------------------------------------- the stage
@@ -463,6 +483,7 @@ void ParticleEffectWindow::setBackground(Background value) {
     background = value;
     SceneProject* selectedScene = project->getSelectedScene();
     if (!overdraw) stage.setBackground(value, selectedScene ? selectedScene->scene : nullptr);
+    stageChanged();
 }
 
 void ParticleEffectWindow::setMovingEmitter(bool on) {
@@ -491,6 +512,7 @@ void ParticleEffectWindow::select(int node) {
     if (node < 0 || node >= (int)nodes.size()) return;
     if (node != selected) pushEdit(nullptr, nullptr, true);
     selected = node;
+    selectedKey = nodeKey(node);
 }
 
 // ---------------------------------------------------------------- edits
@@ -586,6 +608,9 @@ void ParticleEffectWindow::setExposedValue(const std::string& name, const Vector
     }
     it->value = value;
     stage.setExposed(name, value);
+    // the checkpoints hold runs with the old value: a scrub must not start from one (R17)
+    stage.invalidate();
+    stageChanged();
 }
 
 std::vector<std::string> ParticleEffectWindow::triggerNames() const {
@@ -604,6 +629,7 @@ std::vector<std::string> ParticleEffectWindow::triggerNames() const {
 
 void ParticleEffectWindow::fireTrigger(const std::string& name) {
     stage.sendTrigger(name);
+    stageChanged();
 }
 
 ParticleEffectWindow::UiState ParticleEffectWindow::uiState() {
@@ -637,6 +663,8 @@ ParticleEffectWindow::UiState ParticleEffectWindow::uiState() {
 void ParticleEffectWindow::show() {
     if (!windowOpen) {
         focused = false;
+        // closed by its X: the stage goes as setOpen(false) lets it go
+        if (stage.isStage()) setOpen(false);
         return;
     }
     if (focusRequested) {
@@ -668,10 +696,10 @@ void ParticleEffectWindow::show() {
         return;
     }
 
-    // the Curve window opened from these rows marks the clock: the selected system's emitter time,
-    // a fraction of its Duration (the axis of curves over the emitter's time)
+    // the Curve window opened on a curve over the emitter's time marks the clock: the selected
+    // system's emitter time, a fraction of its Duration (lifetime curves have no such time)
     ui::CurveWindow& curveWindow = ui::CurveWindow::get();
-    if (curveWindow.openedFrom(WINDOW_NAME) && selected >= 0 && selected < (int)rows.size()) {
+    if (curveWindow.openedFrom(WINDOW_NAME) && curvePlayhead && selected >= 0 && selected < (int)rows.size()) {
         ParticleEffectDocument scratch;
         const ParticleEffectDocument* document = sourceDocument(selected, scratch);
         const double duration = document ? std::max(0.001, (double)document->duration) : 1.0;
@@ -774,7 +802,17 @@ void ParticleEffectWindow::drawStage(float width, float height) {
     const unsigned int w = (unsigned int)std::max(16.0f, width);
     const unsigned int h = (unsigned int)std::max(16.0f, height);
     if (stage.isStage()) stage.buildStage(stage.getStageSystems(), w, h);
-    stage.render();
+    if (w != stageWidth || h != stageHeight) stageChanged();
+    stageWidth = w;
+    stageHeight = h;
+    // a still stage queues no frame (D4): only a playing or seeking one, or one just changed;
+    // while the game plays the stage keeps its last frame
+    const bool gamePlaying = project->isAnyScenePlaying();
+    const bool live = !gamePlaying && ((playing && !scrubbing) || stage.isSeeking());
+    if (!gamePlaying && (live || stageFramesDue > 0)) {
+        stage.render(live);
+        if (stageFramesDue > 0) stageFramesDue--;
+    }
     const ImVec2 min = ImGui::GetCursorScreenPos();
     const ImVec2 max(min.x + width, min.y + height);
     ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -788,11 +826,18 @@ void ParticleEffectWindow::drawStage(float width, float height) {
     if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 1.0f)) {
         const ImVec2 delta = ImGui::GetIO().MouseDelta;
         stage.orbit(-delta.x * 0.4f, delta.y * 0.4f);
+        stageChanged();
     }
     if (ImGui::IsItemHovered()) {
         const float wheel = ImGui::GetIO().MouseWheel;
-        if (wheel != 0.0f) stage.zoom(wheel > 0.0f ? 0.9f : 1.1f);
-        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) stage.resetView();
+        if (wheel != 0.0f) {
+            stage.zoom(wheel > 0.0f ? 0.9f : 1.1f);
+            stageChanged();
+        }
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            stage.resetView();
+            stageChanged();
+        }
     }
 
     // the stats over the image's top-left corner
@@ -802,6 +847,10 @@ void ParticleEffectWindow::drawStage(float width, float height) {
     const ImVec2 pad(Theme::dpi(6.0f), Theme::dpi(4.0f));
     drawList->AddText(ImVec2(min.x + pad.x + 1.0f, min.y + pad.y + 1.0f), IM_COL32(0, 0, 0, 200), line);
     drawList->AddText(ImVec2(min.x + pad.x, min.y + pad.y), IM_COL32(235, 235, 235, 255), line);
+    if (gamePlaying) {
+        const char* note = "Paused while the game plays";
+        drawList->AddText(ImVec2(min.x + pad.x, max.y - ImGui::GetTextLineHeight() - pad.y), IM_COL32(235, 200, 120, 255), note);
+    }
     if (stage.isSeeking()) {
         // the re-simulation's progress (R17): the stage is not at its time yet
         const float progress = stage.seekProgress();
@@ -968,6 +1017,7 @@ void ParticleEffectWindow::drawInspector() {
     ui.expanded = &expanded;
     ui.prefix = "particle_effect";
     particlerows::drawEffect(ui, edited);
+    if (ui.curveOpened) curvePlayhead = particlerows::curveOverEmitterTime(ui.curveField, ui.curveDriver);
     if (ui.changed) {
         editSelected([&edited](ParticleEffectDocument& target) {
             target = edited;

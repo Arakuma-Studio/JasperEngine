@@ -184,6 +184,7 @@ async def test_a_paused_edit_holds_the_time_and_the_seed(ed: Editor):
     undone = await settled(ui)
     ed.check_eq(undone["time"], before["time"], "an undo is an edit too: the same time")
     ed.check_eq(undone["seed"], before["seed"], "and the same seed")
+    ed.check_eq(undone["state_hash"], before["state_hash"], "the stage follows the undo: the frame before the edit")
 
 
 async def test_esc_cancels_a_drag_with_no_undo_step(ed: Editor):
@@ -197,6 +198,7 @@ async def test_esc_cancels_a_drag_with_no_undo_step(ed: Editor):
     ui.focus()
     await ui.drag(grab, (grab[0] + 60, grab[1]), release=False)
     await shot(ed, "04-dragging")
+    ed.check((ed.project / FIRE).read_text() != text, "the held drag changes the file (so Esc has something to undo)")
     await ui.key("Escape")
     await ui.frames(2)
     await ui.release()
@@ -206,3 +208,4 @@ async def test_esc_cancels_a_drag_with_no_undo_step(ed: Editor):
     ed.check_eq((ed.project / FIRE).read_text(), text, "Esc puts the file back")
     ed.check_eq(await undo_steps(ed), steps, "and adds no undo step")
     ed.check_eq((after["time"], after["seed"]), (before["time"], before["seed"]), "the clock and the seed are as before")
+    ed.check_eq(after["state_hash"], before["state_hash"], "and the stage shows the frame it showed before the drag")

@@ -43,7 +43,10 @@ The preview plays the effect in a scene of its own, with its own clock:
 - **Seed**: the seed every system plays with. **Reroll** picks another one at the same time.
   **Per-Loop Seed** gives each loop a new seed; otherwise the seed changes only when you ask.
 - **Loop Range**: the clock loops between two times. Without it, a one-shot effect starts again shortly
-  after its last particle dies, and a looping effect plays on.
+  after its last particle dies, and a looping effect starts again at the end of the timing bars (two of its
+  longest lifetimes), so an edit never has more than that to simulate again.
+- While the game plays, the preview holds its frame and spends nothing; it goes on after Stop. A closed
+  window keeps no preview scene.
 - **Background**: Dark, Light, Checker (to judge alpha), or Scene Sky (the open scene's sky).
 - **Moving Emitter**: the effect circles the stage's centre, for trails, Rate over Distance and inherited
   velocity.
@@ -75,8 +78,10 @@ sub-emitters). They drive the preview only; the effect keeps its values.
 
 ## Curve window additions
 
-When the Curve window is opened from these rows, it shows the window's playhead (the clock as a fraction
-of the system's Duration, the axis of curves over the emitter's time). Its key menu adds:
+When the Curve window is opened from these rows on a curve over the emitter's time (Rate over Time, a
+burst's Count, Noise Scroll Speed, the shape's speeds, or any curve driven by Emitter Time), it shows the
+window's playhead: the clock as a fraction of the system's Duration. Lifetime curves have no such time and
+show none. Its key menu adds:
 
 - **Align**: the selected keys take their mean value;
 - **Smooth**: each selected key gets joined Free tangents along its neighbours' mean slope (Unity's

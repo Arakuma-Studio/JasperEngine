@@ -5299,10 +5299,6 @@ void editor::App::stopTransientPreviews() {
     if (animatorWindow) {
         animatorWindow->stopPreview();
     }
-    // the Particle Effect window's stage spends no frames while the game plays
-    if (particleEffectWindow) {
-        particleEffectWindow->stopPreview();
-    }
     if (avatarWindow) {
         avatarWindow->stopTransientPreviews();
     }

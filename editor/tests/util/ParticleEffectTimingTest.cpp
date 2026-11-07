@@ -182,3 +182,45 @@ TEST(ParticleEffectTiming, ADisabledSubEmittersModuleHasNoChildren) {
     parent.subEmitters.push_back(entry);
     EXPECT_EQ(ParticleEffectTiming::compute({{"P", "", &parent}}, files.resolver()).size(), 1u);
 }
+
+// review fix round 1 (M5): what the runtime does that the first rows missed
+TEST(ParticleEffectTiming, InheritLifetimeScalesTheChildsLifetimeByItsParents) {
+    Files files;
+    files.documents["fx/inherit.particles"] = oneShot(1.0f, 0.0f, 0.0f, 1.0f, 2.0f);
+    ParticleEffectDocument parent = oneShot(2.0f, 0.0f, 0.0f, 3.0f, 4.0f);
+    parent.subEmittersModule.present = true;
+    SubEmitterEntry entry;
+    entry.trigger = SubEmitterTrigger::Birth;
+    entry.effect = "fx/inherit.particles";
+    entry.inheritLifetime = true;
+    entry.inheritFactor = 0.5f;
+    parent.subEmitters.push_back(entry);
+    const std::vector<ParticleTimingRow> rows = ParticleEffectTiming::compute({{"P", "", &parent}}, files.resolver());
+    ASSERT_EQ(rows.size(), 2u);
+    // the child lives its own lifetime times its parent's times the factor
+    EXPECT_FLOAT_EQ(rows[1].lifetimeMin, 1.0f * 3.0f * 0.5f);
+    EXPECT_FLOAT_EQ(rows[1].lifetimeMax, 2.0f * 4.0f * 0.5f);
+    EXPECT_FLOAT_EQ(rows[1].end, 2.0f + 4.0f);
+}
+
+TEST(ParticleEffectTiming, ABurstsOnlySystemFirstEmitsAtItsFirstBurst) {
+    Files files;
+    files.documents["fx/after.particles"] = oneShot(1.0f, 0.0f, 0.0f, 0.5f, 0.5f);
+    ParticleEffectDocument parent = oneShot(3.0f, 0.25f, 0.25f, 1.0f, 1.0f);
+    parent.emission.rateOverTime = MinMaxCurve(0.0f);
+    Burst burst;
+    burst.time = 0.5f;
+    parent.emission.bursts.push_back(burst);
+    parent.subEmittersModule.present = true;
+    SubEmitterEntry entry;
+    entry.trigger = SubEmitterTrigger::Death;
+    entry.effect = "fx/after.particles";
+    parent.subEmitters.push_back(entry);
+    const std::vector<ParticleTimingRow> rows = ParticleEffectTiming::compute({{"P", "", &parent}}, files.resolver());
+    ASSERT_EQ(rows.size(), 2u);
+    EXPECT_FLOAT_EQ(rows[0].start, 0.75f);
+    EXPECT_FLOAT_EQ(rows[0].emitEnd, 0.75f);
+    EXPECT_FLOAT_EQ(rows[0].end, 1.75f);
+    // the first death: the first burst's particles at their shortest life
+    EXPECT_FLOAT_EQ(rows[1].start, 1.75f);
+}

@@ -99,8 +99,6 @@ namespace jasperengine::editor {
 
         void resetForProjectSwitch();
         void clearSceneState(uint32_t sceneId);
-        // before Play: the stage stops spending frames
-        void stopPreview();
 
         // ---- the Outline (what its rows do)
         const std::vector<Node>& getNodes() const { return nodes; }
@@ -206,6 +204,8 @@ namespace jasperengine::editor {
         std::vector<Node> nodes;
         std::vector<ParticleTimingRow> rows;
         int selected = 0;
+        // the selection by node key: the index moves when the tree above it changes
+        std::string selectedKey;
         // the eye: hidden nodes by key (their effect and place in the tree), the stage only
         std::set<std::string> hidden;
 
@@ -227,6 +227,12 @@ namespace jasperengine::editor {
         bool moving = false;
         bool overdraw = false;
         bool scrubbing = false;
+        // frames the stage still queues after a change while paused (D4: a still stage draws nothing)
+        int stageFramesDue = 0;
+        unsigned int stageWidth = 0;
+        unsigned int stageHeight = 0;
+        // the Curve window was opened on a curve over the emitter's time: it shows the playhead
+        bool curvePlayhead = false;
         std::vector<ExposedRow> exposedOverrides;
 
         // the merging step of a drag in the rows (ended by commit)
@@ -239,6 +245,9 @@ namespace jasperengine::editor {
         // the nodes of what is opened, and their timing; false when nothing can be shown
         bool collectNodes();
         uint64_t sourceSignature() const;
+        // a subtree system's place under the root (false: a file, or no such GameObject)
+        bool placement(const Node& node, Vector3& position, Quaternion& rotation, Vector3& scale) const;
+        void stageChanged() { stageFramesDue = 2; }
         // the stage copies written into the effect library, the stage rebuilt with the systems
         void restage();
         const particles::ParticleEffectDocument* sourceDocument(int node, particles::ParticleEffectDocument& scratch) const;

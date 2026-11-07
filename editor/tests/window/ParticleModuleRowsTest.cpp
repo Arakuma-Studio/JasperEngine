@@ -107,3 +107,41 @@ TEST(ParticleModuleRows, EveryModuleHasAHelpLink) {
     EXPECT_EQ(particlerows::moduleHelpUrl(ParticleModules::get(ModuleId::LimitVelocity)),
               "https://github.com/JasperRaccoon/JasperEngine/blob/main/docs/editor/particle-effect.md#limit-velocity-over-lifetime");
 }
+
+// review fix round 1 (M8, M9)
+TEST(ParticleModuleRows, SubEmittersCopyTheirListAndMainResetsTheEffectsOwnFields) {
+    ParticleEffectDocument source;
+    source.subEmittersModule.present = true;
+    SubEmitterEntry entry;
+    entry.effect = "fx/child.particles";
+    entry.emitCount = 4;
+    source.subEmitters.push_back(entry);
+    const std::string clip = particlerows::copyModule(source, ModuleId::SubEmitters);
+    ParticleEffectDocument target;
+    std::string error;
+    ASSERT_TRUE(particlerows::pasteModule(target, clip, false, &error)) << error;
+    ASSERT_EQ(target.subEmitters.size(), 1u);
+    EXPECT_EQ(target.subEmitters[0].effect, "fx/child.particles");
+    EXPECT_EQ(target.subEmitters[0].emitCount, 4);
+
+    ParticleEffectDocument d;
+    d.duration = 2.0f;
+    d.looping = false;
+    d.main.startSpeed = MinMaxCurve(9.0f);
+    d.subEmitters.push_back(entry);
+    ASSERT_TRUE(particlerows::resetModule(d, ModuleId::Main));
+    EXPECT_FLOAT_EQ(d.duration, 5.0f);
+    EXPECT_TRUE(d.looping);
+    EXPECT_EQ(d.main.startSpeed, MinMaxCurve(5.0f));
+    // the lists are not Main's
+    EXPECT_EQ(d.subEmitters.size(), 1u);
+}
+
+TEST(ParticleModuleRows, OnlyEmitterTimeCurvesTakeThePlayhead) {
+    EXPECT_TRUE(particlerows::curveOverEmitterTime("emission.rateOverTime", CurveDriver::NormalizedAge));
+    EXPECT_TRUE(particlerows::curveOverEmitterTime("noise.scrollSpeed", CurveDriver::NormalizedAge));
+    EXPECT_TRUE(particlerows::curveOverEmitterTime("emission.bursts[0].count", CurveDriver::NormalizedAge));
+    EXPECT_FALSE(particlerows::curveOverEmitterTime("sizeOverLifetime.size", CurveDriver::NormalizedAge));
+    EXPECT_FALSE(particlerows::curveOverEmitterTime("colorBySpeed.color", CurveDriver::Speed));
+    EXPECT_TRUE(particlerows::curveOverEmitterTime("sizeOverLifetime.size", CurveDriver::EmitterTime));
+}

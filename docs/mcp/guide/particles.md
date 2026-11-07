@@ -90,8 +90,6 @@ for a given seed and frame-rate independent.
 - Both report `seed` (the one in use, also what a seedless effect drew for this play) and `state_hash`:
   put the seed in the effect (`edit_particle_effect {patch: {seed}}`) and the same time gives the
   same hash, which is how to tell that two runs are the same one.
-- To show a person an effect as a whole, `focus_window {window: particle_effect}`: the window they
-  opened on a `.particles` or a subtree; `editor_status` gives its clock, seed and hidden nodes under `ui.particle_effect`.
 - `get_particle_migration_report` lists the old particle systems (Points + Particle System action)
   the documents read were converted from; saving writes the new format.
 

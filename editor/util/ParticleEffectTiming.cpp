@@ -68,6 +68,7 @@ namespace {
             std::sort(row.bursts.begin(), row.bursts.end());
         }
 
+        const bool rate = !d.emission.rateOverTime.isZero() || !d.emission.rateOverDistance.isZero();
         if (!emits(d)) {
             row.emitEnd = row.startMax;
             row.end = row.startMax;
@@ -75,9 +76,14 @@ namespace {
             row.emitEnd = ParticleTimingRow::kForever;
             row.end = ParticleTimingRow::kForever;
         } else {
-            const bool rate = !d.emission.rateOverTime.isZero() || !d.emission.rateOverDistance.isZero();
             row.emitEnd = row.startMax + (rate ? duration : lastBurst);
             row.end = row.emitEnd + row.lifetimeMax;
+        }
+        // bursts alone: the first emission is the first burst, not the end of the start delay
+        if (emits(d) && !rate && !row.bursts.empty()) {
+            const float first = row.bursts.front() - row.start;
+            row.start += first;
+            row.startMax += first;
         }
     }
 
@@ -106,6 +112,11 @@ namespace {
                     continue;
                 }
                 lifetimeOf(*child, row);
+                // Inherit Lifetime: the child lives its lifetime times its parent particle's (times the factor)
+                if (entry.inheritLifetime) {
+                    row.lifetimeMin *= parent.lifetimeMin * entry.inheritFactor;
+                    row.lifetimeMax *= parent.lifetimeMax * entry.inheritFactor;
+                }
                 // a child emits on its parent's events, its own clock unused
                 switch (entry.trigger) {
                     case SubEmitterTrigger::Birth:

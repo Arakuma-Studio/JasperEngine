@@ -421,8 +421,9 @@ void editor::ParticlePreviewRender::sendTrigger(const std::string& name){
     }
 }
 
-void editor::ParticlePreviewRender::render(){
+void editor::ParticlePreviewRender::render(bool follow){
     if (!scene) return;
-    frameCamera(true);
+    frameCamera(follow);
     Engine::executeSceneOnce(scene);
+    queued++;
 }

@@ -75,6 +75,16 @@ namespace {
         std::vector<std::string> resets;
         // the UI probe's names of the value widgets ("<probe>.<field path>"), empty for none
         std::string probe;
+        // the curve field that opened the Curve window this frame
+        bool curveOpened = false;
+        std::string curveField;
+        CurveDriver curveDriver = CurveDriver::NormalizedAge;
+        void curveBegan(editor::ui::EditPhase phase, const std::string& path, CurveDriver driver) {
+            if (phase != editor::ui::EditPhase::Begin) return;
+            curveOpened = true;
+            curveField = path;
+            curveDriver = driver;
+        }
 
         // a field window's phase (S27 FieldEdit.h): its session in this history, its values
         // merged into the step, a one-go change its own step
@@ -255,6 +265,7 @@ namespace {
         options.label = f.label;
         const editor::ui::EditPhase phase = editor::ui::minMaxCurveField(id.c_str(), value, options);
         ui.phase(phase, f.label);
+        ui.curveBegan(phase, id, value.driver);
         // the curve's driver below it
         if (value.usesCurve()) drawDriver(ui, value, indent + 1);
     }
@@ -435,7 +446,9 @@ namespace {
                 editor::ui::CurveFieldOptions options;
                 options.range = particleRange(curve, nullptr);
                 options.label = f.label;
-                ui.phase(editor::ui::curveField(id.c_str(), curve, options), f.label);
+                const editor::ui::EditPhase phase = editor::ui::curveField(id.c_str(), curve, options);
+                ui.phase(phase, f.label);
+                ui.curveBegan(phase, id, CurveDriver::NormalizedAge);
                 break;
             }
             case FieldType::Gradient: {
@@ -819,6 +832,11 @@ void editor::particlerows::drawEffect(EffectRows& rows, ParticleEffectDocument& 
     }
     rows.changed = rows.changed || ui.changed;
     rows.commit = rows.commit || ui.commit;
+    if (ui.curveOpened) {
+        rows.curveOpened = true;
+        rows.curveField = ui.curveField;
+        rows.curveDriver = ui.curveDriver;
+    }
 }
 
 void editor::particlerows::drawDiagnostics(const std::vector<Diagnostic>& diagnostics) {
