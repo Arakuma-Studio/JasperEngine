@@ -163,6 +163,10 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   T6's AC35 and T3's move of the hole rule into `sampleHeightField` wait for that.
 - Disk filled to 100% on 2026-11-07 ~06:00; freed 35 GB (coordinator's baseline trees, Docker build cache). The queue now waits
   while under 15 GB is free. MCP test runs need `MCP_SKIP_WEB_BUILD=1`, or `MCP_SUITE=all` builds a web project first.
+- Editor trap found by T2: `jobs::postToMain` drains only in `Engine::runFrame`, which the editor runs only in frames that draw a
+  scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
+  hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
+  T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
 - T1 checkpoint landed in integration (e695a1bf3); the merged code is byte-identical to the tree T1 tested. T2, T3, T5 and
   T6 each merge integration once now. Landing order from here: T5, then T3, then T2 and T6 as they finish; each later lander
   merges integration again just before landing. T4 starts once T3 has landed.
