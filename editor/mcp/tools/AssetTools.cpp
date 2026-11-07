@@ -4144,7 +4144,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "get_asset_info";
         tool.title = "Get Asset Info";
         tool.description =
-            "One project file's details by type: image size/channels, Sprite Mode, packed_in (synthesized PNG: its recipe, changed sources, "
+            "One file's details by type: image size/channels, Sprite Mode, packed_in (synthesized PNG: recipe, changed sources, "
             "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "audio format/duration; .material fields, "
             ".anim clip settings, tracks, events, users; .vat clips, staleness, users; .aseprite layers, tags, slices, outputs; "

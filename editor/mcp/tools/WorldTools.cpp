@@ -6578,8 +6578,8 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- sprites
     add("set_sprite_frames", "Set Sprite Frames",
-        "Give a Sprite its frames: sheet (.aseprite, texture, .spriteatlas; with tag clips), or texture with slice (cells) or "
-        "frames (rects) into its Sprite Mode; frame picks one. Animate: set_sprite_animation (jasper://docs/sprites).",
+        "Sprite frames: sheet (.aseprite + tag clips, texture, .spriteatlas) or texture + slice/frames (into its Sprite Mode); "
+        "frame picks one; animate: set_sprite_animation; jasper://docs/sprites.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
