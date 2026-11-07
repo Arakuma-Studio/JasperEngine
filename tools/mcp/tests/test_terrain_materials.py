@@ -20,6 +20,8 @@ MATERIAL_KEYS = {"quality", "quality_source", "limit_layers_per_pixel", "layers"
 async def make_terrain(ed, name="Hills"):
     scene = (await ed.call("list_scenes"))["scenes"][0]["id"]
     made = await ed.call("create_entity", scene=scene, type="terrain", name=name, select=False)
+    # a height map, so the terrain draws and sample_terrain's stats read it
+    await ed.call("edit_terrain", scene=scene, entity=made["entity_id"], create="test_patch", map_resolution=65)
     return scene, made["entity_id"]
 
 

@@ -17,6 +17,8 @@ async def setup(ed: Editor):
     S["scene"] = (await ed.call("list_scenes"))["scenes"][0]["id"]
     made = await ed.call("create_entity", scene=S["scene"], type="terrain", name="Ground", select=False)
     S["entity"] = made["entity_id"]
+    # holes are cut on a height map (T1's edit_terrain refuses a terrain without one)
+    await ed.call("edit_terrain", scene=S["scene"], entity=S["entity"], create="test_patch", map_resolution=65)
     return S
 
 
