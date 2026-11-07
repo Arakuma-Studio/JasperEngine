@@ -6,6 +6,7 @@
 #include "Log.h"
 #include "Project.h"
 #include "component/TerrainComponent.h"
+#include "subsystem/FoliageSystem.h"
 #include "io/AtomicFile.h"
 
 #include "zstd.h"

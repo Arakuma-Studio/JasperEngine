@@ -9,10 +9,12 @@
 // its own at its first write, as painted maps do.
 
 #include "ecs/Entity.h"
-#include "subsystem/FoliageSystem.h"
+#include "terrain/TreeStore.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace jasperengine::editor {
 

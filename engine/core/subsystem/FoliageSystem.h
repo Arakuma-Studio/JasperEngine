@@ -13,7 +13,7 @@
 
 #include "buffer/ExternalBuffer.h"
 #include "component/InstancedMeshComponent.h"
-#include "component/TerrainComponent.h"
+#include "ecs/ComponentFwd.h"
 #include "ecs/Entity.h"
 #include "jobs/Task.h"
 #include "math/Matrix4.h"

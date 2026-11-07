@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "subsystem/FoliageSystem.h"
+#include "component/TerrainComponent.h"
 #include "memory/MemoryStats.h"
 
 #include "Engine.h"
