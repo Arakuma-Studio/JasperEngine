@@ -3,6 +3,8 @@ set_project_settings; the project's defaults; the export of cooked array slices 
 """
 
 import json
+import shutil
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -39,10 +41,11 @@ async def test_agent_fields(ed):
     assert info["quality"] == "low" and info["quality_source"] == "component"
     assert info["fetches"]["worst"] <= 6
 
-    # an invalid value is refused atomically
-    await ed.call("set_properties", scene=scene, entity=entity, values={"terrain": {"quality": "ULTRA", "limitLayersPerPixel": True}}, expect_error=True)
+    # an invalid value is refused atomically: the valid one beside it is not written either
+    limited = info["limit_layers_per_pixel"]
+    await ed.call("set_properties", scene=scene, entity=entity, values={"terrain": {"quality": "ULTRA", "limitLayersPerPixel": not limited}}, expect_error=True)
     info = await material(ed, scene, entity)
-    assert info["quality"] == "low" and not info["limit_layers_per_pixel"]
+    assert info["quality"] == "low" and info["limit_layers_per_pixel"] == limited
     await ed.call("undo")
     info = await material(ed, scene, entity)
     assert info["quality"] != "low", "undo restores the tier"
@@ -66,6 +69,9 @@ async def test_agent_fields(ed):
 
 
 async def test_project_defaults():
+    # the saved project outlives its editor's scratch directory here, outside the repository
+    keep = Path(tempfile.mkdtemp(prefix="t3-terrain-defaults-"))
+    project_path = keep / "project"
     # a new project from the template: the table of R51
     async with Editor(create=True, name="Terrain Defaults") as ed:
         project_yaml = yaml.safe_load((ed.project / "project.yaml").read_text())
@@ -76,8 +82,8 @@ async def test_project_defaults():
         made = await ed.call("create_entity", scene=scene, type="terrain", name="New", select=False)
         info = await material(ed, scene, made["entity_id"])
         assert info["limit_layers_per_pixel"] is True, "a new terrain limits its layers (R53)"
-        project_path = Path(ed.project)
         await ed.call("save_project")
+        shutil.copytree(ed.project, project_path)
 
     # an old project has no key: High everywhere, and none is written on a re-save
     text = yaml.safe_load((project_path / "project.yaml").read_text())
@@ -90,19 +96,22 @@ async def test_project_defaults():
         assert terrains["info"]["material"]["quality_source"] == "project"
         assert terrains["info"]["material"]["quality"] == "high"
         await ed.call("save_project")
-    saved = yaml.safe_load((project_path / "project.yaml").read_text())
+        saved = yaml.safe_load((Path(ed.project) / "project.yaml").read_text())
+    shutil.rmtree(keep)
     assert "terrainQuality" not in (saved.get("graphics") or {}), "an old project writes no key"
 
 
 async def test_ui_readout(ed):
     scene, entity = await make_terrain(ed, "Readout")
-    layout = await ed.call("get_inspector_layout", scene=scene, entity=entity)
+    await ed.call("select_entities", scene=scene, entities=[entity])
+    layout = await ed.call("get_inspector_layout", scene=scene, entities=[entity])
     text = json.dumps(layout)
     for row in ("quality", "limitLayersPerPixel", "offscreenShadows", "macroMode", "resampleEnabled", "heightBlendSharpness", "macroNormal"):
         assert row in text, row
     before = await material(ed, scene, entity)
-    await ed.call("set_properties", scene=scene, entity=entity, values={"terrain": {"limitLayersPerPixel": True}})
+    flipped = not before["limit_layers_per_pixel"]
+    await ed.call("set_properties", scene=scene, entity=entity, values={"terrain": {"limitLayersPerPixel": flipped}})
     after = await material(ed, scene, entity)
-    assert after["limit_layers_per_pixel"] is True and before["limit_layers_per_pixel"] != after["limit_layers_per_pixel"]
+    assert after["limit_layers_per_pixel"] is flipped
     await ed.call("undo")
     assert (await material(ed, scene, entity))["limit_layers_per_pixel"] == before["limit_layers_per_pixel"]
