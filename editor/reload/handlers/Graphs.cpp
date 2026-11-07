@@ -1,14 +1,15 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 //
-// The files of a graph kind (GraphRegistry): the editor holds nothing of them, so a change is only
-// checked, and its problems reported. S23's load keeps what it does not know, so a file another
-// program broke would otherwise say nothing until something reads it.
+// The files of a graph kind (GraphRegistry): a change is checked and its problems reported, and
+// open documents (the Graph Editor's) reload. S23's load keeps what it does not know, so a file
+// another program broke would otherwise say nothing until something reads it.
 
 #include "ReloadHandlers.h"
 
 #include "Project.h"
 #include "graph/Graph.h"
+#include "graph/GraphDocument.h"
 #include "util/ProjectChecks.h"
 
 using namespace jasperengine;
@@ -40,6 +41,7 @@ void reload::addGraphFileProblems(Project& project, const fs::path& path, Json& 
 }
 
 void reload::reloadGraphs(Context& ctx, const std::vector<fs::path>& files) {
+    if (!files.empty()) GraphDocument::filesChanged(files);
     for (const fs::path& path : files) {
         addGraphFileProblems(ctx.project, path, ctx.result.problems);
         ctx.service.recordDone("graph", path, 0.0);
