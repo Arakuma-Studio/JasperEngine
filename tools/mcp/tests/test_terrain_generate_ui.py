@@ -51,7 +51,7 @@ async def scene_with_terrain(ed: Editor, name: str, resolution: int = 65):
     terrain = (await ed.call("create_entity", scene=sid, name="Ground", type="terrain",
                              values={"terrain": {"terrainSize": SIZE, "maxHeight": MAX_HEIGHT, "resolution": 8}}))["entity_id"]
     await ed.call("set_terrain_maps", scene=sid, entity=terrain, heightmap={"generate": "flat", "resolution": resolution, "base_height": 0.25})
-    await ed.call("select", scene=sid, entities=[terrain])
+    await ed.call("select_entities", scene=sid, entities=[terrain])
     await ed.call("focus_window", window="terrain")
     return sid, terrain
 

@@ -431,6 +431,10 @@ namespace jasperengine::editor {
         // dst mirrors src: changed files copied, files src no longer has removed, unchanged files
         // left untouched (their mtime, for incremental builds) but given src's permissions
         static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec);
+        // T2 R45: whether an asset of the project ships, as far as the noise module decides it. Noise Graphs
+        // are recipes: they ship only when the game can load one at run time, and then all of them, since a
+        // Lua string can name any. usage null: not known (a source export), which keeps everything.
+        static bool shipsForNoise(const fs::path& relPath, const ModuleUsage* usage);
         // Adds the execute bits (owner, group, others) to each file, as a terminal needs them for
         // ./gradlew and ./jasperengine.py (an installed or unzipped editor may have lost them); a
         // no-op on Windows. False with error naming the file when one can't be changed.

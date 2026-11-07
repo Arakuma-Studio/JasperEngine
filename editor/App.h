@@ -72,6 +72,7 @@ namespace jasperengine::editor{
     class PoseAnimationWindow;
     class AnimatorWindow;
     class AvatarWindow;
+    class NoiseGraphWindow;
     class TerrainEditWindow;
     class TextureSynthesisWindow;
     class AudioMixerWindow;

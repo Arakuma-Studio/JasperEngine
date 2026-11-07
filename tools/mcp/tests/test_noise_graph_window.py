@@ -20,7 +20,8 @@ EDITOR = {"create": True, "name": "Noise Graph Window", "xvfb": "harness", "ui_p
 TIMEOUT = 900
 
 WINDOW = "Noise Graph"
-GRAPH = "graphs/Driven.noisegraph"
+# (a folder that sorts first, so it is in view without scrolling, as test_animator_window.py does)
+GRAPH = "aaa_graphs/Driven.noisegraph"
 
 SIMPLE = {
     "formatVersion": 1, "kind": "noise", "kindVersion": 1, "nextId": 10,
@@ -56,7 +57,10 @@ def write_graph(ed: Editor, graph: dict = SIMPLE, path: str = GRAPH) -> Path:
 
 async def wait_probe(ed: Editor, ui: Ui, name: str, frames: int = 120, prefix: bool = False):
     """the probe's name and rect once the editor drew it; prefix: an error's name carries its message"""
-    for _ in range(frames):
+    for i in range(frames):
+        if i % 20 == 19 and name.startswith("project."):
+            # another window docked over the Project window takes its tab back each time it opens
+            await ed.call("focus_window", window="project")
         for key, rect in ed.ui_items().items():
             if key == name or (prefix and key.startswith(name)):
                 return key, rect
@@ -68,14 +72,16 @@ async def open_in_project_window(ed: Editor, ui: Ui, name: str):
     """double-clicks a file of the Project window, by its probe rect"""
     await ed.call("focus_window", window="project")
     await ed.call("run_command", id="assets.refresh")
-    for _ in range(20):
+    for i in range(20):
         await ui.frames(4)
+        if i % 5 == 4:
+            await ed.call("focus_window", window="project")
         items = ed.ui_items()
         rect = items.get("project.file." + name)
         if rect:
             await ui.double_click(ui.centre(rect))
             return
-        for folder in ("graphs", "assets"):
+        for folder in ("aaa_graphs", "assets"):
             if "project.file." + folder in items:
                 await ui.double_click(ui.centre(items["project.file." + folder]))
                 break
@@ -170,7 +176,7 @@ async def test_an_error_shows_on_its_node_and_not_in_the_console(ed: Editor):
     ui = Ui(ed)
     broken = json.loads(json.dumps(SIMPLE))
     broken["edges"] = [e for e in broken["edges"] if e["id"] != "e4"]     # the remap's input is required
-    write_graph(ed, broken, "graphs/Broken.noisegraph")
+    write_graph(ed, broken, "aaa_graphs/Broken.noisegraph")
     await open_in_project_window(ed, ui, "Broken.noisegraph")
     key, _ = await wait_probe(ed, ui, "noisegraph.error.n2", prefix=True)
     ed.check(": " in key and len(key.split(": ", 1)[1]) > 3, f"the probe carries the message: {key}")

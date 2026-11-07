@@ -3090,9 +3090,8 @@ bool editor::Exporter::copyAssets() {
         std::error_code typeError;
         if (!entry.is_regular_file(typeError) || isCppSourceFile(entry.path())) return TreeStep::Skip;
 
-        // Noise Graphs are recipes: a project that bakes them pays nothing (T2 R45). When the module
-        // is needed every one ships, because a Lua string can name any of them.
-        if (moduleUsageKnown && !moduleUsage.needs("noise") && entry.path().extension() == ".noisegraph") continue;
+        // A project that only bakes its Noise Graphs pays nothing for them (T2 R45)
+        if (!shipsForNoise(relPath, moduleUsageKnown ? &moduleUsage : nullptr)) return TreeStep::Skip;
 
         // An FBX ships as its import, which the engine loads in its place. Those the scenes
         // use were imported before the scenes were saved, others are imported here.
@@ -3598,6 +3597,13 @@ bool editor::Exporter::copyNativePlugins() {
 void editor::Exporter::copyTree(const fs::path& src, const fs::path& dst, std::error_code& ec) {
     fs::copy(copyPath(src), copyPath(dst),
              fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
+}
+
+bool editor::Exporter::shipsForNoise(const fs::path& relPath, const ModuleUsage* usage) {
+    if (!usage || usage->needs("noise")) return true;
+    std::string ext = relPath.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext != ".noisegraph";
 }
 
 void editor::Exporter::copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec) {

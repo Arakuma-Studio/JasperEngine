@@ -28,6 +28,7 @@
 #include "window/SpriteNormalsWindow.h"
 #include "window/StatusBar.h"
 #include "window/SystemsWindow.h"
+#include "window/NoiseGraphWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"

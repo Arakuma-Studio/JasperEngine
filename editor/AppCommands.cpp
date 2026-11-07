@@ -18,6 +18,7 @@
 #include "window/AnimatorWindow.h"
 #include "window/GameWindow.h"
 #include "window/SpriteNormalsWindow.h"
+#include "window/NoiseGraphWindow.h"
 #include "window/TerrainEditWindow.h"
 
 #include "AppMenuCommand.h"
