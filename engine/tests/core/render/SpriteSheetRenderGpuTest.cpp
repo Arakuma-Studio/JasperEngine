@@ -5,7 +5,9 @@
 // Sprites drawn from a trimmed, packed page and the same twelve from a page of the untrimmed
 // frames give the same picture, pixel for pixel, for every pivot and both flips. Both pages are
 // made here from one set of frames, so the test needs no golden image. A sheet reimported over and
-// over (R22: saves alternating between two versions) draws the newest page every time.
+// over (R22: saves alternating between two versions) draws the newest page every time. Sheet
+// sprites of one page showing different frames draw as one Dynamic Batching run, the same picture
+// as unbatched, and a frame change reaches the run's baked vertices.
 
 #include "Engine.h"
 #include "Scene.h"
@@ -250,4 +252,77 @@ TEST_F(SpriteSheetRenderGpu, ReimportsAlternatingBetweenTwoPagesDrawTheNewest) {
         EXPECT_EQ(centre(), colours[v]);
     }
     SpriteSheetPool::invalidate(path);
+}
+
+// Dynamic Batching: sheet sprites on one page, each on another frame, draw as one run and the same
+// picture as unbatched; stepping every sprite to its next frame draws the new frames batched too,
+// on the trimmed page (a texture rect and a geometry change) and on the untrimmed one (a texture
+// rect change alone, which only the baked UVs show)
+TEST_F(SpriteSheetRenderGpu, SheetSpritesOfOnePageBatchAsTheyDrawUnbatched) {
+    JASPER_REQUIRE_GPU();
+    TestTempDir dir("sheet-gpu-batch");
+    const SheetPages sheets = makeSheets(dir.path());
+    const std::string path = "gpu-test://batched", untrimmedPath = "gpu-test://batched-untrimmed";
+    auto trimmed = std::make_shared<const SpriteSheetData>(sheets.trimmed);
+    auto untrimmed = std::make_shared<const SpriteSheetData>(sheets.untrimmed);
+    SpriteSheetPool::registerSource([path, untrimmedPath](const std::string& p) { return p == path || p == untrimmedPath; },
+                                    [path, trimmed, untrimmed](const std::string& p) { return p == path ? trimmed : untrimmed; });
+    struct RestoreBatching {
+        bool was = Engine::isDynamicBatching();
+        ~RestoreBatching() { Engine::setDynamicBatching(was); }
+    } restoreBatching;
+
+    const float cellW = static_cast<float>(GpuEnvironment::target().getWidth()) / 4.0f;
+    const float cellH = static_cast<float>(GpuEnvironment::target().getHeight()) / 3.0f;
+    std::vector<std::unique_ptr<Sprite>> sprites;
+    for (int i = 0; i < 12; i++) {
+        auto sprite = std::make_unique<Sprite>(&scene);
+        // the first row and the second on the trimmed page, the third on the untrimmed one
+        sprite->setSheet(i < 8 ? path : untrimmedPath);
+        sprite->setFrame(i % kFrames);
+        sprite->setSize(kFrameW * 3, kFrameH * 3);
+        // (the frames' own pivots differ: centred, the untrimmed frames have one geometry)
+        sprite->setPivotPreset(PivotPreset::CENTER);
+        sprite->setPosition(cellW * (static_cast<float>(i % 4) + 0.5f), cellH * (static_cast<float>(i / 4) + 0.5f), 0.0f);
+        sprites.push_back(std::move(sprite));
+    }
+    Engine::setDynamicBatching(true);
+    ASSERT_TRUE(render());
+
+    auto frameWith = [&](bool batching, uint32_t& draws) {
+        Engine::setDynamicBatching(batching);
+        GpuEnvironment::drawFrames(3);
+        draws = Engine::getFrameStats().drawCalls;
+        return capture();
+    };
+    auto drawnPixels = [](const std::vector<uint8_t>& rgba) {
+        size_t drawn = 0;
+        for (size_t p = 0; p + 3 < rgba.size(); p += 4) drawn += (rgba[p] == 255 && rgba[p + 1] == 0 && rgba[p + 2] == 255) ? 0 : 1;
+        return drawn;
+    };
+    auto differing = [](const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
+        size_t n = 0;
+        for (size_t p = 0; p < std::min(a.size(), b.size()); p++) n += a[p] != b[p] ? 1 : 0;
+        return n + (a.size() > b.size() ? a.size() - b.size() : b.size() - a.size());
+    };
+
+    uint32_t onDraws = 0, offDraws = 0;
+    const std::vector<uint8_t> batched = frameWith(true, onDraws);
+    const std::vector<uint8_t> unbatched = frameWith(false, offDraws);
+    ASSERT_GT(drawnPixels(unbatched), 12u * 30u * 9u) << "the sprites are on screen";
+    EXPECT_EQ(differing(batched, unbatched), 0u) << "batched draws what unbatched does";
+    EXPECT_LT(onDraws, offDraws) << "a run per page: " << onDraws << " draws batched, " << offDraws << " not";
+
+    // every sprite on the next frame, as a playing tag steps it (the frame field alone, no rebuild
+    // asked for): what the batch baked must follow
+    // (batched frames first: the runs settle on the baked vertices of the old frames)
+    frameWith(true, onDraws);
+    for (size_t i = 0; i < sprites.size(); i++) sprites[i]->getComponent<SpriteComponent>().frame = static_cast<int>((i + 1) % kFrames);
+    const std::vector<uint8_t> nextBatched = frameWith(true, onDraws);
+    const std::vector<uint8_t> nextUnbatched = frameWith(false, offDraws);
+    EXPECT_GT(differing(nextUnbatched, unbatched), 0u) << "the frames changed";
+    EXPECT_EQ(differing(nextBatched, nextUnbatched), 0u) << "a frame change reaches the batch";
+    EXPECT_LT(onDraws, offDraws);
+    SpriteSheetPool::invalidate(path);
+    SpriteSheetPool::invalidate(untrimmedPath);
 }
