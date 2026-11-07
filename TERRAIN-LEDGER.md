@@ -123,7 +123,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | T2 implementation | in progress | `.worktrees/t2`. Core: 67 filtered tests pass at `c7ded25f3`. Editor half uncommitted, its tests not yet run |
 | T3 implementation | in progress | `.worktrees/t3`. Holes committed at `a88e00f3d`, 41 filtered core tests pass; collider tests and Vulkan not run. Tiers and materials next |
 | T4 implementation | not started | After T1 and T3 |
-| T5 implementation | in progress | `.worktrees/t5`. Runtime, render hooks and editor panel committed; filtered tests running |
+| T5 implementation | done, waiting to land | `terrain/t5-foliage` at ebac93db7. Filtered suites green on the merged tree: core 130/130, GPU 22/22, budget and shader keys 21/21, editor 126/126, MCP files all passing. Lands after T1's checkpoint |
 | T6 implementation | in progress | `.worktrees/t6`. 110 of 114 filtered tests at last report; GPU tests and the ball test open. Generation and terrain integration not merged |
 | Merge `terrain/integration` to `main`, merge `origin/main`, push | not started | |
 
@@ -163,6 +163,10 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   T6's AC35 and T3's move of the hole rule into `sampleHeightField` wait for that.
 - Disk filled to 100% on 2026-11-07 ~06:00; freed 35 GB (coordinator's baseline trees, Docker build cache). The queue now waits
   while under 15 GB is free. MCP test runs need `MCP_SKIP_WEB_BUILD=1`, or `MCP_SUITE=all` builds a web project first.
+- T5 finished (ebac93db7). Red controls caught: trees never drawn when their shaders compiled at runtime; Paint Trees disarmed
+  in the Terrain window; a flat terrain placed no grass. Not run here: the prebuilt-player export test, the foliage web gate,
+  Metal/D3D11/devices, eval cases. Its moving-camera p99 was over budget on a loaded host. It lands after T1's checkpoint, then
+  merges integration once more to take T1's `editor::terraindetail` rename.
 - Landing risk: `tools/check_fanout.py` caps how many units one header rebuilds at 150. T3's worst is 149 and T5 noted it sits at
   150 too, so merged streams may exceed it. Check it on every landing merge, and split includes if it fails.
 - Stream findings so far (filtered runs only, nothing is final):
