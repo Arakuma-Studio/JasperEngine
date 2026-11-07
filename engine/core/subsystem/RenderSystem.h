@@ -175,6 +175,17 @@ namespace jasperengine{
 		Vector4 params;         // x the plane's height, y 1 with a reflection
 	} fs_planar_reflection_t;
 
+	// WATER_INTERACTION_PARAMS (includes/water_interaction_params.glsl), the engine-written members
+	// at the end of a water shader's u_fs_customParams: the Water Excluders over a draw and the
+	// scene's wake map
+	constexpr int WATER_EXCLUDERS_PER_DRAW = 8;
+	typedef struct fs_water_interaction_t {
+		Vector4 exclusion;      // x the excluders tested; y, z, w their rows in the data texture, three bytes each
+		Vector4 wakeArea;       // xy the map's world corner, z 1 / its world size, w 1 while it holds a wake
+		Vector4 wakeParams;     // x slope per unit of crest over a texel, y 1 / texels, z the body tag / 255
+	} fs_water_interaction_t;
+	static_assert(sizeof(fs_water_interaction_t) == 3 * 16, "WATER_INTERACTION_PARAMS is 3 vec4");
+
 	// includes/environment.glsl (u_fs_environment)
 	typedef struct fs_environment_t {
 		Vector4 colorRotation; // rgb linear tint, w rotation about +Y (radians)
@@ -445,6 +456,10 @@ namespace jasperengine{
 		bool capsuleShadows = false;
 		bool contactShadows = false;
 		bool oit = false;
+		// the scene has a Water Excluder / a Water Wake (enabled or not): a shader requiring
+		// waterexclusion / waterwake takes 'Wex' / 'Wwk' (includes/water_interaction.glsl)
+		bool waterExclusion = false;
+		bool waterWake = false;
 	};
 
 	// The uber pass's compile-time features (shader library phase 4): the property bits of a
@@ -853,6 +868,22 @@ namespace jasperengine{
 		bool hasFog = false;
 		bool hasIBL = false;
 		bool hasReflectionProbes = false;
+		// the scene has a Water Excluder / a Water Wake (enabled or not): the water variants'
+		// 'Wex' / 'Wwk' (MeshShaderEnvironment), and the GPU side of WaterInteractionSystem
+		bool hasWaterExcluders = false;
+		bool hasWaterWakes = false;
+		TextureRender waterExclusionMaps;
+		int waterExclusionMapLayers = 0;
+		// the frame's excluders (RGBA32F, 4 texels a row: includes/water_interaction.glsl), the
+		// rows uploaded this frame and the frame they were
+		TextureRender waterExclusionData;
+		std::vector<Vector4> waterExclusionTexels;
+		size_t waterExclusionRows = 0;
+		uint64_t waterExclusionDataFrame = UINT64_MAX;
+		uint64_t waterExclusionMapsVersion = 0;
+		TextureRender waterWakeTexture;
+		uint64_t waterWakeUploadFrame = UINT64_MAX;
+		bool waterExcluderCapWarned = false;
 		bool hasMultipleCameras = false;
 		// extra cameras the last frame drew, to catch the switch back to main only
 		bool lastMultiCameraDraw = false;
@@ -2945,6 +2976,13 @@ namespace jasperengine{
 		const CameraComponent* passCamera = nullptr;
 		// u_fs_planarReflection and its texture for a draw of a mesh reading one
 		void applyPlanarReflection(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity);
+		// the eye of the camera pass being drawn (its camera's Transform)
+		Vector3 passEye;
+		// the Water Excluders' and Wakes' members of a draw's custom block and their textures: the
+		// excluders over the mesh in the pass camera's view, nearest first, and the wake map with the
+		// mesh's body tag
+		void applyWaterInteraction(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity, const MeshComponent& mesh,
+		                           const Material& material, CustomUniformBlock& customParams);
 		// the world box a transparent draw covers (null when it has none to tell)
 		AABB transparentBounds(const TransparentRenderData& renderData) const;
 		// whether a draw of the transparent queue samples the scene colour (and is drawn)
@@ -3410,6 +3448,13 @@ namespace jasperengine{
 		// as needReloadMeshes does. Once they are built, the loaded objects make their pipelines
 		// on the new variants and warm them (spec S32 R4, R8), and the reload waits for those too
 		void needReloadMeshVariants();
+		// the meshes with a submesh whose shader can ask for the Water Excluders or Wakes
+		void needReloadWaterVariants();
+		// the hull map array and the wake map (once a frame, before the passes draw)
+		void syncWaterInteraction();
+		void destroyWaterInteraction();
+		// the excluders' data texture with room for that many rows (made again only to grow)
+		bool ensureWaterExclusionData(size_t rows);
 		bool meshVariantShadersReady(Entity entity, MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain);
 		// the inputs a load of the submesh would resolve now, from its attributes of the last load
 		SubmeshShaderInputs getCurrentSubmeshInputs(Entity entity, const MeshComponent& mesh, unsigned int index, const TerrainComponent* terrain,

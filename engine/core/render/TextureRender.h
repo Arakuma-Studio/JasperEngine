@@ -60,10 +60,11 @@ namespace jasperengine {
 
         // RGBA32F, NEAREST (bone matrices)
         bool createDynamicTexture(const std::string& label, int width, int height);
-        // RGBA -> RGBA8, RED -> R8; stream update, CLAMP_TO_EDGE, no mipmaps, the given min/mag
-        // filter. updateTexture then takes exactly width * height * 4 (or 1) bytes, rows top first
+        // RGBA -> RGBA8, RED -> R8; stream update, no mipmaps, the given min/mag filter and wrap
+        // (a toroidal map repeats). updateTexture then takes exactly width * height * 4 (or 1)
+        // bytes, rows top first
         bool createDynamicTexture(const std::string& label, int width, int height,
-                                  ColorFormat format, TextureFilter filter);
+                                  ColorFormat format, TextureFilter filter, TextureWrap wrap = TextureWrap::CLAMP_TO_EDGE);
         // RGBA8, linear, clamped, rewritten whole by updateTexture (width * height * 4 bytes)
         // at most once a frame (the post-processing colour LUTs)
         bool createDynamicColorTexture(const std::string& label, int width, int height);

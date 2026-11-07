@@ -504,6 +504,14 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                     value = static_cast<PlanarReflectionResolution>(currentItem);
                 }
             }
+            if constexpr (std::is_same_v<T, WaterWakeResolution>) {
+                const char* resolutionNames[] = { "Auto", "Low (128)", "Medium (256)", "High (512)" };
+                int currentItem = std::clamp(static_cast<int>(value), 0, 3);
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, resolutionNames, IM_ARRAYSIZE(resolutionNames));
+                if (changed) {
+                    value = static_cast<WaterWakeResolution>(currentItem);
+                }
+            }
             if constexpr (std::is_same_v<T, SceneColorScale>) {
                 const char* scaleNames[] = { "Full", "Half" };
                 int currentItem = static_cast<int>(value);
@@ -1913,6 +1921,24 @@ void editor::InspectorWindow::drawScenePlanarReflections(SceneProject* sceneProj
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
     }
+    ImGui::EndTable();
+}
+
+void editor::InspectorWindow::drawSceneWaterWakes(SceneProject* sceneProject, ImGuiTableFlags tableFlags){
+    ImGui::SeparatorText("Water Wakes");
+    if (!ImGui::BeginTable("scene_water_wakes_table", 2, tableFlags))
+        return;
+    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Resolution"));
+    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+    const float comboWidth = ImGui::CalcTextSize("Medium (256)").x + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f;
+    drawScenePropertyRow<WaterWakeResolution>(sceneProject, "water_wake_resolution", "Resolution", ScenePropertyInputType::Combo, comboWidth, 0.0f, 1.0f,
+        "The wakes of Water Wake components live in one map around the main camera, updated on the CPU and sent to the GPU each frame "
+        "while a wake shows. Auto: 256 texels a side, 128 on mobile and web.");
+    drawScenePropertyRow<float>(sceneProject, "water_wake_area", "Area", ScenePropertyInputType::DragFloat, -1.0f, 8.0f, 1024.0f,
+        "Metres the wake map spans around the main camera; wakes farther away are not drawn. A smaller area shows finer wakes.");
+    drawScenePropertyRow<float>(sceneProject, "water_wake_fade", "Fade", ScenePropertyInputType::DragFloat, -1.0f, 0.1f, 120.0f,
+        "Seconds a wake takes to fade (an eighth of its foam is left by then, as scattered foam).");
     ImGui::EndTable();
 }
 
@@ -6804,6 +6830,8 @@ bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform,
             ? "Reserved uniform, written every frame with the size of the render target: xy = width and height, zw = 1 / width and 1 / height.\n\nRename it to edit a value of your own here."
             : name == "sceneTime"
             ? "Reserved uniform, written every frame with the scene's game clock: seconds the scene has run, scaled by the time scale, held while the game is paused.\n\nRename it to edit a value of your own here."
+            : name.rfind("water", 0) == 0
+            ? "Reserved uniform, written every draw with the Water Excluders over the mesh and the scene's Water Wake map (includes/water_interaction_params.glsl)."
             : "Reserved uniform, written every frame with the seconds elapsed since startup.\n\nRename it to edit a value of your own here.");
         return false;
     }
@@ -13570,6 +13598,7 @@ void editor::InspectorWindow::show(){
                 }
 
                 drawScenePlanarReflections(sceneProject, tableFlags);
+                drawSceneWaterWakes(sceneProject, tableFlags);
 
                 ImGui::SeparatorText("Ambient Occlusion (SSAO)");
 

@@ -367,6 +367,16 @@ namespace {
         tail.svarint(scene.getMaxPlanarReflections());
         return tail.data().size();
     }
+
+    // the bytes format 1.5 appends after them (the Water Wakes' map)
+    size_t waterWakeTailBytes(const Scene& scene) {
+        jasperengine::cook::StringTable none;
+        jasperengine::cook::Writer tail(none, [](Entity e) { return static_cast<uint32_t>(e); });
+        tail.u8(static_cast<uint8_t>(scene.getWaterWakeResolution()));
+        tail.f32(scene.getWaterWakeArea());
+        tail.f32(scene.getWaterWakeFade());
+        return tail.data().size();
+    }
 }
 
 // S57: the scene's capsule shadows survive a cook (format 1.1), and S54's LOD cross-fade after
@@ -409,8 +419,8 @@ TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
     // (1.3) the five default shaders' property values, none set here
     jasperengine::cook::Writer v13(none, [](Entity e) { return static_cast<uint32_t>(e); });
     for (int type = 0; type < 5; type++) jasperengine::cook::write(v13, ShaderUniformValues());
-    // (1.4) the planar reflections
-    const size_t v14 = planarReflectionTailBytes(*scene);
+    // (1.4) the planar reflections, and (1.5) the Water Wakes' map after them
+    const size_t v14 = planarReflectionTailBytes(*scene) + waterWakeTailBytes(*scene);
     ASSERT_GT(bytes.size(), v11.data().size() + v12.data().size() + v13.data().size() + v14);
 
     // the 1.1 record: the same bytes without the cross-fade (and the 1.3 and 1.4 values)
@@ -542,9 +552,9 @@ TEST(CookedScene, SceneSettingsKeepPlanarReflections) {
     EXPECT_FLOAT_EQ(player.scene->scene->getPlanarReflectionClipOffset(), 0.2f);
     EXPECT_EQ(player.scene->scene->getMaxPlanarReflections(), 3);
 
-    // the 1.3 record: the same bytes without the planar reflections
+    // the 1.3 record: the same bytes without the planar reflections (and the 1.5 values)
     DecodedScene older = emptyScene();
-    jasperengine::cook::Reader r13(std::span<const uint8_t>(bytes.data(), bytes.size() - planarReflectionTailBytes(*scene)),
+    jasperengine::cook::Reader r13(std::span<const uint8_t>(bytes.data(), bytes.size() - planarReflectionTailBytes(*scene) - waterWakeTailBytes(*scene)),
                                    strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r13, *older.scene->scene);
     ASSERT_FALSE(r13.failed()) << r13.error();
@@ -556,6 +566,53 @@ TEST(CookedScene, SceneSettingsKeepPlanarReflections) {
     EXPECT_FLOAT_EQ(old.getPlanarReflectionFarClip(), defaults.planarReflectionFarClip);
     EXPECT_FLOAT_EQ(old.getPlanarReflectionClipOffset(), defaults.planarReflectionClipOffset);
     EXPECT_EQ(old.getMaxPlanarReflections(), defaults.maxPlanarReflections);
+}
+
+// water-boats: the scene's Water Wakes map settings survive a cook (format 1.5, after the planar
+// reflections); a 1.4 record (without them) leaves them at their defaults
+TEST(CookedScene, SceneSettingsKeepWaterWakes) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    scene->setPlanarReflectionFarClip(60.0f);
+    scene->setWaterWakeResolution(WaterWakeResolution::HIGH);
+    scene->setWaterWakeArea(32.0f);
+    scene->setWaterWakeFade(4.0f);
+
+    jasperengine::cook::StringTable strings;
+    jasperengine::cook::Writer w(strings, [](Entity e) { return static_cast<uint32_t>(e); });
+    jasperengine::cook::writeSceneSettings(w, *scene);
+    const std::vector<uint8_t>& bytes = w.data();
+    auto entityOf = [](uint32_t id) { return static_cast<Entity>(id); };
+
+    DecodedScene loaded = emptyScene();
+    jasperengine::cook::Reader r(std::span<const uint8_t>(bytes.data(), bytes.size()), strings.strings(), entityOf);
+    jasperengine::cook::readSceneSettings(r, *loaded.scene->scene);
+    ASSERT_FALSE(r.failed()) << r.error();
+    EXPECT_TRUE(r.atEnd());
+    EXPECT_EQ(loaded.scene->scene->getWaterWakeResolution(), WaterWakeResolution::HIGH);
+    EXPECT_FLOAT_EQ(loaded.scene->scene->getWaterWakeArea(), 32.0f);
+    EXPECT_FLOAT_EQ(loaded.scene->scene->getWaterWakeFade(), 4.0f);
+
+    // the prebuilt player's path: the whole scene cooked and loaded by CookedSceneLoader
+    DecodedScene player;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {}, player, error)) << error;
+    EXPECT_EQ(player.scene->scene->getWaterWakeResolution(), WaterWakeResolution::HIGH);
+    EXPECT_FLOAT_EQ(player.scene->scene->getWaterWakeArea(), 32.0f);
+    EXPECT_FLOAT_EQ(player.scene->scene->getWaterWakeFade(), 4.0f);
+
+    // the 1.4 record: the same bytes without the wake settings; the planar reflections still read
+    DecodedScene older = emptyScene();
+    jasperengine::cook::Reader r14(std::span<const uint8_t>(bytes.data(), bytes.size() - waterWakeTailBytes(*scene)),
+                                   strings.strings(), entityOf);
+    jasperengine::cook::readSceneSettings(r14, *older.scene->scene);
+    ASSERT_FALSE(r14.failed()) << r14.error();
+    const SceneSettings defaults;
+    const Scene& old = *older.scene->scene;
+    EXPECT_FLOAT_EQ(old.getPlanarReflectionFarClip(), 60.0f);
+    EXPECT_EQ(old.getWaterWakeResolution(), defaults.waterWakeResolution);
+    EXPECT_FLOAT_EQ(old.getWaterWakeArea(), defaults.waterWakeArea);
+    EXPECT_FLOAT_EQ(old.getWaterWakeFade(), defaults.waterWakeFade);
 }
 
 TEST(RuntimeFields, Generated) {

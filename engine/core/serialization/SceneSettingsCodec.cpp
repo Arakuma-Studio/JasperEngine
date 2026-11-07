@@ -142,6 +142,10 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     w.f32(scene.getPlanarReflectionFarClip());
     w.f32(scene.getPlanarReflectionClipOffset());
     w.svarint(scene.getMaxPlanarReflections());
+    // format 1.5 (water-boats): the Water Wakes' map
+    w.u8(static_cast<uint8_t>(scene.getWaterWakeResolution()));
+    w.f32(scene.getWaterWakeArea());
+    w.f32(scene.getWaterWakeFade());
 }
 
 void cook::readSceneSettings(Reader& r, Scene& scene) {
@@ -243,4 +247,11 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     scene.setPlanarReflectionFarClip(r.f32());
     scene.setPlanarReflectionClipOffset(r.f32());
     scene.setMaxPlanarReflections(static_cast<int>(r.svarint()));
+    // a 1.4 record ends here: the Water Wakes' map keeps its defaults (format 1.5)
+    if (r.atEnd()) return;
+    const uint8_t wakeResolution = r.u8();
+    if (wakeResolution <= static_cast<uint8_t>(WaterWakeResolution::HIGH))
+        scene.setWaterWakeResolution(static_cast<WaterWakeResolution>(wakeResolution));
+    scene.setWaterWakeArea(r.f32());
+    scene.setWaterWakeFade(r.f32());
 }

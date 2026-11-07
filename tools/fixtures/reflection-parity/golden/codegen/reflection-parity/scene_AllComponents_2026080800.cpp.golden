@@ -100,7 +100,9 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1090);
     scene->recreateEntity(1091);
     scene->recreateEntity(1092);
-    scene->setLastEntity(1092);
+    scene->recreateEntity(1093);
+    scene->recreateEntity(1094);
+    scene->setLastEntity(1094);
 
     {
         // Entity 1001 (Transform)
@@ -3099,6 +3101,57 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         audiosnapshot.revert = false;
         audiosnapshot.revertSeconds = 0.750000f;
         scene->addComponent<AudioSnapshotComponent>(1092, audiosnapshot);
+    }
+
+    {
+        // Entity 1093 (WaterExcluderComponent)
+        scene->setEntityName(1093, "WaterExcluderComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(92.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1093, transform);
+
+        WaterExcluderComponent waterExcluder;
+        waterExcluder.enabled = false;
+        waterExcluder.shape = WaterExcluderShape::SPHERE;
+        waterExcluder.center = Vector3(0.500000f, 1.500000f, 2.500000f);
+        waterExcluder.size = Vector3(3.500000f, 4.500000f, 5.500000f);
+        scene->addComponent<WaterExcluderComponent>(1093, waterExcluder);
+    }
+
+    {
+        // Entity 1094 (WaterWakeComponent)
+        scene->setEntityName(1094, "WaterWakeComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(93.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1094, transform);
+
+        WaterWakeComponent waterWake;
+        waterWake.enabled = false;
+        waterWake.foam = 1.500000f;
+        waterWake.waves = 0.500000f;
+        waterWake.width = 2.500000f;
+        waterWake.length = 6.500000f;
+        scene->addComponent<WaterWakeComponent>(1094, waterWake);
     }
 
     // Default Camera 1

@@ -373,12 +373,12 @@ in `tools/mcp/tests/test_reflection.py`.
 - **AC4** `ReflectParity.<Component>.DecodeMatchesFrozen`: decoding legacy text, including random
   key subsets over a random base, gives the same values as the legacy decoder, with floats
   compared bitwise. Malformed scalars produce a skip record and no exception.
-- **AC5** `test_reflection.py::test_golden_resave`: the editor opens each of the 18
+- **AC5** `test_reflection.py::test_golden_resave_<project>` (a test per project; see Deviations): the editor opens each of the 18
   `tools/fixtures/*/*.scene`, the prefab fixtures (`tools/prefab-fixtures.py`), and
   `tools/fixtures/reflection-parity/AllComponents.scene` (every component, non-default values),
   saves them, and the bytes equal `tools/fixtures/reflection-parity/golden/`. The goldens are
   captured with the pre-S08 editor in the first S08 PR.
-- **AC6** `test_reflection.py::test_codegen_golden`: the generated C++ for the parity fixtures
+- **AC6** `test_reflection.py::test_golden_resave_<project>`: the generated C++ for the parity fixtures
   equals the golden text captured before migration.
 - **AC7** `test_reflection.py::test_inspector_layout_parity`: for each migrated component,
   `get_inspector_layout` matches the JSON captured from the hand drawer (labels, order, groups,
@@ -586,3 +586,8 @@ Recorded by the implementation (branch `feat/s08-reflection`).
 - **Done by S73, not here.** `editor/asset/AssetRefSchema` stayed hand-written until S73 generated
   its component rows and walk from these tables.
 - **R29** (optional Lua field report) is not implemented.
+- **AC5 and AC6 are one test per project** (`test_golden_resave_<project>`, branch `tests/split-slow-mcp`).
+  One function re-saving every project, and a second comparing the code it left behind, took
+  175-970 s and timed out at 1800 s on loaded servers. Each test now opens one project in its own
+  editor and compares its files and its generated code; the file's `TESTS_INDEPENDENT` lets the
+  runner put them in separate chunks.
