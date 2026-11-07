@@ -259,7 +259,8 @@ async def test_sample(ed: Editor):
     ed.check_eq(got[2]["source"], "modified", f"{got[2]}")
     await refused_points(ed, entity)
 
-    ground = (await ed.call("sample_voxels", entity=entity, mode="values", ground=True, points=[[32, 60, 32], [500, 60, 500]]))["ground"]
+    # (-300, -300) is under no volume of this scene: every test's volumes start at the origin
+    ground = (await ed.call("sample_voxels", entity=entity, mode="values", ground=True, points=[[32, 60, 32], [-300, 60, -300]]))["ground"]
     ed.check_eq(ground[0]["source"], "voxel", f"{ground[0]}")
     ed.check(abs(ground[0]["height"] - 32) < 0.1, f"the ground of a volume: {ground[0]}")
     ed.check_eq(ground[1]["source"], "none", f"{ground[1]}")
@@ -501,7 +502,8 @@ async def test_presets(ed: Editor):
             comps = comps.get("result", comps)
             ed.check(comps["component_count"] >= 1 and comps["air_components"], f"{comps}")
         if preset == "overhangs":
-            grid = await finished(ed, await ed.call("sample_voxels", entity=entity, mode="box", min=[0, 0, 0], max=[126, 62, 126], stride=2))
+            # stride 4: a result over 1 MB loses its structured content
+            grid = await finished(ed, await ed.call("sample_voxels", entity=entity, mode="box", min=[0, 0, 0], max=[124, 60, 124], stride=4))
             grid = grid.get("result", grid)
             nx, ny, nz = grid["counts"]
             values = grid["values"]
