@@ -142,6 +142,7 @@
 #include "texture/Texture.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
+#include "pixelart/aseprite/AsepriteImporter.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "Engine.h"
@@ -6233,6 +6234,9 @@ void editor::Project::resetConfigs() {
     }
     if (ModelCookQueue::get().getProject() == this){
         ModelCookQueue::get().attach(nullptr);
+    }
+    if (pixelart::aseprite::AsepriteImporter::get().getProject() == this){
+        pixelart::aseprite::AsepriteImporter::get().attach(nullptr);
     }
     textureSettings = {};
     modelSettings = {};

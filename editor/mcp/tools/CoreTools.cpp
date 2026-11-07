@@ -4,6 +4,7 @@
 // Core: batch, get_job, cancel_job, undo / redo, editor_status, respond_dialog, tool_groups,
 // get_job_system_stats, set_job_system_config, get_memory_stats
 #include "McpTools.h"
+#include "pixelart/aseprite/AsepriteImporter.h"
 #include "window/StatusBar.h"
 
 #include "mcp/McpAutoSync.h"
@@ -547,6 +548,8 @@ Json jobSystemStatsJson(int windowFrames) {
 void getJobSystemStatsTool(const CallPtr& call) {
     const int window = std::max(1, std::min(120, call->args().value("window_frames", 60)));
     Json data = jobSystemStatsJson(window);
+    // S44 R25: a project without .aseprite files starts no import job
+    data["aseprite"] = {{"imports_started", pixelart::aseprite::AsepriteImporter::get().jobsStarted()}};
     call->ok("Job system: " + std::to_string(data["workers"].get<int>()) + " worker(s), Background gate " +
              std::to_string(data["gate"]["taken"].get<int>()) + "/" + std::to_string(data["gate"]["max"].get<int>()) +
              ", " + std::to_string(data["asset_jobs"].get<uint32_t>()) + " asset job(s) queued or running.", data);
