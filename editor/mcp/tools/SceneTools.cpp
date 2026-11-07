@@ -3,6 +3,7 @@
 
 // W1: scenes (list, create, open, close, select, save, rename, delete), child scenes, main
 // camera, scene settings
+#include "registry/TagManager.h"
 #include "McpTools.h"
 #include "component/CameraComponent.h"
 #include "shader/ShaderGlobals.h"
@@ -802,7 +803,7 @@ void setMainCameraTool(const CallPtr& call) {
 // ------------------------------------------------------------------ scene settings
 
 enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, LitQuality, Filter, PostProcess,
-                         PostProcessing, PostProcessingField, ShadowDebugView, CanvasScaler, ShaderUniforms };
+                         PostProcessing, PostProcessingField, ShadowDebugView, CanvasScaler, PlanarReflectionResolution, LayerMask, ShaderUniforms };
 
 struct SceneSetting {
     std::string name;
@@ -854,6 +855,13 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"depth_prepass_enabled", SettingKind::Bool, "depth-only pass before opaque draws"},
         {"scene_color_scale", SettingKind::SceneColorScale,
          "resolution of the scene-colour copy shaders requiring scenecolor sample: full, half (default)"},
+        {"planar_reflection_resolution", SettingKind::PlanarReflectionResolution,
+         "water planar reflection passes (one per water height a camera sees): off (none: the environment), quarter, half (default), full"},
+        {"planar_reflection_layers", SettingKind::LayerMask, "layers the planar reflections draw (with the camera's culling mask)"},
+        {"planar_reflection_shadows", SettingKind::Bool, "planar reflections sample the camera's shadow maps"},
+        {"planar_reflection_far_clip", SettingKind::Float, "metres the planar reflections draw (0: the camera's far clip)"},
+        {"planar_reflection_clip_offset", SettingKind::Float, "planar reflections leave out what is within this above the water's rest level"},
+        {"max_planar_reflections", SettingKind::Int, "water heights a camera reflects, 1-4 (the nearest; the others show the environment)"},
         {"ssao_enabled", SettingKind::Bool, "screen-space ambient occlusion"},
         {"ssao_radius", SettingKind::Float, "SSAO radius"},
         {"ssao_intensity", SettingKind::Float, "SSAO intensity"},
@@ -1070,7 +1078,9 @@ const char* kindName(SettingKind kind) {
         case SettingKind::LightState:
         case SettingKind::LitQuality:
         case SettingKind::ShadowDebugView:
+        case SettingKind::PlanarReflectionResolution:
         case SettingKind::Filter: return "enum";
+        case SettingKind::LayerMask: return "layer_mask";
         case SettingKind::PostProcess: return "post_process";
         case SettingKind::PostProcessing: return "post_processing";
         case SettingKind::PostProcessingField: return "post_processing_field";
@@ -1085,6 +1095,7 @@ const McpValues::EnumOptions* settingOptions(SettingKind kind) {
         case SettingKind::ShadowQuality: return McpValues::enumTable("shadow_quality");
         case SettingKind::ShadowDebugView: return McpValues::enumTable("shadow_debug_view");
         case SettingKind::SceneColorScale: return McpValues::enumTable("scene_color_scale");
+        case SettingKind::PlanarReflectionResolution: return McpValues::enumTable("planar_reflection_resolution");
         case SettingKind::LightState: return McpValues::enumTable("light_state");
         case SettingKind::LitQuality: return McpValues::enumTable("lit_quality");
         case SettingKind::Filter: return McpValues::enumTable("framebuffer_filter");
@@ -1112,6 +1123,52 @@ Json postProcessToJson(const std::vector<PostProcessPass>& passes, Project* proj
         list.push_back(item);
     }
     return list;
+}
+
+// a layer mask as the tools write one: "everything", "nothing", or the names of its layers
+Json layerMaskToJson(uint32_t mask) {
+    if (mask == LAYER_MASK_EVERYTHING) return "everything";
+    if (mask == LAYER_MASK_NOTHING) return "nothing";
+    Json names = Json::array();
+    for (int layer = 0; layer < MAX_LAYERS; layer++) {
+        if (!(mask & (1u << layer))) continue;
+        const std::string name = TagManager::layerToName(layer);
+        names.push_back(name.empty() ? Json(layer) : Json(name));
+    }
+    return names;
+}
+
+// "everything", "nothing", a list of layer names or indices, or the mask's number
+bool layerMaskFromJson(const Json& value, uint32_t& mask, std::string& why) {
+    if (value.is_string()) {
+        const std::string text = value.get<std::string>();
+        if (text == "everything") { mask = LAYER_MASK_EVERYTHING; return true; }
+        if (text == "nothing") { mask = LAYER_MASK_NOTHING; return true; }
+        why = "\"everything\", \"nothing\", a list of layer names, or a number.";
+        return false;
+    }
+    if (value.is_number_unsigned() || (value.is_number_integer() && value.get<long long>() >= 0)) {
+        const unsigned long long bits = value.get<unsigned long long>();
+        if (bits > 0xFFFFFFFFull) { why = "a mask of at most 32 bits."; return false; }
+        mask = (uint32_t)bits;
+        return true;
+    }
+    if (value.is_array()) {
+        mask = 0;
+        for (const Json& item : value) {
+            int layer = -1;
+            if (item.is_number_integer()) layer = item.get<int>();
+            else if (item.is_string()) layer = TagManager::nameToLayer(item.get<std::string>());
+            if (layer < 0 || layer >= MAX_LAYERS) {
+                why = "unknown layer " + item.dump() + " (Project Settings > Tags and Layers).";
+                return false;
+            }
+            mask |= 1u << layer;
+        }
+        return true;
+    }
+    why = "\"everything\", \"nothing\", a list of layer names, or a number.";
+    return false;
 }
 
 template<typename T>
@@ -1158,6 +1215,13 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<SceneColorScale>(setting.name)
                                                         : Catalog::getSceneProperty<SceneColorScale>(scene, setting.name)),
                                          *settingOptions(setting.kind));
+        case SettingKind::PlanarReflectionResolution:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<PlanarReflectionResolution>(setting.name)
+                                                        : Catalog::getSceneProperty<PlanarReflectionResolution>(scene, setting.name)),
+                                         *settingOptions(setting.kind));
+        case SettingKind::LayerMask:
+            return layerMaskToJson(defaults ? Catalog::getScenePropertyDefault<uint32_t>(setting.name)
+                                            : Catalog::getSceneProperty<uint32_t>(scene, setting.name));
         case SettingKind::LightState:
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<LightState>(setting.name)
                                                         : Catalog::getSceneProperty<LightState>(scene, setting.name)),
@@ -1238,6 +1302,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (name.rfind("fixed_resolution_", 0) == 0 && value.get<int>() < 1) return expect("at least 1");
             if (name == "max_lights_per_object" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
             if (name == "physics_2d_sub_steps" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
+            if (name == "max_planar_reflections" && (value.get<int>() < 1 || value.get<int>() > 4)) return expect("1 to 4");
             if (name == "ssr_debug_mode" && (value.get<int>() < 0 || value.get<int>() > 8)) return expect("0 to 8");
             return new ScenePropertyCmd<int>(project, id, name, value.get<int>());
         case SettingKind::Float:
@@ -1280,6 +1345,16 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (!McpValues::parseVector4(value, v)) return expect("[r,g,b,a] (or [r,g,b], \"#RRGGBB[AA]\")");
             return new ScenePropertyCmd<Vector4>(project, id, name, v);
         }
+        case SettingKind::LayerMask: {
+            uint32_t mask = 0;
+            std::string why;
+            if (!layerMaskFromJson(value, mask, why)) {
+                error = name + ": " + why;
+                return nullptr;
+            }
+            return new ScenePropertyCmd<uint32_t>(project, id, name, mask);
+        }
+        case SettingKind::PlanarReflectionResolution:
         case SettingKind::ShadowQuality:
         case SettingKind::SceneColorScale:
         case SettingKind::LightState:
@@ -1293,6 +1368,8 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             }
             if (setting.kind == SettingKind::ShadowQuality) return new ScenePropertyCmd<ShadowQuality>(project, id, name, (ShadowQuality)parsed);
             if (setting.kind == SettingKind::SceneColorScale) return new ScenePropertyCmd<SceneColorScale>(project, id, name, (SceneColorScale)parsed);
+            if (setting.kind == SettingKind::PlanarReflectionResolution)
+                return new ScenePropertyCmd<PlanarReflectionResolution>(project, id, name, (PlanarReflectionResolution)parsed);
             if (setting.kind == SettingKind::LightState) return new ScenePropertyCmd<LightState>(project, id, name, (LightState)parsed);
             if (setting.kind == SettingKind::LitQuality) return new ScenePropertyCmd<LitQuality>(project, id, name, (LitQuality)parsed);
             return new ScenePropertyCmd<TextureFilter>(project, id, name, (TextureFilter)parsed);
@@ -1501,6 +1578,10 @@ void getSceneSettingsTool(const CallPtr& call) {
         const uint32_t inUse = Catalog::getSceneInputsInUse(scene->scene);
         data["scene_inputs_in_use"] = McpValues::sceneInputsToJson(inUse);
         if (inUse) text += "\n(last frame: scene " + Catalog::getSceneInputsLabel(inUse) + " made for the shaders reading it)";
+        // nor this: the water reflection passes the last frame drew (the inspector's Planar Reflections > In Use)
+        const RenderSystem::PlanarReflectionStats planar = scene->scene->getSystem<RenderSystem>()->getPlanarReflectionStats();
+        data["planar_reflections_in_use"] = Json{{"planes", planar.planes}, {"passes", planar.passes}, {"fallbacks", planar.fallbacks},
+                                                 {"width", planar.width}, {"height", planar.height}};
     }
     call->ok(text, data);
 }

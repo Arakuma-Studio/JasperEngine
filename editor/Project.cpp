@@ -4195,6 +4195,10 @@ void editor::Project::prepareRuntimeScene(PlayRuntimeScene& entry) {
 
     restartFluids(runtime->scene);
 
+    // the scene clock (the water's waves) starts at 0, as in an exported game: the edit-mode
+    // clock ran on while the scene was stopped
+    runtime->scene->setSceneTime(0.0);
+
     runtime->scene->getSystem<ActionSystem>()->resetRunningActions();
     // no animator reset here: the scripts' init already ran (onFinish, play, setAnimation...);
     // Stop resets them (finalizeStop), so play starts from their beginning
@@ -5928,6 +5932,9 @@ std::vector<editor::SceneScriptSource> editor::Project::collectAllSceneCppScript
 }
 
 void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
+    // the scene clock (the water's waves) holds with the bodies; a stopped scene's moves by the
+    // Scene view's Animate water (updateSceneRender)
+    scene->setSceneTimePaused(pause);
     scene->getSystem<PhysicsSystem>()->setPaused(pause);
     scene->getSystem<ActionSystem>()->setPaused(pause);
     scene->getSystem<PoseAnimatorSystem>()->setPaused(pause);
@@ -8271,6 +8278,24 @@ void editor::Project::updateSceneRender(uint32_t sceneId){
     }
 
     syncSceneRenderEditLayer(sceneId);
+    // a stopped scene's clock (its paused one: Engine::runFrame leaves it) moves with the editor's
+    // frames while Animate water is on, once a frame, with its inline child scenes
+    {
+        const auto now = std::chrono::steady_clock::now();
+        const double delta = sceneProject->editClockValid
+            ? std::clamp(std::chrono::duration<double>(now - sceneProject->editClockLast).count(), 0.0, 0.25) : 0.0;
+        sceneProject->editClockLast = now;
+        sceneProject->editClockValid = true;
+        if (sceneProject->playState == ScenePlayState::STOPPED && sceneProject->displaySettings.animateWater && delta > 0.0){
+            if (sceneProject->scene)
+                sceneProject->scene->advanceSceneTime(delta, true);
+            for (const ChildSceneRef& child : sceneProject->childScenes){
+                SceneProject* childScene = getScene(child.id);
+                if (childScene && childScene->expandedInline && childScene->scene && childScene->playState == ScenePlayState::STOPPED)
+                    childScene->scene->advanceSceneTime(delta, true);
+            }
+        }
+    }
     // what the Scene view hides (R22, R23) has no icon or gizmo there either
     sceneProject->sceneRender->update(sceneProject->selectedEntities, sceneview::visibleEntities(*sceneProject, sceneProject->entities),
                                       sceneProject->mainCamera, sceneProject->displaySettings);

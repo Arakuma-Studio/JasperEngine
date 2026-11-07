@@ -293,6 +293,76 @@ SceneColorScale Scene::getSceneColorScale() const{
     return settings.sceneColorScale;
 }
 
+void Scene::setPlanarReflectionResolution(PlanarReflectionResolution resolution){
+    settings.planarReflectionResolution = resolution;
+}
+
+PlanarReflectionResolution Scene::getPlanarReflectionResolution() const{
+    return settings.planarReflectionResolution;
+}
+
+void Scene::setPlanarReflectionLayers(uint32_t layers){
+    settings.planarReflectionLayers = layers;
+}
+
+uint32_t Scene::getPlanarReflectionLayers() const{
+    return settings.planarReflectionLayers;
+}
+
+void Scene::setPlanarReflectionShadows(bool shadows){
+    settings.planarReflectionShadows = shadows;
+}
+
+bool Scene::getPlanarReflectionShadows() const{
+    return settings.planarReflectionShadows;
+}
+
+void Scene::setPlanarReflectionFarClip(float farClip){
+    settings.planarReflectionFarClip = std::isfinite(farClip) ? std::max(farClip, 0.0f) : 0.0f;
+}
+
+float Scene::getPlanarReflectionFarClip() const{
+    return settings.planarReflectionFarClip;
+}
+
+void Scene::setPlanarReflectionClipOffset(float offset){
+    settings.planarReflectionClipOffset = std::isfinite(offset) ? offset : 0.0f;
+}
+
+float Scene::getPlanarReflectionClipOffset() const{
+    return settings.planarReflectionClipOffset;
+}
+
+void Scene::setMaxPlanarReflections(int count){
+    settings.maxPlanarReflections = std::clamp(count, 1, 4);
+}
+
+int Scene::getMaxPlanarReflections() const{
+    return settings.maxPlanarReflections;
+}
+
+double Scene::getSceneTime() const{
+    return Engine::hasPinnedShaderTime() ? Engine::getPinnedShaderTime() : sceneTime;
+}
+
+void Scene::setSceneTime(double seconds){
+    if (std::isfinite(seconds))
+        sceneTime = seconds;
+}
+
+void Scene::advanceSceneTime(double delta, bool evenWhenPaused){
+    if ((!sceneTimePaused || evenWhenPaused) && std::isfinite(delta) && delta > 0.0)
+        sceneTime += delta;
+}
+
+void Scene::setSceneTimePaused(bool paused){
+    sceneTimePaused = paused;
+}
+
+bool Scene::isSceneTimePaused() const{
+    return sceneTimePaused;
+}
+
 void Scene::setSSAOEnabled(bool ssaoEnabled){
     if (settings.ssaoEnabled != ssaoEnabled){
         settings.ssaoEnabled = ssaoEnabled;

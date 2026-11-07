@@ -1010,6 +1010,10 @@ void Engine::beginFrameStats(){
     currentFrameStats = FrameStats();
 }
 
+uint32_t Engine::getFrameDrawCalls(){
+    return currentFrameStats.drawCalls;
+}
+
 void Engine::addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices){
     currentFrameStats.drawCalls++;
     currentFrameStats.instances += instances;
@@ -1113,6 +1117,14 @@ void Engine::setPinnedShaderTime(double seconds){
         shaderTime = pinnedShaderTime;
         shaderTimeFixed = false;
     }
+}
+
+bool Engine::hasPinnedShaderTime(){
+    return pinnedShaderTime >= 0.0;
+}
+
+double Engine::getPinnedShaderTime(){
+    return pinnedShaderTime;
 }
 
 float Engine::getShaderTime(){
@@ -2284,6 +2296,10 @@ void Engine::runFrame(bool draw){
         double frameDelta = deltatime;
         gameTime += frameDelta;
         gameFrames++;
+        // the scenes' game-time clocks (Scene::getSceneTime), before the fixed steps, so the
+        // physics, the update and the draw of the frame see one value; a paused scene holds
+        for (int i = 0; i < scenes.size(); i++)
+            scenes[i]->advanceSceneTime(frameDelta);
         // the scheduler's game clocks: stopped by the editor's Pause too (gameTime is not)
         const bool gameClocks = advanceGameClocks(scheduler, frameTime);
 

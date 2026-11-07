@@ -1260,12 +1260,12 @@ if hit.hit then local e = hit.body end
 
 ### 2.10.1 Water (static)
 
-The water surfaces of a scene are its meshes drawn with `library:water` (enabled, active), each
-resting at the top of its world bounds and covering their XZ extent; with `WAVES` the heights
-follow the same waves the shader draws, on its clock (`Water.getTime()`, `frame.time.x`:
-seconds since the engine started, wall-clock latched once a frame, running in the editor and
-while the game is paused or time-scaled; with a fixed frame delta it advances by exactly that a
-frame), so a script and the screen agree. Where waters overlap the one whose
+The water surfaces of a scene are its meshes drawn with `library:water` or a fork of it (a
+manifest with `@role water`; enabled, active), each resting at the top of its world bounds and
+covering their XZ extent; with `WAVES` (and `GERSTNER`) the heights follow the same waves the
+shader draws, on its clock, the scene clock (`Water.getTime(scene)`: the seconds the scene has
+run, scaled by `Time.timeScale`, held while the game is paused, 0 when the scene starts; a
+stopped scene's follows the Scene view's Animate water), so a script and the screen agree. Where waters overlap the one whose
 bottom (the material's `buoyancyDepth` below its surface; none at 0) is highest wins. Each call
 looks through the scene's meshes: for many points a frame, keep the results.
 
@@ -1274,8 +1274,8 @@ looks through the scene's meshes: for many points a frame, keep the results.
 | `Water.getHeight(scene, x, z)` | surface height (world Y, waves included) of the topmost water over (x, z); `nil` where none covers it |
 | `Water.getNormal(scene, x, z)` | its normal (`Vector3`; up without `WAVES`); `nil` where none |
 | `Water.isUnderwater(scene, point)` | `point` (`Vector3`) is under the surface of the water it is in |
-| `Water.getTime()` | the shader library's clock, seconds (one value a frame) |
-| `Water.sample(scene, point)` | a `WaterSample`: `inWater`, `surfaceHeight`, `normal`, `flowVelocity` (the volume's flow + the surface rising), `volume` (entity), `hasWater`; Water Volumes first, then the meshes above |
+| `Water.getTime(scene)` | the scene clock the waves run on, seconds (one value a frame); without `scene` the main scene's |
+| `Water.sample(scene, point)` | a `WaterSample`: `inWater`, `surfaceHeight`, `normal`, `flowVelocity` (the volume's flow + the surface's motion: rising and falling, and with `GERSTNER` rolling back and forth), `volume` (entity), `hasWater`; Water Volumes first, then the meshes above |
 | `Water.sampleHeight(scene, x, z)` | the surface height there, Water Volumes first; `nil` where no water is |
 
 A Water Volume (`go:getWaterVolume()`, `WaterVolume(scene, entity)`): `size` (Vector3, local: XZ

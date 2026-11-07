@@ -299,7 +299,8 @@ namespace jasperengine::editor{
             SliderFloat,
             ColorRGB,
             ColorRGBA,
-            Combo
+            Combo,
+            LayerMask   // a uint32_t layer mask: Unity's mask field
         };
 
         struct DirtyMaterialEntry {
@@ -459,6 +460,12 @@ namespace jasperengine::editor{
         void writeDirtyMaterial(const DirtyMaterialEntry& entry);
         template<typename T>
         void drawScenePropertyRow(SceneProject* sceneProject, const std::string& propertyName, const char* label, ScenePropertyInputType inputType, float inputWidth = -1.0f, float minValue = 0.0f, float maxValue = 1.0f, const std::string& help = "");
+        // the Planar Reflections section of the scene settings (water-reflections)
+        void drawScenePlanarReflections(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
+    public:
+        // Unity's mask field label: Nothing, Everything, the one layer's name, or Mixed...
+        static std::string sceneLayerMaskLabel(uint32_t mask);
+    private:
 
         // Sound preview helpers
         bool ensureSoundPreviewInitialized();
@@ -689,9 +696,11 @@ namespace jasperengine::editor{
         // @category (with @description tooltips) and "Custom file..." (the Edit Shader Files
         // popup named popupName, which the caller draws)
         // builtInLabel names the empty entry instead ("None" for an extra pass)
+        // onForkLibrary, when given: a "Fork" item while a library shader is picked, called with it
         void drawLibraryShaderCombo(const std::string& currentShader, ShaderType type,
                                     const std::function<void(const std::string&)>& setShader, const std::string& popupName,
-                                    const char* builtInLabel = nullptr);
+                                    const char* builtInLabel = nullptr,
+                                    const std::function<void(const std::string&)>& onForkLibrary = nullptr);
         // The manifest rows of `shader` for one GameObject, into the current table: feature
         // checkboxes, keyword combos, parameters (colour pickers editing sRGB, sliders for
         // ranges, checkboxes for toggles, drag fields) and texture slots, hiding the ones

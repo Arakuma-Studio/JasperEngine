@@ -305,6 +305,17 @@ namespace jasperengine::editor {
         // not apply (no texture, a texture rect, a terrain, a shader with a manifest)
         static std::vector<Finding> stochasticTilingFindings(Project* project);
 
+        // ---- Water (water-reflections spec 6.3, 6.8)
+
+        // Warnings (tool "shader", at the scene or prefab file) for the loaded scenes and prefab
+        // stages: code "water-fork-without-role" where a material or post-process pass draws
+        // with a fork that declares library:water's parameters (buoyancy, waveHeight,
+        // shallowColor) or library:underwater's (waterLevel, followWater) but no @role, so the
+        // engine does not treat it as water; code "planar-reflection-not-flat" where a mesh reads
+        // a planar reflection but its world bounds are taller than 1% of their larger horizontal
+        // extent plus 0.05 (it mirrors about one level)
+        static std::vector<Finding> waterFindings(Project* project);
+
         // Line and Trail Renderers of the loaded scenes (lines and trails spec 6.8): code
         // "line-texture-no-uv" where a hairline (no width) draws with a shader that samples a
         // texture (a hairline has no texture coordinates), "trail-zero-time" where a trail's

@@ -514,6 +514,8 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
             if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
                 if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
+                if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return PlanarReflectionResolution::HALF;
+                if constexpr (std::is_same_v<T, uint32_t>) return 0xFFFFFFFFu;
                 if constexpr (std::is_same_v<T, LitQuality>) return LitQuality::HIGH;
                 if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
                 if constexpr (std::is_same_v<T, std::string>) return std::string();
@@ -673,6 +675,24 @@ namespace jasperengine::editor{
                     return scene->getSceneColorScale();
                 }
             }
+            else if (propertyName == "planar_reflection_resolution") {
+                if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return scene->getPlanarReflectionResolution();
+            }
+            else if (propertyName == "planar_reflection_layers") {
+                if constexpr (std::is_same_v<T, uint32_t>) return scene->getPlanarReflectionLayers();
+            }
+            else if (propertyName == "planar_reflection_shadows") {
+                if constexpr (std::is_same_v<T, bool>) return scene->getPlanarReflectionShadows();
+            }
+            else if (propertyName == "planar_reflection_far_clip") {
+                if constexpr (std::is_same_v<T, float>) return scene->getPlanarReflectionFarClip();
+            }
+            else if (propertyName == "planar_reflection_clip_offset") {
+                if constexpr (std::is_same_v<T, float>) return scene->getPlanarReflectionClipOffset();
+            }
+            else if (propertyName == "max_planar_reflections") {
+                if constexpr (std::is_same_v<T, int>) return scene->getMaxPlanarReflections();
+            }
             else if (propertyName == "ssao_enabled") {
                 if constexpr (std::is_same_v<T, bool>) {
                     return scene->isSSAOEnabled();
@@ -812,6 +832,8 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, ShadowDebugView>) return ShadowDebugView::NONE;
             if constexpr (std::is_same_v<T, PostProcessingSettings>) return PostProcessingSettings();
             if constexpr (std::is_same_v<T, SceneCanvasScaler>) return SceneCanvasScaler();
+            if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return PlanarReflectionResolution::HALF;
+            if constexpr (std::is_same_v<T, uint32_t>) return 0xFFFFFFFFu;
             // Add other types as needed
         }
 
@@ -918,6 +940,24 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "scene_color_scale") {
                 if constexpr (std::is_same_v<T, SceneColorScale>) return d.sceneColorScale;
+            }
+            else if (propertyName == "planar_reflection_resolution") {
+                if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return d.planarReflectionResolution;
+            }
+            else if (propertyName == "planar_reflection_layers") {
+                if constexpr (std::is_same_v<T, uint32_t>) return d.planarReflectionLayers;
+            }
+            else if (propertyName == "planar_reflection_shadows") {
+                if constexpr (std::is_same_v<T, bool>) return d.planarReflectionShadows;
+            }
+            else if (propertyName == "planar_reflection_far_clip") {
+                if constexpr (std::is_same_v<T, float>) return d.planarReflectionFarClip;
+            }
+            else if (propertyName == "planar_reflection_clip_offset") {
+                if constexpr (std::is_same_v<T, float>) return d.planarReflectionClipOffset;
+            }
+            else if (propertyName == "max_planar_reflections") {
+                if constexpr (std::is_same_v<T, int>) return d.maxPlanarReflections;
             }
             else if (propertyName == "ssao_enabled") {
                 if constexpr (std::is_same_v<T, bool>) return d.ssaoEnabled;
@@ -1155,6 +1195,24 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, SceneColorScale>) {
                     scene->setSceneColorScale(value);
                 }
+            }
+            else if (propertyName == "planar_reflection_resolution") {
+                if constexpr (std::is_same_v<T, PlanarReflectionResolution>) scene->setPlanarReflectionResolution(value);
+            }
+            else if (propertyName == "planar_reflection_layers") {
+                if constexpr (std::is_same_v<T, uint32_t>) scene->setPlanarReflectionLayers(value);
+            }
+            else if (propertyName == "planar_reflection_shadows") {
+                if constexpr (std::is_same_v<T, bool>) scene->setPlanarReflectionShadows(value);
+            }
+            else if (propertyName == "planar_reflection_far_clip") {
+                if constexpr (std::is_same_v<T, float>) scene->setPlanarReflectionFarClip(value);
+            }
+            else if (propertyName == "planar_reflection_clip_offset") {
+                if constexpr (std::is_same_v<T, float>) scene->setPlanarReflectionClipOffset(value);
+            }
+            else if (propertyName == "max_planar_reflections") {
+                if constexpr (std::is_same_v<T, int>) scene->setMaxPlanarReflections(value);
             }
             else if (propertyName == "ssao_enabled") {
                 if constexpr (std::is_same_v<T, bool>) {

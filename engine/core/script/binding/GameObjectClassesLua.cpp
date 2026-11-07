@@ -1125,7 +1125,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addStaticFunction("getHeight", &Water::getHeight)
         .addStaticFunction("getNormal", &Water::getNormal)
         .addStaticFunction("isUnderwater", &Water::isUnderwater)
-        .addStaticFunction("getTime", &Water::getTime)
+        // the scene clock the waves run on (Water.getTime(scene); the main scene's without one)
+        .addStaticFunction("getTime",
+            luabridge::overload<>(+[]() -> float { return Water::getTime(nullptr); }),
+            luabridge::overload<Scene*>(+[](Scene* scene) -> float { return Water::getTime(scene); }))
         .addStaticFunction("sample", &Water::sample)
         .addStaticFunction("sampleHeight", &Water::sampleHeight)
         .endClass();

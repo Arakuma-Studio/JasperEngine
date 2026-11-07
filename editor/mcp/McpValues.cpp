@@ -610,6 +610,16 @@ const EnumOptions& litQualityOptions() {
     return options;
 }
 
+const EnumOptions& planarReflectionResolutionOptions() {
+    static const EnumOptions options = {
+        {(int)PlanarReflectionResolution::OFF, "off", "Off"},
+        {(int)PlanarReflectionResolution::QUARTER, "quarter", "Quarter"},
+        {(int)PlanarReflectionResolution::HALF, "half", "Half"},
+        {(int)PlanarReflectionResolution::FULL, "full", "Full"}
+    };
+    return options;
+}
+
 const EnumOptions& sceneColorScaleOptions() {
     static const EnumOptions options = {
         {(int)SceneColorScale::FULL, "full", "Full"},
@@ -802,6 +812,7 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"shadow_debug_view", &shadowDebugViewOptions()},
         {"shadow_tier", &shadowTierOptions()},
         {"scene_color_scale", &sceneColorScaleOptions()},
+        {"planar_reflection_resolution", &planarReflectionResolutionOptions()},
         {"lit_quality", &litQualityOptions()},
         {"light_unit", &tableOptions(reflect::enums::kLightUnit)},
         {"texture_filter", &tableOptions(reflect::enums::kTextureFilter)},

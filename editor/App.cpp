@@ -5650,7 +5650,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v50: render-correctness: includes/instance_fade.glsl (the near fade, the G-buffer's 'Ifd'),
     //      lighting2d's and the SSAO's explicit-LOD lookups, mesh.frag's shadow derivatives before
     //      the light loop (lightShadowD), pbr.glsl's derived (flat) normals turned toward the eye.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v50";
+    // v51: water-reflections: library:water on the scene clock (sceneTime), GERSTNER,
+    //      PLANAR_REFLECTION (includes/planar_reflection.glsl), its shadow lookup with the smooth
+    //      normal and shadowed caustics; @role in water.frag and underwater.frag.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v51";
 }
 
 void editor::App::pushTabNotificationStyle(){
