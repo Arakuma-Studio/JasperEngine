@@ -132,7 +132,10 @@ namespace jasperengine::editor {
         AssetsCreateAudioMixer,
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
-        AddCameraShakerToMainCamera   // GameObject > Add Camera Shaker to Main Camera
+        AddCameraShakerToMainCamera,  // GameObject > Add Camera Shaker to Main Camera
+        // T2 R55, R62
+        ToggleNoiseGraph,             // Window > Terrain > Noise Graph
+        AssetsCreateNoiseGraph
     };
 
 }

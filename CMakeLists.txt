@@ -421,6 +421,11 @@ string(APPEND pose_templates_header "static const PoseTemplateEmbeddedFile pose_
 file(WRITE "${GENERATED_DIR}/pose_templates.h.in" "${pose_templates_header}")
 configure_file("${GENERATED_DIR}/pose_templates.h.in" "${GENERATED_DIR}/pose_templates.h" COPYONLY)
 
+# Built-in Noise Graphs (editor/resources/noisegraphs/*.noisegraph) embedded in the editor (T2 R34;
+# editor/noise/TerrainPresets.cpp, the only includer)
+include(tools/noise/golden/EmbedPresets.cmake)
+jasperengine_embed_noise_presets("${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/noisegraphs" "${GENERATED_DIR}/noise_presets.gen.h")
+
 # HTML/CSS UI example library (docs/mcp/guide/html-ui-examples/**) embedded in the editor: written
 # into every project's .jasperengine/engine-api/html-ui-examples, served as MCP resources and used
 # as create_ui_document templates (editor/util/HtmlUiExamples.cpp, the only includer)
@@ -553,6 +558,11 @@ elseif(API_BACKEND STREQUAL "mac")
 endif()
 include_directories (${JASPERENGINE_ROOT}/renders)
 
+# The editor bakes and previews Noise Graphs and compares the back ends (T2 R42, R51)
+if(DEFINED JASPERENGINE_NOISE AND NOT JASPERENGINE_NOISE)
+    message(FATAL_ERROR "The editor needs JASPERENGINE_NOISE: only players can leave it out")
+endif()
+set(JASPERENGINE_NOISE_ALL_BACKENDS ON CACHE BOOL "" FORCE)
 add_subdirectory(${JASPERENGINE_ROOT})
 
 # Signed alongside the exes, so it needs the same metadata. MinGW prefixes the name.
@@ -835,6 +845,11 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptingTools.cpp
     ${EDITOR_DIR}/mcp/tools/GraphTools.cpp
+    ${EDITOR_DIR}/noise/NoiseGraphDocument.cpp
+    ${EDITOR_DIR}/noise/NoisePreviewService.cpp
+    ${EDITOR_DIR}/mcp/tools/TerrainGenerationTools.cpp
+    ${EDITOR_DIR}/noise/TerrainGeneration.cpp
+    ${EDITOR_DIR}/noise/TerrainPresets.cpp
     ${EDITOR_DIR}/mcp/tools/ParticleTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
     ${EDITOR_DIR}/mcp/tools/MaterialsLightingTools.cpp
@@ -1134,6 +1149,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/AnimatorWindow.cpp
     ${EDITOR_DIR}/window/PoseAnimationWindowTemplates.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
+    ${EDITOR_DIR}/window/TerrainGenerateSection.cpp
+    ${EDITOR_DIR}/window/NoiseGraphWindow.cpp
     ${EDITOR_DIR}/lattice/LatticeEditorOps.cpp
     ${EDITOR_DIR}/lattice/LatticeBake.cpp
     ${EDITOR_DIR}/lattice/LatticeBakeGltf.cpp
@@ -1291,6 +1308,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/LatticeBindingsCmd.cpp
     ${EDITOR_DIR}/command/type/LatticeBakeCmd.cpp
     ${EDITOR_DIR}/command/type/GraphEditCmd.cpp
+    ${EDITOR_DIR}/command/type/TerrainMapDeltaCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsEditCmd.cpp
     ${EDITOR_DIR}/command/type/ParticleEffectAssetCmd.cpp
     ${EDITOR_DIR}/command/type/RevertFilesCmd.cpp

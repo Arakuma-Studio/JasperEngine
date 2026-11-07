@@ -35,6 +35,8 @@ using namespace jasperengine;
 
 namespace {
 
+    struct NoiseStatics {};
+
     constexpr int64_t kMaxGridPoints = 4000000;
     // A job of an async grid: small enough for 1 ms on the slowest target and the web's 4 ms pump (R68)
     constexpr size_t kAsyncBatchPoints = 512;
@@ -329,31 +331,33 @@ namespace {
 }
 
 void LuaBinding::registerNoiseClasses(lua_State *L){
+    // A class of statics, not a namespace: the Lua API data lists classes, and that list is how
+    // ModuleUsage finds that a script needs this module (R43)
     luabridge::getGlobalNamespace(L)
-        .beginNamespace("Noise")
-        .addFunction("perlin", &point2<noise::perlin2>)
-        .addFunction("perlin3", &point3<noise::perlin3>)
-        .addFunction("simplex", &point2<noise::simplex2>)
-        .addFunction("simplex3", &point3<noise::simplex3>)
-        .addFunction("value", &point2<noise::value2>)
-        .addFunction("value3", &point3<noise::value3>)
-        .addFunction("cellular", +[](lua_State* state) -> int {
+        .beginClass<NoiseStatics>("Noise")
+        .addStaticFunction("perlin", &point2<noise::perlin2>)
+        .addStaticFunction("perlin3", &point3<noise::perlin3>)
+        .addStaticFunction("simplex", &point2<noise::simplex2>)
+        .addStaticFunction("simplex3", &point3<noise::simplex3>)
+        .addStaticFunction("value", &point2<noise::value2>)
+        .addStaticFunction("value3", &point3<noise::value3>)
+        .addStaticFunction("cellular", +[](lua_State* state) -> int {
             lua_pushnumber(state, noise::cellular2(floatArg(state, 1), floatArg(state, 2), seedArg(state, 3), cellularReturnArg(state, 4)));
             return 1;
         })
-        .addFunction("cellular3", +[](lua_State* state) -> int {
+        .addStaticFunction("cellular3", +[](lua_State* state) -> int {
             lua_pushnumber(state, noise::cellular3(floatArg(state, 1), floatArg(state, 2), floatArg(state, 3), seedArg(state, 4), cellularReturnArg(state, 5)));
             return 1;
         })
-        .addFunction("fbm", +[](lua_State* state) -> int {
+        .addStaticFunction("fbm", +[](lua_State* state) -> int {
             lua_pushnumber(state, noise::fbmPoint(fractalArgs(state), floatArg(state, 1), 0.0f, floatArg(state, 2)));
             return 1;
         })
-        .addFunction("ridged", +[](lua_State* state) -> int {
+        .addStaticFunction("ridged", +[](lua_State* state) -> int {
             lua_pushnumber(state, noise::ridgedPoint(fractalArgs(state), floatArg(state, 1), 0.0f, floatArg(state, 2)));
             return 1;
         })
-        .endNamespace();
+        .endClass();
 
     luabridge::getGlobalNamespace(L)
         .beginClass<NoiseGrid>("NoiseGrid")

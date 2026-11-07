@@ -33,6 +33,18 @@ NESTED = {
     "decodeTexture": "Texture",
 }
 
+# Settings structures: their decoders report no unknown keys, so StreamSchema.cpp has no table for them. Listed
+# here so that a new key is a conscious one, with a default (T2 R60, R70).
+SETTINGS = {
+    "decodeTerrainEditorSettings": ("TerrainEditorSettings", {
+        "brushMode", "brushShape", "brushFalloff", "brushSize", "brushStrength", "brushRotation", "brushMaskPath",
+        "flattenHeight", "terraceSteps", "noiseSize", "heightMapResolution", "blendMapResolution", "densityMapResolution",
+        "normalizeBlendPaint", "heightMapStartAtMiddle", "flattenPickOnStroke", "paintUseMask", "paintMinSlope", "paintMaxSlope",
+        "paintMinHeight", "paintMaxHeight", "placeAssetPath", "placeInstanced", "placeSpacing", "placeMinScale", "placeMaxScale",
+        "placeRotationJitter", "placeAlignToNormal", "generateGraph", "generateSeed",
+    }),
+}
+
 
 def functions(text):
     """name -> (parameter name, body) for each `... decodeX(const YAML::Node& param, ...) {` definition"""
@@ -140,6 +152,10 @@ def main():
     tables = schema_tables(open(SCHEMA, encoding="utf-8").read())
     for component, (_, known) in components.items():
         tables[component] = known
+    for decoder, (name, known) in SETTINGS.items():
+        if decoder in keys:
+            wanted[name] = keys[decoder]
+            tables[name] = known
     problems = []
     for name in sorted(wanted):
         table = tables.get(name)

@@ -25,6 +25,7 @@
 #include "window/PoseAnimationWindow.h"
 #include "window/AnimatorWindow.h"
 #include "window/AvatarWindow.h"
+#include "window/NoiseGraphWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/AudioMixerWindow.h"
@@ -243,6 +244,7 @@ namespace jasperengine::editor{
         AnimatorWindow* animatorWindow;
         AvatarWindow* avatarWindow = nullptr;
         TerrainEditWindow* terrainEditWindow;
+        NoiseGraphWindow* noiseGraphWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
         AudioMixerWindow* audioMixerWindow;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
@@ -656,6 +658,7 @@ namespace jasperengine::editor{
         void openAvatarWindow(uint32_t sceneId, Entity entity);
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
+        NoiseGraphWindow* getNoiseGraphWindow() const { return noiseGraphWindow; }
         SystemsWindow* getSystemsWindow() const;
         JobsMemoryWindow* getJobsMemoryWindow() const;
         ProfilerWindow* getProfilerWindow() const { return profilerWindow; }

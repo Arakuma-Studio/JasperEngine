@@ -378,6 +378,12 @@ void editor::App::registerPanelClaims(){
     // its selected state, sub-state machine, transition or layer
     claims.add({"Animator", [this]() { return animatorWindow->isFocused(); },
                 {{Verb::Delete, {{}, [this]() { return animatorWindow->canDelete(); }, [this]() { animatorWindow->removeSelection(); }}}}});
+    // T2 R57: its selected nodes and wires
+    claims.add({"Noise Graph", [this]() { return noiseGraphWindow->isFocused(); },
+                {{Verb::Delete, {{}, [this]() { return noiseGraphWindow->canDelete(); }, [this]() { noiseGraphWindow->deleteSelection(); }}},
+                 {Verb::Copy, {{}, [this]() { return noiseGraphWindow->canCopy(); }, [this]() { noiseGraphWindow->copySelection(); }}},
+                 {Verb::Paste, {{}, [this]() { return noiseGraphWindow->canPaste(); }, [this]() { noiseGraphWindow->paste(); }}},
+                 {Verb::Duplicate, {{}, [this]() { return noiseGraphWindow->canDuplicate(); }, [this]() { noiseGraphWindow->duplicateSelection(); }}}}});
     claims.add({"Jobs & Memory", [this]() { return jobsMemoryWindow->isFocused(); }, {}});
     claims.add({"Project", [this]() { return projectWindow->isFocused(); },
                 {{Verb::Delete, own("project.delete")}, {Verb::Copy, own("project.copy")}, {Verb::Cut, own("project.cut")},

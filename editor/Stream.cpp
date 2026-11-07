@@ -1873,6 +1873,9 @@ YAML::Node editor::Stream::encodeTerrainEditorSettings(const TerrainEditorSettin
     encodePositiveFinite(terrainNode, "placeMaxScale", ts.placeMaxScale);
     encodeFinite(terrainNode, "placeRotationJitter", ts.placeRotationJitter);
     encodeFinite(terrainNode, "placeAlignToNormal", ts.placeAlignToNormal);
+    // only away from their defaults: a project that never generated keeps its file as it was (T2 R70)
+    if (!ts.generateGraph.empty()) terrainNode["generateGraph"] = ts.generateGraph;
+    if (ts.generateSeed != TerrainEditorSettings{}.generateSeed) terrainNode["generateSeed"] = ts.generateSeed;
     return terrainNode;
 }
 
@@ -1909,6 +1912,8 @@ editor::TerrainEditorSettings editor::Stream::decodeTerrainEditorSettings(const 
     if (tn["placeMaxScale"].IsDefined())      ts.placeMaxScale      = decodePositiveFinite(tn["placeMaxScale"], ts.placeMaxScale);
     if (tn["placeRotationJitter"].IsDefined()) ts.placeRotationJitter = decodeFinite(tn["placeRotationJitter"], ts.placeRotationJitter);
     if (tn["placeAlignToNormal"].IsDefined()) ts.placeAlignToNormal = decodeFinite(tn["placeAlignToNormal"], ts.placeAlignToNormal);
+    if (tn["generateGraph"].IsDefined())      ts.generateGraph      = tn["generateGraph"].as<std::string>();
+    if (tn["generateSeed"].IsDefined())       ts.generateSeed       = YamlNumbers::as<uint32_t>(tn["generateSeed"]);
     return ts;
 }
 

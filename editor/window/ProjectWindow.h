@@ -54,7 +54,8 @@ namespace jasperengine::editor {
         ANIMATION_CLIP,     // .anim (the Animation window; an icon, no thumbnail)
         ANIMATOR_ASSET,     // .controller (the Animator window), .mask, .montage (the Inspector)
         VERTEX_ANIMATION,   // .vat (the Inspector's asset view / the baker; an icon, no thumbnail)
-        PHYSICS_MATERIAL    // .physicsmaterial (the Inspector's asset view; an icon)
+        PHYSICS_MATERIAL,   // .physicsmaterial (the Inspector's asset view; an icon)
+        NOISE_GRAPH         // .noisegraph (the Noise Graph window)
     };
 
     struct FileEntry {
@@ -532,6 +533,9 @@ namespace jasperengine::editor {
         // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
         // one project undo step, then renamed in place
         void assetsCreateAudioMixer();
+        // Create > Noise Graph (T2 R62): a preset's copy, or with an empty id the Blank graph (a single
+        // output_height on a Constant), in the current folder, one project undo step, then renamed in place
+        void assetsCreateNoiseGraph(const std::string& presetId);
         // Unity's Create > Physics Material / Physics Material 2D (the 2D preset: friction 0.4,
         // geometric mean / maximum)
         void assetsCreatePhysicsMaterial(bool preset2D);
