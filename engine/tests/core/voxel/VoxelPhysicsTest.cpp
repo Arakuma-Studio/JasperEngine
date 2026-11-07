@@ -205,7 +205,7 @@ TEST_F(VoxelPhysics, EmptiedBlockRemovesBody) {
 }
 
 TEST_F(VoxelPhysics, BubbleAroundDynamicBody) {
-    const Entity owner = ground("mem://bubble", VoxelQuality::High, 256, 256);
+    ground("mem://bubble", VoxelQuality::High, 256, 256);
     setWorldPosition(focus, Vector3(16.0f, 34.0f, 16.0f));
     step(5);
     system->finishPendingWork();
@@ -217,7 +217,6 @@ TEST_F(VoxelPhysics, BubbleAroundDynamicBody) {
     }
     EXPECT_GT(heightOf(body), 32.0f);
     EXPECT_LT(heightOf(body), 33.0f);
-    (void)owner;
 }
 
 TEST_F(VoxelPhysics, EnsureCollisionBlocks) {

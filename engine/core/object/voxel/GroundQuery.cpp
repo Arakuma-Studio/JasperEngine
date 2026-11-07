@@ -19,7 +19,6 @@ using namespace jasperengine;
 
 voxel::GroundSample voxel::sampleGround(Scene* scene, float x, float z, float yHint) {
     GroundSample out;
-    bool throughHole = false;
     auto terrains = scene->getComponentArray<TerrainComponent>();
     for (size_t i = 0; i < terrains->size(); i++) {
         TerrainComponent& terrain = terrains->getComponentFromIndex(i);
@@ -28,10 +27,7 @@ voxel::GroundSample voxel::sampleGround(Scene* scene, float x, float z, float yH
         const Vector3 local = transform->modelMatrix.inverse() * Vector3(x, 0.0f, z);
         const terrain::SurfaceSample sample = querySurface(terrain, local.x, local.z);
         if (!sample.inside || !sample.present) continue;
-        if (sample.hole) {
-            throughHole = true;
-            continue;
-        }
+        if (sample.hole) continue;
         out.height = (transform->modelMatrix * Vector3(local.x, sample.height, local.z)).y;
         out.normal = sample.normal;
         out.source = GroundSource::Terrain;
@@ -45,21 +41,23 @@ voxel::GroundSample voxel::sampleGround(Scene* scene, float x, float z, float yH
             const Entity owner = volumes->getEntity(i);
             Store* store = voxels->getStore(owner);
             if (!store) continue;
-            Vec3d origin;
+            // world down, as the volume's rotation and scale see it
+            Vec3d origin, below;
             if (!voxels->worldToLocal(owner, Vector3(x, yHint, z), origin)) continue;
-            const Quatd rotation = voxels->localRotationOf(owner, Quaternion());
-            (void)rotation;
-            const RaycastHit hit = raycast(*store, origin, Vec3d{0.0, -1.0, 0.0}, static_cast<double>(store->desc().dimensions.y) * store->desc().voxelSize * 2.0);
+            voxels->worldToLocal(owner, Vector3(x, yHint - 1.0f, z), below);
+            const Vec3d down{below.x - origin.x, below.y - origin.y, below.z - origin.z};
+            const RaycastHit hit = raycast(*store, origin, down, static_cast<double>(store->desc().dimensions.y) * store->desc().voxelSize * 2.0);
             if (!hit.hit) continue;
             const Vector3 world = voxels->localToWorld(owner, hit.point);
+            const Vector3 pointOnNormal = voxels->localToWorld(owner, Vec3d{hit.point.x + hit.normal.x, hit.point.y + hit.normal.y, hit.point.z + hit.normal.z});
             out.height = world.y;
-            out.normal = Vector3(static_cast<float>(hit.normal.x), static_cast<float>(hit.normal.y), static_cast<float>(hit.normal.z));
+            out.normal = (pointOnNormal - world).normalized();
             out.source = GroundSource::Voxel;
             return out;
         }
     }
-#endif
-    (void)throughHole;
+#else
     (void)yHint;
+#endif
     return out;
 }

@@ -104,7 +104,6 @@ RaycastHit jasperengine::voxel::raycast(Store& store, const Vec3d& origin, const
     };
 
     double t = t0;
-    double previousT = t0;
     double previousValue = valueOf(t);
     if (previousValue < 0.0) {
         // Starting inside solid hits at once
@@ -151,12 +150,10 @@ RaycastHit jasperengine::voxel::raycast(Store& store, const Vec3d& origin, const
                 t = high2;
                 break;
             }
-            previousT = t;
             previousValue = nextValue;
             t = nextT;
             if (nextT >= t1) break;
         }
-        (void)previousT;
     }
     if (!hit.hit) return hit;
     const Vec3d p = position(hit.distance / voxelSize);

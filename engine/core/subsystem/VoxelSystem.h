@@ -201,7 +201,7 @@ namespace jasperengine{
         void flushRequests(VolumeState& state);
         void pumpJobs();
         void uploadChunks(VolumeState& state, const VoxelVolumeComponent& component);
-        void pollActivations(VolumeState& state, VoxelVolumeComponent& component);
+        void pollActivations(VolumeState& state);
         Entity acquireChunk(VolumeState& state, const VoxelVolumeComponent& component);
         void releaseChunk(VolumeState& state, Entity chunk);
         void writeChunk(VolumeState& state, const VoxelVolumeComponent& component, Entity chunk, const voxel::MeshId& id, const voxel::MeshOut& mesh);
@@ -214,9 +214,9 @@ namespace jasperengine{
         // VoxelSystemPhysics.cpp
         void updateCollisionWanted(VolumeState& state, VoxelVolumeComponent& component);
         void startCollisionJob(VolumeState& state, const voxel::Int3& key, bool partOfSwap);
-        void applyCollisionSwaps(VolumeState& state, VoxelVolumeComponent& component);
-        void addNewBodies(VolumeState& state, VoxelVolumeComponent& component);
-        void evictBodies(VolumeState& state, const VoxelVolumeComponent& component);
+        void applyCollisionSwaps(VolumeState& state);
+        void addNewBodies(VolumeState& state);
+        void evictBodies(VolumeState& state);
         void rescueBodies(VolumeState& state, VoxelVolumeComponent& component, double dt);
         void onCollisionEdited(VolumeState& state, const voxel::IntBox& changed, uint64_t setId);
         void onCollisionJobDone(VolumeState& state, Job& job);

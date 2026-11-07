@@ -205,9 +205,6 @@ TEST_F(VoxelTerrain, HoleMapHeldInPlay) {
 TEST_F(VoxelTerrain, CullKeepsCeilingAndRing) {
     const Entity owner = attached("mem://cull");
     // The flush ground far from any cut draws nothing...
-    Store* store = system->getStore(owner);
-    const BlockKey surfaceBlock{0, 1, 1, 1};
-    (void)surfaceBlock;
     drain();
     EXPECT_EQ(system->getStats(owner).triangles, 0);
     // ...a dig under flush ground keeps its ceiling, and the mouth keeps its ring
@@ -230,7 +227,6 @@ TEST_F(VoxelTerrain, CullKeepsCeilingAndRing) {
         }
     }
     EXPECT_TRUE(ringAtSurface);
-    (void)store;
 }
 
 TEST_F(VoxelTerrain, SeamStep) {

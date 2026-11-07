@@ -679,7 +679,7 @@ void VoxelSystem::uploadChunks(VolumeState& state, const VoxelVolumeComponent& c
     }
 }
 
-void VoxelSystem::pollActivations(VolumeState& state, VoxelVolumeComponent& component){
+void VoxelSystem::pollActivations(VolumeState& state){
     ChangeSetScheduler::Activation activation;
     while (state.scheduler.pollActivation(activation)){
         for (const MeshId& id : activation.hide){
@@ -705,7 +705,6 @@ void VoxelSystem::pollActivations(VolumeState& state, VoxelVolumeComponent& comp
             state.triangles += shown.second->triangleCount;
         }
         state.firstSetActive = true;
-        (void)component;
     }
 }
 
@@ -734,7 +733,7 @@ void VoxelSystem::updateVolume(VolumeState& state, VoxelVolumeComponent& compone
     attachTerrain(state, component);
     updateFocus(state, component);
     uploadChunks(state, component);
-    pollActivations(state, component);
+    pollActivations(state);
     fireEvents(state, component);
     updateNavigation(state, component, dt);
 }
@@ -890,18 +889,16 @@ void VoxelSystem::reloadVolume(Entity owner){
     state->assetPath.clear();
     state->asset.reset();
     state->store.reset();
-    const std::string empty;
     removeState(owner);
 }
 
 // ---- runtime saves (R79)
 
 namespace {
-    std::string savePathOf(const std::string& assetPath, uint64_t fileHash, const std::string& slot){
+    std::string savePathOf(uint64_t fileHash, const std::string& slot){
         // data://voxels/<asset>/<slot>.voxelvolume: the asset's identity without its path's separators
         char name[32];
         snprintf(name, sizeof(name), "%016llx", static_cast<unsigned long long>(fileHash));
-        (void)assetPath;
         return "data://voxels/" + std::string(name) + "/" + slot + ".voxelvolume";
     }
 }
@@ -920,7 +917,7 @@ bool VoxelSystem::saveChanges(Entity owner, const std::string& slot, std::string
     }
     const std::vector<uint8_t> bytes = saveVolumeFile(*state->store, options);
     std::string normalized, systemPath;
-    const std::string path = savePathOf(state->assetPath, state->asset->fileHash, slot);
+    const std::string path = savePathOf(state->asset->fileHash, slot);
     if (!FileUtils::resolve(path, true, normalized, systemPath, error)) return false;
     const io::WriteResult written = io::writeFileAtomic(std::filesystem::path(systemPath), std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
     if (!written.ok()){
@@ -933,7 +930,7 @@ bool VoxelSystem::saveChanges(Entity owner, const std::string& slot, std::string
 bool VoxelSystem::hasSavedChanges(Entity owner, const std::string& slot) const{
     const VolumeState* state = stateOf(owner);
     if (!state || !state->asset) return false;
-    return FileUtils::exists(savePathOf(state->assetPath, state->asset->fileHash, slot));
+    return FileUtils::exists(savePathOf(state->asset->fileHash, slot));
 }
 
 bool VoxelSystem::loadChanges(Entity owner, const std::string& slot, std::string& error){
@@ -943,7 +940,7 @@ bool VoxelSystem::loadChanges(Entity owner, const std::string& slot, std::string
         return false;
     }
     std::string normalized, systemPath;
-    const std::string path = savePathOf(state->assetPath, state->asset->fileHash, slot);
+    const std::string path = savePathOf(state->asset->fileHash, slot);
     if (!FileUtils::resolve(path, false, normalized, systemPath, error)) return false;
     Data data;
     if (data.open(systemPath.c_str()) != FileErrors::FILEDATA_OK){

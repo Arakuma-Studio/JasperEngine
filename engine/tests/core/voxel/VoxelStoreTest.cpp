@@ -191,8 +191,6 @@ TEST(VoxelStore, EvictsUnmodifiedFirst) {
     EXPECT_LT(store.memory().hotBytes, resolved + result.memoryDelta);
     // The modified block stayed; evicted blocks come back the same from the base
     EXPECT_TRUE(store.slot(BlockKey{0, 2, 3, 2}).modified());
-    const EditOp undoAdd = digOp(sphereShape(10.0, 10.0, 10.0, 3.0));
-    (void)undoAdd;
     EXPECT_NE(contentHash(store), hash);
     EXPECT_EQ(store.sdfAt(0, 32, 12, 32), encodeSdf(0.0 + std::fabs(12.0 - 32.0) - 20.0));
 }

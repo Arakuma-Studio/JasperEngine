@@ -135,7 +135,7 @@ void VoxelSystem::onCollisionEdited(VolumeState& state, const IntBox& changed, u
     if (!swap.blocks.empty()) state.swaps.push_back(std::move(swap));
 }
 
-void VoxelSystem::applyCollisionSwaps(VolumeState& state, VoxelVolumeComponent& component){
+void VoxelSystem::applyCollisionSwaps(VolumeState& state){
     auto physics = scene->findSystem<PhysicsSystem>();
     if (!physics || state.swaps.empty()) return;
     JPH::BodyInterface& bodies = physics->getBodyInterface3D();
@@ -211,12 +211,11 @@ void VoxelSystem::applyCollisionSwaps(VolumeState& state, VoxelVolumeComponent& 
         bodies.ActivateBodiesInAABox(box, JPH::BroadPhaseLayerFilter(), JPH::ObjectLayerFilter());
         state.collisionEvents.push_back(world);
         if (swap.editFrame != 0) state.lastLatencyFrames = static_cast<int>(frameCounter - swap.editFrame);
-        (void)component;
         state.swaps.pop_front();
     }
 }
 
-void VoxelSystem::addNewBodies(VolumeState& state, VoxelVolumeComponent& component){
+void VoxelSystem::addNewBodies(VolumeState& state){
     auto physics = scene->findSystem<PhysicsSystem>();
     if (!physics) return;
     // What was prepared last tick lands before this step (V8)
@@ -289,10 +288,9 @@ void VoxelSystem::addNewBodies(VolumeState& state, VoxelVolumeComponent& compone
     options.name = "voxel-add-bodies";
     stored.task = jobs::submit([system, ids]{ return system->prepareBodies(*ids); }, options);
     stored.hasTask = true;
-    (void)component;
 }
 
-void VoxelSystem::evictBodies(VolumeState& state, const VoxelVolumeComponent& component){
+void VoxelSystem::evictBodies(VolumeState& state){
     auto physics = scene->findSystem<PhysicsSystem>();
     if (!physics) return;
     const int cap = voxelTierSettings(state.tier).bodyCap;
@@ -316,7 +314,6 @@ void VoxelSystem::evictBodies(VolumeState& state, const VoxelVolumeComponent& co
         state.collision.erase(found);
         state.bodies--;
     }
-    (void)component;
 }
 
 void VoxelSystem::updateCollisionWanted(VolumeState& state, VoxelVolumeComponent& component){
@@ -371,7 +368,7 @@ void VoxelSystem::updateCollisionWanted(VolumeState& state, VoxelVolumeComponent
         around(transform->worldPosition, 1);
         requests++;
     }
-    evictBodies(state, component);
+    evictBodies(state);
 }
 
 void VoxelSystem::rescueBodies(VolumeState& state, VoxelVolumeComponent& component, double dt){
@@ -667,9 +664,9 @@ void VoxelSystem::fixedUpdate(double dt){
                 buildCollisionBlocking(state, *component, around);
             }
         }
-        applyCollisionSwaps(state, *component);
+        applyCollisionSwaps(state);
         updateCollisionWanted(state, *component);
-        addNewBodies(state, *component);
+        addNewBodies(state);
         rescueBodies(state, *component, dt);
     }
 }
@@ -680,9 +677,9 @@ void VoxelSystem::fixedUpdate(double){}
 void VoxelSystem::startCollisionJob(VolumeState&, const Int3&, bool){}
 void VoxelSystem::onCollisionJobDone(VolumeState&, Job&){}
 void VoxelSystem::onCollisionEdited(VolumeState&, const IntBox&, uint64_t){}
-void VoxelSystem::applyCollisionSwaps(VolumeState&, VoxelVolumeComponent&){}
-void VoxelSystem::addNewBodies(VolumeState&, VoxelVolumeComponent&){}
-void VoxelSystem::evictBodies(VolumeState&, const VoxelVolumeComponent&){}
+void VoxelSystem::applyCollisionSwaps(VolumeState&){}
+void VoxelSystem::addNewBodies(VolumeState&){}
+void VoxelSystem::evictBodies(VolumeState&){}
 void VoxelSystem::updateCollisionWanted(VolumeState&, VoxelVolumeComponent&){}
 void VoxelSystem::rescueBodies(VolumeState&, VoxelVolumeComponent&, double){}
 void VoxelSystem::buildCollisionBlocking(VolumeState&, const VoxelVolumeComponent&, const IntBox&){}
