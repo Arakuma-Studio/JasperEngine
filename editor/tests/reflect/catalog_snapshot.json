@@ -33603,8 +33603,12 @@
     "height",
     "obstacleAvoidance",
     "radius",
+    "repathWhenStuck",
     "speed",
     "stoppingDistance",
+    "stuckDetection",
+    "stuckSpeedRatio",
+    "stuckTimeout",
     "surface",
     "updatePosition",
     "updateRotation"
@@ -33681,12 +33685,32 @@
      0,
      true
     ],
+    "repathWhenStuck": [
+     0,
+     0,
+     true
+    ],
     "speed": [
      2,
      0,
      true
     ],
     "stoppingDistance": [
+     2,
+     0,
+     true
+    ],
+    "stuckDetection": [
+     0,
+     0,
+     true
+    ],
+    "stuckSpeedRatio": [
+     2,
+     0,
+     true
+    ],
+    "stuckTimeout": [
      2,
      0,
      true
@@ -33778,12 +33802,32 @@
      0,
      true
     ],
+    "repathWhenStuck": [
+     0,
+     0,
+     true
+    ],
     "speed": [
      2,
      0,
      true
     ],
     "stoppingDistance": [
+     2,
+     0,
+     true
+    ],
+    "stuckDetection": [
+     0,
+     0,
+     true
+    ],
+    "stuckSpeedRatio": [
+     2,
+     0,
+     true
+    ],
+    "stuckTimeout": [
      2,
      0,
      true
@@ -33957,6 +34001,7 @@
    "icon": "ee9388",
    "key": "navmeshlink",
    "known_keys": [
+    "activated",
     "agentType",
     "area",
     "autoUpdatePosition",
@@ -33969,6 +34014,11 @@
    ],
    "name": "NavMeshLinkComponent",
    "properties_of_default": {
+    "activated": [
+     0,
+     0,
+     true
+    ],
     "agentType": [
      8,
      0,
@@ -34016,6 +34066,11 @@
     ]
    },
    "properties_without_component": {
+    "activated": [
+     0,
+     0,
+     true
+    ],
     "agentType": [
      8,
      0,
@@ -34092,6 +34147,7 @@
    "icon": "ef97ae",
    "key": "navmeshmodifier",
    "known_keys": [
+    "applyAtRuntime",
     "applyToChildren",
     "area",
     "enabled",
@@ -34103,6 +34159,11 @@
    ],
    "name": "NavMeshModifierComponent",
    "properties_of_default": {
+    "applyAtRuntime": [
+     0,
+     0,
+     true
+    ],
     "applyToChildren": [
      0,
      0,
@@ -34145,6 +34206,11 @@
     ]
    },
    "properties_without_component": {
+    "applyAtRuntime": [
+     0,
+     0,
+     true
+    ],
     "applyToChildren": [
      0,
      0,
@@ -43740,12 +43806,32 @@
     0,
     true
    ],
+   "repathWhenStuck": [
+    0,
+    0,
+    true
+   ],
    "speed": [
     2,
     0,
     true
    ],
    "stoppingDistance": [
+    2,
+    0,
+    true
+   ],
+   "stuckDetection": [
+    0,
+    0,
+    true
+   ],
+   "stuckSpeedRatio": [
+    2,
+    0,
+    true
+   ],
+   "stuckTimeout": [
     2,
     0,
     true
@@ -43767,6 +43853,11 @@
    ]
   },
   "NavMeshLinkComponent": {
+   "activated": [
+    0,
+    0,
+    true
+   ],
    "agentType": [
     8,
     0,
@@ -43814,6 +43905,11 @@
    ]
   },
   "NavMeshModifierComponent": {
+   "applyAtRuntime": [
+    0,
+    0,
+    true
+   ],
    "applyToChildren": [
     0,
     0,
