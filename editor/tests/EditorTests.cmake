@@ -94,7 +94,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # the counter compiles in the tests' object library (jasperengine_add_test EDITOR), whose
     # definitions are its own; only its source reads the switch
     set_source_files_properties(${CMAKE_SOURCE_DIR}/engine/tests/core/support/AllocationCounter.cpp
-        PROPERTIES COMPILE_DEFINITIONS JE_TEST_COUNTS_ALLOCATIONS)
+        PROPERTIES COMPILE_DEFINITIONS "JE_TEST_COUNTS_ALLOCATIONS;JE_TEST_BINARY_HAS_NEW")
     target_link_options(jasperengine-editor-tests PRIVATE "-Wl,--wrap=malloc" "-Wl,--wrap=calloc" "-Wl,--wrap=realloc")
 endif()
 

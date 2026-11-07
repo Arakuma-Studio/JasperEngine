@@ -110,7 +110,9 @@ extern "C" {
     }
 }
 
-#if !defined(JASPERENGINE_SANITIZE_ADDRESS)
+// JE_TEST_BINARY_HAS_NEW: the binary already replaces the plain new and delete through malloc
+// (the editor tests' ReflectResolveBenchTest counts its own), which the wrapper counts the same
+#if !defined(JASPERENGINE_SANITIZE_ADDRESS) && !defined(JE_TEST_BINARY_HAS_NEW)
 // counted at the malloc wrapper
 void* operator new(std::size_t bytes){
     if (void* memory = std::malloc(bytes ? bytes : 1))
