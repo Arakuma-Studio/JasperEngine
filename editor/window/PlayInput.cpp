@@ -6,6 +6,7 @@
 #include "Project.h"
 #include "Engine.h"
 #include "Input.h"
+#include "window/StatusBar.h"
 
 #include "imgui_internal.h"
 
@@ -26,18 +27,41 @@ int editor::PlayInput::currentMods() {
     return mods;
 }
 
+bool editor::PlayInput::escapeWentDown() {
+    // the key's own state: ImGui's keyboard navigation reads Escape first and may own it this frame,
+    // which hides the press from ImGui::IsKeyPressed
+    const ImGuiKeyData* escape = ImGui::GetKeyData(ImGuiKey_Escape);
+    return escape && escape->Down && escape->DownDuration == 0.0f;
+}
+
 bool editor::PlayInput::forward(uint32_t sceneId, ImVec2 canvasMin, ImVec2 scale, bool hovered, bool focused) {
     ImGuiIO& io = ImGui::GetIO();
     const int mods = currentMods();
     const ImVec2 mouseDelta = io.MouseDelta;
 
+    // ImGui's keyboard navigation takes Escape as "leave the child window" before the Game view
+    // draws: the frame of that press the view has just lost the focus it had the frame before
+    const bool hadFocus = focused || gameViewFocusFrame == ImGui::GetFrameCount() - 1;
+    gameViewFocusFrame = focused ? ImGui::GetFrameCount() : gameViewFocusFrame;
+    // A game holding the cursor gives it back on Escape (Unity), the key still reaching the
+    // game; a click on the game image takes it again
+    const MouseMode mouseMode = Engine::getMouseMode();
+    const bool holdsCursor = mouseMode == MouseMode::CAPTURED || mouseMode == MouseMode::CONFINED;
+    if (!holdsCursor) {
+        cursorReleased = false;
+    } else if (hadFocus && !cursorReleased && escapeWentDown()) {
+        releaseCursor();
+    } else if (cursorReleased && hovered && focused && ImGui::IsAnyMouseDown()) {
+        cursorReleased = false;
+    }
+
     // A captured cursor reports a virtual position that leaves the view,
     // so the mouse follows window focus like the keyboard below.
-    const bool capturedMouse = Engine::getMouseMode() == MouseMode::CAPTURED;
-    bool forwardMouse = capturedMouse ? focused : hovered;
+    const bool capturedMouse = mouseMode == MouseMode::CAPTURED;
+    bool forwardMouse = capturedMouse ? focused && !cursorReleased : hovered;
     // the game's pointer is locked while the Game view has the focus (Input::getPointerLockState)
     if (capturedMouse) {
-        Engine::systemPointerLockChanged(focused);
+        Engine::systemPointerLockChanged(focused && !cursorReleased);
     }
 
     // The pointer belongs to an MCP agent until the real mouse does something here
@@ -185,7 +209,25 @@ void editor::PlayInput::release(uint32_t sceneId) {
     if (mouseSceneId == sceneId) releaseMouseButtons(mods);
 }
 
+void editor::PlayInput::releaseCursor() {
+    const MouseMode mouseMode = Engine::getMouseMode();
+    if (cursorReleased || (mouseMode != MouseMode::CAPTURED && mouseMode != MouseMode::CONFINED)) {
+        return;
+    }
+    cursorReleased = true;
+    if (mouseMode == MouseMode::CAPTURED) {
+        Engine::systemPointerLockChanged(false);
+    }
+    StatusBar::setTransientMessage("Cursor released: click the Game view to give it back to the game", 4.0);
+}
+
+bool editor::PlayInput::wantsEditorCursor() const {
+    // the Game view drew this frame or the last with the focus, and the game keeps the cursor
+    return cursorReleased || gameViewFocusFrame < ImGui::GetFrameCount() - 1;
+}
+
 void editor::PlayInput::releaseAll() {
+    cursorReleased = false;
     releaseKeys(0);
     releaseMouseButtons(0);
     // and whatever else the game holds (keys pressed by an agent, gamepad buttons, touches):

@@ -27,7 +27,7 @@ android {
         unitTests.returnDefaultValues = true
     }
 
-    namespace 'com.jaspergameengine.bridge'
+    namespace = 'com.jaspergameengine.bridge'
 }
 
 dependencies {

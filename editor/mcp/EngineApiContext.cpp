@@ -192,7 +192,8 @@ const std::vector<jasperengine::editor::EngineAPISymbol>& getScriptMacroSymbols(
          ""},
         {"REGISTER_BUTTON_EVENT", "Macro",
          "REGISTER_BUTTON_EVENT(eventName, methodName); shortcut for REGISTER_COMPONENT_EVENT(ButtonComponent, ...). "
-         "ButtonComponent events: onPress, onRelease (handlers take no args). For a click use REGISTER_UI_EVENT(onClick, ...). "
+         "ButtonComponent events: onPress, onRelease, onClick (handlers take no args). onClick is the click: released over the "
+         "button, or submitted (Enter, Space, gamepad A) while selected; onRelease fires off the button too. "
          "Destructor counterpart: UNREGISTER_BUTTON_EVENT(eventName, methodName).",
          ""},
         {"REGISTER_SCROLLBAR_EVENT", "Macro",
@@ -260,7 +261,7 @@ Json EngineApiContext::search(const std::string& query,
 
     std::vector<ScoredSymbol> scored;
     auto consider = [&](const char* symName, const char* symKind,
-                        const char* symDetail, const char* symParent) {
+                        const char* symDetail, const char* symParent, bool luaOnly = false) {
         const std::string name = symName ? symName : "";
         const std::string kind = symKind ? symKind : "";
         const std::string detail = symDetail ? symDetail : "";
@@ -316,19 +317,18 @@ Json EngineApiContext::search(const std::string& query,
             return;
         }
 
-        scored.push_back({
-            score,
-            Json{
-                {"name", name},
-                {"kind", kind},
-                {"parent", parent},
-                {"detail", detail}
-            }
-        });
+        Json data{
+            {"name", name},
+            {"kind", kind},
+            {"parent", parent},
+            {"detail", detail}
+        };
+        if (luaOnly) data["cpp_callable"] = false;
+        scored.push_back({score, std::move(data)});
     };
 
     for (const auto& symbol : jasperengine::editor::getEngineAPISymbols()) {
-        consider(symbol.name, symbol.kind, symbol.detail, symbol.parent);
+        consider(symbol.name, symbol.kind, symbol.detail, symbol.parent, symbol.luaOnly);
     }
     for (const auto& macro : getScriptMacroSymbols()) {
         consider(macro.name, macro.kind, macro.detail, macro.parent);
@@ -350,6 +350,24 @@ Json EngineApiContext::search(const std::string& query,
         const std::string hint = luaCallHint(entry.value("detail", ""), entry.value("parent", ""));
         if (!hint.empty()) {
             entry["lua_call_hint"] = hint;
+        }
+        if (!entry.value("cpp_callable", true)) {
+            // the C++ accessor of a Lua accessor property, when the class has one
+            const std::string parent = entry.value("parent", "");
+            const std::string name = entry.value("name", "");
+            std::string accessor;
+            if (!name.empty()) {
+                const std::string capital = std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])))) + name.substr(1);
+                for (const auto& symbol : jasperengine::editor::getEngineAPISymbols()) {
+                    const std::string symbolName = symbol.name ? symbol.name : "";
+                    if (symbol.luaOnly || !symbol.parent || parent != symbol.parent) continue;
+                    if (symbolName == "get" + capital || symbolName == "is" + capital) {
+                        accessor = parent + "::" + symbolName + "()";
+                        break;
+                    }
+                }
+            }
+            entry["cpp_note"] = accessor.empty() ? "Lua only." : "Lua only. C++: " + accessor;
         }
         if (entry.value("kind", "") == "CppMethod") {
             const std::string parent = entry.value("parent", "");

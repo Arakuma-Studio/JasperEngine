@@ -372,6 +372,16 @@ def build():
 
         run(cmake_build_command, tool_env)
 
+        if platform == "web":
+            # export-settings/apply.cmake writes index.html next to <app>.export.html; an app
+            # named index has its linker output there, and the page is index.export.html. The
+            # newest page is this build's (an earlier --appname leaves its own behind)
+            pages = glob.glob(os.path.join(glob.escape(build_dir), "*.export.html"))
+            page = "index.html"
+            if pages and os.path.basename(max(pages, key=os.path.getmtime)).lower() == "index.export.html":
+                page = os.path.basename(max(pages, key=os.path.getmtime))
+            print("Web build ready: serve %s over HTTP and open %s" % (build_dir, page), flush=True)
+
 
 def print_utf8():
     # Piped output (the editor's Build window, a CI log) is in the ANSI code page on Windows,

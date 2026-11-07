@@ -95,9 +95,28 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/support/AllocationCounter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/util/FunctionSubscribeReentrancyTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/util/PostColorLutTest.cpp)
+jasperengine_skip_unity_build(
+    REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/platform/X11VisibilityTest.cpp)
+
+# S90: the Procedural Material evaluator is the editor's, but its GPU suites need the headless device
+# only this tree has (procmat/*GpuTest.cpp). It uses the engine's render layer and nothing of the editor.
+set(CORE_TEST_PROCMAT_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/NodeLibrary.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProcMatExpander.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralMaterialKind.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/PassPlanner.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralSession.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralGpuEvaluator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/SpirvInterpreter.cpp)
+jasperengine_skip_unity_build(
+    REASON "the editor's own sources: its unity units do not hold them"
+    SOURCES ${CORE_TEST_PROCMAT_SOURCES})
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/SpirvInterpreter.cpp PROPERTIES
+    INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/../../libs/shadercompiler/libs/glslang)
 
 jasperengine_add_test_target(jasperengine-core-tests
-    SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}
+    SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER} ${CORE_TEST_PROCMAT_SOURCES}
         # the animation clip tests' asset root (a temporary directory around each of them)
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimTestEnvironment.cpp
         # the vertex animation tests' asset root, and their asset and GLB fixtures
@@ -105,6 +124,8 @@ jasperengine_add_test_target(jasperengine-core-tests
     # (platform/android: the soft keyboard's text conversions, plain C++, AndroidTextInputTest)
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support
         ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/android
+        # WebKeyMap.h, the web platform's key map (plain C++)
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/emscripten
     DEFINITIONS
         # the repository root: the fixture projects of tools/fixtures (pose and clip tests' models)
         JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../.."
@@ -161,8 +182,20 @@ string(FIND "${WATER_WAVES_REST}" "\n}\n" WATER_WAVES_END)
 math(EXPR WATER_WAVES_LENGTH "${WATER_WAVES_END} + 2")
 string(SUBSTRING "${WATER_WAVES_REST}" 0 ${WATER_WAVES_LENGTH} WATER_WAVES_FUNCTION)
 string(SHA256 WATER_WAVES_GLSL_SHA256 "${WATER_WAVES_FUNCTION}")
+# and of waterGerstnerWave with waterGerstner (GERSTNER), from the first's signature to the
+# second's closing brace
+string(FIND "${WATER_GLSL_SOURCE}" "void waterGerstnerWave(" WATER_GERSTNER_BEGIN)
+string(FIND "${WATER_GLSL_SOURCE}" "vec3 waterGerstner(" WATER_GERSTNER_LAST)
+if(WATER_GERSTNER_BEGIN EQUAL -1 OR WATER_GERSTNER_LAST EQUAL -1)
+    message(FATAL_ERROR "library/water.glsl has no waterGerstnerWave / waterGerstner (WaterWavesTest, engine/core/util/WaterWaves.h)")
+endif()
+string(SUBSTRING "${WATER_GLSL_SOURCE}" ${WATER_GERSTNER_LAST} -1 WATER_GERSTNER_REST)
+string(FIND "${WATER_GERSTNER_REST}" "\n}\n" WATER_GERSTNER_REST_END)
+math(EXPR WATER_GERSTNER_LENGTH "${WATER_GERSTNER_LAST} - ${WATER_GERSTNER_BEGIN} + ${WATER_GERSTNER_REST_END} + 2")
+string(SUBSTRING "${WATER_GLSL_SOURCE}" ${WATER_GERSTNER_BEGIN} ${WATER_GERSTNER_LENGTH} WATER_GERSTNER_FUNCTIONS)
+string(SHA256 WATER_GERSTNER_GLSL_SHA256 "${WATER_GERSTNER_FUNCTIONS}")
 set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/util/WaterWavesTest.cpp PROPERTIES
-    COMPILE_DEFINITIONS "WATER_WAVES_GLSL_SHA256=\"${WATER_WAVES_GLSL_SHA256}\"")
+    COMPILE_DEFINITIONS "WATER_WAVES_GLSL_SHA256=\"${WATER_WAVES_GLSL_SHA256}\";WATER_GERSTNER_GLSL_SHA256=\"${WATER_GERSTNER_GLSL_SHA256}\"")
 # a unit of its own: it redefines JASPERENGINE_PROFILER to 0 before the profiling macros
 jasperengine_skip_unity_build(
     REASON "ProfilerCompileOutTest compiles the profiling macros with the profiler off"

@@ -21,7 +21,6 @@
 #include "Engine.h"
 #include "util/FrameLimiter.h"
 
-#include <chrono>
 #include <cmath>
 #include <cstdio>
 
@@ -49,8 +48,6 @@ constexpr wchar_t WINDOW_CLASS_NAME[] = L"JasperEngineGameWindow";
 // draw from that loop at a bounded rate until the drag ends.
 constexpr UINT_PTR LIVE_RESIZE_TIMER_ID = 0xD04A;
 constexpr UINT LIVE_RESIZE_INTERVAL_MS = 16;
-// A minimized window updates the game this often, without drawing
-constexpr double MINIMIZED_UPDATE_PERIOD = 1.0 / 60.0;
 
 #if defined(SOKOL_GLCORE)
 // wglCreateContextAttribsARB / wglSwapIntervalEXT, resolved at runtime
@@ -113,9 +110,6 @@ LRESULT CALLBACK windowProc(HWND handle, UINT message,
         case WM_ERASEBKGND:
             return 1;
         case WM_SIZE:
-            // a minimized game keeps updating, but the pads are no longer polled
-            if (wParam == SIZE_MINIMIZED)
-                gamepads.release();
             WindowWin::refreshClientSize();
             WindowWin::updateCursorClip();
             return 0;
@@ -349,11 +343,6 @@ void drawFrame() {
         frameLimiter.wait(Engine::getFramePacing().limiterFps);
 }
 
-double monotonicSeconds() {
-    using Clock = std::chrono::steady_clock;
-    return std::chrono::duration<double>(Clock::now().time_since_epoch()).count();
-}
-
 // Waits for a message or the timeout, finer than the 15.6 ms system tick
 void waitForMessage(double timeout) {
     static HANDLE timer = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
@@ -471,13 +460,15 @@ int JasperEngineWin::init(int argc, char **argv) {
     if (platform.windowMode == 2)
         WindowWin::requestFullscreen();
 
-    double nextUpdate = 0.0;
+    // a minimized window's update-only frames (Engine::getHiddenUpdateFps)
+    FrameLimiter hiddenClock;
+    bool hidden = false;
 
     while (!shouldClose) {
         // A minimized window has no present to pace the loop, so the game keeps
         // updating without drawing, at a steady rate between messages
-        if (IsIconic(WindowWin::handle()))
-            waitForMessage(nextUpdate - monotonicSeconds());
+        if (hidden)
+            waitForMessage(hiddenClock.secondsUntilDue());
 
         MSG message{};
         while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
@@ -491,20 +482,26 @@ int JasperEngineWin::init(int argc, char **argv) {
         if (shouldClose)
             break;
 
-        if (!IsIconic(WindowWin::handle())) {
+        // a headless run renders its frames whatever the window does
+        const bool nowHidden = !platform.headless && IsIconic(WindowWin::handle()) != FALSE;
+        if (nowHidden != hidden) {
+            hidden = nowHidden;
+            // a minimized game keeps updating, but the pads are no longer polled: what they
+            // hold comes up before the game hears of it
+            if (hidden) {
+                gamepads.release();
+                hiddenClock.reset();
+            }
+            Engine::systemVisibilityChanged(!hidden);
+        }
+
+        if (!hidden) {
             drawFrame();
             continue;
         }
 
-        const double now = monotonicSeconds();
-        if (now >= nextUpdate) {
+        if (hiddenClock.isDue(Engine::getHiddenUpdateFps(), 0.0))
             Engine::systemUpdate();
-
-            // A late update is made up on the next one
-            nextUpdate += MINIMIZED_UPDATE_PERIOD;
-            if (std::abs(nextUpdate - now) > MINIMIZED_UPDATE_PERIOD)
-                nextUpdate = now + MINIMIZED_UPDATE_PERIOD;
-        }
     }
 
     KillTimer(WindowWin::handle(), LIVE_RESIZE_TIMER_ID);

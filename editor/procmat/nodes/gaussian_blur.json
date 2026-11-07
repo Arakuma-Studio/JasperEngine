@@ -297,9 +297,7 @@
   },
   {
    "default": false,
-   "first": 4,
    "label": "32 bits",
-   "last": 13,
    "links": [
     {
      "node": "buffer_4",
@@ -315,7 +313,7 @@
     }
    ],
    "name": "param3",
-   "type": "size"
+   "type": "boolean"
   }
  ],
  "short_description": "Gaussian blur",

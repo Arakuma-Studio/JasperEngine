@@ -6083,7 +6083,7 @@
   "pack_2x32_to_4x16": {
    "code": [
     "vec4 pack_2x32_to_4x16(vec2 s) {",
-    "\treturn vec4(s.xy - vec2(mod(s.x, 1.0/pack_size), mod(s.y, 1.0/pack_size)) , vec2(mod(s.x, 1.0/pack_size), mod(s.y, 1.0/pack_size))*pack_size);",
+    "\treturn vec4(s.xy - vec2(mod(s.x, 1.0/pack_size), mod(s.y, 1.0/pack_size)) , floor(vec2(mod(s.x, 1.0/pack_size), mod(s.y, 1.0/pack_size))*pack_size*2048.0+0.5)/2048.0);",
     "}"
    ],
    "deps": [

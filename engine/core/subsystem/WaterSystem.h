@@ -9,6 +9,7 @@
 #include "math/Matrix4.h"
 #include "math/Vector2.h"
 #include "math/Vector3.h"
+#include "util/WaterWaves.h"
 
 #include <cstdint>
 #include <limits>
@@ -38,9 +39,9 @@ namespace jasperengine{
     // The Water Volumes of a scene and the Buoyancy they give (docs/specs/S22-gameplay.md
     // R30-R32), owned by its PhysicsSystem: every fixed step, before the 3D world steps, the
     // columns of each Buoyancy push its dynamic Rigidbody up by Archimedes and drag it against
-    // the water. Surfaces follow their library:water material's waves on the shader clock
-    // (Engine::getShaderTime), evaluated by WaterWaves.h. A scene without Water Volumes or
-    // Buoyancies costs nothing.
+    // the water. Surfaces follow their library:water material's waves on the scene clock
+    // (Water::getTime), evaluated by WaterWaves.h. A scene without Water Volumes or Buoyancies
+    // costs nothing.
     class JASPERENGINE_API WaterSystem{
     private:
         struct Volume{
@@ -55,11 +56,8 @@ namespace jasperengine{
             Vector3 flow;
             float linearDrag = 1.0f;
             float angularDrag = 0.5f;
-            bool waves = false;
-            Vector2 waveDirection;
-            float waveHeight = 0.0f;
-            float waveLength = 1.0f;
-            float waveSpeed = 0.0f;
+            // the waves of its library:water material (WAVES, GERSTNER), none without
+            WaterWaveParams waves;
             // the surface is the GameObject's spline river or lake (SplineSystem), not its box
             bool spline = false;
         };
@@ -73,8 +71,9 @@ namespace jasperengine{
         // the scene's enabled volumes of active GameObjects, at the shader clock now
         void gatherVolumes() const;
         // the volume whose surface over (x, z) is highest among those holding a point at y
-        // (-inf: any depth); its surface, rise rate and slope
-        const Volume* findVolume(float x, float y, float z, float& height, float& rate, Vector2& slope, Vector3& flow) const;
+        // (-inf: any depth); its surface height, its waves there (normal, the water's motion)
+        // and its current
+        const Volume* findVolume(float x, float y, float z, float& height, WaterWaveSample& wave, Vector3& flow) const;
 
     public:
         WaterSystem(Scene* scene, PhysicsSystem* physics);

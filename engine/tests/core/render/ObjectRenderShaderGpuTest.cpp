@@ -8,6 +8,9 @@
 // object refuses to draw instead (SokolObject::beginDraw), until a reload builds new pipelines.
 
 #include "pool/ShaderPool.h"
+#include "buffer/Buffer.h"
+#include "buffer/ExternalBuffer.h"
+#include "pool/MeshBufferPool.h"
 #include "render/ObjectRender.h"
 #include "render/ShaderRender.h"
 #include "render/SystemRender.h"
@@ -18,6 +21,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -83,4 +87,34 @@ TEST(ObjectRenderShaderGpu, APipelineOfADeadShaderIsNeverApplied){
     object.destroy();
     SystemRender::commitQueue();
     SystemRender::executeQueue();
+}
+
+// Two attributes of different strides read from buffers of equal bytes, which MeshBufferPool shares
+// as one GPU buffer: each keeps a bind slot of its own (the layout steps a slot with one stride).
+// Before, the slot was found by buffer and offset alone and the second attribute read the first's
+// stride (sprite-batching spec T21).
+TEST(ObjectRenderShaderGpu, BindSlotsKeepStrideApart){
+    JASPER_REQUIRE_GPU();
+    std::vector<float> bytes(64, 0.25f);
+    // (a plain Buffer has no storage of its own: ExternalBuffer points at the bytes)
+    ExternalBuffer vec2s;
+    ExternalBuffer vec4s;
+    for (ExternalBuffer* buffer : {&vec2s, &vec4s}){
+        buffer->setType(BufferType::VERTEX_BUFFER);
+        buffer->setUsage(BufferUsage::IMMUTABLE);
+        buffer->setData(reinterpret_cast<unsigned char*>(bytes.data()), bytes.size() * sizeof(float));
+        ASSERT_TRUE(MeshBufferPool::createRender(*buffer));
+    }
+    ASSERT_EQ(vec2s.getRender()->backend.get().id, vec4s.getRender()->backend.get().id) << "equal bytes share one GPU buffer";
+
+    ObjectRender render;
+    render.beginLoad(PrimitiveType::TRIANGLES);
+    render.addAttribute(0, vec2s.getRender(), 2, AttributeDataType::FLOAT, 8, 0, false, false);
+    render.addAttribute(1, vec4s.getRender(), 4, AttributeDataType::FLOAT, 16, 0, false, false);
+    EXPECT_EQ(render.getVertexBindSlotCount(), 2u);
+    // the same stride and step share the slot, as before
+    render.addAttribute(2, vec2s.getRender(), 2, AttributeDataType::FLOAT, 8, 0, false, false);
+    EXPECT_EQ(render.getVertexBindSlotCount(), 2u);
+    vec2s.getRender()->destroyBuffer();
+    vec4s.getRender()->destroyBuffer();
 }

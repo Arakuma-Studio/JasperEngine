@@ -71,6 +71,7 @@ static const char* sokolLogItems[] = { _SG_LOG_ITEMS };
 
 // (sokol.cpp, where sokol's state is visible) slots of a resource pool in use and free
 extern "C" void jasperengine_sg_pool_usage(int kind, int* used, int* free);
+extern "C" void jasperengine_sg_wait_gpu_idle(void);
 // (sokol.cpp) Vulkan's per-frame buffers: 0 stream staging, 1 uniforms, 2 descriptors
 extern "C" bool jasperengine_sg_vk_frame_buffer_usage(int which, uint32_t* used, uint32_t* size, bool* overflown);
 extern "C" bool jasperengine_sg_vk_next_draw_descriptors(uint32_t limit, uint32_t* need, uint32_t* used, uint32_t* size);
@@ -431,6 +432,49 @@ namespace{
     bool passOpen = false;
     uint64_t nestedPasses = 0;
 
+    uint64_t commitCount = 0;
+
+    // the batcher's held draws and the lazy scissor (setDeferredFlush)
+    SokolSystem::DeferredFlush deferredFlush = nullptr;
+    void* deferredOwner = nullptr;
+    bool inDeferredFlush = false;
+    SokolSystem::ScissorRect requestedScissor;
+    SokolSystem::ScissorRect appliedScissor;
+    // the open pass's render area: a rect covering it is the pass's own scissor (wholePass), so a
+    // reset to the whole target keeps a batch's runs together with the draws before any scissor
+    int passWidth = 0;
+    int passHeight = 0;
+
+    SokolSystem::ScissorRect wholePass(){
+        SokolSystem::ScissorRect rect;
+        rect.width = passWidth;
+        rect.height = passHeight;
+        rect.set = passWidth > 0 && passHeight > 0;
+        return rect;
+    }
+
+    void measurePass(const sg_pass& pass){
+        const sg_view view = pass.attachments.colors[0].id != SG_INVALID_ID ? pass.attachments.colors[0] : pass.attachments.depth_stencil;
+        if (view.id != SG_INVALID_ID){
+            const sg_view_desc desc = sg_query_view_desc(view);
+            const int mip = pass.attachments.colors[0].id != SG_INVALID_ID ? desc.color_attachment.mip_level : desc.depth_stencil_attachment.mip_level;
+            const sg_image image = sg_query_view_image(view);
+            passWidth = std::max(1, sg_query_image_width(image) >> mip);
+            passHeight = std::max(1, sg_query_image_height(image) >> mip);
+        }else{
+            passWidth = pass.swapchain.width;
+            passHeight = pass.swapchain.height;
+        }
+    }
+
+    void applyScissorRect(const SokolSystem::ScissorRect& rect){
+        // what the instancing batch holds was for the rect before
+        SokolDrawBatch::flush();
+        if (rect.set)
+            sg_apply_scissor_rect(rect.x, rect.y, rect.width, rect.height, rect.originTopLeft);
+        appliedScissor = rect;
+    }
+
     struct PendingInitialization{
         sg_attachments attachments;
         bool loadDepthStencil;
@@ -470,6 +514,78 @@ namespace{
     }
 }
 
+bool SokolSystem::ScissorRect::operator==(const ScissorRect& rhs) const{
+    if (set != rhs.set)
+        return false;
+    return !set || (x == rhs.x && y == rhs.y && width == rhs.width && height == rhs.height && originTopLeft == rhs.originTopLeft);
+}
+
+void SokolSystem::setDeferredFlush(DeferredFlush flush, void* owner){
+    if (!flush && deferredFlush){
+        flushDeferred();
+        // what was requested while deferring, for whatever draws next
+        if (passOpen && requestedScissor != appliedScissor && requestedScissor.set)
+            applyScissorRect(requestedScissor);
+    }
+    deferredFlush = flush;
+    deferredOwner = owner;
+}
+
+bool SokolSystem::isDeferringDraws(){
+    return deferredFlush != nullptr;
+}
+
+void SokolSystem::flushDeferred(){
+    if (!deferredFlush || inDeferredFlush)
+        return;
+    inDeferredFlush = true;
+    deferredFlush(deferredOwner);
+    inDeferredFlush = false;
+}
+
+void SokolSystem::beforeForeignDraw(){
+    if (!deferredFlush || inDeferredFlush)
+        return;
+    flushDeferred();
+    if (requestedScissor != appliedScissor){
+        if (requestedScissor.set){
+            applyScissorRect(requestedScissor);
+        }else{
+            // the pass's own scissor is never requested again once a rect was (a pass begins
+            // with it): nothing to restore it from, keep what is applied
+            requestedScissor = appliedScissor;
+        }
+    }
+}
+
+void SokolSystem::applyBatchScissor(const ScissorRect& rect){
+    if (rect != appliedScissor && rect.set)
+        applyScissorRect(rect);
+}
+
+void SokolSystem::applyScissor(int x, int y, int width, int height, bool originTopLeft){
+    ScissorRect rect;
+    rect.x = x;
+    rect.y = y;
+    rect.width = width;
+    rect.height = height;
+    rect.originTopLeft = originTopLeft;
+    rect.set = true;
+    if (passWidth > 0 && x <= 0 && y <= 0 && x + width >= passWidth && y + height >= passHeight)
+        rect = wholePass();
+    requestedScissor = rect;
+    if (!deferredFlush)
+        applyScissorRect(rect);
+}
+
+uint64_t SokolSystem::getCommitCount(){
+    return commitCount;
+}
+
+const SokolSystem::ScissorRect& SokolSystem::getRequestedScissor(){
+    return requestedScissor;
+}
+
 void SokolSystem::beginPass(const sg_pass& pass){
     if (passOpen){
         nestedPasses++;
@@ -479,11 +595,17 @@ void SokolSystem::beginPass(const sg_pass& pass){
     SokolDrawBatch::flush();
     sg_begin_pass(pass);
     passOpen = true;
+    // sokol starts every pass with its whole target as the scissor
+    measurePass(pass);
+    requestedScissor = wholePass();
+    appliedScissor = requestedScissor;
     // a new pass has no pipeline applied (the dynamic path's "applied last") nor uniforms
     SokolPipelineCache::invalidateApplied();
 }
 
 void SokolSystem::endPass(){
+    // the draws still held belong to this pass: the batcher's, then the instancing batch's
+    flushDeferred();
     SokolDrawBatch::flush();
     sg_end_pass();
     passOpen = false;
@@ -538,6 +660,7 @@ void SokolSystem::commit(){
     descriptorFrameSkippedBytes = 0;
 
     sg_commit();
+    commitCount++;
     // the GPU times of earlier commits that resolved meanwhile (never waits)
     sgj_commit_times times;
     while (sgj_gpu_timer_pop(&times)){
@@ -714,6 +837,10 @@ bool SokolSystem::getVulkanFrameBufferUsage(int which, uint64_t& used, uint64_t&
     return vulkan;
 }
 
+void SokolSystem::waitGpuIdle(){
+    jasperengine_sg_wait_gpu_idle();
+}
+
 void SokolSystem::shutdown(){
     // commands an async loader committed after the last frame (the Project window's
     // thumbnail job, an editor closing right after it opened): executed first, as the next
@@ -738,6 +865,8 @@ void SokolSystem::shutdown(){
     sgj_gpu_timer_shutdown();
     pendingInitializations.clear();
     passOpen = false;
+    deferredFlush = nullptr;
+    deferredOwner = nullptr;
     sg_shutdown();
     featuresQueried = false;
     features = RenderFeatures();
