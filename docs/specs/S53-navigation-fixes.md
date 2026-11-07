@@ -688,6 +688,11 @@ P2 order:
   of one batch in flight).
 - S53 P1: R6, `onPathFailed` and `pathStatus` read dtCrowd's corridor; `cancelBake` cannot cancel
   a bake that landed and is building its carved tiles (`isBaking` stays true until they are done).
+- S53 P1: R6, after a tile change (the mesh revision) the crowd checks whole corridors, not only
+  dtCrowd's next 10 polygons, and plans a corridor holding a polygon that is gone again: a cut
+  far ahead otherwise left a stale Complete status until the agent reached it (AC9). A status is
+  also read again whenever the corridor's state changes, not only after a Pending tick (dtCrowd's
+  quick search can land a plan within one step).
 - S53 P1: R4, a tile keeps at most 64 Recast messages, then `... and N more Recast messages`.
 - S53 P1: interface additions beyond §6, used by the tests and the editor: `NavMesh::hasObstacle`,
   `getTileCacheObstacleCount`, `getFailedCarveBuilds`, `getLinkConnections`,

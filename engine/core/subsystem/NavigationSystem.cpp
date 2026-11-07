@@ -3424,9 +3424,13 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
                     agent.wasPending = agent.requested;
                 } else if (target == NavCrowdTarget::Valid) {
                     component.pathPending = false;
-                    agent.crowdPath = crowd.getPathState(index);
+                    const NavCrowdPath state = crowd.getPathState(index);
+                    // a new corridor (a plan that landed, or one dtCrowd's quick search finished
+                    // within a step) is read again
+                    const bool changed = agent.wasPending || state != agent.crowdPath;
+                    agent.crowdPath = state;
                     agent.corridorPolys = crowd.getCorridorSize(index);
-                    if (agent.wasPending) {
+                    if (changed) {
                         agent.wasPending = false;
                         // a truncated corridor is the start of a Complete path; Partial: no path
                         // reaches the destination, onPathFailed once per destination
