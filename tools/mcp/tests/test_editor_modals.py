@@ -40,6 +40,7 @@ SITES = {
     ("layout/LayoutManager.cpp", "exportPopup"): "test_layout_save_to_file_opens_a_picker",
     ("window/GameWindow.cpp", "Add Game View Resolution"): "test_add_game_resolution",
     ("window/HumanoidConvertDialog.cpp", "Convert to Humanoid Clip###HumanoidConvert"): "not driven: needs a clip of a skinned model; convert_animation_clip does the same for agents",
+    ("window/ReduceKeysDialog.cpp", "Reduce Keys###ReduceKeys"): "not driven: test_animation_quality_ui.py drives it (a clip with a rig); optimize_animation does the same for agents",
     ("window/dialog/ShaderForkDialog.cpp", "popupName"): "test_shader_fork",
     ("window/dialog/ExportWindowShipping.cpp", "Keystore Passwords##ExportKeystore"): "not driven: needs a signing keystore and the Android SDK",
     ("window/dialog/ExportWindowShipping.cpp", "Upload to Steam##PublishUpload"): "not driven: needs a release folder and SteamCMD",
@@ -172,7 +173,7 @@ async def test_sites_table_is_complete(ed: Editor):
         listed[rel] = listed.get(rel, 0) + 1
     listed["window/InspectorWindow.cpp"] = INSPECTOR_BOXES
     ed.check_eq(dict(sorted(found.items())), dict(sorted(listed.items())), "every modal site is in the table, with its count")
-    ed.check_eq(sum(found.values()), 73, "the spec's 71 sites, S36's Placeholder Sound and the Model Import prompt")
+    ed.check_eq(sum(found.values()), 74, "the spec's 71 sites, S36's Placeholder Sound, the Model Import prompt and S74's Reduce Keys")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):

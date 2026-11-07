@@ -673,7 +673,6 @@ namespace jasperengine::editor{
         TerrainEditWindow* getTerrainEditWindow() const;
         SystemsWindow* getSystemsWindow() const;
         JobsMemoryWindow* getJobsMemoryWindow() const;
-        AnimationStatisticsWindow* getAnimationStatisticsWindow() const;
         ProfilerWindow* getProfilerWindow() const { return profilerWindow; }
         FrameDebuggerWindow* getFrameDebuggerWindow() const { return frameDebuggerWindow; }
         UndoHistoryWindow* getUndoHistoryWindow() const { return undoHistoryWindow; }

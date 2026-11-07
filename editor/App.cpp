@@ -5638,10 +5638,6 @@ editor::JobsMemoryWindow* editor::App::getJobsMemoryWindow() const{
     return jobsMemoryWindow;
 }
 
-editor::AnimationStatisticsWindow* editor::App::getAnimationStatisticsWindow() const{
-    return animationStatisticsWindow;
-}
-
 editor::PoseAnimationWindow* editor::App::getPoseAnimationWindow() const{
     return poseAnimationWindow;
 }

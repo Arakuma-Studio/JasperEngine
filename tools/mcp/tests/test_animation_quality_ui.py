@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 import ui_input
@@ -38,6 +39,17 @@ def evidence(ed: Editor) -> Path:
 async def shot(ed: Editor, name: str) -> None:
     await ed.call("wait", frames=4)
     await ed.screenshot("editor", path=str(evidence(ed) / f"{name}.png"))
+
+
+async def modal_shot(ed: Editor, ui, name: str) -> None:
+    """the display as X has it: a modal dialog refuses the calls that wait for frames, the screenshot tool's too"""
+    await ui.frames(4)
+    subprocess.run(["import", "-display", ed._xvfb.display, "-window", "root", str(evidence(ed) / f"{name}.png")],
+                   check=True, capture_output=True, timeout=60)
+
+
+async def dialog(ed: Editor) -> dict | None:
+    return (await ed.call("editor_status")).get("dialog")
 
 
 def text_of(item: dict) -> str:
@@ -176,9 +188,33 @@ async def test_reduce_keys_previews_writes_and_proves(ed: Editor):
     max_error = text_of(await drawn(ed, ui, "##reduce_max_error", "Reduce Keys"))
     await drawn(ed, ui, "##reduce_mean_error", "Reduce Keys")
     await drawn(ed, ui, "##reduce_worst_joint", "Reduce Keys")
-    await shot(ed, "ac18-4-reduce-keys-preview")
+    await modal_shot(ed, ui, "ac18-4-reduce-keys-preview")
     after = tree_hash(root)
     ed.check_eq(sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k)), [], "the preview writes nothing")
+
+    # an agent sees the dialog as a person does (S69): its numbers, its fields and its answers
+    shown = await dialog(ed)
+    ed.check(shown and shown["title"].startswith("Reduce Keys"), f"{shown}")
+    ed.check(f"Keys {keys}" in shown["message"] and f"max {max_error}" in shown["message"], f"the rows' numbers: {shown['message']}")
+    ed.check({"ok", "cancel"} <= set(shown["choices"]), f"{shown}")
+    ed.check({"tolerance_mm", "skin_distance_mm", "output", "replace"} <= {f["name"] for f in shown["fields"]}, f"{shown}")
+
+    await ui.click_item("##reduce_write", "Reduce Keys")
+    for _ in range(100):
+        shown = await dialog(ed)
+        if (root / OUTPUT).exists() and shown and "Wrote " in shown["message"]:
+            break
+        await ui.frames(4)
+    ed.check((root / OUTPUT).exists(), f"{OUTPUT} written")
+    ed.check(f"Wrote {OUTPUT}" in shown["message"], f"read back: {shown['message']}")
+    written_error = text_of(await drawn(ed, ui, "##reduce_max_error", "Reduce Keys"))
+    await modal_shot(ed, ui, "ac18-5-reduce-keys-written")
+    await ui.click_item("##reduce_close", "Reduce Keys")
+    for _ in range(30):
+        if await dialog(ed) is None:
+            break
+        await ui.frames(2)
+    ed.check(await dialog(ed) is None, "closed")
 
     # the same numbers the tool gives for the same settings
     tool = (await ed.call("optimize_animation", clips=[CLIP]))["clips"][0]
@@ -186,22 +222,11 @@ async def test_reduce_keys_previews_writes_and_proves(ed: Editor):
     ed.check_eq(keys, f"{thousands(tool['keys_before'])} -> {thousands(tool['keys_after'])}", "Keys")
     ed.check_eq(max_error, f"{tool['max_error_mm']:.2f} mm", "Max Error")
 
-    await ui.click_item("##reduce_write", "Reduce Keys")
-    for _ in range(100):
-        if (root / OUTPUT).exists():
-            break
-        await ed.call("wait", frames=5)
-    ed.check((root / OUTPUT).exists(), f"{OUTPUT} written")
-    await ed.call("wait", frames=30)
-    await shot(ed, "ac18-5-reduce-keys-written")
-    await ui.click_item("##reduce_close", "Reduce Keys")
-    await ed.call("wait", frames=5)
-
     proof = await ed.call("check_animation", clips=[OUTPUT], compare_to=CLIP)
     ed.check(proof["ok"] is True, f"{proof['findings']}")
     compare = proof["clips"][0]["compare"]
     ed.check(compare["within_tolerance"] is True, f"{compare}")
-    ed.check_eq(f"{compare['max_error_mm']:.2f} mm", max_error, "the dialog's number, from the file")
+    ed.check_eq(f"{compare['max_error_mm']:.2f} mm", written_error, "the dialog's number after the write, from the file")
 
     # one undo step takes it back
     await ed.call("undo", scope="project")
@@ -210,10 +235,17 @@ async def test_reduce_keys_previews_writes_and_proves(ed: Editor):
     ed.check((root / OUTPUT).exists(), "redo")
 
 
+async def open_statistics(ed: Editor, ui) -> None:
+    """Window > Analysis > Animation Statistics, as a person opens it"""
+    await ui.click_item("Window", window="##MainMenuBar")
+    await ui.click_item("Analysis")
+    await ui.click_item("Animation Statistics")
+    await ui.frames(4)
+
+
 async def test_statistics_rows_equal_the_tools(ed: Editor):
     ui = await setup(ed)
-    await ed.call("focus_window", window="animation_statistics")
-    await ed.call("wait", frames=5)
+    await open_statistics(ed, ui)
     await shot(ed, "ac18-6-statistics-empty")
     await ui.click_item("##stat_scan", "Animation Statistics")
     tool = (await ed.call("check_animation", checks=["stats"], top=1000))
