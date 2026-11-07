@@ -45,6 +45,12 @@ namespace {
             if (ShaderPool::getShaderTypeFromKey(key) != ShaderType::MESH || !(properties & shaderPropertyBit(17))){
                 continue;
             }
+            // each variant also ships the built-in program it draws with while it compiles (custom id 0),
+            // which has no defines: not a tier of its own
+            if (ShaderPool::getCustomIdFromKey(key) == 0){
+                out.holes |= (properties & ShaderPool::getTerrainHolesProperty(ShaderType::MESH)) != 0;
+                continue;
+            }
             const std::string name = ShaderPool::getCustomShaderName(ShaderPool::getCustomIdFromKey(key));
             const bool medium = name.find("TERRAIN_QUALITY_MEDIUM") != std::string::npos;
             const bool low = name.find("TERRAIN_QUALITY_LOW") != std::string::npos;

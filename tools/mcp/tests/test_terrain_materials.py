@@ -74,6 +74,8 @@ async def test_project_defaults():
     project_path = keep / "project"
     # a new project from the template: the table of R51
     async with Editor(create=True, name="Terrain Defaults") as ed:
+        # the file as a save writes it: a new project's may still be on its way to the disk
+        await ed.call("save_project")
         project_yaml = yaml.safe_load((ed.project / "project.yaml").read_text())
         tiers = project_yaml["graphics"]["terrainQuality"]
         assert tiers == {"macos": "high", "ios": "low", "web": "medium", "android": "low", "linux": "high", "windows": "high"}, tiers
