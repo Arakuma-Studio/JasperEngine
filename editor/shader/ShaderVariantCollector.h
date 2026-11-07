@@ -127,7 +127,8 @@ namespace jasperengine::editor {
                                           const std::vector<ShaderVariantContent>& prefabContents, std::set<ShaderKey>& keys,
                                           const std::filesystem::path& projectRoot, bool scriptsSetPostProcessing,
                                           const std::vector<std::string>& scriptPostProcessingFields, bool allLightCapacities,
-                                          bool scriptsSetShadowQuality, bool scriptsSetLitQuality, PbrTier mobilePbrTier);
+                                          bool scriptsSetShadowQuality, bool scriptsSetLitQuality, PbrTier mobilePbrTier,
+                                          uint32_t terrainTiers);
     };
 
 }

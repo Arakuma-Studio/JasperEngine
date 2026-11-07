@@ -1275,7 +1275,7 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         if (!resolved.insert(signature).second)
             return;
         collectSceneUnderTier(scene, sceneContent, prefabContents, keys, projectRoot, scriptsSetPostProcessing, scriptPostProcessingFields,
-                              allLightCapacities, scriptsSetShadowQuality, scriptsSetLitQuality, mobilePbrTier);
+                              allLightCapacities, scriptsSetShadowQuality, scriptsSetLitQuality, mobilePbrTier, terrainTiers);
     };
     QualityResolver::setTier(std::nullopt);
     QualityResolver::forceThermalResponse(ThermalState::Nominal);
@@ -1302,7 +1302,7 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
                                                            bool scriptsSetPostProcessing,
                                                            const std::vector<std::string>& scriptPostProcessingFields,
                                                            bool allLightCapacities, bool scriptsSetShadowQuality,
-                                                           bool scriptsSetLitQuality, PbrTier mobilePbrTier){
+                                                           bool scriptsSetLitQuality, PbrTier mobilePbrTier, uint32_t terrainTiers){
     const std::vector<bool> postColor = postColorStates(scene, scriptsSetPostProcessing);
 
     const uint32_t sceneFacts = collectFacts(sceneContent, scene);
