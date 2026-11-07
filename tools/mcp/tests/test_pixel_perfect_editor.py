@@ -98,6 +98,13 @@ async def test_layout_values_and_pixel_scale(ed: Editor):
     bad = await ed.call_raw("set_properties", {"scene": s["scene"], "entity": s["camera"],
                                                "values": {"pixelperfectcamera": {"pixelRatio": 2}}})
     ed.check(bad.is_error, f"the layout values are read only: {bad.text}")
+    # Use Project Canvas (0 x 0): the project's 320 x 180, not the editor view's canvas
+    await ed.call("set_properties", scene=s["scene"], entity=s["camera"],
+                  values={"pixelperfectcamera": {"referenceWidth": 0, "referenceHeight": 0}})
+    values = await ppc_values(ed)
+    ed.check(values.get("pixelRatio") == 4 and values.get("baseWidth") == 320, f"the project canvas as the reference: {values}")
+    await ed.call("set_properties", scene=s["scene"], entity=s["camera"],
+                  values={"pixelperfectcamera": {"referenceWidth": 320, "referenceHeight": 180}})
 
     view = await ed.call("configure_game_view", pixel_scale=1)
     ed.check(view.get("pixel_scale") == 1, f"the view reports it: {view}")

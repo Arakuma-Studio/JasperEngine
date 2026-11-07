@@ -33,6 +33,11 @@ namespace jasperengine::editor::pixelart {
         PixelPerfectViewRequest request;
         if (!RenderSystem::getPixelPerfectRequest(scene, camera, request))
             return false;
+        // Use Project Canvas: the project's canvas (outside Play the Engine's is the editor view's)
+        if (request.referenceWidth <= 0 || request.referenceHeight <= 0){
+            request.referenceWidth = (int)project.getCanvasWidth();
+            request.referenceHeight = (int)project.getCanvasHeight();
+        }
         int width = 0, height = 0;
         gameViewSize(project, width, height);
         layout = Engine::computePixelPerfectView(request, width, height, Engine::getPixelPerfectForcedScale());

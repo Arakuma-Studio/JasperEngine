@@ -4349,6 +4349,11 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
     // scenes draw on the same viewport and canvas
     PixelPerfectViewRequest pixelRequest;
     if (RenderSystem::getPixelPerfectRequest(sceneProject.scene, cameraEntity, pixelRequest)) {
+        // Use Project Canvas is the project's canvas (the Engine's is the editor's view here)
+        if (pixelRequest.referenceWidth <= 0 || pixelRequest.referenceHeight <= 0) {
+            pixelRequest.referenceWidth = (int)project.getCanvasWidth();
+            pixelRequest.referenceHeight = (int)project.getCanvasHeight();
+        }
         const jasperengine::pixelart::PixelPerfectLayout layout = Engine::computePixelPerfectView(pixelRequest, width, height,
                                                                                     Engine::getPixelPerfectForcedScale());
         if (layout.baseWidth > 0) {
@@ -4463,6 +4468,9 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
     Engine::systemDraw();
     renderSystem->keepAtmosphereInfo(GAME_VIEW_ID);
 
+    // the game camera's Pixel Perfect Camera laid this pass out; the editor's views lay out
+    // without it (their next systemViewChanged would apply it over the editor's canvas)
+    Engine::setPixelPerfectView(PixelPerfectViewRequest());
     Engine::setCanvasSize(editCanvasWidth, editCanvasHeight);
     Engine::setScalingMode(editScaling);
 
