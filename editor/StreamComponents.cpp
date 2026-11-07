@@ -656,7 +656,7 @@ TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& 
     layer.minDrawDistance = std::max(0.0f, decodeFinite(node["minDrawDistance"], layer.minDrawDistance));
     // a hand-edited or older file: values the renderer cannot use are clamped, and said so
     if (!clamp) return layer;
-    const std::vector<std::string> clamped = editor::terrain::clampDetailLayer(layer);
+    const std::vector<std::string> clamped = editor::terraindetail::clampDetailLayer(layer);
     if (!clamped.empty()) {
         std::string what;
         for (const std::string& change : clamped) what += (what.empty() ? "" : ", ") + change;
