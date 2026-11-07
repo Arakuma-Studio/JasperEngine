@@ -14,6 +14,7 @@
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
+#include "component/VoxelVolumeComponent.h"
 #include "io/AtomicFile.h"
 #include "io/Data.h"
 #include "io/FileUtils.h"

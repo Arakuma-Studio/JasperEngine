@@ -7,6 +7,7 @@
 // What VoxelSystem keeps per volume, shared by its three source files
 
 #include "subsystem/VoxelSystem.h"
+#include "component/VoxelVolumeComponent.h"
 
 #include "terrain/TerrainMapStore.h"
 #include "util/Signal.h"

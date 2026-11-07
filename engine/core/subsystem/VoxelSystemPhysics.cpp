@@ -16,6 +16,7 @@
 #include "component/CharacterControllerComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "component/Transform.h"
+#include "component/VoxelVolumeComponent.h"
 #include "voxel/TransvoxelMesher.h"
 #include "voxel/VoxelSample.h"
 

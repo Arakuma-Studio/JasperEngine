@@ -35,6 +35,7 @@
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/CharacterControllerComponent.h"
 #include "component/RigidbodyComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #endif
 
 #include <algorithm>

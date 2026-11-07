@@ -7,6 +7,7 @@
 // and the hash of the fixed script prints for AC27 (equal to VoxelDeterminism.GoldenHash on native).
 
 #include "JasperEngine.h"
+#include "component/VoxelVolumeComponent.h"
 
 #include "subsystem/VoxelSystem.h"
 #include "voxel/VoxelEdit.h"

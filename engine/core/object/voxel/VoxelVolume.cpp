@@ -6,6 +6,7 @@
 #include "Scene.h"
 #include "component/MeshComponent.h"
 #include "component/Transform.h"
+#include "component/VoxelVolumeComponent.h"
 #include "object/GameObject.h"
 #include "util/MeshTriangles.h"
 #include "subsystem/VoxelSystem.h"

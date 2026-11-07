@@ -11,7 +11,7 @@
 
 #include "SubSystem.h"
 
-#include "component/VoxelVolumeComponent.h"
+#include "ecs/ComponentFwd.h"
 #include "math/AABB.h"
 #include "math/Matrix4.h"
 #include "math/Quaternion.h"

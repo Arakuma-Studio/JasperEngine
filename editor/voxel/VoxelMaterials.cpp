@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "VoxelMaterials.h"
+#include "component/VoxelVolumeComponent.h"
 
 #include "Project.h"
 #include "command/CommandHandle.h"

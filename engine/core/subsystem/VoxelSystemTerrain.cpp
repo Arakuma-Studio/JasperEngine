@@ -14,6 +14,7 @@
 #include "Scene.h"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
+#include "component/VoxelVolumeComponent.h"
 #include "object/TerrainEdit.h"
 #include "terrain/TerrainHoles.h"
 #include "voxel/VoxelCoverage.h"
