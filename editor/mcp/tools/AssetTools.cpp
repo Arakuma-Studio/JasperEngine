@@ -4215,9 +4215,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "move_asset";
         tool.title = "Move / Rename / Copy Asset";
         tool.description =
-            "Rename/move a file or folder, updating references in scenes, prefabs, materials, script entries and "
-            "shader forks, Animation Players; or copy it (a copied prefab or clip gets a new GUID). The "
-            "destination must not exist.";
+            "Rename/move a file or folder, updating references (scenes, prefabs, materials, scripts, shader forks, "
+            "Animation Players); or copy it (a copied prefab or clip gets a new GUID).";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"to", assetPath("New path; omit with copy to duplicate.")},
