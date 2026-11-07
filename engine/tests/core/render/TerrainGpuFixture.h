@@ -52,6 +52,10 @@ namespace jasperengine { namespace test {
         static constexpr int LAYER_RESOLUTION = 64;
         static constexpr float TERRAIN_SIZE = 128.0f;
 
+        // the frame render() draws and readFrame() reads; a sweep of many variants sets a small one
+        int frameWidth = FRAME_WIDTH;
+        int frameHeight = FRAME_HEIGHT;
+
         Scene scene;
         Camera camera{&scene};
         Light sun{&scene};
@@ -194,7 +198,7 @@ namespace jasperengine { namespace test {
         }
 
         bool render(){
-            GpuEnvironment::setView(FRAME_WIDTH, FRAME_HEIGHT, FRAME_WIDTH, FRAME_HEIGHT, Scaling::STRETCH);
+            GpuEnvironment::setView(frameWidth, frameHeight, frameWidth, frameHeight, Scaling::STRETCH);
             Scene* current = &scene;
             // a tier or a feature swaps the variant while the old one draws (needVariantReload): the frame
             // is the new one's only once that is done
@@ -217,7 +221,7 @@ namespace jasperengine { namespace test {
         }
 
         bool readFrame(std::vector<uint8_t>& rgba){
-            return readTexture(GpuEnvironment::target().getRender().getColorTexture(), FRAME_WIDTH, FRAME_HEIGHT, rgba);
+            return readTexture(GpuEnvironment::target().getRender().getColorTexture(), frameWidth, frameHeight, rgba);
         }
 
         std::string poolId(const std::string& name){

@@ -16,6 +16,7 @@
 #include "terrain/TerrainMacroNormal.h"
 #include "terrain/TerrainMaterialCost.h"
 #include "terrain/TerrainQuality.h"
+#include "texture/MaterialPbr.h"
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -66,11 +67,16 @@ namespace {
             TerrainGpuFixture::TearDown();
         }
 
-        // nine PBR layers, all overlapping: every texel weighs each of them by its own bump
-        void terrainNine(float maxHeight, const std::function<float(float, float)>& shape){
+        // nine layers, PBR or colour only, all overlapping: every texel weighs each of them by its own bump
+        void terrainNine(float maxHeight, const std::function<float(float, float)>& shape, bool pbr = true){
             makeTerrain(maxHeight, shape);
             for (unsigned int i = 0; i < 9; i++){
-                addPbrLayer(i, "nine" + std::to_string(i), static_cast<unsigned char>(40 + i * 22), static_cast<unsigned char>(220 - i * 18), static_cast<unsigned char>(90 + i * 7));
+                const unsigned char r = static_cast<unsigned char>(40 + i * 22), g = static_cast<unsigned char>(220 - i * 18), b = static_cast<unsigned char>(90 + i * 7);
+                if (pbr){
+                    addPbrLayer(i, "nine" + std::to_string(i), r, g, b);
+                }else{
+                    addColorLayer(i, "ninecolor" + std::to_string(i), r, g, b);
+                }
             }
             for (unsigned int m = 0; m < 3; m++){
                 setBlendMap(m, [m](float u, float v){
@@ -279,6 +285,70 @@ TEST_F(TerrainMaterialsGpu, CostMatchesShader){
             EXPECT_EQ(measured, cost.worst) << terrain::terrainQualityName(tier) << ": the cliff and the blend reach the tier's worst";
         }
     }
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// R53: a new terrain limits its layers, so High with the cap is the variant most terrains draw with, at
+// the editor's High Lit Quality: it draws with no layer, and with nine keeps at most four
+TEST_F(TerrainMaterialsGpu, LimitedHighDrawsWithoutLayers){
+    JASPER_REQUIRE_GPU();
+    scene.setLitQuality(LitQuality::HIGH);
+    makeTerrain(4.0f, [](float x, float z){ return 0.5f + 0.2f * std::sin(x * 0.1f) * std::cos(z * 0.1f); });
+    component().limitLayersPerPixel = true;
+    setTier(terrain::TerrainQuality::HIGH);
+    ASSERT_TRUE(render());
+    std::vector<uint8_t> frame;
+    ASSERT_TRUE(readFrame(frame));
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// R53: four painted layers draw the same with the cap as without it: the variant that skips it (no more
+// layers than the cap keeps) and the one that runs it (a fifth layer, unpainted, brings it back)
+TEST_F(TerrainMaterialsGpu, LimitThatCutsNothingDrawsTheSame){
+    JASPER_REQUIRE_GPU();
+    makeTerrain(4.0f, cliffBack);
+    for (unsigned int i = 0; i < 4; i++){
+        addPbrLayer(i, "four" + std::to_string(i), static_cast<unsigned char>(50 + i * 40), static_cast<unsigned char>(200 - i * 30), 90);
+    }
+    setBlendMap(0, [](float u, float v){
+        return TerrainGpuColor{static_cast<unsigned char>(u * 160.0f), static_cast<unsigned char>(v * 120.0f), static_cast<unsigned char>((1.0f - u) * 80.0f), 255};
+    });
+    setBlendMap(1, [](float u, float v){
+        return TerrainGpuColor{static_cast<unsigned char>((1.0f - v) * 70.0f), 0, 0, 255};
+    });
+    component().limitLayersPerPixel = true;
+    setTier(terrain::TerrainQuality::HIGH);
+    const uint64_t limitBit = MaterialPbr::getDefineBit("TERRAIN_LAYER_LIMIT");
+    ASSERT_TRUE(render());
+    std::vector<uint8_t> skipped;
+    ASSERT_TRUE(readFrame(skipped));
+    EXPECT_EQ(scene.getComponent<MeshComponent>(terrain->getEntity()).submeshes[0].litDefineBits & limitBit, 0u) << "four layers: no cap";
+
+    addPbrLayer(4, "four4", 220, 220, 220);
+    ASSERT_TRUE(render());
+    std::vector<uint8_t> capped;
+    ASSERT_TRUE(readFrame(capped));
+    EXPECT_NE(scene.getComponent<MeshComponent>(terrain->getEntity()).submeshes[0].litDefineBits & limitBit, 0u) << "five layers: the cap";
+
+    ASSERT_EQ(skipped.size(), capped.size());
+    int largest = 0;
+    for (size_t i = 0; i < skipped.size(); i++){
+        largest = std::max(largest, std::abs(static_cast<int>(skipped[i]) - static_cast<int>(capped[i])));
+    }
+    EXPECT_LE(largest, 2) << "the cap keeps every painted layer";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(TerrainMaterialsGpu, LimitedHighDrawsNineLayers){
+    JASPER_REQUIRE_GPU();
+    scene.setLitQuality(LitQuality::HIGH);
+    terrainNine(4.0f, cliffBack);
+    component().limitLayersPerPixel = true;
+    setTier(terrain::TerrainQuality::HIGH);
+    ASSERT_TRUE(render());
+    const std::vector<int> counts = readCounts(terrain::TerrainDebugView::LAYER_COUNT);
+    EXPECT_LE(*std::max_element(counts.begin(), counts.end()), 4);
+    EXPECT_GT(*std::max_element(counts.begin(), counts.end()), 0) << "the layers drew";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -575,3 +645,104 @@ TEST_F(TerrainMaterialsGpu, TwelveLayers){
     expectFrameGolden("terrain_twelve_layers");
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+namespace {
+
+    // Every variant T3 makes, one test each, drawn on a small frame: each layer set (none, nine colour, nine
+    // PBR) at each tier, with Limit Layers Per Pixel and without, with holes and without, at each Lit Quality,
+    // and each feature, limited, at each tier and Lit Quality. A whole combination no test drew once crashed
+    // llvmpipe's JIT (LimitedHighDraws*); one test per variant names each one that fails. Every case sets only
+    // what a terrain can set (its layers and fields, the tier, Lit Quality) and the engine's own rule picks the
+    // defines (RenderSystem::getTerrainDefineBits), so each variant drawn is one a real terrain gets: with no
+    // more layers than the cap, "limited" draws without TERRAIN_LAYER_LIMIT, as such a terrain does.
+    enum class VariantLayers { NONE, COLOR, PBR };
+    enum class VariantFeature { NONE, MACRO_NOISE, MACRO_BASE_MAP, RESAMPLE, CLIFF, HEIGHT_BLEND, MACRO_NORMAL };
+
+    struct VariantCase {
+        VariantLayers layers;
+        LitQuality lit;
+        terrain::TerrainQuality tier;
+        bool limit;
+        bool holes;
+        VariantFeature feature;
+    };
+
+    std::vector<VariantCase> allVariantCases(){
+        std::vector<VariantCase> cases;
+        for (VariantLayers layers : {VariantLayers::NONE, VariantLayers::COLOR, VariantLayers::PBR}){
+            for (LitQuality lit : {LitQuality::STANDARD, LitQuality::HIGH}){
+                for (terrain::TerrainQuality tier : {terrain::TerrainQuality::HIGH, terrain::TerrainQuality::MEDIUM, terrain::TerrainQuality::LOW}){
+                    for (bool limit : {false, true}){
+                        for (bool holes : {false, true}){
+                            cases.push_back({layers, lit, tier, limit, holes, VariantFeature::NONE});
+                        }
+                    }
+                    for (int f = static_cast<int>(VariantFeature::MACRO_NOISE); f <= static_cast<int>(VariantFeature::MACRO_NORMAL); f++){
+                        cases.push_back({layers, lit, tier, true, false, static_cast<VariantFeature>(f)});
+                    }
+                }
+            }
+        }
+        return cases;
+    }
+
+    std::string variantName(const ::testing::TestParamInfo<VariantCase>& info){
+        static const char* const layerNames[] = {"NoLayers", "ColorLayers", "PbrLayers"};
+        static const char* const featureNames[] = {"", "_MacroNoise", "_MacroBaseMap", "_Resample", "_Cliff", "_HeightBlend", "_MacroNormal"};
+        const VariantCase& c = info.param;
+        std::string name = std::string(layerNames[static_cast<int>(c.layers)]) + "_" + terrain::terrainQualityName(c.tier) +
+                           (c.lit == LitQuality::HIGH ? "_LitHigh" : "_LitStandard") + (c.limit ? "_Limited" : "") +
+                           (c.holes ? "_Holes" : "") + featureNames[static_cast<int>(c.feature)];
+        return name;
+    }
+
+    class TerrainVariantGpu : public TerrainMaterialsGpu, public ::testing::WithParamInterface<VariantCase> {};
+
+}
+
+TEST_P(TerrainVariantGpu, Draws){
+    JASPER_REQUIRE_GPU();
+    const VariantCase& c = GetParam();
+    frameWidth = 64;
+    frameHeight = 36;
+    if (c.layers == VariantLayers::NONE){
+        makeTerrain(8.0f, cliffBack);
+    }else{
+        terrainNine(8.0f, cliffBack, c.layers == VariantLayers::PBR);
+    }
+    scene.setLitQuality(c.lit);
+    setTier(c.tier);
+    TerrainComponent& terrainComponent = component();
+    terrainComponent.limitLayersPerPixel = c.limit;
+    if (c.holes){
+        holesAcross();
+    }
+    terrainComponent.macroMode = c.feature == VariantFeature::MACRO_NOISE ? TerrainMacroMode::NOISE
+                                 : (c.feature == VariantFeature::MACRO_BASE_MAP ? TerrainMacroMode::BASE_MAP : TerrainMacroMode::OFF);
+    terrainComponent.resampleEnabled = c.feature == VariantFeature::RESAMPLE;
+    terrainComponent.resampleNear = 10.0f;
+    terrainComponent.resampleFar = 60.0f;
+    terrainComponent.heightBlendSharpness = c.feature == VariantFeature::HEIGHT_BLEND ? 0.5f : 0.0f;
+    terrainComponent.macroNormal = c.feature == VariantFeature::MACRO_NORMAL;
+    for (size_t i = 0; i < terrainComponent.surfaceLayers.size(); i++){
+        terrainComponent.surfaceLayers[i].cliffProjection = c.feature == VariantFeature::CLIFF && i % 2 == 0 ? TerrainCliffProjection::FLAT_ONLY : TerrainCliffProjection::AUTO;
+    }
+
+    ASSERT_TRUE(render()) << "never settled";
+    std::vector<uint8_t> frame;
+    ASSERT_TRUE(readFrame(frame));
+    // an image: mostly the terrain (not SetUp's background colour), and not black where it is lit
+    const int sky[3] = {140, 173, 209};
+    size_t ground = 0, black = 0;
+    const size_t pixels = frame.size() / 4;
+    for (size_t i = 0; i < pixels; i++){
+        const uint8_t* p = &frame[i * 4];
+        ground += std::abs(p[0] - sky[0]) + std::abs(p[1] - sky[1]) + std::abs(p[2] - sky[2]) > 24 ? 1 : 0;
+        black += p[0] < 4 && p[1] < 4 && p[2] < 4 ? 1 : 0;
+    }
+    EXPECT_GT(ground, pixels / 4) << "drew no terrain";
+    EXPECT_LT(black, pixels / 2) << "black (NaN or no light)";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+INSTANTIATE_TEST_SUITE_P(EveryVariant, TerrainVariantGpu, ::testing::ValuesIn(allVariantCases()), variantName);
