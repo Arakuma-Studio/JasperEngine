@@ -401,6 +401,12 @@ void getEntityTool(const CallPtr& call) {
         data["canvas_group_state"] = groupState;
         text += ". canvas_group_state: " + groupState.dump();
     }
+    // a Button: where the keyboard, the d-pad and a TV remote move from it (its navigation)
+    const Json selectable = McpValues::selectableToJson(registry, entity, false);
+    if (!selectable.is_null()) {
+        data["selectable"] = selectable;
+        text += ". selectable: " + selectable.dump();
+    }
     // what its draws read of the scene (phase 3) in their current variants, and the cost
     const Json sceneInputs = McpValues::entitySceneInputsToJson(registry, entity);
     if (!sceneInputs.empty()) {
@@ -499,6 +505,18 @@ void setPropertiesTool(const CallPtr& call) {
     Json data = {{"scene_id", sceneId}, {"entities", Json::array()}};
     for (Entity entity : entities) data["entities"].push_back(McpRefs::entityJson(current, entity));
     data["values"] = readBack(project, current, entities[0], changes);
+    // a model made of parts draws its parts' meshes, not the empty one of its own GameObject
+    if (std::any_of(changes.begin(), changes.end(), [](const McpValues::Change& c) { return c.component == ComponentType::MeshComponent; })) {
+        for (Entity entity : entities) {
+            const MeshComponent* mesh = current->scene->findComponent<MeshComponent>(entity);
+            const std::vector<Entity> parts = current->scene->getSystem<MeshSystem>()->getModelParts(entity);
+            if (!mesh || mesh->numSubmeshes > 0 || parts.empty()) continue;
+            std::string refs;
+            for (Entity part : parts) refs += (refs.empty() ? "" : ", ") + McpRefs::entityPath(current, part);
+            warnings.push_back("\"" + McpRefs::entityPath(current, entity) + "\" draws " + std::to_string(parts.size()) +
+                               " part(s) (" + refs + "): set the mesh on them, or use the Model API in Lua");
+        }
+    }
     std::string warningText;
     if (!warnings.empty()) {
         data["warnings"] = warnings;
@@ -632,9 +650,10 @@ void setTransformTool(const CallPtr& call) {
         }
         if (args.contains("rotation")) {
             Quaternion value = relative ? Quaternion::IDENTITY : rotation;
-            if (!McpValues::parseQuaternion(args["rotation"], value)) {
+            std::string why;
+            if (!McpValues::parseQuaternion(args["rotation"], value, &why)) {
                 delete multi;
-                call->fail("rotation must be {\"euler\":[x,y,z]} degrees, [x,y,z,w] or {\"quat\":[...]}.");
+                call->fail("rotation: " + why);
                 return;
             }
             rotation = relative ? value * rotation : value;

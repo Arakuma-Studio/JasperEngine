@@ -27,6 +27,7 @@
 #include "Widgets.h"
 #include "external/IconsFontAwesome6.h"
 #include "net/Http.h"
+#include "shortcuts/CommandCatalog.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "render/SystemRender.h"
@@ -483,6 +484,17 @@ void editor::GameWindow::applySettings(const GameViewSettings& newSettings) {
     saveSettings();
 }
 
+void editor::GameWindow::toggleMaximizeOnPlay() {
+    loadSettings();
+    settings.maximizeOnPlay = !settings.maximizeOnPlay;
+    saveSettings();
+}
+
+bool editor::GameWindow::isMaximizeOnPlay() {
+    loadSettings();
+    return settings.maximizeOnPlay;
+}
+
 int editor::GameWindow::getAspectCount() {
     return ASPECT_COUNT;
 }
@@ -567,6 +579,9 @@ void editor::GameWindow::show() {
     }
 
     if (maximize && windowOpen) {
+        if (!maximizedShown) {
+            maximizeHintUntil = ImGui::GetTime() + 3.0;
+        }
         ImGuiViewport* viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowViewport(viewport->ID);
         ImGui::SetNextWindowPos(viewport->WorkPos);
@@ -579,6 +594,23 @@ void editor::GameWindow::show() {
             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
         if (ImGui::Begin("Game##Maximized", nullptr, flags)) {
             drawContent(sceneId);
+            // how to get the editor back, fading out over the last second of 3
+            const double left = maximizeHintUntil - ImGui::GetTime();
+            if (left > 0.0) {
+                // the key is the game's while it has the keyboard: the menu item always answers
+                const std::string keys = CommandCatalog::editor().menuShortcutText("playmode.maximizeOnPlay");
+                const std::string hint = "Maximize On Play: Edit > Maximize On Play shows the editor" +
+                                         (keys.empty() ? std::string() : " (" + keys + " outside the game)");
+                const float alpha = static_cast<float>(std::min(1.0, left));
+                const ImVec2 size = ImGui::CalcTextSize(hint.c_str());
+                const ImVec2 pad(Theme::dpi(8.0f), Theme::dpi(5.0f));
+                const ImVec2 max(ImGui::GetWindowPos().x + ImGui::GetWindowSize().x - Theme::dpi(12.0f),
+                                 ImGui::GetWindowPos().y + Theme::dpi(12.0f) + size.y + pad.y * 2.0f);
+                const ImVec2 min(max.x - size.x - pad.x * 2.0f, max.y - size.y - pad.y * 2.0f);
+                ImDrawList* drawList = ImGui::GetWindowDrawList();
+                drawList->AddRectFilled(min, max, IM_COL32(20, 20, 20, (int)(200 * alpha)), Theme::dpi(4.0f));
+                drawList->AddText(ImVec2(min.x + pad.x, min.y + pad.y), IM_COL32(235, 235, 235, (int)(255 * alpha)), hint.c_str());
+            }
         }
         ImGui::End();
         maximizedShown = true;
@@ -1309,7 +1341,7 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
 
-    char lines[14][112];
+    char lines[16][112];
     int lineCount = 5;
     // the view's vertices and detail levels (spec S54 R12): the frame while playing, else the Game view's own
     const bool playing = project && project->isPlaySessionActive();
@@ -1374,6 +1406,17 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     snprintf(lines[lineCount], sizeof(lines[lineCount]), "Safe area: %g,%g %gx%g", std::round(safe.getX()), std::round(safe.getY()),
              std::round(safe.getWidth()), std::round(safe.getHeight()));
     lineCount++;
+    // Dynamic Batching (Unity's Stats: Batches, Saved by batching) of the scene's last frame in the
+    // view the game draws
+    if (render){
+        // (the game's own frame while it plays, else the Game view's)
+        const RenderSystem::BatchFrame* batching = render->getBatchFrame(playing ? SystemRender::FRAME_STATS_FRAME : GAME_VIEW_ID);
+        if (batching && batching->stats.enabled){
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "Batches: %u   Saved by batching: %u", batching->stats.batches,
+                     batching->stats.savedByBatching());
+            lineCount++;
+        }
+    }
     // the scene's HTML UI documents (their offscreen passes are not in the counters above)
     UIDocumentSystem* documents = (sceneProject && sceneProject->scene) ? sceneProject->scene->getSystem<UIDocumentSystem>().get() : nullptr;
     if (documents && documents->hasDocuments()) {

@@ -72,15 +72,15 @@ any field.
 
 | | Rigidbody (3D) | Rigidbody2D |
 |---|---|---|
-| force at center | `applyForce(force)` | `applyForceToCenter(force, wake)` |
-| force at point | `applyForce(force, point)` | `applyForce(force, point, wake)` (no 1-argument form) |
-| torque | `applyTorque(torque)` | `applyTorque(torque, wake)` |
-| impulse | `applyImpulse(impulse)` | `applyLinearImpulseToCenter(impulse, wake)` |
+| force at center | `applyForce(force)` | `applyForceToCenter(force [, wake])` |
+| force at point | `applyForce(force, point)` | `applyForce(force, point [, wake])` (no 1-argument form) |
+| torque | `applyTorque(torque)` | `applyTorque(torque [, wake])` |
+| impulse | `applyImpulse(impulse)` | `applyLinearImpulseToCenter(impulse [, wake])` |
 | velocity | `linearVelocity` (Lua property) / `setLinearVelocity` (C++) | `linearVelocity` (Lua, points/s) |
 | teleport | `body.position`, `body.rotation` (Lua) / `setPosition`, `setRotation` (C++) | `body.position`, `body.angle` (Lua) / `setPosition`, `setAngle` (C++) |
 
-There is NO `applyForceToCenter` on the 3D `Rigidbody`. In Lua pass every argument (no C++
-default arguments): a missing `wake` reads as false.
+There is NO `applyForceToCenter` on the 3D `Rigidbody`. `wake` defaults to true (a sleeping body
+wakes, as Unity's `AddForce`); pass `false` to leave a sleeping body asleep.
 
 - Never move a body by writing its GameObject's transform from `onFixedUpdate`
   (`object.position = ...`, `setPosition`): the body is synced from the transform before the
@@ -355,7 +355,9 @@ A dynamic Rigidbody floats in a water surface (a mesh drawn with `library:water`
 GameObject menu's 3D Object > Water, `create_entity type=water`) when its `buoyancy` is above 0:
 before each fixed step, with its centre of mass over the mesh's world bounds (XZ) and not
 deeper than the water's floating depth, it gets Jolt's buoyancy impulse at the surface over
-the centre of mass, waves included (the same waves the shader draws, on its clock).
+the centre of mass, waves included (the same waves the shader draws, on its clock: the scene
+clock, which holds while the game is paused and follows the time scale, so bodies and waves stay
+together in a pause and in slow motion).
 
 | Rigidbody field | Default | |
 |---|---|---|
@@ -384,8 +386,8 @@ For water with a box (or an ocean), a density, a current and drags, add a **Wate
   its colliders' bounds, or `customPoints`): each carries its share of the colliders' volume
   (`volumeScale`), pushed up by `density x |g| x` its submerged part and slowed by the volume's
   `linearDrag` / `angularDrag` (`dragScale`) against the water's own motion (`flow` and the
-  waves rising). A box floats as deep as its density is of the water's. It rides the waves the
-  shader draws (one shader time a frame). A body with a Buoyancy ignores the Rigidbody `buoyancy`.
+  waves rising; with `GERSTNER` also rolling back and forth under the crests). A box floats as deep as its density is of the water's. It rides the waves the
+  shader draws (one scene clock value a frame). A body with a Buoyancy ignores the Rigidbody `buoyancy`.
 - `Water.sample(scene, point)` / `Water.sampleHeight(scene, x, z)` and the `sample_water` tool
   read the volumes first, then the `library:water` meshes; they work in edit mode.
 - The inspector warns when the mesh is too coarse for the waves (the drawn surface is linear

@@ -15,6 +15,7 @@
 #include "util/PrimitiveParameters.h"
 #include "lattice/LatticePresets.h"
 #include "window/dialog/ScriptCreateDialog.h"
+#include "util/ScriptAttach.h"
 #include "window/dialog/ShaderForkDialog.h"
 #include "window/TextureImporterView.h"
 #include "window/ModelImporterView.h"
@@ -299,7 +300,8 @@ namespace jasperengine::editor{
             SliderFloat,
             ColorRGB,
             ColorRGBA,
-            Combo
+            Combo,
+            LayerMask   // a uint32_t layer mask: Unity's mask field
         };
 
         struct DirtyMaterialEntry {
@@ -459,6 +461,12 @@ namespace jasperengine::editor{
         void writeDirtyMaterial(const DirtyMaterialEntry& entry);
         template<typename T>
         void drawScenePropertyRow(SceneProject* sceneProject, const std::string& propertyName, const char* label, ScenePropertyInputType inputType, float inputWidth = -1.0f, float minValue = 0.0f, float maxValue = 1.0f, const std::string& help = "");
+        // the Planar Reflections section of the scene settings (water-reflections)
+        void drawScenePlanarReflections(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
+    public:
+        // Unity's mask field label: Nothing, Everything, the one layer's name, or Mixed...
+        static std::string sceneLayerMaskLabel(uint32_t mask);
+    private:
 
         // Sound preview helpers
         bool ensureSoundPreviewInitialized();
@@ -478,6 +486,9 @@ namespace jasperengine::editor{
 
         // Dialogs
         ScriptCreateDialog scriptCreateDialog;
+        // the Add Script picker's list (read when it opens) and search text
+        std::vector<ScriptCandidate> addScriptCandidates;
+        char addScriptSearch[128] = {};
         ShaderForkDialog shaderForkDialog;
         ComponentAddDialog componentAddDialog;
         TextureSlicerToolDialog textureSlicerToolDialog;
@@ -589,7 +600,14 @@ namespace jasperengine::editor{
         bool drawComponentHeader(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType cpType, bool isPrefab, bool readOnly);
         // centered button after the last component, opening the Add Component popup
         void drawAddComponentButton(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, bool forceOpen);
-        void openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // New Script (or, existing: Existing Script) dialog; what it makes goes on the entities
+        void openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities, bool existing);
+        // a script file onto the entities (ScriptAttach), problems to the Console
+        void attachScriptFile(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::filesystem::path& file);
+        // the Scripts header's Add Script picker: the project's scripts, New Script..., Browse...
+        void drawAddScriptPopup(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // every one of the entities runs the candidate's file already
+        bool scriptOnAll(SceneProject* sceneProject, const std::vector<Entity>& entities, const ScriptCandidate& candidate) const;
         // Add Tag... / Add Layer... asked for Project Settings > Tags and Layers
         bool tagsAndLayersRequested = false;
         // a parameter row's link popup asked for Project Settings > Graphics (Shader Globals)
@@ -689,9 +707,11 @@ namespace jasperengine::editor{
         // @category (with @description tooltips) and "Custom file..." (the Edit Shader Files
         // popup named popupName, which the caller draws)
         // builtInLabel names the empty entry instead ("None" for an extra pass)
+        // onForkLibrary, when given: a "Fork" item while a library shader is picked, called with it
         void drawLibraryShaderCombo(const std::string& currentShader, ShaderType type,
                                     const std::function<void(const std::string&)>& setShader, const std::string& popupName,
-                                    const char* builtInLabel = nullptr);
+                                    const char* builtInLabel = nullptr,
+                                    const std::function<void(const std::string&)>& onForkLibrary = nullptr);
         // The manifest rows of `shader` for one GameObject, into the current table: feature
         // checkboxes, keyword combos, parameters (colour pickers editing sRGB, sliders for
         // ranges, checkboxes for toggles, drag fields) and texture slots, hiding the ones
@@ -845,6 +865,7 @@ namespace jasperengine::editor{
 
         void drawTransform(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawMeshComponentFields(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the morph target weights of a mesh with blend shapes (names from its model)
         void drawBlendShapes(SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawModelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -855,6 +876,9 @@ namespace jasperengine::editor{
         void drawInputFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawOnScreenStickComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawOnScreenButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // Unity's Button: Interactable, then the reflected rows by transition and navigation mode,
+        // Visualize and the state while playing (InspectorButton.cpp)
+        void drawButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTouchAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTextEffectComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

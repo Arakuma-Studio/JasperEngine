@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "HierarchyWindow.h"
+#include "util/ScriptAttach.h"
 #include "audio/SoundDrop.h"
 #include "util/UIProbe.h"
 #include "component/ActionComponent.h"
@@ -57,6 +58,7 @@
 #include "util/EditorScripts.h"
 #include "shortcuts/CommandCatalog.h"
 #include "search/HierarchyFilter.h"
+#include "util/EntityLabels.h"
 #include "organisation/Bookmarks.h"
 #include "window/BookmarksWindow.h"
 #include "window/dialog/DataSafetyDialogs.h"
@@ -1500,11 +1502,16 @@ void editor::HierarchyWindow::updateSearchAndSelectionOrder(TreeNode& root, bool
                 names.push_back(Catalog::getComponentDisplayName(type));
             }
             return names;
-        });
+        }, [](const TreeNode& node) { return nodeText(node); });
     }
 
     visibleEntitySelectionOrder.clear();
     collectVisibleEntitySelectionOrder(root, hasSearch);
+}
+
+std::string editor::HierarchyWindow::nodeText(const TreeNode& node) {
+    if (node.isScene || node.isChildScene) return node.name;
+    return entityDisplayName(node.name, node.id);
 }
 
 EntityPayload editor::HierarchyWindow::buildEntityPayload(const TreeNode& node, bool& allowed) {
@@ -1692,7 +1699,14 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     }
 
     const bool renamingNode = isRenaming(node);
-    std::string nodeLabel = BidiText::toVisual(node.name);
+    // an object a script made without a name reads "GameObject <id>", dimmed (unless a colour
+    // rule above already took the row)
+    const bool unnamed = !node.isScene && !node.isChildScene && isUnnamedEntity(node.name);
+    if (unnamed && !pushedHighlightColor) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        pushedHighlightColor = true;
+    }
+    std::string nodeLabel = BidiText::toVisual(nodeText(node));
     SceneProject* headerScene = node.isScene ? project->getScene(node.id) : nullptr;
     if (node.isScene) {
         // Unity's scene header row: framed, always spans the panel, "*" while unsaved
@@ -1828,7 +1842,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                 }
             }
 
-            ImGui::Text("Moving %s", node.name.c_str());
+            ImGui::Text("Moving %s", nodeText(node).c_str());
             ImGui::EndDragDropSource();
         }
     }
@@ -1850,7 +1864,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                 ImGui::SetDragDropPayload("entity", &payload, sizeof(payload), ImGuiCond_Once);
             }
 
-            ImGui::Text("Reference %s", node.name.c_str());
+            ImGui::Text("Reference %s", nodeText(node).c_str());
             ImGui::EndDragDropSource();
         }
     }
@@ -2087,6 +2101,19 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             }
             if (!clips.empty() && ImGui::AcceptDragDropPayload("resource_files")) {
                 Backend::getApp().dispatchClipDrop(getNodeSceneId(node), node.id, clips);
+                ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
+            }
+        }
+
+        // a script onto a GameObject (Unity): attached to it, one step
+        if (!allowResourceDragDrop && !node.isScene && !node.isPlayCreated && !project->isAnyScenePlaying()) {
+            const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+            std::vector<std::string> received;
+            if (peek && peek->IsDataType("resource_files")) received = Util::getStringsFromPayload(peek);
+            if (!received.empty() && ScriptAttach::isScriptFile(received[0]) && ImGui::AcceptDragDropPayload("resource_files")) {
+                if (SceneProject* target = project->getScene(getNodeSceneId(node))) {
+                    ScriptAttach::attachFile(project, target, {node.id}, received[0]);
+                }
                 ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
             }
         }

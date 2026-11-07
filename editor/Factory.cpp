@@ -1313,6 +1313,10 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.submeshes[" << idx << "].faceCulling = " << formatBool(mesh.submeshes[s].faceCulling) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].textureShadow = " << formatBool(mesh.submeshes[s].textureShadow) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].textureRect = " << formatRect(mesh.submeshes[s].textureRect) << ";\n";
+        // a sprite or tilemap sets it once its texture loads: a mesh whose buffers load first would
+        // pick a variant without the texture rect (the cooked scenes keep it too, Stream)
+        if (mesh.submeshes[s].hasTextureRect)
+            code << ind << "mesh.submeshes[" << idx << "].hasTextureRect = true;\n";
 
         // The model load puts these fields back over the ones the file gives the new submesh.
         if (mesh.submeshes[s].overrideFields != 0){
@@ -3085,6 +3089,24 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     out << ind2 << "scene->setDepthPrepassEnabled(" << formatBool(scene->isDepthPrepassEnabled()) << ");\n";
     if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
         out << ind2 << "scene->setSceneColorScale(" << formatSceneColorScale(scene->getSceneColorScale()) << ");\n";
+    // planar reflections, away from their defaults
+    {
+        const SceneSettings defaults;
+        if (scene->getPlanarReflectionResolution() != defaults.planarReflectionResolution){
+            static const char* const names[] = {"OFF", "QUARTER", "HALF", "FULL"};
+            out << ind2 << "scene->setPlanarReflectionResolution(PlanarReflectionResolution::" << names[(int)scene->getPlanarReflectionResolution()] << ");\n";
+        }
+        if (scene->getPlanarReflectionLayers() != defaults.planarReflectionLayers)
+            out << ind2 << "scene->setPlanarReflectionLayers(" << scene->getPlanarReflectionLayers() << "u);\n";
+        if (scene->getPlanarReflectionShadows() != defaults.planarReflectionShadows)
+            out << ind2 << "scene->setPlanarReflectionShadows(" << formatBool(scene->getPlanarReflectionShadows()) << ");\n";
+        if (scene->getPlanarReflectionFarClip() != defaults.planarReflectionFarClip)
+            out << ind2 << "scene->setPlanarReflectionFarClip(" << formatFloat(scene->getPlanarReflectionFarClip()) << ");\n";
+        if (scene->getPlanarReflectionClipOffset() != defaults.planarReflectionClipOffset)
+            out << ind2 << "scene->setPlanarReflectionClipOffset(" << formatFloat(scene->getPlanarReflectionClipOffset()) << ");\n";
+        if (scene->getMaxPlanarReflections() != defaults.maxPlanarReflections)
+            out << ind2 << "scene->setMaxPlanarReflections(" << scene->getMaxPlanarReflections() << ");\n";
+    }
     out << ind2 << "scene->setGlobalIllumination(" << formatFloat(scene->getGlobalIlluminationIntensity()) << ");\n";
     out << ind2 << "scene->setGlobalIllumination(" << formatVector3(scene->getGlobalIlluminationColor()) << ");\n";
     if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)

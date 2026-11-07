@@ -15,6 +15,9 @@ Projects made before the rename are migrated once with
 | Hierarchy window | Structure window |
 | Inspector window | Properties window |
 | Project window | Resources window |
+| Edit > Duplicate (Ctrl+D) on assets: copies beside the originals named `hero 1.png`, the copies selected | none (new); Copy then Paste in the same folder made such a copy |
+| The Project window's Create menu (toolbar "+", right-click > Create on empty space, a file, a folder, a folder of the tree), the same as Assets > Create, into the right-clicked folder | a Create menu without scripts, only in the folder shown ([docs/editor/project-window.md](editor/project-window.md)) |
+| Maximize On Play (the Game view toolbar; F11, Edit > Maximize On Play) | the toolbar toggle only |
 | Console window | Output window |
 | Game view (Window > General > Game) | none: play ran inside the scene tab |
 | Main toolbar: Hand, Move, Rotate, Scale, Rect tools; Play, Pause, Step | Per-scene toolbar: Pan, Translate, Rotate, Scale, 2D gizmo; Play, Pause, Stop |
@@ -96,6 +99,11 @@ Projects made before the rename are migrated once with
 | `Update` / `FixedUpdate` / `LateUpdate` -> `onUpdate` / `onFixedUpdate` / `onPostUpdate` registered with `RegisterEngineEvent(self, "onUpdate")` (C++ `REGISTER_ENGINE_EVENT`) | unchanged |
 | `MonoBehaviour.enabled` -> `self.enabled` (Lua, rw: fires `onEnable`/`onDisable`), `isEnabled()` / `setEnabled(bool)` (C++); `isActiveAndEnabled` -> `self.isActiveAndEnabled` / `isActiveAndEnabled()`; `gameObject` -> `self.gameObject` | none (new) |
 | `GetComponent<Enemy>()`, `GetComponents`, `GetComponentInChildren`, `GetComponentsInChildren`, `GetComponentInParent` (for scripts) -> `go:getScript("Enemy")`, `getScripts`, `getScriptInChildren`, `getScriptsInChildren`, `getScriptInParent` (also on `self`); C++ `getScript<T>()` | none (new): a script property typed with the script's class |
+| `transform.parent`, `SetParent(p, worldPositionStays)`, `childCount`, `GetChild(i)`, `Find("a/b")` -> `go.parent`, `go:setParent(p [, worldPositionStays])`, `go.childCount`, `go:getChild(i)` (0-based), `go:findChild("a/b")`, plus `go:getChildren()`; C++ `getParent()`, `setParent`, `getChildCount()`, `getChild`, `getChildren`, `findChild` | `addChild`, `removeParent` only (no way to read the parent or the children) |
+| `Vector3.Lerp` (t clamped), `Vector3.LerpUnclamped`, `Vector3.MoveTowards` (also Vector2, Vector4) -> `a:lerp(b, t)` / `Vector3.lerp(a, b, t)`, `lerpUnclamped`, `moveTowards`; C++ the same | `Vector3::lerp` unclamped, C++ only |
+| `Bounds` corners (`GetCorners` of a hand-written helper) -> `AABB:getCorners()` / `OBB:getCorners()` (8 `Vector3`) | one corner |
+| `Rigidbody2D.AddForce` (always wakes the body) -> `applyForce(f, p [, wake = true])` and the other force/impulse methods | `wake` read as false when left out |
+| Add Component > Scripts > a script, dragging a script onto a GameObject (Inspector or Hierarchy) -> the same: Add Component and the Script component's Add Script list the project's scripts; drops attach | Add Script added an empty C++ entry |
 | `GameObject.Find`, `GameObject.FindWithTag`, `FindGameObjectsWithTag`, `Object.FindObjectOfType<T>()`, `FindObjectsOfType<T>(includeInactive)` -> `GameObject.find`, `findWithTag`, `findGameObjectsWithTag`, `findObjectOfType("T")`, `findObjectsOfType("T", includeInactive)` (every running scene) | `scene:findEntity`, `scene:findByTag` (one scene) |
 | `Object.DontDestroyOnLoad(gameObject)` -> `DontDestroyOnLoad(self)` (global) or `GameObject.dontDestroyOnLoad(obj)`; C++ `ScriptBase::dontDestroyOnLoad()`; root GameObjects only, the whole hierarchy moves with its running state ([lua-api.md](mcp/guide/lua-api.md) 2.8.1) | none (new) |
 | The "DontDestroyOnLoad" scene (Hierarchy in Play) -> the persistent scene `SceneManager.persistentScene`, a scene layer above the loaded scenes (Hierarchy row "DontDestroyOnLoad" in Play; MCP running scene with `persistent: true`) | none (new) |
@@ -237,6 +245,8 @@ and timers); C++ timers: [cpp-scripting.md](mcp/guide/cpp-scripting.md).
 | `Time.deltaTime`, `unscaledDeltaTime`, `fixedDeltaTime`, `fixedUnscaledDeltaTime` | `Time.deltaTime`, `Time.unscaledDeltaTime`, `Time.fixedDeltaTime`, `Time.fixedUnscaledDeltaTime` (also `Engine.deltatime`, `Engine.unscaledDeltatime`, `Engine.updateTime`) |
 | `Time.time`, `fixedTime`, `unscaledTime`, `realtimeSinceStartup`, `timeSinceLevelLoad`, `frameCount` | the same names on `Time` (`Engine.gameTime`, `Engine.frameCount`) |
 | `Time.timeScale`, `maximumDeltaTime`, `captureDeltaTime`, `smoothDeltaTime`, `inFixedTimeStep` | the same names on `Time` (`Engine.timeScale`, `Engine.maxDeltatime`, `Engine.fixedDeltatime`: a fixed frame delta, not the fixed step) |
+| A shader's `_Time` (game time: held while paused, scaled by `Time.timeScale`); the Scene view's Always Refresh | the engine-written `sceneTime` member of a shader's custom block (`frame.time` stays the wall clock); library:water runs on it, `Water.getTime(scene)`; the Scene view's Rendering > Animate water |
+| HDRP Planar Reflection Probe (Resolution, Culling Mask, Clipping Planes) on a water surface | library:water's `PLANAR_REFLECTION` feature with the scene's Planar Reflections settings (Resolution, Layers, Shadows, Far Clip Plane, Clip Plane Offset, Max Planes) |
 
 ## Camera shake and camera follow
 
@@ -280,6 +290,9 @@ Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
 | `Debug.isDebugBuild`, the Development Build checkbox | `Engine.isDevelopmentBuild`: the editor's Play and exports built with the Debug build type |
 | IngameDebugConsole (`DebugLogManager`, `DebugLogConsole.AddCommand`, `ExecuteCommand`, the popup) | `DebugOverlay` (`showConsole`, `toggleConsole`, `addCommand`, `executeCommand`; the popup and the backquote key), Project Settings > Debug |
 | Graphy (FPS, RAM, audio monitors) | the debug overlay's stats panel (`DebugOverlay.statsMode`, F3) and `DebugOverlay.getStats()` |
+| Dynamic Batching (Player Settings), SpriteRenderer batching | Dynamic Batching (Project Settings > Graphics, on by default; `Engine.dynamicBatching`): Sprites, small meshes and UI elements, [rendering/batching.md](rendering/batching.md) |
+| Game view Stats: Batches, Saved by batching | the same lines in the Game view's Stats; MCP `get_render_stats` `batching` |
+| Frame Debugger: "Why this draw call can't be batched with the previous one" | the Frame Debugger's Dynamic Batch rows (hover: the reason); MCP `get_render_stats batch_breaks` |
 
 See [mcp/guide/debugging.md](mcp/guide/debugging.md).
 
@@ -298,6 +311,27 @@ Details: jasper://docs/native-bridge.
 | External Dependency Manager `*Dependencies.xml` (`androidPackage`, `iosPod`) | `android.gradle_dependencies` + `android.gradle_repositories`, `ios.cocoapods` (Project Settings > Native Plugins) |
 | `mainTemplate.gradle`, `gradleTemplate.properties`, custom `AndroidManifest.xml` | `android.gradle_*` settings, `android.manifest_xml` / `manifest_application_xml`, `plugins/native/android/AndroidManifest.xml` (merged) |
 | `PostProcessBuild` Info.plist / capabilities edits | `ios.plist_entries`, `ios.plist_xml`, `ios.frameworks`, `ios.entitlements_xml`, `ios.swift_packages` |
+| `PrivacyInfo.xcprivacy` in `Assets/Plugins/iOS` (Unity copies plugin privacy manifests into the Xcode project) | `PrivacyInfo.xcprivacy` in `plugins/native/ios` (or `apple`, `macos`), merged into the app's; the game's own entries: Project Settings > Player > iOS > Privacy Manifest (`apple.privacy_*`) |
+| Google Mobile Ads Unity plugin, Unity IAP | a native plugin (`plugins/native`): docs/mcp/guide/native-bridge.md section 10 has an interstitial ads example |
+
+## UI (Selectable, Button)
+
+Details: [mcp/guide/ui.md](mcp/guide/ui.md) (Buttons, Keyboard, gamepad and TV navigation).
+
+| Unity term | JasperEngine name |
+|---|---|
+| `Button.onClick` | `button.onClick` (Lua), `REGISTER_BUTTON_EVENT(onClick, method)` (C++): released over it, or a Submit while selected |
+| `Selectable.interactable` | `Button.interactable` (the stored field is `disabled`; Inspector "Interactable") |
+| `Selectable.transition` (`None`, `ColorTint`, `SpriteSwap`; `Animation` not built) | `Button.transition` (`NONE`, `COLOR_TINT`, `SPRITE_SWAP`, and `COLOR_TINT_AND_SPRITE_SWAP`, the default) |
+| `ColorBlock.normalColor`, `highlightedColor`, `pressedColor`, `selectedColor`, `disabledColor`, `fadeDuration` | `colorNormal`, `colorHovered` (Inspector "Highlighted Color"), `colorPressed`, `colorSelected`, `colorDisabled`, `fadeDuration` (the colours replace the image colour; Unity multiplies) |
+| `SpriteState.highlightedSprite`, `pressedSprite`, `selectedSprite`, `disabledSprite` | `textureHovered`, `texturePressed`, `textureSelected`, `textureDisabled` (`textureNormal` is the image's sprite) |
+| `Navigation.mode` (`None`, `Horizontal`, `Vertical`, `Automatic`, `Explicit`), `wrapAround`, `selectOnUp/Down/Left/Right`, Visualize | `navigationMode` (`NavigationMode.*`), `wrapAround`, `selectOnUp/Down/Left/Right`, the Inspector's Visualize |
+| `EventSystem.firstSelectedGameObject` | the Button's **Select On Enable** (`selectOnEnable`; also a menu shown later) |
+| `EventSystem.current.currentSelectedGameObject`, `SetSelectedGameObject(go)`, `Selectable.Select()` | `UI.getSelected(scene)`, `UI.setSelected(scene, go)`, `button:select()` |
+| `Selectable.FindSelectableOnUp()` ... | `button:findSelectableOnUp()` ... |
+| `ISelectHandler.OnSelect`, `IDeselectHandler`, `IMoveHandler` (`AxisEventData.moveDir`), `ISubmitHandler`, `ICancelHandler` | script methods `onSelect(e)`, `onDeselect(e)`, `onMove(e)` (`e.moveDir`), `onSubmit(e)`, `onCancel(e)` |
+| StandaloneInputModule: Submit (Enter, keypad Enter, Space, joystick button 0), Cancel (Escape, joystick button 1), Horizontal/Vertical | the same keys and gamepad A, B, d-pad and left stick, plus Tab / Shift+Tab and Android TV's remote |
+| A pointer click selects a Selectable | only while its scene has a selection (a clicked HUD button never takes Space or the arrows from the game) |
 
 ## UI (Canvas Group)
 
@@ -374,6 +408,18 @@ through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md)
 | `AudioSource.priority`, Project Settings Real / Virtual Voices | `priority` (0..256, 128); Project Settings > Audio Max Real Voices (32) and Max Voices (256) |
 | `AudioSource.ignoreListenerPause`, `AudioListener.pause`, `AudioListener.volume` | the same names (`AudioListener.volume` = `AudioSystem.globalVolume`) |
 | volume fades (tweens, `DOFade`) | `sound:fadeIn(seconds)`, `fadeOut(seconds [, {pause = true}])`, `fadeTo(volume, seconds)` |
+
+## Terrain
+
+Details: [mcp/guide/terrain.md](mcp/guide/terrain.md) (`jasper://docs/terrain`).
+
+| Unity term | JasperEngine name |
+|---|---|
+| Terrain | the Terrain component (`TerrainComponent`), Window > Terrain |
+| Terrain Layer (Paint Texture) | an entry of `surfaceLayers` (up to 9); MCP `set_terrain_maps layers` |
+| Splat map / control texture (`TerrainData.alphamapTextures`) | `blendMaps` (up to 3; slot i weights layers 3i..3i+2); MCP `set_terrain_maps blendmap {index}` |
+| Details (Paint Details), Detail Mesh (`TerrainData.detailPrototypes`) | detail layers: `foliageLayers`, the Terrain window's "Detail layer"; MCP `edit_terrain_details` |
+| detail density (`SetDetailLayer`) | a detail layer's density map, painted with Paint Density (`sculpt_terrain paint_density`) |
 
 ## Layers and physics
 

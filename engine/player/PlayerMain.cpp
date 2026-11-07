@@ -318,6 +318,7 @@ JASPERENGINE_INIT void init() {
     UIDocumentSystem::setPreferredSampleCount(game.htmlUiMsaa);
     UIDocumentSystem::setHtmlUiRenderOptions(game.glyphAtlasMiB, game.sdfPrimitives, game.transformAwareText);
     if (game.mobilePbrTier != PbrTier::REDUCED) MaterialPbr::setMobileTier(game.mobilePbrTier);
+    Engine::setDynamicBatchingDefault(game.dynamicBatching);
     if (game.lightMode != LightMode::AUTOMATIC) LightingTiers::setLightMode(game.lightMode);
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++)
         if (game.shadowTiers[platform] != ShadowTiers::defaultTier(platform)) ShadowTiers::setPlatformTier(platform, game.shadowTiers[platform]);
@@ -332,6 +333,12 @@ JASPERENGINE_INIT void init() {
     }
     // the voices and the project's mixer, before the first scene (as a Compile build's init)
     player::applyAudio(game);
+    // native plugins with code for other platforms only: "unavailable" here, and a Lua mock
+    // standing in for one says so once (as a Compile build's init)
+    if (!game.nativePlatformOnly.empty()) {
+        NativeBridge::setPlatformOnlyPlugins(game.nativePlatformOnly);
+        NativeBridge::setMockWarnings(true);
+    }
 
     for (const GameScene& scene : game.scenes) {
         const GameScene stack = scene;

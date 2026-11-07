@@ -123,6 +123,9 @@ namespace jasperengine::editor::mcp {
         void setClient(std::string name, std::string requestId) { clientName = std::move(name); callRequestId = std::move(requestId); }
         const std::string& client() const { return clientName; }
         const std::string& requestId() const { return callRequestId; }
+        // How long the call waited for a scene save the editor started (McpServer::execute)
+        void addSaveWait(double ms) { saveWaitMs += ms; }
+        double saveWait() const { return saveWaitMs; }
 
     private:
         McpServer& owner;
@@ -146,6 +149,7 @@ namespace jasperengine::editor::mcp {
         UndoOrigin undoOrigin;
         std::string clientName;
         std::string callRequestId;
+        double saveWaitMs = 0.0;
     };
 
     using CallPtr = std::shared_ptr<McpCall>;

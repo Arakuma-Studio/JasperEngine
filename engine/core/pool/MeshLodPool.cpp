@@ -4,6 +4,7 @@
 #include "MeshLodPool.h"
 
 #include "meshoptimizer.h"
+#include "util/ContentHash.h"
 #include "tiny_gltf.h"
 
 #include <algorithm>
@@ -341,19 +342,10 @@ std::mutex& MeshLodPool::getMutex(){
     return *mutex;
 }
 
-// FNV-1a over 8-byte words, cheap enough to run on every mesh load
+// XXH3 chained through the seed (the previous part's hash), cheap enough to run on every mesh
+// load; never 0, the key of "no levels"
 uint64_t MeshLodPool::hash(uint64_t seed, const void* data, size_t size){
-    uint64_t h = seed ? seed : 14695981039346656037ull;
-    const unsigned char* bytes = static_cast<const unsigned char*>(data);
-    size_t i = 0;
-    for (; i + 8 <= size; i += 8){
-        uint64_t word;
-        std::memcpy(&word, bytes + i, 8);
-        h = (h ^ word) * 1099511628211ull;
-    }
-    for (; i < size; i++){
-        h = (h ^ bytes[i]) * 1099511628211ull;
-    }
+    const uint64_t h = hashContent64(data, size, seed);
     return h ? h : 1;
 }
 

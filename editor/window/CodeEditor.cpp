@@ -719,8 +719,7 @@ void editor::CodeEditor::updateScriptProperties(const EditorInstance& instance, 
 }
 
 void editor::CodeEditor::updateScriptPropertiesForPath(const fs::path& relFilepath, const std::string& inMemoryContent){
-    const std::string relPathStr = relFilepath.string();
-    const fs::path fullPath = resolveFilepath(relFilepath);
+    const fs::path fullPath = resolveFilepath(relFilepath).lexically_normal();
 
     // Several entities can share the same script, so every one of them is refreshed (the
     // prefab stages' too)
@@ -735,8 +734,8 @@ void editor::CodeEditor::updateScriptPropertiesForPath(const fs::path& relFilepa
                 continue;
 
             for (const auto& scriptEntry : scriptComponent->scripts) {
-                bool matchesFile = (scriptEntry.type == ScriptType::CPP) ? (scriptEntry.headerPath == relPathStr)
-                                                                        : (scriptEntry.path == relPathStr);
+                // by resolved file: a Lua entry's path is relative to the Lua directory
+                const bool matchesFile = project->scriptPropertyFile(scriptEntry) == fullPath;
                 if (!matchesFile)
                     continue;
 
@@ -1659,6 +1658,35 @@ bool editor::CodeEditor::isFileModified(const std::string& filepath) const {
     // from the undo position, not the flag show() refreshes: an edit between frames (an MCP
     // revert_change) counts at once
     return it != editors.end() && it->second.editor && it->second.editor->GetUndoIndex() != it->second.savedUndoIndex;
+}
+
+void editor::CodeEditor::retargetProject(const fs::path& oldProjectPath) {
+    std::vector<std::pair<std::string, std::string>> rekeys;
+    for (auto& [key, instance] : editors) {
+        // a key inside the project is relative: it names the copy now; one written absolute under
+        // the old folder is made relative to the project
+        fs::path keyPath(key);
+        if (keyPath.is_absolute()) {
+            const fs::path relative = keyPath.lexically_normal().lexically_relative(oldProjectPath.lexically_normal());
+            if (!relative.empty() && *relative.begin() != "..") rekeys.emplace_back(key, relative.generic_string());
+        }
+    }
+    for (const auto& [oldKey, newKey] : rekeys) {
+        auto it = editors.find(oldKey);
+        const bool wasFocused = lastFocused == &it->second;
+        EditorInstance instance = std::move(it->second);
+        instance.filepath = newKey;
+        editors.erase(it);
+        EditorInstance& moved = editors[newKey];
+        moved = std::move(instance);
+        if (wasFocused) lastFocused = &moved;
+    }
+    // the copies were written now: their times, so they do not read as changed outside the editor
+    for (auto& [key, instance] : editors) {
+        std::error_code ec;
+        const fs::file_time_type written = fs::last_write_time(resolveFilepath(instance.filepath), ec);
+        if (!ec) instance.lastWriteTime = written;
+    }
 }
 
 bool editor::CodeEditor::handleFileRename(const fs::path& oldPath, const fs::path& newPath) {

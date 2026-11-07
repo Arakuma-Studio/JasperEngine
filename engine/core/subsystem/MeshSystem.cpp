@@ -13,6 +13,7 @@
 #include "component/ScaleTracksComponent.h"
 #include "component/TranslateTracksComponent.h"
 #include "component/MeshPolygonComponent.h"
+#include "component/InstancedMeshComponent.h"
 
 #include "Scene.h"
 #include "Engine.h"
@@ -694,7 +695,12 @@ void MeshSystem::prepareSpriteMesh(MeshComponent& mesh){
     mesh.buffer.addAttribute(AttributeType::TANGENT, 4);
     mesh.buffer.addAttribute(AttributeType::COLOR, 4);
 
-    mesh.buffer.setUsage(BufferUsage::DYNAMIC);
+    // shared by content (MeshBufferPool): sprites of one shape draw from one GPU buffer, a
+    // changed sprite takes the buffer of its new bytes (RenderSystem::refreshImmutableBuffer); one
+    // whose geometry kept changing has a dynamic buffer of its own, which it keeps
+    BufferRender* render = mesh.buffer.getRender();
+    if (!(mesh.buffer.getUsage() == BufferUsage::DYNAMIC && render->isCreated() && !render->isShared()))
+        mesh.buffer.setUsage(BufferUsage::IMMUTABLE);
 }
 
 void MeshSystem::prepareMeshPolygonMesh(MeshComponent& mesh){
@@ -818,7 +824,7 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
             if (previousGrid != 0 && previousGrid != grid){
                 mesh.needReload = true;
             }else{
-                mesh.needUpdateBuffer = true; // buffer is not immutable
+                mesh.needUpdateBuffer = true; // the bytes of the shared buffer changed
             }
         }
         return true;
@@ -899,7 +905,7 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
         if (previousGrid > 1){
             mesh.needReload = true;
         }else{
-            mesh.needUpdateBuffer = true; // buffer is not immutable
+            mesh.needUpdateBuffer = true; // the bytes of the shared buffer changed
         }
     }
 
@@ -1547,6 +1553,18 @@ bool MeshSystem::isAsyncModelLoadPending(const Scene* scene, const std::string& 
 
 bool MeshSystem::isModelPreloading(const std::string& filename){
     return isAsyncModelLoadPending(nullptr, filename);
+}
+
+std::vector<Entity> MeshSystem::getModelParts(Entity model) const{
+    std::vector<Entity> parts;
+    const ModelComponent* modelcomp = scene->findComponent<ModelComponent>(model);
+    if (!modelcomp)
+        return parts;
+    for (const auto& node : modelcomp->meshNodesMapping){
+        if (node.second != model && scene->isEntityCreated(node.second) && scene->findComponent<MeshComponent>(node.second))
+            parts.push_back(node.second);
+    }
+    return parts;
 }
 
 bool MeshSystem::hasPendingAsyncModelLoads() const{
@@ -4089,6 +4107,23 @@ std::vector<Entity> MeshSystem::getFoliageEntities(Entity terrainEntity) const{
     }
 
     return entities;
+}
+
+size_t MeshSystem::getFoliageInstanceCount(Entity terrainEntity, size_t layer) const{
+    auto it = terrainFoliage.find(terrainEntity);
+    if (it == terrainFoliage.end() || layer >= it->second.size()){
+        return 0;
+    }
+    size_t count = 0;
+    for (const TerrainFoliageChunk& chunk : it->second[layer].chunks){
+        if (chunk.entity == NULL_ENTITY || !scene->isEntityCreated(chunk.entity)){
+            continue;
+        }
+        if (const InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(chunk.entity)){
+            count += instmesh->instances.size();
+        }
+    }
+    return count;
 }
 
 Entity MeshSystem::getFoliageOwner(Entity foliageEntity) const{

@@ -256,3 +256,39 @@ TEST(Matrix4, IsValidRejectsNan){
     m.set(1, 1, std::nanf(""));
     EXPECT_FALSE(m.isValid());
 }
+
+namespace {
+    // the NDC depth of a view-space point under a projection
+    float m4NdcDepth(const Matrix4& projection, const Vector3& view){
+        const Vector4 clip = projection * Vector4(view.x, view.y, view.z, 1.0f);
+        return clip.z / clip.w;
+    }
+
+    // the oblique projection puts the near plane on the clip plane (points on it at NDC -1, the
+    // side it faces inside, the other side clipped) and keeps the x, y and w rows
+    void m4ExpectObliqueNearClip(const Matrix4& projection){
+        // view-space plane y + 0.02 z + 1 = 0, facing +y; the frustum's far corner on its facing
+        // side stays in front of it, as the method needs (a reflection plane under the eye)
+        const Vector4 plane(0.0f, 1.0f, 0.02f, 1.0f);
+        const Matrix4 oblique = projection.obliqueNearClip(plane);
+        EXPECT_NEAR(m4NdcDepth(oblique, Vector3(0.0f, -0.9f, -5.0f)), -1.0f, 1e-4f);
+        EXPECT_NEAR(m4NdcDepth(oblique, Vector3(0.5f, -0.8f, -10.0f)), -1.0f, 1e-4f);
+        const float front = m4NdcDepth(oblique, Vector3(0.0f, 0.0f, -5.0f));
+        EXPECT_GT(front, -1.0f);
+        EXPECT_LT(front, 1.0f);
+        EXPECT_LT(m4NdcDepth(oblique, Vector3(0.0f, -2.0f, -5.0f)), -1.0f);
+        for (int col = 0; col < 4; col++){
+            EXPECT_FLOAT_EQ(oblique.get(col, 0), projection.get(col, 0));
+            EXPECT_FLOAT_EQ(oblique.get(col, 1), projection.get(col, 1));
+            EXPECT_FLOAT_EQ(oblique.get(col, 3), projection.get(col, 3));
+        }
+    }
+}
+
+TEST(Matrix4, ObliqueNearClipPerspective){
+    m4ExpectObliqueNearClip(Matrix4::perspectiveMatrix(1.0f, 1.5f, 0.5f, 100.0f));
+}
+
+TEST(Matrix4, ObliqueNearClipOrthographic){
+    m4ExpectObliqueNearClip(Matrix4::orthoMatrix(-4.0f, 4.0f, -3.0f, 3.0f, 0.1f, 100.0f));
+}

@@ -3,13 +3,15 @@
 // @shader mesh
 // @name "Water"
 // @category "Nature"
-// @description "Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint, distant waves and ripples fading so they do not shimmer. Optional features: BUILTIN_TEXTURES (the engine's seamless ripples and foam noise where the material sets no texture, so no image files are needed), REFLECTION (the sky or the reflection probe around it by Schlick's fresnel, a GGX sun glint), UNDERSIDE (both faces drawn: seen from below, the sky only through Snell's window, the depths mirrored around it; with library:underwater in the post-processing chain the view under the surface fades into the water), and the scene-reading DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness; with REFRACTION the bed seen through it also loses each colour at its own rate) reading the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth, CAUSTICS (with REFRACTION: the sunlight focused on the bed). For meshes that carry their water (a spline's river or lake): FLOW (rivers: the ripples and the foam carried along the flow the vertex colour gives) and MESH_DEPTH (shore foam and shallow to deep colour from the depth the mesh's first UV set gives, with no scene-depth pass: the mobile path). Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass; REFLECTION, CAUSTICS and MESH_DEPTH are a few instructions (one cube map read for REFLECTION), FLOW doubles the four texture reads. REFRACTION hides other transparent objects behind the water where it bends the view (the scene colour holds only opaque objects and the sky), and needs the Alpha or Premultiplied blend (Additive and Multiply draw it unrefracted). Limits of reading the depth: no shore foam where a vertical face meets the water seen from straight above (no depth gap there), and REFRACTION leaves a faint line along outlines crossing the water (samples in front are rejected). Floats rigidbodies with a Buoyancy (Water in Lua: the surface height and normal at a point, the same waves). Alpha blended; casts no shadows."
+// @description "Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine or Gerstner waves; lit per pixel with a specular glint, distant waves and ripples fading so they do not shimmer. Optional features: BUILTIN_TEXTURES (the engine's seamless ripples and foam noise where the material sets no texture, so no image files are needed), GERSTNER (with WAVES: four Gerstner waves, sharp crests and the surface rolling forward), REFLECTION (the sky or the reflection probe around it by Schlick's fresnel, a GGX sun glint), PLANAR_REFLECTION (with REFLECTION: the scene mirrored in the water, from a camera pass per water height at the scene's Planar Reflections resolution, else the environment), UNDERSIDE (both faces drawn: seen from below, the sky only through Snell's window, the depths mirrored around it; with library:underwater in the post-processing chain the view under the surface fades into the water), and the scene-reading DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness; with REFRACTION the bed seen through it also loses each colour at its own rate) reading the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth, CAUSTICS (with REFRACTION: the sunlight focused on the bed). For meshes that carry their water (a spline's river or lake): FLOW (rivers: the ripples and the foam carried along the flow the vertex colour gives) and MESH_DEPTH (shore foam and shallow to deep colour from the depth the mesh's first UV set gives, with no scene-depth pass: the mobile path). Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass; REFLECTION, CAUSTICS and MESH_DEPTH are a few instructions (one cube map read for REFLECTION), GERSTNER about thirty, FLOW doubles the four texture reads; PLANAR_REFLECTION draws the scene again (at half resolution by default) for each water height a camera sees. REFRACTION needs the Alpha or Premultiplied blend (Additive and Multiply draw it unrefracted). Limits of reading the depth: no shore foam where a vertical face meets the water seen from straight above (no depth gap there), and REFRACTION leaves a faint line along outlines crossing the water (samples in front are rejected). Floats rigidbodies with a Buoyancy (Water in Lua: the surface height and normal at a point, the same waves); the waves run on the scene clock, so they hold while the game is paused. Alpha blended; casts no shadows."
 // @lighting none pixel
+// @role water
 // @require position normals
 // @require scenedepth feature=DEPTH_FOAM
 // @require scenedepth feature=ABSORPTION
 // @require scenecolor scenedepth feature=REFRACTION
 // @require environment feature=REFLECTION
+// @require planarreflection feature=PLANAR_REFLECTION
 // @require rawcolor feature=FLOW
 // @require uv1 feature=MESH_DEPTH
 // @state blend=alpha shadows=off
@@ -31,8 +33,10 @@
 // @property waveHeight float 0.06 "Wave height (world units)" feature=WAVES
 // @property waveLength float 2.5 "Wave length (world units)" feature=WAVES
 // @property waveSpeed float 0.8 "Wave speed (world units per second)" feature=WAVES
+// @property waveSteepness range(0, 1) 0.5 "Crest sharpness" feature=GERSTNER
 // @property reflectionColor color (0.9, 0.95, 1, 1) "Reflection colour (times the environment; alone without one)" feature=REFLECTION
 // @property reflectionStrength range(0, 2) 1 "Reflection strength" feature=REFLECTION
+// @property reflectionDistortion range(0, 0.2) 0.03 "Planar reflection distortion (screen UV per unit of ripple)" feature=PLANAR_REFLECTION
 // @property shoreFoamWidth float 0.12 "Shore foam width (world units of depth)" feature=DEPTH_FOAM
 // @property shoreFoamBreakup range(0, 1) 0.7 "Shore foam break-up (by the foam noise)" feature=DEPTH_FOAM
 // @property absorptionDepth float 1.5 "Deep colour thickness (world units of water along the view)" feature=ABSORPTION
@@ -54,8 +58,10 @@
 // @texture u_normalTexture normal "Ripple normal map" default[BUILTIN_TEXTURES]=ripples
 // @texture u_noiseTexture gray "Foam noise (red)" default[BUILTIN_TEXTURES]=noise
 // @feature WAVES "Waves"
+// @feature GERSTNER "Gerstner waves (with WAVES: sharp crests, the surface rolling forward)"
 // @feature BUILTIN_TEXTURES "Built-in ripples and foam noise (unset textures)"
 // @feature REFLECTION "Reflection (sky or reflection probe, GGX glint)"
+// @feature PLANAR_REFLECTION "Planar reflection (with REFLECTION: the scene mirrored; a camera pass per water height)"
 // @feature UNDERSIDE "Seen from below (both faces, Snell's window)"
 // @feature DEPTH_FOAM "Shore foam (reads the scene depth)"
 // @feature ABSORPTION "Depth colour (reads the scene depth)"
@@ -75,8 +81,10 @@
 // value noise), so a preset needs no image files. Foam shows where the two noise layers
 // together exceed 1 - foamAmount (more on wave crests). Pixel lighting: Lambert from the ambient and the pixel lights on the water and
 // foam colour, plus a Blinn-Phong glint of each pixel light (shadowed; GGX with REFLECTION),
-// which also makes the water more opaque. Light units: includes/lights.glsl. No shadows
-// (@state shadows=off): the surface is see-through, so the bed below stays lit.
+// which also makes the water more opaque. Light units: includes/lights.glsl. The shadows it
+// receives are looked up with the surface's normal without the ripples (offset along it), so
+// a shadow's edge stays where the waves put it instead of following every ripple. It casts no
+// shadows (@state shadows=off): the surface is see-through, so the bed below stays lit.
 //
 // Distant detail: the waves' slope fades out once a pixel covers 4% of a wave length (none
 // left at 35%), the ripples to a third of their strength between 1% and 10% of a tile, so
@@ -89,6 +97,16 @@
 // and reflectionStrength, over the water by Schlick's fresnel with f0 0.02 (water; the foam
 // takes none); rays the ripples bend under the horizon are mirrored back over it. The pixel
 // lights' glint is GGX (f0 0.02, roughness 1 - gloss) instead of Blinn-Phong.
+//
+// PLANAR_REFLECTION (with REFLECTION; @require planarreflection, includes/planar_reflection.glsl):
+// the scene mirrored about the water's rest level instead of the environment, from a reflection
+// pass the camera draws for each water height (the scene's Planar Reflections settings: the
+// resolution, Off for none, the layers, shadows, far clip, clip plane offset and how many heights
+// a camera reflects); the ripples bend where it is read by reflectionDistortion screen UV per
+// unit, as REFRACTION's shift. Seen from below, or without a pass for this camera this frame
+// (Off, more heights than it reflects, a camera image, a probe face, the eye under the surface),
+// it is the environment, as REFLECTION alone. Made for flat water: a sloped mesh (a river)
+// mirrors about one level.
 //
 // UNDERSIDE (cull off): a face seen from below the surface (its back, the camera under it) is
 // lit as the underside: the sky only through Snell's window (the view within 48 degrees of
@@ -123,8 +141,10 @@
 //     water is drawn over that colour as the blend draws it (finalizeStraightColorOverScene:
 //     display-encoded values mixed by its alpha; the fog on the water's own colour only, the
 //     scene colour has its fog) and written with alpha 1 where the refraction is whole. The
-//     scene colour holds the opaque scene and the sky only, so transparent objects behind
-//     the water are hidden there; where the shift is still under a couple of pixels (the
+//     scene colour is copied right before the water draws, after the transparent objects
+//     the surface covers (the transparent queue draws them first, render/WaterLayering.h),
+//     so they show through it bent too, and a refracting water over another one sees it
+//     (a copy is taken again for it); where the shift is still under a couple of pixels (the
 //     first bit of thickness at the shore line, refractionStrength 0) the water blends over
 //     what the target holds instead, partly then fully, as without REFRACTION (at strength 0
 //     it draws exactly the water without it, transparent objects behind included). With
@@ -138,7 +158,8 @@
 //     frame's mainLightColor times its intensity and its height above the horizon) it adds
 //     causticsStrength times the pattern; it grows over the first 0.25 units below the
 //     surface, fades with exp(-below / causticsDepth), and goes where its cells would be
-//     smaller than a few pixels (no shimmer).
+//     smaller than a few pixels (no shimmer). Lit per pixel with shadows, the sunlight is
+//     that light's shadow on the surface times as strong: no caustics under a shadowed surface.
 //
 // Mesh features: what the mesh carries instead of what the scene gives, for the water meshes
 // of splines (docs/specs/S18-splines.md D9: a river ribbon, a lake or banks fill), whose
@@ -209,6 +230,11 @@ uniform u_fs_customParams {
     float meshShoreFoamBreakup;
     float meshAbsorptionDepth;
     float meshShoreFade;
+    float waveSteepness;
+    float reflectionDistortion;
+    // written by the engine: the scene clock (Scene::getSceneTime), which the waves, the ripples,
+    // the flow and the caustics run on, so they hold while the game is paused
+    float sceneTime;
 } customParams;
 
 #define FRAME_FS
@@ -231,9 +257,14 @@ uniform texture2D u_noiseTexture;
 uniform sampler u_noise_smp;
 
 #include "includes/environment.glsl"
+#include "includes/planar_reflection.glsl"
 
 in vec3 v_position;
 in vec3 v_normal;
+#if defined(WAVES) && defined(GERSTNER)
+    // the world XZ the surface point rests at (library/water.vert): the Gerstner waves are lit there
+    in vec2 v_waveRest;
+#endif
 #ifdef FLOW
     // the mesh's flow: rg its direction over world XZ (0.5 + 0.5 d), b the share of flowSpeed
     in vec4 v_rawColor;
@@ -258,7 +289,7 @@ out vec4 g_finalColor;
 // offset wraps every tile, so a long run keeps its precision)
 vec2 waterLayerUV(vec2 xz, float size, vec2 drift){
     float scale = 1.0 / max(size, 1e-3);
-    return xz * scale + fract(frame.time.x * drift * scale);
+    return xz * scale + fract(customParams.sceneTime * drift * scale);
 }
 
 #ifdef FLOW
@@ -312,10 +343,26 @@ void main() {
     // the share of the detail kept, 1 near, less where it would only sparkle
     float detail = 1.0;
 
-    #ifdef WAVES
+    #if defined(WAVES) && defined(GERSTNER)
+        // the Gerstner surface at the point's rest position, each wave fading where a pixel
+        // covers a good part of it; the normal bent as the flat surface's would be
+        vec4 waveWeights = vec4(1.0) - smoothstep(vec4(0.04), vec4(0.35),
+            vec4(footprint) / (max(customParams.waveLength, 1e-3) * vec4(1.0, 0.6, 0.37, 0.23)));
+        vec3 dPdx;
+        vec3 dPdz;
+        vec3 gerstner = waterGerstner(v_waveRest, customParams.sceneTime, customParams.waveDirection, customParams.waveHeight,
+                                      customParams.waveLength, customParams.waveSpeed, customParams.waveSteepness,
+                                      waveWeights, dPdx, dPdz);
+        n = normalize(n + normalize(cross(dPdz, dPdx)) - vec3(0.0, 1.0, 0.0));
+        // foam on the crests: high, or squeezed where the surface bunches up
+        float compression = 1.0 - (dPdx.x * dPdz.z - dPdz.x * dPdx.z);
+        crest = max(clamp(gerstner.y / max(customParams.waveHeight, 1e-4), 0.0, 1.0),
+                    clamp(compression / max(customParams.waveSteepness, 1e-3), 0.0, 1.0)) * 0.15;
+        detail = waveWeights.x;
+    #elif defined(WAVES)
         // the waves' slope, as the vertex stage raised them, fading where a pixel covers a
         // good part of a wave
-        vec3 wave = waterWaves(xz, frame.time.x, customParams.waveDirection, customParams.waveHeight,
+        vec3 wave = waterWaves(xz, customParams.sceneTime, customParams.waveDirection, customParams.waveHeight,
                                customParams.waveLength, customParams.waveSpeed);
         float waveDetail = 1.0 - smoothstep(0.04, 0.35, footprint / max(customParams.waveLength, 1e-3));
         n = normalize(n - vec3(wave.y, 0.0, wave.z) * waveDetail);
@@ -347,7 +394,7 @@ void main() {
         // two phases half a cycle apart, each sampled where the flow brought the surface from
         // since the phase restarted; the second at another part of the tiles
         float cycle = max(customParams.flowCycle, 1e-3);
-        float phaseA = fract(frame.time.x / cycle);
+        float phaseA = fract(customParams.sceneTime / cycle);
         float phaseB = fract(phaseA + 0.5);
         vec2 flowCycleTravel = waterFlowVelocity() * cycle;
         vec2 layerScales = vec2(1.0 / max(customParams.layerScale, 1e-3), 1.0 / max(customParams.secondLayerScale, 1e-3));
@@ -405,6 +452,10 @@ void main() {
             seenThickness = (refractedDepth - surfaceDepth) * rayScale;
         }
         vec3 behind = sceneColor(refracted);
+        #ifdef WATER_CAUSTICS
+            // the caustics' brightening of the bed before the sunlight reaching it (0: none)
+            float causticsGain = 0.0;
+        #endif
         // the refracted sample replaces what the target holds once a unit of ripple shifts
         // it by 2 pixels; before (strength 0, the shore line) the water blends over the
         // target as without REFRACTION (transparent objects behind it stay visible)
@@ -422,9 +473,9 @@ void main() {
                                      (surfaceDepth + seenThickness / rayScale) / max(surfaceDepth, 1e-3));
                 float causticsFade = smoothstep(0.02, 0.25, below) * exp(-below / max(customParams.causticsDepth, 1e-3)) *
                                      (1.0 - smoothstep(0.15, 0.5, bedFootprint / cellSize));
-                vec3 sunlight = frame.mainLightColor.rgb * (frame.mainLightDirection.w * max(frame.mainLightDirection.y, 0.0));
-                float pattern = waterCaustics(bed.xz / cellSize, frame.time.x * customParams.causticsSpeed);
-                behind *= vec3(1.0) + customParams.causticsStrength * pattern * causticsFade * min(sunlight * 0.5, vec3(1.0));
+                float pattern = waterCaustics(bed.xz / cellSize, customParams.sceneTime * customParams.causticsSpeed);
+                // applied after the lights, which tell whether the surface over it is in shadow
+                causticsGain = customParams.causticsStrength * pattern * causticsFade;
             }
         #endif
 
@@ -497,9 +548,15 @@ void main() {
     vec3 color = albedo.rgb;
     float alpha = albedo.a;
 
+    // the share of the sunlight the surface gets: the main directional light's shadow there
+    float causticsShadow = 1.0;
+
     #ifdef USE_PUNCTUAL
         // the underside is lit by the light reaching the water body (from above)
         vec3 lightNormal = fromBelow ? vec3(0.0, 1.0, 0.0) : n;
+        // the shadow lookup offsets along the normal: the surface's without the ripples, or
+        // the ripples would move the shadow's edge about (from below, up as the lighting)
+        vec3 shadowNormal = fromBelow ? lightNormal : surfaceNormal;
         vec3 light = ambientLight(lightNormal);
         vec3 specular = vec3(0.0);
         #ifdef REFLECTION
@@ -513,7 +570,10 @@ void main() {
             LightSample lightSample = getLight(i, v_position);
             float shadow = 1.0;
             #ifdef USE_SHADOWS
-                shadow = lightShadow(i, v_position, lightNormal);
+                shadow = lightShadow(i, v_position, shadowNormal);
+                if (getLightData(i).type == LightType_Directional && dot(lightSample.direction, frame.mainLightDirection.xyz) > 0.999){
+                    causticsShadow = shadow;
+                }
             #endif
             light += lambert(lightSample, lightNormal) * shadow;
             #ifdef REFLECTION
@@ -526,6 +586,12 @@ void main() {
         if (fromBelow){
             specular = vec3(0.0);
         }
+    #endif
+
+    #ifdef WATER_CAUSTICS
+        // the sun focused on the bed, as much of it as reaches the surface over it
+        vec3 sunlight = frame.mainLightColor.rgb * (frame.mainLightDirection.w * max(frame.mainLightDirection.y, 0.0)) * causticsShadow;
+        behind *= vec3(1.0) + causticsGain * min(sunlight * 0.5, vec3(1.0));
     #endif
 
     if (fromBelow){
@@ -552,8 +618,20 @@ void main() {
             // ripples bend some rays under the horizon
             reflected.y = abs(reflected.y);
             vec3 reflection = customParams.reflectionColor.rgb * customParams.reflectionStrength;
+            // the scene mirrored about the surface (PLANAR_REFLECTION, when the camera has a pass
+            // for this height), bent by the ripples as REFRACTION bends the view; else the
+            // environment
+            bool planarDrawn = false;
+            #ifdef SURFACE_PLANAR_REFLECTION
+                if (planarReflectionPresent()){
+                    vec2 bend = (frame.viewMatrix * vec4(n - surfaceNormal, 0.0)).xy * customParams.reflectionDistortion;
+                    bend.x *= frame.resolution.y * frame.resolution.z;
+                    reflection *= planarReflectionColor(v_position, bend);
+                    planarDrawn = true;
+                }
+            #endif
             #ifdef SURFACE_ENVIRONMENT
-                if (environmentPresent()){
+                if (!planarDrawn && environmentPresent()){
                     reflection *= environmentColor(reflected, (1.0 - detail) * 0.3);
                 }
             #endif

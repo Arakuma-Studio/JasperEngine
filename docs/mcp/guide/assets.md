@@ -133,6 +133,22 @@ the project. Links inside the project are written through.
   `#include`) are not rewritten. A rename, move or delete lists the ones it breaks in the
   Console, and MCP returns them as `text_references_broken`.
 
+## Duplicating, and changing the assets directory
+
+- `move_asset {path, copy: true}` without `to` is Unity's Duplicate: the copy lands beside the
+  source under its free name (`hero 1.png`, `hero 2.png`, a folder `Sprites 1`) and the result's
+  `to` says which. With `to` the destination must be free.
+- A folder is never copied or moved into itself or below itself (refused, nothing changed).
+- `set_project_settings {"editor.assets_dir": ...}` (or `scripting.lua_dir`) moves every
+  referenced file into the new directory with its `.meta`, `.humanoid` and Vertex Animation pair,
+  rewrites the scenes, prefabs and materials referring to them, and removes the folders the moves
+  emptied. Pass `dry_run: true` first: `relocation` lists `moved`, `rewritten`, `already_there`
+  (identical files used as they are), `kept_outside` and `text_references_broken`. A blocker (a
+  different file at a destination, an unwritable file, a link out of the new directory, unsaved
+  Code Editor edits of a moving file) refuses the call and nothing changes. After the change,
+  `failed_saves` lists files that keep the old paths on disk (save them again).
+- Set the directories right after creating a project, before importing: a later change moves files.
+
 ## Missing Assets and Find References
 
 **Window > Assets > Missing Assets** opens the Missing Assets panel. The status bar badge shows

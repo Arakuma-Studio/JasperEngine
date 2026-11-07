@@ -37,6 +37,7 @@
 #include "Project.h"
 #include "net/Http.h"
 #include "mcp/McpActivityWindow.h"
+#include "component/CameraComponent.h"
 #include "render/SceneRender.h"
 #include "render/SceneRender2D.h"
 #include "pool/ShaderPool.h"
@@ -912,6 +913,7 @@ Json sceneCameraJson(SceneProject* sp) {
     out["position"] = McpValues::toJson(camera->getPosition());
     out["target"] = McpValues::toJson(camera->getTarget());
     if (sp->sceneType == SceneType::SCENE_3D) {
+        out["up"] = McpValues::toJson(camera->getUp());
         out["distance"] = camera->getDistanceFromTarget();
         out["mode"] = "3d";
         // S26: projection, axis view and the Scene Camera settings
@@ -980,6 +982,7 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"disable_fog", &SceneDisplaySettings::disableFog},
         {"disable_clouds", &SceneDisplaySettings::disableClouds},
         {"show_post_processing", &SceneDisplaySettings::showPostProcessing},
+        {"animate_water", &SceneDisplaySettings::animateWater},
         {"show_stats", &SceneDisplaySettings::showStats},
     };
     return flags;
@@ -1119,6 +1122,23 @@ void setSceneCameraTool(const CallPtr& call) {
         }
         Camera* camera = s->sceneRender->getCamera();
         std::vector<std::string> changed;
+        if (is3D && (a.contains("position") || a.contains("target"))) {
+            const Vector3 eye = a.contains("position") ? position : camera->getPosition();
+            const Vector3 look = a.contains("target") ? target : camera->getTarget();
+            if ((look - eye).length() < 1e-4f) {
+                call->fail("target must differ from position: it is the point the camera looks at (nothing was changed).");
+                return;
+            }
+        }
+        // a camera preview (the Inspector's Preview) shows another camera: a move leaves it, or it would not show
+        static const char* const moves[] = {"position", "target", "orbit", "distance", "view", "frame_all"};
+        const bool moving = is3D && std::any_of(std::begin(moves), std::end(moves), [&a](const char* key) {
+            return a.contains(key) && !(a[key].is_boolean() && !a[key].get<bool>());
+        });
+        if (moving && s->sceneRender->isPreviewCameraActive()) {
+            s->sceneRender->clearPreviewCamera();
+            changed.push_back("left_preview");
+        }
         if (is3D) {
             if (a.contains("position")) {
                 camera->setPosition(position);
@@ -1147,10 +1167,8 @@ void setSceneCameraTool(const CallPtr& call) {
                 camera->setTarget(t);
                 changed.push_back("distance");
             }
-            {
-                const Vector3 dir = (camera->getTarget() - camera->getPosition()).normalize();
-                if (std::abs(dir.y) < 0.99f) camera->setUp(0, 1, 0);
-            }
+            // straight up or down the world up is parallel to the view: the Top/Bottom views' up instead
+            camera->setUp(cameraUpFor(camera->getTarget() - camera->getPosition(), Vector3(0, 1, 0)));
             // S26 (R17, R18, R21): the Scene Camera settings, projection, axis view, framing;
             // an agent's camera moves land at once (Camera Easing is for the user's)
             SceneViewController& view = c.sceneWindow()->getViewController();
@@ -1245,6 +1263,9 @@ void setSceneCameraTool(const CallPtr& call) {
         data["display"] = displayJson;
         std::string text = (changed.empty() ? "Scene view camera of \"" : "Moved the Scene view camera of \"") + s->name +
                            "\": " + data["camera"].dump() + ".";
+        if (std::find(changed.begin(), changed.end(), "left_preview") != changed.end()) {
+            text += " Left the camera preview, which showed another camera.";
+        }
         replyMaybeWithScreenshot(call, sceneId, text, data);
     });
 }
@@ -1909,6 +1930,7 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
         {"aspect", aspectNames()[std::clamp(settings.aspect, 0, (int)aspectNames().size() - 1)]},
         {"scale", settings.scale},
         {"maximize_on_play", settings.maximizeOnPlay},
+        {"maximized", gw->isMaximizedNow()},
         {"show_stats", settings.showStats},
         {"simulate_touch", project->isSimulateTouch()},
         {"simulate_textures", textureFamilyName(TextureCookQueue::get().getViewFamily())},

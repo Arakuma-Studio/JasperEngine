@@ -80,7 +80,6 @@ namespace jasperengine::editor {
         void handleFileChangePopup();
         std::string getWindowTitle(const EditorInstance& instance) const;
         void updateScriptProperties(const EditorInstance& instance, const std::string& inMemoryContent = "");
-        void updateScriptPropertiesForPath(const fs::path& relFilepath, const std::string& inMemoryContent = "");
 
         void updateAllProjectSymbols();
         void applyParsedProjectSymbols();
@@ -104,6 +103,9 @@ namespace jasperengine::editor {
         void addScriptEvent(const std::string& filepath, size_t event);
 
     public:
+        // the script entries reading their properties from this file (a path relative to the project,
+        // or absolute) take the file's, or the code being edited
+        void updateScriptPropertiesForPath(const fs::path& relFilepath, const std::string& inMemoryContent = "");
         CodeEditor(Project* project);
         ~CodeEditor();
 
@@ -125,6 +127,10 @@ namespace jasperengine::editor {
         bool isFileOpen(const std::string& filepath) const;
         bool isFileModified(const std::string& filepath) const;
         bool handleFileRename(const fs::path& oldPath, const fs::path& newPath);
+        // Save Project As continued the project in a copy at another folder: the tabs follow their
+        // files there (a path kept outside the old folder stays), and take the copies' write times,
+        // so the next save writes the copy, never the original
+        void retargetProject(const fs::path& oldProjectPath);
 
         // ---- MCP (files edited by external agents) ----
         struct BufferState {
