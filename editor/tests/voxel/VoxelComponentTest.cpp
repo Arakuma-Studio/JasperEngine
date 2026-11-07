@@ -152,9 +152,9 @@ TEST(AssetTypes, VoxelVolumeValueIs31) {
     EXPECT_EQ(static_cast<int>(AssetType::VoxelVolume), 31);
     EXPECT_STREQ(assetTypeName(AssetType::VoxelVolume), "voxel_volume");
     EXPECT_EQ(assetTypeFromName("voxel_volume"), AssetType::VoxelVolume);
-    // the numbers before it are free: no name reaches them
-    for (int value = 24; value < 31; value++) {
-        EXPECT_STREQ(assetTypeName(static_cast<AssetType>(value)), "unknown") << value;
+    // no other number takes the name (the ones before it belong to other streams, D22)
+    for (int value = 0; value < 64; value++) {
+        if (value != 31) EXPECT_STRNE(assetTypeName(static_cast<AssetType>(value)), "voxel_volume") << value;
     }
     const AssetTypeInfo* info = AssetTypes::find("assets/caves/a.voxelvolume", "assets");
     ASSERT_NE(info, nullptr);

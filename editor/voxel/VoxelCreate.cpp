@@ -36,18 +36,25 @@ namespace {
     }
 
     // the share of a level's blocks a base leaves non-uniform; a plain ground's is two layers of them
-    double nonUniformShare(VoxelCreateBase base) {
+    // The blocks a base leaves non-uniform: a ground surface (two block layers), a share of all
+    // blocks, or both for what is carved into a ground
+    struct NonUniformShape {
+        bool surface = false;
+        double share = 0.0;
+    };
+
+    NonUniformShape nonUniformShape(VoxelCreateBase base) {
         switch (base) {
-            case VoxelCreateBase::Empty: return 0.0;
+            case VoxelCreateBase::Empty: return {false, 0.0};
             case VoxelCreateBase::SolidGround:
-            case VoxelCreateBase::FromTerrain: return -1.0;
-            case VoxelCreateBase::Caves: return 0.35;
-            case VoxelCreateBase::Overhangs: return 0.25;
-            case VoxelCreateBase::CaveEntrance: return 0.20;
-            case VoxelCreateBase::NoiseGraph: return 0.30;
-            case VoxelCreateBase::FromMesh: return 0.15;
+            case VoxelCreateBase::FromTerrain: return {true, 0.0};
+            case VoxelCreateBase::Caves: return {true, 0.35};
+            case VoxelCreateBase::Overhangs: return {true, 0.25};
+            case VoxelCreateBase::CaveEntrance: return {true, 0.20};
+            case VoxelCreateBase::NoiseGraph: return {false, 0.30};
+            case VoxelCreateBase::FromMesh: return {false, 0.15};
         }
-        return 0.0;
+        return {};
     }
 
     std::string joinedTargetNames(const std::vector<std::string>& names) {
@@ -204,7 +211,7 @@ VoxelCreateEstimate editor::estimateVoxelCreate(const VoxelCreateOptions& option
     VoxelCreateEstimate estimate;
     const voxel::Int3 size = voxelCreateDimensions(options);
     const int levels = voxel::levelsFor(size, voxel::MAX_LEVELS);
-    const double share = nonUniformShare(options.base);
+    const NonUniformShape shape = nonUniformShape(options.base);
     for (int level = 0; level < levels; level++) {
         const int span = voxel::BLOCK_SIZE << level;
         const int64_t blocksX = (size.x + span - 1) / span;
@@ -212,7 +219,8 @@ VoxelCreateEstimate editor::estimateVoxelCreate(const VoxelCreateOptions& option
         const int64_t blocksZ = (size.z + span - 1) / span;
         const int64_t total = blocksX * blocksY * blocksZ;
         estimate.bytes += total * CREATE_SLOT_BYTES;
-        const int64_t nonUniform = share < 0.0 ? blocksX * std::min<int64_t>(blocksY, 2) * blocksZ : static_cast<int64_t>(std::llround(static_cast<double>(total) * share));
+        const int64_t surface = shape.surface ? blocksX * std::min<int64_t>(blocksY, 2) * blocksZ : 0;
+        const int64_t nonUniform = std::min(total, surface + static_cast<int64_t>(std::llround(static_cast<double>(total) * shape.share)));
         estimate.bytes += nonUniform * CREATE_BLOCK_PAYLOAD;
     }
     for (BuildPlatform target : kCreateTargets) {

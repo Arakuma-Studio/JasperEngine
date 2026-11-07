@@ -103,8 +103,12 @@ TEST_F(VoxelCreate, DialogEstimateAndUndo) {
     const VoxelCreateEstimate caves = estimateVoxelCreate(options, settings);
     EXPECT_GT(caves.bytes, ground.bytes);
     options.preset = VoxelCreatePreset::Large;
+    const VoxelCreateEstimate largePreset = estimateVoxelCreate(options, settings);
+    EXPECT_GT(largePreset.bytes, caves.bytes);
+    // 512 x 128 x 512 of caves: over the web's 32 MB, under the desktop's 256 MB
+    options.preset = VoxelCreatePreset::Custom;
+    options.dimensions = voxel::Int3{512, 128, 512};
     const VoxelCreateEstimate large = estimateVoxelCreate(options, settings);
-    EXPECT_GT(large.bytes, caves.bytes);
     // over the budget of a target says which, and a project's lower budget is the one that counts
     ASSERT_FALSE(large.warning.empty());
     EXPECT_NE(std::find(large.overBudgetTargets.begin(), large.overBudgetTargets.end(), "web"), large.overBudgetTargets.end());
@@ -198,21 +202,26 @@ TEST_F(VoxelPanel, ErrorStripPerCode) {
     EXPECT_TRUE(has(VoxelProblemCode::NonUnitScale));
     scene->getComponent<Transform>(owner).scale = Vector3(1.0f, 1.0f, 1.0f);
 
-    // over_budget: a budget below what the volume holds, named per target
+    // over_budget: a budget below what the volume holds, named per target. A small cavity or mound in
+    // every level-0 block makes each one hold its samples: 64 blocks of 16 KB, and the coarser level
     VoxelProjectSettings lower;
     lower.cpuBudgetMB = 1;
     project->setVoxelSettings(lower);
-    voxel::EditOp add;
-    add.kind = voxel::EditKind::Add;
-    add.shape.kind = voxel::ShapeKind::Box;
-    add.shape.center = voxel::Vec3d{32.0, 16.0, 32.0};
-    add.shape.halfExtents = voxel::Vec3d{24.0, 24.0, 24.0};
-    voxel::EditOp dig = add;
-    dig.kind = voxel::EditKind::Dig;
-    dig.shape.center = voxel::Vec3d{32.0, 32.0, 32.0};
-    dig.shape.kind = voxel::ShapeKind::Sphere;
-    dig.shape.radius = 22.0;
-    ASSERT_TRUE(system->edit(owner, std::span<const voxel::EditOp>(&dig, 1), voxel::EditOptions{}).ok);
+    std::vector<voxel::EditOp> everyBlock;
+    for (int z = 0; z < 4; z++) {
+        for (int y = 0; y < 4; y++) {
+            for (int x = 0; x < 4; x++) {
+                voxel::EditOp op;
+                op.shape.kind = voxel::ShapeKind::Sphere;
+                op.shape.center = voxel::Vec3d{x * 16.0 + 8.0, y * 16.0 + 8.0, z * 16.0 + 8.0};
+                op.shape.radius = 3.0;
+                // the ground is solid below y = 32: a cavity there, a mound above
+                op.kind = op.shape.center.y < 32.0 ? voxel::EditKind::Dig : voxel::EditKind::Add;
+                everyBlock.push_back(op);
+            }
+        }
+    }
+    ASSERT_TRUE(system->edit(owner, everyBlock, voxel::EditOptions{}).ok);
     ASSERT_GT(asset->store->memory().total(), int64_t(1) << 20);
     EXPECT_TRUE(has(VoxelProblemCode::OverBudget));
     project->setVoxelSettings(VoxelProjectSettings{});
@@ -321,7 +330,11 @@ TEST_F(VoxelPanel, StatsMatchSample) {
     addVolume();
     const std::vector<voxel::EditOp> ops = digAt(3);
     ASSERT_TRUE(system->edit(owner, ops, voxel::EditOptions{}).ok);
-    system->finishPendingWork();
+    // the meshes finish on jobs and show on the system's next updates
+    for (int i = 0; i < 4; i++) {
+        system->finishPendingWork();
+        system->update(0.0);
+    }
 
     const VoxelStats stats = system->getStats(owner);
     const voxel::Store::BlockCounts counted = asset->store->countBlocks();
@@ -411,10 +424,12 @@ TEST_F(VoxelMaterials, RemoveRefusedInUse) {
 
     // Replace With: the voxels move and the slot goes in one undo step
     const uint64_t before = hash();
-    const size_t stepsBefore = history->entries().size();
+    // (the undone removal is the redo tail, which the new step replaces)
+    const size_t stepsBefore = history->position();
     error.clear();
     ASSERT_TRUE(replaceVoxelMaterialSlot(project.get(), sceneProject->id, owner, 2, 3, &error)) << error;
-    EXPECT_EQ(history->entries().size(), stepsBefore + 1);
+    EXPECT_EQ(history->position(), stepsBefore + 1);
+    EXPECT_FALSE(history->canRedo());
     const uint16_t after = voxelSlotsInUse(*asset->store);
     EXPECT_FALSE(after & (1u << 2));
     EXPECT_TRUE(after & (1u << 3));

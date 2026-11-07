@@ -53,12 +53,13 @@ namespace jasperengine::editor::voxeltest {
         return generator;
     }
 
-    // the edit of `index`: spheres apart, each touching its own blocks
+    // the edit of `index`: spheres apart, each touching its own blocks; past 36 a layer deeper, so
+    // every index changes something
     inline std::vector<voxel::EditOp> digAt(int index) {
         voxel::EditOp op;
         op.kind = voxel::EditKind::Dig;
         op.shape.kind = voxel::ShapeKind::Sphere;
-        op.shape.center = voxel::Vec3d{8.0 + (index % 6) * 8.0, 32.0, 8.0 + (index / 6 % 6) * 8.0};
+        op.shape.center = voxel::Vec3d{8.0 + (index % 6) * 8.0, 32.0 - (index / 36) * 6.0, 8.0 + (index / 6 % 6) * 8.0};
         op.shape.radius = 3.0 + (index % 3);
         return {op};
     }
@@ -85,11 +86,14 @@ namespace jasperengine::editor::voxeltest {
         const std::string assetPath = "voxels/cave.voxelvolume";
 
         void SetUp() override {
-            fs::copy(fs::path(JASPER_TEST_REPO_DIR) / "tools/fixtures/prefab-runtime", dir.path(),
+            // a level below the scratch directory: a project directly in the temp directory is the
+            // editor's own temporary one, which Auto Save skips
+            const fs::path projectDir = dir.path() / "project";
+            fs::copy(fs::path(JASPER_TEST_REPO_DIR) / "tools/fixtures/prefab-runtime", projectDir,
                      fs::copy_options::recursive | fs::copy_options::overwrite_existing);
             project = std::make_unique<Project>();
             project->setSkipProjectLock(true);
-            ASSERT_TRUE(project->loadProject(dir.path(), false));
+            ASSERT_TRUE(project->loadProject(projectDir, false));
             assetsSystem.assets = project->getAssetsPath().string();
             previousSystem = SystemTestAccess::swap(&assetsSystem);
             for (SceneProject& candidate : project->getScenes()) {

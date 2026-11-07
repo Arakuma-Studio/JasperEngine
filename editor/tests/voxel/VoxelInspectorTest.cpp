@@ -236,6 +236,7 @@ TEST_F(VoxelSlice, DeterministicImage) {
     EXPECT_NEAR(middle.z, 32.0, 1e-3);
 
     // slots as colour: painting changes the solid side
+    sceneProject->scene->getComponent<VoxelVolumeComponent>(owner).materialSlots.resize(3);
     voxel::EditOp paint;
     paint.kind = voxel::EditKind::Paint;
     paint.material = 2;

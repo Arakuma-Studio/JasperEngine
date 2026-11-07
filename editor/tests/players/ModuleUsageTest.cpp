@@ -147,8 +147,10 @@ TEST(ModuleUsage, VoxelComponentNeedsTheModule) {
     volume.navigationUpdate = VoxelNavigationUpdate::Off;
     one.scene.addComponent<VoxelVolumeComponent>(one.entity, volume);
     const ModuleUsage usage = one.usage();
-    EXPECT_EQ(modules(usage), "voxel");
+    // its generators reach Noise Graphs (R48), on the volume's own evidence
+    EXPECT_EQ(modules(usage), "noise voxel");
     EXPECT_EQ(usage.firstEvidence("voxel"), "scene Main: Voxel Volume on Thing");
+    EXPECT_EQ(usage.firstEvidence("noise"), "scene Main: Voxel Volume on Thing");
 }
 
 TEST(ModuleUsage, VoxelCollisionAddsPhysics) {
@@ -157,7 +159,7 @@ TEST(ModuleUsage, VoxelCollisionAddsPhysics) {
     volume.navigationUpdate = VoxelNavigationUpdate::Off;
     one.scene.addComponent<VoxelVolumeComponent>(one.entity, volume);
     const ModuleUsage usage = one.usage();
-    EXPECT_EQ(modules(usage), "physics3d voxel");
+    EXPECT_EQ(modules(usage), "noise physics3d voxel");
     EXPECT_EQ(usage.firstEvidence("physics3d"), "scene Main: Voxel Volume collision on Thing");
 }
 
@@ -167,14 +169,14 @@ TEST(ModuleUsage, VoxelNavigationUpdateAddsNavigationOnlyWithASurface) {
     volume.collision = false;
     one.scene.addComponent<VoxelVolumeComponent>(one.entity, volume);
     // Automatic, and nothing to rebake
-    EXPECT_EQ(modules(one.usage()), "voxel");
+    EXPECT_EQ(modules(one.usage()), "noise voxel");
     one.scene.addComponent<NavMeshSurfaceComponent>(one.entity, {});
     const ModuleUsage usage = one.usage();
-    EXPECT_EQ(modules(usage), "navigation voxel");
+    EXPECT_EQ(modules(usage), "navigation noise voxel");
     EXPECT_EQ(usage.firstEvidence("navigation"), "scene Main: Voxel Volume navigation update on Thing");
     // Off: nothing rebakes it
     one.scene.getComponent<VoxelVolumeComponent>(one.entity).navigationUpdate = VoxelNavigationUpdate::Off;
-    EXPECT_EQ(modules(one.usage()), "voxel");
+    EXPECT_EQ(modules(one.usage()), "noise voxel");
 }
 
 TEST(ModuleUsage, VoxelScriptPropertyNeedsTheModule) {
