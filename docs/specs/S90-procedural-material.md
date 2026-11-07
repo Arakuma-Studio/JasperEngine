@@ -634,6 +634,12 @@ are in `engine/tests/core/procmat/`.
   compared bit for bit, transcendentals and unordered sums within 4e-6 and 1e-6 relative.
   `SpirvInterpreterTest.MatchesThePythonOracle` reads `SpirvOracleCases.h`, which
   `test_import_mm_nodes.py` checks is current.
+- **R20 on lavapipe.** The per-node image test's first run on Vulkan put one output over AC8:
+  `height_to_angle` wired, 3.98 mean, 255 at p99. Its probe is a sawtooth in x, so on the 1.4% of pixels at
+  its drops the slope points down -x with a zero `dh.y`, and `atan` gives pi or -pi by the sign of that zero,
+  which lavapipe leaves otherwise than the interpreter (inferred from the share of pixels; the fix confirms
+  it). The importer's fix now makes that cut pi: 0.25 mean, 1 at p99 on both backends. Another deviation from
+  Material Maker, whose GPU picks its own sign there.
 - **AC8.** `ProcMatCrossTierTest` is `ProcMatNodeImageGpuSlow`: the per-node image test compares the device
   with the product's CPU tier now, not with a test harness, and its red control
   `TheOldFloatHashIsOverTheLimit` puts Material Maker's float `rand` back and requires the limit to catch it.

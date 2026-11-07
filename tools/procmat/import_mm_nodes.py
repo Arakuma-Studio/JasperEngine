@@ -532,8 +532,10 @@ TEXT_FIXES = {
     "bricks": [("0.5*(sign($(name_uv)_rect.z-$(name_uv)_rect.x-$(name_uv)_rect.w+$(name_uv)_rect.y)+1.0)",
                 "(abs($(name_uv)_rect.z-$(name_uv)_rect.x-$(name_uv)_rect.w+$(name_uv)_rect.y) < 1e-4 ? 0.5 : "
                 "step(0.0, $(name_uv)_rect.z-$(name_uv)_rect.x-$(name_uv)_rect.w+$(name_uv)_rect.y))")],
-    # atan(0, 0) on a flat input: no slope is angle 0
-    "height_to_angle": [("\treturn atan(dh.y, dh.x)/3.141592;", "\treturn dot(dh, dh) < 1e-12 ? 0.0 : atan(dh.y, dh.x)/3.141592;")],
+    # atan(0, 0) on a flat input: no slope is angle 0. On the cut, a slope straight down -x is pi or -pi by the
+    # sign of a zero dh.y, which each device's arithmetic leaves its own way (lavapipe's differs): it is pi
+    "height_to_angle": [("\treturn atan(dh.y, dh.x)/3.141592;",
+                         "\treturn dot(dh, dh) < 1e-12 ? 0.0 : (dh.y == 0.0 && dh.x < 0.0 ? 1.0 : atan(dh.y, dh.x)/3.141592);")],
     "morphology3/shape_2": [(o.format(a="dx", v="x"), n.format(a="dx", v="x")) for o, n in _MORPHOLOGY_LOOP] + [_MORPHOLOGY_PICK],
     "morphology3/shape_3": [(o.format(a="dx", v="x"), n.format(a="dx", v="x")) for o, n in _MORPHOLOGY_LOOP] +
                            [("if (v < input_dist.x && ", "if (v + 0.0009765625 < input_dist.x && ", 4)],
