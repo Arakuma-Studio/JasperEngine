@@ -16,6 +16,7 @@ import json
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Anim Properties"}
+CI = True
 
 TIMEOUT = 900
 

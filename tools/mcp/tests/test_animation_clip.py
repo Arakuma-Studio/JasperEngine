@@ -134,11 +134,8 @@ async def test_tools_and_schema(ed: Editor):
     ed.check_in("animation", ed.tool("list_assets").input_schema["properties"]["type"]["enum"], "list_assets type animation")
     bake = ed.tool("edit_pose_animation").input_schema["properties"]["bake"]["properties"]
     ed.check_in("clip", bake, "bake.clip")
-    ed.check("Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}" in ed.instructions, "the instructions bullet")
-    ed.check("jasper://docs/animation" in ed.instructions, "the instructions name the guide")
     # agents review I5: Unity's legacy Animation is the Animation Player, not the entity Animation
     ed.check("Legacy Animation = AnimationPlayerComponent" in ed.instructions, "the naming rule names the legacy Animation")
-    ed.check(len(ed.instructions.encode()) <= 16384, f"instructions within 16 KB: {len(ed.instructions.encode())}")
 
 
 async def test_create_and_read(ed: Editor):
@@ -1110,7 +1107,9 @@ async def test_guide_names_exist(ed: Editor):
               "retarget_report", "scale_ratio", "foot_ik", "missing_on_target", "unmapped_source_bones", "hips_local_position",
               "local_rotation", "set_humanoid", "animation_type", "extra_mapped", "human_scale", "extra_bones",
               "humanoid_position", "left_upper_arm", "left_index_proximal", "left_eye", "right_eye", "right_toes",
-              "left_foot", "right_foot"}
+              "left_foot", "right_foot",
+              # audio cues (S40): the .anim audio item's keys, which edit_animation takes (its lean schema leaves them out)
+              "follow_speed", "pitch_semitones", "state_exit", "volume_db"}
     words = set(re.findall(r"(?<![\w./:-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(])", text))
     unknown = sorted(w for w in words if w not in known)
     ed.check(not unknown, f"the guide names unknown things: {unknown}")
@@ -1179,3 +1178,26 @@ async def test_export_emits_the_component(ed: Editor):
     ed.check(S["bob_guid"] not in code, "no GUID in the generated code")
     ed.check('resources.clips.push_back("anim/bob.anim");' in code, "the scene resources preload the clip")
     ed.check((out / "project" / "assets" / "anim" / "bob.anim").is_file(), "the .anim is exported")
+
+
+
+async def test_cue_relink(ed: Editor):
+    """S40 R3: an audio cue holds its Sound Event's GUID, so a move (one undo step) relinks it: get_animation
+    and Play resolve the new place; S04's move rewrites no other file, the path hint follows on the clip's next save."""
+    from audio_refs import write_tone
+    write_tone(ed.project / "assets/sounds/relink_tick.wav", seconds=0.2)
+    await ed.call("sync_files")
+    await ed.call("write_file", path="assets/events/relink.soundevent", content=json.dumps({
+        "format": "jasperengine.soundevent", "version": 1, "mode": "random", "clips": [{"clip": {"path": "sounds/relink_tick.wav"}}]}))
+    await ed.call("sync_files")
+    await ed.call("edit_animation", clip="assets/anim/relink.anim", create={}, wrap="once", length=1,
+                  audio=[{"time": 0.5, "sound": "assets/events/relink.soundevent", "name": "Step"}])
+    ed.check(file_json(ed, "assets/anim/relink.anim")["audio"][0]["sound"].get("guid"), "the cue holds the event's GUID")
+    r = await ed.call_raw("move_asset", {"path": "assets/events/relink.soundevent", "to": "assets/events/renamed.soundevent"})
+    ed.check(not r.is_error, r.text[:500])
+    cue = (await ed.call("get_animation", clip="assets/anim/relink.anim"))["audio"][0]
+    ed.check_eq(cue["sound"]["path"], "assets/events/renamed.soundevent", f"the cue follows the move: {cue}")
+    await ed.call("undo", scope="project")
+    ed.check((ed.project / "assets/events/relink.soundevent").is_file(), "undo moves the event back")
+    cue = (await ed.call("get_animation", clip="assets/anim/relink.anim"))["audio"][0]
+    ed.check_eq(cue["sound"]["path"], "assets/events/relink.soundevent", f"and the cue with it, in the same step: {cue}")

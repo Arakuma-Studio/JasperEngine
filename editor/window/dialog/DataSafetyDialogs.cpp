@@ -11,6 +11,7 @@
 #include "window/ConsoleWindow.h"
 
 #include "imgui.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 
@@ -29,7 +30,7 @@ namespace {
             ImGui::OpenPopup(title);
         }
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-        return ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
+        return EditorModal::begin(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
     }
 
     float dataSafetyButtonWidth(const char* label) {
@@ -93,12 +94,14 @@ void DataSafetyDialogs::showRecovery(const SceneBackupInfo& backup) {
     if (!confirmingDiscard) {
         ImGui::Text("\"%s\" has changes from a session that did not close normally (auto-saved %s).",
                     name.c_str(), backup.savedAtClock().c_str());
+        EditorModal::message("\"" + name + "\" has changes from a session that did not close normally (auto-saved " + backup.savedAtClock() +
+                             "). Decide Later offers them again the next time the scene opens.");
         ImGui::Spacing();
         ImGui::Separator();
         if (ImGui::IsWindowAppearing()) {
             ImGui::SetKeyboardFocusHere();
         }
-        if (ImGui::Button("Restore", ImVec2(dataSafetyButtonWidth("Restore"), 0))) {
+        if (EditorModal::button("Restore", "yes", ImVec2(dataSafetyButtonWidth("Restore"), 0))) {
             const SceneBackupInfo copy = backup;
             pop();
             // between frames: the scene reopens, its windows must not be drawing it
@@ -118,25 +121,26 @@ void DataSafetyDialogs::showRecovery(const SceneBackupInfo& backup) {
         }
         ImGui::SetItemDefaultFocus();
         ImGui::SameLine();
-        if (ImGui::Button("Discard", ImVec2(dataSafetyButtonWidth("Discard"), 0))) {
+        if (EditorModal::button("Discard", "no", ImVec2(dataSafetyButtonWidth("Discard"), 0))) {
             confirmingDiscard = true;
         }
         ImGui::SameLine();
-        if (ImGui::Button("Decide Later", ImVec2(dataSafetyButtonWidth("Decide Later"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        if (EditorModal::button("Decide Later", "cancel", ImVec2(dataSafetyButtonWidth("Decide Later"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             // the backup stays and is offered again the next time the scene opens
             pop();
         }
     } else {
         ImGui::Text("The auto-saved changes will be deleted.");
+        EditorModal::message("The auto-saved changes will be deleted.");
         ImGui::Spacing();
         ImGui::Separator();
-        if (ImGui::Button("Cancel", ImVec2(dataSafetyButtonWidth("Cancel"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        if (EditorModal::button("Cancel", "cancel", ImVec2(dataSafetyButtonWidth("Cancel"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             confirmingDiscard = false;
         }
         ImGui::SetItemDefaultFocus();
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ErrorText);
-        if (ImGui::Button("Delete", ImVec2(dataSafetyButtonWidth("Delete"), 0))) {
+        if (EditorModal::button("Delete", "yes", ImVec2(dataSafetyButtonWidth("Delete"), 0))) {
             SceneBackups::discard(backup.backup);
             Out::info("Discarded the auto-saved changes of \"%s\".", name.c_str());
             pop();
@@ -152,6 +156,12 @@ void DataSafetyDialogs::showDegradedSave(const DegradedSaveRequest& request) {
     }
     ImGui::Text("\"%s\" did not load completely. Saving it now permanently removes %zu value%s this\neditor could not read:",
                 request.documentName.c_str(), request.dropped.size(), request.dropped.size() == 1 ? "" : "s");
+    {
+        std::string agentMessage = "\"" + request.documentName + "\" did not load completely. Saving it now permanently removes " +
+                                   std::to_string(request.dropped.size()) + " value(s) this editor could not read:";
+        for (size_t i = 0; i < request.dropped.size() && i < kListedIssues; i++) agentMessage += " " + request.dropped[i].describe() + ";";
+        EditorModal::message(agentMessage);
+    }
     ImGui::Spacing();
     for (size_t i = 0; i < request.dropped.size() && i < kListedIssues; i++) {
         ImGui::BulletText("%s", request.dropped[i].describe().c_str());
@@ -171,7 +181,7 @@ void DataSafetyDialogs::showDegradedSave(const DegradedSaveRequest& request) {
     if (ImGui::IsWindowAppearing()) {
         ImGui::SetKeyboardFocusHere();
     }
-    if (ImGui::Button("Cancel", ImVec2(dataSafetyButtonWidth("Cancel"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+    if (EditorModal::button("Cancel", "cancel", ImVec2(dataSafetyButtonWidth("Cancel"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         pop();
         ImGui::EndPopup();
         return;
@@ -179,7 +189,7 @@ void DataSafetyDialogs::showDegradedSave(const DegradedSaveRequest& request) {
     ImGui::SetItemDefaultFocus();
     if (request.saveAs) {
         ImGui::SameLine();
-        if (ImGui::Button("Save As...", ImVec2(dataSafetyButtonWidth("Save As..."), 0))) {
+        if (EditorModal::button("Save As...", "no", ImVec2(dataSafetyButtonWidth("Save As..."), 0))) {
             const auto saveAs = request.saveAs;
             pop();
             saveAs();
@@ -189,7 +199,7 @@ void DataSafetyDialogs::showDegradedSave(const DegradedSaveRequest& request) {
     }
     ImGui::SameLine();
     ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ErrorText);
-    if (ImGui::Button("Save Anyway", ImVec2(dataSafetyButtonWidth("Save Anyway"), 0))) {
+    if (EditorModal::button("Save Anyway", "yes", ImVec2(dataSafetyButtonWidth("Save Anyway"), 0))) {
         const auto saveAnyway = request.saveAnyway;
         pop();
         if (saveAnyway) saveAnyway();
@@ -206,19 +216,21 @@ void DataSafetyDialogs::showLockedProject(const ProjectLockInfo& info) {
                 info.projectName.c_str(), (long long)info.pid, info.host.c_str(),
                 info.since.empty() ? "" : ", since ", info.since.c_str());
     ImGui::Text("Two editors on one project overwrite each other's changes.");
+    EditorModal::message("\"" + info.projectName + "\" is already open in another JasperEngine editor (PID " + std::to_string((long long)info.pid) +
+                         " on host \"" + info.host + "\"). Two editors on one project overwrite each other's changes.");
     ImGui::Spacing();
     ImGui::Separator();
     if (ImGui::IsWindowAppearing()) {
         ImGui::SetKeyboardFocusHere();
     }
-    if (ImGui::Button("Cancel", ImVec2(dataSafetyButtonWidth("Cancel"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+    if (EditorModal::button("Cancel", "cancel", ImVec2(dataSafetyButtonWidth("Cancel"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         pop();
         ImGui::EndPopup();
         return;
     }
     ImGui::SetItemDefaultFocus();
     ImGui::SameLine();
-    if (ImGui::Button("Open Anyway", ImVec2(dataSafetyButtonWidth("Open Anyway"), 0))) {
+    if (EditorModal::button("Open Anyway", "yes", ImVec2(dataSafetyButtonWidth("Open Anyway"), 0))) {
         const auto openAnyway = info.openAnyway;
         pop();
         if (openAnyway) openAnyway();

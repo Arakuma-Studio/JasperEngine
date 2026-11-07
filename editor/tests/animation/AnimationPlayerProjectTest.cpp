@@ -11,6 +11,8 @@
 // through the ModelPool).
 
 #include <gtest/gtest.h>
+#include "component/AnimationPlayerComponent.h"
+#include "component/Transform.h"
 
 #include "support/EditorTestSupport.h"
 
@@ -182,11 +184,6 @@ namespace {
 
     Json player(const Json& values) { return Json{{"animationplayer", values}}; }
 
-}
-
-TEST(AnimationPlayerProject, HeadlessProjectOpens) {
-    ASSERT_TRUE(headless().ready);
-    EXPECT_EQ(project()->getProjectPath(), headless().dir);
 }
 
 // ---- McpValues -----------------------------------------------------------------------------

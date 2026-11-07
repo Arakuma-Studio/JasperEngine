@@ -3,6 +3,15 @@
 
 #include "SceneRender3D.h"
 #include "animation/BoneOverlay.h"
+#include "component/AudioSourceComponent.h"
+#include "component/BoneComponent.h"
+#include "component/CharacterControllerComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/TranslateTracksComponent.h"
+#include "object/Sprite.h"
+#include "subsystem/PhysicsSystem.h"
+#include "subsystem/RenderSystem.h"
 #include "profiler/Profile.h"
 #include "pose/PoseViewport.h"
 
@@ -135,6 +144,10 @@ editor::SceneRender3D::~SceneRender3D(){
     }
 
     for (auto& pair : forceFieldLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : capsuleShadowLines) {
         delete pair.second;
     }
 }
@@ -600,6 +613,84 @@ void editor::SceneRender3D::createOrUpdateControllerLines(Entity entity, const T
     }
 }
 
+// The capsules of a Capsule Shadow Caster on their bones (CapsuleShadows::toWorld, as the renderer
+// places them), and with its GameObject selected, the handles the Move tool drags: each capsule's
+// two ends and a point on its surface for the radius
+void editor::SceneRender3D::createOrUpdateCapsuleShadowLines(Entity entity, const Transform& transform, const CapsuleShadowCasterComponent& caster,
+                                                             bool visible, bool selected){
+    LineRenderer* lines = capsuleShadowLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+
+    const float alpha = selected ? 1.0f : 0.5f;
+    const Vector4 color = caster.enabled ? Vector4(0.95f, 0.75f, 0.3f, alpha) : Vector4(0.6f, 0.6f, 0.6f, alpha);
+    const Vector4 handleColor(1.0f, 1.0f, 1.0f, 1.0f);
+    const Vector4 selectedHandleColor(1.0f, 0.6f, 0.0f, 1.0f);
+    const bool hasHandleSelection = getSelectedCapsuleHandleEntity() == entity;
+    const int segments = 24;
+    const float pi = 3.14159265f;
+
+    const size_t count = std::min(caster.capsules.size(), (size_t)CapsuleShadowCasterComponent::MAX_CAPSULES);
+    for (size_t c = 0; c < count; c++){
+        CapsuleShadows::World capsule;
+        if (!getCapsuleWorld(entity, c, capsule)) continue;
+
+        // a frame across the segment: u and v span the rings, w runs from a to b
+        Vector3 w = capsule.b - capsule.a;
+        if (w.squaredLength() < 1e-12f) w = Vector3(0.0f, 1.0f, 0.0f);
+        w.normalize();
+        const Vector3 u = w.crossProduct(std::fabs(w.y) < 0.99f ? Vector3(0.0f, 1.0f, 0.0f) : Vector3(1.0f, 0.0f, 0.0f)).normalized();
+        const Vector3 v = w.crossProduct(u).normalized();
+        const float r = capsule.radius;
+
+        // the two rings, the four sides, and the half circles over each end in the two planes
+        for (const Vector3& center : {capsule.a, capsule.b}){
+            Vector3 previous;
+            for (int i = 0; i <= segments; i++){
+                const float angle = 2.0f * pi * (float)i / (float)segments;
+                const Vector3 point = center + (u * std::cos(angle) + v * std::sin(angle)) * r;
+                if (i > 0) lines->addLine(previous, point, color);
+                previous = point;
+            }
+        }
+        for (int k = 0; k < 4; k++){
+            const float angle = 0.5f * pi * (float)k;
+            const Vector3 side = (u * std::cos(angle) + v * std::sin(angle)) * r;
+            lines->addLine(capsule.a + side, capsule.b + side, color);
+        }
+        for (const Vector3& plane : {u, v}){
+            Vector3 previousA, previousB;
+            for (int i = 0; i <= segments / 2; i++){
+                const float angle = pi * (float)i / (float)(segments / 2);
+                const Vector3 across = plane * (std::cos(angle) * r);
+                const Vector3 along = w * (std::sin(angle) * r);
+                const Vector3 pointA = capsule.a + across - along;
+                const Vector3 pointB = capsule.b + across + along;
+                if (i > 0){
+                    lines->addLine(previousA, pointA, color);
+                    lines->addLine(previousB, pointB, color);
+                }
+                previousA = pointA;
+                previousB = pointB;
+            }
+        }
+
+        if (!selected) continue;
+        for (int h = 0; h < CAPSULE_HANDLES; h++){
+            const int index = (int)c * CAPSULE_HANDLES + h;
+            Vector3 worldPoint;
+            if (!getCapsuleHandleWorld(entity, index, worldPoint)) continue;
+            const bool handleSelected = hasHandleSelection && index == getSelectedCapsuleHandleIndex();
+            const Vector4& crossColor = handleSelected ? selectedHandleColor : handleColor;
+            const float halfSize = getPointHandleHalfSize(worldPoint) * (handleSelected ? 0.75f : 0.5f);
+            lines->addLine(worldPoint - Vector3(halfSize, 0, 0), worldPoint + Vector3(halfSize, 0, 0), crossColor);
+            lines->addLine(worldPoint - Vector3(0, halfSize, 0), worldPoint + Vector3(0, halfSize, 0), crossColor);
+            lines->addLine(worldPoint - Vector3(0, 0, halfSize), worldPoint + Vector3(0, 0, halfSize), crossColor);
+        }
+    }
+}
+
 // endpoint handles for a selected Lines entity, drawn as small 3-axis crosses
 // (orientation-independent in 3D); the sub-selected endpoint is drawn bigger
 // and in the selection color
@@ -943,7 +1034,7 @@ void editor::SceneRender3D::createOrUpdateSoundIcon(Entity entity, const Transfo
     so.icon->setScale(billboardScreenScale(transform.worldPosition, 0.25f));
 }
 
-void editor::SceneRender3D::createCameraFrustum(Entity entity, const Transform& transform, const CameraComponent& cameraComponent, bool fixedSizeFrustum, bool isMainCamera) {
+void editor::SceneRender3D::createCameraFrustum(Entity entity, const Transform& transform, const CameraComponent& cameraComponent, bool fullFrustum, bool isMainCamera) {
     CameraObjects& co = cameraObjects[entity];
 
     co.lines->setPosition(transform.worldPosition);
@@ -953,7 +1044,7 @@ void editor::SceneRender3D::createCameraFrustum(Entity entity, const Transform& 
     rotation.fromRotationMatrix(cameraComponent.viewMatrix.inverse());
     co.lines->setRotation(rotation);
 
-    updateCameraFrustum(co, cameraComponent, isMainCamera, fixedSizeFrustum);
+    updateCameraFrustum(co, cameraComponent, isMainCamera, fullFrustum);
 }
 
 
@@ -1201,6 +1292,7 @@ void editor::SceneRender3D::dropGoneGizmos(){
     dropGoneGizmos(polygonPointLines, render);
     dropGoneGizmos(trackLines, render);
     dropGoneGizmos(reflectionProbeLines, render);
+    dropGoneGizmos(capsuleShadowLines, render);
 }
 
 void editor::SceneRender3D::hideAllGizmos(){
@@ -1255,6 +1347,9 @@ void editor::SceneRender3D::hideAllGizmos(){
         pair.second->setVisible(false);
     }
     for (auto& pair : forceFieldLines) {
+        pair.second->setVisible(false);
+    }
+    for (auto& pair : capsuleShadowLines) {
         pair.second->setVisible(false);
     }
 }
@@ -1395,6 +1490,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentBuoyancies;
     std::set<Entity> currentParticleSystems;
     std::set<Entity> currentForceFields;
+    std::set<Entity> currentCapsuleCasters;
     // force fields show with a selected Particle System (the panel's Show Force Fields)
     bool particleSelected = false;
     for (Entity selected : selectedEntities){
@@ -1436,7 +1532,9 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
                 currentIconCameras.insert(entity);
                 bool newCamera = instanciateCameraObject(entity);
                 createOrUpdateCameraIcon(entity, transform, newCamera);
-                createCameraFrustum(entity, transform, cameraComp, true, mainCamera == entity);
+                // a selected camera shows its whole frustum, near to far (Unity)
+                const bool cameraSelected = selectedEntities.find(entity) != selectedEntities.end();
+                createCameraFrustum(entity, transform, cameraComp, cameraSelected, mainCamera == entity);
 
                 if (displaySettings.hideCameraView) {
                     cameraObjects[entity].icon->setVisible(false);
@@ -1548,6 +1646,16 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             ensureOverlayLines(controllerLines, entity);
             const bool highlighted = isDescendantSelected(entity);
             createOrUpdateControllerLines(entity, transform, controller, displaySettings.showAllBodies || highlighted, highlighted);
+        }
+
+        if (signature.test(scene->getComponentId<CapsuleShadowCasterComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            const CapsuleShadowCasterComponent& caster = scene->getComponent<CapsuleShadowCasterComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            currentCapsuleCasters.insert(entity);
+            ensureOverlayLines(capsuleShadowLines, entity);
+            // shown while it or one of its bones is selected; the handles with it selected
+            createOrUpdateCapsuleShadowLines(entity, transform, caster, isDescendantSelected(entity),
+                                             selectedEntities.find(entity) != selectedEntities.end());
         }
 
         if (signature.test(scene->getComponentId<ParticleSystemComponent>()) && signature.test(scene->getComponentId<Transform>())) {
@@ -1713,6 +1821,15 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
         if (currentControllers.find(it->first) == currentControllers.end()) {
             delete it->second;
             it = controllerLines.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    for (auto it = capsuleShadowLines.begin(); it != capsuleShadowLines.end();) {
+        if (currentCapsuleCasters.find(it->first) == currentCapsuleCasters.end()) {
+            delete it->second;
+            it = capsuleShadowLines.erase(it);
         } else {
             ++it;
         }

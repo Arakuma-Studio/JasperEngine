@@ -18,7 +18,9 @@
 
 #include "animation/ClipTypes.h"
 #include "ecs/Entity.h"
-#include "component/MeshComponent.h"
+#include "ecs/ComponentFwd.h"
+#include "Engine.h"
+#include "util/GrowArray.h"
 #include "math/AABB.h"
 #include "math/Matrix4.h"
 #include "math/Quaternion.h"
@@ -200,7 +202,7 @@ namespace jasperengine::editor{
         // bounds the render system derives from the bones (the scene file stores them too)
         struct SavedMesh{
             Entity entity = NULL_ENTITY;
-            HybridArray<Matrix4, MAX_BONES> bonesMatrix;
+            GrowArray<Matrix4> bonesMatrix;
             AABB skinnedAABB;
             AABB worldAABB;
             bool needUpdateAABB = false;

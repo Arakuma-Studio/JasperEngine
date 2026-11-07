@@ -122,11 +122,6 @@ namespace {
         }
     };
 
-    bool isImageValid(uint32_t id){
-        sg_image image = {id};
-        return sg_query_image_state(image) == SG_RESOURCESTATE_VALID;
-    }
-
 }
 
 //-------------------------------------------------------------------------------------------

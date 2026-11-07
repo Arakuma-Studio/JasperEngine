@@ -3,6 +3,7 @@
 
 // The Recorder's pure parts (docs/specs/S27-editor-tools.md R24-R30)
 
+#include "audio/AudioClock.h"
 #include "recorder/RecorderSettings.h"
 
 #include "support/TestTempDir.h"
@@ -128,6 +129,91 @@ TEST(RecorderSettings, FfmpegArguments) {
     EXPECT_TRUE(has(mux, "-c:a", "aac"));
     EXPECT_TRUE(has(mux, "-b:a", "192k"));
     EXPECT_TRUE(has(muxArguments(Format::Mov, "v", "a", "o"), "-c:a", "pcm_s16le"));
+    // the outputs have temporary names: the container is named
+    EXPECT_TRUE(has(x264, "-f", "mp4"));
+    EXPECT_TRUE(has(prores, "-f", "mov"));
+    EXPECT_TRUE(has(mux, "-f", "mp4"));
+    EXPECT_TRUE(has(muxArguments(Format::Mov, "v", "a", "o"), "-f", "mov"));
+}
+
+// what the deterministic driver's pump mixes in a game frame is what the Recorder writes for it
+TEST(RecorderSettings, FramesMatchAudioClock) {
+    for (int fps : {24, 30, 60, 144}) {
+        jasperengine::AudioClock clock;
+        clock.reset((unsigned int)kAudioRate);
+        for (int64_t k = 0; k < fps * 600; k++) {
+            ASSERT_EQ(clock.advance(1.0 / fps), audioFramesOf(k, fps)) << fps << " fps, frame " << k;
+        }
+    }
+}
+
+TEST(RecorderSettings, DecodeCheck) {
+    const std::vector<std::string> args = decodeCheckArguments("/o/a.mp4");
+    EXPECT_NE(std::find(args.begin(), args.end(), "/o/a.mp4"), args.end());
+    EXPECT_EQ(args.back(), "-");
+    EXPECT_EQ(parseDecodedFrames("frame=12\nfps=0.0\nprogress=continue\nframe=90\nfps=0.0\nprogress=end\n"), 90);
+    EXPECT_EQ(parseDecodedFrames("progress=end\n"), -1);
+    EXPECT_EQ(parseDecodedFrames(""), -1);
+}
+
+TEST(RecorderSettings, PartialPath) {
+    EXPECT_EQ(partialPath("/o/take.mp4").generic_string(), "/o/take.partial.mp4");
+    EXPECT_EQ(partialPath("/o/my.take.mov").generic_string(), "/o/my.take.partial.mov");
+}
+
+TEST(RecorderSettings, Estimates) {
+    Settings settings;
+    settings.frameRate = 30;
+    settings.kind = Kind::ImageSequence;
+    // 100 frames of RGBA at a third
+    EXPECT_NEAR((double)estimateRecordingBytes(settings, 1000, 1000, 100), 100 * 1000 * 1000 * 4 * 0.35, 1000.0);
+    settings.kind = Kind::Movie;
+    settings.format = Format::Mp4;
+    settings.quality = Quality::High;
+    const uint64_t oneMinute = estimateRecordingBytes(settings, 1920, 1080, 1800);
+    EXPECT_EQ(estimateRecordingBytes(settings, 1920, 1080, -1), oneMinute) << "no set end: its first minute";
+    EXPECT_GT(oneMinute, 50ull * 1024 * 1024);
+    EXPECT_LT(oneMinute, 500ull * 1024 * 1024);
+    settings.quality = Quality::Low;
+    EXPECT_LT(estimateRecordingBytes(settings, 1920, 1080, 1800), oneMinute);
+    settings.format = Format::Mov;
+    EXPECT_GT(estimateRecordingBytes(settings, 1920, 1080, 1800), oneMinute * 5) << "ProRes 422 HQ";
+    settings.format = Format::Mp4;
+    settings.quality = Quality::High;
+    settings.captureAudio = true;
+    // the video twice (its temporary and the mux), the WAV of 60 s and the AAC of 60 s
+    EXPECT_NEAR((double)estimateRecordingBytes(settings, 1920, 1080, 1800), 2.0 * oneMinute + 60 * 192000 + 60 * 24000, 1000.0);
+}
+
+TEST(RecorderSettings, SizesAndReasons) {
+    EXPECT_EQ(formatSize(950 * 1024), "950 KB");
+    EXPECT_EQ(formatSize(340ull * 1024 * 1024), "340 MB");
+    EXPECT_EQ(formatSize(1288490189ull), "1.2 GB");
+    EXPECT_EQ(diskFullReason(3ull * 1024 * 1024 + 5), "disk full, 3 MB free");
+    EXPECT_EQ(diskFullReason(0), "disk full, 0 MB free");
+    EXPECT_TRUE(isDiskFullMessage("av_interleaved_write_frame(): No space left on device"));
+    EXPECT_TRUE(isDiskFullMessage("Error writing trailer: There is not enough space on the disk"));
+    EXPECT_TRUE(isDiskFullMessage("write failed: Disk quota exceeded"));
+    EXPECT_FALSE(isDiskFullMessage("Invalid data found when processing input"));
+}
+
+TEST(RecorderSettings, TestFaults) {
+    const TestFaults none = parseTestFaults(nullptr);
+    EXPECT_EQ(none.audioWrite, -1);
+    EXPECT_EQ(none.videoWrite, -1);
+    EXPECT_EQ(none.encoderKill, -1);
+    EXPECT_EQ(none.pngWrite, -1);
+    EXPECT_EQ(none.holdLimitMs, -1);
+    EXPECT_EQ(none.freeBytes, -1);
+    EXPECT_FALSE(none.audioHeader || none.mux || none.publish);
+    const TestFaults many = parseTestFaults("audio@5,video@7,encoder-kill@8,png@9,audio-header,mux,publish,hold-limit=1500,free=2");
+    EXPECT_EQ(many.audioWrite, 5);
+    EXPECT_EQ(many.videoWrite, 7);
+    EXPECT_EQ(many.encoderKill, 8);
+    EXPECT_EQ(many.pngWrite, 9);
+    EXPECT_TRUE(many.audioHeader && many.mux && many.publish);
+    EXPECT_EQ(many.holdLimitMs, 1500);
+    EXPECT_EQ(many.freeBytes, 2 * 1024 * 1024);
 }
 
 TEST(RecorderSettings, AudioFramesSumExactly) {

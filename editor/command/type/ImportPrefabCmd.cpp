@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ImportPrefabCmd.h"
+#include "component/PrefabComponent.h"
 #include "sceneview/SurfacePlacement.h"
 
 #include "editor/Out.h"
@@ -38,6 +39,8 @@ bool editor::ImportPrefabCmd::execute(){
     // The prefab is the asset with this GUID: a redo after it was renamed finds it
     if (guid.empty()) {
         guid = project->getPrefabGuid(filepath);
+        // ... at the path it has: one in-memory prefab per asset, whatever path named it
+        filepath = project->getPrefabAssetPath(filepath);
     } else {
         std::filesystem::path current = project->resolvePrefabPath(guid, filepath);
         if (!current.empty()) {

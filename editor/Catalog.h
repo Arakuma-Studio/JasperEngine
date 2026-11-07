@@ -13,6 +13,10 @@
 #include "util/Color.h"
 #include "shader/ShaderManifest.h"
 
+namespace jasperengine{
+    enum class ScriptPropertyType;
+}
+
 namespace jasperengine::editor{
     enum UpdateFlags : uint64_t {
         UpdateFlags_None                = 0,
@@ -217,12 +221,16 @@ namespace jasperengine::editor{
         // Unity's VideoPlayer
         VideoPlayerComponent,
         // drives a RectTransform to Screen.safeArea
-        SafeAreaComponent
+        SafeAreaComponent,
+        // soft capsule shadows of a character from its bones (S57 R2)
+        CapsuleShadowCasterComponent,
+        // a Mixer Snapshot action of the legacy action timeline (S40 R18)
+        AudioSnapshotComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::SafeAreaComponent;
+    constexpr ComponentType LastComponentType = ComponentType::AudioSnapshotComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;
@@ -321,8 +329,10 @@ namespace jasperengine::editor{
 
         static PropertyData getProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName);
 
-        // The same lookup without the not-found log, for callers a miss is expected on
-        static PropertyData findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName);
+        // The same lookup without the not-found log, for callers a miss is expected on. `append`:
+        // the caller writes the value, so one past the last element of a component array that
+        // grows by index ("tiles[N]") appends one (reflect::resolve); a read never grows it
+        static PropertyData findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName, bool append = false);
 
         // Submesh::overrideFields of a "submeshes[N].<field>" property, null for anything else,
         // with propertyFields set to the bits that property occupies. A command ORs them in after
@@ -525,6 +535,21 @@ namespace jasperengine::editor{
                     return scene->isShadowCascadeBlend();
                 }
             }
+            else if (propertyName == "capsule_shadows_enabled") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    return scene->isCapsuleShadowsEnabled();
+                }
+            }
+            else if (propertyName == "capsule_shadow_intensity") {
+                if constexpr (std::is_same_v<T, float>) {
+                    return scene->getCapsuleShadowIntensity();
+                }
+            }
+            else if (propertyName == "capsule_shadow_softness") {
+                if constexpr (std::is_same_v<T, float>) {
+                    return scene->getCapsuleShadowSoftness();
+                }
+            }
             else if (propertyName == "shadows_debug_view") {
                 if constexpr (std::is_same_v<T, ShadowDebugView>) {
                     return scene ? scene->getShadowDebugView() : ShadowDebugView::NONE;
@@ -603,6 +628,16 @@ namespace jasperengine::editor{
             else if (propertyName == "mesh_lod_threshold") {
                 if constexpr (std::is_same_v<T, float>) {
                     return scene->getMeshLodThreshold();
+                }
+            }
+            else if (propertyName == "mesh_lod_cross_fade") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    return scene->isMeshLodCrossFade();
+                }
+            }
+            else if (propertyName == "mesh_lod_cross_fade_duration") {
+                if constexpr (std::is_same_v<T, float>) {
+                    return scene->getMeshLodCrossFadeDuration();
                 }
             }
             else if (propertyName == "depth_prepass_enabled") {
@@ -786,6 +821,15 @@ namespace jasperengine::editor{
             else if (propertyName == "shadow_cascade_blend") {
                 if constexpr (std::is_same_v<T, bool>) return d.shadowCascadeBlend;
             }
+            else if (propertyName == "capsule_shadows_enabled") {
+                if constexpr (std::is_same_v<T, bool>) return d.capsuleShadowsEnabled;
+            }
+            else if (propertyName == "capsule_shadow_intensity") {
+                if constexpr (std::is_same_v<T, float>) return d.capsuleShadowIntensity;
+            }
+            else if (propertyName == "capsule_shadow_softness") {
+                if constexpr (std::is_same_v<T, float>) return d.capsuleShadowSoftness;
+            }
             else if (propertyName == "shadows_debug_view") {
                 if constexpr (std::is_same_v<T, ShadowDebugView>) return ShadowDebugView::NONE;
             }
@@ -833,6 +877,12 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "mesh_lod_threshold") {
                 if constexpr (std::is_same_v<T, float>) return d.meshLodThreshold;
+            }
+            else if (propertyName == "mesh_lod_cross_fade") {
+                if constexpr (std::is_same_v<T, bool>) return d.meshLodCrossFade;
+            }
+            else if (propertyName == "mesh_lod_cross_fade_duration") {
+                if constexpr (std::is_same_v<T, float>) return d.meshLodCrossFadeDuration;
             }
             else if (propertyName == "depth_prepass_enabled") {
                 if constexpr (std::is_same_v<T, bool>) return d.depthPrepassEnabled;
@@ -958,6 +1008,21 @@ namespace jasperengine::editor{
                     scene->setShadowCascadeBlend(value);
                 }
             }
+            else if (propertyName == "capsule_shadows_enabled") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    scene->setCapsuleShadowsEnabled(value);
+                }
+            }
+            else if (propertyName == "capsule_shadow_intensity") {
+                if constexpr (std::is_same_v<T, float>) {
+                    scene->setCapsuleShadowIntensity(value);
+                }
+            }
+            else if (propertyName == "capsule_shadow_softness") {
+                if constexpr (std::is_same_v<T, float>) {
+                    scene->setCapsuleShadowSoftness(value);
+                }
+            }
             else if (propertyName == "shadows_debug_view") {
                 if constexpr (std::is_same_v<T, ShadowDebugView>) {
                     scene->setShadowDebugView(value);
@@ -1036,6 +1101,16 @@ namespace jasperengine::editor{
             else if (propertyName == "mesh_lod_threshold") {
                 if constexpr (std::is_same_v<T, float>) {
                     scene->setMeshLodThreshold(value);
+                }
+            }
+            else if (propertyName == "mesh_lod_cross_fade") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    scene->setMeshLodCrossFade(value);
+                }
+            }
+            else if (propertyName == "mesh_lod_cross_fade_duration") {
+                if constexpr (std::is_same_v<T, float>) {
+                    scene->setMeshLodCrossFadeDuration(value);
                 }
             }
             else if (propertyName == "depth_prepass_enabled") {

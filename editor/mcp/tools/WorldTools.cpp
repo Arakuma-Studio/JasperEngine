@@ -6,6 +6,9 @@
 // colliders and joints, UI widget trees and rect layouts, particle systems, models, and the
 // point lists of polygons / shadow casters / line renderers.
 #include "util/ProjectUtils.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "model/ModelAudit.h"
 #include "McpTools.h"
 #include "AnimationClipTools.h"
 #include "AnimatorTools.h"
@@ -39,6 +42,10 @@
 #include "subsystem/PhysicsSystem.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
+#include "component/AudioSnapshotComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "animation/ClipAudio.h"
+#include "audio/AudioMixer.h"
 #include "component/BoneComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/ImageComponent.h"
@@ -352,7 +359,8 @@ bool addCatalogProperties(Project* project, SceneProject* scene, Entity entity, 
         return false;
     }
     for (auto it = props.begin(); it != props.end(); ++it) {
-        PropertyData property = Catalog::findProperty(scene->scene, entity, component, it.key());
+        // (a write follows: "frames[N]" one past the last appends it)
+        PropertyData property = Catalog::findProperty(scene->scene, entity, component, it.key(), true);
         if (!property.ref) {
             std::vector<std::string> names;
             for (const auto& item : Catalog::findEntityProperties(scene->scene, entity, component)) {
@@ -412,7 +420,8 @@ std::string meshTexturePath(Scene* scene, Entity entity, int submesh) {
 // Sets MeshComponent submeshes[N].material.baseColorTexture from a project-relative path
 bool addMeshTexture(const Target& target, Entity entity, int submesh, const Json& path, MultiPropertyCmd& multi, std::string& error) {
     const std::string name = "submeshes[" + std::to_string(submesh) + "].material.baseColorTexture";
-    PropertyData property = Catalog::findProperty(target.engineScene(), entity, ComponentType::MeshComponent, name);
+    // (a write follows: a sprite just made holds no submesh until its first, appended here)
+    PropertyData property = Catalog::findProperty(target.engineScene(), entity, ComponentType::MeshComponent, name, true);
     if (!property.ref) {
         error = "The GameObject has no mesh submesh " + std::to_string(submesh) + " to hold a texture.";
         return false;
@@ -2473,7 +2482,7 @@ void editTilemapTool(const CallPtr& call) {
                 return;
             }
             std::vector<SliceRect> slices;
-            if (!sliceSheet(args["tileset"], sheetW, sheetH, "tile_", slices, MAX_TILEMAP_TILESRECT, error)) {
+            if (!sliceSheet(args["tileset"], sheetW, sheetH, "tile_", slices, ARRAY_INDEX_LIMIT, error)) {
                 delete setup;
                 failWith("tileset: " + error);
                 return;
@@ -2518,9 +2527,9 @@ void editTilemapTool(const CallPtr& call) {
                 if (!replaced) rects.push_back(rect);
             }
         }
-        if (rects.size() > MAX_TILEMAP_TILESRECT) {
+        if (rects.size() > ARRAY_INDEX_LIMIT) {
             delete setup;
-            failWith("A tilemap holds at most " + std::to_string(MAX_TILEMAP_TILESRECT) + " tile rects.");
+            failWith("A tilemap holds at most " + std::to_string(ARRAY_INDEX_LIMIT) + " tile rects.");
             return;
         }
         for (size_t i = 0; i < std::max(before.size(), rects.size()); i++) {
@@ -2677,7 +2686,7 @@ void editTilemapTool(const CallPtr& call) {
                 if (kind == "fill" && ref.rect < 0) { failWith(where + ": fill needs tile (a tile rect name or index)."); return; }
                 const int c0 = static_cast<int>(std::min(from.x, to.x)), c1 = static_cast<int>(std::max(from.x, to.x));
                 const int r0 = static_cast<int>(std::min(from.y, to.y)), r1 = static_cast<int>(std::max(from.y, to.y));
-                if (static_cast<long long>(c1 - c0 + 1) * (r1 - r0 + 1) > MAX_TILEMAP_TILES * 4) { failWith(where + ": the area is too large."); return; }
+                if (static_cast<long long>(c1 - c0 + 1) * (r1 - r0 + 1) > MAX_TILEMAP_RENDERED_TILES * 4) { failWith(where + ": the area is too large."); return; }
                 for (int r = r0; r <= r1; r++) {
                     for (int c = c0; c <= c1; c++) {
                         if (!setCell(c, r, ref)) { failWith(where + ": " + error); return; }
@@ -2713,8 +2722,8 @@ void editTilemapTool(const CallPtr& call) {
     for (size_t i = 0; i < tiles.size(); i++) {
         if (!removed[i]) finalTiles.push_back(tiles[i]);
     }
-    if (finalTiles.size() > MAX_TILEMAP_TILES) {
-        failWith("The tilemap would hold " + std::to_string(finalTiles.size()) + " tiles; the maximum is " + std::to_string(MAX_TILEMAP_TILES) + ".");
+    if (finalTiles.size() > MAX_TILEMAP_RENDERED_TILES) {
+        failWith("The tilemap would hold " + std::to_string(finalTiles.size()) + " tiles; a Tilemap draws at most " + std::to_string(MAX_TILEMAP_RENDERED_TILES) + ".");
         return;
     }
     auto* tileCmd = new MultiPropertyCmd();
@@ -2830,7 +2839,7 @@ void setSpriteFramesTool(const CallPtr& call) {
     if (has(args, "slice")) {
         int sheetW = 0, sheetH = 0;
         if (!sheetSize(target.project, args["slice"], stored, sheetW, sheetH, error) ||
-            !sliceSheet(args["slice"], sheetW, sheetH, "frame_", frames, MAX_SPRITE_FRAMES, error)) {
+            !sliceSheet(args["slice"], sheetW, sheetH, "frame_", frames, ARRAY_INDEX_LIMIT, error)) {
             delete multi;
             failWith("slice: " + error);
             return;
@@ -2852,9 +2861,9 @@ void setSpriteFramesTool(const CallPtr& call) {
             }
             frames.push_back(slice);
         }
-        if (frames.size() > MAX_SPRITE_FRAMES) {
+        if (frames.size() > ARRAY_INDEX_LIMIT) {
             delete multi;
-            failWith("A sprite holds at most " + std::to_string(MAX_SPRITE_FRAMES) + " frames.");
+            failWith("A sprite holds at most " + std::to_string(ARRAY_INDEX_LIMIT) + " frames.");
             return;
         }
         framesGiven = true;
@@ -2971,8 +2980,8 @@ void setSpriteAnimationTool(const CallPtr& call) {
     } else {
         for (unsigned i = 0; i < sprite->numFramesRect; i++) frames.push_back(static_cast<int>(i));
     }
-    if (frames.size() > MAX_SPRITE_FRAMES) {
-        call->fail("At most " + std::to_string(MAX_SPRITE_FRAMES) + " frames.");
+    if (frames.size() > ARRAY_INDEX_LIMIT) {
+        call->fail("At most " + std::to_string(ARRAY_INDEX_LIMIT) + " frames.");
         return;
     }
     std::vector<int> times(frames.size(), static_cast<int>(std::lround(1000.0f / std::max(0.1f, numberOr(args, "fps", 10.0f)))));
@@ -3072,6 +3081,9 @@ std::string actionKind(Scene* scene, Entity action) {
     if (scene->findComponent<SpriteAnimationComponent>(action)) return "sprite_animation";
     if (scene->findComponent<ParticleSystemComponent>(action)) return "particles";
     if (scene->findComponent<AnimationComponent>(action)) return "animation";
+    // the legacy timeline's sound (S40 R17, R18)
+    if (const AudioSourceComponent* audio = scene->findComponent<AudioSourceComponent>(action)) return audio->event.empty() ? "audio" : "sound_event";
+    if (scene->findComponent<AudioSnapshotComponent>(action)) return "mixer_snapshot";
     return "action";
 }
 
@@ -3487,6 +3499,7 @@ Json animationJson(const Target& target, Entity animation, size_t keyLimit) {
     ActionComponent* action = scene->findComponent<ActionComponent>(animation);
     ActionSystem* actions = scene->getSystem<ActionSystem>().get();
     Json list = Json::array();
+    Json audioList = Json::array();
     float length = 0.0f;
     for (size_t i = 0; i < anim.actions.size(); i++) {
         const ActionFrame& frame = anim.actions[i];
@@ -3525,10 +3538,36 @@ Json animationJson(const Target& target, Entity animation, size_t keyLimit) {
             if (auto* p = scene->findComponent<AlphaTweenComponent>(frame.action)) { t["from"] = p->startAlpha; t["to"] = p->endAlpha; }
             item["tween"] = t;
         }
+        // audio and snapshot actions also list as audio[] (S40 R25), in edit_animation's audio form
+        if (kind == "audio" || kind == "sound_event" || kind == "mixer_snapshot") {
+            Json cue = {{"index", i}, {"time", frame.startTime}, {"duration", frame.duration}, {"effective_duration", effective},
+                        {"lane", frame.track}, {"name", scene->getEntityName(frame.action)}};
+            if (const AudioSourceComponent* audio = scene->findComponent<AudioSourceComponent>(frame.action)) {
+                const AssetRef& sound = audio->event.empty() ? audio->filename : audio->event;
+                Json ref = {{"path", clip_tools::toolPath(target.project, sound.path)}};
+                if (!sound.guid.isNull()) ref["guid"] = sound.guid.str();
+                cue["sound"] = ref;
+                cue["volume_db"] = audio->volume > 0.0 ? 20.0 * std::log10(audio->volume) : -60.0;
+                cue["pitch_semitones"] = audio->speed > 0.0f ? 12.0 * std::log2((double)audio->speed) : 0.0;
+                if (!audio->outputGroupName.empty()) cue["group"] = audio->outputGroupName;
+                cue["spatial"] = audio->attenuationModel != AudioSourceAttenuation::NO_ATTENUATION;
+            }
+            if (const AudioSnapshotComponent* snapshot = scene->findComponent<AudioSnapshotComponent>(frame.action)) {
+                cue["snapshot"] = snapshot->snapshot;
+                cue["seconds"] = snapshot->seconds;
+                cue["unscaled"] = snapshot->unscaled;
+                cue["revert"] = snapshot->revert;
+            }
+            if (ActionComponent* ac = scene->findComponent<ActionComponent>(frame.action)) {
+                if (ac->target != NULL_ENTITY && scene->isEntityCreated(ac->target)) cue["path"] = McpRefs::entityPath(target.scene, ac->target);
+            }
+            audioList.push_back(cue);
+        }
         list.push_back(item);
     }
     Json out = {{"animation", entityJson(target, animation)}, {"loop", anim.loop}, {"duration", anim.duration},
                 {"length", length}, {"actions", list}};
+    if (!audioList.empty()) out["audio"] = audioList;
     if (action) {
         out["target"] = action->target != NULL_ENTITY && scene->isEntityCreated(action->target) ? entityJson(target, action->target) : Json(nullptr);
         out["autoplay"] = action->state == ActionState::Running;
@@ -3809,6 +3848,54 @@ void editAnimationTool(const CallPtr& call) {
         }
     }
 
+    // Audio and Mixer Snapshot actions (S40 R25): edit_animation's cue items, time = the frame's start
+    int audioCreated = 0;
+    if (has(args, "audio")) {
+        if (!args["audio"].is_array()) { failWith("audio must be an array of {time, sound | snapshot, path, duration, lane, ...}."); return; }
+        for (size_t a = 0; a < args["audio"].size(); a++) {
+            const Json& item = args["audio"][a];
+            const std::string where = "audio[" + std::to_string(a) + "]";
+            ClipAudioCue cue;
+            if (!clip_tools::readAudioCue(target.project, item, where, true, cue, error)) { failWith(error); return; }
+            Entity actionTarget = animTarget;
+            if (!cue.path.empty() && (actionTarget = resolveRef(target.scene, Json(cue.path), error)) == NULL_ENTITY) { failWith(where + ".path: " + error); return; }
+            const float duration = numberOr(item, "duration", 0.0f);
+            if (has(item, "duration") && (!item["duration"].is_number() || duration < 0.0f)) {
+                failWith(where + ".duration must be seconds >= 0 (0: as long as its sound or transition)."); return;
+            }
+            const bool snapshot = cue.kind == ClipCueKind::Snapshot;
+            const bool event = !snapshot && lowerText(fs::path(cue.sound.path).extension().string()) == ".soundevent";
+            const EntityCreationType type = snapshot ? EntityCreationType::MIXER_SNAPSHOT_ACTION
+                                                     : event ? EntityCreationType::SOUND_EVENT_ACTION : EntityCreationType::AUDIO_ACTION;
+            const std::string name = !cue.name.empty() ? cue.name
+                                   : snapshot ? "Mixer Snapshot: " + cue.snapshot : "Audio: " + fs::path(cue.sound.path).stem().string();
+            auto* create = new CreateEntityCmd(target.project, target.sceneId(), name, type, actionTarget);
+            std::unique_ptr<CreateEntityCmd> guard(create);
+            if (snapshot) {
+                create->addProperty<std::string>(ComponentType::AudioSnapshotComponent, "snapshot", cue.snapshot);
+                create->addProperty<float>(ComponentType::AudioSnapshotComponent, "seconds", cue.seconds);
+                if (cue.unscaled) create->addProperty<bool>(ComponentType::AudioSnapshotComponent, "unscaled", *cue.unscaled);
+            } else {
+                create->addProperty<AssetRef>(ComponentType::AudioSourceComponent, event ? "event" : "filename", cue.sound);
+                if (cue.volumeDb != 0.0f) create->addProperty<double>(ComponentType::AudioSourceComponent, "volume", std::pow(10.0, (double)cue.volumeDb / 20.0));
+                if (cue.pitchSemitones != 0.0f) create->addProperty<float>(ComponentType::AudioSourceComponent, "speed", (float)std::pow(2.0, (double)cue.pitchSemitones / 12.0));
+                if (!cue.group.empty()) {
+                    create->addProperty<std::string>(ComponentType::AudioSourceComponent, "outputGroupName", cue.group);
+                    create->addProperty<std::string>(ComponentType::AudioSourceComponent, "outputGroup", AudioMixer::findGroupId(cue.group));
+                }
+                if (cue.spatial) create->addProperty<AudioSourceAttenuation>(ComponentType::AudioSourceComponent, "attenuationModel", AudioSourceAttenuation::INVERSE_DISTANCE);
+            }
+            if (!step.add(guard.release())) { failWith(where + ": could not create the action."); return; }
+            ActionFrame frame;
+            frame.startTime = cue.time;
+            frame.duration = duration;
+            frame.action = create->getEntity();
+            frame.track = static_cast<uint32_t>(std::max(0, intOr(item, "lane", static_cast<int>(nextLane++))));
+            kept.push_back(frame);
+            audioCreated++;
+        }
+    }
+
     // Existing actions (tweens, tracks, sprite animations, particles, nested animations)
     if (has(args, "add_actions")) {
         if (!args["add_actions"].is_array()) { failWith("add_actions must be an array of {action, start_time, duration, lane}."); return; }
@@ -3853,7 +3940,8 @@ void editAnimationTool(const CallPtr& call) {
     data["created"] = created;
     call->ok(std::string(created ? "Created" : "Updated") + " animation \"" + scene->getEntityName(animation) + "\": " +
              std::to_string(kept.size()) + " action(s); " + std::to_string(tracksCreated) + " track(s) created, " +
-             std::to_string(tracksWritten) + " rewritten, " + std::to_string(tweensCreated) + " tween(s) added (one undo step).", data);
+             std::to_string(tracksWritten) + " rewritten, " + std::to_string(tweensCreated) + " tween(s), " + std::to_string(audioCreated) +
+             " audio action(s) added (one undo step).", data);
 }
 
 void getAnimationTool(const CallPtr& call) {
@@ -5111,6 +5199,14 @@ void getModelInfoTool(const CallPtr& call) {
     }
     Json info = modelInfoJson(target, target.entity);
     if (!boolOr(call->args(), "include_bones", true)) info.erase("bones");
+    // the model cook of its file (S53 R23)
+    {
+        Project* project = call->ctx().project();
+        const std::string& filename = scene->getComponent<ModelComponent>(target.entity).filename;
+        const fs::path absolute = filename.empty() ? fs::path() : project->resolveAssetPath(filename).lexically_normal();
+        if (!filename.empty() && project->isInsideAssetsPath(absolute) && isModelSource(project->normalizeToAssetsRelative(absolute).generic_string()))
+            info["cook"] = ModelAudit::cookSummaryJson(*project, project->normalizeToAssetsRelative(absolute).generic_string());
+    }
     call->ok("Model \"" + scene->getEntityName(target.entity) + "\": " + std::to_string(info["meshes"].size()) + " mesh(es), " +
              std::to_string(info["bone_count"].get<size_t>()) + " bone(s), " + std::to_string(info["animations"].size()) + " animation(s).", info);
 }
@@ -5698,7 +5794,7 @@ void registerWorldTools(McpRegistry& registry) {
         "Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from the root whose "
         "Animation Player plays it; create {from?, humanoid {model?}}; one project undo step. No clip: an entity "
         "Animation under target (tweens, actions; a scene step). tracks: channel + keys {time, value|points, ease}; "
-        "property: component + property; humanoid: bone.",
+        "property: component + property; humanoid: bone. audio: sound cues (no clip: audio actions).",
         object({
             {"scene", sceneRef()},
             {"clip", assetPath("")},
@@ -5723,6 +5819,8 @@ void registerWorldTools(McpRegistry& registry) {
             }, {"channel", "keys"}), "")},
             {"events", array(object({{"time", number("")}, {"function", string("")}, {"args", array(any(""), "")}}, {"time", "function"}), "")},
             {"events_mode", withDefault(stringEnum("", {"replace", "merge"}), "replace")},
+            // the cue's other keys (path, spatial, volume_db, stop, duration...) are the guide's; the handler checks them
+            {"audio", array(object({{"time", number("")}, {"sound", any("")}, {"source", string("")}, {"snapshot", string("")}}, {"time"}, true), "")},
             {"wrap", stringEnum("", {"once", "loop", "ping_pong", "clamp_forever"})},
             {"frame_rate", number("")},
             {"length", number("")},

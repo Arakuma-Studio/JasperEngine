@@ -7,6 +7,7 @@
 // overrides at any level, Prefab Mode (prefab stages), the standalone prefab list.
 // Every edit runs through the editor's commands (one undo step per call).
 #include "McpTools.h"
+#include "component/Transform.h"
 
 #include "mcp/McpDataSafety.h"
 #include "mcp/McpCall.h"
@@ -248,7 +249,8 @@ bool prefabPathArg(Project* project, const std::string& text, bool mustExist, fs
         error = "No prefab at \"" + generic(rel) + "\". List the project's prefabs with list_prefabs.";
         return false;
     }
-    relative = rel;
+    // an existing prefab is the asset, whichever path of its file was given
+    relative = mustExist ? project->getPrefabAssetPath(rel) : rel;
     return true;
 }
 

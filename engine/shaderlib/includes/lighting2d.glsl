@@ -127,12 +127,11 @@ vec3 getNormal2D(){
 }
 
 #ifdef USE_SHADOWS_2D
-// Bound clamped on every backend, constant on HLSL: see shadows.glsl
-#ifdef IS_HLSL
-const int MAX_SHADOW2D_RADIUS = 2;  // 5 taps; MEDIUM and HIGH render as LOW here
-#else
+// Bound clamped on every backend, as the 3D shadows' (includes/shadows.glsl): every lookup takes
+// explicit LOD 0 (the atlas has one level), since the per-light loop that calls this has
+// per-fragment exits, where implicit derivatives are undefined (an Intel GL hang, Doriax
+// 1251c3139's pattern), and no backend has to unroll the loop
 const int MAX_SHADOW2D_RADIUS = 6;  // 13 taps, Shadow2DQuality::HIGH
-#endif
 
 // 1D polar shadow map lookup: the row stores, per angle around the light, the
 // normalized distance (dist/range) of the nearest occluder. PCF along the row
@@ -152,7 +151,7 @@ float shadow2DCalculation(float row, vec2 lightToFrag, float dist01, float softn
 
     int radius = clamp(int(lighting2d.atlasInfo.w), 0, MAX_SHADOW2D_RADIUS);
     if (radius <= 0){
-        float occ = decodeDepth(texture(sampler2D(u_shadow2DAtlas, u_shadow2DAtlas_smp), vec2(u, v)));
+        float occ = decodeDepth(textureLod(sampler2D(u_shadow2DAtlas, u_shadow2DAtlas_smp), vec2(u, v), 0.0));
         return (dist01 - bias <= occ) ? 1.0 : 0.0;
     }
 
@@ -160,13 +159,9 @@ float shadow2DCalculation(float row, vec2 lightToFrag, float dist01, float softn
     float tapStep = halfWidth / float(radius);
     float lit = 0.0;
     // The clamp leaves radius at MAX_SHADOW2D_RADIUS
-    #ifdef IS_HLSL
-    for (int t = -MAX_SHADOW2D_RADIUS; t <= MAX_SHADOW2D_RADIUS; ++t){
-    #else
     for (int t = -radius; t <= radius; ++t){
-    #endif
         float su = fract(u + float(t) * tapStep);
-        float occ = decodeDepth(texture(sampler2D(u_shadow2DAtlas, u_shadow2DAtlas_smp), vec2(su, v)));
+        float occ = decodeDepth(textureLod(sampler2D(u_shadow2DAtlas, u_shadow2DAtlas_smp), vec2(su, v), 0.0));
         lit += (dist01 - bias <= occ) ? 1.0 : 0.0;
     }
     return lit / float(2 * radius + 1); // 1.0 = fully lit

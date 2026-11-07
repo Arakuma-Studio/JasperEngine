@@ -337,85 +337,99 @@ namespace {
 
 }
 
+namespace {
+
+    // Events and audio cues cross alike (S40 R4): anything with a `time` in clip seconds
+    template<class Timed>
+    void collectCrossed(const std::vector<Timed>& events, double length, ClipWrapMode wrap, float fromTime, float toTime,
+                        bool includeStart, std::vector<anim::CrossedEvent>& out){
+        if (events.empty() || !std::isfinite(fromTime) || !std::isfinite(toTime)) return;
+
+        const bool forward = toTime >= fromTime;
+        if (fromTime == toTime && !includeStart) return;
+        const bool cyclic = (wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong) && length > 0.0;
+
+        // per thread and kept: a crossing allocates nothing once warm (the Animator's wave, S21 R19)
+        thread_local std::vector<RankedEvent> crossed;
+        crossed.clear();
+        if (!cyclic){
+            // once / clamp_forever: the time line is the clip itself
+            const double from = std::min(std::max((double)fromTime, 0.0), length);
+            const double to = std::min(std::max((double)toTime, 0.0), length);
+            for (size_t i = 0; i < events.size(); i++){
+                const double t = events[i].time;
+                if (t > length) continue;
+                const bool inside = forward ? (t > from && t <= to) : (t < from && t >= to);
+                if (inside || (includeStart && t == from)){
+                    crossed.push_back({t, 0, i});
+                }
+            }
+        }else{
+            const double from = fromTime;
+            const double to = toTime;
+            for (size_t i = 0; i < events.size(); i++){
+                const double t = events[i].time;
+                if (t > length) continue;
+                double best = 0.0;
+                bool found = false;
+                int rank = 1;
+                auto consider = [&](double offset, double period, bool start){
+                    double p;
+                    if (firstOccurrence(offset, period, from, to, forward, start, p)){
+                        if (!found || (forward ? p < best : p > best)) best = p;
+                        found = true;
+                    }
+                };
+                if (wrap == ClipWrapMode::Loop){
+                    if (t >= length){
+                        // at the end of every cycle (never the start of the first one)
+                        consider(length, length, includeStart && !forward);
+                        rank = forward ? 0 : 1;
+                    }else{
+                        // at the start of a cycle when at 0 (not reached when going back from its end)
+                        consider(t, length, includeStart && (forward || t > 0.0));
+                        rank = (t == 0.0 && !forward) ? 0 : 1;
+                    }
+                }else{
+                    // ping-pong: the way there at t, the way back at 2 * length - t
+                    const double period = 2.0 * length;
+                    consider(t, period, includeStart);
+                    if (t > 0.0 && t < length) consider(period - t, period, includeStart);
+                }
+                if (found) crossed.push_back({best, rank, i});
+            }
+        }
+
+        // a stable insertion sort (few events per update; std::stable_sort would allocate its buffer)
+        auto before = [forward](const RankedEvent& a, const RankedEvent& b){
+            if (a.position != b.position) return forward ? a.position < b.position : a.position > b.position;
+            return a.rank < b.rank;
+        };
+        for (size_t i = 1; i < crossed.size(); i++){
+            const RankedEvent moving = crossed[i];
+            size_t j = i;
+            while (j > 0 && before(moving, crossed[j - 1])){
+                crossed[j] = crossed[j - 1];
+                j--;
+            }
+            crossed[j] = moving;
+        }
+        for (const RankedEvent& event : crossed){
+            anim::CrossedEvent result;
+            result.index = event.index;
+            result.position = event.position;
+            out.push_back(result);
+        }
+    }
+
+}
+
 void anim::collectCrossedEvents(const AnimationClip& clip, ClipWrapMode wrap, float fromTime, float toTime,
                                 bool includeStart, std::vector<CrossedEvent>& out){
-    const std::vector<ClipEventData>& events = clip.getEvents();
-    if (events.empty() || !std::isfinite(fromTime) || !std::isfinite(toTime)) return;
+    collectCrossed(clip.getEvents(), clip.getLength(), wrap, fromTime, toTime, includeStart, out);
+}
 
-    const double length = clip.getLength();
-    const bool forward = toTime >= fromTime;
-    if (fromTime == toTime && !includeStart) return;
-    const bool cyclic = (wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong) && length > 0.0;
-
-    // per thread and kept: a crossing allocates nothing once warm (the Animator's wave, S21 R19)
-    thread_local std::vector<RankedEvent> crossed;
-    crossed.clear();
-    if (!cyclic){
-        // once / clamp_forever: the time line is the clip itself
-        const double from = std::min(std::max((double)fromTime, 0.0), length);
-        const double to = std::min(std::max((double)toTime, 0.0), length);
-        for (size_t i = 0; i < events.size(); i++){
-            const double t = events[i].time;
-            if (t > length) continue;
-            const bool inside = forward ? (t > from && t <= to) : (t < from && t >= to);
-            if (inside || (includeStart && t == from)){
-                crossed.push_back({t, 0, i});
-            }
-        }
-    }else{
-        const double from = fromTime;
-        const double to = toTime;
-        for (size_t i = 0; i < events.size(); i++){
-            const double t = events[i].time;
-            if (t > length) continue;
-            double best = 0.0;
-            bool found = false;
-            int rank = 1;
-            auto consider = [&](double offset, double period, bool start){
-                double p;
-                if (firstOccurrence(offset, period, from, to, forward, start, p)){
-                    if (!found || (forward ? p < best : p > best)) best = p;
-                    found = true;
-                }
-            };
-            if (wrap == ClipWrapMode::Loop){
-                if (t >= length){
-                    // at the end of every cycle (never the start of the first one)
-                    consider(length, length, includeStart && !forward);
-                    rank = forward ? 0 : 1;
-                }else{
-                    // at the start of a cycle when at 0 (not reached when going back from its end)
-                    consider(t, length, includeStart && (forward || t > 0.0));
-                    rank = (t == 0.0 && !forward) ? 0 : 1;
-                }
-            }else{
-                // ping-pong: the way there at t, the way back at 2 * length - t
-                const double period = 2.0 * length;
-                consider(t, period, includeStart);
-                if (t > 0.0 && t < length) consider(period - t, period, includeStart);
-            }
-            if (found) crossed.push_back({best, rank, i});
-        }
-    }
-
-    // a stable insertion sort (few events per update; std::stable_sort would allocate its buffer)
-    auto before = [forward](const RankedEvent& a, const RankedEvent& b){
-        if (a.position != b.position) return forward ? a.position < b.position : a.position > b.position;
-        return a.rank < b.rank;
-    };
-    for (size_t i = 1; i < crossed.size(); i++){
-        const RankedEvent moving = crossed[i];
-        size_t j = i;
-        while (j > 0 && before(moving, crossed[j - 1])){
-            crossed[j] = crossed[j - 1];
-            j--;
-        }
-        crossed[j] = moving;
-    }
-    for (const RankedEvent& event : crossed){
-        CrossedEvent result;
-        result.index = event.index;
-        result.position = event.position;
-        out.push_back(result);
-    }
+void anim::collectCrossedCues(const AnimationClip& clip, ClipWrapMode wrap, float fromTime, float toTime,
+                              bool includeStart, std::vector<CrossedEvent>& out){
+    collectCrossed(clip.getAudioCues(), clip.getLength(), wrap, fromTime, toTime, includeStart, out);
 }

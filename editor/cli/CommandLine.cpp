@@ -4,6 +4,8 @@
 #include "animation/ClipReport.h"
 #include "util/SHA1.h"
 #include "media/VideoFormats.h"
+#include "htmlui/compat/CompatApi.h"
+#include "component/PrefabComponent.h"
 #include "media/VideoSourceFactory.h"
 #include "CommandLine.h"
 #include "log/Logger.h"
@@ -40,6 +42,7 @@
 #include "command/type/PropertyCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/CommandHandle.h"
+#include "util/TextEncoding.h"
 #include "command/type/ReplacePrefabCmd.h"
 #include "command/type/UnpackPrefabCmd.h"
 #include "command/type/CreatePrefabVariantAssetCmd.h"
@@ -296,6 +299,10 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " generate-sprite-normals [options]  Normal maps for sprites, sheets, GIF/APNG animations and tiles.\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
+        << "  " << commandName << " audio-analyze [options] <file|essentials:id|library:id>...\n"
+        << "                                                     Measure audio files (the analyze_audio numbers; exit 0/2).\n"
+        << "  " << commandName << " sound-library verify|list [options]\n"
+        << "                                                     Check or list the starter library (exit 0/1/2).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
         << "  " << commandName << " call [options] <tool> ...  Run one MCP tool of an editor from the shell.\n"
         << "  " << commandName << " batch [options] < calls  Run MCP tool calls from stdin (one JSON per line).\n"
@@ -348,6 +355,7 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --frames <n>       Measured frames after warmup. Default: 180.\n"
         << "      --warmup <n>       Warmup frames after resources load. Default: 90.\n"
         << "      --mesh-lod <on|off>      Override the scene's mesh LOD setting.\n"
+        << "      --gpu-instancing <on|off> Override the project's GPU Instancing for the run.\n"
         << "      --depth-prepass <on|off> Override the scene's depth prepass setting.\n"
         << "      --lit-quality <standard|high> Override the scene's Lit Quality.\n"
         << "      --play             Measure the scene playing (Play: scripts, animation, physics run)\n"
@@ -619,6 +627,8 @@ static void attachHostConsoleIfNeeded() {
         (void)freopen_s(&stdoutFile, "CONOUT$", "w", stdout);
         (void)freopen_s(&stderrFile, "CONOUT$", "w", stderr);
         (void)freopen_s(&stdinFile,  "CONIN$",  "r", stdin);
+        // the console exists only now: it shows the UTF-8 output too
+        TextEncoding::useUtf8Console();
     }
 #endif
 }
@@ -1107,7 +1117,7 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
                 if (name == "playStart") {
                     // Play does not start on a snapshot that would lose a GameObject
                     try {
-                        played.playStateSnapshot = Stream::encodeSceneProject(nullptr, &played);
+                        played.playStateSnapshot = Stream::encodePlaySnapshot(nullptr, &played);
                     } catch (const std::exception& e) {
                         Out::error("Failed to start scene: %s", e.what());
                         return false;
@@ -2030,8 +2040,10 @@ static int runAssets(int argc, char** argv, const std::string& commandName) {
     for (const AssetDatabase::OrphanMeta& orphan : tracker.getOrphanMetas()) {
         orphans.push_back({{"meta", orphan.metaPath}, {"asset", orphan.assetPath}, {"guid", orphan.guid.str()}});
     }
-    std::cout << Json{{"assets", project.getAssetDatabase().assetCount()}, {"missing", missing},
-                      {"resolved_by_path", healed}, {"orphan_metas", orphans}}.dump(2) << "\n";
+    Json report{{"assets", project.getAssetDatabase().assetCount()}, {"missing", missing},
+                {"resolved_by_path", healed}, {"orphan_metas", orphans}};
+    if (!tracker.getReadOnlyLinked().empty()) report["read_only_linked"] = tracker.getReadOnlyLinked();
+    std::cout << report.dump(2) << "\n";
     return missing.empty() ? 0 : 1;
 }
 
@@ -2565,7 +2577,7 @@ bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const
     std::string extension = model.extension().string();
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return (char)std::tolower(c); });
     if (extension == ".fbx") {
-        // MeshSystem::getImportedModelPath: the project's import folder mirrors the assets folder
+        // MeshSystem::getFbxImportPath: the project's import folder mirrors the assets folder
         file = root / ".jasperengine" / "imported" / (model.lexically_relative(assets).generic_string() + ".glb");
         extension = ".glb";
     }

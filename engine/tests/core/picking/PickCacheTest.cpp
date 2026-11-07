@@ -9,14 +9,13 @@
 #include "picking/PickCache.h"
 #include "picking/MeshRaycast.h"
 #include "jobs/JobSystem.h"
+#include "jobs/Primitives.h"
 #include "object/Primitive.h"
 #include "picking/PickingTestUtil.h"
 
 #include <gtest/gtest.h>
 
-#include <atomic>
 #include <chrono>
-#include <thread>
 #include <vector>
 
 using namespace jasperengine;
@@ -39,27 +38,23 @@ namespace {
                 options.lane = jobs::Lane::Background;
                 options.name = "test-blocker";
                 tasks.push_back(jobs::submit([this](){
-                    started.fetch_add(1);
-                    while (!released.load()){
-                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                    }
+                    started.release();
+                    released.wait();
                 }, options));
             }
             // every slot taken before the test queues its build
-            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-            while (started.load() < slots && std::chrono::steady_clock::now() < deadline){
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
+            for (int i = 0; i < slots; i++)
+                started.acquire();
         }
         ~BackgroundBlocker(){
-            released.store(true);
+            released.set();
             for (jobs::TaskRef& task : tasks){
                 task.wait();
             }
         }
     private:
-        std::atomic<bool> released{false};
-        std::atomic<int> started{0};
+        jobs::Event released;
+        jobs::Semaphore started;
         std::vector<jobs::TaskRef> tasks;
     };
 
