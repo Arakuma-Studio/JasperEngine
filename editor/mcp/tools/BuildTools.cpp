@@ -12,6 +12,7 @@
 // the main thread to save scenes, which keeps running since tool handlers return at once) and a
 // watcher thread forwards its progress and log lines (Out) into the McpJob.
 #include "McpTools.h"
+#include "util/BuildDiagnostics.h"
 #include "util/SourceLocation.h"
 
 #include "mcp/McpCall.h"
@@ -283,18 +284,6 @@ std::string executableName(Project* project) {
 #endif
 }
 
-bool isInside(const fs::path& path, const fs::path& root) {
-    std::error_code ec;
-    const fs::path a = fs::weakly_canonical(path, ec);
-    const fs::path b = fs::weakly_canonical(root, ec);
-    auto ai = a.begin();
-    for (auto bi = b.begin(); bi != b.end(); ++bi, ++ai) {
-        if (bi->empty()) continue;
-        if (ai == a.end() || *ai != *bi) return false;
-    }
-    return true;
-}
-
 // A player build's remembered output dir: this computer's platform keeps the Desktop one, the web
 // the Web one, the others their own (S30)
 std::string playerSettingsKey(BuildPlatform platform) {
@@ -366,109 +355,16 @@ std::string outputDirRefusal(Project* project, const fs::path& outputDir, Export
 }
 
 std::string stripAnsi(const std::string& line) {
-    std::string out;
-    out.reserve(line.size());
-    for (size_t i = 0; i < line.size(); i++) {
-        if (line[i] == '\x1b' && i + 1 < line.size() && line[i + 1] == '[') {
-            i += 2;
-            while (i < line.size() && !(line[i] >= '@' && line[i] <= '~')) i++;
-            continue;
-        }
-        out += line[i];
-    }
-    return out;
+    return BuildDiagnostics::stripAnsi(line);
 }
 
 // ------------------------------------------------------------------ compiler diagnostics
 
-struct Diagnostic {
-    std::string file;
-    int line = 0;
-    int column = 0;
-    std::string severity;   // error, warning
-    std::string code;
-    std::string message;
-};
+// the editor's one parser of build output lines (util/BuildDiagnostics.h)
+using Diagnostic = BuildDiagnostic;
 
-// file:line:col: error: message (GCC/Clang), file(line,col): error C1234: message (MSVC),
-// CMake Error at file:line, linker errors. The location is SourceLocation's (the one parser
-// of file locations, the Console's too); this reads the severity and message around it.
-bool parseDiagnostic(const std::string& rawLine, Diagnostic& out) {
-    const std::string line = stripAnsi(rawLine);
-    if (line.find("error") == std::string::npos && line.find("warning") == std::string::npos &&
-        line.find("Error") == std::string::npos && line.find("Warning") == std::string::npos &&
-        line.find("undefined reference") == std::string::npos) {
-        return false;
-    }
-    size_t first = line.find_first_not_of(" \t");
-    if (first == std::string::npos) return false;
-    const std::vector<SourceLocation> locations = findSourceLocations(line);
-
-    // CMake Error at file:line (command)
-    static const std::string cmakeError = "CMake Error", cmakeWarning = "CMake Warning";
-    if (line.compare(first, cmakeError.size(), cmakeError) == 0 || line.compare(first, cmakeWarning.size(), cmakeWarning) == 0) {
-        const size_t at = line.find(" at ", first);
-        if (at == std::string::npos || locations.empty() || locations[0].begin != at + 4) return false;
-        const bool warning = line.compare(first, cmakeWarning.size(), cmakeWarning) == 0;
-        out.file = locations[0].path;
-        out.line = locations[0].line;
-        out.severity = warning ? "warning" : "error";
-        out.code = "cmake";
-        out.message = std::string(warning ? "CMake Warning" : "CMake Error") + line.substr(locations[0].end);
-        return true;
-    }
-
-    // a compiler line starts with its location, then ": error: ..." or ": error C1234: ..."
-    if (!locations.empty() && locations[0].begin == first) {
-        const SourceLocation& location = locations[0];
-        size_t at = location.end;
-        while (at < line.size() && (line[at] == ' ' || line[at] == ':')) at++;
-        std::string severity;
-        for (const char* word : {"fatal error", "error", "warning"}) {
-            if (line.compare(at, std::strlen(word), word) == 0) {
-                severity = word;
-                at += std::strlen(word);
-                break;
-            }
-        }
-        if (severity.empty()) return false;
-        // MSVC's code: error C2065: ...
-        std::string code;
-        size_t codeEnd = at;
-        while (codeEnd < line.size() && line[codeEnd] == ' ') codeEnd++;
-        size_t letters = codeEnd;
-        while (letters < line.size() && std::isalpha(static_cast<unsigned char>(line[letters]))) letters++;
-        size_t digits = letters;
-        while (digits < line.size() && std::isdigit(static_cast<unsigned char>(line[digits]))) digits++;
-        if (letters > codeEnd && digits > letters) {
-            size_t colon = digits;
-            while (colon < line.size() && line[colon] == ' ') colon++;
-            if (colon < line.size() && line[colon] == ':') {
-                code = line.substr(codeEnd, digits - codeEnd);
-                at = colon;
-            }
-        }
-        if (at >= line.size() || line[at] != ':') return false;
-        at++;
-        while (at < line.size() && line[at] == ' ') at++;
-        out.file = location.path;
-        out.line = location.line;
-        out.column = location.column;
-        out.severity = severity == "warning" ? "warning" : "error";
-        out.code = code;
-        out.message = line.substr(at);
-        return true;
-    }
-
-    static const std::regex linker(R"((undefined reference to .*|multiple definition of .*|ld(?:\.\w+)?: (?:error|fatal error): .*|collect2: error: .*|LINK : fatal error .*))");
-    std::smatch m;
-    if (std::regex_search(line, m, linker)) {
-        out.severity = "error";
-        out.code = "link";
-        out.message = line;
-        return true;
-    }
-    return false;
+bool parseDiagnostic(const std::string& line, Diagnostic& out) {
+    return BuildDiagnostics::parse(line, out);
 }
 
 // ------------------------------------------------------------------ build runs
@@ -628,10 +524,11 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
                     break;
                 }
         if (!report.contentManifest.empty()) result["content_manifest"] = FileUtils::pathToGenericUtf8(report.contentManifest);
-        if (!report.notes.empty()) result["notes"] = report.notes;
     }
-    // every mode: a source export ships the same clips and the same notices
+    // every mode's warnings (W-..., next to the compiler's: a source export ships the same clips and
+    // notices) and notes
     for (const BuildWarning& warning : r.result.warnings) result["warnings"].push_back({{"code", warning.code}, {"message", warning.message}});
+    if (!r.result.notes.empty()) result["notes"] = r.result.notes;
     if (progress.finished && !progress.failed) {
         result["artifacts"] = artifactsJson(outputDir);
         std::string message;
@@ -668,9 +565,6 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
             }
             std::lock_guard<std::mutex> lock(manager().mutex);
             manager().lastExecutable = exe;
-        } else if (r.mode == ExportMode::Web) {
-            result["index_html"] = FileUtils::pathToGenericUtf8(outputDir / "index.html");
-            message = "Built the Web player in " + FileUtils::pathToGenericUtf8(outputDir) + " (serve it over HTTP; file:// does not load WebAssembly).";
         } else {
             message = "Exported the C++ source project to " + FileUtils::pathToGenericUtf8(outputDir) +
                       ". Build it with: cmake -S <dir> -B <dir>/build -DCMAKE_BUILD_TYPE=Release && cmake --build <dir>/build "
@@ -679,13 +573,15 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
                                      "\" -DCMAKE_BUILD_TYPE=Release && cmake --build \"" + FileUtils::pathToGenericUtf8(outputDir / "build") + "\"";
         }
         if (r.warningCount) message += " " + std::to_string(r.warningCount) + " compiler warning(s).";
+        if (!r.result.warnings.empty()) message += " " + std::to_string(r.result.warnings.size()) + " build warning(s): see warnings.";
         r.job->succeed(message, result);
     } else if (r.job->cancelRequested()) {
         r.job->markCancelled("Build cancelled.");
     } else {
         std::string message = progress.errorMessage.empty() ? "Build failed." : progress.errorMessage;
         if (!message.empty() && message.back() != '.') message += ".";
-        if (r.errorCount) {
+        // the exporter's message names its first error already (Exporter::failBuild)
+        if (r.errorCount && progress.errors.empty()) {
             message += " " + std::to_string(r.errorCount) + " compiler error(s), first: ";
             for (const Diagnostic& d : r.diagnostics) {
                 if (d.severity != "error") continue;
@@ -909,11 +805,9 @@ void buildProjectTool(const CallPtr& call) {
         call->fail(refusal);
         return;
     }
-    if ((isInside(outputDir, project->getProjectPath()) || isInside(outputDir, project->getAssetsPath())) &&
-        !isInside(outputDir, project->getProjectInternalPath())) {
-        call->fail("output_dir " + FileUtils::pathToGenericUtf8(outputDir) + " is inside the project (its assets and scenes are scanned "
-                   "from there, so the exported copies would show up as project files). Use a directory outside the "
-                   "project, e.g. " + FileUtils::pathToGenericUtf8(project->getProjectPath().parent_path() / (appName(project) + "-build")) + ".");
+    // the rule every front end shares (Build Settings, the CLI)
+    if (const std::string refusal = Exporter::outputFolderRefusal(project, outputDir); !refusal.empty()) {
+        call->fail(refusal);
         return;
     }
     const bool overwrite = args.value("overwrite", false);

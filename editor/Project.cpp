@@ -3661,7 +3661,7 @@ void editor::Project::updateSceneCppScripts(SceneProject* sceneProject) {
     }
 }
 
-void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& keys) const {
+void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& keys, bool includeRuntimeEntities) const {
     if (!sceneProject || !sceneProject->scene) {
         return;
     }
@@ -3730,6 +3730,14 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
         for (size_t i = 0; i < splineArray->size(); ++i) {
             const std::vector<Entity> chunks = splines->getGeneratedEntities(splineArray->getEntity(i));
             shaderEntities.insert(shaderEntities.end(), chunks.begin(), chunks.end());
+        }
+    }
+    // and so are what scripts and prefab spawns make during Play; the Scene view's icons and
+    // gizmos are system entities, below the first user entity
+    if (includeRuntimeEntities) {
+        const std::unordered_set<Entity> listed(shaderEntities.begin(), shaderEntities.end());
+        for (Entity entity : scene->getEntityList()) {
+            if (entity >= EntityManager::firstUserEntity() && !listed.count(entity)) shaderEntities.push_back(entity);
         }
     }
 
@@ -4051,6 +4059,20 @@ std::vector<std::string> editor::Project::scriptsPostProcessingFields() const {
         }
     }
     return named;
+}
+
+void editor::Project::dropDeadForkKeys(std::set<ShaderKey>& shaderKeys, std::set<std::string>* deadForks) const {
+    // one resolution per fork (a fork has many variants)
+    std::map<uint16_t, bool> resolves;
+    for (auto it = shaderKeys.begin(); it != shaderKeys.end();) {
+        const uint16_t customId = ShaderPool::getCustomIdFromKey(*it);
+        auto known = resolves.find(customId);
+        if (known == resolves.end()) {
+            known = resolves.emplace(customId, ShaderBuilder::customShaderResolves(const_cast<Project*>(this), *it)).first;
+            if (!known->second && deadForks) deadForks->insert(ShaderPool::getCustomShaderName(customId));
+        }
+        it = known->second ? std::next(it) : shaderKeys.erase(it);
+    }
 }
 
 void editor::Project::buildStandaloneShaderCache(const std::set<ShaderKey>& shaderKeys) {
@@ -6273,7 +6295,21 @@ bool editor::Project::restorePlaySnapshot(SceneProject* sceneProject) {
     return true;
 }
 
-void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<PlayRuntimeScene> runtimeScenes) {
+void editor::Project::collectPlayShaderKeys(PlaySession& session, const std::vector<PlayRuntimeScene>& entries) {
+    for (const PlayRuntimeScene& entry : entries) {
+        const uint32_t owner = entry.persistent ? session.mainSceneId : entry.sourceSceneId;
+        if (owner == NULL_PROJECT_SCENE) continue;
+        SceneProject* sceneProject = runtimeOf(entry);
+        if (!sceneProject || !sceneProject->scene) continue;
+        std::set<ShaderKey> keys;
+        collectSceneShaderKeys(sceneProject, keys, true);
+        std::scoped_lock lock(playSessionMutex);
+        session.playShaderKeys[owner].insert(keys.begin(), keys.end());
+    }
+}
+
+void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<PlayRuntimeScene> runtimeScenes,
+                                   const std::map<uint32_t, std::set<ShaderKey>>& playShaderKeys) {
     bool saveMainOnStop = false;
     bool keepMainModified = false;
 
@@ -6349,6 +6385,10 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         if (entry.sourceSceneId != NULL_PROJECT_SCENE) {
             std::set<ShaderKey> playKeys;
             collectSceneShaderKeys(sceneProject, playKeys);
+            // and what the session's objects drew with, collected before the scripts went
+            if (auto collected = playShaderKeys.find(entry.sourceSceneId); collected != playShaderKeys.end()) {
+                playKeys.insert(collected->second.begin(), collected->second.end());
+            }
             if (!playKeys.empty()) {
                 SceneProject* editorScene = entry.ownedRuntime ? getScene(entry.sourceSceneId) : sceneProject;
                 if (editorScene) {
@@ -7294,6 +7334,8 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
 
     std::set<ShaderKey> shaderKeys;
     collectSavedShaderKeys(sceneProject, shaderKeys);
+    // the variants of a fork whose files are gone: the export could only fail building them
+    dropDeadForkKeys(shaderKeys);
     sceneProject->shaderKeys = std::move(shaderKeys);
 
     // paths assigned since the last save get their assets' GUIDs (S04); a background save
@@ -7516,6 +7558,27 @@ void editor::Project::writeSceneSource(SceneProject* sceneProject) {
     std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, sceneProject->id, getProjectPath(), getProjectInternalPath(),
         [this](const fs::path& path) { return getPrefabGuid(path); }, baked);
     generator.writeSceneSource(sceneProject->scene, sceneProject->id, sceneProject->name, sceneProject->entities, getSceneCamera(sceneProject), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(sceneProject->scene));
+}
+
+void editor::Project::writeUnsavedSceneSources(std::vector<std::string>& written, std::vector<std::string>& notOpen) {
+    for (SceneProject& sceneProject : scenes) {
+        if (!sceneProject.filepath.empty()) continue;
+        if (!sceneProject.scene) {
+            notOpen.push_back(sceneProject.name);
+            continue;
+        }
+        writeSceneSource(&sceneProject);
+        written.push_back(sceneProject.name);
+    }
+    if (!written.empty()) configureGenerator();
+}
+
+std::vector<std::string> editor::Project::scenesWithoutSource() const {
+    std::vector<std::string> missing;
+    for (const SceneProject& sceneProject : scenes) {
+        if (!generator.hasSceneSource(sceneProject.id, sceneProject.name, getProjectInternalPath())) missing.push_back(sceneProject.name);
+    }
+    return missing;
 }
 
 bool editor::Project::hasMissingSceneSources() const {
@@ -10110,6 +10173,9 @@ void editor::Project::retireReplacedRuntimeScenes() {
         }
     }
 
+    // the variants of what the scenes' scripts made, before the scripts go
+    collectPlayShaderKeys(*session, retired);
+
     // outside the lock: a C++ script destructor can call back into the editor
     for (PlayRuntimeScene& entry : retired) {
         Scene* scene = runtimeSceneOf(entry);
@@ -10547,6 +10613,13 @@ void editor::Project::stop(uint32_t sceneId) {
 
     const bool startupSucceededAtStop = session->startupSucceeded.load(std::memory_order_acquire);
     if (startupSucceededAtStop) {
+        // the variants of what Play made (scripts, prefab spawns), before the scripts quit
+        std::vector<PlayRuntimeScene> playing;
+        {
+            std::scoped_lock lock(playSessionMutex);
+            playing = session->runtimeScenes;
+        }
+        collectPlayShaderKeys(*session, playing);
         // Notify scripts/engine before tearing the runtime down so that
         // shutdown handlers still see a valid engine state.
         Engine::onViewDestroyed.call();
@@ -10588,6 +10661,12 @@ void editor::Project::stop(uint32_t sceneId) {
             const bool startupSucceeded = session->startupSucceeded.load(std::memory_order_acquire);
 
             if (startupSucceeded && !startupSucceededAtStop) {
+                std::vector<PlayRuntimeScene> playing;
+                {
+                    std::scoped_lock lock(playSessionMutex);
+                    playing = session->runtimeScenes;
+                }
+                collectPlayShaderKeys(*session, playing);
                 Engine::onViewDestroyed.call();
                 ScriptRuntime::quitAll();
                 Engine::onShutdown.call();
@@ -10663,7 +10742,12 @@ void editor::Project::stop(uint32_t sceneId) {
             }
 
             if (startupSucceeded) {
-                finalizeStop(mainSceneProject, runtimeScenes);
+                std::map<uint32_t, std::set<ShaderKey>> playShaderKeys;
+                {
+                    std::scoped_lock lock(playSessionMutex);
+                    playShaderKeys = session->playShaderKeys;
+                }
+                finalizeStop(mainSceneProject, runtimeScenes, playShaderKeys);
             } else {
                 cleanupPlaySession(session);
                 SceneManager::clearAll();

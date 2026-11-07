@@ -2,6 +2,9 @@
 # cxxStandards in the editor (JASPERENGINE_CXX_STANDARD_LIST); Play plugins read the project
 # setting (editor/Generator.cpp). The first entry is the default.
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperEngineToolchain.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperEnginePaths.cmake)
+# the engine's own folder in globs (an export's copy of it may sit below any path)
+jasperengine_glob_escape(JASPERENGINE_SOURCE_GLOB "${CMAKE_CURRENT_LIST_DIR}")
 set(JASPERENGINE_CXX_STANDARDS 20 23)
 if(NOT DEFINED JASPERENGINE_CXX_STANDARD)
     set(JASPERENGINE_CXX_STANDARD 20 CACHE STRING "C++ standard for the engine, editor and project")
@@ -348,15 +351,17 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         set(PLATFORM_ROOT ${JASPERENGINE_ROOT}/platform/emscripten)
 
         set(EM_PRELOAD_FILES)
+        # quoted (a path with spaces), and emcc splits src@dst at a single @: @@ is a literal one
+        string(REPLACE "@" "@@" EM_PRELOAD_ROOT "${PROJECT_ROOT}")
         if(EXISTS "${PROJECT_ROOT}/assets")
-            set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --preload-file ${PROJECT_ROOT}/assets@/")
+            set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --preload-file \"${EM_PRELOAD_ROOT}/assets@/\"")
             # the web loads the web family of the cooked textures only (S14 R9)
             foreach(family desktop mobile android_etc2)
                 set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --exclude-file */je-cooked/${family}")
             endforeach()
         endif()
         if(EXISTS "${PROJECT_ROOT}/lua")
-            set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --preload-file ${PROJECT_ROOT}/lua@/")
+            set(EM_PRELOAD_FILES "${EM_PRELOAD_FILES} --preload-file \"${EM_PRELOAD_ROOT}/lua@/\"")
         endif()
 
         list(APPEND PLATFORM_SOURCE
@@ -415,7 +420,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 -s STACK_SIZE=4MB \
                 -s EXPORTED_FUNCTIONS=\"['_getScreenWidth','_getScreenHeight','_changeCanvasSize','_main','_malloc','_free']\" \
                 -s EXPORTED_RUNTIME_METHODS=\"['ccall', 'cwrap']\" \
-                --pre-js ${PLATFORM_ROOT}/crash_pre.js \
+                --pre-js \"${PLATFORM_ROOT}/crash_pre.js\" \
                 ${EM_PRELOAD_FILES} \
                 ${EM_ADDITIONAL_LINK_FLAGS} \
                 ${USE_PTHREADS} \
@@ -2263,8 +2268,8 @@ endif()
 # compiler. Ahead of shaders/, whose stand-in the Xcode workspace uses.
 set(JASPERENGINE_SHADERLIB_MANIFESTS_HEADER ${CMAKE_CURRENT_BINARY_DIR}/generated/shaderlib_manifests.h)
 file(GLOB_RECURSE JASPERENGINE_SHADERLIB_LIBRARY_FILES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaderlib/library/*.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/shaderlib/library/*.frag
+    ${JASPERENGINE_SOURCE_GLOB}/shaderlib/library/*.vert
+    ${JASPERENGINE_SOURCE_GLOB}/shaderlib/library/*.frag
 )
 add_custom_command(
     OUTPUT ${JASPERENGINE_SHADERLIB_MANIFESTS_HEADER}
@@ -2286,9 +2291,9 @@ if(JASPERENGINE_RUNTIME_SHADERS)
     set(JASPERENGINE_SHADERLIB_HEADER ${CMAKE_CURRENT_BINARY_DIR}/generated/shaderlib.h)
     set(JASPERENGINE_EMBED_SHADERLIB ${CMAKE_CURRENT_SOURCE_DIR}/libs/shadercompiler/embed_shaderlib.cmake)
     file(GLOB_RECURSE JASPERENGINE_SHADERLIB_FILES CONFIGURE_DEPENDS
-        ${CMAKE_CURRENT_SOURCE_DIR}/shaderlib/*.glsl
-        ${CMAKE_CURRENT_SOURCE_DIR}/shaderlib/*.vert
-        ${CMAKE_CURRENT_SOURCE_DIR}/shaderlib/*.frag
+        ${JASPERENGINE_SOURCE_GLOB}/shaderlib/*.glsl
+        ${JASPERENGINE_SOURCE_GLOB}/shaderlib/*.vert
+        ${JASPERENGINE_SOURCE_GLOB}/shaderlib/*.frag
     )
     add_custom_command(
         OUTPUT ${JASPERENGINE_SHADERLIB_HEADER}
@@ -2379,7 +2384,8 @@ endif()
 # =============================================================
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
-    file(GLOB_RECURSE PROJECT_SOURCE ${PROJECT_ROOT}/*.cpp)
+    jasperengine_glob_escape(PROJECT_ROOT_GLOB "${PROJECT_ROOT}")
+    file(GLOB_RECURSE PROJECT_SOURCE ${PROJECT_ROOT_GLOB}/*.cpp)
     # the native plugins' platform folders belong to Gradle / Xcode (and the macOS block the
     # export adds); plugins/native/cpp ships as a script root under scripts/
     foreach(native_source IN LISTS PROJECT_SOURCE)
@@ -2543,7 +2549,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         set(EM_PRELOAD_DEPENDS)
         foreach(preloadDir assets lua)
             if(EXISTS "${PROJECT_ROOT}/${preloadDir}")
-                file(GLOB_RECURSE preloadFiles CONFIGURE_DEPENDS "${PROJECT_ROOT}/${preloadDir}/*")
+                jasperengine_glob_escape(preloadGlob "${PROJECT_ROOT}/${preloadDir}")
+                file(GLOB_RECURSE preloadFiles CONFIGURE_DEPENDS "${preloadGlob}/*")
                 list(APPEND EM_PRELOAD_DEPENDS ${preloadFiles})
             endif()
         endforeach()

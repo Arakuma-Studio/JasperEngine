@@ -1643,6 +1643,33 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "guard_build_output_inside_project",
+        "kind": "guard",
+        "what_happened": "An export into a folder inside the project is refused by every front end (the editor would import "
+                         "the exported files as assets); the refusal names a folder outside, and the agent exports there "
+                         "instead of retrying inside or writing the files by hand.",
+        "text_at_issue": "Exporter::outputFolderRefusal: 'The output folder <dir> is inside the project: the editor would "
+                         "import the exported files as project assets. Choose a folder outside it, e.g. <parent>/<app>-build.'",
+        "source": "export-pipeline spec 6.3 (Doriax de8dc7340, 14670673b)",
+        "prompt": "Export the game as a C++ source project into a Builds folder in the project, like Unity does.",
+        "mocks": [
+            {"tool": "build_project", "args": {"output_dir": "re:(?i)/builds?(/|$)"}, "result": err(
+                "The output folder /work/space-dodge/Builds is inside the project: the editor would import the exported files "
+                "as project assets. Choose a folder outside it, e.g. /work/space-dodge-build.")},
+            {"tool": "build_project", "result": ok(
+                "Exported the C++ source project to /work/space-dodge-build. Build it with: cmake -S <dir> -B <dir>/build",
+                {"status": "succeeded", "result": {"output_dir": "/work/space-dodge-build", "errors": [], "warnings": []}})},
+            {"tool": "get_build_info", "result": ok(
+                "Build Settings: 1 scene in the build (Main, start). Source output folder: none chosen yet.",
+                {"scenes": [{"id": 1, "name": "Main", "path": "scenes/Main.scene", "start": True}],
+                 "source": {"output_dir": "", "backends": ["opengl"]}, "running_job": None})},
+        ],
+        "checks": {"any_of": [{"last_call": {"tool": "build_project", "args": {"output_dir": "re:(?i)^(?!.*/builds?(/|$))"}}},
+                              {"reply_must": [r"outside|space-dodge-build|inside the project"]}],
+                   "max_calls": {"build_project": 3}, "edits_must_not": [r"(?i)builds?/"]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_ssr_reflection_source",
         "kind": "guard",
         "what_happened": "A floor under a reflection probe looked doubly bright with SSR on; the check is the SSR debug view "

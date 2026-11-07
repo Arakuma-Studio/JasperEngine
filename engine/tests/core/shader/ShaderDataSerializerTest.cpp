@@ -190,3 +190,28 @@ TEST(ShaderDataSerializer, JsonDumpNamesTheStages){
     EXPECT_NE(json.find("u_vs_params"), std::string::npos);
     EXPECT_NE(json.find("u_baseTexture"), std::string::npos);
 }
+
+// A D3D11 export built on Windows ships each HLSL stage as bytecode with no source
+// (ShaderBuilder::compileHlslBytecode); a game reads it back as it was written.
+TEST(ShaderDataSerializer, HlslBytecodeRoundTrips){
+    ShaderData original = shaderDataSample();
+    original.lang = ShaderLang::HLSL;
+    original.version = 50;
+    for (ShaderStage& stage : original.stages){
+        stage.source.clear();
+        delete[] stage.bytecode.data;
+        stage.bytecode.size = 4;
+        stage.bytecode.data = new unsigned char[4]{'D', 'X', 'B', 'C'};   // owned by the ShaderData
+    }
+    std::vector<unsigned char> bytes;
+    std::string error;
+    ASSERT_TRUE(ShaderDataSerializer::writeToBytes(bytes, key, original, &error)) << error;
+    ShaderData read;
+    ASSERT_TRUE(ShaderDataSerializer::readFromBytes(bytes, key, read, &error)) << error;
+    expectSame(original, read);
+    for (const ShaderStage& stage : read.stages){
+        EXPECT_TRUE(stage.source.empty());
+        ASSERT_EQ(stage.bytecode.size, 4u);
+        EXPECT_EQ(std::memcmp(stage.bytecode.data, "DXBC", 4), 0);
+    }
+}

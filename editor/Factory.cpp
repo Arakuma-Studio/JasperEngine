@@ -1313,6 +1313,10 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.submeshes[" << idx << "].faceCulling = " << formatBool(mesh.submeshes[s].faceCulling) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].textureShadow = " << formatBool(mesh.submeshes[s].textureShadow) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].textureRect = " << formatRect(mesh.submeshes[s].textureRect) << ";\n";
+        // a sprite or tilemap sets it once its texture loads: a mesh whose buffers load first would
+        // pick a variant without the texture rect (the cooked scenes keep it too, Stream)
+        if (mesh.submeshes[s].hasTextureRect)
+            code << ind << "mesh.submeshes[" << idx << "].hasTextureRect = true;\n";
 
         // The model load puts these fields back over the ones the file gives the new submesh.
         if (mesh.submeshes[s].overrideFields != 0){

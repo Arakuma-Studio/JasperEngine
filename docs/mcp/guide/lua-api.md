@@ -1038,6 +1038,8 @@ Component path fields (`AudioSource.filename`, `Model.filename`...) stay plain s
 `currentSceneName`, `loadPending`, `loadingSceneId`, `loading`, `loadingProgress`,
 `loadingDelay` (rw), `loadingTimeout` (rw), `persistentScene` (the DontDestroyOnLoad scene, nil
 until the first `DontDestroyOnLoad`). `moveGameObjectToScene(obj, scene)` (2.8.1).
+With a loading scene (Project Settings > Loading), it covers the game's start scene too: the start
+loads under it from the first frame, so the loading scene's scripts start first.
 
 ### 2.8.1 Persistent objects (DontDestroyOnLoad)
 

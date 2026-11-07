@@ -479,6 +479,10 @@ Scene* Engine::getMainScene(){
     return mainScene;
 }
 
+Scene* Engine::getBaseScene(){
+    return mainScene ? mainScene : getScene();
+}
+
 Scene* Engine::getLastScene(){
     std::lock_guard<std::mutex> lock(sceneListMutex);
     return scenes.empty() ? nullptr : scenes.back();
@@ -1418,8 +1422,10 @@ void Engine::endCompositeFramebuffer(){
 
     framebuffer = nullptr;
 
-    if (mainScene)
-        mainScene->getSystem<RenderSystem>()->presentFramebufferToSwapchain(&compositeFramebuffer);
+    // the loading scene covers the start as a layer, before there is a main scene
+    Scene* scene = getBaseScene();
+    if (scene)
+        scene->getSystem<RenderSystem>()->presentFramebufferToSwapchain(&compositeFramebuffer);
 }
 
 void Engine::clearPools(){
