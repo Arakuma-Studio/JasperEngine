@@ -227,7 +227,11 @@ namespace {
             for (size_t i = 0; i < systems.size(); i++){
                 const uint64_t want = (uint64_t)std::floor(time / tick[i] + 1e-6);
                 if (want > done[i]){
-                    particles().step(systems[i]->getEntity(), (uint32_t)(want - done[i]));
+                    // a one-shot that has stopped stays stopped (step would play it again)
+                    particles::ParticleSystemState* s = done[i] > 0 ? state(i) : nullptr;
+                    if (!s || s->runtime.state() != particles::PlayState::Stopped){
+                        particles().step(systems[i]->getEntity(), (uint32_t)(want - done[i]));
+                    }
                     done[i] = want;
                 }
             }
@@ -627,7 +631,8 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
                 input.gravity[0] = gravity.x;
                 input.gravity[1] = gravity.y;
                 input.gravity[2] = gravity.z;
-                while (d.shadow[i]->tickCount() < want) d.shadow[i]->step(input);
+                // (a stopped one-shot runs no more ticks)
+                while (d.shadow[i]->tickCount() < want && d.shadow[i]->state() != particles::PlayState::Stopped) d.shadow[i]->step(input);
             }
             for (size_t k = 0; k < d.tree.size() && k < before.size(); k++){
                 if (before[k] < MIN_POP_POPULATION) continue;

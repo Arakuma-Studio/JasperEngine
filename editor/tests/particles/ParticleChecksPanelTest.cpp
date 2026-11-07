@@ -78,7 +78,9 @@ TEST(ParticleChecksPanel, RowsMatchTheToolsChecks){
     panel.setAsset("fx/burst.particles");
     ParticlePreviewRequest windowRequest;
     std::string error;
-    ASSERT_TRUE(panel.buildRequest(h.project.get(), windowRequest, error)) << error;
+    ASSERT_TRUE(panel.buildRequest(h.project.get(), windowRequest, error))
+        << error << " (assets " << h.project->getAssetsPath() << ", file there: " << fs::exists(h.project->getAssetsPath() / "fx" / "burst.particles")
+        << ", the engine's asset path: " << System::instance().getAssetPath() << ")";
     qa::Json windowReport;
     ASSERT_TRUE(ParticleEffectPreview::runCpu(windowRequest, windowReport, error)) << error;
 
