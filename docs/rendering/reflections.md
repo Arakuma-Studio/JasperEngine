@@ -97,27 +97,42 @@ leave a small difference where SSR is confident:
 - hex tiling of the occlusion map, Lit Quality's specular anti-aliasing, and the extended lobes
   (anisotropy bends the reflection; specular and IOR change its strength); clearcoat keeps its own
   environment reflection, which is right;
-- the G-buffer keeps the normal in 8 bits per component, so the rebuilt reflection can turn a fraction of a
-  degree: where the probe's capture has a sharp edge in that direction (a bright object against a dark wall),
-  a thin line of the difference shows under a confident SSR hit;
 - the frame SSR composites is 8 bits a channel, clipped at white: where the surface is already clipped
   (a bright probe or the sun on chrome) SSR leaves it as drawn, and it fades in from just below white;
 - lights beyond a mesh's light cap, which Lit folds into its ambient, stay under SSR as direct light does;
 - the probe blend weight is stored in 62 steps;
 - the volumetric fog's marched part is approximated by the analytic height fog over the whole ray;
-- with post-processing's exposure or tone curve on, the frame is already display-encoded when SSR
-  composites it, so the swap is applied to that colour.
+- with post-processing's exposure, tone curve or colour grade on, the opaque objects and the sky are
+  kept in linear light until SSR composites them (8 bits a channel, in the tone curve's range), and
+  the composite applies the post-processing colour: next to the same frame without SSR, a pixel
+  differs by up to 1/255 (measured under ACES). Two cases keep the display colour and swap in it (the
+  reflection's brightness then follows the curve only roughly): a far-plane video over a sky, and,
+  without a sky, a visible shader-library mesh whose shader moves or clips its vertices or pixels
+  (the G-buffer cannot tell it from the background there). Without a sky and with MSAA, the
+  pixels on an object's outline against the clear colour are a little off.
 
-Transparent objects, near-plane videos and HTML UI drawn by the main camera are in the picture SSR
-reflects and receive the swap of the surface behind them.
+### What SSR reflects and what it covers
+
+SSR runs in the main camera's colour pass after the opaque objects and the sky, and before the
+atmosphere's clouds and volumetric fog, the transparent objects, trails, particles, near-plane
+videos, screen fluids and the UI (the order of Unity's pipelines). So a glass pane is not
+reflected and its colour does not smear into reflections; a transparent object over a reflective
+floor covers its reflection as it covers the floor; and glass or water reading the scene colour
+sees the reflections. The debug views are drawn at that point too: what is drawn after shows over
+them.
+
+A camera with Transparent Sort off draws everything in hierarchy order; there SSR composites after
+the whole pass, so what it draws is reflected and takes the swap of the surface behind it.
 
 ## Cost
 
 SSR off costs nothing. On, it draws a G-buffer pass of the opaque meshes (four targets: depth,
-normal/roughness/metallic, albedo and reflection source, occlusion: 13 bytes a pixel, plus its
-depth buffer), the
-reflection march, an optional blur, and the composite. Pixels SSR does not reflect on (most of a
-frame) cost the composite two texture reads; the march skips surfaces that get no SSR.
+normal/roughness/metallic, albedo and reflection source, occlusion and the normal's last 8 bits:
+16 bytes a pixel, plus its depth buffer), the reflection march, an optional blur, and the
+composite. Pixels SSR does not reflect on (most of a frame) cost the composite two texture reads
+(and, under the post-processing colour, its lookup); the march skips surfaces that get no SSR.
+The rest of the colour pass draws into a second scene colour target (4 bytes a pixel), copied to
+the screen at the end, unless FXAA, bloom or another uber-pass effect reads it there.
 
 ## Changes in 2026-11
 
@@ -127,4 +142,9 @@ Scenes look different, correctly, where:
 - an occlusion map or SSAO darkened a reflective surface: SSR no longer brightens it;
 - fog covered a reflective surface: its reflection fades with it;
 - an unlit material or a planar mirror was under SSR: it no longer reflects twice;
-- a material's base colour or metallic-roughness map is on the second UV set: SSR now sees it there.
+- a material's base colour or metallic-roughness map is on the second UV set: SSR now sees it there;
+- transparent objects, particles and UI were reflected and took the swap of the floor under them:
+  they are drawn after SSR now;
+- a tone curve or exposure was on: reflections now have the brightness of what they reflect;
+- curved polished surfaces showed fine bands in their reflections (the G-buffer's 8-bit normal):
+  the normal is kept in 16 bits.
