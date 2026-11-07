@@ -459,18 +459,8 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 59, 0, 0, 1]
-  WaterExcluderComponent:
-    position: [92, 0, 0]
-    rotation: [1, 0, 0, 0]
-    scale: [1, 1, 1]
-    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 92, 0, 0, 1]
   WaterVolumeComponent:
     position: [63, 0, 0]
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 63, 0, 0, 1]
-  WaterWakeComponent:
-    position: [93, 0, 0]
-    rotation: [1, 0, 0, 0]
-    scale: [1, 1, 1]
-    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 93, 0, 0, 1]
