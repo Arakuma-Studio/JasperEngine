@@ -586,3 +586,68 @@ image, through `slot`; the evaluator's GPU tests and the per-node image test are
   in a game calls them; a player's size was not measured (AC18's check is M6's).
 - **Not run.** Vulkan (lavapipe) and any hardware GPU: the GPU tests ran on glcore only. Tier selection,
   the CPU tier's evaluator, MCP tools and the window are later milestones.
+
+### M4 agent side (s90-bake)
+
+The bake, staleness, the two `materials` tools, the group move, the catalog and the CLI. The window's
+preview pane and Problems strip are a later branch: they call `ProceduralChecks::report`, as the tools do.
+
+- **R14, the normal.** With Height connected and Normal not, the bake adds a host pass that makes the normal
+  from the float height (central differences one texel apart, `PassPlanner.cpp` `heightNormalBody`), in the
+  engine's convention (OpenGL, +Y up; rows go down the image as v does). The input is a function of the pass,
+  so the height is evaluated in float where it is needed and never read back from 8 bits.
+  `material_output` gains one optional parameter, `normal_strength` (default 1, 0 to 4: 1 tilts as Material
+  Maker's Normal Map does at strength 1, a sixteenth of the slope); no version bump, as an optional field.
+  A connected Normal is converted from Material Maker's convention (x and z mirrored: its normals face -z),
+  which every normal node of the library writes. `materialBakeRoots` lists what a bake and a preview draw;
+  `materialOutputRoots` is unchanged for the live session.
+- **R14, the files.** RGBA8 for base colour, normal, ORM and emission, R8 for the height. Names:
+  `<graph>_<output>.png` and `<graph>.material` in the sibling folder.
+- **R15.** A new PNG's `.meta` is written with a new GUID beside its explicit `textureImporter` section, so
+  the `.material` names its textures by GUID at once; a re-bake keeps a meta's GUID and its other sections and
+  import keys (`maxSize` and the like), and drops `inferredFrom`. One `WriteFilesCmd` holds the PNGs, the metas
+  and the `.material` (`writeBakeUndoable`, named "Bake Procedural Material <graph>"). A factor (base colour,
+  metallic and roughness, emissive) goes to 1 only when its slot newly takes the bake: a factor someone tuned on
+  a baked slot stays. A slot holding an output the graph no longer has is emptied; its PNG stays on disk.
+  A PNG at an output's path that is not a bake of this graph (its recipe's GUID) needs `overwrite`.
+- **R16.** The input hash is a SHA-256 of the plan (every pass's text and uniform values, Buffers, steps,
+  outputs) and the bake's own version: the graph's meaning with every node source resolved. Positions,
+  unconnected nodes, the tier and the device do not count. **Deviation:** no node of the shipped library reads
+  an image file (the `Simple/Image` preset's host path was dropped at import, M0), so there is no input image
+  to hash. AC10's "editing an input image" is tested on the nearest input that exists, a node's source
+  (`ProceduralBake.TheHashFollowsInputsAndNothingElse`). The graph is found by its in-file GUID, so a moved
+  graph stays fresh. The badge is the Project window's "generated" badge, yellow when stale.
+- **R8, until s90-tiers.** The tier a result names comes from the device's name only (llvmpipe, lavapipe,
+  softpipe, SwiftShader and the Windows and Apple software renderers are `software`): `ProceduralRun::editorTier`.
+  Vulkan's `deviceType` and the CPU tier are s90-tiers'.
+- **R33.** `search` matches words in a type's id, display name and category; aliases join when the graph
+  window's `NodeTypeDesc::aliases` does. A kind of more than 40 types lists its categories without a filter.
+  An unknown id in `ids` is an error that names `search`.
+- **R34.** No `as` parameter: an image's role is its import type (normal, single channel as a height, else
+  base colour). `submesh` defaults to 0.
+- **R36, what the rows measure.** `repetition`: the strongest circular autocorrelation of the base colour's
+  luma (else the height's) at 64 x 64, offsets within 4 cells of the origin left out. `histogram`: the base
+  colour's luma at 0 or 255 (a height or a metallic at 0 is a choice, not clipping). `base_color`: the texels
+  under 0.5 metallic outside sRGB 30..240. `normal`: FAIL on the mean length error or more than 1% facing away;
+  WARN when, with a height, the green correlates under -0.2 with the height's slope. `metallic`: texels
+  between 0.1 and 0.9. `cost` is an estimate from `docs/textures.md`'s formats, not `get_material_variant`'s
+  data (that tool's group is not enabled with these). Thresholds are project settings (`materials.qa.*`,
+  Project Settings > Graphics > Material Checks, `proceduralMaterialQa` in project.yaml).
+- **R36, `height_8bit`.** Nothing in the engine uses a height for parallax, so the row warns only when a
+  shader texture of the material (or of the bake's own `.material`, for a graph) samples a baked height PNG,
+  and passes otherwise with the levels the height uses.
+- **R37.** `palette_delta_e` is the mean CIE76 distance from each of the reference's 8 dominant colours
+  (4 bits a channel) to the nearest of the material's; `spectrum` the L1 distance of the radially averaged
+  power spectra at 64 x 64; `edges` the difference of the Sobel edge densities.
+- **R35, `fail_on`.** The bake runs the checks on the images it baked and writes nothing when the verdict
+  reaches `fail_on`. Without it, nothing is checked.
+- **R38.** The wait bound is the call's `timeout_seconds`: a run past it fails with the stage it was in, and
+  the ball's textures have ids no earlier run had. The forced slow compile of AC14 is a test hook,
+  `JASPER_TEST_PROCMAT_SPHERE_PENDING=<file>`: while that file exists in the project the ball counts as pending,
+  as `isPending` does while a variant compiles.
+- **R39.** `procedural-material bake` runs `bake_procedural_material` through `call` (the editor that has the
+  project open, else a one-shot headless one): exit 0 baked, 1 failed, 2 usage, 3 no editor could start. The
+  in-process CPU tier is s90-tiers': it slots in where exit 3 is returned today. `check --materials` (also in
+  `--all`, not in the default set) needs no engine or device: it plans each graph and reads the PNGs' recipes.
+- **AC12.** The misspelled parameter and the new ids are tested on this kind in `test_graph.py`; "a positionless
+  graph opens laid out" is s90-canvas's (R30), not on this branch's base.

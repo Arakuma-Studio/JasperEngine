@@ -2023,6 +2023,62 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "pick_procedural_material_preview",
+        "kind": "guard",
+        "what_happened": "Asked to make a tileable material from a graph, agents baked it and judged the result from a screenshot "
+                         "of a mesh; preview_procedural_material evaluates the graph without writing anything and its tileability "
+                         "row's fix_hint names the next edit, so the bake comes after the checks pass.",
+        "text_at_issue": "preview_procedural_material's description; bake_procedural_material's 'Check it with "
+                         "preview_procedural_material first'; tileability's fix_hint",
+        "source": "S90 R34, R35 (design study 3.2); no failure on record",
+        "prompt": "assets/mats/stone.procmat should tile seamlessly. Check it, fix what the check finds, then bake it.",
+        "groups_enabled": ["graphs", "materials"],
+        "mocks": [
+            {"tool": "preview_procedural_material", "args": {"path": "assets/mats/stone.procmat"}, "result": ok(
+                "assets/mats/stone.procmat: 4 output(s) at 512 (seed 0) on gpu (NVIDIA RTX 4070). Verdict FAIL.\n"
+                "FAIL tileability: {\"base_color\":2.41,\"height\":2.38}. seam 2.41 on base_color across its left and right edges. "
+                "A node feeding it does not tile: give its scale a whole number of repeats, or turn its tiling on.\n"
+                "PASS normal: {\"length_error\":0.004,\"z_negative_percent\":0}",
+                {"verdict": "FAIL", "device": {"tier": "gpu", "name": "NVIDIA RTX 4070"},
+                 "next": "Fix what fix_hint says, preview again and check again. Never loosen a threshold."})},
+            {"tool": "get_graph", "result": ok(
+                "procedural_material graph: 2 node(s), 3 edge(s).",
+                {"graph": {"nodes": [{"id": "n1", "type": "perlin", "params": {"scale_x": 4.5, "scale_y": 4}},
+                                     {"id": "out", "type": "material_output"}]}})},
+            {"tool": "edit_graph", "result": ok("Set scale_x of n1: 1 op(s), 0 issue(s).", {"applied": 1, "added": []})},
+            {"tool": "bake_procedural_material", "result": ok(
+                "Baked assets/mats/stone.procmat at 1024 (seed 0) on gpu (NVIDIA RTX 4070): 4 PNG(s) and "
+                "assets/mats/stone/stone.material, one undo step \"Bake Procedural Material stone\" (id 41).",
+                {"material": "assets/mats/stone/stone.material", "undo": {"scope": "project", "id": 41}})},
+        ],
+        "checks": {"calls": ["preview_procedural_material", {"tool": "edit_graph", "args": {"ops": "*"}}, "bake_procedural_material"],
+                   "order": [["preview_procedural_material", "edit_graph"], ["edit_graph", "bake_procedural_material"]],
+                   "must_not_call": ["screenshot"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_procedural_material_catalog",
+        "kind": "guard",
+        "what_happened": "Listing a large kind's node types returned every node's ports and parameters (tens of thousands of "
+                         "characters); the catalog now answers with categories until a search narrows it, then one signature "
+                         "line per node.",
+        "text_at_issue": "list_graph_node_types' description: 'A large kind lists its categories until category, search or ids narrows it'",
+        "source": "S90 R33; no failure on record",
+        "prompt": "In assets/mats/wall.procmat, add a brick pattern node and connect its pattern to the Material Output's height.",
+        "groups_enabled": ["graphs"],
+        "mocks": [
+            {"tool": "list_graph_node_types", "args": {"kind": "procedural_material", "search": "re:brick"}, "result": ok(
+                "2 of 255 node type(s) of procedural_material:\nbricks3(rows=6[1..64] columns=3[1..64] ...) -> bricks_pattern:f "
+                "brick_fill:fill\nbricks(...) -> pattern:f",
+                {"signatures": ["bricks3(rows=6[1..64] columns=3[1..64]) -> bricks_pattern:f brick_fill:fill"]})},
+            {"tool": "edit_graph", "result": ok("Edit Graph (2 Changes): 2 op(s), 0 issue(s).",
+                                                {"applied": 2, "added": [{"op_index": 0, "id": "n4"}, {"op_index": 1, "id": "e5"}]})},
+        ],
+        "checks": {"calls": [{"tool": "list_graph_node_types", "args": {"search": "re:brick"}}, "edit_graph"],
+                   "must_not_call": ["read_file"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_particle_subtree_seek",
         "kind": "guard",
         "what_happened": "A multi-system effect (a parent GameObject with several Particle Systems) was sought one child at a "

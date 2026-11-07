@@ -115,7 +115,9 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `editor_tools` | S27, S66 (`clear_project_leftovers`) |
 | `vcs` | S29 |
 | `html_ui` | S17 (`edit_ui_view`) |
-| `scripting` | S23 (`reload_scripts`, `get_script_status`, `set_script_settings`, `list_editor_menus`, `run_editor_menu`, `eval_expression`, the graph tools), upstream's `user_settings` (PlayerPrefs) |
+| `scripting` | S23 (`reload_scripts`, `get_script_status`, `set_script_settings`, `list_editor_menus`, `run_editor_menu`, `eval_expression`), upstream's `user_settings` (PlayerPrefs) |
+| `graphs` | S23's graph tools (`list_graph_kinds`, `list_graph_node_types`, `get_graph`, `validate_graph`, `edit_graph`), moved out of `scripting` by S90 R32 |
+| `materials` | S90 (`preview_procedural_material`, `bake_procedural_material`) |
 | `shipping` | S30, upstream's native-bridge `native_plugins` (out of core to fit the budget) |
 
 A spec may add a group: one row in `McpToolGroups.cpp` (name, one-line description), and a
