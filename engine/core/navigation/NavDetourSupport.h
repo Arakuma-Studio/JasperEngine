@@ -18,9 +18,11 @@
 
 #include "DetourTileCache.h"
 #include "DetourTileCacheBuilder.h"
+#include "Recast.h"
 
 #include <cstddef>
 #include <functional>
+#include <string>
 #include <vector>
 
 namespace jasperengine::nav::detail {
@@ -62,8 +64,41 @@ namespace jasperengine::nav::detail {
         std::vector<unsigned int> ids;
     };
 
+    // The rcContext of a tile build (S74 R4): logging on, timers off. It keeps Recast's warnings
+    // and errors in order, pointer values written as "?" (results stay deterministic) and without
+    // the contour buffer's allocation notice. Nothing is allocated or formatted while Recast logs
+    // nothing.
+    class NavRecastLog final : public rcContext {
+    public:
+        // the messages one tile keeps; the rest are counted
+        static constexpr size_t MAX_MESSAGES = 64;
+
+        NavRecastLog();
+
+        const std::vector<std::string>& getMessages() const { return messages; }
+        // Recast's last error ("" when none) and how many it logged
+        const std::string& getLastError() const { return lastError; }
+        int getErrorCount() const { return errors; }
+        // appends the messages to `out` (with "... and N more Recast messages" past MAX_MESSAGES)
+        // and forgets them
+        void takeMessages(std::vector<std::string>& out);
+
+    protected:
+        void doResetLog() override;
+        void doLog(const rcLogCategory category, const char* msg, const int len) override;
+
+    private:
+        std::vector<std::string> messages;
+        std::string lastError;
+        size_t dropped = 0;
+        int errors = 0;
+    };
+
     // Converts a built polygon's Recast area to the area and its flag
+    // (S76: a runtime volume's ids back to the area they were moved from)
     inline void polyAreaAndFlags(unsigned char recastArea, unsigned char& area, unsigned short& flags) {
+        if (recastArea >= FIRST_RUNTIME_VOLUME_RECAST_AREA && recastArea <= LAST_RUNTIME_VOLUME_RECAST_AREA)
+            recastArea = (unsigned char)(recastArea - RUNTIME_VOLUME_AREA_OFFSET);
         const unsigned char a = (recastArea >= 1 && recastArea <= AREA_COUNT) ? (unsigned char)(recastArea - 1) : AREA_WALKABLE;
         area = a;
         flags = (unsigned short)(1u << a);

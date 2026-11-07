@@ -57,6 +57,7 @@
 #include "sceneview/SurfacePlacement.h"
 #include "util/FluidEditorTools.h"
 #include "util/UIProbe.h"
+#include "navigation/NavPathTester.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/CameraFollowComponent.h"
 #include "subsystem/CameraControlSystem.h"
@@ -2207,6 +2208,14 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         escapeTaken = physics->cancelGesture((uint32_t)sceneId);
     }
 
+    // the Path Tester: Esc ends it (it edits nothing, there is nothing to cancel)
+    if (NavPathTester::get().isActive((uint32_t)sceneId) && sceneViewInput && !popupOpen && !escapeTaken && !io.WantTextInput &&
+            !ImGui::IsAnyItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        NavPathTester::get().stop();
+        sceneProject->needUpdateRender = true;
+        escapeTaken = true;
+    }
+
     // Paint Dye: Esc puts the brush down ([ / ] scale it: sceneView.brushSmaller/Larger), while the
     // view is focused or under the pointer and nothing is being typed
     if (sceneProject->sceneRender->isFluidPainting() && !ImGui::IsAnyItemActive() && !io.WantTextInput &&
@@ -2341,6 +2350,90 @@ void editor::SceneWindow::focusOnEntities(SceneProject* sceneProject, const std:
         }
     }
     focusOnBounds(sceneProject, bounds);
+}
+
+bool editor::SceneWindow::pathTesterInput(SceneProject& sceneProject, float x, float y, bool hovered) {
+    NavPathTester& tester = NavPathTester::get();
+    if (!tester.isActive(sceneProject.id) || !sceneProject.sceneRender) return false;
+    // a bake landed, a surface moved: the answer follows
+    tester.refresh(sceneProject);
+    const ImGuiIO& io = ImGui::GetIO();
+    SceneRender* sceneRender = sceneProject.sceneRender;
+    auto toView = [sceneRender](const Vector3& world, Vector2& screen) { return sceneRender->worldToScreen(world, screen); };
+    bool used = false;
+    if (hovered && !io.KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        // the handles' reach is in view pixels, the pointer in engine pixels
+        const float grab = NavPathTester::HANDLE_PIXELS * canvasEngineScale(sceneProject.id).x;
+        const SceneSurfaceHit hit = viewController->surfaceAt(sceneProject, x, y, {}, true);
+        if (hit.source != SceneSurfaceHit::Source::NONE) tester.press(sceneProject, hit.point, Vector2(x, y), io.KeyShift, toView, grab);
+        used = true;
+    } else if (tester.getDragged() != NavPathTester::Handle::None && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        const SceneSurfaceHit hit = viewController->surfaceAt(sceneProject, x, y, {}, true);
+        if (hit.source != SceneSurfaceHit::Source::NONE) tester.drag(sceneProject, hit.point);
+        used = true;
+    }
+    if (tester.getDragged() != NavPathTester::Handle::None && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) tester.release(sceneProject);
+    return used;
+}
+
+void editor::SceneWindow::drawNavigationHud(SceneProject& sceneProject, ImVec2 canvasMin, ImVec2 canvasSize) {
+    SceneRender* sceneRender = sceneProject.sceneRender;
+    if (!sceneRender) return;
+    const ImVec2 engineScale = canvasEngineScale(sceneProject.id);
+    auto toScreen = [&](const Vector3& world, float& sx, float& sy) {
+        Vector2 engine;
+        if (!sceneRender->worldToScreen(world, engine)) return false;
+        sx = canvasMin.x + engine.x / engineScale.x;
+        sy = canvasMin.y + engine.y / engineScale.y;
+        return true;
+    };
+    // Show Tile Labels: each visible tile's last build at its top (dirty tiles orange)
+    const NavOverlaySettings& nav = sceneProject.displaySettings.navigation;
+    NavigationOverlay* overlay = sceneRender->getNavigationOverlay();
+    if (overlay && nav.enabled && nav.showTileLabels) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const ImVec2 pad = Theme::dpi(ImVec2(4.0f, 2.0f));
+        for (const NavTileLabel& label : overlay->getTileLabels()) {
+            float sx = 0.0f, sy = 0.0f;
+            if (!toScreen(label.world, sx, sy) || sx < canvasMin.x || sy < canvasMin.y || sx > canvasMin.x + canvasSize.x ||
+                    sy > canvasMin.y + canvasSize.y) {
+                continue;
+            }
+            const ImVec2 size = ImGui::CalcTextSize(label.text.c_str());
+            const ImVec2 at(sx - size.x * 0.5f - pad.x, sy - size.y * 0.5f - pad.y);
+            drawList->AddRectFilled(at, ImVec2(at.x + size.x + pad.x * 2.0f, at.y + size.y + pad.y * 2.0f), IM_COL32(20, 20, 24, 190),
+                                    Theme::dpi(4.0f));
+            drawList->AddText(ImVec2(at.x + pad.x, at.y + pad.y), label.dirty ? IM_COL32(255, 160, 60, 255) : IM_COL32(235, 235, 235, 255),
+                              label.text.c_str());
+        }
+    }
+    // the Path Tester's handles: a ring of the reach a press grabs them in, brighter under the pointer
+    NavPathTester& tester = NavPathTester::get();
+    if (tester.isActive(sceneProject.id)) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const ImVec2 mouse = ImGui::GetIO().MousePos;
+        auto handle = [&](bool set, const Vector3& world, ImU32 color, NavPathTester::Handle which) {
+            float sx = 0.0f, sy = 0.0f;
+            if (!set || !toScreen(world, sx, sy)) return;
+            const float reach = NavPathTester::HANDLE_PIXELS;
+            const float dx = mouse.x - sx, dy = mouse.y - sy;
+            const bool hot = tester.getDragged() == which || dx * dx + dy * dy <= reach * reach;
+            drawList->AddCircleFilled(ImVec2(sx, sy), reach * 0.45f, color);
+            drawList->AddCircle(ImVec2(sx, sy), reach, hot ? IM_COL32(255, 255, 255, 255) : (color & 0x00FFFFFF) | 0xA0000000u, 0,
+                                hot ? Theme::dpi(2.0f) : Theme::dpi(1.0f));
+        };
+        handle(tester.hasStart(), tester.getStart(), IM_COL32(60, 240, 80, 255), NavPathTester::Handle::Start);
+        if (tester.usesEnd()) handle(tester.hasEnd(), tester.getEnd(), IM_COL32(255, 60, 60, 255), NavPathTester::Handle::End);
+    }
+
+    // the Path Tester's panel at the top right, under the view gizmo
+    float top = canvasMin.y + Theme::dpi(8.0f);
+    if (sceneProject.sceneType == SceneType::SCENE_3D) top += VIEWPORT_GIZMO_SIZE * getOverlayScale(sceneProject.id) / engineScale.y;
+    NavPathTester::get().drawPanel(sceneProject, canvasMin.x, canvasSize.x, top, toScreen);
+}
+
+void editor::SceneWindow::frameBounds(uint32_t sceneId, const AABB& worldBounds) {
+    focusOnBounds(project->getScene(sceneId), worldBounds);
 }
 
 void editor::SceneWindow::focusOnBounds(SceneProject* sceneProject, const AABB& bounds) {
@@ -2502,6 +2595,7 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         drawSettingRow("    Show NavGrid", nav.showGrid, !nav.enabled);
         drawSettingRow("    Show Links", nav.showLinks, !nav.enabled);
         drawSettingRow("    Show Obstacles", nav.showObstacles, !nav.enabled);
+        drawSettingRow("    Show Area Overrides", nav.showAreaOverrides, !nav.enabled);
         drawSettingRow("    Show Avoidance", nav.showAvoidance, !nav.enabled);
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
@@ -2516,7 +2610,34 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
             sceneProject.needUpdateRender = true;
             project->saveWorkspaceFile();
         }
+        // S75 diagnostics: what tints the navmesh, the steep collected ground, the tiles' builds
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("    Color By");
+        ImGui::SetItemTooltip("Areas: the area colours; Islands: each connected part (grey: what the Path Tester's start "
+                              "cannot reach); Tiles: each navmesh tile");
+        ImGui::TableSetColumnIndex(1);
+        int colorBy = (int)nav.colorBy;
+        const char* colorNames[] = {"Areas", "Islands", "Tiles"};
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::Combo("##navcolorby", &colorBy, colorNames, 3)) {
+            nav.colorBy = (NavOverlaySettings::ColorBy)colorBy;
+            sceneProject.needUpdateRender = true;
+            project->saveWorkspaceFile();
+        }
         ImGui::EndDisabled();
+        drawSettingRow("    Show Steep Slopes", nav.showSteepSlopes, !nav.enabled);
+        ImGui::SetItemTooltip("Tint the collected ground steeper than the agent type's Max Slope (red)");
+        drawSettingRow("    Show Tile Labels", nav.showTileLabels, !nav.enabled);
+        ImGui::SetItemTooltip("Each visible tile's last build: time, polygons, size; tiles changed since the bake are orange");
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted(ICON_FA_ROUTE " Path Tester");
+        ImGui::SetItemTooltip("Query paths in the Scene view: Shift+click sets the start, click the end (Esc ends it)");
+        ImGui::TableSetColumnIndex(1);
+        NavPathTester& tester = NavPathTester::get();
+        const bool testing = tester.isActive(sceneProject.id);
+        if (ImGui::Button(testing ? "Stop##navtester" : "Start##navtester", ImVec2(-1, 0))) tester.toggle(sceneProject);
         ImGui::EndTable();
     }
 
@@ -2990,6 +3111,7 @@ void editor::SceneWindow::show() {
                     ui::registerViewImage(ImGui::GetWindowViewport()->ID, canvasMin,
                                           ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y), sceneProject.sceneRender->getFramebuffer());
                     particleOverlay.draw(project, &sceneProject, canvasMin, canvasAvail);
+                    drawNavigationHud(sceneProject, canvasMin, canvasAvail);
                     drawDrawModeOverlays(sceneProject, canvasMin, ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y));
                     // an item over the image again, after the panel's widgets: the drop targets
                     // below (BeginDragDropTarget) take the last item, and an empty one a line
@@ -3095,6 +3217,10 @@ void editor::SceneWindow::show() {
                     const bool viewHovered = ImGui::IsWindowHovered();
                     const bool viewFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && project->getSelectedSceneId() == sceneProject.id;
                     const bool pressed = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+                    // the Path Tester takes the left button first (its press is no pick)
+                    if (pathTesterInput(sceneProject, pointerX, pointerY, viewHovered) && pressed) {
+                        suppressLeftMouseUntilRelease[sceneProject.id] = true;
+                    }
                     if (viewController->handleInput(sceneProject, pointerX, pointerY, viewHovered, viewFocused) && pressed) {
                         suppressLeftMouseUntilRelease[sceneProject.id] = true;
                     }

@@ -444,3 +444,50 @@ TEST_F(NavGridTest, JumpPointSearchMatchesAStar){
         EXPECT_GT(compared, 20);
     }
 }
+
+// two grid agents walking: getGridReservedCells reports the cells their lookahead holds at the
+// current fixed tick, and nothing once they stop (S74 AC25, R22)
+TEST_F(NavGridTest, ReservedCellsReported){
+    const Entity gridEntity = transformEntity(*scene, Vector3(), NULL_ENTITY, "Grid");
+    NavGridComponent grid;
+    grid.width = 20;
+    grid.height = 6;
+    grid.cellSize = 1.0f;
+    scene->addComponent<NavGridComponent>(gridEntity, grid);
+    NavGrid handle(scene.get(), gridEntity);
+    std::vector<Entity> agents;
+    for (int i = 0; i < 2; i++) {
+        agents.push_back(agent(*scene, handle.cellToWorld(GridCell{1, 1 + 3 * i}), 2.0f));
+        scene->getComponent<NavMeshAgentComponent>(agents.back()).surface = gridEntity;
+    }
+    std::vector<int> cells;
+    EXPECT_FALSE(nav->getGridReservedCells(agents[0], cells));
+    step();
+    for (int i = 0; i < 2; i++)
+        NavMeshAgent(scene.get(), agents[(size_t)i]).setDestination(handle.cellToWorld(GridCell{18, 1 + 3 * i}));
+    steps(30);
+    ASSERT_TRUE(nav->getGridReservedCells(gridEntity, cells));
+    ASSERT_FALSE(cells.empty());
+    EXPECT_TRUE(std::is_sorted(cells.begin(), cells.end()));
+    // each agent's cell and some ahead of it, on its own row
+    NavGridMap* map = nav->getGridMap(gridEntity);
+    ASSERT_NE(map, nullptr);
+    for (int i = 0; i < 2; i++) {
+        const GridCell here = handle.worldToCell(position(agents[(size_t)i]));
+        int ahead = 0;
+        for (int cell : cells) {
+            const GridCell c{cell % map->getWidth(), cell / map->getWidth()};
+            if (c.y == here.y && c.x > here.x)
+                ahead++;
+        }
+        EXPECT_GT(ahead, 0) << "agent " << i;
+    }
+    for (int cell : cells) {
+        const int row = cell / map->getWidth();
+        EXPECT_TRUE(row == 1 || row == 4) << "cell " << cell;
+    }
+    // arrived: nothing held
+    steps(60 * 12);
+    ASSERT_TRUE(nav->getGridReservedCells(gridEntity, cells));
+    EXPECT_TRUE(cells.empty());
+}

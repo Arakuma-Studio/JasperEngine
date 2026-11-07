@@ -13,6 +13,7 @@
 namespace jasperengine{
 
     class NavigationSystem;
+    struct NavBakeResult;
 
     // Unity's NavMeshSurface (docs/navigation.md): Lua NavMeshSurface(scene, entity). bakeAsync
     // and updateTiles rebuild the navmesh at runtime (procedural levels); agents keep moving on
@@ -43,6 +44,8 @@ namespace jasperengine{
         float getBakeProgress() const;
         // the last bake's error, "" when it succeeded
         std::string getLastBakeError() const;
+        // S75: the last bake's report (null before a bake; Lua's lastBakeResult table)
+        const NavBakeResult* getLastBakeResult() const;
         int getTileCount() const;
         int getPolyCount() const;
         bool hasNavMesh() const;

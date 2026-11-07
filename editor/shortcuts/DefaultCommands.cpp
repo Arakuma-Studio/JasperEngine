@@ -311,6 +311,9 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Measure distances: drag from A to B (Esc ends it)";
     b.add("sceneView.deleteMeasure", "Delete Measure", C::SceneView, "Delete", "Backspace").description =
         "Delete the selected measure (while one is selected)";
+    // S75 R25: rebindable, no default key
+    b.add("navigation.pathTester", "Path Tester", C::SceneView).description =
+        "Query navigation paths in the Scene view: Shift+click the start, click the end (Esc ends it)";
     for (int slot = 1; slot <= 9; slot++) {
         static const char* recallIds[] = {"sceneView.recallBookmark1", "sceneView.recallBookmark2", "sceneView.recallBookmark3",
                                           "sceneView.recallBookmark4", "sceneView.recallBookmark5", "sceneView.recallBookmark6",

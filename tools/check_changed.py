@@ -17,7 +17,9 @@ unit and MCP tests that can see it; the full suite is for pushes to origin main 
    tests for its code, web for engine/ code and its CMake, Android for its own platform code;
    everything for the root CMake, docker/, tools/build.sh, the toolchain and the lockfiles
    (ALL_TRIGGERS); nothing for a change that builds nothing (docs). This tool's and the harness's
-   own Python run their self-tests (SELF_TESTS).
+   own Python run their self-tests (SELF_TESTS). Navigation's runtime, Recast/Detour and the
+   engine's CMake also build the engine with navigation OFF and run its stub tests
+   (NAVIGATION_OFF_PATHS: tools/check-navigation-off.sh).
 3. Unit tests, exactly: Ninja's dependency database of the test trees (`ninja -t deps`) maps every
    changed file (a changed Foo.cpp through its Foo.h too) to the test translation units that
    include it; their gtest suites run (--gtest_filter), in the core and the editor binary. A
@@ -118,6 +120,11 @@ EDITOR_INPUTS = ("libs/*", "docs/mcp/guide/*", "docs/unity-glossary.md", "tools/
 HTMLUI_PATHS = ("engine/tests/htmlui/*", "engine/core/htmlui/*", "engine/libs/rmlui/*", "engine/libs/lexbor/*")
 WEB_DIRS = ("engine/platform/web/*", "engine/platform/emscripten/*", "tools/web/*")
 ANDROID_DIRS = ("engine/platform/android/*", "engine/project/android/*", "tools/android-*", "tools/ci/android_*")
+# what a JASPERENGINE_NAVIGATION=OFF build compiles differently: tools/check-navigation-off.sh
+# builds the engine that way and runs NavStubTest (compiled only then) and NavGridTest (S74 R28)
+NAVIGATION_OFF_PATHS = ("engine/core/navigation/*", "engine/libs/recastnavigation/*", "engine/core/subsystem/NavigationSystem.*",
+                        "engine/core/object/navigation/*", "engine/core/component/Nav*", "engine/CMakeLists.txt",
+                        "engine/tests/core/navigation/*", "tools/check-navigation-off.sh")
 # the MCP files that run a game built with a prebuilt player: the engine's runtime code runs in the
 # game, which no editor coverage sees; and those that compile one, for what the compile path reads
 # (the full gate compiles for every change)
@@ -253,7 +260,7 @@ def read_changes(explicit_base: str | None, cwd: Path = ROOT, rb_file: Path = RB
 
 @dataclass
 class Plan:
-    builds: list[str] = field(default_factory=list)          # linux, unit-tests, web, android, everything
+    builds: list[str] = field(default_factory=list)          # linux, unit-tests, web, android, navigation-off
     reasons: dict[str, str] = field(default_factory=dict)
     unit_all: bool = False
     unit_core: list[str] = field(default_factory=list)       # gtest suites
@@ -331,6 +338,9 @@ def plan_builds(files: list[str], plan: Plan) -> None:
         plan.add_build("web", f"{web[0]} changed (the engine's web build)")
     if android:
         plan.add_build("android", f"{android[0]} changed (Android's own code)")
+    navigation = [f for f in files if match(f, NAVIGATION_OFF_PATHS)]
+    if navigation:
+        plan.add_build("navigation-off", f"{navigation[0]} changed (the engine without Recast/Detour: NavStubTest)")
 
 
 # ---------------------------------------------------------------------------------------- 3. unit tests
@@ -927,6 +937,11 @@ def main(argv: list[str], root: Path | None = None) -> int:
             # (their images are not this one: the check goes on, its pass is not cached, and the summary says so)
             runner.steps.append((f"build {b}", "SKIP (not in the Linux image: tools/check-changed outside it builds it)", 0.0))
             runner.partial = True
+            continue
+        if b == "navigation-off":
+            # (a script of the Linux image, not a build.sh target)
+            script = ["tools/check-navigation-off.sh"]
+            runner.run("navigation OFF (NavStubTest, NavGridTest)", script if in_image() else ["tools/build.sh", "exec", "linux", *script])
             continue
         env = dict(build_env, SKIP_ENGINE="1") if b == "linux" else dict(build_env)
         runner.run(f"build {b}", ["tools/build.sh", b], env)
