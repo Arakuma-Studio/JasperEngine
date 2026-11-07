@@ -3,4 +3,5 @@ presets:
   - id: miniature
     name: Miniature
     aliases: [miniature, toy town, ミニチュア]
+    cost: C4
     params: {blur: 24, width: 120}

@@ -1376,7 +1376,13 @@ std::string titleart::nearestName(std::string_view word, const std::vector<std::
         size_t d = editDistance(word, c);
         // a candidate that contains the word (or the other way round) is close
         if (c.find(word) != std::string::npos || (!c.empty() && word.find(c) != std::string_view::npos)) d = std::min<size_t>(d, 1);
-        if (d < bestDistance) {
+        // equally close: the one sharing the longer start ("lite_glow" is Light Glow, not Outer Glow)
+        auto prefix = [&](const std::string& x) {
+            size_t n = 0;
+            while (n < x.size() && n < word.size() && x[n] == word[n]) n++;
+            return n;
+        };
+        if (d < bestDistance || (d == bestDistance && !best.empty() && prefix(c) > prefix(best))) {
             best = c;
             bestDistance = d;
         }

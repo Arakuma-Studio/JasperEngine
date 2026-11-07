@@ -3,6 +3,7 @@ presets:
   - id: heat_haze
     name: Heat Haze
     aliases: [haze, heat shimmer, 陽炎]
+    cost: C1
     params: {type: turbulent, amplitude: 3, wavelength: 40}
   - id: ripple
     name: Ripple

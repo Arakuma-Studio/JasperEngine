@@ -7,7 +7,7 @@ presets:
   - id: dry_brush
     name: Dry Brush (かすれ)
     aliases: [かすれ, dry brush]
-    cost: C4
+    cost: C3
     params: {pattern: dry_brush, edge: 30, scale: 40}
   - id: worn_print
     name: Worn Print

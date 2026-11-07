@@ -11,4 +11,5 @@ presets:
   - id: mosaic
     name: Mosaic
     aliases: [censor, モザイク]
+    cost: C2
     params: {size: 20, alpha_mode: soft}

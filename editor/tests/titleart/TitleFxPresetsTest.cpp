@@ -88,8 +88,12 @@ TEST(TitleFxPresetsTest, EveryPresetIsValid) {
             const titleart::ParamValues values(params, &def->globalLight);
             const titleart::CostClass modelled = titleart::tfx::costClassOf(def->estimate(values, titleart::FxSize{1920, 1080, 1.0f}, titleart::FxTier::Desktop));
             if ((int)modelled > (int)def->costClass) {
-                EXPECT_LE((int)modelled, (int)def->costClass + 1) << "modelled " << titleart::costClassName(modelled);
+                // Distress's dry brush is C3 where its other patterns are C1 (§6.6.18): two classes
+                const bool dryBrush = type == "distress" && p.id == "dry_brush";
+                EXPECT_LE((int)modelled, (int)def->costClass + (dryBrush ? 2 : 1)) << "modelled " << titleart::costClassName(modelled);
                 EXPECT_EQ(p.cost, titleart::costClassName(modelled)) << "the file states the heavier class";
+            } else if (!p.cost.empty()) {
+                EXPECT_EQ(p.cost, titleart::costClassName(modelled)) << "a stated class is the model's";
             }
         }
     }

@@ -16,4 +16,5 @@ presets:
   - id: dissolve
     name: Dissolve
     aliases: [halftone dissolve, dot fade]
+    cost: C2
     params: {source: alpha, fade: 60}

@@ -216,11 +216,11 @@ namespace {
         const float ox = (float)(anchor.x - std::ceil(anchor.x / cell) * cell);
         const float oy = (float)(anchor.y - std::ceil(anchor.y / cell) * cell);
         const int gw = (int)std::ceil((ctx.width - ox) / cell), gh = (int)std::ceil((ctx.height - oy) / cell);
-        // cells wider than 16 px sample a downsampled copy, 16 taps a side
+        // cells wider than 12 px sample a downsampled copy, 12 taps a side
         fx::Scratch levels[9];
         const TargetRef* source = &input;
         int lw = ctx.width, lh = ctx.height;
-        for (int l = 1; cell / std::ldexp(1.0f, l - 1) > 16.0f && l <= 8; l++) {
+        for (int l = 1; cell / std::ldexp(1.0f, l - 1) > 12.0f && l <= 8; l++) {
             lw = ceilDiv(lw, 2);
             lh = ceilDiv(lh, 2);
             levels[l] = fx::scratch(ctx, lw, lh);
@@ -236,7 +236,7 @@ namespace {
         TitlePass down = tfx::makePass(ctx, tfx::Program::PixelDown, "pixelate cells", *cells);
         down.textures[0].target = source;
         down.textures[2].texture = palette;
-        down.set(2, cell, ox, oy, (float)std::min(16, std::max(1, (int)std::ceil(cell))));
+        down.set(2, cell, ox, oy, (float)std::min(12, std::max(1, (int)std::ceil(cell))));
         down.set(3, (float)ctx.width, (float)ctx.height, (float)p.integer("levels"), (float)optionIndex(p, "dither", {"none", "bayer2", "bayer4", "bayer8"}));
         down.set(4, (float)p.number("dither_amount"), p.string("alpha_mode") == "soft" ? 1.0f : 0.0f, (float)p.number("alpha_threshold"), (float)paletteCount);
         down.set(5, (float)std::max(1, pw));
@@ -252,8 +252,8 @@ namespace {
         tfx::CostBuilder b;
         const double cell = std::max(1.0, p.number("size") * size.pxScale);
         double frac = 1.0;
-        for (int l = 1; cell / std::ldexp(1.0, l - 1) > 16.0 && l <= 8; l++) b.pass(frac /= 4.0, 1);
-        const int taps = std::min(16, std::max(1, (int)std::ceil(cell)));
+        for (int l = 1; cell / std::ldexp(1.0, l - 1) > 12.0 && l <= 8; l++) b.pass(frac /= 4.0, 1);
+        const int taps = std::min(12, std::max(1, (int)std::ceil(cell)));
         b.pass(1.0 / (cell * cell), taps * taps + (p.asset("palette").empty() ? 0 : 256));
         return b.pass(1.0, 1).cost;
     }
