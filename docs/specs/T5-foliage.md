@@ -933,7 +933,7 @@ Recorded by the implementation, each with what it does instead and why.
    which a list mixing them with map ops or `create` would make all-or-nothing across two engines: such a
    call is refused with the split to make. `edit_terrain` gains `wait` and `timeout_seconds` for that job.
    Density undo is T1's `TerrainMapDeltaCmd`; trees are a `TreeEditCmd` in the same group. `density` and
-   `tree_density` are T1 overlay sources (`editor/foliage/FoliageOverlays`); `visualize_terrain`'s
+   `tree_density` are T1 overlay sources (registered by `TerrainFoliagePanel`); `visualize_terrain`'s
    `foliage_quality` is gone (a tier is a project setting). A tree overlay redraws when its settings change or
    the terrain's maps do, not after each tree edit.
 3. **Compound shapes on the main thread.** At most two cells a frame, and in the same frame on a runtime

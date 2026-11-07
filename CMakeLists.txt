@@ -1223,7 +1223,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/TerrainFoliagePanel.cpp
     ${EDITOR_DIR}/foliage/TreeDataFile.cpp
     ${EDITOR_DIR}/foliage/FoliageOpRunner.cpp
-    ${EDITOR_DIR}/foliage/FoliageOverlays.cpp
     ${EDITOR_DIR}/command/type/TreeEditCmd.cpp
     ${EDITOR_DIR}/util/ImpostorBaker.cpp
     ${EDITOR_DIR}/mcp/tools/FoliageTools.cpp
