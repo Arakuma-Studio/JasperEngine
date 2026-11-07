@@ -124,7 +124,7 @@ namespace {
 namespace {
 
     float resolvedOverlap(const VoxelVolumeComponent& component, float voxelSize) {
-        return component.overlapDepth >= 0.0f ? component.overlapDepth : 0.02f * voxelSize;
+        return component.overlapDepth >= 0.0f ? component.overlapDepth : 0.01f * voxelSize;
     }
 
     float resolvedTolerance(const VoxelVolumeComponent& component, float voxelSize) {
@@ -272,15 +272,20 @@ void VoxelSystem::updateTerrainCut(VolumeState& state, VoxelVolumeComponent& com
     const float tolerance = resolvedTolerance(component, voxelSize);
     const Int3 dim = store.desc().dimensions;
 
-    // R39 at a position in the volume's frame: is the volume's surface the terrain's there?
-    const auto flushAt = [&](float vx, float vz){
+    // R39 at a position in the volume's frame: how far the volume's surface leaves the seed's, which
+    // lies overlap under the terrain. Positive: the voxel ground is lower, and the terrain would stand
+    // proud of it at a hole's edge
+    const auto departureAt = [&](float vx, float vz){
         const terrain::SurfaceSample sample = querySurface(terrain, vx + offset.x, vz + offset.z);
         const float h = sample.height - offset.y;
         const double d = valueAt(store, Vec3d{vx, h, vz});
         const float ny = sample.normal.y > 0.001f ? sample.normal.y : 0.001f;
         const double c = slopeFactor(-sample.normal.x / ny, -sample.normal.z / ny);
-        return std::fabs(d - overlap * c) <= tolerance;
+        return d - overlap * c;
     };
+    // R44's rim: what the seed may differ by and still meet the terrain within 2 cm (with overlap)
+    const double rimSlack = 0.005 * voxelSize;
+    const auto flushAt = [&](float vx, float vz){ return std::fabs(departureAt(vx, vz)) <= rimSlack; };
 
     // ---- R41's coverage: a column at a time, over what changed
     if (state.columnFlush.empty()){
@@ -310,6 +315,8 @@ void VoxelSystem::updateTerrainCut(VolumeState& state, VoxelVolumeComponent& com
     const terrain::MapFormat latticeFormat = holeFormat.exists ? holeFormat : holes.format(HEIGHT_MAP);
     const terrain::MapId latticeMap = holeFormat.exists ? HOLE_MAP : HEIGHT_MAP;
     state.holeLattice = latticeMap;
+    // the texels a cut grows past what departs (R44's rim), which the mesher keeps drawn
+    int rimTexels = 1;
     if (latticeFormat.exists && component.terrainCut == VoxelTerrainCut::Automatic){
         const int width = latticeFormat.bounds.w, height = latticeFormat.bounds.h;
         if (state.cutWidth != width || state.cutHeight != height || state.cutMask.empty()){
@@ -323,33 +330,96 @@ void VoxelSystem::updateTerrainCut(VolumeState& state, VoxelVolumeComponent& com
             holes.readBytes(HOLE_MAP, holeFormat.bounds, holeBytes);
         }
         const auto isHoleNow = [&](int tx, int ty){ return !holeBytes.empty() && holeBytes[static_cast<size_t>(ty) * width + tx] < 128; };
-        // Only texels inside the changed bounds are evaluated (R40)
+        // Only texels around the changed bounds are evaluated (R40)
         const float metresX0 = changed.min.x * voxelSize + offset.x, metresX1 = (changed.max.x + 1) * voxelSize + offset.x;
         const float metresZ0 = changed.min.z * voxelSize + offset.z, metresZ1 = (changed.max.z + 1) * voxelSize + offset.z;
         const Vector2 lowTexel = holes.texelOfWorld(latticeMap, metresX0, metresZ0);
         const Vector2 highTexel = holes.texelOfWorld(latticeMap, metresX1, metresZ1);
-        const int tx0 = std::max(static_cast<int>(std::floor(lowTexel.x)), 0), tx1 = std::min(static_cast<int>(std::ceil(highTexel.x)), width - 1);
-        const int ty0 = std::max(static_cast<int>(std::floor(lowTexel.y)), 0), ty1 = std::min(static_cast<int>(std::ceil(highTexel.y)), height - 1);
+        // R44's rim: a cut starts where the volume leaves the terrain by more than the tolerance and
+        // grows through every texel where the voxel ground lies lower than the seed, then by the
+        // terrain collider's rim (one collision cell, T3 R22), so its edge lies on seeded ground: the
+        // step there is the overlap, in render and in collision alike
+        const float texelMetres = terrain.terrainSize / static_cast<float>(width);
+        const terrain::MapFormat heightFormat = holes.format(HEIGHT_MAP);
+        const int samples = heightFormat.exists ? std::min(heightFormat.bounds.w, heightFormat.bounds.h) : width;
+        const float cellMetres = terrain.terrainSize / static_cast<float>(std::max(samples - 1, 1));
+        const int rim = static_cast<int>(std::ceil(cellMetres / texelMetres)) + 1;
+        rimTexels = rim;
+        const int margin = rim + 2;
+        const int wx0 = std::max(static_cast<int>(std::floor(lowTexel.x)) - margin, 0), wx1 = std::min(static_cast<int>(std::ceil(highTexel.x)) + margin, width - 1);
+        const int wy0 = std::max(static_cast<int>(std::floor(lowTexel.y)) - margin, 0), wy1 = std::min(static_cast<int>(std::ceil(highTexel.y)) + margin, height - 1);
+        const int ww = wx1 - wx0 + 1, wh = wy1 - wy0 + 1;
+        enum : uint8_t { OUTSIDE, SEEDED, LOWER, DEPARTS };
+        std::vector<uint8_t> kind(static_cast<size_t>(std::max(ww, 0)) * std::max(wh, 0), OUTSIDE);
+        std::vector<uint8_t> inCut(kind.size(), 0);
+        std::vector<int> grow;
+        for (int ty = wy0; ty <= wy1; ty++){
+            for (int tx = wx0; tx <= wx1; tx++){
+                const Vector2 local = holes.worldOfTexel(latticeMap, tx, ty);
+                const float vx = local.x - offset.x, vz = local.y - offset.z;
+                if (vx < 0.0f || vz < 0.0f || vx > dim.x * voxelSize || vz > dim.z * voxelSize) continue;
+                const double departure = departureAt(vx, vz);
+                const int i = (ty - wy0) * ww + (tx - wx0);
+                kind[static_cast<size_t>(i)] = std::fabs(departure) > tolerance ? DEPARTS : departure > rimSlack ? LOWER : SEEDED;
+                // a cut that reaches in from outside the window carries on
+                const bool border = tx == wx0 || tx == wx1 || ty == wy0 || ty == wy1;
+                const bool carried = border && state.cutMask[static_cast<size_t>(ty) * width + tx] && kind[static_cast<size_t>(i)] != SEEDED;
+                if (kind[static_cast<size_t>(i)] == DEPARTS || carried){
+                    inCut[static_cast<size_t>(i)] = 1;
+                    grow.push_back(i);
+                }
+            }
+        }
+        while (!grow.empty()){
+            const int i = grow.back();
+            grow.pop_back();
+            const int x = i % ww, y = i / ww;
+            const int around[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            for (const auto& step : around){
+                const int nx = x + step[0], ny = y + step[1];
+                if (nx < 0 || ny < 0 || nx >= ww || ny >= wh) continue;
+                const int n = ny * ww + nx;
+                if (inCut[static_cast<size_t>(n)] || kind[static_cast<size_t>(n)] < LOWER) continue;
+                inCut[static_cast<size_t>(n)] = 1;
+                grow.push_back(n);
+            }
+        }
+        for (int pass = 0; pass < rim; pass++){
+            std::vector<uint8_t> grown = inCut;
+            for (int y = 0; y < wh; y++){
+                for (int x = 0; x < ww; x++){
+                    const int i = y * ww + x;
+                    if (inCut[static_cast<size_t>(i)] || kind[static_cast<size_t>(i)] != SEEDED) continue;
+                    bool near = false;
+                    for (int dy = -1; dy <= 1 && !near; dy++){
+                        for (int dx = -1; dx <= 1 && !near; dx++){
+                            const int nx = x + dx, ny = y + dy;
+                            near = nx >= 0 && ny >= 0 && nx < ww && ny < wh && inCut[static_cast<size_t>(ny * ww + nx)];
+                        }
+                    }
+                    if (near) grown[static_cast<size_t>(i)] = 1;
+                }
+            }
+            inCut.swap(grown);
+        }
         std::vector<std::array<int, 3>> fills;
         std::vector<std::array<int, 3>> opens;
-        for (int ty = ty0; ty <= ty1; ty++){
+        for (int ty = wy0; ty <= wy1; ty++){
             int runStart = -1;
             int fillStart = -1;
-            for (int tx = tx0; tx <= tx1 + 1; tx++){
+            for (int tx = wx0; tx <= wx1 + 1; tx++){
                 bool cut = false;
                 bool fill = false;
-                if (tx <= tx1){
-                    const Vector2 local = holes.worldOfTexel(latticeMap, tx, ty);
-                    const float vx = local.x - offset.x, vz = local.y - offset.z;
-                    const bool inFootprint = vx >= 0.0f && vz >= 0.0f && vx <= dim.x * voxelSize && vz <= dim.z * voxelSize;
-                    if (inFootprint){
-                        const bool flush = flushAt(vx, vz);
+                if (tx <= wx1){
+                    const int i = (ty - wy0) * ww + (tx - wx0);
+                    if (kind[static_cast<size_t>(i)] != OUTSIDE){
+                        const bool wanted = inCut[static_cast<size_t>(i)] != 0;
                         uint8_t& mine = state.cutMask[static_cast<size_t>(ty) * width + tx];
-                        if (!flush && !mine && !isHoleNow(tx, ty)){
+                        if (wanted && !mine && !isHoleNow(tx, ty)){
                             mine = 1;
                             cut = true;
                             state.lastHolesCut++;
-                        }else if (flush && mine){
+                        }else if (!wanted && mine){
                             mine = 0;
                             fill = true;
                             state.lastHolesFilled++;
@@ -390,9 +460,9 @@ void VoxelSystem::updateTerrainCut(VolumeState& state, VoxelVolumeComponent& com
         state.pendingOpens.insert(state.pendingOpens.end(), opens.begin(), opens.end());
     }
 
-    // ---- which columns the mesher may drop: flush, and more than the ring from any cut (R41)
+    // ---- which columns the mesher may drop: seeded, and more than the ring from any cut (R41)
     const float holeTexelVoxels = latticeFormat.exists ? terrain.terrainSize / static_cast<float>(latticeFormat.bounds.w) / voxelSize : 1.0f;
-    const int ringWidth = std::max(2, static_cast<int>(std::ceil(holeTexelVoxels)));
+    const int ringWidth = std::max(2, static_cast<int>(std::ceil(holeTexelVoxels * static_cast<float>(rimTexels + 1))));
     buildCoverageMask(*coverage, state.columnFlush, ringWidth);
     state.coverage = coverage;
     state.coverageRing = ringWidth;

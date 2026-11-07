@@ -119,7 +119,8 @@ namespace {
             return 50.0f - 100.0f * hit.mFraction;
         }
 
-        Entity attached(const std::string& name, VoxelTerrainCut cut = VoxelTerrainCut::Automatic, bool collision = false) {
+        // overlapDepth: the component's (-1, its default) unless set
+        Entity attached(const std::string& name, VoxelTerrainCut cut = VoxelTerrainCut::Automatic, bool collision = false, float overlapDepth = -1.0f) {
             GeneratorDesc generator;
             generator.kind = "terrain";
             VolumeDesc desc;
@@ -138,10 +139,8 @@ namespace {
             component.terrain = terrainEntity;
             component.terrainCut = cut;
             component.collision = collision;
+            component.overlapDepth = overlapDepth;
             if (collision) {
-                // the seed's collider sits clear of the terrain's, so a ray tells the two apart; a
-                // step this small a ball rolls over
-                component.overlapDepth = 0.05f;
                 // the colliders gather around the cave mouth, world (64, 64)
                 component.focus = scene->createEntity();
                 scene->addComponent<Transform>(component.focus, {});
@@ -186,7 +185,7 @@ TEST_F(VoxelTerrain, AttachDefaults) {
     // R35: the seed sits overlapDepth under the terrain
     Store* store = system->getStore(owner);
     ASSERT_NE(store, nullptr);
-    EXPECT_NEAR(valueAt(*store, Vec3d{32.0, surfaceHeight(), 32.0}), 0.02, 0.01);
+    EXPECT_NEAR(valueAt(*store, Vec3d{32.0, surfaceHeight(), 32.0}), 0.01, 0.005);
 }
 
 TEST_F(VoxelTerrain, CutsOnlyNonFlush) {
@@ -197,8 +196,9 @@ TEST_F(VoxelTerrain, CutsOnlyNonFlush) {
     EXPECT_GT(result.holesCut, 0);
     drain();
     const int holes = holeCount();
-    EXPECT_GT(holes, 60);
-    EXPECT_LT(holes, 180);    // about pi * 6^2, plus what the tolerance decides at the rim
+    // about pi * 6^2, grown by R44's rim (the terrain collider's cell and a texel: radius 9)
+    EXPECT_GT(holes, 110);
+    EXPECT_LT(holes, 300);
     // Far texels stay; and a change smaller than the tolerance stays flush
     const EditOp small = digOp(sphereShape(10.0, surfaceHeight() + 0.9, 10.0, 1.0));
     const EditResult tiny = system->edit(owner, std::span<const EditOp>(&small, 1), EditOptions{});
@@ -334,7 +334,8 @@ TEST_F(VoxelTerrain, CollisionHoleAfterCollider) {
     // a ray down the cave mouth meets one or the other every tick; and a body rolled over the lip
     // neither falls nor stops (T3 R22's rim leaves it up to a collision cell)
     enablePhysics();
-    const Entity owner = attached("mem://collider-order", VoxelTerrainCut::Automatic, true);
+    // the seed 0.05 m down: a ray tells its collider from the terrain's, which is exact
+    const Entity owner = attached("mem://collider-order", VoxelTerrainCut::Automatic, true, 0.05f);
     steps(30);
     system->finishPendingWork();
     const float surface = surfaceHeight();
@@ -387,4 +388,48 @@ TEST_F(VoxelTerrain, CollisionHoleAfterCollider) {
                 surface - lowest, end.x, end.z, openedAt);
     EXPECT_TRUE(crossed);
     EXPECT_GT(lowest, surface - 1.0f + 0.5f - 0.1f);
+}
+
+TEST_F(VoxelTerrain, RimHasNoStep) {
+    // R44's rim: along any path into a cave mouth, no step up over 2 cm where terrain meets voxel
+    // ground, in what is drawn (the terrain where it is not a hole, else the volume) and in what
+    // collides (the terrain's heightfield, else the volume's colliders). Defaults: 1 m voxels.
+    enablePhysics();
+    const Entity owner = attached("mem://rim", VoxelTerrainCut::Automatic, true);
+    steps(30);
+    system->finishPendingWork();
+    const float surface = surfaceHeight();
+    // the dish of AC35, and a steeper bowl beside it
+    const EditOp dish = digOp(sphereShape(32.0, surface + 19.0, 32.0, 20.0));
+    const EditOp bowl = digOp(sphereShape(40.0, surface + 2.0, 40.0, 4.0));
+    ASSERT_TRUE(system->edit(owner, std::span<const EditOp>(&dish, 1), EditOptions{}).ok);
+    ASSERT_TRUE(system->edit(owner, std::span<const EditOp>(&bowl, 1), EditOptions{}).ok);
+    for (int tick = 0; tick < 1800 && (holeCount() == 0 || !system->isCollisionReady(owner, AABB(Vector3(52, 0, 52), Vector3(80, 40, 80)))); tick++) steps(1);
+    for (int i = 0; i < 60; i++) steps(1);
+    system->finishPendingWork();
+    ASSERT_GT(holeCount(), 0);
+
+    // radial paths, 5 mm apart: a slope moves at most a few mm between samples, a step all at once
+    const float spacing = 0.005f;
+    float worstDrawn = 0.0f, worstColliding = 0.0f;
+    for (const Vector2 centre : {Vector2(64.0f, 64.0f), Vector2(72.0f, 72.0f)}) {
+        for (int ray = 0; ray < 16; ray++) {
+            const float angle = 6.2831853f * static_cast<float>(ray) / 16.0f;
+            const Vector2 out(std::cos(angle), std::sin(angle));
+            float lastDrawn = std::nanf(""), lastColliding = std::nanf("");
+            for (float r = 0.0f; r < 12.0f; r += spacing) {
+                const float x = centre.x + out.x * r, z = centre.y + out.y * r;
+                const voxel::GroundSample drawn = voxel::sampleGround(scene.get(), x, z, 60.0f);
+                const float colliding = groundAt(x, z);
+                // walking out of the mouth, a step up is the next sample higher than this one
+                if (!std::isnan(lastDrawn) && drawn.source != voxel::GroundSource::None) worstDrawn = std::max(worstDrawn, drawn.height - lastDrawn);
+                if (!std::isnan(lastColliding) && !std::isnan(colliding)) worstColliding = std::max(worstColliding, colliding - lastColliding);
+                lastDrawn = drawn.source != voxel::GroundSource::None ? drawn.height : std::nanf("");
+                lastColliding = colliding;
+            }
+        }
+    }
+    std::printf("[bench] cave-mouth rim: largest step up %.4f m drawn, %.4f m colliding\n", worstDrawn, worstColliding);
+    EXPECT_LE(worstDrawn, 0.02f);
+    EXPECT_LE(worstColliding, 0.02f);
 }

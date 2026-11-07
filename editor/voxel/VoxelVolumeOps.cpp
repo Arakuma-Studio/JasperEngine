@@ -132,7 +132,7 @@ const std::vector<VoxelInspectorRow>& editor::voxelInspectorRows() {
         {"navigationUpdate", "Navigation Update", K::Enum, "Automatic: a NavMesh Surface rebakes what an edit changed"},
         {"terrain", "Terrain", K::Entity, "The Terrain it is attached to; none: free-standing"},
         {"terrainCut", "Terrain Cut", K::Enum, "Automatic: cuts Terrain holes where the volume breaks its surface"},
-        {"overlapDepth", "Overlap Depth", K::Float, "How far the volume's surface sits under the terrain's. Negative: 0.02 x Voxel Size"},
+        {"overlapDepth", "Overlap Depth", K::Float, "How far the volume's surface sits under the terrain's. Negative: 0.01 x Voxel Size"},
         {"cutTolerance", "Cut Tolerance", K::Float, "A surface this close to the terrain's cuts no hole. Negative: 0.25 x Voxel Size"},
         {"focus", "Focus", K::Entity, "What LOD follows; none: the active camera"},
         {"runtimeGeneration", "Runtime Generation", K::Bool, "Keep the generator in the build and evaluate it in the player, instead of shipping baked blocks"},
