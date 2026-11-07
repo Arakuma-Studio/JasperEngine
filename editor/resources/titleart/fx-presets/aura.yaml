@@ -1,0 +1,110 @@
+{
+  "presets": [
+    {
+      "id": "tendrils",
+      "name": "Blue Tendrils",
+      "aliases": [
+        "blue tendrils",
+        "corona",
+        "コロナ"
+      ],
+      "source": "corona/tendrils",
+      "params": {},
+      "layer": {
+        "blend": "normal",
+        "place": "below",
+        "effects": []
+      }
+    },
+    {
+      "id": "purple",
+      "name": "Purple Tendrils",
+      "aliases": [
+        "purple tendrils",
+        "purple corona"
+      ],
+      "source": "corona/purple",
+      "params": {
+        "length": 110,
+        "wispiness": 70,
+        "density": 110,
+        "glow": 70,
+        "intensity": 150,
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffffff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.3,
+              "color": "#f0a0ff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.65,
+              "color": "#a020ff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#30006a",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "seed": 3
+      },
+      "layer": {
+        "blend": "normal",
+        "place": "below",
+        "effects": []
+      }
+    },
+    {
+      "id": "strong",
+      "name": "Strong Aura (強)",
+      "aliases": [
+        "Aura (強)",
+        "オーラ強",
+        "strong aura"
+      ],
+      "source": "corona/auraStrong",
+      "params": {
+        "mode": "rising"
+      },
+      "layer": {
+        "blend": "normal",
+        "place": "below",
+        "effects": []
+      }
+    },
+    {
+      "id": "rising_weak",
+      "name": "Rising Weak Aura (弱)",
+      "aliases": [
+        "Rising aura (弱)",
+        "オーラ弱",
+        "weak aura",
+        "rising aura"
+      ],
+      "source": "corona/auraWeakUp",
+      "params": {
+        "mode": "rising",
+        "strength": "weak",
+        "flow": "up"
+      },
+      "layer": {
+        "blend": "normal",
+        "place": "below",
+        "effects": []
+      }
+    }
+  ]
+}

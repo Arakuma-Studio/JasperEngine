@@ -278,20 +278,39 @@ TitlePx TitlePlanner::generator(const DrawNode& node) {
     const double s = scale;
     const PassPlace place = passPlace(rect, node.layer);
     // the followed layer alone (§6.4 "Layer sources"), cut to this target's rect
-    int followSlot = -1;
+    int followSlot = -1, followContentSlot = -1;
+    uint64_t followKey = 0, followContentKey = 0;
     const std::string followed = layer.value("follow", std::string());
     if (def->follow != FollowMode::None && !followed.empty()) {
+        // what S83's analysis keys its readbacks by: the followed layer's pixels and where the
+        // target lies on the canvas
+        uint64_t where = hashCombine(layerHash(followed, &LayerHashes::node), fnv1a64(std::string_view(reinterpret_cast<const char*>(&scale), sizeof(scale))));
+        const int r[4] = {rect.x, rect.y, rect.width, rect.height};
+        where = hashCombine(where, fnv1a64(std::string_view(reinterpret_cast<const char*>(r), sizeof(r))));
+        where = hashCombine(where, fnv1a64(svc.caps.pathName()));
         const TitlePx source = layerSource(followed, "follow_cycle", id);
         if (source.valid()) {
             TitlePx cut = clearedLike(rect, id);
             blendOnto(cut, source, 1.0f, (int)TitleBlend::Normal, nullptr, id);
             followSlot = cut.slot;
+            followKey = hashCombine(where, fnv1a64("styled"));
+        }
+        if (def->inputs.content) {
+            const TitlePx bare = layerContentSource(followed, "follow_cycle", id);
+            if (bare.valid()) {
+                TitlePx cut = clearedLike(rect, id);
+                blendOnto(cut, bare, 1.0f, (int)TitleBlend::Normal, nullptr, id);
+                followContentSlot = cut.slot;
+                followContentKey = hashCombine(where, fnv1a64("content"));
+            }
         }
     }
     std::shared_ptr<bool> reads = canvasReads;
+    const AssetResolver* assets = req.assets;
     kernel(type, id, rect, passes, 1.0f, [=](TitleJobState& state, TitleJobRunner& runner, std::string& error) {
         std::string why;
-        if (!state.target(outSlot, why) || (followSlot >= 0 && !state.target(followSlot, why))) {
+        if (!state.target(outSlot, why) || (followSlot >= 0 && !state.target(followSlot, why)) ||
+            (followContentSlot >= 0 && !state.target(followContentSlot, why))) {
             error = why;
             return false;
         }
@@ -310,9 +329,17 @@ TitlePx TitlePlanner::generator(const DrawNode& node) {
         ctx.lightAltitude = light.value("altitude", 30.0);
         ctx.layerId = id;
         if (followSlot >= 0) ctx.follow = &state.slots[(size_t)followSlot].ref;
+        if (followContentSlot >= 0) ctx.followContent = &state.slots[(size_t)followContentSlot].ref;
+        ctx.followKey = followSlot >= 0 ? followKey : 0;
+        ctx.followContentKey = followContentSlot >= 0 ? followContentKey : 0;
+        ctx.assets = assets;
         def->render(ctx, state.slots[(size_t)outSlot].ref,
                     ParamValues(params, def->globalLight.angleKey ? &def->globalLight : nullptr, ctx.lightAngle, ctx.lightAltitude));
         if (reads && ctx.usesCanvasPosition) *reads = true;
+        for (TitleProblem& p : ctx.problems) {
+            if (p.layer.empty()) p.layer = id;
+            state.job->addProblem(std::move(p));
+        }
         if (!runner.error().empty()) {
             error = std::string(def->type) + ": " + runner.error();
             return false;
@@ -320,6 +347,7 @@ TitlePx TitlePlanner::generator(const DrawNode& node) {
         return true;
     });
     release(followSlot);
+    release(followContentSlot);
     return out;
 }
 

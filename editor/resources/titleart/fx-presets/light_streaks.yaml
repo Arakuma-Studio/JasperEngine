@@ -1,0 +1,98 @@
+{
+  "presets": [
+    {
+      "id": "anamorphic",
+      "name": "Anamorphic",
+      "aliases": [
+        "anamorphic",
+        "アナモルフィック"
+      ],
+      "source": "lightStreaks/anamorphic",
+      "params": {},
+      "layer": {
+        "blend": "add"
+      }
+    },
+    {
+      "id": "bundle",
+      "name": "Light Bundle",
+      "aliases": [
+        "light bundle",
+        "光の束"
+      ],
+      "source": "lightStreaks/bundle",
+      "params": {
+        "mode": "bundle",
+        "origin": [
+          -900,
+          480
+        ],
+        "angle": 25,
+        "spread": 30,
+        "count": 28,
+        "length": 1500,
+        "length_random": 50,
+        "thickness": 12,
+        "taper_head": 20,
+        "taper_tail": 100,
+        "edge_color": "#ff9a2e",
+        "glow": 90
+      },
+      "layer": {
+        "blend": "add"
+      }
+    },
+    {
+      "id": "spears",
+      "name": "Spears",
+      "aliases": [
+        "spears",
+        "光の槍"
+      ],
+      "source": "lightStreaks/spears",
+      "params": {
+        "mode": "spears",
+        "origin": [
+          -500,
+          0
+        ],
+        "spread": 8,
+        "count": 14,
+        "length": 900,
+        "length_random": 50,
+        "thickness": 12,
+        "thickness_random": 50,
+        "taper_head": 100,
+        "taper_tail": 60,
+        "edge_color": "#ffb347",
+        "brightness": 180
+      },
+      "layer": {
+        "blend": "add"
+      }
+    },
+    {
+      "id": "cyan",
+      "name": "Cyan Streak",
+      "aliases": [
+        "cyan streak",
+        "シアンのストリーク"
+      ],
+      "source": "lightStreaks/cyan",
+      "params": {
+        "spread": 0,
+        "count": 3,
+        "length": 2400,
+        "thickness": 12,
+        "edge_color": "#00e1ff",
+        "core_width": 20,
+        "brightness": 300,
+        "glow": 180,
+        "chroma": 3
+      },
+      "layer": {
+        "blend": "add"
+      }
+    }
+  ]
+}

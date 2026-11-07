@@ -61,6 +61,9 @@ namespace jasperengine::titleart {
     // ShaderType::TITLE_ART property bits after the program number
     constexpr uint64_t TITLE_VARIANT_SEEDS_FIXED = 1ull << 7;      // 'Sfx': seeds and bounds in RGBA8
     constexpr uint64_t TITLE_VARIANT_DISTANCE_FIXED = 1ull << 8;   // 'Dfx': distances in RGBA8
+    // 'Gen': the program number names one of S83's generator programs (titleart_gen.vert/.frag,
+    // generators/TitleGen.h's GenProgram), a number space of its own beside titleart.frag's
+    constexpr uint64_t TITLE_VARIANT_GENERATOR = 1ull << 9;
 
     JASPERENGINE_API ShaderKey titleProgramKey(TitleProgram program, uint64_t variant = 0);
     JASPERENGINE_API const char* titleProgramName(TitleProgram program);    // "outer_glow", "gauss" ...
@@ -73,10 +76,14 @@ namespace jasperengine::titleart {
     constexpr int TITLE_LUT_SIZE = 256;
 
     // A 256 x 1 lookup uploaded once per content (gradient ramps, tone curves): RGBA8 bytes or
-    // RGBA16F halves (TitleArtCaps' GradientLut and ToneLut)
+    // RGBA16F halves (TitleArtCaps' GradientLut and ToneLut). S83's data textures use the same
+    // upload at another size: QuadBatch's instance records and the generators' tables (RGBA32F,
+    // nearest, read with texelFetch)
     struct TitleLutData {
         ColorFormat format = ColorFormat::RGBA;
-        std::vector<uint8_t> bytes;     // TITLE_LUT_SIZE texels in `format`
+        std::vector<uint8_t> bytes;     // width x height texels in `format`, rows first to last
+        int width = TITLE_LUT_SIZE, height = 1;
+        TextureFilter filter = TextureFilter::LINEAR;
         uint64_t hash() const;
     };
 
@@ -109,6 +116,11 @@ namespace jasperengine::titleart {
         TitleRectI scissor;                 // output pixels; empty = all of it
         float pxScale = 1.0f;
         BlendMode blend = BlendMode::NONE;
+        // S83's instanced generator passes (TITLE_VARIANT_GENERATOR programs that pull their
+        // vertices): the vertex count drawn (3 = the fullscreen triangle) and the data texture
+        // the vertex stage reads with texelFetch (gpu/QuadBatch.h)
+        int vertices = 3;
+        TitleSource vertexData;
 
         void set(int index, float x, float y = 0.0f, float z = 0.0f, float w = 0.0f) {
             params[index][0] = x;
@@ -135,6 +147,10 @@ namespace jasperengine::titleart {
         virtual bool run(const TitlePass& pass) = 0;
         // fills the output (or its scissor) with transparent black
         virtual bool clear(TargetRef& target) = 0;
+        // true when a pass since construction drew nothing because its program is still being
+        // compiled (the renderer's runner runs the whole definition again later): S83's
+        // analysis then skips its readback instead of reading an undrawn target
+        virtual bool skippedPasses() const { return false; }
         // the first failure since the last clearError(), else empty
         virtual const std::string& error() const = 0;
         virtual void clearError() = 0;

@@ -716,7 +716,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         // 'Oir': the OIT resolve, else the contact shadows' mask
         case ShaderType::LIGHTING_PASS: return 1;
         // the program number (bits 0-6) and the RGBA8 encodings Sfx, Dfx (titleart/render/TitlePasses.h)
-        case ShaderType::TITLE_ART: return 9;
+        case ShaderType::TITLE_ART: return 10;
         default:                 return 0;
     }
 }
@@ -960,11 +960,13 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 1: return shortName ? "Mfl" : "Manual Filtering";
         }
     } else if (shaderType == ShaderType::TITLE_ART) {
-        // titleart.frag: bits 0-6 hold the TA_PROGRAM number, then the RGBA8 fallback encodings
+        // titleart.frag: bits 0-6 hold the TA_PROGRAM number, then the RGBA8 fallback encodings,
+        // then S83's generator program space (titleart_gen.frag)
         if (bit < 7) return (shortName ? "Pb" : "Program Bit ") + std::to_string(bit);
         switch (bit) {
             case 7: return shortName ? "Sfx" : "Seeds Fixed";
             case 8: return shortName ? "Dfx" : "Distance Fixed";
+            case 9: return shortName ? "Gen" : "Generator";
         }
     }
     return shortName ? "?" : "Unknown";

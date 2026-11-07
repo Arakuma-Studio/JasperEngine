@@ -176,6 +176,9 @@ namespace jasperengine::titleart {
         // the layer drawn alone (its ancestors' transforms, guides drawn), shared by every reader
         // of the job; invalid for a missing layer or a cycle (problem `cycle`)
         TitlePx layerSource(const std::string& layerId, const char* cycleProblem, const std::string& reader);
+        // the same without that layer's own effects (its parts' effects kept): S83's `content`
+        // input of a following generator (Pachislop's layerContent)
+        TitlePx layerContentSource(const std::string& layerId, const char* cycleProblem, const std::string& reader);
 
         // ---- 2D titles (Title2DPass.cpp) ----
         // a 2D title's elements and their mask frame (computed once per layer and render)
@@ -225,6 +228,7 @@ namespace jasperengine::titleart {
         std::map<std::string, const Json*> parents;     // layer id -> its parent group (null at the top)
         std::map<std::string, TitlePx> sources;         // layer sources of this job
         std::set<std::string> activeSources;
+        std::string effectsOffLayer;                    // drawn without its own effects (layerContentSource)
         std::map<const DrawNode*, TitleRectI> rects;    // node rects (the trees below keep the nodes alive)
         std::map<std::string, TitleContentPlan> contentPlans;
         TitleElementFilter elementFilter;               // the glyph cell's, for its layer only

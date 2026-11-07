@@ -18,6 +18,8 @@ file(GLOB jasperengineTitleArtEditorFiles CONFIGURE_DEPENDS
 list(APPEND JASPERENGINE_EDITOR_TITLE_ART_SOURCES ${jasperengineTitleArtEditorFiles})
 list(SORT JASPERENGINE_EDITOR_TITLE_ART_SOURCES)
 list(APPEND JASPERENGINE_EDITOR_SOURCES ${JASPERENGINE_EDITOR_TITLE_ART_SOURCES})
+# S83: the effect and generator presets, embedded
+include(${CMAKE_CURRENT_LIST_DIR}/fx/FxPresets.cmake)
 
 # Unity build: several streams' files keep per-file helpers with the same names
 if(JASPERENGINE_EDITOR_TITLE_ART_SOURCES)

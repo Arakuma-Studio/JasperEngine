@@ -46,6 +46,11 @@ namespace jasperengine::titleart::test {
             for (const char* f : {DELA_GOTHIC, STICK, OSWALD, SOURCE_SANS, SOURCE_SANS_VF}) {
                 files[f] = readFileBytes((std::filesystem::path(titleFontsDir()) / std::string(f).substr(6)).string());
             }
+            // S83: Magic Circle's library fonts where S84 copies them into a project
+            files["TitleArt/Fonts/zen-old-mincho-black/ZenOldMincho-Black.ttf"] =
+                readFileBytes((std::filesystem::path(titleFontsDir()) / "ZenOldMincho-Black.ttf").string());
+            files["TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf"] =
+                readFileBytes((std::filesystem::path(titleFontsDir()) / "ZenKakuGothicNew-Black.ttf").string());
         }
 
         void addFile(const std::string& path, std::vector<uint8_t> bytes) {

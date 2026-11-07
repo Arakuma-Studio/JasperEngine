@@ -105,6 +105,21 @@ color schemes, templates, library S84; animation S85; 3D S86; languages and impo
 - Headless: `jasperengine-editor check --titles` (no GPU) reports `title-*` problems with the
   fix command; `jasperengine-editor call export_title --project <p> path=<doc>` bakes.
 
+### Effects and generators
+
+- Discover with `list_title_library {kind: "effects" | "generators", query?, id?}`; `id` gives the
+  params (with their animation class), the presets and the op that adds it. The full catalogue is
+  `title-art-effects.md`.
+- An effect changes a layer's pixels (its Effects stack). A generator draws new content and is
+  its own layer: `add_layer {type: "generator", generator, preset?, follow?, place?, group?}`.
+  Without `preset` the first preset applies (params, blend, layer effects). A following generator
+  (Fire, Glints, Lightning...) draws from the layer `follow` names, `place` "above"/"below" it;
+  `group: "auto"` wraps an Add-blended companion with its layer in "<layer> FX" so its light stays
+  on that layer. `check_title`'s `fx_follow_missing` flags a generator whose layer is gone.
+- Generators are seeded: change `seed` for another layout; strobes (lightning, speed lines) reseed
+  by keying `seed`. Particle `time`, Glints `twinkle_phase`, Fire `phase` and Fractal Noise
+  `evolution` animate without a re-layout.
+
 ### Common mistakes
 
 - Pixel sizes in `%` members (a rim `width` of 40 is 40 % of the text size, very thick).

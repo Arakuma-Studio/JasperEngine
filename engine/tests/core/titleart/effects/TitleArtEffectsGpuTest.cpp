@@ -30,6 +30,7 @@
 #include "titleart/TitleEffectCatalog.h"
 #include "titleart/TitleEffectRegistry.h"
 #include "titleart/effects/TitleFx.h"
+#include "titleart/generators/TitleGen.h"
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/render/TitleArtRenderer.h"
 #include "titleart/render/TitleEffectContext.h"
@@ -463,6 +464,10 @@ namespace {
                     const TitleProgram program = (TitleProgram)p;
                     ready = passes->prepare(program, titleProgramVariant(program, passes->caps())) && ready;
                 }
+                // S83's generators run here too (every registered generator is a case)
+                for (gen::GenProgram program : gen::genPrograms()) {
+                    ready = passes->prepare((TitleProgram)(uint8_t)program, gen::genProgramVariant(program, passes->caps())) && ready;
+                }
                 return ready;
             });
             return ran && passes->error().empty();
@@ -835,9 +840,14 @@ TEST_F(TitleArtEffectsGpu, FallbackAgreesWithinItsClass) {
         ASSERT_TRUE(rig->runGenerator(c.type, c.params, GENERATOR_WIDTH, GENERATOR_HEIGHT, 1.0f, f, error)) << error;
         ASSERT_TRUE(fallback.runGenerator(c.type, c.params, GENERATOR_WIDTH, GENERATOR_HEIGHT, 1.0f, e, error)) << error;
         const PixelStats stats = compareImages(toRgba8(f), toRgba8(e));
-        EXPECT_LE(stats.mean, 1.0) << stats.text();
-        EXPECT_LE(stats.max, 48) << stats.text();
-        EXPECT_LE(stats.fractionOver8, 0.005) << stats.text();
+        // S83 §6.5's classes: F0 as the effects', F1 for accumulations, F2 where light above 1 shapes the look
+        const FallbackClass cls = findGenerator(c.type)->fallback;
+        const double maxMean = cls == FallbackClass::F0 ? 1.0 : cls == FallbackClass::F1 ? 1.5 : 3.0;
+        const int maxDiff = cls == FallbackClass::F0 ? 48 : cls == FallbackClass::F1 ? 64 : 96;
+        const double maxOver = cls == FallbackClass::F0 ? 0.005 : cls == FallbackClass::F1 ? 0.02 : 0.05;
+        EXPECT_LE(stats.mean, maxMean) << fallbackClassName(cls) << ": " << stats.text();
+        EXPECT_LE(stats.max, maxDiff) << fallbackClassName(cls) << ": " << stats.text();
+        EXPECT_LE(stats.fractionOver8, maxOver) << fallbackClassName(cls) << ": " << stats.text();
     }
 }
 

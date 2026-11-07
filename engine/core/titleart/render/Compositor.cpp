@@ -706,7 +706,8 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
     const int ax = (int)std::floor(anchor.x), ay = (int)std::floor(anchor.y);
     const bool leaf2D = node.kind == DrawNodeKind::Leaf && layerTypeHasStyle(node.type);
     uint64_t key = 0;
-    const bool cacheable = !wantInk && !contentInk && !req.glyphCell;
+    const bool contentOnly = !effectsOffLayer.empty() && node.layerId == effectsOffLayer;
+    const bool cacheable = !wantInk && !contentInk && !req.glyphCell && !contentOnly;
     if (cacheable) {
         key = hashCombine(fnv1a64("node"), layerHash(node.layerId, &LayerHashes::content));
         const double s = scale;
@@ -745,7 +746,8 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
     Content content = unitContent(node, clip, contentInk);
     if (!content.px.valid()) return {};
     const bool maskIsPx = content.mask.slot == content.px.slot;
-    Effects post = applyEffects(node.layerId, effectsOf(layer), content.px, clip && maskIsPx, content.ink, wantInk, &layer);
+    Effects post = contentOnly ? Effects{content.px, content.ink}
+                               : applyEffects(node.layerId, effectsOf(layer), content.px, clip && maskIsPx, content.ink, wantInk, &layer);
     Unit out;
     bool positionFree = leaf2D && !clip;
     if (!clip) {

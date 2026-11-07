@@ -27,6 +27,7 @@
 #include "titleart/TitleArtSchema.h"
 #include "titleart/TitleEffectCatalog.h"
 #include "titleart/TitleEffectRegistry.h"
+#include "titleart/fx/FxPresets.h"
 #include "util/FontFace.h"
 #include "util/Util.h"
 
@@ -202,7 +203,18 @@ void listTitleLibraryTool(const CallPtr& call) {
             }
         } else if (kind == "generators") {
             if (const titleart::GeneratorDef* def = registry.generator(id)) {
-                call->ok(std::string(def->label) + " (" + def->type + ")", fromOrdered(titleart::titleGeneratorDetail(*def)));
+                // S83 §6.11: the presets with their params (add_layer's `preset`)
+                Json detail = fromOrdered(titleart::titleGeneratorDetail(*def));
+                Json presets = Json::array();
+                for (const TitleFxPreset& p : titleFxPresets(def->type)) {
+                    Json row{{"id", p.id}, {"name", p.name}, {"params", fromOrdered(p.params)}};
+                    if (p.layer.contains("blend")) row["blend"] = p.layer["blend"].get<std::string>();
+                    if (p.layer.contains("place")) row["place"] = p.layer["place"].get<std::string>();
+                    presets.push_back(std::move(row));
+                }
+                detail["entry"] = "generator";
+                detail["presets"] = std::move(presets);
+                call->ok(std::string(def->label) + " (" + def->type + ")", detail);
                 return;
             }
         }
@@ -228,8 +240,19 @@ void listTitleLibraryTool(const CallPtr& call) {
         for (const titleart::GeneratorDef* d : registry.generators()) {
             std::vector<std::string> fields = {d->type, d->label, d->category};
             for (const char* a : d->aliases) fields.push_back(a);
+            const std::vector<TitleFxPreset>& presets = titleFxPresets(d->type);
+            for (const TitleFxPreset& p : presets) {
+                fields.push_back(p.name);
+                for (const std::string& a : p.aliases) fields.push_back(a);
+            }
             if (!matches(query, fields)) continue;
-            rows.push_back(fromOrdered(titleart::titleGeneratorRow(*d)));
+            // S83 §6.11's row fields: the entry kind and the preset ids
+            Json row = fromOrdered(titleart::titleGeneratorRow(*d));
+            row["entry"] = "generator";
+            Json ids = Json::array();
+            for (const TitleFxPreset& p : presets) ids.push_back(p.id);
+            row["presets"] = std::move(ids);
+            rows.push_back(std::move(row));
         }
     } else if (kind == "blend_modes") {
         for (int i = 0; i < titleart::TITLE_BLEND_COUNT; i++) {

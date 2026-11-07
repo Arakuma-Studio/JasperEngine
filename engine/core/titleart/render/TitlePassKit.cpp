@@ -86,6 +86,12 @@ uint64_t TitleLutData::hash() const {
         h *= 1099511628211ull;
     };
     add((uint8_t)format);
+    // a data texture's shape and filter are part of what is uploaded (a 256 x 1 lookup adds nothing)
+    if (width != TITLE_LUT_SIZE || height != 1 || filter != TextureFilter::LINEAR) {
+        for (int v : {width, height, (int)filter}) {
+            for (int k = 0; k < 4; k++) add((uint8_t)((uint32_t)v >> (8 * k)));
+        }
+    }
     for (uint8_t b : bytes) add(b);
     return h;
 }
@@ -98,6 +104,7 @@ namespace {
     public:
         FramebufferRender framebuffer;
         ~SokolTitleTarget() override { framebuffer.destroyFramebuffer(); }
+        TextureRender* colorTexture() const override { return &const_cast<FramebufferRender&>(framebuffer).getColorTexture(); }
     };
 
     class SokolTitleLut : public TitleLut {
@@ -108,6 +115,9 @@ namespace {
 
     const char* const TEXTURE_NAMES[TITLE_PASS_TEXTURES] = {"u_taTex0", "u_taTex1", "u_taTex2", "u_taTex3"};
     const char* const RAW_NAMES[TITLE_PASS_RAW_TEXTURES] = {"u_taRaw0", "u_taRaw1"};
+    // S83's vertex-pulling generator programs: the vertex stage's block and data texture
+    const char* const VERTEX_BLOCK = "u_vs_titleart";
+    const char* const VERTEX_DATA = "u_taVertexData";
 
 }
 
@@ -145,6 +155,9 @@ struct TitlePassKit::Impl {
         std::shared_ptr<ShaderRender> shader;
         ObjectRender object;
         int blockSlot = -1;
+        int vertexBlockSlot = -1;
+        unsigned int vertexBlockBytes = 0;
+        std::pair<int, int> vertexData = {-1, -1};
         std::pair<int, int> textures[TITLE_PASS_TEXTURES];
         std::pair<int, int> raw[TITLE_PASS_RAW_TEXTURES];
         bool loaded = false;
@@ -206,6 +219,10 @@ struct TitlePassKit::Impl {
         program.blockSlot = data.getUniformBlockIndexByName("u_fs_titleart");
         for (int i = 0; i < TITLE_PASS_TEXTURES; i++) program.textures[i] = data.getTextureIndexByName(TEXTURE_NAMES[i]);
         for (int i = 0; i < TITLE_PASS_RAW_TEXTURES; i++) program.raw[i] = data.getTextureIndexByName(RAW_NAMES[i]);
+        program.vertexBlockSlot = data.getUniformBlockIndexByName(VERTEX_BLOCK);
+        if (program.vertexBlockSlot >= 0 && data.getUniformBlockMembers(VERTEX_BLOCK, program.vertexBlockBytes) == nullptr) program.vertexBlockBytes = 0;
+        program.vertexBlockBytes = std::min<unsigned int>(program.vertexBlockBytes, sizeof(float) * 4 * TITLE_PASS_VEC4S);
+        program.vertexData = data.getTextureIndexByName(VERTEX_DATA);
         program.object.beginLoad(PrimitiveType::TRIANGLES);
         program.object.setShader(program.shader.get());
         for (const auto& t : program.textures) {
@@ -214,6 +231,7 @@ struct TitlePassKit::Impl {
         for (const auto& t : program.raw) {
             if (t.first >= 0) program.object.addTexture(t, ShaderStageType::FRAGMENT, &placeholder);
         }
+        if (program.vertexData.first >= 0) program.object.addTexture(program.vertexData, ShaderStageType::VERTEX, &placeholder);
         // a pass of a render: its pipelines are made at once, never skipped (spec S32 §6.4)
         program.object.setImmediatePipelines(true);
         if (program.blockSlot < 0 || !program.object.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE)) {
@@ -276,16 +294,16 @@ const TitleLut* TitlePassKit::lut(const TitleLutData& data) {
     const uint64_t key = data.hash();
     auto found = impl->luts.find(key);
     if (found != impl->luts.end()) return found->second.get();
-    const size_t texel = data.format == ColorFormat::RGBA16F ? 8 : 4;
-    if (data.bytes.size() != texel * TITLE_LUT_SIZE) {
-        impl->fail("a title lookup must hold 256 texels");
+    const size_t texel = colorFormatBytes(data.format);
+    if (texel == 0 || data.width <= 0 || data.height <= 0 || data.bytes.size() != texel * (size_t)data.width * (size_t)data.height) {
+        impl->fail("a title lookup's bytes do not match its size");
         return nullptr;
     }
     auto lut = std::make_unique<SokolTitleLut>();
     void* pixels[1] = {const_cast<uint8_t*>(data.bytes.data())};
     size_t size[1] = {data.bytes.size()};
-    if (!lut->texture.createTexture("titleart lut", TITLE_LUT_SIZE, 1, data.format, TextureType::TEXTURE_2D, 1, pixels, size,
-                                    TextureFilter::LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE)) {
+    if (!lut->texture.createTexture("titleart lut", data.width, data.height, data.format, TextureType::TEXTURE_2D, 1, pixels, size,
+                                    data.filter, data.filter, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE)) {
         impl->fail("a title lookup could not be made");
         return nullptr;
     }
@@ -353,8 +371,14 @@ bool TitlePassKit::run(const TitlePass& pass) {
             TextureRender* t = impl->textureOf(pass.raw[i]);
             program->object.addTexture(program->raw[i], ShaderStageType::FRAGMENT, t ? t : &impl->placeholder);
         }
+        if (program->vertexData.first >= 0) {
+            TextureRender* t = impl->textureOf(pass.vertexData);
+            program->object.addTexture(program->vertexData, ShaderStageType::VERTEX, t ? t : &impl->placeholder);
+        }
         program->object.applyUniformBlock(program->blockSlot, sizeof(block), block);
-        program->object.draw(0, 3, 1);
+        // the vertex stage's block mirrors the first vec4s of the fragment's (TitleGen.h)
+        if (program->vertexBlockSlot >= 0 && program->vertexBlockBytes > 0) program->object.applyUniformBlock(program->vertexBlockSlot, program->vertexBlockBytes, block);
+        program->object.draw(0, (unsigned int)std::max(3, pass.vertices), 1);
         drawn = true;
     }
     impl->pass.endRenderPass();

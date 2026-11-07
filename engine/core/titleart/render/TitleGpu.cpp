@@ -145,6 +145,9 @@ struct TitleGpu::Program {
     ObjectRender object;
     int block = -1;
     unsigned int blockBytes = 0;
+    int vertexBlock = -1;               // u_vs_titleart: S83's vertex-pulling programs
+    unsigned int vertexBlockBytes = 0;
+    std::pair<int, int> vertexData = {-1, -1};
     std::pair<int, int> tex[TITLE_TEXTURE_SLOTS];
     std::pair<int, int> raw[TITLE_RAW_SLOTS];
 
@@ -186,7 +189,7 @@ void TitleGpu::release() {
 }
 
 bool TitleGpu::ensureProgram(uint32_t number, std::string* error) {
-    if ((number & 0x7Fu) == 0 || number > 0x1FFu) {
+    if ((number & 0x7Fu) == 0 || number > 0x3FFu) {
         if (error) *error = "title art program " + std::to_string(number) + " does not exist";
         return false;
     }
@@ -214,6 +217,10 @@ bool TitleGpu::ensureProgram(uint32_t number, std::string* error) {
     p.blockBytes = std::min<unsigned int>(p.blockBytes, sizeof(TitleParams::v));
     for (int i = 0; i < TITLE_TEXTURE_SLOTS; i++) p.tex[i] = data.getTextureIndexByName("u_taTex" + std::to_string(i));
     for (int i = 0; i < TITLE_RAW_SLOTS; i++) p.raw[i] = data.getTextureIndexByName("u_taRaw" + std::to_string(i));
+    p.vertexBlock = data.getUniformBlockIndexByName("u_vs_titleart");
+    if (p.vertexBlock >= 0 && data.getUniformBlockMembers("u_vs_titleart", p.vertexBlockBytes) == nullptr) p.vertexBlockBytes = 0;
+    p.vertexBlockBytes = std::min<unsigned int>(p.vertexBlockBytes, sizeof(TitleParams::v));
+    p.vertexData = data.getTextureIndexByName("u_taVertexData");
     p.object.beginLoad(PrimitiveType::TRIANGLES);
     p.object.setShader(p.shader.get());
     for (const auto& s : p.tex) {
@@ -222,6 +229,7 @@ bool TitleGpu::ensureProgram(uint32_t number, std::string* error) {
     for (const auto& s : p.raw) {
         if (s.first >= 0) p.object.addTexture(s, ShaderStageType::FRAGMENT, &placeholder);
     }
+    if (p.vertexData.first >= 0) p.object.addTexture(p.vertexData, ShaderStageType::VERTEX, &placeholder);
     // a pass of a render: created at once, never skipped (a skipped pass leaves its target undefined)
     p.object.setImmediatePipelines(true);
     if (p.block < 0 || !p.object.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE)) {
@@ -301,8 +309,11 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
         for (int i = 0; i < TITLE_RAW_SLOTS; i++) {
             if (p.raw[i].first >= 0) p.object.addTexture(p.raw[i], ShaderStageType::FRAGMENT, desc.raw[i] ? desc.raw[i] : &placeholder);
         }
+        if (p.vertexData.first >= 0) p.object.addTexture(p.vertexData, ShaderStageType::VERTEX, desc.vertexData ? desc.vertexData : &placeholder);
         p.object.applyUniformBlock(p.block, p.blockBytes, params.v);
-        p.object.draw(0, 3, 1);
+        // the vertex stage's block mirrors the first vec4s of the fragment's (generators/TitleGen.h)
+        if (p.vertexBlock >= 0 && p.vertexBlockBytes > 0) p.object.applyUniformBlock(p.vertexBlock, p.vertexBlockBytes, params.v);
+        p.object.draw(0, (unsigned int)std::max(3, desc.vertices), 1);
         drawn = true;
     }
     pass.endRenderPass();

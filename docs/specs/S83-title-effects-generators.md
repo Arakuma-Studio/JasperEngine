@@ -1572,3 +1572,98 @@ rest of S82 lands in 6B.
 8. **Reconciled: the Shine, Rainbow and Vignette recipes are written in S80's `gradient_overlay`
    keys** (`length`, `gradient` stops, `amount`, modes `light`, `color`, `shade`); Pachislop's
    width, softness, double band, bands and saturation become gradient stops.
+
+### Generators stream (`ta/s83-generators`)
+
+9. **Implementation: the generator programs have a number space of their own.** A `TITLE_ART`
+   program with property bit 9 ('Gen', `TITLE_VARIANT_GENERATOR`) compiles
+   `titleart_gen.vert` / `titleart_gen.frag` with the number of `generators/TitleGen.h`'s
+   `GenProgram` (`titleart/gen/programs.glsl`), so the effects and the generators never share a
+   `TA_PROGRAM` number. Their includes live in `engine/shaderlib/titleart/gen/` (`tfx_noise`,
+   `tfx_quads`, `tfx_field`, `tfx_glint_star`, `tfx_anamorphic`, `tfx_upstream`,
+   `tfx_particle_shapes` and one file per pass family) rather than in `titleart/` itself.
+10. **Implementation: `QuadBatch` pulls its records in the vertex stage.** Records are an RGBA32F
+    data texture (4 texels a quad; meshes 2 a vertex) read with `texelFetch` in the vertex stage,
+    as the lattice, VAT and skinning shaders already do, and a quad is 6 vertices addressed by
+    `gl_VertexIndex`: no instanced vertex buffers, no storage buffers. The texture is sampled,
+    never rendered or filtered, so R31 (no renderable or filterable RGBA32F) holds. The records
+    upload through `TitlePassRunner::lut`, cached by content, so a live frame that changes only
+    uniforms uploads nothing.
+11. **Implementation: interface additions (all additive).** `TitlePass::vertices` and
+    `vertexData`, `TitleGpuPass::vertices` and `vertexData`, a vertex-stage block `u_vs_titleart`
+    mirroring p[0..5]; `TitleLutData::width`, `height`, `filter`; `TitlePassRunner::skippedPasses()`;
+    `GeneratorContext::followContent`, `followKey`, `followContentKey`; the planner's
+    `layerContentSource` (the followed layer drawn without its own effect stack: R6's `content`),
+    used when a definition sets `FxInputs::content`; the pass kit's targets answer `colorTexture()`.
+12. **Implementation: seeds keep Pachislop's streams.** An element's seed is its `seed` param plus
+    the document's seed − 1 (S80 Deviation 39) and each generator derives its streams as Pachislop
+    does (its two mulberry32 seedings `gen::Rng`, its integer hash `gen::hashN`, its salts), not
+    R15's mix with the type-id hash: the default document then draws Pachislop's particles,
+    glints and bolts bit for bit, which AC4 needs.
+13. **Implementation: analysis runs in the generator's own step.** The grid pass and one
+    synchronous `FrameReadback` of the ≤ 480 × 288 RGBA8 grid run inside the generator's kernel
+    step (the readback is synchronous anyway), and the CPU analysis (≤ R36's budgets) follows it;
+    the grid is cached by the followed layer's key, so an unchanged layer is never read back again.
+    A step whose grid program is still compiling skips the readback (`skippedPasses`) and runs
+    again. `EffectDef::analyse` stays unused by the generators.
+14. **Implementation: preset files are YAML in its JSON-compatible form.** The engine's golden
+    tests read them with the JSON parser (the engine has no YAML parser); the editor embeds them
+    (`editor/titleart/fx/FxPresets.cmake`) and parses them with yaml-cpp, so block-style YAML would
+    load there too. Each preset carries `source` (the Pachislop preset it ports, the parity
+    tests' reference name) and optionally `class`.
+15. **Implementation: generators declare no `bounds`.** S80's planner maps `bounds` to the frame
+    without the generator layer's transform, so a box would cut a moved layer; every S83 generator
+    leaves `bounds` null (the canvas) and scissors its passes to its own box where it has one.
+16. **Implementation: a generator's live kernel is its own passes.** `LiveVariant::program` names
+    the generator program (with the Gen bit); S81's live compose runs the definition's passes
+    again with the new values over cached inputs (grids, anchors, follow splits). No `TFX_LIVE`
+    variant is compiled: generator passes read no stack input that a live variant would replace.
+17. **Implementation: enum values start with a letter** (S80's snake_case check): Glints `rays`
+    are `four`, `snow`, `eight`.
+18. **Implementation: `add_layer` generator members.** Without `preset` the first preset applies
+    (R7) with its layer look (blend, opacity, effects, name); `follow` places the layer beside the
+    followed one (`place`, else the preset's, else above) unless `parent`, `before` or `after`
+    say otherwise; `group` defaults to `none` (D3's `auto` is what the Add Effect menu sends).
+19. **Implementation: the Fractal Noise `static` preset** uses `scale` 4, the param's minimum
+    (§6.8 said 2, outside the range §6.7.16 gives).
+20. **Implementation: generators get the render's assets and report problems.**
+    `GeneratorContext::assets` (the request's `AssetResolver`) and `problems` (appended to the
+    job's) carry Magic Circle's fonts and its missing glyphs. Its library fonts (Zen Old Mincho
+    Black, Zen Kaku Gothic New Black) are read where S84 copies them
+    (`TitleArt/Fonts/<dir>/<file>`); without them the built-in face draws and CJK sets report
+    `glyph_missing` (§9 risk 8). The tests carry both fonts (OFL, google/fonts).
+21. **Implementation: the mobile tier is a cost statement.** `GeneratorContext` carries no tier, so
+    the mobile reductions of §6.7 (Particles' 2,000 cap, Lens Flare's 8 quads, Backlight's
+    quarter-res live kernel, Fire and Smoke's baked half-res field, Fractal Noise's 4 octaves) are
+    what each definition's `estimate` reports for `FxTier::Mobile`; S81's tier selection passes
+    them to the render when it lands (Particles and Fractal Noise already apply theirs from the
+    params). AC12's mobile-agreement half is therefore not tested.
+22. **Implementation: per-generator details.**
+    - Particles: `travel` is X, not L (burst colour and depth depend on it, so a live change would
+      differ from a re-render: AC17); the default gradient is Pachislop's white-gold ramp; the
+      animation shaping of `time`, `loop`, `spin`, `twinkle` is the port's own (at the defaults
+      the image is Pachislop's still).
+    - Speed Lines and Sunburst draw in layer space as Pachislop does; following, their centre is
+      the followed layer's ink centre (from the grid) plus `center` (for every `shape`).
+      `followReach` < 0 means the whole canvas. The Beta Flash preset carries the Halftone
+      dissolve as a layer effect, which renders once the effects stream's `halftone` lands.
+    - Brush Swirl: `width`, `taper_in`, `taper_out` are X (they rebuild the strokes); the strokes
+      draw random values in Pachislop's order (only non-main strokes draw some), which R25's
+      "all values first" would change; `reveal` cuts the ribbon in the shader and the splatter on
+      the CPU after every droplet's values are drawn.
+    - Aura's third program is `AuraNormals` (the field's central differences packed for RGBA8
+      before the blur); Fire's default gradient is Pachislop's default, §6.7.11's ramp is the
+      `hot` and `blaze` presets'. Lightning's two glows are Pachislop's blur radii (0.35 and 1.6
+      x glow size), at half resolution once sigma reaches 2 px.
+    - AC12 as written cannot hold: the side weight 1/max(0.08, spread) leaves the flame beside a
+      vertical edge at 8 % of `height` at spread 0; `FireGpu.FollowsSilhouette` checks < 8 % (and
+      spread 35 % > 20 % as its control).
+    - Backlight runs 3 passes with the noise source folded into the first radial blur; its and
+      Lens Flare's "shape" centres come from the 4 px grid's ink box (within ~2 canvas px of
+      Pachislop's per-pixel box). Glints' `point` is measured from the canvas centre (Pachislop).
+23. **Implementation: parity exceptions (AC4).** Two of the 72 ported presets miss AC12's metric
+    and are listed in `TitleGenParityGpu`'s `PARITY_EXCEPTIONS` (held to twice the histogram
+    limit): `speedLines-beta` (its Halftone dissolve is the effects stream's `halftone`, absent on
+    this branch) and `glints-highlights` (6 % of blocks: the picks follow S80's base title, whose
+    highlights differ from Pachislop's, read from the 8-bit grid). AC4's red control is a reseeded
+    Gold Dust instead of a `glints` threshold change, since `glints_highlights` is an exception.

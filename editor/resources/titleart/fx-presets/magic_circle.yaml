@@ -1,0 +1,567 @@
+{
+  "presets": [
+    {
+      "id": "gold",
+      "name": "Magic Circle Gold (魔法陣)",
+      "aliases": [
+        "magic circle (gold)",
+        "魔法陣",
+        "金の魔法陣"
+      ],
+      "source": "magicCircle/gold",
+      "params": {
+        "rows": [
+          {
+            "type": "ring",
+            "radius": 100,
+            "size": 6,
+            "count": 1,
+            "angle": 0
+          },
+          {
+            "type": "text",
+            "radius": 91.5,
+            "size": 30,
+            "count": 30,
+            "angle": 0
+          },
+          {
+            "type": "ring",
+            "radius": 83,
+            "size": 3,
+            "count": 1,
+            "angle": 0
+          },
+          {
+            "type": "star2",
+            "radius": 83,
+            "size": 4,
+            "count": 6,
+            "angle": 0
+          },
+          {
+            "type": "ring",
+            "radius": 41.5,
+            "size": 3,
+            "count": 1,
+            "angle": 0
+          },
+          {
+            "type": "dashed",
+            "radius": 30,
+            "size": 5,
+            "count": 24,
+            "angle": 0
+          }
+        ],
+        "color": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#fff6d0",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#f0b030",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "fill": 6,
+        "glyphs": "runes",
+        "tilt": 0
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 14,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "blue",
+      "name": "Magic Circle Blue",
+      "aliases": [
+        "magic circle (blue)",
+        "青い魔法陣"
+      ],
+      "source": "magicCircle/blue",
+      "params": {
+        "rows": [
+          {
+            "type": "ring",
+            "radius": 100,
+            "size": 4,
+            "count": 1,
+            "angle": 0
+          },
+          {
+            "type": "text",
+            "radius": 92,
+            "size": 26,
+            "count": 36,
+            "angle": 0
+          },
+          {
+            "type": "ring",
+            "radius": 84,
+            "size": 2,
+            "count": 1,
+            "angle": 0
+          },
+          {
+            "type": "star2",
+            "radius": 84,
+            "size": 3,
+            "count": 5,
+            "angle": 0
+          },
+          {
+            "type": "polygon",
+            "radius": 84,
+            "size": 2,
+            "count": 5,
+            "angle": 0
+          },
+          {
+            "type": "dashed",
+            "radius": 36,
+            "size": 3,
+            "count": 36,
+            "angle": 0
+          }
+        ],
+        "color": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#e8fbff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#3aa0ff",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "fill": 8,
+        "glyphs": "runes",
+        "tilt": 0
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 16,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "hud",
+      "name": "HUD Target",
+      "aliases": [
+        "hud target",
+        "照準",
+        "target lock"
+      ],
+      "source": "magicCircle/hud",
+      "params": {
+        "rows": [
+          {
+            "type": "ring",
+            "radius": 100,
+            "size": 2,
+            "count": 1,
+            "angle": 0
+          },
+          {
+            "type": "ticks",
+            "radius": 96,
+            "size": 16,
+            "count": 72,
+            "angle": 0
+          },
+          {
+            "type": "arcs",
+            "radius": 82,
+            "size": 8,
+            "count": 6,
+            "angle": 0
+          },
+          {
+            "type": "text",
+            "radius": 70,
+            "size": 16,
+            "count": 42,
+            "angle": 0
+          },
+          {
+            "type": "chevrons",
+            "radius": 50,
+            "size": 34,
+            "count": 4,
+            "angle": -45
+          },
+          {
+            "type": "dashed",
+            "radius": 22,
+            "size": 3,
+            "count": 12,
+            "angle": 0
+          }
+        ],
+        "radius": 300,
+        "color": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#d8ffff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#29c4ff",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "fill": 0,
+        "glyphs": "hud",
+        "tilt": 0
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 10,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "hologram",
+      "name": "Hologram Base",
+      "aliases": [
+        "hologram base",
+        "ホログラム台座"
+      ],
+      "source": "magicCircle/hologram",
+      "params": {
+        "rows": [
+          {
+            "type": "ring",
+            "radius": 100,
+            "size": 8,
+            "count": 1,
+            "angle": 0
+          },
+          {
+            "type": "hex",
+            "radius": 97,
+            "size": 110,
+            "count": 48,
+            "angle": 0
+          },
+          {
+            "type": "ticks",
+            "radius": 68,
+            "size": 12,
+            "count": 120,
+            "angle": 0
+          },
+          {
+            "type": "arcs",
+            "radius": 58,
+            "size": 6,
+            "count": 5,
+            "angle": 0
+          },
+          {
+            "type": "ring",
+            "radius": 50,
+            "size": 3,
+            "count": 1,
+            "angle": 0
+          },
+          {
+            "type": "dashed",
+            "radius": 34,
+            "size": 8,
+            "count": 16,
+            "angle": 0
+          }
+        ],
+        "radius": 360,
+        "color": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#e6ffff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#00b8ff",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "fill": 18,
+        "glyphs": "hud",
+        "tilt": 68
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 18,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "radar",
+      "name": "Radar",
+      "aliases": [
+        "radar",
+        "レーダー"
+      ],
+      "source": "magicCircle/radar",
+      "params": {
+        "rows": [
+          {
+            "type": "ring",
+            "radius": 100,
+            "size": 3,
+            "count": 1,
+            "angle": 0
+          },
+          {
+            "type": "ticks",
+            "radius": 100,
+            "size": 14,
+            "count": 72,
+            "angle": 0
+          },
+          {
+            "type": "ring",
+            "radius": 66.7,
+            "size": 1.5,
+            "count": 1,
+            "angle": 0
+          },
+          {
+            "type": "ring",
+            "radius": 33.3,
+            "size": 1.5,
+            "count": 1,
+            "angle": 0
+          },
+          {
+            "type": "star2",
+            "radius": 100,
+            "size": 1.5,
+            "count": 4,
+            "angle": 0
+          },
+          {
+            "type": "dashed",
+            "radius": 83,
+            "size": 1.5,
+            "count": 72,
+            "angle": 0
+          }
+        ],
+        "color": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#d0ffd8",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#20e060",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "fill": 10,
+        "glyphs": "hud",
+        "tilt": 0
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 8,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "bagua",
+      "name": "Bagua (八卦)",
+      "aliases": [
+        "bagua",
+        "八卦",
+        "trigram circle"
+      ],
+      "source": "magicCircle/bagua",
+      "params": {
+        "rows": [
+          {
+            "type": "ring",
+            "radius": 100,
+            "size": 5,
+            "count": 1,
+            "angle": 0
+          },
+          {
+            "type": "polygon",
+            "radius": 96,
+            "size": 3,
+            "count": 8,
+            "angle": -22.5
+          },
+          {
+            "type": "text",
+            "radius": 82,
+            "size": 46,
+            "count": 8,
+            "angle": 0
+          },
+          {
+            "type": "polygon",
+            "radius": 66,
+            "size": 2,
+            "count": 8,
+            "angle": -22.5
+          },
+          {
+            "type": "ring",
+            "radius": 50,
+            "size": 3,
+            "count": 1,
+            "angle": 0
+          },
+          {
+            "type": "star2",
+            "radius": 48,
+            "size": 2,
+            "count": 8,
+            "angle": 0
+          }
+        ],
+        "color": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#fff0c0",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#ff6a1a",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "fill": 0,
+        "glyphs": "trigrams",
+        "tilt": 0
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 12,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
