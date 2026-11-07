@@ -83,3 +83,42 @@ TEST(SearchScorer, HighlightRangesCoverTheMatchedText) {
     ASSERT_FALSE(sub.empty());
     EXPECT_EQ(sub.front().first, 0u);
 }
+
+// S82 R27, AC11: UTF-8 letters are word characters, so Japanese names are searchable in every
+// filter. Red control: the normalize() before R27 turned every byte >= 0x80 into a space and
+// returned "glow" for "激熱 Glow".
+TEST(SearchScorerTest, KeepsUtf8) {
+    EXPECT_EQ(search::normalize("激熱 Glow"), "激熱 glow");
+    EXPECT_EQ(search::normalize("フチ"), "フチ");
+    // no camelCase boundary inside or next to a multi-byte character
+    EXPECT_EQ(search::normalize("激熱Glow"), "激熱glow");
+    EXPECT_EQ(search::normalize("Café Bar"), "café bar");
+    // Unicode punctuation and spaces separate words as ASCII punctuation does
+    EXPECT_EQ(search::normalize("Light · Main Scene"), "light main scene");
+    EXPECT_EQ(search::normalize("フチ・ぼかし"), "フチ ぼかし");
+    EXPECT_EQ(search::normalize("激熱\xE3\x80\x80Glow"), "激熱 glow");     // U+3000
+    EXPECT_EQ(search::normalize("「激熱」"), "激熱");
+    // a stray byte is kept rather than dropped (nothing is lost from a name)
+    EXPECT_EQ(search::normalize("a\xFF" "b"), "a\xFF" "b");
+
+    size_t length = 0;
+    EXPECT_EQ(search::decodeUtf8("激", 0, length), U'激');
+    EXPECT_EQ(length, 3u);
+    EXPECT_EQ(search::decodeUtf8("\xE6\xBF", 0, length), search::INVALID_UTF8);    // cut short
+    EXPECT_EQ(length, 1u);
+    EXPECT_EQ(search::decodeUtf8("\xC0\xAF", 0, length), search::INVALID_UTF8);    // overlong
+    EXPECT_TRUE(search::isSeparator(U'・'));
+    EXPECT_FALSE(search::isSeparator(U'ー'));
+    EXPECT_FALSE(search::isSeparator(U'激'));
+
+    // matching: substrings and word prefixes of Japanese words
+    EXPECT_TRUE(search::filterMatch(search::normalize("激"), search::normalize("激熱")));
+    EXPECT_TRUE(search::filterMatch(search::normalize("熱"), search::normalize("激熱 Glow")));
+    EXPECT_GT(search::fuzzyScore(search::normalize("激"), search::normalize("激熱")), 0);
+    // no typo tolerance between Japanese words (one byte apart, a different word)
+    EXPECT_FALSE(search::filterMatch("あい", "あう"));
+    EXPECT_EQ(search::fuzzyScore("あい", "あう"), -1);
+    // a subsequence matches whole characters: い's bytes are not taken from あ and Ą
+    EXPECT_EQ(search::subsequence("い", "あĄ"), -1);
+    EXPECT_GT(search::subsequence("あい", "あかい"), 0);
+}

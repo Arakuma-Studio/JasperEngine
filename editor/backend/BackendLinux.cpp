@@ -85,6 +85,10 @@ struct NativeWindow {
     Window handle = None;
     Colormap colormap = None;
     XIC inputContext = nullptr;
+    // over-the-spot: the input method draws the preedit at XNSpotLocation (S82 R37)
+    bool imeSpot = false;
+    short imeSpotX = -1;
+    short imeSpotY = -1;
     bool owned = false;
     bool focused = false;
     int ignoreMoveFrame = -1;
@@ -1017,12 +1021,40 @@ NativeWindow* createNativeWindow(int x, int y, int width, int height,
     }
 
     if (backend->inputMethod) {
-        result->inputContext = XCreateIC(
-            backend->inputMethod,
-            XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
-            XNClientWindow, result->handle,
-            XNFocusWindow, result->handle,
-            nullptr);
+        // over-the-spot when the input method offers it, so its preedit and candidates sit at the
+        // caret (ImGui's IME position, setImeData); an input method that refuses it gets today's
+        // root-window style
+        XIMStyles* styles = nullptr;
+        if (XGetIMValues(backend->inputMethod, XNQueryInputStyle, &styles, nullptr) != nullptr) styles = nullptr;
+        bool offersSpot = false;
+        if (styles) {
+            for (unsigned short i = 0; i < styles->count_styles; ++i)
+                if (styles->supported_styles[i] == (XIMPreeditPosition | XIMStatusNothing)) offersSpot = true;
+            XFree(styles);
+        }
+        if (offersSpot) {
+            XPoint spot{0, 0};
+            XVaNestedList preedit = XVaCreateNestedList(0, XNSpotLocation, &spot, nullptr);
+            if (preedit) {
+                result->inputContext = XCreateIC(
+                    backend->inputMethod,
+                    XNInputStyle, XIMPreeditPosition | XIMStatusNothing,
+                    XNClientWindow, result->handle,
+                    XNFocusWindow, result->handle,
+                    XNPreeditAttributes, preedit,
+                    nullptr);
+                XFree(preedit);
+            }
+            result->imeSpot = result->inputContext != nullptr;
+        }
+        if (!result->inputContext) {
+            result->inputContext = XCreateIC(
+                backend->inputMethod,
+                XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
+                XNClientWindow, result->handle,
+                XNFocusWindow, result->handle,
+                nullptr);
+        }
     }
     backend->windows[result->handle] = result;
     return result;
@@ -2369,6 +2401,23 @@ void alphaViewport(ImGuiViewport* viewport, float alpha) {
                     reinterpret_cast<const unsigned char*>(&opacity), 1);
 }
 
+// ImGui calls this when its IME data changes (the focused text field's caret moved): the
+// over-the-spot preedit follows it. The spot is the text's baseline, the bottom of the caret.
+void setImeData(ImGuiContext*, ImGuiViewport* viewport, ImGuiPlatformImeData* data) {
+    auto* window = viewport ? static_cast<NativeWindow*>(viewport->PlatformUserData) : nullptr;
+    if (!window || !window->inputContext || !window->imeSpot || !data->WantVisible) return;
+    const short x = static_cast<short>(std::clamp(data->InputPos.x - viewport->Pos.x, -32768.0f, 32767.0f));
+    const short y = static_cast<short>(std::clamp(data->InputPos.y - viewport->Pos.y + data->InputLineHeight, -32768.0f, 32767.0f));
+    if (x == window->imeSpotX && y == window->imeSpotY) return;
+    window->imeSpotX = x;
+    window->imeSpotY = y;
+    XPoint spot{x, y};
+    XVaNestedList preedit = XVaCreateNestedList(0, XNSpotLocation, &spot, nullptr);
+    if (!preedit) return;
+    XSetICValues(window->inputContext, XNPreeditAttributes, preedit, nullptr);
+    XFree(preedit);
+}
+
 void setupMainViewport() {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     viewport->PlatformUserData = backend->mainWindow;
@@ -2402,6 +2451,7 @@ bool initImGuiPlatform() {
     platformIo.Platform_GetWindowMinimized = viewportMinimized;
     platformIo.Platform_SetWindowTitle = titleViewport;
     platformIo.Platform_SetWindowAlpha = alphaViewport;
+    platformIo.Platform_SetImeDataFn = setImeData;
 
     setupMainViewport();
     updateMonitors();
@@ -2431,6 +2481,7 @@ void shutdownImGuiPlatform() {
     platformIo.Platform_GetWindowMinimized = nullptr;
     platformIo.Platform_SetWindowTitle = nullptr;
     platformIo.Platform_SetWindowAlpha = nullptr;
+    platformIo.Platform_SetImeDataFn = nullptr;
     io.BackendPlatformName = nullptr;
     io.BackendPlatformUserData = nullptr;
     io.BackendFlags &= ~(ImGuiBackendFlags_HasMouseCursors |

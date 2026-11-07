@@ -111,3 +111,18 @@ color schemes, templates, library S84; animation S85; 3D S86; languages and impo
 - y down in document positions (y is up there; only image-space results are y down).
 - Editing the PNGs: they are derived files; edit the document and bake.
 - Reading `check_title` PASS as "it looks good": always look at the render.
+
+### Title Designer
+
+The window a person designs in (Window > Title Designer) edits through the same ops. To show a
+person a variant, use `render_title` `try`; to leave it on their screen, `focus_window` with
+`select`.
+- `focus_window {window: "title_designer", title_designer: {...}}` keys: `path` (open it),
+  `select` (`"Title"`, `"Title/rim#1"`, `"Title/fx:outer_glow"`, `""` = document), `panel`
+  (layers, properties, library, history), `search` (types into Find a setting), `library`
+  `{tab, family, query}`, `preview_as` (realtime, baked, or a registered mode), `background`
+  (checker, black, white, gray, color, image, game_scene, in_context), `device`
+  `{profile, orientation, display_height}`, `zoom` (number or `"fit"`). The result's `state`
+  has `path, selection, panel, zoom, preview_as, busy, staged, preview_active, last_render_ms, rect`.
+- `screenshot {view: "title_designer"}`: the window as a person sees it.
+- `get_title` adds `designer {selection, staged, preview_active, view}` while it is open.

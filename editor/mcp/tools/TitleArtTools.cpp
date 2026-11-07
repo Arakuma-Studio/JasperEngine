@@ -29,6 +29,8 @@
 #include "titleart/TitleEffectRegistry.h"
 #include "util/FontFace.h"
 #include "util/Util.h"
+#include "App.h"
+#include "window/TitleDesignerWindow.h"
 
 #include <algorithm>
 #include <cmath>
@@ -463,6 +465,16 @@ void getTitleTool(const CallPtr& call) {
     out["outputs"] = outputsOf(project, file, doc);
     out["problems"] = problemsOf(project, doc, document->warnings());
     if (document->migrated()) out["migrated_from"] = document->versionRead();
+    // the Title Designer's view of this document while it shows it (S82 R80): no schema change
+    if (TitleDesignerWindow* designer = call->ctx().app().getTitleDesignerWindow();
+        designer && designer->isOpen() && designer->documentPath().lexically_normal() == file.lexically_normal()) {
+        const Json state = fromOrdered(designer->state());
+        out["designer"] = {{"selection", state.value("selection", Json::array())},
+                           {"staged", state.value("staged", false)},
+                           {"preview_active", state.value("preview_active", false)},
+                           {"view", {{"zoom", state.value("zoom", Json(1))}, {"background", state.value("background", Json("checker"))},
+                                     {"device", state.value("device", Json())}}}};
+    }
     size_t stale = 0;
     for (const Json& o : out["outputs"]) if (o.value("status", std::string()) != "fresh") stale++;
     call->ok(relative + " rev " + std::to_string(document->revision()) + ": " + std::to_string(titleart::countLayers(doc.root)) + " layers, canvas " +

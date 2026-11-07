@@ -19,8 +19,22 @@ namespace jasperengine::editor::htmlui {
     // fonts.google.com/metadata/fonts (once per session) tells an unknown family
     // (HTMLUI-IMP-0002 with the closest name) from a weight or style the family does not have
     // (HTMLUI-IMP-0006, imported without it).
+    //
+    // Fonts-only mode (docs/specs/S82-title-designer.md R57: the Title Designer's picker):
+    // Options{writeCss = false, writeManifest = false, dir = "TitleArt/Fonts/Google"} writes the
+    // TrueType files and each family's licence file to <assets>/<dir>/<family-slug>/ with the
+    // same file names, and no CSS, no combined licence file and no manifest entry; `staging`
+    // set: the files are added to it instead of being written (a caller that writes them as one
+    // undo step).
     class GoogleFontsImporter {
     public:
+        struct Options {
+            bool writeCss = true;
+            bool writeManifest = true;
+            std::string dir;                    // asset-relative font folder ("" = <import root>/fonts)
+            ImportStaging* staging = nullptr;   // fonts-only: collect instead of writing
+        };
+
         struct Variant {
             int weight = 400;
             bool italic = false;
@@ -36,6 +50,7 @@ namespace jasperengine::editor::htmlui {
         };
 
         explicit GoogleFontsImporter(RemoteImporter& importer);
+        GoogleFontsImporter(RemoteImporter& importer, Options options);
 
         ImportedResource run(const std::string& url, const ImportLocation& at);
 
@@ -70,7 +85,11 @@ namespace jasperengine::editor::htmlui {
         // fonts.google.com/metadata/fonts, fetched once per session (per resolved URL)
         const Metadata* metadata(const ImportLocation& at);
 
+        // asset-relative path of a font folder file ("<slug>/<file>")
+        std::string fontPath(const std::string& relative) const;
+
         RemoteImporter& importer;
+        Options options;
     };
 
 }

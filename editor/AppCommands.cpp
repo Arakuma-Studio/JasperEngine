@@ -18,6 +18,7 @@
 #include "window/AnimatorWindow.h"
 #include "window/GameWindow.h"
 #include "window/SpriteNormalsWindow.h"
+#include "window/TitleDesignerWindow.h"
 #include "window/TerrainEditWindow.h"
 
 #include "AppMenuCommand.h"
@@ -234,7 +235,7 @@ void editor::App::registerCommands(){
     // nor while the Pose Animation window (or a Scene view posing its character) or the
     // Animation window editing a clip has the keys: their letters are theirs
     // (the Sprite Normal Map window, focused, has its letters too: handleShortcuts)
-    auto toolKeys = [this, noDrag]() { return noDrag() && !animationOrPoseOwnsLetterKeys() && !spriteNormalsWindow->isFocused(); };
+    auto toolKeys = [this, noDrag]() { return noDrag() && !animationOrPoseOwnsLetterKeys() && !spriteNormalsWindow->isFocused() && !titleDesignerWindow->isFocused(); };
     auto tool = [this, &bind, toolKeys](const char* id, MainToolbar::Tool which) {
         bind(id, [this, which](const CommandArgs&) { mainToolbar->setTool(which); },
              [this, which]() { return mainToolbar->canUseTool(which); }, toolKeys);
@@ -374,6 +375,28 @@ void editor::App::registerCommands(){
     browser("soundBrowser.selectAll", [this]() { soundBrowserWindow->selectAll(); });
     browser("soundBrowser.stop", [this]() { soundBrowserWindow->stopOrClear(); }, true);
 
+    // ---- The Title Designer, while it has focus (S82 §6.5): a text field, the search or the
+    // on-canvas text editor keeps its typing; arrows nudge only with the canvas focused
+    for (const char* id : {"titleDesigner.toolHand", "titleDesigner.toolMove", "titleDesigner.toolRotate", "titleDesigner.toolScale",
+                           "titleDesigner.toolRect", "titleDesigner.togglePivot", "titleDesigner.frameSelected", "titleDesigner.fitCanvas",
+                           "titleDesigner.zoomActual", "titleDesigner.zoomIn", "titleDesigner.zoomOut", "titleDesigner.editText",
+                           "titleDesigner.find", "titleDesigner.add", "titleDesigner.duplicate", "titleDesigner.delete", "titleDesigner.rename",
+                           "titleDesigner.selectAll", "titleDesigner.copy", "titleDesigner.cut", "titleDesigner.paste", "titleDesigner.group",
+                           "titleDesigner.ungroup", "titleDesigner.clip", "titleDesigner.forward", "titleDesigner.backward", "titleDesigner.toFront",
+                           "titleDesigner.toBack", "titleDesigner.toggleVisible", "titleDesigner.toggleLock", "titleDesigner.nudgeLeft",
+                           "titleDesigner.nudgeRight", "titleDesigner.nudgeUp", "titleDesigner.nudgeDown", "titleDesigner.nudgeLeftBig",
+                           "titleDesigner.nudgeRightBig", "titleDesigner.nudgeUpBig", "titleDesigner.nudgeDownBig", "titleDesigner.up",
+                           "titleDesigner.bake"}) {
+        const std::string command = id;
+        const bool nudge = command.find("nudge") != std::string::npos;
+        const bool whileTyping = command == "titleDesigner.find" || command == "titleDesigner.bake";
+        bind(id, [this, command](const CommandArgs&) { titleDesignerWindow->runCommand(command); }, [this]() { return titleDesignerWindow->isOpen(); },
+             [this, nudge, whileTyping]() {
+                 if (!whileTyping && titleDesignerWindow->typing()) return false;
+                 return !nudge || titleDesignerWindow->canvasHasKeys();
+             });
+    }
+
     // ---- Window > Audio > Captures, while it has focus
     auto captures = [&bind, this](const char* id, std::function<void()> run) {
         bind(id, [run](const CommandArgs&) { run(); }, [this]() { return audioCapturesWindow->isOpen(); }, []() { return !ImGui::GetIO().WantTextInput; });
@@ -428,6 +451,11 @@ void editor::App::registerPanelClaims(){
                 {{Verb::Delete, own("project.delete")}, {Verb::Copy, own("project.copy")}, {Verb::Cut, own("project.cut")},
                  {Verb::Paste, own("project.paste")}, {Verb::SelectAll, own("project.selectAll")}, {Verb::Rename, own("project.rename")}}});
     claims.add({"Console", [this]() { return consoleWindow->isListFocused(); }, {{Verb::Copy, own("console.copy")}}});
+    // the Title Designer's layers (S82 §6.5): its own commands shadow the broad ones
+    claims.add({"Title Designer", [this]() { return titleDesignerWindow->isFocused(); },
+                {{Verb::Delete, own("titleDesigner.delete")}, {Verb::Duplicate, own("titleDesigner.duplicate")}, {Verb::Copy, own("titleDesigner.copy")},
+                 {Verb::Cut, own("titleDesigner.cut")}, {Verb::Paste, own("titleDesigner.paste")}, {Verb::SelectAll, own("titleDesigner.selectAll")},
+                 {Verb::Rename, own("titleDesigner.rename")}, {Verb::Frame, own("titleDesigner.frameSelected")}}});
     claims.add({"Sprite Normal Map", [this]() { return spriteNormalsWindow->isFocused(); },
                 {{Verb::Frame, {{}, nullptr, [this]() { spriteNormalsWindow->requestFit(); }}}}});
     // the Animation window editing a clip: the clip's keys
@@ -517,6 +545,7 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (ui::ColorPickerWindow::get().isFocused()) state.panels.push_back(ShortcutContext::ColorPicker);
     if (soundBrowserWindow->isFocused()) state.panels.push_back(ShortcutContext::SoundBrowser);
     if (audioCapturesWindow->isFocused()) state.panels.push_back(ShortcutContext::AudioCaptures);
+    if (titleDesignerWindow->isFocused()) state.panels.push_back(ShortcutContext::TitleDesigner);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
     return state;
 }

@@ -26,6 +26,9 @@
 #include "window/ProjectWindow.h"
 #include "window/SceneWindow.h"
 #include "window/SpriteNormalsWindow.h"
+#include "window/TitleDesignerWindow.h"
+#include "window/InspectorWindowTitleArt.h"
+#include "titleart/designer/TitleCanvasView.h"
 #include "window/StatusBar.h"
 #include "window/SystemsWindow.h"
 #include "window/TerrainEditWindow.h"
@@ -246,6 +249,12 @@ editor::App::App(){
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
+    titleDesignerWindow = new TitleDesignerWindow(&project);
+    // the Inspector's Open in Title Designer and a double-click open the window (S82 R1, R62)
+    InspectorWindowTitleArt::setOpenInDesigner([this](const std::filesystem::path& document) {
+        std::string error;
+        if (!titleDesignerWindow->open(document, &error)) registerAlert("Title Designer", error);
+    });
     spriteNormalsWatcher = new SpriteNormalsWatcher(&project);
     SpriteNormalsWatcher::setActive(spriteNormalsWatcher);
     mcpActivityWindow = new mcp::McpActivityWindow();
@@ -765,6 +774,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         }),
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
+        catalogItem("window.titleDesigner", windowMenuLabel(TitleDesignerWindow::WINDOW_NAME)),
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("MCP", {
             catalogItem("window.mcpActivity", windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
@@ -1048,6 +1058,10 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleSpriteNormals:
             spriteNormalsWindow->open();
+            break;
+        case AppMenuCommand::ToggleTitleDesigner:
+            titleDesignerWindow->setOpen(true);
+            titleDesignerWindow->requestFocus();
             break;
         case AppMenuCommand::ToggleVertexAnimationBaker:
             vertexAnimationBakerWindow->open();
@@ -2183,6 +2197,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_middle_top);
     // the Sprite Normal Map window: a preview too
     ImGui::DockBuilderDockWindow(SpriteNormalsWindow::WINDOW_NAME, dock_id_middle_top);
+    // the Title Designer: preview-first, beside Scene and Game (S82 R2)
+    ImGui::DockBuilderDockWindow(TitleDesignerWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -2951,6 +2967,7 @@ void editor::App::show(){
     spriteNormalsWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
     vertexAnimationBakerWindow->show();
+    titleDesignerWindow->show();
     // also the tick of the Scene view's physics sessions, with the panel closed too
     physicsPlacementWindow->show();
     inspectorWindow->show();
@@ -4208,8 +4225,12 @@ void editor::App::engineRender(){
     }
     // the Vertex Animation Baker's preview views (private scenes too, drawn the same way)
     VatPreviewView::processFrame();
+    // the Title Designer's canvas (a private scene; it draws only on change, S82 R66)
+    editor::titledesigner::TitleCanvasView::processFrame();
     // Title Art: every preview of the editor within one budget (S80 R45), then Auto Bake's slice
-    TitlePreviewQueue::editor().runFrame(4.0);
+    // (the budget is Preferences > Title Designer > Preview Budget, S82 R67)
+    TitlePreviewQueue::editor().runFrame(titleDesignerWindow->previewBudgetMs());
+    if (titleDesignerWindow->needsFrames()) requestRedraw();
     if (!project.getProjectPath().empty()) TitleArtAutoBake::get().tick(&project);
     if (TitlePreviewQueue::editor().stats().queued > 0 || !TitleArtAutoBake::get().idle()) {
         requestRedraw();
@@ -5019,6 +5040,7 @@ void editor::App::engineViewDestroyed(){
     // session's stop fires too)
     PoseRender::releaseGpu();
     VatPreviewView::releaseGpu();
+    editor::titledesigner::TitleCanvasView::releaseGpu();
     // Closing during project loading can leave uploads committed before any scene frame
     // consumes them. Drain that batch before shutdown waits to flush the queue.
     SystemRender::executeQueue();
@@ -5106,6 +5128,7 @@ void editor::App::prepareForProjectSwitch() {
     audioCapturesWindow->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
+    titleDesignerWindow->resetForProjectSwitch();
     spriteNormalsWatcher->reset();
     editor::spritenormals::SpriteNormalsRun::cancelRunning();
     // a running bake or import is cancelled, its source and result forgotten
@@ -5709,6 +5732,10 @@ editor::PhysicsPlacementWindow* editor::App::getPhysicsPlacementWindow() const{
 
 editor::SpriteNormalsWindow* editor::App::getSpriteNormalsWindow() const{
     return spriteNormalsWindow;
+}
+
+editor::TitleDesignerWindow* editor::App::getTitleDesignerWindow() const{
+    return titleDesignerWindow;
 }
 
 editor::SpriteNormalsWatcher* editor::App::getSpriteNormalsWatcher() const{

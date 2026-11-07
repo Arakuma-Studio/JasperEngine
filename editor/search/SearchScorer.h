@@ -11,6 +11,10 @@
 //
 // Strings are compared after normalize(): lower case, camelCase and acronyms split into words,
 // anything that is not a letter or a digit turned into one space ("RigidBody2D" -> "rigid body2 d").
+// Letters of other scripts are kept whole as UTF-8 ("激熱 Glow" -> "激熱 glow", S82 R27), so
+// Japanese names are searchable in every filter; Unicode punctuation separates words as ASCII
+// punctuation does. Typo tolerance (Damerau) applies to ASCII words only: a byte distance between
+// two Japanese words means nothing.
 
 #include <cstddef>
 #include <string>
@@ -20,8 +24,17 @@
 
 namespace jasperengine::editor::search {
 
-    // OpenEngine's NormalizeForSearch
+    // OpenEngine's NormalizeForSearch, with UTF-8 letters kept
     std::string normalize(std::string_view text);
+
+    // What decodeUtf8 returns for a byte that does not start a valid UTF-8 sequence (length 1)
+    constexpr char32_t INVALID_UTF8 = 0x110000;
+    // The code point of the UTF-8 sequence at `at` (< text.size()) and its length in bytes
+    char32_t decodeUtf8(std::string_view text, size_t at, size_t& length);
+    // Spaces, punctuation and symbols, ASCII and Unicode (general punctuation, arrows, shapes,
+    // CJK and full-width punctuation such as 、。「」・): what normalize() turns into a space.
+    // Letters of every script, digits, ideographs, kana (and ー) and INVALID_UTF8 are not.
+    bool isSeparator(char32_t codePoint);
 
     // Optimal-string-alignment Damerau-Levenshtein distance; cutoff + 1 once it is exceeded
     int damerau(std::string_view a, std::string_view b, int cutoff);

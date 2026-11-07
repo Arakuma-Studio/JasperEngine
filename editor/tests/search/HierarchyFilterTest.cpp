@@ -121,3 +121,29 @@ TEST(ComponentAddDialogSearch, RanksTypos) {
     const double each = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / 10;
     std::printf("[ bench ] Add Component ranking: %.3f ms (budget 1)\n", each);
 }
+
+// S82 R27, AC11: the Hierarchy finds Japanese names. Red control: with the normalize() before
+// R27 the query "激" normalized to "" and the filter matched every GameObject, so "Glow" and
+// "Main Camera" were shown too.
+TEST(HierarchyFilterTest, FindsJapaneseNames) {
+    Node root{"Root", {"Transform"}, {}};
+    Node title{"激熱", {"Transform"}, {}};
+    title.children.push_back({"Glow", {"Transform"}, {}});
+    root.children.push_back(title);
+    root.children.push_back({"Main Camera", {"Transform", "Camera"}, {}});
+    root.children.push_back({"熱帯 Fish", {"Transform"}, {}});
+
+    auto shownFor = [&](const std::string& query) {
+        Node copy = root;
+        HierarchyFilter(query, false).markTree(copy, [](const Node& node) { return node.components; });
+        Names out;
+        shown(copy, out);
+        return out;
+    };
+    EXPECT_EQ(shownFor("激"), (Names{"Root", "激熱"}));
+    EXPECT_EQ(shownFor("激熱"), (Names{"Root", "激熱"}));
+    EXPECT_EQ(shownFor("熱"), (Names{"Root", "激熱", "熱帯 Fish"}));
+    EXPECT_EQ(shownFor("熱帯 fish"), (Names{"Root", "熱帯 Fish"}));
+    EXPECT_EQ(shownFor("激熱 glow"), Names{});     // both words in one name
+    EXPECT_EQ(shownFor("氷"), Names{});
+}

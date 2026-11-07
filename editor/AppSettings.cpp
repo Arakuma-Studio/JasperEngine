@@ -1422,6 +1422,15 @@ void AppSettings::setCjkFontLanguage(const std::string& language) {
     cjkFontLanguage = SystemFonts::isLanguageSetting(language) ? language : "auto";
 }
 
+YAML::Node AppSettings::getTitleDesignerSettings() {
+    const YAML::Node node = settingsData["title_designer"];
+    return node && node.IsMap() ? YAML::Clone(node) : YAML::Node(YAML::NodeType::Map);
+}
+
+void AppSettings::setTitleDesignerSettings(const YAML::Node& node) {
+    settingsData["title_designer"] = YAML::Clone(node);
+}
+
 bool AppSettings::getSoundBrowserAutoplay() {
     return soundBrowserAutoplay;
 }

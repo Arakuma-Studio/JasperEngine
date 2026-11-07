@@ -1421,3 +1421,54 @@ rest of S82 lands in 6B.
    window commands; S85 keeps `titleAnimation.` for its own context.
 5. **Reconciled: "too small to read" is `legibility_contrast` at `CheckOptions::displayHeightPx`**
    (S80 §6.12); no separate size check exists.
+6. **Implementation: view state in its own per-user file.** The per-document view state and the
+   recent documents live in `.jasperengine/user/title-designer.yaml` (`TitleDesignerWorkspace`,
+   `editor/titleart/designer/TitleDesignerPrefs.h`), beside the editor's `workspace.yaml` in the
+   same uncommitted user folder, instead of a struct in `editor/Workspace.h`: the editor's workspace
+   is a merge hotspot every window touches, and the designer's block is read and written only by
+   the window. The per-user settings are one `title_designer` node of `settings.yaml`
+   (`AppSettings::getTitleDesignerSettings` / `setTitleDesignerSettings`), which also remembers
+   whether the window was open (R64).
+7. **Implementation: Preview As modes, the Library and the 3D gizmo target are hooks.** Preview As
+   lists Realtime and Baked; S81's Glyph Atlas and S86's tiers register through `addPreviewMode`
+   (§6.8). The Library panel draws S84's data through `TitleLibraryProvider`
+   (`editor/titleart/designer/TitleDesignerHooks.h`: items, families, the apply ops a hover previews
+   and a click commits, tiles, favorites, recents, Save As dialogs); without a provider the window
+   shows no Library region (Deviation 2). S86 supplies `Gizmo3DTarget`s through
+   `setGizmo3DProvider`. The window's tests stand in for S84 with a fake provider.
+8. **Implementation: font tables are read directly.** HarfBuzz's symbols are hidden in the editor's
+   shared engine, so `hb_face_count` and `hb_ot_var_*` are not callable from the editor:
+   `editor/titleart/fonts/FontTables.{h,cpp}` reads collections, names, OS/2, `fvar` and `cmap`
+   itself. Shaping and outlines of the preview strips still go through S80's `TitleTextLayout`
+   (HarfBuzz, hb-draw) and the rasterizing through S80's ThorVG `rasterizeElement`. The WOFF2 decoder
+   and Brotli are a static `woff2_decoder` library linked into the editor (not compiled as editor
+   sources), so the editor's precompiled header and unity batches stay off vendored code.
+9. **Implementation: search.** `TitlePropertyIndex` has one tier R26 does not list, before the enum
+   tier: every query word (or a synonym of it) starting a word of the location, which is what lets
+   `フチ` find the rows labelled Width under Rim 1. `search::normalize` also treats Unicode
+   punctuation (・「」、) as word separators, and its typo tolerance applies to ASCII words only
+   (one byte apart is a different kana).
+10. **Implementation: IME.** The macOS patch of `imgui_impl_osx.mm` is marked `[JasperEngine patch]`
+    (the convention `libs/imgui/JASPER_PATCHES.md` already uses) rather than `// JasperEngine:`. The
+    preedit is drawn by the canvas text editor only: the patch keeps the input method's keys away from
+    every ImGui field while composing (so Enter and Esc stay the input method's) but other fields do
+    not draw the composition.
+11. **Implementation: two small additions to S80's and the editor's files.**
+    `SokolTitleTarget::framebufferObject()` (`render/TitleGpu.h`) lets the canvas's private scene
+    show a finished `TitleImage` on its quad without a copy; `WriteFilesCmd::contentOf(path)` gives
+    the History panel the text each step wrote (S80's `TitleArtDocument` has no `stepText`), which
+    is how rows are filtered to this document, previewed on hover and restored.
+12. **Implementation: the canvas quad shows straight-alpha sRGB through the engine's sprite path**
+    (blending as the engine blends a baked PNG in a game), with the checker as a repeating 2 x 2
+    texture whose squares stay 8 screen pixels at every zoom.
+13. **Implementation: tests without a GPU.** The editor's unit-test binary has no GPU context, so
+    the canvas's pixel criteria (AC12's draws, AC17's readback, AC19's render equality, AC21's frame
+    budget, AC32's rebuild) are covered by the MCP test `test_title_designer_window.py` (screenshots
+    of the window: an idle canvas is stable, an edit changes it) and, for R44, by the stronger
+    document check of the unit tests: the committed document equals the previewed one byte for byte
+    (ids included), and S80's renderer is deterministic (R17), so their renders are equal. The
+    Auto Bake toggle is the Project Settings command (`TitleArtSettingsCmd`, an undo step as there).
+14. **Implementation: namespaces `jasperengine::editor::titledesigner` and `::titlefonts`** instead of
+    §6.2's `jasperengine::editor::titleart::designer` / `::fonts`: a namespace
+    `jasperengine::editor::titleart` would shadow `titleart::` (the engine's `jasperengine::titleart`)
+    in every editor file that names it unqualified.
