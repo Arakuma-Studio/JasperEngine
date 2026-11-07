@@ -319,3 +319,7 @@ Effort in person-weeks, estimates at ±50%.
   runtime unbound its particle count is 0, so the read returns before it touches the null effect
   except through a reference binding (undefined behaviour that UBSan would report; not run). The
   guard is kept.
+- **AC16, in part:** the before and after figures of `ref_100k` and `trails_10k` are in
+  `docs/perf/particles.md` (a loaded shared host, not server E). `check_web_particles.py` needs the
+  web gate's browser runs, and the player's size growth needs a base player build to compare with:
+  neither was run.
