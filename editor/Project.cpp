@@ -1672,6 +1672,15 @@ bool editor::Project::isVSyncEnabled() const{
     return vsyncEnabled;
 }
 
+void editor::Project::setDynamicBatching(bool enabled){
+    dynamicBatching = enabled;
+    Engine::setDynamicBatchingDefault(enabled);
+}
+
+bool editor::Project::isDynamicBatching() const{
+    return dynamicBatching;
+}
+
 void editor::Project::setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality){
     atmosphereQuality = quality;
     Engine::setAtmosphereQualityDefaults(quality[0], quality[1], quality[2]);
@@ -2917,6 +2926,7 @@ editor::PlayerSettings editor::Project::getPlayerSettings() const{
     settings.allowedOrientations = presentationSettings.effectiveAllowedOrientations();
     settings.keepScreenOn = presentationSettings.keepScreenOn;
     settings.targetFrameRate = presentationSettings.targetFrameRate;
+    settings.dynamicBatching = dynamicBatching;
     auto app = [this](const std::string& name, const std::string& identifier, const std::string& version, const std::string& build) {
         ApplicationInfo info;
         info.name = getApplicationName(name);
@@ -2938,6 +2948,7 @@ void editor::Project::applyPresentationSettings(){
     Engine::resetApplicationState();
     editor::Platform::resetPlayRecords();
     Engine::setVSyncCount(vsyncEnabled ? 1 : 0);
+    Engine::setDynamicBatchingDefault(dynamicBatching);
     Engine::setTargetFrameRate(presentationSettings.targetFrameRate);
     Screen::initialize(presentationSettings.defaultOrientation, presentationSettings.effectiveAllowedOrientations(),
                        presentationSettings.keepScreenOn);
@@ -5605,6 +5616,7 @@ void editor::Project::resetConfigs() {
     Engine::setDefaultCanvasScaler(uiScale);
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
+    setDynamicBatching(defaultDynamicBatching);
     setAtmosphereQuality(defaultAtmosphereQuality);
     setFoliageDistanceScale(defaultFoliageDistanceScale);
     playerLogging = PlayerLoggingSettings();

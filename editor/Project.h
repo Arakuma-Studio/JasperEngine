@@ -867,6 +867,7 @@ namespace jasperengine::editor{
         float editViewDpi = 0.0f;
         TextureStrategy textureStrategy;
         bool vsyncEnabled;
+        bool dynamicBatching = true;
         // Quality > Atmosphere Quality: desktop, mobile, web
         std::array<AtmosphereQuality, 3> atmosphereQuality;
         std::array<float, 3> foliageDistanceScale = defaultFoliageDistanceScale;
@@ -1510,6 +1511,7 @@ namespace jasperengine::editor{
         static constexpr Scaling defaultScalingMode = Scaling::FITWIDTH;
         static constexpr TextureStrategy defaultTextureStrategy = TextureStrategy::NONE;
         static constexpr bool defaultVSyncEnabled = true;
+        static constexpr bool defaultDynamicBatching = true;
         static constexpr std::array<AtmosphereQuality, 3> defaultAtmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
         static constexpr std::array<float, 3> defaultFoliageDistanceScale = {1.0f, 1.0f, 1.0f};
         static constexpr int defaultHtmlUiMsaaSamples = 4;
@@ -1615,6 +1617,12 @@ namespace jasperengine::editor{
 
         void setVSyncEnabled(bool enabled);
         bool isVSyncEnabled() const;
+
+        // Graphics > Dynamic Batching (on by default): consecutive Sprites, small meshes and UI
+        // elements that share a material draw as one draw call; applied to the editor at once
+        // (the game's Engine.dynamicBatching starts from it) and written into exports
+        void setDynamicBatching(bool enabled);
+        bool isDynamicBatching() const;
 
         // Quality > Atmosphere Quality (volumetric fog and clouds) of desktop, mobile and web
         // games; the editor's views run the desktop one (Engine::setAtmosphereQualityDefaults)

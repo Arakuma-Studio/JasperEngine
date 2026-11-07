@@ -382,6 +382,11 @@ namespace jasperengine {
         static void applyPause();
         static std::atomic<bool> focused;
 
+        // Dynamic Batching: what draws now (Engine.dynamicBatching) and the project's setting it
+        // goes back to with the application state
+        static bool dynamicBatching;
+        static bool dynamicBatchingDefault;
+
         // Engine.targetFrameRate / vSyncCount and the pacing the platform applies
         static int targetFrameRate;
         static int vSyncCount;
@@ -876,6 +881,15 @@ namespace jasperengine {
         // seen yet, and the default frame pacing again, without any event (nothing listens any
         // more)
         static void resetApplicationState();
+
+        //-----Dynamic Batching (docs/rendering/batching.md)-----
+        // Consecutive Sprites, small meshes and UI elements that share pipeline, textures and
+        // their unbaked values are drawn as one draw call (the same image: turn it off to compare).
+        // The project's setting (Project Settings > Graphics > Dynamic Batching) is the default the
+        // application state goes back to; Engine.dynamicBatching changes it while the game runs.
+        static void setDynamicBatchingDefault(bool enabled);
+        static void setDynamicBatching(bool enabled);
+        static bool isDynamicBatching();
 
         //-----Frame pacing and application state-----
         // Unity's Application.targetFrameRate: -1 (default) is the platform's rate (60 on

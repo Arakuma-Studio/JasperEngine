@@ -502,6 +502,7 @@ return Slot
 | `framerate` | ro | fps (measured) |
 | `targetFrameRate` | rw | Unity's `Application.targetFrameRate`: -1 (default) = the platform's rate (60 on mobile, every animation frame on the web, vsync-paced on desktops); desktops and the editor ignore it while `vSyncCount > 0`. Kept across scene loads |
 | `vSyncCount` | rw | Unity's `QualitySettings.vSyncCount` 0..4 (present every Nth vblank); starts from the project's VSync; mobile and web ignore it |
+| `dynamicBatching` | rw | Dynamic Batching (Project Settings > Graphics, on by default): consecutive Sprites, small meshes and UI elements that share a material draw as one draw call, the same image. Starts from the project's setting and goes back to it when Play stops (`jasper://docs/profiling`, Dynamic Batching) |
 | `isFocused` | ro | Unity's `Application.isFocused` (true at start) |
 | `isDevelopmentBuild` | ro | Unity's `Debug.isDebugBuild`: true in the editor's Play and in exports built with the Debug build type |
 | `systemTime` | ro | |

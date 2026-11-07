@@ -16,6 +16,7 @@
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/RenderSystem.h"
 
 #include "lua.hpp"
 
@@ -143,6 +144,8 @@ namespace {
         static MonitorHandle m9 = nullptr;
         static MonitorHandle m10 = nullptr;
         static MonitorHandle m11 = nullptr;
+        static MonitorHandle m12 = nullptr;
+        static MonitorHandle m13 = nullptr;
         const FrameTimeSample frame = FrameTimes::latest();
         counter(handle(m0, "FPS", MonitorUnit::Quantity), frame.fps);
         counter(handle(m1, "CPU frame ms", MonitorUnit::TimeMs), frame.cpuMs);
@@ -172,6 +175,19 @@ namespace {
                 htmlDraws += documents->getRenderStats().drawCalls;
         }
         counter(handle(m11, "HTML UI draws", MonitorUnit::Quantity), htmlDraws);
+        // Dynamic Batching of the frame's scenes (Unity's Stats: Batches, Saved by batching)
+        uint32_t batches = 0;
+        uint32_t savedByBatching = 0;
+        for (Scene* scene : Engine::getSceneLayers()){
+            if (auto render = scene->getSystem<RenderSystem>()){
+                if (const RenderSystem::BatchFrame* frame = render->getBatchFrame(SystemRender::FRAME_STATS_FRAME)){
+                    batches += frame->stats.batches;
+                    savedByBatching += frame->stats.savedByBatching();
+                }
+            }
+        }
+        counter(handle(m12, "Batches", MonitorUnit::Quantity), batches);
+        counter(handle(m13, "Saved by batching", MonitorUnit::Quantity), savedByBatching);
         // the slower ones (a walk of every GPU allocation, /proc) four times a second, whatever
         // the frame rate
         const auto now = std::chrono::steady_clock::now();

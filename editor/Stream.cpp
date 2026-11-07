@@ -2497,6 +2497,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["uiScale"] = encodeCanvasScaler(project->getUIScale());
     root["textureStrategy"] = textureStrategyToString(project->getTextureStrategy());
     root["vsync"] = project->isVSyncEnabled();
+    // absent = on (projects from before Dynamic Batching)
+    if (!project->isDynamicBatching())
+        root["dynamicBatching"] = false;
     if (project->getAtmosphereQuality() != Project::defaultAtmosphereQuality) {
         YAML::Node quality;
         quality["desktop"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[0]);
@@ -3131,6 +3134,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     if (node["vsync"].IsDefined()) {
         project->setVSyncEnabled(YamlNumbers::as<bool>(node["vsync"]));
     }
+
+    project->setDynamicBatching(node["dynamicBatching"].IsDefined() ? YamlNumbers::as<bool>(node["dynamicBatching"]) : Project::defaultDynamicBatching);
 
     {
         // omitted at the defaults; each platform group defaults on its own

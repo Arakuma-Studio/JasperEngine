@@ -254,6 +254,8 @@ namespace jasperengine::editor {
         uint8_t allowedOrientations = (1u << 1) | (1u << 3) | (1u << 4);
         bool keepScreenOn = true;
         int targetFrameRate = -1;
+        // Project Settings > Graphics > Dynamic Batching
+        bool dynamicBatching = true;
         // what System.getAppName/Identifier/Version/Build return on each desktop and the web
         // (with their platform overrides); Android and iOS read their package and bundle
         ApplicationInfo linuxApp, windowsApp, macosApp, webApp;

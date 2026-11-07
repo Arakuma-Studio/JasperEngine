@@ -1256,6 +1256,35 @@ CASES = [
         "checks": {"calls": [{"tool": "set_shader_uniform", "args": {"pass_index": 0, "name": "strength"}}],
                    "must_not_call": ["fork_shader", "set_scene_settings", "write_file"]},
         "max_turns": 10,
+        "id": "bad_batch_breaks",
+        "kind": "bad",
+        "playing": True,
+        "what_happened": "Asked why a 2D level makes hundreds of draw calls, agents read get_render_stats' draw count and "
+                         "guessed (texture sizes, overdraw) instead of asking which objects break Dynamic Batching and why.",
+        "text_at_issue": "get_render_stats description '... batching.'; batch_breaks param: 'Lists the first N draws that did not "
+                         "batch and why.'",
+        "source": "sprite-batching spec, story 'Agent' (synthetic from the spec's user stories)",
+        "prompt": "The 2D level in the running game makes about 900 draw calls. Find out which sprites keep it from batching "
+                  "and why, and tell me what to change. Measure, don't guess.",
+        "mocks": [
+            {"tool": "get_render_stats", "args": {"batch_breaks": "*"}, "result": ok(
+                "Render stats (game): 905 draws, 3 passes, CPU 9.1 ms, 300 batches (saved by batching: 700).",
+                {"view": "game", "draw_calls": 905, "batching": {
+                    "enabled": True, "batches": 300, "batched_objects": 1000, "saved_by_batching": 700,
+                    "breaks": {"texture": 898},
+                    "batch_breaks": [{"reason": "texture", "pass": "color", "entity": 41, "entity_name": "Enemy (12)",
+                                      "previous": 40, "previous_name": "Coin (40)"},
+                                     {"reason": "texture", "pass": "color", "entity": 42, "entity_name": "Coin (41)",
+                                      "previous": 41, "previous_name": "Enemy (12)"}]}})},
+            {"tool": "get_render_stats", "result": ok(
+                "Render stats (game): 905 draws, 3 passes, CPU 9.1 ms, 300 batches (saved by batching: 700).",
+                {"view": "game", "draw_calls": 905, "batching": {"enabled": True, "batches": 300, "saved_by_batching": 700,
+                                                                 "breaks": {"texture": 898}}})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\").", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+        ],
+        "checks": {"calls": [{"tool": "get_render_stats", "args": {"batch_breaks": "*"}}],
+                   "reply_must": [r"(?i)texture", r"(?i)enemy|coin"]},
+        "max_turns": 14,
     },
     # -- dialogs (S69): results as the editor sends them; the model sees their structuredContent ---
     {

@@ -45,6 +45,9 @@ namespace jasperengine{
         // the draw list (R11) of the passes from now (a capture, the Frame Debugger)
         static void setDrawListEnabled(bool enabled);
         static bool isDrawListEnabled();
+        // the next draw is a batch of `items` objects whose first did not join the draw before
+        // it for `reason` (DrawRecord::batchItems, batchBreak); only kept with the draw list
+        static void annotateNextDraw(uint16_t items, uint8_t reason);
 
         // trace hooks (SokolTraceHub)
         static void onMakePipeline(uint32_t pipeline, const sg_pipeline_desc* desc);

@@ -2284,6 +2284,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("isDevelopmentBuild", &Engine::isDevelopmentBuild)
         .addStaticProperty("targetFrameRate", &Engine::getTargetFrameRate, &Engine::setTargetFrameRate)
         .addStaticProperty("vSyncCount", &Engine::getVSyncCount, &Engine::setVSyncCount)
+        // Dynamic Batching (Project Settings > Graphics): the same image, fewer draw calls
+        .addStaticProperty("dynamicBatching", &Engine::isDynamicBatching, &Engine::setDynamicBatching)
         .addStaticProperty("isFocused", &Engine::isFocused)
         .addStaticProperty("asyncLoading", &Engine::isAsyncLoading, &Engine::setAsyncLoading)
         .addStaticFunction("startAsyncThread", &Engine::startAsyncThread)

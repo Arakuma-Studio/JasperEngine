@@ -693,7 +693,12 @@ void MeshSystem::prepareSpriteMesh(MeshComponent& mesh){
     mesh.buffer.addAttribute(AttributeType::TANGENT, 4);
     mesh.buffer.addAttribute(AttributeType::COLOR, 4);
 
-    mesh.buffer.setUsage(BufferUsage::DYNAMIC);
+    // shared by content (MeshBufferPool): sprites of one shape draw from one GPU buffer, a
+    // changed sprite takes the buffer of its new bytes (RenderSystem::refreshImmutableBuffer); one
+    // whose geometry kept changing has a dynamic buffer of its own, which it keeps
+    BufferRender* render = mesh.buffer.getRender();
+    if (!(mesh.buffer.getUsage() == BufferUsage::DYNAMIC && render->isCreated() && !render->isShared()))
+        mesh.buffer.setUsage(BufferUsage::IMMUTABLE);
 }
 
 void MeshSystem::prepareMeshPolygonMesh(MeshComponent& mesh){
@@ -817,7 +822,7 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
             if (previousGrid != 0 && previousGrid != grid){
                 mesh.needReload = true;
             }else{
-                mesh.needUpdateBuffer = true; // buffer is not immutable
+                mesh.needUpdateBuffer = true; // the bytes of the shared buffer changed
             }
         }
         return true;
@@ -898,7 +903,7 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
         if (previousGrid > 1){
             mesh.needReload = true;
         }else{
-            mesh.needUpdateBuffer = true; // buffer is not immutable
+            mesh.needUpdateBuffer = true; // the bytes of the shared buffer changed
         }
     }
 

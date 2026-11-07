@@ -4473,6 +4473,17 @@
 		4A534E47C60D2786A6CDB1B0 /* SSRProbeSlots.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */; };
 		4A534E47FF8274D55DB3FD38 /* SSRProbeSlots.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FA1901109EC2D231 /* SSRProbeSlots.h */; };
 		4A534E47D0AB41A2D07C3A21 /* VulkanRobustness.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */; };
+		4A534E47F783FD15C20796BA /* FrustumCull.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4706670F9B31416A92 /* FrustumCull.cpp */; };
+		4A534E47955278D4A6E349A7 /* FrustumCull.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4706670F9B31416A92 /* FrustumCull.cpp */; };
+		4A534E4771794B0938C50F3F /* DrawBatcher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4796F6995CA27FA950 /* DrawBatcher.cpp */; };
+		4A534E47C1EDEEFB7A4DB287 /* DrawBatcher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4796F6995CA27FA950 /* DrawBatcher.cpp */; };
+		4A534E47780F1FB63C92E44A /* RenderSystemBatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */; };
+		4A534E47C54C9AAC683562BB /* RenderSystemBatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */; };
+		4A534E47EC1527BD9215708F /* ContentHash.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477812D37EDE027E54 /* ContentHash.cpp */; };
+		4A534E474E1AD9E2E230BD31 /* ContentHash.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477812D37EDE027E54 /* ContentHash.cpp */; };
+		4A534E47D9D64A1F2922561D /* DrawBatcher.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475065F0D282851FFA /* DrawBatcher.h */; };
+		4A534E4753AE5E337EEF8298 /* FrustumCull.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E7BE6C143B079A81 /* FrustumCull.h */; };
+		4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477B2FB8E9277F0AE4 /* ContentHash.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8746,6 +8757,13 @@
 		4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SSRProbeSlots.cpp; sourceTree = "<group>"; };
 		4A534E47FA1901109EC2D231 /* SSRProbeSlots.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SSRProbeSlots.h; sourceTree = "<group>"; };
 		4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VulkanRobustness.h; sourceTree = "<group>"; };
+		4A534E4706670F9B31416A92 /* FrustumCull.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FrustumCull.cpp; sourceTree = "<group>"; };
+		4A534E4796F6995CA27FA950 /* DrawBatcher.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DrawBatcher.cpp; sourceTree = "<group>"; };
+		4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemBatch.cpp; sourceTree = "<group>"; };
+		4A534E477812D37EDE027E54 /* ContentHash.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ContentHash.cpp; sourceTree = "<group>"; };
+		4A534E475065F0D282851FFA /* DrawBatcher.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DrawBatcher.h; sourceTree = "<group>"; };
+		4A534E47E7BE6C143B079A81 /* FrustumCull.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrustumCull.h; sourceTree = "<group>"; };
+		4A534E477B2FB8E9277F0AE4 /* ContentHash.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ContentHash.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10755,6 +10773,8 @@
 				4A534E47778D99DE934432D4 /* PlatformRules.h */,
 				4A534E4799EC5AF629083BC1 /* GrowArray.h */,
 				4A534E47C4F45D33EE25F2E9 /* StableArray.h */,
+				4A534E477812D37EDE027E54 /* ContentHash.cpp */,
+				4A534E477B2FB8E9277F0AE4 /* ContentHash.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -10849,6 +10869,10 @@
 				4A534E4764BA0A7E9FBC8EB9 /* SSRProbeSlots.cpp */,
 				4A534E47FA1901109EC2D231 /* SSRProbeSlots.h */,
 				4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */,
+				4A534E4706670F9B31416A92 /* FrustumCull.cpp */,
+				4A534E4796F6995CA27FA950 /* DrawBatcher.cpp */,
+				4A534E475065F0D282851FFA /* DrawBatcher.h */,
+				4A534E47E7BE6C143B079A81 /* FrustumCull.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -11225,6 +11249,7 @@
 				4A534E479D83C26E146CE8A0 /* GltfNormalize.h */,
 				4A534E47F7FB625C23466BAF /* RenderSystemLighting.cpp */,
 				4A534E472FCC66B498BDDE06 /* RenderSystemLighting.h */,
+				4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -15553,6 +15578,9 @@
 				4A534E47B252695D7B90F977 /* StableArray.h in Headers */,
 				4A534E47FF8274D55DB3FD38 /* SSRProbeSlots.h in Headers */,
 				4A534E47D0AB41A2D07C3A21 /* VulkanRobustness.h in Headers */,
+				4A534E47D9D64A1F2922561D /* DrawBatcher.h in Headers */,
+				4A534E4753AE5E337EEF8298 /* FrustumCull.h in Headers */,
+				4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18078,6 +18106,10 @@
 				4A534E47670206F6BE79EF39 /* AudioClassesLua.cpp in Sources */,
 				4A534E4733689B48DEC9E956 /* HeapTrim.cpp in Sources */,
 				4A534E476CC9A23083687A69 /* SSRProbeSlots.cpp in Sources */,
+				4A534E47F783FD15C20796BA /* FrustumCull.cpp in Sources */,
+				4A534E4771794B0938C50F3F /* DrawBatcher.cpp in Sources */,
+				4A534E47780F1FB63C92E44A /* RenderSystemBatch.cpp in Sources */,
+				4A534E47EC1527BD9215708F /* ContentHash.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18897,6 +18929,10 @@
 				4A534E474DEE448FA99C20CF /* AudioClassesLua.cpp in Sources */,
 				4A534E474586B68050D02466 /* HeapTrim.cpp in Sources */,
 				4A534E47C60D2786A6CDB1B0 /* SSRProbeSlots.cpp in Sources */,
+				4A534E47955278D4A6E349A7 /* FrustumCull.cpp in Sources */,
+				4A534E47C1EDEEFB7A4DB287 /* DrawBatcher.cpp in Sources */,
+				4A534E47C54C9AAC683562BB /* RenderSystemBatch.cpp in Sources */,
+				4A534E474E1AD9E2E230BD31 /* ContentHash.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

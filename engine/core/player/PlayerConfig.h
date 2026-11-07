@@ -60,6 +60,8 @@ namespace jasperengine::player {
         bool resizable = true;
         std::string title;
         bool vsync = true;
+        // Project Settings > Graphics > Dynamic Batching
+        bool dynamicBatching = true;
         std::string icon;                  // content-relative PNG ("icon.png"), the window icon
         std::string storageId;
 
