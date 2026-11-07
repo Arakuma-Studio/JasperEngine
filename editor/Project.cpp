@@ -6191,6 +6191,7 @@ void editor::Project::resetConfigs() {
     setThreadingSettings(ThreadingProjectSettings());
     setParticleWorldBudget(0);
     setParticleQaSettings(ParticleQaSettings());
+    setProcMatQaSettings(procmat::ProcMatQaSettings());
     setShaderCreationSettings(ShaderCreationProjectSettings());
     windowMode = defaultWindowMode;
     windowWidth = defaultWindowWidth;

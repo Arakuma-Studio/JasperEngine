@@ -244,6 +244,14 @@ namespace {
                       makePort("occlusion", in, "f", "Occlusion", true), makePort("roughness", in, "f", "Roughness", true),
                       makePort("metallic", in, "f", "Metallic", true), makePort("emission", in, "rgb", "Emission", true),
                       makePort("height", in, "f", "Height", true)};
+        // the bake makes the Normal from the float Height when Normal is not connected (R14)
+        graph::ParamDesc strength;
+        strength.name = MATERIAL_NORMAL_STRENGTH;
+        strength.kind = "float";
+        strength.defaultValue = 1.0;
+        strength.min = 0.0;
+        strength.max = 4.0;
+        type.params = {std::move(strength)};
         return type;
     }
 

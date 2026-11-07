@@ -112,6 +112,10 @@ namespace jasperengine::editor::procmat {
     // The roots of a material's bake: each connected port of its material_output node, and "orm" when
     // any of occlusion, roughness and metallic is, in the order R14 lists them
     std::vector<PlanRoot> materialOutputRoots(const graph::Graph& graph);
+    // What a bake writes and a preview shows (R14): materialOutputRoots, and "normal" made from the float
+    // height when Height is connected and Normal is not. A connected Normal is turned from the library's
+    // convention into the engine's either way.
+    std::vector<PlanRoot> materialBakeRoots(const graph::Graph& graph);
 
     // Plans generators already wired in `expander`: what a test does to wire small sources
     bool planPasses(Expander& expander, const std::vector<PlanSource>& roots, const PlanOptions& options, PassPlan& plan, std::string& error);

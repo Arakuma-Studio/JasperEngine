@@ -23,6 +23,9 @@ namespace jasperengine::editor::procmat {
     inline constexpr const char* PROCEDURAL_MATERIAL_EXTENSION = ".procmat";
     inline constexpr const char* MATERIAL_OUTPUT_NODE = "material_output";
     inline constexpr const char* BUFFER_NODE = "buffer";
+    // material_output's one parameter: how steep the Normal made from Height is (1: Material Maker's
+    // Normal Map at its default strength)
+    inline constexpr const char* MATERIAL_NORMAL_STRENGTH = "normal_strength";
     // a generic node's copies of its inputs, as far as a file can ask
     inline constexpr int GENERIC_SIZE_MAX = 8;
     // R26: a procedural ramp holds up to 32 keys

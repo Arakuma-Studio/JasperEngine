@@ -33,6 +33,7 @@
 #include "util/Util.h"
 #include "physics/PlacementSettings.h"
 #include "particles/ParticleQaSettings.h"
+#include "procmat/ProcMatQaSettings.h"
 #include "navigation/NavigationProjectSettings.h"
 #include "render/shadow/ShadowTiers.h"
 #include "render/LightingTiers.h"
@@ -981,6 +982,7 @@ namespace jasperengine::editor{
         ThreadingProjectSettings threadingSettings;
         uint32_t particleWorldBudget = 0;
         ParticleQaSettings particleQa;
+        procmat::ProcMatQaSettings procMatQa;
         ShaderCreationProjectSettings shaderCreationSettings;
         AudioSettings audioSettings;
         DebugSettings debugSettings;
@@ -2027,6 +2029,9 @@ namespace jasperengine::editor{
         // Project Settings > Graphics > Particle Checks (S91 R28)
         const ParticleQaSettings& getParticleQaSettings() const { return particleQa; }
         void setParticleQaSettings(const ParticleQaSettings& settings) { particleQa = settings; }
+        // Project Settings > Graphics > Material Checks (S90 R36)
+        const procmat::ProcMatQaSettings& getProcMatQaSettings() const { return procMatQa; }
+        void setProcMatQaSettings(const procmat::ProcMatQaSettings& settings) { procMatQa = settings; }
 
         const ThreadingProjectSettings& getThreadingSettings() const;
         // Stores them and applies what applies live (the reserve, the web pump budget) to

@@ -998,6 +998,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_physics3DWorld = project->getPhysics3DWorldSettings();
     m_particleWorldBudget = (int)project->getParticleWorldBudget();
     m_particleQa = project->getParticleQaSettings();
+    m_procMatQa = project->getProcMatQaSettings();
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
     m_dynamicBatching = project->isDynamicBatching();
     m_mobilePbrTierIndex = findMobilePbrTierIndex(project->getMobilePbrTier());
@@ -2044,6 +2045,31 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                 }
                 ImGui::PopID();
                 endSettingsRow((std::string(field.help) + " Changing these does not fix an effect; checks report changed thresholds.").c_str());
+            }
+        }
+
+        // the thresholds of the material checks (preview_procedural_material, check --materials)
+        if (settingsui::sectionVisible("Material Checks")) {
+            ImGui::SeparatorText("Material Checks");
+            const procmat::ProcMatQaSettings defaults;
+            for (const procmat::ProcMatQaField& field : procmat::procMatQaFields()) {
+                if (!settingsui::beginRow(field.key)) continue;
+                const bool changed = field.real ? m_procMatQa.*field.real != defaults.*field.real : m_procMatQa.*field.whole != defaults.*field.whole;
+                if (projectBeginSettingsRow(field.label, changed)) {
+                    if (field.real) m_procMatQa.*field.real = defaults.*field.real;
+                    else m_procMatQa.*field.whole = defaults.*field.whole;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::PushID(field.key);
+                if (field.real) {
+                    ImGui::DragFloat("##value", &(m_procMatQa.*field.real), 0.01f, (float)field.minimum, (float)field.maximum);
+                    m_procMatQa.*field.real = std::clamp(m_procMatQa.*field.real, (float)field.minimum, (float)field.maximum);
+                } else {
+                    ImGui::DragInt("##value", &(m_procMatQa.*field.whole), 1.0f, (int)field.minimum, (int)field.maximum);
+                    m_procMatQa.*field.whole = std::clamp(m_procMatQa.*field.whole, (int)field.minimum, (int)field.maximum);
+                }
+                ImGui::PopID();
+                endSettingsRow((std::string(field.help) + " Changing these does not fix a material; checks report changed thresholds.").c_str());
             }
         }
 
@@ -5275,6 +5301,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setPhysics3DWorldSettings(m_physics3DWorld);
     m_project->setParticleWorldBudget((uint32_t)std::clamp(m_particleWorldBudget, 0, (int)Project::maxParticleWorldBudget));
     m_project->setParticleQaSettings(m_particleQa);
+    m_project->setProcMatQaSettings(m_procMatQa);
     m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
     m_project->setDynamicBatching(m_dynamicBatching);
     m_project->setMobilePbrTier(mobilePbrTierValues[m_mobilePbrTierIndex]);

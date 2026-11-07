@@ -3030,6 +3030,16 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             }
             if (qaNode.size()) root["particleQa"] = qaNode;
         }
+        {
+            const procmat::ProcMatQaSettings& qa = project->getProcMatQaSettings();
+            const procmat::ProcMatQaSettings defaults;
+            YAML::Node qaNode;
+            for (const procmat::ProcMatQaField& field : procmat::procMatQaFields()) {
+                if (field.real && qa.*field.real != defaults.*field.real) qaNode[field.yaml] = qa.*field.real;
+                if (field.whole && qa.*field.whole != defaults.*field.whole) qaNode[field.yaml] = qa.*field.whole;
+            }
+            if (qaNode.size()) root["proceduralMaterialQa"] = qaNode;
+        }
         // Shader Creation (spec S32): the values away from their defaults, by its reflection table
         const YAML::Node shaderCreationNode = reflect::encode(reflect::shaderCreationStruct(), &project->getShaderCreationSettings(), reflect::EncodeContext{});
         if (shaderCreationNode.IsMap() && shaderCreationNode.size()) root["shaderCreation"] = shaderCreationNode;
@@ -3851,6 +3861,16 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setParticleQaSettings(particleQa);
+        procmat::ProcMatQaSettings procMatQa;
+        if (node["proceduralMaterialQa"] && node["proceduralMaterialQa"].IsMap()) {
+            const YAML::Node qaNode = node["proceduralMaterialQa"];
+            for (const procmat::ProcMatQaField& field : procmat::procMatQaFields()) {
+                if (!qaNode[field.yaml]) continue;
+                if (field.real) procMatQa.*field.real = std::clamp(YamlNumbers::as<float>(qaNode[field.yaml]), (float)field.minimum, (float)field.maximum);
+                else procMatQa.*field.whole = std::clamp(YamlNumbers::as<int>(qaNode[field.yaml]), (int)field.minimum, (int)field.maximum);
+            }
+        }
+        project->setProcMatQaSettings(procMatQa);
     }
 
     {

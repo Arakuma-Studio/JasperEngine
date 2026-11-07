@@ -42,6 +42,39 @@ namespace {
         return body;
     }
 
+    // A normal from Material Maker's library (z toward the viewer is its -z, x mirrored) in the engine's
+    // convention (docs/textures.md: OpenGL, Y up): its normal nodes all write the former
+    const Json& libraryNormalBody() {
+        static const Json body = Json::parse(R"json({
+            "functions": [], "instance": [], "code": [], "parameters": [],
+            "inputs": [{"name": "normal", "type": "rgb", "default": "vec3(0.5, 0.5, 0.0)"}],
+            "outputs": [{"type": "rgb", "expr": "(vec3(1.0, 0.0, 1.0) + vec3(-1.0, 1.0, -1.0) * $normal($uv))"}]})json");
+        return body;
+    }
+
+    // The Normal made from the float Height before anything is quantized (R14): central differences one
+    // texel of the output apart, in the engine's convention. Rows go down the image as v does, so a
+    // surface rising toward the bottom faces up (+Y). The input is a function, so the height is
+    // evaluated where it is needed rather than inlined four times; its calls take the variation
+    // arguments, as every library instance function does.
+    const Json& heightNormalBody() {
+        static const Json body = Json::parse(R"json({
+            "functions": [], "code": [],
+            "instance": [
+                "vec3 jp_height_normal_$name(vec2 uv, float texel, float strength, float _seed_variation_, vec4 _controlled_variation_) {",
+                "\tfloat du = ($height(uv + vec2(texel, 0.0)) - $height(uv - vec2(texel, 0.0))) / (2.0 * texel);",
+                "\tfloat dv = ($height(uv + vec2(0.0, texel)) - $height(uv - vec2(0.0, texel))) / (2.0 * texel);",
+                "\treturn vec3(0.5) + 0.5 * normalize(vec3(-strength * du, strength * dv, 1.0));",
+                "}"],
+            "parameters": [{"name": "texel", "type": "float", "default": 0.0}, {"name": "strength", "type": "float", "default": 0.0}],
+            "inputs": [{"name": "height", "type": "f", "default": "0.0", "function": true}],
+            "outputs": [{"type": "rgb", "expr": "jp_height_normal_$name($uv, $texel, $strength, _seed_variation_, _controlled_variation_)"}]})json");
+        return body;
+    }
+
+    // Material Maker's Normal Map at strength 1 tilts by a sixteenth of the slope in texture units
+    constexpr double NORMAL_SLOPE_SCALE = 1.0 / 16.0;
+
     class Planner {
     public:
         Planner(Expander& expander, const PlanOptions& options, PassPlan& plan) : expander(expander), options(options), plan(plan) {}
@@ -332,6 +365,17 @@ size_t jasperengine::editor::procmat::firstStepToRedraw(const PassPlan& plan, ui
     return first;
 }
 
+std::vector<PlanRoot> jasperengine::editor::procmat::materialBakeRoots(const graph::Graph& file) {
+    std::vector<PlanRoot> roots = materialOutputRoots(file);
+    const bool normal = std::any_of(roots.begin(), roots.end(), [](const PlanRoot& root) { return root.name == "normal"; });
+    const bool height = std::any_of(roots.begin(), roots.end(), [](const PlanRoot& root) { return root.name == "height"; });
+    if (!normal && height) {
+        const auto after = std::find_if(roots.begin(), roots.end(), [](const PlanRoot& root) { return root.name == "base_color"; });
+        roots.insert(after == roots.end() ? roots.begin() : after + 1, PlanRoot{"normal", roots.front().node, "normal"});
+    }
+    return roots;
+}
+
 std::vector<PlanRoot> jasperengine::editor::procmat::materialOutputRoots(const graph::Graph& file) {
     std::vector<PlanRoot> roots;
     const graph::Node* output = outputNode(file);
@@ -478,6 +522,26 @@ bool jasperengine::editor::procmat::planGraph(const graph::Graph& file, const st
                     }
                 }
                 sources.push_back({root.name, SourceRef{orm, 0, false}});
+                continue;
+            }
+            if (output && root.node == output->id && root.port == "normal") {
+                const std::optional<SourceRef> normal = outputSource("normal");
+                const std::optional<SourceRef> height = normal ? std::nullopt : outputSource("height");
+                if (!normal && !height) {
+                    error = "output normal has nothing connected, and neither has height";
+                    return false;
+                }
+                double strength = 1.0;
+                if (auto it = output->params.find(MATERIAL_NORMAL_STRENGTH); it != output->params.end() && it->is_number()) {
+                    strength = std::clamp(it->get<double>(), 0.0, 4.0);
+                }
+                expander.ownerNode = output->id;
+                ShaderNode* node = normal ? expander.make<ShaderNode>("normal", libraryNormalBody(), Json::object(), 0.0, 1)
+                                          : expander.make<ShaderNode>("normal", heightNormalBody(),
+                                                                      Json{{"texel", 1.0 / options.size}, {"strength", strength * NORMAL_SLOPE_SCALE}}, 0.0, 1);
+                expander.ownerNode.clear();
+                node->setSource(0, normal ? *normal : *height);
+                sources.push_back({root.name, SourceRef{node, 0, false}});
                 continue;
             }
             const std::optional<SourceRef> source = output && root.node == output->id ? outputSource(root.port) : sourceOf({root.node, root.port});
