@@ -573,6 +573,9 @@ namespace jasperengine {
         // recomputes them at once. RenderSystem sets it from the main scene's main camera.
         static void setPixelPerfectView(const PixelPerfectViewRequest& request);
         static const PixelPerfectViewRequest& getPixelPerfectView();
+        // what the Pixel Perfect Camera on that camera asks of a view (false: none, disabled, or a
+        // perspective camera): RenderSystem, the editor's Game view and MCP lay a view out with it
+        static bool getPixelPerfectRequest(Scene* scene, Entity cameraEntity, PixelPerfectViewRequest& request);
         // the layout in effect (an empty one while no Pixel Perfect Camera drives the view)
         static const pixelart::PixelPerfectLayout& getPixelPerfectLayout();
         // the request's layout on a screen of that size (the editor's Game view, MCP)

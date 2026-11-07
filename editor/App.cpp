@@ -4461,7 +4461,7 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
     // a Pixel Perfect Camera on the game camera lays the view out as Play does (S41 R20); its layer
     // scenes draw on the same viewport and canvas
     PixelPerfectViewRequest pixelRequest;
-    if (RenderSystem::getPixelPerfectRequest(sceneProject.scene, cameraEntity, pixelRequest)) {
+    if (Engine::getPixelPerfectRequest(sceneProject.scene, cameraEntity, pixelRequest)) {
         // Use Project Canvas is the project's canvas (the Engine's is the editor's view here)
         if (pixelRequest.referenceWidth <= 0 || pixelRequest.referenceHeight <= 0) {
             pixelRequest.referenceWidth = (int)project.getCanvasWidth();

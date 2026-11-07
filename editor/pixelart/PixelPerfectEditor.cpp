@@ -8,7 +8,6 @@
 #include "component/CameraComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/UIComponent.h"
-#include "subsystem/RenderSystem.h"
 
 #include <algorithm>
 #include <cmath>
@@ -31,7 +30,7 @@ namespace jasperengine::editor::pixelart {
 
     bool computeEditLayout(const Project& project, Scene* scene, Entity camera, jasperengine::pixelart::PixelPerfectLayout& layout){
         PixelPerfectViewRequest request;
-        if (!RenderSystem::getPixelPerfectRequest(scene, camera, request))
+        if (!Engine::getPixelPerfectRequest(scene, camera, request))
             return false;
         // Use Project Canvas: the project's canvas (outside Play the Engine's is the editor view's)
         if (request.referenceWidth <= 0 || request.referenceHeight <= 0){
@@ -90,7 +89,7 @@ namespace jasperengine::editor::pixelart {
     bool scenePixelPerfect(const SceneProject* sceneProject){
         PixelPerfectViewRequest request;
         return sceneProject && sceneProject->scene &&
-               RenderSystem::getPixelPerfectRequest(sceneProject->scene, sceneProject->mainCamera, request);
+               Engine::getPixelPerfectRequest(sceneProject->scene, sceneProject->mainCamera, request);
     }
 
     float pixelZoomScale(float zoom, int pixelsPerUnit){

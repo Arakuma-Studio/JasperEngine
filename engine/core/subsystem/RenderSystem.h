@@ -3292,9 +3292,6 @@ namespace jasperengine{
 		// whether the scene's objects draw pixel-snapped variants
 		const pixelart::PixelPerfectLayout* getPixelPerfectLayout() const;
 		bool hasPixelSnapVariants() const { return pixelSnapVariants; }
-		// what the Pixel Perfect Camera on that camera asks of a view (false: none, disabled, or a
-		// perspective camera): the editor's Game view and MCP lay a view out with it
-		static bool getPixelPerfectRequest(Scene* scene, Entity cameraEntity, PixelPerfectViewRequest& request);
 
 	private:
 		CanvasGroupRenderStats canvasGroupRenderStats;

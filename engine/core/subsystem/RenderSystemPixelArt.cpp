@@ -43,22 +43,6 @@ namespace {
 
 float RenderSystem::pixelSnapBias = pixelart::kSnapBias;
 
-bool RenderSystem::getPixelPerfectRequest(Scene* scene, Entity cameraEntity, PixelPerfectViewRequest& request){
-    if (!scene || !scene->isComponentRegistered<PixelPerfectCameraComponent>())
-        return false;
-    const PixelPerfectCameraComponent* component = scene->findComponent<PixelPerfectCameraComponent>(cameraEntity);
-    const CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
-    if (!component || !camera || !component->enabled || camera->type == CameraType::CAMERA_PERSPECTIVE)
-        return false;
-    request.active = true;
-    request.referenceWidth = (int)component->referenceWidth;
-    request.referenceHeight = (int)component->referenceHeight;
-    request.mode = component->upscaleMode;
-    request.smoothing = component->subpixelSmoothing;
-    request.pixelsPerUnit = Engine::getPixelsPerUnit();
-    return true;
-}
-
 bool RenderSystem::makePixelPerfectDrive(Entity cameraEntity, const CameraComponent& camera, const PixelPerfectCameraComponent& component,
                                          bool mainOfBaseLayer, int screenWidth, int screenHeight, PixelPerfectDrive& drive) const{
     // inert on a perspective camera and off with its GameObject (D8)
@@ -205,7 +189,7 @@ void RenderSystem::updatePixelPerfect(Entity mainCameraEntity){
 
     // the main camera first: its request sets the Engine's view the others may follow
     PixelPerfectViewRequest mainRequest;
-    if (engineMain && getPixelPerfectRequest(scene, mainCameraEntity, mainRequest) &&
+    if (engineMain && Engine::getPixelPerfectRequest(scene, mainCameraEntity, mainRequest) &&
             !scene->getComponent<CameraComponent>(mainCameraEntity).renderToTexture && scene->isEntityActiveInHierarchy(mainCameraEntity)){
         Engine::setPixelPerfectView(mainRequest);
     }else if (engineMain && Engine::getPixelPerfectView().active){

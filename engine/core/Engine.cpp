@@ -50,6 +50,8 @@
 #include "component/ScriptComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/UIComponent.h"
+#include "component/CameraComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/PanelComponent.h"
 #include "component/ScrollbarComponent.h"
 #include "component/InputFieldComponent.h"
@@ -609,6 +611,22 @@ void Engine::setPixelPerfectView(const PixelPerfectViewRequest& request){
     pixelPerfectRequest = request;
     if (viewLoaded)
         systemViewChanged();
+}
+
+bool Engine::getPixelPerfectRequest(Scene* scene, Entity cameraEntity, PixelPerfectViewRequest& request){
+    if (!scene || !scene->isComponentRegistered<PixelPerfectCameraComponent>())
+        return false;
+    const PixelPerfectCameraComponent* component = scene->findComponent<PixelPerfectCameraComponent>(cameraEntity);
+    const CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
+    if (!component || !camera || !component->enabled || camera->type == CameraType::CAMERA_PERSPECTIVE)
+        return false;
+    request.active = true;
+    request.referenceWidth = (int)component->referenceWidth;
+    request.referenceHeight = (int)component->referenceHeight;
+    request.mode = component->upscaleMode;
+    request.smoothing = component->subpixelSmoothing;
+    request.pixelsPerUnit = pixelsPerUnit;
+    return true;
 }
 
 const PixelPerfectViewRequest& Engine::getPixelPerfectView(){

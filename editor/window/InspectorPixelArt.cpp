@@ -14,7 +14,6 @@
 #include "external/IconsFontAwesome6.h"
 #include "pixelart/PixelPerfectEditor.h"
 #include "reflect/Components.h"
-#include "subsystem/RenderSystem.h"
 #include "util/UIProbe.h"
 #include "Theme.h"
 

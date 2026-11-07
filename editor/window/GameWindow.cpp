@@ -23,7 +23,6 @@
 #include "Theme.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/CameraControlSystem.h"
-#include "subsystem/RenderSystem.h"
 #include "registry/PhysicsLayers.h"
 #include "Widgets.h"
 #include "external/IconsFontAwesome6.h"
@@ -640,7 +639,7 @@ bool editor::GameWindow::shownPixelPerfect(PixelPerfectViewRequest& request) con
     const uint32_t sceneId = getTargetSceneId();
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) return false;
-    return RenderSystem::getPixelPerfectRequest(sceneProject->scene, project->getGameCamera(sceneId), request);
+    return Engine::getPixelPerfectRequest(sceneProject->scene, project->getGameCamera(sceneId), request);
 }
 
 void editor::GameWindow::drawPixelScale(const PixelPerfectViewRequest& request) {
