@@ -310,6 +310,10 @@ namespace jasperengine{
                 return true;
             }
         }
+        // a terrain with no layer draws its base material alone, on the narrow path (T3, spec Deviations)
+        if (terrain.surfaceLayers.empty()){
+            return false;
+        }
         // T3 R9-R14: a material feature works on the wide path
         return terrain.macroMode != TerrainMacroMode::OFF || terrain.resampleEnabled ||
                terrain.heightBlendSharpness > 0.0f || terrain.macroNormal;

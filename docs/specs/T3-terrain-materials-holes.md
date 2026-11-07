@@ -748,6 +748,16 @@ a fourth blend map has no slot. Base Map macro multiplies with a neutral at 0.5 
   `LP_NATIVE_VECTOR_WIDTH=128`. `TerrainQuality.LayerLimitOnlyWhenItCuts` pins the rule,
   `TerrainMaterialsGpu.LimitThatCutsNothingDrawsTheSame` the image, and `EveryVariant/TerrainVariantGpu.Draws/*`
   draws the capped variant with nine layers on glcore at both vector widths and on lavapipe.
+- **A terrain with no layer draws its base material alone:** no tier, cap or feature define, and the narrow
+  path (`hasTerrainSurfaceLayers` is false without a layer); the Terrain debug views keep theirs. The tiers,
+  the cap and the features act on layers, so the image is the same, but for Macro Variation, which waits for
+  a layer: the Inspector, `sample_terrain`'s issue `macro_without_layers` and `docs/terrain.md` say so. It
+  is the cheapest path, and a workaround for llvmpipe's GL path (Mesa 23.2.1, LLVM 15), which faults in its
+  fragment JIT (SIGILL, and SIGSEGV with holes) on every tier and feature variant of a terrain without layers,
+  e.g. `NoLayers_medium_LitStandard` and `NoLayers_high_LitStandard_Limited_MacroNoise` of
+  `EveryVariant/TerrainVariantGpu.Draws`: 44 of 180 at the default width, none with layers. sokol's validation
+  reports nothing for them, and lavapipe draws all of them. `TerrainQuality.NoLayersDrawTheBaseAlone` pins it.
+  At `LP_NATIVE_VECTOR_WIDTH=128` llvmpipe aborts on most variants, layers or not (not chased).
 - **R20: no extra pass on a terrain.** `RenderSystem::hasExtraPass` returns false for a terrain, so the extra pass has nothing to cut; `mesh.frag` covers it if that ever changes.
 - **R26: `TerrainComponent::holeMapRevision`** (not saved, not reflected) is new: `SplineSystem` rebuilds on a hole change by it, which the spec's "Spline conform" and "Instantiate" rows need and no existing flag said without also firing on a density stroke.
 - **AC31:** the tests are `NavBake.*` in `engine/tests/core/navigation/NavBakeHolesTest.cpp`: `NavBakeTest.cpp`'s fixtures have a function named `terrain`, which the `jasperengine::terrain` namespace makes ambiguous. **AC33:** `NavigationSystem.GridHole` is `NavGridTest.GridHole`; `ParticleCollision.TerrainHole` is `TerrainHolesConsumers.ParticlesPassThroughAHole`; `SplineSystem.InstantiateDropsOverHole` and `.ConformOverHole` are one test, `SplineGpu.InstantiateDropsOverHole`, because pool models load on the device.

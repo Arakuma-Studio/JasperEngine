@@ -236,7 +236,8 @@ map's slot (`features` says `base_occlusion_dropped`); a custom shader that does
 ## Material features
 
 On `terrain`: `macroMode` (off, noise, base_map), `resampleEnabled`, `heightBlendSharpness`, `macroNormal`, and per layer
-`surfaceLayers[i].cliffProjection` (auto, flat_only). Each is off by default and costs nothing off. Up to 12 layers: layers 10-12
+`surfaceLayers[i].cliffProjection` (auto, flat_only). Each is off by default and costs nothing off; on a terrain with no layer Macro Variation waits for one
+(issue `macro_without_layers`). Up to 12 layers: layers 10-12
 weigh by the inverted alpha of blend maps 1-3, so an opaque map means 0.
 
 ## Common mistakes

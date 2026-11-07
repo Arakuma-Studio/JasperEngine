@@ -5,6 +5,7 @@
 // decides, kept out of RenderSystem.cpp, which holds only the calls.
 
 #include "RenderSystem.h"
+#include "TerrainRenderInfo.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -80,7 +81,7 @@ bool RenderSystem::loadTerrainHoleTexture(TerrainComponent& terrain, ObjectRende
     return true;
 }
 
-terrain::TerrainVariantInputs RenderSystem::getTerrainVariantInputs(const TerrainComponent& terrainComponent){
+terrain::TerrainVariantInputs jasperengine::getTerrainVariantInputs(const TerrainComponent& terrainComponent){
     terrain::TerrainVariantInputs inputs;
     switch (terrainComponent.quality){
         case TerrainQualitySetting::HIGH:
@@ -122,6 +123,12 @@ terrain::TerrainQualityResolved RenderSystem::resolveTerrainTier(const MeshShade
 // T3 D2: the one rule of the defines a terrain's variant takes. Medium and Low never define the hex or
 // stochastic paths; a feature a tier does not draw has no define there.
 uint64_t RenderSystem::getTerrainDefineBits(const MeshShaderEnvironment& environment, const terrain::TerrainVariantInputs& inputs, bool surfacePath, bool unlit, bool hasNormals){
+    // A terrain with no layer has nothing for a tier, the cap or a feature to act on but Macro Variation's
+    // tint of the base colour, so it draws the base material alone: llvmpipe's GL path (Mesa 23.2.1) dies
+    // in its fragment JIT on every tier and feature variant of a terrain without layers (spec Deviations)
+    if (inputs.layerCount == 0 && environment.terrainDebugView == 0){
+        return 0;
+    }
     const terrain::TerrainQuality tier = resolveTerrainTier(environment, inputs).quality;
     const terrain::TerrainTierInfo& info = terrain::terrainTierInfo(tier);
     const auto bit = [](const char* define){ return MaterialPbr::getDefineBit(define); };
@@ -456,6 +463,11 @@ bool RenderSystem::getTerrainDetailInfo(Entity entity, GpuTextureFormat& format,
     slices = static_cast<int>(it->second.sliceKeys.size());
     bytes = it->second.bytes;
     return true;
+}
+
+bool jasperengine::getTerrainDetailArrayInfo(Scene* scene, Entity entity, GpuTextureFormat& format, int& slices, uint64_t& bytes){
+    std::shared_ptr<RenderSystem> render = scene ? scene->getSystem<RenderSystem>() : nullptr;
+    return render && render->getTerrainDetailInfo(entity, format, slices, bytes);
 }
 
 bool RenderSystem::isTerrainMacroNormalReady(Entity entity){

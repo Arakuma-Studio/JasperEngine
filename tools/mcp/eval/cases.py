@@ -2215,6 +2215,21 @@ CASES = [
         "checks": {"calls": ["sample_terrain", {"tool": "sample_terrain", "args": {"points": [[0, 0]]}}]},
         "max_turns": 10,
     },
+    {
+        "id": "terrain_macro_without_layers",
+        "kind": "guard",
+        "what_happened": "Macro Variation on a terrain with no layer draws nothing; sample_terrain's issue says why, and the agent adds a layer instead of retuning the macro.",
+        "text_at_issue": "sample_terrain issues: macro_without_layers",
+        "source": "T3 (spec Deviations: a terrain with no layer draws its base material alone)",
+        "prompt": "I turned on Macro Variation on the terrain but I see no change. Fix it so it shows.",
+        "results": [
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"issues": [{"code": "macro_without_layers", "severity": "warning",
+                "message": "Macro Variation applies once the terrain has a layer: set_terrain_maps layers adds one."}]})},
+            {"tool": "set_terrain_maps", "result": ok("Set terrain maps (one undo step).", {"layers": [{"index": 0}]})},
+        ],
+        "checks": {"calls": ["sample_terrain", "set_terrain_maps"]},
+        "max_turns": 10,
+    },
     # -- T1 terrain (docs/specs/T1-terrain-authoring.md AC74) -----------------------------------
     {
         "id": "terrain_find_docs",

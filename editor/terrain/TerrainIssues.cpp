@@ -45,6 +45,10 @@ std::vector<editor::TerrainIssue> editor::TerrainIssues::check(TerrainComponent&
             TerrainIssueFix::RetryWrite, "Retry Write");
     }
 
+    // T3: a terrain with no layer draws its base material alone (spec Deviations)
+    if (terrain.macroMode != TerrainMacroMode::OFF && terrain.surfaceLayers.empty()){
+        add(issues, "macro_without_layers", S::Warning, "Macro Variation applies once the terrain has a layer: set_terrain_maps layers adds one.");
+    }
     if (terrain.heightMap.empty()){
         add(issues, "no_height_map", S::Error, "The terrain has no height map.", TerrainIssueFix::CreateTerrain, "Create Terrain...");
         return issues;

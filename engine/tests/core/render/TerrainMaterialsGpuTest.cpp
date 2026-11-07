@@ -665,6 +665,7 @@ namespace {
         bool limit;
         bool holes;
         VariantFeature feature;
+        terrain::TerrainDebugView debug = terrain::TerrainDebugView::SHADED;
     };
 
     std::vector<VariantCase> allVariantCases(){
@@ -680,6 +681,12 @@ namespace {
                     for (int f = static_cast<int>(VariantFeature::MACRO_NOISE); f <= static_cast<int>(VariantFeature::MACRO_NORMAL); f++){
                         cases.push_back({layers, lit, tier, true, false, static_cast<VariantFeature>(f)});
                     }
+                    // the Scene view's Terrain views (R42), which the editor draws on any terrain
+                    if (lit == LitQuality::STANDARD){
+                        for (terrain::TerrainDebugView view : {terrain::TerrainDebugView::LAYER_COUNT, terrain::TerrainDebugView::FETCH_COST, terrain::TerrainDebugView::HOLES}){
+                            cases.push_back({layers, lit, tier, true, true, VariantFeature::NONE, view});
+                        }
+                    }
                 }
             }
         }
@@ -689,10 +696,11 @@ namespace {
     std::string variantName(const ::testing::TestParamInfo<VariantCase>& info){
         static const char* const layerNames[] = {"NoLayers", "ColorLayers", "PbrLayers"};
         static const char* const featureNames[] = {"", "_MacroNoise", "_MacroBaseMap", "_Resample", "_Cliff", "_HeightBlend", "_MacroNormal"};
+        static const char* const viewNames[] = {"", "_LayerCountView", "_FetchCostView", "_HolesView"};
         const VariantCase& c = info.param;
         std::string name = std::string(layerNames[static_cast<int>(c.layers)]) + "_" + terrain::terrainQualityName(c.tier) +
                            (c.lit == LitQuality::HIGH ? "_LitHigh" : "_LitStandard") + (c.limit ? "_Limited" : "") +
-                           (c.holes ? "_Holes" : "") + featureNames[static_cast<int>(c.feature)];
+                           (c.holes ? "_Holes" : "") + featureNames[static_cast<int>(c.feature)] + viewNames[static_cast<int>(c.debug)];
         return name;
     }
 
@@ -712,6 +720,7 @@ TEST_P(TerrainVariantGpu, Draws){
     }
     scene.setLitQuality(c.lit);
     setTier(c.tier);
+    terrain::TerrainQualitySettings::setDebugView(c.debug);
     TerrainComponent& terrainComponent = component();
     terrainComponent.limitLayersPerPixel = c.limit;
     if (c.holes){

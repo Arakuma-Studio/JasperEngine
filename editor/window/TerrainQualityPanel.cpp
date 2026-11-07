@@ -72,6 +72,10 @@ std::vector<std::string> editor::terrainQualityWarnings(const TerrainComponent& 
     if (!terrainComponent.holeMap.empty() && !material.shader.empty()) {
         warnings.push_back("A custom shader that does not read TERRAIN_HOLES draws over the holes.");
     }
+    // a terrain with no layer draws its base material alone (spec Deviations)
+    if (terrainComponent.macroMode != TerrainMacroMode::OFF && terrainComponent.surfaceLayers.empty()) {
+        warnings.push_back("Macro Variation applies once the terrain has a layer.");
+    }
     if (terrainComponent.macroMode == TerrainMacroMode::BASE_MAP && material.baseColorTexture.empty()) {
         warnings.push_back("Macro Variation Base Map has no base colour texture to read: it has no effect.");
     }

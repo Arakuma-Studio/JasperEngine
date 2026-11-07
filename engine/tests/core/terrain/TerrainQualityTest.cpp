@@ -8,6 +8,7 @@
 #include "terrain/TerrainMacroNormal.h"
 #include "terrain/TerrainMaterialCost.h"
 #include "terrain/TerrainQuality.h"
+#include "component/TerrainComponent.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/MaterialPbr.h"
 
@@ -56,6 +57,31 @@ TEST(TerrainQuality, LayerLimitOnlyWhenItCuts) {
     inputs.limitLayers = false;
     inputs.layerCount = 9;
     EXPECT_EQ(jasperengine::RenderSystem::getTerrainDefineBits(environment, inputs, true, false, true) & limitBit, 0u) << "off is off";
+}
+
+// A terrain with no layer draws its base material alone at every tier and with every feature: no define,
+// and the narrow path (the tiers and features act on layers, and llvmpipe dies in those variants without one)
+TEST(TerrainQuality, NoLayersDrawTheBaseAlone) {
+    TerrainVariantInputs inputs;
+    inputs.limitLayers = true;
+    inputs.macro = true;
+    inputs.resample = true;
+    inputs.heightBlend = true;
+    inputs.macroNormal = true;
+    for (TerrainQuality tier : {TerrainQuality::HIGH, TerrainQuality::MEDIUM, TerrainQuality::LOW}) {
+        jasperengine::MeshShaderEnvironment environment;
+        environment.terrainForced = true;
+        environment.terrainForcedTier = tier;
+        inputs.layerCount = 0;
+        EXPECT_EQ(jasperengine::RenderSystem::getTerrainDefineBits(environment, inputs, true, false, true), 0u) << terrainQualityName(tier);
+        inputs.layerCount = 1;
+        EXPECT_NE(jasperengine::RenderSystem::getTerrainDefineBits(environment, inputs, true, false, true), 0u) << terrainQualityName(tier) << ", one layer";
+    }
+    jasperengine::TerrainComponent terrain;
+    terrain.macroMode = jasperengine::TerrainMacroMode::NOISE;
+    EXPECT_FALSE(jasperengine::hasTerrainSurfaceLayers(terrain)) << "no layer, Macro Variation on";
+    terrain.surfaceLayers.resize(1);
+    EXPECT_TRUE(jasperengine::hasTerrainSurfaceLayers(terrain)) << "a layer and Macro Variation";
 }
 
 TEST(TerrainQuality, Resolution) {
