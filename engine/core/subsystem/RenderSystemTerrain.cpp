@@ -433,51 +433,7 @@ void RenderSystem::destroyTerrainMacroNormal(Entity entity){
     }
 }
 
-// T3 R17: terrain outside the view casts. The second cut of a camera that owns shadows: the same
-// selection, ranges, eye and morph origin as its view's, with the frustum test replaced by "intersects
-// any active shadow camera of a light with a shadow slot". A node's level depends only on the range
-// spheres, so nodes in both cuts are identical and existing shadows do not move.
-bool RenderSystem::terrainNodeShadowSelect(TerrainComponent& terrainComponent, const Transform& transform, const Vector3& eye,
-                                           const std::vector<const LightCamera*>& shadowCameras, TerrainNode& node, int lodLevel, TerrainView& view){
-    node.currentRange = terrainComponent.ranges[lodLevel];
-    AABB box = getTerrainNodeAABB(transform, node);
-    if (!isTerrainNodeInSphere(eye, terrainComponent.ranges[lodLevel], box)){
-        return false;
-    }
-    bool seen = false;
-    for (const LightCamera* shadowCamera : shadowCameras){
-        if (isInsideCamera(shadowCamera->nearFar.y, shadowCamera->frustumPlanes, box)){
-            seen = true;
-            break;
-        }
-    }
-    if (!seen){
-        return true;
-    }
-
-    const auto append = [](InterleavedBuffer& buffer, const TerrainNode& selected){
-        buffer.addVector2(AttributeType::TERRAINNODEPOSITION, selected.position);
-        buffer.addFloat(AttributeType::TERRAINNODESIZE, selected.size);
-        buffer.addFloat(AttributeType::TERRAINNODERANGE, selected.currentRange);
-        buffer.addFloat(AttributeType::TERRAINNODERESOLUTION, selected.resolution);
-    };
-
-    if (lodLevel == 0 || !isTerrainNodeInSphere(eye, terrainComponent.ranges[lodLevel - 1], box)){
-        node.resolution = terrainComponent.resolution;
-        append(view.nodesbuffer[0], node);
-        return true;
-    }
-    for (int i = 0; i < 4; i++){
-        TerrainNode& child = terrainComponent.nodes[node.childs[i]];
-        if (!terrainNodeShadowSelect(terrainComponent, transform, eye, shadowCameras, child, lodLevel - 1, view)){
-            child.resolution = terrainComponent.resolution / 2;
-            child.currentRange = node.currentRange;
-            append(view.nodesbuffer[1], child);
-        }
-    }
-    return true;
-}
-
+// T3 R17: terrain outside the view casts (Auto: the tier's); RenderSystem::shadowTerrainCut selects it
 bool RenderSystem::terrainDrawsOffscreenShadows(const TerrainComponent& terrainComponent) const{
     switch (terrainComponent.offscreenShadows){
         case TerrainOffscreenShadows::ON: return true;
@@ -486,95 +442,6 @@ bool RenderSystem::terrainDrawsOffscreenShadows(const TerrainComponent& terrainC
     }
     const MeshShaderEnvironment environment = getMeshShaderEnvironment();
     return terrain::terrainTierInfo(resolveTerrainTier(environment, getTerrainVariantInputs(terrainComponent)).quality).offscreenShadowsAuto;
-}
-
-void RenderSystem::selectTerrainShadowCuts(const CameraShadows& target, const Transform& cameraTransform){
-    if (!scene->isComponentRegistered<TerrainComponent>()){
-        return;
-    }
-    auto terrains = scene->getComponentArray<TerrainComponent>();
-    if (terrains->size() == 0 && terrainShadowCuts.empty()){
-        return;
-    }
-
-    // the active shadow cameras of this camera's lights
-    std::vector<const LightCamera*> shadowCameras;
-    auto lights = scene->getComponentArray<LightComponent>();
-    for (size_t i = 0; hasShadows && i < lights->size(); i++){
-        const LightComponent& light = lights->getComponentFromIndex(i);
-        if (!light.enabled || !light.shadows || light.intensity <= 0 || light.shadowMapIndex < 0){
-            continue;
-        }
-        if (light.type == LightType::DIRECTIONAL){
-            if (light.shadowMapIndex >= MAX_SHADOW_ATLAS_SLOTS) continue;
-            const LightCameraSet& own = target.lightCameras[light.shadowMapIndex];
-            const unsigned int count = target.ownLightCameras ? own.numCascades : light.shadowCascades;
-            for (unsigned int c = 0; c < count && c < MAX_SHADOWCASCADES; c++){
-                shadowCameras.push_back(target.ownLightCameras ? &own.cameras[c] : &light.cameras[c]);
-            }
-        }else{
-            const int count = light.type == LightType::POINT ? 6 : 1;
-            for (int c = 0; c < count; c++){
-                shadowCameras.push_back(&light.cameras[c]);
-            }
-        }
-    }
-
-    for (size_t i = 0; i < terrains->size(); i++){
-        TerrainComponent& terrainComponent = terrains->getComponentFromIndex(i);
-        const Entity entity = terrains->getEntity(i);
-        const std::pair<Entity, int> key(entity, target.terrainView);
-        const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-        const Transform* transform = scene->findComponent<Transform>(entity);
-        const bool wanted = !shadowCameras.empty() && mesh && transform && mesh->castShadows && terrainComponent.enabled &&
-                            terrainComponent.heightMapLoaded && !terrainComponent.nodes.empty() && terrainDrawsOffscreenShadows(terrainComponent);
-        if (!wanted){
-            // off: the view's cut draws, as before T3, and the buffers go
-            terrainShadowCuts.erase(key);
-            continue;
-        }
-
-        TerrainShadowCut& cut = terrainShadowCuts[key];
-        if (cut.capacity != terrainComponent.nodes.size()){
-            for (int s = 0; s < 2; s++){
-                InterleavedBuffer& buffer = cut.view.nodesbuffer[s];
-                buffer.clear();
-                buffer.addAttribute(AttributeType::TERRAINNODEPOSITION, 2, true);
-                buffer.addAttribute(AttributeType::TERRAINNODESIZE, 1, true);
-                buffer.addAttribute(AttributeType::TERRAINNODERANGE, 1, true);
-                buffer.addAttribute(AttributeType::TERRAINNODERESOLUTION, 1, true);
-                buffer.setRenderAttributes(true);
-                buffer.setInstanceBuffer(true);
-                buffer.setUsage(BufferUsage::STREAM);
-                JE_GPU_ALLOC_SCOPE(Terrain, "Terrain");
-                buffer.getRender()->createBuffer(terrainComponent.nodes.size() * buffer.getStride(), buffer.getData(), buffer.getType(), buffer.getUsage());
-            }
-            cut.capacity = terrainComponent.nodes.size();
-        }
-        for (int s = 0; s < 2; s++){
-            cut.view.nodesbuffer[s].clear();
-        }
-        for (int n = 0; n < terrainComponent.rootGridSize * terrainComponent.rootGridSize; n++){
-            terrainNodeShadowSelect(terrainComponent, *transform, cameraTransform.worldPosition, shadowCameras,
-                                    terrainComponent.nodes[terrainComponent.grid[n]], terrainComponent.levels - 1, cut.view);
-        }
-        cut.view.needUpdateNodesBuffer = true;
-        cut.view.nodesEyePos = Vector3(cameraTransform.worldPosition.x, cameraTransform.worldPosition.y, cameraTransform.worldPosition.z);
-    }
-
-    // a terrain removed took its cut's reason with it
-    for (auto it = terrainShadowCuts.begin(); it != terrainShadowCuts.end();){
-        if (it->first.second == target.terrainView && !scene->findComponent<TerrainComponent>(it->first.first)){
-            it = terrainShadowCuts.erase(it);
-        }else{
-            ++it;
-        }
-    }
-}
-
-TerrainView* RenderSystem::terrainShadowCut(Entity entity){
-    auto it = terrainShadowCuts.find(std::pair<Entity, int>(entity, mainTerrainView()));
-    return it != terrainShadowCuts.end() ? &it->second.view : nullptr;
 }
 
 bool RenderSystem::getTerrainDetailInfo(Entity entity, GpuTextureFormat& format, int& slices, uint64_t& bytes) const{
@@ -588,16 +455,8 @@ bool RenderSystem::getTerrainDetailInfo(Entity entity, GpuTextureFormat& format,
     return true;
 }
 
-bool RenderSystem::hasTerrainShadowCut(Entity entity) const{
-    for (const auto& entry : terrainShadowCuts){
-        if (entry.first.first == entity){
-            return true;
-        }
-    }
-    return false;
-}
-
 bool RenderSystem::isTerrainMacroNormalReady(Entity entity){
     auto it = terrainMacroNormals.find(entity);
     return it != terrainMacroNormals.end() && it->second.render.isCreated();
 }
+

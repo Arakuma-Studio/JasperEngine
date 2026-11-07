@@ -1100,6 +1100,17 @@ RenderSystem::ShadowTerrainCut& RenderSystem::shadowTerrainCut(Entity entity, Te
         return cut;
     }
 
+    // T3 R17: with Off-screen Shadows, the camera's selection (its eye, its ranges) with the slot's
+    // frustum in place of the camera's, so terrain outside the view casts and a node in both draws alike
+    if (terrainDrawsOffscreenShadows(terrain)){
+        cut.eye = terrainViewData(entity, terrain, mainTerrainView()).nodesEyePos;
+        for (int i = 0; i < terrain.rootGridSize * terrain.rootGridSize; i++){
+            selectShadowTerrainNode(terrain, transform, cut.eye, shadowCamera.nearFar.y, shadowCamera.frustumPlanes,
+                                    terrain.nodes[terrain.grid[i]], terrain.levels - 1, cut);
+        }
+        return cut;
+    }
+
     // the camera's cut, node by node against the slot's frustum
     TerrainView& view = terrainViewData(entity, terrain, mainTerrainView());
     cut.eye = view.nodesEyePos;
@@ -1500,7 +1511,6 @@ void RenderSystem::prepareCameraShadows(CameraShadows& target, const CameraCompo
         target.pointAtlas = &target.ownPoint;
         target.drawPoint = true;
     }
-    selectTerrainShadowCuts(target, cameraTransform);
 }
 void RenderSystem::buildCameraShadowInstances(CameraShadows& target){
     if (!target.drawProjective || !target.ownShadowInstances)

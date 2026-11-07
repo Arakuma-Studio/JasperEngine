@@ -10125,14 +10125,10 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
         // passes cull as the colour pass)
         const bool mirroredDraw = isMirroredDraw(mesh, objectModel(transform));
 
-        // the depth pass renders the view camera's selection (view 0 in draw()); a shadow map, the cut
-        // that reaches past the view (T3 R17)
+        // the depth pass renders the view camera's selection (view 0 in draw())
         TerrainView* terrainNodes = nullptr;
         if (terrain){
-            terrainNodes = pipelineType == PIP_SHADOW_DEPTH ? terrainShadowCut(entity) : nullptr;
-            if (!terrainNodes){
-                terrainNodes = &terrainViewData(entity, *terrain, mainTerrainView());
-            }
+            terrainNodes = &terrainViewData(entity, *terrain, mainTerrainView());
             updateTerrainNodesBuffer(*terrainNodes);
             // (as drawMesh: never the previous upload's nodes)
             if (terrainNodes->needUpdateNodesBuffer)

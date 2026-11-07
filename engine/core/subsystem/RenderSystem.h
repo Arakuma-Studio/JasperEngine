@@ -2366,23 +2366,11 @@ namespace jasperengine{
 			double lastUpload = -1000.0;
 		};
 		std::unordered_map<Entity, TerrainMacroNormalMap> terrainMacroNormals;
-		// T3 R17 (RenderSystemTerrain.cpp): the second CDLOD cut of a camera that owns shadows, by terrain
-		// and the camera's terrain view; allocated on first use and freed when off
-		struct TerrainShadowCut{
-			TerrainView view;
-			size_t capacity = 0;
-		};
-		std::map<std::pair<Entity, int>, TerrainShadowCut> terrainShadowCuts;
-		bool terrainNodeShadowSelect(TerrainComponent& terrain, const Transform& transform, const Vector3& eye,
-		                             const std::vector<const LightCamera*>& shadowCameras, TerrainNode& node, int lodLevel, TerrainView& view);
+		// T3 R17 (RenderSystemTerrain.cpp): Off-screen Shadows at the terrain's tier, which shadowTerrainCut reads
 		bool terrainDrawsOffscreenShadows(const TerrainComponent& terrain) const;
-		void selectTerrainShadowCuts(const CameraShadows& target, const Transform& cameraTransform);
-		TerrainView* terrainShadowCut(Entity entity);
 	public:
 		// T3 R43: what a terrain's detail array came to; false when it has none
 		bool getTerrainDetailInfo(Entity entity, GpuTextureFormat& format, int& slices, uint64_t& bytes) const;
-		// T3 R17's test: whether a terrain has a shadow cut for its camera, its buffers allocated
-		bool hasTerrainShadowCut(Entity entity) const;
 		bool isTerrainMacroNormalReady(Entity entity);
 	private:
 		// the Holes view's classes (T3 R30), made when the view is on

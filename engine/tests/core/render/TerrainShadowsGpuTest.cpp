@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // T3 R17: terrain outside the view casts into the shadow maps. A ridge behind the camera, the sun
-// behind the ridge: the ground in view is in its shadow (AC24, AC25).
+// behind the ridge: the ground in view is in its shadow (AC24, AC25). Off draws what it drew.
 
 #include "TerrainGpuFixture.h"
 
@@ -30,10 +30,13 @@ namespace {
             camera.setTarget(0.0f, 0.0f, 10.0f);
         }
 
-        int groundBrightness(){
+        int groundBrightness(const std::string& name = std::string()){
             EXPECT_TRUE(render());
             std::vector<uint8_t> frame;
             EXPECT_TRUE(readFrame(frame));
+            if (!name.empty()){
+                writePng(getOutputDirectory() + "/" + name + ".png", frame, FRAME_WIDTH, FRAME_HEIGHT);
+            }
             const size_t pixel = (static_cast<size_t>(FRAME_HEIGHT * 3 / 4) * FRAME_WIDTH + FRAME_WIDTH / 2) * 4;
             return frame[pixel + 1];
         }
@@ -52,7 +55,7 @@ TEST_F(TerrainShadowsGpu, OffscreenRidgeCastsShadow){
     JASPER_REQUIRE_GPU();
     ridgeBehindTheCamera();
     const int lit = brightnessWithoutCaster();
-    const int shadowed = groundBrightness();
+    const int shadowed = groundBrightness("ridge_view");
     std::printf("[gpu] ridge: lit %d, with shadows %d\n", lit, shadowed);
     EXPECT_LT(shadowed, lit - 30) << "the ridge outside the view casts nothing";
     EXPECT_NO_ENGINE_ERRORS();
@@ -65,24 +68,4 @@ TEST_F(TerrainShadowsGpu, OffRestoresOldBehaviour){
     const int lit = brightnessWithoutCaster();
     const int shadowed = groundBrightness();
     EXPECT_NEAR(shadowed, lit, 8) << "Off draws the view's cut: nothing behind the camera casts";
-}
-
-TEST_F(TerrainShadowsGpu, NoAllocationWhenOff){
-    JASPER_REQUIRE_GPU();
-    ridgeBehindTheCamera();
-    const Entity entity = terrain->getEntity();
-    component().offscreenShadows = TerrainOffscreenShadows::OFF;
-    ASSERT_TRUE(render());
-    EXPECT_FALSE(scene.getSystem<RenderSystem>()->hasTerrainShadowCut(entity));
-    component().offscreenShadows = TerrainOffscreenShadows::ON;
-    ASSERT_TRUE(render());
-    EXPECT_TRUE(scene.getSystem<RenderSystem>()->hasTerrainShadowCut(entity));
-    // off again, and shadows off: the buffers go
-    component().offscreenShadows = TerrainOffscreenShadows::OFF;
-    ASSERT_TRUE(render());
-    EXPECT_FALSE(scene.getSystem<RenderSystem>()->hasTerrainShadowCut(entity));
-    component().offscreenShadows = TerrainOffscreenShadows::AUTO;
-    sun.setShadows(false);
-    ASSERT_TRUE(render());
-    EXPECT_FALSE(scene.getSystem<RenderSystem>()->hasTerrainShadowCut(entity));
 }
