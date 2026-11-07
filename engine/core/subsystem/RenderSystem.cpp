@@ -470,16 +470,21 @@ namespace {
     }
 
     // the custom blocks of a submesh's shaders: its material's parameters, else the mesh's
-    // shader uniforms (forks set on the component), else the manifest defaults
-    void writeSubmeshCustomUniforms(const MeshComponent& mesh, Submesh& submesh){
-        const ShaderUniformValues& values = submesh.material.shaderParams;
-        const ShaderManifest* manifest = submesh.manifest.get();
+    // shader uniforms (forks set on the component), else the scene's values for its default
+    // shader (when the submesh draws with it), else the manifest defaults
+    void writeSubmeshCustomUniforms(const Scene* scene, const MeshComponent& mesh, Submesh& submesh){
+        UniformChain chain;
+        chain.values = &submesh.material.shaderParams;
+        chain.fallback = &mesh.shaderUniforms;
+        // a material with a shader of its own never inherits the scene's
+        chain.sceneDefault = submesh.material.shader.empty() ? scene->getInheritedShaderUniforms(ShaderType::MESH, mesh.customShader.path) : nullptr;
+        chain.manifest = submesh.manifest.get();
         // members bound to a global (Material::shaderGlobalBindings) take its current value
-        const ShaderGlobalBindings* bindings = submesh.material.shaderGlobalBindings.empty() ? nullptr : &submesh.material.shaderGlobalBindings;
-        submesh.customVSParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
-        submesh.customFSParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
-        submesh.customVSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
-        submesh.customFSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
+        chain.bindings = submesh.material.shaderGlobalBindings.empty() ? nullptr : &submesh.material.shaderGlobalBindings;
+        submesh.customVSParams.writeValues(chain);
+        submesh.customFSParams.writeValues(chain);
+        submesh.customVSDepthParams.writeValues(chain);
+        submesh.customFSDepthParams.writeValues(chain);
         // the extra pass: its own parameters, else its manifest's defaults (not while a component
         // copy still shares the original's: its load makes its own and writes that one)
         if (submesh.extraPass && submesh.extraPass.use_count() == 1){
@@ -490,7 +495,7 @@ namespace {
     }
 
     // the mesh blocks of both forks, from whichever pass draws first (depth runs before color)
-    void writeCustomUniforms(MeshComponent& mesh){
+    void writeCustomUniforms(const Scene* scene, MeshComponent& mesh){
         // a global a material binds changed since its blocks were written
         const uint64_t globalsVersion = ShaderGlobals::getVersion();
         if (mesh.globalsVersionSeen != globalsVersion){
@@ -504,31 +509,37 @@ namespace {
             return;
 
         for (int i = 0; i < mesh.numSubmeshes; i++){
-            writeSubmeshCustomUniforms(mesh, mesh.submeshes[i]);
+            writeSubmeshCustomUniforms(scene, mesh, mesh.submeshes[i]);
         }
         mesh.needUpdateShaderUniforms = false;
     }
 
     // both stages of a single-block component, from its values, the globals it binds and its
     // manifest defaults (globalsVersionSeen: the ShaderGlobals version they were written with)
+    // sceneDefault: the scene's values for its default shader when the component draws with it
     void writeComponentUniforms(CustomUniformBlock& vsBlock, CustomUniformBlock& fsBlock, const ShaderUniformValues& values,
-                                const ShaderManifest* manifest, const ShaderGlobalBindings& bindings, uint64_t& globalsVersionSeen){
-        const ShaderGlobalBindings* bound = bindings.empty() ? nullptr : &bindings;
-        vsBlock.writeValues(values, nullptr, manifest, bound);
-        fsBlock.writeValues(values, nullptr, manifest, bound);
+                                const ShaderManifest* manifest, const ShaderUniformValues* sceneDefault,
+                                const ShaderGlobalBindings& bindings, uint64_t& globalsVersionSeen){
+        UniformChain chain;
+        chain.values = &values;
+        chain.sceneDefault = sceneDefault;
+        chain.manifest = manifest;
+        chain.bindings = bindings.empty() ? nullptr : &bindings;
+        vsBlock.writeValues(chain);
+        fsBlock.writeValues(chain);
         globalsVersionSeen = ShaderGlobals::getVersion();
     }
 
     // both stages of a single-block component with manifest defaults, rewritten first when
     // its values changed (or a global it binds did)
     void applyComponentUniforms(ObjectRender& render, CustomUniformBlock& vsBlock, CustomUniformBlock& fsBlock,
-                                const ShaderUniformValues& values, const ShaderManifest* manifest, bool& needUpdate,
-                                const ShaderGlobalBindings& bindings, uint64_t& globalsVersionSeen,
+                                const ShaderUniformValues& values, const ShaderManifest* manifest, const ShaderUniformValues* sceneDefault,
+                                bool& needUpdate, const ShaderGlobalBindings& bindings, uint64_t& globalsVersionSeen,
                                 float frameTime, const Vector2& resolution){
         if (ShaderGlobals::isOutdated(bindings, globalsVersionSeen))
             needUpdate = true;
         if (needUpdate){
-            writeComponentUniforms(vsBlock, fsBlock, values, manifest, bindings, globalsVersionSeen);
+            writeComponentUniforms(vsBlock, fsBlock, values, manifest, sceneDefault, bindings, globalsVersionSeen);
             needUpdate = false;
         }
         applyCustomUniforms(render, vsBlock, frameTime, resolution);
@@ -6848,7 +6859,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         // the material's parameters, the mesh's shader uniforms, the manifest defaults
         mesh.submeshes[i].customVSParams.resolve(shaderData, "u_vs_customParams");
         mesh.submeshes[i].customFSParams.resolve(shaderData, "u_fs_customParams");
-        writeSubmeshCustomUniforms(mesh, mesh.submeshes[i]);
+        writeSubmeshCustomUniforms(scene, mesh, mesh.submeshes[i]);
 
         // what the binding below takes stand-ins for (noteTextureBinding)
         const TextureBindMark bindMark = markTextureBinding();
@@ -9936,7 +9947,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 #endif
 
         updateMeshBuffers(mesh);
-        writeCustomUniforms(mesh);
+        writeCustomUniforms(scene, mesh);
 
         TerrainView* terrainNodes = nullptr;
         if (terrain){
@@ -10389,7 +10400,7 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
         }
 
         updateMeshBuffers(mesh);
-        writeCustomUniforms(mesh);
+        writeCustomUniforms(scene, mesh);
 
         // a mirroring model matrix draws with the face winding reversed (the shadow and depth
         // passes cull as the colour pass)
@@ -11976,6 +11987,33 @@ void RenderSystem::needUpdatePostProcessUniforms(){
     postProcessNeedUpdateUniforms = true;
 }
 
+namespace {
+    // the components of a type without a shader of their own: they draw with the scene default
+    template<typename T>
+    void flagInheritedUniforms(Scene* scene){
+        auto components = scene->getComponentArray<T>();
+        for (size_t i = 0; i < components->size(); i++){
+            T& component = components->getComponentFromIndex(i);
+            if (component.customShader.empty())
+                component.needUpdateShaderUniforms = true;
+        }
+    }
+}
+
+void RenderSystem::needUpdateDefaultShaderUniforms(ShaderType type){
+    switch (type){
+        case ShaderType::MESH:   flagInheritedUniforms<MeshComponent>(scene); break;
+        case ShaderType::UI:     flagInheritedUniforms<UIComponent>(scene); break;
+        case ShaderType::SKYBOX: flagInheritedUniforms<SkyboxComponent>(scene); break;
+        case ShaderType::POINTS: flagInheritedUniforms<PointsComponent>(scene); break;
+        case ShaderType::LINES:
+            flagInheritedUniforms<LineRendererComponent>(scene);
+            flagInheritedUniforms<TrailRendererComponent>(scene);
+            break;
+        default: break;
+    }
+}
+
 void RenderSystem::needUpdatePostProcessing(){
     postProcessingDirty = true;
 }
@@ -12612,6 +12650,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     ui.customVSParams.resolve(shaderData, "u_vs_customParams");
     ui.customFSParams.resolve(shaderData, "u_fs_customParams");
     writeComponentUniforms(ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(),
+                           scene->getInheritedShaderUniforms(ShaderType::UI, ui.customShader.path),
                            ui.shaderGlobalBindings, ui.globalsVersionSeen);
     ui.needUpdateShaderUniforms = false;
 
@@ -12744,7 +12783,8 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
         if (ui.slotFSTextParams >= 0){
             render.applyUniformBlock(ui.slotFSTextParams, sizeof(float) * 16, ui.textParams);
         }
-        applyComponentUniforms(render, ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(), ui.needUpdateShaderUniforms,
+        applyComponentUniforms(render, ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(),
+                               scene->getInheritedShaderUniforms(ShaderType::UI, ui.customShader.path), ui.needUpdateShaderUniforms,
                                ui.shaderGlobalBindings, ui.globalsVersionSeen, frameTime, passResolution);
         applyFrameBlock(render, ui.libraryBindings);
         render.draw(0, ui.vertexCount, 1);
@@ -12856,6 +12896,7 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
     points.customVSParams.resolve(shaderData, "u_vs_customParams");
     points.customFSParams.resolve(shaderData, "u_fs_customParams");
     writeComponentUniforms(points.customVSParams, points.customFSParams, points.shaderUniforms, points.shaderManifest.get(),
+                           scene->getInheritedShaderUniforms(ShaderType::POINTS, points.customShader.path),
                            points.shaderGlobalBindings, points.globalsVersionSeen);
     points.needUpdateShaderUniforms = false;
 
@@ -13137,6 +13178,7 @@ bool RenderSystem::loadRibbonRender(Entity entity, T& component, uint16_t pipeli
     component.customVSParams.resolve(shaderData, "u_vs_customParams");
     component.customFSParams.resolve(shaderData, "u_fs_customParams");
     writeComponentUniforms(component.customVSParams, component.customFSParams, component.shaderUniforms, component.shaderManifest.get(),
+                           scene->getInheritedShaderUniforms(ShaderType::LINES, component.customShader.path),
                            component.shaderGlobalBindings, component.globalsVersionSeen);
     component.needUpdateShaderUniforms = false;
 
@@ -13283,6 +13325,7 @@ bool RenderSystem::drawRibbon(T& component, const Matrix4& modelMatrix, const Ve
     params.viewport = Vector4(passResolution.x, passResolution.y, 0.0f, 0.0f);
     render.applyUniformBlock(component.slotVSParams, sizeof(vs_lines_ribbon_params_t), &params);
     applyComponentUniforms(render, component.customVSParams, component.customFSParams, component.shaderUniforms, component.shaderManifest.get(),
+                           scene->getInheritedShaderUniforms(ShaderType::LINES, component.customShader.path),
                            component.needUpdateShaderUniforms, component.shaderGlobalBindings, component.globalsVersionSeen, frameTime, passResolution);
     applyFrameBlock(render, component.libraryBindings);
     render.draw(0, ribbon.indexCount, 1);
@@ -13506,6 +13549,7 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
     lines.customVSParams.resolve(shaderData, "u_vs_customParams");
     lines.customFSParams.resolve(shaderData, "u_fs_customParams");
     writeComponentUniforms(lines.customVSParams, lines.customFSParams, lines.shaderUniforms, lines.shaderManifest.get(),
+                           scene->getInheritedShaderUniforms(ShaderType::LINES, lines.customShader.path),
                            lines.shaderGlobalBindings, lines.globalsVersionSeen);
     lines.needUpdateShaderUniforms = false;
 
@@ -13639,7 +13683,8 @@ bool RenderSystem::drawPoints(Entity entity, PointsComponent& points, Transform&
         vsParams.mvpMatrix = objectMVP(transform);
         vsParams.pointScale = computePointsScale(camera, getPointsViewportHeight(camera));
         render.applyUniformBlock(points.slotVSParams, sizeof(vs_points_params_t), &vsParams);
-        applyComponentUniforms(render, points.customVSParams, points.customFSParams, points.shaderUniforms, points.shaderManifest.get(), points.needUpdateShaderUniforms,
+        applyComponentUniforms(render, points.customVSParams, points.customFSParams, points.shaderUniforms, points.shaderManifest.get(),
+                               scene->getInheritedShaderUniforms(ShaderType::POINTS, points.customShader.path), points.needUpdateShaderUniforms,
                                points.shaderGlobalBindings, points.globalsVersionSeen, frameTime, passResolution);
         applyFrameBlock(render, points.libraryBindings);
         applySceneInputs(render, points.libraryBindings);
@@ -13740,7 +13785,8 @@ bool RenderSystem::drawLines(Entity entity, LineRendererComponent& lines, Transf
         }else{
             render.applyUniformBlock(lines.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
         }
-        applyComponentUniforms(render, lines.customVSParams, lines.customFSParams, lines.shaderUniforms, lines.shaderManifest.get(), lines.needUpdateShaderUniforms,
+        applyComponentUniforms(render, lines.customVSParams, lines.customFSParams, lines.shaderUniforms, lines.shaderManifest.get(),
+                               scene->getInheritedShaderUniforms(ShaderType::LINES, lines.customShader.path), lines.needUpdateShaderUniforms,
                                lines.shaderGlobalBindings, lines.globalsVersionSeen, frameTime, passResolution);
         applyFrameBlock(render, lines.libraryBindings);
         render.draw(0, segments.size() * 2, 1);
@@ -13869,6 +13915,7 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
     sky.customVSParams.resolve(shaderData, "u_vs_customParams");
     sky.customFSParams.resolve(shaderData, "u_fs_customParams");
     writeComponentUniforms(sky.customVSParams, sky.customFSParams, sky.shaderUniforms, sky.shaderManifest.get(),
+                           scene->getInheritedShaderUniforms(ShaderType::SKYBOX, sky.customShader.path),
                            sky.shaderGlobalBindings, sky.globalsVersionSeen);
     sky.needUpdateShaderUniforms = false;
 
@@ -13941,7 +13988,8 @@ bool RenderSystem::drawSky(SkyboxComponent& sky, PipelineType pipType, const Mat
         }
         render.applyUniformBlock(sky.slotVSParams, sizeof(float) * 16, (void*)&viewProjection);
         render.applyUniformBlock(sky.slotFSParams, sizeof(float) * 4, &sky.color);
-        applyComponentUniforms(render, sky.customVSParams, sky.customFSParams, sky.shaderUniforms, sky.shaderManifest.get(), sky.needUpdateShaderUniforms,
+        applyComponentUniforms(render, sky.customVSParams, sky.customFSParams, sky.shaderUniforms, sky.shaderManifest.get(),
+                               scene->getInheritedShaderUniforms(ShaderType::SKYBOX, sky.customShader.path), sky.needUpdateShaderUniforms,
                                sky.shaderGlobalBindings, sky.globalsVersionSeen, frameTime, passResolution);
         applyFrameBlock(render, sky.libraryBindings);
         render.draw(0, 36, 1);

@@ -154,6 +154,8 @@ Shipping of the editor (S30, `docs/shipping.md`; editor-only: never part of a ga
 | [miniz](https://github.com/richgel999/miniz) | 3.0.2 | `libs/miniz/` (`LICENSE`, `README.jasper.md`) | MIT | zip reading and writing: player runtime archives, APK and AAB assembly, the Project Hub's zip import (S27) |
 | [bundletool](https://github.com/google/bundletool) | 1.17.2 (`bundletool-all-1.17.2.jar`, SHA-256 `2d4ad908faea64047c1cc9cb747e6aa667c6ab192e09607bd16b67246a8cd6ae`) | not vendored: downloaded by the editor into its cache on the first Android App Bundle build (`editor/platform/AndroidTools.cpp`) and checked against that hash | Apache-2.0 | building `.aab` files from a prebuilt Android player |
 
+The code editor's line diff (`editor/util/LineDiff.cpp`, from Doriax) follows the clean-up passes of [Visual Studio Code](https://github.com/microsoft/vscode)'s line diff (`defaultLinesDiffComputer`: joining and sliding changes over repeated lines, better boundaries, joining across short matches; MIT, Copyright (c) Microsoft Corporation), so its change markers land where VS Code's do; the file names that origin.
+
 Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, Copyright (c) 2026 Gamecrafters Guild Limited and contributors), used by the OpenEngine port (`docs/specs/`). Each adapted file names its source in its header.
 
 | Code | Location | Used for |
