@@ -642,7 +642,11 @@ namespace {
     // mode or fill path)
     std::vector<Case> effectCases() {
         std::vector<Case> cases;
-        for (const EffectDef* d : TitleEffectRegistry::get().effects()) cases.push_back({d->type, d->type, Json::object()});
+        // S80's ten core effects (S83's catalogue has its own goldens and limits: TitleFxCatalogueGpuTest)
+        for (const char* type : {"outer_glow", "inner_glow", "drop_shadow", "inner_shadow", "outline", "color_overlay", "gradient_overlay",
+                                 "pattern_overlay", "gaussian_blur", "adjust"}) {
+            cases.push_back({type, type, Json::object()});
+        }
         auto add = [&](const char* name, const char* type, Json params) { cases.push_back({name, type, std::move(params)}); };
         add("outer_glow-precise", "outer_glow", Json{{"technique", "precise"}, {"spread", 0.4}, {"size", 24}});
         add("outer_glow-add-gradient", "outer_glow", Json{{"mode", "add"}, {"fill", "gradient"}, {"angle", 45}, {"intensity", 2.5}});

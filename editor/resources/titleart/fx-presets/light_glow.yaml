@@ -1,0 +1,12 @@
+# Light Glow presets (docs/specs/S83-title-effects-generators.md §6.8). `cost` names a preset's
+# class when it is heavier than the type's.
+presets:
+  - id: soft_bloom
+    name: Soft Bloom
+    aliases: [bloom, soft glow]
+    params: {radius: 120, falloff: 70, exposure: 0.5}
+  - id: jackpot_flash
+    name: Jackpot Flash (大当り)
+    aliases: [jackpot, flash, 大当り]
+    cost: C4
+    params: {exposure: 3, radius: 400, highlight_shift: 80, core_white: 50}

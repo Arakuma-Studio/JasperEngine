@@ -1,0 +1,10 @@
+# Ink Brush Stroke presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: sumi
+    name: Sumi (墨)
+    aliases: [墨, sumi-e, calligraphy]
+    params: {bristles: 0.7, dry: 0.5}
+  - id: marker
+    name: Marker
+    aliases: [felt pen, sharpie]
+    params: {bristles: 0.1, roughness: 0.1}

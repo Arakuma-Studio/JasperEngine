@@ -1,0 +1,19 @@
+# Halftone presets (docs/specs/S83-title-effects-generators.md §6.8); comic_dots and ben_day are
+# the Comic Dots and Ben-Day Dots recipes'.
+presets:
+  - id: comic_dots
+    name: Comic Dots
+    aliases: [comic, manga tone, トーン]
+    params: {source: luminance, dot: round, size: 6, color: "#000000", mode: multiply}
+  - id: ben_day
+    name: Ben-Day Dots
+    aliases: [ben-day, pop art, lichtenstein dots]
+    params: {source: uniform, size: 8, dot_scale: 0.6, color: "#ff2a6d"}
+  - id: line_screen
+    name: Line Screen
+    aliases: [lines, engraving]
+    params: {dot: line, angle: 45}
+  - id: dissolve
+    name: Dissolve
+    aliases: [halftone dissolve, dot fade]
+    params: {source: alpha, fade: 60}

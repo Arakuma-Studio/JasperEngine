@@ -1,0 +1,6 @@
+# Motion Blur presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: speed
+    name: Speed
+    aliases: [speed trail, fast]
+    params: {distance: 120, mode: trail}

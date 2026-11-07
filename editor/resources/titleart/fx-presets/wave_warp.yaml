@@ -1,0 +1,10 @@
+# Wave Warp presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: heat_haze
+    name: Heat Haze
+    aliases: [haze, heat shimmer, 陽炎]
+    params: {type: turbulent, amplitude: 3, wavelength: 40}
+  - id: ripple
+    name: Ripple
+    aliases: [water ripple, 波紋]
+    params: {type: radial, amplitude: 12}

@@ -18,10 +18,12 @@
 #include "ImageCompare.h"
 #include "TestPaths.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <set>
 #include <sstream>
 
@@ -82,7 +84,7 @@ TEST(TitleEffectCatalogTest, EveryDefinitionIsComplete) {
     for (const std::string& type : CORE_EFFECTS) EXPECT_TRUE(effects.count(type)) << type << " is not registered";
     EXPECT_TRUE(generators.count("fill"));
     EXPECT_TRUE(generators.count("pattern_fill"));
-    EXPECT_EQ(effects.size(), CORE_EFFECTS.size()) << "S80 registers its ten core effects (S83 adds the rest)";
+    EXPECT_GE(effects.size(), CORE_EFFECTS.size()) << "S80's ten core effects (S83 adds its catalogue: TitleFxCatalogTest)";
 }
 
 TEST(TitleEffectCatalogTest, ChecksCatchBrokenDefinitions) {
@@ -232,17 +234,23 @@ TEST(TitleEffectCatalogTest, CatalogueMatchesTheSpec) {
     EXPECT_EQ(p.number("scale"), 140);
 
     // S80's twelve definitions at defaults: C0 / F0 for the overlays, adjust and the generators,
-    // C1 / F1 for the glows, shadows, outline and blur; before S83 lands no live variant
+    // C1 / F1 for the glows, shadows, outline and blur; S83 §6.12's live variants on five of them
+    const std::map<std::string, LiveKind> live = {{"outer_glow", LiveKind::ScaleSplit}, {"drop_shadow", LiveKind::ScaleSplit},
+                                                  {"outline", LiveKind::ScaleSplit}, {"color_overlay", LiveKind::Kernel},
+                                                  {"gradient_overlay", LiveKind::Kernel}};
     for (const EffectDef* d : TitleEffectRegistry::get().effects()) {
+        if (std::find(CORE_EFFECTS.begin(), CORE_EFFECTS.end(), std::string(d->type)) == CORE_EFFECTS.end()) continue;
         const bool cheap = std::string(d->type) == "color_overlay" || std::string(d->type) == "gradient_overlay" ||
                            std::string(d->type) == "pattern_overlay" || std::string(d->type) == "adjust";
         EXPECT_EQ(d->costClass, cheap ? CostClass::C0 : CostClass::C1) << d->type;
         EXPECT_EQ(d->fallback, cheap ? FallbackClass::F0 : FallbackClass::F1) << d->type;
-        EXPECT_EQ(d->live.kind, LiveKind::None) << d->type;
+        auto l = live.find(d->type);
+        EXPECT_EQ(d->live.kind, l == live.end() ? LiveKind::None : l->second) << d->type;
         for (const ParamDef& param : d->params) {
             const bool stepped = param.kind == ParamKind::Enum || param.kind == ParamKind::Bool || param.kind == ParamKind::Integer ||
                                  param.kind == ParamKind::Asset;
-            EXPECT_EQ(param.anim, stepped ? FxAnim::Step : FxAnim::Rerender) << d->type << "." << param.key;
+            const bool isLive = std::any_of(d->live.params.begin(), d->live.params.end(), [&](const char* k) { return std::string(k) == param.key; });
+            EXPECT_EQ(param.anim, isLive ? FxAnim::Live : stepped ? FxAnim::Step : FxAnim::Rerender) << d->type << "." << param.key;
         }
     }
 }

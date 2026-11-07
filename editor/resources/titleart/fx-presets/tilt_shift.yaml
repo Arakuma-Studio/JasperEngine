@@ -1,0 +1,6 @@
+# Tilt-Shift Blur presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: miniature
+    name: Miniature
+    aliases: [miniature, toy town, ミニチュア]
+    params: {blur: 24, width: 120}

@@ -407,7 +407,8 @@ std::string titleart::titleEffectDocsMarkdown(const TitleEffectRegistry& registr
     out += "`fx:<type>.<param>` (`fx:outer_glow.size`), the names exposed parameters and Lua use. A generator is a layer:\n";
     out += "`{op: \"add_layer\", type: \"generator\", generator: \"<type>\"}`, its params `gen.<param>`.\n\n";
     out += "Classes: cost C0 (trivial) to C4 (bake only); 8-bit F0 to F2 (how closely the RGBA8 fallback agrees);\n";
-    out += "glyph atlas safe, approximate or unsafe (S81's per-glyph rendering); animation `rerender` (smooth) or `step`;\n";
+    out += "glyph atlas safe, approximate or unsafe (S81's per-glyph rendering); animation `live` (plays per frame through the\n";
+    out += "live variant), `rerender` (smooth), `step` or `relayout` (the layout re-runs);\n";
     out += "`light` marks a colour of light (colour schemes map it onto their light ramp).\n\n";
 
     std::vector<const char*> effectCategories, generatorCategories;
@@ -433,6 +434,17 @@ std::string titleart::titleEffectDocsMarkdown(const TitleEffectRegistry& registr
             std::string aliases;
             for (const char* a : d->aliases) aliases += (aliases.empty() ? "" : ", ") + std::string(a);
             out += "Also found as: " + aliases + ".\n\n";
+            // S83 §6.11: what plays live and where the presets are
+            if (d->live.kind != LiveKind::None || d->presetFile) {
+                std::string extra;
+                if (d->live.kind != LiveKind::None) {
+                    std::string params;
+                    for (const char* k : d->live.params) params += (params.empty() ? "`" : ", `") + std::string(k) + "`";
+                    extra += "Live (" + std::string(liveKindName(d->live.kind)) + "): " + params + ".";
+                }
+                if (d->presetFile) extra += (extra.empty() ? "" : " ") + std::string("Presets: `") + d->presetFile + "`.";
+                out += extra + "\n\n";
+            }
             paramTable(out, d->params);
             out += "\n";
         }

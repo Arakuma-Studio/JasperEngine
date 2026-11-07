@@ -1,0 +1,6 @@
+# Grain presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: film
+    name: Film
+    aliases: [film grain, analog]
+    params: {amount: 0.2, size: 1.6}

@@ -28,6 +28,7 @@
 
 #include "titleart/TitleArtDoc.h"
 #include "titleart/TitleArtTypes.h"
+#include "titleart/TitleEffectRegistry.h"
 #include "titleart/render/TitlePasses.h"
 
 #include <functional>
@@ -92,6 +93,8 @@ namespace jasperengine::titleart {
         std::function<const TextureRender*(const TitleAssetRef& ref, int& width, int& height)> image;
         // set by apply: what it drew depends on the layer's place on the canvas (above)
         bool usesCanvasPosition = false;
+        // the quality tier S81 renders for: Mobile takes the reductions S83 names (D11, D12)
+        FxTier tier = FxTier::Desktop;
 
         EffectContext(TitlePassRunner& passes) : runner(passes) {}
     };

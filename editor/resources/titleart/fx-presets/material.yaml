@@ -1,0 +1,83 @@
+# Material presets (docs/specs/S83-title-effects-generators.md §6.8): Pachislop's (src/effects/b/
+# material.ts) and S83's Emboss and Deboss (the recipes of the same names). Material members not
+# listed keep their defaults.
+presets:
+  - id: bevel
+    name: Bevel
+    aliases: [bevel, rounded bevel]
+    params:
+      color_mode: layer
+      material:
+        bevel: {enabled: true, profile: smooth, size: 8, depth: 3, soften: 1, gloss: linear, highlight_opacity: 0.85, shadow_opacity: 0.45}
+  - id: chrome
+    name: Chrome
+    aliases: [chrome, mirror metal, クローム]
+    params:
+      color_mode: fill
+      material:
+        fill: {kind: solid, color: "#ffffff"}
+        bevel: {enabled: true, profile: smooth, size_mode: fit, fit: 100, depth: 5, soften: 1, gloss: linear, highlight_opacity: 0.7, shadow_opacity: 0.35}
+        finish:
+          enabled: true
+          amount: 1
+          gradient: {stops: [{pos: 0, color: "#1b1d22"}, {pos: 0.32, color: "#e9edf2"}, {pos: 0.5, color: "#4a4f58"}, {pos: 0.68, color: "#f7f9fb"}, {pos: 1, color: "#ffffff"}]}
+  - id: gold_chrome
+    name: Gold Chrome
+    aliases: [gold, gold metal, 金]
+    params:
+      color_mode: fill
+      material:
+        fill: {kind: solid, color: "#ffffff"}
+        bevel: {enabled: true, profile: smooth, size_mode: fit, fit: 100, depth: 5, soften: 1, gloss: linear, highlight_opacity: 0.7, shadow_opacity: 0.35}
+        finish:
+          enabled: true
+          amount: 1
+          gradient: {stops: [{pos: 0, color: "#3a0c00"}, {pos: 0.25, color: "#a83800"}, {pos: 0.5, color: "#f08c00"}, {pos: 0.75, color: "#ffd23a"}, {pos: 1, color: "#fff8d6"}]}
+  - id: glass
+    name: Glass
+    aliases: [glass, clear, ガラス]
+    params:
+      color_mode: layer
+      material:
+        opacity: 0.75
+        bevel: {enabled: true, profile: smooth, size: 9, depth: 3.4, soften: 2, gloss: linear, highlight_opacity: 1, shadow_opacity: 0}
+        inner_glow: {enabled: true, color: "#ffffff", size: 3, opacity: 0.45}
+        gloss: {enabled: true, opacity: 0.5, position: 0.42, softness: 0.1, curve: 0.25}
+  - id: brushed_metal
+    name: Brushed Metal
+    aliases: [brushed, hairline, ヘアライン]
+    params:
+      color_mode: layer
+      material:
+        texture: {kind: hairline, amount: 0.3, scale: 1.5}
+        sheen: {enabled: true}
+  - id: spun_metal
+    name: Spun Metal
+    aliases: [spun, turned metal]
+    params:
+      color_mode: layer
+      material:
+        texture: {kind: spun, amount: 0.3, scale: 1.5}
+        sheen: {enabled: true}
+  - id: gold_leaf
+    name: Gold Leaf
+    aliases: [leaf, foil flakes, 金箔]
+    params:
+      color_mode: layer
+      material:
+        texture: {kind: flakes, amount: 0.4, scale: 3}
+        sheen: {enabled: true}
+  - id: emboss
+    name: Emboss
+    aliases: [emboss, raised, エンボス]
+    params:
+      color_mode: layer
+      material:
+        bevel: {enabled: true, profile: smooth, size: 4, depth: 3, gloss: linear, highlight_opacity: 0.75, shadow_opacity: 0.55}
+  - id: deboss
+    name: Deboss
+    aliases: [deboss, pressed, stamped, 型押し]
+    params:
+      color_mode: layer
+      material:
+        bevel: {enabled: true, profile: smooth, size: 4, depth: 3, direction: down, gloss: linear, highlight_opacity: 0.75, shadow_opacity: 0.55}

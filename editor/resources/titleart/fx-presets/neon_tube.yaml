@@ -1,0 +1,14 @@
+# Neon Tube presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: pink_neon
+    name: Pink Neon
+    aliases: [pink, magenta neon]
+    params: {}
+  - id: cyan_neon
+    name: Cyan Neon
+    aliases: [cyan, blue neon]
+    params: {color: "#29f0ff"}
+  - id: broken_neon
+    name: Broken Neon
+    aliases: [broken sign, flickering neon]
+    params: {gaps: 0.3, flicker: 0.4}

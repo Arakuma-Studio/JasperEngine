@@ -166,9 +166,11 @@ namespace {
     const std::vector<std::string> SHAPES = {"rect", "parallelogram", "ellipse", "orb", "polygon", "star", "burst",
                                              "shield", "speech", "shout", "ribbon"};
 
+    // S80's kinds, then S83 §6.6.28's procedural materials (enum additions: no version bump)
     const std::vector<std::string> PATTERN_KINDS = {"none", "zebra", "tiger", "giraffe", "leopard", "checker", "hazard",
                                                     "stripes", "dots", "sakura", "seigaiha", "asanoha", "shippo", "kikko",
-                                                    "uroko", "custom"};
+                                                    "uroko", "custom", "wood", "marble", "granite", "concrete", "brushed_metal",
+                                                    "diamond_plate", "carbon_fiber", "rust", "leather", "brick", "camo", "circuit"};
 
     // the default object of a gradient / curve member
     Json gradientDefault() {

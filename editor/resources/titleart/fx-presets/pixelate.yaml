@@ -1,0 +1,14 @@
+# Pixelate presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: retro_8bit
+    name: Retro 8-bit
+    aliases: [8-bit, chiptune, ファミコン]
+    params: {size: 6, levels: 4, dither: bayer4}
+  - id: led_board
+    name: LED Board
+    aliases: [led sign, dot matrix]
+    params: {shape: led, gap: 0.2}
+  - id: mosaic
+    name: Mosaic
+    aliases: [censor, モザイク]
+    params: {size: 20, alpha_mode: soft}

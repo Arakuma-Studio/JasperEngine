@@ -1,0 +1,10 @@
+# Chalk presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: chalkboard
+    name: Chalkboard
+    aliases: [blackboard, 黒板]
+    params: {}
+  - id: pastel
+    name: Pastel
+    aliases: [crayon, oil pastel]
+    params: {color_mode: layer, grain: 5}

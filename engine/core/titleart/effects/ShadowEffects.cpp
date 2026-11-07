@@ -59,6 +59,8 @@ namespace {
         d.fallback = FallbackClass::F1;
         d.glyphSafety = GlyphSafety::Approximate;
         d.aliases = {"dropShadow", "shadow", "ドロップシャドウ", "影"};
+        // S83 §6.12: the shadow split scales per frame
+        markLive(d, {"opacity"}, LiveKind::ScaleSplit, (uint32_t)TitleProgram::DropShadow);
         d.apply = applyDropShadow;
         return withGlobalLight(std::move(d), "angle", LightRelation::Away);
     }

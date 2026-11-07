@@ -50,6 +50,8 @@ namespace {
         d.fallback = FallbackClass::F0;
         d.glyphSafety = GlyphSafety::Safe;
         d.aliases = {"colour overlay", "tint", "fill color", "カラーオーバーレイ"};
+        // S83 §6.12: a kernel over the cached input split
+        markLive(d, {"opacity", "color"}, LiveKind::Kernel, (uint32_t)TitleProgram::ColorOverlay);
         d.apply = applyColorOverlay;
         return d;
     }
@@ -122,6 +124,8 @@ namespace {
         // it spans the layer's box, which a glyph cell does not have
         d.glyphSafety = GlyphSafety::Unsafe;
         d.aliases = {"gradientOverlay", "gradient", "shine", "グラデーションオーバーレイ"};
+        // S83 §6.12: the band or gradient from the lookup over the cached input split (the sweep, Color Cycle)
+        markLive(d, {"position", "amount", "angle", "offset", "scale"}, LiveKind::Kernel, (uint32_t)TitleProgram::GradientOverlay);
         d.apply = applyGradientOverlay;
         return d;
     }

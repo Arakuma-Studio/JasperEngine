@@ -58,8 +58,8 @@ The ops of this build (later specs add theirs to the same tool):
 {"op": "link_material", "layer": "Title", "material": "style.rims[0].material", "link": "gold"}   {"op": "unlink_material", ...}
 ```
 
-Reserved op names answer `not_available` naming the spec that adds them (recipes S83; looks,
-color schemes, templates, library S84; animation S85; 3D S86; languages and import S87).
+Reserved op names answer `not_available` naming the spec that adds them (looks, color schemes,
+templates, library S84; animation S85; 3D S86; languages and import S87); `apply_recipe` is S83's.
 
 ### The loop: render, check, fix
 
@@ -76,7 +76,8 @@ color schemes, templates, library S84; animation S85; 3D S86; languages and impo
    - `layer` renders one layer alone, `output` an output's frame and content, `crop` [x, y, w, h]
      canvas pixels, `fallback: "rgba8"` the RGBA8 path (`"compare"`: both, `pixel_paths_diff`),
      `image: "none"` metrics only, `save_path` writes the PNG with real alpha.
-   - `options` keys arrive with later specs; an unknown key fails listing them.
+   - `options: {cost: "desktop" | "mobile"}` adds the cost readout (below); other keys arrive
+     with later specs, an unknown key fails listing them.
 4. `check_title {path}`: PASS / WARN / FAIL per check with `measured`, `threshold`, `at` crops,
    `method` and a `fix` ({ops} for `edit_title`, or the tool to run). Apply the fix, check again.
    Checks: document_valid, assets_present, glyphs_present, exposed_targets, bake_fresh (no GPU);
@@ -104,6 +105,30 @@ color schemes, templates, library S84; animation S85; 3D S86; languages and impo
   are rebaked first (title_art.stale_bakes_on_export: rebake, warn or fail).
 - Headless: `jasperengine-editor check --titles` (no GPU) reports `title-*` problems with the
   fix command; `jasperengine-editor call export_title --project <p> path=<doc>` bakes.
+
+### Effects and generators
+
+- Discover: `list_title_library {kind: "effects" | "generators", query?, category?}` (query
+  searches names, aliases in English and Japanese, presets); `id` gives a type's params with
+  their animation class (`live` plays per frame, `rerender`, `step`, `relayout`), presets with
+  their params, cost class, 8-bit class and the op to paste. The full tables are
+  `docs/mcp/guide/title-art-effects.md`.
+- Effects transform a layer's pixels (`add_effect {layer, type, preset?, params?}`; the preset's
+  values over the defaults, yours over both). Generators draw new content and are layers
+  (`add_layer {type: "generator", generator}`), never effect entries.
+- Rows with `entry: "recipe"` are another type's settings: `apply_recipe {layer, recipe}` adds
+  them in one undo step (`long_shadow`, `shine`, `rainbow`, `vignette`, `emboss`, `deboss`,
+  `icicles`, `crt`, `comic_dots`, `ben_day`). `entry: "style_setting"` rows switch a style member
+  on (Dry Brush (かすれ): `set {"style.erode.enabled": true}`). "keyline" finds Outline.
+- Shape effects (Distress, Drips, Ink Brush Stroke, Frost, Neon Tube, Chalk, Stitch, Contour
+  Lines) read the layer's own pixels, so a glow earlier in the stack never widens them.
+- A value on a param its `when` hides still applies and is written; the reply notes `inactive`.
+- Cost: classes C0 (trivial) to C4 (bake only). `render_title {options: {cost: "mobile"}}`
+  returns per effect `{class, passes, fre, taps, desktop_ms, mobile_ms, live}` and the shared
+  distance field as its own row; mobile milliseconds are predictions. Prefer C0-C2 effects on
+  titles that animate on phones; Lens Blur and long Extrudes are bake only there.
+- Strobes (Glitch, Grain, Neon flicker, Scanlines flicker) animate by reseeding: their `seed` is
+  a stepped live param.
 
 ### Common mistakes
 

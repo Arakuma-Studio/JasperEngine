@@ -18,6 +18,7 @@
 #include "titleart/TitleEffectRegistry.h"
 
 #include <initializer_list>
+#include <string_view>
 #include <vector>
 
 namespace jasperengine::titleart::fxparams {
@@ -148,7 +149,26 @@ namespace jasperengine::titleart::fxparams {
     inline std::vector<EnumOption> patternOptions() {
         return {{"zebra", "Zebra"}, {"tiger", "Tiger"}, {"giraffe", "Giraffe"}, {"leopard", "Leopard"}, {"checker", "Checker"},
                 {"hazard", "Hazard"}, {"stripes", "Stripes"}, {"dots", "Polka Dots"}, {"sakura", "Sakura"}, {"seigaiha", "Seigaiha"},
-                {"asanoha", "Asanoha"}, {"shippo", "Shippo"}, {"kikko", "Kikko"}, {"uroko", "Uroko"}};
+                {"asanoha", "Asanoha"}, {"shippo", "Shippo"}, {"kikko", "Kikko"}, {"uroko", "Uroko"},
+                // S83 §6.6.28's procedural material kinds
+                {"wood", "Wood"}, {"marble", "Marble"}, {"granite", "Granite"}, {"concrete", "Concrete"}, {"brushed_metal", "Brushed Metal"},
+                {"diamond_plate", "Diamond Plate"}, {"carbon_fiber", "Carbon Fiber"}, {"rust", "Rust"}, {"leather", "Leather"}, {"brick", "Brick"},
+                {"camo", "Camo"}, {"circuit", "Circuit"}};
+    }
+
+    // S83 §6.12: a definition's live variant (S81's live compose runs `program` with TFX_LIVE);
+    // the params it animates play per frame (FxAnim::Live)
+    template<class Def>
+    void markLive(Def& d, std::initializer_list<const char*> keys, LiveKind kind, uint32_t program) {
+        d.live.kind = kind;
+        d.live.program = program;
+        d.live.params.clear();
+        for (const char* key : keys) {
+            d.live.params.push_back(key);
+            for (ParamDef& p : d.params) {
+                if (std::string_view(p.key) == key) p.anim = FxAnim::Live;
+            }
+        }
     }
 
     // the index of the param's current option (0 when unknown)
