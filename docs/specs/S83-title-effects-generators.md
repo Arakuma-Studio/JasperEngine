@@ -1678,3 +1678,35 @@ rest of S82 lands in 6B.
     its own render of that layer: a borderline cell can flip, so a few pixels (0.15-0.2 %) differ
     by more than the class's max while the mean and the share over 8/255 stay within F1/F2.
     `TitleGenGpu.FallbackWithinClass` holds these two to the mean and the share only.
+25. **Implementation: the mobile tier renders (supersedes 21).** `GeneratorContext::tier` and
+    `RenderRequest::fxTier` (`tier` there is S86's) carry `FxTier`; the node cache and the
+    followed-layer keys tell the tiers apart, and each definition's mobile `estimate` counts the
+    passes its mobile path runs. Where the reductions depart from §6.7:
+    - Fire and Smoke draw at half resolution through a downsample of the content and a copy
+      back: the content's field, E baked into a field (`UpstreamField`, R16F or RGBA8 fixed
+      point, E / length), the flame or smoke pass reading E at its swayed point. The field is
+      baked on every render (4 passes, ~4.1 FRE at 1024 × 512, inside C3), so §6.7.11's "C1 per
+      frame" holds only once S81 keeps the baked field while `angle`, `height` and `spread`
+      hold. The 256² noise texture holds two independent fbm-like fields repeating every 255
+      texels (16 lattice units); being another random field than the desktop value noise, it
+      moves the tongues and billows, so AC12's "mobile baked-field path agrees within F1" is
+      checked on the baked field (the flame's base coverage, `FireMobileGpu.BakedFieldAgrees`)
+      and the whole mobile image against the desktop one by colour histogram only.
+    - Aura's half resolution covers its field, normals and blur too; its 3-octave fbm adds the
+      dropped octaves' mean so the tongues keep their lengths.
+    - Lens Flare's quads also keep the halo ring (inside the core's quad); the starburst is left
+      out and the bloom and streak tails fade out at 6 sizes and 3 streak lengths.
+    - Light Streaks draws the halo source and both halo blurs at quarter resolution; the cores
+      stay at full resolution.
+26. **Implementation: the two S83 streams' shared names.** S83's effect programs take
+    `ShaderType::TITLE_ART` property bit 9 ('Efx', `titleart_fx.frag`) and live kernels bit 10
+    ('Liv'); the generator programs take bit 11 ('Gen', `titleart_gen.vert/.frag`), so a generator
+    program and an effect program with the same number differ in their properties (bit 11 vs bit
+    9), hence in their ShaderPool keys and their shader names (`titleart_Pb2Pb3Gen` vs
+    `titleart_Pb2Pb3Efx`); the property count of `TITLE_ART` is 12 and `TitleGpu` takes numbers up
+    to 0xFFF. The editor files of both streams are shared: the preset loader `FxPresets`, the cost
+    model `FxCost` and the Pachislop map `PachislopFxMap` with its data file are the effects
+    stream's; the generators add `FxGeneratorCost` (their rows, appended to `FxCost`'s estimate),
+    `PachislopGeneratorMap` (the `generators:` section of the same data file) and their tests.
+    `.gitattributes` merges `pachislop-fx-map.yaml` and `FxCost.cpp` with the union driver, where
+    each stream appends its own lines.

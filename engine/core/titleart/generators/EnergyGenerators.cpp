@@ -10,6 +10,7 @@
 #include "titleart/analysis/ReadGrid.h"
 #include "titleart/generators/TitleGen.h"
 #include "titleart/generators/TitleGenFamilies.h"
+#include "titleart/generators/TitleGenMobile.h"
 #include "titleart/gpu/QuadBatch.h"
 
 #include <algorithm>
@@ -80,6 +81,30 @@ namespace {
         return std::max(1.0, taps / 4.0);
     }
 
+    // the mobile tier (§6.7.11-6.7.13) draws Fire, Smoke and Aura at half resolution
+    // (drawReduced): a quarter of the pixels, plus the content's downsample there and the
+    // copy back to full size
+    constexpr int ENERGY_MOBILE_DIVISOR = 2;
+    constexpr double ENERGY_MOBILE_SHARE = 1.0 / (ENERGY_MOBILE_DIVISOR * ENERGY_MOBILE_DIVISOR);
+    constexpr int ENERGY_MOBILE_PASSES = 2;
+    constexpr double ENERGY_MOBILE_FRE = ENERGY_MOBILE_SHARE + 1.0;
+
+    // the mobile flame and smoke passes' taps: the baked field, three noise fetches (and Fire's
+    // gradient and over-edge distance)
+    constexpr int FIRE_MOBILE_TAPS = 6, SMOKE_MOBILE_TAPS = 4;
+    // the upstream march's distance reads (tfx_upstream.glsl)
+    constexpr int UPSTREAM_TAPS = 40;
+
+    // the mobile tier's Fire and Smoke cost: the content's downsample, the baked field (the
+    // 40-step march at half resolution), the flame or smoke pass at half resolution and the copy
+    // back; the content's distance field is the shared SDF row
+    FxCost energyMobileCost(int flameTaps) {
+        FxCost c = passCost(2 + ENERGY_MOBILE_PASSES, ENERGY_MOBILE_SHARE * (passFre(UPSTREAM_TAPS) + passFre(flameTaps)) + ENERGY_MOBILE_FRE,
+                            UPSTREAM_TAPS);
+        c.sdf = true;
+        return c;
+    }
+
     // ---- Fire ----
 
     float fireReach(const ParamValues& p) {
@@ -87,34 +112,62 @@ namespace {
         return (float)(1.6 * p.number("height") + 0.7 * p.number("width") * (p.number("turbulence") / 100.0));
     }
 
+    // the flames from `content` into `out`, both of c's size: the desktop pass marching the
+    // upstream distance per pixel, or on the mobile tier (§6.7.11) E baked into a field first
+    // and the flames reading it with the tiling noise texture
+    void firePasses(GeneratorContext& c, TargetRef& out, const TargetRef& content, const ParamValues& p, bool mobile) {
+        const double H = std::max(1.0, p.number("height"));
+        const double inside = std::max(0.5, p.number("inside"));
+        // the march reads the field out to the longest flame (beyond it a flame is gone at
+        // any distance) and the over-edge band inside the shape
+        EffectContext e = effectContext(c);
+        fx::Scratch field = fx::distanceField(e, content, 0.5f, (float)(std::max(1.6 * H, inside) * c.pxScale + 2.0));
+        const TitleLut* ramp = c.runner.lut(fx::gradientLut(p.gradient("gradient")));
+        if (!field || !ramp) return;
+        const TitleVec2 dir = flowOf(p);
+        fx::Scratch baked;
+        const TitleLut* noise = nullptr;
+        // the longest tongue (fire.glsl): the desktop march's length, the baked field's too
+        const double marchPx = 1.6 * H * spaceScale(c.documentToTarget);
+        if (mobile) {
+            baked = upstreamField(c, *field, dir, marchPx, sideOf(p));
+            noise = c.runner.lut(mobileNoiseData());
+            if (!baked || !noise) return;
+        }
+        TitlePass pass = genPass(c, mobile ? GenProgram::FireMobile : GenProgram::Fire, "fire", out, c.documentToTarget);
+        pass.textures[0].lut = ramp;
+        pass.raw[0].target = field.get();
+        pass.set(6, (float)dir.x, (float)dir.y, (float)H, (float)std::max(1.0, p.number("width")));
+        pass.set(7, (float)(p.number("turbulence") / 100.0), (float)p.number("phase"), noiseSeed(c, p), sideOf(p));
+        pass.set(8, (float)(p.number("intensity") / 100.0), (float)inside, p.flag("over_edge") ? 1.0f : 0.0f, 0.0f);
+        if (mobile) {
+            pass.textures[1].lut = noise;
+            pass.raw[1].target = baked.get();
+            pass.set(9, (float)std::max(1.0, marchPx));
+        }
+        c.runner.run(pass);
+    }
+
     void renderFire(GeneratorContext& ctx, TargetRef& target, const ParamValues& p) {
         if (!hasFollowed(ctx, target)) return;
         const TargetRef& content = *ctx.followContent;
         drawFollowed(ctx, target, [&](TargetRef& out) {
-            const double H = std::max(1.0, p.number("height"));
-            const double inside = std::max(0.5, p.number("inside"));
-            // the march reads the field out to the longest flame (beyond it a flame is gone at
-            // any distance) and the over-edge band inside the shape
-            EffectContext e = effectContext(ctx);
-            fx::Scratch field = fx::distanceField(e, content, 0.5f, (float)(std::max(1.6 * H, inside) * ctx.pxScale + 2.0));
-            const TitleLut* ramp = ctx.runner.lut(fx::gradientLut(p.gradient("gradient")));
-            if (!field || !ramp) return;
-            const TitleVec2 dir = flowOf(p);
-            TitlePass pass = genPass(ctx, GenProgram::Fire, "fire", out, ctx.documentToTarget);
-            pass.textures[0].lut = ramp;
-            pass.raw[0].target = field.get();
-            pass.set(6, (float)dir.x, (float)dir.y, (float)H, (float)std::max(1.0, p.number("width")));
-            pass.set(7, (float)(p.number("turbulence") / 100.0), (float)p.number("phase"), noiseSeed(ctx, p), sideOf(p));
-            pass.set(8, (float)(p.number("intensity") / 100.0), (float)inside, p.flag("over_edge") ? 1.0f : 0.0f, 0.0f);
-            ctx.runner.run(pass);
+            if (ctx.tier != FxTier::Mobile) {
+                firePasses(ctx, out, content, p, false);
+                return;
+            }
+            drawReduced(ctx, out, ENERGY_MOBILE_DIVISOR, [&](GeneratorContext& half, TargetRef& halfOut) {
+                firePasses(half, halfOut, *half.followContent, p, true);
+            });
         });
     }
 
     FxCost fireCost(const ParamValues&, const FxSize&, FxTier tier) {
         // desktop: one pass over the target, 40 distance taps of the upstream march and 12 value
-        // noises. Mobile (§6.7.11): E baked to a half-res field while angle, height and spread
-        // hold, the noise from a 256² tiling RG texture (3 fetches), drawn at half resolution
-        FxCost c = tier == FxTier::Mobile ? passCost(1, 0.25 * passFre(4), 4) : passCost(1, passFre(40 + 12 * 2), 40 + 12 * 2);
+        // noises. Mobile (§6.7.11): at half resolution, E baked to a field, the noise from the
+        // 256² tiling RG texture (3 fetches)
+        if (tier == FxTier::Mobile) return energyMobileCost(FIRE_MOBILE_TAPS);
+        FxCost c = passCost(1, passFre(UPSTREAM_TAPS + 12 * 2), UPSTREAM_TAPS + 12 * 2);
         c.sdf = true;
         return c;
     }
@@ -168,31 +221,57 @@ namespace {
         return (float)(1.35 * p.number("height") + p.number("width"));
     }
 
+    // the smoke from `content` into `out`, both of c's size, as firePasses
+    void smokePasses(GeneratorContext& c, TargetRef& out, const TargetRef& content, const ParamValues& p, bool mobile) {
+        const double H = std::max(1.0, p.number("height"));
+        // the march reads the field out to its own length, past the tallest plume
+        EffectContext e = effectContext(c);
+        fx::Scratch field = fx::distanceField(e, content, 0.5f, (float)(1.4 * H * c.pxScale + 2.0));
+        if (!field) return;
+        const TitleVec2 dir = flowOf(p);
+        fx::Scratch baked;
+        const TitleLut* noise = nullptr;
+        // smoke.glsl's march length
+        const double marchPx = 1.4 * H * spaceScale(c.documentToTarget);
+        if (mobile) {
+            baked = upstreamField(c, *field, dir, marchPx, sideOf(p));
+            noise = c.runner.lut(mobileNoiseData());
+            if (!baked || !noise) return;
+        }
+        const TitleColor col = fx::linearOf(p.color("color")), shadow = fx::linearOf(p.color("shadow_color"));
+        TitlePass pass = genPass(c, mobile ? GenProgram::SmokeMobile : GenProgram::Smoke, "smoke", out, c.documentToTarget);
+        pass.raw[0].target = field.get();
+        pass.set(6, (float)dir.x, (float)dir.y, (float)H, (float)std::max(1.0, p.number("width")));
+        pass.set(7, (float)p.number("phase"), noiseSeed(c, p), sideOf(p), (float)std::max(0.02, p.number("softness") / 100.0));
+        pass.set(8, col.r, col.g, col.b, 0.0f);
+        pass.set(9, shadow.r, shadow.g, shadow.b, 0.0f);
+        if (mobile) {
+            pass.textures[1].lut = noise;
+            pass.raw[1].target = baked.get();
+            pass.set(10, (float)std::max(1.0, marchPx));
+        }
+        c.runner.run(pass);
+    }
+
     void renderSmoke(GeneratorContext& ctx, TargetRef& target, const ParamValues& p) {
         if (!hasFollowed(ctx, target)) return;
         const TargetRef& content = *ctx.followContent;
         drawFollowed(ctx, target, [&](TargetRef& out) {
-            const double H = std::max(1.0, p.number("height"));
-            // the march reads the field out to its own length, past the tallest plume
-            EffectContext e = effectContext(ctx);
-            fx::Scratch field = fx::distanceField(e, content, 0.5f, (float)(1.4 * H * ctx.pxScale + 2.0));
-            if (!field) return;
-            const TitleVec2 dir = flowOf(p);
-            const TitleColor col = fx::linearOf(p.color("color")), shadow = fx::linearOf(p.color("shadow_color"));
-            TitlePass pass = genPass(ctx, GenProgram::Smoke, "smoke", out, ctx.documentToTarget);
-            pass.raw[0].target = field.get();
-            pass.set(6, (float)dir.x, (float)dir.y, (float)H, (float)std::max(1.0, p.number("width")));
-            pass.set(7, (float)p.number("phase"), noiseSeed(ctx, p), sideOf(p), (float)std::max(0.02, p.number("softness") / 100.0));
-            pass.set(8, col.r, col.g, col.b, 0.0f);
-            pass.set(9, shadow.r, shadow.g, shadow.b, 0.0f);
-            ctx.runner.run(pass);
+            if (ctx.tier != FxTier::Mobile) {
+                smokePasses(ctx, out, content, p, false);
+                return;
+            }
+            drawReduced(ctx, out, ENERGY_MOBILE_DIVISOR, [&](GeneratorContext& half, TargetRef& halfOut) {
+                smokePasses(half, halfOut, *half.followContent, p, true);
+            });
         });
     }
 
     FxCost smokeCost(const ParamValues&, const FxSize&, FxTier tier) {
         // desktop: one pass, 40 distance taps and 12 value noises (four soft 3-octave sums).
         // Mobile: as Fire's, half resolution
-        FxCost c = tier == FxTier::Mobile ? passCost(1, 0.25 * passFre(4), 4) : passCost(1, passFre(40 + 12 * 2), 40 + 12 * 2);
+        if (tier == FxTier::Mobile) return energyMobileCost(SMOKE_MOBILE_TAPS);
+        FxCost c = passCost(1, passFre(UPSTREAM_TAPS + 12 * 2), UPSTREAM_TAPS + 12 * 2);
         c.sdf = true;
         return c;
     }
@@ -277,63 +356,83 @@ namespace {
         return fx::blur(e, *diffs, blurPx);
     }
 
+    // the aura from `content` into `out`, both of c's size; `mobile` takes 3-octave fbm
+    // (§6.7.13: drawn at half resolution by renderAura)
+    void auraPasses(GeneratorContext& c, TargetRef& out, const TargetRef& content, const ParamValues& p, bool mobile) {
+        EffectContext e = effectContext(c);
+        fx::Scratch field = fx::distanceField(e, content, 0.5f, (float)(auraFieldReach(p) * c.pxScale + 2.0));
+        const TitleLut* ramp = c.runner.lut(fx::gradientLut(p.gradient("gradient")));
+        if (!field || !ramp) return;
+        if (auraRising(p)) {
+            const bool strong = auraStrong(p), up = auraUp(p);
+            const double len = auraTongue(p);
+            // rising up reads the upstream distance, outward the blurred normals
+            fx::Scratch normals;
+            if (!up) {
+                normals = auraNormals(c, e, *field, (float)(len * c.pxScale * 0.3));
+                if (!normals) return;
+            }
+            TitlePass pass = genPass(c, GenProgram::AuraRising, "aura", out, c.documentToTarget);
+            pass.textures[0].lut = ramp;
+            pass.textures[1].target = normals.get();
+            pass.raw[0].target = field.get();
+            pass.set(6, (float)len, (float)std::max(1.0, p.number("turbulence_scale")),
+                     (float)std::min(1.0, p.number("breakup") / 100.0 + (strong ? 0.0 : 0.3)), (float)p.number("phase"));
+            pass.set(7, (float)(p.number("intensity") / 100.0), noiseSeed(c, p), (float)(p.number("glow") / 100.0), strong ? 1.0f : 0.0f);
+            pass.set(8, up ? 1.0f : 0.0f, mobile ? 1.0f : 0.0f);
+            c.runner.run(pass);
+            return;
+        }
+        fx::Scratch normals = auraNormals(c, e, *field, (float)(p.number("length") * c.pxScale * 0.3));
+        if (!normals) return;
+        TitlePass pass = genPass(c, GenProgram::AuraTendrils, "aura tendrils", out, c.documentToTarget);
+        pass.textures[0].lut = ramp;
+        pass.textures[1].target = normals.get();
+        pass.raw[0].target = field.get();
+        pass.set(6, (float)std::max(1.0, p.number("length")), (float)(p.number("wispiness") / 100.0), (float)p.number("phase"),
+                 (float)(p.number("intensity") / 100.0));
+        pass.set(7, (float)std::max(0.05, p.number("density") / 100.0), noiseSeed(c, p), (float)(p.number("glow") / 100.0), mobile ? 1.0f : 0.0f);
+        c.runner.run(pass);
+    }
+
     void renderAura(GeneratorContext& ctx, TargetRef& target, const ParamValues& p) {
         if (!hasFollowed(ctx, target)) return;
         const TargetRef& content = *ctx.followContent;
         drawFollowed(ctx, target, [&](TargetRef& out) {
-            EffectContext e = effectContext(ctx);
-            fx::Scratch field = fx::distanceField(e, content, 0.5f, (float)(auraFieldReach(p) * ctx.pxScale + 2.0));
-            const TitleLut* ramp = ctx.runner.lut(fx::gradientLut(p.gradient("gradient")));
-            if (!field || !ramp) return;
-            if (auraRising(p)) {
-                const bool strong = auraStrong(p), up = auraUp(p);
-                const double len = auraTongue(p);
-                // rising up reads the upstream distance, outward the blurred normals
-                fx::Scratch normals;
-                if (!up) {
-                    normals = auraNormals(ctx, e, *field, (float)(len * ctx.pxScale * 0.3));
-                    if (!normals) return;
-                }
-                TitlePass pass = genPass(ctx, GenProgram::AuraRising, "aura", out, ctx.documentToTarget);
-                pass.textures[0].lut = ramp;
-                pass.textures[1].target = normals.get();
-                pass.raw[0].target = field.get();
-                pass.set(6, (float)len, (float)std::max(1.0, p.number("turbulence_scale")),
-                         (float)std::min(1.0, p.number("breakup") / 100.0 + (strong ? 0.0 : 0.3)), (float)p.number("phase"));
-                pass.set(7, (float)(p.number("intensity") / 100.0), noiseSeed(ctx, p), (float)(p.number("glow") / 100.0), strong ? 1.0f : 0.0f);
-                pass.set(8, up ? 1.0f : 0.0f);
-                ctx.runner.run(pass);
+            if (ctx.tier != FxTier::Mobile) {
+                auraPasses(ctx, out, content, p, false);
                 return;
             }
-            fx::Scratch normals = auraNormals(ctx, e, *field, (float)(p.number("length") * ctx.pxScale * 0.3));
-            if (!normals) return;
-            TitlePass pass = genPass(ctx, GenProgram::AuraTendrils, "aura tendrils", out, ctx.documentToTarget);
-            pass.textures[0].lut = ramp;
-            pass.textures[1].target = normals.get();
-            pass.raw[0].target = field.get();
-            pass.set(6, (float)std::max(1.0, p.number("length")), (float)(p.number("wispiness") / 100.0), (float)p.number("phase"),
-                     (float)(p.number("intensity") / 100.0));
-            pass.set(7, (float)std::max(0.05, p.number("density") / 100.0), noiseSeed(ctx, p), (float)(p.number("glow") / 100.0), 0.0f);
-            ctx.runner.run(pass);
+            drawReduced(ctx, out, ENERGY_MOBILE_DIVISOR, [&](GeneratorContext& half, TargetRef& halfOut) {
+                auraPasses(half, halfOut, *half.followContent, p, true);
+            });
         });
     }
 
     FxCost auraCost(const ParamValues& p, const FxSize& size, FxTier tier) {
-        // tendrils: the normals (4 distance taps), their blur, the light (13 value noises, the
-        // field, the normals and the ramp); rising up: one pass with the 40-tap march and 16
-        // noises; rising outward: the normals, their blur and 21 noises
+        // tendrils: the normals (4 distance taps), their blur, the light (2 fbm, 2 ridged and the
+        // pulse noise, the field, the normals and the ramp); rising up: one pass with the 40-tap
+        // march, 3 fbm and a ridged noise; rising outward: the normals, their blur, 4 fbm and a
+        // ridged noise. An fbm is 5 value noises; the mobile tier's (§6.7.13) 3, every pass at
+        // half resolution (the blur's radius halved) plus the content's downsample and the copy back
+        const bool mobile = tier == FxTier::Mobile;
+        const int fbmNoises = mobile ? 3 : 5;
+        const double share = mobile ? ENERGY_MOBILE_SHARE : 1.0;
         const bool rising = auraRising(p), up = rising && auraUp(p);
-        const double blurPx = (rising ? auraTongue(p) : p.number("length")) * size.pxScale * 0.3;
-        const int taps = up ? 41 + 16 * 2 : 3 + (rising ? 21 : 13) * 2;
-        FxCost c = passCost(1, passFre(taps), taps);
+        const double blurPx = (rising ? auraTongue(p) : p.number("length")) * size.pxScale * 0.3 / (mobile ? ENERGY_MOBILE_DIVISOR : 1);
+        const int noises = up ? 3 * fbmNoises + 1 : rising ? 4 * fbmNoises + 1 : 2 * fbmNoises + 3;
+        const int taps = up ? UPSTREAM_TAPS + 1 + noises * 2 : 3 + noises * 2;
+        FxCost c = passCost(1, share * passFre(taps), taps);
         if (!up) {
             const BlurCost b = blurCost(blurPx);
             c.passes += 1 + b.passes;
-            c.fre += passFre(4) + b.fre;
+            c.fre += share * (passFre(4) + b.fre);
             c.maxTapsPerPixel = std::max(c.maxTapsPerPixel, b.taps);
         }
-        // mobile (§6.7.13): half resolution with 3-octave fbm
-        if (tier == FxTier::Mobile) c.fre *= 0.25;
+        if (mobile) {
+            c.passes += ENERGY_MOBILE_PASSES;
+            c.fre += ENERGY_MOBILE_FRE;
+        }
         c.sdf = true;
         return c;
     }

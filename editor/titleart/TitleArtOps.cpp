@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleArtOps.h"
-#include "fx/FxPresets.h"
 
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtSchema.h"
 #include "titleart/TitleEffectRegistry.h"
+
+#include "fx/FxPresets.h"
 
 #include <algorithm>
 #include <cmath>
@@ -533,24 +534,27 @@ namespace {
                     }
                     layer["generator"] = Json{{"type", gen}};
                     // R7: a preset's params over the defaults and its layer look; no preset = the first
-                    const std::vector<TitleFxPreset>& presets = titleFxPresets(gen);
+                    const std::vector<TitleFxPreset>& presets = TitleFxPresets::forType(gen);
                     if (op.contains("preset")) {
                         std::string id;
                         if (!ctx.requireString(op, "preset", id)) return false;
-                        preset = findTitleFxPreset(gen, id);
+                        preset = TitleFxPresets::find(gen, id);
                         if (!preset) {
-                            const std::vector<std::string> valid = titleFxPresetIds(gen);
+                            std::vector<std::string> valid;
+                            for (const TitleFxPreset& p : presets) valid.push_back(p.id);
                             return ctx.fail("bad_value", "'" + id + "' is not a preset of " + gen, "preset", valid, titleart::nearestName(id, valid));
                         }
                     } else if (!presets.empty()) {
                         preset = &presets.front();
                     }
                     if (preset) {
+                        // the preset's layer look: generator presets only (an object, else null)
+                        const Json look = preset->layer.is_object() ? preset->layer : Json::object();
                         layer["generator"]["params"] = preset->params;
-                        if (preset->layer.contains("blend")) layer["blend"] = preset->layer["blend"];
-                        if (preset->layer.contains("opacity")) layer["opacity"] = preset->layer["opacity"];
+                        if (look.contains("blend")) layer["blend"] = look["blend"];
+                        if (look.contains("opacity")) layer["opacity"] = look["opacity"];
                         Json effects = Json::array();
-                        for (const Json& e : preset->layer.value("effects", Json::array())) {
+                        for (const Json& e : look.value("effects", Json::array())) {
                             Json fx = e;
                             fx["id"] = ctx.newId();
                             fx["enabled"] = true;
@@ -594,7 +598,8 @@ namespace {
             const bool explicitPlace = op.contains("parent") || op.contains("before") || op.contains("after");
             if (!followId.empty() && !explicitPlace) {
                 // beside the followed layer: above it unless the op or the preset says below
-                const std::string place = op.contains("place") ? str(op, "place") : preset ? preset->layer.value("place", std::string("above")) : std::string("above");
+                const std::string place = op.contains("place") ? str(op, "place")
+                                      : preset && preset->layer.is_object() ? preset->layer.value("place", std::string("above")) : std::string("above");
                 Slot slot;
                 slotOf(doc(), followId, slot);
                 list = slot.list;

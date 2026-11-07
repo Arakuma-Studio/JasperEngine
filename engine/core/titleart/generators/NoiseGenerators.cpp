@@ -39,7 +39,7 @@ namespace {
         pass.set(6, (float)offset.x, (float)offset.y, (float)std::max(1.0, p.number("scale")), (float)std::max(0.1, p.number("aspect")));
         // the pattern turns clockwise on screen (negative in the y-up layer space) when the
         // sampled point turns the other way
-        pass.set(7, (float)std::cos(rotation), (float)std::sin(rotation), (float)octavesOf(p, FxTier::Desktop), (float)optionIndex(p, "noise", kinds));
+        pass.set(7, (float)std::cos(rotation), (float)std::sin(rotation), (float)octavesOf(p, ctx.tier), (float)optionIndex(p, "noise", kinds));
         pass.set(8, (float)p.number("contrast"), (float)p.number("brightness"), (float)p.number("evolution"), (float)std::fmod(seedOf(ctx, p), 4096.0));
         ctx.runner.run(pass);
     }

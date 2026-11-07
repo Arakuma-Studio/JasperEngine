@@ -58,12 +58,14 @@ namespace jasperengine::titleart {
     };
     constexpr int TITLE_PROGRAM_LAST = 17;
 
+    // 'Gen' (bit 11; S83's effect programs take 9, the live kernels 10): the program number names
+    // one of S83's generator programs (titleart_gen.vert/.frag, generators/TitleGen.h's
+    // GenProgram), a number space of its own beside titleart.frag's
+    constexpr uint64_t TITLE_VARIANT_GENERATOR = 1ull << 11;
+
     // ShaderType::TITLE_ART property bits after the program number
     constexpr uint64_t TITLE_VARIANT_SEEDS_FIXED = 1ull << 7;      // 'Sfx': seeds and bounds in RGBA8
     constexpr uint64_t TITLE_VARIANT_DISTANCE_FIXED = 1ull << 8;   // 'Dfx': distances in RGBA8
-    // 'Gen': the program number names one of S83's generator programs (titleart_gen.vert/.frag,
-    // generators/TitleGen.h's GenProgram), a number space of its own beside titleart.frag's
-    constexpr uint64_t TITLE_VARIANT_GENERATOR = 1ull << 9;
 
     JASPERENGINE_API ShaderKey titleProgramKey(TitleProgram program, uint64_t variant = 0);
     JASPERENGINE_API const char* titleProgramName(TitleProgram program);    // "outer_glow", "gauss" ...

@@ -58,6 +58,11 @@ namespace jasperengine::titleart::gen {
         LightStreakCompose = 24,
         SpeedLinesBeta = 25,
         GlintsCompose = 34,     // Glints' stars as light and the hero's anamorphic cross
+        // the mobile tier's Energy passes (§6.7.11, §6.7.12): the baked upstream distance, and
+        // Fire and Smoke reading it with the tiling noise texture
+        UpstreamField = 42,
+        FireMobile = 43,
+        SmokeMobile = 44,
         // 26 stays free: Brush Swirl draws with MeshBrushSwirl and QuadsSplatter only
         // instanced quads (QuadBatch): titleart/gen/tfx_quads.glsl in the vertex stage
         QuadsParticles = 64,
@@ -68,6 +73,7 @@ namespace jasperengine::titleart::gen {
         QuadsLightning = 69,
         QuadsSplatter = 70,
         QuadsTest = 71,
+        QuadsLensFlare = 78,    // the mobile tier's Lens Flare (§6.7.9): core, streak and ghosts as quads
         // vertex meshes (QuadBatch::drawMesh): a ribbon of vertices pulled from the data texture
         MeshBrushSwirl = 96,
     };

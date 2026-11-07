@@ -549,9 +549,9 @@ void addFluidPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, co
 // titleart.frag: the program number in bits 0-6, the RGBA8 encodings after it
 void addTitleArtPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
     defs.push_back({"TA_PROGRAM", std::to_string(prop & 0x7Fu)});
+    if (prop & shaderPropertyBit(11)) defs.push_back({"TA_GEN", "1"});                   // 'Gen' (S83's generators)
     if (prop & shaderPropertyBit(7))  defs.push_back({"TA_SEEDS_FIXED", "1"});           // 'Sfx'
     if (prop & shaderPropertyBit(8))  defs.push_back({"TA_DISTANCE_FIXED", "1"});        // 'Dfx'
-    if (prop & shaderPropertyBit(9))  defs.push_back({"TA_GEN", "1"});                   // 'Gen'
 }
 
 void addSkyPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -765,7 +765,7 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         // the Title Art renderer's programs (render/TitlePrograms.h); 1-17 are titleart.frag's
         args.frag_file = "titleart_render.frag";
     }
-    if (shaderType == ShaderType::TITLE_ART && (properties & shaderPropertyBit(9))){
+    if (shaderType == ShaderType::TITLE_ART && (properties & shaderPropertyBit(11))){
         // S83's generator programs (generators/TitleGen.h): a number space of their own, some
         // pulling instanced quads from a data texture in the vertex stage
         args.vert_file = "titleart_gen.vert";

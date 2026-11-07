@@ -271,7 +271,8 @@ TitlePx TitlePlanner::generator(const DrawNode& node) {
     static const Json empty = Json::object();
     auto paramsIt = gen.find("params");
     const Json params = paramsIt != gen.end() && paramsIt->is_object() ? *paramsIt : empty;
-    if (def->estimate) passes = (uint32_t)std::max(1, def->estimate(ParamValues(params), FxSize{rect.width, rect.height, (float)scale}, FxTier::Desktop).passes);
+    const FxTier tier = req.fxTier;
+    if (def->estimate) passes = (uint32_t)std::max(1, def->estimate(ParamValues(params), FxSize{rect.width, rect.height, (float)scale}, tier).passes);
     const std::shared_ptr<const TitleArtDoc> doc = document;
     const std::string id = node.layerId;
     const int outSlot = out.slot;
@@ -290,6 +291,8 @@ TitlePx TitlePlanner::generator(const DrawNode& node) {
         where = hashCombine(where, fnv1a64(svc.caps.pathName()));
         // the request's forced fallbacks change the followed pixels without changing the path name
         where = hashCombine(where, (uint64_t)svc.testFlags + 1);
+        // a followed generator layer draws its mobile reductions on the mobile tier
+        if (tier != FxTier::Desktop) where = hashCombine(where, fnv1a64("fx tier mobile"));
         const TitlePx source = layerSource(followed, "follow_cycle", id);
         if (source.valid()) {
             TitlePx cut = clearedLike(rect, id);
@@ -335,6 +338,7 @@ TitlePx TitlePlanner::generator(const DrawNode& node) {
         ctx.followKey = followSlot >= 0 ? followKey : 0;
         ctx.followContentKey = followContentSlot >= 0 ? followContentKey : 0;
         ctx.assets = assets;
+        ctx.tier = tier;
         def->render(ctx, state.slots[(size_t)outSlot].ref,
                     ParamValues(params, def->globalLight.angleKey ? &def->globalLight : nullptr, ctx.lightAngle, ctx.lightAltitude));
         if (reads && ctx.usesCanvasPosition) *reads = true;

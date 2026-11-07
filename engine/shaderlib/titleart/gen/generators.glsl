@@ -80,6 +80,18 @@
 #elif TA_PROGRAM == TA_GEN_BACKLIGHT_COMPOSE
     #include "titleart/gen/backlight.glsl"
     vec4 gen_program() { return gen_backlightCompose(); }
+#elif TA_PROGRAM == TA_GEN_QUADS_LENS_FLARE
+    #include "titleart/gen/lens_flare.glsl"
+    vec4 gen_program() { return gen_lensFlareQuad(); }
+#elif TA_PROGRAM == TA_GEN_UPSTREAM_FIELD
+    #include "titleart/gen/energy_mobile.glsl"
+    vec4 gen_program() { return gen_upstreamField(); }
+#elif TA_PROGRAM == TA_GEN_FIRE_MOBILE
+    #include "titleart/gen/energy_mobile.glsl"
+    vec4 gen_program() { return gen_fireMobile(); }
+#elif TA_PROGRAM == TA_GEN_SMOKE_MOBILE
+    #include "titleart/gen/energy_mobile.glsl"
+    vec4 gen_program() { return gen_smokeMobile(); }
 #elif TA_PROGRAM == TA_GEN_QUADS_TEST
     // QuadBatch's own check (QuadBatchGpu): a flat quad of its colour
     vec4 gen_program() { return v_color; }

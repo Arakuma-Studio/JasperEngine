@@ -14,8 +14,8 @@
 #include "mcp/McpJobs.h"
 #include "mcp/McpRefs.h"
 #include "texsynth/SynthesisRecipe.h"
-#include "titleart/TitleArtBake.h"
 #include "titleart/fx/FxCost.h"
+#include "titleart/TitleArtBake.h"
 #include "titleart/TitleArtBuiltinChecks.h"
 #include "titleart/TitleArtChecks.h"
 #include "titleart/TitleArtDocument.h"
@@ -376,7 +376,7 @@ void runFrameTask(const CallPtr& call, const std::string& kind, const std::strin
 
 namespace {
 
-    // render_title's `options`: the keys later specs add, by owner; none is served by S80
+    // render_title's `options`: the keys later specs add, by owner (S83's `cost` is served)
     struct OptionKey {
         const char* key;
         const char* owner;
@@ -621,7 +621,7 @@ bool checkRenderOptions(const Json& options, std::string& error) {
         return false;
     }
     for (auto it = options.begin(); it != options.end(); ++it) {
-        // S83 §6.11: the static cost model per layer, effect and generator
+        // S83 §6.11: the cost readout, per tier
         if (it.key() == "cost") {
             if (!it.value().is_string() || (it.value() != "desktop" && it.value() != "mobile")) {
                 error = "bad_option: `options.cost` is \"desktop\" or \"mobile\".";
@@ -633,13 +633,13 @@ bool checkRenderOptions(const Json& options, std::string& error) {
         for (const OptionKey& k : RENDER_OPTIONS) {
             if (it.key() != k.key) continue;
             known = true;
-            error = std::string("not_available: render_title option '") + k.key + "' arrives with " + k.owner + "; this build serves none.";
+            error = std::string("not_available: render_title option '") + k.key + "' arrives with " + k.owner + "; this build serves cost.";
             return false;
         }
         if (!known) {
             std::string list;
             for (const OptionKey& k : RENDER_OPTIONS) list += (list.empty() ? "" : ", ") + std::string(k.key) + " (" + k.owner + ")";
-            error = "bad_option: render_title has no option '" + it.key() + "'. This build serves `cost`; later features add: " + list + ".";
+            error = "bad_option: render_title has no option '" + it.key() + "'. This build serves cost; later features add: " + list + ".";
             return false;
         }
     }
@@ -819,11 +819,11 @@ void renderTitleTool(const CallPtr& call) {
     spec.args = args;
     Json extra = Json::object();
     std::string prefix;
-    const Json options = args.contains("options") && args["options"].is_object() ? args["options"] : Json::object();
-    if (options.contains("cost")) {
-        const titleart::Json cost = estimateTitleFxCost(*spec.doc, options["cost"] == "mobile" ? titleart::FxTier::Mobile : titleart::FxTier::Desktop);
-        extra["cost"] = fromOrdered(cost);
-        prefix = titleFxCostSummary(cost) + "\n";
+    const Json& options = args.contains("options") ? args["options"] : Json();
+    if (options.is_object() && options.contains("cost")) {
+        const TitleFxCost cost = estimateTitleFxCost(*spec.doc, options["cost"] == "mobile" ? titleart::FxTier::Mobile : titleart::FxTier::Desktop);
+        extra["cost"] = fromOrdered(cost.toJson());
+        prefix = cost.summary() + ". ";
     }
     startRender(call, std::move(spec), extra, prefix);
 }

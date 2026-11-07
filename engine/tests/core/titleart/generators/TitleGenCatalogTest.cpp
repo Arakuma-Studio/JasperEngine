@@ -159,7 +159,7 @@ TEST(TitleFxBudget, GeneratorStaticModel) {
             const std::string id = preset.value("id", std::string());
             cases.push_back({id, values});
             CostClass c;
-            if (classFromName(preset.value("class", std::string()), c)) stated[id] = c;
+            if (classFromName(preset.value("cost", std::string()), c)) stated[id] = c;
         }
         for (const auto& [name, values] : cases) {
             SCOPED_TRACE(type + "/" + name);

@@ -38,6 +38,9 @@ const char* gen::genProgramName(GenProgram program) {
         case GenProgram::LightStreakCompose: return "light_streak_compose";
         case GenProgram::SpeedLinesBeta: return "speed_lines_beta";
         case GenProgram::GlintsCompose: return "glints_compose";
+        case GenProgram::UpstreamField: return "upstream_field";
+        case GenProgram::FireMobile: return "fire_mobile";
+        case GenProgram::SmokeMobile: return "smoke_mobile";
         case GenProgram::QuadsParticles: return "quads_particles";
         case GenProgram::QuadsGlints: return "quads_glints";
         case GenProgram::QuadsInk: return "quads_ink";
@@ -46,6 +49,7 @@ const char* gen::genProgramName(GenProgram program) {
         case GenProgram::QuadsLightning: return "quads_lightning";
         case GenProgram::QuadsSplatter: return "quads_splatter";
         case GenProgram::QuadsTest: return "quads_test";
+        case GenProgram::QuadsLensFlare: return "quads_lens_flare";
         case GenProgram::MeshBrushSwirl: return "mesh_brush_swirl";
     }
     return "";
@@ -57,10 +61,10 @@ const std::vector<GenProgram>& gen::genPrograms() {
         GenProgram::FractalNoise, GenProgram::Fire, GenProgram::Smoke, GenProgram::AuraTendrils, GenProgram::AuraRising,
         GenProgram::AuraNormals, GenProgram::BacklightSource, GenProgram::BacklightRadial, GenProgram::BacklightCompose,
         GenProgram::MagicCircle, GenProgram::LightningCompose, GenProgram::LightStreakCompose, GenProgram::SpeedLinesBeta,
-        GenProgram::GlintsCompose,
+        GenProgram::GlintsCompose, GenProgram::UpstreamField, GenProgram::FireMobile, GenProgram::SmokeMobile,
         GenProgram::QuadsParticles, GenProgram::QuadsGlints, GenProgram::QuadsInk, GenProgram::QuadsSpeedLines,
         GenProgram::QuadsLightStreaks, GenProgram::QuadsLightning, GenProgram::QuadsSplatter, GenProgram::QuadsTest,
-        GenProgram::MeshBrushSwirl};
+        GenProgram::QuadsLensFlare, GenProgram::MeshBrushSwirl};
     return all;
 }
 
@@ -74,6 +78,9 @@ namespace {
             case GenProgram::AuraTendrils:
             case GenProgram::AuraRising:
             case GenProgram::AuraNormals:
+            case GenProgram::UpstreamField:     // and writes the baked field in the same encoding
+            case GenProgram::FireMobile:
+            case GenProgram::SmokeMobile:
                 return true;
             default:
                 return false;

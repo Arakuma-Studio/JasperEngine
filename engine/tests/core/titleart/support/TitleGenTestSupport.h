@@ -105,9 +105,10 @@ namespace jasperengine::titleart::test {
         return false;
     }
 
-    // the whole document at `scale` as straight sRGB bytes, through the renderer
+    // the whole document at `scale` as straight sRGB bytes, through the renderer, its generators
+    // drawing for `tier` (S83 D12)
     inline bool renderGenDocument(const TitleArtDoc& doc, float scale, GenImage& out, std::string& error, uint32_t testFlags = 0,
-                                  std::vector<TitleProblem>* problems = nullptr) {
+                                  std::vector<TitleProblem>* problems = nullptr, FxTier tier = FxTier::Desktop) {
         static TestAssetResolver assets;
         TitleArtRenderer renderer;
         RenderRequest request;
@@ -116,6 +117,7 @@ namespace jasperengine::titleart::test {
         request.output = TitleOutputFormat::Srgb8;
         request.assets = &assets;
         request.testFlags = testFlags;
+        request.fxTier = tier;
         std::unique_ptr<TitleRenderJob> job = renderer.begin(request);
         if (!job || !runGenJob(*job, error)) return false;
         if (problems) *problems = job->problems();

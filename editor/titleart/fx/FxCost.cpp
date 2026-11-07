@@ -2,115 +2,118 @@
 // SPDX-License-Identifier: MIT
 
 #include "FxCost.h"
+#include "FxGeneratorCost.h"
+
+#include "titleart/TitleArtIO.h"
+#include "titleart/effects/TfxCommon.h"
 
 #include <algorithm>
 #include <cstdio>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-namespace ta = jasperengine::titleart;
-
-titleart::CostClass editor::titleFxCostClass(const ta::FxCost& c) {
-    if (c.fre <= 1.0 && c.maxTapsPerPixel <= 16 && !c.sdf && !c.analysis) return ta::CostClass::C0;
-    if (c.fre <= 3.0 && c.maxTapsPerPixel <= 64 && !c.sdf && !c.analysis) return ta::CostClass::C1;
-    if (c.fre <= 10.0 && c.maxTapsPerPixel <= 200 && !c.sdf && !c.analysis) return ta::CostClass::C2;
-    if (c.fre <= 40.0) return ta::CostClass::C3;
-    return ta::CostClass::C4;
-}
+using titleart::Json;
 
 namespace {
 
-    std::string shortMs(double v) {
-        char t[32];
-        std::snprintf(t, sizeof(t), "%.2g", v);
-        return t;
+    double msOf(const titleart::FxCost& c, bool mobile) {
+        return c.fre * (mobile ? TITLE_FX_MOBILE_MS_PER_FRE : TITLE_FX_DESKTOP_MS_PER_FRE) +
+               c.instances * (mobile ? TITLE_FX_MOBILE_MS_PER_INSTANCE : TITLE_FX_DESKTOP_MS_PER_INSTANCE);
     }
 
-    ta::Json liveOf(const ta::LiveVariant& live) {
-        ta::Json params = ta::Json::array();
-        for (const char* p : live.params) params.push_back(p);
-        return ta::Json{{"kind", ta::liveKindName(live.kind)}, {"params", params}};
-    }
-
-    struct Accum {
-        int passes = 0;
-        double fre = 0.0, desktopMs = 0.0, mobileMs = 0.0;
-        ta::CostClass worst = ta::CostClass::C0;
-    };
-
-    ta::Json item(const std::string& layerId, const std::string& path, const char* type, const char* entry, ta::CostClass declared,
-                  const ta::LiveVariant& live, const ta::FxCost& desktop, const ta::FxCost& mobile, ta::FxTier tier, Accum& total) {
-        const ta::FxCost& shown = tier == ta::FxTier::Mobile ? mobile : desktop;
-        const double desktopMs = desktop.fre * TITLE_FX_DESKTOP_MS_PER_FRE + desktop.instances * TITLE_FX_DESKTOP_MS_PER_INSTANCE + desktop.cpuMs;
-        const double mobileMs = mobile.fre * TITLE_FX_MOBILE_MS_PER_FRE + mobile.instances * TITLE_FX_MOBILE_MS_PER_INSTANCE + mobile.cpuMs * 2.5;
-        const ta::CostClass cls = std::max(titleFxCostClass(shown), declared == ta::CostClass::C4 ? ta::CostClass::C4 : ta::CostClass::C0);
-        total.passes += shown.passes;
-        total.fre += shown.fre;
-        total.desktopMs += desktopMs;
-        total.mobileMs += mobileMs;
-        total.worst = std::max(total.worst, cls);
-        return ta::Json{{"layer", layerId}, {"path", path}, {"type", type}, {"entry", entry}, {"class", ta::costClassName(cls)},
-                        {"declared", ta::costClassName(declared)}, {"passes", shown.passes}, {"fre", shown.fre}, {"taps", shown.maxTapsPerPixel},
-                        {"instances", shown.instances}, {"cpu_ms", shown.cpuMs}, {"sdf", shown.sdf}, {"analysis", shown.analysis},
-                        {"readback", shown.readback}, {"desktop_ms", desktopMs}, {"mobile_ms", mobileMs}, {"live", liveOf(live)}};
-    }
-
-    ta::FxCost onePass() {
-        ta::FxCost c;
-        c.passes = 1;
-        c.fre = 1.0;
-        c.maxTapsPerPixel = 1;
-        return c;
+    std::string ms(double v) {
+        char text[32];
+        std::snprintf(text, sizeof(text), "%.1f", v);
+        return text;
     }
 
 }
 
-ta::Json editor::estimateTitleFxCost(const ta::TitleArtDoc& doc, ta::FxTier tier) {
-    const int w = std::max(1, doc.canvasWidth()), h = std::max(1, doc.canvasHeight());
-    const ta::FxSize desktopSize{w, h, 1.0f};
-    const float mobileScale = std::min(1.0f, 1024.0f / (float)w);
-    const ta::FxSize mobileSize{(int)(w * mobileScale), (int)(h * mobileScale), mobileScale};
-    Accum total;
-    ta::Json items = ta::Json::array();
-    ta::forEachLayer(doc.root, [&](const ta::Json& layer, const ta::Json*, int) {
-        if (!layer.value("visible", true)) return true;
+TitleFxCost editor::estimateTitleFxCost(const titleart::TitleArtDoc& doc, titleart::FxTier tier) {
+    TitleFxCost out;
+    const int cw = std::max(1, doc.canvasWidth()), ch = std::max(1, doc.canvasHeight());
+    // the desktop tier at the canvas size, the mobile tier on a 1024 x 512 surface
+    const titleart::FxSize desktop{cw, ch, 1.0f};
+    const float mobileScale = std::min(1024.0f / cw, 512.0f / ch);
+    const titleart::FxSize mobile{std::max(1, (int)(cw * mobileScale)), std::max(1, (int)(ch * mobileScale)), mobileScale};
+    const Json& light = doc.root.value("global_light", Json::object());
+    const double lightAngle = light.value("angle", 120.0), lightAltitude = light.value("altitude", 30.0);
+    titleart::forEachLayer(doc.root, [&](const Json& layer, const Json*, int) {
         const std::string id = layer.value("id", std::string());
-        const std::string name = layer.value("name", std::string());
-        if (ta::layerTypeOf(layer) == ta::LayerType::Generator) {
-            const ta::Json& gen = layer.value("generator", ta::Json::object());
-            if (const ta::GeneratorDef* def = ta::findGenerator(gen.value("type", std::string()))) {
-                const ta::ParamValues p(gen.value("params", ta::Json::object()));
-                const ta::FxCost d = def->estimate ? def->estimate(p, desktopSize, ta::FxTier::Desktop) : onePass();
-                const ta::FxCost m = def->estimate ? def->estimate(p, mobileSize, ta::FxTier::Mobile) : onePass();
-                items.push_back(item(id, name, def->type, "generator", def->costClass, def->live, d, m, tier, total));
-            }
-        }
-        for (const ta::Json& e : layer.value("effects", ta::Json::array())) {
-            if (!e.value("enabled", true)) continue;
-            const ta::EffectDef* def = ta::findEffect(e.value("type", std::string()));
+        // S83's generator layers: one row each (FxGeneratorCost.h)
+        appendTitleGeneratorCostRow(layer, desktop, mobile, tier, out);
+        bool sdf = false;
+        float sdfReach = 0.0f;
+        auto effects = layer.find("effects");
+        if (effects == layer.end() || !effects->is_array()) return true;
+        for (const Json& fx : *effects) {
+            if (!fx.value("enabled", true)) continue;
+            const titleart::EffectDef* def = titleart::findEffect(fx.value("type", std::string()));
             if (!def) continue;
-            const ta::ParamValues p(e.value("params", ta::Json::object()));
-            const ta::FxCost d = def->estimate ? def->estimate(p, desktopSize, ta::FxTier::Desktop) : onePass();
-            const ta::FxCost m = def->estimate ? def->estimate(p, mobileSize, ta::FxTier::Mobile) : onePass();
-            items.push_back(item(id, name + "/fx:" + def->type, def->type, "effect", def->costClass, def->live, d, m, tier, total));
+            Json params = fx.value("params", Json::object());
+            titleart::NormalizeContext normalize;
+            titleart::normalizeParams(def->params, params, "params", normalize);
+            const titleart::ParamValues values(params, &def->globalLight, lightAngle, lightAltitude);
+            TitleFxCostRow row;
+            row.layer = id;
+            row.path = std::string("fx:") + def->type;
+            row.type = def->type;
+            const titleart::FxCost d = def->estimate ? def->estimate(values, desktop, titleart::FxTier::Desktop) : titleart::tfx::CostBuilder().pass(1.0, 1).cost;
+            const titleart::FxCost m = def->estimate ? def->estimate(values, mobile, titleart::FxTier::Mobile) : d;
+            row.cost = tier == titleart::FxTier::Mobile ? m : d;
+            row.costClass = titleart::tfx::costClassOf(row.cost);
+            row.desktopMs = msOf(d, false);
+            row.mobileMs = msOf(m, true);
+            row.liveKind = def->live.kind;
+            for (const char* k : def->live.params) row.liveParams.push_back(k);
+            if (row.cost.sdf) {
+                sdf = true;
+                sdfReach = std::max(sdfReach, def->reach ? def->reach(values) : 0.0f) + (def->gather ? std::max(0.0f, def->gather(values)) : 0.0f);
+            }
+            out.rows.push_back(std::move(row));
+        }
+        if (sdf) {
+            // the content's distance field: shared by the layer's effects, rebuilt once
+            TitleFxCostRow row;
+            row.layer = id;
+            row.path = "sdf";
+            row.type = "sdf";
+            const titleart::FxCost d = titleart::tfx::sdfCost(sdfReach, desktop), m = titleart::tfx::sdfCost(sdfReach * mobileScale, mobile);
+            row.cost = tier == titleart::FxTier::Mobile ? m : d;
+            row.costClass = titleart::CostClass::C3;
+            row.desktopMs = msOf(d, false);
+            row.mobileMs = msOf(m, true);
+            out.rows.push_back(std::move(row));
         }
         return true;
     });
-    return ta::Json{{"tier", tier == ta::FxTier::Mobile ? "mobile" : "desktop"},
-                    {"total", {{"class", ta::costClassName(total.worst)}, {"passes", total.passes}, {"fre", total.fre},
-                               {"desktop_ms", total.desktopMs}, {"mobile_ms", total.mobileMs}}},
-                    {"items", items}};
+    for (const TitleFxCostRow& r : out.rows) {
+        out.desktopMs += r.desktopMs;
+        out.mobileMs += r.mobileMs;
+        out.total = std::max(out.total, r.costClass);
+    }
+    return out;
 }
 
-std::string editor::titleFxCostSummary(const ta::Json& cost) {
-    const ta::Json& t = cost["total"];
-    std::string text = "cost: " + t.value("class", std::string("C0")) + " total, desktop " + shortMs(t.value("desktop_ms", 0.0)) + " ms, mobile " +
-                       shortMs(t.value("mobile_ms", 0.0)) + " ms predicted";
-    std::string rows;
-    for (const ta::Json& i : cost.value("items", ta::Json::array())) {
-        rows += (rows.empty() ? "; " : ", ") + i.value("path", std::string()) + ": " + i.value("type", std::string()) + " " +
-                i.value("class", std::string()) + " " + shortMs(i.value(cost.value("tier", std::string()) == "mobile" ? "mobile_ms" : "desktop_ms", 0.0)) +
-                " ms";
+Json TitleFxCost::toJson() const {
+    Json rowsJson = Json::array();
+    for (const TitleFxCostRow& r : rows) {
+        Json live = Json{{"kind", titleart::liveKindName(r.liveKind)}, {"params", r.liveParams}};
+        if (r.liveKind != titleart::LiveKind::None) live["mobile_ms"] = r.liveKind == titleart::LiveKind::ScaleSplit ? TITLE_FX_MOBILE_MS_PER_FRE : r.mobileMs;
+        rowsJson.push_back(Json{{"layer", r.layer}, {"path", r.path}, {"type", r.type}, {"class", titleart::costClassName(r.costClass)},
+                                {"passes", r.cost.passes}, {"fre", r.cost.fre}, {"taps", r.cost.maxTapsPerPixel}, {"instances", r.cost.instances},
+                                {"cpu_ms", r.cost.cpuMs}, {"sdf", r.cost.sdf}, {"analysis", r.cost.analysis}, {"readback", r.cost.readback},
+                                {"desktop_ms", r.desktopMs}, {"mobile_ms", r.mobileMs}, {"live", live}});
     }
-    return text + rows;
+    return Json{{"rows", rowsJson}, {"class", titleart::costClassName(total)}, {"desktop_ms", desktopMs}, {"mobile_ms", mobileMs},
+                {"mobile_predicted", true}};
+}
+
+std::string TitleFxCost::summary() const {
+    std::string text = std::string("cost: ") + titleart::costClassName(total) + " total, desktop " + ms(desktopMs) + " ms, mobile " + ms(mobileMs) +
+                       " ms predicted";
+    for (size_t i = 0; i < rows.size() && i < 6; i++) {
+        text += (i == 0 ? "; " : ", ") + rows[i].type + " " + titleart::costClassName(rows[i].costClass) + " " + ms(rows[i].desktopMs) + " ms";
+    }
+    return text;
 }

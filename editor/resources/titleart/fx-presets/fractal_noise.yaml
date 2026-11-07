@@ -166,7 +166,7 @@
           "interp": "rgb"
         }
       },
-      "class": "C2"
+      "cost": "C2"
     }
   ]
 }

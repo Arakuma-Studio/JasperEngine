@@ -101,7 +101,8 @@ namespace {
         const double d[9] = {documentToSpace.a, documentToSpace.b,  documentToSpace.c,  documentToSpace.d,  documentToSpace.tx,
                              documentToSpace.ty, (double)ctx.canvasWidth, (double)ctx.canvasHeight, (double)ctx.seed};
         const uint64_t h = hashCombine(fnv1a64(params.dump()), fnv1a64(std::string_view(reinterpret_cast<const char*>(d), sizeof(d))));
-        return hashCombine(h, sourceKey);
+        // the mobile tier lays out fewer particles
+        return hashCombine(hashCombine(h, sourceKey), (uint64_t)ctx.tier);
     }
 
     std::shared_ptr<const ParticleDraws> cachedDraws(const GeneratorContext& ctx, uint64_t key) {
@@ -146,7 +147,10 @@ namespace {
 
     void renderParticles(GeneratorContext& ctx, TargetRef& target, const ParamValues& p) {
         ctx.runner.clear(target);
-        const ParticleLook look = readParticleLook(p, seedOf(ctx, p));
+        ParticleLook look = readParticleLook(p, seedOf(ctx, p));
+        // the mobile tier draws the first 2,000 particles: by R25 their records are the ones a
+        // count of 2,000 lays out, so the cap is a subset of the desktop image
+        if (ctx.tier == FxTier::Mobile) look.count = std::min(look.count, PARTICLES_MOBILE_MAX);
         if (look.count == 0) return;
         const std::string em = p.string("emitter");
         if (em == "layer") {

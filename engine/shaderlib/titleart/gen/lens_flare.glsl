@@ -6,6 +6,12 @@
 // p6 = (the flare's centre x, y in the drawing space, its size, streak length in target px);
 // p7 = (intensity, streak angle in render px radians counter-clockwise, starburst 0..2, seed);
 // p8 = (linear colour, ghosts 0/1); p9 = (the canvas centre minus the flare's, target px +y up, 0, 0).
+//
+// QuadsLensFlare, the mobile tier's flare (§6.7.9: C0, no full-canvas pass): additive quads,
+// each shading the terms of gen_lensFlare that reach into it, with the same block. v_extra.x =
+// the part: 0 the core with its bloom and the halo ring, 1 the streak, 2..7 ghosts 0..5. The
+// starburst is left out, and the bloom's and the streak's tails fade out toward their quad's
+// edge instead of reaching across the canvas.
 
 #ifndef TITLEART_GEN_LENS_FLARE_GLSL
 #define TITLEART_GEN_LENS_FLARE_GLSL
@@ -49,5 +55,42 @@ vec4 gen_lensFlare() {
     }
     return gen_lightPremul(L * intensity);
 }
+
+#if TA_GEN_VERTICES == 1
+
+vec4 gen_lensFlareQuad() {
+    vec2 pos = ta.p[6].xy;
+    float size = ta.p[6].z, streak = ta.p[6].w;
+    float intensity = ta.p[7].x, rot = ta.p[7].y, seed = ta.p[7].w;
+    vec3 col = ta.p[8].rgb;
+    vec2 axis = ta.p[9].xy;
+    vec2 v = gen_dirToTarget(gen_spacePos() - pos) * vec2(1.0, -1.0);
+    float r = length(v) / size;
+    int part = int(v_extra.x + 0.5);
+    vec3 L = vec3(0.0);
+    if (part == 0) {
+        L += vec3(1.0) * (exp(-r * r * 18.0) * 2.0 + 0.25 / (1.0 + r * r * 6.0));
+        L += col * 0.35 / (1.0 + r * r * 1.5);
+        vec3 ringD = (vec3(r) - vec3(2.35, 2.25, 2.15)) / 0.07;
+        L += exp(-ringD * ringD) * 0.18;
+        L *= 1.0 - smoothstep(0.6, 1.0, length(v_quad));
+    } else if (part == 1) {
+        float c = cos(rot), sn = sin(rot);
+        vec2 lv = vec2(c * v.x + sn * v.y, -sn * v.x + c * v.y);
+        L += anamorphicStreak(lv, size, streak, col);
+        L *= 1.0 - smoothstep(0.7, 1.0, abs(v_quad.x));
+    } else {
+        float fi = float(part - 2);
+        float k = 0.35 + fi * 0.33 + (hash12(vec2(fi, seed)) - 0.5) * 0.2;
+        float gs = size * (0.25 + 0.9 * hash12(vec2(fi + 9.0, seed)));
+        float d = length(v - axis * k * 2.0) / gs;
+        float disc = (1.0 - smoothstep(0.9, 1.0, d)) * (0.35 + 0.65 * d * d);
+        vec3 tint = 0.5 + 0.5 * cos(6.2831 * (fi * 0.17 + vec3(0.0, 0.33, 0.67) + seed * 0.1));
+        L += tint * mix(col, vec3(1.0), 0.3) * disc * 0.16;
+    }
+    return gen_lightPremul(L * intensity);
+}
+
+#endif
 
 #endif // TITLEART_GEN_LENS_FLARE_GLSL

@@ -68,13 +68,30 @@ namespace {
 }
 
 TEST_F(TitleFxGeneratorOpsTest, PresetFilesAreClean) {
-    const std::vector<std::string> problems = checkTitleFxPresets();
-    for (const std::string& p : problems) ADD_FAILURE() << p;
-    EXPECT_FALSE(titleFxPresets("shockwave").empty());
+    // every generator's embedded presets set only its params, inside their ranges
+    int presets = 0;
+    for (const titleart::GeneratorDef* def : titleart::TitleEffectRegistry::get().generators()) {
+        if (!def->presetFile) continue;
+        EXPECT_FALSE(TitleFxPresets::forType(def->type).empty()) << def->type;
+        for (const TitleFxPreset& p : TitleFxPresets::forType(def->type)) {
+            presets++;
+            for (auto it = p.params.begin(); it != p.params.end(); ++it) {
+                const titleart::ParamDef* param = titleart::findParam(def->params, it.key());
+                ASSERT_TRUE(param) << def->type << "/" << p.id << ": unknown param " << it.key();
+                Json value = it.value();
+                std::vector<titleart::TitleWarning> warnings;
+                titleart::NormalizeContext context;
+                context.warnings = &warnings;
+                EXPECT_TRUE(titleart::normalizeParamValue(*param, value, it.key(), context)) << def->type << "/" << p.id << "." << it.key();
+                EXPECT_TRUE(warnings.empty()) << def->type << "/" << p.id << "." << it.key();
+            }
+        }
+    }
+    EXPECT_GE(presets, 78);
 }
 
 TEST_F(TitleFxGeneratorOpsTest, AddGeneratorAppliesItsPreset) {
-    const TitleFxPreset* neon = findTitleFxPreset("shockwave", "neon");
+    const TitleFxPreset* neon = TitleFxPresets::find("shockwave", "neon");
     ASSERT_TRUE(neon);
     const TitleOpsResult r = TitleArtOps::apply(doc, Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "shockwave"}, {"preset", "neon"}});
     ASSERT_TRUE(r.ok) << r.error();
@@ -90,7 +107,7 @@ TEST_F(TitleFxGeneratorOpsTest, AddGeneratorAppliesItsPreset) {
     // no preset: the first one (R7)
     const TitleOpsResult plain = TitleArtOps::apply(doc, Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "shockwave"}});
     ASSERT_TRUE(plain.ok) << plain.error();
-    EXPECT_EQ(plain.doc.layers().back().value("name", std::string()), titleFxPresets("shockwave").front().name);
+    EXPECT_EQ(plain.doc.layers().back().value("name", std::string()), TitleFxPresets::forType("shockwave").front().name);
     // an unknown preset fails naming the nearest
     const TitleOpsResult bad = TitleArtOps::apply(doc, Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "shockwave"}, {"preset", "neom"}});
     ASSERT_FALSE(bad.ok);

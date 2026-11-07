@@ -714,6 +714,8 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
         key = hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(&s), sizeof(s))));
         key = hashCombine(key, fnv1a64(svc.caps.pathName()));
         key = hashCombine(key, inkOnly ? 1 : 2);
+        // generators draw their mobile reductions on the mobile tier (S83 D12)
+        if (req.fxTier != FxTier::Desktop) key = hashCombine(key, fnv1a64("fx tier mobile"));
         // the ancestors' rotation, scale and flips shape the pixels
         const geometry::Affine& m = place.toDocument;
         const double linear[4] = {m.a, m.b, m.c, m.d};

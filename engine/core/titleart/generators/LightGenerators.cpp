@@ -426,6 +426,51 @@ namespace {
 
     // ---- Lens Flare ----
 
+    // the mobile tier's quads (titleart/gen/lens_flare.glsl QuadsLensFlare), target px: the
+    // core's half side in flare sizes (its bloom fades out by then), the streak's half length
+    // in streak lengths (its hot line is below 1/500 there) and the ghosts' reach about their
+    // axis points (their centres move +-0.1 of the axis, their radius is at most 1.15 sizes)
+    constexpr double FLARE_CORE_REACH = 6.0, FLARE_STREAK_REACH = 3.0, FLARE_GHOST_SHIFT = 0.2, FLARE_GHOST_RADIUS = 1.15;
+
+    // the flare as additive quads of the full-canvas pass's block (§6.7.9's mobile reduction):
+    // the core with its bloom and halo ring, the streak, and the ghosts when `ghosts`
+    void drawLensFlareQuads(GeneratorContext& ctx, TargetRef& target, const TitlePass& block, const TitleAffine& space, const TitleVec2& posT, bool ghosts) {
+        ctx.runner.clear(target);
+        const double k = spaceScale(space);
+        if (!(k > 0.0)) return;
+        const double size = block.params[6][2], streak = block.params[6][3], rot = block.params[7][1];
+        const TitleAffine inv = space.inverse();
+        QuadBatch batch;
+        // a quad about the point `ox, oy` render px (+y up) from the flare, its long side along
+        // the render-px direction `ux, uy`
+        auto add = [&](double ox, double oy, double halfLength, double halfWidth, double ux, double uy, int part) {
+            const TitleVec2 c = inv.apply(TitleVec2{posT.x + ox, posT.y - oy});
+            QuadInstance q;
+            q.cx = (float)c.x;
+            q.cy = (float)c.y;
+            q.w = (float)(2.0 * halfLength / k);
+            q.h = (float)(2.0 * halfWidth / k);
+            q.rotation = (float)std::atan2(inv.c * ux - inv.d * uy, inv.a * ux - inv.b * uy);
+            std::fill(q.color, q.color + 4, 1.0f);
+            q.extra[0] = (float)part;
+            batch.add(q);
+        };
+        add(0.0, 0.0, FLARE_CORE_REACH * size, FLARE_CORE_REACH * size, 1.0, 0.0, 0);
+        add(0.0, 0.0, FLARE_STREAK_REACH * std::max(1.0, streak) + size, size + 1.0, std::cos(rot), std::sin(rot), 1);
+        if (ghosts) {
+            const double ax = block.params[9][0], ay = block.params[9][1];
+            const double len = std::hypot(ax, ay);
+            const double ux = len > 0.0 ? ax / len : 1.0, uy = len > 0.0 ? ay / len : 0.0;
+            for (int i = 0; i < 6; i++) {
+                const double along = 2.0 * (0.35 + 0.33 * i);
+                add(ax * along, ay * along, FLARE_GHOST_SHIFT * len + FLARE_GHOST_RADIUS * size + 1.0, FLARE_GHOST_RADIUS * size + 1.0, ux, uy, 2 + i);
+            }
+        }
+        batch.draw(ctx, GenProgram::QuadsLensFlare, "lens_flare", target, space, QuadBlend::Add, 0.0f, [&](TitlePass& pass) {
+            for (int i = 6; i <= 9; i++) pass.set(i, block.params[i][0], block.params[i][1], block.params[i][2], block.params[i][3]);
+        });
+    }
+
     void renderLensFlare(GeneratorContext& ctx, TargetRef& target, const ParamValues& p) {
         // Pachislop places the flare in the generator's own layer space, following or not
         const TitleAffine space = ctx.layerToTarget;
@@ -454,8 +499,12 @@ namespace {
         pass.set(8, color.r, color.g, color.b, p.flag("ghosts") ? 1.0f : 0.0f);
         // the ghosts' axis runs through the canvas centre (render px, +y up)
         pass.set(9, (float)(centreT.x - posT.x), (float)(posT.y - centreT.y), 0.0f, 0.0f);
-        ctx.runner.run(pass);
         ctx.usesCanvasPosition = true;
+        if (ctx.tier == FxTier::Mobile) {
+            drawLensFlareQuads(ctx, target, pass, space, posT, p.flag("ghosts"));
+            return;
+        }
+        ctx.runner.run(pass);
     }
 
     float lensFlareReach(const ParamValues& p) {
@@ -468,14 +517,19 @@ namespace {
     FxCost lensFlareCost(const ParamValues& p, const FxSize& size, FxTier tier) {
         const double target = std::max(1.0, (double)size.width * size.height);
         if (tier == FxTier::Mobile) {
-            // the mobile tier's 8 additive quads: the core with its bloom, the streak and the 6
-            // ghosts (at most 1.15 x size), each cut to the target
+            // the mobile tier's quads in one additive draw (drawLensFlareQuads): the core, the
+            // streak (no longer than the target's diagonal) and the 6 ghosts about their axis
+            // points, each at most the target; the axis runs from the flare to the canvas centre
             const double s = std::max(1.0, p.number("size") * size.pxScale);
-            const double streak = p.number("streak") * size.pxScale;
-            const double core = std::min(target, (12.0 * s) * (12.0 * s));
-            const double band = std::min(target, (2.0 * streak + 2.0 * s) * (6.0 * s));
-            const double ghosts = 6.0 * std::min(target, (2.3 * s) * (2.3 * s));
-            return passCost(1, (core + band + ghosts) / target, 1, 8);
+            const double streak = std::max(1.0, p.number("streak") * size.pxScale);
+            const double diag = std::hypot((double)size.width, (double)size.height);
+            const TitleVec2 at = p.vec2("position");
+            const double axis = std::min(diag, std::hypot(at.x, at.y) * size.pxScale);
+            const double core = std::min(target, std::pow(2.0 * FLARE_CORE_REACH * s, 2.0));
+            const double band = std::min(target, std::min(diag, 2.0 * (FLARE_STREAK_REACH * streak + s)) * 2.0 * (s + 1.0));
+            const double ghost = std::min(target, 2.0 * (FLARE_GHOST_SHIFT * axis + FLARE_GHOST_RADIUS * s + 1.0) * 2.0 * (FLARE_GHOST_RADIUS * s + 1.0));
+            const bool ghosts = p.flag("ghosts");
+            return passCost(1, (core + band + (ghosts ? 6.0 * ghost : 0.0)) / target, 1, ghosts ? 8 : 2);
         }
         // one full-canvas pass; the starburst's two value-noise lookups (4 hashes each) count as taps
         return passCost(1, 2.0, 8);
@@ -521,6 +575,7 @@ namespace {
     // ---- Backlight ----
 
     constexpr int BACKLIGHT_TAPS = 40;      // each radial blur's taps (titleart/gen/backlight.glsl)
+    constexpr int BACKLIGHT_MOBILE_DIVISOR = 4;     // the mobile tier's ray targets: quarter resolution
 
     void renderBacklight(GeneratorContext& ctx, TargetRef& target, const ParamValues& p) {
         // the rays come from the followed layer's own pixels: a glow or shadow on it neither emits
@@ -539,11 +594,13 @@ namespace {
                     return;
                 }
             }
-            const int hw = std::max(1, (ctx.width + 1) / 2), hh = std::max(1, (ctx.height + 1) / 2);
+            // the rays at half resolution, at quarter on the mobile tier (§6.7.10)
+            const int div = ctx.tier == FxTier::Mobile ? BACKLIGHT_MOBILE_DIVISOR : 2;
+            const int hw = std::max(1, (ctx.width + div - 1) / div), hh = std::max(1, (ctx.height + div - 1) / div);
             fx::Scratch a = fx::scratchOf(ctx.runner, TitleBuffer::Accumulator, hw, hh);
             fx::Scratch b = fx::scratchOf(ctx.runner, TitleBuffer::Accumulator, hw, hh);
             if (!a || !b) return;
-            // document space -> the half-resolution targets' px, which cover the full target
+            // document space -> the reduced targets' px, which cover the full target
             const double sx = (double)hw / ctx.width, sy = (double)hh / ctx.height;
             TitleAffine halfSpace = space;
             halfSpace.a *= sx;
@@ -584,10 +641,11 @@ namespace {
         return (float)(p.number("length") * (1.0 + 1.0 / BACKLIGHT_TAPS));
     }
 
-    FxCost backlightCost(const ParamValues& p, const FxSize&, FxTier) {
-        // two 40-tap radial blurs at half resolution (the first also builds the source), the
-        // colour pass at full
-        FxCost c = passCost(3, 2.0 * 0.25 * (BACKLIGHT_TAPS / 4.0) + 1.0, BACKLIGHT_TAPS);
+    FxCost backlightCost(const ParamValues& p, const FxSize&, FxTier tier) {
+        // two 40-tap radial blurs at half resolution (quarter on the mobile tier; the first also
+        // builds the source), the colour pass at full
+        const double share = tier == FxTier::Mobile ? 1.0 / (BACKLIGHT_MOBILE_DIVISOR * BACKLIGHT_MOBILE_DIVISOR) : 0.25;
+        FxCost c = passCost(3, 2.0 * share * (BACKLIGHT_TAPS / 4.0) + 1.0, BACKLIGHT_TAPS);
         c.analysis = c.readback = p.string("center_mode") != "manual";
         return c;
     }

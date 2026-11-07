@@ -30,6 +30,7 @@
 
 #include "titleart/TitleArtDoc.h"
 #include "titleart/TitleArtTypes.h"
+#include "titleart/TitleEffectRegistry.h"
 #include "titleart/render/TitlePasses.h"
 
 #include <functional>
@@ -130,6 +131,10 @@ namespace jasperengine::titleart {
         // the render's fonts, images and SVGs (RenderRequest::assets); null when the request has
         // none. S83's Magic Circle draws its glyph rings with a font from it
         const AssetResolver* assets = nullptr;
+        // the device tier it draws for (S83 D12, §6.7's Mobile reductions): Mobile runs each
+        // definition's reduced path, the one its estimate for FxTier::Mobile describes. The
+        // renderer takes it from RenderRequest::fxTier (S81 sets it per device); tests set it
+        FxTier tier = FxTier::Desktop;
         // set by render: what it drew depends on the layer's place on the canvas (above). A
         // generator that fills the canvas from canvas coordinates sets it
         bool usesCanvasPosition = false;

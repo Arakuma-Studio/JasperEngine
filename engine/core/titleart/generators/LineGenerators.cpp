@@ -11,12 +11,14 @@
 #include "titleart/analysis/SpeedLineLayout.h"
 #include "titleart/generators/TitleGen.h"
 #include "titleart/generators/TitleGenFamilies.h"
+#include "titleart/generators/TitleGenMobile.h"
 #include "titleart/gpu/QuadBatch.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -331,13 +333,11 @@ namespace {
     // the halos' radii as shares of `glow` and their gains (a tight bright one, a wide soft one)
     constexpr double HALO_NARROW = 0.25, HALO_NARROW_GAIN = 1.5, HALO_WIDE_GAIN = 1.2;
 
-    void renderLightStreaks(GeneratorContext& ctx, TargetRef& target, const ParamValues& p) {
-        ctx.runner.clear(target);
-        const TitleAffine space = ctx.layerToTarget;
-        const double k = spaceScale(space);
-        if (!(k > 0.0)) return;
-        const std::vector<Streak> list = streaksOf(p, seedOf(ctx, p));
-        const double chroma = std::max(0.0, p.number("chroma"));
+    // the mobile tier's halo resolution (§6.7.4): its source and both blurs at quarter
+    constexpr int LIGHT_STREAKS_MOBILE_DIVISOR = 4;
+
+    // one quad per streak in a drawing space of `k` target px per space px
+    QuadBatch streakBatch(const std::vector<Streak>& list, double k, double chroma) {
         const double margin = 1.0 / k;      // one target px of anti-aliasing room past each end
         QuadBatch batch;
         for (const Streak& s : list) {
@@ -354,32 +354,55 @@ namespace {
             q.extra[3] = 1.0f;
             batch.add(q);
         }
+        return batch;
+    }
+
+    void renderLightStreaks(GeneratorContext& ctx, TargetRef& target, const ParamValues& p) {
+        ctx.runner.clear(target);
+        const TitleAffine space = ctx.layerToTarget;
+        const double k = spaceScale(space);
+        if (!(k > 0.0)) return;
+        const std::vector<Streak> list = streaksOf(p, seedOf(ctx, p));
+        const double chroma = std::max(0.0, p.number("chroma"));
+        const QuadBatch batch = streakBatch(list, k, chroma);
         float tail = 0.0f, head = 0.0f;
         taperFractions(p.number("taper_tail"), p.number("taper_head"), tail, head);
         const TitleColor core = fx::linearOf(p.color("core_color")), edge = fx::linearOf(p.color("edge_color"));
         const float coreWidth = (float)std::clamp(p.number("core_width") / 100.0, 0.0, 1.0);
         const float bright = (float)std::max(0.0, p.number("brightness") / 100.0);
         // core weight 2 burns the core out to white under Add; 0 draws the edge colour alone
-        auto draw = [&](TargetRef& dst, float coreWeight, const char* label) {
-            batch.draw(ctx, GenProgram::QuadsLightStreaks, label, dst, space, QuadBlend::Add, 0.0f, [&](TitlePass& pass) {
+        auto draw = [&](const GeneratorContext& c, const QuadBatch& quads, const TitleAffine& sp, double kk, TargetRef& dst, float coreWeight,
+                        const char* label) {
+            quads.draw(c, GenProgram::QuadsLightStreaks, label, dst, sp, QuadBlend::Add, 0.0f, [&](TitlePass& pass) {
                 pass.set(6, core.r, core.g, core.b, coreWidth);
                 pass.set(7, edge.r, edge.g, edge.b, coreWeight);
-                pass.set(8, tail, head, (float)(chroma * k), bright);
+                pass.set(8, tail, head, (float)(chroma * kk), bright);
             });
         };
-        draw(target, 2.0f, "light_streaks");
+        draw(ctx, batch, space, k, target, 2.0f, "light_streaks");
         // the halo is blurred from the edge colour alone: the white core stays a thin hot line
         // inside a coloured bloom. Pachislop's two glowInto passes, added in one compose
         const double glow = std::max(0.0, p.number("glow"));
         if (!(glow > 0.0)) return;
-        fx::Scratch edges = fx::scratchOf(ctx.runner, TitleBuffer::Accumulator, ctx.width, ctx.height);
+        // the mobile tier draws the halo's source and blurs it at quarter resolution; the
+        // compose samples them bilinearly at full
+        std::optional<GeneratorContext> quarter;
+        QuadBatch quarterBatch;
+        if (ctx.tier == FxTier::Mobile) {
+            quarter.emplace(reducedContext(ctx, LIGHT_STREAKS_MOBILE_DIVISOR));
+            quarterBatch = streakBatch(list, spaceScale(quarter->layerToTarget), chroma);
+        }
+        const GeneratorContext& hc = quarter ? *quarter : ctx;
+        const QuadBatch& haloBatch = quarter ? quarterBatch : batch;
+        const TitleAffine haloSpace = hc.layerToTarget;
+        fx::Scratch edges = fx::scratchOf(ctx.runner, TitleBuffer::Accumulator, hc.width, hc.height);
         if (!edges) return;
         ctx.runner.clear(*edges);
-        draw(*edges, 0.0f, "light_streaks halo source");
-        EffectContext e = effectContext(ctx);
-        fx::Scratch narrow = fx::blur(e, *edges, (float)(glow * HALO_NARROW * ctx.pxScale));
+        draw(hc, haloBatch, haloSpace, spaceScale(haloSpace), *edges, 0.0f, "light_streaks halo source");
+        EffectContext e = effectContext(hc);
+        fx::Scratch narrow = fx::blur(e, *edges, (float)(glow * HALO_NARROW * hc.pxScale));
         if (!narrow) return;
-        fx::Scratch wide = fx::blur(e, *edges, (float)(glow * ctx.pxScale));
+        fx::Scratch wide = fx::blur(e, *edges, (float)(glow * hc.pxScale));
         if (!wide) return;
         TitlePass pass = genPass(ctx, GenProgram::LightStreakCompose, "light_streaks halo", target, ctx.documentToTarget);
         pass.textures[0].target = narrow.get();
@@ -390,15 +413,16 @@ namespace {
     }
 
     // fx::blur's passes at radiusPx (TitleFx.cpp): halvings to sigma <= 6, a separable Gaussian
-    // of up to 2 x 18 + 1 taps there, and the copy back to full size
-    void addBlurCost(FxCost& c, double radiusPx) {
+    // of up to 2 x 18 + 1 taps there, and the copy back to the size it ran at, which is `area`
+    // of the full target's pixels
+    void addBlurCost(FxCost& c, double radiusPx, double area = 1.0) {
         const double sigma = radiusPx / 3.0;
         c.passes += 1;
-        c.fre += 1.0;
+        c.fre += area;
         if (sigma < 0.3) return;
         int level = 0;
         while (sigma / std::ldexp(1.0, level) > 6.0 && level < 5) level++;
-        double share = 1.0;
+        double share = area;
         for (int l = 1; l <= level; l++) {
             share *= 0.25;
             c.passes += 1;
@@ -410,18 +434,22 @@ namespace {
         c.maxTapsPerPixel = std::max(c.maxTapsPerPixel, taps);
     }
 
-    FxCost lightStreaksCost(const ParamValues& p, const FxSize& size, FxTier) {
+    FxCost lightStreaksCost(const ParamValues& p, const FxSize& size, FxTier tier) {
         // two quad draws (the core, the halo source) over the streaks' area, the two halo blurs
-        // and the compose
+        // and the compose; the mobile tier draws the halo source and its blurs at quarter
+        // resolution (1/16 of the pixels, radii / 4)
         const double area = std::max(1.0, (double)size.width * size.height);
         const double s = size.pxScale;
         const double n = std::clamp(p.number("count"), 1.0, (double)MAX_STREAKS);
         const double quadArea = n * (p.number("length") + 2.0) * (p.number("thickness") + 2.0 * p.number("chroma") + 2.0) * s * s;
-        FxCost c = passCost(2, 2.0 * std::min(1.0, quadArea / area), 1, 2 * (int)n, 0.1);
+        const bool mobile = tier == FxTier::Mobile;
+        const double haloShare = mobile ? 1.0 / (LIGHT_STREAKS_MOBILE_DIVISOR * LIGHT_STREAKS_MOBILE_DIVISOR) : 1.0;
+        const double haloScale = mobile ? 1.0 / LIGHT_STREAKS_MOBILE_DIVISOR : 1.0;
+        FxCost c = passCost(2, (1.0 + haloShare) * std::min(1.0, quadArea / area), 1, 2 * (int)n, 0.1);
         const double glow = std::max(0.0, p.number("glow")) * s;
         if (glow > 0.0) {
-            addBlurCost(c, glow * HALO_NARROW);
-            addBlurCost(c, glow);
+            addBlurCost(c, glow * HALO_NARROW * haloScale, haloShare);
+            addBlurCost(c, glow * haloScale, haloShare);
             c.passes += 1;
             c.fre += 1.0;
             c.maxTapsPerPixel = std::max(c.maxTapsPerPixel, 2);
