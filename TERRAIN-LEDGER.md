@@ -163,6 +163,15 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   T6's AC35 and T3's move of the hole rule into `sampleHeightField` wait for that.
 - Disk filled to 100% on 2026-11-07 ~06:00; freed 35 GB (coordinator's baseline trees, Docker build cache). The queue now waits
   while under 15 GB is free. MCP test runs need `MCP_SKIP_WEB_BUILD=1`, or `MCP_SUITE=all` builds a web project first.
+- Shader undefined behaviour or driver bug, found by T3's merged MCP run: a new terrain limits layers per pixel (R53), and that
+  variant at High tier and High Lit Quality (the editor default) had never been drawn by any GPU test. llvmpipe kills it with an
+  illegal instruction. A rewrite of the layer selection didn't fix it; checks at 128-bit llvmpipe width, on lavapipe and with
+  glslangValidator/spirv-val decide whether it's our shader or the driver. T3 adds a GPU test drawing every variant combination
+  on glcore and Vulkan. Also: `sample_terrain` could pass the 1 MB result limit with many points; capped at 64 full samples.
+- Header fan-out passed 150 on integration after T1's checkpoint (about 153 on `Transform.h`). T1 cut it at the source on an
+  isolated branch `terrain/t1-fanout` from the checkpoint; T3 moved its one unit to a narrow header.
+- The build queue's first-come rule let newcomers win freed slots when fewer jobs waited than there were slots (T5 waited 144 min
+  behind later jobs). Now strictly head of line.
 - Editor trap found by T2: `jobs::postToMain` drains only in `Engine::runFrame`, which the editor runs only in frames that draw a
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
