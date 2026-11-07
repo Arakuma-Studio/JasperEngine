@@ -16,6 +16,8 @@
 #include "object/Light.h"
 #include "object/ParticleSystem.h"
 #include "object/Primitive.h"
+#include "particles/ParticleEffectCodec.h"
+#include "particles/ParticleEffectLibrary.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/RenderSystem.h"
 
@@ -272,4 +274,271 @@ TEST_F(ParticlesGpu, PlayOnAwakeSystemsShowWithoutASeek){
         if (rgba[i] > 120) lit++;
     }
     EXPECT_GT(lit, 100) << "its particles are drawn";
+}
+
+TEST_F(ParticlesGpu, DeathSubEmitterChildrenDraw){
+    JASPER_REQUIRE_GPU();
+    // BF23 F1: the parents die at 0.5 s, so at 1.5 s all that is left on screen is the children
+    // their deaths spawned, each drawn with the child effect's own Renderer (green)
+    particles::ParticleEffectDocument child;
+    std::vector<particles::Diagnostic> diagnostics;
+    ASSERT_TRUE(particles::ParticleEffectCodec::read(R"({"version": 1, "duration": 5, "looping": false, "maxParticles": 200, "modules": [
+        {"type": "main", "startLifetime": 5, "startSpeed": 0.5, "startSize": 0.5, "startColor": [0.1, 1, 0.2, 1], "gravityModifier": 0},
+        {"type": "emission", "rateOverTime": 0},
+        {"type": "shape", "shape": "sphere", "radius": 0.1},
+        {"type": "renderer", "renderMode": "billboard", "untexturedShape": "square"}]})", child, diagnostics));
+    particles::ParticleEffectLibrary::set("fx/bf23-death-child.particles", child);
+    ParticleSystem& ps = system(Vector3(0.0f, 1.0f, 0.0f), R"({"version": 1, "duration": 5, "looping": false, "seed": 17, "maxParticles": 50,
+        "subEmitters": [{"trigger": "death", "effect": "fx/bf23-death-child.particles", "emitCount": 6}],
+        "modules": [
+            {"type": "main", "startLifetime": 0.5, "startSpeed": 2, "startSize": 0.2, "startColor": [1, 0.1, 0.1, 1], "gravityModifier": 0},
+            {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 4}]},
+            {"type": "shape", "shape": "sphere", "radius": 0.2},
+            {"type": "subEmitters"},
+            {"type": "renderer", "renderMode": "billboard"}]})");
+    ASSERT_TRUE(render(1.5));
+    EXPECT_NO_ENGINE_ERRORS();
+
+    const particles::ParticleSystemState* state = scene.getSystem<ParticleSubsystem>()->getState(ps.getEntity());
+    ASSERT_NE(state, nullptr);
+    EXPECT_EQ(state->runtime.count(), 0u) << "the parents are dead by now";
+    ASSERT_EQ(state->runtime.childCount(), 1u);
+    ASSERT_GT(state->runtime.child(0)->count(), 0u) << "the children are alive in the simulation";
+
+    Framebuffer& target = GpuEnvironment::target();
+    const int width = (int)target.getWidth(), height = (int)target.getHeight();
+    std::vector<uint8_t> rgba;
+    ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), width, height, rgba));
+    int green = 0;
+    for (size_t i = 0; i < rgba.size(); i += 4){
+        if (rgba[i + 1] > 120 && rgba[i] < rgba[i + 1] / 2) green++;
+    }
+    EXPECT_GT(green, 100) << "the children are drawn (" << green << " green pixels)";
+    particles::ParticleEffectLibrary::clear();
+}
+
+TEST_F(ParticlesGpu, SubEmittersDrawWithTheirOwnRenderers){
+    JASPER_REQUIRE_GPU();
+    // AC3's golden: each child has its Renderer. Left: a Death child, untextured squares. Middle:
+    // a parent that draws nothing, Birth children as lit-less cubes. Right: two levels, the
+    // second additive sparks with trails. A last system, without sub-emitters, makes nothing new
+    auto define = [](const char* path, const std::string& json){
+        particles::ParticleEffectDocument document;
+        std::vector<particles::Diagnostic> diagnostics;
+        ASSERT_TRUE(particles::ParticleEffectCodec::read(json, document, diagnostics)) << particles::ParticleEffectCodec::format(diagnostics);
+        particles::ParticleEffectLibrary::set(path, document);
+    };
+    const std::string kid = R"({"version": 1, "duration": 5, "looping": false, "seed": 5, "maxParticles": 200, "modules": [
+        {"type": "main", "startLifetime": 5, "startSpeed": 0.6, "startSize": 0.3, "startColor": [%COLOR%], "gravityModifier": 0},
+        {"type": "emission", "rateOverTime": 0},
+        {"type": "shape", "shape": "sphere", "radius": 0.1}%EXTRA%,
+        {"type": "renderer", %RENDERER%}]})";
+    auto effect = [&kid](const std::string& color, const std::string& extra, const std::string& renderer){
+        std::string json = kid;
+        json.replace(json.find("%COLOR%"), 7, color);
+        json.replace(json.find("%EXTRA%"), 7, extra);
+        json.replace(json.find("%RENDERER%"), 10, renderer);
+        return json;
+    };
+    define("fx/bf23-squares.particles", effect("0.1, 1, 0.2, 1", "", R"("renderMode": "billboard", "untexturedShape": "square")"));
+    define("fx/bf23-cubes.particles", effect("0.2, 0.5, 1, 1", "", R"("renderMode": "mesh", "meshes": [{"type": "primitive", "primitive": "cube"}])"));
+    define("fx/bf23-sparks.particles", effect("1, 0.8, 0.3, 1", R"(, {"type": "trails", "mode": "perParticle", "lifetime": 0.4})",
+                                              R"("renderMode": "billboard", "texture": "particles/textures/spark.png", "blend": "additive")"));
+    define("fx/bf23-middle.particles", R"({"version": 1, "duration": 5, "looping": false, "seed": 6, "maxParticles": 50,
+        "subEmitters": [{"trigger": "death", "effect": "fx/bf23-sparks.particles", "emitCount": 3}],
+        "modules": [{"type": "main", "startLifetime": 0.3, "startSpeed": 1, "startSize": 0.2, "startColor": [1, 0.2, 0.8, 1], "gravityModifier": 0},
+                    {"type": "emission", "rateOverTime": 0},
+                    {"type": "subEmitters"},
+                    {"type": "renderer", "renderMode": "billboard"}]})");
+    auto parent = [](const std::string& trigger, const std::string& child, float lifetime, const std::string& renderer){
+        return R"({"version": 1, "duration": 5, "looping": false, "seed": 17, "maxParticles": 50,
+            "subEmitters": [{"trigger": ")" + trigger + R"(", "effect": ")" + child + R"(", "emitCount": 4}],
+            "modules": [
+                {"type": "main", "startLifetime": )" + std::to_string(lifetime) + R"(, "startSpeed": 1.5, "startSize": 0.2, "startColor": [1, 0.1, 0.1, 1], "gravityModifier": 0},
+                {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 4}]},
+                {"type": "shape", "shape": "sphere", "radius": 0.2},
+                {"type": "subEmitters"},
+                {"type": "renderer", )" + renderer + R"(}]})";
+    };
+    system(Vector3(-3.5f, 1.0f, 0.0f), parent("death", "fx/bf23-squares.particles", 0.5f, R"("renderMode": "billboard")"));
+    system(Vector3(0.0f, 1.0f, 0.0f), parent("birth", "fx/bf23-cubes.particles", 5.0f, R"("renderMode": "none")"));
+    system(Vector3(3.5f, 1.0f, 0.0f), parent("death", "fx/bf23-middle.particles", 0.3f, R"("renderMode": "billboard")"));
+    ParticleSystem& plain = system(Vector3(0.0f, 3.2f, 0.0f), burst(R"("renderMode": "billboard")", "", 6, 0.3f));
+    ASSERT_TRUE(render(1.25));
+    EXPECT_GOLDEN_OPTIONS("particles_sub_emitters", goldenTolerance());
+    EXPECT_NO_ENGINE_ERRORS();
+
+    ParticleSubsystem& subsystem = *scene.getSystem<ParticleSubsystem>();
+    const particles::ParticleSystemState* last = subsystem.getState(systems[2]->getEntity());
+    ASSERT_NE(last, nullptr);
+    ASSERT_EQ(last->render.children.size(), 1u);
+    ASSERT_NE(last->render.children[0], nullptr);
+    ASSERT_EQ(last->render.children[0]->children.size(), 1u);
+    EXPECT_TRUE(last->render.children[0]->children[0]->loaded);
+    const particles::ParticleSystemState* none = subsystem.getState(plain.getEntity());
+    ASSERT_NE(none, nullptr);
+    EXPECT_TRUE(none->render.children.empty()) << "no sub-emitters: nothing allocated for them";
+    particles::ParticleEffectLibrary::clear();
+}
+
+TEST_F(ParticlesGpu, ChildrenKeepTheirSystemInView){
+    JASPER_REQUIRE_GPU();
+    // children that flew far from their dead parents: the system's bounds hold them, so a camera
+    // that only sees them marks it visible and draws them (its culling would pause it otherwise)
+    particles::ParticleEffectDocument child;
+    std::vector<particles::Diagnostic> diagnostics;
+    ASSERT_TRUE(particles::ParticleEffectCodec::read(R"({"version": 1, "duration": 5, "looping": false, "maxParticles": 50, "modules": [
+        {"type": "main", "startLifetime": 20, "startSpeed": 0, "startSize": 1, "startColor": [0.1, 1, 0.2, 1], "gravityModifier": 0},
+        {"type": "emission", "rateOverTime": 0},
+        {"type": "renderer", "renderMode": "billboard", "untexturedShape": "square"}]})", child, diagnostics));
+    particles::ParticleEffectLibrary::set("fx/bf23-far-child.particles", child);
+    ParticleSystem& ps = system(Vector3(-200.0f, 1.0f, 0.0f), R"({"version": 1, "duration": 5, "looping": false, "seed": 9, "maxParticles": 50,
+        "simulationSpace": "world",
+        "subEmitters": [{"trigger": "death", "effect": "fx/bf23-far-child.particles", "emitCount": 1}],
+        "modules": [
+            {"type": "main", "startLifetime": 1, "startSpeed": 0, "startSize": 0.1, "gravityModifier": 0},
+            {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 1}]},
+            {"type": "shape", "enabled": false},
+            {"type": "startVelocity", "min": [200, 0, 0], "max": [200, 0, 0]},
+            {"type": "subEmitters"},
+            {"type": "renderer", "renderMode": "billboard"}]})");
+    ASSERT_TRUE(render(1.5));
+    EXPECT_NO_ENGINE_ERRORS();
+    const particles::ParticleSystemState* state = scene.getSystem<ParticleSubsystem>()->getState(ps.getEntity());
+    ASSERT_NE(state, nullptr);
+    ASSERT_EQ(state->runtime.count(), 0u);
+    ASSERT_EQ(state->runtime.child(0)->count(), 1u);
+    ASSERT_TRUE(state->hasBounds);
+    EXPECT_GT(state->boundsMax[0], -50.0f) << "the box follows the children, not the emitter";
+    EXPECT_GT(state->drawnViews, 0u);
+    particles::ParticleEffectLibrary::clear();
+}
+
+namespace {
+
+    // the pixel at the middle of the target (world y = 1 in front of the camera)
+    bool centrePixel(uint8_t out[4]){
+        Framebuffer& target = GpuEnvironment::target();
+        const int width = (int)target.getWidth(), height = (int)target.getHeight();
+        std::vector<uint8_t> rgba;
+        if (!readTexture(target.getRender().getColorTexture(), width, height, rgba))
+            return false;
+        std::memcpy(out, &rgba[((size_t)(height / 2) * width + width / 2) * 4], 4);
+        return true;
+    }
+
+    void defineEffect(const char* path, const std::string& json){
+        particles::ParticleEffectDocument document;
+        std::vector<particles::Diagnostic> diagnostics;
+        ASSERT_TRUE(particles::ParticleEffectCodec::read(json, document, diagnostics)) << particles::ParticleEffectCodec::format(diagnostics);
+        particles::ParticleEffectLibrary::set(path, document);
+    }
+
+    // one big opaque square at the emitter, or `speedZ` along z
+    std::string square(const std::string& color, const std::string& renderer = "", float speedZ = 0.0f){
+        const std::string velocity = std::to_string(speedZ);
+        return R"({"version": 1, "duration": 5, "looping": false, "seed": 3, "maxParticles": 10, "modules": [
+            {"type": "main", "startLifetime": 100, "startSpeed": 0, "startSize": 3, "startColor": [)" + color + R"(], "gravityModifier": 0},
+            {"type": "emission", "rateOverTime": 0},
+            {"type": "shape", "enabled": false},
+            {"type": "startVelocity", "min": [0, 0, )" + velocity + R"(], "max": [0, 0, )" + velocity + R"(]},
+            {"type": "renderer", "renderMode": "billboard", "untexturedShape": "square")" + renderer + R"(}]})";
+    }
+
+    // one particle at the emitter, drawing as `renderer`, that spawns one child of `effect` at birth
+    std::string parentOf(const std::string& effect, const std::string& renderer){
+        return R"({"version": 1, "duration": 5, "looping": false, "seed": 3, "maxParticles": 10,
+            "subEmitters": [{"trigger": "birth", "effect": ")" + effect + R"(", "emitCount": 1}],
+            "modules": [
+                {"type": "main", "startLifetime": 100, "startSpeed": 0, "startSize": 3, "startColor": [0, 1, 0, 1], "gravityModifier": 0},
+                {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 1}]},
+                {"type": "shape", "enabled": false},
+                {"type": "subEmitters"},
+                {"type": "renderer", )" + renderer + R"(}]})";
+    }
+
+}
+
+TEST_F(ParticlesGpu, AChildsSortPriorityPutsItOverAnotherSystem){
+    JASPER_REQUIRE_GPU();
+    // farther than the green system, and yet last: Sort Priority comes before distance
+    defineEffect("fx/bf23-priority.particles", square("1, 0, 0, 1", R"(, "sortPriority": 10)"));
+    system(Vector3(0.0f, 1.0f, -2.0f), parentOf("fx/bf23-priority.particles", R"("renderMode": "none")"));
+    system(Vector3(0.0f, 1.0f, 0.0f), R"({"version": 1, "duration": 5, "looping": false, "seed": 3, "maxParticles": 10, "modules": [
+        {"type": "main", "startLifetime": 100, "startSpeed": 0, "startSize": 3, "startColor": [0, 1, 0, 1], "gravityModifier": 0},
+        {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 1}]},
+        {"type": "shape", "enabled": false},
+        {"type": "renderer", "renderMode": "billboard", "untexturedShape": "square"}]})");
+    ASSERT_TRUE(render(0.5));
+    EXPECT_NO_ENGINE_ERRORS();
+    uint8_t pixel[4];
+    ASSERT_TRUE(centrePixel(pixel));
+    EXPECT_GT(pixel[0], 150) << "the child is on top: " << (int)pixel[0] << "," << (int)pixel[1];
+    EXPECT_LT(pixel[1], 80);
+    particles::ParticleEffectLibrary::clear();
+}
+
+TEST_F(ParticlesGpu, AChildBehindItsParentDrawsFirst){
+    JASPER_REQUIRE_GPU();
+    // blended without depth writes, the farther has to draw first: here the child, flying away
+    defineEffect("fx/bf23-behind.particles", square("1, 0, 0, 1", "", -3.0f));
+    system(Vector3(0.0f, 1.0f, 0.0f), parentOf("fx/bf23-behind.particles", R"("renderMode": "billboard", "untexturedShape": "square")"));
+    ASSERT_TRUE(render(1.0));
+    EXPECT_NO_ENGINE_ERRORS();
+    uint8_t pixel[4];
+    ASSERT_TRUE(centrePixel(pixel));
+    EXPECT_GT(pixel[1], 150) << "the parent is on top: " << (int)pixel[0] << "," << (int)pixel[1];
+    EXPECT_LT(pixel[0], 80);
+    particles::ParticleEffectLibrary::clear();
+}
+
+TEST_F(ParticlesGpu, EditingAChildsFileShowsOnScreen){
+    JASPER_REQUIRE_GPU();
+    defineEffect("fx/bf23-edit.particles", square("1, 0, 0, 1"));
+    system(Vector3(0.0f, 1.0f, 0.0f), parentOf("fx/bf23-edit.particles", R"("renderMode": "none")"));
+    ASSERT_TRUE(render(0.5));
+    uint8_t pixel[4];
+    ASSERT_TRUE(centrePixel(pixel));
+    ASSERT_GT(pixel[0], 150);
+    ASSERT_LT(pixel[2], 80);
+    defineEffect("fx/bf23-edit.particles", square("0, 0, 1, 1"));
+    ASSERT_TRUE(render(0.5)) << "seeks the system again, as capture_particles does";
+    EXPECT_NO_ENGINE_ERRORS();
+    ASSERT_TRUE(centrePixel(pixel));
+    EXPECT_GT(pixel[2], 150) << "the edit shows: " << (int)pixel[0] << "," << (int)pixel[2];
+    EXPECT_LT(pixel[0], 80);
+    particles::ParticleEffectLibrary::clear();
+}
+
+TEST_F(ParticlesGpu, ASystemPlaysAgainAfterTheViewComesBack){
+    JASPER_REQUIRE_GPU();
+    // Android's pause under low memory, or a lost context: the scenes destroy their systems and
+    // keep their components
+    systems.push_back(std::make_unique<ParticleSystem>(&scene));
+    ParticleSystem& ps = *systems.back();
+    ps.setPosition(Vector3(0.0f, 1.0f, 0.0f));
+    ASSERT_TRUE(ps.setInlineEffect(R"({"version": 1, "duration": 2, "seed": 3, "maxParticles": 400, "modules": [
+        {"type": "main", "startLifetime": 3, "startSpeed": 0.3, "startSize": 0.6, "startColor": [1, 0.75, 0.4, 1]},
+        {"type": "emission", "rateOverTime": 400},
+        {"type": "renderer", "renderMode": "billboard", "blend": "additive"}]})"));
+    Scene* current = &scene;
+    ASSERT_TRUE(GpuEnvironment::runFrames([current](){ return current->getSystem<RenderSystem>()->isAllLoaded(); }));
+    ASSERT_TRUE(GpuEnvironment::runFrames([&ps](){ return ps.getParticleCount() >= 50; }, 20000)) << ps.getParticleCount();
+
+    Engine::systemViewDestroyed();
+    Engine::systemViewLoaded();
+    Engine::systemViewChanged();
+    ASSERT_TRUE(GpuEnvironment::runFrames([current](){ return current->getSystem<RenderSystem>()->isAllLoaded(); }));
+    ASSERT_TRUE(GpuEnvironment::runFrames([&ps](){ return ps.getParticleCount() >= 50; }, 20000)) << ps.getParticleCount();
+    int frames = 0;
+    ASSERT_TRUE(GpuEnvironment::runFrames([&frames](){ return ++frames >= 5; }));
+    Framebuffer& target = GpuEnvironment::target();
+    const int width = (int)target.getWidth(), height = (int)target.getHeight();
+    std::vector<uint8_t> rgba;
+    ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), width, height, rgba));
+    int lit = 0;
+    for (size_t i = 0; i < rgba.size(); i += 4){
+        if (rgba[i] > 120) lit++;
+    }
+    EXPECT_GT(lit, 100) << "its particles are drawn again";
 }

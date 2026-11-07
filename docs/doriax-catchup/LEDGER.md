@@ -78,24 +78,24 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | # | Feature (branch `dc/<name>`) | Covers | Status |
 |---|---|---|---|
 | 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | merged |
-| 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | impl |
-| 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | impl |
+| 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | merged |
+| 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | merged |
 | 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | merged |
-| 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | impl |
-| 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | impl |
-| 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | impl |
-| 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | impl |
-| 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | impl |
-| 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | impl |
+| 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | merged |
+| 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | merged |
+| 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | merged |
+| 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | merged |
+| 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | merged |
+| 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | merged |
 | 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | merged |
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
-| 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | impl |
+| 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | merged |
 | 14 | `ssr-probes` | SSR under local probes and AO, early-out | merged |
-| 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | impl |
+| 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | merged |
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
-| 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | impl |
-| 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | impl |
-| 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | impl |
+| 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | merged |
+| 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | merged |
+| 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | merged |
 
 ## Log
 
@@ -186,3 +186,71 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   Box B/F rounds: WERROR editor, core SSR* 23/23, editor variants 43/43, test_ssr_reflections 4/4, lints; red
   controls failed as they should. GBUFFER bits 16/17 are ssr-probes'; render-correctness moves 'Ifd' to bit 18.
   Shader cache v49 is now taken: later landings bump it.
+- 2026-11-07 00:xx: **render-correctness merged** after an independent review (flat normals turned toward the eye on
+  every backend, catalog snapshot regenerated, foliage refills on a distance-scale change, scaled cylindrical
+  billboards, near clip clamped only at <= 0 with matching near/far everywhere, LOD lint widened, render-texture
+  rebinds without variant checks). Box C: WERROR editor, core 113 / editor 57 filtered, test_render_correctness 4,
+  red run failed as it should. GBUFFER 'Ifd' is bit 18; shader cache v50. Vulkan, web, Windows, macOS, iOS not run.
+- 2026-11-07 00:xx: **code-editor-git merged** after an independent review (revert is its own undo step, editor-buffer
+  diffs match git byte for byte, renamed files diff from their old path, svn '@' paths, restored MCP warnings, core
+  budget kept at 99000 by trimming). Landing check on main + branch (box C): WERROR editor, gen_tool_docs and
+  tool_budget, unit (scene defaults, cooked, editor diff, VCS, render-correctness suites), MCP 3 files +
+  render_correctness/budget/docs/protocol, lints: all green. Cooked scene format 1.3 is code-editor-git's;
+  water-reflections takes 1.4.
+- 2026-11-07 01:xx: **runtime-core, platform-lifecycle and scene-integrity merged as one batch** (`f0fc338d9`), each
+  after an independent review and its fixes. They share Engine.cpp, App.cpp, Project.cpp and InspectorWindow.cpp,
+  so one landing check covered the three on main: WERROR editor, unit filters of all three plus render-correctness
+  and code-editor-git suites (343), MCP files of all three plus budget/docs/protocol (57 and 75), Android compile,
+  lints. Integration fixes made at landing: onVisibilityChanged cleared with the other lifecycle events
+  (runtime-core's event-clear lint meets platform-lifecycle's new event); set_child_scene description trimmed to keep
+  core at 99000; RuntimeFields.gen.inc regenerated (runtime-core's action fields and render-correctness' foliage and
+  instanced fade fields were not in cooked scenes, so prebuilt exports dropped them).
+- Lesson for every landing check: a branch that adds component fields runs `RuntimeFields.*:CookedScene.*`.
+- Open, not ours: a many-material OBJ drops submeshes on main since mesh-memory (S55's per-submesh culling assumed
+  contiguous submeshes, `VisibleList.cpp:50`); the follow-ups program fixes it on `fix/submesh-drop` with our
+  diagnosis. `UIParticleSystemsClippedByAPanel` fails only when run with the other scissor tests (older than this
+  program). An FBX foliage layer draws no instances in the headless editor (unverified).
+- 2026-11-07 02:xx: **sprite-batching merged** after an independent review (Buffer write counter so geometry uploaded
+  by another pass is rebaked, lazy-MVP test that can fail, the dropped spec tests added, lazy MVP off with several
+  cameras and on in the depth pre-pass, annotations on the batch's own draw, chunks kept past 16 MB, draw modes and
+  scissor). Landing tree = main (with the batch and code-editor-git) + branch; integration resolved at landing:
+  writeCustomUniforms(scene, mesh) in both draw paths, Engine/SokolSystem additions from both sides, two eval cases
+  an earlier conflict union had joined. Checks on box H: WERROR editor, gen_tool_docs and budget, unit (SpriteBatch,
+  DrawBatcher, S55, mesh-memory, render-correctness, SSR, scene defaults, cooked, RuntimeFields, platform-lifecycle),
+  MCP (batching, scene defaults, hidden window, budget/docs/protocol), web compile, lints. Red controls in the branch:
+  batching compiled out fails all 17 batch tests. Pixel-snapped sprites (S41) draw one by one until S41 wires in.
+- Landing is now parallel: the next features are pre-merged onto main + the previous landing and checked at once.
+- 2026-11-07 02:xx: **scripting merged** after an independent review (C++ fields kept when a header is missing,
+  instancing refuses cleanly on parts models, winding not carried across a rebuild, guide fixed on omitted bools,
+  eval cases for the new text). Landing tree = main + sprite-batching + branch, conflicts resolved by its agent;
+  box D: WERROR editor (0 warnings), fanout, budget (core 98966), unit 60 core + 44 editor incl. RuntimeFields and
+  CookedScene, MCP 32, lints, test_grade.
+- 2026-11-07 03:xx: **agent-authoring and export-pipeline merged** (landing train 1), each after an independent review
+  and its fixes, each pre-checked on main + sprite-batching, then together on main + scripting (box: WERROR editor,
+  gen_tool_docs and budget with the guide's client cut, unit filters of both plus RuntimeFields/CookedScene and
+  scripting's parts tests, MCP 122 passed across both features plus scripting's overlap, lints and test_grade).
+  Conflicts at landing: eval cases (union, graded), the shipping guide (both paragraphs).
+- 2026-11-07 03:xx: **mobile-shipping merged** (landing train 2 = train 1 + branch) after an independent review (SDK
+  resource bundles copied and their manifests merged, guide anchor, iOS red controls incl. the old-runtime fallback,
+  privacy warnings in the build result, OK disabled on an invalid manifest, one undo step per agent call). Conflicts
+  at landing with export-pipeline in Exporter/ExporterPrebuilt (manifests and the Xcode project written only when
+  changed, a failed write names the file; every web export keeps its favicon and carries native web scripts),
+  StreamSchema keys, check-changed rules. Box: WERROR editor, budget, unit 294, MCP 57, web compile, lints, Apple
+  privacy check. No Apple code compiled here.
+- 2026-11-07 04:xx: **main's MCP goldens fixed** (`fix/main-goldens`): four MCP tests had failed on main since the
+  landings (reported by the pixel-art program). Intended changes regenerated per suite (scene-integrity's
+  startSceneId and scene source 4, render-correctness' normal-less shader keys, runtime-core's action rows,
+  export-pipeline's hasTextureRect in generated scenes); one real bug fixed with a red control: a spline road saved
+  before its first frame lost its template submesh (save determinism). Checked on main: test_reflection +
+  test_saved_output_determinism 11/11, GeneratedScenes/SplineStream/Compat unit tests. Open: three prefab codegen
+  goldens that need the external fixture project.
+- 2026-11-07 05:xx: **project-window, water-reflections and ui-components merged** (landing trains 3 and 4), each
+  after an independent review and its fixes. Integration fixes at landing: the Privacy Manifest Preview became an
+  EditorModal (mobile-shipping's raw modal failed check-editor-modals on main; test table 72 sites); move_asset
+  text trimmed (core back at 99000); a GPU-harness view leak in sprite-batching's tests reset (water goldens were
+  drawn at 256x256); held batch draws flushed before water's scene-colour re-copy; reflection goldens for the
+  Button's new fields and the editor's extra 2D line renderer (camera id 9 -> 10, editor only). Cooked format 1.4
+  (water's planar settings), shader cache v51. Box C: WERROR editor, budget, unit 105 + earlier 294-run, MCP 125 +
+  55 + reflection/determinism 11/11, HTML UI input, web compile, lints, test_grade.
+- Box tool: rsync now compares contents and never copies times (a stale object after a cancelled build crashed
+  the editor in one landing check).

@@ -17,6 +17,7 @@
 #include "command/type/GraphEditCmd.h"
 #include "graph/Graph.h"
 #include "graph/GraphRegistry.h"
+#include "procmat/ProceduralMaterialKind.h"
 #include "util/ProjectChecks.h"
 
 #include <cstdlib>
@@ -260,6 +261,7 @@ void editGraphTool(const CallPtr& call) {
 void registerGraphTools(McpRegistry& registry) {
     using namespace schema;
     if (const char* test = std::getenv("JASPER_TEST_GRAPH_KIND"); test && std::strcmp(test, "1") == 0) registerTestKind();
+    procmat::registerProceduralMaterialKind();
 
     {
         ToolDef tool;

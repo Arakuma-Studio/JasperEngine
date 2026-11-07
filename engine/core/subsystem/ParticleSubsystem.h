@@ -119,6 +119,9 @@ namespace jasperengine{
     private:
         // binds (or rebinds) the component's effect; false when there is none to run
         bool ensureEffect(Entity entity, ParticleSystemComponent& particles);
+        particles::CompileEnvironment compileEnvironment(Entity entity);
+        // the library moved on since its sub-emitter files were last compared
+        bool subEmittersOutOfDate(const ParticleSystemComponent& particles) const;
         particles::ParticleSystemState* stateOf(Entity entity, bool load);
         void prepareInput(Entity entity, ParticleSystemComponent& particles, Transform& transform, particles::EmitterInput& input);
         bool bodyVelocity(Entity entity, Vector3& velocity);

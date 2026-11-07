@@ -4,6 +4,7 @@
 // S26: the Scene view's camera and ruler maths (R17, R18, R21, R25; AC16 RulerStep.NiceSteps)
 
 #include "sceneview/SceneViewMath.h"
+#include "component/CameraComponent.h"
 
 #include <gtest/gtest.h>
 
@@ -69,6 +70,13 @@ TEST(SceneViewMath, AxisViews) {
     const float off = std::tan(1.0f * 3.14159265f / 180.0f);
     EXPECT_EQ(sceneview::alignedAxis(Vector3(off, -1.0f, 0.0f)), SceneViewAxis::FREE);
     EXPECT_EQ(sceneview::alignedAxis(Vector3(1.0f, -1.0f, 0.3f)), SceneViewAxis::FREE);
+}
+
+// a camera aimed straight down or up (set_scene_camera, a game camera) takes the Top / Bottom
+// views' up, so it frames like those views (agent-authoring)
+TEST(SceneViewMath, StraightUpOrDownUsesTheAxisViewUp) {
+    EXPECT_EQ(cameraUpFor(sceneview::axisViewDirection(SceneViewAxis::TOP), Vector3(0, 1, 0)), sceneview::axisViewUp(SceneViewAxis::TOP));
+    EXPECT_EQ(cameraUpFor(sceneview::axisViewDirection(SceneViewAxis::BOTTOM), Vector3(0, 1, 0)), sceneview::axisViewUp(SceneViewAxis::BOTTOM));
 }
 
 TEST(SceneViewMath, EasedMoves) {

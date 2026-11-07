@@ -14,6 +14,7 @@
 #include "io/Data.h"
 #include "io/FileData.h"
 #include "io/ResourcePack.h"
+#include "particles/ParticleWorld.h"
 #include "player/ContentManifest.h"
 #include "player/Launch.h"
 #include "player/PlayerConfig.h"
@@ -310,6 +311,7 @@ JASPERENGINE_INIT void init() {
     Engine::setScalingMode(game.scaling);
     Engine::setTextureStrategy(game.textureStrategy);
     Engine::setAtmosphereQualityDefaults(game.atmosphereQuality[0], game.atmosphereQuality[1], game.atmosphereQuality[2]);
+    Engine::setFoliageDistanceScaleDefaults(game.foliageDistanceScale[0], game.foliageDistanceScale[1], game.foliageDistanceScale[2]);
     if (game.inputDeadzone != 0.15f) InputActions::setDefaultDeadzone(game.inputDeadzone);
     if (!game.inputActions.empty()) InputActions::loadDefault(game.inputActions);
     if (game.navigation != nav::NavigationSettings()) nav::setSettings(game.navigation);
@@ -317,6 +319,7 @@ JASPERENGINE_INIT void init() {
     UIDocumentSystem::setPreferredSampleCount(game.htmlUiMsaa);
     UIDocumentSystem::setHtmlUiRenderOptions(game.glyphAtlasMiB, game.sdfPrimitives, game.transformAwareText);
     if (game.mobilePbrTier != PbrTier::REDUCED) MaterialPbr::setMobileTier(game.mobilePbrTier);
+    Engine::setDynamicBatchingDefault(game.dynamicBatching);
     if (game.lightMode != LightMode::AUTOMATIC) LightingTiers::setLightMode(game.lightMode);
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++)
         if (game.shadowTiers[platform] != ShadowTiers::defaultTier(platform)) ShadowTiers::setPlatformTier(platform, game.shadowTiers[platform]);
@@ -331,6 +334,12 @@ JASPERENGINE_INIT void init() {
     }
     // the voices and the project's mixer, before the first scene (as a Compile build's init)
     player::applyAudio(game);
+    // native plugins with code for other platforms only: "unavailable" here, and a Lua mock
+    // standing in for one says so once (as a Compile build's init)
+    if (!game.nativePlatformOnly.empty()) {
+        NativeBridge::setPlatformOnlyPlugins(game.nativePlatformOnly);
+        NativeBridge::setMockWarnings(true);
+    }
 
     for (const GameScene& scene : game.scenes) {
         const GameScene stack = scene;
@@ -350,6 +359,7 @@ JASPERENGINE_INIT void init() {
         });
     }
 
+    if (game.particleWorldBudget != 0) particles::ParticleWorld::setProjectBudget(game.particleWorldBudget);
     if (game.asyncLoading) Engine::setAsyncLoading(true);
     if (game.loadingScene != 0 && game.findScene(game.loadingScene)) SceneManager::setLoadingScene(game.loadingScene);
     if (game.loadingDelay != 0.0f) SceneManager::setLoadingDelay(game.loadingDelay);

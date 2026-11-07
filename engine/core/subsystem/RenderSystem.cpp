@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "RenderSystem.h"
+#include "component/CameraComponent.h"
 #include "model/ModelCpuData.h"
 #include "device/QualityResolver.h"
 #include "component/UIDocumentComponent.h"
+#include "component/ButtonComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/BoneComponent.h"
 #include "component/MirrorComponent.h"
@@ -431,33 +433,61 @@ namespace {
         return transform.worldPosition;
     }
 
+    // An instanced billboard's rotation for the batch, in the entity's space: the camera's (the
+    // view-aligned billboard), or with cylindrical only its turn about the mesh's up axis toward
+    // the camera's view; a camera looking straight along that axis keeps lastYaw (radians)
+    Quaternion instanceBillboardRotation(bool cylindrical, const Matrix4& cameraView, const Quaternion& entityWorldRotation, const Vector3& entityWorldScale, float& lastYaw){
+        Quaternion cameraRotation;
+        cameraRotation.fromRotationMatrix(cameraView.inverse());
+        const Quaternion local = entityWorldRotation.inverse() * cameraRotation;
+        if (!cylindrical)
+            return local;
+        // the camera's back (+Z of its frame: from the scene toward the camera) on the XZ plane
+        const Vector3 back = local * Vector3(0.0f, 0.0f, 1.0f);
+        // the entity's scale turns the face's normal by its inverse, so the yaw is taken with it
+        // applied: the scaled face then faces the camera's side
+        const float x = back.x * entityWorldScale.x;
+        const float z = back.z * entityWorldScale.z;
+        if (x * x + z * z > 1e-8f)
+            lastYaw = std::atan2(x, z);
+        return Quaternion(Angle::radToDefault(lastYaw), Vector3(0.0f, 1.0f, 0.0f));
+    }
+
+    // the u_vs_fade block (includes/instance_fade.glsl): the far range, the near range, the eye
     void applyInstanceFadeUniform(ObjectRender& render, int slot, const InstancedMeshComponent& instmesh, const Vector3& fadeEyeLocal){
-        float fade[8] = {instmesh.fadeStart, instmesh.fadeEnd, 0.0f, 0.0f,
+        float fade[8] = {instmesh.fadeStart, instmesh.fadeEnd, instmesh.nearFadeStart, instmesh.nearFadeEnd,
             fadeEyeLocal.x, fadeEyeLocal.y, fadeEyeLocal.z, 0.0f};
         render.applyUniformBlock(slot, sizeof(fade), &fade);
     }
 
-    // custom block of a forked shader, with the engine-written members refreshed
-    void applyCustomUniforms(ObjectRender& render, CustomUniformBlock& block, float frameTime, const Vector2& resolution){
+    // custom block of a forked shader, with the engine-written members refreshed: the shader
+    // clock, the scene clock and the target's size
+    void applyCustomUniforms(ObjectRender& render, CustomUniformBlock& block, float frameTime, float sceneTime, const Vector2& resolution){
         if (block.slot == -1)
             return;
 
         block.writeTime(frameTime);
+        block.writeSceneTime(sceneTime);
         block.writeResolution(resolution.x, resolution.y);
         render.applyUniformBlock(block.slot, (unsigned int)block.data.size(), block.data.data());
     }
 
     // the custom blocks of a submesh's shaders: its material's parameters, else the mesh's
-    // shader uniforms (forks set on the component), else the manifest defaults
-    void writeSubmeshCustomUniforms(const MeshComponent& mesh, Submesh& submesh){
-        const ShaderUniformValues& values = submesh.material.shaderParams;
-        const ShaderManifest* manifest = submesh.manifest.get();
+    // shader uniforms (forks set on the component), else the scene's values for its default
+    // shader (when the submesh draws with it), else the manifest defaults
+    void writeSubmeshCustomUniforms(const Scene* scene, const MeshComponent& mesh, Submesh& submesh){
+        UniformChain chain;
+        chain.values = &submesh.material.shaderParams;
+        chain.fallback = &mesh.shaderUniforms;
+        // a material with a shader of its own never inherits the scene's
+        chain.sceneDefault = submesh.material.shader.empty() ? scene->getInheritedShaderUniforms(ShaderType::MESH, mesh.customShader.path) : nullptr;
+        chain.manifest = submesh.manifest.get();
         // members bound to a global (Material::shaderGlobalBindings) take its current value
-        const ShaderGlobalBindings* bindings = submesh.material.shaderGlobalBindings.empty() ? nullptr : &submesh.material.shaderGlobalBindings;
-        submesh.customVSParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
-        submesh.customFSParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
-        submesh.customVSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
-        submesh.customFSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
+        chain.bindings = submesh.material.shaderGlobalBindings.empty() ? nullptr : &submesh.material.shaderGlobalBindings;
+        submesh.customVSParams.writeValues(chain);
+        submesh.customFSParams.writeValues(chain);
+        submesh.customVSDepthParams.writeValues(chain);
+        submesh.customFSDepthParams.writeValues(chain);
         // the extra pass: its own parameters, else its manifest's defaults (not while a component
         // copy still shares the original's: its load makes its own and writes that one)
         if (submesh.extraPass && submesh.extraPass.use_count() == 1){
@@ -468,7 +498,7 @@ namespace {
     }
 
     // the mesh blocks of both forks, from whichever pass draws first (depth runs before color)
-    void writeCustomUniforms(MeshComponent& mesh){
+    void writeCustomUniforms(const Scene* scene, MeshComponent& mesh){
         // a global a material binds changed since its blocks were written
         const uint64_t globalsVersion = ShaderGlobals::getVersion();
         if (mesh.globalsVersionSeen != globalsVersion){
@@ -482,35 +512,41 @@ namespace {
             return;
 
         for (int i = 0; i < mesh.numSubmeshes; i++){
-            writeSubmeshCustomUniforms(mesh, mesh.submeshes[i]);
+            writeSubmeshCustomUniforms(scene, mesh, mesh.submeshes[i]);
         }
         mesh.needUpdateShaderUniforms = false;
     }
 
     // both stages of a single-block component, from its values, the globals it binds and its
     // manifest defaults (globalsVersionSeen: the ShaderGlobals version they were written with)
+    // sceneDefault: the scene's values for its default shader when the component draws with it
     void writeComponentUniforms(CustomUniformBlock& vsBlock, CustomUniformBlock& fsBlock, const ShaderUniformValues& values,
-                                const ShaderManifest* manifest, const ShaderGlobalBindings& bindings, uint64_t& globalsVersionSeen){
-        const ShaderGlobalBindings* bound = bindings.empty() ? nullptr : &bindings;
-        vsBlock.writeValues(values, nullptr, manifest, bound);
-        fsBlock.writeValues(values, nullptr, manifest, bound);
+                                const ShaderManifest* manifest, const ShaderUniformValues* sceneDefault,
+                                const ShaderGlobalBindings& bindings, uint64_t& globalsVersionSeen){
+        UniformChain chain;
+        chain.values = &values;
+        chain.sceneDefault = sceneDefault;
+        chain.manifest = manifest;
+        chain.bindings = bindings.empty() ? nullptr : &bindings;
+        vsBlock.writeValues(chain);
+        fsBlock.writeValues(chain);
         globalsVersionSeen = ShaderGlobals::getVersion();
     }
 
     // both stages of a single-block component with manifest defaults, rewritten first when
     // its values changed (or a global it binds did)
     void applyComponentUniforms(ObjectRender& render, CustomUniformBlock& vsBlock, CustomUniformBlock& fsBlock,
-                                const ShaderUniformValues& values, const ShaderManifest* manifest, bool& needUpdate,
-                                const ShaderGlobalBindings& bindings, uint64_t& globalsVersionSeen,
-                                float frameTime, const Vector2& resolution){
+                                const ShaderUniformValues& values, const ShaderManifest* manifest, const ShaderUniformValues* sceneDefault,
+                                bool& needUpdate, const ShaderGlobalBindings& bindings, uint64_t& globalsVersionSeen,
+                                float frameTime, float sceneTime, const Vector2& resolution){
         if (ShaderGlobals::isOutdated(bindings, globalsVersionSeen))
             needUpdate = true;
         if (needUpdate){
-            writeComponentUniforms(vsBlock, fsBlock, values, manifest, bindings, globalsVersionSeen);
+            writeComponentUniforms(vsBlock, fsBlock, values, manifest, sceneDefault, bindings, globalsVersionSeen);
             needUpdate = false;
         }
-        applyCustomUniforms(render, vsBlock, frameTime, resolution);
-        applyCustomUniforms(render, fsBlock, frameTime, resolution);
+        applyCustomUniforms(render, vsBlock, frameTime, sceneTime, resolution);
+        applyCustomUniforms(render, fsBlock, frameTime, sceneTime, resolution);
     }
 
     // how a shader without a manifest takes the post-processing colour under its resolved blend
@@ -798,6 +834,7 @@ std::mutex RenderSystem::zeroVertexBuffersMutex;
 
 bool RenderSystem::emptyTexturesCreated = false;
 int RenderSystem::emptyTextureUsers = 0;
+uint64_t RenderSystem::textureVariantChecks = 0;
 
 namespace {
     // Who uses the static textures below, and their making. Never waits for another thread: a
@@ -838,6 +875,7 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     ssaoSlotParams = -1;
     ssaoBlurSlotParams = -1;
     frameTime = 0.0f;
+    frameSceneTime = 0.0f;
     passResolution = Vector2(0.0f, 0.0f);
     passFrame = {};
     passSceneBlock = {};
@@ -970,6 +1008,12 @@ void RenderSystem::destroy(){
     activeView = &primaryView;
 #endif
 
+    // Dynamic Batching's records (their objects are destroyed with the scene) and buffers
+    endBatchPass();
+    dropBatchRecords();
+    batchStaleMVPs.clear();
+    destroyBatchChunks();
+    batchFrames.clear();
     // S57's passes, targets and lists, before the views go
     releaseLightingFeatures(true);
     destroySSAO();
@@ -1015,6 +1059,8 @@ void RenderSystem::destroy(){
         ShaderPool::remove(ShaderType::BLIT, 0);
     }
     sceneInputMeshes.clear();
+    waterMeshes.clear();
+    planarReflectionMeshes.clear();
     sceneInputPoints.clear();
     sceneInputUsage = 0;
     sceneDepthPrograms = false;
@@ -3362,16 +3408,26 @@ PbrVariant RenderSystem::getLoadedPbrVariant(const Submesh& submesh, PbrTier tie
     return MaterialPbr::getPbrVariant(submesh.material, lighting, false, tier, shadows2d ? 1 : 0);
 }
 
-bool RenderSystem::pbrVariantMatches(const Submesh& submesh) const{
-    const PbrVariant expected = getLoadedPbrVariant(submesh, loadedPbrTier);
-    const uint32_t environmentBits = MaterialPbr::getDefineBit(MaterialPbr::LIT_QUALITY_DEFINE) | MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_DEFINE) |
-                                     MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE);
-    if (MaterialPbr::getDefineBits(expected.defines) != (submesh.litDefineBits & ~environmentBits))
+uint64_t RenderSystem::getTextureVariantChecks(){
+    return textureVariantChecks;
+}
+
+bool RenderSystem::loadedVariantMatches(const Submesh& submesh, const SubmeshShaderVariant& variant, const SubmeshShaderVariant* extraPass){
+    if (variant.properties != submesh.shaderProperties)
+        return false;
+    if (MaterialPbr::getDefineBits(variant.litDefines) != submesh.litDefineBits)
         return false;
     for (int k = 0; k < MaterialPbr::MAX_EXTENSION_MAPS; k++){
-        if ((k < (int)expected.maps.size() ? expected.maps[k] : PbrMap::COUNT) != submesh.pbrMaps[k])
+        if ((k < (int)variant.pbr.maps.size() ? variant.pbr.maps[k] : PbrMap::COUNT) != submesh.pbrMaps[k])
             return false;
     }
+    // (a pass the variant no longer builds keeps its handle until the next load: not a mismatch)
+    if (variant.depth && (!submesh.depthShader || variant.depthProperties != submesh.depthShaderProperties))
+        return false;
+    if (variant.gbuffer && (!submesh.gbufferShader || variant.gbufferProperties != submesh.gbufferShaderProperties))
+        return false;
+    if (extraPass && submesh.extraPass && submesh.extraPass->shaderProperties != extraPass->properties)
+        return false;
     return true;
 }
 
@@ -3431,6 +3487,18 @@ RenderState RenderSystem::resolveComponentRenderState(MaterialBlendMode blendMod
     const MaterialDepthWrite write = resolveState(depthWrite, manifestState.depthWrite);
     if (write == MaterialDepthWrite::AUTO)
         state.depthWrite = true;
+    return state;
+}
+
+RenderState RenderSystem::resolvePointsRenderState(const PointsComponent& points, bool& depthFollowsQueue){
+    RenderState state = resolveComponentRenderState(points.blendMode, points.depthWrite, points.stencil, points.colorWrite,
+                                                    points.shaderManifest.get(), points.shaderFeatures, false);
+    MaterialDepthWrite manifestDepthWrite = MaterialDepthWrite::AUTO;
+    if (points.shaderManifest)
+        manifestDepthWrite = points.shaderManifest->resolveState(points.shaderManifest->resolveFeatures(points.shaderFeatures)).depthWrite;
+    depthFollowsQueue = points.depthWrite == MaterialDepthWrite::AUTO && manifestDepthWrite == MaterialDepthWrite::AUTO;
+    if (depthFollowsQueue)
+        state.depthWrite = !points.isTransparent();
     return state;
 }
 
@@ -3864,8 +3932,10 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         p_vertexLights = environment.lights && (lighting == MaterialLighting::VERTEX || lighting == MaterialLighting::MIXED);
         p_ibl = useIBL;
 
-        p_hasNormal = true;
-        if (inputs.tangent){
+        // a mesh without normals shades with flat ones (includes/pbr.glsl getNormalInfo, glTF's
+        // rule): declaring a_normal would leave it unfed. Tangents only with normals
+        p_hasNormal = inputs.normal;
+        if (p_hasNormal && inputs.tangent){
             p_hasTangent = true;
         }
         if (inputs.normalTexture){
@@ -3889,8 +3959,10 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     const bool p_light2d = useLight2D;
     const bool p_shadows2d = useLight2D && environment.shadows2D && inputs.receiveShadows;
     if (useLight2D){
-        p_hasNormal = true;
-        if (inputs.tangent){
+        // the 2D light path reads the normal when the mesh has one (+Z otherwise) and the
+        // tangents only for a normal map (includes/lighting2d.glsl getNormal2DAt)
+        p_hasNormal = p_hasNormal || inputs.normal;
+        if (p_hasNormal && inputs.tangent && inputs.normalTexture){
             p_hasTangent = true;
         }
         if (inputs.normalTexture){
@@ -4099,7 +4171,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             inputs.morphTarget, inputs.morphNormal, inputs.morphTangent,
             inputs.terrain, inputs.instanced, inputs.metallicRoughnessTexture, p_terrainSurface && inputs.normal,
             g_stochastic, p_lattice, p_lattice && inputs.vertexColor3, p_lattice && inputs.vertexColor4,
-            inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES, g_occlusion, g_uv2);
+            inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES, g_occlusion, g_uv2, p_instanceFade);
     }
 
     return variant;
@@ -4166,6 +4238,11 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
     bindings.slotEnvironment = shaderData.getTextureIndexByName("u_environmentTexture");
     if (bindings.slotEnvironment.first != -1)
         render.addTexture(bindings.slotEnvironment, ShaderStageType::FRAGMENT, &emptyCubeBlack);
+    // the planar reflection (includes/planar_reflection.glsl), black until a draw binds its own
+    bindings.slotFSPlanarReflection = shaderData.getUniformBlockIndexByName("u_fs_planarReflection");
+    bindings.slotPlanarReflection = shaderData.getTextureIndexByName("u_planarReflectionTexture");
+    if (bindings.slotPlanarReflection.first != -1)
+        render.addTexture(bindings.slotPlanarReflection, ShaderStageType::FRAGMENT, &emptyBlack);
     // the frame's blurred scene (includes/blurred_scene.glsl), black until a draw binds it
     bindings.slotFSBlurredScene = shaderData.getUniformBlockIndexByName("u_fs_blurredScene");
     bindings.slotBlurredScene = shaderData.getTextureIndexByName("u_blurredSceneTexture");
@@ -6799,7 +6876,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         // the material's parameters, the mesh's shader uniforms, the manifest defaults
         mesh.submeshes[i].customVSParams.resolve(shaderData, "u_vs_customParams");
         mesh.submeshes[i].customFSParams.resolve(shaderData, "u_fs_customParams");
-        writeSubmeshCustomUniforms(mesh, mesh.submeshes[i]);
+        writeSubmeshCustomUniforms(scene, mesh, mesh.submeshes[i]);
 
         // what the binding below takes stand-ins for (noteTextureBinding)
         const TextureBindMark bindMark = markTextureBinding();
@@ -7170,6 +7247,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             ShaderData& gbufferShaderData = mesh.submeshes[i].gbufferShader.get()->shaderData;
 
             mesh.submeshes[i].slotVSGBufferParams = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_VS_PARAMS);
+            // the instance distance fade, as the colour and depth passes shrink it ('Ifd')
+            mesh.submeshes[i].slotVSGBufferFade = (mesh.submeshes[i].gbufferShaderProperties & shaderPropertyBit(18)) ?
+                gbufferShaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE) : -1;
             mesh.submeshes[i].slotFSGBufferMaterial = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_FS_MATERIAL);
             gbufferShaderData.getUniformBlockMembers("u_fs_gbufferMaterial", mesh.submeshes[i].sizeFSGBufferMaterial);
 
@@ -7341,6 +7421,22 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             customDepthOpaque = true;
     }
     mesh.sceneInputs = sceneInputs & ShaderRequire_SceneInputs;
+    // a water (layering, render/WaterLayering.h) and a planar reflection reader (the reflection
+    // passes): as its shaders resolved
+    bool water = false;
+    bool planarReflection = false;
+    for (int i = 0; i < mesh.numSubmeshes; i++){
+        const SubmeshShaderInputs& inputs = submeshLoads[i].shaderInputs;
+        if (!inputs.manifest || mesh.submeshes[i].customShaderId == 0)
+            continue;
+        water = water || (inputs.manifest->role == ShaderRole::WATER && mesh.submeshes[i].alphaBlend);
+        // (a water draws its planar reflection inside REFLECTION: without it, no pass for it)
+        const bool reads = (inputs.manifest->resolveRequire(inputs.features) & ShaderRequire_PlanarReflection) != 0 &&
+            (inputs.manifest->role != ShaderRole::WATER ||
+             std::find(inputs.features.begin(), inputs.features.end(), "REFLECTION") != inputs.features.end());
+        planarReflection = planarReflection || reads;
+    }
+    setWaterMesh(entity, water, planarReflection);
     // a mixed mesh whose blended submeshes read the scene keeps its opaque ones in the opaque
     // queue: the basin under a water surface is in the depth and colour the water reads
     mesh.splitQueues = mesh.autoTransparency && mesh.isTransparent() && hasOpaqueSubmesh && hasTransparentSubmesh &&
@@ -8070,8 +8166,8 @@ bool RenderSystem::bindSmoothNormals(ObjectRender& render, ShaderData& shaderDat
     // until then, and the other renders of the submesh bind the same buffer
     if (!entry.created){
         JE_GPU_ALLOC_SCOPE(Meshes, "Smooth normals");
-        // one buffer for every mesh of the same geometry (keyed by what it is made of)
-        if (entry.data.empty() || !MeshBufferPool::acquireContent(entry.buffer, entry.key, BufferType::VERTEX_BUFFER, entry.data.data(), entry.data.size()))
+        // one buffer for every mesh of the same normals (keyed by their bytes)
+        if (entry.data.empty() || !MeshBufferPool::acquireContent(entry.buffer, BufferType::VERTEX_BUFFER, entry.data.data(), entry.data.size()))
             return false;
         entry.created = true;
     }
@@ -8911,6 +9007,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     applyFrameBlock(render, extra.libraryBindings);
     applySceneInputs(render, extra.libraryBindings);
     applyEnvironment(render, extra.libraryBindings, mesh, transform);
+    applyPlanarReflection(render, extra.libraryBindings, entity);
 
     if (extra.slotFSFog != -1){
 #ifdef JASPERENGINE_EDITOR
@@ -8994,8 +9091,8 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
 
     render.applyUniformBlock(extra.slotVSParams, sizeof(float) * 48, (void*)objectBlock);
 
-    applyCustomUniforms(render, extra.customVSParams, frameTime, passResolution);
-    applyCustomUniforms(render, extra.customFSParams, frameTime, passResolution);
+    applyCustomUniforms(render, extra.customVSParams, frameTime, frameSceneTime, passResolution);
+    applyCustomUniforms(render, extra.customFSParams, frameTime, frameSceneTime, passResolution);
 
     // the same instances, detail level and tilemap chunks as the submesh's draw
     if (tilemap && !tilemapDrawRanges.empty()){
@@ -9656,7 +9753,7 @@ void RenderSystem::drawSubmeshFade(ObjectRender& render, Entity entity, MeshComp
 // rebuilt tilemap reorders its indices, so a shadow or G-buffer pass drawing chunk
 // ranges would slice the previous upload with the new offsets. Sokol allows a single
 // update per buffer per frame, which the flag already guarantees.
-void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
+void RenderSystem::updateMeshBuffers(Entity entity, MeshComponent& mesh){
     if (mesh.needUpdateBones && mesh.bonesUploadRows != mesh.bonesMatrix.stored() && mesh.bonesUploadRows != 0){
         // the palette changed size since its resource was made (a scene or cooked read): the
         // reload makes the resource again, which uploads then
@@ -9697,6 +9794,17 @@ void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
 
     // what picking hashed may be gone (a script edits the vertices, a tilemap rebuilds)
     mesh.pickGeometryHash = 0;
+    // (a batch record baked before sees it, whichever pass uploads it: noteWrite)
+    mesh.buffer.noteWrite();
+    mesh.indices.noteWrite();
+
+    // an immutable buffer shared by content whose bytes changed: the shared buffer of its new
+    // bytes, or a private dynamic one once it changes often
+    refreshImmutableBuffer(entity, mesh, mesh.buffer);
+    refreshImmutableBuffer(entity, mesh, mesh.indices);
+    for (int i = 0; i < mesh.numExternalBuffers; i++){
+        refreshImmutableBuffer(entity, mesh, mesh.eBuffers[i]);
+    }
 
     // a STREAM upload past the frame's stream staging buffer is tried again next frame
     bool refused = false;
@@ -9716,6 +9824,55 @@ void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
     }
 
     mesh.needUpdateBuffer = refused;
+}
+
+void RenderSystem::retargetMeshBuffer(MeshComponent& mesh, uint32_t oldId, BufferRender* replacement, bool index){
+    auto retarget = [&](ObjectRender& render){
+        if (index)
+            render.retargetIndexBuffer(oldId, replacement);
+        else
+            render.retargetVertexBuffer(oldId, replacement);
+    };
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+        Submesh& submesh = mesh.submeshes[s];
+        retarget(submesh.render);
+        retarget(submesh.depthRender);
+        retarget(submesh.gbufferRender);
+        if (submesh.extraPass)
+            retarget(submesh.extraPass->render);
+    }
+}
+
+void RenderSystem::refreshImmutableBuffer(Entity entity, MeshComponent& mesh, Buffer& buffer){
+    BufferRender& render = *buffer.getRender();
+    if (buffer.getUsage() != BufferUsage::IMMUTABLE || !render.isShared() || !MeshBufferPool::isShareable(buffer) ||
+            MeshBufferPool::holdsSource(render, buffer))
+        return;
+
+    const uint32_t oldId = render.backend.get().id;
+    // a second change within IMMUTABLE_CHANGE_WINDOW updates: a buffer of its own that is
+    // updated in place, so no immutable buffer (on Vulkan a blocking staging copy) is made per frame
+    uint32_t& last = immutableChanges[entity];
+    const bool volatileBytes = last != 0 && updateSerial - last <= IMMUTABLE_CHANGE_WINDOW;
+    last = updateSerial;
+
+    BufferRender previous = render; // holds the old shared buffer until the renders let go of it
+    render.destroyBuffer();
+    bool made;
+    if (volatileBytes){
+        buffer.setUsage(BufferUsage::DYNAMIC);
+        made = render.createBuffer((unsigned int)buffer.getSize(), buffer.getData(), buffer.getType(), BufferUsage::DYNAMIC);
+        Log::verbose("Mesh entity %u changes its geometry often: it draws from a buffer of its own", entity);
+    }else{
+        made = MeshBufferPool::createRender(buffer);
+    }
+    if (!made){
+        // a pool is full (logged): drawn again once it has room
+        render = previous;
+        mesh.needReload = true;
+        return;
+    }
+    retargetMeshBuffer(mesh, oldId, &render, buffer.getType() == BufferType::INDEX_BUFFER);
 }
 
 // Once per frame, before any pass: the depth passes take their instance count from here.
@@ -9823,15 +9980,22 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             return false;
         }
 
-        // (a visible list culled it already: passPreCulled)
-        if (!passPreCulled && !isBatchVisible(entity, mesh, transform, instmesh, instanceView, camera.farClip, camera.frustumPlanes)) {
-            return false;
-        }
-
-        // Buffers already uploaded this frame by updateInstanceBuffers().
+        // a batch (passBatchGeometry, RenderSystemBatch.cpp) drawn with this object, its first:
+        // culled, selected and uploaded by the batcher
+        const BatchGeometry* batch = passBatchGeometry;
         MeshDraw draw;
-        if (!selectMeshDraw(entity, mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
-            return false;
+        if (!batch){
+            ensureBatchMVP(entity, transform);
+
+            // (a visible list culled it already: passPreCulled)
+            if (!passPreCulled && !isBatchVisible(entity, mesh, transform, instmesh, instanceView, camera.farClip, camera.frustumPlanes)) {
+                return false;
+            }
+
+            // Buffers already uploaded this frame by updateInstanceBuffers().
+            if (!selectMeshDraw(entity, mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
+                return false;
+            }
         }
         unsigned int instanceCount = draw.instanceCount;
 
@@ -9883,8 +10047,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         auto drawModeMaterial = [](const Material& material, unsigned int) -> const Material&{ return material; };
 #endif
 
-        updateMeshBuffers(mesh);
-        writeCustomUniforms(mesh);
+        updateMeshBuffers(entity, mesh);
+        writeCustomUniforms(scene, mesh);
 
         TerrainView* terrainNodes = nullptr;
         if (terrain){
@@ -9897,13 +10061,13 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 
         // model, normal and mvp matrices of this pass (one uniform block)
         Matrix4 objectScratch[3];
-        const Matrix4* objectBlock = objectMatrices(transform, objectScratch);
+        const Matrix4* objectBlock = batch ? batch->objectBlock : objectMatrices(transform, objectScratch);
         // a mirroring model matrix draws with the face winding reversed (front faces stay front)
-        const bool mirroredDraw = isMirroredDraw(mesh, objectBlock[0]);
+        const bool mirroredDraw = batch ? batch->mirrored : isMirroredDraw(mesh, objectBlock[0]);
         // Transform::normalMatrix is kept only while the scene has lights (and is saved with
         // the scene), but library shaders read it whatever the lighting (outline widths,
         // fresnel, matcap, rim): without lights theirs is made here
-        if (!hasLights){
+        if (!hasLights && !batch){
             bool libraryShader = false;
             for (int s = 0; s < mesh.numSubmeshes && !libraryShader; s++){
                 libraryShader = mesh.submeshes[s].manifest || (mesh.submeshes[s].extraPass && mesh.submeshes[s].extraPass->loaded);
@@ -9967,12 +10131,13 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 if (order == MaterialPassOrder::BEFORE){
                     // checked once for both draws: rebinding a redrawn render target texture takes
                     // its new version, so the pass rebinding first would hide the change from the
-                    // main draw; the main draw is told through its own flag
+                    // main draw; the main draw is told through its own flag, a rebind and not an
+                    // edit (the textures are the same: no variant check every redraw)
                     const bool outdated = checkPBRFrabebufferUpdate(mesh.submeshes[i].material);
                     if (mesh.submeshes[i].needUpdateTexture || outdated)
                         extra->needUpdateTexture = true;
                     if (outdated)
-                        mesh.submeshes[i].needUpdateTexture = true;
+                        mesh.submeshes[i].needRebindTexture = true;
                 }
                 drawSubmeshExtraPass(entity, mesh, i, transform, pipType, instmesh, instanceView, draw, instanceCount, objectBlock, tilemap, builtLightBits);
             }
@@ -9987,6 +10152,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             // gaining indices always reloads the mesh, which reloads the textures.
             if (mesh.submeshes[i].vertexCount == 0){
                 mesh.submeshes[i].needUpdateTexture = false;
+                mesh.submeshes[i].needRebindTexture = false;
                 continue;
             }
             if (!inQueue(i))
@@ -10007,7 +10173,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             // checked once for this draw and its After pass, which then rebinds (see above)
-            const bool pbrFramebufferOutdated = checkPBRFrabebufferUpdate(mesh.submeshes[i].material);
+            const bool pbrFramebufferOutdated = checkPBRFrabebufferUpdate(mesh.submeshes[i].material) || mesh.submeshes[i].needRebindTexture;
             SubmeshExtraPass* extraPass = mesh.submeshes[i].extraPass.get();
             if (extraPass && extraPass->loaded && extraPass->order == MaterialPassOrder::AFTER &&
                     (mesh.submeshes[i].needUpdateTexture || pbrFramebufferOutdated)){
@@ -10015,19 +10181,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             const ShaderLibraryBindings& libraryBindings = mesh.submeshes[i].libraryBindings;
-            bool needUpdateFramebuffer = pbrFramebufferOutdated ||
-                (!libraryBindings.textures.empty() && shaderTexturesOutdated(libraryBindings, mesh.submeshes[i].material.shaderTextures));
-
-            if (mesh.submeshes[i].needUpdateTexture || needUpdateFramebuffer){
-                ShaderData& shaderData = mesh.submeshes[i].shader.get()->shaderData;
-                const TextureBindMark bindMark = markTextureBinding();
-                if (loadPBRTextures(mesh.submeshes[i].material, shaderData, mesh.submeshes[i].render, mesh.receiveLights) &&
-                        loadPbrExtTextures(mesh.submeshes[i], shaderData, mesh.submeshes[i].render) &&
-                        bindShaderTextures(libraryBindings, mesh.submeshes[i].render, mesh.submeshes[i].material.shaderTextures)){
-                    mesh.submeshes[i].needUpdateTexture = false;
-                    noteTextureBinding(mesh.submeshes[i], bindMark);
-                }
-            }
+            refreshSubmeshTextures(mesh.submeshes[i], mesh.receiveLights, pbrFramebufferOutdated);
             if (oitDraw)
                 render.shareBindings(mesh.submeshes[i].render);
             // a FluidSimulation shown on this mesh (output MATERIAL): its image as submesh 0's
@@ -10072,6 +10226,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             applyFrameBlock(render, libraryBindings);
             applySceneInputs(render, libraryBindings);
             applyEnvironment(render, libraryBindings, mesh, transform);
+            applyPlanarReflection(render, libraryBindings, entity);
 
             if (mesh.submeshes[i].hasIBL){
                 TextureRender* probeTexture = &emptyCubeBlack;
@@ -10164,7 +10319,10 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             if (mesh.submeshes[i].hasTextureRect){
-                render.applyUniformBlock(mesh.submeshes[i].slotVSSprite, sizeof(float) * 4, &mesh.submeshes[i].textureRect);
+                // (a batch's UVs have the rect in them)
+                static const Rect fullRect(0.0f, 0.0f, 1.0f, 1.0f);
+                render.applyUniformBlock(mesh.submeshes[i].slotVSSprite, sizeof(float) * 4,
+                                         (void*)(batch ? &fullRect : &mesh.submeshes[i].textureRect));
             }
 
             if (mesh.submeshes[i].hasSkinning){
@@ -10237,6 +10395,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     }
                     writePbrHairBlock(sub, block, size);
                     render.applyUniformBlock(sub.slotFSParams, size, block);
+                }else if (sub.pbrParamsSize == 0 && batch && batch->neutralColor){
+                    // a batch's vertex colours carry each object's colour factor
+                    applyMaterialPrefix(render, sub.slotFSParams, material, paramsSize, submeshLit, true);
                 }else if (sub.pbrParamsSize == 0 && submeshLit){
                     applyLitMaterialBlock(render, sub.slotFSParams, material, paramsSize);
                 }else if (sub.pbrParamsSize == 0){
@@ -10266,10 +10427,12 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             //model, normal and mvp matrix
             render.applyUniformBlock(mesh.submeshes[i].slotVSParams, sizeof(float) * 48, (void*)objectBlock);
 
-            applyCustomUniforms(render, mesh.submeshes[i].customVSParams, frameTime, passResolution);
-            applyCustomUniforms(render, mesh.submeshes[i].customFSParams, frameTime, passResolution);
+            applyCustomUniforms(render, mesh.submeshes[i].customVSParams, frameTime, frameSceneTime, passResolution);
+            applyCustomUniforms(render, mesh.submeshes[i].customFSParams, frameTime, frameSceneTime, passResolution);
 
-            if (tilemap && !tilemapDrawRanges.empty()){
+            if (batch){
+                drawBatchGeometry(render, mesh.buffer, *batch);
+            }else if (tilemap && !tilemapDrawRanges.empty()){
                 if (instmesh){
                     bindInstances(render, *instmesh, instanceView, draw.instanceFirst, draw.vatFirst);
                 }
@@ -10316,14 +10479,18 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             return false;
         }
 
-        // (a visible list culled it already: passPreCulled)
-        if (!passPreCulled && !isBatchVisible(entity, mesh, transform, instmesh, instanceView, cameraFar, frustumPlanes)) {
-            return false;
-        }
-
+        // a batch drawn with this object, its first (RenderSystemBatch.cpp)
+        const BatchGeometry* batch = passBatchGeometry;
         MeshDraw draw;
-        if (!selectMeshDraw(entity, mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
-            return false;
+        if (!batch){
+            // (a visible list culled it already: passPreCulled)
+            if (!passPreCulled && !isBatchVisible(entity, mesh, transform, instmesh, instanceView, cameraFar, frustumPlanes)) {
+                return false;
+            }
+
+            if (!selectMeshDraw(entity, mesh, transform, instmesh, terrain || tilemap, instanceView, lodView, draw)){
+                return false;
+            }
         }
         unsigned int instanceCount = draw.instanceCount;
         // the depth pre-pass leaves a fading mesh out: a pre-pass of both levels would hold the
@@ -10333,12 +10500,12 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             return false;
         }
 
-        updateMeshBuffers(mesh);
-        writeCustomUniforms(mesh);
+        updateMeshBuffers(entity, mesh);
+        writeCustomUniforms(scene, mesh);
 
         // a mirroring model matrix draws with the face winding reversed (the shadow and depth
         // passes cull as the colour pass)
-        const bool mirroredDraw = isMirroredDraw(mesh, objectModel(transform));
+        const bool mirroredDraw = batch ? batch->mirrored : isMirroredDraw(mesh, objectModel(transform));
 
         // the depth pass renders the view camera's selection (view 0 in draw())
         TerrainView* terrainNodes = nullptr;
@@ -10376,15 +10543,7 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
 
             ObjectRender& depthRender = mesh.submeshes[i].depthRender;
 
-            if (mesh.submeshes[i].needUpdateDepthTexture &&
-                (mesh.submeshes[i].depthShaderProperties & (1u << 0))){
-                ShaderData& depthShaderData = mesh.submeshes[i].depthShader.get()->shaderData;
-                if (loadDepthTexture(mesh.submeshes[i].material, depthShaderData, mesh.submeshes[i].depthRender)){
-                    mesh.submeshes[i].needUpdateDepthTexture = false;
-                }
-            }else if (mesh.submeshes[i].needUpdateDepthTexture){
-                mesh.submeshes[i].needUpdateDepthTexture = false;
-            }
+            refreshDepthTextures(mesh.submeshes[i]);
 
             const ShaderLibraryBindings& depthBindings = mesh.submeshes[i].depthLibraryBindings;
             if (!depthBindings.textures.empty() && (mesh.submeshes[i].needUpdateTexture ||
@@ -10426,14 +10585,17 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             //model, mvp matrix
             depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthParams, std::min((unsigned int)sizeof(vs_depth_t), mesh.submeshes[i].sizeVSDepthParams), &vsDepthParams);
 
-            applyCustomUniforms(depthRender, mesh.submeshes[i].customVSDepthParams, frameTime, passResolution);
-            applyCustomUniforms(depthRender, mesh.submeshes[i].customFSDepthParams, frameTime, passResolution);
+            applyCustomUniforms(depthRender, mesh.submeshes[i].customVSDepthParams, frameTime, frameSceneTime, passResolution);
+            applyCustomUniforms(depthRender, mesh.submeshes[i].customFSDepthParams, frameTime, frameSceneTime, passResolution);
 
             if (mesh.submeshes[i].slotVSDepthFade != -1 && instmesh){
                 applyInstanceFadeUniform(depthRender, mesh.submeshes[i].slotVSDepthFade, *instmesh, instanceFadeEye(entity, *instmesh, instanceView));
             }
             if (mesh.submeshes[i].slotVSDepthSprite != -1){
-                depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthSprite, sizeof(float) * 4, &mesh.submeshes[i].textureRect);
+                // (a batch's UVs have the rect in them)
+                static const Rect fullRect(0.0f, 0.0f, 1.0f, 1.0f);
+                depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthSprite, sizeof(float) * 4,
+                                              (void*)(batch ? &fullRect : &mesh.submeshes[i].textureRect));
             }
 
             if (mesh.submeshes[i].slotFSDepthMaterial != -1){
@@ -10471,7 +10633,9 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                 depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthTerrain, sizeof(float) * 8, &(terrain->eyePos));
             }
 
-            if (tilemap && !tilemapDrawRanges.empty()){
+            if (batch){
+                drawBatchGeometry(depthRender, mesh.buffer, *batch);
+            }else if (tilemap && !tilemapDrawRanges.empty()){
                 if (instmesh){
                     bindInstances(depthRender, *instmesh, instanceView, draw.instanceFirst, draw.vatFirst);
                 }
@@ -10746,6 +10910,11 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
     ssaoPassRender.startRenderPass(&target.getRender());
     passResolution = Vector2((float)width, (float)height);
 
+    // (depth only: its draws group by state, in any order)
+    beginBatchPass(BatchPass::SCENE_DEPTH, BatchMode::GROUP, &camera, perCameraTransform, PIP_DEPTH, renderVP, camera.farClip, camera.frustumPlanes);
+    batchPass.forSSAO = true;
+    batchPass.instanceView = instanceView;
+    batchPass.lodView = lodView;
     // GPU Instancing: the meshes are listed, then culled and drawn in batches (spec S55)
     const bool batching = SystemRender::isDrawBatching();
     depthQueue.clear();
@@ -10786,7 +10955,7 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
         const Matrix4& model = objectModel(transform);
         vs_depth_t params = {model, renderVP, renderVP * model};
         passSubmeshQueue = mesh.isTransparent() ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
-        drawMeshDepth(entity, mesh, transform, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true, PIP_DEPTH, instanceView, lodView);
+        submitMeshDepth(entity, mesh, transform, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true, PIP_DEPTH, instanceView, lodView);
     }
     if (batching){
         // GPU Instancing: culled once and drawn in batches (spec S55)
@@ -10802,14 +10971,107 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
             passSubmeshQueue = opaque.mesh->isTransparent() ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
             passSubmeshMask = opaque.submeshMask;
             passPreCulled = opaque.preCulled;
-            drawMeshDepth(opaque.entity, *opaque.mesh, *opaque.transform, camera.farClip, camera.frustumPlanes, params, opaque.instmesh, opaque.terrain, opaque.tilemap, true, PIP_DEPTH, instanceView, lodView);
+            submitMeshDepth(opaque.entity, *opaque.mesh, *opaque.transform, camera.farClip, camera.frustumPlanes, params, opaque.instmesh, opaque.terrain, opaque.tilemap, true, PIP_DEPTH, instanceView, lodView);
         }
         SystemRender::endDrawBatch();
         passSubmeshMask = 0xFFFFFFFFu;
         passPreCulled = false;
     }
+    endBatchPass();
     passSubmeshQueue = SubmeshQueue::ALL;
     ssaoPassRender.endRenderPass();
+}
+
+void RenderSystem::gatherPassWaters(const std::vector<TransparentRenderData>& queue, std::vector<WaterLayer>& waters) const{
+    waters.clear();
+    if (waterMeshes.empty())
+        return;
+    for (const TransparentRenderData& renderData : queue){
+        if (renderData.type != TransparentRenderType::MESH || !renderData.mesh || renderData.mesh->worldAABB.isNull() ||
+                !waterMeshes.count(renderData.entity))
+            continue;
+        const MeshComponent& mesh = *renderData.mesh;
+        // the waves of its water submesh: how far they leave the rest level and move it sideways
+        WaterWaveParams waves;
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            if (Water::readWaves(mesh.submeshes[s].material, waves))
+                break;
+        }
+        // (a sloped one, a river, is not layered by)
+        WaterLayer water;
+        if (makeWaterLayer(renderData.entity, mesh.worldAABB, waves, renderData.distanceToCamera, water))
+            waters.push_back(water);
+    }
+}
+
+bool RenderSystem::readsSceneColor(const TransparentRenderData& renderData, CameraComponent& camera, int instanceView){
+    switch (renderData.type){
+        case TransparentRenderType::MESH:
+            if (!renderData.mesh || !(renderData.mesh->sceneInputs & ShaderRequire_SceneColor))
+                return false;
+            break;
+        case TransparentRenderType::POINTS:
+            if (!renderData.points || !(renderData.points->sceneInputs & ShaderRequire_SceneColor))
+                return false;
+            break;
+        case TransparentRenderType::PARTICLES:
+            if (!renderData.particles || !renderData.particles->state || !(renderData.particles->state->render.sceneInputs & ShaderRequire_SceneColor))
+                return false;
+            break;
+        default:
+            return false;
+    }
+    return drawsSceneColorReader(renderData.entity, scene->getSignature(renderData.entity), *renderData.transform, camera, instanceView);
+}
+
+Vector4 RenderSystem::screenBoundsOf(const AABB& bounds, const Matrix4& viewProjection){
+    // the whole screen when the box is unknown or reaches behind the eye
+    const Vector4 whole(-1.0f, -1.0f, 1.0f, 1.0f);
+    if (bounds.isNull() || !bounds.isFinite())
+        return whole;
+    const Vector3& low = bounds.getMinimum();
+    const Vector3& high = bounds.getMaximum();
+    Vector4 rect(1.0f, 1.0f, -1.0f, -1.0f);
+    for (int corner = 0; corner < 8; corner++){
+        const Vector4 clip = viewProjection * Vector4((corner & 1) ? high.x : low.x, (corner & 2) ? high.y : low.y, (corner & 4) ? high.z : low.z, 1.0f);
+        if (clip.w <= 1e-5f)
+            return whole;
+        const float x = clip.x / clip.w;
+        const float y = clip.y / clip.w;
+        rect = Vector4(std::min(rect.x, x), std::min(rect.y, y), std::max(rect.z, x), std::max(rect.w, y));
+    }
+    return rect;
+}
+
+AABB RenderSystem::transparentBounds(const TransparentRenderData& renderData) const{
+    switch (renderData.type){
+        case TransparentRenderType::MESH:
+            return renderData.mesh ? renderData.mesh->worldAABB : AABB();
+        case TransparentRenderType::TRAIL:
+            return renderData.trail ? renderData.trail->worldAABB : AABB();
+        case TransparentRenderType::LINES:
+            return (renderData.lines && renderData.transform) ? linesWorldBounds(*renderData.lines, *renderData.transform) : AABB();
+        case TransparentRenderType::PARTICLES:
+            if (renderData.particles && renderData.particles->state && renderData.particles->state->hasBounds){
+                const particles::ParticleSystemState& state = *renderData.particles->state;
+                return AABB(Vector3(state.boundsMin[0], state.boundsMin[1], state.boundsMin[2]),
+                            Vector3(state.boundsMax[0], state.boundsMax[1], state.boundsMax[2]));
+            }
+            return AABB();
+        default:
+            return AABB();
+    }
+}
+
+void RenderSystem::setWaterMesh(Entity entity, bool water, bool planarReflection){
+    if (water)
+        waterMeshes.insert(entity);
+    else if (!waterMeshes.empty())
+        waterMeshes.erase(entity);
+    if (planarReflection)
+        planarReflectionMeshes.insert(entity);
+    else if (!planarReflectionMeshes.empty())
+        planarReflectionMeshes.erase(entity);
 }
 
 void RenderSystem::setSceneInputUser(Entity entity, bool points, uint32_t inputs){
@@ -10831,6 +11093,25 @@ void RenderSystem::setSceneInputUser(Entity entity, bool points, uint32_t inputs
     for (const auto& user : sceneInputParticles)
         usage |= user.second;
     sceneInputUsage = usage;
+}
+
+// The scene inputs an emitter and its children will read, for the ones not loaded yet
+static uint32_t predictedParticleInputs(const particles::EmitterRuntime& emitter, const particles::ParticleRenderData* render){
+    // (no effect: a view reload unbound it, and it binds again on its next update)
+    if (!emitter.effect())
+        return 0;
+    uint32_t inputs = 0;
+    if (!render || !render->loaded){
+        const particles::RendererModule& renderer = emitter.effect()->document.renderer;
+        if (std::shared_ptr<const ShaderManifest> manifest = findManifest(renderer.shader))
+            inputs = manifest->resolveRequire(ShaderReference::getEnabledFeatures(renderer.shader, renderer.shaderFeatures)) & ShaderRequire_SceneInputs;
+    }
+    for (size_t c = 0; c < emitter.childCount(); c++){
+        const particles::EmitterRuntime* child = emitter.child(c);
+        if (child && child->effect())
+            inputs |= predictedParticleInputs(*child, render && c < render->children.size() ? render->children[c].get() : nullptr);
+    }
+    return inputs;
 }
 
 void RenderSystem::predictSceneInputUsers(){
@@ -10876,19 +11157,16 @@ void RenderSystem::predictSceneInputUsers(){
             setSceneInputUser(entity, true, inputs | (found != sceneInputPoints.end() ? found->second : 0));
         }
     }
-    // the particle systems about to load (their effect bound, the render not yet)
+    // the particle systems about to load (their effect bound, the render not yet), and their
+    // children (a child read after the root loaded): with what the loaded part of the tree reads
     auto particleArray = scene->getComponentArray<ParticleSystemComponent>();
     for (size_t i = 0; i < particleArray->size(); i++){
         const ParticleSystemComponent& particles = particleArray->getComponentFromIndex(i);
-        if (!particles.state || !particles.state->effect || particles.state->render.loaded)
+        if (!particles.state || !particles.state->effect)
             continue;
-        const particles::RendererModule& renderer = particles.state->effect->document.renderer;
-        std::shared_ptr<const ShaderManifest> manifest = findManifest(renderer.shader);
-        if (!manifest)
-            continue;
-        const uint32_t inputs = manifest->resolveRequire(ShaderReference::getEnabledFeatures(renderer.shader, renderer.shaderFeatures)) & ShaderRequire_SceneInputs;
+        const uint32_t inputs = predictedParticleInputs(particles.state->runtime, &particles.state->render);
         if (inputs)
-            setParticleSceneInputUser(particleArray->getEntity(i), inputs);
+            setParticleSceneInputUser(particleArray->getEntity(i), inputs | particleSceneInputs(particles.state->render));
     }
 }
 
@@ -10956,6 +11234,7 @@ RenderSystem::SceneInputDetails RenderSystem::getSceneInputDetails(){
     usage.depthPrePasses = lastSceneInputStats.depthPrePasses;
     usage.sharedDepth = lastSceneInputStats.sharedDepth;
     usage.colorCopies = lastSceneInputStats.colorCopies;
+    usage.colorRecopies = lastSceneInputStats.colorRecopies;
     usage.targets = (uint32_t)primaryView.sceneInputTargets.size() + (primaryView.sceneColorRedirect.isCreated() ? 1u : 0u);
 #ifdef JASPERENGINE_EDITOR
     for (const auto& entry : secondaryViews)
@@ -11028,7 +11307,7 @@ bool RenderSystem::drawsSceneColorReader(Entity entity, Signature signature, Tra
     if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
         ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
         if (!particles.enabled || !particles.state || !particles.state->render.loaded ||
-                !(particles.state->render.sceneInputs & ShaderRequire_SceneColor) || !transform.visible)
+                !(particleSceneInputs(particles.state->render) & ShaderRequire_SceneColor) || !transform.visible)
             return false;
         return isParticleRenderActive(entity, camera.cullingMask) && particleBoundsVisible(*particles.state, camera);
     }
@@ -11128,7 +11407,11 @@ void RenderSystem::loadSceneColorCopy(){
     sceneColorCopySlotParams = sceneColorCopyShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::BLIT_FS_PARAMS);
     // a pass of the frame: created at once, never skipped (spec S32 §6.4)
     sceneColorCopyRender.setImmediatePipelines(true);
-    if (!sceneColorCopyRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
+    // the copy replaces: blended, it would keep rgb * alpha where the target's alpha is under 1
+    // (a background colour with alpha, say), and every reader would see that darker colour
+    RenderState copyState(false, true, CullingMode::BACK, WindingOrder::CCW);
+    copyState.blend = BlendMode::NONE;
+    if (!sceneColorCopyRender.endLoad(PIP_EFFECT, copyState))
         return;
     sceneColorCopyLoaded = true;
 }
@@ -11301,7 +11584,7 @@ void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, c
         environmentCode = slot >= 0 ? SSRCode::probe(slot, record.probeWeight) : SSRCode::PROBE_NO_SLOT;
     }
 
-    updateMeshBuffers(mesh);
+    updateMeshBuffers(entity, mesh);
 
     // a mirroring model matrix draws with the face winding reversed (as the colour pass)
     const bool mirroredDraw = isMirroredDraw(mesh, objectModel(transform));
@@ -11345,6 +11628,9 @@ void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, c
         }
 
         gbufferRender.applyUniformBlock(mesh.submeshes[i].slotVSGBufferParams, sizeof(vs_gbuffer_t), &vsGBufferParams);
+        if (mesh.submeshes[i].slotVSGBufferFade != -1 && instmesh){
+            applyInstanceFadeUniform(gbufferRender, mesh.submeshes[i].slotVSGBufferFade, *instmesh, instanceFadeEye(entity, *instmesh, instanceView));
+        }
 
         // what the composite swaps on these pixels (includes/ssr_source.glsl)
         uint8_t code = SSRCode::SKIP;
@@ -11918,6 +12204,33 @@ void RenderSystem::needUpdatePostProcessUniforms(){
     postProcessNeedUpdateUniforms = true;
 }
 
+namespace {
+    // the components of a type without a shader of their own: they draw with the scene default
+    template<typename T>
+    void flagInheritedUniforms(Scene* scene){
+        auto components = scene->getComponentArray<T>();
+        for (size_t i = 0; i < components->size(); i++){
+            T& component = components->getComponentFromIndex(i);
+            if (component.customShader.empty())
+                component.needUpdateShaderUniforms = true;
+        }
+    }
+}
+
+void RenderSystem::needUpdateDefaultShaderUniforms(ShaderType type){
+    switch (type){
+        case ShaderType::MESH:   flagInheritedUniforms<MeshComponent>(scene); break;
+        case ShaderType::UI:     flagInheritedUniforms<UIComponent>(scene); break;
+        case ShaderType::SKYBOX: flagInheritedUniforms<SkyboxComponent>(scene); break;
+        case ShaderType::POINTS: flagInheritedUniforms<PointsComponent>(scene); break;
+        case ShaderType::LINES:
+            flagInheritedUniforms<LineRendererComponent>(scene);
+            flagInheritedUniforms<TrailRendererComponent>(scene);
+            break;
+        default: break;
+    }
+}
+
 void RenderSystem::needUpdatePostProcessing(){
     postProcessingDirty = true;
 }
@@ -12234,7 +12547,7 @@ TextureRender* RenderSystem::renderPostProcess(FramebufferRender* destination, b
             // its own textures (a camera target may have been made again) and engine data
             bindShaderTextures(pass.bindings, pass.render, pass.textures);
             applyFrameBlock(pass.render, pass.bindings);
-            applyCustomUniforms(pass.render, pass.params, frameTime, Vector2((float)width, (float)height));
+            applyCustomUniforms(pass.render, pass.params, frameTime, frameSceneTime, Vector2((float)width, (float)height));
             pass.render.draw(0, 3, 1);
         }
         postProcessPassRender.endRenderPass();
@@ -12283,6 +12596,8 @@ void RenderSystem::presentFramebufferToSwapchain(Framebuffer* source){
 }
 
 void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAssets){
+    // (its draws in batch form are baked again from the mesh it loads next)
+    dropBatchRecord(entity);
     InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
     TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
     const bool preserveAssets = mesh.needReload && !clearAssets;
@@ -12431,6 +12746,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSDepthSprite = -1;
 
         submesh.slotVSGBufferParams = -1;
+        submesh.slotVSGBufferFade = -1;
         submesh.slotFSGBufferMaterial = -1;
         submesh.sizeFSGBufferMaterial = 0;
         submesh.slotVSGBufferSkinning = -1;
@@ -12553,6 +12869,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     ui.customVSParams.resolve(shaderData, "u_vs_customParams");
     ui.customFSParams.resolve(shaderData, "u_fs_customParams");
     writeComponentUniforms(ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(),
+                           scene->getInheritedShaderUniforms(ShaderType::UI, ui.customShader.path),
                            ui.shaderGlobalBindings, ui.globalsVersionSeen);
     ui.needUpdateShaderUniforms = false;
 
@@ -12569,6 +12886,8 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
 
     JE_GPU_ALLOC_SCOPE(UI, "UI");
     ui.buffer.getRender()->createBuffer(bufferSize, ui.buffer.getData(), ui.buffer.getType(), ui.buffer.getUsage());
+    ui.gpuBufferBytes = bufferSize;
+    ui.gpuIndicesBytes = 0;
     if (ui.buffer.isRenderAttributes()) {
         for (auto const &attr : ui.buffer.getAttributes()) {
             render.addAttribute(shaderData.getAttrIndex(attr.first), ui.buffer.getRender(), attr.second.getElements(), attr.second.getDataType(), ui.buffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
@@ -12586,6 +12905,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     if (ui.indices.getCount() > 0){
         JE_GPU_ALLOC_SCOPE(UI, "UI");
         ui.indices.getRender()->createBuffer(bufferSize, ui.indices.getData(), ui.indices.getType(), ui.indices.getUsage());
+        ui.gpuIndicesBytes = bufferSize;
         ui.vertexCount = ui.indices.getCount();
         Attribute indexattr = ui.indices.getAttributes()[AttributeType::INDEX];
         render.setIndex(ui.indices.getRender(), indexattr.getDataType(), indexattr.getOffset());
@@ -12640,33 +12960,14 @@ bool RenderSystem::lendsTransparentFluid(Entity entity, const Submesh& submesh) 
 bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride, bool inCanvasLayer){
     if (ui.loaded && ui.buffer.getSize() > 0){
 
-        if (ui.needUpdateTexture || ui.texture.isFramebufferOutdated()){
-            ShaderData& shaderData = ui.shader.get()->shaderData;
-            ui.texture.setAlphaBorderAuto(true);
-            if (TextureRender* textureRender = ui.texture.getRender(&emptyWhite))
-                if (textureRender->isCreated()){
-                    ui.render.addTexture(shaderData.getTextureIndex(TextureShaderType::UI), ShaderStageType::FRAGMENT, textureRender);
-                    ui.needUpdateTexture = false;
-                }
-        }
+        refreshUITexture(ui);
         if (textureOverride && textureOverride->isCreated())
             ui.render.addTexture(ui.shader.get()->shaderData.getTextureIndex(TextureShaderType::UI), ShaderStageType::FRAGMENT, textureOverride);
         if (!ui.libraryBindings.textures.empty() && (ui.needUpdateTexture || shaderTexturesOutdated(ui.libraryBindings, ui.shaderTextures))){
             bindShaderTextures(ui.libraryBindings, ui.render, ui.shaderTextures);
         }
 
-        if (ui.needUpdateBuffer){
-            ui.buffer.getRender()->updateBuffer(ui.buffer.getSize(), ui.buffer.getData());
-
-            if (ui.indices.getCount() > 0){
-                ui.indices.getRender()->updateBuffer(ui.indices.getSize(), ui.indices.getData());
-                ui.vertexCount = ui.indices.getCount();
-            }else{
-                ui.vertexCount = ui.buffer.getCount();
-            }
-
-            ui.needUpdateBuffer = false;
-        }
+        uploadUIBuffers(ui);
 
         ObjectRender& render = ui.render;
 
@@ -12676,19 +12977,25 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
                 ui.needReload = true;
             return false;
         }
-        render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
+        // a batch drawn with this element, its first (RenderSystemBatch.cpp)
+        const BatchGeometry* batch = passBatchGeometry;
+        render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)(batch ? &batch->objectBlock[2] : &objectMVP(transform)));
         //Color, faded by the element's Canvas Groups (a Text Effect writes each glyph's colour in its
-        // vertices: then only the alpha here)
-        const Vector4 baseColor = ui.vertexColorAbsolute ? Vector4(1.0f, 1.0f, 1.0f, ui.color.w) : ui.color;
-        Vector4 drawColor = uiDrawColor(baseColor, inCanvasLayer ? ui.groupLayerAlpha : ui.groupAlpha, ui.drawBlendMode);
+        // vertices: then only the alpha here); a batch's vertex colours carry each element's
+        Vector4 drawColor = (batch && batch->neutralColor) ? Vector4(1.0f, 1.0f, 1.0f, 1.0f) : uiElementColor(ui, inCanvasLayer);
         render.applyUniformBlock(ui.slotFSParams, sizeof(float) * 4, &drawColor);
         if (ui.slotFSTextParams >= 0){
             render.applyUniformBlock(ui.slotFSTextParams, sizeof(float) * 16, ui.textParams);
         }
-        applyComponentUniforms(render, ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(), ui.needUpdateShaderUniforms,
-                               ui.shaderGlobalBindings, ui.globalsVersionSeen, frameTime, passResolution);
+        applyComponentUniforms(render, ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(),
+                               scene->getInheritedShaderUniforms(ShaderType::UI, ui.customShader.path), ui.needUpdateShaderUniforms,
+                               ui.shaderGlobalBindings, ui.globalsVersionSeen, frameTime, frameSceneTime, passResolution);
         applyFrameBlock(render, ui.libraryBindings);
-        render.draw(0, ui.vertexCount, 1);
+        if (batch){
+            drawBatchGeometry(render, ui.buffer, *batch);
+        }else{
+            render.draw(0, ui.vertexCount, 1);
+        }
 
     }
 
@@ -12696,6 +13003,7 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
 }
 
 void RenderSystem::destroyUI(Entity entity, UIComponent& ui){
+    dropBatchRecord(entity);
     TextComponent* text = scene->findComponent<TextComponent>(entity);
 
     if (!ui.loaded)
@@ -12725,6 +13033,8 @@ void RenderSystem::destroyUI(Entity entity, UIComponent& ui){
     }
     ui.buffer.getRender()->destroyBuffer();
     ui.indices.getRender()->destroyBuffer();
+    ui.gpuBufferBytes = 0;
+    ui.gpuIndicesBytes = 0;
 
     if (text){
         text->needReloadAtlas = true;
@@ -12797,6 +13107,7 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
     points.customVSParams.resolve(shaderData, "u_vs_customParams");
     points.customFSParams.resolve(shaderData, "u_fs_customParams");
     writeComponentUniforms(points.customVSParams, points.customFSParams, points.shaderUniforms, points.shaderManifest.get(),
+                           scene->getInheritedShaderUniforms(ShaderType::POINTS, points.customShader.path),
                            points.shaderGlobalBindings, points.globalsVersionSeen);
     points.needUpdateShaderUniforms = false;
 
@@ -12839,8 +13150,8 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
 
     points.needUpdateTexture = false;
 
-    const RenderState pointsState = resolveComponentRenderState(points.blendMode, points.depthWrite, points.stencil, points.colorWrite,
-                                                                points.shaderManifest.get(), points.shaderFeatures, false);
+    const RenderState pointsState = resolvePointsRenderState(points, points.depthFollowsQueue);
+    points.loadedTransparent = points.isTransparent();
     points.libraryBindings.postColorBlend = postColorBlendOf(pointsState, points.shaderManifest != nullptr);
     if (!render.endLoad(pipelines, pointsState, msaaPipelineSamples)){
         return false;
@@ -13078,6 +13389,7 @@ bool RenderSystem::loadRibbonRender(Entity entity, T& component, uint16_t pipeli
     component.customVSParams.resolve(shaderData, "u_vs_customParams");
     component.customFSParams.resolve(shaderData, "u_fs_customParams");
     writeComponentUniforms(component.customVSParams, component.customFSParams, component.shaderUniforms, component.shaderManifest.get(),
+                           scene->getInheritedShaderUniforms(ShaderType::LINES, component.customShader.path),
                            component.shaderGlobalBindings, component.globalsVersionSeen);
     component.needUpdateShaderUniforms = false;
 
@@ -13224,7 +13536,8 @@ bool RenderSystem::drawRibbon(T& component, const Matrix4& modelMatrix, const Ve
     params.viewport = Vector4(passResolution.x, passResolution.y, 0.0f, 0.0f);
     render.applyUniformBlock(component.slotVSParams, sizeof(vs_lines_ribbon_params_t), &params);
     applyComponentUniforms(render, component.customVSParams, component.customFSParams, component.shaderUniforms, component.shaderManifest.get(),
-                           component.needUpdateShaderUniforms, component.shaderGlobalBindings, component.globalsVersionSeen, frameTime, passResolution);
+                           scene->getInheritedShaderUniforms(ShaderType::LINES, component.customShader.path),
+                           component.needUpdateShaderUniforms, component.shaderGlobalBindings, component.globalsVersionSeen, frameTime, frameSceneTime, passResolution);
     applyFrameBlock(render, component.libraryBindings);
     render.draw(0, ribbon.indexCount, 1);
 
@@ -13447,6 +13760,7 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
     lines.customVSParams.resolve(shaderData, "u_vs_customParams");
     lines.customFSParams.resolve(shaderData, "u_fs_customParams");
     writeComponentUniforms(lines.customVSParams, lines.customFSParams, lines.shaderUniforms, lines.shaderManifest.get(),
+                           scene->getInheritedShaderUniforms(ShaderType::LINES, lines.customShader.path),
                            lines.shaderGlobalBindings, lines.globalsVersionSeen);
     lines.needUpdateShaderUniforms = false;
 
@@ -13551,6 +13865,9 @@ bool RenderSystem::drawPoints(Entity entity, PointsComponent& points, Transform&
                 if (textureRender->isCreated()){
                     points.render.addTexture(shaderData.getTextureIndex(TextureShaderType::POINTS), ShaderStageType::FRAGMENT, textureRender);
                     points.needUpdateTexture = false;
+                    // its alpha decides the queue (and, with Depth Write Auto, the depth write: the
+                    // update reloads the pipelines on the next frame)
+                    points.derivedTransparent = points.autoTransparency && points.texture.isTransparent();
                 }
             }
         }
@@ -13577,8 +13894,9 @@ bool RenderSystem::drawPoints(Entity entity, PointsComponent& points, Transform&
         vsParams.mvpMatrix = objectMVP(transform);
         vsParams.pointScale = computePointsScale(camera, getPointsViewportHeight(camera));
         render.applyUniformBlock(points.slotVSParams, sizeof(vs_points_params_t), &vsParams);
-        applyComponentUniforms(render, points.customVSParams, points.customFSParams, points.shaderUniforms, points.shaderManifest.get(), points.needUpdateShaderUniforms,
-                               points.shaderGlobalBindings, points.globalsVersionSeen, frameTime, passResolution);
+        applyComponentUniforms(render, points.customVSParams, points.customFSParams, points.shaderUniforms, points.shaderManifest.get(),
+                               scene->getInheritedShaderUniforms(ShaderType::POINTS, points.customShader.path), points.needUpdateShaderUniforms,
+                               points.shaderGlobalBindings, points.globalsVersionSeen, frameTime, frameSceneTime, passResolution);
         applyFrameBlock(render, points.libraryBindings);
         applySceneInputs(render, points.libraryBindings);
 #ifdef JASPERENGINE_EDITOR
@@ -13678,8 +13996,9 @@ bool RenderSystem::drawLines(Entity entity, LineRendererComponent& lines, Transf
         }else{
             render.applyUniformBlock(lines.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
         }
-        applyComponentUniforms(render, lines.customVSParams, lines.customFSParams, lines.shaderUniforms, lines.shaderManifest.get(), lines.needUpdateShaderUniforms,
-                               lines.shaderGlobalBindings, lines.globalsVersionSeen, frameTime, passResolution);
+        applyComponentUniforms(render, lines.customVSParams, lines.customFSParams, lines.shaderUniforms, lines.shaderManifest.get(),
+                               scene->getInheritedShaderUniforms(ShaderType::LINES, lines.customShader.path), lines.needUpdateShaderUniforms,
+                               lines.shaderGlobalBindings, lines.globalsVersionSeen, frameTime, frameSceneTime, passResolution);
         applyFrameBlock(render, lines.libraryBindings);
         render.draw(0, segments.size() * 2, 1);
     }
@@ -13807,6 +14126,7 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
     sky.customVSParams.resolve(shaderData, "u_vs_customParams");
     sky.customFSParams.resolve(shaderData, "u_fs_customParams");
     writeComponentUniforms(sky.customVSParams, sky.customFSParams, sky.shaderUniforms, sky.shaderManifest.get(),
+                           scene->getInheritedShaderUniforms(ShaderType::SKYBOX, sky.customShader.path),
                            sky.shaderGlobalBindings, sky.globalsVersionSeen);
     sky.needUpdateShaderUniforms = false;
 
@@ -13879,8 +14199,9 @@ bool RenderSystem::drawSky(SkyboxComponent& sky, PipelineType pipType, const Mat
         }
         render.applyUniformBlock(sky.slotVSParams, sizeof(float) * 16, (void*)&viewProjection);
         render.applyUniformBlock(sky.slotFSParams, sizeof(float) * 4, &sky.color);
-        applyComponentUniforms(render, sky.customVSParams, sky.customFSParams, sky.shaderUniforms, sky.shaderManifest.get(), sky.needUpdateShaderUniforms,
-                               sky.shaderGlobalBindings, sky.globalsVersionSeen, frameTime, passResolution);
+        applyComponentUniforms(render, sky.customVSParams, sky.customFSParams, sky.shaderUniforms, sky.shaderManifest.get(),
+                               scene->getInheritedShaderUniforms(ShaderType::SKYBOX, sky.customShader.path), sky.needUpdateShaderUniforms,
+                               sky.shaderGlobalBindings, sky.globalsVersionSeen, frameTime, frameSceneTime, passResolution);
         applyFrameBlock(render, sky.libraryBindings);
         render.draw(0, 36, 1);
     }
@@ -14000,7 +14321,9 @@ bool RenderSystem::applyPassScissor(Entity entity, Signature signature, Transfor
         }
     }
 
-    if (signature.test(scene->getComponentId<ImageComponent>())){
+    // an Image clips its children to its patch margins, except a Button's: its label is clipped by
+    // the Button's ancestors only (a short 9-patch button would cut its glyphs, as Unity never does)
+    if (signature.test(scene->getComponentId<ImageComponent>()) && !signature.test(scene->getComponentId<ButtonComponent>())){
         ImageComponent& img = scene->getComponent<ImageComponent>(entity);
 
         *scissor.rect = getScissorRect(layout, img, transform, colorPassViewport);
@@ -14100,6 +14423,16 @@ void RenderSystem::updateTransform(Transform& transform, Entity entity){
     }
 }
 
+Vector2 RenderSystem::getCameraNearFar(const CameraComponent& camera){
+    if (camera.type != CameraType::CAMERA_PERSPECTIVE)
+        return Vector2(camera.nearClip, camera.farClip);
+    // a perspective projection needs 0 < near < far: a near of 0 or less takes the reflection
+    // probe capture's 0.001, a smaller positive one is kept
+    const float nearClip = (std::isfinite(camera.nearClip) && camera.nearClip > 0.0f) ? camera.nearClip : 0.001f;
+    const float farClip = std::isfinite(camera.farClip) ? std::max(camera.farClip, nearClip + 0.001f) : nearClip + 0.001f;
+    return Vector2(nearClip, farClip);
+}
+
 void RenderSystem::updateCamera(CameraComponent& camera, Transform& transform){
     //Update ProjectionMatrix
     if (camera.type == CameraType::CAMERA_UI){
@@ -14107,19 +14440,22 @@ void RenderSystem::updateCamera(CameraComponent& camera, Transform& transform){
     }else if (camera.type == CameraType::CAMERA_ORTHO) {
         camera.projectionMatrix = Matrix4::orthoMatrix(camera.leftClip, camera.rightClip, camera.bottomClip, camera.topClip, camera.nearClip, camera.farClip);
     }else if (camera.type == CameraType::CAMERA_PERSPECTIVE){
-        camera.projectionMatrix = Matrix4::perspectiveMatrix(camera.yfov, camera.aspect, camera.nearClip, camera.farClip);
+        const Vector2 nearFar = getCameraNearFar(camera);
+        camera.projectionMatrix = Matrix4::perspectiveMatrix(camera.yfov, camera.aspect, nearFar.x, nearFar.y);
     }
 
     if (camera.useTarget){
+        // aimed straight up or down the stored up is parallel to the view: lookAt needs another
+        const Vector3 up = cameraUpFor(camera.target - transform.position, camera.up);
         camera.direction = (transform.position - camera.target).normalize();
-        camera.right = (camera.up.crossProduct(camera.direction)).normalize();
+        camera.right = (up.crossProduct(camera.direction)).normalize();
 
         if (transform.parent != NULL_ENTITY){
             camera.worldTarget = transform.modelMatrix * (camera.target - transform.position);
-            camera.worldUp = ((transform.modelMatrix * camera.up) - (transform.modelMatrix * Vector3(0,0,0))).normalize();
+            camera.worldUp = ((transform.modelMatrix * up) - (transform.modelMatrix * Vector3(0,0,0))).normalize();
         }else{
             camera.worldTarget = camera.target;
-            camera.worldUp = camera.up;
+            camera.worldUp = up;
         }
 
         //Update ViewMatrix
@@ -14221,6 +14557,364 @@ void RenderSystem::destroyMirrorCamera(Entity entity){
     scene->destroyEntity(cameraEntity);
 }
 
+RenderSystem::ReflectionViewer RenderSystem::ReflectionViewer::of(const CameraComponent& camera){
+    ReflectionViewer viewer;
+    viewer.viewMatrix = camera.viewMatrix;
+    // the eye in world space, from the view matrix (whatever the camera's transform holds)
+    viewer.eye = camera.viewMatrix.inverse() * Vector3(0.0f, 0.0f, 0.0f);
+    viewer.type = camera.type;
+    viewer.yfov = camera.yfov;
+    viewer.aspect = camera.aspect;
+    viewer.nearClip = camera.nearClip;
+    viewer.farClip = camera.farClip;
+    viewer.leftClip = camera.leftClip;
+    viewer.rightClip = camera.rightClip;
+    viewer.bottomClip = camera.bottomClip;
+    viewer.topClip = camera.topClip;
+    // a reflection shows the layers its viewer sees
+    viewer.cullingMask = camera.cullingMask;
+    return viewer;
+}
+
+void RenderSystem::driveReflectionCamera(CameraComponent& refCam, Transform& refCamTransform, const ReflectionViewer& viewer,
+                                         const Vector3& normal, const Vector3& point, float clipOffset){
+    Plane plane(normal, point);
+
+    // reflection view keeps the handedness flip (true mirror); winding is
+    // restored by invertCulling so reflected geometry shows front faces
+    Matrix4 reflectMat = Matrix4::reflectMatrix(plane);
+    refCam.customViewMatrix = viewer.viewMatrix * reflectMat;
+    refCam.hasCustomViewMatrix = true;
+
+    // Give the reflection camera the reflected eye position. The custom view
+    // matrix overrides the view, but distance-based effects still read the
+    // transform's worldPosition (terrain CDLOD detail + morph origin, transparent
+    // sorting, per-camera lighting eye) — without this they'd key off the origin
+    // and the reflected terrain would morph at the wrong LOD (visible cracks).
+    refCamTransform.position = reflectMat * viewer.eye;
+    refCamTransform.worldPosition = refCamTransform.position;
+    refCam.invertCulling = true;
+    refCam.renderToTexture = true;
+
+    // match the viewer's projection so the reflection lines up 1:1
+    refCam.type = viewer.type;
+    refCam.yfov = viewer.yfov;
+    refCam.aspect = viewer.aspect;
+    refCam.nearClip = viewer.nearClip;
+    refCam.farClip = viewer.farClip;
+    refCam.leftClip = viewer.leftClip;
+    refCam.rightClip = viewer.rightClip;
+    refCam.bottomClip = viewer.bottomClip;
+    refCam.topClip = viewer.topClip;
+    refCam.cullingMask = viewer.cullingMask;
+
+    // recompute the reflection camera matrices with the override applied
+    updateCamera(refCam, refCamTransform);
+
+    // oblique near-plane clipping: move the reflection camera's near plane onto
+    // the plane (raised by clipOffset) so geometry behind it doesn't leak into the
+    // reflection. The clip plane (normal toward the front/reflecting side) is taken
+    // to the reflection camera's view space via inverse-transpose. Applied ONLY to
+    // viewProjectionMatrix (used by meshes), NOT projectionMatrix: the skybox
+    // renders from projectionMatrix and the oblique depth would clip it. Only the
+    // depth row changes, so projective sampling (clip.xy/w) is unaffected.
+    const Plane clipPlane(normal, point + normal * clipOffset);
+    Vector4 worldClipPlane(normal.x, normal.y, normal.z, clipPlane.d);
+    Vector4 viewClipPlane = refCam.viewMatrix.inverse().transpose() * worldClipPlane;
+    Matrix4 obliqueProjection = refCam.projectionMatrix.obliqueNearClip(viewClipPlane);
+    refCam.viewProjectionMatrix = obliqueProjection * refCam.viewMatrix;
+    updateCameraFrustumPlanes(refCam.viewProjectionMatrix, refCam.frustumPlanes);
+}
+
+RenderSystem::WaterReflectionPass::WaterReflectionPass(){
+    // the reflection renders into the pass's own framebuffer
+    delete camera.framebuffer;
+    camera.framebuffer = &framebuffer;
+    camera.renderToTexture = true;
+    camera.autoResize = false;
+    camera.invertCulling = true;
+}
+
+RenderSystem::WaterReflectionPass::~WaterReflectionPass(){
+    camera.framebuffer = nullptr;
+    framebuffer.destroy();
+#ifdef JASPERENGINE_EDITOR
+    for (auto& entry : objects.terrainViews){
+        for (int s = 0; s < 2; s++){
+            entry.second.nodesbuffer[s].getRender()->destroyBuffer();
+        }
+    }
+#endif
+}
+
+void RenderSystem::releaseWaterReflections(RenderView& view, bool everything){
+    // a pass unused for this many draws gives its target back
+    const uint64_t HOLD_DRAWS = 120;
+    for (auto it = view.waterReflections.begin(); it != view.waterReflections.end();){
+        if (everything || (!(*it)->active && drawCount > (*it)->lastUsed + HOLD_DRAWS)){
+            it = view.waterReflections.erase(it);
+        }else{
+            ++it;
+        }
+    }
+    if (everything)
+        view.waterReflectionOf.clear();
+}
+
+bool RenderSystem::planarReflectionVisible(Entity cameraEntity){
+    if (planarReflectionMeshes.empty() || scene->getPlanarReflectionResolution() == PlanarReflectionResolution::OFF)
+        return false;
+    CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
+    if (!camera)
+        return false;
+    const Vector3 eye = ReflectionViewer::of(*camera).eye;
+    for (Entity entity : planarReflectionMeshes){
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!mesh || !transform || !mesh->loaded || mesh->worldAABB.isNull() || !transform->visible)
+            continue;
+        if (!isRenderActive(entity) || !isLayerVisible(entity, camera->cullingMask) || !isInsideCamera(*camera, mesh->worldAABB))
+            continue;
+        if (eye.y > mesh->worldAABB.getMaximum().y + 1e-3f)
+            return true;
+    }
+    return false;
+}
+
+void RenderSystem::renderWaterReflections(RenderView& view, CameraComponent& viewer, Transform& viewerTransform, int terrainView){
+    view.waterReflectionOf.clear();
+    view.waterReflectionCamera = &viewer;
+    view.waterReflectionSource = nullptr;
+    for (const std::unique_ptr<WaterReflectionPass>& pass : view.waterReflections)
+        pass->active = false;
+    // nothing reads a planar reflection, or the scene draws none: nothing at all
+    const PlanarReflectionResolution resolution = scene->getPlanarReflectionResolution();
+    if (planarReflectionMeshes.empty() || resolution == PlanarReflectionResolution::OFF){
+        if (!view.waterReflections.empty())
+            releaseWaterReflections(view, true);
+        return;
+    }
+
+    ReflectionViewer reflectionViewer = ReflectionViewer::of(viewer);
+    const Vector3 eye = reflectionViewer.eye;
+
+    // the heights of the visible meshes reading a reflection, joined within 0.01 world units;
+    // a height the eye is not above shows no reflection (seen from below: the fallback)
+    struct ReflectionPlane{ float level; float distance; std::vector<Entity> meshes; };
+    std::vector<ReflectionPlane> planes;
+    for (Entity entity : planarReflectionMeshes){
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!mesh || !transform || !mesh->loaded || mesh->worldAABB.isNull() || !transform->visible)
+            continue;
+        if (!isRenderActive(entity) || !isLayerVisible(entity, viewer.cullingMask) || !isInsideCamera(viewer, mesh->worldAABB))
+            continue;
+        const float level = mesh->worldAABB.getMaximum().y;
+        if (eye.y <= level + 1e-3f)
+            continue;
+        ReflectionPlane* found = nullptr;
+        for (ReflectionPlane& plane : planes){
+            if (std::fabs(plane.level - level) <= 0.01f){
+                found = &plane;
+                break;
+            }
+        }
+        if (!found){
+            planes.push_back({level, eye.y - level, {}});
+            found = &planes.back();
+        }
+        found->meshes.push_back(entity);
+    }
+    planarReflectionStats.planes += (uint32_t)planes.size();
+    if (planes.empty()){
+        releaseWaterReflections(view, false);
+        return;
+    }
+    // the nearest heights first; past the cap the waters show the environment
+    std::sort(planes.begin(), planes.end(), [](const ReflectionPlane& a, const ReflectionPlane& b){
+        return a.distance < b.distance;
+    });
+    const size_t count = std::min(planes.size(), (size_t)std::max(1, scene->getMaxPlanarReflections()));
+    planarReflectionStats.fallbacks += (uint32_t)(planes.size() - count);
+
+    // the passes' size: the viewer's pass at the scene's resolution
+    float viewWidth = 0.0f;
+    float viewHeight = 0.0f;
+#ifdef JASPERENGINE_EDITOR
+    if (view.secondary){
+        viewWidth = view.viewRect.getWidth();
+        viewHeight = view.viewRect.getHeight();
+    }
+#endif
+    if (viewWidth <= 0.0f || viewHeight <= 0.0f){
+        if (viewer.renderToTexture && viewer.framebuffer){
+            viewWidth = (float)viewer.framebuffer->getWidth();
+            viewHeight = (float)viewer.framebuffer->getHeight();
+        }else{
+            const Rect viewRect = Engine::getViewRect();
+            viewWidth = viewRect.getWidth();
+            viewHeight = viewRect.getHeight();
+        }
+    }
+    // the size the viewer's pass draws at: the fixed resolution, or the render scale with the
+    // uber pass (dynamic resolution's in the frame's own view), as renderCameraPass sizes it
+    if (isFixedResolutionActive() && !viewer.renderToTexture){
+        viewWidth = (float)scene->getFixedResolutionWidth();
+        viewHeight = (float)scene->getFixedResolutionHeight();
+    }else if (postTiers.uber){
+        const float renderScale = (&view == &primaryView) ? getAppliedRenderScale() : postTiers.renderScale;
+        viewWidth *= renderScale;
+        viewHeight *= renderScale;
+    }
+    const float scale = resolution == PlanarReflectionResolution::QUARTER ? 0.25f : (resolution == PlanarReflectionResolution::HALF ? 0.5f : 1.0f);
+    const unsigned int width = (unsigned int)std::max(16.0f, std::floor(viewWidth * scale));
+    const unsigned int height = (unsigned int)std::max(16.0f, std::floor(viewHeight * scale));
+
+    // what the reflection draws: the layers the viewer and the scene's setting share, up to
+    // the scene's far clip
+    reflectionViewer.cullingMask = viewer.cullingMask & scene->getPlanarReflectionLayers();
+    const float farClip = scene->getPlanarReflectionFarClip();
+    if (farClip > 0.0f)
+        reflectionViewer.farClip = std::max(reflectionViewer.nearClip * 2.0f, std::min(reflectionViewer.farClip, farClip));
+    const float clipOffset = scene->getPlanarReflectionClipOffset();
+    const CameraShadows& viewerShadows = passShadows ? *passShadows : view.shadows;
+    const bool reflectionShadows = scene->getPlanarReflectionShadows();
+
+    while (view.waterReflections.size() < count)
+        view.waterReflections.push_back(std::make_unique<WaterReflectionPass>());
+
+#ifdef JASPERENGINE_EDITOR
+    PassObjects* viewObjects = passObjects;
+#endif
+    CameraShadows* viewShadows = passShadows;
+    for (size_t p = 0; p < count; p++){
+        WaterReflectionPass& pass = *view.waterReflections[p];
+        if (!pass.framebuffer.isCreated() || pass.framebuffer.getWidth() != width || pass.framebuffer.getHeight() != height){
+            pass.framebuffer.destroy();
+            pass.framebuffer.setWidth(width);
+            pass.framebuffer.setHeight(height);
+            pass.framebuffer.setMinFilter(TextureFilter::LINEAR);
+            pass.framebuffer.setMagFilter(TextureFilter::LINEAR);
+            pass.framebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+            pass.framebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+            JE_GPU_ALLOC_SCOPE(RenderTargets, "Water reflection");
+            pass.framebuffer.create();
+        }
+        if (!pass.framebuffer.isCreated())
+            continue;
+        pass.camera.framebufferWidth = width;
+        pass.camera.framebufferHeight = height;
+
+        const ReflectionPlane& plane = planes[p];
+        driveReflectionCamera(pass.camera, pass.transform, reflectionViewer, Vector3(0.0f, 1.0f, 0.0f), Vector3(0.0f, plane.level, 0.0f), clipOffset);
+
+        // the viewer's lighting and maps (shadows are world-space): none of its own to draw
+        shareCameraShadows(pass.shadows, viewerShadows, pass.camera, reflectionShadows);
+
+        // each pass its own terrain cut (a cut's node buffer updates once a frame): the next free
+        // slots from terrainView, past MAX_TERRAIN_VIEWS the viewer's (view 0, not updated again)
+        int passTerrainView = (terrainView != 0 && terrainView + (int)p < MAX_TERRAIN_VIEWS) ? terrainView + (int)p : 0;
+#ifdef JASPERENGINE_EDITOR
+        if (view.secondary){
+            passObjects = &pass.objects;
+            buildPassObjects(pass.objects, pass.camera, pass.transform);
+            selectPassTerrain(pass.objects, pass.camera, pass.transform);
+            passTerrainView = TERRAIN_PASS_VIEW;
+        }else
+#endif
+        if (passTerrainView != 0){
+            selectCameraTerrain(pass.camera, pass.transform, passTerrainView);
+        }
+
+        // (the cut mainTerrainView gives the pass's draws)
+        pass.shadows.terrainView = passTerrainView;
+
+        CameraPass cameraPass;
+        cameraPass.camera = &pass.camera;
+        cameraPass.cameraTransform = &pass.transform;
+        cameraPass.isMain = false;
+        cameraPass.renderToTexture = true;
+        cameraPass.reflection = true;
+        cameraPass.terrainView = passTerrainView;
+        passShadows = &pass.shadows;
+        renderCameraPass(cameraPass);
+        passShadows = viewShadows;
+#ifdef JASPERENGINE_EDITOR
+        passObjects = viewObjects;
+#endif
+
+        pass.active = true;
+        pass.lastUsed = drawCount;
+        pass.level = plane.level;
+        for (Entity entity : plane.meshes)
+            view.waterReflectionOf[entity] = (int)p;
+        planarReflectionStats.passes++;
+        planarReflectionStats.width = width;
+        planarReflectionStats.height = height;
+    }
+    (void)viewerTransform;
+    releaseWaterReflections(view, false);
+}
+
+void RenderSystem::shareCameraShadows(CameraShadows& target, const CameraShadows& source, const CameraComponent& camera, bool shadows){
+    target.fs_lighting = source.fs_lighting;
+    target.vs_shadows = source.vs_shadows;
+    target.fs_shadows = source.fs_shadows;
+    target.fs_point_shadows = source.fs_point_shadows;
+    target.fs_shadow_data = source.fs_shadow_data;
+    target.fs_point_shadow_data = source.fs_point_shadow_data;
+    // the shadow debug views are the viewer's
+    target.fs_shadow_data.header.w = 0.0f;
+    target.fitCameraPosition = source.fitCameraPosition;
+    target.fitCameraForward = source.fitCameraForward;
+    target.fs_lighting.viewportInfo = lightingViewportInfo(camera);
+    target.ownLightCameras = false;
+    target.ownShadowInstances = false;
+    target.cameraMask = source.cameraMask;
+    target.terrainView = source.terrainView;
+    target.projectiveAtlas = source.projectiveAtlas;
+    target.pointAtlas = source.pointAtlas;
+    target.projectiveAtlasRaw = source.projectiveAtlasRaw;
+    target.drawProjective = false;
+    target.drawPoint = false;
+    if (!shadows){
+        // every slot at strength 0 (shadow_data.glsl): the fragments read their lights unshadowed
+        for (int s = 0; s < MAX_SHADOW_ATLAS_SLOTS; s++){
+            target.fs_shadow_data.filtering[s].w = 0.0f;
+        }
+        for (int p = 0; p < MAX_POINT_SHADOW_LIGHTS; p++){
+            target.fs_point_shadow_data.filtering[p].w = 0.0f;
+        }
+    }
+}
+
+void RenderSystem::applyPlanarReflection(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity){
+    if (bindings.slotFSPlanarReflection == -1 && bindings.slotPlanarReflection.first == -1)
+        return;
+    fs_planar_reflection_t block;
+    block.params = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    TextureRender* texture = &emptyBlack;
+
+    // the reflection the view's camera has for this mesh's height, in its own pass only
+    RenderView& view = rv();
+    RenderView& source = view.waterReflectionSource ? *view.waterReflectionSource : view;
+    if (passCamera && passCamera == view.waterReflectionCamera){
+        auto found = view.waterReflectionOf.find(entity);
+        if (found != view.waterReflectionOf.end() && found->second >= 0 && found->second < (int)source.waterReflections.size()){
+            WaterReflectionPass& pass = *source.waterReflections[found->second];
+            if (pass.active && pass.framebuffer.isCreated()){
+                block.viewProjection = pass.camera.viewProjectionMatrix;
+                block.params = Vector4(pass.level, 1.0f, 0.0f, 0.0f);
+                texture = &pass.framebuffer.getRender().getColorTexture();
+            }
+        }
+    }
+    if (bindings.slotFSPlanarReflection != -1)
+        render.applyUniformBlock(bindings.slotFSPlanarReflection, sizeof(fs_planar_reflection_t), &block);
+    if (bindings.slotPlanarReflection.first != -1)
+        render.addTexture(bindings.slotPlanarReflection, ShaderStageType::FRAGMENT, texture);
+}
+
 // Drives each mirror's reflection camera: its view = mainView * reflect(plane),
 // so the reflected scene is rendered into that camera's framebuffer. Runs after
 // the main camera is updated and before the draw pass. The handedness flip from
@@ -14236,17 +14930,7 @@ void RenderSystem::updateMirrors(Entity mainCameraEntity){
 
     // copy main camera state before any camera creation: creating a reflection
     // camera below can reallocate the camera/transform arrays and dangle references
-    const Matrix4 mainView = mainCameraPtr->viewMatrix;
-    // main camera eye in world space (reflected per-mirror below); derived from the
-    // view matrix so it doesn't depend on the (possibly dangling) camera component
-    const Vector3 mainEye = mainView.inverse() * Vector3(0.0f, 0.0f, 0.0f);
-    const CameraType mainType = mainCameraPtr->type;
-    const float mYfov = mainCameraPtr->yfov, mAspect = mainCameraPtr->aspect;
-    const float mNear = mainCameraPtr->nearClip, mFar = mainCameraPtr->farClip;
-    const float mLeft = mainCameraPtr->leftClip, mRight = mainCameraPtr->rightClip;
-    const float mBottom = mainCameraPtr->bottomClip, mTop = mainCameraPtr->topClip;
-    // a mirror reflects the layers its viewer sees
-    const uint32_t mCullingMask = mainCameraPtr->cullingMask;
+    const ReflectionViewer viewer = ReflectionViewer::of(*mainCameraPtr);
     // mainCameraPtr must not be used past here (may dangle after camera creation)
 
     // Creating a reflection camera appends to the camera/transform arrays but never
@@ -14271,50 +14955,7 @@ void RenderSystem::updateMirrors(Entity mainCameraEntity){
 
         // mirror plane in world space (entity position, world-rotated normal)
         Vector3 worldNormal = (mirrorTransform->worldRotation * mirrors->getComponentFromIndex(i).normal).normalize();
-        Plane plane(worldNormal, mirrorTransform->worldPosition);
-
-        // reflection view keeps the handedness flip (true mirror); winding is
-        // restored by invertCulling so reflected geometry shows front faces
-        Matrix4 reflectMat = Matrix4::reflectMatrix(plane);
-        refCam->customViewMatrix = mainView * reflectMat;
-        refCam->hasCustomViewMatrix = true;
-
-        // Give the reflection camera the reflected eye position. The custom view
-        // matrix overrides the view, but distance-based effects still read the
-        // transform's worldPosition (terrain CDLOD detail + morph origin, transparent
-        // sorting, per-camera lighting eye) — without this they'd key off the origin
-        // and the reflected terrain would morph at the wrong LOD (visible cracks).
-        refCamTransform->worldPosition = reflectMat * mainEye;
-        refCam->invertCulling = true;
-        refCam->renderToTexture = true;
-
-        // match the main camera projection so the reflection lines up 1:1
-        refCam->type = mainType;
-        refCam->yfov = mYfov;
-        refCam->aspect = mAspect;
-        refCam->nearClip = mNear;
-        refCam->farClip = mFar;
-        refCam->leftClip = mLeft;
-        refCam->rightClip = mRight;
-        refCam->bottomClip = mBottom;
-        refCam->topClip = mTop;
-        refCam->cullingMask = mCullingMask;
-
-        // recompute the reflection camera matrices with the override applied
-        updateCamera(*refCam, *refCamTransform);
-
-        // oblique near-plane clipping: move the reflection camera's near plane onto
-        // the mirror plane so geometry behind the mirror doesn't leak into the
-        // reflection. The clip plane (mirror plane, normal toward the front/reflecting
-        // side) is taken to the reflection camera's view space via inverse-transpose.
-        // Applied ONLY to viewProjectionMatrix (used by meshes), NOT projectionMatrix:
-        // the skybox renders from projectionMatrix and the oblique depth would clip it.
-        // Only the depth row changes, so projective sampling (clip.xy/w) is unaffected.
-        Vector4 worldClipPlane(worldNormal.x, worldNormal.y, worldNormal.z, plane.d);
-        Vector4 viewClipPlane = refCam->viewMatrix.inverse().transpose() * worldClipPlane;
-        Matrix4 obliqueProjection = refCam->projectionMatrix.obliqueNearClip(viewClipPlane);
-        refCam->viewProjectionMatrix = obliqueProjection * refCam->viewMatrix;
-        updateCameraFrustumPlanes(refCam->viewProjectionMatrix, refCam->frustumPlanes);
+        driveReflectionCamera(*refCam, *refCamTransform, viewer, worldNormal, mirrorTransform->worldPosition, 0.0f);
 
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
         if (mesh && mesh->numSubmeshes > 0){
@@ -14671,6 +15312,14 @@ void RenderSystem::needReloadMeshVariants() {
     }
 }
 
+SubmeshShaderInputs RenderSystem::getCurrentSubmeshInputs(Entity entity, const MeshComponent& mesh, unsigned int index, const TerrainComponent* terrain,
+                                                          const InstancedMeshComponent* instmesh, bool hasMirror, const std::string& sceneMeshShader) const{
+    SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, mesh.submeshes[index], terrain, instmesh, hasMirror, sceneMeshShader);
+    if (index == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
+        inputs.baseColorTexture = true;
+    return inputs;
+}
+
 // Whether every shader a reload of the mesh would take now is built (or failed: the load
 // falls back), asking for them as loadMesh does (ShaderPool::get starts their builds). The
 // variants as loadMesh resolves them, from the submeshes' attributes of their last load
@@ -14694,9 +15343,7 @@ bool RenderSystem::meshVariantShadersReady(Entity entity, MeshComponent& mesh, c
     bool allReady = true;
     for (unsigned int i = 0; i < mesh.numSubmeshes; i++){
         Submesh& submesh = mesh.submeshes[i];
-        SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, hasMirror, sceneMeshShader);
-        if (i == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
-            inputs.baseColorTexture = true;
+        const SubmeshShaderInputs inputs = getCurrentSubmeshInputs(entity, mesh, i, terrain, instmesh, hasMirror, sceneMeshShader);
         const SubmeshShaderVariant variant = getSubmeshShaderVariant(shaderEnvironment, inputs);
         allReady = ready(ShaderType::MESH, variant.properties,
                          ShaderPool::registerCustomShader(getSubmeshShaderReference(mesh, submesh, sceneMeshShader, variant.litDefines)), &submesh.render) && allReady;
@@ -14850,7 +15497,7 @@ void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char
     for (size_t i = 0; i < particleArray->size(); i++) {
         const ParticleSystemComponent& particles = particleArray->getComponentFromIndex(i);
         if (particles.enabled && particles.state && particles.state->effect)
-            visit(particles.state->render.loaded, particleArray->getEntity(i), "particles");
+            visit(isParticleTreeLoaded(particles.state->runtime, particles.state->render), particleArray->getEntity(i), "particles");
     }
 
     // Check LineRendererComponents
@@ -14948,17 +15595,24 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
     const float localRadius = hasBounds ? vertexBounds.getHalfSize().length() : 0.0f;
 
     const float cullEnd = instanceFadeCullEnd(instmesh, mesh, *scene);
+    const float cullNear = instanceFadeCullNear(instmesh, mesh, *scene);
+    // the lists are cut past margins where the fade has shrunk instances to nothing, so the eye
+    // can move that far before they are cut again (RenderSystem::update)
+    const float slackFar = instanceFadeSlackFar(instmesh, cullEnd);
+    const float slackNear = instanceFadeSlackNear(cullNear);
     instmesh.lastFadeCullEnd = cullEnd;
+    instmesh.lastFadeCullNear = cullNear;
     instmesh.lastFadeCullEye = instmesh.fadeEyeLocal;
+    instmesh.lastCullSlack = (cullEnd >= 0.0f && cullNear > 0.0f) ? std::min(slackFar, slackNear) : (cullNear > 0.0f ? slackNear : slackFar);
     // small margin for CPU/GPU float differences at the edge
-    const float cullRadius = cullEnd + std::max(0.0001f, cullEnd * 0.00001f);
+    const float cullRadius = cullEnd + slackFar + std::max(0.0001f, cullEnd * 0.00001f);
     const float cullRadiusSquared = cullRadius * cullRadius;
+    const float cullNearRadius = std::max(0.0f, cullNear - slackNear);
+    const float cullNearSquared = cullNearRadius * cullNearRadius;
 
     Quaternion bRotation;
     if (instmesh.instancedBillboard){
-        Matrix4 m1 = camera.viewMatrix.inverse();
-        bRotation.fromRotationMatrix(m1);
-        bRotation = transform.worldRotation.inverse() * bRotation;
+        bRotation = instanceBillboardRotation(instmesh.instancedCylindricalBillboard, camera.viewMatrix, transform.worldRotation, transform.worldScale, instmesh.lastBillboardYaw);
     }
 
     // a version 2 Particle System's instances, aligned for the main camera
@@ -14981,6 +15635,9 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
             const float dx = instmesh.instances[i].position.x - instmesh.fadeEyeLocal.x;
             const float dz = instmesh.instances[i].position.z - instmesh.fadeEyeLocal.z;
             if (cullEnd >= 0.0f && dx * dx + dz * dz > cullRadiusSquared){
+                continue;
+            }
+            if (dx * dx + dz * dz < cullNearSquared){
                 continue;
             }
             Matrix4 instanceMatrix;
@@ -15422,7 +16079,7 @@ bool RenderSystem::isBaseLayer() const{
     if (rv().secondary)
         return rv().baseLayer;
 #endif
-    return Engine::getMainScene() == scene;
+    return Engine::getBaseScene() == scene;
 }
 
 const LightCamera& RenderSystem::lightCamera(int lightIndex, const LightComponent& light, int cameraIndex) const{
@@ -15660,7 +16317,7 @@ bool RenderSystem::isFixedResolutionActive() const{
         return rv().fixedResolution && rv().baseLayer;
 #endif
     // main scene only: layer scenes keep rendering at native resolution on top
-    return !disableFixedResolution && Engine::getMainScene() == scene;
+    return !disableFixedResolution && Engine::getBaseScene() == scene;
 }
 
 void RenderSystem::updateSwapchainRedirect(){
@@ -15671,7 +16328,7 @@ void RenderSystem::updateSwapchainRedirect(){
     bool redirect = false;
 
     if (!Engine::getFramebuffer() && !isFixedResolutionActive()
-            && Engine::getMainScene() == scene && Engine::isViewLoaded()){
+            && Engine::getBaseScene() == scene && Engine::isViewLoaded()){
         unsigned int w = (unsigned int)Engine::getViewRect().getWidth();
         unsigned int h = (unsigned int)Engine::getViewRect().getHeight();
 
@@ -15718,7 +16375,9 @@ void RenderSystem::updateSwapchainRedirect(){
     if (redirect != swapchainRedirect){
         swapchainRedirect = redirect;
         // the flip is baked in the MVP matrices
-        scene->getComponent<CameraComponent>(scene->getCamera()).needUpdate = true;
+        if (CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera())){
+            camera->needUpdate = true;
+        }
     }
 }
 
@@ -15933,10 +16592,15 @@ uint16_t RenderSystem::getScenePipelines() const{
         }
     }
 
-    // mirrors and probe capture render with reversed winding (see isRenderingFlipped)
+    // mirrors, probe capture and water reflections render with reversed winding (see
+    // isRenderingFlipped); a water reflection into a target of its own
     if (scene->getComponentArray<MirrorComponent>()->size() > 0 ||
             scene->getComponentArray<ReflectionProbeComponent>()->size() > 0){
         pipelines |= PIP_RTT_INVERT;
+    }
+    // (whatever the resolution, so turning it Off and on again reloads nothing)
+    if (!planarReflectionMeshes.empty()){
+        pipelines |= PIP_RTT | PIP_RTT_INVERT;
     }
 
 #ifdef JASPERENGINE_EDITOR
@@ -15952,7 +16616,19 @@ void RenderSystem::update(double dt){
 #endif
     // shadow maps drawn before this update hold another scene
     shadowEpoch++;
+    updateSerial = updateSerial + 1 ? updateSerial + 1 : 1;
 
+    // Dynamic Batching turned off: every object draws alone again, with its own MVP and buffers
+    if (!Engine::isDynamicBatching()){
+        if (!batchRecords.empty())
+            dropBatchRecords();
+        if (batchingSeen){
+            destroyBatchChunks();
+            batchingSeen = false;
+        }
+    }else{
+        batchingSeen = true;
+    }
     if (paused) {
         return;
     }
@@ -15961,6 +16637,9 @@ void RenderSystem::update(double dt){
     const uint32_t rebindEpoch = TexturePool::getRebindEpoch();
     const bool rendersMayBeOutdated = rebindEpoch != rebindEpochSeen;
     rebindEpochSeen = rebindEpoch;
+    // the shader environment a texture edit's variant is resolved against, taken at the first edit
+    MeshShaderEnvironment variantEnvironment;
+    bool variantEnvironmentReady = false;
     // the clock of the shadow caches (ShadowCache): one tick per update that samples the casters
     shadowFrame++;
 
@@ -16171,11 +16850,45 @@ void RenderSystem::update(double dt){
         }
     }
 
+    // the scene camera's water reflection passes rewrite the shared MVPs as other cameras do
+    if (planarReflectionVisible(mainCameraEntity)){
+        hasMultipleCameras = true;
+    }
+
     // drive mirror reflection cameras from the (now updated) main camera, so the
     // reflection passes render with current matrices in the draw step. This may
     // create reflection camera entities (reallocating the camera/transform arrays),
     // so fetch mainCamera/mainCameraTransform references AFTER it returns.
     updateMirrors(mainCameraEntity);
+
+    // the MVP of batched meshes waits for a draw alone only while every pass draws with the main
+    // camera's (a probe or another camera makes its own per pass): decided once the cameras of
+    // this update are counted (a mirror's too)
+    {
+        const bool lazy = Engine::isDynamicBatching() && !hasReflectionProbes && !hasMultipleCameras;
+        if (!lazy && batchLazyMVP){
+            // the stale ones made now with the main camera (ensureBatchMVP would leave them to
+            // the per-camera passes)
+            const Entity cameraEntity = scene->getCamera();
+            CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
+            Transform* cameraTransform = scene->findComponent<Transform>(cameraEntity);
+            auto refresh = [&](Entity entity){
+                Transform* transform = scene->findComponent<Transform>(entity);
+                if (transform && camera && cameraTransform)
+                    updateMVP(0, *transform, *camera, *cameraTransform);
+            };
+            for (BatchRecord& record : batchRecords){
+                if (record.mvpStale){
+                    record.mvpStale = false;
+                    refresh(record.entity);
+                }
+            }
+            for (Entity entity : batchStaleMVPs)
+                refresh(entity);
+            batchStaleMVPs.clear();
+        }
+        batchLazyMVP = lazy;
+    }
 
     // the rest of the frame is built from the main camera view
     CameraComponent* mainCameraPtr = scene->findComponent<CameraComponent>(mainCameraEntity);
@@ -16355,9 +17068,13 @@ void RenderSystem::update(double dt){
                 const bool cameraBound = instmesh->instancedBillboard || instmesh->particle.cameraDependent();
 
                 const float cullEnd = instanceFadeCullEnd(*instmesh, mesh, *scene);
-                const bool fadeSelectionChanged = cullEnd != instmesh->lastFadeCullEnd ||
-                    (cullEnd >= 0.0f && (instmesh->fadeEyeLocal.x != instmesh->lastFadeCullEye.x ||
-                                        instmesh->fadeEyeLocal.z != instmesh->lastFadeCullEye.z));
+                const float cullNear = instanceFadeCullNear(*instmesh, mesh, *scene);
+                // cut again once the eye moves past the margin the lists were cut with
+                const float eyeDx = instmesh->fadeEyeLocal.x - instmesh->lastFadeCullEye.x;
+                const float eyeDz = instmesh->fadeEyeLocal.z - instmesh->lastFadeCullEye.z;
+                const bool eyeMoved = eyeDx * eyeDx + eyeDz * eyeDz > instmesh->lastCullSlack * instmesh->lastCullSlack;
+                const bool fadeSelectionChanged = cullEnd != instmesh->lastFadeCullEnd || cullNear != instmesh->lastFadeCullNear ||
+                    ((cullEnd >= 0.0f || cullNear > 0.0f) && eyeMoved);
                 bool instancesNeedUpdate = instmesh->needUpdateInstances || mesh.needUpdateAABB ||
                     batchSortChanged || fadeSelectionChanged;
 
@@ -16365,8 +17082,9 @@ void RenderSystem::update(double dt){
                     updateInstancedMesh(*instmesh, mesh, transform, mainCamera, mainCameraTransform);
                 }
 
-                const bool particleCamera = instmesh->particle.cameraDependent();
-                if (instancesNeedUpdate || ((mainCamera.needUpdate || transform.needUpdate) && (sortTransparentInstances || particleCamera))){
+                // billboards face the camera and camera-aligned particles follow it: like a
+                // transparent sort, they are rebuilt on every camera move, opaque or not
+                if (instancesNeedUpdate || ((mainCamera.needUpdate || transform.needUpdate) && (sortTransparentInstances || cameraBound))){
                     // The instance buffer is shared by every camera and sokol allows one
                     // sg_update_buffer per frame (VALIDATE_UPDATEBUF_ONCE), so the main camera
                     // fixes the batch order and every other camera reuses it.
@@ -16479,12 +17197,15 @@ void RenderSystem::update(double dt){
 
                 // An image the material names that had no GPU texture when it was bound (it drew a
                 // stand-in) may be made now, and one it drew has new pixels or a new view: an image
-                // ready, or assigned, after the binding (BF15)
+                // ready, or assigned, after the binding (BF15). The same images: bound again
+                // without the variant check below
+                bool rebindOnly = false;
                 if (mesh.loaded && !mesh.needReload && !mesh.submeshes[s].needUpdateTexture){
                     const uint32_t standIn = mesh.submeshes[s].textureStandInEpoch;
                     if ((standIn != 0 && standIn != TexturePool::getReadyEpoch()) ||
                             (rendersMayBeOutdated && materialRendersOutdated(mesh.submeshes[s]))){
                         mesh.submeshes[s].needUpdateTexture = true;
+                        rebindOnly = true;
                     }
                 }
 
@@ -16498,44 +17219,50 @@ void RenderSystem::update(double dt){
                     if (mesh.submeshes[s].gbufferShader){
                         mesh.submeshes[s].needUpdateGBufferTexture = true;
                     }
-                    // a shader with a manifest takes its UV sets from @require, not the textures
                     if (mesh.submeshes[s].manifest){
-                        // its custom textures are bound again by drawMesh
-                    }else if (checkPBRTextures(mesh.submeshes[s].material, mesh.receiveLights, mesh.receiveIBL)){
-                        if (!(mesh.submeshes[s].shaderProperties & (1 << 1)) && !(mesh.submeshes[s].shaderProperties & (1 << 2))){ // not 'Uv1' and not 'Uv2'
-                            mesh.needReload = true;
-                        }
-                    }else if (mesh.submeshes[s].pbrMaps[0] == PbrMap::COUNT){
-                        // (a lobe's map the variant binds asked for its UVs: when it goes or
-                        // another comes, pbrVariantMatches below builds the variant it takes)
-                        if ((mesh.submeshes[s].shaderProperties & (1 << 1)) || (mesh.submeshes[s].shaderProperties & (1 << 2))){ // 'Uv1' or 'Uv2'
-                            mesh.needReload = true;
-                        }
-                    }
-                    // the built-in Lit's lobes, maps and hex tiling: a variant of their own, built
-                    // while the loaded one draws (the variant as asked for, see loadMesh)
-                    if (!mesh.submeshes[s].manifest && !terrain && mesh.loaded && !mesh.needReload &&
-                            !pbrVariantMatches(mesh.submeshes[s])){
-                        mesh.needVariantReload = true;
-                    }
-                    if (mesh.submeshes[s].manifest){
-                        // a normal map variant only with @require normalmap (its 2D lights): one
-                        // gained or lost since the load picks it again
+                        // a shader with a manifest takes its UV sets from @require, not the
+                        // textures (its custom textures are bound again by drawMesh); a normal
+                        // map variant only with @require normalmap (its 2D lights): one gained or
+                        // lost since the load picks it again
                         if (mesh.submeshes[s].manifest->getPossibleRequire() & ShaderRequire_NormalMap){
                             if (mesh.submeshes[s].hasNormalMap != !mesh.submeshes[s].material.normalTexture.empty()){
                                 mesh.needReload = true;
                             }
                         }
-                    }else if (!mesh.submeshes[s].material.normalTexture.empty()){
-                        if (!(mesh.submeshes[s].shaderProperties & (1 << 7))){ // not 'Nmp'
+                    }else if (terrain){
+                        // a terrain keeps its own checks (its layers' above): a reload, which also
+                        // builds its layer image array again (invalidateTerrainDetailArray)
+                        const bool shaderUVs = (mesh.submeshes[s].shaderProperties & ((1 << 1) | (1 << 2))) != 0; // 'Uv1', 'Uv2'
+                        if (checkPBRTextures(mesh.submeshes[s].material, mesh.receiveLights, mesh.receiveIBL) ? !shaderUVs :
+                                (mesh.submeshes[s].pbrMaps[0] == PbrMap::COUNT && shaderUVs)){
                             mesh.needReload = true;
                         }
-                    }else{
-                        if (mesh.submeshes[s].shaderProperties & (1 << 7)){ // 'Nmp'
+                        const bool shaderNormalMap = (mesh.submeshes[s].shaderProperties & (1 << 7)) != 0; // 'Nmp'
+                        if (shaderNormalMap != !mesh.submeshes[s].material.normalTexture.empty()){
                             mesh.needReload = true;
+                        }
+                    }else if (mesh.loaded && !mesh.needReload && !rebindOnly){
+                        textureVariantChecks++;
+                        // the whole variant the material asks for now, in every pass (colour with
+                        // its UV sets, maps, lobes and Stochastic Tiling; the depth pass's alpha
+                        // clip; the SSR G-buffer's base colour and metallic-roughness), built while
+                        // the loaded one draws (Doriax 17ce79969 fixed the G-buffer's alone)
+                        if (!variantEnvironmentReady){
+                            variantEnvironment = getMeshShaderEnvironment();
+                            variantEnvironmentReady = true;
+                        }
+                        const bool hasMirror = scene->findComponent<MirrorComponent>(entity) != nullptr;
+                        const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+                        const SubmeshShaderInputs inputs = getCurrentSubmeshInputs(entity, mesh, (unsigned int)s, terrain, instmesh, hasMirror, sceneMeshShader);
+                        const SubmeshShaderVariant variant = getSubmeshShaderVariant(variantEnvironment, inputs);
+                        SubmeshShaderVariant passVariant;
+                        const bool extraPass = hasExtraPass(mesh.submeshes[s], terrain != nullptr);
+                        if (extraPass)
+                            passVariant = getSubmeshShaderVariant(variantEnvironment, getExtraPassShaderInputs(inputs, mesh.submeshes[s].material.extraPass));
+                        if (!loadedVariantMatches(mesh.submeshes[s], variant, extraPass ? &passVariant : nullptr)){
+                            mesh.needVariantReload = true;
                         }
                     }
-
                 }
             }
 
@@ -16695,6 +17422,12 @@ void RenderSystem::update(double dt){
                 }
             }
 
+            // Depth Write Auto follows the queue (resolvePointsRenderState): a change of the
+            // Transparent flag or of the texture's alpha needs new pipelines
+            if (points.loaded && points.depthFollowsQueue && points.isTransparent() != points.loadedTransparent){
+                points.needReload = true;
+            }
+
             if (points.loaded && points.needReload){
                 destroyPoints(entity, points);
             }
@@ -16747,7 +17480,15 @@ void RenderSystem::update(double dt){
 
             // need to be updated for every camera
             if (!hasMultipleCameras){
-                updateMVP(i, transform, mainCamera, mainCameraTransform);
+                // a batched mesh draws without its MVP: made when a draw of it alone reads it
+                // (ensureBatchMVP); its distance still sorts it
+                BatchRecord* lazy = batchLazyMVP ? findBatchRecord(entity) : nullptr;
+                if (lazy && !lazy->ui && !transform.billboard){
+                    lazy->mvpStale = true;
+                    transform.distanceToCamera = (mainCameraTransform.worldPosition - transform.worldPosition).length();
+                }else{
+                    updateMVP(i, transform, mainCamera, mainCameraTransform);
+                }
             }
 
             // Select the main camera's CDLOD cut (view 0) once per frame; both the
@@ -16874,8 +17615,10 @@ void RenderSystem::selectCameraTerrain(CameraComponent& camera, Transform& camer
 // culled instance lists of the scene camera, the shadow maps of its lights, the 2D
 // shadow rows and the reflection probe face of the frame.
 void RenderSystem::drawFramePasses(){
-    // the frame's shader clock (Engine::latchShaderTime), the one the CPU's waves read
+    // the frame's shader clock (Engine::latchShaderTime), and the scene's game clock the water
+    // and the CPU's waves read (Scene::getSceneTime)
     frameTime = Engine::getShaderTime();
+    frameSceneTime = (float)scene->getSceneTime();
     updateDynamicResolution();
 
 #ifdef JASPERENGINE_EDITOR
@@ -17030,8 +17773,10 @@ void RenderSystem::draw(){
     // UI particles whose Canvas Group alpha changed after this frame's update (the UI draw
     // synced it): their render points again, so this frame shows it
     refreshGroupFadedPoints();
+    beginBatchFrame();
     drawFramePasses();
     drawCameras(true);
+    endBatchFrame();
 
 #ifdef JASPERENGINE_EDITOR
     frameDrawn = true;
@@ -17137,6 +17882,13 @@ void RenderSystem::drawCameras(bool includeMain){
             renderCameraShadows(*cameraLighting);
         }
 
+        // the scene camera's water reflections, before its own pass, with the next terrain cuts
+        // the render-to-texture cameras left (one a pass; else the scene camera's)
+        if (isMainCamera){
+            const int reflectionTerrainView = (terrainViewCounter + 1 < MAX_TERRAIN_VIEWS) ? terrainViewCounter + 1 : 0;
+            renderWaterReflections(primaryView, camera, *cameraTransformPtr, reflectionTerrainView);
+        }
+
         CameraPass pass;
         pass.camera = &camera;
         pass.cameraTransform = cameraTransformPtr;
@@ -17165,6 +17917,9 @@ void RenderSystem::drawCameras(bool includeMain){
     sceneInputStats.depthPrePasses = 0;
     sceneInputStats.sharedDepth = 0;
     sceneInputStats.colorCopies = 0;
+    sceneInputStats.colorRecopies = 0;
+    lastPlanarReflectionStats = planarReflectionStats;
+    planarReflectionStats = PlanarReflectionStats();
     if (!primaryView.sceneInputTargets.empty())
         releaseSceneInputTargets(primaryView, false);
 #ifdef JASPERENGINE_EDITOR
@@ -17188,6 +17943,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     CameraComponent& camera = *pass.camera;
     Transform& cameraTransform = *pass.cameraTransform;
     const bool isMainCamera = pass.isMain;
+    passCamera = &camera;
     const int terrainView = pass.terrainView;
     // layers this camera draws (Unity Camera.cullingMask)
     const uint32_t cullingMask = camera.cullingMask;
@@ -17215,7 +17971,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // scene (nothing to look at in a scene without such a shader)
     passSceneDepth = nullptr;
     passSceneColor = nullptr;
-    const uint32_t sceneInputs = sceneInputUsage ? findPassSceneInputs(camera, isMainCamera ? 0 : -1) : 0;
+    // (a water reflection pass draws no reader of the scene)
+    const uint32_t sceneInputs = (sceneInputUsage && !pass.reflection) ? findPassSceneInputs(camera, isMainCamera ? 0 : -1) : 0;
 
     // Screen-space reflections (main camera only). The G-buffer geometry pass runs
     // FIRST so SSAO can share its depth (a single geometry pre-pass feeds both
@@ -17714,10 +18471,13 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         const unsigned int copyHeight = fullCopy ? (unsigned int)colorPassViewport.getHeight() : std::max(1u, (unsigned int)colorPassViewport.getHeight() / 2);
         fillSceneInputs(camera, colorPassViewport, sceneInputTargetHeight, passFlipped, copyWidth, copyHeight);
     }
+    // the frame's draw calls when the copy was last taken
+    uint32_t drawsAtCopy = 0;
     auto takeSceneColor = [&](){
         sceneColorPending = false;
         camera.render.endRenderPass();
         passSceneColor = copySceneColor(&colorTarget->getColorTexture(), colorPassViewport, sceneInputTargetWidth, sceneInputTargetHeight);
+        drawsAtCopy = Engine::getFrameDrawCalls();
         camera.render.resumeRenderPass(colorTarget);
         if (colorPassViewportApplied){
             camera.render.applyViewport(colorPassViewport);
@@ -17727,19 +18487,20 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     //---------Draw opaque meshes and UI----------
     bool hasActiveScissor = false;
 
-    // only the main camera has a culled instance view and fading detail levels; another camera
-    // (render to texture, a mirror) draws one level, chosen for its own view without fading
-    // (spec S54 R7: never all levels), the Shadow LOD Bias coarser (spec S55 R5)
+    // only the main camera has a culled instance view and fading detail levels; a water reflection
+    // takes its viewer's; another camera (render to texture, a mirror) draws one level, chosen for
+    // its own view without fading (spec S54 R7: never all levels), the Shadow LOD Bias coarser
+    // (spec S55 R5)
     const int instanceView = isMainCamera ? 0 : -1;
     LodView passLodView;
-    if (!isMainCamera){
+    if (!isMainCamera && !pass.reflection){
         passLodView = computeLodView(camera, cameraTransform, 0.0f, true);
         const float height = std::max(colorPassViewport.getHeight(), 1.0f);
         passLodView.perUnit *= passLodView.viewHeight / height;
         passLodView.constant *= passLodView.viewHeight / height;
         passLodView.viewHeight = height;
     }
-    const LodView* lodView = isMainCamera ? &rv().lodView : &passLodView;
+    const LodView* lodView = (isMainCamera || pass.reflection) ? &rv().lodView : &passLodView;
 
     const bool depthPrepass = isMainCamera && camera.depthTest && scene->isDepthPrepassEnabled();
 
@@ -17764,6 +18525,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
             if (!transform.visible || samplesCameraTarget(camera, mesh) || !isRenderActive(entity, signature) || !isLayerVisible(entity, cullingMask)){
+                continue;
+            }
+            // a water reflection draws no reflecting mesh (it would read its own pass) and no
+            // reader of the scene (it has none)
+            if (pass.reflection && (mesh.sceneInputs != 0 || planarReflectionMeshes.count(entity))){
                 continue;
             }
 
@@ -17816,14 +18582,23 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
 
+    // the view-projection the pass's MVPs are made of (Y-flipped as updateMVP flips them): the
+    // pre-pass's and the batched draws' (whose model is their origin cell)
+    Matrix4 renderVP = camera.viewProjectionMatrix;
+    if (isRenderingFlipped(camera)){
+        renderVP = Matrix4::scaleMatrix(Vector3(1, -1, 1)) * renderVP;
+    }
+
     // the same draws, depth only, with the color pass's own MVP; a color fork
     // without a depth fork is left out since its vertices may not match
     if (depthPrepass){
         const PipelineType prepassPip = passMsaa > 1 ? PIP_ZPREPASS_MSAA : (offscreenTarget ? PIP_ZPREPASS_RTT : PIP_ZPREPASS);
-        Matrix4 renderVP = camera.viewProjectionMatrix;
-        if (isRenderingFlipped(camera)){
-            renderVP = Matrix4::scaleMatrix(Vector3(1, -1, 1)) * renderVP;
-        }
+        // (depth only: its draws group by state, in any order)
+        beginBatchPass(BatchPass::DEPTH_PREPASS, BatchMode::GROUP, &camera, &cameraTransform, prepassPip, renderVP, camera.farClip, camera.frustumPlanes);
+        batchPass.colorPipType = colorPip;
+        batchPass.forSSAO = true;
+        batchPass.instanceView = instanceView;
+        batchPass.lodView = lodView;
         SystemRender::beginDrawBatch();
         passLodFade = LodFadePass::PLAIN;
         for (const OpaqueRenderData& opaque : opaqueRenders){
@@ -17831,12 +18606,17 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             // the fading draws are drawn by the colour pass alone
             if (opaque.mesh->skipsDepthPrepass || opaque.lodPass == LodFadePass::FADE)
                 continue;
+            // a batched mesh's MVP may wait: submitMeshDepth makes it for a draw alone (batching
+            // off, no batch pass: made here)
+            if (!Engine::isDynamicBatching())
+                ensureBatchMVP(opaque.entity, *opaque.transform);
             vs_depth_t params = {objectModel(*opaque.transform), renderVP, objectMVP(*opaque.transform)};
             passSubmeshQueue = opaque.mesh->isTransparent() ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
             passSubmeshMask = opaque.submeshMask;
             passPreCulled = opaque.preCulled;
-            drawMeshDepth(opaque.entity, *opaque.mesh, *opaque.transform, camera.farClip, camera.frustumPlanes, params, opaque.instmesh, opaque.terrain, opaque.tilemap, true, prepassPip, instanceView, lodView);
+            submitMeshDepth(opaque.entity, *opaque.mesh, *opaque.transform, camera.farClip, camera.frustumPlanes, params, opaque.instmesh, opaque.terrain, opaque.tilemap, true, prepassPip, instanceView, lodView);
         }
+        endBatchPass();
         SystemRender::endDrawBatch();
         passSubmeshQueue = SubmeshQueue::ALL;
         passSubmeshMask = 0xFFFFFFFFu;
@@ -17885,6 +18665,17 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         videoPlanes->drawCameraPlanes(videoCamera, false, targetFormatFor(colorPip, passMsaa), camera.render, colorPassViewport, videoFlipY);
     };
 
+    // Dynamic Batching: the meshes and UI elements below are held and drawn in runs (any other
+    // draw of the pass draws the runs first). An orthographic camera looking along Z lets a draw
+    // join an earlier run past draws its bounds do not touch (disjoint on screen)
+    {
+        const float viewAxis = camera.viewMatrix[2][2];
+        const bool alongZ = camera.type != CameraType::CAMERA_PERSPECTIVE && std::fabs(viewAxis) > 1.0f - 1e-6f &&
+            camera.viewMatrix[0][2] == 0.0f && camera.viewMatrix[1][2] == 0.0f;
+        beginBatchPass(BatchPass::COLOR, alongZ ? BatchMode::REORDER : BatchMode::STRICT, &camera, &cameraTransform, colorPip, renderVP,
+                       camera.farClip, camera.frustumPlanes);
+    }
+
     if (distanceSort){
         // (GPU Instancing: consecutive draws of one mesh, material and pipeline drawn as one)
         SystemRender::beginDrawBatch();
@@ -17894,7 +18685,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             passSubmeshMask = opaque.submeshMask;
             passPreCulled = opaque.preCulled;
             passLodFade = opaque.lodPass;
-            drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, camera, cameraTransform, colorPip, opaque.instmesh, opaque.terrain, opaque.tilemap, terrainView, instanceView, lodView);
+            submitMesh(opaque.entity, *opaque.mesh, *opaque.transform, camera, cameraTransform, colorPip, opaque.instmesh, opaque.terrain, opaque.tilemap, terrainView, instanceView, lodView);
         }
         SystemRender::endDrawBatch();
         passSubmeshQueue = SubmeshQueue::ALL;
@@ -17906,7 +18697,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         // drawn after (transparents) takes the analytic fog alone
         if (atmospherePlan.any())
             atmosphere.drawComposites(atmospherePlan, colorPip, passMsaa, colorPassViewport, sceneInputTargetHeight, passFlipped, camera, cameraTransform);
-        // the opaque queue and the sky are drawn
+        // the opaque queue and the sky are drawn: the scene colour, before the hierarchy loop's
+        // UI and overlays (the transparent queue's readers may copy it again, below)
         if (sceneColorPending){
             takeSceneColor();
         }
@@ -18045,7 +18837,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         if (signature.test(scene->getComponentId<MeshComponent>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
 
-            if (transform.visible && renderActive && !samplesCameraTarget(camera, mesh)){
+            if (transform.visible && renderActive && !samplesCameraTarget(camera, mesh) &&
+                    !(pass.reflection && (mesh.sceneInputs != 0 || planarReflectionMeshes.count(entity)))){
 
                 // Per-camera transparent-instance sorting is intentionally NOT done
                 // here: the instance buffer is shared across all cameras and sokol
@@ -18067,7 +18860,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 // ones refreshed in update()
                 TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
 
-                drawMesh(entity, mesh, transform, camera, cameraTransform, colorPip, instmesh, terrain, tilemap, terrainView, instanceView, lodView);
+                submitMesh(entity, mesh, transform, camera, cameraTransform, colorPip, instmesh, terrain, tilemap, terrainView, instanceView, lodView);
             }
 
         }else if (signature.test(scene->getComponentId<UIComponent>())){
@@ -18075,8 +18868,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
             if (transform.visible && renderActive && !canvasSkipped && !samplesCameraTarget(camera, ui.texture) &&
                     !uiDrawSkipped(ui.color, ui.groupAlpha, ui.drawBlendMode, ui.writesStencil))
-                drawUI(ui, transform, colorPip,
-                       (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr);
+                submitUI(entity, ui, transform, colorPip,
+                         (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr);
 
         }else if (signature.test(scene->getComponentId<PointsComponent>())){
             PointsComponent& points = scene->getComponent<PointsComponent>(entity);
@@ -18126,14 +18919,18 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 if (!(canvasSkipped && !passCanvasLayers.count(canvasSkipGroup)))
                     drawParticles(entity, particles, transform, camera, cameraTransform, colorPip);
             }else if (particles.enabled && particles.state && particles.state->render.loaded && transform.visible && isParticleRenderActive(entity, cullingMask)){
-                const particles::ParticleSystemState& state = *particles.state;
-                const Vector3 center = state.hasBounds ? Vector3((state.boundsMin[0] + state.boundsMax[0]) * 0.5f, (state.boundsMin[1] + state.boundsMax[1]) * 0.5f,
-                                                                 (state.boundsMin[2] + state.boundsMax[2]) * 0.5f)
-                                                       : transform.worldPosition;
-                TransparentRenderData data{TransparentRenderType::PARTICLES, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
-                                           (center - cameraTransform.worldPosition).length(), state.render.sortPriority, transparentOrder++};
-                data.particles = &particles;
-                transparentRenders.push_back(data);
+                particles::ParticleSystemState& state = *particles.state;
+                if (state.runtime.childCount() > 0){
+                    queueParticleTree(entity, particles, state.runtime, state.render, transform, cameraTransform, true, transparentOrder);
+                }else{
+                    const Vector3 center = state.hasBounds ? Vector3((state.boundsMin[0] + state.boundsMax[0]) * 0.5f, (state.boundsMin[1] + state.boundsMax[1]) * 0.5f,
+                                                                     (state.boundsMin[2] + state.boundsMax[2]) * 0.5f)
+                                                           : transform.worldPosition;
+                    TransparentRenderData data{TransparentRenderType::PARTICLES, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
+                                               (center - cameraTransform.worldPosition).length(), state.render.sortPriority, transparentOrder++};
+                    data.particles = &particles;
+                    transparentRenders.push_back(data);
+                }
             }
         }
 
@@ -18147,6 +18944,21 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     }
 
     //---------Draw transparent renderers----------
+    // layered around the pass's waters (WaterLayering.h): nothing to do without one
+    std::vector<WaterLayer> passWaters;
+    gatherPassWaters(transparentRenders, passWaters);
+    if (!passWaters.empty()){
+        const std::vector<float> groupDistances = waterGroupDistances(passWaters);
+        for (TransparentRenderData& renderData : transparentRenders){
+            const WaterPlace place = waterPlace(transparentBounds(renderData), cameraTransform.worldPosition, passWaters, groupDistances,
+                                                renderData.entity, renderData.distanceToCamera);
+            renderData.waterRank = (int8_t)place.rank;
+            renderData.waterSortDistance = place.sortDistance;
+        }
+    }else{
+        for (TransparentRenderData& renderData : transparentRenders)
+            renderData.waterSortDistance = renderData.distanceToCamera;
+    }
     std::sort(transparentRenders.begin(), transparentRenders.end(), TransparentRenderComparison());
     // S57: an Order Independent camera's alpha-blended submeshes accumulate in a pass of their
     // own, resolved over the scene; the sorted loop below draws the rest
@@ -18163,17 +18975,58 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             passOit = true;
         }
     }
+
+    // the scene colour for the queue's readers: copied again before the first one when the queue
+    // drew before it (what is under a water), and before a reader over one of a higher rank
+    // drawn since the last copy (a refracting pool over a refracting lake sees the lake), at most
+    // MAX_SCENE_COLOR_COPIES a pass; only while nothing but the queue drew since the copy (the
+    // hierarchy loop's UI, points, lines and screen fluids, an OIT resolve stay out of it)
+    const Matrix4& readerViewProjection = camera.viewProjectionMatrix;
+    struct DrawnReader{ Vector4 rect; int rank; };
+    std::vector<DrawnReader> readersSinceCopy;
+    unsigned int passColorCopies = passSceneColor ? 1u : 0u;
+    // (the draws the batcher still holds from the hierarchy loop, its UI and sprites, drawn first:
+    // the count sees them)
+    if (passSceneColor)
+        flushHeldBatchDraws();
+    const bool recopies = !passSceneColor || Engine::getFrameDrawCalls() == drawsAtCopy;
+    bool queueCopied = false;
+    bool queueDrawnSinceCopy = false;
     for (const TransparentRenderData& renderData : transparentRenders){
+        if (copySceneColorPending && colorTarget && readsSceneColor(renderData, camera, instanceView)){
+            const Vector4 rect = screenBoundsOf(transparentBounds(renderData), readerViewProjection);
+            bool copy = sceneColorPending || (recopies && !queueCopied && queueDrawnSinceCopy);
+            if (!copy && recopies){
+                for (const DrawnReader& drawn : readersSinceCopy){
+                    if (drawn.rank > renderData.waterRank && drawn.rect.x <= rect.z && rect.x <= drawn.rect.z &&
+                            drawn.rect.y <= rect.w && rect.y <= drawn.rect.w){
+                        copy = true;
+                        break;
+                    }
+                }
+            }
+            if (copy && passColorCopies < MAX_SCENE_COLOR_COPIES){
+                if (!sceneColorPending)
+                    sceneInputStats.colorRecopies++;
+                takeSceneColor();
+                passColorCopies++;
+                readersSinceCopy.clear();
+                queueDrawnSinceCopy = false;
+            }
+            queueCopied = true;
+            readersSinceCopy.push_back({rect, renderData.waterRank});
+        }
+        queueDrawnSinceCopy = true;
 
         if (renderData.type == TransparentRenderType::MESH){
             // a split mesh: its blended submeshes (the opaque ones were drawn in the opaque queue)
             passSubmeshQueue = renderData.mesh->splitQueues ? SubmeshQueue::TRANSPARENT : SubmeshQueue::ALL;
-            drawMesh(renderData.entity, *renderData.mesh, *renderData.transform, camera, cameraTransform, colorPip, renderData.instmesh, renderData.terrain, renderData.tilemap, terrainView, instanceView, lodView);
+            submitMesh(renderData.entity, *renderData.mesh, *renderData.transform, camera, cameraTransform, colorPip, renderData.instmesh, renderData.terrain, renderData.tilemap, terrainView, instanceView, lodView);
             passSubmeshQueue = SubmeshQueue::ALL;
         }else if (renderData.type == TransparentRenderType::POINTS){
             drawPoints(renderData.entity, *renderData.points, *renderData.transform, camera, cameraTransform, colorPip);
         }else if (renderData.type == TransparentRenderType::PARTICLES){
-            drawParticles(renderData.entity, *renderData.particles, *renderData.transform, camera, cameraTransform, colorPip);
+            drawParticles(renderData.entity, *renderData.particles, *renderData.transform, camera, cameraTransform, colorPip, renderData.emitter, renderData.emitterRender);
         }else if (renderData.type == TransparentRenderType::LINES){
             drawLines(renderData.entity, *renderData.lines, *renderData.transform, camera, cameraTransform, colorPip);
         }else if (renderData.type == TransparentRenderType::TRAIL){
@@ -18188,6 +19041,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     //---------Draw HTML UI documents (in front of everything, including component UI)----------
     // UI and 2D cameras draw the canvas in world space, the editor's Scene view included; a
     // 3D camera fills its viewport, in the game camera only
+    // (the documents draw over every run)
+    endBatchPass();
+
     bool drawDocuments = isMainCamera && !pass.renderToTexture;
 #ifdef JASPERENGINE_EDITOR
     drawDocuments = drawDocuments && (!passDrawsOverlays || camera.type != CameraType::CAMERA_PERSPECTIVE);
@@ -18724,6 +19580,10 @@ void RenderSystem::onComponentAdded(Entity entity, ComponentId componentId) {
 }
 
 void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
+    // the entity goes (every one has a Transform), or something it was batched as
+    if (componentId == scene->getComponentId<Transform>())
+        dropBatchRecord(entity);
+
 #ifdef JASPERENGINE_EDITOR
     forgetEntityInViews(entity, componentId);
     // the entity goes (every one has a Transform): its id may come back as something else
@@ -18741,12 +19601,16 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     } else if (componentId == scene->getComponentId<MeshComponent>()) {
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         destroyMesh(entity, mesh);
+        dropBatchRecord(entity);
+        immutableChanges.erase(entity);
         // (kept over reloads, which load it again)
         setSceneInputUser(entity, false, 0);
+        setWaterMesh(entity, false, false);
         setGBufferDepthMismatch(entity, false);
     } else if (componentId == scene->getComponentId<UIComponent>()) {
         UIComponent& ui = scene->getComponent<UIComponent>(entity);
         destroyUI(entity, ui);
+        dropBatchRecord(entity);
     } else if (componentId == scene->getComponentId<PointsComponent>()) {
         PointsComponent& points = scene->getComponent<PointsComponent>(entity);
         destroyPoints(entity, points);
@@ -19242,11 +20106,13 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
     const float cullEnd = instanceFadeCullEnd(instmesh, mesh, *scene);
     const float cullRadius = cullEnd + std::max(0.0001f, cullEnd * 0.00001f);
     const float cullRadiusSquared = cullRadius * cullRadius;
+    const float cullNear = instanceFadeCullNear(instmesh, mesh, *scene);
+    const float cullNearSquared = cullNear * cullNear;
 
     Quaternion billboardRotation;
     if (instmesh.instancedBillboard){
-        billboardRotation.fromRotationMatrix(camera.viewMatrix.inverse());
-        billboardRotation = transform.worldRotation.inverse() * billboardRotation;
+        float yaw = instmesh.lastBillboardYaw;
+        billboardRotation = instanceBillboardRotation(instmesh.instancedCylindricalBillboard, camera.viewMatrix, transform.worldRotation, transform.worldScale, yaw);
     }
 
     // a version 2 Particle System's instances, aligned for this camera
@@ -19276,6 +20142,8 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
         const float dx = instance.position.x - fadeEyeLocal.x;
         const float dz = instance.position.z - fadeEyeLocal.z;
         if (cullEnd >= 0.0f && dx * dx + dz * dz > cullRadiusSquared)
+            continue;
+        if (dx * dx + dz * dz < cullNearSquared)
             continue;
 
         Matrix4 instanceMatrix;
@@ -19385,7 +20253,8 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
         const InstanceVatRenderData* vat;
         const InstanceBounds* bounds;
         unsigned int count;
-        source.own = instmesh.instancedBillboard || instmesh.particle.cameraDependent() || instanceFadeCullEnd(instmesh, *mesh, *scene) >= 0.0f;
+        source.own = instmesh.instancedBillboard || instmesh.particle.cameraDependent() || instanceFadeCullEnd(instmesh, *mesh, *scene) >= 0.0f ||
+                     instanceFadeCullNear(instmesh, *mesh, *scene) > 0.0f;
         if (source.own){
             buildInstanceList(instmesh, *mesh, *transform, camera, source.fadeEyeLocal, source);
             instances = source.instances.data();
@@ -19442,8 +20311,7 @@ void RenderSystem::renderViewMirrors(RenderView& view, CameraComponent& camera){
         return;
     }
 
-    const Matrix4 mainView = camera.viewMatrix;
-    const Vector3 mainEye = mainView.inverse() * Vector3(0.0f, 0.0f, 0.0f);
+    const ReflectionViewer viewer = ReflectionViewer::of(camera);
 
     PassObjects* viewObjects = passObjects;
 
@@ -19482,36 +20350,7 @@ void RenderSystem::renderViewMirrors(RenderView& view, CameraComponent& camera){
         Transform& refCamTransform = mirrorView.transform;
 
         Vector3 worldNormal = (mirrorTransform->worldRotation * mirror.normal).normalize();
-        Plane plane(worldNormal, mirrorTransform->worldPosition);
-
-        Matrix4 reflectMat = Matrix4::reflectMatrix(plane);
-        refCam.customViewMatrix = mainView * reflectMat;
-        refCam.hasCustomViewMatrix = true;
-        refCamTransform.position = reflectMat * mainEye;
-        refCamTransform.worldPosition = refCamTransform.position;
-        refCam.invertCulling = true;
-        refCam.renderToTexture = true;
-
-        refCam.type = camera.type;
-        refCam.yfov = camera.yfov;
-        refCam.aspect = camera.aspect;
-        refCam.nearClip = camera.nearClip;
-        refCam.farClip = camera.farClip;
-        refCam.leftClip = camera.leftClip;
-        refCam.rightClip = camera.rightClip;
-        refCam.bottomClip = camera.bottomClip;
-        refCam.topClip = camera.topClip;
-        // a mirror reflects the layers its viewer sees
-        refCam.cullingMask = camera.cullingMask;
-
-        updateCamera(refCam, refCamTransform);
-
-        // oblique near plane on the mirror (see updateMirrors)
-        Vector4 worldClipPlane(worldNormal.x, worldNormal.y, worldNormal.z, plane.d);
-        Vector4 viewClipPlane = refCam.viewMatrix.inverse().transpose() * worldClipPlane;
-        Matrix4 obliqueProjection = refCam.projectionMatrix.obliqueNearClip(viewClipPlane);
-        refCam.viewProjectionMatrix = obliqueProjection * refCam.viewMatrix;
-        updateCameraFrustumPlanes(refCam.viewProjectionMatrix, refCam.frustumPlanes);
+        driveReflectionCamera(refCam, refCamTransform, viewer, worldNormal, mirrorTransform->worldPosition, 0.0f);
         mirrorView.viewProjection = refCam.viewProjectionMatrix;
 
         passObjects = &mirrorView.objects;
@@ -19573,6 +20412,8 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     // skipped them does not keep them from this one
     if (!desc.editorOverlays)
         scene->getSystem<UIDocumentSystem>()->renderOffscreen(desc.viewRect);
+
+    beginBatchFrame();
 
     // a scene drawn only through views does the frame's shared work here: uploads,
     // 2D shadows, probe faces and its render-to-texture cameras
@@ -19667,6 +20508,11 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
             view.instancesBuilt = false;
         }
         view.mirrors.clear();
+        // the frame's water reflections, read by this view's own pass
+        view.waterReflections.clear();
+        view.waterReflectionOf = primaryView.waterReflectionOf;
+        view.waterReflectionSource = &primaryView;
+        view.waterReflectionCamera = &camera;
     }else if (!desc.shadows){
         // its lighting without shadow maps: none is planned or drawn for it
         const bool sceneShadows = hasShadows;
@@ -19677,6 +20523,7 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
         selectPassTerrain(view.objects, camera, cameraTransform);
         updatePassFrame(camera, cameraTransform);
         renderViewMirrors(view, camera);
+        renderWaterReflections(view, camera, cameraTransform, 0);
     }else{
         // the view's shadow passes draw its terrain cut and cull its instance lists
         prepareCameraShadows(viewShadows, camera, cameraTransform, TERRAIN_PASS_VIEW, false);
@@ -19685,6 +20532,7 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
         updatePassFrame(camera, cameraTransform);
         renderCameraShadows(viewShadows);
         renderViewMirrors(view, camera);
+        renderWaterReflections(view, camera, cameraTransform, 0);
     }
     if (!desc.shadows){
         // every slot at strength 0 (shadow_data.glsl): the fragments read their lights unshadowed
@@ -19714,6 +20562,8 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     passExcludedEntity = NULL_ENTITY;
     passDrawsOverlays = true;
     activeView = &primaryView;
+
+    endBatchFrame();
 }
 
 #endif

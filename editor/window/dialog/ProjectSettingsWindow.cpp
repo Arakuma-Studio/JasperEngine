@@ -17,6 +17,7 @@
 #include "util/FileUtils.h"
 #include "util/NativePlugins.h"
 #include "Backend.h"
+#include "asset/AssetTypes.h"
 #include "App.h"
 #include "util/Util.h"
 #include "window/Widgets.h"
@@ -31,6 +32,8 @@
 #include "subsystem/AudioSystem.h"
 #include "EditorHost.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "command/type/ApplePrivacySettingsCmd.h"
+#include "util/NativeNeeds.h"
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
 #include "input/InputManagerFormat.h"
@@ -61,6 +64,7 @@
 #include <cfloat>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 
 namespace jasperengine::editor {
 
@@ -954,6 +958,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_vsyncEnabled = project->isVSyncEnabled();
     for (int i = 0; i < 3; i++)
         m_atmosphereQuality[i] = (int)project->getAtmosphereQuality()[i];
+    for (int i = 0; i < 3; i++)
+        m_foliageDistanceScale[i] = project->getFoliageDistanceScale()[i];
     m_textureSettings = project->getTextureSettings();
     m_modelSettings = project->getModelSettings();
     m_playerLogging = project->getPlayerLogging();
@@ -990,7 +996,9 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
         std::sort(m_inputActionsFiles.begin(), m_inputActionsFiles.end());
     }
     m_physics3DWorld = project->getPhysics3DWorldSettings();
+    m_particleWorldBudget = (int)project->getParticleWorldBudget();
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
+    m_dynamicBatching = project->isDynamicBatching();
     m_mobilePbrTierIndex = findMobilePbrTierIndex(project->getMobilePbrTier());
     m_lightModeIndex = static_cast<int>(project->getLightMode());
 
@@ -1041,11 +1049,10 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     snprintf(m_iosVersionNameBuffer, sizeof(m_iosVersionNameBuffer), "%s", ios.versionName.c_str());
     snprintf(m_iosBuildNumberBuffer, sizeof(m_iosBuildNumberBuffer), "%s", ios.buildNumber.c_str());
     m_iosIcon = ios.icon;
+    m_applePrivacy = m_project->getApplePrivacy();
     m_iosHideStatusBar = ios.hideStatusBar;
     m_iosHideHomeIndicator = ios.hideHomeIndicator;
     m_iosSupportsHighRefreshRate = ios.supportsHighRefreshRate;
-    m_iosAdmobEnabled = ios.admobEnabled;
-    snprintf(m_iosAdmobAppIdBuffer, sizeof(m_iosAdmobAppIdBuffer), "%s", ios.admobAppId.c_str());
     snprintf(m_iosTeamIdBuffer, sizeof(m_iosTeamIdBuffer), "%s", ios.teamId.c_str());
     m_iosExportMethodIndex = indexOfName(iosExportMethods, ios.exportMethod);
 
@@ -1071,8 +1078,6 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_androidInternetAccessIndex = android.internetAccess == AndroidInternetAccess::Require ? 1 : 0;
     m_androidAllowBackup = android.allowBackup;
     m_androidFullscreen = android.fullscreen;
-    m_androidAdmobEnabled = android.admobEnabled;
-    snprintf(m_androidAdmobAppIdBuffer, sizeof(m_androidAdmobAppIdBuffer), "%s", android.admobAppId.c_str());
     m_androidPackageFormatIndex = indexOfName(androidPackageFormats, android.packageFormat);
     m_androidKeystorePath = android.keystorePath;
     snprintf(m_androidKeystoreAliasBuffer, sizeof(m_androidKeystoreAliasBuffer), "%s", android.keystoreAlias.c_str());
@@ -1241,16 +1246,34 @@ void ProjectSettingsWindow::drawSettings() {
     const std::string tagsAndLayersProblem = tagsAndLayersError();
     const std::string inputProblem = inputError();
     const std::string shaderGlobalsProblem = m_globalsEdit.error();
-    const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty();
+    const std::string privacyProblem = applePrivacyError();
+    const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty() && privacyProblem.empty();
 
+    // other asset roots move the referenced files: a confirmation says what moves first
+    if (!m_rootsError.empty()) {
+        ImGui::SetCursorPos(ImVec2(style.WindowPadding.x, footerY));
+        ImGui::PushTextWrapPos(ImGui::GetWindowContentRegionMax().x - buttonsWidth - style.ItemSpacing.x);
+        ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.4f, 1.0f), "Asset directories not changed: %s", m_rootsError.c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::SetCursorPos(ImVec2(std::max(style.WindowPadding.x, ImGui::GetWindowContentRegionMax().x - buttonsWidth), footerY));
+    }
     ImGui::BeginDisabled(!canSave);
     if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
-        if (applySettings()) {
+        if (m_assetsDir != m_project->getAssetsDir() || m_luaDir != m_project->getLuaDir()) {
+            m_rootsPlan = m_project->planAssetRootChange(m_assetsDir, m_luaDir, false);
+            m_rootsConfirmRequested = true;
+        } else if (applySettings()) {
             m_isOpen = false;
             ImGui::CloseCurrentPopup();
         }
     }
     ImGui::EndDisabled();
+    drawRootsConfirmation();
+    if (m_rootsCloseWindow) {
+        m_rootsCloseWindow = false;
+        m_isOpen = false;
+        ImGui::CloseCurrentPopup();
+    }
     if (!canSave && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
         if (!hasAbi) {
             ImGui::SetTooltip("Select at least one Android architecture (Player > Android).");
@@ -1258,8 +1281,10 @@ void ProjectSettingsWindow::drawSettings() {
             ImGui::SetTooltip("%s (Tags and Layers).", tagsAndLayersProblem.c_str());
         } else if (!inputProblem.empty()) {
             ImGui::SetTooltip("%s (Input).", inputProblem.c_str());
-        } else {
+        } else if (!shaderGlobalsProblem.empty()) {
             ImGui::SetTooltip("%s (Graphics > Shader Globals).", shaderGlobalsProblem.c_str());
+        } else {
+            ImGui::SetTooltip("Privacy manifest: %s (Player > iOS or macOS > Privacy Manifest).", privacyProblem.c_str());
         }
     }
 
@@ -1274,6 +1299,89 @@ void ProjectSettingsWindow::drawSettings() {
     // Per-frame lifecycle, matching Properties: the pool keeps the underlying
     // thumbnail textures cached, so re-creating the wrappers next frame is cheap.
     m_thumbnailTextures.clear();
+}
+
+void ProjectSettingsWindow::drawRootsConfirmation() {
+    constexpr const char* POPUP = "Change Asset Directories";
+    if (m_rootsConfirmRequested) {
+        ImGui::OpenPopup(POPUP);
+        m_rootsConfirmRequested = false;
+    }
+    if (!EditorModal::begin(POPUP, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        return;
+    }
+    auto rel = [this](const fs::path& path) { return FileUtils::pathToGenericUtf8(m_project->normalizeToProjectRelative(path)); };
+    const AssetRootChange& plan = m_rootsPlan;
+    const float width = Theme::dpi(460.0f);
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width);
+    if (!plan.blocker.empty()) {
+        ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.4f, 1.0f), "Can't change the asset directories: %s.", plan.blocker.c_str());
+        ImGui::TextUnformatted("Nothing was changed.");
+        EditorModal::message("Can't change the asset directories: " + plan.blocker + ". Nothing was changed.");
+    } else {
+        size_t files = 0;
+        for (const AssetRootChange::Move& move : plan.moves) {
+            if (!AssetTypes::isMetaFile(move.from)) files++;
+        }
+        ImGui::Text("%zu referenced file(s) or folder(s) move into the new directories:", files);
+        if (!plan.moves.empty() && ImGui::BeginChild("##RootMoves", ImVec2(width, Theme::dpi(120.0f)), ImGuiChildFlags_Borders)) {
+            for (const AssetRootChange::Move& move : plan.moves) {
+                if (AssetTypes::isMetaFile(move.from)) continue;
+                ImGui::BulletText("%s  ->  %s", rel(move.from).c_str(), rel(move.to).c_str());
+            }
+        }
+        if (!plan.moves.empty()) ImGui::EndChild();
+        ImGui::Text("%zu file(s) are rewritten (scenes, prefabs, materials, project.yaml). Files nothing references stay where they are.",
+                    plan.rewritten.size());
+        if (!plan.alreadyThere.empty()) {
+            ImGui::Text("%zu identical file(s) already at the destination are used as they are.", plan.alreadyThere.size());
+        }
+        if (!plan.keptOutside.empty()) {
+            ImGui::Text("%zu reference(s) outside both directories keep their paths.", plan.keptOutside.size());
+        }
+        if (!plan.savedScenesWithEdits.empty()) {
+            ImGui::Text("Open scenes with unsaved changes are saved: %zu.", plan.savedScenesWithEdits.size());
+        }
+        if (!plan.unsavedBuffers.empty()) {
+            ImGui::Text("Unsaved script edits are saved first: %zu file(s).", plan.unsavedBuffers.size());
+        }
+        if (!plan.textReferencesBroken.empty()) {
+            ImGui::Text("%zu text reference(s) (require, HTML, CSS, #include) will still name the old paths.", plan.textReferencesBroken.size());
+        }
+        ImGui::TextDisabled("This cannot be undone; changing the directories back moves the files back.");
+        EditorModal::message(std::to_string(files) + " referenced file(s) or folder(s) move into the new directories; " +
+                             std::to_string(plan.rewritten.size()) + " file(s) are rewritten. This cannot be undone.");
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::Separator();
+    const float buttonWidth = Theme::dpi(projectSettingsButtonWidth);
+    if (plan.blocker.empty()) {
+        if (EditorModal::button("Move and Apply", "yes", ImVec2(buttonWidth * 1.4f, 0))) {
+            const AssetRootChange done = m_project->changeAssetRoots(m_assetsDir, m_luaDir, false);
+            ImGui::CloseCurrentPopup();
+            if (!done.ok()) {
+                // the window stays open, nothing else is applied
+                m_rootsError = done.refusal();
+            } else {
+                m_rootsError.clear();
+                if (!done.failedSaves.empty()) {
+                    std::string files;
+                    for (const fs::path& path : done.failedSaves) files += "\n" + rel(path);
+                    Backend::getApp().registerAlert("Change Asset Directories",
+                        "The directories changed, but these files could not be saved and still hold the old paths on disk "
+                        "(the editor keeps the new ones; save them again):" + files);
+                }
+                // the window closes after this popup ended (CloseCurrentPopup there closes it)
+                m_rootsCloseWindow = applySettings();
+            }
+        }
+        ImGui::SameLine();
+    }
+    if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        if (!plan.blocker.empty()) m_rootsError = plan.blocker;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
 }
 
 std::string ProjectSettingsWindow::inheritedApplicationName() const {
@@ -1698,7 +1806,7 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                 ImGui::SetNextItemWidth(-helpMarkerWidth());
                 ImGui::Combo("##BuildMethod", &m_buildMethodIndex, buildMethodLabels, IM_ARRAYSIZE(buildMethodLabels));
                 endSettingsRow("How Build makes the game. Auto: a prebuilt player (no compiler needed) unless the project needs native code "
-                               "(C++ scripts, ProjectBuild.cmake, capacities above the player's, AdMob), then compiled from source.");
+                               "(C++ scripts, ProjectBuild.cmake, capacities above the player's, native plugins it cannot carry), then compiled from source.");
             }
             if (settingsui::beginRow("player.pack_content")) {
                 if (projectBeginSettingsRow("Content Pack", m_packContent)) m_packContent = false;
@@ -1907,6 +2015,12 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                 "- Automatic is Tiled on Medium tiers and above, Per Object on Low");
         }
 
+        if (settingsui::beginRow("particles.world_budget")) {
+            drawIntSetting("World Particle Budget", "##ParticleWorldBudget", m_particleWorldBudget, 0, 0,
+                "The most particles alive at once in a scene, sub-emitter children included: past it, effects of lower priority "
+                "and smaller on screen emit less. 0 keeps the platform's default (262,144 on desktop, 131,072 on the web, 65,536 on mobile).");
+        }
+
         // Shadows: the quality tier a scene of Quality Auto renders with, per platform
         if (settingsui::sectionVisible("Shadows")) {
             ImGui::SeparatorText("Shadows");
@@ -1928,6 +2042,16 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
 
         drawShaderCreationSettings();
 
+        if (settingsui::beginRow("graphics.dynamic_batching")) {
+            if (projectBeginSettingsRow("Dynamic Batching", m_dynamicBatching != Project::defaultDynamicBatching)) {
+                m_dynamicBatching = Project::defaultDynamicBatching;
+            }
+            ImGui::Checkbox("##DynamicBatching", &m_dynamicBatching);
+            endSettingsRow("Consecutive Sprites, small meshes (64 vertices at most) and UI elements that share a material, textures "
+                "and render state draw as one draw call: their vertices are placed on the CPU and drawn together. The image is the same; "
+                "turn it off to compare. The Game view's Stats show Batches and Saved by batching, the Frame Debugger why a draw "
+                "was not batched with the previous one.");
+        }
         drawUploadBudgetSettings();
 
         if (settingsui::beginRow("graphics.runtime_shaders")) {
@@ -2029,6 +2153,22 @@ void ProjectSettingsWindow::drawQualitySettings() {
             drawComboSetting(rows[i], ids[i], qualityNames, 4, m_atmosphereQuality[i], (int)Project::defaultAtmosphereQuality[i], tooltips[i]);
         }
 
+        // the scale of every terrain foliage layer's draw distances (Unity's
+        // QualitySettings.terrainDetailDistanceFactor; docs/rendering/instancing.md)
+        static const char* const foliageRows[3] = {"Foliage Distance (Desktop)", "Foliage Distance (Mobile)", "Foliage Distance (Web)"};
+        static const char* const foliageIds[3] = {"##FoliageDistanceDesktop", "##FoliageDistanceMobile", "##FoliageDistanceWeb"};
+        static const char* const foliageKeys[3] = {"quality.foliage_distance_desktop", "quality.foliage_distance_mobile", "quality.foliage_distance_web"};
+        static const char* const foliageTooltip =
+            "Multiplies the Draw Distance and Min Draw Distance of every terrain foliage layer on this platform group; "
+            "0 draws no foliage. Lower it for phones and the web. A script can change it at runtime: Engine.foliageDistanceScale.";
+        for (int i = 0; i < 3; i++) {
+            if (!settingsui::beginRow(foliageKeys[i])) continue;
+            if (projectBeginSettingsRow(foliageRows[i], m_foliageDistanceScale[i] != Project::defaultFoliageDistanceScale[i]))
+                m_foliageDistanceScale[i] = Project::defaultFoliageDistanceScale[i];
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::DragFloat(foliageIds[i], &m_foliageDistanceScale[i], 0.01f, 0.0f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            endSettingsRow(foliageTooltip);
+        }
         // the render budgets check_render_budgets holds a scene to (S53 R25): 0 is no limit
         for (size_t f = 0; f < kModelFamilyCount; f++) {
             RenderBudget& budget = m_modelSettings.renderBudgets[f];
@@ -3617,6 +3757,8 @@ void ProjectSettingsWindow::drawMacOSSettings() {
         ImGui::Checkbox("##MacOSHighDpi", &m_macOSHighDpi);
         endSettingsRow("Allow high-DPI rendering on macOS.");
     }
+
+    drawApplePrivacySection("macos");
 }
 
 void ProjectSettingsWindow::drawIOSSettings() {
@@ -3692,28 +3834,7 @@ void ProjectSettingsWindow::drawIOSSettings() {
         endSettingsRow("Allow 120 Hz displays when supported.");
     }
 
-    if (settingsui::beginRow("ios.admob_enabled")) {
-        if (projectBeginSettingsRow("Google AdMob", m_iosAdmobEnabled)) {
-            m_iosAdmobEnabled = false;
-        }
-        ImGui::Checkbox("##IOSAdMob", &m_iosAdmobEnabled);
-        endSettingsRow("Links Google Mobile Ads for System.initializeAdMob and the interstitial ad calls. Without it the export leaves the SDK out and those calls do nothing.");
-    }
-
-    if (settingsui::beginRow("ios.admob_app_id")) {
-        ImGui::BeginDisabled(!m_iosAdmobEnabled);
-        projectBeginSettingsRow("AdMob App ID");
-        ImGui::SetNextItemWidth(-helpMarkerWidth());
-        ImGui::InputTextWithHint("##IOSAdMobAppId", "ca-app-pub-0000000000000000~0000000000", m_iosAdmobAppIdBuffer, sizeof(m_iosAdmobAppIdBuffer));
-        endSettingsRow((std::string("GADApplicationIdentifier from the AdMob console, required with AdMob. Google's sample app ") +
-            iosSampleAdMobAppId + " only serves test ads.").c_str());
-        drawOverrideWarning(m_iosAdmobAppIdBuffer, isAdMobAppIdValid,
-            "Use the app ID (with ~), not an ad unit ID (with /).");
-        if (m_iosAdmobEnabled && m_iosAdmobAppIdBuffer[0] == '\0') {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Exports need the AdMob App ID.");
-        }
-        ImGui::EndDisabled();
-    }
+    drawApplePrivacySection("ios");
 }
 
 void ProjectSettingsWindow::drawAndroidSettings() {
@@ -3865,29 +3986,6 @@ void ProjectSettingsWindow::drawAndroidSettings() {
         ImGui::SetNextItemWidth(-helpMarkerWidth());
         ImGui::InputTextWithHint("##AndroidKeystoreAlias", "upload", m_androidKeystoreAliasBuffer, sizeof(m_androidKeystoreAliasBuffer));
         endSettingsRow("The key of the keystore that signs the build.");
-        ImGui::EndDisabled();
-    }
-
-    if (settingsui::beginRow("android.admob_enabled")) {
-        if (projectBeginSettingsRow("Google AdMob", m_androidAdmobEnabled != defaults.admobEnabled)) {
-            m_androidAdmobEnabled = defaults.admobEnabled;
-        }
-        ImGui::Checkbox("##AndroidAdMob", &m_androidAdmobEnabled);
-        endSettingsRow("Compiles in Google Mobile Ads for System.initializeAdMob and the interstitial ad calls. Without it the export leaves the SDK out and those calls do nothing. Declare ads and Ad ID use in the Play Console.");
-    }
-
-    if (settingsui::beginRow("android.admob_app_id")) {
-        ImGui::BeginDisabled(!m_androidAdmobEnabled);
-        projectBeginSettingsRow("AdMob App ID");
-        ImGui::SetNextItemWidth(-helpMarkerWidth());
-        ImGui::InputTextWithHint("##AndroidAdMobAppId", "ca-app-pub-0000000000000000~0000000000", m_androidAdmobAppIdBuffer, sizeof(m_androidAdmobAppIdBuffer));
-        endSettingsRow((std::string("APPLICATION_ID from the AdMob console, required with AdMob. Google's sample app ") +
-            androidSampleAdMobAppId + " only serves test ads.").c_str());
-        drawOverrideWarning(m_androidAdmobAppIdBuffer, isAdMobAppIdValid,
-            "Use the app ID (with ~), not an ad unit ID (with /).");
-        if (m_androidAdmobEnabled && m_androidAdmobAppIdBuffer[0] == '\0') {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Exports need the AdMob App ID.");
-        }
         ImGui::EndDisabled();
     }
 }
@@ -4116,6 +4214,211 @@ void ProjectSettingsWindow::refreshNativeSummary() {
           "), " + std::to_string(mocks) + " Lua mock(s). Lua calls them with Native.call / callAsync."
         : "No plugins/native folder yet. Create Plugin writes one plugin for the chosen platforms and its Lua mock; "
           "Lua calls it with Native.call / callAsync (jasper://docs/native-bridge).";
+    // what a prebuilt player's build of each platform does with them
+    std::vector<BuildPlatform> buildPlatforms = {BuildPlatform::Android, BuildPlatform::IOS, BuildPlatform::MacOS, BuildPlatform::Web};
+    if (hostBuildPlatform() != BuildPlatform::MacOS) buildPlatforms.push_back(hostBuildPlatform());
+    for (BuildPlatform platform : buildPlatforms) {
+        const NativeNeeds needs = nativeNeedsFor(*m_project, platform, nullptr);
+        if (needs.compileReasons.empty() && needs.carried.empty()) continue;
+        m_nativeSummary += std::string("\n") + buildPlatformName(platform) + ": " +
+            (needs.compileReasons.empty() ? "the prebuilt build carries them" : "compiles from source (" + needs.compileReasons.front() + ")");
+    }
+}
+
+namespace {
+
+    // "DeviceID" -> "Device ID", "ThirdPartyAdvertising" -> "Third Party Advertising"
+    std::string spacedName(const std::string& name) {
+        std::string out;
+        for (size_t i = 0; i < name.size(); i++) {
+            const bool upper = std::isupper(static_cast<unsigned char>(name[i])) != 0;
+            const bool nextLower = i + 1 < name.size() && std::islower(static_cast<unsigned char>(name[i + 1])) != 0;
+            const bool prevLower = i > 0 && std::islower(static_cast<unsigned char>(name[i - 1])) != 0;
+            if (i > 0 && upper && (prevLower || nextLower)) out += ' ';
+            out += name[i];
+        }
+        return out;
+    }
+
+    // A combo with a check box per choice; true when the set changed
+    bool multiSelect(const char* id, std::vector<std::string>& selected, const std::vector<std::string>& choices,
+                     const std::function<std::string(const std::string&)>& label) {
+        std::string preview;
+        for (const std::string& item : selected) preview += (preview.empty() ? "" : ", ") + item;
+        if (preview.empty()) preview = "(none)";
+        bool changed = false;
+        if (ImGui::BeginCombo(id, preview.c_str())) {
+            for (const std::string& choice : choices) {
+                bool on = std::find(selected.begin(), selected.end(), choice) != selected.end();
+                if (ImGui::Checkbox(label(choice).c_str(), &on)) {
+                    if (on) selected.push_back(choice);
+                    else selected.erase(std::remove(selected.begin(), selected.end(), choice), selected.end());
+                    std::sort(selected.begin(), selected.end());
+                    changed = true;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        return changed;
+    }
+
+    // A combo of names; the current one kept when it is not in the list
+    void nameCombo(const char* id, std::string& value, const std::vector<std::string>& names) {
+        if (ImGui::BeginCombo(id, value.empty() ? "(choose)" : spacedName(value).c_str())) {
+            for (const std::string& name : names) {
+                if (ImGui::Selectable(spacedName(name).c_str(), name == value)) value = name;
+            }
+            ImGui::EndCombo();
+        }
+    }
+
+}
+
+ApplePrivacy::Manifest ProjectSettingsWindow::editedApplePrivacy() const {
+    ApplePrivacy::Manifest privacy = m_applePrivacy;
+    privacy.trackingDomains.clear();
+    for (const std::string& domain : m_applePrivacy.trackingDomains) {
+        if (!trimmed(domain).empty()) privacy.trackingDomains.push_back(trimmed(domain));
+    }
+    std::erase_if(privacy.collectedData, [](const ApplePrivacy::CollectedData& data) { return data.type.empty(); });
+    std::erase_if(privacy.accessedApis, [](const ApplePrivacy::AccessedApi& api) { return api.type.empty(); });
+    return ApplePrivacy::normalized(privacy);
+}
+
+std::string ProjectSettingsWindow::applePrivacyError() const {
+    return ApplePrivacy::validate(editedApplePrivacy());
+}
+
+void ProjectSettingsWindow::drawApplePrivacySection(const char* platform) {
+    ImGui::PushID(platform);
+    const bool ios = std::string(platform) == "ios";
+    // the search rows: apple.privacy_* on iOS, their macos.privacy_* copies on macOS
+    auto rowKey = [ios](const char* name) { return std::string(ios ? "apple." : "macos.") + name; };
+
+    projectBeginSettingsRow("Privacy Manifest");
+    ImGui::TextDisabled("iOS and macOS");
+    endSettingsRow("PrivacyInfo.xcprivacy of every iOS and macOS build: the engine's entries (always), what you add here, and the "
+                   "PrivacyInfo.xcprivacy files of static plugins in plugins/native. App Store Connect refuses apps that use "
+                   "required-reason APIs without declaring them.");
+
+    projectBeginSettingsRow("Engine");
+    for (const ApplePrivacy::AccessedApi& api : ApplePrivacy::engineManifest().accessedApis) {
+        for (const std::string& reason : api.reasons) {
+            ImGui::TextDisabled("%s: %s (%s)", spacedName(api.type).c_str(), reason.c_str(), ApplePrivacy::reasonText(reason).c_str());
+        }
+    }
+    endSettingsRow("What the engine itself uses: UserSettings (UserDefaults), the timestamps of the game's own files, and timers. "
+                   "Always included; no tracking, no collected data.");
+
+    if (settingsui::beginRow(rowKey("privacy_tracking").c_str())) {
+        if (projectBeginSettingsRow("Tracking", m_applePrivacy.tracking)) m_applePrivacy.tracking = false;
+        ImGui::Checkbox("##PrivacyTracking", &m_applePrivacy.tracking);
+        endSettingsRow("NSPrivacyTracking: the game or one of its SDKs tracks users (most ads SDKs do). iOS also needs "
+                       "NSUserTrackingUsageDescription in Native Plugins > iOS > Info.plist Entries.");
+    }
+    if (settingsui::beginRow(rowKey("privacy_tracking_domains").c_str())) {
+        drawStringList("Tracking Domains", "##PrivacyDomains", m_applePrivacy.trackingDomains, "ads.example.com",
+                       "NSPrivacyTrackingDomains: host names the SDKs use for tracking; iOS blocks them until the user allows tracking.");
+        for (const std::string& domain : m_applePrivacy.trackingDomains) {
+            if (!trimmed(domain).empty() && !ApplePrivacy::isDomain(trimmed(domain))) {
+                ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.3f, 1.0f), "\"%s\" is not a host name like ads.example.com", domain.c_str());
+            }
+        }
+    }
+    if (settingsui::beginRow(rowKey("privacy_collected_data").c_str())) {
+        projectBeginSettingsRow("Collected Data");
+        int remove = -1;
+        for (size_t i = 0; i < m_applePrivacy.collectedData.size(); i++) {
+            ApplePrivacy::CollectedData& data = m_applePrivacy.collectedData[i];
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.35f);
+            nameCombo("##type", data.type, ApplePrivacy::dataTypes());
+            ImGui::SameLine();
+            ImGui::Checkbox("Linked", &data.linked);
+            ImGui::SetItemTooltip("Linked to the user's identity");
+            ImGui::SameLine();
+            ImGui::Checkbox("Tracking", &data.tracking);
+            ImGui::SetItemTooltip("Used to track the user");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x);
+            multiSelect("##purposes", data.purposes, ApplePrivacy::purposes(), spacedName);
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_MINUS, ImVec2(ImGui::GetFrameHeight(), 0.0f))) remove = static_cast<int>(i);
+            ImGui::PopID();
+        }
+        if (remove >= 0) m_applePrivacy.collectedData.erase(m_applePrivacy.collectedData.begin() + remove);
+        if (ImGui::SmallButton(ICON_FA_PLUS "##AddCollectedData")) m_applePrivacy.collectedData.push_back({});
+        endSettingsRow("NSPrivacyCollectedDataTypes: what the game or its SDKs collect, whether it is linked to the user, used for "
+                       "tracking, and why. Match what you declare in App Store Connect's App Privacy.");
+    }
+    if (settingsui::beginRow(rowKey("privacy_accessed_apis").c_str())) {
+        projectBeginSettingsRow("Required Reason APIs");
+        int remove = -1;
+        for (size_t i = 0; i < m_applePrivacy.accessedApis.size(); i++) {
+            ApplePrivacy::AccessedApi& api = m_applePrivacy.accessedApis[i];
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.35f);
+            nameCombo("##type", api.type, ApplePrivacy::apiTypes());
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x);
+            multiSelect("##reasons", api.reasons, ApplePrivacy::reasonsOf(api.type),
+                        [](const std::string& reason) { return reason + ": " + ApplePrivacy::reasonText(reason); });
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_MINUS, ImVec2(ImGui::GetFrameHeight(), 0.0f))) remove = static_cast<int>(i);
+            ImGui::PopID();
+        }
+        if (remove >= 0) m_applePrivacy.accessedApis.erase(m_applePrivacy.accessedApis.begin() + remove);
+        if (ImGui::SmallButton(ICON_FA_PLUS "##AddAccessedApi")) m_applePrivacy.accessedApis.push_back({});
+        endSettingsRow("NSPrivacyAccessedAPITypes your own native code adds (C++ scripts, plugins without a manifest of their own), "
+                       "with Apple's reason codes. The engine's are already included.");
+    }
+
+    // what is wrong, and what the export will warn about
+    const ApplePrivacy::Manifest edited = editedApplePrivacy();
+    const std::string problem = applePrivacyError();
+    std::vector<std::string> plistKeys;
+    for (const auto& [key, value] : m_iosPlistEntries) plistKeys.push_back(trimmed(key));
+    const bool trackingUsage = ApplePrivacy::declaresTrackingUsage(plistKeys, m_iosPlistXml);
+
+    projectBeginSettingsRow("Composed");
+    if (!problem.empty()) {
+        ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.3f, 1.0f), "%s (fix it to save)", problem.c_str());
+    }
+    if (ImGui::Button(ios ? ICON_FA_EYE " Preview iOS##PrivacyPreview" : ICON_FA_EYE " Preview macOS##PrivacyPreview")) {
+        const ApplePrivacy::Composed composed = ApplePrivacy::compose(m_project->getProjectPath(), problem.empty() ? edited : m_project->getApplePrivacy(),
+                                                                      platform, trackingUsage);
+        m_privacyPreview = ApplePrivacy::toXml(composed.manifest);
+        std::string notes;
+        for (const std::string& manifest : composed.pluginManifests) notes += "plugin manifest: " + manifest + "\n";
+        for (const std::string& warning : composed.warnings) notes += "warning: " + warning + "\n";
+        if (!notes.empty()) m_privacyPreview = notes + "\n" + m_privacyPreview;
+        m_privacyPreviewTitle = ios ? "iOS PrivacyInfo.xcprivacy" : "macOS PrivacyInfo.xcprivacy";
+        m_openPrivacyPreview = true;
+    }
+    if (m_applePrivacy.tracking && edited.trackingDomains.empty()) {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Tracking is on with no tracking domain.");
+    }
+    if (ios && m_applePrivacy.tracking && !trackingUsage) {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Tracking needs NSUserTrackingUsageDescription (Native Plugins > iOS).");
+    }
+    endSettingsRow("The manifest the next build ships: the engine's entries, these additions and the plugin manifests.");
+
+    if (m_openPrivacyPreview) {
+        ImGui::OpenPopup("Privacy Manifest Preview");
+        m_openPrivacyPreview = false;
+    }
+    ImGui::SetNextWindowSize(ImVec2(Theme::dpi(620.0f), Theme::dpi(460.0f)), ImGuiCond_Appearing);
+    if (EditorModal::begin("Privacy Manifest Preview", nullptr)) {
+        EditorModal::message(m_privacyPreviewTitle + "\n" + m_privacyPreview);
+        ImGui::TextUnformatted(m_privacyPreviewTitle.c_str());
+        ImGui::InputTextMultiline("##PrivacyXml", m_privacyPreview.data(), m_privacyPreview.size() + 1,
+                                  ImVec2(-1.0f, -ImGui::GetFrameHeightWithSpacing()), ImGuiInputTextFlags_ReadOnly);
+        if (ImGui::Button(ICON_FA_COPY " Copy")) ImGui::SetClipboardText(m_privacyPreview.c_str());
+        ImGui::SameLine();
+        if (EditorModal::button("Close", "ok")) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+    ImGui::PopID();
 }
 
 void ProjectSettingsWindow::drawNativePluginsSettings() {
@@ -4172,7 +4475,7 @@ void ProjectSettingsWindow::drawNativePluginsSettings() {
 
         if (settingsFoldout("iOS", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##NativeIOSTable")) {
             if (settingsui::beginRow("ios.plist_entries")) {
-                drawPlistEntries("##IOSPlist", m_iosPlistEntries, "Info.plist keys, replacing the export's (NSUserTrackingUsageDescription, GADApplicationIdentifier...).");
+                drawPlistEntries("##IOSPlist", m_iosPlistEntries, "Info.plist keys, replacing the export's (NSUserTrackingUsageDescription, NSCameraUsageDescription...).");
             }
             if (settingsui::beginRow("ios.plist_xml")) {
                 drawXmlSetting("Info.plist XML", "##IOSPlistXml", m_iosPlistXml, 70.0f,
@@ -4896,6 +5199,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setVSyncEnabled(m_vsyncEnabled);
     m_project->setAtmosphereQuality({(AtmosphereQuality)m_atmosphereQuality[0], (AtmosphereQuality)m_atmosphereQuality[1],
                                      (AtmosphereQuality)m_atmosphereQuality[2]});
+    m_project->setFoliageDistanceScale({m_foliageDistanceScale[0], m_foliageDistanceScale[1], m_foliageDistanceScale[2]});
     m_project->setTextureSettings(m_textureSettings);
     m_project->setPlayerLogging(m_playerLogging);
     m_project->setPlayerCrash(m_playerCrash);
@@ -4933,8 +5237,6 @@ bool ProjectSettingsWindow::applySettings() {
     application.build = static_cast<unsigned int>(std::max(1, m_applicationBuild));
     application.allowInsecureHttp = m_allowInsecureHttp;
 
-    // Moves the referenced files in and rewrites every reference to the new roots
-    m_project->changeAssetRoots(m_assetsDir, m_luaDir);
     m_project->setScriptDirs(m_scriptDirs);
     if (m_cxxStandardIndex < 0 || m_cxxStandardIndex >= cxxStandardCount) {
         m_cxxStandardIndex = 0;
@@ -4945,7 +5247,9 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setInputActionsAsset(m_inputActionsAsset);
     m_project->setInputDeadzone(m_inputDeadzone);
     m_project->setPhysics3DWorldSettings(m_physics3DWorld);
+    m_project->setParticleWorldBudget((uint32_t)std::clamp(m_particleWorldBudget, 0, (int)Project::maxParticleWorldBudget));
     m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
+    m_project->setDynamicBatching(m_dynamicBatching);
     m_project->setMobilePbrTier(mobilePbrTierValues[m_mobilePbrTierIndex]);
     m_project->setLightMode(static_cast<LightMode>(std::clamp(m_lightModeIndex, 0, lightModeCount - 1)));
 
@@ -5028,8 +5332,6 @@ bool ProjectSettingsWindow::applySettings() {
     ios.hideStatusBar = m_iosHideStatusBar;
     ios.hideHomeIndicator = m_iosHideHomeIndicator;
     ios.supportsHighRefreshRate = m_iosSupportsHighRefreshRate;
-    ios.admobEnabled = m_iosAdmobEnabled;
-    applyTextBuffer(ios.admobAppId, m_iosAdmobAppIdBuffer);
     applyTextBuffer(ios.teamId, m_iosTeamIdBuffer);
     ios.exportMethod = iosExportMethods[std::clamp(m_iosExportMethodIndex, 0, static_cast<int>(IM_ARRAYSIZE(iosExportMethods)) - 1)];
 
@@ -5062,8 +5364,6 @@ bool ProjectSettingsWindow::applySettings() {
     android.manifestApplicationXml = m_manifestApplicationXml;
     android.allowBackup = m_androidAllowBackup;
     android.fullscreen = m_androidFullscreen;
-    android.admobEnabled = m_androidAdmobEnabled;
-    applyTextBuffer(android.admobAppId, m_androidAdmobAppIdBuffer);
     android.packageFormat = androidPackageFormats[std::clamp(m_androidPackageFormatIndex, 0, static_cast<int>(IM_ARRAYSIZE(androidPackageFormats)) - 1)];
     android.keystorePath = m_androidKeystorePath;
     applyTextBuffer(android.keystoreAlias, m_androidKeystoreAliasBuffer);
@@ -5076,6 +5376,16 @@ bool ProjectSettingsWindow::applySettings() {
     }
 
     m_project->getLoadingSettings() = m_loadingSettings;
+    // undoable: the next Apple export composes its privacy manifest from them
+    {
+        // OK stays disabled while the manifest is invalid (applePrivacyError)
+        const ApplePrivacy::Manifest privacy = editedApplePrivacy();
+        if (privacy != m_project->getApplePrivacy() && ApplePrivacy::validate(privacy).empty()) {
+            ApplePrivacySettingsCmd* command = new ApplePrivacySettingsCmd(m_project, privacy);
+            command->setNoMerge();
+            m_project->getProjectCommandHistory()->addCommand(command);
+        }
+    }
     // undoable: the reserve applies to the editor's job system at once
     if (m_threading != m_project->getThreadingSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new ThreadingSettingsCmd(m_project, m_threading));

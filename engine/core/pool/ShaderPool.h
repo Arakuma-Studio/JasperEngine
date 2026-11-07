@@ -278,7 +278,7 @@ namespace jasperengine{
                                                  bool stochasticTiling = false, bool lattice = false,
                                                  bool vertexColorVec3 = false, bool vertexColorVec4 = false,
                                                  bool vat = false, bool vatBones = false,
-                                                 bool occlusionTexture = false, bool uvSet2 = false);
+                                                 bool occlusionTexture = false, bool uvSet2 = false, bool instanceFade = false);
         // fontAtlasSdf: a Text with outline or shadow (with fontAtlasTexture only)
         static uint64_t getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4, bool fontAtlasSdf = false);
         static uint64_t getHtmlUIProperties(bool texture);

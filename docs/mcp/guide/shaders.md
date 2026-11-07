@@ -53,7 +53,7 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
     less, less_equal, equal, greater_equal, greater, not_equal, always), `depthOffsetFactor` /
     `depthOffsetUnits` (polygon offset; negative pulls towards the camera), `sortPriority`
     (draw order within the opaque or the transparent queue, lower first, before distance). `auto` takes the shader's default state, else the
-    engine's. UI, Points, Lines and Trails have `blendMode` and `depthWrite` (a thick line's or a trail's auto: alpha, no depth write).
+    engine's. UI, Points, Lines and Trails have `blendMode` and `depthWrite` (a thick line's or a trail's auto: alpha, no depth write; Points' auto: depth written only when opaque).
   - `lighting`: auto, pixel, vertex, mixed or none (unlit), only the modes the shader lists
     (`list_shaders` gives them, the default first; the built-in Lit takes pixel, vertex, mixed
     and none, which draws the base colour only: a glTF material with `KHR_materials_unlit`
@@ -297,8 +297,9 @@ uniform u_fs_customParams {
   set them with `set_shader_uniform` (undoable, no shader rebuild); list the declared members
   with `get_shader_uniforms`. Scripts: `mesh:setShaderUniform("amplitude", 0.3)`,
   `scene:setPostProcessUniform(0, "amount", 0.5)`.
-- The engine writes `time` (seconds since startup) and `resolution` (xy = render target size,
-  zw = 1/size) every frame: declare them to animate, never set them.
+- The engine writes `time` (seconds since startup), `sceneTime` (the scene clock: scaled game
+  seconds, held while paused) and `resolution` (xy = render target size, zw = 1/size) every
+  frame: declare them to animate, never set them.
 - One scalar kind per block (do not mix int and float members: GL flattens the block after
   its first member). No matrix or array members (they stay zero): one scalar/vector member per
   value. An unset member reads zero: set it or give the effect a sensible fallback.
@@ -306,6 +307,29 @@ uniform u_fs_customParams {
   `@feature`, `@state`, ...; read `engine/shaderlib/library/unlit.frag` with
   `read_engine_source`): its parameters then get labels and defaults, and it takes
   `shaderTextures` and `shaderFeatures` like a library shader.
+
+## Scene default values
+
+A scene's default shader of a type (`default_mesh_shader`, `default_ui_shader`, `default_sky_shader`,
+`default_points_shader`, `default_lines_shader`) draws every object of that type without a shader of
+its own (a mesh: every submesh whose material names none). Its property values can be set once for
+the scene, and those objects inherit them:
+
+- `set_shader_uniform` with `shader_type` (`mesh`, `ui`, `sky`, `points`, `lines`) and no
+  `entity` sets one; `remove: true` drops it. `get_shader_uniforms` with `shader_type` lists the
+  values, `used_by` (how many objects draw with it), the members, `unused_values` (kept from
+  another shader). The whole map is also the scene setting `default_<type>_shader_uniforms`
+  (`{member: value | null}` merges, `null` clears). Each edit is one undo step; the values are
+  saved in the scene and reach exported games.
+- What a member renders with, first to last: the global it is bound to, the object's own value
+  (a mesh's material, then the mesh), the scene default value, the shader's `@property` default,
+  zero. `get_shader_uniforms` on an object gives each member (and each library parameter) its
+  `effective` value and `source` (`global`, `own`, `fallback`, `scene_default`,
+  `shader_default`, `zero`): use it to check which layer wins.
+- A value the whole scene shares (a palette, a stylised rim colour) goes here once, not on each
+  object. A value that changes every frame or is shared by every scene is a Shader Global (below).
+- Lua: `scene:setDefaultShaderUniform(ShaderType.MESH, "rimColor", Vector4(1, 0.2, 0, 1))`,
+  `getDefaultShaderUniform`, `hasDefaultShaderUniform`, `removeDefaultShaderUniform`.
 
 ## Global values
 
@@ -539,17 +563,21 @@ particle on low-end mobile, a tinted alpha surface instead of refraction).
   (its `transparent` then decides the queue, whatever the blend), `transparent = true`; the
   inspector's error row has a button for the one that applies, `get_entity`'s `fix` is it.
   Points have no queue: they always draw after the copy.
-- **The copy holds the opaque scene and the sky only.** Transparent objects are not in it, so
-  two glass panes do not see each other through it (as Unity URP's opaque texture), and UI,
-  lines and gizmos are not either. A shader drawing the copy in place of what is behind it
-  (library `glass`, `water` with REFRACTION, `heat_haze` where its mask is whole) hides every
-  transparent object behind it (particles, alpha meshes, other water): keep those in front
-  of it or opaque. `water` REFRACTION at strength 0 draws exactly the water without it.
-  Compositing over the copy in a shader: mix display-encoded values (`encodeColor`,
-  `finalizeStraightColorOverScene` in `includes/output.glsl`), as the hardware blend does. Reflection probe faces draw the opaque queue only: such
-  shaders are not in them. A camera drawing in hierarchy order (2D, `transparentSort` off)
-  copies right before the first draw reading the colour, so the copy holds everything drawn
-  before it.
+- **The copy holds what was drawn before the first reader.** A 3D pass copies after its opaque
+  queue and the sky, and again before its first queued reader when the queue drew before it
+  (those a water's surface covers, see Water below) and nothing else drew since; a 2D pass (or
+  `transparentSort` off) copies right before the first reader, with everything drawn before it in
+  hierarchy order. Two glass panes
+  at the same depth layer do not see each other (as Unity URP's opaque texture); a reader over
+  one of a higher water rank (a refracting pool over a refracting lake) gets the copy again, at
+  most four copies a pass (`get_render_stats` `scene_color_copies`). UI, lines and gizmos are
+  not in it. A shader drawing the copy in place of what is behind it (library `glass`, `water`
+  with REFRACTION, `heat_haze` where its mask is whole) hides what the copy lacks: transparents
+  drawn after it in the queue, that is in front of it by distance. Compositing over the copy in
+  a shader: mix display-encoded values (`encodeColor`, `finalizeStraightColorOverScene` in
+  `includes/output.glsl`), as the hardware blend does. The copy replaces (no blend), so its
+  colour is right where the target's alpha is under 1. Reflection probe faces draw the opaque
+  queue only: such shaders are not in them.
 - **Where the copy comes from.** The colour is copied out of an offscreen target (the screen
   cannot be read). An exported game drawing its main scene straight to the screen (no
   post-process, SSR or fixed resolution) draws it offscreen and blits it to the screen instead,
@@ -586,8 +614,8 @@ particle on low-end mobile, a tinted alpha surface instead of refraction).
 water: everything beyond the base look is a compile-time feature, off by default. The quickest
 start is the GameObject menu's **3D Object > Water** (`create_entity type=water`): a 20 x 20
 grid of 64 x 64 quads (`Primitive:createGrid`, fine enough for the waves) with a material of
-`BUILTIN_TEXTURES`, `WAVES`, `REFLECTION`, `UNDERSIDE`, `DEPTH_FOAM` and `REFRACTION`, lit per
-pixel, and, when the scene has none, a `library:underwater` pass (off) at the end of its
+`BUILTIN_TEXTURES`, `WAVES`, `GERSTNER`, `REFLECTION`, `UNDERSIDE`, `DEPTH_FOAM` and
+`REFRACTION`, lit per pixel, and, when the scene has none, a `library:underwater` pass (off) at the end of its
 post-processing chain; one undo step removes both. Unset, the ripple normal map is flat and the
 foam noise grey (no ripples, no noise foam: water made before these features looks as it did);
 `BUILTIN_TEXTURES` makes unset slots bind the engine's seamless `ripples` and `noise` instead
@@ -599,7 +627,9 @@ either.
 | (none) | shallow to deep colour by the view angle, two ripple layers, foam, Blinn-Phong glint (pixel lighting); distant waves and ripples fade by the pixel's footprint (no shimmer) | two normal and two noise fetches |
 | `BUILTIN_TEXTURES` | the engine's ripples and foam noise for unset texture slots | none (a different default binding) |
 | `WAVES` | two sine waves raising the vertices (tessellate the mesh) | vertex sines; the physics and `Water.getHeight` follow them |
+| `GERSTNER` | with `WAVES`: four Gerstner waves (lengths 1, 0.6, 0.37, 0.23 of `waveLength`, shorter ones slower), sharp crests by `waveSteepness` (0..1, never folding), the surface rolling back and forth; foam on the squeezed crests | about thirty ALU a pixel and a varying; the physics, `Water.sample` (its `flowVelocity` rolls too) and the underwater switch follow them |
 | `REFLECTION` | the sky's environment or the reflection probe around the water by Schlick's fresnel (f0 0.02), a GGX glint (`ggxSpecular`, `includes/lights.glsl`) | one cube map fetch |
+| `PLANAR_REFLECTION` | with `REFLECTION`: the scene mirrored in the water instead of the environment, bent by the ripples (`reflectionDistortion`) | the scene drawn again per water height a camera sees (Planar Reflections below) |
 | `UNDERSIDE` | both faces drawn (`@state[UNDERSIDE] cull=off`): from below, Snell's window (the sky only within 48 degrees of straight up), the depths mirrored around it | a branch |
 | `DEPTH_FOAM` | foam along every shore and object crossing the surface | scene depth |
 | `ABSORPTION` | colour by the water's thickness, a soft shore; with `REFRACTION` the bed loses each colour at its own rate (Beer-Lambert from the shallow colour) | scene depth |
@@ -609,8 +639,31 @@ either.
 | `MESH_DEPTH` | shore foam and shallow to deep colour from the mesh's depth (uv0 = (metres along, depth in metres), as spline water writes it), no scene depth: the mobile shore | a few instructions |
 
 Scene depth and colour cost what the previous section says (a depth pre-pass, a copy of the
-screen); the others are a few instructions. On low-end mobile keep to the base, `WAVES` and
-`REFLECTION`.
+screen); `PLANAR_REFLECTION` a camera pass; the others are a few instructions. On low-end mobile
+keep to the base, `WAVES` and `REFLECTION` (or set the scene's planar reflections to `quarter` or
+`off`).
+
+**Planar reflections.** Each camera (the scene camera, the editor's views; not render-to-texture
+cameras or probe faces) draws one reflection pass per water height it sees with
+`PLANAR_REFLECTION` (tiles of one lake at one level share it; the nearest heights first, up to
+`max_planar_reflections`, default 2; the others, and a camera under the surface, show the
+environment). The scene settings (Inspector Scene settings > Planar Reflections,
+`set_scene_settings`, Lua `scene.planarReflection*`): `planar_reflection_resolution` (`off`,
+`quarter`, `half` the default, `full`: per side of the view; `off` draws none), `_layers` (with
+the camera's culling mask), `_shadows` (the camera's own shadow maps; no map is drawn for it),
+`_far_clip` (0: the camera's), `_clip_offset` (what is within it above the rest level is left
+out, Unity's Clip Plane Offset). A reflection pass draws no reflecting water and no reader of
+the scene (no glass in the reflection) and takes the camera's detail levels.
+`get_render_stats` `planar_reflections` and `get_scene_settings` `planar_reflections_in_use`
+say what the last frame drew. Made for flat water: `check` warns (`planar-reflection-not-flat`)
+on a sloped mesh.
+
+**Layering.** In a 3D pass, transparent draws are ranked around the visible waters: under a
+surface the camera looks down through (or above one it looks up through) draws before the water,
+on the camera's side after it, whatever the distances of their transforms (a fish under a large
+lake no longer draws over it). Draws over a water's area sort with that water, where it is; the
+rest by their own distance. Only flat waters layer (a sloped river sorts by distance). The rank
+comes after `sortPriority`, which still wins.
 
 **Seen from below.** `UNDERSIDE` draws the surface from under it; the water between the camera
 and everything it sees is the post-process pass `library:underwater` (each colour fading at
@@ -625,13 +678,24 @@ with `followWater` on (the default), that water's `shallowColor` and `deepColor`
 
 **Physics and scripts.** The water's surface is known outside the shader (`Water.h`): its rest
 height is the top of the mesh's world bounds, its extent their XZ, its heights the same waves
-on the same clock (`frame.time.x`, wall-clock seconds since the engine started: the waves keep
-moving in the editor and while a game is paused, and so do the heights scripts read). A
+on the same clock: the scene clock (`Water.getTime(scene)`, the engine-written `sceneTime` of
+the shader), the seconds the scene has run scaled by the time scale. It holds while the game or
+Play is paused and at `Time.timeScale = 0`, starts at 0 when the scene starts, and in a stopped
+scene follows the Scene view's Animate water (on; `set_scene_camera display {animate_water}`).
+`sample_water` returns it as `water_time`. Any shader can run on it by declaring a `sceneTime`
+member in its custom block. A
 dynamic Rigidbody with a `buoyancy` above 0 floats in it (physics guide, "Floating in water");
 the material's `buoyancy` (on) and `buoyancyDepth` (0: no bottom) decide per water, the water
 whose bottom is highest wins where they overlap. Lua: `Water.getHeight(scene, x, z)`,
 `Water.getNormal(scene, x, z)` (nil where no water covers the point),
 `Water.isUnderwater(scene, point)`.
+
+**Forks.** The engine treats a shader as water by its manifest's `// @role water` (and as the
+underwater pass by `// @role underwater`), not by its name. Fork a library shader with
+`fork_shader {source: "library:water", target: "material", entity}` (or `post_process` with
+`library:underwater`), or the Inspector's Shader picker > Fork "Water"...: the copy keeps the
+manifest, so its parameters, features and role carry over, and the bodies keep floating.
+`check` warns (`water-fork-without-role`) about a hand-made copy without the line.
 
 ## Asynchronous creation and the warm-up list
 

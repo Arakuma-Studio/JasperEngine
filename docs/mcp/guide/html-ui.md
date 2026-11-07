@@ -1388,7 +1388,7 @@ exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
 ### Particles: `<particle-system>`
 
 `<particle-system src="fx/confetti.prefab" autoplay loop time="ui" scale="1">` plays a prefab's
-Particle System (the first of its GameObjects with one; its billboards as they look: the Renderer's
+Particle System (the first of its GameObjects with one, and its sub-emitters' particles with their own Renderers; its billboards as they look: the Renderer's
 texture or soft disc, sprite sheet frames, additive or alpha blending, sizes, rotations, colours)
 and draws its particles in document order: above what comes before it,
 below what comes after, inside the element's clip (`overflow: hidden`) and transform. The emitter
@@ -1537,7 +1537,9 @@ end)
   `:focus-visible` match the focused element only, `:focus-within` its ancestors too.
 - Keys go to the focused element (bubbling to the document) of the document that took the
   last press. They are consumed when a listener stops or prevents them, or when a text field
-  has focus (except Escape and F1-F25); otherwise the game gets them. Enter and Space activate
+  has focus (except Escape and F1-F25); otherwise the game gets them. A text field being typed
+  in, in any scene, gets the keys before the other documents (an upper document's focused
+  button does not take Space or Enter from it). Enter and Space activate
   a focused button or summary, Enter a link, Space toggles a checkbox.
 - **Keyboard menus**: focus the first button on load. The arrow keys move the focus only where
   `nav-up` / `nav-down` / `nav-left` / `nav-right` (or the shorthand `nav`) say so: `auto`
@@ -1572,9 +1574,11 @@ form control or `tabindex="0"`) has the focus, the gamepad drives the document l
   `onGamepadAxisMove`. A stick the menu takes is reported once at rest to the game. With no
   such element focused (nothing focused, or a clicked panel), the gamepad is the game's; the
   document still hears the keys. Focus a button to give a menu the gamepad (`autofocus`,
-  `el:focus()`), blur it (or hide the document) to give it back.
+  `el:focus()`), blur it (or hide the document) to give it back: a stick still held then
+  reaches the game in the next frame at its value.
 - `Input.isGamepadButtonPressed` / `Input.getGamepadAxis` always read the device: a game that
-  polls checks `Engine.wantsGamepadNavigation()` (true while a document has such a focus).
+  polls checks `Engine.wantsGamepadNavigation()` (true while a document has such a focus, or a
+  component UI Button is selected: jasper://docs/ui).
 - `:focus-visible` shows on the element the gamepad moves to, and on a clicked element once the
   gamepad is used, so style it (`.btn:focus-visible`).
 - Documents on meshes get the gamepad like the keys: the one that took the last press.

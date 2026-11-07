@@ -97,6 +97,11 @@ namespace jasperengine::editor{
 
     using ChannelWriteListener = std::function<void(uint32_t sceneId, Entity entity, ClipChannel channel)>;
 
+    // every component write a command makes (before/afterComponentWrite), animatable or not: the
+    // entity Animation and Inspector action previews keep what a command wrote while they ran
+    // (ActionPreviewSnapshot); property "" is the whole component
+    using ComponentWriteListener = std::function<void(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property)>;
+
     class ClipRecordHooks{
     public:
         using Id = int;     // 0 = none
@@ -159,9 +164,13 @@ namespace jasperengine::editor{
         // (removed with removeChannelWriteListener)
         static void beforePropertyWrite(uint32_t sceneId, Entity entity, const ClipPropertyKey& property);
         static void afterPropertyWrite(uint32_t sceneId, Entity entity, const ClipPropertyKey& property);
-        // before/afterChannelWrite for every channel of channelsOf (the command call sites)
+        // before/afterChannelWrite for every channel of channelsOf (the command call sites); the
+        // component write listeners first (before) and last (after)
         static void beforeComponentWrite(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property);
         static void afterComponentWrite(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property);
+        // (removed with removeChannelWriteListener)
+        static Id addBeforeComponentWrite(ComponentWriteListener listener);
+        static Id addAfterComponentWrite(ComponentWriteListener listener);
 
         // ---- helpers of the record sources ----
 

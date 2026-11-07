@@ -252,3 +252,8 @@ void ScriptBase::onDrag(PointerEventData&) { inherited(*this, ScriptMessage::Dra
 void ScriptBase::onEndDrag(PointerEventData&) { inherited(*this, ScriptMessage::EndDrag); }
 void ScriptBase::onDrop(PointerEventData&) { inherited(*this, ScriptMessage::Drop); }
 void ScriptBase::onScroll(PointerEventData&) { inherited(*this, ScriptMessage::Scroll); }
+void ScriptBase::onSelect(BaseEventData&) { inherited(*this, ScriptMessage::Select); }
+void ScriptBase::onDeselect(BaseEventData&) { inherited(*this, ScriptMessage::Deselect); }
+void ScriptBase::onMove(AxisEventData&) { inherited(*this, ScriptMessage::Move); }
+void ScriptBase::onSubmit(BaseEventData&) { inherited(*this, ScriptMessage::Submit); }
+void ScriptBase::onCancel(BaseEventData&) { inherited(*this, ScriptMessage::Cancel); }

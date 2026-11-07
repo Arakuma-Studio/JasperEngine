@@ -85,7 +85,7 @@ for a given seed and frame-rate independent.
 - `control_particles {entity, action: play|pause|stop|clear|restart|emit|seek|step}` works in
   Play and in Edit mode, where the Scene view's Particle Effect preview runs the system (the
   selected systems play there too; the panel's Playback Time slider scrubs).
-- `get_particle_stats` reports particle_count, time, ticks, the world budget, simulate/render µs,
+- `get_particle_stats` reports particle_count (sub-emitter children included), time, ticks, the world budget, simulate/render µs,
   culled; `capture_particles {entity, time, camera: scene|game}` seeks and returns an image.
 - Both report `seed` (the one in use, also what a seedless effect drew for this play) and `state_hash`:
   put the seed in the effect (`edit_particle_effect {patch: {seed}}`) and the same time gives the
@@ -120,7 +120,7 @@ first, said once): `ps.main.startSpeed = 4` (a number, `MinMaxCurve`, `{min, max
 `ParticleSystemSimulationSpace.World`, ...). `ps:play(true)` / `ps:stop(true, ParticleSystemStopBehavior.StopEmittingAndClear)` /
 `ps:clear(true)` take the children too; `GameObject:getParticleSystemsInChildren()`.
 
-Properties: `isPlaying`, `isPaused`, `isEmitting`, `particleCount`, `time`, `playbackSpeed`,
+Properties: `isPlaying`, `isPaused`, `isEmitting`, `particleCount` (with its sub-emitter children), `time`, `playbackSpeed`,
 `seed` (0: a new seed each play), `playOnAwake`, `effect` (asset path, "" inline),
 `useUnscaledTime` (the GameObject's own Unscaled Time, beside the effect's: it plays at
 `Engine.timeScale` 0; UI particles, jasper://docs/ui).
@@ -153,7 +153,8 @@ particles of systems whose External Forces module shares one of its layers.
 
 ## Performance
 
-Budgets: the world keeps at most its particle budget alive (higher `priority` effects keep more),
+Budgets: the world keeps at most its particle budget alive, sub-emitter children included (higher
+`priority` effects keep more; `particles.world_budget` in `set_project_settings`, 0 for the platform's default),
 Automatic culling pauses off-screen emitters and catches up when they come back, Distance LOD
 thins far ones. Collision against the world (`collision.collisionType: world`) is the costly module:
 Medium quality caches planes and caps the ray casts per tick (`maxQueriesPerTick`). Sorting

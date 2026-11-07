@@ -12,8 +12,10 @@
 #include "App.h"
 #include "Backend.h"
 #include "command/CommandHandle.h"
+#include "command/type/ForkShaderCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "component/PointsComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "material/MaterialChange.h"
 #include "material/MaterialPresets.h"
@@ -27,6 +29,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <map>
@@ -205,6 +208,34 @@ namespace {
             wrappedTooltip(editor::Catalog::getSceneInputsCost(inputs));
     }
 
+    // One row under a shader's rows reading a planar reflection (PLANAR_REFLECTION): what the
+    // scene's Planar Reflections draw for it, and that it costs a camera pass per water height
+    void planarReflectionInfoRow(Scene* scene, const std::string& shader, const std::vector<std::string>& features) {
+        std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
+        const std::vector<std::string> enabled = ShaderReference::getEnabledFeatures(shader, features);
+        if (!scene || !manifest || !(manifest->resolveRequire(enabled) & ShaderRequire_PlanarReflection))
+            return;
+        static const char* const sizes[] = {"Off", "a quarter", "half", "full"};
+        const PlanarReflectionResolution resolution = scene->getPlanarReflectionResolution();
+        // a water draws its planar reflection inside its Reflection
+        const bool withoutReflection = manifest->role == ShaderRole::WATER &&
+            std::find(enabled.begin(), enabled.end(), "REFLECTION") == enabled.end();
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(1);
+        ImGui::PushStyleColor(ImGuiCol_Text, editor::Theme::Colors::WarningText);
+        if (withoutReflection)
+            ImGui::TextWrapped(ICON_FA_GAUGE_HIGH " Planar reflection: turn Reflection on too (it draws inside it)");
+        else if (resolution == PlanarReflectionResolution::OFF)
+            ImGui::TextWrapped(ICON_FA_GAUGE_HIGH " Planar reflection: Off in this scene, the sky or probe reflection is drawn");
+        else
+            ImGui::TextWrapped(ICON_FA_GAUGE_HIGH " Planar reflection: the scene again at %s resolution, one pass per water height", sizes[(int)resolution]);
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered())
+            wrappedTooltip("Each camera that sees this water draws the scene mirrored about its rest level, once for every water height "
+                           "it sees (the nearest up to Max Planes). Scene settings > Planar Reflections sets the resolution (Off: none), "
+                           "the layers, shadows and distance. Made for flat water: a sloped surface mirrors about one level.");
+    }
+
     std::shared_ptr<const ShaderManifest> presentManifest(const std::string& shader) {
         std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
         return (manifest && manifest->present) ? manifest : nullptr;
@@ -272,15 +303,26 @@ namespace {
         std::shared_ptr<const ShaderManifest> manifest =
             presentManifest(editor::Catalog::getShaderReferenceForProperty(scene, entity, cpType, "customShader"));
         const std::vector<std::string>* features = editor::Catalog::getPropertyRef<std::vector<std::string>>(scene, entity, cpType, "shaderFeatures");
-        return RenderSystem::resolveComponentRenderState(MaterialBlendMode::AUTO, MaterialDepthWrite::AUTO, manifest.get(),
-                                                         features ? *features : noFeatures, false);
+        RenderState state = RenderSystem::resolveComponentRenderState(MaterialBlendMode::AUTO, MaterialDepthWrite::AUTO, manifest.get(),
+                                                                      features ? *features : noFeatures, false);
+        // Points: Auto writes depth when opaque only (RenderSystem::resolvePointsRenderState)
+        if (cpType == editor::ComponentType::PointsComponent){
+            if (const PointsComponent* points = scene->findComponent<PointsComponent>(entity)){
+                const MaterialDepthWrite manifestDepthWrite = manifest ?
+                    manifest->resolveState(manifest->resolveFeatures(features ? *features : noFeatures)).depthWrite : MaterialDepthWrite::AUTO;
+                if (manifestDepthWrite == MaterialDepthWrite::AUTO)
+                    state.depthWrite = !points->isTransparent();
+            }
+        }
+        return state;
     }
 
 }
 
 void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentShader, ShaderType type,
                                                      const std::function<void(const std::string&)>& setShader,
-                                                     const std::string& popupName, const char* builtInLabel){
+                                                     const std::string& popupName, const char* builtInLabel,
+                                                     const std::function<void(const std::string&)>& onForkLibrary){
     const char* builtIn = builtInLabel ? builtInLabel : (type == ShaderType::MESH ? "Lit (built-in)" : "Built-in");
 
     std::string preview = builtIn;
@@ -304,6 +346,7 @@ void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentS
     // the files popup opens after the combo closes: opened from inside the combo's own popup
     // window, its id would not match the BeginPopup of the row (drawShaderFilesPopup)
     bool openFiles = false;
+    bool forkLibrary = false;
     ImGui::SetNextItemWidth(-1);
     if (ImGui::BeginCombo(("##shader_picker_" + popupName).c_str(), preview.c_str())) {
         if (ImGui::Selectable(builtIn, currentShader.empty()) && !currentShader.empty())
@@ -336,8 +379,20 @@ void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentS
             openFiles = true;
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("A shader of this project: pick its .vert and .frag files");
+        // a copy of the library shader in the project, keeping its rows and its role
+        if (onForkLibrary && ShaderReference::isLibrary(currentShader)) {
+            std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(currentShader);
+            const std::string name = (manifest && !manifest->name.empty()) ? manifest->name : currentShader;
+            if (ImGui::Selectable(("Fork \"" + name + "\"...").c_str()))
+                forkLibrary = true;
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Copy %s into this project to edit it; the copy keeps its parameters, features and what the engine does with it (water floats bodies, the underwater pass switches)",
+                                  currentShader.c_str());
+        }
         ImGui::EndCombo();
     }
+    if (forkLibrary)
+        onForkLibrary(ShaderReference::getBase(currentShader));
     if (ShaderReference::isLibrary(currentShader) && ImGui::IsItemHovered()) {
         std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(currentShader);
         if (manifest && manifest->getPossibleSceneInputs())
@@ -651,12 +706,31 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
             new PropertyCmd<ShaderGlobalBindings>(project, sceneId, entity, cpType, bindingsProperty, value, onValueChanged));
     };
 
+    // what an unset parameter renders with: a mesh's value under its material's, the scene's
+    // default-shader value, the manifest default (ShaderUniforms::resolve, as the render system)
+    Catalog::UniformChainRefs chain;
+    bool chained = false;
+    if (paramsProperty == "shaderUniforms") {
+        chain = Catalog::getShaderUniformChain(scene, entity, cpType);
+        chained = true;
+    } else if (unsigned int submesh = 0; std::sscanf(paramsProperty.c_str(), "submeshes[%u].material.shaderParams", &submesh) == 1 &&
+                                         paramsProperty == "submeshes[" + std::to_string(submesh) + "].material.shaderParams") {
+        chain = Catalog::getShaderUniformChain(scene, entity, cpType, static_cast<int>(submesh));
+        chained = true;
+    }
+    chain.chain.values = &params;
+    chain.chain.manifest = manifest.get();
+
     // ---- parameters
     for (const ShaderManifestProperty& property : manifest->properties) {
         if (!featureOn(property.feature))
             continue;
         const bool hasValue = ShaderUniforms::has(params, property.member);
-        const Vector4 value = hasValue ? ShaderUniforms::get(params, property.member) : property.defaultValue;
+        UniformSource source = UniformSource::ShaderDefault;
+        const Vector4 value = hasValue ? ShaderUniforms::get(params, property.member)
+                            : chained ? ShaderUniforms::resolve(chain.chain, property.member, &source) : property.defaultValue;
+        // an own value over the scene's default shows "Revert to Scene Default"
+        const bool overScene = chain.chain.sceneDefault && ShaderUniforms::has(*chain.chain.sceneDefault, property.member);
         const bool color = property.kind == ShaderPropertyKind::COLOR || property.kind == ShaderPropertyKind::HDRCOLOR;
         const int components = property.kind == ShaderPropertyKind::VECTOR2 ? 2
                              : property.kind == ShaderPropertyKind::VECTOR3 ? 3
@@ -674,8 +748,11 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
             continue;
         }
         prefabRowProperty = paramsProperty;
-        if (propertyHeader(rowLabel(property.label, property.member), -1, hasValue)) {
-            // back to the manifest default
+        const bool revert = propertyHeader(rowLabel(property.label, property.member), -1, hasValue);
+        if (hasValue && ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", overScene ? "Revert to Scene Default" : "Reset to the shader's default");
+        if (revert) {
+            // back to what it inherits (the scene's default-shader value, the manifest default)
             ShaderUniformValues changed = params;
             ShaderUniforms::remove(changed, property.member);
             setParams(changed, false);
@@ -693,8 +770,12 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
             setParams(newParams, continuous);
         }
         finishDrag();
-        if (ImGui::IsItemHovered() && !ImGui::IsItemActive())
-            ImGui::SetTooltip("%s", property.member.c_str());
+        if (ImGui::IsItemHovered() && !ImGui::IsItemActive()) {
+            if (!hasValue && source == UniformSource::SceneDefault)
+                ImGui::SetTooltip("%s\nFrom the scene's default shader values (Scene > Default Shaders)", property.member.c_str());
+            else
+                ImGui::SetTooltip("%s", property.member.c_str());
+        }
         if (bindingsRef)
             drawGlobalLinkButton(property.member, components, bindings, setBindings);
         ImGui::PopID();
@@ -759,6 +840,7 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
     // what this variant reads of the scene (phase 3) and the cost: a material's, its extra
     // pass's or a points component's
     sceneInputsInfoRow(Catalog::getShaderSceneInputs(shader, features));
+    planarReflectionInfoRow(sceneProject->scene, shader, features);
 
     return true;
 }
@@ -804,7 +886,23 @@ bool editor::InspectorWindow::drawMaterialShaderRows(ComponentType cpType, Scene
     propertyHeader("Shader", -1, false, true);
     if (mixed)
         ImGui::TextDisabled("(different shaders)");
-    drawLibraryShaderCombo(mixed ? std::string() : currentShader, ShaderType::MESH, setShader, popupName);
+    // a fork of the library shader in one step: the files, and every selected submesh on it
+    auto onForkLibrary = [this, sceneId, entities, cpType, shaderProperty, onValueChanged = settingsMaterial.onValueChanged](const std::string& library){
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(library);
+        const std::string defaultName = (manifest && !manifest->name.empty()) ? manifest->name : ShaderReference::getLibraryName(library);
+        shaderForkDialog.open(project, ShaderType::MESH, defaultName,
+            [this, sceneId, entities, cpType, shaderProperty, onValueChanged, library](const std::filesystem::path& directory, const std::string& name, bool forkIncludes){
+                auto makePropertyCmd = [this, sceneId, entities, cpType, shaderProperty, onValueChanged](const std::string& forkBase){
+                    auto multi = std::make_unique<MultiPropertyCmd>();
+                    for (Entity entity : entities)
+                        multi->addPropertyCmd<std::string>(project, sceneId, entity, cpType, shaderProperty, forkBase, onValueChanged);
+                    return std::unique_ptr<Command>(std::move(multi));
+                };
+                commitShaderFork(sceneId, std::make_unique<ForkShaderCmd>(project, ShaderType::MESH, makePropertyCmd, directory, name,
+                                                                         forkIncludes, library));
+            }, nullptr, library);
+    };
+    drawLibraryShaderCombo(mixed ? std::string() : currentShader, ShaderType::MESH, setShader, popupName, nullptr, onForkLibrary);
     const Util::CustomShaderPaths paths = (!currentShader.empty() && !ShaderReference::isLibrary(currentShader))
         ? project->resolveCustomShaderFiles(currentShader) : Util::CustomShaderPaths();
     drawShaderFilesPopup(popupName, setShader, paths.vert, paths.frag);
@@ -1013,7 +1111,9 @@ void editor::InspectorWindow::drawComponentStateRows(ComponentType cpType, Scene
     settings.help = "How the colour mixes with what is behind. Auto: the shader's @state, else alpha blending.";
     propertyRow(RowPropertyType::Enum, cpType, "blendMode", "Blend Mode", sceneProject, entities, settings);
     settings.enumEntries = &depthWriteEntries.entries;
-    settings.help = "Whether it writes depth. Auto: the shader's @state, else on.";
+    settings.help = cpType == ComponentType::PointsComponent ?
+        "Whether it writes depth. Auto: the shader's @state, else on when opaque and off when Transparent (or when Auto Transparency finds alpha in the texture)." :
+        "Whether it writes depth. Auto: the shader's @state, else on.";
     propertyRow(RowPropertyType::Enum, cpType, "depthWrite", "Depth Write", sceneProject, entities, settings);
 
     // stencil and colour write (phase 2): Auto names the shader's rule

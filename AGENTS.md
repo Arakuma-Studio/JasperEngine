@@ -87,6 +87,7 @@ Run the generator and commit its output:
 | `engine/core/serialization/RuntimeFields.gen.inc` | `jasperengine-editor reflect --emit-runtime-fields engine/core/serialization/RuntimeFields.gen.inc` |
 | `editor/procmat/nodes/` | `python3 -I tools/procmat/import_mm_nodes.py --source <clone of Material Maker at its recorded commit>` |
 | `editor/tests/procmat/SpirvInterpreterFixtures.h` | `tools/build.sh exec linux python3 tools/procmat/gen_interpreter_fixtures.py build/procmat-sweep/procmat-sweep` (after building `tools/procmat/sweep`) |
+| `editor/tests/procmat/ExpanderReference.txt` | `python3 -I tools/procmat/expand_nodes.py --write-reference editor/tests/procmat/ExpanderReference.txt` |
 | `docs/editor/keyboard-shortcuts.md` | the unit test `CommandCatalog.MarkdownReferenceMatchesDocs` with `JASPER_UPDATE_SHORTCUT_DOCS=1`, inside the image (the variable is not forwarded into it) |
 
 - `tools/lua_api` produces the Lua API data, joined stubs and completion data at build time.
@@ -143,6 +144,7 @@ Run the generator and commit its output:
 - There is no CI: nothing checks a push except what you ran.
 - Lints check-changed does not run; run the one for each area you changed, with `python3`:
   - `tools/check_raw_writes.py`, `tools/check_stream_keys.py`: file writes, decoders.
+  - `tools/check_event_clears.py`: engine events (`FunctionSubscribe` members) cleared at Stop; `tools/build.sh linux` runs it too.
   - `tools/check_text_encoding.py`: code-page conversions, Win32 `-A` calls, Apple string encodings, vswhere.
   - `tools/ci/check-hardcoded-shortcuts.py`: editor keys.
 - After renaming a path or build target these docs name: `python3 tools/check_agent_docs.py`.

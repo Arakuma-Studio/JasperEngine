@@ -12,8 +12,8 @@ Served as `jasper://docs/editor-tools`. The user documentation is `docs/editor/c
 Any colour property (`set_properties`, `create_entity` values, `set_scene_settings`, material
 values) takes:
 
-- `[r, g, b(, a)]`: the field's own space, unchanged (most 3D colours are linear; UI and sprite
-  colours sRGB: `get_entity` shows what is stored).
+- `[r, g, b(, a)]`: the field's own space, unchanged (stored colours are linear, UI ones too:
+  `get_entity` shows what is stored).
 - `"#RRGGBB"` / `"#RRGGBBAA"`: sRGB, converted to linear for a linear field.
 - `{"srgb": [r, g, b(, a)]}` or `{"linear": [...]}`: say the space; converted to the field's.
 - `"intensity": stops` with any of the forms above (`{"hex": "#FF8000", "intensity": 2}`):

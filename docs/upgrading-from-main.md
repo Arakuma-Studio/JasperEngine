@@ -124,6 +124,9 @@ The first open applies rendering migrations that change how a scene looks, on pu
   platform's tier). Shadows are sharper and placed differently.
 - **Particles** (S20): the effects are simulated and drawn by the new particle system: the same
   emission settings, different particles.
+- **Sub-emitters** (BF23): a sub-emitter's particles were simulated but never drawn. Effects with
+  sub-emitters now show them, each with its child effect's Renderer, so they may look different and
+  cost what they always should have; they count against the world particle budget.
 
 The upgrade test takes screenshots at the same game frames in both editors and compares them at one
 size (480x270: the Game view's size follows each editor's layout, 904x509 against 869x489 here).

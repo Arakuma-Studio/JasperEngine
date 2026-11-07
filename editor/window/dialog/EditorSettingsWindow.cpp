@@ -1336,6 +1336,15 @@ void EditorSettingsWindow::drawVersionControlSettings() {
             }
             ImGui::Checkbox("##CommitAndPush", &m_versionControl.commitAndPush);
         }
+        sectionRow("Code Editor");
+        if (settingsui::beginRow("editor.vcs.code_editor_changes")) {
+            if (prefsBeginSettingsRow("Show Changes in Code Editor", "Marks in the gutter and on the scrollbar for the lines changed since "
+                                      "the last commit, with their diff on hover and Revert Change",
+                                      m_versionControl.codeEditorChanges != defaults.codeEditorChanges)) {
+                m_versionControl.codeEditorChanges = defaults.codeEditorChanges;
+            }
+            ImGui::Checkbox("##CodeEditorChanges", &m_versionControl.codeEditorChanges);
+        }
         sectionRow("Merge");
         if (settingsui::beginRow("preferences.vcs.smart_merge")) {
             prefsBeginSettingsRow("Smart Merge", "git merges scenes and prefabs GameObject by GameObject with this editor (merge-scene), "

@@ -165,7 +165,7 @@
     "instance": [
      "vec3 $(name)_compare(vec2 uv, float size, float _seed_variation_, vec4 _controlled_variation_) {",
      "\tfloat iter = $in(uv).b;",
-     "\tsize = size / pow(2.0, (iter * 100.0) );",
+     "\tsize = size / exp2(floor(iter * 100.0 + 0.5));",
      "\titer += 0.01;",
      "\tfloat pixel_offset = 1.0 / size;",
      "\tvec2 half_res_uv = floor(uv * size / 2.0) / size * 2.0 + pixel_offset / 2.0;",

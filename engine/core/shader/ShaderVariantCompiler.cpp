@@ -463,6 +463,7 @@ void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& de
     if (vat && (prop & shaderPropertyBit(15))) defs.push_back({"HAS_VAT_BONES", "1"});          // 'Vab'
     if (prop & shaderPropertyBit(16)) defs.push_back({"HAS_OCCLUSION_TEXTURE", "1"});         // 'Occ'
     if ((prop & shaderPropertyBit(17)) && !(prop & shaderPropertyBit(6))) defs.push_back({"HAS_UV_SET2", "1"}); // 'Uv2' (never on a terrain)
+    if (prop & shaderPropertyBit(18)) defs.push_back({"USE_INSTANCE_FADE", "1"});             // 'Ifd'
 }
 
 void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -1276,6 +1277,90 @@ std::string ShaderVariantCompiler::normalizePreprocessed(const std::string& sour
         start = end + 1;
     }
     return normalized;
+}
+
+bool ShaderVariantCompiler::compileSources(const std::string& vertexSource, const std::string& fragmentSource, ShaderBackend backend,
+                                           ShaderData& out, std::string* error, std::string* log){
+    auto fail = [&](const std::string& message) {
+        if (error)
+            *error = message;
+        return false;
+    };
+#if defined(JASPERENGINE_RUNTIME_SHADERS)
+    retainCompilerProcess();
+    shadercompiler::args_t args = shadercompiler::initialize_args();
+    args.useBuffers = true;
+    args.fileBuffers["source.vert"] = vertexSource;
+    args.fileBuffers["source.frag"] = fragmentSource;
+    args.vert_file = "source.vert";
+    args.frag_file = "source.frag";
+    applyShaderBackend(args, backend);
+    std::string compileLog;
+    args.error_output = &compileLog;
+    auto failWithLog = [&](const std::string& message) {
+        if (log)
+            *log = compileLog;
+        return fail(message);
+    };
+
+    std::vector<shadercompiler::input_t> inputs;
+    if (!shadercompiler::load_input(inputs, args))
+        return failWithLog("Error loading shader input");
+    std::vector<shadercompiler::spirv_t> spirvvec(inputs.size());
+    if (!shadercompiler::compile_to_spirv(spirvvec, inputs, args))
+        return failWithLog("Error compiling to SPIRV");
+    std::vector<shadercompiler::spirvcross_t> spirvcrossvec(inputs.size());
+    bool crossCompiled = false;
+    try {
+        crossCompiled = shadercompiler::compile_to_lang(spirvcrossvec, spirvvec, inputs, args);
+    } catch (const std::exception& e) {
+        compileLog += std::string("SPIRV-Cross: ") + e.what() + "\n";
+    }
+    if (!crossCompiled)
+        return failWithLog("Error cross-compiling");
+    args.output_basename = "procedural" + getLangSuffix(args.lang, args.version, args.es, args.platform);
+    out = convertToShaderData(spirvcrossvec, args);
+    if (log)
+        *log = compileLog;
+    return true;
+#else
+    (void)vertexSource; (void)fragmentSource; (void)backend; (void)out; (void)log;
+    return fail("This build has no runtime shader compiler (JASPERENGINE_RUNTIME_SHADERS is off)");
+#endif
+}
+
+bool ShaderVariantCompiler::compileFragmentToSpirv(const std::string& fragmentSource, std::vector<uint32_t>& spirv,
+                                                   std::string* error, std::string* log){
+    auto fail = [&](const std::string& message) {
+        if (error)
+            *error = message;
+        return false;
+    };
+#if defined(JASPERENGINE_RUNTIME_SHADERS)
+    retainCompilerProcess();
+    shadercompiler::args_t args = shadercompiler::initialize_args();
+    args.useBuffers = true;
+    args.fileBuffers["source.frag"] = fragmentSource;
+    args.frag_file = "source.frag";
+    applyShaderBackend(args, ShaderBackend::Vulkan);
+    std::string compileLog;
+    args.error_output = &compileLog;
+    std::vector<shadercompiler::input_t> inputs;
+    std::vector<shadercompiler::spirv_t> spirvvec(1);
+    const bool loaded = shadercompiler::load_input(inputs, args);
+    if (!loaded || inputs.size() != 1 || !shadercompiler::compile_to_spirv(spirvvec, inputs, args)) {
+        if (log)
+            *log = compileLog;
+        return fail(loaded ? "Error compiling to SPIRV" : "Error loading shader input");
+    }
+    spirv = spirvvec[0].bytecode;
+    if (log)
+        *log = compileLog;
+    return true;
+#else
+    (void)fragmentSource; (void)spirv; (void)log;
+    return fail("This build has no runtime shader compiler (JASPERENGINE_RUNTIME_SHADERS is off)");
+#endif
 }
 
 bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,

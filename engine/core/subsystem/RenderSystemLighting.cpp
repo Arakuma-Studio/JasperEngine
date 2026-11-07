@@ -500,8 +500,10 @@ void RenderSystem::beginTiledLights(CameraShadows& target, const CameraComponent
     view.viewMatrix = camera.viewMatrix;
     view.projectionMatrix = camera.projectionMatrix;
     view.perspective = camera.type == CameraType::CAMERA_PERSPECTIVE;
-    view.nearClip = camera.nearClip;
-    view.farClip = camera.farClip;
+    // the near and far the projection was built with (a perspective near of 0 is moved off it)
+    const Vector2 nearFar = getCameraNearFar(camera);
+    view.nearClip = nearFar.x;
+    view.farClip = nearFar.y;
     view.cameraPosition = cameraTransform.worldPosition;
     view.width = width;
     view.height = height;

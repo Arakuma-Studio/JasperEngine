@@ -72,13 +72,21 @@ namespace jasperengine::editor {
         bool isCaptureActive() const { return capturing; }
         void noteCaptureConsumedKey(ImGuiKey key);
 
+        // A chord that would run a command but for its enabled() (Ctrl+S while playing): the
+        // handler gets it and its disabledReason, once per press, when the reason is not empty
+        void setDisabledHandler(std::function<void(const CommandDef&, const std::string&)> handler) { disabledHandler = std::move(handler); }
+
     private:
         CommandCatalog& catalog;
         bool capturing = false;
         ImGuiKey consumedKey = ImGuiKey_None;
+        std::function<void(const CommandDef&, const std::string&)> disabledHandler;
 
         bool contextActive(ShortcutContext context, const ShortcutState& state) const;
-        bool mayFire(const CommandDef& def, Chord chord, const ShortcutState& state) const;
+        bool mayFire(const CommandDef& def, Chord chord, const ShortcutState& state, bool ignoreEnabled = false) const;
+        // resolve() with the enabled() test left out: the command a disabled chord names
+        const CommandDef* resolveIgnoringEnabled(Chord chord, const ShortcutState& state) const;
+        const CommandDef* resolveCommand(Chord chord, const ShortcutState& state, bool ignoreEnabled) const;
     };
 
 }

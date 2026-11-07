@@ -81,7 +81,7 @@ void editor::ParticlePreviewRender::update(){
 
     // ease the framing towards the particles' bounds
     const ParticleSystemComponent* particles = scene->findComponent<ParticleSystemComponent>(emitter->getEntity());
-    if (particles && particles->state && particles->state->runtime.count() > 0){
+    if (particles && particles->state && particles->state->runtime.totalCount() > 0){
         const particles::ParticleSystemState& state = *particles->state;
         const Vector3 lo(state.boundsMin[0], state.boundsMin[1], state.boundsMin[2]);
         const Vector3 hi(state.boundsMax[0], state.boundsMax[1], state.boundsMax[2]);
