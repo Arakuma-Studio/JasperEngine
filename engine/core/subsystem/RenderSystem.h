@@ -315,6 +315,10 @@ namespace jasperengine{
 		Vector4 probePosition[SSR_PROBE_SLOTS]; // xyz = capture position
 		Vector4 probeBoxMin[SSR_PROBE_SLOTS];   // xyz = influence AABB min, w = intensity
 		Vector4 probeBoxMax[SSR_PROBE_SLOTS];   // xyz = influence AABB max, w = max mip LOD (0 = unfiltered)
+		// how the colour pass stored what the composite reads: x 1 = its surfaces in linear light
+		// (post_color.glsl's linear store, under the post-processing colour), y 1 = its background too
+		// (a sky drew it); 0 = display-encoded, as drawn
+		Vector4 sceneEncoding;
 	} fs_composite_t;
 
 	// What the SSR G-buffer pass of a view last drew (RenderSystem::getSSRStats): the reflection
@@ -1349,6 +1353,10 @@ namespace jasperengine{
 			// the contact shadows' mask and the OIT targets of its main camera (null: none drawn)
 			std::unique_ptr<LightingViewTargets> lightingTargets;
 			Framebuffer sceneColorFramebuffer; // offscreen opaque scene color (top-left)
+			// a distance-sorted pass's colour after the SSR composite: the composite, then the
+			// transparents, UI and overlays drawn over it with sceneColorFramebuffer's depth-stencil
+			// (made on first use, destroyed before it)
+			FramebufferRender ssrSceneTarget;
 			Framebuffer ssrFramebuffer;        // reflection color + mask (logical orientation)
 			Framebuffer ssrBlurFramebuffer;    // glossy-blurred reflection
 
@@ -1880,10 +1888,18 @@ namespace jasperengine{
 		int compositeSlotParams;
 		int compositeSlotFog;              // u_fs_fog (the distance fog the swap is attenuated by)
 		int compositeSlotHeightFog;        // u_fs_heightFog
+		int compositeSlotPostColor;        // u_fs_postColor (the tail it applies after a linear store)
+		std::pair<int, int> compositePostLutSlot;                 // u_postColorLut
+		// the colour pass's post-processing colour while it stores linear light for the SSR
+		// composite (post_color.glsl), and the composite's own (the scene's), else neutral
+		post_color_t ssrCompositePostColor;
+		bool ssrLinearStore = false;
+		bool ssrBackgroundStored = false;
 		std::pair<int, int> compositeProbeSlots[SSR_PROBE_SLOTS]; // u_probeTexture0..3
 		std::pair<int, int> compositeOcclusionSlot;               // u_occlusionGBufferTexture
 		std::pair<int, int> compositeSSAOSlot;                    // u_ssaoTexture
 		std::pair<int, int> ssrAlbedoSlot;                        // ssr.frag's u_albedoTexture
+		std::pair<int, int> ssrExtraSlot;                         // ssr.frag's u_occlusionGBufferTexture (the normal's fine bits)
 		bool ssrProbeOverflowWarned = false; // the overflow warning, once until the next scene load
 		bool swapchainRedirect;            // exported builds: the last pass targets the swapchain
 		// exported builds, a scene with a scene-colour reader (phase 3): the scene camera may draw
@@ -3058,6 +3074,16 @@ namespace jasperengine{
 		void drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams);
 		// destination == nullptr renders the composite to the swapchain (backbuffer)
 		void renderSSR(CameraComponent& camera, FramebufferRender* destination);
+		// the SSR march and its glossy blur (their own passes): the reflection the composite reads
+		TextureRender* renderSSRReflections(CameraComponent& camera);
+		// the composite's block (flipDestination: a GL swapchain destination), its sky's map out
+		void fillSSRComposite(CameraComponent& camera, bool flipDestination, TextureRender*& prefiltered);
+		// the composite's draw into the open pass (target: that pass's format)
+		void drawSSRComposite(const RenderTargetFormat& target, TextureRender* reflection, TextureRender* prefiltered);
+		// the target a distance-sorted pass resumes on after its SSR composite (ssrSceneTarget)
+		bool ensureSSRSceneTarget();
+		// source onto destination, whole (null: the swapchain at the view rect)
+		void renderBlitTo(TextureRender* source, FramebufferRender* destination);
 
 		// fixed game resolution
 		void loadBlit();

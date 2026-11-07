@@ -46,8 +46,9 @@ namespace jasperengine{
         // a pass of an offscreen target that keeps its depth and stencil when it ends, so
         // resumeRenderPass can continue it after other passes (the scene-colour copy)
         void startSplitRenderPass(FramebufferRender* framebuffer);
-        // continues such a pass: colour, depth and stencil loaded as they were left
-        void resumeRenderPass(FramebufferRender* framebuffer);
+        // continues such a pass: colour, depth and stencil loaded as they were left; split: kept
+        // when it ends too (multisampled colour included), for another resume
+        void resumeRenderPass(FramebufferRender* framebuffer, bool split = false);
 
         void applyViewport(Rect rect);
         void applyScissor(Rect rect);

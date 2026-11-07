@@ -176,12 +176,17 @@ void SokolCamera::startSplitRenderPass(FramebufferRender* framebuffer){
     beginPass(split);
 }
 
-void SokolCamera::resumeRenderPass(FramebufferRender* framebuffer){
+void SokolCamera::resumeRenderPass(FramebufferRender* framebuffer, bool split){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_pass resumed = pass;
     resumed.swapchain = {};
     resumed.attachments = attachmentsOf(framebuffer, 0);
-    if (multisample){
+    if (split){
+        // (DONTCARE invalidates them on GLES and tilers: the next resume would load nothing)
+        resumed.action.depth.store_action = SG_STOREACTION_STORE;
+        resumed.action.stencil.store_action = SG_STOREACTION_STORE;
+    }else if (multisample){
+        // the samples resolve into the framebuffer at the end and are dropped
         resumed.action.colors[0].store_action = SG_STOREACTION_DONTCARE;
     }
     resumed.action.colors[0].load_action = SG_LOADACTION_LOAD;

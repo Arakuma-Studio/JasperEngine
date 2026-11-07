@@ -5666,7 +5666,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      engine-written WATER_INTERACTION_PARAMS at the end of water.frag's custom block.
     // v53: draw-perf's directional-only Lit: MESH 'Dlo' (44; DIRECTIONAL_LIGHTS_ONLY in
     //      includes/lights.glsl and punctual.glsl)
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v53";
+    // v54: SSR follow-ups: the G-buffer's 16-bit normal (color[3] RGBA8, octEncode16), the
+    //      composite inside the colour pass under the transparents and its tone curve
+    //      (includes/post_color.glsl's linear-store mode, the composite's USE_POST_COLOR)
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v54";
 }
 
 void editor::App::pushTabNotificationStyle(){

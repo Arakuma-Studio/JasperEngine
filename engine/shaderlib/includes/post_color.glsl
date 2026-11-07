@@ -25,7 +25,11 @@
 //   postColor_params               x, y: falloff w = saturate(dot(p, p) * x + y); z dither
 //                                  amplitude (0 = none); w LUT side N, 0 = no LUT (a pass
 //                                  without post-processing: render-to-texture cameras,
-//                                  reflection probes, the editor's Scene view)
+//                                  reflection probes, the editor's Scene view), -N the linear
+//                                  store: the colour pass before the SSR composite writes the
+//                                  shaper's code alone (no LUT, vignette or dither), linear
+//                                  light in the tone curve's range, which the composite decodes
+//                                  (postColorStoredToLinear), swaps and encodes with N
 //   postColor_shaper               x the shaper's k; y how the draw's blend takes the colour, for
 //                                  the built-in shaders (postColorEncodeBlended, no BLEND_*
 //                                  define): 0 its own, 1 added, 2 premultiplied (a multiply
@@ -71,15 +75,28 @@
         return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
     }
 
-    // the LUT (exposure, curve, grade, encoding) of a linear colour
+    // the colour pass stores linear light for the SSR composite (params.w < 0)
+    bool postColorStoresLinear(){
+        return POST_COLOR_BLOCK.postColor_params.w < -0.5;
+    }
+
+    // the LUT (exposure, curve, grade, encoding) of a linear colour; the shaper's code alone in
+    // the linear store
     vec3 postColorLut(vec3 linearColor){
         vec4 params = POST_COLOR_BLOCK.postColor_params;
         vec3 x = max(linearColor, vec3(0.0));
-        if (params.w > 0.5){
-            float k = POST_COLOR_BLOCK.postColor_shaper.x;
+        float k = POST_COLOR_BLOCK.postColor_shaper.x;
+        if (params.w > 0.5)
             return samplePostColorLut(sqrt(x / (x + k)), params.w);
-        }
+        if (params.w < -0.5)
+            return sqrt(x / (x + k));
         return linearTosRGB(x);
+    }
+
+    // a colour the linear store wrote, back in linear light (the shaper's inverse, k s^2 / (1 - s^2))
+    vec3 postColorStoredToLinear(vec3 stored){
+        vec3 s2 = min(stored * stored, vec3(0.999));
+        return POST_COLOR_BLOCK.postColor_shaper.x * s2 / (1.0 - s2);
     }
 
     // the vignette's amount at this fragment (0..1, times its intensity)
@@ -95,9 +112,12 @@
         return (postColorNoise(gl_FragCoord.xy) - 0.5) * POST_COLOR_BLOCK.postColor_params.z;
     }
 
-    // a shader's own colour: linear in, display-encoded out
+    // a shader's own colour: linear in, display-encoded out (the linear store: the vignette and
+    // the dither are the composite's)
     vec3 postColorEncode(vec3 linearColor){
         vec3 color = postColorLut(linearColor);
+        if (postColorStoresLinear())
+            return color;
         color = mix(color, POST_COLOR_BLOCK.postColor_vignetteColor.rgb, postColorVignette());
         return color + vec3(postColorDither());
     }
@@ -106,7 +126,8 @@
     // lift is the frame's, not the glow's) and the vignette can only darken it
     vec3 postColorEncodeAdditive(vec3 linearColor){
         // (no dither: what is behind has it, and the target would clamp its negative half)
-        return max(postColorLut(linearColor) - postColorLut(vec3(0.0)), vec3(0.0)) * (1.0 - postColorVignette());
+        float vignette = postColorStoresLinear() ? 0.0 : postColorVignette();
+        return max(postColorLut(linearColor) - postColorLut(vec3(0.0)), vec3(0.0)) * (1.0 - vignette);
     }
 
     // the built-in shaders' colour (mesh, points, lines: no BLEND_* define), linear in,
