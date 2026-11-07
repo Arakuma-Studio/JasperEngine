@@ -821,10 +821,12 @@ Branch `fu/mesh-memory` (docs/doriax-catchup/FOLLOWUPS.md).
    | ObjectRender | 896 | 832 | 776 | 808 | 808 |
    | Submesh | 9,472 | 8,632 | 7,944 | 8,560 | 8,168 |
    | MeshComponent | 2,048 | 1,760 | 1,584 | 1,696 | 1,648 |
-   | SpriteComponent | 256 | 72 | 72 | 80 | 72 |
+   | SpriteComponent | 384 | 320 | 296 | 344 | 296 |
    | TilemapComponent | 384 | 152 | 152 | 184 | 152 |
 
-   A sprite's mesh with its arrays is 10,264 B under MSVC Debug (ceiling 11,264). MSVC's `std::map` (16 B, 24
+   SpriteComponent was 72 B (80 MSVC Debug) under a 256 ceiling until pixel-art's S44 gave it its tag playback
+   (`playingTag`, `tagFrames` and five scalars, `c3c73e186`): its ceiling is now 384, the Linux 320 with room as the
+   others have, MSVC Debug's 344 under it. A sprite's mesh with its arrays is 10,264 B under MSVC Debug (ceiling 11,264). MSVC's `std::map` (16 B, 24
    checked) is much smaller than libstdc++'s (48), which outweighs the checked iterators' proxies, so every
    configuration fits the Linux ceilings: the "half again under MSVC's checked iterators" of deviation 16 is
    gone (its premise was wrong) and the ceilings are the same everywhere. `test_jobs_memory.py`'s
