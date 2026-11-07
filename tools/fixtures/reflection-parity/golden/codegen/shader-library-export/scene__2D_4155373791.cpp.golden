@@ -154,6 +154,7 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = true;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         mesh.submeshes[0].overrideFields = 1114240;
         mesh.buffer.clearAll();
         mesh.buffer.addAttribute(AttributeType::POSITION, 3);
@@ -275,6 +276,7 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = true;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         mesh.submeshes[0].overrideFields = 721024;
         mesh.buffer.clearAll();
         mesh.buffer.addAttribute(AttributeType::POSITION, 3);
@@ -396,6 +398,7 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = true;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         mesh.submeshes[0].overrideFields = 721024;
         mesh.buffer.clearAll();
         mesh.buffer.addAttribute(AttributeType::POSITION, 3);
@@ -517,6 +520,7 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = true;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         mesh.submeshes[0].overrideFields = 721024;
         mesh.buffer.clearAll();
         mesh.buffer.addAttribute(AttributeType::POSITION, 3);
@@ -638,6 +642,7 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = true;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         mesh.submeshes[0].overrideFields = 721024;
         mesh.buffer.clearAll();
         mesh.buffer.addAttribute(AttributeType::POSITION, 3);
@@ -768,6 +773,7 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = true;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         mesh.submeshes[0].overrideFields = 983168;
         mesh.buffer.clearAll();
         mesh.buffer.addAttribute(AttributeType::POSITION, 3);
@@ -898,6 +904,7 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = true;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         mesh.submeshes[0].overrideFields = 983168;
         mesh.buffer.clearAll();
         mesh.buffer.addAttribute(AttributeType::POSITION, 3);
@@ -1019,6 +1026,7 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = true;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         mesh.submeshes[0].overrideFields = 721024;
         mesh.buffer.clearAll();
         mesh.buffer.addAttribute(AttributeType::POSITION, 3);

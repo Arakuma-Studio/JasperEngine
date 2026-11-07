@@ -3740,6 +3740,7 @@ void create_scene_Saved_367179023(Scene* scene){
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = true;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         mesh.submeshes[0].overrideFields = 65664;
         mesh.buffer.clearAll();
         mesh.buffer.addAttribute(AttributeType::POSITION, 3);
