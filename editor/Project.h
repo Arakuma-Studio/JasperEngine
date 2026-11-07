@@ -833,6 +833,32 @@ namespace jasperengine::editor{
         }
     };
 
+    // What an asset-root change does or would do (Project::planAssetRootChange, changeAssetRoots);
+    // absolute paths
+    struct AssetRootChange {
+        struct Move {
+            std::filesystem::path from;
+            std::filesystem::path to;
+            bool folder = false;
+        };
+        std::vector<Move> moves;                              // planned, then done (companions included)
+        std::vector<std::filesystem::path> alreadyThere;      // identical file at the destination: used, source kept
+        std::vector<std::filesystem::path> keptOutside;       // outside both old roots: references kept as they are
+        std::vector<std::filesystem::path> rewritten;         // scenes, prefabs, materials, project.yaml
+        std::vector<std::filesystem::path> savedScenesWithEdits;  // open scenes that had unsaved changes
+        std::vector<std::filesystem::path> unsavedBuffers;    // Code Editor buffers of files that move
+        std::vector<std::filesystem::path> failedSaves;       // rewritten in memory, not on disk
+        std::vector<std::filesystem::path> removedFolders;    // emptied by the moves
+        std::vector<std::string> textReferencesBroken;        // "referrer:line (target)", project-relative
+        std::string blocker;    // preflight refusal: nothing changed
+        std::string error;      // failed while moving: what moved was put back, the roots are unchanged
+        bool changed = false;   // the roots changed (also with failedSaves)
+
+        bool ok() const { return blocker.empty() && error.empty(); }
+        // the reason it did not change anything ("" when it did)
+        const std::string& refusal() const { return blocker.empty() ? error : blocker; }
+    };
+
     class Project{
         friend struct PlaySessionTestAccess;
     private:
@@ -1382,10 +1408,20 @@ namespace jasperengine::editor{
         static SceneResources collectResourcesInRegistry(EntityRegistry* registry);
         // Same for Lua script entries; C++ ones are build inputs kept project-relative.
         static bool visitLuaPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
-        bool visitAssetPathsInMaterialFiles(const std::function<bool(std::string&)>& transform);
+        bool visitAssetPathsInMaterialFiles(const std::function<bool(std::string&)>& transform,
+                                            std::vector<std::filesystem::path>* changedFiles = nullptr,
+                                            std::vector<std::filesystem::path>* failedFiles = nullptr, bool dryRun = false);
         // Reads every .material file of the project, calls visit on it and writes back the
-        // ones visit changed (returns true for)
-        bool visitMaterialFiles(const std::function<bool(Material&)>& visit);
+        // ones visit changed (returns true for); `changedFiles` gets them, `failedFiles` the ones
+        // that could not be written; dryRun writes nothing (changedFiles: what would be written)
+        bool visitMaterialFiles(const std::function<bool(Material&)>& visit,
+                                std::vector<std::filesystem::path>* changedFiles = nullptr,
+                                std::vector<std::filesystem::path>* failedFiles = nullptr, bool dryRun = false);
+        // planAssetRootChange and changeAssetRoots: one pass, applied or not
+        AssetRootChange runAssetRootChange(const std::filesystem::path& newAssetsDir, const std::filesystem::path& newLuaDir,
+                                           bool apply, bool refuseUnsavedBuffers);
+        // writeProbe for the asset-root preflight (tests replace it)
+        std::function<bool(const std::filesystem::path&)> assetRootWriteProbe;
         bool removeMissingChildSceneReferences(SceneProject& sceneProject);
         bool detachChildSceneFromParents(uint32_t childSceneId, const std::set<uint32_t>& skippedSceneIds);
 
@@ -1839,9 +1875,22 @@ namespace jasperengine::editor{
         // reads a fork file as the shader compilers and manifests see it
         bool readShaderFile(const std::string& relative, std::string& content) const;
 
-        // Applies new roots: referenced files outside them are moved in keeping their
-        // layout, then every stored reference is rewritten and saved.
-        void changeAssetRoots(const std::filesystem::path& newAssetsDir, const std::filesystem::path& newLuaDir);
+        // What changing the assets / Lua directories would do (project-window spec 6.9); nothing
+        // changes (closed scenes are loaded and unloaded to read their references).
+        // refuseUnsavedBuffers: an unsaved Code Editor buffer of a file that would move is a
+        // blocker (agents) instead of being saved first (the Project Settings window)
+        AssetRootChange planAssetRootChange(const std::filesystem::path& newAssetsDir, const std::filesystem::path& newLuaDir,
+                                            bool refuseUnsavedBuffers);
+        // Applies new roots: referenced files outside them are moved in keeping their layout
+        // (with their .meta, .humanoid and Vertex Animation pair), then every stored reference is
+        // rewritten and saved, and folders the moves emptied are removed. A blocker (the
+        // preflight) or a failed move changes nothing; failed saves are listed. Reports nothing
+        // itself: the caller says what happened.
+        AssetRootChange changeAssetRoots(const std::filesystem::path& newAssetsDir, const std::filesystem::path& newLuaDir,
+                                         bool refuseUnsavedBuffers = false);
+        // The asset-root preflight's writability check (default: append-open the file and create a
+        // probe folder beside it); tests replace it
+        void setAssetRootWriteProbe(std::function<bool(const std::filesystem::path&)> probe) { assetRootWriteProbe = std::move(probe); }
 
         void setPackNativeResources(bool enabled);
         bool shouldPackNativeResources() const;
@@ -2050,8 +2099,18 @@ namespace jasperengine::editor{
 
         CommandHistory* getProjectCommandHistory();
 
+        // the editor's own temporary project, in a folder of the temp directory no other editor uses
         bool createTempProject(std::string projectName, bool deleteIfExists = false);
+        // `<tempRoot>/<name>`, else `<name> 2`, `<name> 3`... the first `isBusy` says is free
+        static std::filesystem::path chooseTempProjectDir(const std::filesystem::path& tempRoot, const std::string& name,
+                                                          const std::function<bool(const std::filesystem::path&)>& isBusy);
+        // Save (path = the project's) or Save Project As (another, empty or new, folder): the
+        // project is copied there (the temporary project moved) and the editor continues in the
+        // copy. Refused before anything is copied when the folder is inside the project, holds it,
+        // or is not empty; any failure removes what was copied and leaves the project where it was.
         bool saveProjectToPath(const std::filesystem::path& path);
+        // why Save Project As can't go to `path` ("" when it can)
+        std::string saveAsRefusal(const std::filesystem::path& path) const;
         void clearTrash();
 
         // Keeps .gitignore and .gitattributes written, skipping either if it exists

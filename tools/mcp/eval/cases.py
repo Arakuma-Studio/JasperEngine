@@ -1726,6 +1726,49 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "move_entity", "args": {"index": 0}}]},
         "max_turns": 14,
+        "id": "guard_duplicate_asset_beside",
+        "kind": "guard",
+        "what_happened": "Duplicating an asset: move_asset copy without `to` lands beside it under Unity's free name "
+                         "(hero 1.png); the agent need not list the folder to invent a free name (project-window spec 6.14).",
+        "text_at_issue": "AssetTools.cpp move_asset `to`: 'New path; omit with copy to duplicate.'",
+        "source": "docs/superpowers/specs/2026-11-04-project-window-design.md (Doriax 37d7cdc41)",
+        "prompt": "Duplicate assets/sprites/hero.png.",
+        "mocks": [
+            {"tool": "move_asset", "args": {"path": "assets/sprites/hero.png", "copy": True}, "result": ok(
+                "Copied assets/sprites/hero.png to assets/sprites/hero 1.png (new GUIDs).",
+                {"from": "assets/sprites/hero.png", "to": "assets/sprites/hero 1.png", "copy": True})},
+        ],
+        "checks": {"calls": [{"tool": "move_asset", "args": {"path": "assets/sprites/hero.png", "copy": True}}],
+                   "must_not_call": ["list_assets", "search_files", "import_files"], "max_calls": {"move_asset": 1}},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_asset_root_dry_run",
+        "kind": "guard",
+        "what_happened": "Changing the assets directory moves every referenced file; asked to check first, the agent asks "
+                         "set_project_settings with dry_run, then applies (project-window spec 6.9).",
+        "text_at_issue": "ProjectTools.cpp set_project_settings dry_run: 'Only report.'",
+        "source": "docs/superpowers/specs/2026-11-04-project-window-design.md (Doriax 35c8e31da)",
+        "prompt": "Make the project's assets directory a folder called content. First show me what would move, then do it.",
+        "mocks": [
+            {"tool": "set_project_settings", "args": {"dry_run": True}, "result": ok(
+                "Valid: 1 setting(s); nothing was changed (dry_run). The asset roots' change would move 2 file(s).",
+                {"settings": {"editor.assets_dir": "content"}, "relocation": {
+                    "moved": [{"from": "assets/sprites/hero.png", "to": "content/sprites/hero.png"},
+                              {"from": "assets/sounds/jump.wav", "to": "content/sounds/jump.wav"}],
+                    "rewritten": ["scenes/Main.scene", "project.yaml"], "failed_saves": [], "removed_folders": []}})},
+            {"tool": "set_project_settings", "args": {"values": {"editor.assets_dir": "content"}}, "result": ok(
+                "Set 1 setting(s). Moved 2 referenced file(s), rewrote 2 file(s), removed 2 emptied folder(s). project.yaml saved.",
+                {"settings": {"editor.assets_dir": "content"}, "relocation": {
+                    "moved": [{"from": "assets/sprites/hero.png", "to": "content/sprites/hero.png"},
+                              {"from": "assets/sounds/jump.wav", "to": "content/sounds/jump.wav"}],
+                    "rewritten": ["scenes/Main.scene", "project.yaml"], "failed_saves": [],
+                    "removed_folders": ["assets/sprites", "assets/sounds"]}})},
+        ],
+        "checks": {"order": [[{"tool": "set_project_settings", "args": {"dry_run": True}},
+                              {"tool": "set_project_settings", "args": {"values": {"editor.assets_dir": "content"}}}]],
+                   "reply_must": [r"hero\.png"], "max_calls": {"set_project_settings": 3}},
+        "max_turns": 10,
     },
     {
         "id": "guard_typing_utf16_units",

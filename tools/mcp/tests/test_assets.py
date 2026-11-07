@@ -122,3 +122,24 @@ async def test_skybox_cube_faces(ed: Editor):
     again = (await ed.call("get_entity", scene=scene, entity=sky, components=["skybox"]))["components"]["skybox"]["texture"]
     ed.check(isinstance(again, dict), f"the re-written cube map still loads: {again!r}")
     ed.check_eq(again.get("cube"), paths, "the read value round-trips")
+
+
+async def test_move_asset_copy_without_to_duplicates_beside(ed: Editor):
+    image_file(ed, "assets/dup/hero.png")
+    await ed.call("sync_files", paths=["assets/dup/hero.png"])
+    first = await ed.call("move_asset", path="assets/dup/hero.png", copy=True)
+    ed.check_eq(first["to"], "assets/dup/hero 1.png", "Unity's Duplicate name")
+    second = await ed.call("move_asset", path="assets/dup/hero.png", copy=True)
+    ed.check_eq(second["to"], "assets/dup/hero 2.png")
+    ed.check((ed.project / "assets/dup/hero 1.png").exists() and (ed.project / "assets/dup/hero 2.png").exists(), "both copies")
+    ed.check(first.get("guid") and first["guid"] != second.get("guid"), "each copy its own GUID")
+    await ed.check_error("move_asset", path="assets/dup/hero.png", contains="to is required")
+
+
+async def test_copy_into_itself_says_copy(ed: Editor):
+    image_file(ed, "assets/self/inner/a.png")
+    await ed.call("sync_files", paths=["assets/self/inner/a.png"])
+    msg = await ed.check_error("move_asset", path="assets/self", to="assets/self/inner/self", copy=True)
+    ed.check_in("Can't copy 'self' into itself", msg)
+    msg = await ed.check_error("move_asset", path="assets/self", to="assets/self/inner/self")
+    ed.check_in("Can't move 'self' into itself", msg)

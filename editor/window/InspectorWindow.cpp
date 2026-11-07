@@ -151,6 +151,9 @@
 #include <fstream>
 #include <cctype>
 #include <cfloat>
+#include "util/EntityLabels.h"
+#include "util/TextureLabels.h"
+
 #include <algorithm>
 #include <unordered_set>
 #include <memory>
@@ -1906,7 +1909,9 @@ void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, c
     ImGui::BeginDisabled(!single || readOnly);
     if (nameFocusFrames > 0 && single) ImGui::SetKeyboardFocusHere();
     if (nameOverridden) ImGui::PushFont(App::getBoldFont(), 0.0f);
-    ImGui::InputText("##input_name", nameBuffer, IM_ARRAYSIZE(nameBuffer));
+    // an object a script made without a name: "GameObject <id>" as the hint (the name stays empty)
+    const std::string nameHint = single ? entityDisplayName(std::string(), entities[0]) : std::string();
+    ImGui::InputTextWithHint("##input_name", nameHint.c_str(), nameBuffer, IM_ARRAYSIZE(nameBuffer));
     if (nameOverridden) ImGui::PopFont();
     if (ImGui::IsItemActive()) nameFocusFrames = 0;
     ImGui::EndDisabled();
@@ -4682,22 +4687,17 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         ImGui::BeginChild("textureframe", ImVec2(-texButtonsReserve, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2),
             false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
-        std::string texName = newValue.getId();
+        // the file's name, never the pool id ("ship.png", not "sprites/ship.png|alphaborder")
+        const TextureSlotLabel slotLabel = textureSlotLabel(newValue, [this](const std::string& path) {
+            return project->assetHintToProjectPath(path, AssetPathBase::Assets);
+        });
+        std::string texName = slotLabel.text;
         if (isCameraTexture) {
             texName = std::string(ICON_FA_VIDEO) + " " + CameraTextureLink::cameraName(sceneProject->scene, newValue);
         } else if (isFluidTexture) {
             texName = std::string(ICON_FA_DROPLET) + " " + FluidTextureLink::fluidName(sceneProject->scene, newValue);
         } else if (isVideoTexture) {
             texName = std::string(ICON_FA_FILM) + " " + VideoTextureLink::videoName(sceneProject->scene, newValue);
-        } else {
-            // Never show the "?svgScale=" suffix in the slot; display the clean path/name.
-            texName = TextureData::parseSvgScalePath(texName);
-            if (std::filesystem::exists(texName)) {
-                texName = std::filesystem::path(texName).filename().string();
-            }
-        }
-        if (texName.empty()) {
-            texName = "< Not set >";
         }
         // S04 R28: a reference whose asset is gone stays, shown red with its last path
         std::string missingTooltip;
@@ -4725,8 +4725,8 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         ImGui::EndChild();
         if (!missingTooltip.empty()){
             ImGui::SetItemTooltip("%s", missingTooltip.c_str());
-        } else if (!newValue.getId().empty()){
-            ImGui::SetItemTooltip("%s", newValue.getId().c_str());
+        } else if (!slotLabel.tooltip.empty()){
+            ImGui::SetItemTooltip("%s", (isCameraTexture || isFluidTexture || isVideoTexture ? newValue.getId() : slotLabel.tooltip).c_str());
         }
         ImGui::PopStyleColor();
 
@@ -4802,7 +4802,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                     continue;
 
                 hasCamera = true;
-                std::string cameraLabel = std::string(ICON_FA_VIDEO) + " " + scene->getEntityName(cameraEntity);
+                std::string cameraLabel = std::string(ICON_FA_VIDEO) + " " + entityDisplayName(scene->getEntityName(cameraEntity), cameraEntity);
                 if (ImGui::MenuItem(cameraLabel.c_str())) {
                     applyCameraTexture(cameraEntity, cpType, id, sceneProject, entities, settings.onValueChanged);
                     finishProperty = true;
@@ -4823,7 +4823,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                         ImGui::Separator();
                         separated = true;
                     }
-                    const std::string videoLabel = std::string(ICON_FA_FILM) + " Video Player: " + scene->getEntityName(videoEntity) +
+                    const std::string videoLabel = std::string(ICON_FA_FILM) + " Video Player: " + entityDisplayName(scene->getEntityName(videoEntity), videoEntity) +
                                                    "##video_" + std::to_string(videoEntity);
                     const bool linked = VideoTextureLink::parse(newValue.getId()) == videoEntity && !dif;
                     if (ImGui::MenuItem(videoLabel.c_str(), nullptr, linked)) {
@@ -4848,7 +4848,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
                 hasFluid = true;
                 const FluidSimulationComponent& fluid = fluidsArray->getComponentFromIndex(f);
-                std::string fluidLabel = std::string(ICON_FA_DROPLET) + " " + scene->getEntityName(fluidEntity) + "##fluid_" + std::to_string(fluidEntity);
+                std::string fluidLabel = std::string(ICON_FA_DROPLET) + " " + entityDisplayName(scene->getEntityName(fluidEntity), fluidEntity) + "##fluid_" + std::to_string(fluidEntity);
                 const bool linked = FluidTextureLink::parse(newValue.getId()) == fluidEntity && !dif;
                 if (ImGui::MenuItem(fluidLabel.c_str(), nullptr, linked)) {
                     applyFluidTexture(fluidEntity, cpType, id, sceneProject, entities, settings.onValueChanged);

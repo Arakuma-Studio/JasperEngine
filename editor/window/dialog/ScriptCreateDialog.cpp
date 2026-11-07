@@ -9,8 +9,8 @@
 #include "Factory.h"
 #include "Theme.h"
 #include "util/FileDialogs.h"
-#include "util/ProjectUtils.h"
 #include "util/ScriptParser.h"
+#include "util/ScriptTemplates.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
 #include "util/FileUtils.h"
@@ -110,180 +110,21 @@ void ScriptCreateDialog::writeTemplateFiles(Scene* scene, Entity entity,
                                             const fs::path& sourcePath,
                                             const std::string& classOrModuleName,
                                             CreationKind kind) {
-    bool isCppSubclass = kind == CreationKind::CPP_SUBCLASS;
-    bool isCppScriptBase = kind == CreationKind::CPP_SCRIPT_CLASS;
-    bool isLua = kind == CreationKind::LUA;
-
-    if (isCppSubclass || isCppScriptBase) {
-        fs::create_directories(headerPath.parent_path());
-
-        if (isCppSubclass) {
-            ProjectUtils::EntityClassInfo parentInfo = ProjectUtils::getEntityClassInfo(scene, entity);
-            std::string parentClass = parentInfo.name;
-            bool hasTransform = parentInfo.derivesObject;
-            bool isMesh = parentInfo.derivesMesh;
-
-            // Header
-            {
-                AtomicFileStream h(headerPath);
-                if (h) {
-                    h << "#pragma once\n\n";
-                    h << "#include \"Primitive.h\"\n";
-                    h << "#include \"" << parentClass << ".h\"\n";
-                    h << "#include \"ScriptProperty.h\"\n\n";
-                    h << "class " << classOrModuleName << " : public jasperengine::" << parentClass << " {\n";
-                    h << "public:\n";
-                    h << "    // Example properties\n";
-                    h << "    DPROPERTY(\"Is Active\")\n";
-                    h << "    bool isActive = true;\n\n";
-                    if (hasTransform){
-                        h << "    DPROPERTY(\"Speed\")\n";
-                        h << "    float speed = 5.0f;\n\n";
-                        h << "    DPROPERTY(\"Target Position\")\n";
-                        h << "    jasperengine::Vector3 targetPosition = jasperengine::Vector3(0, 0, 0);\n\n";
-                        if (isMesh){
-                            h << "    DPROPERTY(\"Mesh Color\", Color4)\n";
-                            h << "    jasperengine::Vector4 meshColor = jasperengine::Vector4(1, 1, 1, 1);\n\n";
-                        }
-                    }
-                    h << "    " << classOrModuleName << "(jasperengine::Scene* scene, jasperengine::Entity entity);\n";
-                    h << "    virtual ~" << classOrModuleName << "();\n\n";
-                    h << "    void onUpdate();\n";
-                    h << "};\n";
-                }
-            }
-
-            // Source
-            {
-                AtomicFileStream c(sourcePath);
-                if (c) {
-                    c << "#include \"" << headerPath.filename().string() << "\"\n\n";
-                    c << "using namespace jasperengine;\n\n";
-                    c << classOrModuleName << "::" << classOrModuleName << "(Scene* scene, Entity entity): " << parentClass << "(scene, entity) {\n";
-                    c << "    REGISTER_ENGINE_EVENT(onUpdate);\n\n";
-                    c << "}\n\n";
-                    c << classOrModuleName << "::~" << classOrModuleName << "() {\n";
-                    c << "\n";
-                    c << "}\n\n";
-                    c << "void " << classOrModuleName << "::onUpdate() {\n";
-                    c << "    if (!isActive) return;\n\n";
-                    if (hasTransform){
-                        c << "    // Example: move toward the target at 'speed' units per second.\n";
-                        c << "    // moveTowards() clamps the step to the remaining distance, so it\n";
-                        c << "    // never overshoots - even on the first frame where deltaTime is large.\n";
-                        c << "    float deltaTime = Engine::getDeltatime();\n";
-                        c << "    Vector3 currentPos = getPosition();\n";
-                        c << "    setPosition(currentPos.moveTowards(targetPosition, speed * deltaTime));\n";
-                        if (isMesh){
-                            c << "    setColor(meshColor);\n";
-                        }
-                    }
-                    c << "}\n\n";
-                }
-            }
-        } else if (isCppScriptBase) {
-            // Script Class
-            // Header
-            {
-                AtomicFileStream h(headerPath);
-                if (h) {
-                    h << "#pragma once\n\n";
-                    h << "#include \"ScriptBase.h\"\n";
-                    h << "#include \"Engine.h\"\n";
-                    h << "#include \"ScriptProperty.h\"\n\n";
-                    h << "class " << classOrModuleName << " : public jasperengine::ScriptBase {\n";
-                    h << "public:\n";
-                    h << "    // Example properties - you can add more!\n";
-                    h << "    DPROPERTY(\"Speed\")\n";
-                    h << "    float speed = 5.0f;\n\n";
-                    h << "    DPROPERTY(\"Is Active\")\n";
-                    h << "    bool isActive = true;\n\n";
-                    h << "    DPROPERTY(\"Counter\")\n";
-                    h << "    int counter = 0;\n\n";
-                    h << "    " << classOrModuleName << "(jasperengine::Scene* scene, jasperengine::Entity entity);\n";
-                    h << "    ~" << classOrModuleName << "();\n\n";
-                    h << "    void onUpdate();\n";
-                    h << "};\n";
-                }
-            }
-
-            // Source
-            {
-                AtomicFileStream c(sourcePath);
-                if (c) {
-                    c << "#include \"" << headerPath.filename().string() << "\"\n\n";
-                    c << "using namespace jasperengine;\n\n";
-                    c << classOrModuleName << "::" << classOrModuleName << "(Scene* scene, Entity entity): ScriptBase(scene, entity) {\n";
-                    c << "    REGISTER_ENGINE_EVENT(onUpdate);\n\n";
-                    c << "}\n\n";
-                    c << classOrModuleName << "::~" << classOrModuleName << "() {\n";
-                    c << "\n";
-                    c << "}\n\n";
-                    c << "void " << classOrModuleName << "::onUpdate() {\n";
-                    c << "    if (!isActive) return;\n\n";
-                    c << "    // Example: Increment counter every frame\n";
-                    c << "    counter++;\n";
-                    c << "    if (counter % 60 == 0) {\n";
-                    c << "        Log::print(\"Counter: %d\\n\", counter);\n";
-                    c << "    }\n";
-                    c << "}\n\n";
-                }
-            }
-        }
+    auto write = [](const fs::path& path, const std::string& text) {
+        fs::create_directories(path.parent_path());
+        AtomicFileStream out(path);
+        if (out) out << text;
+    };
+    if (kind == CreationKind::LUA) {
+        write(sourcePath, ScriptTemplates::lua(classOrModuleName));
+        return;
     }
-
-    // Lua generation
-    if (isLua) {
-        fs::create_directories(sourcePath.parent_path());
-        AtomicFileStream f(sourcePath);
-        if (f) {
-            f << "-- " << classOrModuleName << ".lua\n";
-            f << "-- Auto-generated by JasperEngine Editor\n\n";
-
-            // The module as a ScriptInstance subclass, a field per property: lua-language-server
-            // then types self (self.scene, self.entity, the properties) and reports typos
-            f << "---@class " << classOrModuleName << " : ScriptInstance\n";
-            f << "---@field speed number\n";
-            f << "---@field isActive boolean\n";
-
-            // Script table used as the instance prototype
-            f << "local " << classOrModuleName << " = {\n";
-            f << "    -- Editor-exposed properties\n";
-            f << "    properties = {\n";
-            f << "        {\n";
-            f << "            name = \"speed\",\n";
-            f << "            displayName = \"Speed\",\n";
-            f << "            type = \"float\",\n";
-            f << "            default = 5.0\n";
-            f << "        },\n";
-            f << "        {\n";
-            f << "            name = \"isActive\",\n";
-            f << "            displayName = \"Is Active\",\n";
-            f << "            type = \"bool\",\n";
-            f << "            default = true\n";
-            f << "        }\n";
-            f << "    }\n";
-            f << "}\n\n";
-
-            // init(self) – called once by the engine (Project::initializeLuaScripts)
-            f << "function " << classOrModuleName << ":init()\n";
-            f << "    -- 'self.scene' and 'self.entity' are provided by the engine\n";
-            f << "    RegisterEngineEvent(self, \"onUpdate\")\n";
-            f << "    self.counter = 0\n";
-            f << "end\n\n";
-
-            // onUpdate(self) – optional; engine may call this every frame
-            f << "function " << classOrModuleName << ":onUpdate()\n";
-            f << "    if not self.isActive then return end\n\n";
-            f << "    self.counter = self.counter + 1\n";
-            f << "    if self.counter % 60 == 0 then\n";
-            f << "        Log.print(\"[\" .. tostring(self.entity) .. \"] Counter: \" .. self.counter)\n";
-            f << "    end\n";
-            f << "end\n\n";
-
-            f << "return " << classOrModuleName << "\n";
-        }
-    }
+    const std::string headerFileName = headerPath.filename().string();
+    const ScriptTemplates::Files files = kind == CreationKind::CPP_SUBCLASS
+        ? ScriptTemplates::cppSubclass(scene, entity, classOrModuleName, headerFileName)
+        : ScriptTemplates::cppScript(classOrModuleName, headerFileName);
+    write(headerPath, files.header);
+    write(sourcePath, files.source);
 }
 
 void ScriptCreateDialog::finalizeCreation(const fs::path& headerPath,

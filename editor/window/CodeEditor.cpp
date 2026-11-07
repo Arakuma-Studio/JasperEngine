@@ -1661,6 +1661,35 @@ bool editor::CodeEditor::isFileModified(const std::string& filepath) const {
     return it != editors.end() && it->second.editor && it->second.editor->GetUndoIndex() != it->second.savedUndoIndex;
 }
 
+void editor::CodeEditor::retargetProject(const fs::path& oldProjectPath) {
+    std::vector<std::pair<std::string, std::string>> rekeys;
+    for (auto& [key, instance] : editors) {
+        // a key inside the project is relative: it names the copy now; one written absolute under
+        // the old folder is made relative to the project
+        fs::path keyPath(key);
+        if (keyPath.is_absolute()) {
+            const fs::path relative = keyPath.lexically_normal().lexically_relative(oldProjectPath.lexically_normal());
+            if (!relative.empty() && *relative.begin() != "..") rekeys.emplace_back(key, relative.generic_string());
+        }
+    }
+    for (const auto& [oldKey, newKey] : rekeys) {
+        auto it = editors.find(oldKey);
+        const bool wasFocused = lastFocused == &it->second;
+        EditorInstance instance = std::move(it->second);
+        instance.filepath = newKey;
+        editors.erase(it);
+        EditorInstance& moved = editors[newKey];
+        moved = std::move(instance);
+        if (wasFocused) lastFocused = &moved;
+    }
+    // the copies were written now: their times, so they do not read as changed outside the editor
+    for (auto& [key, instance] : editors) {
+        std::error_code ec;
+        const fs::file_time_type written = fs::last_write_time(resolveFilepath(instance.filepath), ec);
+        if (!ec) instance.lastWriteTime = written;
+    }
+}
+
 bool editor::CodeEditor::handleFileRename(const fs::path& oldPath, const fs::path& newPath) {
     std::string oldKey = toRelativePath(oldPath.string());
     std::string newKey = toRelativePath(newPath.string());

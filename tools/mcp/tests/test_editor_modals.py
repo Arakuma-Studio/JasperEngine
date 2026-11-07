@@ -51,15 +51,13 @@ SITES = {
     ("window/ProjectWindowSound.cpp", "Placeholder Sound"): "not driven: Assets > Create > Placeholder Sound... (S36) draws its own widgets; generate_sound makes the same clips for agents",
     ("window/ImporterFields.cpp", "Unapplied Import Settings##importer_prompt"): "not driven: the Model Import inspector asks it on leaving unapplied settings; set_model_import_settings applies them for agents",
     ("window/ProjectWindow.cpp", "Delete Confirmation"): "test_em2_delete_confirmation_no, test_em3_delete_confirmation_yes",
-    ("window/ProjectWindow.cpp", "Create New Directory"): "test_create_folder_prompt",
-    ("window/ProjectWindow.cpp", "Directory Already Exists"): "test_create_folder_prompt",
-    ("window/ProjectWindow.cpp", "Creation Error"): "not driven: only a failing file system opens it",
-    ("window/ProjectWindow.cpp", "Invalid Name (directory)"): "test_create_folder_prompt",
+    ("window/ProjectWindow.cpp", "New Folder / Lua Script / C++ ... / HTML Document###ProjectNewItem"): "test_create_folder_prompt",
     ("window/ProjectWindow.cpp", "Rename File"): "test_rename_prompt",
     ("window/ProjectWindow.cpp", "File Already Exists"): "test_rename_prompt",
     ("window/ProjectWindow.cpp", "Rename Error"): "not driven: only a .vat pair's rename refusal or a failing file system opens it (the .vat rename is in test_vat_inspector)",
     ("window/ProjectWindow.cpp", "Invalid Name (file)"): "test_rename_prompt",
     ("window/ProjectWindow.cpp", "POPUP"): "not driven: Create Prefab or Variant? opens on dragging an instance into the Project window; create_prefab decides for agents",
+    ("window/dialog/ProjectSettingsWindow.cpp", "Change Asset Directories"): "not driven: opens from Project Settings' OK with another Assets or Lua Directory; set_project_settings (dry_run) gives agents the same plan (test_asset_roots)",
     ("window/dialog/RagdollWizardDialog.cpp", "popupName"): "not driven: needs a skeleton; create_ragdoll does the same for agents",
     ("window/HierarchyPrefabRows.cpp", "POPUP (replace)"): "not driven: from a prefab instance's context menu; replace_prefab does the same for agents",
     ("window/HierarchyPrefabRows.cpp", "POPUP (restructure)"): "not driven: opens on dragging a child of an instance in the Hierarchy; move_entity refuses with the same message",
@@ -172,7 +170,10 @@ async def test_sites_table_is_complete(ed: Editor):
         listed[rel] = listed.get(rel, 0) + 1
     listed["window/InspectorWindow.cpp"] = INSPECTOR_BOXES
     ed.check_eq(dict(sorted(found.items())), dict(sorted(listed.items())), "every modal site is in the table, with its count")
-    ed.check_eq(sum(found.values()), 73, "the spec's 71 sites, S36's Placeholder Sound and the Model Import prompt")
+    # the spec's 71 sites, S36's Placeholder Sound and the Model Import prompt (73); the project
+    # window's folder prompt and its three nested boxes became one name dialog (errors inline), and
+    # Change Asset Directories came: 71
+    ed.check_eq(sum(found.values()), 71, "the 71 sites")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):
@@ -248,46 +249,43 @@ async def test_project_settings_merges_edits(ed: Editor):
 @clean
 async def test_error_box_is_dismissed_by_the_next_edit(ed: Editor):
     """R4: a modal whose only choice is ok is dismissed by the next edit, like an info alert"""
-    await ed.call("write_file", path="scripts/Box.lua", content="return {}\n")
-    await ed.call("run_command", id="assets.createFolder")
-    d = await frame_dialog(ed, "Create New Directory")
+    helper = ui(ed)
+    await open_rename(ed, helper)
     # no name: Invalid Name on top
-    await ed.call_raw("respond_dialog", {"choice": "yes", "values": {"name": ""}})
+    await ed.call_raw("respond_dialog", {"choice": "ok", "values": {"name": ""}})
     box = await frame_dialog(ed, "Invalid Name")
     ed.check_eq(box.get("choices"), ["ok"], "an error box")
     made = await ed.call("create_entity", name="AfterError", type="cube")
     got = await ed.call("get_entity", entity="AfterError", detail="summary")
     ed.check_eq(got["id"], made["entity"]["id"], "the next edit ran")
     await ui_input.frames(ed)
-    ed.check_eq((await dialog(ed))["title"], "Create New Directory", "the edit dismissed only the error box")
+    ed.check_eq((await dialog(ed))["title"], "Rename File", "the edit dismissed only the error box")
     await ed.call("respond_dialog", choice="cancel")
     ed.check_eq(await dialog(ed), None, "closed")
     await ed.call("delete_entities", entity=made["entity"]["id"])
+    (ed.project / "RenameMe.lua").unlink()
+    (ed.project / "Taken.lua").unlink()
 
 
 @clean
 async def test_create_folder_prompt(ed: Editor):
-    """R3: a name prompt with its nested error boxes: the refusal comes back in the reply, the box is
-    the one answered, and the name then completes it"""
+    """R3: a name prompt whose refusal stays in it (EditorModal::error): the reply says why, the prompt
+    stays open, and the name then completes it"""
     await ed.call("write_file", path="scripts/Keep.lua", content="return {}\n")
     await ed.call("focus_window", window="project")
-    d = await open_modal(ed, "assets.createFolder", "Create New Directory")
+    d = await open_modal(ed, "assets.createFolder", "New Folder")
     ed.check_eq(fields(d)["name"]["type"], "text", f"its name field: {d}")
     ed.check_in("yes", d["choices"], "Create")
 
-    # a folder that exists: Directory Already Exists on top, reported as the refusal
+    # a folder that exists: the refusal comes back, the prompt stays
     existing = next(p.name for p in ed.project.iterdir() if p.is_dir() and not p.name.startswith("."))
     r = await ed.call_raw("respond_dialog", {"choice": "yes", "values": {"name": existing}})
-    ed.check(r.is_error and "Directory Already Exists" in r.text, f"the box comes back as the refusal: {r.text[:300]}")
-    box = await dialog(ed)
-    ed.check_eq(box["title"], "Directory Already Exists", "the top-most is reported")
-    ed.check_eq(box["choices"], ["ok"], "and answered")
-    await ed.call("respond_dialog", choice="ok")
+    ed.check(r.is_error and "already exists" in r.text, f"the refusal comes back: {r.text[:300]}")
+    ed.check_eq((await dialog(ed))["title"], "New Folder", "the prompt stays open")
 
-    # the empty name: Invalid Name
+    # the empty name
     r = await ed.call_raw("respond_dialog", {"choice": "yes", "values": {"name": ""}})
-    ed.check(r.is_error and "valid directory name" in r.text, f"{r.text[:300]}")
-    await ed.call("respond_dialog", choice="ok")
+    ed.check(r.is_error and "Enter a name" in r.text, f"{r.text[:300]}")
 
     # unknown field, wrong kind of value: refused before anything applies
     r = await ed.call_raw("respond_dialog", {"values": {"nope": "x"}})

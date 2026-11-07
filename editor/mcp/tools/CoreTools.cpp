@@ -691,7 +691,8 @@ void reportEditorStatus(const CallPtr& call) {
         }
         ui["project_window"] = {{"drawn", state.drawn}, {"directory", state.directory}, {"search", state.search},
                                 {"selected", state.selected}, {"search_box", rectJson(state.searchBox)},
-                                {"tree", tree}, {"entries", entries}, {"context_menu", menu}};
+                                {"tree", tree}, {"entries", entries}, {"context_menu", menu},
+                                {"clipboard", {{"files", state.clipboard}, {"cut", state.clipboardCut}}}};
     }
     if (AssetReferencesWindow* references = app.getAssetReferencesWindow()) {
         Json referrers = Json::array();

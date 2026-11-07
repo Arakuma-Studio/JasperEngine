@@ -966,6 +966,10 @@ void setProjectSettingsTool(const CallPtr& call) {
     }
     const Json& values = args["values"];
     if (refuseDuringBuild(call)) return;
+    const bool dryRun = args.value("dry_run", false);
+    // what a setting did beyond its value (the asset roots' relocation)
+    Json report = Json::object();
+    settings.report = &report;
 
     // Validate everything first so a bad value changes nothing
     std::vector<std::pair<const Setting*, Json>> changes;
@@ -988,10 +992,22 @@ void setProjectSettingsTool(const CallPtr& call) {
                 for (const std::string& v : s->values) hint += " " + v;
                 hint += ".";
             }
-            call->fail(s->key + ": " + error + "." + hint + " Nothing was changed.");
+            call->fail(s->key + ": " + error + "." + hint + " Nothing was changed.", report);
             return;
         }
         changes.push_back({s, it.value()});
+    }
+    if (dryRun) {
+        Json data = report;
+        Json wouldSet = Json::object();
+        for (const auto& [setting, value] : changes) wouldSet[setting->key] = value;
+        data["settings"] = wouldSet;
+        std::string text = "Valid: " + std::to_string(changes.size()) + " setting(s); nothing was changed (dry_run).";
+        if (data.contains("relocation")) {
+            text += " The asset roots' change would move " + std::to_string(data["relocation"]["moved"].size()) + " file(s).";
+        }
+        call->ok(text, data);
+        return;
     }
 
     // Apply settings whose application depends on others (asset roots move files) last
@@ -999,12 +1015,14 @@ void setProjectSettingsTool(const CallPtr& call) {
         return change.first->key != "editor.assets_dir" && change.first->key != "scripting.lua_dir";
     });
 
+    // the plans the validation reported give way to what the change did
+    report = Json::object();
     Json applied = Json::object();
     bool projectChanged = false;
     for (const auto& [setting, value] : changes) {
         std::string error;
         if (!setting->set(settings, value, true, error)) {
-            call->fail(setting->key + ": " + error + ". Applied before it: " + applied.dump() + ".");
+            call->fail(setting->key + ": " + error + ". Applied before it: " + applied.dump() + ".", report);
             return;
         }
         applied[setting->key] = setting->get(settings);
@@ -1012,6 +1030,17 @@ void setProjectSettingsTool(const CallPtr& call) {
     }
 
     std::string text = "Set " + std::to_string(applied.size()) + " setting(s).";
+    if (report.contains("relocation")) {
+        const Json& relocation = report["relocation"];
+        text += " Moved " + std::to_string(relocation["moved"].size()) + " referenced file(s), rewrote " +
+                std::to_string(relocation["rewritten"].size()) + " file(s), removed " + std::to_string(relocation["removed_folders"].size()) +
+                " emptied folder(s).";
+        if (!relocation["failed_saves"].empty()) {
+            text += " Not saved, they keep the old paths on disk: " + relocation["failed_saves"].dump() +
+                    ". Fix what blocked them (permissions, a full disk), then save_project saves the scenes among them; a prefab "
+                    "or material there still finds its textures by GUID.";
+        }
+    }
     if (projectChanged) {
         // the standalone build's main.cpp bakes these settings in
         project->markGeneratedSourcesDirty();
@@ -1024,7 +1053,9 @@ void setProjectSettingsTool(const CallPtr& call) {
             text += " project.yaml saved.";
         }
     }
-    call->ok(text, Json{{"settings", applied}});
+    Json data = report;
+    data["settings"] = applied;
+    call->ok(text, data);
 }
 
 // ------------------------------------------------------------------ edit_build_scenes
@@ -1504,7 +1535,8 @@ void registerProjectTools(McpRegistry& registry) {
             "saved to project.yaml at once, NOT undoable. Lists are replaced; tags_and_layers.layers merges "
             "by index. Example: {\"values\": {\"player.window_width\": 800}}.";
         tool.inputSchema = object({
-            {"values", anyObject("")}
+            {"values", anyObject("")},
+            {"dry_run", withDefault(boolean("Only report."), false)}
         }, {"values"});
         tool.annotations.destructive = true;
         tool.annotations.idempotent = true;

@@ -637,6 +637,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("edit.pause", "Pause", mainToolbar->isPaused()),
         catalogItem("edit.step"),
         catalogItem("edit.stop"),
+        catalogItem("playmode.maximizeOnPlay", "Maximize On Play", gameWindow->isMaximizeOnPlay()),
         menuSeparator(),
         catalogItem("edit.projectSettings"),
         catalogItem("edit.clearUserSettings"),
@@ -644,37 +645,25 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("edit.shortcuts")
     }));
 
-    std::vector<PlatformMenuItem> assetsCreateItems = {
-        catalogItem("assets.createFolder", "Folder"),
-        menuSeparator(),
-        catalogItem("assets.createLuaScript", "Lua Script"),
-        catalogItem("assets.createCppScript", "C++ Script"),
-        menuSeparator(),
-        catalogItem("assets.createHtmlDocument", "HTML Document"),
-        menuSeparator(),
-        catalogItem("assets.createAudioMixer", "Audio Mixer"),
-        catalogItem("assets.createPlaceholderSound", "Placeholder Sound..."),
-        menuSeparator(),
-        catalogItem("assets.createPoseAnimation", "Pose Animation"),
-        menuSeparator(),
-        catalogItem("assets.createNativePlugin", "Native Plugin...")
-    };
-    // Animation Clip: once the clip asset task set its hook
-    if (animationClipAppHooks().createClipAsset) {
-        assetsCreateItems.push_back(catalogItem("assets.createAnimationClip", "Animation Clip"));
+    // the one Create list (AssetCreateMenu: the Project window shows the same), then what only
+    // the main menu makes: a new scene, a native plugin
+    std::vector<PlatformMenuItem> assetsCreateItems;
+    for (const AssetCreateItem& item : assetCreateItems()) {
+        // Animation Clip: once the clip asset task set its hook
+        if (item.kind == AssetCreateKind::AnimationClip && !animationClipAppHooks().createClipAsset) continue;
+        if (item.separatorBefore) assetsCreateItems.push_back(menuSeparator());
+        assetsCreateItems.push_back(catalogItem(item.commandId, item.label));
     }
-    assetsCreateItems.push_back(catalogItem("assets.createAnimatorController", "Animator Controller"));
-    assetsCreateItems.push_back(catalogItem("assets.createAvatarMask", "Avatar Mask"));
-    assetsCreateItems.push_back(catalogItem("assets.createAnimationMontage", "Animation Montage"));
-    assetsCreateItems.push_back(catalogItem("assets.createShakePreset", "Shake Preset"));
     assetsCreateItems.push_back(menuSeparator());
     assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
+    assetsCreateItems.push_back(catalogItem("assets.createNativePlugin", "Native Plugin..."));
 
     menu.menus.push_back(menuSubmenu("Assets", {
         menuSubmenu("Create", assetsCreateItems),
         catalogItem("assets.showInFileManager"),
         catalogItem("assets.open"),
         catalogItem("assets.rename", "Rename"),
+        catalogItem("assets.duplicate", "Duplicate"),
         catalogItem("assets.delete", "Delete"),
         menuSeparator(),
         catalogItem("assets.import"),
@@ -1190,41 +1179,60 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 inspectorWindow->requestAddComponent();
             break;
         }
+        // Assets > Create: in the folder the Project window shows (the one Create list, AssetCreateMenu)
         case AppMenuCommand::AssetsCreateFolder:
-            projectWindow->assetsCreateFolder();
+            projectWindow->createAsset(AssetCreateKind::Folder, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateLuaScript:
-            projectWindow->assetsCreateScript(true);
+            projectWindow->createAsset(AssetCreateKind::LuaScript, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateCppScript:
-            projectWindow->assetsCreateScript(false);
+            projectWindow->createAsset(AssetCreateKind::CppScript, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateCppSource:
+            projectWindow->createAsset(AssetCreateKind::CppSource, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateCppHeader:
+            projectWindow->createAsset(AssetCreateKind::CppHeader, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateHtmlDocument:
-            projectWindow->assetsCreateHtmlDocument();
+            projectWindow->createAsset(AssetCreateKind::HtmlDocument, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsImportSoundEssentials:
             projectWindow->assetsImportSoundEssentials();
             break;
         case AppMenuCommand::AssetsCreatePlaceholderSound:
-            projectWindow->assetsCreatePlaceholderSound();
+            projectWindow->createAsset(AssetCreateKind::PlaceholderSound, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsReanalyzeAudio:
             projectWindow->assetsReanalyzeAudio(projectWindow->getSelectedFiles());
             break;
         case AppMenuCommand::AssetsCreateAudioMixer:
-            projectWindow->assetsCreateAudioMixer();
+            projectWindow->createAsset(AssetCreateKind::AudioMixer, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateSoundEvent:
-            projectWindow->assetsCreateSoundEvent();
+            projectWindow->createAsset(AssetCreateKind::SoundEvent, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateSoundEventFromClips:
             projectWindow->assetsCreateSoundEventFromClips();
             break;
         case AppMenuCommand::AssetsCreatePoseAnimation:
-            projectWindow->assetsCreatePoseAnimation();
+            projectWindow->createAsset(AssetCreateKind::PoseAnimation, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateShakePreset:
-            projectWindow->assetsCreateShakePreset();
+            projectWindow->createAsset(AssetCreateKind::ShakePreset, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreatePhysicsMaterial:
+            projectWindow->createAsset(AssetCreateKind::PhysicsMaterial, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreatePhysicsMaterial2D:
+            projectWindow->createAsset(AssetCreateKind::PhysicsMaterial2D, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsDuplicate:
+            projectWindow->duplicateSelection();
+            break;
+        case AppMenuCommand::ToggleMaximizeOnPlay:
+            gameWindow->toggleMaximizeOnPlay();
             break;
         case AppMenuCommand::AddCameraShakerToMainCamera: {
             SceneProject* scene = project.getSelectedScene();
@@ -1243,17 +1251,16 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreateAnimationClip:
             if (animationClipAppHooks().createClipAsset) {
                 animationClipAppHooks().createClipAsset(&project);
-                projectWindow->refreshCurrentDirectory();
             }
             break;
         case AppMenuCommand::AssetsCreateAnimatorController:
-            projectWindow->assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Controller);
+            projectWindow->createAsset(AssetCreateKind::AnimatorController, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateAvatarMask:
-            projectWindow->assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Mask);
+            projectWindow->createAsset(AssetCreateKind::AvatarMask, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateAnimationMontage:
-            projectWindow->assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Montage);
+            projectWindow->createAsset(AssetCreateKind::AnimationMontage, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsShowInFileManager:
             projectWindow->assetsShowInFileManager();

@@ -62,6 +62,24 @@ namespace {
 namespace fs = std::filesystem;
 using mcp::Json;
 
+// An asset-root change for set_project_settings (project-relative paths)
+mcp::Json assetRootChangeJson(Project* p, const AssetRootChange& change) {
+    auto rel = [p](const fs::path& path) { return FileUtils::pathToGenericUtf8(p->normalizeToProjectRelative(path)); };
+    auto list = [&](const std::vector<fs::path>& paths) {
+        mcp::Json out = mcp::Json::array();
+        for (const fs::path& path : paths) out.push_back(rel(path));
+        return out;
+    };
+    mcp::Json moved = mcp::Json::array();
+    for (const AssetRootChange::Move& move : change.moves) moved.push_back({{"from", rel(move.from)}, {"to", rel(move.to)}});
+    mcp::Json out = {{"moved", moved}, {"already_there", list(change.alreadyThere)}, {"kept_outside", list(change.keptOutside)},
+                     {"rewritten", list(change.rewritten)}, {"saved_scenes_with_edits", list(change.savedScenesWithEdits)},
+                     {"removed_folders", list(change.removedFolders)}, {"failed_saves", list(change.failedSaves)},
+                     {"text_references_broken", change.textReferencesBroken}};
+    if (!change.refusal().empty()) out["refused"] = change.refusal();
+    return out;
+}
+
 std::string lowerText(std::string text) {
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return text;
@@ -2655,11 +2673,31 @@ std::vector<Setting> mcpSettingsTable() {
                     error = "cannot change asset roots during Play";
                     return false;
                 }
-                if (apply) {
-                    std::error_code ec;
-                    FileUtils::createDirectories(p->getProjectPath() / dir, ec);
-                    if (lua) p->changeAssetRoots(p->getAssetsDir(), dir);
-                    else p->changeAssetRoots(dir, p->getLuaDir());
+                const fs::path newAssets = lua ? p->getAssetsDir() : dir;
+                const fs::path newLua = lua ? dir : p->getLuaDir();
+                // the preflight while validating (nothing is changed when it refuses), the move when applying;
+                // an agent's unsaved Code Editor buffers of moving files refuse instead of being saved
+                const AssetRootChange change = apply ? p->changeAssetRoots(newAssets, newLua, true)
+                                                     : p->planAssetRootChange(newAssets, newLua, true);
+                if (ctx.report && (change.changed || !change.moves.empty() || !change.ok())) {
+                    // one call moving both roots reports both relocations, in one
+                    Json relocation = assetRootChangeJson(p, change);
+                    Json& reported = (*ctx.report)["relocation"];
+                    if (reported.is_object()) {
+                        for (auto it = relocation.begin(); it != relocation.end(); ++it) {
+                            if (it.value().is_array() && reported.contains(it.key()) && reported[it.key()].is_array()) {
+                                for (const Json& item : it.value()) reported[it.key()].push_back(item);
+                            } else if (!reported.contains(it.key())) {
+                                reported[it.key()] = it.value();
+                            }
+                        }
+                    } else {
+                        reported = std::move(relocation);
+                    }
+                }
+                if (!change.ok()) {
+                    error = "asset directories not changed: " + change.refusal();
+                    return false;
                 }
                 return true;
             };
