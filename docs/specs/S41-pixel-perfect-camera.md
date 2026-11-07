@@ -781,7 +781,7 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
     post-colour vectors before them, unread): every other program's frame block, and the bytes
     uploaded to it, are what they were. `pixelSnap` holds half the target (`xy`), `flipY` and k;
     `pixelSnapOffset` where NDC 0 lands (`xy`), the on-grid view flag and the bias. The editor's
-    shader cache moves to `v49`.
+    shader cache moves to `v52`.
 24. **Shadow maps and uploads.** A depth draw into a shadow map never snaps (its frame block holds
     the camera's grid; `RenderSystem::depthSnapMode`). A block the engine extends with
     `pixelSnapDraw` is uploaded at most at the shader's reflected size (a fork without the member).
