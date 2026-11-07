@@ -60,7 +60,9 @@ build_ndk() {  # abi extra-flags extra-cmake...
     local abi="$1" flags="$2"
     shift 2
     local dir="$OUT/$abi"
-    "$CMAKE" -S "$SOURCE" -B "$dir" -G Ninja --fresh \
+    # a clean tree each run (the SDK's CMake 3.22 has no --fresh)
+    rm -rf "$dir"
+    "$CMAKE" -S "$SOURCE" -B "$dir" -G Ninja \
         -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DANDROID_ABI="$abi" -DANDROID_PLATFORM=android-21 -DANDROID_STL=c++_static \
         -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG $flags" \
         -DJASPERENGINE_NOISE_STATIC=ON "$@" >"$dir.configure.log" 2>&1 \
