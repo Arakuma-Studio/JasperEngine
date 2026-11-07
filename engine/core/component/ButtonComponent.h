@@ -54,7 +54,7 @@ namespace jasperengine{
         FunctionSubscribe<void()> onClick;
 
         // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
-        template<typename F> void forEachEvent(F&& f) { f(onPress); f(onRelease); }
+        template<typename F> void forEachEvent(F&& f) { f(onPress); f(onRelease); f(onClick); }
 
         bool pressed = false;
         bool hovered = false;
