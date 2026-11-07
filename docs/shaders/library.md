@@ -113,6 +113,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Panner](#librarypanner) `library:panner` | mesh | Effects | none | opaque |
 | [Panoramic Sky](#librarypanoramic_sky) `library:panoramic_sky` | sky | Sky | none | - |
 | [Particle](#libraryparticle) `library:particle` | points | Particles | none | alpha (Auto) |
+| [Particles](#libraryparticles) `library:particles` | particles | Particles | none | alpha (Auto) |
 | [Pixelate](#librarypixelate) `library:pixelate` | postprocess | Post-processing | none | - |
 | [Posterize](#libraryposterize) `library:posterize` | postprocess | Post-processing | none | - |
 | [Procedural Sky](#libraryprocedural_sky) `library:procedural_sky` | sky | Sky | none | - |
@@ -162,7 +163,7 @@ Base colour times base map, optionally times vertex colour, without lighting; op
 
 | Texture | Default | Description |
 |---|---|---|
-| `u_baseTexture` | white | Base map |
+| `u_baseTexture` | white; built-in particle with `PARTICLE_TEXTURE` | Base map |
 
 | Feature | Default | Description |
 |---|---|---|
@@ -171,6 +172,7 @@ Base colour times base map, optionally times vertex colour, without lighting; op
 | `SOFT` | off | Soft intersections (fade where it meets geometry; reads the scene depth) |
 | `NEAR_FADE` | off | Camera near fade |
 | `STOCHASTIC` | off | Stochastic Tiling |
+| `PARTICLE_TEXTURE` | off | Built-in soft particle texture (when no base map is set) |
 
 ## Lit
 
@@ -1136,6 +1138,41 @@ Point-sprite particles: texture (sprite-sheet rect per point) times the particle
 | `EROSION` | off | Erosion (the particle's alpha dissolves it through a noise texture) |
 | `SOFT` | off | Soft particles (fade where they meet geometry; reads the scene depth) |
 | `NEAR_FADE` | off | Camera near fade |
+
+<a id="libraryparticles"></a>
+### Particles (`library:particles`)
+
+The particle system shader: the particle texture (sprite-sheet frame, blended into the next with Frame Blending) times the particle colour, lit as the Renderer asks (unlit, per-vertex lit or six-way smoke lighting), plus its emission; with alpha-as-light glow, noise erosion over the particle's life, soft intersections, a camera near fade and distortion. Draws in the Renderer's blend mode; no depth write. Soft particles read the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees them (none when SSAO or SSR already made one). Distortion reads the scene colour, which holds the opaque objects and the sky only (transparent objects behind a distorting particle are hidden where it is whole): on mobile a copy of the screen and a split of the render pass. Where a camera has no scene colour (a reflection probe's faces) a distorting particle draws as it would without the feature.
+
+- **Type**: particles; category Particles.
+- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one) and the scene colour (a copy of the opaque scene, at the scene's Scene Color Scale), in the camera passes that draw it.
+- **Default state**: depth write off.
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `tint` | colour | (1, 1, 1, 1) | Tint |
+| `glowColor` | HDR colour | (2, 1.3, 0.6, 1) | Glow colour (HDR) (with `GLOW`) |
+| `glowScale` | range 0 to 4 | 1 | Glow alpha scale (with `GLOW`) |
+| `glowPower` | range 0.1 to 8 | 3 | Glow falloff power (with `GLOW`) |
+| `erosionSoftness` | range 0.01 to 0.5 | 0.08 | Erosion edge softness (with `EROSION`) |
+| `erosionTiling` | float | 1 | Erosion noise tiling (per particle) (with `EROSION`) |
+| `softness` | float | 0.5 | Softness (world units) (with `SOFT`) |
+| `nearFadeStart` | float | 0.3 | Near fade: invisible at (world units from the camera) (with `NEAR_FADE`) |
+| `nearFadeEnd` | float | 1.5 | Near fade: whole from (world units from the camera) (with `NEAR_FADE`) |
+| `distortionStrength` | range 0 to 0.2 | 0.03 | Distortion (screen UV) (with `DISTORTION`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_erosionTexture` | gray | Erosion noise (red channel) (with `EROSION`) |
+| `u_distortionTexture` | gray | Distortion map (red: x, green: y; 0.5 shifts nothing) (with `DISTORTION`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `GLOW` | off | Glow (alpha as light) |
+| `EROSION` | off | Erosion (the particle's alpha dissolves it through a noise texture) |
+| `SOFT` | off | Soft particles (fade where they meet geometry; reads the scene depth) |
+| `NEAR_FADE` | off | Camera near fade |
+| `DISTORTION` | off | Distortion (bends the scene behind the particle through a distortion map; reads the scene colour) |
 
 ## Sky
 
