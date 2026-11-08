@@ -63,6 +63,18 @@ def check_of(result: dict, check_id: str) -> dict:
     raise harness.TestFailure(f"no check {check_id} in {[c['id'] for c in result['checks']]}")
 
 
+def recipe_of(png: bytes) -> dict:
+    """a baked PNG's jasper.procmat recipe (an uncompressed iTXt chunk)"""
+    at = 8
+    while at + 8 <= len(png):
+        length = int.from_bytes(png[at:at + 4], "big")
+        data = png[at + 8:at + 8 + length]
+        if png[at + 4:at + 8] == b"iTXt" and data.startswith(b"jasper.procmat\x00"):
+            return json.loads(data[len(b"jasper.procmat") + 5:].decode())
+        at += 12 + length
+    raise harness.TestFailure("no jasper.procmat chunk")
+
+
 def chunks(png: bytes) -> list[bytes]:
     """the chunk keywords of a PNG's text chunks"""
     out, at = [], 8
@@ -282,11 +294,17 @@ async def test_the_cli_bake(ed: Editor):
         ok = subprocess.run(base + [str(copy / GRAPH_PATH), "--size", "64"], capture_output=True, text=True, timeout=1200)
         ed.check_eq(ok.returncode, 0, (ok.stdout + ok.stderr)[-3000:])
         ed.check((copy / FOLDER / "stone_orm.png").exists() and (copy / FOLDER / "stone.material").exists(), "the files")
-        # no editor comes up within the spawn bound: its own code, where s90-tiers bakes on the CPU instead
-        env = dict(os.environ, JASPER_CALL_SPAWN_TIMEOUT="0.001")
-        none = subprocess.run(base + [str(copy / GRAPH_PATH), "--size", "64"], capture_output=True, text=True, timeout=600, env=env)
-        ed.check_eq(none.returncode, 5, (none.stdout + none.stderr)[-2000:])
-        ed.check_in("no editor could start", none.stderr)
+        # AC5: no display and nothing on PATH, and no editor within the spawn bound (the editor's PATH bootstrap
+        # would find Xvfb in /usr/bin again): the bake runs in this process on tier 3
+        shutil.rmtree(copy / FOLDER)
+        env = {k: v for k, v in os.environ.items() if k not in ("DISPLAY", "WAYLAND_DISPLAY")}
+        env.update(PATH=str(Path(scratch) / "empty-path"), JASPER_CALL_SPAWN_TIMEOUT="0.001")
+        cpu = subprocess.run(base + [str(copy / GRAPH_PATH), "--size", "64"], capture_output=True, text=True, timeout=1200, env=env)
+        ed.check_eq(cpu.returncode, 0, (cpu.stdout + cpu.stderr)[-3000:])
+        ed.check_in("baking on the cpu tier", cpu.stderr)
+        recipe = recipe_of((copy / FOLDER / "stone_orm.png").read_bytes())
+        ed.check_eq(recipe["tier"], "cpu", f"the recipe says where it was baked: {recipe}")
+        ed.check((copy / FOLDER / "stone.material").exists(), "and the .material")
         sized = subprocess.run(base + [str(copy / GRAPH_PATH), "--size", "100"], capture_output=True, text=True, timeout=600)
         ed.check_eq(sized.returncode, 2, f"a size that is no power of two is a usage error: {sized.stderr[-500:]}")
         bad = stone_graph()
@@ -310,6 +328,22 @@ async def test_a_baked_png_ships_without_its_recipe(ed: Editor):
     ed.check(shipped, f"the baked base colour ships, as its PNG or a cook of it: {[str(p) for p in files][:30]}")
     carrying = [str(p) for p in files if b"jasper.procmat" in p.read_bytes()]
     ed.check(not carrying, f"no recipe ships: {carrying}")
+
+
+async def test_a_device_failure_continues_on_the_cpu_with_a_warning(ed: Editor):
+    """AC4, MCP half: the headless editor is the software tier; a pass that fails to compile on it continues on the
+    CPU, the result names the cpu tier and warns which pass failed on which device"""
+    data = await ed.call("preview_procedural_material", path=GRAPH_PATH, size=64, sheet=[])
+    ed.check_eq(data["device"]["tier"], "software", f"llvmpipe and lavapipe are software: {data['device']}")
+    async with Editor(create=True, name="Procmat device failure", env={"JASPER_TEST_PROCMAT_DEVICE_FAIL": "compile:normal"}) as failing:
+        write_graph(failing, stone_graph())
+        await failing.call("sync_files")
+        r = await failing.call_raw("preview_procedural_material", {"path": GRAPH_PATH, "size": 64, "sheet": []})
+        failing.check(not r.is_error, r.text[:1000])
+        failing.check_eq(r.structured["device"]["tier"], "cpu", f"it continued on the CPU: {r.structured['device']}")
+        warnings = " ".join(r.structured.get("warnings", []))
+        failing.check("(normal) failed on" in warnings and "llvmpipe" in warnings.lower(), f"the warning names the pass and the device: {warnings}")
+        failing.check_in("Warning: ", r.text)
 
 
 async def test_a_tileability_fail_names_its_node_and_edit(ed: Editor):

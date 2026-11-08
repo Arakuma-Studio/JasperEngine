@@ -82,6 +82,7 @@ tier change, or a seed the bake was given, does not make a bake stale. Nothing r
 - `jasperengine-editor check --project <dir> --materials`: graph problems (errors) and stale bakes (warnings),
   compiler style.
 - `jasperengine-editor procedural-material bake <file.procmat> [--size n] [--seed n] [--outputs a,b] [--output dir]`:
-  the bake through the editor that has the project open, else a one-shot headless one. Exit codes: 0 baked; 1 the
-  bake failed; 2 usage (an unknown flag, a size that is no power of two); 3 the connection was lost, timed out or
-  interrupted, or another editor holds the project; 4 internal; 5 no editor could start (nothing ran).
+  the bake through the editor that has the project open, else a one-shot headless one, else (no display, no Xvfb)
+  in-process on the CPU tier. Exit codes: 0 baked; 1 the bake failed; 2 usage (an unknown flag, a size that is no
+  power of two); 3 the connection was lost, timed out or interrupted, or another editor holds the project;
+  4 internal.

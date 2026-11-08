@@ -653,9 +653,8 @@ preview pane and Problems strip are a later branch: they call `ProceduralChecks:
   to hash. AC10's "editing an input image" is tested on the nearest input that exists, a node's source
   (`ProceduralBake.TheHashFollowsInputsAndNothingElse`). The graph is found by its in-file GUID, so a moved
   graph stays fresh. The badge is the Project window's "generated" badge, yellow when stale.
-- **R8, until s90-tiers.** The tier a result names comes from the device's name only (llvmpipe, lavapipe,
-  softpipe, SwiftShader and the Windows and Apple software renderers are `software`): `ProceduralRun::editorTier`.
-  Vulkan's `deviceType` and the CPU tier are s90-tiers'.
+- **R8, R9.** `ProceduralRun` evaluates through s90-tiers' `makeEditorEvaluator()`; a result's `device` is the
+  evaluator's after the run (`cpu` after a device failure), and the fallback's warning is in `warnings` and the text.
 - **R33.** `search` matches words in a type's id, display name, category and aliases (`NodeTypeDesc::aliases`). A kind of more than 40 types lists its categories without a filter.
   An unknown id in `ids` is an error that names `search`.
 - **R34.** No `as` parameter: an image's role is its import type (normal, single channel as a height, else
@@ -691,9 +690,12 @@ preview pane and Problems strip are a later branch: they call `ProceduralChecks:
   as `isPending` does while a variant compiles.
 - **R39.** `procedural-material bake` runs `bake_procedural_material` through `call` (the editor that has the
   project open, else a one-shot headless one): exit 0 baked, 1 failed, 2 usage, 3 connection lost, timed out or
-  interrupted, or the project held by another editor, 4 internal, 5 no editor could start (the spawned editor
-  stopped, or did not open the project within the spawn bound, before any tool ran: `CallCommand::spawnFailed`).
-  The in-process CPU tier is s90-tiers': it takes exit 5's case only, never 3's, after which files may exist.
+  interrupted, or the project held by another editor, 4 internal. When no editor could start (the spawned editor
+  stopped, or did not open the project within the spawn bound, before any tool ran: `CallCommand::spawnFailed`),
+  it bakes in this process on tier 3 (`CommandLine::bakeProceduralMaterialOnCpu`, s90-tiers' `evaluateOnCpu`), with
+  no window: never after a 3, when the editor may have written files. AC5's test forces the spawn failure through
+  the spawn bound with no `DISPLAY` and an empty `PATH`: the editor's own PATH bootstrap adds `/usr/bin` back, so a
+  missing Xvfb cannot be arranged in the image.
   `check --materials` (also in `--all`, not in the default set) needs no engine or device: it plans each graph and reads the PNGs' recipes.
 - **AC12.** The misspelled parameter and the new ids are tested on this kind in `test_graph.py`; "a positionless
   graph opens laid out" is s90-canvas's (R30), not on this branch's base.

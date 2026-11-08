@@ -67,6 +67,9 @@ namespace jasperengine::editor::procmat {
     // Variations write it): what a bake and a preview use when not told another; 0 when it has none
     uint32_t graphSeed(const graph::Graph& graph);
 
+    // A .procmat read for an evaluation: of its kind and without error issues (each listed with its fix)
+    bool readGraphForBake(const std::filesystem::path& file, const std::string& rel, graph::Graph& graph, std::string& error);
+
     // The names of materialBakeRoots, in R14's order: what a bake of the whole graph writes
     std::vector<std::string> graphBakeOutputs(const graph::Graph& graph);
 

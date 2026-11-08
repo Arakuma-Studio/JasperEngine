@@ -4,6 +4,7 @@
 #include "ProceduralMaterialCommand.h"
 
 #include "CallCommand.h"
+#include "CommandLine.h"
 
 #include "json.hpp"
 
@@ -19,11 +20,10 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    // `call`'s codes, and one of this command's own: s90-tiers' in-process CPU bake takes EXIT_NO_EDITOR's case only,
-    // never a timeout, an interrupt or a lost connection, after which the editor may have written the files
+    // `call`'s codes. Only "no editor could start" bakes in this process on the CPU tier, never a timeout, an
+    // interrupt or a lost connection, after which the editor may have written the files
     constexpr int EXIT_USAGE = 2;
     constexpr int EXIT_CONNECTION = 3;
-    constexpr int EXIT_NO_EDITOR = 5;
 
     void printUsage(const std::string& exe) {
         std::cout
@@ -40,9 +40,10 @@ namespace {
             << "  --overwrite           Replace PNGs that are not this graph's.\n"
             << "  --timeout <seconds>   How long the bake may take (default 600).\n"
             << "  -h, --help            Show this help.\n\n"
+            << "When no editor can start (no display, no Xvfb), it bakes in this process on the CPU tier (slower).\n\n"
             << "Exit codes: 0 baked; 1 the bake failed (a bad graph, a failed evaluation, fail_on reached); 2 usage;\n"
             << "3 the editor's connection was lost, timed out or interrupted (Ctrl-C), or another editor holds the project;\n"
-            << "4 internal error; 5 no editor could start (nothing ran).\n";
+            << "4 internal error.\n";
     }
 
     // the directory holding project.yaml at or above the file
@@ -149,9 +150,7 @@ int ProceduralMaterialCommand::run(int argc, char** argv, const char* executable
     for (std::string& part : call) callArgv.push_back(part.data());
     callArgv.push_back(nullptr);
     const int code = CallCommand::run((int)call.size(), callArgv.data(), executableName);
-    if (code == EXIT_CONNECTION && CallCommand::spawnFailed()) {
-        std::cerr << exe << " procedural-material bake: no editor could start on " << project.string() << "; nothing was baked\n";
-        return EXIT_NO_EDITOR;
-    }
+    // R39: no editor at all (nothing ran in one): the same bake here, on tier 3, with no window
+    if (code == EXIT_CONNECTION && CallCommand::spawnFailed()) return jasperengine::editor::CommandLine::bakeProceduralMaterialOnCpu(argc, argv, project, tool, exe);
     return code;
 }

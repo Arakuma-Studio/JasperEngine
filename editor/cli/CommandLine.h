@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "json.hpp"
+
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -35,6 +37,10 @@ namespace jasperengine::editor {
 
         // Checks a project's Lua scripts, shader forks, C++ scripts and HTML/CSS UI files (see docs/mcp/checks.md)
         static int runCheckCommand(int argc, char** argv, const char* executableName);
+        // procedural-material bake when no editor could start (S90 R39): bake_procedural_material's arguments
+        // (`toolArgs`) baked in this process on the CPU tier, no window, no device. 0 baked, 1 failed.
+        static int bakeProceduralMaterialOnCpu(int argc, char** argv, const std::filesystem::path& project, const nlohmann::json& toolArgs,
+                                               const std::string& commandName);
 
         // Prints the HTML/CSS compatibility support tables as JSON (developer: docs generation)
         static int runUiSupportCommand(int argc, char** argv, const char* executableName);

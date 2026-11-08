@@ -9,7 +9,7 @@
 #include "../../procmat/ProceduralMaterialKind.h"
 #include "../../procmat/ProceduralRun.h"
 #include "../../procmat/ProceduralChecks.h"
-#include "PlanInterpreter.h"
+#include "../../procmat/ProceduralCpuEvaluator.h"
 
 #include "asset/AssetMeta.h"
 #include "texsynth/SynthImage.h"
@@ -339,13 +339,6 @@ TEST(ProceduralBake, CheckReportsAGraphProblemAndAStaleBake) {
     EXPECT_EQ(stale->severity, "warning");
 }
 
-TEST(ProceduralRun, TheTierComesFromTheDeviceName) {
-    EXPECT_EQ(ProceduralRun::editorTier("llvmpipe (LLVM 15.0.7, 256 bits)"), EvaluatorTier::Software);
-    EXPECT_EQ(ProceduralRun::editorTier("Llvmpipe (LLVM 17)"), EvaluatorTier::Software);
-    EXPECT_EQ(ProceduralRun::editorTier("lavapipe"), EvaluatorTier::Software);
-    EXPECT_EQ(ProceduralRun::editorTier("NVIDIA GeForce RTX 4070/PCIe/SSE2"), EvaluatorTier::Gpu);
-    EXPECT_EQ(ProceduralRun::editorTier("a device nobody knows"), EvaluatorTier::Gpu) << "R8: an unrecognised name counts as gpu";
-}
 
 namespace {
 
@@ -378,10 +371,10 @@ namespace {
         BakeOptions options;
         options.size = 64;
         EXPECT_TRUE(planBake(file, NodeLibrary::shipped(), options, plan, outputs, error)) << error;
-        std::vector<OutputImage> images;
-        EXPECT_TRUE(jasperengine::editor::procmat::test::runPlanOnInterpreter(plan, 4, images, error)) << error;
+        EvaluationResult result;
+        EXPECT_TRUE(evaluateOnCpu(plan, result)) << result.error;
         std::map<std::string, OutputImage> out;
-        for (OutputImage& image : images) out[image.name] = std::move(image);
+        for (OutputImage& image : result.outputs) out[image.name] = std::move(image);
         return out;
     }
 

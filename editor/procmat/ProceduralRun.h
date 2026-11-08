@@ -66,17 +66,16 @@ namespace jasperengine::editor::procmat {
         const std::vector<OutputImage>& getOutputs() const { return outputs; }
         // the lit ball, RGBA8 rows top first; empty without one
         const OutputImage& getSphere() const { return sphereImage; }
+        // the editor's device before the evaluation, the one it ran on after (cpu after a device failure)
         EvaluatorTier tier() const;
         std::string deviceName() const;
+        // a device failure the evaluation continued past on the CPU (R9): the pass, device and log
+        const std::vector<std::string>& getWarnings() const { return warnings; }
 
         // Called when the run ends (ok or not), on the main thread from processFrame
         void setOnFinished(std::function<void()> done) { onFinished = std::move(done); }
         // Called with getStage() each time it changes
         void setOnStage(std::function<void(const std::string&)> changed) { onStage = std::move(changed); }
-
-        // The tier of the editor's context (R8): a known software renderer's name is `software`, anything
-        // else `gpu`
-        static EvaluatorTier editorTier(const std::string& deviceName);
 
         // The editor calls these from its frame: advance every started run; true while one still runs.
         // setFrameRequester keeps an idle editor drawing.
@@ -96,6 +95,7 @@ namespace jasperengine::editor::procmat {
         std::unique_ptr<Impl> impl;
         ProceduralRunRequest request;
         std::vector<OutputImage> outputs;
+        std::vector<std::string> warnings;
         OutputImage sphereImage;
         std::string error;
         bool started = false;

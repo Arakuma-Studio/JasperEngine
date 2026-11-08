@@ -55,6 +55,11 @@
 #include "util/QaChecks.h"
 #include "particles/ParticleEffectPreview.h"
 #include "procmat/ProceduralBake.h"
+#include "procmat/ProceduralCpuEvaluator.h"
+#include "procmat/ProceduralDevice.h"
+#include "procmat/ProceduralMaterialKind.h"
+#include "procmat/NodeLibrary.h"
+#include "texsynth/SynthesisRecipe.h"
 #include "particles/ParticlePreviewSource.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/TransformPropagation.h"
@@ -297,7 +302,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " synthesize-texture [options]  Synthesize a texture (tileable, inpainted, ...) from examples.\n"
         << "  " << commandName << " place-physics [options]  Drop, separate or move GameObjects with edit-time physics.\n"
         << "  " << commandName << " bake-vat [options]       Bake a Vertex Animation (.vat) from a model, clips or GameObject, or import one.\n"
-        << "  " << commandName << " procedural-material bake <file.procmat> [options]  Bake a Procedural Material (exit 0/1/2/3/4/5).\n"
+        << "  " << commandName << " procedural-material bake <file.procmat> [options]  Bake a Procedural Material (exit 0/1/2/3/4).\n"
         << "  " << commandName << " import-unity-particles <file> [options]  Import Unity Particle Systems as engine prefabs.\n"
         << "  " << commandName << " generate-sprite-normals [options]  Normal maps for sprites, sheets, GIF/APNG animations and tiles.\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
@@ -3481,6 +3486,103 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     return errors ? 1 : 0;
 }
 
+}
+
+int CommandLine::bakeProceduralMaterialOnCpu(int argc, char** argv, const fs::path& root, const nlohmann::json& args, const std::string& commandName) {
+    const std::string tag = commandName + " procedural-material bake: ";
+    EditorHostOverrideGuard hostOverride(nullptr);
+    Out::setConsoleWindow(nullptr);
+    Project project;
+    auto platform = std::make_unique<Platform>(&project);
+    Engine::systemInit(argc, argv, platform.get());
+    EngineRuntimeGuard engineRuntime;
+    Engine::pauseGameEvents(true);
+    Engine::setAsyncLoading(false);
+    // no editor came up, so none holds the project; every file below is written all or nothing
+    project.setSkipProjectLock(true);
+    if (!project.loadProject(root, false)) {
+        std::cerr << tag << "the project could not be loaded: " << root.string() << "\n";
+        return 1;
+    }
+    procmat::registerProceduralMaterialKind();
+    const std::string rel = args.value("path", std::string());
+    const fs::path file = root / FileUtils::pathFromUtf8(rel);
+    graph::Graph graphFile;
+    std::string error;
+    if (!procmat::readGraphForBake(file, rel, graphFile, error)) {
+        std::cerr << tag << error << "\n";
+        return 1;
+    }
+    procmat::BakeOptions options;
+    options.size = args.value("size", procmat::BAKE_SIZE_DEFAULT);
+    options.seed = args.contains("seed") ? args.value("seed", 0u) : procmat::graphSeed(graphFile);
+    if (args.contains("outputs")) options.outputs = args["outputs"].get<std::vector<std::string>>();
+    procmat::PassPlan plan;
+    std::vector<std::string> outputs;
+    if (!procmat::planBake(graphFile, procmat::NodeLibrary::shipped(), options, plan, outputs, error)) {
+        std::cerr << tag << rel << " does not bake: " << error << "\n";
+        return 1;
+    }
+    const procmat::EvaluatorDevice device = procmat::editorDevice();
+    std::cerr << tag << "no editor could start: baking on the " << procmat::evaluatorTierName(device.tier) << " tier (" << device.name
+              << ") in this process\n";
+    procmat::EvaluationResult result;
+    int shown = -1;
+    if (!procmat::evaluateOnCpu(plan, result, {}, [&](float progress) {
+            const int percent = (int)(progress * 100.0f);
+            if (percent / 10 != shown / 10) std::cerr << "[progress] " << percent << "%\n";
+            shown = percent;
+        })) {
+        std::cerr << tag << "the evaluation failed: " << result.error << "\n";
+        return 1;
+    }
+    const std::string failOn = args.value("fail_on", std::string());
+    if (!failOn.empty()) {
+        procmat::MaterialImages images;
+        for (const procmat::OutputImage& image : result.outputs) images.outputs[image.name] = image;
+        procmat::CheckRequest request;
+        request.qa = project.getProcMatQaSettings();
+        const qa::Json report = procmat::ProceduralChecks::report(images, request);
+        if (qa::reaches(report.value("verdict", ""), failOn)) {
+            for (const qa::Json& row : report["checks"]) std::cerr << qa::rowLine(row) << "\n";
+            std::cerr << tag << "verdict " << report.value("verdict", "") << " reaches --fail-on " << failOn << "; nothing was written\n";
+            return 1;
+        }
+    }
+    procmat::BakeWrite bake;
+    bake.graphPath = rel;
+    bake.folder = args.contains("output") ? args.value("output", std::string()) : procmat::defaultBakeFolder(rel);
+    Guid guid;
+    std::vector<Guid> former;
+    AssetDatabase::AssetInfo info;
+    if (AssetDatabase::readInFileIdentity(file, guid, former)) bake.recipe.graphGuid = guid.str();
+    else if (project.getAssetDatabase().getInfo(rel, info)) bake.recipe.graphGuid = info.guid.str();
+    bake.recipe.graphPath = rel;
+    bake.recipe.inputHash = procmat::bakeInputHash(plan);
+    bake.recipe.seed = options.seed;
+    bake.recipe.size = options.size;
+    bake.recipe.seedFromGraph = !args.contains("seed");
+    bake.graphOutputs = procmat::graphBakeOutputs(graphFile);
+    bake.recipe.graphOutputs = bake.graphOutputs;
+    bake.recipe.tier = procmat::evaluatorTierName(device.tier);
+    bake.recipe.device = device.name;
+    bake.images = std::move(result.outputs);
+    bake.overwrite = args.value("overwrite", false);
+    procmat::BakeFiles files;
+    if (!procmat::encodeBake(&project, bake, files, error)) {
+        std::cerr << tag << "nothing was written: " << error << "\n";
+        return 1;
+    }
+    std::vector<texsynth::StagedFile> staged;
+    for (const texsynth::OutputFile& out : files.files) staged.push_back({out.absolute, std::vector<uint8_t>(out.bytes.begin(), out.bytes.end())});
+    std::string failedPath;
+    if (!texsynth::writeFilesAllOrNothing(staged, failedPath, error)) {
+        std::cerr << tag << "nothing was written: " << failedPath << ": " << error << "\n";
+        return 1;
+    }
+    std::cout << "Baked " << rel << " at " << options.size << " (seed " << options.seed << ") on " << procmat::evaluatorTierName(device.tier) << " ("
+              << device.name << "): " << files.images.size() << " PNG(s) and " << files.material << ".\n";
+    return 0;
 }
 
 int CommandLine::runCheckCommand(int argc, char** argv, const char* executableName) {

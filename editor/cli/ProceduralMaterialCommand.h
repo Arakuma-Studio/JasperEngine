@@ -10,8 +10,8 @@ namespace jasperengine::editor::cli {
     // project open, else in a one-shot headless editor (tier 1 on a GPU, tier 2 on Linux's software
     // renderer), through `call`. Exit codes: 0 baked, 1 the bake failed (a bad graph, a failed evaluation,
     // fail_on reached), 2 usage (an unknown flag, a file outside a project), 3 connection lost, timed out or
-    // interrupted, or the project held by another editor, 4 internal, 5 no editor could start (nothing ran:
-    // the case s90-tiers' in-process CPU bake takes).
+    // interrupted, or the project held by another editor, 4 internal. When no editor could start, it bakes in
+    // this process on the CPU tier instead (CommandLine::bakeProceduralMaterialOnCpu).
     class ProceduralMaterialCommand {
     public:
         // argv[0] is "procedural-material"

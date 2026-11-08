@@ -3,7 +3,7 @@
 
 #include "ProceduralRun.h"
 
-#include "ProceduralGpuEvaluator.h"
+#include "ProceduralDevice.h"
 
 #include "Engine.h"
 #include "render/SystemRender.h"
@@ -48,7 +48,7 @@ struct ProceduralRun::Impl {
     enum class Stage { Evaluate, Sphere, Done };
     Stage stage = Stage::Evaluate;
     double deadline = 0.0;
-    std::unique_ptr<ProceduralGpuEvaluator> evaluator;
+    std::unique_ptr<ProceduralEvaluator> evaluator;
     bool prepared = false;
     std::string device;
     EvaluatorTier tier = EvaluatorTier::Gpu;
@@ -66,23 +66,15 @@ struct ProceduralRun::Impl {
 };
 
 ProceduralRun::ProceduralRun(ProceduralRunRequest request) : impl(std::make_unique<Impl>()), request(std::move(request)) {
-    impl->device = SystemRender::getDeviceName();
-    impl->tier = editorTier(impl->device);
+    const EvaluatorDevice device = editorDevice();
+    impl->device = device.name;
+    impl->tier = device.tier;
 }
 
 ProceduralRun::~ProceduralRun() {
     auto& runs = liveRuns();
     runs.erase(std::remove(runs.begin(), runs.end(), this), runs.end());
     if (impl) impl->releaseBall();
-}
-
-EvaluatorTier ProceduralRun::editorTier(const std::string& deviceName) {
-    std::string name = deviceName;
-    std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-    for (const char* software : {"llvmpipe", "lavapipe", "softpipe", "swiftshader", "swrast", "microsoft basic render", "apple software renderer"}) {
-        if (name.find(software) != std::string::npos) return EvaluatorTier::Software;
-    }
-    return EvaluatorTier::Gpu;
 }
 
 EvaluatorTier ProceduralRun::tier() const {
@@ -140,7 +132,8 @@ void ProceduralRun::advance(double budgetMs) {
     }
     if (impl->stage == Impl::Stage::Evaluate) {
         if (!impl->prepared) {
-            impl->evaluator = std::make_unique<ProceduralGpuEvaluator>(impl->tier);
+            // R8's order: the context's tier, the CPU's after a device failure (D4)
+            impl->evaluator = makeEditorEvaluator();
             std::string prepareError;
             if (!impl->evaluator->prepare(*request.plan, prepareError)) {
                 finish("The " + impl->device + " device cannot run this graph: " + prepareError);
@@ -150,6 +143,10 @@ void ProceduralRun::advance(double budgetMs) {
         }
         EvaluationResult result;
         if (!impl->evaluator->advance(budgetMs, result)) return;
+        // where it ran in the end: a pass that failed on the device continued on the CPU (R9)
+        impl->tier = impl->evaluator->tier();
+        impl->device = impl->evaluator->deviceName();
+        warnings = result.warnings;
         if (!result.ok) {
             std::string failure = result.error;
             if (result.failedPass >= 0 && (size_t)result.failedPass < request.plan->passes.size()) {

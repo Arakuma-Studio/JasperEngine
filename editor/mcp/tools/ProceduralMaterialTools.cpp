@@ -28,8 +28,8 @@
 #include "procmat/ProceduralBake.h"
 #include "procmat/ProceduralChecks.h"
 #include "procmat/ProceduralMaterialKind.h"
+#include "procmat/ProceduralDevice.h"
 #include "procmat/ProceduralRun.h"
-#include "render/SystemRender.h"
 #include "texsynth/SynthesisSession.h"
 #include "texsynth/SynthImage.h"
 #include "texture/TextureImportSettings.h"
@@ -64,13 +64,13 @@ std::vector<std::shared_ptr<ProceduralRun>>& liveRuns() {
 }
 
 // R34: every result names the device, a refusal before anything ran too
-Json editorDevice() {
-    const std::string name = SystemRender::getDeviceName();
-    return {{"tier", evaluatorTierName(ProceduralRun::editorTier(name))}, {"name", name}};
+Json deviceOfEditor() {
+    const EvaluatorDevice device = procmat::editorDevice();
+    return {{"tier", evaluatorTierName(device.tier)}, {"name", device.name}};
 }
 
 void refuse(const CallPtr& call, const std::string& message) {
-    call->fail(message, Json{{"device", editorDevice()}});
+    call->fail(message, Json{{"device", deviceOfEditor()}});
 }
 
 std::string relativeTo(Project* project, const fs::path& absolute) {
@@ -157,37 +157,6 @@ bool readMaterialFile(const fs::path& file, Material& material, std::string& err
     }
 }
 
-// A .procmat read, of its kind and without error issues: what evaluates
-bool readGraph(const std::string& rel, const fs::path& file, graph::Graph& out, std::string& error) {
-    std::string text;
-    if (!ProjectChecks::readFile(file, text)) {
-        error = "could not read " + rel + ".";
-        return false;
-    }
-    graph::LoadReport report;
-    out = graph::load(text, report);
-    if (!report.ok) {
-        error = rel + " is not a graph file: " + report.error;
-        return false;
-    }
-    if (out.kind != PROCEDURAL_MATERIAL_KIND) {
-        error = rel + " is a '" + out.kind + "' graph, not a Procedural Material.";
-        return false;
-    }
-    std::vector<std::string> errors;
-    for (const graph::Issue& issue : graph::validate(out)) {
-        if (issue.severity != graph::Severity::Error) continue;
-        errors.push_back(issue.code + (issue.nodeId.empty() ? "" : " node '" + issue.nodeId + "'") + ": " + issue.message +
-                         (issue.suggestion.empty() ? "" : " (" + issue.suggestion + ")"));
-    }
-    if (!errors.empty()) {
-        error = rel + " has " + std::to_string(errors.size()) + " error(s); nothing was evaluated. Fix them with edit_graph:";
-        for (size_t i = 0; i < errors.size() && i < 8; i++) error += "\n- " + errors[i];
-        return false;
-    }
-    return true;
-}
-
 bool resolveSource(const CallPtr& call, Source& source) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -204,7 +173,7 @@ bool resolveSource(const CallPtr& call, Source& source) {
         if (extension == PROCEDURAL_MATERIAL_EXTENSION) {
             source.kind = "procmat";
             source.graphPath = source.scope;
-            if (!readGraph(source.scope, file, source.graph, error)) {
+            if (!readGraphForBake(file, source.scope, source.graph, error)) {
                 refuse(call, error);
                 return false;
             }
@@ -438,6 +407,13 @@ Json deviceJson(const ProceduralRun& run) {
     return {{"tier", evaluatorTierName(run.tier())}, {"name", run.deviceName()}};
 }
 
+// R9: a device failure the run continued past on the CPU never goes unsaid
+void addWarnings(const ProceduralRun& run, Json& data, std::string& text) {
+    if (run.getWarnings().empty()) return;
+    data["warnings"] = run.getWarnings();
+    for (const std::string& warning : run.getWarnings()) text += "\nWarning: " + warning;
+}
+
 std::string checksText(const Json& report) {
     std::string text;
     for (const Json& row : report["checks"]) text += "\n" + qa::rowLine(row);
@@ -568,6 +544,7 @@ void previewTool(const CallPtr& call) {
                            (source->kind == "procmat" ? " at " + std::to_string(size) + " (seed " + std::to_string(seed) + ")" : std::string()) + " on " +
                            evaluatorTierName(run.tier()) + " (" + run.deviceName() + "). Verdict " + data.value("verdict", "") + ".";
         text += checksText(data);
+        addWarnings(run, data, text);
         if (reference->width > 0) {
             data["reference"] = ProceduralChecks::reference(images, *reference);
             text += "\nReference (advisory, no status): palette " + data["reference"]["palette_delta_e"].dump() + " dE, spectrum " +
@@ -616,7 +593,7 @@ void bakeTool(const CallPtr& call) {
         return;
     }
     graph::Graph graphFile;
-    if (!readGraph(rel, file, graphFile, error)) {
+    if (!readGraphForBake(file, rel, graphFile, error)) {
         refuse(call, error);
         return;
     }
@@ -710,6 +687,7 @@ void bakeTool(const CallPtr& call) {
                            evaluatorTierName(run.tier()) + " (" + run.deviceName() + "): " + std::to_string(files.images.size()) + " PNG(s) and " +
                            files.material + ", one undo step \"" + undo.value("name", std::string("Bake Procedural Material ") + stem) + "\"" +
                            (undo.contains("id") ? " (id " + undo["id"].dump() + ")" : std::string()) + ".";
+        addWarnings(run, data, text);
         return ToolResult::success(text, data);
     });
 }

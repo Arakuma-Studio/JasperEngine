@@ -148,6 +148,36 @@ std::vector<std::string> jasperengine::editor::procmat::graphBakeOutputs(const g
     return names;
 }
 
+bool jasperengine::editor::procmat::readGraphForBake(const fs::path& file, const std::string& rel, graph::Graph& out, std::string& error) {
+    std::string text;
+    if (!ProjectChecks::readFile(file, text)) {
+        error = "could not read " + rel + ".";
+        return false;
+    }
+    graph::LoadReport report;
+    out = graph::load(text, report);
+    if (!report.ok) {
+        error = rel + " is not a graph file: " + report.error;
+        return false;
+    }
+    if (out.kind != PROCEDURAL_MATERIAL_KIND) {
+        error = rel + " is a '" + out.kind + "' graph, not a Procedural Material.";
+        return false;
+    }
+    std::vector<std::string> errors;
+    for (const graph::Issue& issue : graph::validate(out)) {
+        if (issue.severity != graph::Severity::Error) continue;
+        errors.push_back(issue.code + (issue.nodeId.empty() ? "" : " node '" + issue.nodeId + "'") + ": " + issue.message +
+                         (issue.suggestion.empty() ? "" : " (" + issue.suggestion + ")"));
+    }
+    if (!errors.empty()) {
+        error = rel + " has " + std::to_string(errors.size()) + " error(s); nothing was evaluated. Fix them with edit_graph:";
+        for (size_t i = 0; i < errors.size() && i < 8; i++) error += "\n- " + errors[i];
+        return false;
+    }
+    return true;
+}
+
 bool jasperengine::editor::procmat::planBake(const graph::Graph& file, const std::shared_ptr<const NodeLibrary>& library, const BakeOptions& options,
                                              PassPlan& plan, std::vector<std::string>& outputs, std::string& error) {
     if (options.size < BAKE_SIZE_MIN || options.size > BAKE_SIZE_MAX || (options.size & (options.size - 1)) != 0) {

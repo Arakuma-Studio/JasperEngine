@@ -56,15 +56,20 @@ async def wait_for(ed: Editor, predicate, what: str, seconds: float = 60.0) -> N
     ed.fail(f"timed out waiting for {what}; the Project window shows {shown}; the folder holds {files}")
 
 
-async def open_folder(ed: Editor, ui: Ui, name: str) -> None:
-    rect = await ed.ui_rect(f"project.file.{name}", timeout=20.0)
-    ed.check(rect is not None, f"{name} in the Project window: {sorted(ed.ui_items())[:30]}")
-    # (probe rects are window pixels of the harness's Xvfb, whose window sits at its origin: as
-    # test_sprite_normals_window.py opens its folder)
-    ui.xdo("mousemove", str(int((rect[0] + rect[2]) / 2)), str(int((rect[1] + rect[3]) / 2)))
-    await ed.call("wait", frames=4)
-    ui.xdo("click", "--repeat", "2", "--delay", "80", "1")
-    await ed.call("wait", frames=10)
+async def open_folder(ed: Editor, ui: Ui, name: str, inside: str) -> None:
+    """double-click folder `name` until its item `inside` shows: a double click a loaded frame splits is two clicks"""
+    for _ in range(6):
+        if await ed.ui_rect(f"project.file.{inside}", timeout=1.0):
+            return
+        rect = await ed.ui_rect(f"project.file.{name}", timeout=20.0)
+        ed.check(rect is not None, f"{name} in the Project window: {sorted(ed.ui_items())[:30]}")
+        # (probe rects are window pixels of the harness's Xvfb, whose window sits at its origin: as
+        # test_sprite_normals_window.py opens its folder)
+        ui.xdo("mousemove", str(int((rect[0] + rect[2]) / 2)), str(int((rect[1] + rect[3]) / 2)))
+        await ed.call("wait", frames=4)
+        ui.xdo("click", "--repeat", "2", "--delay", "80", "1")
+        await ed.call("wait", frames=10)
+    ed.check(await ed.ui_rect(f"project.file.{inside}", timeout=5.0) is not None, f"{name} opened: {sorted(ed.ui_items())[:30]}")
 
 
 async def test_the_badge_follows_the_graph_and_survives_the_sprite_normals_refresh(ed: Editor):
@@ -81,8 +86,8 @@ async def test_the_badge_follows_the_graph_and_survives_the_sprite_normals_refre
     ui = Ui(ed)
     await ed.call("focus_window", window="project")
     ui.focus()
-    for folder in ("assets", "mats", "stone"):
-        await open_folder(ed, ui, folder)
+    for folder, inside in (("assets", "mats"), ("mats", "stone"), ("stone", "stone_base_color.png")):
+        await open_folder(ed, ui, folder, inside)
     await wait_for(ed, lambda: BADGE in ed.ui_items(), "the bake's badge")
     ed.check(STALE not in ed.ui_items(), "fresh after the bake")
 
