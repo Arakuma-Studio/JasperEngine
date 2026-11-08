@@ -9,8 +9,6 @@
 #include "subsystem/NavigationSystem.h"
 
 #if JASPERENGINE_TERRAIN_WORLD
-#include "component/TerrainComponent.h"
-#include "component/TerrainWorldComponent.h"
 #include "component/Transform.h"
 #include "subsystem/TerrainWorldRuntime.h"
 #include "subsystem/TerrainWorldSystem.h"
@@ -42,26 +40,6 @@ namespace {
         return runtime && runtime->started() ? runtime : nullptr;
     }
 
-}
-
-Entity nav::followedTerrainWorld(Scene* scene) {
-    std::shared_ptr<TerrainWorldSystem> worlds = scene->findSystem<TerrainWorldSystem>();
-    if (!worlds)
-        return NULL_ENTITY;
-    std::vector<Entity> entities;
-    auto array = scene->getComponentArray<TerrainWorldComponent>();
-    for (size_t i = 0; i < array->size(); i++)
-        entities.push_back(array->getEntity(i));
-    std::sort(entities.begin(), entities.end());
-    for (Entity entity : entities) {
-        const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
-        if (!scene->getComponent<TerrainWorldComponent>(entity).enabled || !terrain || !terrain->enabled || !scene->isEntityActiveInHierarchy(entity))
-            continue;
-        TerrainWorldRuntime* runtime = worlds->ensureRuntime(entity);
-        if (runtime && runtime->started())
-            return entity;
-    }
-    return NULL_ENTITY;
 }
 
 bool nav::terrainWorldFocus(const TerrainWorldRuntime& runtime, float& x, float& z) {
@@ -174,10 +152,6 @@ void nav::followTerrainWorldFocus(NavigationSystem& system, Scene* scene, Entity
 }
 
 #else
-
-Entity nav::followedTerrainWorld(Scene*) {
-    return NULL_ENTITY;
-}
 
 bool nav::terrainWorldFocus(const TerrainWorldRuntime&, float&, float&) {
     return false;

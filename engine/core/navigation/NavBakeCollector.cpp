@@ -1373,6 +1373,31 @@ namespace {
 
 }
 
+// T4 R25 (NavTerrainWorld.h): in this unit, which reads Terrains already, to keep the Terrain header's fan-out down
+Entity nav::followedTerrainWorld(Scene* scene) {
+#if JASPERENGINE_TERRAIN_WORLD
+    std::shared_ptr<TerrainWorldSystem> worlds = scene->findSystem<TerrainWorldSystem>();
+    if (!worlds)
+        return NULL_ENTITY;
+    std::vector<Entity> entities;
+    auto array = scene->getComponentArray<TerrainWorldComponent>();
+    for (size_t i = 0; i < array->size(); i++)
+        entities.push_back(array->getEntity(i));
+    std::sort(entities.begin(), entities.end());
+    for (Entity entity : entities) {
+        const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+        if (!scene->getComponent<TerrainWorldComponent>(entity).enabled || !terrain || !terrain->enabled || !scene->isEntityActiveInHierarchy(entity))
+            continue;
+        TerrainWorldRuntime* runtime = worlds->ensureRuntime(entity);
+        if (runtime && runtime->started())
+            return entity;
+    }
+#else
+    (void)scene;
+#endif
+    return NULL_ENTITY;
+}
+
 NavFrame NavBakeCollector::frameOf(Scene* scene, Entity surface) {
     NavFrame frame;
     if (const Transform* transform = scene->findComponent<Transform>(surface)) {
