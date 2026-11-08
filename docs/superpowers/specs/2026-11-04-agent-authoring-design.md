@@ -843,6 +843,15 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
      32-bit floats (the raw source was read as bytes). Tests: `test_density_map_cooked_before_its_layer`,
      `test_float_density_map`, `test_reopening_a_project_writes_no_file`, and
      `TerrainFoliageGpu.AGpuOnlyDensityMapStopsWithOneError` / `AFailedCpuReadableCookStopsTheWaitWithOneError`.
+   - The layer's error reaches agents through `sample_terrain` (`details[i].error`); eval case
+     `guard_detail_layer_error_names_the_fix` (an agent asked why grass stopped showing must reimport the named
+     map, not repaint or replace the layer). Only `test_grade.py` ran here: the live eval needs Orquester accounts.
+   - Open, not reproduced: in the first of five runs of the 11-file MCP set at -j 8 on box A (after be2e1807b's
+     sources were built), the editor of `test_saved_output_determinism.py::test_fixture_scenes_save_the_same_drawn_or_not`
+     closed its connection during the `screenshot` of `physics-placement/TableCrate.scene` (`JSON-RPC error -32000:
+     Connection closed`, after 143.8 s; the scenes before it re-saved the same bytes). The container kept no
+     scratch or stderr. It did not happen in the other four runs or in two more runs of that file with the
+     terrain, spline and FBX tests (32 passed each). Log: `dc-work/evidence/fu-agent-authoring/crash-determinism-run1.log`.
 2. **The generated `AGENTS.md` has headroom under its 5,000-byte cap** (`test_generators.py`, not raised). The text
    is the same for every template (2D, 3D, Empty, UI): `writeAgentsFile` takes only the project paths, which are
    always `.jasperengine/...`. Only the editor version string changes its size. Before: 4,929 bytes (version

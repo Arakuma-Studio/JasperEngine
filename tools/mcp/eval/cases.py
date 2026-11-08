@@ -2801,6 +2801,37 @@ CASES = [
         "max_turns": 16,
     },
     {
+        "id": "guard_detail_layer_error_names_the_fix",
+        "kind": "guard",
+        "what_happened": "A detail layer whose density map had only a GPU-only cook drew nothing; sample_terrain showed drawn 0 and "
+                         "nothing else, so agents repainted or replaced the layer. The layer's error names the map and the fix.",
+        "text_at_issue": "sample_terrain details[i].error (MeshSystem foliage): 'its density map ... has no pixels the CPU can read: "
+                         "no CPU-readable cook of it arrived; reimport it (reimport_textures)'",
+        "source": "agent-authoring follow-ups (review of 767dfb9bb, item 3)",
+        "prompt": "The grass on the terrain Ground stopped showing. Find out why and fix it; don't change the layer.",
+        "groups_enabled": ["terrain", "assets_pipeline"],
+        "mocks": [
+            {"tool": "sample_terrain", "result": ok(
+                "Terrain Ground: 32 x 32, max height 4; 1 detail layer (0 drawn).",
+                {"info": {"size": 32, "mesh_built": True, "details": [{
+                    "index": 0, "mesh": "assets/models/grass.glb", "density_map": "assets/terrain/painted.png", "density": 2,
+                    "drawn": 0, "error": "its density map assets/terrain/painted.png has no pixels the CPU can read: no CPU-readable "
+                                         "cook of it arrived; reimport it (reimport_textures)"}]}})},
+            {"tool": "reimport_textures", "result": ok(
+                "Reimported 1 texture(s).",
+                {"textures": [{"path": "assets/terrain/painted.png", "platforms": {"desktop": {"status": "cooked", "cpu_readable": True,
+                                                                                            "format": "R8"}}}], "timed_out": False})},
+            {"tool": "edit_terrain_details", "result": ok("Ground has 1 detail layer(s).", {"terrain": {"id": 11}, "layers": [
+                {"index": 0, "mesh": "assets/models/grass.glb", "density_map": "assets/terrain/painted.png", "density": 2}]})},
+        ],
+        "checks": {"calls": [{"tool": "sample_terrain"}, {"tool": "reimport_textures", "args": {"paths": ["assets/terrain/painted.png"]}}],
+                   "order": [["sample_terrain", "reimport_textures"]],
+                   "must_not_call": [{"tool": "edit_terrain_details", "args": {"update": "*"}},
+                                     {"tool": "edit_terrain_details", "args": {"remove": "*"}},
+                                     {"tool": "sculpt_terrain"}, "write_file"]},
+        "max_turns": 14,
+    },
+    {
         "id": "bad_shader_override_by_building",
         "kind": "bad",
         "what_happened": "Shader overrides could only change through build_project, so agents started a build to exclude one "
