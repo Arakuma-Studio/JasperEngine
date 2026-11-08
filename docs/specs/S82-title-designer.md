@@ -1503,19 +1503,27 @@ rest of S82 lands in 6B.
     Properties are the side column's tabs, selected by Tab and by `focus_window`'s `panel`.
 20. **AC31 measured on this host, not on server A.** `tools/perf/title_designer_bench.py` builds
     the reference documents with `edit_title` ops (S80 has no `bench_2d_rims` / `bench_40_layers`
-    fixtures) and reads the window's `state().timings` and canvas render times. Host numbers
-    (software GL, llvmpipe; the CPU shared with other streams' builds; window 956 x 538; run of
-    `26b8c2d03`, result `bench3.json`):
-    - Draft / Full render: 0.010 (bench_2d_rims: 68.6 ms / 7011 ms) and 0.108 (bench_40_layers:
-      75.8 ms / 703.6 ms): met.
-    - Search query: 0.38 ms (605 entries): met.
-    - **Missed:** the window's ImGui work per frame with bench_40_layers is 8.4 ms (Layers shown)
-      and 9.3 ms (Properties shown), budget 1.5 ms; the search index of the 6-rim, 8-effect layer
-      builds in 10.5 ms (median of 5), budget 3 ms; the 256-layer tree costs 4.6 x the 40-layer
-      one (38.5 ms against 8.4 ms), budget 1.1 x. The first run measured 16.8 ms and 93 ms a
-      frame: layer bounds (a text layer's bounds lay its text out) and hashes are now made once per
-      change and the snapping edges only during drags. The rest scales with the layer count
-      outside the clipped Layers rows and is not found yet; server A's numbers are still to take.
+    fixtures) and reads the window's `state().timings`, its canvas render times and, with
+    `--profile`, the profiler's `TD ...` scopes. Host: software GL (llvmpipe), the CPU shared with
+    other streams' builds (load average 6.7-7.5 during the runs), window 956 x 538; medians of four
+    runs at `68e251f25` (`uid1-3.json`, `bench7.json`):
+    - Draft / Full render: 0.009 (bench_2d_rims: 63 ms / 6875 ms) and 0.090 (bench_40_layers:
+      60 ms / 661 ms): met.
+    - The window's ImGui work per frame: 0.65 ms (Layers shown) and 0.73 ms (Properties shown) with
+      bench_40_layers: met. The first runs measured 8.4-16.8 ms; the profiler put 8.6 of 9.7 ms in
+      the toolbar's bake status (a document hash and every output's recipe read, every frame), now
+      made once per change.
+    - The 256-layer tree against the 40-layer one: 1.01 x (0.65 ms / 0.65 ms): met (was 4.6 x).
+      Layer bounds, hashes, the flattened tree, the empty-state check and the empty-text boxes are
+      made once per change, and `IdleFramesMakeNoDocumentPasses` counts the whole-document passes of
+      idle frames at 40 and 256 layers (none), load-insensitive.
+    - Search query: 0.25 ms: met.
+    - **Missed: the index build.** After an edit it is incremental (the rows of objects that did
+      not change are replayed: 125 of 790 rows re-collected, `IncrementalIndexMatchesAFullBuild`):
+      5.1 ms; a full build (a newly selected layer) takes 12.8 ms, budget 3 ms. Of the incremental
+      pass, the rows take 1.3 ms; the rest is the pages' own work and the per-object keys. Either
+      build runs ahead, 300 ms after the document and the selection settle, so a search keystroke
+      never pays it; the frame that builds does. Server A's numbers are still to take.
 21. **Open: the Windows and macOS IME manual checks** (M5, R37). They need a person on those
     systems (Microsoft IME, Kotoeri); this host builds Linux only. The `imgui_impl_osx` patch
     compiles by reading only. AC28's chip drag and In Context wait for S81, at integration.
