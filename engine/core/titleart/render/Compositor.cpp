@@ -422,11 +422,12 @@ TitlePlacement TitlePlanner::placementOf(const Json& layer) const {
         const TitleTransform t = decodeTransform((*it)->value("transform", Json::object()));
         // flips (before rotation, about the position), then clockwise rotation (negative in
         // y-up), uniform scale, then the position
-        geometry::Affine local = geometry::Affine::scale((t.flipX ? -1.0 : 1.0) * t.scale, (t.flipY ? -1.0 : 1.0) * t.scale);
+        geometry::Affine local = geometry::Affine::scale((t.flipX ? -1.0 : 1.0) * t.scale * t.stretch.x, (t.flipY ? -1.0 : 1.0) * t.scale * t.stretch.y);
         local = geometry::Affine::rotateDegrees(-t.rotation).after(local);
         local = geometry::Affine::translate(t.position.x, t.position.y).after(local);
         m = m.after(local);
-        out.scale *= std::max(1e-6, t.scale);
+        // a stretch scales the reach by its mean (style units follow the content size)
+        out.scale *= std::max(1e-6, t.scale * std::sqrt(std::fabs(t.stretch.x * t.stretch.y)));
         // a flip on one axis turns the rotations that follow it the other way
         const bool flipped = t.flipX != t.flipY;
         rotation += flip ? -t.rotation : t.rotation;
@@ -579,9 +580,33 @@ TitlePx TitlePlanner::copyOf(TitlePx src, const std::string& layerId) {
     return out;
 }
 
-void TitlePlanner::blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, const TitlePx* clipMask, const std::string& layerId) {
+TitlePlanner::LayerColor TitlePlanner::layerColorOf(const Json& layer) {
+    LayerColor c;
+    TitleColor tint;
+    if (auto it = layer.find("tint"); it != layer.end() && parseTitleColor(*it, tint)) {
+        c.tint[0] = srgbToLinear(tint.r);
+        c.tint[1] = srgbToLinear(tint.g);
+        c.tint[2] = srgbToLinear(tint.b);
+    }
+    if (auto it = layer.find("flash"); it != layer.end() && it->is_object()) {
+        const double amount = it->value("amount", 0.0);
+        TitleColor flash{1.0f, 1.0f, 1.0f};
+        if (auto color = it->find("color"); color != it->end()) parseTitleColor(*color, flash);
+        if (amount != 0.0 && std::isfinite(amount)) {
+            c.flash[0] = (float)(srgbToLinear(flash.r) * amount);
+            c.flash[1] = (float)(srgbToLinear(flash.g) * amount);
+            c.flash[2] = (float)(srgbToLinear(flash.b) * amount);
+        }
+    }
+    return c;
+}
+
+void TitlePlanner::blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, const TitlePx* clipMask, const std::string& layerId,
+                             const LayerColor* color) {
     const TitleRectI r = intersectRect(src.rect, dst.rect);
     if (r.empty() || !(opacity > 0.0f)) return;
+    const bool colored = color && color->active();
+    const LayerColor tone = colored ? *color : LayerColor();
     const TitleRectI rows = relative(r, dst.rect);
     const int srcSlot = src.slot;
     const int clipSlot = clipMask ? clipMask->slot : -1;
@@ -594,13 +619,17 @@ void TitlePlanner::blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, 
         // light blend, colour added and coverage unioned, as blend.glsl's add
         const BlendMode blend = mode == (int)TitleBlend::Normal ? BlendMode::PREMULTIPLIED : BlendMode::LIGHT_PREMULTIPLIED;
         pass(mode == (int)TitleBlend::Normal ? "compose normal" : "compose add", layerId, dst.slot, rows, TitleRenderProgram::Copy,
-             [srcSlot, clipSlot, srcMap, clipMap, opacity](TitleJobState& s, TitleGpuPass& p, std::string&) {
+             [srcSlot, clipSlot, srcMap, clipMap, opacity, colored, tone](TitleJobState& s, TitleGpuPass& p, std::string&) {
                  p.tex[0] = s.texture(srcSlot);
                  setMap(p, 2, srcMap);
                  p.params.set(3, opacity, 0.0f, 1.0f, clipSlot >= 0 ? 1.0f : 0.0f);
                  if (clipSlot >= 0) {
                      p.tex[1] = s.texture(clipSlot);
                      setMap(p, 4, clipMap);
+                 }
+                 if (colored) {
+                     p.params.set(5, tone.tint[0], tone.tint[1], tone.tint[2], 1.0f);
+                     p.params.set(6, tone.flash[0], tone.flash[1], tone.flash[2], 0.0f);
                  }
                  return true;
              },
@@ -622,7 +651,7 @@ void TitlePlanner::blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, 
     const int backSlot = backdrop.slot;
     const std::array<float, 4> backMap = uvMap(dst.rect, r);
     pass(std::string("blend ") + titleBlendName((TitleBlend)std::min(mode, TITLE_BLEND_COUNT - 1)), layerId, dst.slot, rows, TitleRenderProgram::Blend,
-         [backSlot, srcSlot, clipSlot, srcMap, backMap, clipMap, opacity, mode](TitleJobState& s, TitleGpuPass& p, std::string&) {
+         [backSlot, srcSlot, clipSlot, srcMap, backMap, clipMap, opacity, mode, colored, tone](TitleJobState& s, TitleGpuPass& p, std::string&) {
              p.tex[0] = s.texture(backSlot);
              p.tex[1] = s.texture(srcSlot);
              setMap(p, 2, srcMap);
@@ -632,6 +661,10 @@ void TitlePlanner::blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, 
                  setMap(p, 4, clipMap);
              }
              p.params.set(5, (float)mode, opacity, clipSlot >= 0 ? 1.0f : 0.0f);
+             if (colored) {
+                 p.params.set(6, tone.tint[0], tone.tint[1], tone.tint[2], 1.0f);
+                 p.params.set(7, tone.flash[0], tone.flash[1], tone.flash[2], 0.0f);
+             }
              return true;
          });
     release(backdrop.slot);
@@ -661,8 +694,9 @@ std::pair<TitlePx, TitlePx> TitlePlanner::composeInk(const std::vector<DrawNode>
         }
         const float opacity = opacityOf(*n.layer);
         const int mode = blendOf(*n.layer);
-        blendOnto(acc, u.px, opacity, mode, clipMask, n.layerId);
-        if (ink.valid() && !light) blendOnto(ink, u.ink.valid() ? u.ink : u.px, opacity, mode, clipMask, n.layerId);
+        const LayerColor color = layerColorOf(*n.layer);
+        blendOnto(acc, u.px, opacity, mode, clipMask, n.layerId, &color);
+        if (ink.valid() && !light) blendOnto(ink, u.ink.valid() ? u.ink : u.px, opacity, mode, clipMask, n.layerId, &color);
         release(u.px.slot);
         if (u.ink.valid()) release(u.ink.slot);
     }

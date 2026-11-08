@@ -110,7 +110,7 @@ namespace {
         geometry::Affine m;
         for (const Json* layer : chain){
             const TitleTransform t = decodeTransform(layer->value("transform", Json::object()));
-            geometry::Affine local = geometry::Affine::scale((t.flipX ? -1.0 : 1.0) * t.scale, (t.flipY ? -1.0 : 1.0) * t.scale);
+            geometry::Affine local = geometry::Affine::scale((t.flipX ? -1.0 : 1.0) * t.scale * t.stretch.x, (t.flipY ? -1.0 : 1.0) * t.scale * t.stretch.y);
             local = geometry::Affine::rotateDegrees(-t.rotation).after(local);
             local = geometry::Affine::translate(t.position.x, t.position.y).after(local);
             m = m.after(local);

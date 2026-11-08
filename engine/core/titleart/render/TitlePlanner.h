@@ -144,7 +144,18 @@ namespace jasperengine::titleart {
         Content unitContent(const DrawNode& node, bool wantMask, bool wantInk);
         TitlePx adjustOnto(TitlePx acc, const DrawNode& node, const TitlePx* clipMask);
         // src x opacity (x the clip mask's alpha) blended into dst by `mode` (TitleBlend values, 18 = disjoint)
-        void blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, const TitlePx* clipMask, const std::string& layerId);
+        // S85's layer tint (a multiply) and flash (colour x amount added under the layer's alpha),
+        // linear; applied as the layer composes onto its parent (identity: no work)
+        struct LayerColor {
+            float tint[3] = {1.0f, 1.0f, 1.0f};
+            float flash[3] = {0.0f, 0.0f, 0.0f};
+            bool active() const {
+                return tint[0] != 1.0f || tint[1] != 1.0f || tint[2] != 1.0f || flash[0] != 0.0f || flash[1] != 0.0f || flash[2] != 0.0f;
+            }
+        };
+        static LayerColor layerColorOf(const Json& layer);
+        void blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, const TitlePx* clipMask, const std::string& layerId,
+                       const LayerColor* color = nullptr);
         TitlePx copyOf(TitlePx src, const std::string& layerId);
         TitlePx clearedLike(const TitleRectI& rect, const std::string& layerId);
         struct Effects {

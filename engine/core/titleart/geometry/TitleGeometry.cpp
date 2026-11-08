@@ -95,7 +95,7 @@ namespace {
         const TitleTransform t = decodeTransform(member(layer, "transform"));
         return Affine::translate(t.position.x, t.position.y)
             .after(Affine::rotateDegrees(-t.rotation))
-            .after(Affine::scale(t.scale * (t.flipX ? -1 : 1), t.scale * (t.flipY ? -1 : 1)));
+            .after(Affine::scale(t.scale * t.stretch.x * (t.flipX ? -1 : 1), t.scale * t.stretch.y * (t.flipY ? -1 : 1)));
     }
 
     // the ancestors of the layer with `id` (outermost first), false when it is not in `layers`

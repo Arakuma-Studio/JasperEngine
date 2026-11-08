@@ -17,12 +17,14 @@ bool taInsideUv(vec2 uv) { return all(greaterThanEqual(uv, vec2(0.0))) && all(le
 #if TA_PROGRAM == TA_PROGRAM_COPY
 // TA_TEX0 through p[2] x opacity p[3].x; p[3].y 0 rgba, 1 the red channel as a value (r r r r);
 // p[3].z 1: transparent outside the source; p[3].w mask 0 none, 1 TA_TEX1's alpha, 2 its red,
-// through p[4]
+// through p[4]; p[5].w 1: S85's layer tint p[5].rgb (multiply) and flash p[6].rgb (added under
+// the alpha), linear, on the premultiplied source
 void main() {
     vec2 uv = taMapUv(ta.p[2]);
     vec4 s = texture(TA_TEX0, uv);
     if (ta.p[3].y > 0.5) s = vec4(s.r);
     if (ta.p[3].z > 0.5 && !taInsideUv(uv)) s = vec4(0.0);
+    if (ta.p[5].w > 0.5) s.rgb = max(s.rgb * ta.p[5].rgb + ta.p[6].rgb * s.a, vec3(0.0));
     s *= ta.p[3].x;
     if (ta.p[3].w > 0.5) {
         vec4 m = texture(TA_TEX1, taMapUv(ta.p[4]));
@@ -35,10 +37,12 @@ void main() {
 #if TA_PROGRAM == TA_PROGRAM_BLEND
 // mode p[5].x of TA_TEX1 (through p[2], transparent outside it) x opacity p[5].y over the
 // backdrop copy TA_TEX0 (through p[3]); p[5].z 1: inside TA_TEX2's alpha (the clip group's base
-// content), through p[4]
+// content), through p[4]; p[6].w 1: S85's layer tint p[6].rgb and flash p[7].rgb (as COPY's)
 void main() {
     vec2 su = taMapUv(ta.p[2]);
-    vec4 s = taInsideUv(su) ? texture(TA_TEX1, su) * ta.p[5].y : vec4(0.0);
+    vec4 s = taInsideUv(su) ? texture(TA_TEX1, su) : vec4(0.0);
+    if (ta.p[6].w > 0.5) s.rgb = max(s.rgb * ta.p[6].rgb + ta.p[7].rgb * s.a, vec3(0.0));
+    s *= ta.p[5].y;
     if (ta.p[5].z > 0.5) s *= texture(TA_TEX2, taMapUv(ta.p[4])).a;
     vec4 d = texture(TA_TEX0, taMapUv(ta.p[3]));
     frag_color = taBlend(d, s, int(ta.p[5].x + 0.5));
