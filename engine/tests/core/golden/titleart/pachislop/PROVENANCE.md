@@ -7,6 +7,10 @@ author's permission (`NOTICE.md`), commit `1c32502dc9feaff1086f615b07f2ca978722d
   standard title, 確定 in Dela Gothic One with the classic style, rendered at 0.25 and trimmed);
 - `generator/patternFill-*.png` from `tests/golden/refs/generator/` (the Pattern Fill presets alone
   on the 1920 x 1080 canvas at 0.25).
+- `look/f-3d-*.png` from `tests/golden/refs/look/` (Pachislop's 40 3D looks on "BIG" in Dela Gothic
+  One at 0.25, trimmed; S86 AC21, `engine/tests/core/titleart/three_d/Title3DParityGpuTest.cpp`,
+  compared with AC21's metric: size within 2 px, mean at most 6/255, at most 4 % of pixels over
+  24/255).
 
 They were drawn by Chromium's WebGL on unknown hardware, so they are cross-implementation
 references compared with S80 AC12's loose structural metric (4 x 4 block means, block threshold

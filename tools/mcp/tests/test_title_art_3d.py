@@ -41,7 +41,7 @@ async def test_group_hidden(ed: Editor):
 
 async def test_quality_and_debug_views(ed: Editor):
     """R60: quality renders as that tier and reports it with stats_3d (k = 1 at low); every
-    debug_view this build serves returns an image, the others answer not_available."""
+    debug_view returns an image."""
     await setup(ed)
     path = "assets/titles/gold3d.titleart"
     await create3D(ed, path)
@@ -54,11 +54,9 @@ async def test_quality_and_debug_views(ed: Editor):
     ed.check_eq(stats[0]["k"], 1, "low renders without supersampling")
     ed.check(stats[0]["triangles"] > 0, "the mesh has triangles")
     ed.check_in("low", stats[0]["tiers"], "the tier fits are listed")
-    for view in ["none", "normals", "environment"]:
+    for view in ["none", "normals", "environment", "ao", "glint", "ink", "wireframe"]:
         r = await ed.call_raw("render_title", {"path": path, "options": {"debug_view": view}})
         ed.check(not r.is_error and r.images, f"debug_view {view}: {r.text[:300]}")
-    msg = await ed.check_error("render_title", path=path, options={"debug_view": "ao"})
-    ed.check_in("not_available", msg, "ao is not in this build")
     msg = await ed.check_error("render_title", path=path, options={"debug_view": "x"})
     ed.check_in("bad_option", msg, "an unknown view")
     msg = await ed.check_error("render_title", path=path, options={"quality": "ultra"})

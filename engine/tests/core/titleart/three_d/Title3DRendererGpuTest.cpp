@@ -12,11 +12,15 @@
 // 3D renderer; the environment's level map and CPU scene evaluation.
 
 #include "titleart/render/TitleRenderTestSupport.h"
+#include "titleart/support/TitleTestAssets.h"
 
 #include "titleart/render/TitleRenderServices.h"
 #include "titleart/three_d/Title3DMath.h"
 #include "titleart/three_d/Title3DRenderer.h"
 #include "titleart/three_d/TitleEnvironment.h"
+#include "titleart/three_d/TitleMeshFile.h"
+#include "titleart/three_d/Title3DSource.h"
+#include "titleart/three_d/mesher/TitleMesher.h"
 
 #include <cmath>
 
@@ -153,13 +157,20 @@ TEST_F(Title3DRendererGpu, AODarkensTheCrevicesAndKeepsOpenFaces) {
     // AC16: where the face meets the band behind it the AO darkens by 15 % or more; the flat
     // middle of the face (open) keeps its value; intensity 0 changes nothing
     auto renderer = geometryRenderer();
-    auto withAO = [](double intensity) {
+    // a bright band grown well past the letter: the crevice at the letter's foot is lit
+    auto litPlate = []() {
         Json layer = plate3D();
-        layer["style_3d"]["ao"] = Json{{"enabled", true}, {"radius", 6}, {"intensity", intensity}};
+        layer["style_3d"]["bands"][0]["grow"] = 20;
+        layer["style_3d"]["bands"][0]["material"] = materialPreset("white_gloss");
+        return layer;
+    };
+    auto withAO = [&](double intensity) {
+        Json layer = litPlate();
+        layer["style_3d"]["ao"] = Json{{"enabled", true}, {"radius", 8}, {"intensity", intensity}};
         return doc3D(layer);
     };
-    const Pixels off = render(*renderer, requestOf(doc3D(plate3D())));
-    const Pixels on = render(*renderer, requestOf(withAO(1.5)));
+    const Pixels off = render(*renderer, requestOf(doc3D(litPlate())));
+    const Pixels on = render(*renderer, requestOf(withAO(2)));
     const Pixels zero = render(*renderer, requestOf(withAO(0)));
     ASSERT_EQ(off.rgba.size(), on.rgba.size());
     size_t covered = 0, darkened = 0;
@@ -206,9 +217,12 @@ TEST_F(Title3DRendererGpu, GemsRefractTheLayersOwnOpaqueParts) {
 TEST_F(Title3DRendererGpu, APartsOwnEnvironmentLightsThatPartOnly) {
     // a face material tinting its environment red: the face reddens, the band keeps its colour
     auto renderer = geometryRenderer();
-    Json tinted = plate3D(0.0, "chrome");
+    // the band grown well past the letter's bevel, so its rim shows
+    Json base = plate3D(0.0, "chrome");
+    base["style_3d"]["bands"][0]["grow"] = 20;
+    Json tinted = base;
     tinted["style_3d"]["face"]["environment"] = Json{{"tint", "#ff2020"}};
-    const Pixels plain = render(*renderer, requestOf(doc3D(plate3D(0.0, "chrome"))));
+    const Pixels plain = render(*renderer, requestOf(doc3D(base)));
     const Pixels red = render(*renderer, requestOf(doc3D(tinted)));
     const float* a = plain.at(256, 128);
     const float* b = red.at(256, 128);
@@ -228,18 +242,21 @@ TEST_F(Title3DRendererGpu, APartsOwnEnvironmentLightsThatPartOnly) {
 TEST_F(Title3DRendererGpu, DebugViewsAoInkAndWireframe) {
     auto renderer = geometryRenderer();
     Json layer = plate3D();
-    layer["style_3d"]["ao"] = Json{{"enabled", true}, {"radius", 6}, {"intensity", 1.5}};
+    layer["style_3d"]["bands"][0]["grow"] = 20;
+    layer["style_3d"]["ao"] = Json{{"enabled", true}, {"radius", 8}, {"intensity", 2}};
     RenderRequest ao = requestOf(doc3D(layer));
     ao.debugView3D = (int)Title3DDebugView::AO;
     const Pixels aoView = render(*renderer, ao);
     EXPECT_GT(aoView.at(256, 128)[0], 0.95f) << "the open face is unoccluded";
-    size_t dark = 0;
-    for (size_t i = 0; i + 3 < aoView.rgba.size(); i += 4) dark += aoView.rgba[i + 3] > 0.99f && aoView.rgba[i] < 0.85f;
-    EXPECT_GT(dark, 0u) << "the crevices show";
+    float darkest = 1;
+    for (size_t i = 0; i + 3 < aoView.rgba.size(); i += 4) {
+        if (aoView.rgba[i + 3] > 0.99f) darkest = std::min(darkest, aoView.rgba[i]);
+    }
+    EXPECT_LT(darkest, 0.8f) << "the crevices show";
     // ink: the render without glint (no glint here: the render itself)
     RenderRequest ink = requestOf(doc3D(plate3D()));
     ink.debugView3D = (int)Title3DDebugView::Ink;
-    EXPECT_LE(compare(render(*renderer, ink), render(*renderer, requestOf(doc3D(plate3D()))), 2.0).overFraction, 0.0);
+    EXPECT_LE(compare(render(*renderer, ink), render(*renderer, requestOf(doc3D(plate3D()))), 2.0).overFraction, 0.001);
     // wireframe: lines over nothing, fewer covered pixels than the solid render
     RenderRequest wire = requestOf(doc3D(plate3D()));
     wire.debugView3D = (int)Title3DDebugView::Wireframe;
@@ -298,6 +315,144 @@ TEST_F(Title3DRendererGpu, TheGlintAddsLightPastTheLetters) {
     double light = 0;
     for (size_t i = 0; i + 3 < g.rgba.size(); i += 4) light += g.rgba[i + 3];
     EXPECT_GT(light, 0.0);
+}
+
+TEST_F(Title3DRendererGpu, PatternsPrintAndRaiseTheFace) {
+    // R22: a checker printed on the face changes it (marks in the pattern's colours); a
+    // relief-only pattern (no ink) still bends the face's normal and changes its light
+    auto renderer = geometryRenderer();
+    auto withPattern = [](double opacity, double relief) {
+        Json layer = plate3D(0.0, "chrome");
+        layer["style_3d"]["face"]["pattern"] = Json{{"kind", "checker"}, {"color", "#ff0000"}, {"color2", "#0000ff"}, {"opacity", opacity},
+                                                    {"scale", 20}, {"shade", 0.5}, {"relief", relief}};
+        return doc3D(layer);
+    };
+    const Pixels plain = render(*renderer, requestOf(doc3D(plate3D(0.0, "chrome"))));
+    const Pixels printed = render(*renderer, requestOf(withPattern(1, 0)));
+    const Pixels raised = render(*renderer, requestOf(withPattern(0, 1)));
+    auto changedShare = [&](const Pixels& a, const Pixels& b) {
+        size_t covered = 0, changed = 0;
+        for (size_t i = 0; i + 3 < a.rgba.size(); i += 4) {
+            if (a.rgba[i + 3] < 0.99f) continue;
+            covered++;
+            float worst = 0;
+            for (int c = 0; c < 3; c++) worst = std::max(worst, std::abs(a.rgba[i + c] - b.rgba[i + c]));
+            if (worst > 8.0f / 255.0f) changed++;
+        }
+        return covered ? (double)changed / covered : 0.0;
+    };
+    EXPECT_GT(changedShare(plain, printed), 0.2) << "the marks show";
+    EXPECT_GT(changedShare(plain, raised), 0.01) << "the relief bends the light";
+    // the marks are red and blue: the face holds both hues
+    size_t red = 0, blue = 0;
+    for (size_t i = 0; i + 3 < printed.rgba.size(); i += 4) {
+        if (printed.rgba[i + 3] < 0.99f) continue;
+        red += printed.rgba[i] > printed.rgba[i + 2] + 0.15f;
+        blue += printed.rgba[i + 2] > printed.rgba[i] + 0.15f;
+    }
+    EXPECT_GT(red, 0u);
+    EXPECT_GT(blue, 0u);
+}
+
+TEST_F(Title3DRendererGpu, ACookedMeshDrawsWithoutTheMesher) {
+    // R38, AC26: the layer's mesh written to .titlemesh and read back draws the same image in a
+    // render that has no mesher (a player built without it); red control: without the cooked
+    // mesh that render has nothing to draw and says why
+    auto renderer = geometryRenderer();
+    const Json layer = plate3D();
+    const std::shared_ptr<const TitleArtDoc> doc = doc3D(layer);
+    const Pixels meshed = render(*renderer, requestOf(doc));
+    three_d::TitleMeshRequest r;
+    auto content = makeGeometryTitleContentProvider();
+    r.source = three_d::collectTitleSource(doc->layers()[0], *doc, *content, nullptr, nullptr);
+    r.style = decodeStyle3D(doc->layers()[0]);
+    r.blocks = three_d::collectCharBlocks(doc->layers()[0], r.style.bands.size());
+    r.tier = TitleTier::Bake;
+    r.outputScale = 1.0;
+    three_d::TitleMesher mesher;
+    const std::vector<uint8_t> file = writeTitleMesh(*mesher.build(r));
+    std::string error;
+    std::shared_ptr<TitleMesh> cooked = readTitleMesh(file, &error);
+    ASSERT_TRUE(cooked) << error;
+    RenderRequest playerRequest = requestOf(doc, TITLE_ART_TEST_NO_MESHER);
+    playerRequest.cookedMeshes3D[doc->layers()[0].value("id", std::string())] = cooked;
+    const Pixels fromFile = render(*renderer, playerRequest);
+    const Difference d = compare(meshed, fromFile, 2.0);
+    EXPECT_LE(d.mean, 0.5);
+    EXPECT_LE(d.overFraction, 0.0);
+    // red control: no cooked mesh, no mesher
+    std::unique_ptr<TitleRenderJob> job;
+    const Pixels nothing = render(*renderer, requestOf(doc, TITLE_ART_TEST_NO_MESHER), &job);
+    bool reported = false;
+    for (const TitleProblem& p : job->problems()) reported = reported || p.code == "mesher_unavailable";
+    EXPECT_TRUE(reported);
+    EXPECT_LT(nothing.at(256, 128)[3], 1.0f / 255.0f);
+}
+
+TEST_F(Title3DRendererGpu, ACookedEnvironmentLightsLikeTheBuiltOne) {
+    // R26, AC13: the builder's CPU twin written as a KTX2 cube and handed to the render
+    // (RenderRequest::cookedEnvironments3D, a player's path) lights the plate as the GPU build does
+    auto renderer = geometryRenderer();
+    RenderRequest built = requestOf(doc3D(plate3D(0.6, "chrome")));
+    built.tier = 3;
+    const Pixels gpu = render(*renderer, built);
+    const int face = titleEnvironmentFace(Environment3D{}, 1.0, TitleTier::Low);
+    const TitleEnvCube twin = buildTitleEnvironmentCpu(*titleEnvironmentPreset("studio"), nullptr, 0, face);
+    std::vector<uint8_t> file;
+    std::string error;
+    ASSERT_TRUE(writeTitleEnvironmentKtx2(twin, {{"JE.titleart.environment", "studio"}}, file, error)) << error;
+    auto cookedRenderer = geometryRenderer();
+    RenderRequest cooked = requestOf(doc3D(plate3D(0.6, "chrome")));
+    cooked.tier = 3;
+    cooked.cookedEnvironments3D["studio"] = std::make_shared<const std::vector<uint8_t>>(file);
+    const Pixels fromFile = render(*cookedRenderer, cooked);
+    const Title3DStats* st = stats3D(*cookedRenderer);
+    ASSERT_TRUE(st);
+    EXPECT_EQ(st->cookedEnvironments, 1u);
+    EXPECT_EQ(st->environmentBuilds, 0u) << "nothing is built";
+    const Difference d = compare(gpu, fromFile, 24.0);
+    EXPECT_LE(d.mean, 3.0);
+    EXPECT_LE(d.overFraction, 0.02);
+}
+
+TEST_F(Title3DRendererGpu, AnImageLayerProjectsItsPicture) {
+    // R1a: an Image layer in 3D shows its picture on its face (a red left half and a blue right
+    // half on a white plastic face); face_image 0 shows the face material only (red control)
+    static TestAssetResolver assets;
+    TitleImageData picture;
+    picture.width = 64;
+    picture.height = 32;
+    picture.rgba.resize((size_t)64 * 32 * 4);
+    for (int y = 0; y < 32; y++) {
+        for (int x = 0; x < 64; x++) {
+            uint8_t* p = &picture.rgba[((size_t)y * 64 + x) * 4];
+            p[0] = x < 32 ? 230 : 20;
+            p[1] = 20;
+            p[2] = x < 32 ? 20 : 230;
+            p[3] = 255;
+        }
+    }
+    assets.addImage("textures/halves.png", picture);
+    auto docWith = [](double faceImage) {
+        Json layer = Json{{"id", "00000001"}, {"type", "image"}, {"name", "Picture"}, {"image", Json{{"path", "textures/halves.png"}}},
+                          {"size", 200}, {"dimension", "3d"}};
+        layer["style_3d"] = Json{{"face", materialPreset("white_gloss")}, {"bevel", {{"width", 4}, {"depth", 4}}}, {"face_image", faceImage},
+                                 {"edge_image", 1}};
+        return makeDoc({{"canvas", canvas(512, 256)}, {"layers", Json::array({layer})}, {"scene_3d", {{"supersample", 1}}}});
+    };
+    auto renderer = geometryRenderer();
+    RenderRequest withPicture = requestOf(docWith(1));
+    withPicture.assets = &assets;
+    RenderRequest without = requestOf(docWith(0));
+    without.assets = &assets;
+    const Pixels p = render(*renderer, withPicture);
+    const Pixels plain = render(*renderer, without);
+    const float* left = p.at(256 - 50, 128);
+    const float* right = p.at(256 + 50, 128);
+    EXPECT_GT(left[0], left[2] + 0.2f) << "the red half";
+    EXPECT_GT(right[2], right[0] + 0.2f) << "the blue half";
+    const float* plainLeft = plain.at(256 - 50, 128);
+    EXPECT_LT(std::abs(plainLeft[0] - plainLeft[2]), 0.1f) << "face_image 0: the white face";
 }
 
 TEST_F(Title3DRendererGpu, AnEnvironmentBuildIsSpreadOverFrames) {

@@ -1371,20 +1371,19 @@ rest of S82 lands in 6B.
     scenes were transcribed by hand from `environment.ts` into a C++ table (`TitleEnvironment.cpp`, also the CPU twin of
     the scene evaluation); there is no `port_environments.py` and no per-preset JSON. Poly Haven titles the third photo
     "Derelict Highway Midday" (no parentheses). Not in this branch: custom `.hdr`/`.exr` project assets (they render the
-    studio with `environment_missing`), the cook to KTX2 cubes (R26, AC14) and the runtime loading of cooked cubes.
+    studio with `environment_missing`). The cook to KTX2 cubes and their runtime loading are deviation 26.
 14. **Implementation: the roughness-to-level map below r = 1/6.** `level = 6 r + log2(face / 512)` holds from r = 1/6 up;
     below it the level runs linearly from 0 (the face's own top level) so the extra top levels of 1024 and 2048 faces sharpen
     near-mirrors as the text says (the formula alone would never read level 0).
 15. **Implementation: no culling, no `mirrored`.** The main pass depth-tests closed solids without face culling and turns each
     normal toward the viewer, which gives the same image for flipped (negative-determinant) layers and the GL Y flip without
     reversed winding; `PipelineState::mirrored` (R44) is therefore not added.
-16. **Implementation: what this branch does not implement** (each is listed in the final report): SAO (R31), glints (R32: S83's
-    `Glint3D`, S86's sprite glints), the gem behind pass (R21: gems refract the environment), the cap position rebuild and
-    patterns on 3D faces (R22), picture projection (R1a), per-part environments in one draw, the `ao`, `glint`, `ink` and `wireframe` debug views (`none`,
-    `normals` and `environment` are served),
-    the 3D Designer rows, pickers and gizmo target (R50-R58: S82's hooks are not in this tree), Lua (R63: S81's component is not
-    in this tree), the cooked `.titlemesh` export and its player load (the format, writer and reader are implemented), the
-    parity goldens (AC21) and the device runs (AC23).
+16. **Implementation: what this branch does not implement** (each is listed in the final report): the 3D Designer rows,
+    pickers and gizmo target (R50-R58: S82's panel hooks and `Gizmo3DTarget` are not in this tree), Lua (R63: S81's
+    component is not in this tree), the exporter's calls (S81's export scan decides which titles ship cooked meshes and
+    which environments ship cubes: `cookTitleMeshes` and `cookTitleEnvironment` are what it calls), the `title3d-fixed`
+    smoke case and the Compile builds with the sub-options OFF (S81), custom `.hdr`/`.exr` project environments, and the
+    device runs (AC23: no phone and no KVM on this host). The cap seam count of AC12 is not measured (the rebuild is in).
 17. **Implementation: `fit_to_tier` applies the tier's reductions** (curve segments, bevel segments, bands past the tier's solid
     count) without measuring the mesh; `3d_tier_budget` measures it per Realtime tier and offers `fit_to_tier` as the fix.
 18. **Implementation: inflate slopes are analytic.** The smooth inflate normals take the profile curve's derivative instead of
@@ -1397,3 +1396,51 @@ rest of S82 lands in 6B.
     profiles: each facet has its own profile normal, so its rings' vertices are split per facet (BIG BONUS, Gold 3D with a
     chamfer ring, a step ring and a plate: 21,216 triangles, 26,381 vertices, 1.24 per triangle against a triangle soup's 3).
     The test asserts ≤ 1.5; sharing would need averaged normals across facets, which would soften the bevels' highlights.
+21. **Implementation: the glint is S86's** (`three_d/Glint3D`, `ShaderType::TITLE_GLINT`, `titleart/glint3d.frag`): S83 owns
+    `Glint3D` in the text, but its streams do not carry it, so this branch ports Pachislop's `glint.ts` whole: the full
+    chain (Bake, High), the mobile reduction (Medium: half resolution, two rays, no star budget) and the sprite glints
+    (Low: the bright pass, its 1D blurs and the point detector on the stars' mip, then one instanced draw of a star per
+    local maximum, `ShaderType::TITLE_GLINT_SPRITE`, no readback). It reads S86's compressed light (decoded, the MSAA
+    shoulder expanded, in its bright pass). S83 may take it over at integration; its interface is `Glint3D.h`.
+22. **Implementation: environment builds are spread over frames.** The 21 s main-thread stalls of MCP 3D renders were the
+    builder's draws (a 1024 cube with 128-sample GGX levels rasterised by llvmpipe in one call; hang reports from an
+    isolated editor), not shader compiles. `Title3DRenderer::ready()` runs the build as 128 px tile passes, a share a call
+    (a texel-sample budget that doubles while calls stay under 4 ms and halves past 16 ms), and the job waits on it.
+    `TITLE_ART_TEST_ENV_ONE_SHOT` is the red control.
+23. **Implementation: first draws of Title Art programs go one a frame (`TitleFirstDraws`, `TitleGpu.h`).** The 2D stalls
+    (4-5 s each) were llvmpipe's LLVM JIT inside the first draw of a TITLE_ART program on the render thread (hang report
+    stacks: `TitleGpu::run` -> `SokolObject::draw` -> `llvm::MCJIT`), not the shader build (async through S32: no builder
+    or create call over 5 ms with `JASPER_SHADER_TIMING`). S32 moves that compile to a worker context on hardware GL but
+    not on a software rasteriser (S32 deviation 6), and Title Art passes use immediate pipelines (S32 §6.4), so it cannot
+    leave the render thread here. Title Art therefore lets one new (program, state) draw a frame: a pass or kernel whose
+    first draw is deferred runs again on a later frame (S80's step re-run, also closing a race where a program finished
+    compiling between a kernel's run and its readiness check); a 3D layer's programs go as one group. This bounds a frame
+    to one driver compile (milliseconds on a GPU); on llvmpipe one compile still takes 4-5 s, so a hang report can still
+    name it. A shader build never runs on the main thread (S32).
+24. **Implementation: render_title's debug views** are `RenderRequest::debugView3D` (`Title3DDebugView`): normals and
+    environment are Title Lit outputs (`TL_OUTPUT` 1, 2); ao is the SAO result (computed with the layer's AO values even
+    when AO is off); glint is the glint light tone mapped alone (the full chain when the layer has none); ink is the render
+    without the glint; wireframe draws the mesh's unique edges (coloured by their normals) over the solids' depth.
+25. **Implementation: cooked meshes.** `RenderRequest::cookedMeshes3D` (by layer id) hands a player's `.titlemesh` meshes to
+    the renderer, which draws a cooked mesh of the request's tier and skips the mesher (`TITLE_ART_TEST_NO_MESHER` stands
+    for a build without it); the editor's `cookTitleMeshes` writes them per tier. S81's exporter wiring is open.
+26. **Implementation: cooked environments.** `buildTitleEnvironmentCpu` is the builder's CPU twin (the procedural scene or
+    the panorama, every level, the GGX prefilter as `title_env.frag`); the editor's `cookTitleEnvironment` encodes it
+    through the texture cook's HDR row (BC6H desktop, RGB9E5 mobile and android_etc2, UASTC HDR web) into a KTX2 cube
+    stamped `JE.logical = title_environment`, `JE.titleart.environment / .face / .builder`, cached in memory;
+    `RenderRequest::cookedEnvironments3D` (by preset id) hands a player's cubes to the renderer, which uploads them
+    (`createTextureLevels`, the device's format or its fallback) instead of building. The cube is linear radiance (not
+    the display encoding of colour textures).
+27. **Implementation: patterns and pictures on 3D faces.** `TL_PATTERN` reads S80's `patterns.glsl` in layer space (marks,
+    colour 2, shade, relief by finite differences; a custom kind's image per material); `TL_FACE_IMAGE` (property bit 24,
+    so `TITLE_LIT` has 25 bits) projects an Image or artwork Vector layer's picture: the face texture premultiplied, the
+    edge texture of nearest inside colours (Felzenszwalb-Huttenlocher), made on a job (`TitlePicture3D`). Caps rebuild
+    their layer position from the view ray (unrigged parts).
+28. **Implementation: the parity goldens are a core GPU test** (`Title3DParityGpu.PachislopLooks`), not
+    `test_title_art_3d_parity.py`: S84's look converter is not in this tree, so the 40 looks are transcribed as JSON
+    (`titleart/fixtures/pachislop3d/`, by hand from Pachislop's look helpers, no code run) and `title3DFromPachislop`
+    (R67) converts their 3D part; their 2D effects map onto S80's (keyline -> outline, outerGlow -> outer_glow) and
+    S83's (deepGlow) are left out. The looks that do not pass are listed in the test with their causes.
+29. **Measured: benches on this host** (`docs/perf/title3d.md`): the figures are this host's (a container on a shared CPU,
+    llvmpipe for the GPU), not build server A's; `tools/perf/bench-thresholds.json` keeps the spec's budgets.
+

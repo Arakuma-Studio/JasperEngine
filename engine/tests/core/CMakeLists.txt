@@ -200,6 +200,19 @@ foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-b
     set_target_properties(${target} PROPERTIES FOLDER "tests")
 endforeach()
 
+# je-bench-titlemesh: the 3D title geometry budgets (S86 R46, AC24, docs/perf/title3d.md); it reads
+# the title art test fonts through the tests' asset resolver
+if(JASPERENGINE_TITLE_ART_3D AND JASPERENGINE_TITLE_ART_MESHER)
+    add_executable(je-bench-titlemesh ${CMAKE_CURRENT_SOURCE_DIR}/bench/TitleMeshBench.cpp ${CMAKE_CURRENT_SOURCE_DIR}/../support/TestPaths.cpp)
+    target_link_libraries(je-bench-titlemesh PRIVATE jasperengine Threads::Threads)
+    target_include_directories(je-bench-titlemesh PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support ${CMAKE_CURRENT_SOURCE_DIR}
+                                                          ${CMAKE_CURRENT_SOURCE_DIR}/../support)
+    target_compile_definitions(je-bench-titlemesh PRIVATE JE_TITLE_BENCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    jasperengine_apply_cxx_standard(je-bench-titlemesh)
+    jasperengine_target_warnings(je-bench-titlemesh)
+    set_target_properties(je-bench-titlemesh PROPERTIES FOLDER "tests")
+endif()
+
 foreach(target jasperengine-core-tests je-bench-jobs je-bench-memory je-bench-particles je-bench-nav je-bench-splines je-bench-anim)
     if(CORE_TEST_COUNTS_ALLOCATIONS)
         target_compile_definitions(${target} PRIVATE JE_TEST_COUNTS_ALLOCATIONS)

@@ -48,6 +48,46 @@ comparison of the old golden against the new image (before) and after the update
 | `effects/fill-radial` | A radial gradient, scaled and offset |
 | `effects/pattern_fill-tilt` | Seigaiha on a floor tilted 50 degrees |
 | `effects/pattern_fill-leopard` | Leopard turned, the background at 40 % |
+| `pachislop/look/f-3d-amethyst` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-amethyst.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-aurora` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-aurora.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-black-chrome` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-black-chrome.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-box-plate` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-box-plate.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-candy` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-candy.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-carbon-orange` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-carbon-orange.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-chrome` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-chrome.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-chrome-blue` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-chrome-blue.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-copper-bronze` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-copper-bronze.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-diamond` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-diamond.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-emerald` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-emerald.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-fire` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-fire.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-galaxy` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-galaxy.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-gold` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-gold.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-gold-plate` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-gold-plate.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-holo-silver` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-holo-silver.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-ice-crystal` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-ice-crystal.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-inflate` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-inflate.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-jade` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-jade.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-kin-gin` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-kin-gin.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-lacquer-gold` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-lacquer-gold.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-lava` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-lava.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-matte-glow` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-matte-glow.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-neon-glass` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-neon-glass.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-obsidian` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-obsidian.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-pearl-pink` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-pearl-pink.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-popout` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-popout.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-rainbow` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-rainbow.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-rainbow-glass-gold` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-rainbow-glass-gold.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-red` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-red.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-rose-chocolate` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-rose-chocolate.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-sakura` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-sakura.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-sapphire` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-sapphire.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-shu-lacquer` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-shu-lacquer.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-silver` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-silver.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-sometsuke` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-sometsuke.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-titanium` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-titanium.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-toxic` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-toxic.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-two-tone` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-two-tone.png` (3D parity reference, S86 AC21) |
+| `pachislop/look/f-3d-violet-neon` | copied unchanged from Pachislop's `tests/golden/refs/look/f-3d-violet-neon.png` (3D parity reference, S86 AC21) |
 | `pachislop/effect/adjust` | copied unchanged from Pachislop's `tests/golden/refs/effect/adjust.png` (parity reference, AC12) |
 | `pachislop/effect/dropShadow` | copied unchanged from Pachislop's `tests/golden/refs/effect/dropShadow.png` (parity reference, AC12) |
 | `pachislop/effect/gaussianBlur` | copied unchanged from Pachislop's `tests/golden/refs/effect/gaussianBlur.png` (parity reference, AC12) |

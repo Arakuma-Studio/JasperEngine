@@ -132,8 +132,9 @@ value by value in `3d.lighting`, a material's environment in `3d.face.environmen
 - `render_title {options: {quality: "low"}}` renders 3D layers as that Realtime tier would; every result with a 3D layer carries
   `stats_3d` (triangles, vertices, solids, build_ms, k, environment_face and per tier `{fits, over}`); `get_title` adds each 3D
   layer's effective style and lighting with the source of every value (`document`, `layer`, `part`).
-- `options.debug_view`: `normals` (the shading normal, world space as colour) and `environment` (the reflected environment,
-  unweighted) show why a look reads wrong, with no tone map; `ao`, `glint`, `ink` and `wireframe` answer not_available.
+- `options.debug_view` shows why a look reads wrong: `normals` (the shading normal as colour) and `environment` (the
+  reflected environment, unweighted) with no tone map; `ao` (the occlusion alone), `glint` (the glint light alone), `ink`
+  (the render without the glint) and `wireframe` (the mesh's edges).
 - Budgets per layer: High 150k triangles / 8 solids, Medium 60k / 5, Low 30k / 3 (Android and HTML5 default to Low). Check them
   with `check_title {checks: ["3d"]}` (`3d_tier_budget.<tier>` FAILs come with a `fit_to_tier` fix; also `3d_z_fighting`,
   `3d_environment_missing`, `3d_light_limit`, `3d_mesh_fallback`).
