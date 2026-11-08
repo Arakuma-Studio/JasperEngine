@@ -17,6 +17,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::titleart;
+using geometry::TitleGeometry;
+using geometry::GlyphOutline;
 
 namespace {
 

@@ -5,6 +5,7 @@
 
 #include "TitleLanguageNames.h"
 #include "titleart/TitleArtIO.h"
+#include "titleart/TitleArtSchema.h"
 #include "titleart/TitleFit.h"
 #include "titleart/TitleTranslations.h"
 #include "util/TitleArtLanguage.h"
