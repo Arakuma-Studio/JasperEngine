@@ -7,11 +7,9 @@
 
 #pragma once
 
-#include "sprite/SpriteMigration.h"
-
 #include <map>
+#include <memory>
 #include <string>
-#include <vector>
 
 namespace jasperengine::editor {
 
@@ -27,7 +25,10 @@ namespace jasperengine::editor {
         Project* project = nullptr;
         bool openRequested = false;
         bool visible = false;
-        std::map<std::string, std::vector<sprite::LegacySprite>> byTexture;
+        // texture -> its legacy sprites (in the .cpp: App.h includes this header, and a sprite::
+        // type here would make `sprite` a namespace in every source that includes App.h)
+        struct Scan;
+        std::shared_ptr<Scan> found;
         std::map<std::string, std::string> results;   // texture -> what converting it did, or why not
 
         void scan();

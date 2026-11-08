@@ -28,15 +28,15 @@
 
 #include <memory>
 
-namespace jasperengine::editor::sprite {
-    struct AtlasBuildResult;
-}
-
 namespace jasperengine::editor::pixelart::aseprite {
     struct ImportRecord;
 }
 
 namespace jasperengine::editor {
+
+    // an export's Sprite Atlas build and whether it remaps its members (Exporter.cpp; the header
+    // names no sprite:: type, so the editor's sources keep a free `sprite` name)
+    struct ExportSpriteAtlas;
 
     namespace fs = std::filesystem;
 
@@ -227,7 +227,7 @@ namespace jasperengine::editor {
         // S45: the Sprite Atlases built for this export's family (gatherSpriteAtlases), whether each
         // remaps its members (Include in Build), the texture sheets' records (texture -> file),
         // and the member textures only sprites read, which copyAssets() leaves out
-        std::vector<std::pair<std::shared_ptr<const sprite::AtlasBuildResult>, bool>> atlasBuilds;
+        std::vector<std::shared_ptr<const ExportSpriteAtlas>> atlasBuilds;
         std::map<std::string, std::string> textureSheetFiles;
         std::set<std::string> atlasOnlySources;
 

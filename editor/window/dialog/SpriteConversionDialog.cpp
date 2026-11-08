@@ -3,6 +3,8 @@
 
 #include "SpriteConversionDialog.h"
 
+#include "sprite/SpriteMigration.h"
+
 #include "Out.h"
 #include "Project.h"
 #include "command/CommandHistory.h"
@@ -14,6 +16,10 @@
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
+struct SpriteConversionDialog::Scan {
+    std::map<std::string, std::vector<sprite::LegacySprite>> byTexture;
+};
+
 void SpriteConversionDialog::open(Project* newProject) {
     project = newProject;
     openRequested = true;
@@ -22,7 +28,8 @@ void SpriteConversionDialog::open(Project* newProject) {
 }
 
 void SpriteConversionDialog::scan() {
-    byTexture.clear();
+    found = std::make_shared<Scan>();
+    auto& byTexture = found->byTexture;
     if (!project) return;
     for (sprite::LegacySprite& legacy : sprite::findLegacySprites(*project)) byTexture[legacy.texture].push_back(std::move(legacy));
 }
@@ -41,6 +48,8 @@ void SpriteConversionDialog::show() {
         visible = false;
         return;
     }
+    if (!found) found = std::make_shared<Scan>();
+    auto& byTexture = found->byTexture;
     size_t total = 0;
     for (const auto& [texture, sprites] : byTexture) total += sprites.size();
     EditorModal::message(std::to_string(total) + " legacy sprite(s) carry their own frames; converting moves them into their texture's Sprite Mode");

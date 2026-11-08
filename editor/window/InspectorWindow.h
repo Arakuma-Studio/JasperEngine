@@ -18,7 +18,7 @@
 #include "util/ScriptAttach.h"
 #include "window/dialog/ShaderForkDialog.h"
 #include "window/AsepriteImporterView.h"
-#include "window/SpriteAtlasInspector.h"
+#include "window/SheetPreviewTextures.h"
 #include "window/TextureImporterView.h"
 #include "window/ModelImporterView.h"
 #include "window/dialog/ComponentAddDialog.h"
@@ -71,6 +71,7 @@ namespace jasperengine::editor{
     class MultiPropertyCmd;
     class AnimationClipDocument;
     class AnimatorAssetDocument;
+    class SpriteAtlasInspector;
     struct InspectorClipState;
     struct InspectorClipStateDeleter{
         void operator()(InspectorClipState* state) const;
@@ -209,7 +210,9 @@ namespace jasperengine::editor{
         // and its model files (S53)
         std::unique_ptr<ModelImporterView> modelImporter;
         std::unique_ptr<AsepriteImporterView> asepriteImporter;
-        std::unique_ptr<SpriteAtlasInspector> spriteAtlasInspector;
+        // (shared: the type stays out of this header, which App.h includes; its sprite:: names would
+        // make `sprite` a namespace in every source that includes App.h)
+        std::shared_ptr<SpriteAtlasInspector> spriteAtlasInspector;
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;

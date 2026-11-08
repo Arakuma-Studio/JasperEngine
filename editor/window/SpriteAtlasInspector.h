@@ -9,16 +9,15 @@
 // extrusion overlay, hover tooltip, click selects the member in the Project window,
 // double-click opens it), the frame list (search name / member: / page:, sorts, thumbnails),
 // the stats line, waste per page and the worst members, warnings with a Fix button.
-// SheetPreviewTextures: page images uploaded for ImGui (the Sprite inspector's frame picker too).
 
 #pragma once
 
 #include "pixelart/PixelImage.h"
 #include "sprite/SpriteAtlasBuilder.h"
 #include "sprite/SpriteAtlasDocument.h"
+#include "window/SheetPreviewTextures.h"
 
 #include "jobs/Task.h"
-#include "texture/Texture.h"
 
 #include <filesystem>
 #include <map>
@@ -30,25 +29,6 @@
 namespace jasperengine::editor {
 
     class Project;
-
-    // Image files uploaded once (by path and modification time) for ImGui, nearest-filtered
-    class SheetPreviewTextures {
-    public:
-        struct Image {
-            Texture texture;
-            int width = 0, height = 0;
-            std::filesystem::file_time_type time;
-            bool valid() const { return width > 0 && !texture.empty(); }
-        };
-        ~SheetPreviewTextures();
-        // a file (absolute, or relative to the assets folder); null when it does not read
-        Image* get(Project* project, const std::string& path);
-        Image* fromImage(const std::string& key, const pixelart::PixelImage& image);
-        void clear();
-
-    private:
-        std::map<std::string, Image> images;
-    };
 
     class SpriteAtlasInspector {
     public:

@@ -151,6 +151,7 @@
 #include "sprite/SpriteSheetPool.h"
 #include "subsystem/MeshSystem.h"
 #include "sprite/SpriteSheetSources.h"
+#include "window/SpriteAtlasInspector.h"
 #include "command/CommandHistory.h"
 #include "yaml-cpp/yaml.h"
 #include "soloud.h"
@@ -13286,7 +13287,7 @@ void editor::InspectorWindow::show(){
         }
         if (!drewAssets) {
             // S45: a .spriteatlas
-            if (!spriteAtlasInspector) spriteAtlasInspector = std::make_unique<SpriteAtlasInspector>(project);
+            if (!spriteAtlasInspector) spriteAtlasInspector = std::make_shared<SpriteAtlasInspector>(project);
             drewAssets = spriteAtlasInspector->draw(project->getInspectedAssets());
         }
         if (assetsLocked) ImGui::EndDisabled();

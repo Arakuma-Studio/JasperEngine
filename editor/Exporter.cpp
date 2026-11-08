@@ -117,6 +117,13 @@ namespace {
 
 using namespace jasperengine;
 
+namespace jasperengine::editor {
+    struct ExportSpriteAtlas {
+        std::shared_ptr<const sprite::AtlasBuildResult> build;
+        bool remaps = false;
+    };
+}
+
 namespace {
 
     constexpr float BUILD_PROGRESS_START = 0.6f;
@@ -2972,8 +2979,9 @@ bool editor::Exporter::copyImportedAssets(const fs::path& assetsDst) {
     }
     std::set<std::string> shippedAtlasFiles;
     std::map<std::string, std::string> claimed;
-    for (const auto& [atlas, remaps] : atlasBuilds) {
-        for (const sprite::AtlasBuildResult::ExportedFile& f : atlas->exportedFiles(remaps)) {
+    for (const auto& entry : atlasBuilds) {
+        const std::shared_ptr<const sprite::AtlasBuildResult>& atlas = entry->build;
+        for (const sprite::AtlasBuildResult::ExportedFile& f : atlas->exportedFiles(entry->remaps)) {
             const bool cookedPage = f.key.rfind("image#", 0) == 0 && cookedTextureSources.count(f.exportPath);
             if (!cookedPage && !shippedAtlasFiles.count(f.exportPath)) {
                 if (!ship(f.cacheFile, f.exportPath)) return false;
@@ -3084,7 +3092,7 @@ bool editor::Exporter::gatherSpriteAtlases(const std::vector<std::string>& platf
                      (built->error.fix.empty() ? std::string() : " (" + built->error.fix + ")"));
             return false;
         }
-        atlasBuilds.emplace_back(built, input.doc.includeInBuild);
+        atlasBuilds.push_back(std::make_shared<const ExportSpriteAtlas>(ExportSpriteAtlas{built, input.doc.includeInBuild}));
         if (!input.doc.includeInBuild) continue;
         // R19: a packed texture only sprites read (their sheet) ships as the atlas's pages only
         for (const sprite::AtlasMemberInput& m : input.members) {
@@ -3133,7 +3141,8 @@ bool editor::Exporter::cookTextures() {
     // je-imported/ path, lossless ones ship as PNG; a packed texture only sprites read is not cooked
     if (!gatherSpriteAtlases(platforms)) return false;
     for (const std::string& source : atlasOnlySources) inputs.erase(source);
-    for (const auto& [atlas, remaps] : atlasBuilds) {
+    for (const auto& entry : atlasBuilds) {
+        const std::shared_ptr<const sprite::AtlasBuildResult>& atlas = entry->build;
         if (atlas->compression != "platform_default") continue;
         for (const sprite::AtlasBuildResult::ExportedFile& f : atlas->exportedFiles(false)) {
             if (f.key.rfind("image#", 0) != 0) continue;
