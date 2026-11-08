@@ -12,9 +12,11 @@
 #include "component/VoxelVolumeComponent.h"
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderVariantCollector.h"
+#include "players/ModuleUsage.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/VoxelSystem.h"
 #include "support/TestTempDir.h"
+#include "util/PngWriter.h"
 #include "voxel/VoxelEdit.h"
 #include "voxel/VoxelFile.h"
 #include "voxel/VoxelGenerator.h"
@@ -305,6 +307,71 @@ TEST(VoxelCook, BakedLoadsWithoutSources) {
     VoxelAssets::setBaseResolver(nullptr);
     EXPECT_FALSE(cookVoxelVolume(editor, "rock.voxelvolume", VoxelCookOptions(), cooked, error));
     EXPECT_NE(error.find("rock.voxelvolume"), std::string::npos) << error;
+}
+
+// R78: a volume made over a Terrain cooks over the ground of the Terrain a shipped scene attaches it to,
+// read from the height map's file when the scene never drew it, and loads with no Terrain
+TEST(VoxelCook, AttachedTerrainCooksOverItsGround) {
+    jasperengine::test::TestTempDir dir("voxel-cook-terrain");
+    std::vector<uint8_t> heights(33 * 33);
+    for (int z = 0; z < 33; z++) {
+        for (int x = 0; x < 33; x++) heights[static_cast<size_t>(z) * 33 + x] = static_cast<uint8_t>(96 + x);
+    }
+    ASSERT_TRUE(writePng(dir.path() / "height.png", 33, 33, 1, heights.data(), 33, io::Durability::Cache));
+
+    Scene scene;
+    const Entity terrainEntity = scene.createEntity();
+    scene.addComponent<Transform>(terrainEntity, {});
+    TerrainComponent terrain;
+    terrain.terrainSize = 128.0f;
+    terrain.maxHeight = 40.0f;
+    terrain.heightMap.setPath((dir.path() / "height.png").generic_string());
+    scene.addComponent<TerrainComponent>(terrainEntity, terrain);
+    const Entity owner = scene.createEntity();
+    scene.addComponent<Transform>(owner, {});
+    Transform& transform = scene.getComponent<Transform>(owner);
+    transform.position = transform.worldPosition = Vector3(-32.0f, 0.0f, -32.0f);
+    VoxelVolumeComponent volume;
+    volume.volumeData.path = "cave.voxelvolume";
+    volume.terrain = terrainEntity;
+    scene.addComponent<VoxelVolumeComponent>(owner, volume);
+
+    voxel::GeneratorDesc generator;
+    generator.kind = "terrain";
+    const std::vector<uint8_t> file = editorFile(desc(64, 64, 64, 2), voxel::generatorToJson(generator));
+    jasperengine::test::TestTempDir::write(dir.path() / "cave.voxelvolume", std::string(reinterpret_cast<const char*>(file.data()), file.size()));
+
+    ModuleScan scan;
+    scan.contents.push_back({"scene Main", &scene, {terrainEntity, owner}});
+    std::vector<std::string> problems;
+    const auto bases = voxelTerrainBases(scan, dir.path(), problems);
+    EXPECT_TRUE(problems.empty()) << problems.front();
+    ASSERT_EQ(bases.count("cave.voxelvolume"), 1u);
+
+    std::vector<uint8_t> cooked;
+    std::string error;
+    EXPECT_FALSE(cookVoxelVolume(file, "cave.voxelvolume", VoxelCookOptions(), cooked, error));
+    EXPECT_NE(error.find("cave.voxelvolume"), std::string::npos) << error;
+    EXPECT_NE(error.find("Terrain"), std::string::npos) << error;
+
+    VoxelCookOptions options;
+    options.terrainBase = bases.at("cave.voxelvolume");
+    ASSERT_TRUE(cookVoxelVolume(file, "cave.voxelvolume", options, cooked, error)) << error;
+    voxel::Store edited(desc(64, 64, 64, 2));
+    edited.setBase(options.terrainBase);
+    auto bytes = std::make_shared<std::vector<uint8_t>>(cooked);
+    std::shared_ptr<VoxelAsset> loaded = VoxelAssets::fromBytes("mem://cooked-cave.voxelvolume", bytes);
+    ASSERT_EQ(loaded->error, voxel::FileError::None) << loaded->errorMessage;
+    EXPECT_EQ(voxel::contentHash(*loaded->store), voxel::contentHash(edited));
+    EXPECT_GT(voxel::readVolumeFileInfo(cooked).info.entryCount, 0u) << "the ground's blocks are in the file";
+    VoxelAssets::forget("mem://cooked-cave.voxelvolume");
+
+    // the same volume attached twice cooks one ground: the export says so
+    scan.contents.push_back({"scene Other", &scene, {owner}});
+    problems.clear();
+    voxelTerrainBases(scan, dir.path(), problems);
+    ASSERT_EQ(problems.size(), 1u);
+    EXPECT_NE(problems[0].find("cave.voxelvolume"), std::string::npos) << problems[0];
 }
 
 TEST(VoxelCook, CorruptFileNamesTheVolume) {

@@ -28,6 +28,10 @@
 
 #include <memory>
 
+namespace jasperengine::voxel {
+    class BaseSource;
+}
+
 namespace jasperengine::editor {
 
     namespace fs = std::filesystem;
@@ -221,6 +225,7 @@ namespace jasperengine::editor {
         std::vector<cook::CookedPrefabInfo> cookedPrefabs;
         // assets-relative: the volumes some component ships with runtimeGeneration on (T6 R78)
         std::set<std::string> voxelKeptGenerators;
+        std::map<std::string, std::shared_ptr<const voxel::BaseSource>> voxelTerrainBases;
         std::shared_ptr<PlayerInfo> player;
         // S34: what the project reaches of the optional modules, found while every scene was
         // loaded (loadAndSaveAllScenes); a source export has no such answer (every module allowed)

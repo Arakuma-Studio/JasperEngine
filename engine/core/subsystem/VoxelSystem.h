@@ -34,6 +34,9 @@
 
 namespace jasperengine{
 
+    class EntityRegistry;
+    struct TerrainSurfaceLayer;
+
     // The tier decides what a volume costs (R51). Stored in MeshComponent::voxelTier.
     enum class VoxelTier : uint8_t{ High = 1, Medium = 2, Low = 3 };
 
@@ -82,6 +85,14 @@ namespace jasperengine{
     // How the module finds the base of a generator kind it cannot build alone: a Terrain, a Noise Graph.
     // Null: the kind stays unresolved, and base_stale says so.
     using VoxelBaseResolver = std::function<std::shared_ptr<const voxel::BaseSource>(const voxel::GeneratorDesc&, const voxel::VolumeDesc&)>;
+
+    // R35, R78: the base of a volume attached to a Terrain, over a copy of its maps, in any registry (an
+    // export's scenes too). readFiles: a map the scene has not loaded is read from its file, and no heights
+    // give null. Null when either entity or a Transform is missing.
+    JASPERENGINE_API std::shared_ptr<const voxel::BaseSource> makeAttachedTerrainBase(EntityRegistry* registry, Entity owner, Entity terrain, double voxelSize, bool readFiles);
+
+    // R43: what each slot draws, a linked slot its Terrain Layer as it is now
+    JASPERENGINE_API std::vector<TerrainSurfaceLayer> voxelSlotLayers(EntityRegistry* registry, const VoxelVolumeComponent& volume);
 
     class JASPERENGINE_API VoxelAssets{
     public:

@@ -93,6 +93,44 @@ TEST(TerrainDetailBuilder, PlanCountsEverySlice){
     EXPECT_EQ(detailSliceKind(plan, 7), DetailSliceKind::SURFACE);
 }
 
+// T6 R50: a Voxel Volume's 16 slots go through the same plan and build; Low plans no surface slices
+// and keeps the height in its colour's alpha
+TEST(TerrainDetailBuilder, VoxelSlotsPlanAndBuild){
+    test::TempDir dir;
+    const std::string color = writeImage(dir, "c.png", 8, 200, 100, 50, 255);
+    const std::string normal = writeImage(dir, "n.png", 8, 128, 128, 255, 255);
+    const std::string height = writeImage(dir, "h.png", 8, 40, 40, 40, 255);
+    std::vector<TerrainSurfaceLayer> slots(16);
+    for (TerrainSurfaceLayer& slot : slots) slot.colorTexture.setPath(color);
+    slots[15].pbr = true;
+    slots[15].normalTexture.setPath(normal);
+    slots[15].heightTexture.setPath(height);
+
+    DetailPlanOptions options;
+    options.wholeBlendMaps = false;
+    const DetailPlan high = planDetailArray(slots, options);
+    EXPECT_EQ(high.colorSlices, 16) << "a slot per colour slice: a volume reads no blend map";
+    EXPECT_EQ(high.normalSlice[15], 16);
+    EXPECT_EQ(high.surfaceSlice[15], 17);
+    EXPECT_EQ(high.sliceKeys.size(), 18u);
+
+    options.surfaceSlices = false;
+    const DetailPlan low = planDetailArray(slots, options);
+    EXPECT_EQ(low.normalSlice[15], 16);
+    EXPECT_EQ(low.surfaceSlice[15], -1);
+    EXPECT_EQ(low.sliceKeys.size(), 17u);
+
+    DetailBuildOptions build;
+    build.maxSize = 512;
+    DetailPixels pixels;
+    ASSERT_TRUE(buildDetailPixels(slots, low, build, pixels));
+    EXPECT_EQ(pixels.slices, 17);
+    const size_t slice = static_cast<size_t>(pixels.width) * pixels.height * 4;
+    // slot 15's colour slice carries the height in alpha, slot 0's its own map's
+    EXPECT_LT(pixels.levels[0][slice * 15 + 3], 60);
+    EXPECT_EQ(pixels.levels[0][3], 255);
+}
+
 TEST(TerrainDetailBuilder, CookedSlicesConcatenate){
     std::vector<CookedSlice> slices(2);
     for (int s = 0; s < 2; s++){

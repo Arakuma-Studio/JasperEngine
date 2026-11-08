@@ -14,6 +14,9 @@
 #include "io/AtomicFile.h"
 #include "reload/HotReloadService.h"
 #include "reload/handlers/ReloadHandlers.h"
+#include "texture/TerrainDetailBuilder.h"
+#include "texture/TerrainSliceCook.h"
+#include "util/PngWriter.h"
 #include "voxel/VoxelFile.h"
 
 #include "json.hpp"
@@ -331,4 +334,22 @@ TEST_F(VoxelAssetTest, DiscardingRecoveryDiscardsTheVolumesCopy) {
     ASSERT_TRUE(project->loadScene(project->getProjectPath() / scenePath, true, false, true));
     EXPECT_FALSE(fs::exists(sceneBackup));
     EXPECT_FALSE(fs::exists(volumeBackup));
+}
+
+// T6 R50: with Compress Terrain Layers on, an export cooks a volume's slot slices as a terrain's,
+// under the same keys, so the player loads the volume's array cooked
+TEST_F(VoxelSceneTest, ExportCooksSlotSlices) {
+    addVolume();
+    const std::vector<uint8_t> rgba(16 * 16 * 4, 200);
+    ASSERT_TRUE(writePng(project->getAssetsPath() / "voxels" / "rock.png", 16, 16, 4, rgba.data(), 16 * 4, io::Durability::Cache));
+    VoxelVolumeComponent& component = sceneProject->scene->getComponent<VoxelVolumeComponent>(owner);
+    component.materialSlots.resize(1);
+    component.materialSlots[0].layer.colorTexture.setPath("voxels/rock.png");
+    project->setCompressTerrainLayers(true);
+
+    std::map<std::string, TextureCookInputs> inputs;
+    std::set<std::string> dropped;
+    std::string error;
+    ASSERT_TRUE(gatherTerrainSliceInputs(*project, inputs, dropped, error)) << error;
+    EXPECT_EQ(inputs.count(terrain::cookedSliceIndexKey("voxels/rock.png")), 1u) << inputs.size() << " slices";
 }

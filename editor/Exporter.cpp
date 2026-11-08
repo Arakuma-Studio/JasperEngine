@@ -2570,10 +2570,18 @@ bool editor::Exporter::loadAndSaveAllScenes() {
             // use any)
             moduleUsageKnown = false;
             voxelKeptGenerators.clear();
+            voxelTerrainBases.clear();
             if (imported) {
                 const ModuleScan shipped = ModuleUsageDetector::collect(project);
-                // T6 R78: which volumes the asset cook leaves a generator in
+                // T6 R78: which volumes the asset cook leaves a generator in, and the ground a volume
+                // attached to a Terrain is cooked over, taken while its scene is loaded
                 voxelKeptGenerators = cook::voxelVolumesGeneratedAtRuntime(shipped);
+                std::vector<std::string> voxelProblems;
+                voxelTerrainBases = cook::voxelTerrainBases(shipped, project->getAssetsPath(), voxelProblems);
+                if (!voxelProblems.empty()) {
+                    importError = voxelProblems.front();
+                    imported = false;
+                }
                 if (config.mode != ExportMode::SourceCode) {
                     moduleUsage = ModuleUsageDetector::analyze(shipped);
                     moduleUsageKnown = true;
@@ -3347,6 +3355,8 @@ bool editor::Exporter::copyAssets() {
         if (cook::isVoxelVolumeFile(entry.path())) {
             cook::VoxelCookOptions voxelOptions;
             voxelOptions.keepGenerator = voxelKeptGenerators.count(relPath.generic_string()) > 0;
+            const auto terrainBase = voxelTerrainBases.find(relPath.generic_string());
+            if (terrainBase != voxelTerrainBases.end()) voxelOptions.terrainBase = terrainBase->second;
             voxelOptions.settings = project->getVoxelSettings();
             voxelOptions.hasTarget = config.mode != ExportMode::SourceCode;
             voxelOptions.target = config.mode == ExportMode::Player ? config.platform

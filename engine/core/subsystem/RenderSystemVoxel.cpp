@@ -13,12 +13,11 @@
 #include "component/Transform.h"
 #include "component/VoxelVolumeComponent.h"
 #include "render/SystemRender.h"
-#include "texture/MipChain.h"
-#include "texture/TextureData.h"
+#include "subsystem/VoxelSystem.h"
+#include "texture/TerrainDetailBuilder.h"
 
 #include <algorithm>
 #include <cmath>
-#include <map>
 
 using namespace jasperengine;
 
@@ -44,19 +43,6 @@ namespace {
             }
         }
         return &slot.layer;
-    }
-
-    std::string sourceKey(const Texture& texture) {
-        const std::string path = texture.getPath(0);
-        return path;
-    }
-
-    unsigned char channelOf(TextureData* source, size_t texel, int channel, unsigned char fallback) {
-        if (!source || !source->getData()) return fallback;
-        const int channels = source->getChannels();
-        if (channel == 3 && channels < 4) return fallback;
-        const auto* pixels = static_cast<const unsigned char*>(source->getData());
-        return pixels[texel * static_cast<size_t>(channels) + static_cast<size_t>(std::min(channel, channels - 1))];
     }
 
     // R50's cap on an own array, per tier
@@ -130,41 +116,17 @@ RenderSystem::VoxelDetailArray* RenderSystem::getVoxelDetailArray(Entity owner, 
         }
     }
 
-    std::vector<std::string> sliceKeys;
-    std::array<int, 16> colorSlice, normalSlice, surfaceSlice;
-    colorSlice.fill(-1);
-    normalSlice.fill(-1);
-    surfaceSlice.fill(-1);
-    std::array<const TerrainSurfaceLayer*, 16> layers{};
-    bool anySource = false;
-    for (size_t i = 0; i < count; i++) {
-        const TerrainSurfaceLayer* layer = slotLayer(scene, *volume, i);
-        layers[i] = layer;
-        const std::string color = sourceKey(layer->colorTexture);
-        anySource = anySource || !color.empty();
-        colorSlice[i] = static_cast<int>(sliceKeys.size());
-        sliceKeys.push_back(color);
-    }
-    for (size_t i = 0; i < count; i++) {
-        const TerrainSurfaceLayer* layer = layers[i];
-        if (!layer->pbr) continue;
-        if (!layer->normalTexture.empty()) {
-            normalSlice[i] = static_cast<int>(sliceKeys.size());
-            sliceKeys.push_back("normal|" + sourceKey(layer->normalTexture));
-            anySource = true;
-        }
-        // R50: no surface slices at Low
-        const bool surface = !layer->occlusionTexture.empty() || !layer->roughnessTexture.empty() || !layer->metallicTexture.empty() || !layer->heightTexture.empty();
-        if (surface && tier != 3) {
-            surfaceSlice[i] = static_cast<int>(sliceKeys.size());
-            sliceKeys.push_back("surface|" + sourceKey(layer->occlusionTexture) + "|" + sourceKey(layer->roughnessTexture) + "|" + sourceKey(layer->metallicTexture) + "|" + sourceKey(layer->heightTexture));
-            anySource = true;
-        }
-    }
-    if (!anySource) return nullptr;
+    // R50: T3's builder over the slots' layers, so a volume's array has the terrain's formats, cooked
+    // slices and height in colour alpha; no surface slices at Low
+    const std::vector<TerrainSurfaceLayer> layers = voxelSlotLayers(scene, *volume);
+    terrain::DetailPlanOptions planOptions;
+    planOptions.surfaceSlices = tier != 3;
+    planOptions.wholeBlendMaps = false;
+    const terrain::DetailPlan plan = terrain::planDetailArray(layers, planOptions);
+    if (!plan.anySource) return nullptr;
 
     auto found = voxelDetailArrays.find(owner);
-    if (found != voxelDetailArrays.end() && !found->second.sharesTerrain && found->second.sliceKeys == sliceKeys) {
+    if (found != voxelDetailArrays.end() && !found->second.sharesTerrain && found->second.sliceKeys == plan.sliceKeys) {
         if (found->second.failed) return nullptr;
         bound = &found->second.render;
         return &found->second;
@@ -174,134 +136,37 @@ RenderSystem::VoxelDetailArray* RenderSystem::getVoxelDetailArray(Entity owner, 
         voxelDetailArrays.erase(found);
     }
 
-    // The largest source, under the tier's cap
-    std::map<std::string, TextureData> sources;
-    int width = 0, height = 0;
-    const auto source = [&](const Texture& texture) -> TextureData* {
-        const std::string key = sourceKey(texture);
-        if (key.empty()) return nullptr;
-        auto entry = sources.find(key);
-        if (entry == sources.end()) {
-            entry = sources.emplace(key, TextureData()).first;
-            if (!entry->second.loadTextureFromFile(key.c_str())) return nullptr;
-            entry->second.setDataOwned(true);
-            width = std::max(width, entry->second.getWidth());
-            height = std::max(height, entry->second.getHeight());
-        }
-        return entry->second.getData() ? &entry->second : nullptr;
-    };
-    struct Slice {
-        int kind = 0;   // 0 colour, 1 normal, 2 surface
-        TextureData* color = nullptr;
-        TextureData* normal = nullptr;
-        TextureData* occlusion = nullptr;
-        TextureData* roughness = nullptr;
-        TextureData* metallic = nullptr;
-        TextureData* heightMap = nullptr;
-    };
-    std::vector<Slice> slices(sliceKeys.size());
-    for (size_t i = 0; i < count; i++) {
-        const TerrainSurfaceLayer* layer = layers[i];
-        slices[static_cast<size_t>(colorSlice[i])].color = source(layer->colorTexture);
-        if (normalSlice[i] >= 0) {
-            Slice& slice = slices[static_cast<size_t>(normalSlice[i])];
-            slice.kind = 1;
-            slice.normal = source(layer->normalTexture);
-        }
-        if (surfaceSlice[i] >= 0) {
-            Slice& slice = slices[static_cast<size_t>(surfaceSlice[i])];
-            slice.kind = 2;
-            slice.occlusion = source(layer->occlusionTexture);
-            slice.roughness = source(layer->roughnessTexture);
-            slice.metallic = source(layer->metallicTexture);
-            slice.heightMap = source(layer->heightTexture);
-        }
-    }
-
     VoxelDetailArray& entry = voxelDetailArrays[owner];
-    entry.sliceKeys = sliceKeys;
-    entry.colorSlice = colorSlice;
-    entry.normalSlice = normalSlice;
-    entry.surfaceSlice = surfaceSlice;
+    entry.sliceKeys = plan.sliceKeys;
+    entry.colorSlice.fill(-1);
+    entry.normalSlice.fill(-1);
+    entry.surfaceSlice.fill(-1);
+    for (size_t i = 0; i < layers.size(); i++) {
+        entry.colorSlice[i] = static_cast<int>(i);
+        entry.normalSlice[i] = plan.normalSlice[i];
+        entry.surfaceSlice[i] = plan.surfaceSlice[i];
+    }
     entry.sharesTerrain = false;
     entry.failed = true;
-    if (width == 0) return nullptr;
-    const int cap = maxArraySize(tier);
-    width = std::min(width, cap);
-    height = std::min(height, cap);
-    for (auto& item : sources) {
-        if (item.second.getData() && (item.second.getWidth() != width || item.second.getHeight() != height)) item.second.resize(width, height);
-    }
 
-    const size_t texels = static_cast<size_t>(width) * static_cast<size_t>(height);
-    std::vector<std::vector<MipLevel>> sliceLevels(slices.size());
-    for (size_t s = 0; s < slices.size(); s++) {
-        const Slice& slice = slices[s];
-        std::vector<unsigned char> pixels(texels * 4, 0xFF);
-        for (size_t t = 0; t < texels; t++) {
-            unsigned char* texel = &pixels[t * 4];
-            if (slice.kind == 1) {
-                texel[0] = channelOf(slice.normal, t, 0, 0x80);
-                texel[1] = channelOf(slice.normal, t, 1, 0x80);
-                texel[2] = channelOf(slice.normal, t, 2, 0xFF);
-            } else if (slice.kind == 2) {
-                texel[0] = channelOf(slice.occlusion, t, 0, 0xFF);
-                texel[1] = channelOf(slice.roughness, t, 1, 0xFF);
-                texel[2] = channelOf(slice.metallic, t, 2, 0xFF);
-                texel[3] = channelOf(slice.heightMap, t, 0, 0xFF);
-            } else {
-                for (int c = 0; c < 4; c++) texel[c] = channelOf(slice.color, t, c, 0xFF);
-            }
-        }
-        MipChainOptions options;
-        options.maxLevels = 0;
-        options.wrap = true;
-        MipLevel base;
-        base.width = width;
-        base.height = height;
-        if (slice.kind == 1) {
-            options.channels = 3;
-            options.type = MipPixelType::F32;
-            options.normalMap = true;
-            base.pixels.resize(texels * 3 * sizeof(float));
-            float* v = reinterpret_cast<float*>(base.pixels.data());
-            for (size_t t = 0; t < texels * 3; t++) v[t] = pixels[(t / 3) * 4 + t % 3] / 255.0f * 2.0f - 1.0f;
-        } else {
-            options.srgb = slice.kind == 0;
-            options.alphaWeighted = slice.kind == 0;
-            base.pixels = std::move(pixels);
-        }
-        sliceLevels[s].push_back(std::move(base));
-        MipChain::build(sliceLevels[s], options);
-        if (slice.kind == 1) {
-            for (MipLevel& level : sliceLevels[s]) {
-                const size_t n = static_cast<size_t>(level.width) * static_cast<size_t>(level.height);
-                const float* v = reinterpret_cast<const float*>(level.pixels.data());
-                std::vector<uint8_t> rgba(n * 4, 0xFF);
-                for (size_t t = 0; t < n; t++) {
-                    for (int c = 0; c < 3; c++) {
-                        rgba[t * 4 + static_cast<size_t>(c)] = static_cast<uint8_t>(std::clamp(static_cast<int>(std::lround((v[t * 3 + static_cast<size_t>(c)] * 0.5f + 0.5f) * 255.0f)), 0, 255));
-                    }
-                }
-                level.pixels = std::move(rgba);
-            }
-        }
+    const int cap = maxArraySize(tier);
+    terrain::DetailBuildOptions options;
+    options.maxSize = cap;
+    terrain::DetailPixels pixels;
+    if (!terrain::loadCookedDetailArray(plan, cap, pixels) && !terrain::buildDetailPixels(layers, plan, options, pixels)) return nullptr;
+    std::vector<TextureLevel> levels(pixels.levels.size());
+    for (size_t level = 0; level < pixels.levels.size(); level++) {
+        levels[level].width = pixels.levelWidths[level];
+        levels[level].height = pixels.levelHeights[level];
+        levels[level].data = pixels.levels[level].data();
+        levels[level].size = pixels.levels[level].size();
     }
-    std::vector<std::vector<uint8_t>> combined(sliceLevels[0].size());
-    std::vector<TextureLevel> levels(combined.size());
-    for (size_t level = 0; level < combined.size(); level++) {
-        for (const std::vector<MipLevel>& slice : sliceLevels) combined[level].insert(combined[level].end(), slice[level].pixels.begin(), slice[level].pixels.end());
-        levels[level].width = sliceLevels[0][level].width;
-        levels[level].height = sliceLevels[0][level].height;
-        levels[level].data = combined[level].data();
-        levels[level].size = combined[level].size();
-    }
-    if (!entry.render.createTextureLevels("voxel|detail|" + std::to_string(owner), TextureType::TEXTURE_ARRAY, GpuTextureFormat::RGBA8, width, height,
-            static_cast<int>(slices.size()), levels, TextureFilter::LINEAR_MIPMAP_LINEAR, TextureFilter::LINEAR, TextureWrap::REPEAT, TextureWrap::REPEAT)) {
+    if (!entry.render.createTextureLevels("voxel|detail|" + std::to_string(owner), TextureType::TEXTURE_ARRAY, pixels.format, pixels.width, pixels.height,
+            pixels.slices, levels, TextureFilter::LINEAR_MIPMAP_LINEAR, TextureFilter::LINEAR, TextureWrap::REPEAT, TextureWrap::REPEAT)) {
         return nullptr;
     }
     if (Engine::isAsyncThread()) {
-        auto* keep = new std::vector<std::vector<uint8_t>>(std::move(combined));
+        auto* keep = new std::vector<std::vector<uint8_t>>(std::move(pixels.levels));
         SystemRender::scheduleCleanup([](void* buffers) { delete static_cast<std::vector<std::vector<uint8_t>>*>(buffers); }, keep);
     }
     entry.failed = false;

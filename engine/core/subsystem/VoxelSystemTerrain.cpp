@@ -32,20 +32,35 @@ namespace {
     const terrain::MapId HOLE_MAP{terrain::MapKind::Hole, 0};
     const terrain::MapId HEIGHT_MAP{terrain::MapKind::Height, 0};
 
-    // T1's query over copied texels, so a mesh job may read it while the map changes (S53 R93)
+    // A map's pixels from its file, for a terrain whose scene was loaded but never drawn (an export)
+    bool decodeMap(const Texture& texture, TextureData& out) {
+        const std::string path = texture.getPath(0);
+        if (path.empty() || !out.loadTextureFromFile(path.c_str())) return false;
+        out.setDataOwned(true);
+        return out.getData() != nullptr;
+    }
+
+    // T1's query over copied texels, so a mesh job may read it while the map changes (S53 R93).
+    // readFiles: a map not in memory is read from its file
     class SnapshotTerrainSource final : public TerrainSource {
     public:
-        SnapshotTerrainSource(TerrainComponent& terrain, const Vector3& volumeToTerrain, std::vector<int> layerSlots): offset(volumeToTerrain), slots(std::move(layerSlots)) {
+        SnapshotTerrainSource(TerrainComponent& terrain, const Vector3& volumeToTerrain, std::vector<int> layerSlots, bool readFiles = false): offset(volumeToTerrain), slots(std::move(layerSlots)) {
             snapshotTerrainSurface(terrain, snapshot);
+            if (readFiles) readMissingMaps(terrain);
             size = snapshot.view.size;
             for (int m = 0; m < static_cast<int>(terrain.blendMaps.size()); m++) {
-                TextureData& data = terrain.blendMaps[static_cast<size_t>(m)].getData();
+                const Texture& texture = terrain.blendMaps[static_cast<size_t>(m)];
+                TextureData decoded;
+                TextureData* data = !texture.empty() && texture.hasData() && texture.getData().getData() ? &texture.getData() : nullptr;
+                if (!data && readFiles && decodeMap(texture, decoded)) data = &decoded;
                 BlendMap map;
-                map.width = data.getWidth();
-                map.height = data.getHeight();
-                map.channels = data.getChannels();
-                if (data.getData() && map.width > 0 && map.height > 0) {
-                    const auto* bytes = static_cast<const uint8_t*>(data.getData());
+                if (data) {
+                    map.width = data->getWidth();
+                    map.height = data->getHeight();
+                    map.channels = data->getChannels();
+                }
+                if (data && data->getData() && map.width > 0 && map.height > 0) {
+                    const auto* bytes = static_cast<const uint8_t*>(data->getData());
                     map.pixels.assign(bytes, bytes + static_cast<size_t>(map.width) * map.height * map.channels);
                 }
                 blends.push_back(std::move(map));
@@ -101,7 +116,32 @@ namespace {
             return out;
         }
 
+        bool hasHeights() const { return snapshot.view.pixels != nullptr; }
+
     private:
+        void readMissingMaps(TerrainComponent& terrain) {
+            TextureData decoded;
+            if (!snapshot.view.pixels && decodeMap(terrain.heightMap, decoded)) {
+                terrain::SurfaceView& view = snapshot.view;
+                view.width = decoded.getWidth();
+                view.height = decoded.getHeight();
+                view.channels = decoded.getChannels();
+                view.bytesPerChannel = TextureData::getBytesPerChannel(decoded.getColorFormat());
+                const auto* bytes = static_cast<const uint8_t*>(decoded.getData());
+                snapshot.pixels.assign(bytes, bytes + static_cast<size_t>(view.width) * view.height * view.channels * view.bytesPerChannel);
+                view.pixels = snapshot.pixels.data();
+            }
+            TextureData holes;
+            if (!terrain.holeMap.empty() && !snapshot.view.holes.texels && decodeMap(terrain.holeMap, holes) && holes.getChannels() == 1 &&
+                TextureData::getBytesPerChannel(holes.getColorFormat()) == 1) {
+                const auto* bytes = static_cast<const uint8_t*>(holes.getData());
+                snapshot.holes.assign(bytes, bytes + static_cast<size_t>(holes.getWidth()) * holes.getHeight());
+                snapshot.view.holes.texels = snapshot.holes.data();
+                snapshot.view.holes.width = holes.getWidth();
+                snapshot.view.holes.height = holes.getHeight();
+            }
+        }
+
         struct BlendMap {
             int width = 0, height = 0, channels = 0;
             std::vector<uint8_t> pixels;
@@ -133,22 +173,42 @@ namespace {
 
 }
 
-std::shared_ptr<const BaseSource> VoxelSystem::makeTerrainBaseFor(Entity owner, Entity terrainEntity){
-    const VolumeState* state = stateOf(owner);
-    VoxelVolumeComponent* component = scene->findComponent<VoxelVolumeComponent>(owner);
-    TerrainComponent* terrain = terrainEntity != NULL_ENTITY && scene->isEntityCreated(terrainEntity) ? scene->findComponent<TerrainComponent>(terrainEntity) : nullptr;
-    const Transform* terrainTransform = terrain ? scene->findComponent<Transform>(terrainEntity) : nullptr;
-    const Transform* volumeTransform = scene->findComponent<Transform>(owner);
-    if (!state || !state->store || !component || !terrainTransform || !volumeTransform) return nullptr;
+std::shared_ptr<const BaseSource> jasperengine::makeAttachedTerrainBase(EntityRegistry* registry, Entity owner, Entity terrainEntity, double voxelSize, bool readFiles){
+    if (!registry || owner == NULL_ENTITY || !registry->isEntityCreated(owner)) return nullptr;
+    VoxelVolumeComponent* component = registry->findComponent<VoxelVolumeComponent>(owner);
+    TerrainComponent* terrain = terrainEntity != NULL_ENTITY && registry->isEntityCreated(terrainEntity) ? registry->findComponent<TerrainComponent>(terrainEntity) : nullptr;
+    const Transform* terrainTransform = terrain ? registry->findComponent<Transform>(terrainEntity) : nullptr;
+    const Transform* volumeTransform = registry->findComponent<Transform>(owner);
+    if (!component || !terrainTransform || !volumeTransform) return nullptr;
     std::vector<int> slots(terrain->surfaceLayers.size(), 0);
     for (size_t i = 0; i < component->materialSlots.size(); i++){
         const int layer = component->materialSlots[i].linkedTerrainLayer;
         if (layer >= 0 && static_cast<size_t>(layer) < slots.size()) slots[static_cast<size_t>(layer)] = static_cast<int>(i);
     }
     TerrainBaseOptions options;
-    options.voxelSize = state->store->desc().voxelSize;
-    options.overlapDepth = resolvedOverlap(*component, static_cast<float>(options.voxelSize));
-    return makeTerrainBase(std::make_shared<SnapshotTerrainSource>(*terrain, volumeToTerrain(*volumeTransform, *terrainTransform), std::move(slots)), options);
+    options.voxelSize = voxelSize;
+    options.overlapDepth = resolvedOverlap(*component, static_cast<float>(voxelSize));
+    auto source = std::make_shared<SnapshotTerrainSource>(*terrain, volumeToTerrain(*volumeTransform, *terrainTransform), std::move(slots), readFiles);
+    if (readFiles && !source->hasHeights()) return nullptr;
+    return makeTerrainBase(std::move(source), options);
+}
+
+std::vector<TerrainSurfaceLayer> jasperengine::voxelSlotLayers(EntityRegistry* registry, const VoxelVolumeComponent& volume){
+    const TerrainComponent* terrain = registry && volume.terrain != NULL_ENTITY && registry->isEntityCreated(volume.terrain) ? registry->findComponent<TerrainComponent>(volume.terrain) : nullptr;
+    std::vector<TerrainSurfaceLayer> layers;
+    layers.reserve(std::min(volume.materialSlots.size(), static_cast<size_t>(voxel::MAX_SLOTS)));
+    for (size_t i = 0; i < volume.materialSlots.size() && i < static_cast<size_t>(voxel::MAX_SLOTS); i++){
+        const VoxelMaterialSlot& slot = volume.materialSlots[i];
+        const bool linked = terrain && slot.linkedTerrainLayer >= 0 && static_cast<size_t>(slot.linkedTerrainLayer) < terrain->surfaceLayers.size();
+        layers.push_back(linked ? terrain->surfaceLayers[static_cast<size_t>(slot.linkedTerrainLayer)] : slot.layer);
+    }
+    return layers;
+}
+
+std::shared_ptr<const BaseSource> VoxelSystem::makeTerrainBaseFor(Entity owner, Entity terrainEntity){
+    const VolumeState* state = stateOf(owner);
+    if (!state || !state->store) return nullptr;
+    return makeAttachedTerrainBase(scene, owner, terrainEntity, state->store->desc().voxelSize, false);
 }
 
 void VoxelSystem::attachTerrain(VolumeState& state, VoxelVolumeComponent& component){

@@ -58,7 +58,17 @@ bool cook::cookVoxelVolume(std::span<const uint8_t> source, const std::string& n
     asset.store = std::make_shared<voxel::Store>(info.info.desc());
     // also with the generator kept: a block edited back to what the base gives is what such a file
     // leaves out, and only the real base can tell (R76)
-    VoxelAssets::resolveBase(asset);
+    if (asset.generator.kind == "terrain") {
+        if (!options.terrainBase) {
+            error = "Voxel Volume \"" + name + "\" is made over a Terrain, and no scene in the build attaches it to one: attach it "
+                    "(Voxel Volume > Terrain), or bake its base (generate_voxels).";
+            return false;
+        }
+        asset.store->setBase(options.terrainBase);
+        asset.baseResolved = true;
+    } else {
+        VoxelAssets::resolveBase(asset);
+    }
     if (!asset.baseResolved) {
         error = "Voxel Volume \"" + name + "\": its generator (" + asset.generator.kind + ") cannot be evaluated here, so it cannot be cooked. "
                 "Check that its source exists.";
@@ -113,4 +123,40 @@ std::set<std::string> cook::voxelVolumesGeneratedAtRuntime(const ModuleScan& sca
         }
     }
     return volumes;
+}
+
+std::map<std::string, std::shared_ptr<const voxel::BaseSource>> cook::voxelTerrainBases(const ModuleScan& scan, const fs::path& assetsDir,
+                                                                                         std::vector<std::string>& problems) {
+    std::map<std::string, std::shared_ptr<const voxel::BaseSource>> bases;
+    std::map<std::string, std::string> attachedIn;      // the volume, where it was first attached
+    for (const ModuleContent& content : scan.contents) {
+        if (!content.registry) continue;
+        for (Entity entity : content.entities) {
+            if (!content.registry->isEntityCreated(entity)) continue;
+            const VoxelVolumeComponent* volume = content.registry->findComponent<VoxelVolumeComponent>(entity);
+            if (!volume || volume->terrain == NULL_ENTITY || volume->volumeData.path.empty()) continue;
+            const std::string& path = volume->volumeData.path;
+            const std::string where = content.label + ", entity " + std::to_string(entity);
+            if (attachedIn.count(path)) {
+                problems.push_back("Voxel Volume \"" + path + "\" is attached to a Terrain in " + attachedIn[path] + " and in " + where +
+                                   ": an export cooks one ground under it. Give each its own volume.");
+                continue;
+            }
+            attachedIn[path] = where;
+            std::string text;
+            if (!DocumentFiles::readBytes(assetsDir / path, text)) continue;   // the cook names an unreadable file
+            const voxel::VolumeFileResult info = voxel::readVolumeFileInfo(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(text.data()), text.size()));
+            if (!info.ok) continue;
+            voxel::GeneratorDesc generator;
+            voxel::generatorFromJson(info.info.generatorJson, generator);
+            if (generator.kind != "terrain") continue;
+            std::shared_ptr<const voxel::BaseSource> base = makeAttachedTerrainBase(content.registry, entity, volume->terrain, info.info.desc().voxelSize, true);
+            if (!base) {
+                problems.push_back("Voxel Volume \"" + path + "\" in " + where + ": its Terrain has no height map to cook it over.");
+                continue;
+            }
+            bases[path] = std::move(base);
+        }
+    }
+    return bases;
 }

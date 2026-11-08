@@ -14,10 +14,16 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <map>
+#include <memory>
 #include <set>
 #include <span>
 #include <string>
 #include <vector>
+
+namespace jasperengine::voxel {
+    class BaseSource;
+}
 
 namespace jasperengine::editor {
     struct ModuleScan;
@@ -32,6 +38,9 @@ namespace jasperengine::editor::cook {
         bool hasTarget = false;
         BuildPlatform target = BuildPlatform::Linux;
         VoxelProjectSettings settings;
+        // R78: the ground of the Terrain a shipped scene attaches the volume to, for a volume whose base
+        // is that Terrain (voxelTerrainBases)
+        std::shared_ptr<const voxel::BaseSource> terrainBase;
     };
 
     bool isVoxelVolumeFile(const std::filesystem::path& path);
@@ -46,5 +55,11 @@ namespace jasperengine::editor::cook {
 
     // The volumes (assets-relative) some component ships with runtimeGeneration on
     std::set<std::string> voxelVolumesGeneratedAtRuntime(const ModuleScan& scan);
+
+    // R78: for each volume (assets-relative) attached to a Terrain in what ships, that Terrain's ground under
+    // it, copied, so it outlives the scenes; maps the scene has not loaded are read from their files. A
+    // volume attached to two Terrains, or over a Terrain with no heights, adds a problem naming it.
+    std::map<std::string, std::shared_ptr<const voxel::BaseSource>> voxelTerrainBases(const ModuleScan& scan, const std::filesystem::path& assetsDir,
+                                                                                       std::vector<std::string>& problems);
 
 }
