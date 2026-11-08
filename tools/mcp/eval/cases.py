@@ -2419,7 +2419,7 @@ CASES = [
         "kind": "guard",
         "what_happened": "A destructible cave is voxel work, and no voxel tool is listed until the group is enabled: the agent "
                          "must find the group or the doc rather than fake it with terrain and meshes.",
-        "text_at_issue": "Guide 'Other areas': voxels (edit_voxels); the voxels row of tool_groups",
+        "text_at_issue": "Guide 'Tool groups': voxels; tool_groups' voxels description (start with edit_voxels; jasper://docs/voxels)",
         "source": "docs/specs/T6-voxel-volumes.md R72, AC54",
         "prompt": "Add a destructible cave to this level, one the player can blast open while playing.",
         "mocks": [
@@ -2929,7 +2929,7 @@ CASES = [
         "kind": "guard",
         "what_happened": "T1: terrain edits moved to edit_terrain in the terrain group, hidden until enabled; an agent asked to edit "
                          "a terrain must find the group or its guide and edit declaratively, not script brush strokes.",
-        "text_at_issue": "Guide 'Other areas': terrain (edit_terrain): jasper://docs/terrain; tool_groups' terrain description",
+        "text_at_issue": "Guide 'Tool groups': terrain; tool_groups' terrain description (start with edit_terrain; jasper://docs/terrain)",
         "source": "docs/specs/T1-terrain-authoring.md R73, AC74",
         "prompt": "The scene has a terrain called Island. Make its middle a plateau 30 m high, about 50 m across.",
         "mocks": [
