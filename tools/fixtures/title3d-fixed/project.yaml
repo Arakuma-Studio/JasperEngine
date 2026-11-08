@@ -1,0 +1,30 @@
+formatVersion: 1
+name: Title 3D Fixed
+canvasWidth: 640
+canvasHeight: 360
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+windowMode: windowed
+windowWidth: 640
+windowHeight: 360
+windowResizable: true
+luaDir: .
+versionControl:
+  lfs: true
+startSceneId: 2319053856
+audio:
+  mixer: audio/Main.mixer
+  outputStage: linear
+  iosSessionCategory: ambient
+titleArt:
+  autoBake: false
+  realtime3DQuality:
+    linux: low
+scenes:
+  - filepath: scenes/Title3D.scene
+    filepathGuid: 514db6798bf784366cd0ab6460d9cdce

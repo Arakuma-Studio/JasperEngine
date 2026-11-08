@@ -1,0 +1,57 @@
+{
+  "format": "jasperengine.titleart.bakeinfo",
+  "version": 1,
+  "frame": {
+    "x": 82,
+    "y": 20,
+    "w": 236,
+    "h": 160
+  },
+  "origin": [118, 80],
+  "outputs": [
+    {
+      "id": "main",
+      "file": "logo.titleart.png",
+      "content": "all",
+      "size": [236, 160]
+    }
+  ],
+  "alpha_bounds": {
+    "x": 86,
+    "y": 24,
+    "w": 228,
+    "h": 152
+  },
+  "source_hash": "abd805fa1dfc40b76979ea48a0b3e4ba25881cec0b38f8ac9104c427cac83479",
+  "bake_version": 1,
+  "anchors": [
+    {
+      "x": 0.5662722,
+      "y": 0.1165045,
+      "size": 0.3125,
+      "strength": 1,
+      "fade": 1
+    },
+    {
+      "x": 0.2210833,
+      "y": 0.09558926,
+      "size": 0.21875,
+      "strength": 0.6536757,
+      "fade": 1
+    },
+    {
+      "x": 0.5848186,
+      "y": 0.9036351,
+      "size": 0.21875,
+      "strength": 0.5760945,
+      "fade": 1
+    },
+    {
+      "x": 0.2521604,
+      "y": 0.9159359,
+      "size": 0.10625,
+      "strength": 0.4881399,
+      "fade": 1
+    }
+  ]
+}

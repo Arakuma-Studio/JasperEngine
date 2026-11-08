@@ -1,0 +1,6 @@
+{
+ "image": "smoke-golden.png",
+ "tolerance": 24,
+ "max_fraction": 0.01,
+ "about": "the editor's frame of the start scene (record_game); the game's own frame (SMOKE_PLAY=1) must match it"
+}
