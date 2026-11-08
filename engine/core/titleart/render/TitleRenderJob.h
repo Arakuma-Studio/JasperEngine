@@ -105,6 +105,7 @@ namespace jasperengine::titleart {
         int width = 0, height = 0;
         ColorFormat format = ColorFormat::RGBA;
         TitleRectI frame;
+        TitleRectI pixels;              // the output pixels it covers (the scaled canvas's, exact where frame rounds)
         TitleRectI alphaBounds;
         bool premultiplied = true;      // intermediates are; the output pass writes straight sRGB
     };

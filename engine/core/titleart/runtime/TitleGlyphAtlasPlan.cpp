@@ -81,7 +81,10 @@ TitleGlyphAtlasPlan jasperengine::titleart::planTitleGlyphAtlas(const TitleArtDo
     }
     // R25: ancestor groups may have normal blend, opacity and transforms only
     std::vector<const Json*> chain;
-    ancestorsOf(root.value("layers", Json::array()), id, chain);
+    // by reference: the chain points into the document
+    static const Json noLayers = Json::array();
+    auto layers = root.find("layers");
+    ancestorsOf(layers != root.end() && layers->is_array() ? *layers : noLayers, id, chain);
     for (const Json* group : chain){
         const std::string blend = str(*group, "blend");
         if (!blend.empty() && blend != "normal"){

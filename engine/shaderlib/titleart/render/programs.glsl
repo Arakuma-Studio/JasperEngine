@@ -32,4 +32,5 @@
 #define TA_PROGRAM_GROW 39          // a mask grown through its distance field (image rims)
 #define TA_PROGRAM_SEED_ALPHA 40    // jump-flood seeds at the alpha edge of a layer target
 #define TA_PROGRAM_RESOLVE_ALPHA 41 // seeds to the signed distance of a layer target's alpha
+#define TA_PROGRAM_GLYPH_COMPOSE 42 // S81's Glyph Atlas: cell quads of an atlas page, in order
 #define TA_PROGRAM_RENDERER_LAST 63

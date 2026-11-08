@@ -12,6 +12,7 @@
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/render/TitleArtRenderer.h"
 #include "titleart/render/TitleGpu.h"
+#include "titleart/runtime/TitleGlyphAtlas.h"
 
 #include <algorithm>
 #include <cmath>
@@ -219,6 +220,7 @@ namespace {
 
 TitleJobFactory jasperengine::titleart::makeRendererJobFactory(TitleArtRenderer& renderer, const AssetResolver* assets){
     return [&renderer, assets](const TitleJobSpec& spec) -> std::unique_ptr<TitleJob> {
+        if (spec.atlas) return makeGlyphAtlasJob(renderer, assets, spec);
         return std::make_unique<RendererJob>(renderer, assets, spec);
     };
 }
@@ -341,6 +343,13 @@ void TitleArtLive::startJob(const TitleJobFactory& factory, uint32_t budgetUs, d
     spec.testFlags = wanted.testFlags;
     spec.glow = wanted.glowOutput;
     spec.label = wanted.label;
+    if (renderMode == TitleArtRenderMode::GLYPH_ATLAS && glyphPlan.fallback.empty() && !glyphPlan.textLayer.empty()){
+        // R25-R29: per glyph; a title whose plan falls back renders as Realtime
+        if (!atlas) atlas = std::make_shared<TitleGlyphAtlas>();
+        atlas->setLimits(wanted.atlasPageSize, wanted.atlasMaxPages);
+        spec.atlas = atlas;
+        spec.glyphPlan = glyphPlan;
+    }
     running.job = factory(spec);
     queued = false;
     if (running.job){
@@ -508,6 +517,7 @@ void TitleArtLive::dropGpu(){
     previousImage = TitleDisplayImage();
     cache.clear();
     running = Running();
+    if (atlas) atlas->clear();
     if (hasWanted){
         queued = true;
         requestSerial = nextRequestSerial();
@@ -559,6 +569,7 @@ TitleArtLiveStatus TitleArtLive::status() const{
         s.glyphUnsafe = glyphPlan.unsafeLabels();
         s.glyphApproximate = glyphPlan.approximateLabels();
         s.glyphFallback = glyphPlan.fallback;
+        s.atlasPages = atlas ? (uint32_t)atlas->pageCount() : 0;
     }
     return s;
 }

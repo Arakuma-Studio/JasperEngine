@@ -40,6 +40,7 @@ const char* titleart::titleRenderProgramName(uint32_t program) {
         case TitleRenderProgram::Grow: return "GROW";
         case TitleRenderProgram::SeedAlpha: return "SEED_ALPHA";
         case TitleRenderProgram::ResolveAlpha: return "RESOLVE_ALPHA";
+        case TitleRenderProgram::GlyphCompose: return "GLYPH_COMPOSE";
     }
     return "";
 }

@@ -148,3 +148,26 @@ void main() {
     frag_color = vec4(s, a);
 }
 #endif
+
+#if TA_PROGRAM == TA_PROGRAM_GLYPH_COMPOSE
+// S81's Glyph Atlas compose (docs/specs/S81-title-art-runtime.md R28): up to 20 cell quads of
+// the atlas page TA_TEX0, each over the ones before it (premultiplied), the whole drawn over the
+// target with premultiplied blending. p[2].x the count; quad i: p[3 + 2i] its rectangle in this
+// target's pixels (x0, y0, x1, y1 in gl_FragCoord space), p[4 + 2i] its cell in the page (u0, v0,
+// u1, v1). The cells hold linear premultiplied colour (the accumulators' encoding).
+void main() {
+    vec2 f = gl_FragCoord.xy;
+    int count = int(ta.p[2].x + 0.5);
+    vec4 acc = vec4(0.0);
+    for (int i = 0; i < 20; i++) {
+        if (i >= count) break;
+        vec4 r = ta.p[3 + 2 * i];
+        if (f.x < r.x || f.y < r.y || f.x >= r.z || f.y >= r.w) continue;
+        vec4 u = ta.p[4 + 2 * i];
+        vec2 t = (f - r.xy) / max(r.zw - r.xy, vec2(1e-3));
+        vec4 s = texture(TA_TEX0, mix(u.xy, u.zw, t));
+        acc = s + acc * (1.0 - s.a);
+    }
+    frag_color = acc;
+}
+#endif

@@ -44,6 +44,7 @@ namespace jasperengine::titleart {
 
     class TitleArtRenderer;
     class AssetResolver;
+    class TitleGlyphAtlas;
 
     // S81's flags in S80's per-request set (RenderRequest::testFlags, after TITLE_ART_TEST_S80_LAST_BIT)
     constexpr uint32_t TITLE_ART_TEST_FAIL_TARGETS = 1u << 6;   // every target allocation of the request fails
@@ -52,6 +53,9 @@ namespace jasperengine::titleart {
 
     // a finished image of a title: the display target (S80's output encoding, straight-alpha sRGB)
     struct JASPERENGINE_API TitleDisplayImage {
+        // what owns the target's pool when it is not the renderer's (a Glyph Atlas title's
+        // atlas): declared first, so it outlives the target
+        std::shared_ptr<void> owner;
         TargetRef target;
         int width = 0, height = 0;
         TitleRectI frame;               // canvas pixels the image covers
@@ -79,6 +83,9 @@ namespace jasperengine::titleart {
         bool glow = false;              // also the glow output (half resolution)
         int tier = 0;
         std::string label;
+        // Glyph Atlas (R25-R29): the title's atlas and plan; null renders as Realtime
+        std::shared_ptr<TitleGlyphAtlas> atlas;
+        TitleGlyphAtlasPlan glyphPlan;
     };
 
     // The scheduler's view of one render (S80's TitleRenderJob in a game; a fake in tests)
@@ -172,6 +179,9 @@ namespace jasperengine::titleart {
         // Glyph Atlas (R25, R30, R31): what its document gives per glyph; a title that falls back
         // renders as Realtime (the plan's `fallback` says why)
         void setGlyphPlan(TitleGlyphAtlasPlan plan) { glyphPlan = std::move(plan); }
+        // the atlas of a Glyph Atlas title that renders per glyph (null before its first job, and
+        // for a title that falls back to Realtime)
+        const std::shared_ptr<TitleGlyphAtlas>& glyphAtlas() const { return atlas; }
         // R55: the characters of the state its Characters set leaves out (they draw as nothing)
         void setMissingCharacters(std::string characters) { missingCharacters = std::move(characters); }
         const TitleGlyphAtlasPlan& glyphAtlasPlan() const { return glyphPlan; }
@@ -200,6 +210,8 @@ namespace jasperengine::titleart {
         std::string path;
         TitleArtRenderMode renderMode;
         TitleGlyphAtlasPlan glyphPlan;
+        // before the images: their targets may be its pool's (TitleDisplayImage::owner keeps it too)
+        std::shared_ptr<TitleGlyphAtlas> atlas;
         std::string missingCharacters;
         std::shared_ptr<const TitleArtDoc> doc;
         uint64_t docHash = 0;

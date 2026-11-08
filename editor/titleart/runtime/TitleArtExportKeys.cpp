@@ -7,6 +7,7 @@
 #include "titleart/TitleArtRenderHost.h"
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/render/TitleArtRenderer.h"
+#include "titleart/render/TitleGpu.h"
 #include "asset/AssetFileWrite.h"
 
 using namespace jasperengine;
@@ -58,5 +59,7 @@ bool editor::addTitleArtRenderKeys(const fs::path& projectRoot, const std::strin
             for (const ShaderKey& key : job->shaderKeys()) keys.insert(key);
         }
     }
+    // a Glyph Atlas title composes its cells (R28): its glyph cells and plates use the programs above
+    keys.insert(titleart::titleRenderProgramKey((uint32_t)titleart::TitleRenderProgram::GlyphCompose));
     return true;
 }

@@ -221,6 +221,7 @@ void TitlePlanner::finishOutput(TitlePx acc) {
         image.height = rect.height;
         image.format = format;
         image.frame = canvasRect(rect);
+        image.pixels = rect;
         image.alphaBounds = {0, 0, rect.width, rect.height};
         image.premultiplied = premultiplied;
         for (const auto& [name, px] : kept) {
@@ -232,6 +233,7 @@ void TitlePlanner::finishOutput(TitlePx acc) {
             split.height = px.rect.height;
             split.format = from.key.format;
             split.frame = canvasRect(px.rect);
+            split.pixels = px.rect;
             split.alphaBounds = {0, 0, px.rect.width, px.rect.height};
             split.premultiplied = true;
             if (name == "glyph:back") state.job->resultSplits().glyphBack = std::move(split);
