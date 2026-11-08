@@ -58,8 +58,11 @@ namespace {
     // the first draw of `number` into `target`, ms: the driver's compile of the variant
     // (llvmpipe's LLVM JIT) is in it. Blended straight-alpha, a state no render draws an element
     // in, so a variant an earlier test drew compiles again here
-    double firstDrawMs(TitleGpu& gpu, uint32_t number, TitleTarget* target, std::string& error) {
+    double firstDrawMs(TitleGpu& gpu, uint32_t number, TitleTarget* target, std::string& error, double* buildMs = nullptr) {
+        const auto built = std::chrono::steady_clock::now();
         if (!build(gpu, number, error)) return -1.0;
+        // (a synchronous shader creation links on this thread: what a GL driver compiles there)
+        if (buildMs) *buildMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - built).count();
         TitleGpuPass pass;
         pass.program = (TitleRenderProgram)(number & 0x7Fu);
         pass.variant = number & ~0x7Fu;
@@ -166,17 +169,21 @@ TEST_F(TitleElementVariantGpu, CompileCostIsBounded) {
     double largest = 0.0;
     std::string largestName;
     for (uint32_t v : variants) {
-        const double ms = firstDrawMs(gpu, v, target.get(), error);
+        double buildMs = 0.0;
+        const double ms = firstDrawMs(gpu, v, target.get(), error, &buildMs);
         ASSERT_GE(ms, 0.0) << ShaderPool::getShaderStr(ShaderType::TITLE_ART, v) << ": " << error;
-        std::printf("[ element ] %-56s %8.1f ms\n", ShaderPool::getShaderStr(ShaderType::TITLE_ART, v).c_str(), ms);
+        std::printf("[ element ] %-56s first draw %8.1f ms, built in %8.1f ms\n", ShaderPool::getShaderStr(ShaderType::TITLE_ART, v).c_str(), ms,
+                    buildMs);
         if (ms > largest) {
             largest = ms;
             largestName = ShaderPool::getShaderStr(ShaderType::TITLE_ART, v);
         }
     }
-    const double whole = firstDrawMs(gpu, before[0], target.get(), error);
+    double wholeBuildMs = 0.0;
+    const double whole = firstDrawMs(gpu, before[0], target.get(), error, &wholeBuildMs);
     ASSERT_GE(whole, 0.0) << error;
-    std::printf("[ element ] %-56s %8.1f ms (before: every element)\n", ShaderPool::getShaderStr(ShaderType::TITLE_ART, before[0]).c_str(), whole);
+    std::printf("[ element ] %-56s first draw %8.1f ms, built in %8.1f ms (before: every element)\n",
+                ShaderPool::getShaderStr(ShaderType::TITLE_ART, before[0]).c_str(), whole, wholeBuildMs);
     const double bound = std::max(MAX_SHARE_OF_WHOLE * whole, FAST_DRIVER_MS);
     ::testing::Test::RecordProperty("largest", largestName + " " + std::to_string(largest) + " ms of the whole program's " + std::to_string(whole) + " ms");
     EXPECT_LE(largest, bound) << largestName << " " << largest << " ms, the whole program " << whole << " ms";
