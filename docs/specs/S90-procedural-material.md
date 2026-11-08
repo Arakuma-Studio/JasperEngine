@@ -690,6 +690,9 @@ are in `engine/tests/core/procmat/`.
   nodes a, b" otherwise; `ProceduralSession`, which has the graph, then plans each of those nodes alone and
   names the smallest one that is refused (`refusedNode`). The bake path names the pass's nodes only, unless it
   calls `refusedNode` too.
+- **Not done (review minors).** D3D11 tells software adapters by name only, not by `DXGI_ADAPTER_FLAG_SOFTWARE`
+  (Windows is not built here); `refusedNode` compiles each node of a refused pass on the main thread, which only an
+  R11 refusal reaches and the shipped library has none.
 - **R12.** A Buffer is stored as RGBA16F stores it, every mip level included (`SpirvImage` with
   `halfPrecision`), and only a Buffer the plan gives mips has a chain: one level samples level 0 at any level of
   detail, as on the device. `roundedToHalf` moved from the test harness into `SpirvInterpreter`.
@@ -698,10 +701,12 @@ are in `engine/tests/core/procmat/`.
   work before any backend starts. `ProceduralRun` (s90-bake) should take its evaluator from
   `makeEditorEvaluator()` and its `device` from the evaluator after the run, not from the context, so that a
   fallback shows as `cpu`.
-- **AC7.** `tools/procmat/spirv_oracle.py` computes 20 cases (75 input sets) in Python from the GLSL
+- **AC7.** `tools/procmat/spirv_oracle.py` computes 21 cases (83 input sets) in Python from the GLSL
   definitions, in 32-bit floats and integers: arithmetic, rounding, comparisons with NaN, logic and selects,
   integers and their bits, an unsigned hash, conversions, swizzles and dynamic indexing, matrices, loops with
-  `break`/`continue` and an `inout` call, the `GLSL.std.450` set the interpreter covers. Exact results are
+  `break`/`continue` and an `inout` call, the `GLSL.std.450` set the interpreter covers, and a sampler
+  (bilinear, repeat outside [0, 1], box mips blended by the lod's fraction and clamped at both ends, from the GL
+  specification's definitions). Exact results are
   compared bit for bit, transcendentals and unordered sums within 4e-6 and 1e-6 relative.
   `SpirvInterpreterTest.MatchesThePythonOracle` reads `SpirvOracleCases.h`, which
   `test_import_mm_nodes.py` checks is current.
@@ -722,5 +727,6 @@ are in `engine/tests/core/procmat/`.
   with `JASPER_TEST_PROCMAT_DEVICE_FAIL=compile:<pass>` in the editor's environment.
 - **AC5** is s90-bake's: the CLI's in-process path is `evaluateOnCpu`, and the editor test
   `ProceduralDevice.WithNoContextTheEditorIsOnTheCpuTier` runs it in a process with no graphics device.
-- **AC6** has no red run: it is new code that gives the same bytes by construction (a pixel reads only its own
-  coordinates and stored Buffers), and no small mutation of it changes bytes between runs rather than always.
+- **AC6** runs each graph on job systems of 0, 1 and 5 workers (the evaluator takes a `jobs::JobSystem`, the
+  process's by default), at two slicings and through `evaluateOnCpu`. Its red run put rows where they were
+  claimed rather than at their own `y`.

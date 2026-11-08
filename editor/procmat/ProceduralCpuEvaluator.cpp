@@ -28,6 +28,9 @@ namespace {
         return (uint8_t)std::floor(clamped * 255.0f + 0.5f);
     }
 
+    std::atomic<int> runningSteps{0};
+    std::atomic<uint64_t> shadedRows{0};
+
     std::string nodesOf(const PlannedPass& pass) {
         if (pass.nodes.empty()) return pass.label;
         if (pass.nodes.size() == 1) return "node " + pass.nodes.front();
@@ -68,7 +71,7 @@ std::string jasperengine::editor::procmat::cpuDeviceName() {
     return "SPIR-V interpreter on the CPU";
 }
 
-ProceduralCpuEvaluator::ProceduralCpuEvaluator() = default;
+ProceduralCpuEvaluator::ProceduralCpuEvaluator(jobs::JobSystem* jobSystem) : jobSystem(jobSystem ? jobSystem : &jobs::system()) {}
 
 ProceduralCpuEvaluator::~ProceduralCpuEvaluator() {
     stopRunning();
@@ -224,17 +227,22 @@ bool ProceduralCpuEvaluator::startStep(size_t index, EvaluationResult& result) {
         }
     }
 
-    const auto body = [step, program, block = std::move(block), textures = std::move(textures), size, mips]() {
+    jobs::JobSystem* const pool = jobSystem;
+    const auto body = [step, program, block = std::move(block), textures = std::move(textures), size, mips, pool]() {
+        runningSteps.fetch_add(1);
+        struct Counted {
+            ~Counted() { runningSteps.fetch_sub(1); }
+        } counted;
         std::vector<float> rgba((size_t)size * size * 4, 0.0f);
         if (program) {
             std::mutex failureLock;
-            const std::function<bool()> stopped = [&]() { return step->stop.load(std::memory_order_relaxed) || jobs::system().isShuttingDown(); };
+            const std::function<bool()> stopped = [&]() { return step->stop.load(std::memory_order_relaxed) || pool->isShuttingDown(); };
             jobs::ParallelForOptions options;
             options.lane = jobs::Lane::Background;
             options.stop = &stopped;
             // a row is one unit: a pixel depends on nothing another row computes, so how rows are
             // shared between threads never changes a byte
-            jobs::parallelFor((size_t)size, [&](size_t y) {
+            pool->parallelFor((size_t)size, [&](size_t y) {
                 SpirvMachine machine(*program);
                 machine.setUniforms(block.data(), block.size());
                 for (const auto& [slot, image] : textures) machine.setTexture(slot, image.get());
@@ -251,6 +259,7 @@ bool ProceduralCpuEvaluator::startStep(size_t index, EvaluationResult& result) {
                     }
                 }
                 step->rowsDone.fetch_add(1, std::memory_order_relaxed);
+                shadedRows.fetch_add(1, std::memory_order_relaxed);
                 return true;
             }, options);
         }
@@ -261,16 +270,27 @@ bool ProceduralCpuEvaluator::startStep(size_t index, EvaluationResult& result) {
     submit.lane = jobs::Lane::Background;
     submit.gate = jobs::GateClass::Heavy;
     submit.name = "procmat-cpu-step";
-    step->task = jobs::submit(body, submit);
+    step->task = jobSystem->submit(body, submit);
     running = std::move(step);
     return true;
 }
 
-void ProceduralCpuEvaluator::startQuantize() {
+ProceduralCpuEvaluator::Activity ProceduralCpuEvaluator::activity() {
+    return {runningSteps.load(), shadedRows.load()};
+}
+
+bool ProceduralCpuEvaluator::startQuantize(EvaluationResult& result) {
     auto step = std::make_shared<Step>();
     step->index = plan.steps.size();
     std::vector<std::pair<std::string, std::shared_ptr<const SpirvImage>>> sources;
-    for (const PlannedOutput& output : plan.outputs) sources.push_back({output.name, buffers[(size_t)output.buffer]});
+    for (const PlannedOutput& output : plan.outputs) {
+        // a plan no step of which draws an output's buffer: the device tier refuses it the same way
+        if (!buffers[(size_t)output.buffer]) {
+            fail(result, "output " + output.name + " has no buffer", -1, {});
+            return false;
+        }
+        sources.push_back({output.name, buffers[(size_t)output.buffer]});
+    }
     const int size = plan.size;
     const auto body = [step, sources = std::move(sources), size]() {
         for (const auto& [name, image] : sources) {
@@ -294,8 +314,9 @@ void ProceduralCpuEvaluator::startQuantize() {
     jobs::SubmitOptions submit;
     submit.lane = jobs::Lane::Background;
     submit.name = "procmat-cpu-quantize";
-    step->task = jobs::submit(body, submit);
+    step->task = jobSystem->submit(body, submit);
     running = std::move(step);
+    return true;
 }
 
 bool ProceduralCpuEvaluator::advance(double budgetMs, EvaluationResult& result) {
@@ -305,7 +326,7 @@ bool ProceduralCpuEvaluator::advance(double budgetMs, EvaluationResult& result) 
     };
     // with no workers nothing runs at submit: the job system runs it here, within the slice
     const auto ready = [&]() {
-        if (!running->task.isReady() && jobs::system().isSingleThreaded()) jobs::pump(std::max(budgetMs, 1.0));
+        if (!running->task.isReady() && jobSystem->isSingleThreaded()) jobSystem->pump(std::max(budgetMs, 1.0));
         return running->task.isReady();
     };
     for (;;) {
@@ -338,7 +359,7 @@ bool ProceduralCpuEvaluator::advance(double budgetMs, EvaluationResult& result) 
                 }
                 if (nextStep >= plan.steps.size()) {
                     phase = Phase::Quantize;
-                    startQuantize();
+                    if (!startQuantize(result)) return true;
                     continue;
                 }
                 if (!startStep(nextStep, result)) return true;

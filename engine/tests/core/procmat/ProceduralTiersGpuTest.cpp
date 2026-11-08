@@ -3,8 +3,8 @@
 
 // S90 R8, R9, R12, D4 and AC4 on the headless device: which tier the context is, and what a device
 // failure does. The device fails on demand through JASPER_TEST_PROCMAT_DEVICE_FAIL, read by
-// ProceduralGpuEvaluator at prepare(). This host has Mesa only, so `gpu` is shown by name in the editor
-// suite (ProceduralCpuEvaluatorTest), not by a device.
+// ProceduralGpuEvaluator at prepare(). Mesa's reference renderers are `software` and any other device is
+// `gpu` (GpuEnvironment::isReferenceRenderer), so the suite holds on the RTX lane and a desktop as here.
 
 #include "../../../../editor/procmat/NodeLibrary.h"
 #include "../../../../editor/procmat/PassPlanner.h"
@@ -106,19 +106,21 @@ namespace {
 
 }
 
-TEST(ProceduralTiersGpu, TheHeadlessDeviceIsSoftware) {
+TEST(ProceduralTiersGpu, TheDeviceTierFollowsItsRenderer) {
     JASPER_REQUIRE_GPU();
-    // llvmpipe on GL, lavapipe on Vulkan: R8's tier 2
+    // AC4: llvmpipe on GL and lavapipe on Vulkan are R8's tier 2; a hardware device is tier 1
+    const bool software = GpuEnvironment::isReferenceRenderer();
+    const EvaluatorTier expected = software ? EvaluatorTier::Software : EvaluatorTier::Gpu;
     const EvaluatorDevice device = editorDevice();
-    EXPECT_EQ(device.tier, EvaluatorTier::Software) << device.name;
+    EXPECT_EQ(device.tier, expected) << device.name;
     EXPECT_EQ(device.name, SystemRender::getDeviceName());
     if (std::strcmp(jasperengine::test::HeadlessContext::getBackendName(), "vulkan") == 0) {
-        EXPECT_TRUE(SystemRender::isCpuDevice()) << "lavapipe's Vulkan device type is the CPU";
+        EXPECT_EQ(SystemRender::isCpuDevice(), software) << "lavapipe's Vulkan device type is the CPU, a GPU's is not";
     } else {
-        EXPECT_FALSE(SystemRender::isCpuDevice()) << "GL has no device type";
+        EXPECT_FALSE(SystemRender::isCpuDevice()) << "GL and Metal have no device type";
     }
     std::unique_ptr<ProceduralEvaluator> evaluator = makeEditorEvaluator();
-    EXPECT_EQ(evaluator->tier(), EvaluatorTier::Software);
+    EXPECT_EQ(evaluator->tier(), expected);
     std::printf("[gpu] procedural material device on %s: %s \"%s\"\n", jasperengine::test::HeadlessContext::getBackendName(),
                 evaluatorTierName(device.tier), device.name.c_str());
 }
@@ -158,7 +160,8 @@ TEST(ProceduralTiersGpu, AFailureNeverLeavesTheDevicesOlderImage) {
     ASSERT_TRUE(evaluator->prepare(constantPlan(0.25f), error)) << error;
     ASSERT_TRUE(runTiers(*evaluator, result));
     ASSERT_TRUE(result.ok) << result.error;
-    EXPECT_EQ(evaluator->tier(), EvaluatorTier::Software);
+    EXPECT_EQ(evaluator->tier(), editorDevice().tier) << "the device drew it";
+    EXPECT_NE(evaluator->tier(), EvaluatorTier::Cpu);
     EXPECT_NEAR(result.outputs[0].rgba[0], 64, 1);
 
     // the next image fails to read back: what comes is the new plan's, from the CPU tier, never 0.25's

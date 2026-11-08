@@ -14,6 +14,8 @@
 #include "../../procmat/ProceduralTieredEvaluator.h"
 #include "../../procmat/SpirvInterpreter.h"
 
+#include "jobs/JobSystem.h"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -214,27 +216,33 @@ TEST(ProceduralDevice, WithNoContextTheEditorIsOnTheCpuTier) {
 }
 
 TEST(ProceduralCpuEvaluator, TheSameGraphGivesTheSameBytesOnEveryRun) {
-    // AC6 on tier 3: a single pass, and a graph whose Buffer feeds the next pass, at two slicings
+    // AC6 on tier 3: a single pass, and a graph whose Buffer feeds the next pass, on job systems of 0 (every
+    // step run by the slices themselves), 1 and 5 workers, at two slicings, and through the blocking entry
     const auto library = cpuTierLibrary();
     for (const graph::Graph& file : {chainGraph(library, {{"n", "perlin"}}), chainGraph(library, {{"a", "voronoi2"}, {"b", "fast_blur"}})}) {
         const PassPlan plan = libraryPlan(library, file, 64);
         ASSERT_FALSE(plan.passes.empty());
         std::vector<std::vector<uint8_t>> runs;
-        for (double budget : {0.0, 50.0}) {
-            ProceduralCpuEvaluator evaluator;
-            std::string error;
-            ASSERT_TRUE(evaluator.prepare(plan, error)) << error;
-            EvaluationResult result;
-            ASSERT_TRUE(finish(evaluator, result, budget));
-            ASSERT_TRUE(result.ok) << result.error;
-            ASSERT_EQ(result.outputs.size(), 1u);
-            runs.push_back(result.outputs[0].rgba);
+        for (int workers : {0, 1, 5}) {
+            jobs::Config config;
+            config.workers = workers;
+            config.reserveForFrame = 0;
+            jobs::JobSystem pool(config);
+            for (double budget : {0.0, 50.0}) {
+                ProceduralCpuEvaluator evaluator(&pool);
+                std::string error;
+                ASSERT_TRUE(evaluator.prepare(plan, error)) << error;
+                EvaluationResult result;
+                ASSERT_TRUE(finish(evaluator, result, budget));
+                ASSERT_TRUE(result.ok) << result.error;
+                ASSERT_EQ(result.outputs.size(), 1u);
+                runs.push_back(result.outputs[0].rgba);
+            }
         }
         EvaluationResult blocking;
         ASSERT_TRUE(evaluateOnCpu(plan, blocking)) << blocking.error;
         runs.push_back(blocking.outputs[0].rgba);
-        EXPECT_EQ(runs[0], runs[1]);
-        EXPECT_EQ(runs[0], runs[2]);
+        for (size_t run = 1; run < runs.size(); run++) EXPECT_EQ(runs[0], runs[run]) << "run " << run;
         EXPECT_GT(std::count_if(runs[0].begin(), runs[0].end(), [&](uint8_t v) { return v != runs[0][0]; }), 0) << "an image, not a flat colour";
     }
 }
@@ -256,6 +264,24 @@ TEST(ProceduralCpuEvaluator, ABufferIsStoredAtHalfPrecision) {
     EXPECT_EQ(roundedToHalf(1.0004f), 1.0f);
     EXPECT_EQ(roundedToHalf(65519.0f), 65504.0f);
     EXPECT_TRUE(std::isinf(roundedToHalf(65520.0f)));
+    // to nearest, not toward zero: 1 + 0.75/1024 lies nearer 1 + 1/1024 than 1
+    EXPECT_EQ(roundedToHalf(1.0f + 0.75f / 1024.0f), 1.0f + 1.0f / 1024.0f);
+    EXPECT_EQ(roundedToHalf(-(1.0f + 0.75f / 1024.0f)), -(1.0f + 1.0f / 1024.0f));
+}
+
+TEST(ProceduralCpuEvaluator, AMipLevelIsStoredAtHalfPrecisionToo) {
+    // R12: the device's box passes store each level as RGBA16F; the average 1 + 3/4096 of these four texels is
+    // 1 + 1/1024 in a half
+    const float a = 1.0f, b = 1.0f + 1.0f / 1024.0f;
+    std::vector<float> rgba;
+    for (float value : {a, b, b, b}) rgba.insert(rgba.end(), {value, value, value, 1.0f});
+    const SpirvImage image(2, 2, rgba, true, true);
+    ASSERT_EQ(image.mipCount(), 2);
+    float texel[4];
+    image.sampleBilinear(0.5f, 0.5f, 1, texel);
+    EXPECT_EQ(texel[0], 1.0f + 1.0f / 1024.0f);
+    const SpirvImage single(2, 2, rgba, false, true);
+    EXPECT_EQ(single.mipCount(), 1) << "a Buffer without mips has one level, as on the device";
 }
 
 TEST(ProceduralCpuEvaluator, AValueEditRedrawsFromTheStepItAffects) {
@@ -273,16 +299,41 @@ TEST(ProceduralCpuEvaluator, AValueEditRedrawsFromTheStepItAffects) {
     EXPECT_NEAR(result.outputs[0].rgba[0], 102, 1) << "two iterations of + 0.2 from the start, not on top of the last result";
 }
 
-TEST(ProceduralCpuEvaluator, CancelStopsAndAValueEditStartsAgain) {
+namespace {
+
+    bool waitForNoStep() {
+        const auto start = std::chrono::steady_clock::now();
+        while (ProceduralCpuEvaluator::activity().runningSteps > 0) {
+            if (std::chrono::steady_clock::now() - start > std::chrono::seconds(120)) return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return true;
+    }
+
+}
+
+TEST(ProceduralCpuEvaluator, CancelStopsARunningStepAndAValueEditStartsAgain) {
+    // R11: a cancel stops the step that is shading, at its next row, not at the end of the image
     const auto library = cpuTierLibrary();
-    const PassPlan plan = libraryPlan(library, chainGraph(library, {{"n", "perlin"}}), 256);
+    const PassPlan plan = libraryPlan(library, chainGraph(library, {{"n", "perlin"}}), 1024);
+    ASSERT_EQ(plan.steps.size(), 1u);
+    const int rows = plan.steps[0].size;
     ProceduralCpuEvaluator evaluator;
     std::string error;
     ASSERT_TRUE(evaluator.prepare(plan, error)) << error;
+    ASSERT_TRUE(waitForNoStep());
+    const uint64_t before = ProceduralCpuEvaluator::activity().shadedRows;
     EvaluationResult result;
-    // a slice returns with work left: the rows run on the job system, not in the caller's slice
-    EXPECT_FALSE(evaluator.advance(0.0, result));
+    // the compile, then the step's job: slices return while the rows run on the job system
+    const auto start = std::chrono::steady_clock::now();
+    while (ProceduralCpuEvaluator::activity().shadedRows == before) {
+        ASSERT_FALSE(evaluator.advance(1.0, result)) << "the image was done before a row was seen";
+        ASSERT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(60));
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
+    }
     evaluator.cancel();
+    ASSERT_TRUE(waitForNoStep());
+    EXPECT_LT(ProceduralCpuEvaluator::activity().shadedRows - before, (uint64_t)rows) << "the stopped step shaded every row";
     ASSERT_TRUE(evaluator.advance(0.0, result));
     EXPECT_FALSE(result.ok);
     EXPECT_TRUE(result.error.empty()) << "a cancel is no failure";
@@ -291,10 +342,25 @@ TEST(ProceduralCpuEvaluator, CancelStopsAndAValueEditStartsAgain) {
     ASSERT_TRUE(finish(evaluator, result));
     EXPECT_TRUE(result.ok) << result.error;
 
-    bool cancelledOnce = false;
-    EXPECT_FALSE(evaluateOnCpu(plan, result, [&]() { return cancelledOnce = true; }));
-    EXPECT_TRUE(cancelledOnce);
+    // the blocking entry stops its running step the same way
+    const uint64_t blockingBefore = ProceduralCpuEvaluator::activity().shadedRows;
+    EXPECT_FALSE(evaluateOnCpu(plan, result, [&]() { return ProceduralCpuEvaluator::activity().shadedRows > blockingBefore; }));
     EXPECT_EQ(result.error, "Cancelled.");
+    EXPECT_TRUE(result.outputs.empty());
+    ASSERT_TRUE(waitForNoStep());
+    EXPECT_LT(ProceduralCpuEvaluator::activity().shadedRows - blockingBefore, (uint64_t)rows);
+}
+
+TEST(ProceduralCpuEvaluator, AnOutputWhoseBufferNoStepDrawsIsAnError) {
+    PassPlan plan;
+    plan.size = 8;
+    plan.passes = {handPass("write", "", "vec4(1.0)", false)};
+    plan.buffers = {{"drawn", 8, false}, {"never", 8, false}};
+    plan.steps = {{0, 0, 8}};
+    plan.outputs = {{"height", 1}};
+    EvaluationResult result;
+    EXPECT_FALSE(evaluateOnCpu(plan, result));
+    EXPECT_EQ(result.error, "output height has no buffer");
 }
 
 TEST(ProceduralCpuEvaluator, AnUnsupportedInstructionIsRefusedAtLoadNamingTheNode) {
@@ -380,4 +446,24 @@ TEST(ProceduralTieredEvaluator, ADeviceFailureContinuesOnTheCpuWithAWarning) {
     EXPECT_EQ(device->prepares, prepares);
     EXPECT_EQ(evaluator.tier(), EvaluatorTier::Cpu);
     EXPECT_EQ(result.warnings.size(), 1u);
+}
+
+TEST(ProceduralTieredEvaluator, WhenTheCpuTierFailsTooTheSessionSaysWhatTheDeviceDid) {
+    // R9: the device failed, then the CPU tier refused the graph; the problem names both
+    auto* device = new FailingDevice();
+    device->failPass = 0;
+    ProceduralTieredEvaluator evaluator{std::unique_ptr<ProceduralEvaluator>(device)};
+    const auto library = refusingLibrary();
+    PlanOptions options;
+    options.size = 8;
+    ProceduralSession session(evaluator, library, options);
+    session.setGraph(chainGraph(library, {{"k1", "kill"}}), 0.0);
+    const auto start = std::chrono::steady_clock::now();
+    session.update(0.0, 2.0);
+    while (session.error().empty() && std::chrono::steady_clock::now() - start < std::chrono::seconds(60)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        session.update(0.0, 2.0);
+    }
+    EXPECT_NE(session.error().find("failed on Test GPU 9000"), std::string::npos) << session.error();
+    EXPECT_NE(session.error().find("the CPU tier cannot run node k1"), std::string::npos) << session.error();
 }

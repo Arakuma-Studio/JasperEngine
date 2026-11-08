@@ -15,6 +15,10 @@ namespace jasperengine::editor::procmat::test {
         uint32_t expected[4];
     };
 
+    // t_img of the cases that sample, RGBA32F rows from v = 0, as bits
+    inline constexpr int oracleImageSize = 4;
+    inline const uint32_t oracleImage[] = {0x00000000u, 0x3e800000u, 0x3f000000u, 0x3f400000u, 0x3ea00000u, 0x3f100000u, 0x3f500000u, 0x3f880000u, 0x3f200000u, 0x3f600000u, 0x3f900000u, 0x3fb00000u, 0x3f700000u, 0x3f980000u, 0x3fb80000u, 0x3fd80000u, 0x3e400000u, 0x3ee00000u, 0x3f300000u, 0x3f700000u, 0x3f000000u, 0x3f400000u, 0x3f800000u, 0x3fa00000u, 0x3f500000u, 0x3f880000u, 0x3fa80000u, 0x3fc80000u, 0x3e000000u, 0x3ec00000u, 0x3f200000u, 0x3f600000u, 0x3ec00000u, 0x3f200000u, 0x3f600000u, 0x3f900000u, 0x3f300000u, 0x3f700000u, 0x3f980000u, 0x3fb80000u, 0x00000000u, 0x3e800000u, 0x3f000000u, 0x3f400000u, 0x3ea00000u, 0x3f100000u, 0x3f500000u, 0x3f880000u, 0x3f100000u, 0x3f500000u, 0x3f880000u, 0x3fa80000u, 0x3f600000u, 0x3f900000u, 0x3fb00000u, 0x3fd00000u, 0x3e400000u, 0x3ee00000u, 0x3f300000u, 0x3f700000u, 0x3f000000u, 0x3f400000u, 0x3f800000u, 0x3fa00000u};
+
     struct SpirvOracleCase {
         const char* name;
         const char* fragment;
@@ -139,6 +143,16 @@ namespace jasperengine::editor::procmat::test {
         {{0x3f800000u, 0x00000000u, 0x40000000u, 0x00000000u, 0x00000000u, 0x3f800000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u}, {0x7f800000u, 0x7f800000u, 0x3f800000u, 0x40000000u}},
         {{0xbf800000u, 0x80000000u, 0xc0400000u, 0x00000000u, 0x00000000u, 0x40000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u}, {0xff800000u, 0xff800000u, 0xc0400000u, 0x3f800000u}},
     };
+    inline const SpirvOracleSet oracleSets20[] = {
+        {{0x3e000000u, 0x3e000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u}, {0x00000000u, 0x3e800000u, 0x3f000000u, 0x3f400000u}},
+        {{0x3e99999au, 0x3f35c28fu, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u}, {0x3f2851ecu, 0x3f6851ecu, 0x3f9428f6u, 0x3fb428f6u}},
+        {{0x3ca3d70au, 0x3f7851ecu, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u}, {0x3ef6d5cfu, 0x3f3b6ae8u, 0x3f7b6ae8u, 0x3f9db574u}},
+        {{0xbecccccdu, 0x3fa66666u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u}, {0x3f399999u, 0x3f799999u, 0x3f9cccccu, 0x3fbcccccu}},
+        {{0x3f19999au, 0x3e4ccccdu, 0x3e800000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u}, {0x3f1ca3d8u, 0x3f5ca3d8u, 0x3f8e51ecu, 0x3fae51ecu}},
+        {{0x3ee66666u, 0x3f59999au, 0x3fc00000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u}, {0x3ee5c28fu, 0x3f32e148u, 0x3f72e148u, 0x3f9970a4u}},
+        {{0x3f666666u, 0x3dcccccdu, 0x40e00000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u}, {0x3ee00000u, 0x3f300000u, 0x3f700000u, 0x3f980000u}},
+        {{0x3ea8f5c3u, 0x3f28f5c3u, 0xc0000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u}, {0x3f2851ecu, 0x3f6851ecu, 0x3f9428f6u, 0x3fb428f6u}},
+    };
 
     inline const SpirvOracleCase oracleCases[] = {
         {"arithmetic", "#version 450\nin vec2 v_uv;\nout vec4 g_finalColor;\nuniform u_fs_procmat {\n    vec4 v[3];\n} pm;\nvoid main() {\n    vec4 a = pm.v[0];\n    vec4 b = pm.v[1];\n    vec4 c = pm.v[2];\n    vec4 r;\n    r = vec4(a.x + b.x, a.y - b.y, a.z * b.z, a.w / b.w) - vec4(0.0, c.y, 0.0, 0.0) * 0.5 + (-c);\n    g_finalColor = r;\n}\n", 0.0f, oracleSets0, 5},
@@ -161,6 +175,7 @@ namespace jasperengine::editor::procmat::test {
         {"matrices", "#version 450\nin vec2 v_uv;\nout vec4 g_finalColor;\nuniform u_fs_procmat {\n    vec4 v[3];\n} pm;\nvoid main() {\n    vec4 a = pm.v[0];\n    vec4 b = pm.v[1];\n    vec4 c = pm.v[2];\n    vec4 r;\n    mat2 m = mat2(a.xy, a.zw); mat2 n = mat2(b.xy, b.zw); vec2 p = m * c.xy; vec2 q = c.zw * m; mat2 o = m * n * 0.5; r = vec4(p + q, o[0][1] + o[1][0], o[1][1]);\n    g_finalColor = r;\n}\n", 1e-06f, oracleSets17, 5},
         {"loops_and_calls", "#version 450\nin vec2 v_uv;\nout vec4 g_finalColor;\nuniform u_fs_procmat {\n    vec4 v[3];\n} pm;\nvoid bump(inout vec2 v, float by) { v += vec2(by, by * 2.0); }\nvoid main() {\n    vec4 a = pm.v[0];\n    vec4 b = pm.v[1];\n    vec4 c = pm.v[2];\n    vec4 r;\n    float s = 0.0; int n = int(c.x); for (int i = 0; i < n; i++) { if (i == int(c.y)) continue; s += a[i & 3]; if (s > b.x) break; } vec2 w = vec2(s, 0.0); bump(w, c.z); int k = 0; while (k < int(c.w)) k += 2; r = vec4(s, w, float(k));\n    g_finalColor = r;\n}\n", 0.0f, oracleSets18, 3},
         {"special_values", "#version 450\nin vec2 v_uv;\nout vec4 g_finalColor;\nuniform u_fs_procmat {\n    vec4 v[3];\n} pm;\nvoid main() {\n    vec4 a = pm.v[0];\n    vec4 b = pm.v[1];\n    vec4 c = pm.v[2];\n    vec4 r;\n    r = vec4(a.x / b.x, b.y / a.y, min(a.z, 1.0), max(1.0, a.z)) * vec4(1.0, 1.0, 1.0, 1.0);\n    g_finalColor = r;\n}\n", 0.0f, oracleSets19, 2},
+        {"sample_bilinear_repeat_mips", "#version 450\nin vec2 v_uv;\nout vec4 g_finalColor;\nuniform u_fs_procmat {\n    vec4 v[3];\n} pm;\nuniform texture2D t_img;\nuniform sampler s_img;\nvoid main() {\n    vec4 a = pm.v[0];\n    vec4 b = pm.v[1];\n    vec4 c = pm.v[2];\n    vec4 r;\n    r = textureLod(sampler2D(t_img, s_img), a.xy, a.z);\n    g_finalColor = r;\n}\n", 1e-06f, oracleSets20, 8},
     };
 
 }

@@ -308,6 +308,69 @@ def _(a, b_, c):
     return [div(a[0], b_[0]), div(b_[1], a[1]), fmin(a[2], 1.0), fmax(1.0, a[2])]
 
 
+# The texture of the sampler cases, t_img: 4 x 4 RGBA, every texel and channel its own value. GLSL 4.50
+# 8.9 and the GL 4.5 specification, 8.14 to 8.15: a level is the box average of the one above, and a
+# LINEAR_MIPMAP_LINEAR sample with REPEAT is bilinear on the two levels around the lod, blended by its fraction
+IMAGE_SIZE = 4
+IMAGE = [f32(((x * 5 + y * 3) % 16) / 16.0 + k * 0.25) for y in range(IMAGE_SIZE) for x in range(IMAGE_SIZE) for k in range(4)]
+SAMPLER = "uniform texture2D t_img;\nuniform sampler s_img;\n"
+
+
+def mip_levels():
+    levels = [(IMAGE_SIZE, IMAGE_SIZE, IMAGE)]
+    while levels[-1][0] > 1 or levels[-1][1] > 1:
+        w, h, data = levels[-1]
+        nw, nh = max(1, w // 2), max(1, h // 2)
+        out = []
+        for y in range(nh):
+            for x in range(nw):
+                for k in range(4):
+                    taps = [data[((min(2 * y + dy, h - 1)) * w + min(2 * x + dx, w - 1)) * 4 + k] for dy in (0, 1) for dx in (0, 1)]
+                    out.append(f32((taps[0] + taps[1] + taps[2] + taps[3]) / 4.0))
+        levels.append((nw, nh, out))
+    return levels
+
+
+def bilinear(level, u, v):
+    w, h, data = level
+    x, y = u * w - 0.5, v * h - 0.5
+    i0, j0 = math.floor(x), math.floor(y)
+    alpha, beta = x - i0, y - j0
+    texel = lambda i, j, k: data[((j % h) * w + (i % w)) * 4 + k]
+    return [(1 - alpha) * (1 - beta) * texel(i0, j0, k) + alpha * (1 - beta) * texel(i0 + 1, j0, k) +
+            (1 - alpha) * beta * texel(i0, j0 + 1, k) + alpha * beta * texel(i0 + 1, j0 + 1, k) for k in range(4)]
+
+
+def texture_lod(u, v, lod):
+    levels = mip_levels()
+    top = len(levels) - 1
+    lod = min(max(lod, 0.0), float(top))
+    low = math.floor(lod)
+    fraction = lod - low
+    near = bilinear(levels[low], u, v)
+    if fraction == 0.0 or low >= top:
+        return near
+    far = bilinear(levels[low + 1], u, v)
+    return [(1 - fraction) * p + fraction * q for p, q in zip(near, far)]
+
+
+SAMPLES = [
+    ([0.125, 0.125, 0.0, 0.0], [0.0] * 4, [0.0] * 4),    # a texel centre
+    ([0.3, 0.71, 0.0, 0.0], [0.0] * 4, [0.0] * 4),
+    ([0.02, 0.97, 0.0, 0.0], [0.0] * 4, [0.0] * 4),      # across both edges: repeat
+    ([-0.4, 1.3, 0.0, 0.0], [0.0] * 4, [0.0] * 4),       # outside [0, 1]
+    ([0.6, 0.2, 0.25, 0.0], [0.0] * 4, [0.0] * 4),       # between levels 0 and 1
+    ([0.45, 0.85, 1.5, 0.0], [0.0] * 4, [0.0] * 4),      # between levels 1 and 2
+    ([0.9, 0.1, 7.0, 0.0], [0.0] * 4, [0.0] * 4),        # past the last level
+    ([0.33, 0.66, -2.0, 0.0], [0.0] * 4, [0.0] * 4),     # below level 0
+]
+
+
+@case("sample_bilinear_repeat_mips", "r = textureLod(sampler2D(t_img, s_img), a.xy, a.z);", ORDERED, SAMPLES, helpers=SAMPLER)
+def _(a, b_, c):
+    return texture_lod(a[0], a[1], a[2])
+
+
 SHADER = """#version 450
 in vec2 v_uv;
 out vec4 g_finalColor;
@@ -339,6 +402,10 @@ def render() -> str:
         "        uint32_t inputs[12];",
         "        uint32_t expected[4];",
         "    };",
+        "",
+        f"    // t_img of the cases that sample, RGBA32F rows from v = 0, as bits",
+        f"    inline constexpr int oracleImageSize = {IMAGE_SIZE};",
+        "    inline const uint32_t oracleImage[] = {" + ", ".join(c_float(x) for x in IMAGE) + "};",
         "",
         "    struct SpirvOracleCase {",
         "        const char* name;",

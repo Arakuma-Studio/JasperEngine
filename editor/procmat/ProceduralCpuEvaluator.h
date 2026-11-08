@@ -25,11 +25,16 @@
 #include "PassPlanner.h"
 #include "ProceduralEvaluator.h"
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
+
+namespace jasperengine::jobs {
+    class JobSystem;
+}
 
 namespace jasperengine::editor::procmat {
 
@@ -41,7 +46,8 @@ namespace jasperengine::editor::procmat {
 
     class ProceduralCpuEvaluator : public ProceduralEvaluator {
     public:
-        ProceduralCpuEvaluator();
+        // `jobSystem`: whose workers run the steps, the process's when null; it must outlive every step
+        explicit ProceduralCpuEvaluator(jobs::JobSystem* jobSystem = nullptr);
         // A running step stops at its next row; the job keeps what it reads alive until then
         ~ProceduralCpuEvaluator() override;
 
@@ -55,16 +61,25 @@ namespace jasperengine::editor::procmat {
         // The share of the evaluation done, 0 to 1, for a progress bar
         float progress() const;
 
+        // What the CPU tier's step jobs are doing in this process, whatever evaluator started them: a stopped
+        // step still runs until its current rows end, which a host shutting down, and the tests, wait for
+        struct Activity {
+            int runningSteps = 0;
+            uint64_t shadedRows = 0;
+        };
+        static Activity activity();
+
     private:
         struct Step;
         enum class Phase { Idle, Compile, Draw, Quantize };
 
         bool compilePass(size_t pass, EvaluationResult& result);
         bool startStep(size_t step, EvaluationResult& result);
-        void startQuantize();
+        bool startQuantize(EvaluationResult& result);
         void stopRunning();
         void fail(EvaluationResult& result, const std::string& error, int pass, const std::string& log);
 
+        jobs::JobSystem* jobSystem;
         PassPlan plan;
         Phase phase = Phase::Idle;
         size_t nextPass = 0;

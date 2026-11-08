@@ -577,6 +577,9 @@ TEST(SpirvInterpreter, APixelIsIndependentOfThePreviousOne){
 
 TEST(SpirvInterpreter, MatchesThePythonOracle){
     using namespace jasperengine::editor::procmat::test;
+    std::vector<float> texels(std::size(oracleImage));
+    std::memcpy(texels.data(), oracleImage, sizeof(oracleImage));
+    const SpirvImage image(oracleImageSize, oracleImageSize, texels);
     int sets = 0;
     for (const SpirvOracleCase& oracle : oracleCases){
         std::vector<uint32_t> words;
@@ -590,6 +593,8 @@ TEST(SpirvInterpreter, MatchesThePythonOracle){
             std::memcpy(inputs, oracle.sets[set].inputs, sizeof(inputs));
             SpirvMachine machine(*program);
             machine.setUniforms(inputs, 12);
+            if (program->textureSlot("t_img") >= 0)
+                machine.setTexture(program->textureSlot("t_img"), &image);
             float out[4];
             ASSERT_EQ(machine.shade(0.5f, 0.5f, out), SpirvMachine::Result::Ok) << oracle.name;
             for (int k = 0; k < 4; k++){
