@@ -210,9 +210,10 @@ def red_pixels(data: bytes) -> int:
 
 
 async def test_canvas_title_over_backdrop(ed: Editor):
-    """R28: the canvas shows the title over its backdrop at any zoom, with the Library open (a
-    shorter canvas) too. Red control: both canvas sprites in one queue order, where the transparent
-    queue's distance sort can put the title under the backdrop: some of these views show none."""
+    """R28: the canvas shows the title over its backdrop at several zooms with the Library open (a
+    shorter canvas). A regression check: the bug it guards (the transparent queue's distance sort
+    putting the title under the backdrop) did not show in this headless window's sizes, so the red
+    evidence is the screenshot run (S82 report), not this test."""
     await setup(ed)
     path = "assets/designer/over.titleart"
     await create(ed, path, text="OVER")
