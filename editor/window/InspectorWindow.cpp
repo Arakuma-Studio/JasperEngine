@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "pixelart/PixelPerfectEditor.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "pool/ShaderPool.h"
@@ -9228,19 +9229,28 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
     RowSettings settingsDrawMode;
     settingsDrawMode.enumEntries = &entriesSpriteDrawMode;
     settingsDrawMode.help = "Sliced: a frame with a border as 9 quads at Width x Height, corners unscaled";
+    // S41: texels per world unit (0: the project's) and the rotation policy under a Pixel Perfect Camera
+    RowSettings settingsPpu;
+    settingsPpu.secondColSize = 6 * ImGui::GetFontSize();
+    settingsPpu.help = "Texels per world unit. 0 = the Sprite Sheet's, else Project (" + std::to_string(project->getPixelsPerUnit()) + ").";
+    RowSettings settingsPixelRotation;
+    settingsPixelRotation.enumEntries = enumEntries(reflect::enums::kPixelRotation);
+    settingsPixelRotation.help = "Under a Pixel Perfect Camera: the camera's rotation policy, 90 Degree Steps or Rotate On Grid.";
 
     const bool singleSheetSprite = entities.size() == 1 && !sceneProject->scene->getComponent<SpriteComponent>(entities[0]).sheet.empty();
-    beginTable(cpType, getLabelSize("Texture Scale"));
+    beginTable(cpType, getLabelSize("Pixels Per Unit"));
     propertyRow(RowPropertyType::Asset, cpType, "sheet", "Sprite", sceneProject, entities, settingsSheet);
     propertyRow(RowPropertyType::Enum, cpType, "drawMode", "Draw Mode", sceneProject, entities, settingsDrawMode);
     endTable();
     if (singleSheetSprite) drawSpriteNativeSize(cpType, sceneProject, entities[0]);
-    beginTable(cpType, getLabelSize("Texture Scale"), "sprite_size");
+    beginTable(cpType, getLabelSize("Pixels Per Unit"), "sprite_size");
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Enum, cpType, "pivotPreset", "Pivot", sceneProject, entities, settingsPivot);
     propertyRow(RowPropertyType::Float, cpType, "textureScaleFactor", "Texture Scale", sceneProject, entities, settingsTexScale);
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, settingsPpu);
+    propertyRow(RowPropertyType::Enum, cpType, "pixelRotation", "Pixel Rotation", sceneProject, entities, settingsPixelRotation);
 
     endTable();
 
@@ -10080,11 +10090,16 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
     settingsTexScale.secondColSize = 6 * ImGui::GetFontSize();
     settingsTexScale.help = "Increase or decrease texture area by a factor";
 
-    beginTable(cpType, getLabelSize("Reserve Tiles"));
+    RowSettings settingsPpu;
+    settingsPpu.secondColSize = 6 * ImGui::GetFontSize();
+    settingsPpu.help = "Texels per world unit. 0 = Project (" + std::to_string(project->getPixelsPerUnit()) + ").";
+
+    beginTable(cpType, getLabelSize("Pixels Per Unit"));
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Float, cpType, "textureScaleFactor", "Texture Scale", sceneProject, entities, settingsTexScale);
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, settingsPpu);
     propertyRow(RowPropertyType::UInt, cpType, "reserveTiles", "Reserve Tiles", sceneProject, entities, settingsInt);
     endTable();
 
@@ -13826,6 +13841,9 @@ void editor::InspectorWindow::show(){
             }
 
             ImGui::SeparatorText("Fixed Resolution");
+            // R4: a Pixel Perfect Camera on the main camera drives the target instead
+            if (const std::string note = pixelart::fixedResolutionNote(sceneProject); !note.empty())
+                ImGui::TextDisabled("%s", note.c_str());
 
             if (ImGui::BeginTable("scene_fixed_resolution_table", 2, tableFlags)) {
                 ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Enabled"));

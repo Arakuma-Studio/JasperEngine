@@ -7429,6 +7429,22 @@
    "label": "Flip Y",
    "path": "flipY",
    "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Pixels Per Unit",
+   "path": "pixelsPerUnit",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
+   "kind": "Enum",
+   "label": "Pixel Rotation",
+   "path": "pixelRotation",
+   "read_only": false
   }
  ],
  "sprite_animation#0": [
@@ -8228,6 +8244,14 @@
    "kind": "Bool",
    "label": "Flip Y",
    "path": "flipY",
+   "read_only": false
+  },
+  {
+   "component": "tilemap",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Pixels Per Unit",
+   "path": "pixelsPerUnit",
    "read_only": false
   },
   {

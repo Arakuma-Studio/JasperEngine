@@ -29,6 +29,14 @@
 // instanced batch (HAS_AUTO_INSTANCING); a fork keeping its own block is never batched
 #include "includes/object_params.glsl"
 
+// a pixel-perfect camera's sprites and tilemaps (S41): the snap on the final position, read from
+// the frame block's grid (the depth program snaps identically)
+#ifdef PIXEL_SNAP
+    #define FRAME_VS
+    #include "includes/frame.glsl"
+    #include "includes/pixel_snap.glsl"
+#endif
+
 // same expression as depth.vert, so a depth prepass and this pass agree bit for bit
 invariant gl_Position;
 
@@ -335,6 +343,14 @@ void main() {
     #endif
 
     gl_Position = pbrParams.mvpMatrix * pos;
+    #ifdef PIXEL_SNAP
+        #ifdef HAS_INSTANCING
+            vec4 snapPivot = pbrParams.mvpMatrix * i_matrix_col4;
+        #else
+            vec4 snapPivot = pbrParams.mvpMatrix[3];
+        #endif
+        gl_Position = pixelSnapApply(gl_Position, pbrParams.pixelSnapDraw.x, snapPivot);
+    #endif
     #ifdef IS_VULKAN
         // GL [-1,1] to Vulkan [0,1] depth range (spirv-cross fixup_clipspace equivalent)
         gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;

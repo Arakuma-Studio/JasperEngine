@@ -144,6 +144,7 @@
 #include "component/SafeAreaComponent.h"
 #include "component/CapsuleShadowCasterComponent.h"
 #include "component/AudioSnapshotComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"
 
@@ -181,6 +182,7 @@
 #include "object/Bone.h"
 #include "object/Camera.h"
 #include "object/CameraFollow.h"
+#include "object/PixelPerfectCamera.h"
 #include "object/CameraShaker.h"
 #include "object/EntityHandle.h"
 #include "object/environment/Fog.h"

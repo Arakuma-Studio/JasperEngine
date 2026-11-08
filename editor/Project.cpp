@@ -4,6 +4,7 @@
 #include "Project.h"
 #include "util/ScriptPropertyCache.h"
 #include "util/ProjectChecks.h"
+#include "asset/ModelSubAssets.h"
 #include "memory/HeapTrim.h"
 #include "render/LayerViewCamera.h"
 #include "component/MirrorComponent.h"
@@ -1104,6 +1105,11 @@ static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs
         return state != editor::FbxImporter::State::Missing;
     }
     written = true;
+    // (the database sees the FBX, which has no contents of its own: the model is this file)
+    editor::ModelContents contents;
+    if (editor::scanModelFile(glbPath, contents)) {
+        editor::reportModelLimits(fbxName, contents);
+    }
     return true;
 }
 
@@ -1782,6 +1788,21 @@ void editor::Project::setSpriteAtlasMode(const std::string& mode){
 
 int editor::Project::getHtmlUiMsaaSamples() const{
     return htmlUiMsaaSamples;
+}
+
+void editor::Project::setPixelsPerUnit(int pixelsPerUnit){
+    const int previous = this->pixelsPerUnit;
+    this->pixelsPerUnit = std::clamp(pixelsPerUnit, minPixelsPerUnit, maxPixelsPerUnit);
+    // the edited scenes' sprites and tilemaps of PPU 0 build again (MeshSystem)
+    Engine::setPixelsPerUnit(this->pixelsPerUnit);
+    // .aseprite sheets of pixelsPerUnit "project" bake it: their imports' keys change with it
+    if (previous != this->pixelsPerUnit && pixelart::aseprite::AsepriteImporter::get().getProject() == this){
+        pixelart::aseprite::AsepriteImporter::get().requestAll();
+    }
+}
+
+int editor::Project::getPixelsPerUnit() const{
+    return pixelsPerUnit;
 }
 
 bool editor::Project::isValidHtmlUiGlyphAtlasMiB(int mib){
@@ -6172,6 +6193,7 @@ void editor::Project::resetConfigs() {
     stripEngineCode = true;
     spriteAtlasMode = "enabled";
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
+    setPixelsPerUnit(defaultPixelsPerUnit);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
     setDrawSubmissionSettings(DrawSubmissionSettings());
     setDeviceSettings(DeviceSettings());
@@ -8127,6 +8149,7 @@ void editor::Project::configureGenerator() {
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
+    generator.setPixelsPerUnit(pixelsPerUnit);
     generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings);
 }
 
@@ -10318,6 +10341,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
+    generator.setPixelsPerUnit(pixelsPerUnit);
     generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings);
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
@@ -10526,6 +10550,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 // Apply project display settings before scripts read the canvas size.
                 Engine::setCanvasSize(canvasWidth, canvasHeight);
                 Engine::setScalingMode(scalingMode);
+                Engine::setPixelsPerUnit(pixelsPerUnit);
                 Engine::setDefaultCanvasScaler(uiScale);
                 Engine::setTextureStrategy(textureStrategy);
                 Engine::systemViewChanged();

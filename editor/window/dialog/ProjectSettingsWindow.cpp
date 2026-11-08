@@ -68,8 +68,9 @@
 
 namespace jasperengine::editor {
 
-static const char* scalingModeNames[] = { "Fit Width", "Fit Height", "Letterbox", "Crop", "Stretch", "Native" };
-static const Scaling scalingModeValues[] = { Scaling::FITWIDTH, Scaling::FITHEIGHT, Scaling::LETTERBOX, Scaling::CROP, Scaling::STRETCH, Scaling::NATIVE };
+static const char* scalingModeNames[] = { "Fit Width", "Fit Height", "Letterbox", "Crop", "Stretch", "Native", "Integer (Letterbox)", "Integer (Expand)" };
+static const Scaling scalingModeValues[] = { Scaling::FITWIDTH, Scaling::FITHEIGHT, Scaling::LETTERBOX, Scaling::CROP, Scaling::STRETCH, Scaling::NATIVE,
+                                             Scaling::INTEGER, Scaling::INTEGER_EXPAND };
 static const int scalingModeCount = sizeof(scalingModeValues) / sizeof(scalingModeValues[0]);
 
 static const char* textureStrategyNames[] = { "Fit", "Resize", "None" };
@@ -837,6 +838,13 @@ static void drawScalingPreview(Scaling mode, int canvasWidth, int canvasHeight) 
             scaleX = vw / baseW;
             scaleY = vh / baseH;
             break;
+        case Scaling::INTEGER:
+        case Scaling::INTEGER_EXPAND: {
+            // the preview's whole-number fit (at least 1, as the layout's k)
+            float s = std::floor((vw / baseW < vh / baseH) ? vw / baseW : vh / baseH);
+            scaleX = scaleY = s < 1.0f ? 1.0f : s;
+            break;
+        }
         case Scaling::NATIVE:
         default:
             scaleX = scaleY = 1.0f;
@@ -954,6 +962,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_canvasWidth = project->getCanvasWidth();
     m_canvasHeight = project->getCanvasHeight();
     m_scalingModeIndex = findScalingIndex(project->getScalingMode());
+    m_pixelsPerUnit = project->getPixelsPerUnit();
     m_uiScale = project->getUIScale();
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
@@ -1908,6 +1917,13 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             drawComboSetting("Scaling Mode", "##ScalingMode", scalingModeNames, scalingModeCount, m_scalingModeIndex, findScalingIndex(Project::defaultScalingMode));
             ImGui::Spacing();
             drawScalingPreview(scalingModeValues[m_scalingModeIndex], m_canvasWidth, m_canvasHeight);
+        }
+
+        if (settingsui::beginRow("graphics.pixels_per_unit")) {
+            drawIntSetting("Pixels Per Unit", "##PixelsPerUnit", m_pixelsPerUnit, Project::defaultPixelsPerUnit, Project::minPixelsPerUnit,
+                           "Texels per world unit of sprites and tilemaps whose own Pixels Per Unit is 0 (1: a world unit is a pixel). "
+                           "1 to 256.");
+            m_pixelsPerUnit = std::min(m_pixelsPerUnit, Project::maxPixelsPerUnit);
         }
 
         // the Canvas Scaler's project default: the UI's own space, apart from the game canvas
@@ -5233,6 +5249,7 @@ bool ProjectSettingsWindow::applySettings() {
 
     m_project->setCanvasSize(m_canvasWidth, m_canvasHeight);
     m_project->setScalingMode(scalingModeValues[m_scalingModeIndex]);
+    m_project->setPixelsPerUnit(m_pixelsPerUnit);
     if (m_project->getUIScale() != m_uiScale)
         m_project->setUIScale(m_uiScale);
     m_project->setTextureStrategy(textureStrategyValues[m_textureStrategyIndex]);

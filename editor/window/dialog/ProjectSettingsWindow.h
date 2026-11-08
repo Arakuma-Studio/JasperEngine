@@ -34,6 +34,7 @@ namespace jasperengine::editor {
         int m_canvasWidth = 0;
         int m_canvasHeight = 0;
         int m_scalingModeIndex = 0;
+        int m_pixelsPerUnit = 1;
         CanvasScalerSettings m_uiScale;
         int m_textureStrategyIndex = 0;
         bool m_vsyncEnabled = true;

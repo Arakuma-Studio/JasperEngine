@@ -99,8 +99,8 @@ namespace jasperengine::editor::pixelart::aseprite {
             }
         }
 
-        // the pixels per unit of the project (S41 adds the setting; until then 1 pixel = 1 unit)
-        int projectPixelsPerUnit(const Project&) { return 1; }
+        // a sheet of pixelsPerUnit "project" takes the project's Pixels Per Unit (S41)
+        int projectPixelsPerUnit(const Project& project) { return project.getPixelsPerUnit(); }
 
     }
 

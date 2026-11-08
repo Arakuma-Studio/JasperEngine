@@ -63,6 +63,15 @@ namespace jasperengine{
         void setTextureScaleFactor(float textureScaleFactor);
         float getTextureScaleFactor() const;
 
+        // S41: texels per world unit (0: the project's Pixels Per Unit); the rotation policy
+        // under a Pixel Perfect Camera (CAMERA: the camera's)
+        void setPixelsPerUnit(float pixelsPerUnit);
+        float getPixelsPerUnit() const;
+        void setPixelRotation(PixelRotation pixelRotation);
+        PixelRotation getPixelRotation() const;
+        // the quad in world units (width and height over its Pixels Per Unit)
+        Vector2 getWorldSize() const;
+
         void setTextureRect(float x, float y, float width, float height);
         void setTextureRect(Rect textureRect);
         Rect getTextureRect() const;

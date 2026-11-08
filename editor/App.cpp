@@ -4478,6 +4478,23 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
     Rect viewRect;
     Engine::computeViewLayout(width, height, (int)project.getCanvasWidth(), (int)project.getCanvasHeight(), project.getScalingMode(),
                               canvasWidth, canvasHeight, viewRect);
+    // a Pixel Perfect Camera on the game camera lays the view out as Play does (S41 R20); its layer
+    // scenes draw on the same viewport and canvas
+    PixelPerfectViewRequest pixelRequest;
+    if (Engine::getPixelPerfectRequest(sceneProject.scene, cameraEntity, pixelRequest)) {
+        // Use Project Canvas is the project's canvas (the Engine's is the editor's view here)
+        if (pixelRequest.referenceWidth <= 0 || pixelRequest.referenceHeight <= 0) {
+            pixelRequest.referenceWidth = (int)project.getCanvasWidth();
+            pixelRequest.referenceHeight = (int)project.getCanvasHeight();
+        }
+        const jasperengine::pixelart::PixelPerfectLayout layout = Engine::computePixelPerfectView(pixelRequest, width, height,
+                                                                                    Engine::getPixelPerfectForcedScale());
+        if (layout.baseWidth > 0) {
+            viewRect = layout.viewport;
+            canvasWidth = std::max(1, (int)std::lround(layout.canvasWidth));
+            canvasHeight = std::max(1, (int)std::lround(layout.canvasHeight));
+        }
+    }
 
     // a UI scene's camera covers its Canvas Scaler UI size (what it is laid out at), any other the canvas
     auto layerCanvas = [&](SceneProject* layerScene, Entity layerCamera, float& layerWidth, float& layerHeight) {
@@ -4584,6 +4601,9 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
     Engine::systemDraw();
     renderSystem->keepAtmosphereInfo(GAME_VIEW_ID);
 
+    // the game camera's Pixel Perfect Camera laid this pass out; the editor's views lay out
+    // without it (their next systemViewChanged would apply it over the editor's canvas)
+    Engine::setPixelPerfectView(PixelPerfectViewRequest());
     Engine::setCanvasSize(editCanvasWidth, editCanvasHeight);
     Engine::setScalingMode(editScaling);
 
@@ -5717,7 +5737,13 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and water-uniforms: library:water and the painted Terrain ('Tpb') read their lights'
     //      records from u_lightRecords (includes/lights.glsl LIGHTS_FS_RECORDS) and, with both
     //      requires, the planar reflection's values come from u_fs_environment
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v55";
+    // v56: lit-uniforms: a lit variant over its backend's fragment uniforms (GLES3 224 vectors,
+    //      desktop GL 256, 8 blocks) reads its lights, capsules and 2D lights from u_lightRecords
+    //      (LIGHTS_FS_RECORDS, the records form's tail in u_fs_objectLights; ShaderVariantCompiler::compile)
+    // v57: S41's pixel snap: the frame block's pixelSnap and pixelSnapOffset (last, in the 'Pxs'
+    //      vertex stages only), includes/pixel_snap.glsl in the mesh, depth, UI and particle
+    //      vertex stages; MESH 'Pxs' bit 45, DEPTH 19, UI 5, PARTICLES 11, BLIT 'Psb' 18.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v57";
 }
 
 void editor::App::pushTabNotificationStyle(){

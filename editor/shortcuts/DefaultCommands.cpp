@@ -313,6 +313,11 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("sceneView.hideSelection", "Hide Selection", C::SceneView, "H").description =
         "Hide the selection in the Scene view (again: show it)";
     b.add("sceneView.showAll", "Show All", C::SceneView, "Alt+H").description = "Show every GameObject hidden in the Scene view";
+    // S41 R21: a 2D scene drawn through a Pixel Perfect Camera
+    b.add("sceneView.pixelZoom1x", "Pixel Zoom 1x", C::SceneView, "Alt+1").description =
+        "Pixel Zoom: one art pixel per screen pixel (a 2D scene with a Pixel Perfect Camera)";
+    b.add("sceneView.pixelZoomGame", "Pixel Zoom Game", C::SceneView, "Alt+2").description =
+        "Pixel Zoom: the Game view's pixel scale (a 2D scene with a Pixel Perfect Camera)";
     b.add("sceneView.togglePickLock", "Toggle Pick Lock", C::SceneView, "L").description =
         "Lock the selection against picking in the Scene view, or unlock it";
     b.add("sceneView.measure", "Measure", C::SceneView, "M").description =

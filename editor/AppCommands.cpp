@@ -24,6 +24,7 @@
 #include "Backend.h"
 #include "Out.h"
 #include "Engine.h"
+#include "pixelart/PixelPerfectEditor.h"
 #include "util/Util.h"
 #include "window/PlayInput.h"
 #include "animation/AnimationClipAppHooks.h"
@@ -312,6 +313,17 @@ void editor::App::registerCommands(){
     };
     onView("sceneView.hideSelection", [](SceneViewController& view, SceneProject& scene) { view.hideSelection(scene); });
     onView("sceneView.showAll", [](SceneViewController& view, SceneProject& scene) { view.showAll(scene); });
+    // S41: the Pixel Zoom's 1x and Game (a 2D scene drawn through a Pixel Perfect Camera)
+    auto pixelScene = [this]() {
+        const SceneProject* scene = project.getSelectedScene();
+        return scene && scene->sceneRender && scene->sceneType == SceneType::SCENE_2D && pixelart::scenePixelPerfect(scene);
+    };
+    bind("sceneView.pixelZoom1x", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, 1.0f);
+    }, pixelScene, noDrag);
+    bind("sceneView.pixelZoomGame", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, sceneWindow->gamePixelZoom(*scene));
+    }, pixelScene, noDrag);
     onView("sceneView.togglePickLock", [](SceneViewController& view, SceneProject& scene) { view.togglePickLockSelection(scene); });
     onView("sceneView.measure", [](SceneViewController& view, SceneProject& scene) { view.setMeasuring(scene, !view.isMeasuring(scene.id)); });
     // the Path Tester (S75 R25): in the selected scene's view, edit or play

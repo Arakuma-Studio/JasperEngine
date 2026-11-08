@@ -171,7 +171,7 @@ never build or run them.
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | spec done |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | in review |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
-| S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | implementing |
+| S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | in review |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | spec done |
@@ -221,6 +221,22 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-08: S45 implementation reported at `180f6354e` (main `b069dde54` merged).
+  - Passing: core 100 and editor 366 filtered tests, plus the shared-data suites; 162 MCP tests;
+    `WERROR` linux; the compile smoke test; Lua API tests.
+  - AssetType 26; `SpriteComponent` is 352 of 384 bytes.
+  - Gaps it reported: AC13's player screenshot (needs `JASPER_SLOW_BUILD`), AC14's device
+    number, and web/android not rebuilt after the last merge.
+  - An independent review is running.
+- 2026-11-08: Fixed and pushed `b069dde54`: the lite2d player didn't compile, because S44 put the
+  slice-geometry include under `JASPERENGINE_PHYSICS_3D`. The follow-ups program reported it;
+  verified with a `lite2d` player build (776/776).
+  - The disk was back at 98%. Android build output (~27 GB per worktree, git-ignored under
+    `engine/workspaces/androidstudio`) and S43's one-off trees were removed, leaving 104 GB free.
+  - S41 passed its final gate at `61b5d84b9`: `WERROR` build; editor 181 and core 207 filtered
+    unit tests; Vulkan 61; 152 MCP tests; the web gate; `SpriteComponent` at 328 of 384 bytes.
+    But `main` moved 38 commits (shader cache v54 and v55 taken by the follow-ups program), so it
+    is doing one more merge (taking v56) before landing.
 - 2026-11-08: The disk filled to 0 bytes while S41's final gate was running. The landed S44
   worktree and its 42 GB build were removed, leaving 64 GB free. Each worktree build takes
   35–70 GB, so builds are deleted after a spec lands, one-off trees (smoke, players-build,

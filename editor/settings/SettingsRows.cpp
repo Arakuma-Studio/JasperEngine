@@ -109,7 +109,9 @@ struct EnumMap {
 
 const EnumMap<Scaling> scalingModes[] = {
     {"fit_width", Scaling::FITWIDTH}, {"fit_height", Scaling::FITHEIGHT}, {"letterbox", Scaling::LETTERBOX},
-    {"crop", Scaling::CROP}, {"stretch", Scaling::STRETCH}, {"native", Scaling::NATIVE}};
+    {"crop", Scaling::CROP}, {"stretch", Scaling::STRETCH}, {"native", Scaling::NATIVE},
+    // S41: whole-number scales of the canvas
+    {"integer", Scaling::INTEGER}, {"integer_expand", Scaling::INTEGER_EXPAND}};
 const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
 const EnumMap<PbrTier> pbrTiers[] = {{"full", PbrTier::FULL}, {"reduced", PbrTier::REDUCED}};
@@ -1733,6 +1735,21 @@ std::vector<Setting> mcpSettingsTable() {
                 Scaling mode;
                 if (!parseEnum(scalingModes, value, mode, error)) return false;
                 if (apply) ctx.project()->setScalingMode(mode);
+                return true;
+            };
+            add(s);
+        }
+        {
+            // S41 R6
+            Setting s;
+            s.key = "graphics.pixels_per_unit";
+            s.type = "int";
+            s.description = "Texels per world unit of sprites and tilemaps whose own Pixels Per Unit is 0 (1: a unit is a pixel).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getPixelsPerUnit()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, Project::minPixelsPerUnit, Project::maxPixelsPerUnit, v, error)) return false;
+                if (apply) ctx.project()->setPixelsPerUnit(static_cast<int>(v));
                 return true;
             };
             add(s);
@@ -3506,7 +3523,8 @@ const Placement placements[] = {
     {"sprite_atlas.mode", "2D", "Sprite Atlas", "Mode", "sprite atlas packer pages enabled for builds"},
     {"graphics.canvas_width", "Graphics", "", "Canvas Width", "reference resolution"},
     {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution"},
-    {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch"},
+    {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch integer pixel perfect"},
+    {"graphics.pixels_per_unit", "Graphics", "", "Pixels Per Unit", "pixel art ppu sprite tilemap"},
     {"graphics.ui_scale", "Graphics", "", "UI Scale", "canvas scaler ui scaling reference resolution match width height constant pixel physical size dpi"},
     {"graphics.texture_strategy", "Graphics", "", "Texture Strategy", "power of two"},
     {"graphics.mobile_pbr_tier", "Graphics", "", "Mobile PBR Tier", "clear coat iridescence anisotropy lit android ios web"},

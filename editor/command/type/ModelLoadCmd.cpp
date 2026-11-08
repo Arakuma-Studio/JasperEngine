@@ -784,6 +784,7 @@ bool editor::ModelLoadCmd::execute(){
 
     // Synchronous failure — restore old state
     restoreTransform(scene);
+    ProjectUtils::releaseMeshResources(scene, entity, scene->getComponent<MeshComponent>(entity));
     scene->getComponent<MeshComponent>(entity) = Stream::decodeMeshComponent(oldMesh);
     scene->getComponent<ModelComponent>(entity) = Stream::decodeModelComponent(oldModel);
     if (oldSubEntitiesDeleteCmd) {
@@ -842,6 +843,7 @@ void editor::ModelLoadCmd::undo(){
 
     // Restore old components
     restoreTransform(scene);
+    ProjectUtils::releaseMeshResources(scene, entity, scene->getComponent<MeshComponent>(entity));
     scene->getComponent<MeshComponent>(entity) = Stream::decodeMeshComponent(oldMesh);
     scene->getComponent<ModelComponent>(entity) = Stream::decodeModelComponent(oldModel);
 

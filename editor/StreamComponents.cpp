@@ -418,6 +418,11 @@ YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) 
     node["pivotPreset"] = pivotPresetToString(sprite.pivotPreset);
     // S45 R6: optional, written only when not Simple (an older editor keeps it as unknown data)
     if (sprite.drawMode != SpriteDrawMode::SIMPLE) node["drawMode"] = StreamSchema::spriteDrawMode().toString(sprite.drawMode);
+    // S41: written only away from their defaults (a scene of before is unchanged)
+    if (sprite.pixelsPerUnit != 0.0f)
+        node["pixelsPerUnit"] = YamlNumbers::text(sprite.pixelsPerUnit);
+    if (sprite.pixelRotation != PixelRotation::CAMERA)
+        node["pixelRotation"] = sprite.pixelRotation == PixelRotation::STEPS_90 ? "steps_90" : "on_grid";
 
     // a sheet sprite (S44 R48): the sheet decides its frames; the inline ones are not saved
     if (!sprite.sheet.empty()) {
@@ -481,6 +486,11 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
             }
         }
     }
+    if (node["pixelsPerUnit"]) sprite.pixelsPerUnit = std::max(0.0f, YamlNumbers::as<float>(node["pixelsPerUnit"]));
+    if (node["pixelRotation"]){
+        const std::string rotation = node["pixelRotation"].IsScalar() ? node["pixelRotation"].Scalar() : std::string();
+        sprite.pixelRotation = rotation == "steps_90" ? PixelRotation::STEPS_90 : (rotation == "on_grid" ? PixelRotation::ON_GRID : PixelRotation::CAMERA);
+    }
 
     if (node["framesRect"]) {
         const YAML::Node& framesNode = node["framesRect"];
@@ -515,6 +525,9 @@ YAML::Node editor::Stream::encodeTilemapComponent(const TilemapComponent& tilema
     node["automaticFlipY"] = tilemap.automaticFlipY;
     node["flipY"] = tilemap.flipY;
     node["textureScaleFactor"] = tilemap.textureScaleFactor;
+    // S41: written only away from its default
+    if (tilemap.pixelsPerUnit != 0.0f)
+        node["pixelsPerUnit"] = tilemap.pixelsPerUnit;
     node["reserveTiles"] = tilemap.reserveTiles;
 
     YAML::Node tilesRectNode;
@@ -549,6 +562,7 @@ TilemapComponent editor::Stream::decodeTilemapComponent(const YAML::Node& node, 
     if (node["flipY"]) tilemap.flipY = YamlNumbers::as<bool>(node["flipY"]);
     if (node["textureScaleFactor"]) tilemap.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["reserveTiles"]) tilemap.reserveTiles = YamlNumbers::as<unsigned int>(node["reserveTiles"]);
+    if (node["pixelsPerUnit"]) tilemap.pixelsPerUnit = std::max(0.0f, YamlNumbers::as<float>(node["pixelsPerUnit"]));
 
     if (node["tilesRect"]) {
         const YAML::Node& tilesRectNode = node["tilesRect"];

@@ -21,25 +21,6 @@ using namespace jasperengine;
 
 namespace {
 
-    // Textures a mesh holds keep their pooled data and render until destroyed. The render
-    // system destroys them with a loaded mesh only, so this also covers one never drawn.
-    void releaseMeshResources(Scene* scene, Entity entity, MeshComponent& mesh) {
-        scene->getSystem<RenderSystem>()->prepareMeshForDataReload(entity, mesh);
-        for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
-            Material& material = mesh.submeshes[s].material;
-            material.baseColorTexture.destroy();
-            material.metallicRoughnessTexture.destroy();
-            material.normalTexture.destroy();
-            material.occlusionTexture.destroy();
-            material.emissiveTexture.destroy();
-            for (auto& shaderTexture : material.shaderTextures)
-                shaderTexture.second.destroy();
-            if (MaterialPass* pass = material.extraPass.editIfSet())
-                for (auto& shaderTexture : pass->shaderTextures)
-                    shaderTexture.second.destroy();
-        }
-    }
-
     // The Mesh Renderer of a GameObject whose model was unloaded: no geometry, submeshes or
     // bones, and the renderer settings the user chose.
     MeshComponent emptyModelMesh(const MeshComponent& mesh) {
@@ -252,7 +233,7 @@ void editor::ModelClearCmd::clearComponents(Scene* scene){
     model.needUpdateModel = false;
 
     if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)) {
-        releaseMeshResources(scene, entity, *mesh);
+        ProjectUtils::releaseMeshResources(scene, entity, *mesh);
         *mesh = emptyModelMesh(*mesh);
     }
 }
@@ -395,7 +376,7 @@ void editor::ModelClearCmd::undo(){
 
     if (hadMesh) {
         if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)) {
-            releaseMeshResources(scene, entity, *mesh);
+            ProjectUtils::releaseMeshResources(scene, entity, *mesh);
             *mesh = Stream::decodeMeshComponent(oldMesh);
         }
     }

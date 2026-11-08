@@ -549,6 +549,9 @@ Json terrainInfo(Project* project, Scene* scene, Entity entity) {
         Json layer = detailLayerJson(project, terrain.foliageLayers[i]);
         layer["index"] = i;
         layer["drawn"] = scene->getSystem<MeshSystem>()->getFoliageInstanceCount(entity, i);
+        // why it draws nothing (a map without CPU-readable pixels)
+        const std::string error = scene->getSystem<MeshSystem>()->getFoliageError(entity, i);
+        if (!error.empty()) layer["error"] = error;
         details.push_back(layer);
     }
     const float half = terrain.terrainSize * 0.5f;
@@ -1291,7 +1294,9 @@ const std::vector<std::pair<const char*, Collider3DType>>& collider3DTypes() {
 bool bounds2D(Scene* scene, Entity entity, Vector2& minOut, Vector2& maxOut, std::string& source) {
     if (SpriteComponent* sprite = scene->findComponent<SpriteComponent>(entity)) {
         if (sprite->width > 0 && sprite->height > 0) {
-            const float w = static_cast<float>(sprite->width), h = static_cast<float>(sprite->height);
+            // world units: the pixel size over its Pixels Per Unit (S41)
+            const Vector2 worldSize = spriteWorldSize(*sprite);
+            const float w = worldSize.x, h = worldSize.y;
             float px = 0.0f, py = 0.0f;
             switch (sprite->pivotPreset) {
                 case PivotPreset::CENTER: px = w * 0.5f; py = h * 0.5f; break;

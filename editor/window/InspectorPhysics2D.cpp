@@ -302,11 +302,13 @@ void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, Sce
         float height = defaultSize;
 
         if (SpriteComponent* spriteComp = sceneProject->scene->findComponent<SpriteComponent>(entity)){
+            // world units: the pixel size over its Pixels Per Unit (S41)
+            const Vector2 worldSize = spriteWorldSize(*spriteComp);
             if (spriteComp->width > 0){
-                width = (float)spriteComp->width;
+                width = worldSize.x;
             }
             if (spriteComp->height > 0){
-                height = (float)spriteComp->height;
+                height = worldSize.y;
             }
         }else if (RectTransformComponent* layoutComp = sceneProject->scene->findComponent<RectTransformComponent>(entity)){
             if (layoutComp->width > 0){

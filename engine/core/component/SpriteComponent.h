@@ -9,6 +9,7 @@
 #include "asset/AssetRef.h"
 #include "math/Rect.h"
 #include "Engine.h"
+#include "pixelart/PixelPerfectLayout.h"
 
 #include <cstdint>
 #include <atomic>
@@ -107,6 +108,12 @@ namespace jasperengine{
 
         PivotPreset pivotPreset = PivotPreset::BOTTOM_LEFT;
 
+        // S41: texels per world unit; 0 = the project's Pixels Per Unit (Engine::getPixelsPerUnit).
+        // width and height stay in pixels; the quad is their size divided by it (spriteWorldSize)
+        float pixelsPerUnit = 0.0f;
+        // under a Pixel Perfect Camera: the camera's rotation policy, or one of its own
+        PixelRotation pixelRotation = PixelRotation::CAMERA;
+
         // Frame chosen before the texture size was known, in pixels
         Rect pendingFrameRect;
         bool needUpdateFrameRect = false;
@@ -146,6 +153,13 @@ namespace jasperengine{
         double tagElapsedMs = 0.0;
         float tagSpeed = 1.0f;
     };
+
+    // the texels per world unit a pixelsPerUnit of a sprite or a tilemap stands for (0: the
+    // project's), always positive
+    JASPERENGINE_API float resolvePixelsPerUnit(float pixelsPerUnit);
+    // the sprite's quad in world units (its pixel size over its Pixels Per Unit): what bounds,
+    // colliders fitted to it and world-size readers use
+    JASPERENGINE_API Vector2 spriteWorldSize(const SpriteComponent& sprite);
     
 }
 

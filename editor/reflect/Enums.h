@@ -49,6 +49,9 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kOnScreenStickMode;
     extern const EnumDesc kOnScreenStickAxes;
     extern const EnumDesc kOnScreenVisibility;
+    // pixel art (PixelArtReflect.cpp, S41)
+    extern const EnumDesc kPixelUpscaleMode;
+    extern const EnumDesc kPixelRotation;
     extern const EnumDesc kJointAnchorSpace;
     extern const EnumDesc kCollisionDetection2D;
     extern const EnumDesc kSleepMode2D;

@@ -892,6 +892,8 @@ namespace jasperengine::editor{
         void drawTextEffectComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the Pixel Perfect Camera (InspectorPixelArt.cpp, S41)
+        void drawPixelPerfectCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // "Inherited alpha 0.25 · not interactable · click-through (Canvas Group: Panel)" and a
         // Select button, when the entity is under a Canvas Group
         void drawCanvasGroupInheritedLine(SceneProject* sceneProject, Entity entity);

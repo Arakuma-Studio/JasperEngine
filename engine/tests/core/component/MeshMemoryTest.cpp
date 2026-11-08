@@ -3,10 +3,10 @@
 //
 // What a mesh costs (mesh-memory spec, docs/superpowers/specs/2026-11-04-mesh-memory-design.md):
 // a component holds what it uses, not a capacity. Each ceiling is the size measured on Linux
-// (libstdc++, x86-64: 816, 832, 8,632, 1,760, 320 and 152 bytes; 2,528, 2,544, 11,776, 204,928,
-// 6,192 and 125,992 before; a Submesh holds S55's two batch render objects since, a
-// SpriteComponent S44's tag playback) with some room; a field that brings an inline array back
-// trips it. MSVC's x64 layouts, Release and Debug (checked iterators), and MinGW's are smaller or
+// (libstdc++, x86-64: 816, 832, 6,960, 1,760, 320 and 152 bytes; 2,528, 2,544, 11,776, 204,928,
+// 6,192 and 125,992 before; a SpriteComponent holds S44's tag playback since, and a Submesh
+// S55's batch variants out of line, 8,664 inline) with some room; a field that brings an inline
+// array back trips it. MSVC's x64 layouts, Release and Debug (checked iterators), and MinGW's are smaller or
 // within the room (spec, Follow-ups).
 
 #include <gtest/gtest.h>
@@ -30,14 +30,15 @@ TEST(MeshMemory, SizeofCeilings) {
                 sizeof(TilemapComponent));
     EXPECT_LE(sizeof(SokolObject), 896u);
     EXPECT_LE(sizeof(ObjectRender), 896u);
-    EXPECT_LE(sizeof(Submesh), 9472u);
+    EXPECT_LE(sizeof(Submesh), 7680u);
     EXPECT_LE(sizeof(MeshComponent), 2048u);
     EXPECT_LE(sizeof(SpriteComponent), 384u);
     EXPECT_LE(sizeof(TilemapComponent), 384u);
 }
 
-// A sprite's mesh holds one submesh and no palette: about a twentieth of the 204,928 bytes every
-// mesh took with 16 inline submeshes, a 128-bone palette and 30 buffer slots
+// A sprite's mesh holds one submesh and no palette: about a twenty-third of the 204,928 bytes
+// every mesh took with 16 inline submeshes, a 128-bone palette and 30 buffer slots (8,728 bytes;
+// 10,432 with S55's batch variants inline)
 TEST(MeshMemory, SpriteCostsAnOrderOfMagnitudeLess) {
     MeshComponent mesh;
     MeshSystem::prepareSpriteMesh(mesh);
@@ -45,7 +46,7 @@ TEST(MeshMemory, SpriteCostsAnOrderOfMagnitudeLess) {
     EXPECT_EQ(mesh.bonesMatrix.stored(), 0u);
     EXPECT_EQ(mesh.eBuffers.stored(), 0u);
     std::printf("[sizes] a sprite's mesh: %zu bytes with its arrays\n", sizeof(MeshComponent) + mesh.arrayHeapBytes());
-    EXPECT_LE(sizeof(MeshComponent) + mesh.arrayHeapBytes(), 11264u);
+    EXPECT_LE(sizeof(MeshComponent) + mesh.arrayHeapBytes(), 9472u);
 }
 
 // Every Mesh method taking a submesh index refuses one the mesh does not have, with an error, and

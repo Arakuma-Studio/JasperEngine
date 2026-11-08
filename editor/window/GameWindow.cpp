@@ -65,6 +65,8 @@ namespace {
 
     constexpr float MIN_SCALE = 1.0f;
     constexpr float MAX_SCALE = 5.0f;
+    // the Pixel Scale choices (S41 R20): Auto, 1x .. 8x
+    constexpr int MAX_PIXEL_SCALE = 8;
 
     bool isRunning(editor::ScenePlayState state) {
         return state == editor::ScenePlayState::PLAYING || state == editor::ScenePlayState::PAUSED;
@@ -92,6 +94,8 @@ void editor::GameWindow::loadSettings() {
     settings = AppSettings::getGameViewSettings();
     settings.aspect = std::clamp(settings.aspect, 0, ASPECT_COUNT - 1);
     settings.scale = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
+    settings.pixelScale = std::clamp(settings.pixelScale, 0, MAX_PIXEL_SCALE);
+    Engine::setPixelPerfectForcedScale(settings.pixelScale);
     applySimulation();
 }
 
@@ -479,6 +483,8 @@ void editor::GameWindow::applySettings(const GameViewSettings& newSettings) {
     settings = newSettings;
     settings.aspect = std::clamp(settings.aspect, 0, ASPECT_COUNT - 1);
     settings.scale = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
+    settings.pixelScale = std::clamp(settings.pixelScale, 0, MAX_PIXEL_SCALE);
+    Engine::setPixelPerfectForcedScale(settings.pixelScale);
     applySimulation();
     editPassDirty = true;
     saveSettings();
@@ -629,6 +635,52 @@ void editor::GameWindow::show() {
     }
 }
 
+bool editor::GameWindow::shownPixelPerfect(PixelPerfectViewRequest& request) const {
+    const uint32_t sceneId = getTargetSceneId();
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene) return false;
+    return Engine::getPixelPerfectRequest(sceneProject->scene, project->getGameCamera(sceneId), request);
+}
+
+void editor::GameWindow::drawPixelScale(const PixelPerfectViewRequest& request) {
+    // the largest k the view fits, at the view's own size (Auto's)
+    PixelPerfectViewRequest autoRequest = request;
+    const jasperengine::pixelart::PixelPerfectLayout fit = Engine::computePixelPerfectView(autoRequest, width, height, 0);
+    const jasperengine::pixelart::PixelPerfectLayout shown = Engine::computePixelPerfectView(request, width, height, settings.pixelScale);
+
+    ImGui::SameLine(0, Theme::dpi(12.0f));
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Pixel Scale");
+    ImGui::SameLine();
+    char current[16];
+    if (settings.pixelScale == 0) std::snprintf(current, sizeof(current), "Auto");
+    else std::snprintf(current, sizeof(current), "%dx", settings.pixelScale);
+    ImGui::SetNextItemWidth(Theme::dpi(64.0f));
+    if (ImGui::BeginCombo("##GamePixelScale", current)) {
+        if (ImGui::Selectable("Auto", settings.pixelScale == 0)) {
+            settings.pixelScale = 0;
+            applySettings(settings);
+        }
+        for (int scale = 1; scale <= MAX_PIXEL_SCALE; scale++) {
+            char label[16];
+            std::snprintf(label, sizeof(label), "%dx", scale);
+            ImGui::BeginDisabled(scale > fit.scale);
+            if (ImGui::Selectable(label, settings.pixelScale == scale)) {
+                settings.pixelScale = scale;
+                applySettings(settings);
+            }
+            ImGui::EndDisabled();
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SetItemTooltip("Screen pixels per base pixel of the Pixel Perfect Camera (Auto: the largest that fits). 1x shows "
+                          "the base resolution at one physical pixel per pixel: check pixel art at 1x.");
+    if (shown.baseWidth > 0) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("%dx%d x%d", shown.baseWidth, shown.baseHeight, shown.scale);
+    }
+}
+
 void editor::GameWindow::drawToolbar() {
     float toolbarRowY = ImGui::GetCursorPosY();
     ImGui::SetCursorPosY(toolbarRowY - (ImGui::GetFrameHeight() - ImGui::GetTextLineHeight()) * 0.5f);
@@ -712,12 +764,23 @@ void editor::GameWindow::drawToolbar() {
                                  : "Aspect ratio, or a fixed resolution the game renders at (fitted to the view)");
     drawCustomResolutionPopup();
 
+    // S41 R20: a shown scene drawn through a Pixel Perfect Camera gets the Pixel Scale, and its image
+    // is magnified by whole numbers only
+    PixelPerfectViewRequest pixelRequest;
+    const bool pixelPerfect = shownPixelPerfect(pixelRequest);
+    if (pixelPerfect) {
+        drawPixelScale(pixelRequest);
+    }
+
     ImGui::SameLine(0, Theme::dpi(12.0f));
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Scale");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(Theme::dpi(90.0f));
-    ImGui::SliderFloat("##GameScale", &settings.scale, MIN_SCALE, MAX_SCALE, "%.1fx");
+    ImGui::SliderFloat("##GameScale", &settings.scale, MIN_SCALE, MAX_SCALE, pixelPerfect ? "%.0fx" : "%.1fx");
+    if (pixelPerfect) {
+        settings.scale = std::round(settings.scale);
+    }
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         saveSettings();
     }
@@ -1164,6 +1227,14 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         float dpiScale = (canvasViewport && canvasViewport->DpiScale > 0.0f) ? canvasViewport->DpiScale : 1.0f;
         if (dpiScale < 0.5f || dpiScale > 8.0f) dpiScale = 1.0f;
         engineScale = Backend::sceneRenderScale(fbScale, dpiScale);
+        // a Pixel Perfect Camera's view is laid out over physical pixels (R20): the framebuffer
+        // gets one pixel per physical display pixel even where the backend renders the scene at
+        // the DPI scale over a 1:1 framebuffer (Linux HiDPI), which would resample it
+        PixelPerfectViewRequest pixelRequest;
+        const bool pixelPerfect = shownPixelPerfect(pixelRequest);
+        if (pixelPerfect) {
+            engineScale = ImVec2(fbScale.x > 0.0f ? fbScale.x : 1.0f, fbScale.y > 0.0f ? fbScale.y : 1.0f);
+        }
 
         // the Recorder's size: the image is that many engine pixels over the area
         if (overridden && areaSize.x > 0.0f && areaSize.y > 0.0f) {
@@ -1214,10 +1285,18 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
         if (resized) syncSafeArea();
 
         // Scale zooms into the image around its centre; the child clips the rest
-        const float zoom = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
-        const ImVec2 imageSize(areaSize.x * zoom, areaSize.y * zoom);
-        const ImVec2 imageMin(areaMin.x + (areaSize.x - imageSize.x) * 0.5f,
-                              areaMin.y + (areaSize.y - imageSize.y) * 0.5f);
+        float zoom = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
+        ImVec2 imageSize(areaSize.x * zoom, areaSize.y * zoom);
+        ImVec2 imageMin(areaMin.x + (areaSize.x - imageSize.x) * 0.5f,
+                        areaMin.y + (areaSize.y - imageSize.y) * 0.5f);
+        if (pixelPerfect && engineScale.x > 0.0f && engineScale.y > 0.0f && width > 0 && height > 0) {
+            // one framebuffer pixel per physical pixel (times a whole zoom): the image's size from
+            // the framebuffer's, its corner on a physical pixel, no resampling (R20)
+            zoom = std::round(zoom);
+            imageSize = ImVec2((float)width / engineScale.x * zoom, (float)height / engineScale.y * zoom);
+            imageMin = ImVec2(std::round((areaMin.x + (areaSize.x - imageSize.x) * 0.5f) * engineScale.x) / engineScale.x,
+                              std::round((areaMin.y + (areaSize.y - imageSize.y) * 0.5f) * engineScale.y) / engineScale.y);
+        }
         const ImVec2 imageMax(imageMin.x + imageSize.x, imageMin.y + imageSize.y);
 
         SceneProject* sceneProject = project->getScene(sceneId);
@@ -1257,7 +1336,12 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
 
         if (texture != ImTextureID{}) {
             drawList->PushClipRect(canvasMin, canvasMax, true);
+            // pixel art magnifies with nearest sampling (the backend's standard callbacks, where it has them)
+            const ImGuiPlatformIO& platformIO = ImGui::GetPlatformIO();
+            const bool nearest = pixelPerfect && platformIO.DrawCallback_SetSamplerNearest && platformIO.DrawCallback_SetSamplerLinear;
+            if (nearest) drawList->AddCallback(platformIO.DrawCallback_SetSamplerNearest, nullptr);
             drawList->AddImage(texture, imageMin, imageMax);
+            if (nearest) drawList->AddCallback(platformIO.DrawCallback_SetSamplerLinear, nullptr);
             // the simulated device's screen over it (input is unaffected)
             const DeviceProfile* device = Platform::getSimulation().device;
             if (device && (settings.deviceOverlay || settings.safeAreaOutline)) {

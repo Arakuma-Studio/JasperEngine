@@ -269,6 +269,8 @@ namespace luabridge
     template<> struct Stack<TextEffectMix> : EnumWrapper<TextEffectMix>{};
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
     template<> struct Stack<SpriteDrawMode> : EnumWrapper<SpriteDrawMode>{};
+    template<> struct Stack<PixelUpscaleMode> : EnumWrapper<PixelUpscaleMode>{};
+    template<> struct Stack<PixelRotation> : EnumWrapper<PixelRotation>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
     // ui-components: the Button's Selectable enums

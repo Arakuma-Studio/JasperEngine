@@ -47,7 +47,8 @@ using namespace terrain_uniform_budget_test;
 // with everything that adds to its fragment uniforms: shadows with the High filters, the sky's and
 // a probe's reflections, SSAO, the post colour, with and without fog (the height fog's block); and
 // its material normal-mapped (16 fragment textures and 16 samplers before its lights' records),
-// with point and spot lights possible or directional only, at the High and the Medium tier
+// with point and spot lights possible or directional only, at the High and the Medium tier, with
+// S57's capsule shadows and 2D lights with their shadows or without
 TEST(TerrainUniformBudgetSlow, PaintedTerrainFitsAtEveryLightCapacity){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
     std::vector<ShaderLibraryMatrix::Variant> variants;
@@ -90,7 +91,9 @@ TEST(TerrainUniformBudgetSlow, PaintedTerrainFitsAtEveryLightCapacity){
     normalMapped.normalTexture = true;
     for (int capacity : {8, 16}){
         for (bool high : {true, false}){
-            for (bool directionalOnly : {false, true}){
+            for (int extra = 0; extra < 3; extra++){
+                const bool directionalOnly = extra == 1;
+                const bool heavy = extra == 2;
                 MeshShaderEnvironment environment;
                 environment.lights = true;
                 environment.shadows = true;
@@ -102,10 +105,14 @@ TEST(TerrainUniformBudgetSlow, PaintedTerrainFitsAtEveryLightCapacity){
                 environment.fog = true;
                 environment.directionalLightsOnly = directionalOnly;
                 environment.lightCapacity = capacity;
+                environment.capsuleShadows = heavy;
+                environment.contactShadows = heavy;
+                environment.lights2D = heavy;
+                environment.shadows2D = heavy;
                 const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, normalMapped);
                 ASSERT_TRUE(variant.properties & shaderPropertyBit(27)) << "not the painted terrain";
                 variants.push_back({"normal-mapped, " + std::to_string(capacity) + " lights, fog" + (high ? ", high filters" : "") +
-                                    (directionalOnly ? ", directional only" : ""),
+                                    (directionalOnly ? ", directional only" : "") + (heavy ? ", capsule shadows, 2d lights and shadows" : ""),
                                     variant.litDefines.empty() ? std::string() : ShaderReference::withFeatures(ShaderReference::BUILTIN_LIT, variant.litDefines),
                                     ShaderType::MESH, variant.properties});
             }
@@ -114,6 +121,7 @@ TEST(TerrainUniformBudgetSlow, PaintedTerrainFitsAtEveryLightCapacity){
 
     size_t worst = 0;
     std::string worstName;
+    size_t shadows2DLeftOut = 0;
     for (const ShaderLibraryMatrix::Variant& variant : variants){
         const bool custom = !variant.reference.empty();
         const uint16_t customId = custom ? ShaderPool::registerCustomShader(variant.reference) : 0;
@@ -130,10 +138,15 @@ TEST(TerrainUniformBudgetSlow, PaintedTerrainFitsAtEveryLightCapacity){
         const size_t vertex = terrainStageVectors(data, ShaderStageType::VERTEX, vertexBlocks);
         // (16 samplers across the stages, 16 fragment textures: checkResourceBudget)
         EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), "") << name;
-        // the lights' records on every lit one; the spot lights' masks left out only where
-        // the records would not fit otherwise, and the log says so
-        if (variant.properties & shaderPropertyBit(3)){
-            EXPECT_NE(data.getTextureIndexByName("u_lightRecords").first, -1) << name;
+        // the spot lights' masks left out only where the records would not fit otherwise, and the
+        // log says so
+        // the 2D lights' shadows left out (the last fallback), said by the build and at runtime
+        if (log.find(ShaderVariantCompiler::SHADOWS_2D_LEFT_OUT) != std::string::npos){
+            shadows2DLeftOut++;
+            EXPECT_EQ(data.getTextureIndexByName("u_shadow2DAtlas").first, -1) << name;
+            EXPECT_NE(RenderSystem::describeLeftOutLighting(variant.properties, data), "") << name;
+        }else{
+            EXPECT_EQ(RenderSystem::describeLeftOutLighting(variant.properties, data), "") << name;
         }
         if ((variant.properties & shaderPropertyBit(3)) && data.getTextureIndex(TextureShaderType::SPOTMASKATLAS).first == -1 &&
                 !(variant.properties & ShaderPool::getDirectionalOnlyProperty())){
@@ -146,6 +159,8 @@ TEST(TerrainUniformBudgetSlow, PaintedTerrainFitsAtEveryLightCapacity){
             worstName = name;
         }
     }
+    // the normal-mapped painted terrain lit by shadowed 2D lights reaches the 2D shadows' fallback
+    EXPECT_GT(shadows2DLeftOut, 0u) << "no variant left the 2D shadows out: the fallback has no case";
     std::printf("[terrain] %zu painted terrain variants; the most fragment uniform vectors: %zu of 224, %s\n",
                 variants.size(), worst, worstName.c_str());
 }
