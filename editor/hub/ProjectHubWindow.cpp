@@ -452,6 +452,22 @@ void ProjectHubWindow::drawNewProject() {
     const fs::path parent = FileUtils::pathFromUtf8(location.data());
     const std::string problem = createProblem(projectName.data(), parent);
     const hub::ProjectTemplate* chosen = hub::templates::find(templateList, selectedTemplate);
+    // S42 R21: a pixel-art template asks for its base resolution
+    static const int kBases[][2] = {{256, 144}, {320, 180}, {384, 216}, {480, 270}, {640, 360}};
+    if (chosen && chosen->pixelArt) {
+        ImGui::TextUnformatted("Base Resolution");
+        ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+        const std::string current = std::to_string(kBases[pixelArtBase][0]) + "x" + std::to_string(kBases[pixelArtBase][1]);
+        if (ImGui::BeginCombo("##hubPixelArtBase", current.c_str())) {
+            for (int i = 0; i < 5; i++) {
+                const std::string label = std::to_string(kBases[i][0]) + "x" + std::to_string(kBases[i][1]);
+                if (ImGui::Selectable(label.c_str(), i == pixelArtBase)) pixelArtBase = i;
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("the art's resolution; the window opens at 4x");
+    }
     if (!problem.empty()) ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", problem.c_str());
     else ImGui::TextDisabled("%s", FileUtils::pathToUtf8(parent / hub::folderName(projectName.data())).c_str());
     ImGui::BeginDisabled(!problem.empty() || !chosen);
@@ -459,7 +475,12 @@ void ProjectHubWindow::drawNewProject() {
         std::error_code ec;
         fs::create_directories(parent, ec);
         AppSettings::setHubLastLocation(parent);
-        actions.createProject(*chosen, projectName.data(), parent);
+        hub::ProjectTemplate info = *chosen;
+        if (info.pixelArt) {
+            info.baseWidth = kBases[pixelArtBase][0];
+            info.baseHeight = kBases[pixelArtBase][1];
+        }
+        actions.createProject(info, projectName.data(), parent);
     }
     ImGui::EndDisabled();
     if (!createMessage.empty()) ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), "%s", createMessage.c_str());

@@ -3094,4 +3094,67 @@ CASES = [
                    "must_not_call": [{"tool": "configure_game_view", "args": {"resolution": "*"}}]},
         "max_turns": 12,
     },
+    # -- S42 the pixel-art validator: the "Other areas" entry, the description's preview-then-output and `next` -------
+    {
+        "id": "guard_pixel_art_check_route",
+        "kind": "guard",
+        "what_happened": "New tool (S42): blurry, uneven pixel art is check_pixel_art's to measure and fix (one call to "
+                         "preview, the same with output: true to apply); without the guide's entry and the result's `next` "
+                         "an agent edits import settings and filters by hand, or stops at the preview.",
+        "text_at_issue": "Guide 'Other areas': 'pixel art (check_pixel_art)'; check_pixel_art: 'fix previews the changes; "
+                         "the same call with output:true applies them as one undo step'; the results' `next`",
+        "source": "S42 R22 (new tool text); no failure on record",
+        "prompt": "Our pixel-art game looks blurry and some sprite columns are wider than others on a 1366x768 laptop. "
+                  "Find what is wrong with the pixel-art setup and fix all of it.",
+        "mocks": [
+            {"tool": "check_pixel_art", "args": {"fix": ["all"], "output": True}, "result": ok(
+                "Pixel art check: fixable, 2 FAIL, 1 WARN (12 rules). Applied 3 fix(es) as \"Fix Pixel Art (3)\"; after: "
+                "clean, 0 FAIL, 0 WARN.",
+                {"verdict": "fixable", "applied": {"undo_step": {"id": 9, "name": "Fix Pixel Art (3)"}, "changed": ["project"]},
+                 "after": {"verdict": "clean", "counts": {"fail": 0, "warn": 0}}})},
+            {"tool": "check_pixel_art", "args": {"fix": ["all"]}, "result": ok(
+                "Pixel art check: fixable, 2 FAIL, 1 WARN (12 rules). Fix plan: 3 fix(es), 6 change(s); nothing changed. "
+                "Preview only, nothing changed: the same call with output: true applies these 6 change(s) as one undo step.",
+                {"verdict": "fixable", "fix_plan": [{"key": "filtering:scenes/Main.scene#/Hero:mesh.submeshes[0].material.baseColorTexture",
+                                                     "option": "default", "label": "Set both filters of /Hero to Nearest", "changes": []}],
+                 "next": "Preview only, nothing changed: the same call with output: true applies these 6 change(s) as one undo step."})},
+            {"tool": "check_pixel_art", "result": ok(
+                "Pixel art check: fixable, 2 FAIL, 1 WARN (12 rules). check_pixel_art {fix: [\"all\"]} previews 3 fix(es); "
+                "add output: true to apply.",
+                {"verdict": "fixable", "counts": {"fail": 2, "warn": 1, "fixable": 3, "needs_person": 0},
+                 "findings": [{"id": "F1", "rule": "integer_scale", "status": "FAIL", "message": "Main scales its pixels by a fraction on some screens."},
+                              {"id": "F2", "rule": "filtering", "status": "FAIL", "message": "hero.png is filtered bilinear on Hero."},
+                              {"id": "F3", "rule": "pixel_art_mode", "status": "WARN", "message": "The project draws pixel art but Pixel Art Mode is off."}],
+                 "next": "check_pixel_art {fix: [\"all\"]} previews 3 fix(es); add output: true to apply."})},
+        ],
+        "checks": {"calls": [{"tool": "check_pixel_art", "args": {"fix": ["all"], "output": True}}],
+                   "must_not_call": ["set_texture_import_settings", "set_project_settings", "write_file"],
+                   "edits_must_not": [r"\.(meta|scene|yaml)$"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_pixel_art_needs_person",
+        "kind": "guard",
+        "what_happened": "New tool (S42): a finding no automatic change fixes (art drawn at another texel size) has no fix and "
+                         "needs a person; without the result's `next` an agent scales the sprite until the number passes.",
+        "text_at_issue": "check_pixel_art's `next`: 'The findings need a person: report them (needs_person) instead of "
+                         "changing scale or art.'",
+        "source": "S42 R12, D5 (new tool text); no failure on record",
+        "prompt": "Run the pixel-art check on our project and get it to pass.",
+        "mocks": [
+            {"tool": "check_pixel_art", "result": ok(
+                "Pixel art check: needs_person, 1 FAIL, 0 WARN (12 rules). The findings need a person: report them (needs_person) "
+                "instead of changing scale or art.",
+                {"verdict": "needs_person", "counts": {"fail": 1, "warn": 0, "fixable": 0, "needs_person": 1},
+                 "findings": [{"id": "F1", "key": "texel_size:scenes/Main.scene#/Boss", "rule": "texel_size", "status": "FAIL",
+                               "measured": {"x": 1.5, "y": 1.5}, "expected": {"x": 1, "y": 1}, "fix": None,
+                               "needs_person": "the art itself is not one texel per pixel at this size: fix the art or its Pixels "
+                                               "Per Unit, never the scale",
+                               "message": "Boss's pixels are 1.5 x 1.5 base pixels, not 1 x 1."}],
+                 "next": "The findings need a person: report them (needs_person) instead of changing scale or art."})},
+        ],
+        "checks": {"must_not_call": ["set_transform", {"tool": "set_properties", "args": {"values": {"transform": "*"}}},
+                                     {"tool": "check_pixel_art", "args": {"output": True}}]},
+        "max_turns": 8,
+    },
 ]

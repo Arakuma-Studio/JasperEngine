@@ -249,3 +249,52 @@ TEST(TexturePrepare, CubeFacesShareTheSizeRules){
     // face 3 starts after three faces of level 0
     EXPECT_NEAR(levels[0][(size_t)4 * 4 * 4 * 3], 120, 1);
 }
+
+// S42 AC2 (R6): Alpha Clip after the alpha source and before any resize: cutoff 0.5 maps 127 to 0
+// and 128 to 255, and a cleared texel's colour is bled from its visible neighbours (Alpha Is
+// Transparency). The raw load and the cook share TexturePrepare, so they agree.
+TEST(TexturePrepare, AlphaClip){
+    // 127 (just under the cutoff), 128 (at it), 255 and 0
+    Image image = rgba(4, 1, [](int x, int, uint8_t* p){
+        static const uint8_t alpha[4] = {127, 128, 255, 0};
+        p[0] = (uint8_t)(40 + x * 50); p[1] = 20; p[2] = 200; p[3] = alpha[x];
+    });
+    TextureProcessing p;
+    p.type = TextureImportType::Sprite;
+    p.mipmaps = false;
+    p.alphaClip = true;
+    p.alphaCutoff = 0.5f;
+    PreparedTexture clipped = prepare(image.data, p);
+    const std::vector<uint8_t>& out = clipped.faces[0][0].pixels;
+    EXPECT_EQ(out[0 * 4 + 3], 0);
+    EXPECT_EQ(out[1 * 4 + 3], 255);
+    EXPECT_EQ(out[2 * 4 + 3], 255);
+    EXPECT_EQ(out[3 * 4 + 3], 0);
+
+    // a cleared texel takes its visible neighbour's colour when alpha borders are bled
+    p.alphaIsTransparency = true;
+    PreparedTexture bled = prepare(image.data, p);
+    const std::vector<uint8_t>& b = bled.faces[0][0].pixels;
+    EXPECT_EQ(b[0 * 4 + 0], b[1 * 4 + 0]) << "texel 0 (cleared) bled from texel 1";
+    EXPECT_EQ(b[0 * 4 + 2], b[1 * 4 + 2]);
+
+    // red control: without Alpha Clip the partial alpha stays
+    p.alphaClip = false;
+    p.alphaIsTransparency = false;
+    PreparedTexture kept = prepare(image.data, p);
+    EXPECT_EQ(kept.faces[0][0].pixels[0 * 4 + 3], 127);
+    EXPECT_EQ(kept.faces[0][0].pixels[1 * 4 + 3], 128);
+
+    // the clip happens before the resize: a Nearest downscale of clipped texels stays binary
+    Image big = rgba(8, 8, [](int x, int y, uint8_t* q){ q[0] = q[1] = q[2] = 100; q[3] = (uint8_t)((x + y) * 16); });
+    TextureProcessing resize;
+    resize.type = TextureImportType::Sprite;
+    resize.mipmaps = false;
+    resize.alphaClip = true;
+    resize.maxSize = 4;
+    resize.resizeFilter = MipFilter::Nearest;
+    PreparedTexture small = prepare(big.data, resize);
+    ASSERT_EQ(small.width, 4);
+    for (size_t i = 3; i < small.faces[0][0].pixels.size(); i += 4)
+        EXPECT_TRUE(small.faces[0][0].pixels[i] == 0 || small.faces[0][0].pixels[i] == 255);
+}

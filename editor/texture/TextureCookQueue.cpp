@@ -33,11 +33,23 @@ namespace {
         return extension;
     }
 
-    // what a cook of a texture without settings stores: the inferred type and its reason (R2)
-    TextureImportSettings cookInferredSettings(const TextureInference& inference){
+    // what a cook of a texture without settings stores: the inferred type and its reason (R2);
+    // in Pixel Art Mode (S42 R1) a sprite or UI image, or a 2D image nothing references yet, is
+    // pixel art, written once with the type (turning the mode off later changes no file)
+    TextureImportSettings cookInferredSettings(const TextureInference& inference, bool pixelArtMode){
         TextureImportSettings settings;
         settings.type = inference.type;
         settings.inferredFrom = inference.reason;
+        if (pixelArtMode && inference.shape == TextureShape::Tex2D){
+            const bool unreferenced = inference.type == TextureImportType::Default && inference.uses.empty() && !inference.linear;
+            if (inference.type == TextureImportType::Sprite || inference.type == TextureImportType::UI || unreferenced){
+                settings.pixelArt = true;
+                if (unreferenced){
+                    settings.type = TextureImportType::Sprite;
+                    settings.inferredFrom = inference.reason + " (Pixel Art Mode)";
+                }
+            }
+        }
         if (inference.linear && TextureImportSettings::defaultSrgb(inference.type))
             settings.srgb = false;
         if (inference.shape == TextureShape::Cube)
@@ -121,7 +133,7 @@ bool editor::gatherTextureInputs(Project& project, const std::string& assetPath,
         return false;
     out.inference = TextureTypeInference::infer(project, out.projectRelative);
     if (!out.hasSettings)
-        out.settings = cookInferredSettings(out.inference);
+        out.settings = cookInferredSettings(out.inference, project.getPixelArtSettings().enabled);
     return true;
 }
 
@@ -678,7 +690,8 @@ void TextureCookQueue::startJobs(){
         options.name = "texture-plan";
         Project* owner = project;
         TextureCookCache* cookCache = &cache;
-        job->task = jobs::submit([job, owner, cookCache](){
+        const bool pixelArtMode = project->getPixelArtSettings().enabled;
+        job->task = jobs::submit([job, owner, cookCache, pixelArtMode](){
             if (job->cancel)
                 return;
             TextureCookInputs& inputs = job->inputs;
@@ -689,7 +702,7 @@ void TextureCookQueue::startJobs(){
                 inputs.inference.cpuReason = "read on the CPU";
             }
             if (!inputs.hasSettings){
-                inputs.settings = cookInferredSettings(inputs.inference);
+                inputs.settings = cookInferredSettings(inputs.inference, pixelArtMode);
                 job->inferred = true;
             }
             if (inputs.inference.sourceOnly){

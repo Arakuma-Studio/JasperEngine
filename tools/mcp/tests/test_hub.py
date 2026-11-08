@@ -33,19 +33,20 @@ CI = True
 EDITOR = {"create": True, "name": "Hub", "env": harness.compile_env("test_hub")}
 TIMEOUT = 1800
 
-TEMPLATES = ("empty", "3d", "2d", "ui")
+TEMPLATES = ("empty", "3d", "2d", "2d-pixel-art", "ui")
 # what each template's script leaves to read in Play
 SCRIPT_PROBES = {
     "3d": "return GameObject(scene, entity('Cube')).rotation ~= nil",
     "2d": "return GameObject(scene, entity('Player')).position ~= nil",
+    "2d-pixel-art": "return GameObject(scene, entity('Player')).position ~= nil",
 }
 
 
 async def test_list_templates(ed: Editor):
     got = await ed.call("list_project_templates")
     ids = [t["id"] for t in got["templates"]]
-    ed.check_eq(ids[:4], list(TEMPLATES), f"the built-in templates first, in order: {ids}")
-    for t in got["templates"][:4]:
+    ed.check_eq(ids[:5], list(TEMPLATES), f"the built-in templates first, in order: {ids}")
+    for t in got["templates"][:5]:
         ed.check(t["built_in"] is True and t["name"] and t["description"], f"{t}")
         ed.check_eq(t["start_scene"], "Main")
 
@@ -99,6 +100,9 @@ async def test_create_from_templates(ed: Editor):
         if template == "2d":
             ed.check("Player" in names and any(target.rglob("player.png")), f"2d: the player sprite: {names}")
             ed.check(project.get("canvasWidth") == 1280 and project.get("canvasHeight") == 720, "2d: 1280x720")
+        if template == "2d-pixel-art":
+            ed.check("Player" in names and "Main Camera" in names, f"2d-pixel-art: the player and its camera: {names}")
+            ed.check(project.get("canvasWidth") == 320 and project.get("canvasHeight") == 180, "2d-pixel-art: 320x180")
         if template == "ui":
             ed.check(any(target.rglob("main_menu.html")) and any(target.rglob("main_menu.css")), "ui: the menu's files")
             ed.check(project.get("canvasWidth") == 1920 and project.get("canvasHeight") == 1080, "ui: 1920x1080")

@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "pixelart/PixelArtAssign.h"
 #include "component/ButtonComponent.h"
 #include "util/ProjectChecks.h"
 #include "component/CanvasGroupComponent.h"
@@ -30,6 +31,8 @@
 #include "command/type/SetMainCameraCmd.h"
 #include "command/type/UnlinkMaterialCmd.h"
 #include "component/MeshComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
 #include "component/ModelComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/ScriptComponent.h"
@@ -3303,6 +3306,25 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 return nullptr;
             }
             if (camera == NULL_ENTITY) {
+                // S42 R7: a newly assigned image starts with its import's Filter Mode (unless the
+                // value names filters), and a Sprite's or Tilemap's Pixels Per Unit with the import's
+                const Texture* current = property.ref ? static_cast<Texture*>(property.ref) : nullptr;
+                const bool assigned = !texture.getPath().empty() && (!current || current->getPath() != texture.getPath());
+                const bool explicitFilters = value.is_object() && (value.contains("min_filter") || value.contains("mag_filter"));
+                if (assigned && !explicitFilters) {
+                    pixelart::applyAssignmentFilters(*project, texture);
+                    const pixelart::AssignmentDefaults defaults = pixelart::assignmentDefaults(*project, texture.getPath());
+                    const bool spriteTexture = component == ComponentType::MeshComponent && propertyName == "submeshes[0].material.baseColorTexture";
+                    SpriteComponent* sprite = spriteTexture ? scene->scene->findComponent<SpriteComponent>(entity) : nullptr;
+                    TilemapComponent* tilemap = spriteTexture ? scene->scene->findComponent<TilemapComponent>(entity) : nullptr;
+                    if (defaults.pixelsPerUnit && (sprite || tilemap)) {
+                        auto* multi = new MultiPropertyCmd();
+                        multi->addPropertyCmd<Texture>(project, sceneId, entity, component, propertyName, texture, onChanged);
+                        if (sprite) multi->addPropertyCmd<float>(project, sceneId, entity, ComponentType::SpriteComponent, "pixelsPerUnit", (float)*defaults.pixelsPerUnit);
+                        else multi->addPropertyCmd<float>(project, sceneId, entity, ComponentType::TilemapComponent, "pixelsPerUnit", (float)*defaults.pixelsPerUnit);
+                        return multi;
+                    }
+                }
                 return new PropertyCmd<Texture>(project, sceneId, entity, component, propertyName, texture, onChanged);
             }
             // render to texture, as the Inspector's camera picker does it

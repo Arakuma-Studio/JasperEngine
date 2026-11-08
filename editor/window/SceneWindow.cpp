@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "pixelart/PixelArtAssign.h"
 #include "SceneWindow.h"
 #include "audio/SoundDrop.h"
 #include "component/TextComponent.h"
@@ -136,11 +137,19 @@ namespace {
 
 namespace {
 
-// with repeat, linear filtering bleeds the opposite edge into the border
-Texture edgeClampedTexture(const std::string& path) {
+// with repeat, linear filtering bleeds the opposite edge into the border; the filters are the
+// import's Filter Mode (S42 R7)
+Texture edgeClampedTexture(const editor::Project* project, const std::string& path) {
     Texture texture(path);
     texture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     texture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    editor::pixelart::applyAssignmentFilters(*project, texture);
+    return texture;
+}
+
+Texture importFilteredTexture(const editor::Project* project, const std::string& path) {
+    Texture texture(path);
+    editor::pixelart::applyAssignmentFilters(*project, texture);
     return texture;
 }
 
@@ -771,7 +780,7 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         originalTex = mesh->submeshes[0].material.baseColorTexture;
                                     }
                                     const bool isSprite = sceneProject->scene->findComponent<SpriteComponent>(selEntity) != nullptr;
-                                    Texture newTex = isSprite ? edgeClampedTexture(droppedAssetPath) : Texture(droppedAssetPath);
+                                    Texture newTex = isSprite ? edgeClampedTexture(project, droppedAssetPath) : importFilteredTexture(project, droppedAssetPath);
                                     if (mesh->submeshes[0].material.baseColorTexture != newTex) {
                                         mesh->submeshes[0].material.baseColorTexture = newTex;
                                         mesh->submeshes[0].needUpdateTexture = true;
@@ -784,7 +793,12 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         }
 
                                         if (insideAssets) {
-                                            PropertyCmd<Texture>* cmd = new PropertyCmd<Texture>(project, sceneProject->id, selEntity, ComponentType::MeshComponent, propName, newTex);
+                                            // S42 R7: a sprite takes the import's Pixels Per Unit in the same step
+                                            const editor::pixelart::AssignmentDefaults defaults = editor::pixelart::assignmentDefaults(*project, droppedAssetPath);
+                                            auto* cmd = new MultiPropertyCmd();
+                                            cmd->addPropertyCmd<Texture>(project, sceneProject->id, selEntity, ComponentType::MeshComponent, propName, newTex);
+                                            if (isSprite && defaults.pixelsPerUnit)
+                                                cmd->addPropertyCmd<float>(project, sceneProject->id, selEntity, ComponentType::SpriteComponent, "pixelsPerUnit", (float)*defaults.pixelsPerUnit);
                                             CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(cmd);
                                         } else {
                                             Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
@@ -800,7 +814,7 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         selUI = ui;
                                         originalTex = ui->texture;
                                     }
-                                    Texture newTex = edgeClampedTexture(droppedAssetPath);
+                                    Texture newTex = edgeClampedTexture(project, droppedAssetPath);
                                     if (ui->texture != newTex) {
                                         ui->texture = newTex;
                                         ui->needUpdateTexture = true;
@@ -908,14 +922,17 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                     cmd = new CreateEntityCmd(project, sceneProject->id, "Sprite", EntityCreationType::SPRITE);
 
                                     cmd->addProperty<Vector3>(ComponentType::Transform, "position", rreturn.point);
-                                    cmd->addProperty<Texture>(ComponentType::MeshComponent, "submeshes[0].material.baseColorTexture", edgeClampedTexture(droppedAssetPath));
+                                    cmd->addProperty<Texture>(ComponentType::MeshComponent, "submeshes[0].material.baseColorTexture", edgeClampedTexture(project, droppedAssetPath));
+                                    const editor::pixelart::AssignmentDefaults defaults = editor::pixelart::assignmentDefaults(*project, droppedAssetPath);
+                                    if (defaults.pixelsPerUnit)
+                                        cmd->addProperty<float>(ComponentType::SpriteComponent, "pixelsPerUnit", (float)*defaults.pixelsPerUnit);
                                     cmd->addProperty<unsigned int>(ComponentType::SpriteComponent, "width", tempImage->getWidth());
                                     cmd->addProperty<unsigned int>(ComponentType::SpriteComponent, "height", tempImage->getHeight());
                                 } else {
                                     cmd = new CreateEntityCmd(project, sceneProject->id, "Image", EntityCreationType::IMAGE);
 
                                     cmd->addProperty<Vector3>(ComponentType::Transform, "position", rreturn.point);
-                                    cmd->addProperty<Texture>(ComponentType::UIComponent, "texture", edgeClampedTexture(droppedAssetPath));
+                                    cmd->addProperty<Texture>(ComponentType::UIComponent, "texture", edgeClampedTexture(project, droppedAssetPath));
                                     cmd->addProperty<unsigned int>(ComponentType::RectTransformComponent, "width", tempImage->getWidth());
                                     cmd->addProperty<unsigned int>(ComponentType::RectTransformComponent, "height", tempImage->getHeight());
                                 }
@@ -3449,7 +3466,7 @@ float editor::SceneWindow::getOverlayScale(uint32_t sceneId) const {
 
 bool editor::SceneWindow::pixelZoomActive(const SceneProject* sceneProject) const{
     return sceneProject && sceneProject->sceneType == SceneType::SCENE_2D && sceneProject->displaySettings.pixelZoom &&
-           pixelart::scenePixelPerfect(sceneProject);
+           pixelart::scenePixelViews(project, sceneProject);
 }
 
 float editor::SceneWindow::gamePixelZoom(SceneProject& sceneProject) const{
@@ -3475,7 +3492,7 @@ void editor::SceneWindow::setPixelZoom(SceneProject& sceneProject, float scale){
 }
 
 void editor::SceneWindow::drawPixelZoomToolbar(SceneProject& sceneProject){
-    if (sceneProject.sceneType != SceneType::SCENE_2D || !pixelart::scenePixelPerfect(&sceneProject))
+    if (sceneProject.sceneType != SceneType::SCENE_2D || !pixelart::scenePixelViews(project, &sceneProject))
         return;
     const std::string id = std::to_string(sceneProject.id);
     bool& on = sceneProject.displaySettings.pixelZoom;
@@ -3581,7 +3598,7 @@ void editor::SceneWindow::drawPixelGrid(SceneProject& sceneProject, const ImVec2
 }
 
 void editor::SceneWindow::drawPixelPerfectFrames(SceneProject& sceneProject, const ImVec2& canvasMin){
-    if (sceneProject.sceneType != SceneType::SCENE_2D || !sceneProject.sceneRender || !pixelart::scenePixelPerfect(&sceneProject))
+    if (sceneProject.sceneType != SceneType::SCENE_2D || !sceneProject.sceneRender || !pixelart::scenePixelViews(project, &sceneProject))
         return;
     Scene* scene = sceneProject.scene;
     const Entity cameraEntity = sceneProject.mainCamera;

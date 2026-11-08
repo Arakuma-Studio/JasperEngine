@@ -522,6 +522,7 @@ parents to the first script that defines it (otherwise the game gets Escape or B
 | `viewRect` | ro | `Rect` |
 | `scalingMode` | rw | `Scaling.*` |
 | `getPixelsPerUnit()` | static fn | the project's Pixels Per Unit (1-256, default 1: a world unit is a pixel); sprites and tilemaps with `pixelsPerUnit` 0 take it |
+| `setDefaultTextureFilter(f)`, `getDefaultTextureFilter()` | static fn | the filter every Texture made from now on starts with (`TextureFilter.NEAREST` or `LINEAR`; the project's Default Filter Mode at start): a `Sprite:setTexture` of pixel art stays crisp; saved references keep theirs |
 | `setAtmosphereQuality(q)`, `getAtmosphereQuality()`, `resetAtmosphereQuality()` | fn | the volumetric fog and clouds tier (`AtmosphereQuality.*`): overrides the project's per-platform one until reset |
 | `textureStrategy` | rw | `TextureStrategy.*` |
 | `setTextureQuality(q)`, `getTextureQuality()` | static fn | 0 (full) to 3 (an eighth): top mips dropped from streamable textures at load (Unity's Global Mipmap Limit); sprites and UI keep theirs. The export sets the platform's from Project Settings > Texture |
@@ -2391,6 +2392,10 @@ assert(ppc.referenceResolution.x == 320)
 local p = ppc:roundToPixel(Vector3(10.5, 4.25, 0))
 assert(p.x == 11 and p.y == 4)
 assert(Engine.getPixelsPerUnit() >= 1)
+local filter = Engine.getDefaultTextureFilter()
+Engine.setDefaultTextureFilter(TextureFilter.NEAREST)
+assert(Engine.getDefaultTextureFilter() == TextureFilter.NEAREST)
+Engine.setDefaultTextureFilter(filter)
 ```
 
 ### 4.9.1 CameraShake, CameraShaker, ShakeInstance, CameraFollow

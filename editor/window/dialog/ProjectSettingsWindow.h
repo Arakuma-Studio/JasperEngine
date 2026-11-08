@@ -5,12 +5,14 @@
 
 #include "Project.h"
 #include "NativePluginDialog.h"
+#include "PixelArtPresetDialog.h"
 #include "imgui.h"
 #include "util/ShaderGlobalsEdit.h"
 #include "util/ShaderGlobalsUsage.h"
 
 #include <string>
 #include <filesystem>
+#include <memory>
 #include <set>
 #include <unordered_map>
 
@@ -108,6 +110,12 @@ namespace jasperengine::editor {
         // into the project), and the project's palettes as the picker lists them (path, name)
         std::string m_defaultPalette;
         std::vector<std::pair<std::string, std::string>> m_paletteFiles;
+        // Pixel Art (S42 R18): Pixel Art Mode and its checks, Graphics' Default Filter Mode (0
+        // Bilinear, 1 Point), a screen being added to Check Screens, and the preset's dialog
+        pixelart::PixelArtSettings m_pixelArt;
+        int m_defaultFilterIndex = 0;
+        char m_newCheckScreen[32] = "";
+        std::unique_ptr<PixelArtPresetDialog> m_presetDialog;
         Physics3DWorldSettings m_physics3DWorld;
         bool m_runtimeShadersEnabled = true;
         bool m_dynamicBatching = true;

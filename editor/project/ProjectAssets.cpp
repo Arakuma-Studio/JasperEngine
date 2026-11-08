@@ -5,6 +5,8 @@
 // references of loaded documents by GUID, the identity keys written into scenes, prefabs and
 // materials, and the in-memory edges of documents with unsaved edits.
 
+#include "pixelart/PixelArtMode.h"
+#include "texture/TextureCookQueue.h"
 #include "Project.h"
 #include "component/MeshComponent.h"
 
@@ -415,5 +417,17 @@ void editor::Project::onAssetFilesChanged(const std::vector<AssetDatabase::Chang
         // references follow their assets' GUIDs: moved ones get the new hints, a file put
         // back resolves again
         refreshAssetHints();
+    }
+    // the Pixel Art Check window checks again after imports (S42 R19)
+    pixelart::PixelArtMode::get().notifyAssets();
+    // Pixel Art Mode's Check on Import (S42 R1): registered only while the mode is on
+    if (pixelart::PixelArtMode::get().importHookRegistered()) {
+        std::vector<std::string> textures;
+        for (const AssetDatabase::Change& change : changes) {
+            if (change.type == AssetDatabase::Change::Type::Removed) continue;
+            const std::string relative = change.path.generic_string();
+            if (isTextureSource(relative)) textures.push_back(relative);
+        }
+        if (!textures.empty()) pixelart::PixelArtMode::get().assetsChanged(this, textures);
     }
 }

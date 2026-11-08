@@ -123,3 +123,29 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ApplyPaletteDialog.cpp
     ${EDITOR_DIR}/widget/PaletteSwatchAdapter.cpp
 )
+
+# S42 (Pixel Art Project Mode & Validator): Project Settings > Pixel Art, the validator (its input
+# from a project, the rules, the fixes), Pixel Art Mode's hooks, the preset, the Pixel Art Check
+# window and check_pixel_art
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/PixelArtSettings.cpp
+    ${EDITOR_DIR}/pixelart/PixelArtCheck.cpp
+    ${EDITOR_DIR}/pixelart/PixelArtRules.cpp
+    ${EDITOR_DIR}/pixelart/PixelArtInput.cpp
+    ${EDITOR_DIR}/pixelart/PixelArtFix.cpp
+    ${EDITOR_DIR}/pixelart/PixelArtMode.cpp
+    ${EDITOR_DIR}/pixelart/PixelArtPreset.cpp
+    ${EDITOR_DIR}/pixelart/PixelArtAssign.cpp
+    ${EDITOR_DIR}/command/type/ProjectSettingsValuesCmd.cpp
+    ${EDITOR_DIR}/mcp/tools/PixelArtTools.cpp
+    ${EDITOR_DIR}/window/PixelArtCheckWindow.cpp
+    ${EDITOR_DIR}/window/dialog/PixelArtPresetDialog.cpp
+)
+jasperengine_skip_unity_build(
+    REASON "S42's validator: file-local helpers (option, readText, isFontPath) shared in name with the sprite and Aseprite modules"
+    SOURCES
+        ${EDITOR_DIR}/pixelart/PixelArtRules.cpp
+        ${EDITOR_DIR}/pixelart/PixelArtInput.cpp
+        ${EDITOR_DIR}/pixelart/PixelArtFix.cpp
+        ${EDITOR_DIR}/mcp/tools/PixelArtTools.cpp
+)

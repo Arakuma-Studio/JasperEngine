@@ -112,3 +112,50 @@ Camera or an integer Scaling is active, the canvas backing store is its CSS size
 `devicePixelRatio` and the canvas is drawn `image-rendering: pixelated`, so the browser never
 resamples the integer image. A scene without a Pixel Perfect Camera and without an integer
 Scaling draws exactly what it drew before: no variant, pass or target is added.
+
+## Pixel Art Mode, the preset and the Pixel Art Check
+
+The design and its acceptance record are in `docs/specs/S42-pixel-art-mode.md`.
+
+**Project Settings > Pixel Art** holds Pixel Art Mode and what goes with it:
+
+| Setting | What it does |
+|---|---|
+| Pixel Art Mode | New textures import as pixel art, new 2D scenes get a Main Camera with a Pixel Perfect Camera, the Scene view uses Pixel Zoom, and the Pixel Art Check runs after imports and at Play start (one Console line when it finds problems; click it to open the check on that finding). Turning it on changes no other setting. |
+| Base Resolution | The project canvas, with the usual pixel-art sizes (256x144 to 640x360). |
+| Upscale Mode | What a new Pixel Perfect Camera gets. |
+| Pixels Per Unit, Default Filter Mode | The Graphics settings a pixel-art project sets, shown here too. Default Filter Mode **Point** makes every texture a game creates at runtime (a Lua `Sprite:setTexture`) start point-filtered. |
+| Default Palette, Backdrops | The palette pixel-art tools use, and the dark and light backgrounds art is shown on. |
+| Check on Import, Check on Play, Check Screens | When the check runs in Pixel Art Mode, and the screen sizes it lays each scene out on. |
+
+**Apply Pixel Art Preset...** previews every change that converts a project (base resolution,
+integer scaling, Pixels Per Unit, Point filtering, a window at 4x the base, a Pixel Perfect Camera
+on each 2D scene, lossless pixel-art textures and point-filtered references) with its current and
+new value, and applies them as one undo step.
+
+**Texture import settings** have a **Pixel Art** checkbox (and a Presets > Pixel Art entry). It
+gives the fields you leave alone the pixel-art values: no mipmaps, uncompressed on every platform,
+the **Nearest (Point)** resize and mip filter, **Alpha Clip** (alpha becomes fully opaque or fully
+transparent at the cutoff) and no streaming. **Filter Mode** and **Pixels Per Unit** are what a
+reference starts with when you assign the texture (drop it in the Scene view or on a field);
+afterwards the reference keeps its own filters, and **Apply to N References** updates those that
+differ. The preview shows pixel art at whole-number zooms, with a 1x toggle.
+
+**Window > 2D > Pixel Art Check** runs the rules on a scope (open scenes, build scenes, the
+selection or the whole project) and lists the findings by rule with what was measured and what was
+expected. **Fix** applies a finding's change (its menu offers a second option where there is one),
+**Fix All...** previews every change and applies them as one undo step, and **Copy Report** copies
+the JSON. A finding that no automatic change can fix (a vector font, art drawn at another texel
+size) says why a person must look. F5 runs the check again.
+
+The same rules run from the command line on the saved project:
+
+    jasperengine-editor check --pixel-art [--format json]
+
+one line per finding (`path[#GameObject]: error|warning: [rule] message (fix: ...) [PIXELART-<RULE>]`),
+exit code 1 when a rule fails. In Pixel Art Mode the check is part of `check`'s default set and of
+its agent `--hook`.
+
+**File > New Project > 2D Pixel Art** starts a project that passes the check: Pixel Art Mode, the
+base resolution you choose, integer scaling, a Pixel Perfect Camera and point-filtered lossless art.
+

@@ -2309,6 +2309,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("viewRect", &Engine::getViewRect)
         .addStaticProperty("scalingMode", &Engine::getScalingMode, &Engine::setScalingMode)
         .addStaticFunction("getPixelsPerUnit", &Engine::getPixelsPerUnit)
+        .addStaticFunction("setDefaultTextureFilter", &Engine::setDefaultTextureFilter)
+        .addStaticFunction("getDefaultTextureFilter", &Engine::getDefaultTextureFilter)
         .addStaticProperty("textureStrategy", &Engine::getTextureStrategy, &Engine::setTextureStrategy)
         .addStaticFunction("setTextureQuality", &Engine::setTextureQuality)
         .addStaticFunction("getTextureQuality", &Engine::getTextureQuality)

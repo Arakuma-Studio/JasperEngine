@@ -619,6 +619,7 @@ bool editor::Exporter::writeGameConfig() {
     game.canvasHeight = project->getCanvasHeight();
     game.scaling = project->getScalingMode();
     game.pixelsPerUnit = project->getPixelsPerUnit();
+    game.defaultFilterPoint = project->getDefaultFilterMode() == TextureFilterMode::Point;
     game.textureStrategy = project->getTextureStrategy();
     const LoadingSettings& loading = project->getLoadingSettings();
     game.loadingScene = loading.sceneId;

@@ -61,6 +61,8 @@
 #include "texsynth/SynthesisCli.h"
 #include "spritenormals/SpriteNormalsCheck.h"
 #include "sprite/SpriteMigration.h"
+#include "pixelart/PixelArtCheck.h"
+#include "pixelart/PixelArtInput.h"
 #include "spritenormals/SpriteNormalsCli.h"
 #include "pixelart/aseprite/AsepriteCli.h"
 #include "physics/PlacementCli.h"
@@ -2132,6 +2134,7 @@ struct CheckOptions {
     bool normals = false;
     bool videos = false;
     bool sprites = false;
+    bool pixelArt = false;
     bool all = false;
     bool filesGiven = false;
     std::vector<std::string> files;
@@ -2174,9 +2177,14 @@ void printCheckUsage(const std::string& commandName) {
         << "      --sprites            Sprites: legacy sprites with inline frames (scene or prefab, GameObject, texture,\n"
         << "                           frame count; info) and Sprite Atlas problems (missing members, a frame larger\n"
         << "                           than the max size: errors; a source packed by two atlases: a warning).\n"
-        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps, videos and\n"
-        << "                           sprites.\n"
-        << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos.\n"
+        << "      --pixel-art          The pixel-art rules (check_pixel_art's, on the saved project): one line per finding,\n"
+        << "                           path[#GameObject]: error|warning: [rule] message (fix: ...) [PIXELART-<RULE>];\n"
+        << "                           --format json adds the full result as pixel_art. In the default set and in --hook\n"
+        << "                           when the project's Pixel Art Mode is on.\n"
+        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps, videos,\n"
+        << "                           sprites and pixel art.\n"
+        << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos\n"
+        << "                           (and --pixel-art in Pixel Art Mode).\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
         << "                           A .vat or .vat.glb checks the Vertex Animation; another file checks the\n"
@@ -2224,6 +2232,8 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.normals = true;
         } else if (arg == "--sprites") {
             options.sprites = true;
+        } else if (arg == "--pixel-art") {
+            options.pixelArt = true;
         } else if (arg == "--videos") {
             options.videos = true;
         } else if (arg == "--all") {
@@ -2518,7 +2528,47 @@ struct CheckRun {
     std::string fatal;                                     // the checks could not run
     vat::VatCheck vat;                                     // --vat (listed last, after the pure checks)
     bool vatRan = false;
+    nlohmann::json pixelArt;                               // --pixel-art: check_pixel_art's result (null: not run)
+    size_t pixelArtFixable = 0;
 };
+
+// the project's Pixel Art Mode, from project.yaml (pixelArt.enabled), without loading the project
+bool pixelArtModeOn(const fs::path& root) {
+    try {
+        const YAML::Node node = YAML::LoadFile((root / "project.yaml").string());
+        const YAML::Node pixelArt = node["pixelArt"];
+        return pixelArt && pixelArt.IsMap() && pixelArt["enabled"] && pixelArt["enabled"].as<bool>();
+    } catch (...) {
+        return false;
+    }
+}
+
+// check_pixel_art's findings as check lines: path[#GameObject]: error|warning: [rule] message (fix: ...) [PIXELART-RULE]
+void addPixelArtFindings(const pixelart::CheckResult& result, std::vector<ProjectChecks::Finding>& out, size_t& fixable) {
+    for (const pixelart::Finding& finding : result.findings) {
+        ProjectChecks::Finding f;
+        f.tool = "pixel_art";
+        const std::string scene = finding.target.value("scene", "");
+        const std::string entity = finding.target.value("entity", "");
+        const std::string path = finding.target.value("path", "");
+        // a GameObject's scene and path, a scene, a texture or font, else the project
+        if (!scene.empty()) f.path = scene + (entity.empty() ? "" : "#" + entity);
+        else if (!path.empty()) f.path = path + (entity.empty() ? "" : "#" + entity);
+        else f.path = "project.yaml";
+        f.severity = finding.status == pixelart::RuleStatus::Fail ? "error" : "warning";
+        f.message = "[" + finding.rule + "] " + finding.message;
+        std::string code = finding.rule;
+        std::transform(code.begin(), code.end(), code.begin(), [](unsigned char c) { return (char)std::toupper(c); });
+        f.code = "PIXELART-" + code;
+        if (!finding.options.empty()) {
+            f.suggestion = finding.options.front().label;
+            fixable++;
+        } else {
+            f.suggestion = "needs a person: " + finding.needsPerson;
+        }
+        out.push_back(f);
+    }
+}
 
 std::string plural(size_t count, const std::string& word) {
     return std::to_string(count) + " " + word + (count == 1 ? "" : "s");
@@ -2997,7 +3047,8 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
 CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vector<fs::path>& luaFiles, bool luaWanted,
                    bool shadersAll, const std::vector<std::string>& shaderFiles, bool shadersWanted, bool cppWanted,
                    const std::vector<std::string>& textureFiles, bool texturesWanted,
-                   const std::vector<fs::path>& vatFiles, bool vatWanted) {
+                   const std::vector<fs::path>& vatFiles, bool vatWanted, bool pixelArtWanted,
+                   const std::vector<std::string>& pixelArtPaths) {
     CheckRun run;
     EditorHostOverrideGuard hostOverride(nullptr);
     Out::setConsoleWindow(nullptr);
@@ -3048,7 +3099,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         run.checked.push_back({"lua", count});
     }
 
-    if (shadersWanted || cppWanted || texturesWanted || vatWanted) {
+    if (shadersWanted || cppWanted || texturesWanted || vatWanted || pixelArtWanted) {
         // checks only read the project: no lock, an open editor is fine, and no file is written
         // (a project from before GUIDs keeps its identities in memory; no GUID upgrade of
         // prefabs or clips)
@@ -3071,6 +3122,22 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         // the .vat files (all of them, or the given ones): format, staleness, device limits
         run.vat = vat::checkVatAssets(&project, vatFiles);
         run.vatRan = true;
+    }
+
+    // S42 R24: the validator on the saved project (the same input and rules as check_pixel_art)
+    if (pixelArtWanted) {
+        pixelart::Scope scope;
+        scope.paths = pixelArtPaths;
+        std::vector<pixelart::PixelProblem> problems;
+        const pixelart::PixelArtCheckInput input = pixelart::inputFromProject(project, scope, problems);
+        const pixelart::CheckResult result = pixelart::run(input);
+        run.pixelArt = result.toJson();
+        for (const pixelart::PixelProblem& problem : problems)
+            run.findings.push_back({"pixel_art", "", 0, 0, "error", problem.message, "PIXELART-" + problem.kind, problem.fix});
+        addPixelArtFindings(result, run.findings, run.pixelArtFixable);
+        size_t checked = 0;
+        for (const pixelart::RuleResult& rule : result.rules) checked += (size_t)rule.checked;
+        run.checked.push_back({"pixel_art", checked});
     }
 
     // S19 R42, S75 R36: the scenes' navigation findings with their severities (an error fails the
@@ -3186,9 +3253,12 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool normals = options.normals || options.all;
     bool videos = options.videos || options.all;
     const bool sprites = options.sprites || options.all;
+    bool pixelArt = options.pixelArt || options.all;
     if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.normals &&
-        !options.videos && !options.sprites && !options.all) {
+        !options.videos && !options.sprites && !options.pixelArt && !options.all) {
         lua = shaders = ui = textures = anims = vatAssets = normals = videos = true;
+        // S42 R24: in the default set (and so in --hook) while Pixel Art Mode is on
+        pixelArt = pixelArtModeOn(options.project);
     }
 
     fs::path base = CommandLine::invocationDirectory();
@@ -3222,6 +3292,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> clipFiles;
     std::vector<fs::path> vatGiven;     // .vat, .vat.glb and the other files (sources of bakes)
     std::vector<fs::path> normalFiles;  // images: generated normal maps, or sources of some
+    std::vector<std::string> pixelArtFiles;   // assets-relative images (check_pixel_art's paths)
+    bool pixelArtScenes = false;               // a scene, prefab, meta or project.yaml changed
     bool cppFiles = false;
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
@@ -3262,6 +3334,14 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             if (textures && Util::isImageFile(name)) synthesisFiles.push_back(path);
             // a generated normal map, or an image normal maps were made from
             if (normals && Util::isImageFile(name)) normalFiles.push_back(path);
+            if (pixelArt) {
+                const std::string assetsDir = ProjectChecks::assetsRootFromProjectFile(root).lexically_relative(root).generic_string();
+                if (Util::isImageFile(name) && !assetsDir.empty() && name.rfind(assetsDir + "/", 0) == 0)
+                    pixelArtFiles.push_back(name.substr(assetsDir.size() + 1));
+                const std::string extension = rel.extension().string();
+                if (extension == ".scene" || extension == ".prefab" || extension == ".meta" || name == "project.yaml")
+                    pixelArtScenes = true;
+            }
         }
     } else if (lua) {
         luaFiles = ProjectChecks::findProjectFiles(root, {".lua"});
@@ -3280,6 +3360,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     // the recipes are read without the engine: it starts only when a .vat is concerned
     const std::vector<fs::path> vatFiles = fileMode ? vat::vatAssetsForFiles(root, vatGiven) : std::vector<fs::path>();
     const bool vatWanted = fileMode ? !vatFiles.empty() : vatAssets;
+    const bool pixelArtWanted = fileMode ? pixelArt && (!pixelArtFiles.empty() || pixelArtScenes) : pixelArt;
 
     // The UI check is pure parsing (no engine): first, and the engine starts only for the others
     ProjectChecks::UiCheck uiCheck;
@@ -3288,10 +3369,10 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         uiCheck = ProjectChecks::checkUiFiles(root, fileMode ? uiFiles : std::vector<fs::path>());
     }
     CheckRun run;
-    if (luaWanted || shadersWanted || cppWanted || texturesWanted || vatWanted) {
+    if (luaWanted || shadersWanted || cppWanted || texturesWanted || vatWanted || pixelArtWanted) {
         QuietOutput quiet;
         run = runChecks(argc, argv, root, luaFiles, luaWanted, !fileMode, shaderFiles, shadersWanted, cppWanted, textureFiles, texturesWanted,
-                        vatFiles, vatWanted);
+                        vatFiles, vatWanted, pixelArtWanted, pixelArtFiles);
     }
     if (!run.fatal.empty()) {
         std::cerr << commandName << " check: " << run.fatal << "\n";
@@ -3386,6 +3467,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             std::cerr << ProjectChecks::toText(finding) << "\n";
         }
         for (const std::string& line : run.cppLogTail) std::cerr << "  " << line << "\n";
+        if (run.pixelArtFixable > 0) std::cerr << "fix: " << "jasperengine-editor call --project " + root.string() + " check_pixel_art '{\"fix\":[\"all\"],\"output\":true}'" << "\n";
         if (uiShown > 0) {
             std::cerr << "(UI warnings are shown once, after the edit that introduced them; " << commandName
                       << " check --ui lists them all)\n";
@@ -3409,10 +3491,14 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const nlohmann::json out = {{"ok", errors == 0}, {"errors", errors}, {"warnings", warnings}, {"checked", checked},
                                     {"findings", ProjectChecks::toJson(run.findings)},
                                     {"seconds", std::round(seconds * 100.0) / 100.0}};
+        nlohmann::json full = out;
+        if (!run.pixelArt.is_null()) full["pixel_art"] = run.pixelArt;
         // a finding's path may not be UTF-8 (a Latin-1 file name): shown with U+FFFD, never an abort
-        std::cout << out.dump(1, ' ', false, nlohmann::json::error_handler_t::replace) << std::endl;
+        std::cout << full.dump(1, ' ', false, nlohmann::json::error_handler_t::replace) << std::endl;
     } else {
         for (const ProjectChecks::Finding& finding : run.findings) std::cout << ProjectChecks::toText(finding) << "\n";
+        // the CLI does not fix: the call that does (S42 R24)
+        if (run.pixelArtFixable > 0) std::cout << "fix: " << "jasperengine-editor call --project " + root.string() + " check_pixel_art '{\"fix\":[\"all\"],\"output\":true}'" << "\n";
         std::cout.flush();
         if (!options.quiet) {
             for (const std::string& line : run.cppLogTail) std::cerr << "  " << line << "\n";
@@ -3423,7 +3509,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
                                                           {"textures", "recipe"}, {"texture_imports", "texture"}, {"anims", "clip"},
                                                           {"vat", "file"}, {"navigation", "surface"},
-                                                          {"normals", "map"}, {"videos", "Video Player"}, {"sprites", "file"}};
+                                                          {"normals", "map"}, {"videos", "Video Player"}, {"sprites", "file"},
+                                                          {"pixel_art", "item"}};
         for (const auto& [category, count] : run.checked) {
             // a category without a unit here still prints (never a map::at abort after the results)
             const auto unit = units.find(category);

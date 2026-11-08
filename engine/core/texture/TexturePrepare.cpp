@@ -134,6 +134,11 @@ namespace {
         out.width = width;
         out.height = height;
         out.pixels.resize((size_t)width * (size_t)height * texel);
+        if (filter == MipFilter::Nearest){
+            nearestResize(level.pixels.data(), level.width, level.height, out.pixels.data(), width, height, texel);
+            level = std::move(out);
+            return;
+        }
         stbir_pixel_layout layout = STBIR_4CHANNEL;
         if (options.channels == 1) layout = STBIR_1CHANNEL;
         else if (options.channels == 2) layout = STBIR_2CHANNEL;
@@ -306,11 +311,15 @@ bool TexturePrepare::prepare(const std::vector<const TextureData*>& faces, const
         switch (layout){
             case Layout::RGBA8: {
                 base.pixels = prepToRgba8(data);
+                // the byte an alpha test at alphaCutoff starts passing at (a >= cutoff * 255)
+                const int clipByte = std::clamp((int)std::ceil(processing.alphaCutoff * 255.0f - 1e-4f), 0, 255);
                 for (size_t i = 0; i < texels; i++){
                     if (processing.alphaSource == TextureAlphaSource::FromGray)
                         base.pixels[i * 4 + 3] = prepLuma(&base.pixels[i * 4]);
                     else if (processing.alphaSource == TextureAlphaSource::None)
                         base.pixels[i * 4 + 3] = 255;
+                    if (processing.alphaClip)
+                        base.pixels[i * 4 + 3] = base.pixels[i * 4 + 3] >= clipByte ? 255 : 0;
                     out.hasAlpha = out.hasAlpha || base.pixels[i * 4 + 3] != 255;
                 }
                 break;

@@ -55,6 +55,9 @@ namespace jasperengine::editor::pixelart {
     // the scene's main camera has an applicable Pixel Perfect Camera: Pixel Zoom, the grid, Snap
     // Preview and Pixel Move Snap apply
     bool scenePixelPerfect(const SceneProject* sceneProject);
+    // the Scene view's pixel tools apply: a scene drawn through a Pixel Perfect Camera, or (S42 R1)
+    // a 2D scene of a project in Pixel Art Mode
+    bool scenePixelViews(const Project* project, const SceneProject* sceneProject);
     // view pixels per base pixel of a 2D zoom (world units per view pixel), and back
     float pixelZoomScale(float zoom, int pixelsPerUnit);
     float zoomForPixelScale(float scale, int pixelsPerUnit);

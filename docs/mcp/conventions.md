@@ -117,7 +117,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `html_ui` | S17 (`edit_ui_view`) |
 | `scripting` | S23 (`reload_scripts`, `get_script_status`, `set_script_settings`, `list_editor_menus`, `run_editor_menu`, `eval_expression`, the graph tools), upstream's `user_settings` (PlayerPrefs) |
 | `shipping` | S30, upstream's native-bridge `native_plugins` (out of core to fit the budget) |
-| `pixel_art` | S43 (`edit_palette`, `apply_palette`); S42, S46 and S48 add theirs |
+| `pixel_art` | S43 (`edit_palette`, `apply_palette`), S42 (`check_pixel_art`); S46 and S48 add theirs |
 
 A spec may add a group: one row in `McpToolGroups.cpp` (name, one-line description), and a
 `budget.json` `groups` entry only if it needs other limits than the defaults. Registering a tool

@@ -564,3 +564,76 @@ Swap material on a BC7 texture, and 30 `library:sprite` variants. Unit tests in
 
 ## Deviations
 
+Recorded at implementation (`feature/s42-pixel-art-mode`); the code is what is true now.
+
+- **D3, R24: one input builder.** `inputFromFiles` is not a second parser of raw YAML: `check
+  --pixel-art` loads the project headless, as `check`'s other engine categories do, and calls the
+  same `inputFromProject`; closed scenes of the build list are read from their files into scenes of
+  their own (`Project::loadSceneProbe`) in both. A saved project gives the same input both ways by
+  construction (AC7).
+- **R5: ties.** "A 2× downscale keeps the top-left texel" and "`⌊(i + 0.5)·s/d⌋`" disagree when a
+  destination centre lands exactly on a source texel edge; the edge goes to the lower texel
+  (`⌈(i + 0.5)·s/d⌉ − 1`, integer maths), which keeps both statements everywhere else.
+- **R9, R10: what counts as pixel art.** In Pixel Art Mode every 2D scene is a pixel-art scene (the
+  mode declares the project pixel art). `pixel_art_mode`'s "pixel-art content" also counts a 2D scene
+  with sprites or tilemaps, so a plain 2D project (the 2d template, AC9) can be converted by its fix.
+- **R10 `integer_scale`:** a pixel-art scene with integer scaling but no enabled Pixel Perfect Camera
+  is a WARN (nothing snaps without one, so `off_grid`'s "drawn snapped" would not hold); its fix adds
+  the camera, which is how `fix: ["all"]` does R2's camera row. A scene without a saved camera gets a
+  "Main Camera" (set as main) with the component. A Stretch Fill camera's fix is Upscale Mode Integer.
+- **R10 `pixel_art_mode` fix:** R2 rows 1–5 keep the project's Pixels Per Unit (any PPU is a valid
+  pixel-art layout) and add row 6 (the window at 4× the base) when the window is not already a whole
+  multiple of the base, so `fix: ["pixel_art_mode"]` then `fix: ["all"]` equals the preset (AC9).
+- **R10 `filtering`, R11 keys:** the field is the property path `set_properties` takes
+  (`mesh.submeshes[0].material.baseColorTexture`, `ui.texture`), not the spec's illustrative
+  `sprite.texture`.
+- **R10 `mipmaps_compression`:** one finding per texture with every family's format in `measured`
+  (and `vram_bytes`, R17). An `.aseprite` sheet is judged by `texture.compression`; a `.spriteatlas`
+  by its `compression` (S45's Auto is now lossless in Pixel Art Mode too, R16 of S45). Generated pages
+  are judged through their source.
+- **R10 `particles_grid`:** particle textures are made at runtime, so their filter is the project's
+  Default Filter Mode (fix: Default Filter Mode point). Render mode, sizes and a perspective camera
+  have no automatic fix (`needs_person` names what to change). The Pixel Art module criteria wait for
+  S49 (not in this base).
+- **R10 `font_antialiasing`:** S51 plugs in through `pixelart::setFontAnalyzer`; until then every font
+  reads as a vector font (WARN, `needs_person`). The `.bitmapfont` `alpha_cutoff` fix is S51's to add
+  (its writer), so that case is `needs_person` meanwhile.
+- **R10 `sprite_variants`:** the collector runs on one GameObject per library:sprite material identity
+  (shader features and blend), and `by_material` names those identities.
+- **R10 `cleanup_outputs`:** not listed until S46 registers it (`registerRule`); asking for it before
+  is `unknown_rule`.
+- **R22:** `guidance` is `next` in structuredContent (AGENTS.md "MCP text"); typed errors are
+  `errors[]`. The image is the Game view at Pixel Scale 1× of the first pixel-art scene with
+  findings, cropped to the base image, scaled by whole numbers within `max_width` (default 1024).
+- **R24:** the closing call is `jasperengine-editor call --project <p> check_pixel_art '{...}'`
+  (options before the tool name, as `call` takes them). In `--hook`, the category runs when an image,
+  scene, prefab, meta or project.yaml changed.
+- **R1:** in Pixel Art Mode a 2D image nothing references yet (S14 infers `default`, "no
+  references") imports as `type: sprite` with `pixelArt: true` ("no references (Pixel Art Mode)"), so
+  imported art is pixel art before it is placed (AC12). The validator judges a texture with no
+  import settings yet as the mode will import it.
+- **R3:** the editor applies the Default Filter Mode at Play start (and restores Bilinear at stop);
+  edit mode keeps Bilinear, since assignments copy their filters explicitly (R7). Lua gets
+  `Engine.setDefaultTextureFilter` / `getDefaultTextureFilter`.
+- **R18:** the Upscale Mode default has a key of its own, `pixel_art.upscale_mode`. Base Resolution,
+  Pixels Per Unit and Default Filter Mode are rows of the Pixel Art page bound to the Graphics
+  settings. `edit.projectSettings` takes a page as payload (run_command opens Pixel Art directly).
+- **R19:** the Console line is clickable through a small `ConsoleWindow::setMessageAction` (lines that
+  start with "Pixel Art Check:"), registered only while Pixel Art Mode's hooks are. The window's
+  double-click frames through `edit.frameSelected`.
+- **R21:** the hub's Base Resolution is a field of the New Project form; `create_project` takes the
+  template as it is (320×180). The `create_project` / `list_project_templates` descriptions were not
+  changed (`list_project_templates` lists the new template).
+- **R13:** fixing a GameObject of a closed scene opens the scene; scene edits are unsaved until
+  `save_scene` (the result's `next` says so), as every MCP scene edit.
+- **R26:** the agent guide gets an "Other areas" entry, `pixel art (check_pixel_art)` (the ledger's
+  upstream MCP rule change), not a digest section; the rest is in `docs/mcp/guide/pixel-art.md`.
+- **AC1-AC3, AC6, AC9, AC14 test names** follow docs/testing.md's naming (`MipChain.NearestResize`,
+  `TexturePrepare.AlphaClip`, `PixelArtImport.*`, `TextureCook.PixelArtLossless`, `PixelArtCheck.*`,
+  `PixelArtPreset.PlanMatchesFixes`, `PixelArtMode.OffRegistersNothing`). The rule unit tests run on
+  the fixture's data written in code (the rules are pure functions of the input, D3);
+  `test_check_pixel_art.py` checks the same seeded findings on the fixture's files.
+- **AC10:** the 1× frame is compared with a CPU reference composed from the template's own sprite
+  (S41 AC4's method) rather than a stored golden image.
+- **AC14:** `pixel-art-large` (12 scenes, 600 textures, 6,000 sprites) is generated by `test_cost`
+  instead of being committed (megabytes of scene YAML).

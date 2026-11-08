@@ -1011,6 +1011,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
         std::sort(m_inputActionsFiles.begin(), m_inputActionsFiles.end());
     }
     m_defaultPalette = FileUtils::pathToGenericUtf8(project->getDefaultPalette());
+    m_pixelArt = project->getPixelArtSettings();
+    m_defaultFilterIndex = project->getDefaultFilterMode() == TextureFilterMode::Point ? 1 : 0;
     m_paletteFiles.clear();
     for (const pixelart::ProjectPalette& entry : pixelart::listProjectPalettes(*project))
         m_paletteFiles.push_back({entry.path, entry.palette.name});
@@ -1933,6 +1935,14 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                            "Texels per world unit of sprites and tilemaps whose own Pixels Per Unit is 0 (1: a world unit is a pixel). "
                            "1 to 256.");
             m_pixelsPerUnit = std::min(m_pixelsPerUnit, Project::maxPixelsPerUnit);
+        }
+
+        // S42 R3: what runtime-made textures and new references start with
+        if (settingsui::beginRow("graphics.default_filter_mode")) {
+            static const char* const filterNames[] = {"Bilinear", "Point (no filter)"};
+            drawComboSetting("Default Filter Mode", "##DefaultFilterMode", filterNames, 2, m_defaultFilterIndex, 0,
+                             "What every texture a game makes at runtime (Lua Sprite:setTexture) and every new reference to a texture "
+                             "without its own Filter Mode starts with. Point keeps pixel art crisp. Saved references keep their own filters.");
         }
 
         // the Canvas Scaler's project default: the UI's own space, apart from the game canvas
@@ -3158,6 +3168,71 @@ void ProjectSettingsWindow::drawNavigationSettings() {
 void ProjectSettingsWindow::drawPixelArtSettings() {
     if (beginSettingsPanel("##PixelArtSettingsPanel")) {
         if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("pixel_art.enabled")) {
+                if (projectBeginSettingsRow("Pixel Art Mode", m_pixelArt.enabled)) m_pixelArt.enabled = false;
+                ImGui::Checkbox("##PixelArtMode", &m_pixelArt.enabled);
+                endSettingsRow("New textures import as pixel art (Point, no mipmaps, lossless), new 2D scenes get a Pixel Perfect "
+                    "Camera, the Scene view uses Pixel Zoom, and the Pixel Art Check runs on import and at Play. Changes no other "
+                    "setting: Apply Pixel Art Preset converts the project.");
+            }
+            if (settingsui::beginRow("pixel_art.base_resolution")) {
+                const std::vector<pixelart::PixelArtScreen>& sizes = pixelart::presetBaseResolutions();
+                if (projectBeginSettingsRow("Base Resolution", false)) {}
+                std::string current = std::to_string(m_canvasWidth) + "x" + std::to_string(m_canvasHeight);
+                ImGui::SetNextItemWidth(Theme::dpi(110.0f));
+                if (ImGui::BeginCombo("##PixelArtBase", current.c_str())) {
+                    for (const pixelart::PixelArtScreen& size : sizes) {
+                        const std::string label = std::to_string(size.width) + "x" + std::to_string(size.height);
+                        if (ImGui::Selectable(label.c_str(), (int)size.width == m_canvasWidth && (int)size.height == m_canvasHeight)) {
+                            m_canvasWidth = size.width;
+                            m_canvasHeight = size.height;
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(Theme::dpi(70.0f));
+                ImGui::InputInt("##PixelArtBaseW", &m_canvasWidth, 0);
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(Theme::dpi(70.0f));
+                ImGui::InputInt("##PixelArtBaseH", &m_canvasHeight, 0);
+                m_canvasWidth = std::max(m_canvasWidth, 1);
+                m_canvasHeight = std::max(m_canvasHeight, 1);
+                endSettingsRow("The project canvas (Graphics > Canvas Width and Height): the resolution the art is drawn at. "
+                    "320x180 divides every common 16:9 screen exactly.");
+            }
+            if (settingsui::beginRow("pixel_art.upscale_mode")) {
+                static const char* const modes[] = {"Integer (Letterbox)", "Integer (Expand)", "Stretch Fill"};
+                int index = (int)m_pixelArt.upscaleMode;
+                drawComboSetting("Upscale Mode", "##PixelArtUpscale", modes, 3, index, 0,
+                                 "The Upscale Mode a new Pixel Perfect Camera gets (Pixel Art Mode's new 2D scenes and the preset).");
+                m_pixelArt.upscaleMode = (PixelUpscaleMode)index;
+            }
+            if (settingsui::beginRow("pixel_art.pixels_per_unit")) {
+                drawIntSetting("Pixels Per Unit", "##PixelArtPPU", m_pixelsPerUnit, Project::defaultPixelsPerUnit, Project::minPixelsPerUnit,
+                               "Graphics > Pixels Per Unit: texels per world unit of the sprites and tilemaps that take the project's. "
+                               "Keep 1 unless the game uses tile units.");
+                m_pixelsPerUnit = std::min(m_pixelsPerUnit, Project::maxPixelsPerUnit);
+            }
+            if (settingsui::beginRow("pixel_art.default_filter_mode")) {
+                static const char* const filterNames[] = {"Bilinear", "Point (no filter)"};
+                drawComboSetting("Default Filter Mode", "##PixelArtDefaultFilter", filterNames, 2, m_defaultFilterIndex, 0,
+                                 "Graphics > Default Filter Mode: what runtime-made textures and new references start with.");
+            }
+            if (settingsui::beginRow("pixel_art.backdrops")) {
+                if (projectBeginSettingsRow("Backdrops", m_pixelArt.backdrops != pixelart::PixelArtSettings::defaultBackdrops()))
+                    m_pixelArt.backdrops = pixelart::PixelArtSettings::defaultBackdrops();
+                for (size_t i = 0; i < m_pixelArt.backdrops.size() && i < 2; i++) {
+                    char buffer[16];
+                    snprintf(buffer, sizeof(buffer), "%s", m_pixelArt.backdrops[i].c_str());
+                    if (i > 0) ImGui::SameLine();
+                    ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+                    if (ImGui::InputText(i == 0 ? "##BackdropDark" : "##BackdropLight", buffer, sizeof(buffer)) && pixelart::isPixelArtBackdrop(buffer))
+                        m_pixelArt.backdrops[i] = buffer;
+                }
+                endSettingsRow("The project's pixel-art backdrops (#rrggbb): the first dark, the second light. Contact sheets and "
+                    "contrast checks draw art on them.");
+            }
             if (settingsui::beginRow("palettes.default")) {
                 if (projectBeginSettingsRow("Default Palette", !m_defaultPalette.empty())) {
                     m_defaultPalette.clear();
@@ -3191,10 +3266,59 @@ void ProjectSettingsWindow::drawPixelArtSettings() {
                     "Snap to Palette, the Palette window's first open and new pixel art. A built-in is copied into the "
                     "project when you press OK.");
             }
+            if (settingsui::beginRow("pixel_art.check_on_import")) {
+                if (projectBeginSettingsRow("Check on Import", !m_pixelArt.checkOnImport)) m_pixelArt.checkOnImport = true;
+                ImGui::Checkbox("##PixelArtCheckImport", &m_pixelArt.checkOnImport);
+                endSettingsRow("With Pixel Art Mode on, the Pixel Art Check runs after textures import and logs one Console line.");
+            }
+            if (settingsui::beginRow("pixel_art.check_on_play")) {
+                if (projectBeginSettingsRow("Check on Play", !m_pixelArt.checkOnPlay)) m_pixelArt.checkOnPlay = true;
+                ImGui::Checkbox("##PixelArtCheckPlay", &m_pixelArt.checkOnPlay);
+                endSettingsRow("With Pixel Art Mode on, the Pixel Art Check runs at Play start and logs one Console line.");
+            }
+            if (settingsui::beginRow("pixel_art.check_screens")) {
+                if (projectBeginSettingsRow("Check Screens", m_pixelArt.checkScreens != pixelart::PixelArtSettings::defaultCheckScreens()))
+                    m_pixelArt.checkScreens = pixelart::PixelArtSettings::defaultCheckScreens();
+                int removed = -1;
+                for (size_t i = 0; i < m_pixelArt.checkScreens.size(); i++) {
+                    ImGui::TextUnformatted(m_pixelArt.checkScreens[i].c_str());
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton(("x##screen" + std::to_string(i)).c_str())) removed = (int)i;
+                }
+                if (removed >= 0) m_pixelArt.checkScreens.erase(m_pixelArt.checkScreens.begin() + removed);
+                ImGui::SetNextItemWidth(Theme::dpi(100.0f));
+                ImGui::InputTextWithHint("##NewCheckScreen", "1920x1080", m_newCheckScreen, sizeof(m_newCheckScreen));
+                ImGui::SameLine();
+                pixelart::PixelArtScreen parsed;
+                const bool valid = pixelart::parsePixelArtScreen(m_newCheckScreen, parsed);
+                ImGui::BeginDisabled(!valid);
+                if (ImGui::SmallButton("Add##CheckScreen")) {
+                    m_pixelArt.checkScreens.push_back(m_newCheckScreen);
+                    m_newCheckScreen[0] = '\0';
+                }
+                ImGui::EndDisabled();
+                endSettingsRow("The screen sizes the Pixel Art Check lays each scene out on (integer_scale).");
+            }
+            if (settingsui::beginRow("pixel_art.apply_preset")) {
+                projectBeginSettingsRow("Pixel Art Preset", false);
+                if (ImGui::Button("Apply Pixel Art Preset...")) {
+                    if (!m_presetDialog) {
+                        m_presetDialog = std::make_unique<PixelArtPresetDialog>(m_project);
+                    }
+                    m_presetDialog->open();
+                }
+                endSettingsRow("Previews every change that converts the project (base resolution, integer scaling, Point filtering, "
+                    "Pixel Perfect Cameras, lossless textures) and applies them as one undo step.");
+            }
             ImGui::EndTable();
         }
     }
     endSettingsPanel();
+    if (m_presetDialog) {
+        m_presetDialog->draw();
+        // the preset changed the project: the page shows its values again
+        if (m_presetDialog->takeApplied()) open(m_project, nullptr);
+    }
 }
 
 void ProjectSettingsWindow::drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows) {
@@ -5355,6 +5479,8 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
     m_project->setInputActionsAsset(m_inputActionsAsset);
     m_project->setInputDeadzone(m_inputDeadzone);
+    m_project->setPixelArtSettings(m_pixelArt);
+    m_project->setDefaultFilterMode(m_defaultFilterIndex == 1 ? TextureFilterMode::Point : TextureFilterMode::Bilinear);
     // a built-in Default Palette is the project's copy of it (S43 R7), made now
     if (m_defaultPalette.rfind(pixelart::kBuiltinPrefix, 0) == 0) {
         pixelart::ResolvedPalette resolved;
