@@ -3,7 +3,9 @@
 
 // T1 R65, R90 (AC71): the overlay sources bake from the terrain's maps through one interface.
 
+#include "Project.h"
 #include "Scene.h"
+#include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
 #include "terrain/TerrainOverlay.h"
@@ -119,4 +121,31 @@ TEST(TerrainOverlay, SettingsRoundTrip) {
     TerrainOverlaySettings back;
     decodeTerrainOverlaySettings(encodeTerrainOverlaySettings(settings), back);
     EXPECT_EQ(back, settings);
+}
+
+// AC39 (R53): with the overlay off there is no sheet: no entity and so no texture, from the start and
+// again after it was on
+TEST(TerrainOverlay, OffHasNoEntities) {
+    Scene scene;
+    const Entity entity = overlayTerrain(scene);
+    SceneProject sceneProject;
+    sceneProject.scene = &scene;
+    sceneProject.entities = {entity};
+    const size_t meshes = scene.getComponentArray<MeshComponent>()->size();
+
+    TerrainOverlay overlay(&scene);
+    const TerrainOverlaySettings off;
+    overlay.update(sceneProject, off, 0.0);
+    EXPECT_EQ(overlay.getSheetCount(), 0u);
+    EXPECT_EQ(scene.getComponentArray<MeshComponent>()->size(), meshes) << "off from the start makes nothing";
+
+    TerrainOverlaySettings height;
+    height.source = "height";
+    overlay.update(sceneProject, height, 1.0);
+    ASSERT_EQ(overlay.getSheetCount(), 1u);
+    EXPECT_EQ(scene.getComponentArray<MeshComponent>()->size(), meshes + 1) << "the sheet is one mesh";
+
+    overlay.update(sceneProject, off, 2.0);
+    EXPECT_EQ(overlay.getSheetCount(), 0u);
+    EXPECT_EQ(scene.getComponentArray<MeshComponent>()->size(), meshes) << "turned off, the sheet's entity goes";
 }

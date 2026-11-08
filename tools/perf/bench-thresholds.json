@@ -179,5 +179,25 @@
     "compile_64_nodes_ms": {"max": 1.0, "spec": "T2 R49"},
     "compile_1000_nodes_ms": {"max": 20.0, "spec": "T2 R49"},
     "preview_32_nodes_64px_ms": {"max": 16.0, "spec": "T2 R49 on one worker"}
+  },
+  "je-bench-terrain": {
+    "stamp_raise_r64_ms": {"max": 0.3, "spec": "T1 R47 a raise stamp, radius 64 texels, 16-bit"},
+    "stamp_smooth_r64_ms": {"max": 0.8, "spec": "T1 R47 a smooth stamp, radius 64 texels"},
+    "stamp_smooth_slope_filter_r64_ms": {"max": 1.0, "spec": "T1 R47 the same with the slope filter"},
+    "stamp_raise_r512_ms": {"max": 8.0, "spec": "T1 R47 a raise stamp, radius 512 texels, on the workers"},
+    "set_height_4096_ms": {"max": 400, "spec": "T1 R48 applyOps set_height on all of 4096^2"},
+    "paint_by_rules_3_2048_ms": {"max": 600, "spec": "T1 R48 paint_by_rules, 3 rules, 2048^2"},
+    "overlay_commit_64_tiles_ms": {"max": 1.0, "spec": "T1 R48 overlay commit of 64 tiles"},
+    "sample_height_ns": {"max": 40, "spec": "T1 R50 sampleSurface height"},
+    "sample_height_vs_today": {"max": 1.05, "spec": "T1 R50 against the code it replaced, same run"},
+    "sample_height_normal_ns": {"max": 150, "spec": "T1 R50 height and normal"},
+    "sample_height_normal_vs_today": {"max": 1.05, "spec": "T1 R50 against the code it replaced, same run"},
+    "raycast_512m_us": {"max": 30, "spec": "T1 R50 raycastSurface over 512 m of 1024^2"},
+    "raycast_512m_vs_today": {"max": 1.05, "spec": "T1 R50 against the code it replaced, same run"},
+    "node_refit_64_ms": {"max": 0.1, "spec": "T1 R51 refit of a 64x64 rect, 2 roots, 6 levels"},
+    "runtime_set_heights_64_ms": {"max": 0.2, "spec": "T1 R52 setHeights 64x64, main thread"},
+    "runtime_apply_circle_r32_ms": {"max": 0.2, "spec": "T1 R52 applyOps circle radius 32 texels, main thread"},
+    "collision_refresh_64_ms": {"max": 2.0, "spec": "T1 R52 SetHeights refresh of 64x64 samples"},
+    "collision_refresh_64_rebuilds": {"max": 0, "spec": "T1 R52 every refresh wrote in place"}
   }
 }
