@@ -57,6 +57,22 @@ namespace {
     }
 
     // the schema kind of a material member ("material.bevel" -> "bevel")
+    // a member by reference (the pages read big objects: a layer's style with its rims), the
+    // fallback when absent or of another type
+    const ta::Json& emptyObject() {
+        static const ta::Json value = ta::Json::object();
+        return value;
+    }
+    const ta::Json& emptyArray() {
+        static const ta::Json value = ta::Json::array();
+        return value;
+    }
+    const ta::Json& memberOr(const ta::Json& object, const char* key, const ta::Json& fallback) {
+        if (!object.is_object()) return fallback;
+        auto it = object.find(key);
+        return it != object.end() && it->type() == fallback.type() ? *it : fallback;
+    }
+
     std::string memberKind(const std::string& kindName, const std::string& key) {
         const ta::TitleArtSchema& schema = ta::TitleArtSchema::get();
         const ta::SchemaKind* kind = schema.kind(kindName);
@@ -451,8 +467,11 @@ void jasperengine::editor::titledesigner::layerPage(RowContext& ctx, const std::
 
     if (ta::layerTypeHasStyle(type)) {
         // Appearance: Face and each rim as one row (R19)
-        const ta::Json style = first->value("style", ta::Json::object());
-        const ta::Json rims = style.value("rims", ta::Json::array());
+        // (collecting reads in place; drawing copies: a button may commit and replace the document)
+        const ta::Json styleCopy = ctx.collecting() ? ta::Json() : first->value("style", ta::Json::object());
+        const ta::Json& style = ctx.collecting() ? memberOr(*first, "style", emptyObject()) : styleCopy;
+        const ta::Json rimsCopy = ctx.collecting() ? ta::Json() : style.value("rims", ta::Json::array());
+        const ta::Json& rims = ctx.collecting() ? memberOr(style, "rims", emptyArray()) : rimsCopy;
         std::string appearance = std::to_string(rims.size()) + (rims.size() == 1 ? " rim" : " rims");
         if (beginSection(ctx, "appearance", "Appearance", appearance, true)) {
             if (!ctx.collecting()) {
@@ -538,8 +557,8 @@ void jasperengine::editor::titledesigner::layerPage(RowContext& ctx, const std::
                 }
             }
             fieldRow(ctx, refs(layers, "style.knockout"));
-            if (beginSection(ctx, "erode", "Erode", objectSummary("erode", style.value("erode", ta::Json::object())),
-                             style.value("erode", ta::Json::object()).value("enabled", false))) {
+            if (beginSection(ctx, "erode", "Erode", objectSummary("erode", memberOr(style, "erode", emptyObject())),
+                             memberOr(style, "erode", emptyObject()).value("enabled", false))) {
                 ctx.stepPrefix = "Erode ";
                 objectRows(ctx, layers, "style.erode", "erode");
                 ctx.stepPrefix.clear();
@@ -549,7 +568,8 @@ void jasperengine::editor::titledesigner::layerPage(RowContext& ctx, const std::
         }
 
         if (type == ta::LayerType::Text) {
-            const ta::Json chars = first->value("chars", ta::Json::object());
+            const ta::Json charsCopy = ctx.collecting() ? ta::Json() : first->value("chars", ta::Json::object());
+            const ta::Json& chars = ctx.collecting() ? memberOr(*first, "chars", emptyObject()) : charsCopy;
             if (beginSection(ctx, "letters", "Letters", chars.empty() ? std::string() : std::to_string(chars.size()) + " adjusted", false)) {
                 if (!ctx.collecting()) {
                     if (chars.empty()) ImGui::TextDisabled("Select characters while editing the text on the canvas to adjust them");
@@ -575,7 +595,8 @@ void jasperengine::editor::titledesigner::layerPage(RowContext& ctx, const std::
         }
 
         if (type != ta::LayerType::Image) {
-            const ta::Json warp = first->value("warp", ta::Json::object());
+            const ta::Json warpCopy = ctx.collecting() ? ta::Json() : first->value("warp", ta::Json::object());
+            const ta::Json& warp = ctx.collecting() ? memberOr(*first, "warp", emptyObject()) : warpCopy;
             const std::string warpSummary = warp.value("style", std::string("none")) == "none" ? std::string() : enumLabel(warp.value("style", std::string()));
             if (beginSection(ctx, "warp", "Warp & Distort", warpSummary, false)) {
                 ctx.stepPrefix = "Warp ";
@@ -589,12 +610,14 @@ void jasperengine::editor::titledesigner::layerPage(RowContext& ctx, const std::
         }
     }
 
-    const ta::Json effects = first->value("effects", ta::Json::array());
+    const ta::Json effectsCopy = ctx.collecting() ? ta::Json() : first->value("effects", ta::Json::array());
+    const ta::Json& effects = ctx.collecting() ? memberOr(*first, "effects", emptyArray()) : effectsCopy;
     if (layers.size() == 1 && beginSection(ctx, "effects", "Effects", effects.empty() ? std::string() : std::to_string(effects.size()), true)) {
         effectCards(ctx, layers[0], std::string());
         endSection(ctx);
     }
-    const ta::Json masks = first->value("masks", ta::Json::array());
+    const ta::Json masksCopy = ctx.collecting() ? ta::Json() : first->value("masks", ta::Json::array());
+    const ta::Json& masks = ctx.collecting() ? memberOr(*first, "masks", emptyArray()) : masksCopy;
     if (layers.size() == 1 && beginSection(ctx, "masks", "Masks", masks.empty() ? std::string() : std::to_string(masks.size()), false)) {
         if (!ctx.collecting()) {
             for (size_t i = 0; i < masks.size(); i++) {
