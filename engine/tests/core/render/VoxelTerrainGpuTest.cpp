@@ -99,7 +99,7 @@ namespace {
             const Entity volume = owner;
             Scene* current = &scene;
             const auto stable = [&]() {
-                if ((volume != NULL_ENTITY && !system->isVolumeReady(volume)) || !render->isAllLoaded()) return false;
+                if ((volume != NULL_ENTITY && !system->isVolumeSettled(volume)) || !render->isAllLoaded()) return false;
                 auto meshes = current->getComponentArray<MeshComponent>();
                 for (size_t i = 0; i < meshes->size(); i++) {
                     const MeshComponent& mesh = meshes->getComponentFromIndex(i);
@@ -107,9 +107,11 @@ namespace {
                 }
                 return true;
             };
-            // the volume's first chunks on screen open its holes (R44), and the terrain swaps to its
-            // holed variant after that, frames later where pipelines are made on a worker (Vulkan,
-            // spec S32): settled is when a few more frames change nothing
+            // an edit's meshes go on screen as one set and its holes open after them (R44), then the
+            // terrain swaps to its holed variant, frames later where pipelines are made on a worker
+            // (Vulkan, spec S32): settled is when the volume has nothing on its way and a few more
+            // frames change nothing. Ready alone let a repeat in a warm process read the screen
+            // before the dig's set was up
             bool ready = false;
             for (int round = 0; round < 4 && !ready; round++) {
                 ready = GpuEnvironment::runFrames(stable, 600);
@@ -119,7 +121,7 @@ namespace {
             if (!ready) {
                 if (volume != NULL_ENTITY) {
                     const VoxelStats stats = system->getStats(volume);
-                    std::printf("[gpu] not settled: ready %d, chunks %d, jobs %d, error '%s'; terrain %u, volume %u\n", system->isVolumeReady(volume) ? 1 : 0, stats.chunks, stats.jobsPending, system->getError(volume).c_str(), terrain ? terrain->getEntity() : 0u, volume);
+                    std::printf("[gpu] not settled: ready %d, settled %d, chunks %d, jobs %d, error '%s'; terrain %u, volume %u\n", system->isVolumeReady(volume) ? 1 : 0, system->isVolumeSettled(volume) ? 1 : 0, stats.chunks, stats.jobsPending, system->getError(volume).c_str(), terrain ? terrain->getEntity() : 0u, volume);
                 }
                 for (const std::string& line : render->describeNotLoaded()) std::printf("[gpu] not loaded: %s\n", line.c_str());
                 return false;
