@@ -31,9 +31,10 @@ namespace {
 
     std::string stateText(const VcsChange& change) {
         if (change.conflict) return "Conflicted";
-        if (change.newFile()) return change.index == FileState::Added ? "Added" : "Untracked";
+        if (change.copied) return "Copied";
+        if (change.newFile()) return change.index == FileState::Added || change.worktree == FileState::Added ? "Added" : "Untracked";
         if (change.deleted()) return "Deleted";
-        if (change.index == FileState::Renamed) return "Renamed";
+        if (change.renamed()) return "Renamed";
         return "Modified";
     }
 

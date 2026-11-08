@@ -223,15 +223,21 @@ NormalInfo getNormalInfo(){
         #else
             ng = normalize(cross(dFdx(v_position), dFdy(v_position)));
             // the derivatives' handedness follows the framebuffer's y, which differs between
-            // backends: the derived normal is turned toward the eye, so it needs no back-face flip
+            // backends: the derived normal is turned toward the eye, so it needs no back-face flip.
+            // A fork's legacy u_fs_lighting block exists only with lights or IBL: without it there
+            // is no eye, and the normal keeps the back-face flip below
             #if defined(LIT_FRAME_DECLARED)
                 vec3 flatToEye = litFrame.cameraPosition_fogEnd.xyz - v_position;
             #elif defined(FRAME_FS_DECLARED)
                 vec3 flatToEye = frame.cameraPosition.xyz - v_position;
-            #else
+            #elif defined(USE_PUNCTUAL) || defined(USE_IBL)
                 vec3 flatToEye = lighting.eyePos.xyz - v_position;
+            #else
+                #define PBR_FLAT_NORMAL_NO_EYE
             #endif
-            ng = dot(ng, flatToEye) < 0.0 ? -ng : ng;
+            #ifndef PBR_FLAT_NORMAL_NO_EYE
+                ng = dot(ng, flatToEye) < 0.0 ? -ng : ng;
+            #endif
         #endif
         #if defined(HAS_UV_SET1) || defined(HAS_UV_SET2)
             vec2 normalUV = getNormalUV();
@@ -265,7 +271,7 @@ NormalInfo getNormalInfo(){
     #endif
     // Double-sided glTF materials shade the reverse side with reversed normals.
     // Face culling already removes backfaces for single-sided materials.
-    #if defined(HAS_TANGENTS) || defined(HAS_NORMALS)
+    #if defined(HAS_TANGENTS) || defined(HAS_NORMALS) || defined(PBR_FLAT_NORMAL_NO_EYE)
     if (!gl_FrontFacing) {
         n = -n;
         ng = -ng;
