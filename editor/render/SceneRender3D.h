@@ -87,7 +87,7 @@ namespace jasperengine::editor{
         // Field's shape (S20 R28: the Particle Effect panel's gizmo toggles)
         std::map<Entity, LineRenderer*> particleLines;
         std::map<Entity, LineRenderer*> forceFieldLines;
-        // Gizmos > Animation (S77 R49): one line set per Animator, from the overlay pass
+        // Gizmos > Animation (S77 R49): one line set per Animator (tools layer), from the overlay pass
         std::map<Entity, LineRenderer*> animatorLines;
         std::unique_ptr<anim::AnimatorOverlayPass> animatorOverlay;
         // a highlighted Capsule Shadow Caster's capsules, with the selected one's handles

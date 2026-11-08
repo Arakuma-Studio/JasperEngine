@@ -1869,7 +1869,11 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     const anim::AnimatorOverlayFlags animatorFlags{displaySettings.showIK, displaySettings.showRootMotion, displaySettings.showFootTrails};
     std::set<Entity> currentAnimatorLines;
     animatorOverlay->update(scene, entities, animatorFlags, [&](Entity entity, const std::vector<anim::AnimatorOverlayLine>& drawn){
-        ensureOverlayLines(animatorLines, entity);
+        // in the tools layer, as the skeleton overlay: drawn over the meshes the chains run inside
+        if (animatorLines.find(entity) == animatorLines.end()) {
+            ScopedDefaultEntityPool sys(*toolslayer.getScene(), EntityPool::System);
+            animatorLines[entity] = new LineRenderer(toolslayer.getScene());
+        }
         currentAnimatorLines.insert(entity);
         LineRenderer* overlayLines = animatorLines[entity];
         overlayLines->clearLines();
