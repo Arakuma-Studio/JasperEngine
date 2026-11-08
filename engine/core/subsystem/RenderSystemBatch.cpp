@@ -303,6 +303,9 @@ BatchBreak RenderSystem::meshBatchForm(Entity entity, Signature signature, MeshC
         return BatchBreak::INELIGIBLE_RENDER_TARGET;
     if (frameFluids && frameFluids->hasMaterialFluids() && frameFluids->getMaterialTexture(entity))
         return BatchBreak::INELIGIBLE_FLUID;
+    // a Title Art Renderer's image lent to its Sprite (S81 R2) is a render target, as for an Image
+    if (hasLentTextures() && lentTexture(entity))
+        return BatchBreak::INELIGIBLE_RENDER_TARGET;
 
     if (transform.billboard && transform.fakeBillboard)
         return BatchBreak::INELIGIBLE_BILLBOARD;
