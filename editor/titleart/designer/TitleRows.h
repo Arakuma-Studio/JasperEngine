@@ -177,4 +177,17 @@ namespace jasperengine::editor::titledesigner {
     const std::vector<RowAudit>& lastCollectAudit();
     void clearCollectAudit();
 
+    // While alive (a collect pass: the document does not change), the rows find `doc`'s layers by
+    // id in a map instead of walking the tree for each field. Main thread; nests.
+    class CollectLayerLookup {
+    public:
+        explicit CollectLayerLookup(const jasperengine::titleart::TitleArtDoc& doc);
+        ~CollectLayerLookup();
+        CollectLayerLookup(const CollectLayerLookup&) = delete;
+        CollectLayerLookup& operator=(const CollectLayerLookup&) = delete;
+
+    private:
+        void* previous = nullptr;
+    };
+
 }

@@ -90,6 +90,7 @@ std::string TitleDesignerWindow::libraryTargetKey() const {
     if (key != committedHashesKey) {
         committedHashesKey = key;
         committedHashes = ta::hashTitleArt(doc.committed());
+        documentPasses++;
     }
     auto it = committedHashes.layers.find(options.layers.back());
     return it == committedHashes.layers.end() ? std::string("sample") : std::to_string(it->second.content);

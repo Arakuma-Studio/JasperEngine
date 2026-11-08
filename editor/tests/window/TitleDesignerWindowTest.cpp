@@ -504,6 +504,39 @@ TEST(TitleDesignerWindowDeathTest, TabCyclesRegions) {
     });
 }
 
+// R69 (AC31's load-insensitive half): an idle frame makes no whole-document pass (hash, bake
+// status, layer bounds, index, lint), with 40 layers as with 256, Layers or Properties shown, so
+// its cost does not grow with the document. Red control: the toolbar's bake status made every
+// frame (it hashes the document and reads every output's recipe) adds a pass per frame.
+TEST(TitleDesignerWindowDeathTest, IdleFramesMakeNoDocumentPasses) {
+    IN_EDITOR("passes", {
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        for (int count : {40, 256}) {
+            const fs::path file = newTitle(w, "passes" + std::to_string(count));
+            ASSERT_TRUE(window->open(file, nullptr));
+            ta::Json ops = ta::Json::array();
+            for (int i = 1; i < count; i++) {
+                ta::Json layer = i % 2 ? ta::Json{{"type", "text"}, {"name", "Text " + std::to_string(i)}, {"text", "L" + std::to_string(i)},
+                                                  {"effects", ta::Json::array({{{"type", "outer_glow"}}})}}
+                                       : ta::Json{{"type", "shape"}, {"name", "Shape " + std::to_string(i)}};
+                ops.push_back({{"op", "add_layer"}, {"from", layer}});
+            }
+            std::string error;
+            ASSERT_TRUE(window->runOps(ops, "Add Layers", &error)) << error;
+            ASSERT_TRUE(window->select({"Text 1"}));
+            for (const char* panel : {"layers", "properties"}) {
+                ASSERT_TRUE(window->setPanel(panel, &error)) << error;
+                // past the lint's 300 ms debounce and the first layout of every row
+                for (int i = 0; i < 40; i++) Access::drawFrame(*window);
+                const uint64_t before = window->state()["timings"].value("document_passes", (uint64_t)0);
+                for (int i = 0; i < 30; i++) Access::drawFrame(*window);
+                const uint64_t after = window->state()["timings"].value("document_passes", (uint64_t)0);
+                EXPECT_EQ(after - before, 0u) << count << " layers, " << panel << " shown: passes on idle frames";
+            }
+        }
+    });
+}
+
 // No system CJK font and a title in Japanese: the window says so once, naming the setting, and
 // says nothing with a CJK font found or with no CJK text. Red control: the notice never drawn
 // (state().notices empty) fails the first check.

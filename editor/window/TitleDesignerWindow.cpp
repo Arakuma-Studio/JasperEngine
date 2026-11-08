@@ -530,7 +530,7 @@ ta::Json TitleDesignerWindow::state() const {
     out["keyboard_focus"] = focusedRegion >= 0 ? ta::Json(regionName(focusedRegion)) : ta::Json();
     out["timings"] = {{"frame_ms", frameMs}, {"frame_ms_avg", frameSamples.empty() ? 0.0 : frameMsSum / (double)frameSamples.size()},
                       {"frame_ms_max", frameMsMax}, {"frames", frameSamples.size()}, {"index_ms", indexMs}, {"query_ms", queryMs},
-                      {"index_entries", index.size()}};
+                      {"index_entries", index.size()}, {"document_passes", documentPasses}};
     out["library"] = {{"provider", libraryProvider() ? "registered" : "starter"}, {"shown", libraryShown}};
     ta::Json notices = ta::Json::array();
     if (cjkNoticeShown) notices.push_back("cjk_font_missing");
@@ -1300,6 +1300,7 @@ void TitleDesignerWindow::drawCjkFontNotice() {
         cjkScanDocument = doc.document().get();
         cjkScanChange = doc.changeCount();
         cjkInDocument = false;
+        documentPasses++;
         ta::forEachLayer(doc.committed().root, [&](const ta::Json& l, const ta::Json*, int) {
             if (hasCjk(str(l, "name")) || (ta::layerTypeOf(l) == ta::LayerType::Text && hasCjk(str(l, "text")))) cjkInDocument = true;
             return !cjkInDocument;
@@ -1421,12 +1422,17 @@ void TitleDesignerWindow::frameSelection() {
 
 bool TitleDesignerWindow::contentEmpty() const {
     JE_PROFILE_SCOPE("TD contentEmpty");
-    // R5: no visible, non-guide content layer (hidden ancestors count)
+    // R5: no visible, non-guide content layer (hidden ancestors count); once per change
     if (!doc.isOpen()) return true;
+    const DerivedKey key = derivedKey();
+    if (key == contentEmptyKey) return contentEmptyCache;
+    contentEmptyKey = key;
+    documentPasses++;
     bool any = false;
     std::function<void(const ta::Json&, bool)> walk = [&](const ta::Json& list, bool parentVisible) {
         if (!list.is_array()) return;
         for (const ta::Json& layer : list) {
+            if (any) return;
             const bool visible = parentVisible && layer.value("visible", true);
             const ta::LayerType type = ta::layerTypeOf(layer);
             if (type == ta::LayerType::Group) walk(ta::layerChildren(layer), visible);
@@ -1434,7 +1440,8 @@ bool TitleDesignerWindow::contentEmpty() const {
         }
     };
     walk(doc.shown().layers(), true);
-    return !any;
+    contentEmptyCache = !any;
+    return contentEmptyCache;
 }
 
 std::vector<std::string> TitleDesignerWindow::fontTextOfSelection() const {

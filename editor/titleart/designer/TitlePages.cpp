@@ -806,6 +806,7 @@ void jasperengine::editor::titledesigner::collectIndex(TitleDesignerState& state
     index.clear();
     clearCollectAudit();
     const ta::TitleArtDoc& doc = state.shown();
+    const CollectLayerLookup lookup(doc);
     RowContext base;
     base.mode = RowMode::Collect;
     base.host = host;

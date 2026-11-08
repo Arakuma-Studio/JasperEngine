@@ -17,6 +17,7 @@
 // job, preview request, font listing or timer exists. Opening makes them; closing destroys them
 // within the frame.
 
+#include "titleart/TitleArtBake.h"
 #include "titleart/TitleArtHash.h"
 #include "titleart/designer/TitleDesignerHooks.h"
 #include "titleart/designer/TitleDesignerPrefs.h"
@@ -346,6 +347,9 @@ namespace jasperengine::editor {
         std::vector<double> frameSamples;
         size_t frameSampleNext = 0;
         double indexMs = 0.0;               // the last search index build
+        // whole-document passes the window made (a hash, the bake status, a layer's bounds, the
+        // index, the lint...): an idle frame makes none, at any layer count (R69's regression test)
+        mutable uint64_t documentPasses = 0;
         double queryMs = 0.0;               // the last search query
         void showContents();
 
@@ -362,6 +366,14 @@ namespace jasperengine::editor {
         mutable std::map<std::string, titledesigner::TitleRect> boundsCache;
         DerivedKey hashesKey;
         jasperengine::titleart::TitleArtHashes hashesCache;
+        // the outputs' bake status (the toolbar's Bake button, the Baked preview): it hashes the
+        // document and reads every output's recipe, so it is made again only when the document,
+        // its assets, a bake in progress or the sidecar's time change
+        std::string bakeStatusKey;
+        TitleBakeStatus bakeStatusCache;
+        const TitleBakeStatus& bakeStatus();
+        mutable DerivedKey contentEmptyKey;
+        mutable bool contentEmptyCache = true;
         mutable std::pair<const void*, uint64_t> committedHashesKey{nullptr, ~0ull};
         mutable jasperengine::titleart::TitleArtHashes committedHashes;
 

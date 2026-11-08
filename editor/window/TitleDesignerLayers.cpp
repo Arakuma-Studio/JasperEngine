@@ -227,8 +227,11 @@ void TitleDesignerWindow::drawLayers() {
             // groups open by default (their `collapsed` gives the first state), others closed (R11)
             auto twirl = v.twirls.find(id);
             row.open = twirl != v.twirls.end() ? twirl->second : group ? !layer.value("collapsed", false) : false;
-            row.hasChildren = group ? !ta::layerChildren(layer).empty() : (ta::layerTypeHasStyle(type) || !layer.value("effects", ta::Json::array()).empty() ||
-                                                                           !layer.value("masks", ta::Json::array()).empty());
+            auto nonEmpty = [&](const char* key) {
+                auto it = layer.find(key);
+                return it != layer.end() && it->is_array() && !it->empty();
+            };
+            row.hasChildren = group ? !ta::layerChildren(layer).empty() : (ta::layerTypeHasStyle(type) || nonEmpty("effects") || nonEmpty("masks"));
             row.clippedToBase = layer.value("clip", false);
             rows.push_back(row);
             if (!row.open) continue;
@@ -243,7 +246,6 @@ void TitleDesignerWindow::drawLayers() {
                 header.layerId = id;
                 header.depth = depth + 1;
                 rows.push_back(header);
-                const ta::Json style = layer.value("style", ta::Json::object());
                 Row face = header;
                 face.kind = Row::Kind::Part;
                 face.part = "face";
@@ -254,8 +256,7 @@ void TitleDesignerWindow::drawLayers() {
                     Row rim = face;
                     rim.part = "rim:" + str(rims[r], "id");
                     rows.push_back(rim);
-                    const ta::Json parts = layer.value("part_effects", ta::Json::object());
-                    if (parts.contains(rim.part)) {
+                    if (layer.contains("part_effects") && layer["part_effects"].contains(rim.part)) {
                         for (const ta::Json& effect : layer["part_effects"][rim.part]) {
                             Row e = rim;
                             e.kind = Row::Kind::Effect;

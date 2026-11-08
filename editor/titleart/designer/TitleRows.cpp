@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 #include <cstdio>
 #include <set>
 
@@ -263,8 +264,19 @@ namespace {
         }
     }
 
+    // the layers of a document by id while a collect pass reads it (it does not change meanwhile)
+    struct LayerMemo {
+        const ta::TitleArtDoc* doc = nullptr;
+        std::unordered_map<std::string, const ta::Json*> layers;
+    };
+    LayerMemo* activeLayerMemo = nullptr;
+
     const ta::Json* objectOf(const ta::TitleArtDoc& doc, const std::string& layer) {
         if (layer.empty()) return &doc.root;
+        if (activeLayerMemo && activeLayerMemo->doc == &doc) {
+            auto it = activeLayerMemo->layers.find(layer);
+            return it != activeLayerMemo->layers.end() ? it->second : nullptr;
+        }
         return layerById(doc, layer);
     }
 
@@ -285,7 +297,13 @@ namespace {
         if (!out.ok) {
             // a map entry that does not exist yet (a character without adjustments): the member
             // as it would be once `set` creates the entry at its defaults
-            ta::Json copy = *object;
+            // (a copy of the member the path starts at and the type deciding the variant, not of
+            // the whole layer: the index asks this for every missing entry)
+            ta::Json copy = ta::Json::object();
+            for (const char* variantKey : {"type"}) {
+                if (object->contains(variantKey)) copy[variantKey] = (*object)[variantKey];
+            }
+            if (!segments.empty() && object->contains(segments[0].key)) copy[segments[0].key] = (*object)[segments[0].key];
             out = ta::lookupField(copy, *kind, segments, true);
             out.value = nullptr;
         }
@@ -590,6 +608,23 @@ const ta::Json* jasperengine::editor::titledesigner::fieldValue(const ta::TitleA
     const ta::Json* object = objectOf(doc, target.layer);
     if (!object) return nullptr;
     return ta::getTitleArtField(*object, kindOfTarget(target.layer), target.path);
+}
+
+jasperengine::editor::titledesigner::CollectLayerLookup::CollectLayerLookup(const ta::TitleArtDoc& doc) {
+    auto* memo = new LayerMemo();
+    memo->doc = &doc;
+    ta::forEachLayer(doc.root, [&](const ta::Json& l, const ta::Json*, int) {
+        auto it = l.find("id");
+        if (it != l.end() && it->is_string()) memo->layers.emplace(it->get<std::string>(), &l);
+        return true;
+    });
+    previous = activeLayerMemo;
+    activeLayerMemo = memo;
+}
+
+jasperengine::editor::titledesigner::CollectLayerLookup::~CollectLayerLookup() {
+    delete activeLayerMemo;
+    activeLayerMemo = static_cast<LayerMemo*>(previous);
 }
 
 // ---- rows ----

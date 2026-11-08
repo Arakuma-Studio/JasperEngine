@@ -57,6 +57,23 @@ namespace {
 
 }
 
+const TitleBakeStatus& TitleDesignerWindow::bakeStatus() {
+    JE_PROFILE_SCOPE("TD bakeStatus");
+    const fs::path document = doc.document()->absolutePath();
+    std::error_code ec;
+    const auto sidecarTime = fs::last_write_time(titleArtSidecarPath(document), ec);
+    const std::string key = document.string() + "|" + std::to_string(doc.changeCount()) + "|" + std::to_string(transient.revision()) + "|" +
+                            (TitleArtAutoBake::get().baking(document) ? "1" : "0") + "|" +
+                            std::to_string(ec ? 0 : (long long)sidecarTime.time_since_epoch().count());
+    if (key != bakeStatusKey) {
+        JE_PROFILE_SCOPE("TD bakeStatus compute");
+        bakeStatusKey = key;
+        bakeStatusCache = titleArtStatusOf(project, document, doc.committed());
+        documentPasses++;
+    }
+    return bakeStatusCache;
+}
+
 void TitleDesignerWindow::drawToolbar() {
     JE_PROFILE_SCOPE("TD drawToolbar");
     const bool open = doc.isOpen();
@@ -293,7 +310,7 @@ void TitleDesignerWindow::drawToolbar() {
 
     // Bake (R9)
     nextItem(220.0f);
-    const TitleBakeStatus status = titleArtStatusOf(project, doc.document()->absolutePath(), doc.committed());
+    const TitleBakeStatus& status = bakeStatus();
     const bool baking = TitleArtAutoBake::get().baking(doc.document()->absolutePath());
     std::string bakeLabel = baking ? "Baking..." : status.allFresh() ? "Up to date" : status.anyBaked() ? "Out of date" : "Not baked";
     if (!editable) ImGui::BeginDisabled();

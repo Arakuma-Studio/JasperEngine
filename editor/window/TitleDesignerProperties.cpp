@@ -79,6 +79,7 @@ void TitleDesignerWindow::rebuildIndexIfNeeded() {
     if (!editingHit.empty() && t - editingHitAt < 0.25 && indexSelectionKey == selectionKey) return;
     const auto start = std::chrono::steady_clock::now();
     collectIndex(doc, this, index, searchEveryLayer);
+    documentPasses++;
     indexMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     indexChange = doc.changeCount();
     indexSelectionKey = selectionKey;
@@ -370,6 +371,7 @@ void TitleDesignerWindow::refreshLint(bool pixels) {
     findings.clear();
     checksRun = 0;
     if (!doc.isOpen() || newerVersion()) return;
+    documentPasses++;
     registerBuiltinTitleChecks();
     TitleCheckContext context(doc.shown(), doc.document()->projectPath());
     context.file = doc.document()->absolutePath();

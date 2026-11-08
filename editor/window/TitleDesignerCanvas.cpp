@@ -95,6 +95,7 @@ TitleRect TitleDesignerWindow::layerBounds(const std::string& layerId) const {
     if (!layer) return {};
     const TitleRect bounds = geometry->contentBounds(*layer, doc.shown());
     boundsCache.emplace(layerId, bounds);
+    documentPasses++;
     return bounds;
 }
 
@@ -103,6 +104,7 @@ const ta::TitleArtHashes& TitleDesignerWindow::shownHashes() {
     if (!(key == hashesKey)) {
         hashesKey = key;
         hashesCache = doc.isOpen() ? ta::hashTitleArt(doc.shown()) : ta::TitleArtHashes();
+        documentPasses++;
     }
     return hashesCache;
 }
@@ -1003,7 +1005,7 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
                 if (ProjectChecks::readFile(titleArtSidecarPath(doc.document()->absolutePath()), text) && TitleBakeInfo::parse(text, info, error)) bakedFrame = info.frame;
                 else bakedFrame = {0, 0, image.width, image.height};
             }
-            const TitleBakeStatus status = titleArtStatusOf(project, doc.document()->absolutePath(), doc.committed());
+            const TitleBakeStatus& status = bakeStatus();
             bakedStale = !status.outputs.empty() && status.outputs[0].status != TitleOutputStatus::Fresh;
         }
         if (bakedTexture.getRender()) {
