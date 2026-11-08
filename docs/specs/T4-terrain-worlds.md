@@ -906,8 +906,9 @@ Recorded while implementing (`terrain/t4-worlds`). The code is what holds; each 
   collider's sampling and bit depth), for the chunks each context region reaches, never the whole World; `JoltShapeBuilder::buildHeightFieldShape`
   still refuses a World.
 - **R41: the panel opens from the Terrain World inspector's Open Terrain World Panel button and after Create,** not from Window. Its minimap has no camera frustum and no click-to-frame.
-- **R42: the overlay's LOD Level shows the main view's cut** (the Scene view's camera in the editor), recorded by render only while the overlay
-  shows it, and Collision Chunks shows the World's collider, which exists while the scene simulates (Play). A brush pins the tiles it hovers each
+- **R42: the overlay's LOD Level shows the main camera's cut** (the Scene view's camera in the editor, the game's in Play), recorded by render
+  only while the overlay shows it, and Collision Chunks shows the World's collider, which exists while the scene simulates (Play); so
+  `visualize_terrain` now runs in Play. The sheet covers the box of present tiles (no ring past them). A brush pins the tiles it hovers each
   frame; a pump half a second after the last hover lets them go. T1's overlays (height, slope, ...) and T4's are each refused on the other kind.
 - **D9: what changes a World's drawability sets its `transform.needUpdate` where it changes, not only in the pump.** The render upload step, which runs in the frame's draw, sets it when a page goes up or away or the overview is made, so the next update selects again; the pump sets it for what the pump itself changes (a page evicted, a new overview). The pump skips frames closer than its 1 ms dedupe (the editor's extra draws of a frame), so when the pump passed the upload step's changes on, a world whose pages and overview arrived in frames with no pump after them drew nothing (26 `TerrainVariantGpu` World cases on a fast CPU). `TerrainWorldGpu.DrawsPagesUploadedWithNoPumpBetweenFrames` holds the pump (`TerrainWorldSystem::setPumpHeldForTesting`) to make that interleaving every run.
 - **Play in place restarts a World's runtime,** saving the editor's edited tiles first (`Host::released`), so Play's write cap and waits apply (R29, R19).
