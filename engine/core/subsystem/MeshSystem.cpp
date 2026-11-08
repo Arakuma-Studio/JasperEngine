@@ -32,6 +32,7 @@
 #include "pool/TextureDataPool.h"
 #include "sprite/SpriteFrameGeometry.h"
 #include "sprite/SpriteSheetPool.h"
+#include "sprite/SpriteSheetSources.h"
 #include "thread/ResourceProgress.h"
 #include "io/AssetIOService.h"
 #include "subsystem/RenderSystem.h"
@@ -936,7 +937,7 @@ void MeshSystem::createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, 
 }
 
 void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
-                                 float x0, float y0, float x1, float y1, int grid){
+                                 float x0, float y0, float x1, float y1, int grid, bool keepIndices){
     float texCutRatioW = 0;
     float texCutRatioH = 0;
     if (texWidth != 0 && texHeight != 0){
@@ -981,6 +982,29 @@ void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, u
         }
     }
 
+    // the grid's bounds are its corners' (calculateMeshAABB's result, without its buffer map: a
+    // frame change allocates nothing, S45 R26)
+    auto cornerBounds = [&](){
+        mesh.verticesAABB = AABB(std::min(x0, x1), std::min(y0, y1), 0.0f, std::max(x0, x1), std::max(y0, y1), 0.0f);
+        mesh.bonesAABB.clear();
+        mesh.skinnedAABB.setNull();
+        mesh.aabb = mesh.verticesAABB;
+        mesh.needUpdateAABB = true;
+        mesh.pickGeometryHash = 0;
+    };
+    if (keepIndices){
+        cornerBounds();
+        return;
+    }
+    // the quad: its indices without an allocation
+    if (grid == 1){
+        static const uint16_t quadIndices[] = {0, 1, 3, 0, 3, 2};
+        mesh.indices.clear();
+        mesh.indices.setValues(0, mesh.indices.getAttribute(AttributeType::INDEX), 6, (char*)&quadIndices[0], sizeof(uint16_t));
+        cornerBounds();
+        return;
+    }
+
     // two triangles per cell, wound as the quad's (0, 1, 2) (0, 2, 3)
     std::vector<uint16_t> indices;
     indices.reserve((size_t)grid * grid * 6);
@@ -1002,6 +1026,50 @@ void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, u
         indices.size(), (char*)&indices[0], sizeof(uint16_t));
 
     calculateMeshAABB(mesh);
+}
+
+// The 9-slice of a sheet frame (S45 R6): 16 vertices and 54 indices on the sprite's own buffer,
+// with the quad's normals, tangent and colour
+void MeshSystem::buildSpriteSliced(SpriteComponent& sprite, MeshComponent& mesh, const SpriteSlicedMesh& sliced){
+    Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
+    Attribute* attTexcoord = mesh.buffer.getAttribute(AttributeType::TEXCOORD1);
+    Attribute* attNormal = mesh.buffer.getAttribute(AttributeType::NORMAL);
+    Attribute* attTangent = mesh.buffer.getAttribute(AttributeType::TANGENT);
+    Attribute* attColor = mesh.buffer.getAttribute(AttributeType::COLOR);
+    const Vector4 tangent = Vector4(1.0f, 0.0f, 0.0f, flatTangentHandedness(sprite.flipY));
+    for (int row = 0; row < 4; row++){
+        for (int column = 0; column < 4; column++){
+            mesh.buffer.addVector3(attVertex, Vector3(sliced.x[column], sliced.y[row], 0));
+            mesh.buffer.addVector2(attTexcoord, Vector2(sliced.u[column], sliced.v[row]));
+            mesh.buffer.addVector3(attNormal, Vector3(0.0f, 0.0f, 1.0f));
+            mesh.buffer.addVector4(attTangent, tangent);
+            mesh.buffer.addVector4(attColor, Vector4(1.0f, 1.0f, 1.0f, 1.0f));
+        }
+    }
+    mesh.indices.clear();
+    mesh.indices.setValues(0, mesh.indices.getAttribute(AttributeType::INDEX), SPRITE_SLICED_INDICES,
+                           (char*)spriteSlicedIndices(), sizeof(uint16_t));
+    calculateSpriteAABB(mesh);
+}
+
+// calculateMeshAABB for a sprite's own buffer (no external buffers, no bones), without its buffer
+// map: a sheet sprite's frame change allocates nothing (S45 R26)
+void MeshSystem::calculateSpriteAABB(MeshComponent& mesh){
+    mesh.verticesAABB.setNull();
+    mesh.bonesAABB.clear();
+    mesh.skinnedAABB.setNull();
+    Attribute* position = mesh.buffer.getAttribute(AttributeType::POSITION);
+    if (position && position->getDataType() == AttributeDataType::FLOAT){
+        const int count = int(position->getCount());
+        for (int v = 0; v < count; v++){
+            mesh.verticesAABB.merge(mesh.buffer.getVector3(position, v));
+        }
+    }
+    if (mesh.verticesAABB.isNull())
+        mesh.verticesAABB = AABB::ZERO;
+    mesh.aabb = mesh.verticesAABB;
+    mesh.needUpdateAABB = true;
+    mesh.pickGeometryHash = 0;
 }
 
 bool MeshSystem::createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh){
@@ -1330,6 +1398,11 @@ void MeshSystem::setSpriteFrameRect(MeshComponent& mesh, SpriteComponent& sprite
     // The first slot exists before createSprite sets numSubmeshes, so scripts can
     // select a frame while configuring a newly constructed sprite.
 
+    // a legacy sprite drawn from an atlas page (S45 R8): its frames are the source texture's
+    if (!frameRect.isNormalized() && sprite.inlineAtlas && !sprite.inlineAtlas->page.empty() &&
+        mesh.submeshes[0].material.baseColorTexture.getPath() == sprite.inlineAtlas->page && sprite.inlineAtlas->sourceWidth > 0){
+        frameRect = normalizeTileRect(frameRect, (unsigned int)sprite.inlineAtlas->sourceWidth, (unsigned int)sprite.inlineAtlas->sourceHeight);
+    }
     if (!frameRect.isNormalized()){
         Texture& texture = mesh.submeshes[0].material.baseColorTexture;
 
@@ -1352,6 +1425,34 @@ void MeshSystem::setSpriteFrameRect(MeshComponent& mesh, SpriteComponent& sprite
 
     sprite.needUpdateFrameRect = false;
     mesh.submeshes[0].textureRect = frameRect;
+}
+
+namespace{
+    // the page shows the source's frame as last mapped (nobody wrote another rect since)
+    const SpriteInlineAtlas* drawnFromPage(const SpriteComponent& sprite, const MeshComponent& mesh){
+        const SpriteInlineAtlas* atlas = sprite.inlineAtlas.get();
+        if (!atlas || atlas->page.empty() || mesh.submeshes[0].material.baseColorTexture.getPath() != atlas->page) return nullptr;
+        return atlas;
+    }
+}
+
+Rect MeshSystem::spriteSourceRect(const SpriteComponent& sprite, const MeshComponent& mesh){
+    const SpriteInlineAtlas* atlas = drawnFromPage(sprite, mesh);
+    Rect current = mesh.submeshes[0].textureRect;
+    if (atlas && !(current != atlas->pageRect)) return atlas->sourceRect;
+    return current;
+}
+
+std::string MeshSystem::spriteSourceTexture(const SpriteComponent& sprite, const MeshComponent& mesh){
+    const SpriteInlineAtlas* atlas = drawnFromPage(sprite, mesh);
+    return atlas ? atlas->source : mesh.submeshes[0].material.baseColorTexture.getPath();
+}
+
+void MeshSystem::spriteSourceSize(const SpriteComponent& sprite, const MeshComponent& mesh, float& width, float& height){
+    if (const SpriteInlineAtlas* atlas = drawnFromPage(sprite, mesh)){
+        width = (float)atlas->sourceWidth;
+        height = (float)atlas->sourceHeight;
+    }
 }
 
 // createSprite sizes the inset by the frame, mirrored frames only flip the sign
@@ -7626,19 +7727,25 @@ bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh)
     }
     sprite.frame = std::clamp(sprite.frame, 0, frameCount - 1);
 
-    const int grid = requestedSpriteGrid(mesh);
-    const int previousGrid = builtSpriteGrid(mesh);
-    if (!sprite.needUpdateSprite && sprite.frame == sprite.builtFrame && previousGrid == grid){
+    const SpriteFrame& frame = sheet.frames[(size_t)sprite.frame];
+    // Sliced (S45 R6): a bordered frame as its 9-slice; the lattice's grid does not apply to it
+    const bool sliced = sprite.drawMode == SpriteDrawMode::SLICED && spriteFrameHasBorder(frame);
+    const int grid = sliced ? 1 : requestedSpriteGrid(mesh);
+    const int previousGrid = sprite.builtSliced ? 1 : builtSpriteGrid(mesh);
+    if (!sprite.needUpdateSprite && sprite.frame == sprite.builtFrame && previousGrid == grid && sprite.builtSliced == sliced){
         return true;
     }
 
-    const SpriteFrame& frame = sheet.frames[(size_t)sprite.frame];
     if (frame.page >= sheet.pages.size()){
         return false;
     }
     const SpritePage& page = sheet.pages[frame.page];
     Texture& texture = mesh.submeshes[0].material.baseColorTexture;
-    if (texture.getPath() != page.texture){
+    // a frame on the page already bound needs no path comparison (it copies the path: S45 R26's
+    // zero allocations per frame change)
+    const bool samePage = !sprite.needUpdateSprite && sprite.builtFrame >= 0 && sprite.builtFrame < frameCount &&
+                          sheet.frames[(size_t)sprite.builtFrame].page == frame.page;
+    if (!samePage && texture.getPath() != page.texture){
         // the page as the base colour texture; the texture keeps the sprite's sampler settings
         texture.setAlphaBorderAuto(true);
         texture.setPath(page.texture);
@@ -7660,9 +7767,42 @@ bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh)
     input.flipY = sprite.flipY;
     input.pageWidth = page.width;
     input.pageHeight = page.height;
+    if (sliced || sprite.builtSliced){
+        // a 9-slice is rebuilt on every frame change (its lattice depends on the frame's border);
+        // back to Simple, the buffer goes back to the quad's size
+        const bool wasSliced = sprite.builtSliced;
+        prepareSpriteMesh(mesh);
+        if (sliced){
+            const SpriteSlicedMesh slicedMesh = spriteFrameSliced(frame, input);
+            mesh.submeshes[0].textureRect = slicedMesh.textureRect;
+            buildSpriteSliced(sprite, mesh, slicedMesh);
+        }else{
+            const SpriteFrameQuad quad = spriteFrameQuad(frame, input);
+            mesh.submeshes[0].textureRect = quad.textureRect;
+            buildSpriteGrid(sprite, mesh, (unsigned int)page.width, (unsigned int)page.height, quad.x0, quad.y0, quad.x1, quad.y1, grid);
+        }
+        mesh.submeshes[0].hasTextureRect = true;
+        sprite.builtSliced = sliced;
+        sprite.frameName = frame.name;
+        sprite.needUpdateFrameRect = false;
+        if (mesh.loaded){
+            // a GPU buffer keeps the size it was created with: 16 vertices and 4 differ
+            if (wasSliced != sliced || (previousGrid != 0 && previousGrid != grid)){
+                mesh.needReload = true;
+            }else{
+                mesh.needUpdateBuffer = true;
+            }
+        }
+        sprite.builtFrame = sprite.frame;
+        sprite.needUpdateSprite = false;
+        return true;
+    }
+
     const SpriteFrameQuad quad = spriteFrameQuad(frame, input);
 
-    bool rebuild = sprite.needUpdateSprite || sprite.builtFrame < 0 || sprite.builtFrame >= frameCount || previousGrid != grid;
+    // a frame of another trim on the grid built: the buffer keeps its layout and its indices
+    const bool geometryOnly = !sprite.needUpdateSprite && sprite.builtFrame >= 0 && sprite.builtFrame < frameCount && previousGrid == grid;
+    bool rebuild = !geometryOnly;
     if (!rebuild){
         // frames with the same trim geometry only swap the texture rect
         rebuild = !spriteFrameQuad(sheet.frames[(size_t)sprite.builtFrame], input).sameGeometry(quad);
@@ -7672,8 +7812,12 @@ bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh)
     sprite.frameName = frame.name;
     sprite.needUpdateFrameRect = false;
     if (rebuild){
-        prepareSpriteMesh(mesh);
-        buildSpriteGrid(sprite, mesh, (unsigned int)page.width, (unsigned int)page.height, quad.x0, quad.y0, quad.x1, quad.y1, grid);
+        if (geometryOnly){
+            mesh.buffer.clear();
+        }else{
+            prepareSpriteMesh(mesh);
+        }
+        buildSpriteGrid(sprite, mesh, (unsigned int)page.width, (unsigned int)page.height, quad.x0, quad.y0, quad.x1, quad.y1, grid, geometryOnly);
         if (mesh.loaded){
             // a GPU buffer keeps the size it was created with: another grid reloads the mesh
             if (previousGrid != 0 && previousGrid != grid){
@@ -7688,9 +7832,176 @@ bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh)
     return true;
 }
 
+// S45 R8: a legacy sprite whose texture an atlas in use packs draws its inline rect from the page
+// (translated, clipped to the member's trim); the saved texture and rect stay the source's
+// (SpriteInlineAtlas). Rechecked when the pool moves on, the rect or the texture changes; a legacy
+// sprite of a project without atlases only compares the pool's revision.
+bool MeshSystem::updateInlineAtlas(SpriteComponent& sprite, MeshComponent& mesh){
+    Submesh& submesh = mesh.submeshes[0];
+    Texture& texture = submesh.material.baseColorTexture;
+    const uint64_t revision = SpriteSheetPool::revision();
+    SpriteInlineAtlasRef state = sprite.inlineAtlas;
+    const bool onPage = state && !state->page.empty() && texture.getPath() == state->page;
+    const bool onSource = state && state->page.empty() && texture.getPath() == state->source;
+
+    std::string source;
+    Rect sourceRect = submesh.textureRect;
+    Rect pending;
+    bool hasPending = false;
+    if (sprite.needUpdateFrameRect && !sprite.pendingFrameRect.isNormalized()){
+        pending = sprite.pendingFrameRect;
+        hasPending = true;
+    }
+    if (state && (onPage || onSource)){
+        source = state->source;
+        Rect current = submesh.textureRect;
+        Rect mapped = onPage ? state->pageRect : state->sourceRect;
+        // someone wrote a frame of the source (setFrame, a clip, the Inspector): map it
+        if (current != mapped) sourceRect = current;
+        else sourceRect = state->sourceRect;
+        Rect stored = state->sourceRect;
+        if (!hasPending && !(sourceRect != stored) && revision == state->revision && !sprite.needUpdateSprite){
+            return onPage;
+        }
+    }else{
+        if (state){
+            // another texture was set: it is the source now (the page's rect means nothing for it)
+            Rect current = submesh.textureRect;
+            if (!state->page.empty() && !(current != state->pageRect)) sourceRect = state->sourceRect;
+            sprite.inlineAtlas.reset();
+            state.reset();
+        }else if (static_cast<uint32_t>(revision) == sprite.inlineAtlasChecked && !sprite.needUpdateSprite && !submesh.needUpdateTexture && !hasPending){
+            return false;
+        }
+        source = texture.getPath();
+    }
+    sprite.inlineAtlasChecked = static_cast<uint32_t>(revision);
+
+    // back to the source texture, as it saves
+    auto restore = [&](){
+        if (onPage){
+            texture.setPath(source);
+            submesh.needUpdateTexture = true;
+            submesh.textureRect = sourceRect;
+            sprite.needUpdateSprite = true;
+        }
+    };
+    if (source.empty() || !SpriteSheetSources::isPacked(source)){
+        restore();
+        sprite.inlineAtlas.reset();
+        return false;
+    }
+    int sourceW = 0, sourceH = 0;
+    if (state && state->source == source && state->sourceWidth > 0){
+        // a frame change of a mapped sprite reads no file
+        sourceW = state->sourceWidth;
+        sourceH = state->sourceHeight;
+    }else if (!SpriteSheetSources::textureSize(source, sourceW, sourceH) || sourceW <= 0 || sourceH <= 0){
+        restore();
+        sprite.inlineAtlas.reset();
+        return false;
+    }
+    Rect pixels = hasPending ? pending : (sourceRect.isNormalized() ? Rect(sourceRect.getX() * sourceW, sourceRect.getY() * sourceH,
+                                                                         sourceRect.getWidth() * sourceW, sourceRect.getHeight() * sourceH)
+                                                                    : sourceRect);
+    if (hasPending){
+        sourceRect = normalizeTileRect(pending, (unsigned int)sourceW, (unsigned int)sourceH);
+        sprite.needUpdateFrameRect = false;
+    }
+    SpriteFrame frame;
+    std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::find(source);
+    // mirrored frames (a negative size) and rects across packed frames draw from the source
+    const bool mirrored = sourceRect.getWidth() < 0.0f || sourceRect.getHeight() < 0.0f;
+    CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+    bool mapped = !mirrored && camera && sheet && SpriteSheetSources::mapInlineRect(source, pixels, frame) && frame.page < sheet->pages.size();
+    // textureScaleFactor: createSprite samples the frame `cut` texels in from each edge; drawn from
+    // the page, the frame is that inner part (clipped to the packed rect), with no UV cut of its own
+    const float cut = sprite.textureScaleFactor;
+    if (mapped && cut > 0.0f){
+        Rect packed = frame.rect;
+        const float innerW = frame.sourceSize.x - 2.0f * cut, innerH = frame.sourceSize.y - 2.0f * cut;
+        const float x0 = std::max(frame.offset.x, cut), y0 = std::max(frame.offset.y, cut);
+        const float x1 = std::min(frame.offset.x + packed.getWidth(), frame.sourceSize.x - cut);
+        const float y1 = std::min(frame.offset.y + packed.getHeight(), frame.sourceSize.y - cut);
+        if (innerW <= 0.0f || innerH <= 0.0f || x1 <= x0 || y1 <= y0){
+            mapped = false;
+        }else{
+            frame.rect = Rect(packed.getX() + (x0 - frame.offset.x), packed.getY() + (y0 - frame.offset.y), x1 - x0, y1 - y0);
+            frame.offset = Vector2(x0 - cut, y0 - cut);
+            frame.sourceSize = Vector2(innerW, innerH);
+        }
+    }
+    if (!mapped){
+        restore();
+        auto* unmapped = new SpriteInlineAtlas();
+        unmapped->source = source;
+        unmapped->sourceRect = sourceRect;
+        unmapped->revision = revision;
+        sprite.inlineAtlas = SpriteInlineAtlasRef(unmapped);
+        if (onPage) return false;
+        submesh.textureRect = sourceRect;
+        return false;
+    }
+    const SpritePage& page = sheet->pages[frame.page];
+    if (sprite.width == 0 && sprite.height == 0){
+        sprite.width = (unsigned int)sourceW;
+        sprite.height = (unsigned int)sourceH;
+    }
+    if (texture.getPath() != page.texture){
+        texture.setAlphaBorderAuto(true);
+        texture.setPath(page.texture);
+        submesh.needUpdateTexture = true;
+    }
+    if (sprite.automaticFlipY){
+        changeFlipY(sprite.flipY, *camera, mesh);
+    }
+    SpriteFrameGeometryInput input;
+    input.width = sprite.width;
+    input.height = sprite.height;
+    // the quad in world units, as createSprite makes it (S41: its Pixels Per Unit, else the project's)
+    input.pixelsPerUnit = resolvePixelsPerUnit(sprite.pixelsPerUnit);
+    // inline frames carry no pivot: From Frame is the centre (createSprite's)
+    input.pivot = sprite.pivotPreset;
+    input.uiCamera = camera->type == CameraType::CAMERA_UI;
+    input.flipY = sprite.flipY;
+    input.pageWidth = page.width;
+    input.pageHeight = page.height;
+    const SpriteFrameQuad quad = spriteFrameQuad(frame, input);
+    const int grid = requestedSpriteGrid(mesh);
+    const int previousGrid = sprite.builtSliced ? 0 : builtSpriteGrid(mesh);
+    submesh.textureRect = quad.textureRect;
+    submesh.hasTextureRect = true;
+    prepareSpriteMesh(mesh);
+    // (a page size of 0: no UV cut, the frame above is already the cut one)
+    buildSpriteGrid(sprite, mesh, cut > 0.0f ? 0u : (unsigned int)page.width, cut > 0.0f ? 0u : (unsigned int)page.height,
+                    quad.x0, quad.y0, quad.x1, quad.y1, grid);
+    if (mesh.loaded){
+        if (sprite.builtSliced || (previousGrid != 0 && previousGrid != grid)){
+            mesh.needReload = true;
+        }else{
+            mesh.needUpdateBuffer = true;
+        }
+    }
+    sprite.builtSliced = false;
+    auto* atlasState = new SpriteInlineAtlas();
+    atlasState->source = source;
+    atlasState->sourceRect = sourceRect;
+    atlasState->page = page.texture;
+    atlasState->pageRect = quad.textureRect;
+    atlasState->sourceWidth = sourceW;
+    atlasState->sourceHeight = sourceH;
+    atlasState->revision = revision;
+    sprite.inlineAtlas = SpriteInlineAtlasRef(atlasState);
+    sprite.needUpdateSprite = false;
+    return true;
+}
+
 bool MeshSystem::createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& mesh){
     if (!sprite.sheet.empty()){
         return updateSheetSprite(sprite, mesh);
+    }
+    if (updateInlineAtlas(sprite, mesh)){
+        return true;
     }
 
     // a lattice started or stopped deforming it, or asks for another grid
@@ -7714,6 +8025,7 @@ bool MeshSystem::createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& me
 
         if (createSprite(sprite, mesh, camera)){
             sprite.needUpdateSprite = false;
+            sprite.builtSliced = false;
         }else{
             return false;
         }

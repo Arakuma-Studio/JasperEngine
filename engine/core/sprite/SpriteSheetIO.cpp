@@ -230,8 +230,9 @@ namespace jasperengine{
         if (root.contains("source") && root["source"].is_string()) sheet.source = root["source"].get<std::string>();
         if (root.contains("source_guid") && root["source_guid"].is_string()){
             const std::string g = root["source_guid"].get<std::string>();
+            // "" is what writeSheet writes for a source without a GUID (S45's texture sheets)
             if (Guid::isValidText(g)) sheet.sourceGuid = Guid::parse(g);
-            else p.warn("source_guid", "not a GUID (dropped)");
+            else if (!g.empty()) p.warn("source_guid", "not a GUID (dropped)");
         }
         if (root.contains("pixels_per_unit")){
             int ppu = 1;

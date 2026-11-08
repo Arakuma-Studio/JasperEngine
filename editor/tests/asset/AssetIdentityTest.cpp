@@ -48,6 +48,7 @@
 #include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <random>
 #include <set>
@@ -817,6 +818,24 @@ TEST(AssetDatabase, StaleScanIsDropped) {
     EXPECT_FALSE(database.getAssetGuid("assets/b.png").isNull());
     const AssetDatabase::DiskScan now = database.scanDisk();
     EXPECT_TRUE(database.refresh(now).empty());
+}
+
+// An importer's settings written to a sidecar before the asset got its GUID (S45: a texture's Sprite
+// Mode set while it was being imported) survive the GUID's write
+TEST(AssetDatabase, SettingsWrittenBeforeTheGuidSurvive) {
+    AssetTestDir dir;
+    write(dir.path / "assets/walk.png", "w");
+    write(dir.path / "assets/walk.png.meta", "metaVersion: 1\nimport:\n  spriteSheet:\n    mode: multiple\n");
+    AssetDatabase database;
+    database.setBackgroundHashing(false);
+    database.open(dir.path, "assets");
+    database.importAssets(dir.path / "assets/walk.png");
+    EXPECT_FALSE(database.getAssetGuid("assets/walk.png").isNull());
+    std::ifstream in(dir.path / "assets/walk.png.meta");
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    EXPECT_NE(text.find("guid:"), std::string::npos) << text;
+    EXPECT_NE(text.find("spriteSheet"), std::string::npos) << "the settings are kept: " << text;
+    EXPECT_NE(text.find("mode: multiple"), std::string::npos) << text;
 }
 
 // ==================================================================== links and hard links (S68)

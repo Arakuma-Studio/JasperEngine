@@ -19,6 +19,7 @@ namespace {
     struct ImportedState {
         std::mutex mutex;
         ImportedAssets::Provider provider;
+        ImportedAssets::Provider sheetProvider;
         bool loaded = false;
         std::unordered_map<std::string, std::string> files;
     };
@@ -76,6 +77,13 @@ bool ImportedAssets::find(const std::string& sourceRef, std::string& fileOut){
         return false;
     ImportedState& s = importedState();
     Provider provider;
+    Provider sheetProvider;
+    {
+        std::lock_guard<std::mutex> lock(s.mutex);
+        sheetProvider = s.sheetProvider;
+    }
+    if (sheetProvider && sheetProvider(key, fileOut))
+        return true;
     {
         std::lock_guard<std::mutex> lock(s.mutex);
         if (!s.provider){
@@ -96,6 +104,12 @@ void ImportedAssets::setProvider(Provider provider){
     ImportedState& s = importedState();
     std::lock_guard<std::mutex> lock(s.mutex);
     s.provider = std::move(provider);
+}
+
+void ImportedAssets::setSheetProvider(Provider provider){
+    ImportedState& s = importedState();
+    std::lock_guard<std::mutex> lock(s.mutex);
+    s.sheetProvider = std::move(provider);
 }
 
 bool ImportedAssets::hasProvider(){

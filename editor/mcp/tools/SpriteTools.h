@@ -22,5 +22,8 @@ namespace jasperengine::editor::mcp {
     Json asepriteAssetInfo(Project* project, const std::filesystem::path& file, std::string& text);
     // view_asset of an .aseprite file: its imported frames as a contact sheet
     bool replyAsepriteView(const CallPtr& call, Project* project, const std::filesystem::path& file, int maxSize);
+    // get_asset_info of a sheet source (S45): a texture's Sprite Mode and frames, packed_in of a
+    // texture or .aseprite file an atlas packs, an atlas's build; `kind` is get_asset_info's
+    Json spriteSheetAssetInfo(Project* project, const std::filesystem::path& file, const std::string& kind, std::string& text);
 
 }

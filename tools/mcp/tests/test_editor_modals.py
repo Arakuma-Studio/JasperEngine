@@ -92,6 +92,7 @@ SITES = {
     ("window/dialog/ProjectSettingsWindow.cpp", "Privacy Manifest Preview"): "not driven: a read-only preview from Player > iOS/macOS > Privacy Manifest > Preview; native_plugins privacy_manifest gives agents the same manifest",
     ("window/AsepriteImporterView.cpp", "Extract Clips##aseprite_extract"): "test_aseprite_extract_clips",
     ("pixelart/aseprite/AsepriteEditorHooks.cpp", "Aseprite Not Found##aseprite_open"): "test_aseprite_not_found",
+    ("window/dialog/SpriteConversionDialog.cpp", "title"): "test_sprite_conversion_dialog",
 }
 # InspectorWindow's error boxes share one shape: they open when a file picker's answer is refused
 INSPECTOR_BOXES = 11
@@ -176,8 +177,8 @@ async def test_sites_table_is_complete(ed: Editor):
     # the spec's 71 sites, S36's Placeholder Sound and the Model Import prompt (73); the project
     # window's folder prompt and its three nested boxes became one name dialog (errors inline), and
     # Change Asset Directories came: 71; mobile-shipping's Privacy Manifest Preview: 72; S44's Extract
-    # Clips and Aseprite Not Found: 74
-    ed.check_eq(sum(found.values()), 74, "the 74 sites")
+    # Clips and Aseprite Not Found: 74; S45's Convert Inline Sprite Frames: 75
+    ed.check_eq(sum(found.values()), 75, "the 75 sites")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):
@@ -735,6 +736,25 @@ async def test_texture_slicer(ed: Editor):
     await ed.call("respond_dialog", choice="cancel")
     ed.check_eq(await dialog(ed), None, "closed")
 
+    # a texture's stored Sprite Mode: the Slicer opens on it and Slice keeps its pivot (S45 R12)
+    (ed.project / "grid.png").write_bytes(png(64, 32))
+    (ed.project / "grid.png.meta").write_text("guid: 5a1ce5a1ce5a1ce5a1ce5a1ce5a1ce5a\nimport:\n  spriteSheet: {version: 1, mode: grid, grid: {cell: [32, 32], offset: [0, 0], "
+                                             "spacing: [0, 0], count: 0, skipEmpty: false, prefix: g_}, pivot: bottom_center}\n")
+    await ed.call("sync_files", paths=["grid.png", "grid.png.meta"])
+    made = await ed.call("set_sprite_frames", create={"name": "GridSprite"}, sheet="grid.png", frame=0)
+    await ed.call("select_entities", entities=[made["sprite"]["id"]])
+    await ed.call("focus_window", window="inspector")
+    await helper.frames(4)
+    button = await helper.reveal("\uf58d Slicer Tool", "Inspector")
+    await helper.click(helper.centre(button["rect"]))
+    d = await frame_dialog(ed)
+    ed.check(d and "pivot" in fields(d), f"the Sprite Mode fields: {d}")
+    ed.check_eq(fields(d)["pivot"]["value"], "Bottom Center", f"the stored pivot is shown: {fields(d)['pivot']}")
+    await ed.call("respond_dialog", choice="yes")
+    await helper.frames(4)
+    meta = (ed.project / "grid.png.meta").read_text()
+    ed.check("bottom_center" in meta, f"Slice kept the pivot: {meta}")
+
 
 @clean
 async def test_shader_fork(ed: Editor):
@@ -876,5 +896,17 @@ async def test_aseprite_not_found(ed: Editor):
     ed.check("aseprite.org" in d.get("message", ""), f"says where to get it: {d}")
     r = await ed.call_raw("create_entity", {"name": "Refused", "type": "empty"})
     ed.check(r.is_error and "Aseprite Not Found" in r.text, f"an edit is refused while it is open: {r.text[:300]}")
+    await ed.call("respond_dialog", choice="cancel")
+    ed.check_eq(await frame_dialog(ed), None, "cancel closes it")
+
+
+@clean
+async def test_sprite_conversion_dialog(ed: Editor):
+    """S45: Assets > Convert Inline Sprite Frames... lists the legacy sprites (a dry run) and is
+    answered by agents: Convert All and Close (cancel), cancel closes it, nothing converted"""
+    d = await open_modal(ed, "assets.convertInlineSpriteFrames", None)
+    ed.check(d and "Convert Inline Sprite Frames" in d.get("title", ""), f"the dialog: {d}")
+    ed.check({"convert_all", "cancel"} <= set(d.get("choices", [])), f"Convert All and Close: {d}")
+    ed.check("legacy sprite" in d.get("message", ""), f"says what it lists: {d}")
     await ed.call("respond_dialog", choice="cancel")
     ed.check_eq(await frame_dialog(ed), None, "cancel closes it")

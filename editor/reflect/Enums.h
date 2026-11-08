@@ -88,6 +88,7 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kMaterialStencilOp;
     extern const EnumDesc kParticleEmitterShape;
     extern const EnumDesc kPivotPreset;
+    extern const EnumDesc kSpriteDrawMode;
     extern const EnumDesc kPrimitiveType;
     extern const EnumDesc kProgressbarType;
     extern const EnumDesc kReflectionProbeMode;

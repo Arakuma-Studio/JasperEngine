@@ -7,6 +7,7 @@
 #include "asset/ImportedAssets.h"
 #include "io/Data.h"
 #include "sprite/SpriteSheetIO.h"
+#include "sprite/SpriteSheetSources.h"
 #include "subsystem/MeshSystem.h"
 #include "texture/CookedTextures.h"
 
@@ -63,6 +64,7 @@ namespace {
     }
 
     std::shared_ptr<const SpriteSheetData> loadFromSources(const std::string& path, std::string& error){
+        SpriteSheetSources::ensureRegistered();
         std::vector<Source> sources;
         {
             PoolState& pool = state();
@@ -75,7 +77,7 @@ namespace {
             }
             if (SpriteSheetPool::isAsepritePath(path)) return SpriteSheetPool::loadImported(path, &error);
             if (isTexturePath(path)) return SpriteSheetPool::loadTexture(path, &error);
-            error = "not a sprite sheet source (an .aseprite file or a texture)";
+            error = "not a sprite sheet source (an .aseprite file, a texture or a .spriteatlas)";
         }catch (const std::exception& e){
             error = e.what();
         }
@@ -86,6 +88,10 @@ namespace {
 
 bool SpriteSheetPool::isAsepritePath(const std::string& path){
     return endsWithNoCase(path, ".aseprite") || endsWithNoCase(path, ".ase");
+}
+
+bool SpriteSheetPool::mapInlineRect(const std::string& texture, const Rect& rect, SpriteFrame& out){
+    return SpriteSheetSources::mapInlineRect(texture, rect, out);
 }
 
 std::string SpriteSheetPool::getKey(const std::string& path){

@@ -6,6 +6,9 @@
 #include "EditorModal.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "ProjectWindow.h"
+#include "sprite/SpriteAtlasBuilder.h"
+#include "sprite/SpriteSheetSources.h"
+#include "sprite/SpriteSheetPool.h"
 #include "window/vcs/VcsUi.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
@@ -1844,6 +1847,22 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         ImVec2(imageX + Theme::dpi(3.0f) + badge, imageY + dispH - Theme::dpi(2.0f)), IM_COL32(140, 205, 255, 255));
                 }
                 drawTextureCookBadge(ImGui::GetWindowDrawList(), file, ImVec2(imageX, imageY), ImVec2(imageX + dispW, imageY + dispH));
+                // S45 R32: a Sprite Atlas building or failed
+                if (!file.isDirectory && SpriteSheetSources::isAtlasPath(file.name)){
+                    sprite::SpriteAtlasBuilder& atlases = sprite::SpriteAtlasBuilder::get();
+                    const std::string atlasFile = (currentPath / file.name).string();
+                    std::shared_ptr<const sprite::AtlasBuildResult> attempt = atlases.lastAttempt(atlasFile);
+                    const bool building = atlases.isBuilding(atlasFile);
+                    const bool failed = !building && attempt && !attempt->ok && attempt->error.kind != "cancelled";
+                    if (building || failed){
+                        const float r = std::max(Theme::dpi(4.0f), std::min(dispW, dispH) * 0.12f);
+                        const ImVec2 c(imageX + dispW - r - Theme::dpi(2.0f), imageY + dispH - r - Theme::dpi(2.0f));
+                        ImGui::GetWindowDrawList()->AddCircleFilled(c, r, failed ? IM_COL32(230, 80, 60, 255) : IM_COL32(240, 190, 40, 255));
+                        if (ImGui::IsMouseHoveringRect(ImVec2(c.x - r, c.y - r), ImVec2(c.x + r, c.y + r))){
+                            ImGui::SetTooltip("%s", failed ? ("Sprite Atlas build failed: " + attempt->error.message).c_str() : "Building the Sprite Atlas");
+                        }
+                    }
+                }
                 if (file.generated){
                     drawGeneratedBadge(ImGui::GetWindowDrawList(), ImVec2(imageX, imageY + dispH - std::min(dispW, dispH) * 0.32f), std::min(dispW, dispH), file.name, file.generatedStale);
                 }
@@ -2097,6 +2116,11 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         ImGui::EndMenu();
                     }
                     ImGui::Separator();
+                }
+                if (!file.isDirectory && hasSpriteSelection() && (SpriteSheetSources::isTexturePath(file.name) || SpriteSheetPool::isAsepritePath(file.name))) {
+                    if (ImGui::MenuItem(ICON_FA_TABLE_CELLS " Create Sprite Atlas from Selection")) {
+                        assetsCreateSpriteAtlasFromSelection();
+                    }
                 }
                 if (!file.isDirectory && Util::isAudioFile(file.name) && hasAudioSelection()) {
                     if (ImGui::MenuItem(ICON_FA_MUSIC " Create Sound Event from Clips")) {
@@ -4779,6 +4803,65 @@ bool editor::ProjectWindow::hasAudioSelection() const {
     return false;
 }
 
+namespace {
+    // a new atlas packing `members` (asset-relative files), written as one undo step
+    bool writeNewSpriteAtlas(jasperengine::editor::Project* project, const std::filesystem::path& file, const std::vector<std::string>& members, std::string& error) {
+        namespace je = jasperengine::editor;
+        je::sprite::SpriteAtlasDocument doc;
+        doc.guid = jasperengine::Guid::parse(je::AssetDatabase::generateGuid());
+        for (const std::string& path : members) {
+            je::sprite::SpriteAtlasMember m;
+            m.path = path;
+            m.guid = project->getAssetDatabase().getAssetGuid(project->normalizeToProjectRelative(project->getAssetsPath() / path));
+            doc.members.push_back(m);
+        }
+        return je::ProjectFileWrites::writeUndoable(project, {{file, je::sprite::writeSpriteAtlas(doc)}}, error, nullptr, nullptr, {}, false,
+                                                    "Create Sprite Atlas " + file.filename().string());
+    }
+}
+
+void editor::ProjectWindow::assetsCreateSpriteAtlas(const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
+        return;
+    }
+    focusProjectPanel(this);
+    const fs::path relative = uniqueRelativePath(directory, "New Sprite Atlas", ".spriteatlas");
+    std::string error;
+    if (!writeNewSpriteAtlas(project, project->getProjectPath() / relative, {}, error)) {
+        Backend::getApp().registerAlert("Create Sprite Atlas", error);
+        return;
+    }
+    selectCreated(directory, relative.filename().string(), true);
+}
+
+bool editor::ProjectWindow::hasSpriteSelection() const {
+    for (const std::string& name : selectedFiles) {
+        if (SpriteSheetSources::isTexturePath(name) || SpriteSheetPool::isAsepritePath(name)) return true;
+    }
+    return false;
+}
+
+void editor::ProjectWindow::assetsCreateSpriteAtlasFromSelection() {
+    if (currentPath.empty() || !hasSpriteSelection()) return;
+    focusProjectPanel(this);
+    std::vector<std::string> members;
+    for (const std::string& name : selectedFiles) {
+        if (!SpriteSheetSources::isTexturePath(name) && !SpriteSheetPool::isAsepritePath(name)) continue;
+        const std::string asset = (currentPath / name).lexically_normal().lexically_relative(project->getAssetsPath().lexically_normal()).generic_string();
+        if (!asset.empty() && asset.rfind("..", 0) != 0) members.push_back(asset);
+    }
+    std::sort(members.begin(), members.end());
+    const fs::path relative = uniqueRelativePath(currentPath, "New Sprite Atlas", ".spriteatlas");
+    std::string error;
+    if (!writeNewSpriteAtlas(project, project->getProjectPath() / relative, members, error)) {
+        Backend::getApp().registerAlert("Create Sprite Atlas from Selection", error);
+        return;
+    }
+    selectCreated(currentPath, relative.filename().string(), true);
+    sprite::SpriteAtlasBuilder::get().rebuild((project->getProjectPath() / relative).string());
+}
+
 void editor::ProjectWindow::assetsCreateSoundEventFromClips() {
     if (currentPath.empty() || !hasAudioSelection()) {
         return;
@@ -5123,6 +5206,7 @@ void editor::ProjectWindow::createAsset(AssetCreateKind kind, const fs::path& di
         case AssetCreateKind::PhysicsMaterial: assetsCreatePhysicsMaterial(false, directory); break;
         case AssetCreateKind::PhysicsMaterial2D: assetsCreatePhysicsMaterial(true, directory); break;
         case AssetCreateKind::ShakePreset: assetsCreateShakePreset(directory); break;
+        case AssetCreateKind::SpriteAtlas: assetsCreateSpriteAtlas(directory); break;
         default: break;
     }
 }

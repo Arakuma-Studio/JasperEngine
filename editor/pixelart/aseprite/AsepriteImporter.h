@@ -150,6 +150,10 @@ namespace jasperengine::editor::pixelart::aseprite {
         // count to move and reads the outcome of its own import
         std::shared_ptr<const ImportRecord> lastAttempt(const std::string& assetPath) const;
         uint64_t attemptCount(const std::string& assetPath) const;
+        // S45: told (main thread) when a file's new import is swapped in (Sprite Atlases rebuild);
+        // one listener per owner
+        void addImportListener(const void* owner, std::function<void(const std::string& assetPath)> listener);
+        void removeImportListener(const void* owner);
         // imports started since attach (R25: a project without .aseprite files starts none)
         uint64_t jobsStarted() const { return started; }
 
@@ -188,6 +192,7 @@ namespace jasperengine::editor::pixelart::aseprite {
         std::set<std::string> again;   // asked again while running
         std::vector<std::pair<std::string, std::function<void()>>> waiting;   // whenImported
         std::vector<Swap> swaps;
+        std::map<const void*, std::function<void(const std::string&)>> importListeners;
         uint64_t started = 0;
 
         void start(const std::string& assetPath);

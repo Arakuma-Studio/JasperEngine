@@ -18,6 +18,7 @@
 #include "util/ScriptAttach.h"
 #include "window/dialog/ShaderForkDialog.h"
 #include "window/AsepriteImporterView.h"
+#include "window/SheetPreviewTextures.h"
 #include "window/TextureImporterView.h"
 #include "window/ModelImporterView.h"
 #include "window/dialog/ComponentAddDialog.h"
@@ -70,6 +71,7 @@ namespace jasperengine::editor{
     class MultiPropertyCmd;
     class AnimationClipDocument;
     class AnimatorAssetDocument;
+    class SpriteAtlasInspector;
     struct InspectorClipState;
     struct InspectorClipStateDeleter{
         void operator()(InspectorClipState* state) const;
@@ -208,6 +210,9 @@ namespace jasperengine::editor{
         // and its model files (S53)
         std::unique_ptr<ModelImporterView> modelImporter;
         std::unique_ptr<AsepriteImporterView> asepriteImporter;
+        // (shared: the type stays out of this header, which App.h includes; its sprite:: names would
+        // make `sprite` a namespace in every source that includes App.h)
+        std::shared_ptr<SpriteAtlasInspector> spriteAtlasInspector;
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;
@@ -897,6 +902,15 @@ namespace jasperengine::editor{
         void drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // a sheet sprite's frame, Open in Aseprite, slice colliders, sprite properties (S44)
         void drawSheetSpriteSection(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        // S45 (InspectorSpriteSheet.cpp): the frame picker, Native Size, the Slicer writing a
+        // texture's Sprite Mode, the legacy frames' Convert to Sprite Sheet
+        void drawSheetFramePicker(ComponentType cpType, SceneProject* sceneProject, Entity entity, const SpriteSheetData& sheet);
+        void drawSpriteNativeSize(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        void openSpriteSlicer(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::string& texture);
+        void drawLegacyFramesHeader(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        SheetPreviewTextures sheetThumbnails;
+        char sheetFrameSearch[96] = "";
+        std::string legacyConvertError;
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

@@ -230,6 +230,19 @@ class Emitters(unittest.TestCase):
                 missing.append(line)
         self.assertEqual(missing, [], 'symbols the regex parser listed and the one parser does not')
 
+    def test_sprite_sheets_and_atlases(self):
+        """S45 R36 (AC17): the API lists Sprite.drawMode and its SpriteDrawMode values, and the sheet
+        members an atlas is used through (Sprite.sheet/frameName/frameCount, SpriteSheet.load/getFrame)"""
+        classes = {c['name']: c for c in api()['classes']}
+        enums = {e['name']: e for e in api()['enums']}
+        sprite = {p['name'] for p in classes['Sprite']['properties']}
+        self.assertTrue({'drawMode', 'sheet', 'frame', 'frameName', 'frameCount'} <= sprite, sprite)
+        self.assertEqual([v['name'] for v in enums['SpriteDrawMode']['values']], ['SIMPLE', 'SLICED'])
+        sheet = classes['SpriteSheet']
+        self.assertTrue({'load', 'getFrame', 'findFrame'} <= {m['name'] for m in sheet['methods']})
+        self.assertIn('frameCount', {p['name'] for p in sheet['properties']})
+        self.assertTrue(any(m['name'] == 'load' and m['static'] for m in sheet['methods']), 'SpriteSheet.load is static')
+
     def test_lua_only_marked(self):
         """C++ completion offers Engine::deltatime only if C++ has it (Doriax 755972f92): a static
         property backed by an accessor or a lambda, and a method bound to a helper, are Lua only"""

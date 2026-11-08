@@ -63,7 +63,7 @@ async def test_sprite_animation_frame_names_and_fps(ed: Editor):
     texture = "assets/frames.png"
     image_file(ed, texture)
     sprite = await ed.call("set_sprite_frames", scene=sid, create={"name": "Animated"}, texture=texture,
-                           slice={"columns": 2, "rows": 1, "names": ["left", "right"]})
+                           slice={"columns": 2, "rows": 1, "names": ["left", "right"]}, inline=True)
     animation = await ed.call("set_sprite_animation", scene=sid, sprite=sprite["sprite"]["id"],
                               frames=["right", "left"], fps=20)
     ed.check_eq(animation["frames"], [1, 0], "frame names resolve in the authored sheet order")
@@ -204,5 +204,5 @@ async def test_sprite_frames_past_old_capacity(ed: Editor):
     texture = "assets/many-frames.png"
     image_file(ed, texture)
     frames = [{"name": f"f{i}", "rect": [i % 8, 0, 1, 1]} for i in range(200)]
-    sprite = await ed.call("set_sprite_frames", scene=sid, create={"name": "Many"}, texture=texture, frames=frames)
+    sprite = await ed.call("set_sprite_frames", scene=sid, create={"name": "Many"}, texture=texture, frames=frames, inline=True)
     ed.check_eq(len(sprite["frames"]), 200, "every frame is kept")

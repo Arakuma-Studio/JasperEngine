@@ -27,6 +27,7 @@
 #include <future>
 
 #include "window/dialog/ProjectSaveDialog.h"
+#include "window/dialog/SpriteConversionDialog.h"
 #include "window/dialog/SceneSaveDialog.h"
 #include "window/dialog/DataSafetyDialogs.h"
 #include "window/dialog/ExportWindow.h"
@@ -321,6 +322,7 @@ namespace jasperengine::editor{
         // An MCP agent's answer to the alert, pressed by showAlert on the next frame
         std::string alertPendingChoice;
         ProjectSaveDialog projectSaveDialog;
+        SpriteConversionDialog spriteConversionDialog;   // S45 R21
         SceneSaveDialog sceneSaveDialog;
         // Recover Unsaved Changes, Saving Would Lose Data, the second-instance dialog
         DataSafetyDialogs dataSafetyDialogs;
