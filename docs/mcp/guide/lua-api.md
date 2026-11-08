@@ -521,6 +521,7 @@ parents to the first script that defines it (otherwise the game gets Escape or B
 | `setCanvasSize(w, h)` | static fn | |
 | `viewRect` | ro | `Rect` |
 | `scalingMode` | rw | `Scaling.*` |
+| `getPixelsPerUnit()` | static fn | the project's Pixels Per Unit (1-256, default 1: a world unit is a pixel); sprites and tilemaps with `pixelsPerUnit` 0 take it |
 | `setAtmosphereQuality(q)`, `getAtmosphereQuality()`, `resetAtmosphereQuality()` | fn | the volumetric fog and clouds tier (`AtmosphereQuality.*`): overrides the project's per-platform one until reset |
 | `textureStrategy` | rw | `TextureStrategy.*` |
 | `setTextureQuality(q)`, `getTextureQuality()` | static fn | 0 (full) to 3 (an eighth): top mips dropped from streamable textures at load (Unity's Global Mipmap Limit); sprites and UI keep theirs. The export sets the platform's from Project Settings > Texture |
@@ -1292,7 +1293,7 @@ looks through the scene's meshes: for many points a frame, keep the results.
 |---|---|
 | `Water.getHeight(scene, x, z)` | surface height (world Y, waves included) of the topmost water over (x, z); `nil` where none covers it |
 | `Water.getNormal(scene, x, z)` | its normal (`Vector3`; up without `WAVES`); `nil` where none |
-| `Water.isUnderwater(scene, point)` | `point` (`Vector3`) is under the surface of the water it is in |
+| `Water.isUnderwater(scene, point)` | `point` (`Vector3`) is under the surface of the water it is in (false inside a Water Excluder) |
 | `Water.getTime(scene)` | the scene clock the waves run on, seconds (one value a frame); without `scene` the main scene's |
 | `Water.sample(scene, point)` | a `WaterSample`: `inWater`, `surfaceHeight`, `normal`, `flowVelocity` (the volume's flow + the surface's motion: rising and falling, and with `GERSTNER` rolling back and forth), `volume` (entity), `hasWater`; Water Volumes first, then the meshes above |
 | `Water.sampleHeight(scene, x, z)` | the surface height there, Water Volumes first; `nil` where no water is |
@@ -1303,9 +1304,32 @@ extent, Y depth), `surfaceOffset`, `infinite`, `density`, `flow`, `linearDrag`, 
 `Buoyancy(scene, entity)`): `columns` (`BuoyancyColumns.AUTO_2x2` / `AUTO_3x3` / `CUSTOM`),
 `customPoints` ({Vector3...}), `volumeScale`, `dragScale`, `enabled`.
 
+A `WaterSample` also tells `excluder` (the Water Excluder keeping the point dry: `inWater` is then
+false, the surface still reported), `excluded`, and the Water Wakes there: `wakeFoam` (0..1) and
+`wakeHeight` (metres of wake crest; both 0 without a wake).
+
+A Water Excluder (`go:getWaterExcluder()`, `WaterExcluder(scene, entity)`; keeps water out: no
+surface drawn, no underwater fade, nothing floats in it but the Rigidbody it belongs to): `enabled`,
+`shape` (`WaterExcluderShape.BOX` / `SPHERE` / `CONVEX_HULL`, the hull of the GameObject's mesh),
+`center`, `size` (Vector3, local, Box and Sphere), `hullStatus` (ro: `"ready"`, `"pending"`,
+`"no_mesh"`, `"flat"`, `"no_physics"`, `"none"` for the other shapes), `hullFaces` (ro),
+`contains(point)`. A Water Wake (`go:getWaterWake()`, `WaterWake(scene, entity)`; foam and waves
+behind it on the water while it moves): `enabled`, `foam`, `waves` (0..2), `width`, `length`
+(metres; 0: from the excluder or the mesh), `emitting` and `speed` (ro, the last step). The
+scene's wake map: `scene.waterWakeResolution` (`WaterWakeResolution.AUTO` / `LOW` / `MEDIUM` /
+`HIGH`: 128, 256, 512 texels; AUTO 256, 128 on mobile and web), `scene.waterWakeArea` (metres),
+`scene.waterWakeFade` (seconds).
+
 ```lua
 local y = Water.getHeight(self.scene, pos.x, pos.z)
 if y and pos.y < y then -- swimming
+end
+local hold = self.gameObject:getWaterExcluder()
+hold.shape = WaterExcluderShape.BOX
+hold.size = Vector3(2, 1, 5)
+local wake = self.gameObject:getWaterWake()
+wake.foam = 1.5
+if Water.sample(self.scene, pos).excluded then -- in the dry hold
 end
 ```
 
@@ -1939,12 +1963,39 @@ Color/texture via Mesh: `Primitive(self.scene, self.entity):setColor(1, 0, 0, 1)
 | `textureRect` | rw `Rect`; `setTextureRect(x, y, w, h)` |
 | `textureScaleFactor` | rw |
 | `pivotPreset` | rw `PivotPreset.*` |
+| `pixelsPerUnit` | rw: texels per world unit, 0 = the project's (`Engine.getPixelsPerUnit()`); `width`/`height` stay pixels |
+| `pixelRotation` | rw `PixelRotation.*`: under a Pixel Perfect Camera, `CAMERA` (its policy), `STEPS_90` or `ON_GRID` |
+| `worldSize` | ro `Vector2`: the quad in world units |
 | `enabled` | rw |
 | frames: `addFrame(...)`, `removeFrame(idOrName)`, `setFrame(idOrName)` | methods |
 | `startAnimation(framesTable, framesTimeTable, loop)`, `startAnimation(startFrame, endFrame, intervalMs, loop)`, `startAnimation(name, intervalMs, loop)` | methods |
 | `pauseAnimation()`, `stopAnimation()` | methods |
 | `getShadowCaster2D()`, `removeShadowCaster2D()` | methods |
+| sheet sprites: `sheet` (rw path: an `.aseprite` file, a texture or a `.spriteatlas`; setting it shows frame 0), `frame` (rw index, 0-based), `frameName` (rw), `frameCount` | properties |
+| `drawMode` | rw `SpriteDrawMode.SIMPLE` / `SLICED` (a bordered frame as 9 parts at the sprite's size) |
+| `getSheet()` -> `SpriteSheet` or nil | method |
+| `playTag(name, speed)`, `stopTag()`; `tag` (name or nil), `isTagPlaying` | tags at the sheet's durations, direction and repeat (no clip events) |
+| `getTag(name)` -> `{name, from, to, direction, repeat, durationMs, color, userData}`, `getTags()` | methods |
+| `getSlice(name)` -> `{name, rect, center, pivot, visible, userData}` on the shown frame in local units, `getSlices()`, `getUserData()` | methods |
 | plus Mesh: `color`, `alpha`, `setColor`, `setTexture`, ... | |
+
+`SpriteSheet.load(path)` (any sheet: an `.aseprite` file, a texture, a `.spriteatlas`; nil and a logged error when there is none) gives `path`, `frameCount`,
+`pageCount`, `frameNames`, `tags`, `slices`, `properties` and `findFrame(name)` (-1 when absent),
+`getFrame(nameOrIndex)`, `getTag(name)`, `getSlice(name, frame)` (pixels, y down).
+
+```lua
+local hero = Sprite(self.scene, self.entity)
+hero.sheet = "assets/sprites/hero.aseprite"
+hero:playTag("walk")
+local hurt = hero:getSlice("hurt")
+if hurt and hurt.visible then
+    print(hero.tag, hero.frame, hurt.rect.width)
+end
+local sheet = SpriteSheet.load("assets/sprites/hero.aseprite")
+if sheet then
+    print(sheet.frameCount, sheet:findFrame("hero 3"), sheet:getTag("walk").durationMs)
+end
+```
 
 ### 4.6 SpriteAnimation (Action)
 
@@ -2266,6 +2317,8 @@ controller does not have warn once and do nothing.
 | `montageJumpToSection(name)`, `montageSetNextSection(from, to)` | |
 | `setIKTarget(constraint, position [, weight])`, `clearIKTarget(constraint)`, `setIKWeight(constraint, w)` | world space; a script target wins over the constraint's GameObject |
 | `setLookAt(position [, weight])` | the first look_at constraint |
+| `isIKReached(constraint)` | the last solve left the end within 1 mm of its target (look_at: the aim within 0.1 degree; foot_ik: on ground it found), measured on the final pose: false for a partial weight, a soft limit, a clamp, a target out of reach, weight 0, a disabled or culled Animator, an unknown name |
+| `setIKSoften(constraint, soften)`, `setIKHingeAxis(constraint, axis)`, `setIKTwist(constraint, degrees)`, `setIKAimOffset(constraint, offset)` | the constraint's fields: `soften` 0..1 (0: a hard limit), `axis` the middle bone's local hinge (`Vector3(0, 0, 0)`: auto), `offset` the eyes from the last bone |
 | `hasBone(slotOrPath)`, `getBonePosition(slotOrPath)`, `getBoneRotation(slotOrPath)` | world space, from the last evaluated pose; humanoid slots (`"left_hand"`) or paths |
 | `speed`, `applyRootMotion` | rw |
 | `getDeltaPosition()`, `getDeltaRotation()` | the last update's root motion (world space) |
@@ -2307,6 +2360,40 @@ far)`, `setType(t)`, `setTarget(x, y, z)`, `disableTarget()`, `isUsingTarget()`,
 A camera looks at its target by default (`isUsingTarget()`): the GameObject's rotation is
 ignored until `disableTarget()`. Orbit: position = target + (cos(pitch)sin(yaw), sin(pitch),
 cos(pitch)cos(yaw)) * distance, then `setTarget(target)`.
+`camera:getPixelPerfectCamera()` returns its Pixel Perfect Camera, nil without one (4.9.2).
+
+### 4.9.2 PixelPerfectCamera (EntityHandle)
+
+Pixel art on a camera (`jasper://docs/pixel-art`): one base resolution scaled by a whole number,
+every sprite, tile, UI element and particle on whole base pixels.
+
+- `PixelPerfectCamera(scene, cameraEntity)`: the camera's component, added when it has none.
+- rw: `enabled`, `referenceResolution` (`Vector2`, `(0, 0)` = the project canvas), `upscaleMode`
+  (`PixelUpscaleMode.INTEGER`, `INTEGER_EXPAND`, `STRETCH_FILL`), `upscaleRenderTexture`,
+  `pixelSnapping`, `rotationMode` (`PixelRotation.STEPS_90`, `ON_GRID`), `subpixelSmoothing`,
+  `letterboxColor` (`Vector4`).
+- ro, the layout of this frame: `pixelRatio` (k), `baseResolution`, `targetResolution`
+  (`Vector2`), `viewport` (`Rect`, screen pixels), `snappedPosition` (`Vector3`, where the camera
+  draws from), `subpixelOffset` (`Vector2`, base pixels), `cropped`.
+- `worldToPixel(Vector3)` -> `Vector2` base pixels of the image (unsnapped), `pixelToWorld(Vector2)`
+  -> `Vector3`, `roundToPixel(Vector3)` -> the world position on whole pixels (the snap rule).
+- Zoom by changing `referenceResolution` (a new target each change).
+
+```lua run
+local cam = Camera(scene)
+cam:setType(CameraType.CAMERA_ORTHO)
+assert(cam:getPixelPerfectCamera() == nil)
+local ppc = PixelPerfectCamera(scene, cam.entity)
+ppc.referenceResolution = Vector2(320, 180)
+ppc.upscaleMode = PixelUpscaleMode.INTEGER_EXPAND
+ppc.rotationMode = PixelRotation.ON_GRID
+ppc.subpixelSmoothing = true
+assert(cam:getPixelPerfectCamera() ~= nil)
+assert(ppc.referenceResolution.x == 320)
+local p = ppc:roundToPixel(Vector3(10.5, 4.25, 0))
+assert(p.x == 11 and p.y == 4)
+assert(Engine.getPixelsPerUnit() >= 1)
+```
 
 ### 4.9.1 CameraShake, CameraShaker, ShakeInstance, CameraFollow
 
@@ -3178,6 +3265,59 @@ a:setOnComplete(function() Log.print("arrived") end)   -- Once only
 | `play()`, `pause()`, `restart()`, `playing`, `completed`, `normalizedTime`, `distance` (rw: moves the follower) | constant world speed along the curve; a 2D spline turns the follower about Z |
 | `onComplete` (`FunctionSubscribe`), `setOnComplete(fn)` | Once: called at the end |
 
+### 4.21 Navigation: NavigationSystem, NavMeshQueryFilter, NavMeshAgent
+
+Navmesh queries take and return world positions (`jasper://docs/navigation`). Queries returning
+a hit return two values, `found, hit`; paths are plain tables (`NavMeshPath`).
+
+```lua
+local nav = self.scene:getNavigationSystem()
+local filter = NavMeshQueryFilter{agentType = "Humanoid", areaMask = NavAreas.All}
+filter:setAreaCost(3, 5)                      -- area 3 costs 5 per metre for this filter
+local path = nav:calculatePath(Vector3(0, 0, 0), Vector3(10, 0, 4), filter, {areaCrossings = true})
+local found, point = nav:randomPoint(filter, {center = Vector3(0, 0, 0), radius = 8})
+local moved, step = nav:moveAlongSurface(Vector3(0, 0, 0), Vector3(1, 0, 0))
+local near, edge = nav:findClosestEdge(Vector3(0, 0, 0), nil, 5.0)
+```
+
+| Member | Notes |
+|---|---|
+| `calculatePath(from, to[, filter[, options]])` | `status`, `corners`, `length`, `cost`, `cornerAreas`, `cornerFlags` (`NavCornerFlags`), `areaLengths[area]`, `corridor`; options `{areaCrossings = true}` |
+| `samplePosition(p, maxDistance[, filter])`, `raycast(a, b[, filter])`, `findClosestEdge(p[, filter[, maxDistance]])`, `isReachable(a, b[, filter])` | hit: `position`, `normal`, `distance`, `area`, `mask`, `hit`, `cost` (raycast) |
+| `randomPoint([filter[, options]])` | options `center` + `radius` (reachable within it, not uniform), `sameIslandAs`, `seed`; none: anywhere, uniform by area |
+| `moveAlongSurface(from, to[, filter])` | one step along the surface: hit `position`, `hit` (a wall stopped it), `distance`, `area` |
+| `randomSeed` | rw: restarts the stream (a scene starts at 0x5EED) |
+| NavMeshQueryFilter `agentType`, `areaMask`, `setAreaCost(area, cost)`, `getAreaCost(area)`, `resetAreaCost(area)` | costs >= 1; the areas it does not set cost the project's |
+| NavMeshAgent `setAreaCost(area, cost)`, `getAreaCost(area)`, `resetAreaCost(area)` | runtime only (gone at Stop) |
+| NavMeshAgent `calculatePath(target)`, `setPath(path)`, `path`, `steeringTarget`, `isPathStale` | `setPath` takes a path of `calculatePath` (false, and no path, when refused); `path` starts at the agent |
+| NavMeshAgent `nextPosition`, `velocity` (rw) | root motion: `nextPosition = p` moves it along the surface, `velocity = v` holds for the next fixed tick; neither writes the Transform |
+| NavMeshAgent `raycast(target)`, `findClosestEdge()`, `samplePathPosition(areaMask, maxDistance)`, `nextOffMeshLinkData` | from where it stands with its filter; two values like the system's queries |
+| NavMeshAgent `stuckDetection`, `stuckSpeedRatio`, `stuckTimeout`, `repathWhenStuck` (rw), `stuckTime`, `lastPathFailure` (read), `onStuck(agent)`, `onPathFailed(agent, reason)` | reasons are strings: `"none"`, `"no_surface"`, `"not_baked"`, `"end_off_mesh"`, `"disconnected"`, `"blocked_by_area"`, ... |
+| `NavAreas.All`, `Walkable`, `NotWalkable`, `Jump` (masks), `NavAreas.maskOf(area)`, `getAreaFromName(name)`, `getAreaName(area)`, `getAreaCost(area)` | areas are 0-15 |
+
+### 4.22 Navigation: NavMeshObstacle, NavMeshLink, NavMeshModifier, NavAreaOverride
+
+Unity's scripting names over the components (`jasper://docs/navigation`, "Script names"). A door
+is a NavMesh Modifier with Volume and Apply At Runtime; a script volume does the same from code.
+
+```lua
+local door = NavMeshModifier(self.scene, self.entity)
+door.enabled = false                                  -- the runtime volume stops applying: the door opens
+local bridge = NavMeshLink(self.scene, self.entity)
+bridge.activated = false                              -- paths and agents ignore it
+local nav = self.scene:getNavigationSystem()
+local gate = nav:setAreaInVolume(Vector3(0, 1, 0), Vector3(2, 3, 1), 1, {rotation = Quaternion()})
+gate.area = 0 ; gate:remove()
+```
+
+| Member | Notes |
+|---|---|
+| NavMeshObstacle `enabled`, `shape` (`NavMeshObstacleShape.CAPSULE` / `BOX`), `center`, `size`, `radius`, `height`, `carving`, `carveOnlyStationary`, `carvingMoveThreshold`, `carvingTimeToStationary` | rw; `velocity` read (from its transform each fixed tick) |
+| NavMeshLink `enabled`, `agentTypeID`, `startPoint`, `endPoint`, `width`, `costModifier`, `bidirectional`, `area`, `autoUpdate`, `activated` | rw; `occupied` read (an agent is crossing it); `updateLink()` moves its baked connections to its fields |
+| NavMeshModifier `enabled`, `area`, `center`, `size` | rw: a runtime volume applies again at once; `useVolume`, `applyAtRuntime`, `overrideArea`, `applyToChildren` read (bake inputs); `appliedPolygons` read |
+| NavigationSystem `setAreaInVolume(center, size, area[, {rotation, agentType}])` | a NavAreaOverride (nil for an area outside 0-15): the polygons whose centre lies in the box take `area` until `remove()`; ends at Stop |
+| NavAreaOverride `area`, `center`, `size`, `rotation` | rw; `valid`, `handle`, `appliedPolygons` read; `remove()` |
+
 ## 5. Enums (exact Lua spelling; values are integers)
 
 | Namespace | Values |
@@ -3235,7 +3375,9 @@ a:setOnComplete(function() Log.print("arrived") end)   -- Once only
 | `AtmosphereQualityOverride` | `PROJECT`, `LOW`, `MEDIUM` |
 | `RotationOrder` | `XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX` |
 | `RayFilter` | `BODY_2D`, `BODY_3D`, `BOUNDS` |
-| `Scaling` | `FITWIDTH`, `FITHEIGHT`, `LETTERBOX`, `CROP`, `STRETCH`, `NATIVE` |
+| `Scaling` | `FITWIDTH`, `FITHEIGHT`, `LETTERBOX`, `CROP`, `STRETCH`, `NATIVE`, `INTEGER`, `INTEGER_EXPAND` |
+| `PixelUpscaleMode` | `INTEGER`, `INTEGER_EXPAND`, `STRETCH_FILL` |
+| `PixelRotation` | `CAMERA`, `STEPS_90`, `ON_GRID` |
 | `Platform` | `MacOS`, `iOS`, `Web`, `Android`, `Linux`, `Windows` |
 | `CursorType` | `ARROW`, `IBEAM`, `CROSSHAIR`, `POINTING_HAND`, `RESIZE_EW`, `RESIZE_NS`, `RESIZE_NWSE`, `RESIZE_NESW`, `RESIZE_ALL`, `NOT_ALLOWED`, `WAIT`, `PROGRESS`, `HELP`, `GRAB`, `GRABBING` |
 | `MouseMode` | `NORMAL`, `HIDDEN`, `CAPTURED`, `CONFINED` |

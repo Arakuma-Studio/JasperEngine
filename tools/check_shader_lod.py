@@ -12,10 +12,12 @@ derivatives before the loop (.claude/rules/rendering.md).
 
 A call counts when it is in such a loop's body, or in a loop's per-fragment `if` branch,
 directly or through a function or a macro that makes one (any depth, by name: GLSL functions
-are global once included). An `if` is per-fragment when its condition reads a varying (`v_*`),
-gl_FragCoord, gl_FrontFacing, gl_PointCoord or a sample; a local computed from them is not
-seen. Loops and branches without braces count too. A line, or a function's or macro's
-definition line, carrying `// lod-safe: <reason>` is accepted.
+are global once included). A condition is per-fragment when it reads a varying (`v_*`),
+gl_FragCoord, gl_FrontFacing, gl_PointCoord, a sample, or a variable its function assigns from
+one of those (through other variables too, anywhere in the function; parameters are not
+followed). A loop whose own condition is per-fragment has a per-fragment exit. Loops and
+branches without braces count too. A line, or a function's or macro's definition line,
+carrying `// lod-safe: <reason>` is accepted.
 
     python3 tools/check_shader_lod.py [--root DIR]
 
@@ -40,6 +42,8 @@ LOOP = re.compile(r"\b(?:for|while)\s*\(|\bdo\b")
 IF = re.compile(r"\bif\s*\(")
 PER_FRAGMENT = re.compile(r"\b(?:v_\w+|gl_FragCoord|gl_FrontFacing|gl_PointCoord)\b")
 KEYWORDS = {"if", "for", "while", "switch", "return", "else"}
+# `name =`, `name.xy +=`, `name[i] *=` (not ==, <=, >= or !=)
+ASSIGNMENT = re.compile(r"(?<![\w.])([A-Za-z_]\w*)\s*(?:\.\s*[A-Za-z_]\w*|\[[^\];]*\])*\s*(?:[-+*/%&|^]|<<|>>)?=(?!=)")
 
 
 def strip_comments(text):
@@ -119,13 +123,28 @@ def loop_body(text, match):
     return start, statement_end(text, start)
 
 
-def per_fragment_branches(text, start, end, calls):
+def loop_header(text, match, body_end):
+    """What decides whether a loop goes on: a for's or while's parentheses, a do loop's while."""
+    if match.group(0) == "do":
+        trailer = re.match(r"\s*while\s*\(", text[body_end:])
+        if not trailer:
+            return ""
+        open_paren = body_end + trailer.end() - 1
+        return text[open_paren + 1:block_end(text, open_paren, "(", ")") - 1]
+    return text[match.end():block_end(text, match.end() - 1, "(", ")") - 1]
+
+
+def per_fragment(text, calls, locals_):
+    return bool(PER_FRAGMENT.search(text) or calls.search(text) or (locals_ and locals_.search(text)))
+
+
+def per_fragment_branches(text, start, end, calls, locals_=None):
     """(start, end) of each branch, in text[start:end], of an `if` whose condition is per-fragment."""
     branches = []
     for branch in IF.finditer(text, start, end):
         close = block_end(text, branch.end() - 1, "(", ")")
         condition = text[branch.end():close - 1]
-        if not (PER_FRAGMENT.search(condition) or calls.search(condition)):
+        if not per_fragment(condition, calls, locals_):
             continue
         then_end = statement_end(text, close)
         branches.append((close, then_end))
@@ -133,6 +152,36 @@ def per_fragment_branches(text, start, end, calls):
         if re.match(r"else\b", text[other:]):
             branches.append((other + 4, statement_end(text, other + 4)))
     return branches
+
+
+def assigned_value(text, pos):
+    """The expression assigned from pos: up to the `;`, or a `,` or `)` outside brackets."""
+    depth = 0
+    for i in range(pos, len(text)):
+        if text[i] in "([{":
+            depth += 1
+        elif text[i] in ")]}":
+            if depth == 0:
+                return text[pos:i]
+            depth -= 1
+        elif text[i] == ";" or (text[i] == "," and depth == 0):
+            return text[pos:i]
+    return text[pos:]
+
+
+def per_fragment_locals(body, calls):
+    """A pattern of the variables of a function body that hold a per-fragment value: assigned (or
+    declared) from a varying, gl_FragCoord, gl_FrontFacing, gl_PointCoord, a sample or another
+    such variable, anywhere in the body (a loop carries a value back to its top). None for none."""
+    assignments = [(m.group(1), assigned_value(body, m.end())) for m in ASSIGNMENT.finditer(body)]
+    names = set()
+    while True:
+        known = re.compile(r"\b(?:" + "|".join(map(re.escape, sorted(names))) + r")\b") if names else None
+        grown = {name for name, value in assignments if name not in names and
+                 (PER_FRAGMENT.search(value) or calls.search(value) or (known and known.search(value)))}
+        if not grown:
+            return known
+        names |= grown
 
 
 def line_of(text, offset):
@@ -187,6 +236,13 @@ def scan(files):
     uses = re.compile(calls.pattern + "|" + r"(?<![\w.])(" + "|".join(sorted(map(re.escape, implicit & macro_names), key=len, reverse=True) or ["(?!x)x"]) + r")\b")
     for path, (clean, safe_lines) in sorted(sources.items()):
         seen = set()
+        functions = []   # (start, end, its per-fragment locals) of each function body
+        for match in FUNCTION_DEF.finditer(clean):
+            if match.group(1) in KEYWORDS:
+                continue
+            body_start = match.end() - 1
+            body_end = block_end(clean, body_start)
+            functions.append((body_start, body_end, per_fragment_locals(clean[body_start:body_end], uses)))
 
         def flag(start, end, why):
             for call in uses.finditer(clean, start, end):
@@ -199,9 +255,11 @@ def scan(files):
 
         for loop in LOOP.finditer(clean):
             start, end = loop_body(clean, loop)
-            branches = per_fragment_branches(clean, start, end, uses)
+            locals_ = next((found for a, b, found in functions if a <= loop.start() < b), None)
+            branches = per_fragment_branches(clean, start, end, uses, locals_)
             exits = re.search(r"\b(?:continue|discard)\b", clean[start:end]) or any(
-                re.search(r"\b(?:break|return)\b", clean[a:b]) for a, b in branches)
+                re.search(r"\b(?:break|return)\b", clean[a:b]) for a, b in branches) or \
+                per_fragment(loop_header(clean, loop, end), uses, locals_)
             if exits:
                 flag(start, end, "in a loop with a per-fragment exit")
             for a, b in branches:

@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine{
@@ -213,6 +214,9 @@ namespace jasperengine{
         // a project warns past this many builtin:lit variants (each one is a compile and an
         // exported shader per backend)
         static const int VARIANT_WARNING = 64;
+        // the distinct builtin:lit variants among drawn submeshes: (litDefineBits, shaderProperties)
+        // pairs, the second the whole variant key
+        static size_t countLitVariants(const std::vector<std::pair<uint64_t, uint64_t>>& drawn);
 
         static const std::vector<PbrLobeInfo>& getLobes();
         static const PbrLobeInfo& getLobe(PbrLobe lobe);

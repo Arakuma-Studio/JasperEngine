@@ -25,6 +25,7 @@
 #include "Backend.h"
 #include "Out.h"
 #include "Engine.h"
+#include "pixelart/PixelPerfectEditor.h"
 #include "util/Util.h"
 #include "window/PlayInput.h"
 #include "animation/AnimationClipAppHooks.h"
@@ -32,7 +33,9 @@
 #include "pose/PoseViewportLogic.h"
 #include "window/AnimationWindowClip.h"
 #include "window/PoseAnimationWindow.h"
+#include "window/SpritePreviewWindow.h"
 #include "navigation/NavigationEditor.h"
+#include "navigation/NavPathTester.h"
 #include "sceneview/SceneViewController.h"
 #include "search/SearchPalette.h"
 #include "shortcuts/DefaultCommands.h"
@@ -46,6 +49,7 @@
 #include "widget/CurveField.h"
 #include "widget/GradientField.h"
 #include "window/InputActionsWindow.h"
+#include "window/AnimationStatisticsWindow.h"
 #include "window/JobsMemoryWindow.h"
 #include "window/vcs/VcsUi.h"
 #include "voxel/VoxelBrushTool.h"
@@ -234,6 +238,7 @@ void editor::App::registerCommands(){
     }
     enable("assets.createAnimationClip", []() { return static_cast<bool>(animationClipAppHooks().createClipAsset); });
     enable("assets.createSoundEventFromClips", [this]() { return projectWindow->hasAudioSelection(); });
+    enable("assets.createSpriteAtlasFromSelection", [this]() { return projectWindow->hasSpriteSelection(); });
     bind("soundEvent.audition", [this](const CommandArgs&) { inspectorWindow->requestSoundEventAudition(); },
          [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()); });
     bind("soundEvent.matchLevels", [this](const CommandArgs&) { inspectorWindow->requestSoundEventMatchLevels(); },
@@ -311,8 +316,23 @@ void editor::App::registerCommands(){
     };
     onView("sceneView.hideSelection", [](SceneViewController& view, SceneProject& scene) { view.hideSelection(scene); });
     onView("sceneView.showAll", [](SceneViewController& view, SceneProject& scene) { view.showAll(scene); });
+    // S41: the Pixel Zoom's 1x and Game (a 2D scene drawn through a Pixel Perfect Camera)
+    auto pixelScene = [this]() {
+        const SceneProject* scene = project.getSelectedScene();
+        return scene && scene->sceneRender && scene->sceneType == SceneType::SCENE_2D && pixelart::scenePixelPerfect(scene);
+    };
+    bind("sceneView.pixelZoom1x", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, 1.0f);
+    }, pixelScene, noDrag);
+    bind("sceneView.pixelZoomGame", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, sceneWindow->gamePixelZoom(*scene));
+    }, pixelScene, noDrag);
     onView("sceneView.togglePickLock", [](SceneViewController& view, SceneProject& scene) { view.togglePickLockSelection(scene); });
     onView("sceneView.measure", [](SceneViewController& view, SceneProject& scene) { view.setMeasuring(scene, !view.isMeasuring(scene.id)); });
+    // the Path Tester (S75 R25): in the selected scene's view, edit or play
+    bind("navigation.pathTester", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) NavPathTester::get().toggle(*scene);
+    }, sceneShown, noDrag);
     onView("sceneView.deleteMeasure", [](SceneViewController& view, SceneProject& scene) { view.deleteMeasure(scene, view.selectedMeasure(scene.id)); },
            [](SceneViewController& view, SceneProject& scene) { return view.hasSelectedMeasure(scene.id); });
     // under the pointer it must not take Delete from a panel that claims it
@@ -414,6 +434,7 @@ void editor::App::registerCommands(){
     // ---- Animation window (clip mode) and Pose Animation window: their own commands
     AnimationWindowClip::bindCommands(catalog, [this]() { return animationWindow->getClipMode(); });
     poseAnimationWindow->bindCommands(catalog, [this]() { return poseKeysActive(); }, [this]() { return poseKeysFromSceneView(); });
+    spritePreviewWindow->bindCommands(catalog, [this]() { return spritePreviewWindow->isFocused(); });
 
     // ---- The Sound Browser, while it has focus: keys typed into its search stay text
     auto browser = [&bind, this](const char* id, std::function<void()> run, bool whileTyping = false) {
@@ -485,6 +506,7 @@ void editor::App::registerPanelClaims(){
                  {Verb::Paste, {{}, [this]() { return noiseGraphWindow->canPaste(); }, [this]() { noiseGraphWindow->paste(); }}},
                  {Verb::Duplicate, {{}, [this]() { return noiseGraphWindow->canDuplicate(); }, [this]() { noiseGraphWindow->duplicateSelection(); }}}}});
     claims.add({"Jobs & Memory", [this]() { return jobsMemoryWindow->isFocused(); }, {}});
+    claims.add({"Animation Statistics", [this]() { return animationStatisticsWindow->isFocused(); }, {}});
     claims.add({"Project", [this]() { return projectWindow->isFocused(); },
                 {{Verb::Delete, own("project.delete")}, {Verb::Copy, own("project.copy")}, {Verb::Cut, own("project.cut")},
                  {Verb::Paste, own("project.paste")}, {Verb::SelectAll, own("project.selectAll")}, {Verb::Rename, own("project.rename")},
@@ -583,6 +605,7 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (soundBrowserWindow->isFocused()) state.panels.push_back(ShortcutContext::SoundBrowser);
     if (audioCapturesWindow->isFocused()) state.panels.push_back(ShortcutContext::AudioCaptures);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
+    if (spritePreviewWindow->isFocused()) state.panels.push_back(ShortcutContext::SpritePreview);
     return state;
 }
 

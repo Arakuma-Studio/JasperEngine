@@ -199,3 +199,17 @@ async def test_detached_and_merge_state(ed: Editor):
         git(ed, "merge", "--abort")
     status = await ed.call("get_vcs_status", refresh=True)
     ed.check("operation" not in status["branch"], f"the merge is over: {status['branch']}")
+
+
+async def test_renamed_scene_diffs_against_its_source(ed: Editor):
+    """A staged rename compares with the file it came from (its new path is not in HEAD)."""
+    await setup(ed)
+    text = (ed.project / SCENE).read_text()
+    (ed.project / "Level.scene").write_text(text.replace("id: 1\nname: Main Scene\n", "id: 7001\nname: Level\n", 1))
+    git(ed, "add", "Level.scene")
+    git(ed, "commit", "-q", "-m", "a level", "--", "Level.scene")
+    git(ed, "mv", "Level.scene", "Level Moved.scene")
+    await ed.call("get_vcs_status", refresh=True)
+    diff = await ed.call("diff_scene", scene="Level Moved.scene", source="disk")
+    # (the asset guid the editor gives the new path may differ: GameObjects are what must match)
+    ed.check((diff.get("added"), diff.get("removed")) == (0, 0), f"the same GameObjects as its source: {diff}")

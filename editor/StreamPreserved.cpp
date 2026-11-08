@@ -695,6 +695,20 @@ void StreamLoad::unreadableValue(const YAML::Node& value, const std::string& rea
     valueNotRead(value, LoadIssueKind::InvalidValue, invalidMessage(reason), std::string());
 }
 
+void StreamLoad::fallbackValue(const YAML::Node& value, const std::string& message) {
+    if (!value)
+        return;
+    Frame* frame = currentFrame;
+    if (!frame) {
+        if (!ScopedLoadReport::current())
+            return;
+        recordLoadIssue(makeIssue(LoadIssueKind::Fallback, LoadIssueFate::Info, currentRegistry, currentEntity, "", "", message, value));
+        return;
+    }
+    recordLoadIssue(makeIssue(LoadIssueKind::Fallback, LoadIssueFate::Info, frame->registry, frame->entity, frame->component,
+                              StreamLoad::locate(frame->node, value), message, value));
+}
+
 void StreamLoad::unknownEnumValue(const YAML::Node& value, const char* typeName, const std::vector<std::string>& names) {
     const bool scalar = value && value.IsScalar();
     const std::string text = scalar ? value.Scalar() : std::string();

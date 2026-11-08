@@ -520,7 +520,7 @@ struct FoliageSystem::Impl {
     // -------------------------------------------------------------------------------- meshes
 
     bool loadPrototypeMesh(Entity entity, const std::string& path) {
-        return scene->getSystem<MeshSystem>()->loadFoliageMesh(entity, path);
+        return scene->getSystem<MeshSystem>()->loadPlacedModel(entity, path, true);
     }
 
     // R6: one mesh load per layer, on the Background path; true once it is drawn

@@ -16,6 +16,7 @@
 #include "component/TranslateTracksComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/InstancedMeshComponent.h"
+#include "pixelart/PixelSnap.h"
 
 #include "Scene.h"
 #include "object/TerrainEdit.h"
@@ -24,6 +25,7 @@
 #include "animation/ModelSubClips.h"
 #include "animation/VertexAnimation.h"
 #include "buffer/InterleavedBuffer.h"
+#include "thread/MainThreadQueue.h"
 #include "io/FileData.h"
 #include "io/Data.h"
 #include "io/ResourcePack.h"
@@ -31,6 +33,9 @@
 #include "pool/ModelPool.h"
 #include "pool/TexturePool.h"
 #include "pool/TextureDataPool.h"
+#include "sprite/SpriteFrameGeometry.h"
+#include "sprite/SpriteSheetPool.h"
+#include "sprite/SpriteSheetSources.h"
 #include "thread/ResourceProgress.h"
 #include "io/AssetIOService.h"
 #include "subsystem/RenderSystem.h"
@@ -810,7 +815,8 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
         pivotPos.y = sprite.height / 2.0;
     }else if (sprite.pivotPreset == PivotPreset::LEFT_CENTER){
         pivotPos.y = sprite.height / 2.0;
-    }else if (sprite.pivotPreset == PivotPreset::CENTER){
+    }else if (sprite.pivotPreset == PivotPreset::CENTER || sprite.pivotPreset == PivotPreset::FRAME){
+        // inline frames carry no pivot: From Frame is the centre on a legacy sprite
         pivotPos.x = sprite.width / 2.0;
         pivotPos.y = sprite.height / 2.0;
     }
@@ -818,6 +824,13 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
     if (camera.type == CameraType::CAMERA_UI){
         pivotPos.y = sprite.height - pivotPos.y;
     }
+
+    // the quad in world units: the pixel size over the Pixels Per Unit (S41 R6; 1 by default,
+    // exact: the vertices are the pixel sizes then)
+    const float ppu = resolvePixelsPerUnit(sprite.pixelsPerUnit);
+    pivotPos = Vector2(pivotPos.x / ppu, pivotPos.y / ppu);
+    const float quadWidth = (float)sprite.width / ppu;
+    const float quadHeight = (float)sprite.height / ppu;
 
     if (grid > 1){
         createSpriteGrid(sprite, mesh, texWidth, texHeight, pivotPos, grid);
@@ -834,9 +847,9 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
     }
 
     mesh.buffer.addVector3(attVertex, Vector3(-pivotPos.x, -pivotPos.y, 0));
-    mesh.buffer.addVector3(attVertex, Vector3(sprite.width-pivotPos.x, -pivotPos.y, 0));
-    mesh.buffer.addVector3(attVertex, Vector3(sprite.width-pivotPos.x,  sprite.height-pivotPos.y, 0));
-    mesh.buffer.addVector3(attVertex, Vector3(-pivotPos.x,  sprite.height-pivotPos.y, 0));
+    mesh.buffer.addVector3(attVertex, Vector3(quadWidth-pivotPos.x, -pivotPos.y, 0));
+    mesh.buffer.addVector3(attVertex, Vector3(quadWidth-pivotPos.x,  quadHeight-pivotPos.y, 0));
+    mesh.buffer.addVector3(attVertex, Vector3(-pivotPos.x,  quadHeight-pivotPos.y, 0));
 
     Attribute* attTexcoord = mesh.buffer.getAttribute(AttributeType::TEXCOORD1);
 
@@ -920,11 +933,14 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
 // exactly, so the AABB is the quad's
 void MeshSystem::createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
                                   Vector2 pivotPos, int grid){
-    const float x0 = -pivotPos.x;
-    const float x1 = sprite.width - pivotPos.x;
-    const float y0 = -pivotPos.y;
-    const float y1 = sprite.height - pivotPos.y;
+    // world units, as createSprite's quad (pivotPos is in them already)
+    const float ppu = resolvePixelsPerUnit(sprite.pixelsPerUnit);
+    buildSpriteGrid(sprite, mesh, texWidth, texHeight, -pivotPos.x, -pivotPos.y,
+                    (float)sprite.width / ppu - pivotPos.x, (float)sprite.height / ppu - pivotPos.y, grid);
+}
 
+void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
+                                 float x0, float y0, float x1, float y1, int grid, bool keepIndices){
     float texCutRatioW = 0;
     float texCutRatioH = 0;
     if (texWidth != 0 && texHeight != 0){
@@ -969,6 +985,29 @@ void MeshSystem::createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, 
         }
     }
 
+    // the grid's bounds are its corners' (calculateMeshAABB's result, without its buffer map: a
+    // frame change allocates nothing, S45 R26)
+    auto cornerBounds = [&](){
+        mesh.verticesAABB = AABB(std::min(x0, x1), std::min(y0, y1), 0.0f, std::max(x0, x1), std::max(y0, y1), 0.0f);
+        mesh.bonesAABB.clear();
+        mesh.skinnedAABB.setNull();
+        mesh.aabb = mesh.verticesAABB;
+        mesh.needUpdateAABB = true;
+        mesh.pickGeometryHash = 0;
+    };
+    if (keepIndices){
+        cornerBounds();
+        return;
+    }
+    // the quad: its indices without an allocation
+    if (grid == 1){
+        static const uint16_t quadIndices[] = {0, 1, 3, 0, 3, 2};
+        mesh.indices.clear();
+        mesh.indices.setValues(0, mesh.indices.getAttribute(AttributeType::INDEX), 6, (char*)&quadIndices[0], sizeof(uint16_t));
+        cornerBounds();
+        return;
+    }
+
     // two triangles per cell, wound as the quad's (0, 1, 2) (0, 2, 3)
     std::vector<uint16_t> indices;
     indices.reserve((size_t)grid * grid * 6);
@@ -990,6 +1029,50 @@ void MeshSystem::createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, 
         indices.size(), (char*)&indices[0], sizeof(uint16_t));
 
     calculateMeshAABB(mesh);
+}
+
+// The 9-slice of a sheet frame (S45 R6): 16 vertices and 54 indices on the sprite's own buffer,
+// with the quad's normals, tangent and colour
+void MeshSystem::buildSpriteSliced(SpriteComponent& sprite, MeshComponent& mesh, const SpriteSlicedMesh& sliced){
+    Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
+    Attribute* attTexcoord = mesh.buffer.getAttribute(AttributeType::TEXCOORD1);
+    Attribute* attNormal = mesh.buffer.getAttribute(AttributeType::NORMAL);
+    Attribute* attTangent = mesh.buffer.getAttribute(AttributeType::TANGENT);
+    Attribute* attColor = mesh.buffer.getAttribute(AttributeType::COLOR);
+    const Vector4 tangent = Vector4(1.0f, 0.0f, 0.0f, flatTangentHandedness(sprite.flipY));
+    for (int row = 0; row < 4; row++){
+        for (int column = 0; column < 4; column++){
+            mesh.buffer.addVector3(attVertex, Vector3(sliced.x[column], sliced.y[row], 0));
+            mesh.buffer.addVector2(attTexcoord, Vector2(sliced.u[column], sliced.v[row]));
+            mesh.buffer.addVector3(attNormal, Vector3(0.0f, 0.0f, 1.0f));
+            mesh.buffer.addVector4(attTangent, tangent);
+            mesh.buffer.addVector4(attColor, Vector4(1.0f, 1.0f, 1.0f, 1.0f));
+        }
+    }
+    mesh.indices.clear();
+    mesh.indices.setValues(0, mesh.indices.getAttribute(AttributeType::INDEX), SPRITE_SLICED_INDICES,
+                           (char*)spriteSlicedIndices(), sizeof(uint16_t));
+    calculateSpriteAABB(mesh);
+}
+
+// calculateMeshAABB for a sprite's own buffer (no external buffers, no bones), without its buffer
+// map: a sheet sprite's frame change allocates nothing (S45 R26)
+void MeshSystem::calculateSpriteAABB(MeshComponent& mesh){
+    mesh.verticesAABB.setNull();
+    mesh.bonesAABB.clear();
+    mesh.skinnedAABB.setNull();
+    Attribute* position = mesh.buffer.getAttribute(AttributeType::POSITION);
+    if (position && position->getDataType() == AttributeDataType::FLOAT){
+        const int count = int(position->getCount());
+        for (int v = 0; v < count; v++){
+            mesh.verticesAABB.merge(mesh.buffer.getVector3(position, v));
+        }
+    }
+    if (mesh.verticesAABB.isNull())
+        mesh.verticesAABB = AABB::ZERO;
+    mesh.aabb = mesh.verticesAABB;
+    mesh.needUpdateAABB = true;
+    mesh.pickGeometryHash = 0;
 }
 
 bool MeshSystem::createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh){
@@ -1110,6 +1193,14 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
     std::vector<TilemapAcceptedTile> acceptedTiles;
     acceptedTiles.reserve(tilemap.numTiles);
 
+    // the quads in world units: the tiles' pixels over the Pixels Per Unit (S41 R6); under a
+    // Pixel Perfect Camera each edge is rounded to the texel grid on its own (R13), so the
+    // edge two neighbours share is bit for bit the same value and the vertex snap moves both
+    const float ppu = resolvePixelsPerUnit(tilemap.pixelsPerUnit);
+    auto tileEdge = [&tilemap, ppu](float pixels){
+        return (tilemap.roundTileEdges ? pixelart::snap(pixels) : pixels) / ppu;
+    };
+
     unsigned int numTiles = 0;
     unsigned int reserveTiles = tilemap.reserveTiles;
 
@@ -1141,10 +1232,14 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
         if (tilemap.tiles[i].position.y < 0) tilemap.tiles[i].position.y = 0;
 
         Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
-        mesh.buffer.addVector3(attVertex, Vector3(tilemap.tiles[i].position.x, tilemap.tiles[i].position.y, 0));
-        mesh.buffer.addVector3(attVertex, Vector3(tilemap.tiles[i].position.x + tilemap.tiles[i].width, tilemap.tiles[i].position.y, 0));
-        mesh.buffer.addVector3(attVertex, Vector3(tilemap.tiles[i].position.x + tilemap.tiles[i].width, tilemap.tiles[i].position.y + tilemap.tiles[i].height, 0));
-        mesh.buffer.addVector3(attVertex, Vector3(tilemap.tiles[i].position.x, tilemap.tiles[i].position.y + tilemap.tiles[i].height, 0));
+        const float tileX0 = tileEdge(tilemap.tiles[i].position.x);
+        const float tileX1 = tileEdge(tilemap.tiles[i].position.x + tilemap.tiles[i].width);
+        const float tileY0 = tileEdge(tilemap.tiles[i].position.y);
+        const float tileY1 = tileEdge(tilemap.tiles[i].position.y + tilemap.tiles[i].height);
+        mesh.buffer.addVector3(attVertex, Vector3(tileX0, tileY0, 0));
+        mesh.buffer.addVector3(attVertex, Vector3(tileX1, tileY0, 0));
+        mesh.buffer.addVector3(attVertex, Vector3(tileX1, tileY1, 0));
+        mesh.buffer.addVector3(attVertex, Vector3(tileX0, tileY1, 0));
 
         if (tilemap.width < tilemap.tiles[i].position.x + tilemap.tiles[i].width)
             tilemap.width = static_cast<unsigned int>(tilemap.tiles[i].position.x + tilemap.tiles[i].width);
@@ -1220,10 +1315,8 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
         // only matches the loop counter while no tile is skipped — an invalidated
         // rectId or an empty tile past the reserve budget shifts every later tile.
         const unsigned int vertexBase = (numTiles - 1) * 4;
-        const float tileX = tilemap.tiles[i].position.x;
-        const float tileY = tilemap.tiles[i].position.y;
         acceptedTiles.push_back({vertexBase, (unsigned int)submeshId, 0,
-            AABB(Vector3(tileX, tileY, 0), Vector3(tileX + tilemap.tiles[i].width, tileY + tilemap.tiles[i].height, 0))});
+            AABB(Vector3(tileX0, tileY0, 0), Vector3(tileX1, tileY1, 0))});
 
     }
 
@@ -1308,6 +1401,11 @@ void MeshSystem::setSpriteFrameRect(MeshComponent& mesh, SpriteComponent& sprite
     // The first slot exists before createSprite sets numSubmeshes, so scripts can
     // select a frame while configuring a newly constructed sprite.
 
+    // a legacy sprite drawn from an atlas page (S45 R8): its frames are the source texture's
+    if (!frameRect.isNormalized() && sprite.inlineAtlas && !sprite.inlineAtlas->page.empty() &&
+        mesh.submeshes[0].material.baseColorTexture.getPath() == sprite.inlineAtlas->page && sprite.inlineAtlas->sourceWidth > 0){
+        frameRect = normalizeTileRect(frameRect, (unsigned int)sprite.inlineAtlas->sourceWidth, (unsigned int)sprite.inlineAtlas->sourceHeight);
+    }
     if (!frameRect.isNormalized()){
         Texture& texture = mesh.submeshes[0].material.baseColorTexture;
 
@@ -1330,6 +1428,34 @@ void MeshSystem::setSpriteFrameRect(MeshComponent& mesh, SpriteComponent& sprite
 
     sprite.needUpdateFrameRect = false;
     mesh.submeshes[0].textureRect = frameRect;
+}
+
+namespace{
+    // the page shows the source's frame as last mapped (nobody wrote another rect since)
+    const SpriteInlineAtlas* drawnFromPage(const SpriteComponent& sprite, const MeshComponent& mesh){
+        const SpriteInlineAtlas* atlas = sprite.inlineAtlas.get();
+        if (!atlas || atlas->page.empty() || mesh.submeshes[0].material.baseColorTexture.getPath() != atlas->page) return nullptr;
+        return atlas;
+    }
+}
+
+Rect MeshSystem::spriteSourceRect(const SpriteComponent& sprite, const MeshComponent& mesh){
+    const SpriteInlineAtlas* atlas = drawnFromPage(sprite, mesh);
+    Rect current = mesh.submeshes[0].textureRect;
+    if (atlas && !(current != atlas->pageRect)) return atlas->sourceRect;
+    return current;
+}
+
+std::string MeshSystem::spriteSourceTexture(const SpriteComponent& sprite, const MeshComponent& mesh){
+    const SpriteInlineAtlas* atlas = drawnFromPage(sprite, mesh);
+    return atlas ? atlas->source : mesh.submeshes[0].material.baseColorTexture.getPath();
+}
+
+void MeshSystem::spriteSourceSize(const SpriteComponent& sprite, const MeshComponent& mesh, float& width, float& height){
+    if (const SpriteInlineAtlas* atlas = drawnFromPage(sprite, mesh)){
+        width = (float)atlas->sourceWidth;
+        height = (float)atlas->sourceHeight;
+    }
 }
 
 // createSprite sizes the inset by the frame, mirrored frames only flip the sign
@@ -2479,7 +2605,8 @@ int MeshSystem::materializeGLTFSparseAccessor(tinygltf::Accessor& accessor, Mode
     return denseViewIndex;
 }
 
-int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model){
+int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model,
+                                             const std::vector<std::pair<int, float>>& morphs){
     // Bakes a node's world transform into a copy of a POSITION/NORMAL attribute, into a synthetic
     // tightly-packed FLOAT VEC3 buffer/view. Used by flattened previews and static merged models.
     // Caller must reserve buffers/bufferViews up-front.
@@ -2509,6 +2636,41 @@ int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor,
         return -1;
     }
 
+    // the displacements (float, or normalized bytes and shorts) of one vertex count each
+    struct Displacement {
+        const unsigned char* data;
+        size_t stride;
+        int componentType;
+        float weight;
+    };
+    std::vector<Displacement> displacements;
+    for (const auto& [index, weight] : morphs) {
+        if (!isValidGLTFIndex(index, model.gltfModel->accessors)) {
+            continue;
+        }
+        const tinygltf::Accessor& delta = model.gltfModel->accessors[index];
+        const bool readable = delta.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT ||
+            (delta.normalized && (delta.componentType == TINYGLTF_COMPONENT_TYPE_BYTE || delta.componentType == TINYGLTF_COMPONENT_TYPE_SHORT));
+        if (delta.type != TINYGLTF_TYPE_VEC3 || delta.count != count || !readable ||
+                !isValidGLTFIndex(delta.bufferView, model.gltfModel->bufferViews)) {
+            Log::warn("GLTF blend shape displacement %i cannot be baked; drawn without it", index);
+            continue;
+        }
+        const tinygltf::BufferView& view = model.gltfModel->bufferViews[delta.bufferView];
+        if (!isValidGLTFIndex(view.buffer, model.gltfModel->buffers)) {
+            continue;
+        }
+        const std::vector<unsigned char>& data = model.gltfModel->buffers[view.buffer].data;
+        const size_t deltaStride = static_cast<size_t>(delta.ByteStride(view));
+        const size_t deltaElement = 3 * static_cast<size_t>(tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(delta.componentType)));
+        const size_t deltaBase = view.byteOffset + delta.byteOffset;
+        if (deltaStride < deltaElement || deltaBase + (count - 1) * deltaStride + deltaElement > data.size()) {
+            Log::error("GLTF blend shape displacement range out of bounds");
+            continue;
+        }
+        displacements.push_back({data.data() + deltaBase, deltaStride, delta.componentType, weight});
+    }
+
     tinygltf::Buffer newBuffer;
     newBuffer.data.resize(count * 3 * sizeof(float));
     float* dst = reinterpret_cast<float*>(newBuffer.data.data());
@@ -2516,6 +2678,11 @@ int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor,
         float src[3];
         readGLTFComponents(srcData.data() + base + i * static_cast<size_t>(stride), accessor.componentType, 3, src);
         Vector3 v(src[0], src[1], src[2]);
+        for (const Displacement& displacement : displacements) {
+            float d[3];
+            readGLTFComponents(displacement.data + i * displacement.stride, displacement.componentType, 3, d);
+            v += Vector3(d[0], d[1], d[2]) * displacement.weight;
+        }
         Vector3 r = isNormal ? (normalMatrix * v).normalized() : (matrix * v);
         dst[i * 3 + 0] = r.x;
         dst[i * 3 + 1] = r.y;
@@ -2817,7 +2984,7 @@ bool MeshSystem::hasCustomMeshParenting(Entity modelEntity, const ModelComponent
     return false;
 }
 
-bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason) const {
+bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason, bool bakesMorphs) const {
     auto reject = [reason](const char* message) {
         if (reason) *reason = message;
         return false;
@@ -2828,7 +2995,7 @@ bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std
     }
 
     for (const tinygltf::Primitive& primitive : model.gltfModel->meshes[meshIndex].primitives) {
-        if (!primitive.targets.empty()) {
+        if (!primitive.targets.empty() && !bakesMorphs) {
             return reject("Models with morph targets cannot be merged as static geometry");
         }
         for (const auto& attribute : primitive.attributes) {
@@ -3576,6 +3743,22 @@ float MeshSystem::terrainTexelCoord(float local, float terrainSize, int size){
     return terrain::surfaceTexelCoord(local, terrainSize, size);
 }
 
+// channel 0 of a height or density map texel, 0-1: 8-bit, 16-bit (R16) or 32-bit float (a linear
+// .exr/.hdr map, raw or its CPU-readable cook)
+static float readMapTexel(const unsigned char* pixels, size_t index, int bytesPerChannel){
+    if (bytesPerChannel >= 4){
+        float value;
+        std::memcpy(&value, pixels + index, sizeof(value));
+        return std::isfinite(value) ? value : 0.0f;
+    }
+    if (bytesPerChannel >= 2){
+        // 16-bit little-endian (native unsigned short)
+        const unsigned int value = static_cast<unsigned int>(pixels[index]) | (static_cast<unsigned int>(pixels[index + 1]) << 8);
+        return static_cast<float>(value) / 65535.0f;
+    }
+    return pixels[index] / 255.0f;
+}
+
 float MeshSystem::sampleTerrainHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY){
     return terrain::sampleHeightTexels(pixels, width, height, channels, bytesPerChannel, texelX, texelY);
 }
@@ -3621,13 +3804,7 @@ void MeshSystem::getTerrainHeightRangeArea(TerrainComponent& terrain, float x, f
     auto sampleHeight = [&](int sampleX, int sampleZ){
         const size_t texelIndex = static_cast<size_t>(sampleZ) * static_cast<size_t>(width) + static_cast<size_t>(sampleX);
         const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
-        if (bytesPerChannel >= 2){
-            // 16-bit little-endian (native unsigned short) heightmap sample
-            const unsigned int value = static_cast<unsigned int>(pixels[index]) |
-                                       (static_cast<unsigned int>(pixels[index + 1]) << 8);
-            return terrain.maxHeight * static_cast<float>(value) / 65535.0f;
-        }
-        return terrain.maxHeight * pixels[index] / 255.0f;
+        return terrain.maxHeight * readMapTexel(pixels, index, bytesPerChannel);
     };
 
     // one texel of margin covers the bilinear filter of the vertices on the area border
@@ -3721,8 +3898,21 @@ void MeshSystem::resetTerrainToUnbuilt(TerrainComponent& terrain, MeshComponent&
     terrain.needUpdateTerrain = false;
 }
 
+// a cook in a GPU format only (block-compressed): levels, no CPU pixels for the terrain's readers
+static bool isGpuOnlyData(Texture& texture){
+    if (texture.empty() || texture.isFramebuffer() || !texture.hasData()){
+        return false;
+    }
+    TextureData& data = texture.getData();
+    return data.hasLevels() && !data.getData();
+}
+
 bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
     applyTerrainMapSettings(terrain);
+    // the heights are read on the CPU (collision, placement): a GPU-only cook is cooked again
+    if (isGpuOnlyData(terrain.heightMap)){
+        CookedTextures::requireCpuReadable(terrain.heightMap.getPath());
+    }
 
     // Check heightmap loading state BEFORE clearing buffers to avoid leaving
     // the mesh with empty data when the heightmap is still loading.
@@ -3846,13 +4036,13 @@ void MeshSystem::retryFailedModelLoads(const std::string& filename){
     }
 }
 
-bool MeshSystem::loadFoliageMesh(Entity entity, const std::string& path){
-    // changeRootTransform is off: the terrain places the field, not the file's root transform.
+bool MeshSystem::loadPlacedModel(Entity entity, const std::string& path, bool asyncLoad){
     if (FileData::getFilePathExtension(path).compare("obj") == 0){
-        return loadOBJ(entity, path, true);
+        return loadOBJ(entity, path, asyncLoad);
     }
-    // Keep all geometry on the instanced root, with the file's node transforms baked in.
-    return loadGLTF(entity, path, true, true, false, true);
+    // All geometry on the instanced root, the file's node transforms baked in; the system
+    // places the copy, not the file's root transform
+    return loadGLTFModel(entity, path, asyncLoad, true, false, true, true);
 }
 
 // Sample height and normal in terrain-local space.
@@ -4621,7 +4811,106 @@ void MeshSystem::createTorus(MeshComponent& mesh, float radius, float ringRadius
         mesh.needReload = true;
 }
 
+// A thumbnail: off the main thread, images capped (setImageDecodeMaxDimension), never a game's model
+static bool isPreviewLoad(){
+    return Engine::isAsyncThread() && g_imageDecodeMaxDimension > 0;
+}
+
+std::shared_ptr<tinygltf::Model> MeshSystem::parseGLTFModel(const std::string& filename){
+    std::shared_ptr<tinygltf::Model> model = std::make_shared<tinygltf::Model>();
+
+    std::string err;
+    std::string warn;
+    tinygltf::TinyGLTF loader;
+    loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes});
+    loader.SetImagesAsIs(true); // keep images encoded; decode in parallel below
+
+    const bool res = loadGLTFFile(loader, model.get(), &err, &warn, filename);
+
+    if (!warn.empty())
+        warn = withoutCookedImageWarnings(warn, *model, filename);
+    if (!warn.empty()) {
+        Log::warn("Loading GLTF model (%s): %s", filename.c_str(), warn.c_str());
+    }
+
+    if (!err.empty()) {
+        Log::error("Can't load GLTF model (%s): %s", filename.c_str(), err.c_str());
+        return nullptr;
+    }
+
+    if (!res) {
+        Log::verbose("Failed to load glTF: %s", filename.c_str());
+        return nullptr;
+    }
+
+    decodeGLTFImagesParallel(*model, g_imageDecodeMaxDimension);
+    return model;
+}
+
+std::shared_ptr<ObjModelData> MeshSystem::parseOBJModel(const std::string& filename){
+    std::shared_ptr<ObjModelData> model = std::make_shared<ObjModelData>();
+
+    std::string warn;
+    std::string err;
+    tinyobj::FileReader::externalFunc = readFileToString;
+    const std::string baseDir = FileData::getBaseDir(filename);
+    const bool ret = tinyobj::LoadObj(&model->attrib, &model->shapes, &model->materials, &warn, &err, filename.c_str(), baseDir.c_str());
+
+    if (!warn.empty()) {
+        Log::warn("Loading OBJ model (%s): %s", filename.c_str(), warn.c_str());
+    }
+
+    if (!err.empty()) {
+        Log::error("Can't load OBJ model (%s): %s", filename.c_str(), err.c_str());
+        return nullptr;
+    }
+
+    return ret ? model : nullptr;
+}
+
+bool MeshSystem::isLoadOnMainThread() const{
+    return Engine::isAsyncThread() && !isPreviewLoad() && !MainThreadQueue::isMainThread() && Engine::isSceneRunning(scene);
+}
+
+bool MeshSystem::prepareLoadOnMainThread(Entity entity, const std::string& filename, std::function<void()> commit){
+    const std::string poolKey = getModelFilenameKey(filename);
+    if (FileData::getFilePathExtension(filename) == "obj"){
+        if (!ModelPool::getObj(poolKey)){
+            std::shared_ptr<ObjModelData> parsed = parseOBJModel(filename);
+            if (!parsed){
+                return false;
+            }
+            ModelPool::addObj(poolKey, parsed);
+        }
+    }else if (!ModelPool::getGLTF(poolKey)){
+        std::shared_ptr<tinygltf::Model> parsed = parseGLTFModel(filename);
+        if (!parsed){
+            return false;
+        }
+        ModelPool::addGLTF(poolKey, parsed);
+    }
+
+    Scene* target = scene;
+    MainThreadQueue::post([lifetime = target->getLifetime(), target, entity, commit = std::move(commit)]() {
+        if (!lifetime.expired() && target->isEntityCreated(entity)) {
+            commit();
+        }
+    });
+    return true;
+}
+
 bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncLoad, bool skipEntities, bool changeRootTransform, bool bakeSceneRoot){
+    return loadGLTFModel(entity, filename, asyncLoad, skipEntities, changeRootTransform, bakeSceneRoot, false);
+}
+
+bool MeshSystem::loadGLTFModel(Entity entity, const std::string& filename, bool asyncLoad, bool skipEntities, bool changeRootTransform,
+                               bool bakeSceneRoot, bool placedCopy){
+    if (isLoadOnMainThread()) {
+        return prepareLoadOnMainThread(entity, filename, [this, entity, filename, asyncLoad, skipEntities, changeRootTransform, bakeSceneRoot, placedCopy]() {
+            loadGLTFModel(entity, filename, asyncLoad, skipEntities, changeRootTransform, bakeSceneRoot, placedCopy);
+        });
+    }
+
     const std::string poolKey = getModelFilenameKey(filename);
 
     failedModelLoads.erase(filename); // an explicit load is a new attempt
@@ -4651,7 +4940,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // A merged root owns all renderable geometry. Remove any generated mesh-node entities left
     // by the previously loaded hierarchy before taking MeshComponent references: destroying a
     // child mesh can compact its component array and invalidate an already captured root reference.
-    if (model.mergeStaticMeshes && !Engine::isAsyncThread() && !model.meshNodesMapping.empty()) {
+    const bool preview = isPreviewLoad();
+    if (model.mergeStaticMeshes && !preview && !model.meshNodesMapping.empty()) {
         clearMeshNodeMapping(model);
     }
 
@@ -4670,9 +4960,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     uint64_t buildId = asyncLoad ? std::hash<std::string>{}(getAsyncModelLoadKey(filename)) : 0;
 
-    std::string err;
-    std::string warn;
-
     std::vector<std::string> loadedBuffers;
 
     mesh.numExternalBuffers = 0;
@@ -4681,8 +4968,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     mesh.bonesMatrix.clear();
     mesh.needUpdateBones = false;
     mesh.morphTargetNames.clear();
-
-    bool res = false;
 
     if (asyncLoad){
         if (!meshLoadHoldFile().empty()){
@@ -4704,7 +4989,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 }
             }
         }
-        res = true;
     }else{
         // Try cache before hitting disk. A preview load (a thumbnail, its images decoded
         // downscaled) parses its own copy: it neither takes nor publishes the pooled model.
@@ -4712,34 +4996,13 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         auto cached = sharePool ? ModelPool::getGLTF(poolKey) : nullptr;
         if (cached){
             model.gltfModel = cached;
-            res = true;
         }else{
-            model.gltfModel = std::make_shared<tinygltf::Model>();
-
-            tinygltf::TinyGLTF loader;
-            loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes});
-            loader.SetImagesAsIs(true); // keep images encoded; decode in parallel below
-
-            res = loadGLTFFile(loader, model.gltfModel.get(), &err, &warn, filename);
-
-            if (!warn.empty())
-                warn = withoutCookedImageWarnings(warn, *model.gltfModel, filename);
-            if (!warn.empty()) {
-                Log::warn("Loading GLTF model (%s): %s", filename.c_str(), warn.c_str());
-            }
-
-            if (!err.empty()) {
-                Log::error("Can't load GLTF model (%s): %s", filename.c_str(), err.c_str());
-                return false;
-            }
-
-            if (!res) {
-                Log::verbose("Failed to load glTF: %s", filename.c_str());
+            model.gltfModel = parseGLTFModel(filename);
+            if (!model.gltfModel) {
                 return false;
             }
 
             const int maxImageDim = g_imageDecodeMaxDimension;
-            decodeGLTFImagesParallel(*model.gltfModel, maxImageDim);
 
             // Only cache full-resolution parses. A downscaled preview decode must not be reused
             // as the full-resolution model in the user's scene.
@@ -4785,6 +5048,14 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         if (model.gltfModel->nodes[nodeIdx].skin >= 0) { meshNode = nodeIdx; break; }
     }
 
+    // GPU buffers are a real limit: over it, what finds the pool full does not draw (SokolSystem)
+    const size_t gpuBuffers = static_cast<size_t>(std::count_if(model.gltfModel->bufferViews.begin(), model.gltfModel->bufferViews.end(),
+        [](const tinygltf::BufferView& view) { return view.target != 0 && view.name.rfind(GLTF_SYNTH_PREFIX, 0) != 0; }));
+    if (!preview && gpuBuffers > static_cast<size_t>(Engine::getGpuResourceLimits().buffers)) {
+        Log::error("Model %s has %zu vertex and index buffers, more than the maximum allowed (%i): what does not fit does not draw",
+            filename.c_str(), gpuBuffers, Engine::getGpuResourceLimits().buffers);
+    }
+
     if (meshNodes.empty()) {
         Log::error("GLTF model has no mesh nodes: %s", filename.c_str());
         if (asyncLoad) {
@@ -4810,8 +5081,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             return false;
         }
     }
-    // Building child entities mutates the ECS, so off-thread previews keep the flat path.
-    const bool canUseChildEntities = !mergeMeshNodes && !Engine::isAsyncThread();
+    // A thumbnail shows the model baked into one mesh (no nodes to build, nothing to pose or play).
+    const bool canUseChildEntities = !mergeMeshNodes && !preview;
     // Under an Animation Player the sub-clip paths address one entity per glTF node (spec 9.R3).
     // A reload that keeps its entities keeps their layout: the editor reloads to switch it.
     const bool forceNodeHierarchy = canUseChildEntities && !skipEntities && isNodeHierarchyForced(entity);
@@ -4827,13 +5098,17 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     const bool useChildEntities = canUseChildEntities &&
         (meshNodes.size() > 1 || useNodeHierarchy || anyNodeInstanced);
 
-    // Off-thread previews cannot safely build child/skeleton entities, so bake glTF node globals into
-    // a flat static mesh instead. Skinned nodes are baked too, but a skinned mesh node's own transform
-    // is ignored (the skeleton drives it): they bake with the skin root's default-pose matrix instead
-    // (joint global * inverse bind, identity for a consistent export). Non-skinned nodes bake their own
-    // global transform. (Async is always the flatten path, so useChildEntities is already false here.)
-    bool bakingFlatten = (Engine::isAsyncThread() && (meshNodes.size() > 1 || anyNodeSkinned))
+    // A preview bakes glTF node globals into a flat static mesh. Skinned nodes are baked too, but a
+    // skinned mesh node's own transform is ignored (the skeleton drives it): they bake with the skin
+    // root's default-pose matrix instead (joint global * inverse bind, identity for a consistent
+    // export). Non-skinned nodes bake their own global transform.
+    bool bakingFlatten = (preview && (meshNodes.size() > 1 || anyNodeSkinned))
         || mergeMeshNodes;
+    // A copy a system places (loadPlacedModel) builds no skeleton and never animates its blend
+    // shapes: it stands at rest as static geometry, its bones the identity and the blend shapes'
+    // default weights baked into its positions and normals. Instanced, a textured mesh's blend
+    // shapes alone need 17 vertex inputs, past the 16 every backend has.
+    const bool restPose = placedCopy && !vatGltf;
 
     if (meshNode < 0) {
         meshNode = meshNodes[0];
@@ -4850,7 +5125,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // chunk) bakes the node's whole global transform, as the merged nodes of a model do.
     Matrix4 meshOffset;
     if (!useChildEntities && !bakingFlatten && !anyNodeSkinned &&
-            canBakeGLTFMesh(model, model.gltfModel->nodes[meshNodes[0]].mesh)) {
+            canBakeGLTFMesh(model, model.gltfModel->nodes[meshNodes[0]].mesh, nullptr, restPose)) {
         if (bakeSceneRoot) {
             meshOffset = getGLTFMeshGlobalMatrix(meshNodes[0], model, nodesParent);
         } else {
@@ -4976,6 +5251,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         return false;
     }
 
+    std::set<int> morphLimitReported; // (the glTF meshes: once a load)
+
     unsigned int submeshIndex = 0; // continuous across nodes for the flatten path
     for (int nodeIdx : meshNodes) {
         int gltfMeshIndex = model.gltfModel->nodes[nodeIdx].mesh;
@@ -4985,7 +5262,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
         tinygltf::Mesh& gltfmesh = model.gltfModel->meshes[gltfMeshIndex];
 
-        // For the baked-flatten preview, precompute this node's world matrix (for positions) and its
+        // For the baked flatten path, precompute this node's world matrix (for positions) and its
         // normal matrix (inverse-transpose of the linear part) to bake into the vertices below.
         Matrix4 nodeBakeMatrix;
         Matrix3 nodeBakeNormalMatrix;
@@ -5104,7 +5381,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             // flatten path's one mesh takes its largest skin's)
             if (mesh.bonesMatrix.stored() < nodeSkin->joints.size())
                 mesh.bonesMatrix.resize(nodeSkin->joints.size());
-        }else if (!bakingFlatten && nodeSkin && !nodeSkin->joints.empty()){
+        }else if (!bakingFlatten && !restPose && nodeSkin && !nodeSkin->joints.empty()){
             Log::error("Model %s has a skin of %zu joints, more than %zu",
                 filename.c_str(), nodeSkin->joints.size(), ARRAY_INDEX_LIMIT);
             if (asyncLoad) {
@@ -5288,15 +5565,36 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 int attrBufferView = accessor.bufferView;
                 size_t attrByteOffset = accessor.byteOffset;
                 int byteStride = accessor.ByteStride(model.gltfModel->bufferViews[accessor.bufferView]);
-                if (bakingFlatten && !vatGltf && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
-                    continue; // baked preview is static geometry; drop the skinning attributes
+                if ((bakingFlatten || restPose) && !vatGltf && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
+                    continue; // static geometry (a baked preview, a placed copy); drop the skinning attributes
                 }
                 // (the bakes write floats, also from a quantized normal or tangent)
                 bool bakedToFloat = false;
-                if ((bakingFlatten || bakeMeshOffset) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
+                // a copy at rest: the displacements of the blend shapes its file weighs in
+                std::vector<std::pair<int, float>> morphs;
+                std::string morphKey;
+                if (restPose && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
+                    for (size_t t = 0; t < primitive.targets.size() && t < gltfmesh.weights.size(); t++) {
+                        const float weight = static_cast<float>(gltfmesh.weights[t]);
+                        auto target = primitive.targets[t].find(attrib.first);
+                        if (weight == 0.0f || target == primitive.targets[t].end() ||
+                                !isValidGLTFIndex(target->second, model.gltfModel->accessors)) {
+                            continue;
+                        }
+                        tinygltf::Accessor& delta = model.gltfModel->accessors[target->second];
+                        if (delta.sparse.isSparse && materializeGLTFSparseAccessor(delta, model) < 0) {
+                            continue;
+                        }
+                        morphs.emplace_back(target->second, weight);
+                        uint32_t bits;
+                        std::memcpy(&bits, &weight, sizeof(bits));
+                        morphKey += "|" + std::to_string(target->second) + ":" + std::to_string(bits);
+                    }
+                }
+                if ((bakingFlatten || bakeMeshOffset || !morphs.empty()) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
                     const bool isNormal = attrib.first == "NORMAL";
-                    int baked = synthView(gltfSynthKey(isNormal ? "normal" : "position", accessor, &nodeBakeMatrix), [&]() {
-                        return bakeGLTFTransformedAttribute(accessor, nodeBakeMatrix, nodeBakeNormalMatrix, isNormal, model);
+                    int baked = synthView(gltfSynthKey(isNormal ? "normal" : "position", accessor, &nodeBakeMatrix) + morphKey, [&]() {
+                        return bakeGLTFTransformedAttribute(accessor, nodeBakeMatrix, nodeBakeNormalMatrix, isNormal, model, morphs);
                     });
                     if (baked >= 0) {
                         attrBufferView = baked;
@@ -5470,12 +5768,19 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             int  morphIndex    = 0;
 
             for (auto& morphs : primitive.targets) {
+                if (restPose) {
+                    break; // baked above
+                }
                 // Capacity must follow semantics in the prefix actually loaded. A later,
                 // truncated target must not reduce the shader's attribute capacity.
                 const int supportedMorphTargets = (morphNormals && morphTangents) ? 2
                                                 : (morphNormals || morphTangents) ? 4
                                                 : MAX_MORPHTARGETS;
                 if (morphIndex >= supportedMorphTargets) {
+                    if (!preview && morphLimitReported.insert(gltfMeshIndex).second) {
+                        Log::error("Model %s: mesh '%s' has %zu blend shapes, more than the maximum allowed (%i): the ones over it are left out",
+                            filename.c_str(), gltfmesh.name.c_str(), primitive.targets.size(), supportedMorphTargets);
+                    }
                     break;
                 }
                 for (auto& attribMorph : morphs) {
@@ -5661,10 +5966,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
 
         if (skeletonRoot >= 0) {
-            // Creating the skeleton's bone entities mutates the ECS, which is only safe on the main
-            // thread, so the off-thread thumbnail worker skips it (building bones off-thread desyncs
-            // the BoneComponent ComponentArray maps and crashes when the preview scene is torn down).
-            if (!skipEntities && !Engine::isAsyncThread()) {
+            // A thumbnail is baked, it has no skeleton to pose
+            if (!skipEntities && !preview) {
                 model.bonesNameMapping.clear();
                 model.bonesIdMapping.clear();
 
@@ -5678,8 +5981,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             // The bones and mesh nodes added Transforms since `transform` was taken: the array may
             // have grown (moved), so the root's is read again
             Transform& rootTransform = scene->getComponent<Transform>(entity);
-            if (Engine::isAsyncThread()) {
-                // Off-thread skinned previews are baked into static geometry above (skinning attributes
+            if (preview) {
+                // Skinned previews are baked into static geometry above (skinning attributes
                 // dropped), so there is no skeleton to pose and bonesMatrix stays at the identity it was
                 // reset to at load start. Just refresh the transform so the preview gets framed.
                 rootTransform.needUpdate = true;
@@ -5701,13 +6004,12 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
     }
 
-    if (!Engine::isAsyncThread())
+    if (!preview)
         buildGLTFSkinBindings(entity, model);
 
-    // Animation tracks are also model-generated entities, so the off-thread thumbnail worker skips
-    // building them for the same reason as the skeleton above (a static preview never plays them).
+    // Animation tracks are also model-generated entities (a static preview never plays them).
     // Not either when an Animation Player plays the file's animations as sub-clips (spec 9.R15).
-    if (!skipEntities && !Engine::isAsyncThread()) {
+    if (!skipEntities && !preview) {
         model.animations.clear();
 
         const size_t animationCount = model.animationEntities ? model.gltfModel->animations.size() : 0;
@@ -6015,6 +6317,12 @@ static Vector3 objFaceNormal(const tinyobj::attrib_t& attrib, const std::vector<
 }
 
 bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLoad){
+    if (isLoadOnMainThread()) {
+        return prepareLoadOnMainThread(entity, filename, [this, entity, filename, asyncLoad]() {
+            loadOBJ(entity, filename, asyncLoad);
+        });
+    }
+
     const std::string poolKey = getModelFilenameKey(filename);
 
     failedModelLoads.erase(filename); // an explicit load is a new attempt
@@ -6053,14 +6361,7 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
     mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
     mesh.numSubmeshes = 1;
 
-    std::string warn;
-    std::string err;
-
-    tinyobj::FileReader::externalFunc = readFileToString;
-
     std::string baseDir = FileData::getBaseDir(filename);
-
-    bool ret = false;
 
     if (asyncLoad){
         auto cached = ModelPool::getObj(poolKey);
@@ -6070,26 +6371,13 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
             model.objModel = asyncResult->objModel;
             ModelPool::addObj(poolKey, model.objModel);
         }
-        ret = true;
     }else{
         auto cached = ModelPool::getObj(poolKey);
         if (cached){
             model.objModel = cached;
-            ret = true;
         }else{
-            model.objModel = std::make_shared<ObjModelData>();
-            ret = tinyobj::LoadObj(&model.objModel->attrib, &model.objModel->shapes, &model.objModel->materials, &warn, &err, filename.c_str(), baseDir.c_str());
-
-            if (!warn.empty()) {
-                Log::warn("Loading OBJ model (%s): %s", filename.c_str(), warn.c_str());
-            }
-
-            if (!err.empty()) {
-                Log::error("Can't load OBJ model (%s): %s", filename.c_str(), err.c_str());
-                return false;
-            }
-
-            if (!ret) {
+            model.objModel = parseOBJModel(filename);
+            if (!model.objModel) {
                 return false;
             }
 
@@ -6556,7 +6844,388 @@ void MeshSystem::resetModelToBindPose(Entity entity, ModelComponent& model){
     }
 }
 
+// Sprite:playTag (S44 R38): the tag's frames for the sheet's durations, at the tag's speed;
+// a zero-duration frame shows for one update
+void MeshSystem::stepSpriteTag(SpriteComponent& sprite, double dt){
+    if (!sprite.sheetData || sprite.tagFrames.empty()){
+        return;
+    }
+    const SpriteSheetData& sheet = *sprite.sheetData;
+    const double step = dt * 1000.0 * sprite.tagSpeed;
+    if (step <= 0.0){
+        return;
+    }
+    if (!std::isfinite(step)){
+        return;
+    }
+    if (sprite.tagStep >= sprite.tagFrames.size()){
+        sprite.tagStep = 0;
+    }
+    auto durationOf = [&](size_t i) -> double {
+        const int f = sprite.tagFrames[i];
+        return (f >= 0 && f < sheet.frameCount()) ? (double)sheet.frames[(size_t)f].durationMs : 0.0;
+    };
+    sprite.tagElapsedMs += step;
+    // a large step (a high speed, a long frame) goes round whole loops at once, or ends the
+    // tag, instead of stepping frame by frame: the loop below runs at most one pass
+    double loop = 0.0, rest = 0.0;
+    for (size_t i = 0; i < sprite.tagFrames.size(); i++){
+        loop += durationOf(i);
+        if (i >= sprite.tagStep) rest += durationOf(i);
+    }
+    if (sprite.tagLoop && loop > 0.0 && sprite.tagElapsedMs >= loop){
+        sprite.tagElapsedMs = std::fmod(sprite.tagElapsedMs, loop);
+    }else if (!sprite.tagLoop && sprite.tagElapsedMs >= rest){
+        sprite.tagStep = sprite.tagFrames.size() - 1;
+        sprite.tagPlaying = false;
+        sprite.tagElapsedMs = 0.0;
+        sprite.frame = sprite.tagFrames[sprite.tagStep];
+        return;
+    }
+    while (true){
+        const double duration = durationOf(sprite.tagStep);
+        if (sprite.tagElapsedMs < duration){
+            break;
+        }
+        if (sprite.tagStep + 1 >= sprite.tagFrames.size()){
+            if (!sprite.tagLoop){
+                // finished: the last frame stays
+                sprite.tagPlaying = false;
+                sprite.tagElapsedMs = 0.0;
+                break;
+            }
+            sprite.tagStep = 0;
+        }else{
+            sprite.tagStep++;
+        }
+        sprite.tagElapsedMs -= duration;
+        if (duration <= 0.0){
+            break;
+        }
+    }
+    sprite.frame = sprite.tagFrames[sprite.tagStep];
+}
+
+bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh){
+    // the sheet: loaded once, and again when the pool has a newer version (a reimport); the
+    // previous one stays drawn until the new one is there (no flicker)
+    // another sheet (the Inspector, a script, a drop): its frames from now on
+    if (sprite.sheetData && sprite.loadedSheet != sprite.sheet.path){
+        sprite.sheetData.reset();
+        sprite.builtFrame = -1;
+    }
+    const uint64_t revision = SpriteSheetPool::revision();
+    if (!sprite.sheetData || sprite.sheetRevision != revision){
+        sprite.sheetRevision = revision;
+        const uint64_t generation = SpriteSheetPool::generation(sprite.sheet.path);
+        if (!sprite.sheetData || generation != sprite.sheetGeneration){
+            std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite.sheet.path);
+            if (sheet){
+                sprite.sheetData = std::move(sheet);
+                sprite.loadedSheet = sprite.sheet.path;
+                sprite.sheetGeneration = SpriteSheetPool::generation(sprite.sheet.path);
+                sprite.resolveFrameName = true;
+                sprite.needUpdateSprite = true;
+            }
+        }
+    }
+    if (!sprite.sheetData || sprite.sheetData->frames.empty()){
+        return false;
+    }
+    const SpriteSheetData& sheet = *sprite.sheetData;
+    const int frameCount = (int)sheet.frames.size();
+    // the frame by its saved name (a renamed file or a reordered atlas keeps the frame), else by index
+    if (sprite.resolveFrameName){
+        sprite.resolveFrameName = false;
+        if (!sprite.frameName.empty()){
+            const int named = sheet.findFrame(sprite.frameName);
+            if (named >= 0){
+                sprite.frame = named;
+            }else if (sprite.frame < 0 || sprite.frame >= frameCount){
+                Log::warn("Sprite sheet %s has no frame '%s' and %d frames: showing frame %d",
+                          sprite.sheet.path.c_str(), sprite.frameName.c_str(), frameCount, std::clamp(sprite.frame, 0, frameCount - 1));
+            }
+        }
+    }
+    sprite.frame = std::clamp(sprite.frame, 0, frameCount - 1);
+
+    const SpriteFrame& frame = sheet.frames[(size_t)sprite.frame];
+    // Sliced (S45 R6): a bordered frame as its 9-slice; the lattice's grid does not apply to it
+    const bool sliced = sprite.drawMode == SpriteDrawMode::SLICED && spriteFrameHasBorder(frame);
+    const int grid = sliced ? 1 : requestedSpriteGrid(mesh);
+    const int previousGrid = sprite.builtSliced ? 1 : builtSpriteGrid(mesh);
+    if (!sprite.needUpdateSprite && sprite.frame == sprite.builtFrame && previousGrid == grid && sprite.builtSliced == sliced){
+        return true;
+    }
+
+    if (frame.page >= sheet.pages.size()){
+        return false;
+    }
+    const SpritePage& page = sheet.pages[frame.page];
+    Texture& texture = mesh.submeshes[0].material.baseColorTexture;
+    // a frame on the page already bound needs no path comparison (it copies the path: S45 R26's
+    // zero allocations per frame change)
+    const bool samePage = !sprite.needUpdateSprite && sprite.builtFrame >= 0 && sprite.builtFrame < frameCount &&
+                          sheet.frames[(size_t)sprite.builtFrame].page == frame.page;
+    if (!samePage && texture.getPath() != page.texture){
+        // the page as the base colour texture; the texture keeps the sprite's sampler settings
+        texture.setAlphaBorderAuto(true);
+        texture.setPath(page.texture);
+        mesh.submeshes[0].needUpdateTexture = true;
+    }
+
+    CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
+    if (sprite.automaticFlipY){
+        changeFlipY(sprite.flipY, camera, mesh);
+    }
+    SpriteFrameGeometryInput input;
+    input.width = sprite.width;
+    input.height = sprite.height;
+    input.pivot = sprite.pivotPreset;
+    // the Sprite's own Pixels Per Unit (S41) over its sheet's (the import's, else the project's)
+    input.pixelsPerUnit = sprite.pixelsPerUnit > 0.0f ? sprite.pixelsPerUnit : sheet.pixelsPerUnit;
+    input.pixelRatio = sheet.pixelRatio;
+    input.uiCamera = camera.type == CameraType::CAMERA_UI;
+    input.flipY = sprite.flipY;
+    input.pageWidth = page.width;
+    input.pageHeight = page.height;
+    if (sliced || sprite.builtSliced){
+        // a 9-slice is rebuilt on every frame change (its lattice depends on the frame's border);
+        // back to Simple, the buffer goes back to the quad's size
+        const bool wasSliced = sprite.builtSliced;
+        prepareSpriteMesh(mesh);
+        if (sliced){
+            const SpriteSlicedMesh slicedMesh = spriteFrameSliced(frame, input);
+            mesh.submeshes[0].textureRect = slicedMesh.textureRect;
+            buildSpriteSliced(sprite, mesh, slicedMesh);
+        }else{
+            const SpriteFrameQuad quad = spriteFrameQuad(frame, input);
+            mesh.submeshes[0].textureRect = quad.textureRect;
+            buildSpriteGrid(sprite, mesh, (unsigned int)page.width, (unsigned int)page.height, quad.x0, quad.y0, quad.x1, quad.y1, grid);
+        }
+        mesh.submeshes[0].hasTextureRect = true;
+        sprite.builtSliced = sliced;
+        sprite.frameName = frame.name;
+        sprite.needUpdateFrameRect = false;
+        if (mesh.loaded){
+            // a GPU buffer keeps the size it was created with: 16 vertices and 4 differ
+            if (wasSliced != sliced || (previousGrid != 0 && previousGrid != grid)){
+                mesh.needReload = true;
+            }else{
+                mesh.needUpdateBuffer = true;
+            }
+        }
+        sprite.builtFrame = sprite.frame;
+        sprite.needUpdateSprite = false;
+        return true;
+    }
+
+    const SpriteFrameQuad quad = spriteFrameQuad(frame, input);
+
+    // a frame of another trim on the grid built: the buffer keeps its layout and its indices
+    const bool geometryOnly = !sprite.needUpdateSprite && sprite.builtFrame >= 0 && sprite.builtFrame < frameCount && previousGrid == grid;
+    bool rebuild = !geometryOnly;
+    if (!rebuild){
+        // frames with the same trim geometry only swap the texture rect
+        rebuild = !spriteFrameQuad(sheet.frames[(size_t)sprite.builtFrame], input).sameGeometry(quad);
+    }
+    mesh.submeshes[0].textureRect = quad.textureRect;
+    mesh.submeshes[0].hasTextureRect = true;
+    sprite.frameName = frame.name;
+    sprite.needUpdateFrameRect = false;
+    if (rebuild){
+        if (geometryOnly){
+            mesh.buffer.clear();
+        }else{
+            prepareSpriteMesh(mesh);
+        }
+        buildSpriteGrid(sprite, mesh, (unsigned int)page.width, (unsigned int)page.height, quad.x0, quad.y0, quad.x1, quad.y1, grid, geometryOnly);
+        if (mesh.loaded){
+            // a GPU buffer keeps the size it was created with: another grid reloads the mesh
+            if (previousGrid != 0 && previousGrid != grid){
+                mesh.needReload = true;
+            }else{
+                mesh.needUpdateBuffer = true;
+            }
+        }
+    }
+    sprite.builtFrame = sprite.frame;
+    sprite.needUpdateSprite = false;
+    return true;
+}
+
+// S45 R8: a legacy sprite whose texture an atlas in use packs draws its inline rect from the page
+// (translated, clipped to the member's trim); the saved texture and rect stay the source's
+// (SpriteInlineAtlas). Rechecked when the pool moves on, the rect or the texture changes; a legacy
+// sprite of a project without atlases only compares the pool's revision.
+bool MeshSystem::updateInlineAtlas(SpriteComponent& sprite, MeshComponent& mesh){
+    Submesh& submesh = mesh.submeshes[0];
+    Texture& texture = submesh.material.baseColorTexture;
+    const uint64_t revision = SpriteSheetPool::revision();
+    SpriteInlineAtlasRef state = sprite.inlineAtlas;
+    const bool onPage = state && !state->page.empty() && texture.getPath() == state->page;
+    const bool onSource = state && state->page.empty() && texture.getPath() == state->source;
+
+    std::string source;
+    Rect sourceRect = submesh.textureRect;
+    Rect pending;
+    bool hasPending = false;
+    if (sprite.needUpdateFrameRect && !sprite.pendingFrameRect.isNormalized()){
+        pending = sprite.pendingFrameRect;
+        hasPending = true;
+    }
+    if (state && (onPage || onSource)){
+        source = state->source;
+        Rect current = submesh.textureRect;
+        Rect mapped = onPage ? state->pageRect : state->sourceRect;
+        // someone wrote a frame of the source (setFrame, a clip, the Inspector): map it
+        if (current != mapped) sourceRect = current;
+        else sourceRect = state->sourceRect;
+        Rect stored = state->sourceRect;
+        if (!hasPending && !(sourceRect != stored) && revision == state->revision && !sprite.needUpdateSprite){
+            return onPage;
+        }
+    }else{
+        if (state){
+            // another texture was set: it is the source now (the page's rect means nothing for it)
+            Rect current = submesh.textureRect;
+            if (!state->page.empty() && !(current != state->pageRect)) sourceRect = state->sourceRect;
+            sprite.inlineAtlas.reset();
+            state.reset();
+        }else if (static_cast<uint32_t>(revision) == sprite.inlineAtlasChecked && !sprite.needUpdateSprite && !submesh.needUpdateTexture && !hasPending){
+            return false;
+        }
+        source = texture.getPath();
+    }
+    sprite.inlineAtlasChecked = static_cast<uint32_t>(revision);
+
+    // back to the source texture, as it saves
+    auto restore = [&](){
+        if (onPage){
+            texture.setPath(source);
+            submesh.needUpdateTexture = true;
+            submesh.textureRect = sourceRect;
+            sprite.needUpdateSprite = true;
+        }
+    };
+    if (source.empty() || !SpriteSheetSources::isPacked(source)){
+        restore();
+        sprite.inlineAtlas.reset();
+        return false;
+    }
+    int sourceW = 0, sourceH = 0;
+    if (state && state->source == source && state->sourceWidth > 0){
+        // a frame change of a mapped sprite reads no file
+        sourceW = state->sourceWidth;
+        sourceH = state->sourceHeight;
+    }else if (!SpriteSheetSources::textureSize(source, sourceW, sourceH) || sourceW <= 0 || sourceH <= 0){
+        restore();
+        sprite.inlineAtlas.reset();
+        return false;
+    }
+    Rect pixels = hasPending ? pending : (sourceRect.isNormalized() ? Rect(sourceRect.getX() * sourceW, sourceRect.getY() * sourceH,
+                                                                         sourceRect.getWidth() * sourceW, sourceRect.getHeight() * sourceH)
+                                                                    : sourceRect);
+    if (hasPending){
+        sourceRect = normalizeTileRect(pending, (unsigned int)sourceW, (unsigned int)sourceH);
+        sprite.needUpdateFrameRect = false;
+    }
+    SpriteFrame frame;
+    std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::find(source);
+    // mirrored frames (a negative size) and rects across packed frames draw from the source
+    const bool mirrored = sourceRect.getWidth() < 0.0f || sourceRect.getHeight() < 0.0f;
+    CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+    bool mapped = !mirrored && camera && sheet && SpriteSheetSources::mapInlineRect(source, pixels, frame) && frame.page < sheet->pages.size();
+    // textureScaleFactor: createSprite samples the frame `cut` texels in from each edge; drawn from
+    // the page, the frame is that inner part (clipped to the packed rect), with no UV cut of its own
+    const float cut = sprite.textureScaleFactor;
+    if (mapped && cut > 0.0f){
+        Rect packed = frame.rect;
+        const float innerW = frame.sourceSize.x - 2.0f * cut, innerH = frame.sourceSize.y - 2.0f * cut;
+        const float x0 = std::max(frame.offset.x, cut), y0 = std::max(frame.offset.y, cut);
+        const float x1 = std::min(frame.offset.x + packed.getWidth(), frame.sourceSize.x - cut);
+        const float y1 = std::min(frame.offset.y + packed.getHeight(), frame.sourceSize.y - cut);
+        if (innerW <= 0.0f || innerH <= 0.0f || x1 <= x0 || y1 <= y0){
+            mapped = false;
+        }else{
+            frame.rect = Rect(packed.getX() + (x0 - frame.offset.x), packed.getY() + (y0 - frame.offset.y), x1 - x0, y1 - y0);
+            frame.offset = Vector2(x0 - cut, y0 - cut);
+            frame.sourceSize = Vector2(innerW, innerH);
+        }
+    }
+    if (!mapped){
+        restore();
+        auto* unmapped = new SpriteInlineAtlas();
+        unmapped->source = source;
+        unmapped->sourceRect = sourceRect;
+        unmapped->revision = revision;
+        sprite.inlineAtlas = SpriteInlineAtlasRef(unmapped);
+        if (onPage) return false;
+        submesh.textureRect = sourceRect;
+        return false;
+    }
+    const SpritePage& page = sheet->pages[frame.page];
+    if (sprite.width == 0 && sprite.height == 0){
+        sprite.width = (unsigned int)sourceW;
+        sprite.height = (unsigned int)sourceH;
+    }
+    if (texture.getPath() != page.texture){
+        texture.setAlphaBorderAuto(true);
+        texture.setPath(page.texture);
+        submesh.needUpdateTexture = true;
+    }
+    if (sprite.automaticFlipY){
+        changeFlipY(sprite.flipY, *camera, mesh);
+    }
+    SpriteFrameGeometryInput input;
+    input.width = sprite.width;
+    input.height = sprite.height;
+    // the quad in world units, as createSprite makes it (S41: its Pixels Per Unit, else the project's)
+    input.pixelsPerUnit = resolvePixelsPerUnit(sprite.pixelsPerUnit);
+    // inline frames carry no pivot: From Frame is the centre (createSprite's)
+    input.pivot = sprite.pivotPreset;
+    input.uiCamera = camera->type == CameraType::CAMERA_UI;
+    input.flipY = sprite.flipY;
+    input.pageWidth = page.width;
+    input.pageHeight = page.height;
+    const SpriteFrameQuad quad = spriteFrameQuad(frame, input);
+    const int grid = requestedSpriteGrid(mesh);
+    const int previousGrid = sprite.builtSliced ? 0 : builtSpriteGrid(mesh);
+    submesh.textureRect = quad.textureRect;
+    submesh.hasTextureRect = true;
+    prepareSpriteMesh(mesh);
+    // (a page size of 0: no UV cut, the frame above is already the cut one)
+    buildSpriteGrid(sprite, mesh, cut > 0.0f ? 0u : (unsigned int)page.width, cut > 0.0f ? 0u : (unsigned int)page.height,
+                    quad.x0, quad.y0, quad.x1, quad.y1, grid);
+    if (mesh.loaded){
+        if (sprite.builtSliced || (previousGrid != 0 && previousGrid != grid)){
+            mesh.needReload = true;
+        }else{
+            mesh.needUpdateBuffer = true;
+        }
+    }
+    sprite.builtSliced = false;
+    auto* atlasState = new SpriteInlineAtlas();
+    atlasState->source = source;
+    atlasState->sourceRect = sourceRect;
+    atlasState->page = page.texture;
+    atlasState->pageRect = quad.textureRect;
+    atlasState->sourceWidth = sourceW;
+    atlasState->sourceHeight = sourceH;
+    atlasState->revision = revision;
+    sprite.inlineAtlas = SpriteInlineAtlasRef(atlasState);
+    sprite.needUpdateSprite = false;
+    return true;
+}
+
 bool MeshSystem::createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& mesh){
+    if (!sprite.sheet.empty()){
+        return updateSheetSprite(sprite, mesh);
+    }
+    if (updateInlineAtlas(sprite, mesh)){
+        return true;
+    }
+
     // a lattice started or stopped deforming it, or asks for another grid
     if (!sprite.needUpdateSprite){
         const int built = builtSpriteGrid(mesh);
@@ -6578,6 +7247,7 @@ bool MeshSystem::createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& me
 
         if (createSprite(sprite, mesh, camera)){
             sprite.needUpdateSprite = false;
+            sprite.builtSliced = false;
         }else{
             return false;
         }
@@ -6755,6 +7425,10 @@ void MeshSystem::update(double dt){
         return;
     }
 
+    // the project's Pixels Per Unit changed: what takes it builds again (S41)
+    const bool pixelsPerUnitChanged = Engine::getPixelsPerUnit() != builtPixelsPerUnit;
+    builtPixelsPerUnit = Engine::getPixelsPerUnit();
+
     auto sprites = scene->getComponentArray<SpriteComponent>();
     for (int i = 0; i < sprites->size(); i++){
         SpriteComponent& sprite = sprites->getComponentFromIndex(i);
@@ -6762,21 +7436,35 @@ void MeshSystem::update(double dt){
         Entity entity = sprites->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
+        if (pixelsPerUnitChanged && sprite.pixelsPerUnit <= 0.0f)
+            sprite.needUpdateSprite = true;
+
         if (signature.test(scene->getComponentId<MeshComponent>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
 
+            if (sprite.tagPlaying){
+                stepSpriteTag(sprite, dt);
+            }
             createOrUpdateSprite(sprite, mesh);
         }
     }
 
     // The resolve creates and destroys entities, which can compact the terrain array.
 
+    // a Pixel Perfect Camera's tilemaps round their tile edges to the texel grid (S41 R13)
+    RenderSystem* renderSystem = scene->getSystem<RenderSystem>().get();
+    const bool roundTileEdges = renderSystem && renderSystem->hasPixelSnapVariants();
     auto tilemaps = scene->getComponentArray<TilemapComponent>();
     for (int i = 0; i < tilemaps->size(); i++){
         TilemapComponent& tilemap = tilemaps->getComponentFromIndex(i);
 
         Entity entity = tilemaps->getEntity(i);
         Signature signature = scene->getSignature(entity);
+
+        if (tilemap.roundTileEdges != roundTileEdges || (pixelsPerUnitChanged && tilemap.pixelsPerUnit <= 0.0f)){
+            tilemap.roundTileEdges = roundTileEdges;
+            tilemap.needUpdateTilemap = true;
+        }
 
         if (signature.test(scene->getComponentId<MeshComponent>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);

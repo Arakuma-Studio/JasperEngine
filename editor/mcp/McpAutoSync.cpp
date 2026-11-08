@@ -216,9 +216,10 @@ bool McpAutoSync::isTrackedFile(const std::string& path) {
     if (Util::isScriptFile(path) || Util::isShaderFile(path) || Util::isMaterialFile(path) || Util::isColorLutFile(path)) return true;
     if (isUiCodeFile(path) || isAssetFile(path)) return true;
     const std::string ext = lowerExtension(path);
-    // pose animations and humanoid sidecars: their open documents reload (editor/pose); clips:
-    // their documents reload, AnimationClipPool drops them and their players reload
-    if (ext == ".c" || ext == ".inl" || ext == ".poseanim" || ext == ".humanoid" || Util::isAnimationClipFile(path)) return true;
+    // pose animations and humanoid sidecars: their open documents reload (editor/pose); clips and
+    // a model's .clips sidecar: their documents reload, AnimationClipPool drops them and their
+    // players reload
+    if (ext == ".c" || ext == ".inl" || ext == ".poseanim" || ext == ".humanoid" || ext == ".clips" || Util::isAnimationClipFile(path)) return true;
     // Avatar Masks and Animator Controllers: their documents reload, their pools drop them and
     // their players reload (AnimationClipDocument::filesChanged reaches them)
     if (Util::isAvatarMaskFile(path) || Util::isAnimatorControllerFile(path)) return true;
@@ -911,7 +912,15 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
     for (auto& [rel, pending] : deferred) merge(merged, rel, pending.kind, pending.report);
     deferred.clear();
     if (merged.empty()) {
-        run(nullptr);
+        // what a reload found after the call that reported its change had returned (an import
+        // the watcher's own reload ran, a shader fork's compile): the next call says it
+        Json problems = Json::array();
+        for (const Json& problem : HotReloadService::get().takeLateProblems()) problems.push_back(compactProblems(Json::array({problem}))[0]);
+        if (problems.empty()) {
+            run(nullptr);
+            return;
+        }
+        run(Json{{"changed", Json::array()}, {"problems", uniqueProblems(problems)}, {"source", source}});
         return;
     }
 
@@ -1103,8 +1112,10 @@ void McpAutoSync::attach(Json& result, const Json& report) {
     }
     result["structuredContent"]["external_changes"] = report;
 
-    std::string text = "External changes picked up (files changed on disk since your last call):";
     const Json& changed = report["changed"];
+    // (no change, only what a reload found after the call that reported it)
+    std::string text = changed.empty() ? "Found since your last call by the reload of earlier external changes" :
+                                         "External changes picked up (files changed on disk since your last call):";
     auto has = [&](const char* key, const std::string& rel) {
         if (!report.contains(key)) return false;
         for (const Json& item : report[key]) {

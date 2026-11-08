@@ -105,3 +105,18 @@ Every changed line carries `JasperEngine: flattened uniform arrays` or the comme
   other backends (the engine's test `SokolGlUniformArray` reads it).
 
 Status: to be offered upstream (the clamp; the query is for the tests).
+
+## Invariant positions on Metal
+
+The engine's vertex shaders declare `invariant gl_Position` so a depth pre-pass, the shadow passes
+and the colour pass put a vertex at the same depth, and SPIRV-Cross writes it as
+`[[position, invariant]]`. Metal honours that only in a library compiled with
+`MTLCompileOptions.preserveInvariance`; with `options:nil` an instanced batch (its matrices read from
+a vertex buffer) and the same draw alone (from a uniform block) reached different depths in 11,436
+pixels of `InstancingGoldenGpu.ShadowAndDepthPassesBatch`, none with it.
+
+- `_sg_mtl_compile_options()` (once, never released) sets `preserveInvariance`; `_sg_mtl_compile_library`
+  and sokol_async's `newLibraryWithSource:options:completionHandler:` pass it instead of `nil`. Fast math
+  stays on. Marked `JasperEngine: invariant position`.
+
+Status: to be offered upstream (any sokol user with `invariant` positions has the same problem).

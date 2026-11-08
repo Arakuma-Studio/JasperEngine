@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // W4: Lua/C++ scripts, compile check, code editor sync
+#include "sprite/SpriteSheetPool.h"
+#include "sprite/SpriteSheetSources.h"
 #include "camera/ShakePreset.h"
 #include "io/watch/LinkedFolders.h"
 #include "media/VideoFormats.h"
@@ -116,6 +118,10 @@ std::string extensionOf(const fs::path& path) {
 std::string assetType(const fs::path& path) {
     const std::string p = path.string();
     if (Util::isImageFile(p)) return "texture";
+    // Aseprite files (S44): the sprite, its import settings and outputs
+    if (SpriteSheetPool::isAsepritePath(p)) return "aseprite_sprite";
+    // Sprite Atlases (S45)
+    if (SpriteSheetSources::isAtlasPath(p)) return "sprite_atlas";
     if (Util::isColorLutFile(p)) return "color_lut";
     if (Util::isParticleEffectFile(p)) return "particle_effect";
     if (Util::isModelFile(p)) return "model";

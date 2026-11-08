@@ -5,6 +5,7 @@
 ---The last frame's statistics (Profiler.frameStats)
 ---@class ProfilerFrameStats
 ---@field drawCalls integer
+---@field setPassCalls integer # pipelines applied (Unity's SetPass calls)
 ---@field instances integer
 ---@field triangles integer
 ---@field cpuMs number # the frame's CPU work, presenting and waiting excluded

@@ -10,13 +10,19 @@
 #include "component/TranslateTracksComponent.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "component/MeshPolygonComponent.h"
+#include "pixelart/aseprite/AsepriteSpriteSetup.h"
+#include "sprite/SpriteSheetPool.h"
 #include "widget/ColorField.h"
 #include "voxel/VoxelBrushTool.h"
+#include "pixelart/PixelPerfectEditor.h"
+#include "pixelart/PixelSnap.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "util/EditorScripts.h"
 #include "DocumentFile.h"
 #include "util/PhysicsMaterialAssets.h"
 #include "component/Joint2DComponent.h"
 #include "pose/PoseViewport.h"
+#include "animation/AnimatorDebug.h"
 #include "util/BidiText.h"
 #include "imgui_internal.h"
 
@@ -61,6 +67,7 @@
 #include "sceneview/SurfacePlacement.h"
 #include "util/FluidEditorTools.h"
 #include "util/UIProbe.h"
+#include "navigation/NavPathTester.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/CameraFollowComponent.h"
 #include "subsystem/CameraControlSystem.h"
@@ -670,6 +677,25 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                 if (Util::isAnimationClipFile(path)) clips.push_back(path);
                             }
                             Backend::getApp().dispatchClipDrop(sceneProject->id, selEntity, clips);
+                            focusSceneWindow(*sceneProject);
+                        }
+                    }
+                } else if (SpriteSheetPool::isAsepritePath(droppedRelativePath)) {
+                    // an .aseprite file (S44 R33): onto a Sprite its sheet, onto an Animation
+                    // Player its clips, else a new animated Sprite where it drops; one step
+                    if (sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (ImGui::AcceptDragDropPayload("resource_files")) {
+                            if (!insideAssets) {
+                                Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
+                            } else {
+                                Vector3 dropPosition(0.0f, 0.0f, 0.0f);
+                                if (sceneProject->sceneType == SceneType::SCENE_3D) {
+                                    dropPosition = getDropSurface(sceneProject, x, y, {}).point;
+                                } else if (RayReturn hit = sceneProject->sceneRender->screenToRay(x, y).intersects(Plane(Vector3(0, 0, 1), Vector3(0, 0, 0)))) {
+                                    dropPosition = hit.point;
+                                }
+                                pixelart::aseprite::dropAseprite(project, sceneProject->id, droppedAssetPath, selEntity, NULL_ENTITY, dropPosition);
+                            }
                             focusSceneWindow(*sceneProject);
                         }
                     }
@@ -2186,6 +2212,12 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
             camera->slide(slideX);
             camera->slideUp(slideY);
+            // Pixel Zoom: the world's pixel grid stays on whole view pixels (S41 R21)
+            if (pixelZoomActive(sceneProject)){
+                const Vector3 position = camera->getPosition();
+                camera->setPosition(pixelart::snapToViewPixels(position.x, currentZoom),
+                                    pixelart::snapToViewPixels(position.y, currentZoom), position.z);
+            }
         }
 
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Right) && isMouseInWindow && mouseWheel != 0.0f &&
@@ -2196,6 +2228,15 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }else if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)){
             if (isMouseInWindow && mouseWheel != 0.0f){
                 float zoomFactor = 1.0f - (0.1f * mouseWheel);
+                // Pixel Zoom: 1/8x .. 32x in whole steps, one step per notch (S41 R21)
+                const bool pixelZoom = pixelZoomActive(sceneProject);
+                if (pixelZoom){
+                    SceneRender2D* sceneRender2D = static_cast<SceneRender2D*>(sceneProject->sceneRender);
+                    const int ppu = project->getPixelsPerUnit();
+                    const float current = pixelart::pixelZoomScale(sceneRender2D->getZoom(), ppu);
+                    const float next = pixelart::stepPixelZoom(current, mouseWheel > 0.0f ? 1 : -1);
+                    zoomFactor = pixelart::zoomForPixelScale(next, ppu) / sceneRender2D->getZoom();
+                }
 
                 float mouseX = mousePos.x - windowPos.x;
                 float mouseY = mousePos.y - windowPos.y;
@@ -2207,6 +2248,11 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
                 SceneRender2D* sceneRender2D = static_cast<SceneRender2D*>(sceneProject->sceneRender);
                 sceneRender2D->zoomAtPosition(getWidth(sceneProject->id), getHeight(sceneProject->id), Vector2(mouseX, mouseY), zoomFactor);
+                if (pixelZoom){
+                    const float zoom = sceneRender2D->getZoom();
+                    const Vector3 position = camera->getPosition();
+                    camera->setPosition(pixelart::snapToViewPixels(position.x, zoom), pixelart::snapToViewPixels(position.y, zoom), position.z);
+                }
             }
         }
 
@@ -2229,6 +2275,14 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     if (physics && sceneViewInput && !popupOpen && project->getSelectedSceneId() == sceneId && !io.WantTextInput &&
             ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         escapeTaken = physics->cancelGesture((uint32_t)sceneId);
+    }
+
+    // the Path Tester: Esc ends it (it edits nothing, there is nothing to cancel)
+    if (NavPathTester::get().isActive((uint32_t)sceneId) && sceneViewInput && !popupOpen && !escapeTaken && !io.WantTextInput &&
+            !ImGui::IsAnyItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        NavPathTester::get().stop();
+        sceneProject->needUpdateRender = true;
+        escapeTaken = true;
     }
 
     // Paint Dye: Esc puts the brush down ([ / ] scale it: sceneView.brushSmaller/Larger), while the
@@ -2365,6 +2419,90 @@ void editor::SceneWindow::focusOnEntities(SceneProject* sceneProject, const std:
         }
     }
     focusOnBounds(sceneProject, bounds);
+}
+
+bool editor::SceneWindow::pathTesterInput(SceneProject& sceneProject, float x, float y, bool hovered) {
+    NavPathTester& tester = NavPathTester::get();
+    if (!tester.isActive(sceneProject.id) || !sceneProject.sceneRender) return false;
+    // a bake landed, a surface moved: the answer follows
+    tester.refresh(sceneProject);
+    const ImGuiIO& io = ImGui::GetIO();
+    SceneRender* sceneRender = sceneProject.sceneRender;
+    auto toView = [sceneRender](const Vector3& world, Vector2& screen) { return sceneRender->worldToScreen(world, screen); };
+    bool used = false;
+    if (hovered && !io.KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        // the handles' reach is in view pixels, the pointer in engine pixels
+        const float grab = NavPathTester::HANDLE_PIXELS * canvasEngineScale(sceneProject.id).x;
+        const SceneSurfaceHit hit = viewController->surfaceAt(sceneProject, x, y, {}, true);
+        if (hit.source != SceneSurfaceHit::Source::NONE) tester.press(sceneProject, hit.point, Vector2(x, y), io.KeyShift, toView, grab);
+        used = true;
+    } else if (tester.getDragged() != NavPathTester::Handle::None && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        const SceneSurfaceHit hit = viewController->surfaceAt(sceneProject, x, y, {}, true);
+        if (hit.source != SceneSurfaceHit::Source::NONE) tester.drag(sceneProject, hit.point);
+        used = true;
+    }
+    if (tester.getDragged() != NavPathTester::Handle::None && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) tester.release(sceneProject);
+    return used;
+}
+
+void editor::SceneWindow::drawNavigationHud(SceneProject& sceneProject, ImVec2 canvasMin, ImVec2 canvasSize) {
+    SceneRender* sceneRender = sceneProject.sceneRender;
+    if (!sceneRender) return;
+    const ImVec2 engineScale = canvasEngineScale(sceneProject.id);
+    auto toScreen = [&](const Vector3& world, float& sx, float& sy) {
+        Vector2 engine;
+        if (!sceneRender->worldToScreen(world, engine)) return false;
+        sx = canvasMin.x + engine.x / engineScale.x;
+        sy = canvasMin.y + engine.y / engineScale.y;
+        return true;
+    };
+    // Show Tile Labels: each visible tile's last build at its top (dirty tiles orange)
+    const NavOverlaySettings& nav = sceneProject.displaySettings.navigation;
+    NavigationOverlay* overlay = sceneRender->getNavigationOverlay();
+    if (overlay && nav.enabled && nav.showTileLabels) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const ImVec2 pad = Theme::dpi(ImVec2(4.0f, 2.0f));
+        for (const NavTileLabel& label : overlay->getTileLabels()) {
+            float sx = 0.0f, sy = 0.0f;
+            if (!toScreen(label.world, sx, sy) || sx < canvasMin.x || sy < canvasMin.y || sx > canvasMin.x + canvasSize.x ||
+                    sy > canvasMin.y + canvasSize.y) {
+                continue;
+            }
+            const ImVec2 size = ImGui::CalcTextSize(label.text.c_str());
+            const ImVec2 at(sx - size.x * 0.5f - pad.x, sy - size.y * 0.5f - pad.y);
+            drawList->AddRectFilled(at, ImVec2(at.x + size.x + pad.x * 2.0f, at.y + size.y + pad.y * 2.0f), IM_COL32(20, 20, 24, 190),
+                                    Theme::dpi(4.0f));
+            drawList->AddText(ImVec2(at.x + pad.x, at.y + pad.y), label.dirty ? IM_COL32(255, 160, 60, 255) : IM_COL32(235, 235, 235, 255),
+                              label.text.c_str());
+        }
+    }
+    // the Path Tester's handles: a ring of the reach a press grabs them in, brighter under the pointer
+    NavPathTester& tester = NavPathTester::get();
+    if (tester.isActive(sceneProject.id)) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const ImVec2 mouse = ImGui::GetIO().MousePos;
+        auto handle = [&](bool set, const Vector3& world, ImU32 color, NavPathTester::Handle which) {
+            float sx = 0.0f, sy = 0.0f;
+            if (!set || !toScreen(world, sx, sy)) return;
+            const float reach = NavPathTester::HANDLE_PIXELS;
+            const float dx = mouse.x - sx, dy = mouse.y - sy;
+            const bool hot = tester.getDragged() == which || dx * dx + dy * dy <= reach * reach;
+            drawList->AddCircleFilled(ImVec2(sx, sy), reach * 0.45f, color);
+            drawList->AddCircle(ImVec2(sx, sy), reach, hot ? IM_COL32(255, 255, 255, 255) : (color & 0x00FFFFFF) | 0xA0000000u, 0,
+                                hot ? Theme::dpi(2.0f) : Theme::dpi(1.0f));
+        };
+        handle(tester.hasStart(), tester.getStart(), IM_COL32(60, 240, 80, 255), NavPathTester::Handle::Start);
+        if (tester.usesEnd()) handle(tester.hasEnd(), tester.getEnd(), IM_COL32(255, 60, 60, 255), NavPathTester::Handle::End);
+    }
+
+    // the Path Tester's panel at the top right, under the view gizmo
+    float top = canvasMin.y + Theme::dpi(8.0f);
+    if (sceneProject.sceneType == SceneType::SCENE_3D) top += VIEWPORT_GIZMO_SIZE * getOverlayScale(sceneProject.id) / engineScale.y;
+    NavPathTester::get().drawPanel(sceneProject, canvasMin.x, canvasSize.x, top, toScreen);
+}
+
+void editor::SceneWindow::frameBounds(uint32_t sceneId, const AABB& worldBounds) {
+    focusOnBounds(project->getScene(sceneId), worldBounds);
 }
 
 void editor::SceneWindow::focusOnBounds(SceneProject* sceneProject, const AABB& bounds) {
@@ -2516,6 +2654,17 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         ImGui::EndTable();
     }
 
+    // every Animator's live IK, root motion and feet (S77 R49): view state, saved with the workspace
+    if (sceneProject.sceneType == SceneType::SCENE_3D && beginSection("Animation")) {
+        drawSettingRow(ICON_FA_ROUTE " Root Motion", sceneProject.displaySettings.showRootMotion);
+        ImGui::SetItemTooltip("Each Animator's root: its last %.0f s in red, where its speed and turn lead in green", anim::kAnimatorTrailSeconds);
+        drawSettingRow(ICON_FA_CROSSHAIRS " IK", sceneProject.displaySettings.showIK);
+        ImGui::SetItemTooltip("Targets (green reached, red not), chains, poles, Foot IK rays and hits, locked feet");
+        drawSettingRow(ICON_FA_SHOE_PRINTS " Foot Trails", sceneProject.displaySettings.showFootTrails);
+        ImGui::SetItemTooltip("Foot IK and Foot Lock feet, %.0f s: green planted, yellow to red sliding", anim::kAnimatorTrailSeconds);
+        ImGui::EndTable();
+    }
+
     // the AI Navigation overlay (S19): saved with the workspace, per scene
     if (beginSection("AI Navigation")) {
         NavOverlaySettings& nav = sceneProject.displaySettings.navigation;
@@ -2526,6 +2675,7 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         drawSettingRow("    Show NavGrid", nav.showGrid, !nav.enabled);
         drawSettingRow("    Show Links", nav.showLinks, !nav.enabled);
         drawSettingRow("    Show Obstacles", nav.showObstacles, !nav.enabled);
+        drawSettingRow("    Show Area Overrides", nav.showAreaOverrides, !nav.enabled);
         drawSettingRow("    Show Avoidance", nav.showAvoidance, !nav.enabled);
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
@@ -2540,7 +2690,34 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
             sceneProject.needUpdateRender = true;
             project->saveWorkspaceFile();
         }
+        // S75 diagnostics: what tints the navmesh, the steep collected ground, the tiles' builds
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted("    Color By");
+        ImGui::SetItemTooltip("Areas: the area colours; Islands: each connected part (grey: what the Path Tester's start "
+                              "cannot reach); Tiles: each navmesh tile");
+        ImGui::TableSetColumnIndex(1);
+        int colorBy = (int)nav.colorBy;
+        const char* colorNames[] = {"Areas", "Islands", "Tiles"};
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::Combo("##navcolorby", &colorBy, colorNames, 3)) {
+            nav.colorBy = (NavOverlaySettings::ColorBy)colorBy;
+            sceneProject.needUpdateRender = true;
+            project->saveWorkspaceFile();
+        }
         ImGui::EndDisabled();
+        drawSettingRow("    Show Steep Slopes", nav.showSteepSlopes, !nav.enabled);
+        ImGui::SetItemTooltip("Tint the collected ground steeper than the agent type's Max Slope (red)");
+        drawSettingRow("    Show Tile Labels", nav.showTileLabels, !nav.enabled);
+        ImGui::SetItemTooltip("Each visible tile's last build: time, polygons, size; tiles changed since the bake are orange");
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted(ICON_FA_ROUTE " Path Tester");
+        ImGui::SetItemTooltip("Query paths in the Scene view: Shift+click sets the start, click the end (Esc ends it)");
+        ImGui::TableSetColumnIndex(1);
+        NavPathTester& tester = NavPathTester::get();
+        const bool testing = tester.isActive(sceneProject.id);
+        if (ImGui::Button(testing ? "Stop##navtester" : "Start##navtester", ImVec2(-1, 0))) tester.toggle(sceneProject);
         ImGui::EndTable();
     }
 
@@ -2927,6 +3104,8 @@ void editor::SceneWindow::show() {
                         drawTerrainPreviewDropdown("##SceneTerrain" + std::to_string(sceneProject.id));
                     }
                 }
+                // S41 R21: Pixel Zoom (2D scenes drawn through a Pixel Perfect Camera)
+                drawPixelZoomToolbar(sceneProject);
                 ImGui::SameLine();
                 if (rightX > ImGui::GetCursorPosX()) {
                     ImGui::SetCursorPosX(rightX);
@@ -3065,6 +3244,7 @@ void editor::SceneWindow::show() {
                     ui::registerViewImage(ImGui::GetWindowViewport()->ID, canvasMin,
                                           ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y), sceneProject.sceneRender->getFramebuffer());
                     particleOverlay.draw(project, &sceneProject, canvasMin, canvasAvail);
+                    drawNavigationHud(sceneProject, canvasMin, canvasAvail);
                     drawDrawModeOverlays(sceneProject, canvasMin, ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y));
                     // an item over the image again, after the panel's widgets: the drop targets
                     // below (BeginDragDropTarget) take the last item, and an empty one a line
@@ -3072,6 +3252,11 @@ void editor::SceneWindow::show() {
                     // narrows the view and moves the view gizmo off the view's corner)
                     ImGui::SetCursorScreenPos(canvasMin);
                     ImGui::Dummy(canvasAvail);
+
+                    // S41: the Pixel Grid over the image (Pixel Zoom from 6x)
+                    drawPixelGrid(sceneProject, canvasMin, canvasAvail);
+                    if (!sceneProject.displaySettings.hideCameraView)
+                        drawPixelPerfectFrames(sceneProject, canvasMin);
 
                     // Camera Follow: the selected followers' Bounds and Dead Zone
                     {
@@ -3170,6 +3355,10 @@ void editor::SceneWindow::show() {
                     const bool viewHovered = ImGui::IsWindowHovered();
                     const bool viewFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && project->getSelectedSceneId() == sceneProject.id;
                     const bool pressed = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+                    // the Path Tester takes the left button first (its press is no pick)
+                    if (pathTesterInput(sceneProject, pointerX, pointerY, viewHovered) && pressed) {
+                        suppressLeftMouseUntilRelease[sceneProject.id] = true;
+                    }
                     if (viewController->handleInput(sceneProject, pointerX, pointerY, viewHovered, viewFocused) && pressed) {
                         suppressLeftMouseUntilRelease[sceneProject.id] = true;
                     }
@@ -3343,4 +3532,196 @@ int editor::SceneWindow::getHeight(uint32_t sceneId) const{
 
 float editor::SceneWindow::getOverlayScale(uint32_t sceneId) const {
     return canvasDpi(sceneId) * canvasEngineScale(sceneId).x;
+}
+
+// ---- S41 R21: Pixel Zoom
+
+bool editor::SceneWindow::pixelZoomActive(const SceneProject* sceneProject) const{
+    return sceneProject && sceneProject->sceneType == SceneType::SCENE_2D && sceneProject->displaySettings.pixelZoom &&
+           pixelart::scenePixelPerfect(sceneProject);
+}
+
+float editor::SceneWindow::gamePixelZoom(SceneProject& sceneProject) const{
+    jasperengine::pixelart::PixelPerfectLayout layout;
+    if (pixelart::computeEditLayout(*project, sceneProject.scene, sceneProject.mainCamera, layout))
+        return (float)layout.scale;
+    return 1.0f;
+}
+
+void editor::SceneWindow::setPixelZoom(SceneProject& sceneProject, float scale){
+    if (sceneProject.sceneType != SceneType::SCENE_2D || !sceneProject.sceneRender)
+        return;
+    SceneRender2D* sceneRender2D = static_cast<SceneRender2D*>(sceneProject.sceneRender);
+    const float width = getWidth(sceneProject.id);
+    const float height = getHeight(sceneProject.id);
+    const float zoom = pixelart::zoomForPixelScale(scale, project->getPixelsPerUnit());
+    sceneRender2D->zoomAtPosition(width, height, Vector2(width * 0.5f, height * 0.5f), zoom / sceneRender2D->getZoom());
+    Camera* camera = sceneProject.sceneRender->getCamera();
+    const Vector3 position = camera->getPosition();
+    const float applied = sceneRender2D->getZoom();
+    camera->setPosition(pixelart::snapToViewPixels(position.x, applied), pixelart::snapToViewPixels(position.y, applied), position.z);
+    sceneProject.needUpdateRender = true;
+}
+
+void editor::SceneWindow::drawPixelZoomToolbar(SceneProject& sceneProject){
+    if (sceneProject.sceneType != SceneType::SCENE_2D || !pixelart::scenePixelPerfect(&sceneProject))
+        return;
+    const std::string id = std::to_string(sceneProject.id);
+    bool& on = sceneProject.displaySettings.pixelZoom;
+    ImGui::SameLine(0, Theme::dpi(8.0f));
+    ImGui::PushStyleColor(ImGuiCol_Button, on ? Theme::Colors::ButtonActivated : ImGui::GetStyle().Colors[ImGuiCol_Button]);
+    if (ImGui::Button(("Pixel Zoom##PixelZoom" + id).c_str())){
+        on = !on;
+        project->saveWorkspaceFile();
+    }
+    ImGui::PopStyleColor();
+    ImGui::SetItemTooltip("Zoom in whole pixel steps (1/8x to 32x), the pixel grid on whole screen pixels");
+    UIProbe::item("sceneview.pixel_zoom");
+    // the other R21 display flags of this view (display_settings pixel_grid, pixel_snap_preview,
+    // pixel_move_snap), with or without the zoom
+    const std::string optionsId = "PixelArtOptions" + id;
+    ImGui::SameLine(0, Theme::dpi(2.0f));
+    if (ImGui::Button((std::string(ICON_FA_CARET_DOWN) + "##PixelArtOptionsButton" + id).c_str()))
+        ImGui::OpenPopup(optionsId.c_str());
+    ImGui::SetItemTooltip("Pixel Grid, Snap Preview, Pixel Move Snap");
+    UIProbe::item("sceneview.pixel_options");
+    if (ImGui::BeginPopup(optionsId.c_str())){
+        SceneDisplaySettings& display = sceneProject.displaySettings;
+        if (ImGui::MenuItem("Pixel Grid", nullptr, &display.pixelGrid))
+            project->saveWorkspaceFile();
+        ImGui::SetItemTooltip("Art-pixel edges from 6x");
+        UIProbe::item("sceneview.pixel_grid");
+        if (ImGui::MenuItem("Snap Preview", nullptr, &display.pixelSnapPreview)){
+            sceneProject.needUpdateRender = true;
+            project->saveWorkspaceFile();
+        }
+        ImGui::SetItemTooltip("Draw the snapped sprites on this view's own pixel grid");
+        UIProbe::item("sceneview.pixel_snap_preview");
+        if (ImGui::MenuItem("Pixel Move Snap", nullptr, &display.pixelMoveSnap))
+            project->saveWorkspaceFile();
+        ImGui::SetItemTooltip("Move and size on whole art pixels (Ctrl drags freely)");
+        UIProbe::item("sceneview.pixel_move_snap");
+        ImGui::EndPopup();
+    }
+    if (!on || !sceneProject.sceneRender)
+        return;
+
+    SceneRender2D* sceneRender2D = static_cast<SceneRender2D*>(sceneProject.sceneRender);
+    const float current = pixelart::nearestPixelZoom(pixelart::pixelZoomScale(sceneRender2D->getZoom(), project->getPixelsPerUnit()));
+    const std::string popupId = "PixelZoomList" + id;
+    ImGui::SameLine();
+    if (ImGui::Button((pixelart::pixelZoomLabel(current) + "##PixelZoomReadout" + id).c_str()))
+        ImGui::OpenPopup(popupId.c_str());
+    ImGui::SetItemTooltip("Screen pixels per art pixel (click for the list)");
+    UIProbe::item("sceneview.pixel_zoom_readout");
+    if (ImGui::BeginPopup(popupId.c_str())){
+        for (float step : pixelart::pixelZoomSteps()){
+            if (ImGui::Selectable(pixelart::pixelZoomLabel(step).c_str(), step == current))
+                setPixelZoom(sceneProject, step);
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(("1x##PixelZoom1x" + id).c_str()))
+        setPixelZoom(sceneProject, 1.0f);
+    ImGui::SetItemTooltip("%s", ("One art pixel per screen pixel (" + sceneViewShortcut("sceneView.pixelZoom1x") + ")").c_str());
+    ImGui::SameLine();
+    if (ImGui::Button(("Game##PixelZoomGame" + id).c_str()))
+        setPixelZoom(sceneProject, gamePixelZoom(sceneProject));
+    ImGui::SetItemTooltip("%s", ("The Game view's pixel scale (" + sceneViewShortcut("sceneView.pixelZoomGame") + ")").c_str());
+}
+
+void editor::SceneWindow::drawPixelGrid(SceneProject& sceneProject, const ImVec2& canvasMin, const ImVec2& canvasAvail){
+    if (!pixelZoomActive(&sceneProject) || !sceneProject.displaySettings.pixelGrid || !sceneProject.sceneRender)
+        return;
+    SceneRender2D* sceneRender2D = static_cast<SceneRender2D*>(sceneProject.sceneRender);
+    const float zoom = sceneRender2D->getZoom();
+    const int ppu = project->getPixelsPerUnit();
+    const float scale = pixelart::pixelZoomScale(zoom, ppu);
+    if (scale < 6.0f - 1e-3f)
+        return;
+    // the camera is the view's bottom-left corner, zoom world units per view pixel
+    const ImVec2 engineScale = canvasEngineScale(sceneProject.id);
+    const Vector3 origin = sceneProject.sceneRender->getCamera()->getPosition();
+    const float pixel = 1.0f / (float)std::max(1, ppu);
+    const float viewWidth = canvasAvail.x * engineScale.x;
+    const float viewHeight = canvasAvail.y * engineScale.y;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImU32 color = IM_COL32(255, 255, 255, 31);   // 12 %
+    drawList->PushClipRect(canvasMin, ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y), true);
+    // whole art pixels counted in integers: a float stepped by 1/PPU far from the origin stops
+    // advancing (and the loop would never end)
+    const long long firstX = (long long)std::ceil(origin.x * (float)std::max(1, ppu));
+    const long long countX = (long long)std::ceil(viewWidth * zoom / pixel) + 1;
+    for (long long i = 0; i <= countX; i++){
+        const double x = (double)(firstX + i) * (double)pixel;
+        const float screenX = canvasMin.x + std::round((float)((x - (double)origin.x) / (double)zoom)) / engineScale.x;
+        drawList->AddLine(ImVec2(screenX, canvasMin.y), ImVec2(screenX, canvasMin.y + canvasAvail.y), color, 1.0f);
+    }
+    const long long firstY = (long long)std::ceil(origin.y * (float)std::max(1, ppu));
+    const long long countY = (long long)std::ceil(viewHeight * zoom / pixel) + 1;
+    for (long long i = 0; i <= countY; i++){
+        const double y = (double)(firstY + i) * (double)pixel;
+        // a 2D scene's view is y up from its bottom
+        const float screenY = canvasMin.y + canvasAvail.y - std::round((float)((y - (double)origin.y) / (double)zoom)) / engineScale.y;
+        drawList->AddLine(ImVec2(canvasMin.x, screenY), ImVec2(canvasMin.x + canvasAvail.x, screenY), color, 1.0f);
+    }
+    drawList->PopClipRect();
+}
+
+void editor::SceneWindow::drawPixelPerfectFrames(SceneProject& sceneProject, const ImVec2& canvasMin){
+    if (sceneProject.sceneType != SceneType::SCENE_2D || !sceneProject.sceneRender || !pixelart::scenePixelPerfect(&sceneProject))
+        return;
+    Scene* scene = sceneProject.scene;
+    const Entity cameraEntity = sceneProject.mainCamera;
+    const Transform* transform = scene->findComponent<Transform>(cameraEntity);
+    const PixelPerfectCameraComponent* component = scene->findComponent<PixelPerfectCameraComponent>(cameraEntity);
+    if (!transform || !component)
+        return;
+    const float ppu = (float)project->getPixelsPerUnit();
+    const float referenceWidth = (float)(component->referenceWidth > 0 ? component->referenceWidth : project->getCanvasWidth());
+    const float referenceHeight = (float)(component->referenceHeight > 0 ? component->referenceHeight : project->getCanvasHeight());
+    // the camera draws from its snapped position (R8), its image spanning the base resolution
+    const Vector3 origin = jasperengine::pixelart::snapWorld(transform->worldPosition, project->getPixelsPerUnit());
+    const ImVec2 engineScale = canvasEngineScale(sceneProject.id);
+    SceneRender* sceneRender = sceneProject.sceneRender;
+    auto toScreen = [&](float x, float y, ImVec2& screen){
+        Vector2 engine;
+        if (!sceneRender->worldToScreen(Vector3(x, y, origin.z), engine)) return false;
+        screen = ImVec2(canvasMin.x + engine.x / engineScale.x, canvasMin.y + engine.y / engineScale.y);
+        return true;
+    };
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImU32 color = IM_COL32(128, 255, 128, 220);
+    ImVec2 a, b;
+    if (toScreen(origin.x, origin.y, a) && toScreen(origin.x + referenceWidth / ppu, origin.y + referenceHeight / ppu, b)){
+        drawList->AddRect(ImVec2(std::min(a.x, b.x), std::min(a.y, b.y)), ImVec2(std::max(a.x, b.x), std::max(a.y, b.y)), color, 0.0f, 0,
+                          Theme::dpi(1.0f));
+    }
+    if (component->upscaleMode != PixelUpscaleMode::INTEGER_EXPAND)
+        return;
+    jasperengine::pixelart::PixelPerfectLayout layout;
+    if (!pixelart::computeEditLayout(*project, scene, cameraEntity, layout))
+        return;
+    ImVec2 c, d;
+    if (!toScreen(origin.x, origin.y, c) || !toScreen(origin.x + (float)layout.baseWidth / ppu, origin.y + (float)layout.baseHeight / ppu, d))
+        return;
+    const ImVec2 lo(std::min(c.x, d.x), std::min(c.y, d.y));
+    const ImVec2 hi(std::max(c.x, d.x), std::max(c.y, d.y));
+    // dashed: segments of 6 px with gaps of 4
+    const float dash = Theme::dpi(6.0f), gap = Theme::dpi(4.0f);
+    auto dashed = [&](ImVec2 from, ImVec2 to){
+        const float length = std::sqrt((to.x - from.x) * (to.x - from.x) + (to.y - from.y) * (to.y - from.y));
+        if (length <= 0.0f) return;
+        const ImVec2 dir((to.x - from.x) / length, (to.y - from.y) / length);
+        for (float t = 0.0f; t < length; t += dash + gap){
+            const float end = std::min(length, t + dash);
+            drawList->AddLine(ImVec2(from.x + dir.x * t, from.y + dir.y * t), ImVec2(from.x + dir.x * end, from.y + dir.y * end), color,
+                              Theme::dpi(1.0f));
+        }
+    };
+    dashed(lo, ImVec2(hi.x, lo.y));
+    dashed(ImVec2(hi.x, lo.y), hi);
+    dashed(hi, ImVec2(lo.x, hi.y));
+    dashed(ImVec2(lo.x, hi.y), lo);
 }

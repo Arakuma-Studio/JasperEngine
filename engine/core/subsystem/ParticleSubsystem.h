@@ -131,6 +131,11 @@ namespace jasperengine{
         static bool castWorldRay(const void* context, const float from[3], const float to[3], float radius, uint32_t layers, particles::CollisionHit& hit);
         static bool castWorldRay2D(const void* context, const float from[3], const float to[3], float radius, uint32_t layers, particles::CollisionHit& hit);
 
+        // a seed for a play (Auto Random Seed): the scene's own sequence, never 0. Per scene, so
+        // what a scene plays does not depend on what other scenes (or tests) played before it
+        uint32_t nextSeed();
+        uint32_t seedCounter = 0x9e3779b9u;
+
         particles::ParticleWorld world;
         // the systems whose stop action runs at the end of this frame (Disable, Destroy, Callback)
         std::vector<Entity> stopActions;

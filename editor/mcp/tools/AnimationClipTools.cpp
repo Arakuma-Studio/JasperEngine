@@ -22,10 +22,12 @@
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
+#include "animation/AnimatorAssetIO.h"
 #include "animation/ClipAudio.h"
 #include "animation/ClipBinding.h"
 #include "animation/ClipConverters.h"
 #include "animation/ClipPropertyNames.h"
+#include "animation/ClipReport.h"
 #include "animation/ClipEditorUtil.h"
 #include "animation/AvatarMaskWeights.h"
 #include "animation/HumanoidClip.h"
@@ -37,6 +39,7 @@
 #include "animation/ClipValidation.h"
 #include "animation/PropertyBindings.h"
 #include "animation/KeyframeSampling.h"
+#include "animation/ModelClipSettingsFile.h"
 #include "animation/ModelSubClips.h"
 #include "audio/AudioMixer.h"
 #include "audio/TimelineAudio.h"
@@ -45,6 +48,7 @@
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "sprite/SpriteSheetPool.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeTracksComponent.h"
 #include "component/ModelComponent.h"
@@ -870,7 +874,7 @@ const std::vector<Rejection>& fileModeRejections() {
 const std::vector<Rejection>& sceneModeRejections() {
     static const std::vector<Rejection> table = {
         {"wrap", "wrap"}, {"length", "length"}, {"frame_rate", "frame_rate"}, {"events", "events"},
-        {"events_mode", "events_mode"}, {"root", "root"}, {"create", "create"}};
+        {"events_mode", "events_mode"}, {"root", "root"}, {"create", "create"}, {"root_motion", "root_motion"}};
     return table;
 }
 
@@ -2022,6 +2026,105 @@ std::string rejectedArgument(const Json& args, bool fileMode) {
     return "";
 }
 
+namespace {
+
+Json rootMotionJson(const std::optional<anim::ClipRootMotion>& rootMotion) {
+    if (!rootMotion) return nullptr;
+    return {{"bone", rootMotion->bone}, {"bake_rotation", rootMotion->bakeRotation}, {"bake_position_y", rootMotion->bakePositionY},
+            {"bake_position_xz", rootMotion->bakePositionXZ}};
+}
+
+// root_motion's members onto `rootMotion` (the others kept); false + `error` when it is not that shape
+bool applyRootMotionArg(const Json& arg, anim::ClipRootMotion& rootMotion, std::string& error) {
+    bool valid = arg.is_object();
+    for (auto it = arg.begin(); valid && it != arg.end(); ++it) {
+        valid = it.key() == "bone" ? it.value().is_string()
+              : (it.key() == "bake_rotation" || it.key() == "bake_position_y" || it.key() == "bake_position_xz") && it.value().is_boolean();
+    }
+    if (!valid) {
+        error = "root_motion must be {bone: \"<path>\" (\"\": auto), bake_rotation, bake_position_y, bake_position_xz: true or false}.";
+        return false;
+    }
+    rootMotion.present = true;
+    rootMotion.bone = arg.value("bone", rootMotion.bone);
+    rootMotion.bakeRotation = arg.value("bake_rotation", rootMotion.bakeRotation);
+    rootMotion.bakePositionY = arg.value("bake_position_y", rootMotion.bakePositionY);
+    rootMotion.bakePositionXZ = arg.value("bake_position_xz", rootMotion.bakePositionXZ);
+    return true;
+}
+
+// edit_animation on a model clip with only wrap and root_motion (S77 R53): the clip's import
+// settings, written to <model>.clips as one project undo step. False when the call is not that
+// (the model clip's refusal stands).
+bool editModelClipSettings(const CallPtr& call, Project* project, const std::string& relative, const fs::path& model) {
+    const Json& args = call->args();
+    if (!has(args, "wrap") && !has(args, "root_motion")) return false;
+    for (auto it = args.begin(); it != args.end(); ++it) {
+        if (it.key() != "clip" && it.key() != "wrap" && it.key() != "root_motion" && it.key() != "scene") return false;
+    }
+    anim::SubClipReference reference;
+    anim::parseSubClipReference(assetForm(project, relative), reference);
+    std::vector<anim::ModelClipInfo> clips;
+    std::string error;
+    if (!anim::listModelFileClips(reference.model, clips, &error)) {
+        call->fail("clip: " + error);
+        return true;
+    }
+    // a name, else an index (the pool's rule)
+    const anim::ModelClipInfo* clip = nullptr;
+    for (const anim::ModelClipInfo& info : clips) {
+        if (info.name == reference.clip) clip = &info;
+    }
+    if (!clip && !reference.clip.empty() && std::all_of(reference.clip.begin(), reference.clip.end(), [](unsigned char c) { return std::isdigit(c) != 0; })) {
+        for (const anim::ModelClipInfo& info : clips) {
+            if (std::to_string(info.index) == reference.clip) clip = &info;
+        }
+    }
+    if (!clip) {
+        call->fail("clip: no animation \"" + reference.clip + "\" in " + projectRel(project, model) + " (get_asset_info lists its animations).");
+        return true;
+    }
+    std::optional<ClipWrapMode> wrap;
+    if (has(args, "wrap")) {
+        ClipWrapMode value = ClipWrapMode::Once;
+        if (!args["wrap"].is_string() || !anim::wrapFromName(lower(args["wrap"].get<std::string>()), value) || value == ClipWrapMode::Default) {
+            call->fail("wrap " + args["wrap"].dump() + " is not valid: use " + wrapNames() + ".");
+            return true;
+        }
+        wrap = value;
+    }
+    anim::ModelClipSettings settings;
+    if (!readModelClipSettingsFile(model, settings, error)) {
+        call->fail(error + ".");
+        return true;
+    }
+    anim::ModelClipSetting& setting = settings.clips[clip->name];
+    if (wrap) setting.wrap = wrap;
+    if (has(args, "root_motion")) {
+        anim::ClipRootMotion rootMotion = setting.rootMotion.value_or(anim::ClipRootMotion());
+        if (!applyRootMotionArg(args["root_motion"], rootMotion, error)) {
+            call->fail(error);
+            return true;
+        }
+        setting.rootMotion = rootMotion;
+    }
+    bool changed = false;
+    if (!writeModelClipSettingsFile(project, model, settings, "Edit Animation Clip Settings", error, &changed)) {
+        call->fail(error + ".");
+        return true;
+    }
+    const std::string sidecar = projectRel(project, FileUtils::pathFromUtf8(anim::modelClipSettingsPath(FileUtils::pathToUtf8(model))));
+    const std::string canonical = projectRel(project, model) + "#" + clip->name;
+    const ClipWrapMode shownWrap = setting.wrap.value_or(ClipWrapMode::Once);
+    Json out = {{"clip", canonical}, {"settings_file", sidecar}, {"wrap", anim::wrapName(shownWrap)},
+                {"root_motion", rootMotionJson(setting.rootMotion)}, {"changed", changed}};
+    call->ok(canonical + ": wrap " + anim::wrapName(shownWrap) + (changed ? " (wrote " + sidecar + ": one project undo step, undo scope project; "
+             "its players reload)" : " (no change: nothing written)"), out);
+    return true;
+}
+
+} // namespace
+
 void editClip(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -2037,9 +2140,14 @@ void editClip(const CallPtr& call) {
         call->fail(error);
         return;
     }
+    if (subClip && editModelClipSettings(call, project, relative, absolute)) return;
     if (subClip) {
-        call->fail("clip: \"" + relative + "\" is a model clip (read-only): extract it with edit_animation {clip: \"assets/anim/<name>.anim\", "
-                   "create: {from: \"" + relative + "\"}} and edit the file.");
+        // an Aseprite tag clip is remade by every import, a model clip by the model: both read-only
+        const bool tagClip = SpriteSheetPool::isAsepritePath(relative.substr(0, relative.find('#')));
+        const std::string fix = "extract it with edit_animation {clip: \"assets/anim/<name>.anim\", create: {from: \"" + relative +
+                                "\"}} and edit the file";
+        call->fail("clip: \"" + relative + "\" is " + (tagClip ? "an Aseprite tag clip" : "a model clip") + " (read-only): " + fix + ".",
+                   Json{{"error", {{"kind", "read_only_clip"}, {"field", "clip"}, {"message", relative + " is read-only"}, {"fix", fix}}}});
         return;
     }
     EditContext ctx;
@@ -2233,6 +2341,19 @@ void editClip(const CallPtr& call) {
         call->fail(error + " (nothing was changed: a call is all or nothing)");
         return;
     }
+    if (has(args, "root_motion")) {
+        // the clip's root_motion block (the Inspector's Root Motion foldout)
+        anim::ClipRootMotion rootMotion = anim::readClipRootMotion(data.unknownKeys);
+        if (!applyRootMotionArg(args["root_motion"], rootMotion, error)) {
+            call->fail(error + " (nothing was changed: a call is all or nothing)");
+            return;
+        }
+        const std::string block = anim::writeClipRootMotion(rootMotion);
+        auto at = std::find_if(data.unknownKeys.begin(), data.unknownKeys.end(), [](const auto& entry) { return entry.first == "root_motion"; });
+        if (at == data.unknownKeys.end()) data.unknownKeys.push_back({"root_motion", block});
+        else at->second = block;
+        ctx.changes.push_back("root_motion " + block);
+    }
     if (!creating && ctx.changes.empty()) {
         call->fail("Nothing to do: give tracks, events, wrap, frame_rate or length (or create).");
         return;
@@ -2413,6 +2534,27 @@ void listProperties(const CallPtr& call) {
     call->ok(text, out);
 }
 
+namespace {
+
+std::string subClipReferenceOf(const fs::path& model, const std::string& clip) {
+    return anim::formatSubClipReference(FileUtils::pathToGenericUtf8(model), clip);
+}
+
+anim::ClipReport clipStats(const std::string& reference) {
+    anim::ClipReportRequest request;
+    request.reference = reference;
+    return anim::analyzeClip(request);
+}
+
+// ", Memory 31 KB, 2,340 keys" of a tool's summary
+std::string statsText(const anim::ClipReport& report) {
+    if (!report.ok) return std::string();
+    return ", Memory " + anim::formatClipField(*anim::findClipReportField("runtime_bytes"), (double)report.runtimeBytes) + ", " +
+           anim::formatClipField(*anim::findClipReportField("keys"), (double)report.keys) + " keys";
+}
+
+} // namespace
+
 void getClip(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -2439,6 +2581,10 @@ void getClip(const CallPtr& call) {
     const ClipData& data = document->data();
     Json out = clipJson(project, document->path(), data, document->isReadOnly(), maxKeys);
     out["warnings"] = warningsJson(document->loadWarnings());
+    anim::SubClipReference subClipParts;
+    const bool namesSubClip = subClip && anim::parseSubClipReference(relative, subClipParts);
+    const anim::ClipReport report = clipStats(namesSubClip ? subClipReferenceOf(absolute, subClipParts.clip) : FileUtils::pathToGenericUtf8(absolute));
+    if (report.ok) out["stats"] = anim::clipReportJson(report);
     const std::vector<ClipUser> users = findClipUsers(project, relative);
     out["users"] = usersJson(project, users);
     if (users.size() > 50) out["users_total"] = users.size();
@@ -2700,7 +2846,7 @@ void getClip(const CallPtr& call) {
 
     std::string text = document->path() + (document->isReadOnly() ? " (read-only model clip)" : "") + ": " + plural(data.tracks.size(), "track") +
                        ", " + plural(data.events.size(), "event") + ", " + fmt(data.effectiveLength()) + " s, " + anim::wrapName(data.wrap) + ", " +
-                       fmt(data.frameRate) + " fps; " + plural(users.size(), "user") + sampled;
+                       fmt(data.frameRate) + " fps; " + plural(users.size(), "user") + statsText(report) + sampled;
     for (const ClipTrackData& track : data.tracks) {
         text += "\n" + ClipValidation::trackLabel(track) + " (" + plural(track.keys.size(), "key") + (track.loop ? ", loop" : "") +
                 (track.relative ? ", relative" : "") + ")";
@@ -2972,11 +3118,29 @@ bool clipAssetInfo(Project* project, const fs::path& file, Json& data, std::stri
                     {"users", usersJson(project, users)}};
     if (users.size() > 50) data["clip"]["users_total"] = users.size();
     if (!clip.previewModel.empty()) data["clip"]["preview_model"] = projectPathOf(project, clip.previewModel);
+    const anim::ClipReport report = clipStats(FileUtils::pathToGenericUtf8(file.lexically_normal()));
+    if (report.ok) data["clip"]["stats"] = anim::clipReportJson(report);
     text += ", " + plural(clip.tracks.size(), "track") + ", " + plural(clip.events.size(), "event") + ", " + fmt(clip.effectiveLength()) + " s, " +
-            anim::wrapName(clip.wrap) + ", " + plural(users.size(), "user") +
+            anim::wrapName(clip.wrap) + ", " + plural(users.size(), "user") + statsText(report) +
             (document->loadWarnings().empty() ? std::string() : ", " + plural(document->loadWarnings().size(), "warning")) +
             " (read it with get_animation {clip})";
     return true;
+}
+
+void addModelClipStats(const fs::path& model, Json& animations) {
+    // the import settings each clip plays with (<model>.clips; one that does not parse plays none)
+    anim::ModelClipSettings settings;
+    std::string error;
+    readModelClipSettingsFile(model.lexically_normal(), settings, error);
+    for (Json& animation : animations) {
+        const std::string name = animation["name"].get<std::string>();
+        const anim::ClipReport report = clipStats(subClipReferenceOf(model.lexically_normal(), name));
+        animation["keys"] = report.ok ? Json(report.keys) : Json(nullptr);
+        animation["runtime_bytes"] = report.ok ? Json(report.runtimeBytes) : Json(nullptr);
+        const anim::ModelClipSetting* setting = settings.find(name);
+        animation["wrap"] = anim::wrapName(setting && setting->wrap ? *setting->wrap : ClipWrapMode::Once);
+        animation["root_motion"] = rootMotionJson(setting ? setting->rootMotion : std::nullopt);
+    }
 }
 
 bool checkClipText(const std::string& text, std::vector<std::string>& warnings, std::string& error) {
@@ -2986,6 +3150,44 @@ bool checkClipText(const std::string& text, std::vector<std::string>& warnings, 
         return false;
     }
     for (const ClipWarning& warning : parsed.warnings) warnings.push_back(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
+    return true;
+}
+
+// A GameObject's hierarchy as a rig: its rest is what the Transforms hold now
+bool rigFromEntity(SceneProject* sceneProject, Entity root, anim::ClipRig& rig, std::string& error) {
+    Scene* scene = sceneProject->scene;
+    std::map<Entity, int> index;
+    std::vector<Entity> members;
+    for (Entity entity : sceneProject->entities) {
+        // on or under the root
+        for (const Transform* at = scene->findComponent<Transform>(entity); at != nullptr;
+             at = at->parent == NULL_ENTITY ? nullptr : scene->findComponent<Transform>(at->parent)) {
+            if (entity != root && at->parent != root) continue;
+            index[entity] = (int)members.size();
+            members.push_back(entity);
+            break;
+        }
+    }
+    if (index.find(root) == index.end()) {
+        error = "the GameObject has no Transform";
+        return false;
+    }
+    std::vector<anim::ModelNodeInfo> nodes;
+    for (Entity entity : members) {
+        const Transform* transform = scene->findComponent<Transform>(entity);
+        anim::ModelNodeInfo node;
+        node.name = scene->getEntityName(entity);
+        if (entity != root) {
+            const auto parent = index.find(transform->parent);
+            node.parent = parent == index.end() ? -1 : parent->second;
+        }
+        node.addressable = ClipConverters::clipPath(scene, root, entity, node.path);
+        node.position = transform->position;
+        node.rotation = transform->rotation;
+        node.scale = transform->scale;
+        nodes.push_back(std::move(node));
+    }
+    rig.assign(scene->getEntityName(root), nodes);
     return true;
 }
 

@@ -42,6 +42,7 @@ editor/Exporter.cpp :: fs::copy_file(src / "shaderlib.h" :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(resolveProjectFile(project, source), target :: export staging (S30)
 editor/Exporter.cpp :: if (!ec) fs::copy_file(source, target :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(resolved, to, fs::copy_options::overwrite_existing, copyError); :: export staging (S30): a native plugin link's target copied where links cannot be made
+editor/Exporter.cpp :: fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec); :: export output (S30): a macOS build's plugin dylib in Frameworks/ beside its executable, as the build copies the executable itself
 editor/export/ExportFiles.cpp :: if (!ec) fs::copy_file(longPath(from), longPath(to), fs::copy_options::overwrite_existing, ec); :: export staging (S30): every copy of an export (exportfiles::copyFile), into its build tree or staging folder, never a project document
 editor/ExporterPrebuilt.cpp :: fs::copy_file(player->dir / "THIRD-PARTY-NOTICES.txt", contentDir :: prebuilt staging, as the icon above
 editor/platform/IosProject.cpp :: stbi_write_png((set / "AppIcon-1024.png") :: the Xcode project's icon, in finalizeIOS's <dest>.staging-<pid>/<app>, discarded on failure, swapped in whole

@@ -71,6 +71,7 @@ namespace {
                 SokolCmdQueue::add_command_destroy_sampler(sampler);
             }else{
                 sg_destroy_sampler(sampler);
+                SokolSystem::forgetAppliedBindings();
             }
         }
     };
@@ -640,7 +641,7 @@ bool SokolTexture::createDynamicTexture(const std::string& label, int width, int
 }
 
 bool SokolTexture::createDynamicTexture(const std::string& label, int width, int height,
-            ColorFormat colorFormat, TextureFilter filter){
+            ColorFormat colorFormat, TextureFilter filter, TextureWrap wrap){
     sg_pixel_format pixelFormat = _SG_PIXELFORMAT_DEFAULT;
     size_t bytesPerPixel;
     if (colorFormat == ColorFormat::RGBA){
@@ -669,8 +670,8 @@ bool SokolTexture::createDynamicTexture(const std::string& label, int width, int
     sg_sampler_desc samplerDesc = {};
     samplerDesc.min_filter = getFilter(filter);
     samplerDesc.mag_filter = getFilter(filter);
-    samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
-    samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.wrap_u = getWrap(wrap);
+    samplerDesc.wrap_v = getWrap(wrap);
 
     if (Engine::isAsyncThread()){
         image = SokolCmdQueue::add_command_make_image(imageDesc);
@@ -960,6 +961,7 @@ void SokolTexture::destroyTexture(){
             SokolCmdQueue::add_command_destroy_view(view);
         }else{
             sg_destroy_view(view);
+            SokolSystem::forgetAppliedBindings();
         }
     }
     if (image.id != SG_INVALID_ID && !aliasImage)
@@ -969,6 +971,7 @@ void SokolTexture::destroyTexture(){
             SokolCmdQueue::add_command_destroy_image(image);
         }else{
             sg_destroy_image(image);
+            SokolSystem::forgetAppliedBindings();
         }
     }
     // the data textures' sampler is let go (destroyed with its last holder), another destroyed
@@ -979,6 +982,7 @@ void SokolTexture::destroyTexture(){
             SokolCmdQueue::add_command_destroy_sampler(sampler);
         }else{
             sg_destroy_sampler(sampler);
+            SokolSystem::forgetAppliedBindings();
         }
     }
 

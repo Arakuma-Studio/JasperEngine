@@ -17,6 +17,8 @@ list(APPEND EDITOR_TEST_SOURCES ${CMAKE_SOURCE_DIR}/engine/tests/core/support/Al
 # the reflection codec's benchmark against the frozen numbers of the codecs it replaced
 # (docs/specs/S08-reflection.md R17)
 list(APPEND EDITOR_TEST_SOURCES ${CMAKE_SOURCE_DIR}/tools/performance/reflect_codec.cpp)
+# the Aseprite codec's and importer's budgets (docs/specs/S44-aseprite-import.md AC15)
+list(APPEND EDITOR_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR}/pixelart/AsepriteBench.cpp)
 
 # the process LoggerCrashFlushTest crashes: the logger's queue, a file sink and the editor's
 # crash handler (editor/tests/util/LogCrashHelper.cpp)

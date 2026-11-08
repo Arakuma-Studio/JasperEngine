@@ -14,6 +14,7 @@
 #include "component/CharacterCollision.h"
 #include "component/TerrainComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/BuoyancyComponent.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/SplineExtrudeComponent.h"
@@ -176,6 +177,8 @@ namespace luabridge
     template<> struct Stack<InputActionType> : EnumWrapper<InputActionType>{};
     template<> struct Stack<CharacterCollisionFlags> : EnumWrapper<CharacterCollisionFlags>{};
     template<> struct Stack<WaterVolumeWaves> : EnumWrapper<WaterVolumeWaves>{};
+    template<> struct Stack<WaterExcluderShape> : EnumWrapper<WaterExcluderShape>{};
+    template<> struct Stack<WaterWakeResolution> : EnumWrapper<WaterWakeResolution>{};
     template<> struct Stack<BuoyancyColumns> : EnumWrapper<BuoyancyColumns>{};
     template<> struct Stack<spline::SplineType> : EnumWrapper<spline::SplineType>{};
     template<> struct Stack<spline::TangentMode> : EnumWrapper<spline::TangentMode>{};
@@ -270,6 +273,9 @@ namespace luabridge
     template<> struct Stack<TextEffectType> : EnumWrapper<TextEffectType>{};
     template<> struct Stack<TextEffectMix> : EnumWrapper<TextEffectMix>{};
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
+    template<> struct Stack<SpriteDrawMode> : EnumWrapper<SpriteDrawMode>{};
+    template<> struct Stack<PixelUpscaleMode> : EnumWrapper<PixelUpscaleMode>{};
+    template<> struct Stack<PixelRotation> : EnumWrapper<PixelRotation>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
     // ui-components: the Button's Selectable enums

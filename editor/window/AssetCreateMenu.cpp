@@ -29,6 +29,7 @@ namespace {
         {AssetCreateKind::PhysicsMaterial, "Physics Material", ICON_FA_CIRCLE_HALF_STROKE, "assets.createPhysicsMaterial", true, false},
         {AssetCreateKind::PhysicsMaterial2D, "Physics Material 2D", ICON_FA_CIRCLE_HALF_STROKE, "assets.createPhysicsMaterial2D", false, false},
         {AssetCreateKind::ShakePreset, "Shake Preset", ICON_FA_BURST, "assets.createShakePreset", true, false},
+        {AssetCreateKind::SpriteAtlas, "Sprite Atlas", ICON_FA_TABLE_CELLS, "assets.createSpriteAtlas", true, false},
         // the Project window shows it as a submenu: Blank, then the presets (T2 R62)
         {AssetCreateKind::NoiseGraph, "Noise Graph", ICON_FA_MOUNTAIN_SUN, "assets.createNoiseGraph", true, false},
     }};

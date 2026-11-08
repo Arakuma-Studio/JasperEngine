@@ -3,6 +3,9 @@
 
 #include "SetAssetMetaCmd.h"
 
+#include <algorithm>
+#include <vector>
+
 #include "Out.h"
 #include "Project.h"
 #include "asset/AssetFileWrite.h"

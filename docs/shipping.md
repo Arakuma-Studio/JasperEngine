@@ -127,7 +127,13 @@ jasperengine-editor players remove <id>
 An engine checkout builds its own runtimes: `tools/build.sh players` (Linux; `PLAYER_PLATFORM=web`
 and `PLAYER_PLATFORM=android` for those), into `build/players/`; point the editor at them with
 `JASPER_PLAYERS_DIR=build/players` or `--players-dir`. A runtime is locked to the editor version
-it was built with.
+it was built with, and reads the cooked content format of that version (`contentFormatVersion`,
+major.minor). A newer minor only adds what an older player skips: the editor does not use a
+runtime of an older minor than it cooks ("reads content format ..., older than the ... this
+editor writes: update the player runtime") unless the player-mismatch option asks for it (warning
+W-PLAYER-MISMATCH, and publish verify refuses the build). A player runs content of a newer minor
+without what is newer, with one warning ("content ... was made by a newer editor; features newer
+than ... are skipped"), and refuses another major at start (exit 5).
 
 ## Player size: Strip Engine Code
 
@@ -174,6 +180,14 @@ read from its file as it is now (no GPU work) and remembered by the file's hash,
 project reads none of them. The list shows "Reading N closed scene(s)..." while that takes a moment,
 and names a scene whose file cannot be read: the list then holds what it last knew of it. Play's
 startup and every export use the same list.
+
+## Model limits
+
+A model loads the same on a game's loading thread as on the main thread. Two limits of a model are
+real: a primitive's blend shapes (8; 4 when they have normals or tangents; 2 with both; the ones over
+it are left out) and a file's vertex and index buffers (the GPU buffer pool, 16384; what does not fit
+does not draw). The Console names the model, the count and the limit when the model is imported, and
+again when a game loads it.
 
 ## Platforms
 
@@ -264,7 +278,12 @@ Xcode on a Mac for macOS plugins).
 A Lua mock (`native_mocks/<Plugin>.lua`) answers where a plugin has no code. When a build would
 ship one in place of real code (an Android-only ads plugin in a Windows build), the build warns
 `W-NATIVE-MOCK`, and the game logs once, the first time the mock answers. A macOS build without
-Xcode compiles no Swift: `W-NATIVE-SWIFT-CMAKE` says so.
+Xcode compiles no Swift: `W-NATIVE-SWIFT-CMAKE` says so. It links the SDKs of `apple/` and `macos/` as
+the Xcode project does (frameworks, the macOS library of an `.xcframework`, `.a` files) and puts the
+dynamic frameworks in `Frameworks/` beside the executable and the resource `.bundle`s beside it
+(`Contents/Frameworks` and `Contents/Resources` of a `.app` built with `jasperengine.py --platform macos-xcode`).
+
+The editor's `.meta` files in `plugins/native` are neither listed, carried nor copied into a build.
 
 ## Privacy manifest (iOS and macOS)
 

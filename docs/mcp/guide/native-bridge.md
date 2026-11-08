@@ -262,7 +262,8 @@ export's bridging header (with every plugin `.h`).
 `+jasperInit` runs once for every plugin class of the app's own images that implements it,
 before the engine starts (found from the classes' method lists: no class is initialized for it).
 macOS: Objective-C plugins of `apple/` and `macos/` are compiled into CMake desktop builds and the
-macOS editor's Play library too (Swift only in the Xcode project); there `+jasperInit` runs at the
+macOS editor's Play library too (Swift only in the Xcode project), and their SDKs linked (desktop
+builds carry the dynamic frameworks in `Frameworks/` and resource bundles beside the executable); there `+jasperInit` runs at the
 engine's start and at each Play for classes not run yet. macOS never unloads Objective-C classes:
 after changing an Objective-C plugin, restart the editor (Play warns once).
 

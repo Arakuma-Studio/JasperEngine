@@ -259,6 +259,26 @@ TEST(BuildMethod, IosPluginsAreCarried) {
     EXPECT_TRUE(hasReason(choice, "CocoaPods (ios.cocoapods)"));
 }
 
+// red before platform-build: the editor's .meta of a plugin file was listed as carried, and a
+// .meta left in a plugin folder made a build compile
+TEST(BuildMethod, EditorSidecarsAreNeitherCarriedNorAReason) {
+    TestTempDir dir("build-method-native");
+    TestTempDir::write(dir / "plugins/native/ios/Device.h", "@interface Device\n@end\n");
+    TestTempDir::write(dir / "plugins/native/ios/Device.h.meta", "guid: 1\n");
+    TestTempDir::write(dir / "plugins/native/ios/Device.m", "@implementation Device\n@end\n");
+    TestTempDir::write(dir / "plugins/native/macos/Removed.h.meta", "guid: 2\n");
+    TestTempDir::write(dir / "plugins/native/android/res/drawable/icon.png.meta", "guid: 3\n");
+    auto project = projectIn(dir.path());
+    BuildMethodChoice choice = Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::IOS), nullptr);
+    EXPECT_EQ(choice.method, BuildMethod::Prebuilt) << (choice.reasons.empty() ? "" : choice.reasons.front());
+    EXPECT_TRUE(hasCarried(choice, "iOS plugins (plugins/native/ios/Device.h, plugins/native/ios/Device.m)"))
+        << (choice.carried.empty() ? "" : choice.carried.front());
+    for (BuildPlatform platform : {BuildPlatform::MacOS, BuildPlatform::Android}) {
+        choice = Exporter::chooseBuildMethod(project.get(), configFor(platform), nullptr);
+        EXPECT_EQ(choice.method, BuildMethod::Prebuilt) << buildPlatformName(platform) << ": " << (choice.reasons.empty() ? "" : choice.reasons.front());
+    }
+}
+
 TEST(BuildMethod, WebPluginsAreCarried) {
     TestTempDir dir("build-method-native");
     TestTempDir::write(dir / "plugins/native/web/poki.js", "JasperNative.register('Poki', {});\n");

@@ -369,6 +369,9 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             externalToolPaths.clear();
             for (const auto& item : settingsData["externalTools"]) {
                 if (item.second.IsScalar()) externalToolPaths[item.first.as<std::string>()] = item.second.as<std::string>();
+                // a tool with its own section (externalTools.aseprite.path, S44 §6.8): "<tool>.path"
+                else if (item.second.IsMap() && item.second["path"] && item.second["path"].IsScalar())
+                    externalToolPaths[item.first.as<std::string>() + ".path"] = item.second["path"].as<std::string>();
             }
         }
         if (settingsData["emsdk"] && settingsData["emsdk"]["path"]) {
@@ -498,6 +501,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 auto gameNode = editorNode["game_view"];
                 if (gameNode["aspect"]) gameViewSettings.aspect = gameNode["aspect"].as<int>();
                 if (gameNode["scale"]) gameViewSettings.scale = gameNode["scale"].as<float>();
+                if (gameNode["pixelScale"]) gameViewSettings.pixelScale = std::clamp(gameNode["pixelScale"].as<int>(), 0, 8);
                 if (gameNode["maximize_on_play"]) gameViewSettings.maximizeOnPlay = gameNode["maximize_on_play"].as<bool>();
                 if (gameNode["stats"]) gameViewSettings.showStats = gameNode["stats"].as<bool>();
                 if (gameNode["atmosphere_quality"]) gameViewSettings.atmosphereQuality = std::clamp(gameNode["atmosphere_quality"].as<int>(), -1, 3);
@@ -708,7 +712,11 @@ bool AppSettings::saveSettings() {
         // Preferences > External Tools
         if (!externalToolPaths.empty()) {
             YAML::Node toolsNode;
-            for (const auto& [tool, path] : externalToolPaths) toolsNode[tool] = path;
+            for (const auto& [tool, path] : externalToolPaths) {
+                const size_t dot = tool.find('.');
+                if (dot == std::string::npos) toolsNode[tool] = path;
+                else toolsNode[tool.substr(0, dot)][tool.substr(dot + 1)] = path;
+            }
             settingsData["externalTools"] = toolsNode;
         } else {
             settingsData.remove("externalTools");
@@ -814,6 +822,7 @@ bool AppSettings::saveSettings() {
         YAML::Node gameNode;
         gameNode["aspect"] = gameViewSettings.aspect;
         gameNode["scale"] = gameViewSettings.scale;
+        if (gameViewSettings.pixelScale != 0) gameNode["pixelScale"] = gameViewSettings.pixelScale;
         gameNode["maximize_on_play"] = gameViewSettings.maximizeOnPlay;
         gameNode["stats"] = gameViewSettings.showStats;
         gameNode["atmosphere_quality"] = gameViewSettings.atmosphereQuality;

@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cmath>
 #include <limits>
+#include <set>
 
 using namespace jasperengine;
 
@@ -591,6 +592,15 @@ void MaterialPbr::getHairUniformBlock(const MaterialPbrExtensions& pbr, float ou
     out[9] = hairExponent(hair.secondaryWidth);
     out[10] = std::cos(hair.rotation);
     out[11] = std::sin(hair.rotation);
+}
+
+size_t MaterialPbr::countLitVariants(const std::vector<std::pair<uint64_t, uint64_t>>& drawn){
+    std::set<std::pair<uint64_t, uint64_t>> variants;
+    for (const auto& submesh : drawn){
+        if (submesh.first != 0)
+            variants.insert(submesh);
+    }
+    return variants.size();
 }
 
 std::string MaterialPbr::getVariantBasename(const std::vector<std::string>& defines){

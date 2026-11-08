@@ -17,6 +17,8 @@
 #include "window/dialog/ScriptCreateDialog.h"
 #include "util/ScriptAttach.h"
 #include "window/dialog/ShaderForkDialog.h"
+#include "window/AsepriteImporterView.h"
+#include "window/SheetPreviewTextures.h"
 #include "window/TextureImporterView.h"
 #include "window/ModelImporterView.h"
 #include "window/dialog/ComponentAddDialog.h"
@@ -53,6 +55,10 @@ namespace jasperengine{
 namespace jasperengine::particles {
     struct ParticleEffectDocument;
 }
+
+namespace jasperengine::anim {
+    struct AnimatorDebugSnapshot;
+}
 #include <tuple>
 
 namespace jasperengine::editor{
@@ -69,6 +75,7 @@ namespace jasperengine::editor{
     class MultiPropertyCmd;
     class AnimationClipDocument;
     class AnimatorAssetDocument;
+    class SpriteAtlasInspector;
     struct InspectorClipState;
     struct InspectorClipStateDeleter{
         void operator()(InspectorClipState* state) const;
@@ -206,6 +213,10 @@ namespace jasperengine::editor{
         std::unique_ptr<TextureImporterView> textureImporter;
         // and its model files (S53)
         std::unique_ptr<ModelImporterView> modelImporter;
+        std::unique_ptr<AsepriteImporterView> asepriteImporter;
+        // (shared: the type stays out of this header, which App.h includes; its sprite:: names would
+        // make `sprite` a namespace in every source that includes App.h)
+        std::shared_ptr<SpriteAtlasInspector> spriteAtlasInspector;
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;
@@ -366,6 +377,7 @@ namespace jasperengine::editor{
         bool usePlayerClipFiles(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index, const std::vector<std::string>& files);
         void drawAnimationPlayerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawAnimatorLive(const anim::AnimatorDebugSnapshot& snapshot);
         void drawAnimationPlayerClips(ComponentType cpType, SceneProject* sceneProject, Entity entity);
         void drawPlayerClipNameRow(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index);
         void drawPlayerDefaultClipRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
@@ -463,6 +475,8 @@ namespace jasperengine::editor{
         void drawScenePropertyRow(SceneProject* sceneProject, const std::string& propertyName, const char* label, ScenePropertyInputType inputType, float inputWidth = -1.0f, float minValue = 0.0f, float maxValue = 1.0f, const std::string& help = "");
         // the Planar Reflections section of the scene settings (water-reflections)
         void drawScenePlanarReflections(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
+        // the scene's Water Wakes map: resolution, area, fade
+        void drawSceneWaterWakes(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
     public:
         // Unity's mask field label: Nothing, Everything, the one layer's name, or Mixed...
         static std::string sceneLayerMaskLabel(uint32_t mask);
@@ -883,12 +897,25 @@ namespace jasperengine::editor{
         void drawTextEffectComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the Pixel Perfect Camera (InspectorPixelArt.cpp, S41)
+        void drawPixelPerfectCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // "Inherited alpha 0.25 · not interactable · click-through (Canvas Group: Panel)" and a
         // Select button, when the entity is under a Canvas Group
         void drawCanvasGroupInheritedLine(SceneProject* sceneProject, Entity entity);
         void drawSafeAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAudioSnapshotComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // a sheet sprite's frame, Open in Aseprite, slice colliders, sprite properties (S44)
+        void drawSheetSpriteSection(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        // S45 (InspectorSpriteSheet.cpp): the frame picker, Native Size, the Slicer writing a
+        // texture's Sprite Mode, the legacy frames' Convert to Sprite Sheet
+        void drawSheetFramePicker(ComponentType cpType, SceneProject* sceneProject, Entity entity, const SpriteSheetData& sheet);
+        void drawSpriteNativeSize(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        void openSpriteSlicer(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::string& texture);
+        void drawLegacyFramesHeader(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        SheetPreviewTextures sheetThumbnails;
+        char sheetFrameSearch[96] = "";
+        std::string legacyConvertError;
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTerrainQualitySection(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
@@ -971,6 +998,8 @@ namespace jasperengine::editor{
         void drawCharacterController2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCharacterControllerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawWaterVolumeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawWaterExcluderComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawWaterWakeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawBuoyancyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // InspectorSplines.cpp (S18)
         void drawSplineComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

@@ -377,7 +377,7 @@ namespace {
 
 // Final review M1: in async loading a sub-clip's first build runs on the thread pool, so a caller
 // on the main thread (a player, a scene preload) never waits for the pooled-glTF mutex a model
-// loading on another thread holds; .anim files and the non-async mode load in the call
+// loading on another thread holds; small .anim files and the non-async mode load in the call
 TEST_F(SubClipPool, PollOrLoadBuildsSubClipsOffTheCallingThread){
     Scene scene;
     Model holder(&scene);
@@ -426,7 +426,7 @@ TEST_F(SubClipPool, PollOrLoadBuildsSubClipsOffTheCallingThread){
         EXPECT_EQ(idle->getSource().name, "Idle");
     }
 
-    // .anim files load in the call, async or not
+    // a small .anim loads in the call, async or not (a large one: ClipPool)
     animtest::writeAsset("models/async.anim", "{\"format\": \"jasperengine.anim\", \"version\": 1, \"tracks\": []}");
     {
         PooledLockHolder loader;
