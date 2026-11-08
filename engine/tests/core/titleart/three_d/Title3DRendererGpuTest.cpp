@@ -163,6 +163,8 @@ TEST_F(Title3DRendererGpu, AODarkensTheCrevicesAndKeepsOpenFaces) {
         Json layer = plate3D();
         layer["style_3d"]["bands"][0]["grow"] = 20;
         layer["style_3d"]["bands"][0]["material"] = materialPreset("white_gloss");
+        // linear output below white, so the occlusion shows as it is multiplied in
+        layer["style_3d"]["lighting"] = Json{{"tone_mapping", "none"}, {"exposure", 0.3}};
         return layer;
     };
     auto withAO = [&](double intensity) {
@@ -179,10 +181,11 @@ TEST_F(Title3DRendererGpu, AODarkensTheCrevicesAndKeepsOpenFaces) {
         if (off.rgba[i + 3] < 0.99f) continue;
         covered++;
         const double a = luminance(&off.rgba[i]), b = luminance(&on.rgba[i]);
-        if (a > 0.05 && b < a * 0.85) darkened++;
+        if (a > 0.05 && b < a * 0.95) darkened++;
     }
     ASSERT_GT(covered, 0u);
-    EXPECT_GT(darkened, covered / 200) << darkened << " of " << covered << " pixels darkened by 15 %";
+    // (the occlusion itself, 15 % or more at the foot, is the AO debug view's check below)
+    EXPECT_GT(darkened, covered / 200) << darkened << " of " << covered << " pixels darkened by 5 %";
     const float* c0 = off.at(256, 128);
     const float* c1 = on.at(256, 128);
     EXPECT_NEAR(luminance(c1), luminance(c0), 0.01 * std::max(0.05, luminance(c0))) << "the open face keeps its value";
