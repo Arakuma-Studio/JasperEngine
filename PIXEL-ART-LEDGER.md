@@ -243,6 +243,13 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S51's review found 1 blocker: the "original" built-in pixel font matched the
+  classic 5×7 LCD table, so it must be redrawn, with an originality test. It also found 7
+  should-fix issues; all were sent back.
+  - All five implementers (S42, S43, S49, S51, S52) then stopped on an API weekly limit. The
+    session moved accounts, and all five were revived; the boxes were idle and nothing was lost.
+  - Heads at revival: S42 `5cf28fde2`, S43 `4c455647e`, S49 `9cc2fb3bd`, S51 `dc7f9c3b7`, S52
+    `6de6e4596` (+32 uncommitted files).
 - 2026-11-09: The mats-fx program landed (205 commits), so S43 is re-merging (9 conflicts) and
   re-gating on box B before landing as batch 1.
   - S51 implementation reported at `4e635a3bd` (main `c2ed0b8c3`), passing the lighter gate on box
