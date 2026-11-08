@@ -1109,7 +1109,10 @@ async def test_guide_names_exist(ed: Editor):
               "humanoid_position", "left_upper_arm", "left_index_proximal", "left_eye", "right_eye", "right_toes",
               "left_foot", "right_foot",
               # audio cues (S40): the .anim audio item's keys, which edit_animation takes (its lean schema leaves them out)
-              "follow_speed", "pitch_semitones", "state_exit", "volume_db"}
+              "follow_speed", "pitch_semitones", "state_exit", "volume_db",
+              # a Button transition value (button.transition, ui-components) and get_animation's
+              # start_offset, reported only when an Animation has one (runtime-core)
+              "sprite_swap", "start_offset"}
     words = set(re.findall(r"(?<![\w./:-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(])", text))
     unknown = sorted(w for w in words if w not in known)
     ed.check(not unknown, f"the guide names unknown things: {unknown}")
