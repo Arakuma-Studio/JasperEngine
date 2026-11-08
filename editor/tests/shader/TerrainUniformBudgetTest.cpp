@@ -47,7 +47,8 @@ using namespace terrain_uniform_budget_test;
 // with everything that adds to its fragment uniforms: shadows with the High filters, the sky's and
 // a probe's reflections, SSAO, the post colour, with and without fog (the height fog's block); and
 // its material normal-mapped (16 fragment textures and 16 samplers before its lights' records),
-// with point and spot lights possible or directional only, at the High and the Medium tier
+// with point and spot lights possible or directional only, at the High and the Medium tier, with
+// S57's capsule shadows and 2D lights with their shadows or without
 TEST(TerrainUniformBudgetSlow, PaintedTerrainFitsAtEveryLightCapacity){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
     std::vector<ShaderLibraryMatrix::Variant> variants;
@@ -90,7 +91,9 @@ TEST(TerrainUniformBudgetSlow, PaintedTerrainFitsAtEveryLightCapacity){
     normalMapped.normalTexture = true;
     for (int capacity : {8, 16}){
         for (bool high : {true, false}){
-            for (bool directionalOnly : {false, true}){
+            for (int extra = 0; extra < 3; extra++){
+                const bool directionalOnly = extra == 1;
+                const bool heavy = extra == 2;
                 MeshShaderEnvironment environment;
                 environment.lights = true;
                 environment.shadows = true;
@@ -102,10 +105,14 @@ TEST(TerrainUniformBudgetSlow, PaintedTerrainFitsAtEveryLightCapacity){
                 environment.fog = true;
                 environment.directionalLightsOnly = directionalOnly;
                 environment.lightCapacity = capacity;
+                environment.capsuleShadows = heavy;
+                environment.contactShadows = heavy;
+                environment.lights2D = heavy;
+                environment.shadows2D = heavy;
                 const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, normalMapped);
                 ASSERT_TRUE(variant.properties & shaderPropertyBit(27)) << "not the painted terrain";
                 variants.push_back({"normal-mapped, " + std::to_string(capacity) + " lights, fog" + (high ? ", high filters" : "") +
-                                    (directionalOnly ? ", directional only" : ""),
+                                    (directionalOnly ? ", directional only" : "") + (heavy ? ", capsule shadows, 2d lights and shadows" : ""),
                                     variant.litDefines.empty() ? std::string() : ShaderReference::withFeatures(ShaderReference::BUILTIN_LIT, variant.litDefines),
                                     ShaderType::MESH, variant.properties});
             }

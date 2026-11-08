@@ -101,11 +101,10 @@ TEST(WaterUniformBudgetSlow, EveryMatrixVariantFits){
 }
 
 // lit per pixel with every feature, at each light capacity, from the object's lights and from
-// screen tiles, in the scene with every option that adds to the fragment stage's uniforms and that
-// the built-in Lit fits too: the shadows with the High filters, fog (the height fog's block), the
-// post colour, the reflection environment, 2D lights and their shadows, Water Excluders and Wakes;
-// on a mesh, a lattice-bound mesh and a terrain. (Not S57's capsule and contact shadows: their
-// block is a ninth with fog, and takes 67 vectors with capsules, over 224 for the Lit too.)
+// screen tiles, in the scene with every option that adds to the fragment stage's uniforms: the
+// shadows with the High filters, S57's capsule and contact shadows, fog (the height fog's block),
+// the post colour, the reflection environment, 2D lights and their shadows, Water Excluders and
+// Wakes; on a mesh, a lattice-bound mesh and a terrain
 TEST(WaterUniformBudgetSlow, WorstScenesFitAtEveryLightCapacity){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
     SubmeshShaderInputs inputs;
@@ -127,6 +126,8 @@ TEST(WaterUniformBudgetSlow, WorstScenesFitAtEveryLightCapacity){
     worst.lights = true;
     worst.shadows = true;
     worst.shadowsHQ = true;
+    worst.capsuleShadows = true;
+    worst.contactShadows = true;
     worst.ibl = true;
     worst.reflectionProbes = true;
     worst.fog = true;
