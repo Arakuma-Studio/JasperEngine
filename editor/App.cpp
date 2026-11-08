@@ -5691,7 +5691,13 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      composite inside the colour pass under the transparents and its tone curve
     //      (the composite's USE_POST_COLOR over a linear store: the colour pass's own
     //      post-processing colour with an identity LUT)
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v54";
+    // v55: PCSS on GLES3/WebGL2 and painted terrains (doriax-catchup pcss-gles): the raw-depth
+    //      shadow view in every 'Shq' variant, a GLES3 one compiled again with SHADOW_RAW_VIEW_OFF
+    //      where it would be the 17th fragment texture;
+    //      and water-uniforms: library:water and the painted Terrain ('Tpb') read their lights'
+    //      records from u_lightRecords (includes/lights.glsl LIGHTS_FS_RECORDS) and, with both
+    //      requires, the planar reflection's values come from u_fs_environment
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v55";
 }
 
 void editor::App::pushTabNotificationStyle(){

@@ -142,6 +142,15 @@ namespace jasperengine{
 		Vector4 data[4 + 4 * MAX_LIGHTS_PER_OBJECT];
 	} object_lights_t;
 
+	// u_fs_objectLights of the records form (includes/lights.glsl, LIGHTS_FS_RECORDS): the
+	// pixel lights' records are rows of the frame's u_lightRecords (RenderSystem::syncLightRecords)
+	typedef struct object_light_records_t {
+		Vector4 counts;      // x pixel lights, y vertex lights
+		Vector4 sh[3];
+		// per pixel light, two a vector: its scene light, its spot_shadow.w
+		Vector4 records[(MAX_LIGHTS_PER_OBJECT + 1) / 2];
+	} object_light_records_t;
+
 	// u_fs_litFrame (shaderlib/includes/lit_frame.glsl): what the built-in Lit's lit variants
 	// read of the camera pass, filled with the frame block (RenderSystem::updatePassFrame). A
 	// variant declares a prefix of it (2 to 6 vectors, by fog, shadows, SSAO and IBL).
@@ -191,6 +200,12 @@ namespace jasperengine{
 		Vector4 colorRotation; // rgb linear tint, w rotation about +Y (radians)
 		Vector4 params;        // x highest mip level, y 1 with an environment
 	} fs_environment_t;
+
+	// u_fs_environment of a shader reading the planar reflection too: both in one block
+	typedef struct fs_environment_planar_t {
+		fs_environment_t environment;
+		fs_planar_reflection_t planar;
+	} fs_environment_planar_t;
 
 	typedef struct fs_reflection_probe_t {
 		Vector4 position_weight; // xyz = capture position, w = local probe blend weight
@@ -1815,6 +1830,17 @@ namespace jasperengine{
 		// S57: the fragment block of a Tiled variant, the capsule and contact shadows' block and
 		// what the scene's lighting features are this update
 		tiled_object_lights_t tiledObjectLightsBlock;
+		// the fragment block of the lights' records form, the frame's records (a row of 512
+		// texels holds 128 scene lights) and the meshes drawing with them (none: no texture)
+		static constexpr int LIGHT_RECORDS_WIDTH = 512;
+		object_light_records_t lightRecordsBlock;
+		TextureRender lightRecords;
+		// what the texture holds (uploaded only when a record changed) and the next frame's
+		std::vector<Vector4> lightRecordTexels;
+		std::vector<Vector4> lightRecordScratch;
+		uint64_t lightRecordsFrame = UINT64_MAX;
+		bool lightRecordsUploaded = false;
+		std::unordered_set<Entity> lightRecordMeshes;
 		light_occlusion_t lightOcclusionBlock;
 		LightingFeatureState lighting;
 		// the camera pass being drawn: its contact mask (null: white), whether it draws OIT
@@ -2249,7 +2275,24 @@ namespace jasperengine{
 		int lightOcclusionBits(int sceneLight) const;
 		// the object's lights of a variant into its blocks (the Tiled form for 'Til')
 		void applyObjectLights(ObjectRender& render, int slotVS, unsigned int sizeVS, int slotFS, unsigned int sizeFS,
-		                       const MeshComponent& mesh, uint64_t properties, uint32_t& builtLightBits);
+		                       std::pair<int, int> slotLightRecords, const MeshComponent& mesh, uint64_t properties,
+		                       uint32_t& builtLightBits);
+		// the records form's block (includes/lights.glsl, LIGHTS_FS_RECORDS): the object's pixel
+		// lights as rows of u_lightRecords
+		void buildObjectLightRecords(const MeshComponent& mesh, uint64_t properties, object_light_records_t& block) const;
+		// a pixel light's spot_shadow.w in the pass being drawn: its shadow slot, cascades, mask
+		// tile and occlusions (vertex lights: none)
+		float packObjectLightShadow(int sceneLight, bool perPixel) const;
+		// the frame's light records, once a frame while a mesh draws with them; a float texture
+		// of at least the rows given (false: none)
+		void syncLightRecords();
+		bool ensureLightRecords(int rows);
+		void setLightRecordsMesh(Entity entity, bool records);
+	public:
+		// the light records' uploads so far (tests: none while no light changes)
+		uint64_t lightRecordUploads = 0;
+		const TextureRender& getLightRecordsTexture() const { return lightRecords; }
+	private:
 		// a submesh variant's S57 blocks and textures: resolved at load, bound per draw
 		void loadLightingFeatureSlots(Submesh& submesh, ShaderData& shaderData);
 		void applyLightingFeatures(Submesh& submesh, ObjectRender& render, const MeshComponent& mesh);
@@ -2431,7 +2474,7 @@ namespace jasperengine{
 		void applySceneInputs(ObjectRender& render, const ShaderLibraryBindings& bindings);
 		// the reflection environment around a mesh, to a draw whose shader declares it
 		// (includes/environment.glsl): its reflection probe, else the sky's prefiltered map
-		void applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, const MeshComponent& mesh, const Transform& transform);
+		void applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity, const MeshComponent& mesh, const Transform& transform);
 		// resolves the frame block slots and the custom textures of a loaded shader, then
 		// binds the textures (false while one is still loading); enabledFeatures (the variant's,
 		// ShaderReference::getEnabledFeatures) pick a @texture's default[<DEFINE>]= default
@@ -3046,6 +3089,8 @@ namespace jasperengine{
 		const CameraComponent* passCamera = nullptr;
 		// u_fs_planarReflection and its texture for a draw of a mesh reading one
 		void applyPlanarReflection(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity);
+		// the planar reflection a draw of the mesh reads in the pass being drawn (none: params.y 0, black)
+		void getPlanarReflection(Entity entity, fs_planar_reflection_t& block, TextureRender*& texture);
 		// the eye of the camera pass being drawn (its camera's Transform)
 		Vector3 passEye;
 		// the Water Excluders' and Wakes' members of a draw's custom block and their textures: the
