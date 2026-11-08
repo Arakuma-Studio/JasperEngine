@@ -214,6 +214,172 @@ comparison of the old golden against the new image (before) and after the update
 | `pachislop/effect/shatter` | copied unchanged from Pachislop's `tests/golden/refs/effect/shatter.png` (S83 parity reference, AC4) |
 | `pachislop/effect/tiltShift` | copied unchanged from Pachislop's `tests/golden/refs/effect/tiltShift.png` (S83 parity reference, AC4) |
 | `pachislop/effect/wave` | copied unchanged from Pachislop's `tests/golden/refs/effect/wave.png` (S83 parity reference, AC4) |
+| `effects/aura` | Aura at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `effects/backlight` | Backlight at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `effects/brush_swirl` | Brush Swirl at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `effects/fire` | Fire at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `effects/fractal_noise` | Fractal Noise at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `effects/glints` | Glints at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `effects/ink_splatter` | Ink Splatter at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `effects/lens_flare` | Lens Flare at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `effects/light_streaks` | Light Streaks at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `effects/lightning` | Lightning at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `effects/magic_circle` | Magic Circle at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `effects/particles` | Particles at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `effects/shockwave` | Shockwave at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `effects/smoke` | Smoke at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `effects/speed_lines` | Speed Lines at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `effects/sunburst` | Sunburst at defaults, alone on the fixture canvas (S83; `TitleArtEffectsGpu.Goldens` draws every registered generator) |
+| `gen/aura_purple` | Aura's Purple Tendrils preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/aura_rising_weak` | Aura's Rising Weak Aura (弱) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/aura_strong` | Aura's Strong Aura (強) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/aura_tendrils` | Aura's Blue Tendrils preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/backlight_blue` | Backlight's Blue Rays preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/backlight_god_rays` | Backlight's God Rays preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/backlight_jackpot` | Backlight's Jackpot Rays (大当り) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/brush_swirl_gold` | Brush Swirl's Gold Brush preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/brush_swirl_ink` | Brush Swirl's Ink Swirl (筆渦) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/brush_swirl_red` | Brush Swirl's Red Brush preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/brush_swirl_slash` | Brush Swirl's Slash preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/fire_behind` | Fire's Flames Behind preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/fire_blaze` | Fire's Tall Blaze preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/fire_hot` | Fire's Hot Fire (激アツ) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/fire_over_edges` | Fire's Flames over the Edges preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/fractal_noise_caustics` | Fractal Noise's Caustics preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/fractal_noise_clouds` | Fractal Noise's Clouds preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/fractal_noise_fog` | Fractal Noise's Fog preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/fractal_noise_nebula` | Fractal Noise's Nebula preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/fractal_noise_plasma` | Fractal Noise's Plasma preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/fractal_noise_static` | Fractal Noise's Static preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/glints_hero` | Glints's Hero Glint preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/glints_highlights` | Glints's Highlight Glints preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/glints_rainbow` | Glints's Rainbow Glints preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/glints_scatter` | Glints's Scattered Sparkles preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/glints_stars` | Glints's Star Glints preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/ink_splatter_ink_behind` | Ink Splatter's Ink Behind (墨) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/ink_splatter_ink_over` | Ink Splatter's Ink Spattered Over (墨) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/ink_splatter_red_ink` | Ink Splatter's Red Ink (赤) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/ink_splatter_swept` | Ink Splatter's Swept Streaks preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/lens_flare_blue` | Lens Flare's Blue Flare preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/lens_flare_gold` | Lens Flare's Gold Flare preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/lens_flare_streak` | Lens Flare's Long Streak preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/light_streaks_anamorphic` | Light Streaks's Anamorphic preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/light_streaks_bundle` | Light Streaks's Light Bundle preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/light_streaks_cyan` | Light Streaks's Cyan Streak preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/light_streaks_spears` | Light Streaks's Spears preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/lightning_bolts` | Lightning's Lightning Bolts preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/lightning_electric_blue` | Lightning's Electric Blue preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/lightning_electrify` | Lightning's Electrify (along Edge) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/magic_circle_bagua` | Magic Circle's Bagua (八卦) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/magic_circle_blue` | Magic Circle's Magic Circle Blue preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/magic_circle_gold` | Magic Circle's Magic Circle Gold (魔法陣) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/magic_circle_hologram` | Magic Circle's Hologram Base preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/magic_circle_hud` | Magic Circle's HUD Target preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/magic_circle_radar` | Magic Circle's Radar preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/particles_bokeh` | Particles's Bokeh preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/particles_confetti` | Particles's Confetti preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/particles_embers` | Particles's Embers preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/particles_fireworks` | Particles's Fireworks preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/particles_gold_dust` | Particles's Gold Dust preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/particles_light_motes` | Particles's Light Motes preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/particles_rain` | Particles's Rain preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/particles_sakura` | Particles's Sakura preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/particles_star_shower` | Particles's Star Shower preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/shockwave_ground` | Shockwave's Ground Shockwave preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/shockwave_halo` | Shockwave's Ring of Light preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/shockwave_neon` | Shockwave's Neon Rings preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/shockwave_red` | Shockwave's Red Shockwave preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/shockwave_white` | Shockwave's Shockwave White preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/smoke_black` | Smoke's Black Smoke preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/smoke_grey` | Smoke's Grey Smoke preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/smoke_steam` | Smoke's White Steam preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/speed_lines_beta` | Speed Lines's Beta Flash (ベタフラ) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/speed_lines_flash` | Speed Lines's Flash (フラッシュ) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/speed_lines_flow_diag` | Speed Lines's Flow Lines Diagonal preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/speed_lines_flow_h` | Speed Lines's Flow Lines Horizontal (流線) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/speed_lines_focus` | Speed Lines's Focus Lines (集中線) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/speed_lines_focus_red` | Speed Lines's Focus Lines Red, Additive preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/speed_lines_rainbow` | Speed Lines's Rainbow Tunnel preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/speed_lines_spiky` | Speed Lines's Spiky Burst preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/sunburst_black_gold` | Sunburst's Black & Gold preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/sunburst_blue` | Sunburst's Blue Rays preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/sunburst_focus_lines` | Sunburst's Focus Lines preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/sunburst_purple` | Sunburst's Purple Rays preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/sunburst_rainbow_halo` | Sunburst's Rainbow Halo preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/sunburst_red_gold` | Sunburst's Red & Gold Rays preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/sunburst_two_colour_wedges` | Sunburst's Two-Colour Wedges preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `pachislop/generator/backlight-blue` | copied unchanged from Pachislop's `tests/golden/refs/generator/backlight-blue.png` (S83 parity reference, AC4) |
+| `pachislop/generator/backlight-godRays` | copied unchanged from Pachislop's `tests/golden/refs/generator/backlight-godRays.png` (S83 parity reference, AC4) |
+| `pachislop/generator/backlight-jackpot` | copied unchanged from Pachislop's `tests/golden/refs/generator/backlight-jackpot.png` (S83 parity reference, AC4) |
+| `pachislop/generator/brushSwirl-gold` | copied unchanged from Pachislop's `tests/golden/refs/generator/brushSwirl-gold.png` (S83 parity reference, AC4) |
+| `pachislop/generator/brushSwirl-ink` | copied unchanged from Pachislop's `tests/golden/refs/generator/brushSwirl-ink.png` (S83 parity reference, AC4) |
+| `pachislop/generator/brushSwirl-red` | copied unchanged from Pachislop's `tests/golden/refs/generator/brushSwirl-red.png` (S83 parity reference, AC4) |
+| `pachislop/generator/brushSwirl-slash` | copied unchanged from Pachislop's `tests/golden/refs/generator/brushSwirl-slash.png` (S83 parity reference, AC4) |
+| `pachislop/generator/corona-auraStrong` | copied unchanged from Pachislop's `tests/golden/refs/generator/corona-auraStrong.png` (S83 parity reference, AC4) |
+| `pachislop/generator/corona-auraWeakUp` | copied unchanged from Pachislop's `tests/golden/refs/generator/corona-auraWeakUp.png` (S83 parity reference, AC4) |
+| `pachislop/generator/corona-purple` | copied unchanged from Pachislop's `tests/golden/refs/generator/corona-purple.png` (S83 parity reference, AC4) |
+| `pachislop/generator/corona-tendrils` | copied unchanged from Pachislop's `tests/golden/refs/generator/corona-tendrils.png` (S83 parity reference, AC4) |
+| `pachislop/generator/fire-behind` | copied unchanged from Pachislop's `tests/golden/refs/generator/fire-behind.png` (S83 parity reference, AC4) |
+| `pachislop/generator/fire-blaze` | copied unchanged from Pachislop's `tests/golden/refs/generator/fire-blaze.png` (S83 parity reference, AC4) |
+| `pachislop/generator/fire-overEdges` | copied unchanged from Pachislop's `tests/golden/refs/generator/fire-overEdges.png` (S83 parity reference, AC4) |
+| `pachislop/generator/fire-red` | copied unchanged from Pachislop's `tests/golden/refs/generator/fire-red.png` (S83 parity reference, AC4) |
+| `pachislop/generator/glints-hero` | copied unchanged from Pachislop's `tests/golden/refs/generator/glints-hero.png` (S83 parity reference, AC4) |
+| `pachislop/generator/glints-highlights` | copied unchanged from Pachislop's `tests/golden/refs/generator/glints-highlights.png` (S83 parity reference, AC4) |
+| `pachislop/generator/glints-rainbow` | copied unchanged from Pachislop's `tests/golden/refs/generator/glints-rainbow.png` (S83 parity reference, AC4) |
+| `pachislop/generator/glints-scatter` | copied unchanged from Pachislop's `tests/golden/refs/generator/glints-scatter.png` (S83 parity reference, AC4) |
+| `pachislop/generator/glints-stars` | copied unchanged from Pachislop's `tests/golden/refs/generator/glints-stars.png` (S83 parity reference, AC4) |
+| `pachislop/generator/inkSplatter-black` | copied unchanged from Pachislop's `tests/golden/refs/generator/inkSplatter-black.png` (S83 parity reference, AC4) |
+| `pachislop/generator/inkSplatter-over` | copied unchanged from Pachislop's `tests/golden/refs/generator/inkSplatter-over.png` (S83 parity reference, AC4) |
+| `pachislop/generator/inkSplatter-red` | copied unchanged from Pachislop's `tests/golden/refs/generator/inkSplatter-red.png` (S83 parity reference, AC4) |
+| `pachislop/generator/inkSplatter-swept` | copied unchanged from Pachislop's `tests/golden/refs/generator/inkSplatter-swept.png` (S83 parity reference, AC4) |
+| `pachislop/generator/lensFlare-blue` | copied unchanged from Pachislop's `tests/golden/refs/generator/lensFlare-blue.png` (S83 parity reference, AC4) |
+| `pachislop/generator/lensFlare-gold` | copied unchanged from Pachislop's `tests/golden/refs/generator/lensFlare-gold.png` (S83 parity reference, AC4) |
+| `pachislop/generator/lensFlare-streak` | copied unchanged from Pachislop's `tests/golden/refs/generator/lensFlare-streak.png` (S83 parity reference, AC4) |
+| `pachislop/generator/lightStreaks-anamorphic` | copied unchanged from Pachislop's `tests/golden/refs/generator/lightStreaks-anamorphic.png` (S83 parity reference, AC4) |
+| `pachislop/generator/lightStreaks-bundle` | copied unchanged from Pachislop's `tests/golden/refs/generator/lightStreaks-bundle.png` (S83 parity reference, AC4) |
+| `pachislop/generator/lightStreaks-cyan` | copied unchanged from Pachislop's `tests/golden/refs/generator/lightStreaks-cyan.png` (S83 parity reference, AC4) |
+| `pachislop/generator/lightStreaks-spears` | copied unchanged from Pachislop's `tests/golden/refs/generator/lightStreaks-spears.png` (S83 parity reference, AC4) |
+| `pachislop/generator/lightning-bolts` | copied unchanged from Pachislop's `tests/golden/refs/generator/lightning-bolts.png` (S83 parity reference, AC4) |
+| `pachislop/generator/lightning-electricBlue` | copied unchanged from Pachislop's `tests/golden/refs/generator/lightning-electricBlue.png` (S83 parity reference, AC4) |
+| `pachislop/generator/lightning-electrify` | copied unchanged from Pachislop's `tests/golden/refs/generator/lightning-electrify.png` (S83 parity reference, AC4) |
+| `pachislop/generator/magicCircle-bagua` | copied unchanged from Pachislop's `tests/golden/refs/generator/magicCircle-bagua.png` (S83 parity reference, AC4) |
+| `pachislop/generator/magicCircle-blue` | copied unchanged from Pachislop's `tests/golden/refs/generator/magicCircle-blue.png` (S83 parity reference, AC4) |
+| `pachislop/generator/magicCircle-gold` | copied unchanged from Pachislop's `tests/golden/refs/generator/magicCircle-gold.png` (S83 parity reference, AC4) |
+| `pachislop/generator/magicCircle-hologram` | copied unchanged from Pachislop's `tests/golden/refs/generator/magicCircle-hologram.png` (S83 parity reference, AC4) |
+| `pachislop/generator/magicCircle-hud` | copied unchanged from Pachislop's `tests/golden/refs/generator/magicCircle-hud.png` (S83 parity reference, AC4) |
+| `pachislop/generator/magicCircle-radar` | copied unchanged from Pachislop's `tests/golden/refs/generator/magicCircle-radar.png` (S83 parity reference, AC4) |
+| `pachislop/generator/particles-bokeh` | copied unchanged from Pachislop's `tests/golden/refs/generator/particles-bokeh.png` (S83 parity reference, AC4) |
+| `pachislop/generator/particles-confetti` | copied unchanged from Pachislop's `tests/golden/refs/generator/particles-confetti.png` (S83 parity reference, AC4) |
+| `pachislop/generator/particles-embers` | copied unchanged from Pachislop's `tests/golden/refs/generator/particles-embers.png` (S83 parity reference, AC4) |
+| `pachislop/generator/particles-fireworks` | copied unchanged from Pachislop's `tests/golden/refs/generator/particles-fireworks.png` (S83 parity reference, AC4) |
+| `pachislop/generator/particles-goldDust` | copied unchanged from Pachislop's `tests/golden/refs/generator/particles-goldDust.png` (S83 parity reference, AC4) |
+| `pachislop/generator/particles-lightMotes` | copied unchanged from Pachislop's `tests/golden/refs/generator/particles-lightMotes.png` (S83 parity reference, AC4) |
+| `pachislop/generator/particles-rain` | copied unchanged from Pachislop's `tests/golden/refs/generator/particles-rain.png` (S83 parity reference, AC4) |
+| `pachislop/generator/particles-sakura` | copied unchanged from Pachislop's `tests/golden/refs/generator/particles-sakura.png` (S83 parity reference, AC4) |
+| `pachislop/generator/particles-starShower` | copied unchanged from Pachislop's `tests/golden/refs/generator/particles-starShower.png` (S83 parity reference, AC4) |
+| `pachislop/generator/shockwave-ground` | copied unchanged from Pachislop's `tests/golden/refs/generator/shockwave-ground.png` (S83 parity reference, AC4) |
+| `pachislop/generator/shockwave-halo` | copied unchanged from Pachislop's `tests/golden/refs/generator/shockwave-halo.png` (S83 parity reference, AC4) |
+| `pachislop/generator/shockwave-neon` | copied unchanged from Pachislop's `tests/golden/refs/generator/shockwave-neon.png` (S83 parity reference, AC4) |
+| `pachislop/generator/shockwave-red` | copied unchanged from Pachislop's `tests/golden/refs/generator/shockwave-red.png` (S83 parity reference, AC4) |
+| `pachislop/generator/shockwave-white` | copied unchanged from Pachislop's `tests/golden/refs/generator/shockwave-white.png` (S83 parity reference, AC4) |
+| `pachislop/generator/smoke-black` | copied unchanged from Pachislop's `tests/golden/refs/generator/smoke-black.png` (S83 parity reference, AC4) |
+| `pachislop/generator/smoke-grey` | copied unchanged from Pachislop's `tests/golden/refs/generator/smoke-grey.png` (S83 parity reference, AC4) |
+| `pachislop/generator/smoke-steam` | copied unchanged from Pachislop's `tests/golden/refs/generator/smoke-steam.png` (S83 parity reference, AC4) |
+| `pachislop/generator/speedLines-beta` | copied unchanged from Pachislop's `tests/golden/refs/generator/speedLines-beta.png` (S83 parity reference, AC4) |
+| `pachislop/generator/speedLines-flash` | copied unchanged from Pachislop's `tests/golden/refs/generator/speedLines-flash.png` (S83 parity reference, AC4) |
+| `pachislop/generator/speedLines-flowDiag` | copied unchanged from Pachislop's `tests/golden/refs/generator/speedLines-flowDiag.png` (S83 parity reference, AC4) |
+| `pachislop/generator/speedLines-flowH` | copied unchanged from Pachislop's `tests/golden/refs/generator/speedLines-flowH.png` (S83 parity reference, AC4) |
+| `pachislop/generator/speedLines-focus` | copied unchanged from Pachislop's `tests/golden/refs/generator/speedLines-focus.png` (S83 parity reference, AC4) |
+| `pachislop/generator/speedLines-focusRed` | copied unchanged from Pachislop's `tests/golden/refs/generator/speedLines-focusRed.png` (S83 parity reference, AC4) |
+| `pachislop/generator/speedLines-rainbow` | copied unchanged from Pachislop's `tests/golden/refs/generator/speedLines-rainbow.png` (S83 parity reference, AC4) |
+| `pachislop/generator/speedLines-spiky` | copied unchanged from Pachislop's `tests/golden/refs/generator/speedLines-spiky.png` (S83 parity reference, AC4) |
+| `pachislop/generator/sunburst-blackGold` | copied unchanged from Pachislop's `tests/golden/refs/generator/sunburst-blackGold.png` (S83 parity reference, AC4) |
+| `pachislop/generator/sunburst-blue` | copied unchanged from Pachislop's `tests/golden/refs/generator/sunburst-blue.png` (S83 parity reference, AC4) |
+| `pachislop/generator/sunburst-focusLines` | copied unchanged from Pachislop's `tests/golden/refs/generator/sunburst-focusLines.png` (S83 parity reference, AC4) |
+| `pachislop/generator/sunburst-purple` | copied unchanged from Pachislop's `tests/golden/refs/generator/sunburst-purple.png` (S83 parity reference, AC4) |
+| `pachislop/generator/sunburst-rainbowHalo` | copied unchanged from Pachislop's `tests/golden/refs/generator/sunburst-rainbowHalo.png` (S83 parity reference, AC4) |
+| `pachislop/generator/sunburst-redGold` | copied unchanged from Pachislop's `tests/golden/refs/generator/sunburst-redGold.png` (S83 parity reference, AC4) |
+| `pachislop/generator/sunburst-twoColourWedges` | copied unchanged from Pachislop's `tests/golden/refs/generator/sunburst-twoColourWedges.png` (S83 parity reference, AC4) |
 
 ## Updated goldens
 
