@@ -182,21 +182,11 @@ bool editor::commitTerrainOpsWithUndo(Project* project, SceneProject* scene, Ent
     for (const MapId& map : result.createdMaps) {
         const terrain::MapFormat format = snapshot.overlay->format(map);
         TerrainMadeMap made;
-        if (!terrainMakeBlankMap(project, scene, entity, map, format, made)) {
+        if (!makeTerrainBlankMap(project, scene, entity, map, format, made)) {
             error = "A new map could not be made.";
             return false;
         }
-        TerrainMapSnapshot after = made.blank;
-        if (!snapshot.overlay->readBytes(map, terrain::TexelRect{0, 0, after.width, after.height}, after.pixels)) {
-            error = "A new map could not be read back.";
-            return false;
-        }
-        Command* command = new TerrainTextureEditCmd(project, scene->id, entity, made.ref, made.before, std::move(after), stepName);
-        command->setNoMerge();
-        if (!history->addCommand(command)) {
-            error = "A new map could not be made.";
-            return false;
-        }
+        if (!keepTerrainMadeMap(project, scene, entity, made, *snapshot.overlay, stepName, error)) return false;
     }
     // the live maps equal the copy, so the copy's before and after tiles are the live map's
     auto delta = std::make_unique<TerrainMapDeltaCmd>(project, scene->id, entity, entity, *snapshot.overlay, false, stepName, result.createdMaps);
