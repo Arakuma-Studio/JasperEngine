@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 // T1 R58 (AC44): Create Terrain makes the GameObject, its sizes, a height map and a collider as one
-// undo step; R10, R24: an op list through the shared undo helper is one step too.
+// undo step, its Start Shape Import Raw... and Base Layer included; R10, R24: an op list through the
+// shared undo helper is one step too.
 
 #include "TerrainProjectFixture.h"
+#include "component/MeshComponent.h"
 #include "component/RigidbodyComponent.h"
 
 #include "command/CommandHistory.h"
 #include "terrain/TerrainOpsUndo.h"
+#include "terrain/TerrainRawIO.h"
 #include "terrain/TerrainSizePresets.h"
 #include "window/dialog/CreateTerrainDialog.h"
 
@@ -17,6 +20,44 @@ using namespace terrainprojecttest;
 namespace {
 
     class TerrainCreateDialogTest : public TerrainProjectFixture {};
+
+    CreateTerrainDialog::Settings smallSettings(const std::string& name, int heightmap) {
+        CreateTerrainDialog::Settings settings;
+        settings.name = name;
+        const TerrainSizePreset& small = TERRAIN_SIZE_PRESETS[2];
+        settings.size = small.size;
+        settings.height = small.height;
+        settings.heightmap = heightmap;
+        settings.meshResolution = small.meshResolution;
+        settings.rootGrid = small.root;
+        settings.levels = small.levels;
+        settings.collider = false;
+        return settings;
+    }
+
+    // A little-endian 16-bit file whose rows and columns differ, so a flip or a transpose shows
+    HeightImport rampFile(int width, int height) {
+        std::vector<uint8_t> bytes(static_cast<size_t>(width) * height * 2);
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                const uint16_t value = static_cast<uint16_t>((x * 977 + y * 131) % 65536);
+                const size_t at = (static_cast<size_t>(y) * width + x) * 2;
+                bytes[at] = static_cast<uint8_t>(value & 0xFF);
+                bytes[at + 1] = static_cast<uint8_t>(value >> 8);
+            }
+        }
+        HeightImportOptions options;
+        options.width = width;
+        options.height = height;
+        options.byteOrder = HeightByteOrder::Little;
+        options.range = HeightRange::Full;
+        return TerrainRawIO::decode("ramp.r16", bytes, options);
+    }
+
+    uint64_t heightHash(Scene* scene, Entity entity) {
+        TerrainComponentStore store(scene, entity, scene->getComponent<TerrainComponent>(entity));
+        return terrain::mapHash(store, HEIGHT_MAP);
+    }
 
 }
 
@@ -102,4 +143,72 @@ TEST_F(TerrainCreateDialogTest, OpsWithUndoMakeMapsAndOneGroup) {
     EXPECT_FALSE(TerrainComponentStore(scene->scene, terrainEntity, terrain()).format(BLEND_MAP).exists) << "the made map goes with the step";
     ASSERT_TRUE(history->redo());
     EXPECT_NE(bytesOf(HEIGHT_MAP), heightsBefore);
+}
+
+TEST_F(TerrainCreateDialogTest, ImportRawStartShapeIsTheImportedFile) {
+    const HeightImport imported = rampFile(33, 33);
+    ASSERT_TRUE(imported.ok) << imported.error;
+    CreateTerrainDialog::Settings settings = smallSettings("Imported", 33);
+    settings.shape = CreateTerrainDialog::StartShape::ImportRaw;
+    settings.imported = imported;
+    std::string error;
+    CommandHistory* history = CommandHandle::get(scene->id);
+    const size_t before = history->position();
+    const Entity made = CreateTerrainDialog::create(project.get(), scene->id, NULL_ENTITY, settings, error);
+    ASSERT_NE(made, NULL_ENTITY) << error;
+    EXPECT_EQ(history->position(), before + 1) << "one undo step";
+
+    // the same file through the Terrain window's import (the import_heightmap op) on a flat terrain
+    CreateTerrainDialog::Settings flat = smallSettings("Flat", 33);
+    const Entity reference = CreateTerrainDialog::create(project.get(), scene->id, NULL_ENTITY, flat, error);
+    ASSERT_NE(reference, NULL_ENTITY) << error;
+    terrain::Op op;
+    op.type = terrain::OpType::ImportHeightmap;
+    op.importedWidth = imported.width;
+    op.importedHeight = imported.height;
+    op.importedHeights = imported.normalized;
+    const std::vector<terrain::Op> ops = {op};
+    const terrain::TerrainOpResult preview = previewTerrainOps(project.get(), scene, reference, ops, terrain::OpOptions());
+    ASSERT_TRUE(preview.ok) << preview.error;
+    terrain::TerrainOpResult reported;
+    const size_t importStart = history->mark();
+    ASSERT_TRUE(applyTerrainOpsWithUndo(project.get(), scene, reference, ops, terrain::OpOptions(), preview, "Import", reported, error)) << error;
+    ASSERT_TRUE(history->groupSince(importStart, "Import"));
+    EXPECT_EQ(heightHash(scene->scene, made), heightHash(scene->scene, reference)) << "Create's heights are the import's";
+
+    ASSERT_TRUE(history->undo());
+    ASSERT_TRUE(history->undo());
+    ASSERT_TRUE(history->undo());
+    EXPECT_FALSE(scene->scene->isEntityCreated(made)) << "undo takes the imported terrain away";
+}
+
+TEST_F(TerrainCreateDialogTest, ImportRawRefusesWhatItCannotMake) {
+    CreateTerrainDialog::Settings settings = smallSettings("Imported", 33);
+    settings.shape = CreateTerrainDialog::StartShape::ImportRaw;
+    std::string error;
+    EXPECT_EQ(CreateTerrainDialog::create(project.get(), scene->id, NULL_ENTITY, settings, error), NULL_ENTITY);
+    EXPECT_NE(error.find("choose a heightmap file"), std::string::npos) << error;
+
+    settings.imported = rampFile(33, 17);
+    ASSERT_TRUE(settings.imported.ok) << settings.imported.error;
+    error.clear();
+    EXPECT_EQ(CreateTerrainDialog::create(project.get(), scene->id, NULL_ENTITY, settings, error), NULL_ENTITY);
+    EXPECT_NE(error.find("Terrain window"), std::string::npos) << "names the route that takes any size: " << error;
+}
+
+TEST_F(TerrainCreateDialogTest, BaseLayerIsTheMaterialBaseColorInTheSameStep) {
+    CreateTerrainDialog::Settings settings = smallSettings("Grass", 17);
+    settings.baseLayer = "textures/grass.png";
+    std::string error;
+    CommandHistory* history = CommandHandle::get(scene->id);
+    const size_t before = history->position();
+    const Entity made = CreateTerrainDialog::create(project.get(), scene->id, NULL_ENTITY, settings, error);
+    ASSERT_NE(made, NULL_ENTITY) << error;
+    EXPECT_EQ(history->position(), before + 1) << "one undo step";
+    const MeshComponent& mesh = scene->scene->getComponent<MeshComponent>(made);
+    EXPECT_EQ(mesh.submeshes[0].material.baseColorTexture.getPath(0), "textures/grass.png");
+    ASSERT_TRUE(history->undo());
+    ASSERT_TRUE(history->redo());
+    EXPECT_EQ(scene->scene->getComponent<MeshComponent>(made).submeshes[0].material.baseColorTexture.getPath(0), "textures/grass.png")
+        << "redo brings the Base Layer back with the terrain";
 }
