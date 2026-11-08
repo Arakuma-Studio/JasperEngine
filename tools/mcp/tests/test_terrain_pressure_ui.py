@@ -23,11 +23,6 @@ EDITOR = {"create": True, "name": "Terrain Pressure UI", "xvfb": "harness", "ui_
 WINDOW = "Terrain"
 
 
-def mid(ui: Ui, rect) -> tuple[int, int]:
-    """the screen centre of a UI probe rect: the probe gives [x0, y0, x1, y1], Ui.centre takes [x, y, width, height]"""
-    return ui.centre([rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1]])
-
-
 async def test_pressure_options_are_saved(ed: Editor):
     ui = Ui(ed)
     await ed.call("tool_groups", enable=["terrain"])
@@ -38,7 +33,8 @@ async def test_pressure_options_are_saved(ed: Editor):
     await ed.call("select_entities", scene=sid, entities=[terrain])
     await ed.call("focus_window", window="terrain")
 
-    await ui.reveal("Pressure Size", WINDOW)
+    # a row's text is not an item: its checkbox's ## id is
+    await ui.reveal("##pressure_size", WINDOW)
     await ui.frames(5)
     items = ed.ui_items()
     for name in ("terrain.brush.pressure_strength", "terrain.brush.pressure_size"):
@@ -52,9 +48,9 @@ async def test_pressure_options_are_saved(ed: Editor):
     shutil.copy(ed.project / relative, folder / "terrain-pressure-options.png")
 
     # Pressure Size starts off and Pressure Strength on: a click on each turns them around
-    await ui.click(mid(ui, items["terrain.brush.pressure_size"]))
+    await ui.click_revealed("##pressure_size", WINDOW)
     await ui.frames(5)
-    await ui.click(mid(ui, ed.ui_items()["terrain.brush.pressure_strength"]))
+    await ui.click_revealed("##pressure_strength", WINDOW)
     await ui.frames(5)
     await ed.call("save_project", untitled_scene_dir="scenes")
     saved = yaml.safe_load((ed.project / ".jasperengine" / "user" / "workspace.yaml").read_text())["terrainEditor"]

@@ -216,16 +216,16 @@ namespace {
             return lower + (upper - lower) * blendY;
         }
 
-        float sampleHeight(const SurfaceView& view, float localX, float localZ) {
+        float todayHeight(const SurfaceView& view, float localX, float localZ) {
             if (view.size <= std::numeric_limits<float>::epsilon()) return 0.0f;
             return view.maxHeight * sampleTexels(view.pixels, view.width, view.height, view.channels, view.bytesPerChannel,
                                                  texelCoord(localX, view.size, view.width), texelCoord(localZ, view.size, view.height));
         }
 
-        void sampleSurface(const SurfaceView& view, float localX, float localZ, float& height, Vector3& normal) {
+        void todaySurface(const SurfaceView& view, float localX, float localZ, float& height, Vector3& normal) {
             const float delta = view.size / static_cast<float>(view.width);
-            height = sampleHeight(view, localX, localZ);
-            normal = Vector3(height - sampleHeight(view, localX + delta, localZ), delta, height - sampleHeight(view, localX, localZ + delta)).normalized();
+            height = todayHeight(view, localX, localZ);
+            normal = Vector3(height - todayHeight(view, localX + delta, localZ), delta, height - todayHeight(view, localX, localZ + delta)).normalized();
         }
 
         // The 160-step march with 12 bisections over origin + direction * t, t in [0, 1]
@@ -233,7 +233,7 @@ namespace {
             const float halfSize = view.size * 0.5f;
             auto heightAt = [&](float x, float z, float& out) {
                 if (x < -halfSize || x > halfSize || z < -halfSize || z > halfSize) return false;
-                out = sampleHeight(view, x, z);
+                out = todayHeight(view, x, z);
                 return true;
             };
             const float surfaceMinHeight = std::min(0.0f, view.maxHeight);
@@ -423,7 +423,7 @@ int main(int argc, char** argv) {
             [&]() {
                 float sum = 0.0f;
                 const auto begin = bench::Clock::now();
-                for (const Vector2& p : points) sum += today::sampleHeight(view, p.x, p.y);
+                for (const Vector2& p : points) sum += today::todayHeight(view, p.x, p.y);
                 const double ns = bench::secondsSince(begin) * 1.0e9 / POINTS;
                 sink = sink + sum;
                 return ns;
@@ -450,7 +450,7 @@ int main(int argc, char** argv) {
                 for (const Vector2& p : points) {
                     float height = 0.0f;
                     Vector3 normal;
-                    today::sampleSurface(view, p.x, p.y, height, normal);
+                    today::todaySurface(view, p.x, p.y, height, normal);
                     sum += height + normal.x;
                 }
                 const double ns = bench::secondsSince(begin) * 1.0e9 / POINTS;
