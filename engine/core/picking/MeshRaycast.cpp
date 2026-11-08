@@ -401,8 +401,15 @@ const char* jasperengine::pickKindName(PickKind kind){
         case PickKind::UI: return "ui";
         case PickKind::BOUNDS: return "bounds";
         case PickKind::ICON: return "icon";
+        case PickKind::TREE: return "tree";
+        case PickKind::DETAIL: return "detail";
     }
     return "mesh";
+}
+
+bool picking::testMeshAt(SceneBvh& bvh, const SceneBvh::Leaf& leaf, const Matrix4& model, const Vector3& origin, const Vector3& direction,
+                         float maxDistance, const PickFilter& filter, PickHit& hit){
+    return testMesh(bvh, leaf, model, origin, direction, maxDistance, filter, hit);
 }
 
 bool picking::testLeaf(SceneBvh& bvh, const SceneBvh::Leaf& leaf, const Vector3& origin, const Vector3& direction,
@@ -429,6 +436,9 @@ bool picking::testLeaf(SceneBvh& bvh, const SceneBvh::Leaf& leaf, const Vector3&
         case PickKind::BOUNDS:
             return boundsHit(leaf, origin, direction, maxDistance, false, hit);
         case PickKind::ICON:
+        // foliage has no leaves: SceneBvh walks its cells (T5 R35)
+        case PickKind::TREE:
+        case PickKind::DETAIL:
             return false;
     }
     return false;
@@ -474,6 +484,8 @@ MeshRaycastHit MeshRaycast::toHit(const PickHit& pick, float distanceScale){
     hit.barycentric = pick.barycentric;
     hit.kind = pick.kind;
     hit.pending = pick.pending;
+    hit.foliageId = pick.foliageId;
+    hit.prototype = pick.prototype;
     return hit;
 }
 

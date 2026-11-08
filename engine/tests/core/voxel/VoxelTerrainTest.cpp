@@ -419,7 +419,7 @@ TEST_F(VoxelTerrain, RimHasNoStep) {
     const float spacing = 0.005f;
     float worstDrawn = 0.0f, worstColliding = 0.0f;
     float lowestDrawn = 1e9f, lowestColliding = 1e9f;
-    for (const Vector2 centre : {Vector2(64.0f, 64.0f), Vector2(72.0f, 72.0f)}) {
+    for (const Vector2& centre : {Vector2(64.0f, 64.0f), Vector2(72.0f, 72.0f)}) {
         for (int ray = 0; ray < 16; ray++) {
             const float angle = 6.2831853f * static_cast<float>(ray) / 16.0f;
             const Vector2 out(std::cos(angle), std::sin(angle));

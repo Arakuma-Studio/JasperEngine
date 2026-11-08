@@ -13,6 +13,8 @@
 #include "RenderSystemLighting.h"
 #include "component/MeshComponent.h"
 #include "component/InstancedMeshComponent.h"
+#include <map>
+#include <memory>
 #include "component/ModelComponent.h"
 #include "component/SkyboxComponent.h"
 #include "component/ReflectionProbeComponent.h"
@@ -29,7 +31,7 @@
 #include "component/TerrainComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/SpriteComponent.h"
-#include "component/Transform.h"
+#include "ecs/ComponentFwd.h"
 #include "render/WaterLayering.h"
 #include "render/ObjectRender.h"
 #include "render/VisibleList.h"
@@ -61,6 +63,8 @@
 #include <unordered_set>
 
 namespace jasperengine{
+
+	struct FoliageViewList;
 
 	namespace particles { struct CompiledEffect; }
 	// Legacy u_fs_lighting, declared by forks written before per-object lights: filled per
@@ -564,6 +568,10 @@ namespace jasperengine{
 		uint8_t voxelTier = 0;
 		bool instanced = false;
 		bool instanceFade = false;
+		// a foliage prototype (T5): 'Cin', 'Wnd', 'Dth'
+		bool compactInstance = false;
+		bool foliageWind = false;
+		bool foliageDither = false;
 		bool mirror = false;
 		// bound to lattices (LatticeMeshState::count > 0, never a terrain): the 'Ltc' variants,
 		// with the vertex colour a mask channel reads
@@ -1173,7 +1181,8 @@ namespace jasperengine{
 		struct MirrorView{
 			Framebuffer framebuffer;
 			CameraComponent camera;
-			Transform transform;
+			// behind a pointer so this header only names Transform (T1: Transform.h fan-out)
+			std::unique_ptr<Transform> transform;
 			PassObjects objects;
 			Matrix4 viewProjection; // oblique, for the mirror surface's projective lookup
 			// lighting and shadow maps of the reflection camera
@@ -1217,7 +1226,7 @@ namespace jasperengine{
 			uint64_t lastUsed = 0;
 			Framebuffer framebuffer;
 			CameraComponent camera;
-			Transform transform;
+			std::unique_ptr<Transform> transform;
 			// the viewer's lighting and shadow maps (strengths 0 without the scene's shadows)
 			CameraShadows shadows;
 #ifdef JASPERENGINE_EDITOR
@@ -2427,6 +2436,26 @@ namespace jasperengine{
 #endif
 		void updateAllTerrainRenderTextures();
 		void updateInstanceBuffers();
+		// foliage (RenderSystemFoliage.cpp, T5 F1)
+		FoliageViewList& foliageList(const void* owner, int slot);
+		void buildFoliageLists(const void* owner, CameraComponent& camera, Transform& cameraTransform, const LodView& lodView, bool main);
+		void buildFoliageShadowLists(const void* owner, int firstSlot, const Vector3& eye);
+		void buildFoliageCameraList(CameraComponent& camera, Transform& cameraTransform, int terrainView);
+		void uploadFoliageList(FoliageViewList& list);
+		void uploadFoliageViews();
+		FoliageViewList* currentFoliageList(int instanceView);
+		unsigned int foliageDrawCount(const InstancedMeshComponent& instmesh, int instanceView);
+		void applyFoliageUniforms(ObjectRender& render, int slot, Entity entity, int instanceView);
+		void drawFoliageSubmesh(ObjectRender& render, Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent& instmesh, int instanceView);
+		std::map<std::pair<const void*, int>, std::unique_ptr<FoliageViewList>> foliageLists;
+		const void* foliageLastOwner = nullptr;
+		int foliageLastSlot = -1;
+		FoliageViewList* foliageLastList = nullptr;
+		// the render-to-texture camera's view being drawn (its terrain view), 0 the main camera's
+		int foliagePassView = 0;
+		// the camera of the pass being drawn, for the fade and the billboards
+		Vector3 foliagePassEye;
+		uint64_t foliageUploadBytes = 0;
 		void uploadInstanceViews(RenderView& renderView);
 		Rect getScissorRect(RectTransformComponent& layout, ImageComponent& img, Transform& transform, const Rect& passViewport);
 		// The UI scissor of a pass entity (a RectTransform): its parent's (unless ignoreScissor)
@@ -3292,6 +3321,10 @@ namespace jasperengine{
 		// The shader a submesh draws with: its material's, else the mesh's fork, else the
 		// scene's default mesh shader; "" is the built-in Lit shader
 		static const std::string& getSubmeshShader(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
+		// R37: whether this shader's vertex program reads the compact instance; F6: whether its
+		// fragment program knows the fade
+		static bool shaderSupportsCompactInstances(const std::string& shader);
+		static bool shaderSupportsFoliageDither(const std::string& shader);
 		// The custom shader strings (with the "#FEATURES" suffix the material's features
 		// resolve to) its color and depth variants are keyed by; "" for built-in. The depth
 		// pass draws with the library shader's @depth program, else the mesh's depth fork.

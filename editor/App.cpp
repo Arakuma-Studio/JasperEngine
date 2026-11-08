@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "util/ImpostorBaker.h"
 #include "terrain/TerrainMapPersistence.h"
 #include "render/ViewCameraMirror.h"
 #include "component/Transform.h"
@@ -3933,6 +3934,9 @@ void editor::App::engineRender(){
     ScriptReloadService::get().update();
     // navigation bakes of the stopped scenes: landed and saved (.navmesh) as they finish
     NavigationEditor::get().update(&project);
+    // T5: a bake renders a view a frame, and asks for the next one so an idle editor goes on
+    ImpostorBaker::update();
+    if (ImpostorBaker::isRunning()) requestFrame();
     // generated normal maps whose sources changed (badges, the opt-in auto-regenerate)
     spriteNormalsWatcher->tick();
     project.updateGeneratedSources();
@@ -5684,13 +5688,15 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v51: water-reflections: library:water on the scene clock (sceneTime), GERSTNER,
     //      PLANAR_REFLECTION (includes/planar_reflection.glsl), its shadow lookup with the smooth
     //      normal and shadowed caustics; @role in water.frag and underwater.frag.
-    // v52: terrain holes (T3 R20): TERRAIN_HOLES, 'Thl' on MESH, DEPTH and GBUFFER, in mesh.frag, depth.frag,
+    // v52: foliage's compact instance, wind and dither (T5: MESH 'Cin' 'Wnd' 'Dth' at 42-44, DEPTH
+    //      and GBUFFER at 19-21, in mesh.vert and its siblings), library:impostor.
+    // v53: terrain holes (T3 R20): TERRAIN_HOLES ('Thl': MESH 45, DEPTH 22, GBUFFER 22), in mesh.frag, depth.frag,
     //      gbuffer.frag, output.glsl and surface_depth_fs.glsl; a terrain with holes drops u_occlusionTexture.
-    // v53: Voxel Volumes (T6 R83): HAS_VOXEL and its tiers in mesh.vert, mesh.frag and the G-buffer
-    //      (GBUFFER bit 'Vox'), includes/voxel_vs.glsl and voxel_fs.glsl.
-    // v54: a voxel colour layer (not PBR) stays raw, as the terrain's do (voxel_fs.glsl's voxelLayerColor).
-    // v55: u_fs_voxelLayers carries the eye; v_voxelPositionEye became v_voxelPosition.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v55";
+    // v54: Voxel Volumes (T6 R83): HAS_VOXEL and its tiers in mesh.vert, mesh.frag and the G-buffer
+    //      (GBUFFER bit 'Vox' at 23), includes/voxel_vs.glsl and voxel_fs.glsl.
+    // v55: a voxel colour layer (not PBR) stays raw, as the terrain's do (voxel_fs.glsl's voxelLayerColor).
+    // v56: u_fs_voxelLayers carries the eye; v_voxelPositionEye became v_voxelPosition.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v56";
 }
 
 void editor::App::pushTabNotificationStyle(){

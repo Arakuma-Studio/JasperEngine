@@ -263,6 +263,11 @@ namespace jasperengine{
         OBJECTMVP2,
         OBJECTMVP3,
         OBJECTEXTRA,
+        // foliage's compact instance (includes/foliage_instance.glsl, T5 F3)
+        INSTANCEPACKED0,
+        INSTANCEPACKED1,
+        INSTANCEPACKED2,
+        INSTANCEPACKED3,
         // a Voxel Volume's vertex (T6 R49): four 4-bit slots in x (ushort2n), the weights over them (ubyte4n)
         VOXELSLOTS,
         VOXELWEIGHTS
@@ -285,6 +290,7 @@ namespace jasperengine{
         PBR_FS_PARAMS,
         PBR_FS_TEXCOORDSETS,
         PBR_VS_FADE,
+        PBR_VS_FOLIAGE,
         FS_LIGHTING,
         FS_REFLECTION_PROBE,
         FS_FOG,

@@ -57,6 +57,7 @@
 #endif
 
 #include "subsystem/ActionSystem.h"
+#include "component/Transform.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -2274,6 +2275,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("setAtmosphereQuality", &Engine::setAtmosphereQuality)
         .addStaticFunction("getAtmosphereQuality", &Engine::getAtmosphereQuality)
         .addStaticFunction("resetAtmosphereQuality", &Engine::resetAtmosphereQuality)
+        .addStaticFunction("setFoliageQuality", &Engine::setFoliageQuality)
+        .addStaticFunction("getFoliageQuality", &Engine::getFoliageQuality)
+        .addStaticFunction("resetFoliageQuality", &Engine::resetFoliageQuality)
         .addStaticProperty("foliageDistanceScale", &Engine::getFoliageDistanceScale, &Engine::setFoliageDistanceScale)
         .addStaticFunction("resetFoliageDistanceScale", &Engine::resetFoliageDistanceScale)
         .addStaticProperty("callMouseInTouchEvent", &Engine::isCallMouseInTouchEvent, &Engine::setCallMouseInTouchEvent)

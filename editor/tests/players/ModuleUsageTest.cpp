@@ -23,6 +23,7 @@
 #include "component/Rigidbody2DComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "component/ScriptComponent.h"
+#include "component/TerrainComponent.h"
 #include "component/SplineExtrudeComponent.h"
 #include "component/Transform.h"
 #include "component/UIDocumentComponent.h"
@@ -88,6 +89,20 @@ TEST(ModuleUsage, AnEmptyProjectNeedsNothing) {
     EXPECT_EQ(modules(plain.usage()), "");
     // a Lua script of math, input and logs
     EXPECT_EQ(modules(withLua("local v = Vector3(1, 2, 3)\nif Input.isKeyPressed(1) then Log.info(tostring(v:length())) end")), "");
+}
+
+// T5 AC17: a tree's capsule is a body the physics module has to build
+TEST(ModuleUsage, TreeCapsulesNeedPhysics3d) {
+    OneEntity plain;
+    TerrainComponent terrain;
+    TerrainTreePrototype prototype;
+    prototype.id = 1;
+    terrain.treePrototypes.push_back(prototype);
+    plain.scene.addComponent<TerrainComponent>(plain.entity, terrain);
+    EXPECT_EQ(modules(plain.usage()).find("physics3d"), std::string::npos) << "no collision, no module";
+
+    plain.scene.getComponent<TerrainComponent>(plain.entity).treePrototypes[0].collision = TerrainTreeCollision::Capsule;
+    EXPECT_NE(modules(plain.usage()).find("physics3d"), std::string::npos);
 }
 
 TEST(ModuleUsage, TheSoundLayerFollowsTheImportTable) {

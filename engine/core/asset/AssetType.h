@@ -39,7 +39,8 @@ namespace jasperengine {
         VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
         // 24 to 27 are the pixel art program's (docs/specs/S41-S52)
         SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
-        // 29 and 30 are the other terrain streams' (D22)
+        // 30 is Terrain World's (programme D19, D22)
+        TreeData = 29,              // a .jetrees file of a Terrain's trees (T5 R22)
         VoxelVolume = 31,           // a .voxelvolume (T6 R77, its GUID in a sidecar)
         NoiseGraph = 32             // a .noisegraph Noise Graph (T2; D22 moved it from 28)
     };
@@ -68,6 +69,7 @@ namespace jasperengine {
             case AssetType::NavGrid: return "navgrid";
             case AssetType::AnimatorController: return "animator_controller";
             case AssetType::AvatarMask: return "avatar_mask";
+            case AssetType::TreeData: return "tree_data";
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
             case AssetType::SoundEvent: return "sound_event";

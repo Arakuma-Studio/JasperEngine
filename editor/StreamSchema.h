@@ -19,7 +19,7 @@
 #include "reflect/Reflect.h"
 #include "Project.h"
 #include "Generator.h"
-#include "window/TerrainEditWindow.h"
+#include "terrain/TerrainBrush.h"
 #include "render/shadow/ShadowTiers.h"
 #include "render/shadow/ShadowTypes.h"
 
@@ -73,6 +73,10 @@ namespace jasperengine{
     enum class ProgressbarType;
     enum class ScrollbarType;
     enum class ShadowCaster2DShape;
+    enum class TerrainCliffProjection;
+    enum class TerrainMacroMode;
+    enum class TerrainOffscreenShadows;
+    enum class TerrainQualitySetting;
     enum class UIDocumentRenderMode;
     enum class WaterVolumeWaves;
 }
@@ -211,6 +215,7 @@ namespace jasperengine::editor {
         static const EnumTable<EaseType>& easeType();
         static const EnumTable<FluidOutput>& fluidOutput();
         static const EnumTable<AtmosphereQuality>& atmosphereQuality();
+        static const EnumTable<FoliageQuality>& foliageQuality();
         static const EnumTable<AtmosphereQualityOverride>& atmosphereQualityOverride();
         static const EnumTable<CloudsPreset>& cloudsPreset();
         static const EnumTable<CloudsRendering>& cloudsRendering();

@@ -271,6 +271,9 @@ namespace jasperengine{
                         bool terrainPBR = false,
                         bool vertexLights = false, int lightCapacity = 8, bool stochasticTiling = false,
                         bool lattice = false, bool vat = false, bool vatBones = false);
+        // foliage's bits of a MESH, DEPTH or GBUFFER key (T5 F3, F6, F8). They change a uniform block or
+        // the inputs, so they are in no fallback list (R37).
+        static uint64_t getFoliageProperties(ShaderType shaderType, bool compact, bool wind, bool dither);
         // normals, vertexColorVec3/4 and uv1: the inputs a library depth program requires
         // (vertexColorVec3/4 also a lattice's vertex colour mask); textureRect: the sprite
         // texture rect its UV (texture or uv1) goes through

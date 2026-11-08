@@ -3,6 +3,7 @@
 
 #include "LuaBinding.h"
 #include "component/MeshComponent.h"
+#include "component/Transform.h"
 #include "object/spline/Spline.h"
 #include "object/spline/SplineAnimate.h"
 #include "object/spline/SplineExtrude.h"

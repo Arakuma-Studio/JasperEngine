@@ -50,7 +50,6 @@ namespace {
                 terrain.heightMapLoaded = false;
                 terrain.needUpdateTerrain = true;
                 terrain.needUpdateTexture = true;
-                terrain.needUpdateFoliage = true;
                 break;
             case MapKind::Blend:
             case MapKind::Hole:
@@ -62,7 +61,6 @@ namespace {
                 }
                 break;
             case MapKind::Density:
-                terrain.needUpdateFoliage = true;
                 break;
         }
         if (Texture* texture = terrainMapTexture(terrain, map)) {
@@ -179,8 +177,8 @@ void jasperengine::snapshotTerrainSurface(TerrainComponent& terrain, TerrainSurf
 }
 
 void jasperengine::applyNewTerrainDefaults(TerrainComponent& terrain) {
-    // T1 sets nothing a struct default does not: T3 R53 and T5 F12 add theirs here
-    (void)terrain;
+    // T5 F12: an old scene's 0 means no Terrain-wide limit; T3 R53 adds its own here
+    terrain.detailDistance = 80.0f;
 }
 
 void jasperengine::applyLayerOrder(TerrainComponent& terrain, std::span<const int> order) {
@@ -337,6 +335,18 @@ void jasperengine::noteTerrainMapEdited(const Scene* scene, Entity entity, Terra
 uint64_t jasperengine::terrainUploadInterval(size_t mapBytes, size_t budget) {
     if (budget == 0 || mapBytes <= budget) return 1;
     return static_cast<uint64_t>((mapBytes + budget - 1) / budget);
+}
+
+TerrainWorldPlacement jasperengine::terrainWorldPlacement(Scene* scene, Entity entity) {
+    TerrainWorldPlacement placement;
+    const Transform* transform = scene ? scene->findComponent<Transform>(entity) : nullptr;
+    if (!transform) return placement;
+    placement.valid = true;
+    placement.model = transform->modelMatrix;
+    placement.position = transform->worldPosition;
+    placement.scale = transform->worldScale;
+    placement.rotated = transform->worldRotation != Quaternion::IDENTITY;
+    return placement;
 }
 
 bool jasperengine::detachTerrainMapsForRuntime(TerrainComponent& terrain, Entity entity) {

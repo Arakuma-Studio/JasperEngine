@@ -8,6 +8,7 @@
 
 #include "Project.h"
 #include "component/TerrainComponent.h"
+#include "component/Transform.h"
 #include "component/VoxelVolumeComponent.h"
 #include "object/LineRenderer.h"
 #include "object/Mesh.h"

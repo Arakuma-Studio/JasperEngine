@@ -4,6 +4,7 @@
 #include "ModuleUsage.h"
 
 #include "ShaderNeutralApi.h"
+#include "component/TerrainComponent.h"
 #include "Project.h"
 #include "DocumentFile.h"
 #include "util/Prefab.h"
@@ -361,6 +362,15 @@ namespace {
                 if (has(registry->findComponent<Joint3DComponent>(entity))) add("physics3d", content.label, "Joint 3D on " + object);
                 if (has(registry->findComponent<CharacterControllerComponent>(entity))) add("physics3d", content.label, "Character Controller on " + object);
                 if (has(registry->findComponent<BuoyancyComponent>(entity))) add("physics3d", content.label, "Buoyancy on " + object);
+                if (const TerrainComponent* terrain = registry->findComponent<TerrainComponent>(entity)) {
+                    // T5 R18, R39: foliage stays in core; only its capsules need the physics module
+                    for (const TerrainTreePrototype& prototype : terrain->treePrototypes) {
+                        if (prototype.collision == TerrainTreeCollision::Capsule) {
+                            add("physics3d", content.label, "Tree capsules on " + object);
+                            break;
+                        }
+                    }
+                }
                 if (has(registry->findComponent<Rigidbody2DComponent>(entity))) add("physics2d", content.label, "Rigidbody 2D on " + object);
                 if (has(registry->findComponent<Joint2DComponent>(entity))) add("physics2d", content.label, "Joint 2D on " + object);
                 if (has(registry->findComponent<CharacterController2DComponent>(entity))) add("physics2d", content.label, "Character Controller 2D on " + object);

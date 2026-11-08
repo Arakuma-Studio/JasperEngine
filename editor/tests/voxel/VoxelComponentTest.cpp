@@ -154,7 +154,9 @@ TEST(AssetTypes, VoxelVolumeValueIs31) {
     EXPECT_EQ(assetTypeFromName("voxel_volume"), AssetType::VoxelVolume);
     // no other number takes the name (the ones before it belong to other streams, D22)
     for (int value = 0; value < 64; value++) {
-        if (value != 31) EXPECT_STRNE(assetTypeName(static_cast<AssetType>(value)), "voxel_volume") << value;
+        if (value != 31) {
+            EXPECT_STRNE(assetTypeName(static_cast<AssetType>(value)), "voxel_volume") << value;
+        }
     }
     const AssetTypeInfo* info = AssetTypes::find("assets/caves/a.voxelvolume", "assets");
     ASSERT_NE(info, nullptr);

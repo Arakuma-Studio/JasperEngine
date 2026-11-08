@@ -9,7 +9,7 @@
 // size belong to the asset.
 
 #include "asset/AssetRef.h"
-#include "component/TerrainComponent.h"
+#include "component/TerrainSurfaceLayer.h"
 #include "ecs/Entity.h"
 #include "math/AABB.h"
 #include "math/Vector3.h"

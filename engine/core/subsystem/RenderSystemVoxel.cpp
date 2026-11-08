@@ -10,6 +10,7 @@
 #include "Scene.h"
 #include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/Transform.h"
 #include "component/VoxelVolumeComponent.h"
 #include "render/SystemRender.h"
 #include "texture/MipChain.h"

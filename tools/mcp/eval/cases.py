@@ -2142,6 +2142,64 @@ CASES = [
         "checks": {"calls": [{"tool": "edit_graph", "args": {"path": "re:Bad"}}]},
         "max_turns": 10,
     {
+        "id": "terrain_foliage_add_details",
+        "kind": "guard",
+        "what_happened": "Asked for grass, an agent has to fill an existing layer's density by rules, not place objects one by one.",
+        "text_at_issue": "edit_terrain's description and jasper://docs/terrain: scatter_by_rules with target detail_layer; sample_terrain foliage reads drawn.",
+        "source": "T5 R65, AC41",
+        "prompt": "Terrain [12] has a grass detail layer 0. Fill it on the flat ground, under 15 degrees, at 2 per square unit.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"ops": "re:scatter_by_rules"}, "result": ok(
+                "Scatter Foliage (Terrain): 0 trees.",
+                {"dry_run": False, "undo_name": "Scatter Foliage (Terrain)", "ops": [{"op": "scatter_by_rules", "changed_texels": 40960, "instances_added": 0, "instances_removed": 0,
+                 "rejected": {"slope": 2024, "height": 0, "layer": 0, "noise": 0, "hole": 0, "spline": 0, "spacing": 0}}], "changed": [], "warnings": [], "trees": 0})},
+            {"tool": "sample_terrain", "args": {"foliage": True}, "result": ok(
+                "Sampled terrain \"Terrain\".",
+                {"foliage": {"details": [{"layer": 0, "instances": 81344, "mean_density": 1.6, "drawn": 12033}], "trees": [], "totals": {"resident": 12033}}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:detail_layer"}}],
+                   "must_not_call": ["sculpt_terrain", "create_entity"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_foliage_mass_trees",
+        "kind": "bad",
+        "what_happened": "Asked for a forest, an agent placed thousands of GameObjects with create_entity or sculpt_terrain place_object, which the scene YAML then carried.",
+        "text_at_issue": "edit_terrain's op scatter_by_rules in its listing and guide: dry_run first, then the real run.",
+        "source": "T5 R24, AC41",
+        "prompt": "Plant a pine forest over the whole of Terrain [12]; the prototype Pine exists.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"dry_run": True}, "result": ok(
+                "Dry run of Scatter Foliage (Terrain): 18422 trees.",
+                {"dry_run": True, "undo_name": "Scatter Foliage (Terrain)", "ops": [{"op": "scatter_by_rules", "changed_texels": 0, "instances_added": 18422, "instances_removed": 0,
+                 "rejected": {"slope": 311, "height": 0, "layer": 0, "noise": 0, "hole": 0, "spline": 0, "spacing": 90}, "hash": "5c6872872df93554"}], "changed": [], "warnings": [], "trees": 18422})},
+            {"tool": "edit_terrain", "result": ok(
+                "Scatter Foliage (Terrain): 18422 trees.",
+                {"dry_run": False, "undo_name": "Scatter Foliage (Terrain)", "ops": [{"op": "scatter_by_rules", "changed_texels": 0, "instances_added": 18422, "instances_removed": 0,
+                 "rejected": {"slope": 311, "height": 0, "layer": 0, "noise": 0, "hole": 0, "spline": 0, "spacing": 90}, "hash": "5c6872872df93554"}], "changed": [], "warnings": [], "trees": 18422,
+                 "next": ["The Terrain has 18422 trees, past the Mobile budget of 8000 visible: bake_impostors, and check sample_terrain foliage on a Low tier."]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:scatter_by_rules", "dry_run": True}}],
+                   "must_not_call": ["create_entity", "sculpt_terrain"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_foliage_impostors",
+        "kind": "guard",
+        "what_happened": "Asked why far trees cost so much, an agent has to bake impostors through edit_terrain, not look for a tool of its own.",
+        "text_at_issue": "edit_terrain's op bake_impostors, and the next hint on a tree count past the Mobile budget.",
+        "source": "T5 R56, AC41",
+        "prompt": "The far trees on Terrain [12] cost too much. Fix that with impostors.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"ops": "re:bake_impostors"}, "result": ok(
+                "Baked 2 impostor(s).",
+                {"dry_run": False, "undo_name": "Bake Impostors", "ops": [{"op": "bake_impostors", "entries": [
+                    {"prototype": 0, "albedo": "terrain_maps/a.png", "normal": "terrain_maps/n.png", "views": 8, "ms": 900}]}], "job_id": "7", "status": "succeeded"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:bake_impostors"}}]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_footsteps_built_in_lua",
         "kind": "bad",
         "what_happened": "Asked for varied footsteps, an agent wrote a Lua table of clips with math.random and its own pitch "

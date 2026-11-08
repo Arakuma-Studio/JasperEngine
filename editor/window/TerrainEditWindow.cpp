@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainEditWindow.h"
+#include "TerrainFoliagePanel.h"
+#include "foliage/TreeDataFile.h"
 #include "component/TerrainComponent.h"
 #include "component/MeshComponent.h"
 #include "component/PrefabComponent.h"
@@ -114,6 +116,8 @@ static void collectTerrainMapTokens(const std::string& content, std::unordered_s
         }
         if (content.compare(end, 4, ".png") == 0){
             out.insert(content.substr(pos, end + 4 - pos));
+        }else if (content.compare(end, 8, ".jetrees") == 0){
+            out.insert(content.substr(pos, end + 8 - pos));
         }
         pos = content.find(prefix, end);
     }
@@ -177,7 +181,8 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
     // Settle pending background writes first, so a late write can't resurrect a
     // file this scan is about to delete. This runs on every scene save, so a
     // failure here means the save is incomplete — say so, loudly.
-    const bool flushOk = TerrainMapPersistence::get().flushAll();
+    bool flushOk = TerrainMapPersistence::get().flushAll();
+    flushOk = TreeDataFile::flushAll(project) && flushOk;
     if (!flushOk){
         Out::error("Scene saved, but %zu terrain map(s) could not be written to disk; the scene stays marked as unsaved — save again after checking free disk space and permissions.",
                    TerrainMapFileWriter::get().failedCount());
@@ -204,6 +209,14 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
                     if (!blendMap.getPath(0).empty() && TerrainMapUtils::isEditableTexturePath(blendMap.getPath(0))){
                         activeFiles.insert(fs::path(blendMap.getPath(0)).filename().string());
                     }
+                }
+                // T5 R61: the tree file and the baked atlases are the maps folder's too
+                if (!terrain->treeData.empty()){
+                    activeFiles.insert(fs::path(terrain->treeData.str()).filename().string());
+                }
+                for (const TerrainTreePrototype& prototype : terrain->treePrototypes){
+                    if (!prototype.impostorAlbedo.getPath(0).empty()) activeFiles.insert(fs::path(prototype.impostorAlbedo.getPath(0)).filename().string());
+                    if (!prototype.impostorNormal.getPath(0).empty()) activeFiles.insert(fs::path(prototype.impostorNormal.getPath(0)).filename().string());
                 }
                 for (const TerrainFoliageLayer& layer : terrain->foliageLayers){
                     const std::string& densityPath = layer.densityMap.getPath(0);
@@ -432,6 +445,7 @@ bool editor::TerrainEditWindow::raycastTerrainStrokeSurface(const Ray& localRay,
 
 editor::TerrainEditWindow::TerrainEditWindow(Project* project){
     this->project = project;
+    foliagePanel = std::make_unique<TerrainFoliagePanel>(project, this);
     windowOpen = false;
     focusRequested = false;
     brushActive = false;
@@ -475,6 +489,7 @@ editor::TerrainEditWindow::~TerrainEditWindow(){
     // Drain pending map writes while the app is still fully alive (the writer's
     // own static destructor runs during late shutdown, where it makes one final
     // synchronous attempt at anything still failing).
+    TreeDataFile::flushAll(project);
     if (!TerrainMapPersistence::get().flushAll()){
         Out::error("%zu terrain map(s) could not be written to disk; one final attempt will be made at exit, but the sculpt may be lost. Check free disk space and permissions.",
                    TerrainMapFileWriter::get().failedCount());
@@ -855,6 +870,12 @@ bool editor::TerrainEditWindow::hasValidTarget(SceneProject* sceneProject) const
            targetScene->scene->isEntityCreated(selectedEntity) &&
            targetScene->scene->findComponent<TerrainComponent>(selectedEntity) &&
            targetScene->scene->findComponent<Transform>(selectedEntity);
+}
+
+bool editor::TerrainEditWindow::ensureDensityMap(Project* project, SceneProject* sceneProject, Entity entity, int layer){
+    const TerrainMapRef ref(TerrainMapTarget::DensityMap, layer);
+    TerrainMapUtils::ensureMapSlot(sceneProject->scene->getComponent<TerrainComponent>(entity), ref);
+    return TerrainMapUtils::ensureEditableMap(project, sceneProject, entity, ref, mapResolutionFor(TerrainMapTarget::DensityMap), false);
 }
 
 int editor::TerrainEditWindow::mapResolutionFor(TerrainMapTarget target) const{
@@ -2349,6 +2370,11 @@ void editor::TerrainEditWindow::show(){
                 toolCategory = tool.category;
                 brushActive = false;
             }
+            // T5 R46: Paint Trees with Place As Tree is its brush, as Unity's: choosing it arms it
+            if (clicked && tool.category == TerrainToolCategory::Trees && foliagePanel->placesTrees()){
+                brushMode = TerrainBrushMode::PlaceObject;
+                brushActive = true;
+            }
         }
         ImGui::Spacing();
         const TerrainTool* currentTool = &terrainTools[0];
@@ -2479,7 +2505,7 @@ void editor::TerrainEditWindow::show(){
                 setFoliageLayerProperty("density", std::clamp(layer.density, 0.0f, 128.0f));
             }
             const TerrainFoliageLayer& currentLayer = terrain.foliageLayers[selectedFoliageLayer];
-            terrainPropertyRow("Scale range", "Minimum and maximum random scale per instance.");
+            terrainPropertyRow("Min/Max Width", "Minimum and maximum random scale per instance.");
             if (ImGui::DragFloatRange2("##foliage_scale", &layer.minScale, &layer.maxScale, 0.01f, 0.01f, 20.0f, "%.2f", "%.2f", ImGuiSliderFlags_AlwaysClamp)){
                 layer.minScale = std::max(0.01f, layer.minScale);
                 layer.maxScale = std::max(layer.minScale, layer.maxScale);
@@ -2539,9 +2565,14 @@ void editor::TerrainEditWindow::show(){
             }
         }
         ImGui::EndTable();
+        // T5 R47: its Unity rows, Show Density, the settings and the stats
+        foliagePanel->drawDetails(sceneProject, selectedEntity, terrain, selectedFoliageLayer);
     }
 
-    if (toolCategory == TerrainToolCategory::Trees && beginTerrainProperties("object_properties")){
+    // T5: the prototypes, the tree brush and what goes with them; GameObjects are below it
+    const bool placesTrees = toolCategory == TerrainToolCategory::Trees && foliagePanel->drawTrees(sceneProject, selectedEntity, terrain, brushSize);
+
+    if (toolCategory == TerrainToolCategory::Trees && !placesTrees && beginTerrainProperties("object_properties")){
         drawPlacementAsset();
         terrainPropertyRow("Place", "Placed GameObjects are parented to the terrain, so they show in the Hierarchy and can be transformed one by one.");
         ImGui::BeginDisabled(placeAssetPath.empty());
@@ -2578,7 +2609,9 @@ void editor::TerrainEditWindow::show(){
 
     const bool placementBrush = isPlacementBrush();
     Texture* brushTexture = placementBrush ? nullptr : TerrainMapUtils::findTexture(terrain, getBrushMapRef());
-    const bool brushTargetAvailable = placementBrush ? isPlacementReady() : (brushTexture && !brushTexture->empty());
+    // the tree brush needs a prototype, not the GameObject brush's asset (T5 R46)
+    const bool treeBrushReady = foliagePanel->placesTrees() && (brushMode == TerrainBrushMode::EraseObject || foliagePanel->isReady(terrain));
+    const bool brushTargetAvailable = placementBrush ? (foliagePanel->placesTrees() ? treeBrushReady : isPlacementReady()) : (brushTexture && !brushTexture->empty());
     if (brushActive && !brushTargetAvailable){
         brushActive = false;
         endStroke();
@@ -2697,6 +2730,7 @@ void editor::TerrainEditWindow::show(){
         ts.paintMaxHeight = paintMaxHeight;
         ts.placeAssetPath = placeAssetPath;
         ts.placeInstanced = placeInstanced;
+        ts.placeAsTree = foliagePanel->placesTrees();
         ts.placeSpacing = placeSpacing;
         ts.placeMinScale = placeMinScale;
         ts.placeMaxScale = placeMaxScale;
@@ -2771,6 +2805,7 @@ void editor::TerrainEditWindow::loadSettings(){
     paintMaxHeight = std::clamp(ts.paintMaxHeight, paintMinHeight, 1.0f);
     placeAssetPath = ts.placeAssetPath;
     placeInstanced = ts.placeInstanced;
+    foliagePanel->setPlacesTrees(ts.placeAsTree);
     placeSpacing = std::max(MIN_PLACE_SPACING, ts.placeSpacing);
     placeMinScale = std::max(0.01f, ts.placeMinScale);
     placeMaxScale = std::max(placeMinScale, ts.placeMaxScale);
@@ -2805,7 +2840,7 @@ bool editor::TerrainEditWindow::isEditingScene(Scene* scene) const{
     }
 
     if (isPlacementBrush()){
-        return isPlacementReady();
+        return foliagePanel->placesTrees() ? (brushMode == TerrainBrushMode::EraseObject || foliagePanel->isReady(*terrain)) : isPlacementReady();
     }
     // Stamp lays the mask down, so without one there is nothing for a stroke to write
     if (brushMode == TerrainBrushMode::Stamp && brushMaskPath.empty()){
@@ -2841,6 +2876,22 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
         }
         pickHeightArmed = false;
         return false;
+    }
+
+    // T5 R46: Alt+click with no drag picks the prototype under the cursor (Alt+drag orbits before this)
+    if (isPlacementBrush() && foliagePanel->placesTrees()){
+        if (io.KeyAlt){
+            foliagePanel->pickPrototype(sceneProject, entity, localPoint, std::max(brushSize, 1.0f));
+            return false;
+        }
+        clearStroke();
+        stroke.active = true;
+        stroke.placement = true;
+        stroke.treeStroke = true;
+        stroke.sceneId = sceneProject->id;
+        stroke.entity = entity;
+        openStrokeEdit(sceneProject);
+        return foliagePanel->beginStroke(sceneProject, entity, localPoint, brushSize, io.KeyShift, io.KeyCtrl || brushMode == TerrainBrushMode::EraseObject);
     }
 
     if (isPlacementBrush()){
@@ -2922,6 +2973,10 @@ bool editor::TerrainEditWindow::paintStroke(Scene* scene, const Ray& ray){
         return false;
     }
 
+    if (stroke.treeStroke){
+        return foliagePanel->stamp(sceneProject, entity, localPoint, brushSize);
+    }
+
     if (stroke.placement){
         if (stroke.effectiveMode == TerrainBrushMode::EraseObject){
             return applyObjectErase(sceneProject, entity, localPoint);
@@ -2938,6 +2993,9 @@ void editor::TerrainEditWindow::endStroke(){
     }
 
     // Placement already pushed its own commands; there is no map to diff.
+    if (stroke.treeStroke){
+        foliagePanel->endStroke();
+    }
     if (stroke.placement){
         clearStroke();
         return;
@@ -3058,6 +3116,16 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
         buildLoop(brushSize * 0.5f, 12, cursor.innerPoints);
     }else{
         cursor.innerPoints.clear();
+    }
+    cursor.capsuleLines.clear();
+    if (isPlacementBrush() && foliagePanel->placesTrees()){
+        const int selected = foliagePanel->selectedPrototype();
+        if (selected >= 0 && selected < static_cast<int>(terrain.treePrototypes.size())
+                && terrain.treePrototypes[selected].collision == TerrainTreeCollision::Capsule){
+            const TerrainTreePrototype& prototype = terrain.treePrototypes[selected];
+            const Vector3 base = surfacePoint(localPoint.x, localPoint.z);
+            TerrainFoliagePanel::appendCapsuleLines(base, prototype.collisionRadius, prototype.collisionHeight, cursor.capsuleLines);
+        }
     }
     return true;
 }

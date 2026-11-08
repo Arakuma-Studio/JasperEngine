@@ -18,6 +18,7 @@
 #include "component/RigidbodyComponent.h"
 #include "component/SkyboxComponent.h"
 #include "component/SplineComponent.h"
+#include "component/TerrainComponent.h"
 #include "component/TweenComponent.h"
 #include "cook/RuntimeFieldsEmitter.h"
 #include "cook/SceneCooker.h"
@@ -208,6 +209,50 @@ TEST(CookedScene, SplineCurveThroughAccessors) {
 // files the build ships (SceneCooker::defaultSkyFiles), or the player has a cube texture with no
 // face ("Texture is missing texture for face 0" and no sky: the upgrade test's prebuilt player of
 // an origin/main 3D scene)
+// T5 AC39: the cooked path carries the Terrain's foliage fields, the prototypes' struct among them
+TEST(CookedScene, TerrainFoliageRoundTrip) {
+    OwnedFramebuffers owned;
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    const Entity entity = scene->createEntity();
+    TerrainComponent terrain;
+    terrain.treeDistance = 321.0f;
+    terrain.billboardStart = 44.0f;
+    terrain.maxMeshTrees = 77;
+    terrain.windBending = 0.75f;
+    terrain.treeData = AssetRef("terrain/island.jetrees");
+    TerrainTreePrototype prototype;
+    prototype.id = 5;
+    prototype.collision = TerrainTreeCollision::Capsule;
+    prototype.collisionRadius = 0.75f;
+    prototype.navObstacle = true;
+    prototype.impostorViews = 8;
+    terrain.treePrototypes.push_back(prototype);
+    TerrainFoliageLayer layer;
+    layer.windBend = 0.5f;
+    layer.minDrawDistance = 9.0f;
+    terrain.foliageLayers.push_back(layer);
+    scene->addComponent<TerrainComponent>(entity, terrain);
+
+    DecodedScene loaded;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {entity}, loaded, error)) << error;
+    const TerrainComponent& back = loaded.scene->scene->getComponent<TerrainComponent>(entity);
+    EXPECT_FLOAT_EQ(back.treeDistance, 321.0f);
+    EXPECT_FLOAT_EQ(back.billboardStart, 44.0f);
+    EXPECT_EQ(back.maxMeshTrees, 77);
+    EXPECT_FLOAT_EQ(back.windBending, 0.75f);
+    EXPECT_EQ(back.treeData.str(), "terrain/island.jetrees");
+    ASSERT_EQ(back.treePrototypes.size(), 1u);
+    EXPECT_EQ(back.treePrototypes[0].id, 5u);
+    EXPECT_EQ(back.treePrototypes[0].collision, TerrainTreeCollision::Capsule);
+    EXPECT_FLOAT_EQ(back.treePrototypes[0].collisionRadius, 0.75f);
+    EXPECT_TRUE(back.treePrototypes[0].navObstacle);
+    EXPECT_EQ(back.treePrototypes[0].impostorViews, 8);
+    ASSERT_EQ(back.foliageLayers.size(), 1u);
+    EXPECT_FLOAT_EQ(back.foliageLayers[0].minDrawDistance, 9.0f);
+}
+
 TEST(CookedScene, DefaultSkyShipsItsFaces) {
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;

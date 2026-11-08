@@ -80,6 +80,8 @@ namespace jasperengine::player {
 
         ThreadingSettings threading;
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::MEDIUM, AtmosphereQuality::LOW};
+        std::array<FoliageQuality, 3> foliageQuality = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
+        bool foliageQualityUncapped = true;
         // Quality > Foliage Distance (desktop, mobile, web)
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         float inputDeadzone = 0.15f;

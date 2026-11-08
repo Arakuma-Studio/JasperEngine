@@ -267,7 +267,12 @@ const float M_PI = 3.141592653589793;
     #include "includes/terrain_holes_fs.glsl"
 #endif
 
+#include "includes/foliage_dither.glsl"
+
 void main() {
+    #ifdef USE_FOLIAGE_DITHER
+        foliageDitherDiscard();
+    #endif
     #ifdef PBR_HEX_ACTIVE
         pbrHexSetup();
     #endif

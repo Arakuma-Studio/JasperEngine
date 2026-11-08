@@ -172,7 +172,12 @@ in vec3 a_position;
     #endif
 #endif
 
-#ifdef HAS_INSTANCING
+#include "includes/foliage_instance.glsl"
+#include "includes/foliage_wind.glsl"
+#ifdef USE_FOLIAGE_DITHER
+    out float v_foliageFade;
+#endif
+#if defined(HAS_INSTANCING) && !defined(HAS_COMPACT_INSTANCE)
     in vec4 i_matrix_col1;
     in vec4 i_matrix_col2;
     in vec4 i_matrix_col3;
@@ -313,6 +318,9 @@ vec2 surfaceUV2(){
 }
 
 void main() {
+    #ifdef HAS_COMPACT_INSTANCE
+        compactInstanceSetup();
+    #endif
     // the baked vertex animation first (HAS_VAT): it takes the place of morph targets and skinning
     vatEvaluate();
     mat4 boneTransform = getBoneTransform();
@@ -383,6 +391,19 @@ void main() {
         #ifdef SURFACE_SMOOTH_NORMAL_INPUT
             smoothNormal = normalize(instanceNormal(mat3(instanceMatrix), smoothNormal));
         #endif
+
+    // the impostor places its quad in its displace hook, with its own whole-tree sway
+    #ifndef FOLIAGE_IMPOSTOR
+    #ifdef USE_FOLIAGE_WIND
+        pos.xyz = foliageWindSway(pos.xyz, i_matrix_col4.xyz, a_position.y, 1.0);
+    #endif
+    #ifdef USE_FOLIAGE_DITHER
+        v_foliageFade = foliageFadeFactor(i_matrix_col4.xyz);
+    #endif
+    #endif
+    #if defined(USE_FOLIAGE_DITHER) && defined(FOLIAGE_IMPOSTOR)
+        v_foliageFade = foliageFadeFactor(i_matrix_col4.xyz);
+    #endif
         #if defined(SURFACE_TANGENTS) && defined(HAS_TANGENTS)
             objectTangent = mat3(instanceMatrix) * objectTangent;
         #endif

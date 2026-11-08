@@ -226,6 +226,7 @@ namespace {
         JE_FIELD(SplineTerrainSettings, paintNoise, .ops = &ops::FiniteFloat, .flags = kOmitFloat, .min = 0.0f, .max = 1.0f,
                  .label = "Edge Noise", .tooltip = "Break-up of the painted band's edge."),
         JE_FIELD(SplineTerrainSettings, clearFoliage, .flags = kOmit),
+        JE_FIELD(SplineTerrainSettings, clearTrees, .flags = kOmit),
         JE_FIELD(SplineTerrainSettings, foliageMask, .flags = kOmit, .label = "Foliage Layer Mask", .tooltip = "Bit n clears foliage layer n."),
         JE_FIELD(SplineTerrainSettings, terrain, .ops = &ops::Entity, .flags = kOmit, .tooltip = "None: the first terrain under the spline."),
     };

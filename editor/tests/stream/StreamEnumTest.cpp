@@ -141,6 +141,10 @@ TEST(StreamEnum, AttributeTypeRoundTrips){
         AttributeType::PARTICLECUSTOM,
         AttributeType::VAT_INDEX,
         AttributeType::INSTANCEVAT0,
+        AttributeType::INSTANCEPACKED0,
+        AttributeType::INSTANCEPACKED1,
+        AttributeType::INSTANCEPACKED2,
+        AttributeType::INSTANCEPACKED3,
         AttributeType::INSTANCEVAT1
     }, AttributeType::POSITION);
 }

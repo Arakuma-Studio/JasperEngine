@@ -4,12 +4,12 @@
 // T1 R68, R69, R95: edit_terrain, the declarative write route for agents (every op of Table 1 through
 // the engine's applyOps, one undo step a call, all-or-nothing, dry_run), and export_terrain_heightmap.
 
+#include "FoliageTools.h"
 #include "McpTools.h"
 #include "PlayViewCommon.h"
 #include "TerrainToolsSupport.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/TerrainComponent.h"
-#include "component/Transform.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpRefs.h"
@@ -37,11 +37,13 @@
 #include "terrain/TerrainRawIO.h"
 #include "terrain/TerrainSizePresets.h"
 #include "terrain/TerrainLayers.h"
+#include "terrain/FoliageOps.h"
 #include "terrain/TerrainOps.h"
 #include "object/TerrainOpsJson.h"
 #include "terrain/TerrainOpsUndo.h"
 #include "util/FileUtils.h"
 #include "util/FloatImage.h"
+#include "util/ImpostorBaker.h"
 #include "util/SafeWrite.h"
 #include "subsystem/NavigationSystem.h"
 #include "util/TerrainMapUtils.h"
@@ -108,16 +110,15 @@ bool resolveTerrainTarget(const CallPtr& call, TerrainCallTarget& target) {
             return false;
         }
     }
-    if (!scene->findComponent<TerrainComponent>(target.entity) || !scene->findComponent<Transform>(target.entity)) {
+    if (!scene->findComponent<TerrainComponent>(target.entity) || !terrainWorldPlacement(scene, target.entity).valid) {
         call->fail("\"" + scene->getEntityName(target.entity) + "\" has no Terrain component.");
         return false;
     }
     return true;
 }
 
-terrain::OpSpace spaceOf(const Transform& transform, bool world) {
-    return terrain::OpSpace::of(transform.modelMatrix, transform.worldPosition, transform.worldScale,
-                                transform.worldRotation != Quaternion::IDENTITY, world);
+terrain::OpSpace spaceOf(const TerrainWorldPlacement& placement, bool world) {
+    return terrain::OpSpace::of(placement.model, placement.position, placement.scale, placement.rotated, world);
 }
 
 // Image files a mask or an import reads, through the project
@@ -276,7 +277,7 @@ bool sampleTerrainExtras(const CallPtr& call, Project* project, SceneProject* sc
     const Json& args = call->args();
     Scene* scene = sceneProject->scene;
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
-    Transform& transform = scene->getComponent<Transform>(entity);
+    const TerrainWorldPlacement transform = terrainWorldPlacement(scene, entity);
     TerrainComponentStore store(scene, entity, terrain);
     const MapId heightMap{MapKind::Height, 0};
 
@@ -463,7 +464,7 @@ void editTerrainTool(const CallPtr& call) {
         return;
     }
 
-    Transform& transform = scene->getComponent<Transform>(target.entity);
+    const TerrainWorldPlacement transform = terrainWorldPlacement(scene, target.entity);
     const terrain::OpSpace space = spaceOf(transform, !(hasKey(args, "space") && args["space"] == "local"));
     const bool dryRun = hasKey(args, "dry_run") && args["dry_run"].get<bool>();
 
@@ -551,6 +552,17 @@ void editTerrainTool(const CallPtr& call) {
     if (!parser.parseList(args["ops"], ops)) {
         rollback();
         call->fail(parser.error);
+        return;
+    }
+
+    // T5's ops write trees as well as density maps: they run as a job on a snapshot, in a call of their own
+    if (std::any_of(ops.begin(), ops.end(), [](const Op& op) { return isFoliageOp(op); })) {
+        if (hasKey(args, "create")) {
+            rollback();
+            call->fail("create: foliage ops run in a call of their own; create the terrain first, then send them.");
+            return;
+        }
+        editFoliageFromOps(call, TerrainTarget{target.project, target.scene, target.entity}, std::move(ops), space, dryRun);
         return;
     }
 
@@ -730,7 +742,7 @@ void visualizeTerrainTool(const CallPtr& call) {
     // the box to frame: the terrain, or region in the call's space
     Scene* scene = target.scene->scene;
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(target.entity);
-    const Transform& transform = scene->getComponent<Transform>(target.entity);
+    const TerrainWorldPlacement transform = terrainWorldPlacement(scene, target.entity);
     const terrain::OpSpace space = spaceOf(transform, !(hasKey(args, "space") && args["space"] == "local"));
     const float half = terrain.terrainSize * 0.5f;
     float minX = -half, minZ = -half, maxX = half, maxZ = half;
@@ -750,7 +762,7 @@ void visualizeTerrainTool(const CallPtr& call) {
     }
     AABB box;
     for (int corner = 0; corner < 8; corner++) {
-        box.merge(transform.modelMatrix * Vector3((corner & 1) ? maxX : minX, (corner & 2) ? terrain.maxHeight : 0.0f, (corner & 4) ? maxZ : minZ));
+        box.merge(transform.model * Vector3((corner & 1) ? maxX : minX, (corner & 2) ? terrain.maxHeight : 0.0f, (corner & 4) ? maxZ : minZ));
     }
     const std::string framing = hasKey(args, "framing") && args["framing"].is_string() ? args["framing"].get<std::string>() : "fit";
     if (framing != "keep" && framing != "fit" && framing != "top" && framing != "orbit") {
@@ -839,6 +851,9 @@ void visualizeTerrainTool(const CallPtr& call) {
 
 void registerTerrainTools(McpRegistry& registry) {
     using namespace schema;
+    terrain::registerFoliageOps();
+    // T5 R56: editor only, so Lua's applyOps does not know it
+    ImpostorBaker::registerOp();
 
     ToolDef edit;
     edit.name = "edit_terrain";
@@ -856,9 +871,11 @@ void registerTerrainTools(McpRegistry& registry) {
         {"space", withDefault(stringEnum("", {"world", "local"}), "world")},
         {"create", string("Size preset for a terrain with no maps.")},
         {"map_resolution", integer("New maps.", 2, 8192)},
-        {"ops", Json{{"type", "array"}, {"maxItems", 256}, {"items", anyObject("{op, shape, filter, ...}: raise, lower, set_height, smooth, paint_layer, paint_by_rules, cut_holes...")}}},
+        {"ops", Json{{"type", "array"}, {"maxItems", 256}, {"items", anyObject("{op, shape, filter, ...}: raise, lower, set_height, smooth, paint_layer, paint_by_rules, cut_holes, scatter_by_rules...")}}},
         {"dry_run", withDefault(boolean(""), false)},
-        {"hash", withDefault(boolean("Hash each changed map."), false)}
+        {"hash", withDefault(boolean("Hash each changed map."), false)},
+        {"wait", withDefault(boolean("Foliage ops are a job: wait for its end."), true)},
+        {"timeout_seconds", number("", 0, 3600)}
     });
     edit.handler = terrain_tools::editTerrainTool;
     registry.addTool(std::move(edit));

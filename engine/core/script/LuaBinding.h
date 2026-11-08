@@ -81,6 +81,7 @@ namespace jasperengine {
         // in binding directory
         static void registerActionClasses(lua_State *L);
         static void registerParticleClasses(lua_State *L);
+        static void registerFoliageClasses(lua_State *L);
         static void registerCoreClasses(lua_State *L);
         static void registerECSClasses(lua_State *L);
         static void registerAudioClasses(lua_State *L);

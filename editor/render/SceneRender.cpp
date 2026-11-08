@@ -4,6 +4,7 @@
 #include "SceneRender.h"
 #include "LayerViewCamera.h"
 #include "component/AudioSourceComponent.h"
+#include "component/Transform.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/NavGridComponent.h"
 #include "component/NavMeshAgentComponent.h"
@@ -2970,6 +2971,9 @@ void editor::SceneRender::updateTerrainBrushCursor(){
     // over the terrain surface by updateCursor.
     addLoop(cursor.outerPoints, cursor.color);
     addLoop(cursor.innerPoints, Vector4(cursor.color.x * 0.75f, cursor.color.y * 0.75f, cursor.color.z * 0.75f, cursor.color.w));
+    for (size_t i = 0; i + 1 < cursor.capsuleLines.size(); i += 2){
+        terrainBrushLines->addLine(cursor.capsuleLines[i], cursor.capsuleLines[i + 1], Vector4(0.45f, 0.9f, 0.45f, 1.0f));
+    }
 
     terrainBrushLines->setVisible(true);
 }

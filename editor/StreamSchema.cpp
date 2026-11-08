@@ -70,7 +70,7 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             "addedTo", "childIndex", "parentRegistryEntity", "prefabRootRegistryEntity", "prefabPath"}},
         // the editor state an older project.yaml held (Workspace::adoptLegacyProjectState) and
         // its build settings (AppSettings, build.yaml) are read too
-        {RootKind::Project, {"formatVersion", "android", "apple", "application", "assetLabels", "assetsDir", "atmosphereQuality", "canvasHeight", "canvasWidth", "cxxStandard", "debug", "device", "dynamicBatching", "export", "foliageDistanceScale", "graphics", "htmlUiGlyphAtlasMiB", "htmlUiMsaaSamples", "htmlUiSdfPrimitives", "htmlUiTransformAwareText", "ignoredLayerCollisions", "input", "ios", "layers", "linux", "loading", "luaDir", "macos", "mesh", "mobilePbrTier", "name", "navigation", "packNativeResources", "physics2D", "physics3D", "playerLogging", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "shaderCreation", "standalonePrefabs", "startSceneId", "tags", "texture", "textureStrategy", "threading", "versionControl", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
+        {RootKind::Project, {"formatVersion", "android", "apple", "application", "assetLabels", "assetsDir", "atmosphereQuality", "foliageQuality", "canvasHeight", "canvasWidth", "cxxStandard", "debug", "device", "dynamicBatching", "export", "foliageDistanceScale", "graphics", "htmlUiGlyphAtlasMiB", "htmlUiMsaaSamples", "htmlUiSdfPrimitives", "htmlUiTransformAwareText", "ignoredLayerCollisions", "input", "ios", "layers", "linux", "loading", "luaDir", "macos", "mesh", "mobilePbrTier", "name", "navigation", "packNativeResources", "physics2D", "physics3D", "playerLogging", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "shaderCreation", "standalonePrefabs", "startSceneId", "tags", "texture", "textureStrategy", "threading", "versionControl", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
             "cmakeBuildJobs", "cmakeCCompiler", "cmakeCxxCompiler", "cmakeGenerator", "selectedScene", "tabs", "terrainEditor",
             // upstream's project.yaml blocks (SYNC#4): the editor writes and reads them
             "audio", "physics3DWorld", "playerCrash", "presentation", "shaderGlobals", "uiScale",
@@ -219,6 +219,10 @@ const EnumTable<AttributeType>& StreamSchema::attributeType() {
         {AttributeType::SMOOTHNORMAL, "smoothnormal"},
         {AttributeType::VAT_INDEX, "vatindex"},
         {AttributeType::INSTANCEVAT0, "instancevat0"},
+        {AttributeType::INSTANCEPACKED0, "instancepacked0"},
+        {AttributeType::INSTANCEPACKED1, "instancepacked1"},
+        {AttributeType::INSTANCEPACKED2, "instancepacked2"},
+        {AttributeType::INSTANCEPACKED3, "instancepacked3"},
         {AttributeType::INSTANCEVAT1, "instancevat1"},
         {AttributeType::PARTICLECORNER, "particlecorner"},
         {AttributeType::PARTICLEPOSITION, "particleposition"},
@@ -401,6 +405,15 @@ const EnumTable<CloudsPreset>& StreamSchema::cloudsPreset() {
 
 const EnumTable<CloudsRendering>& StreamSchema::cloudsRendering() {
     static const EnumTable<CloudsRendering> table(reflect::enums::kCloudsRendering);
+    return table;
+}
+
+const EnumTable<FoliageQuality>& StreamSchema::foliageQuality() {
+    static const EnumTable<FoliageQuality> table("FoliageQuality", {
+        {FoliageQuality::LOW, "low"},
+        {FoliageQuality::MEDIUM, "medium"},
+        {FoliageQuality::HIGH, "high"},
+    }, FoliageQuality::HIGH);
     return table;
 }
 

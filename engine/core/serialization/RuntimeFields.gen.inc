@@ -125,6 +125,13 @@ template<> struct Codec<TerrainFoliageLayer> {
 template<> struct TextureVisit<TerrainFoliageLayer> {
     static void visit(TerrainFoliageLayer& value, const TextureVisitor& f);
 };
+template<> struct Codec<TerrainTreePrototype> {
+    static void write(Writer& w, const TerrainTreePrototype& value);
+    static void read(Reader& r, TerrainTreePrototype& value);
+};
+template<> struct TextureVisit<TerrainTreePrototype> {
+    static void visit(TerrainTreePrototype& value, const TextureVisitor& f);
+};
 template<> struct Codec<PointData> {
     static void write(Writer& w, const PointData& value);
     static void read(Reader& r, PointData& value);
@@ -572,11 +579,46 @@ const FieldEntry kStruct_TerrainFoliageLayer_fields[] = {
     JE_RF(TerrainFoliageLayer, minDrawDistance, 0x7a0a24b1u, Float),
     JE_RF(TerrainFoliageLayer, seed, 0x4cccda81u, UInt),
     JE_RF(TerrainFoliageLayer, castShadows, 0x0656f2b8u, Bool),
+    JE_RF(TerrainFoliageLayer, minDrawDistance, 0x7a0a24b1u, Float),
+    JE_RF(TerrainFoliageLayer, minHeightRatio, 0xc76e0bb6u, Float),
+    JE_RF(TerrainFoliageLayer, maxHeightRatio, 0x85e81a78u, Float),
+    JE_RF(TerrainFoliageLayer, healthyColor, 0xd4e515a4u, Vector4),
+    JE_RF(TerrainFoliageLayer, dryColor, 0x5dcf2320u, Vector4),
+    JE_RF(TerrainFoliageLayer, noiseSpread, 0x5126d80du, Float),
+    JE_RF(TerrainFoliageLayer, windBend, 0xa3698e0du, Float),
+    JE_RF(TerrainFoliageLayer, densityFalloffStart, 0xb3d26b9au, Float),
+    JE_RF(TerrainFoliageLayer, farDensity, 0xa5ab9afbu, Float),
+    JE_RF(TerrainFoliageLayer, densityScale, 0xf87cf516u, Float),
+    JE_RF(TerrainFoliageLayer, algorithmVersion, 0xfd97376bu, UInt),
 };
 const StructTable kStruct_TerrainFoliageLayer{"TerrainFoliageLayer", kStruct_TerrainFoliageLayer_fields, std::size(kStruct_TerrainFoliageLayer_fields)};
 void Codec<TerrainFoliageLayer>::write(Writer& w, const TerrainFoliageLayer& value) { writeStruct(w, kStruct_TerrainFoliageLayer, &value); }
 void Codec<TerrainFoliageLayer>::read(Reader& r, TerrainFoliageLayer& value) { readStruct(r, kStruct_TerrainFoliageLayer, &value); }
 void TextureVisit<TerrainFoliageLayer>::visit(TerrainFoliageLayer& value, const TextureVisitor& f) { visitStructTextures(kStruct_TerrainFoliageLayer, &value, f); }
+
+const FieldEntry kStruct_TerrainTreePrototype_fields[] = {
+    JE_RF(TerrainTreePrototype, id, 0x8eca5f97u, UInt),
+    JE_RF(TerrainTreePrototype, meshPath, 0x4569a1a4u, AssetPath),
+    JE_RF(TerrainTreePrototype, lodMeshes, 0x7dc92a64u, Array),
+    JE_RF(TerrainTreePrototype, lodDistances, 0xd792ed2fu, Array),
+    JE_RF(TerrainTreePrototype, bendFactor, 0xc27c015eu, Float),
+    JE_RF(TerrainTreePrototype, windMask, 0xa2e93c00u, Enum),
+    JE_RF(TerrainTreePrototype, shadowLodMask, 0x7652d0cdu, UInt),
+    JE_RF(TerrainTreePrototype, collision, 0x465839eau, Enum),
+    JE_RF(TerrainTreePrototype, collisionRadius, 0xdd67e428u, Float),
+    JE_RF(TerrainTreePrototype, collisionHeight, 0x247ba809u, Float),
+    JE_RF(TerrainTreePrototype, navObstacle, 0x978f8632u, Bool),
+    JE_RF(TerrainTreePrototype, impostorAlbedo, 0x2fbe6936u, Texture),
+    JE_RF(TerrainTreePrototype, impostorNormal, 0x18861024u, Texture),
+    JE_RF(TerrainTreePrototype, impostorViews, 0xc763eaa7u, Int),
+    JE_RF(TerrainTreePrototype, impostorBoundsCenter, 0x5505bf1bu, Vector3),
+    JE_RF(TerrainTreePrototype, impostorSize, 0x145d397au, Vector2),
+    JE_RF(TerrainTreePrototype, impostorSourceHash, 0x03748d22u, String),
+};
+const StructTable kStruct_TerrainTreePrototype{"TerrainTreePrototype", kStruct_TerrainTreePrototype_fields, std::size(kStruct_TerrainTreePrototype_fields)};
+void Codec<TerrainTreePrototype>::write(Writer& w, const TerrainTreePrototype& value) { writeStruct(w, kStruct_TerrainTreePrototype, &value); }
+void Codec<TerrainTreePrototype>::read(Reader& r, TerrainTreePrototype& value) { readStruct(r, kStruct_TerrainTreePrototype, &value); }
+void TextureVisit<TerrainTreePrototype>::visit(TerrainTreePrototype& value, const TextureVisitor& f) { visitStructTextures(kStruct_TerrainTreePrototype, &value, f); }
 
 const FieldEntry kStruct_PointData_fields[] = {
     JE_RF(PointData, position, 0xaf119f92u, Vector3),
@@ -772,6 +814,7 @@ const FieldEntry kStruct_SplineTerrainSettings_fields[] = {
     JE_RF(SplineTerrainSettings, paintFalloff, 0x9fde3ed0u, Float),
     JE_RF(SplineTerrainSettings, paintNoise, 0xb24a7800u, Float),
     JE_RF(SplineTerrainSettings, clearFoliage, 0x9ddd40aeu, Bool),
+    JE_RF(SplineTerrainSettings, clearTrees, 0x05c174b4u, Bool),
     JE_RF(SplineTerrainSettings, foliageMask, 0x70db1fa9u, UInt),
     JE_RF_ENTITY(SplineTerrainSettings, terrain, 0x1975f77bu, Entity),
 };
@@ -1029,6 +1072,18 @@ const FieldEntry kBody_TerrainComponent_fields[] = {
     JE_RF(TerrainComponent, blendMaps, 0x33f6f5c8u, Array),
     JE_RF(TerrainComponent, surfaceLayers, 0xd55ed0f5u, Array),
     JE_RF(TerrainComponent, foliageLayers, 0x09c3247du, Array),
+    JE_RF(TerrainComponent, detailDistance, 0xe71d943eu, Float),
+    JE_RF(TerrainComponent, detailDensity, 0x44fa763fu, Float),
+    JE_RF(TerrainComponent, treeDistance, 0x262bd703u, Float),
+    JE_RF(TerrainComponent, billboardStart, 0x7732e1f1u, Float),
+    JE_RF(TerrainComponent, fadeLength, 0x82e007e2u, Float),
+    JE_RF(TerrainComponent, maxMeshTrees, 0x9b464f58u, Int),
+    JE_RF(TerrainComponent, windDirection, 0x494a4763u, Vector3),
+    JE_RF(TerrainComponent, windSpeed, 0x5d9a7961u, Float),
+    JE_RF(TerrainComponent, windSize, 0x88c9e6ffu, Float),
+    JE_RF(TerrainComponent, windBending, 0xaf04a977u, Float),
+    JE_RF(TerrainComponent, treePrototypes, 0xdf70ea57u, Array),
+    JE_RF(TerrainComponent, treeData, 0x46e9c730u, AssetPath),
 };
 const StructTable kBody_TerrainComponent{"terrain", kBody_TerrainComponent_fields, std::size(kBody_TerrainComponent_fields)};
 

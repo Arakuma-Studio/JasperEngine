@@ -2279,9 +2279,13 @@
    "known_keys": [
     "allowRuntimeEdits",
     "autoSetRanges",
+    "billboardStart",
     "blendMap",
     "blendMaps",
+    "detailDensity",
+    "detailDistance",
     "enabled",
+    "fadeLength",
     "foliageLayers",
     "heightBlendSharpness",
     "heightMap",
@@ -2296,6 +2300,7 @@
     "macroTintA",
     "macroTintB",
     "maxHeight",
+    "maxMeshTrees",
     "offscreenShadows",
     "offset",
     "quality",
@@ -2310,7 +2315,14 @@
     "terrainSize",
     "textureBaseTiles",
     "textureDetailTiles",
-    "textureLayers"
+    "textureLayers",
+    "treeData",
+    "treeDistance",
+    "treePrototypes",
+    "windBending",
+    "windDirection",
+    "windSize",
+    "windSpeed"
    ],
    "name": "TerrainComponent",
    "properties_of_default": {
@@ -2324,13 +2336,33 @@
      33554432,
      true
     ],
+    "billboardStart": [
+     2,
+     0,
+     true
+    ],
     "blendMaps": [
      15,
      67108864,
      true
     ],
+    "detailDensity": [
+     2,
+     0,
+     true
+    ],
+    "detailDistance": [
+     2,
+     34359738368,
+     true
+    ],
     "enabled": [
      0,
+     0,
+     true
+    ],
+    "fadeLength": [
+     2,
      0,
      true
     ],
@@ -2402,6 +2434,11 @@
     "maxHeight": [
      2,
      34393292800,
+     true
+    ],
+    "maxMeshTrees": [
+     8,
+     0,
      true
     ],
     "offscreenShadows": [
@@ -2473,6 +2510,41 @@
      2,
      0,
      true
+    ],
+    "treeData": [
+     18,
+     34359738368,
+     true
+    ],
+    "treeDistance": [
+     2,
+     0,
+     true
+    ],
+    "treePrototypes": [
+     15,
+     34359738368,
+     true
+    ],
+    "windBending": [
+     2,
+     0,
+     true
+    ],
+    "windDirection": [
+     5,
+     0,
+     true
+    ],
+    "windSize": [
+     2,
+     0,
+     true
+    ],
+    "windSpeed": [
+     2,
+     0,
+     true
     ]
    },
    "properties_without_component": {
@@ -2486,6 +2558,11 @@
      33554432,
      true
     ],
+    "billboardStart": [
+     2,
+     0,
+     true
+    ],
     "blendMaps": [
      15,
      67108864,
@@ -2496,13 +2573,33 @@
      67108864,
      true
     ],
+    "detailDensity": [
+     2,
+     0,
+     true
+    ],
+    "detailDistance": [
+     2,
+     34359738368,
+     true
+    ],
     "enabled": [
      0,
      0,
      true
     ],
+    "fadeLength": [
+     2,
+     0,
+     true
+    ],
     "foliageLayers": [
      15,
+     34359738368,
+     true
+    ],
+    "foliageLayers[].algorithmVersion": [
+     9,
      34359738368,
      true
     ],
@@ -2521,9 +2618,19 @@
      34359738368,
      true
     ],
+    "foliageLayers[].densityFalloffStart": [
+     2,
+     0,
+     true
+    ],
     "foliageLayers[].densityMap": [
      11,
      34359738368,
+     true
+    ],
+    "foliageLayers[].densityScale": [
+     2,
+     0,
      true
     ],
     "foliageLayers[].drawDistance": [
@@ -2531,7 +2638,27 @@
      34359738368,
      true
     ],
+    "foliageLayers[].dryColor": [
+     6,
+     34359738368,
+     true
+    ],
+    "foliageLayers[].farDensity": [
+     2,
+     0,
+     true
+    ],
+    "foliageLayers[].healthyColor": [
+     6,
+     34359738368,
+     true
+    ],
     "foliageLayers[].maxHeight": [
+     2,
+     34359738368,
+     true
+    ],
+    "foliageLayers[].maxHeightRatio": [
      2,
      34359738368,
      true
@@ -2561,12 +2688,22 @@
      34359738368,
      true
     ],
+    "foliageLayers[].minHeightRatio": [
+     2,
+     34359738368,
+     true
+    ],
     "foliageLayers[].minScale": [
      2,
      34359738368,
      true
     ],
     "foliageLayers[].minSlope": [
+     2,
+     34359738368,
+     true
+    ],
+    "foliageLayers[].noiseSpread": [
      2,
      34359738368,
      true
@@ -2578,6 +2715,11 @@
     ],
     "foliageLayers[].seed": [
      9,
+     34359738368,
+     true
+    ],
+    "foliageLayers[].windBend": [
+     2,
      34359738368,
      true
     ],
@@ -2644,6 +2786,11 @@
     "maxHeight": [
      2,
      34393292800,
+     true
+    ],
+    "maxMeshTrees": [
+     8,
+     0,
      true
     ],
     "offscreenShadows": [
@@ -2827,6 +2974,136 @@
      true
     ],
     "textureDetailTiles": [
+     2,
+     0,
+     true
+    ],
+    "treeData": [
+     18,
+     34359738368,
+     true
+    ],
+    "treeDistance": [
+     2,
+     0,
+     true
+    ],
+    "treePrototypes": [
+     15,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].bendFactor": [
+     2,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].collision": [
+     13,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].collisionHeight": [
+     2,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].collisionRadius": [
+     2,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].id": [
+     9,
+     0,
+     true
+    ],
+    "treePrototypes[].impostorAlbedo": [
+     11,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].impostorBoundsCenter": [
+     5,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].impostorNormal": [
+     11,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].impostorSize": [
+     4,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].impostorSourceHash": [
+     1,
+     0,
+     true
+    ],
+    "treePrototypes[].impostorViews": [
+     8,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].lodDistances": [
+     15,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].lodDistances[]": [
+     2,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].lodMeshes": [
+     15,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].lodMeshes[]": [
+     18,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].meshPath": [
+     18,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].navObstacle": [
+     0,
+     0,
+     true
+    ],
+    "treePrototypes[].shadowLodMask": [
+     9,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].windMask": [
+     13,
+     34359738368,
+     true
+    ],
+    "windBending": [
+     2,
+     0,
+     true
+    ],
+    "windDirection": [
+     5,
+     0,
+     true
+    ],
+    "windSize": [
+     2,
+     0,
+     true
+    ],
+    "windSpeed": [
      2,
      0,
      true
@@ -16039,6 +16316,11 @@
      0,
      true
     ],
+    "terrain.clearTrees": [
+     0,
+     0,
+     true
+    ],
     "terrain.extraWidth": [
      2,
      0,
@@ -16167,6 +16449,11 @@
      true
     ],
     "terrain.clearFoliage": [
+     0,
+     0,
+     true
+    ],
+    "terrain.clearTrees": [
      0,
      0,
      true
@@ -27602,6 +27889,11 @@
     0,
     true
    ],
+   "terrain.clearTrees": [
+    0,
+    0,
+    true
+   ],
    "terrain.extraWidth": [
     2,
     0,
@@ -28127,6 +28419,11 @@
     33554432,
     true
    ],
+   "billboardStart": [
+    2,
+    0,
+    true
+   ],
    "blendMaps": [
     15,
     67108864,
@@ -28137,8 +28434,23 @@
     67108864,
     true
    ],
+   "detailDensity": [
+    2,
+    0,
+    true
+   ],
+   "detailDistance": [
+    2,
+    34359738368,
+    true
+   ],
    "enabled": [
     0,
+    0,
+    true
+   ],
+   "fadeLength": [
+    2,
     0,
     true
    ],
@@ -28210,6 +28522,11 @@
    "maxHeight": [
     2,
     34393292800,
+    true
+   ],
+   "maxMeshTrees": [
+    8,
+    0,
     true
    ],
    "offscreenShadows": [
@@ -28393,6 +28710,41 @@
     true
    ],
    "textureDetailTiles": [
+    2,
+    0,
+    true
+   ],
+   "treeData": [
+    18,
+    34359738368,
+    true
+   ],
+   "treeDistance": [
+    2,
+    0,
+    true
+   ],
+   "treePrototypes": [
+    15,
+    34359738368,
+    true
+   ],
+   "windBending": [
+    2,
+    0,
+    true
+   ],
+   "windDirection": [
+    5,
+    0,
+    true
+   ],
+   "windSize": [
+    2,
+    0,
+    true
+   ],
+   "windSpeed": [
     2,
     0,
     true

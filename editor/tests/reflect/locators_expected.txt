@@ -4,6 +4,7 @@
 1005 light/spotMask texture
 1006 terrain/heightMap texture
 1006 terrain/holeMap texture
+1006 terrain/treeData tree_data
 1007 points/texture texture
 1007 points/customShader shader
 1008 skybox/texture cubemap

@@ -120,11 +120,11 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | Spec revision for the upstream changes | done | `terrain` 10 tools, `voxels` 4, no format bump, no new budget exceptions |
 | T1 foundation | done, verification continuing | On integration; writer migration has since moved to `terrain/s53-authoring` |
 | T1 implementation | checkpoint landed, rest in progress | Checkpoint 32b44659f merged into integration (e695a1bf3): core 162/162 and editor 129/129 with WERROR, MCP 41/41, collider red control. Remaining: UI items D-28 to D-37, the eval run |
-| T2 implementation | in progress | `.worktrees/t2`. Core: 67 filtered tests pass at `c7ded25f3`. Editor half uncommitted, its tests not yet run |
+| T2 implementation | done, waiting to land | `terrain/t2-noise` at 63454eb9e, T1 merged. Core 133/133, editor 64/64 and 11/11, all T2 and T1 MCP files pass; red controls for the idle hand-back, throwing job, seeding race, grouped undo, cross-check. Noise identical on x86/x86_64 (native), arm64 (qemu emulation), armv7 (Ubuntu cross compiler only; NDK armv7 unverified). Left: the preview supersede red control. Lands after T5 and T3 |
 | T3 implementation | done, waiting on T1 | `terrain/t3-materials-holes` at ea92366f0. Core 171/171, GPU and purity 33/33, editor 120/120, materials MCP 3/3, each with a red run. Hole rule in `sampleHeightField`, hole brush on T1's strokes and the holes MCP file wait for T1's checkpoint (resolution saved in terrain-evidence/T3/t1-merge-withdrawn.txt) |
 | T4 implementation | not started | After T1 and T3 |
-| T5 implementation | done, waiting to land | `terrain/t5-foliage` at ebac93db7. Filtered suites green on the merged tree: core 130/130, GPU 22/22, budget and shader keys 21/21, editor 126/126, MCP files all passing. Lands after T1's checkpoint |
-| T6 implementation | in progress | `.worktrees/t6`. 110 of 114 filtered tests at last report; GPU tests and the ball test open. Generation and terrain integration not merged |
+| T5 implementation | landed | Merged into integration (caf5a42a0) at 34b6bf7a3: core 221/221, GPU 22/22 cold cache, editor 137/137, foliage/terrain/navigation MCP files, lints. Not run here: test_foliage_export (player), the eval case for `wait`, web, Android, other platforms. Build tree deleted for disk |
+| T6 implementation | in progress, nearly complete | `terrain/t6-voxels` at b9fd20144, integration merged. Core 163/164, editor 198/200 (2 are T2's), test_voxels.py 12/12, soak and fuzz pass. Open: AC35 cave-mouth step (decision: no step over 2 cm at the rim), AC23 tunnelling (496/1000 lost, root cause unknown), fan-out (TerrainSurfaceLayer moves to its own header on T1's branch) |
 | Merge `terrain/integration` to `main`, merge `origin/main`, push | not started | |
 
 ## Log
@@ -163,6 +163,34 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   T6's AC35 and T3's move of the hole rule into `sampleHeightField` wait for that.
 - Disk filled to 100% on 2026-11-07 ~06:00; freed 35 GB (coordinator's baseline trees, Docker build cache). The queue now waits
   while under 15 GB is free. MCP test runs need `MCP_SKIP_WEB_BUILD=1`, or `MCP_SUITE=all` builds a web project first.
+- T6 decision: where a voxel volume meets terrain at a cave mouth there must be no upward step over 2 cm along any path into
+  the mouth; the voxel surface meets the terrain edge exactly in render and collision. A 0.25 m lip (the cut tolerance) is a bug.
+- Follow-ups outside the programme (for their owners, not fixed here):
+  - `SplineGpu.FenceAndWall` fails deterministically on integration's engine code alone (6612 pixels over threshold, fence rails
+    about 1.5 px lower; posts and wall match), proven by T3 building integration's exact `engine/`. T1's passing run predates the
+    upstream merge, so it came with upstream (likely render-correctness or mesh-memory). The final baseline checks it on plain
+    `origin/main`; it is not a terrain-programme regression and is reported to that work's owner. `RagdollWizardDialog::instance().show()` is drawn only from
+  the Inspector, the same bug T2 found and fixed for Create Terrain (a dialog opened from another tab is never drawn).
+- Shader undefined behaviour or driver bug, found by T3's merged MCP run: a new terrain limits layers per pixel (R53), and that
+  variant at High tier and High Lit Quality (the editor default) had never been drawn by any GPU test. llvmpipe kills it with an
+  illegal instruction. A rewrite of the layer selection didn't fix it; checks at 128-bit llvmpipe width, on lavapipe and with
+  glslangValidator/spirv-val decide whether it's our shader or the driver. T3 adds a GPU test drawing every variant combination
+  on glcore and Vulkan. Also: `sample_terrain` could pass the 1 MB result limit with many points; capped at 64 full samples.
+- Header fan-out passed 150 on integration after T1's checkpoint (about 153 on `Transform.h`). T1 cut it at the source on an
+  isolated branch `terrain/t1-fanout` from the checkpoint; T3 moved its one unit to a narrow header.
+- The build queue's first-come rule let newcomers win freed slots when fewer jobs waited than there were slots (T5 waited 144 min
+  behind later jobs). Now strictly head of line.
+- Editor trap found by T2: `jobs::postToMain` drains only in `Engine::runFrame`, which the editor runs only in frames that draw a
+  scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
+  hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
+  T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- T1's fan-out cut landed (a6a3c6538): worst header 123 of 150 (Transform.h was 153, TerrainComponent.h 143, now 113), with
+  TerrainSurfaceLayer in its own header. The coordinator's one-file syntax check of T5's sources after the merge was
+  unreliable: it borrowed a compile command from a stale build tree, and passed RenderSystemFoliage.cpp, which T3's real build
+  then showed needs the Transform include. T3 added it, plus the includes for three T5 test files (48c22c1e3). T5's 11 foliage files were missing from the Xcode
+  project since T5 landed; regenerated in the merge.
+- T5 landed (caf5a42a0); merged code identical to T5's tested tree. It absorbs Doriax's foliage work and builds on T1's
+  `edit_terrain`, `visualize_terrain` and delta undo. Next: T1's fan-out branch, then T3, then T2 and T6.
 - T1 checkpoint landed in integration (e695a1bf3); the merged code is byte-identical to the tree T1 tested. T2, T3, T5 and
   T6 each merge integration once now. Landing order from here: T5, then T3, then T2 and T6 as they finish; each later lander
   merges integration again just before landing. T4 starts once T3 has landed.

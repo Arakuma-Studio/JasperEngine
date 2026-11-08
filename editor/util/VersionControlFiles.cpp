@@ -59,7 +59,7 @@ namespace jasperengine::editor::vcsfiles {
         // merge runs. With LFS the binaries are LFS objects and lockable (git lfs lock); scenes, prefabs
         // and meta files never are LFS objects (docs/specs/S29-version-control.md R21).
         const char* const binaryPatterns[] = {
-            "*.png", "*.jpg", "*.jpeg", "*.tga", "*.ktx", "*.dds", "*.glb", "*.gltf", "*.fbx", "*.obj",
+            "*.png", "*.jpg", "*.jpeg", "*.tga", "*.ktx", "*.dds", "*.glb", "*.gltf", "*.fbx", "*.obj", "*.jetrees",
             "*.ogg", "*.wav", "*.mp3", "*.ttf", "*.otf",
             // T6 R77: a volume is a binary, and big
             "*.voxelvolume"
