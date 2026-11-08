@@ -7657,8 +7657,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         // the batch variants, on the layouts just loaded (GPU Instancing, spec S55)
         loadSubmeshBatchVariants(mesh, mesh.submeshes[i], pipelines, colorState, needDepthPass ? depthPipelines : 0, depthState,
                                  allDepthAttributes, msaaPipelineSamples, buffers, bufferNameToRender, bufferStride, batchPending);
-        attempt.renders.push_back(&mesh.submeshes[i].batchRender);
-        attempt.renders.push_back(&mesh.submeshes[i].batchDepthRender);
+        if (SubmeshBatchVariants* batch = mesh.submeshes[i].batch.get()){
+            attempt.renders.push_back(&batch->render);
+            attempt.renders.push_back(&batch->depthRender);
+        }
     }
     attempt.succeeded = true;
 
@@ -8653,33 +8655,46 @@ void RenderSystem::requestSubmeshBatchShaders(MeshComponent& mesh, Submesh& subm
     const SubmeshBatchVariant batch = getSubmeshBatchVariant(mesh, submesh, inputs, variant, meshShaderSrc, depthShaderSrc);
     const uint16_t shaderId = batch.properties ? ShaderPool::registerCustomShader(meshShaderSrc) : 0;
     const uint16_t depthShaderId = batch.depthProperties ? ShaderPool::registerCustomShader(depthShaderSrc) : 0;
+    // nothing to batch (GPU Instancing off, a submesh that cannot): no variants held at all
+    if (!batch.properties && !batch.depthProperties){
+        releaseSubmeshBatchVariants(submesh, false);
+        return;
+    }
+    // a copy of the component shares its source's until here: it makes its own
+    if (!submesh.batch || submesh.batch.use_count() > 1)
+        submesh.batch = std::make_shared<SubmeshBatchVariants>();
+    SubmeshBatchVariants& held = *submesh.batch;
     // a reload keeps the variants it still draws, and lets go of the others with their keys
-    if (submesh.batchShader && (submesh.batchShaderProperties != batch.properties || submesh.batchShaderId != shaderId)){
-        submesh.batchShader.reset();
-        ShaderPool::remove(ShaderType::MESH, submesh.batchShaderProperties, submesh.batchShaderId);
+    if (held.shader && (held.shaderProperties != batch.properties || held.shaderId != shaderId)){
+        held.shader.reset();
+        ShaderPool::remove(ShaderType::MESH, held.shaderProperties, held.shaderId);
     }
-    if (submesh.batchDepthShader && (submesh.batchDepthShaderProperties != batch.depthProperties || submesh.batchDepthShaderId != depthShaderId)){
-        submesh.batchDepthShader.reset();
-        ShaderPool::remove(ShaderType::DEPTH, submesh.batchDepthShaderProperties, submesh.batchDepthShaderId);
+    if (held.depthShader && (held.depthShaderProperties != batch.depthProperties || held.depthShaderId != depthShaderId)){
+        held.depthShader.reset();
+        ShaderPool::remove(ShaderType::DEPTH, held.depthShaderProperties, held.depthShaderId);
     }
-    submesh.batchShaderProperties = batch.properties;
-    submesh.batchShaderId = shaderId;
-    submesh.batchDepthShaderProperties = batch.depthProperties;
-    submesh.batchDepthShaderId = depthShaderId;
+    held.shaderProperties = batch.properties;
+    held.shaderId = shaderId;
+    held.depthShaderProperties = batch.depthProperties;
+    held.depthShaderId = depthShaderId;
     // asked again every load: ShaderPool::get makes a program the runtime compiler finished
     // since the last call (holding the handle never sees it created)
     if (batch.properties)
-        submesh.batchShader = ShaderPool::get(ShaderType::MESH, batch.properties, shaderId);
+        held.shader = ShaderPool::get(ShaderType::MESH, batch.properties, shaderId);
     if (batch.depthProperties)
-        submesh.batchDepthShader = ShaderPool::get(ShaderType::DEPTH, batch.depthProperties, depthShaderId);
+        held.depthShader = ShaderPool::get(ShaderType::DEPTH, batch.depthProperties, depthShaderId);
 }
 
 void RenderSystem::loadSubmeshBatchVariants(MeshComponent& mesh, Submesh& submesh, uint16_t pipelines, const RenderState& colorState,
                                             uint16_t depthPipelines, const RenderState& depthState, bool allDepthAttributes, int msaaSamples,
                                             BufferMap& buffers, BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride, bool& pending){
+    // (none asked for: requestSubmeshBatchShaders)
+    if (!submesh.batch)
+        return;
+    SubmeshBatchVariants& held = *submesh.batch;
     // a variant not linked below draws nothing: the submesh's draws stay single
-    submesh.batchRender.destroy();
-    submesh.batchDepthRender.destroy();
+    held.render.destroy();
+    held.depthRender.destroy();
 
     auto ready = [&pending](std::shared_ptr<ShaderRender>& shader, ShaderType type, uint64_t properties, uint16_t id){
         if (!shader)
@@ -8694,12 +8709,12 @@ void RenderSystem::loadSubmeshBatchVariants(MeshComponent& mesh, Submesh& submes
         return false;
     };
 
-    if (ready(submesh.batchShader, ShaderType::MESH, submesh.batchShaderProperties, submesh.batchShaderId) &&
+    if (ready(held.shader, ShaderType::MESH, held.shaderProperties, held.shaderId) &&
             submesh.shader && submesh.shader->isCreated()){
-        ObjectRender& batch = submesh.batchRender;
-        ShaderData& data = submesh.batchShader->shaderData;
+        ObjectRender& batch = held.render;
+        ShaderData& data = held.shader->shaderData;
         batch.beginLoad(submesh.primitiveType);
-        batch.setShader(submesh.batchShader.get());
+        batch.setShader(held.shader.get());
         // as the colour render binds them (loadMesh), then the instance's vectors
         bindSubmeshAttributes(batch, data, mesh, submesh, buffers, bufferNameToRender, bufferStride, nullptr);
         bool loaded = bindSmoothNormals(batch, data, mesh, submesh, buffers) && bindUnfedMorphInputs(batch, data, mesh, submesh, buffers);
@@ -8719,12 +8734,12 @@ void RenderSystem::loadSubmeshBatchVariants(MeshComponent& mesh, Submesh& submes
             batch.destroy();
     }
 
-    if (ready(submesh.batchDepthShader, ShaderType::DEPTH, submesh.batchDepthShaderProperties, submesh.batchDepthShaderId) &&
+    if (ready(held.depthShader, ShaderType::DEPTH, held.depthShaderProperties, held.depthShaderId) &&
             submesh.depthShader && submesh.depthShader->isCreated()){
-        ObjectRender& batch = submesh.batchDepthRender;
-        ShaderData& data = submesh.batchDepthShader->shaderData;
+        ObjectRender& batch = held.depthRender;
+        ShaderData& data = held.depthShader->shaderData;
         batch.beginLoad(submesh.primitiveType);
-        batch.setShader(submesh.batchDepthShader.get());
+        batch.setShader(held.depthShader.get());
         // as the depth render binds them (loadMesh: no skin, morph targets or terrain here)
         auto depthInput = [allDepthAttributes](AttributeType type){
             return allDepthAttributes || type == AttributeType::POSITION || type == AttributeType::TEXCOORD1 ||
@@ -8771,20 +8786,26 @@ void RenderSystem::loadSubmeshBatchVariants(MeshComponent& mesh, Submesh& submes
 }
 
 void RenderSystem::releaseSubmeshBatchVariants(Submesh& submesh, bool keepShaders){
-    submesh.batchRender.destroy();
-    submesh.batchDepthRender.destroy();
+    // variants shared with a copy of the component are the other holder's to release
+    if (!submesh.batch || submesh.batch.use_count() > 1){
+        if (!keepShaders)
+            submesh.batch.reset();
+        return;
+    }
+    SubmeshBatchVariants& held = *submesh.batch;
+    held.render.destroy();
+    held.depthRender.destroy();
     if (keepShaders)
         return;
-    if (submesh.batchShader){
-        submesh.batchShader.reset();
-        ShaderPool::remove(ShaderType::MESH, submesh.batchShaderProperties, submesh.batchShaderId);
+    if (held.shader){
+        held.shader.reset();
+        ShaderPool::remove(ShaderType::MESH, held.shaderProperties, held.shaderId);
     }
-    if (submesh.batchDepthShader){
-        submesh.batchDepthShader.reset();
-        ShaderPool::remove(ShaderType::DEPTH, submesh.batchDepthShaderProperties, submesh.batchDepthShaderId);
+    if (held.depthShader){
+        held.depthShader.reset();
+        ShaderPool::remove(ShaderType::DEPTH, held.depthShaderProperties, held.depthShaderId);
     }
-    submesh.batchShaderProperties = submesh.batchDepthShaderProperties = 0;
-    submesh.batchShaderId = submesh.batchDepthShaderId = 0;
+    submesh.batch.reset();
 }
 
 namespace {
@@ -8974,10 +8995,10 @@ std::shared_ptr<ShadowIndexBuffer> RenderSystem::shadowIndexBuffer(MeshComponent
     return result;
 }
 
-void RenderSystem::offerDrawBatch(ObjectRender& render, ObjectRender& variant, int objectSlot, bool mirrored){
+void RenderSystem::offerDrawBatch(ObjectRender& render, ObjectRender* variant, int objectSlot, bool mirrored){
     // (a mirrored draw has a pipeline of its own: it draws alone)
-    if (SystemRender::isDrawBatching() && !mirrored && objectSlot >= 0 && variant.isBatchVariant())
-        render.setNextDrawBatch(&variant, objectSlot, 0.0f);
+    if (SystemRender::isDrawBatching() && !mirrored && objectSlot >= 0 && variant && variant->isBatchVariant())
+        render.setNextDrawBatch(variant, objectSlot, 0.0f);
 }
 
 namespace {
@@ -9081,7 +9102,8 @@ void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const
         if (splits){
             for (unsigned int s = 0; s < mesh.numSubmeshes && s < 32; s++){
                 const Submesh& submesh = mesh.submeshes[s];
-                const bool batches = depthPipelines ? submesh.batchDepthRender.isBatchVariant() : submesh.batchRender.isBatchVariant();
+                const bool batches = submesh.batch &&
+                    (depthPipelines ? submesh.batch->depthRender.isBatchVariant() : submesh.batch->render.isBatchVariant());
                 if (!(mask & (1u << s)) || !batches)
                     continue;
                 OpaqueRenderData split = entry;
@@ -9099,7 +9121,8 @@ void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const
             const unsigned int first = (unsigned int)std::countr_zero(rest);
             const Submesh& firstSubmesh = mesh.submeshes[first];
             const bool batches = std::popcount(rest) == 1 && !entry.instmesh && !entry.terrain && !entry.tilemap &&
-                (depthPipelines ? firstSubmesh.batchDepthRender.isBatchVariant() : firstSubmesh.batchRender.isBatchVariant());
+                firstSubmesh.batch &&
+                (depthPipelines ? firstSubmesh.batch->depthRender.isBatchVariant() : firstSubmesh.batch->render.isBatchVariant());
             whole.batchKey = keyOf(first, batches);
             whole.preCulled = candidate.cullBounds;
             visibleEntries.push_back(whole);
@@ -10776,7 +10799,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 // (GPU Instancing: it may join the draws of its like, spec S55)
                 // (not an OIT draw: its render is not the one the batch variant was made from)
                 if (!instmesh && !terrain && !oitDraw)
-                    offerDrawBatch(render, mesh.submeshes[i].batchRender, mesh.submeshes[i].slotVSParams, mirroredDraw || passNoFaceCulling() || viewMirrorBound);
+                    offerDrawBatch(render, mesh.submeshes[i].batch ? &mesh.submeshes[i].batch->render : nullptr, mesh.submeshes[i].slotVSParams, mirroredDraw || passNoFaceCulling() || viewMirrorBound);
                 drawSubmeshGeometry(render, entity, mesh, i, instmesh, instanceView, draw.lod, instanceCount, beforeLevel);
             }
 
@@ -10983,7 +11006,7 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                         shadowIndices = mesh.submeshes[i].shadowIndices.get();
                 }
                 if (!instmesh && !terrain)
-                    offerDrawBatch(depthRender, mesh.submeshes[i].batchDepthRender, mesh.submeshes[i].slotVSDepthParams, mirroredDraw || passNoFaceCulling());
+                    offerDrawBatch(depthRender, mesh.submeshes[i].batch ? &mesh.submeshes[i].batch->depthRender : nullptr, mesh.submeshes[i].slotVSDepthParams, mirroredDraw || passNoFaceCulling());
                 passShadowIndices = shadowIndices;
                 drawSubmeshGeometry(depthRender, entity, mesh, i, instmesh, instanceView, draw.lod, instanceCount);
                 passShadowIndices = nullptr;
@@ -13126,8 +13149,8 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.render.destroy();
         submesh.depthRender.destroy();
         submesh.gbufferRender.destroy();
-        submesh.batchRender.destroy();
-        submesh.batchDepthRender.destroy();
+        // (its shaders and the variants' memory went above unless the assets are kept)
+        releaseSubmeshBatchVariants(submesh, true);
         submesh.shadowIndices.reset();
         releaseSubmeshOit(submesh);
 

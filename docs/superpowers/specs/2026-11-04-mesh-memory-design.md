@@ -846,17 +846,19 @@ Branch `fu/mesh-memory` (docs/doriax-catchup/FOLLOWUPS.md).
    now also asserts that the frame after the clone is gone is the frame before it, writing both images when not,
    so a difference of that kind shows again if it ever returns. That assertion is a pin, not a regression test:
    it passes with the cloner fix reverted (the test's batch-variant checks fail there).
-4. **S55's batch render objects out of line: blocked.** `fix/submesh-drop` had not landed on `origin/main` at the
-   start or the end of this work, and the change touches the per-submesh split in `RenderSystem.cpp` (the
-   `isBatchVariant` reads beside the `localBounds` culling) that it rewrites, so it was not started. The design:
-   a `SubmeshBatchVariants` struct in `MeshComponent.h` holding what `Submesh` now holds inline for S55
-   (`batchRender`, `batchDepthRender`, both shaders, both property words, both shader ids), and `Submesh::batch`
-   a `std::shared_ptr<SubmeshBatchVariants>` like `extraPass` and `oit`: made by `loadSubmeshBatchVariants` only
-   when GPU Instancing is on and the submesh can batch, released where the variants are let go of today (the
-   unload path, `destroyMesh`) and when GPU Instancing turns off; the cloner resets the pointer instead of the
-   eight fields; readers test `batch && batch->render.isBatchVariant()`; `offerDrawBatch` takes the batch render
-   by pointer. A submesh drawn without instancing then holds 16 bytes instead of 1,720 (Linux; 2 x 832 for the
-   render objects plus the shader handles and keys): a sprite's mesh with its arrays goes from 10,400 to about
-   8,700 bytes. Its tests: `MeshMemory` measuring a sprite's and a model's mesh with GPU Instancing off (no batch
-   variants allocated, the bytes above) and the `InstancingGoldenGpu` suite unchanged (on: allocated and linked;
-   off then on: freed and made again, same image).
+4. **S55's batch render objects out of line.** Blocked until `fix/submesh-drop` landed (`2b893484f`, every
+   submesh culled by its own bounds), then built on it. `SubmeshBatchVariants` (`MeshComponent.h`) holds what
+   `Submesh` held inline for S55: both render objects, both shaders, their property words and ids. `Submesh::batch`
+   is a `std::shared_ptr` to it, null unless GPU Instancing is on and the submesh can batch:
+   `RenderSystem::requestSubmeshBatchShaders` makes it (or releases it when there is nothing to batch, which is
+   how GPU Instancing turning off frees it), `loadSubmeshBatchVariants` does nothing without it, and
+   `releaseSubmeshBatchVariants` and `destroyMesh` let it go. A copy of a component shares its source's variants
+   until its own load, which then makes new ones instead of writing the source's; releasing shared variants only
+   drops the pointer, so a copy never destroys the source's pipelines nor removes shader keys it never took (the
+   inline objects were destroyed by whichever copy was released first). The cloner resets the pointer.
+   `MeshComponent::arrayHeapBytes` counts the variants a mesh holds. Sizes (Linux; MSVC Release / Debug computed as
+   in item 2): `Submesh` 8,664 -> 6,960 B on the merged tree (6,392 / 6,944), `SubmeshBatchVariants` 1,720 B (1,600 / 1,664) only while
+   instancing, a sprite's mesh with its arrays 10,432 -> 8,728 B (1,704 B a submesh drawn without instancing). The `MeshMemory` ceilings follow: `Submesh`
+   7,680, a sprite's mesh 9,472. Tests: `MeshMemory.SizeofCeilings` and `SpriteCostsAnOrderOfMagnitudeLess` (red
+   with the change reverted), `InstancingGoldenGpu.BatchVariantsHeldOnlyWhileInstancing` (none held with GPU
+   Instancing off, the arrays' heap bytes lower by exactly the variants, made again on, the same frame).

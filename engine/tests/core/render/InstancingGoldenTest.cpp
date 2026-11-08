@@ -197,6 +197,10 @@ namespace {
             return different;
         }
 
+        static bool batchLinked(const Submesh& submesh){
+            return submesh.batch && submesh.batch->render.isBatchVariant();
+        }
+
         static std::vector<uint8_t> readTarget(){
             Framebuffer& target = GpuEnvironment::target();
             std::vector<uint8_t> rgba;
@@ -227,12 +231,14 @@ TEST_F(InstancingGoldenGpu, BatchedFrameMatchesUnbatched){
                 stats.splitBindings, stats.splitBindingParts, stats.splitUniforms, stats.splitUniformSlots);
     // what the first box loaded (a test that does not batch says why)
     const Submesh& first = scene.getComponent<MeshComponent>(models[0]->getEntity()).submeshes[0];
+    ASSERT_TRUE(first.batch) << "the box holds no batch variants";
+    const SubmeshBatchVariants& variants = *first.batch;
     std::printf("[instancing] box: batch shader %s (properties %llx), colour variant %s (%s), depth variant %s (%s)\n",
-                first.batchShader ? (first.batchShader->isCreated() ? "built" : "not built") : "none",
-                (unsigned long long)first.batchShaderProperties, first.batchRender.isBatchVariant() ? "linked" : "not linked",
-                first.batchRender.getBatchLinkFailure() ? first.batchRender.getBatchLinkFailure() : "-",
-                first.batchDepthRender.isBatchVariant() ? "linked" : "not linked",
-                first.batchDepthRender.getBatchLinkFailure() ? first.batchDepthRender.getBatchLinkFailure() : "-");
+                variants.shader ? (variants.shader->isCreated() ? "built" : "not built") : "none",
+                (unsigned long long)variants.shaderProperties, variants.render.isBatchVariant() ? "linked" : "not linked",
+                variants.render.getBatchLinkFailure() ? variants.render.getBatchLinkFailure() : "-",
+                variants.depthRender.isBatchVariant() ? "linked" : "not linked",
+                variants.depthRender.getBatchLinkFailure() ? variants.depthRender.getBatchLinkFailure() : "-");
     EXPECT_GT(stats.instancedDraws, 0u);
     // the 36 grid objects in the colour pass alone
     EXPECT_GE(stats.batchedInstances, 30u);
@@ -263,24 +269,23 @@ TEST_F(InstancingGoldenGpu, CloneOfAnInstancedMeshLeavesTheOriginalsBatches){
     ASSERT_TRUE(render()) << "the scene never finished loading";
     const std::vector<uint8_t> before = readTarget();
     const Entity original = models[0]->getEntity();
-    ASSERT_TRUE(scene.getComponent<MeshComponent>(original).submeshes[0].batchRender.isBatchVariant());
+    ASSERT_TRUE(batchLinked(scene.getComponent<MeshComponent>(original).submeshes[0]));
 
     const std::vector<Entity> copies = EntityCloner::clone(&scene, EntityCloner::collectHierarchy(&scene, original), &scene);
     ASSERT_FALSE(copies.empty());
     const Submesh& copied = scene.getComponent<MeshComponent>(copies[0]).submeshes[0];
-    EXPECT_FALSE(copied.batchRender.isBatchVariant()) << "the clone holds the original's batch variant";
-    EXPECT_FALSE(copied.batchDepthRender.isBatchVariant());
-    EXPECT_FALSE(copied.batchShader);
-    EXPECT_FALSE(copied.batchDepthShader);
+    EXPECT_FALSE(copied.batch) << "the clone holds the original's batch variants";
 
     ASSERT_TRUE(render()) << "the clone never finished loading";
-    EXPECT_TRUE(scene.getComponent<MeshComponent>(copies[0]).submeshes[0].batchRender.isBatchVariant());
+    EXPECT_TRUE(batchLinked(scene.getComponent<MeshComponent>(copies[0]).submeshes[0]));
+    EXPECT_NE(scene.getComponent<MeshComponent>(copies[0]).submeshes[0].batch,
+              scene.getComponent<MeshComponent>(original).submeshes[0].batch);
     for (auto copy = copies.rbegin(); copy != copies.rend(); ++copy)
         scene.destroyEntity(*copy);
     ASSERT_TRUE(render());
     GpuEnvironment::drawFrames(2);
 
-    EXPECT_TRUE(scene.getComponent<MeshComponent>(original).submeshes[0].batchRender.isBatchVariant());
+    EXPECT_TRUE(batchLinked(scene.getComponent<MeshComponent>(original).submeshes[0]));
     EXPECT_GT(SystemRender::getDrawBatchStats().instancedDraws, 0u);
     const std::vector<uint8_t> after = readTarget();
     const size_t different = differentPixels(before, after);
@@ -291,6 +296,50 @@ TEST_F(InstancingGoldenGpu, CloneOfAnInstancedMeshLeavesTheOriginalsBatches){
         writePng(getOutputDirectory() + "/instancing_after_clone.png", after, width, height);
     }
     EXPECT_EQ(different, 0u) << "pixels that differ once the clone is gone";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// The batch variants (two render objects, 1.7 KB a submesh) are held only while GPU Instancing
+// is on: off, no submesh holds any and the arrays' heap bytes drop by them; on again, they are
+// made again and the frame is the one before
+TEST_F(InstancingGoldenGpu, BatchVariantsHeldOnlyWhileInstancing){
+    JASPER_REQUIRE_GPU();
+    buildScene();
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    const std::vector<uint8_t> on = readTarget();
+    auto heldAndBytes = [this](size_t& bytes){
+        size_t held = 0;
+        bytes = 0;
+        for (std::unique_ptr<Model>& model : models){
+            const MeshComponent& mesh = scene.getComponent<MeshComponent>(model->getEntity());
+            bytes += mesh.arrayHeapBytes();
+            for (unsigned int s = 0; s < mesh.numSubmeshes; s++)
+                held += mesh.submeshes[s].batch ? 1 : 0;
+        }
+        return held;
+    };
+    size_t bytesOn = 0;
+    EXPECT_EQ(heldAndBytes(bytesOn), models.size()) << "a grid object without batch variants while GPU Instancing is on";
+    for (std::unique_ptr<Model>& model : models)
+        EXPECT_TRUE(batchLinked(scene.getComponent<MeshComponent>(model->getEntity()).submeshes[0]));
+
+    Engine::setGpuInstancingEnabled(false);
+    ASSERT_TRUE(render()) << "the meshes never loaded again without GPU Instancing";
+    size_t bytesOff = 0;
+    EXPECT_EQ(heldAndBytes(bytesOff), 0u) << "batch variants held with GPU Instancing off";
+    std::printf("[instancing] the grid's mesh arrays: %zu bytes with GPU Instancing on, %zu off (%zu a submesh)\n",
+                bytesOn, bytesOff, (bytesOn - std::min(bytesOn, bytesOff)) / models.size());
+    EXPECT_EQ(bytesOn - bytesOff, models.size() * sizeof(SubmeshBatchVariants));
+    for (std::unique_ptr<Primitive>& object : objects)
+        EXPECT_FALSE(scene.getComponent<MeshComponent>(object->getEntity()).submeshes[0].batch);
+    EXPECT_EQ(SystemRender::getDrawBatchStats().instancedDraws, 0u);
+
+    Engine::setGpuInstancingEnabled(true);
+    ASSERT_TRUE(render()) << "the batch variants never loaded again";
+    size_t bytesAgain = 0;
+    EXPECT_EQ(heldAndBytes(bytesAgain), models.size());
+    EXPECT_GT(SystemRender::getDrawBatchStats().instancedDraws, 0u);
+    EXPECT_EQ(differentPixels(on, readTarget()), 0u) << "pixels that differ after GPU Instancing went off and on";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -400,9 +449,10 @@ TEST_F(InstancingGoldenGpu, BatchedFrameMatchesUnderTiledLights){
     const std::vector<uint8_t> batched = readTarget();
     const DrawBatchStats stats = SystemRender::getDrawBatchStats();
     const Submesh& first = scene.getComponent<MeshComponent>(models[0]->getEntity()).submeshes[0];
+    ASSERT_TRUE(first.batch) << "the box holds no batch variants";
     std::printf("[instancing] tiled: %u instanced draws for %u draws, batch properties %llx\n", stats.instancedDraws,
-                stats.batchedInstances, (unsigned long long)first.batchShaderProperties);
-    EXPECT_NE(first.batchShaderProperties & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS), 0u);
+                stats.batchedInstances, (unsigned long long)first.batch->shaderProperties);
+    EXPECT_NE(first.batch->shaderProperties & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS), 0u);
     EXPECT_GT(stats.instancedDraws, 0u);
     EXPECT_GE(stats.batchedInstances, 30u);
     EXPECT_EQ(differentPixels(unbatched, batched), 0u) << "pixels that differ with GPU Instancing on under Tiled lights";

@@ -223,6 +223,21 @@ namespace jasperengine{
         unsigned int count = 0;
     };
 
+    // Automatic GPU instancing (spec S55): the HAS_AUTO_INSTANCING variants of a submesh's render
+    // and depthRender (RenderSystem::loadSubmeshBatchVariants), which draw batches of its draws
+    // with those of every submesh like it, linked to render and depthRender (else they draw
+    // nothing). Held only while GPU Instancing is on and the submesh can batch (Submesh::batch).
+    struct JASPERENGINE_API SubmeshBatchVariants{
+        ObjectRender render;
+        ObjectRender depthRender;
+        std::shared_ptr<ShaderRender> shader;
+        std::shared_ptr<ShaderRender> depthShader;
+        uint64_t shaderProperties = 0;
+        uint64_t depthShaderProperties = 0;
+        uint16_t shaderId = 0;
+        uint16_t depthShaderId = 0;
+    };
+
     struct JASPERENGINE_API Submesh{
         Material material;
         std::map<AttributeType, Attribute> attributes;
@@ -426,18 +441,10 @@ namespace jasperengine{
         // MeshComponent::smoothNormals entry its position attribute uses (-1: none)
         int smoothNormals = -1;
 
-        // Automatic GPU instancing (spec S55): the HAS_AUTO_INSTANCING variants of render and
-        // depthRender (RenderSystem::loadSubmeshBatchVariants), which draw batches of this
-        // submesh's draws with those of every submesh like it; loaded while GPU Instancing is on
-        // and the submesh can batch, linked to render and depthRender (else they draw nothing)
-        ObjectRender batchRender;
-        ObjectRender batchDepthRender;
-        std::shared_ptr<ShaderRender> batchShader;
-        std::shared_ptr<ShaderRender> batchDepthShader;
-        uint64_t batchShaderProperties = 0;
-        uint64_t batchDepthShaderProperties = 0;
-        uint16_t batchShaderId = 0;
-        uint16_t batchDepthShaderId = 0;
+        // its GPU Instancing variants (null: GPU Instancing off, the submesh cannot batch, or not
+        // loaded yet; 1.7 KB a submesh not paid then). A copy of the component shares them until
+        // its load makes its own (RenderSystem::requestSubmeshBatchShaders)
+        std::shared_ptr<SubmeshBatchVariants> batch;
         // the bounds of the vertices it draws in the mesh's space (null: not known, the mesh's
         // are used): a pass culls a visible mesh's submeshes one by one (spec S55 R4)
         AABB localBounds;
@@ -604,7 +611,12 @@ namespace jasperengine{
         // authored one)
         bool isTransparent() const { return autoTransparency ? derivedTransparent : transparent; }
         // what its arrays hold outside the component (ComponentArray::arrayHeapBytes)
-        size_t arrayHeapBytes() const { return submeshes.storageBytes() + eBuffers.storageBytes() + bonesMatrix.storageBytes(); }
+        size_t arrayHeapBytes() const {
+            size_t bytes = submeshes.storageBytes() + eBuffers.storageBytes() + bonesMatrix.storageBytes();
+            for (size_t i = 0; i < submeshes.stored(); i++)
+                bytes += submeshes[i].batch ? sizeof(SubmeshBatchVariants) : 0;
+            return bytes;
+        }
         // set at load: transparent-queue order (the lowest sortPriority of its blended
         // submeshes), opaque-queue order (the lowest of the others; before the distance)
         // and whether the camera depth pre-pass leaves it out (a forked color shader without
