@@ -124,7 +124,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | T3 implementation | landed | Merged into integration (9f3ffd6ba) at 8376cd9c4: core 560/560 (all 207 variants), editor 182/182, terrain MCP 35/35, fan-out worst 127. Driver workarounds recorded (llvmpipe GL path). Not run: web, Android, full Vulkan suite, perf checks |
 | T4 implementation | in progress | `.worktrees/t4` (reuses T3's worktree and build tree), branch terrain/t4-worlds from integration 9f3ffd6ba |
 | T5 implementation | landed | Merged into integration (caf5a42a0) at 34b6bf7a3: core 221/221, GPU 22/22 cold cache, editor 137/137, foliage/terrain/navigation MCP files, lints. Not run here: test_foliage_export (player), the eval case for `wait`, web, Android, other platforms. Build tree deleted for disk |
-| T6 implementation | in progress, nearly complete | `terrain/t6-voxels` at b9fd20144, integration merged. Core 163/164, editor 198/200 (2 are T2's), test_voxels.py 12/12, soak and fuzz pass. Open: AC35 cave-mouth step (decision: no step over 2 cm at the rim), AC23 tunnelling (496/1000 lost, root cause unknown), fan-out (TerrainSurfaceLayer moves to its own header on T1's branch) |
+| T6 implementation | nearly done | `terrain/t6-voxels` at ed15f5a58, integration (T1, T5, T3, T2) merged. Cave-mouth seam and AC35 step rule pass; tunnelling 0/1000 lost. Core 452/452 (incl. 207 terrain variants), editor 265/265 with WERROR, test_voxels 12/12, fan-out worst 144 of 150. Left: R50 (texture array via T3's builder), R78 (cook gap), Vulkan check, tunnelling root-cause write-up, fixing T5's WERROR break, a fresh screenshot |
 | Merge `terrain/integration` to `main`, merge `origin/main`, push | not started | |
 
 ## Log
@@ -184,6 +184,10 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
   T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- Integration issues found by T6's merge: T2's unused function in NoiseGraphWindow.cpp breaks WERROR (fixed in T6's branch);
+  T5's TerrainFoliageGpuTest.cpp:216 breaks a WERROR core-test build (T6 fixing); locators_expected.txt lacked T5's treeData;
+  T3's TerrainDetailBuilder and TerrainRenderInfo.h were missing from the Xcode project. Fan-out worst is now 144 of 150
+  (TerrainSurfaceLayer.h); T4 told to keep its headers to forward declarations.
 - T2 landed (6af5f3b9d), merged code identical to T2's tested tree. Generation's layer output now reaches all 12 layers.
   Remaining: T6 (merges integration for T2's noise), T1's open requirements, T4.
 - T3 landed (9f3ffd6ba), merged code identical to T3's tested tree. It also fixed T5's duplicate `minDrawDistance` reflection
