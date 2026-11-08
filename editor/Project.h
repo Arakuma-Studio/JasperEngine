@@ -641,6 +641,19 @@ namespace jasperengine::editor{
         bool operator!=(const PresentationSettings& other) const { return !(*this == other); }
     };
 
+    // Project Settings > Localization (docs/specs/S87-title-localisation-interchange.md R64, D3):
+    // the languages the game ships (empty: every language of every title) and the default one ("":
+    // the first of `languages`, else "en"); names a later project-wide localisation reuses
+    struct LocalizationSettings {
+        std::vector<std::string> languages;     // BCP 47, canonical case
+        std::string defaultLanguage;
+
+        // the default with its fallbacks applied ("" -> the first language, else "en")
+        std::string effectiveDefault() const { return !defaultLanguage.empty() ? defaultLanguage : !languages.empty() ? languages.front() : "en"; }
+        bool operator==(const LocalizationSettings& other) const { return languages == other.languages && defaultLanguage == other.defaultLanguage; }
+        bool operator!=(const LocalizationSettings& other) const { return !(*this == other); }
+    };
+
     // Name, identifier, version and build below are overrides: empty (or 0)
     // means the ApplicationSettings value.
 
@@ -963,6 +976,7 @@ namespace jasperengine::editor{
         bool stripEngineCode = true;
         ApplicationSettings applicationSettings;
         PresentationSettings presentationSettings;
+        LocalizationSettings localizationSettings;
         WebProjectSettings webProjectSettings;
         LinuxProjectSettings linuxProjectSettings;
         WindowsProjectSettings windowsProjectSettings;
@@ -1979,6 +1993,8 @@ namespace jasperengine::editor{
         const ApplicationSettings& getApplicationSettings() const;
         PresentationSettings& getPresentationSettings();
         const PresentationSettings& getPresentationSettings() const;
+        LocalizationSettings& getLocalizationSettings() { return localizationSettings; }
+        const LocalizationSettings& getLocalizationSettings() const { return localizationSettings; }
         // Play start: Engine.targetFrameRate / vSyncCount, Screen and the application info from
         // these settings, before any script runs (the generated main of an export does the same)
         void applyPresentationSettings();

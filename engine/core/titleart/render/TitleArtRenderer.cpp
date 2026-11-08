@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleArtRenderer.h"
+#include "titleart/TitleFit.h"
+#include "titleart/TitleTranslations.h"
 
 #include "TitlePlanner.h"
 
@@ -389,9 +391,12 @@ std::unique_ptr<TitleRenderJob> TitleArtRenderer::begin(const RenderRequest& req
     // overrides apply to a copy of the snapshot, never to the document (R18a)
     std::shared_ptr<const TitleArtDoc> doc = request.doc;
     std::vector<TitleProblem> skipped;
-    if (!request.overrides.empty()) {
-        auto copy = std::make_shared<TitleArtDoc>(*request.doc);
-        applyFieldOverrides(*copy, request.overrides, &skipped);
+    const bool multilingual = titleIsMultilingual(request.doc->root);
+    const bool fits = titleHasFit(request.doc->root);
+    if (!request.overrides.empty() || multilingual || fits) {
+        auto copy = std::make_shared<TitleArtDoc>(multilingual ? resolveTitleLanguage(*request.doc, request.language, &skipped) : *request.doc);
+        if (!request.overrides.empty()) applyFieldOverrides(*copy, request.overrides, &skipped);
+        if (titleHasFit(copy->root)) applyTitleFits(*copy, request.assets);
         doc = copy;
     }
     TitlePlanner planner(svc, request, doc);

@@ -112,4 +112,9 @@ namespace jasperengine::editor::mcp::titletools {
     // false with `error` (bad_option listing the keys this build knows)
     bool checkRenderOptions(const Json& options, std::string& error);
 
+    // S87: export_title's delivery formats (png, psd, svg, sheet, atlas, sequence, ktx2, csv,
+    // xliff) through TitleExport.h, as a job (TitleArtToolsInterchange.cpp)
+    void exportTitleInterchange(const CallPtr& call, Project* project, const std::filesystem::path& file, const std::string& relative,
+                                const std::string& format);
+
 }

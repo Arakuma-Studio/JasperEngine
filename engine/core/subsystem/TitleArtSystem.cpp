@@ -23,6 +23,8 @@
 #include "texture/Framebuffer.h"
 #include "util/Color.h"
 #include "util/Fnv.h"
+#include "util/TitleArtLanguage.h"
+#include "System.h"
 
 #include <algorithm>
 #include <cctype>
@@ -541,6 +543,27 @@ void TitleArtSystem::resolve(Entity entity, TitleArtRendererComponent& title, Ti
                   title.title.path.c_str(), titleArtDefaultBakeFile(title.title.path).c_str());
     }
 
+    // S87: the source set, and the languages the title offers (the sidecar's table; a Realtime
+    // title without one reads its document)
+    instance.sourceBake = instance.bake;
+    instance.sourceBakePath = instance.bakePath;
+    instance.sourceGlowPath = instance.glowPath;
+    instance.languages.clear();
+    instance.resolvedLanguage.clear();
+    instance.languageAsked.clear();
+    instance.languageGeneration = ~uint64_t(0);
+    instance.languageReady = true;
+    instance.switching = false;
+    instance.pendingTexture = Texture();
+    instance.pendingGlowTexture = Texture();
+    if (instance.bake.languages.present){
+        instance.languages = instance.bake.languages.available();
+    }else if (title.renderMode != TitleArtRenderMode::BAKED){
+        std::vector<std::string> codes;
+        if (TitleArtRuntime::readLanguages(title.title.path, codes, nullptr) && codes.size() > 1 && !codes.front().empty()) instance.languages = codes;
+    }
+    instance.shownLanguage = instance.languages.empty() ? std::string() : instance.languages.front();
+
     std::string exposedError;
     instance.exposedKnown = TitleArtRuntime::readExposed(title.title.path, instance.exposed, &exposedError);
     if (!instance.exposedKnown) instance.documentError = exposedError;
@@ -601,10 +624,117 @@ void TitleArtSystem::updateTitle(Entity entity, TitleArtRendererComponent& title
     }
     title.sweepPositionKeyed = false;
 
+    updateLanguage(entity, title, instance);
     updateLive(entity, title, instance);
     updateLiveEffects(entity, title, instance);
     updateStatus(entity, title, instance);
+    finishLanguageSwitch(entity, title, instance);
     subscribeEvents(entity);
+}
+
+// ---- languages (S87) ----
+
+void TitleArtSystem::updateLanguage(Entity entity, TitleArtRendererComponent& title, TitleArtInstance& instance){
+    if (instance.languages.empty()) return;
+    // R14, R48: nothing to do until the global language, the device's or the component's changes
+    if (instance.languageGeneration == TitleArtLanguage::generation() && instance.languageAsked == title.language) return;
+    instance.languageGeneration = TitleArtLanguage::generation();
+    instance.languageAsked = title.language;
+    const std::string& source = instance.languages.front();
+    std::string picked = TitleArtLanguage::resolve(TitleArtLanguage::candidates(title.language, System::instance().getPreferredLocales(), source),
+                                                   instance.languages);
+    if (picked.empty()) picked = source;
+    if (picked == instance.resolvedLanguage) return;
+    instance.resolvedLanguage = picked;
+    if (picked == instance.shownLanguage && !instance.switching){
+        instance.languageReady = true;
+        return;
+    }
+    instance.languageReady = false;
+    instance.switching = true;
+    // R27: the language's sidecar (S81's reader) and its textures; the current image stays
+    // until they are loaded. A language that reuses the source set, or whose sidecar fails to
+    // read, draws the source set (R65: one warning)
+    const std::string file = instance.sourceBake.languages.setFile(picked);
+    instance.pendingBake = instance.sourceBake;
+    instance.pendingBakePath = instance.sourceBakePath;
+    instance.pendingGlowPath = instance.sourceGlowPath;
+    if (!file.empty()){
+        TitleArtBakeInfo info;
+        std::string error;
+        if (TitleArtBakeInfo::load(titleArtSiblingPath(title.title.path, file), info, error)){
+            const TitleArtBakeOutput* main = info.output("main");
+            if (!main) main = info.firstOutput("all");
+            if (!main && !info.outputs.empty()) main = &info.outputs.front();
+            if (main){
+                instance.pendingBake = info;
+                instance.pendingBakePath = titleArtSiblingPath(title.title.path, main->file);
+                const TitleArtBakeOutput* glow = info.firstOutput("glow");
+                instance.pendingGlowPath = glow ? titleArtSiblingPath(title.title.path, glow->file) : std::string();
+            }
+        }else if (instance.sayOnce("language_set|" + picked)){
+            Log::warn("Title Art '%s': the %s set of %s does not read (%s): showing the source set. Bake the title again.",
+                      scene->getEntityName(entity).c_str(), picked.c_str(), title.title.path.c_str(), error.c_str());
+        }
+    }
+    if (title.renderMode == TitleArtRenderMode::BAKED || instance.moduleMissing){
+        if (instance.pendingBakePath == instance.bakePath){
+            instance.pendingTexture = instance.bakeTexture;
+        }else{
+            instance.pendingTexture = Texture();
+            instance.pendingTexture.setPath(instance.pendingBakePath);
+        }
+        instance.pendingGlowTexture = Texture();
+        if (!instance.pendingGlowPath.empty()) instance.pendingGlowTexture.setPath(instance.pendingGlowPath);
+    }
+}
+
+void TitleArtSystem::finishLanguageSwitch(Entity entity, TitleArtRendererComponent& title, TitleArtInstance& instance){
+    if (!instance.switching) return;
+    if (title.renderMode == TitleArtRenderMode::BAKED || instance.moduleMissing){
+        // the texture pool loads the new set; the old one draws meanwhile
+        TextureRender* render = instance.pendingTexture.getRender();
+        if (!render || !render->isCreated()) return;
+        const TitleArtBakeInfo before = instance.bake;
+        instance.bake = instance.pendingBake;
+        instance.bakePath = instance.pendingBakePath;
+        instance.glowPath = instance.pendingGlowPath;
+        instance.bakeTexture = instance.pendingTexture;
+        instance.glowTexture = instance.pendingGlowTexture;
+        instance.pendingTexture = Texture();
+        instance.pendingGlowTexture = Texture();
+        instance.anchors = instance.bake.anchors;
+        // a natively sized companion follows the language's frame, about the same anchor
+        float width = 0.0f, height = 0.0f, pivotX = 0.5f, pivotY = 0.5f;
+        if (before.frame.width > 0 && before.frame.height > 0 && instance.bake.frame.width > 0){
+            if (RectTransformComponent* rect = scene->findComponent<RectTransformComponent>(entity); rect && instance.space == TitleArtSpace::UI){
+                rect->width = (unsigned int)std::max(1.0f, std::round(rect->width * (float)instance.bake.frame.width / (float)before.frame.width));
+                rect->height = (unsigned int)std::max(1.0f, std::round(rect->height * (float)instance.bake.frame.height / (float)before.frame.height));
+                if (title.pivotFromTitle) rect->pivot = Vector2(instance.bake.pivotX(), instance.bake.pivotY());
+                rect->needUpdateSizes = true;
+                scene->markChanged<RectTransformComponent>(entity);
+                if (Transform* transform = scene->findComponent<Transform>(entity)) transform->needUpdate = true;
+            }else if (nativeSize(scene, entity, width, height, pivotX, pivotY)){
+                if (SpriteComponent* sprite = scene->findComponent<SpriteComponent>(entity)){
+                    sprite->width = (unsigned int)std::max(1.0f, std::round(width));
+                    sprite->height = (unsigned int)std::max(1.0f, std::round(height));
+                    sprite->needUpdateSprite = true;
+                    scene->markChanged<SpriteComponent>(entity);
+                }
+            }
+        }
+        applyLending(entity, instance, false, false);
+        applyLending(entity, instance, instance.hasBake, false);
+    }else{
+        // Realtime and Glyph Atlas: the new language's image is on screen
+        if (!instance.liveStatus.ready || !instance.liveStatus.hasImage) return;
+        instance.bake = instance.pendingBake;
+        instance.anchors = instance.bake.anchors;
+    }
+    instance.switching = false;
+    instance.shownLanguage = instance.resolvedLanguage;
+    instance.languageReady = true;
+    instance.onLanguageReady.call(instance.shownLanguage);
 }
 
 // ---- Realtime and Glyph Atlas ----
@@ -674,7 +804,8 @@ void TitleArtSystem::updateLive(Entity entity, TitleArtRendererComponent& title,
         liveState.overrides.push_back(std::move(value));
     }
     liveState.resolution = displayResolution(entity, title, instance);
-    liveState.region = instance.bake.frame;
+    liveState.region = instance.switching ? instance.pendingBake.frame : instance.bake.frame;
+    liveState.language = instance.resolvedLanguage;
     liveState.priority = std::max(-100, std::min(100, title.priority));
     liveState.visible = isVisible(entity, title, instance);
     liveState.renderWhenHidden = title.renderWhenHidden;

@@ -138,6 +138,10 @@ namespace jasperengine::titleart {
         TitleArtRenderMode mode() const { return renderMode; }
         const std::shared_ptr<const TitleArtDoc>& document() const { return doc; }
         uint64_t documentHash() const { return docHash; }
+        // S87 R17: the document resolved for `code` ("" = the source) becomes the one rendered
+        // (Glyph Atlas: its plan made again and a new atlas for it); false when it already is
+        bool setLanguage(const std::string& code);
+        const std::string& language() const { return languageCode; }
 
         // ---- the state (TitleArtSystem, once a frame) ----
         void setState(const TitleArtLiveState& state, uint64_t stateHash, std::vector<FieldOverride> overrides);
@@ -217,6 +221,9 @@ namespace jasperengine::titleart {
         std::string missingCharacters;
         std::shared_ptr<const TitleArtDoc> doc;
         uint64_t docHash = 0;
+        // S87: the document as stored, and the language `doc` is resolved for
+        std::shared_ptr<const TitleArtDoc> sourceDoc;
+        std::string languageCode;
 
         TitleArtLiveState wanted;
         uint64_t wantedHash = 0;

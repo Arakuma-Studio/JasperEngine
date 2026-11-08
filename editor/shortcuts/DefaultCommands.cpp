@@ -163,6 +163,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.createPlaceholderSound", "Create Placeholder Sound", AppMenuCommand::AssetsCreatePlaceholderSound);
     b.menu("assets.reanalyzeAudio", "Reanalyze Audio", AppMenuCommand::AssetsReanalyzeAudio).description =
         "Drop the cached measurements of the selected audio files: they are measured again";
+    b.add("assets.importTitleArt", "Import Title Art...", C::Editor).description =
+        "Import a Pachislop project, a layered PSD or an SVG as a new Title Art";
     b.menu("assets.importSoundEssentials", "Import Sound Essentials", AppMenuCommand::AssetsImportSoundEssentials).description =
         "Import the 40 built-in CC0 clips into sounds/essentials (one undo step)";
     b.menu("assets.createShakePreset", "Create Shake Preset", AppMenuCommand::AssetsCreateShakePreset);
@@ -472,6 +474,9 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("titleDesigner.nudgeDownBig", "Nudge Down x10", C::TitleDesigner, "Shift+Down").repeat = true;
     b.add("titleDesigner.up", "Select Parent", C::TitleDesigner, "Escape");
     b.add("titleDesigner.bake", "Bake Now", C::TitleDesigner, "Ctrl+B");
+    // S87 R51: rebindable, no default keys
+    b.add("titleDesigner.nextLanguage", "Next Language", C::TitleDesigner);
+    b.add("titleDesigner.previousLanguage", "Previous Language", C::TitleDesigner);
     b.group = "Sound Browser";
     b.add("audioCaptures.playMoment", "Play Moment", C::AudioCaptures, "Enter");
     b.add("audioCaptures.stop", "Stop", C::AudioCaptures, "Escape");

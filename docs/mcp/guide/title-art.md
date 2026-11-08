@@ -59,7 +59,8 @@ The ops of this build (later specs add theirs to the same tool):
 ```
 
 Reserved op names answer `not_available` naming the spec that adds them (looks, color schemes,
-templates, library S84; animation S85; 3D S86; languages and import S87); `apply_recipe` is S83's.
+templates, library S84; animation S85; 3D S86); `apply_recipe` is S83's. The language and import
+ops are below (Languages; Import and export).
 
 ### The loop: render, check, fix
 
@@ -255,3 +256,86 @@ value by value in `3d.lighting`, a material's environment in `3d.face.environmen
   `3d_environment_missing`, `3d_light_limit`, `3d_mesh_fallback`).
 - Bake a 3D title for anything static (an image costs nothing at run time); `export_title {format: "glb"}` writes the solids
   with their materials (`KHR_materials_*`) beside the title for use as a model.
+
+### Languages
+
+A title holds its own translations (S87): `source_language` (BCP 47), `languages` (each with a
+`code`, a `name`, a default `font` and `fallback_fonts`, extra `characters`, `bake`), and on each
+text layer `translations: {<code>: {text, status, source_hash, ...overrides}}`. A Translation is
+sparse: only the members it overrides (`font`, `face_index`, `fallback_fonts`, `language`,
+`size_scale`, `tracking`, `line_height`, `h_scale`, `v_scale`, `vertical`, `align`, `features`,
+`variations`, `chars`, `lines`, `offset`, `fit`); the rest, and every colour, rim and effect, is
+the source's. `text_key` and the document's `string_namespace` make the key
+`<namespace>.<text_key>`; `translate: false` marks a brand word; `max_chars` and
+`translator_note` guide translators; `only_languages` shows a layer in some languages only.
+Image and Vector layers may swap their asset per language (`translations: {de: {image}}`).
+
+The translation loop (agents translate with their own model; the engine calls no service):
+
+1. `get_title {path}`: `languages {source, list}` and, per text layer, `text_key`, `translate`,
+   `max_chars`, `translator_note`, `translated`.
+2. One `edit_title` batch: `{"op": "add_language", "code": "de"}` (sets the source when empty,
+   makes text keys, and gives every text a `fit: shrink` box of its extent + 10 %), then
+   `{"op": "set_translation", "layer": "Title", "language": "de", "text": "GROSSER GEWINN",
+   "values": {"size_scale": 0.9, "fit.mode": "condense"}}` per layer.
+3. `check_title {path, languages: "all"}`: `languages_complete`, `translation_stale`,
+   `text_overflow`, `fit_scale_low`, `fit_without_box`, `project_language_missing`,
+   `translation_unused`, and `glyphs_present` and `bake_fresh` per language; apply the fix ops
+   (a `needs_input` fix carries the source text as a placeholder: write the translation).
+4. `render_title {path, options: {languages: "all"}}`: a sheet row per language, labelled with
+   the code, the smallest fit scale and the overflow count. `get_title {path, language: "de"}`
+   reads the German document (text, font, `fit` result per layer).
+
+The other ops: `remove_language {code}`, `set_source_language {code, swap}` (swap: the language's
+texts become the base, the old base its translation), `revert_translation {layer, language,
+fields}` (default every override but the text; `["all"]` removes it), `mark_reviewed {language,
+layers}`, `import_strings {file, format, languages, add_languages, status}` (CSV or XLIFF:
+counts and notes `unknown_key`, `unknown_language`, `source_changed`, `inline_markup` in
+`reports`).
+
+Fit (`fit {mode: none|shrink|condense|wrap, box: [w, h], min_scale 0.6, min_h_scale 0.8,
+max_lines 2}`) measures geometry, not pixels: the outline ink after warp, distort and weight,
+grown by the rims; effects may bleed out. `box` is in layer space, centred on the text.
+
+Which language a game shows: the Title Art Renderer's `language` (Inspector Language), else
+`TitleArt.setLanguage(code)` (Lua, runtime only), else the device's preferred locales in order,
+else Project Settings > Localization > Default Language, else the source. Matching is RFC 4647
+with the Chinese script rule (`zh-TW` -> `zh-Hant`, `pt-PT` -> `pt-BR`, never Hans for Hant).
+Baked titles switch to the language's bake set (`logo.titleart.de.png`, its own frame, listed in
+the source sidecar's `languages` table) once its texture is loaded; Realtime and Glyph Atlas
+titles re-render; the previous image stays meanwhile and `onLanguageReady` fires on the first
+new frame. `localization.languages` (the project's) limits what builds ship
+(`W-TITLE-LANGUAGE-DROPPED`). In Play, `configure_game_view {language}` simulates the device.
+
+### Import and export
+
+Import into a new document with `edit_title {path, create: {from: "<file>"}}`: a Pachislop
+project (`.pslot.json` v4-v11), a layered PSD/PSB (RGB or Grey, 8 or 16 bits) or an SVG, detected
+by content. Fonts and pictures go to `<name>_assets/` beside the document (equal files reused),
+and the result's `import {kind, files, notes}` lists what was dropped or approximated (also in the
+document's `import_notes`). One undo removes every file. `create.from` takes no `canvas`, `text`
+or `template`. An `.asl` style library is no document: `{"op": "import_ps_styles", "file":
+"styles.asl"}` writes one Look per style; `{"op": "apply_ps_style", "layer": "Title", "file":
+"styles.asl", "style": 0}` styles a layer; `{"op": "import_svg", "file": "badge.svg", "split":
+"groups"}` adds Vector layers.
+
+`export_title {path, format, languages, options, out}` writes delivery files (not bakes) into
+`out` (default `Recordings/Title Art/<name>/`, inside the project for MCP) as a job:
+
+| format | options (besides `overwrite`, `zip`) |
+|---|---|
+| `png` | `scale` 0.1-8, `trim`, `padding` (px), `round_to` 1/2/4/8, `pot`, `alpha_threshold` 1-255 (8), `max_size`, `registered`, `bit_depth` 8/16, `dither`, `alpha` straight/premultiplied, `alpha_bleed`, `bleed_px` 0-64, `metadata`, `parts`, `split_titles` |
+| `psd` | the image options, `split_titles` (layers rendered alone, groups, clipping, masks, native or baked adjustments) |
+| `svg` | `embed_raster`, `strict` (outlines with transforms, gradients, rims as strokes, masks, clips) |
+| `sheet`, `atlas`, `sequence` | the image options, `animation`, `fps`, `frames` (a count or `[from, to]`, at most 1,024), `columns` (sheet), `max_atlas` (atlas) |
+| `ktx2` | the image options, `family` desktop/mobile/web, `quality`, `mipmaps` |
+| `csv`, `xliff` | none; `path` may list several documents |
+
+Files are `<name>[_<part>][.<code>].<ext>`; `zip` bundles them into `<name>_<format>.zip`. PNGs
+are sRGB-tagged (`sRGB`, `gAMA`, `cHRM`, never an ICC profile), straight alpha with the colour
+bled under transparent pixels (no dark fringes when filtered), or premultiplied; PSDs embed a
+generated sRGB profile and the true composite (Photoshop blends layers in sRGB, the engine in
+linear light). The CLI does the same in batch: `jasperengine-editor import-title-art <files>
+--project <dir>` and `export-title-art <titles> --project <dir> --format <f>` (flags are the
+options with dashes). CSVs keep their content as written: open a translator's CSV with formulas
+disabled.

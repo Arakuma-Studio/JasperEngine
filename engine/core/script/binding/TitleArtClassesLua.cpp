@@ -252,6 +252,14 @@ namespace {
         return self->play(name, speed, loop, unscaled);
     }
 
+    // TitleArt.setLanguage(code): an invalid tag raises (S81 §6.6's sentence form), nothing changes
+    int setGlobalLanguage(lua_State* L){
+        const char* code = luaL_checkstring(L, 1);
+        std::string error;
+        if (!TitleArt::setGlobalLanguage(code, &error)) return luaL_error(L, "TitleArt: %s.", error.c_str());
+        return 0;
+    }
+
     int play(lua_State* L){
         TitleArt* self = titleSelf(L);
         lua_pushboolean(L, playArgs(L, self) ? 1 : 0);
@@ -309,6 +317,16 @@ void LuaBinding::registerTitleArtClasses(lua_State *L){
                                             [](TitleArt* self, lua_State* L) { self->getOnMissingCharacters() = L; })
         .addProperty("onAnimationFinished", [](TitleArt* self) { return &self->getOnAnimationFinished(); },
                                             [](TitleArt* self, lua_State* L) { self->getOnAnimationFinished() = L; })
+        // S87: the renderer's language ("" = Auto) and its events
+        .addProperty("language", &TitleArt::getLanguage, &TitleArt::setLanguage)
+        .addProperty("onLanguageReady", [](TitleArt* self) { return &self->getOnLanguageReady(); },
+                                        [](TitleArt* self, lua_State* L) { self->getOnLanguageReady() = L; })
+        .addFunction("getResolvedLanguage", &TitleArt::getResolvedLanguage)
+        .addFunction("getLanguages", +[](const TitleArt* self, lua_State* L) { return stringList(L, self->getLanguages()); })
+        .addFunction("isLanguageReady", &TitleArt::isLanguageReady)
+        .addStaticFunction("setLanguage", &setGlobalLanguage)
+        .addStaticFunction("getLanguage", &TitleArt::getGlobalLanguage)
+        .addStaticProperty("onLanguageChanged", +[]() { return &TitleArt::getOnLanguageChanged(); })
         .addFunction("setParameter", &setParameter)
         .addFunction("getParameter", &getParameter)
         .addFunction("hasParameter", &TitleArt::hasParameter)

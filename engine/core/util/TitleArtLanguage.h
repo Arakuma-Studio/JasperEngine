@@ -67,8 +67,12 @@ namespace jasperengine{
         // (nothing changes); a change bumps generation() and calls the listeners once
         static bool setGlobal(const std::string& code, std::string* error = nullptr);
         static const std::string& global();
-        // counts the changes of the global language and of the project default (renderers compare it)
+        // counts the changes of the global language, the project default and the device's
+        // locales (renderers compare it)
         static uint64_t generation();
+        // the device's preferred locales changed (a platform's locale event, the editor's
+        // simulated language): every Auto renderer resolves again
+        static void localesChanged();
         using Listener = std::function<void(const std::string& code)>;
         static int addListener(Listener listener);
         static void removeListener(int id);

@@ -177,6 +177,7 @@ New: the engine had none of these. Unity's members became `System`, `Screen`, `E
 |---|---|
 | `Application.OpenURL(url)` | `System.openURL(url)` (returns whether the system took it) |
 | `Application.systemLanguage` | `System.getSystemLanguage()` (`SystemLanguage.*`, same names and values); codes: `System.getLanguageCode()`, `getRegionCode()`, `getLocale()`, `getPreferredLanguages()` |
+| Unity Localization `LocalizationSettings.SelectedLocale` (titles only) | `TitleArt.setLanguage(code)`, `TitleArt.getLanguage()`, `TitleArt.onLanguageChanged`; a Title Art Renderer's `language`; Project Settings > Localization (`localization.languages`, `localization.default_language`) |
 | `Application.targetFrameRate` | `Engine.targetFrameRate` (Project Settings > Player > Target Frame Rate) |
 | `QualitySettings.vSyncCount` | `Engine.vSyncCount` (starts from Quality > VSync) |
 | `QualitySettings.terrainDetailDistanceFactor` | `Engine.foliageDistanceScale` (starts from Quality > Foliage Distance; [instancing.md](rendering/instancing.md)) |

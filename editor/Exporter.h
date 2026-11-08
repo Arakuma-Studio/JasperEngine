@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "titleart/localisation/TitleLanguageExport.h"
 #include "Project.h"
 #include "ShippingTypes.h"
 #include "cook/BuildReport.h"
@@ -207,6 +208,8 @@ namespace jasperengine::editor {
         // S14: the texture sources the export's cooks replaced (asset-relative), which
         // copyAssets() leaves out
         std::set<std::string> cookedTextureSources;
+        // S87 R25: the Title Art language sets the build leaves out, and the sidecars it rewrites
+        TitleLanguageShipping titleLanguages;
         // S53: the same for models (and the .bin files only they read)
         std::set<std::string> cookedModelSources;
         // S53 R21: what the export's cooks measured, for the Build Report: a cooked file's build

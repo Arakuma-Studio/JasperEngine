@@ -2696,6 +2696,13 @@ OVERRIDES.update({
         'doc': ['Sizes the Image (or the Sprite) to the title\'s pixels, as the Inspector\'s Set Native Size. Raises',
                 'when the title has no image yet.'],
         'overloads': [([], '')]},
+    ('TitleArt', 'setLanguage'): {
+        'doc': ['S87: the language of every Title Art Renderer whose Language is Auto ("" = back to the device\'s',
+                'languages). Raises on a tag that is not BCP 47 ("de", "pt-BR", "zh-Hant"); nothing changes then.'],
+        'overloads': [([('code', 'string')], '')]},
+    ('TitleArt', 'getLanguages'): {
+        'doc': ['The languages this title offers: its source first, then the languages it ships.'],
+        'overloads': [([], 'string[]')]},
     ('TitleArt', 'play'): {
         'doc': ['Plays the title\'s animation `name`. False (warned once) while titles have no animations (S85).'],
         'overloads': [([('name', 'string'), ('options?', '{speed?: number, loop?: boolean, unscaled?: boolean}')], 'boolean')]},
@@ -2740,6 +2747,8 @@ PROPERTY_OVERRIDES = {
     ('TitleArt', 'colorSchemes'): ('string[]', True),
     ('TitleArt', 'parameterNames'): ('string[]', True),
     ('TitleArt', 'animations'): ('string[]', True),
+    # S87: the static language event
+    ('TitleArt', 'onLanguageChanged'): ('FunctionSubscribe', False),
     # the joint's bodies (std::optional<GameObject> lambdas): nil = the world
     ('Joint2D', 'bodyA'): ('GameObject|nil', False),
     ('Joint2D', 'bodyB'): ('GameObject|nil', False),
