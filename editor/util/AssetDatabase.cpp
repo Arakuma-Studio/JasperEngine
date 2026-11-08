@@ -1289,6 +1289,7 @@ bool editor::AssetDatabase::refreshSubAssets(Entry& entry, const Entry* previous
         pixelart::aseprite::scanAsepriteSubAssets(projectPath / entry.path, contents.subAssets);
     } else {
         scanModelFile(projectPath / entry.path, contents);
+        reportModelLimits(entry.path, contents);
     }
 
     // §6.4: match by key, then an unmatched old entry to an unmatched new one of the same

@@ -10,6 +10,9 @@
 #include "subsystem/WaterSystem.h"
 #include "object/environment/Water.h"
 #include "util/Angle.h"
+#include "component/CameraComponent.h"
+#include "component/SpriteComponent.h"
+#include "sprite/SpriteFrameGeometry.h"
 
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "util/Box2DAux.h"
@@ -26,9 +29,6 @@
 #include "util/JoltPhysicsAux.h"
 #include "util/MeshTriangles.h"
 #include "component/RagdollComponent.h"
-#include "sprite/SpriteFrameGeometry.h"
-#include "component/CameraComponent.h"
-#include "component/SpriteComponent.h"
 #include "pool/PhysicsMaterialPool.h"
 #include "physics/PhysicsMaterial.h"
 #endif

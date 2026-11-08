@@ -5,6 +5,7 @@
 #include "ShaderGlobals.h"
 
 #include "Engine.h"
+#include "Log.h"
 #include "pool/ShaderPool.h"
 #include "component/TerrainComponent.h"
 #include "lattice/LatticeTypes.h"
@@ -14,11 +15,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <exception>
 #include <filesystem>
 #include <string_view>
+#include <set>
+#include <mutex>
 #include <unordered_set>
 
 #ifdef JASPERENGINE_RUNTIME_SHADERS
@@ -1107,6 +1111,29 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
 #ifdef JASPERENGINE_RUNTIME_SHADERS
 namespace {
 
+// past the fragment uniforms the backend guarantees: on GLES3 / WebGL2 224 vectors and on desktop GL
+// 256 (GL_MAX_FRAGMENT_UNIFORM_VECTORS, 1024 components in GL 3.3 and 4.1: sokol's GL backends upload
+// each block as plain uniforms), and on every backend 8 blocks a stage (sokol's
+// _SG_MAX_UNIFORMBLOCK_BINDINGS_PER_STAGE; D3D11, Metal and Vulkan have no total of vectors, and
+// their per-block sizes, 4096 vectors and up, are far from the engine's). extraVectors and
+// extraBlocks are what a sibling variant adds (a colour variant's OIT twin: u_fs_oit)
+bool isOverUniformLimits(const ShaderData& data, ShaderBackend backend, size_t extraVectors, size_t extraBlocks){
+    size_t vectorLimit = SIZE_MAX;
+    if (backend == ShaderBackend::GLES3)
+        vectorLimit = 224;
+    else if (backend == ShaderBackend::GLCore)
+        vectorLimit = 256;
+    for (const ShaderStage& stage : data.stages){
+        if (stage.type != ShaderStageType::FRAGMENT)
+            continue;
+        size_t vectors = extraVectors;
+        for (const ShaderUniformBlock& block : stage.uniformblocks)
+            vectors += (block.sizeBytes + 15) / 16;
+        return vectors > vectorLimit || stage.uniformblocks.size() + extraBlocks > 8;
+    }
+    return false;
+}
+
 // past what every backend can bind: the 16 samplers sokol has for both stages together
 // (SG_MAX_SAMPLER_BINDSLOTS), or the 16 fragment texture units of GLES3, WebGL2 and macOS GL
 bool isOverBindLimits(const ShaderData& data){
@@ -1406,20 +1433,34 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
 
     std::string compileLog;
     // one pass of the pipeline: "" when out holds the variant, else what failed
-    auto build = [&](bool rawViewOff, bool spotMasksOff) -> std::string {
+    // what a pass leaves out or reads otherwise (the fallbacks below, in their order)
+    struct Fallbacks {
+        bool lightRecords = false;
+        bool rawViewOff = false;
+        bool spotMasksOff = false;
+        bool shadows2DOff = false;
+    };
+    Fallbacks taken;
+    auto build = [&](const Fallbacks& fallbacks) -> std::string {
+        // (a retry reports no progress: the first pass did)
+        const bool retry = fallbacks.lightRecords || fallbacks.rawViewOff || fallbacks.spotMasksOff || fallbacks.shadows2DOff;
         shadercompiler::args_t args;
         std::string setupError;
         if (!prepareVariantArgs(key, backend, customSources, args, setupError))
             return setupError;
-        if (rawViewOff)
+        if (fallbacks.lightRecords)
+            args.defines.push_back({"LIGHTS_FS_RECORDS", "1"});
+        if (fallbacks.rawViewOff)
             args.defines.push_back({"SHADOW_RAW_VIEW_OFF", "1"});
-        if (spotMasksOff)
+        if (fallbacks.spotMasksOff)
             args.defines.push_back({"SPOT_MASKS_OFF", "1"});
+        if (fallbacks.shadows2DOff)
+            args.defines.push_back({"SHADOWS_2D_OFF", "1"});
         args.error_output = &compileLog;
 
         if (stopped())
             return "Cancelled";
-        if (!rawViewOff)
+        if (!retry)
             report(0.3f);
 
         std::vector<shadercompiler::input_t> inputs;
@@ -1428,7 +1469,7 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
 
         if (stopped())
             return "Cancelled";
-        if (!rawViewOff)
+        if (!retry)
             report(0.5f);
 
         std::vector<shadercompiler::spirv_t> spirvvec;
@@ -1438,7 +1479,7 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
 
         if (stopped())
             return "Cancelled";
-        if (!rawViewOff)
+        if (!retry)
             report(0.8f);
 
         std::vector<shadercompiler::spirvcross_t> spirvcrossvec;
@@ -1454,7 +1495,7 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
 
         if (stopped())
             return "Cancelled";
-        if (!rawViewOff)
+        if (!retry)
             report(0.9f);
 
         // A deterministic basename names the stages
@@ -1464,24 +1505,71 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
         return "";
     };
 
-    std::string failure = build(false, false);
+    std::string failure = build(taken);
+    // a lit variant whose lights' blocks would take it past this backend's fragment uniforms (GLES3
+    // and WebGL2 224 vectors, desktop GL 256, 8 blocks everywhere) reads its lights, capsules and 2D
+    // lights from u_lightRecords (includes/lights.glsl, LIGHTS_FS_RECORDS): it draws the same. A
+    // backend it fits keeps the blocks, and the textures they leave for PCSS and the masks. A colour
+    // variant decides with its OIT twin's block (u_fs_oit, one vector), so both take the same form
+    // (the OIT draws apply the colour variant's slots)
+    const uint64_t oitBit = ShaderPool::getLightingProperty(ShaderPool::LightingFeature::OIT);
+    const bool oitTwin = shaderType == ShaderType::MESH && !(properties & oitBit);
+    if (failure.empty() && isOverUniformLimits(out, backend, oitTwin ? 1 : 0, oitTwin ? 1 : 0) &&
+            out.getUniformBlockIndexByName("u_fs_objectLights") >= 0 && out.getTextureIndexByName("u_lightRecords").first < 0) {
+        const std::string blockForm = compileLog;
+        compileLog += std::string(LIGHT_RECORDS_TAKEN) + ": the lights' blocks would take the variant past this backend's fragment "
+                      "uniforms; it reads its lights from the frame's light records\n";
+        taken.lightRecords = true;
+        failure = build(taken);
+        // a fork reading the lights' blocks itself (objectLights.*, lighting2d.*) builds in them
+        if (!failure.empty() && failure != "Cancelled") {
+            const std::string name = ShaderPool::getShaderStr(shaderType, properties, customId) +
+                                     (customId ? " (" + ShaderPool::getCustomShaderName(customId) + ")" : std::string());
+            // (once a variant, whatever the backends it builds for)
+            static std::mutex warnedMutex;
+            static std::set<std::string> warned;
+            bool first = false;
+            {
+                std::lock_guard<std::mutex> lock(warnedMutex);
+                first = warned.insert(name).second;
+            }
+            if (first)
+                Log::warn("Shader %s reads the lights' blocks itself: it keeps them, past the guaranteed fragment uniforms "
+                          "(GLES3 and WebGL2: 224 vectors and 8 blocks); read the lights through includes/lights.glsl's functions",
+                          name.c_str());
+            compileLog = blockForm + std::string(LIGHT_RECORDS_FAILED) + ": " + name + " does not build with the light records; "
+                         "it keeps the lights' blocks\n";
+            taken.lightRecords = false;
+            failure = build(taken);
+        }
+    }
     // a variant the raw-depth view of the shadow atlas (PCSS) takes past the bind limits is built
     // without it (on every backend: the same program everywhere), and filters the Ultra tier's
     // shadows with the High tier's Vogel disk
     if (failure.empty() && isOverBindLimits(out) && out.getTextureIndex(TextureShaderType::SHADOWATLASRAW).first >= 0) {
         compileLog += std::string(PCSS_LEFT_OUT) + ": the raw-depth shadow view would take the variant past 16 samplers or "
                       "16 fragment textures; it filters Ultra shadows with the Vogel disk\n";
-        failure = build(true, false);
+        taken.rawViewOff = true;
+        failure = build(taken);
     }
-    // a variant whose lights' records (u_lightRecords, includes/lights.glsl: the painted terrain's)
-    // still leave it past them is built without the spot lights' masks (SPOT_MASKS_OFF): a masked
-    // spot light lights it with its plain cone
+    // a variant whose lights' records (u_lightRecords, includes/lights.glsl) still leave it past
+    // them is built without the spot lights' masks (SPOT_MASKS_OFF): a masked spot light lights it
+    // with its plain cone
     if (failure.empty() && isOverBindLimits(out) && out.getTextureIndexByName("u_lightRecords").first >= 0 &&
             out.getTextureIndex(TextureShaderType::SPOTMASKATLAS).first >= 0) {
         compileLog += std::string(SPOT_MASKS_LEFT_OUT) + ": the lights' records would take the variant past 16 samplers or "
                       "16 fragment textures; masked spot lights light it with their cones\n";
-        const bool rawViewOff = compileLog.find(PCSS_LEFT_OUT) != std::string::npos;
-        failure = build(rawViewOff, true);
+        taken.spotMasksOff = true;
+        failure = build(taken);
+    }
+    // then without the 2D lights' shadows (SHADOWS_2D_OFF: the painted terrain lit by 2D lights
+    // with their shadows): its 2D lights light it unshadowed
+    if (failure.empty() && isOverBindLimits(out) && out.getTextureIndexByName("u_lightRecords").first >= 0 &&
+            out.getTextureIndexByName("u_shadow2DAtlas").first >= 0) {
+        compileLog += std::string(SHADOWS_2D_LEFT_OUT) + ": the lights' records would take the variant past 16 samplers or "
+                      "16 fragment textures; its 2D lights light it unshadowed\n";
+        taken.shadows2DOff = true;
+        failure = build(taken);
     }
     if (!failure.empty()) {
         if (log && failure != "Cancelled")
@@ -1533,7 +1621,12 @@ std::string ShaderVariantCompiler::checkResourceBudget(const ShaderData& data) {
                 over += std::string(name) + " stage: " + std::to_string(count) + " " + what + " (limit " + std::to_string(limit) + ")";
             }
         };
-        check(stage.uniformblocks.size(), 8, "uniform blocks");
+        // which blocks: the one to fold into another is the fix
+        std::string blocks = "uniform blocks";
+        if (stage.uniformblocks.size() > 8) {
+            for (size_t i = 0; i < stage.uniformblocks.size(); i++) blocks += (i ? ", " : ": ") + stage.uniformblocks[i].name;
+        }
+        check(stage.uniformblocks.size(), 8, blocks.c_str());
         check(stage.textures.size(), 16, "textures");
         check(stage.samplers.size(), 16, "samplers");
         check(stage.textureSamplerPairs.size(), 16, "texture-sampler pairs");

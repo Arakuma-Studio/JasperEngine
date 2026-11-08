@@ -21,6 +21,7 @@
 #include "animation/ModelSubClips.h"
 #include "animation/VertexAnimation.h"
 #include "buffer/InterleavedBuffer.h"
+#include "thread/MainThreadQueue.h"
 #include "io/FileData.h"
 #include "io/Data.h"
 #include "io/ResourcePack.h"
@@ -2479,7 +2480,8 @@ int MeshSystem::materializeGLTFSparseAccessor(tinygltf::Accessor& accessor, Mode
     return denseViewIndex;
 }
 
-int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model){
+int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model,
+                                             const std::vector<std::pair<int, float>>& morphs){
     // Bakes a node's world transform into a copy of a POSITION/NORMAL attribute, into a synthetic
     // tightly-packed FLOAT VEC3 buffer/view. Used by flattened previews and static merged models.
     // Caller must reserve buffers/bufferViews up-front.
@@ -2509,6 +2511,41 @@ int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor,
         return -1;
     }
 
+    // the displacements (float, or normalized bytes and shorts) of one vertex count each
+    struct Displacement {
+        const unsigned char* data;
+        size_t stride;
+        int componentType;
+        float weight;
+    };
+    std::vector<Displacement> displacements;
+    for (const auto& [index, weight] : morphs) {
+        if (!isValidGLTFIndex(index, model.gltfModel->accessors)) {
+            continue;
+        }
+        const tinygltf::Accessor& delta = model.gltfModel->accessors[index];
+        const bool readable = delta.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT ||
+            (delta.normalized && (delta.componentType == TINYGLTF_COMPONENT_TYPE_BYTE || delta.componentType == TINYGLTF_COMPONENT_TYPE_SHORT));
+        if (delta.type != TINYGLTF_TYPE_VEC3 || delta.count != count || !readable ||
+                !isValidGLTFIndex(delta.bufferView, model.gltfModel->bufferViews)) {
+            Log::warn("GLTF blend shape displacement %i cannot be baked; drawn without it", index);
+            continue;
+        }
+        const tinygltf::BufferView& view = model.gltfModel->bufferViews[delta.bufferView];
+        if (!isValidGLTFIndex(view.buffer, model.gltfModel->buffers)) {
+            continue;
+        }
+        const std::vector<unsigned char>& data = model.gltfModel->buffers[view.buffer].data;
+        const size_t deltaStride = static_cast<size_t>(delta.ByteStride(view));
+        const size_t deltaElement = 3 * static_cast<size_t>(tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(delta.componentType)));
+        const size_t deltaBase = view.byteOffset + delta.byteOffset;
+        if (deltaStride < deltaElement || deltaBase + (count - 1) * deltaStride + deltaElement > data.size()) {
+            Log::error("GLTF blend shape displacement range out of bounds");
+            continue;
+        }
+        displacements.push_back({data.data() + deltaBase, deltaStride, delta.componentType, weight});
+    }
+
     tinygltf::Buffer newBuffer;
     newBuffer.data.resize(count * 3 * sizeof(float));
     float* dst = reinterpret_cast<float*>(newBuffer.data.data());
@@ -2516,6 +2553,11 @@ int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor,
         float src[3];
         readGLTFComponents(srcData.data() + base + i * static_cast<size_t>(stride), accessor.componentType, 3, src);
         Vector3 v(src[0], src[1], src[2]);
+        for (const Displacement& displacement : displacements) {
+            float d[3];
+            readGLTFComponents(displacement.data + i * displacement.stride, displacement.componentType, 3, d);
+            v += Vector3(d[0], d[1], d[2]) * displacement.weight;
+        }
         Vector3 r = isNormal ? (normalMatrix * v).normalized() : (matrix * v);
         dst[i * 3 + 0] = r.x;
         dst[i * 3 + 1] = r.y;
@@ -2817,7 +2859,7 @@ bool MeshSystem::hasCustomMeshParenting(Entity modelEntity, const ModelComponent
     return false;
 }
 
-bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason) const {
+bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason, bool bakesMorphs) const {
     auto reject = [reason](const char* message) {
         if (reason) *reason = message;
         return false;
@@ -2828,7 +2870,7 @@ bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std
     }
 
     for (const tinygltf::Primitive& primitive : model.gltfModel->meshes[meshIndex].primitives) {
-        if (!primitive.targets.empty()) {
+        if (!primitive.targets.empty() && !bakesMorphs) {
             return reject("Models with morph targets cannot be merged as static geometry");
         }
         for (const auto& attribute : primitive.attributes) {
@@ -3576,6 +3618,22 @@ float MeshSystem::terrainTexelCoord(float local, float terrainSize, int size){
     return ((local + terrainSize * 0.5f) / terrainSize) * static_cast<float>(size) - 0.5f;
 }
 
+// channel 0 of a height or density map texel, 0-1: 8-bit, 16-bit (R16) or 32-bit float (a linear
+// .exr/.hdr map, raw or its CPU-readable cook)
+static float readMapTexel(const unsigned char* pixels, size_t index, int bytesPerChannel){
+    if (bytesPerChannel >= 4){
+        float value;
+        std::memcpy(&value, pixels + index, sizeof(value));
+        return std::isfinite(value) ? value : 0.0f;
+    }
+    if (bytesPerChannel >= 2){
+        // 16-bit little-endian (native unsigned short)
+        const unsigned int value = static_cast<unsigned int>(pixels[index]) | (static_cast<unsigned int>(pixels[index + 1]) << 8);
+        return static_cast<float>(value) / 65535.0f;
+    }
+    return pixels[index] / 255.0f;
+}
+
 float MeshSystem::sampleTerrainHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY){
     if (!pixels || width <= 0 || height <= 0 || channels <= 0){
         return 0.0f;
@@ -3594,13 +3652,7 @@ float MeshSystem::sampleTerrainHeightTexels(const unsigned char* pixels, int wid
     auto texel = [&](int x, int y){
         const size_t texelIndex = static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x);
         const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
-        if (bytesPerChannel >= 2){
-            // 16-bit little-endian (native unsigned short) heightmap sample
-            const unsigned int value = static_cast<unsigned int>(pixels[index]) |
-                                       (static_cast<unsigned int>(pixels[index + 1]) << 8);
-            return static_cast<float>(value) / 65535.0f;
-        }
-        return pixels[index] / 255.0f;
+        return readMapTexel(pixels, index, bytesPerChannel);
     };
 
     const float lower = texel(lowerX, lowerY) + (texel(upperX, lowerY) - texel(lowerX, lowerY)) * blendX;
@@ -3800,13 +3852,7 @@ void MeshSystem::getTerrainHeightRangeArea(TerrainComponent& terrain, float x, f
     auto sampleHeight = [&](int sampleX, int sampleZ){
         const size_t texelIndex = static_cast<size_t>(sampleZ) * static_cast<size_t>(width) + static_cast<size_t>(sampleX);
         const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
-        if (bytesPerChannel >= 2){
-            // 16-bit little-endian (native unsigned short) heightmap sample
-            const unsigned int value = static_cast<unsigned int>(pixels[index]) |
-                                       (static_cast<unsigned int>(pixels[index + 1]) << 8);
-            return terrain.maxHeight * static_cast<float>(value) / 65535.0f;
-        }
-        return terrain.maxHeight * pixels[index] / 255.0f;
+        return terrain.maxHeight * readMapTexel(pixels, index, bytesPerChannel);
     };
 
     // one texel of margin covers the bilinear filter of the vertices on the area border
@@ -3900,8 +3946,21 @@ void MeshSystem::resetTerrainToUnbuilt(TerrainComponent& terrain, MeshComponent&
     terrain.needUpdateTerrain = false;
 }
 
+// a cook in a GPU format only (block-compressed): levels, no CPU pixels for the terrain's readers
+static bool isGpuOnlyData(Texture& texture){
+    if (texture.empty() || texture.isFramebuffer() || !texture.hasData()){
+        return false;
+    }
+    TextureData& data = texture.getData();
+    return data.hasLevels() && !data.getData();
+}
+
 bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
     applyTerrainMapSettings(terrain);
+    // the heights are read on the CPU (collision, placement): a GPU-only cook is cooked again
+    if (isGpuOnlyData(terrain.heightMap)){
+        CookedTextures::requireCpuReadable(terrain.heightMap.getPath());
+    }
 
     // Check heightmap loading state BEFORE clearing buffers to avoid leaving
     // the mesh with empty data when the heightmap is still loading.
@@ -3999,6 +4058,8 @@ static const float TERRAIN_FOLIAGE_CELL_SIZE = 8.0f;
 static const unsigned int TERRAIN_FOLIAGE_MAX_CHUNK_INSTANCES = 8192;
 // Share of the draw distance that stays full size; the rest shrinks out.
 static const float TERRAIN_FOLIAGE_FADE_START = 0.75f;
+// how long a layer waits for the CPU-readable cook of a map found cooked GPU-only
+static const int TERRAIN_FOLIAGE_CPU_READ_WAIT_SECONDS = 30;
 
 bool MeshSystem::setFoliagePreviewEntity(Entity entity){
     if (foliagePreviewEntity == entity){
@@ -4129,6 +4190,11 @@ size_t MeshSystem::getFoliageInstanceCount(Entity terrainEntity, size_t layer) c
     return count;
 }
 
+std::string MeshSystem::getFoliageError(Entity terrainEntity, size_t layer) const{
+    auto it = terrainFoliage.find(terrainEntity);
+    return (it == terrainFoliage.end() || layer >= it->second.size()) ? std::string() : it->second[layer].cpuReadError;
+}
+
 Entity MeshSystem::getFoliageOwner(Entity foliageEntity) const{
     if (foliageEntity == NULL_ENTITY){
         return NULL_ENTITY;
@@ -4180,13 +4246,13 @@ void MeshSystem::reloadFoliageMesh(const std::string& filename){
     }
 }
 
-bool MeshSystem::loadFoliageMesh(Entity entity, const std::string& path){
-    // changeRootTransform is off: the terrain places the field, not the file's root transform.
+bool MeshSystem::loadPlacedModel(Entity entity, const std::string& path){
     if (FileData::getFilePathExtension(path).compare("obj") == 0){
         return loadOBJ(entity, path);
     }
-    // Keep all geometry on the instanced root, with the file's node transforms baked in.
-    return loadGLTF(entity, path, false, true, false, true);
+    // All geometry on the instanced root, the file's node transforms baked in; the system
+    // places the copy, not the file's root transform
+    return loadGLTFModel(entity, path, false, true, false, true, true);
 }
 
 // Sample height and normal in terrain-local space.
@@ -4239,8 +4305,9 @@ float MeshSystem::sampleFoliageDensity(TerrainComponent& terrain, TerrainFoliage
     const float halfSize = terrain.terrainSize * 0.5f;
     const int texelX = std::clamp(static_cast<int>((localX + halfSize) / terrain.terrainSize * width), 0, width - 1);
     const int texelZ = std::clamp(static_cast<int>((localZ + halfSize) / terrain.terrainSize * height), 0, height - 1);
+    const int bytesPerChannel = TextureData::getBytesPerChannel(textureData.getColorFormat());
 
-    return pixels[(static_cast<size_t>(texelZ) * width + texelX) * channels] / 255.0f;
+    return std::clamp(readMapTexel(pixels, (static_cast<size_t>(texelZ) * width + texelX) * channels * bytesPerChannel, bytesPerChannel), 0.0f, 1.0f);
 }
 
 // Placement depends on the cell and seed, independent of the camera.
@@ -4394,6 +4461,48 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
         instances.pending = true;
         return;
     }
+    // A GPU-only cook of a map (made before anything read it on the CPU) is never sampled: the
+    // editor cooks it again CPU-readable, and new pixels (that swap, a repaint) refill the layer.
+    // The wait is bounded: a cook that fails or cannot happen leaves the layer empty with one error.
+    const bool densityGpuOnly = isGpuOnlyData(layer.densityMap);
+    if (densityGpuOnly || isGpuOnlyData(terrain.heightMap)){
+        const Texture& map = densityGpuOnly ? layer.densityMap : terrain.heightMap;
+        // (a texture made in memory has an id and no path)
+        const std::string name = map.getPath().empty() ? map.getId() : map.getPath();
+        const auto now = std::chrono::steady_clock::now();
+        if (instances.cpuReadMap != name){
+            instances.cpuReadMap = name;
+            instances.cpuReadSince = now;
+            instances.cpuReadError.clear();
+            CookedTextures::requireCpuReadable(instances.cpuReadMap);
+        }
+        if (instances.cpuReadError.empty()){
+            std::string why = CookedTextures::getCpuReadFailure(instances.cpuReadMap);
+            if (why.empty() && !CookedTextures::hasCpuReadHandler()){
+                why = "its cook is GPU-only; turn on its Read/Write in its import settings and export again";
+            }else if (why.empty() && now - instances.cpuReadSince > std::chrono::seconds(TERRAIN_FOLIAGE_CPU_READ_WAIT_SECONDS)){
+                why = "no CPU-readable cook of it arrived; reimport it (reimport_textures)";
+            }
+            if (!why.empty()){
+                instances.cpuReadError = (densityGpuOnly ? "its density map " : "its terrain's height map ") +
+                                         instances.cpuReadMap + " has no pixels the CPU can read: " + why;
+                Log::error("A detail layer of %s draws nothing: %s", layer.meshPath.c_str(), instances.cpuReadError.c_str());
+            }
+        }
+        // stopped (until the map's pixels change), or still waiting for the CPU-readable cook
+        instances.pending = instances.cpuReadError.empty();
+        instances.needUpdate = true;
+        return;
+    }
+    instances.cpuReadMap.clear();
+    instances.cpuReadError.clear();
+    const void* densityPixels = layer.densityMap.hasData() ? layer.densityMap.getData().getData() : nullptr;
+    const void* heightPixels = terrain.heightMap.hasData() ? terrain.heightMap.getData().getData() : nullptr;
+    if (instances.densityPixels != densityPixels || instances.heightPixels != heightPixels){
+        instances.densityPixels = densityPixels;
+        instances.heightPixels = heightPixels;
+        instances.needUpdate = true;
+    }
 
     // Layer-wide invalidation only: a single slot going stale clears its own assigned flag.
     const bool refillAll = instances.needUpdate || terrain.needUpdateFoliage;
@@ -4452,7 +4561,7 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
             bool justLoaded = false;
             if (!chunk.meshLoaded && !instances.loadFailed && meshLoadBudget > 0){
                 meshLoadBudget--;
-                instances.loadFailed = !loadFoliageMesh(chunk.entity, layer.meshPath);
+                instances.loadFailed = !loadPlacedModel(chunk.entity, layer.meshPath);
                 chunk.meshLoaded = !instances.loadFailed;
                 chunk.assigned = false;
                 justLoaded = true;
@@ -5358,7 +5467,106 @@ void MeshSystem::createTorus(MeshComponent& mesh, float radius, float ringRadius
         mesh.needReload = true;
 }
 
+// A thumbnail: off the main thread, images capped (setImageDecodeMaxDimension), never a game's model
+static bool isPreviewLoad(){
+    return Engine::isAsyncThread() && g_imageDecodeMaxDimension > 0;
+}
+
+std::shared_ptr<tinygltf::Model> MeshSystem::parseGLTFModel(const std::string& filename){
+    std::shared_ptr<tinygltf::Model> model = std::make_shared<tinygltf::Model>();
+
+    std::string err;
+    std::string warn;
+    tinygltf::TinyGLTF loader;
+    loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes});
+    loader.SetImagesAsIs(true); // keep images encoded; decode in parallel below
+
+    const bool res = loadGLTFFile(loader, model.get(), &err, &warn, filename);
+
+    if (!warn.empty())
+        warn = withoutCookedImageWarnings(warn, *model, filename);
+    if (!warn.empty()) {
+        Log::warn("Loading GLTF model (%s): %s", filename.c_str(), warn.c_str());
+    }
+
+    if (!err.empty()) {
+        Log::error("Can't load GLTF model (%s): %s", filename.c_str(), err.c_str());
+        return nullptr;
+    }
+
+    if (!res) {
+        Log::verbose("Failed to load glTF: %s", filename.c_str());
+        return nullptr;
+    }
+
+    decodeGLTFImagesParallel(*model, g_imageDecodeMaxDimension);
+    return model;
+}
+
+std::shared_ptr<ObjModelData> MeshSystem::parseOBJModel(const std::string& filename){
+    std::shared_ptr<ObjModelData> model = std::make_shared<ObjModelData>();
+
+    std::string warn;
+    std::string err;
+    tinyobj::FileReader::externalFunc = readFileToString;
+    const std::string baseDir = FileData::getBaseDir(filename);
+    const bool ret = tinyobj::LoadObj(&model->attrib, &model->shapes, &model->materials, &warn, &err, filename.c_str(), baseDir.c_str());
+
+    if (!warn.empty()) {
+        Log::warn("Loading OBJ model (%s): %s", filename.c_str(), warn.c_str());
+    }
+
+    if (!err.empty()) {
+        Log::error("Can't load OBJ model (%s): %s", filename.c_str(), err.c_str());
+        return nullptr;
+    }
+
+    return ret ? model : nullptr;
+}
+
+bool MeshSystem::isLoadOnMainThread() const{
+    return Engine::isAsyncThread() && !isPreviewLoad() && !MainThreadQueue::isMainThread() && Engine::isSceneRunning(scene);
+}
+
+bool MeshSystem::prepareLoadOnMainThread(Entity entity, const std::string& filename, std::function<void()> commit){
+    const std::string poolKey = getModelFilenameKey(filename);
+    if (FileData::getFilePathExtension(filename) == "obj"){
+        if (!ModelPool::getObj(poolKey)){
+            std::shared_ptr<ObjModelData> parsed = parseOBJModel(filename);
+            if (!parsed){
+                return false;
+            }
+            ModelPool::addObj(poolKey, parsed);
+        }
+    }else if (!ModelPool::getGLTF(poolKey)){
+        std::shared_ptr<tinygltf::Model> parsed = parseGLTFModel(filename);
+        if (!parsed){
+            return false;
+        }
+        ModelPool::addGLTF(poolKey, parsed);
+    }
+
+    Scene* target = scene;
+    MainThreadQueue::post([lifetime = target->getLifetime(), target, entity, commit = std::move(commit)]() {
+        if (!lifetime.expired() && target->isEntityCreated(entity)) {
+            commit();
+        }
+    });
+    return true;
+}
+
 bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncLoad, bool skipEntities, bool changeRootTransform, bool bakeSceneRoot){
+    return loadGLTFModel(entity, filename, asyncLoad, skipEntities, changeRootTransform, bakeSceneRoot, false);
+}
+
+bool MeshSystem::loadGLTFModel(Entity entity, const std::string& filename, bool asyncLoad, bool skipEntities, bool changeRootTransform,
+                               bool bakeSceneRoot, bool placedCopy){
+    if (isLoadOnMainThread()) {
+        return prepareLoadOnMainThread(entity, filename, [this, entity, filename, asyncLoad, skipEntities, changeRootTransform, bakeSceneRoot, placedCopy]() {
+            loadGLTFModel(entity, filename, asyncLoad, skipEntities, changeRootTransform, bakeSceneRoot, placedCopy);
+        });
+    }
+
     const std::string poolKey = getModelFilenameKey(filename);
 
     failedModelLoads.erase(filename); // an explicit load is a new attempt
@@ -5388,7 +5596,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // A merged root owns all renderable geometry. Remove any generated mesh-node entities left
     // by the previously loaded hierarchy before taking MeshComponent references: destroying a
     // child mesh can compact its component array and invalidate an already captured root reference.
-    if (model.mergeStaticMeshes && !Engine::isAsyncThread() && !model.meshNodesMapping.empty()) {
+    const bool preview = isPreviewLoad();
+    if (model.mergeStaticMeshes && !preview && !model.meshNodesMapping.empty()) {
         clearMeshNodeMapping(model);
     }
 
@@ -5407,9 +5616,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     uint64_t buildId = asyncLoad ? std::hash<std::string>{}(getAsyncModelLoadKey(filename)) : 0;
 
-    std::string err;
-    std::string warn;
-
     std::vector<std::string> loadedBuffers;
 
     mesh.numExternalBuffers = 0;
@@ -5418,8 +5624,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     mesh.bonesMatrix.clear();
     mesh.needUpdateBones = false;
     mesh.morphTargetNames.clear();
-
-    bool res = false;
 
     if (asyncLoad){
         if (!meshLoadHoldFile().empty()){
@@ -5441,7 +5645,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 }
             }
         }
-        res = true;
     }else{
         // Try cache before hitting disk. A preview load (a thumbnail, its images decoded
         // downscaled) parses its own copy: it neither takes nor publishes the pooled model.
@@ -5449,34 +5652,13 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         auto cached = sharePool ? ModelPool::getGLTF(poolKey) : nullptr;
         if (cached){
             model.gltfModel = cached;
-            res = true;
         }else{
-            model.gltfModel = std::make_shared<tinygltf::Model>();
-
-            tinygltf::TinyGLTF loader;
-            loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes});
-            loader.SetImagesAsIs(true); // keep images encoded; decode in parallel below
-
-            res = loadGLTFFile(loader, model.gltfModel.get(), &err, &warn, filename);
-
-            if (!warn.empty())
-                warn = withoutCookedImageWarnings(warn, *model.gltfModel, filename);
-            if (!warn.empty()) {
-                Log::warn("Loading GLTF model (%s): %s", filename.c_str(), warn.c_str());
-            }
-
-            if (!err.empty()) {
-                Log::error("Can't load GLTF model (%s): %s", filename.c_str(), err.c_str());
-                return false;
-            }
-
-            if (!res) {
-                Log::verbose("Failed to load glTF: %s", filename.c_str());
+            model.gltfModel = parseGLTFModel(filename);
+            if (!model.gltfModel) {
                 return false;
             }
 
             const int maxImageDim = g_imageDecodeMaxDimension;
-            decodeGLTFImagesParallel(*model.gltfModel, maxImageDim);
 
             // Only cache full-resolution parses. A downscaled preview decode must not be reused
             // as the full-resolution model in the user's scene.
@@ -5522,6 +5704,14 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         if (model.gltfModel->nodes[nodeIdx].skin >= 0) { meshNode = nodeIdx; break; }
     }
 
+    // GPU buffers are a real limit: over it, what finds the pool full does not draw (SokolSystem)
+    const size_t gpuBuffers = static_cast<size_t>(std::count_if(model.gltfModel->bufferViews.begin(), model.gltfModel->bufferViews.end(),
+        [](const tinygltf::BufferView& view) { return view.target != 0 && view.name.rfind(GLTF_SYNTH_PREFIX, 0) != 0; }));
+    if (!preview && gpuBuffers > static_cast<size_t>(Engine::getGpuResourceLimits().buffers)) {
+        Log::error("Model %s has %zu vertex and index buffers, more than the maximum allowed (%i): what does not fit does not draw",
+            filename.c_str(), gpuBuffers, Engine::getGpuResourceLimits().buffers);
+    }
+
     if (meshNodes.empty()) {
         Log::error("GLTF model has no mesh nodes: %s", filename.c_str());
         if (asyncLoad) {
@@ -5547,8 +5737,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             return false;
         }
     }
-    // Building child entities mutates the ECS, so off-thread previews keep the flat path.
-    const bool canUseChildEntities = !mergeMeshNodes && !Engine::isAsyncThread();
+    // A thumbnail shows the model baked into one mesh (no nodes to build, nothing to pose or play).
+    const bool canUseChildEntities = !mergeMeshNodes && !preview;
     // Under an Animation Player the sub-clip paths address one entity per glTF node (spec 9.R3).
     // A reload that keeps its entities keeps their layout: the editor reloads to switch it.
     const bool forceNodeHierarchy = canUseChildEntities && !skipEntities && isNodeHierarchyForced(entity);
@@ -5564,13 +5754,17 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     const bool useChildEntities = canUseChildEntities &&
         (meshNodes.size() > 1 || useNodeHierarchy || anyNodeInstanced);
 
-    // Off-thread previews cannot safely build child/skeleton entities, so bake glTF node globals into
-    // a flat static mesh instead. Skinned nodes are baked too, but a skinned mesh node's own transform
-    // is ignored (the skeleton drives it): they bake with the skin root's default-pose matrix instead
-    // (joint global * inverse bind, identity for a consistent export). Non-skinned nodes bake their own
-    // global transform. (Async is always the flatten path, so useChildEntities is already false here.)
-    bool bakingFlatten = (Engine::isAsyncThread() && (meshNodes.size() > 1 || anyNodeSkinned))
+    // A preview bakes glTF node globals into a flat static mesh. Skinned nodes are baked too, but a
+    // skinned mesh node's own transform is ignored (the skeleton drives it): they bake with the skin
+    // root's default-pose matrix instead (joint global * inverse bind, identity for a consistent
+    // export). Non-skinned nodes bake their own global transform.
+    bool bakingFlatten = (preview && (meshNodes.size() > 1 || anyNodeSkinned))
         || mergeMeshNodes;
+    // A copy a system places (loadPlacedModel) builds no skeleton and never animates its blend
+    // shapes: it stands at rest as static geometry, its bones the identity and the blend shapes'
+    // default weights baked into its positions and normals. Instanced, a textured mesh's blend
+    // shapes alone need 17 vertex inputs, past the 16 every backend has.
+    const bool restPose = placedCopy && !vatGltf;
 
     if (meshNode < 0) {
         meshNode = meshNodes[0];
@@ -5587,7 +5781,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // chunk) bakes the node's whole global transform, as the merged nodes of a model do.
     Matrix4 meshOffset;
     if (!useChildEntities && !bakingFlatten && !anyNodeSkinned &&
-            canBakeGLTFMesh(model, model.gltfModel->nodes[meshNodes[0]].mesh)) {
+            canBakeGLTFMesh(model, model.gltfModel->nodes[meshNodes[0]].mesh, nullptr, restPose)) {
         if (bakeSceneRoot) {
             meshOffset = getGLTFMeshGlobalMatrix(meshNodes[0], model, nodesParent);
         } else {
@@ -5713,6 +5907,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         return false;
     }
 
+    std::set<int> morphLimitReported; // (the glTF meshes: once a load)
+
     unsigned int submeshIndex = 0; // continuous across nodes for the flatten path
     for (int nodeIdx : meshNodes) {
         int gltfMeshIndex = model.gltfModel->nodes[nodeIdx].mesh;
@@ -5722,7 +5918,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
         tinygltf::Mesh& gltfmesh = model.gltfModel->meshes[gltfMeshIndex];
 
-        // For the baked-flatten preview, precompute this node's world matrix (for positions) and its
+        // For the baked flatten path, precompute this node's world matrix (for positions) and its
         // normal matrix (inverse-transpose of the linear part) to bake into the vertices below.
         Matrix4 nodeBakeMatrix;
         Matrix3 nodeBakeNormalMatrix;
@@ -5841,7 +6037,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             // flatten path's one mesh takes its largest skin's)
             if (mesh.bonesMatrix.stored() < nodeSkin->joints.size())
                 mesh.bonesMatrix.resize(nodeSkin->joints.size());
-        }else if (!bakingFlatten && nodeSkin && !nodeSkin->joints.empty()){
+        }else if (!bakingFlatten && !restPose && nodeSkin && !nodeSkin->joints.empty()){
             Log::error("Model %s has a skin of %zu joints, more than %zu",
                 filename.c_str(), nodeSkin->joints.size(), ARRAY_INDEX_LIMIT);
             if (asyncLoad) {
@@ -6025,15 +6221,36 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 int attrBufferView = accessor.bufferView;
                 size_t attrByteOffset = accessor.byteOffset;
                 int byteStride = accessor.ByteStride(model.gltfModel->bufferViews[accessor.bufferView]);
-                if (bakingFlatten && !vatGltf && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
-                    continue; // baked preview is static geometry; drop the skinning attributes
+                if ((bakingFlatten || restPose) && !vatGltf && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
+                    continue; // static geometry (a baked preview, a placed copy); drop the skinning attributes
                 }
                 // (the bakes write floats, also from a quantized normal or tangent)
                 bool bakedToFloat = false;
-                if ((bakingFlatten || bakeMeshOffset) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
+                // a copy at rest: the displacements of the blend shapes its file weighs in
+                std::vector<std::pair<int, float>> morphs;
+                std::string morphKey;
+                if (restPose && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
+                    for (size_t t = 0; t < primitive.targets.size() && t < gltfmesh.weights.size(); t++) {
+                        const float weight = static_cast<float>(gltfmesh.weights[t]);
+                        auto target = primitive.targets[t].find(attrib.first);
+                        if (weight == 0.0f || target == primitive.targets[t].end() ||
+                                !isValidGLTFIndex(target->second, model.gltfModel->accessors)) {
+                            continue;
+                        }
+                        tinygltf::Accessor& delta = model.gltfModel->accessors[target->second];
+                        if (delta.sparse.isSparse && materializeGLTFSparseAccessor(delta, model) < 0) {
+                            continue;
+                        }
+                        morphs.emplace_back(target->second, weight);
+                        uint32_t bits;
+                        std::memcpy(&bits, &weight, sizeof(bits));
+                        morphKey += "|" + std::to_string(target->second) + ":" + std::to_string(bits);
+                    }
+                }
+                if ((bakingFlatten || bakeMeshOffset || !morphs.empty()) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
                     const bool isNormal = attrib.first == "NORMAL";
-                    int baked = synthView(gltfSynthKey(isNormal ? "normal" : "position", accessor, &nodeBakeMatrix), [&]() {
-                        return bakeGLTFTransformedAttribute(accessor, nodeBakeMatrix, nodeBakeNormalMatrix, isNormal, model);
+                    int baked = synthView(gltfSynthKey(isNormal ? "normal" : "position", accessor, &nodeBakeMatrix) + morphKey, [&]() {
+                        return bakeGLTFTransformedAttribute(accessor, nodeBakeMatrix, nodeBakeNormalMatrix, isNormal, model, morphs);
                     });
                     if (baked >= 0) {
                         attrBufferView = baked;
@@ -6207,12 +6424,19 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             int  morphIndex    = 0;
 
             for (auto& morphs : primitive.targets) {
+                if (restPose) {
+                    break; // baked above
+                }
                 // Capacity must follow semantics in the prefix actually loaded. A later,
                 // truncated target must not reduce the shader's attribute capacity.
                 const int supportedMorphTargets = (morphNormals && morphTangents) ? 2
                                                 : (morphNormals || morphTangents) ? 4
                                                 : MAX_MORPHTARGETS;
                 if (morphIndex >= supportedMorphTargets) {
+                    if (!preview && morphLimitReported.insert(gltfMeshIndex).second) {
+                        Log::error("Model %s: mesh '%s' has %zu blend shapes, more than the maximum allowed (%i): the ones over it are left out",
+                            filename.c_str(), gltfmesh.name.c_str(), primitive.targets.size(), supportedMorphTargets);
+                    }
                     break;
                 }
                 for (auto& attribMorph : morphs) {
@@ -6398,10 +6622,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
 
         if (skeletonRoot >= 0) {
-            // Creating the skeleton's bone entities mutates the ECS, which is only safe on the main
-            // thread, so the off-thread thumbnail worker skips it (building bones off-thread desyncs
-            // the BoneComponent ComponentArray maps and crashes when the preview scene is torn down).
-            if (!skipEntities && !Engine::isAsyncThread()) {
+            // A thumbnail is baked, it has no skeleton to pose
+            if (!skipEntities && !preview) {
                 model.bonesNameMapping.clear();
                 model.bonesIdMapping.clear();
 
@@ -6415,8 +6637,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             // The bones and mesh nodes added Transforms since `transform` was taken: the array may
             // have grown (moved), so the root's is read again
             Transform& rootTransform = scene->getComponent<Transform>(entity);
-            if (Engine::isAsyncThread()) {
-                // Off-thread skinned previews are baked into static geometry above (skinning attributes
+            if (preview) {
+                // Skinned previews are baked into static geometry above (skinning attributes
                 // dropped), so there is no skeleton to pose and bonesMatrix stays at the identity it was
                 // reset to at load start. Just refresh the transform so the preview gets framed.
                 rootTransform.needUpdate = true;
@@ -6438,13 +6660,12 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
     }
 
-    if (!Engine::isAsyncThread())
+    if (!preview)
         buildGLTFSkinBindings(entity, model);
 
-    // Animation tracks are also model-generated entities, so the off-thread thumbnail worker skips
-    // building them for the same reason as the skeleton above (a static preview never plays them).
+    // Animation tracks are also model-generated entities (a static preview never plays them).
     // Not either when an Animation Player plays the file's animations as sub-clips (spec 9.R15).
-    if (!skipEntities && !Engine::isAsyncThread()) {
+    if (!skipEntities && !preview) {
         model.animations.clear();
 
         const size_t animationCount = model.animationEntities ? model.gltfModel->animations.size() : 0;
@@ -6752,6 +6973,12 @@ static Vector3 objFaceNormal(const tinyobj::attrib_t& attrib, const std::vector<
 }
 
 bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLoad){
+    if (isLoadOnMainThread()) {
+        return prepareLoadOnMainThread(entity, filename, [this, entity, filename, asyncLoad]() {
+            loadOBJ(entity, filename, asyncLoad);
+        });
+    }
+
     const std::string poolKey = getModelFilenameKey(filename);
 
     failedModelLoads.erase(filename); // an explicit load is a new attempt
@@ -6790,14 +7017,7 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
     mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
     mesh.numSubmeshes = 1;
 
-    std::string warn;
-    std::string err;
-
-    tinyobj::FileReader::externalFunc = readFileToString;
-
     std::string baseDir = FileData::getBaseDir(filename);
-
-    bool ret = false;
 
     if (asyncLoad){
         auto cached = ModelPool::getObj(poolKey);
@@ -6807,26 +7027,13 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
             model.objModel = asyncResult->objModel;
             ModelPool::addObj(poolKey, model.objModel);
         }
-        ret = true;
     }else{
         auto cached = ModelPool::getObj(poolKey);
         if (cached){
             model.objModel = cached;
-            ret = true;
         }else{
-            model.objModel = std::make_shared<ObjModelData>();
-            ret = tinyobj::LoadObj(&model.objModel->attrib, &model.objModel->shapes, &model.objModel->materials, &warn, &err, filename.c_str(), baseDir.c_str());
-
-            if (!warn.empty()) {
-                Log::warn("Loading OBJ model (%s): %s", filename.c_str(), warn.c_str());
-            }
-
-            if (!err.empty()) {
-                Log::error("Can't load OBJ model (%s): %s", filename.c_str(), err.c_str());
-                return false;
-            }
-
-            if (!ret) {
+            model.objModel = parseOBJModel(filename);
+            if (!model.objModel) {
                 return false;
             }
 

@@ -45,7 +45,10 @@ per quad (the derivatives `lightShadow` takes stay defined).
 A shader near GLES3 and WebGL2's 224 fragment uniform vectors can `#define LIGHTS_FS_RECORDS` with
 `LIGHTS_FS` (Per Object only; `library:water` and the built-in Lit's painted Terrain do): the block then holds two floats a pixel light
 instead of four vectors, and the lights' data comes from the frame's `u_lightRecords` (four texel
-fetches a light, one upload a frame while such a mesh is loaded). It draws the same lights the same.
+fetches a light, one upload a frame while such a mesh is loaded, and only when a record changed). The
+form also reads the frame's capsules and 2D lights from that texture (no 67- and 50-vector blocks), in
+the Tiled form too. The engine gives it to any lit variant whose blocks would be over GLES3's 224
+fragment vectors or 8 blocks. It draws the same lights the same.
 
 ## Capsule shadows
 

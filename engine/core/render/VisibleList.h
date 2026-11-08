@@ -35,8 +35,7 @@ namespace jasperengine {
     struct VisibleCandidate {
         AABB worldBounds;               // the mesh's; tested unless cullBounds is false
         const Matrix4* model = nullptr;
-        const AABB* submeshBounds = nullptr;
-        size_t submeshStride = sizeof(AABB);   // bytes from one submesh's bounds to the next
+        const AABB* const* submeshBounds = nullptr;   // one a submesh (the first 32 are read)
         uint32_t numSubmeshes = 0;
         uint32_t submeshMask = 0xFFFFFFFFu;
         bool cullBounds = true;         // false: drawn wherever the frustum is (no bounds to test)

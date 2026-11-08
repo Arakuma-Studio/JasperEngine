@@ -5752,9 +5752,12 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and water-uniforms: library:water and the painted Terrain ('Tpb') read their lights'
     //      records from u_lightRecords (includes/lights.glsl LIGHTS_FS_RECORDS) and, with both
     //      requires, the planar reflection's values come from u_fs_environment
-    // v56: S91's library:particles DISTORTION (scene colour, u_distortionTexture, distortionStrength
+    // v56: lit-uniforms: a lit variant over its backend's fragment uniforms (GLES3 224 vectors,
+    //      desktop GL 256, 8 blocks) reads its lights, capsules and 2D lights from u_lightRecords
+    //      (LIGHTS_FS_RECORDS, the records form's tail in u_fs_objectLights; ShaderVariantCompiler::compile)
+    // v57: S91's library:particles DISTORTION (scene colour, u_distortionTexture, distortionStrength
     //      in u_fs_customParams).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v56";
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v57";
 }
 
 void editor::App::pushTabNotificationStyle(){

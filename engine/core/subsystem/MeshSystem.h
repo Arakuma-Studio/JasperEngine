@@ -18,6 +18,7 @@
 
 #include "jobs/JobSystem.h"
 
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -43,6 +44,7 @@ namespace tinygltf {
 namespace jasperengine{
 
     struct InstanceData;
+    struct ObjModelData;
     struct Submesh;
     struct TerrainFoliageLayer;
 
@@ -79,6 +81,13 @@ namespace jasperengine{
             float appliedNearFadeEnd = -1.0f;
             bool needUpdate = true;
             bool pending = false;
+            // a map found cooked GPU-only: asked to be cooked again CPU-readable, since when, and
+            // the error the layer stopped with (it draws nothing until the map's pixels change)
+            std::string cpuReadMap;
+            std::chrono::steady_clock::time_point cpuReadSince;
+            std::string cpuReadError;
+            const void* densityPixels = nullptr; // the pixels the slots were filled from
+            const void* heightPixels = nullptr;
         };
 
         Entity foliagePreviewEntity = NULL_ENTITY;
@@ -116,6 +125,9 @@ namespace jasperengine{
         static bool fileExists(const std::string &abs_filename, void *);
         static bool readWholeFile(std::vector<unsigned char> *out, std::string *err, const std::string &filepath, void *);
         static bool getFileSizeInBytes(size_t *filesize_out, std::string *err, const std::string &filepath, void *userdata);
+        // The file read (its images decoded), with no scene; null, logged, when it cannot be read
+        static std::shared_ptr<tinygltf::Model> parseGLTFModel(const std::string& filename);
+        static std::shared_ptr<ObjModelData> parseOBJModel(const std::string& filename);
         // GltfNormalize::run on a parse; false with the error in `err` when the model cannot be used
         static bool normalizeGLTF(tinygltf::Model& model, const std::string& filename, std::string* err);
         static std::string getAsyncModelLoadScenePrefix(const Scene* scene);
@@ -146,10 +158,15 @@ namespace jasperengine{
         bool loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers);
         int convertGLTFByteIndicesToShort(const tinygltf::Accessor& indexAccessor, ModelComponent& model);
         int materializeGLTFSparseAccessor(tinygltf::Accessor& accessor, ModelComponent& model);
-        int bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model);
+        // morphs: (target accessor, weight) displacements added before the transform
+        int bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model,
+                                         const std::vector<std::pair<int, float>>& morphs = {});
         int bakeGLTFTransformedTangent(const tinygltf::Accessor& accessor, const Matrix3& tangentMatrix, ModelComponent& model);
         // The bake helpers need float positions, normals and tangents, and no morph targets
-        bool canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason = nullptr) const;
+        // unless the load bakes them too (a placed copy)
+        bool canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason = nullptr, bool bakesMorphs = false) const;
+        bool loadGLTFModel(Entity entity, const std::string& filename, bool asyncLoad, bool skipEntities, bool changeRootTransform,
+                           bool bakeSceneRoot, bool placedCopy);
         int convertGLTFColorToVec4(const tinygltf::Accessor& accessor, ModelComponent& model);
         bool loadGLTFTexture(int textureIndex, ModelComponent& model, Texture& texture, const std::string& textureName);
         // glTF material extensions (MeshSystemGltfPbr.cpp): the KHR_materials_* lobes into
@@ -192,7 +209,6 @@ namespace jasperengine{
         void destroyFoliageEntity(TerrainFoliageChunk& chunk);
         void destroyFoliageInstances(TerrainFoliageInstances& instances);
         void destroyTerrainFoliage(Entity entity);
-        bool loadFoliageMesh(Entity entity, const std::string& path);
         float sampleFoliageDensity(TerrainComponent& terrain, TerrainFoliageLayer& layer, float localX, float localZ);
         void appendFoliageCell(TerrainComponent& terrain, TerrainFoliageLayer& layer, int cellX, int cellZ, std::vector<InstanceData>& instances);
         void updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLayer& layer, TerrainFoliageInstances& instances, const Vector3& viewLocal, bool preview);
@@ -245,6 +261,8 @@ namespace jasperengine{
         std::vector<Entity> getFoliageEntities(Entity terrainEntity) const;
         // The instances the chunks of one detail layer (foliageLayers[layer]) hold now (MCP readback)
         size_t getFoliageInstanceCount(Entity terrainEntity, size_t layer) const;
+        // why the layer draws nothing (a map without CPU-readable pixels), or empty
+        std::string getFoliageError(Entity terrainEntity, size_t layer) const;
         Entity getFoliageOwner(Entity foliageEntity) const;
         // Reloads the foliage chunks drawn from a model file that changed on disk
         void reloadFoliageMesh(const std::string& filename);
@@ -307,6 +325,20 @@ namespace jasperengine{
         // chunk), so a lone mesh node bakes its whole global transform into the vertices
         bool loadGLTF(Entity entity, const std::string filename, bool asyncLoad=false, bool skipEntities=false, bool changeRootTransform=true, bool bakeSceneRoot=false);
         bool loadOBJ(Entity entity, const std::string filename, bool asyncLoad=false);
+        // A copy a system places and draws instanced (a foliage or spline chunk; the editor's
+        // shader variant collector probes one the same way): an .obj, or a glTF/FBX with its node
+        // transforms baked and no skeleton, at rest as static geometry (no skin, the blend shapes'
+        // default weights baked), since instancing with blend shapes needs more vertex inputs than
+        // a GPU has
+        bool loadPlacedModel(Entity entity, const std::string& path);
+
+        // A game's loading thread (Engine::startAsyncThread) owns a scene the frames do not run, and
+        // loads into it what the main thread does: the whole entity tree. A running scene is the main
+        // thread's: this thread only reads the file, into ModelPool, and `commit` makes the tree on the
+        // main thread in a coming frame (MainThreadQueue; not if the scene or entity is gone by then).
+        // False when the file cannot be read.
+        bool isLoadOnMainThread() const;
+        bool prepareLoadOnMainThread(Entity entity, const std::string& filename, std::function<void()> commit);
 
         // Parses a model file into ModelPool without a scene, for SceneManager::preloadScene().
         // False while it loads; data then holds the model, or stays empty when it failed.
