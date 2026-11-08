@@ -24,8 +24,8 @@ outputs). Each test prints a `[bench]` line; R25's wall-clock budgets are enforc
 - **Slider drag (R23)**: 40 float edits (Bricks' `mortar`) of the window's material session at
   256² (`ProceduralSession` with the bake's roots, a 2 ms slice a frame as the window gives it). Per
   edit: the time from `setGraph` to the new image, the frames that took, and the session's own CPU
-  work (`setGraph`, which plans the graph, plus each frame's `update`); per frame: `update` and the
-  frame drawn after it.
+  work (`setGraph`, which plans the graph or writes a value edit into the held plan, plus each
+  frame's `update`); per frame: `update` and the frame drawn after it.
 - **Thumbnails (R24)**: `ProcMatThumbnails` asked for an image of every node (29 of 128²) with the
   window's 1 ms share of a frame: each image's cost (what the node shows) and each frame's `update`.
   On the device (the window's take: the image stays on it) and on tier 3 (a job per image).
@@ -45,20 +45,21 @@ M6 change. Two runs of the suite; the second is quoted, the first within 12 % of
 
 | Budget | Tier 1 (GPU) | Tier 2 (llvmpipe), measured | Tier 3 (CPU), measured |
 |---|---|---|---|
-| R23 slider drag at 256², 30 nodes: under 16 ms a frame | not measured: no GPU here; the default stays | edit to image 124 ms median, 147 ms p95, in 6 frames (worst 7); a frame 4.3 ms median, 76 ms p95; `setGraph` (planning, device-independent) 8.2 ms median, 16.2 ms p95 | not measured (a drag on tier 3 redraws through a job) |
+| R23 slider drag at 256², 30 nodes: under 16 ms a frame | not measured: no GPU here; the default stays | edit to image 67 to 71 ms median, 85 ms p95, in 4 frames; a frame 12 ms median, 58 to 62 ms p95; `setGraph` (device-independent) 0.3 ms median, 0.4 ms p95 since value edits are not planned (6.4 to 6.9 ms median, 8.8 to 9.1 ms p95 before, same run) | not measured (a drag on tier 3 redraws through a job) |
 | R24 thumbnails: one image a frame | not measured | at most 1 finished a frame (held); an image 112 ms median, 419 ms p90, 514 ms worst; `update` 9.9 ms median, 340 ms p99, 434 ms worst, against its 1 ms share | at most 1 a frame (held); an image 11 ms median, 32 ms p90, 37 ms worst; `update` under 0.01 ms median, 26 ms worst; 29 images in 4.9 s |
 | R25 bake 1024²: tier 1 under 2 s, tier 2 under 5 s, tier 3 under 5 min | not measured: the 2 s default stays | 1.70 s (1.56 s compiled): **holds**; CLI end to end 9.6 s (20.9 s with a cold cache) | 111 s (99.9 s in the first run): **holds**; CLI end to end 109 s |
 
 ### What the numbers say
 
 - **R23 does not hold as a frame budget on tier 2, and is not shown for tier 1.** A drag frame that
-  draws and reads back costs up to 76 ms on llvmpipe; the median frame is 4.3 ms because the pass
-  lands in one or two of the six frames an edit takes. The device-independent part, planning the
-  graph again on every edit (`ProceduralSession::setGraph` runs `planGraph`), is 8.2 ms median and
-  16.2 ms p95 here for one session. The window plans once per session that holds the graph (the
-  material, the focused node, the thumbnails), so on a GPU the CPU side alone can reach the 16 ms
-  frame at p95 (inferred: the window was not timed, and a desktop CPU is faster than this host's
-  share of 4 cores).
+  draws and reads back costs up to about 60 ms on llvmpipe: drawing the passes, which a GPU does.
+  The device-independent part was planning the graph again on every edit: 8.2 ms median and 16.2 ms
+  p95 in the first measurement (load 9 to 15), once per session holding the graph, enough alone to
+  reach 16 ms on a GPU. A value edit is now written into the held plan without planning
+  (`planValueEdit`, R7): `setGraph` is 0.3 ms median and 0.4 ms p95. Measured back to back at load 2
+  (the fix switched off, then on, twice): 6.4 and 6.9 ms median before, 0.3 ms after; the edit's
+  time to its image on llvmpipe is the same within noise (66 to 72 ms), being the drawing.
+  Thumbnails still plan an image when they start it (R24, below), not on each edit.
 - **R24's "one image a frame" holds; one image is not one frame's work on tier 2.** The first draw
   of a node's image includes compiling its passes, which `update` does in the frame that starts it:
   110 to 500 ms on llvmpipe for this graph's nodes (each with what feeds it), so a thumbnail on tier

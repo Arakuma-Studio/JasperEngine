@@ -221,10 +221,11 @@ with `LP_NUM_THREADS=4`. No GPU was available, so every tier 1 number stays a de
 - **R23.** Slider drag on tier 1: the frame cost stays under 16 ms on the reference GPU, for a
   30-node graph with 256² previews. **Default, not measured.** For scale, the same pass on llvmpipe
   draws in 14 ms, and a float edit needs no compile (R7). **M6, measured** on the 30-node fixture
-  (docs/perf/procedural-material.md): on llvmpipe an edit reaches its image in 124 ms median over 6
-  frames, a frame 4.3 ms median and 76 ms at p95, so R23 is not met on tier 2; replanning the graph on
-  each edit, the device-independent part, is 8.2 ms median and 16.2 ms at p95 for one session. Tier 1
-  stays a default (no GPU here).
+  (docs/perf/procedural-material.md): on llvmpipe an edit reaches its image in about 70 ms median
+  over 4 frames, a frame up to about 60 ms at p95 (the drawing), so R23 is not met on tier 2. Its
+  device-independent part, replanning the graph on each edit, was 8.2 ms median and 16.2 ms at p95 per
+  session; a value edit now plans nothing (`planValueEdit`) and costs 0.3 ms median, 0.4 ms at p95.
+  Tier 1 stays a default (no GPU here).
 - **R24.** Thumbnails: at most one node re-rendered per frame, one shared quad scene, an LRU of 128²
   framebuffers. No `MaterialRender` per node: the sokol pools are 2048.
   - Tier 2: thumbnails render for the selected node and the outputs only. Measured: a first draw of
@@ -861,13 +862,23 @@ are in `engine/tests/core/procmat/`.
   web gate and an emulator are not part of M6's lighter checks).
 - **AC17, measured; R23 not met on tier 2, tier 1 unmeasured.** `ProcMatBudgetsGpuSlow` and the CLI
   timings are in `docs/perf/procedural-material.md`, and R23 to R25 above carry them. R24's one image a
-  frame and R25 hold on tiers 2 and 3. R23 does not hold on llvmpipe (a drawing frame is 76 ms at p95),
-  and its CPU side, replanning on every edit, is 8 ms median and 16 ms at p95 per session on this host,
-  which the window does for each session that holds the graph: a drag on a GPU may miss 16 ms on the CPU
-  alone (inferred; the window was not timed). On tier 2 a thumbnail's first draw compiles inside the
-  `update` that starts it (110 to 500 ms), not within its 1 ms share. Neither is changed here (M6
-  measures); both are follow-ups: plan only what an edit changed, and compile a thumbnail's passes off
-  the frame. Tier 1's budgets stay defaults until the RTX lane runs the suite.
+  frame and R25 hold on tiers 2 and 3. R23 does not hold on llvmpipe (a drawing frame is about 60 ms
+  at p95). On tier 2 a thumbnail's first draw compiles inside the `update` that starts it (110 to
+  500 ms), not within its 1 ms share: a follow-up (compile a thumbnail's passes off the frame). Tier 1's
+  budgets stay defaults until the RTX lane runs the suite.
+- **R7, value edits (fixed in M6).** M6 measured that every float edit planned the whole graph again
+  (8 ms median, 16 ms at p95 per session on this host, device-independent), against R7. Now
+  `ProceduralSession::setGraph` asks `planValueEdit` first: when the new graph differs from the held one
+  only in floats, colours or ramps (same keys, order and interpolation) of the graph's own shader nodes,
+  each still in range, it copies the held plan and writes the new values into the slots the expander
+  noted for those parameters (`ValueSlot`), with no planning; anything else (structure, an enum, a
+  boolean, a size, a node's seed, a library graph node's parameter, a value read as text, an edit while a
+  rebuild waits or after a failure) is planned as before. A node's position is not a plan edit. The rule
+  that edit kinds are decided only by comparing plans is therefore relaxed for these three types;
+  `PassPlanner.AValueEditGivesTheUniformsPlanningWould` keeps the two paths equal over every value
+  parameter of the 30-node fixture. Red: with the path off,
+  `ProceduralSessionTest.FortyFloatEditsOfTheFixturePlanNothing` counts 41 plans against 1. Thumbnails
+  are unchanged: they plan when they start an image, not on each edit.
 - **AC18, met.** S34's check on the full Linux glcore release player, built from the merge base with
   `origin/main` (`43a475707`) and from this tree: no symbol of the evaluator, the interpreter or
   `editor/procmat` is in the player, nor R21's two compiler entry points or `isCpuDevice`; the player's
