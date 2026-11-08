@@ -43,6 +43,7 @@ namespace tinygltf {
 namespace jasperengine{
 
     struct InstanceData;
+    struct ObjModelData;
     struct Submesh;
     struct TerrainFoliageLayer;
 
@@ -116,6 +117,9 @@ namespace jasperengine{
         static bool fileExists(const std::string &abs_filename, void *);
         static bool readWholeFile(std::vector<unsigned char> *out, std::string *err, const std::string &filepath, void *);
         static bool getFileSizeInBytes(size_t *filesize_out, std::string *err, const std::string &filepath, void *userdata);
+        // The file read (its images decoded), with no scene; null, logged, when it cannot be read
+        static std::shared_ptr<tinygltf::Model> parseGLTFModel(const std::string& filename);
+        static std::shared_ptr<ObjModelData> parseOBJModel(const std::string& filename);
         // GltfNormalize::run on a parse; false with the error in `err` when the model cannot be used
         static bool normalizeGLTF(tinygltf::Model& model, const std::string& filename, std::string* err);
         static std::string getAsyncModelLoadScenePrefix(const Scene* scene);
@@ -307,6 +311,14 @@ namespace jasperengine{
         // chunk), so a lone mesh node bakes its whole global transform into the vertices
         bool loadGLTF(Entity entity, const std::string filename, bool asyncLoad=false, bool skipEntities=false, bool changeRootTransform=true, bool bakeSceneRoot=false);
         bool loadOBJ(Entity entity, const std::string filename, bool asyncLoad=false);
+
+        // A game's loading thread (Engine::startAsyncThread) owns a scene the frames do not run, and
+        // loads into it what the main thread does: the whole entity tree. A running scene is the main
+        // thread's: this thread only reads the file, into ModelPool, and `commit` makes the tree on the
+        // main thread in a coming frame (MainThreadQueue; not if the scene or entity is gone by then).
+        // False when the file cannot be read.
+        bool isLoadOnMainThread() const;
+        bool prepareLoadOnMainThread(Entity entity, const std::string& filename, std::function<void()> commit);
 
         // Parses a model file into ModelPool without a scene, for SceneManager::preloadScene().
         // False while it loads; data then holds the model, or stays empty when it failed.

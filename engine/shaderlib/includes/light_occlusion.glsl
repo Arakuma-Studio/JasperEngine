@@ -41,8 +41,10 @@ uniform u_fs_lightOcclusion {
 
 // which occlusions a light takes (bits: 1 capsule, 2 contact)
 int lightOcclusionFlags(int index){
-    #ifdef LIGHTS_TILED
+    #if defined(LIGHTS_TILED)
         return (int(tiledLightsTexel(tiledLightRecord(index) + 3).w) >> 12) & 3;
+    #elif defined(LIGHTS_RECORDS)
+        return (int(lightRecordEntry(index).y) >> 12) & 3;
     #else
         return (int(objectLights.spot_shadow[index].w) >> 12) & 3;
     #endif

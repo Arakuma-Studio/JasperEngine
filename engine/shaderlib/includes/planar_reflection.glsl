@@ -20,9 +20,8 @@
 //   u_fs_planarReflection.viewProjection: the reflection camera's (logical: the shader handles
 //                                         the texture origin, as mesh.frag's mirror)
 //   u_fs_planarReflection.params:         x the plane's height, y 1 with a reflection, 0 without
+//   (with @require environment too, both are u_fs_environment's last members: one block)
 //   u_planarReflectionTexture:            its colour (display-encoded, decoded with sRGBToLinear)
-// With `@require environment` as well, the two members are the last of u_fs_environment
-// (planarViewProjection, planarParams; includes/environment.glsl) instead of a block of their own.
 
 #ifndef PLANAR_REFLECTION_GLSL
 #define PLANAR_REFLECTION_GLSL
@@ -32,6 +31,7 @@
 #include "includes/srgb.glsl"
 
 #ifdef SURFACE_ENVIRONMENT
+    // with @require environment, its block holds these values (includes/environment.glsl)
     #include "includes/environment.glsl"
     #define PLANAR_REFLECTION_VIEW_PROJECTION environment.planarViewProjection
     #define PLANAR_REFLECTION_PARAMS environment.planarParams

@@ -729,10 +729,6 @@ Recorded during implementation (branch `dc/water-reflections`):
     viewer's pass (fixed resolution, or the render scale with dynamic resolution), and the scene keeps its
     render-to-texture pipelines whatever the resolution, so turning it Off and on reloads nothing; the shared MVPs are
     rewritten per camera only while the camera sees a planar water from above.
-16. **With `@require environment` as well, the planar members end `u_fs_environment`** (`planarViewProjection`,
-    `planarParams`) instead of `u_fs_planarReflection`: a lit, shadowed and fogged library:water with every feature had
-    nine fragment uniform blocks, one over the budget (fix/main-green). A shader requiring only the planar reflection
-    keeps `u_fs_planarReflection`.
 
 ## Follow-ups (2026-11-07)
 
@@ -760,3 +756,50 @@ Branch `fu/water-tests` (docs/doriax-catchup/FOLLOWUPS.md, water-tests).
      tells a reload apart from a pipeline-cache hit;
    - target sizing: `WaterReflectionGpu.TargetSizeIsThePassSize` (Half of the view, of a 400 x 225 fixed
      resolution, of render scale 0.5).
+
+Workstream `water-uniforms` (`docs/doriax-catchup/FOLLOWUPS.md`). Measured with the GLES3 reflection of every variant
+the library's compile matrix builds (`WaterUniformBudgetSlow`), a fragment stage's vectors being the sum of its blocks
+(sokol's GL backends upload each block as plain uniforms, against GL_MAX_FRAGMENT_UNIFORM_VECTORS: 224 guaranteed).
+
+1. **Before:** 11 of the 290 matrix variants were over 224 vectors, 5 of them (30 compiles over 6 backends) also over the
+   8 blocks a stage: lit per pixel with shadows at 16 lights 229 (no features) to 248 (every feature, Water Excluders
+   and Wakes), and at 8 lights with fog 227 to 231 in 9 blocks (`u_fs_heightFog` the ninth). The plain water was over at
+   16 lights before this program; PLANAR_REFLECTION added the ninth block. The built-in Lit in the same scenes: 199
+   vectors at 16 lights with shadows, 222 with fog and the post colour; it has no GLES3 cap or fallback of its own.
+2. **The lights' records form** (`includes/lights.glsl`, `LIGHTS_FS_RECORDS`, defined by `library/water.frag`): the
+   fragment block holds the counts, the SH and two floats a pixel light (its scene light, its pass-dependent
+   `spot_shadow.w`), 12 vectors at 16 lights instead of 68; the four vectors of each scene light are rows of
+   `u_lightRecords` (RGBA32F, 128 lights a row), uploaded once a frame before the passes while a mesh drawing the form
+   is loaded (`RenderSystem::syncLightRecords`). Rejected: capping the lights on GLES3 (changes what it draws there),
+   moving the shadow blocks (124 vectors, the Lit's too, per camera pass: one upload a frame per image), packing the
+   shadow blocks (12 vectors at most). Light Mode Tiled keeps its own form. A fork made before keeps the block form.
+3. **One block for the environment and the planar reflection:** with both requires, `u_fs_environment` holds the planar
+   reflection's matrix and parameters after its own (`includes/environment.glsl`, `planar_reflection.glsl`), resolved by
+   the block's reflected size, so existing forks get it from the includes.
+4. **After:** the matrix's most is 203 vectors (8 lights, fog, post colour, shadows, every feature) and 8 blocks; the
+   worst scene at any capacity (16 lights, High shadow filters, fog, post colour, 2D lights, Excluders and Wakes, on a
+   mesh, a lattice mesh or a terrain) 210; `shaders --library water --backend all`: 1740 compiled, 0 failed. No new
+   property bit; shader cache v55.
+5. **Not covered:** S57's capsule and contact shadows. Their `u_fs_lightOcclusion` is a ninth block with fog, and with
+   capsules 67 vectors: the built-in Lit with capsule shadows, 2D lights and fog is at 9 blocks and 307 to 339 vectors
+   too, so that is the S57 feature's GLES3 budget, not the water's.
+6. **The built-in Lit's painted Terrain** ('Tpb', the lead's addition; measured by the pcss-gles workstream): its nine
+   layers' `u_fs_terrainLayers` takes 45 vectors, so at 8 lights with shadows, the sky's and a probe's reflections,
+   SSAO, the post colour and fog it took 235 (253 and 267 at 16 lights, without and with fog), in 8 blocks and 15 of
+   16 textures. `mesh.frag` gives it the records form (not with a 2D shadow atlas, which takes the 16th texture
+   then; it never takes the Tiled form): 211 at most (`TerrainUniformBudget`). Its golden
+   (`TerrainLightRecordsGpu`) was captured with the block form and matches the records form exactly.
+7. **Within the bind limits too** (with pcss-gles' rule: 16 samplers across the stages, 16 fragment textures, on
+   every backend): a normal-mapped painted terrain with IBL, SSAO, the post colour, shadows and point or spot lights is
+   at 16 textures and 16 samplers before its records. The records share PCSS's raw view's sampler where a variant has
+   one (both nearest and clamped; texelFetch reads neither), so the directional-only terrain keeps PCSS.
+   `ShaderVariantCompiler::compile` builds a variant still over
+   them after PCSS's fallback without the spot lights' masks (`SPOT_MASKS_OFF`, a `spot-masks-left-out` log line, the
+   editor's build log "no spot light masks"): a masked spot light lights that terrain with its plain cone. Chosen over
+   SSAO (contact darkening under every object on the ground) and over the block form (235 to 267 vectors): masks are
+   rare, and without one the terrain draws the same. Pinned by `TerrainUniformBudgetSlow` (normal-mapped, 8 and 16
+   lights, High and Medium tiers, directional only or not). The records are uploaded only when one changed, and a
+   scene past 128 lights reads the texture's second row (`WaterLightRecordsGpu`).
+8. **Open follow-up (next):** S57's capsule and contact shadows on water and the painted terrain, and the built-in Lit
+   with capsule shadows, 2D lights and fog on GLES3 (307 to 339 fragment vectors and a ninth block); the painted
+   terrain with 2D lights (its 2D lights' block, 50 vectors) keeps the block form and is over 224 with them.

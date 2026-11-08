@@ -48,6 +48,11 @@ namespace jasperengine {
     // compile() fails.
     class JASPERENGINE_API ShaderVariantCompiler {
     public:
+        // what starts the log line of a variant built without PCSS (compile)
+        static constexpr const char* PCSS_LEFT_OUT = "pcss-left-out";
+        // what starts the log line of a variant built without the spot lights' masks (compile)
+        static constexpr const char* SPOT_MASKS_LEFT_OUT = "spot-masks-left-out";
+
         using FileReader = std::function<bool(const std::string& path, std::string& content)>;
         using ProgressFn = std::function<void(float progress)>;
 
@@ -93,6 +98,11 @@ namespace jasperengine {
         // custom shader id and ignored otherwise. On failure returns false and fills
         // error with what failed and log with the compiler output. progress, when set,
         // is told how far the build is (0..1); cancelled, when set, stops it between steps.
+        // A variant the raw-depth shadow view (PCSS) would take past 16 samplers (both stages) or
+        // 16 fragment textures is built without it (SHADOW_RAW_VIEW_OFF), on every backend; log
+        // then has a PCSS_LEFT_OUT line (preprocess gives the source before that fallback). One
+        // reading its lights' records (u_lightRecords) still over them is then built without the
+        // spot lights' masks (SPOT_MASKS_OFF), with a SPOT_MASKS_LEFT_OUT line.
         static bool compile(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
                             ShaderData& out, std::string* error = nullptr, std::string* log = nullptr,
                             const ProgressFn& progress = {}, const std::function<bool()>& cancelled = {});
@@ -109,7 +119,8 @@ namespace jasperengine {
 
         // The engine's per-stage resource budget a compiled variant must fit on every backend
         // (shadercompiler.h: 8 uniform blocks, 16 textures, 16 samplers, 16 texture-sampler
-        // pairs; GLES3 has 16 fragment texture units). Empty when it fits, else what is over.
+        // pairs; GLES3 has 16 fragment texture units) and across its stages (16 samplers: sokol's
+        // slots are shared). Empty when it fits, else what is over.
         static std::string checkResourceBudget(const ShaderData& data);
         // A globals block (u_vs_globals / u_fs_globals, ShaderGlobals) over 1024 bytes: the
         // "globals-block-too-large: ..." error compile() fails with; "" when they fit

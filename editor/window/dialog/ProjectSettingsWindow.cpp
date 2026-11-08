@@ -2029,7 +2029,8 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                     static_cast<int>(ShadowTiers::defaultTier(platform)),
                     "The shadow quality tier of this platform's builds (and of the editor running on it) for scenes whose shadow "
                     "Quality is Auto: cascades, resolution, distance, filter and the memory budget (docs/rendering/shadows.md). "
-                    "Ultra adds PCSS contact hardening.");
+                    "Ultra adds PCSS contact hardening: two to three times the High filter's shadow lookups per pixel, heavy for phones "
+                    "and the web (where a variant with every texture slot used keeps the High filter).");
             }
         }
 
