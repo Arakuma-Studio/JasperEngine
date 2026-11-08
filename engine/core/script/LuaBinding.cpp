@@ -939,6 +939,10 @@ void LuaBinding::registerClasses(lua_State *L){
     registerNavigationClasses(L);
     registerSplineClasses(L);
     registerTerrainClasses(L);
+#if JASPERENGINE_TERRAIN_WORLD
+    // after the GameObject classes, which it reopens for getTerrainWorld
+    registerTerrainWorldClasses(L);
+#endif
     registerCrashClasses(L);
 #if JASPERENGINE_HTMLUI
     registerHtmlUIClasses(L);

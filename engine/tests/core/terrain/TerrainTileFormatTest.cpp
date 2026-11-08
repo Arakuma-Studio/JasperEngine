@@ -15,7 +15,7 @@ using namespace terrainworldtest;
 namespace {
 
     // A tile with every kind of section, from the fixture
-    std::shared_ptr<TileData> fullTile(const WorldLattice& lattice, TileCoord coord) {
+    std::shared_ptr<WorldTile> fullTile(const WorldLattice& lattice, TileCoord coord) {
         auto tile = fixtureTile(lattice, coord);
         tile->blend.resize(2);
         for (int i = 0; i < 2; i++) {
@@ -31,7 +31,7 @@ namespace {
         return tile;
     }
 
-    void expectSameTile(const TileData& a, const TileData& b) {
+    void expectSameTile(const WorldTile& a, const WorldTile& b) {
         EXPECT_EQ(a.coord, b.coord);
         EXPECT_EQ(a.tileQuads, b.tileQuads);
         EXPECT_EQ(a.spacing, b.spacing);
@@ -57,14 +57,14 @@ TEST(TerrainTileFormat, RoundTrip) {
         std::vector<uint8_t> bytes;
         std::string error;
         ASSERT_TRUE(encodeTile(*tile, codec, TileEncodeOptions{}, bytes, &error)) << error;
-        TileData back;
+        WorldTile back;
         ASSERT_EQ(decodeTile(bytes, zstdCodec(), back), TileError::None);
         expectSameTile(*tile, back);
     }
     // D8: the overview alone, without decoding the samples
     std::vector<uint8_t> bytes;
     ASSERT_TRUE(encodeTile(*tile, zstdCodec(), TileEncodeOptions{}, bytes));
-    TileData overviewOnly;
+    WorldTile overviewOnly;
     const uint32_t only[] = {TILE_SECTION_OVERVIEW_HEIGHT, TILE_SECTION_OVERVIEW_COLOUR};
     ASSERT_EQ(decodeTile(bytes, zstdCodec(), overviewOnly, only), TileError::None);
     EXPECT_TRUE(overviewOnly.height.empty());
@@ -79,7 +79,7 @@ TEST(TerrainTileFormat, DeterministicBytes) {
     ASSERT_TRUE(encodeTile(*fullTile(lattice, TileCoord(4, -2)), zstdCodec(), TileEncodeOptions{}, second));
     EXPECT_EQ(first, second);
     // decode and encode again: the same file
-    TileData back;
+    WorldTile back;
     ASSERT_EQ(decodeTile(first, zstdCodec(), back), TileError::None);
     std::vector<uint8_t> third;
     ASSERT_TRUE(encodeTile(back, zstdCodec(), TileEncodeOptions{}, third));
@@ -99,7 +99,7 @@ TEST(TerrainTileFormat, PreservesUnknownSections) {
     tile->unknown.push_back(future);
     std::vector<uint8_t> bytes;
     ASSERT_TRUE(encodeTile(*tile, zstdCodec(), TileEncodeOptions{}, bytes));
-    TileData back;
+    WorldTile back;
     ASSERT_EQ(decodeTile(bytes, zstdCodec(), back), TileError::None);
     ASSERT_EQ(back.unknown.size(), 1u);
     EXPECT_EQ(back.unknown[0].id, future.id);
@@ -114,7 +114,7 @@ TEST(TerrainTileFormat, PreservesUnknownSections) {
     cook.level = 19;
     cook.keepUnknown = false;
     ASSERT_TRUE(encodeTile(back, zstdCodec(), cook, again));
-    TileData cooked;
+    WorldTile cooked;
     ASSERT_EQ(decodeTile(again, zstdCodec(), cooked), TileError::None);
     EXPECT_TRUE(cooked.unknown.empty());
 }
@@ -124,7 +124,7 @@ TEST(TerrainTileFormat, RefusesNewerMajor) {
     std::vector<uint8_t> bytes;
     ASSERT_TRUE(encodeTile(*fixtureTile(lattice, TileCoord(1, 1)), zstdCodec(), TileEncodeOptions{}, bytes));
     bytes[8] = static_cast<uint8_t>(TILE_FORMAT_VERSION + 1);
-    TileData back;
+    WorldTile back;
     EXPECT_EQ(decodeTile(bytes, zstdCodec(), back), TileError::NewerVersion);
     TileHeader header;
     EXPECT_EQ(parseTileHeader(bytes, header), TileError::NewerVersion);
@@ -152,13 +152,13 @@ TEST(TerrainTileFormat, RejectsCorrupt) {
                 break;
             }
         }
-        TileData out;
+        WorldTile out;
         const TileError error = decodeTile(bad, codec, out);
         if (error != TileError::None) rejected++;
     }
     // a flip inside padding changes nothing; everything else is refused, and nothing crashed
     EXPECT_GT(rejected, 900);
-    TileData out;
+    WorldTile out;
     EXPECT_EQ(decodeTile(std::span<const uint8_t>(), codec, out), TileError::Truncated);
     const uint8_t notATile[64] = {'P', 'N', 'G'};
     EXPECT_EQ(decodeTile(notATile, codec, out), TileError::BadMagic);
@@ -167,13 +167,13 @@ TEST(TerrainTileFormat, RejectsCorrupt) {
 TEST(TerrainTileFormat, MigratesThroughTheTable) {
     // version 1 is the only one: the table is empty, and a synthetic step shows how it runs
     EXPECT_TRUE(tileMigrations().empty());
-    TileData data;
+    WorldTile data;
     data.skirtDepth = 0.25f;
-    const TileMigration steps[] = {{1, [](TileData& tile, std::string*) {
+    const TileMigration steps[] = {{1, [](WorldTile& tile, std::string*) {
                                         tile.skirtDepth *= 2.0f;
                                         return true;
                                     }},
-                                   {2, [](TileData& tile, std::string*) {
+                                   {2, [](WorldTile& tile, std::string*) {
                                         tile.flags |= 4u;
                                         return true;
                                     }}};
@@ -228,7 +228,7 @@ TEST(TerrainTileFormat, DerivedSections) {
     EXPECT_EQ(cell.min, low);
     EXPECT_EQ(cell.max, high);
     // a flat tile needs no skirt; a bumpy one does
-    TileData flat;
+    WorldTile flat;
     initTile(flat, lattice, TileCoord(0, 0), 1000);
     EXPECT_EQ(flat.skirtDepth, 0.0f);
     EXPECT_GT(tile->skirtDepth, 0.0f);

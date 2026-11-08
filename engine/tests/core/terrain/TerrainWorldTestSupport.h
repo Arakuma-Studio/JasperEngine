@@ -55,8 +55,8 @@ namespace terrainworldtest {
     }
 
     // A tile holding the fixture, gutters included (as if every neighbour were present)
-    inline std::shared_ptr<TileData> fixtureTile(const WorldLattice& lattice, TileCoord coord) {
-        auto tile = std::make_shared<TileData>();
+    inline std::shared_ptr<WorldTile> fixtureTile(const WorldLattice& lattice, TileCoord coord) {
+        auto tile = std::make_shared<WorldTile>();
         initTile(*tile, lattice, coord, 0);
         const int n = lattice.tileQuads;
         for (int j = 0; j < n + 3; j++) {

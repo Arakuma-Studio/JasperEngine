@@ -70,7 +70,7 @@ namespace jasperengine::terrain {
         std::vector<uint8_t> stored;
     };
 
-    struct TileData {
+    struct WorldTile {
         TileCoord coord;
         int tileQuads = 0;
         float spacing = 0.0f;
@@ -159,51 +159,51 @@ namespace jasperengine::terrain {
     // One section into data; so decoding splits into jobs per section (R17). Unknown ids land in
     // data.unknown. The lattice of a known section is checked against the header's.
     JASPERENGINE_API TileError decodeTileSection(std::span<const uint8_t> file, const TileHeader& header, size_t sectionIndex, const TileCodec& codec,
-                                                 TileData& data);
+                                                 WorldTile& data);
     // Header, every section and migrations. sectionMask: decode only these ids (0: all), D8's
     // overview-only read.
-    JASPERENGINE_API TileError decodeTile(std::span<const uint8_t> file, const TileCodec& codec, TileData& data, std::span<const uint32_t> only = {});
-    JASPERENGINE_API bool encodeTile(const TileData& data, const TileCodec& codec, const TileEncodeOptions& options, std::vector<uint8_t>& out,
+    JASPERENGINE_API TileError decodeTile(std::span<const uint8_t> file, const TileCodec& codec, WorldTile& data, std::span<const uint32_t> only = {});
+    JASPERENGINE_API bool encodeTile(const WorldTile& data, const TileCodec& codec, const TileEncodeOptions& options, std::vector<uint8_t>& out,
                                      std::string* error = nullptr);
 
     // R49: a step of the migration table upgrades data decoded at version from to from + 1
     struct TileMigration {
         uint32_t from = 0;
-        bool (*apply)(TileData& data, std::string* error) = nullptr;
+        bool (*apply)(WorldTile& data, std::string* error) = nullptr;
     };
     // This build's table: empty while version 1 is the only one
     JASPERENGINE_API std::span<const TileMigration> tileMigrations();
     // Runs the steps from version up to target; false when a step is missing or fails
-    JASPERENGINE_API bool migrateTile(TileData& data, uint32_t version, uint32_t target, std::span<const TileMigration> table, std::string* error);
+    JASPERENGINE_API bool migrateTile(WorldTile& data, uint32_t version, uint32_t target, std::span<const TileMigration> table, std::string* error);
 
     // D7's height filter: residuals against left + up - upleft, then the low bytes, then the high
     JASPERENGINE_API void predictorEncode16(std::span<const uint8_t> samples, int width, int height, std::vector<uint8_t>& out);
     JASPERENGINE_API bool predictorDecode16(std::span<const uint8_t> filtered, int width, int height, std::vector<uint8_t>& out);
 
     // A new tile of the lattice, every sample at baseHeight (normalized 16-bit), no other map
-    JASPERENGINE_API void initTile(TileData& tile, const WorldLattice& lattice, TileCoord coord, uint16_t baseHeight);
+    JASPERENGINE_API void initTile(WorldTile& tile, const WorldLattice& lattice, TileCoord coord, uint16_t baseHeight);
 
     // The derived sections (R52, D4, D5) from the tile's samples; call after a write
-    JASPERENGINE_API void buildMinMax(TileData& tile, const WorldLattice& lattice);
-    JASPERENGINE_API void buildOverviewHeight(TileData& tile, const WorldLattice& lattice);
-    JASPERENGINE_API void buildSkirtDepth(TileData& tile, const WorldLattice& lattice);
+    JASPERENGINE_API void buildMinMax(WorldTile& tile, const WorldLattice& lattice);
+    JASPERENGINE_API void buildOverviewHeight(WorldTile& tile, const WorldLattice& lattice);
+    JASPERENGINE_API void buildSkirtDepth(WorldTile& tile, const WorldLattice& lattice);
     // R52: macro colour per overview sample, the blend-weighted mean of each layer's colour. colours
     // holds RGBA floats: the base first, then layers 0..layerCount-1.
-    JASPERENGINE_API void buildOverviewColour(TileData& tile, const WorldLattice& lattice, std::span<const float> colours, int layerCount);
-    JASPERENGINE_API void buildDerived(TileData& tile, const WorldLattice& lattice, std::span<const float> colours, int layerCount);
+    JASPERENGINE_API void buildOverviewColour(WorldTile& tile, const WorldLattice& lattice, std::span<const float> colours, int layerCount);
+    JASPERENGINE_API void buildDerived(WorldTile& tile, const WorldLattice& lattice, std::span<const float> colours, int layerCount);
 
     // D3, AC9: the vertex shader's reads of a page, mirrored. texelX and texelZ count page texels,
     // gutter included (a tile's first shared sample is texel 1). The bilerp clamps to the page.
-    JASPERENGINE_API float tileHeightAt(const TileData& tile, float texelX, float texelZ, float maxHeight);
+    JASPERENGINE_API float tileHeightAt(const WorldTile& tile, float texelX, float texelZ, float maxHeight);
     // At a vertex on texel (texelX, texelZ), deltaSamples away on each axis, held inside the page
     // symmetrically, so a vertex on a border reads its two neighbours on both tiles alike
-    JASPERENGINE_API LatticeNormal tileNormalAt(const TileData& tile, int texelX, int texelZ, int deltaSamples, float maxHeight, float spacing);
+    JASPERENGINE_API LatticeNormal tileNormalAt(const WorldTile& tile, int texelX, int texelZ, int deltaSamples, float maxHeight, float spacing);
 
     struct TileMinMax {
         uint16_t min = 0, max = 0;
     };
     // The node of level (0..T) at cell (cellX, cellZ) of the tile, from minMax; the whole tile at T
-    JASPERENGINE_API TileMinMax tileNodeMinMax(const TileData& tile, const WorldLattice& lattice, int level, int cellX, int cellZ);
+    JASPERENGINE_API TileMinMax tileNodeMinMax(const WorldTile& tile, const WorldLattice& lattice, int level, int cellX, int cellZ);
 
 }
 

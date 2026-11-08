@@ -79,8 +79,9 @@ namespace {
 }
 
 void jasperengine::terrain::encodeWorldBin(const WorldManifest& manifest, std::vector<uint8_t>& out) {
+    // byte by byte: GCC 11 misreads an insert of the magic into a cleared vector (-Wstringop-overflow)
     out.clear();
-    out.insert(out.end(), WORLD_BIN_MAGIC, WORLD_BIN_MAGIC + 4);
+    for (uint8_t byte : WORLD_BIN_MAGIC) out.push_back(byte);
     Writer w{out};
     w.u32(manifest.formatVersion);
     const WorldLattice& lattice = manifest.lattice;
@@ -183,7 +184,7 @@ void jasperengine::terrain::initOverview(WorldOverview& overview, const WorldLat
     for (size_t i = 3; i < overview.colour.size(); i += 4) overview.colour[i] = 255;
 }
 
-bool jasperengine::terrain::setOverviewPatch(WorldOverview& overview, const TileData& tile) {
+bool jasperengine::terrain::setOverviewPatch(WorldOverview& overview, const WorldTile& tile) {
     if (!overview.covers(tile.coord)) return false;
     const int side = overview.stride + 1;
     if (tile.overviewHeight.size() != static_cast<size_t>(side) * side) return false;

@@ -88,6 +88,7 @@
 #include "component/ScaleTracksComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/TerrainWorldComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/Rigidbody2DComponent.h"

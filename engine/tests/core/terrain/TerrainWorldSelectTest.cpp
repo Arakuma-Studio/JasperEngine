@@ -20,11 +20,11 @@ namespace {
     struct SelectWorld {
         WorldLattice lattice = smallLattice(256, 1.0f);
         WorldOccupancy occupancy;
-        std::map<uint32_t, std::shared_ptr<TileData>> pages;
-        std::shared_ptr<TileData> flat;
+        std::map<uint32_t, std::shared_ptr<WorldTile>> pages;
+        std::shared_ptr<WorldTile> flat;
 
         SelectWorld() {
-            flat = std::make_shared<TileData>();
+            flat = std::make_shared<WorldTile>();
             initTile(*flat, lattice, TileCoord(0, 0), 20000);
         }
 
@@ -48,7 +48,7 @@ namespace {
             p.eyeX = x;
             p.eyeY = y;
             p.eyeZ = z;
-            p.page = [this](TileCoord tile) -> const TileData* {
+            p.page = [this](TileCoord tile) -> const WorldTile* {
                 const auto it = pages.find(tile.key());
                 return it == pages.end() ? nullptr : it->second.get();
             };

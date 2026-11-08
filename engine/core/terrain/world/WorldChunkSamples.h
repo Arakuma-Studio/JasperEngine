@@ -24,8 +24,8 @@ namespace jasperengine::terrain {
 
     // The tile and its eight neighbours, [dz + 1][dx + 1]; null where absent or not in memory
     struct TileNeighbourhood {
-        const TileData* tiles[3][3] = {};
-        const TileData* centre() const { return tiles[1][1]; }
+        const WorldTile* tiles[3][3] = {};
+        const WorldTile* centre() const { return tiles[1][1]; }
     };
 
     // Whether the lattice square whose low corner is the tile's local sample (sx, sz) is open: every

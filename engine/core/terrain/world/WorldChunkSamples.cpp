@@ -12,7 +12,7 @@ bool jasperengine::terrain::worldSquareOpen(const TileNeighbourhood& near, const
     const int n = lattice.tileQuads;
     const int dx = sx < 0 ? -1 : (sx >= n ? 1 : 0);
     const int dz = sz < 0 ? -1 : (sz >= n ? 1 : 0);
-    const TileData* tile = near.tiles[dz + 1][dx + 1];
+    const WorldTile* tile = near.tiles[dz + 1][dx + 1];
     // not in memory, absent, or without holes: solid
     if (!tile || tile->holes.empty()) return false;
     const int lx = sx - dx * n, lz = sz - dz * n;
@@ -30,13 +30,13 @@ bool jasperengine::terrain::worldSquareOpen(const TileNeighbourhood& near, const
 
 int jasperengine::terrain::worldChunkSamples(const TileNeighbourhood& near, const WorldLattice& lattice, float maxHeight, int chunkQuads, int chunkX,
                                              int chunkZ, std::vector<float>& out) {
-    const TileData* tile = near.centre();
+    const WorldTile* tile = near.centre();
     const int side = chunkQuads + 1;
     out.assign(static_cast<size_t>(side) * side, 0.0f);
     if (!tile) return 0;
     const bool holes = !tile->holes.empty() || [&] {
         for (const auto& row : near.tiles) {
-            for (const TileData* other : row) {
+            for (const WorldTile* other : row) {
                 if (other && !other->holes.empty()) return true;
             }
         }

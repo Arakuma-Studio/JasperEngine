@@ -11,7 +11,7 @@
 using namespace jasperengine;
 
 const std::vector<std::string>& player::allModules() {
-    static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer"};
+    static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "terrainworld"};
     return modules;
 }
 
@@ -36,6 +36,9 @@ std::vector<std::string> player::builtModules() {
 #if JASPERENGINE_SOUND_LAYER
     modules.push_back("soundlayer");
 #endif
+#if JASPERENGINE_TERRAIN_WORLD
+    modules.push_back("terrainworld");
+#endif
     return modules;
 }
 
@@ -52,5 +55,6 @@ std::string player::moduleDisplayName(const std::string& module) {
     if (module == "physics2d") return "2D physics";
     if (module == "navigation") return "navigation meshes";
     if (module == "soundlayer") return "Sound Events and clip import settings";
+    if (module == "terrainworld") return "Terrain World";
     return module;
 }

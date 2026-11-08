@@ -32,7 +32,7 @@ namespace {
         int n() const { return lattice.tileQuads; }
     };
 
-    std::vector<uint8_t> fileOf(const TileData& tile) {
+    std::vector<uint8_t> fileOf(const WorldTile& tile) {
         std::vector<uint8_t> bytes;
         encodeTile(tile, TileCodec{}, TileEncodeOptions{}, bytes);
         return bytes;

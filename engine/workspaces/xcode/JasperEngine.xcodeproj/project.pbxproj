@@ -1487,6 +1487,38 @@
 		71F225482C587388006ED3CA /* ParticleSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 71F225462C587388006ED3CA /* ParticleSystem.h */; };
 		71F225492C587388006ED3CA /* ParticleSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71F225472C587388006ED3CA /* ParticleSystem.cpp */; };
 		71F2254A2C587388006ED3CA /* ParticleSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71F225472C587388006ED3CA /* ParticleSystem.cpp */; };
+		54574C44CB04174D8B9C9A81 /* TerrainWorldSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C445842ED2CBC0DE95D /* TerrainWorldSystem.cpp */; };
+		54574C442F8546944D83294B /* TerrainWorldSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C445842ED2CBC0DE95D /* TerrainWorldSystem.cpp */; };
+		54574C442E35F93B39C59196 /* TerrainWorldRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44919688538EDDF4BA /* TerrainWorldRuntime.cpp */; };
+		54574C4430EB2B5BB50C24D0 /* TerrainWorldRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44919688538EDDF4BA /* TerrainWorldRuntime.cpp */; };
+		54574C441EA1DDE24AC59663 /* TerrainWorldClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44F0E8D5E59490A0B1 /* TerrainWorldClassesLua.cpp */; };
+		54574C441D555B6284D4625C /* TerrainWorldClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44F0E8D5E59490A0B1 /* TerrainWorldClassesLua.cpp */; };
+		54574C44865B281326CB5FF2 /* TerrainWorldCollision.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44FD5752CF7DB6BCCA /* TerrainWorldCollision.cpp */; };
+		54574C44D6B908FB839075A1 /* TerrainWorldCollision.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44FD5752CF7DB6BCCA /* TerrainWorldCollision.cpp */; };
+		54574C44421F1F84E3E0C9F3 /* TerrainWorld.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44930C079396D19049 /* TerrainWorld.cpp */; };
+		54574C444948D273BB82E901 /* TerrainWorld.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44930C079396D19049 /* TerrainWorld.cpp */; };
+		54574C449B4AC1B8904DC88E /* WorldLattice.h in Headers */ = {isa = PBXBuildFile; fileRef = 54574C44A52D8E4E5B3D5FC7 /* WorldLattice.h */; };
+		54574C44CABA5D2CEC22726E /* WorldImport.h in Headers */ = {isa = PBXBuildFile; fileRef = 54574C44DA9BA6C96E8E8888 /* WorldImport.h */; };
+		54574C44ABF56C584D37B83F /* WorldImport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44FE31A488BEEE5914 /* WorldImport.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		54574C44DC91C93283505A44 /* WorldImport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44FE31A488BEEE5914 /* WorldImport.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		54574C442F1D47721D9FCCA2 /* WorldChunkSamples.h in Headers */ = {isa = PBXBuildFile; fileRef = 54574C44EFD5FEED45F41781 /* WorldChunkSamples.h */; };
+		54574C4439EC3E91DE18F0D1 /* WorldChunkSamples.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44557DD0E2F2F09EB7 /* WorldChunkSamples.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		54574C440666D8BFE8153FF9 /* WorldChunkSamples.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44557DD0E2F2F09EB7 /* WorldChunkSamples.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		54574C4473201C0C7982B944 /* TiledMapStore.h in Headers */ = {isa = PBXBuildFile; fileRef = 54574C444AEFFB3D550055FE /* TiledMapStore.h */; };
+		54574C44F6BF7E7CD22AD134 /* TiledMapStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44140943810402B1C9 /* TiledMapStore.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		54574C44AABBB83CB6304CFE /* TiledMapStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44140943810402B1C9 /* TiledMapStore.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		54574C4431F27FE8F1963764 /* TileStreamer.h in Headers */ = {isa = PBXBuildFile; fileRef = 54574C44F35E87DDA9E5AC01 /* TileStreamer.h */; };
+		54574C44EC0EA13526D0EC50 /* TileStreamer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44EF31BEF912049C7C /* TileStreamer.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		54574C4453B7062EFB108F72 /* TileStreamer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44EF31BEF912049C7C /* TileStreamer.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		54574C44A074768F982FFED1 /* TerrainWorldSelect.h in Headers */ = {isa = PBXBuildFile; fileRef = 54574C4467FF5FBD41288C0C /* TerrainWorldSelect.h */; };
+		54574C44320CB6340012406F /* TerrainWorldSelect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44DC8247B973097348 /* TerrainWorldSelect.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		54574C44A664BF4F919C5ADB /* TerrainWorldSelect.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44DC8247B973097348 /* TerrainWorldSelect.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		54574C4445F7A4B26B7F2D70 /* TerrainWorldData.h in Headers */ = {isa = PBXBuildFile; fileRef = 54574C44356FA78DC6096B3C /* TerrainWorldData.h */; };
+		54574C44B8E069427266643B /* TerrainWorldData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C4423385CA31D3B99E8 /* TerrainWorldData.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		54574C447ABA4FDB975FA33F /* TerrainWorldData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C4423385CA31D3B99E8 /* TerrainWorldData.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		54574C440A2404CAE109FADB /* TerrainTileFormat.h in Headers */ = {isa = PBXBuildFile; fileRef = 54574C44C6697E210672D798 /* TerrainTileFormat.h */; };
+		54574C443A5FE19F7C54128F /* TerrainTileFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44D9B5C025579DFD1A /* TerrainTileFormat.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		54574C44BA54EF26B8EE8859 /* TerrainTileFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44D9B5C025579DFD1A /* TerrainTileFormat.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		53504C4EB24308C2D78335F2 /* SplineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E5262B21B0E1C90F9 /* SplineClassesLua.cpp */; };
 		53504C4E56FFBE8361FFBEBC /* SplineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E5262B21B0E1C90F9 /* SplineClassesLua.cpp */; };
 		53504C4E297A11A3049D85C4 /* SplineAnimate.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4EFA373C8F004A166E /* SplineAnimate.h */; };
@@ -4557,6 +4589,20 @@
 		4A534E478E2F95E4FDE1A893 /* FoliagePhysics.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4721B5BD951F8A4523 /* FoliagePhysics.h */; };
 		4A534E4798A525A1727A195C /* FoliageSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479C6E796903EF07CE /* FoliageSystem.h */; };
 		4A534E479E36F56582F28B4C /* TerrainSurfaceLayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475A8787B5C4B08188 /* TerrainSurfaceLayer.h */; };
+		4A534E470FEF85A7ED474EE6 /* RenderSystemTerrain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4781D8F4100888CA85 /* RenderSystemTerrain.cpp */; };
+		4A534E474E606B3936AD3F48 /* RenderSystemTerrain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4781D8F4100888CA85 /* RenderSystemTerrain.cpp */; };
+		4A534E47B4AF4FB4F18BD8DD /* RenderSystemTerrainWorld.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472846E95D3CE04ECF /* RenderSystemTerrainWorld.cpp */; };
+		4A534E47D2C61C27935D710D /* RenderSystemTerrainWorld.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472846E95D3CE04ECF /* RenderSystemTerrainWorld.cpp */; };
+		4A534E47BCCF20B641CC97A4 /* TerrainDetailBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DF74FC5C3A6356C3 /* TerrainDetailBuilder.cpp */; };
+		4A534E473020FE9FB18A2558 /* TerrainDetailBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DF74FC5C3A6356C3 /* TerrainDetailBuilder.cpp */; };
+		4A534E47CFD7470B039FD5C2 /* TerrainWorldComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FCED2187376D428C /* TerrainWorldComponent.h */; };
+		4A534E472D32861ABE7267E5 /* TerrainWorld.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4753F1DD451F5B4EBE /* TerrainWorld.h */; };
+		4A534E47E0FAEAAAD3DA04F5 /* TerrainWorldCollision.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4723B039D0FB37B5E2 /* TerrainWorldCollision.h */; };
+		4A534E476EFCB2DB5A29BE71 /* TerrainRenderInfo.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */; };
+		4A534E476ACE32BBDAFA848C /* TerrainWorldRender.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4799DC7889C929F151 /* TerrainWorldRender.h */; };
+		4A534E47EDDBEC55CA382D5F /* TerrainWorldRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D7D3D6320F5B27F7 /* TerrainWorldRuntime.h */; };
+		4A534E47FEE30F3DBB527AD3 /* TerrainWorldSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47597116CBCC8E46A1 /* TerrainWorldSystem.h */; };
+		4A534E47A6A86FDF02FBA017 /* TerrainDetailBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476A75DCD5F17650F3 /* TerrainDetailBuilder.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6753,6 +6799,26 @@
 		71F225442C58736B006ED3CA /* InstancedMeshComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InstancedMeshComponent.h; sourceTree = "<group>"; };
 		71F225462C587388006ED3CA /* ParticleSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleSystem.h; sourceTree = "<group>"; };
 		71F225472C587388006ED3CA /* ParticleSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleSystem.cpp; sourceTree = "<group>"; };
+		54574C445842ED2CBC0DE95D /* TerrainWorldSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainWorldSystem.cpp; sourceTree = "<group>"; };
+		54574C44919688538EDDF4BA /* TerrainWorldRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainWorldRuntime.cpp; sourceTree = "<group>"; };
+		54574C44F0E8D5E59490A0B1 /* TerrainWorldClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainWorldClassesLua.cpp; sourceTree = "<group>"; };
+		54574C44FD5752CF7DB6BCCA /* TerrainWorldCollision.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainWorldCollision.cpp; sourceTree = "<group>"; };
+		54574C44930C079396D19049 /* TerrainWorld.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainWorld.cpp; sourceTree = "<group>"; };
+		54574C44A52D8E4E5B3D5FC7 /* WorldLattice.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WorldLattice.h; sourceTree = "<group>"; };
+		54574C44DA9BA6C96E8E8888 /* WorldImport.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WorldImport.h; sourceTree = "<group>"; };
+		54574C44FE31A488BEEE5914 /* WorldImport.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WorldImport.cpp; sourceTree = "<group>"; };
+		54574C44EFD5FEED45F41781 /* WorldChunkSamples.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WorldChunkSamples.h; sourceTree = "<group>"; };
+		54574C44557DD0E2F2F09EB7 /* WorldChunkSamples.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WorldChunkSamples.cpp; sourceTree = "<group>"; };
+		54574C444AEFFB3D550055FE /* TiledMapStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TiledMapStore.h; sourceTree = "<group>"; };
+		54574C44140943810402B1C9 /* TiledMapStore.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TiledMapStore.cpp; sourceTree = "<group>"; };
+		54574C44F35E87DDA9E5AC01 /* TileStreamer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TileStreamer.h; sourceTree = "<group>"; };
+		54574C44EF31BEF912049C7C /* TileStreamer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TileStreamer.cpp; sourceTree = "<group>"; };
+		54574C4467FF5FBD41288C0C /* TerrainWorldSelect.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainWorldSelect.h; sourceTree = "<group>"; };
+		54574C44DC8247B973097348 /* TerrainWorldSelect.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainWorldSelect.cpp; sourceTree = "<group>"; };
+		54574C44356FA78DC6096B3C /* TerrainWorldData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainWorldData.h; sourceTree = "<group>"; };
+		54574C4423385CA31D3B99E8 /* TerrainWorldData.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainWorldData.cpp; sourceTree = "<group>"; };
+		54574C44C6697E210672D798 /* TerrainTileFormat.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainTileFormat.h; sourceTree = "<group>"; };
+		54574C44D9B5C025579DFD1A /* TerrainTileFormat.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainTileFormat.cpp; sourceTree = "<group>"; };
 		53504C4E5262B21B0E1C90F9 /* SplineClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineClassesLua.cpp; sourceTree = "<group>"; };
 		53504C4EFA373C8F004A166E /* SplineAnimate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineAnimate.h; sourceTree = "<group>"; };
 		53504C4ECB827EC45A167CF8 /* SplineAnimate.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineAnimate.cpp; sourceTree = "<group>"; };
@@ -8885,6 +8951,17 @@
 		4A534E4721B5BD951F8A4523 /* FoliagePhysics.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FoliagePhysics.h; sourceTree = "<group>"; };
 		4A534E479C6E796903EF07CE /* FoliageSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FoliageSystem.h; sourceTree = "<group>"; };
 		4A534E475A8787B5C4B08188 /* TerrainSurfaceLayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainSurfaceLayer.h; sourceTree = "<group>"; };
+		4A534E4781D8F4100888CA85 /* RenderSystemTerrain.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemTerrain.cpp; sourceTree = "<group>"; };
+		4A534E472846E95D3CE04ECF /* RenderSystemTerrainWorld.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemTerrainWorld.cpp; sourceTree = "<group>"; };
+		4A534E47DF74FC5C3A6356C3 /* TerrainDetailBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainDetailBuilder.cpp; sourceTree = "<group>"; };
+		4A534E47FCED2187376D428C /* TerrainWorldComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainWorldComponent.h; sourceTree = "<group>"; };
+		4A534E4753F1DD451F5B4EBE /* TerrainWorld.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainWorld.h; sourceTree = "<group>"; };
+		4A534E4723B039D0FB37B5E2 /* TerrainWorldCollision.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainWorldCollision.h; sourceTree = "<group>"; };
+		4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainRenderInfo.h; sourceTree = "<group>"; };
+		4A534E4799DC7889C929F151 /* TerrainWorldRender.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainWorldRender.h; sourceTree = "<group>"; };
+		4A534E47D7D3D6320F5B27F7 /* TerrainWorldRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainWorldRuntime.h; sourceTree = "<group>"; };
+		4A534E47597116CBCC8E46A1 /* TerrainWorldSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainWorldSystem.h; sourceTree = "<group>"; };
+		4A534E476A75DCD5F17650F3 /* TerrainDetailBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainDetailBuilder.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -9441,6 +9518,7 @@
 				4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */,
 				5452524EC5408E41C210BCE6 /* TerrainClassesLua.cpp */,
 				4A534E474296E82A1489FA1A /* FoliageLua.cpp */,
+				54574C44F0E8D5E59490A0B1 /* TerrainWorldClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10294,6 +10372,8 @@
 				4A534E47E00F9DE4AB0805F0 /* ContactTracker.h */,
 				5452524EF9A4189CF3D079B0 /* JoltTerrainRefresh.cpp */,
 				5452524E4733A6D0ECC250AF /* JoltTerrainRefresh.h */,
+				4A534E4723B039D0FB37B5E2 /* TerrainWorldCollision.h */,
+				54574C44FD5752CF7DB6BCCA /* TerrainWorldCollision.cpp */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -10758,8 +10838,31 @@
 				5452524EF9D2D4B7EFC25AD4 /* FoliageTypes.h */,
 				5452524E696C63BA6BA00DAB /* TreeStore.cpp */,
 				5452524EF4B0A6EDC73ED80F /* TreeStore.h */,
+				54574C449FE6559F1CF44CC9 /* world */,
 			);
 			path = terrain;
+			sourceTree = "<group>";
+		};
+		54574C449FE6559F1CF44CC9 /* world */ = {
+			isa = PBXGroup;
+			children = (
+				54574C44D9B5C025579DFD1A /* TerrainTileFormat.cpp */,
+				54574C44C6697E210672D798 /* TerrainTileFormat.h */,
+				54574C4423385CA31D3B99E8 /* TerrainWorldData.cpp */,
+				54574C44356FA78DC6096B3C /* TerrainWorldData.h */,
+				54574C44DC8247B973097348 /* TerrainWorldSelect.cpp */,
+				54574C4467FF5FBD41288C0C /* TerrainWorldSelect.h */,
+				54574C44EF31BEF912049C7C /* TileStreamer.cpp */,
+				54574C44F35E87DDA9E5AC01 /* TileStreamer.h */,
+				54574C44140943810402B1C9 /* TiledMapStore.cpp */,
+				54574C444AEFFB3D550055FE /* TiledMapStore.h */,
+				54574C44557DD0E2F2F09EB7 /* WorldChunkSamples.cpp */,
+				54574C44EFD5FEED45F41781 /* WorldChunkSamples.h */,
+				54574C44FE31A488BEEE5914 /* WorldImport.cpp */,
+				54574C44DA9BA6C96E8E8888 /* WorldImport.h */,
+				54574C44A52D8E4E5B3D5FC7 /* WorldLattice.h */,
+			);
+			path = world;
 			sourceTree = "<group>";
 		};
 		7162FC2A25962A0E0075B97D /* core */ = {
@@ -11134,6 +11237,7 @@
 				4A534E47D9914C150209E5CB /* ComponentEvents.h */,
 				4A534E47B4E493A883DC863A /* UISelectable.h */,
 				4A534E475A8787B5C4B08188 /* TerrainSurfaceLayer.h */,
+				4A534E47FCED2187376D428C /* TerrainWorldComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -11249,6 +11353,8 @@
 				5452524EE2E21CCF598630C1 /* TerrainEdit.h */,
 				5452524EACCBCC90A30BA18C /* TerrainOpsJson.cpp */,
 				5452524ECF1CE9F8492BA35B /* TerrainOpsJson.h */,
+				4A534E4753F1DD451F5B4EBE /* TerrainWorld.h */,
+				54574C44930C079396D19049 /* TerrainWorld.cpp */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -11287,6 +11393,8 @@
 				545854526064F947321E683C /* BasisTranscode.cpp */,
 				4A534E474AA9758938A89CD5 /* Ktx2Write.cpp */,
 				4A534E47979EFB31D7BE0582 /* Ktx2Detail.h */,
+				4A534E47DF74FC5C3A6356C3 /* TerrainDetailBuilder.cpp */,
+				4A534E476A75DCD5F17650F3 /* TerrainDetailBuilder.h */,
 			);
 			path = texture;
 			sourceTree = "<group>";
@@ -11424,6 +11532,14 @@
 				4A534E4774170120B80738B8 /* FoliagePhysics.cpp */,
 				4A534E4721B5BD951F8A4523 /* FoliagePhysics.h */,
 				4A534E479C6E796903EF07CE /* FoliageSystem.h */,
+				4A534E4781D8F4100888CA85 /* RenderSystemTerrain.cpp */,
+				4A534E472846E95D3CE04ECF /* RenderSystemTerrainWorld.cpp */,
+				4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */,
+				4A534E4799DC7889C929F151 /* TerrainWorldRender.h */,
+				4A534E47D7D3D6320F5B27F7 /* TerrainWorldRuntime.h */,
+				4A534E47597116CBCC8E46A1 /* TerrainWorldSystem.h */,
+				54574C44919688538EDDF4BA /* TerrainWorldRuntime.cpp */,
+				54574C445842ED2CBC0DE95D /* TerrainWorldSystem.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -15104,6 +15220,14 @@
 				17145B3C2FF7FC5E00543CB7 /* Light2D.h in Headers */,
 				17145B3D2FF7FC5E00543CB7 /* ShadowCaster2D.h in Headers */,
 				71F225482C587388006ED3CA /* ParticleSystem.h in Headers */,
+				54574C449B4AC1B8904DC88E /* WorldLattice.h in Headers */,
+				54574C44CABA5D2CEC22726E /* WorldImport.h in Headers */,
+				54574C442F1D47721D9FCCA2 /* WorldChunkSamples.h in Headers */,
+				54574C4473201C0C7982B944 /* TiledMapStore.h in Headers */,
+				54574C4431F27FE8F1963764 /* TileStreamer.h in Headers */,
+				54574C44A074768F982FFED1 /* TerrainWorldSelect.h in Headers */,
+				54574C4445F7A4B26B7F2D70 /* TerrainWorldData.h in Headers */,
+				54574C440A2404CAE109FADB /* TerrainTileFormat.h in Headers */,
 				53504C4E297A11A3049D85C4 /* SplineAnimate.h in Headers */,
 				53504C4EBC6278D3C50D1C80 /* SplineInstantiate.h in Headers */,
 				53504C4E311041BDE2CBB621 /* SplineExtrude.h in Headers */,
@@ -15780,6 +15904,14 @@
 				4A534E478E2F95E4FDE1A893 /* FoliagePhysics.h in Headers */,
 				4A534E4798A525A1727A195C /* FoliageSystem.h in Headers */,
 				4A534E479E36F56582F28B4C /* TerrainSurfaceLayer.h in Headers */,
+				4A534E47CFD7470B039FD5C2 /* TerrainWorldComponent.h in Headers */,
+				4A534E472D32861ABE7267E5 /* TerrainWorld.h in Headers */,
+				4A534E47E0FAEAAAD3DA04F5 /* TerrainWorldCollision.h in Headers */,
+				4A534E476EFCB2DB5A29BE71 /* TerrainRenderInfo.h in Headers */,
+				4A534E476ACE32BBDAFA848C /* TerrainWorldRender.h in Headers */,
+				4A534E47EDDBEC55CA382D5F /* TerrainWorldRuntime.h in Headers */,
+				4A534E47FEE30F3DBB527AD3 /* TerrainWorldSystem.h in Headers */,
+				4A534E47A6A86FDF02FBA017 /* TerrainDetailBuilder.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -17803,6 +17935,18 @@
 				713D82AF259D307F00567F9F /* InterleavedBuffer.cpp in Sources */,
 				71E54500284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F2254A2C587388006ED3CA /* ParticleSystem.cpp in Sources */,
+				54574C44CB04174D8B9C9A81 /* TerrainWorldSystem.cpp in Sources */,
+				54574C442E35F93B39C59196 /* TerrainWorldRuntime.cpp in Sources */,
+				54574C441EA1DDE24AC59663 /* TerrainWorldClassesLua.cpp in Sources */,
+				54574C44865B281326CB5FF2 /* TerrainWorldCollision.cpp in Sources */,
+				54574C44421F1F84E3E0C9F3 /* TerrainWorld.cpp in Sources */,
+				54574C44ABF56C584D37B83F /* WorldImport.cpp in Sources */,
+				54574C4439EC3E91DE18F0D1 /* WorldChunkSamples.cpp in Sources */,
+				54574C44F6BF7E7CD22AD134 /* TiledMapStore.cpp in Sources */,
+				54574C44EC0EA13526D0EC50 /* TileStreamer.cpp in Sources */,
+				54574C44320CB6340012406F /* TerrainWorldSelect.cpp in Sources */,
+				54574C44B8E069427266643B /* TerrainWorldData.cpp in Sources */,
+				54574C443A5FE19F7C54128F /* TerrainTileFormat.cpp in Sources */,
 				53504C4EB24308C2D78335F2 /* SplineClassesLua.cpp in Sources */,
 				53504C4E283B6FF5F26263BD /* SplineAnimate.cpp in Sources */,
 				53504C4E4A7CF4D85FD00022 /* SplineInstantiate.cpp in Sources */,
@@ -18335,6 +18479,9 @@
 				4A534E475354715988994280 /* RenderSystemFoliage.cpp in Sources */,
 				4A534E474C1938A0916547C2 /* FoliageSystem.cpp in Sources */,
 				4A534E4731E966DE3238B3F4 /* FoliagePhysics.cpp in Sources */,
+				4A534E470FEF85A7ED474EE6 /* RenderSystemTerrain.cpp in Sources */,
+				4A534E47B4AF4FB4F18BD8DD /* RenderSystemTerrainWorld.cpp in Sources */,
+				4A534E47BCCF20B641CC97A4 /* TerrainDetailBuilder.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18664,6 +18811,18 @@
 				7162FD4525963AE00075B97D /* GameObject.cpp in Sources */,
 				71E544FF284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F225492C587388006ED3CA /* ParticleSystem.cpp in Sources */,
+				54574C442F8546944D83294B /* TerrainWorldSystem.cpp in Sources */,
+				54574C4430EB2B5BB50C24D0 /* TerrainWorldRuntime.cpp in Sources */,
+				54574C441D555B6284D4625C /* TerrainWorldClassesLua.cpp in Sources */,
+				54574C44D6B908FB839075A1 /* TerrainWorldCollision.cpp in Sources */,
+				54574C444948D273BB82E901 /* TerrainWorld.cpp in Sources */,
+				54574C44DC91C93283505A44 /* WorldImport.cpp in Sources */,
+				54574C440666D8BFE8153FF9 /* WorldChunkSamples.cpp in Sources */,
+				54574C44AABBB83CB6304CFE /* TiledMapStore.cpp in Sources */,
+				54574C4453B7062EFB108F72 /* TileStreamer.cpp in Sources */,
+				54574C44A664BF4F919C5ADB /* TerrainWorldSelect.cpp in Sources */,
+				54574C447ABA4FDB975FA33F /* TerrainWorldData.cpp in Sources */,
+				54574C44BA54EF26B8EE8859 /* TerrainTileFormat.cpp in Sources */,
 				53504C4E56FFBE8361FFBEBC /* SplineClassesLua.cpp in Sources */,
 				53504C4EC783A95717F91079 /* SplineAnimate.cpp in Sources */,
 				53504C4E5B3A511C890C7ABB /* SplineInstantiate.cpp in Sources */,
@@ -19181,6 +19340,9 @@
 				4A534E477CA3CE864977F43E /* RenderSystemFoliage.cpp in Sources */,
 				4A534E47479595579F7D940A /* FoliageSystem.cpp in Sources */,
 				4A534E473B21901082D0758F /* FoliagePhysics.cpp in Sources */,
+				4A534E474E606B3936AD3F48 /* RenderSystemTerrain.cpp in Sources */,
+				4A534E47D2C61C27935D710D /* RenderSystemTerrainWorld.cpp in Sources */,
+				4A534E473020FE9FB18A2558 /* TerrainDetailBuilder.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

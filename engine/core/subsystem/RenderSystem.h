@@ -611,6 +611,8 @@ namespace jasperengine{
 		bool terrainHexStochastic = false;
 		// the terrain has a hole map (T3 R20): every pass of its variant reads it ('Thl')
 		bool terrainHoles = false;
+		// the Terrain is a Terrain World (T4 R58): every pass reads its pages ('Twd')
+		bool terrainWorld = false;
 		// what the Terrain says of its variant (T3 D2); the tier is the environment's with it
 		terrain::TerrainVariantInputs terrainVariant;
 	};
@@ -3205,6 +3207,13 @@ namespace jasperengine{
 		                         Vector3& fitPosition, Vector3& fitForward);
 		void updatePoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform);
 		void updateTerrain(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainView& view);
+		// T4 (RenderSystemTerrainWorld.cpp): a World's selection into the view's grids, its pages and
+		// overview before the passes, and its draw items in a pass
+		enum class TerrainWorldPass { COLOR, DEPTH, SHADOW, GBUFFER };
+		void selectTerrainWorld(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainView& view);
+		void updateTerrainWorldPages(Entity entity, TerrainComponent& terrain);
+		bool drawTerrainWorldItems(ObjectRender& render, MeshComponent& mesh, unsigned int submeshIndex, TerrainComponent& terrain, TerrainView& view,
+		                           TerrainWorldPass pass, int slotTerrain);
 		static void updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes);
 		void updateInstancedMesh(InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform);
 

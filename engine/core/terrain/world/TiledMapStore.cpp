@@ -15,14 +15,14 @@ namespace {
         return TileCoord(static_cast<int>(tile.x) + dx, static_cast<int>(tile.z) + dz);
     }
 
-    std::shared_ptr<TileData> cloneTile(const std::shared_ptr<const TileData>& tile) {
-        return tile ? std::make_shared<TileData>(*tile) : nullptr;
+    std::shared_ptr<WorldTile> cloneTile(const std::shared_ptr<const WorldTile>& tile) {
+        return tile ? std::make_shared<WorldTile>(*tile) : nullptr;
     }
 
     // R30, D11: the tiles of a large edit as they were before it, and as they were before its undo
     class TiledLargeEdit final : public TerrainLargeEdit {
     public:
-        TiledLargeEdit(TiledMapStore& store, std::vector<std::pair<TileCoord, std::shared_ptr<TileData>>> before)
+        TiledLargeEdit(TiledMapStore& store, std::vector<std::pair<TileCoord, std::shared_ptr<WorldTile>>> before)
             : store(store), before(std::move(before)) {}
 
         void undo() override {
@@ -30,17 +30,17 @@ namespace {
             for (const auto& [coord, data] : before) {
                 after.emplace_back(coord, cloneTile(store.tiles().tile(coord)));
             }
-            for (const auto& [coord, data] : before) store.restoreTile(coord, std::make_shared<TileData>(*data));
+            for (const auto& [coord, data] : before) store.restoreTile(coord, std::make_shared<WorldTile>(*data));
         }
 
         void redo() override {
-            for (const auto& [coord, data] : after) store.restoreTile(coord, data ? std::make_shared<TileData>(*data) : nullptr);
+            for (const auto& [coord, data] : after) store.restoreTile(coord, data ? std::make_shared<WorldTile>(*data) : nullptr);
         }
 
     private:
         TiledMapStore& store;
-        std::vector<std::pair<TileCoord, std::shared_ptr<TileData>>> before;
-        std::vector<std::pair<TileCoord, std::shared_ptr<TileData>>> after;
+        std::vector<std::pair<TileCoord, std::shared_ptr<WorldTile>>> before;
+        std::vector<std::pair<TileCoord, std::shared_ptr<WorldTile>>> after;
     };
 
     // Over the cap with allow_no_undo: the edit runs and its step holds nothing to restore
@@ -72,7 +72,7 @@ namespace {
     private:
         TiledMapStore& store;
         std::vector<TileCoord> tiles;
-        std::vector<std::shared_ptr<TileData>> kept;
+        std::vector<std::shared_ptr<WorldTile>> kept;
     };
 
 }
@@ -83,20 +83,20 @@ bool MemoryTileAccess::present(TileCoord tile) const {
     return tiles.count(tile.key()) > 0;
 }
 
-std::shared_ptr<const TileData> MemoryTileAccess::tile(TileCoord tile) const {
+std::shared_ptr<const WorldTile> MemoryTileAccess::tile(TileCoord tile) const {
     const auto it = tiles.find(tile.key());
     return it == tiles.end() ? nullptr : it->second;
 }
 
-std::shared_ptr<TileData> MemoryTileAccess::writable(TileCoord tile) {
+std::shared_ptr<WorldTile> MemoryTileAccess::writable(TileCoord tile) {
     const auto it = tiles.find(tile.key());
     if (it == tiles.end()) return nullptr;
     // someone else (a job, an undo snapshot) holds this copy: they keep it as it is
-    if (it->second.use_count() > 1) it->second = std::make_shared<TileData>(*it->second);
+    if (it->second.use_count() > 1) it->second = std::make_shared<WorldTile>(*it->second);
     return it->second;
 }
 
-void MemoryTileAccess::add(TileCoord tile, std::shared_ptr<TileData> data) {
+void MemoryTileAccess::add(TileCoord tile, std::shared_ptr<WorldTile> data) {
     tiles[tile.key()] = std::move(data);
     changedTiles[tile.key()] = true;
 }
@@ -211,7 +211,7 @@ void TiledMapStore::defaultTexel(MapId map, uint8_t* out) const {
     }
 }
 
-const TileMap* TiledMapStore::tileMap(const TileData& tile, MapId map) const {
+const TileMap* TiledMapStore::tileMap(const WorldTile& tile, MapId map) const {
     switch (map.kind) {
         case MapKind::Height: return tile.height.empty() ? nullptr : &tile.height;
         case MapKind::Blend:
@@ -224,8 +224,8 @@ const TileMap* TiledMapStore::tileMap(const TileData& tile, MapId map) const {
     return nullptr;
 }
 
-TileMap* TiledMapStore::tileMap(TileData& tile, MapId map, bool allocate) {
-    if (const TileMap* existing = tileMap(static_cast<const TileData&>(tile), map)) return const_cast<TileMap*>(existing);
+TileMap* TiledMapStore::tileMap(WorldTile& tile, MapId map, bool allocate) {
+    if (const TileMap* existing = tileMap(static_cast<const WorldTile&>(tile), map)) return const_cast<TileMap*>(existing);
     if (!allocate || map.kind == MapKind::Height || map.index < 0) return nullptr;
     const MapGeometry geo = geometry(map);
     uint8_t fill[4] = {};
@@ -254,14 +254,14 @@ TileMap* TiledMapStore::tileMap(TileData& tile, MapId map, bool allocate) {
     return made;
 }
 
-void TiledMapStore::copyBordersFromNeighbours(TileData& tile, MapId map) {
+void TiledMapStore::copyBordersFromNeighbours(WorldTile& tile, MapId map) {
     const MapGeometry geo = geometry(map);
     if (!geo.shared) return;
     TileMap* own = map.kind == MapKind::Height ? &tile.height : (map.index < static_cast<int>(tile.blend.size()) ? &tile.blend[map.index] : nullptr);
     if (!own || own->empty()) return;
     const int last = geo.side - 1;
     const int gutter = map.kind == MapKind::Height ? 1 : 0;
-    std::shared_ptr<const TileData> near[3][3];
+    std::shared_ptr<const WorldTile> near[3][3];
     for (int dz = -1; dz <= 1; dz++) {
         for (int dx = -1; dx <= 1; dx++) {
             if (dx != 0 || dz != 0) near[dz + 1][dx + 1] = access->tile(offsetCoord(tile.coord, dx, dz));
@@ -272,7 +272,7 @@ void TiledMapStore::copyBordersFromNeighbours(TileData& tile, MapId map) {
         for (int dz = (j == 0 ? -1 : 0); dz <= (j == last ? 1 : 0); dz++) {
             for (int dx = (i == 0 ? -1 : 0); dx <= (i == last ? 1 : 0); dx++) {
                 if (dx == 0 && dz == 0) continue;
-                const std::shared_ptr<const TileData>& other = near[dz + 1][dx + 1];
+                const std::shared_ptr<const WorldTile>& other = near[dz + 1][dx + 1];
                 const TileMap* theirs = other ? tileMap(*other, map) : nullptr;
                 if (!theirs) continue;
                 std::memcpy(own->texel(i + gutter, j + gutter), theirs->texel(i - dx * last + gutter, j - dz * last + gutter), geo.bytesPerTexel);
@@ -287,8 +287,8 @@ void TiledMapStore::copyBordersFromNeighbours(TileData& tile, MapId map) {
     }
 }
 
-std::shared_ptr<TileData> TiledMapStore::makeTile(TileCoord coord) {
-    auto tile = std::make_shared<TileData>();
+std::shared_ptr<WorldTile> TiledMapStore::makeTile(TileCoord coord) {
+    auto tile = std::make_shared<WorldTile>();
     initTile(*tile, worldLattice, coord, worldMaps.baseHeight);
     copyBordersFromNeighbours(*tile, MapId{MapKind::Height, 0});
     return tile;
@@ -340,7 +340,7 @@ void TiledMapStore::dropTile(TileCoord tile) {
     markDirty(MapId{MapKind::Height, 0}, tileRect(MapId{MapKind::Height, 0}, tile));
 }
 
-void TiledMapStore::restoreTile(TileCoord tile, std::shared_ptr<TileData> data) {
+void TiledMapStore::restoreTile(TileCoord tile, std::shared_ptr<WorldTile> data) {
     if (!data) {
         dropTile(tile);
         return;
@@ -356,11 +356,11 @@ void TiledMapStore::restoreTile(TileCoord tile, std::shared_ptr<TileData> data) 
 }
 
 void TiledMapStore::syncGutters(TileCoord coord) {
-    const std::shared_ptr<const TileData> current = access->tile(coord);
+    const std::shared_ptr<const WorldTile> current = access->tile(coord);
     if (!current) return;
     const int n = worldLattice.tileQuads;
     const int last = n + 2;
-    std::shared_ptr<const TileData> near[3][3];
+    std::shared_ptr<const WorldTile> near[3][3];
     for (int dz = -1; dz <= 1; dz++) {
         for (int dx = -1; dx <= 1; dx++) {
             if (dx != 0 || dz != 0) near[dz + 1][dx + 1] = access->tile(offsetCoord(coord, dx, dz));
@@ -390,7 +390,7 @@ void TiledMapStore::syncGutters(TileCoord coord) {
                 for (int b = 0; b < xCount && !found; b++) {
                     const int ox = xs[b], oz = zs[a];
                     if (ox == 0 && oz == 0) continue;
-                    const std::shared_ptr<const TileData>& other = near[oz + 1][ox + 1];
+                    const std::shared_ptr<const WorldTile>& other = near[oz + 1][ox + 1];
                     if (!other || other->height.empty()) continue;
                     value = other->sample(lx - ox * n + 1, lz - oz * n + 1);
                     found = true;
@@ -401,13 +401,14 @@ void TiledMapStore::syncGutters(TileCoord coord) {
         }
     }
     if (wanted.empty()) return;
-    const std::shared_ptr<TileData> tile = access->writable(coord);
+    const std::shared_ptr<WorldTile> tile = access->writable(coord);
+    if (!tile) return;
     for (const auto& [index, value] : wanted) tile->setSample(index % (n + 3), index / (n + 3), value);
     access->changed(coord);
 }
 
 int TiledMapStore::seamErrors(TileCoord coord, bool repair) {
-    const std::shared_ptr<const TileData> tile = access->tile(coord);
+    const std::shared_ptr<const WorldTile> tile = access->tile(coord);
     if (!tile) return 0;
     const int n = worldLattice.tileQuads;
     int errors = 0;
@@ -425,7 +426,7 @@ int TiledMapStore::seamErrors(TileCoord coord, bool repair) {
                 for (int dx = (i == 0 ? -1 : 0); dx <= (i == n ? 1 : 0); dx++) {
                     if (dx == 0 && dz == 0) continue;
                     const TileCoord other = offsetCoord(coord, dx, dz);
-                    const std::shared_ptr<const TileData> theirs = access->tile(other);
+                    const std::shared_ptr<const WorldTile> theirs = access->tile(other);
                     if (!theirs || theirs->height.empty()) continue;
                     holders.push_back(other);
                     const uint16_t value = theirs->sample(sx - other.x * n + 1, sz - other.z * n + 1);
@@ -441,7 +442,8 @@ int TiledMapStore::seamErrors(TileCoord coord, bool repair) {
             if (!repair) continue;
             holders.push_back(coord);
             for (const TileCoord& holder : holders) {
-                const std::shared_ptr<TileData> data = access->writable(holder);
+                const std::shared_ptr<WorldTile> data = access->writable(holder);
+                if (!data) continue;
                 data->setSample(sx - holder.x * n + 1, sz - holder.z * n + 1, winning);
                 access->changed(holder);
             }
@@ -461,7 +463,7 @@ LargeEditPrediction TiledMapStore::predictLarge(MapId map, TexelRect rect) const
     prediction.large = rect.area() > storeOptions.largeEditTexels;
     if (!prediction.large) return prediction;
     for (const TileCoord& coord : tilesOf(map, grow(rect, 1))) {
-        if (const std::shared_ptr<const TileData> tile = access->tile(coord)) {
+        if (const std::shared_ptr<const WorldTile> tile = access->tile(coord)) {
             prediction.snapshotBytes += tile->cpuBytes();
             prediction.tiles++;
         }
@@ -514,7 +516,7 @@ bool TiledMapStore::readBytes(MapId map, TexelRect rect, std::span<uint8_t> out)
     for (size_t i = 0; i < out.size(); i += bytes) std::memcpy(out.data() + i, fill, bytes);
     const int gutter = map.kind == MapKind::Height ? 1 : 0;
     for (const TileCoord& coord : tilesOf(map, rect)) {
-        const std::shared_ptr<const TileData> tile = access->tile(coord);
+        const std::shared_ptr<const WorldTile> tile = access->tile(coord);
         if (!tile) continue;
         const TileMap* source = tileMap(*tile, map);
         if (!source) continue;
@@ -598,7 +600,7 @@ WriteResult TiledMapStore::writeStored(MapId map, TexelRect rect, std::span<cons
         }
 
         // nothing changes: no writable copy, no notice
-        const std::shared_ptr<const TileData> current = access->tile(coord);
+        const std::shared_ptr<const WorldTile> current = access->tile(coord);
         if (!current) continue;
         const TileMap* existing = tileMap(*current, map);
         bool changes = false;
@@ -610,7 +612,12 @@ WriteResult TiledMapStore::writeStored(MapId map, TexelRect rect, std::span<cons
         }
         if (!changes) continue;
 
-        const std::shared_ptr<TileData> tile = access->writable(coord);
+        const std::shared_ptr<WorldTile> tile = access->writable(coord);
+        if (!tile) {
+            std::string why = "tile (" + std::to_string(coord.x) + ", " + std::to_string(coord.z) + ") cannot change now";
+            access->mayWrite(coord, &why);
+            return WriteResult{false, why, result.tilesCreated};
+        }
         TileMap* target = tileMap(*tile, map, true);
         if (!target) continue;
         TexelRect changed;
@@ -649,6 +656,9 @@ bool TiledMapStore::canWrite(MapId map, TexelRect rect, std::string* why) const 
     if (!mapFormat.bounds.contains(rect)) {
         if (why) *why = "the rectangle reaches past the world's addressable lattice";
         return false;
+    }
+    for (const TileCoord& coord : tilesOf(map, rect)) {
+        if (access->present(coord) && !access->mayWrite(coord, why)) return false;
     }
     if (!storeOptions.autoAddTiles || map.kind == MapKind::Hole) return true;
     // every absent tile the rectangle reaches could be made: they must fit R6 together
@@ -743,9 +753,9 @@ std::unique_ptr<TerrainLargeEdit> TiledMapStore::beginLarge(MapId map, TexelRect
     const LargeEditPrediction prediction = predictLarge(map, rect);
     if (!prediction.large) return nullptr;
     if (!prediction.undoable) return std::make_unique<UnrecordedLargeEdit>();
-    std::vector<std::pair<TileCoord, std::shared_ptr<TileData>>> before;
+    std::vector<std::pair<TileCoord, std::shared_ptr<WorldTile>>> before;
     for (const TileCoord& coord : tilesOf(map, grow(rect, 1))) {
-        if (std::shared_ptr<TileData> copy = cloneTile(access->tile(coord))) before.emplace_back(coord, std::move(copy));
+        if (std::shared_ptr<WorldTile> copy = cloneTile(access->tile(coord))) before.emplace_back(coord, std::move(copy));
     }
     return std::make_unique<TiledLargeEdit>(*this, std::move(before));
 }

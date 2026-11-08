@@ -2132,7 +2132,8 @@ void FoliageSystem::update(double dt) {
         const Entity entity = terrains->getEntity(i);
         RegionState* state = impl->regionOf(entity);
 
-        if (terrain.foliageLayers.empty() && terrain.treePrototypes.empty() && terrain.treeData.empty()) {
+        // R38, and T4 R27: a Terrain World's foliage is its resident tiles' regions, never one of its own
+        if ((terrain.foliageLayers.empty() && terrain.treePrototypes.empty() && terrain.treeData.empty()) || terrain.world) {
             // R38: a Terrain with no layer and no prototype has no state at all
             if (state) {
                 impl->destroyRegion(*state);

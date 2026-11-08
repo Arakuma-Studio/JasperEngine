@@ -18,6 +18,13 @@
 #include "terrain/TerrainMaterialCost.h"
 #include "terrain/TerrainQuality.h"
 #include "texture/MaterialPbr.h"
+#include "component/TerrainWorldComponent.h"
+#include "subsystem/TerrainWorldRuntime.h"
+#include "terrain/world/TerrainTileFormat.h"
+#include "terrain/world/TerrainWorldData.h"
+
+#include <filesystem>
+#include <fstream>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -667,6 +674,8 @@ namespace {
         bool holes;
         VariantFeature feature;
         terrain::TerrainDebugView debug = terrain::TerrainDebugView::SHADED;
+        // T4: the same terrain as a Terrain World ('Twd' on every pass), its maps its tiles'
+        bool world = false;
     };
 
     std::vector<VariantCase> allVariantCases(){
@@ -691,7 +700,65 @@ namespace {
                 }
             }
         }
+        // T4: every one of them again as a Terrain World
+        const size_t plain = cases.size();
+        for (size_t i = 0; i < plain; i++){
+            VariantCase worldCase = cases[i];
+            worldCase.world = true;
+            cases.push_back(worldCase);
+        }
         return cases;
+    }
+
+    // A cooked 2 x 2 world over the fixture's 128 m (tiles -1..0 of 64 quads), heights by f, a hole
+    // patch in each tile when asked: what an export writes (T4 R53)
+    void writeVariantWorld(const std::filesystem::path& folder, float maxHeight, float (*f)(float, float), bool holes){
+        using namespace jasperengine::terrain;
+        WorldManifest manifest;
+        manifest.guid = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
+        manifest.lattice.tileQuads = 64;
+        manifest.lattice.spacing = 1.0f;
+        manifest.maps.maxHeight = maxHeight;
+        manifest.maps.hasHoles = holes;
+        WorldOverview overview;
+        initOverview(overview, manifest.lattice, TileCoord(-1, -1), TileCoord(0, 0), 0);
+        auto write = [](const std::filesystem::path& path, const std::vector<uint8_t>& bytes){
+            std::filesystem::create_directories(path.parent_path());
+            std::ofstream file(path, std::ios::binary);
+            file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        };
+        for (int z = -1; z <= 0; z++){
+            for (int x = -1; x <= 0; x++){
+                WorldTile tile;
+                initTile(tile, manifest.lattice, TileCoord(x, z), 0);
+                for (int j = 0; j < 67; j++){
+                    for (int i = 0; i < 67; i++){
+                        const float h = std::fmin(std::fmax(f(static_cast<float>(x * 64 + i - 1), static_cast<float>(z * 64 + j - 1)), 0.0f), 1.0f);
+                        tile.setSample(i, j, static_cast<uint16_t>(std::lround(h * 65535.0f)));
+                    }
+                }
+                if (holes){
+                    tile.holes.allocate(64, 1, 8, 255);
+                    for (int hz = 20; hz < 40; hz++){
+                        for (int hx = 20; hx < 40; hx++) tile.holes.texel(hx, hz)[0] = 0;
+                    }
+                }
+                const float colours[] = {0.4f, 0.55f, 0.3f, 1.0f};
+                buildDerived(tile, manifest.lattice, colours, 0);
+                std::vector<uint8_t> bytes;
+                encodeTile(tile, TileCodec{}, TileEncodeOptions{}, bytes);
+                write(folder / ("tiles/" + std::to_string(x) + "_" + std::to_string(z) + ".jtile"), bytes);
+                setOverviewPatch(overview, tile);
+                const TileMinMax whole = tileNodeMinMax(tile, manifest.lattice, manifest.lattice.tileLevel(), 0, 0);
+                manifest.tiles.push_back(WorldTileInfo{TileCoord(x, z), whole.min, whole.max});
+                manifest.skirtDepth = std::fmax(manifest.skirtDepth, tile.skirtDepth);
+            }
+        }
+        std::vector<uint8_t> bytes;
+        encodeOverview(overview, manifest.lattice, TileCodec{}, 0, bytes, nullptr);
+        write(folder / "overview.jtile", bytes);
+        encodeWorldBin(manifest, bytes);
+        write(folder / "world.bin", bytes);
     }
 
     std::string variantName(const ::testing::TestParamInfo<VariantCase>& info){
@@ -701,7 +768,8 @@ namespace {
         const VariantCase& c = info.param;
         std::string name = std::string(layerNames[static_cast<int>(c.layers)]) + "_" + terrain::terrainQualityName(c.tier) +
                            (c.lit == LitQuality::HIGH ? "_LitHigh" : "_LitStandard") + (c.limit ? "_Limited" : "") +
-                           (c.holes ? "_Holes" : "") + featureNames[static_cast<int>(c.feature)] + viewNames[static_cast<int>(c.debug)];
+                           (c.holes ? "_Holes" : "") + featureNames[static_cast<int>(c.feature)] + viewNames[static_cast<int>(c.debug)] +
+                           (c.world ? "_World" : "");
         return name;
     }
 
@@ -724,8 +792,17 @@ TEST_P(TerrainVariantGpu, Draws){
     terrain::TerrainQualitySettings::setDebugView(c.debug);
     TerrainComponent& terrainComponent = component();
     terrainComponent.limitLayersPerPixel = c.limit;
-    if (c.holes){
+    if (c.holes && !c.world){
         holesAcross();
+    }
+    if (c.world){
+        // T4 R58: the Terrain becomes a World; its tiles hold the heights and holes
+        const std::filesystem::path folder = files.path() / "variant.terrainworld";
+        writeVariantWorld(folder, 8.0f, cliffBack, c.holes);
+        TerrainWorldComponent world;
+        world.worldData.path = folder.generic_string();
+        world.useCameraFocus = true;
+        scene.addComponent<TerrainWorldComponent>(terrain->getEntity(), world);
     }
     terrainComponent.macroMode = c.feature == VariantFeature::MACRO_NOISE ? TerrainMacroMode::NOISE
                                  : (c.feature == VariantFeature::MACRO_BASE_MAP ? TerrainMacroMode::BASE_MAP : TerrainMacroMode::OFF);
@@ -738,6 +815,14 @@ TEST_P(TerrainVariantGpu, Draws){
         terrainComponent.surfaceLayers[i].cliffProjection = c.feature == VariantFeature::CLIFF && i % 2 == 0 ? TerrainCliffProjection::FLAT_ONLY : TerrainCliffProjection::AUTO;
     }
 
+    if (c.world){
+        // its overview, then its pages, before the frame is judged
+        GpuEnvironment::setView(frameWidth, frameHeight, frameWidth, frameHeight, Scaling::STRETCH);
+        ASSERT_TRUE(GpuEnvironment::runFrames([this](){
+            const TerrainWorldRuntime* world = component().world;
+            return world && world->isReady() && world->tiles().stats().residentPages > 0;
+        }, 600)) << "the world never streamed in";
+    }
     ASSERT_TRUE(render()) << "never settled";
     std::vector<uint8_t> frame;
     ASSERT_TRUE(readFrame(frame));

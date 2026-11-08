@@ -136,7 +136,7 @@ namespace {
             return true;
         }
 
-        bool walkNear(const TileData& tile, float originX, float originZ, int level, int cellX, int cellZ, WorldTileDraws& draws) {
+        bool walkNear(const WorldTile& tile, float originX, float originZ, int level, int cellX, int cellZ, WorldTileDraws& draws) {
             out.visited++;
             const TileMinMax heights = tileNodeMinMax(tile, params.lattice, level, cellX, cellZ);
             const float size = params.lattice.nodeSize(level);
@@ -306,7 +306,7 @@ void jasperengine::terrain::selectWorld(const WorldSelectParams& params, const W
         return a.distance != b.distance ? a.distance < b.distance : a.tile.key() < b.tile.key();
     });
     for (const Walker::Pending& entry : walker.pending) {
-        const TileData* tile = static_cast<int>(out.near.size()) < params.maxNearTiles && params.page ? params.page(entry.tile) : nullptr;
+        const WorldTile* tile = static_cast<int>(out.near.size()) < params.maxNearTiles && params.page ? params.page(entry.tile) : nullptr;
         if (tile) {
             WorldTileDraws draws;
             draws.tile = entry.tile;

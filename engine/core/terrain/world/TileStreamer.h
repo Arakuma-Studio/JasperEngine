@@ -36,7 +36,7 @@ namespace jasperengine::terrain {
         virtual ~TileIO() = default;
         virtual uint64_t begin(TileCoord tile, TilePriority priority) = 0;
         // Done fills data; Failed fills error
-        virtual TileLoadStatus poll(uint64_t handle, std::shared_ptr<TileData>& data, std::string& error) = 0;
+        virtual TileLoadStatus poll(uint64_t handle, std::shared_ptr<WorldTile>& data, std::string& error) = 0;
         virtual void cancel(uint64_t handle) = 0;
     };
 
@@ -112,11 +112,11 @@ namespace jasperengine::terrain {
         void uploadRefused(TileCoord tile);
 
         TileState state(TileCoord tile) const;
-        std::shared_ptr<const TileData> data(TileCoord tile) const;
+        std::shared_ptr<const WorldTile> data(TileCoord tile) const;
         bool wanted(TileCoord tile) const;
         bool pageStale(TileCoord tile) const;
         // An edit replaced the tile's data: it stays drawable on its old page until the new one is up
-        void replace(TileCoord tile, std::shared_ptr<const TileData> data);
+        void replace(TileCoord tile, std::shared_ptr<const WorldTile> data);
         // The file changed (R14, R31): back to Cold, an Error cleared
         void invalidate(TileCoord tile);
         // The tile was removed from the world
@@ -124,14 +124,14 @@ namespace jasperengine::terrain {
 
         std::vector<TileStreamEvent> takeEvents();
         const TileStreamStats& stats() const { return counters; }
-        uint64_t pageBytes(const TileData& tile) const;
+        uint64_t pageBytes(const WorldTile& tile) const;
         // Tiles with a record, in key order: for the panel and sample_terrain
         std::vector<TileCoord> knownTiles() const;
 
     private:
         struct Record {
             TileState state = TileState::Cold;
-            std::shared_ptr<const TileData> data;
+            std::shared_ptr<const WorldTile> data;
             uint64_t handle = 0;
             TilePriority priority = TilePriority::Normal;
             float distance = 0.0f;

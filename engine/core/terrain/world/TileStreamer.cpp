@@ -134,7 +134,7 @@ void TileStreamer::resort(double now) {
 void TileStreamer::pollLoads(double now) {
     for (auto& [key, record] : records) {
         if (record.state != TileState::Loading) continue;
-        std::shared_ptr<TileData> data;
+        std::shared_ptr<WorldTile> data;
         std::string error;
         const TileLoadStatus status = io.poll(record.handle, data, error);
         if (status == TileLoadStatus::Pending) continue;
@@ -254,6 +254,29 @@ void TileStreamer::evict() {
             events.push_back(TileStreamEvent{TileStreamEvent::Kind::PageEvicted, TileCoord::fromKey(key), ""});
         }
     }
+    // the pool shrank under the pages it holds: the farthest wanted ones go too, never the focus's
+    // tile or a pinned one (R8; the overview draws them, R34)
+    if (counters.residentPages > limits.poolSize) {
+        std::vector<std::pair<float, uint32_t>> wantedPages;
+        for (const auto& [key, record] : records) {
+            if (record.page && record.wanted && !record.pinned && !record.focusTile) wantedPages.emplace_back(record.distance, key);
+        }
+        std::sort(wantedPages.begin(), wantedPages.end(), [](const auto& a, const auto& b) {
+            return a.first != b.first ? a.first > b.first : a.second > b.second;
+        });
+        for (const auto& [distance, key] : wantedPages) {
+            if (counters.residentPages <= limits.poolSize) break;
+            Record& record = records[key];
+            record.page = false;
+            record.stale = false;
+            counters.residentPages--;
+            counters.gpuBytes -= record.gpuBytes;
+            record.gpuBytes = 0;
+            record.state = record.data ? TileState::CpuReady : TileState::Cold;
+            counters.evictedPages++;
+            events.push_back(TileStreamEvent{TileStreamEvent::Kind::PageEvicted, TileCoord::fromKey(key), ""});
+        }
+    }
     if (counters.cpuBytes > limits.cpuCapBytes) {
         for (const auto& [age, key] : victims(false)) {
             if (counters.cpuBytes <= limits.cpuCapBytes) break;
@@ -304,7 +327,7 @@ void TileStreamer::update(double now) {
     recount();
 }
 
-uint64_t TileStreamer::pageBytes(const TileData& tile) const {
+uint64_t TileStreamer::pageBytes(const WorldTile& tile) const {
     // height RG8 with gutter, the blend maps and the hole map as the page holds them (R34)
     uint64_t bytes = static_cast<uint64_t>(tile.height.width) * tile.height.height * 2;
     for (const TileMap& map : tile.blend) bytes += map.bytes.size();
@@ -386,7 +409,7 @@ TileState TileStreamer::state(TileCoord tile) const {
     return record ? record->state : TileState::Cold;
 }
 
-std::shared_ptr<const TileData> TileStreamer::data(TileCoord tile) const {
+std::shared_ptr<const WorldTile> TileStreamer::data(TileCoord tile) const {
     const Record* record = find(tile);
     return record ? record->data : nullptr;
 }
@@ -401,7 +424,7 @@ bool TileStreamer::pageStale(TileCoord tile) const {
     return record && record->stale;
 }
 
-void TileStreamer::replace(TileCoord tile, std::shared_ptr<const TileData> data) {
+void TileStreamer::replace(TileCoord tile, std::shared_ptr<const WorldTile> data) {
     Record& record = records[tile.key()];
     if (record.state == TileState::Loading) io.cancel(record.handle);
     record.handle = 0;

@@ -72,7 +72,7 @@ namespace jasperengine::terrain {
     // A box from low to high inclusive, its samples at the base height and its colour mid grey
     JASPERENGINE_API void initOverview(WorldOverview& overview, const WorldLattice& lattice, TileCoord low, TileCoord high, uint16_t baseHeight);
     // One tile's patch from its OVRH and OVRC; false when the tile is outside the box or has none
-    JASPERENGINE_API bool setOverviewPatch(WorldOverview& overview, const TileData& tile);
+    JASPERENGINE_API bool setOverviewPatch(WorldOverview& overview, const WorldTile& tile);
     // Height in metres at an entity-local position over a present tile, by the overview's bilinear
     // (what an overview draw shows), and its normal
     JASPERENGINE_API SurfaceSample sampleOverview(const WorldOverview& overview, const WorldLattice& lattice, float maxHeight, float localX, float localZ);

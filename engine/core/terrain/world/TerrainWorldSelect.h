@@ -82,7 +82,7 @@ namespace jasperengine::terrain {
         int maxNearTiles = 16;      // D
         int maxNodesPerGrid = 4096;
         // the tile's resident data when its page can draw, else null (R10)
-        std::function<const TileData*(TileCoord)> page;
+        std::function<const WorldTile*(TileCoord)> page;
     };
 
     // r_L = 2 size_L lodDistance; the root's range reaches the far clip

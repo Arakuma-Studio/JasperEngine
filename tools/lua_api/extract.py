@@ -51,6 +51,7 @@ _MODULE_MACROS = {
     'JASPERENGINE_PHYSICS_2D': 'physics2d',
     'JASPERENGINE_PHYSICS_3D': 'physics3d',
     'JASPERENGINE_SOUND_LAYER': 'soundlayer',
+    'JASPERENGINE_TERRAIN_WORLD': 'terrainworld',
 }
 
 

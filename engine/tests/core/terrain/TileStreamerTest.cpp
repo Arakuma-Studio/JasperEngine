@@ -32,7 +32,7 @@ namespace {
             return next;
         }
 
-        TileLoadStatus poll(uint64_t handle, std::shared_ptr<TileData>& data, std::string& error) override {
+        TileLoadStatus poll(uint64_t handle, std::shared_ptr<WorldTile>& data, std::string& error) override {
             Load& load = loads[handle];
             if (autoFinish && load.finish == 0) load.finish = failing.count(load.tile.key()) ? -1 : 1;
             if (load.finish == 0) return TileLoadStatus::Pending;
@@ -40,7 +40,7 @@ namespace {
                 error = "read failed";
                 return TileLoadStatus::Failed;
             }
-            auto tile = std::make_shared<TileData>();
+            auto tile = std::make_shared<WorldTile>();
             initTile(*tile, lattice, load.tile, 100);
             data = tile;
             return TileLoadStatus::Done;
@@ -224,7 +224,7 @@ TEST(TileStreamer, NeverEvictsFocusOrPinned) {
 TEST(TileStreamer, RespectsMemoryCaps) {
     Stream stream(20);
     WorldLattice lattice = stream.lattice;
-    TileData sample;
+    WorldTile sample;
     initTile(sample, lattice, TileCoord(0, 0), 0);
     stream.streamer.budgets().cpuCapBytes = sample.cpuBytes() * 30;
     stream.streamer.budgets().gpuCapBytes = stream.streamer.pageBytes(sample) * 6;
@@ -261,7 +261,7 @@ TEST(TileStreamer, UploadBudget) {
         now += 0.05;
         stream.streamer.update(now);
     }
-    TileData sample;
+    WorldTile sample;
     initTile(sample, stream.lattice, TileCoord(0, 0), 0);
     const uint64_t page = stream.streamer.pageBytes(sample);
     // a budget of 2.5 pages takes 2; a budget under one page still takes one (progress)

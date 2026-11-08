@@ -823,7 +823,10 @@ TerrainComponent* SplineSystem::findTerrainUnder(const Vector3& worldPoint, Enti
         }
         const Vector3 local = transform->modelMatrix.inverse() * worldPoint;
         const float half = terrain.terrainSize * 0.5f;
-        if (local.x >= -half && local.x <= half && local.z >= -half && local.z <= half){
+        // T4: a World is under the point where one of its tiles is
+        const bool under = terrain.world ? querySurface(terrain, local.x, local.z).present
+                                         : (local.x >= -half && local.x <= half && local.z >= -half && local.z <= half);
+        if (under){
             terrainEntity = entity;
             return &terrain;
         }
@@ -864,11 +867,15 @@ bool SplineSystem::collectStations(Entity entity, const SplineComponent& spline,
             }
             const Vector3 local = terrainTransform->modelMatrix.inverse() * point;
             const float half = terrain->terrainSize * 0.5f;
-            if (local.x < -half || local.x > half || local.z < -half || local.z > half || !terrain->heightMap.hasData()){
+            // T4 R26: a World's ground is its tiles' (a job waits for a cold one), absent off them
+            if (!terrain->world && (local.x < -half || local.x > half || local.z < -half || local.z > half || !terrain->heightMap.hasData())){
                 return sample;
             }
             // T3 R26: the height map stays defined under a hole, so a road bridges it
             const terrain::SurfaceSample ground = querySurface(*terrain, local.x, local.z);
+            if (terrain->world && !ground.present){
+                return sample;
+            }
             if (ground.hole){
                 (*stationsOverHole)++;
             }

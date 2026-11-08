@@ -116,10 +116,36 @@ TEST(ContentManifest, RefusesContentNeedingAModuleThePlayerLacks) {
     ASSERT_TRUE(ContentManifest::fromJson(json, old, error)) << error;
     EXPECT_FALSE(old.hasModules);
     EXPECT_EQ(missingModules(old, allModules()), std::vector<std::string>{});
-    EXPECT_EQ(missingModules(old, lite), (std::vector<std::string>{"htmlui", "video", "runtimeshaders"}));
+    EXPECT_EQ(missingModules(old, lite), (std::vector<std::string>{"htmlui", "video", "runtimeshaders", "terrainworld"}));
     // and a Compile build (no player id) is not asked
     problems.clear();
     EXPECT_TRUE(checkContent(m, "", access, false, problems, &lite));
+}
+
+// T4 R55, AC36: lite3d leaves Terrain Worlds out, so content with one does not start on it (S34 R3)
+TEST(ContentManifest, ContentNeedingTerrainWorldRefusesLite3D) {
+    ContentManifest m = sample();
+    m.modules = {"physics3d", "navigation", "terrainworld"};
+    present() = {"scenes/3.jscn", "scenes/4.jscn", "prefabs/2.jpfb", "assets/shaders/MESH_x_glsl410.sdat", "content.jpak"};
+    const ContentAccess access{&exists, &noSha};
+    const std::vector<std::string> lite3d = {"physics3d", "navigation"};
+    std::vector<std::string> problems;
+    EXPECT_FALSE(checkContent(m, "linux-x64-glcore-release-lite3d", access, false, problems, &lite3d));
+    bool named = false;
+    for (const std::string& problem : problems) named = named || problem.find("Terrain World (terrainworld)") != std::string::npos;
+    EXPECT_TRUE(named);
+    EXPECT_EQ(missingModules(m, lite3d), std::vector<std::string>{"terrainworld"});
+}
+
+TEST(PlayerModules, KnowsTerrainWorldLast) {
+    ASSERT_FALSE(allModules().empty());
+    EXPECT_EQ(allModules().back(), "terrainworld");
+    EXPECT_EQ(moduleDisplayName("terrainworld"), "Terrain World");
+#if JASPERENGINE_TERRAIN_WORLD
+    EXPECT_TRUE(isModuleBuilt("terrainworld"));
+#else
+    EXPECT_FALSE(isModuleBuilt("terrainworld"));
+#endif
 }
 
 TEST(PlayerModules, BuiltModulesFollowTheBuildDefinitions) {

@@ -40,6 +40,10 @@ option(JASPERENGINE_ECS_BENCH "Build jasperengine-ecs-bench" OFF)
 # OFF leaves the library out and the navmesh API fails (grids keep working). The export sets it
 # from Project Settings > Navigation.
 option(JASPERENGINE_NAVIGATION "Compile Recast/Detour navigation meshes and crowds" ON)
+# Terrain Worlds (S34 module terrainworld, spec T4): tiled terrain past one map, streamed, with paged
+# collision. OFF leaves them out: a World draws and collides as nothing, and a player refuses content
+# that needs one (S34 R3).
+option(JASPERENGINE_TERRAIN_WORLD "Compile Terrain Worlds (tiles, streaming, collision paging)" ON)
 # The sound layer (S34 module soundlayer, specs S36 and S37): Sound Events, triggers, free voices and
 # what a clip's import settings do at run time. A Compile build leaves it out when its project does
 # not use it.
@@ -1805,6 +1809,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/RenderSystemBatch.cpp
     core/subsystem/RenderSystemLighting.cpp
     core/subsystem/RenderSystemTerrain.cpp
+    core/subsystem/RenderSystemTerrainWorld.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp
     core/subsystem/UISystemNavigation.cpp
@@ -1968,6 +1973,9 @@ include(core/particles/ParticleSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS} ${JASPERENGINE_PARTICLE_SYSTEM_SRCS})
 include(core/terrain/TerrainSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_TERRAIN_SRCS})
+if(JASPERENGINE_TERRAIN_WORLD)
+    list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_TERRAIN_WORLD_SRCS})
+endif()
 # Navigation (S19): navmeshes, crowds, grids, the NavigationSystem and its Lua objects
 include(core/navigation/NavigationSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NAVIGATION_SRCS})
@@ -2162,6 +2170,7 @@ target_compile_definitions(jasperengine
         JASPERENGINE_DEVELOPMENT_BUILD=$<OR:$<BOOL:${JASPERENGINE_DEVELOPMENT_BUILD}>,$<CONFIG:Debug>>
         JASPERENGINE_TRACY=$<BOOL:${JASPERENGINE_TRACY}>
         JASPERENGINE_NAVIGATION=$<BOOL:${JASPERENGINE_NAVIGATION}>
+        JASPERENGINE_TERRAIN_WORLD=$<BOOL:${JASPERENGINE_TERRAIN_WORLD}>
         JASPERENGINE_SOUND_LAYER=$<BOOL:${JASPERENGINE_SOUND_LAYER}>
         JASPERENGINE_HTMLUI=$<BOOL:${JASPERENGINE_HTMLUI}>
         JASPERENGINE_VIDEO=$<BOOL:${JASPERENGINE_VIDEO}>
@@ -2258,12 +2267,14 @@ jasperengine_skip_unity_build(
 # are the same on every CPU only without floating-point contraction
 if(MSVC)
     set_source_files_properties(${JASPERENGINE_TERRAIN_SRCS} PROPERTIES COMPILE_OPTIONS "/fp:precise")
+    set_source_files_properties(${JASPERENGINE_TERRAIN_WORLD_PURE_SRCS} PROPERTIES COMPILE_OPTIONS "/fp:precise")
 else()
     set_source_files_properties(${JASPERENGINE_TERRAIN_SRCS} PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+    set_source_files_properties(${JASPERENGINE_TERRAIN_WORLD_PURE_SRCS} PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 endif()
 jasperengine_skip_unity_build(
     REASON "the terrain kernels: no floating-point contraction, per unit"
-    SOURCES ${JASPERENGINE_TERRAIN_SRCS})
+    SOURCES ${JASPERENGINE_TERRAIN_SRCS} ${JASPERENGINE_TERRAIN_WORLD_PURE_SRCS})
 
 # the mip chain and the import processing: no fused multiply-adds, so the levels (and the cook
 # cache keys built on them) are the same bytes on every CPU, like stb_image_resize2's

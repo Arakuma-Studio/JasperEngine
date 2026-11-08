@@ -29,24 +29,30 @@ namespace jasperengine::terrain {
         virtual ~TileAccess() = default;
         virtual bool present(TileCoord tile) const = 0;
         // The CPU data, loaded now if it must be; null when absent or unreadable
-        virtual std::shared_ptr<const TileData> tile(TileCoord tile) const = 0;
+        virtual std::shared_ptr<const WorldTile> tile(TileCoord tile) const = 0;
         // The copy the store may change: a reader holding the old one (a job) keeps it as it was
-        virtual std::shared_ptr<TileData> writable(TileCoord tile) = 0;
-        virtual void add(TileCoord tile, std::shared_ptr<TileData> data) = 0;
+        virtual std::shared_ptr<WorldTile> writable(TileCoord tile) = 0;
+        virtual void add(TileCoord tile, std::shared_ptr<WorldTile> data) = 0;
         virtual void remove(TileCoord tile) = 0;
         // The tile's bytes changed (samples, gutters, maps): its derived sections, page and file follow
         virtual void changed(TileCoord tile) = 0;
         // The box of present tiles, inclusive; false when there are none
         virtual bool bounds(TileCoord& low, TileCoord& high) const = 0;
+        // Whether this tile may change now (R31's cap on a game's edited tiles); asked by canWrite
+        virtual bool mayWrite(TileCoord tile, std::string* why) const {
+            (void)tile;
+            (void)why;
+            return true;
+        }
     };
 
     // Tiles in memory: tests, the import's slicing and the runtime's edit pins all start from it
     class JASPERENGINE_API MemoryTileAccess : public TileAccess {
     public:
         bool present(TileCoord tile) const override;
-        std::shared_ptr<const TileData> tile(TileCoord tile) const override;
-        std::shared_ptr<TileData> writable(TileCoord tile) override;
-        void add(TileCoord tile, std::shared_ptr<TileData> data) override;
+        std::shared_ptr<const WorldTile> tile(TileCoord tile) const override;
+        std::shared_ptr<WorldTile> writable(TileCoord tile) override;
+        void add(TileCoord tile, std::shared_ptr<WorldTile> data) override;
         void remove(TileCoord tile) override;
         void changed(TileCoord tile) override;
         bool bounds(TileCoord& low, TileCoord& high) const override;
@@ -57,7 +63,7 @@ namespace jasperengine::terrain {
         std::vector<TileCoord> takeChanged();
 
     private:
-        std::map<uint32_t, std::shared_ptr<TileData>> tiles;
+        std::map<uint32_t, std::shared_ptr<WorldTile>> tiles;
         std::map<uint32_t, bool> changedTiles;
     };
 
@@ -141,7 +147,7 @@ namespace jasperengine::terrain {
         std::unique_ptr<TerrainStoreUndoHook> takeUndoHook() override;
 
         // Used by the undo hook and the large edit's restore
-        void restoreTile(TileCoord tile, std::shared_ptr<TileData> data);
+        void restoreTile(TileCoord tile, std::shared_ptr<WorldTile> data);
         void dropTile(TileCoord tile);
 
     private:
@@ -157,10 +163,10 @@ namespace jasperengine::terrain {
         MapGeometry geometry(MapId map) const;
         void defaultTexel(MapId map, uint8_t* out) const;
         // The map of a tile a texel goes to; allocated with the default when allocate, else null
-        TileMap* tileMap(TileData& tile, MapId map, bool allocate);
-        const TileMap* tileMap(const TileData& tile, MapId map) const;
-        void copyBordersFromNeighbours(TileData& tile, MapId map);
-        std::shared_ptr<TileData> makeTile(TileCoord tile);
+        TileMap* tileMap(WorldTile& tile, MapId map, bool allocate);
+        const TileMap* tileMap(const WorldTile& tile, MapId map) const;
+        void copyBordersFromNeighbours(WorldTile& tile, MapId map);
+        std::shared_ptr<WorldTile> makeTile(TileCoord tile);
         WriteResult writeStored(MapId map, TexelRect rect, std::span<const uint8_t> in, bool allowCreate);
         void markDirty(MapId map, TexelRect rect);
 

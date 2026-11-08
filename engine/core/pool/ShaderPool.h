@@ -179,6 +179,9 @@ namespace jasperengine{
         // the variant bit of a terrain's holes (T3 R20: TERRAIN_HOLES) of MESH, DEPTH and GBUFFER, 0 for
         // another type. Never in getFallbackProperties: a dropped hole would draw over the hole.
         static uint64_t getTerrainHolesProperty(ShaderType shaderType);
+        // the variant bit of a Terrain World (T4 R58: HAS_TERRAIN_WORLD, 'Twd') of MESH, DEPTH and GBUFFER,
+        // 0 for another type. It widens u_vs_terrainParams, so no fallback drops it.
+        static uint64_t getTerrainWorldProperty(ShaderType shaderType);
         // the GBUFFER bits of a terrain's tier and of its twelve layers (T3 D2: Lit defines do not reach
         // a G-buffer); High has no bit, so its keys stay
         static uint64_t getTerrainTierProperty(terrain::TerrainQuality quality);

@@ -45,7 +45,7 @@ namespace {
 
     // Compares every shared border sample of two neighbours, heights and normals, bit for bit;
     // returns how many normals differ
-    int compareBorder(const TileData& a, const TileData& b, int n, float maxHeight, float spacing, bool alongX) {
+    int compareBorder(const WorldTile& a, const WorldTile& b, int n, float maxHeight, float spacing, bool alongX) {
         int differing = 0;
         for (int k = 0; k <= n; k++) {
             // a's last shared column (or row) is b's first
@@ -164,7 +164,7 @@ TEST(WorldLattice, BorderNormalsMatch) {
     EXPECT_EQ(compareBorder(*lowRight, *highRight, n, maxHeight, h, false), 0);
 
     // the control the spec names: without the gutter the two sides read different neighbours
-    TileData noGutter = *highRight;
+    WorldTile noGutter = *highRight;
     for (int k = 0; k < n + 3; k++) noGutter.setSample(0, k, noGutter.sample(1, k));
     int differing = 0;
     for (int k = 0; k <= n; k++) {
