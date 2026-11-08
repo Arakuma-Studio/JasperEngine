@@ -688,7 +688,8 @@ void jasperengine::editor::titledesigner::partPage(RowContext& ctx, const std::s
         ctx.countNoun = "Rims";
         // the rims' indexes (several rims of one layer edit together, R12)
         std::vector<std::string> bases;
-        const ta::Json rims = object->value("style", ta::Json::object()).value("rims", ta::Json::array());
+        // (read in place: used only before any row could edit the document)
+        const ta::Json& rims = memberOr(memberOr(*object, "style", emptyObject()), "rims", emptyArray());
         for (const std::string& p : parts) {
             for (size_t i = 0; i < rims.size(); i++) {
                 if ("rim:" + str(rims[i], "id") == p) bases.push_back("style.rims[" + std::to_string(i) + "]");
@@ -704,8 +705,8 @@ void jasperengine::editor::titledesigner::partPage(RowContext& ctx, const std::s
         };
         if (!ctx.collecting()) ImGui::SeparatorText(parts.size() > 1 ? (std::to_string(parts.size()) + " Rims").c_str() : partLabel(*object, part).c_str());
         for (const char* key : {"enabled", "width", "join", "fill_counters", "offset"}) fieldRow(ctx, rimRefs(key));
-        if (beginSection(ctx, "plate", "Plate", objectSummary("plate", fieldValue(doc, {layer, bases[0] + ".plate"}) ? *fieldValue(doc, {layer, bases[0] + ".plate"}) : ta::Json::object()),
-                         false)) {
+        const ta::Json* plate = ctx.collecting() ? nullptr : fieldValue(doc, {layer, bases[0] + ".plate"});
+        if (beginSection(ctx, "plate", "Plate", plate ? objectSummary("plate", *plate) : std::string(), false)) {
             ctx.stepPrefix = prefix + "Plate ";
             for (const char* key : {"kind", "close", "corner", "slant"}) fieldRow(ctx, rimRefs(std::string("plate.") + key));
             ctx.stepPrefix = prefix;
