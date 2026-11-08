@@ -130,7 +130,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | T4 implementation | in progress | `terrain/t4-worlds` at 02f215f48 (integration with T2 merged). Built: tiles, tiled store, streaming, compound-shape collision paging, `Twd` variant, .terrainworld asset and cook, panel, inspector, undo, Lua, module, edit_terrain_world, sample_terrain {world}. Core 565/565, GPU (lavapipe) 418/418, editor 108/108, world MCP 11/11. Sent back to build: foliage on worlds, Convert to Terrain World, navigation, panel import and cancellable import job, streaming overlay, spline water fill, Physics Placement |
 | T5 implementation | landed | Merged into integration (caf5a42a0) at 34b6bf7a3: core 221/221, GPU 22/22 cold cache, editor 137/137, foliage/terrain/navigation MCP files, lints. Not run here: test_foliage_export (player), the eval case for `wait`, web, Android, other platforms. Build tree deleted for disk |
 | T6 implementation | landed | Merged into integration (e1021e82c) at 10bc59d4c: core 461/461 WERROR, editor 267/267 WERROR, test_voxels 12/12, voxel and hole GPU tests on Vulkan 48/48 and glcore 49/49. The Vulkan 'hang' was T6's own test giving up after 4 frames while Vulkan creates pipelines on a worker; no render bug (general runtime variant switch on Vulkan verified). Not run: web, Android, sanitizers, full suites, eval. Build tree deleted |
-| Merge `terrain/integration` to `main`, merge `origin/main`, push | not started | |
+| Merge `terrain/integration` to `main`, merge `origin/main`, push | in progress | origin/main (622 commits) merged into integration; final merge and push after T1b, T1 performance and T4 land and the final gates pass |
 
 ## Log
 
@@ -189,6 +189,10 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
   T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- origin/main merged into integration (2a414c895, via terrain/upstream-merge a0e90439f): 622 upstream commits plus T3's GLES3 fit,
+  T6's CaveMouth fix and a fan-out cut (TerrainSurfaceLayer.h 148 to 87; worst header now MeshComponent.h at 137). Core 819/819,
+  editor 431, MCP 139 (both single failures fixed and rerun), VoxelTerrainGpu stable over repeats. This is the new base for T1b,
+  T1's performance work and T4.
 - T1b done (terrain/t1-benches 47351285e): pen pressure on every platform (Linux reader header-free), benches, size script, and 14
   Terrain Lua getters fixed (from T5's 3204d1e62 and T1's edf78d1cf). Measured T1 over budget: its code adds ~312 KiB to the Linux
   player against 96 KiB (AC40 fails), and 9 of 18 bench budgets miss (whole-map ops 2-4x). Decision: fix, don't record. T1 makes the
