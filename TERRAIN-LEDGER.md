@@ -124,7 +124,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | Merge of `origin/main` (pixel art, Doriax specs, lean MCP, no CI) | done | Specs renumbered from S41-S46 to T1-T6 |
 | Spec revision for the upstream changes | done | `terrain` 10 tools, `voxels` 4, no format bump, no new budget exceptions |
 | T1 foundation | done, verification continuing | On integration; writer migration has since moved to `terrain/s53-authoring` |
-| T1 implementation | most landed, two parallel batches left | Part 1 of the final batch merged (b6312c623): Create Terrain's Import Raw start shape and Base Layer (a real Layer 0 filled at full weight), edit_terrain place_objects/erase_objects on T5's tree store; core 235/235, editor 156/156, MCP 61/61. Left: window items on terrain/s53-authoring (stroke log, alternates, shortcut context, Pick, decal fade, Resize, hillshade and Paint by Rules previews); pen readers and benches on terrain/t1-benches (.worktrees/t1b, second agent) |
+| T1 implementation | nearly done | Window batch merged (3b8f715e7): Terrain Brush shortcut context, C alternate, decal fade, range eyedroppers, Resize, hillshade preview, Paint by Rules Preview, stroke log. Left (one small batch): true-average alternate and the Alt Alternates While Painting preference, Noise Size eyedropper and Alt+click on release, AC29's real-mouse stroke-log test. Pen readers and benches on terrain/t1-benches |
 | T2 implementation | landed | Merged into integration (6af5f3b9d) at 2b280b147: core 133/133, editor 70/70 and 9/9, T2 and T1 MCP files pass, fan-out worst 129, lints. Not run: the test_noise_export player run, je-bench-noise, eval, web, Android, size checks, NDK armv7. Build tree deleted |
 | T3 implementation | landed | Merged into integration (9f3ffd6ba) at 8376cd9c4: core 560/560 (all 207 variants), editor 182/182, terrain MCP 35/35, fan-out worst 127. Driver workarounds recorded (llvmpipe GL path). Not run: web, Android, full Vulkan suite, perf checks |
 | T4 implementation | in progress | `terrain/t4-worlds` at 02f215f48 (integration with T2 merged). Built: tiles, tiled store, streaming, compound-shape collision paging, `Twd` variant, .terrainworld asset and cook, panel, inspector, undo, Lua, module, edit_terrain_world, sample_terrain {world}. Core 565/565, GPU (lavapipe) 418/418, editor 108/108, world MCP 11/11. Sent back to build: foliage on worlds, Convert to Terrain World, navigation, panel import and cancellable import job, streaming overlay, spline water fill, Physics Placement |
@@ -189,6 +189,10 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
   T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- T1 window batch landed (3b8f715e7), identical to T1's tree. Its test run caught Esc both cancelling a stroke and putting the brush
+  down, turning the release into a stray Deselect All; fixed before landing.
+- Guide budget resolved on terrain/upstream-merge (aac58b2c9): the programme's two "Other areas" entries removed, 7 bytes of upstream
+  wording trimmed with the same meaning, and the terrain and voxels group descriptions now name edit_terrain/edit_voxels and their docs.
 - origin/main merge prepared on terrain/upstream-merge (13cf25705): 622 commits, WERROR build, core 810, editor 418 (2 failures,
   one fixed), MCP 123/123, fan-out 148 of 150; SplineGpu.FenceAndWall now passes (upstream recaptured its golden; follow-up
   closed). Found: T3's 12-layer variants use 226-241 GLES3 fragment uniform vectors against 224 (would break on WebGL2/Android;
