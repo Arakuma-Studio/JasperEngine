@@ -544,6 +544,9 @@ Json terrainInfo(Project* project, Scene* scene, Entity entity) {
         Json layer = detailLayerJson(project, terrain.foliageLayers[i]);
         layer["index"] = i;
         layer["drawn"] = scene->getSystem<MeshSystem>()->getFoliageInstanceCount(entity, i);
+        // why it draws nothing (a map without CPU-readable pixels)
+        const std::string error = scene->getSystem<MeshSystem>()->getFoliageError(entity, i);
+        if (!error.empty()) layer["error"] = error;
         details.push_back(layer);
     }
     const float half = terrain.terrainSize * 0.5f;
