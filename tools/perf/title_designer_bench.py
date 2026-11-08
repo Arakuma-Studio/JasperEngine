@@ -156,6 +156,7 @@ async def ui_numbers(ed: Editor, docs: dict[str, str], profile: bool) -> dict:
                 break
         index.append(t["index_ms"])
         query.append(t["query_ms"])
+        out.setdefault("index_parts", []).append({k: t.get(k) for k in ("index_rows_ms", "index_lookup_ms", "index_values_ms", "index_add_ms", "index_rows")})
     out["index_ms"] = index
     out["query_ms"] = query
     if profile:

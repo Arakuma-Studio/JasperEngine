@@ -530,7 +530,10 @@ ta::Json TitleDesignerWindow::state() const {
     out["keyboard_focus"] = focusedRegion >= 0 ? ta::Json(regionName(focusedRegion)) : ta::Json();
     out["timings"] = {{"frame_ms", frameMs}, {"frame_ms_avg", frameSamples.empty() ? 0.0 : frameMsSum / (double)frameSamples.size()},
                       {"frame_ms_max", frameMsMax}, {"frames", frameSamples.size()}, {"index_ms", indexMs}, {"query_ms", queryMs},
-                      {"index_entries", index.size()}, {"document_passes", documentPasses}};
+                      {"index_entries", index.size()}, {"document_passes", documentPasses},
+                      {"index_rows_ms", lastCollectTimes().rows}, {"index_lookup_ms", lastCollectTimes().lookup},
+                      {"index_values_ms", lastCollectTimes().values}, {"index_add_ms", lastCollectTimes().index},
+                      {"index_rows", lastCollectTimes().rowCount}};
     out["library"] = {{"provider", libraryProvider() ? "registered" : "starter"}, {"shown", libraryShown}};
     ta::Json notices = ta::Json::array();
     if (cjkNoticeShown) notices.push_back("cjk_font_missing");

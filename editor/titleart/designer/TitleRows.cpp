@@ -16,10 +16,12 @@
 #include "imgui_internal.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
-#include <unordered_map>
 #include <cstdio>
+#include <optional>
 #include <set>
+#include <unordered_map>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -482,7 +484,30 @@ const std::vector<RowAudit>& jasperengine::editor::titledesigner::lastCollectAud
     return audit();
 }
 
+namespace {
+    jasperengine::editor::titledesigner::CollectTimes collectTimes;
+
+    double msSince(std::chrono::steady_clock::time_point start) {
+        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    }
+
+    // adds the scope's time to a CollectTimes member while a Collect pass runs
+    struct CollectTimer {
+        double* into;
+        std::chrono::steady_clock::time_point start;
+        CollectTimer(bool collecting, double& member) : into(collecting ? &member : nullptr), start(std::chrono::steady_clock::now()) {}
+        ~CollectTimer() {
+            if (into) *into += msSince(start);
+        }
+    };
+}
+
+const jasperengine::editor::titledesigner::CollectTimes& jasperengine::editor::titledesigner::lastCollectTimes() {
+    return collectTimes;
+}
+
 void jasperengine::editor::titledesigner::clearCollectAudit() {
+    collectTimes = CollectTimes();
     audit().clear();
 }
 
@@ -631,11 +656,14 @@ jasperengine::editor::titledesigner::CollectLayerLookup::~CollectLayerLookup() {
 
 void jasperengine::editor::titledesigner::fieldRow(RowContext& ctx, const std::vector<FieldRef>& targets, const RowExtras& extras) {
     JE_PROFILE_SCOPE("TD fieldRow");
+    const CollectTimer rowTimer(ctx.collecting(), collectTimes.rows);
+    if (ctx.collecting()) collectTimes.rowCount++;
     if (targets.empty() || !ctx.state) return;
     const ta::TitleArtDoc& doc = ctx.state->shown();
     ta::FieldLookup found;
     {
         JE_PROFILE_SCOPE("TD row lookup");
+        const CollectTimer timer(ctx.collecting(), collectTimes.lookup);
         found = lookup(doc, targets[0]);
     }
     if (!found.ok || (!found.member && !found.param)) return;
@@ -699,6 +727,7 @@ void jasperengine::editor::titledesigner::fieldRow(RowContext& ctx, const std::v
 
     // values over the targets
     JE_PROFILE_SCOPE("TD row values");
+    std::optional<CollectTimer> valuesTimer(std::in_place, ctx.collecting(), collectTimes.values);
     std::vector<ta::Json> values;
     values.reserve(targets.size());
     for (const FieldRef& target : targets) {
@@ -770,8 +799,10 @@ void jasperengine::editor::titledesigner::fieldRow(RowContext& ctx, const std::v
     }
     if (inherited) options.isDefault = true;
 
+    valuesTimer.reset();
     if (ctx.collecting()) {
         JE_PROFILE_SCOPE("TD row index");
+        const CollectTimer timer(true, collectTimes.index);
         if (ctx.sink) {
             IndexEntry entry;
             entry.rowId = rowId;

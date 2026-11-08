@@ -173,6 +173,13 @@ namespace jasperengine::editor::titledesigner {
         double defaultValue = 0.0;
         double hardMin = 0.0, hardMax = 0.0;
     };
+    // where the last Collect pass spent its time (ms): the rows' schema lookups, their values and
+    // index entries, and the rows all told (the rest is the pages' own work); R69's bench reads it
+    struct CollectTimes {
+        double lookup = 0.0, values = 0.0, index = 0.0, rows = 0.0;
+        int rowCount = 0;
+    };
+    const CollectTimes& lastCollectTimes();
     // the numeric rows a Collect pass saw, with their schema defaults
     const std::vector<RowAudit>& lastCollectAudit();
     void clearCollectAudit();
