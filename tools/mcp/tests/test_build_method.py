@@ -12,6 +12,7 @@ import base64
 import hashlib
 import json
 import plistlib
+import re
 import shutil
 import stat
 import struct
@@ -25,6 +26,14 @@ from harness import Editor, record_built_player
 CI = True
 EDITOR = {"create": True, "name": "Build Method Test"}
 RUNTIME = "linux-x64-glcore-release"
+REPO = Path(__file__).resolve().parents[3]
+
+
+def content_format() -> str:
+    """The cooked format this tree's editor writes (a runtime that reads less is refused), as
+    tools/players/package_player.py reads it."""
+    text = (REPO / "engine/core/serialization/CookedScene.h").read_text(encoding="utf-8")
+    return ".".join(re.search(rf"FORMAT_{part} = (\d+)", text).group(1) for part in ("MAJOR", "MINOR"))
 
 
 def png_bytes(width: int, height: int, rgb=(200, 40, 40)) -> bytes:
@@ -39,7 +48,7 @@ def runtime_archive(path: Path, version: str) -> Path:
     binary = Path("/bin/true").read_bytes()
     info = {
         "schemaVersion": 1, "id": RUNTIME, "platform": "linux", "arch": "x64", "backend": "glcore", "flavour": "release",
-        "engineVersion": version, "gitSha": "", "contentFormatVersion": "1.0", "modelCookFormats": [1],
+        "engineVersion": version, "gitSha": "", "contentFormatVersion": content_format(), "modelCookFormats": [1],
         "capacities": {}, "features": ["physics2d", "physics3d", "navigation", "runtimeshaders"], "notices": ["lua"],
         "executables": {"files/jasperengine-player": hashlib.sha256(binary).hexdigest()}, "executable": "jasperengine-player",
     }
@@ -178,7 +187,6 @@ async def test_native_code_compiles(ed: Editor):
     ed.check_eq(info["platforms"]["linux"]["method"], "prebuilt")
 
 
-REPO = Path(__file__).resolve().parents[3]
 FEATURES = ["physics2d", "physics3d", "navigation", "runtimeshaders"]
 
 
@@ -188,7 +196,7 @@ def fake_runtime(path: Path, version: str, runtime: str, platform: str, arch: st
     (nothing in it runs here)."""
     info = {
         "schemaVersion": 1, "id": runtime, "platform": platform, "arch": arch, "backend": backend, "flavour": "release",
-        "engineVersion": version, "gitSha": "", "contentFormatVersion": "1.0", "capacities": {},
+        "engineVersion": version, "gitSha": "", "contentFormatVersion": content_format(), "capacities": {},
         "features": FEATURES + (extra_features or []), "notices": [], "executables": {}, "executable": "",
     }
     with zipfile.ZipFile(path, "w") as zipped:

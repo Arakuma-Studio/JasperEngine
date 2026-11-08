@@ -217,10 +217,16 @@ Per spec, the merged tree passes:
 `build/fixture-unity` (TappyPlane) isn't on this host, so tests that need it skip and the reports
 list them. There is no CI.
 
-Every landing set also runs the shared-data suites: editor unit `ShaderNeutralApi*:ReflectParity*:ReflectRegistry*:RuntimeFields*:CookedScene*:ReflectLocators*`; MCP `test_reflection.py`, `test_saved_output_determinism.py`, `test_editor_modals.py`; `python3 tools/mcp/eval/test_grade.py`.
+Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*:CookedScene.*:ShaderNeutralApi.*:ReflectParity.*:ReflectRegistry.*:ReflectLocators.*:Stream.*:MeshMemory.*`; MCP `test_reflection.py`, `test_saved_output_determinism.py`, `test_editor_modals.py`, `test_tool_budget.py`, `test_docs.py`; lints `check-editor-modals.py`, `tools/mcp/eval/test_grade.py`.
 
 ## Log
 
+- 2026-11-08: `main` is green again on the shared-data suites, after the Doriax lead's
+  regeneration (`152131bed`).
+  - Added to the shared-data list: `Stream.*`, `MeshMemory.*` (component size ceilings;
+    `SpriteComponent` is at 320 of 384 bytes after S44), MCP `test_tool_budget.py` and
+    `test_docs.py`, and the `check-editor-modals.py` lint.
+  - S41 and S45 were told that any failure in those suites is now theirs.
 - 2026-11-07: S45 Sprite Atlas implementation started (`.worktrees/s45`, from `main` `8abf785e1`
   with S44). S41 was told to make its final merge of `main` (with S44). The Doriax lead was told
   about `main`'s six failing shared-data tests.

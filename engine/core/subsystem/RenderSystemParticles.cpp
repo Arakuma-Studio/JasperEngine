@@ -78,10 +78,13 @@ namespace {
         return (manifest && manifest->present) ? manifest : nullptr;
     }
 
-    void applyCustomBlock(ObjectRender& render, CustomUniformBlock& block, float frameTime, const Vector2& resolution){
+    // the engine-written members, as every other custom block gets them: a fork's sceneTime
+    // holds while the scene is paused and follows its time scale
+    void applyCustomBlock(ObjectRender& render, CustomUniformBlock& block, float frameTime, float sceneTime, const Vector2& resolution){
         if (block.slot == -1)
             return;
         block.writeTime(frameTime);
+        block.writeSceneTime(sceneTime);
         block.writeResolution(resolution.x, resolution.y);
         render.applyUniformBlock(block.slot, (unsigned int)block.data.size(), block.data.data());
     }
@@ -754,8 +757,8 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
                                                            : (hasShadowAtlas ? &shadowAtlasFramebuffer.getDepthTexture() : &emptyShadowDepth);
             render.addTexture(slots.shadowAtlasSlot, ShaderStageType::FRAGMENT, atlas);
         }
-        applyCustomBlock(render, slots.customVS, frameTime, passResolution);
-        applyCustomBlock(render, slots.customFS, frameTime, passResolution);
+        applyCustomBlock(render, slots.customVS, frameTime, frameSceneTime, passResolution);
+        applyCustomBlock(render, slots.customFS, frameTime, frameSceneTime, passResolution);
         applyFrameBlock(render, slots.bindings);
         applySceneInputs(render, slots.bindings);
     };

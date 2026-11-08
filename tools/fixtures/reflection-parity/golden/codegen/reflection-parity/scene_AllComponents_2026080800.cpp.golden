@@ -2281,6 +2281,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         navSurface.minRegionArea = 3.400000f;
         navSurface.plane = nav::NavPlane::XY;
         navSurface.runtimeCarving = true;
+        navSurface.maxCarvingObstacles = 128;
         navSurface.navMeshData = "";
         navSurface.enabled = false;
         scene->addComponent<NavMeshSurfaceComponent>(1068, navSurface);
@@ -2322,6 +2323,10 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         navAgent.updateRotation = false;
         navAgent.driver = NavAgentDriver::NONE;
         navAgent.surface = NULL_ENTITY;
+        navAgent.stuckDetection = false;
+        navAgent.stuckSpeedRatio = 0.100000f;
+        navAgent.stuckTimeout = 2.000000f;
+        navAgent.repathWhenStuck = true;
         navAgent.enabled = false;
         scene->addComponent<NavMeshAgentComponent>(1069, navAgent);
 

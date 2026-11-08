@@ -56,11 +56,13 @@ bool keysOf(const VcsService& service, const std::vector<fs::path>& paths, std::
     return true;
 }
 
-std::string revertRefusal(const VcsSnapshot& snapshot, const std::vector<RepoPath>& keys) {
+std::string revertRefusal(const VcsSnapshot& snapshot, const std::vector<RepoPath>& keys, bool unschedulesAdds) {
     for (const RepoPath& key : keys) {
         const VcsChange* change = snapshot.find(key);
         if (!change || !change->changed()) return key + " has no changes to revert";
-        if (change->newFile()) return key + " is new: there is no committed version to revert to (Delete it instead)";
+        const bool untracked = change->index == FileState::Untracked || change->worktree == FileState::Untracked;
+        if (change->newFile() && (untracked || !unschedulesAdds))
+            return key + " is new: there is no committed version to revert to (Delete it instead)";
     }
     return std::string();
 }
@@ -88,13 +90,13 @@ void revertFiles(Project& project, const std::vector<fs::path>& files, std::func
     std::string why;
     if (!keysOf(service, files, keys, &why)) return fail(why);
     const VcsSnapshot& snapshot = *service.snapshot();
-    const std::string refusal = revertRefusal(snapshot, keys);
+    const std::string refusal = revertRefusal(snapshot, keys, service.caps().provider == "svn");
     if (!refusal.empty()) return fail(refusal);
-    // a rename goes back with the path it came from
+    // a rename goes back with the path it came from (a copy leaves its source alone)
     std::vector<RepoPath> targets = withChangedMetas(snapshot, keys);
     for (const RepoPath& key : keys) {
         const VcsChange* change = snapshot.find(key);
-        if (change && !change->oldPath.empty()) targets.push_back(change->oldPath);
+        if (change && change->renamed() && !change->oldPath.empty()) targets.push_back(change->oldPath);
     }
     struct Plan {
         fs::path backup;
