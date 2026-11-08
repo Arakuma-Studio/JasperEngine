@@ -135,6 +135,9 @@ namespace jasperengine::editor {
         void fit();
         void frameSelection();
         void setSearch(const std::string& query);
+        // the Add palette (R17) with `filter` ("", layers, generators, effects) and a query typed in
+        void openAddPalette(const std::string& filter, const std::string& query);
+        void closeAddPalette();
         bool setPanel(const std::string& panel, std::string* error = nullptr);
         bool setLibrary(const std::string& tab, const std::string& family, const std::string& query, std::string* error = nullptr);
         bool previewItem(const titledesigner::PreviewItem& item, std::string* error = nullptr);
@@ -331,6 +334,7 @@ namespace jasperengine::editor {
         // ---- Add palette (R17) ----
         bool addOpen = false;
         bool addOpenRequested = false;
+        bool addCloseRequested = false;
         std::string addFilter;                     // "" | "layers" | "generators" | "effects"
         std::string addQuery;
         std::string addCategory;

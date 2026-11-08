@@ -32,6 +32,7 @@ namespace jasperengine::editor::titledesigner {
         // drawn instead of S82's own section of this id while it applies ("appearance" on a
         // layer page, "material" on a part page: a Dimension 3D layer's parts are S86's)
         std::string replaces;
+        bool defaultOpen = false;           // its first open state (then remembered per node kind, R19)
         // draws its rows for the page's layers (empty for the Document page) / parts
         std::function<void(RowContext& ctx, const std::vector<std::string>& layers, const std::vector<std::string>& parts)> draw;
         // shown for this selection (null: always)

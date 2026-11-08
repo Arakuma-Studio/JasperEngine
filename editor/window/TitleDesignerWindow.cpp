@@ -570,6 +570,11 @@ ta::Json TitleDesignerWindow::state() const {
         for (const auto& [category, count] : addRail) rail.push_back({{"category", category}, {"count", count}});
         out["add"] = {{"query", addQuery}, {"filter", addFilter}, {"rail", rail}, {"entries", addVisible}};
     }
+    if (gizmo3d && gizmo3d->visible()) {
+        // S82 R35's schematic where it is drawn (window coords, as `rect`): its centre and the
+        // free-rotate ring's radius
+        out["gizmo_3d"] = {{"centre", ta::Json::array({gizmo3d->centre().x, gizmo3d->centre().y})}, {"ring", rotation3d::RING_PX}};
+    }
     ta::Json live = ta::Json::array();
     for (const auto& [layer, effect] : livePreviews) live.push_back(nodePath(doc.shown(), {NodeKind::Effect, layer, {}, effect}));
     out["live_previews"] = live;
@@ -602,6 +607,16 @@ void TitleDesignerWindow::openAddPalette(const std::string& filter) {
     addCategory.clear();
     addHighlight = 0;
     addOpenRequested = true;
+}
+
+void TitleDesignerWindow::openAddPalette(const std::string& filter, const std::string& query) {
+    openAddPalette(filter);
+    addQuery = query;
+}
+
+void TitleDesignerWindow::closeAddPalette() {
+    addOpenRequested = false;
+    addCloseRequested = addOpen;
 }
 
 void TitleDesignerWindow::exposeField(const FieldRef& target, const std::string& label) {

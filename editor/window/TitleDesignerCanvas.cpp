@@ -1215,6 +1215,7 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
     }
     // the fixed-schematic 3D gizmo for S86's Dimension 3D layers and their selected letters (R35, S86 R56)
     const bool lettersTools = textEditing() && doc.editable() && rendersWorking && editLetters3D;
+    if (gizmo3d && !(showTools || lettersTools) && drag != Drag::Gizmo3D) gizmo3d->hide();
     if (gizmo3d && (showTools || lettersTools)) {
         const std::vector<std::string> layers = doc.selectedLayers();
         const Gizmo3DProvider& provider = gizmo3DProvider();
@@ -1227,6 +1228,7 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
         } else if (drag == Drag::Gizmo3D) {
             shownGizmo = true;
         }
+        if (!shownGizmo) gizmo3d->hide();
         if (shownGizmo && gizmo3d->visible()) {
             const Gizmo3DHandle hovered = drag == Drag::None && cursorInCanvas ? gizmo3d->hitTest(ImGui::GetIO().MousePos) : Gizmo3DHandle::None;
             gizmo3d->draw(dl, hovered, drag == Drag::Gizmo3D ? hovered : Gizmo3DHandle::None);

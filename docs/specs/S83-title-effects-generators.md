@@ -1802,3 +1802,16 @@ rest of S82 lands in 6B.
     `PachislopGeneratorMap` (the `generators:` section of the same data file) and their tests.
     `.gitattributes` merges `pachislop-fx-map.yaml` and `FxCost.cpp` with the union driver, where
     each stream appends its own lines.
+37. **Implementation: the Title Designer side (W2).** The Add menus are S82's palette built by
+    `editor/titleart/designer/TitleAddCatalog` in §6.10's order (recipes and style settings among the
+    effects, each generator with its presets, "Generators that follow this layer" last). Cost badges
+    (R41) read `estimateTitleFxCost` once per document change for both tiers; "Baked on mobile" is
+    amber when a Title Art Renderer of an open scene shows the title in Realtime or Glyph Atlas
+    (looked at again every 2 s while badges are drawn), the only place a document is "Realtime".
+    Part-stack and disabled effects show their definition's class at its defaults. Presets are chips
+    on the effect page and the generator section (hover previews, click is one step "Apply Preset
+    <name>"); a `seed` param has the dice ("Randomize Seed"). **Preview Live** (D10 in the Designer):
+    a play button on an effect card with a live variant animates its L params on the canvas as
+    render overrides (numbers between the low end of their range and their value over 2 s, angles
+    turning, vec2 offsets scrolling, 12 steps a cycle), view state only; the canvas renders each step
+    with S80's renderer, not S81's live compose, so it shows what changes, not the live cost.

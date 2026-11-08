@@ -1477,3 +1477,11 @@ rest of S82 lands in 6B.
     51.7 ms; a Realtime render sliced at a 4 ms budget took 3 frames, the largest multi-step frame
     measuring 81.3 ms (the estimates are desktop-GPU figures; llvmpipe runs the passes on the CPU).
     These are host measurements, not device figures (AC18 is open, Deviation 22).
+29. **Implementation: the Title Designer side (W2, `editor/titleart/runtime/TitleArtRuntimeDesigner`).**
+    R62's Characters UI is the Document page's Runtime section (presets as checkboxes, Custom, Custom
+    File, Characters Used by the Document, the count, Check Characters with the subset size of each
+    font of the text layers, the characters the set leaves out with "Add to Custom", R55's missing
+    glyphs) and the Glyph Layer. Preview As Glyph Atlas creates a real Glyph Atlas title
+    (`TitleArtRuntime::create`) on the committed file, run by S81's scheduler like any instance, and
+    makes it again when the file's revision changes; leaving the mode or closing the window drops
+    it. The Title Art Renderer's Open in Title Designer opens one instance In Context (S82 R30).

@@ -68,6 +68,12 @@ void TitleDesignerWindow::drawAddPalette() {
         }
         return;
     }
+    if (addCloseRequested) {
+        addCloseRequested = false;
+        ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+        return;
+    }
     const NodeRef primary = doc.primary();
     const bool partsSelected = primary.kind == NodeKind::Part;
     const AddTarget target = addTarget();

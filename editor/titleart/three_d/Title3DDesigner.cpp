@@ -1148,8 +1148,10 @@ void jasperengine::editor::registerTitle3DDesigner() {
     }
 
     // the Dimension section's subsections, on Dimension 3D layers
-    auto sub = [](const char* id, const char* title, std::function<void(RowContext&, const std::vector<std::string>&, const std::vector<std::string>&)> draw) {
+    auto sub = [](const char* id, const char* title, std::function<void(RowContext&, const std::vector<std::string>&, const std::vector<std::string>&)> draw,
+                  bool open = false) {
         SectionDef def;
+        def.defaultOpen = open;
         def.page = SectionDef::Page::Layer;
         def.id = id;
         def.title = title;
@@ -1158,10 +1160,10 @@ void jasperengine::editor::registerTitle3DDesigner() {
         def.draw = std::move(draw);
         addSection(std::move(def));
     };
-    sub("3d_geometry", "Geometry", geometrySection);
+    sub("3d_geometry", "Geometry", geometrySection, true);
     sub("3d_bands", "Bands", [](RowContext& ctx, const std::vector<std::string>& layers, const std::vector<std::string>&) {
         if (layers.size() == 1) bandsList(ctx, layers[0]);
-    });
+    }, true);
     sub("3d_lighting", "Lighting", lightingSection);
     sub("3d_glint", "Glint", [](RowContext& ctx, const std::vector<std::string>& layers, const std::vector<std::string>&) {
         ctx.stepPrefix = "Glint ";

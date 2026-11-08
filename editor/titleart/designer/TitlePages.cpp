@@ -97,7 +97,7 @@ namespace {
         for (const SectionDef& def : sections()) {
             if (def.page != page || !def.draw || !def.parent.empty() || !def.replaces.empty()) continue;
             if (def.applies && !def.applies(*ctx.state)) continue;
-            drawRegistered(ctx, def, layers, parts, false);
+            drawRegistered(ctx, def, layers, parts, def.defaultOpen);
         }
     }
 
@@ -107,7 +107,7 @@ namespace {
         for (const SectionDef& def : sections()) {
             if (def.page != page || !def.draw || def.parent != parent) continue;
             if (def.applies && !def.applies(*ctx.state)) continue;
-            drawRegistered(ctx, def, layers, parts, false);
+            drawRegistered(ctx, def, layers, parts, def.defaultOpen);
         }
     }
 
@@ -845,7 +845,9 @@ void jasperengine::editor::titledesigner::layerPage(RowContext& ctx, const std::
         }
         endSection(ctx);
     }
-    if (ta::layerTypeHasStyle(type) && beginSection(ctx, "dimension", "Dimension", first->value("dimension", std::string("2d")) == "3d" ? "3D" : "2D", false)) {
+    // a Dimension 3D layer opens it: its 3D rows are there (S86 R51)
+    const bool layer3D = first->value("dimension", std::string("2d")) == "3d";
+    if (ta::layerTypeHasStyle(type) && beginSection(ctx, "dimension", "Dimension", layer3D ? "3D" : "2D", layer3D)) {
         if (!ctx.collecting()) {
             const std::string owner = TitleArtOps::pendingOwner("set_dimension");
             const bool is3d = first->value("dimension", std::string("2d")) == "3d";

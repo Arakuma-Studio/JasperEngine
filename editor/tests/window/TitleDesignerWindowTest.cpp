@@ -24,6 +24,8 @@
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitlePreviewQueue.h"
 #include "titleart/designer/TitleCanvasView.h"
+#include "titleart/fx/FxGeneratorChecks.h"
+#include "titleart/designer/TitleAddCatalog.h"
 #include "titleart/designer/TitleDesignerHooks.h"
 #include "titleart/designer/TitleTextEdit.h"
 #include "window/EditorModal.h"
@@ -102,6 +104,14 @@ namespace jasperengine::editor {
             return out;
         }
         static void setSystemCjk(W& w, std::function<int()> found) { w.systemCjkOverride = std::move(found); }
+        static bool addEntry(W& w, const AddEntry& entry, std::string* error) { return w.addEntry(entry, error); }
+        static bool previewAddEntry(W& w, const AddEntry& entry) { return w.previewAddEntry(entry); }
+        static AddTarget addTarget(W& w) { return w.addTarget(); }
+        static bool effectCost(W& w, const std::string& layer, int index, CostBadge& out) { return w.effectCost(layer, std::string(), index, out); }
+        static const std::vector<std::string>& forceOpen(W& w) { return w.forceOpenSections; }
+        static std::vector<ta::FieldOverride> liveOverrides(W& w) { return w.liveOverrides(nullptr); }
+        static TitleInContext* inContext(W& w) { return w.inContext ? &*w.inContext : nullptr; }
+        static titleart::TitleRect stageRect(W& w) { return w.stageRect(); }
     };
 
 }
@@ -726,5 +736,179 @@ TEST(TitleDesignerWindowDeathTest, LintWording) {
             for (const char* word : {"good", "approved", "looks great"}) EXPECT_EQ(f.message.find(word), std::string::npos) << f.message;
         }
         Access::drawFrame(*window);
+    });
+}
+
+// S83 R17/§6.10 through the window: the palette's state lists §6.10's rail; a recipe, a style
+// setting and a following generator each add one step named after them; a style setting opens
+// its section; the preview of an entry is the document its commit makes (R44)
+TEST(TitleDesignerWindowDeathTest, AddPaletteEntries) {
+    IN_EDITOR("add", {
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        ASSERT_TRUE(window->open(newTitle(w, "add"), nullptr));
+        ASSERT_TRUE(window->select({"Title"}));
+        window->openAddPalette("effects", "power glow");
+        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        const ta::Json add = window->state().value("add", ta::Json::object());
+        bool lightGlow = false;
+        for (const ta::Json& id : add.value("entries", ta::Json::array())) lightGlow = lightGlow || id == "fx:light_glow";
+        EXPECT_TRUE(lightGlow) << add.dump();
+        window->closeAddPalette();
+        for (int i = 0; i < 2; i++) Access::drawFrame(*window);
+        EXPECT_FALSE(window->state().contains("add")) << "closed";
+
+        CommandHistory* history = w.p->getProjectCommandHistory();
+        const std::vector<AddEntry> entries = buildAddEntries("", Access::addTarget(*window));
+        auto entry = [&](const std::string& id) {
+            for (const AddEntry& e : entries) {
+                if (e.id == id) return e;
+            }
+            ADD_FAILURE() << "no entry " << id;
+            return AddEntry();
+        };
+        // the preview equals the commit (the same ops, the same id seed)
+        const AddEntry recipe = entry("recipe:long_shadow");
+        ASSERT_TRUE(Access::previewAddEntry(*window, recipe));
+        const std::string previewed = ta::writeTitleArt(window->designer().shown());
+        size_t position = history->position();
+        std::string error;
+        ASSERT_TRUE(Access::addEntry(*window, recipe, &error)) << error;
+        EXPECT_EQ(history->position(), position + 1);
+        EXPECT_EQ(history->top()->name(), "Add Effect Long Shadow to Title");
+        EXPECT_EQ(ta::writeTitleArt(window->designer().committed()), previewed) << "R44: committed = previewed";
+        ASSERT_EQ(window->designer().primary().kind, NodeKind::Effect) << "the new effect is selected";
+
+        ASSERT_TRUE(window->select({"Title"}));
+        ASSERT_TRUE(Access::addEntry(*window, entry("style:dry_brush"), &error)) << error;
+        EXPECT_EQ(history->top()->name(), "Turn On Dry Brush (\xE3\x81\x8B\xE3\x81\x99\xE3\x82\x8C)");
+        EXPECT_EQ(Access::forceOpen(*window), (std::vector<std::string>{"Appearance", "Erode"}));
+        EXPECT_EQ(window->designer().primary().kind, NodeKind::Layer) << "a style setting selects its layer, never an effect row";
+
+        ASSERT_TRUE(window->select({"Title"}));
+        position = history->position();
+        ASSERT_TRUE(Access::addEntry(*window, entry("follow:fire:behind"), &error)) << error;
+        EXPECT_EQ(history->position(), position + 1);
+        EXPECT_EQ(history->top()->name(), "Add Layer Flames Behind");
+        const std::vector<std::string> layers = window->designer().selectedLayers();
+        ASSERT_EQ(layers.size(), 1u);
+        const ta::Json* fire = layerById(window->designer().committed(), layers[0]);
+        ASSERT_NE(fire, nullptr);
+        EXPECT_EQ(ta::layerTypeOf(*fire), ta::LayerType::Generator) << "a generator entry adds a layer row";
+        EXPECT_EQ(fire->value("follow", std::string()), titleLayer(*window));
+        // S83 R41: the generator layer and the text's stack have cost classes
+        CostBadge badge;
+        EXPECT_TRUE(Access::effectCost(*window, layers[0], -1, badge));
+        EXPECT_FALSE(badge.cls.empty());
+        EXPECT_TRUE(Access::effectCost(*window, titleLayer(*window), 0, badge)) << "the Long Shadow effect";
+        EXPECT_NE(badge.tooltip.find("mobile"), std::string::npos) << badge.tooltip;
+        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+    });
+}
+
+// S83 R43: a following generator whose layer is deleted shows the row warning; S83 D10: Preview
+// Live plays the live params as render overrides, never as edits
+TEST(TitleDesignerWindowDeathTest, FollowMissingAndPreviewLive) {
+    IN_EDITOR("follow", {
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        ASSERT_TRUE(window->open(newTitle(w, "follow"), nullptr));
+        ASSERT_TRUE(window->runOps(ta::Json::parse(R"([{"op": "add_layer", "type": "text", "name": "Other", "values": {"text": "B"}},
+            {"op": "add_layer", "type": "generator", "generator": "fire", "follow": "Other"}])"), "Add Layers"));
+        ASSERT_TRUE(window->runOps(ta::Json::parse(R"([{"op": "remove_layer", "layer": "Other"}])"), "Delete Layer"));
+        ASSERT_TRUE(window->setPanel("layers"));
+        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        // (the Layers row and the generator page read the same problems)
+        EXPECT_FALSE(titleFollowProblems(window->designer().committed()).empty());
+
+        ASSERT_TRUE(window->runOps(ta::Json::parse(R"([{"op": "add_effect", "layer": "Title", "type": "light_glow"}])"), "Add Effect"));
+        const ta::Json* title = layerById(window->designer().committed(), titleLayer(*window));
+        ASSERT_NE(title, nullptr);
+        const std::string effect = (*title)["effects"][0].value("id", std::string());
+        const std::string before = ta::writeTitleArt(window->designer().committed());
+        window->setLivePreview(titleLayer(*window), effect, true);
+        const std::vector<ta::FieldOverride> overrides = Access::liveOverrides(*window);
+        EXPECT_FALSE(overrides.empty()) << "Light Glow's live params play";
+        for (const ta::FieldOverride& o : overrides) EXPECT_EQ(o.path.rfind("effects[0].params.", 0), 0u) << o.path;
+        EXPECT_TRUE(window->state()["live_previews"].size() == 1);
+        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        EXPECT_EQ(ta::writeTitleArt(window->designer().committed()), before) << "Preview Live changes no document byte";
+        window->setLivePreview(titleLayer(*window), effect, false);
+        EXPECT_TRUE(Access::liveOverrides(*window).empty());
+    });
+}
+
+// S86 R50-R51 through S82's hooks: a Dimension 3D layer's page has S86's rows (indexed by the
+// property search) and a 2D one has none; its parts are Face, Bevel, Side and Band N; the
+// Realtime tiers and S81's Glyph Atlas are Preview As modes
+TEST(TitleDesignerWindowDeathTest, ThreeDRowsPartsAndModes) {
+    IN_EDITOR("threed", {
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        ASSERT_TRUE(window->open(newTitle(w, "threed"), nullptr));
+        ASSERT_TRUE(window->select({"Title"}));
+        auto hits = [&](const std::string& query) { return Access::search(*window, query); };
+        auto contains = [](const std::vector<std::string>& paths, const std::string& path) {
+            return std::find(paths.begin(), paths.end(), path) != paths.end();
+        };
+        EXPECT_FALSE(contains(hits("lock environment"), "style_3d.env_lock")) << "a 2D layer has no 3D rows";
+        CommandHistory* history = w.p->getProjectCommandHistory();
+        ASSERT_TRUE(window->runOps(ta::Json::parse(R"([{"op": "set_dimension", "layer": "Title", "dimension": "3d"},
+            {"op": "add_band", "layer": "Title", "preset": "bright_ring"}])"), "Set Dimension 3D"));
+        ASSERT_TRUE(window->select({"Title"}));
+        EXPECT_TRUE(contains(hits("lock environment"), "style_3d.env_lock"));
+        EXPECT_TRUE(contains(hits("bevel width"), "style_3d.bevel.width"));
+        EXPECT_TRUE(contains(hits("glint threshold"), "style_3d.glint.threshold"));
+        EXPECT_TRUE(contains(hits("tone mapping"), "style_3d.lighting.tone_mapping"));
+        // the band's page
+        std::string error;
+        ASSERT_TRUE(window->select({"Title/band#0"}, &error)) << error;
+        EXPECT_EQ(window->state()["selection"][0], "Title/band#0");
+        EXPECT_TRUE(contains(hits("grow"), "style_3d.bands[0].grow"));
+        EXPECT_TRUE(contains(hits("roughness"), "style_3d.bands[0].material.roughness"));
+        ASSERT_TRUE(window->select({"Title/face"}));
+        EXPECT_TRUE(contains(hits("roughness"), "style_3d.face.roughness"));
+        for (const char* panel : {"properties", "layers"}) {
+            ASSERT_TRUE(window->setPanel(panel));
+            for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        }
+        // the document's 3D Scene and Runtime (S81)
+        ASSERT_TRUE(window->select({}));
+        EXPECT_TRUE(contains(hits("exposure"), "scene_3d.exposure"));
+        EXPECT_TRUE(contains(hits("custom file"), "runtime.characters.custom_file"));
+        // Preview As
+        for (const char* mode : {"realtime_high", "realtime_medium", "realtime_low", "glyph_atlas", "realtime"}) {
+            EXPECT_TRUE(window->setPreviewAs(mode, &error)) << mode << ": " << error;
+            EXPECT_EQ(window->state()["preview_as"], mode);
+            for (int i = 0; i < 2; i++) Access::drawFrame(*window);
+        }
+        // a material applied the way the picker commits it is one named step
+        const size_t position = history->position();
+        ASSERT_TRUE(window->runOps(ta::Json::parse(R"([{"op": "apply_material", "layer": "Title", "part": "face", "preset": "gold"}])"), "Apply Material Gold"));
+        EXPECT_EQ(history->position(), position + 1);
+        EXPECT_EQ(history->top()->name(), "Apply Material Gold");
+    });
+}
+
+// R30, AC16: In Context puts the title's bake frame on the instance's screen rectangle
+TEST(TitleDesignerWindowDeathTest, InContextPlacement) {
+    IN_EDITOR("incontext", {
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        const fs::path file = newTitle(w, "incontext");
+        TitleInContext context;
+        context.document = file;
+        context.screenWidth = 1280;
+        context.screenHeight = 720;
+        context.x = 100.0f;
+        context.y = 50.0f;
+        context.width = 480.0f;
+        context.height = 270.0f;
+        context.located = true;
+        context.snapshotRgba.assign((size_t)1280 * 720 * 4, 40);
+        std::string error;
+        ASSERT_TRUE(window->openInContext(context, &error)) << error;
+        EXPECT_EQ(window->state()["background"], "in_context");
+        const titleart::TitleRect stage = Access::stageRect(*window);
+        EXPECT_DOUBLE_EQ(stage.width, 1280.0) << "the stage is the instance's screen";
+        EXPECT_DOUBLE_EQ(stage.height, 720.0);
+        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        ASSERT_NE(Access::inContext(*window), nullptr);
     });
 }

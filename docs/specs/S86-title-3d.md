@@ -1487,4 +1487,17 @@ rest of S82 lands in 6B.
     ramped look, the gold and silver faces most), in the renderer and the GLB (white factor under the ramp texture); and
     direct and ambient light use three.js's units (irradiance x BRDF with the Lambert term diffuse / pi), not the engine's
     pi-scaled lobes, which made the lights pi times brighter than the references.
-
+31. **Implementation: the Title Designer side (W2,
+    `editor/titleart/three_d/Title3DDesigner`).** R50-R58 through S82's hooks: the Dimension
+    section's subsections, a 3D Appearance (Face, Bevel, Side, Band N) in place of the 2D one, the
+    part pages' material and band rows, the Document page's 3D Scene, the three pickers, the tiers in
+    Preview As, the gizmo target of a layer and of selected letters, Alt+drag Environment Rotation.
+    Not done, each for a reason: hovering a band row does not outline the band (the outline needs
+    the mesher's band rings on the main thread); the material picker has Copy and Paste but no Link (S80's
+    `link_material` accepts S80's `material` kind only, TitleArtOps `linkMaterial`, so a `material_3d` has no op to link through); the environment picker takes a project HDRI or
+    one dropped from the Project window, with no Import HDRI... file dialog. Material tiles render a
+    bevelled "Aa" through the preview queue at priority Thumbnails without a disk cache (the queue's
+    LRU keeps them for the session); environment tiles are computed on the CPU from the environment
+    itself (a mirror ball, a rough gold disc, its panorama), one per frame while the picker is open,
+    dropped when it closes. The Status footer measures with `title3DStats` on the main thread once the
+    document has been still for 0.5 s while the section is open (the mesher's cost, once per change).

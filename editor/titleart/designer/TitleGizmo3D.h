@@ -153,6 +153,8 @@ namespace jasperengine::editor::titledesigner {
         // false (and nothing drawn) when the pivot is behind the camera
         bool layout(const Gizmo3DTarget& target, const Gizmo3DCamera& camera);
         bool visible() const { return shown; }
+        // not laid out this frame (no 3D target selected): nothing to hit or draw
+        void hide() { shown = false; }
         ImVec2 centre() const { return c; }
         // the drawn tip of arm 0..2 on screen
         ImVec2 armEnd(int axis) const;

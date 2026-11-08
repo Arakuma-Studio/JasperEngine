@@ -1312,6 +1312,12 @@ ImVec4 jasperengine::editor::titledesigner::costBadgeColor(const CostBadge& badg
 
 void jasperengine::editor::titledesigner::drawCostBadge(const CostBadge& badge) {
     if (badge.cls.empty()) return;
-    ImGui::TextColored(costBadgeColor(badge), "%s", badge.amber ? (badge.cls + " Baked on mobile").c_str() : badge.cls.c_str());
+    // a frameless small button: an item find_ui_item and send_input reach by its label ("C3")
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1, 1, 1, 0.08f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1, 1, 1, 0.08f));
+    ImGui::PushStyleColor(ImGuiCol_Text, costBadgeColor(badge));
+    ImGui::SmallButton(((badge.amber ? badge.cls + " Baked on mobile" : badge.cls) + "###cost").c_str());
+    ImGui::PopStyleColor(4);
     if (!badge.tooltip.empty() && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", badge.tooltip.c_str());
 }

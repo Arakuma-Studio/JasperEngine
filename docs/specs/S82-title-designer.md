@@ -1533,4 +1533,26 @@ rest of S82 lands in 6B.
       Server A's numbers are still to take.
 21. **Open: the Windows and macOS IME manual checks** (M5, R37). They need a person on those
     systems (Microsoft IME, Kotoeri); this host builds Linux only. The `imgui_impl_osx` patch
-    compiles by reading only. AC28's chip drag and In Context wait for S81, at integration.
+    compiles by reading only. AC28's chip drag and In Context were wired with S81 in W2 (Deviation 22).
+22. **Implementation: W2's wiring of S81, S83 and S86 through §6.8 (branch ta/w2-designer-hooks).**
+    The hooks grew where the other specs needed more than §6.8 names, each additive:
+    `SectionDef::parent` (S86's subsections inside S82's Dimension section), `SectionDef::replaces`
+    (a 3D layer's Appearance and part pages are S86's), `SectionDef::defaultOpen`;
+    `PreviewModeDef::renderTier` (a mode without `draw` renders the working document at an S86 tier);
+    the gizmo provider takes the selected letters (`Gizmo3DLetters`) and `Gizmo3DTarget` names its
+    steps (`moveStep`, `rotateStep`: "Rotate 3D Layer", "Tilt Letters"); `InheritanceRule::sparse` and
+    `valueAt` (S86's lighting levels: an absent member is inherited, the row menu says Inherit);
+    `PropertyHost` gives cost badges, Preview Live, picker tiles (the window's preview queue, priority
+    Thumbnails), the project's HDRIs and Preview As. The editor's own extensions register once from
+    the window (`registerTitleDesignerExtensions`). `focus_window`'s `title_designer` gains `add`
+    (`{filter, query}` opens the Add palette, `false` closes it; no schema characters) and `state`
+    gains `add {rail, entries}`, `live_previews` and `gizmo_3d` (the schematic's centre), so MCP
+    tests reach the palette and the gizmo as a person does. The Add palette's entries are
+    `TitleAddCatalog` (S83 §6.10); a following generator's entry is a layer step ("Add Layer Focus
+    Lines (集中線)"), not AC38's "Add Effect Focus Lines to Title": §6.3 names layer additions so and
+    D6 keeps generators layers. In Context (R30, AC16) finds the instance's screen rectangle by
+    rendering its scene twice, with and without the instance (Transform `visible` off around the
+    render), and taking where they differ; the title's bake frame is placed on that rectangle. A
+    renderer that draws nothing on screen leaves the title centred with a notice. The Hierarchy's
+    window drop takes a `.titleart` (S81 R6's create function), which completes the document-chip drag
+    (R61, AC28).
