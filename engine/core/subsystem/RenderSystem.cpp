@@ -11426,10 +11426,15 @@ bool RenderSystem::readsSceneColor(const TransparentRenderData& renderData, Came
             if (!renderData.points || !(renderData.points->sceneInputs & ShaderRequire_SceneColor))
                 return false;
             break;
-        case TransparentRenderType::PARTICLES:
-            if (!renderData.particles || !renderData.particles->state || !(renderData.particles->state->render.sceneInputs & ShaderRequire_SceneColor))
+        case TransparentRenderType::PARTICLES:{
+            // each emitter of a tree is its own item (queueParticleTree): its own shader decides
+            if (!renderData.particles || !renderData.particles->state)
+                return false;
+            const uint32_t inputs = renderData.emitterRender ? renderData.emitterRender->sceneInputs : renderData.particles->state->render.sceneInputs;
+            if (!(inputs & ShaderRequire_SceneColor))
                 return false;
             break;
+        }
         default:
             return false;
     }

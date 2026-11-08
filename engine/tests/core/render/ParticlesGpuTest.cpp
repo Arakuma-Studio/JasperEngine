@@ -652,6 +652,28 @@ TEST_F(ParticlesGpu, FollowParentChildrenStayOnTheirParents){
     particles::ParticleEffectLibrary::clear();
 }
 
+TEST_F(ParticlesGpu, ADistortingChildReadsTheTransparentsDrawnBeforeIt){
+    JASPER_REQUIRE_GPU();
+    // F6: the queue's scene colour readers are its items, a sub-emitter child its own: a distorting
+    // child under a plain root, drawn after a plain system behind it, takes the scene colour again
+    // so that it bends what was drawn before it
+    defineEffect("fx/f6-distorting-child.particles", square("1, 1, 1, 1", R"(, "blend": "alpha", "shader": "library:particles", "shaderFeatures": ["DISTORTION"],
+        "shaderProperties": [{"name": "distortionStrength", "value": [0.08, 0, 0, 0]}],
+        "shaderTextures": [{"name": "u_distortionTexture", "path": "particles/textures/distortion.png"}])"));
+    system(Vector3(0.0f, 1.0f, -3.0f), R"({"version": 1, "duration": 5, "looping": false, "seed": 3, "maxParticles": 4, "modules": [
+        {"type": "main", "startLifetime": 100, "startSpeed": 0, "startSize": 3, "startColor": [0.2, 0.4, 1, 0.5], "gravityModifier": 0},
+        {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 1}]},
+        {"type": "shape", "enabled": false},
+        {"type": "renderer", "renderMode": "billboard", "blend": "alpha", "untexturedShape": "square"}]})");
+    system(Vector3(0.0f, 1.0f, 0.0f), parentOf("fx/f6-distorting-child.particles", R"("renderMode": "billboard", "blend": "alpha", "untexturedShape": "square")"));
+    ASSERT_TRUE(render(0.5));
+    EXPECT_NO_ENGINE_ERRORS();
+    const RenderSystem::SceneInputDetails inputs = scene.getSystem<RenderSystem>()->getSceneInputDetails();
+    EXPECT_GE(inputs.colorCopies, 2u) << "the copy after the opaque queue and the child's";
+    EXPECT_EQ(inputs.colorRecopies, 1u) << "the child reads the scene colour, its root does not";
+    particles::ParticleEffectLibrary::clear();
+}
+
 TEST_F(ParticlesGpu, ATreeSortsOncePerView){
     JASPER_REQUIRE_GPU();
     // get_particle_stats' sorted_views: a parent and its child each sorting are one view
