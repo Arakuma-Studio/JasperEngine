@@ -318,7 +318,8 @@ TEST_F(TerrainWorldGpu, DrawsPagesUploadedWithNoPumpBetweenFrames) {
     component.poolSize = 4;
     runtime()->applySettings(component.poolSize, component.lodDistance, component.uploadBudget, terrainWorldPlatformBudget().nearTiles);
     for (int i = 0; i < 4; i++) frame(false);
-    EXPECT_GT(runtime()->stats().states[static_cast<int>(TileState::Resident)], 1) << "the frames with no pump uploaded pages";
+    // (the streamer's own count: the runtime's stats are a snapshot the pump takes)
+    EXPECT_GT(runtime()->tiles().stats().residentPages, 1) << "the frames with no pump uploaded pages";
     const std::vector<uint8_t> held = pixels();
 
     // the same view once pumps run again
