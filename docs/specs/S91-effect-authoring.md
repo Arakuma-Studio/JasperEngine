@@ -403,3 +403,9 @@ The Particle Effect window (R17 to R23, R25, D3, D4, AC14; branch `feature/s91-w
   sub-emitter only through its parents.
 - **M3, CLI (R33).** `check --particles` is opt-in (and part of `--all`), not in the default set: it
   starts the engine for every effect. `--fail-on warn` reports WARN rows as errors too.
+- **R14's warning (final wave, F7).** The `distortion` row (`ParticleEffectChecks`, so the tool and the
+  window's panel both show it) lists the emitters whose Renderer turns Distortion on. It WARNs where the
+  run itself has no scene colour behind them: a sprite sheet's transparent cells (`bake_particle_sheet`,
+  the panel's Record), which cannot hold the distortion. A preview's own pass always copies the scene
+  colour, so there it PASSes and its method names the cameras with no copy (a reflection probe's faces);
+  a check cannot know which cameras of a game will see the effect.

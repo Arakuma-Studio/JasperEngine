@@ -712,7 +712,13 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
                 }
             }
             for (const TreeEmitter& e : d.tree){
-                if (e.runtime->effect() && e.runtime->effect()->document.renderer.blend == particles::ParticleBlend::Additive) measured.additive = true;
+                if (!e.runtime->effect()) continue;
+                const particles::RendererModule& renderer = e.runtime->effect()->document.renderer;
+                if (renderer.blend == particles::ParticleBlend::Additive) measured.additive = true;
+                if (std::find(renderer.shaderFeatures.begin(), renderer.shaderFeatures.end(), "DISTORTION") != renderer.shaderFeatures.end() &&
+                        std::find(measured.distorting.begin(), measured.distorting.end(), e.name) == measured.distorting.end()){
+                    measured.distorting.push_back(e.name);
+                }
             }
             if (live > 0){
                 // the run's mean alpha, sampled on a few particles a tick
@@ -1078,6 +1084,7 @@ void ParticleEffectPreview::buildReport(){
     checkRequest.platform = request.platform;
     checkRequest.qa = request.qa;
     checkRequest.hasImages = !cells.empty();
+    checkRequest.sceneColor = !request.transparentCells;
     Json rows = ParticleEffectChecks::rows(measured, checkRequest);
     const bool stop = qa::countRounds(rows, request.rounds, request.qa.fixRounds);
     const std::string verdict = qa::verdict(rows);

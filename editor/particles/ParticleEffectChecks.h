@@ -84,12 +84,17 @@ namespace jasperengine::editor {
         double popPercent = 0.0;
         double popAt = -1.0;
         std::string popEmitter;
+
+        // the emitters whose Renderer turns Distortion on (it bends the scene colour behind them)
+        std::vector<std::string> distorting;
     };
 
     struct ParticleCheckRequest {
         std::string platform = "mobile";   // mobile, web, desktop
         ParticleQaSettings qa;
         bool hasImages = false;
+        // the cells draw over a scene colour copy; a sprite sheet's transparent cells have none
+        bool sceneColor = true;
     };
 
     class ParticleEffectChecks {

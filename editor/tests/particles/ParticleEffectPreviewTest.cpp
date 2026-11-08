@@ -206,3 +206,24 @@ TEST(ParticleEffectPreview, CutRunsSkipNeverEndsAndVariableStepsCostAFrameTick){
     const qa::Json variable = reportOf(requestOf(R"({"version": 1, "duration": 1, "looping": true, "tickRate": 0, "modules": [{"type": "main"}]})"));
     EXPECT_DOUBLE_EQ(variable["metrics"]["cost"]["ticks_per_frame"].get<double>(), 1.0);
 }
+
+TEST(ParticleEffectChecks, DistortionWithNoSceneColourWarns){
+    // S91 R14: where there is no scene colour a distorting particle draws undistorted, and the
+    // checks say so: a sprite sheet's transparent cells have no scene behind them
+    const std::string distorting = burst(10, 100, R"(, {"type": "renderer", "shader": "library:particles", "shaderFeatures": ["DISTORTION"]})");
+    EXPECT_EQ(checkOf(reportOf(requestOf(burst(10, 100))), "distortion")["status"], "PASS") << "nothing distorts";
+
+    const qa::Json live = checkOf(reportOf(requestOf(distorting)), "distortion");
+    EXPECT_EQ(live["status"], "PASS") << live.dump();
+    EXPECT_EQ(live["measured"]["distorting"], qa::Json::array({"test"}));
+    EXPECT_EQ(live["measured"]["scene_color"], true);
+
+    ParticlePreviewRequest sheet = requestOf(distorting);
+    sheet.transparentCells = true;
+    const qa::Json row = checkOf(reportOf(sheet), "distortion");
+    EXPECT_EQ(row["status"], "WARN") << row.dump();
+    EXPECT_EQ(row["measured"]["scene_color"], false);
+    EXPECT_FALSE(row["threshold_source"].get<std::string>().empty());
+    EXPECT_NE(row["limited_by"].get<std::string>().find("test"), std::string::npos) << row.dump();
+    EXPECT_FALSE(row["fix_hint"].get<std::string>().empty());
+}

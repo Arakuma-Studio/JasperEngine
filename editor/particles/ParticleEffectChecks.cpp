@@ -222,10 +222,36 @@ namespace {
         return row;
     }
 
+    // S91 R14: a distorting particle with no scene colour behind it draws undistorted
+    Json distortion(const ParticleMeasurements& m, const ParticleCheckRequest& request){
+        Json row = qa::row("distortion", "content");
+        row["threshold"] = "a scene colour copy";
+        row["threshold_source"] = "library:particles DISTORTION (reads the scene colour)";
+        row["measured"] = {{"distorting", m.distorting}, {"scene_color", request.sceneColor}};
+        if (m.distorting.empty()){
+            row["method"] = "no emitter turns its Renderer's Distortion on";
+            row["status"] = "PASS";
+            return row;
+        }
+        if (request.sceneColor){
+            row["method"] = "the preview's pass copies the scene colour; a camera without a copy (a reflection probe's faces) draws it undistorted";
+            row["status"] = "PASS";
+            return row;
+        }
+        row["method"] = "a sprite sheet's cells are drawn over transparency: no scene colour to bend";
+        row["status"] = "WARN";
+        std::string names;
+        for (const std::string& name : m.distorting) names += (names.empty() ? "" : ", ") + name;
+        row["limited_by"] = names + " distort(s) the scene colour, and a sheet has no scene behind it: the sheet shows no distortion.";
+        row["fix_hint"] = "Keep the distortion live: bake the sheet with the Renderer's Distortion off and give the sheet's effect a distorting emitter.";
+        return row;
+    }
+
 }
 
 const std::vector<std::string>& ParticleEffectChecks::checkIds(){
-    static const std::vector<std::string> ids = {"capacity_hit", "overdraw_budget", "invisible", "blown_out", "pop", "never_ends", "platform_budget"};
+    static const std::vector<std::string> ids = {"capacity_hit", "overdraw_budget", "invisible", "blown_out", "pop", "never_ends", "platform_budget",
+                                                 "distortion"};
     return ids;
 }
 
@@ -251,6 +277,7 @@ qa::Json ParticleEffectChecks::rows(const ParticleMeasurements& m, const Particl
     out.push_back(pop(m, request));
     out.push_back(neverEnds(m));
     out.push_back(platformBudget(m, request, estimate));
+    out.push_back(distortion(m, request));
     return out;
 }
 
