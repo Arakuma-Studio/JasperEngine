@@ -101,10 +101,10 @@ SHADER_LINT_TEST = "tools/ci/test_check_shader_lod.py"
 # an MCP test file, or what classifies it, changes: every file must stay classified for the CI suite
 CI_SUITE_GUARD = "tools/ci/check-mcp-ci-suite.py"
 CI_SUITE_GUARD_TRIGGERS = ("tools/mcp/tests/test_*.py", "tools/mcp/run_tests.py", CI_SUITE_GUARD)
-# an engine event's holder, or the clears that walk them, changes: every event must stay cleared at Stop
+# an engine source changes (any can hold an event or walk one): every event must stay cleared at Stop.
+# The lint reads every engine source but the vendored libraries, the tests and the IDE projects
 EVENT_CLEARS_LINT = "tools/check_event_clears.py"
-EVENT_CLEARS_TRIGGERS = ("engine/core/component/*.h", "engine/core/subsystem/PhysicsSystem.h", "engine/core/Engine.h",
-                         "engine/core/Engine.cpp", EVENT_CLEARS_LINT)
+EVENT_CLEARS_SKIPPED = ("engine/libs/", "engine/tests/", "engine/workspaces/")
 # the engine with every optional module off: a header's include can reach a source only through a
 # module's code, and the editor's engine, which has them all, never shows it
 MODULES_OFF_CHECK = "tools/check-physics-off.sh"
@@ -294,7 +294,8 @@ def plan_builds(files: list[str], plan: Plan) -> None:
             plan.self_tests.append(test)
         if match(f, CI_SUITE_GUARD_TRIGGERS) and CI_SUITE_GUARD not in plan.self_tests:
             plan.self_tests.append(CI_SUITE_GUARD)
-        if match(f, EVENT_CLEARS_TRIGGERS) and EVENT_CLEARS_LINT not in plan.self_tests:
+        holds_events = f.startswith("engine/") and f.endswith(CXX) and not f.startswith(EVENT_CLEARS_SKIPPED)
+        if (holds_events or f == EVENT_CLEARS_LINT) and EVENT_CLEARS_LINT not in plan.self_tests:
             plan.self_tests.append(EVENT_CLEARS_LINT)
     # engine code may call a required-reason API the Apple privacy manifest must declare
     if any(f.startswith("engine/") and f.endswith(CXX) for f in files) or "engine/workspaces/xcode/ios/PrivacyInfo.xcprivacy" in files:

@@ -276,6 +276,24 @@ TEST_F(InputActionsTest, GamepadFilter){
     EXPECT_GT(InputActions::get("P1/Steer")->readValue(), 0.2f);
 }
 
+// every action event goes at Stop (unload) and with a new session, through InputAction::forEachEvent
+TEST_F(InputActionsTest, UnloadAndANewSessionClearEveryActionEvent){
+    for (bool unload : {true, false}){
+        load(GAMEPLAY);
+        InputAction* jump = InputActions::get("Gameplay/Jump");
+        ASSERT_NE(jump, nullptr);
+        auto ignore = std::function<void(InputActionEvent&)>([](InputActionEvent&){});
+        jump->onStarted.add("test", ignore);
+        jump->onPerformed.add("test", ignore);
+        jump->onCanceled.add("test", ignore);
+        if (unload) InputActions::unload();
+        else InputActions::resetSession();
+        EXPECT_EQ(jump->onStarted.size(), 0u) << unload;
+        EXPECT_EQ(jump->onPerformed.size(), 0u) << unload;
+        EXPECT_EQ(jump->onCanceled.size(), 0u) << unload;
+    }
+}
+
 TEST_F(InputActionsTest, SameWindowTapPerformsAndCancels){
     load(GAMEPLAY);
     InputAction* jump = InputActions::get("Gameplay/Jump");
