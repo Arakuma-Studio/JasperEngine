@@ -495,6 +495,13 @@ async def test_vector_text_unchanged(ed: Editor):
         "type": "text", "name": "Styled", "text": "Outline & shadow", "font_size": 24, "text_color": [1, 1, 0, 1],
         "outline": {"width": 2, "color": [1, 0, 0, 1]}, "shadow": {"offset": [2, 2], "color": [0, 0, 1, 1], "softness": 2},
         "layout": {"anchor": "top_left", "position": [10, 60]}})
+    # AllComponents' Text (tools/fixtures/reflection-parity, the only fixture Text with a TTF; its
+    # fonts/Parity.ttf is not in the fixture, so it draws in the default font, as here)
+    await ed.call("create_ui", scene=scene, root={
+        "type": "text", "name": "Parity", "text": "text: [1, 2]", "font_size": 20, "text_color": [1, 1, 1, 1],
+        "layout": {"anchor": "top_left", "position": [10, 110]}})
+    await ed.call("set_properties", scene=scene, entity="Parity", values={"text": {
+        "maxTextSize": 100, "fixedWidth": True, "fixedHeight": True, "pivotBaseline": True, "pivotCentered": True}})
     await ed.call("configure_game_view", resolution="320x180")
     image = await ed.screenshot(view="game", max_width=0)
     reference = GOLDEN / "vector_text.png"
@@ -515,23 +522,11 @@ async def test_vector_text_unchanged(ed: Editor):
     shutil.copytree(src, copy)
     opened = await ed.call("open_scene", scene="parity/AllComponents.scene")
     parity = opened["scene"]["id"]
-    # and it draws as the pre-S51 editor drew it (its Text is a TTF): two shots agree, then the reference
-    await ed.call("select_scene", scene=parity)
-    await ed.call("wait", frames=20)
-    first = await ed.screenshot(view="game", max_width=0)
-    await ed.call("wait", frames=5)
-    drawn = await ed.screenshot(view="game", max_width=0)
-    ed.check(pixels(first)[2] == pixels(drawn)[2], "AllComponents draws the same frame twice (a stable reference)")
     await ed.call("save_scene", scene=parity, path="parity/AllComponents.resaved.scene")
     after = (copy / "AllComponents.resaved.scene").read_bytes()
     if capture:
         (GOLDEN / "AllComponents.resaved.scene").write_bytes(after)
-        (GOLDEN / "AllComponents.png").write_bytes(drawn)
         return
-    want_rows = pixels((GOLDEN / "AllComponents.png").read_bytes())[2]
-    got_rows = pixels(drawn)[2]
-    differing = sum(1 for a, b in zip(got_rows, want_rows) for p, q in zip(a, b) if p != q)
-    ed.check(len(got_rows) == len(want_rows) and differing == 0, f"AllComponents pixel-identical to the reference: {differing} differ")
     SHOTS.mkdir(parents=True, exist_ok=True)
     (SHOTS / "AllComponents.resaved.scene").write_bytes(after)
     # (a save to a new path is a new scene file: its own guid line)

@@ -23,7 +23,7 @@ function PixelFontsCheck:onUpdate()
     local title = Text(self.scene, self.scene:findEntity("Title"))
     Log.print("[gate] pixel_fonts Title x" .. title.pixelScale .. " (" .. title.effectiveFontSize .. ")")
     local styled = Text(self.scene, self.scene:findEntity("Styled"))
-    Log.print("[gate] pixel_fonts Styled outline " .. styled.outlineWidth .. " neighbors " .. styled.outlineNeighbors)
+    Log.print("[gate] pixel_fonts Styled outline " .. math.floor(styled.outlineWidth) .. " neighbors " .. styled.outlineNeighbors)
 end
 
 return PixelFontsCheck

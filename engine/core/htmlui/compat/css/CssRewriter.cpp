@@ -2316,17 +2316,6 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
             const size_t b = text.find_last_not_of(" \t\n");
             return a == std::string::npos ? std::string() : text.substr(a, b - a + 1);
         };
-        auto split = [](const std::string& text, char by){
-            std::vector<std::string> parts;
-            size_t start = 0;
-            while (true){
-                const size_t end = text.find(by, start);
-                parts.push_back(text.substr(start, end == std::string::npos ? std::string::npos : end - start));
-                if (end == std::string::npos) break;
-                start = end + 1;
-            }
-            return parts;
-        };
         auto namesBitmapFamily = [&](const std::string& value){
             std::string first = lower(value.substr(0, value.find(',')));
             first.erase(std::remove(first.begin(), first.end(), '"'), first.end());

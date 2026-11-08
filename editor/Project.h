@@ -1410,8 +1410,6 @@ namespace jasperengine::editor{
         static bool visitAssetPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
         // The Animation Player clips of visitAssetPathsInRegistry (their path and GUID are not an AssetRef)
         static bool visitClipPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
-        // The files of those references, for SceneManager::preloadScene()
-        static SceneResources collectResourcesInRegistry(EntityRegistry* registry);
         // Same for Lua script entries; C++ ones are build inputs kept project-relative.
         static bool visitLuaPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
         bool visitAssetPathsInMaterialFiles(const std::function<bool(std::string&)>& transform,
@@ -1537,6 +1535,9 @@ namespace jasperengine::editor{
         std::filesystem::path inspectedAsset;
 
     public:
+        // The files a registry's components reference, for SceneManager::preloadScene() (the
+        // generated scene's resources; public for the tests of what a scene preloads)
+        static SceneResources collectResourcesInRegistry(EntityRegistry* registry);
         // Unity's activeObject (animation clips spec 9.R30): the asset the Inspector shows, set by
         // the Project window when a single asset is clicked (T2b), cleared by any scene selection
         // change (T2c); empty = the Inspector shows the scene selection. Absolute path.
