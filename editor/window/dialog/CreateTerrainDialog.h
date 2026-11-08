@@ -9,6 +9,7 @@
 #pragma once
 
 #include "ecs/Entity.h"
+#include "terrain/TerrainRawIO.h"
 
 #include <cstdint>
 #include <functional>
@@ -22,7 +23,7 @@ namespace jasperengine::editor {
 
     class CreateTerrainDialog {
     public:
-        enum class StartShape { Flat, FlatAtMiddle };
+        enum class StartShape { Flat, FlatAtMiddle, ImportRaw };
 
         struct Settings {
             std::string name = "Terrain";
@@ -37,6 +38,10 @@ namespace jasperengine::editor {
             int levels = 4;
             StartShape shape = StartShape::Flat;
             float baseHeight = 0.0f;    // metres, Flat
+            // ImportRaw: the decoded height file (TerrainRawIO), square and heightmap texels a side
+            HeightImport imported;
+            // An image of the assets: Terrain Layer 0, with the first blend map at its full weight; empty: no layer
+            std::string baseLayer;
             bool collider = true;
             // T2 R61: a Noise Graph preset run on the new terrain after Create (its own undo step); empty: none
             std::string noisePreset;
@@ -71,9 +76,16 @@ namespace jasperengine::editor {
         Entity parent = NULL_ENTITY;
         Settings settings;
         std::string error;
+        // Start Shape > Import Raw...: the chosen file and its import fields (R61's, shared)
+        std::string importPath;
+        std::vector<uint8_t> importBytes;
+        HeightImportOptions importOptions;
+        bool importSetsHeight = false;
 
         void applyPreset(int index);
         void applyNoisePreset(const std::string& id);
+        void chooseImportFile();
+        void useImportedSize();
     };
 
 }

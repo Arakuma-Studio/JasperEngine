@@ -4,6 +4,7 @@
 #include "TerrainQualityPanel.h"
 #include "component/TerrainComponent.h"
 #include "SceneWindow.h"
+#include "window/TerrainEditWindow.h"
 #include "audio/SoundDrop.h"
 #include "component/TextComponent.h"
 #include "component/Transform.h"
@@ -79,6 +80,12 @@
 #include <cmath>
 
 using namespace jasperengine;
+
+// T1 R63: the Alt gesture of an armed terrain brush, as T6's voxel brush keeps its own
+static editor::VoxelAltGesture& terrainAltGesture(){
+    static editor::VoxelAltGesture gesture;
+    return gesture;
+}
 
 namespace {
 
@@ -1285,6 +1292,10 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     // Paint Dye (FluidEditorTools): the left button paints the fluid, no selection or gizmo
     bool fluidPainting = sceneProject->sceneRender->isFluidPainting();
     bool altGizmoDrag = altHeld && gizmoSideActive && !fluidPainting;
+    // T1 R56: with Alt Alternates While Painting, Alt+LMB paints an armed terrain brush's alternate instead of orbiting
+    TerrainEditWindow* terrainBrush = Backend::getApp().getTerrainEditWindow();
+    const bool terrainBrushArmed = terrainBrush && terrainBrush->isEditingScene(sceneProject->scene);
+    const bool terrainAltPaints = altHeld && terrainBrushArmed && terrainBrush->altPaints();
     bool altGizmoDuplicate = altGizmoDrag &&
         (gizmoSelected != GizmoSelected::OBJECT2D || gizmo2DSide == Gizmo2DSideSelected::CENTER);
 
@@ -1343,7 +1354,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             SplineSceneTools::doubleClick(project, sceneProject, x, y);
         }
 
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled && !poseHandleClick &&
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag || terrainAltPaints) && !suppressLeftMouse && !handPanEnabled && !poseHandleClick &&
                 splinePress != SplineSceneTools::Press::Captured){
             subSelectionClickConsumesRelease[sceneId] = false;
             if (splinePress == SplineSceneTools::Press::Selected){
@@ -1765,7 +1776,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             }
         }
 
-        if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled){
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag || terrainAltPaints) && !suppressLeftMouse && !handPanEnabled){
             if (!mouseLeftDown){
                 mouseLeftStartPos = Vector2(logicalX, logicalY);
                 mouseLeftDown = true;
@@ -1982,8 +1993,26 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }
     }
 
+    // T1 R63 (DC12): the same on an armed terrain brush, unless Alt+LMB paints its alternate: a release before
+    // the drag threshold picks (T5's tree prototype, the layer on Paint Texture, else the height)
+    VoxelAltGesture& terrainAlt = terrainAltGesture();
+    if (terrainBrushArmed && !terrainAltPaints) {
+        if (isMouseInWindow && altHeld && !gizmoSideActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !suppressLeftMouse) {
+            terrainAlt.press(mousePos.x, mousePos.y);
+        }
+        terrainAlt.move(mousePos.x, mousePos.y, io.MouseDragThreshold);
+        if (terrainAlt.isActive() && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && terrainAlt.release()) {
+            float pickX = mousePos.x - windowPos.x;
+            float pickY = mousePos.y - windowPos.y;
+            toEngineCanvas(sceneId, pickX, pickY);
+            terrainBrush->altPick(sceneProject->scene, sceneProject->sceneRender->screenToRay(pickX, pickY));
+        }
+    } else if (terrainAlt.isActive()) {
+        terrainAlt.cancel();
+    }
+
     if (isMouseInWindow && (ImGui::IsMouseClicked(ImGuiMouseButton_Middle) || ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||
-            (altHeld && !gizmoSideActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !suppressLeftMouse))) {
+            (altHeld && !gizmoSideActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !suppressLeftMouse && !terrainAltPaints))) {
         draggingMouse[sceneId] = true;
 
         // X11 still delivers motion queued before the pointer was warped to the centre,
@@ -2151,7 +2180,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }
 
         // Alt+LMB orbit
-        if (draggingMouse[sceneId] && altHeld && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !axisLocked && !voxelBrush.altHolding()) {
+        if (draggingMouse[sceneId] && altHeld && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !axisLocked && !voxelBrush.altHolding() &&
+                !(terrainAlt.isActive() && !terrainAlt.isOrbit())) {
             camera->rotatePosition(-0.1 * mouseDelta.x);
             camera->elevatePosition(0.1 * mouseDelta.y);
 

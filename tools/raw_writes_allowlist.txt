@@ -3,6 +3,7 @@
 
 # append-only logs: a crash loses at most the last lines, never earlier ones
 editor/cli/CommandLine.cpp :: std::ofstream out(log, std::ios::app); :: hook log, append-only
+editor/window/TerrainEditWindow.cpp :: std::ofstream out(std::filesystem::u8path(log), std::ios::app); :: T1 R39 JASPER_TERRAIN_STROKE_LOG, a test-only append-only log of mouse strokes
 
 # not a document
 editor/AppSettings.cpp :: std::ofstream f(probe); :: write probe of the settings directory, removed at once

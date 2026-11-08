@@ -1153,6 +1153,22 @@ namespace {
         const LayerChannel channel = terrainLayerChannel(*op.layer);
         const MapId map{MapKind::Blend, channel.map};
         if (!ensureMap(map, 4, entry)) return;
+        if (op.smoothBlend) {
+            // T1 R56: Paint Texture's alternate blurs every weight of the layer's map by a true average
+            applyShaped(op, map, BLEND_FLOW, 1, false, entry, [&](const Block& block, int x, int y, const ShapeSample&, float w, const float* cur, float* next, Counters&) {
+                for (int c = 0; c < block.channels; c++) {
+                    float sum = 0.0f;
+                    for (int oy = -1; oy <= 1; oy++) {
+                        for (int ox = -1; ox <= 1; ox++) {
+                            sum += block.at(std::clamp(x + ox, block.source.x, block.source.right() - 1),
+                                            std::clamp(y + oy, block.source.y, block.source.bottom() - 1))[c];
+                        }
+                    }
+                    next[c] = cur[c] + (sum / 9.0f - cur[c]) * w;
+                }
+            });
+            return;
+        }
         const bool normalize = op.normalize;
         const int painted = channel.channel;
         const float goal = channel.inverted ? 0.0f : 1.0f;

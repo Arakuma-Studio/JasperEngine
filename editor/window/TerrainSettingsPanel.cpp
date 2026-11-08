@@ -15,6 +15,7 @@
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/type/PropertyCmd.h"
+#include "command/type/TerrainTextureEditCmd.h"
 #include "external/IconsFontAwesome6.h"
 #include "math/AABB.h"
 #include "object/TerrainEdit.h"
@@ -22,6 +23,7 @@
 #include "terrain/TerrainIssues.h"
 #include "terrain/TerrainLayers.h"
 #include "terrain/TerrainOpsUndo.h"
+#include "terrain/TerrainOverlay.h"
 #include "util/Angle.h"
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
@@ -29,6 +31,7 @@
 #include "util/TerrainMapFileWriter.h"
 #include "util/UIUtils.h"
 #include "window/EditorModal.h"
+#include "window/HeightImportFields.h"
 #include "window/SceneWindow.h"
 
 #include <algorithm>
@@ -46,6 +49,37 @@ using terrain::MapId;
 using terrain::MapKind;
 
 namespace {
+
+    // T1 R67: the window's rules as the paint_by_rules op Apply and Preview run
+    terrain::Op paintByRulesOp(const TerrainEditorSettings& ts, const TerrainComponent& terrain) {
+        terrain::Op op;
+        op.type = terrain::OpType::PaintByRules;
+        op.seed = static_cast<uint32_t>(ts.paintRulesSeed);
+        for (const TerrainPaintRule& rule : ts.paintRules) {
+            terrain::PaintRule r;
+            r.layer = rule.layer;
+            if (rule.useSlope) r.slope = terrain::FilterRange{rule.slopeMin, rule.slopeMax};
+            if (rule.useHeight) r.height = terrain::FilterRange{rule.heightMin * terrain.maxHeight, rule.heightMax * terrain.maxHeight};
+            r.invert = rule.invert;
+            r.opacity = rule.opacity;
+            r.noise = rule.noise;
+            op.rules.push_back(r);
+        }
+        return op;
+    }
+
+    bool samePaintRules(const std::vector<TerrainPaintRule>& a, const std::vector<TerrainPaintRule>& b) {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); i++) {
+            const TerrainPaintRule& x = a[i];
+            const TerrainPaintRule& y = b[i];
+            if (x.layer != y.layer || x.useSlope != y.useSlope || x.slopeMin != y.slopeMin || x.slopeMax != y.slopeMax || x.useHeight != y.useHeight ||
+                x.heightMin != y.heightMin || x.heightMax != y.heightMax || x.invert != y.invert || x.opacity != y.opacity || x.noise != y.noise) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     bool settingsTableBegin(const char* id) {
         if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) return false;
@@ -236,12 +270,20 @@ void editor::TerrainEditWindow::drawSettingsTool(SceneProject* sceneProject, Ter
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Convert to 16-bit") && !convertHeightMapTo16Bit(sceneProject->id, selectedEntity, error)) Out::error("%s", error.c_str());
             }
+            ImGui::SameLine();
+            ImGui::PushID(name.c_str());
+            if (ImGui::SmallButton("Resize...")){
+                resizeMap = ResizeMapDialog();
+                resizeMap.open = true;
+                resizeMap.justOpened = true;
+                resizeMap.map = map;
+                resizeMap.size = format.bounds.w;
+            }
             if (map.kind == MapKind::Blend){
                 ImGui::SameLine();
-                ImGui::PushID(name.c_str());
                 if (ImGui::SmallButton("Remove")) deleteMapForTarget(TerrainMapRef(TerrainMapTarget::BlendMap, map.index));
-                ImGui::PopID();
             }
+            ImGui::PopID();
         }
         ImGui::EndTable();
     }
@@ -311,6 +353,100 @@ void editor::TerrainEditWindow::drawSettingsTool(SceneProject* sceneProject, Ter
     }
     drawImportRawDialog(sceneProject, terrain);
     drawExportRawDialog(sceneProject, terrain);
+
+    // R59: Resize... resamples one map to a new size, one undo step
+    if (resizeMap.justOpened){
+        ImGui::OpenPopup("Resize Terrain Map");
+        resizeMap.justOpened = false;
+    }
+    if (EditorModal::begin("Resize Terrain Map", &resizeMap.open, ImGuiWindowFlags_AlwaysAutoResize)){
+        EditorModal::message("Resample the map to a new size: heights and weights keep their place on the terrain.");
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
+        EditorModal::inputInt("Size", "size", &resizeMap.size, 0, 0);
+        resizeMap.size = std::clamp(resizeMap.size, 2, 8192);
+        if (EditorModal::button("Resize", "ok")){
+            std::string why;
+            if (!resizeTerrainMap(project, sceneProject, selectedEntity, TerrainMapUtils::refOfMap(resizeMap.map), resizeMap.size, resizeMap.size, why)){
+                Out::error("%s", why.c_str());
+            }
+            resizeMap.open = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (EditorModal::button("Cancel", "cancel")){
+            resizeMap.open = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
+editor::TerrainMapSnapshot editor::TerrainEditWindow::resizedSnapshot(const TerrainMapSnapshot& source, int width, int height, bool holes){
+    TerrainMapSnapshot out = source;
+    out.width = width;
+    out.height = height;
+    const int channels = std::max(1, source.channels);
+    const int bytes = static_cast<int>(TextureData::getBytesPerChannel(source.colorFormat));
+    out.pixels.assign(static_cast<size_t>(width) * height * channels * bytes, 0);
+    if (source.width < 1 || source.height < 1 || source.pixels.empty()) return out;
+    auto read = [&](int x, int y, int c){
+        const size_t at = ((static_cast<size_t>(y) * source.width + x) * channels + c) * bytes;
+        return bytes == 2 ? static_cast<float>(source.pixels[at] | (source.pixels[at + 1] << 8)) : static_cast<float>(source.pixels[at]);
+    };
+    // corner texels sit on the terrain's edges in both sizes
+    const float scaleX = width > 1 ? static_cast<float>(source.width - 1) / static_cast<float>(width - 1) : 0.0f;
+    const float scaleY = height > 1 ? static_cast<float>(source.height - 1) / static_cast<float>(height - 1) : 0.0f;
+    for (int y = 0; y < height; y++){
+        const float sy = y * scaleY;
+        const int y0 = std::min(static_cast<int>(sy), source.height - 1);
+        const int y1 = std::min(y0 + 1, source.height - 1);
+        const float fy = sy - static_cast<float>(y0);
+        for (int x = 0; x < width; x++){
+            const float sx = x * scaleX;
+            const int x0 = std::min(static_cast<int>(sx), source.width - 1);
+            const int x1 = std::min(x0 + 1, source.width - 1);
+            const float fx = sx - static_cast<float>(x0);
+            for (int c = 0; c < channels; c++){
+                float value;
+                if (holes){
+                    value = read(fx < 0.5f ? x0 : x1, fy < 0.5f ? y0 : y1, c);
+                }else{
+                    const float top = read(x0, y0, c) + (read(x1, y0, c) - read(x0, y0, c)) * fx;
+                    const float bottom = read(x0, y1, c) + (read(x1, y1, c) - read(x0, y1, c)) * fx;
+                    value = top + (bottom - top) * fy;
+                }
+                const unsigned rounded = static_cast<unsigned>(std::lround(value));
+                const size_t at = ((static_cast<size_t>(y) * width + x) * channels + c) * bytes;
+                out.pixels[at] = static_cast<unsigned char>(rounded & 0xFF);
+                if (bytes == 2) out.pixels[at + 1] = static_cast<unsigned char>(rounded >> 8);
+            }
+        }
+    }
+    return out;
+}
+
+bool editor::TerrainEditWindow::resizeTerrainMap(Project* project, SceneProject* sceneProject, Entity entity, const TerrainMapRef& ref, int width,
+                                                 int height, std::string& error){
+    TerrainComponent& terrain = sceneProject->scene->getComponent<TerrainComponent>(entity);
+    Texture* texture = TerrainMapUtils::findTexture(terrain, ref);
+    if (!texture || texture->empty()){
+        error = "The terrain has no such map to resize.";
+        return false;
+    }
+    TerrainMapSnapshot before = TerrainMapUtils::captureSnapshot(project, *texture, true);
+    if (before.empty || before.pixels.empty()){
+        error = "The map's pixels could not be read.";
+        return false;
+    }
+    TerrainMapSnapshot after = resizedSnapshot(before, width, height, ref.target == TerrainMapTarget::HoleMap);
+    after.path = TerrainMapUtils::makeEditableTexturePath(project, sceneProject->id, entity, ref);
+    after.id = after.path;
+    if (!CommandHandle::get(sceneProject->id)->addCommandNoMerge(
+            new TerrainTextureEditCmd(project, sceneProject->id, entity, ref, std::move(before), std::move(after), "Resize Terrain Map"))){
+        error = "The map could not be resized.";
+        return false;
+    }
+    return true;
 }
 
 void editor::TerrainEditWindow::drawImportRawDialog(SceneProject* sceneProject, TerrainComponent& terrain){
@@ -324,79 +460,8 @@ void editor::TerrainEditWindow::drawImportRawDialog(SceneProject* sceneProject, 
     EditorModal::message("Import " + FileUtils::pathToUtf8(std::filesystem::u8path(importRaw.path).filename()) +
                          " as the height map: depth, resolution and byte order are detected, the marked ones guessed.");
     EditorModal::error(importRaw.preview.ok ? importRaw.message : importRaw.preview.error);
-    bool changed = false;
+    drawHeightImportFields(importRaw.path, importRaw.bytes, importRaw.options, importRaw.preview, terrain.maxHeight, &importRaw.setHeightFromRange);
     const HeightImport& p = importRaw.preview;
-    // a guessed value is marked; editing it makes it given
-    auto guessed = [](bool value){
-        if (!value) return;
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.95f, 0.8f, 0.2f, 1.0f), ICON_FA_CIRCLE_QUESTION);
-        ImGui::SetItemTooltip("Detected from the file");
-    };
-    ImGui::TextUnformatted(FileUtils::pathToUtf8(std::filesystem::u8path(importRaw.path).filename()).c_str());
-
-    int depth = static_cast<int>(importRaw.options.format);
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
-    if (EditorModal::combo("Depth", "depth", &depth, {"Detect", "Bit 8", "Bit 16", "Float 32", "PNG", "EXR"})){
-        importRaw.options.format = static_cast<HeightFileFormat>(depth);
-        changed = true;
-    }
-    guessed(p.ok && p.formatGuessed);
-    int width = importRaw.options.width > 0 ? importRaw.options.width : p.width;
-    int height = importRaw.options.height > 0 ? importRaw.options.height : p.height;
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
-    if (EditorModal::inputInt("Width", "width", &width, 0, 0)){
-        importRaw.options.width = std::max(0, width);
-        changed = true;
-    }
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
-    if (EditorModal::inputInt("Height", "height", &height, 0, 0)){
-        importRaw.options.height = std::max(0, height);
-        changed = true;
-    }
-    guessed(p.ok && p.sizeGuessed);
-    int order = static_cast<int>(importRaw.options.byteOrder);
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
-    if (EditorModal::combo("Byte Order", "byte_order", &order, {"Detect", "Windows", "Mac"})){
-        importRaw.options.byteOrder = static_cast<HeightByteOrder>(order);
-        changed = true;
-    }
-    guessed(p.ok && p.byteOrderGuessed);
-    changed = EditorModal::checkbox("Flip Vertically", "flip_vertically", &importRaw.options.flipVertically) || changed;
-    int range = static_cast<int>(importRaw.options.range);
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
-    if (EditorModal::combo("Value Range", "range", &range, {"Detected", "Full", "Source Min/Max"})){
-        importRaw.options.range = static_cast<HeightRange>(range);
-        changed = true;
-    }
-    if (importRaw.options.range == HeightRange::Source){
-        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
-        changed = EditorModal::inputFloat("Source Min", "source_min", &importRaw.options.sourceMin) || changed;
-        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
-        changed = EditorModal::inputFloat("Source Max", "source_max", &importRaw.options.sourceMax) || changed;
-        EditorModal::checkbox("Set Terrain Height From Range", "set_height_from_range", &importRaw.setHeightFromRange);
-    }
-    if (changed){
-        importRaw.preview = TerrainRawIO::decode(importRaw.path, importRaw.bytes, importRaw.options);
-    }
-
-    if (p.ok){
-        double sum = 0.0;
-        for (float v : p.normalized) sum += v;
-        const double mean = p.normalized.empty() ? 0.0 : sum / static_cast<double>(p.normalized.size());
-        const double clipped = p.normalized.empty() ? 0.0 : static_cast<double>(p.clippedLow + p.clippedHigh) / static_cast<double>(p.normalized.size());
-        ImGui::Text("%s %d x %d. Data %.4g to %.4g; mapped %.4g to %.4g.", TerrainRawIO::formatName(p.format), p.width, p.height,
-                    p.dataMin, p.dataMax, p.rangeLow, p.rangeHigh);
-        ImGui::Text("Mean %.1f%% of Terrain Height (%.2f m); %.2f%% clipped.", mean * 100.0, mean * terrain.maxHeight, clipped * 100.0);
-        // a 64-bin histogram of the mapped heights
-        float bins[64] = {};
-        for (float v : p.normalized) bins[std::min(63, static_cast<int>(v * 64.0f))] += 1.0f;
-        ImGui::PlotHistogram("##import_histogram", bins, 64, 0, nullptr, 0.0f, FLT_MAX, ImVec2(ImGui::GetFontSize() * 20.0f, ImGui::GetFontSize() * 4.0f));
-    }else{
-        ImGui::PushStyleColor(ImGuiCol_Text, severityColor(TerrainIssueSeverity::Error));
-        ImGui::TextWrapped("%s", p.error.c_str());
-        ImGui::PopStyleColor();
-    }
     if (!importRaw.message.empty()){
         ImGui::TextWrapped("%s", importRaw.message.c_str());
     }
@@ -608,6 +673,8 @@ void editor::TerrainEditWindow::drawPaintByRules(SceneProject* sceneProject, Ter
     if (!Theme::foldoutHeader("Paint by Rules")) return;
     TerrainEditorSettings& ts = project->getTerrainEditorSettings();
     std::vector<TerrainPaintRule>& rules = ts.paintRules;
+    const std::vector<TerrainPaintRule> rulesBefore = rules;
+    const int seedBefore = ts.paintRulesSeed;
     std::vector<std::string> layers = {"Base"};
     for (size_t l = 0; l < terrain.surfaceLayers.size(); l++) layers.push_back("Layer " + std::to_string(l));
     int moveUp = -1, remove = -1;
@@ -655,22 +722,28 @@ void editor::TerrainEditWindow::drawPaintByRules(SceneProject* sceneProject, Ter
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 5.0f);
     ImGui::InputInt("Seed", &ts.paintRulesSeed);
     ts.paintRulesSeed = std::max(0, ts.paintRulesSeed);
+    if (!samePaintRules(rules, rulesBefore) || ts.paintRulesSeed != seedBefore) TerrainOverlay::clearPreview(sceneProject->scene, selectedEntity);
 
     ImGui::BeginDisabled(rules.empty() || terrain.heightMap.empty());
-    if (ImGui::Button("Apply")){
-        terrain::Op op;
-        op.type = terrain::OpType::PaintByRules;
-        op.seed = static_cast<uint32_t>(ts.paintRulesSeed);
-        for (const TerrainPaintRule& rule : rules){
-            terrain::PaintRule r;
-            r.layer = rule.layer;
-            if (rule.useSlope) r.slope = terrain::FilterRange{rule.slopeMin, rule.slopeMax};
-            if (rule.useHeight) r.height = terrain::FilterRange{rule.heightMin * terrain.maxHeight, rule.heightMax * terrain.maxHeight};
-            r.invert = rule.invert;
-            r.opacity = rule.opacity;
-            r.noise = rule.noise;
-            op.rules.push_back(r);
+    // R67: Preview shows the result in the Layer Weights overlay from a run on a copy; any change ends it
+    const bool previewing = TerrainOverlay::hasPreview(sceneProject->scene, selectedEntity);
+    if (ImGui::Checkbox("Preview", &paintRulesPreview)){
+        if (!paintRulesPreview) TerrainOverlay::clearPreview(sceneProject->scene, selectedEntity);
+    }
+    if (paintRulesPreview && !previewing){
+        std::string error;
+        if (previewPaintByRules(project, sceneProject, selectedEntity, paintByRulesOp(ts, terrain), blendMapResolution, error)){
+            sceneProject->displaySettings.terrainOverlay.source = "layer_weights";
+        }else{
+            paintRulesMessage = error;
+            paintRulesPreview = false;
         }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Apply")){
+        TerrainOverlay::clearPreview(sceneProject->scene, selectedEntity);
+        paintRulesPreview = false;
+        const terrain::Op op = paintByRulesOp(ts, terrain);
         const std::vector<terrain::Op> ops = {op};
         terrain::OpOptions options;
         options.newMapResolution = blendMapResolution;
@@ -694,6 +767,25 @@ void editor::TerrainEditWindow::drawPaintByRules(SceneProject* sceneProject, Ter
         ImGui::SameLine();
         ImGui::TextDisabled("%s", paintRulesMessage.c_str());
     }
+}
+
+bool editor::TerrainEditWindow::previewPaintByRules(Project* project, SceneProject* sceneProject, Entity entity, const terrain::Op& op,
+                                                     int newMapResolution, std::string& error){
+    std::shared_ptr<TerrainOpsSnapshot> snapshot = snapshotTerrainMaps(project, sceneProject, entity);
+    if (!snapshot || !snapshot->overlay){
+        error = "The terrain's maps could not be copied.";
+        return false;
+    }
+    terrain::OpOptions options;
+    options.newMapResolution = newMapResolution;
+    const terrain::TerrainOpResult result = terrain::applyOps(*snapshot->overlay, std::span<const terrain::Op>(&op, 1), options);
+    if (!result.ok){
+        error = result.error;
+        return false;
+    }
+    // the overlay keeps the copy alive as long as it shows it
+    TerrainOverlay::setPreview(sceneProject->scene, entity, std::shared_ptr<const terrain::TerrainMapStore>(snapshot, snapshot->overlay.get()));
+    return true;
 }
 
 template bool editor::TerrainEditWindow::setTerrainProperty<float>(const char*, const float&);

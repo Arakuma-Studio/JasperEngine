@@ -1277,6 +1277,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ImpostorBaker.cpp
     ${EDITOR_DIR}/mcp/tools/FoliageTools.cpp
     ${EDITOR_DIR}/window/TerrainSettingsPanel.cpp
+    ${EDITOR_DIR}/window/HeightImportFields.cpp
     ${EDITOR_DIR}/lattice/LatticeEditorOps.cpp
     ${EDITOR_DIR}/lattice/LatticeBake.cpp
     ${EDITOR_DIR}/lattice/LatticeBakeGltf.cpp
