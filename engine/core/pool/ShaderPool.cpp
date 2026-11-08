@@ -212,6 +212,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::TITLE_GLINT_SPRITE;
         return true;
     }
+    if (typeToken == "titleglint") {
+        shaderType = ShaderType::TITLE_GLINT;
+        return true;
+    }
 
     return false;
 }
@@ -639,6 +643,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::TITLE_3D_POST: return lowerCase ? "title3dpost" : "Title 3D Post";
         case ShaderType::TITLE_ENV: return lowerCase ? "titleenv" : "Title Environment";
         case ShaderType::TITLE_GLINT_SPRITE: return lowerCase ? "titleglintsprite" : "Title Glint Sprite";
+        case ShaderType::TITLE_GLINT: return lowerCase ? "titleglint" : "Title Glint";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -743,6 +748,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::TITLE_3D_POST: return 4;
         case ShaderType::TITLE_ENV: return 4;
         case ShaderType::TITLE_GLINT_SPRITE: return 0;
+        case ShaderType::TITLE_GLINT: return 4;
         default:                 return 0;
     }
 }
@@ -993,8 +999,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
                                              "Emissive", "Transparent", "Rigs", "Lights", "HDR Compress", "Output Bit 0", "Output Bit 1",
                                              "Matcap", "Specular AA", "Surface Lite"};
         if (bit >= 0 && bit < 24) return shortName ? SHORT[bit] : LONG[bit];
-    } else if (shaderType == ShaderType::TITLE_3D_POST || shaderType == ShaderType::TITLE_ENV) {
-        // the pass number (title3d_post.frag TP_PROGRAM, title_env.frag TE_PROGRAM)
+    } else if (shaderType == ShaderType::TITLE_3D_POST || shaderType == ShaderType::TITLE_ENV || shaderType == ShaderType::TITLE_GLINT) {
+        // the pass number (title3d_post.frag TP_PROGRAM, title_env.frag TE_PROGRAM, glint3d.frag TG_PROGRAM)
         if (bit < 4) return (shortName ? "Pb" : "Pass Bit ") + std::to_string(bit);
     } else if (shaderType == ShaderType::TITLE_ART) {
         // titleart.frag: bits 0-6 hold the TA_PROGRAM number, then the RGBA8 fallback encodings

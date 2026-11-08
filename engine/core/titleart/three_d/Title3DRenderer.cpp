@@ -5,6 +5,7 @@
 // tonemap.ts, hdrResolve.ts and resample.ts by SafEight, used with the author's permission.
 
 #include "Title3DRenderer.h"
+#include "Glint3D.h"
 
 #include "pool/ShaderPool.h"
 #include "render/BufferRender.h"
@@ -173,10 +174,13 @@ struct Title3DRenderer::Impl {
     std::map<uint64_t, std::unique_ptr<Cube>> cubes;
     std::map<uint64_t, std::unique_ptr<EnvBuild>> builds;
     uint64_t envShare = TITLE_ENV_STEP_UNITS;
-    TextureRender placeholder2D, placeholderCube;
+    // placeholders: filtering samplers, and a nearest one for the slots that declare nonfiltering
+    TextureRender placeholder2D, placeholderCube, placeholderNearest;
     bool placeholders = false;
-    // the gem behind copy and its scratch twin (box mips through two textures)
-    TextureRender behindCopy, behindScratch;
+    // the gem behind copy and its scratch twin (box mips through two textures), each with a
+    // nearest view for the passes that read them texel by texel
+    TextureRender behindCopy, behindScratch, behindCopyRaw, behindScratchRaw;
+    std::unique_ptr<Glint3D> glint;
     int behindWidth = 0, behindHeight = 0, behindLevels = 0;
     CameraRender pass;
     uint64_t clock = 0;
@@ -192,11 +196,14 @@ struct Title3DRenderer::Impl {
         if (placeholders) {
             placeholder2D.destroyTexture();
             placeholderCube.destroyTexture();
+            placeholderNearest.destroyTexture();
         }
     }
 
     void releaseBehind() {
         if (behindWidth > 0) {
+            behindCopyRaw.destroyTexture();
+            behindScratchRaw.destroyTexture();
             behindCopy.destroyTexture();
             behindScratch.destroyTexture();
         }
@@ -215,7 +222,10 @@ struct Title3DRenderer::Impl {
                                                    TextureWrap::CLAMP_TO_EDGE) &&
                        placeholderCube.createTexture("title 3d placeholder cube", 1, 1, ColorFormat::RGBA, TextureType::TEXTURE_CUBE, 6,
                                                      faces, sizes, TextureFilter::LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE,
-                                                     TextureWrap::CLAMP_TO_EDGE);
+                                                     TextureWrap::CLAMP_TO_EDGE) &&
+                       placeholderNearest.createTexture("title 3d placeholder nearest", 1, 1, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data,
+                                                        size, TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::CLAMP_TO_EDGE,
+                                                        TextureWrap::CLAMP_TO_EDGE);
         return placeholders;
     }
 
@@ -250,12 +260,13 @@ struct Title3DRenderer::Impl {
         }
         p.object.beginLoad(PrimitiveType::TRIANGLES);
         p.object.setShader(p.shader.get());
+        const bool post = type == ShaderType::TITLE_3D_POST;
         if (p.source.first >= 0) {
             const bool cubeSource = type == ShaderType::TITLE_ENV && properties != EQUIRECT;
-            p.object.addTexture(p.source, ShaderStageType::FRAGMENT, cubeSource ? &placeholderCube : &placeholder2D);
+            p.object.addTexture(p.source, ShaderStageType::FRAGMENT, cubeSource ? &placeholderCube : post ? &placeholderNearest : &placeholder2D);
         }
         for (auto slot2 : {p.aux, p.aux2}) {
-            if (slot2.first >= 0) p.object.addTexture(slot2, ShaderStageType::FRAGMENT, &placeholder2D);
+            if (slot2.first >= 0) p.object.addTexture(slot2, ShaderStageType::FRAGMENT, &placeholderNearest);
         }
         p.object.setImmediatePipelines(true);
         if (p.block < 0 || !p.object.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE)) {
@@ -650,9 +661,10 @@ struct Title3DRenderer::Impl {
         for (auto slot : {o->env, o->matcap}) {
             if (slot.first >= 0) r.addTexture(slot, ShaderStageType::FRAGMENT, slot == o->env ? &placeholderCube : &placeholder2D);
         }
-        for (auto slot : {o->ramps, o->spans, o->base, o->behind}) {
+        for (auto slot : {o->ramps, o->base, o->behind}) {
             if (slot.first >= 0) r.addTexture(slot, ShaderStageType::FRAGMENT, &placeholder2D);
         }
+        if (o->spans.first >= 0) r.addTexture(o->spans, ShaderStageType::FRAGMENT, &placeholderNearest);
         r.setImmediatePipelines(true);
         if (o->vsBlock < 0 || o->fsBlock < 0 || !r.endLoadDynamic(primitive, wide ? IndexType::UINT32 : IndexType::UINT16)) {
             r.destroy();
@@ -684,9 +696,9 @@ struct Title3DRenderer::Impl {
         state.blend = BlendMode::NONE;
         bool drawn = false;
         if (p.object.beginDraw(state)) {
-            if (p.source.first >= 0) p.object.addTexture(p.source, ShaderStageType::FRAGMENT, source ? source : &placeholder2D);
-            if (p.aux.first >= 0) p.object.addTexture(p.aux, ShaderStageType::FRAGMENT, aux ? aux : &placeholder2D);
-            if (p.aux2.first >= 0) p.object.addTexture(p.aux2, ShaderStageType::FRAGMENT, aux2 ? aux2 : &placeholder2D);
+            if (p.source.first >= 0) p.object.addTexture(p.source, ShaderStageType::FRAGMENT, source ? source : &placeholderNearest);
+            if (p.aux.first >= 0) p.object.addTexture(p.aux, ShaderStageType::FRAGMENT, aux ? aux : &placeholderNearest);
+            if (p.aux2.first >= 0) p.object.addTexture(p.aux2, ShaderStageType::FRAGMENT, aux2 ? aux2 : &placeholderNearest);
             p.object.applyUniformBlock(p.block, sizeof(PostBlock), (void*)&block);
             p.object.draw(0, 3, 1);
             drawn = true;
@@ -717,7 +729,11 @@ struct Title3DRenderer::Impl {
                                               1, false, false, levels);
         };
         if (!make(behindCopy)) return false;
-        if (!make(behindScratch)) {
+        if (!make(behindScratch) || !behindCopyRaw.createAliasView(behindCopy, "title 3d behind (texels)") ||
+            !behindScratchRaw.createAliasView(behindScratch, "title 3d behind scratch (texels)")) {
+            behindCopyRaw.destroyTexture();
+            behindScratchRaw.destroyTexture();
+            behindScratch.destroyTexture();
             behindCopy.destroyTexture();
             return false;
         }
@@ -751,6 +767,14 @@ namespace {
         return f.renderRGBA16F && f.filterRGBA16F;
     }
 
+    // the glint chain of the render (the debug view shows the full chain when the layer has none)
+    GlintMode glintMode(const Title3DPlan& plan) {
+        const RenderFeatures& f = SystemRender::getFeatures();
+        if (!floatPasses() || !f.blendRGBA16F || plan.glintParams.intensity <= 0) return GlintMode::Off;
+        if (plan.glint == GlintMode::Off && plan.debugView == Title3DDebugView::Glint) return GlintMode::Full;
+        return plan.glint;
+    }
+
     bool debugGeometry(const Title3DPlan& plan) {
         return plan.debugView == Title3DDebugView::Normals || plan.debugView == Title3DDebugView::Environment ||
                plan.debugView == Title3DDebugView::Wireframe;
@@ -781,6 +805,13 @@ uint32_t Title3DRenderer::passCount(const Title3DPlan& plan) {
     uint32_t passes = 2u + (plan.k > 1 ? 2u : 0u);
     if (wantsAO(plan)) passes += 4u;
     if (plan.behind) passes += 2u + 2u * 8u;
+    // the glint chain: about 30 passes in full, 20 reduced, 4 and a draw as sprites
+    switch (glintMode(plan)) {
+        case GlintMode::Full: passes += 30u; break;
+        case GlintMode::Mobile: passes += 20u; break;
+        case GlintMode::Sprites: passes += 5u; break;
+        default: break;
+    }
     return passes;
 }
 
@@ -802,6 +833,11 @@ bool Title3DRenderer::ready(const Title3DPlan& plan, uint32_t testFlags) {
     }
     for (uint32_t p : posts) {
         if (!impl->shaderOf(ShaderType::TITLE_3D_POST, p, &error) && error.empty()) return false;
+    }
+    const GlintMode glint = glintMode(plan);
+    if (glint != GlintMode::Off) {
+        if (!impl->glint) impl->glint = std::make_unique<Glint3D>();
+        if (!impl->glint->ready(glint, &error) && error.empty()) return false;
     }
     // the environments: a share of a build per call, so a cube never stalls a frame
     for (const Title3DEnvPlan& env : plan.environments) {
@@ -1066,9 +1102,10 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
         state.depthWrite = true;
         if (prepass->object.beginDraw(state)) {
             if (prepass->env.first >= 0) prepass->object.addTexture(prepass->env, ShaderStageType::FRAGMENT, &im.placeholderCube);
-            for (auto slot : {prepass->ramps, prepass->spans, prepass->base, prepass->matcap, prepass->behind}) {
+            for (auto slot : {prepass->ramps, prepass->base, prepass->matcap, prepass->behind}) {
                 if (slot.first >= 0) prepass->object.addTexture(slot, ShaderStageType::FRAGMENT, &im.placeholder2D);
             }
+            if (prepass->spans.first >= 0) prepass->object.addTexture(prepass->spans, ShaderStageType::FRAGMENT, &im.placeholderNearest);
             prepass->object.applyUniformBlock(prepass->vsBlock, sizeof(VsBlock), &aoVs);
             prepass->object.applyUniformBlock(prepass->fsBlock, sizeof(FsBlock), &aoFs);
             prepass->object.draw(0, (unsigned)mesh.indexCount(), 1);
@@ -1174,9 +1211,10 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
             state.depthWrite = false;
             if (wire->object.beginDraw(state)) {
                 if (wire->env.first >= 0) wire->object.addTexture(wire->env, ShaderStageType::FRAGMENT, &im.placeholderCube);
-                for (auto slot : {wire->ramps, wire->spans, wire->base, wire->matcap, wire->behind}) {
+                for (auto slot : {wire->ramps, wire->base, wire->matcap, wire->behind}) {
                     if (slot.first >= 0) wire->object.addTexture(slot, ShaderStageType::FRAGMENT, &im.placeholder2D);
                 }
+                if (wire->spans.first >= 0) wire->object.addTexture(wire->spans, ShaderStageType::FRAGMENT, &im.placeholderNearest);
                 wire->object.applyUniformBlock(wire->vsBlock, sizeof(VsBlock), &vs);
                 wire->object.applyUniformBlock(wire->fsBlock, sizeof(FsBlock), &fs);
                 wire->object.draw(0, gpuMesh->edgeIndexCount, 1);
@@ -1203,9 +1241,9 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
             if (!im.post(*copy, nullptr, &im.behindCopy, 0, ColorFormat::RGBA16F, &mt->texture(), nullptr, nullptr, block, error)) return false;
             for (int level = 1; level < im.behindLevels; level++) {
                 set4(block.p1, (float)(level - 1), 0);
-                if (!im.post(*down, nullptr, &im.behindScratch, level, ColorFormat::RGBA16F, nullptr, &im.behindCopy, nullptr, block, error)) return false;
+                if (!im.post(*down, nullptr, &im.behindScratch, level, ColorFormat::RGBA16F, nullptr, &im.behindCopyRaw, nullptr, block, error)) return false;
                 set4(block.p1, (float)level, 1);
-                if (!im.post(*down, nullptr, &im.behindCopy, level, ColorFormat::RGBA16F, nullptr, &im.behindScratch, nullptr, block, error)) return false;
+                if (!im.post(*down, nullptr, &im.behindCopy, level, ColorFormat::RGBA16F, nullptr, &im.behindScratchRaw, nullptr, block, error)) return false;
             }
             counters.behindCopies++;
             // the whole render's width: a region's preview mips as the whole render would
@@ -1221,7 +1259,32 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
     counters.mainPasses++;
     if (!error.empty()) return false;
 
-    // ---- tone map (decode, expand, AO), then Mitchell down ----
+    // ---- the glint on the pre-tone-map image (R32) ----
+    Glint3DOutput glintOut;
+    const GlintMode glint = glintMode(plan);
+    if (glint != GlintMode::Off) {
+        if (!im.glint) im.glint = std::make_unique<Glint3D>();
+        Glint3DInput gi;
+        gi.source = &mt->texture();
+        gi.sourceWidth = mainKey.width;
+        gi.sourceHeight = mainKey.height;
+        gi.compressed = compressed;
+        gi.shoulder = shoulder;
+        gi.exposure = exposure;
+        gi.k = k;
+        gi.region = region;
+        gi.frameWidth = plan.canvasWidth * pxScale;
+        gi.frameHeight = plan.canvasHeight * pxScale;
+        gi.pxScale = pxScale;
+        gi.unit = plan.size / 100.0 * plan.layerScale * pxScale;
+        gi.params = plan.glintParams;
+        gi.mode = glint;
+        gi.originTopLeft = features.originTopLeft;
+        if (!im.glint->render(gi, services.pool, glintOut, error)) return false;
+        counters.glintPasses += glintOut.passes;
+    }
+
+    // ---- tone map (decode, expand, AO, glint), then Mitchell down ----
     Fullscreen* tonemap = im.program(ShaderType::TITLE_3D_POST, TONEMAP, "u_fs_title3dPost", "u_tpSrc", &error);
     Fullscreen* mitchellH = k > 1 ? im.program(ShaderType::TITLE_3D_POST, MITCHELL_H, "u_fs_title3dPost", "u_tpSrc", &error) : nullptr;
     Fullscreen* mitchellV = k > 1 ? im.program(ShaderType::TITLE_3D_POST, MITCHELL_V, "u_fs_title3dPost", "u_tpSrc", &error) : nullptr;
@@ -1236,8 +1299,8 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
     if (plan.debugView == Title3DDebugView::AO) debug = 1;
     else if (plan.debugView == Title3DDebugView::Glint) debug = 2;
     else if (plan.debugView == Title3DDebugView::Ink) debug = 3;
-    set4(post.p2, aoTarget ? 1.0f : 0.0f, 0, debug);
-    set4(post.p3, 1, 1, 0, 0);
+    set4(post.p2, aoTarget ? 1.0f : 0.0f, glintOut.light ? 1.0f : 0.0f, debug);
+    set4(post.p3, glintOut.uv[0], glintOut.uv[1], glintOut.uv[2], glintOut.uv[3]);
     const TargetKey outKey = static_cast<SokolTitleTarget*>(out)->key();
     TargetRef toned;
     TitleTarget* tonedTarget = out;
@@ -1255,10 +1318,12 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
         tonedTarget = toned.get();
     }
     TextureRender* aoTexture = aoTarget ? &aoTarget.as<SokolTitleTarget>()->texture() : nullptr;
-    if (!im.fullscreenPass(*tonemap, tonedTarget, &mt->texture(), post, error, aoTexture, nullptr)) return false;
+    TextureRender* glintTexture = glintOut.light ? &glintOut.light.as<SokolTitleTarget>()->texture() : nullptr;
+    if (!im.fullscreenPass(*tonemap, tonedTarget, &mt->texture(), post, error, aoTexture, glintTexture)) return false;
     counters.postPasses++;
     main.reset();
     aoTarget.reset();
+    glintOut.light.reset();
     if (k > 1) {
         TargetKey key;
         key.width = region.width;

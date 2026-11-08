@@ -6,7 +6,8 @@
 // does and nothing outside its region; the ramp's bend changes the image (red control: bend 0);
 // the compressed-light path agrees with the float path; the debug views; AO (AC16) darkens the
 // crevices and keeps open faces; gems refract the layer's own opaque parts (AC11); a part's own
-// environment lights that part only; an environment build is spread over frames (the 21 s
+// environment lights that part only; the glint (AC17) adds light past the letters on every tier
+// (red control: a threshold nothing passes); an environment build is spread over frames (the 21 s
 // software-rasteriser stall of one-shot builds; red control: one shot); a 2D document makes no
 // 3D renderer; the environment's level map and CPU scene evaluation.
 
@@ -251,6 +252,52 @@ TEST_F(Title3DRendererGpu, DebugViewsAoInkAndWireframe) {
     }
     EXPECT_GT(wireCovered, 0u);
     EXPECT_LT(wireCovered, solidCovered / 2);
+}
+
+TEST_F(Title3DRendererGpu, TheGlintAddsLightPastTheLetters) {
+    // AC17: a gold plate's bevel highlights make a glint that reaches past the plate (alpha raised
+    // where the plain render is empty), on the full chain (Bake), the reduction (Medium) and the
+    // sprites (Low); a threshold nothing passes changes nothing (red control)
+    const RenderFeatures& f = SystemRender::getFeatures();
+    if (!f.renderRGBA16F || !f.filterRGBA16F || !f.blendRGBA16F) GTEST_SKIP() << "no float passes here";
+    auto withGlint = [](double threshold) {
+        Json layer = plate3D(0.6, "chrome");
+        layer["style_3d"]["glint"] = Json{{"enabled", true}, {"threshold", threshold}, {"intensity", 2}, {"radius", 5},
+                                          {"streaks", 4}, {"length", 40}, {"angle", 15}};
+        return doc3D(layer);
+    };
+    for (int tier : {0, 2, 3}) {
+        auto renderer = geometryRenderer();
+        RenderRequest plainRequest = requestOf(doc3D(plate3D(0.6, "chrome")));
+        plainRequest.tier = tier;
+        RenderRequest glintRequest = requestOf(withGlint(0.5));
+        glintRequest.tier = tier;
+        RenderRequest darkRequest = requestOf(withGlint(1000));
+        darkRequest.tier = tier;
+        const Pixels plain = render(*renderer, plainRequest);
+        const Pixels glint = render(*renderer, glintRequest);
+        const Pixels dark = render(*renderer, darkRequest);
+        ASSERT_EQ(plain.rgba.size(), glint.rgba.size());
+        size_t outside = 0, brighter = 0;
+        for (size_t i = 0; i + 3 < plain.rgba.size(); i += 4) {
+            if (plain.rgba[i + 3] <= 0.0f && glint.rgba[i + 3] > 2.0f / 255.0f) outside++;
+            if (glint.rgba[i] + glint.rgba[i + 1] + glint.rgba[i + 2] > plain.rgba[i] + plain.rgba[i + 1] + plain.rgba[i + 2] + 6.0f / 255.0f) brighter++;
+        }
+        EXPECT_GT(brighter, 0u) << "tier " << tier << ": the glint adds light";
+        EXPECT_GT(outside, 0u) << "tier " << tier << ": the glint reaches past the letters";
+        EXPECT_LE(compare(plain, dark, 1.0).overFraction, 0.0) << "tier " << tier << ": nothing passes the threshold";
+        const Title3DStats* st = stats3D(*renderer);
+        ASSERT_TRUE(st);
+        EXPECT_GT(st->glintPasses, 0u);
+    }
+    // the debug view shows the glint alone
+    auto renderer = geometryRenderer();
+    RenderRequest view = requestOf(withGlint(0.5));
+    view.debugView3D = (int)Title3DDebugView::Glint;
+    const Pixels g = render(*renderer, view);
+    double light = 0;
+    for (size_t i = 0; i + 3 < g.rgba.size(); i += 4) light += g.rgba[i + 3];
+    EXPECT_GT(light, 0.0);
 }
 
 TEST_F(Title3DRendererGpu, AnEnvironmentBuildIsSpreadOverFrames) {

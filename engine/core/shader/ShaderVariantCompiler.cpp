@@ -701,6 +701,13 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         args.vert_file = "fullscreen.vert";
         args.frag_file = "titleart/title_env.frag";
         args.defines.push_back({"TE_PROGRAM", std::to_string(properties & 0xFu)});
+    }else if (shaderType == ShaderType::TITLE_GLINT){
+        args.vert_file = "titleart.vert";
+        args.frag_file = "titleart/glint3d.frag";
+        args.defines.push_back({"TG_PROGRAM", std::to_string(properties & 0xFu)});
+    }else if (shaderType == ShaderType::TITLE_GLINT_SPRITE){
+        args.vert_file = "titleart/glint_sprite.vert";
+        args.frag_file = "titleart/glint_sprite.frag";
     }else if (shaderType == ShaderType::ATMOSPHERE_DEPTH){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "atmosphere_depth.frag";
