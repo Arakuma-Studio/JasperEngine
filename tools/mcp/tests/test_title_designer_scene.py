@@ -5,6 +5,7 @@ Title Designer opens the title In Context, its scene behind it and its screen re
 """
 
 import asyncio
+from pathlib import Path
 
 import harness
 from harness import Editor
@@ -15,6 +16,13 @@ EDITOR = {"create": True, "name": "Title Designer Scene", "xvfb": "harness"}
 TIMEOUT = 600
 
 S: dict = {}
+
+
+def shots_dir() -> Path:
+    """Where a failing step leaves its screenshot (copied back with the test results)."""
+    d = Path(__file__).resolve().parents[3] / "build" / "test-results" / "w2"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 async def setup(ed: Editor) -> dict:
@@ -55,7 +63,7 @@ async def test_document_chip_drag(ed: Editor):
         ed.check(len(rows) > 0, "the Hierarchy shows the scene")
         r = rows[0]["window_rect"]
         hierarchy = [r["x"], r["y"], r["width"], r["height"]]
-    before = (await ed.call("find_entities", component="titleart")).get("entities", [])
+    before = harness.find_key(await ed.call("find_entities", component="titleart"), "entities") or []
     # the empty area at the bottom of the Hierarchy (a row would parent it)
     if isinstance(hierarchy, dict):
         hierarchy = [hierarchy["x"], hierarchy["y"], hierarchy["width"], hierarchy["height"]]
@@ -68,7 +76,9 @@ async def test_document_chip_drag(ed: Editor):
         return
     await ui.drag(ui.centre(chip["rect"]), target, steps=16)
     await ui.frames(6)
-    after = (await ed.call("find_entities", component="titleart")).get("entities", [])
+    after = harness.find_key(await ed.call("find_entities", component="titleart"), "entities") or []
+    if len(after) != len(before) + 1:
+        (shots_dir() / "chip-drag.png").write_bytes(await ed.screenshot("editor", max_width=0))
     ed.check_eq(len(after), len(before) + 1, f"one GameObject shows the title: {after}")
     ed.check(await top_step(ed) in ("Create Title Art (chip)", "mcp: Create Title Art (chip)"), f"one step: {await top_step(ed)}")
 
@@ -90,6 +100,8 @@ async def test_open_in_context(ed: Editor):
     await ed.call("select_entities", scene=scene, entities=["Logo"])
     await ed.call("focus_window", window="inspector")
     await ui.frames(6)
+    if await ui.find("Open in Title Designer", "Inspector") is None:
+        (shots_dir() / "in-context.png").write_bytes(await ed.screenshot("editor", max_width=0))
     await ui.click_revealed("Open in Title Designer", "Inspector")
     state = {}
     for _ in range(60):

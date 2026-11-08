@@ -277,7 +277,6 @@ namespace {
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip(materialClipboard().is_object() ? "Paste Material" : "Paste Material (copy one first)");
         if (ctx.readOnly) ImGui::EndDisabled();
-        ImGui::SetNextWindowSize(ImVec2(560, 420), ImGuiCond_Appearing);
         if (!ImGui::BeginPopup("##materialpicker")) {
             if (openPicker() == pickerId) {
                 openPicker().clear();
@@ -287,7 +286,8 @@ namespace {
         }
         char buffer[96];
         std::snprintf(buffer, sizeof(buffer), "%s", pickerQuery().c_str());
-        ImGui::SetNextItemWidth(-1.0f);
+        // (a popup sizes itself to its contents: fixed widths, four tiles a row)
+        ImGui::SetNextItemWidth(4.0f * 112.0f);
         if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
         if (ImGui::InputTextWithHint("##matsearch", ICON_FA_MAGNIFYING_GLASS " Search materials", buffer, sizeof(buffer))) pickerQuery() = buffer;
         std::string query = pickerQuery();
@@ -297,7 +297,7 @@ namespace {
         bool hovering = false;
         std::string section;
         int column = 0;
-        const int columns = std::max(1, (int)((ImGui::GetContentRegionAvail().x + 6.0f) / (side + 8.0f)));
+        const int columns = 4;
         for (const std::string& preset : ta::title3DMaterialPresetNames()) {
             if (preset == "custom") continue;
             if (!query.empty() && preset.find(query) == std::string::npos && titleCase(preset).find(pickerQuery()) == std::string::npos) continue;
@@ -498,7 +498,6 @@ namespace {
             openPicker() = pickerId;
         }
         if (ctx.readOnly) ImGui::EndDisabled();
-        ImGui::SetNextWindowSize(ImVec2(470, 440), ImGuiCond_Appearing);
         if (!ImGui::BeginPopup("##envpicker")) {
             if (openPicker() == pickerId) {
                 openPicker().clear();
@@ -575,7 +574,7 @@ namespace {
             }
         }
         // an .hdr / .exr dragged from the Project window
-        ImGui::Dummy(ImVec2(ImGui::GetContentRegionAvail().x, 24.0f));
+        ImGui::Dummy(ImVec2(4.0f * 104.0f, 24.0f));
         if (ImGui::BeginDragDropTarget()) {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
                 const std::string text((const char*)payload->Data, (size_t)payload->DataSize);

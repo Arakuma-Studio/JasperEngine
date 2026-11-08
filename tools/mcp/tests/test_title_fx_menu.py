@@ -5,6 +5,8 @@ Enter in the palette), the seed dice as one step, the cost badge on an effect, a
 generator whose layer was deleted showing "Follows a deleted layer" with Pick Layer.
 """
 
+import json
+
 import harness
 from harness import Editor
 from ui_input import Ui
@@ -88,8 +90,7 @@ async def test_recipe_is_one_step(ed: Editor):
     await ui.key("Return")
     await ui.frames(4)
     ed.check_eq(await top_step(ed), "Add Effect Long Shadow to Title", "one step named after the recipe")
-    got = await ed.call("get_title", path=path)
-    effects = [e.get("type") for e in got["layers"][0].get("effects", [])]
+    effects = [e.get("type") for e in json.loads((ed.project / path).read_text())["layers"][0].get("effects", [])]
     ed.check_eq(effects, ["extrude"], "Long Shadow is an Extrude")
 
 
@@ -113,12 +114,13 @@ async def test_seed_dice_and_cost_badge(ed: Editor):
     got = await ed.call("get_title", path=path)
     generator = next(layer["name"] for layer in got["layers"] if layer.get("type") == "generator")
     await focus(ed, select=generator, panel="properties")
-    before = await ed.call("get_title", path=path)
+    before = (ed.project / path).read_text()
+    # the generator's section sits under Transform: fold it so the dice is in view
+    await ui.click_item("Transform", "Title Designer")
     await ui.click_revealed("Randomize Seed")
     await ui.frames(4)
     ed.check_eq(await top_step(ed), "Randomize Seed", "the dice is one step")
-    after = await ed.call("get_title", path=path)
-    ed.check(before != after, "the seed changed")
+    ed.check(before != (ed.project / path).read_text(), "the seed changed")
 
 
 async def test_follow_missing_warning(ed: Editor):

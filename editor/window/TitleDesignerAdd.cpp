@@ -59,7 +59,6 @@ void TitleDesignerWindow::drawAddPalette() {
         addOpenRequested = false;
         addOpen = true;
     }
-    ImGui::SetNextWindowSize(ImVec2(620, 480), ImGuiCond_Appearing);
     if (!ImGui::BeginPopup("Add###addpalette")) {
         if (addOpen) {
             // Esc / a click outside closes and restores
@@ -119,15 +118,17 @@ void TitleDesignerWindow::drawAddPalette() {
     for (const std::string& cat : categoryOrder) addRail.push_back({cat, counts[cat]});
     addVisible.clear();
     for (const AddEntry* e : visible) addVisible.push_back(e->id);
-    const float footer = ImGui::GetTextLineHeightWithSpacing() * 2.5f;
-    ImGui::BeginChild("##rail", ImVec2(200, -footer), true);
+    // fixed sizes: a popup sizes itself to its contents, so a child cannot fill it
+    const float scale = ImGui::GetFontSize() / 16.0f;
+    const float listHeight = 340.0f * scale;
+    ImGui::BeginChild("##rail", ImVec2(210.0f * scale, listHeight), true);
     if (ImGui::Selectable(("All (" + std::to_string(matched) + ")###railall").c_str(), addCategory.empty())) addCategory.clear();
     for (const std::string& cat : categoryOrder) {
         if (ImGui::Selectable((cat + " (" + std::to_string(counts[cat]) + ")###rail" + cat).c_str(), addCategory == cat)) addCategory = cat;
     }
     ImGui::EndChild();
     ImGui::SameLine();
-    ImGui::BeginChild("##addlist", ImVec2(0, -footer), true);
+    ImGui::BeginChild("##addlist", ImVec2(440.0f * scale, listHeight), true);
     if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) addHighlight = std::min(addHighlight + 1, (int)visible.size() - 1);
     if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) addHighlight = std::max(0, addHighlight - 1);
     const bool arrowed = ImGui::IsKeyPressed(ImGuiKey_DownArrow) || ImGui::IsKeyPressed(ImGuiKey_UpArrow);
@@ -170,7 +171,9 @@ void TitleDesignerWindow::drawAddPalette() {
     if (highlighted) {
         std::string footerText = highlighted->description;
         if (!highlighted->cost.empty()) footerText += "  (cost " + highlighted->cost + ")";
-        ImGui::TextWrapped("%s", footerText.c_str());
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 650.0f * scale);
+        ImGui::TextUnformatted(footerText.c_str());
+        ImGui::PopTextWrapPos();
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Enter) && highlighted) chosen = highlighted;
 
