@@ -182,7 +182,7 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         "$EDITOR" export --project project --out export --backend "$EXPORT_BACKEND" $SMOKE_EXPORT_ARGS > export.log 2>&1 \
             || { echo "FAIL: export"; tail -30 export.log; exit 1; }
         check_log export export.log
-        # smoke-export-expect.txt: lines the exported project's CMake files must hold (module switches)
+        # smoke-export-expect.txt: lines the CMake files of the exported project must hold (module switches)
         if [[ -f project/smoke-export-expect.txt ]]; then
             while IFS= read -r line; do
                 [[ -z "$line" || "$line" == "#"* ]] && continue
@@ -288,11 +288,11 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
             done < project/smoke-expect.txt
             echo "ok: the game logged project/smoke-expect.txt"
         fi
-        # smoke-golden.json: the game's own frame against an image (tools/ci/smoke_golden.py)
+        # smoke-golden.json: the own frame of the game against an image (tools/ci/smoke_golden.py)
         if [[ -f project/smoke-golden.json ]]; then
-            [[ "$SMOKE_PLAY" == 1 ]] || { echo "FAIL: project/smoke-golden.json compares the game's own frame: run with SMOKE_PLAY=1"; exit 1; }
+            [[ "$SMOKE_PLAY" == 1 ]] || { echo "FAIL: project/smoke-golden.json compares the frame the game writes itself: run with SMOKE_PLAY=1"; exit 1; }
             python3 /src/tools/ci/smoke_golden.py project/smoke-golden.json game.png game-golden-diff.png \
-                || { echo "FAIL: the game's frame is not its golden ($OUT/game-golden-diff.png)"; exit 1; }
+                || { echo "FAIL: the frame of the game is not its golden ($OUT/game-golden-diff.png)"; exit 1; }
         fi
 
         # the extra runs: "<name> NAME=value ..." entries separated by ";"
