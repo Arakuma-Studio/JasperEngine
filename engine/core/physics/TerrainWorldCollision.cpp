@@ -45,8 +45,6 @@ namespace {
 
     // seconds a chunk stays after no subject wants it, so a body at a border does not churn it
     constexpr double CHUNK_LINGER_SECONDS = 1.0;
-    // R23: the error Jolt's compression may add, in metres
-    constexpr float CHUNK_MAX_ERROR = 0.01f;
 
 }
 
@@ -55,7 +53,7 @@ namespace {
     JPH::ShapeRefC buildHeightField(const std::vector<float>& samples, int side, float spacing) {
         JPH::HeightFieldShapeSettings settings(samples.data(), JPH::Vec3::sZero(), JPH::Vec3(spacing, 1.0f, spacing), static_cast<JPH::uint32>(side));
         // R23: 1 cm, at most 8 bits a sample
-        settings.mBitsPerSample = std::min<JPH::uint32>(8u, std::max<JPH::uint32>(1u, settings.CalculateBitsPerSampleForError(CHUNK_MAX_ERROR)));
+        settings.mBitsPerSample = std::min<JPH::uint32>(8u, std::max<JPH::uint32>(1u, settings.CalculateBitsPerSampleForError(TerrainWorldCollision::CHUNK_MAX_ERROR)));
         JPH::ShapeSettings::ShapeResult result = settings.Create();
         if (!result.IsValid()) return nullptr;
         return result.Get();
@@ -85,6 +83,8 @@ struct TerrainWorldCollision::Impl {
     bool dirty = false;
     bool applied = false;
     double clock = 0.0;
+    // the chunk size the chunks were built at, for colliders()
+    int quads = 64;
 };
 
 TerrainWorldCollision::TerrainWorldCollision(TerrainWorldRuntime& runtime): impl(std::make_unique<Impl>()), runtime(runtime) {}
@@ -110,6 +110,17 @@ void TerrainWorldCollision::clear() {
         }
         impl->applied = false;
     }
+}
+
+std::vector<TerrainWorldColliderRect> TerrainWorldCollision::colliders() const {
+    std::vector<TerrainWorldColliderRect> out;
+    if (!impl->applied) return out;
+    const float size = runtime.lattice().tileSize();
+    for (const auto& [key, entry] : impl->coarse) out.push_back(TerrainWorldColliderRect{entry.originX, entry.originZ, size, true});
+    for (const auto& [key, chunk] : impl->chunks) {
+        if (chunk.shape) out.push_back(TerrainWorldColliderRect{chunk.originX, chunk.originZ, static_cast<float>(impl->quads) * runtime.lattice().spacing, false});
+    }
+    return out;
 }
 
 bool TerrainWorldCollision::fineActive(TileCoord tile) const {
@@ -164,6 +175,7 @@ void TerrainWorldCollision::pump(float collisionRadius, int chunkQuads) {
 
     if (!applyOnly) {
         const int quads = std::clamp(isPowerOfTwo(chunkQuads) ? chunkQuads : 64, 32, lattice.tileQuads);
+        impl->quads = quads;
         const int chunksPerTile = lattice.tileQuads / quads;
         const float chunkSize = static_cast<float>(quads) * lattice.spacing;
         Vector3 origin;
@@ -392,6 +404,8 @@ void TerrainWorldCollision::pump(float collisionRadius, int chunkQuads) {
 
 struct TerrainWorldCollision::Impl {};
 
+std::vector<TerrainWorldColliderRect> TerrainWorldCollision::colliders() const { return {}; }
+
 TerrainWorldCollision::TerrainWorldCollision(TerrainWorldRuntime& runtime): impl(std::make_unique<Impl>()), runtime(runtime) {}
 TerrainWorldCollision::~TerrainWorldCollision() = default;
 void TerrainWorldCollision::clear() {}
@@ -400,3 +414,20 @@ bool TerrainWorldCollision::ensureAt(float, float) { return false; }
 void TerrainWorldCollision::pump(float, int) {}
 
 #endif
+
+bool TerrainWorldCollision::chunkSamplesNow(TerrainWorldRuntime& runtime, TileCoord tile, int chunkQuads, int chunkX, int chunkZ, std::vector<float>& out) {
+    if (!runtime.started() || !runtime.occupancy().present(tile)) return false;
+    TileNeighbourhood near;
+    std::shared_ptr<const WorldTile> keep[3][3];
+    for (int dz = -1; dz <= 1; dz++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            const TileCoord coord(tile.x + dx, tile.z + dz);
+            if (!coord.addressable()) continue;
+            keep[dz + 1][dx + 1] = runtime.loadNow(coord);
+            near.tiles[dz + 1][dx + 1] = keep[dz + 1][dx + 1].get();
+        }
+    }
+    if (!near.centre()) return false;
+    worldChunkSamples(near, runtime.lattice(), runtime.maxHeight(), chunkQuads, chunkX, chunkZ, out);
+    return true;
+}

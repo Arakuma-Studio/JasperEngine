@@ -262,8 +262,10 @@ GameObjects.
 - Heights, paint and holes across tiles: `edit_terrain` or `sculpt_terrain` with the World as `entity`. A
   stroke past the last tile makes the tile it reaches; one undo removes it.
 - More land, or less: ops `add_tiles` / `remove_tiles` with `tiles: [[x, z], ...]`.
-- A heightmap file on a World: `edit_terrain_world` op `import_heightmap`, not `edit_terrain`'s; it makes the tiles
-  the file covers from `origin`.
+- A heightmap file on a World: `edit_terrain_world` op `import_heightmap`, alone in its call, not `edit_terrain`'s; it
+  makes the tiles the file covers from `origin`. It is a job: a `job_id` back means `get_job` until it ends.
+- Which tiles are loaded, at what detail, with what collision: `visualize_terrain` overlay `tile_state`, `tiles`
+  (borders), `lod` or `collision` (in Play) on the World.
 - `sample_terrain {world: {}}` reports `seam_errors` above 0: op `repair_seams`.
 - Screenshot or test one place: `sample_terrain {world: {wait_for: {x, z, radius}}}`, then
   `edit_terrain_world` op `set_streaming {freeze: true}`, then `screenshot`. `freeze: false` after.

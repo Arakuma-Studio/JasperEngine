@@ -100,6 +100,35 @@ namespace jasperengine {
         bool frozen = false;
     };
 
+    // R42's LOD Level overlay: a node the main view drew last, entity-local; overview: drawn from the
+    // overview rather than the tile's page
+    struct TerrainWorldDrawnNode {
+        float x = 0.0f, z = 0.0f, size = 0.0f;
+        int level = 0;
+        bool overview = false;
+    };
+
+    // R26: a world's heights for a job, apart from the runtime (which may go while the job runs): the
+    // tiles in memory when it was made, the rest read from the source when the job asks (it may wait)
+    class JASPERENGINE_API TerrainWorldHeightReader {
+    public:
+        // Local heights in metres of the world samples [x0, x0 + countX) x [z0, z0 + countZ) (sample s
+        // sits at s * spacing); an absent tile, or one that cannot be read, reads the base height
+        void read(int x0, int z0, int countX, int countZ, std::vector<float>& out);
+        const terrain::WorldLattice& lattice() const { return worldLattice; }
+
+    private:
+        friend class TerrainWorldRuntime;
+        std::shared_ptr<const terrain::WorldTile> tile(terrain::TileCoord coord);
+
+        terrain::WorldLattice worldLattice;
+        float maxHeight = 0.0f;
+        uint16_t baseHeight = 0;
+        std::shared_ptr<TerrainWorldSource> source;
+        std::set<uint32_t> present;
+        std::map<uint32_t, std::shared_ptr<const terrain::WorldTile>> tiles;
+    };
+
     struct TerrainWorldAreaWait {
         int id = 0;
         float x = 0.0f, z = 0.0f, radius = 0.0f;
@@ -191,6 +220,21 @@ namespace jasperengine {
         void overviewSaved() { overviewUnsaved = false; }
         // R52: the layers' colours for the macro colour (base first, RGBA floats)
         void setLayerColours(std::vector<float> colours, int layerCount);
+        const std::vector<float>& getLayerColours() const { return layerColours; }
+        int getLayerCount() const { return layerCount; }
+        // R42: the tiles under the editor's brush stay in memory while it hovers them (the brush sets
+        // them each frame; a pump past HOVER_SECONDS without one lets them go); an edited tile keeps
+        // its own pin
+        static constexpr double HOVER_SECONDS = 0.5;
+        void setHoverTiles(const std::vector<terrain::TileCoord>& tiles);
+        bool hovered(terrain::TileCoord tile) const { return hoverPins.count(tile.key()) > 0; }
+        // R42's LOD Level overlay: render keeps the main view's nodes only while this is on
+        void recordDrawnNodes(bool on);
+        bool recordingDrawnNodes() const { return recordNodes; }
+        void setDrawnNodes(std::vector<TerrainWorldDrawnNode> nodes) { drawn = std::move(nodes); }
+        const std::vector<TerrainWorldDrawnNode>& drawnNodes() const { return drawn; }
+        // R26: the heights of tiles low..high for a job
+        std::shared_ptr<TerrainWorldHeightReader> heightReader(terrain::TileCoord low, terrain::TileCoord high) const;
 
         // The budgets from the component, with R34's defaults
         void applySettings(int poolSize, float lodDistance, float uploadBudgetMiB, int maxNearTiles);
@@ -261,6 +305,10 @@ namespace jasperengine {
 
         std::vector<float> layerColours;
         int layerCount = 0;
+        std::set<uint32_t> hoverPins;
+        double hoverAt = 0.0;
+        bool recordNodes = false;
+        std::vector<TerrainWorldDrawnNode> drawn;
 
         std::vector<terrain::StreamFocus> autoFocuses;
         std::vector<ScriptFocus> scriptFocuses;

@@ -4,5 +4,7 @@ set(JASPERENGINE_TERRAIN_WORLD_EDITOR_SOURCES
     ${EDITOR_DIR}/terrainworld/TerrainWorldConvert.cpp
     ${EDITOR_DIR}/terrainworld/TerrainWorldEditor.cpp
     ${EDITOR_DIR}/terrainworld/TerrainWorldFiles.cpp
+    ${EDITOR_DIR}/terrainworld/TerrainWorldImport.cpp
+    ${EDITOR_DIR}/terrainworld/TerrainWorldOverlay.cpp
     ${EDITOR_DIR}/terrainworld/TerrainWorldPanel.cpp
 )

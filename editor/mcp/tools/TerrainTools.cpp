@@ -10,6 +10,7 @@
 #include "TerrainToolsSupport.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/TerrainWorldComponent.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpRefs.h"
@@ -29,6 +30,10 @@
 #include "render/SceneRender.h"
 #include "sceneview/SceneViewController.h"
 #include "terrain/TerrainOverlay.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "subsystem/TerrainWorldRuntime.h"
+#include "terrainworld/TerrainWorldOverlay.h"
+#endif
 #include "window/SceneWindow.h"
 #include "object/TerrainEdit.h"
 #include "terrain/EditorTerrainStore.h"
@@ -340,6 +345,19 @@ bool sampleTerrainExtras(const CallPtr& call, Project* project, SceneProject* sc
     const terrain::OpSpace space = spaceOf(transform, world);
     const float half = terrain.terrainSize * 0.5f;
     float minX = -half, minZ = -half, maxX = half, maxZ = half;
+    float boxHeight = terrain.maxHeight;
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 R4: a World's box is its tiles'
+    jasperengine::terrain::TileCoord low, high;
+    if (isWorld && terrain.world && terrain.world->started() && terrain.world->occupancy().bounds(low, high)) {
+        const float size = terrain.world->lattice().tileSize();
+        minX = static_cast<float>(low.x) * size;
+        minZ = static_cast<float>(low.z) * size;
+        maxX = static_cast<float>(high.x + 1) * size;
+        maxZ = static_cast<float>(high.z + 1) * size;
+        boxHeight = terrain.world->maxHeight();
+    }
+#endif
     if (hasKey(args, "region")) {
         const Json& region = args["region"];
         if (!region.is_object() || !hasKey(region, "min") || !hasKey(region, "max") || !region["min"].is_array() || !region["max"].is_array() ||
@@ -724,19 +742,25 @@ void visualizeTerrainTool(const CallPtr& call) {
         return;
     }
     TerrainOverlaySettings settings = target.scene->displaySettings.terrainOverlay;
+    const bool isWorld = target.scene->scene->findComponent<TerrainWorldComponent>(target.entity) != nullptr;
     if (hasKey(args, "overlay")) {
         const std::string name = args["overlay"].is_string() ? args["overlay"].get<std::string>() : "";
+        bool worldOverlay = false;
+#if JASPERENGINE_TERRAIN_WORLD
+        TerrainWorldOverlayMode mode;
+        worldOverlay = terrainWorldOverlayMode(name, mode);
+#endif
         if (name == "none") {
             settings.source.clear();
-        } else if (name == "tiles" || name == "tile_state" || name == "lod" || name == "collision") {
-            // T4 R46: the Terrain World overlays are not wired into the Scene view's overlay bake yet
-            call->fail("overlay: \"" + name + "\" is a Terrain World overlay visualize_terrain cannot draw yet; sample_terrain {world} reports the "
-                       "tiles' states, nodes and collision as numbers.");
+        } else if (worldOverlay != isWorld && (worldOverlay || TerrainOverlay::hasSource(name))) {
+            // T4 R46: a Terrain World draws its tiles' overlays, a Terrain its maps'
+            call->fail(isWorld ? "overlay: \"" + name + "\" draws one Terrain's maps; on a Terrain World use tiles, tile_state, lod or collision."
+                               : "overlay: \"" + name + "\" is for a Terrain World; on a Terrain use height, slope, contours or layer_weights.");
             return;
-        } else if (!TerrainOverlay::hasSource(name)) {
+        } else if (!worldOverlay && !TerrainOverlay::hasSource(name)) {
             std::string names;
             for (const std::string& source : TerrainOverlay::sourceNames()) names += ", " + source;
-            call->fail("overlay: \"" + name + "\" is not an overlay. Overlays: none" + names + ".");
+            call->fail("overlay: \"" + name + "\" is not an overlay. Overlays: none" + names + "; on a Terrain World tiles, tile_state, lod, collision.");
             return;
         } else {
             settings.source = name;
@@ -756,6 +780,11 @@ void visualizeTerrainTool(const CallPtr& call) {
     if (hasKey(args, "opacity")) settings.opacity = std::clamp(args["opacity"].get<float>(), 0.0f, 1.0f);
     target.scene->displaySettings.terrainOverlay = settings;
     target.scene->needUpdateRender = true;
+    // T4 R42: in Play the running copy's Scene view shows it too
+    if (SceneProject* running = McpRefs::runtimeScene(target.project, target.scene); running != target.scene) {
+        running->displaySettings.terrainOverlay = settings;
+        running->needUpdateRender = true;
+    }
     target.project->saveWorkspaceFile();
 
     // the box to frame: the terrain, or region in the call's space
@@ -781,7 +810,7 @@ void visualizeTerrainTool(const CallPtr& call) {
     }
     AABB box;
     for (int corner = 0; corner < 8; corner++) {
-        box.merge(transform.model * Vector3((corner & 1) ? maxX : minX, (corner & 2) ? terrain.maxHeight : 0.0f, (corner & 4) ? maxZ : minZ));
+        box.merge(transform.model * Vector3((corner & 1) ? maxX : minX, (corner & 2) ? boxHeight : 0.0f, (corner & 4) ? maxZ : minZ));
     }
     const std::string framing = hasKey(args, "framing") && args["framing"].is_string() ? args["framing"].get<std::string>() : "fit";
     if (framing != "keep" && framing != "fit" && framing != "top" && framing != "orbit") {
@@ -836,8 +865,11 @@ void visualizeTerrainTool(const CallPtr& call) {
                 call->fail("The scene closed.");
                 return;
             }
+            // in Play the legend is the running copy's, whose state the overlay shows
+            SceneProject* running = McpRefs::runtimeScene(call->ctx().project(), shown);
+            SceneRender* legendRender = running && running->sceneRender ? running->sceneRender : shown->sceneRender;
             Json legend = Json::array();
-            for (const TerrainOverlayLegendStop& stop : shown->sceneRender->getTerrainOverlayLegend()) {
+            for (const TerrainOverlayLegendStop& stop : legendRender->getTerrainOverlayLegend()) {
                 legend.push_back({{"label", stop.label}, {"color", {stop.color.x, stop.color.y, stop.color.z}}});
             }
             Json data = {{"overlay", overlayName}, {"legend", legend}, {"camera", w3::sceneViewCameraJson(shown)},

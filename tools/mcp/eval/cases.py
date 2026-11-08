@@ -2496,6 +2496,46 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "terrain_world_overlay",
+        "kind": "bad",
+        "what_happened": "Asked to see which tiles of a streamed world are loaded, an agent listed sample_terrain {world} numbers or took a plain screenshot instead of the World's overlay.",
+        "text_at_issue": "jasper://docs/terrain: Terrain Worlds (visualize_terrain's tile_state, tiles, lod and collision overlays on a World).",
+        "source": "T4 R42, R46",
+        "prompt": "Show me in the Scene view which tiles of Terrain World [7] are loaded right now.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "visualize_terrain", "args": {"overlay": "tile_state"}, "result": ok(
+                "Terrain overlay tile_state on.",
+                {"overlay": "tile_state", "legend": [{"label": "cold", "color": [0.27, 0.35, 0.47]}, {"label": "resident", "color": [0.31, 0.75, 0.43]}],
+                 "camera": {"position": [0, 900, 900], "target": [0, 0, 0]}, "image": {"width": 1024, "height": 576},
+                 "next": "The overlay stays on in the Scene view; overlay none hides it."})},
+        ],
+        "checks": {"calls": [{"tool": "visualize_terrain", "args": {"overlay": "tile_state"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_world_import_job",
+        "kind": "guard",
+        "what_happened": "A heightmap import into a Terrain World came back as a running job; an agent sent the import again instead of following the job.",
+        "text_at_issue": "jasper://docs/terrain: Terrain Worlds (import_heightmap alone in its call; a job_id back means get_job).",
+        "source": "T4 R32, R44",
+        "prompt": "Import assets/island.r16 into Terrain World [7] with its first sample on tile (0, 0), and tell me how many tiles it made.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain_world", "args": {"ops": [{"op": "import_heightmap"}]}, "result": ok(
+                "Import Heightmap (Landscape) is running.",
+                {"job_id": "job-3", "status": "running", "progress": 0.2})},
+            {"tool": "get_job", "result": ok(
+                "Imported the heightmap into Terrain World \"Landscape\": 16 tile(s).",
+                {"id": "job-3", "status": "succeeded", "result": {"tile_count": 20, "changed_tiles": {"imported": [[0, 0], [1, 0], [2, 0], [3, 0]]},
+                                                               "undo_name": "Import Heightmap (Landscape)"}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain_world", "args": {"ops": [{"op": "import_heightmap"}]}}, "get_job"],
+                   "order": [[{"tool": "edit_terrain_world", "args": {"ops": [{"op": "import_heightmap"}]}}, "get_job"]],
+                   "max_calls": {"edit_terrain_world": 1}},
+        "max_turns": 10,
+    },
+    {
         "id": "terrain_world_wait_ready",
         "kind": "guard",
         "what_happened": "Asked for a screenshot of a far corner of a streamed world, an agent has to wait for its tiles and hold them, not shoot the low-detail overview.",

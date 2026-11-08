@@ -1453,6 +1453,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ReplacePrefabCmd.cpp
     ${EDITOR_DIR}/command/type/ForkShaderCmd.cpp
     ${EDITOR_DIR}/command/type/TerrainMapDeltaCmd.cpp
+    ${EDITOR_DIR}/command/type/TerrainWorldImportCmd.cpp
     ${EDITOR_DIR}/command/type/TerrainWorldTilesCmd.cpp
     ${EDITOR_DIR}/command/type/TerrainTextureEditCmd.cpp
     ${EDITOR_DIR}/command/type/WriteFilesCmd.cpp

@@ -5,14 +5,15 @@
 
 // T4 R40, R41: Create Terrain World (GameObject > 3D Object > Terrain World) and the Terrain World
 // panel: a minimap of the tiles by state with the focuses, Add Tile and Remove Tile by clicking cells,
-// Rebuild Overview, Repair Seams, the streaming settings and a live info block. Drawn by the App, so
-// they show whichever tab opened them.
+// Import Heightmap..., Rebuild Overview, Repair Seams, the streaming settings and a live info block.
+// Drawn by the App, so they show whichever tab opened them.
 
 #include "ecs/Entity.h"
 #include "terrainworld/TerrainWorldEditor.h"
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 
 namespace jasperengine::editor {
@@ -56,6 +57,32 @@ namespace jasperengine::editor {
         std::string name;
         std::string error;
         std::function<void()> cancel;
+    };
+
+    class TerrainWorldImportTask;
+
+    // R32, R41: Terrain World panel > Import Heightmap...: the file, the tile its first sample lands
+    // on and the flip, then the import as a job with progress and cancel; one undo step
+    class ImportHeightmapDialog {
+    public:
+        static ImportHeightmapDialog& instance();
+        void open(Project* project, uint32_t sceneId, Entity world);
+        void show();
+        bool opened() const { return isOpen; }
+
+    private:
+        bool isOpen = false;
+        bool justOpened = false;
+        Project* project = nullptr;
+        uint32_t sceneId = 0;
+        Entity world = NULL_ENTITY;
+        std::string path;
+        int originX = 0, originZ = 0;
+        int rawWidth = 0, rawHeight = 0;
+        bool flip = false;
+        std::string error;
+        std::string done;
+        std::shared_ptr<TerrainWorldImportTask> task;
     };
 
     class TerrainWorldPanel {

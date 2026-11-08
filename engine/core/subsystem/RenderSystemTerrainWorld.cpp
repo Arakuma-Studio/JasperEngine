@@ -262,6 +262,20 @@ void RenderSystem::selectTerrainWorld(TerrainComponent& terrain, const Transform
     stats.nodesVisited = selection.visited;
     stats.nodesSelected = selection.selectedNodes();
     runtime->noteLatePages(selection.missingPages);
+    // R42's LOD Level overlay: the main view's cut, kept only while the overlay asks for it (R37)
+    if (runtime->recordingDrawnNodes() && &view == &terrain.views[0]){
+        std::vector<TerrainWorldDrawnNode> drawn;
+        auto keep = [&](const WorldSelectNode& node, bool overview){
+            drawn.push_back(TerrainWorldDrawnNode{node.x, node.z, node.size, node.level, overview});
+        };
+        for (const WorldTileDraws& draws : selection.near){
+            for (const WorldSelectNode& node : draws.full) keep(node, false);
+            for (const WorldSelectNode& node : draws.half) keep(node, false);
+        }
+        for (const WorldSelectNode& node : selection.overviewFull) keep(node, true);
+        for (const WorldSelectNode& node : selection.overviewHalf) keep(node, true);
+        runtime->setDrawnNodes(std::move(drawn));
+    }
 
     // one buffer per grid for the whole view, each item a slice of it bound by byte offset (R39)
     auto append = [&](int grid, const WorldSelectNode& node){

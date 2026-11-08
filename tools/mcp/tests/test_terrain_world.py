@@ -208,6 +208,47 @@ async def test_play_refusals_by_name(ed: Editor):
         await ed.call("play", action="stop")
 
 
+async def overlay_legend(ed: Editor, sid: str, world, overlay: str) -> list:
+    shown = await ed.call_raw("visualize_terrain", {"scene": sid, "entity": world, "overlay": overlay, "framing": "top"})
+    ed.check(not shown.is_error and shown.images, f"{overlay} is drawn and captured: {shown.texts}")
+    return [stop["label"] for stop in shown.value["legend"]]
+
+
+async def test_visualize_world_overlays(ed: Editor):
+    """R42, R46: visualize_terrain draws a World's overlays from its runtime, refuses the other kind's, and works in Play."""
+    sid, world, _ = await new_world(ed, "Overlaid")
+    ed.check_eq(await overlay_legend(ed, sid, world, "tiles"), ["tile border"], "Tile Borders")
+    states = await overlay_legend(ed, sid, world, "tile_state")
+    ed.check("resident" in states and "pinned" in states, f"Tile State's legend: {states}")
+    levels = await overlay_legend(ed, sid, world, "lod")
+    ed.check(any(label.startswith("level") or label == "overview" for label in levels), f"LOD Level shows what the view drew: {levels}")
+    collision = await overlay_legend(ed, sid, world, "collision")
+    ed.check(len(collision) == 1 and "Play" in collision[0], f"no collider out of Play: {collision}")
+
+    message = await ed.check_error("visualize_terrain", scene=sid, entity=world, overlay="height")
+    ed.check("Terrain World" in message and "tile_state" in message, f"a Terrain's overlay on a World names the World's: {message}")
+    terrain = (await ed.call("create_entity", scene=sid, name="Plain", type="terrain"))["entity_id"]
+    message = await ed.check_error("visualize_terrain", scene=sid, entity=terrain, overlay="tiles")
+    ed.check("Terrain World" in message and "height" in message, f"a World's overlay on a Terrain names a Terrain's: {message}")
+    await ed.call("delete_entity", scene=sid, entity=terrain)
+
+    await ed.call("save_scene", scene=sid, path="scenes/Overlaid.scene")
+    await ed.call("play", action="start", scene=sid)
+    try:
+        states = await overlay_legend(ed, sid, world, "tile_state")
+        ed.check("resident" in states, f"Tile State in Play: {states}")
+        deadline = time.monotonic() + 30.0
+        while True:
+            collision = await overlay_legend(ed, sid, world, "collision")
+            if "fine chunk" in collision or time.monotonic() > deadline:
+                break
+            await ed.call("wait", seconds=5, frames=10)
+        ed.check("fine chunk" in collision, f"Collision Chunks in Play shows the collider: {collision}")
+    finally:
+        await ed.call("play", action="stop")
+        await ed.call("visualize_terrain", scene=sid, entity=world, overlay="none", screenshot=False)
+
+
 async def test_brush_across_border(ed: Editor):
     """AC27: strokes over the grid's edge make the tile they reach; one undo removes it, files byte-identical."""
     sid, world, _ = await new_world(ed, "Border")
@@ -267,6 +308,55 @@ async def test_import_heightmap_makes_tiles(ed: Editor):
 
     await ed.call("undo", scene=sid)
     ed.check_eq(await settled(folder, before), before, "one undo takes the import back, files byte for byte")
+    await ed.call("redo", scene=sid)
+    ed.check({"1_-1.jtile", "1_0.jtile"} <= await tiles_made(folder, {"1_-1.jtile", "1_0.jtile"}), "redo puts the import back")
+    await ed.call("undo", scene=sid)
+    ed.check_eq(await settled(folder, before), before, "and undo again, byte for byte")
+
+    message = await ed.check_error("edit_terrain_world", scene=sid, entity=world, ops=[op, {"op": "rebuild_overview"}])
+    ed.check("alone" in message, f"an import is a job, sent alone: {message}")
+
+
+async def wait_job(ed: Editor, job_id: str, timeout: float = 60.0) -> dict:
+    deadline = time.monotonic() + timeout
+    while True:
+        job = await ed.call("get_job", job_id=job_id)
+        if job["status"] != "running" or time.monotonic() > deadline:
+            return job
+        await asyncio.sleep(0.1)
+
+
+async def test_import_heightmap_job_and_cancel(ed: Editor):
+    """R32: an import runs as a job with progress; cancel_job stops it and leaves the world's folder untouched."""
+    sid, world, _ = await new_world(ed, "Streamed")
+    folder = world_folder(ed, "Streamed")
+    before = files(folder)
+    (ed.project / "assets").mkdir(parents=True, exist_ok=True)
+    # 129 x 129 samples: four tiles from (0, 0), read in bands
+    small = b"".join((((x * 7 + z * 3) % 50000).to_bytes(2, "little")) for z in range(129) for x in range(129))
+    (ed.project / "assets" / "hill.r16").write_bytes(small)
+    out = await ed.call("edit_terrain_world", scene=sid, entity=world, wait=False,
+                        ops=[{"op": "import_heightmap", "path": "assets/hill.r16", "origin": [0, 0]}])
+    ed.check("job_id" in out, f"a job: {out}")
+    job = await wait_job(ed, out["job_id"])
+    ed.check_eq(job["status"], "succeeded", f"the job finishes: {job}")
+    ed.check_eq(len(job["result"]["changed_tiles"]["imported"]), 4, "the tiles it covers")
+    await ed.call("undo", scene=sid)
+    ed.check_eq(await settled(folder, before), before, "undone")
+
+    # a large file, cancelled at once: nothing of it reaches the folder
+    stash = ed.project / ".jasperengine" / "trash" / "terrain-world-import"
+    kept = set(stash.iterdir()) if stash.exists() else set()
+    side = 2049
+    row = b"".join((i % 60000).to_bytes(2, "little") for i in range(side))
+    (ed.project / "assets" / "big.r16").write_bytes(row * side)
+    out = await ed.call("edit_terrain_world", scene=sid, entity=world, wait=False,
+                        ops=[{"op": "import_heightmap", "path": "assets/big.r16", "origin": [-16, -16]}])
+    await ed.call("cancel_job", job_id=out["job_id"])
+    job = await wait_job(ed, out["job_id"])
+    ed.check_eq(job["status"], "cancelled", f"cancelled: {job}")
+    ed.check_eq(files(folder), before, "the world's folder is untouched")
+    ed.check_eq(set(stash.iterdir()) if stash.exists() else set(), kept, "and the job's own tiles are gone")
 
 
 async def convert_source(ed: Editor, scene: str, name: str) -> str:

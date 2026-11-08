@@ -27,9 +27,8 @@
 #include "subsystem/TerrainWorldSystem.h"
 #include "terrainworld/TerrainWorldConvert.h"
 #include "terrainworld/TerrainWorldEditor.h"
-#include "terrain/TerrainRawIO.h"
-#include "terrain/world/WorldImport.h"
 #include "terrainworld/TerrainWorldFiles.h"
+#include "terrainworld/TerrainWorldImport.h"
 #include "util/FileUtils.h"
 
 #include <algorithm>
@@ -57,8 +56,6 @@ constexpr size_t MAX_LISTED_TILES = 64;
 constexpr size_t MAX_CALL_TILES = 4096;
 constexpr size_t MAX_OPS = 64;
 constexpr size_t MAX_TEXT_TILES = 16;
-// an import's undo step holds every tile it writes, before and after, in memory
-constexpr uint64_t MAX_IMPORT_UNDO_BYTES = 1024ull * 1024ull * 1024ull;
 
 const char* const FREEZE_NEXT =
     "For screenshots: edit_terrain_world {ops: [{op: \"set_streaming\", freeze: true}]} stops loads, evictions and uploads so frames "
@@ -176,7 +173,7 @@ struct WorldOp {
     int width = 0, height = 0;
     bool flipVertically = false;
     TileCoord origin;
-    std::shared_ptr<HeightImport> imported;
+    TerrainWorldImportPlan importPlan;
 };
 
 bool parseOp(const Json& item, size_t index, WorldOp& op, std::string& error) {
@@ -532,92 +529,68 @@ std::vector<TileCoord> seamTiles(TerrainWorldRuntime& runtime, const std::vector
     return found;
 }
 
-// R32: the file read and decoded, and the tiles it makes, before anything changes
-bool checkImport(Project* project, const TerrainWorldRuntime& runtime, WorldOp& op, std::vector<TileCoord>& tiles, std::string& error) {
-    std::error_code ec;
-    const std::filesystem::path absolute = project->resolveAssetPath(FileUtils::pathFromUtf8(op.path));
-    if (!std::filesystem::is_regular_file(absolute, ec)) {
-        error = "path: \"" + op.path + "\" is not a file of the project. Nothing was changed.";
+// R32: the file's size and the tiles it reaches, before anything changes
+bool checkImport(Project* project, TerrainWorldRuntime& runtime, WorldOp& op, std::vector<TileCoord>& tiles, std::string& error) {
+    TerrainWorldImportRequest request;
+    request.path = op.path;
+    request.width = op.width;
+    request.height = op.height;
+    request.flipVertically = op.flipVertically;
+    request.origin = op.origin;
+    if (!planTerrainWorldImport(project, runtime, request, op.importPlan, error)) {
+        error = "path: " + error + ". Nothing was changed.";
         return false;
     }
-    std::ifstream file(absolute, std::ios::binary);
-    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    HeightImportOptions options;
-    options.width = op.width;
-    options.height = op.height;
-    options.flipVertically = op.flipVertically;
-    op.imported = std::make_shared<HeightImport>(TerrainRawIO::decode(op.path, bytes, options));
-    if (!op.imported->ok) {
-        error = "path: " + op.imported->error + " Nothing was changed.";
-        return false;
-    }
-    const int n = runtime.lattice().tileQuads;
-    const int across = terrain::importTilesAcross(op.imported->width, n), down = terrain::importTilesAcross(op.imported->height, n);
-    for (int z = 0; z < down; z++) {
-        for (int x = 0; x < across; x++) {
-            const TileCoord tile(op.origin.x + x, op.origin.z + z);
-            std::string why;
-            if (!tile.addressable() || (!runtime.present(tile) && !const_cast<TerrainWorldRuntime&>(runtime).store().canCreate(tile, &why))) {
-                error = "path: the file's " + std::to_string(op.imported->width) + " x " + std::to_string(op.imported->height) + " samples from tile " +
-                        tileText(op.origin) + " reach tile " + tileText(tile) + ", which " + (why.empty() ? std::string("is past the world's limit") : why) +
-                        ": move origin or crop the file. Nothing was changed.";
-                return false;
-            }
-            tiles.push_back(tile);
-        }
-    }
-    if (predictedBytes(runtime, static_cast<int>(tiles.size())) * 2 > MAX_IMPORT_UNDO_BYTES) {
-        error = "path: the file makes " + std::to_string(tiles.size()) + " tiles, more than one undo step holds (1 GiB of tiles before and after): split it into "
-                "smaller files and import each at its own origin. Nothing was changed.";
-        return false;
-    }
+    tiles = op.importPlan.covered;
     return true;
 }
 
-// R32: the decoded file's samples written over its tiles through the store, which keeps every copy of
-// a shared sample and the gutters of the neighbours in step
-bool applyImport(TerrainWorldRuntime& world, const HeightImport& imported, TileCoord origin, const std::vector<TileCoord>& tiles, std::string& failure) {
-    terrain::TiledMapStore& store = world.store();
-    for (const TileCoord& tile : tiles) {
-        if (world.present(tile)) continue;
-        std::string why;
-        if (!store.addTile(tile, &why)) {
-            failure = "tile " + tileText(tile) + " cannot be added: " + why + ". Nothing was changed.";
-            return false;
-        }
+// R32: the import as a job (progress, cancel_job); the call waits for it unless wait is false
+void importHeightmapJob(const CallPtr& call, Project* project, SceneProject* sceneProject, Entity entity, TerrainWorldRuntime& runtime, const WorldOp& op,
+                        const Json& base, bool wait, double timeout) {
+    const std::string name = sceneProject->scene->getEntityName(entity);
+    JobPtr job = call->ctx().jobs().create("terrain_world_import", "Import Heightmap (" + name + ")");
+    job->setProgress(0.0, "Reading the file");
+    Json imported = Json::array();
+    for (const TileCoord& tile : op.importPlan.covered) imported.push_back(tileJson(tile));
+    Json warnings = Json::array();
+    if (op.importPlan.sizeGuessed) {
+        warnings.push_back("ops[0]: the file's size was detected as " + std::to_string(op.importPlan.width) + " x " + std::to_string(op.importPlan.height) +
+                           " samples from its length: pass width and height when that is wrong.");
     }
-    terrain::HeightmapRows rows;
-    rows.width = imported.width;
-    rows.height = imported.height;
-    rows.read = [&imported](int row, std::vector<uint16_t>& out) {
-        const float* source = imported.normalized.data() + static_cast<size_t>(row) * static_cast<size_t>(imported.width);
-        for (int i = 0; i < imported.width; i++) out[static_cast<size_t>(i)] = static_cast<uint16_t>(std::lround(std::clamp(source[i], 0.0f, 1.0f) * 65535.0f));
-        return true;
-    };
-    terrain::HeightmapImport plan;
-    plan.lattice = world.lattice();
-    plan.origin = origin;
-    const terrain::MapId height{terrain::MapKind::Height, 0};
-    std::vector<uint8_t> bytes;
-    return terrain::sliceHeightmap(
-        rows, plan,
-        [&](terrain::WorldTile& tile) {
-            // the tile's own samples, its gutter left to the store
-            const terrain::TexelRect rect = store.tileRect(height, tile.coord);
-            bytes.resize(static_cast<size_t>(rect.area()) * 2);
-            for (int j = 0; j < rect.h; j++) {
-                for (int i = 0; i < rect.w; i++) {
-                    const uint16_t value = tile.sample(i + 1, j + 1);
-                    const size_t at = (static_cast<size_t>(j) * static_cast<size_t>(rect.w) + static_cast<size_t>(i)) * 2;
-                    bytes[at] = static_cast<uint8_t>(value & 0xff);
-                    bytes[at + 1] = static_cast<uint8_t>(value >> 8);
-                }
+    const int tiles = runtime.occupancy().tileCount() + op.importPlan.made;
+    std::shared_ptr<TerrainWorldImportTask> task = startTerrainWorldImport(project, sceneProject->id, entity, op.importPlan,
+        [job, imported, warnings, base, name, tiles](const TerrainWorldImportResult& result) {
+            if (result.cancelled) {
+                job->markCancelled("Cancelled; the Terrain World is as it was.");
+                return;
             }
-            const terrain::WriteResult result = store.writeBytes(height, rect, bytes);
-            if (!result.ok) failure = "tile " + tileText(tile.coord) + " could not be written: " + result.error + ". Nothing was changed.";
-            return result.ok;
-        },
-        nullptr, failure);
+            if (!result.ok) {
+                job->fail("ops[0]: " + result.error + ". Nothing was changed.");
+                return;
+            }
+            Json data = base;
+            data["tile_count"] = tiles;
+            data["changed_tiles"] = {{"added", Json::array()}, {"removed", Json::array()}, {"imported", imported}, {"repaired", Json::array()}};
+            data["warnings"] = warnings;
+            data["dry_run"] = false;
+            data["undo_name"] = "Import Heightmap (" + name + ")";
+            data["next"] = "sample_terrain checks the heights; undo takes the whole import back.";
+            job->succeed("Imported the heightmap into Terrain World \"" + name + "\": " + std::to_string(imported.size()) + " tile(s).", data);
+        });
+    job->setCancelHandler([task]() { task->cancel(); });
+    pollJob(job, [job, task]() {
+        job->setProgress(task->progress(), task->phase());
+        return false;
+    });
+    call->detach();
+    replyWhenJobDone(call, job, wait, timeout, [](const McpJob& finished) {
+        Json result = finished.result();
+        result["job_id"] = finished.id();
+        result["status"] = jobStatusName(finished.status());
+        if (finished.status() != JobStatus::Succeeded) return ToolResult::error(finished.message(), result);
+        return ToolResult::success(finished.message(), result);
+    });
 }
 
 // R33: the conversion's job; its result is the GameObject made, or why nothing was
@@ -712,6 +685,11 @@ void editTerrainWorldTool(const CallPtr& call) {
             }
             ops.push_back(std::move(op));
         }
+    }
+    for (size_t i = 0; i < ops.size(); i++) {
+        if (ops[i].kind != WorldOpKind::ImportHeightmap || (ops.size() == 1 && !creating)) continue;
+        call->fail("ops[" + std::to_string(i) + "]: import_heightmap runs as a job: send it alone, in a call of its own on the World. Nothing was changed.");
+        return;
     }
     if (playing) {
         if (creating) {
@@ -859,12 +837,10 @@ void editTerrainWorldTool(const CallPtr& call) {
                 tiles += remove ? -static_cast<int>(changes[i].size()) : static_cast<int>(changes[i].size());
             } else if (ops[i].kind == WorldOpKind::ImportHeightmap) {
                 Json list = Json::array();
-                for (const TileCoord& tile : changes[i]) {
-                    list.push_back(tileJson(tile));
-                    if (!runtime->present(tile)) tiles++;
-                }
+                for (const TileCoord& tile : changes[i]) list.push_back(tileJson(tile));
+                tiles += ops[i].importPlan.made;
                 entry["imported"] = list;
-                entry["detected"] = {{"width", ops[i].imported->width}, {"height", ops[i].imported->height}, {"size_guessed", ops[i].imported->sizeGuessed}};
+                entry["detected"] = {{"width", ops[i].importPlan.width}, {"height", ops[i].importPlan.height}, {"size_guessed", ops[i].importPlan.sizeGuessed}};
             } else if (ops[i].kind == WorldOpKind::RepairSeams) {
                 int errors = 0;
                 const std::vector<TileCoord> found = seamTiles(*runtime, ops[i].tiles, errors);
@@ -911,37 +887,10 @@ void editTerrainWorldTool(const CallPtr& call) {
                 }
                 break;
             }
-            case WorldOpKind::ImportHeightmap: {
-                // the neighbours' shared samples and gutters change too: they are kept with the step
-                std::set<TileCoord> keep(changes[i].begin(), changes[i].end());
-                for (const TileCoord& tile : changes[i]) {
-                    for (int dz = -1; dz <= 1; dz++) {
-                        for (int dx = -1; dx <= 1; dx++) {
-                            const TileCoord near(tile.x + dx, tile.z + dz);
-                            if (near.addressable() && runtime->present(near)) keep.insert(near);
-                        }
-                    }
-                }
-                auto reason = std::make_shared<std::string>();
-                auto change = [file = op.imported, origin = op.origin, tiles = changes[i], reason](TerrainWorldRuntime& world, std::string& failure) {
-                    const bool ok = applyImport(world, *file, origin, tiles, failure);
-                    if (!ok) *reason = failure;
-                    return ok;
-                };
-                auto* command = new TerrainWorldTilesCmd(project, sceneProject->id, entity, "Import Heightmap",
-                                                         std::vector<TileCoord>(keep.begin(), keep.end()), change);
-                if (!addProperty(command)) {
-                    rollback();
-                    call->fail(where + (reason->empty() ? std::string("the heightmap could not be imported. Nothing was changed.") : *reason));
-                    return;
-                }
-                for (const TileCoord& tile : changes[i]) imported.push_back(tileJson(tile));
-                if (op.imported->sizeGuessed) {
-                    warnings.push_back(where + "the file's size was detected as " + std::to_string(op.imported->width) + " x " +
-                                       std::to_string(op.imported->height) + " samples from its length: pass width and height when that is wrong.");
-                }
-                break;
-            }
+            case WorldOpKind::ImportHeightmap:
+                // alone in its call (checked above): the job replies
+                importHeightmapJob(call, project, sceneProject, entity, *runtime, op, base(runtime->occupancy().tileCount()), wait, timeout);
+                return;
             case WorldOpKind::RepairSeams: {
                 int errors = 0;
                 const std::vector<TileCoord> found = seamTiles(*runtime, op.tiles, errors);

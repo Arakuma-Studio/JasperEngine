@@ -36,6 +36,9 @@
 #include "command/type/TerrainTextureEditCmd.h"
 #include "external/IconsFontAwesome6.h"
 #include "subsystem/MeshSystem.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "subsystem/TerrainWorldRuntime.h"
+#endif
 #include "util/Angle.h"
 #include "util/Color.h"
 #include "util/FileDialogs.h"
@@ -3158,7 +3161,26 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
     const float terrainSize = std::max(terrain.terrainSize, std::numeric_limits<float>::epsilon());
     const float halfSize = terrainSize * 0.5f;
     const float lift = std::max(0.03f, std::abs(terrain.maxHeight) * 0.01f);
+    // T4 R42: a World's tiles under the brush stay in memory while it hovers, and its decal drapes over
+    // the tiles across their borders
+    bool world = false;
+#if JASPERENGINE_TERRAIN_WORLD
+    if (terrain.world && terrain.world->started()){
+        world = true;
+        const float size = terrain.world->lattice().tileSize();
+        std::vector<jasperengine::terrain::TileCoord> under;
+        for (int z = jasperengine::terrain::tileOfLocal(localPoint.z - brushSize, size); z <= jasperengine::terrain::tileOfLocal(localPoint.z + brushSize, size); z++){
+            for (int x = jasperengine::terrain::tileOfLocal(localPoint.x - brushSize, size); x <= jasperengine::terrain::tileOfLocal(localPoint.x + brushSize, size); x++){
+                under.emplace_back(x, z);
+            }
+        }
+        terrain.world->setHoverTiles(under);
+    }
+#endif
     auto surfacePoint = [&](float localX, float localZ){
+        if (world){
+            return transform.modelMatrix * Vector3(localX, querySurface(terrain, localX, localZ).height + lift, localZ);
+        }
         const float clampedX = std::clamp(localX, -halfSize, halfSize);
         const float clampedZ = std::clamp(localZ, -halfSize, halfSize);
         float surfaceHeight = 0.0f;

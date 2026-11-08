@@ -215,6 +215,10 @@ bool jasperengine::editor::writeTileFile(const fs::path& folder, const WorldTile
     return writeAtomic(folder / terrainWorldTileName(tile.coord), std::string(bytes.begin(), bytes.end()), io::Durability::Document, error);
 }
 
+bool jasperengine::editor::writeTileBytes(const fs::path& folder, TileCoord tile, const std::string& bytes, std::string& error) {
+    return writeAtomic(folder / terrainWorldTileName(tile), bytes, io::Durability::Document, error);
+}
+
 bool jasperengine::editor::removeTileFile(const fs::path& folder, TileCoord tile, std::string& error) {
     const fs::path path = folder / terrainWorldTileName(tile);
     ScopedExpectedWrite expected(path);

@@ -2974,6 +2974,7 @@ void editor::App::show(){
     // T4 R40, R41: drawn here, so they show whichever tab opened them
     CreateTerrainWorldDialog::instance().show();
     ConvertTerrainWorldDialog::instance().show();
+    ImportHeightmapDialog::instance().show();
     TerrainWorldPanel::instance().show();
 #endif
     textureSynthesisWindow->show();

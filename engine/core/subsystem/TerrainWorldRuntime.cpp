@@ -449,6 +449,79 @@ void TerrainWorldRuntime::setLayerColours(std::vector<float> colours, int count)
     layerCount = count;
 }
 
+void TerrainWorldRuntime::setHoverTiles(const std::vector<TileCoord>& tiles) {
+    std::lock_guard<std::recursive_mutex> guard(lock);
+    if (!streamer) return;
+    std::set<uint32_t> now;
+    for (const TileCoord& tile : tiles) {
+        if (tile.addressable() && worldOccupancy.present(tile)) now.insert(tile.key());
+    }
+    for (uint32_t key : hoverPins) {
+        // an edited tile is pinned until it is flushed, hovered or not
+        if (!now.count(key) && !pinned.count(key)) streamer->pin(TileCoord::fromKey(key), false);
+    }
+    for (uint32_t key : now) streamer->pin(TileCoord::fromKey(key), true);
+    hoverPins = std::move(now);
+    hoverAt = lastNow;
+}
+
+void TerrainWorldRuntime::recordDrawnNodes(bool on) {
+    recordNodes = on;
+    if (!on) drawn.clear();
+}
+
+std::shared_ptr<TerrainWorldHeightReader> TerrainWorldRuntime::heightReader(TileCoord low, TileCoord high) const {
+    std::lock_guard<std::recursive_mutex> guard(lock);
+    auto reader = std::make_shared<TerrainWorldHeightReader>();
+    reader->worldLattice = worldManifest.lattice;
+    reader->maxHeight = worldManifest.maps.maxHeight;
+    reader->baseHeight = worldManifest.maps.baseHeight;
+    reader->source = worldSource;
+    for (int z = std::max<int>(low.z, WORLD_TILE_MIN); z <= std::min<int>(high.z, WORLD_TILE_MAX); z++) {
+        for (int x = std::max<int>(low.x, WORLD_TILE_MIN); x <= std::min<int>(high.x, WORLD_TILE_MAX); x++) {
+            const TileCoord tile(x, z);
+            if (!worldOccupancy.present(tile)) continue;
+            reader->present.insert(tile.key());
+            if (std::shared_ptr<const WorldTile> data = resident(tile)) reader->tiles[tile.key()] = data;
+        }
+    }
+    return reader;
+}
+
+std::shared_ptr<const WorldTile> TerrainWorldHeightReader::tile(TileCoord coord) {
+    if (!present.count(coord.key())) return nullptr;
+    const auto it = tiles.find(coord.key());
+    if (it != tiles.end()) return it->second;
+    // a cold tile, read now: this runs on a job, which may wait (R24)
+    std::shared_ptr<WorldTile> data;
+    std::vector<uint8_t> bytes;
+    std::string error;
+    if (source && AssetIOService::readFile(source->tilePath(coord), 0, 0, bytes, error)) {
+        data = std::make_shared<WorldTile>();
+        if (decodeTile(bytes, terrainWorldDecodeCodec(), *data) != TileError::None || !tileMatches(*data, coord, worldLattice, error)) data.reset();
+        else if (data->height.empty()) data.reset();
+    }
+    tiles[coord.key()] = data;
+    return data;
+}
+
+void TerrainWorldHeightReader::read(int x0, int z0, int countX, int countZ, std::vector<float>& out) {
+    out.assign(static_cast<size_t>(std::max(0, countX)) * static_cast<size_t>(std::max(0, countZ)), heightOfSample(baseHeight, maxHeight));
+    const int n = worldLattice.tileQuads;
+    for (int cz = 0; cz < countZ; cz++) {
+        const int sz = z0 + cz;
+        const int tz = floorDiv(sz, n);
+        for (int cx = 0; cx < countX; cx++) {
+            const int sx = x0 + cx;
+            const int tx = floorDiv(sx, n);
+            const std::shared_ptr<const WorldTile> data = tile(TileCoord(tx, tz));
+            if (!data) continue;
+            out[static_cast<size_t>(cz) * static_cast<size_t>(countX) + static_cast<size_t>(cx)] =
+                heightOfSample(data->sample(sx - tx * n + 1, sz - tz * n + 1), maxHeight);
+        }
+    }
+}
+
 void TerrainWorldRuntime::rebuildDerived(TileCoord tile, WorldTile& data) {
     buildMinMax(data, worldManifest.lattice);
     buildOverviewHeight(data, worldManifest.lattice);
@@ -464,6 +537,7 @@ void TerrainWorldRuntime::pump(double now) {
     if (!streamer) return;
     const auto started = std::chrono::steady_clock::now();
     lastNow = now;
+    if (!hoverPins.empty() && now - hoverAt > HOVER_SECONDS) setHoverTiles({});
 
     pollOverview();
 
@@ -799,9 +873,9 @@ void TerrainWorldRuntime::releaseFlushed(TileCoord tile) {
     std::lock_guard<std::recursive_mutex> guard(lock);
     const auto it = pinned.find(tile.key());
     if (it == pinned.end() || dirtyFiles.count(tile.key())) return;
-    // the streamer keeps the data as its own; it may evict it now
+    // the streamer keeps the data as its own; it may evict it now, unless the brush hovers it
     streamer->replace(tile, it->second);
-    streamer->pin(tile, false);
+    if (!hoverPins.count(tile.key())) streamer->pin(tile, false);
     pinned.erase(it);
 }
 
@@ -809,7 +883,8 @@ void TerrainWorldRuntime::fileChanged(TileCoord tile, bool exists) {
     std::lock_guard<std::recursive_mutex> guard(lock);
     if (!streamer) return;
     if (pinned.count(tile.key()) && dirtyFiles.count(tile.key())) return;
-    pinned.erase(tile.key());
+    // a flushed edit's pin goes with the data it held; the brush's hover keeps its own
+    if (pinned.erase(tile.key()) && !hoverPins.count(tile.key())) streamer->pin(tile, false);
     if (!exists) {
         worldOccupancy.setTile(tile, false);
         streamer->forget(tile);
@@ -825,6 +900,8 @@ void TerrainWorldRuntime::fileChanged(TileCoord tile, bool exists) {
     }
     const TileMinMax whole = tileNodeMinMax(*data, worldManifest.lattice, worldManifest.lattice.tileLevel(), 0, 0);
     worldOccupancy.setTile(tile, true, whole.min, whole.max);
+    // R11: the skirts reach as deep as the deepest tile's edge, a replaced file's too (an import)
+    worldManifest.skirtDepth = std::max(worldManifest.skirtDepth, data->skirtDepth);
     streamer->replace(tile, data);
     revisions[tile.key()]++;
     if (setOverviewPatch(overview, *data)) overviewRev++;

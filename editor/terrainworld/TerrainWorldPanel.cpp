@@ -15,6 +15,10 @@
 #include "subsystem/TerrainWorldSystem.h"
 #include "terrainworld/TerrainWorldConvert.h"
 #include "terrainworld/TerrainWorldFiles.h"
+#include "terrainworld/TerrainWorldImport.h"
+#include "terrainworld/TerrainWorldOverlay.h"
+#include "util/FileDialogs.h"
+#include "util/FileUtils.h"
 #include "window/EditorModal.h"
 
 #include "imgui.h"
@@ -29,16 +33,9 @@ using namespace jasperengine::terrain;
 namespace {
 
     ImU32 tileStateColour(TileState state, bool pinned) {
-        if (pinned) return IM_COL32(230, 180, 60, 255);
-        switch (state) {
-            case TileState::Absent: return IM_COL32(40, 40, 40, 255);
-            case TileState::Cold: return IM_COL32(70, 90, 120, 255);
-            case TileState::Queued: case TileState::Loading: return IM_COL32(120, 120, 200, 255);
-            case TileState::CpuReady: case TileState::Uploading: return IM_COL32(90, 160, 200, 255);
-            case TileState::Resident: return IM_COL32(80, 190, 110, 255);
-            case TileState::Error: return IM_COL32(210, 70, 70, 255);
-        }
-        return IM_COL32(40, 40, 40, 255);
+        // the overlay's Tile State colours (R41, R42)
+        const Vector4 colour = terrainWorldStateColour(state, pinned);
+        return ImGui::ColorConvertFloat4ToU32(ImVec4(colour.x, colour.y, colour.z, colour.w));
     }
 
     std::string worldMegabytes(uint64_t bytes) {
@@ -217,6 +214,134 @@ void ConvertTerrainWorldDialog::show() {
     ImGui::EndPopup();
 }
 
+// ------------------------------------------------------------------ Import Heightmap
+
+ImportHeightmapDialog& ImportHeightmapDialog::instance() {
+    static ImportHeightmapDialog dialog;
+    return dialog;
+}
+
+void ImportHeightmapDialog::open(Project* project, uint32_t sceneId, Entity world) {
+    if (task && !task->finished()) return;
+    this->project = project;
+    this->sceneId = sceneId;
+    this->world = world;
+    error.clear();
+    done.clear();
+    task.reset();
+    isOpen = true;
+    justOpened = true;
+}
+
+void ImportHeightmapDialog::show() {
+    if (!isOpen || !project) return;
+    const char* popupName = "Import Heightmap##TerrainWorldImportModal";
+    if (justOpened) {
+        ImGui::OpenPopup(popupName);
+        justOpened = false;
+    }
+    const bool running = task && !task->finished();
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    bool keepOpen = true;
+    if (!EditorModal::begin(popupName, running ? nullptr : &keepOpen, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+        if (!running) isOpen = keepOpen && isOpen;
+        return;
+    }
+    SceneProject* sceneProject = project->getScene(sceneId);
+    std::shared_ptr<TerrainWorldSystem> system = sceneProject && sceneProject->scene ? sceneProject->scene->getSystem<TerrainWorldSystem>() : nullptr;
+    std::string why;
+    TerrainWorldRuntime* runtime = system ? system->ensureRuntime(world, &why) : nullptr;
+    if (runtime) {
+        // R32's spacing and max height are the world's: the file's samples land one on each of its own
+        char text[256];
+        std::snprintf(text, sizeof(text),
+                      "Reads a 16-bit RAW or R16 file a band of rows at a time, or a PNG or EXR whole (up to 8,193 a side), into the tiles it covers, "
+                      "making the ones that are missing. Spacing (%.2f m) and Max Height (%.1f m) are the Terrain World's: one file sample "
+                      "on each world sample, the file's lowest to highest value over 0 to Max Height. One undo step.",
+                      runtime->lattice().spacing, runtime->maxHeight());
+        EditorModal::message(text);
+    } else {
+        EditorModal::error(why.empty() ? std::string("The Terrain World is not running.") : why);
+    }
+    EditorModal::error(error);
+
+    const float width = ImGui::GetFontSize() * 14.0f;
+    ImGui::BeginDisabled(running);
+    char file[512];
+    std::snprintf(file, sizeof(file), "%s", path.c_str());
+    ImGui::SetNextItemWidth(width);
+    if (EditorModal::inputText("File", "path", file, sizeof(file))) path = file;
+    ImGui::SameLine();
+    if (ImGui::Button("Browse...")) {
+        const std::string chosen = FileDialogs::openFileDialog(project->getAssetsPath().string());
+        if (!chosen.empty()) path = FileUtils::pathToUtf8(project->normalizeToAssetsRelative(FileUtils::pathFromUtf8(chosen)));
+    }
+    ImGui::SetNextItemWidth(width * 0.5f);
+    EditorModal::inputInt("Origin Tile X", "origin_x", &originX, 1, 8);
+    ImGui::SetNextItemWidth(width * 0.5f);
+    EditorModal::inputInt("Origin Tile Z", "origin_z", &originZ, 1, 8);
+    originX = std::clamp(originX, WORLD_TILE_MIN, WORLD_TILE_MAX);
+    originZ = std::clamp(originZ, WORLD_TILE_MIN, WORLD_TILE_MAX);
+    EditorModal::checkbox("Flip Vertically", "flip_vertically", &flip);
+    ImGui::SetNextItemWidth(width * 0.5f);
+    EditorModal::inputInt("Raw Width", "width", &rawWidth, 1, 256);
+    ImGui::SetNextItemWidth(width * 0.5f);
+    EditorModal::inputInt("Raw Height", "height", &rawHeight, 1, 256);
+    rawWidth = std::clamp(rawWidth, 0, 65537);
+    rawHeight = std::clamp(rawHeight, 0, 65537);
+    ImGui::TextDisabled("Raw Width and Height 0: from the file's length (a square)");
+    ImGui::EndDisabled();
+
+    TerrainWorldImportRequest request;
+    request.path = path;
+    request.width = rawWidth;
+    request.height = rawHeight;
+    request.flipVertically = flip;
+    request.origin = TileCoord(originX, originZ);
+    TerrainWorldImportPlan plan;
+    std::string planError;
+    const bool possible = runtime && !path.empty() && planTerrainWorldImport(project, *runtime, request, plan, planError);
+    if (possible) {
+        ImGui::TextDisabled("%i x %i samples%s: %i tiles from (%i, %i), %i new", plan.width, plan.height, plan.sizeGuessed ? " (from its length)" : "",
+                            static_cast<int>(plan.covered.size()), originX, originZ, plan.made);
+    } else if (!path.empty() && !planError.empty()) {
+        EditorModal::error(planError);
+    }
+    if (running) {
+        const double progress = task->progress();
+        ImGui::ProgressBar(progress < 0.0 ? static_cast<float>(-1.0 * ImGui::GetTime()) : static_cast<float>(progress), ImVec2(width * 1.4f, 0),
+                           task->phase().c_str());
+    } else if (!done.empty()) {
+        ImGui::TextUnformatted(done.c_str());
+    }
+
+    ImGui::Separator();
+    ImGui::BeginDisabled(!possible || running);
+    if (EditorModal::button(running ? "Importing..." : "Import", "ok", ImVec2(8.0f * ImGui::GetFontSize(), 0))) {
+        error.clear();
+        done.clear();
+        task = startTerrainWorldImport(project, sceneId, world, plan, [this](const TerrainWorldImportResult& result) {
+            if (result.ok) {
+                done = "Imported into " + std::to_string(result.tiles) + " tile(s); Edit > Undo takes it back.";
+                isOpen = false;
+            } else {
+                error = result.error;
+            }
+        });
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (EditorModal::button("Cancel", "cancel", ImVec2(8.0f * ImGui::GetFontSize(), 0))) {
+        if (running) {
+            task->cancel();
+        } else {
+            isOpen = false;
+        }
+    }
+    if (!isOpen) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
+}
+
 // ------------------------------------------------------------------ the panel
 
 TerrainWorldPanel& TerrainWorldPanel::instance() {
@@ -328,6 +453,9 @@ void TerrainWorldPanel::show() {
 
     if (!runtime->playing()) {
         if (ImGui::Button("Rebuild Overview")) runtime->rebuildOverview(false);
+        ImGui::SameLine();
+        if (ImGui::Button("Import Heightmap...")) ImportHeightmapDialog::instance().open(project, sceneProject->id, entity);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("A heightmap file into the tiles it covers, as a job you can cancel; one undo step.");
         ImGui::SameLine();
         if (ImGui::Button("Repair Seams")) {
             int repaired = 0;

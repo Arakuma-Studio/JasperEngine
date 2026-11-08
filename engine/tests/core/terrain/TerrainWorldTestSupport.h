@@ -8,6 +8,7 @@
 // library and the same bytes everywhere) and a zstd codec.
 
 #include "terrain/world/TerrainTileFormat.h"
+#include "terrain/world/TerrainWorldData.h"
 #include "terrain/world/TiledMapStore.h"
 #include "terrain/world/WorldLattice.h"
 
@@ -15,7 +16,11 @@
 
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace terrainworldtest {
@@ -66,6 +71,49 @@ namespace terrainworldtest {
         buildOverviewHeight(*tile, lattice);
         buildSkirtDepth(*tile, lattice);
         return tile;
+    }
+
+    // A player's world folder (world.bin, overview.jtile, tiles/x_z.jtile) of tiles low..high a side,
+    // sample (sx, sz) of the world holding height(sx, sz); false when a file could not be made
+    inline bool writePlayerWorld(const std::filesystem::path& folder, const WorldLattice& lattice, float maxHeight, int low, int high,
+                                 const std::function<uint16_t(int, int)>& height) {
+        WorldManifest manifest;
+        manifest.guid = "77771111222233334444555566667777";
+        manifest.lattice = lattice;
+        manifest.maps.maxHeight = maxHeight;
+        WorldOverview overview;
+        initOverview(overview, lattice, TileCoord(low, low), TileCoord(high, high), 0);
+        auto put = [](const std::filesystem::path& path, const std::vector<uint8_t>& bytes) {
+            std::filesystem::create_directories(path.parent_path());
+            std::ofstream file(path, std::ios::binary);
+            file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            return static_cast<bool>(file);
+        };
+        const int n = lattice.tileQuads;
+        for (int z = low; z <= high; z++) {
+            for (int x = low; x <= high; x++) {
+                WorldTile tile;
+                initTile(tile, lattice, TileCoord(x, z), 0);
+                for (int j = 0; j < n + 3; j++) {
+                    for (int i = 0; i < n + 3; i++) tile.setSample(i, j, height(x * n + i - 1, z * n + j - 1));
+                }
+                buildMinMax(tile, lattice);
+                buildOverviewHeight(tile, lattice);
+                buildSkirtDepth(tile, lattice);
+                const float colours[] = {0.5f, 0.5f, 0.5f, 1.0f};
+                buildOverviewColour(tile, lattice, colours, 0);
+                std::vector<uint8_t> bytes;
+                if (!encodeTile(tile, zstdCodec(), TileEncodeOptions{}, bytes)) return false;
+                if (!put(folder / ("tiles/" + std::to_string(x) + "_" + std::to_string(z) + ".jtile"), bytes)) return false;
+                setOverviewPatch(overview, tile);
+                const TileMinMax whole = tileNodeMinMax(tile, lattice, lattice.tileLevel(), 0, 0);
+                manifest.tiles.push_back(WorldTileInfo{TileCoord(x, z), whole.min, whole.max});
+            }
+        }
+        std::vector<uint8_t> bytes;
+        if (!encodeOverview(overview, lattice, zstdCodec(), 3, bytes, nullptr) || !put(folder / "overview.jtile", bytes)) return false;
+        encodeWorldBin(manifest, bytes);
+        return put(folder / "world.bin", bytes);
     }
 
     // A rectangle of a store's global height texels, read as samples

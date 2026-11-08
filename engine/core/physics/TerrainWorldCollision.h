@@ -26,6 +26,12 @@ namespace jasperengine {
     class Scene;
     class TerrainWorldRuntime;
 
+    // R42's Collision Chunks overlay: one collider of the World's compound, entity-local
+    struct TerrainWorldColliderRect {
+        float minX = 0.0f, minZ = 0.0f, size = 0.0f;
+        bool coarse = false;
+    };
+
     class JASPERENGINE_API TerrainWorldCollision {
     public:
         // R21
@@ -34,6 +40,14 @@ namespace jasperengine {
         static constexpr int MAX_COARSE_PER_FRAME = 8;
         // R20
         static constexpr int MAX_CHUNKS_PER_FRAME = 16;
+        // R23: the error Jolt's compression of a chunk may add, in metres (at most 8 bits a sample)
+        static constexpr float CHUNK_MAX_ERROR = 0.01f;
+
+        // R23: one fine chunk's samples as the collider builds them (worldChunkSamples), its tile and
+        // neighbours read now if they must be (Physics Placement reads synchronously); false when the
+        // tile is absent
+        static bool chunkSamplesNow(TerrainWorldRuntime& runtime, terrain::TileCoord tile, int chunkQuads, int chunkX, int chunkZ,
+                                    std::vector<float>& out);
 
         explicit TerrainWorldCollision(TerrainWorldRuntime& runtime);
         ~TerrainWorldCollision();
@@ -49,6 +63,8 @@ namespace jasperengine {
         bool fineActive(terrain::TileCoord tile) const;
         // Drops every collider (Stop, the World removed)
         void clear();
+        // The colliders in the compound now, coarse tiles first
+        std::vector<TerrainWorldColliderRect> colliders() const;
 
         int fineBodies() const { return fineCount; }
         int coarseBodies() const { return coarseCount; }
