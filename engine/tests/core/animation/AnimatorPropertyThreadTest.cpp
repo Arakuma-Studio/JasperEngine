@@ -614,6 +614,17 @@ TEST_F(AnimatorPropertyThread, WaitingRowsAllocateNothing){
     buildCharacters(controllerFile("c", oneState(clip("rows", data))));
     step(0.0);
     step(kDt, 120);
+    // The parallel wave's blocks come from the job system's slab pool: the main thread takes them and
+    // the workers free them into their own caches, which hand blocks back to the shared depot only
+    // once full. Until every worker's cache is full the main thread can still reach the heap, which
+    // took more than the 120 frames above in 4 of 40 runs (traced: jobs::detail::acquireSlab in
+    // runParallelFor). Play on until a window allocates nothing: a per-frame allocation of the rows
+    // never gets there, and the measurement below fails as it should
+    for (int window = 0; window < 30; window++){
+        testsupport::AllocationCountScope warmup;
+        step(kDt, 100);
+        if (warmup.count() == 0) break;
+    }
     testsupport::AllocationCountScope scope;
     step(kDt, 600);
     EXPECT_EQ(scope.count(), 0u);
