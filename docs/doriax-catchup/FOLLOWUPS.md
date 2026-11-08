@@ -70,6 +70,11 @@ worktree `/var/lib/orquester/workspaces/jaspersito/dc-wt/fu-<name>` and branch `
   shared-data and placed-model suites, 12 MCP files, lints, test_grade, tool budget, TOOLS.md check, web, Android: green.
   Open: one unreproduced editor crash in test_saved_output_determinism (TableCrate screenshot), recorded in its spec.
 
+- Train 7 (2026-11-08): mesh-memory's S55 item after fix/submesh-drop landed, with two leak fixes (mesh/model undo/redo,
+  S55's shadow index buffer), on box D: WERROR linux, core `*Gpu*`/`*Golden*`/culling/batching suites, editor shared-data
+  and command suites, 11 MCP files (new test_mesh_undo_resources), lints, test_grade, TOOLS.md check, web, Android (rerun
+  after a JDK download timeout): green. Every workstream is merged.
+
 ## Not compiled or run (owner, 2026-11-08: skip the Windows and Mac check)
 
 Nothing here ran on Windows, macOS or iOS. What each workstream left for those machines (commands in its spec's
