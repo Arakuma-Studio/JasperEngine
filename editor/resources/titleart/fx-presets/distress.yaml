@@ -1,0 +1,23 @@
+# Distress presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: grunge
+    name: Grunge
+    aliases: [dirty, worn]
+    params: {}
+  - id: dry_brush
+    name: Dry Brush (かすれ)
+    aliases: [かすれ, dry brush]
+    cost: C3
+    params: {pattern: dry_brush, edge: 30, scale: 40}
+  - id: worn_print
+    name: Worn Print
+    aliases: [letterpress, old print]
+    params: {pattern: speckle, wear: 0.4}
+  - id: spray_paint
+    name: Spray Paint
+    aliases: [graffiti, spray]
+    params: {pattern: spray, outside: 0.6}
+  - id: scratched
+    name: Scratched
+    aliases: [scratches, scuffed]
+    params: {pattern: scratches, angle: 20}

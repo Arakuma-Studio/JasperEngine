@@ -61,6 +61,11 @@ namespace jasperengine::titleart {
     // ShaderType::TITLE_ART property bits after the program number
     constexpr uint64_t TITLE_VARIANT_SEEDS_FIXED = 1ull << 7;      // 'Sfx': seeds and bounds in RGBA8
     constexpr uint64_t TITLE_VARIANT_DISTANCE_FIXED = 1ull << 8;   // 'Dfx': distances in RGBA8
+    // 'Efx': the program number names one of S83's effect programs (titleart_fx.frag,
+    // effects/TfxPrograms.h) instead of titleart.frag's
+    constexpr uint64_t TITLE_VARIANT_CATALOGUE_EFFECT = 1ull << 9;
+    // 'Liv': the live-kernel form of a program (TFX_LIVE, S83 D10), run by S81's live compose
+    constexpr uint64_t TITLE_VARIANT_LIVE = 1ull << 10;
 
     JASPERENGINE_API ShaderKey titleProgramKey(TitleProgram program, uint64_t variant = 0);
     JASPERENGINE_API const char* titleProgramName(TitleProgram program);    // "outer_glow", "gauss" ...

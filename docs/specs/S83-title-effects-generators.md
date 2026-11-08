@@ -1572,3 +1572,73 @@ rest of S82 lands in 6B.
 8. **Reconciled: the Shine, Rainbow and Vignette recipes are written in S80's `gradient_overlay`
    keys** (`length`, `gradient` stops, `amount`, modes `light`, `color`, `shade`); Pachislop's
    width, softness, double band, bands and saturation become gradient stops.
+9. **Implementation (effects stream): S83's effect programs are their own family.** They are
+   `ShaderType::TITLE_ART` programs with property bit 9 (`Efx`, `TITLE_VARIANT_CATALOGUE_EFFECT`)
+   in `engine/shaderlib/titleart_fx.frag`, numbered by `tfx::Program` (`effects/TfxPrograms.h`), so
+   they never take numbers from titleart.frag (1-17) or the renderer (18-63); bit 10 (`Liv`,
+   `TITLE_VARIANT_LIVE`) is `TFX_LIVE`. `TitleGpu::ensureProgram` accepts numbers up to 0x7FF.
+   Includes are `engine/shaderlib/titleart/fx/*.glsl` per family (not `fx/<id>.glsl` per type).
+10. **Implementation: no QuadBatch, readback or CPU analysis on the effects side.** Drips, Stitch
+    and Shatter are fragment passes on the GPU, so they need no readback, work identically at
+    runtime and need nothing in S81's sidecar: Drips find their origins by marching seeded columns
+    of the layer box down to the edges that face gravity (one texel per drip, written as a
+    jump-flood seed) and draw their distance field by looping over the drips (the minimum MAX
+    blending would give); Stitch measures arc length on the GPU (each coarse cell of the contour
+    marches its contour point both ways to the ends of its monotone piece, so the stitches of a
+    piece fit it exactly); Shatter finds, per pixel, the pieces that may have moved over it (the
+    cells within reach of their largest displacement), maps the pixel back to each piece's rest
+    position, tests it against the piece (exact edge distances) and keeps the two most displaced.
+    Pieces are functions of their index and seed, not a CPU layout, so Shatter's class is C3
+    rather than C1 and its piece pattern differs from Pachislop's (a parity exception). QuadBatch,
+    `analysis/ReadGrid` and the anchors are left to the generators, which need them most.
+11. **Implementation: the layer box is the GPU reduction** (`fx::layerBounds`), as in S80's
+    effects: `EffectContext` carries no CPU box. Glitch is therefore C1 (the reduction is 0.5 FRE),
+    not C0.
+12. **Implementation: Material shades in two effect passes** (`material_surface`,
+    `material_detail`) with the element program's formulas: fill (every kind but `image` and
+    `source`; the layer's colours with `color_mode: layer`), opacity, bevel (profiles, Direction,
+    soften, light, gloss contours, highlight and shadow), finish, surface and colour textures (the
+    procedural kinds), pattern (every kind), satin, sheen, inner glow and the gloss cap. A
+    reflection map needs a panorama an effect pass does not bind: an enabled reflection is a sky
+    and ground horizon by the surface normal (what Chrome and Gold Chrome map through their finish);
+    glass and refraction are not drawn by the effect (the Glass preset is a bevel, inner glow and
+    gloss at 0.75 opacity); `size_mode: fit` takes 12 % of `size` as the half-thickness. The
+    renderer's element pass is unchanged.
+13. **Implementation: Pixelate's palette is a palette image** (one colour per pixel, up to 256, an
+    image asset): S43's `.palette` asset type has not landed; the param takes `.palette` assets when
+    it does. Pixelate carries `jfx_color.glsl`'s OKLab conversion (that file declares the HTML UI's
+    frame block and outputs, so a title program cannot include it); the Bayer thresholds are
+    `jfx_tone.glsl`'s, included.
+14. **Implementation: presets and the id map are embedded data.** `editor/resources/titleart/
+    fx-presets/<type>.yaml` and `pachislop-fx-map.yaml` are embedded at configure time
+    (`editor/titleart/TitleArtEditorSources.cmake`, `title_fx_presets.h`,
+    `title_pachislop_fx_map.h`) and parsed by `editor/titleart/fx/FxPresets.cpp` and
+    `PachislopFxMap.cpp` at first use, instead of a generated C++ table. The map's generator half
+    is the generators stream's.
+15. **Implementation: interface additions.** `EffectContext::tier` (S81 sets Mobile; D11, D12);
+    `TitleOpContext::undoName` (a registered op names its undo step: apply_recipe's is the
+    recipe's name) and `TitleArtOps::runCoreOp` (a registered op runs one of S80's ops in its
+    batch); add_effect's `preset`; `set` notes `inactive` on a param its `when` hides;
+    list_title_library's `category`, rows' `entry`, `presets`, `live_params`, the recipe and
+    style-setting rows and their `id` details; render_title's `options.cost`. The core GPU test of
+    S80 (`TitleArtEffectsGpuTest.cpp`) keeps S80's ten effects; S83's have their own
+    (`TitleFxCatalogueGpuTest.cpp`, with `TitleFxRig.h`).
+16. **Implementation: what waits for other streams.** The live kernels run in S81's live compose
+    (AC17, AC29, AC27 belong there; every definition declares its kind, params and program here);
+    `fx_follow_missing` is the generators'; `fx_bake_only_realtime`, `fx_live_budget` and
+    `fx_realtime_budget` need S81's Render Mode and are not registered yet; Glint (3D) is S86's
+    member (listed here as a style setting); the device figures of AC22 are pending (no device).
+17. **Implementation: the declared classes are the static model's.** §6.4's model applied literally
+    (FRE = Σ pixels x max(1, taps / 4), the shared distance field its own row) puts twelve effects one
+    class above §6.6's estimates: Motion Blur, Chromatic Aberration and Chalk C2; Contour Lines,
+    Neon Tube, Tilt-Shift Blur, Radial Blur, Extrude, Floor Reflection, Drips, Stitch and Shatter C3;
+    Motion Trail C4 (its smear marches 214 taps). Each definition declares what its `estimate`
+    gives at defaults (`TitleFxBudget.StaticModel`), so the badges, `list_title_library` and the
+    Realtime rules agree with the model; the desktop timings of AC15 decide whether the model's
+    constants should loosen.
+18. **Implementation: hard-edged cuts and the RGBA8 path.** Chalk, Frost, Ink Brush Stroke and Stitch
+    cut their shapes at noise or arc-length thresholds; where the RGBA8 path's 1/64 px distance
+    steps cross a threshold a lone pixel flips fully. `TitleFxFallbackGpu` holds them to their
+    class's mean and share of pixels over 8/255 but not its maximum. Parity exceptions (AC4):
+    Shatter (another piece layout, Deviation 10) and Extrude (the trimmed image one pixel deeper
+    at 0.25 shifts the centring; the block metric reads that as 16 % of blocks).

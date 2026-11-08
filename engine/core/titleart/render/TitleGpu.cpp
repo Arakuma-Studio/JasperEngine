@@ -186,7 +186,7 @@ void TitleGpu::release() {
 }
 
 bool TitleGpu::ensureProgram(uint32_t number, std::string* error) {
-    if ((number & 0x7Fu) == 0 || number > 0x1FFu) {
+    if ((number & 0x7Fu) == 0 || number > 0x7FFu) {
         if (error) *error = "title art program " + std::to_string(number) + " does not exist";
         return false;
     }

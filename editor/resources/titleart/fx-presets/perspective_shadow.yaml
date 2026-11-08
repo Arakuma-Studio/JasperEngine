@@ -1,0 +1,6 @@
+# Perspective Shadow presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: low_sun
+    name: Low Sun
+    aliases: [long cast shadow, sunset shadow]
+    params: {length: 400, perspective: 0.6}

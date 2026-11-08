@@ -1,0 +1,10 @@
+# Contour Lines presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: light_guide
+    name: Light Guide (導光板)
+    aliases: [導光板, light guide panel]
+    params: {}
+  - id: outside_rings
+    name: Outside Rings
+    aliases: [rings, halo rings]
+    params: {mode: outside, count: 4, spacing: 14}

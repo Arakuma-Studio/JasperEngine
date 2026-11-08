@@ -554,6 +554,7 @@ void addTitleArtPropertyDefinitions(std::vector<shadercompiler::define_t>& defs,
     defs.push_back({"TA_PROGRAM", std::to_string(prop & 0x7Fu)});
     if (prop & shaderPropertyBit(7))  defs.push_back({"TA_SEEDS_FIXED", "1"});           // 'Sfx'
     if (prop & shaderPropertyBit(8))  defs.push_back({"TA_DISTANCE_FIXED", "1"});        // 'Dfx'
+    if (prop & shaderPropertyBit(10)) defs.push_back({"TFX_LIVE", "1"});                 // 'Liv'
 }
 
 void addSkyPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -763,7 +764,10 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     if (shaderType == ShaderType::SSR_BLUR){
         args.defines.push_back({"SSR_BLUR_TAPS", "6"});
     }
-    if (shaderType == ShaderType::TITLE_ART && (properties & 0x7Fu) >= 18){
+    if (shaderType == ShaderType::TITLE_ART && (properties & shaderPropertyBit(9))){
+        // S83's effect programs (titleart/effects/TfxPrograms.h): their own numbers under 'Efx'
+        args.frag_file = "titleart_fx.frag";
+    }else if (shaderType == ShaderType::TITLE_ART && (properties & 0x7Fu) >= 18){
         // the Title Art renderer's programs (render/TitlePrograms.h); 1-17 are titleart.frag's
         args.frag_file = "titleart_render.frag";
     }

@@ -22,6 +22,8 @@
 #include "titleart/TitleArtBaker.h"
 #include "titleart/TitleArtBuiltinChecks.h"
 #include "titleart/TitleArtDocument.h"
+#include "titleart/fx/FxPresets.h"
+#include "titleart/fx/FxRecipes.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
 #include "titleart/TitleArtSchema.h"
@@ -152,8 +154,35 @@ void listTitleLibraryTool(const CallPtr& call) {
     const std::string kind = args.value("kind", std::string());
     const std::string id = args.value("id", std::string());
     const std::string query = args.value("query", std::string());
+    const std::string category = lower(args.value("category", std::string()));
     const int limit = args.value("limit", 20), offset = args.value("offset", 0);
     titleart::TitleEffectRegistry& registry = titleart::TitleEffectRegistry::get();
+    auto inCategory = [&](const char* c) { return category.empty() || lower(c ? c : "") == category; };
+    // S83 §6.11: an effect's or generator's presets (ids in rows, their params in the detail)
+    auto presetsOf = [](const char* type, bool detail) {
+        Json out = Json::array();
+        for (const TitleFxPreset& p : TitleFxPresets::forType(type)) {
+            if (!detail) {
+                out.push_back(p.id);
+                continue;
+            }
+            Json row = Json{{"id", p.id}, {"name", p.name}, {"params", fromOrdered(p.params)}};
+            if (!p.cost.empty()) row["cost"] = p.cost;
+            out.push_back(row);
+        }
+        return out;
+    };
+    auto liveParams = [](const titleart::LiveVariant& live) {
+        Json out = Json::array();
+        for (const char* k : live.params) out.push_back(k);
+        return out;
+    };
+    auto presetFields = [](const char* type, std::vector<std::string>& fields) {
+        for (const TitleFxPreset& p : TitleFxPresets::forType(type)) {
+            fields.push_back(p.name);
+            for (const std::string& a : p.aliases) fields.push_back(a);
+        }
+    };
 
     auto fonts = [&]() {
         std::vector<Json> rows;
@@ -199,7 +228,29 @@ void listTitleLibraryTool(const CallPtr& call) {
     if (!id.empty()) {
         if (kind == "effects") {
             if (const titleart::EffectDef* def = registry.effect(id)) {
-                call->ok(std::string(def->label) + " (" + def->type + ")", fromOrdered(titleart::titleEffectDetail(*def)));
+                Json detail = fromOrdered(titleart::titleEffectDetail(*def));
+                detail["entry"] = "effect";
+                detail["presets"] = presetsOf(def->type, true);
+                detail["live_params"] = liveParams(def->live);
+                Json anim = Json::object();
+                for (const titleart::ParamDef& q : def->params) anim[q.key] = titleart::fxAnimName(q.anim);
+                detail["anim"] = anim;
+                detail["docs"] = std::string("docs/mcp/guide/title-art-effects.md#") + def->type;
+                call->ok(std::string(def->label) + " (" + def->type + ")", detail);
+                return;
+            }
+            if (const TitleFxRecipe* r = findTitleFxRecipe(id)) {
+                Json op = Json{{"op", "apply_recipe"}, {"layer", "<layer>"}, {"recipe", r->id}};
+                call->ok(std::string(r->name) + " (recipe: " + r->type + ")",
+                         Json{{"id", r->id}, {"name", r->name}, {"entry", "recipe"}, {"category", r->category}, {"type", r->type},
+                              {"preset", r->preset ? Json(r->preset) : Json(nullptr)}, {"params", fromOrdered(titleFxRecipeParams(*r))}, {"op", op}});
+                return;
+            }
+            for (const TitleFxStyleSetting& st : titleFxStyleSettings()) {
+                if (id != st.id) continue;
+                Json op = Json{{"op", "set"}, {"layer", "<layer>"}, {"values", Json{{st.member, true}}}};
+                call->ok(std::string(st.name) + " (style setting)", Json{{"id", st.id}, {"name", st.name}, {"entry", "style_setting"}, {"category", st.category},
+                                                                       {"sets", st.member}, {"layers", st.layers}, {"op", op}});
                 return;
             }
         } else if (kind == "generators") {
@@ -209,7 +260,11 @@ void listTitleLibraryTool(const CallPtr& call) {
             }
         }
         std::vector<std::string> ids;
-        if (kind == "effects") for (const auto* d : registry.effects()) ids.push_back(d->type);
+        if (kind == "effects") {
+            for (const auto* d : registry.effects()) ids.push_back(d->type);
+            for (const TitleFxRecipe& r : titleFxRecipes()) ids.push_back(r.id);
+            for (const TitleFxStyleSetting& st : titleFxStyleSettings()) ids.push_back(st.id);
+        }
         if (kind == "generators") for (const auto* d : registry.generators()) ids.push_back(d->type);
         std::string list;
         for (const std::string& i : ids) list += (list.empty() ? "" : ", ") + i;
@@ -223,15 +278,41 @@ void listTitleLibraryTool(const CallPtr& call) {
         for (const titleart::EffectDef* d : registry.effects()) {
             std::vector<std::string> fields = {d->type, d->label, d->category};
             for (const char* a : d->aliases) fields.push_back(a);
-            if (!matches(query, fields)) continue;
-            rows.push_back(fromOrdered(titleart::titleEffectRow(*d)));
+            presetFields(d->type, fields);
+            if (!inCategory(d->category) || !matches(query, fields)) continue;
+            Json row = fromOrdered(titleart::titleEffectRow(*d));
+            row["entry"] = "effect";
+            row["presets"] = presetsOf(d->type, false);
+            row["live_params"] = liveParams(d->live);
+            rows.push_back(std::move(row));
+        }
+        // S83 D4, D5: the menu entries that add another type's preset or switch a style setting
+        for (const TitleFxRecipe& r : titleFxRecipes()) {
+            std::vector<std::string> fields = {r.id, r.name, r.category, r.type};
+            for (const char* a : r.aliases) fields.push_back(a);
+            if (!inCategory(r.category) || !matches(query, fields)) continue;
+            const titleart::EffectDef* def = registry.effect(r.type);
+            rows.push_back(Json{{"id", r.id}, {"name", r.name}, {"entry", "recipe"}, {"category", r.category}, {"type", r.type},
+                                {"preset", r.preset ? Json(r.preset) : Json(nullptr)},
+                                {"cost", def ? titleart::costClassName(def->costClass) : "C1"}});
+        }
+        for (const TitleFxStyleSetting& st : titleFxStyleSettings()) {
+            std::vector<std::string> fields = {st.id, st.name, st.category, st.member};
+            for (const char* a : st.aliases) fields.push_back(a);
+            if (!inCategory(st.category) || !matches(query, fields)) continue;
+            rows.push_back(Json{{"id", st.id}, {"name", st.name}, {"entry", "style_setting"}, {"category", st.category}, {"sets", st.member},
+                                {"layers", st.layers}});
         }
     } else if (kind == "generators") {
         for (const titleart::GeneratorDef* d : registry.generators()) {
             std::vector<std::string> fields = {d->type, d->label, d->category};
             for (const char* a : d->aliases) fields.push_back(a);
-            if (!matches(query, fields)) continue;
-            rows.push_back(fromOrdered(titleart::titleGeneratorRow(*d)));
+            presetFields(d->type, fields);
+            if (!inCategory(d->category) || !matches(query, fields)) continue;
+            Json row = fromOrdered(titleart::titleGeneratorRow(*d));
+            row["entry"] = "generator";
+            row["presets"] = presetsOf(d->type, false);
+            rows.push_back(std::move(row));
         }
     } else if (kind == "blend_modes") {
         for (int i = 0; i < titleart::TITLE_BLEND_COUNT; i++) {
@@ -856,6 +937,7 @@ bool titleArtViewImage(Project* project, const fs::path& file, int maxSize, texs
 
 void registerTitleArtTools(McpRegistry& registry) {
     registerBuiltinTitleChecks();
+    registerTitleFxOps();
     {
         ToolDef tool;
         tool.name = "list_title_library";
@@ -863,13 +945,15 @@ void registerTitleArtTools(McpRegistry& registry) {
         tool.description =
             "The Title Art catalogue. No args: counts per kind. kind effects, generators, blend_modes, fonts lists rows "
             "(looks, color_schemes, templates, environments, materials_3d, bevel_profiles, animation_presets: later). "
-            "id: one effect's or generator's params and the op to paste. query filters names, aliases, categories.";
+            "id: one effect's, recipe's or generator's params, presets and the op to paste. query searches names, aliases, presets; "
+            "category filters.";
         std::vector<std::string> kinds;
         for (const LibraryKind& k : LIBRARY_KINDS) kinds.push_back(k.kind);
         tool.inputSchema = object({
             {"kind", stringEnum("", kinds)},
             {"id", string("")},
             {"query", string("")},
+            {"category", string("")},
             {"limit", withDefault(integer("", 1, 200), 20)},
             {"offset", integer("", 0, 100000)},
         });

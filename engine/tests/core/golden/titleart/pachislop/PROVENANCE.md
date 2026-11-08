@@ -18,5 +18,6 @@ They were drawn by Chromium's WebGL on unknown hardware, so they are cross-imple
 references compared with S80 AC12's loose structural metric (4 x 4 block means, block threshold
 24, at most 3 % of blocks over, colour histogram distance at most 6 %), never regenerated: our own
 strict goldens are `../effects/`. Used by `engine/tests/core/titleart/effects/TitleArtEffectsGpuTest.cpp`
-(`TitleArtParityGpu`) and `engine/tests/core/titleart/render/TitleArtScenesParityGpuTest.cpp`
-(`TitleArtScenesParityGpu`). Never shipped (`engine/tests/` stays out of installs and exports).
+(`TitleArtParityGpu`), `engine/tests/core/titleart/render/TitleArtScenesParityGpuTest.cpp`
+(`TitleArtScenesParityGpu`) and, for S83's seventeen ported effects (`deepGlow` .. `shatter`),
+`TitleFxCatalogueGpuTest.cpp` (`TitleFxParityGpu`). Never shipped (`engine/tests/` stays out of installs and exports).

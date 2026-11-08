@@ -15,4 +15,5 @@ void jasperengine::titleart::registerBuiltinTitleEffects(TitleEffectRegistry& re
     registerColorEffects(registry);
     registerTextureEffects(registry);
     registerBlurEffects(registry);
+    registerCatalogueEffects(registry);
 }

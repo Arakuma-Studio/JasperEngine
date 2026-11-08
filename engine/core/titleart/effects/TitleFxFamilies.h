@@ -20,6 +20,8 @@ namespace jasperengine::titleart {
     void registerColorEffects(TitleEffectRegistry& registry);
     void registerTextureEffects(TitleEffectRegistry& registry);
     void registerBlurEffects(TitleEffectRegistry& registry);
+    // S83's catalogue (TfxFamilies.h), after the core effects
+    void registerCatalogueEffects(TitleEffectRegistry& registry);
 
     // generators (S80): Fill & Pattern
     void registerFillGenerators(TitleEffectRegistry& registry);

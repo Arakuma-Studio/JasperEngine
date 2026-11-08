@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleArtOps.h"
+#include "fx/FxRecipes.h"
 
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtSchema.h"
@@ -806,6 +807,15 @@ namespace {
             if (!stack) return false;
             if (stack->size() >= titleart::TITLE_MAX_EFFECTS) return ctx.fail("limit", "a stack holds at most " + std::to_string(titleart::TITLE_MAX_EFFECTS) + " effects");
             Json params = titleart::defaultParams(def->params);
+            // S83 R45: a preset's params over the defaults, the op's own over both
+            if (op.contains("preset")) {
+                std::string preset, error;
+                std::vector<std::string> valid;
+                if (!ctx.requireString(op, "preset", preset)) return false;
+                if (!applyTitleFxPreset(type, preset, params, error, valid)) {
+                    return ctx.fail("bad_value", error, "preset", valid, titleart::nearestName(preset, valid));
+                }
+            }
             if (op.contains("params")) {
                 if (!op["params"].is_object()) return ctx.fail("bad_value", "`params` takes {key: value}", "params");
                 for (auto it = op["params"].begin(); it != op["params"].end(); ++it) {
@@ -1438,6 +1448,22 @@ bool TitleOpContext::set(TitleJson* layer, const std::string& path, const TitleJ
     const bool percent = (r.member && r.member->unit == titleart::ParamUnit::Percent) || (r.param && r.param->unit == titleart::ParamUnit::Percent);
     if (percent && layer && r.to.is_number()) c.px = r.to.get<double>() * titleart::layerSourceSize(*layer) / 100.0;
     change(std::move(c));
+    // S83 R45: a value set on a param its `when` hides still applies and is written, with a note
+    if (r.param && r.param->when.active()) {
+        const size_t dot = r.longPath.rfind('.');
+        const TitleJson* params = dot == std::string::npos ? nullptr
+                                                           : titleart::getTitleArtField(layer ? *layer : doc.root, layer ? "layer" : "document", r.longPath.substr(0, dot));
+        const TitleJson* switchValue = params && params->is_object() && params->contains(r.param->when.param) ? &(*params)[r.param->when.param] : nullptr;
+        bool shown = false;
+        for (const char* v : r.param->when.values) {
+            if (switchValue && ((switchValue->is_string() && *switchValue == v) || (switchValue->is_boolean() && switchValue->dump() == v))) shown = true;
+        }
+        if (!shown) {
+            std::string values;
+            for (const char* v : r.param->when.values) values += (values.empty() ? "" : " or ") + std::string(v);
+            note("inactive", std::string("inactive: ") + r.param->key + " applies only when " + r.param->when.param + " is " + values, r.longPath);
+        }
+    }
     // the label a one-value `set` names its undo step with
     const std::string label = r.param ? std::string(r.param->label) : (r.member ? r.member->label : path);
     if (!r.ownerLabel.empty()) lastSetLabel = r.ownerLabel + " " + label;
@@ -1461,6 +1487,15 @@ std::string TitleArtOps::pendingOwner(const std::string& name) {
         if (name == r.name) return r.owner;
     }
     return {};
+}
+
+bool TitleArtOps::runCoreOp(TitleOpContext& ctx, const TitleJson& op, std::string* undoName) {
+    const std::string name = op.is_object() ? op.value("op", std::string()) : std::string();
+    if (std::find(s80Table().begin(), s80Table().end(), name) == s80Table().end()) return ctx.fail("bad_op", "'" + name + "' is not one of S80's ops", "op");
+    Batch batch(ctx);
+    const bool ok = batch.run(name, op);
+    if (undoName) *undoName = batch.undoName;
+    return ok;
 }
 
 bool TitleArtOps::registerOp(const std::string& name, TitleOpHandler handler) {
@@ -1630,8 +1665,9 @@ TitleOpsResult TitleArtOps::apply(const TitleArtDoc& doc, const TitleJson& ops, 
         bool ok = false;
         auto handler = registry().handlers.find(name);
         if (handler != registry().handlers.end()) {
+            ctx.undoName.clear();
             ok = handler->second(ctx, op);
-            names.push_back(titleCase(name));
+            names.push_back(ctx.undoName.empty() ? titleCase(name) : ctx.undoName);
         } else if (std::find(s80Table().begin(), s80Table().end(), name) != s80Table().end()) {
             Batch batch(ctx);
             ok = batch.run(name, op);

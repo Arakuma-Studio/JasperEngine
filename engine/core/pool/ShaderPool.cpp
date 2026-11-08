@@ -727,8 +727,9 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::HTMLUI_PRIM: return 0;
         // 'Oir': the OIT resolve, else the contact shadows' mask
         case ShaderType::LIGHTING_PASS: return 1;
-        // the program number (bits 0-6) and the RGBA8 encodings Sfx, Dfx (titleart/render/TitlePasses.h)
-        case ShaderType::TITLE_ART: return 9;
+        // the program number (bits 0-6), the RGBA8 encodings Sfx, Dfx, S83's effect programs Efx
+        // and the live kernels Liv (titleart/render/TitlePasses.h)
+        case ShaderType::TITLE_ART: return 11;
         default:                 return 0;
     }
 }
@@ -984,6 +985,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
         switch (bit) {
             case 7: return shortName ? "Sfx" : "Seeds Fixed";
             case 8: return shortName ? "Dfx" : "Distance Fixed";
+            case 9: return shortName ? "Efx" : "Catalogue Effect";
+            case 10: return shortName ? "Liv" : "Live Kernel";
         }
     }
     return shortName ? "?" : "Unknown";

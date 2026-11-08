@@ -1,0 +1,19 @@
+# Extrude presets (docs/specs/S83-title-effects-generators.md §6.8). long_shadow is the Long
+# Shadow recipe's (Pachislop recipes.ts longShadowExtrude).
+presets:
+  - id: long_shadow
+    name: Long Shadow
+    aliases: [long shadow, flat shadow, ロングシャドウ]
+    cost: C4
+    params:
+      angle: 45
+      length: 260
+      fade: 1
+      gradient: {stops: [{pos: 0, color: "#000000", alpha: 1, mid: 0.5}, {pos: 1, color: "#000000", alpha: 1, mid: 0.5}], interp: rgb}
+      opacity: 0.55
+      shading: 0
+      edge: 0
+  - id: block_letters
+    name: Block Letters
+    aliases: [3d block, deep extrude]
+    params: {length: 40, shading: 0.8}

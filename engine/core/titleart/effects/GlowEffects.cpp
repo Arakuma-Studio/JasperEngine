@@ -114,6 +114,11 @@ namespace {
         d.fallback = FallbackClass::F1;
         d.glyphSafety = GlyphSafety::Approximate;
         d.aliases = {"glow", "halo", "outerGlow", "光彩 (外側)", "後光"};
+        // S83 §6.12: the glow split scales per frame
+        markLive(d, {"intensity", "opacity"}, LiveKind::ScaleSplit, (uint32_t)TitleProgram::OuterGlow);
+        for (ParamDef& q : d.params) {
+            if (std::string_view(q.key) == "intensity") q.combine = ParamCombine::Multiply;
+        }
         d.apply = applyOuterGlow;
         d.alphaFromAlpha = true;
         return d;

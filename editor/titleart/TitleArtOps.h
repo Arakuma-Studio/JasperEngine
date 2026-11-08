@@ -121,6 +121,8 @@ namespace jasperengine::editor {
         // the label of the field the last set() wrote ("Rim Width", "Outer Glow Size"): a one-value
         // `set` names its undo step "Set <label>"
         std::string lastSetLabel;
+        // a registered op's undo step name ("Long Shadow"); empty: its op name in title case
+        std::string undoName;
     };
 
     struct ReservedTitleOp {
@@ -138,6 +140,9 @@ namespace jasperengine::editor {
 
         // the ops S80 implements, in the order the agent docs list them
         static const std::vector<std::string>& s80Ops();
+        // one of S80's ops inside a registered op's batch (apply_recipe adds its effect through
+        // add_effect), its undo step name in `undoName`; false after ctx.fail()
+        static bool runCoreOp(TitleOpContext& ctx, const TitleJson& op, std::string* undoName = nullptr);
         // the reserved names of §6.15 and their owners
         static const std::vector<ReservedTitleOp>& reservedOps();
         // the owner of a reserved name without a handler yet ("" when it is not reserved or has one)

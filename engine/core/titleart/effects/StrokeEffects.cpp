@@ -65,6 +65,8 @@ namespace {
         d.aliases = {"keyline", "stroke", "border", "縁取り", "フチ"};
         d.inputs.content = true;
         d.inputs.sdf = true;
+        // S83 §6.12: the line's split scales per frame
+        markLive(d, {"opacity"}, LiveKind::ScaleSplit, (uint32_t)TitleProgram::Outline);
         d.apply = applyOutline;
         return d;
     }

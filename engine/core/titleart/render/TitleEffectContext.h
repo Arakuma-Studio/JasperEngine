@@ -28,6 +28,7 @@
 
 #include "titleart/TitleArtDoc.h"
 #include "titleart/TitleArtTypes.h"
+#include "titleart/TitleEffectRegistry.h"
 #include "titleart/render/TitlePasses.h"
 
 #include <functional>
@@ -97,6 +98,8 @@ namespace jasperengine::titleart {
         // under it, so a colour change does not run them again (R42)
         uint64_t inputAlphaKey = 0;
         const TargetRef* alphaKeyed = nullptr;
+        // the quality tier S81 renders for: Mobile takes the reductions S83 names (D11, D12)
+        FxTier tier = FxTier::Desktop;
 
         EffectContext(TitlePassRunner& passes) : runner(passes) {}
     };

@@ -9,7 +9,9 @@
 // z = mark height 0..1 for relief, w = 0. Kind ids are TitlePatternKind's (TitleFx.h): 0 none,
 // 1 zebra, 2 tiger, 3 giraffe, 4 leopard, 5 checker, 6 hazard, 7 stripes, 8 dots, 9 sakura,
 // 10 seigaiha, 11 asanoha, 12 shippo, 13 kikko, 14 uroko, 15 custom (an image tile per motif
-// unit, its luminance x alpha the marks: the includer defines TA_PATTERN_IMAGE as its sampler).
+// unit, its luminance x alpha the marks: the includer defines TA_PATTERN_IMAGE as its sampler),
+// then S83's 16 wood, 17 marble, 18 granite, 19 concrete, 20 brushed metal, 21 diamond plate,
+// 22 carbon fiber, 23 rust, 24 leather, 25 brick, 26 camo, 27 circuit.
 // The pattern space is y-up (Pachislop's layer space), so the C++ side maps frame pixels (y down)
 // into it (TitleFx: patternTransform).
 
@@ -272,6 +274,134 @@ vec3 pat_uroko(vec2 q) {
   return vec3(d, PAT_NONE, 0.07);
 }
 
+// ---- S83 §6.6.28's procedural material kinds (16 wood .. 27 circuit): original designs on the
+// noise above; the same (d, d2, w) triple so shade and relief work unchanged ----
+
+// a fractal sum of gradient noise, roughly -1..1
+float pat_fbm(vec2 q) {
+  return 0.5 * pat_gnoise(q) + 0.25 * pat_gnoise(q * 2.03 + 3.1) + 0.125 * pat_gnoise(q * 4.07 - 1.7) + 0.0625 * pat_gnoise(q * 8.1 + 9.2);
+}
+
+// 木目: rings of noise-distorted distance from a vertical axis; color2 the fine grain streaks
+vec3 pat_wood(vec2 q) {
+  float u = abs(q.x + 0.9 * pat_gnoise(q * vec2(0.12, 0.05))) + 0.8 * pat_gnoise(q * vec2(0.45, 0.16)) + 0.15 * pat_gnoise(q * vec2(1.5, 0.3) + 4.0);
+  float ring = abs(fract(u) - 0.5) - 0.17 - 0.06 * pat_gnoise(vec2(floor(u) * 3.7, q.y * 0.2));
+  float streak = abs(fract(q.x * 7.0 + 0.6 * pat_gnoise(q * vec2(1.2, 0.08))) - 0.5) - 0.42;
+  return vec3(ring, streak / 7.0, 0.12);
+}
+
+// 大理石: domain-warped veins, sharpened by abs(sin); color2 the faint secondary veins
+vec3 pat_marble(vec2 q) {
+  vec2 w = q + 1.6 * vec2(pat_fbm(q * 0.6), pat_fbm(q * 0.6 + 5.2));
+  float v = abs(sin((w.x + 0.4 * w.y) * 1.7));
+  float v2 = abs(sin((w.y * 3.1 - w.x) * 2.3 + 1.3));
+  return vec3((v - 0.07) * 0.35, (v2 - 0.04) * 0.12, 0.05);
+}
+
+// 御影石: speckles of three cell scales; color2 the middle scale
+vec3 pat_granite(vec2 q) {
+  float d = PAT_NONE, d2 = PAT_NONE;
+  for (int s = 0; s < 3; s++) {
+    float k = s == 0 ? 1.0 : s == 1 ? 2.3 : 5.1;
+    vec2 p = q * k + float(s) * 17.3;
+    vec2 n = floor(p), f = fract(p);
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+      vec2 c = n + vec2(float(i), float(j));
+      float h = pat_h21(c + float(s) * 3.3);
+      vec2 o = pat_h22(c + float(s) * 7.1);
+      float r = (0.12 + 0.2 * pat_h21(c + 9.7)) * step(0.45, h);
+      float e = (length(f - vec2(float(i), float(j)) - o) - r) / k;
+      if (s == 1) d2 = min(d2, e);
+      else d = min(d, e);
+    }
+  }
+  return vec3(d, d2, 0.03);
+}
+
+// コンクリート: low-frequency mottling; color2 the pores
+vec3 pat_concrete(vec2 q) {
+  float m = pat_fbm(q * 0.45);
+  float pore = pat_gnoise(q * 4.3 + 2.1);
+  return vec3((0.12 - m) * 0.6, (0.62 - pore) * 0.12, 0.08);
+}
+
+// ヘアライン: noise lines stretched along x (the relief gives the anisotropic sheen)
+vec3 pat_brushedMetal(vec2 q) {
+  float n = pat_gnoise(vec2(q.x * 0.04, q.y * 18.0)) + 0.5 * pat_gnoise(vec2(q.x * 0.11 + 3.0, q.y * 41.0));
+  return vec3((0.25 - n) * 0.03, PAT_NONE, 0.02);
+}
+
+// 縞鋼板: raised lozenges on a grid, alternating between +45 and -45 degrees
+vec3 pat_diamondPlate(vec2 q) {
+  vec2 n = floor(q), f = fract(q) - 0.5;
+  float flip = mod(n.x + n.y, 2.0) < 0.5 ? 1.0 : -1.0;
+  vec2 r = vec2(f.x + flip * f.y, f.y - flip * f.x) * 0.7071068;
+  vec2 e = abs(r) - vec2(0.3, 0.07);
+  float d = length(max(e, 0.0)) + min(max(e.x, e.y), 0.0) - 0.03;
+  return vec3(d, PAT_NONE, 0.06);
+}
+
+// カーボン: a 2 x 2 twill; the tows along x are marks, the tows along y color2
+vec3 pat_carbonFiber(vec2 q) {
+  vec2 n = floor(q * 2.0), f = fract(q * 2.0);
+  bool along = mod(n.x + n.y, 4.0) < 2.0;
+  float e = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)) * 0.5;
+  float d = along ? -e : e;
+  return vec3(d, -d, 0.12);
+}
+
+// 錆: fbm patches; color2 the pitting along their edges
+vec3 pat_rust(vec2 q) {
+  float spot = pat_fbm(q * 0.5 + 1.3);
+  float pit = pat_gnoise(q * 5.7 - 4.0);
+  float edge = abs(spot - 0.05);
+  return vec3((0.05 - spot) * 0.5, max((edge - 0.12) * 0.3, (0.35 - pit) * 0.1), 0.1);
+}
+
+// 革: Worley cells raised, the creases between them the marks
+vec3 pat_leather(vec2 q) {
+  vec2 n = floor(q), f = fract(q);
+  float f1 = 8.0, f2 = 8.0;
+  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+    vec2 g = vec2(float(i), float(j));
+    float dd = length(g + pat_h22(n + g) - f);
+    if (dd < f1) { f2 = f1; f1 = dd; } else if (dd < f2) f2 = dd;
+  }
+  return vec3((f2 - f1) * 0.5 - 0.04, PAT_NONE, 0.12);
+}
+
+// 煉瓦: a running bond; the bricks are marks, the mortar color2
+vec3 pat_brick(vec2 q) {
+  float row = floor(q.y * 2.0);
+  vec2 b = vec2(q.x + 0.5 * mod(row, 2.0), q.y * 2.0);
+  vec2 f = fract(b);
+  float e = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y) * 0.5) - 0.05;
+  return vec3(-e, e, 0.04);
+}
+
+// 迷彩: woodland, three levels of thresholded fbm; color2 the top level
+vec3 pat_camo(vec2 q) {
+  float a = pat_fbm(q * 0.4);
+  float b = pat_fbm(q * 0.4 + 7.7);
+  return vec3((0.0 - a) * 0.5, (0.18 - b) * 0.5, 0.05);
+}
+
+// 基板: per-cell traces (straight, bent or none) and pads (color2) on a grid
+vec3 pat_circuit(vec2 q) {
+  vec2 n = floor(q), f = fract(q);
+  float d = PAT_NONE, d2 = PAT_NONE;
+  const float hw = 0.06;
+  float h = pat_h21(n + 5.3);
+  vec2 c = vec2(0.5);
+  if (h < 0.3) d = pat_seg(f, vec2(0.0, 0.5), vec2(1.0, 0.5));
+  else if (h < 0.6) d = pat_seg(f, vec2(0.5, 0.0), vec2(0.5, 1.0));
+  else if (h < 0.8) d = min(pat_seg(f, vec2(0.0, 0.5), c), pat_seg(f, c, vec2(0.5, 1.0)));
+  else if (h < 0.9) d = min(pat_seg(f, vec2(0.5, 0.0), c), pat_seg(f, c, vec2(1.0, 0.5)));
+  d -= hw;
+  if (pat_h21(n + 11.9) > 0.65) d2 = length(f - c) - 0.16;
+  return vec3(min(d, d2 + 0.04), d2, hw);
+}
+
 // dpdx / dpdy: derivatives of p along screen x / y (motif units per pixel). No derivative
 // functions are used inside, so it is safe anywhere (helper lanes, branches, MSAA edges).
 vec4 patternSampleD(vec2 p, vec2 dpdx, vec2 dpdy, int kind, float seed) {
@@ -292,7 +422,10 @@ vec4 patternSampleD(vec2 p, vec2 dpdx, vec2 dpdy, int kind, float seed) {
   // Internal units per motif unit, chosen so one Pattern.scale reads alike across kinds.
   float S = kind == 1 ? 0.7 : kind == 2 ? 0.7 : kind == 3 ? 0.45 : kind == 4 ? 0.38 : kind == 5 ? 1.0
           : kind == 6 ? 0.6 : kind == 7 ? 1.0 : kind == 8 ? 1.0 : kind == 9 ? 0.32 : kind == 10 ? 0.4
-          : kind == 11 ? 0.55 : kind == 12 ? 0.65 : kind == 13 ? 0.5 : 0.55;
+          : kind == 11 ? 0.55 : kind == 12 ? 0.65 : kind == 13 ? 0.5 : kind == 14 ? 0.55
+          : kind == 16 ? 0.35 : kind == 17 ? 0.3 : kind == 18 ? 1.2 : kind == 19 ? 0.6 : kind == 20 ? 1.0
+          : kind == 21 ? 1.0 : kind == 22 ? 1.0 : kind == 23 ? 0.5 : kind == 24 ? 1.6 : kind == 25 ? 0.8
+          : kind == 26 ? 0.25 : 1.0;
   vec2 q = p * S + so;
   vec2 dqx = dpdx * S, dqy = dpdy * S;
   float px = max(length(abs(dqx) + abs(dqy)) * 0.7071068, 1e-6); // pixel footprint, internal units
@@ -310,7 +443,19 @@ vec4 patternSampleD(vec2 p, vec2 dpdx, vec2 dpdy, int kind, float seed) {
   else if (kind == 11) r = pat_asanoha(q);
   else if (kind == 12) r = pat_shippo(q);
   else if (kind == 13) r = pat_kikko(q);
-  else r = pat_uroko(q);
+  else if (kind == 14) r = pat_uroko(q);
+  else if (kind == 16) r = pat_wood(q);
+  else if (kind == 17) r = pat_marble(q);
+  else if (kind == 18) r = pat_granite(q);
+  else if (kind == 19) r = pat_concrete(q);
+  else if (kind == 20) r = pat_brushedMetal(q);
+  else if (kind == 21) r = pat_diamondPlate(q);
+  else if (kind == 22) r = pat_carbonFiber(q);
+  else if (kind == 23) r = pat_rust(q);
+  else if (kind == 24) r = pat_leather(q);
+  else if (kind == 25) r = pat_brick(q);
+  else if (kind == 26) r = pat_camo(q);
+  else r = pat_circuit(q);
   float x = clamp(0.5 - r.x / px, 0.0, 1.0);
   float y = clamp(0.5 - r.y / px, 0.0, 1.0);
   float t = clamp(-r.x / max(r.z, px), 0.0, 1.0);

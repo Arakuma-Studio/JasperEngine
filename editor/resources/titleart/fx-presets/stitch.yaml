@@ -1,0 +1,14 @@
+# Stitch presets (docs/specs/S83-title-effects-generators.md §6.8)
+presets:
+  - id: patch_border
+    name: Patch Border
+    aliases: [patch, badge border]
+    params: {style: running}
+  - id: cross_stitch
+    name: Cross Stitch
+    aliases: [cross stitch, sampler]
+    params: {style: cross}
+  - id: embroidered
+    name: Embroidered
+    aliases: [embroidery, satin stitch]
+    params: {style: satin_border, fill: satin}

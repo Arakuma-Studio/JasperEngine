@@ -440,7 +440,10 @@ namespace {
 
 int fx::patternKindId(std::string_view kind) {
     static const char* const KINDS[] = {"none", "zebra", "tiger", "giraffe", "leopard", "checker", "hazard", "stripes",
-                                        "dots", "sakura", "seigaiha", "asanoha", "shippo", "kikko", "uroko", "custom"};
+                                        "dots", "sakura", "seigaiha", "asanoha", "shippo", "kikko", "uroko", "custom",
+                                        // S83 §6.6.28
+                                        "wood", "marble", "granite", "concrete", "brushed_metal", "diamond_plate", "carbon_fiber",
+                                        "rust", "leather", "brick", "camo", "circuit"};
     for (int i = 0; i < (int)(sizeof(KINDS) / sizeof(KINDS[0])); i++) {
         if (kind == KINDS[i]) return i;
     }

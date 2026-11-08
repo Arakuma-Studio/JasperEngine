@@ -12,6 +12,7 @@
 
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtSchema.h"
+#include "titleart/effects/TitleFx.h"
 
 #include <algorithm>
 #include <cmath>
@@ -119,11 +120,9 @@ namespace {
     int textureBlendId(const std::string& b) { return indexOf(b, {"overlay", "soft_light", "screen", "multiply"}, 0); }
     int satinBlendId(const std::string& b) { return indexOf(b, {"normal", "multiply", "screen", "overlay"}, 1); }
 
-    // the 15 procedural kinds and the custom tile (titleart/patterns.glsl)
+    // the procedural kinds and the custom tile (titleart/patterns.glsl: S80's 1-15, S83's 16-27)
     int patternKindId(const std::string& kind) {
-        return indexOf(kind, {"none", "zebra", "tiger", "giraffe", "leopard", "checker", "hazard", "stripes", "dots", "sakura", "seigaiha",
-                              "asanoha", "shippo", "kikko", "uroko", "custom"},
-                       0);
+        return fx::patternKindId(kind);
     }
 
     // the layer-space angle (deg, counter-clockwise, y-up) of screen direction `deg` under the

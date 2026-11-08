@@ -166,9 +166,11 @@ namespace {
     const std::vector<std::string> SHAPES = {"rect", "parallelogram", "ellipse", "orb", "polygon", "star", "burst",
                                              "shield", "speech", "shout", "ribbon"};
 
+    // S80's kinds, then S83 §6.6.28's procedural materials (enum additions: no version bump)
     const std::vector<std::string> PATTERN_KINDS = {"none", "zebra", "tiger", "giraffe", "leopard", "checker", "hazard",
                                                     "stripes", "dots", "sakura", "seigaiha", "asanoha", "shippo", "kikko",
-                                                    "uroko", "custom"};
+                                                    "uroko", "custom", "wood", "marble", "granite", "concrete", "brushed_metal",
+                                                    "diamond_plate", "carbon_fiber", "rust", "leather", "brick", "camo", "circuit"};
 
     // the default object of a gradient / curve member
     Json gradientDefault() {
@@ -1374,7 +1376,13 @@ std::string titleart::nearestName(std::string_view word, const std::vector<std::
         size_t d = editDistance(word, c);
         // a candidate that contains the word (or the other way round) is close
         if (c.find(word) != std::string::npos || (!c.empty() && word.find(c) != std::string_view::npos)) d = std::min<size_t>(d, 1);
-        if (d < bestDistance) {
+        // equally close: the one sharing the longer start ("lite_glow" is Light Glow, not Outer Glow)
+        auto prefix = [&](const std::string& x) {
+            size_t n = 0;
+            while (n < x.size() && n < word.size() && x[n] == word[n]) n++;
+            return n;
+        };
+        if (d < bestDistance || (d == bestDistance && !best.empty() && prefix(c) > prefix(best))) {
             best = c;
             bestDistance = d;
         }
