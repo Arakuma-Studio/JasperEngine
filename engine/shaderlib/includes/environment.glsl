@@ -17,6 +17,7 @@
 //   u_fs_environment.params:        x the map's highest mip level (roughness 1 samples it),
 //                                   y 1 with an environment, 0 without
 //   u_environmentTexture:           the cube map (display-encoded, decoded with sRGBToLinear)
+//   with @require planarreflection too, the planar reflection's block follows in this one
 
 #ifndef ENVIRONMENT_GLSL
 #define ENVIRONMENT_GLSL
@@ -28,6 +29,12 @@
 uniform u_fs_environment {
     vec4 colorRotation;
     vec4 params;
+    #ifdef SURFACE_PLANAR_REFLECTION
+        // the planar reflection's (includes/planar_reflection.glsl), in this block when a shader
+        // reads both: one uniform block of the fragment stage's eight for the two
+        mat4 planarViewProjection;
+        vec4 planarParams;
+    #endif
 } environment;
 
 uniform textureCube u_environmentTexture;

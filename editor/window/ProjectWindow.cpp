@@ -3631,11 +3631,10 @@ void editor::ProjectWindow::thumbnailStep() {
 
         } else if (thumbFile.type == FileType::MODEL) {
             try {
-                // Run the load under the async-thread flag: building the multi-node child-entity
-                // hierarchy mutates the ECS, which is only safe on the main thread, so off-thread the
-                // loader bakes node transforms into one static preview mesh instead.
+                // Run the load under the async-thread flag, with texture decode capped (a 128px preview
+                // never needs full 4K maps): that is a preview load, which bakes node transforms into
+                // one static mesh, with no entities to build for a picture.
                 // GPU work is deferred to the main thread; ModelRender frames whatever entities exist.
-                // Cap texture decode resolution too: a 128px preview never needs full 4K maps.
                 // An FBX previews through its import, created here on first sight
                 const bool loadable = !FbxImporter::isFbxFile(thumbFile.path) || project->importFbxModel(thumbFile.path);
 

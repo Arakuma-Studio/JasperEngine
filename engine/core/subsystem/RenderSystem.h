@@ -142,6 +142,15 @@ namespace jasperengine{
 		Vector4 data[4 + 4 * MAX_LIGHTS_PER_OBJECT];
 	} object_lights_t;
 
+	// u_fs_objectLights of the records form (includes/lights.glsl, LIGHTS_FS_RECORDS): the
+	// pixel lights' records are rows of the frame's u_lightRecords (RenderSystem::syncLightRecords)
+	typedef struct object_light_records_t {
+		Vector4 counts;      // x pixel lights, y vertex lights
+		Vector4 sh[3];
+		// per pixel light, two a vector: its scene light, its spot_shadow.w
+		Vector4 records[(MAX_LIGHTS_PER_OBJECT + 1) / 2];
+	} object_light_records_t;
+
 	// u_fs_litFrame (shaderlib/includes/lit_frame.glsl): what the built-in Lit's lit variants
 	// read of the camera pass, filled with the frame block (RenderSystem::updatePassFrame). A
 	// variant declares a prefix of it (2 to 6 vectors, by fog, shadows, SSAO and IBL).
@@ -191,6 +200,12 @@ namespace jasperengine{
 		Vector4 colorRotation; // rgb linear tint, w rotation about +Y (radians)
 		Vector4 params;        // x highest mip level, y 1 with an environment
 	} fs_environment_t;
+
+	// u_fs_environment of a shader reading the planar reflection too: both in one block
+	typedef struct fs_environment_planar_t {
+		fs_environment_t environment;
+		fs_planar_reflection_t planar;
+	} fs_environment_planar_t;
 
 	typedef struct fs_reflection_probe_t {
 		Vector4 position_weight; // xyz = capture position, w = local probe blend weight
@@ -315,6 +330,9 @@ namespace jasperengine{
 		Vector4 probePosition[SSR_PROBE_SLOTS]; // xyz = capture position
 		Vector4 probeBoxMin[SSR_PROBE_SLOTS];   // xyz = influence AABB min, w = intensity
 		Vector4 probeBoxMax[SSR_PROBE_SLOTS];   // xyz = influence AABB max, w = max mip LOD (0 = unfiltered)
+		// how the colour pass stored what the composite reads: x 1 = linear light (the shaper's code,
+		// under the post-processing colour), 0 = display-encoded, as drawn
+		Vector4 sceneEncoding;
 	} fs_composite_t;
 
 	// What the SSR G-buffer pass of a view last drew (RenderSystem::getSSRStats): the reflection
@@ -779,6 +797,9 @@ namespace jasperengine{
 		// passes like the queues
 		std::vector<VisibleCandidate> visibleCandidates;
 		std::vector<VisibleResult> visibleResults;
+		// the candidates' submesh bounds, one pointer a submesh (a mesh's submeshes are allocated
+		// one by one, not side by side)
+		std::vector<const AABB*> visibleSubmeshBounds;
 		std::vector<OpaqueRenderData> visibleEntries;
 		std::vector<int> visiblePriorities;
 		std::vector<uint64_t> visibleKeys;
@@ -1349,6 +1370,15 @@ namespace jasperengine{
 			// the contact shadows' mask and the OIT targets of its main camera (null: none drawn)
 			std::unique_ptr<LightingViewTargets> lightingTargets;
 			Framebuffer sceneColorFramebuffer; // offscreen opaque scene color (top-left)
+			// a distance-sorted pass's colour after the SSR composite: the composite, then the
+			// transparents, UI and overlays drawn over it with sceneColorFramebuffer's depth-stencil
+			// (made on first use, destroyed before it)
+			FramebufferRender ssrSceneTarget;
+			// the same with the pass's destination for colour (same size: no target, no blit), for
+			// the destination image and depth it was made with
+			FramebufferRender ssrSceneAlias;
+			uint32_t ssrSceneAliasImage = 0;
+			uint32_t ssrSceneAliasDepth = 0;
 			Framebuffer ssrFramebuffer;        // reflection color + mask (logical orientation)
 			Framebuffer ssrBlurFramebuffer;    // glossy-blurred reflection
 
@@ -1803,6 +1833,17 @@ namespace jasperengine{
 		// S57: the fragment block of a Tiled variant, the capsule and contact shadows' block and
 		// what the scene's lighting features are this update
 		tiled_object_lights_t tiledObjectLightsBlock;
+		// the fragment block of the lights' records form, the frame's records (a row of 512
+		// texels holds 128 scene lights) and the meshes drawing with them (none: no texture)
+		static constexpr int LIGHT_RECORDS_WIDTH = 512;
+		object_light_records_t lightRecordsBlock;
+		TextureRender lightRecords;
+		// what the texture holds (uploaded only when a record changed) and the next frame's
+		std::vector<Vector4> lightRecordTexels;
+		std::vector<Vector4> lightRecordScratch;
+		uint64_t lightRecordsFrame = UINT64_MAX;
+		bool lightRecordsUploaded = false;
+		std::unordered_set<Entity> lightRecordMeshes;
 		light_occlusion_t lightOcclusionBlock;
 		LightingFeatureState lighting;
 		// the camera pass being drawn: its contact mask (null: white), whether it draws OIT
@@ -1880,10 +1921,34 @@ namespace jasperengine{
 		int compositeSlotParams;
 		int compositeSlotFog;              // u_fs_fog (the distance fog the swap is attenuated by)
 		int compositeSlotHeightFog;        // u_fs_heightFog
+		int compositeSlotPostColor;        // u_fs_postColor (the tail it applies after a linear store)
+		std::pair<int, int> compositePostLutSlot;                 // u_postColorLut
+		// the colour pass's post-processing colour while it stores linear light for the SSR
+		// composite (post_color.glsl), and the composite's own (the scene's), else neutral
+		post_color_t ssrCompositePostColor;
+		bool ssrLinearStore = false;
+		// the shaper code the linear store clears to, which the tail turns back into the clear colour,
+		// for the clear colour and tail LUT (postTailLutVersion) it was found for
+		struct SSRStoredClear{
+			Vector3 display;
+			Vector3 code;
+			uint32_t version = 0;
+			bool valid = false;
+		} ssrStoredClear;
+		uint32_t postTailLutVersion = 0;
+		Vector3 ssrStoredClearColor(const Vector3& clear);
+		// the linear store's LUT (its texels their coordinates), bound in place of the scene's while
+		// the colour pass stores linear light (passPostColorLut; null: the scene's)
+		static constexpr int SSR_IDENTITY_LUT_SIDE = 16;
+		TextureRender ssrIdentityLut;
+		bool ssrIdentityLutFailed = false;
+		TextureRender* passPostColorLut = nullptr;
+		bool ensureSSRIdentityLut();
 		std::pair<int, int> compositeProbeSlots[SSR_PROBE_SLOTS]; // u_probeTexture0..3
 		std::pair<int, int> compositeOcclusionSlot;               // u_occlusionGBufferTexture
 		std::pair<int, int> compositeSSAOSlot;                    // u_ssaoTexture
 		std::pair<int, int> ssrAlbedoSlot;                        // ssr.frag's u_albedoTexture
+		std::pair<int, int> ssrExtraSlot;                         // ssr.frag's u_occlusionGBufferTexture (the normal's fine bits)
 		bool ssrProbeOverflowWarned = false; // the overflow warning, once until the next scene load
 		bool swapchainRedirect;            // exported builds: the last pass targets the swapchain
 		// exported builds, a scene with a scene-colour reader (phase 3): the scene camera may draw
@@ -2213,7 +2278,24 @@ namespace jasperengine{
 		int lightOcclusionBits(int sceneLight) const;
 		// the object's lights of a variant into its blocks (the Tiled form for 'Til')
 		void applyObjectLights(ObjectRender& render, int slotVS, unsigned int sizeVS, int slotFS, unsigned int sizeFS,
-		                       const MeshComponent& mesh, uint64_t properties, uint32_t& builtLightBits);
+		                       std::pair<int, int> slotLightRecords, const MeshComponent& mesh, uint64_t properties,
+		                       uint32_t& builtLightBits);
+		// the records form's block (includes/lights.glsl, LIGHTS_FS_RECORDS): the object's pixel
+		// lights as rows of u_lightRecords
+		void buildObjectLightRecords(const MeshComponent& mesh, uint64_t properties, object_light_records_t& block) const;
+		// a pixel light's spot_shadow.w in the pass being drawn: its shadow slot, cascades, mask
+		// tile and occlusions (vertex lights: none)
+		float packObjectLightShadow(int sceneLight, bool perPixel) const;
+		// the frame's light records, once a frame while a mesh draws with them; a float texture
+		// of at least the rows given (false: none)
+		void syncLightRecords();
+		bool ensureLightRecords(int rows);
+		void setLightRecordsMesh(Entity entity, bool records);
+	public:
+		// the light records' uploads so far (tests: none while no light changes)
+		uint64_t lightRecordUploads = 0;
+		const TextureRender& getLightRecordsTexture() const { return lightRecords; }
+	private:
 		// a submesh variant's S57 blocks and textures: resolved at load, bound per draw
 		void loadLightingFeatureSlots(Submesh& submesh, ShaderData& shaderData);
 		void applyLightingFeatures(Submesh& submesh, ObjectRender& render, const MeshComponent& mesh);
@@ -2325,6 +2407,8 @@ namespace jasperengine{
 		void setPassPostColor(const post_color_t& postColor);
 		void fillPassPostColor(bool active, const Rect& viewport, float targetHeight);
 		void applyPostColor(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// the post-processing colour's LUT of the draws now (the scene's, or the SSR linear store's)
+		TextureRender* currentPostColorLut();
 		// the vignette's parameters for a viewport of a target targetHeight high (gl_FragCoord)
 		void fillVignette(const PostProcessingSettings& settings, const Rect& viewport, float targetHeight,
 		                  Vector4& scaleOffset, Vector4& color, float& falloffScale, float& falloffBias) const;
@@ -2393,7 +2477,7 @@ namespace jasperengine{
 		void applySceneInputs(ObjectRender& render, const ShaderLibraryBindings& bindings);
 		// the reflection environment around a mesh, to a draw whose shader declares it
 		// (includes/environment.glsl): its reflection probe, else the sky's prefiltered map
-		void applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, const MeshComponent& mesh, const Transform& transform);
+		void applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity, const MeshComponent& mesh, const Transform& transform);
 		// resolves the frame block slots and the custom textures of a loaded shader, then
 		// binds the textures (false while one is still loading); enabledFeatures (the variant's,
 		// ShaderReference::getEnabledFeatures) pick a @texture's default[<DEFINE>]= default
@@ -3008,6 +3092,8 @@ namespace jasperengine{
 		const CameraComponent* passCamera = nullptr;
 		// u_fs_planarReflection and its texture for a draw of a mesh reading one
 		void applyPlanarReflection(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity);
+		// the planar reflection a draw of the mesh reads in the pass being drawn (none: params.y 0, black)
+		void getPlanarReflection(Entity entity, fs_planar_reflection_t& block, TextureRender*& texture);
 		// the eye of the camera pass being drawn (its camera's Transform)
 		Vector3 passEye;
 		// the Water Excluders' and Wakes' members of a draw's custom block and their textures: the
@@ -3058,14 +3144,26 @@ namespace jasperengine{
 		void drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams);
 		// destination == nullptr renders the composite to the swapchain (backbuffer)
 		void renderSSR(CameraComponent& camera, FramebufferRender* destination);
+		// the SSR march and its glossy blur (their own passes): the reflection the composite reads
+		TextureRender* renderSSRReflections(CameraComponent& camera);
+		// the composite's block (flipDestination: a GL swapchain destination), its sky's map out
+		void fillSSRComposite(CameraComponent& camera, bool flipDestination, TextureRender*& prefiltered, bool debugView);
+		// the composite's draw into the open pass (target: that pass's format)
+		void drawSSRComposite(const RenderTargetFormat& target, TextureRender* reflection, TextureRender* prefiltered);
+		// the target a distance-sorted pass resumes on after its SSR composite (ssrSceneTarget)
+		bool ensureSSRSceneTarget();
+		// the destination with the scene colour's depth (ssrSceneAlias), null when it cannot be
+		FramebufferRender* ensureSSRSceneAlias(FramebufferRender* destination);
+		// a view's SSR targets, freed while it draws no SSR
+		void releaseSSRTargets();
 
 		// fixed game resolution
 		void loadBlit();
 		void destroyBlit();
 		bool ensureFixedResFramebuffer(unsigned int width, unsigned int height, TextureFilter filter);
-		// draws source over the real destination (Engine framebuffer in the editor,
-		// swapchain in exported builds)
-		void renderBlit(TextureRender* source, Rect viewport);
+		// draws source over the real destination at viewport: destination, else the Engine
+		// framebuffer in the editor, the swapchain in exported builds
+		void renderBlit(TextureRender* source, Rect viewport, FramebufferRender* destination = nullptr, const char* label = "blit");
 		// upscales fixedResFramebuffer to the view rect
 		void renderFixedResolutionBlit();
 

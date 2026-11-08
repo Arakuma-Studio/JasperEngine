@@ -301,6 +301,39 @@ void PostColorLut::bake(const PostProcessingSettings& settings, const CubeLut* l
     }
 }
 
+Vector3 PostColorLut::evaluate(const PostProcessingSettings& settings, const CubeLut* lut, Stage stage, const Vector3& code, float shaper){
+    const Grader grader(settings, lut);
+    const float exposure = std::exp2(settings.exposure);
+    auto decode = [shaper](float c){
+        const float s2 = saturate(c) * saturate(c);
+        return s2 < 1.0f ? shaper * s2 / (1.0f - s2) : 65504.0f;
+    };
+    const Vector3 value(decode(code.x), decode(code.y), decode(code.z));
+    const Vector3 display = toneMap(settings.tonemap, grader.scene(value * exposure));
+    const Vector3 out = (stage == Stage::ALL) ? grader.grade(grader.encode(display)) : saturate(powv(display, 1.0f / GAMMA));
+    return saturate(out);
+}
+
+Vector3 PostColorLut::invert(const PostProcessingSettings& settings, const CubeLut* lut, Stage stage, const Vector3& display, float shaper){
+    Vector3 code = saturate(display);
+    for (int sweep = 0; sweep < 8; sweep++){
+        for (unsigned c = 0; c < 3; c++){
+            float lo = 0.0f;
+            float hi = 0.9995f;
+            for (int step = 0; step < 24; step++){
+                Vector3 probe = code;
+                probe[c] = 0.5f * (lo + hi);
+                if (evaluate(settings, lut, stage, probe, shaper)[c] < display[c])
+                    lo = probe[c];
+                else
+                    hi = probe[c];
+            }
+            code[c] = 0.5f * (lo + hi);
+        }
+    }
+    return code;
+}
+
 bool PostColorLut::loadStrip(const std::string& path, Strip& strip, std::string* error){
     strip = Strip();
     if (path.empty()){

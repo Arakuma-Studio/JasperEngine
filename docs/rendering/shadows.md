@@ -75,9 +75,16 @@ in `docs/rendering/shadow-budgets.md`. High and Ultra freeze their cascade fits 
 the static caches since the GPU campaign: without them a moving camera with moving casters redrew
 every static caster each frame (7.2 ms of shadow passes at High on an RTX 3080 Ti; 0.18 ms now).
 
-GLES3 and WebGL2 have 16 texture units and render the Ultra tier's soft shadows with the High
-tier's Vogel disk (no PCSS); so does a painted terrain everywhere. Point lights never take PCSS
-(their filter would cross cube faces): they use the Vogel disk at High and Ultra.
+PCSS reads the shadow map's depths through one more texture and sampler. Every device binds at
+least 16 samplers across a shader's stages and 16 fragment textures (GLES3, WebGL2 and macOS GL
+have no more), so a variant of the Lit gets PCSS when its other textures and samplers leave one
+free, on every backend: a scene lit by directional lights only always does (its variant binds no
+spot mask or point shadow map), and so do most others; a variant using every slot (three material
+extension maps with IBL, SSAO and the colour grading LUT, or a painted terrain with a normal-mapped
+material, IBL, SSAO and the LUT under point or spot lights) renders the Ultra tier's soft shadows
+with the High tier's Vogel disk, and the build log says which ("no PCSS"). Point lights never take
+PCSS (their filter would cross cube faces): they use the Vogel disk at High and Ultra. Android and
+the web default to Low and Medium: PCSS costs there only when a project picks Ultra for them.
 
 **Shader variants.** The High and Ultra filters (the Vogel disk, PCSS and the raw-depth view of
 the atlas PCSS reads) live only in the mesh variants with the `Shq` bit (`USE_SHADOWS_HQ`); Low and
@@ -177,7 +184,7 @@ member (`fs_shadow_data_t` in `RenderSystem.h` must match it):
 Depths are window depths in [0, 1], nearer the light smaller; the comparison sampler returns the
 lit fraction. Declare only what you read (an unread block or texture breaks the bind slots on
 GL): `SHADOW_DATA_POINT` adds the point light block and atlas, `SHADOW_DATA_RAW` the raw-depth
-view (`u_shadowAtlasRaw`, never on GLES), and `SHADOW_SAMPLING_HQ` the Vogel and PCSS filters
+view (`u_shadowAtlasRaw`; only where it fits in 16 samplers and 16 fragment textures, `SHADOW_RAW_VIEW_OFF` leaves it out), and `SHADOW_SAMPLING_HQ` the Vogel and PCSS filters
 (`includes/lights.glsl` defines it in `Shq` variants; without it a soft light takes the 5×5 grid). The array sizes come from the defines the engine gives
 mesh shaders (`MAX_SHADOW_ATLAS_SLOTS`, `MAX_SHADOWCASCADES`, `MAX_POINT_SHADOW_ATLAS_SLOTS`,
 `MAX_POINT_SHADOW_LIGHTS`, `SHADOW_CUBE_FACES`); a pass of another shader type defines them too.
