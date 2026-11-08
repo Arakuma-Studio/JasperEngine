@@ -508,7 +508,7 @@ void registerSpriteAtlasTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "edit_sprite_atlas";
         tool.title = "Edit Sprite Atlas";
-        tool.description = "Create a .spriteatlas, add or remove members (textures, .aseprite files, folders), change settings (keys: "
+        tool.description = "Create a .spriteatlas, add or remove members (images, .aseprite files, folders), change settings (keys: "
                            "jasper://docs/sprites; platform: one family's max_size). Without output: an in-memory pack (pages, usage, "
                            "duplicates, warnings), nothing written; output: true writes it (one undo step) and builds it.";
         tool.inputSchema = object({
@@ -530,8 +530,8 @@ void registerSpriteAtlasTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "get_sprite_atlas";
         tool.title = "Get Sprite Atlas";
-        tool.description = "A .spriteatlas's settings, members, pages, frames (search: name, member:, page:) and warnings; a texture or "
-                           ".aseprite path gives the atlas packing it and its placements.";
+        tool.description = "A .spriteatlas's settings, members, pages, frames (search: name, member:, page:) and warnings; a member's path "
+                           "(an image or .aseprite) gives the atlas packing it and its placements.";
         tool.inputSchema = object({
             {"path", string("")},
             {"search", string("")},
