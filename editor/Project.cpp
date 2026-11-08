@@ -4,6 +4,7 @@
 #include "Project.h"
 #include "util/ScriptPropertyCache.h"
 #include "util/ProjectChecks.h"
+#include "asset/ModelSubAssets.h"
 #include "memory/HeapTrim.h"
 #include "render/LayerViewCamera.h"
 #include "component/MirrorComponent.h"
@@ -1103,6 +1104,11 @@ static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs
         return state != editor::FbxImporter::State::Missing;
     }
     written = true;
+    // (the database sees the FBX, which has no contents of its own: the model is this file)
+    editor::ModelContents contents;
+    if (editor::scanModelFile(glbPath, contents)) {
+        editor::reportModelLimits(fbxName, contents);
+    }
     return true;
 }
 

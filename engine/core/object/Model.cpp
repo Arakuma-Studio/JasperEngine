@@ -168,49 +168,54 @@ bool Model::loadModel(const std::string& filename){
     return loadGLTF(filename);
 }
 
-bool Model::loadOBJ(const std::string& filename){
-    MeshComponent& mesh = getComponent<MeshComponent>();
-    ModelComponent& model = getComponent<ModelComponent>();
+// The load of a Model on the thread that may touch its scene: the entities it made in an earlier
+// load go, and an owned Model owns the animations of this one. Component references are taken after
+// the load: the meshes and bones it adds can move their arrays.
+static bool loadModelFile(Scene* scene, Entity entity, bool owned, const std::string& filename, bool obj){
+    MeshSystem* meshSystem = scene->getSystem<MeshSystem>().get();
 
-    if (isEntityOwned()){
-        scene->getSystem<MeshSystem>()->clearBoneMapping(model);
-        scene->getSystem<MeshSystem>()->clearAnimationMapping(model);
-        scene->getSystem<MeshSystem>()->clearMeshNodeMapping(model);
+    if (owned){
+        ModelComponent& model = scene->getComponent<ModelComponent>(entity);
+        meshSystem->clearBoneMapping(model);
+        meshSystem->clearAnimationMapping(model);
+        meshSystem->clearMeshNodeMapping(model);
     }
 
-    bool ret = scene->getSystem<MeshSystem>()->loadOBJ(entity, filename);
+    const bool ret = obj ? meshSystem->loadOBJ(entity, filename) : meshSystem->loadGLTF(entity, filename);
 
     if (ret){
-        mesh.needReload = true;
-    }
-
-    return ret;
-}
-
-bool Model::loadGLTF(const std::string& filename){
-    MeshComponent& mesh = getComponent<MeshComponent>();
-    ModelComponent& model = getComponent<ModelComponent>();
-
-    if (isEntityOwned()){
-        scene->getSystem<MeshSystem>()->clearBoneMapping(model);
-        scene->getSystem<MeshSystem>()->clearAnimationMapping(model);
-        scene->getSystem<MeshSystem>()->clearMeshNodeMapping(model);
-    }
-
-    bool ret = scene->getSystem<MeshSystem>()->loadGLTF(entity, filename);
-
-    if (ret){
-        if (isEntityOwned()){
+        if (owned && !obj){
+            const ModelComponent& model = scene->getComponent<ModelComponent>(entity);
             for (Entity anim : model.animations){
                 if (scene->getSignature(anim).test(scene->getComponentId<AnimationComponent>())){
                     scene->getComponent<AnimationComponent>(anim).ownedActions = true;
                 }
             }
         }
-        mesh.needReload = true;
+        scene->getComponent<MeshComponent>(entity).needReload = true;
     }
 
     return ret;
+}
+
+bool Model::loadOBJ(const std::string& filename){
+    MeshSystem* meshSystem = scene->getSystem<MeshSystem>().get();
+    if (meshSystem->isLoadOnMainThread()){
+        return meshSystem->prepareLoadOnMainThread(entity, filename, [target = scene, id = entity, owned = isEntityOwned(), filename]() {
+            loadModelFile(target, id, owned, filename, true);
+        });
+    }
+    return loadModelFile(scene, entity, isEntityOwned(), filename, true);
+}
+
+bool Model::loadGLTF(const std::string& filename){
+    MeshSystem* meshSystem = scene->getSystem<MeshSystem>().get();
+    if (meshSystem->isLoadOnMainThread()){
+        return meshSystem->prepareLoadOnMainThread(entity, filename, [target = scene, id = entity, owned = isEntityOwned(), filename]() {
+            loadModelFile(target, id, owned, filename, false);
+        });
+    }
+    return loadModelFile(scene, entity, isEntityOwned(), filename, false);
 }
 
 Animation Model::getAnimation(int index){
