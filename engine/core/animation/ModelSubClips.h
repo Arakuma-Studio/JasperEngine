@@ -26,7 +26,8 @@
 //   * the pool key of a sub-clip is "<normalized model path>#<animation index>", never the name.
 //   * track paths mirror buildGLTFNodeHierarchy: node.name or "Node <i>", parent = the node that
 //     lists it as a child, parentless nodes directly under the model root, "#k" = the count of
-//     lower-index siblings with the same name. Frame rate 30, wrap Once, source {kind "model"}.
+//     lower-index siblings with the same name. Frame rate 30, wrap Once, source {kind "model"};
+//     buildModelSubClip then applies the clip's entry of "<model>.clips" (ModelClipSettings.h).
 //   * accessor reads are bounds-checked and strided (byteStride); sparse accessors are rejected
 //     with a warning.
 

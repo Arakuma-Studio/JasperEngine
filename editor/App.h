@@ -95,6 +95,7 @@ namespace jasperengine::editor{
     class JobsMemoryWindow;
     class MeshAuditWindow;
     class BuildReportWindow;
+    class AnimationStatisticsWindow;
     class ProfilerWindow;
     class FrameDebuggerWindow;
     class UndoHistoryWindow;
@@ -269,6 +270,7 @@ namespace jasperengine::editor{
         JobsMemoryWindow* jobsMemoryWindow;
         MeshAuditWindow* meshAuditWindow;
         BuildReportWindow* buildReportWindow;
+        AnimationStatisticsWindow* animationStatisticsWindow;
         ProfilerWindow* profilerWindow;
         FrameDebuggerWindow* frameDebuggerWindow;
         UndoHistoryWindow* undoHistoryWindow;
