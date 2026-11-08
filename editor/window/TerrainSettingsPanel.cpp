@@ -23,6 +23,7 @@
 #include "terrain/TerrainIssues.h"
 #include "terrain/TerrainLayers.h"
 #include "terrain/TerrainOpsUndo.h"
+#include "terrain/TerrainOverlay.h"
 #include "util/Angle.h"
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
@@ -48,6 +49,37 @@ using terrain::MapId;
 using terrain::MapKind;
 
 namespace {
+
+    // T1 R67: the window's rules as the paint_by_rules op Apply and Preview run
+    terrain::Op paintByRulesOp(const TerrainEditorSettings& ts, const TerrainComponent& terrain) {
+        terrain::Op op;
+        op.type = terrain::OpType::PaintByRules;
+        op.seed = static_cast<uint32_t>(ts.paintRulesSeed);
+        for (const TerrainPaintRule& rule : ts.paintRules) {
+            terrain::PaintRule r;
+            r.layer = rule.layer;
+            if (rule.useSlope) r.slope = terrain::FilterRange{rule.slopeMin, rule.slopeMax};
+            if (rule.useHeight) r.height = terrain::FilterRange{rule.heightMin * terrain.maxHeight, rule.heightMax * terrain.maxHeight};
+            r.invert = rule.invert;
+            r.opacity = rule.opacity;
+            r.noise = rule.noise;
+            op.rules.push_back(r);
+        }
+        return op;
+    }
+
+    bool samePaintRules(const std::vector<TerrainPaintRule>& a, const std::vector<TerrainPaintRule>& b) {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); i++) {
+            const TerrainPaintRule& x = a[i];
+            const TerrainPaintRule& y = b[i];
+            if (x.layer != y.layer || x.useSlope != y.useSlope || x.slopeMin != y.slopeMin || x.slopeMax != y.slopeMax || x.useHeight != y.useHeight ||
+                x.heightMin != y.heightMin || x.heightMax != y.heightMax || x.invert != y.invert || x.opacity != y.opacity || x.noise != y.noise) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     bool settingsTableBegin(const char* id) {
         if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) return false;
@@ -641,6 +673,8 @@ void editor::TerrainEditWindow::drawPaintByRules(SceneProject* sceneProject, Ter
     if (!Theme::foldoutHeader("Paint by Rules")) return;
     TerrainEditorSettings& ts = project->getTerrainEditorSettings();
     std::vector<TerrainPaintRule>& rules = ts.paintRules;
+    const std::vector<TerrainPaintRule> rulesBefore = rules;
+    const int seedBefore = ts.paintRulesSeed;
     std::vector<std::string> layers = {"Base"};
     for (size_t l = 0; l < terrain.surfaceLayers.size(); l++) layers.push_back("Layer " + std::to_string(l));
     int moveUp = -1, remove = -1;
@@ -688,22 +722,28 @@ void editor::TerrainEditWindow::drawPaintByRules(SceneProject* sceneProject, Ter
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 5.0f);
     ImGui::InputInt("Seed", &ts.paintRulesSeed);
     ts.paintRulesSeed = std::max(0, ts.paintRulesSeed);
+    if (!samePaintRules(rules, rulesBefore) || ts.paintRulesSeed != seedBefore) TerrainOverlay::clearPreview(sceneProject->scene, selectedEntity);
 
     ImGui::BeginDisabled(rules.empty() || terrain.heightMap.empty());
-    if (ImGui::Button("Apply")){
-        terrain::Op op;
-        op.type = terrain::OpType::PaintByRules;
-        op.seed = static_cast<uint32_t>(ts.paintRulesSeed);
-        for (const TerrainPaintRule& rule : rules){
-            terrain::PaintRule r;
-            r.layer = rule.layer;
-            if (rule.useSlope) r.slope = terrain::FilterRange{rule.slopeMin, rule.slopeMax};
-            if (rule.useHeight) r.height = terrain::FilterRange{rule.heightMin * terrain.maxHeight, rule.heightMax * terrain.maxHeight};
-            r.invert = rule.invert;
-            r.opacity = rule.opacity;
-            r.noise = rule.noise;
-            op.rules.push_back(r);
+    // R67: Preview shows the result in the Layer Weights overlay from a run on a copy; any change ends it
+    const bool previewing = TerrainOverlay::hasPreview(sceneProject->scene, selectedEntity);
+    if (ImGui::Checkbox("Preview", &paintRulesPreview)){
+        if (!paintRulesPreview) TerrainOverlay::clearPreview(sceneProject->scene, selectedEntity);
+    }
+    if (paintRulesPreview && !previewing){
+        std::string error;
+        if (previewPaintByRules(project, sceneProject, selectedEntity, paintByRulesOp(ts, terrain), blendMapResolution, error)){
+            sceneProject->displaySettings.terrainOverlay.source = "layer_weights";
+        }else{
+            paintRulesMessage = error;
+            paintRulesPreview = false;
         }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Apply")){
+        TerrainOverlay::clearPreview(sceneProject->scene, selectedEntity);
+        paintRulesPreview = false;
+        const terrain::Op op = paintByRulesOp(ts, terrain);
         const std::vector<terrain::Op> ops = {op};
         terrain::OpOptions options;
         options.newMapResolution = blendMapResolution;
@@ -727,6 +767,25 @@ void editor::TerrainEditWindow::drawPaintByRules(SceneProject* sceneProject, Ter
         ImGui::SameLine();
         ImGui::TextDisabled("%s", paintRulesMessage.c_str());
     }
+}
+
+bool editor::TerrainEditWindow::previewPaintByRules(Project* project, SceneProject* sceneProject, Entity entity, const terrain::Op& op,
+                                                     int newMapResolution, std::string& error){
+    std::shared_ptr<TerrainOpsSnapshot> snapshot = snapshotTerrainMaps(project, sceneProject, entity);
+    if (!snapshot || !snapshot->overlay){
+        error = "The terrain's maps could not be copied.";
+        return false;
+    }
+    terrain::OpOptions options;
+    options.newMapResolution = newMapResolution;
+    const terrain::TerrainOpResult result = terrain::applyOps(*snapshot->overlay, std::span<const terrain::Op>(&op, 1), options);
+    if (!result.ok){
+        error = result.error;
+        return false;
+    }
+    // the overlay keeps the copy alive as long as it shows it
+    TerrainOverlay::setPreview(sceneProject->scene, entity, std::shared_ptr<const terrain::TerrainMapStore>(snapshot, snapshot->overlay.get()));
+    return true;
 }
 
 template bool editor::TerrainEditWindow::setTerrainProperty<float>(const char*, const float&);

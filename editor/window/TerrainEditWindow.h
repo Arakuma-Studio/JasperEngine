@@ -254,6 +254,8 @@ namespace jasperengine::editor{
         // T1 R67: Paint by Rules under Paint Texture; Apply is one undo step
         void drawPaintByRules(SceneProject* sceneProject, TerrainComponent& terrain);
         std::string paintRulesMessage;
+        // T1 R67: Preview on: the Layer Weights overlay shows the rules' result until they change or Apply runs
+        bool paintRulesPreview = false;
         void frameTerrain(SceneProject* sceneProject);
         // An undoable property of the selected terrain
         template<typename T> bool setTerrainProperty(const char* property, const T& value);
@@ -384,6 +386,10 @@ namespace jasperengine::editor{
         // T1 R59: Resize...: the map at another size, one undo step; false with error
         static bool resizeTerrainMap(Project* project, SceneProject* sceneProject, Entity entity, const TerrainMapRef& ref, int width, int height,
                                      std::string& error);
+        // T1 R67: Paint by Rules' Preview: the op run on a copy of the maps, shown by the Layer Weights overlay;
+        // the terrain's maps stay as they are. false with error
+        static bool previewPaintByRules(Project* project, SceneProject* sceneProject, Entity entity, const terrain::Op& op, int newMapResolution,
+                                        std::string& error);
         // T1 R63: the eyedroppers' values at a terrain-local point
         static TerrainPickValues pickValues(Scene* scene, Entity entity, float localX, float localZ);
         // T1 R55: the decal's opacity this long after the pointer last moved: whole for 0.5 s, then gone over 0.25 s

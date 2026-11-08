@@ -1,11 +1,12 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// T1 R55, R59, R61, R63: the Terrain window's brush decal and its eyedroppers, the parts that need no window open.
+// T1 R55, R59, R61, R63, R67: the Terrain window's brush decal and its eyedroppers, the parts that need no window open.
 
 #include "TerrainProjectFixture.h"
 
 #include "command/CommandHistory.h"
+#include "terrain/TerrainOverlay.h"
 #include "window/HeightImportFields.h"
 #include "window/TerrainEditWindow.h"
 
@@ -83,4 +84,32 @@ TEST(TerrainBrushWindow, HillshadeLightsSlopesFacingTheLight) {
     const size_t middle = (8 * 16 + 8) * 4;
     EXPECT_GT(heightHillshade(east, N, N, 16)[middle], flat[middle]) << "ground rising away from the light faces it";
     EXPECT_LT(heightHillshade(west, N, N, 16)[middle], flat[middle]) << "ground rising towards the light is in its shade";
+}
+
+// R67: Preview bakes the Layer Weights overlay from the rules run on a copy; the terrain's maps stay
+TEST_F(TerrainBrushWindowTest, PaintByRulesPreviewLeavesTheMaps) {
+    giveHeight16(33);
+    terrain().surfaceLayers.resize(3);
+    settleFiles();
+    TerrainOverlaySettings settings;
+    settings.source = "layer_weights";
+    auto bake = [&]() {
+        std::vector<uint8_t> rgba;
+        std::vector<TerrainOverlayLegendStop> legend;
+        std::string error;
+        EXPECT_TRUE(TerrainOverlay::bake(scene->scene, terrainEntity, settings, 32, 32, rgba, legend, error)) << error;
+        return rgba;
+    };
+    const std::vector<uint8_t> before = bake();
+    terrain::Op op;
+    op.type = terrain::OpType::PaintByRules;
+    terrain::PaintRule everywhere;
+    everywhere.layer = 1;
+    op.rules.push_back(everywhere);
+    std::string error;
+    ASSERT_TRUE(TerrainEditWindow::previewPaintByRules(project.get(), scene, terrainEntity, op, 32, error)) << error;
+    EXPECT_NE(bake(), before) << "the overlay shows layer 1 painted";
+    EXPECT_TRUE(terrain().blendMaps.empty() || terrain().blendMaps[0].empty()) << "the terrain got no blend map";
+    TerrainOverlay::clearPreview(scene->scene, terrainEntity);
+    EXPECT_EQ(bake(), before) << "cleared, the overlay shows the terrain again";
 }
