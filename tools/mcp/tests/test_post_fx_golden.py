@@ -18,7 +18,9 @@ saturated objects, the HUD layer), played at a fixed 60 fps with the uber pass's
                         changed the mip-filtered texels of the checker floor and glow.png, so every
                         reference here was captured again (BF7); the old and new images differ only
                         on those textured surfaces (each golden's changed pixels lie inside the
-                        defaults' changed area, every untextured pixel the same)
+                        defaults' changed area, every untextured pixel the same). Dynamic batching
+                        (sprite-batching, 48cf20e75) moved 89 pixels of the additive glow and the
+                        multiply quad by 1/255, so defaults.png was captured again then
   test_pass_counts      halation with bloom adds no pass to bloom's, halation alone adds 2 (its
                         prefilter and one level down), VHS, film damage and the grain types add none
                         to the uber pass alone (JASPERENGINE_FRAME_STATS=all)

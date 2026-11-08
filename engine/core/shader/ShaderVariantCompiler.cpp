@@ -1541,7 +1541,12 @@ std::string ShaderVariantCompiler::checkResourceBudget(const ShaderData& data) {
                 over += std::string(name) + " stage: " + std::to_string(count) + " " + what + " (limit " + std::to_string(limit) + ")";
             }
         };
-        check(stage.uniformblocks.size(), 8, "uniform blocks");
+        // which blocks: the one to fold into another is the fix
+        std::string blocks = "uniform blocks";
+        if (stage.uniformblocks.size() > 8) {
+            for (size_t i = 0; i < stage.uniformblocks.size(); i++) blocks += (i ? ", " : ": ") + stage.uniformblocks[i].name;
+        }
+        check(stage.uniformblocks.size(), 8, blocks.c_str());
         check(stage.textures.size(), 16, "textures");
         check(stage.samplers.size(), 16, "samplers");
         check(stage.textureSamplerPairs.size(), 16, "texture-sampler pairs");

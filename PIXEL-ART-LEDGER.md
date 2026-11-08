@@ -167,7 +167,7 @@ never build or run them.
 
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
-| S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | in review |
+| S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | merged and pushed |
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | spec done |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | in review |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
@@ -177,7 +177,7 @@ never build or run them.
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | spec done |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | spec done |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
-| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | spec done |
+| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | implementing |
 | S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | re-scoping onto the landed batcher |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
@@ -221,6 +221,19 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-08: **S41 Pixel Perfect Camera merged into `main` and pushed** (`e3a0d1ff9`, then
+  `be6b8baf9`).
+  - Merged twice more with `origin/main` (lit-uniforms took cache v56, so S41 is v57; S65 and
+    mesh-memory follow-ups). Bits: MESH `Pxs` 45, DEPTH 19, UI 5, PARTICLES 11, BLIT `Psb` 18.
+  - Verified on the merged tree: `WERROR` linux; editor 166 tests (S41 plus the shared-data and
+    `ShaderKey` suites); core 77 tests; 115 MCP tests (S41, Aseprite and the shared MCP files);
+    `test_grade`. The agent's own last full gate (Vulkan 86, editor 182, core 209, web gate,
+    Lua doctest) ran one merge earlier.
+  - Added `Pxs` to `test_shader_keys.py`'s WIDE_MESH set. A red control showed the set isn't
+    checked exhaustively, so this only keeps the list accurate.
+  - The Doriax lead was told; S52 owns the batcher wiring for snapped sprites.
+  - S43 was woken for its final merge (`Pal` off bit 18, cache v58, Aseprite palette import).
+    S51 Pixel Fonts started from `be6b8baf9`.
 - 2026-11-08: S45 implementation reported at `180f6354e` (main `b069dde54` merged).
   - Passing: core 100 and editor 366 filtered tests, plus the shared-data suites; 162 MCP tests;
     `WERROR` linux; the compile smoke test; Lua API tests.
