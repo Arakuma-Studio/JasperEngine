@@ -373,8 +373,33 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.group = "Terrain";
     b.add("terrain.brushSmaller", "Brush Smaller", C::SceneView, "[").repeat = true;   // also Paint Dye's radius
     b.add("terrain.brushLarger", "Brush Larger", C::SceneView, "]").repeat = true;
-    b.add("terrain.brushWeaker", "Brush Weaker", C::SceneView, "Shift+[").repeat = true;
-    b.add("terrain.brushStronger", "Brush Stronger", C::SceneView, "Shift+]").repeat = true;
+    b.add("terrain.brushWeaker", "Brush Weaker", C::SceneView, "Shift+[", "-").repeat = true;
+    b.add("terrain.brushStronger", "Brush Stronger", C::SceneView, "Shift+]", "=").repeat = true;
+
+    // T1 R57, Table 5: a terrain brush's keys, while it is armed and the pointer is over the Scene view
+    b.group = "Terrain Brush";
+    b.add("terrain.tool.raise", "Raise", C::TerrainBrush, "R").description = "Ctrl lowers, Shift smooths";
+    b.add("terrain.tool.setHeight", "Set Height", C::TerrainBrush, "H");
+    b.add("terrain.tool.smooth", "Smooth", C::TerrainBrush, "S");
+    b.add("terrain.tool.ramp", "Ramp", C::TerrainBrush, "A");
+    b.add("terrain.tool.noise", "Noise", C::TerrainBrush, "N");
+    b.add("terrain.tool.terrace", "Terrace", C::TerrainBrush, "T");
+    b.add("terrain.tool.erode", "Erode", C::TerrainBrush, "E");
+    b.add("terrain.tool.stamp", "Stamp", C::TerrainBrush, "K");
+    b.add("terrain.tool.paintTexture", "Paint Texture", C::TerrainBrush, "B");
+    b.add("terrain.tool.paintDetails", "Paint Details", C::TerrainBrush, "D");
+    b.add("terrain.tool.placeObjects", "Paint Trees", C::TerrainBrush, "P");
+    b.add("terrain.tool.cutHoles", "Cut Holes", C::TerrainBrush, "X").description = "Ctrl fills";
+    b.add("terrain.pick", "Pick Height", C::TerrainBrush, "I").description = "The next click takes Set Height's value from the terrain";
+    b.add("terrain.invertSlopeFilter", "Invert Slope Filter", C::TerrainBrush, "Y");
+    b.add("terrain.alternate", "Alternate", C::TerrainBrush, "C").description =
+        "The armed tool's alternate on or off: Lift Floors (Ctrl: Flatten Peaks) for Raise, Pick and Flatten for Set Height";
+    b.add("terrain.overlay.height", "Height Overlay", C::TerrainBrush, "1");
+    b.add("terrain.overlay.slope", "Slope Overlay", C::TerrainBrush, "2");
+    b.add("terrain.overlay.contours", "Contours Overlay", C::TerrainBrush, "3");
+    b.add("terrain.overlay.layerWeights", "Layer Weights Overlay", C::TerrainBrush, "4");
+    b.add("terrain.overlay.off", "Overlay Off", C::TerrainBrush, "0");
+    b.add("terrain.disarm", "Put the Brush Down", C::TerrainBrush, "Escape").description = "Esc during a stroke cancels the stroke instead";
 
     // The Animation window editing a clip (docs/animation-clips.md): while it has focus
     b.group = "Animation";

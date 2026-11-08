@@ -35,7 +35,7 @@ namespace jasperengine::editor {
     // posing its character; Curve, ColorPicker, SoundBrowser and AudioCaptures: those windows, focused; VoxelBrush: a Voxel Volume
     // brush armed and the pointer over the Scene view, T6 R60). A new context goes at
     // the end: parseShortcutContext walks up to the last one.
-    enum class ShortcutContext : uint8_t { Global, Editor, SceneView, Hierarchy, Project, Console, Animation, PoseAnimation, Curve, ColorPicker, SoundBrowser, AudioCaptures, VoxelBrush };
+    enum class ShortcutContext : uint8_t { Global, Editor, SceneView, Hierarchy, Project, Console, Animation, PoseAnimation, Curve, ColorPicker, SoundBrowser, AudioCaptures, VoxelBrush, TerrainBrush };
 
     const char* shortcutContextName(ShortcutContext context);       // "Global", "Scene View", ...
     const char* shortcutContextKey(ShortcutContext context);        // "global", "scene_view", ...

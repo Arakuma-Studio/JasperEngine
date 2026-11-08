@@ -385,3 +385,40 @@ TEST_F(TerrainEditorRoutesTest, HoleBrushKeepsTheMapThroughAStroke) {
     store.endStroke();
     EXPECT_TRUE(store.canRemoveMap(HOLE_MAP)) << "the stroke's end may take it away";
 }
+
+// R56: Raise's alternate lifts floors to the picked height and leaves what is above; Lower's (Ctrl)
+// flattens peaks to it and leaves what is below
+TEST(TerrainStrokeSession, AlternatesLiftFloorsAndFlattenPeaks) {
+    constexpr int N = 65;
+    constexpr unsigned LOW = 10000, HIGH = 50000, TARGET = 30000;
+    for (const TerrainBrushMode mode : {TerrainBrushMode::Raise, TerrainBrushMode::Lower}) {
+        terrain::RawMapStore store(static_cast<float>(N), 10.0f);
+        std::vector<uint8_t> bytes(static_cast<size_t>(N) * N * 2);
+        for (int y = 0; y < N; y++) {
+            for (int x = 0; x < N; x++) {
+                const unsigned value = x < N / 2 ? LOW : HIGH;
+                const size_t at = (static_cast<size_t>(y) * N + x) * 2;
+                bytes[at] = static_cast<uint8_t>(value & 0xFF);
+                bytes[at + 1] = static_cast<uint8_t>(value >> 8);
+            }
+        }
+        store.addMap(HEIGHT_MAP, N, N, 1, 16, std::move(bytes));
+        TerrainStrokeBrush brush = raiseBrush(10.0f, 1.0f);
+        brush.mode = mode;
+        brush.falloff = TerrainBrushFalloff::Constant;
+        brush.alternate = true;
+        brush.flattenTarget = static_cast<float>(TARGET) / 65535.0f;
+        TerrainStrokeSession session(store, HEIGHT_MAP, static_cast<float>(N), brush);
+        for (int i = 0; i < 400; i++) ASSERT_TRUE(session.moveTo(0.0f, 0.0f, CLICK_SECONDS));
+        ASSERT_TRUE(session.flush());
+        const unsigned left = heightAt(store, N, N / 2 - 3, N / 2);
+        const unsigned right = heightAt(store, N, N / 2 + 3, N / 2);
+        if (mode == TerrainBrushMode::Raise) {
+            EXPECT_NEAR(static_cast<double>(left), TARGET, 300.0) << "the floor rose to the picked height";
+            EXPECT_EQ(right, HIGH) << "what is above it stays";
+        } else {
+            EXPECT_EQ(left, LOW) << "what is below it stays";
+            EXPECT_NEAR(static_cast<double>(right), TARGET, 300.0) << "the peak came down to the picked height";
+        }
+    }
+}

@@ -1276,7 +1276,10 @@ TerrainStrokeBrush editor::TerrainEditWindow::makeStrokeBrush(TerrainBrushMode m
     brush.size = brushSize;
     brush.strength = brushStrength;
     brush.rotation = brushRotation;
-    brush.flattenTarget = std::clamp(flattenPickOnStroke ? pickedHeight : flattenHeight, 0.0f, 1.0f);
+    // R56: an alternate takes its height from under the stroke's first point, as Pick and Flatten does
+    const bool alternateOn = !scripted && isAlternateOn();
+    brush.flattenTarget = std::clamp(flattenPickOnStroke || alternateOn ? pickedHeight : flattenHeight, 0.0f, 1.0f);
+    brush.alternate = alternateOn && (mode == TerrainBrushMode::Raise || mode == TerrainBrushMode::Lower);
     brush.terraceSteps = std::clamp(terraceSteps, MIN_TERRACE_STEPS, MAX_TERRACE_STEPS);
     brush.noiseSize = noiseSize;
     brush.textureLayer = selectedTextureLayer;
@@ -2464,6 +2467,16 @@ void editor::TerrainEditWindow::show(){
         brushButton(TerrainBrushMode::Smooth, ICON_FA_WATER, "terrain_smooth", "Smooth Height");
         ImGui::SameLine();
         brushButton(TerrainBrushMode::Flatten, ICON_FA_GRIP_LINES, "terrain_flatten", "Set Height (Shift smooths)");
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!hasAlternate());
+        // R56: Lift Floors (Ctrl: Flatten Peaks) for Raise and Lower, Pick and Flatten for Set Height
+        if (iconButton(ICON_FA_ARROWS_UP_TO_LINE, "terrain_alternate",
+                       brushMode == TerrainBrushMode::Flatten ? "Alternate (C): Pick and Flatten, from the height under the click"
+                                                              : "Alternate (C): Lift Floors up to the height under the click (Ctrl: Flatten Peaks)",
+                       isAlternateOn(), commandButtonSize())){
+            toggleAlternate();
+        }
+        ImGui::EndDisabled();
 
         brushButton(TerrainBrushMode::Sharpen, ICON_FA_CHART_LINE, "terrain_sharpen", "Sharpen terrain, pulling ridges back out of a smoothed surface");
         ImGui::SameLine();
@@ -3248,7 +3261,8 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
     const TerrainBrushMode shown = stroke.active ? stroke.effectiveMode : effectiveModeFor(io.KeyCtrl, io.KeyShift);
     const float texel = mapWidth > 1 ? terrainSize / static_cast<float>(mapWidth - 1) : 0.0f;
     cursor.color = pickHeightArmed ? Vector4(1.0f, 1.0f, 1.0f, 1.0f)
-                                   : (!isPlacementBrush() && brushSize < texel ? Vector4(1.0f, 0.0f, 1.0f, 1.0f) : decalColor(shown));
+                                   : (!isPlacementBrush() && brushSize < texel ? Vector4(1.0f, 0.0f, 1.0f, 1.0f)
+                                                                                : decalColor(isAlternateOn() && shown != TerrainBrushMode::Smooth ? TerrainBrushMode::Flatten : shown));
     buildLoop(brushSize, 16, cursor.outerPoints);
     // Placement has no falloff — the ring is the area objects can scatter into.
     if (brushFalloff != TerrainBrushFalloff::Constant && !isPlacementBrush()){
@@ -3268,6 +3282,36 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
             TerrainFoliagePanel::appendCapsuleLines(base, prototype.collisionRadius, prototype.collisionHeight, cursor.capsuleLines);
         }
     }
+    return true;
+}
+
+void editor::TerrainEditWindow::armBrush(TerrainBrushMode mode){
+    endStroke();
+    brushMode = mode;
+    toolCategory = toolCategoryFor(mode);
+    brushActive = true;
+    pickHeightArmed = false;
+}
+
+void editor::TerrainEditWindow::armPickHeight(){
+    armBrush(TerrainBrushMode::Flatten);
+    pickHeightArmed = true;
+}
+
+bool editor::TerrainEditWindow::hasAlternate() const{
+    return brushMode == TerrainBrushMode::Raise || brushMode == TerrainBrushMode::Lower || brushMode == TerrainBrushMode::Flatten;
+}
+
+bool editor::TerrainEditWindow::disarmBrush(){
+    if (pickHeightArmed){
+        pickHeightArmed = false;
+        return true;
+    }
+    if (!brushActive){
+        return false;
+    }
+    endStroke();
+    brushActive = false;
     return true;
 }
 

@@ -184,6 +184,8 @@ namespace jasperengine::editor{
         bool heightFilterInvert = false;
         // T1 R63: the next click picks the Set Height value instead of painting
         bool pickHeightArmed = false;
+        // T1 R56: the armed tool's alternate (C)
+        bool alternate = false;
         float paintMinSlope;
         float paintMaxSlope;
         float paintMinHeight;
@@ -358,6 +360,18 @@ namespace jasperengine::editor{
 
         void adjustBrushSize(float factor);
         void adjustBrushStrength(float factor);
+
+        // T1 R57, Table 5: what the TerrainBrush shortcut context does while a brush is armed
+        bool isBrushArmed() const { return windowOpen && brushActive; }
+        void armBrush(TerrainBrushMode mode);
+        void armPickHeight();
+        void toggleSlopeFilterInvert() { filterInvert = !filterInvert; }
+        // T1 R56: Raise and Lower: Lift Floors and Flatten Peaks; Set Height: Pick and Flatten
+        void toggleAlternate() { alternate = !alternate; }
+        bool hasAlternate() const;
+        bool isAlternateOn() const { return alternate && hasAlternate(); }
+        // Esc: the eyedropper first, then the brush; false when neither was armed
+        bool disarmBrush();
 
         // One stroke through terrain-local points (y ignored) with `brush`, the same brush code
         // a mouse drag runs, as undoable commands (a missing map is created first). Returns
