@@ -197,6 +197,8 @@ TEST(TerrainUniformBudgetSlow, TerrainProgrammeVariantsFitGles3){
                     inputs.terrainVariant.heightBlend = features;
                     inputs.terrainHex = features;
                     inputs.terrainHexStochastic = features;
+                    inputs.terrainVariant.hex = features;
+                    inputs.terrainVariant.hexStochastic = features;
                     MeshShaderEnvironment environment;
                     environment.lights = true;
                     environment.shadows = true;
@@ -261,6 +263,8 @@ TEST(TerrainUniformBudgetSlow, PackedLayersCrossCompileForEveryBackend){
     inputs.terrainHoles = true;
     inputs.terrainHex = true;
     inputs.terrainHexStochastic = true;
+    inputs.terrainVariant.hex = true;
+    inputs.terrainVariant.hexStochastic = true;
     inputs.terrainVariant.layerCount = 12;
     inputs.terrainVariant.limitLayers = true;
     inputs.terrainVariant.macro = true;
