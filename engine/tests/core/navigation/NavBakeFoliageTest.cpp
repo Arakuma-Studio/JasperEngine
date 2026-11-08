@@ -9,6 +9,7 @@
 
 #include "component/NavMeshModifierComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
+#include "component/TerrainComponent.h"
 #include "navigation/NavBakeCollector.h"
 #include "navigation/NavBakeInput.h"
 

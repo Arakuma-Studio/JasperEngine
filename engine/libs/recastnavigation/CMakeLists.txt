@@ -2,7 +2,7 @@
 # commit 6dc1667f580357e8a2154c28b7867bea7e8ad3a7), zlib (License.txt). The navigation meshes,
 # queries, crowds and tile caches of JasperEngine's navigation (docs/specs/S19-navigation.md).
 # Only the five libraries are vendored (README.jasper.md); this file replaces the upstream build.
-# One local patch, marked "JasperEngine patch" in the sources and listed in PATCHES.md.
+# Five local patches, marked "JasperEngine patch" in the sources and listed in PATCHES.md.
 #
 # recastnavigation: Recast, Detour, DetourCrowd and DetourTileCache in one static library, what
 # every game with JASPERENGINE_NAVIGATION links. 32-bit polygon references (no DT_POLYREF64) and

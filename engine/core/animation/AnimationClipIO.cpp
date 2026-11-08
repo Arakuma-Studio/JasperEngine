@@ -1154,8 +1154,8 @@ namespace{
             warn(warnings, "humanoid.human_scale", "expected a positive number: dropped");
             data.humanoid.humanScale = 0.0f;
         }
-        if (data.source.kind != "" && data.source.kind != "model" && data.source.kind != "entity" && data.source.kind != "pose"){
-            warn(warnings, "source.kind", "expected model, entity or pose: source dropped");
+        if (data.source.kind != "" && data.source.kind != "model" && data.source.kind != "entity" && data.source.kind != "pose" && data.source.kind != "aseprite"){
+            warn(warnings, "source.kind", "expected model, entity, pose or aseprite: source dropped");
             data.source = ClipSource();
         }
 
@@ -2157,6 +2157,18 @@ static anim::ClipParseResult parseClipText(const std::string& text){
         warn(&warnings, "", "unknown keys kept as they are (written back on save): " + unknownNames);
     }
 
+    for (const ClipTrackData& track : data.tracks){
+        if (!isRotationChannel(track.channel)) continue;
+        for (size_t k = 1; k < track.keys.size(); k++){
+            const ClipKey& previous = track.keys[k - 1];
+            const ClipKey& key = track.keys[k];
+            if (previous.hasTangents() || key.hasTangents() || previous.value.size() != 4 || key.value.size() != 4) continue;
+            if (quaternionDot(previous.value, key.value) < 0.0f){
+                result.rotationSignFlips.push_back({track.path, key.time});
+                break;
+            }
+        }
+    }
     normalizeClip(data, &warnings, &origins);
     checkEulerSegments(data, origins, eulerKeys, warnings);
     if (version->get<double>() < 2.0 && data.isHumanoid()){

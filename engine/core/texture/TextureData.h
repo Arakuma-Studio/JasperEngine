@@ -50,7 +50,8 @@ namespace jasperengine {
 
         // The GPU levels (spec S14 D9): level 0 first, each holding every face contiguously, in
         // gpuFormat. levelStorage owns their bytes; with levels, `data` is level 0 when the format
-        // is one the CPU readers know (RGBA8, R8, R16) and null otherwise.
+        // is one the CPU readers know (RGBA8, R8, R16; a CPU-readable RGBA16F cook: a linear
+        // RGBA32F copy in the same storage) and null otherwise.
         GpuTextureFormat gpuFormat;
         bool srgb;
         int faceCount;
@@ -62,6 +63,7 @@ namespace jasperengine {
         // RGBA8 faces for CPU readers of compressed or float data (IBL from a cooked sky)
         std::shared_ptr<std::array<TextureData, 6>> cpuCopy;
 
+        void addFloatCpuView();
         int getNearestPowerOfTwo(int size);
         // bytes per pixel of the data for an operation that walks it (crop, resize, flip...),
         // 0 with an error naming the operation when it can't be walked: no data, or a float

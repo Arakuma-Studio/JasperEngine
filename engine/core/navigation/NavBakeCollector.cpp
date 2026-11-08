@@ -41,6 +41,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <map>
 #include <set>
@@ -53,6 +54,8 @@ using namespace jasperengine::nav;
 namespace {
 
     constexpr float PI = 3.14159265358979323846f;
+    // the voxels a tile heightfield spans clamp at (Recast's RC_SPAN_MAX_HEIGHT)
+    constexpr int SPAN_MAX_HEIGHT = 8191;
     // the largest terrain lattice a bake samples per side
     constexpr int MAX_TERRAIN_SAMPLES = 4097;
     // tessellation of round colliders
@@ -394,24 +397,30 @@ namespace {
     struct Policy {
         bool include = true;
         uint8_t area = AREA_WALKABLE;
+        // why it is left out (NavCollectStats::excludedEntities)
+        const char* reason = "";
     };
 
     class Collector {
     public:
-        Collector(Scene* scene, Entity surface, const NavMeshSurfaceComponent& component, NavCollectStats& stats)
-            : scene(scene), surfaceEntity(surface), surface(component), stats(stats) {
+        Collector(Scene* scene, Entity surface, const NavMeshSurfaceComponent& component, NavCollectStats& stats,
+                  const NavCollectOptions& options)
+            : scene(scene), surfaceEntity(surface), surface(component), stats(stats), options(options) {
 #ifdef JASPERENGINE_EDITOR
             renderSystem = scene->getSystem<RenderSystem>().get();
 #endif
         }
 
-        std::shared_ptr<NavBakeInput> run(std::string& error);
+        std::shared_ptr<NavBakeInput> run(std::string& error, NavBakeError& code);
 
     private:
         Scene* scene;
         Entity surfaceEntity;
         const NavMeshSurfaceComponent& surface;
         NavCollectStats& stats;
+        const NavCollectOptions& options;
+        // the GameObject the triangles, terrains and volumes added now come from (recordSources)
+        Entity source = NULL_ENTITY;
         NavFrame frame;
         Matrix4 navFromWorld;
         std::shared_ptr<NavBakeInput> input;
@@ -424,6 +433,10 @@ namespace {
 
         bool isDescendant(Entity entity, Entity ancestor) const;
         bool inScope(Entity entity) const;
+        // why an entity is out of scope ("" when in scope): inactive or layer, as excluded; out
+        // of the surface's children is not an exclusion
+        const char* scopeExclusion(Entity entity) const;
+        void recordExcluded(Entity entity, const char* reason);
         const Policy& policyOf(Entity entity);
         bool collectable(Entity entity, Policy& policy);
 #ifdef JASPERENGINE_EDITOR
@@ -441,7 +454,7 @@ namespace {
         void collectColliders2D();
         void collectVolumes();
         void collectLinks();
-        void addVolume(const Matrix4& worldOf, const Vector3& center, const Vector3& size, uint8_t recastArea);
+        void addVolume(const Matrix4& worldOf, const Vector3& center, const Vector3& size, uint8_t recastArea, bool boundaryOnly = false);
 #ifdef JASPERENGINE_PHYSICS_2D
         void addFootprint(const std::vector<Vector2>& worldPolygon, uint8_t recastArea);
 #endif
@@ -469,6 +482,25 @@ namespace {
         return true;
     }
 
+    const char* Collector::scopeExclusion(Entity entity) const {
+        if (!scene->isEntityActiveInHierarchy(entity))
+            return "inactive";
+        const int layer = scene->getEntityLayer(entity);
+        if (layer >= 0 && layer < 32 && !(surface.includeLayers & (1u << layer)))
+            return "layer";
+        return "";
+    }
+
+    void Collector::recordExcluded(Entity entity, const char* reason) {
+        if (!options.recordSources || !reason || !*reason)
+            return;
+        for (const auto& entry : stats.excludedEntities) {
+            if (entry.first == entity)
+                return;
+        }
+        stats.excludedEntities.emplace_back(entity, reason);
+    }
+
     const Policy& Collector::policyOf(Entity entity) {
         auto found = policies.find(entity);
         if (found != policies.end())
@@ -483,6 +515,7 @@ namespace {
         }
         NavModifierInclusion inclusion = NavModifierInclusion::AUTO;
         bool moving = false;
+        const char* movingReason = "";
         uint8_t area = areaIndex(surface.defaultArea);
         for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
             const Entity node = *it;
@@ -495,28 +528,43 @@ namespace {
                         area = areaIndex(modifier->area);
                 }
             }
-            if (scene->findComponent<NavMeshAgentComponent>(node) || scene->findComponent<NavMeshObstacleComponent>(node))
+            // the nearest moving GameObject of the chain names why
+            if (scene->findComponent<NavMeshAgentComponent>(node)) {
                 moving = true;
+                movingReason = "agent";
+            } else if (scene->findComponent<NavMeshObstacleComponent>(node)) {
+                moving = true;
+                movingReason = "obstacle";
+            }
 #ifdef JASPERENGINE_PHYSICS_3D
             if (const RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(node)) {
-                if (body->type != BodyType::STATIC)
+                if (body->type != BodyType::STATIC) {
                     moving = true;
+                    movingReason = "moving body";
+                }
             }
-            if (scene->findComponent<CharacterControllerComponent>(node))
+            if (scene->findComponent<CharacterControllerComponent>(node)) {
                 moving = true;
+                movingReason = "moving body";
+            }
 #endif
 #ifdef JASPERENGINE_PHYSICS_2D
             if (const Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(node)) {
-                if (body->type != BodyType::STATIC)
+                if (body->type != BodyType::STATIC) {
                     moving = true;
+                    movingReason = "moving body";
+                }
             }
-            if (scene->findComponent<CharacterController2DComponent>(node))
+            if (scene->findComponent<CharacterController2DComponent>(node)) {
                 moving = true;
+                movingReason = "moving body";
+            }
 #endif
         }
         Policy policy;
         policy.include = inclusion == NavModifierInclusion::INCLUDE ? true : (inclusion == NavModifierInclusion::EXCLUDE ? false : !moving);
         policy.area = area;
+        policy.reason = inclusion == NavModifierInclusion::EXCLUDE ? "exclude modifier" : movingReason;
         return policies.emplace(entity, policy).first->second;
     }
 
@@ -527,13 +575,18 @@ namespace {
         if (renderSystem && renderSystem->isEditorOverlay(entity))
             return false;
 #endif
-        if (!inScope(entity))
+        if (!inScope(entity)) {
+            if (options.recordSources)
+                recordExcluded(entity, scopeExclusion(entity));
             return false;
+        }
         policy = policyOf(entity);
         if (!policy.include) {
             stats.excluded++;
+            recordExcluded(entity, policy.reason);
             return false;
         }
+        source = entity;
         return true;
     }
 
@@ -563,6 +616,8 @@ namespace {
             input->triangles.push_back(base + (int)(mirrored ? c : b));
             input->triangles.push_back(base + (int)(mirrored ? b : c));
             input->triangleAreas.push_back(recastArea);
+            if (options.recordSources)
+                input->triangleSources.push_back(source);
             for (uint32_t k : {a, b, c}) {
                 const float* v = &input->vertices[((size_t)base + k) * 3];
                 grow(Vector3(v[0], v[1], v[2]));
@@ -705,6 +760,8 @@ namespace {
         grow(Vector3(lattice.bmin[0], lattice.bmin[1], lattice.bmin[2]));
         grow(Vector3(lattice.bmax[0], lattice.bmax[1], lattice.bmax[2]));
         input->terrains.push_back(std::move(lattice));
+        if (options.recordSources)
+            input->terrainSources.push_back(source);
         stats.terrains++;
         // the pixels read again here are this collect's own (TextureData does not free them)
         reloaded.releaseImageData();
@@ -875,6 +932,8 @@ namespace {
         volume.maxY = std::numeric_limits<float>::max() * 0.5f;
         volume.recastArea = recastArea;
         input->volumes.push_back(std::move(volume));
+        if (options.recordSources)
+            input->volumeSources.push_back(source);
     }
 #endif
 
@@ -979,34 +1038,15 @@ namespace {
 #endif
     }
 
-    void Collector::addVolume(const Matrix4& worldOf, const Vector3& center, const Vector3& size, uint8_t recastArea) {
-        // the box's footprint in nav space (the hull of its corners) and its height range
-        std::vector<Vector2> footprint;
-        float minY = std::numeric_limits<float>::max(), maxY = -std::numeric_limits<float>::max();
-        for (int c = 0; c < 8; c++) {
-            const Vector3 local(center.x + ((c & 1) ? 0.5f : -0.5f) * size.x, center.y + ((c & 2) ? 0.5f : -0.5f) * size.y,
-                                center.z + ((c & 4) ? 0.5f : -0.5f) * size.z);
-            const Vector3 nav = frame.toNav(worldOf * local);
-            footprint.push_back(Vector2(nav.x, nav.z));
-            minY = std::min(minY, nav.y);
-            maxY = std::max(maxY, nav.y);
-        }
-        const std::vector<Vector2> hull = convexHull2D(footprint);
-        if (hull.size() < 3)
-            return;
+    void Collector::addVolume(const Matrix4& worldOf, const Vector3& center, const Vector3& size, uint8_t recastArea, bool boundaryOnly) {
         NavConvexVolume volume;
-        for (const Vector2& p : hull) {
-            volume.points.push_back(p.x);
-            volume.points.push_back(p.y);
-        }
-        if (frame.plane == NavPlane::XY) {
-            minY = -std::numeric_limits<float>::max() * 0.5f;
-            maxY = std::numeric_limits<float>::max() * 0.5f;
-        }
-        volume.minY = minY;
-        volume.maxY = maxY;
+        if (!NavBakeCollector::boxVolume(frame, worldOf, center, size, volume))
+            return;
         volume.recastArea = recastArea;
+        volume.boundaryOnly = boundaryOnly;
         input->volumes.push_back(std::move(volume));
+        if (options.recordSources)
+            input->volumeSources.push_back(source);
         stats.volumes++;
     }
 
@@ -1020,7 +1060,7 @@ namespace {
         std::vector<std::pair<int, Entity>> ordered;
         for (Entity entity : entities) {
             const NavMeshModifierComponent& modifier = scene->getComponent<NavMeshModifierComponent>(entity);
-            if (!modifier.enabled || !modifier.useVolume || !inScope(entity))
+            if (!modifier.enabled || !modifier.useVolume || modifier.applyAtRuntime || !inScope(entity))
                 continue;
             const uint8_t area = areaIndex(modifier.overrideArea ? modifier.area : surface.defaultArea);
             ordered.emplace_back(area == AREA_NOT_WALKABLE ? AREA_COUNT : area, entity);
@@ -1031,9 +1071,20 @@ namespace {
             const Transform* transform = scene->findComponent<Transform>(entry.second);
             if (!transform)
                 continue;
+            source = entry.second;
             const uint8_t area = entry.first == AREA_COUNT ? AREA_NOT_WALKABLE : (uint8_t)entry.first;
             addVolume(transform->modelMatrix, modifier.volumeCenter, modifier.volumeSize,
                       area == AREA_NOT_WALKABLE ? RECAST_NULL_AREA : (uint8_t)(area + 1));
+        }
+        // S76 R11, D4: runtime volumes last, enabled or not: the bake splits the polygons along
+        // them and keeps their areas; NavigationSystem applies their area at runtime
+        for (Entity entity : entities) {
+            const NavMeshModifierComponent& modifier = scene->getComponent<NavMeshModifierComponent>(entity);
+            const Transform* transform = scene->findComponent<Transform>(entity);
+            if (!modifier.useVolume || !modifier.applyAtRuntime || !transform || !inScope(entity))
+                continue;
+            source = entity;
+            addVolume(transform->modelMatrix, modifier.volumeCenter, modifier.volumeSize, RECAST_NULL_AREA, true);
         }
     }
 
@@ -1067,7 +1118,7 @@ namespace {
                                      " distinct link cost modifiers: the extra links use their area's cost");
     }
 
-    std::shared_ptr<NavBakeInput> Collector::run(std::string& error) {
+    std::shared_ptr<NavBakeInput> Collector::run(std::string& error, NavBakeError& code) {
         frame = NavBakeCollector::frameOf(scene, surfaceEntity);
         navFromWorld = frame.navFromWorld();
         input = std::make_shared<NavBakeInput>();
@@ -1109,9 +1160,11 @@ namespace {
             }
             if (!(boundsMax.x > boundsMin.x) || !(boundsMax.z > boundsMin.z)) {
                 error = "nothing to bake: a 2D surface needs a volume, colliders or sprites to span";
+                code = NavBakeError::NothingCollected;
                 return nullptr;
             }
             // the walkable ground: a quad of the default area at y = 0 over the bounds
+            source = NULL_ENTITY;
             Mesh ground;
             ground.vertices = {Vector3(boundsMin.x, 0.0f, boundsMin.z), Vector3(boundsMin.x, 0.0f, boundsMax.z),
                                Vector3(boundsMax.x, 0.0f, boundsMax.z), Vector3(boundsMax.x, 0.0f, boundsMin.z)};
@@ -1137,6 +1190,8 @@ namespace {
                     volume.maxY = y1;
                     volume.recastArea = RECAST_NULL_AREA;
                     input->volumes.push_back(std::move(volume));
+                    if (options.recordSources)
+                        input->volumeSources.push_back(NULL_ENTITY);
                 };
                 slab(-big, -big, volumeMin.x, big, -big, big);
                 slab(volumeMax.x, -big, big, big, -big, big);
@@ -1151,6 +1206,7 @@ namespace {
             if (input->triangles.empty() && input->terrains.empty()) {
                 error = "nothing to bake: no static mesh, collider or terrain " +
                         std::string(surface.collectObjects == NavCollectObjects::VOLUME ? "in the volume" : "was collected");
+                code = NavBakeError::NothingCollected;
                 return nullptr;
             }
         }
@@ -1165,11 +1221,26 @@ namespace {
         if (input->linkAreaCosts.size() > (size_t)(MAX_POLY_AREAS - FIRST_LINK_COST_AREA))
             input->linkAreaCosts.resize((size_t)(MAX_POLY_AREAS - FIRST_LINK_COST_AREA));
 
+        // a tile's heightfield spans the surface's whole height, in at most 8191 voxels: above
+        // that Recast clamps, so the geometry there is lost (spec S74 R5; a warning, since the
+        // clamped part may well not be walkable)
+        const float voxel = input->config.cellHeight;
+        if (voxel > 0.0f && (input->bmax[1] - input->bmin[1]) / voxel + 2.0f > (float)SPAN_MAX_HEIGHT) {
+            char text[320];
+            std::snprintf(text, sizeof(text),
+                          "the surface spans %.1f m of height, more than the %d voxels (%.1f m at this voxel height) a tile holds: "
+                          "geometry above %.1f m is cut off; increase the voxel size or split the surface",
+                          input->bmax[1] - input->bmin[1], SPAN_MAX_HEIGHT, (float)SPAN_MAX_HEIGHT * voxel,
+                          input->bmin[1] + (float)(SPAN_MAX_HEIGHT - 1) * voxel);
+            stats.warnings.push_back(text);
+        }
+
         // the 32-bit reference limit, before any tile is bucketed or built (spec R6)
         input->computeTileGrid();
         const std::string tooLarge = checkPolyRefBits(input->tileCount64(), input->config.maxPolysPerTile);
         if (!tooLarge.empty()) {
             error = tooLarge;
+            code = NavBakeError::TooLarge;
             return nullptr;
         }
         input->finalize();
@@ -1213,6 +1284,63 @@ NavBuildConfig NavBakeCollector::configOf(Scene* scene, const NavMeshSurfaceComp
 #endif
     return NavBuildConfig::derive(agent, surface.plane, surface.overrideCellSize ? surface.cellSize : 0.0f, tileSize,
                                   surface.minRegionArea, surface.runtimeCarving, unitScaleOf(scene, surface));
+}
+
+Entity NavBakeCollector::areaModifierOf(Scene* scene, Entity entity) {
+    for (Entity current = entity; current != NULL_ENTITY;) {
+        if (const NavMeshModifierComponent* modifier = scene->findComponent<NavMeshModifierComponent>(current)) {
+            if (modifier->enabled && !modifier->useVolume && modifier->overrideArea && (current == entity || modifier->applyToChildren))
+                return current;
+        }
+        const Transform* transform = scene->findComponent<Transform>(current);
+        current = transform ? transform->parent : NULL_ENTITY;
+    }
+    return NULL_ENTITY;
+}
+
+bool NavBakeCollector::meshWorldBounds(Scene* scene, Entity entity, AABB& out) {
+    const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    if (!mesh || !transform || mesh->aabb.isNull() || mesh->aabb.isInfinite())
+        return false;
+    out = transform->modelMatrix * mesh->aabb;
+    return true;
+}
+
+bool NavBakeCollector::boxVolume(const NavFrame& frame, const Matrix4& worldOf, const Vector3& center, const Vector3& size,
+                                 NavConvexVolume& out) {
+    // the box's footprint in nav space (the hull of its corners) and its height range
+    std::vector<Vector2> footprint;
+    float minY = std::numeric_limits<float>::max(), maxY = -std::numeric_limits<float>::max();
+    for (int c = 0; c < 8; c++) {
+        const Vector3 local(center.x + ((c & 1) ? 0.5f : -0.5f) * size.x, center.y + ((c & 2) ? 0.5f : -0.5f) * size.y,
+                            center.z + ((c & 4) ? 0.5f : -0.5f) * size.z);
+        const Vector3 nav = frame.toNav(worldOf * local);
+        footprint.push_back(Vector2(nav.x, nav.z));
+        minY = std::min(minY, nav.y);
+        maxY = std::max(maxY, nav.y);
+    }
+    const std::vector<Vector2> hull = convexHull2D(footprint);
+    if (hull.size() < 3)
+        return false;
+    out = NavConvexVolume();
+    out.bmin[0] = out.bmin[2] = std::numeric_limits<float>::max();
+    out.bmax[0] = out.bmax[2] = -std::numeric_limits<float>::max();
+    for (const Vector2& p : hull) {
+        out.points.push_back(p.x);
+        out.points.push_back(p.y);
+        out.bmin[0] = std::min(out.bmin[0], p.x);
+        out.bmax[0] = std::max(out.bmax[0], p.x);
+        out.bmin[2] = std::min(out.bmin[2], p.y);
+        out.bmax[2] = std::max(out.bmax[2], p.y);
+    }
+    if (frame.plane == NavPlane::XY) {
+        minY = -std::numeric_limits<float>::max() * 0.5f;
+        maxY = std::numeric_limits<float>::max() * 0.5f;
+    }
+    out.minY = out.bmin[1] = minY;
+    out.maxY = out.bmax[1] = maxY;
+    return true;
 }
 
 void NavBakeCollector::linkConnections(Scene* scene, Entity entity, const NavFrame& frame, float agentRadius,
@@ -1260,15 +1388,23 @@ void NavBakeCollector::linkConnections(Scene* scene, Entity entity, const NavFra
     }
 }
 
-std::shared_ptr<NavBakeInput> NavBakeCollector::collect(Scene* scene, Entity surface, std::string& error, NavCollectStats* stats) {
+std::shared_ptr<NavBakeInput> NavBakeCollector::collect(Scene* scene, Entity surface, std::string& error, NavCollectStats* stats,
+                                                       const NavCollectOptions& options, NavBakeError* code) {
     NavCollectStats local;
     NavCollectStats& out = stats ? *stats : local;
     out = NavCollectStats();
-    const NavMeshSurfaceComponent* component = scene->findComponent<NavMeshSurfaceComponent>(surface);
-    if (!component) {
+    NavBakeError why = NavBakeError::None;
+    std::shared_ptr<NavBakeInput> input;
+    if (const NavMeshSurfaceComponent* component = scene->findComponent<NavMeshSurfaceComponent>(surface)) {
+        Collector collector(scene, surface, *component, out, options);
+        input = collector.run(error, why);
+        if (input && options.recordSources)
+            input->excludedEntities = out.excludedEntities;
+    } else {
         error = "the GameObject has no NavMeshSurface";
-        return nullptr;
+        why = NavBakeError::NoSurface;
     }
-    Collector collector(scene, surface, *component, out);
-    return collector.run(error);
+    if (code)
+        *code = why;
+    return input;
 }

@@ -72,6 +72,11 @@
             "tools": 13,
             "spec": "S23's 12 (hot reload, script status and settings, editor menus, expressions, the graph tools) and upstream's user_settings (PlayerPrefs, the scripts' saved data: no group fits it better; SYNC#4)"
         },
+        "animation": {
+            "chars": 16000,
+            "tools": 13,
+            "spec": "S21's Animator tools, upstream's pose, Vertex Animation and lattice tools, and S77's check_animation and optimize_animation (R55): one tool more than the default count, so an agent reading clip quality need not enable two groups"
+        },
         "editor_ux": {
             "chars": 24000,
             "tools": 21,
@@ -84,6 +89,10 @@
         }
     },
     "exceptions": {
+        "visualize_navigation": {
+            "limit": 1725,
+            "reason": "S74 path filter (agent_type, area_mask) and S75 R33 (frame, island / tile colours, slope and tile label flags, GameObject path ends, the Game view screenshot): 1642 measured + 5 %"
+        },
         "set_scene_camera": {
             "limit": 1960,
             "reason": "S26 (R17-R21): the Scene view camera's projection, ortho size, axis view, Frame All and Scene Camera settings (field of view, clip planes, speed, easing, ...) on the one camera tool agents already use"
@@ -97,8 +106,8 @@
             "reason": "upstream (Texture Synthesis), predates its merge into oe-port: 3519 with S31's schema conventions until upstream round 3 moved its per-argument texts to jasper://docs/texture-synthesis (2341 measured, nested objects still say additionalProperties)"
         },
         "edit_animation": {
-            "limit": 3606,
-            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the round-1 upstream sync, 3494 on round 2 (upstream's .anim clip mode on the same tool: clip, create, tracks by path, keys, events, cheaper than a second tool); 3578 with refs typed integer|string again (the CLI tells ids from names by it), 3606 with its free-form key items saying so (S31 conventions)"
+            "limit": 3566,
+            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the round-1 upstream sync, 3494 on round 2 (upstream's .anim clip mode on the same tool: clip, create, tracks by path, keys, events, cheaper than a second tool); 3578 with refs typed integer|string again (the CLI tells ids from names by it), 3606 with its free-form key items saying so (S31 conventions); 3566 with S77's root_motion (a free-form object; the guide names its members) paid for by a shorter clip sentence (the core listing had 3 characters left)"
         },
         "sculpt_terrain": {
             "limit": 2699,

@@ -309,3 +309,40 @@ TEST(PostColorLut, SceneStageLogLut){
         EXPECT_NEAR(out.z, std::pow(display.z, 1.0f / 2.2f), 1.0f / 255.0f) << i;
     }
 }
+
+// The SSR linear store clears to the shaper code the tail turns back into the clear colour:
+// evaluate(invert(display)) gives the display colour back, for a curve and a curve with a grade,
+// and the code agrees with the strip's texels where they meet
+TEST(PostColorLut, InvertGivesTheCodeOfADisplayColour){
+    PostProcessingSettings settings;
+    settings.tonemap = TonemapMode::ACES;
+    settings.exposure = 1.0f;
+    const Vector3 displays[] = {Vector3(0.08f, 0.08f, 0.1f), Vector3(0.5f, 0.3f, 0.7f), Vector3(0.9f, 0.95f, 0.2f)};
+    for (const Vector3& display : displays){
+        const Vector3 code = PostColorLut::invert(settings, nullptr, PostColorLut::Stage::CURVE, display);
+        const Vector3 back = PostColorLut::evaluate(settings, nullptr, PostColorLut::Stage::CURVE, code);
+        for (unsigned c = 0; c < 3; c++)
+            EXPECT_NEAR(back[c], display[c], 1e-4f) << "channel " << c;
+    }
+    // (a saturation of 0.5 halves the chroma: colours within reach of it)
+    settings.colorGradingEnabled = true;
+    settings.saturation = 0.5f;
+    const Vector3 greyish[] = {Vector3(0.08f, 0.08f, 0.1f), Vector3(0.3f, 0.32f, 0.35f), Vector3(0.6f, 0.55f, 0.5f)};
+    for (const Vector3& display : greyish){
+        const Vector3 code = PostColorLut::invert(settings, nullptr, PostColorLut::Stage::ALL, display);
+        const Vector3 back = PostColorLut::evaluate(settings, nullptr, PostColorLut::Stage::ALL, code);
+        for (unsigned c = 0; c < 3; c++)
+            EXPECT_NEAR(back[c], display[c], 2e-3f) << "graded, channel " << c;
+    }
+    // the strip's texel at a code is its evaluate, rounded to 8 bits
+    std::vector<uint8_t> strip;
+    const int n = 16;
+    PostColorLut::bake(settings, nullptr, PostColorLut::Stage::ALL, n, strip);
+    const int r = 5, g = 9, b = 3;
+    const Vector3 texel = PostColorLut::evaluate(settings, nullptr, PostColorLut::Stage::ALL,
+                                                 Vector3((float)r / (n - 1), (float)g / (n - 1), (float)b / (n - 1)));
+    const size_t i = ((size_t)g * n * n + (size_t)b * n + (size_t)r) * 4;
+    EXPECT_EQ(strip[i], (uint8_t)std::lround(texel.x * 255.0f));
+    EXPECT_EQ(strip[i + 1], (uint8_t)std::lround(texel.y * 255.0f));
+    EXPECT_EQ(strip[i + 2], (uint8_t)std::lround(texel.z * 255.0f));
+}

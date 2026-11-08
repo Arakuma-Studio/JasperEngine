@@ -47,7 +47,7 @@ VisibleResult VisibleList::cull(const VisibleFrustum& frustum, const VisibleCand
         for (uint32_t s = 0; s < candidate.numSubmeshes && s < 32; s++){
             if (!(mask & (1u << s)))
                 continue;
-            const AABB& local = *reinterpret_cast<const AABB*>(reinterpret_cast<const uint8_t*>(candidate.submeshBounds) + s * candidate.submeshStride);
+            const AABB& local = *candidate.submeshBounds[s];
             if (local.isNull() || local.isInfinite())
                 continue;
             AABB world = local;

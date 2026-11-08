@@ -45,6 +45,8 @@ namespace {
     const EnumName<ScriptMeshData> scriptNames[] = {
         {ScriptMeshData::Automatic, "automatic", "Automatic"}, {ScriptMeshData::Keep, "keep", "Keep"},
         {ScriptMeshData::Release, "release", "Release"}};
+    const EnumName<AnimationEntitiesMode> animationEntitiesNames[] = {
+        {AnimationEntitiesMode::Always, "always", "Always"}, {AnimationEntitiesMode::Auto, "auto", "Auto"}};
 
     template<class E, size_t N>
     const EnumName<E>& entryOf(const EnumName<E> (&table)[N], E value){
@@ -198,6 +200,7 @@ const char* editor::modelNormalsName(ModelNormals value){ return entryOf(normals
 const char* editor::generateLodsName(GenerateLods value){ return entryOf(lodsNames, value).name; }
 const char* editor::lodReductionName(LodReduction value){ return entryOf(reductionNames, value).name; }
 const char* editor::scriptMeshDataName(ScriptMeshData value){ return entryOf(scriptNames, value).name; }
+const char* editor::animationEntitiesModeName(AnimationEntitiesMode value){ return entryOf(animationEntitiesNames, value).name; }
 const char* editor::optimizeMeshLabel(OptimizeMesh value){ return entryOf(optimizeNames, value).label; }
 const char* editor::meshCompressionLabel(MeshCompression value){ return entryOf(compressionNames, value).label; }
 const char* editor::indexFormatLabel(IndexFormat value){ return entryOf(indexNames, value).label; }
@@ -387,6 +390,8 @@ YAML::Node editor::encodeModelProjectSettings(const ModelProjectSettings& settin
         node["cacheSizeMB"] = settings.cacheSizeMB;
     if (settings.scriptMeshData != defaults.scriptMeshData)
         node["keepCpuDataForScripts"] = scriptMeshDataName(settings.scriptMeshData);
+    if (settings.animationEntities != defaults.animationEntities)
+        node["animationEntities"] = animationEntitiesModeName(settings.animationEntities);
     YAML::Node budgets(YAML::NodeType::Map);
     for (size_t f = 0; f < kModelFamilyCount; f++){
         const RenderBudget& b = settings.renderBudgets[f];
@@ -451,6 +456,13 @@ void editor::decodeModelProjectSettings(const YAML::Node& node, ModelProjectSett
         try { name = node["keepCpuDataForScripts"].Scalar(); } catch (...) { name.clear(); }
         if (valueOf(scriptNames, name, value))
             settings.scriptMeshData = value;
+    }
+    if (node["animationEntities"]){
+        AnimationEntitiesMode value;
+        std::string name;
+        try { name = node["animationEntities"].Scalar(); } catch (...) { name.clear(); }
+        if (valueOf(animationEntitiesNames, name, value))
+            settings.animationEntities = value;
     }
     if (const YAML::Node budgets = node["renderBudgets"]; budgets && budgets.IsMap()){
         for (size_t f = 0; f < kModelFamilyCount; f++){

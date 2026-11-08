@@ -46,7 +46,7 @@ DEFAULT_SECONDS = 30.0
 # an editor's start, its project copy and its close: what a chunk costs besides its tests
 CHUNK_OVERHEAD = 20.0
 # the files that compile a game (method "compile", docs/testing.md "Compiled and prebuilt game builds")
-BUILD_FILES = ("test_build.py", "test_html_ui_effects_export.py", "test_hub.py", "test_busy.py")
+BUILD_FILES = ("test_build.py", "test_html_ui_effects_export.py", "test_hub.py", "test_busy.py", "test_lifecycle_export.py")
 LINE = re.compile(r"^(PASS|FAIL|SKIP) (\S+?\.py)::(\S+) \(([\d.]+)s\)")
 
 

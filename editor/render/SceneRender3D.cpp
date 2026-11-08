@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender3D.h"
+#include "animation/AnimatorDebug.h"
+#include "animation/AnimatorInstance.h"
+#include "animation/BoneOverlay.h"
+#include "component/AnimatorComponent.h"
+#include "component/ModelComponent.h"
+#include "component/Transform.h"
 #include "component/AudioSourceComponent.h"
 #include "component/Transform.h"
 #include "component/BoneComponent.h"
@@ -29,12 +35,17 @@
 
 #include <algorithm>
 #include "util/WaterEditorUtils.h"
+#include "util/WaterExclusion.h"
+#include "component/WaterExcluderComponent.h"
+#include "component/WaterWakeComponent.h"
+#include "subsystem/WaterInteractionSystem.h"
 #include <cmath>
 #include <cstdint>
 #include <functional>
 #include <limits>
 #include <map>
 #include <set>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -69,6 +80,7 @@ editor::SceneRender3D::SceneRender3D(Scene* scene): SceneRender(scene, false, tr
     uilayer.setViewportGizmoTexture(viewgizmo.getFramebuffer());
 
     poseViewport = std::make_unique<PoseViewport>(scene, toolslayer.getScene());
+    animatorOverlay = std::make_unique<anim::AnimatorOverlayPass>();
 }
 
 editor::SceneRender3D::~SceneRender3D(){
@@ -131,7 +143,19 @@ editor::SceneRender3D::~SceneRender3D(){
         delete pair.second;
     }
 
+    for (auto& pair : animatorLines) {
+        delete pair.second;
+    }
+
     for (auto& pair : waterVolumeLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : waterExcluderLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : waterWakeLines) {
         delete pair.second;
     }
 
@@ -519,6 +543,79 @@ void editor::SceneRender3D::createOrUpdateWaterVolumeLines(Entity entity, const 
     lines->addLine(p[5], p[7], surfaceColor);
 }
 
+// A Water Excluder: its box, the three circles of its sphere, or its hull's edges (orange: where
+// no water is drawn and nothing floats)
+void editor::SceneRender3D::createOrUpdateWaterExcluderLines(Entity entity, const Transform& transform, const WaterExcluderComponent& excluder, bool visible, bool highlighted){
+    LineRenderer* lines = waterExcluderLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+
+    const float alpha = highlighted ? 1.0f : 0.4f;
+    const Vector4 color = excluder.enabled ? Vector4(1.0f, 0.55f, 0.2f, alpha) : Vector4(0.6f, 0.6f, 0.6f, alpha);
+    auto world = [&](const Vector3& p){ return transform.modelMatrix * p; };
+    std::shared_ptr<WaterInteractionSystem> system = scene->findSystem<WaterInteractionSystem>();
+    const WaterHull* hull = system ? system->getHull(entity) : nullptr;
+    if (excluder.shape == WaterExcluderShape::CONVEX_HULL){
+        if (!hull) return;
+        // (a hull without planes: a build without 3D physics, its bounds box drawn below)
+        if (!hull->planes.empty()){
+            for (const auto& edge : hull->edges)
+                lines->addLine(world(hull->points[edge.first]), world(hull->points[edge.second]), color);
+            return;
+        }
+    }
+    const AABB box = getWaterExcluderLocalBox(excluder.shape, excluder.center, excluder.size, hull);
+    if (box.isNull()) return;
+    const Vector3 c = box.getCenter();
+    const Vector3 h = box.getHalfSize();
+    if (excluder.shape == WaterExcluderShape::SPHERE){
+        const int segments = 32;
+        for (int axis = 0; axis < 3; axis++){
+            for (int i = 0; i < segments; i++){
+                const float a0 = 6.28318530718f * (float)i / (float)segments;
+                const float a1 = 6.28318530718f * (float)(i + 1) / (float)segments;
+                auto point = [&](float a){
+                    const float u = std::cos(a), v = std::sin(a);
+                    if (axis == 0) return c + Vector3(0.0f, u * h.y, v * h.z);
+                    if (axis == 1) return c + Vector3(u * h.x, 0.0f, v * h.z);
+                    return c + Vector3(u * h.x, v * h.y, 0.0f);
+                };
+                lines->addLine(world(point(a0)), world(point(a1)), color);
+            }
+        }
+        return;
+    }
+    const Vector3 p[8] = {
+        world(c + Vector3(-h.x, -h.y, -h.z)), world(c + Vector3(h.x, -h.y, -h.z)), world(c + Vector3(h.x, -h.y, h.z)), world(c + Vector3(-h.x, -h.y, h.z)),
+        world(c + Vector3(-h.x, h.y, -h.z)), world(c + Vector3(h.x, h.y, -h.z)), world(c + Vector3(h.x, h.y, h.z)), world(c + Vector3(-h.x, h.y, h.z))
+    };
+    const int edges[12][2] = {{0,1}, {1,2}, {2,3}, {3,0}, {4,5}, {5,6}, {6,7}, {7,4}, {0,4}, {1,5}, {2,6}, {3,7}};
+    for (const auto& edge : edges) lines->addLine(p[edge[0]], p[edge[1]], color);
+}
+
+// A selected Water Wake's waterline footprint: the ellipse its wake starts from (cyan), with its
+// length axis
+void editor::SceneRender3D::createOrUpdateWaterWakeLines(Entity entity, const Transform& transform, const WaterWakeComponent& wake, bool visible){
+    LineRenderer* lines = waterWakeLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    std::shared_ptr<WaterInteractionSystem> system = scene->findSystem<WaterInteractionSystem>();
+    if (!transform.visible || !visible || !system) return;
+
+    const WaterInteractionSystem::WakeFootprint shape = system->getWakeFootprint(entity, wake, transform);
+    const WaterWakeFootprint& footprint = shape.footprint;
+    const Vector4 color = wake.enabled ? Vector4(0.3f, 0.85f, 1.0f, 1.0f) : Vector4(0.6f, 0.6f, 0.6f, 1.0f);
+    auto point = [&](float a){
+        const Vector2 p = footprint.axisX * (std::cos(a) * footprint.radiusX) + footprint.axisZ * (std::sin(a) * footprint.radiusZ);
+        return Vector3(shape.center.x + p.x, shape.center.y, shape.center.z + p.y);
+    };
+    const int segments = 48;
+    for (int i = 0; i < segments; i++)
+        lines->addLine(point(6.28318530718f * (float)i / (float)segments), point(6.28318530718f * (float)(i + 1) / (float)segments), color);
+    lines->addLine(point(-1.57079632679f), point(1.57079632679f), color);
+}
+
 // A Buoyancy's columns: each from its bottom up the colliders' height, as WaterSystem samples
 void editor::SceneRender3D::createOrUpdateBuoyancyLines(Entity entity, const Transform& transform, const BuoyancyComponent& buoyancy, bool visible, bool highlighted){
     LineRenderer* lines = buoyancyLines[entity];
@@ -829,62 +926,53 @@ void editor::SceneRender3D::createOrUpdateBoneLines(Entity entity, const ModelCo
     const Vector4 boneColor(0.9f, 0.9f, 0.2f, alpha);
     const Vector4 tipColor(1.0f, 0.5f, 0.1f, alpha);
 
-    for (const auto& [boneId, boneEntity] : model.bonesIdMapping) {
-        Transform* boneTransform = scene->findComponent<Transform>(boneEntity);
-        if (!boneTransform || !boneTransform->visible) continue;
+    // a bone's position from the Animator's pose where its Transform is not written (Write Bones: Exposed)
+    for (const BoneOverlaySegment& segment : boneOverlaySegments(scene, model)) {
+        const Vector3& bonePos = segment.bone;
 
-        Vector3 bonePos = boneTransform->worldPosition;
+        if (segment.hasParent) {
+            const Vector3& parentPos = segment.parent;
+            Vector3 dir = bonePos - parentPos;
+            float length = dir.length();
 
-        Entity parentEntity = boneTransform->parent;
-        if (parentEntity != NULL_ENTITY) {
-            BoneComponent* parentBone = scene->findComponent<BoneComponent>(parentEntity);
-            if (parentBone) {
-                Transform* parentTransform = scene->findComponent<Transform>(parentEntity);
-                if (parentTransform) {
-                    Vector3 parentPos = parentTransform->worldPosition;
-                    Vector3 dir = bonePos - parentPos;
-                    float length = dir.length();
+            if (length < 1e-6f) continue;
 
-                    if (length < 1e-6f) continue;
+            dir = dir / length;
 
-                    dir = dir / length;
+            // Build perpendicular basis
+            Vector3 up = (std::abs(dir.y) < 0.99f) ? Vector3(0, 1, 0) : Vector3(1, 0, 0);
+            Vector3 right = dir.crossProduct(up).normalized();
+            up = right.crossProduct(dir).normalized();
 
-                    // Build perpendicular basis
-                    Vector3 up = (std::abs(dir.y) < 0.99f) ? Vector3(0, 1, 0) : Vector3(1, 0, 0);
-                    Vector3 right = dir.crossProduct(up).normalized();
-                    up = right.crossProduct(dir).normalized();
+            // Wireframe pyramid: base near parent, tip at child
+            float baseOffset = length * 0.15f;
+            float baseSize = length * 0.08f;
+            Vector3 baseCenter = parentPos + dir * baseOffset;
 
-                    // Wireframe pyramid: base near parent, tip at child
-                    float baseOffset = length * 0.15f;
-                    float baseSize = length * 0.08f;
-                    Vector3 baseCenter = parentPos + dir * baseOffset;
+            Vector3 b0 = baseCenter + (right + up) * baseSize;
+            Vector3 b1 = baseCenter + (right - up) * baseSize;
+            Vector3 b2 = baseCenter + (right * -1.0f - up) * baseSize;
+            Vector3 b3 = baseCenter + (up - right) * baseSize;
 
-                    Vector3 b0 = baseCenter + (right + up) * baseSize;
-                    Vector3 b1 = baseCenter + (right - up) * baseSize;
-                    Vector3 b2 = baseCenter + (right * -1.0f - up) * baseSize;
-                    Vector3 b3 = baseCenter + (up - right) * baseSize;
+            // Base square
+            boneLinesObj->addLine(b0, b1, boneColor);
+            boneLinesObj->addLine(b1, b2, boneColor);
+            boneLinesObj->addLine(b2, b3, boneColor);
+            boneLinesObj->addLine(b3, b0, boneColor);
 
-                    // Base square
-                    boneLinesObj->addLine(b0, b1, boneColor);
-                    boneLinesObj->addLine(b1, b2, boneColor);
-                    boneLinesObj->addLine(b2, b3, boneColor);
-                    boneLinesObj->addLine(b3, b0, boneColor);
+            // Lines from parent to base
+            boneLinesObj->addLine(parentPos, b0, tipColor);
+            boneLinesObj->addLine(parentPos, b1, tipColor);
+            boneLinesObj->addLine(parentPos, b2, tipColor);
+            boneLinesObj->addLine(parentPos, b3, tipColor);
 
-                    // Lines from parent to base
-                    boneLinesObj->addLine(parentPos, b0, tipColor);
-                    boneLinesObj->addLine(parentPos, b1, tipColor);
-                    boneLinesObj->addLine(parentPos, b2, tipColor);
-                    boneLinesObj->addLine(parentPos, b3, tipColor);
-
-                    // Lines from base to child tip
-                    boneLinesObj->addLine(b0, bonePos, boneColor);
-                    boneLinesObj->addLine(b1, bonePos, boneColor);
-                    boneLinesObj->addLine(b2, bonePos, boneColor);
-                    boneLinesObj->addLine(b3, bonePos, boneColor);
-                }
-            }
+            // Lines from base to child tip
+            boneLinesObj->addLine(b0, bonePos, boneColor);
+            boneLinesObj->addLine(b1, bonePos, boneColor);
+            boneLinesObj->addLine(b2, bonePos, boneColor);
+            boneLinesObj->addLine(b3, bonePos, boneColor);
         } else {
-            // Root bone: draw a small octahedron marker
+            // A root (its parent is no bone, or there is none): a small octahedron marker
             float markSize = 0.03f;
             boneLinesObj->addLine(bonePos + Vector3(0, markSize, 0), bonePos + Vector3(markSize, 0, 0), tipColor);
             boneLinesObj->addLine(bonePos + Vector3(markSize, 0, 0), bonePos + Vector3(0, -markSize, 0), tipColor);
@@ -1302,6 +1390,7 @@ void editor::SceneRender3D::dropGoneGizmos(){
     dropGoneGizmos(trackLines, render);
     dropGoneGizmos(reflectionProbeLines, render);
     dropGoneGizmos(capsuleShadowLines, render);
+    dropGoneGizmos(animatorLines, render);
 }
 
 void editor::SceneRender3D::hideAllGizmos(){
@@ -1346,7 +1435,16 @@ void editor::SceneRender3D::hideAllGizmos(){
     for (auto& pair : controllerLines) {
         pair.second->setVisible(false);
     }
+    for (auto& pair : animatorLines) {
+        pair.second->setVisible(false);
+    }
     for (auto& pair : waterVolumeLines) {
+        pair.second->setVisible(false);
+    }
+    for (auto& pair : waterExcluderLines) {
+        pair.second->setVisible(false);
+    }
+    for (auto& pair : waterWakeLines) {
         pair.second->setVisible(false);
     }
     for (auto& pair : buoyancyLines) {
@@ -1524,6 +1622,8 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentFogVolumes;
     std::set<Entity> currentControllers;
     std::set<Entity> currentWaterVolumes;
+    std::set<Entity> currentWaterExcluders;
+    std::set<Entity> currentWaterWakes;
     std::set<Entity> currentBuoyancies;
     std::set<Entity> currentParticleSystems;
     std::set<Entity> currentForceFields;
@@ -1670,6 +1770,23 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             createOrUpdateWaterVolumeLines(entity, transform, volume, displaySettings.showAllBodies || highlighted, highlighted);
         }
 
+        if (signature.test(scene->getComponentId<WaterExcluderComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            const WaterExcluderComponent& excluder = scene->getComponent<WaterExcluderComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            currentWaterExcluders.insert(entity);
+            ensureOverlayLines(waterExcluderLines, entity);
+            const bool highlighted = isDescendantSelected(entity);
+            createOrUpdateWaterExcluderLines(entity, transform, excluder, displaySettings.showAllBodies || highlighted, highlighted);
+        }
+
+        if (signature.test(scene->getComponentId<WaterWakeComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            const WaterWakeComponent& wake = scene->getComponent<WaterWakeComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            currentWaterWakes.insert(entity);
+            ensureOverlayLines(waterWakeLines, entity);
+            createOrUpdateWaterWakeLines(entity, transform, wake, isDescendantSelected(entity));
+        }
+
         if (signature.test(scene->getComponentId<BuoyancyComponent>()) && signature.test(scene->getComponentId<Transform>())) {
             const BuoyancyComponent& buoyancy = scene->getComponent<BuoyancyComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
@@ -1751,6 +1868,30 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
 
         if (!active) {
             hideEntityGizmos(entity);
+        }
+    }
+
+    // Gizmos > Animation (S77 R49): with every toggle off the pass takes no snapshot and draws nothing
+    const anim::AnimatorOverlayFlags animatorFlags{displaySettings.showIK, displaySettings.showRootMotion, displaySettings.showFootTrails};
+    std::set<Entity> currentAnimatorLines;
+    animatorOverlay->update(scene, entities, animatorFlags, [&](Entity entity, const std::vector<anim::AnimatorOverlayLine>& drawn){
+        // in the tools layer, as the skeleton overlay: drawn over the meshes the chains run inside
+        if (animatorLines.find(entity) == animatorLines.end()) {
+            ScopedDefaultEntityPool sys(*toolslayer.getScene(), EntityPool::System);
+            animatorLines[entity] = new LineRenderer(toolslayer.getScene());
+        }
+        currentAnimatorLines.insert(entity);
+        LineRenderer* overlayLines = animatorLines[entity];
+        overlayLines->clearLines();
+        for (const anim::AnimatorOverlayLine& line : drawn) overlayLines->addLine(line.a, line.b, line.color);
+        overlayLines->setVisible(true);
+    });
+    for (auto it = animatorLines.begin(); it != animatorLines.end();) {
+        if (currentAnimatorLines.find(it->first) == currentAnimatorLines.end()) {
+            delete it->second;
+            it = animatorLines.erase(it);
+        } else {
+            ++it;
         }
     }
 
@@ -1850,7 +1991,9 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
         }
     }
 
-    for (const auto& pair : {std::make_pair(&waterVolumeLines, &currentWaterVolumes), std::make_pair(&buoyancyLines, &currentBuoyancies)}) {
+    for (const auto& pair : {std::make_pair(&waterVolumeLines, &currentWaterVolumes), std::make_pair(&waterExcluderLines, &currentWaterExcluders),
+                             std::make_pair(&waterWakeLines, &currentWaterWakes),
+                             std::make_pair(&buoyancyLines, &currentBuoyancies)}) {
         for (auto it = pair.first->begin(); it != pair.first->end();) {
             if (pair.second->find(it->first) == pair.second->end()) {
                 delete it->second;
@@ -1929,4 +2072,95 @@ void editor::SceneRender3D::setGridPlane(int plane){
     }else{
         lines->setRotation(Quaternion());
     }
+}
+
+// The skeleton overlay's reading of the pose (animation/BoneOverlay.h). Defined here, in a unit that reads
+// Transforms already, so the overlay adds none to Transform.h's fan-out (tools/check_fanout.py)
+namespace{
+
+    // The Exposed Animator on `entity` or above it whose rig holds `entity`, with a pose evaluated
+    struct ExposedBone{
+        const anim::AnimatorInstance* instance = nullptr;
+        Entity root = NULL_ENTITY;
+        int bone = -1;
+    };
+
+    ExposedBone findExposedBone(Scene* scene, Entity entity){
+        ExposedBone found;
+        for (Entity at = entity; at != NULL_ENTITY;){
+            const AnimatorComponent* animator = scene->findComponent<AnimatorComponent>(at);
+            if (animator && animator->writeBones == AnimatorWriteBones::Exposed){
+                const anim::AnimatorInstance* instance = animator->runtime.get();
+                if (instance){
+                    const int bone = instance->rig.findBone(entity);
+                    if (bone >= 0){
+                        found.instance = instance;
+                        found.root = at;
+                        found.bone = bone;
+                        return found;
+                    }
+                }
+            }
+            const Transform* transform = scene->findComponent<Transform>(at);
+            at = transform ? transform->parent : NULL_ENTITY;
+        }
+        return found;
+    }
+
+}
+
+std::vector<editor::BoneOverlaySegment> editor::boneOverlaySegments(Scene* scene, const ModelComponent& model){
+    std::vector<editor::BoneOverlaySegment> segments;
+    segments.reserve(model.bonesIdMapping.size());
+    // a bone's position once: each bone is usually some other's parent
+    std::unordered_map<Entity, Vector3> positions;
+    auto positionOf = [&](Entity entity, const Transform& transform) -> Vector3{
+        const auto known = positions.find(entity);
+        if (known != positions.end()) return known->second;
+        Vector3 position = transform.worldPosition;
+        const ExposedBone exposed = findExposedBone(scene, entity);
+        if (exposed.instance && (size_t)exposed.bone < exposed.instance->rigWorld().size()){
+            const Vector3 inRig = exposed.instance->rigWorld()[(size_t)exposed.bone].translation();
+            const Transform* root = scene->findComponent<Transform>(exposed.root);
+            position = root ? root->modelMatrix * inRig : inRig;
+        }
+        positions.emplace(entity, position);
+        return position;
+    };
+    for (const auto& [boneId, boneEntity] : model.bonesIdMapping){
+        const Transform* transform = scene->findComponent<Transform>(boneEntity);
+        if (!transform || !transform->visible) continue;
+        editor::BoneOverlaySegment segment;
+        segment.bone = positionOf(boneEntity, *transform);
+        if (transform->parent != NULL_ENTITY && scene->findComponent<BoneComponent>(transform->parent)){
+            if (const Transform* parent = scene->findComponent<Transform>(transform->parent)){
+                segment.parent = positionOf(transform->parent, *parent);
+                segment.hasParent = true;
+            }
+        }
+        segments.push_back(segment);
+    }
+    return segments;
+}
+
+bool editor::isUnwrittenAnimatorBone(Scene* scene, Entity entity){
+    const ExposedBone exposed = findExposedBone(scene, entity);
+    if (!exposed.instance || (size_t)exposed.bone >= exposed.instance->writeMask.size()) return false;
+    return !exposed.instance->writeMask[(size_t)exposed.bone];
+}
+
+anim::AnimatorRoot anim::animatorRoot(const Transform& transform){
+    AnimatorRoot root;
+    root.position = transform.worldPosition;
+    root.rotation = transform.worldRotation;
+    root.scale = transform.worldScale;
+    root.matrix = transform.modelMatrix;
+    return root;
+}
+
+bool anim::animatorRootOf(Scene* scene, Entity entity, AnimatorRoot& root){
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform) return false;
+    root = animatorRoot(*transform);
+    return true;
 }

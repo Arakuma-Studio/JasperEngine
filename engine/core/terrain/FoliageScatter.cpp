@@ -86,7 +86,8 @@ namespace {
         const int texelZ = std::clamp(static_cast<int>((localZ + half) / terrainSize * patch.mapHeight), 0, patch.mapHeight - 1);
         const size_t row = static_cast<size_t>(texelZ - patch.originY);
         const size_t column = static_cast<size_t>(texelX - patch.originX);
-        return patch.texels[(row * patch.width + column) * patch.channels * patch.bytesPerChannel] / 255.0f;
+        // the red channel, as heights are read: 8-bit maps keep their bytes / 255 (the golden hashes)
+        return heightTexelAt(patch.texels, row * static_cast<size_t>(patch.width) + column, patch.channels, patch.bytesPerChannel);
     }
 
     inline uint8_t foliageMixByte(uint8_t a, uint8_t b, float t) {

@@ -22,6 +22,8 @@
 #include "terrain/FoliageRules.h"
 #include "terrain/TerrainDeterministic.h"
 #include "terrain/TerrainMapStore.h"
+#include "texture/CookedTextures.h"
+#include "texture/TextureData.h"
 #include "util/Fnv.h"
 
 #include "zstd.h"
@@ -41,6 +43,16 @@ using namespace jasperengine::terrain;
 namespace {
 
     constexpr int FOLIAGE_NO_CELL = INT_MIN;
+
+    // how long a layer waits for the CPU-readable cook of a map found cooked GPU-only
+    constexpr int FOLIAGE_CPU_READ_WAIT_SECONDS = 30;
+
+    // a cook in a GPU format only (block-compressed): levels, no CPU pixels for placement to read
+    bool foliageMapIsGpuOnly(Texture& texture) {
+        if (texture.empty() || texture.isFramebuffer() || !texture.hasData()) return false;
+        TextureData& data = texture.getData();
+        return data.hasLevels() && !data.getData();
+    }
 
     // A big .jetrees is zstd: every player links zstd_decompress (TreeStore names no library)
     bool treeFileDecompress(const void* input, size_t inputBytes, void* output, size_t outputBytes) {
@@ -202,6 +214,11 @@ namespace {
         int viewCellX = FOLIAGE_NO_CELL, viewCellZ = FOLIAGE_NO_CELL;
         bool needScan = true;
         bool waitingForMap = false;
+        // a map found cooked GPU-only: asked to be cooked again CPU-readable, since when, and the
+        // error the layer stopped with (it places nothing until the map has CPU pixels)
+        std::string cpuReadMap;
+        std::chrono::steady_clock::time_point cpuReadSince;
+        std::string cpuReadError;
         std::vector<int> pending;   // slots with a job
         FoliageLayerParams params;
         float distance = 0.0f;
@@ -520,7 +537,7 @@ struct FoliageSystem::Impl {
     // -------------------------------------------------------------------------------- meshes
 
     bool loadPrototypeMesh(Entity entity, const std::string& path) {
-        return scene->getSystem<MeshSystem>()->loadFoliageMesh(entity, path);
+        return scene->getSystem<MeshSystem>()->loadPlacedModel(entity, path, true);
     }
 
     // R6: one mesh load per layer, on the Background path; true once it is drawn
@@ -565,6 +582,45 @@ struct FoliageSystem::Impl {
 
     // -------------------------------------------------------------------------------- details
 
+    // A GPU-only cook of a map (made before anything read it on the CPU) is never sampled: the
+    // editor cooks it again CPU-readable, and its CPU pixels arriving fill the layer. The wait is
+    // bounded: a cook that fails or cannot happen (a game) leaves the layer empty with one error.
+    bool hasCpuPixels(TerrainComponent& terrain, TerrainFoliageLayer& layer, DetailLayerState& layerState) {
+        const bool densityGpuOnly = foliageMapIsGpuOnly(layer.densityMap);
+        if (!densityGpuOnly && !foliageMapIsGpuOnly(terrain.heightMap)) {
+            if (!layerState.cpuReadMap.empty()) {
+                layerState.cpuReadMap.clear();
+                layerState.cpuReadError.clear();
+                layerState.needScan = true;
+            }
+            return true;
+        }
+        const Texture& map = densityGpuOnly ? layer.densityMap : terrain.heightMap;
+        // (a texture made in memory has an id and no path)
+        const std::string name = map.getPath().empty() ? map.getId() : map.getPath();
+        const auto now = std::chrono::steady_clock::now();
+        if (layerState.cpuReadMap != name) {
+            layerState.cpuReadMap = name;
+            layerState.cpuReadSince = now;
+            layerState.cpuReadError.clear();
+            CookedTextures::requireCpuReadable(name);
+        }
+        if (layerState.cpuReadError.empty()) {
+            std::string why = CookedTextures::getCpuReadFailure(name);
+            if (why.empty() && !CookedTextures::hasCpuReadHandler()) {
+                why = "its cook is GPU-only; turn on its Read/Write in its import settings and export again";
+            } else if (why.empty() && now - layerState.cpuReadSince > std::chrono::seconds(FOLIAGE_CPU_READ_WAIT_SECONDS)) {
+                why = "no CPU-readable cook of it arrived; reimport it (reimport_textures)";
+            }
+            if (!why.empty()) {
+                layerState.cpuReadError = (densityGpuOnly ? "its density map " : "its terrain's height map ") + name +
+                                          " has no pixels the CPU can read: " + why;
+                Log::error("A detail layer of %s draws nothing: %s", layer.meshPath.c_str(), layerState.cpuReadError.c_str());
+            }
+        }
+        return false;
+    }
+
     void ensureHoleCopy(RegionState& state) {
         if (state.holeCopyValid) return;
         state.holeCopyValid = true;
@@ -607,7 +663,7 @@ struct FoliageSystem::Impl {
         input.heightMap.width = heightRect.width;
         input.heightMap.height = heightRect.height;
         input.heightMap.channels = heightFormat.channels;
-        input.heightMap.bytesPerChannel = heightFormat.bitsPerChannel >= 16 ? 2 : 1;
+        input.heightMap.bytesPerChannel = bytesPerChannelOf(heightFormat.bitsPerChannel);
 
         const FoliagePatchRect densityRect = foliageDensityPatchRect(cellX, cellZ, size, densityFormat.bounds.w, densityFormat.bounds.h);
         job.densityTexels.resize(static_cast<size_t>(densityRect.width) * densityRect.height * bytesPerTexel(densityFormat));
@@ -620,7 +676,7 @@ struct FoliageSystem::Impl {
         input.densityMap.width = densityRect.width;
         input.densityMap.height = densityRect.height;
         input.densityMap.channels = densityFormat.channels;
-        input.densityMap.bytesPerChannel = densityFormat.bitsPerChannel >= 16 ? 2 : 1;
+        input.densityMap.bytesPerChannel = bytesPerChannelOf(densityFormat.bitsPerChannel);
 
         ensureHoleCopy(state);
         if (state.holeCopy) {
@@ -1540,6 +1596,10 @@ struct FoliageSystem::Impl {
                 layerState.waitingForMap = false;
                 layerState.needScan = true;
             }
+            if (!hasCpuPixels(terrain, layer, layerState)) {
+                if (layerState.cpuReadError.empty()) state.stats.pendingCells++;
+                continue;
+            }
 
             if (refillAll || paramsChanged) {
                 for (DetailSlot& slot : layerState.ring) {
@@ -2222,7 +2282,11 @@ bool FoliageSystem::hasPendingUpdates() const {
         if (region->stats.pendingCells > 0 || region->storeLoading) return true;
         for (const DetailLayerState& layer : region->layers) {
             if (layer.entity == NULL_ENTITY) continue;
+            // stopped on a map without CPU pixels: nothing more comes until its pixels do
+            if (!layer.cpuReadError.empty()) continue;
             if (layer.needScan || !layer.pending.empty() || layer.waitingForMap) return true;
+            // still waiting for a CPU-readable cook
+            if (!layer.cpuReadMap.empty()) return true;
             if (!layer.meshReady && !layer.loadFailed) return true;
         }
     }
@@ -2281,6 +2345,15 @@ uint64_t FoliageSystem::getInstanceCount(Entity terrainEntity, int layer) const 
         if (layer >= 0 && layer < static_cast<int>(region->layers.size())) total += region->layers[layer].resident;
     }
     return total;
+}
+
+std::string FoliageSystem::getLayerError(Entity terrainEntity, int layer) const {
+    for (const std::unique_ptr<RegionState>& region : impl->regions) {
+        if (region->owner != terrainEntity) continue;
+        if (layer >= 0 && layer < static_cast<int>(region->layers.size()) && !region->layers[layer].cpuReadError.empty())
+            return region->layers[layer].cpuReadError;
+    }
+    return std::string();
 }
 
 void FoliageSystem::addRegion(Entity owner, std::shared_ptr<FoliageRegion> region) {

@@ -1,0 +1,60 @@
+{ "frames": [
+   {
+    "filename": "group_blend 0.aseprite",
+    "frame": { "x": 0, "y": 0, "w": 32, "h": 16 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 32, "h": 16 },
+    "sourceSize": { "w": 32, "h": 16 },
+    "duration": 100
+   },
+   {
+    "filename": "group_blend 1.aseprite",
+    "frame": { "x": 32, "y": 0, "w": 32, "h": 16 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 32, "h": 16 },
+    "sourceSize": { "w": 32, "h": 16 },
+    "duration": 150
+   }
+ ],
+ "meta": {
+  "app": "http://www.aseprite.org/",
+  "version": "1.3.18.6-dev",
+  "image": "group_blend.png",
+  "format": "RGBA8888",
+  "size": { "w": 64, "h": 16 },
+  "scale": "1",
+  "frameTags": [
+  ],
+  "layers": [
+   { "name": "base", "opacity": 255, "blendMode": "normal" },
+   { "name": "g_normal" },
+   { "name": "a_normal", "group": "g_normal", "opacity": 255, "blendMode": "normal" },
+   { "name": "b_normal", "group": "g_normal", "opacity": 220, "blendMode": "multiply" },
+   { "name": "g_multiply" },
+   { "name": "a_multiply", "group": "g_multiply", "opacity": 255, "blendMode": "normal" },
+   { "name": "b_multiply", "group": "g_multiply", "opacity": 220, "blendMode": "multiply" },
+   { "name": "g_screen" },
+   { "name": "a_screen", "group": "g_screen", "opacity": 255, "blendMode": "normal" },
+   { "name": "b_screen", "group": "g_screen", "opacity": 220, "blendMode": "multiply" },
+   { "name": "g_overlay" },
+   { "name": "a_overlay", "group": "g_overlay", "opacity": 255, "blendMode": "normal" },
+   { "name": "b_overlay", "group": "g_overlay", "opacity": 220, "blendMode": "multiply" },
+   { "name": "g_difference" },
+   { "name": "a_difference", "group": "g_difference", "opacity": 255, "blendMode": "normal" },
+   { "name": "b_difference", "group": "g_difference", "opacity": 220, "blendMode": "multiply" },
+   { "name": "g_color" },
+   { "name": "a_color", "group": "g_color", "opacity": 255, "blendMode": "normal" },
+   { "name": "b_color", "group": "g_color", "opacity": 220, "blendMode": "multiply" },
+   { "name": "g_addition" },
+   { "name": "a_addition", "group": "g_addition", "opacity": 255, "blendMode": "normal" },
+   { "name": "b_addition", "group": "g_addition", "opacity": 220, "blendMode": "multiply" },
+   { "name": "g_darken" },
+   { "name": "a_darken", "group": "g_darken", "opacity": 255, "blendMode": "normal" },
+   { "name": "b_darken", "group": "g_darken", "opacity": 220, "blendMode": "multiply" }
+  ],
+  "slices": [
+  ]
+ }
+}

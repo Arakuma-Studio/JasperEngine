@@ -291,3 +291,34 @@ INSTANTIATE_TEST_SUITE_P(Fixtures, StreamFixtureScene, ::testing::ValuesIn(fixtu
         }
         return name;
     });
+
+// the Water Wakes' map (water-boats spec 6.1): written only away from its defaults, read back; a
+// scene without the keys takes the defaults
+TEST(StreamScene, WaterWakeSettings){
+    Scene plain;
+    const std::string plainYaml = dumpScene(&plain);
+    EXPECT_EQ(plainYaml.find("waterWake"), std::string::npos) << "defaults are not written";
+
+    Scene scene;
+    scene.setWaterWakeResolution(WaterWakeResolution::HIGH);
+    scene.setWaterWakeArea(32.0f);
+    scene.setWaterWakeFade(4.0f);
+    Scene read;
+    Stream::decodeScene(&read, YAML::Load(dumpScene(&scene)));
+    EXPECT_EQ(read.getWaterWakeResolution(), WaterWakeResolution::HIGH);
+    EXPECT_FLOAT_EQ(read.getWaterWakeArea(), 32.0f);
+    EXPECT_FLOAT_EQ(read.getWaterWakeFade(), 4.0f);
+    EXPECT_EQ(dumpScene(&read), dumpScene(&scene));
+
+    Stream::decodeScene(&read, YAML::Load(plainYaml));
+    const SceneSettings defaults;
+    EXPECT_EQ(read.getWaterWakeResolution(), defaults.waterWakeResolution);
+    EXPECT_FLOAT_EQ(read.getWaterWakeArea(), defaults.waterWakeArea);
+    EXPECT_FLOAT_EQ(read.getWaterWakeFade(), defaults.waterWakeFade);
+
+    // the setters keep values in range
+    read.setWaterWakeArea(2.0f);
+    EXPECT_FLOAT_EQ(read.getWaterWakeArea(), 8.0f);
+    read.setWaterWakeFade(1000.0f);
+    EXPECT_FLOAT_EQ(read.getWaterWakeFade(), 120.0f);
+}

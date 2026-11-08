@@ -764,4 +764,12 @@ a fourth blend map has no slot. Base Map macro multiplies with a neutral at 0.5 
 - **AC1 on Vulkan:** `legacyOptions` holds Vulkan to the cross-backend bound of the other suites (threshold 16, 3 %, mean 3), not to a difference measured on the pre-change commit: that needed a second full build of the base. The difference each run measures is printed.
 - **AC29, AC30:** `JoltShapeBuilder.*` is `HeightfieldHoles.*` in `engine/tests/core/physics/HeightfieldHolesTest.cpp`: it tests engine code and needs no editor, which keeps it in the fast suite. It asks the shape itself (`IsNoCollision`, `CastRay`).
 - **R17 rides on upstream's per-slot terrain cut.** The merge of origin/main brought Doriax's `RenderSystem::shadowTerrainCut` (S55 R5): each shadow slot selects its own terrain nodes, from the slot's eye for a Static Shadow Caster, else as the camera's cut filtered by the slot's frustum. T3's second per-camera cut and its buffers are gone; with Off-screen Shadows on, the non-static branch runs the CDLOD selection from the camera's eye and ranges with the slot's frustum in place of the camera's, which is R17's rule per slot. Its nodes stream through upstream's per-draw binding, so no buffer is allocated at all and `NoAllocationWhenOff` was dropped. Red control for AC24: the same test on the merged tree before this change (`terrain-evidence/T3/merge-gpu-2.log`: lit 139, shadowed 139); with it, 139 against 60.
+- **R15, R33: `u_fs_terrainLayers` is packed** to three vectors and a component a layer, so 12 layers with
+  every feature fit GLES3 / WebGL2's 224 fragment uniform vectors beside the heaviest lighting
+  (`TerrainUniformBudgetSlow.TerrainProgrammeVariantsFitGles3`: 241 before). Roughness, metallic, occlusion
+  strength and Stochastic Tiling's sharpness, contrast and rotation go in 12-bit pairs, clamped to 0-1 (the
+  Inspector's range, and the shader's for the stochastic ones); the slices, PBR and Flat Only in one exact
+  integer, so `flatOnly[3]` left the cliff block; the colour slice is the layer's index; a hex layer's
+  rotation shares the stochastic cell size's slot, as a layer with both takes Stochastic Tiling. The other
+  values stay exact. A data texture would have taken a seventeenth texture from the normal-mapped variants.
 - Implementers record further deviations here.

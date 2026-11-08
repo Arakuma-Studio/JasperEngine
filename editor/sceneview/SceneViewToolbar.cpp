@@ -13,6 +13,9 @@
 #include "Backend.h"
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
+#include "component/NavGridComponent.h"
+#include "component/NavMeshSurfaceComponent.h"
+#include "navigation/NavPathTester.h"
 #include "object/Camera.h"
 #include "render/SceneRender.h"
 #include "sceneview/SceneViewVisibility.h"
@@ -260,9 +263,20 @@ void SceneViewController::drawToolbar(SceneProject& sceneProject, float rightLim
     const std::string exactLabel = std::string(ICON_FA_CROSSHAIRS) + "##ExactPick" + sid;
     const std::string alignLabel = std::string(ICON_FA_ARROWS_DOWN_TO_LINE) + "##Align" + sid;
     const std::string cameraLabel = std::string(ICON_FA_CAMERA) + "##SceneCamera" + sid;
+    // the Path Tester (S75 R25), in scenes with a NavMesh Surface or a Nav Grid
+    const std::string pathTesterLabel = std::string(ICON_FA_ROUTE) + "##PathTester" + sid;
+    const bool hasNavigation = sceneProject.scene && (sceneProject.scene->getComponentArray<NavMeshSurfaceComponent>()->size() > 0 ||
+                                                      sceneProject.scene->getComponentArray<NavGridComponent>()->size() > 0);
+    NavPathTester& pathTester = NavPathTester::get();
+    const std::string pathTesterShortcut = sceneViewShortcut("navigation.pathTester");
+    const std::string pathTesterTooltip = std::string("Path Tester: Shift+click sets the start, click the end, drag a handle to move it (") +
+                                          (pathTesterShortcut.empty() ? "" : pathTesterShortcut + "; ") + "Esc ends it)";
     float middle = 0.0f;
     for (const std::string* label : {&layoutLabel, &projectionLabel, &layersLabel, &measureLabel, &rulersLabel, &exactLabel, &alignLabel}){
         middle += buttonWidth(label->c_str()) + spacing;
+    }
+    if (hasNavigation){
+        middle += buttonWidth(pathTesterLabel.c_str()) + spacing;
     }
     const float cameraWidth = buttonWidth(cameraLabel.c_str()) + spacing;
     ImGui::SameLine(0, Theme::dpi(8.0f));
@@ -373,6 +387,12 @@ void SceneViewController::drawToolbar(SceneProject& sceneProject, float rightLim
                 AppSettings::setSceneViewSettings(appSettings);
             }
         }
+        if (hasNavigation){
+            ImGui::SameLine();
+            if (toggleButton(pathTesterLabel.c_str(), pathTester.isActive(sceneProject.id), pathTesterTooltip.c_str())){
+                pathTester.toggle(sceneProject);
+            }
+        }
     }else{
         const std::string morePopup = "SceneViewMore" + sid;
         if (ImGui::Button((std::string(ICON_FA_ELLIPSIS) + "##More" + sid).c_str())) ImGui::OpenPopup(morePopup.c_str());
@@ -403,6 +423,10 @@ void SceneViewController::drawToolbar(SceneProject& sceneProject, float rightLim
             if (is3D && ImGui::MenuItem("Align to Surface", nullptr, appSettings.alignToSurface)){
                 appSettings.alignToSurface = !appSettings.alignToSurface;
                 AppSettings::setSceneViewSettings(appSettings);
+            }
+            if (hasNavigation && ImGui::MenuItem("Path Tester", pathTesterShortcut.empty() ? nullptr : pathTesterShortcut.c_str(),
+                                                 pathTester.isActive(sceneProject.id))){
+                pathTester.toggle(sceneProject);
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Clear Measures", nullptr, false, !state.measures.empty())) clearMeasures(sceneProject);

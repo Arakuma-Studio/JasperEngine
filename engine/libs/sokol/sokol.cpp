@@ -172,13 +172,14 @@ extern "C" bool jasperengine_sg_vk_update_image_alone(sg_image img_id, const sg_
 }
 
 // Vulkan: the descriptor buffer bytes the next sg_apply_bindings and sg_draw take (their
-// textures', samplers' and storage buffers' descriptor set, and the uniform blocks' one when
+// textures', samplers' and storage buffers' descriptor set when `bindings` (the draw applies
+// them: SokolSystem skips bindings equal to the applied ones), and the uniform blocks' one when
 // uniforms were applied since the last draw, each rounded up to the buffer's alignment as sokol
 // places them), the bytes the frame has taken and the buffer's size; false when they do not fit
 // in it, or in `limit` bytes when that is less (sokol would drop the draw). True with nothing
 // needed on the other backends and outside a valid pass or pipeline (sokol skips such a draw
 // before it gets there).
-extern "C" bool jasperengine_sg_vk_next_draw_descriptors(uint32_t limit, uint32_t* need, uint32_t* used, uint32_t* size){
+extern "C" bool jasperengine_sg_vk_next_draw_descriptors(uint32_t limit, bool bindings, uint32_t* need, uint32_t* used, uint32_t* size){
     *need = 0;
     *used = 0;
     *size = 0;
@@ -197,7 +198,7 @@ extern "C" bool jasperengine_sg_vk_next_draw_descriptors(uint32_t limit, uint32_
     const uint64_t room = limit < bind->size ? limit : bind->size;
     uint64_t offset = *used;
     bool fits = !bind->overflown;
-    const uint64_t sets[2] = {shd->vk.view_smp_dset_size, _sg.vk.uniforms.dirty ? shd->vk.ub_dset_size : 0};
+    const uint64_t sets[2] = {bindings ? shd->vk.view_smp_dset_size : 0, _sg.vk.uniforms.dirty ? shd->vk.ub_dset_size : 0};
     for (uint64_t set : sets){
         if (set == 0)
             continue;
@@ -209,6 +210,7 @@ extern "C" bool jasperengine_sg_vk_next_draw_descriptors(uint32_t limit, uint32_
     return fits;
 #else
     (void)limit;
+    (void)bindings;
     return true;
 #endif
 }

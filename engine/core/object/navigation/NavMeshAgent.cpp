@@ -99,7 +99,39 @@ bool NavMeshAgent::getCurrentOffMeshLink(Vector3& start, Vector3& end, Entity& l
     return system()->getCurrentOffMeshLink(entity, start, end, link);
 }
 
+void NavMeshAgent::setAreaCost(int area, float cost){ system()->setAgentAreaCost(entity, area, cost); }
+float NavMeshAgent::getAreaCost(int area) const{ return system()->getAgentAreaCost(entity, area); }
+void NavMeshAgent::resetAreaCost(int area){ system()->resetAgentAreaCost(entity, area); }
+
+nav::NavPath NavMeshAgent::calculatePath(const Vector3& target) const{ return system()->calculateAgentPath(entity, target); }
+bool NavMeshAgent::setPath(const nav::NavPath& path){ return system()->setAgentPath(entity, path); }
+nav::NavPath NavMeshAgent::getPath() const{ return system()->getAgentCorridorPath(entity); }
+Vector3 NavMeshAgent::getSteeringTarget() const{ return system()->getSteeringTarget(entity); }
+bool NavMeshAgent::isPathStale() const{ return system()->isAgentPathStale(entity); }
+void NavMeshAgent::setNextPosition(const Vector3& position){ system()->setAgentNextPosition(entity, position); }
+void NavMeshAgent::setVelocity(const Vector3& velocity){ system()->setAgentVelocity(entity, velocity); }
+bool NavMeshAgent::raycast(const Vector3& target, nav::NavHit& hit) const{ return system()->agentRaycast(entity, target, hit); }
+bool NavMeshAgent::findClosestEdge(nav::NavHit& hit) const{ return system()->agentFindClosestEdge(entity, hit); }
+bool NavMeshAgent::samplePathPosition(int areaMask, float maxDistance, nav::NavHit& hit) const{
+    return system()->samplePathPosition(entity, (uint16_t)(areaMask & nav::ALL_AREAS), maxDistance, hit);
+}
+bool NavMeshAgent::getNextOffMeshLink(Vector3& start, Vector3& end, Entity& link) const{
+    return system()->getNextOffMeshLink(entity, start, end, link);
+}
+
+void NavMeshAgent::setStuckDetection(bool detect){ component().stuckDetection = detect; }
+bool NavMeshAgent::isStuckDetection() const{ return component().stuckDetection; }
+void NavMeshAgent::setStuckSpeedRatio(float ratio){ component().stuckSpeedRatio = std::max(0.0f, ratio); }
+float NavMeshAgent::getStuckSpeedRatio() const{ return component().stuckSpeedRatio; }
+void NavMeshAgent::setStuckTimeout(float seconds){ component().stuckTimeout = std::max(0.0f, seconds); }
+float NavMeshAgent::getStuckTimeout() const{ return component().stuckTimeout; }
+void NavMeshAgent::setRepathWhenStuck(bool repath){ component().repathWhenStuck = repath; }
+bool NavMeshAgent::isRepathWhenStuck() const{ return component().repathWhenStuck; }
+float NavMeshAgent::getStuckTime() const{ return component().stuckTime; }
+nav::PathFailure NavMeshAgent::getLastPathFailure() const{ return component().lastPathFailure; }
+
 FunctionSubscribe<void(NavMeshAgent)>& NavMeshAgent::getOnDestinationReached(){ return component().onDestinationReached; }
-FunctionSubscribe<void(NavMeshAgent)>& NavMeshAgent::getOnPathFailed(){ return component().onPathFailed; }
+FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)>& NavMeshAgent::getOnPathFailed(){ return component().onPathFailed; }
 FunctionSubscribe<void(NavMeshAgent)>& NavMeshAgent::getOnOffMeshLinkStart(){ return component().onOffMeshLinkStart; }
 FunctionSubscribe<void(NavMeshAgent)>& NavMeshAgent::getOnOffMeshLinkEnd(){ return component().onOffMeshLinkEnd; }
+FunctionSubscribe<void(NavMeshAgent)>& NavMeshAgent::getOnStuck(){ return component().onStuck; }

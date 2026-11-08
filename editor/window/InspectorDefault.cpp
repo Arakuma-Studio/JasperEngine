@@ -16,6 +16,7 @@
 #include "Theme.h"
 #include "component/FogComponent.h"
 #include "component/ModelComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "command/CommandHandle.h"
 #include "command/type/ReflectedValueCmd.h"
 #include "reflect/Enums.h"
@@ -412,6 +413,8 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::CharacterController2DComponent: return &InspectorWindow::drawCharacterController2DComponent;
         case ComponentType::CharacterControllerComponent: return &InspectorWindow::drawCharacterControllerComponent;
         case ComponentType::WaterVolumeComponent: return &InspectorWindow::drawWaterVolumeComponent;
+        case ComponentType::WaterExcluderComponent: return &InspectorWindow::drawWaterExcluderComponent;
+        case ComponentType::WaterWakeComponent: return &InspectorWindow::drawWaterWakeComponent;
         case ComponentType::BuoyancyComponent: return &InspectorWindow::drawBuoyancyComponent;
         case ComponentType::Joint3DComponent: return &InspectorWindow::drawJoint3DComponent;
         case ComponentType::ActionComponent: return &InspectorWindow::drawActionComponent;
@@ -456,6 +459,8 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::TouchAreaComponent: return &InspectorWindow::drawTouchAreaComponent;
         case ComponentType::RagdollComponent: return &InspectorWindow::drawRagdollComponent;
         case ComponentType::CanvasGroupComponent: return &InspectorWindow::drawCanvasGroupComponent;
+        // pixel art (InspectorPixelArt.cpp)
+        case ComponentType::PixelPerfectCameraComponent: return &InspectorWindow::drawPixelPerfectCameraComponent;
         default: return nullptr;
     }
 }

@@ -13,6 +13,8 @@
 #include "component/Joint2DComponent.h"
 #include "component/Rigidbody2DComponent.h"
 #include "component/SpriteComponent.h"
+#include "sprite/SpriteSheet.h"
+#include "sprite/SpriteSheetPool.h"
 #include "component/RectTransformComponent.h"
 #include "component/Transform.h"
 #include "external/IconsFontAwesome6.h"
@@ -33,6 +35,7 @@
 #include "imgui.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -299,11 +302,13 @@ void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, Sce
         float height = defaultSize;
 
         if (SpriteComponent* spriteComp = sceneProject->scene->findComponent<SpriteComponent>(entity)){
+            // world units: the pixel size over its Pixels Per Unit (S41)
+            const Vector2 worldSize = spriteWorldSize(*spriteComp);
             if (spriteComp->width > 0){
-                width = (float)spriteComp->width;
+                width = worldSize.x;
             }
             if (spriteComp->height > 0){
-                height = (float)spriteComp->height;
+                height = worldSize.y;
             }
         }else if (RectTransformComponent* layoutComp = sceneProject->scene->findComponent<RectTransformComponent>(entity)){
             if (layoutComp->width > 0){
@@ -526,6 +531,32 @@ void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, Sce
         };
 
         beginTable(cpType, getLabelSize("Enable Hit Events"), "rigidbody2d_collider");
+        // a slice of the sheet sprite's (S44 R17): the collider is that slice's box on every frame
+        const SpriteComponent* sheetSprite = sceneProject->scene->findComponent<SpriteComponent>(entities[0]);
+        std::shared_ptr<const SpriteSheetData> sliceSheet = sheetSprite && !sheetSprite->sheet.empty() ? SpriteSheetPool::get(sheetSprite->sheet.path) : nullptr;
+        if ((sliceSheet && !sliceSheet->slices.empty()) || !shape.slice.empty()) {
+            propertyHeader("Slice");
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::BeginCombo("##collider_slice", shape.slice.empty() ? "(None)" : shape.slice.c_str())) {
+                std::vector<std::string> names = {""};
+                if (sliceSheet) {
+                    for (const SpriteSlice& slice : sliceSheet->slices) names.push_back(slice.name);
+                }
+                for (const std::string& name : names) {
+                    if (ImGui::Selectable(name.empty() ? "(None)" : name.c_str(), name == shape.slice) && name != shape.slice) {
+                        editCollider([&](Collider2D& value, Entity) {
+                            value.slice = name;
+                            if (!name.empty()) value.type = Collider2DType::POLYGON;
+                            return true;
+                        });
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Follows a slice of the Sprite's sheet: its box on every frame, no shape where the slice is hidden");
+            }
+        }
         propertyRow(RowPropertyType::Enum, cpType, shapeKey + ".type", "Type", sceneProject, entities, settingsShapeType);
 
         RowSettings settingsFloat;

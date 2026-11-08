@@ -22,6 +22,9 @@ namespace jasperengine{
         Ease function;
         // the ease when function is EaseType::CURVE: value = curve.evaluate(time)
         Curve curve = Curve::linear(0.0f, 0.0f, 1.0f, 1.0f);
+
+        // a script's ease function, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) { f(function); }
     };
 
 }

@@ -7,6 +7,7 @@
 #include "SokolPipelineCache.h"
 
 #include "Engine.h"
+#include "SokolSystem.h"
 #include "Log.h"
 #include "System.h"
 #include "io/AtomicFile.h"
@@ -385,6 +386,7 @@ namespace {
 
     void destroyShaderNow(State& s, sg_shader shader){
         forgetWarmKeys(s, shader);
+        SokolSystem::forgetAppliedState();
         if (sg_isvalid())
             sg_destroy_shader(shader);
     }
@@ -428,6 +430,7 @@ namespace {
             const bool destroy = job.destroyRequested;
             const sg_pipeline handle = job.handle;
             s.pipelines.erase(id);
+            SokolSystem::forgetAppliedState();
             if (destroy && sg_isvalid())
                 sg_destroy_pipeline(handle);
             return;
@@ -457,6 +460,7 @@ namespace {
         const bool destroy = job.destroyRequested;
         const sg_pipeline handle = job.handle;
         s.pipelines.erase(id);
+        SokolSystem::forgetAppliedState();
         if (destroy && sg_isvalid())
             sg_destroy_pipeline(handle);
     }
@@ -506,6 +510,7 @@ namespace {
                 if (job.destroyRequested || pit->second->destroyRequested){
                     const sg_pipeline handle = pit->second->handle;
                     s.pipelines.erase(pit);
+                    SokolSystem::forgetAppliedState();
                     if (sg_isvalid())
                         sg_destroy_pipeline(handle);
                     continue;
@@ -541,6 +546,7 @@ namespace {
         auto users = s.shaderUsers.find(job.desc.shader.id);
         if (users != s.shaderUsers.end() && --users->second <= 0)
             s.shaderUsers.erase(users);
+        SokolSystem::forgetAppliedState();
         if (job.destroyRequested && sg_isvalid())
             sg_destroy_pipeline(job.handle);
     }
@@ -805,6 +811,7 @@ void SokolAsyncCreate::shutdown(){
             ids.push_back(id);
     }
     for (uint32_t id : ids){
+        SokolSystem::forgetAppliedState();
         if (sg_isvalid())
             sg_destroy_pipeline(s.pipelines[id]->handle);
         s.pipelines.erase(id);
@@ -957,6 +964,7 @@ void SokolAsyncCreate::destroyShader(sg_shader shader){
     if (shader.id == SG_INVALID_ID)
         return;
     if (!s.setUp){
+        SokolSystem::forgetAppliedState();
         if (sg_isvalid())
             sg_destroy_shader(shader);
         return;
@@ -1055,6 +1063,7 @@ void SokolAsyncCreate::destroyPipeline(sg_pipeline pipeline){
                         s.waitingOnShader.erase(waiting);
                 }
                 s.pipelines.erase(it);
+                SokolSystem::forgetAppliedState();
                 if (sg_isvalid())
                     sg_destroy_pipeline(pipeline);
                 flushDeferredShaderDestroys(s);
@@ -1064,6 +1073,7 @@ void SokolAsyncCreate::destroyPipeline(sg_pipeline pipeline){
             return;
         }
     }
+    SokolSystem::forgetAppliedState();
     if (sg_isvalid())
         sg_destroy_pipeline(pipeline);
 }

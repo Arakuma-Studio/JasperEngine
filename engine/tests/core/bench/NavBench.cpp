@@ -19,16 +19,20 @@
 
 #include "Engine.h"
 #include "Scene.h"
+#include "component/NavMeshLinkComponent.h"
 #include "component/NavMeshObstacleComponent.h"
 #include "jobs/JobSystem.h"
 #include "navigation/GridPathfinder.h"
 #include "navigation/NavBakeCollector.h"
 #include "navigation/NavBakeScheduler.h"
+#include "navigation/NavDiagnostics.h"
 #include "navigation/NavGridMap.h"
 #include "navigation/NavMesh.h"
+#include "navigation/NavRandom.h"
 #include "object/navigation/NavMeshAgent.h"
 #include "subsystem/NavigationSystem.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <memory>
@@ -193,6 +197,163 @@ int main(int argc, char** argv) {
         results.add("query_raycast_p95_ms", bench::percentile(raycasts, 0.95), "ms");
     }
 
+    // ---- S76 queries (docs/specs/S76-navigation-gameplay-api.md R36): random points (the area
+    // table's first build, then cached), around a point, the closest wall within 5 m, 2 m steps
+    {
+        const Vector3 extents(1.0f, 2.0f, 1.0f);
+        nav::NavRandom random(11);
+        nav::NavHit hit;
+        // each mask has a table of its own: five first calls
+        std::vector<double> firsts;
+        for (int area = 3; area < 8; area++) {
+            const nav::NavFilter masked = nav::NavFilter::fromSettings((uint16_t)(nav::ALL_AREAS & ~(1u << area)));
+            const auto t = bench::Clock::now();
+            runtime.findRandomPoint(masked, random, -1, hit);
+            firsts.push_back(msSince(t));
+        }
+        results.add("query_random_first_ms", bench::percentile(firsts, 0.5), "ms");
+        const nav::NavFilter filter = nav::NavFilter::fromSettings(nav::ALL_AREAS);
+        runtime.findRandomPoint(filter, random, -1, hit);
+        std::vector<double> anywhere, around, walls, moves;
+        std::vector<Vector3> points;
+        for (int i = 0; i < 1000; i++) {
+            auto t = bench::Clock::now();
+            runtime.findRandomPoint(filter, random, -1, hit);
+            anywhere.push_back(msSince(t));
+            if (hit.hit)
+                points.push_back(hit.position);
+        }
+        std::mt19937 direction(5);
+        std::uniform_real_distribution<float> angle(0.0f, 6.2831853f);
+        for (const Vector3& p : points) {
+            auto t = bench::Clock::now();
+            runtime.findRandomPointAround(p, 10.0f, filter, extents, random, -1, hit);
+            around.push_back(msSince(t));
+            t = bench::Clock::now();
+            runtime.findClosestEdge(p, filter, extents, 5.0f);
+            walls.push_back(msSince(t));
+            const float a = angle(direction);
+            const Vector3 to = p + Vector3(std::cos(a) * 2.0f, 0.0f, std::sin(a) * 2.0f);
+            t = bench::Clock::now();
+            runtime.moveAlongSurface(p, to, filter, extents, hit);
+            moves.push_back(msSince(t));
+        }
+        results.add("query_random_p95_ms", bench::percentile(anywhere, 0.95), "ms");
+        results.add("query_random_circle_p95_ms", bench::percentile(around, 0.95), "ms");
+        results.add("query_wall_p95_ms", bench::percentile(walls, 0.95), "ms");
+        results.add("query_move_along_p95_ms", bench::percentile(moves, 0.95), "ms");
+    }
+
+    // ---- S75 diagnostics: island labelling, a disconnected reject, locate (islands current)
+    {
+        static_assert(sizeof(nav::NavIsland) <= 48, "R21: an island is at most 48 bytes");
+        nav::NavIslandLabels labels;
+        std::vector<double> times;
+        for (int i = 0; i < 20; i++) {
+            const auto t = bench::Clock::now();
+            nav::labelIslands(runtime.detourNavMesh(), labels);
+            times.push_back(msSince(t));
+        }
+        results.add("city_islands_ms", bench::percentile(times, 0.5), "ms");
+        results.add("city_islands", (double)labels.islands.size(), "islands");
+        const size_t islandBytes = labels.islands.capacity() * sizeof(nav::NavIsland);
+        results.add("islands_bytes_per_poly", (double)(labels.memoryBytes() - islandBytes) / std::max(1, runtime.getPolyCount()), "B");
+
+        const nav::NavFilter filter = nav::NavFilter::fromSettings(nav::ALL_AREAS);
+        const Vector3 extents(1.0f, 2.0f, 1.0f);
+        const std::vector<nav::NavIsland>& islands = runtime.getIslands();
+        int largest = 0;
+        for (const nav::NavIsland& island : islands) {
+            if (island.area > islands[(size_t)largest].area)
+                largest = island.id;
+        }
+        std::mt19937 random(11);
+        std::uniform_real_distribution<float> coordinate(-120.0f, 120.0f);
+        std::uniform_real_distribution<float> height(0.0f, 16.0f);
+        // a pair on two islands (the ground and a roof): rejected without a search
+        Vector3 ground, roof;
+        bool hasGround = false, hasRoof = false;
+        std::vector<double> locates;
+        for (int i = 0; i < 2000; i++) {
+            const Vector3 p(coordinate(random), height(random), coordinate(random));
+            const auto t = bench::Clock::now();
+            const nav::NavLocation location = runtime.locate(p, filter, extents, 5.0f);
+            locates.push_back(msSince(t));
+            if (!location.onMesh || location.island < 0)
+                continue;
+            if (!hasGround && location.island == largest) {
+                ground = location.position;
+                hasGround = true;
+            } else if (!hasRoof && location.island != largest) {
+                roof = location.position;
+                hasRoof = true;
+            }
+        }
+        results.add("query_locate_p95_ms", bench::percentile(locates, 0.95), "ms");
+        if (hasGround && hasRoof) {
+            const uint64_t searches = runtime.getSearchCount();
+            std::vector<double> rejects;
+            for (int b = 0; b < 20; b++) {
+                const auto t = bench::Clock::now();
+                for (int i = 0; i < 1000; i++)
+                    runtime.isReachable(ground, roof, filter, extents);
+                rejects.push_back(msSince(t));
+            }
+            results.add("query_reject_disconnected_us", bench::percentile(rejects, 0.5), "us");
+            results.add("query_reject_searches", (double)(runtime.getSearchCount() - searches), "searches");
+        } else {
+            std::fprintf(stderr, "no pair of islands found for the reject\n");
+        }
+    }
+
+    // ---- S75 findings: bench_nav_city with 100 agents and 20 links, stale counts cached
+    {
+        Scene findingsScene;
+        test::disableSubSystems(findingsScene);
+        findingsScene.getScheduler().setEnabled("NavigationSystem", true);
+        City findingsCity = city(findingsScene);
+        NavigationSystem* system = findingsScene.getSystem<NavigationSystem>().get();
+        system->setKeepBakeData(true);
+        system->setNavMeshData(findingsCity.surface, nav::NavMeshData(data), error);
+        std::mt19937 random(23);
+        std::uniform_real_distribution<float> coordinate(-110.0f, 110.0f);
+        int agents = 0;
+        while (agents < 100) {
+            nav::NavHit hit;
+            if (!system->samplePosition(Vector3(coordinate(random), 3.0f, coordinate(random)), 6.0f, hit))
+                continue;
+            agent(findingsScene, hit.position);
+            agents++;
+        }
+        for (int i = 0; i < 20; i++) {
+            nav::NavHit a, b;
+            const Vector3 p(coordinate(random), 3.0f, coordinate(random));
+            if (!system->samplePosition(p, 6.0f, a) || !system->samplePosition(p + Vector3(3.0f, 0.0f, 0.0f), 6.0f, b)) {
+                i--;
+                continue;
+            }
+            const Entity link = transformEntity(findingsScene, Vector3());
+            NavMeshLinkComponent component;
+            component.startPoint = a.position;
+            component.endPoint = b.position;
+            findingsScene.addComponent<NavMeshLinkComponent>(link, component);
+        }
+        resolveTransforms(findingsScene);
+        // the links' tiles only
+        system->bakeNow(findingsCity.surface, NavBakeMode::DIRTY);
+        nav::NavFindingOptions options;
+        options.dirtyTilesOf = [](Entity) { return 0; };
+        size_t count = system->getFindings(options).size();
+        std::vector<double> times;
+        for (int i = 0; i < 20; i++) {
+            const auto t = bench::Clock::now();
+            count = system->getFindings(options).size();
+            times.push_back(msSince(t));
+        }
+        results.add("findings_city_ms", bench::percentile(times, 0.5), "ms");
+        results.add("findings_city_count", (double)count, "findings");
+    }
+
     // ---- crowds: 100 and 500 agents (Good) walking across the city; the system's fixed tick
     for (int count : {100, 500}) {
         Scene crowdScene;
@@ -234,9 +395,64 @@ int main(int argc, char** argv) {
         results.add("crowd_" + std::to_string(count) + "_tick_ms", bench::percentile(ticks, 0.5), "ms");
         results.add("crowd_" + std::to_string(count) + "_tick_p95_ms", bench::percentile(ticks, 0.95), "ms");
     }
+
+    // ---- S76 agents (docs/specs/S76-navigation-gameplay-api.md R38): what the stuck watchdog adds
+    // to 100 walking agents. Two copies of the crowd (the same agents and destinations) step in
+    // turns, only the second watched; the median of the paired tick differences
+    {
+        nav::NavigationSettings settings = nav::NavigationSettings::defaults();
+        settings.crowdMaxAgents = 512;
+        nav::setSettings(settings);
+        auto makeCrowd = [&](bool watched) {
+            auto crowdScene = std::make_unique<Scene>();
+            test::disableSubSystems(*crowdScene);
+            crowdScene->getScheduler().setEnabled("NavigationSystem", true);
+            City crowdCity = city(*crowdScene);
+            NavigationSystem* system = crowdScene->getSystem<NavigationSystem>().get();
+            system->setNavMeshData(crowdCity.surface, nav::NavMeshData(data), error);
+            std::mt19937 random(9);
+            std::uniform_real_distribution<float> coordinate(-110.0f, 110.0f);
+            std::vector<Entity> agents;
+            while ((int)agents.size() < 100) {
+                nav::NavHit hit;
+                if (!system->samplePosition(Vector3(coordinate(random), 3.0f, coordinate(random)), 6.0f, hit))
+                    continue;
+                const Entity entity = agent(*crowdScene, hit.position);
+                NavMeshAgentComponent& component = crowdScene->getComponent<NavMeshAgentComponent>(entity);
+                component.obstacleAvoidance = nav::AvoidanceQuality::Good;
+                component.stuckDetection = watched;
+                agents.push_back(entity);
+            }
+            resolveTransforms(*crowdScene);
+            crowdScene->fixedUpdate(kTick);
+            for (Entity entity : agents) {
+                nav::NavHit hit;
+                while (!system->samplePosition(Vector3(coordinate(random), 3.0f, coordinate(random)), 6.0f, hit)) {
+                }
+                NavMeshAgent(crowdScene.get(), entity).setDestination(hit.position);
+            }
+            for (int warm = 0; warm < 60; warm++)
+                crowdScene->fixedUpdate(kTick);
+            return crowdScene;
+        };
+        std::unique_ptr<Scene> plain = makeCrowd(false);
+        std::unique_ptr<Scene> watched = makeCrowd(true);
+        std::vector<double> extra;
+        for (int tick = 0; tick < 600; tick++) {
+            auto t = bench::Clock::now();
+            plain->fixedUpdate(kTick);
+            const double without = msSince(t);
+            t = bench::Clock::now();
+            watched->fixedUpdate(kTick);
+            extra.push_back(msSince(t) - without);
+        }
+        results.add("stuck_100_extra_ms", std::max(0.0, bench::percentile(extra, 0.5)), "ms");
+    }
     nav::setSettings(nav::NavigationSettings::defaults());
 
-    // ---- carving: one obstacle moved on a carving surface; tile-cache work per tick, ticks to land
+    // ---- carving: one obstacle moved on a carving surface; tile-cache work per tick at Carve
+    // Tiles Per Tick Auto (desktop: 4) with the wall-clock ceiling off, ticks to land
+    // (S19 R28, S74 R14, R19)
     {
         Scene carveScene;
         test::disableSubSystems(carveScene);
@@ -247,6 +463,7 @@ int main(int argc, char** argv) {
         resolveTransforms(carveScene);
         NavigationSystem* system = carveScene.getSystem<NavigationSystem>().get();
         system->bakeNow(surface, NavBakeMode::FULL);
+        system->setCarveTimeCeiling(0.0);
         const Entity obstacle = transformEntity(carveScene, Vector3(-10.0f, 0.5f, 0.0f));
         NavMeshObstacleComponent component;
         component.carve = true;

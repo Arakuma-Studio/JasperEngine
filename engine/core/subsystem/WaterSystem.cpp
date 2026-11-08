@@ -14,6 +14,8 @@
 #include "texture/Material.h"
 #include "util/WaterWaves.h"
 #include "subsystem/SplineSystem.h"
+#include "subsystem/WaterInteractionSystem.h"
+#include "component/WaterExcluderComponent.h"
 
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/RigidbodyComponent.h"
@@ -131,6 +133,22 @@ const WaterSystem::Volume* WaterSystem::findVolume(float x, float y, float z, fl
 }
 
 WaterSample WaterSystem::sample(const Vector3& point) const{
+    WaterSample result = sampleSurface(point);
+    if (!result.hasWater())
+        return result;
+    // what keeps it dry, and the wakes on that water
+    if (std::shared_ptr<WaterInteractionSystem> interaction = scene->findSystem<WaterInteractionSystem>()){
+        result.excluder = interaction->findExcluder(point);
+        if (result.excluder != NULL_ENTITY)
+            result.inWater = false;
+        float crest = 0.0f;
+        if (interaction->sampleWake(point.x, point.z, result.volume, result.wakeFoam, crest))
+            result.wakeHeight = crest * WATER_WAKE_CREST_HEIGHT;
+    }
+    return result;
+}
+
+WaterSample WaterSystem::sampleSurface(const Vector3& point) const{
     WaterSample result;
     gatherVolumes();
     float height = 0.0f;
@@ -174,7 +192,7 @@ WaterSample WaterSystem::sample(const Vector3& point) const{
 }
 
 float WaterSystem::sampleHeight(float x, float z) const{
-    const WaterSample result = sample(Vector3(x, std::numeric_limits<float>::infinity(), z));
+    const WaterSample result = sampleSurface(Vector3(x, std::numeric_limits<float>::infinity(), z));
     return result.hasWater() ? result.surfaceHeight : std::numeric_limits<float>::quiet_NaN();
 }
 
@@ -190,6 +208,10 @@ void WaterSystem::applyBuoyancy(float dt){
 
     const float gravity = physics->getGravity3D().length();
     JPH::BodyInterface& bodies = physics->getBodyInterface3D();
+    // columns inside a Water Excluder its body does not own are dry (cargo in a boat)
+    std::shared_ptr<WaterInteractionSystem> interaction;
+    if (scene->getComponentArray<WaterExcluderComponent>()->size() > 0)
+        interaction = scene->findSystem<WaterInteractionSystem>();
     // between steps, on the thread that steps: one body lock each, no mutex (R37's budget)
     const JPH::BodyLockInterface& locks = physics->world3D.GetBodyLockInterfaceNoLock();
     for (size_t i = 0; i < buoyancies->size(); i++){
@@ -278,6 +300,8 @@ void WaterSystem::applyBuoyancy(float dt){
             Vector3 flow;
             const Volume* volume = findVolume((float)bottom.GetX(), (float)bottom.GetY(), (float)bottom.GetZ(), height, wave, flow);
             if (!volume)
+                continue;
+            if (interaction && interaction->findExcluder(Vector3((float)bottom.GetX(), (float)bottom.GetY(), (float)bottom.GetZ()), entity) != NULL_ENTITY)
                 continue;
             const float depth = std::clamp(height - (float)bottom.GetY(), 0.0f, columnHeight);
             if (depth <= 0.0f)

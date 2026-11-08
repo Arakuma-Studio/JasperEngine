@@ -6,6 +6,7 @@
 #include "VcsTestSupport.h"
 
 #include "vcs/GitProvider.h"
+#include "vcs/VcsEditorOps.h"
 
 #include <algorithm>
 #include <set>
@@ -419,4 +420,37 @@ TEST(GitProvider, HeadLabels) {
     branch.operationBranch = "feature";
     EXPECT_EQ(headLabel(branch), "feature | REBASE");
     EXPECT_STREQ(vcsOperationName(VcsOperation::CherryPick), "cherry_pick");
+}
+
+// A copy (status.renames=copies) is a new file whose diff base is its source: Revert refuses it
+// (Delete it instead) and so never touches the source; a rename is no new file
+TEST(GitProvider, CopiesAreNewFilesDiffedAgainstTheirSource) {
+    VcsSandbox box;
+    ASSERT_FALSE(box.git.empty());
+    const std::string text = "one\ntwo\nthree\nfour\nfive\n";
+    const fs::path repo = box.gitRepo("repo", {{"source.txt", text}, {"r.txt", "r\n"}});
+    box.gitOk(repo, {"config", "status.renames", "copies"});
+    writeFile(repo / "source.txt", text + "six\n");
+    writeFile(repo / "copy.txt", text);
+    box.gitOk(repo, {"add", "--", "source.txt", "copy.txt"});
+    box.gitOk(repo, {"mv", "r.txt", "r2.txt"});
+
+    GitProvider provider(box.config(repo, repo));
+    const VcsSnapshot snapshot = statusOf(provider);
+    const VcsChange* copy = entry(snapshot, "copy.txt");
+    ASSERT_NE(copy, nullptr);
+    EXPECT_EQ(copy->oldPath, "source.txt");
+    EXPECT_TRUE(copy->copied);
+    EXPECT_TRUE(copy->newFile());
+    EXPECT_FALSE(copy->renamed());
+    EXPECT_TRUE(copy->hasBaseline());
+    EXPECT_EQ(copy->diffSource(), "source.txt");
+    const std::string refusal = revertRefusal(snapshot, {"copy.txt"}, false);
+    EXPECT_NE(refusal.find("is new"), std::string::npos) << refusal;
+
+    const VcsChange* renamed = entry(snapshot, "r2.txt");
+    ASSERT_NE(renamed, nullptr);
+    EXPECT_TRUE(renamed->renamed());
+    EXPECT_FALSE(renamed->newFile());
+    EXPECT_EQ(revertRefusal(snapshot, {"r2.txt"}, false), "");
 }

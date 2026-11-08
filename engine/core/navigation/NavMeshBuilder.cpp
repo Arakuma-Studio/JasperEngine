@@ -85,6 +85,54 @@ namespace {
         }
     }
 
+    // whether the xz point lies in the polygon (xyz triplets; crossings of a ray along +x)
+    bool insidePolygonXZ(const std::vector<float>& polygon, float x, float z) {
+        bool inside = false;
+        const size_t count = polygon.size() / 3;
+        for (size_t i = 0, j = count - 1; i < count; j = i++) {
+            const float xi = polygon[i * 3], zi = polygon[i * 3 + 2];
+            const float xj = polygon[j * 3], zj = polygon[j * 3 + 2];
+            if ((zi > z) != (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi)
+                inside = !inside;
+        }
+        return inside;
+    }
+
+    // S76 D4: a runtime volume's boundary on the compact heightfield. A walkable span of the
+    // areas (Recast ids 1-16) whose cell centre lies in the prism keeps its area, moved to the
+    // runtime volume ids, so region building splits the polygons along the volume. Our own
+    // loop over the prism's cells, as rcMarkConvexPolyArea walks them.
+    void markRuntimeVolume(const std::vector<float>& polygon, float low, float high, rcCompactHeightfield& chf) {
+        float minX = polygon[0], maxX = polygon[0], minZ = polygon[2], maxZ = polygon[2];
+        for (size_t i = 3; i + 2 < polygon.size(); i += 3) {
+            minX = std::min(minX, polygon[i]);
+            maxX = std::max(maxX, polygon[i]);
+            minZ = std::min(minZ, polygon[i + 2]);
+            maxZ = std::max(maxZ, polygon[i + 2]);
+        }
+        const int x0 = std::max(0, (int)std::floor((minX - chf.bmin[0]) / chf.cs));
+        const int x1 = std::min(chf.width - 1, (int)std::floor((maxX - chf.bmin[0]) / chf.cs));
+        const int z0 = std::max(0, (int)std::floor((minZ - chf.bmin[2]) / chf.cs));
+        const int z1 = std::min(chf.height - 1, (int)std::floor((maxZ - chf.bmin[2]) / chf.cs));
+        const int y0 = (int)std::floor((low - chf.bmin[1]) / chf.ch);
+        const int y1 = (int)std::floor((high - chf.bmin[1]) / chf.ch);
+        for (int z = z0; z <= z1; z++) {
+            for (int x = x0; x <= x1; x++) {
+                const float px = chf.bmin[0] + ((float)x + 0.5f) * chf.cs;
+                const float pz = chf.bmin[2] + ((float)z + 0.5f) * chf.cs;
+                if (!insidePolygonXZ(polygon, px, pz))
+                    continue;
+                const rcCompactCell& cell = chf.cells[x + z * chf.width];
+                for (unsigned int i = cell.index, end = cell.index + cell.count; i < end; i++) {
+                    const unsigned char area = chf.areas[i];
+                    const int y = (int)chf.spans[i].y;
+                    if (area >= 1 && area <= AREA_COUNT && y >= y0 && y <= y1)
+                        chf.areas[i] = (unsigned char)(area + RUNTIME_VOLUME_AREA_OFFSET);
+                }
+            }
+        }
+    }
+
 }
 
 struct NavMeshBuilder::TileJob::State {
@@ -97,7 +145,10 @@ struct NavMeshBuilder::TileJob::State {
     std::chrono::steady_clock::time_point started;
     double busyMs = 0.0;
 
-    rcContext context{false};
+    // Recast's warnings and errors (spec S74 R4); errorsAtStep: its error count when the running
+    // step began, so a failure names Recast's reason only when that step logged one
+    detail::NavRecastLog context;
+    int errorsAtStep = 0;
     rcConfig cfg{};
     RecastScratch scratch;
 
@@ -109,10 +160,15 @@ struct NavMeshBuilder::TileJob::State {
     std::vector<NavLinkInput> links;
 
     const NavBakeInput& in() const { return *input; }
+    // S75: the probe's relaxed limits for this build (null: the input's)
+    std::unique_ptr<NavBuildConfig> configOverride;
+    const NavBuildConfig& config() const { return configOverride ? *configOverride : input->config; }
 
     void fail(const std::string& message) {
         result.ok = false;
         result.error = "tile (" + std::to_string(result.coord.x) + ", " + std::to_string(result.coord.y) + "): " + message;
+        if (context.getErrorCount() > errorsAtStep && !context.getLastError().empty())
+            result.error += ": " + context.getLastError();
         result.blobs.clear();
         stage = Stage::Done;
         scratch.release();
@@ -138,7 +194,7 @@ struct NavMeshBuilder::TileJob::State {
 
 void NavMeshBuilder::TileJob::State::gather() {
     const NavBakeInput& input = in();
-    const NavBuildConfig& config = input.config;
+    const NavBuildConfig& config = this->config();
     result.coord = input.tileCoord(index);
     result.hash = index < input.tileHashes.size() ? input.tileHashes[index] : 0;
 
@@ -335,7 +391,10 @@ void NavMeshBuilder::TileJob::State::markAreas() {
             const float high = std::min(volume.maxY, chf.bmax[1] + chf.ch);
             if (low > high)
                 continue;
-            rcMarkConvexPolyArea(&context, polygon.data(), (int)(polygon.size() / 3), low, high, volume.recastArea, chf);
+            if (volume.boundaryOnly)
+                markRuntimeVolume(polygon, low, high, chf);
+            else
+                rcMarkConvexPolyArea(&context, polygon.data(), (int)(polygon.size() / 3), low, high, volume.recastArea, chf);
         }
         return;
     }
@@ -346,7 +405,7 @@ void NavMeshBuilder::TileJob::State::markAreas() {
         return;
     }
     part = 0;
-    if (input.config.carving) {
+    if (config().carving) {
         buildLayers();
         return;
     }
@@ -388,9 +447,9 @@ void NavMeshBuilder::TileJob::State::contours() {
         finishEmpty();
         return;
     }
-    if (scratch.polyMesh->npolys > in().config.maxPolysPerTile) {
+    if (scratch.polyMesh->npolys > config().maxPolysPerTile) {
         fail(std::to_string(scratch.polyMesh->npolys) + " polygons, more than a tile may hold (" +
-             std::to_string(in().config.maxPolysPerTile) + "); use a smaller tile size or a larger cell size");
+             std::to_string(config().maxPolysPerTile) + "); use a smaller tile size or a larger cell size");
         return;
     }
     stage = Stage::Detail;
@@ -494,11 +553,24 @@ void NavMeshBuilder::TileJob::State::buildLayers() {
     rcFreeCompactHeightfield(scratch.compact);
     scratch.compact = nullptr;
 
+    // past the tile cache's MAX_LAYERS, the lowest layers are kept (in Recast's order)
+    std::vector<int> kept;
+    for (int i = 0; i < scratch.layers->nlayers; i++)
+        kept.push_back(i);
+    if (scratch.layers->nlayers > MAX_LAYERS) {
+        const rcHeightfieldLayer* all = scratch.layers->layers;
+        std::stable_sort(kept.begin(), kept.end(), [all](int a, int b) { return all[a].hmin < all[b].hmin; });
+        kept.resize(MAX_LAYERS);
+        std::sort(kept.begin(), kept.end());
+        result.warnings.push_back(std::to_string(scratch.layers->nlayers) + " walkable layers, the lowest " + std::to_string(MAX_LAYERS) +
+                                  " kept");
+    }
+
     detail::DeflateCompressor compressor;
-    const int count = std::min(scratch.layers->nlayers, MAX_LAYERS);
+    const int count = (int)kept.size();
     result.blobs.clear();
     for (int i = 0; i < count; i++) {
-        const rcHeightfieldLayer& layer = scratch.layers->layers[i];
+        const rcHeightfieldLayer& layer = scratch.layers->layers[kept[(size_t)i]];
         dtTileCacheLayerHeader header;
         std::memset(&header, 0, sizeof(header));
         header.magic = DT_TILECACHE_MAGIC;
@@ -540,10 +612,12 @@ void NavMeshBuilder::TileJob::State::buildLayers() {
     stage = Stage::Done;
 }
 
-NavMeshBuilder::TileJob::TileJob(std::shared_ptr<const NavBakeInput> input, uint32_t index)
+NavMeshBuilder::TileJob::TileJob(std::shared_ptr<const NavBakeInput> input, uint32_t index, const NavBuildConfig* configOverride)
     : state(std::make_unique<State>()) {
     state->input = std::move(input);
     state->index = index;
+    if (configOverride)
+        state->configOverride = std::make_unique<NavBuildConfig>(*configOverride);
 }
 
 NavMeshBuilder::TileJob::~TileJob() = default;
@@ -570,6 +644,7 @@ bool NavMeshBuilder::TileJob::step() {
     if (s.stage == Stage::Done)
         return true;
     const auto begin = std::chrono::steady_clock::now();
+    s.errorsAtStep = s.context.getErrorCount();
     switch (s.stage) {
         case Stage::Gather: s.gather(); break;
         case Stage::Rasterize: s.rasterize(); break;
@@ -582,8 +657,12 @@ bool NavMeshBuilder::TileJob::step() {
         case Stage::Done: break;
     }
     s.busyMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
-    if (s.stage == Stage::Done)
+    if (s.stage == Stage::Done) {
         s.result.milliseconds = s.busyMs;
+        // a failed tile reports its error; a built one what Recast warned about
+        if (s.result.ok)
+            s.context.takeMessages(s.result.warnings);
+    }
     return s.stage == Stage::Done;
 }
 
@@ -599,9 +678,9 @@ NavTileBuildResult& NavMeshBuilder::TileJob::result() {
     return state->result;
 }
 
-NavTileBuildResult NavMeshBuilder::buildTile(const NavBakeInput& input, uint32_t index) {
+NavTileBuildResult NavMeshBuilder::buildTile(const NavBakeInput& input, uint32_t index, const NavBuildConfig* configOverride) {
     // a non-owning pointer: the caller holds the input for the call
-    TileJob job(std::shared_ptr<const NavBakeInput>(std::shared_ptr<const NavBakeInput>(), &input), index);
+    TileJob job(std::shared_ptr<const NavBakeInput>(std::shared_ptr<const NavBakeInput>(), &input), index, configOverride);
     while (!job.step()) {
     }
     return std::move(job.result());
@@ -629,7 +708,7 @@ struct NavMeshBuilder::TileJob::State {
     NavTileBuildResult result;
 };
 
-NavMeshBuilder::TileJob::TileJob(std::shared_ptr<const NavBakeInput> input, uint32_t index)
+NavMeshBuilder::TileJob::TileJob(std::shared_ptr<const NavBakeInput> input, uint32_t index, const NavBuildConfig*)
     : state(std::make_unique<State>()) {
     state->index = index;
     if (input)
@@ -649,7 +728,7 @@ bool NavMeshBuilder::TileJob::done() const { return true; }
 uint32_t NavMeshBuilder::TileJob::index() const { return state->index; }
 NavTileBuildResult& NavMeshBuilder::TileJob::result() { return state->result; }
 
-NavTileBuildResult NavMeshBuilder::buildTile(const NavBakeInput& input, uint32_t index) {
+NavTileBuildResult NavMeshBuilder::buildTile(const NavBakeInput& input, uint32_t index, const NavBuildConfig*) {
     NavTileBuildResult result;
     result.coord = input.tileCoord(index);
     result.ok = false;

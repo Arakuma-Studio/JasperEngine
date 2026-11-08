@@ -125,10 +125,11 @@ layouts. Read jasper://docs/html-ui first.
 2D (points, y up; Box2D 64 points per meter), cameras (useTarget ignores rotation), animation
 (edit_animation), post-processing (apply_post_processing_preset), atmosphere (Fog type height,
 apply_atmosphere_preset), shadows (a light's softShadows, the scene's shadows_quality), reflections
-(SSR replaces probe reflections; check with ssr_debug_mode 7), profiling (get_frame_times), sound
-(analyze_audio), shipping (build_project), data safety (save after each step; allow_data_loss),
-meshes (inspect_models, check_render_budgets), device tiers (set_device_simulation, then play),
-terrain (edit_terrain), voxels (edit_voxels): jasper://docs/<area>.
+(SSR replaces probe reflections; check with ssr_debug_mode 7), profiling (get_frame_times),
+navigation (get_navigation_info), sound (analyze_audio), shipping (build_project), data safety (save
+after each step; allow_data_loss), meshes (inspect_models, check_render_budgets), device tiers
+(set_device_simulation, then play), sprites (set_sprite_frames sheet):
+jasper://docs/<area>.
 )JE";
 }
 
@@ -145,7 +146,7 @@ std::string toolGroupsSection(const McpRegistry& registry) {
     }
     // A client only offers the model the tools it listed (Claude Code's tool search sees no others),
     // so the line says the agent enables a group itself
-    return "\n## Tool groups\nTools outside core are not in your tool list until you call `tool_groups` "
+    return "\n## Tool groups\nTools outside core join your tool list once you call `tool_groups` "
            "{\"enable\": [\"<group>\"]} (no arguments: what each holds)" +
            (names.empty() ? std::string() : ": " + names) + ".\n";
 }

@@ -9,6 +9,7 @@
 #include "RenderSystem.h"
 #include "FoliageSystem.h"
 #include "component/Transform.h"
+#include "component/TerrainComponent.h"
 #include "RenderSystemShared.h"
 #include "render/SystemRender.h"
 #include "device/QualityResolver.h"
@@ -820,7 +821,9 @@ void RenderSystem::processLights(CameraShadows& view, int numLights, const Camer
     if (scene->isShadowCascadeBlend()){
         flags += (tier.transition == CascadeTransition::DITHER) ? 2.0f : ((tier.transition == CascadeTransition::BLEND) ? 4.0f : 0.0f);
     }
-    if (tier.softFilter == ShadowSoftFilter::PCSS && !shadowHardOnly && Engine::getGraphicBackend() != GraphicBackend::GLES3)
+    // (on every backend: a variant without the raw-depth view, one it would take past the bind
+    // limits, filters with the Vogel disk whatever the flag)
+    if (tier.softFilter == ShadowSoftFilter::PCSS && !shadowHardOnly)
         flags += 8.0f;
     float debugView = 0.0f;
 #ifdef JASPERENGINE_EDITOR

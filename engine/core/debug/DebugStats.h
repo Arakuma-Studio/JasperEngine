@@ -24,6 +24,7 @@ namespace jasperengine {
         float frameMsMax = 0.0f;
         float frameMs1PercentLow = 0.0f;    // the average of the slowest 1% of frames (at least one): "1% low"
         uint32_t drawCalls = 0;             // Engine::getFrameStats: the last drawn frame
+        uint32_t setPassCalls = 0;          // pipelines applied (Unity's SetPass calls)
         uint32_t instances = 0;
         uint64_t triangles = 0;
         uint64_t processMemoryBytes = 0;    // resident memory of the process; 0 = unknown on this platform

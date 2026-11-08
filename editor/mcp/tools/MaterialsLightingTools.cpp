@@ -35,19 +35,17 @@ namespace {
 // the distinct builtin:lit variants the open scenes' meshes draw with (a project past
 // MaterialPbr::VARIANT_WARNING compiles and ships many)
 size_t litVariantCount(Project* project){
-    std::set<std::pair<uint64_t, uint64_t>> variants;
+    std::vector<std::pair<uint64_t, uint64_t>> drawn;
     for (SceneProject* sceneProject : project->getScenesAndPrefabStages()){
         if (!sceneProject->scene) continue;
         auto meshes = sceneProject->scene->getComponentArray<MeshComponent>();
         for (size_t i = 0; i < meshes->size(); i++){
             const MeshComponent& mesh = meshes->getComponentFromIndex(i);
-            for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
-                if (mesh.submeshes[s].litDefineBits != 0)
-                    variants.insert({mesh.submeshes[s].litDefineBits, mesh.submeshes[s].shaderProperties});
-            }
+            for (unsigned int s = 0; s < mesh.numSubmeshes; s++)
+                drawn.push_back({mesh.submeshes[s].litDefineBits, mesh.submeshes[s].shaderProperties});
         }
     }
-    return variants.size();
+    return MaterialPbr::countLitVariants(drawn);
 }
 
 void getMaterialVariantTool(const CallPtr& call){
@@ -109,6 +107,8 @@ void getMaterialVariantTool(const CallPtr& call){
         {"mobileStripped", mobile.strippedMaps},
         {"litQuality", scene->getLitQuality() == LitQuality::HIGH ? "high" : "standard"},
         {"terrain", terrain},
+        // the loaded variant is the directional-only Lit ('Dlo': every Light of the scene directional)
+        {"directional_only", (sub.shaderProperties & ShaderPool::getDirectionalOnlyProperty()) != 0},
         {"projectLitVariants", litVariantCount(project)}
     };
     std::string text = McpRefs::entityPath(sceneProject, entity) + " submesh " + std::to_string(submesh) + ": " +

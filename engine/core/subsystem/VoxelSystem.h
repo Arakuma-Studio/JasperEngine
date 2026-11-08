@@ -150,6 +150,9 @@ namespace jasperengine{
 
         // ---- loading (R20): false until the volume's first LOD set is active
         bool isVolumeReady(Entity owner) const;
+        // nothing on its way: every change set on screen, no hole waiting for one (R44), no collider swap.
+        // What a reader of the screen after an edit waits for; ready alone says only that the first set is up
+        bool isVolumeSettled(Entity owner) const;
         // For RenderSystem::forEachLoad: every volume not yet on screen
         void forEachLoading(const std::function<void(Entity)>& visit) const;
 

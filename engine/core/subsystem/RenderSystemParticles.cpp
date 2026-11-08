@@ -79,10 +79,13 @@ namespace {
         return (manifest && manifest->present) ? manifest : nullptr;
     }
 
-    void applyCustomBlock(ObjectRender& render, CustomUniformBlock& block, float frameTime, const Vector2& resolution){
+    // the engine-written members, as every other custom block gets them: a fork's sceneTime
+    // holds while the scene is paused and follows its time scale
+    void applyCustomBlock(ObjectRender& render, CustomUniformBlock& block, float frameTime, float sceneTime, const Vector2& resolution){
         if (block.slot == -1)
             return;
         block.writeTime(frameTime);
+        block.writeSceneTime(sceneTime);
         block.writeResolution(resolution.x, resolution.y);
         render.applyUniformBlock(block.slot, (unsigned int)block.data.size(), block.data.data());
     }
@@ -260,6 +263,7 @@ uint64_t RenderSystem::particleRenderKey(const ParticleSystemState& state) const
     h = mix(h, (uint64_t)state.effect->program.trails.enabled);
     h = mix(h, (uint64_t)hasFog);
     h = mix(h, (uint64_t)postColorProperty(ShaderType::PARTICLES));
+    h = mix(h, (uint64_t)pixelSnapVariants);
     h = mix(h, (uint64_t)getScenePipelines());
     h = mix(h, (uint64_t)msaaPipelineSamples);
     return h;
@@ -353,8 +357,10 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
         }
         return shader;
     };
-    rd.properties = variants.quadProperties | postColor;
-    rd.meshProperties = variants.meshProperties | postColor;
+    // the centres on a Pixel Perfect Camera's grid (S41; trails stay continuous)
+    const uint64_t pixelSnap = pixelSnapVariants ? ShaderPool::getPixelSnapProperty(ShaderType::PARTICLES) : 0;
+    rd.properties = variants.quadProperties | postColor | pixelSnap;
+    rd.meshProperties = variants.meshProperties | postColor | pixelSnap;
     rd.trailProperties = variants.trailProperties | postColor;
     rd.customShaderId = customId;
     rd.shader = drawsQuads ? shaderFor(rd.properties, customId) : nullptr;
@@ -608,7 +614,10 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
     ParticleRenderData& rd = state.render;
     if (!rd.loaded || state.runtime.isPrewarming())
         return;
+#if JASPERENGINE_PROFILER
+    // (the editor's and the profiler's statistic: a release game reads no clock here)
     const auto start = std::chrono::steady_clock::now();
+#endif
     const ParticleEffectDocument& d = state.effect->document;
     const ParticleProgram& prog = state.effect->program;
     const RenderParams& rp = prog.render;
@@ -749,8 +758,8 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
                                                            : (hasShadowAtlas ? &shadowAtlasFramebuffer.getDepthTexture() : &emptyShadowDepth);
             render.addTexture(slots.shadowAtlasSlot, ShaderStageType::FRAGMENT, atlas);
         }
-        applyCustomBlock(render, slots.customVS, frameTime, passResolution);
-        applyCustomBlock(render, slots.customFS, frameTime, passResolution);
+        applyCustomBlock(render, slots.customVS, frameTime, frameSceneTime, passResolution);
+        applyCustomBlock(render, slots.customFS, frameTime, frameSceneTime, passResolution);
         applyFrameBlock(render, slots.bindings);
         applySceneInputs(render, slots.bindings);
     };
@@ -825,5 +834,7 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
     state.drawnViews += drawn;
     if (view.sort && drawn > 0)
         state.sortedViews++;
+#if JASPERENGINE_PROFILER
     state.renderMicros += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
+#endif
 }

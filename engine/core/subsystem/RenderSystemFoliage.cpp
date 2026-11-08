@@ -11,6 +11,7 @@
 #include "Engine.h"
 #include "Scene.h"
 #include "component/Transform.h"
+#include "component/TerrainComponent.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/FoliageSystem.h"
 

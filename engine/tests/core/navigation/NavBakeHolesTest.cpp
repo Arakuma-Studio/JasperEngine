@@ -5,6 +5,7 @@
 // function named terrain, which the namespace of terrain/TerrainHoles.h would make ambiguous.
 
 #include "NavFixtures.h"
+#include "component/TerrainComponent.h"
 #include "NavTestUtil.h"
 #include "navigation/NavBakeCollector.h"
 

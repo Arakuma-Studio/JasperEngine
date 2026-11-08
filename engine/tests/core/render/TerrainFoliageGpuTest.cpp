@@ -23,6 +23,8 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "terrain/FoliageTypes.h"
+#include "texture/CookedTextures.h"
+#include "texture/TextureData.h"
 
 #include "GpuEnvironment.h"
 #include "LogCapture.h"
@@ -259,4 +261,59 @@ TEST_F(TerrainFoliageGpu, ZeroScaleRemovesTheLayer){
     EXPECT_FALSE(drawnView().stream.empty()) << "the preview follows the game's Foliage Distance";
     meshes()->setFoliagePreviewEntity(NULL_ENTITY);
     EXPECT_NO_ENGINE_ERRORS();
+}
+
+namespace {
+
+    // a density map whose pixels are a BC1 cook: GPU levels, nothing the CPU can sample (a cook
+    // made before anything read the map on the CPU)
+    Texture gpuOnlyDensity(const std::string& id){
+        TextureData data;
+        data.setLevels(GpuTextureFormat::BC1, false, 1, 16, 16, {std::vector<uint8_t>(16 * 8, 0xff)});
+        return Texture(id, data);
+    }
+
+}
+
+// Red before the fix: the layer waited for CPU pixels with no end (a game cannot cook again)
+TEST_F(TerrainFoliageGpu, AGpuOnlyDensityMapStopsWithOneError){
+    JASPER_REQUIRE_GPU();
+    ASSERT_FALSE(CookedTextures::hasCpuReadHandler()) << "a game: nothing cooks it again";
+    LogCapture log;
+    TerrainComponent& component = scene.getComponent<TerrainComponent>(terrain.getEntity());
+    component.foliageLayers[0].densityMap = gpuOnlyDensity("gpu-only-density");
+    component.needUpdateFoliage = true;
+    settle();
+    const std::string error = meshes()->getFoliageError(terrain.getEntity(), 0);
+    EXPECT_NE(error.find("gpu-only-density"), std::string::npos) << error;
+    EXPECT_NE(error.find("Read/Write"), std::string::npos) << "the fix is named: " << error;
+    EXPECT_EQ(meshes()->getFoliageInstanceCount(terrain.getEntity(), 0), 0u);
+    GpuEnvironment::runFrames([](){ return false; }, 30);
+    EXPECT_FALSE(meshes()->hasPendingFoliageUpdates()) << "it stopped waiting";
+    EXPECT_EQ(log.count(D_LOG_ERROR, "draws nothing"), 1u) << log.describeErrors();
+}
+
+// The editor's word that the CPU-readable cook failed ends the wait the same way (the handler
+// answers at once, as a failed cook does: the 30 s bound is never what the test waits for)
+TEST_F(TerrainFoliageGpu, AFailedCpuReadableCookStopsTheWaitWithOneError){
+    JASPER_REQUIRE_GPU();
+    std::vector<std::string> asked;
+    CookedTextures::setCpuReadHandler([&asked](const std::string& path){
+        asked.push_back(path);
+        CookedTextures::setCpuReadFailure(path, "its CPU-readable cook failed (bad pixels)");
+    });
+    LogCapture log;
+    TerrainComponent& component = scene.getComponent<TerrainComponent>(terrain.getEntity());
+    component.foliageLayers[0].densityMap = gpuOnlyDensity("failing-density");
+    component.needUpdateFoliage = true;
+    settle();
+    EXPECT_EQ(asked, std::vector<std::string>{"failing-density"}) << "asked once to cook it again";
+    const std::string error = meshes()->getFoliageError(terrain.getEntity(), 0);
+    EXPECT_NE(error.find("bad pixels"), std::string::npos) << error;
+    EXPECT_NE(error.find("failing-density"), std::string::npos) << error;
+    GpuEnvironment::runFrames([](){ return false; }, 30);
+    EXPECT_FALSE(meshes()->hasPendingFoliageUpdates()) << "it stopped waiting";
+    EXPECT_EQ(asked.size(), 1u) << "and stopped asking";
+    EXPECT_EQ(log.count(D_LOG_ERROR, "draws nothing"), 1u) << log.describeErrors();
+    CookedTextures::setCpuReadHandler(nullptr);
 }

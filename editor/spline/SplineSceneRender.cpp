@@ -11,6 +11,7 @@
 #include "component/Transform.h"
 #include "subsystem/MeshSystem.h"
 #include "component/CameraComponent.h"
+#include "component/TerrainComponent.h"
 
 #include "Backend.h"
 #include "App.h"

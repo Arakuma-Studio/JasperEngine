@@ -88,11 +88,11 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | merged |
 | 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | merged |
 | 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | merged |
-| 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
+| 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | merged |
 | 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | merged |
 | 14 | `ssr-probes` | SSR under local probes and AO, early-out | merged |
 | 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | merged |
-| 16 | `water-boats` | exclusion volumes and wakes | specced |
+| 16 | `water-boats` | exclusion volumes and wakes | merged |
 | 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | merged |
 | 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | merged |
 | 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | merged |
@@ -254,3 +254,30 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   55 + reflection/determinism 11/11, HTML UI input, web compile, lints, test_grade.
 - Box tool: rsync now compares contents and never copies times (a stale object after a cancelled build crashed
   the editor in one landing check).
+- 2026-11-07 06:xx: **main's editor unit failures fixed** (`fix/main-units`, reported by the follow-ups program):
+  ShaderNeutralApi hashes updated after checking every new Lua member is draw-neutral (runtime-core, scripting,
+  AdMob's removal); a real engine bug fixed with a red control: particles with no seed drew from a counter shared by
+  the whole process, so runtime-core's new particle test shifted LegacyParticlePresets (now per scene). The
+  ReflectParity Action goldens already passed after ui-components. Every landing check now also runs the suites
+  that pin shared data (AGENT-BRIEF.md).
+- 2026-11-07 08:xx: **water-boats merged** (`c75c5c3e0`) after an independent review (blocker fixed: opaque water kept
+  auto-instancing in scenes without excluders or wakes; wakes pause with the editor and clear at Stop; foam survives
+  a look-around; off-screen wakes cost no upload; ShaderZeroCost sees 64-bit keys; excluders in a per-frame data
+  texture so the worst lit water variant fits GLES3's 224 fragment vectors). MESH bits 42 'Wex' / 43 'Wwk', shader
+  cache v52, cooked format 1.5 (wake settings). Landing check on box D: WERROR editor, docs and budget (core 98,994),
+  unit 77 + 107 incl. ShaderNeutralApi/ReflectParity/RuntimeFields/CookedScene/particles, MCP 48 + the determinism
+  file 5/5 after a test race fix (the project copy skips .je-tmp files). Open: the 256-texel wake bench (600 us vs
+  300 us on a shared box; 128 is within budget).
+- 2026-11-07 09:xx: **draw-perf merged**, the last of the 19, after an independent review (lights arriving mid-game
+  keep the general variant instead of being dropped; the Dlo twin covers Tiled; the tracker covers batched sprites
+  and S55 held draws; the engine-framebuffer pipeline skip withdrawn after it broke a batched sprite on Vulkan;
+  dropped tests added). Dlo is MESH bit 44, shader cache v53. Checks: WERROR editor, editor units 108 (shared-data
+  suites included), core GL 138, Vulkan 111 (incl. SpriteBatchGpu, InstancingGoldenGpu), MCP 49 + reflection /
+  determinism / docs 47 (3 fixture-only skipped) on main with the follow-ups' latest, web and Android compiles.
+
+## Result
+
+All 19 features are merged and pushed. Main stayed green at each landing for the suites the landing checks ran;
+breakages the checks did not cover (MCP goldens, editor units pinning shared data) were fixed on main as they were
+reported, and the brief now makes every landing check run those suites. Not built anywhere in this program:
+Windows, macOS and iOS (checked by reading; the follow-ups program runs Mac checks of main).

@@ -333,6 +333,8 @@ void NavBakeInput::finalize() {
             hasher.f32(volume.minY);
             hasher.f32(volume.maxY);
             hasher.u8(volume.recastArea);
+            if (volume.boundaryOnly)
+                hasher.boolean(true);
         }
 
         for (uint32_t l : tileLinks[index]) {
@@ -368,6 +370,8 @@ size_t NavBakeInput::memoryBytes() const {
     for (const std::vector<uint32_t>& bucket : tileTriangles)
         bytes += bucket.capacity() * sizeof(uint32_t);
     bytes += tileHashes.capacity() * sizeof(uint64_t);
+    bytes += (triangleSources.capacity() + terrainSources.capacity() + volumeSources.capacity()) * sizeof(Entity);
+    bytes += excludedEntities.capacity() * sizeof(std::pair<Entity, std::string>);
     return bytes;
 }
 

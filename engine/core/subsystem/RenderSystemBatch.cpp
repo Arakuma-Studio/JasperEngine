@@ -17,6 +17,7 @@
 #include "Log.h"
 #include "component/ImageComponent.h"
 #include "component/Transform.h"
+#include "component/TerrainComponent.h"
 #include "pool/ShaderPool.h"
 #include "profiler/Profile.h"
 #include "render/UIDrawColor.h"
@@ -61,7 +62,8 @@ namespace{
         29, // Lc4
         30, // L16
         31, // Pcl
-        33  // Shq
+        33, // Shq
+        44  // Dlo (the lights' types a constant of the variant: nothing per object)
     };
 
     uint64_t batchMeshPropertyMask(){

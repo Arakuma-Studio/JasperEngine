@@ -174,6 +174,8 @@ uniform u_fs_pbrParams {
 
 #ifdef USE_PUNCTUAL
     #define LIGHTS_FS
+    // (a variant past the backend's fragment uniforms, a painted terrain's layers taking 45 vectors,
+    // reads its lights from the light records: ShaderVariantCompiler::compile, LIGHTS_FS_RECORDS)
     #include "includes/lights.glsl"
 #endif
 

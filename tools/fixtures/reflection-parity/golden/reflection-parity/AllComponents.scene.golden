@@ -1,4 +1,4 @@
-formatVersion: 7
+formatVersion: 8
 guid: 32bfd2ae1a9d56a8dc83ae0fc8537f39
 id: 2026080800
 name: AllComponents
@@ -1336,6 +1336,8 @@ entities:
         flipY: true
         textureScaleFactor: 8.6
         pivotPreset: bottom_right
+        pixelsPerUnit: 6.6
+        pixelRotation: on_grid
   - type: Entity
     entity: 1044
     name: TextComponent
@@ -1407,6 +1409,7 @@ entities:
         automaticFlipY: false
         flipY: true
         textureScaleFactor: 4.2
+        pixelsPerUnit: 5.6
         reserveTiles: 10
   - type: Entity
     entity: 1047
@@ -1974,6 +1977,7 @@ entities:
         minRegionArea: 3.4
         plane: xy
         runtimeCarving: true
+        maxCarvingObstacles: 128
         navMeshData: ""
   - type: Entity
     entity: 1069
@@ -2008,6 +2012,10 @@ entities:
         updateRotation: false
         driver: none
         surface: 0
+        stuckDetection: false
+        stuckSpeedRatio: 0.1
+        stuckTimeout: 2
+        repathWhenStuck: true
   - type: Entity
     entity: 1070
     name: NavMeshObstacleComponent
@@ -2055,6 +2063,7 @@ entities:
         bidirectional: false
         autoUpdatePosition: true
         area: 4
+        activated: true
   - type: Entity
     entity: 1072
     name: NavMeshModifierComponent
@@ -2077,6 +2086,7 @@ entities:
         useVolume: true
         volumeCenter: [4.3, 6.1, 6.9]
         volumeSize: [0.6, 4.8, 8.9]
+        applyAtRuntime: false
   - type: Entity
     entity: 1073
     name: NavGridComponent
@@ -2655,3 +2665,63 @@ entities:
         unscaled: true
         revert: false
         revertSeconds: 0.75
+  - type: Entity
+    entity: 1093
+    name: WaterExcluderComponent
+    components:
+      transform:
+        position: [92, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      waterexcluder:
+        enabled: false
+        shape: sphere
+        center: [0.5, 1.5, 2.5]
+        size: [3.5, 4.5, 5.5]
+  - type: Entity
+    entity: 1094
+    name: WaterWakeComponent
+    components:
+      transform:
+        position: [93, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      waterwake:
+        enabled: false
+        foam: 1.5
+        waves: 0.5
+        width: 2.5
+        length: 6.5
+  - type: Entity
+    entity: 1095
+    name: PixelPerfectCameraComponent
+    components:
+      transform:
+        position: [94, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      pixelperfectcamera:
+        enabled: false
+        referenceWidth: 7
+        referenceHeight: 2
+        upscaleMode: stretch_fill
+        upscaleRenderTexture: false
+        pixelSnapping: false
+        rotationMode: on_grid
+        subpixelSmoothing: true
+        letterboxColor: [0.6333333, 0.43333334, 0.5555556, 1]

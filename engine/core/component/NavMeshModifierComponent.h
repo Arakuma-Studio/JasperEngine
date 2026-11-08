@@ -34,6 +34,9 @@ namespace jasperengine{
         bool useVolume = false;
         Vector3 volumeCenter = Vector3(0.0f, 1.0f, 0.0f);
         Vector3 volumeSize = Vector3(4.0f, 3.0f, 4.0f);
+        // ---- S76: with useVolume, the bake only splits the navmesh along the volume, and while
+        // the modifier is enabled the polygons inside take `area` without a rebake (a door, a bridge)
+        bool applyAtRuntime = false;
     };
 
 }

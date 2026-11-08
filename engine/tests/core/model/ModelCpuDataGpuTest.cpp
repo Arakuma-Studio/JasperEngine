@@ -78,6 +78,7 @@ namespace {
         Camera camera{&scene};
         Light light{&scene};
         bool keepCpuData = false;
+        std::shared_ptr<tinygltf::Model> held;
 
         void SetUp() override{
             scene.setBackgroundColor(0.05f, 0.05f, 0.25f, 1.0f);
@@ -101,11 +102,29 @@ namespace {
         }
 
         void TearDown() override{
+            held.reset();
             CookedModels::setProvider(nullptr);
             Engine::setFixedDeltatime(0.0);
             Engine::removeScene(&scene);
             ModelPool::invalidate(MeshSystem::getModelFilenameKey(kAsset));
             ModelCpuData::clear();
+        }
+
+        // loads the model and holds its parse: a reference update() does not know of keeps the bytes
+        // (ModelCpuData.cpp: "anything else holding the parse"), so the engine's own release, at every
+        // 30th frame while one is pending, never comes before the test's, however many frames the
+        // load takes
+        bool loadHeld(Model& model){
+            if (!model.loadModel(kAsset))
+                return false;
+            held = model.getComponent<ModelComponent>().gltfModel;
+            return held != nullptr;
+        }
+
+        // the test's release: the parse no longer held, update() frees it now
+        void release(){
+            held.reset();
+            ModelCpuData::update({&scene}, true);
         }
 
         bool settle(){
@@ -158,7 +177,7 @@ TEST_F(ModelCpuDataGpu, ReleasesTheFilesBytesAfterUploadAndKeepsDrawing){
     JASPER_REQUIRE_GPU();
     LogCapture log;
     Model model(&scene);
-    ASSERT_TRUE(model.loadModel(kAsset));
+    ASSERT_TRUE(loadHeld(model));
     ASSERT_TRUE(settle());
     const std::vector<uint8_t> before = frame();
     // (raw: a reference of the test's own would count as something still holding the parse)
@@ -168,7 +187,7 @@ TEST_F(ModelCpuDataGpu, ReleasesTheFilesBytesAfterUploadAndKeepsDrawing){
     EXPECT_GT(held, 12000u);
     EXPECT_EQ(ModelCpuData::getPendingCount(), 1u);
 
-    ModelCpuData::update({&scene}, true);
+    release();
     EXPECT_EQ(ModelCpuData::getPendingCount(), 0u) << ModelCpuData::describeHeld();
     EXPECT_EQ(fileBytes(*parse), 0u) << "the parse's vectors hold no memory";
     EXPECT_GE(ModelCpuData::getReleasedBytes(), held / 2);
@@ -196,7 +215,7 @@ TEST_F(ModelCpuDataGpu, AReaderGetsTheBytesBackAndTheyStay){
     JASPER_REQUIRE_GPU();
     LogCapture log;
     Model model(&scene);
-    ASSERT_TRUE(model.loadModel(kAsset));
+    ASSERT_TRUE(loadHeld(model));
     ASSERT_TRUE(settle());
     // (raw: a reference of the test's own would count as something still holding the parse)
     const tinygltf::Model* parse = model.getComponent<ModelComponent>().gltfModel.get();
@@ -204,7 +223,7 @@ TEST_F(ModelCpuDataGpu, AReaderGetsTheBytesBackAndTheyStay){
     ASSERT_FALSE(meshes.empty());
     const size_t indices = triangleIndices(*meshes[0]);
     EXPECT_GT(indices, 0u);
-    ModelCpuData::update({&scene}, true);
+    release();
     ASSERT_EQ(fileBytes(*parse), 0u);
 
     // Mesh Collider, navigation bake: MeshTriangles
@@ -228,12 +247,12 @@ TEST_F(ModelCpuDataGpu, ALaterLoadOfTheFileDraws){
     JASPER_REQUIRE_GPU();
     LogCapture log;
     Model model(&scene);
-    ASSERT_TRUE(model.loadModel(kAsset));
+    ASSERT_TRUE(loadHeld(model));
     ASSERT_TRUE(settle());
     const std::vector<uint8_t> before = frame();
     // (raw: a reference of the test's own would count as something still holding the parse)
     const tinygltf::Model* parse = model.getComponent<ModelComponent>().gltfModel.get();
-    ModelCpuData::update({&scene}, true);
+    release();
     ASSERT_EQ(fileBytes(*parse), 0u);
 
     Model second(&scene);
@@ -251,12 +270,12 @@ TEST_F(ModelCpuDataGpu, ALostGpuBufferReadsTheFileAgain){
     JASPER_REQUIRE_GPU();
     LogCapture log;
     Model model(&scene);
-    ASSERT_TRUE(model.loadModel(kAsset));
+    ASSERT_TRUE(loadHeld(model));
     ASSERT_TRUE(settle());
     const std::vector<uint8_t> before = frame();
     // (raw: a reference of the test's own would count as something still holding the parse)
     const tinygltf::Model* parse = model.getComponent<ModelComponent>().gltfModel.get();
-    ModelCpuData::update({&scene}, true);
+    release();
     ASSERT_EQ(fileBytes(*parse), 0u);
     for (MeshComponent* mesh : meshesOf(parse)){
         for (unsigned int b = 0; b < mesh->numExternalBuffers; b++)
@@ -304,11 +323,11 @@ TEST_F(ModelCpuDataGpu, KeepCpuDataKeepsTheBytesForEachReader){
 TEST_F(ModelCpuDataGpu, AParticleMeshShapeReadsTheFileAfterARelease){
     JASPER_REQUIRE_GPU();
     Model model(&scene);
-    ASSERT_TRUE(model.loadModel(kAsset));
+    ASSERT_TRUE(loadHeld(model));
     ASSERT_TRUE(settle());
     // (raw: a reference of the test's own would count as something still holding the parse)
     const tinygltf::Model* parse = model.getComponent<ModelComponent>().gltfModel.get();
-    ModelCpuData::update({&scene}, true);
+    release();
     ASSERT_EQ(fileBytes(*parse), 0u);
     particles::ParticleMeshData shape;
     std::string error;
