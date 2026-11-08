@@ -703,3 +703,8 @@ Recorded by the implementation (branch `feature/s51-pixel-fonts`).
     ascender and its line height the native size + 1 (as a grid's) unless the font has a line gap.
 13. **World text and Pixels Per Unit (R8).** A Text drawn by a non-UI camera with a project Pixels
     Per Unit above 1 takes k / PPU units per font pixel: its `fontSize` stays in pixels.
+14. **MCP text and the core budget (R26-R28, R30).** The core listing had no room for R26's two
+    parameters: `view_asset` lists `text` and `scale` without descriptions (the page
+    `docs/mcp/guide/pixel-fonts.md` describes them), its `max_size` lost its description and bounds
+    (the handler still clamps it to 16..2048), and `get_asset_info`, `write_file` and `sync_files`
+    lost a few words (`get_asset_info` says "font metrics"; `pixel_report` is in its result).
