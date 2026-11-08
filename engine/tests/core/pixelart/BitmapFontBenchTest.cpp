@@ -46,8 +46,9 @@ namespace {
     void bfbBudget(const char* name, double ms, double budget){
         const double slack = bfbSlack();
         std::printf("[bench] %s: %.4f ms (budget %.3f ms)\n", name, ms, budget * (slack > 0.0 ? slack : 1.0));
-        if (slack > 0.0)
+        if (slack > 0.0) {
             EXPECT_LE(ms, budget * slack) << name;
+        }
     }
 
     std::string bfbFixture(const std::string& name){

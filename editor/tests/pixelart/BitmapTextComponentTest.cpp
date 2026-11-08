@@ -164,10 +164,11 @@ TEST(BitmapTextCache, ColourChangeNoRebuild){
     const std::vector<Vector4> colors = t.colors();
     ASSERT_EQ(colors.size(), positions.size());
     for (size_t v = 0; v < colors.size(); v++){
-        if (v < (size_t)backQuads * 4)
+        if (v < (size_t)backQuads * 4) {
             EXPECT_EQ(colors[v], Vector4(1.0f, 1.0f, 1.0f, 1.0f)) << v;
-        else
+        } else {
             EXPECT_EQ(colors[v], Vector4(0.2f, 0.4f, 0.6f, 1.0f)) << v;
+        }
     }
     // the draw takes only the component's alpha (D5)
     EXPECT_TRUE(t.uiComponent().vertexColorAbsolute);
