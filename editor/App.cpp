@@ -5693,13 +5693,13 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      post-processing colour with an identity LUT)
     // v55: PCSS on GLES3/WebGL2 and painted terrains (doriax-catchup pcss-gles): the raw-depth
     //      shadow view in every 'Shq' variant, a GLES3 one compiled again with SHADOW_RAW_VIEW_OFF
-    //      where it would be the 17th fragment texture; water-uniforms: library:water and the
-    //      painted Terrain ('Tpb') read their lights' records from u_lightRecords
-    //      (includes/lights.glsl LIGHTS_FS_RECORDS) and, with both requires, the planar
-    //      reflection's values come from u_fs_environment
-    // v56: lit-uniforms: a lit variant over GLES3's 224 fragment vectors or 8 blocks reads its
-    //      lights, capsules and 2D lights from u_lightRecords (LIGHTS_FS_RECORDS, the records form's
-    //      tail in u_fs_objectLights; ShaderVariantCompiler::compile)
+    //      where it would be the 17th fragment texture;
+    //      and water-uniforms: library:water and the painted Terrain ('Tpb') read their lights'
+    //      records from u_lightRecords (includes/lights.glsl LIGHTS_FS_RECORDS) and, with both
+    //      requires, the planar reflection's values come from u_fs_environment
+    // v56: lit-uniforms: a lit variant over its backend's fragment uniforms (GLES3 224 vectors,
+    //      desktop GL 256, 8 blocks) reads its lights, capsules and 2D lights from u_lightRecords
+    //      (LIGHTS_FS_RECORDS, the records form's tail in u_fs_objectLights; ShaderVariantCompiler::compile)
     return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v56";
 }
 
