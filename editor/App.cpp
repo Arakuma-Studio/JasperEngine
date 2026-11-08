@@ -5689,7 +5689,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v53: Voxel Volumes (T6 R83): HAS_VOXEL and its tiers in mesh.vert, mesh.frag and the G-buffer
     //      (GBUFFER bit 'Vox'), includes/voxel_vs.glsl and voxel_fs.glsl.
     // v54: a voxel colour layer (not PBR) stays raw, as the terrain's do (voxel_fs.glsl's voxelLayerColor).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v54";
+    // v55: u_fs_voxelLayers carries the eye; v_voxelPositionEye became v_voxelPosition.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v55";
 }
 
 void editor::App::pushTabNotificationStyle(){

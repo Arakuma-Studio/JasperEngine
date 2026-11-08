@@ -2423,7 +2423,7 @@ namespace jasperengine{
 		VoxelDetailArray* getVoxelDetailArray(Entity owner, TextureRender*& bound);
 		void destroyVoxelDetailArrays();
 		bool loadVoxelTextures(Entity owner, ObjectRender& render, ShaderData& shaderData);
-		void applyVoxelLayersUniform(ObjectRender& render, int slot, Entity owner);
+		void applyVoxelLayersUniform(ObjectRender& render, int slot, Entity owner, const Vector3& eye);
 #endif
 		void updateAllTerrainRenderTextures();
 		void updateInstanceBuffers();
@@ -3009,7 +3009,7 @@ namespace jasperengine{
 		void renderGBufferPass(CameraComponent& camera);
 		// the SSR G-buffer: a mesh's draw record, when it draws (visible, loaded, a submesh to draw)
 		bool collectGBufferDraw(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, GBufferDraw& record);
-		void drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams);
+		void drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, const Vector3& eye);
 		// destination == nullptr renders the composite to the swapchain (backbuffer)
 		void renderSSR(CameraComponent& camera, FramebufferRender* destination);
 

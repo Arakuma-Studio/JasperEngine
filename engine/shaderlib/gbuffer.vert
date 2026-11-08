@@ -183,9 +183,6 @@ void main() {
     #endif
 
     gl_Position = mvpMatrix * pos;
-    #ifdef HAS_VOXEL
-        v_voxelPositionEye.w = gl_Position.w;
-    #endif
 
     v_projZW = gl_Position.zw;
     // No Y flip here: the G-buffer keeps the target's native orientation, and SSR

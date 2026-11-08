@@ -10466,7 +10466,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 #if JASPERENGINE_VOXEL
             if (mesh.voxelTier != 0){
-                applyVoxelLayersUniform(render, mesh.submeshes[i].slotFSVoxelLayers, mesh.voxelOwner);
+                applyVoxelLayersUniform(render, mesh.submeshes[i].slotFSVoxelLayers, mesh.voxelOwner, camTransform.worldPosition);
             }
 #endif
 
@@ -11597,7 +11597,7 @@ bool RenderSystem::collectGBufferDraw(Entity entity, MeshComponent& mesh, Transf
     return true;
 }
 
-void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams){
+void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, const Vector3& eye){
     Entity entity = record.entity;
     MeshComponent& mesh = *record.mesh;
     Transform& transform = *record.transform;
@@ -11707,7 +11707,7 @@ void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, c
 
 #if JASPERENGINE_VOXEL
         if (mesh.voxelTier != 0){
-            applyVoxelLayersUniform(gbufferRender, mesh.submeshes[i].slotFSGBufferVoxelLayers, mesh.voxelOwner);
+            applyVoxelLayersUniform(gbufferRender, mesh.submeshes[i].slotFSGBufferVoxelLayers, mesh.voxelOwner, eye);
         }
 #endif
         if (terrain){
@@ -11738,6 +11738,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
     // view-space normal (octahedral) + roughness + metallic at the same texel layout.
     Matrix4 renderVP = camera.viewProjectionMatrix;
     Matrix4 viewMatrix = camera.viewMatrix;
+    const Vector3 eye = viewMatrix.inverse() * Vector3(0.0f, 0.0f, 0.0f);
     SSRView& ssr = rv().ssr;
 
     // 1. the meshes that draw, and the screen the probes they are under cover
@@ -11824,7 +11825,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
     gbufferPassRender.startRenderPass(&rv().gbufferFramebuffer.getRender());
     for (GBufferDraw& record : ssr.draws){
         vs_gbuffer_t params = {objectModel(*record.transform), renderVP, record.normalMatrix};
-        drawMeshGBuffer(record, camera.farClip, camera.frustumPlanes, params);
+        drawMeshGBuffer(record, camera.farClip, camera.frustumPlanes, params, eye);
     }
     gbufferPassRender.endRenderPass();
 }

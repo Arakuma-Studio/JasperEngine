@@ -4,7 +4,7 @@
 in vec2 a_voxelSlots;
 in vec4 a_voxelWeights;
 
-out vec4 v_voxelPositionEye;    // the volume's frame; w the eye distance
+out vec3 v_voxelPosition;       // the volume's frame
 out vec3 v_voxelNormal;         // the volume's frame
 out vec4 v_voxelWeights;
 flat out vec4 v_voxelSlots;
@@ -13,7 +13,7 @@ flat out vec3 v_voxelAxisX;
 flat out vec3 v_voxelAxisY;
 
 void setVoxelVaryings(vec3 position, vec3 normal, mat4 normalMatrix){
-    v_voxelPositionEye = vec4(position, 0.0);
+    v_voxelPosition = position;
     v_voxelNormal = normal;
     v_voxelWeights = a_voxelWeights;
     int code = int(a_voxelSlots.x * 65535.0 + 0.5);

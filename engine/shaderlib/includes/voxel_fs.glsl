@@ -15,9 +15,10 @@ uniform u_fs_voxelLayers {
     vec4 uvTransform[16];   // xy per metre, zw offset, so an attached volume tiles exactly as its terrain
     vec4 surface[16];       // roughness, metallic, normal strength, occlusion strength
     vec4 slices[16];        // colour, normal and surface slice (-1 = none)
+    vec4 eye;               // xyz the camera in the volume's frame, as the terrain measures its eye distance
 } voxelLayers;
 
-in vec4 v_voxelPositionEye;
+in vec3 v_voxelPosition;
 in vec3 v_voxelNormal;
 in vec4 v_voxelWeights;
 flat in vec4 v_voxelSlots;
@@ -92,7 +93,7 @@ vec4 voxelLayerColor(vec4 texel, vec4 factor){
 }
 
 VoxelSurface getVoxelSurface(vec4 baseColor, vec3 baseNormal, float baseRoughness, float baseMetallic){
-    vec3 p = v_voxelPositionEye.xyz;
+    vec3 p = v_voxelPosition;
     vec3 pdx = dFdx(p);
     vec3 pdy = dFdy(p);
     vec3 localNormal = normalize(v_voxelNormal);
@@ -151,7 +152,7 @@ VoxelSurface getVoxelSurface(vec4 baseColor, vec3 baseNormal, float baseRoughnes
     #endif
 
     #ifndef VOXEL_TIER_LOW
-        float eyeTiles = v_voxelPositionEye.w * voxelLayers.uvTransform[int(v_voxelSlots.x)].x;
+        float eyeTiles = distance(voxelLayers.eye.xyz, p) * voxelLayers.uvTransform[int(v_voxelSlots.x)].x;
         float farAmount = smoothstep(VOXEL_TILE_BREAK_NEAR, VOXEL_TILE_BREAK_FAR, eyeTiles) * VOXEL_TILE_BREAK_MIX;
     #endif
 

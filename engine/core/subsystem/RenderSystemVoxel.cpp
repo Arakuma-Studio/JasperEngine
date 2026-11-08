@@ -29,6 +29,7 @@ namespace {
         Vector4 uvTransform[16];
         Vector4 surface[16];
         Vector4 slices[16];
+        Vector4 eye;
     };
 
     // A slot follows its Terrain Layer live (R43)
@@ -316,7 +317,7 @@ bool RenderSystem::loadVoxelTextures(Entity owner, ObjectRender& render, ShaderD
     return true;
 }
 
-void RenderSystem::applyVoxelLayersUniform(ObjectRender& render, int slot, Entity owner) {
+void RenderSystem::applyVoxelLayersUniform(ObjectRender& render, int slot, Entity owner, const Vector3& eye) {
     if (slot == -1) return;
     const VoxelVolumeComponent* volume = scene->findComponent<VoxelVolumeComponent>(owner);
     if (!volume) return;
@@ -359,5 +360,10 @@ void RenderSystem::applyVoxelLayersUniform(ObjectRender& render, int slot, Entit
         layers.slices[i] = Vector4(detail ? static_cast<float>(std::max(detail->colorSlice[i], 0)) : 0.0f, detail ? static_cast<float>(detail->normalSlice[i]) : -1.0f,
                                    detail ? static_cast<float>(detail->surfaceSlice[i]) : -1.0f, 0.0f);
     }
+    // the far tile break fades by distance to the eye, as the terrain's does: the clip w an orthographic
+    // camera gives is 1 everywhere, which left the voxel ground sharper than the terrain around it
+    const Transform* volumeTransform = scene->findComponent<Transform>(owner);
+    const Vector3 localEye = volumeTransform ? volumeTransform->modelMatrix.inverse() * eye : eye;
+    layers.eye = Vector4(localEye.x, localEye.y, localEye.z, 0.0f);
     render.applyUniformBlock(slot, sizeof(fs_voxel_layers_t), &layers);
 }

@@ -99,10 +99,10 @@ namespace {
             return ready && render->isAllLoaded();
         }
 
-        void lookDown() {
+        void lookDown(float height) {
             camera.setType(CameraType::CAMERA_ORTHO);
             camera.setOrtho(-VIEW_WIDTH * 0.5f, VIEW_WIDTH * 0.5f, -VIEW_HEIGHT * 0.5f, VIEW_HEIGHT * 0.5f, 1.0f, 400.0f);
-            camera.setPosition(0.0f, 200.0f, 0.0f);
+            camera.setPosition(0.0f, height, 0.0f);
             camera.setUp(0.0f, 0.0f, -1.0f);
             camera.setTarget(0.0f, 0.0f, 0.0f);
         }
@@ -158,10 +158,11 @@ namespace {
             }
         }
 
-        // The step across each edge against the step between the same two pixels while both were terrain
-        void expectSeamMatches(VoxelQuality quality, const std::string& name) {
+        // The step across each edge against the step between the same two pixels while both were terrain,
+        // seen from a height, which sets how far the tile break has faded in
+        void expectSeamMatches(VoxelQuality quality, const std::string& name, float height) {
             ground();
-            lookDown();
+            lookDown(height);
             ASSERT_TRUE(settled());
             std::vector<uint8_t> terrainOnly;
             ASSERT_TRUE(readFrame(terrainOnly));
@@ -201,10 +202,13 @@ TEST_F(VoxelTerrainGpu, CaveMouth) {
 
 TEST_F(VoxelTerrainGpu, SeamColourStep) {
     JASPER_REQUIRE_GPU();
-    expectSeamMatches(VoxelQuality::High, "mem://gpu-seam-high");
+    // 190 m away, the tile break is half in on both sides
+    expectSeamMatches(VoxelQuality::High, "mem://gpu-seam-high", 200.0f);
 }
 
 TEST_F(VoxelTerrainGpu, SeamColourStepLow) {
     JASPER_REQUIRE_GPU();
-    expectSeamMatches(VoxelQuality::Low, "mem://gpu-seam-low");
+    // Low reads near only (R51), as T3's Low terrain does (T3 R1); the terrain here has no Low tier yet, so
+    // the edges are seen from 20 m, where neither has any tile break
+    expectSeamMatches(VoxelQuality::Low, "mem://gpu-seam-low", GROUND + 20.0f);
 }
