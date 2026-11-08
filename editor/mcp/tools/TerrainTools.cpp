@@ -345,19 +345,6 @@ bool sampleTerrainExtras(const CallPtr& call, Project* project, SceneProject* sc
     const terrain::OpSpace space = spaceOf(transform, world);
     const float half = terrain.terrainSize * 0.5f;
     float minX = -half, minZ = -half, maxX = half, maxZ = half;
-    float boxHeight = terrain.maxHeight;
-#if JASPERENGINE_TERRAIN_WORLD
-    // T4 R4: a World's box is its tiles'
-    jasperengine::terrain::TileCoord low, high;
-    if (isWorld && terrain.world && terrain.world->started() && terrain.world->occupancy().bounds(low, high)) {
-        const float size = terrain.world->lattice().tileSize();
-        minX = static_cast<float>(low.x) * size;
-        minZ = static_cast<float>(low.z) * size;
-        maxX = static_cast<float>(high.x + 1) * size;
-        maxZ = static_cast<float>(high.z + 1) * size;
-        boxHeight = terrain.world->maxHeight();
-    }
-#endif
     if (hasKey(args, "region")) {
         const Json& region = args["region"];
         if (!region.is_object() || !hasKey(region, "min") || !hasKey(region, "max") || !region["min"].is_array() || !region["max"].is_array() ||
@@ -794,6 +781,19 @@ void visualizeTerrainTool(const CallPtr& call) {
     const terrain::OpSpace space = spaceOf(transform, !(hasKey(args, "space") && args["space"] == "local"));
     const float half = terrain.terrainSize * 0.5f;
     float minX = -half, minZ = -half, maxX = half, maxZ = half;
+    float boxHeight = terrain.maxHeight;
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 R4: a World's box is its tiles'
+    jasperengine::terrain::TileCoord low, high;
+    if (isWorld && terrain.world && terrain.world->started() && terrain.world->occupancy().bounds(low, high)) {
+        const float size = terrain.world->lattice().tileSize();
+        minX = static_cast<float>(low.x) * size;
+        minZ = static_cast<float>(low.z) * size;
+        maxX = static_cast<float>(high.x + 1) * size;
+        maxZ = static_cast<float>(high.z + 1) * size;
+        boxHeight = terrain.world->maxHeight();
+    }
+#endif
     if (hasKey(args, "region")) {
         const Json& region = args["region"];
         if (!region.is_object() || !hasKey(region, "min") || !hasKey(region, "max") || !region["min"].is_array() || !region["max"].is_array() ||

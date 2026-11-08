@@ -253,7 +253,7 @@ void ImportHeightmapDialog::show() {
     TerrainWorldRuntime* runtime = system ? system->ensureRuntime(world, &why) : nullptr;
     if (runtime) {
         // R32's spacing and max height are the world's: the file's samples land one on each of its own
-        char text[256];
+        char text[640];
         std::snprintf(text, sizeof(text),
                       "Reads a 16-bit RAW or R16 file a band of rows at a time, or a PNG or EXR whole (up to 8,193 a side), into the tiles it covers, "
                       "making the ones that are missing. Spacing (%.2f m) and Max Height (%.1f m) are the Terrain World's: one file sample "
