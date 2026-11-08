@@ -105,6 +105,7 @@ void TitleDesignerWindow::stepIndexBuild(bool urgent) {
         indexBuild.selection = selection;
         indexBuild.ms = 0.0;
         indexBuild.frameMsMax = 0.0;
+        indexBuild.unitMsMax = 0.0;
         indexBuild.frames = 0;
         indexBuild.generation++;
         documentPasses++;
@@ -114,11 +115,17 @@ void TitleDesignerWindow::stepIndexBuild(bool urgent) {
     int count = 0;
     {
         const CollectLayerLookup lookup(doc.shown());
+        auto since = [](std::chrono::steady_clock::time_point t) {
+            return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t).count();
+        };
         while (indexBuild.next < indexBuild.units.size()) {
+            const auto unitStart = std::chrono::steady_clock::now();
             collectUnit(doc, this, indexBuild.pending, indexBuild.units[indexBuild.next++]);
+            indexBuild.unitMsMax = std::max(indexBuild.unitMsMax, since(unitStart));
             count++;
-            const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-            if (count >= indexUnitsPerFrame || elapsed >= INDEX_FRAME_BUDGET_MS) break;
+            // another page only when it fits: the costliest page so far is the estimate
+            const double elapsed = since(start);
+            if (count >= indexUnitsPerFrame || elapsed >= INDEX_FRAME_BUDGET_MS || elapsed + indexBuild.unitMsMax > INDEX_FRAME_BUDGET_MS + 0.5) break;
         }
     }
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
@@ -134,6 +141,7 @@ void TitleDesignerWindow::stepIndexBuild(bool urgent) {
     indexMs = indexBuild.ms;
     indexFrames = indexBuild.frames;
     indexFrameMsMax = indexBuild.frameMsMax;
+    indexUnitMsMax = indexBuild.unitMsMax;
     indexBuild.active = false;
     mergedKey = ~0ull;
 }

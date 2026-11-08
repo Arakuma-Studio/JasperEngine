@@ -534,7 +534,7 @@ ta::Json TitleDesignerWindow::state() const {
                       {"index_rows_ms", lastCollectTimes().rows}, {"index_lookup_ms", lastCollectTimes().lookup},
                       {"index_values_ms", lastCollectTimes().values}, {"index_add_ms", lastCollectTimes().index},
                       {"index_rows", lastCollectTimes().rowCount}, {"index_building", indexBuild.active},
-                      {"index_frames", indexFrames}, {"index_frame_ms_max", indexFrameMsMax}, {"index_units_frame", indexUnitsLastFrame}};
+                      {"index_frames", indexFrames}, {"index_frame_ms_max", indexFrameMsMax}, {"index_unit_ms_max", indexUnitMsMax}, {"index_units_frame", indexUnitsLastFrame}};
     out["library"] = {{"provider", libraryProvider() ? "registered" : "starter"}, {"shown", libraryShown}};
     ta::Json notices = ta::Json::array();
     if (cjkNoticeShown) notices.push_back("cjk_font_missing");

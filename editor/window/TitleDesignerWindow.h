@@ -259,7 +259,7 @@ namespace jasperengine::editor {
             uint64_t change = 0;
             std::string selection;
             titledesigner::PropertyIndex pending;
-            double ms = 0.0, frameMsMax = 0.0;
+            double ms = 0.0, frameMsMax = 0.0, unitMsMax = 0.0;
             int frames = 0;
             uint64_t generation = 0;
         };
@@ -268,6 +268,7 @@ namespace jasperengine::editor {
         int indexUnitsLastFrame = 0;
         int indexFrames = 0;                // frames the last complete build spanned
         double indexFrameMsMax = 0.0;       // its costliest frame
+        double indexUnitMsMax = 0.0;        // and page
         titledesigner::PropertyIndex mergedIndex;   // old + collected so far, while searching mid-build
         uint64_t mergedKey = ~0ull;
         // starts (urgent: now; else once the document settled for 300 ms) or continues the build
