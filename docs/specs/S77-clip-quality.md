@@ -363,8 +363,8 @@ Step 5 solvers (stream `solvers`):
 - **D6, `compare_to`:** a clip only, as D6 says; the plan's `"source"` needs step 6's cook. Without `limits.error_mm` the limit is the clip's own record,
   and with neither `within_tolerance` is null and nothing fails.
 - **D6, `root`:** switches that GameObject's Animation Player entries of the source to the new file in one scene undo step, the plan's meaning.
-- **`foot_sliding`, `transition`, `record_seconds`, `feet`, `move_speed`, `limits.foot_slide_mm`, `limits.pop_mm`:** in the schema now, answering
-  `not_available` until stream `debug` flips their row in `kChecks`. Nothing about the schema changes then.
+- **`foot_sliding`, `transition`, `record_seconds`, `feet`, `move_speed`, `limits.foot_slide_mm`, `limits.pop_mm`:** in the schema
+  from the start; stream `debug` filled them in with no schema change (its deviations below).
 - **Calibration (risks table), JasperArcade-Ported through the real importer, 69 clips of 25 models:** at 1 mm the median
   key ratio is 1.19x and the median `runtime_bytes` ratio 1.03x (0.96x to 1.90x); 7 clips grow, since tracks that lose
   different keys stop sharing key times. Every measured max is within 1 mm (worst 0.99). R50's gate is not met. Loop Match's
@@ -389,3 +389,46 @@ Step 4 (stream `clips`):
   3,062, `StandingUp` 1,069, `Standing Greeting` 270), and one `Idle` 17.5 mm, left unsuggested. Mixamo names every clip
   `mixamo.com` and the action after the file name's `@` (`granjero@Running.fbx`), so that part also names the file's longest
   clip (its other clips are one-frame T-poses), or no Mixamo cycle would ever be suggested.
+
+Step 5 debug (stream `debug`):
+
+- **R36, the signature.** `makeSnapshot(instance, component, root)`: the third argument is the Animator
+  GameObject's Transform, because the runtime keeps the chain, the hit and the root motion in rig space and
+  only the Transform can put them in world space.
+- **D3, the IK rows.** Reach Error, Pelvis Offset, Lock Drift, Slide and the root motion rates are in
+  `kAnimatorDebugFields` (`editor/animation/AnimatorDebug.h`), the same shape as `kClipReportFields`, with its
+  own gtest against the live JSON: `ClipReportTest` holds the clip table equal to the clip JSON, where these
+  keys never appear. The table also names `foot_speed_mps` (R49's Foot Speed) and `accumulated_yaw`.
+- **R36, what the numbers mean.** Lock Drift is the distance from where a Foot Lock locked to where the clip
+  has the foot now (the slide the lock hides; the end's own miss is Reach Error). `accumulated_position` is
+  metres of root motion since the bind, in the rig frame the Animator had then; `accumulated_yaw` is degrees.
+  The slide is the planted foot's world speed, one update's step: Foot Lock's contact, or Foot IK's ground with
+  the animated ankle within 2 cm of its planted height. The runtime gains `AnimatorIKRun::contact`,
+  `footVelocity`, `AnimatorOutput::deltaTime` and the root motion total: plain stores, no allocation.
+- **R49, edit mode.** The live table shows while an Animator previews in edit mode too, not only in Play.
+- **R38, where and when.** The setting is stored with the model settings (`project.yaml` `mesh:
+  {animationEntities: auto}`) and drawn on a new **Animation** page. It decides when a model is first placed
+  in a scene (`ModelLoadCmd`, from the file's clip count): the scene stores `animationEntities: false`, so
+  Play, players and exports read the scene as before and nothing at runtime reads the setting. A reload keeps
+  the model's value. A new project is one File > New Project makes or a Project Hub template makes: the
+  template's copy is set when it opens, as its Git LFS is, so the committed templates need no regeneration.
+- **R37, contact on a clip.** A foot is on the ground while it is within 2 cm of the lowest it gets in the clip;
+  its slide is how far it gets from where it touched down, within one contact. The feet are `feet`, else the
+  humanoid map's two feet (`ClipRig::footGoals`, the clip's foot goals); feet found by name (R23's) never count.
+  An in-place clip (root under 0.25 m/s) is measured on ground moving at `matching_ground_speed_mps`, the
+  speed that holds its planted feet on average, so a walk the game moves at that speed passes; `move_speed`
+  measures at another. `foot_sliding` runs when asked (`checks`, `feet` or `move_speed`), not by default, so a
+  default check of an in-place clip says nothing it cannot back.
+- **R54, the pop.** `anim-transition-pop`: a joint stepping over 30 mm in 1/60 s through the crossfade
+  (`limits.pop_mm`) and over twice its largest step in the 0.25 s around it. Assumed, not calibrated: the corpus
+  has no controllers. The crossfade blends the two clips' local poses linearly over `duration` (the
+  controller's transition, else `duration`, else instant, said in `causes`), starting at its exit time (else
+  `at`, else half the first clip).
+- **R37, `record_seconds`.** Watches the Animator through `makeSnapshot` in play mode, one sample an update, for
+  that many seconds of its own time; contact is its Foot IK and Foot Lock legs' (the live rule above), and
+  without either it reports `contact_source: "none"`. The result is one `clips[]` entry
+  (`"<GameObject> (recorded)"`, `record_seconds`, `frames`, `foot_sliding`), the shape unchanged.
+- **R54, `anim-bone-limit`.** This base has no `MAX_BONES`: the bone palette is a texture row per joint since
+  `dc/mesh-memory`, so the limit is 2048 joints in one skin, the smallest `MAX_TEXTURE_SIZE` GLES3 and WebGL2
+  guarantee. `--anim-quality` also measures every `.anim` that names its model (preview or source), not only
+  model clips: the clips a project plays are mostly `.anim`.

@@ -15,6 +15,7 @@
 #include "util/PhysicsMaterialAssets.h"
 #include "component/Joint2DComponent.h"
 #include "pose/PoseViewport.h"
+#include "animation/AnimatorDebug.h"
 #include "util/BidiText.h"
 #include "imgui_internal.h"
 
@@ -2603,6 +2604,17 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
 
         drawSettingRow(ICON_FA_OBJECT_GROUP " Hide selection outline", sceneProject.displaySettings.hideSelectionOutline);
 
+        ImGui::EndTable();
+    }
+
+    // every Animator's live IK, root motion and feet (S77 R49): view state, saved with the workspace
+    if (sceneProject.sceneType == SceneType::SCENE_3D && beginSection("Animation")) {
+        drawSettingRow(ICON_FA_ROUTE " Root Motion", sceneProject.displaySettings.showRootMotion);
+        ImGui::SetItemTooltip("Each Animator's root: its last %.0f s in red, where its speed and turn lead in green", anim::kAnimatorTrailSeconds);
+        drawSettingRow(ICON_FA_CROSSHAIRS " IK", sceneProject.displaySettings.showIK);
+        ImGui::SetItemTooltip("Targets (green reached, red not), chains, poles, Foot IK rays and hits, locked feet");
+        drawSettingRow(ICON_FA_SHOE_PRINTS " Foot Trails", sceneProject.displaySettings.showFootTrails);
+        ImGui::SetItemTooltip("Foot IK and Foot Lock feet, %.0f s: green planted, yellow to red sliding", anim::kAnimatorTrailSeconds);
         ImGui::EndTable();
     }
 

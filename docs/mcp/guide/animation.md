@@ -62,14 +62,27 @@ are in the `animation` group (`tool_groups {enable: ["animation"]}`) and run as 
 | What costs most in the project? | `check_animation {checks: ["stats"], top: 8}` | `clips` (largest first), `totals` |
 | A clean loop? Does the root drift? | `check_animation {clips: [clip]}` | `loop_seam`, `root_motion`, `findings`, `ok` |
 | Is this clip the same as that one? | `check_animation {clips: [a], compare_to: b, limits: {error_mm: 1}}` | `compare.max_error_mm`, `worst_joint`, `within_tolerance` |
+| Do the feet slide? | `check_animation {clips: [clip], checks: ["foot_sliding"], feet: [...]}` | `foot_sliding.max_slide_mm`, `matching_ground_speed_mps`, `contact_source` |
+| Why does it pop? | `check_animation {entity, transition: {from, to}}` | `transition.max_step_mm`, `worst_joint`, `causes` |
+| Do they slide in the game? | `play`, then `check_animation {entity, record_seconds: 3}` | `foot_sliding` of the Animator's Foot IK and Foot Lock legs |
 
 `ok: false` is a successful call that has findings (the `ProjectChecks` shape: `docs/mcp/checks.md`). Every
 mm is measured: both clips sampled with the runtime sampler at each key time and halfway between them, then
 each joint and six points `skin_distance_mm` from it are compared. A check that has no number to give says
-so (`anim-no-rig`, `anim-compare-unmeasured`, `not_available`); silence never means a pass.
+so (`anim-no-rig`, `anim-compare-unmeasured`, `contact_source: "none"`); silence never means a pass.
 
-`foot_sliding`, `transition`, `record_seconds`, `feet`, `move_speed` and the `foot_slide_mm` and `pop_mm`
-limits are in the schema and answer `not_available` until a build has them.
+**Feet.** A foot is on the ground while it is within 2 cm of the lowest it gets; `max_slide_mm` is how far it
+gets from where it touched down (`anim-foot-slide` over 15 mm, `limits.foot_slide_mm`). The feet are `feet`
+(bone names or paths), else a humanoid model's feet; a generic rig with neither has `contact_source: "none"` and
+no number. An in-place clip is measured on ground moving at `matching_ground_speed_mps` (move the character at
+it); `move_speed` measures at your speed instead. `record_seconds` (play mode) watches the Animator's own Foot
+IK and Foot Lock constraints; with neither, `contact_source` is `"none"`. A slide on a planted foot: match the
+speed, or add a `foot_lock` constraint and record again. Live numbers: `get_animator` `live` (`docs/animator`).
+
+**Transitions.** `transition {from, to}` crossfades two states of `entity` (duration and start from its
+controller's transition, else `duration`, `at`): `max_step_mm` is the largest joint step in 1/60 s through it,
+`baseline_step_mm` the largest around it, `causes` what explains a pop (`anim-transition-pop` over 30 mm and twice
+the baseline, `limits.pop_mm`).
 
 **Reducing keys: preview, write, prove.** Usually a small gain: JasperArcade-Ported's 51 clips, already
 key-reduced by their FBX import, have a median of 1.1x fewer keys at 1 mm, and tracks that lose different keys

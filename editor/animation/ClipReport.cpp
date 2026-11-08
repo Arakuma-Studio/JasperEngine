@@ -99,6 +99,12 @@ namespace{
         }
 
         void pose(float time){
+            sampleAt(time);
+            resolve(local);
+        }
+
+        // the local pose at `time` (localPose()), without its rig space
+        void sampleAt(float time){
             local.copyFrom(rest);
             for (Binding& binding : bindings){
                 if (!anim::sampleTrack(*binding.track, time, sample, &binding.cursor)) continue;
@@ -115,10 +121,16 @@ namespace{
                         break;
                 }
             }
-            anim::poseToRigSpace(local, parents, anim::RigSpace{world.data(), positions.data(), rotations.data(), scales.data()});
         }
 
+        // the rig space of `from` (localPose() or a blend of two posers' local poses)
+        void resolve(const anim::Pose& from){
+            anim::poseToRigSpace(from, parents, anim::RigSpace{world.data(), positions.data(), rotations.data(), scales.data()});
+        }
+
+        const anim::Pose& localPose() const { return local; }
         const anim::Affine& matrix(size_t bone) const { return world[bone]; }
+        const Vector3& position(size_t bone) const { return positions[bone]; }
         const Quaternion& rotation(size_t bone) const { return rotations[bone]; }
         // the bones a track of this clip moves, itself and every descendant
         void markMoved(std::vector<uint8_t>& moved) const{
@@ -329,6 +341,172 @@ namespace{
         return facts;
     }
 
+    // a foot within this of its lowest in the clip is on the ground (metres)
+    constexpr double FOOT_CONTACT_BAND = 0.02;
+
+    anim::ClipFootSliding measureFootSliding(const AnimationClip& clip, const anim::ClipRig& rig, const std::vector<std::string>& asked,
+                                             std::optional<double> moveSpeed){
+        anim::ClipFootSliding out;
+        std::vector<int> feet;
+        for (const std::string& name : asked){
+            int bone = rig.findBone(name);
+            if (bone < 0){
+                const auto found = std::find(rig.names.begin(), rig.names.end(), name);
+                if (found != rig.names.end()) bone = (int)(found - rig.names.begin());
+            }
+            if (bone < 0) out.unknownFeet.push_back(name);
+            else if (std::find(feet.begin(), feet.end(), bone) == feet.end()) feet.push_back(bone);
+        }
+        if (!feet.empty()) out.contactSource = "feet";
+        else if (asked.empty() && !rig.footGoals.empty()){
+            feet = rig.footGoals;
+            out.contactSource = "foot_goals";
+        }
+        const double length = clip.getLength();
+        if (feet.empty() || !(length > 0.0)) return out;
+
+        const int steps = std::clamp((int)std::ceil(length * 60.0), 2, 6000);
+        const double dt = length / steps;
+        std::vector<std::vector<Point>> at(feet.size(), std::vector<Point>((size_t)steps + 1));
+        RigPoser poser(clip, rig);
+        for (int i = 0; i <= steps; i++){
+            poser.pose(i == steps ? clip.getLength() : (float)(dt * i));
+            for (size_t f = 0; f < feet.size(); f++){
+                const Vector3& p = poser.position((size_t)feet[f]);
+                at[f][(size_t)i] = Point{p.x, p.y, p.z};
+            }
+        }
+        std::vector<std::vector<uint8_t>> contact(feet.size(), std::vector<uint8_t>((size_t)steps + 1, 0));
+        double backward = 0.0, contactTime = 0.0;
+        for (size_t f = 0; f < feet.size(); f++){
+            double lowest = at[f][0].y;
+            for (const Point& p : at[f]) lowest = std::min(lowest, p.y);
+            for (size_t i = 0; i < at[f].size(); i++) contact[f][i] = at[f][i].y <= lowest + FOOT_CONTACT_BAND ? 1 : 0;
+            for (size_t i = 1; i < at[f].size(); i++){
+                if (!contact[f][i] || !contact[f][i - 1]) continue;
+                backward -= at[f][i].z - at[f][i - 1].z;
+                contactTime += dt;
+            }
+        }
+        out.matchingGroundSpeedMps = contactTime > 0.0 ? backward / contactTime : 0.0;
+        if (moveSpeed) out.moveSpeedMps = *moveSpeed;
+        else if (measureRootMotion(clip, rig).averageSpeedMps < anim::kClipInPlaceSpeedMps) out.moveSpeedMps = out.matchingGroundSpeedMps;
+
+        for (size_t f = 0; f < feet.size(); f++){
+            anim::ClipFootSlide slide;
+            slide.bone = rig.names[(size_t)feet[f]];
+            size_t onGround = 0;
+            size_t start = 0;
+            bool inContact = false;
+            for (size_t i = 0; i < at[f].size(); i++){
+                if (!contact[f][i]){
+                    inContact = false;
+                    continue;
+                }
+                onGround++;
+                if (!inContact){
+                    inContact = true;
+                    start = i;
+                }
+                // on the ground moving at the move speed: where the foot is against where it touched down
+                const double dx = at[f][i].x - at[f][start].x;
+                const double dz = (at[f][i].z - at[f][start].z) + out.moveSpeedMps * dt * (double)(i - start);
+                const double mm = std::hypot(dx, dz) * 1000.0;
+                if (mm > slide.maxSlideMm){
+                    slide.maxSlideMm = mm;
+                    slide.worstStart = (float)(dt * (double)start);
+                    slide.worstEnd = (float)(dt * (double)i);
+                }
+            }
+            slide.contactRatio = (double)onGround / (double)at[f].size();
+            out.maxSlideMm = std::max(out.maxSlideMm, slide.maxSlideMm);
+            out.feet.push_back(slide);
+        }
+        return out;
+    }
+
+    // the two posers' local poses mixed by `weight` of `to`, as a crossfade blends them
+    void blendPoses(const anim::Pose& from, const anim::Pose& to, float weight, size_t bones, anim::Pose& out){
+        for (size_t b = 0; b < bones; b++){
+            out.setPosition(b, from.position(b) * (1.0f - weight) + to.position(b) * weight);
+            out.setScale(b, from.scale(b) * (1.0f - weight) + to.scale(b) * weight);
+            out.setRotation(b, Quaternion::slerp(weight, from.rotation(b), to.rotation(b)));
+        }
+    }
+
+    anim::ClipTransitionFacts measureTransition(const AnimationClip& from, const AnimationClip& to, const anim::ClipRig& rig,
+                                                float duration, float at){
+        anim::ClipTransitionFacts facts;
+        facts.durationSeconds = std::max(duration, 0.0f);
+        facts.atSeconds = std::max(at, 0.0f);
+        const size_t bones = rig.size();
+        RigPoser a(from, rig), b(to, rig);
+        std::vector<uint8_t> movedA(bones, 0), movedB(bones, 0);
+        a.markMoved(movedA);
+        b.markMoved(movedB);
+        std::vector<uint8_t> moved(bones, 0);
+        for (size_t i = 0; i < bones; i++) moved[i] = movedA[i] || movedB[i];
+        spreadToDescendants(rig, moved);
+        anim::Pose blend;
+        blend.resize(bones, 0);
+        constexpr double frame = 1.0 / 60.0;
+        constexpr double around = 0.25;     // seconds of each clip measured around the crossfade
+        const double start = std::max(0.0, (double)facts.atSeconds - around);
+        const double end = (double)facts.atSeconds + facts.durationSeconds + around;
+        const int frames = std::max(2, (int)std::ceil((end - start) / frame));
+        std::vector<Point> previous(bones);
+        for (int i = 0; i <= frames; i++){
+            const double t = start + frame * i;
+            const double into = t - facts.atSeconds;
+            if (into < 0.0){
+                a.pose((float)t);
+                b.resolve(a.localPose());
+            }else{
+                a.sampleAt((float)t);
+                b.sampleAt((float)into);
+                const float weight = facts.durationSeconds > 0.0f ? (float)std::min(1.0, into / facts.durationSeconds) : 1.0f;
+                blendPoses(a.localPose(), b.localPose(), weight, bones, blend);
+                b.resolve(blend);
+            }
+            // b holds the pose that plays now; the first frame only sets where the steps start from
+            const bool during = into >= 0.0 && into - frame <= facts.durationSeconds;
+            for (size_t bone = 0; bone < bones; bone++){
+                if (!moved[bone]) continue;
+                const Vector3& p = b.position(bone);
+                const Point now{p.x, p.y, p.z};
+                if (i > 0){
+                    const double mm = distanceBetween(previous[bone], now) * 1000.0;
+                    if (during){
+                        if (mm > facts.maxStepMm){
+                            facts.maxStepMm = mm;
+                            facts.worstJoint = rig.names[bone];
+                            facts.worstTimeSeconds = (float)std::max(0.0, into);
+                        }
+                    }else{
+                        facts.baselineStepMm = std::max(facts.baselineStepMm, mm);
+                    }
+                }
+                previous[bone] = now;
+            }
+        }
+        facts.popRatio = facts.maxStepMm / std::max(facts.baselineStepMm, 0.1);
+        if (facts.durationSeconds <= 0.0f) facts.causes.push_back("duration 0: the switch is instant");
+        auto onlyIn = [&](const std::vector<uint8_t>& own, const std::vector<uint8_t>& other, const std::string& clip, const char* what){
+            std::vector<std::string> names;
+            for (size_t i = 0; i < bones; i++){
+                if (own[i] && !other[i]) names.push_back(rig.names[i]);
+            }
+            if (names.empty()) return;
+            std::string list;
+            for (size_t i = 0; i < names.size() && i < 5; i++) list += (i ? ", " : "") + names[i];
+            if (names.size() > 5) list += " and " + std::to_string(names.size() - 5) + " more";
+            facts.causes.push_back("bones keyed only in " + clip + what + list);
+        };
+        onlyIn(movedA, movedB, "the first clip", " go back to their rest: ");
+        onlyIn(movedB, movedA, "the second clip", " leave their rest: ");
+        return facts;
+    }
+
     anim::ClipLoopSeam measureLoopSeam(const AnimationClip& clip, const anim::ClipRig& rig, double skinDistanceMm){
         anim::ClipLoopSeam seam;
         if (!(clip.getLength() > 0.0f)) return seam;
@@ -410,6 +588,7 @@ void anim::ClipRig::assign(const std::string& sourceName, const std::vector<Mode
     restRotations.clear();
     restScales.clear();
     feet.clear();
+    footGoals.clear();
     byPath.clear();
     hips = -1;
     const size_t count = nodes.size();
@@ -459,6 +638,10 @@ bool anim::clipRigFromModel(const std::string& modelPath, ClipRig& out, std::str
         return found == out.names.end() ? -1 : (int)(found - out.names.begin());
     };
     out.hips = boneOfSlot(pose::HumanBone::Hips);
+    for (pose::HumanBone slot : {pose::HumanBone::LeftFoot, pose::HumanBone::RightFoot}){
+        const int bone = boneOfSlot(slot);
+        if (bone >= 0) out.footGoals.push_back(bone);
+    }
     for (pose::HumanBone slot : {pose::HumanBone::LeftFoot, pose::HumanBone::RightFoot, pose::HumanBone::LeftToes, pose::HumanBone::RightToes}){
         const int bone = boneOfSlot(slot);
         if (bone >= 0) out.feet[(size_t)bone] = 1;
@@ -595,6 +778,13 @@ anim::ClipReport anim::analyzeClip(const ClipReportRequest& request){
             if (request.toleranceMm && compare.error.measured) compare.withinTolerance = compare.error.maxErrorMm <= *request.toleranceMm;
             report.compare = std::move(compare);
         }
+        if (request.footSliding) report.footSliding = measureFootSliding(*clip, *request.rig, request.feet, request.moveSpeedMps);
+        if (request.transitionTo){
+            ClipTransitionFacts facts = measureTransition(*clip, *request.transitionTo, *request.rig, request.transitionDuration, request.transitionAt);
+            facts.from = request.transitionFromName;
+            facts.to = request.transitionToName;
+            report.transition = std::move(facts);
+        }
     }
 
     if (loaded){
@@ -705,6 +895,29 @@ nlohmann::json anim::clipReportJson(const ClipReport& report){
                               {"average_speed_mps", rounded(facts.averageSpeedMps)},
                               {"average_yaw_deg_s", rounded(facts.averageYawDegS)},
                               {"loop_gap_mm", rounded(facts.loopGapMm)}};
+    }
+    if (report.footSliding){
+        const ClipFootSliding& sliding = *report.footSliding;
+        nlohmann::json feet = nlohmann::json::array();
+        for (const ClipFootSlide& foot : sliding.feet){
+            feet.push_back({{"bone", foot.bone}, {"contact_ratio", rounded(foot.contactRatio)}, {"max_slide_mm", rounded(foot.maxSlideMm)},
+                            {"worst_contact", {{"start", rounded(foot.worstStart)}, {"end", rounded(foot.worstEnd)}}}});
+        }
+        const bool judged = sliding.contactSource != "none";
+        nlohmann::json block = {{"contact_source", sliding.contactSource},
+                                {"max_slide_mm", judged ? nlohmann::json(rounded(sliding.maxSlideMm)) : nlohmann::json(nullptr)},
+                                {"matching_ground_speed_mps", judged ? nlohmann::json(rounded(sliding.matchingGroundSpeedMps)) : nlohmann::json(nullptr)},
+                                {"move_speed_mps", judged ? nlohmann::json(rounded(sliding.moveSpeedMps)) : nlohmann::json(nullptr)},
+                                {"feet", feet}};
+        if (!sliding.unknownFeet.empty()) block["unknown_feet"] = sliding.unknownFeet;
+        out["foot_sliding"] = block;
+    }
+    if (report.transition){
+        const ClipTransitionFacts& t = *report.transition;
+        out["transition"] = {{"from", t.from}, {"to", t.to}, {"duration_s", rounded(t.durationSeconds)}, {"at_s", rounded(t.atSeconds)},
+                             {"baseline_step_mm", rounded(t.baselineStepMm)}, {"max_step_mm", rounded(t.maxStepMm)},
+                             {"pop_ratio", rounded(t.popRatio, 100.0)}, {"worst_joint", t.worstJoint},
+                             {"worst_time_s", rounded(t.worstTimeSeconds)}, {"causes", t.causes}};
     }
     return out;
 }

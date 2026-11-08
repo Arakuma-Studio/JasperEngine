@@ -143,3 +143,13 @@ partial weight, a soft limit, a clamp or a target out of reach. `control_animato
 `target` and `weight` on a running Animator, and in play mode also `soften`, `twist`, `hinge_axis`
 and `aim_offset`. A controller holds no constraints, so `edit_animator_controller` does not take
 them.
+
+`live` also says how well IK and root motion work, from the last update. `ik[i]`: `weight` (the
+solve's), `reach_error_mm`, foot_ik's `hit_point`, `hit_normal` (world) and `pelvis_offset_mm`, a
+locked foot_lock's `lock_drift_mm` (from where it locked to where the clip has the foot: the slide
+the lock hides). `root_motion`: `speed_mps`, `yaw_deg_s`, `accumulated_position` (metres since the
+bind, in the rig frame of then) and `accumulated_yaw` (degrees), and `contact_source`: `foot_goals`
+when the Animator has a foot_ik or foot_lock, with `slide_mm_s` (the planted foot's world speed)
+and `foot_speed_mps` (its speed against the root: move at it for no slide), else `none` and no
+slide. `set_scene_camera {display: {show_ik, show_root_motion, show_foot_trails}}` draws them in the
+Scene view (the Inspector's Gizmos > Animation).

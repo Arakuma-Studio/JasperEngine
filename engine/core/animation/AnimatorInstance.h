@@ -192,7 +192,12 @@ namespace jasperengine::anim{
         Vector3 lockWorld = Vector3(0, 0, 0);
         float lockWeight = 0.0f;
         bool hadPrevious = false;
-        Vector3 previousWorld = Vector3(0, 0, 0);
+        Vector3 previousWorld = Vector3(0, 0, 0);   // FootLock: this update's animated foot (world)
+        // FootIK and FootLock, for the debug readouts (S77 R36): whether the leg's own rule has the
+        // foot in contact this update (Foot Lock's contact; Foot IK: on the ground with the
+        // animated ankle at its planted height) and the animated foot's world velocity, m/s
+        bool contact = false;
+        Vector3 footVelocity = Vector3(0, 0, 0);
     };
 
     struct JASPERENGINE_API AnimatorStateNote{
@@ -249,6 +254,7 @@ namespace jasperengine::anim{
         bool hasRootMotion = false;
         Vector3 rootDeltaPosition = Vector3(0, 0, 0);   // rig space (the Animator entity's local space)
         float rootDeltaYaw = 0.0f;                      // radians about the rig's up (+y)
+        float deltaTime = 0.0f;                         // the update's step, seconds (unscaled): rates
         bool sampled = false;                           // the pose was evaluated and written
     };
 
@@ -300,6 +306,10 @@ namespace jasperengine::anim{
         std::vector<uint64_t> warnedKeys;   // warnOnce(key): the per-event warnings, no string built
 
         AnimatorOutput output;
+        // the root motion of every update since the bind, in the rig frame the Animator had at
+        // the bind (each delta turned by the yaw before it): debug readouts (S77 R36)
+        Vector3 rootMotionTotal = Vector3(0, 0, 0);
+        float rootMotionTotalYaw = 0.0f;                // radians
         // the values of the property rows that wait for the main thread (RigProperty::inWave
         // false), by rig channel: sized at bind, filled by the wave, applied by AnimatorSystem
         std::vector<float> deferredProperties;

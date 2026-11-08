@@ -2,6 +2,9 @@
 tool_groups enables them, run as jobs, preview before they write, and the journey reduce + prove takes
 3 calls with numbers measured from the file. `check --anims` plants each of its codes; a clean clip
 triggers none. A dense clip is sampled from the fixture's Walk here, since its Walk has few keys.
+S77 R37, R54 (AC11, AC17): a planted 50 mm foot slide fails and a clean step passes, a generic rig
+with no feet reports contact_source "none", an instant crossfade pops, record_seconds watches the
+Animator's legs in play mode, and `check --anim-quality` plants each of its codes.
 
 Runs on a scratch copy of tools/fixtures/pose-animation.
 """
@@ -106,13 +109,6 @@ async def test_group_hidden_until_enabled(ed: Editor):
     optimize = ed.tool("optimize_animation")
     ed.check(optimize.annotations.read_only_hint is not True, "optimize_animation writes")
     ed.check(optimize.annotations.idempotent_hint is True, "the same arguments give the same file")
-
-
-async def test_checks_of_a_later_stream_say_so(ed: Editor):
-    for args in ({"checks": ["foot_sliding"]}, {"checks": ["transition"]}, {"record_seconds": 3}, {"feet": ["LeftFoot"]},
-                 {"move_speed": 1.2}, {"transition": {"from": "A", "to": "B"}}, {"limits": {"foot_slide_mm": 15}}):
-        r = await ed.call_raw("check_animation", {"clips": [WALK], **args})
-        ed.check(r.is_error and "not_available" in r.text, f"{args}: {r.text[:200]}")
 
 
 async def test_stats_project_and_model(ed: Editor):
@@ -419,5 +415,124 @@ async def test_cli_codes():
         (anims / "broken.anim").write_text("{not json")
         code, _ = run_anims(project)
         check_eq(code, 1, "an error keeps its exit code")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ---------------------------------------------------------------- foot sliding, transitions, recording (R37, R54)
+
+HIPS = "Hero/mixamorig:Hips"
+LEFT_FOOT = HIPS + "/mixamorig:LeftUpLeg/mixamorig:LeftLeg/mixamorig:LeftFoot"
+
+
+def step_track(slide: float) -> dict:
+    """the left foot on the ground for half a second while it moves `slide` metres, then lifted 10 cm and back"""
+    return {"path": LEFT_FOOT, "channel": "position", "relative": True,
+            "keys": [[0, [0, 0, 0]], [0.5, [slide, 0, 0]], [0.6, [slide, 0.1, 0]], [0.9, [0, 0.1, 0]], [1, [0, 0, 0]]]}
+
+
+async def test_foot_sliding_planted_clean_and_no_contact(ed: Editor):
+    await write_clip(ed, "assets/anim/slide.anim", clip_text([step_track(0.05)]))
+    await write_clip(ed, "assets/anim/step.anim", clip_text([step_track(0.0)]))
+    feet = ["mixamorig:LeftFoot"]
+    slide = await ed.call("check_animation", clips=["assets/anim/slide.anim"], checks=["foot_sliding"], feet=feet, move_speed=0)
+    sliding = slide["clips"][0]["foot_sliding"]
+    ed.check(sliding["contact_source"] == "feet" and abs(sliding["max_slide_mm"] - 50) < 1, f"the planted 50 mm: {sliding}")
+    ed.check("anim-foot-slide" in {f["code"] for f in slide["findings"]} and slide["ok"] is False, f"{slide['findings']}")
+    clean = await ed.call("check_animation", clips=["assets/anim/step.anim"], checks=["foot_sliding"], feet=feet, move_speed=0)
+    ed.check(clean["ok"] is True and clean["clips"][0]["foot_sliding"]["max_slide_mm"] < 1, f"a clean step: {clean}")
+    loose = await ed.call("check_animation", clips=["assets/anim/slide.anim"], feet=feet, move_speed=0, limits={"foot_slide_mm": 60})
+    ed.check(loose["ok"] is True, f"the limit is the agent's: {loose['findings']}")
+    # the fixture's model has no humanoid map: no feet asked, no contact to judge (R37)
+    generic = await ed.call("check_animation", clips=["assets/anim/slide.anim"], checks=["foot_sliding"])
+    block = generic["clips"][0]["foot_sliding"]
+    ed.check(block["contact_source"] == "none" and block["max_slide_mm"] is None, f"no guess: {block}")
+    ed.check("anim-foot-slide" not in {f["code"] for f in generic["findings"]}, f"{generic['findings']}")
+    unknown = await ed.call("check_animation", clips=["assets/anim/slide.anim"], feet=["NoSuchFoot"])
+    ed.check("anim-unknown-foot" in {f["code"] for f in unknown["findings"]}, f"{unknown['findings']}")
+
+
+async def test_transition_pop(ed: Editor):
+    hold = lambda x: clip_text([{"path": LEFT_FOOT, "channel": "position", "relative": True, "keys": [[0, [x, 0, 0]], [1, [x, 0, 0]]]}], wrap="loop")
+    await write_clip(ed, "assets/anim/pose_a.anim", hold(0.0))
+    await write_clip(ed, "assets/anim/pose_b.anim", hold(0.3))
+    await ed.call("edit_animator_controller", path="assets/anim/pop.controller", create=True, ops=[
+        {"op": "add_state", "name": "A", "clip": "assets/anim/pose_a.anim", "default": True, "position": [300, 100]},
+        {"op": "add_state", "name": "B", "clip": "assets/anim/pose_b.anim", "position": [500, 100]},
+        {"op": "add_transition", "from": "A", "to": "B", "duration": 0, "has_exit_time": True, "exit_time": 0.5}])
+    await ed.call("add_component", entity="Hero", component="animator", values={"animator": {"controller": "assets/anim/pop.controller"}})
+    pop = await ed.call("check_animation", entity="Hero", transition={"from": "A", "to": "B"})
+    t = pop["clips"][0]["transition"]
+    ed.check(abs(t["max_step_mm"] - 300) < 2 and t["worst_joint"].startswith(("mixamorig:LeftFoot", "mixamorig:LeftToe")), f"the instant switch: {t}")
+    ed.check(any("duration 0" in c for c in t["causes"]) and abs(t["at_s"] - 0.5) < 1e-3, f"the controller's timing and cause: {t}")
+    ed.check("anim-transition-pop" in {f["code"] for f in pop["findings"]}, f"{pop['findings']}")
+    smooth = await ed.call("check_animation", entity="Hero", transition={"from": "A", "to": "B", "duration": 0.5})
+    ed.check(smooth["ok"] is True and smooth["clips"][0]["transition"]["max_step_mm"] < 15, f"a 0.5 s crossfade: {smooth}")
+    r = await ed.call_raw("check_animation", {"transition": {"from": "A", "to": "B"}})
+    ed.check(r.is_error and "entity" in r.text, f"names the fix: {r.text[:200]}")
+
+
+async def test_record_seconds_watches_the_legs(ed: Editor):
+    await ed.call("set_properties", entity="Hero", values={"animator": {"ik": [
+        {"name": "Lock", "type": "foot_lock", "bones": ["left_upper_leg", "left_lower_leg", "left_foot"]}]}})
+    r = await ed.call_raw("check_animation", {"entity": "Hero", "record_seconds": 0.5})
+    ed.check(r.is_error and "play" in r.text, f"edit mode: says to play: {r.text[:200]}")
+    await ed.call("play", action="start")
+    try:
+        out = await ed.call("check_animation", entity="Hero", record_seconds=0.5)
+        entry = out["clips"][0]
+        ed.check(entry["frames"] >= 2 and entry["record_seconds"] >= 0.5, f"recorded: {entry}")
+        sliding = entry["foot_sliding"]
+        ed.check(sliding["contact_source"] == "foot_goals" and sliding["feet"][0]["bone"] == "Lock", f"the Foot Lock leg: {sliding}")
+    finally:
+        await ed.call("play", action="stop")
+
+
+def write_skin(path: Path, joints: int) -> None:
+    nodes = [{"name": f"b{i}"} for i in range(joints)]
+    path.write_text(json.dumps({"asset": {"version": "2.0"}, "nodes": nodes, "scenes": [{"nodes": list(range(joints))}], "scene": 0,
+                                "skins": [{"joints": list(range(joints))}]}))
+
+
+async def test_cli_anim_quality():
+    tmp = Path(tempfile.mkdtemp(prefix="jasper-anim-quality-"))
+    try:
+        project = write_project(tmp / "project")
+        models = project / "assets/models"
+        anims = project / "assets/anim"
+        models.mkdir(parents=True)
+        anims.mkdir(parents=True)
+        shutil.copy(REPO / "tools/fixtures/pose-animation" / MODEL, models / "hero_animated.gltf")
+        # a humanoid map: the model's feet are foot goals
+        (models / "hero_animated.gltf.humanoid").write_text(json.dumps(
+            {"format": "jasperengine.humanoid", "version": 1, "animation_type": "humanoid", "bones": {}}))
+        write_skin(models / "huge.gltf", 2100)
+        write_skin(models / "small.gltf", 60)
+
+        def write(name: str, tracks: list, wrap: str = "once") -> str:
+            (anims / name).write_text(clip_text(tracks, wrap=wrap))
+            return f"assets/anim/{name}"
+
+        slide = write("slide.anim", [step_track(0.05)])
+        step = write("step.anim", [step_track(0.0)])
+        drift = write("drift.anim", [{"path": HIPS, "channel": "position", "relative": True, "keys": [[0, [0, 0, 0]], [1, [0.05, 0, 0]]]}], wrap="loop")
+        seam = write("seam.anim", [{"path": LEFT_FOOT, "channel": "rotation", "keys": [[0, [0, 0, 0, 1]], [1, rotation_y(60)]]}], wrap="loop")
+
+        r = subprocess.run(harness.editor_command() + ["check", "--project", str(project), "--anim-quality", "--format", "json"],
+                           cwd=str(project), input="", capture_output=True, text=True, timeout=300)
+        check(r.stdout.strip().startswith("{"), f"exit {r.returncode}, no JSON: {r.stdout[-500:]} {r.stderr[-2000:]}")
+        data = json.loads(r.stdout)
+        check_eq(r.returncode, 0, f"warnings keep the exit code: {r.stderr[-500:]}")
+        by_path: dict[str, set] = {}
+        for item in data["findings"]:
+            by_path.setdefault(item["path"], set()).add(item.get("code", ""))
+            check_eq(item["severity"], "warning", f"{item}")
+        check("anim-foot-slide" in by_path.get(slide, set()), f"the planted slide: {by_path}")
+        check(step not in by_path, f"a clean step triggers none: {by_path.get(step)}")
+        check("anim-root-drift" in by_path.get(drift, set()), f"{by_path}")
+        check("anim-loop-seam" in by_path.get(seam, set()), f"{by_path}")
+        check("anim-bone-limit" in by_path.get("assets/models/huge.gltf", set()), f"{by_path}")
+        check("assets/models/small.gltf" not in by_path, f"{by_path}")
+        check(data["checked"].get("anim_quality", 0) >= 4, f"{data['checked']}")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

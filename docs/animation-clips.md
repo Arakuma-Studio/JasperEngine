@@ -524,6 +524,13 @@ choose the animation.
   "Played by an Animation Player (no entity animations)". Scenes then store one short clip list
   instead of every key of every model instance.
 
+**Project Settings > Animation > Animation Entities** decides what placing a model in a scene does.
+**Always** makes an entity animation per clip, as every project before did. **Auto**, which new
+projects start with, places a model of 5 or more clips with no entity animations (as after Use
+Animation Player, without the player): play its clips with an Animation Player or an Animator. A
+model of fewer clips, and a model already in a scene, are not affected. A project without the
+setting in its `project.yaml` (`mesh: {animationEntities: auto}`) is Always.
+
 ### Model clip settings (`<model>.clips`)
 
 Selecting a model in the Project window and opening the Inspector's **Animation** tab lists its clips

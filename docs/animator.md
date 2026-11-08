@@ -178,6 +178,32 @@ target (a Look At: its aim within 0.1 degree, a Foot IK: on ground it found), me
 pose in world space, so a partial weight, a soft limit, a clamp or a target out of reach is not
 reached. It is false while a constraint does not solve: weight 0, disabled, culled.
 
+## Seeing IK and root motion
+
+While the game plays, or an Animator previews in edit mode, the Animator's Inspector shows
+**IK (live)**: per constraint its **Weight** (the one the last solve ran with), **Reach Error** (mm
+from the end to the target; a Look At: from the target to its aim ray), its **State** (Reached or
+Out of Reach, On Target or Clamped, Grounded or No Ground, Locked or Free, Off) and, for Foot IK, the
+**Pelvis Offset** of the stack, for a locked Foot Lock its **Lock Drift** (mm from where the foot
+locked to where the clip has the foot now: the slide the lock hides). Under it, with root motion,
+**Root Motion (live)**: **Speed**, **Yaw** (deg/s), and when the Animator has a Foot IK or Foot Lock,
+**Foot Speed** (how fast the planted foot moves against the root: the speed to move at for no slide)
+and **Slide** (the planted foot's speed in the world), in orange over 100 mm/s. Contact comes only
+from those constraints (Foot Lock's contact, Foot IK's ground with the animated ankle within 2 cm of
+its planted height): without them there is no slide reading, never a guess. These are the numbers
+`get_animator` reports; the same code makes both.
+
+The Scene view's **Gizmos > Animation** draws them for every Animator (all off, saved with the
+workspace; nothing is computed while they are off):
+
+- **IK**: the target as a cross, green when reached and red when not, with a line to the end; the
+  chain in cyan; a pole as a diamond with a dashed line to the middle bone; Foot IK's ray in yellow,
+  its hit green with the ground normal, a miss white; a locked foot as an orange pin, with a line to
+  where the clip has the foot when it drifts.
+- **Root Motion**: the root's last 2 seconds in red, and in green where its speed and turn lead in 1 s.
+- **Foot Trails**: each Foot IK and Foot Lock foot's last 2 seconds: green planted, yellow to red as
+  a planted foot slides faster, dim white in the air.
+
 ## Humanoids and retargeting
 
 A model whose bones map to the 22 humanoid slots is a humanoid (the Animator's Avatar section

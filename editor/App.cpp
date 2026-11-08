@@ -3605,6 +3605,10 @@ void editor::App::updateHubCreation() {
             VcsProjectSettings vcs = project.getVcsProjectSettings();
             vcs.lfs = true;   // S29 R21: a new project's binaries are LFS objects
             project.setVcsProjectSettings(vcs, false);
+            // S77 R38: a new project places a model of many clips without an Animation entity per clip
+            ModelProjectSettings models = project.getModelSettings();
+            models.animationEntities = AnimationEntitiesMode::Auto;
+            project.setModelSettings(models);
             project.saveProject();
             project.writeVersionControlMetadata();
             const std::filesystem::path start = done.dir / (done.info.startScene + ".scene");

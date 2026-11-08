@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender3D.h"
+#include "animation/AnimatorDebug.h"
 #include "animation/AnimatorInstance.h"
 #include "animation/BoneOverlay.h"
 #include "component/AnimatorComponent.h"
@@ -78,6 +79,7 @@ editor::SceneRender3D::SceneRender3D(Scene* scene): SceneRender(scene, false, tr
     uilayer.setViewportGizmoTexture(viewgizmo.getFramebuffer());
 
     poseViewport = std::make_unique<PoseViewport>(scene, toolslayer.getScene());
+    animatorOverlay = std::make_unique<anim::AnimatorOverlayPass>();
 }
 
 editor::SceneRender3D::~SceneRender3D(){
@@ -137,6 +139,10 @@ editor::SceneRender3D::~SceneRender3D(){
     }
 
     for (auto& pair : controllerLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : animatorLines) {
         delete pair.second;
     }
 
@@ -1383,6 +1389,7 @@ void editor::SceneRender3D::dropGoneGizmos(){
     dropGoneGizmos(trackLines, render);
     dropGoneGizmos(reflectionProbeLines, render);
     dropGoneGizmos(capsuleShadowLines, render);
+    dropGoneGizmos(animatorLines, render);
 }
 
 void editor::SceneRender3D::hideAllGizmos(){
@@ -1425,6 +1432,9 @@ void editor::SceneRender3D::hideAllGizmos(){
         pair.second->setVisible(false);
     }
     for (auto& pair : controllerLines) {
+        pair.second->setVisible(false);
+    }
+    for (auto& pair : animatorLines) {
         pair.second->setVisible(false);
     }
     for (auto& pair : waterVolumeLines) {
@@ -1860,6 +1870,30 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
         }
     }
 
+    // Gizmos > Animation (S77 R49): with every toggle off the pass takes no snapshot and draws nothing
+    const anim::AnimatorOverlayFlags animatorFlags{displaySettings.showIK, displaySettings.showRootMotion, displaySettings.showFootTrails};
+    std::set<Entity> currentAnimatorLines;
+    animatorOverlay->update(scene, entities, animatorFlags, [&](Entity entity, const std::vector<anim::AnimatorOverlayLine>& drawn){
+        // in the tools layer, as the skeleton overlay: drawn over the meshes the chains run inside
+        if (animatorLines.find(entity) == animatorLines.end()) {
+            ScopedDefaultEntityPool sys(*toolslayer.getScene(), EntityPool::System);
+            animatorLines[entity] = new LineRenderer(toolslayer.getScene());
+        }
+        currentAnimatorLines.insert(entity);
+        LineRenderer* overlayLines = animatorLines[entity];
+        overlayLines->clearLines();
+        for (const anim::AnimatorOverlayLine& line : drawn) overlayLines->addLine(line.a, line.b, line.color);
+        overlayLines->setVisible(true);
+    });
+    for (auto it = animatorLines.begin(); it != animatorLines.end();) {
+        if (currentAnimatorLines.find(it->first) == currentAnimatorLines.end()) {
+            delete it->second;
+            it = animatorLines.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
     // Remove sun icons for entities that are no longer directional lights
     auto it = lightObjects.begin();
     while (it != lightObjects.end()) {
@@ -2112,4 +2146,20 @@ bool editor::isUnwrittenAnimatorBone(Scene* scene, Entity entity){
     const ExposedBone exposed = findExposedBone(scene, entity);
     if (!exposed.instance || (size_t)exposed.bone >= exposed.instance->writeMask.size()) return false;
     return !exposed.instance->writeMask[(size_t)exposed.bone];
+}
+
+anim::AnimatorRoot anim::animatorRoot(const Transform& transform){
+    AnimatorRoot root;
+    root.position = transform.worldPosition;
+    root.rotation = transform.worldRotation;
+    root.scale = transform.worldScale;
+    root.matrix = transform.modelMatrix;
+    return root;
+}
+
+bool anim::animatorRootOf(Scene* scene, Entity entity, AnimatorRoot& root){
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform) return false;
+    root = animatorRoot(*transform);
+    return true;
 }

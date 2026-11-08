@@ -1119,7 +1119,9 @@ async def test_guide_names_exist(ed: Editor):
               # clip quality (S77, test_animation_quality): optimize_animation's and check_animation's result fields and
               # error kinds, which this test does not call (the animation group)
               "bytes_after", "bytes_before", "effective_tolerance_mm", "kept_all_keys", "keys_after", "keys_before", "max_error_mm",
-              "no_gain", "no_rig", "not_available", "skipped_tracks", "within_tolerance", "worst_joint"}
+              "no_gain", "no_rig", "skipped_tracks", "within_tolerance", "worst_joint",
+              # its foot sliding and transition results (S77 R37, R54) and the IK type the guide suggests
+              "max_slide_mm", "matching_ground_speed_mps", "contact_source", "max_step_mm", "baseline_step_mm", "foot_lock"}
     words = set(re.findall(r"(?<![\w./:-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(])", text))
     unknown = sorted(w for w in words if w not in known)
     ed.check(not unknown, f"the guide names unknown things: {unknown}")

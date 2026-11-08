@@ -41,6 +41,7 @@
 #include "component/AnimationPlayerComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/Transform.h"
+#include "animation/AnimatorDebug.h"
 #include "object/Animator.h"
 #include "pool/AnimatorAssetPool.h"
 #include "pose/HumanBones.h"
@@ -599,9 +600,13 @@ Json liveJson(const AnimatorTarget& target, AnimatorInstance& instance) {
         out["montage"] = {{"path", montage->path}, {"section", montage->montage->sections[(size_t)montage->section].name},
                           {"time", montage->time}, {"weight", montage->weight}};
     }
+    // the debug numbers (S77 R36): makeSnapshot is their one producer, as for the Inspector
+    const Transform* root = target.scene->scene->findComponent<Transform>(target.entity);
+    const AnimatorDebugSnapshot snapshot = root ? makeSnapshot(instance, *target.component, animatorRoot(*root)) : AnimatorDebugSnapshot();
     if (instance.output.hasRootMotion) {
         const Vector3 d = instance.output.rootDeltaPosition;
         out["root_motion"] = {{"delta_position", {d.x, d.y, d.z}}, {"delta_yaw", instance.output.rootDeltaYaw}};
+        if (snapshot.valid) addAnimatorDebugRootMotionJson(snapshot, out["root_motion"]);
     }
     Json ik = Json::array();
     for (size_t i = 0; i < target.component->ik.size() && i < instance.ik.size(); i++) {
@@ -612,6 +617,7 @@ Json liveJson(const AnimatorTarget& target, AnimatorInstance& instance) {
         if (target.component->ik[i].type == AnimatorIKType::FootIK) item["grounded"] = run.hit;
         if (target.component->ik[i].type == AnimatorIKType::FootLock) item["locked"] = run.locked;
         item["reached"] = run.reached;
+        if (snapshot.valid && i < snapshot.ik.size()) addAnimatorDebugIKJson(snapshot.ik[i], item);
         ik.push_back(item);
     }
     if (!ik.empty()) out["ik"] = ik;
