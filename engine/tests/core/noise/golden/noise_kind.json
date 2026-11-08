@@ -1208,7 +1208,7 @@
           "kind": "int",
           "default": 0,
           "min": 0.0,
-          "max": 8.0
+          "max": 11.0
         },
         {
           "name": "optional",
