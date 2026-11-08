@@ -4,6 +4,8 @@
 #include "subsystem/TerrainWorldRuntime.h"
 
 #include "Engine.h"
+#include "Scene.h"
+#include "component/Transform.h"
 #include "io/AssetIOService.h"
 #include "io/FileData.h"
 #include "physics/TerrainWorldCollision.h"
@@ -466,6 +468,10 @@ void TerrainWorldRuntime::setHoverTiles(const std::vector<TileCoord>& tiles) {
 }
 
 void TerrainWorldRuntime::recordDrawnNodes(bool on) {
+    // render selects again only when the World's transform says so (D9): the first cut comes with it
+    if (on && !recordNodes && scene) {
+        if (Transform* transform = scene->findComponent<Transform>(entity)) transform->needUpdate = true;
+    }
     recordNodes = on;
     if (!on) drawn.clear();
 }
