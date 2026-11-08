@@ -40,6 +40,7 @@
 #include "titleart/three_d/Title3DStyle.h"
 #include "titleart/three_d/TitleEnvironment.h"
 #include "util/FontFace.h"
+#include "util/FileUtils.h"
 #include "util/Util.h"
 #include "App.h"
 #include "window/TitleDesignerWindow.h"
