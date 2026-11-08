@@ -7,6 +7,7 @@
 
 #include "TerrainGpuFixture.h"
 
+#include "component/MeshComponent.h"
 #include "component/Transform.h"
 #include "component/VoxelVolumeComponent.h"
 #include "object/TerrainEdit.h"
@@ -96,11 +97,26 @@ namespace {
             std::shared_ptr<VoxelSystem> system = scene.getSystem<VoxelSystem>();
             RenderSystem* render = scene.getSystem<RenderSystem>().get();
             const Entity volume = owner;
-            const bool ready = GpuEnvironment::runFrames([&]() {
-                return (volume == NULL_ENTITY || system->isVolumeReady(volume)) && render->isAllLoaded();
-            }, 600);
-            GpuEnvironment::drawFrames(4);
-            if (!ready || !render->isAllLoaded()) {
+            Scene* current = &scene;
+            const auto stable = [&]() {
+                if ((volume != NULL_ENTITY && !system->isVolumeReady(volume)) || !render->isAllLoaded()) return false;
+                auto meshes = current->getComponentArray<MeshComponent>();
+                for (size_t i = 0; i < meshes->size(); i++) {
+                    const MeshComponent& mesh = meshes->getComponentFromIndex(i);
+                    if (mesh.needReload || mesh.needVariantReload) return false;
+                }
+                return true;
+            };
+            // the volume's first chunks on screen open its holes (R44), and the terrain swaps to its
+            // holed variant after that, frames later where pipelines are made on a worker (Vulkan,
+            // spec S32): settled is when a few more frames change nothing
+            bool ready = false;
+            for (int round = 0; round < 4 && !ready; round++) {
+                ready = GpuEnvironment::runFrames(stable, 600);
+                GpuEnvironment::drawFrames(4);
+                ready = ready && stable();
+            }
+            if (!ready) {
                 if (volume != NULL_ENTITY) {
                     const VoxelStats stats = system->getStats(volume);
                     std::printf("[gpu] not settled: ready %d, chunks %d, jobs %d, error '%s'; terrain %u, volume %u\n", system->isVolumeReady(volume) ? 1 : 0, stats.chunks, stats.jobsPending, system->getError(volume).c_str(), terrain ? terrain->getEntity() : 0u, volume);
