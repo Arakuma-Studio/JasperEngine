@@ -33,6 +33,9 @@ namespace jasperengine::terrain {
         // The copy the store may change: a reader holding the old one (a job) keeps it as it was
         virtual std::shared_ptr<WorldTile> writable(TileCoord tile) = 0;
         virtual void add(TileCoord tile, std::shared_ptr<WorldTile> data) = 0;
+        // An undo's snapshot back as it was, derived sections included: rebuilding them could change
+        // the bytes the tile had (an undo leaves the files as they were)
+        virtual void restore(TileCoord tile, std::shared_ptr<WorldTile> data) { add(tile, std::move(data)); }
         virtual void remove(TileCoord tile) = 0;
         // The tile's bytes changed (samples, gutters, maps): its derived sections, page and file follow
         virtual void changed(TileCoord tile) = 0;

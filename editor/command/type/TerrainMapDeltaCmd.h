@@ -78,7 +78,7 @@ namespace jasperengine::editor{
         };
 
         std::string refusal() const;
-        void applyXor();
+        void applyXor(bool makesTiles);
 
         Project* project;
         uint32_t sceneId;
@@ -89,6 +89,8 @@ namespace jasperengine::editor{
         std::vector<std::shared_ptr<terrain::TerrainStoreUndoHook>> undoHooks;
         std::vector<std::shared_ptr<terrain::TerrainLargeEdit>> largeEdits;
         bool applied;
+        // executed once: later executes are redos
+        bool replayed = false;
         bool wasModified = false;
     };
 

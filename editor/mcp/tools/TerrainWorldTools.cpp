@@ -21,7 +21,6 @@
 #include "command/CommandHistory.h"
 #include "command/type/PropertyCmd.h"
 #include "command/type/TerrainWorldTilesCmd.h"
-#include "component/TerrainComponent.h"
 #include "component/TerrainWorldComponent.h"
 #include "component/Transform.h"
 #include "subsystem/TerrainWorldRuntime.h"
@@ -392,29 +391,6 @@ bool parseCreate(const Json& value, TerrainWorldSettings& settings, std::string&
     return true;
 }
 
-// The world of a GameObject in this scene, its runtime made now if it has none yet
-TerrainWorldRuntime* worldRuntime(Scene* scene, Entity entity, std::string& error) {
-    const std::string name = "\"" + scene->getEntityName(entity) + "\"";
-    if (!scene->findComponent<TerrainWorldComponent>(entity)) {
-        error = scene->findComponent<TerrainComponent>(entity) ? name + " is a plain Terrain, not a Terrain World: make one with edit_terrain_world {create}."
-                                                               : name + " is not a Terrain World: pass one as entity, or make one with edit_terrain_world {create}.";
-        return nullptr;
-    }
-    std::shared_ptr<TerrainWorldSystem> system = scene->findSystem<TerrainWorldSystem>();
-    if (!system) {
-        error = "This editor was built without Terrain Worlds.";
-        return nullptr;
-    }
-    std::string why;
-    TerrainWorldRuntime* runtime = system->ensureRuntime(entity, &why);
-    if (!runtime || !runtime->started()) {
-        error = "The Terrain World " + name + " did not start: " + (why.empty() ? std::string("its data did not load") : why) +
-                ". Check its World Data asset.";
-        return nullptr;
-    }
-    return runtime;
-}
-
 // The runtime for the scene and GameObject a job watches, or null once it is gone
 TerrainWorldRuntime* liveRuntime(McpContext* context, uint32_t sceneId, Entity entity) {
     Project* project = context->project();
@@ -707,7 +683,7 @@ void editTerrainWorldTool(const CallPtr& call) {
     // Play changes the running copy's world, which never writes (R31)
     SceneProject* running = McpRefs::runtimeScene(project, sceneProject);
     Scene* scene = running->scene;
-    TerrainWorldRuntime* runtime = worldRuntime(scene, entity, error);
+    TerrainWorldRuntime* runtime = terrainWorldRuntimeOf(scene, entity, error);
     if (!runtime) {
         rollback();
         call->fail(error);
@@ -1012,7 +988,7 @@ void addTerrainWorldPointState(Scene* scene, Entity entity, float localX, float 
     using namespace terrain_world_tools;
     if (!scene->findComponent<TerrainWorldComponent>(entity)) return;
     std::string error;
-    TerrainWorldRuntime* runtime = worldRuntime(scene, entity, error);
+    TerrainWorldRuntime* runtime = terrainWorldRuntimeOf(scene, entity, error);
     sample["state"] = runtime ? terrainWorldPointStateName(runtime->pointState(localX, localZ)) : "absent";
 }
 
@@ -1027,7 +1003,7 @@ void sampleTerrainWorld(const CallPtr& call, Project* project, SceneProject* sce
     }
     SceneProject* running = McpRefs::runtimeScene(project, sceneProject);
     Scene* scene = running->scene;
-    TerrainWorldRuntime* runtime = worldRuntime(scene, entity, error);
+    TerrainWorldRuntime* runtime = terrainWorldRuntimeOf(scene, entity, error);
     if (!runtime) {
         call->fail("world: " + error);
         return;

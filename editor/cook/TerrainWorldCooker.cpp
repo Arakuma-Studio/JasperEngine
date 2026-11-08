@@ -51,6 +51,8 @@ namespace {
 }
 
 bool TerrainWorldCooker::cook(const fs::path& source, const fs::path& destination, bool web, TerrainWorldCookReport& report, std::string& error) {
+    // a report says what this cook did, not the sum of the cooks it was given to
+    report = TerrainWorldCookReport();
     WorldManifest manifest;
     if (!readWorldManifest(source, manifest, error)) return false;
     const WorldLattice& lattice = manifest.lattice;

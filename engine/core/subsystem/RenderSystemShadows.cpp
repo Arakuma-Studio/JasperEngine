@@ -1090,7 +1090,8 @@ RenderSystem::ShadowTerrainCut& RenderSystem::shadowTerrainCut(Entity entity, Te
     ShadowTerrainCut& cut = shadowTerrainScratch;
     cut.nodes[0].clear();
     cut.nodes[1].clear();
-    if (!terrain.heightMapLoaded)
+    // T4: a World has no node tree; its shadow pass draws its own selection (drawTerrainWorldItems)
+    if (!terrain.heightMapLoaded || terrain.world)
         return cut;
 
     if (mesh.staticShadowCaster){

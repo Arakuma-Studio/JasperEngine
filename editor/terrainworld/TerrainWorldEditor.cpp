@@ -4,6 +4,7 @@
 #include "terrainworld/TerrainWorldEditor.h"
 
 #include "Project.h"
+#include "Scene.h"
 #include "asset/AssetTypes.h"
 #include "asset/Guid.h"
 #include "command/CommandHandle.h"
@@ -164,9 +165,6 @@ Entity jasperengine::editor::createTerrainWorld(Project* project, uint32_t scene
     for (int z = s.originZ; z < s.originZ + s.gridLength; z++) {
         for (int x = s.originX; x < s.originX + s.gridWidth; x++) tiles.emplace_back(x, z);
     }
-    if (!createWorldFolder(folder, manifest, tiles, error)) return NULL_ENTITY;
-    FileUtils::reportWritten(folder);
-
     CommandHistory* history = CommandHandle::get(sceneId);
     const size_t start = history->mark();
     auto fail = [&](const std::string& why) {
@@ -177,6 +175,12 @@ Entity jasperengine::editor::createTerrainWorld(Project* project, uint32_t scene
     CreateEntityCmd* createCmd = new CreateEntityCmd(project, sceneId, name, EntityCreationType::TERRAIN, parent);
     if (!history->addCommandNoMerge(createCmd)) return fail("The Terrain World could not be made.");
     const Entity entity = createCmd->getEntity();
+    // the tiles carry the macro colour the runtime derives from the new Terrain's layers
+    Scene* scene = sceneProject->scene;
+    const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+    const std::vector<float> colours = terrain ? terrainWorldLayerColours(*terrain, scene->findComponent<MeshComponent>(entity)) : std::vector<float>();
+    if (!createWorldFolder(folder, manifest, tiles, error, colours, terrain ? static_cast<int>(terrain->surfaceLayers.size()) : 0)) return fail(error);
+    FileUtils::reportWritten(folder);
     const AssetRef ref(assetPath, Guid::parse(manifest.guid));
     if (!history->addCommandNoMerge(new AddComponentCmd(project, sceneId, entity, ComponentType::TerrainWorldComponent)) ||
         !history->addCommandNoMerge(new PropertyCmd<AssetRef>(project, sceneId, entity, ComponentType::TerrainWorldComponent, "worldData", ref))) {
@@ -202,4 +206,26 @@ TerrainWorldAutoAddPause::TerrainWorldAutoAddPause(TerrainComponent& terrain): r
 
 TerrainWorldAutoAddPause::~TerrainWorldAutoAddPause() {
     if (runtime) runtime->store().options().autoAddTiles = was;
+}
+
+TerrainWorldRuntime* jasperengine::editor::terrainWorldRuntimeOf(Scene* scene, Entity entity, std::string& error) {
+    const std::string name = "\"" + scene->getEntityName(entity) + "\"";
+    if (!scene->findComponent<TerrainWorldComponent>(entity)) {
+        error = scene->findComponent<TerrainComponent>(entity) ? name + " is a plain Terrain, not a Terrain World: make one with edit_terrain_world {create}."
+                                                               : name + " is not a Terrain World: pass one as entity, or make one with edit_terrain_world {create}.";
+        return nullptr;
+    }
+    std::shared_ptr<TerrainWorldSystem> system = scene->findSystem<TerrainWorldSystem>();
+    if (!system) {
+        error = "This editor was built without Terrain Worlds.";
+        return nullptr;
+    }
+    std::string why;
+    TerrainWorldRuntime* runtime = system->ensureRuntime(entity, &why);
+    if (!runtime || !runtime->started()) {
+        error = "The Terrain World " + name + " did not start: " + (why.empty() ? std::string("its data did not load") : why) +
+                ". Check its World Data asset.";
+        return nullptr;
+    }
+    return runtime;
 }

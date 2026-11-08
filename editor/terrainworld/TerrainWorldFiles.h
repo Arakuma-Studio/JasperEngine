@@ -30,10 +30,12 @@ namespace jasperengine::editor {
     bool writeTileFile(const std::filesystem::path& folder, const terrain::WorldTile& tile, std::string& error);
     bool removeTileFile(const std::filesystem::path& folder, terrain::TileCoord tile, std::string& error);
 
-    // R40, R43: a new world folder: manifest and every listed tile at the base height. Refuses a
-    // folder that exists.
+    // R40, R43: a new world folder: manifest and every listed tile at the base height, with the
+    // macro colour of these layer colours (terrainWorldLayerColours) when given, as the runtime
+    // would derive it, so an undo that puts a tile back writes the bytes it had. Refuses a folder
+    // that exists.
     bool createWorldFolder(const std::filesystem::path& folder, terrain::WorldManifest& manifest, const std::vector<terrain::TileCoord>& tiles,
-                           std::string& error);
+                           std::string& error, const std::vector<float>& layerColours = {}, int layerCount = 0);
 
     // R52: the overview cache of a world and the fingerprint (tile names, sizes, times) it was made from
     std::filesystem::path worldOverviewCachePath(const std::filesystem::path& projectInternal, const std::string& guid);

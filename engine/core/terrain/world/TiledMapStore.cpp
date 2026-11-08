@@ -345,7 +345,7 @@ void TiledMapStore::restoreTile(TileCoord tile, std::shared_ptr<WorldTile> data)
         dropTile(tile);
         return;
     }
-    access->add(tile, std::move(data));
+    access->restore(tile, std::move(data));
     for (int dz = -1; dz <= 1; dz++) {
         for (int dx = -1; dx <= 1; dx++) syncGutters(offsetCoord(tile, dx, dz));
     }

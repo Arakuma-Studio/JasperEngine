@@ -904,6 +904,14 @@ void TerrainWorldRuntime::add(TileCoord coord, std::shared_ptr<WorldTile> data) 
     revisions[coord.key()]++;
 }
 
+void TerrainWorldRuntime::restore(TileCoord coord, std::shared_ptr<WorldTile> data) {
+    std::lock_guard<std::recursive_mutex> guard(lock);
+    if (!data) return;
+    add(coord, std::move(data));
+    derivedDirty.erase(coord.key());
+    overviewPatchPending = true;
+}
+
 void TerrainWorldRuntime::remove(TileCoord coord) {
     std::lock_guard<std::recursive_mutex> guard(lock);
     worldOccupancy.setTile(coord, false);

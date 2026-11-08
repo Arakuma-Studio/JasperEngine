@@ -168,11 +168,8 @@ TEST(ModuleUsage, TerrainWorldNotNeededByAnEmptyProjectOrAPlainTerrain) {
     one.scene.addComponent<TerrainComponent>(one.entity, {});
     EXPECT_FALSE(one.usage().needs("terrainworld"));
     // a script using the plain Terrain, and the words in a string or a comment
-    EXPECT_FALSE(withLua("local t = Terrain(self.scene, self.entity)
-local h = t:getHeightAt(1, 2)").needs("terrainworld"));
-    EXPECT_FALSE(withLua("print('TerrainWorld')
--- go:getTerrainWorld()
-local x = 1").needs("terrainworld"));
+    EXPECT_FALSE(withLua("local t = Terrain(self.scene, self.entity)\nlocal h = t:getHeightAt(1, 2)").needs("terrainworld"));
+    EXPECT_FALSE(withLua("print('TerrainWorld')\n-- go:getTerrainWorld()\nlocal x = 1").needs("terrainworld"));
 }
 
 TEST(ModuleUsage, TerrainWorldLuaNamesNeedTheModule) {

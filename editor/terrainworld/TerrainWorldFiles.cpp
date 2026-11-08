@@ -226,7 +226,8 @@ bool jasperengine::editor::removeTileFile(const fs::path& folder, TileCoord tile
     return true;
 }
 
-bool jasperengine::editor::createWorldFolder(const fs::path& folder, WorldManifest& manifest, const std::vector<TileCoord>& tiles, std::string& error) {
+bool jasperengine::editor::createWorldFolder(const fs::path& folder, WorldManifest& manifest, const std::vector<TileCoord>& tiles, std::string& error,
+                                             const std::vector<float>& layerColours, int layerCount) {
     std::error_code ec;
     if (fs::exists(folder, ec)) {
         error = "a file or folder is already at " + folder.string();
@@ -238,6 +239,7 @@ bool jasperengine::editor::createWorldFolder(const fs::path& folder, WorldManife
     for (const TileCoord& coord : tiles) {
         WorldTile tile;
         initTile(tile, manifest.lattice, coord, manifest.maps.baseHeight);
+        if (!layerColours.empty()) buildOverviewColour(tile, manifest.lattice, layerColours, layerCount);
         if (!writeTileFile(folder, tile, error)) return false;
         manifest.tiles.push_back(WorldTileInfo{coord, manifest.maps.baseHeight, manifest.maps.baseHeight});
     }

@@ -14,6 +14,7 @@
 #include <vector>
 
 namespace jasperengine {
+    class Scene;
     class TerrainWorldRuntime;
     struct TerrainComponent;
     struct MeshComponent;
@@ -28,6 +29,9 @@ namespace jasperengine::editor {
     void installTerrainWorldHost(Project* project);
     // The editor's frame: the pump (an idle editor runs no engine frame) and the tiles' debounce
     void updateTerrainWorlds(double nowSeconds);
+    // R44, R45: the world of a GameObject in this scene, its runtime made now if it has none yet;
+    // null with why and its fix (a plain Terrain, not a world, a world that did not start)
+    TerrainWorldRuntime* terrainWorldRuntimeOf(Scene* scene, Entity entity, std::string& error);
 
     struct TerrainWorldSettings {
         std::string name = "Terrain World";

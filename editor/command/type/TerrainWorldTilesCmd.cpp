@@ -99,6 +99,8 @@ bool editor::TerrainWorldTilesCmd::execute() {
         put(*world, false);
         return false;
     }
+    // the after side holds the derived sections the files will: a redo writes it as it is
+    world->settleEdits();
     bool any = false;
     for (Snapshot& snapshot : snapshots) {
         if (world->present(snapshot.tile)) {

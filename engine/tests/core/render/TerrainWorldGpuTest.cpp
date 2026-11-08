@@ -194,3 +194,14 @@ TEST_F(TerrainWorldGpu, DrawsAtTheWorldsLimit) {
     ASSERT_TRUE(settle(true));
     EXPECT_EQ(magentaPixels(), 0);
 }
+
+TEST_F(TerrainWorldGpu, CastsShadowsAsAStaticCaster) {
+    // a World has no node tree: the shadow passes draw its selection, whichever cut a caster takes
+    makeWorld(-2, 1, 0);
+    scene.getComponent<MeshComponent>(terrain->getEntity()).staticShadowCaster = true;
+    sun.setShadows(true);
+    lookDown(0.0f, 0.0f, 70.0f);
+    ASSERT_TRUE(settle(true));
+    EXPECT_EQ(magentaPixels(), 0);
+    EXPECT_GT(runtime()->stats().draws[0][1], 0) << "the shadow passes drew the world";
+}

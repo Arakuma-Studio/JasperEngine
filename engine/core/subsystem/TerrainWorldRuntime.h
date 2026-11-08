@@ -203,6 +203,7 @@ namespace jasperengine {
         std::shared_ptr<const terrain::WorldTile> tile(terrain::TileCoord tile) const override;
         std::shared_ptr<terrain::WorldTile> writable(terrain::TileCoord tile) override;
         void add(terrain::TileCoord tile, std::shared_ptr<terrain::WorldTile> data) override;
+        void restore(terrain::TileCoord tile, std::shared_ptr<terrain::WorldTile> data) override;
         void remove(terrain::TileCoord tile) override;
         void changed(terrain::TileCoord tile) override;
         bool bounds(terrain::TileCoord& low, terrain::TileCoord& high) const override;

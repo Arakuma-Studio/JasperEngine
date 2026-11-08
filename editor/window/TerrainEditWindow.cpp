@@ -3062,6 +3062,10 @@ void editor::TerrainEditWindow::endStroke(){
             }
         }else{
             auto delta = std::make_unique<TerrainMapDeltaCmd>(project, stroke.sceneId, stroke.entity, stroke.entity, stroke.session->overlay(), true);
+            // T4 R29, R30: the World tiles the stroke made go with its undo
+            if (std::unique_ptr<terrain::TerrainStoreUndoHook> hook = stroke.store->takeUndoHook()){
+                delta->addUndoHook(std::move(hook));
+            }
             if (!delta->empty()){
                 history->addCommandNoMerge(delta.release());
             }
