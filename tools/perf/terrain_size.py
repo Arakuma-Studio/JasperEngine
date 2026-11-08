@@ -7,7 +7,7 @@ docs/perf/terrain.md): the growth of a Linux glcore player's linked .text and .r
     python3 tools/perf/terrain_size.py --base-linux FILE --head-linux FILE [--base-web FILE --head-web FILE]
 
 A players directory is what tools/players/build_linux_player.sh or `tools/build.sh players` writes
-(linux-x64-glcore-release*/jasperengine-player, web-*/files/jasperengine-player-st.wasm); either
+(linux-x64-glcore-release*/files/jasperengine-player, web-*/files/jasperengine-player-st.wasm); either
 platform may be missing from both, and is then reported as not measured. The base is the merge base
 (R54): build the same recipe on a copy of that commit, e.g. from the worktree root, inside the linux image:
 
@@ -81,7 +81,7 @@ def web_bytes(path: Path) -> int:
 
 
 def find_linux(players: Path) -> Path | None:
-    found = sorted(players.glob("linux-x64-glcore-release*/jasperengine-player"))
+    found = sorted(players.glob("linux-x64-glcore-release*/files/jasperengine-player"))
     return found[0] if found else None
 
 
