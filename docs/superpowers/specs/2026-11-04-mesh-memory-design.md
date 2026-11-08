@@ -853,12 +853,25 @@ Branch `fu/mesh-memory` (docs/doriax-catchup/FOLLOWUPS.md).
    `RenderSystem::requestSubmeshBatchShaders` makes it (or releases it when there is nothing to batch, which is
    how GPU Instancing turning off frees it), `loadSubmeshBatchVariants` does nothing without it, and
    `releaseSubmeshBatchVariants` and `destroyMesh` let it go. A copy of a component shares its source's variants
-   until its own load, which then makes new ones instead of writing the source's; releasing shared variants only
-   drops the pointer, so a copy never destroys the source's pipelines nor removes shader keys it never took (the
-   inline objects were destroyed by whichever copy was released first). The cloner resets the pointer.
+   until its own load, which then makes new ones instead of writing the source's. The struct owns its GPU objects:
+   its destructor, run by the last holder, destroys both pipelines and removes both shaders' pool entries
+   (posted to the main thread through `MainThreadQueue` when the last holder goes on another thread), so a copy
+   game code keeps (`MeshComponent proto = ...`) frees the variants it copied when it goes, and neither holder
+   destroys what the other still draws. The cloner resets the pointer.
    `MeshComponent::arrayHeapBytes` counts the variants a mesh holds. Sizes (Linux; MSVC Release / Debug computed as
    in item 2): `Submesh` 8,664 -> 6,960 B on the merged tree (6,392 / 6,944), `SubmeshBatchVariants` 1,720 B (1,600 / 1,664) only while
    instancing, a sprite's mesh with its arrays 10,432 -> 8,728 B (1,704 B a submesh drawn without instancing). The `MeshMemory` ceilings follow: `Submesh`
    7,680, a sprite's mesh 9,472. Tests: `MeshMemory.SizeofCeilings` and `SpriteCostsAnOrderOfMagnitudeLess` (red
    with the change reverted), `InstancingGoldenGpu.BatchVariantsHeldOnlyWhileInstancing` (none held with GPU
    Instancing off, the arrays' heap bytes lower by exactly the variants, made again on, the same frame).
+5. **Review of item 4.** Ownership as above (a kept copy leaked its variants' pipelines and pool shaders when
+   the live mesh made new ones: `InstancingGoldenGpu.BatchVariantsFreedByTheirLastHolder`, red without the
+   destructor). `destroyMesh` with the assets kept releases the variants whole for a submesh past
+   `numSubmeshes` (left from a larger load: it draws nothing). Undo and redo of `MeshChangeCmd` and the restore
+   paths of `ModelLoadCmd` assign a decoded component over a loaded one: the variants now free themselves there
+   (the old `batch` is the last holder), but the rest of that component's GPU objects (its render, depth and
+   G-buffer pipelines, buffers, shader pool entries and textures) are still not released, as before this program.
+   Not fixed here: the right fix is `ModelClearCmd`'s `releaseMeshResources` (`prepareMeshForDataReload` and the
+   material textures) before each assignment, moved where the three commands share it, with an editor test per
+   command counting live pipelines across undo and redo; it is a change to editor command behaviour beyond the
+   variants.

@@ -343,6 +343,42 @@ TEST_F(InstancingGoldenGpu, BatchVariantsHeldOnlyWhileInstancing){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// The batch variants belong to their last holder: game code keeping a copy of a loaded component
+// (MeshComponent proto = ...) holds the ones it copied, the live mesh makes its own at its next
+// load, and when the copy goes its variants' pipelines and pool shaders go with it
+TEST_F(InstancingGoldenGpu, BatchVariantsFreedByTheirLastHolder){
+    JASPER_REQUIRE_GPU();
+    // one box: no other mesh holds its batch shaders
+    models.push_back(std::make_unique<Model>(&scene));
+    ASSERT_TRUE(models[0]->loadModel("gltf/instancing/box.gltf"));
+    const Entity entity = models[0]->getEntity();
+
+    Engine::setGpuInstancingEnabled(false);
+    ASSERT_TRUE(render()) << "the box never finished loading";
+    const int pipelinesOff = ObjectRender::getLivePipelineCount();
+
+    Engine::setGpuInstancingEnabled(true);
+    ASSERT_TRUE(render()) << "the box never loaded its batch variants";
+    ASSERT_TRUE(scene.getComponent<MeshComponent>(entity).submeshes[0].batch);
+    const SubmeshBatchVariants& loaded = *scene.getComponent<MeshComponent>(entity).submeshes[0].batch;
+    ASSERT_NE(loaded.shaderProperties, 0u);
+    const ShaderKey key = ShaderPool::getShaderKey(ShaderType::MESH, loaded.shaderProperties, loaded.shaderId);
+    ASSERT_EQ(ShaderPool::getShaderState(key), ResourceLoadState::Finished);
+    {
+        const MeshComponent proto = scene.getComponent<MeshComponent>(entity);
+        ASSERT_EQ(proto.submeshes[0].batch, scene.getComponent<MeshComponent>(entity).submeshes[0].batch);
+        // the live mesh lets go of its variants (the copy still holds them)
+        Engine::setGpuInstancingEnabled(false);
+        ASSERT_TRUE(render()) << "the box never loaded again without GPU Instancing";
+        EXPECT_FALSE(scene.getComponent<MeshComponent>(entity).submeshes[0].batch);
+        EXPECT_TRUE(proto.submeshes[0].batch);
+    }
+    GpuEnvironment::drawFrames(2);
+    EXPECT_EQ(ObjectRender::getLivePipelineCount(), pipelinesOff) << "the copy's batch pipelines outlived it";
+    EXPECT_EQ(ShaderPool::getShaderState(key), ResourceLoadState::NotStarted) << "the copy's batch shader stayed in the pool";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 // a Mesh that does not allow it draws alone, and the image is the same
 TEST_F(InstancingGoldenGpu, MeshOptOutDrawsAlone){
     JASPER_REQUIRE_GPU();

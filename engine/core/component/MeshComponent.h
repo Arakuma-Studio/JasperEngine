@@ -227,6 +227,8 @@ namespace jasperengine{
     // and depthRender (RenderSystem::loadSubmeshBatchVariants), which draw batches of its draws
     // with those of every submesh like it, linked to render and depthRender (else they draw
     // nothing). Held only while GPU Instancing is on and the submesh can batch (Submesh::batch).
+    // It owns them: its last holder (a copy of the component included) frees the pipelines and
+    // lets go of the shaders' pool entries.
     struct JASPERENGINE_API SubmeshBatchVariants{
         ObjectRender render;
         ObjectRender depthRender;
@@ -236,6 +238,14 @@ namespace jasperengine{
         uint64_t depthShaderProperties = 0;
         uint16_t shaderId = 0;
         uint16_t depthShaderId = 0;
+
+        SubmeshBatchVariants() = default;
+        SubmeshBatchVariants(const SubmeshBatchVariants&) = delete;
+        SubmeshBatchVariants& operator=(const SubmeshBatchVariants&) = delete;
+        // releases them; off the main thread the release is posted there (MainThreadQueue)
+        ~SubmeshBatchVariants();
+        // frees them now, leaving it empty (main thread)
+        void release();
     };
 
     struct JASPERENGINE_API Submesh{

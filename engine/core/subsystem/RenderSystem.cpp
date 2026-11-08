@@ -36,6 +36,7 @@
 #include <optional>
 #include "htmlui/HtmlUIClock.h"
 #include "pool/ShaderPool.h"
+#include "thread/MainThreadQueue.h"
 #include "pool/TexturePool.h"
 #include "pool/MeshBufferPool.h"
 #include "math/Vector3.h"
@@ -8785,26 +8786,53 @@ void RenderSystem::loadSubmeshBatchVariants(MeshComponent& mesh, Submesh& submes
     }
 }
 
+void SubmeshBatchVariants::release(){
+    render.destroy();
+    depthRender.destroy();
+    if (shader){
+        shader.reset();
+        ShaderPool::remove(ShaderType::MESH, shaderProperties, shaderId);
+    }
+    if (depthShader){
+        depthShader.reset();
+        ShaderPool::remove(ShaderType::DEPTH, depthShaderProperties, depthShaderId);
+    }
+    shaderProperties = depthShaderProperties = 0;
+    shaderId = depthShaderId = 0;
+}
+
+SubmeshBatchVariants::~SubmeshBatchVariants(){
+    if (MainThreadQueue::isMainThread()){
+        release();
+        return;
+    }
+    // (the last holder went on another thread: the pipelines and pool entries go on the main one;
+    // a cleared queue destroys the task there, which releases them too)
+    std::shared_ptr<SubmeshBatchVariants> rest = std::make_shared<SubmeshBatchVariants>();
+    rest->render = render;
+    rest->depthRender = depthRender;
+    rest->shader = std::move(shader);
+    rest->depthShader = std::move(depthShader);
+    rest->shaderProperties = shaderProperties;
+    rest->depthShaderProperties = depthShaderProperties;
+    rest->shaderId = shaderId;
+    rest->depthShaderId = depthShaderId;
+    MainThreadQueue::post([rest](){ rest->release(); });
+}
+
 void RenderSystem::releaseSubmeshBatchVariants(Submesh& submesh, bool keepShaders){
-    // variants shared with a copy of the component are the other holder's to release
+    // variants shared with a copy of the component are freed by their last holder
     if (!submesh.batch || submesh.batch.use_count() > 1){
         if (!keepShaders)
             submesh.batch.reset();
         return;
     }
-    SubmeshBatchVariants& held = *submesh.batch;
-    held.render.destroy();
-    held.depthRender.destroy();
-    if (keepShaders)
+    if (keepShaders){
+        submesh.batch->render.destroy();
+        submesh.batch->depthRender.destroy();
         return;
-    if (held.shader){
-        held.shader.reset();
-        ShaderPool::remove(ShaderType::MESH, held.shaderProperties, held.shaderId);
     }
-    if (held.depthShader){
-        held.depthShader.reset();
-        ShaderPool::remove(ShaderType::DEPTH, held.depthShaderProperties, held.depthShaderId);
-    }
+    // (its destructor frees them)
     submesh.batch.reset();
 }
 
@@ -13149,8 +13177,9 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.render.destroy();
         submesh.depthRender.destroy();
         submesh.gbufferRender.destroy();
-        // (its shaders and the variants' memory went above unless the assets are kept)
-        releaseSubmeshBatchVariants(submesh, true);
+        // (its shaders and the variants' memory went above unless the assets are kept; a submesh
+        // past the count, left from a larger load, draws nothing: its variants go whole)
+        releaseSubmeshBatchVariants(submesh, i < mesh.numSubmeshes);
         submesh.shadowIndices.reset();
         releaseSubmeshOit(submesh);
 
