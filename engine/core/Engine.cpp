@@ -34,6 +34,7 @@
 #include "audio/AudioMixer.h"
 #if JASPERENGINE_SOUND_LAYER
 #include "audio/MusicPlayer.h"
+#include "object/sound/Audio.h"
 #endif
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -1634,6 +1635,10 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     Log::onMessageReceived.removeByTagSubstring(substring);
     Device::onThermalStateChanged.removeByTagSubstring(substring);
     Device::onLowMemory.removeByTagSubstring(substring);
+#if JASPERENGINE_SOUND_LAYER
+    Audio::onMusicBeat.removeByTagSubstring(substring);
+    Audio::onMusicSection.removeByTagSubstring(substring);
+#endif
     DebugOverlay::removeCommandsByTag(substring);
 
     // a released script instance's tag is "_<address>_": the input sources it owned go too
@@ -1682,6 +1687,11 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     Log::onMessageReceived.clear();
     Device::onThermalStateChanged.clear();
     Device::onLowMemory.clear();
+#if JASPERENGINE_SOUND_LAYER
+    // here too, not only in MusicPlayer::reset: the editor's Stop runs that after the C++ script library is unloaded
+    Audio::onMusicBeat.clear();
+    Audio::onMusicSection.clear();
+#endif
     DebugOverlay::removeOwnedCommands();
 
     if (includeLifecycle) {

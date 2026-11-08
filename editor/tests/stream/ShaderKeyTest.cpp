@@ -63,9 +63,9 @@ namespace {
     // October 2026, see StochasticTilingTest.cpp)
     // bits 0-31, bit 32, the lattice deformer ('Ltc'), bit 33, S10's high shadow filters ('Shq'),
     // bits 34-35, the Vertex Animation ('Vat', 'Vab'), bits 36-39, S57's lighting ('Til',
-    // 'Cap', 'Cts', 'Oit'), bit 40, S54's LOD cross-fade ('Lfd'), bit 41, S55's automatic
-    // instancing ('Aui'), bits 42-43, the water interaction ('Wex', 'Wwk'), bit 44, draw-perf's
-    // directional-only Lit ('Dlo'), and bit 45, S41's Pixel Snap ('Pxs')
+    // 'Cap', 'Cts', 'Oit'), bit 40, S54's LOD cross-fade ('Lfd'), bit 41, S55's automatic GPU
+    // instancing ('Aui'), bits 42-43, water-boats' excluders and wakes ('Wex', 'Wwk'), bit 44,
+    // draw-perf's directional-only Lit ('Dlo'), and bit 45, S41's Pixel Snap ('Pxs')
     const uint64_t meshValidMask = 0x3FFFFFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
@@ -409,7 +409,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::MESH, (1u << 3) | (1u << 30), "mesh_PucL16"},
         {ShaderType::MESH, meshMaskWithoutBit5, "mesh_UltUv1Uv2PucShwNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16Pcl"},
         // bits past the count add nothing
-        {ShaderType::MESH, 0x41 | shaderPropertyBit(46) | shaderPropertyBit(63), "mesh_UltNor"},
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(62) | shaderPropertyBit(63), "mesh_UltNor"},
         // bits 36-39, S57's lighting: Tiled lights, capsule and contact shadows, Order Independent
         {ShaderType::MESH, 0x41 | shaderPropertyBit(36), "mesh_UltNorTil"},
         {ShaderType::MESH, 0x51 | shaderPropertyBit(37), "mesh_UltShwNorCap"},
