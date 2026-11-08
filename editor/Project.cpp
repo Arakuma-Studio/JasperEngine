@@ -6979,8 +6979,9 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         }
 
         if (!std::filesystem::exists(projectFile)) {
-            if (!std::filesystem::exists(projectPath)) {
-                std::filesystem::create_directories(projectPath);
+            // a file in its place is no project folder: nothing could be saved there
+            if (!std::filesystem::is_directory(projectPath) && !std::filesystem::create_directories(projectPath)) {
+                throw std::runtime_error(FileUtils::pathToGenericUtf8(projectPath) + " is not a folder");
             }
             Out::info("Created project directory: \"%s\"", projectPath.string().c_str());
             refreshTrustedRoots();   // the folder exists now
