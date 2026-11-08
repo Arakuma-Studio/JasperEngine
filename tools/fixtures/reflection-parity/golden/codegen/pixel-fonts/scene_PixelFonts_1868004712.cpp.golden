@@ -291,5 +291,7 @@ void create_scene_PixelFonts_1868004712(Scene* scene){
 
 SceneResources resources_scene_PixelFonts_1868004712(){
     SceneResources resources;
+    resources.bitmapFonts.push_back("assets/fonts/hud.bitmapfont");
+    resources.bitmapFonts.push_back("assets/fonts/colored.bitmapfont");
     return resources;
 }
