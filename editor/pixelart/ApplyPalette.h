@@ -26,8 +26,7 @@ namespace jasperengine::editor::pixelart {
     const char* ditherName(Dither dither);
     bool parseDither(std::string_view name, Dither& out);
 
-    // "clean", "fixable", "needs_person"
-    const char* verdictName(Verdict verdict);
+    // (verdictName: PixelProblem.h)
     // apply_palette measure_only's exit code (R43): 0, 3, 4
     int verdictExitCode(Verdict verdict);
 

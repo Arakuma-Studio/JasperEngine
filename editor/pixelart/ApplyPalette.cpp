@@ -237,15 +237,6 @@ namespace {
         return false;
     }
 
-    const char* verdictName(Verdict verdict) {
-        switch (verdict) {
-            case Verdict::Clean: return "clean";
-            case Verdict::Fixable: return "fixable";
-            case Verdict::NeedsPerson: return "needs_person";
-        }
-        return "needs_person";
-    }
-
     int verdictExitCode(Verdict verdict) {
         switch (verdict) {
             case Verdict::Clean: return 0;

@@ -436,7 +436,7 @@ void getEntityTool(const CallPtr& call) {
         if (const MeshComponent* mesh = registry->findComponent<MeshComponent>(entity)) {
             Json paletteRows = Json::array();
             Json paletteWarnings = Json::array();
-            for (unsigned int s = 0; s < usedSubmeshes && s < MAX_SUBMESHES; s++) {
+            for (unsigned int s = 0; s < usedSubmeshes && s < (unsigned int)mesh->submeshes.stored(); s++) {
                 const Material& material = mesh->submeshes[s].material;
                 if (jasperengine::pixelart::findPaletteBinding(material)) {
                     paletteRows.push_back({{"submesh", s}, {"rows", jasperengine::pixelart::paletteRowNames(material)},
