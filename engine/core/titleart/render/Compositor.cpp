@@ -204,13 +204,20 @@ void TitlePlanner::pass(const std::string& label, const std::string& layerId, in
     step.splittable = splittable && !clear;
     step.shader = titleRenderProgramKey((uint32_t)program);
     TitleRenderServices* services = &svc;
-    step.ready = [services, program]() {
+    // a pass whose first draw went to a later frame (TitleFirstDraws) runs again then
+    auto deferred = std::make_shared<bool>(false);
+    step.ready = [services, program, deferred]() {
         std::string error;
         // a program that failed to build is "ready": its run reports the error
-        return services->gpu.ensureProgram(program, &error) || !error.empty();
+        if (!services->gpu.ensureProgram(program, &error) && error.empty()) return false;
+        if (*deferred) {
+            if (!TitleFirstDraws::available()) return false;
+            *deferred = false;
+        }
+        return true;
     };
     std::shared_ptr<TitleJobState> state = st;
-    step.run = [state, slot, program, fill, blend, clear](const TitleRectI& rows, std::string& error) {
+    step.run = [state, slot, program, fill, blend, clear, deferred](const TitleRectI& rows, std::string& error) {
         if (!state->alive(error)) return false;
         TitleGpuPass p;
         p.program = program;
@@ -220,7 +227,9 @@ void TitlePlanner::pass(const std::string& label, const std::string& layerId, in
         p.blend = blend;
         p.clear = clear;
         if (fill && !fill(*state, p, error)) return false;
-        return state->services.gpu.run(p, error);
+        const bool ok = state->services.gpu.run(p, error);
+        *deferred = ok && state->services.gpu.lastRunDeferred();
+        return ok;
     };
     steps.add(std::move(step));
 }
@@ -271,13 +280,16 @@ void TitlePlanner::kernel(const std::string& label, const std::string& layerId, 
     auto compiling = std::make_shared<std::vector<uint32_t>>();
     TitleRenderServices* services = &svc;
     step.ready = [services, compiling]() {
-        bool ready = true;
+        if (compiling->empty()) return true;
         for (uint32_t program : *compiling) {
             std::string error;
-            ready = (services->gpu.ensureProgram(program, &error) || !error.empty()) && ready;
+            if (!services->gpu.ensureProgram(program, &error) && error.empty()) return false;
         }
-        if (ready) compiling->clear();
-        return ready;
+        // a pass whose first draw went to a later frame (TitleFirstDraws)
+        if (!TitleFirstDraws::available()) return false;
+        // every program can draw now: the step runs again on the next call (the passes it skipped)
+        compiling->clear();
+        return false;
     };
     std::shared_ptr<TitleJobState> state = st;
     step.run = [state, run, compiling](const TitleRectI&, std::string& error) {

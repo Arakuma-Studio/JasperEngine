@@ -9,6 +9,7 @@
 #include "render/SystemRender.h"
 
 #include <algorithm>
+#include <unordered_set>
 #include <cstring>
 
 using namespace jasperengine;
@@ -250,6 +251,7 @@ bool TitleGpu::clear(TitleTarget* target, const float color[4], std::string& err
 }
 
 bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
+    deferredRun = false;
     auto* t = static_cast<SokolTitleTarget*>(desc.target);
     if (!t) {
         error = "device_lost: a title art target is gone";
@@ -262,6 +264,13 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
     }
     Program& p = *programs[number];
     const TargetKey& key = t->key();
+    // the first draw in this state compiles the driver's variant: one a frame
+    const uint64_t drawKey = ((uint64_t)number << 32) ^ ((uint64_t)key.format << 24) ^ ((uint64_t)key.samples << 16) ^ ((uint64_t)key.depth << 8) ^
+                             (uint64_t)desc.blend;
+    if (!TitleFirstDraws::allow(drawKey)) {
+        deferredRun = true;
+        return true;
+    }
     const TitleRectI whole{0, 0, key.width, key.height};
     TitleRectI scissor = desc.scissor.empty() ? whole : desc.scissor;
     const int x0 = std::max(0, scissor.x), y0 = std::max(0, scissor.y);
@@ -313,3 +322,72 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
     }
     return true;
 }
+
+// ---- first draws ----
+
+namespace {
+
+    struct FirstDraws {
+        std::unordered_set<uint64_t> drawn;
+        uint64_t frame = UINT64_MAX;
+        uint64_t grants = 0;
+        bool unbounded = false;
+        TitleFirstDrawStats stats;
+
+        // the grants of the frame now
+        uint64_t& frameGrants() {
+            const uint64_t now = SystemRender::getFrameCount();
+            if (now != frame) {
+                frame = now;
+                grants = 0;
+            }
+            return grants;
+        }
+    };
+
+    FirstDraws& firstDraws() {
+        static FirstDraws f;
+        return f;
+    }
+
+}
+
+bool TitleFirstDraws::allow(uint64_t key) {
+    return allowGroup({key});
+}
+
+bool TitleFirstDraws::allowGroup(const std::vector<uint64_t>& keys) {
+    FirstDraws& f = firstDraws();
+    size_t fresh = 0;
+    for (uint64_t k : keys) fresh += f.drawn.count(k) ? 0 : 1;
+    if (fresh == 0) return true;
+    uint64_t& grants = f.frameGrants();
+    if (grants > 0 && !f.unbounded) {
+        f.stats.deferred++;
+        return false;
+    }
+    for (uint64_t k : keys) f.drawn.insert(k);
+    grants += f.unbounded ? fresh : 1;
+    f.stats.granted += fresh;
+    f.stats.maxPerFrame = std::max(f.stats.maxPerFrame, grants);
+    return true;
+}
+
+bool TitleFirstDraws::available() {
+    FirstDraws& f = firstDraws();
+    return f.unbounded || f.frameGrants() == 0;
+}
+
+const TitleFirstDrawStats& TitleFirstDraws::stats() {
+    return firstDraws().stats;
+}
+
+void TitleFirstDraws::resetForTesting(bool unbounded) {
+    FirstDraws& f = firstDraws();
+    f.drawn.clear();
+    f.grants = 0;
+    f.frame = UINT64_MAX;
+    f.unbounded = unbounded;
+    f.stats = TitleFirstDrawStats();
+}
+

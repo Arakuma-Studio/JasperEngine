@@ -119,6 +119,8 @@ bool TitleJobRunner::run(const TitlePass& pass) {
         if (failure.empty()) failure = why;
         return false;
     }
+    // its first draw went to a later frame (TitleFirstDraws): drawn when the step runs again
+    if (services.gpu.lastRunDeferred() && std::find(pending.begin(), pending.end(), number) == pending.end()) pending.push_back(number);
     return true;
 }
 
