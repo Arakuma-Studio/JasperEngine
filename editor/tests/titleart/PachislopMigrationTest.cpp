@@ -29,11 +29,17 @@ namespace {
         return nlohmann::json(a) == nlohmann::json(b);
     }
 
+    // a current Material3D: every field the migration fills already present
     Json mat3(const std::string& preset, const std::string& color) {
-        return Json{{"preset", preset}, {"color", color}, {"metalness", 1}, {"roughness", 0.3}};
+        return Json{{"preset", preset}, {"color", color}, {"metalness", 1}, {"roughness", 0.3}, {"gradientAxis", "xy"}, {"gradientBend", 0},
+                    {"glassDepth", 0}, {"environment", Json::object()}, {"surface", Json{{"kind", "none"}, {"amount", 0.5}, {"scale", 20}, {"seed", 1}}}};
     }
 
     // ---- a v4-shaped project (the fields v4 lacked left out) ----
+
+    Json mat3V4(const std::string& preset, const std::string& color) {
+        return Json{{"preset", preset}, {"color", color}, {"metalness", 1}, {"roughness", 0.3}};
+    }
 
     Json material2DV4(const std::string& color) {
         return Json{{"fill", Json{{"kind", "solid"}, {"color", color}}},
@@ -44,13 +50,13 @@ namespace {
     }
 
     Json legacyStyle3D() {
-        return Json{{"depth", 14}, {"face", mat3("gold", "#ffcc33")}, {"side", mat3("gold", "#ffcc33")},
+        return Json{{"depth", 14}, {"face", mat3V4("gold", "#ffcc33")}, {"side", mat3V4("gold", "#ffcc33")},
                     {"bands", Json::array({Json{{"id", "ring"}, {"width", 2.5}, {"depth", 2.5}, {"profile", "round"}, {"segments", 6}, {"curve", 0},
-                                                {"material", mat3("gold", "#ffcc33")}}})},
+                                                {"material", mat3V4("gold", "#ffcc33")}}})},
                     {"backplates", Json::array({Json{{"id", "b1"}, {"enabled", true}, {"grow", 4}, {"join", "miter"}, {"fillCounters", true},
                                                      {"depth", 10}, {"zGap", 0}, {"bevel", Json{{"width", 1.5}, {"depth", 1.5}, {"profile", "round"},
                                                                                                 {"segments", 6}, {"curve", 0}}},
-                                                     {"face", mat3("chrome", "#dddddd")}, {"side", mat3("chrome", "#dddddd")}}})}};
+                                                     {"face", mat3V4("chrome", "#dddddd")}, {"side", mat3V4("chrome", "#dddddd")}}})}};
     }
 
     Json v4Project(int version) {
@@ -66,7 +72,7 @@ namespace {
         Json t3 = Json{{"id", "t3"}, {"name", "確定"}, {"kind", "title3d"}, {"visible", true},
                        {"transform", Json{{"x", 0}, {"y", 0}, {"rotZ", 0}, {"scale", 1}, {"opacity", 1}}}, {"effects", Json::array()},
                        {"source", Json{{"kind", "text"}, {"text", "確定"}, {"fontId", "dela-gothic-one"}, {"size", 200},
-                                       {"chars", Json{{"0", Json{{"dx", 1}, {"dy", 0}, {"scale", 1.2}, {"rotate", 0}, {"face3d", mat3("gold", "#ffcc33")}}}}}}},
+                                       {"chars", Json{{"0", Json{{"dx", 1}, {"dy", 0}, {"scale", 1.2}, {"rotate", 0}, {"face3d", mat3V4("gold", "#ffcc33")}}}}}}},
                        {"style3d", legacyStyle3D()}};
         Json img = Json{{"id", "img"}, {"name", "img"}, {"kind", "title2d"}, {"visible", true},
                         {"transform", Json{{"x", 0}, {"y", 0}, {"rotZ", 0}, {"scale", 1}, {"opacity", 1}}}, {"effects", Json::array()},

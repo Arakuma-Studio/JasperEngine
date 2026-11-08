@@ -401,7 +401,10 @@ bool pachislop::importProjectFile(const TitleCreateRequest& request, TitleCreate
     MapResult mapped = mapProject(bundle.project, sink);
     std::vector<TitleOpFile> staged = files.take();
     if (bundle.version == 4) {
-        ImportResolver resolver(assetsDir, staged);
+        // the layout reads the fonts the import is about to write (embedded and pack fonts)
+        std::vector<TitleOpFile> all = staged;
+        all.insert(all.end(), packFiles.begin(), packFiles.end());
+        ImportResolver resolver(assetsDir, all);
         if (compensateV4CharScale(mapped.doc, &resolver)) {
             note("", "", "Per-character scale now reflows the line, so character offsets and layer positions were adjusted to keep the v4 glyph positions",
                  "note", "");
