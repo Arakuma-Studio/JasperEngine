@@ -67,12 +67,12 @@ async def wait_item(ed: Editor, label: str, window_name: str | None = None, time
     ed.fail(f"no drawn UI item {label!r}")
 
 
-async def click_at(ed: Editor, x: float, y: float, button: int = 1) -> None:
+async def click_at(ed: Editor, x: float, y: float, button: str = "1") -> None:
     driver = ui_input.for_editor(ed)
     await driver.click(driver.at((x, y)), button=button)
 
 
-async def click(ed: Editor, rect: list, button: int = 1) -> None:
+async def click(ed: Editor, rect: list, button: str = "1") -> None:
     x, y, w, h = rect
     await click_at(ed, x + w / 2, y + h / 2, button)
 
@@ -110,7 +110,7 @@ async def setup_files(ed: Editor) -> None:
         shutil.copy(FIXTURES / name, fonts / name)
     (ed.project / FONT).write_text(json.dumps({"format": "jasperengine.bitmapfont", "version": 1,
                                                "source": {"type": "grid", "image": "grid@6x9.png"}}))
-    await ed.call("sync_assets")
+    await ed.call("sync_files", full=False)
 
 
 async def test_bitmap_font_inspector(ed: Editor):
@@ -155,7 +155,7 @@ async def test_bitmap_font_inspector(ed: Editor):
     await click(ed, await wait_item(ed, "Kerning", "Inspector"))
     for label, text in (("##bfKernLeft", "T"), ("##bfKernRight", "o")):
         await click(ed, await wait_item(ed, label, "Inspector"))
-        await ui_input.for_editor(ed).type_text(text)
+        await ui_input.for_editor(ed).type(text)
     await click(ed, await wait_item(ed, "Add Pair##bfKernAdd", "Inspector"))
     await ui_input.frames(ed, 4)
     ed.check_eq(font_doc(ed).get("kerning"), [["T", "o", -1]], "the pair was added")
@@ -180,7 +180,7 @@ async def test_create_and_banner(ed: Editor):
     # Create Bitmap Font from each source kind (the Project window's context menu)
     for name, made in (("grid@6x9.png", "grid.bitmapfont"), ("bm.fnt", "bm.bitmapfont"), ("pixel8.ttf", "pixel8.bitmapfont")):
         state = await ui(ed)
-        await click(ed, entry(state, name), button=3)
+        await click(ed, entry(state, name), button="3")
         await click(ed, await wait_item(ed, "Create Bitmap Font"))
         await ui_input.frames(ed, 4)
         path = ed.project / "assets/fonts" / made

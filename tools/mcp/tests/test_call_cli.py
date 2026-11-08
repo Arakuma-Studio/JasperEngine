@@ -229,6 +229,17 @@ async def test_screenshot_image_file(ed: Editor):
     ed.check(str(shots / "screenshot-2.png") in p.stderr, f"the path goes to stderr: {p.stderr}")
 
 
+async def test_view_asset_font_image_file(ed: Editor):
+    """S51 AC16 (R31): view_asset of a font with text writes the PNG through the CLI's image rule"""
+    cli: Cli = S["cli"]
+    shots = cli.root / "fonts"
+    p = await cli.arun("call", *ATTACH, "--json", "--image-dir", str(shots), "view_asset", "--path", "builtin:pixel", "--text", "HP 99")
+    env = envelopes(p)
+    ed.check(p.returncode == 0 and env and env[0]["images"], f"view_asset: {p.returncode} {p.stdout[:300]} {p.stderr}")
+    path = Path(env[0]["images"][0]["path"])
+    ed.check(path.name == "view_asset-1.png" and path.read_bytes().startswith(b"\x89PNG"), f"a PNG file: {path}")
+
+
 async def test_broken_server(ed: Editor):
     cli: Cli = S["cli"]
     port = free_port()

@@ -81,6 +81,8 @@ def downsample(rows, box, k):
 
 async def setup(ed: Editor) -> dict:
     if S.get("ed") is ed:
+        # (a test that made another scene left it selected: the Game view shows the selected scene)
+        await ed.call("select_scene", scene=S["scene"])
         return S
     S.clear()
     S["ed"] = ed
@@ -108,8 +110,12 @@ async def label(ed: Editor, values: dict):
     await ui_input.frames(ed, 4)
 
 
-async def shot(ed: Editor):
-    """the Game view once two screenshots agree (a new shader variant is made off the frame first)"""
+SHOTS = REPO / "build" / "test-results" / "pixel-fonts"
+
+
+async def shot(ed: Editor, name: str = ""):
+    """the Game view once two screenshots agree (a new shader variant is made off the frame first);
+    kept in build/test-results/pixel-fonts/<name>.png"""
     previous = None
     for _ in range(12):
         image = await ed.screenshot(view="game", max_width=0)
@@ -117,6 +123,9 @@ async def shot(ed: Editor):
             break
         previous = image
         await ui_input.frames(ed, 4)
+    if name:
+        SHOTS.mkdir(parents=True, exist_ok=True)
+        (SHOTS / f"{name}.png").write_bytes(previous)
     return pixels(previous)
 
 
@@ -125,7 +134,7 @@ async def test_blocks_uniform(ed: Editor):
     images = {}
     for k in (1, 2, 3):
         await label(ed, {"text": {"fontSize": 9 * k, "outlineWidth": 0}})
-        _, _, rows = await shot(ed)
+        _, _, rows = await shot(ed, f"blocks-x{k}")
         box = ink_box(rows)
         ed.check(box is not None, f"x{k} draws")
         ed.check(blocks_of(rows, box, k), f"x{k}: every font pixel is a {k} x {k} block")
@@ -158,13 +167,14 @@ async def test_styles(ed: Editor):
     await setup(ed)
     for font, colored in (("builtin:pixel", False), ("assets/fonts/colored.bitmapfont", True)):
         await label(ed, {"text": {"font": font, "fontSize": 27, "outlineWidth": 0, "shadowEnabled": False}})
-        _, _, plain = await shot(ed)
+        tag = "colored" if colored else "mono"
+        _, _, plain = await shot(ed, f"styles-{tag}-plain")
         faces = {(x, y) for y, row in enumerate(plain) for x, p in enumerate(row) if p != BLACK}
         ed.check(len(faces) > 0, f"{font} draws")
         counts = {}
         for width, neighbors in ((1, 4), (1, 8), (2, 4), (2, 8)):
             await label(ed, {"text": {"outlineWidth": width, "outlineNeighbors": neighbors, "outlineColor": [1, 0, 0, 1]}})
-            _, _, rows = await shot(ed)
+            _, _, rows = await shot(ed, f"styles-{tag}-outline-{width}-{neighbors}")
             covered = [p for p in faces if rows[p[1]][p[0]] != plain[p[1]][p[0]]]
             ed.check(not covered, f"{font} outline {width}/{neighbors}: no outline pixel over a face ({len(covered)})")
             counts[(width, neighbors)] = sum(1 for row in rows for p in row if p == (255, 0, 0))
@@ -172,7 +182,7 @@ async def test_styles(ed: Editor):
         ed.check(counts[(1, 8)] > counts[(1, 4)] and counts[(2, 4)] > counts[(1, 4)], f"{font}: wider and 8-neighbour outlines grow: {counts}")
         for offset in ([1, 1], [-2, 0]):
             await label(ed, {"text": {"outlineWidth": 0, "shadowEnabled": True, "shadowOffset": offset, "shadowColor": [0, 0, 1, 1]}})
-            _, _, rows = await shot(ed)
+            _, _, rows = await shot(ed, f"styles-{tag}-shadow-{offset[0]}-{offset[1]}")
             covered = [p for p in faces if rows[p[1]][p[0]] != plain[p[1]][p[0]]]
             ed.check(not covered, f"{font} shadow {offset}: no shadow pixel over a face ({len(covered)})")
             blue = sum(1 for row in rows for p in row if p == (0, 0, 255))
@@ -224,7 +234,7 @@ async def test_ui_fractional_scale(ed: Editor):
     try:
         for k in (1, 2):
             await label(ed, {"text": {"fontSize": 9 * k}})
-            _, _, rows = await shot(ed)
+            _, _, rows = await shot(ed, f"ui-1.37-x{k}")
             box = ink_box(rows)
             d = max(1, round(k * 1.37))
             ed.check(blocks_of(rows, box, d), f"x{k} at 1.37: every font pixel {d} x {d} device pixels")
@@ -362,7 +372,7 @@ async def test_hot_reload(ed: Editor):
     box = ink_box(before)
     # a wider spacing on disk: the Text is wider within a frame of the watcher's event
     path.write_text(json.dumps({"format": "jasperengine.bitmapfont", "source": {"type": "grid", "image": "grid@6x9.png"}, "spacing": 3}))
-    await ed.call("sync_assets")
+    await ed.call("sync_files", full=False)
     await ed.call("wait", frames=3)
     _, _, after = await shot(ed)
     wider = ink_box(after)
@@ -372,13 +382,13 @@ async def test_hot_reload(ed: Editor):
     original = sheet.read_bytes()
     try:
         sheet.write_bytes(pngdiff.encode(96, 54, bytes(96 * 54 * 4)))
-        await ed.call("sync_assets")
+        await ed.call("sync_files", full=False)
         await ed.call("wait", frames=3)
         _, _, blank = await shot(ed)
         ed.check(ink_box(blank) is None, "the edited sheet reached the Text")
     finally:
         sheet.write_bytes(original)
-        await ed.call("sync_assets")
+        await ed.call("sync_files", full=False)
         await label(ed, {"text": {"font": "builtin:pixel", "fontSize": 9, "text": "Hp 99!"}})
 
 
@@ -415,11 +425,16 @@ async def test_vector_text_unchanged(ed: Editor):
     if copy.exists():
         shutil.rmtree(copy)
     shutil.copytree(src, copy)
-    opened = await ed.call("open_scene", path="parity/AllComponents.scene")
-    before = (copy / "AllComponents.scene").read_bytes()
-    await ed.call("save_scene", scene=opened["scene"]["id"], force=True)
-    after = (copy / "AllComponents.scene").read_bytes()
-    first = before if capture else (GOLDEN / "AllComponents.resaved.scene").read_bytes()
+    opened = await ed.call("open_scene", scene="parity/AllComponents.scene")
+    await ed.call("save_scene", scene=opened["scene"]["id"], path="parity/AllComponents.resaved.scene")
+    after = (copy / "AllComponents.resaved.scene").read_bytes()
     if capture:
         (GOLDEN / "AllComponents.resaved.scene").write_bytes(after)
-    ed.check(after == first, "AllComponents re-saves as the pre-S51 editor re-saved it")
+        return
+    SHOTS.mkdir(parents=True, exist_ok=True)
+    (SHOTS / "AllComponents.resaved.scene").write_bytes(after)
+    # (a save to a new path is a new scene file: its own guid line)
+    def body(data: bytes) -> list[bytes]:
+        return [line for line in data.splitlines() if not line.startswith(b"guid: ")]
+    ed.check(body(after) == body((GOLDEN / "AllComponents.resaved.scene").read_bytes()),
+             "AllComponents re-saves as the pre-S51 editor re-saved it")

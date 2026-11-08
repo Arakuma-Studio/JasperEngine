@@ -204,8 +204,9 @@ namespace {
          "Part of an animation is approximated: per-keyframe easing dropped, a fractional iteration count rounded, the "
          "backwards fill mode not applied during the delay, ..."},
         {codes::FontSource, W, true, "font-source", "Font source",
-         "An @font-face source was skipped (WOFF/WOFF2/SVG/EOT, local(): Info), or the rule has no TrueType/OpenType source and "
-         "was dropped (Warning). Convert the font to TTF or OTF; remote fonts are imported as TTF by the editor."},
+         "An @font-face source was skipped (WOFF/WOFF2/SVG/EOT, local(): Info), or the rule has no TrueType/OpenType or bitmap font "
+         "(.bitmapfont, .fnt) source and was dropped (Warning). Convert the font to TTF or OTF; remote fonts are imported as TTF by "
+         "the editor."},
         {codes::UnknownFontFamily, I, false, "unknown-font-family", "Unknown font family",
          "No @font-face declares the family and the engine does not know it; the text uses the next family of the list or the "
          "engine's fallback font."},

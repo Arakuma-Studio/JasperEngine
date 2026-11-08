@@ -1,0 +1,2720 @@
+formatVersion: 8
+guid: d4a9176b480049670e62b19e8e422f71
+id: 2026080800
+name: AllComponents
+scene:
+  backgroundColor: [0, 0, 0, 1]
+  shadowQuality: auto
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: auto
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_3d
+mainCamera: 0
+maxValues:
+  maxSubmeshes: 0
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 0
+  maxColliders2D: 0
+  maxColliderPoints2D: 0
+  maxColliders3D: 0
+  maxColliderVertices3D: 0
+  maxColliderIndices3D: 0
+shaderKeys:
+  - type: points
+    properties: 4
+  - type: points
+    properties: 5
+  - type: points
+    properties: 13
+  - type: lines
+    properties: 2
+  - type: lines
+    properties: 42
+  - type: sky
+  - type: ui
+    properties: 2
+  - type: ui
+    properties: 8
+  - type: ui
+    properties: 9
+  - type: shadow2d
+  - type: blit
+  - type: blit
+    properties: 4096
+  - type: htmlui
+  - type: htmlui
+    properties: 1
+  - type: htmluigradient
+  - type: htmluipost
+    properties: 1
+  - type: htmluipost
+    properties: 2
+  - type: htmluipost
+    properties: 4
+  - type: htmluipost
+    properties: 8
+  - type: htmluipost
+    properties: 16
+  - type: htmluipost
+    properties: 32
+  - type: htmluipost
+    properties: 64
+  - type: probefilter
+  - type: fluid
+  - type: fluid
+    properties: 1
+  - type: fluid
+    properties: 2
+  - type: fluid
+    properties: 3
+  - type: shadowcache
+  - type: atmospheredepth
+  - type: volumetricfog
+  - type: atmospheredenoise
+  - type: volumetricclouds
+  - type: skycomposite
+  - type: volumetriccomposite
+  - type: particles
+  - type: particles
+    properties: 512
+  - type: htmluiprim
+  - type: particles
+    customShader: library:particles#BLEND_ALPHA
+  - type: particles
+    properties: 512
+    customShader: library:particles#BLEND_ALPHA
+prefabs:
+  - path: Reflection parity
+    guid: Reflection parity
+entities:
+  - type: Entity
+    entity: 1001
+    name: Transform
+    components:
+      transform:
+        position: [8.7, 3.8, 6.9]
+        rotation: [0.7193398, 0, 0.6946584, 0]
+        scale: [6.4, 0.9, 8.7]
+        visible: false
+        billboardRotation: [0.9848077, 0, 0.17364818, 0]
+        billboard: true
+        fakeBillboard: true
+        cylindricalBillboard: true
+  - type: Entity
+    entity: 1002
+    name: ScriptComponent
+    components:
+      transform:
+        position: [1, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      script: ~
+  - type: Entity
+    entity: 1003
+    name: MeshComponent
+    components:
+      transform:
+        position: [2, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: false
+        buffer:
+          type: vertex_buffer
+          usage: immutable
+          stride: 0
+          size: 0
+          count: 0
+          renderAttributes: true
+          instanceBuffer: false
+          attributes: ~
+          vertexSize: 0
+        indices:
+          type: index_buffer
+          usage: immutable
+          stride: 2
+          size: 0
+          count: 0
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: index
+              dataType: unsigned_short
+              bufferName: ""
+              elements: 1
+              offset: 0
+              count: 0
+              normalized: true
+              perInstance: false
+        eBuffers: ~
+        submeshes: ~
+        bonesMatrix:
+          []
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0.5, 0, 0.25, 0, 0, 0, 0, 0]
+        morphTargetCount: 4
+        aabb:
+          min: [0, 0, 0]
+          max: [0, 0, 0]
+        verticesAABB:
+          min: [0, 0, 0]
+          max: [0, 0, 0]
+        receiveLights: false
+        receiveIBL: true
+        castShadows: false
+        receiveShadows: false
+        lodEnabled: false
+        lodBias: 4.4
+        renderInReflectionProbes: false
+        shadowsBillboard: true
+        staticShadowCaster: true
+        transparent: true
+        autoTransparency: false
+        cullingMode: front
+        windingOrder: ccw
+  - type: Entity
+    entity: 1004
+    name: LineRendererComponent
+    components:
+      transform:
+        position: [3, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      linerenderer:
+        enabled: false
+        maxLines: 100
+        lines: ~
+        blendMode: MULTIPLY
+        depthWrite: DISABLED
+  - type: Entity
+    entity: 1005
+    name: LightComponent
+    components:
+      transform:
+        position: [4, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      light:
+        enabled: false
+        type: spot
+        direction: [1, 0.3, 8.3]
+        color: [4.9, 6.8, 6.2]
+        range: 3.7
+        intensity: 4.8
+        innerConeCos: 5.1
+        outerConeCos: 6.2
+        spotMask:
+          textureType: 2D
+          source: path
+          path: textures/parity.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        cullingMask: 1
+        shadows: true
+        automaticShadowCamera: false
+        shadowBias: 5.8
+        mapResolution: 0
+        shadowCameraNearFar: [1.2, 6.9]
+        numShadowCascades: 0
+        shading: VERTEX
+        softShadows: false
+        shadowStrength: 4.5
+        shadowNormalBias: 8.8
+        cascadeSplitMode: manual
+        cascadeSplits: [8.5, 4.4, 5.2]
+        shadowDistance: 5.7
+        shadowAngularDiameter: 2.1
+        shadowSourceRadius: 4.3
+        shadowUpdateMode: onDemand
+        volumetricIntensity: 7.2
+        intensityUnit: lumen
+        useColorTemperature: true
+        colorTemperature: 1000
+  - type: Entity
+    entity: 1006
+    name: TerrainComponent
+    components:
+      transform:
+        position: [5, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      terrain:
+        enabled: false
+        heightMap: ~
+        blendMaps: ~
+        surfaceLayers: ~
+        autoSetRanges: false
+        offset: [4.3, 5.3]
+        terrainSize: 8.5
+        maxHeight: 7.9
+        resolution: 32
+        textureBaseTiles: 0.2
+        textureDetailTiles: 5.4
+        rootGridSize: 2
+        levels: 6
+  - type: Entity
+    entity: 1007
+    name: PointsComponent
+    components:
+      transform:
+        position: [6, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      points:
+        enabled: false
+        maxPoints: 100
+        transparent: true
+        autoTransparency: false
+        texture:
+          textureType: 2D
+          source: path
+          path: textures/parity.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        points: ~
+        blendMode: MULTIPLY
+        depthWrite: DISABLED
+  - type: Entity
+    entity: 1008
+    name: SkyboxComponent
+    components:
+      transform:
+        position: [7, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      skybox:
+        useDefaultTexture: false
+        texture:
+          textureType: 2D
+          source: path
+          path: textures/parity.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        color: [0.08888889, 0.24444444, 0.54444444, 1]
+        rotation: 0.7
+        visible: false
+  - type: Entity
+    entity: 1009
+    name: ModelComponent
+    components:
+      transform:
+        position: [8, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      model:
+        enabled: false
+        filename: ""
+        mergeStaticMeshes: true
+        animationEntities: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+  - type: Entity
+    entity: 1010
+    name: UIComponent
+    components:
+      transform:
+        position: [9, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: false
+        buffer:
+          type: vertex_buffer
+          usage: immutable
+          stride: 0
+          size: 0
+          count: 0
+          renderAttributes: true
+          instanceBuffer: false
+          attributes: ~
+        indices:
+          type: index_buffer
+          usage: immutable
+          stride: 2
+          size: 0
+          count: 0
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: index
+              dataType: unsigned_short
+              bufferName: ""
+              elements: 1
+              offset: 0
+              count: 0
+              normalized: true
+              perInstance: false
+        minBufferCount: 0
+        minIndicesCount: 0
+        primitiveType: triangles
+        vertexCount: 0
+        aabb:
+          min: [0, 0, 0]
+          max: [0, 0, 0]
+        texture:
+          textureType: 2D
+          source: path
+          path: textures/parity.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        color: [0.14444444, 0.099999994, 0.044444446, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+        blendMode: MULTIPLY
+        depthWrite: DISABLED
+  - type: Entity
+    entity: 1011
+    name: RectTransformComponent
+    components:
+      transform:
+        position: [2.8, 6.7, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      recttransform:
+        width: 320
+        height: 180
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 1
+        anchorPointBottom: 1
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 0
+        anchorOffsetBottom: 0
+        positionOffset: [2.8, 6.7]
+        pivot: [2, 6]
+        anchorPreset: FULL_LAYOUT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        ignoreScissor: true
+        ignoreEvents: true
+  - type: Entity
+    entity: 1012
+    name: ActionComponent
+    components:
+      transform:
+        position: [11, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      action:
+        state: Stopped
+        speed: 7.1
+        target: 0
+        ownedTarget: true
+  - type: Entity
+    entity: 1013
+    name: TweenComponent
+    components:
+      transform:
+        position: [12, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      tween:
+        duration: 0.7
+        loop: true
+        pingPong: true
+        function: CUBIC_IN_OUT
+  - type: Entity
+    entity: 1014
+    name: AlphaTweenComponent
+    components:
+      transform:
+        position: [13, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      alphatween:
+        endAlpha: 3.9
+        startAlpha: 6.4
+  - type: Entity
+    entity: 1015
+    name: AnimationComponent
+    components:
+      transform:
+        position: [14, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      animation:
+        loop: true
+        duration: 5.8
+        ownedActions: true
+        defaultFadeTime: 1.2
+        actions: ~
+  - type: Entity
+    entity: 1016
+    name: AudioSourceComponent
+    components:
+      transform:
+        position: [15, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      audiosource:
+        enabled: false
+        state: stopped
+        enableClocked: true
+        volume: 5.199999809265137
+        speed: 7
+        pan: 1
+        looping: true
+        loopingPoint: 5.900000095367432
+        protectVoice: true
+        inaudibleBehaviorMustTick: true
+        inaudibleBehaviorKill: true
+        minDistance: 8.6
+        maxDistance: 2
+        attenuationModel: exponential_distance
+        attenuationRolloffFactor: 4.6
+        dopplerFactor: 5.4
+  - type: Entity
+    entity: 1017
+    name: Rigidbody2DComponent
+    components:
+      transform:
+        position: [16, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      rigidbody2d:
+        enabled: false
+        type: dynamic
+        numColliders: 0
+        gravityScale: 1
+        linearDamping: 0
+        angularDamping: 0
+        fixedRotation: false
+        collisionDetection: discrete
+        sleepingMode: start_awake
+        useAutoMass: true
+        mass: 1
+        autoCenterOfMass: true
+        centerOfMass: [0, 0]
+        autoInertia: true
+        inertia: 0
+        material: ""
+        colliders: ~
+  - type: Entity
+    entity: 1018
+    name: RigidbodyComponent
+    components:
+      transform:
+        position: [17, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      rigidbody:
+        enabled: false
+        type: dynamic
+        motionQuality: linear_cast
+        sensor: true
+        gravityFactor: 7.5
+        friction: 2
+        restitution: 2.4
+        buoyancy: 4.4
+        waterDrag: 8.3
+        waterAngularDrag: 3.1
+        material: ""
+        linearDamping: 0.05
+        angularDamping: 0.05
+        maxLinearVelocity: 500
+        maxAngularVelocity: 47.12389
+        automaticMass: true
+        mass: 1
+        automaticCenterOfMass: true
+        centerOfMass: [0, 0, 0]
+        automaticInertiaTensor: true
+        inertiaTensor: [1, 1, 1]
+        inertiaTensorRotation: [1, 0, 0, 0]
+        allowSleeping: true
+        collideKinematicVsNonDynamic: false
+        interpolation: scene
+        allowedDOFs:
+          translationX: true
+          translationY: true
+          translationZ: true
+          rotationX: true
+          rotationY: true
+          rotationZ: true
+        numColliders: 0
+        colliders:
+          []
+  - type: Entity
+    entity: 1019
+    name: BoneComponent
+    components:
+      transform:
+        position: [18, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      bone:
+        model: 0
+        index: 0
+        bindPosition: [3.7, 0.6, 2.3]
+        bindRotation: [0.8338858, 0, 0.551937, 0]
+        bindScale: [1, 8.8, 3.8]
+        offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+  - type: Entity
+    entity: 1020
+    name: PrefabComponent
+    components:
+      transform:
+        position: [19, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      prefab:
+        name: "text: [1, 2]"
+        path: Reflection parity
+        guid: Reflection parity
+  - type: Entity
+    entity: 1021
+    name: ButtonComponent
+    components:
+      transform:
+        position: [20, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      button:
+        label: 0
+        textureNormal:
+          textureType: 2D
+          source: path
+          path: textures/parity.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        textureHovered:
+          textureType: 2D
+          source: path
+          path: textures/parity.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        texturePressed:
+          textureType: 2D
+          source: path
+          path: textures/parity.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        textureDisabled:
+          textureType: 2D
+          source: path
+          path: textures/parity.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        colorNormal: [0.6222222, 0.6111111, 0.18888889, 1]
+        colorHovered: [0.70000005, 0.7888889, 0.7222222, 1]
+        colorPressed: [0.84444445, 0.9555556, 0.033333335, 1]
+        colorDisabled: [0.2777778, 0.96666664, 0.37777779, 1]
+        disabled: true
+        textureSelected: ~
+        colorSelected: [1, 1, 1, 1]
+        transition: color_tint_and_sprite_swap
+        fadeDuration: 0
+        scaleHovered: 1
+        scalePressed: 1
+        scaleSelected: 1
+        navigationMode: automatic
+        wrapAround: false
+        selectOnUp: 0
+        selectOnDown: 0
+        selectOnLeft: 0
+        selectOnRight: 0
+        selectOnEnable: false
+  - type: Entity
+    entity: 1022
+    name: CameraComponent
+    components:
+      transform:
+        position: [21, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      camera:
+        enabled: false
+        type: camera_perspective
+        cullingMask: 7
+        target: [5.3, 1.2, 4.4]
+        up: [6.7, 4.3, 7.5]
+        leftClip: 8.3
+        rightClip: 0.8
+        bottomClip: 1.3
+        topClip: 5.4
+        yfov: 0.6
+        aspect: 4.8
+        nearClip: 1.1
+        farClip: 1.2
+        renderToTexture: true
+        transparentSort: false
+        depthTest: false
+        useTarget: false
+        autoResize: false
+        framebufferWidth: 512
+        framebufferHeight: 512
+        framebufferFilter: linear
+  - type: Entity
+    entity: 1023
+    name: ColorTweenComponent
+    components:
+      transform:
+        position: [22, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      colortween:
+        endColor: [7.3, 0.6, 1.4]
+        startColor: [6.4, 8.7, 1.9]
+        useSRGB: false
+  - type: Entity
+    entity: 1024
+    name: FogComponent
+    components:
+      transform:
+        position: [23, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      fog:
+        type: height
+        color: [6.9, 7.5, 7.3]
+        density: 4.8
+        linearStart: 3.2
+        linearEnd: 6
+        colorMode: sky
+        attenuationDistance: 4.1
+        baseHeight: 3.2
+        maximumHeight: 7.7
+        startDistance: 4.6
+        maxFogDistance: 8.9
+        maxOpacity: 3.7
+        directionalInscattering: 8.6
+        anisotropy: 5.7
+        skyFill: false
+        skyFillAngle: 3.2
+        volumetric: true
+        volumetricDistance: 5.7
+        lightShafts: false
+        noiseIntensity: 6.6
+        noiseScale: 2.8
+        wind: [4.1, 8.6, 4.3]
+        qualityOverride: medium
+  - type: Entity
+    entity: 1025
+    name: ImageComponent
+    components:
+      transform:
+        position: [24, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      image:
+        patchMarginLeft: 7
+        patchMarginRight: 3
+        patchMarginTop: 3
+        patchMarginBottom: 1
+        textureScaleFactor: 8.9
+  - type: Entity
+    entity: 1026
+    name: InstancedMeshComponent
+    components:
+      transform:
+        position: [25, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      instancedmesh:
+        enabled: false
+        maxInstances: 100
+        cullInstances: false
+        distanceFade: true
+        cullDistance: 7.1
+        fadeStart: 4.5
+        fadeEnd: 7.3
+        instancedBillboard: true
+        instancedCylindricalBillboard: true
+        instances: ~
+  - type: Entity
+    entity: 1027
+    name: Joint2DComponent
+    components:
+      transform:
+        position: [26, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      joint2d:
+        enabled: false
+        type: motor
+        bodyA: 0
+        bodyB: 0
+        anchorSpace: world
+        anchorA: [3.7, 6.1]
+        anchorB: [5.4, 6.4]
+        axis: [7.5, 6.5]
+        target: [2.2, 8.3]
+        autoAnchors: false
+        rope: true
+        enableCollision: false
+        breakAction: destroy
+        useLimits: false
+        lowerAngle: 0
+        upperAngle: 0
+        lowerTranslation: 0
+        upperTranslation: 0
+        useMotor: false
+        motorSpeed: 0
+        maxMotorTorque: 0
+        maxMotorForce: 0
+        enableSpring: false
+        frequency: 0
+        dampingRatio: 0
+        length: 0
+        autoLength: true
+        minLength: 0
+        maxLength: 0
+        linearFrequency: 0
+        angularFrequency: 0
+        linearDampingRatio: 0
+        angularDampingRatio: 0
+        linearOffset: [0, 0]
+        angularOffset: 0
+        autoOffset: false
+        maxForce: 1
+        maxTorque: 1
+        correctionFactor: 0.3
+  - type: Entity
+    entity: 1028
+    name: Joint3DComponent
+    components:
+      transform:
+        position: [27, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      joint3d:
+        enabled: false
+        type: pulley
+        bodyA: 0
+        bodyB: 0
+        anchorA: [2.9, 2, 0.8]
+        anchorB: [6, 7.4, 5.5]
+        anchor: [4, 1.2, 0.2]
+        axis: [8.9, 8.1, 9]
+        normal: [5.8, 4.6, 8]
+        twistAxis: [4.6, 8.2, 5.3]
+        planeAxis: [1.4, 0.4, 6.9]
+        axisX: [1.8, 1.8, 7.4]
+        axisY: [4.8, 2.2, 2.2]
+        limitsMin: 1
+        limitsMax: 3.6
+        normalHalfConeAngle: 4.9
+        planeHalfConeAngle: 6.9
+        twistMinAngle: 6.7
+        twistMaxAngle: 4
+        fixedPointA: [8.7, 1.8, 3.8]
+        fixedPointB: [5.9, 0.7, 0.3]
+        hingeA: 0
+        hingeB: 0
+        hinge: 0
+        slider: 0
+        numTeethGearA: 2
+        numTeethGearB: 4
+        numTeethRack: 6
+        numTeethGear: 7
+        rackLength: 7
+        pathPoints: ~
+        pathPosition: [1.9, 4.4, 8.4]
+        isLooping: true
+        autoAnchors: false
+        anchorSpace: world
+        enableCollision: true
+        breakAction: destroy
+        useLimits: false
+        limitsSpringFrequency: 0
+        limitsSpringDamping: 0
+        useMotor: false
+        motorTargetVelocity: 0
+        motorMaxForce: 1000
+        useSpring: false
+        springStiffness: 0
+        springDamper: 0
+        springTargetPosition: 0
+        maxFriction: 0
+        minDistance: -1
+        maxDistance: -1
+        coneHalfAngle: 45
+        swingType: cone
+        motorTargetRotation: [1, 0, 0, 0]
+        motorSpringFrequency: 20
+        motorSpringDamping: 1
+        xMotion: free
+        yMotion: free
+        zMotion: free
+        angularXMotion: free
+        angularYMotion: free
+        angularZMotion: free
+        linearLimitMin: [0, 0, 0]
+        linearLimitMax: [0, 0, 0]
+        angularLimitMin: [0, 0, 0]
+        angularLimitMax: [0, 0, 0]
+        useDrive: false
+        driveStiffness: 0
+        driveDamping: 0
+        angularDriveStiffness: 0
+        angularDriveDamping: 0
+        targetPosition: [0, 0, 0]
+        targetRotation: [1, 0, 0, 0]
+        targetVelocity: [0, 0, 0]
+        targetAngularVelocity: [0, 0, 0]
+  - type: Entity
+    entity: 1029
+    name: KeyframeTracksComponent
+    components:
+      transform:
+        position: [28, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      keyframetracks:
+        index: 0
+        interpolation: 3.1
+        loop: true
+        relative: true
+        times: ~
+  - type: Entity
+    entity: 1030
+    name: MeshPolygonComponent
+    components:
+      transform:
+        position: [29, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      meshpolygon:
+        width: 0
+        height: 0
+        automaticFlipY: false
+        flipY: true
+        points: ~
+  - type: Entity
+    entity: 1031
+    name: MorphTracksComponent
+    components:
+      transform:
+        position: [30, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      morphtracks:
+        values: ~
+  - type: Entity
+    entity: 1032
+    name: PanelComponent
+    components:
+      transform:
+        position: [31, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      panel:
+        headerimage: 0
+        headercontainer: 0
+        headertext: 0
+        titleAnchorPreset: FULL_LAYOUT
+        minWidth: 7
+        minHeight: 2
+        headerMarginLeft: 7
+        headerMarginTop: 7
+        headerMarginRight: 3
+        headerMarginBottom: 5
+        defaultHeaderMargin: false
+        resizeMargin: 1
+        canMove: false
+        canResize: false
+        canBringToFront: false
+  - type: Entity
+    entity: 1033
+    name: ParticleSystemComponent
+    components:
+      transform:
+        position: [32, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      particlesystem:
+        enabled: false
+        inlineEffect: "{\n  \"version\": 1,\n  \"modules\": [\n    {\n      \"type\": \"main\"\n    },\n    {\n      \"type\": \"emission\"\n    },\n    {\n      \"type\": \"shape\"\n    },\n    {\n      \"type\": \"renderer\"\n    }\n  ]\n}\n"
+        playOnAwake: false
+        seed: 0
+        playbackSpeed: 2.5
+  - type: Entity
+    entity: 1034
+    name: PolygonComponent
+    components:
+      transform:
+        position: [33, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      polygon:
+        points: ~
+  - type: Entity
+    entity: 1035
+    name: PositionTweenComponent
+    components:
+      transform:
+        position: [34, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      positiontween:
+        endPosition: [4.3, 2, 3.8]
+        startPosition: [8.5, 3.2, 6.4]
+  - type: Entity
+    entity: 1036
+    name: ProgressbarComponent
+    components:
+      transform:
+        position: [35, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      progressbar:
+        fill: 0
+        type: horizontal
+        value: 7.4
+        fillMarginLeft: 4
+        fillMarginRight: 6
+        fillMarginTop: 6
+        fillMarginBottom: 4
+  - type: Entity
+    entity: 1037
+    name: RotateTracksComponent
+    components:
+      transform:
+        position: [36, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      rotatetracks:
+        values: ~
+  - type: Entity
+    entity: 1038
+    name: RotationTweenComponent
+    components:
+      transform:
+        position: [37, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      rotationtween:
+        endRotation: [0.71325046, 0, 0.70090926, 0]
+        startRotation: [0.9396926, 0, 0.34202012, 0]
+        shortestPath: true
+        spin: true
+        axis: [7.7, 4, 6.1]
+        angle: 2.5
+  - type: Entity
+    entity: 1039
+    name: ScaleTweenComponent
+    components:
+      transform:
+        position: [38, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      scaletween:
+        endScale: [2.4, 8.5, 8.1]
+        startScale: [2, 3.7, 5.2]
+  - type: Entity
+    entity: 1040
+    name: ScaleTracksComponent
+    components:
+      transform:
+        position: [39, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      scaletracks:
+        values: ~
+  - type: Entity
+    entity: 1041
+    name: ScrollbarComponent
+    components:
+      transform:
+        position: [40, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      scrollbar:
+        bar: 0
+        type: horizontal
+        barSize: 5.3
+        step: 1
+        barMarginLeft: 7
+        barMarginRight: 1
+        barMarginTop: 4
+        barMarginBottom: 7
+  - type: Entity
+    entity: 1042
+    name: SpriteAnimationComponent
+    components:
+      transform:
+        position: [41, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      spriteanimation:
+        loop: false
+        frames: ~
+        framesTime: ~
+  - type: Entity
+    entity: 1043
+    name: SpriteComponent
+    components:
+      transform:
+        position: [42, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      sprite:
+        enabled: false
+        width: 0
+        height: 0
+        automaticFlipY: false
+        flipY: true
+        textureScaleFactor: 8.6
+        pivotPreset: bottom_right
+        pixelsPerUnit: 6.6
+        pixelRotation: on_grid
+  - type: Entity
+    entity: 1044
+    name: TextComponent
+    components:
+      transform:
+        position: [43, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      text:
+        font: [fonts/Parity.ttf]
+        text: "text: [1, 2]"
+        fontSize: 20
+        multiline: false
+        maxTextSize: 100
+        fixedWidth: true
+        fixedHeight: true
+        pivotBaseline: true
+        pivotCentered: true
+  - type: Entity
+    entity: 1045
+    name: InputFieldComponent
+    components:
+      transform:
+        position: [44, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      inputfield:
+        text: 0
+        selection: 0
+        cursor: 0
+        cursorBlink: 8.3
+        cursorWidth: 4.5
+        cursorColor: [0.34444442, 0.85555553, 0.7111111, 1]
+        selectionColor: [0.70000005, 0.055555556, 0.9111111, 1]
+        placeholderColor: [0.3, 0.73333335, 0.9111111, 1]
+        placeholder: "text: [1, 2]"
+        passwordChar: "*"
+        cursorIndex: 0
+        selectionAnchor: 0
+        disabled: true
+        password: true
+  - type: Entity
+    entity: 1046
+    name: TilemapComponent
+    components:
+      transform:
+        position: [45, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      tilemap:
+        enabled: false
+        width: 0
+        height: 0
+        automaticFlipY: false
+        flipY: true
+        textureScaleFactor: 4.2
+        pixelsPerUnit: 5.6
+        reserveTiles: 10
+  - type: Entity
+    entity: 1047
+    name: TranslateTracksComponent
+    components:
+      transform:
+        position: [46, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      translatetracks:
+        values: ~
+  - type: Entity
+    entity: 1048
+    name: LayoutGroupComponent
+    components:
+      transform:
+        position: [47, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      layoutgroup:
+        type: horizontal_wrap
+        useAllWrapSpace: true
+        wrapCellWidth: 6
+        wrapCellHeight: 3
+  - type: Entity
+    entity: 1049
+    name: MirrorComponent
+    components:
+      transform:
+        position: [48, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mirror:
+        normal: [2.2, 7.4, 8.4]
+  - type: Entity
+    entity: 1050
+    name: Light2DComponent
+    components:
+      transform:
+        position: [49, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      light2d:
+        enabled: false
+        color: [8.3, 0.1, 8.3]
+        intensity: 3.6
+        range: 7.6
+        falloff: 4.8
+        height: 0
+        shadows: true
+        shadowBias: 8.7
+        shadowSoftness: 2
+        mapResolution: 512
+  - type: Entity
+    entity: 1051
+    name: ShadowCaster2DComponent
+    components:
+      transform:
+        position: [50, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      shadowcaster2d:
+        shape: polygon
+        closed: false
+        enabled: false
+        points:
+          []
+  - type: Entity
+    entity: 1052
+    name: ReflectionProbeComponent
+    components:
+      transform:
+        position: [51, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      reflectionprobe:
+        mode: dynamic
+        updateMode: manual
+        boxOffset: [1.2, 0.3, 3.4]
+        boxSize: [3.6, 1, 3.3]
+        blendDistance: 8.5
+        intensity: 0.1
+        priority: 1
+        resolution: 128
+        nearClip: 8.4
+        farClip: 3.7
+        updateInterval: 1.1
+        includeSky: false
+        cullingMask: 2
+        texture:
+          textureType: 2D
+          source: path
+          path: textures/parity.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+  - type: Entity
+    entity: 1053
+    name: UIDocumentComponent
+    components:
+      transform:
+        position: [52, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      uidocument:
+        enabled: false
+        filename: ""
+        sortOrder: 4
+        interactive: false
+        renderMode: texture
+        pixelRatio: 5.6
+  - type: Entity
+    entity: 1054
+    name: FluidSimulationComponent
+    components:
+      transform:
+        position: [53, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      fluidsimulation:
+        enabled: false
+        output: texture
+        interactive: false
+        aspectRatio: 5.6
+        densityDissipation: 6.3
+        velocityDissipation: 8.6
+        pressure: 0.9
+        pressureIterations: 6
+        curl: 7.3
+        gradientScale: 8.9
+        simulationRate: 4
+        maxSubsteps: 7
+        timeScale: 6
+        paused: true
+        splatRadius: 3.6
+        splatForce: 1.6
+        colorful: false
+        colorUpdateSpeed: 1.8
+        splatsOnStart: false
+        randomSplatCount: 4
+        shading: false
+        backColor: [0.3, 6.9, 7.9]
+        transparent: true
+        bloom: false
+        bloomIterations: 4
+        bloomIntensity: 1.3
+        bloomThreshold: 7
+        bloomSoftKnee: 7.3
+        sunrays: false
+        sunraysWeight: 7.6
+  - type: Entity
+    entity: 1055
+    name: LatticeComponent
+    components:
+      transform:
+        position: [54, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      lattice:
+        enabled: false
+        resolutionX: 3
+        resolutionY: 3
+        resolutionZ: 3
+        offsets:
+          - [5.6, 5, 2]
+          - [3.6, 6.2, 6.6]
+          - [1.5, 5.2, 3.8]
+          - [3.2, 3.3, 8.1]
+          - [5.5, 0.8, 3.1]
+          - [6.9, 7.9, 2.7]
+          - [2, 3.2, 8.9]
+          - [8.6, 6.4, 2.7]
+          - [1.8, 4.7, 1.5]
+          - [5.2, 8.7, 8.6]
+          - [1.5, 4.6, 7.9]
+          - [6.4, 1.5, 8.7]
+          - [3.7, 0.8, 0.2]
+          - [7.6, 3.5, 7]
+          - [3.5, 6.2, 5.4]
+          - [2.6, 7.5, 3.7]
+          - [8.6, 0.9, 1.5]
+          - [3.3, 3.2, 8.3]
+          - [7.4, 8.9, 2]
+          - [8, 4.3, 4.1]
+          - [8.3, 6.8, 3]
+          - [5.7, 1.7, 3.6]
+          - [0.5, 4.4, 7.1]
+          - [8.1, 7, 3.5]
+          - [4.3, 8, 3.6]
+          - [4.8, 5.6, 8.4]
+          - [8.7, 6.6, 7.1]
+        interpolation: cubic
+        outside: fade
+        fadeDistance: 4.6
+        poses: []
+        jiggle: true
+        jiggleStiffness: 8.1
+        jiggleDamping: 8.8
+        jiggleInertia: 7.6
+        jiggleAnchor: positive_z
+        jiggleMaxOffset: 8.2
+  - type: Entity
+    entity: 1056
+    name: LatticeModifierComponent
+    components:
+      transform:
+        position: [55, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      latticemodifier:
+        enabled: false
+        bindings: []
+        includeChildren: true
+        subdivisions: 8
+  - type: Entity
+    entity: 1057
+    name: LatticeFollowerComponent
+    components:
+      transform:
+        position: [56, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      latticefollower:
+        enabled: false
+        lattice: 0
+        rest: 0
+        applyPosition: false
+        applyRotation: false
+        applyScale: true
+        weight: 0.6
+  - type: Entity
+    entity: 1058
+    name: LatticeTracksComponent
+    components:
+      transform:
+        position: [57, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      latticetracks:
+        points: []
+        values: []
+  - type: Entity
+    entity: 1059
+    name: LocalVolumetricFogComponent
+    components:
+      transform:
+        position: [58, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      localvolumetricfog:
+        shape: sphere
+        size: [3.9, 4.7, 4.4]
+        attenuationDistance: 5.8
+        albedo: [8.4, 1.4, 1.3]
+        blendDistance: 1.6
+        falloff: exponential
+        noiseIntensity: 1
+        noiseScale: 2
+        scrollSpeed: [5.6, 6.8, 8]
+  - type: Entity
+    entity: 1060
+    name: VolumetricCloudsComponent
+    components:
+      transform:
+        position: [59, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      volumetricclouds:
+        preset: stormy
+        rendering: screen
+        coverage: 6
+        density: 5.8
+        shapeScale: 2.9
+        shapeFactor: 0.7
+        erosionFactor: 4.6
+        erosionScale: 2.6
+        bottomAltitude: 5.7
+        altitudeRange: 3.8
+        earthCurvature: 5.7
+        windDirection: 5.4
+        windSpeed: 3.1
+        weatherMap:
+          textureType: 2D
+          source: path
+          path: textures/parity.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        weatherMapScale: 4.5
+        sunLightDimmer: 6.9
+        ambientLightDimmer: 4.1
+        maxDistance: 8.3
+        qualityOverride: medium
+  - type: Entity
+    entity: 1061
+    name: ForceFieldComponent
+    components:
+      transform:
+        position: [60, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      forcefield:
+        enabled: false
+        shape: infinite
+        size: [8.4, 2.7, 5.7]
+        kind: drag
+        strength: 3.7
+        direction: [5.2, 1.1, 5.6]
+        turbulence: 8.2
+        pulseFrequency: 3.8
+        frequency: 3.6
+        falloff:
+          - [0, 1, 0, 0]
+        layers: 3
+  - type: Entity
+    entity: 1062
+    name: CharacterController2DComponent
+    components:
+      transform:
+        position: [61, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      charactercontroller2d:
+        enabled: false
+        center: [8.5, 2.2]
+        height: 128
+        radius: 0.9
+        slopeLimit: 5.9
+        stepOffset: 8.7
+        skinWidth: 8.7
+        minMoveDistance: 4.3
+        pushStrength: 8.6
+        pushBodies: false
+        movingPlatforms: false
+        categoryBits: 1
+        maskBits: 65535
+  - type: Entity
+    entity: 1063
+    name: CharacterControllerComponent
+    components:
+      transform:
+        position: [62, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      charactercontroller:
+        enabled: false
+        center: [1.1, 1.9, 3.5]
+        height: 2
+        radius: 0.7
+        slopeLimit: 1.7
+        stepOffset: 7.4
+        skinWidth: 0.4
+        minMoveDistance: 6.1
+        mass: 1.2
+        pushStrength: 0.4
+        pushBodies: false
+        movingPlatforms: false
+        inheritPlatformYaw: false
+        detectCollisions: false
+        characterCollisions: false
+        enhancedEdgeRemoval: true
+        categoryBits: 1
+        maskBits: 65535
+  - type: Entity
+    entity: 1064
+    name: WaterVolumeComponent
+    components:
+      transform:
+        position: [63, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      watervolume:
+        enabled: false
+        size: [7, 1.7, 1.2]
+        surfaceOffset: 7.8
+        infinite: true
+        density: 0.1
+        flow: [2.4, 6.3, 1.7]
+        linearDrag: 7
+        angularDrag: 1.2
+        waves: none
+  - type: Entity
+    entity: 1065
+    name: BuoyancyComponent
+    components:
+      transform:
+        position: [64, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      buoyancy:
+        enabled: false
+        columns: custom
+        customPoints:
+          []
+        volumeScale: 9
+        dragScale: 0.9
+  - type: Entity
+    entity: 1066
+    name: PoseAnimatorComponent
+    components:
+      transform:
+        position: [65, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      poseanimator:
+        animation: animations/parity.poseanim
+        autoplay: false
+        speed: 2.5
+        weight: 0.5
+  - type: Entity
+    entity: 1067
+    name: AnimationPlayerComponent
+    components:
+      transform:
+        position: [66, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      animationplayer:
+        enabled: false
+        clips:
+          - clip: animations/parity.anim
+            name: Parity
+            wrap: loop
+          - clip: models/parity.gltf#Run
+            wrap: ping_pong
+        defaultClip: Parity
+        playAutomatically: false
+        speed: 2.5
+        defaultFadeTime: 0.5
+  - type: Entity
+    entity: 1068
+    name: NavMeshSurfaceComponent
+    components:
+      transform:
+        position: [67, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      navmeshsurface:
+        enabled: false
+        agentType: 7
+        collectObjects: children
+        useGeometry: both
+        includeLayers: 2
+        defaultArea: 4
+        volumeCenter: [3.1, 3.8, 7.9]
+        volumeSize: [4.9, 5, 6.6]
+        overrideCellSize: true
+        cellSize: 6.9
+        overrideTileSize: true
+        tileSize: 7
+        minRegionArea: 3.4
+        plane: xy
+        runtimeCarving: true
+        maxCarvingObstacles: 128
+        navMeshData: ""
+  - type: Entity
+    entity: 1069
+    name: NavMeshAgentComponent
+    components:
+      transform:
+        position: [68, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      navmeshagent:
+        enabled: false
+        agentType: 5
+        baseOffset: 8.2
+        speed: 1.2
+        angularSpeed: 7.4
+        acceleration: 4.8
+        stoppingDistance: 1.3
+        autoBraking: false
+        radius: 8.3
+        height: 2
+        obstacleAvoidance: high
+        avoidancePriority: 2
+        autoTraverseOffMeshLink: false
+        autoRepath: false
+        areaMask: 5
+        updatePosition: false
+        updateRotation: false
+        driver: none
+        surface: 0
+        stuckDetection: false
+        stuckSpeedRatio: 0.1
+        stuckTimeout: 2
+        repathWhenStuck: true
+  - type: Entity
+    entity: 1070
+    name: NavMeshObstacleComponent
+    components:
+      transform:
+        position: [69, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      navmeshobstacle:
+        enabled: false
+        shape: box
+        center: [4.9, 3, 0.5]
+        size: [4.2, 6.2, 4.2]
+        radius: 1.7
+        height: 2
+        carve: true
+        moveThreshold: 5.2
+        timeToStationary: 6.3
+        carveOnlyStationary: false
+  - type: Entity
+    entity: 1071
+    name: NavMeshLinkComponent
+    components:
+      transform:
+        position: [70, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      navmeshlink:
+        enabled: false
+        agentType: 1
+        startPoint: [5.6, 3.6, 7.3]
+        endPoint: [5, 3.7, 0.8]
+        width: 0
+        costModifier: 4.9
+        bidirectional: false
+        autoUpdatePosition: true
+        area: 4
+        activated: true
+  - type: Entity
+    entity: 1072
+    name: NavMeshModifierComponent
+    components:
+      transform:
+        position: [71, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      navmeshmodifier:
+        enabled: false
+        overrideInclusion: exclude
+        overrideArea: true
+        area: 5
+        applyToChildren: false
+        useVolume: true
+        volumeCenter: [4.3, 6.1, 6.9]
+        volumeSize: [0.6, 4.8, 8.9]
+        applyAtRuntime: false
+  - type: Entity
+    entity: 1073
+    name: NavGridComponent
+    components:
+      transform:
+        position: [72, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      navgrid:
+        enabled: false
+        layout: hex
+        neighbours: 8
+        cellSize: 3.2
+        width: 32
+        height: 32
+        plane: xy
+        maxSlope: 7.8
+        maxStep: 2.1
+        movement: cell_centres
+        reservationLookahead: 3.1
+        reservationPenalty: 6.5
+        source: terrain
+        sourceEntity: 0
+        tileAreas:
+          []
+        emptyCellArea: 3
+        collidersBlock: true
+        autoRebuild: false
+        gridData: ""
+  - type: Entity
+    entity: 1074
+    name: SplineComponent
+    components:
+      transform:
+        position: [73, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      spline:
+        enabled: false
+        type: bezier
+        closed: true
+        upAxis: [0.6779341, 0.6593606, 0.3250369]
+        knots:
+          - {p: [0, 0, 0], r: 3}
+          - {p: [10, 1, 5], in: [-2, 0, 0], out: [2, 0, 0], r: 4.5, roll: 12, mode: broken}
+        terrain:
+          region: area
+          extraWidth: 4.6
+          falloff: 2.8
+          flatten: false
+          flattenMode: fill_only
+          heightOffset: 9
+          paint: true
+          paintLayer: 2
+          paintStrength: 1.2
+          paintFalloff: 5.8
+          paintNoise: 0.9
+          clearFoliage: true
+          foliageMask: 5
+  - type: Entity
+    entity: 1075
+    name: SplineExtrudeComponent
+    components:
+      transform:
+        position: [74, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      splineextrude:
+        enabled: false
+        shape: water_banks
+        widthSource: constant
+        edgeDrop: 8
+        edgeInset: 4.4
+        crownRise: 8.7
+        shoulderWidth: 0.7
+        shoulderDrop: 4.1
+        thickness: 8.2
+        grade: stepped
+        stepHeight: 4.7
+        tubeSides: 3
+        customProfile:
+          - {p: [-1, 0], grounded: true}
+          - {p: [0, 0.5], hard: true}
+          - {p: [1, 0], grounded: true}
+        customClosed: true
+        maxHalfWidth: 0.6
+        waterEdgeDrop: 7.1
+        seaLevelFloor: true
+        seaLevel: 4.1
+        flow: true
+        flowSpeed: 3.5
+        tilesPerMetreU: 3.1
+        tilesPerMetreV: 1.5
+        levelCourseV: true
+        corners: round
+        endCaps: false
+        endTaper: 8.6
+        lateralOffset: 3.2
+        verticalOffset: 1.8
+        conform: terrain_height_and_slope
+        slopeBlend: 6.1
+        stationSpacing: 8.1
+        collision: chain_2d
+  - type: Entity
+    entity: 1076
+    name: SplineInstantiateComponent
+    components:
+      transform:
+        position: [75, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      splineinstantiate:
+        enabled: false
+        mode: fence
+        spacing: 7.9
+        fit: fixed_pitch
+        postPitch: 0.5
+        spanMaxStretch: 2.8
+        fenceGrade: stepped
+        crestPitch: 0.7
+        spanOverrides:
+          - {knot: 0, span: 1, kind: gate, piece: 0}
+        lateralOffset: 8.8
+        verticalOffset: 8.6
+        spacingJitter: 1.2
+        yawJitter: 2.9
+        lateralJitter: 6.4
+        scaleRange: [8.4, 3]
+        dropout: 5.4
+        endTrim: 3.4
+        plantMode: pivot
+        maxTilt: 6.9
+        conform: terrain_height_and_slope
+        slopeBlend: 4.2
+        stationSpacing: 0.3
+  - type: Entity
+    entity: 1077
+    name: SplineAnimateComponent
+    components:
+      transform:
+        position: [76, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      splineanimate:
+        enabled: false
+        method: speed
+        duration: 5.2
+        speed: 4.7
+        loop: ping_pong
+        easing: ease_in_out
+        alignment: world
+        startOffset: 3.8
+        lateralOffset: 6
+        verticalOffset: 4.9
+        playOnAwake: false
+  - type: Entity
+    entity: 1078
+    name: AnimatorComponent
+    components:
+      transform:
+        position: [77, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      animator:
+        enabled: false
+        controller: animations/parity.controller
+        speed: 7.4
+        applyRootMotion: true
+        rootMotionBone: Reflection parity
+        updateMode: unscaled_time
+        cullingMode: cull_completely
+        writeBones: exposed
+        exposedBones:
+          - Hips/Spine
+          - left_hand
+        eventMode: all
+        sendEventsToScripts: false
+        retarget: off
+        clipOverrides:
+          - original: animations/parity.anim
+            replacement: models/parity.gltf#Run
+        ik:
+          - name: LeftHand
+            type: two_bone
+            enabled: true
+            weight: 0.5
+            weightParameter: ""
+            bones:
+              - left_upper_arm
+              - left_lower_arm
+              - left_hand
+            boneWeights:
+              []
+            target: 0
+            targetPosition: [0, 0, 0]
+            useTargetRotation: false
+            pole: 0
+            polePosition: [0, 0, 0]
+            usePole: false
+            iterations: 10
+            tolerance: 0.001
+            forwardAxis: [0, 0, 1]
+            clampAngle: 60
+            pelvis: ""
+            footHeight: 0.08
+            rayStart: 0.5
+            rayLength: 1
+            layerMask: 4294967295
+            maxFootAngle: 30
+            smoothing: 0.08
+            contactParameter: ""
+            speedThreshold: 0.05
+            releaseTime: 0.1
+  - type: Entity
+    entity: 1079
+    name: VertexAnimatorComponent
+    components:
+      transform:
+        position: [78, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      vertexanimator:
+        enabled: false
+        animation: Reflection parity
+        guid: Reflection parity
+        defaultClip: Reflection parity
+        playAutomatically: false
+        speed: 1.7
+        randomStart: false
+        defaultFadeTime: 1.5
+        instanceEvents: true
+        attachments: []
+  - type: Entity
+    entity: 1080
+    name: TrailRendererComponent
+    components:
+      transform:
+        position: [79, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      trailrenderer:
+        enabled: false
+        time: 6.8
+        minVertexDistance: 7.9
+        widthMultiplier: 7.8
+        emitting: false
+        autodestruct: true
+        widthUnit: pixels
+        numCornerVertices: 5
+        numCapVertices: 2
+        alignment: transform_z
+        textureMode: repeat_per_segment
+        textureScale: [6.8, 3]
+        blendMode: MULTIPLY
+        depthWrite: DISABLED
+  - type: Entity
+    entity: 1081
+    name: CanvasGroupComponent
+    components:
+      transform:
+        position: [80, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      canvasgroup:
+        enabled: false
+        alpha: 0.5
+        interactable: false
+        blocksRaycasts: false
+        ignoreParentGroups: true
+        renderMode: FLATTEN
+  - type: Entity
+    entity: 1082
+    name: OnScreenStickComponent
+    components:
+      transform:
+        position: [81, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      onscreenstick:
+        enabled: false
+        mode: dynamic
+        background: 0
+        handle: 0
+        handleRange: 2.2
+        deadZone: 1
+        moveThreshold: 8.4
+        axes: vertical
+        snapX: true
+        snapY: true
+        hideWhenReleased: false
+        clampToArea: false
+        horizontalAction: Reflection parity
+        verticalAction: "text: [1, 2]"
+        visibility: touch_devices_only
+  - type: Entity
+    entity: 1083
+    name: OnScreenButtonComponent
+    components:
+      transform:
+        position: [82, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      onscreenbutton:
+        enabled: false
+        action: Reflection parity
+        value: 1
+        pressWhenPointerEnters: true
+        releaseWhenPointerLeaves: true
+        visibility: touch_devices_only
+  - type: Entity
+    entity: 1084
+    name: TouchAreaComponent
+    components:
+      transform:
+        position: [83, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      toucharea:
+        enabled: false
+        horizontalAction: "text: [1, 2]"
+        verticalAction: "text: [1, 2]"
+        sensitivity: 8.9
+        invertX: true
+        invertY: true
+        visibility: touch_devices_only
+  - type: Entity
+    entity: 1085
+    name: RagdollComponent
+    components:
+      transform:
+        position: [84, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ragdoll:
+        enabled: false
+        simulated: true
+        root: 0
+        animator: 0
+        inheritVelocity: false
+        selfCollision: false
+        totalMass: 8.1
+  - type: Entity
+    entity: 1086
+    name: CameraShakerComponent
+    components:
+      transform:
+        position: [85, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      camerashaker:
+        enabled: false
+        global: false
+        unscaledTime: true
+        mode: 2d
+        positionScale: 6.7
+        rotationScale: 3.6
+        startPreset: "text: [1, 2]"
+        traumaDecay: 2.5
+        traumaPower: 4
+        traumaMaxOffset: [7.9, 6.1, 5.4]
+        traumaMaxAngle: [4.9, 4.9, 7]
+        traumaFrequency: 1.6
+  - type: Entity
+    entity: 1087
+    name: CameraFollowComponent
+    components:
+      transform:
+        position: [86, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      camerafollow:
+        enabled: false
+        target: 0
+        offset: [2.6, 3.7, 6.4]
+        offsetSpace: target_yaw
+        damping: [0.3, 5.8, 3.3]
+        maxSpeed: 7.5
+        lookAt: false
+        lookAtOffset: [2.8, 5.7, 0.7]
+        rotationDamping: 5.8
+        deadZone: [0.7, 4.1]
+        useBounds: true
+        boundsMin: [9, 5, 6.9]
+        boundsMax: [9, 6.1, 2.4]
+        unscaledTime: true
+  - type: Entity
+    entity: 1088
+    name: TextEffectComponent
+    components:
+      transform:
+        position: [87, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      texteffect:
+        enabled: false
+        autoPlay: false
+        loop: false
+        useUnscaledTime: false
+        startIndex: 4
+        forWords: "text: [1, 2]"
+  - type: Entity
+    entity: 1089
+    name: VideoPlayerComponent
+    components:
+      transform:
+        position: [88, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      videoplayer:
+        enabled: false
+        source: url
+        clip: "text: [1, 2]"
+        url: Reflection parity
+        playOnAwake: false
+        waitForFirstFrame: false
+        isLooping: true
+        skipOnDrop: false
+        playbackSpeed: 8.3
+        timeUpdateMode: unscaled_game_time
+        renderMode: api_only
+        targetCameraAlpha: 0.5
+        aspectRatio: stretch
+        targetMaterialProperty: Reflection parity
+        targetSubmesh: 3
+        renderTextureWidth: 6
+        renderTextureHeight: 7
+        directMute: true
+  - type: Entity
+    entity: 1090
+    name: SafeAreaComponent
+    components:
+      transform:
+        position: [89, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      safearea:
+        enabled: false
+        left: false
+        top: false
+        right: false
+        bottom: false
+        includeExtraInsets: false
+  - type: Entity
+    entity: 1091
+    name: CapsuleShadowCasterComponent
+    components:
+      transform:
+        position: [90, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      capsuleshadowcaster:
+        enabled: false
+        castShadows: capsules_only
+        capsules:
+          - bone: Spine
+            radius: 0.2
+            length: 0.65
+            offset: [0, 0.1, 0.05]
+            direction: x_axis
+          - bone: ""
+            radius: 0.1
+            length: 0.5
+            offset: [0, 0, 0]
+            direction: y_axis
+  - type: Entity
+    entity: 1092
+    name: AudioSnapshotComponent
+    components:
+      transform:
+        position: [91, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      audiosnapshot:
+        snapshot: Snap7
+        seconds: 2.5
+        unscaled: true
+        revert: false
+        revertSeconds: 0.75
+  - type: Entity
+    entity: 1093
+    name: WaterExcluderComponent
+    components:
+      transform:
+        position: [92, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      waterexcluder:
+        enabled: false
+        shape: sphere
+        center: [0.5, 1.5, 2.5]
+        size: [3.5, 4.5, 5.5]
+  - type: Entity
+    entity: 1094
+    name: WaterWakeComponent
+    components:
+      transform:
+        position: [93, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      waterwake:
+        enabled: false
+        foam: 1.5
+        waves: 0.5
+        width: 2.5
+        length: 6.5
+  - type: Entity
+    entity: 1095
+    name: PixelPerfectCameraComponent
+    components:
+      transform:
+        position: [94, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      pixelperfectcamera:
+        enabled: false
+        referenceWidth: 7
+        referenceHeight: 2
+        upscaleMode: stretch_fill
+        upscaleRenderTexture: false
+        pixelSnapping: false
+        rotationMode: on_grid
+        subpixelSmoothing: true
+        letterboxColor: [0.6333333, 0.43333334, 0.5555556, 1]

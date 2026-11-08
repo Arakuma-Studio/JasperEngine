@@ -315,12 +315,12 @@ namespace {
             std::string list;
             for (const std::string& s : skipped)
                 list += (list.empty() ? "" : ", ") + s;
-            session.sink->reportAs(Severity::Info, codes::FontSource, srcRef, "font sources in " + list + " format are skipped (the engine reads TTF/OTF)");
+            session.sink->reportAs(Severity::Info, codes::FontSource, srcRef, "font sources in " + list + " format are skipped (the engine reads TTF/OTF and bitmap fonts)");
         }
         if (!chosen){
             // its own subject: the Info about skipped formats has the same code and location
             session.sink->reportAs(Severity::Warning, codes::FontSource, srcRef.valid() ? srcRef : rule.ref,
-                                   "@font-face '" + family + "' has no TrueType/OpenType source; the rule is dropped",
+                                   "@font-face '" + family + "' has no TrueType/OpenType or bitmap font source; the rule is dropped",
                                    "convert the font to TTF (remote fonts are imported as TTF by the editor)", std::string(), family);
             return;
         }

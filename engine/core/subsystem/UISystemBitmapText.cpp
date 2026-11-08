@@ -19,6 +19,7 @@
 #include "pixelart/BitmapText.h"
 #include "pixelart/BitmapTextCache.h"
 #include "pixelart/FontPixelReport.h"
+#include "pool/ShaderPool.h"
 #include "util/Color.h"
 
 #include <algorithm>
@@ -108,7 +109,11 @@ void UISystem::createBitmapText(TextComponent& text, UIComponent& ui, RectTransf
     const unsigned int quadsPerCharacter = style.hasBack() ? 2 : 1;
 
     ui.primitiveType = PrimitiveType::TRIANGLES;
-    ui.buffer.clear();
+    // (clear() keeps the attributes: a colour attribute no longer written goes with clearAll)
+    if (!colors && ui.buffer.getAttribute(AttributeType::COLOR))
+        ui.buffer.clearAll();
+    else
+        ui.buffer.clear();
     ui.buffer.addAttribute(AttributeType::POSITION, 3);
     ui.buffer.addAttribute(AttributeType::TEXCOORD1, 2);
     // a Text Effect, or the cache's two layers, colour each glyph
@@ -148,10 +153,14 @@ void UISystem::createBitmapText(TextComponent& text, UIComponent& ui, RectTransf
                                 &text.glyphInfo);
 
     // the font's atlas (or the cache page), sampled NEAREST without mips (R9)
+    // another texture kind or vertex layout needs another program: what it was loaded with is in
+    // its shader properties (read there, not from the last build: a reload in flight would miss it)
     const bool rgba = text.bitmapText->isColoredTexture();
-    if (ui.textRgba != rgba){
-        ui.textRgba = rgba;
-        if (ui.loaded)
+    ui.textRgba = rgba;
+    if (ui.loadCalled){
+        const uint64_t textureBit = ShaderPool::getUIProperties(true, false, false, false, false);
+        const uint64_t colorBit = ShaderPool::getUIProperties(false, false, false, true, false);
+        if (((ui.shaderProperties & textureBit) != 0) != rgba || ((ui.shaderProperties & colorBit) != 0) != colors)
             ui.needReload = true;
     }
     if (TextureData* data = text.bitmapText->getTexture()){
