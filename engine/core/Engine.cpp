@@ -1215,8 +1215,14 @@ void Engine::updateGpuCreation(){
     drawSemaphore.release();
 }
 
+// The main thread runs the render queue a loading thread fills, so it never takes that role: in the
+// scope it would wait for itself (a script's init, which runs before the view starts the queue; a
+// second commit before a frame ran the first; a scene change inside a frame, which holds the draw
+// semaphore). There a scope changes nothing, on every backend.
 void Engine::startAsyncThread(){
     #ifndef NO_THREAD_SUPPORT
+        if (jobs::isMainThread())
+            return;
         getAsyncThreadDepthStorage()++;
     #else
         Log::warn("Threads are not available");
@@ -1224,11 +1230,16 @@ void Engine::startAsyncThread(){
 }
 
 void Engine::commitThreadQueue(){
+    // the main thread queues nothing (outside a scope it makes its GPU objects at once)
+    if (jobs::isMainThread())
+        return;
     SystemRender::commitQueue();
 }
 
 void Engine::endAsyncThread(){
     #ifndef NO_THREAD_SUPPORT
+        if (jobs::isMainThread())
+            return;
         unsigned int& asyncThreadDepth = getAsyncThreadDepthStorage();
         if (asyncThreadDepth == 0){
             Log::warn("Engine::endAsyncThread called without matching startAsyncThread");
