@@ -9,7 +9,8 @@
 
 **Basis of this spec.** The current state below comes from reading the code at `b4f7816ea`. M0 has
 run: the numbers in R6, R12, R23 to R25, AC8 and Deviations are measured where they say so, and
-defaults where they say that. Effort figures are estimates.
+defaults where they say that. Effort figures are estimates. M6 ran AC16 to AC18 on this host (no GPU):
+R23 is not met on tier 2 and tier 1 is unmeasured; see "M6" at the end of Deviations.
 
 ## 1. Goal
 
@@ -219,7 +220,12 @@ with `LP_NUM_THREADS=4`. No GPU was available, so every tier 1 number stays a de
 
 - **R23.** Slider drag on tier 1: the frame cost stays under 16 ms on the reference GPU, for a
   30-node graph with 256² previews. **Default, not measured.** For scale, the same pass on llvmpipe
-  draws in 14 ms, and a float edit needs no compile (R7).
+  draws in 14 ms, and a float edit needs no compile (R7). **M6, measured** on the 30-node fixture
+  (docs/perf/procedural-material.md): on llvmpipe an edit reaches its image in about 70 ms median
+  over 4 frames, a frame up to about 60 ms at p95 (the drawing), so R23 is not met on tier 2. Its
+  device-independent part, replanning the graph on each edit, was 8.2 ms median and 16.2 ms at p95 per
+  session; a value edit now plans nothing (`planValueEdit`) and costs 0.3 ms median, 0.4 ms at p95.
+  Tier 1 stays a default (no GPU here).
 - **R24.** Thumbnails: at most one node re-rendered per frame, one shared quad scene, an LRU of 128²
   framebuffers. No `MaterialRender` per node: the sokol pools are 2048.
   - Tier 2: thumbnails render for the selected node and the outputs only. Measured: a first draw of
@@ -227,12 +233,18 @@ with `LP_NUM_THREADS=4`. No GPU was available, so every tier 1 number stays a de
     would miss 16 ms and the restriction stands.
   - Tier 3: only on selection, as a cancellable job. Measured at 128² on 4 cores: 3 ms median,
     100 ms at p90, 2.1 s worst.
+  - **M6, measured** on the 30-node fixture, each node with what feeds it: one image a frame holds on
+    both tiers; tier 2's first draw of an image is 112 ms median and 514 ms worst, compiles included,
+    all inside the `update` that starts it (its 1 ms share is not kept); tier 3's is 11 ms median and
+    37 ms worst, off the frame.
 - **R25.** A 1024² bake of a 30-node graph: under 2 s on tier 1 (**default**), under 5 s on tier 2,
   under 5 min on tier 3 on 4 cores. Over 1 s is a job with progress and cancel; a cancelled bake
   writes nothing. Measured for 1024²: tier 2 is 0.19 s for a 30-node pass, JIT included (0.15 s after
   it), and 0.3 to 0.6 s for the heaviest real graphs (wood, marble, dirt, every output). Tier 3 is
   30 s for that pass and 37 to 42 s for those graphs. At 2048² the 30-node pass takes 1.4 s on tier 2
   and 120 s on tier 3. The exception is `japanese_glyphs2`, whose first draw on llvmpipe is 71 to 78 s.
+  **M6, measured** on the 30-node fixture (four passes, every output) at 1024²: tier 2 1.7 s and
+  tier 3 111 s, so both hold; the CLI end to end is 9.6 s and 109 s. Tier 1 stays a default.
 
 ### Editor UX (human)
 
@@ -583,7 +595,7 @@ image, through `slot`; the evaluator's GPU tests and the per-node image test are
 - **R21.** Not as written: two compiler entry points were added to the engine (`ShaderVariantCompiler::
   compileSources`, `compileFragmentToSpirv`), because the engine links `shadercompiler` privately and the editor
   has no other way to it. They compile only with `JASPERENGINE_RUNTIME_SHADERS`, use no new dependency, and nothing
-  in a game calls them; a player's size was not measured (AC18's check is M6's).
+  in a game calls them. M6's size check found neither in the player (see M6 below).
 - **Not run.** Vulkan (lavapipe) and any hardware GPU: the GPU tests ran on glcore only. Tier selection,
   the CPU tier's evaluator, MCP tools and the window are later milestones.
 ### M2 (s90-canvas): the graph-editing foundation
@@ -831,3 +843,46 @@ are in `engine/tests/core/procmat/`.
 - **Two words cut from base text** to make room for the group names, both stated elsewhere in the guide: the 2D
   entry's "Box2D" (the Unity names section gives `Rigidbody2DComponent (Box2D)`) and the heading
   "Unity names -> engine names", now "Unity names".
+
+### M6: AC16 to AC18 (branch feature/s90-m6)
+
+- **AC16, met on Linux; web and Android cooked, not run.** `tools/fixtures/procmat-baked` is a 30-node
+  graph and what the bake CLI wrote for it at 256² (four PNGs, their metas, the `.material`) with a
+  scene showing it on a sphere. `ProcMatBakedGpu.ABakedMaterialDrawsOnASphere` draws a sphere with the
+  slots and factors that `.material` names (golden `procmat_baked_brick_wall`): it passes on glcore and
+  on Vulkan (lavapipe) against the same golden at the default tolerance. Red control: without the normal
+  map it fails (8.2 % of pixels over the threshold, mean 5.6). The test reads the `.material`'s slot
+  paths itself, since the engine reads no `.material` (a game's are generated code).
+  `SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/procmat-baked` passes: export, the exported
+  project built and run (the sphere textured from the desktop cooks, BC1, BC4 and BC5), the recording,
+  the editor and navigation. S14's cooks: `cook-textures --platform all --check` cooks all four PNGs for
+  desktop, mobile (ASTC), android_etc2 (ETC2 and EAC) and web (ETC1S and UASTC) with no warning, and
+  source exports for web and Android ship `je-cooked/<family>/index.json` with the four textures, no
+  baked PNG, no `.procmat` and no `jasper.procmat` chunk. No web or Android game was built or run (the
+  web gate and an emulator are not part of M6's lighter checks).
+- **AC17, measured; R23 not met on tier 2, tier 1 unmeasured.** `ProcMatBudgetsGpuSlow` and the CLI
+  timings are in `docs/perf/procedural-material.md`, and R23 to R25 above carry them. R24's one image a
+  frame and R25 hold on tiers 2 and 3. R23 does not hold on llvmpipe (a drawing frame is about 60 ms
+  at p95). On tier 2 a thumbnail's first draw compiles inside the `update` that starts it (110 to
+  500 ms), not within its 1 ms share: a follow-up (compile a thumbnail's passes off the frame). Tier 1's
+  budgets stay defaults until the RTX lane runs the suite.
+- **R7, value edits (fixed in M6).** M6 measured that every float edit planned the whole graph again
+  (8 ms median, 16 ms at p95 per session on this host, device-independent), against R7. Now
+  `ProceduralSession::setGraph` asks `planValueEdit` first: when the new graph differs from the held one
+  only in floats, colours or ramps (same keys, order and interpolation) of the graph's own shader nodes,
+  each still in range, it copies the held plan and writes the new values into the slots the expander
+  noted for those parameters (`ValueSlot`), with no planning; anything else (structure, an enum, a
+  boolean, a size, a node's seed, a library graph node's parameter, a value read as text, an edit while a
+  rebuild waits or after a failure) is planned as before. A node's position is not a plan edit. The rule
+  that edit kinds are decided only by comparing plans is therefore relaxed for these three types;
+  `PassPlanner.AValueEditGivesTheUniformsPlanningWould` keeps the two paths equal over every value
+  parameter of the 30-node fixture. Red: with the path off,
+  `ProceduralSessionTest.FortyFloatEditsOfTheFixturePlanNothing` counts 41 plans against 1. Thumbnails
+  are unchanged: they plan when they start an image, not on each edit.
+- **AC18, met.** S34's check on the full Linux glcore release player, built from the merge base with
+  `origin/main` (`43a475707`) and from this tree: no symbol of the evaluator, the interpreter or
+  `editor/procmat` is in the player, nor R21's two compiler entry points or `isCpuDevice`; the player's
+  growth over the base (+103,488 bytes, +0.24 %) is S91's and BF23's runtime (S91 M6 Deviations).
+  Frame cost: the same content on both players, 600 frames on llvmpipe, alternated: +1.1 % for the
+  fixture's scene, inside one binary's spread, so none is measurable. Only the Linux glcore player was
+  built; the web and Android players were not.

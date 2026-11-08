@@ -12,6 +12,7 @@
 #include "ProcMatExpander.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -47,6 +48,8 @@ namespace jasperengine::editor::procmat {
         UniformBlock uniforms;
         std::vector<PlannedTexture> textures;
         std::vector<PlannedSize> sizes;
+        // the parts of `uniforms` that hold graph nodes' value parameters (planValueEdit)
+        std::vector<ValueSlot> values;
     };
 
     struct PlannedBuffer {
@@ -123,6 +126,12 @@ namespace jasperengine::editor::procmat {
     // nothing and says why. Empty roots mean materialOutputRoots().
     bool planGraph(const graph::Graph& graph, const std::shared_ptr<const NodeLibrary>& library, const std::vector<PlanRoot>& roots,
                    const PlanOptions& options, PassPlan& plan, std::string& error);
+    // R7 without planning: `plan` (planGraph's of `before`) with the uniforms of `after`, when `after` differs
+    // from `before` only in value parameters (a float, a colour, a ramp of the same keys in the same order) of
+    // the graph's shader nodes, each still valid. Nothing otherwise: an edit of structure, an enum, a size, a
+    // seed, a library graph node's parameter or an invalid value is planned again, and planning says why.
+    std::optional<PassPlan> planValueEdit(const PassPlan& plan, const graph::Graph& before, const graph::Graph& after,
+                                          const std::shared_ptr<const NodeLibrary>& library);
 
 }
 

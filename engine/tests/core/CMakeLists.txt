@@ -111,6 +111,7 @@ set(CORE_TEST_PROCMAT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralGpuEvaluator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralCpuEvaluator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralTieredEvaluator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProcMatThumbnails.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralDevice.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/SpirvInterpreter.cpp)
 jasperengine_skip_unity_build(

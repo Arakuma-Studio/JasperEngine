@@ -131,6 +131,34 @@ namespace {
         return prefix + "\x1f" + part;
     }
 
+    // A ramp's keys in position order, as ShaderNode::gradient writes them, and the index each had in the
+    // value; a ramp with no value is the default one
+    struct RampKeys {
+        std::vector<Json> points;
+        std::vector<size_t> order;
+        int interpolation = 1;
+        bool given = false;
+    };
+
+    RampKeys rampKeys(const Json& given) {
+        static const Json fallback = Json::parse(R"({"points": [{"pos": 0, "r": 0, "g": 0, "b": 0, "a": 1}, {"pos": 1, "r": 1, "g": 1, "b": 1, "a": 1}], "interpolation": 1})");
+        RampKeys keys;
+        keys.given = truthy(given);
+        const Json& value = keys.given ? given : fallback;
+        std::vector<Json> points;
+        for (const Json& point : value.is_object() ? value.at("points") : value) points.push_back(point);
+        keys.order.resize(points.size());
+        for (size_t i = 0; i < points.size(); i++) keys.order[i] = i;
+        std::stable_sort(keys.order.begin(), keys.order.end(), [&](size_t a, size_t b) { return numberOf(points[a].at("pos")) < numberOf(points[b].at("pos")); });
+        for (size_t i : keys.order) keys.points.push_back(points[i]);
+        keys.interpolation = value.is_object() ? (int)numberOr(value, "interpolation", 1.0) : 1;
+        return keys;
+    }
+
+    std::vector<double> colourOf(const Json& value) {
+        return {numberOf(value.at("r")), numberOf(value.at("g")), numberOf(value.at("b")), numberOr(value, "a", 1.0)};
+    }
+
     bool hasGenericMark(const Json& item, const char* field) {
         const Json* value = member(item, field);
         return value && value->is_string() && value->get<std::string>().find('#') != std::string::npos;
@@ -289,9 +317,16 @@ std::string PassBuilder::vec4Slot(const std::string& key, const double value[4])
     while (values.size() % 4) values.push_back(0.0);
     const size_t index = values.size();
     values.insert(values.end(), value, value + 4);
+    indices[key] = index;
     std::string slot = "pm.v[" + std::to_string(index / 4) + "]";
     slots[key] = slot;
     return slot;
+}
+
+void PassBuilder::noteValue(const std::string& node, const std::string& param, int part, const std::string& key) {
+    const size_t index = indices.at(key);
+    const bool known = std::any_of(valueSlots.begin(), valueSlots.end(), [&](const ValueSlot& slot) { return slot.index == index; });
+    if (!known) valueSlots.push_back({node, param, part, index});
 }
 
 std::string PassBuilder::texture(const std::string& name, TextureSource* source, int port) {
@@ -500,6 +535,7 @@ void ShaderNode::processParameters(ExpandedCode& rv, Variables& variables, bool 
                 variables[parameter] = text("(" + randomMacros(value.get<std::string>()) + ")");
             } else {
                 variables[parameter] = text(current.floatSlot(prefix, value.is_null() ? 0.0 : numberOf(value)));
+                if (!paramsNode.empty() && value.is_number()) current.noteValue(paramsNode, parameter, 0, prefix);
             }
         } else if (kind == "color") {
             double color[4] = {1.0, 1.0, 1.0, 1.0};
@@ -510,6 +546,7 @@ void ShaderNode::processParameters(ExpandedCode& rv, Variables& variables, bool 
                 color[3] = numberOr(value, "a", 1.0);
             }
             variables[parameter] = text(current.vec4Slot(prefix, color));
+            if (!paramsNode.empty() && value.is_object() && truthy(value)) current.noteValue(paramsNode, parameter, 0, prefix);
         } else if (kind == "enum") {
             const Json* values = member(definition, "values");
             const size_t count = values ? values->size() : 0;
@@ -524,7 +561,7 @@ void ShaderNode::processParameters(ExpandedCode& rv, Variables& variables, bool 
         } else if (kind == "size") {
             variables[parameter] = text(formatted("%.1f", std::pow(2.0, numberOf(value))));
         } else if (kind == "gradient") {
-            variables[parameter] = text(gradient(prefix, value, rv, declare));
+            variables[parameter] = text(gradient(prefix, parameter, value, rv, declare));
         } else if (kind == "curve") {
             variables[parameter] = text(curve(prefix, value, rv, declare));
         } else if (kind == "polygon" || kind == "polyline" || kind == "lattice") {
@@ -569,21 +606,24 @@ std::string ShaderNode::randomMacros(std::string text) {
     return text;
 }
 
-std::string ShaderNode::gradient(const std::string& prefix, const Json& given, ExpandedCode& rv, bool declare) {
+std::string ShaderNode::gradient(const std::string& prefix, const std::string& parameter, const Json& given, ExpandedCode& rv, bool declare) {
     PassBuilder& current = expander.currentPass();
-    static const Json fallback = Json::parse(R"({"points": [{"pos": 0, "r": 0, "g": 0, "b": 0, "a": 1}, {"pos": 1, "r": 1, "g": 1, "b": 1, "a": 1}], "interpolation": 1})");
-    const Json& value = truthy(given) ? given : fallback;
-    std::vector<Json> points;
-    for (const Json& point : value.is_object() ? value.at("points") : value) points.push_back(point);
-    std::stable_sort(points.begin(), points.end(), [](const Json& a, const Json& b) { return numberOf(a.at("pos")) < numberOf(b.at("pos")); });
-    const int interpolation = value.is_object() ? (int)numberOr(value, "interpolation", 1.0) : 1;
+    const RampKeys keys = rampKeys(given);
+    const std::vector<Json>& points = keys.points;
+    const int interpolation = keys.interpolation;
     std::vector<std::string> pos, col;
     for (size_t i = 0; i < points.size(); i++) {
         pos.push_back(current.floatSlot(slotKey(prefix, "p" + std::to_string(i)), numberOf(points[i].at("pos"))));
     }
     for (size_t i = 0; i < points.size(); i++) {
-        const double color[4] = {numberOf(points[i].at("r")), numberOf(points[i].at("g")), numberOf(points[i].at("b")), numberOr(points[i], "a", 1.0)};
-        col.push_back(current.vec4Slot(slotKey(prefix, "c" + std::to_string(i)), color));
+        const std::vector<double> colour = colourOf(points[i]);
+        col.push_back(current.vec4Slot(slotKey(prefix, "c" + std::to_string(i)), colour.data()));
+    }
+    if (!paramsNode.empty() && keys.given) {
+        for (size_t i = 0; i < points.size(); i++) {
+            current.noteValue(paramsNode, parameter, (int)(2 * i), slotKey(prefix, "p" + std::to_string(i)));
+            current.noteValue(paramsNode, parameter, (int)(2 * i + 1), slotKey(prefix, "c" + std::to_string(i)));
+        }
     }
     const std::string function = prefix + "_gradient_fct";
     if (declare) {
@@ -1144,4 +1184,34 @@ std::string Expander::shaderText(const SourceRef& root, PassBuilder& current) {
             setup + "\n" + rv.code + "\n\tg_finalColor = jp_finite(" + color + ");\n}\n";
     pass = nullptr;
     return text;
+}
+
+bool jasperengine::editor::procmat::isValueEdit(const std::string& kind, const Json& before, const Json& after) {
+    try {
+        if (kind == "float") return before.is_number() && after.is_number();
+        if (kind == "color") {
+            if (!before.is_object() || !after.is_object() || !truthy(before) || !truthy(after)) return false;
+            colourOf(before);
+            colourOf(after);
+            return true;
+        }
+        if (kind == "gradient") {
+            if (!truthy(before) || !truthy(after) || before.is_object() != after.is_object()) return false;
+            const RampKeys a = rampKeys(before), b = rampKeys(after);
+            if (a.order != b.order || a.interpolation != b.interpolation) return false;
+            for (const Json& point : b.points) colourOf(point);
+            return true;
+        }
+    } catch (const std::exception&) {
+        // a value the expander would refuse: planning says why
+    }
+    return false;
+}
+
+std::vector<double> jasperengine::editor::procmat::valueSlotFloats(const std::string& kind, const Json& value, int part) {
+    if (kind == "float") return {numberOf(value)};
+    if (kind == "color") return colourOf(value);
+    const RampKeys keys = rampKeys(value);
+    const Json& point = keys.points.at((size_t)(part / 2));
+    return part % 2 == 0 ? std::vector<double>{numberOf(point.at("pos"))} : colourOf(point);
 }

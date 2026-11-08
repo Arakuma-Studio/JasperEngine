@@ -81,6 +81,16 @@ namespace jasperengine::editor::procmat {
 
     class TextureSource;
 
+    // A part of a pass's block that holds a value parameter of a graph node verbatim, so a value edit can
+    // write it without planning again (R7): a float (part 0, one float), a colour (part 0, four floats) or
+    // a ramp's key k in position order (part 2k: its position, one float; part 2k + 1: its colour, four)
+    struct ValueSlot {
+        std::string node;
+        std::string param;
+        int part = 0;
+        size_t index = 0;
+    };
+
     // The state of one generated shader: its uniform block, textures and what was inlined in it,
     // which the planner reads to decide where to cut (R6).
     class PassBuilder {
@@ -111,12 +121,16 @@ namespace jasperengine::editor::procmat {
         std::set<std::string> nodes;
         // where each Buffer's size is in the block: a shrinking Iterate Buffer's changes per step
         std::map<TextureSource*, size_t> sizeSlots;
+        // the parts of the block that hold a graph node's value parameters
+        std::vector<ValueSlot> valueSlots;
 
         std::string floatSlot(const std::string& key, double value);
         std::string vec4Slot(const std::string& key, const double value[4]);
         std::string texture(const std::string& name, TextureSource* source, int port);
         // the float a slot made by floatSlot is, in the block
         size_t floatIndex(const std::string& key) const { return indices.at(key); }
+        // the slot made under `key` holds part `part` of `param` of graph node `node`
+        void noteValue(const std::string& node, const std::string& param, int part, const std::string& key);
 
     private:
         std::unordered_map<std::string, std::string> slots;
@@ -218,6 +232,9 @@ namespace jasperengine::editor::procmat {
 
         // a graph's parameters with `named: true`: name -> (slot key, value)
         std::vector<std::pair<std::string, std::pair<std::string, double>>> namedParameters;
+        // the graph node whose parameters this node's are, verbatim (a shader node of the graph itself, not
+        // one inside a library graph): its value parameters' slots are noted as ValueSlots
+        std::string paramsNode;
 
     private:
         struct Variable {
@@ -229,7 +246,7 @@ namespace jasperengine::editor::procmat {
 
         void processParameters(ExpandedCode& rv, Variables& variables, bool declare);
         std::string randomMacros(std::string text);
-        std::string gradient(const std::string& prefix, const Json& value, ExpandedCode& rv, bool declare);
+        std::string gradient(const std::string& prefix, const std::string& parameter, const Json& value, ExpandedCode& rv, bool declare);
         std::string curve(const std::string& prefix, const Json& value, ExpandedCode& rv, bool declare);
         void pixels(const std::string& prefix, const Json& value, ExpandedCode& rv, bool declare, std::string& function, std::string& size);
         void generateInputFunction(int index, const Json& definition, ExpandedCode& rv, ExpansionContext& context);
@@ -316,6 +333,13 @@ namespace jasperengine::editor::procmat {
     std::vector<Json> expandedParameters(const Json& descriptor, int genericSize);
     bool isGenericDescriptor(const Json& descriptor);
     std::vector<std::string> outputPortIds(const std::vector<Json>& outputs);
+
+    // R7: whether `before` and `after`, values of a parameter of type `kind` (float, color, gradient), differ
+    // only in what its ValueSlots hold: the generated text is the same for both. False for any other type, a
+    // value the expander reads as text, and a ramp whose size, key order or interpolation changes.
+    bool isValueEdit(const std::string& kind, const Json& before, const Json& after);
+    // The floats `value` puts in part `part` of its ValueSlots, as the expander writes them
+    std::vector<double> valueSlotFloats(const std::string& kind, const Json& value, int part);
 
 }
 

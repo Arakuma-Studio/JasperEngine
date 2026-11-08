@@ -1,0 +1,851 @@
+{
+  "formatVersion": 1,
+  "kind": "procedural_material",
+  "kindVersion": 1,
+  "nextId": 37,
+  "nodes": [
+    {
+      "id": "b",
+      "type": "bricks",
+      "position": [
+        0,
+        0
+      ],
+      "params": {
+        "rows": 8,
+        "columns": 4,
+        "mortar": 0.05,
+        "bevel": 0.15,
+        "round": 0.1,
+        "corner": 0.2
+      }
+    },
+    {
+      "id": "p1",
+      "type": "perlin",
+      "position": [
+        0,
+        160
+      ],
+      "params": {
+        "scale_x": 6,
+        "scale_y": 6,
+        "iterations": 5
+      }
+    },
+    {
+      "id": "p2",
+      "type": "perlin",
+      "position": [
+        0,
+        320
+      ],
+      "params": {
+        "scale_x": 24,
+        "scale_y": 24,
+        "iterations": 3
+      }
+    },
+    {
+      "id": "f1",
+      "type": "fbm2",
+      "position": [
+        0,
+        480
+      ],
+      "params": {
+        "noise": 1,
+        "scale_x": 5,
+        "scale_y": 5,
+        "iterations": 5
+      }
+    },
+    {
+      "id": "f2",
+      "type": "fbm2",
+      "position": [
+        0,
+        640
+      ],
+      "params": {
+        "noise": 3,
+        "scale_x": 16,
+        "scale_y": 16
+      }
+    },
+    {
+      "id": "v1",
+      "type": "voronoi",
+      "position": [
+        0,
+        800
+      ],
+      "params": {
+        "scale_x": 10,
+        "scale_y": 10,
+        "intensity": 0.6
+      }
+    },
+    {
+      "id": "cbrick",
+      "type": "colorize",
+      "position": [
+        260,
+        0
+      ],
+      "params": {
+        "gradient": {
+          "interpolation": 1,
+          "type": "Gradient",
+          "points": [
+            {
+              "pos": 0,
+              "r": 0.42,
+              "g": 0.16,
+              "b": 0.1,
+              "a": 1
+            },
+            {
+              "pos": 0.5,
+              "r": 0.58,
+              "g": 0.25,
+              "b": 0.15,
+              "a": 1
+            },
+            {
+              "pos": 1,
+              "r": 0.7,
+              "g": 0.38,
+              "b": 0.24,
+              "a": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cgrain",
+      "type": "colorize",
+      "position": [
+        260,
+        160
+      ],
+      "params": {
+        "gradient": {
+          "interpolation": 1,
+          "type": "Gradient",
+          "points": [
+            {
+              "pos": 0,
+              "r": 0.55,
+              "g": 0.55,
+              "b": 0.55,
+              "a": 1
+            },
+            {
+              "pos": 1,
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "blgrain",
+      "type": "blend",
+      "position": [
+        260,
+        320
+      ],
+      "params": {
+        "blend_type": 2,
+        "amount": 0.35
+      }
+    },
+    {
+      "id": "cmortar",
+      "type": "colorize",
+      "position": [
+        260,
+        480
+      ],
+      "params": {
+        "gradient": {
+          "interpolation": 1,
+          "type": "Gradient",
+          "points": [
+            {
+              "pos": 0,
+              "r": 0.45,
+              "g": 0.44,
+              "b": 0.4,
+              "a": 1
+            },
+            {
+              "pos": 1,
+              "r": 0.68,
+              "g": 0.66,
+              "b": 0.6,
+              "a": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "blmortar",
+      "type": "blend",
+      "position": [
+        260,
+        640
+      ],
+      "params": {
+        "blend_type": 0,
+        "amount": 1
+      }
+    },
+    {
+      "id": "mossmask",
+      "type": "tones_range",
+      "position": [
+        260,
+        800
+      ],
+      "params": {
+        "value": 0.62,
+        "width": 0.2,
+        "contrast": 0.6
+      }
+    },
+    {
+      "id": "cmoss",
+      "type": "colorize",
+      "position": [
+        520,
+        0
+      ],
+      "params": {
+        "gradient": {
+          "interpolation": 1,
+          "type": "Gradient",
+          "points": [
+            {
+              "pos": 0,
+              "r": 0.12,
+              "g": 0.22,
+              "b": 0.06,
+              "a": 1
+            },
+            {
+              "pos": 1,
+              "r": 0.3,
+              "g": 0.45,
+              "b": 0.12,
+              "a": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "blmoss",
+      "type": "blend",
+      "position": [
+        520,
+        160
+      ],
+      "params": {
+        "blend_type": 0,
+        "amount": 1
+      }
+    },
+    {
+      "id": "bc",
+      "type": "brightness_contrast",
+      "position": [
+        520,
+        320
+      ],
+      "params": {
+        "contrast": 1.1
+      }
+    },
+    {
+      "id": "hs",
+      "type": "math",
+      "position": [
+        520,
+        480
+      ],
+      "params": {
+        "op": 2,
+        "default_in2": 0.25
+      }
+    },
+    {
+      "id": "ha",
+      "type": "math",
+      "position": [
+        520,
+        640
+      ],
+      "params": {
+        "op": 0,
+        "default_in2": 0.75
+      }
+    },
+    {
+      "id": "hb",
+      "type": "math",
+      "position": [
+        520,
+        800
+      ],
+      "params": {
+        "op": 2
+      }
+    },
+    {
+      "id": "crk",
+      "type": "tones_range",
+      "position": [
+        780,
+        0
+      ],
+      "params": {
+        "value": 0.0,
+        "width": 0.08,
+        "contrast": 0.9
+      }
+    },
+    {
+      "id": "crk2",
+      "type": "math",
+      "position": [
+        780,
+        160
+      ],
+      "params": {
+        "op": 2,
+        "default_in2": 0.15
+      }
+    },
+    {
+      "id": "hc",
+      "type": "math",
+      "position": [
+        780,
+        320
+      ],
+      "params": {
+        "op": 1
+      }
+    },
+    {
+      "id": "p2s",
+      "type": "math",
+      "position": [
+        780,
+        480
+      ],
+      "params": {
+        "op": 2,
+        "default_in2": 0.05
+      }
+    },
+    {
+      "id": "hd",
+      "type": "math",
+      "position": [
+        780,
+        640
+      ],
+      "params": {
+        "op": 0
+      }
+    },
+    {
+      "id": "r1",
+      "type": "math",
+      "position": [
+        780,
+        800
+      ],
+      "params": {
+        "op": 2,
+        "default_in2": 0.2
+      }
+    },
+    {
+      "id": "r2",
+      "type": "math",
+      "position": [
+        1040,
+        0
+      ],
+      "params": {
+        "op": 0,
+        "default_in2": 0.7
+      }
+    },
+    {
+      "id": "blur",
+      "type": "fast_blur_shader",
+      "position": [
+        1040,
+        160
+      ],
+      "params": {
+        "sigma": 4
+      }
+    },
+    {
+      "id": "ao",
+      "type": "math",
+      "position": [
+        1040,
+        320
+      ],
+      "params": {
+        "op": 1
+      }
+    },
+    {
+      "id": "ao2",
+      "type": "math",
+      "position": [
+        1040,
+        480
+      ],
+      "params": {
+        "op": 0,
+        "default_in2": 0.85,
+        "clamp": true
+      }
+    },
+    {
+      "id": "metal",
+      "type": "uniform_greyscale",
+      "position": [
+        1040,
+        640
+      ],
+      "params": {
+        "color": 0
+      }
+    },
+    {
+      "id": "out",
+      "type": "material_output",
+      "position": [
+        1040,
+        800
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": {
+        "node": "b",
+        "port": "random_color"
+      },
+      "to": {
+        "node": "cbrick",
+        "port": "input"
+      }
+    },
+    {
+      "id": "e2",
+      "from": {
+        "node": "p2",
+        "port": "output"
+      },
+      "to": {
+        "node": "cgrain",
+        "port": "input"
+      }
+    },
+    {
+      "id": "e3",
+      "from": {
+        "node": "cgrain",
+        "port": "output"
+      },
+      "to": {
+        "node": "blgrain",
+        "port": "s1"
+      }
+    },
+    {
+      "id": "e4",
+      "from": {
+        "node": "cbrick",
+        "port": "output"
+      },
+      "to": {
+        "node": "blgrain",
+        "port": "s2"
+      }
+    },
+    {
+      "id": "e5",
+      "from": {
+        "node": "p1",
+        "port": "output"
+      },
+      "to": {
+        "node": "cmortar",
+        "port": "input"
+      }
+    },
+    {
+      "id": "e6",
+      "from": {
+        "node": "blgrain",
+        "port": "output"
+      },
+      "to": {
+        "node": "blmortar",
+        "port": "s1"
+      }
+    },
+    {
+      "id": "e7",
+      "from": {
+        "node": "cmortar",
+        "port": "output"
+      },
+      "to": {
+        "node": "blmortar",
+        "port": "s2"
+      }
+    },
+    {
+      "id": "e8",
+      "from": {
+        "node": "b",
+        "port": "bricks_pattern"
+      },
+      "to": {
+        "node": "blmortar",
+        "port": "a"
+      }
+    },
+    {
+      "id": "e9",
+      "from": {
+        "node": "f1",
+        "port": "output"
+      },
+      "to": {
+        "node": "mossmask",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e10",
+      "from": {
+        "node": "f2",
+        "port": "output"
+      },
+      "to": {
+        "node": "cmoss",
+        "port": "input"
+      }
+    },
+    {
+      "id": "e11",
+      "from": {
+        "node": "cmoss",
+        "port": "output"
+      },
+      "to": {
+        "node": "blmoss",
+        "port": "s1"
+      }
+    },
+    {
+      "id": "e12",
+      "from": {
+        "node": "blmortar",
+        "port": "output"
+      },
+      "to": {
+        "node": "blmoss",
+        "port": "s2"
+      }
+    },
+    {
+      "id": "e13",
+      "from": {
+        "node": "mossmask",
+        "port": "output"
+      },
+      "to": {
+        "node": "blmoss",
+        "port": "a"
+      }
+    },
+    {
+      "id": "e14",
+      "from": {
+        "node": "blmoss",
+        "port": "output"
+      },
+      "to": {
+        "node": "bc",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e15",
+      "from": {
+        "node": "p1",
+        "port": "output"
+      },
+      "to": {
+        "node": "hs",
+        "port": "in1"
+      }
+    },
+    {
+      "id": "e16",
+      "from": {
+        "node": "hs",
+        "port": "output"
+      },
+      "to": {
+        "node": "ha",
+        "port": "in1"
+      }
+    },
+    {
+      "id": "e17",
+      "from": {
+        "node": "b",
+        "port": "bricks_pattern"
+      },
+      "to": {
+        "node": "hb",
+        "port": "in1"
+      }
+    },
+    {
+      "id": "e18",
+      "from": {
+        "node": "ha",
+        "port": "output"
+      },
+      "to": {
+        "node": "hb",
+        "port": "in2"
+      }
+    },
+    {
+      "id": "e19",
+      "from": {
+        "node": "v1",
+        "port": "borders"
+      },
+      "to": {
+        "node": "crk",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e20",
+      "from": {
+        "node": "crk",
+        "port": "output"
+      },
+      "to": {
+        "node": "crk2",
+        "port": "in1"
+      }
+    },
+    {
+      "id": "e21",
+      "from": {
+        "node": "hb",
+        "port": "output"
+      },
+      "to": {
+        "node": "hc",
+        "port": "in1"
+      }
+    },
+    {
+      "id": "e22",
+      "from": {
+        "node": "crk2",
+        "port": "output"
+      },
+      "to": {
+        "node": "hc",
+        "port": "in2"
+      }
+    },
+    {
+      "id": "e23",
+      "from": {
+        "node": "p2",
+        "port": "output"
+      },
+      "to": {
+        "node": "p2s",
+        "port": "in1"
+      }
+    },
+    {
+      "id": "e24",
+      "from": {
+        "node": "hc",
+        "port": "output"
+      },
+      "to": {
+        "node": "hd",
+        "port": "in1"
+      }
+    },
+    {
+      "id": "e25",
+      "from": {
+        "node": "p2s",
+        "port": "output"
+      },
+      "to": {
+        "node": "hd",
+        "port": "in2"
+      }
+    },
+    {
+      "id": "e26",
+      "from": {
+        "node": "p2",
+        "port": "output"
+      },
+      "to": {
+        "node": "r1",
+        "port": "in1"
+      }
+    },
+    {
+      "id": "e27",
+      "from": {
+        "node": "r1",
+        "port": "output"
+      },
+      "to": {
+        "node": "r2",
+        "port": "in1"
+      }
+    },
+    {
+      "id": "e28",
+      "from": {
+        "node": "hd",
+        "port": "output"
+      },
+      "to": {
+        "node": "blur",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e29",
+      "from": {
+        "node": "hd",
+        "port": "output"
+      },
+      "to": {
+        "node": "ao",
+        "port": "in1"
+      }
+    },
+    {
+      "id": "e30",
+      "from": {
+        "node": "blur",
+        "port": "low_pass"
+      },
+      "to": {
+        "node": "ao",
+        "port": "in2"
+      }
+    },
+    {
+      "id": "e31",
+      "from": {
+        "node": "ao",
+        "port": "output"
+      },
+      "to": {
+        "node": "ao2",
+        "port": "in1"
+      }
+    },
+    {
+      "id": "e32",
+      "from": {
+        "node": "bc",
+        "port": "output"
+      },
+      "to": {
+        "node": "out",
+        "port": "base_color"
+      }
+    },
+    {
+      "id": "e33",
+      "from": {
+        "node": "hd",
+        "port": "output"
+      },
+      "to": {
+        "node": "out",
+        "port": "height"
+      }
+    },
+    {
+      "id": "e34",
+      "from": {
+        "node": "r2",
+        "port": "output"
+      },
+      "to": {
+        "node": "out",
+        "port": "roughness"
+      }
+    },
+    {
+      "id": "e35",
+      "from": {
+        "node": "ao2",
+        "port": "output"
+      },
+      "to": {
+        "node": "out",
+        "port": "occlusion"
+      }
+    },
+    {
+      "id": "e36",
+      "from": {
+        "node": "metal",
+        "port": "output"
+      },
+      "to": {
+        "node": "out",
+        "port": "metallic"
+      }
+    }
+  ],
+  "guid": "5d0c1f2e8a4b4c7e9f30a1b2c3d4e5f6",
+  "metadata": {
+    "seed": 7
+  }
+}

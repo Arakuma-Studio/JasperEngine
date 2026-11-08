@@ -13,6 +13,9 @@
 #include <algorithm>
 #include <array>
 #include <filesystem>
+#include <fstream>
+#include <functional>
+#include <sstream>
 #include <set>
 
 using namespace jasperengine;
@@ -373,4 +376,110 @@ TEST(PassPlanner, APassKnowsWhereTheSizeOfEachBufferItReadsIs) {
         }
     }
     EXPECT_GT(sized, 0);
+}
+
+namespace {
+
+    graph::Graph brickWallFixture() {
+        std::ifstream file(std::filesystem::path(JASPER_TEST_REPO_DIR) / "tools/fixtures/procmat-baked/assets/brick_wall.procmat");
+        std::stringstream text;
+        text << file.rdbuf();
+        graph::LoadReport report;
+        graph::Graph graph = graph::load(text.str(), report);
+        EXPECT_TRUE(report.ok) << report.error;
+        return graph;
+    }
+
+    // a valid value of another value for a float, colour or ramp parameter; null for any other type
+    graph::Json anotherValue(const graph::Json& definition, const graph::Json& value) {
+        const std::string kind = definition.value("type", std::string());
+        if (kind == "float" && value.is_number()) {
+            const double low = definition.value("min", value.get<double>() - 1.0);
+            const double high = definition.value("max", value.get<double>() + 1.0);
+            return low + (high - low) * 0.37;
+        }
+        if (kind == "color" && value.is_object()) {
+            graph::Json other = value;
+            other["r"] = 0.25;
+            return other;
+        }
+        if (kind == "gradient" && value.is_object() && value.contains("points")) {
+            graph::Json other = value;
+            other["points"][0]["g"] = 0.75;
+            return other;
+        }
+        return nullptr;
+    }
+
+}
+
+// R7: a value edit writes its slots without planning, and they hold what planning the edited graph gives,
+// for every float, colour and ramp of every shader node of the 30-node fixture (default or given)
+TEST(PassPlanner, AValueEditGivesTheUniformsPlanningWould) {
+    const auto library = repositoryLibrary();
+    const graph::Graph wall = brickWallFixture();
+    const std::vector<PlanRoot> roots = materialBakeRoots(wall);
+    PlanOptions options;
+    options.size = 64;
+    options.maxBufferSize = 64;
+    PassPlan plan;
+    std::string error;
+    ASSERT_TRUE(planGraph(wall, library, roots, options, plan, error)) << error;
+
+    int edits = 0;
+    for (const graph::Node& node : wall.nodes) {
+        const graph::Json* descriptor = library->descriptor(node.type);
+        if (!descriptor || descriptor->value("kind", std::string()) != "shader") continue;
+        for (const graph::Json& definition : expandedParameters(*descriptor, genericSizeOf(node))) {
+            const std::string name = definition.at("name").get<std::string>();
+            const auto given = node.params.find(name);
+            const graph::Json value = given != node.params.end() ? *given : definition.value("default", graph::Json());
+            const graph::Json other = anotherValue(definition, value);
+            if (other.is_null()) continue;
+            graph::Graph edited = wall;
+            edited.findNode(node.id)->params[name] = other;
+            const std::optional<PassPlan> written = planValueEdit(plan, wall, edited, library);
+            ASSERT_TRUE(written) << node.id << "." << name << " is a value edit";
+            PassPlan planned;
+            ASSERT_TRUE(planGraph(edited, library, roots, options, planned, error)) << error;
+            ASSERT_TRUE(written->sameStructure(planned)) << node.id << "." << name;
+            for (size_t i = 0; i < planned.passes.size(); i++) {
+                EXPECT_EQ(written->passes[i].uniforms, planned.passes[i].uniforms) << node.id << "." << name << ", pass " << i;
+            }
+            edits++;
+        }
+    }
+    EXPECT_GE(edits, 40) << "the fixture's value parameters";
+}
+
+// What is not a value edit is planned: an enum, a seed, a wire, a ramp key more, a value out of range
+TEST(PassPlanner, AnEditOfMoreThanValuesIsPlanned) {
+    const auto library = repositoryLibrary();
+    const graph::Graph wall = brickWallFixture();
+    PlanOptions options;
+    options.size = 64;
+    PassPlan plan;
+    std::string error;
+    ASSERT_TRUE(planGraph(wall, library, materialBakeRoots(wall), options, plan, error)) << error;
+    const auto planned = [&](const std::function<void(graph::Graph&)>& edit) {
+        graph::Graph edited = wall;
+        edit(edited);
+        return !planValueEdit(plan, wall, edited, library).has_value();
+    };
+    EXPECT_TRUE(planned([](graph::Graph& g) { g.findNode("b")->params["pattern"] = 1; })) << "an enum";
+    EXPECT_TRUE(planned([](graph::Graph& g) { g.findNode("b")->params["seed"] = 3; })) << "a node's seed";
+    EXPECT_TRUE(planned([](graph::Graph& g) { g.findNode("blur")->params["sigma"] = "2.0*3.0"; })) << "a value read as text";
+    EXPECT_TRUE(planned([](graph::Graph& g) { g.findNode("b")->params["mortar"] = 1000.0; })) << "out of range";
+    EXPECT_TRUE(planned([](graph::Graph& g) { g.findEdge("e1")->from.port = "position_x"; })) << "a wire";
+    EXPECT_TRUE(planned([](graph::Graph& g) {
+        graph::Json ramp = g.findNode("cbrick")->params["gradient"];
+        ramp["points"].push_back({{"pos", 0.9}, {"r", 1}, {"g", 1}, {"b", 1}, {"a", 1}});
+        g.findNode("cbrick")->params["gradient"] = ramp;
+    })) << "a ramp key more";
+    EXPECT_TRUE(planned([](graph::Graph& g) {
+        graph::Json ramp = g.findNode("cbrick")->params["gradient"];
+        ramp["points"][0]["pos"] = 0.95;
+        g.findNode("cbrick")->params["gradient"] = ramp;
+    })) << "a ramp key moved past another";
+    EXPECT_FALSE(planned([](graph::Graph& g) { g.findNode("b")->position = {500.0, 500.0}; })) << "a move is no edit of the plan";
 }
