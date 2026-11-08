@@ -61,6 +61,26 @@ namespace {
         bool clippedToBase = false;
     };
 
+    // the flattened tree, made again only when the document or the twirls change: the clipper
+    // draws the shown rows, so a frame's cost does not grow with the layer count (R69)
+    struct RowsCache {
+        const void* window = nullptr;
+        const void* shown = nullptr;
+        uint64_t change = ~0ull;
+        uint64_t twirls = ~0ull;
+        std::vector<Row> rows;
+    };
+    RowsCache rowsCache;
+
+    uint64_t twirlsKey(const std::map<std::string, bool>& twirls) {
+        uint64_t h = 1469598103934665603ull;
+        for (const auto& [id, open] : twirls) {
+            for (char c : id) h = (h ^ (unsigned char)c) * 1099511628211ull;
+            h = (h ^ (open ? 2u : 1u)) * 1099511628211ull;
+        }
+        return h;
+    }
+
     // the drop zone of a pointer over a layer row (R14)
     enum class Zone : uint8_t { None, Above, Below, Into };
 
@@ -211,7 +231,9 @@ void TitleDesignerWindow::drawLayers() {
     const ta::TitleArtHashes& hashes = shownHashes();
 
     // flatten the tree: top of the list = front (S80 stores bottom first: D17)
-    std::vector<Row> rows;
+    const uint64_t twirls = twirlsKey(v.twirls);
+    const bool rowsCurrent = rowsCache.window == this && rowsCache.shown == &shown && rowsCache.change == doc.changeCount() && rowsCache.twirls == twirls;
+    std::vector<Row>& rows = rowsCache.rows;
     std::function<void(const ta::Json&, int, const std::string&)> walk = [&](const ta::Json& list, int depth, const std::string& parentId) {
         if (!list.is_array()) return;
         for (size_t i = list.size(); i-- > 0;) {
@@ -308,22 +330,28 @@ void TitleDesignerWindow::drawLayers() {
             }
         }
     };
-    {
+    if (!rowsCurrent) {
         JE_PROFILE_SCOPE("TD drawLayers rows");
+        rows.clear();
         walk(shown.layers(), 0, std::string());
+        rowsCache.window = this;
+        rowsCache.shown = &shown;
+        rowsCache.change = doc.changeCount();
+        rowsCache.twirls = twirls;
+        documentPasses++;
+        shownRows.clear();
+        for (const Row& row : rows) {
+            switch (row.kind) {
+                case Row::Kind::Layer: shownRows.push_back({NodeKind::Layer, row.layerId, {}, {}}); break;
+                case Row::Kind::Part: shownRows.push_back({NodeKind::Part, row.layerId, row.part, {}}); break;
+                case Row::Kind::Effect: shownRows.push_back({NodeKind::Effect, row.layerId, row.part, row.item}); break;
+                case Row::Kind::Mask: shownRows.push_back({NodeKind::Mask, row.layerId, {}, row.item}); break;
+                default: shownRows.push_back({}); break;
+            }
+        }
     }
     JE_PROFILE_SCOPE("TD drawLayers tree");
 
-    shownRows.clear();
-    for (const Row& row : rows) {
-        switch (row.kind) {
-            case Row::Kind::Layer: shownRows.push_back({NodeKind::Layer, row.layerId, {}, {}}); break;
-            case Row::Kind::Part: shownRows.push_back({NodeKind::Part, row.layerId, row.part, {}}); break;
-            case Row::Kind::Effect: shownRows.push_back({NodeKind::Effect, row.layerId, row.part, row.item}); break;
-            case Row::Kind::Mask: shownRows.push_back({NodeKind::Mask, row.layerId, {}, row.item}); break;
-            default: shownRows.push_back({}); break;
-        }
-    }
 
     const float footer = ImGui::GetFrameHeightWithSpacing() + 4.0f;
     ImGui::BeginChild("##layertree", ImVec2(0, -footer), false);

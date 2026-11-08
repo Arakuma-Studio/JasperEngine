@@ -68,10 +68,19 @@ namespace {
 
 }
 
-void TitleDesignerWindow::rebuildIndexIfNeeded() {
-    JE_PROFILE_SCOPE("TD rebuildIndexIfNeeded");
+std::string TitleDesignerWindow::indexSelection() const {
     std::string selectionKey = searchEveryLayer ? std::string("*") : std::string();
     for (const NodeRef& node : doc.selection()) selectionKey += node.layer + ";";
+    return selectionKey;
+}
+
+bool TitleDesignerWindow::indexStale() const {
+    return indexChange != doc.changeCount() || indexSelectionKey != indexSelection();
+}
+
+void TitleDesignerWindow::rebuildIndexIfNeeded() {
+    JE_PROFILE_SCOPE("TD rebuildIndexIfNeeded");
+    const std::string selectionKey = indexSelection();
     const double t = now();
     const bool stale = indexChange != doc.changeCount() || indexSelectionKey != selectionKey;
     if (!stale) return;
@@ -347,6 +356,17 @@ void TitleDesignerWindow::drawProperties() {
     drawPropertiesHeader();
     drawSearch();
     ImGui::Separator();
+    // the index is made ahead, once the document and the selection have settled for 300 ms, so
+    // typing a search finds it made (R69)
+    if (searchText.empty() && !doc.gestureActive() && indexStale()) {
+        if (indexIdleSince < 0.0) indexIdleSince = now();
+        else if (now() - indexIdleSince >= 0.3) {
+            rebuildIndexIfNeeded();
+            indexIdleSince = -1.0;
+        }
+    } else {
+        indexIdleSince = -1.0;
+    }
     ImGui::BeginChild("##propertiespage", ImVec2(0, 0), false);
     if (!searchText.empty()) {
         drawSearchResults();

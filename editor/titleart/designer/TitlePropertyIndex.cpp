@@ -13,6 +13,7 @@
 #include "search/SearchScorer.h"
 
 #include <algorithm>
+#include <unordered_map>
 
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::titledesigner;
@@ -141,8 +142,19 @@ namespace {
         if (limit > 0 && hits.size() > limit) hits.resize(limit);
     }
 
+    // labels, aliases and sections repeat across rows (every effect has a Size, a Color...):
+    // each is folded once per editor session (main thread; dropped past a bound)
+    const std::string& foldOnce(std::string_view text) {
+        static std::unordered_map<std::string, std::string> folds;
+        std::string key(text);
+        auto it = folds.find(key);
+        if (it != folds.end()) return it->second;
+        if (folds.size() > 50000) folds.clear();
+        return folds.emplace(std::move(key), foldForSearch(text)).first->second;
+    }
+
     void addFolded(FoldedLabels& labels, std::string_view text) {
-        std::string folded = foldForSearch(text);
+        std::string folded = foldOnce(text);
         if (folded.empty() || std::find(labels.texts.begin(), labels.texts.end(), folded) != labels.texts.end()) return;
         if (!labels.joined.empty()) labels.joined.push_back(LABEL_SEPARATOR);
         labels.joined += folded;
@@ -184,12 +196,12 @@ void PropertyIndex::add(IndexEntry entry) {
     addFolded(f.labels, entry.label);
     for (const std::string& alias : entry.aliases) addFolded(f.labels, alias);
     for (const std::string& section : entry.location) {
-        const std::string part = foldForSearch(section);
+        const std::string& part = foldOnce(section);
         if (part.empty()) continue;
         if (!f.location.empty()) f.location.push_back(' ');
         f.location += part;
     }
-    for (const std::string& value : entry.enumLabels) f.enums.push_back(foldForSearch(value));
+    for (const std::string& value : entry.enumLabels) f.enums.push_back(foldOnce(value));
     entries.push_back(std::move(entry));
     folded.push_back(std::move(f));
 }

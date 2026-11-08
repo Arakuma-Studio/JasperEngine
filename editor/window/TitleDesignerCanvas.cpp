@@ -827,12 +827,23 @@ void TitleDesignerWindow::drawCanvasOverlays(ImDrawList* dl) {
             dl->AddRect(titleXform.toScreen({r.x, r.y + r.height}), titleXform.toScreen({r.x + r.width, r.y}), IM_COL32(255, 255, 255, 70), 0.0f, 0, 1.0f);
         }
     }
-    // empty texts: a dashed box with "Empty text" (R24)
-    ta::forEachLayer(shown.root, [&](const ta::Json& layer, const ta::Json*, int) {
-        if (ta::layerTypeOf(layer) != ta::LayerType::Text || !str(layer, "text").empty() || !layer.value("visible", true)) return true;
-        const ta::TitleTransform t = ta::decodeTransform(layer.value("transform", ta::Json::object()));
-        const double size = layer.value("size", 200.0);
-        const ImVec2 a = titleXform.toScreen({t.position.x - size, t.position.y + size * 0.5}), b = titleXform.toScreen({t.position.x + size, t.position.y - size * 0.5});
+    // empty texts: a dashed box with "Empty text" (R24); found once per change
+    if (!(emptyTextsKey == derivedKey())) {
+        emptyTextsKey = derivedKey();
+        emptyTexts.clear();
+        documentPasses++;
+        ta::forEachLayer(shown.root, [&](const ta::Json& layer, const ta::Json*, int) {
+            if (ta::layerTypeOf(layer) != ta::LayerType::Text || !layer.value("visible", true)) return true;
+            auto text = layer.find("text");
+            if (text != layer.end() && text->is_string() && !text->get_ref<const std::string&>().empty()) return true;
+            const ta::TitleTransform t = ta::decodeTransform(layer.value("transform", ta::Json::object()));
+            emptyTexts.push_back({t.position.x, t.position.y, layer.value("size", 200.0)});
+            return true;
+        });
+    }
+    for (const EmptyText& empty : emptyTexts) {
+        const double size = empty.size;
+        const ImVec2 a = titleXform.toScreen({empty.x - size, empty.y + size * 0.5}), b = titleXform.toScreen({empty.x + size, empty.y - size * 0.5});
         for (float x = a.x; x < b.x; x += 10.0f) {
             dl->AddLine(ImVec2(x, a.y), ImVec2(std::min(x + 5.0f, b.x), a.y), IM_COL32(220, 220, 220, 200));
             dl->AddLine(ImVec2(x, b.y), ImVec2(std::min(x + 5.0f, b.x), b.y), IM_COL32(220, 220, 220, 200));
@@ -843,8 +854,7 @@ void TitleDesignerWindow::drawCanvasOverlays(ImDrawList* dl) {
         }
         const ImVec2 textSize = ImGui::CalcTextSize("Empty text");
         dl->AddText(ImVec2((a.x + b.x - textSize.x) * 0.5f, (a.y + b.y - textSize.y) * 0.5f), IM_COL32(220, 220, 220, 220), "Empty text");
-        return true;
-    });
+    }
 }
 
 void TitleDesignerWindow::drawCanvas(float width, float height) {

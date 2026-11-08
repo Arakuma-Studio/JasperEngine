@@ -248,6 +248,9 @@ namespace jasperengine::editor {
         uint64_t indexChange = ~0ull;
         std::string indexSelectionKey;
         double indexDirtyAt = -1.0;
+        double indexIdleSince = -1.0;       // the index stale and the document still since
+        std::string indexSelection() const;
+        bool indexStale() const;
         std::vector<std::string> stableOrder;      // while a hit is edited the list keeps its order
         std::string editingHit;
         double editingHitAt = 0.0;
@@ -372,6 +375,11 @@ namespace jasperengine::editor {
         std::string bakeStatusKey;
         TitleBakeStatus bakeStatusCache;
         const TitleBakeStatus& bakeStatus();
+        struct EmptyText {
+            double x, y, size;
+        };
+        DerivedKey emptyTextsKey;
+        std::vector<EmptyText> emptyTexts;      // visible text layers with no text (the canvas's dashed boxes)
         mutable DerivedKey contentEmptyKey;
         mutable bool contentEmptyCache = true;
         mutable std::pair<const void*, uint64_t> committedHashesKey{nullptr, ~0ull};
