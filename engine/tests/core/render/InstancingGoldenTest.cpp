@@ -198,15 +198,14 @@ namespace {
             return different;
         }
 
-        // The frames compare exactly, except on Metal. There each program is compiled on its own
-        // (fast math or not), and the world position and normal a batch variant computes from
-        // vertex attributes round a few ULP away from its base's, which reads the same matrices
-        // (bit for bit: packInstance) from a uniform block. The clip position is
-        // [[invariant]] and stays exact (the shadow atlas and depth pre-pass compare exactly
-        // everywhere), but those few ULP move a shadow comparison on a curved mesh's terminator: on
-        // an M4 Max, 62-69 isolated pixels of the spheres' shadowed sides, at most 9/255. So on
-        // Metal a frame may differ in at most 1 pixel in 1000, by at most 16/255; a real
-        // difference (a wrong matrix, a lost instance) changes thousands of pixels or more.
+        // The frames compare exactly, except on Metal. There a batch variant, which reads the draw's
+        // matrices (bit for bit: packInstance) as vertex attributes, and its base, which reads them
+        // from a uniform block, shade a few isolated pixels of the spheres' shadowed sides
+        // differently: on an M4 Max 54-67 pixels, at most 9/255. The positions match (the shadow
+        // atlas and the depth pre-pass compare exactly everywhere), and neither Metal's fast math
+        // nor SPIRV-Cross's contraction is the cause (with invariant_float_math on every stage and
+        // fast math off they stay). So on Metal a frame may differ in at most 1 pixel in 1000, by
+        // at most 16/255: the instance normals transposed differ in 31,845 pixels, by up to 85/255.
         static void expectSameFrame(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, const char* what){
             ASSERT_EQ(a.size(), b.size()) << what;
             size_t different = 0;
