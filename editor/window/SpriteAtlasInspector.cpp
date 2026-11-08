@@ -40,7 +40,7 @@ namespace {
     const char* kPlatformLabels[] = {"Default", "Desktop", "Mobile", "Web", "Android ETC2"};
     const int kMaxSizes[] = {32, 64, 128, 256, 512, 1024, 2048, 4096, 8192};
 
-    bool atlasInspectorUpload(Texture& texture, int& width, int& height, const pixelart::PixelImage& image) {
+    bool atlasInspectorUpload(Texture& texture, int& width, int& height, const editor::pixelart::PixelImage& image) {
         if (image.empty()) return false;
         static uint64_t counter = 0;
         const size_t bytes = image.pixels().size();
@@ -62,7 +62,7 @@ namespace {
         return true;
     }
 
-    void atlasProblemLine(const pixelart::PixelProblem& p) {
+    void atlasProblemLine(const editor::pixelart::PixelProblem& p) {
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " %s", p.message.c_str());
         if (!p.fix.empty()) ImGui::TextDisabled("%s", p.fix.c_str());
