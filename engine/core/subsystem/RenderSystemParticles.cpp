@@ -295,6 +295,7 @@ uint64_t RenderSystem::particleRenderKey(const CompiledEffect& effect) const{
     h = mix(h, (uint64_t)effect.program.trails.enabled);
     h = mix(h, (uint64_t)hasFog);
     h = mix(h, (uint64_t)postColorProperty(ShaderType::PARTICLES));
+    h = mix(h, (uint64_t)pixelSnapVariants);
     h = mix(h, (uint64_t)getScenePipelines());
     h = mix(h, (uint64_t)msaaPipelineSamples);
     return h;
@@ -456,8 +457,10 @@ bool RenderSystem::loadParticleEmitter(Entity entity, const EmitterRuntime& runt
         }
         return shader;
     };
-    rd.properties = variants.quadProperties | postColor;
-    rd.meshProperties = variants.meshProperties | postColor;
+    // the centres on a Pixel Perfect Camera's grid (S41; trails stay continuous)
+    const uint64_t pixelSnap = pixelSnapVariants ? ShaderPool::getPixelSnapProperty(ShaderType::PARTICLES) : 0;
+    rd.properties = variants.quadProperties | postColor | pixelSnap;
+    rd.meshProperties = variants.meshProperties | postColor | pixelSnap;
     rd.trailProperties = variants.trailProperties | postColor;
     rd.customShaderId = customId;
     rd.shader = drawsQuads ? shaderFor(rd.properties, customId) : nullptr;

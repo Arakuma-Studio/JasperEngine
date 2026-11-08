@@ -34,6 +34,10 @@ namespace jasperengine::editor::pixelart::aseprite {
 
 namespace jasperengine::editor {
 
+    // an export's Sprite Atlas build and whether it remaps its members (Exporter.cpp; the header
+    // names no sprite:: type, so the editor's sources keep a free `sprite` name)
+    struct ExportSpriteAtlas;
+
     namespace fs = std::filesystem;
 
     enum class ShaderOutputFormat {
@@ -220,6 +224,12 @@ namespace jasperengine::editor {
         // S44: the imports of the project's .aseprite files (gatherImportedAssets), shipped as
         // assets/je-imported/ with its index.json; the .aseprite files themselves never ship
         std::vector<std::shared_ptr<const pixelart::aseprite::ImportRecord>> importedRecords;
+        // S45: the Sprite Atlases built for this export's family (gatherSpriteAtlases), whether each
+        // remaps its members (Include in Build), the texture sheets' records (texture -> file),
+        // and the member textures only sprites read, which copyAssets() leaves out
+        std::vector<std::shared_ptr<const ExportSpriteAtlas>> atlasBuilds;
+        std::map<std::string, std::string> textureSheetFiles;
+        std::set<std::string> atlasOnlySources;
 
         // S30: the Player build's report, the cooked scenes and prefabs loadAndSaveAllScenes()
         // made while every scene was loaded, and the player runtime it stages
@@ -419,6 +429,8 @@ namespace jasperengine::editor {
         bool gatherImportedAssets();
         // S44: the imports' sheets, pages and clips into assets/je-imported/ and its index.json
         bool copyImportedAssets(const fs::path& assetsDst);
+        // S45 R19: every atlas built for the export's family, and the texture sheets' records
+        bool gatherSpriteAtlases(const std::vector<std::string>& platforms);
         bool copyAssets();
         // a .cube LUT cooked to <destination's name>.jlut; false (warned) when it does not parse
         bool cookColorLut(const fs::path& source, const fs::path& destination);

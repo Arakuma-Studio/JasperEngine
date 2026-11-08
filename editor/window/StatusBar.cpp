@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "StatusBar.h"
+#include "sprite/SpriteAtlasBuilder.h"
 #include "render/SystemRender.h"
 
 #include "Theme.h"
@@ -78,6 +79,17 @@ void StatusBar::show() {
                 TextureCookQueue::get().cancelAll();
                 ModelCookQueue::get().cancelAll();
             }
+            ImGui::PopStyleVar();
+            ImGui::SameLine();
+        }
+        // Sprite Atlas builds (S45 R17): "Building sprite atlas ui (2/3 pages)", with Cancel
+        const std::string atlasStatus = sprite::SpriteAtlasBuilder::get().statusText();
+        if (!atlasStatus.empty()) {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(atlasStatus.c_str());
+            ImGui::SameLine();
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, 0.0f));
+            if (ImGui::SmallButton("Cancel##sprite_atlas")) sprite::SpriteAtlasBuilder::get().cancelAll();
             ImGui::PopStyleVar();
             ImGui::SameLine();
         }

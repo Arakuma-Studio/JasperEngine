@@ -55,6 +55,11 @@
         mat4 modelMatrix;
         mat4 normalMatrix;
         mat4 mvpMatrix;
+        // x the draw's pixel snap (S41, includes/pixel_snap.glsl): 0 none, 1 every vertex, 2 the
+        // pivot; per draw, so a pixel-snapped drawable is never in an instanced batch
+        #ifdef PIXEL_SNAP
+            vec4 pixelSnapDraw;
+        #endif
     } pbrParams;
 
     #define objectLodFade() (pbrParams.normalMatrix[0][3])

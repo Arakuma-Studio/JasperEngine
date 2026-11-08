@@ -68,8 +68,9 @@
 
 namespace jasperengine::editor {
 
-static const char* scalingModeNames[] = { "Fit Width", "Fit Height", "Letterbox", "Crop", "Stretch", "Native" };
-static const Scaling scalingModeValues[] = { Scaling::FITWIDTH, Scaling::FITHEIGHT, Scaling::LETTERBOX, Scaling::CROP, Scaling::STRETCH, Scaling::NATIVE };
+static const char* scalingModeNames[] = { "Fit Width", "Fit Height", "Letterbox", "Crop", "Stretch", "Native", "Integer (Letterbox)", "Integer (Expand)" };
+static const Scaling scalingModeValues[] = { Scaling::FITWIDTH, Scaling::FITHEIGHT, Scaling::LETTERBOX, Scaling::CROP, Scaling::STRETCH, Scaling::NATIVE,
+                                             Scaling::INTEGER, Scaling::INTEGER_EXPAND };
 static const int scalingModeCount = sizeof(scalingModeValues) / sizeof(scalingModeValues[0]);
 
 static const char* textureStrategyNames[] = { "Fit", "Resize", "None" };
@@ -206,6 +207,7 @@ enum class ProjectCategory {
     Editor,
     Navigation,
     Mesh,
+    TwoD,   // "2D" (S45: Sprite Atlas)
     Count
 };
 
@@ -836,6 +838,13 @@ static void drawScalingPreview(Scaling mode, int canvasWidth, int canvasHeight) 
             scaleX = vw / baseW;
             scaleY = vh / baseH;
             break;
+        case Scaling::INTEGER:
+        case Scaling::INTEGER_EXPAND: {
+            // the preview's whole-number fit (at least 1, as the layout's k)
+            float s = std::floor((vw / baseW < vh / baseH) ? vw / baseW : vh / baseH);
+            scaleX = scaleY = s < 1.0f ? 1.0f : s;
+            break;
+        }
         case Scaling::NATIVE:
         default:
             scaleX = scaleY = 1.0f;
@@ -953,6 +962,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_canvasWidth = project->getCanvasWidth();
     m_canvasHeight = project->getCanvasHeight();
     m_scalingModeIndex = findScalingIndex(project->getScalingMode());
+    m_pixelsPerUnit = project->getPixelsPerUnit();
     m_uiScale = project->getUIScale();
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
@@ -980,6 +990,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_scriptDirs = project->getScriptDirs();
     m_cxxStandardIndex = findCxxStandardIndex(project->getCxxStandard());
     m_physics2DEnabled = project->isPhysics2DEnabled();
+    m_spriteAtlasMode = project->getSpriteAtlasMode();
     m_physics3DEnabled = project->isPhysics3DEnabled();
     m_inputActionsAsset = project->getInputActionsAsset();
     m_inputDeadzone = project->getInputDeadzone();
@@ -1229,6 +1240,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Editor: drawEditorSettings(); break;
         case ProjectCategory::Navigation: drawNavigationSettings(); break;
         case ProjectCategory::Mesh: drawMeshSettings(); break;
+        case ProjectCategory::TwoD: draw2DSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -1908,6 +1920,13 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             drawComboSetting("Scaling Mode", "##ScalingMode", scalingModeNames, scalingModeCount, m_scalingModeIndex, findScalingIndex(Project::defaultScalingMode));
             ImGui::Spacing();
             drawScalingPreview(scalingModeValues[m_scalingModeIndex], m_canvasWidth, m_canvasHeight);
+        }
+
+        if (settingsui::beginRow("graphics.pixels_per_unit")) {
+            drawIntSetting("Pixels Per Unit", "##PixelsPerUnit", m_pixelsPerUnit, Project::defaultPixelsPerUnit, Project::minPixelsPerUnit,
+                           "Texels per world unit of sprites and tilemaps whose own Pixels Per Unit is 0 (1: a world unit is a pixel). "
+                           "1 to 256.");
+            m_pixelsPerUnit = std::min(m_pixelsPerUnit, Project::maxPixelsPerUnit);
         }
 
         // the Canvas Scaler's project default: the UI's own space, apart from the game canvas
@@ -3019,6 +3038,31 @@ void ProjectSettingsWindow::drawPhysics2DSettings() {
             drawSectionNote("Rigidbody 2D colliders on layers whose box is cleared pass through each other and report no contacts or triggers. "
                 "Scripts change it with Physics2D.ignoreLayerCollision; collider category, mask and group still apply to the checked pairs.");
             if (settingsui::beginRow("physics2d.layer_collision_matrix")) drawLayerCollisionMatrix("##LayerCollisionMatrix2D", m_layerCollision2D);
+        }
+    }
+    endSettingsPanel();
+}
+
+// S45 R18: Project Settings > 2D > Sprite Atlas > Mode
+void ProjectSettingsWindow::draw2DSettings() {
+    if (beginSettingsPanel("##TwoDSettingsPanel")) {
+        if (settingsFoldout("Sprite Atlas", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (beginSettingsTable("##SpriteAtlasTable")) {
+                if (settingsui::beginRow("sprite_atlas.mode")) {
+                    static const char* modes[] = {"Enabled", "Enabled for Builds", "Disabled"};
+                    static const char* tokens[] = {"enabled", "enabled_for_builds", "disabled"};
+                    int index = 0;
+                    for (int i = 0; i < 3; i++) {
+                        if (m_spriteAtlasMode == tokens[i]) index = i;
+                    }
+                    if (projectBeginSettingsRow("Mode", index != 0)) m_spriteAtlasMode = "enabled";
+                    ImGui::SetNextItemWidth(-helpMarkerWidth());
+                    if (ImGui::Combo("##SpriteAtlasMode", &index, modes, 3)) m_spriteAtlasMode = tokens[index];
+                    endSettingsRow("Enabled: the editor, Play and builds draw packed sprites from their atlases. Enabled for Builds: the editor "
+                                   "and Play draw the sources, builds the atlases. Disabled: no atlas is built or used.");
+                }
+                ImGui::EndTable();
+            }
         }
     }
     endSettingsPanel();
@@ -5264,6 +5308,7 @@ bool ProjectSettingsWindow::applySettings() {
 
     m_project->setCanvasSize(m_canvasWidth, m_canvasHeight);
     m_project->setScalingMode(scalingModeValues[m_scalingModeIndex]);
+    m_project->setPixelsPerUnit(m_pixelsPerUnit);
     if (m_project->getUIScale() != m_uiScale)
         m_project->setUIScale(m_uiScale);
     m_project->setTextureStrategy(textureStrategyValues[m_textureStrategyIndex]);
@@ -5314,6 +5359,7 @@ bool ProjectSettingsWindow::applySettings() {
     }
     m_project->setCxxStandard(cxxStandards[m_cxxStandardIndex]);
     m_project->setPhysics2DEnabled(m_physics2DEnabled);
+    m_project->setSpriteAtlasMode(m_spriteAtlasMode);
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
     m_project->setInputActionsAsset(m_inputActionsAsset);
     m_project->setInputDeadzone(m_inputDeadzone);

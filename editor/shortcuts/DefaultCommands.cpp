@@ -170,6 +170,10 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.createShakePreset", "Create Shake Preset", AppMenuCommand::AssetsCreateShakePreset);
     b.menu("assets.createProceduralMaterial", "Create Procedural Material", AppMenuCommand::AssetsCreateProceduralMaterial).description =
         "A .procmat graph (a noise on a Material Output), opened in the Procedural Material window";
+    // S45
+    b.menu("assets.createSpriteAtlas", "Create Sprite Atlas", AppMenuCommand::AssetsCreateSpriteAtlas);
+    b.menu("assets.createSpriteAtlasFromSelection", "Create Sprite Atlas from Selection", AppMenuCommand::AssetsCreateSpriteAtlasFromSelection);
+    b.menu("assets.convertInlineSpriteFrames", "Convert Inline Sprite Frames...", AppMenuCommand::AssetsConvertInlineSpriteFrames);
     b.menu("assets.createPhysicsMaterial", "Create Physics Material", AppMenuCommand::AssetsCreatePhysicsMaterial);
     b.menu("assets.createPhysicsMaterial2D", "Create Physics Material 2D", AppMenuCommand::AssetsCreatePhysicsMaterial2D);
     b.menu("assets.createNativePlugin", "Create Native Plugin...", AppMenuCommand::AssetsCreateNativePlugin);
@@ -314,6 +318,11 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("sceneView.hideSelection", "Hide Selection", C::SceneView, "H").description =
         "Hide the selection in the Scene view (again: show it)";
     b.add("sceneView.showAll", "Show All", C::SceneView, "Alt+H").description = "Show every GameObject hidden in the Scene view";
+    // S41 R21: a 2D scene drawn through a Pixel Perfect Camera
+    b.add("sceneView.pixelZoom1x", "Pixel Zoom 1x", C::SceneView, "Alt+1").description =
+        "Pixel Zoom: one art pixel per screen pixel (a 2D scene with a Pixel Perfect Camera)";
+    b.add("sceneView.pixelZoomGame", "Pixel Zoom Game", C::SceneView, "Alt+2").description =
+        "Pixel Zoom: the Game view's pixel scale (a 2D scene with a Pixel Perfect Camera)";
     b.add("sceneView.togglePickLock", "Toggle Pick Lock", C::SceneView, "L").description =
         "Lock the selection against picking in the Scene view, or unlock it";
     b.add("sceneView.measure", "Measure", C::SceneView, "M").description =

@@ -30,7 +30,8 @@ namespace jasperengine::editor {
         PhysicsMaterial,
         PhysicsMaterial2D,
         ShakePreset,
-        ProceduralMaterial
+        ProceduralMaterial,
+        SpriteAtlas     // S45 (the main menu's Create > 2D)
     };
 
     struct AssetCreateItem {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ShaderVariantCollector.h"
+#include "component/CameraComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 
 #include "Engine.h"
@@ -11,6 +12,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/TextEffectComponent.h"
 #include "component/TextComponent.h"
 #include "component/FogComponent.h"
@@ -585,6 +587,9 @@ namespace {
         void collect(const editor::ShaderVariantContent& content){
             EntityRegistry* registry = content.registry;
             std::unordered_set<Entity> modelMeshes;
+            // S41: a camera of the scene snaps through a Pixel Perfect Camera (a script may turn it
+            // off: the plain variants come along)
+            const bool scenePixelSnap = scenePixelSnaps(registry);
 
             // Model meshes first: their geometry and materials come from the file
             for (Entity entity : content.entities){
@@ -608,7 +613,10 @@ namespace {
                         const FluidSimulationComponent* fluid = registry->isComponentRegistered<FluidSimulationComponent>()
                                                                 ? registry->findComponent<FluidSimulationComponent>(entity) : nullptr;
                         lentBaseColor = fluid && fluid->output == FluidOutput::MATERIAL;
+                        pixelSnapKeys = scenePixelSnap && (registry->findComponent<SpriteComponent>(entity) ||
+                                                           registry->findComponent<TilemapComponent>(entity));
                         collectMesh(registry, entity, *mesh);
+                        pixelSnapKeys = false;
                         lentBaseColor = false;
                     }
                 }
@@ -616,8 +624,10 @@ namespace {
                     collectFoliage(*terrain);
                 }
                 if (const UIComponent* ui = registry->findComponent<UIComponent>(entity)){
+                    pixelSnapKeys = scenePixelSnap;
                     collectUI(*ui, registry->findComponent<TextComponent>(entity),
                               registry->isComponentRegistered<TextEffectComponent>() && registry->findComponent<TextEffectComponent>(entity));
+                    pixelSnapKeys = false;
                 }
                 // an HTML UI document draws geometry, gradients and its layer/filter passes
                 // (RmlRenderer) (asked first: an editor built without the document component's
@@ -635,7 +645,9 @@ namespace {
                     collectPoints(points);
                 }
                 if (const ParticleSystemComponent* particles = registry->findComponent<ParticleSystemComponent>(entity)){
+                    pixelSnapKeys = scenePixelSnap;
                     collectParticles(*particles);
+                    pixelSnapKeys = false;
                 }
                 // the hairline, or the ribbon variant a width loads (pixel widths, a base texture)
                 if (const LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)){
@@ -656,6 +668,21 @@ namespace {
         // the mesh being collected is a 3D mesh that may get detail levels (not a terrain,
         // sprite, tilemap or polygon: RenderSystem::updateMeshLods)
         bool meshHasLevels = false;
+        // the drawable being collected also draws pixel-snapped ('Pxs', S41)
+        bool pixelSnapKeys = false;
+
+        static bool scenePixelSnaps(EntityRegistry* registry){
+            if (!registry->isComponentRegistered<PixelPerfectCameraComponent>())
+                return false;
+            auto components = registry->getComponentArray<PixelPerfectCameraComponent>();
+            for (size_t i = 0; i < components->size(); i++){
+                const PixelPerfectCameraComponent& component = components->getComponentFromIndex(i);
+                const CameraComponent* camera = registry->findComponent<CameraComponent>(components->getEntity(i));
+                if (component.enabled && component.pixelSnapping && camera && camera->type != CameraType::CAMERA_PERSPECTIVE)
+                    return true;
+            }
+            return false;
+        }
         const std::vector<MeshShaderEnvironment>& environments;
         // the post colour bit's states, for the points, lines and sky (meshes: environments)
         const std::vector<bool>& postColor;
@@ -671,6 +698,11 @@ namespace {
 
         // A custom shader that fails to build falls back to the built-in variant at runtime
         void insertKeys(ShaderType type, uint64_t properties, uint16_t customId){
+            // the pixel-snapped twin of a snapping scene's drawable (its depth program too)
+            const uint64_t pixelSnapBit = pixelSnapKeys ? ShaderPool::getPixelSnapProperty(type) : 0;
+            if (pixelSnapBit && !(properties & pixelSnapBit)){
+                insertKeys(type, properties | pixelSnapBit, customId);
+            }
             // a mesh's post colour bit comes with its environment; the others take it here
             const uint64_t postColorBit = type == ShaderType::MESH ? 0 : ShaderPool::getPostColorProperty(type);
             for (bool postColorOn : postColor){
@@ -1422,8 +1454,23 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
     bool bloom = false;
     bool blur = false;
     bool halation = false;
+    // a Pixel Perfect Camera's Stretch Fill: the sharp bilinear upscale alone and with each set of
+    // the post-processing's features (S41 R11)
+    bool stretchFill = false;
+    if (scene->isComponentRegistered<PixelPerfectCameraComponent>()){
+        auto pixelCameras = scene->getComponentArray<PixelPerfectCameraComponent>();
+        for (size_t i = 0; i < pixelCameras->size(); i++){
+            const PixelPerfectCameraComponent& pixelCamera = pixelCameras->getComponentFromIndex(i);
+            stretchFill = stretchFill || (pixelCamera.enabled && pixelCamera.upscaleRenderTexture &&
+                                          pixelCamera.upscaleMode == PixelUpscaleMode::STRETCH_FILL);
+        }
+    }
+    if (stretchFill)
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, UBER_SHARP_BILINEAR));
     for (uint32_t features : plausibleUberFeatures(scene->getPostProcessing(), scriptsSetPostProcessing, scriptPostProcessingFields)){
         keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, features));
+        if (stretchFill)
+            keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, features | UBER_SHARP_BILINEAR));
         bloom = bloom || (features & UBER_BLOOM);
         blur = blur || (features & UBER_BLUR);
         // halation without bloom runs its own prefilter and down pass (S13)

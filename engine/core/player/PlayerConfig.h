@@ -71,6 +71,8 @@ namespace jasperengine::player {
         unsigned int canvasHeight = 480;
         Scaling scaling = Scaling::FITWIDTH;
         TextureStrategy textureStrategy = TextureStrategy::NONE;
+        // Project Settings > Graphics > Pixels Per Unit (S41)
+        int pixelsPerUnit = 1;
 
         // loading
         uint32_t loadingScene = 0;         // 0: none

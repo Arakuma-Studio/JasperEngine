@@ -146,6 +146,10 @@ namespace jasperengine {
     protected:
         ecs::SparseIndex entityToSlot;
         ecs::PagedArray<Entity> slotEntities; // NULL_ENTITY marks a hole
+        // For a hole: a later slot with only holes between them, shortened as findNextAfter steps
+        // over a run of holes, so the run is walked once and not at each lookup (destroying
+        // copies newest first looked past every hole behind each one: quadratic)
+        ecs::PagedArray<uint32_t> holeSkip;
         ecs::TickColumn changedTicks;
         ecs::TickColumn addedTicks;
 
@@ -197,12 +201,14 @@ namespace jasperengine {
 
         void reserveColumns(size_t count){
             slotEntities.reserve(count);
+            holeSkip.reserve(count);
             changedTicks.reserve(count);
             addedTicks.reserve(count);
         }
 
         void shrinkColumns(){
             slotEntities.shrinkTo(slotCount);
+            holeSkip.shrinkTo(slotCount);
             changedTicks.shrinkTo(slotCount);
             addedTicks.shrinkTo(slotCount);
         }
@@ -248,6 +254,7 @@ namespace jasperengine {
                     shrinkStorage();
                 }
             }else{
+                holeSkip[slot] = (uint32_t)slot + 1;
                 if (holeCount == 0 || slot < firstHole){
                     firstHole = slot;
                 }
@@ -455,7 +462,7 @@ namespace jasperengine {
         // Memory of everything but the components themselves: index pages, slot owners, ticks
         // and the removal log
         size_t overheadBytes() const {
-            return entityToSlot.bytes() + slotEntities.bytes() + changedTicks.bytes() + addedTicks.bytes()
+            return entityToSlot.bytes() + slotEntities.bytes() + holeSkip.bytes() + changedTicks.bytes() + addedTicks.bytes()
                 + removedLog.bytes();
         }
 
@@ -839,10 +846,16 @@ namespace jasperengine {
         const T* findNextAfter(Entity entity) const {
             const uint32_t slot = entityToSlot.find(entity);
             if (slot == ecs::SparseIndex::kNone) return nullptr;
-            for (size_t next = (size_t)slot + 1; next < slotCount; next++){
-                if (slotEntities[next] != NULL_ENTITY) return slotPtr(next);
+            size_t next = (size_t)slot + 1;
+            while (next < slotCount && slotEntities[next] == NULL_ENTITY){
+                // path halving: the hole skips to where its successor skips (only holes between)
+                uint32_t& skip = holeSkip[next];
+                if (skip < slotCount && slotEntities[skip] == NULL_ENTITY){
+                    skip = holeSkip[skip];
+                }
+                next = skip;
             }
-            return nullptr;
+            return next < slotCount ? slotPtr(next) : nullptr;
         }
 
         // Calls fn(entity, component) for every component in index order while it returns

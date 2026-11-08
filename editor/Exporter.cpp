@@ -65,6 +65,11 @@
 #include "texture/TextureExport.h"
 #include "model/ModelExport.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
+#include "sprite/SpriteAtlasBuilder.h"
+#include "sprite/SpriteAtlasCook.h"
+#include "sprite/SpriteSheetBuilder.h"
+#include "sprite/SpriteSheetSources.h"
+#include "asset/DepEdge.h"
 #include "asset/ImportedAssets.h"
 #include "sprite/SpriteSheetPool.h"
 #include "util/StringUtils.h"
@@ -113,6 +118,13 @@ namespace {
 }
 
 using namespace jasperengine;
+
+namespace jasperengine::editor {
+    struct ExportSpriteAtlas {
+        std::shared_ptr<const sprite::AtlasBuildResult> build;
+        bool remaps = false;
+    };
+}
 
 namespace {
 
@@ -2970,9 +2982,32 @@ namespace {
 bool editor::Exporter::copyImportedAssets(const fs::path& assetsDst) {
     std::error_code ec;
     fs::remove_all(assetsDst / ImportedAssets::kImportedDir, ec);
-    if (importedRecords.empty()) return true;
+    if (importedRecords.empty() && atlasBuilds.empty() && textureSheetFiles.empty()) return true;
     nlohmann::json files = nlohmann::json::object();
     auto ship = [&](const fs::path& from, const std::string& to) { return copyOrFail(from, assetsDst / editor::FileUtils::pathFromUtf8(to)); };
+    // S45: texture sheets, then the atlases (a packed member's remap replaces its own sheet)
+    for (const auto& [texture, file] : textureSheetFiles) {
+        const std::string to = std::string(ImportedAssets::kImportedDir) + "/sheets/" + fs::path(file).filename().string();
+        if (!ship(file, to)) return false;
+        files[ImportedAssets::reference(texture, "sheet")] = to;
+    }
+    std::set<std::string> shippedAtlasFiles;
+    std::map<std::string, std::string> claimed;
+    for (const auto& entry : atlasBuilds) {
+        const std::shared_ptr<const sprite::AtlasBuildResult>& atlas = entry->build;
+        for (const sprite::AtlasBuildResult::ExportedFile& f : atlas->exportedFiles(entry->remaps)) {
+            const bool cookedPage = f.key.rfind("image#", 0) == 0 && cookedTextureSources.count(f.exportPath);
+            if (!cookedPage && !shippedAtlasFiles.count(f.exportPath)) {
+                if (!ship(f.cacheFile, f.exportPath)) return false;
+                shippedAtlasFiles.insert(f.exportPath);
+            }
+            // two atlases packing one source: the one whose path sorts first draws it (R18; the
+            // builds come in path order)
+            if (f.source != atlas->atlasPath && claimed.count(f.source) && claimed[f.source] != atlas->atlasPath) continue;
+            if (f.source != atlas->atlasPath) claimed[f.source] = atlas->atlasPath;
+            files[ImportedAssets::reference(f.source, f.key)] = f.exportPath;
+        }
+    }
     for (const auto& record : importedRecords) {
         // the record's own table: the editor's provider answers the same keys from it
         for (const pixelart::aseprite::ImportRecord::ExportedFile& f : record->exportedFiles()) {
@@ -2990,6 +3025,124 @@ bool editor::Exporter::copyImportedAssets(const fs::path& assetsDst) {
     if (!written.ok()) {
         setError("Failed to write " + target.string() + ": " + written.message);
         return false;
+    }
+    return true;
+}
+
+bool editor::Exporter::gatherSpriteAtlases(const std::vector<std::string>& platforms) {
+    atlasBuilds.clear();
+    textureSheetFiles.clear();
+    atlasOnlySources.clear();
+    // one family's layout: a source export (every platform) takes the desktop one
+    std::string family = "desktop";
+    if (platforms.size() == 1) {
+        const std::string& p = platforms[0];
+        family = p == "web" ? "web" : (p == "android" || p == "ios") ? "mobile" : "desktop";
+    } else if (config.mode == ExportMode::SourceCode && config.selectedBackends.size() == 1 &&
+               *config.selectedBackends.begin() == ShaderBackend::GLES3) {
+        // a source export for GLES3 / WebGL2 only: the web family's layout
+        family = "web";
+    }
+    struct Gathered {
+        std::vector<sprite::AtlasBuildInput> inputs;
+        std::map<std::string, std::string> sheets;
+        std::map<std::string, std::vector<DepEdge>> referrers;
+        std::vector<fs::path> codeFiles;      // scripts and UI documents (they name textures by path)
+        std::string error;
+        bool disabled = false;
+    };
+    Gathered gathered;
+    std::promise<void> asked;
+    auto future = asked.get_future();
+    editor::getEditorHost().enqueueMainThreadTask([this, &gathered, &asked, family]() {
+        sprite::SpriteAtlasBuilder& builder = sprite::SpriteAtlasBuilder::get();
+        if (builder.getProject() != project) builder.attach(project);
+        gathered.disabled = project->getSpriteAtlasMode() == "disabled";
+        // textures with a Sprite Mode (or a name@WxH grid): their records ship
+        project->getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+            if (info.type != AssetType::Texture) return;
+            const fs::path absolute = project->getProjectPath() / info.path;
+            const std::string assetPath = absolute.lexically_normal().lexically_relative(project->getAssetsPath().lexically_normal()).generic_string();
+            if (assetPath.rfind("..", 0) == 0 || !SpriteSheetSources::isTexturePath(assetPath)) return;
+            std::string file;
+            if (sprite::SpriteSheetBuilder::get().resolve(assetPath, file)) gathered.sheets[assetPath] = file;
+        });
+        if (!gathered.disabled) {
+            project->getAssetIndex().waitUntilReady();
+            project->getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+                std::string ext = fs::path(info.path).extension().string();
+                std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                static const std::set<std::string> code = {".lua", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".rml", ".rcss", ".html", ".htm", ".css"};
+                if (code.count(ext)) gathered.codeFiles.push_back(project->getProjectPath() / info.path);
+            });
+            for (const std::string& atlasPath : builder.atlasPaths()) {
+                pixelart::PixelProblem problem;
+                std::optional<sprite::SpriteAtlasDocument> doc = sprite::SpriteAtlasBuilder::readDocument(project->getAssetsPath() / atlasPath, &problem);
+                if (!doc) {
+                    gathered.error = atlasPath + ": " + problem.message;
+                    return asked.set_value();
+                }
+                sprite::AtlasBuildInput input;
+                sprite::SpriteAtlasBuilder::gather(*project, atlasPath, *doc, family, input);
+                for (const sprite::AtlasMemberInput& m : input.members) {
+                    if (m.kind != "texture" || gathered.referrers.count(m.path)) continue;
+                    const fs::path absolute = project->getAssetsPath() / m.path;
+                    const std::string rel = project->normalizeToProjectRelative(absolute).generic_string();
+                    const AssetDatabase::Resolution res = project->getAssetDatabase().lookupPath(rel);
+                    gathered.referrers[m.path] = project->getAssetIndex().referencesTo(res.found() ? res.guid : Guid(), rel, false, 4096);
+                }
+                gathered.inputs.push_back(std::move(input));
+            }
+        }
+        asked.set_value();
+    });
+    future.get();
+    if (!gathered.error.empty()) {
+        setError("Cannot export: the Sprite Atlas " + gathered.error);
+        return false;
+    }
+    textureSheetFiles = gathered.sheets;
+    // what scripts and UI documents say (a texture a script loads by path ships whatever sprites do)
+    std::vector<std::string> codeTexts;
+    for (const fs::path& file : gathered.codeFiles) {
+        std::string text;
+        if (assetio::readFile(file, text)) codeTexts.push_back(std::move(text));
+    }
+    auto namedByCode = [&](const std::string& assetPath) {
+        const std::string projectRelative = project->normalizeToProjectRelative(project->getAssetsPath() / assetPath).generic_string();
+        for (const std::string& text : codeTexts) {
+            if (text.find(assetPath) != std::string::npos || text.find(projectRelative) != std::string::npos) return true;
+        }
+        return false;
+    };
+    for (sprite::AtlasBuildInput input : gathered.inputs) {
+        // the export's own folder: the editor's pages (and a build of it running now) are never touched
+        input.outDir = sprite::SpriteAtlasBuilder::exportDir(input);
+        for (const pixelart::PixelProblem& p : input.problems) {
+            if (p.kind == "importing" || p.kind == "missing_member") warn("W-SPRITE-ATLAS", input.atlasPath + ": " + p.message);
+        }
+        setDetail("Building sprite atlas " + fs::path(input.atlasPath).stem().string());
+        std::shared_ptr<sprite::AtlasBuildResult> built = sprite::SpriteAtlasBuilder::get().build(input);
+        if (!built->ok) {
+            setError("Cannot export: the Sprite Atlas " + input.atlasPath + " does not build: " + built->error.message +
+                     (built->error.fix.empty() ? std::string() : " (" + built->error.fix + ")"));
+            return false;
+        }
+        sprite::SpriteAtlasBuilder::removeStaleFiles(*built);
+        atlasBuilds.push_back(std::make_shared<const ExportSpriteAtlas>(ExportSpriteAtlas{built, input.doc.includeInBuild}));
+        if (!input.doc.includeInBuild) continue;
+        // R19: a packed texture only sprites read (their sheet) ships as the atlas's pages only; a
+        // member the build left out (no frames, unreadable) has no remap and ships as it is
+        for (const std::string& member : built->members) {
+            if (!SpriteSheetSources::isTexturePath(member) || namedByCode(member)) continue;
+            const std::vector<DepEdge>& edges = gathered.referrers[member];
+            bool onlySprites = !edges.empty();
+            for (const DepEdge& edge : edges) {
+                const FieldLocatorParts parts = parseFieldLocator(edge.field);
+                onlySprites = onlySprites && parts.hasEntity && parts.component == "SpriteComponent";
+            }
+            if (onlySprites) atlasOnlySources.insert(member);
+        }
     }
     return true;
 }
@@ -3021,6 +3174,18 @@ bool editor::Exporter::cookTextures() {
     if (!gatheredFuture.get()) {
         setError("Texture import settings: " + gatherError);
         return false;
+    }
+    // S45: the export family's atlases cook under their je-imported/ path (R16: lossless pages as
+    // S14 quality none, RGBA8 + Zstandard; the others as the project's sprites); a packed texture
+    // only sprites read is not cooked
+    if (!gatherSpriteAtlases(platforms)) return false;
+    for (const std::string& source : atlasOnlySources) inputs.erase(source);
+    for (const auto& entry : atlasBuilds) {
+        const std::shared_ptr<const sprite::AtlasBuildResult>& atlas = entry->build;
+        for (size_t p = 0; p < atlas->pages.size(); p++) {
+            TextureCookInputs in = sprite::atlasPageCookInputs(*atlas, p);
+            inputs[in.assetPath] = std::move(in);
+        }
     }
     // S44: the pages of imports set to compression "project" cook as the project's sprites do,
     // under their je-imported/ path (which the sheet records name)
@@ -3376,6 +3541,10 @@ bool editor::Exporter::copyAssets() {
         // A Procedural Material ships as what it baked: PNGs and a .material (S90 R4)
         if (Util::isProceduralMaterialFile(entry.path().string())) return TreeStep::Enter;
 
+        // A texture only sprites read, packed in an atlas, ships as the atlas's pages only (S45 R19)
+        if (atlasOnlySources.count(relPath.generic_string())) {
+            return removeStale(assetsDst / relPath) ? TreeStep::Enter : stop();
+        }
         // A texture source the cooks replace ships as assets/je-cooked/<family>/ only
         if (cookedTextureSources.count(relPath.generic_string())) {
             return removeStale(assetsDst / relPath) ? TreeStep::Enter : stop();

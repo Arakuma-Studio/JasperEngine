@@ -1336,6 +1336,8 @@ entities:
         flipY: true
         textureScaleFactor: 8.6
         pivotPreset: bottom_right
+        pixelsPerUnit: 6.6
+        pixelRotation: on_grid
   - type: Entity
     entity: 1044
     name: TextComponent
@@ -1407,6 +1409,7 @@ entities:
         automaticFlipY: false
         flipY: true
         textureScaleFactor: 4.2
+        pixelsPerUnit: 5.6
         reserveTiles: 10
   - type: Entity
     entity: 1047
@@ -2699,3 +2702,26 @@ entities:
         waves: 0.5
         width: 2.5
         length: 6.5
+  - type: Entity
+    entity: 1095
+    name: PixelPerfectCameraComponent
+    components:
+      transform:
+        position: [94, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      pixelperfectcamera:
+        enabled: false
+        referenceWidth: 7
+        referenceHeight: 2
+        upscaleMode: stretch_fill
+        upscaleRenderTexture: false
+        pixelSnapping: false
+        rotationMode: on_grid
+        subpixelSmoothing: true
+        letterboxColor: [0.6333333, 0.43333334, 0.5555556, 1]

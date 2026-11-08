@@ -59,6 +59,13 @@ namespace jasperengine{
 
         float textureScaleFactor = 0.0;
 
+        // S41: texels per world unit; 0 = the project's Pixels Per Unit. Tile positions and sizes
+        // stay in pixels; the quads are divided by it
+        float pixelsPerUnit = 0.0f;
+        // the tile edges are rounded to the texel grid (a Pixel Perfect Camera in the scene, R13):
+        // neighbours share them bit for bit; MeshSystem rebuilds when it changes
+        bool roundTileEdges = false;
+
         unsigned int reserveTiles = 10;
         unsigned int renderedTiles = 0;
         

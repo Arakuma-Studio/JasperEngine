@@ -876,6 +876,11 @@ void getAssetInfoTool(const CallPtr& call) {
         Json sprite = asepriteAssetInfo(project, file, text);
         for (auto it = sprite.begin(); it != sprite.end(); ++it) data[it.key()] = it.value();
     }
+    // S45: a texture's Sprite Mode, packed_in of a sheet source, an atlas's build
+    if (kind == "texture" || kind == "aseprite_sprite" || kind == "sprite_atlas") {
+        Json sheet = spriteSheetAssetInfo(project, file, kind, text);
+        for (auto it = sheet.begin(); it != sheet.end(); ++it) data[it.key()] = it.value();
+    }
     if (kind == "texture") {
         int w = 0, h = 0, c = 0;
         if (extensionOf(file) != ".svg" && stbi_info(file.string().c_str(), &w, &h, &c)) {
@@ -4174,7 +4179,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "get_asset_info";
         tool.title = "Get Asset Info";
         tool.description =
-            "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
+            "One file's details by type: image size/channels, Sprite Mode, packed_in (synthesized PNG: recipe, changed sources, "
             "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "audio format/duration; .material fields, "
             ".anim clip settings, tracks, events, users; .vat clips, staleness, users; .aseprite layers, tags, slices, outputs; "

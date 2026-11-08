@@ -618,6 +618,11 @@ namespace {
         {v(PivotPreset::BOTTOM_RIGHT), "bottom_right", "Bottom Right", "PivotPreset::BOTTOM_RIGHT"},
         {v(PivotPreset::FRAME), "frame", "From Frame", "PivotPreset::FRAME"},
     };
+    // S45 R6
+    constexpr EnumItem kSpriteDrawModeItems[] = {
+        {v(SpriteDrawMode::SIMPLE), "simple", "Simple", "SpriteDrawMode::SIMPLE"},
+        {v(SpriteDrawMode::SLICED), "sliced", "Sliced", "SpriteDrawMode::SLICED"},
+    };
 
     constexpr EnumItem kPrimitiveTypeItems[] = {
         {v(PrimitiveType::TRIANGLES), "triangles", "Triangles", "PrimitiveType::TRIANGLES"},
@@ -820,6 +825,7 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kMaterialStencilOp{"MaterialStencilOp", kMaterialStencilOpItems, v(MaterialStencilOp::KEEP)};
     const EnumDesc kParticleEmitterShape{"ParticleEmitterShape", kParticleEmitterShapeItems, v(ParticleEmitterShape::Box)};
     const EnumDesc kPivotPreset{"PivotPreset", kPivotPresetItems, v(PivotPreset::BOTTOM_LEFT)};
+    const EnumDesc kSpriteDrawMode{"SpriteDrawMode", kSpriteDrawModeItems, v(SpriteDrawMode::SIMPLE)};
     const EnumDesc kPrimitiveType{"PrimitiveType", kPrimitiveTypeItems, v(PrimitiveType::TRIANGLES)};
     const EnumDesc kProgressbarType{"ProgressbarType", kProgressbarTypeItems, v(ProgressbarType::HORIZONTAL)};
     const EnumDesc kReflectionProbeMode{"ReflectionProbeMode", kReflectionProbeModeItems, v(ReflectionProbeMode::STATIC)};

@@ -423,6 +423,7 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::CAPSULE_SHADOWS)) defs.push_back({"USE_CAPSULE_SHADOWS", "1"}); // 'Cap'
     if (prop & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::CONTACT_SHADOWS)) defs.push_back({"USE_CONTACT_SHADOWS", "1"}); // 'Cts'
     if (prop & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::OIT)) defs.push_back({"USE_OIT", "1"});                         // 'Oit'
+    if (prop & ShaderPool::getPixelSnapProperty(ShaderType::MESH)) defs.push_back({"PIXEL_SNAP", "1"}); // 'Pxs' (S41)
 }
 
 void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -447,6 +448,7 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (vat) defs.push_back({"HAS_VAT", "1"});                                              // 'Vat', 'Vab'
     if (vat && (prop & shaderPropertyBit(17))) defs.push_back({"HAS_VAT_BONES", "1"});      // 'Vab'
     if (prop & ShaderPool::getAutoInstancingProperty(ShaderType::DEPTH)) defs.push_back({"HAS_AUTO_INSTANCING", "1"}); // 'Aui'
+    if (prop & ShaderPool::getPixelSnapProperty(ShaderType::DEPTH)) defs.push_back({"PIXEL_SNAP", "1"}); // 'Pxs' (S41)
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -479,6 +481,7 @@ void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const
     if (prop & shaderPropertyBit(2))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
     if (prop & shaderPropertyBit(3))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
     if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_FONTATLAS_SDF", "1"});        // 'Sdf' (with 'Ftx')
+    if (prop & shaderPropertyBit(5))  defs.push_back({"PIXEL_SNAP", "1"});               // 'Pxs' (S41)
 }
 
 void addHtmlUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -527,6 +530,7 @@ void addParticlesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & (1 << 8))  defs.push_back({"RECEIVE_SHADOWS", "1"});          // 'Rsh'
     if (prop & (1 << 9))  defs.push_back({"HAS_FOG", "1"});                  // 'Fog'
     if (prop & (1 << 10)) defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
+    if (prop & (1 << 11)) defs.push_back({"PIXEL_SNAP", "1"});               // 'Pxs' (S41)
 }
 
 // the uber pass's features (RenderSystem::UberFeature)
@@ -534,7 +538,7 @@ void addUberPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     static const char* const defines[] = {"UBER_FXAA", "UBER_CHROMATIC", "UBER_PIXELATE", "UBER_CRT", "UBER_EDGE", "UBER_GRAIN",
                                           "UBER_SHARPEN", "UBER_LUT", "UBER_VIGNETTE", "UBER_DITHER", "UBER_BLOOM", "UBER_BLUR",
                                           "UBER_UPSCALE", "UBER_VHS", "UBER_HALATION", "UBER_FILM_DAMAGE", "UBER_GRAIN_LENS",
-                                          "UBER_GRAIN_FILMIC"};
+                                          "UBER_GRAIN_FILMIC", "UBER_SHARP_BILINEAR"};
     for (int bit = 0; bit < (int)(sizeof(defines) / sizeof(defines[0])); bit++) {
         if (prop & shaderPropertyBit(bit)) defs.push_back({defines[bit], "1"});
     }

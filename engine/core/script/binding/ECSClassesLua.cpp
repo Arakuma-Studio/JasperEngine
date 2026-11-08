@@ -286,6 +286,12 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("SpriteDrawMode")
+        .addVariable("SIMPLE", SpriteDrawMode::SIMPLE)
+        .addVariable("SLICED", SpriteDrawMode::SLICED)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("LayoutGroupType")
         .addVariable("VERTICAL", LayoutGroupType::VERTICAL)
         .addVariable("HORIZONTAL", LayoutGroupType::HORIZONTAL)

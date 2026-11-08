@@ -168,6 +168,8 @@ namespace jasperengine{
         CustomUniformBlock customFSParams;
 
         int slotVSParams = -1;
+        // reflected: a pixel-snapped variant's block ends with pixelSnapDraw (S41), a fork's may not
+        unsigned int sizeVSParams = 0;
         int slotFSParams = -1;
         unsigned int sizeFSParams = 0; // reflected, read by the Stochastic Tiling ('Sto') variants
         int slotFSTexCoordSets = -1;
@@ -283,6 +285,8 @@ namespace jasperengine{
         PbrMap pbrMaps[MaterialPbr::MAX_EXTENSION_MAPS] = {PbrMap::COUNT, PbrMap::COUNT, PbrMap::COUNT};
 
         int slotVSParams = -1;
+        // reflected: a pixel-snapped variant's block ends with pixelSnapDraw (S41), a fork's may not
+        unsigned int sizeVSParams = 0;
         int slotFSParams = -1;
         // reflected, read by the Stochastic Tiling ('Sto') variants: the material prefix with
         // its stochastic vec4 (16 floats), or less from a fork made before it

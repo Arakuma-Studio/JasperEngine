@@ -44,6 +44,7 @@ namespace tinygltf {
 namespace jasperengine{
 
     struct InstanceData;
+    struct SpriteSlicedMesh;
     struct ObjModelData;
     struct Submesh;
     struct TerrainFoliageLayer;
@@ -56,6 +57,9 @@ namespace jasperengine{
 
         static std::mutex& getAsyncModelMutex();
         static async_model_loads_t& getPendingModelLoads();
+
+        // the project Pixels Per Unit the sprites and tilemaps that take it were built with (S41)
+        int builtPixelsPerUnit = 1;
 
         // Files that already failed to load, so createOrUpdateModel stops retrying them.
         std::set<std::string> failedModelLoads;
@@ -105,11 +109,17 @@ namespace jasperengine{
                               Vector2 pivotPos, int grid);
         // createSpriteGrid with the quad's corners given (x0, y0 the first vertex): sheet frames
         // draw their trimmed quad (S44 R49) through it
+        // (keepIndices: the buffer holds this grid's indices already, a frame change of S45 R26)
         void buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
-                             float x0, float y0, float x1, float y1, int grid);
+                             float x0, float y0, float x1, float y1, int grid, bool keepIndices = false);
         // a sheet sprite (S44 R48-R49): the frame's page, texture rect and trimmed quad, rebuilt
         // only when the frame's geometry differs from the one built
         bool updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh);
+        // the 9-slice of a bordered sheet frame (S45 R6, the Sliced draw mode)
+        void buildSpriteSliced(SpriteComponent& sprite, MeshComponent& mesh, const SpriteSlicedMesh& sliced);
+        // a legacy sprite whose texture an atlas in use packs (S45 R8): its inline rect drawn from
+        // the page; false when it draws from its own texture
+        bool updateInlineAtlas(SpriteComponent& sprite, MeshComponent& mesh);
         bool createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh);
         bool createTilemap(TilemapComponent& tilemap, MeshComponent& mesh);
 
@@ -223,6 +233,12 @@ namespace jasperengine{
 
         // Frames are authored in pixels, textureRect is in UV space
         static void setSpriteFrameRect(MeshComponent& mesh, SpriteComponent& sprite, Rect frameRect);
+        // A legacy sprite's texture rect and texture as it saves them: its source's while it draws
+        // from an atlas page (S45 R8), else the mesh's
+        static Rect spriteSourceRect(const SpriteComponent& sprite, const MeshComponent& mesh);
+        static std::string spriteSourceTexture(const SpriteComponent& sprite, const MeshComponent& mesh);
+        // the source texture's size (unchanged when the sprite draws from its own texture)
+        static void spriteSourceSize(const SpriteComponent& sprite, const MeshComponent& mesh, float& width, float& height);
         // What a Terrain needs of its height and blend maps, whatever a file said: a save and the
         // generated code hold them too (the editor applies them on load and before a save)
         static void applyTerrainMapSettings(TerrainComponent& terrain);
@@ -463,6 +479,7 @@ namespace jasperengine{
         bool rebuildModelFile(const std::string& filename);
 
         void calculateMeshAABB(MeshComponent& mesh);
+        void calculateSpriteAABB(MeshComponent& mesh);
 
         void load() override;
         void draw() override;

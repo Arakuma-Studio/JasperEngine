@@ -63,12 +63,26 @@ namespace jasperengine{
         void setTextureScaleFactor(float textureScaleFactor);
         float getTextureScaleFactor() const;
 
+        // S41: texels per world unit (0: the project's Pixels Per Unit); the rotation policy
+        // under a Pixel Perfect Camera (CAMERA: the camera's)
+        void setPixelsPerUnit(float pixelsPerUnit);
+        float getPixelsPerUnit() const;
+        void setPixelRotation(PixelRotation pixelRotation);
+        PixelRotation getPixelRotation() const;
+        // the quad in world units (width and height over its Pixels Per Unit)
+        Vector2 getWorldSize() const;
+
         void setTextureRect(float x, float y, float width, float height);
         void setTextureRect(Rect textureRect);
         Rect getTextureRect() const;
 
         void setPivotPreset(PivotPreset pivotPreset);
         PivotPreset getPivotPreset() const;
+
+        // Simple or Sliced (docs/specs/S45-sprite-atlas.md R6): a sheet frame with a border drawn as
+        // its 9-slice at the sprite's size
+        void setDrawMode(SpriteDrawMode drawMode);
+        SpriteDrawMode getDrawMode() const;
 
         void addFrame(int id, const std::string& name, Rect rect);
         void addFrame(const std::string& name, float x, float y, float width, float height);

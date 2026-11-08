@@ -6,6 +6,8 @@
 // id takes the new pixels through its generation (R13), the old GPU texture stays bound until
 // then, and on a failure it stays.
 
+#include "sprite/SpriteAtlasBuilder.h"
+#include "sprite/SpriteSheetBuilder.h"
 #include "ReloadHandlers.h"
 
 #include "Project.h"
@@ -61,6 +63,12 @@ void reload::reloadTextures(Context& ctx, const std::vector<fs::path>& files) {
         if (TextureCookQueue::get().getProject() == project) {
             const std::string assetPath = ctx.project.normalizeToAssetsRelative(path).generic_string();
             TextureCookQueue::get().sourceChanged(assetPath);
+        }
+        // S45: its texture sheet and the Sprite Atlases packing it, loaded or not
+        if (sprite::SpriteAtlasBuilder::get().getProject() == project) {
+            const std::string assetPath = ctx.project.normalizeToAssetsRelative(path).generic_string();
+            sprite::SpriteSheetBuilder::get().invalidate(assetPath);
+            sprite::SpriteAtlasBuilder::get().memberChanged(assetPath);
         }
         const std::vector<std::string> ids = TextureDataPool::findIdsUsingFile(watch::pathToUtf8(path));
 

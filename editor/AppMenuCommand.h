@@ -153,7 +153,11 @@ namespace jasperengine::editor {
         ToggleMaximizeOnPlay,
         ToggleParticleEffect,         // Window > Visual Effects > Particle Effect (S91)
         ToggleGraphEditor,            // Window > Assets > Graph Editor (S90)
-        ToggleSpritePreview           // Window > 2D > Sprite Preview (S44)
+        ToggleSpritePreview,          // Window > 2D > Sprite Preview (S44)
+        // S45: Assets > Create > 2D > Sprite Atlas (and from the selection), Assets > Convert Inline Sprite Frames...
+        AssetsCreateSpriteAtlas,
+        AssetsCreateSpriteAtlasFromSelection,
+        AssetsConvertInlineSpriteFrames
     };
 
 }

@@ -772,7 +772,7 @@ CASES = [
                          "aseprite --sheet, sliced them with set_sprite_frames {texture, slice} and built the walk "
                          "animation frame by frame; the editor imports .aseprite files itself (S44).",
         "text_at_issue": "guide Other areas: 'sprites (set_sprite_frames sheet)'; set_sprite_frames "
-                         "description: 'sheet (.aseprite or texture, with its tag clips)'",
+                         "description: 'sheet (.aseprite + tag clips, texture, .spriteatlas)'",
         "source": "S44 design review (pixel-art trial sessions, paraphrased)",
         "files": {"assets/sprites/hero.aseprite": "binary placeholder"},
         "prompt": "Add assets/sprites/hero.aseprite to the scene as an animated character that plays its idle animation.",
@@ -797,6 +797,94 @@ CASES = [
                                      {"tool": "set_sprite_animation"}],
                    "shell_must_not": [r"aseprite\s+(-b|--batch)", r"--sheet"]},
         "max_turns": 10,
+    },
+
+    {
+        "id": "bad_atlas_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked to pack the item icons into one texture so they batch, agents stitched a PNG with a shell "
+                         "script and re-sliced every sprite onto it with set_sprite_frames {texture, frames}: every scene "
+                         "changed and a new icon meant doing it again; the editor packs .spriteatlas files itself and sprites "
+                         "keep their own textures (S45).",
+        "text_at_issue": "edit_sprite_atlas description ('Without output: an in-memory pack ... output: true writes it'); "
+                         "its result's next",
+        "source": "S45 design review (pixel-art trial sessions, paraphrased)",
+        "files": {"assets/items/sword.png": "binary placeholder", "assets/items/shield.png": "binary placeholder",
+                  "assets/items/gem.png": "binary placeholder"},
+        "prompt": "The item icons in assets/items each cost a draw call. Pack them into one atlas so they batch.",
+        "mocks": [
+            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "edit_sprite_atlas", "args": {"output": True}, "result": ok(
+                "Created assets/items.spriteatlas: 1 page \u00b7 3 frames \u00b7 81 % used \u00b7 0.0 MB VRAM (desktop).",
+                {"written": True, "path": "assets/items.spriteatlas", "frame_count": 3, "usage_percent": 81,
+                 "next": "Created and built assets/items.spriteatlas (undo with scope project). Sprites keep referencing their "
+                         "sources; they now draw from its pages."})},
+            {"tool": "edit_sprite_atlas", "args": {}, "result": ok(
+                "Preview of assets/items.spriteatlas: 1 page \u00b7 3 frames \u00b7 81 % used. Nothing written.",
+                {"written": False, "frame_count": 3, "usage_percent": 81, "pages": [{"index": 0, "size": [64, 32], "frames": 3}],
+                 "next": "Nothing written. The same arguments plus output: true write assets/items.spriteatlas and build it."})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sprite_atlas", "args": {"output": True}}],
+                   "must_not_call": [{"tool": "set_sprite_frames", "args": {"frames": "*"}},
+                                     {"tool": "set_sprite_frames", "args": {"slice": "*"}}, {"tool": "write_file"}],
+                   "shell_must_not": [r"montage|convert\s+.*\+append|PIL|Image\.new"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_inline_frames_retyped",
+        "kind": "bad",
+        "what_happened": "Asked to move an old sprite's frames into its texture so other sprites can share them, agents read "
+                         "the inline rects and typed them back into set_sprite_frames {texture, frames} on each sprite, "
+                         "missing the ones in closed scenes; set_sprite_frames {convert, all_users} does it in one undo step (S45).",
+        "text_at_issue": "set_sprite_frames parameters convert, all_users; guide sprites 'Legacy inline frames'",
+        "source": "S45 design review (paraphrased)",
+        "files": {"assets/legacy/walk.png": "binary placeholder"},
+        "prompt": "The Walker sprite still keeps its own frame rects. Move them into walk.png so every sprite using that "
+                  "texture shares them, closed scenes included.",
+        "mocks": [
+            {"tool": "get_entity", "args": {}, "result": ok(
+                "Walker: Sprite Renderer (3 inline frames of assets/legacy/walk.png).",
+                {"components": {"sprite": {"framesRect": [{"name": "walk_0", "rect": [0, 0, 16, 16]},
+                                                          {"name": "walk_1", "rect": [16, 0, 16, 16]},
+                                                          {"name": "walk_2", "rect": [32, 0, 16, 16]}], "numFramesRect": 3}}})},
+            {"tool": "set_sprite_frames", "args": {"convert": True}, "result": ok(
+                "Converted 4 sprite(s) to frames of assets/legacy/walk.png's Sprite Mode (3 frames, indices kept).",
+                {"texture": "assets/legacy/walk.png", "frames": 3, "converted": [{"owner": "scenes/Main.scene", "game_object": "Walker"}],
+                 "next": "One undo (scope project) restores the sprites, their files and the texture's meta."})},
+        ],
+        "checks": {"calls": [{"tool": "set_sprite_frames", "args": {"convert": True, "all_users": True}}],
+                   "must_not_call": [{"tool": "set_sprite_frames", "args": {"frames": "*"}}, {"tool": "write_file"}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_atlas_mode_disabled",
+        "kind": "bad",
+        "what_happened": "In a project whose Sprite Atlas mode is Disabled, agents wrote the atlas with output: true and then "
+                         "polled get_sprite_atlas for a build that never came, or switched the project-wide mode on without "
+                         "asking; the result says it is not built and why (S45 review).",
+        "text_at_issue": "edit_sprite_atlas result's next when the mode is Disabled (built: false)",
+        "source": "S45 review (paraphrased)",
+        "files": {"assets/items/sword.png": "binary placeholder", "assets/items/shield.png": "binary placeholder"},
+        "prompt": "Pack the item icons in assets/items into one sprite atlas.",
+        "mocks": [
+            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "edit_sprite_atlas", "args": {"output": True}, "result": ok(
+                "Created assets/items.spriteatlas; not built: the project's Sprite Atlas mode is Disabled.",
+                {"path": "assets/items.spriteatlas", "written": True, "built": False, "mode": "disabled",
+                 "next": "Not built: the project's Sprite Atlas mode is Disabled (Project Settings > 2D), so sprites draw their "
+                         "sources. Tell the user; with their go-ahead set_project_settings {\"sprite_atlas.mode\": \"enabled\"} builds it."})},
+            {"tool": "edit_sprite_atlas", "args": {}, "result": ok(
+                "Preview of assets/items.spriteatlas: 1 page \u00b7 2 frames \u00b7 80 % used. Nothing written.",
+                {"written": False, "frame_count": 2, "usage_percent": 80,
+                 "next": "Nothing written. The same arguments plus output: true write assets/items.spriteatlas and build it."})},
+            {"tool": "get_sprite_atlas", "args": {}, "result": ok(
+                "assets/items.spriteatlas: not built (disabled).", {"build_state": "disabled", "mode": "disabled"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sprite_atlas", "args": {"output": True}}],
+                   "must_not_call": [{"tool": "set_project_settings"}],
+                   "max_calls": {"get_sprite_atlas": 1},
+                   "reply_must": [r"(?i)disabled"]},
+        "max_turns": 8,
     },
 
     # -- guards: good behaviour seen in the sessions ---------------------------------------------
@@ -3113,5 +3201,51 @@ CASES = [
         ],
         "checks": {"calls": ["get_build_info"], "reply_must": [r"(?i)(compiler|toolchain|build tools)"]},
         "max_turns": 16,
+    },
+    {
+        "id": "guard_pixel_perfect_camera",
+        "kind": "guard",
+        "what_happened": "Pixel art drawn at a fractional scale (columns 2 and 3 px wide, blur): the fix is the camera's Pixel "
+                         "Perfect Camera component (S41), not a post-processing pixelate, a shader fork or the scene's Fixed "
+                         "Resolution.",
+        "text_at_issue": "None since the guide's 'pixel art' line was cut (it passed without it): the component's name in list_component_types",
+        "source": "S41 (docs/specs/S41-pixel-perfect-camera.md R3, the @asynkimo failure); no failure on record",
+        "prompt": "My pixel-art game looks wrong at 1366x768: some pixel columns are wider than others and sprites shimmer "
+                  "when the camera moves. Make the Main Camera pixel perfect at 320x180.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nMain Camera [3] camera transform",
+                                                   {"entities": [{"id": 3, "path": "Main Camera"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:Main Camera|^3$"}, "result": ok(
+                "Main Camera [3] components: camera transform; camera: type ortho", {"id": 3, "path": "Main Camera"})},
+            {"tool": "add_component", "result": ok("Added pixelperfectcamera to GameObject 3 \"Main Camera\" (one undo step).",
+                                                   {"entity": {"id": 3, "path": "Main Camera"}, "component": "pixelperfectcamera"})},
+            {"tool": "set_properties", "result": ok("Set 2 properties on GameObject 3 \"Main Camera\".", {"entity": {"id": 3}})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)pixel.?perfect"}}],
+                   "must_not_call": ["fork_shader", "apply_post_processing_preset",
+                                     {"tool": "set_scene_settings", "args": {"settings": {"fixed_resolution_enabled": True}}}]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_game_view_pixel_scale",
+        "kind": "guard",
+        "what_happened": "Checking pixel art at 1x (one physical pixel per art pixel) is the Game view's Pixel Scale, not its "
+                         "zoom Scale (1 to 5, the image fitted first) or a resolution change.",
+        "text_at_issue": "configure_game_view pixel_scale: 'Pixel Perfect scale; 0 auto.'",
+        "source": "S41 (R20, AC15); no failure on record",
+        "prompt": "The main camera has a Pixel Perfect Camera. Show the Game view at 1x pixel scale so I can check the art pixel "
+                  "for pixel, then take a Game view screenshot.",
+        "mocks": [
+            {"tool": "configure_game_view", "args": {"pixel_scale": 1}, "result": ok(
+                "Game view: aspect free, scale 1, pixel scale 1.", {"aspect": "free", "scale": 1, "pixel_scale": 1})},
+            {"tool": "configure_game_view", "result": ok("Game view: aspect free, scale 1, pixel scale 0.",
+                                                         {"aspect": "free", "scale": 1, "pixel_scale": 0})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).",
+                                               {"view": "game", "width": 1280, "height": 720})},
+        ],
+        "checks": {"calls": [{"tool": "configure_game_view", "args": {"pixel_scale": 1}}],
+                   "must_not_call": [{"tool": "configure_game_view", "args": {"resolution": "*"}}]},
+        "max_turns": 12,
     },
 ]

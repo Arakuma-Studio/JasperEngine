@@ -1413,6 +1413,23 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("CROP", Scaling::CROP)
         .addVariable("STRETCH", Scaling::STRETCH)
         .addVariable("NATIVE", Scaling::NATIVE)
+        .addVariable("INTEGER", Scaling::INTEGER)
+        .addVariable("INTEGER_EXPAND", Scaling::INTEGER_EXPAND)
+        .endNamespace();
+
+    // the Pixel Perfect Camera's choices (S41)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PixelUpscaleMode")
+        .addVariable("INTEGER", PixelUpscaleMode::INTEGER)
+        .addVariable("INTEGER_EXPAND", PixelUpscaleMode::INTEGER_EXPAND)
+        .addVariable("STRETCH_FILL", PixelUpscaleMode::STRETCH_FILL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PixelRotation")
+        .addVariable("CAMERA", PixelRotation::CAMERA)
+        .addVariable("STEPS_90", PixelRotation::STEPS_90)
+        .addVariable("ON_GRID", PixelRotation::ON_GRID)
         .endNamespace();
 
     // the Canvas Scaler (Unity's CanvasScaler.ScaleMode, ScreenMatchMode, Unit)
@@ -2272,6 +2289,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("preferredCanvasHeight", &Engine::getPreferredCanvasHeight)
         .addStaticProperty("viewRect", &Engine::getViewRect)
         .addStaticProperty("scalingMode", &Engine::getScalingMode, &Engine::setScalingMode)
+        .addStaticFunction("getPixelsPerUnit", &Engine::getPixelsPerUnit)
         .addStaticProperty("textureStrategy", &Engine::getTextureStrategy, &Engine::setTextureStrategy)
         .addStaticFunction("setTextureQuality", &Engine::setTextureQuality)
         .addStaticFunction("getTextureQuality", &Engine::getTextureQuality)
