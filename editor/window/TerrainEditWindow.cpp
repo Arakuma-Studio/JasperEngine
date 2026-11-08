@@ -3157,6 +3157,21 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
         return false;
     }
     infoValid = false;
+    // R55: no decal while the camera moves (right or middle drag, Alt+left orbit), and a fade once the pointer rests
+    const ImGuiIO& pointer = ImGui::GetIO();
+    if (!stroke.active && (pointer.MouseDown[ImGuiMouseButton_Right] || pointer.MouseDown[ImGuiMouseButton_Middle] ||
+                           (pointer.KeyAlt && pointer.MouseDown[ImGuiMouseButton_Left]))){
+        return false;
+    }
+    if (pointer.MousePos.x != decalPointerX || pointer.MousePos.y != decalPointerY || stroke.active){
+        decalPointerX = pointer.MousePos.x;
+        decalPointerY = pointer.MousePos.y;
+        decalMovedAt = ImGui::GetTime();
+    }
+    const float opacity = decalOpacity(ImGui::GetTime() - decalMovedAt);
+    if (opacity <= 0.0f){
+        return false;
+    }
 
     Entity entity = NULL_ENTITY;
     Vector3 localPoint;
@@ -3263,6 +3278,7 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
     cursor.color = pickHeightArmed ? Vector4(1.0f, 1.0f, 1.0f, 1.0f)
                                    : (!isPlacementBrush() && brushSize < texel ? Vector4(1.0f, 0.0f, 1.0f, 1.0f)
                                                                                 : decalColor(isAlternateOn() && shown != TerrainBrushMode::Smooth ? TerrainBrushMode::Flatten : shown));
+    cursor.color.w *= opacity;
     buildLoop(brushSize, 16, cursor.outerPoints);
     // Placement has no falloff — the ring is the area objects can scatter into.
     if (brushFalloff != TerrainBrushFalloff::Constant && !isPlacementBrush()){
@@ -3335,6 +3351,13 @@ TerrainBrushMode editor::TerrainEditWindow::effectiveModeFor(bool ctrl, bool shi
         return brushMode == TerrainBrushMode::PlaceObject ? TerrainBrushMode::EraseObject : TerrainBrushMode::PlaceObject;
     }
     return brushMode;
+}
+
+float editor::TerrainEditWindow::decalOpacity(double secondsSinceMoved){
+    constexpr double HOLD = 0.5;
+    constexpr double FADE = 0.25;
+    if (secondsSinceMoved <= HOLD) return 1.0f;
+    return static_cast<float>(std::max(0.0, 1.0 - (secondsSinceMoved - HOLD) / FADE));
 }
 
 Vector4 editor::TerrainEditWindow::decalColor(TerrainBrushMode mode){

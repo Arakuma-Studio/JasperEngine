@@ -223,6 +223,9 @@ namespace jasperengine::editor{
         mutable bool infoValid = false;
         mutable Entity infoEntity = NULL_ENTITY;
         mutable Vector3 infoLocal;
+        // T1 R55: where the pointer was and when it last moved, for the decal's fade
+        mutable float decalPointerX = -1.0f, decalPointerY = -1.0f;
+        mutable double decalMovedAt = 0.0;
 
         void drawIssuesBanner(SceneProject* sceneProject, TerrainComponent& terrain);
         void drawSettingsTool(SceneProject* sceneProject, TerrainComponent& terrain);
@@ -357,6 +360,8 @@ namespace jasperengine::editor{
         TerrainBrushMode effectiveModeFor(bool ctrl, bool shift) const;
         // T1 R55, Table 4: the decal's colour of an operation
         static Vector4 decalColor(TerrainBrushMode mode);
+        // T1 R55: the decal's opacity this long after the pointer last moved: whole for 0.5 s, then gone over 0.25 s
+        static float decalOpacity(double secondsSinceMoved);
 
         void adjustBrushSize(float factor);
         void adjustBrushStrength(float factor);
