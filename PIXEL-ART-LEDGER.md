@@ -221,6 +221,15 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-08: Fixed and pushed `b069dde54`: the lite2d player didn't compile, because S44 put the
+  slice-geometry include under `JASPERENGINE_PHYSICS_3D`. The follow-ups program reported it;
+  verified with a `lite2d` player build (776/776).
+  - The disk was back at 98%. Android build output (~27 GB per worktree, git-ignored under
+    `engine/workspaces/androidstudio`) and S43's one-off trees were removed, leaving 104 GB free.
+  - S41 passed its final gate at `61b5d84b9`: `WERROR` build; editor 181 and core 207 filtered
+    unit tests; Vulkan 61; 152 MCP tests; the web gate; `SpriteComponent` at 328 of 384 bytes.
+    But `main` moved 38 commits (shader cache v54 and v55 taken by the follow-ups program), so it
+    is doing one more merge (taking v56) before landing.
 - 2026-11-08: The disk filled to 0 bytes while S41's final gate was running. The landed S44
   worktree and its 42 GB build were removed, leaving 64 GB free. Each worktree build takes
   35–70 GB, so builds are deleted after a spec lands, one-off trees (smoke, players-build,
