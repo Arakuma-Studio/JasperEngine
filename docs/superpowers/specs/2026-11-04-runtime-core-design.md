@@ -775,25 +775,33 @@ Recorded during implementation (branch `dc/runtime-core`).
 
 ## Follow-ups (2026-11-07)
 
-1. **The event-clear lint covers every engine event** (`tools/check_event_clears.py`): every
-   `FunctionSubscribe` member of every struct or class in the engine's sources (not `engine/libs`,
-   `engine/tests`, `engine/workspaces`), with comments and literals stripped and only declarations directly
-   in a class body counted (no locals, parameters, references or getters). A holder's instance events are
-   in its `forEachEvent`; a component holder is in `ComponentsWithEvents`; any other holder is in the
-   lint's `WALKS` table with the clears that call its visitor (PhysicsSystem's two, InputAction's
-   `InputActions::unload` and `resetSession`), each checked to call `forEachEvent`; a static event is in
-   `Engine::clearAllSubscriptions` and `Engine::removeSubscriptionsByTag` (Engine's own unqualified and
-   not satisfied by another class's same-named event, others as `Class::member`). Types derived from
-   FunctionSubscribe (`Ease`) are values and are not checked.
-2. **Real hits fixed.** `Audio::onMusicBeat` and `Audio::onMusicSection` were cleared only in
-   `MusicPlayer::reset`, which the editor's Stop runs in `finalizeStop`, after `conector.disconnect()`:
-   a C++ script's callback there was destroyed after its library was unloaded, and a tag removal never
-   reached them. Both are now in Engine's two clears (test `EngineEventsTest.ClearsReachOtherClassesStaticEvents`,
-   red before the fix). `InputAction`'s three events were cleared by two hand lists (complete): they now
-   go through `InputAction::forEachEvent` (test `InputActionsTest.UnloadAndANewSessionClearEveryActionEvent`
-   pins it; no red run, nothing was missed).
+1. **The event-clear lint covers every engine event** (`tools/check_event_clears.py`). An event is a
+   member of type `FunctionSubscribe<...>`, of a class derived from it (`Ease`) or of an alias of one,
+   alone or in a container, anywhere in the engine's sources (not `engine/libs`, `engine/tests`,
+   `engine/workspaces`). Declarations are read as statements (type arguments across lines,
+   `jasperengine::` qualification, `JASPERENGINE_API static`, `alignas` and attributes); locals,
+   parameters, references, pointers, functions and static definitions are not events. A holder's events
+   are in its `forEachEvent` (a container by name); a component holder is in `ComponentsWithEvents`;
+   any other holder is in the lint's `WALKS` table, with the clears that call its visitor checked
+   (PhysicsSystem's two, InputAction's `InputActions::unload` and `resetSession`), or in `TRANSIENT`
+   (`LegacyParticleSystem.h`, a view sampled into curves within one call); a static event is in
+   `Engine::clearAllSubscriptions` and `Engine::removeSubscriptionsByTag` (Engine's own unqualified,
+   not satisfied by another class's same-named event; others as `Class::member`). An event at
+   namespace scope fails, and so does an event type the lint cannot read where a declaration could
+   be (a macro, an unparsable statement), so nothing is skipped silently.
+2. **Real hits fixed.**
+   - `Audio::onMusicBeat` and `Audio::onMusicSection` were cleared only in `MusicPlayer::reset`,
+     which the editor's Stop runs in `finalizeStop`, after `conector.disconnect()`: a C++ script's
+     callback there was destroyed after its library was unloaded, and a tag removal never reached
+     them. Both are now in Engine's two clears (test `EngineEventsTest.ClearsReachOtherClassesStaticEvents`,
+     red before the fix).
+   - `TweenComponent::function`, an `Ease` a C++ script can set to its own lambda, was destroyed with
+     the runtime scene after the unload. TweenComponent is now in `ComponentsWithEvents` with a
+     `forEachEvent`, and `Ease::clear` keeps only the built-in curve of its type (a custom function
+     goes, the ease is linear again), so `clearComponentSubscriptions` destroys the script's function
+     while its code is loaded (test `ComponentEventsTest.ClearDropsAScriptsTweenEase`, red before).
+   - `InputAction`'s three events were cleared by two hand lists (complete): they now go through
+     `InputAction::forEachEvent` (test `InputActionsTest.UnloadAndANewSessionClearEveryActionEvent`
+     pins it; no red run, nothing was missed).
 3. **check-changed** runs the lint for any changed engine source outside the skipped directories (it
    used to take component headers, PhysicsSystem.h and Engine.h/.cpp only).
-4. Open (not an event, outside the lint): a C++ script's custom `Ease` on a `TweenComponent` is a
-   `std::function` destroyed with the runtime scene, after the library is unloaded (inferred from the
-   Stop order; not run).

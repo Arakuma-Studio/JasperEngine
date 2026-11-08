@@ -27,6 +27,7 @@
 #include "component/ScrollbarComponent.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/TextEffectComponent.h"
+#include "component/TweenComponent.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
@@ -40,6 +41,8 @@
 #endif
 #include "subsystem/PhysicsSystem.h"
 
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -171,6 +174,33 @@ TEST(ComponentEventsTest, RemoveByTagReachesEveryEvent) {
     scene.removeSubscriptionsByTag("ScriptX_");
     EXPECT_TRUE(stillSubscribed(scene, entity, named).empty())
         << "left after the removal by tag: " << joined(stillSubscribed(scene, entity, named));
+}
+
+// a C++ script's tween ease (TweenComponent::function) is code of its library: the clear at Stop
+// destroys it while the library is loaded (the scene is restored or deleted after the unload);
+// a built-in ease keeps its curve
+TEST(ComponentEventsTest, ClearDropsAScriptsTweenEase) {
+    Scene scene;
+    const Entity scripted = scene.createEntity();
+    const Entity builtin = scene.createEntity();
+    scene.addComponent<TweenComponent>(scripted, {});
+    scene.addComponent<TweenComponent>(builtin, {});
+    auto capture = std::make_shared<int>(0);
+    const std::weak_ptr<int> alive = capture;
+    scene.getComponent<TweenComponent>(scripted).function =
+        std::function<float(float)>([capture](float t) { return t * t * t; });
+    capture.reset();
+    scene.getComponent<TweenComponent>(builtin).function = EaseType::QUAD_IN;
+    ASSERT_FALSE(alive.expired());
+
+    Engine::clearComponentSubscriptions(&scene);
+    EXPECT_TRUE(alive.expired()) << "the script's function would be destroyed after its library is unloaded";
+    Ease& ease = scene.getComponent<TweenComponent>(scripted).function;
+    EXPECT_EQ(ease.getType(), EaseType::LINEAR);
+    EXPECT_FLOAT_EQ(ease.call(0.5f), 0.5f);
+    Ease& kept = scene.getComponent<TweenComponent>(builtin).function;
+    EXPECT_EQ(kept.getType(), EaseType::QUAD_IN);
+    EXPECT_FLOAT_EQ(kept.call(0.5f), 0.25f);
 }
 
 // the static events of classes other than Engine go with Engine's clears too: the editor's Stop
