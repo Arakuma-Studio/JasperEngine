@@ -226,4 +226,9 @@ TEST_F(TitleArtScenesParityGpu, Scenes) {
     ASSERT_TRUE(renderScene(nestedGroups(false), shown, error)) << error;
     const BlockStats hidden = againstReference("nested-hidden-groups", shown);
     EXPECT_FALSE(withinParity(hidden)) << "the parity metric passes hidden groups drawn: " << hidden.text();
+    // - the title without the Sunburst's luminance is not the masked title
+    Rgba8Image unmasked;
+    ASSERT_TRUE(renderScene({title(1, "確定")}, unmasked, error)) << error;
+    const BlockStats lit = againstReference("mask-from-layer-luminance", unmasked);
+    EXPECT_FALSE(withinParity(lit)) << "the parity metric passes the title without its luminance mask: " << lit.text();
 }
