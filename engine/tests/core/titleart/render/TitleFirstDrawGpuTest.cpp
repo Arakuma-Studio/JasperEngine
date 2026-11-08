@@ -90,6 +90,23 @@ TEST(TitleFirstDraws, AHeartbeatEndsTheFrame) {
     TitleFirstDraws::resetForTesting(false);
 }
 
+// A synchronous render (the editor's view_asset and bake step one job to its end, no frame in
+// between) lets every new key through while its scope lives; the frame rule is back after it.
+// Red control: without the scope view_asset waited 60 s for a frame and failed
+// (test_title_art.py::test_asset_info_and_view on the wave-2 merge).
+TEST(TitleFirstDraws, ASynchronousRenderIsNotSpread) {
+    TitleFirstDraws::resetForTesting(false);
+    EXPECT_TRUE(TitleFirstDraws::allow(0x61ull));
+    {
+        TitleFirstDraws::SynchronousScope synchronous;
+        EXPECT_TRUE(TitleFirstDraws::allow(0x62ull)) << "a second new key in the same frame goes";
+        EXPECT_TRUE(TitleFirstDraws::allow(0x63ull));
+        EXPECT_TRUE(TitleFirstDraws::available());
+    }
+    EXPECT_FALSE(TitleFirstDraws::allow(0x64ull)) << "after the scope a new key waits for the next frame again";
+    TitleFirstDraws::resetForTesting(false);
+}
+
 TEST_F(TitleFirstDrawGpu, NewProgramsDrawOneAFrame) {
     TitleFirstDraws::resetForTesting(false);
     const TimedRender spread = renderWithEffects();

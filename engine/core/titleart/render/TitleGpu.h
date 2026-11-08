@@ -158,6 +158,20 @@ namespace jasperengine::titleart {
         // tests: forget every key and the counters; `unbounded` lets every new key through (the
         // red control: the frames' compiles are no longer spread)
         static void resetForTesting(bool unbounded = false);
+
+        // While one lives, every new key goes at once: a synchronous render (one call that steps
+        // its job to the end, as the editor's view_asset and bake do) has no later frame to send a
+        // draw to, so spreading would wait for a frame that never comes.
+        class JASPERENGINE_API SynchronousScope {
+        public:
+            SynchronousScope();
+            ~SynchronousScope();
+            SynchronousScope(const SynchronousScope&) = delete;
+            SynchronousScope& operator=(const SynchronousScope&) = delete;
+
+        private:
+            bool previous;
+        };
     };
 
     class JASPERENGINE_API TitleGpu {

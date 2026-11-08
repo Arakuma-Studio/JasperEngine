@@ -10,6 +10,7 @@
 #include "render/SystemRender.h"
 #include "texture/TexturePrepare.h"
 #include "titleart/TitleArtHash.h"
+#include "titleart/render/TitleGpu.h"
 #include "util/AssetDatabase.h"
 #include "util/FontFace.h"
 #include "util/FontRegistry.h"
@@ -220,7 +221,9 @@ bool TitleArtRenderHost::render(Project* project, titleart::RenderRequest reques
     std::unique_ptr<titleart::TitleRenderJob> job = begin(project, std::move(request), error);
     if (!job) return false;
     // no editor frame runs while this call does, so a program the job waits for (built in the
-    // background, created off the render thread) is published here, within a deadline
+    // background, created off the render thread) is published here, within a deadline, and the
+    // first draws are not spread over frames (S86's TitleFirstDraws)
+    titleart::TitleFirstDraws::SynchronousScope synchronous;
     constexpr double PROGRAM_WAIT_MS = 60000.0;
     const auto waitStart = std::chrono::steady_clock::now();
     while (!job->done()) {

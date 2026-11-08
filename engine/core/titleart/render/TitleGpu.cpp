@@ -410,6 +410,14 @@ const TitleFirstDrawStats& TitleFirstDraws::stats() {
     return firstDraws().stats;
 }
 
+TitleFirstDraws::SynchronousScope::SynchronousScope() : previous(firstDraws().unbounded) {
+    firstDraws().unbounded = true;
+}
+
+TitleFirstDraws::SynchronousScope::~SynchronousScope() {
+    firstDraws().unbounded = previous;
+}
+
 void TitleFirstDraws::resetForTesting(bool unbounded) {
     FirstDraws& f = firstDraws();
     f.drawn.clear();
