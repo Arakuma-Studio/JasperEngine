@@ -510,8 +510,9 @@ struct Title3DRenderer::Impl {
     }
 
     // a completed build's cube into the cache (keeps 3 cubes at 1024 and 1 at 2048, least
-    // recently used go first)
-    Cube* finish(std::unique_ptr<EnvBuild> b, Title3DStats& stats) {
+    // recently used go first; never one of `pinned`, the render's own, which would build again
+    // forever or be drawn after it went)
+    Cube* finish(std::unique_ptr<EnvBuild> b, Title3DStats& stats, const std::vector<Title3DEnvPlan>& pinned) {
         std::unique_ptr<Cube> made = std::move(b->made);
         made->lastUse = ++clock;
         Cube* out = made.get();
@@ -528,7 +529,8 @@ struct Title3DRenderer::Impl {
                 for (auto& [k, c] : cubes) {
                     if (c->face != faceSize) continue;
                     count++;
-                    if (c->lastUse < oldest && c.get() != out) {
+                    const bool held = std::any_of(pinned.begin(), pinned.end(), [&](const Title3DEnvPlan& e) { return e.key == k; });
+                    if (c->lastUse < oldest && c.get() != out && !held) {
                         oldest = c->lastUse;
                         victim = k;
                     }
@@ -577,7 +579,7 @@ struct Title3DRenderer::Impl {
 
     // the cube of an environment: cached, else uploaded (cooked) or built to the end now (a render
     // that did not wait for ready())
-    Cube* cube(const Title3DEnvPlan& env, std::string& error, Title3DStats& stats) {
+    Cube* cube(const Title3DEnvPlan& env, std::string& error, Title3DStats& stats, const std::vector<Title3DEnvPlan>& pinned) {
         auto it = cubes.find(env.key);
         if (it != cubes.end()) {
             it->second->lastUse = ++clock;
@@ -599,7 +601,7 @@ struct Title3DRenderer::Impl {
         stats.environmentMaxStepUnits = std::max(stats.environmentMaxStepUnits, used);
         std::unique_ptr<EnvBuild> done = std::move(slot);
         builds.erase(env.key);
-        return finish(std::move(done), stats);
+        return finish(std::move(done), stats, pinned);
     }
 
     // ---- pictures ----
@@ -956,7 +958,7 @@ bool Title3DRenderer::ready(const Title3DPlan& plan, uint32_t testFlags) {
         if (!complete) return false;
         std::unique_ptr<EnvBuild> done = std::move(slot);
         impl->builds.erase(env.key);
-        impl->finish(std::move(done), counters);
+        impl->finish(std::move(done), counters, plan.environments);
         return false;   // the next call goes on with the next build, or renders
     }
     return TitleFirstDraws::allowGroup(drawKeys);
@@ -978,7 +980,7 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
     std::vector<Cube*> envCubes(plan.environments.size(), nullptr);
     for (size_t i = 0; i < plan.environments.size(); i++) {
         if (plan.environments[i].matcap) continue;
-        envCubes[i] = im.cube(plan.environments[i], error, counters);
+        envCubes[i] = im.cube(plan.environments[i], error, counters, plan.environments);
         if (!envCubes[i]) return false;
     }
     GpuMesh* gpuMesh = im.mesh(plan, error, counters);

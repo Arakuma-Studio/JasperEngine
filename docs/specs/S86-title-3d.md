@@ -1406,7 +1406,8 @@ rest of S82 lands in 6B.
     builder's draws (a 1024 cube with 128-sample GGX levels rasterised by llvmpipe in one call; hang reports from an
     isolated editor), not shader compiles. `Title3DRenderer::ready()` runs the build as 128 px tile passes, a share a call
     (a texel-sample budget that doubles while calls stay under 4 ms and halves past 16 ms), and the job waits on it.
-    `TITLE_ART_TEST_ENV_ONE_SHOT` is the red control.
+    `TITLE_ART_TEST_ENV_ONE_SHOT` is the red control. The cube cache never evicts a cube the render itself needs: a
+    layer with more environments than it keeps built them round forever (`MoreEnvironmentsThanTheCacheKeepsBuildOnce`).
 23. **Implementation: first draws of Title Art programs go one a frame (`TitleFirstDraws`, `TitleGpu.h`).** The 2D stalls
     (4-5 s each) were llvmpipe's LLVM JIT inside the first draw of a TITLE_ART program on the render thread (hang report
     stacks: `TitleGpu::run` -> `SokolObject::draw` -> `llvm::MCJIT`), not the shader build (async through S32: no builder
@@ -1414,9 +1415,16 @@ rest of S82 lands in 6B.
     not on a software rasteriser (S32 deviation 6), and Title Art passes use immediate pipelines (S32 §6.4), so it cannot
     leave the render thread here. Title Art therefore lets one new (program, state) draw a frame: a pass or kernel whose
     first draw is deferred runs again on a later frame (S80's step re-run, also closing a race where a program finished
-    compiling between a kernel's run and its readiness check); a 3D layer's programs go as one group. This bounds a frame
-    to one driver compile (milliseconds on a GPU); on llvmpipe one compile still takes 4-5 s, so a hang report can still
-    name it. A shader build never runs on the main thread (S32).
+    compiling between a kernel's run and its readiness check); a 3D layer's programs go as one group. A frame ends at a
+    main-loop heartbeat or a commit: the editor commits only when a view redraws, and with commits alone an MCP render
+    waited forever ("rendering main"; `TitleFirstDraws.AHeartbeatEndsTheFrame`). This bounds a frame
+    to one driver compile (milliseconds on a GPU; `TitleFirstDrawGpu.NewProgramsDrawOneAFrame` times it: the longest frame
+    is the slowest pass and under 1 s more). On llvmpipe that does not bring the stall under the 3 s hang threshold:
+    S80's `ELEMENT` program alone compiles for 4.8-5.3 s here (its first draw, or a later draw with other textures,
+    which llvmpipe compiles as another variant), so the longest frame of that render was 5.8 s bounded and 5.5 s
+    unbounded. The remaining cause is that one program's size; splitting it into smaller variants is S80's shader, left
+    to its stream. A 3D layer's group is one frame of several compiles (MCP renders here still log 5-10 s stalls). A
+    shader build never runs on the main thread (S32).
 24. **Implementation: render_title's debug views** are `RenderRequest::debugView3D` (`Title3DDebugView`): normals and
     environment are Title Lit outputs (`TL_OUTPUT` 1, 2); ao is the SAO result (computed with the layer's AO values even
     when AO is off); glint is the glint light tone mapped alone (the full chain when the layer has none); ink is the render

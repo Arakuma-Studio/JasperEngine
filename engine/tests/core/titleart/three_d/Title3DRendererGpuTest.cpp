@@ -9,7 +9,8 @@
 // environment lights that part only; the glint (AC17) adds light past the letters on every tier
 // (red control: a threshold nothing passes); an environment build is spread over frames (the 21 s
 // software-rasteriser stall of one-shot builds; red control: one shot); a 2D document makes no
-// 3D renderer; the environment's level map and CPU scene evaluation.
+// 3D renderer; five environments in one layer build once each (red control: the cache evicted
+// them and the builds went round); the environment's level map and CPU scene evaluation.
 
 #include "titleart/render/TitleRenderTestSupport.h"
 #include "titleart/support/TitleTestAssets.h"
@@ -241,6 +242,28 @@ TEST_F(Title3DRendererGpu, APartsOwnEnvironmentLightsThatPartOnly) {
     }
     ASSERT_GE(bandX, 0);
     for (int c = 0; c < 3; c++) EXPECT_NEAR(red.at(bandX, 128)[c], plain.at(bandX, 128)[c], 2.0f / 255.0f) << "the band keeps the layer's environment";
+}
+
+TEST_F(Title3DRendererGpu, MoreEnvironmentsThanTheCacheKeepsBuildOnce) {
+    // five cubes in one layer (the cache keeps three of 1024): each built once, none evicted
+    // while the render needs it (red control: evicted, the builds went round forever)
+    auto renderer = geometryRenderer();
+    Json layer = plate3D(0.0, "chrome");
+    layer["style_3d"]["face"]["environment"] = Json{{"preset", "neon"}};
+    Json bands = Json::array();
+    const char* const presets[] = {"strips", "backlit", "under"};
+    for (int i = 0; i < 3; i++) {
+        Json material = materialPreset("chrome");
+        material["environment"] = Json{{"preset", presets[i]}};
+        bands.push_back(Json{{"grow", 3 + 4 * i}, {"material", material}});
+    }
+    layer["style_3d"]["bands"] = bands;
+    const Pixels image = render(*renderer, requestOf(doc3D(layer)));
+    ASSERT_GT(image.width, 0);
+    const Title3DStats* stats = stats3D(*renderer);
+    ASSERT_NE(stats, nullptr);
+    EXPECT_EQ(stats->environmentBuilds, 5u) << "one build per cube";
+    EXPECT_GT(image.at(256, 128)[3], 0.99f) << "the plate drew";
 }
 
 TEST_F(Title3DRendererGpu, DebugViewsAoInkAndWireframe) {
