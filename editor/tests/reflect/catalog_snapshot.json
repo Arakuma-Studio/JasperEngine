@@ -2215,7 +2215,64 @@
   },
   {
    "display_name": "Terrain",
-   "enum_options": {},
+   "enum_options": {
+    "macroMode": [
+     [
+      0,
+      "off",
+      "Off"
+     ],
+     [
+      1,
+      "noise",
+      "Noise"
+     ],
+     [
+      2,
+      "base_map",
+      "Base Map"
+     ]
+    ],
+    "offscreenShadows": [
+     [
+      0,
+      "auto",
+      "Auto"
+     ],
+     [
+      1,
+      "on",
+      "On"
+     ],
+     [
+      2,
+      "off",
+      "Off"
+     ]
+    ],
+    "quality": [
+     [
+      0,
+      "auto",
+      "Auto"
+     ],
+     [
+      1,
+      "high",
+      "High"
+     ],
+     [
+      2,
+      "medium",
+      "Medium"
+     ],
+     [
+      3,
+      "low",
+      "Low"
+     ]
+    ]
+   },
    "has_enabled": true,
    "icon": "ef9bbc",
    "key": "terrain",
@@ -2230,13 +2287,28 @@
     "enabled",
     "fadeLength",
     "foliageLayers",
+    "heightBlendSharpness",
     "heightMap",
     "holeMap",
     "levels",
+    "limitLayersPerPixel",
+    "macroMode",
+    "macroNormal",
+    "macroScale",
+    "macroSlopeFade",
+    "macroStrength",
+    "macroTintA",
+    "macroTintB",
     "maxHeight",
     "maxMeshTrees",
+    "offscreenShadows",
     "offset",
+    "quality",
     "ranges",
+    "resampleEnabled",
+    "resampleFar",
+    "resampleNear",
+    "resampleReduction",
     "resolution",
     "rootGridSize",
     "surfaceLayers",
@@ -2299,6 +2371,11 @@
      34359738368,
      true
     ],
+    "heightBlendSharpness": [
+     2,
+     67108864,
+     true
+    ],
     "heightMap": [
      11,
      34460401664,
@@ -2314,6 +2391,46 @@
      33554440,
      true
     ],
+    "limitLayersPerPixel": [
+     0,
+     67108864,
+     true
+    ],
+    "macroMode": [
+     13,
+     67108864,
+     true
+    ],
+    "macroNormal": [
+     0,
+     67108864,
+     true
+    ],
+    "macroScale": [
+     2,
+     67108864,
+     true
+    ],
+    "macroSlopeFade": [
+     2,
+     67108864,
+     true
+    ],
+    "macroStrength": [
+     2,
+     67108864,
+     true
+    ],
+    "macroTintA": [
+     5,
+     67108864,
+     true
+    ],
+    "macroTintB": [
+     5,
+     67108864,
+     true
+    ],
     "maxHeight": [
      2,
      34393292800,
@@ -2324,14 +2441,44 @@
      0,
      true
     ],
+    "offscreenShadows": [
+     13,
+     0,
+     true
+    ],
     "offset": [
      4,
      0,
      true
     ],
+    "quality": [
+     13,
+     67108864,
+     true
+    ],
     "ranges": [
      15,
      33554432,
+     true
+    ],
+    "resampleEnabled": [
+     0,
+     67108864,
+     true
+    ],
+    "resampleFar": [
+     2,
+     67108864,
+     true
+    ],
+    "resampleNear": [
+     2,
+     67108864,
+     true
+    ],
+    "resampleReduction": [
+     2,
+     67108864,
      true
     ],
     "resolution": [
@@ -2576,6 +2723,11 @@
      34359738368,
      true
     ],
+    "heightBlendSharpness": [
+     2,
+     67108864,
+     true
+    ],
     "heightMap": [
      11,
      34460401664,
@@ -2591,6 +2743,46 @@
      33554440,
      true
     ],
+    "limitLayersPerPixel": [
+     0,
+     67108864,
+     true
+    ],
+    "macroMode": [
+     13,
+     67108864,
+     true
+    ],
+    "macroNormal": [
+     0,
+     67108864,
+     true
+    ],
+    "macroScale": [
+     2,
+     67108864,
+     true
+    ],
+    "macroSlopeFade": [
+     2,
+     67108864,
+     true
+    ],
+    "macroStrength": [
+     2,
+     67108864,
+     true
+    ],
+    "macroTintA": [
+     5,
+     67108864,
+     true
+    ],
+    "macroTintB": [
+     5,
+     67108864,
+     true
+    ],
     "maxHeight": [
      2,
      34393292800,
@@ -2601,9 +2793,19 @@
      0,
      true
     ],
+    "offscreenShadows": [
+     13,
+     0,
+     true
+    ],
     "offset": [
      4,
      0,
+     true
+    ],
+    "quality": [
+     13,
+     67108864,
      true
     ],
     "ranges": [
@@ -2614,6 +2816,26 @@
     "ranges[]": [
      2,
      33554432,
+     true
+    ],
+    "resampleEnabled": [
+     0,
+     67108864,
+     true
+    ],
+    "resampleFar": [
+     2,
+     67108864,
+     true
+    ],
+    "resampleNear": [
+     2,
+     67108864,
+     true
+    ],
+    "resampleReduction": [
+     2,
+     67108864,
      true
     ],
     "resolution": [
@@ -2628,6 +2850,11 @@
     ],
     "surfaceLayers": [
      15,
+     67108864,
+     true
+    ],
+    "surfaceLayers[].cliffProjection": [
+     13,
      67108864,
      true
     ],
@@ -27849,6 +28076,11 @@
     34359738368,
     true
    ],
+   "heightBlendSharpness": [
+    2,
+    67108864,
+    true
+   ],
    "heightMap": [
     11,
     34460401664,
@@ -27864,6 +28096,46 @@
     33554440,
     true
    ],
+   "limitLayersPerPixel": [
+    0,
+    67108864,
+    true
+   ],
+   "macroMode": [
+    13,
+    67108864,
+    true
+   ],
+   "macroNormal": [
+    0,
+    67108864,
+    true
+   ],
+   "macroScale": [
+    2,
+    67108864,
+    true
+   ],
+   "macroSlopeFade": [
+    2,
+    67108864,
+    true
+   ],
+   "macroStrength": [
+    2,
+    67108864,
+    true
+   ],
+   "macroTintA": [
+    5,
+    67108864,
+    true
+   ],
+   "macroTintB": [
+    5,
+    67108864,
+    true
+   ],
    "maxHeight": [
     2,
     34393292800,
@@ -27874,9 +28146,19 @@
     0,
     true
    ],
+   "offscreenShadows": [
+    13,
+    0,
+    true
+   ],
    "offset": [
     4,
     0,
+    true
+   ],
+   "quality": [
+    13,
+    67108864,
     true
    ],
    "ranges": [
@@ -27887,6 +28169,26 @@
    "ranges[N]": [
     2,
     33554432,
+    true
+   ],
+   "resampleEnabled": [
+    0,
+    67108864,
+    true
+   ],
+   "resampleFar": [
+    2,
+    67108864,
+    true
+   ],
+   "resampleNear": [
+    2,
+    67108864,
+    true
+   ],
+   "resampleReduction": [
+    2,
+    67108864,
     true
    ],
    "resolution": [
@@ -27901,6 +28203,11 @@
    ],
    "surfaceLayers": [
     15,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].cliffProjection": [
+    13,
     67108864,
     true
    ],
