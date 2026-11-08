@@ -127,7 +127,8 @@ TEST(PixelSnapShaderTest, VariantBitsArePinned){
         int index = 0;
         while (index < 64 && shaderPropertyBit(index) != bit) index++;
         EXPECT_EQ(ShaderPool::getShaderPropertyName(type, index, true), "Pxs");
-        EXPECT_EQ(ShaderPool::getShaderPropertyCount(type), index + 1) << "'Pxs' is the last bit of its type";
+        // upstream's last bit; the terrain programme's bits come after it on MESH and DEPTH (D19)
+        EXPECT_GE(ShaderPool::getShaderPropertyCount(type), index + 1) << "'Pxs' is a bit of its type";
     }
     EXPECT_EQ(UBER_SHARP_BILINEAR, 1u << 18);
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 18, true), "Psb");

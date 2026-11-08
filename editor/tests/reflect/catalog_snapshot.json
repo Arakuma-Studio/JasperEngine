@@ -22110,6 +22110,389 @@
    "type": 94,
    "type_of_key": 94,
    "type_of_name": 94
+  },
+  {
+   "display_name": "Voxel Volume",
+   "enum_options": {
+    "navigationUpdate": [
+     [
+      0,
+      "off",
+      "Off"
+     ],
+     [
+      1,
+      "automatic",
+      "Automatic"
+     ]
+    ],
+    "quality": [
+     [
+      0,
+      "auto",
+      "Auto"
+     ],
+     [
+      1,
+      "high",
+      "High"
+     ],
+     [
+      2,
+      "medium",
+      "Medium"
+     ],
+     [
+      3,
+      "low",
+      "Low"
+     ]
+    ],
+    "terrainCut": [
+     [
+      0,
+      "off",
+      "Off"
+     ],
+     [
+      1,
+      "automatic",
+      "Automatic"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef86b3",
+   "key": "voxelvolume",
+   "known_keys": [
+    "castShadows",
+    "collision",
+    "collisionRadius",
+    "cutTolerance",
+    "enabled",
+    "focus",
+    "lodLevels",
+    "lodRadius",
+    "materialSlots",
+    "maxDrawDistance",
+    "navigationUpdate",
+    "overlapDepth",
+    "quality",
+    "rescueBodies",
+    "runtimeGeneration",
+    "terrain",
+    "terrainCut",
+    "volumeData"
+   ],
+   "name": "VoxelVolumeComponent",
+   "properties_of_default": {
+    "castShadows": [
+     0,
+     0,
+     true
+    ],
+    "collision": [
+     0,
+     0,
+     true
+    ],
+    "collisionRadius": [
+     8,
+     0,
+     true
+    ],
+    "cutTolerance": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "focus": [
+     16,
+     0,
+     true
+    ],
+    "lodLevels": [
+     8,
+     0,
+     true
+    ],
+    "lodRadius": [
+     8,
+     0,
+     true
+    ],
+    "materialSlots": [
+     15,
+     0,
+     true
+    ],
+    "maxDrawDistance": [
+     2,
+     0,
+     true
+    ],
+    "navigationUpdate": [
+     13,
+     0,
+     true
+    ],
+    "overlapDepth": [
+     2,
+     0,
+     true
+    ],
+    "quality": [
+     13,
+     0,
+     true
+    ],
+    "rescueBodies": [
+     0,
+     0,
+     true
+    ],
+    "runtimeGeneration": [
+     0,
+     0,
+     true
+    ],
+    "terrain": [
+     16,
+     0,
+     true
+    ],
+    "terrainCut": [
+     13,
+     0,
+     true
+    ],
+    "volumeData": [
+     18,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "castShadows": [
+     0,
+     0,
+     true
+    ],
+    "collision": [
+     0,
+     0,
+     true
+    ],
+    "collisionRadius": [
+     8,
+     0,
+     true
+    ],
+    "cutTolerance": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "focus": [
+     16,
+     0,
+     true
+    ],
+    "lodLevels": [
+     8,
+     0,
+     true
+    ],
+    "lodRadius": [
+     8,
+     0,
+     true
+    ],
+    "materialSlots": [
+     15,
+     0,
+     true
+    ],
+    "materialSlots[].layer.cliffProjection": [
+     13,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.colorFactor": [
+     6,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.colorTexture": [
+     11,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.heightTexture": [
+     11,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.hexRotation": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.hexTiling": [
+     0,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.metallicFactor": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.metallicTexture": [
+     11,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.normalStrength": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.normalTexture": [
+     11,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.occlusionStrength": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.occlusionTexture": [
+     11,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.pbr": [
+     0,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.roughnessFactor": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.roughnessTexture": [
+     11,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.stochasticBlendSharpness": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.stochasticCellSize": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.stochasticContrast": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.stochasticRotation": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.stochasticTiling": [
+     0,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.uvOffset": [
+     4,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.uvScale": [
+     4,
+     67108864,
+     true
+    ],
+    "materialSlots[].linkedTerrainLayer": [
+     8,
+     0,
+     true
+    ],
+    "materialSlots[].name": [
+     1,
+     0,
+     true
+    ],
+    "maxDrawDistance": [
+     2,
+     0,
+     true
+    ],
+    "navigationUpdate": [
+     13,
+     0,
+     true
+    ],
+    "overlapDepth": [
+     2,
+     0,
+     true
+    ],
+    "quality": [
+     13,
+     0,
+     true
+    ],
+    "rescueBodies": [
+     0,
+     0,
+     true
+    ],
+    "runtimeGeneration": [
+     0,
+     0,
+     true
+    ],
+    "terrain": [
+     16,
+     0,
+     true
+    ],
+    "terrainCut": [
+     13,
+     0,
+     true
+    ],
+    "volumeData": [
+     18,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 95,
+   "type_of_key": 95,
+   "type_of_name": 95
   }
  ],
  "ease_options": [
@@ -22362,46 +22745,6 @@
     8796093022208,
     true
    ],
-   "clips[N].clip": [
-    1,
-    8796093022208,
-    true
-   ],
-   "clips[N].footIK": [
-    0,
-    8796093022208,
-    true
-   ],
-   "clips[N].guid": [
-    1,
-    8796093022208,
-    true
-   ],
-   "clips[N].layer": [
-    8,
-    8796093022208,
-    true
-   ],
-   "clips[N].mirror": [
-    0,
-    8796093022208,
-    true
-   ],
-   "clips[N].name": [
-    1,
-    8796093022208,
-    true
-   ],
-   "clips[N].retarget": [
-    0,
-    8796093022208,
-    true
-   ],
-   "clips[N].wrap": [
-    15,
-    8796093022208,
-    true
-   ],
    "defaultClip": [
     1,
     0,
@@ -22444,16 +22787,6 @@
     35184372088832,
     true
    ],
-   "clipOverrides[N].original": [
-    1,
-    35184372088832,
-    true
-   ],
-   "clipOverrides[N].replacement": [
-    1,
-    35184372088832,
-    true
-   ],
    "controller": [
     18,
     35184372088832,
@@ -22482,161 +22815,6 @@
    "ik": [
     15,
     35184372088832,
-    true
-   ],
-   "ik[N].aimOffset": [
-    5,
-    0,
-    true
-   ],
-   "ik[N].boneWeights": [
-    15,
-    0,
-    true
-   ],
-   "ik[N].bones": [
-    15,
-    35184372088832,
-    true
-   ],
-   "ik[N].clampAngle": [
-    2,
-    0,
-    true
-   ],
-   "ik[N].contactParameter": [
-    1,
-    0,
-    true
-   ],
-   "ik[N].enabled": [
-    0,
-    0,
-    true
-   ],
-   "ik[N].footHeight": [
-    2,
-    0,
-    true
-   ],
-   "ik[N].forwardAxis": [
-    5,
-    0,
-    true
-   ],
-   "ik[N].hingeAxis": [
-    5,
-    0,
-    true
-   ],
-   "ik[N].iterations": [
-    8,
-    0,
-    true
-   ],
-   "ik[N].layerMask": [
-    9,
-    0,
-    true
-   ],
-   "ik[N].maxFootAngle": [
-    2,
-    0,
-    true
-   ],
-   "ik[N].name": [
-    1,
-    35184372088832,
-    true
-   ],
-   "ik[N].pelvis": [
-    1,
-    35184372088832,
-    true
-   ],
-   "ik[N].pole": [
-    16,
-    0,
-    true
-   ],
-   "ik[N].polePosition": [
-    5,
-    0,
-    true
-   ],
-   "ik[N].rayLength": [
-    2,
-    0,
-    true
-   ],
-   "ik[N].rayStart": [
-    2,
-    0,
-    true
-   ],
-   "ik[N].releaseTime": [
-    2,
-    0,
-    true
-   ],
-   "ik[N].smoothing": [
-    2,
-    0,
-    true
-   ],
-   "ik[N].soften": [
-    2,
-    0,
-    true
-   ],
-   "ik[N].speedThreshold": [
-    2,
-    0,
-    true
-   ],
-   "ik[N].target": [
-    16,
-    0,
-    true
-   ],
-   "ik[N].targetPosition": [
-    5,
-    0,
-    true
-   ],
-   "ik[N].tolerance": [
-    2,
-    0,
-    true
-   ],
-   "ik[N].twist": [
-    2,
-    0,
-    true
-   ],
-   "ik[N].type": [
-    13,
-    35184372088832,
-    true
-   ],
-   "ik[N].usePole": [
-    0,
-    0,
-    true
-   ],
-   "ik[N].useTargetRotation": [
-    0,
-    0,
-    true
-   ],
-   "ik[N].weight": [
-    2,
-    0,
-    true
-   ],
-   "ik[N].weightParameter": [
-    1,
-    0,
     true
    ],
    "retarget": [
@@ -23311,31 +23489,6 @@
   "CapsuleShadowCasterComponent": {
    "capsules": [
     15,
-    0,
-    true
-   ],
-   "capsules[N].bone": [
-    1,
-    0,
-    true
-   ],
-   "capsules[N].direction": [
-    13,
-    0,
-    true
-   ],
-   "capsules[N].length": [
-    2,
-    0,
-    true
-   ],
-   "capsules[N].offset": [
-    5,
-    0,
-    true
-   ],
-   "capsules[N].radius": [
-    2,
     0,
     true
    ],
@@ -28369,26 +28522,6 @@
     0,
     true
    ],
-   "customProfile[N]": [
-    15,
-    0,
-    true
-   ],
-   "customProfile[N].grounded": [
-    0,
-    0,
-    true
-   ],
-   "customProfile[N].hard": [
-    0,
-    0,
-    true
-   ],
-   "customProfile[N].position": [
-    4,
-    0,
-    true
-   ],
    "edgeDrop": [
     2,
     0,
@@ -28653,31 +28786,6 @@
    ],
    "spanOverrides": [
     15,
-    0,
-    true
-   ],
-   "spanOverrides[N]": [
-    15,
-    0,
-    true
-   ],
-   "spanOverrides[N].kind": [
-    13,
-    0,
-    true
-   ],
-   "spanOverrides[N].knot": [
-    9,
-    0,
-    true
-   ],
-   "spanOverrides[N].piece": [
-    9,
-    0,
-    true
-   ],
-   "spanOverrides[N].span": [
-    9,
     0,
     true
    ],
@@ -30090,6 +30198,98 @@
    ],
    "windSpeed": [
     2,
+    0,
+    true
+   ]
+  },
+  "VoxelVolumeComponent": {
+   "castShadows": [
+    0,
+    0,
+    true
+   ],
+   "collision": [
+    0,
+    0,
+    true
+   ],
+   "collisionRadius": [
+    8,
+    0,
+    true
+   ],
+   "cutTolerance": [
+    2,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "focus": [
+    16,
+    0,
+    true
+   ],
+   "lodLevels": [
+    8,
+    0,
+    true
+   ],
+   "lodRadius": [
+    8,
+    0,
+    true
+   ],
+   "materialSlots": [
+    15,
+    0,
+    true
+   ],
+   "maxDrawDistance": [
+    2,
+    0,
+    true
+   ],
+   "navigationUpdate": [
+    13,
+    0,
+    true
+   ],
+   "overlapDepth": [
+    2,
+    0,
+    true
+   ],
+   "quality": [
+    13,
+    0,
+    true
+   ],
+   "rescueBodies": [
+    0,
+    0,
+    true
+   ],
+   "runtimeGeneration": [
+    0,
+    0,
+    true
+   ],
+   "terrain": [
+    16,
+    0,
+    true
+   ],
+   "terrainCut": [
+    13,
+    0,
+    true
+   ],
+   "volumeData": [
+    18,
     0,
     true
    ]

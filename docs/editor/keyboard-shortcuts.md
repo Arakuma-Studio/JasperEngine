@@ -159,6 +159,21 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Shrink Point Selection | Ctrl+- / Ctrl+NumpadSubtract | Scene View |
 | Toggle Falloff | O | Scene View |
 
+## Voxel Brush
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Dig | D | Voxel Brush |
+| Add | A | Voxel Brush |
+| Smooth | S | Voxel Brush |
+| Paint | P | Voxel Brush |
+| Pick | K | Voxel Brush |
+| Brush Smaller | [ | Voxel Brush |
+| Brush Larger | ] | Voxel Brush |
+| Put the Brush Down | Escape | Voxel Brush |
+| Pick Material | Alt+Left Click | Voxel Brush |
+| Orbit | Alt+Left Drag | Voxel Brush |
+
 ## Terrain
 
 | Command | Shortcut | Context |
