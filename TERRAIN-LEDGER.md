@@ -189,6 +189,11 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
   T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- T1b done (terrain/t1-benches 47351285e): pen pressure on every platform (Linux reader header-free), benches, size script, and 14
+  Terrain Lua getters fixed (from T5's 3204d1e62 and T1's edf78d1cf). Measured T1 over budget: its code adds ~312 KiB to the Linux
+  player against 96 KiB (AC40 fails), and 9 of 18 bench budgets miss (whole-map ops 2-4x). Decision: fix, don't record. T1 makes the
+  runtime edit path a player module (no cost without runtime edits), shrinks the rest, and optimises the ops on terrain/t1-perf.
+  T1b holds to land on the new base after the upstream merge.
 - T3's GLES3 fit done (terrain/t3-gles3-fit 1d3fb3dde): the per-layer block packed from 5 vectors to 3 plus 1 component; worst
   variant 217 of 224 (was 241), upstream's painted terrain 221 to 212, cross-compiles for every backend, 207/207 variants on glcore,
   226 on Vulkan, goldens unchanged. Lua factors outside 0-1 are now clamped. T6's CaveMouth flake fixed (f4a854f33): the test read
