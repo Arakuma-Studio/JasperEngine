@@ -121,7 +121,8 @@ A version mismatch between the CLI and the editor is a warning on stderr.
    "editor": {"url": "http://127.0.0.1:47615/mcp", "pid": 4242, "project": "/home/me/games/demo", "spawned": false, "version": "v1.4.0"}}
   ```
 
-  `code` is `null`, `"tool_error"`, `"usage"`, `"connection"` or `"internal"`.
+  `code` is `null`, `"tool_error"`, `"usage"`, `"connection"`, `"internal"` or `"tool_exit"` (the
+  tool's own exit code, below; `ok` is true then).
 - Progress notifications (the CLI always asks for them) go to stderr unless `--quiet`.
 
 ## Exit codes
@@ -133,6 +134,14 @@ A version mismatch between the CLI and the editor is a warning on stderr.
 | 2 | usage: a bad option, flag or value, an unknown tool, several editors and no target |
 | 3 | connection: refused, wrong token (401/403), unknown session, timeout (after `notifications/cancelled`), Ctrl-C, the one-shot editor failed to start, `project_locked` |
 | 4 | internal: malformed JSON-RPC, an unsupported protocol version, an unexpected error |
+
+A tool can set the exit code of a successful call: an integer `cli_exit` (1 to 125) in its
+`structuredContent` (or in a `--wait-job` job's result) becomes the exit code. `apply_palette
+--measure-only` sets it from its verdict, as the pixel-art checks do: 0 `clean`, 3 `fixable`, 4
+`needs_person` (and 2 for a usage error, as every call). Those numbers are also the CLI's
+`connection` and `internal` codes: in a script, tell them apart with `--json`, whose `code` is
+`"tool_exit"` for the tool's own code (and `ok` true), or by the verdict on stdout. `batch` does not
+stop at a tool's own exit code.
 
 Ctrl-C during `--wait-job` sends `cancel_job` for the job, then exits 3.
 

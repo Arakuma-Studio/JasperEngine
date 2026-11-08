@@ -1313,7 +1313,9 @@ bool editor::AssetDatabase::refreshSubAssets(Entry& entry, const Entry* previous
         return had;
     }
     ModelContents contents;
-    if (entry.type == AssetType::AsepriteSprite) {
+    if (entry.type == AssetType::Palette) {
+        scanPaletteFile(projectPath / entry.path, contents);
+    } else if (entry.type == AssetType::AsepriteSprite) {
         // its named outputs (tag clips, slices, tilesets): the index-keyed ones (frames, pages,
         // the palette) are always derived, never kept (S44 §6.5)
         pixelart::aseprite::scanAsepriteSubAssets(projectPath / entry.path, contents.subAssets);

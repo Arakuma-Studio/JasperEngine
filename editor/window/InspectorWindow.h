@@ -71,6 +71,7 @@ namespace jasperengine::editor{
 
     class SceneWindow;
     class CommandHistory;
+    struct PostProcessingPreset;
     class ForkShaderCmd;
     class MultiPropertyCmd;
     class AnimationClipDocument;
@@ -767,6 +768,15 @@ namespace jasperengine::editor{
         // (its own undo step) and true while dragging (merged until released)
         bool drawShaderPropertyValue(const ShaderManifestProperty& property, const std::string& id, const Vector4& value,
                                      Vector4& edited, bool& continuous, float itemWidth = -1.0f);
+        // A material's Palette Swap rows (S43 R35, under the manifest rows of materialPrefix
+        // "submeshes[N].material."), for each @palette slot that is on: Source Palette with
+        // Detect, Use Variants, Extra Targets, Active Palette (paletteRow), Cycling Speed
+        // (paletteCycleSpeed), and the warnings (the binding's build errors, a lossy texture with
+        // its Fix, the colours that will not swap with Show)
+        void drawShaderPaletteRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::string& shader,
+                                   const ShaderManifest& manifest, const std::string& materialPrefix,
+                                   const std::vector<std::string>& features, const ShaderUniformValues& params,
+                                   const std::function<void()>& onValueChanged);
         // A submesh material's Shader row and manifest rows; true when the built-in PBR rows
         // apply (built-in Lit or a fork)
         bool drawMaterialShaderRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
@@ -854,6 +864,12 @@ namespace jasperengine::editor{
                                         const PostProcessingSettings::Field& field, const char* label,
                                         const std::string& help, bool indent);
         void drawPostProcessingCost(SceneProject* sceneProject, const PostProcessingSettings& settings);
+        // Palette Quantize's Palette cell (S43 R36): the palette field (a built-in is copied into
+        // the project), its swatches, "Baking..." while the renderer bakes its table, and the
+        // warning when the effect is on without a palette
+        void drawPostProcessingPaletteField(SceneProject* sceneProject, const PostProcessingSettings& settings);
+        // Applies a preset as one undo step (a built-in palette it names copied in with it)
+        void applyPostProcessingPreset(SceneProject* sceneProject, const PostProcessingPreset& preset);
 
         // ---- Fluid Simulation (InspectorFluid.cpp): Post-processing-style groups, presets, the
         // preview bar (FluidSystem::setPreview), the Scene view's Paint Dye toggle and the stats

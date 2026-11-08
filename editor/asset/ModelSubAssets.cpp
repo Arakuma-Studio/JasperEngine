@@ -7,11 +7,13 @@
 #include "Out.h"
 #include "asset/AssetFileWrite.h"
 #include "json.hpp"
+#include "pixelart/Palette.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <set>
 
 using namespace jasperengine;
@@ -270,4 +272,22 @@ bool editor::scanModelFile(const std::filesystem::path& file, ModelContents& con
         return false;
     }
     return scanModelBytes(file.extension().string(), bytes, contents);
+}
+
+bool editor::scanPaletteFile(const std::filesystem::path& file, ModelContents& contents) {
+    contents = ModelContents();
+    std::ifstream in(file, std::ios::binary);
+    if (!in) {
+        return false;
+    }
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    jasperengine::pixelart::Palette palette;
+    std::vector<jasperengine::pixelart::Diagnostic> diagnostics;
+    if (!jasperengine::pixelart::PaletteCodec::read(text, palette, diagnostics)) {
+        return false;
+    }
+    std::vector<std::string> names;
+    for (const jasperengine::pixelart::PaletteRamp& ramp : palette.ramps) names.push_back(ramp.name);
+    addKind(contents, SubAssetKind::PaletteRamp, names);
+    return true;
 }

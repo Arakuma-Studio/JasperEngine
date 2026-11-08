@@ -11,6 +11,7 @@
 #include "window/AnimationWindow.h"
 #include "window/AnimatorWindow.h"
 #include "window/AssetPanels.h"
+#include "window/ApplyPaletteDialog.h"
 #include "window/AudioMixerWindow.h"
 #include "window/ParticleEffectWindow.h"
 #include "window/AudioCapturesWindow.h"
@@ -25,6 +26,7 @@
 #include "window/InspectorWindow.h"
 #include "window/LoadingWindow.h"
 #include "window/MainToolbar.h"
+#include "window/PaletteWindow.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "window/PlayInput.h"
 #include "window/PoseAnimationWindow.h"
@@ -42,6 +44,7 @@
 #include "spline/SplineSceneTools.h"
 #include "spline/SplineEditor.h"
 #include "particles/ParticleEffectLibrary.h"
+#include "pixelart/PaletteSwap.h"
 #include "util/ParticleMigrationReport.h"
 #include "AppMenuCommand.h"
 #include "util/NumericExpression.h"
@@ -255,6 +258,8 @@ editor::App::App(){
     graphEditorWindow = new GraphEditorWindow(&project);
     proceduralMaterialWindow = new ProceduralMaterialWindow(&project);
     audioCapturesWindow = new AudioCapturesWindow(&project);
+    applyPaletteDialog = new ApplyPaletteDialog(&project);
+    paletteWindow = new PaletteWindow(&project, projectWindow, applyPaletteDialog);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
@@ -668,14 +673,15 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     for (const AssetCreateItem& item : assetCreateItems()) {
         // Animation Clip: once the clip asset task set its hook
         if (item.kind == AssetCreateKind::AnimationClip && !animationClipAppHooks().createClipAsset) continue;
-        // Sprite Atlas: in Create > 2D below
-        if (item.kind == AssetCreateKind::SpriteAtlas) continue;
+        // Sprite Atlas and Palette: in Create > 2D below
+        if (item.kind == AssetCreateKind::SpriteAtlas || item.kind == AssetCreateKind::Palette) continue;
         if (item.separatorBefore) assetsCreateItems.push_back(menuSeparator());
         assetsCreateItems.push_back(catalogItem(item.commandId, item.label));
     }
     assetsCreateItems.push_back(menuSeparator());
     assetsCreateItems.push_back(menuSubmenu("2D", {catalogItem("assets.createSpriteAtlas", "Sprite Atlas"),
-                                                   catalogItem("assets.createSpriteAtlasFromSelection", "Sprite Atlas from Selection")}));
+                                                   catalogItem("assets.createSpriteAtlasFromSelection", "Sprite Atlas from Selection"),
+                                                   catalogItem("assets.createPalette", "Palette")}));
     assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
     assetsCreateItems.push_back(catalogItem("assets.createNativePlugin", "Native Plugin..."));
 
@@ -784,7 +790,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("2D", {
-            catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME))
+            catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME)),
+            catalogItem("window.palette", windowMenuLabel(PaletteWindow::WINDOW_NAME))
         }),
         menuSubmenu("MCP", {
             catalogItem("window.mcpActivity", windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
@@ -1073,6 +1080,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleAudioMixer:
             audioMixerWindow->open();
             break;
+        case AppMenuCommand::TogglePalette:
+            paletteWindow->open(FileUtils::pathFromUtf8(command.payload));
+            break;
         case AppMenuCommand::ToggleParticleEffect:
             showEditorWindow(particleEffectWindow);
             break;
@@ -1264,6 +1274,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateShakePreset:
             projectWindow->createAsset(AssetCreateKind::ShakePreset, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreatePalette:
+            projectWindow->createAsset(AssetCreateKind::Palette, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateProceduralMaterial:
             projectWindow->createAsset(AssetCreateKind::ProceduralMaterial, projectWindow->createTargetDirectory());
@@ -2527,6 +2540,9 @@ void editor::App::setup() {
     setupLayouts();
     // the command catalog and the user's rebindings (shortcuts.yaml, next to settings.yaml)
     registerCommands();
+    // the Palette context's commands (a later add takes the user's stored binding too)
+    paletteWindow->bindCommands(CommandCatalog::editor());
+    applyPaletteDialog->bindCommands(CommandCatalog::editor());
 
     // Separate from the window scale: the layout keeps the scale it was built at,
     // while the window is measured on whichever monitor it closes on.
@@ -3000,6 +3016,9 @@ void editor::App::show(){
     particleEffectWindow->show();
     soundBrowserWindow->show();
     audioCapturesWindow->show();
+    // also the tick of its workers (Lospec, Usage, From Texture) with the window closed
+    paletteWindow->show();
+    applyPaletteDialog->show();
     // the Graph Editor and every graph kind's own window
     GraphEditorWindow::showAll();
     // also the tick of its Shift-click generations (with the window closed)
@@ -3050,6 +3069,7 @@ void editor::App::show(){
     ui::CurveWindow::get().show();
     ui::GradientWindow::get().show();
     ui::ColorPickerWindow::get().setProjectPath(project.getProjectPath());
+    ui::ColorPickerWindow::get().setProject(&project);
     ui::ColorPickerWindow::get().show();
 
     loadingWindow->show();
@@ -5281,6 +5301,9 @@ void editor::App::prepareForProjectSwitch() {
     soundBrowserWindow->resetForProjectSwitch();
     GraphEditorWindow::prepareAllForProjectSwitch();
     audioCapturesWindow->resetForProjectSwitch();
+    // a Lospec fetch is cancelled; the palette, its selection and the dialogs are forgotten
+    paletteWindow->resetForProjectSwitch();
+    applyPaletteDialog->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
     spriteNormalsWatcher->reset();
@@ -5309,6 +5332,9 @@ void editor::App::prepareForProjectSwitch() {
     inputActionsWindow->reset();
     // the next project's .particles files are other files under the same paths
     particles::ParticleEffectLibrary::clear();
+    // and its palettes (S43): the swap textures first, they were made from them
+    jasperengine::pixelart::PaletteSwapCache::clear();
+    jasperengine::pixelart::PaletteLibrary::clear();
     ParticleMigrationReport::clear();
     dockspaceNeedsRebuild = true;
 }
@@ -5813,7 +5839,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      vertex stages; MESH 'Pxs' bit 45, DEPTH 19, UI 5, PARTICLES 11, BLIT 'Psb' 18.
     // v58: S91's library:particles DISTORTION (scene colour, u_distortionTexture, distortionStrength
     //      in u_fs_customParams).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v58";
+    // v59: S43's palettes: library:sprite's PALETTE_SWAP and PALETTE_CYCLE (includes/palette.glsl,
+    //      the custom block's paletteRow, paletteCycleSpeed and sceneTime), the uber pass's
+    //      Palette Quantize (BLIT 'Pal' 19, includes/bayer.glsl).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v59";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -5958,6 +5987,11 @@ void editor::App::openMeshAudit(){
 
 void editor::App::openConsole(){
     showEditorWindow(consoleWindow);
+}
+
+void editor::App::openPaletteWindow(const std::string& palettePath, const std::string& texturePath){
+    // the material inspector's Show: the palette's Usage of the sprite's texture (project-relative)
+    paletteWindow->showUsage(FileUtils::pathFromUtf8(palettePath), FileUtils::pathFromUtf8(texturePath));
 }
 
 void editor::App::openAudioMixerWindow(const std::filesystem::path& mixer){

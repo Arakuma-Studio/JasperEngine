@@ -33,6 +33,8 @@
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/RemoveComponentCmd.h"
 #include "component/MeshComponent.h"
+#include "pixelart/PaletteMaterial.h"
+#include "pixelart/PaletteSwapChecks.h"
 #include "registry/TagManager.h"
 #include "subsystem/MeshSystem.h"
 #include "util/EntityClipboard.h"
@@ -426,6 +428,36 @@ void getEntityTool(const CallPtr& call) {
         data["scene_inputs_cost"] = Catalog::getSceneInputsCost(reads);
         text += ". Reads the scene " + Catalog::getSceneInputsLabel(reads) + " (" + Catalog::getSceneInputsCost(reads, true) + ")" +
                 (error ? "; ERROR: a reader draws in the opaque queue (scene_inputs[].error, .fix)" : "");
+    }
+    // Palette Swap (S43 R41): per submesh with a palette binding, the row names sprite.palette and
+    // shaderParams.paletteRow take ("" is row 0, the source's own colours) and the active row; and
+    // R15's warning when its texture is lossy (the swap needs the exact colours)
+    if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::MeshComponent) != filter.end()) {
+        if (const MeshComponent* mesh = registry->findComponent<MeshComponent>(entity)) {
+            Json paletteRows = Json::array();
+            Json paletteWarnings = Json::array();
+            for (unsigned int s = 0; s < usedSubmeshes && s < (unsigned int)mesh->submeshes.stored(); s++) {
+                const Material& material = mesh->submeshes[s].material;
+                if (jasperengine::pixelart::findPaletteBinding(material)) {
+                    paletteRows.push_back({{"submesh", s}, {"rows", jasperengine::pixelart::paletteRowNames(material)},
+                                           {"row", jasperengine::pixelart::getPaletteRow(material)}});
+                }
+                const std::string lossy = jasperengine::editor::pixelart::paletteSwapLossyTexture(*project, material);
+                if (!lossy.empty()) {
+                    paletteWarnings.push_back({{"kind", "palette_swap_lossy_texture"}, {"submesh", s}, {"message", lossy},
+                                               {"fix", "set_texture_import_settings {settings: {quality: \"none\", mipmaps: false}} on the "
+                                                       "texture, and Nearest filters (min_filter, mag_filter) on the material's texture"}});
+                }
+            }
+            if (!paletteRows.empty()) {
+                data["palette_rows"] = paletteRows;
+                text += ". palette_rows: " + paletteRows.dump();
+            }
+            if (!paletteWarnings.empty()) {
+                data["warnings"] = paletteWarnings;
+                for (const Json& warning : paletteWarnings) text += ". Warning: " + warning["message"].get<std::string>();
+            }
+        }
     }
     if (elided) data["note"] = std::to_string(elided) + " large custom value(s) elided; name them in properties to read them.";
     call->ok(text, data);

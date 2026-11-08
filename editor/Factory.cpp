@@ -556,6 +556,19 @@ std::string editor::Factory::formatMaterialShaderLibrary(int indentSpaces, const
         code << ind << target << ".shaderFeatures = " << formatShaderFeatures(material.shaderFeatures) << ";\n";
     if (!material.shaderGlobalBindings.empty())
         code << ind << target << ".shaderGlobalBindings = " << formatShaderGlobalBindings(material.shaderGlobalBindings) << ";\n";
+    // Palette Swap bindings (S43): the paths as the editor resolved them
+    for (const auto& [uniform, binding] : material.shaderPalettes.get()) {
+        code << ind << "{\n";
+        code << ind << "    jasperengine::pixelart::PaletteBinding binding;\n";
+        code << ind << "    binding.source = " << formatString(binding.source.path) << ";\n";
+        for (const jasperengine::pixelart::PaletteTarget& paletteTarget : binding.targets) {
+            code << ind << "    binding.targets.push_back(jasperengine::pixelart::PaletteTarget{AssetRef(" << formatString(paletteTarget.palette.path) << "), "
+                 << formatString(paletteTarget.variant) << "});\n";
+        }
+        if (!binding.useVariants) code << ind << "    binding.useVariants = false;\n";
+        code << ind << "    " << target << ".shaderPalettes.edit().push_back({" << formatString(uniform) << ", binding});\n";
+        code << ind << "}\n";
+    }
     if (material.blendMode != MaterialBlendMode::AUTO)
         code << ind << target << ".blendMode = " << formatBlendMode(material.blendMode) << ";\n";
     if (material.cullMode != MaterialCullMode::AUTO)

@@ -135,6 +135,7 @@ std::filesystem::path AppSettings::configFilePath;
 YAML::Node AppSettings::settingsData;
 YAML::Node AppSettings::loadedSettings;
 bool AppSettings::autosaveEnabled = true;
+bool AppSettings::networkOffline = false;
 int AppSettings::autosaveIntervalSeconds = AppSettings::defaultAutosaveInterval;
 std::vector<hub::RecentProject> AppSettings::recentProjects;
 std::filesystem::path AppSettings::lastProjectPath;
@@ -439,6 +440,11 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (codeNode["font_size"]) {
                 setCodeEditorFontSize(codeNode["font_size"].as<float>());
             }
+        }
+
+        // Network: the editor's own requests (Lospec)
+        if (settingsData["network"] && settingsData["network"]["offline"]) {
+            networkOffline = settingsData["network"]["offline"].as<bool>();
         }
 
         // Load editor viewport settings
@@ -785,6 +791,10 @@ bool AppSettings::saveSettings() {
         YAML::Node codeNode;
         codeNode["font_size"] = codeEditorFontSize;
         settingsData["code_editor"] = codeNode;
+
+        YAML::Node networkNode;
+        networkNode["offline"] = networkOffline;
+        settingsData["network"] = networkNode;
 
         // Editor viewport settings
         YAML::Node editorNode;
@@ -1769,6 +1779,14 @@ int AppSettings::getAutosaveIntervalSeconds() {
 
 void AppSettings::setAutosaveIntervalSeconds(int seconds) {
     autosaveIntervalSeconds = std::clamp(seconds, minAutosaveInterval, maxAutosaveInterval);
+}
+
+bool AppSettings::isNetworkOffline() {
+    return networkOffline;
+}
+
+void AppSettings::setNetworkOffline(bool offline) {
+    networkOffline = offline;
 }
 
 } // namespace jasperengine::editor

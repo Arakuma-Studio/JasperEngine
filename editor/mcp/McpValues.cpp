@@ -2433,14 +2433,24 @@ bool McpValues::editYamlPath(YAML::Node root, const std::string& property, const
                              long index, std::string& error, bool create) {
     YAML::Node target = findYamlPath(root, property);
     if (!target && create && root.IsMap()) {
-        // a property the encoder left out (empty): make its map keys
+        // a property the encoder left out (empty): make its map keys; a list element is walked
+        // through when it exists (submeshes[0].material.shaderPalettes), never made
         std::vector<PathSegment> segments;
         if (splitPath(property, segments)) {
             YAML::Node current;
             current.reset(root);
             bool made = true;
             for (const PathSegment& segment : segments) {
-                if (segment.index >= 0 || !(current.IsMap() || current.IsNull())) {
+                if (segment.index >= 0) {
+                    YAML::Node element = childOf(current, segment);
+                    if (!element) {
+                        made = false;
+                        break;
+                    }
+                    current.reset(element);
+                    continue;
+                }
+                if (!(current.IsMap() || current.IsNull())) {
                     made = false;
                     break;
                 }

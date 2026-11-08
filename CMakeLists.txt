@@ -442,6 +442,27 @@ string(APPEND pose_templates_header "static const PoseTemplateEmbeddedFile pose_
 file(WRITE "${GENERATED_DIR}/pose_templates.h.in" "${pose_templates_header}")
 configure_file("${GENERATED_DIR}/pose_templates.h.in" "${GENERATED_DIR}/pose_templates.h" COPYONLY)
 
+# Built-in palettes (editor/resources/palettes/*.palette, S43 R9) embedded in the editor
+# (editor/pixelart/BuiltinPalettes.cpp, the only includer)
+file(GLOB BUILTIN_PALETTE_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/palettes/*.palette")
+list(SORT BUILTIN_PALETTE_FILES)
+set(builtin_palettes_header "// Generated from editor/resources/palettes by CMakeLists.txt. Do not edit.\n#pragma once\n\n")
+set(builtin_palettes_entries "")
+set(builtin_palette_index 0)
+foreach(builtin_palette IN LISTS BUILTIN_PALETTE_FILES)
+    get_filename_component(builtin_palette_name "${builtin_palette}" NAME)
+    file(READ "${builtin_palette}" builtin_palette_hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," builtin_palette_bytes "${builtin_palette_hex}")
+    string(APPEND builtin_palettes_header "static const unsigned char builtin_palette_${builtin_palette_index}[] = {${builtin_palette_bytes}0x00};\n")
+    string(APPEND builtin_palettes_entries "    { \"${builtin_palette_name}\", builtin_palette_${builtin_palette_index}, sizeof(builtin_palette_${builtin_palette_index}) - 1 },\n")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${builtin_palette}")
+    math(EXPR builtin_palette_index "${builtin_palette_index} + 1")
+endforeach()
+string(APPEND builtin_palettes_header "\nstruct BuiltinPaletteEmbeddedFile { const char* name; const unsigned char* data; unsigned int size; };\n")
+string(APPEND builtin_palettes_header "static const BuiltinPaletteEmbeddedFile builtin_palette_embedded_files[] = {\n${builtin_palettes_entries}    { nullptr, nullptr, 0 }\n};\n")
+file(WRITE "${GENERATED_DIR}/palettes_builtin.h.in" "${builtin_palettes_header}")
+configure_file("${GENERATED_DIR}/palettes_builtin.h.in" "${GENERATED_DIR}/palettes_builtin.h" COPYONLY)
+
 # HTML/CSS UI example library (docs/mcp/guide/html-ui-examples/**) embedded in the editor: written
 # into every project's .jasperengine/engine-api/html-ui-examples, served as MCP resources and used
 # as create_ui_document templates (editor/util/HtmlUiExamples.cpp, the only includer)
@@ -919,6 +940,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/AnimationQualityTools.cpp
     ${EDITOR_DIR}/mcp/tools/VcsTools.cpp
     ${EDITOR_DIR}/mcp/tools/SpriteNormalsTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PaletteTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -948,6 +970,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Assets.cpp
     ${EDITOR_DIR}/reload/handlers/Audio.cpp
     ${EDITOR_DIR}/reload/handlers/Particles.cpp
+    ${EDITOR_DIR}/reload/handlers/Palettes.cpp
     ${EDITOR_DIR}/reload/handlers/Common.cpp
     ${EDITOR_DIR}/reload/handlers/Fonts.cpp
     ${EDITOR_DIR}/reload/handlers/Graphs.cpp
@@ -1483,6 +1506,8 @@ include(${EDITOR_DIR}/navigation/NavigationEditorSources.cmake)
 # the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
 include(${EDITOR_DIR}/procmat/ProcMatSources.cmake)
+# the pixel-art family (S43...): palettes, Apply Palette, the Palette window, the pixel_art tools
+include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
 
 # the pixel-art family (S41-S52): PixelImage, the .aseprite codec, the importer and its windows
 include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)

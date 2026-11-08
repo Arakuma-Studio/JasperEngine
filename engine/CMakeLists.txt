@@ -1762,6 +1762,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp
     core/script/binding/SplineClassesLua.cpp
+    core/script/binding/PixelArtClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp
@@ -1988,6 +1989,9 @@ endif()
 # Splines (S18): the core, geometry and layouts (no contraction, bit-identical output)
 include(core/spline/SplineSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_SPLINE_SRCS})
+# Pixel art (S43): colour maths and palettes (no contraction, bit-identical output)
+include(core/pixelart/PixelArtSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PIXELART_SRCS})
 if(JASPERENGINE_HTMLUI)
     include(libs/lucide/lucide.cmake)
 endif()

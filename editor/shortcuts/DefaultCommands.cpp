@@ -168,6 +168,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.importSoundEssentials", "Import Sound Essentials", AppMenuCommand::AssetsImportSoundEssentials).description =
         "Import the 40 built-in CC0 clips into sounds/essentials (one undo step)";
     b.menu("assets.createShakePreset", "Create Shake Preset", AppMenuCommand::AssetsCreateShakePreset);
+    b.menu("assets.createPalette", "Create Palette", AppMenuCommand::AssetsCreatePalette).description =
+        "A new palette (black and white): edit it in Window > 2D > Palette";
     b.menu("assets.createProceduralMaterial", "Create Procedural Material", AppMenuCommand::AssetsCreateProceduralMaterial).description =
         "A .procmat graph (a noise on a Material Output), opened in the Procedural Material window";
     // S45
@@ -257,6 +259,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "An effect as a whole: outline, timing, a preview stage and its modules";
     b.menu("audioMixer.resetLoudness", "Reset Integrated Loudness", AppMenuCommand::ResetLoudness).description =
         "Start the Audio Mixer's integrated loudness and true-peak hold over";
+    b.menu("window.palette", "Palette", AppMenuCommand::TogglePalette).description =
+        "Pixel-art palettes: swatches, ramps, variants and how a texture uses them";
     b.menu("window.inputActions", "Input Actions", AppMenuCommand::ToggleInputActions);
     b.menu("window.navigation", "Navigation", AppMenuCommand::ToggleNavigation);
     b.menu("window.textureSynthesis", "Texture Synthesis", AppMenuCommand::ToggleTextureSynthesis);
@@ -445,6 +449,15 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("spritePreview.lastFrame", "Last Frame", C::SpritePreview, "End").description = "The last frame of the tag (or of the file)";
     b.add("spritePreview.zoomIn", "Zoom In", C::SpritePreview, "=", "NumpadAdd").repeat = true;
     b.add("spritePreview.zoomOut", "Zoom Out", C::SpritePreview, "-", "NumpadSubtract").repeat = true;
+
+    // The Palette window (S43): while it, or its Apply Palette dialog, has focus
+    b.group = "Palette";
+    b.add("palette.delete", "Delete Colours", C::Palette, "Delete", "Backspace");
+    b.add("palette.duplicate", "Duplicate Colours", C::Palette, "Ctrl+D");
+    b.add("palette.moveLeft", "Move Colours Left", C::Palette, "Alt+Left").repeat = true;
+    b.add("palette.moveRight", "Move Colours Right", C::Palette, "Alt+Right").repeat = true;
+    b.add("palette.flickerCompare", "Flicker Compare", C::Palette, "Space").description =
+        "Apply Palette: the After half shows Before, and back";
 
     b.group = "Project";
     b.add("project.copy", "Copy Assets", C::Project, "Ctrl+C");

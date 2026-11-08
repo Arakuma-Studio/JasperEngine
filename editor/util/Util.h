@@ -227,12 +227,17 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".shake";
         }
 
+        // Palettes (S43)
+        inline static bool isPaletteFile(const std::string& path) {
+            return fileExtension(path) == ".palette";
+        }
+
         // Files referenced relative to the assets directory
         inline static bool isAssetFile(const std::string& path) {
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
                    isHtmlFile(path) || isCssFile(path) || isColorLutFile(path) || isParticleEffectFile(path) || isPoseAnimationFile(path) ||
                    isAnimationClipFile(path) || isAnimatorAssetFile(path) ||
-                   isShakePresetFile(path);
+                   isShakePresetFile(path) || isPaletteFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {

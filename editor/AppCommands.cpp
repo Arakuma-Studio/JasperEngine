@@ -20,6 +20,8 @@
 #include "window/GameWindow.h"
 #include "window/SpriteNormalsWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "window/ApplyPaletteDialog.h"
+#include "window/PaletteWindow.h"
 
 #include "AppMenuCommand.h"
 #include "Backend.h"
@@ -594,6 +596,7 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (ui::ColorPickerWindow::get().isFocused()) state.panels.push_back(ShortcutContext::ColorPicker);
     if (soundBrowserWindow->isFocused()) state.panels.push_back(ShortcutContext::SoundBrowser);
     if (audioCapturesWindow->isFocused()) state.panels.push_back(ShortcutContext::AudioCaptures);
+    if (paletteWindow->takesKeys() || applyPaletteDialog->takesKeys()) state.panels.push_back(ShortcutContext::Palette);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
     if (spritePreviewWindow->isFocused()) state.panels.push_back(ShortcutContext::SpritePreview);
     return state;

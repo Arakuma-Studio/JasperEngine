@@ -214,6 +214,19 @@ jasperengine_skip_unity_build(
     REASON "ProfilerCompileOutTest compiles the profiling macros with the profiler off"
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/profiler/ProfilerCompileOutTest.cpp)
 
+# PixelColorDeterminism.UnoptimisedBuildMatches (S43 AC5): the pixel-art colour maths built a
+# second time without optimisation, in a namespace of its own, against the engine's optimised copy
+set(PIXELART_O0_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/pixelart/PixelColorO0.cpp)
+target_sources(jasperengine-core-tests PRIVATE ${PIXELART_O0_SOURCE})
+if(MSVC)
+    set_source_files_properties(${PIXELART_O0_SOURCE} PROPERTIES COMPILE_OPTIONS "/Od;/fp:precise")
+else()
+    set_source_files_properties(${PIXELART_O0_SOURCE} PROPERTIES COMPILE_OPTIONS "-O0;-ffp-contract=off")
+endif()
+jasperengine_skip_unity_build(
+    REASON "PixelColorO0.cpp compiles engine/core/pixelart/PixelColor.cpp again in a renamed namespace"
+    SOURCES ${PIXELART_O0_SOURCE})
+
 # the logger's backtraces name the test functions (LoggerTest.ErrorCarriesBacktrace): dladdr
 # sees the executable's symbols
 set_target_properties(jasperengine-core-tests PROPERTIES ENABLE_EXPORTS ON)

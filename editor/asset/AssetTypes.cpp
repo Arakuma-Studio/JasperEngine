@@ -51,6 +51,9 @@ namespace {
             {{AssetType::AnimatorController, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".controller"}},
             {{AssetType::AvatarMask, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".mask"}},
             {{AssetType::AnimationMontage, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".montage"}},
+            // the pixel-art family's assets (PIXEL-ART-LEDGER.md)
+            // its ramps are sub-assets ("<file>.palette#ramp:<name>", a texture strip)
+            {{AssetType::Palette, AssetIdentity::Sidecar, AssetPathBase::Assets, true, false}, {".palette"}},
             // Aseprite files (S44): a meta beside them, their outputs are sub-assets
             {{AssetType::AsepriteSprite, AssetIdentity::Sidecar, AssetPathBase::Assets, true, false}, {".aseprite", ".ase"}},
             // Sprite Atlases (S45): their GUID in their JSON, as clips; pages have derived GUIDs, no sub-assets

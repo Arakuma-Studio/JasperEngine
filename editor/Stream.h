@@ -339,6 +339,10 @@ namespace jasperengine::editor {
         // custom-block members that follow a global shader value: {member: global}
         static YAML::Node encodeShaderGlobalBindings(const ShaderGlobalBindings& bindings);
         static ShaderGlobalBindings decodeShaderGlobalBindings(const YAML::Node& node);
+        // @palette bindings (S43 Palette Swap): {uniform: {source, sourceGuid, targets: [{palette,
+        // paletteGuid, variant}], useVariants (written only when false)}}
+        static YAML::Node encodeShaderPalettes(const jasperengine::pixelart::ShaderPalettes& palettes);
+        static jasperengine::pixelart::ShaderPalettes decodeShaderPalettes(const YAML::Node& node);
         // The Line and Trail Renderers' width curve and colour gradient: S27's one curve encoding
         // (stream/CurveCodec.h). The reader also takes upstream's (lines and trails) form, so its
         // files read without loss: {keys, pre, post} curves, numbers, "#RRGGBB" / linear colours

@@ -48,5 +48,7 @@ namespace jasperengine::editor {
     bool scanModelFile(const std::filesystem::path& file, ModelContents& contents);
     // The same from the file's bytes (extension picks the format: .gltf, .glb or .obj)
     bool scanModelBytes(const std::string& extension, const std::string& bytes, ModelContents& contents);
+    // A palette's sub-assets (S43 R4a): its ramps, "ramp:<name>". False when it cannot be read.
+    bool scanPaletteFile(const std::filesystem::path& file, ModelContents& contents);
 
 }

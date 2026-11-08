@@ -2485,6 +2485,11 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
 
+        // ---- the Default Palette (S43 R4b): Snap to Palette, apply_palette without a palette, the
+        // pixel-art tools' new art
+        add(pathSetting("palettes.default", "The Default Palette: the .palette used where none is named (apply_palette, Snap to "
+                        "Palette, new pixel art).", [](Project& p) -> fs::path& { return p.getDefaultPalette(); }));
+
         // ---- input (S22, and Unity's Input Manager absorbed from the older Project Settings > Input)
         {
             // the asset path; an older editor's list of Input Manager actions (or "defaults") set
@@ -3239,6 +3244,25 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
         {
+            // S43 R8: no network request of the editor's own (Lospec says it is offline at once)
+            Setting s;
+            s.key = "preferences.network.offline";
+            s.type = "bool";
+            s.preference = true;
+            s.description = "General: Offline, no network access from the editor (Import > From Lospec reports network_unavailable at once).";
+            s.get = [](SettingsContext&) { return Json(AppSettings::isNetworkOffline()); };
+            s.set = [](SettingsContext&, const Json& value, bool apply, std::string& error) {
+                bool b;
+                if (!readBool(value, b, error)) return false;
+                if (apply) {
+                    AppSettings::setNetworkOffline(b);
+                    AppSettings::saveSettings();
+                }
+                return true;
+            };
+            add(s);
+        }
+        {
             Setting s = boolSetting("preferences.simulate_touch", "Play acts as a touch device: the mouse is one finger and isTouchDevice() is true.",
                                     [](Project& p) { return p.isSimulateTouch(); }, [](Project& p, bool v) { p.setSimulateTouch(v); });
             s.preference = true;
@@ -3670,6 +3694,8 @@ const Placement placements[] = {
     {"input.actions", "Input", "", "Default Actions Asset", "input actions bindings controls keyboard gamepad touch inputactions"},
     {"input.deadzone", "Input", "", "Default Deadzone", "input stick axis analog gamepad dead zone"},
     {"input.manager_actions", "Input", "Input Manager", "Input Manager", "input manager virtual axes buttons horizontal vertical jump fire gravity sensitivity unity"},
+    // Project Settings > Pixel Art (S43 R4b; S42's Pixel Art page joins it)
+    {"palettes.default", "Pixel Art", "", "Default Palette", "palette colours colors swatches snap lospec apply palette sweetie pico"},
     // Project Settings > Audio
     {"audio.mixer", "Audio", "", "Audio Mixer", "mixer groups master bus sound music"},
     {"audio.default_output_group", "Audio", "", "Default Output Group", "mixer group master output audio source"},
@@ -3743,6 +3769,7 @@ const Placement placements[] = {
     {"preferences.clear_on_play", "General", "Console", "Clear on Play", "console"},
     {"preferences.error_pause", "General", "Console", "Error Pause", "console"},
     {"preferences.simulate_touch", "General", "Game View", "Simulate Touch", "game view mouse finger"},
+    {"preferences.network.offline", "General", "Network", "Offline", "network internet offline proxy lospec download http"},
     {"preferences.default_export_dir", "General", "", "Default Build Directory", "output export"},
     {"preferences.sound_browser_autoplay", "General", "Sound Browser", "Auto-play", "sound browser audition select play"},
     {"preferences.sound_browser_match_loudness", "General", "Sound Browser", "Match Loudness", "sound browser audition loudness lufs"},
@@ -3955,6 +3982,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Mesh", SettingsScope::Project, 14, "mesh model import cook optimize compression lod meshopt read write cache audit"},
         {"2D", SettingsScope::Project, 15, "2d sprite atlas packer pages pixel art"},
         {"Animation", SettingsScope::Project, 16, "animation clips model animator animation player entities"},
+        {"Pixel Art", SettingsScope::Project, 17, "pixel art 2d palette palettes colours colors swatches"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},

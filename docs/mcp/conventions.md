@@ -119,6 +119,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `graphs` | S23's graph tools (`list_graph_kinds`, `list_graph_node_types`, `get_graph`, `validate_graph`, `edit_graph`), moved out of `scripting` by S90 R32 |
 | `materials` | S90 (`preview_procedural_material`, `bake_procedural_material`) |
 | `shipping` | S30, upstream's native-bridge `native_plugins` (out of core to fit the budget) |
+| `pixel_art` | S43 (`edit_palette`, `apply_palette`); S42, S46 and S48 add theirs |
 
 A spec may add a group: one row in `McpToolGroups.cpp` (name, one-line description), and a
 `budget.json` `groups` entry only if it needs other limits than the defaults. Registering a tool

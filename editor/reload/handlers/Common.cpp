@@ -33,6 +33,7 @@ std::string reload::kindOf(const fs::path& path) {
     }
     if (Util::isMaterialFile(text)) return "material";
     if (Util::isParticleEffectFile(text)) return "particles";
+    if (Util::isPaletteFile(text)) return "palette";
     if (Util::isShaderFile(text)) return "shader";
     if (Util::isAudioFile(text)) return "audio";
     if (Util::isFontFile(text)) return "font";

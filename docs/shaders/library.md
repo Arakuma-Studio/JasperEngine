@@ -1049,6 +1049,8 @@ Sprite, tilemap and polygon effects on the sprite's own texture and colour: outl
 | `glowColor` | HDR colour | (2, 1.5, 0.8, 1) | Glow colour (HDR) (with `GLOW`) |
 | `glowScale` | range 0 to 4 | 1 | Glow alpha scale (with `GLOW`) |
 | `glowPower` | range 0.1 to 8 | 2 | Glow falloff power (with `GLOW`) |
+| `paletteRow` | int | 0 | Active palette (0: original) (with `PALETTE_SWAP`) |
+| `paletteCycleSpeed` | float | 1 | Cycling speed (with `PALETTE_CYCLE`) |
 
 | Texture | Default | Description |
 |---|---|---|
@@ -1064,6 +1066,8 @@ Sprite, tilemap and polygon effects on the sprite's own texture and colour: outl
 | `COLOR_REPLACE` | off | Colour replace |
 | `OVERLAY` | off | Overlay (hard light) |
 | `GLOW` | off | Glow |
+| `PALETTE_SWAP` | off | Palette Swap |
+| `PALETTE_CYCLE` | off | Palette Cycling |
 
 <a id="librarysprite_mask"></a>
 ### Sprite mask (`library:sprite_mask`)
@@ -1302,7 +1306,7 @@ Glowing outlines: the picture's edges (Sobel on brightness) lit in a neon colour
 <a id="librarygameboy"></a>
 ### Game Boy (`library:gameboy`)
 
-A four-shade handheld screen: big pixels, the brightness mapped to four greens with an ordered dither between them.
+A four-shade handheld screen: big pixels, the brightness mapped to four greens with an ordered dither between them; for an exact palette use Post-processing ▸ Palette Quantize.
 
 - **Type**: post-process (a pass of the scene's post-process chain); category Post-processing.
 - **Inputs**: the previous pass's colour (`u_sceneColorTexture`) (the engine also binds `u_originalSceneTexture`, `u_depthTexture`, `u_gbufferTexture`, `u_ssaoTexture` to a pass declaring them).
@@ -1333,7 +1337,7 @@ Big square pixels: the picture in blocks of a few output pixels, each the colour
 <a id="libraryposterize"></a>
 ### Posterize (`library:posterize`)
 
-Fewer colours: each channel rounded to a few levels, with an optional ordered dither that trades the bands for a fine pattern.
+Fewer colours: each channel rounded to a few levels, with an optional ordered dither that trades the bands for a fine pattern; for an exact palette use Post-processing ▸ Palette Quantize.
 
 - **Type**: post-process (a pass of the scene's post-process chain); category Post-processing.
 - **Inputs**: the previous pass's colour (`u_sceneColorTexture`) (the engine also binds `u_originalSceneTexture`, `u_depthTexture`, `u_gbufferTexture`, `u_ssaoTexture` to a pass declaring them).

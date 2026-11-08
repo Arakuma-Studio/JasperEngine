@@ -148,6 +148,7 @@ namespace jasperengine::editor::mcp {
     void registerOrganisationTools(McpRegistry& registry);
     void registerNavigationTools(McpRegistry& registry);
     void registerVcsTools(McpRegistry& registry);   // S29 (VcsTools.cpp)
+    void registerPaletteTools(McpRegistry& registry);   // S43 (PaletteTools.cpp): edit_palette, apply_palette
 
     // list_assets search and saved searches (OrganisationTools.cpp): an R20 search over the asset
     // index, as {entries: [{path, type, guid?, labels?}], total, truncated, query}; *error for a bad re:

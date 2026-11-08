@@ -82,6 +82,8 @@ namespace jasperengine::editor{
     class GraphEditorWindow;
     class ProceduralMaterialWindow;
     class AudioCapturesWindow;
+    class ApplyPaletteDialog;
+    class PaletteWindow;
     class VertexAnimationBakerWindow;
     class PhysicsPlacementWindow;
     class SystemsWindow;
@@ -263,6 +265,9 @@ namespace jasperengine::editor{
         GraphEditorWindow* graphEditorWindow;
         ProceduralMaterialWindow* proceduralMaterialWindow;
         AudioCapturesWindow* audioCapturesWindow;
+        // S43: Window > 2D > Palette and the Apply Palette / Reduce Colours dialog
+        PaletteWindow* paletteWindow = nullptr;
+        ApplyPaletteDialog* applyPaletteDialog = nullptr;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
         SpriteNormalsWindow* spriteNormalsWindow;
@@ -734,6 +739,9 @@ namespace jasperengine::editor{
         void openBuildReport(const std::filesystem::path& report) override;
         void openMeshAudit() override;
         void openConsole() override;
+        void openPaletteWindow(const std::string& palettePath, const std::string& texturePath) override;
+        PaletteWindow* getPaletteWindow() const { return paletteWindow; }
+        ApplyPaletteDialog* getApplyPaletteDialog() const { return applyPaletteDialog; }
         void openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;

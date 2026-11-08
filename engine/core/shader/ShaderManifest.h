@@ -144,6 +144,22 @@ namespace jasperengine{
         ShaderTextureDefault getDefault(const std::vector<std::string>& enabledFeatures) const;
     };
 
+    // `// @palette <uniform> ["label"] [feature=A,B]`: a material palette binding (S43 Palette
+    // Swap, includes/palette.glsl). The shader declares <uniform>Cells and <uniform>Rows
+    // (texture2D) and <uniform>_smp; the engine binds a PaletteSwapCache entry built from the
+    // material's shaderPalettes[<uniform>] while one of the features is on.
+    struct JASPERENGINE_API ShaderManifestPalette{
+        std::string uniform;
+        std::string label;
+        std::vector<std::string> features; // empty: always
+        int line = 0;
+
+        std::string cellsTexture() const { return uniform + "Cells"; }
+        std::string rowsTexture() const { return uniform + "Rows"; }
+        // whether a variant with these enabled defines (resolveFeatures) reads the binding
+        bool isEnabled(const std::vector<std::string>& enabledFeatures) const;
+    };
+
     struct JASPERENGINE_API ShaderManifestFeature{
         std::string define;
         std::string label;
@@ -248,6 +264,7 @@ namespace jasperengine{
         std::vector<ShaderManifestStateRule> stateRules;
         std::vector<ShaderManifestProperty> properties;
         std::vector<ShaderManifestTexture> textures;
+        std::vector<ShaderManifestPalette> palettes;
         std::vector<ShaderManifestFeature> features;
         std::vector<ShaderManifestKeywords> keywords;
         bool depth = false;      // has its own depth program
@@ -271,6 +288,7 @@ namespace jasperengine{
 
         const ShaderManifestProperty* findProperty(const std::string& member) const;
         const ShaderManifestTexture* findTexture(const std::string& uniform) const;
+        const ShaderManifestPalette* findPalette(const std::string& uniform) const;
         const ShaderManifestFeature* findFeature(const std::string& define) const;
         // the group a "<group>_<value>" define belongs to, or null
         const ShaderManifestKeywords* findKeywordGroup(const std::string& define) const;

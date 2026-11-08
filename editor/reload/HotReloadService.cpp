@@ -69,6 +69,7 @@ namespace {
         if (kind == "audio") noun = "audio clip";
         else if (kind == "ui") noun = "UI file";
         else if (kind == "particles") noun = "particle effect";
+        else if (kind == "palette") noun = "palette";
         return std::to_string(count) + " " + noun + (count == 1 ? "" : "s");
     }
 
@@ -405,8 +406,10 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         if (change.origin == ChangeOrigin::Editor) {
             // (an agent's write_file of a clip or a pose animation: their documents reload too,
             // and its load problems are the call's)
-            // (an .aseprite an editor tool wrote: imported again like another program's save, S44 R23)
-            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "graph" || kind == "aseprite")
+            // (a palette the Palette window or edit_palette wrote: the swaps drawn with it update; an
+            // .aseprite an editor tool wrote: imported again like another program's save, S44 R23)
+            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "palette" || kind == "graph" ||
+                kind == "aseprite")
                 editorWritten[kind].push_back(change.path);
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) editorWritten["ui"].push_back(change.path);
             continue;
@@ -478,6 +481,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         project->audioFilesChanged(paths);
     }
     reload::reloadParticleEffects(ctx, files(external, "particles"));
+    reload::reloadPalettes(ctx, both("palette"));
     {
         std::vector<fs::path> graphDocuments = files(editorWritten, "graph");
         graphDocuments.insert(graphDocuments.end(), graphsGone.begin(), graphsGone.end());

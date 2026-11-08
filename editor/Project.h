@@ -900,6 +900,8 @@ namespace jasperengine::editor{
         // none) and the deadzone of AXIS and VECTOR2 actions without their own
         std::filesystem::path inputActionsAsset;
         float inputDeadzone = 0.15f;
+        // Pixel Art: the palette used where none is named (S43 R4b), project-relative, empty for none
+        std::filesystem::path defaultPalette;
         PlayerCrashSettings playerCrash;
         int htmlUiMsaaSamples;
         // graphics.pixelsPerUnit (S41): texels per world unit of the sprites and tilemaps that take it
@@ -1717,6 +1719,10 @@ namespace jasperengine::editor{
         // Project Settings > Input (docs/mcp/guide/input.md): the default Input Actions asset
         // (InputActions::loadDefault at Play and at game start) and the default deadzone
         static constexpr float defaultInputDeadzone = 0.15f;
+        // the Default Palette (Project Settings, palettes.default; S43 R4b)
+        void setDefaultPalette(const std::filesystem::path& palette) { defaultPalette = palette; }
+        std::filesystem::path& getDefaultPalette() { return defaultPalette; }
+        const std::filesystem::path& getDefaultPalette() const { return defaultPalette; }
         void setInputActionsAsset(const std::filesystem::path& asset);
         std::filesystem::path& getInputActionsAsset();
         const std::filesystem::path& getInputActionsAsset() const;

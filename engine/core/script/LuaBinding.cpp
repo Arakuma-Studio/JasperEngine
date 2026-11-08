@@ -946,6 +946,8 @@ void LuaBinding::registerClasses(lua_State *L){
     registerGameplayClasses(L);
     registerNavigationClasses(L);
     registerSplineClasses(L);
+    // after the GameObject classes: Palette Swap's members on Sprite, Tilemap and MeshPolygon
+    registerPixelArtClasses(L);
     registerCrashClasses(L);
 #if JASPERENGINE_HTMLUI
     registerHtmlUIClasses(L);

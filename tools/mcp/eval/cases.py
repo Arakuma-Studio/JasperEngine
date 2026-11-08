@@ -1287,6 +1287,93 @@ CASES = [
                               {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"shadows_quality": "*"}}}]}],
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
+    },    # -- S43 palettes: the "Other areas" entry, edit_palette's preview-then-write and apply_palette's check --------
+    {
+        "id": "guard_palette_apply_route",
+        "kind": "guard",
+        "what_happened": "New area (S43): recolouring a sprite onto a fixed palette is apply_palette in the pixel_art group; "
+                         "without the guide's index entry an agent edits the PNG with its own scripts or a shader.",
+        "text_at_issue": "Guide 'Other areas': 'palettes (edit_palette, apply_palette)'; apply_palette: 'palette: path, "
+                         "builtin:<id> or [hex]'; 'A preview until output: true overwrites the texture'",
+        "source": "S43 R40 (new tool text); no failure on record",
+        "prompt": "Our pixel-art hero sprite assets/sprites/hero.png has to use only the PICO-8 colours. Recolour it onto "
+                  "that palette and keep the result in the same file.",
+        "mocks": [
+            {"tool": "apply_palette", "args": {"output": True}, "result": ok(
+                "Apply Palette PICO-8 (built-in) on assets/sprites/hero.png: fixable. Colours 41 -> 12, 380 pixels changed, "
+                "mean dE 3.10, max dE 9.80, 0 lost-colour group(s). Wrote assets/sprites/hero.png as one undo step (undo "
+                "with scope project).",
+                {"path": "assets/sprites/hero.png", "verdict": "fixable", "written": "assets/sprites/hero.png",
+                 "undo": {"id": 12, "name": "Write File hero.png"}})},
+            {"tool": "apply_palette", "result": ok(
+                "Apply Palette PICO-8 (built-in) on assets/sprites/hero.png: fixable. Colours 41 -> 12, 380 pixels changed, "
+                "mean dE 3.10, max dE 9.80, 0 lost-colour group(s). Preview only, nothing written: call again with the same "
+                "arguments plus output: true (overwrite assets/sprites/hero.png) or output: \"<new .png path>\".",
+                {"path": "assets/sprites/hero.png", "verdict": "fixable", "lost": [],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output: true (overwrite "
+                         "assets/sprites/hero.png) or output: \"<new .png path>\"."})},
+        ],
+        "checks": {"calls": [{"tool": "apply_palette", "args": {"palette": "re:(?i)pico", "output": True}}],
+                   "must_not_call": ["fork_shader", "write_file"], "edits_must_not": [r"\.png$"],
+                   "shell_must_not": [r"(?i)\bPIL\b|from PIL|magick|convert\s"]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_palette_lospec_write",
+        "kind": "guard",
+        "what_happened": "New tool (S43): edit_palette previews by default; an agent asked to add a palette must call again "
+                         "with output: true, which the description and the result's `next` say.",
+        "text_at_issue": "edit_palette: 'from creates one (builtin, Lospec slug, ...)'; 'A preview until output: true writes "
+                         "it (one undo)'; the result's `next`",
+        "source": "S43 R39 (new tool text); no failure on record",
+        "prompt": "Add the Lospec palette endesga-32 to the project as a palette asset.",
+        "mocks": [
+            {"tool": "edit_palette", "args": {"output": True}, "result": ok(
+                "Palette assets/Palettes/endesga-32.palette (Endesga 32, 32 colours, 0 ramps, 0 variants). Wrote "
+                "assets/Palettes/endesga-32.palette as one undo step (undo with scope project).",
+                {"path": "assets/Palettes/endesga-32.palette", "asset_path": "Palettes/endesga-32.palette",
+                 "written": ["assets/Palettes/endesga-32.palette"], "undo": {"id": 4, "name": "Create File endesga-32.palette"},
+                 "job_id": "job-3", "status": "succeeded"})},
+            {"tool": "edit_palette", "args": {"from": {"lospec": "re:(?i)endesga"}}, "result": ok(
+                "Palette assets/Palettes/endesga-32.palette (Endesga 32, 32 colours, 0 ramps, 0 variants). Preview only, "
+                "nothing written: call again with the same arguments plus output: true to write assets/Palettes/endesga-32.palette.",
+                {"path": "assets/Palettes/endesga-32.palette", "palette": {"name": "Endesga 32", "count": 32},
+                 "next": "Preview only, nothing written: call again with the same arguments plus output: true to write "
+                         "assets/Palettes/endesga-32.palette.", "job_id": "job-2", "status": "succeeded"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_palette", "args": {"from": {"lospec": "re:(?i)endesga"}, "output": True}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.(palette|hex|gpl)$"], "shell_must_not": [r"curl|wget"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_palette_measure_only",
+        "kind": "guard",
+        "what_happened": "New tool (S43): checking art against a palette is a read-only apply_palette (measure_only, or a "
+                         "preview) or edit_palette's texture usage; the texture must stay as it is.",
+        "text_at_issue": "apply_palette: 'measure_only only checks', 'verdict clean|fixable|needs_person'; edit_palette: "
+                         "'texture counts its colours'",
+        "source": "S43 R40, R43 (new tool text); no failure on record",
+        "prompt": "Does assets/sprites/tiles.png use only colours of assets/Palettes/level.palette? Don't change any file, "
+                  "just tell me.",
+        "mocks": [
+            {"tool": "apply_palette", "args": {"output": True}, "result": err("apply_palette must not write in this case")},
+            {"tool": "apply_palette", "result": ok(
+                "Apply Palette assets/Palettes/level.palette on assets/sprites/tiles.png: fixable. Colours 18 -> 16, 37 "
+                "pixels changed, mean dE 1.20, max dE 4.10, 0 lost-colour group(s).",
+                {"path": "assets/sprites/tiles.png", "verdict": "fixable", "cli_exit": 3,
+                 "stats": {"colors_before": 18, "colors_after": 16, "pixels_changed": 37}})},
+            {"tool": "edit_palette", "args": {"texture": "*"}, "result": ok(
+                "Palette assets/Palettes/level.palette (Level, 16 colours, 2 ramps, 0 variants). assets/sprites/tiles.png: 37 "
+                "off-palette pixels in 2 colours.",
+                {"path": "assets/Palettes/level.palette", "usage": {"texture": "assets/sprites/tiles.png", "off_palette_pixels": 37,
+                                                                   "off_palette_colors": 2}})},
+        ],
+        "checks": {"any_of": [{"calls": ["apply_palette"]}, {"calls": [{"tool": "edit_palette", "args": {"texture": "*"}}]}],
+                   "must_not_call": [{"tool": "apply_palette", "args": {"output": True}},
+                                     {"tool": "apply_palette", "args": {"output": "re:\\.png$"}},
+                                     {"tool": "edit_palette", "args": {"output": True}}],
+                   "reply_must": [r"(?i)\bno\b|not only|37|off.palette|fixable"]},
+        "max_turns": 10,
     },
     {
         "id": "guard_nav_carve_tiles_per_tick",

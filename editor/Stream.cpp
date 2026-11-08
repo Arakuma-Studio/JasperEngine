@@ -1266,6 +1266,57 @@ ShaderGlobalBindings editor::Stream::decodeShaderGlobalBindings(const YAML::Node
     return bindings;
 }
 
+YAML::Node editor::Stream::encodeShaderPalettes(const jasperengine::pixelart::ShaderPalettes& palettes) {
+    YAML::Node node(YAML::NodeType::Map);
+    for (const auto& [uniform, binding] : palettes) {
+        YAML::Node entry(YAML::NodeType::Map);
+        encodeAssetRef(entry, "source", binding.source);
+        if (!binding.targets.empty()) {
+            YAML::Node targets(YAML::NodeType::Sequence);
+            for (const jasperengine::pixelart::PaletteTarget& target : binding.targets) {
+                YAML::Node item(YAML::NodeType::Map);
+                encodeAssetRef(item, "palette", target.palette);
+                if (!target.variant.empty()) item["variant"] = target.variant;
+                targets.push_back(item);
+            }
+            entry["targets"] = targets;
+        }
+        if (!binding.useVariants) entry["useVariants"] = false;
+        node[uniform] = entry;
+    }
+    return node;
+}
+
+jasperengine::pixelart::ShaderPalettes editor::Stream::decodeShaderPalettes(const YAML::Node& node) {
+    jasperengine::pixelart::ShaderPalettes palettes;
+    if (!node || !node.IsMap()) return palettes;
+    for (const auto& entry : node) {
+        const std::string uniform = entry.first.as<std::string>();
+        const YAML::Node value = entry.second;
+        if (uniform.empty() || !value.IsMap()) continue;
+        jasperengine::pixelart::PaletteBinding binding;
+        binding.source = decodeAssetRef(value, "source");
+        const YAML::Node targets = value["targets"];
+        if (targets && targets.IsSequence()) {
+            for (const YAML::Node& item : targets) {
+                jasperengine::pixelart::PaletteTarget target;
+                if (item.IsScalar()) {
+                    target = jasperengine::pixelart::PaletteTarget::parse(item.as<std::string>());
+                } else if (item.IsMap()) {
+                    target.palette = decodeAssetRef(item, "palette");
+                    if (item["variant"] && item["variant"].IsScalar()) target.variant = item["variant"].as<std::string>();
+                } else {
+                    continue;
+                }
+                binding.targets.push_back(target);
+            }
+        }
+        if (value["useVariants"] && value["useVariants"].IsScalar()) binding.useVariants = value["useVariants"].as<bool>();
+        palettes.push_back({uniform, binding});
+    }
+    return palettes;
+}
+
 YAML::Node editor::Stream::encodeQuaternion(const Quaternion& quat) {
     YAML::Node node;
     node.SetStyle(YAML::EmitterStyle::Flow);
@@ -2605,6 +2656,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         scale["web"] = project->getFoliageDistanceScale()[2];
         root["foliageDistanceScale"] = scale;
     }
+    // Project Settings > Default Palette (S43), omitted when there is none
+    if (!project->getDefaultPalette().empty()) {
+        YAML::Node palettes;
+        palettes["default"] = project->getDefaultPalette().generic_string();
+        root["palettes"] = palettes;
+    }
     // Project Settings > Input, omitted at its defaults
     if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
         YAML::Node input;
@@ -3273,6 +3330,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setAtmosphereQuality(quality);
+    }
+
+    {
+        const YAML::Node palettes = node["palettes"];
+        // (a missing key is an undefined node: IsMap on it would throw)
+        const bool hasDefaultPalette = palettes.IsDefined() && palettes.IsMap() && palettes["default"].IsDefined() && palettes["default"].IsScalar();
+        project->setDefaultPalette(hasDefaultPalette ? fs::path(palettes["default"].as<std::string>()) : fs::path());
     }
 
     {
@@ -5475,6 +5539,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     }
     if (!material.shaderFeatures.empty()) node["shaderFeatures"] = encodeShaderFeatures(material.shaderFeatures);
     if (!material.shaderGlobalBindings.empty()) node["shaderGlobalBindings"] = encodeShaderGlobalBindings(material.shaderGlobalBindings);
+    if (!material.shaderPalettes->empty()) node["shaderPalettes"] = encodeShaderPalettes(material.shaderPalettes.get());
     if (material.blendMode != MaterialBlendMode::AUTO) node["blendMode"] = materialBlendModeToString(material.blendMode);
     if (material.cullMode != MaterialCullMode::AUTO) node["cullMode"] = materialCullModeToString(material.cullMode);
     if (material.depthWrite != MaterialDepthWrite::AUTO) node["depthWrite"] = materialDepthWriteToString(material.depthWrite);
@@ -5619,6 +5684,7 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
     material.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
     material.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
+    material.shaderPalettes = decodeShaderPalettes(node["shaderPalettes"]);
     material.blendMode = node["blendMode"] ? decodeEnum(node, "blendMode", StreamSchema::materialBlendMode()) : MaterialBlendMode::AUTO;
     material.cullMode = node["cullMode"] ? decodeEnum(node, "cullMode", StreamSchema::materialCullMode()) : MaterialCullMode::AUTO;
     material.depthWrite = node["depthWrite"] ? decodeEnum(node, "depthWrite", StreamSchema::materialDepthWrite()) : MaterialDepthWrite::AUTO;

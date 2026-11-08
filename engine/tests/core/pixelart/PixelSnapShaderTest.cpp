@@ -131,7 +131,8 @@ TEST(PixelSnapShaderTest, VariantBitsArePinned){
     }
     EXPECT_EQ(UBER_SHARP_BILINEAR, 1u << 18);
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 18, true), "Psb");
-    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::BLIT), 19);
+    // S43's Palette Quantize took the next one, 19 'Pal' (PostProcessingTiers.PaletteQuantizeBit)
+    EXPECT_GE(ShaderPool::getShaderPropertyCount(ShaderType::BLIT), 19);
 }
 
 // a block the engine extends (pixelSnapDraw) is uploaded at most as large as the shader declares

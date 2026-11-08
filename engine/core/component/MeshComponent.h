@@ -81,10 +81,12 @@ namespace jasperengine{
         // material.shaderGlobalBindings (shader globals; upstream's 1 << 31 is S11's PbrExtensions
         // here, so it comes after S11's bits)
         SubmeshOverride_ShaderGlobalBindings     = 1ull << 33,
+        // material.shaderPalettes (S43 Palette Swap)
+        SubmeshOverride_ShaderPalettes           = 1ull << 34,
 
         SubmeshOverride_ShaderLibrary = SubmeshOverride_Shader | SubmeshOverride_ShaderParams |
                                         SubmeshOverride_ShaderTextures | SubmeshOverride_ShaderFeatures |
-                                        SubmeshOverride_ShaderGlobalBindings |
+                                        SubmeshOverride_ShaderGlobalBindings | SubmeshOverride_ShaderPalettes |
                                         SubmeshOverride_BlendMode | SubmeshOverride_CullMode |
                                         SubmeshOverride_DepthWrite | SubmeshOverride_DepthTest |
                                         SubmeshOverride_DepthOffset | SubmeshOverride_SortPriority |

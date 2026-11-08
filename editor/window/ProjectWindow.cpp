@@ -74,6 +74,9 @@
 #include "vat/VatDocument.h"
 #include "util/UIProbe.h"
 #include "util/PhysicsMaterialAssets.h"
+#include "window/ApplyPaletteDialog.h"
+#include "window/PaletteWindow.h"
+#include "pixelart/Palette.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseEditSession.h"
 #include "pose/PoseImage.h"
@@ -254,6 +257,102 @@ static void makePhysicsMaterialIcon(int size, std::vector<uint8_t>& rgba) {
     rgba = image.getPixels();
 }
 
+// The .palette icon (until its swatch thumbnail is made): a card of colour chips
+static void makePaletteFileIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    auto px = [s](float v) { return static_cast<int>(v * s); };
+    image.fillRect(px(4), px(8), px(56), px(48), editor::PoseColor::hex(0x2B2F36));
+    const uint32_t chips[] = {0x1A1C2C, 0x5D275D, 0xB13E53, 0xEF7D57, 0xFFCD75, 0xA7F070, 0x38B764, 0x257179, 0x29366F, 0x3B5DC9, 0x41A6F6, 0x73EFF7};
+    for (int i = 0; i < 12; i++) {
+        image.fillRect(px(8 + (i % 4) * 12.5f), px(12 + (i / 4) * 14.0f), px(11), px(12), editor::PoseColor::hex(chips[i]));
+    }
+    rgba = image.getPixels();
+}
+
+// "+N" over a palette thumbnail of more than 64 colours: a 3 x 5 pixel font, no text renderer
+// on the thumbnail worker
+static void drawPaletteThumbnailCount(std::vector<uint8_t>& rgba, int width, int height, int hidden) {
+    static const uint16_t glyphs[11] = {
+        0x7B6F, 0x2C97, 0x73E7, 0x73CF, 0x5BC9, 0x79CF, 0x79EF, 0x7249, 0x7BEF, 0x7BCF,   // 0-9
+        0x05D0,                                                                            // +
+    };
+    const std::string text = "+" + std::to_string(hidden);
+    const int scale = std::max(1, width / 40);
+    const int textWidth = (static_cast<int>(text.size()) * 4 - 1) * scale;
+    const int textHeight = 5 * scale;
+    const int x0 = width - textWidth - 3 * scale, y0 = height - textHeight - 3 * scale;
+    auto put = [&](int x, int y, uint8_t r, uint8_t g, uint8_t b) {
+        if (x < 0 || y < 0 || x >= width || y >= height) return;
+        uint8_t* p = rgba.data() + (static_cast<size_t>(y) * width + x) * 4;
+        p[0] = r;
+        p[1] = g;
+        p[2] = b;
+        p[3] = 255;
+    };
+    for (int y = y0 - scale; y < y0 + textHeight + scale; y++) {
+        for (int x = x0 - scale; x < x0 + textWidth + scale; x++) put(x, y, 20, 20, 24);
+    }
+    for (size_t c = 0; c < text.size(); c++) {
+        const uint16_t glyph = text[c] == '+' ? glyphs[10] : glyphs[text[c] - '0'];
+        for (int row = 0; row < 5; row++) {
+            for (int column = 0; column < 3; column++) {
+                if (!(glyph & (1u << (14 - row * 3 - column)))) continue;
+                for (int dy = 0; dy < scale; dy++) {
+                    for (int dx = 0; dx < scale; dx++) {
+                        put(x0 + (static_cast<int>(c) * 4 + column) * scale + dx, y0 + row * scale + dy, 240, 240, 240);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The .palette thumbnail (S43 R37): its first 64 colours as a square grid, "+N" for the rest
+static bool writePaletteSwatchThumbnail(const fs::path& sourcePath, const fs::path& thumbnailPath) {
+    std::ifstream in(sourcePath, std::ios::binary);
+    if (!in) return false;
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    jasperengine::pixelart::Palette palette;
+    std::vector<jasperengine::pixelart::Diagnostic> diagnostics;
+    if (!jasperengine::pixelart::PaletteCodec::read(text, palette, diagnostics) || palette.colors.empty()) return false;
+    const int shown = std::min(palette.count(), 64);
+    int columns = 1;
+    while (columns * columns < shown) columns++;
+    const int rows = (shown + columns - 1) / columns;
+    const int cell = std::max(1, THUMBNAIL_SIZE / std::max(columns, rows));
+    const int width = cell * columns, height = cell * rows;
+    const int gap = cell >= 8 ? 1 : 0;
+    std::vector<uint8_t> rgba(static_cast<size_t>(width) * static_cast<size_t>(height) * 4, 0);
+    for (int i = 0; i < shown; i++) {
+        const jasperengine::pixelart::Rgba8 color = palette.colors[i];
+        const int cx = (i % columns) * cell, cy = (i / columns) * cell;
+        for (int y = cy; y < cy + cell - gap; y++) {
+            for (int x = cx; x < cx + cell - gap; x++) {
+                // a see-through colour over a checker, as the swatches show it
+                const uint8_t checker = ((x / 4 + y / 4) % 2) ? 200 : 128;
+                uint8_t* p = rgba.data() + (static_cast<size_t>(y) * width + x) * 4;
+                const int a = color.a;
+                p[0] = static_cast<uint8_t>((color.r * a + checker * (255 - a)) / 255);
+                p[1] = static_cast<uint8_t>((color.g * a + checker * (255 - a)) / 255);
+                p[2] = static_cast<uint8_t>((color.b * a + checker * (255 - a)) / 255);
+                p[3] = 255;
+            }
+        }
+    }
+    if (palette.count() > shown) drawPaletteThumbnailCount(rgba, width, height, palette.count() - shown);
+    std::error_code ec;
+    fs::create_directories(thumbnailPath.parent_path(), ec);
+    return editor::writePng(thumbnailPath, width, height, 4, rgba.data(), width * 4, io::Durability::Cache);
+}
+
+// what Apply Palette reads and writes (S43 R23)
+static bool isPaletteApplicableTexture(const fs::path& path) {
+    std::string extension = path.extension().string();
+    for (char& c : extension) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return extension == ".png" || extension == ".bmp" || extension == ".tga" || extension == ".gif";
+}
+
 // The .vat icon: a crowd of three figures over a texture grid (the baked frames)
 static void makeVertexAnimationIcon(int size, std::vector<uint8_t>& rgba) {
     editor::PoseImage image(size, size);
@@ -408,6 +507,9 @@ editor::FileType editor::ProjectWindow::classifyThumbnailFileType(const fs::path
     }
     if (editor::Util::isPoseAnimationFile(extension)) {
         return editor::FileType::POSE_ANIMATION;
+    }
+    if (editor::PaletteWindow::isPaletteFile(filePath)) {
+        return editor::FileType::PALETTE;
     }
     if (editor::Util::isAudioFile(extension)) {
         return editor::FileType::AUDIO;
@@ -1122,6 +1224,8 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.82f, 0.48f, 0.15f, 1.0f));
         case FileType::PHYSICS_MATERIAL:
             return ImGui::GetColorU32(ImVec4(0.31f, 0.76f, 0.97f, 1.0f));
+        case FileType::PALETTE:
+            return ImGui::GetColorU32(ImVec4(0.94f, 0.49f, 0.34f, 1.0f));
         case FileType::NONE:
         default:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
@@ -1173,7 +1277,6 @@ void editor::ProjectWindow::renderCreateItems(const fs::path& directory) {
             ImGui::CloseCurrentPopup();
         }
     }
-
     ImGui::Separator();
 
     if (ImGui::MenuItem(ICON_FA_FILE_IMPORT " Import New Asset...")){
@@ -2288,6 +2391,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     ImGui::Separator();
                 }
 
+                drawPaletteMenuItems(file, currentPath / file.name);
+
                 // Vertex Animation: bake a model or a clip, import a Houdini / OpenVAT export, open a
                 // .vat's recipe (the baker window's hook; hidden until it is set)
                 if (!file.isDirectory && vatAppHooks().openBaker){
@@ -2957,6 +3062,9 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         }else if (PhysicsMaterialAssets::isPhysicsMaterialFile(fileEntry.extension)){
             fileEntry.type = FileType::PHYSICS_MATERIAL;
             fileEntry.icon = physicsMaterialIcon.getRender();
+        }else if (PaletteWindow::isPaletteFile(path)){
+            fileEntry.type = FileType::PALETTE;
+            fileEntry.icon = paletteIcon.getRender();
         }else if (Util::isLuaFile(fileEntry.extension)){
             fileEntry.type = FileType::LUA;
             fileEntry.icon = luaIcon.getRender();
@@ -2996,7 +3104,8 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         }
 
         if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL ||
-            fileEntry.type == FileType::PREFAB || fileEntry.type == FileType::POSE_ANIMATION || fileEntry.type == FileType::AUDIO) {
+            fileEntry.type == FileType::PREFAB || fileEntry.type == FileType::POSE_ANIMATION || fileEntry.type == FileType::AUDIO ||
+            fileEntry.type == FileType::PALETTE) {
             queueThumbnailGeneration(path, fileEntry.type);
         }
         // its asset labels (S25)
@@ -3659,6 +3768,16 @@ void editor::ProjectWindow::thumbnailStep() {
                 std::cerr << "Failed to generate image thumbnail: " << thumbFile.path.string() << std::endl;
             }
 
+            {
+                std::lock_guard<std::mutex> lock(thumbnailMutex);
+                pendingThumbnailRequests.erase(thumbnailRequestKey(thumbFile.path));
+            }
+        } else if (thumbFile.type == FileType::PALETTE) {
+            // the swatches, drawn on this worker as an image's thumbnail is
+            if (writePaletteSwatchThumbnail(thumbFile.path, project->getThumbnailPath(thumbFile.path))) {
+                std::lock_guard<std::mutex> lock(completedThumbnailMutex);
+                completedThumbnailQueue.push(thumbFile);
+            }
             {
                 std::lock_guard<std::mutex> lock(thumbnailMutex);
                 pendingThumbnailRequests.erase(thumbnailRequestKey(thumbFile.path));
@@ -4438,6 +4557,7 @@ void editor::ProjectWindow::show() {
             TextureData(clipIconSize, clipIconSize, static_cast<unsigned int>(physicsMaterialIconPixels.size()), ColorFormat::RGBA, 4,
                         physicsMaterialIconPixels.data()));
         physicsMaterialIcon.load();
+        proceduralIcon(paletteIcon, paletteIconPixels, "editor:resources:palette_icon", makePaletteFileIcon);
 
         scanDirectory(project->getProjectPath().string());
 
@@ -4857,6 +4977,71 @@ void editor::ProjectWindow::assetsCreatePhysicsMaterial(bool preset2D, const fs:
     selectCreated(directory, created.filename().string(), true);
 }
 
+void editor::ProjectWindow::assetsCreatePalette(const fs::path& directory) {
+    PaletteWindow* palettes = Backend::getApp().getPaletteWindow();
+    if (!palettes) return;
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
+        return;
+    }
+    focusProjectPanel(this);
+    const fs::path created = palettes->createNew(directory, false);
+    if (created.empty()) {
+        Backend::getApp().registerAlert("Create Palette", "The palette could not be written (see the Console).");
+        return;
+    }
+    selectCreated(directory, created.filename().string(), true);
+}
+
+void editor::ProjectWindow::drawPaletteMenuItems(const FileEntry& file, const fs::path& filePath) {
+    if (file.isDirectory) return;
+    PaletteWindow* palettes = Backend::getApp().getPaletteWindow();
+    ApplyPaletteDialog* apply = Backend::getApp().getApplyPaletteDialog();
+    if (!palettes) return;
+    bool shown = false;
+    if (file.type == FileType::PALETTE) {
+        const bool openIt = ImGui::MenuItem(ICON_FA_PALETTE " Open in Palette Window");
+        uiBuilding.contextMenu.push_back({"Open in Palette Window", lastItemRect()});
+        if (openIt) palettes->open(filePath);
+        const bool exportOpen = ImGui::BeginMenu(ICON_FA_FILE_EXPORT " Export");
+        uiBuilding.contextMenu.push_back({"Export", lastItemRect()});
+        if (exportOpen) {
+            for (editor::pixelart::PaletteFormat format : PaletteWindow::exportFormats()) {
+                const bool chosen = ImGui::MenuItem(PaletteWindow::exportLabel(format));
+                uiBuilding.contextMenu.push_back({PaletteWindow::exportLabel(format), lastItemRect()});
+                if (chosen) palettes->exportPalette(filePath, format);
+            }
+            ImGui::EndMenu();
+        }
+        shown = true;
+    }
+    if (isPaletteApplicableTexture(filePath) && project->isInsideAssetsPath(filePath)) {
+        if (apply) {
+            const bool applyIt = ImGui::MenuItem(ICON_FA_PALETTE " Apply Palette...");
+            uiBuilding.contextMenu.push_back({"Apply Palette...", lastItemRect()});
+            ImGui::SetItemTooltip("Map every pixel to its nearest palette colour: a preview first, then one undo step");
+            if (applyIt) apply->open(filePath, "", false);
+            const bool reduceIt = ImGui::MenuItem(ICON_FA_PALETTE " Reduce Colours...");
+            uiBuilding.contextMenu.push_back({"Reduce Colours...", lastItemRect()});
+            ImGui::SetItemTooltip("Find the best N colours for this texture and map it to them");
+            if (reduceIt) apply->open(filePath, "", true);
+        }
+        const bool extract = ImGui::MenuItem(ICON_FA_PALETTE " Extract Palette");
+        uiBuilding.contextMenu.push_back({"Extract Palette", lastItemRect()});
+        ImGui::SetItemTooltip("A new .palette beside it with the texture's colours (Reduce Colours when it has more than 256)");
+        if (extract) palettes->importFile(filePath);
+        shown = true;
+    }
+    if (PaletteWindow::isForeignPaletteFile(filePath) && project->isInsideAssetsPath(filePath)) {
+        const bool import = ImGui::MenuItem(ICON_FA_FILE_IMPORT " Import as Palette");
+        uiBuilding.contextMenu.push_back({"Import as Palette", lastItemRect()});
+        ImGui::SetItemTooltip("A new .palette beside it with its colours (the file itself stays as it is)");
+        if (import) palettes->importFile(filePath);
+        shown = true;
+    }
+    if (shown) ImGui::Separator();
+}
+
 void editor::ProjectWindow::assetsCreateAudioMixer(const fs::path& directory) {
     if (!fs::is_directory(directory)) {
         Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
@@ -5193,6 +5378,8 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         }
     } else if (filePath.extension() == AudioMixerIO::EXTENSION) {
         editor::getEditorHost().openAudioMixerWindow(filePath);
+    } else if (file.type == FileType::PALETTE) {
+        if (PaletteWindow* palettes = Backend::getApp().getPaletteWindow()) palettes->open(filePath);
     } else if (graphEditorHooks().openGraph && graphEditorHooks().openGraph(filePath.string())) {
         // a graph kind's file: the window of its kind (S90 R26)
     } else {
@@ -5318,6 +5505,7 @@ void editor::ProjectWindow::createAsset(AssetCreateKind kind, const fs::path& di
         case AssetCreateKind::ShakePreset: assetsCreateShakePreset(directory); break;
         case AssetCreateKind::ProceduralMaterial: assetsCreateProceduralMaterial(directory); break;
         case AssetCreateKind::SpriteAtlas: assetsCreateSpriteAtlas(directory); break;
+        case AssetCreateKind::Palette: assetsCreatePalette(directory); break;
         default: break;
     }
 }

@@ -188,3 +188,31 @@ TEST(PostProcessingPresets, CubeFilesAreColorLutAssets) {
     EXPECT_NE(text.find("Auto: ACEScct"), std::string::npos);
     EXPECT_NE(describeColorLut(nullptr, "line 3: bad").find("line 3: bad"), std::string::npos);
 }
+
+TEST(PostProcessingPresets, S43PalettePresetsAndRows) {
+    // R22: Palette Quantize with a built-in, named by its alias until applied in a project (R7)
+    const PostProcessingPreset* handheld = findPostProcessingPreset("handheld_4");
+    const PostProcessingPreset* pico = findPostProcessingPreset("pico_8");
+    ASSERT_NE(handheld, nullptr);
+    ASSERT_NE(pico, nullptr);
+    EXPECT_TRUE(handheld->settings.paletteEnabled);
+    EXPECT_EQ(handheld->settings.palette.path, "builtin:game-boy");
+    EXPECT_EQ(handheld->settings.paletteDither, PaletteDither::BAYER4);
+    EXPECT_TRUE(pico->settings.paletteEnabled);
+    EXPECT_EQ(pico->settings.palette.path, "builtin:pico-8");
+    EXPECT_EQ(pico->settings.paletteDither, PaletteDither::NONE);
+    EXPECT_EQ(getPostProcessingCostTier(handheld->settings), PostProcessingCostTier::UBER);
+
+    // the rows: Dither Strength only with a dither; the anti-banding Dither and an effect
+    // without a palette say why they do nothing
+    PostProcessingSettings settings;
+    settings.paletteEnabled = true;
+    EXPECT_NE(getPostProcessingRowState(settings, "palette_enabled", false).inactiveReason, "");
+    EXPECT_EQ(getPostProcessingRowState(settings, "dither_enabled", false).inactiveReason, "");
+    settings.palette = "Palettes/hero.palette";
+    EXPECT_EQ(getPostProcessingRowState(settings, "palette_enabled", false).inactiveReason, "");
+    EXPECT_NE(getPostProcessingRowState(settings, "dither_enabled", false).inactiveReason, "");
+    EXPECT_TRUE(getPostProcessingRowState(settings, "palette_dither_strength", false).shown);
+    settings.paletteDither = PaletteDither::NONE;
+    EXPECT_FALSE(getPostProcessingRowState(settings, "palette_dither_strength", false).shown);
+}
