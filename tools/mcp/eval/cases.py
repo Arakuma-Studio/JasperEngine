@@ -3032,6 +3032,25 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "terrain_large_edit_job",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "On a 4096 terrain an edit runs as a job and the call returns its job_id; agents read the job_id as a "
+                         "failure and edited again, or reported the edit as done without polling.",
+        "text_at_issue": "docs/mcp/guide/terrain.md edit_terrain: 'An edit over more than 4 M texels runs as a job'",
+        "source": "docs/specs/T1-terrain-authoring.md R69, AC74",
+        "prompt": "Raise the whole 4096 terrain by 5 m, without waiting on it, and tell me when it has landed.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok("Job 7 running: Edit Terrain (World).",
+                                                  {"job_id": "7", "status": "running", "message": "editing a copy of the maps"})},
+            {"tool": "get_job", "result": ok("Job 7 succeeded: Edited the terrain: 16785409 texel(s) changed in 1 map(s).",
+                                             {"id": "7", "status": "succeeded", "result": TERRAIN_EDIT_RESULT})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"wait": False}}, "get_job"], "max_calls": {"edit_terrain": 1},
+                   "order": [["edit_terrain", "get_job"]]},
+        "max_turns": 10,
+    },
+    {
         "id": "terrain_lua_crater",
         "kind": "guard",
         "what_happened": "Asked for a game that digs craters, agents wrote height loops over textures or called the editor's tools "

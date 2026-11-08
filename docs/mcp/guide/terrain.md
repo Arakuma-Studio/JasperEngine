@@ -162,13 +162,16 @@ Every op takes `shape` (default the whole terrain), `filter` and `strength` (0 t
 Shapes: `{type: "circle", center: [x, z], radius}`, `{type: "rect", min: [x, z], max: [x, z]}`,
 `{type: "polyline", points: [[x, z], ...], radius, closed}`, `{type: "stroke", points: [[x, z, pressure], ...], radius, spacing}`,
 `{type: "mask", path, center, size: [w, d], rotation}`, `{type: "all"}`; `falloff` `smooth` (default), `linear` or
-`constant`, `feather` 0 to 1. Filters: `{slope: [min, max] degrees, height: [min, max], layer: {index, min, max}, invert, softness}`.
+`constant`, `feather` 0 to 1. Filters: `{slope: [min, max] degrees, height: [min, max], layer: {index, min, max}, invert, softness}`;
+`invert_slope` or `invert_height` keeps what is outside that one range.
 
 The result: `changed` per map (`rect` in texels, `local` box in the call's space, `texels`), `ops` per
 op (`changed_texels`, `clipped_low`, `clipped_high`, `filtered_out`, `outside`, `seed`), `stats`
 (heights before and after), `warnings` and `next`. Warnings: `clipped_high` and `clipped_low` (heights hit
 0 or Max Height), `filter_excluded_all`, `outside_terrain`, `no_change`, `map_created`, `rotated_terrain`.
-Act on `next`.
+Act on `next`. An edit over more than 4 M texels runs as a job: `wait` (default true) waits up to
+`timeout_seconds`, else the result is a `job_id` to poll with `get_job`; the terrain takes no other
+edit until it ends.
 
 ## Foliage ops of edit_terrain
 

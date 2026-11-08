@@ -223,6 +223,8 @@ SokolTexture::SokolTexture(){
     view.id = SG_INVALID_ID;
     streamBytes = 0;
     aliasImage = false;
+    dynamicMap = false;
+    lastMapUpdateFrame = UINT64_MAX;
 }
 
 SokolTexture::SokolTexture(const SokolTexture& rhs) = default;
@@ -719,10 +721,80 @@ bool SokolTexture::createDynamicColorTexture(const std::string& label, int width
     return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
 }
 
+bool SokolTexture::createDynamicMapTexture(const std::string& label, int width, int height, ColorFormat colorFormat){
+    destroyTexture();
+    if (width <= 0 || height <= 0){
+        Log::error("Dynamic map '%s': invalid size %i x %i", label.c_str(), width, height);
+        return false;
+    }
+    sg_pixel_format pixelFormat;
+    size_t bytesPerTexel;
+    if (colorFormat == ColorFormat::RGBA){
+        pixelFormat = SG_PIXELFORMAT_RGBA8;
+        bytesPerTexel = 4;
+        uploadFormat = ColorFormat::RGBA;
+    }else if (colorFormat == ColorFormat::RED){
+        pixelFormat = SG_PIXELFORMAT_R8;
+        bytesPerTexel = 1;
+        uploadFormat = ColorFormat::RED;
+    }else if (colorFormat == ColorFormat::RED16){
+        // the rule of createTexture's unorm16ToFloat (GLES3, WebGL2: R16 does not filter)
+        if (sg_query_pixelformat(SG_PIXELFORMAT_R16).filter){
+            pixelFormat = SG_PIXELFORMAT_R16;
+            bytesPerTexel = 2;
+            uploadFormat = ColorFormat::RED16;
+        }else if (sg_query_pixelformat(SG_PIXELFORMAT_R32F).filter){
+            pixelFormat = SG_PIXELFORMAT_R32F;
+            bytesPerTexel = 4;
+            uploadFormat = ColorFormat::R32F;
+        }else{
+            pixelFormat = SG_PIXELFORMAT_R16F;
+            bytesPerTexel = 2;
+            uploadFormat = ColorFormat::R16F;
+        }
+    }else{
+        Log::error("Dynamic map '%s': colour format %s is not a terrain map's (RED16, RED, RGBA)", label.c_str(), TextureData::getColorFormatName(colorFormat));
+        return false;
+    }
+
+    sg_image_desc imageDesc = {};
+    imageDesc.usage.stream_update = true;
+    imageDesc.width = width;
+    imageDesc.height = height;
+    imageDesc.pixel_format = pixelFormat;
+    imageDesc.label = label.c_str();
+
+    sg_sampler_desc samplerDesc = {};
+    samplerDesc.min_filter = SG_FILTER_LINEAR;
+    samplerDesc.mag_filter = SG_FILTER_LINEAR;
+    samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+
+    if (Engine::isAsyncThread()){
+        image = SokolCmdQueue::add_command_make_image(imageDesc);
+        sampler = SokolCmdQueue::add_command_make_sampler(samplerDesc);
+    }else{
+        image = sg_make_image(imageDesc);
+        sampler = sg_make_sampler(samplerDesc);
+    }
+    trackImage(image, imageDesc, false, false);
+    createTextureView(label.c_str());
+    streamBytes = (size_t)width * (size_t)height * bytesPerTexel;
+    dynamicMap = true;
+    return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
+}
+
 bool SokolTexture::updateTexture(const void* data, size_t size){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     if (image.id == SG_INVALID_ID || !data || size == 0)
         return false;
+    if (dynamicMap){
+        // a terrain map already updated this frame: the caller tries again next frame
+        const uint64_t frame = SystemRender::getFrameCount();
+        if (frame == lastMapUpdateFrame)
+            return false;
+        lastMapUpdateFrame = frame;
+    }
     // sokol reads width * height * bpp bytes whatever the size says
     if (streamBytes != 0 && size != streamBytes){
         Log::error("Dynamic texture update of %zu bytes ignored: the texture takes %zu", size, streamBytes);
