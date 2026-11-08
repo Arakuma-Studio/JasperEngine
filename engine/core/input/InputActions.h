@@ -125,6 +125,9 @@ namespace jasperengine {
         FunctionSubscribe<void(InputActionEvent&)> onStarted;
         FunctionSubscribe<void(InputActionEvent&)> onPerformed;
         FunctionSubscribe<void(InputActionEvent&)> onCanceled;
+        // every event, for the clears at Stop (InputActions::unload) and of a new session
+        // (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) { f(onStarted); f(onPerformed); f(onCanceled); }
     };
 
     // A binding of the loaded asset by id (scripts: action:getBindings(), InputActions.getBinding)

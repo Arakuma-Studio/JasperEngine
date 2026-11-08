@@ -150,12 +150,14 @@ class Builds(unittest.TestCase):
         self.assertEqual(self.plan("tools/mcp/tests/test_new.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])
         self.assertEqual(self.plan("tools/mcp/run_tests.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])
         self.assertEqual(self.plan("tools/mcp/tests/helper.py").self_tests, [])
-        # an engine event's holder, or a clear walking them: the event clears lint
-        self.assertEqual(self.plan("engine/core/component/ButtonComponent.h").self_tests,
-                         ["tools/check_event_clears.py", "tools/check_apple_privacy.py"])
-        self.assertEqual(self.plan("engine/core/Engine.cpp").self_tests,
-                         ["tools/check_event_clears.py", "tools/check_apple_privacy.py"])
-        self.assertEqual(self.plan("engine/core/component/ButtonComponent.cpp").self_tests, ["tools/check_apple_privacy.py"])
+        # an engine source (any can hold an event or walk one): the event clears lint
+        for f in ("engine/core/component/ButtonComponent.h", "engine/core/Engine.cpp", "engine/core/input/InputActions.cpp",
+                  "engine/core/object/sound/Audio.h", "engine/platform/mac/WindowMac.mm"):
+            self.assertEqual(self.plan(f).self_tests, ["tools/check_event_clears.py", "tools/check_apple_privacy.py"], f)
+        self.assertEqual(self.plan("tools/check_event_clears.py").self_tests, ["tools/check_event_clears.py"])
+        for f in ("engine/libs/jolt/Jolt/Core/Core.h", "engine/tests/core/registry/ComponentEventsTest.cpp",
+                  "engine/shaderlib/includes/lights.glsl", "editor/App.cpp"):
+            self.assertNotIn("tools/check_event_clears.py", self.plan(f).self_tests, f)
         for trigger in ("CMakeLists.txt", "docker/linux.Dockerfile", "tools/build.sh", "engine/cmake/JasperPch.cmake",
                         "tools/mcp/requirements.txt"):
             p = self.plan(trigger)

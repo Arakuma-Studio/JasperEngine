@@ -64,7 +64,12 @@ namespace jasperengine {
         using EaseFunction::operator();
         using EaseFunction::remove;
         using EaseFunction::removeByTagSubstring;
-        using EaseFunction::clear;
+
+        // only the built-in curve of its type stays (a script's own function goes: linear again).
+        // The clears at Stop call it (TweenComponent::forEachEvent) while that code is still loaded
+        void clear(){
+            setType(functionType == EaseType::CUSTOM ? EaseType::LINEAR : functionType);
+        }
 
         Ease(): EaseFunction(std::function<float(float)>(Ease::linear)){
         }

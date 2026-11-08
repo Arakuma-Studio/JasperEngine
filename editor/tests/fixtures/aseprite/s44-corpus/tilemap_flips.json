@@ -1,0 +1,37 @@
+{ "frames": [
+   {
+    "filename": "tilemap_flips 0.aseprite",
+    "frame": { "x": 0, "y": 0, "w": 16, "h": 8 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 16, "h": 8 },
+    "sourceSize": { "w": 16, "h": 8 },
+    "duration": 100
+   },
+   {
+    "filename": "tilemap_flips 1.aseprite",
+    "frame": { "x": 16, "y": 0, "w": 16, "h": 8 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 16, "h": 8 },
+    "sourceSize": { "w": 16, "h": 8 },
+    "duration": 100
+   }
+ ],
+ "meta": {
+  "app": "http://www.aseprite.org/",
+  "version": "1.3.18.6-dev",
+  "image": "tilemap_flips.png",
+  "format": "RGBA8888",
+  "size": { "w": 32, "h": 8 },
+  "scale": "1",
+  "frameTags": [
+  ],
+  "layers": [
+   { "name": "base", "opacity": 255, "blendMode": "normal" },
+   { "name": "tiles", "opacity": 255, "blendMode": "normal" }
+  ],
+  "slices": [
+  ]
+ }
+}

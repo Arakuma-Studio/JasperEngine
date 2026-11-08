@@ -131,8 +131,13 @@ bool VcsChange::clean() const {
 }
 
 bool VcsChange::newFile() const {
+    // git stages an add (index), svn schedules one (worktree)
     return index == FileState::Untracked || worktree == FileState::Untracked ||
-           (index == FileState::Added && worktree != FileState::Deleted);
+           ((index == FileState::Added || worktree == FileState::Added) && worktree != FileState::Deleted);
+}
+
+bool VcsChange::renamed() const {
+    return index == FileState::Renamed || worktree == FileState::Renamed;
 }
 
 bool VcsChange::deleted() const {

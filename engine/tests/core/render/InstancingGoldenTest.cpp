@@ -255,11 +255,13 @@ TEST_F(InstancingGoldenGpu, BatchedFrameMatchesUnbatched){
 
 // A runtime clone of an instanced mesh holds none of the original's batch variants (their
 // pipelines and shaders, which the clone's load and destroy let go of): it loads its own, and
-// once it is destroyed the original still draws instanced
+// once it is destroyed the original still draws instanced, and the frame is the one before the
+// clone (an early version of this test saw 421 pixels differ; see the spec's Follow-ups)
 TEST_F(InstancingGoldenGpu, CloneOfAnInstancedMeshLeavesTheOriginalsBatches){
     JASPER_REQUIRE_GPU();
     buildScene();
     ASSERT_TRUE(render()) << "the scene never finished loading";
+    const std::vector<uint8_t> before = readTarget();
     const Entity original = models[0]->getEntity();
     ASSERT_TRUE(scene.getComponent<MeshComponent>(original).submeshes[0].batchRender.isBatchVariant());
 
@@ -280,6 +282,15 @@ TEST_F(InstancingGoldenGpu, CloneOfAnInstancedMeshLeavesTheOriginalsBatches){
 
     EXPECT_TRUE(scene.getComponent<MeshComponent>(original).submeshes[0].batchRender.isBatchVariant());
     EXPECT_GT(SystemRender::getDrawBatchStats().instancedDraws, 0u);
+    const std::vector<uint8_t> after = readTarget();
+    const size_t different = differentPixels(before, after);
+    if (different > 0){
+        const int width = (int)GpuEnvironment::target().getWidth();
+        const int height = (int)GpuEnvironment::target().getHeight();
+        writePng(getOutputDirectory() + "/instancing_before_clone.png", before, width, height);
+        writePng(getOutputDirectory() + "/instancing_after_clone.png", after, width, height);
+    }
+    EXPECT_EQ(different, 0u) << "pixels that differ once the clone is gone";
     EXPECT_NO_ENGINE_ERRORS();
 }
 

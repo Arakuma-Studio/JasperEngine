@@ -28,6 +28,9 @@
 #include "htmlui/VideoImporter.h"
 #include "lattice/LatticeEditorOps.h"
 #include "shortcuts/CommandCatalog.h"
+#include "pixelart/aseprite/AsepriteEditorHooks.h"
+#include "pixelart/aseprite/AsepriteLocator.h"
+#include "Backend.h"
 
 #include <algorithm>
 #include <cmath>
@@ -216,7 +219,7 @@ void EditorSettingsWindow::open(Project* project) {
     m_ffmpegOverride = AppSettings::getFfmpegPath();
     refreshFfmpegStatus();
     m_toolPaths.clear();
-    for (const char* tool : {"androidSdk", "jdk", "steamcmd", "rcodesign"}) m_toolPaths[tool] = AppSettings::getExternalToolPath(tool);
+    for (const char* tool : {"androidSdk", "jdk", "steamcmd", "rcodesign", pixelart::aseprite::kAsepriteToolKey}) m_toolPaths[tool] = AppSettings::getExternalToolPath(tool);
     refreshPlayerRuntimes();
     m_editorVSyncEnabled = AppSettings::getEditorVSyncEnabled();
     m_projectHubAlways = AppSettings::getProjectHubAlways();
@@ -814,7 +817,55 @@ void EditorSettingsWindow::drawExternalToolsSettings() {
         drawVideoImportSettings();
         sectionRow("Shipping");
         drawShippingSettings();
+        sectionRow("Aseprite");
+        drawAsepriteSettings();
     });
+}
+
+// S44 R32, §6.8: the Aseprite that Open in Aseprite starts. Detection runs on the locator's
+// thread, so the page shows its answer when it comes and never waits for --version
+void EditorSettingsWindow::drawAsepriteSettings() {
+    if (!settingsui::beginRow("preferences.aseprite_path")) return;
+    namespace ase = pixelart::aseprite;
+    std::string& value = m_toolPaths[ase::kAsepriteToolKey];
+    if (prefsBeginSettingsRow("Aseprite", "The Aseprite executable Open in Aseprite and double-click start. Empty: JASPER_ASEPRITE, "
+                              "then the usual install places (Program Files, Applications, Steam, /opt) and PATH.", !value.empty())) {
+        value.clear();
+    }
+    ase::AsepriteLocator& locator = ase::AsepriteLocator::instance();
+    // the same preference is detected once; an edited one again
+    locator.start(value);
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float buttons = ImGui::CalcTextSize("Browse...").x + ImGui::CalcTextSize("Detect").x + style.FramePadding.x * 4.0f + style.ItemSpacing.x * 2.0f;
+    ImGui::SetNextItemWidth(std::max(Theme::dpi(80.0f), ImGui::GetContentRegionAvail().x - buttons));
+    char buffer[1024];
+    std::snprintf(buffer, sizeof(buffer), "%s", value.c_str());
+    if (ImGui::InputTextWithHint("##AsepritePath", "<Auto-detect>", buffer, sizeof(buffer))) value = buffer;
+    ImGui::SameLine();
+    if (ImGui::Button("Browse...##aseprite")) {
+        const std::string start = value.empty() ? std::string() : fs::path(value).parent_path().string();
+        const std::string selected = FileDialogs::openFileDialog(start, FILE_DIALOG_ALL, false);
+        if (!selected.empty()) value = selected;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Detect##aseprite")) {
+        locator.invalidate();
+        locator.start(value);
+    }
+    ImGui::SetItemTooltip("Looks for Aseprite again (after installing it, or moving it)");
+    if (!locator.ready()) {
+        ImGui::TextDisabled("Detecting...");
+        Backend::getApp().requestRedraw();
+    } else if (const std::optional<ase::AsepriteInstall> install = locator.result()) {
+        ImGui::TextDisabled("Detected: %s (%s)", install->version.empty() ? "version unknown" : install->version.c_str(), install->source.c_str());
+        ImGui::SetItemTooltip("%s", FileUtils::pathToUtf8(install->executable).c_str());
+    } else {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextUnformatted(locator.problem().message.empty() ? "Aseprite was not found" : locator.problem().message.c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::PopStyleColor();
+    }
 }
 
 void EditorSettingsWindow::refreshPlayerRuntimes() {
