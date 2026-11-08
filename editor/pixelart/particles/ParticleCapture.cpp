@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <cstdio>
 
 using namespace jasperengine;
@@ -60,6 +61,18 @@ namespace {
 }
 
 namespace cio = jasperengine::editor::pixelart::captureio;
+
+namespace {
+
+    // an emitter and its sub-emitters, depth first
+    void forEachEmitter(const jasperengine::particles::EmitterRuntime& emitter,
+                        const std::function<void(const jasperengine::particles::EmitterRuntime&)>& visit){
+        visit(emitter);
+        for (size_t i = 0; const jasperengine::particles::EmitterRuntime* child = emitter.child(i); i++)
+            forEachEmitter(*child, visit);
+    }
+
+}
 
 ParticleCapture::ParticleCapture() = default;
 
@@ -128,14 +141,17 @@ bool ParticleCapture::begin(const ParticleCaptureSettings& settings, std::string
     float lo[2] = {0.0f, 0.0f}, hi[2] = {0.0f, 0.0f};
     for (double t : config.times){
         seekTo(t);
-        if (!state->runtime.hasBounds() || (!state->runtime.isAnalytic() && state->runtime.count() == 0))
-            continue;
-        float bmin[3], bmax[3];
-        state->runtime.bounds(bmin, bmax);
-        for (int k = 0; k < 2; k++){
-            lo[k] = std::min(lo[k], bmin[k]);
-            hi[k] = std::max(hi[k], bmax[k]);
-        }
+        // the sub-emitters' particles too (Debris draws only its children)
+        forEachEmitter(state->runtime, [&](const particles::EmitterRuntime& emitter){
+            if (!emitter.hasBounds() || (!emitter.isAnalytic() && emitter.count() == 0))
+                return;
+            float bmin[3], bmax[3];
+            emitter.bounds(bmin, bmax);
+            for (int k = 0; k < 2; k++){
+                lo[k] = std::min(lo[k], bmin[k]);
+                hi[k] = std::max(hi[k], bmax[k]);
+            }
+        });
     }
     // whole base pixels, an even count each way so the camera's centre is a pixel corner
     const float m = (float)config.margin;
@@ -182,34 +198,35 @@ void ParticleCapture::collectParticles(CapturedFrame& frame){
     if (!state)
         return;
     const float ppu = (float)std::max(config.pixelsPerUnit, 1);
-    const particles::EmitterRuntime& runtime = state->runtime;
-    const particles::ParticleProgram* program = runtime.program();
-    const bool pixelSizes = program && program->render.pixel.active && program->render.pixel.pixelSizes;
-    auto add = [&](float x, float y, float size){
-        CapturedParticle p;
-        p.x = (x - frameOrigin.x) * ppu;
-        p.y = (y - frameOrigin.y) * ppu;
-        p.size = pixelSizes ? size : size * ppu;
-        frame.particles.push_back(p);
-    };
-    if (runtime.isAnalytic()){
-        const particles::AnalyticProgram& analytic = *runtime.analytic();
-        for (uint32_t s = 0; s < analytic.slotCount; s++){
-            const particles::AnalyticParticle p = particles::AnalyticParticles::evaluate(analytic, s);
-            if (p.alive) add(p.position.x + p.wobble.x / ppu, p.position.y + p.wobble.y / ppu, p.size.x);
+    // every emitter of the effect: its sub-emitters draw too
+    forEachEmitter(state->runtime, [&](const particles::EmitterRuntime& runtime){
+        const particles::ParticleProgram* program = runtime.program();
+        const bool pixelSizes = program && program->render.pixel.active && program->render.pixel.pixelSizes;
+        auto add = [&](float x, float y, float size){
+            CapturedParticle p;
+            p.x = (x - frameOrigin.x) * ppu;
+            p.y = (y - frameOrigin.y) * ppu;
+            p.size = pixelSizes ? size : size * ppu;
+            frame.particles.push_back(p);
+        };
+        if (runtime.isAnalytic()){
+            const particles::AnalyticProgram& analytic = *runtime.analytic();
+            for (uint32_t s = 0; s < analytic.slotCount; s++){
+                const particles::AnalyticParticle p = particles::AnalyticParticles::evaluate(analytic, s);
+                if (p.alive) add(p.position.x + p.wobble.x / ppu, p.position.y + p.wobble.y / ppu, p.size.x);
+            }
+            return;
         }
-        frame.count = (uint32_t)frame.particles.size();
-        return;
-    }
-    const particles::ParticleChannels& ch = runtime.particleChannels();
-    const float* xs = ch.get(particles::ChPosX);
-    const float* ys = ch.get(particles::ChPosY);
-    for (uint32_t i = 0; i < runtime.count(); i++){
-        float color[4], size = 1.0f, rotation = 0.0f;
-        runtime.appearance(i, color, size, rotation);
-        add(xs[i], ys[i], size);
-    }
-    frame.count = runtime.count();
+        const particles::ParticleChannels& ch = runtime.particleChannels();
+        const float* xs = ch.get(particles::ChPosX);
+        const float* ys = ch.get(particles::ChPosY);
+        for (uint32_t i = 0; i < runtime.count(); i++){
+            float color[4], size = 1.0f, rotation = 0.0f;
+            runtime.appearance(i, color, size, rotation);
+            add(xs[i], ys[i], size);
+        }
+    });
+    frame.count = (uint32_t)frame.particles.size();
 }
 
 bool ParticleCapture::step(){

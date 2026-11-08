@@ -31,7 +31,10 @@ uint analyticHash(uint key, uint particle){
 
 // a random key of AnalyticBlock (analyticKey in AnalyticParticles.h)
 uint analyticKey(int group, int i){
-    return uint(particlesParams.analyticKeys[group * 2][i]) | (uint(particlesParams.analyticKeys[group * 2 + 1][i]) << 16u);
+    // (copied out first: a flattened block allows no dynamic component index)
+    vec4 lo = particlesParams.analyticKeys[group * 2];
+    vec4 hi = particlesParams.analyticKeys[group * 2 + 1];
+    return uint(lo[i]) | (uint(hi[i]) << 16u);
 }
 
 float analyticRandom(uint key, uint particle){

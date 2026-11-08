@@ -924,6 +924,16 @@ Recorded by the S49 implementation (`feature/s49-pixel-particles`).
   compiler clears the Simulated pack-hold for it.
 - **Hold Frames packing** keeps the last pack per (emitter, view) in `HeldPack` and repacks only
   when the step changes; AC4's "pack calls drop by >= 70 %" is measured with `packCount()`.
+- **AC10's spark path.** S20 moves a particle by the tick's mean velocity, pixelfx by its end
+  velocity, so the two paths differ by (v₀ − v)·dt/2 by construction (1.4 px at 0.5 s for a fast
+  spark); `PixelPresetsTest.SparkFliesAsPixelfx` takes that known offset out and holds the rest to
+  the 1 px budget (0.24 px measured by the same model). AC9's reference uses pixelfx's formula
+  where it is well conditioned and its exact series below k·t = 1e-3, where the formula cancels.
+- **The Analytic block's random keys** are 16-bit halves stored as floats (`AnalyticBlock::keys`,
+  `analyticKey`): the GL backends flatten a uniform block only when all its members are one type,
+  and an unflattened block is limited to sokol's 16 members.
+- **A sub-emitter spawner** (Render Mode None with sub-emitters, the Debris preset) no longer gets
+  S20's "None draws only trails" warning.
 - **Presets.** Sub-emitter children (`pixel_smoke` of `pixel_fire`; `pixel_debris_shard` and
   `pixel_debris_chunk` of `pixel_debris`) are written beside the created asset; `create_particle_effect`
   lists them in `children`. Rates the pixelfx demos do not state (smoke, fire, ember) are ours,

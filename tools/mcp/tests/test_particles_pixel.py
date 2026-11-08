@@ -142,7 +142,8 @@ async def test_patch_paths(ed: Editor):
         ({"modules": {"colorOverLifetime": {"color": {"mode": "ramp", "rampColors": ["#fff3a6", "#ffe26b", "#ff8a2a"], "rampBias": 0.62}}}},
          lambda e: e["modules"]["colorOverLifetime"]["color"]["mode"] == "ramp" and e["modules"]["colorOverLifetime"]["color"]["rampBias"] == 0.62),
         ({"modules": {"collision": {"settleSpeed": 70}}}, lambda e: e["modules"]["collision"]["settleSpeed"] == 70),
-        ({"simulationMode": "analytic", "modules": {"collision": None}}, lambda e: e["simulationMode"] == "analytic"),
+        # (the default effect's Start Velocity is not Analytic's: removed in the same patch)
+        ({"simulationMode": "analytic", "modules": {"collision": None, "startVelocity": None}}, lambda e: e["simulationMode"] == "analytic"),
     ]
     for patch, check in patches:
         edited = await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch=patch)
