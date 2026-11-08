@@ -221,6 +221,13 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-08: The disk filled to 0 bytes while S41's final gate was running. The landed S44
+  worktree and its 42 GB build were removed, leaving 64 GB free. Each worktree build takes
+  35–70 GB, so builds are deleted after a spec lands, one-off trees (smoke, players-build,
+  variants) are cleaned after use, and about four specs run at once.
+  - S41 at `aeaa6b666` with the latest `main`: `Pxs` = MESH 45, shader cache v54; `WERROR` build
+    clean; 152 MCP tests pass. The S44 importer now uses the project's Pixels Per Unit. Its unit
+    tests and web gate are being re-run now that there's disk space.
 - 2026-11-08: `main` is green again on the shared-data suites, after the Doriax lead's
   regeneration (`152131bed`).
   - Added to the shared-data list: `Stream.*`, `MeshMemory.*` (component size ceilings;
