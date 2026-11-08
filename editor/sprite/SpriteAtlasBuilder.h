@@ -6,7 +6,8 @@
 // lossless pages, the atlas's sheet and, for each member, its view into the pages (the remap the
 // pool draws a packed source from), on a Background job.
 //
-//   .jasperengine/cache/atlas/v1/<atlas guid>/<platform>/page<n>-<hash>.png   pages (named by their bytes)
+//   .jasperengine/cache/atlas/v1/<atlas guid>/desktop/page<n>-<hash>.png   the editor's pages (named by their bytes)
+//   .jasperengine/cache/atlas/v1/<atlas guid>/export-<family>/...   an export's own build of a family
 //   .../member-<hash of path>.json    a member's remapped jasperengine.spritesheet record
 //   .../sheet.json                    the atlas's own sheet
 //   .../build.json                    stats, frames, warnings and the input key (written last)
@@ -139,8 +140,10 @@ namespace jasperengine::editor::sprite {
         std::filesystem::path pageFile(size_t page) const { return dir / pages[page].file; }
         std::filesystem::path sheetFile() const { return dir / "sheet.json"; }
         std::filesystem::path memberFile(const std::string& member) const;
-        // VRAM bytes of the pages on a family (lossless: RGBA8; platform formats: 1 byte a pixel)
+        // VRAM bytes of the pages on a family (lossless: RGBA8; platform formats: 1 byte a pixel):
+        // "web" counts the web layout when its max size differs (webPages)
         size_t vramBytes(const std::string& platform) const;
+        std::vector<std::pair<int, int>> webPages;      // the web family's page sizes, when its layout differs
         // the inspector's stats line ("3 pages · 1,204 frames · 87 % used · ...")
         std::string statsLine() const;
         // what get_sprite_atlas returns (frames filtered by search: name substring, member:, page:)
@@ -175,13 +178,16 @@ namespace jasperengine::editor::sprite {
         void rebuild(const std::string& atlasPath);
         // a member's pixels or settings changed: the atlases that pack it build again
         void memberChanged(const std::string& memberPath);
-        // an atlas file went away: its build is dropped and its members draw their sources again
-        void forget(const std::string& atlasPath);
+        // an atlas file went away: its build is dropped and its members draw their sources again;
+        // its cache folder goes too unless it was renamed (removeCache false: the GUID's folder is reused)
+        void forget(const std::string& atlasPath, bool removeCache = true);
         // the project's Sprite Atlas mode changed
         void modeChanged();
         AtlasMode mode() const;
 
         bool isBuilding(const std::string& atlasPath) const;
+        // the pages written of its running build (false when none runs)
+        bool progressOf(const std::string& atlasPath, int& done, int& total) const;
         bool isBusy() const { return !running.empty(); }
         // the status bar's "Building sprite atlas ui (2/3 pages)"; "" when idle
         std::string statusText() const;
@@ -216,6 +222,12 @@ namespace jasperengine::editor::sprite {
         std::shared_ptr<const AtlasMemberFrames> memberFrames(const AtlasMemberInput& member);
         // the atlas document of a file; nullopt (with the problem) when it does not read
         static std::optional<SpriteAtlasDocument> readDocument(const std::filesystem::path& file, pixelart::PixelProblem* problem);
+        // where an export builds a family: its own folder beside the editor's (an export never
+        // writes or prunes the pages the editor draws)
+        static std::filesystem::path exportDir(const AtlasBuildInput& input);
+        // removes the page and remap files of the build's folder that neither this build nor the
+        // folder's build.json (the newest build written there) names
+        static void removeStaleFiles(const AtlasBuildResult& result);
         std::filesystem::path cacheRoot() const;
         static std::filesystem::path cacheRootOf(const Project& project);
 
@@ -252,6 +264,8 @@ namespace jasperengine::editor::sprite {
         void adopt(const std::shared_ptr<AtlasBuildResult>& result);
         void finishSwap(Swap& swap);
         void refreshRemaps();
+        // removes the cache folders of atlases that are gone, and the families nothing builds any more
+        void pruneCache();
         std::string assetPathOf(const std::string& path) const;
     };
 

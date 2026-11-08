@@ -99,20 +99,37 @@ TEST(SpriteFrameBench, ThousandSpritesSwitchFramesWithoutAllocating) {
 }
 
 // R25: the frames are the sheet's (shared), a sheet sprite holds none; a legacy sprite pays for
-// the frames it has only, and S45's own runtime fields stay within 64 bytes of the component
+// the frames it has only. AC14: a sheet sprite costs at most 64 bytes more than a frameless one
+// (its component and what it holds outside it: the shared sheet is not its own)
+namespace {
+
+    // a component's own bytes: itself, its arrays, its strings past the small-string buffer
+    size_t spriteBytes(const SpriteComponent& sprite) {
+        const std::string empty;
+        auto heap = [&](const std::string& text) { return text.capacity() > empty.capacity() ? text.capacity() + 1 : 0; };
+        return sizeof(SpriteComponent) + sprite.arrayHeapBytes() + heap(sprite.sheet.path) + heap(sprite.frameName) + heap(sprite.loadedSheet) +
+               heap(sprite.playingTag) + sprite.tagFrames.capacity() * sizeof(int) + (sprite.inlineAtlas ? sizeof(SpriteInlineAtlas) : 0);
+    }
+
+}
+
 TEST(SpriteFrameBench, SheetSpritesShareTheirFrames) {
     SpriteComponent frameless;
     EXPECT_EQ(frameless.arrayHeapBytes(), 0u);
     SpriteComponent sheetSprite;
     sheetSprite.sheet = AssetRef("sprites/hero.aseprite");
     sheetSprite.sheetData = trimmedSheet();
+    sheetSprite.loadedSheet = "sprites/hero.aseprite";
+    sheetSprite.frame = 3;
+    sheetSprite.frameName = "f3";
+    sheetSprite.drawMode = SpriteDrawMode::SLICED;
     EXPECT_EQ(sheetSprite.arrayHeapBytes(), 0u);
+    EXPECT_LE(spriteBytes(sheetSprite), spriteBytes(frameless) + 64u)
+        << "a sheet sprite: " << spriteBytes(sheetSprite) << " bytes, a frameless one: " << spriteBytes(frameless);
     SpriteComponent legacy;
     legacy.framesRect.resize(3);
     legacy.numFramesRect = 3;
     EXPECT_EQ(legacy.arrayHeapBytes(), 3 * sizeof(SpriteFrameData));
-    // drawMode, builtSliced, the inline atlas pointer and its checked revision
-    constexpr size_t s45Fields = sizeof(SpriteDrawMode) + sizeof(bool) + sizeof(std::shared_ptr<const SpriteInlineAtlas>) + sizeof(uint64_t);
-    static_assert(s45Fields <= 64, "S45's per-sprite fields stay within 64 bytes (R25)");
-    EXPECT_LE(s45Fields, 64u);
+    // the S45 runtime state of a legacy sprite is one pointer in the component, its mapping outside
+    static_assert(sizeof(SpriteInlineAtlasRef) == sizeof(void*), "the inline atlas handle is one pointer");
 }

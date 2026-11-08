@@ -175,6 +175,42 @@ async def test_typed_errors(ed: Editor):
     check(r.get("error", {}).get("kind") == "invalid_settings" and r["error"].get("field") == "padding", f"invalid_settings: {r}")
     r, _ = await atlas_call(ed, "edit_sprite_atlas", expect_error=True, path=ATLAS, add=ITEMS)
     check(r.get("error", {}).get("kind") == "missing_member" and "create" in r["error"].get("fix", ""), f"no atlas: {r}")
+    r, _ = await atlas_call(ed, "edit_sprite_atlas", expect_error=True, path=ATLAS, create=True, add=ITEMS, settings={"max_texture": 512})
+    check(r.get("error", {}).get("kind") == "invalid_settings" and r["error"].get("field") == "max_texture", f"an unknown settings key: {r}")
+
+
+async def test_empty_atlas(ed: Editor):
+    """An atlas without members writes and builds: no pages, no frames; a sprite cannot show a frame of it"""
+    path = "assets/ui/empty.spriteatlas"
+    r, _ = await atlas_call(ed, "edit_sprite_atlas", path=path, create=True, output=True)
+    check(r.get("written") is True and r.get("frame_count") == 0 and r.get("pages") == [], f"an empty atlas builds: {r}")
+    got = await built(ed, path)
+    check(got["build_state"] == "built" and got["frame_count"] == 0, f"get_sprite_atlas: {got}")
+    bad = await ed.call_raw("set_sprite_frames", {"scene": S["main"], "create": {"name": "Nothing"}, "sheet": path, "frame": 0})
+    check(bad.is_error and ("unknown_frame" in bad.text or "not_a_sheet" in bad.text), f"no frame to show: {bad.text}")
+    await ed.call("undo", scope="project")
+    check(not (ed.project / path).exists(), "one undo deletes it")
+
+
+async def test_disabled_mode_writes_without_building(ed: Editor):
+    """With the atlas mode Disabled, output: true writes the file and says at once that it is not built"""
+    await set_mode(ed, "disabled")
+    try:
+        path = "assets/ui/off.spriteatlas"
+        start = time.monotonic()
+        raw = await ed.call_raw("edit_sprite_atlas", {"path": path, "create": True, "add": ITEMS, "output": True})
+        took = time.monotonic() - start
+        value = raw.structured or {}
+        check(not raw.is_error and value.get("written") is True and value.get("built") is False, f"written, not built: {raw.text} {value}")
+        check(value.get("status") != "running" and took < 20, f"no build waited for ({took:.1f} s): {value}")
+        check("Disabled" in value.get("next", "") and "sprite_atlas.mode" in value.get("next", ""), f"next says why and how: {value}")
+        check((ed.project / path).is_file(), "the file is written")
+        got = await ed.call("get_sprite_atlas", path=path)
+        check(got["build_state"] == "disabled", f"not built: {got['build_state']}")
+        await ed.call("undo", scope="project")
+        check(not (ed.project / path).exists(), "one undo deletes it")
+    finally:
+        await set_mode(ed, "enabled")
 
 
 async def test_output_builds_and_undo(ed: Editor):
@@ -301,11 +337,22 @@ async def test_transparent_atlas(ed: Editor):
     check(da[:2] == ea[:2] and diff == 0, f"the same picture with the atlas Disabled and Enabled: {diff} pixels differ {da[:2]} {ea[:2]}; "
                                           f"textures {tex_disabled} / {tex_enabled}")
     pages = [p for p in atlas_cache(ed)]
-    check(any(p.name in tex_enabled[0] for p in pages) and any(p.name in tex_enabled[1] for p in pages),
-          f"Enabled: both draw from atlas pages: {tex_enabled}")
+    hero_pages = {p.name for p in pages if p.name in tex_enabled[0]}
+    sword_pages = {p.name for p in pages if p.name in tex_enabled[1]}
+    check(len(hero_pages) == 1 and hero_pages == sword_pages, f"Enabled: both draw from one and the same page: {hero_pages} {sword_pages} {tex_enabled}")
     check(tex_disabled[0] != tex_enabled[0] and tex_disabled[1] != tex_enabled[1], "Disabled: their own textures")
-    stats = await ed.call("get_render_stats", view="game")
-    S["enabled_draws"] = stats.get("draw_calls")
+    # one page bound for both: fewer image bindings than the two source textures need
+    enabled_stats = await ed.call("get_render_stats", view="game")
+    await set_mode(ed, "disabled")
+    await screenshot(ed, sid)
+    disabled_stats = await ed.call("get_render_stats", view="game")
+    await set_mode(ed, "enabled")
+    await built(ed)
+    await screenshot(ed, sid)
+    enabled_stats = await ed.call("get_render_stats", view="game")
+    check(enabled_stats["bindings_applied"] < disabled_stats["bindings_applied"] or enabled_stats["draw_calls"] < disabled_stats["draw_calls"],
+          f"one page: fewer bindings or draws: enabled {enabled_stats.get('bindings_applied')}/{enabled_stats.get('draw_calls')}, "
+          f"disabled {disabled_stats.get('bindings_applied')}/{disabled_stats.get('draw_calls')}")
     # Enabled for Builds: the editor draws the sources
     await set_mode(ed, "enabled_for_builds")
     check(await textures_of(ed, sid, ["Hero", "Sword"]) == tex_disabled, "Enabled for Builds: the editor draws the sources")
@@ -410,59 +457,163 @@ async def test_incremental(ed: Editor):
     check(after.get("relayout") is True, f"a member of a new size relayouts: {after.get('relayout')}")
     sizes = sorted(tuple(p["size"]) for p in after["pages"])
     check((40 + 3, 40 + 3) in sizes or any(s[0] < 60 for s in sizes), f"a smaller page for the new size: {sizes}")
-    # progress and cancel: a build cancelled through its job
-    raw = await ed.call_raw("edit_sprite_atlas", {"path": path, "settings": {"padding": 2}, "output": True})
-    value = raw.structured or {}
-    if value.get("status") == "running":
-        await ed.call("cancel_job", job_id=value["job_id"])
-        job = await wait_job(ed, value["job_id"])
-        check(job["status"] in ("cancelled", "failed", "succeeded"), f"the job ends: {job}")
     await built(ed, path)
+
+
+async def test_progress_and_cancel(ed: Editor):
+    """AC6: a build's job reports the pages written (get_job's progress) and cancel_job cancels a
+    running build (the editor keeps its last build)"""
+    grid = "assets/many/grid@8x8.png"
+    (ed.project / grid).parent.mkdir(parents=True, exist_ok=True)
+    # 16,384 cells, each its own (no duplicates to merge): long enough builds to cancel one
+    (ed.project / grid).write_bytes(png(1024, 1024, lambda x, y: ((x // 8) * 2, (y // 8) * 2, (x * 7 + y) & 255, 255)))
+    await ed.call("sync_files", paths=[grid])
+    path = "assets/ui/many.spriteatlas"
+    settings = {"max_size": 64, "compression": "lossless", "filter": "point", "extrude": 0, "padding": 0, "trim": False}
+    await atlas_call(ed, "edit_sprite_atlas", path=path, create=True, add=[grid], settings=settings, include_pages=False, output=True)
+    first = await built(ed, path, timeout=300)
+    check(first["build_state"] == "built" and len(first["pages"]) >= 200, f"16,384 frames on many pages: {len(first.get('pages', []))}")
+    # a build to its end: its job's progress is the pages written
+    raw = await ed.call_raw("edit_sprite_atlas", {"path": path, "settings": {"padding": 1}, "include_pages": False, "output": True})
+    value = raw.structured or {}
+    check(value.get("status") == "running" and value.get("job_id"), f"a build job: {raw.text} {value}")
+    job = await wait_job(ed, value["job_id"])
+    second = await built(ed, path)
+    pages = len(second["pages"])
+    check(job["status"] == "succeeded" and job.get("progress") == 1.0 and f"{pages}/{pages} pages" in job.get("message", ""),
+          f"the job's progress counts the pages: {job}")
+    # a build cancelled while it runs: the job says so and the last build stays
+    raw = await ed.call_raw("edit_sprite_atlas", {"path": path, "settings": {"padding": 2}, "include_pages": False, "output": True})
+    value = raw.structured or {}
+    check(value.get("status") == "running" and value.get("job_id"), f"a build job: {raw.text} {value}")
+    await ed.call("cancel_job", job_id=value["job_id"])
+    job = await wait_job(ed, value["job_id"])
+    check(job["status"] == "cancelled", f"cancelled: {job}")
+    got = await built(ed, path)
+    check(got["frame_count"] == second["frame_count"] and len(got["pages"]) == pages, f"the editor keeps its last build: {len(got['pages'])} pages")
+    await ed.call("undo", scope="project")   # padding 2
+    await ed.call("undo", scope="project")   # padding 1
+    await ed.call("undo", scope="project")   # the atlas
+    check(not (ed.project / path).exists(), "the atlas is gone")
 
 
 async def test_lua(ed: Editor):
     """AC17: an atlas is just a sheet in Lua"""
     sid = S["view"]
     await ed.call("select_scene", scene=sid)
+    cursor = (await ed.call("read_console", limit=1))["next_cursor"]
     await ed.call("play", action="start", fixed_fps=60, auto_pause=True)
     try:
         code = ("local atlas = SpriteSheet.load('" + ATLAS + "') "
                 "local sword = atlas:getFrame('sword') "
                 "local s = object('Sword', 'Sprite') s.sheet = '" + ATLAS + "' s.frameName = 'sword' "
-                "print('atlas frames', atlas.frameCount, 'sword', sword.rect.width, sword.rect.height, 'sprite', s.frameCount, s.frameName) "
-                "return atlas.frameCount, atlas:findFrame('sword') >= 0, s.frameName, s.frameCount, sword.rect.width")
+                "s.drawMode = SpriteDrawMode.SLICED "
+                "Log.print(string.format('atlas frames %d sword %dx%d sprite %d %s', atlas.frameCount, sword.rect.width, sword.rect.height, "
+                "s.frameCount, s.frameName)) "
+                "return atlas.frameCount, atlas:findFrame('sword') >= 0, s.frameName, s.frameCount, sword.rect.width, "
+                "s.drawMode == SpriteDrawMode.SLICED")
         values = (await ed.call("eval_lua", code=code))["values"]
+        sprite = (await ed.call("get_entity", scene=sid, entity="Sword", components=["sprite"]))["components"]["sprite"]
     finally:
         await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
     got = await ed.call("get_sprite_atlas", path=ATLAS, search="sword")
     check(values[0] == got["frame_count"] and values[1] is True and values[2] == "sword" and values[3] == got["frame_count"], f"Lua: {values}")
-    check(values[4] == got["frames"][0]["rect"][2], f"getFrame('sword').rect: {values} vs {got['frames'][0]}")
+    rect = got["frames"][0]["rect"]
+    check(values[4] == rect[2], f"getFrame('sword').rect: {values} vs {got['frames'][0]}")
+    check(values[5] is True and sprite.get("drawMode") == "sliced", f"Lua sets drawMode: {values} {sprite.get('drawMode')}")
+    console = await ed.call("read_console", since=cursor, contains="atlas frames")
+    lines = [e.get("message", "") for e in console.get("entries", [])]
+    want = f"atlas frames {got['frame_count']} sword {rect[2]}x{rect[3]} sprite {got['frame_count']} sword"
+    check(any(line.strip() == want for line in lines), f"the Console has {want!r}: {lines}")
+
+
+async def test_deleted_and_renamed_members(ed: Editor):
+    """A member deleted rebuilds its atlas without it (a missing_member warning); a member renamed is
+    followed by its GUID and packed under its new path"""
+    members = ["assets/gone/x.png", "assets/gone/y.png"]
+    for i, p in enumerate(members):
+        (ed.project / p).parent.mkdir(parents=True, exist_ok=True)
+        (ed.project / p).write_bytes(item_png(30 + i, size=20, inset=2))
+    await ed.call("sync_files", paths=members)
+    path = "assets/ui/gone.spriteatlas"
+    await atlas_call(ed, "edit_sprite_atlas", path=path, create=True, add=members, output=True)
+    first = await built(ed, path)
+    check(sorted(first["members"]) == sorted(members), f"both packed: {first['members']}")
+    builds = first.get("frame_count")
+    (ed.project / members[1]).unlink()
+    await ed.call("sync_files", paths=[members[1]])
+    deadline = time.monotonic() + 60
+    while True:
+        got = await ed.call("get_sprite_atlas", path=path)
+        if got.get("build_state") == "built" and members[1] not in got.get("members", []):
+            break
+        if time.monotonic() > deadline:
+            ed.fail(f"the atlas never dropped the deleted member: {got}")
+        await ed.call("wait", seconds=0.2)
+    check(got["frame_count"] == builds - 1, f"one frame fewer: {got['frame_count']} vs {builds}")
+    check(any(w["kind"] == "missing_member" and "y.png" in w["message"] for w in got["warnings"]), f"the missing member is warned about: {got['warnings']}")
+    renamed = "assets/gone/x_renamed.png"
+    (ed.project / members[0]).rename(ed.project / renamed)
+    meta = ed.project / (members[0] + ".meta")
+    if meta.exists():
+        meta.rename(ed.project / (renamed + ".meta"))
+    await ed.call("sync_files", paths=[members[0], renamed, members[0] + ".meta", renamed + ".meta"])
+    deadline = time.monotonic() + 60
+    while True:
+        got = await ed.call("get_sprite_atlas", path=path)
+        if got.get("build_state") == "built" and renamed in got.get("members", []):
+            break
+        if time.monotonic() > deadline:
+            ed.fail(f"the atlas never followed the rename: {got}")
+        await ed.call("wait", seconds=0.2)
+    check(members[0] not in got["members"], f"the old path is gone: {got['members']}")
+    # the atlas deleted: its cache folder goes with it
+    guid = json.loads((ed.project / path).read_text())["guid"]
+    folder = ed.project / ".jasperengine" / "cache" / "atlas" / "v1" / guid
+    check(folder.is_dir(), "its cache folder while it exists")
+    (ed.project / path).unlink()
+    await ed.call("sync_files", paths=[path])
+    await ed.call("wait", frames=5)
+    check(not folder.exists(), f"a deleted atlas leaves no cache: {list(folder.rglob('*')) if folder.exists() else []}")
 
 
 async def test_export(ed: Editor):
-    """AC13: the atlas ships per family (web override: 2 pages instead of 1), atlas-only textures stay out"""
+    """AC13: the atlas ships per family (web override: 2 pages instead of 1), its lossless pages cooked
+    as S14 RGBA8 (R16); atlas-only textures stay out, but not one a script names by path, nor a
+    member the build left out (no frames: no remap)"""
     ed.require_tools("build_project", "edit_build_scenes")
     path = "assets/ui/export.spriteatlas"
     only = ["assets/export/a.png", "assets/export/b.png"]
-    for i, p in enumerate(only):
+    scripted, frameless = "assets/export/c.png", "assets/export/d.png"
+    for i, p in enumerate(only + [scripted, frameless]):
         (ed.project / p).parent.mkdir(parents=True, exist_ok=True)
         (ed.project / p).write_bytes(item_png(60 + i, size=40, inset=0))
-    await ed.call("sync_files", paths=only)
-    await atlas_call(ed, "edit_sprite_atlas", path=path, create=True, add=only, output=True)
+    # d.png: a Sprite Mode without frames (the build leaves it out)
+    (ed.project / (frameless + ".meta")).write_text("import:\n  spriteSheet: {version: 1, mode: multiple, frames: [], pivot: center}\n")
+    (ed.project / "assets" / "scripts").mkdir(parents=True, exist_ok=True)
+    (ed.project / "assets" / "scripts" / "uses_c.lua").write_text(f"local t = Texture('{scripted}')\nreturn t\n")
+    await ed.call("sync_files", paths=only + [scripted, frameless, frameless + ".meta", "assets/scripts/uses_c.lua"])
+    await atlas_call(ed, "edit_sprite_atlas", path=path, create=True, add=only + [scripted, frameless], settings={"compression": "lossless"}, output=True)
     await atlas_call(ed, "edit_sprite_atlas", path=path, platform="web", settings={"max_size": 64}, output=True)
     desktop = await built(ed, path)
-    check(len(desktop["pages"]) == 1, f"desktop: one page: {desktop['pages']}")
+    check(frameless not in desktop["members"] and scripted in desktop["members"], f"d.png is left out, c.png packed: {desktop['members']}")
+    check(len(desktop["pages"]) == 2 or len(desktop["pages"]) == 1, f"desktop pages: {desktop['pages']}")
+    desktop_pages = len(desktop["pages"])
     web = await ed.call("get_sprite_atlas", path=path, platform="web")
     if web.get("status") == "running":
         web = (await wait_job(ed, web["job_id"]))["result"]
-    check(len(web["pages"]) == 2, f"web (max 64): two pages: {web['pages']}")
+    web_pages = len(web["pages"])
+    check(web_pages > desktop_pages, f"web (max 64): more pages than desktop: {web['pages']} vs {desktop['pages']}")
     sid = (await ed.call("create_scene", name="ExportAtlas", type="2d"))["scene"]["id"]
-    for i, p in enumerate(only):
+    for i, p in enumerate(only + [scripted]):
         await ed.call("set_sprite_frames", scene=sid, create={"name": f"S{i}", "position": [40 + 60 * i, 45, 0]}, sheet=p)
+    # a sprite naming d.png as its sheet (it has no frames to show)
+    await ed.call("create_entity", scene=sid, type="sprite", name="D")
+    await ed.call("set_properties", scene=sid, entity="D", values={"sprite": {"sheet": frameless}})
     scene_path = (await ed.call("save_scene", scene=sid, path="scenes/ExportAtlas"))["scene"]["path"]
     await ed.call("edit_build_scenes", action="add", scene=scene_path)
     await ed.call("edit_build_scenes", action="set_start", scene=scene_path)
-    for platform, pages in (("linux", 1), ("web", 2)):
+    for platform, pages in (("linux", desktop_pages), ("web", web_pages)):
         out = ed.scratch.root / f"export-atlas-{platform}"
         r = await ed.call("build_project", mode="source", output_dir=str(out), platform=platform, timeout_seconds=900)
         if r.get("status") == "running":
@@ -479,5 +630,17 @@ async def test_export(ed: Editor):
         for p in only:
             check(f"{p}#sheet" in index and f"{p}#atlas" in index, f"{platform}: {p}'s remap ships")
             check(not (assets / p).exists(), f"{platform}: {p}, read only by sprites, is left out")
+        check((assets / scripted).is_file(), f"{platform}: {scripted}, named by a script, ships")
+        check(f"{frameless}#atlas" not in index and (assets / frameless).is_file(), f"{platform}: {frameless}, not packed, ships as it is")
+        # R16: the lossless pages are cooked (S14 quality none: RGBA8), not shipped as PNG
+        cooked = {}
+        for family_index in (assets / "je-cooked").glob("*/index.json"):
+            cooked[family_index.parent.name] = json.loads(family_index.read_text()).get("textures", {})
+        check(cooked, f"{platform}: a je-cooked index")
         for k in atlas_pages:
-            check((assets / index[k]).is_file() or (assets / "je-cooked").is_dir(), f"{platform}: {k} ships")
+            entries = [(fam, table[index[k]]) for fam, table in cooked.items() if index[k] in table]
+            check(entries, f"{platform}: {k} ({index[k]}) is cooked: {list(cooked)}")
+            for fam, entry in entries:
+                check("RGBA8" in entry.get("format", "").upper(), f"{platform}: {k} cooks lossless (RGBA8) in {fam}: {entry}")
+                check((assets / "je-cooked" / fam / entry["file"]).is_file(), f"{platform}: {k}'s cooked file in {fam}")
+            check(not (assets / index[k]).is_file(), f"{platform}: {k} ships as its cook only")

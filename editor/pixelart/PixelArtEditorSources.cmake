@@ -32,6 +32,7 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/sprite/SpriteSheetBuilder.cpp
     ${EDITOR_DIR}/sprite/SpriteAtlasDocument.cpp
     ${EDITOR_DIR}/sprite/SpriteAtlasBuilder.cpp
+    ${EDITOR_DIR}/sprite/SpriteAtlasCook.cpp
     ${EDITOR_DIR}/sprite/SpriteMigration.cpp
     ${EDITOR_DIR}/mcp/tools/SpriteAtlasTools.cpp
     ${EDITOR_DIR}/window/SpriteAtlasInspector.cpp
@@ -45,6 +46,7 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/sprite/SpriteSheetBuilder.cpp
         ${EDITOR_DIR}/sprite/SpriteAtlasDocument.cpp
         ${EDITOR_DIR}/sprite/SpriteAtlasBuilder.cpp
+        ${EDITOR_DIR}/sprite/SpriteAtlasCook.cpp
         ${EDITOR_DIR}/sprite/SpriteMigration.cpp
         ${EDITOR_DIR}/mcp/tools/SpriteAtlasTools.cpp
         ${EDITOR_DIR}/window/SpriteAtlasInspector.cpp

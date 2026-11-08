@@ -4,6 +4,7 @@
 #include "HotReloadService.h"
 #include "sprite/SpriteAtlasBuilder.h"
 #include "sprite/SpriteSheetBuilder.h"
+#include "sprite/SpriteSheetPool.h"
 #include "sprite/SpriteSheetSources.h"
 
 #include "handlers/ReloadHandlers.h"
@@ -317,12 +318,29 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         if (change.kind == FileChangeKind::Moved) gone.push_back(change.oldPath);
         if (change.kind == FileChangeKind::Removed) {
             notify(change.path, reload::kindOf(change.path), Event::Dropped);
-            if (SpriteSheetSources::isAtlasPath(change.path.string()) && sprite::SpriteAtlasBuilder::get().getProject() == project) {
-                sprite::SpriteAtlasBuilder::get().forget(change.path.string());
+            if (sprite::SpriteAtlasBuilder::get().getProject() == project) {
+                // S45: an atlas gone takes its build along; a member gone rebuilds the atlases packing it
+                if (SpriteSheetSources::isAtlasPath(change.path.string())) sprite::SpriteAtlasBuilder::get().forget(change.path.string());
+                else if (SpriteSheetSources::isTexturePath(change.path.string()) || SpriteSheetPool::isAsepritePath(change.path.string())) {
+                    sprite::SpriteSheetBuilder::get().invalidate(project->normalizeToAssetsRelative(change.path).generic_string());
+                    sprite::SpriteAtlasBuilder::get().memberChanged(change.path.string());
+                }
             }
             // a removed HTML document is reported missing by its scene's documents
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) external["ui"].push_back(change.path);
             continue;
+        }
+        // S45: a renamed atlas is forgotten under its old name (built again under the new one
+        // below); a renamed member rebuilds the atlases that packed it and those it joins now
+        if (change.kind == FileChangeKind::Moved && sprite::SpriteAtlasBuilder::get().getProject() == project) {
+            const std::string oldPath = change.oldPath.string();
+            if (SpriteSheetSources::isAtlasPath(oldPath)) {
+                sprite::SpriteAtlasBuilder::get().forget(oldPath, false);
+            } else if (SpriteSheetSources::isTexturePath(oldPath) || SpriteSheetPool::isAsepritePath(oldPath)) {
+                sprite::SpriteSheetBuilder::get().invalidate(project->normalizeToAssetsRelative(change.oldPath).generic_string());
+                sprite::SpriteAtlasBuilder::get().memberChanged(oldPath);
+                sprite::SpriteAtlasBuilder::get().memberChanged(change.path.string());
+            }
         }
         // so is a renamed one under its old name (a document reading the old name reloads and
         // reports it missing; the new name is handled below like an added file)

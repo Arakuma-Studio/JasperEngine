@@ -59,6 +59,10 @@ namespace jasperengine::editor::sprite {
     // the frames' names and rects in order, the 9-patch slices' centres as borders and their pivots
     bool framesFromAsepriteJson(const std::string& text, std::vector<TextureSheetFrame>& out, pixelart::PixelProblem& problem);
 
+    // A texture's pixels as RGBA8: what stb decodes, and SVG rasterized as the engine does (every
+    // format the engine loads a texture from)
+    std::optional<pixelart::PixelImage> loadSpriteImage(const std::filesystem::path& file, std::string* error);
+
     struct TextureSheetInfo {
         enum class Source { Default, Meta, FileName };
         TextureSheetSettings settings;

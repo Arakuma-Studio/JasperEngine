@@ -135,7 +135,8 @@ bool TextureSheetSettings::operator==(const TextureSheetSettings& o) const{
         const TextureSheetFrame& a = frames[i];
         const TextureSheetFrame& b = o.frames[i];
         Rect ra = a.rect, rb = b.rect;
-        if (a.name != b.name || ra != rb || a.hasPivot != b.hasPivot || a.pivot != b.pivot || a.border != b.border) return false;
+        if (a.name != b.name || ra != rb || a.hasPivot != b.hasPivot || a.pivot != b.pivot || a.border != b.border ||
+            a.sourceSize != b.sourceSize || a.offset != b.offset) return false;
     }
     return true;
 }
@@ -145,7 +146,8 @@ bool SpriteSheetSources::isAtlasPath(const std::string& path){
 }
 
 bool SpriteSheetSources::isTexturePath(const std::string& path){
-    for (const char* ext : {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".psd", ".hdr", ".pic", ".pnm"}){
+    // (the Texture asset type's files: SVG too, which the engine rasterizes)
+    for (const char* ext : {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".psd", ".hdr", ".pic", ".pnm", ".svg"}){
         if (sourcesEndsWithNoCase(path, ext)) return true;
     }
     return false;
@@ -212,13 +214,17 @@ SpriteSheetData SpriteSheetSources::buildTextureSheet(const std::string& texture
     sheet.pages.push_back({texture, width, height});
     std::set<std::string> used;
     const std::string stem = std::filesystem::path(texture).stem().string();
-    auto addFrame = [&](const std::string& name, const Rect& rect, bool hasPivot, const Vector2& pivot, const Vector4& border){
+    auto addFrame = [&](const std::string& name, const Rect& rect, bool hasPivot, const Vector2& pivot, const Vector4& border,
+                        const Vector2& sourceSize = Vector2(), const Vector2& offset = Vector2()){
         SpriteFrame frame;
         frame.name = uniqueName(name, used, warnings);
         frame.key = frameTextureKey(rect);
         frame.rect = rect;
-        frame.sourceSize = Vector2(rect.getWidth(), rect.getHeight());
-        frame.pivot = hasPivot ? pivot : settingsPivot(settings, rect.getWidth(), rect.getHeight());
+        // a trimmed frame keeps its place in the untrimmed one (R10)
+        const bool trimmed = sourceSize.x >= rect.getWidth() && sourceSize.y >= rect.getHeight() && sourceSize.x > 0.0f && sourceSize.y > 0.0f;
+        frame.sourceSize = trimmed ? sourceSize : Vector2(rect.getWidth(), rect.getHeight());
+        frame.offset = trimmed ? offset : Vector2(0.0f, 0.0f);
+        frame.pivot = hasPivot ? pivot : settingsPivot(settings, frame.sourceSize.x, frame.sourceSize.y);
         frame.border = border;
         sheet.frames.push_back(frame);
     };
@@ -243,7 +249,8 @@ SpriteSheetData SpriteSheetSources::buildTextureSheet(const std::string& texture
                 }
                 continue;
             }
-            addFrame(name, Rect(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h)), f.hasPivot, f.pivot, f.border);
+            addFrame(name, Rect(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h)), f.hasPivot, f.pivot, f.border,
+                     f.sourceSize, f.offset);
         }
         return sheet;
     }

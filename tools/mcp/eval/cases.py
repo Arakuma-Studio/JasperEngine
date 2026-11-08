@@ -856,6 +856,36 @@ CASES = [
                    "must_not_call": [{"tool": "set_sprite_frames", "args": {"frames": "*"}}, {"tool": "write_file"}]},
         "max_turns": 10,
     },
+    {
+        "id": "bad_atlas_mode_disabled",
+        "kind": "bad",
+        "what_happened": "In a project whose Sprite Atlas mode is Disabled, agents wrote the atlas with output: true and then "
+                         "polled get_sprite_atlas for a build that never came, or switched the project-wide mode on without "
+                         "asking; the result says it is not built and why (S45 review).",
+        "text_at_issue": "edit_sprite_atlas result's next when the mode is Disabled (built: false)",
+        "source": "S45 review (paraphrased)",
+        "files": {"assets/items/sword.png": "binary placeholder", "assets/items/shield.png": "binary placeholder"},
+        "prompt": "Pack the item icons in assets/items into one sprite atlas.",
+        "mocks": [
+            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "edit_sprite_atlas", "args": {"output": True}, "result": ok(
+                "Created assets/items.spriteatlas; not built: the project's Sprite Atlas mode is Disabled.",
+                {"path": "assets/items.spriteatlas", "written": True, "built": False, "mode": "disabled",
+                 "next": "Not built: the project's Sprite Atlas mode is Disabled (Project Settings > 2D), so sprites draw their "
+                         "sources. Tell the user; with their go-ahead set_project_settings {\"sprite_atlas.mode\": \"enabled\"} builds it."})},
+            {"tool": "edit_sprite_atlas", "args": {}, "result": ok(
+                "Preview of assets/items.spriteatlas: 1 page \u00b7 2 frames \u00b7 80 % used. Nothing written.",
+                {"written": False, "frame_count": 2, "usage_percent": 80,
+                 "next": "Nothing written. The same arguments plus output: true write assets/items.spriteatlas and build it."})},
+            {"tool": "get_sprite_atlas", "args": {}, "result": ok(
+                "assets/items.spriteatlas: not built (disabled).", {"build_state": "disabled", "mode": "disabled"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sprite_atlas", "args": {"output": True}}],
+                   "must_not_call": [{"tool": "set_project_settings"}],
+                   "max_calls": {"get_sprite_atlas": 1},
+                   "reply_must": [r"(?i)disabled"]},
+        "max_turns": 8,
+    },
 
     # -- guards: good behaviour seen in the sessions ---------------------------------------------
     {

@@ -299,22 +299,40 @@ void editSpriteAtlasTool(const CallPtr& call) {
         std::string error;
         if (!ProjectFileWrites::writeUndoable(project, {{absolute, text}}, error, nullptr, nullptr, {}, false,
                                               (create ? "Create Sprite Atlas " : "Edit Sprite Atlas ") + absolute.filename().string())) {
-            atlasFail(call, {{"invalid_settings", "path", "couldn't write " + given + ": " + error, "check the folder is writable"}});
+            atlasFail(call, {{"write_failed", "path", "couldn't write " + given + ": " + error, "check the folder is writable"}});
             return;
         }
         SpriteAtlasBuilder::get().rebuild(atlasPath);
     }
+    if (SpriteAtlasBuilder::get().mode() == AtlasMode::Disabled) {
+        // nothing builds while the project's atlas mode is Disabled: the file is written, unbuilt
+        call->ok(std::string(create ? "Created " : "Wrote ") + given + "; not built: the project's Sprite Atlas mode is Disabled.",
+                 Json{{"path", given}, {"written", true}, {"built", false}, {"mode", "disabled"},
+                      {"next", "Not built: the project's Sprite Atlas mode is Disabled (Project Settings > 2D), so sprites draw their sources. "
+                               "Tell the user; with their go-ahead set_project_settings {\"sprite_atlas.mode\": \"enabled\"} builds it."}});
+        return;
+    }
     const uint64_t buildsBefore = SpriteAtlasBuilder::get().buildCount(atlasPath);
     JobPtr job = call->ctx().jobs().create("edit_sprite_atlas", "Build Sprite Atlas " + fs::path(atlasPath).stem().string());
     job->setCancelHandler([]() { SpriteAtlasBuilder::get().cancelAll(); });
-    atlasWhenMain([atlasPath, buildsBefore]() {
+    atlasWhenMain([job, atlasPath, buildsBefore]() {
         SpriteAtlasBuilder& b = SpriteAtlasBuilder::get();
+        // get_job's progress: the pages written of the build running now
+        int done = 0, total = 0;
+        if (b.progressOf(atlasPath, done, total) && total > 0) {
+            job->setProgress(static_cast<double>(done) / static_cast<double>(total),
+                             "Building " + fs::path(atlasPath).stem().string() + " (" + std::to_string(done) + "/" + std::to_string(total) + " pages)");
+        }
         return b.buildCount(atlasPath) > buildsBefore && !b.isBuilding(atlasPath);
     }, [job, atlasPath, project, includePages, given, create](bool timedOut) {
         std::shared_ptr<const AtlasBuildResult> r = SpriteAtlasBuilder::get().lastAttempt(atlasPath);
+        if (!timedOut && r && !r->ok && r->error.kind == "cancelled") {
+            job->markCancelled("Cancelled: " + given + " is written; the editor keeps drawing its last build until it builds again.");
+            return;
+        }
         if (timedOut || !r) {
-            job->fail("the build did not finish within 5 minutes", Json{{"error", {{"kind", "missing_member"}, {"message", "the build is still running"},
-                                                                                 {"fix", "read get_sprite_atlas's build_state later"}}}});
+            job->fail("build_timeout: the build did not finish within 5 minutes", Json{{"error", {{"kind", "build_timeout"}, {"message", "the build is still running"},
+                                                                                                {"fix", "read get_sprite_atlas's build_state later"}}}});
             return;
         }
         if (!r->ok) {
@@ -322,9 +340,11 @@ void editSpriteAtlasTool(const CallPtr& call) {
                       Json{{"error", atlasProblemJson(r->error)}, {"errors", Json::array({atlasProblemJson(r->error)})}, {"written", true}});
             return;
         }
+        job->setProgress(1.0, "Built " + fs::path(atlasPath).stem().string() + " (" + std::to_string(r->pages.size()) + "/" + std::to_string(r->pages.size()) + " pages)");
         Json pngs = Json::array();
         Json data = buildSummary(project, *r, includePages, pngs);
         data["written"] = true;
+        data["built"] = true;
         data["next"] = std::string(create ? "Created" : "Wrote") + " and built " + given +
                        " (undo with scope project). Sprites keep referencing their sources; they now draw from its pages.";
         if (!pngs.empty()) data["images"] = pngs;

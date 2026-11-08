@@ -7611,7 +7611,7 @@ bool MeshSystem::updateInlineAtlas(SpriteComponent& sprite, MeshComponent& mesh)
     Submesh& submesh = mesh.submeshes[0];
     Texture& texture = submesh.material.baseColorTexture;
     const uint64_t revision = SpriteSheetPool::revision();
-    std::shared_ptr<const SpriteInlineAtlas> state = sprite.inlineAtlas;
+    SpriteInlineAtlasRef state = sprite.inlineAtlas;
     const bool onPage = state && !state->page.empty() && texture.getPath() == state->page;
     const bool onSource = state && state->page.empty() && texture.getPath() == state->source;
 
@@ -7641,12 +7641,12 @@ bool MeshSystem::updateInlineAtlas(SpriteComponent& sprite, MeshComponent& mesh)
             if (!state->page.empty() && !(current != state->pageRect)) sourceRect = state->sourceRect;
             sprite.inlineAtlas.reset();
             state.reset();
-        }else if (revision == sprite.inlineAtlasChecked && !sprite.needUpdateSprite && !submesh.needUpdateTexture && !hasPending){
+        }else if (static_cast<uint32_t>(revision) == sprite.inlineAtlasChecked && !sprite.needUpdateSprite && !submesh.needUpdateTexture && !hasPending){
             return false;
         }
         source = texture.getPath();
     }
-    sprite.inlineAtlasChecked = revision;
+    sprite.inlineAtlasChecked = static_cast<uint32_t>(revision);
 
     // back to the source texture, as it saves
     auto restore = [&](){
@@ -7684,13 +7684,31 @@ bool MeshSystem::updateInlineAtlas(SpriteComponent& sprite, MeshComponent& mesh)
     // mirrored frames (a negative size) and rects across packed frames draw from the source
     const bool mirrored = sourceRect.getWidth() < 0.0f || sourceRect.getHeight() < 0.0f;
     CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
-    if (mirrored || !camera || !sheet || !SpriteSheetSources::mapInlineRect(source, pixels, frame) || frame.page >= sheet->pages.size()){
+    bool mapped = !mirrored && camera && sheet && SpriteSheetSources::mapInlineRect(source, pixels, frame) && frame.page < sheet->pages.size();
+    // textureScaleFactor: createSprite samples the frame `cut` texels in from each edge; drawn from
+    // the page, the frame is that inner part (clipped to the packed rect), with no UV cut of its own
+    const float cut = sprite.textureScaleFactor;
+    if (mapped && cut > 0.0f){
+        Rect packed = frame.rect;
+        const float innerW = frame.sourceSize.x - 2.0f * cut, innerH = frame.sourceSize.y - 2.0f * cut;
+        const float x0 = std::max(frame.offset.x, cut), y0 = std::max(frame.offset.y, cut);
+        const float x1 = std::min(frame.offset.x + packed.getWidth(), frame.sourceSize.x - cut);
+        const float y1 = std::min(frame.offset.y + packed.getHeight(), frame.sourceSize.y - cut);
+        if (innerW <= 0.0f || innerH <= 0.0f || x1 <= x0 || y1 <= y0){
+            mapped = false;
+        }else{
+            frame.rect = Rect(packed.getX() + (x0 - frame.offset.x), packed.getY() + (y0 - frame.offset.y), x1 - x0, y1 - y0);
+            frame.offset = Vector2(x0 - cut, y0 - cut);
+            frame.sourceSize = Vector2(innerW, innerH);
+        }
+    }
+    if (!mapped){
         restore();
-        auto unmapped = std::make_shared<SpriteInlineAtlas>();
+        auto* unmapped = new SpriteInlineAtlas();
         unmapped->source = source;
         unmapped->sourceRect = sourceRect;
         unmapped->revision = revision;
-        sprite.inlineAtlas = unmapped;
+        sprite.inlineAtlas = SpriteInlineAtlasRef(unmapped);
         if (onPage) return false;
         submesh.textureRect = sourceRect;
         return false;
@@ -7723,7 +7741,9 @@ bool MeshSystem::updateInlineAtlas(SpriteComponent& sprite, MeshComponent& mesh)
     submesh.textureRect = quad.textureRect;
     submesh.hasTextureRect = true;
     prepareSpriteMesh(mesh);
-    buildSpriteGrid(sprite, mesh, (unsigned int)page.width, (unsigned int)page.height, quad.x0, quad.y0, quad.x1, quad.y1, grid);
+    // (a page size of 0: no UV cut, the frame above is already the cut one)
+    buildSpriteGrid(sprite, mesh, cut > 0.0f ? 0u : (unsigned int)page.width, cut > 0.0f ? 0u : (unsigned int)page.height,
+                    quad.x0, quad.y0, quad.x1, quad.y1, grid);
     if (mesh.loaded){
         if (sprite.builtSliced || (previousGrid != 0 && previousGrid != grid)){
             mesh.needReload = true;
@@ -7732,15 +7752,15 @@ bool MeshSystem::updateInlineAtlas(SpriteComponent& sprite, MeshComponent& mesh)
         }
     }
     sprite.builtSliced = false;
-    auto mapped = std::make_shared<SpriteInlineAtlas>();
-    mapped->source = source;
-    mapped->sourceRect = sourceRect;
-    mapped->page = page.texture;
-    mapped->pageRect = quad.textureRect;
-    mapped->sourceWidth = sourceW;
-    mapped->sourceHeight = sourceH;
-    mapped->revision = revision;
-    sprite.inlineAtlas = mapped;
+    auto* atlasState = new SpriteInlineAtlas();
+    atlasState->source = source;
+    atlasState->sourceRect = sourceRect;
+    atlasState->page = page.texture;
+    atlasState->pageRect = quad.textureRect;
+    atlasState->sourceWidth = sourceW;
+    atlasState->sourceHeight = sourceH;
+    atlasState->revision = revision;
+    sprite.inlineAtlas = SpriteInlineAtlasRef(atlasState);
     sprite.needUpdateSprite = false;
     return true;
 }

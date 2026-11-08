@@ -9,6 +9,7 @@
 #include "Project.h"
 #include "command/type/SetAssetMetaCmd.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
+#include "texture/TextureCookQueue.h"
 #include "texture/TextureImportSettings.h"
 
 #include "asset/ImportedAssets.h"
@@ -22,6 +23,7 @@
 #include "util/Sha256.h"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <chrono>
 #include <cmath>
@@ -121,7 +123,7 @@ namespace jasperengine::editor::sprite {
             return {{"format", kBuildFormat}, {"version", 1}, {"key", r.key}, {"atlas", r.atlasPath}, {"guid", r.guid.str()}, {"platform", r.platform},
                     {"compression", r.compression}, {"filter", r.filter}, {"members", r.members}, {"member_files", r.memberFiles},
                     {"member_pages", r.memberPages}, {"pages", pages}, {"frames", frames}, {"duplicates", r.duplicates}, {"usage", r.usage},
-                    {"warnings", warnings}, {"worst_members", worst}, {"ms", r.ms}};
+                    {"warnings", warnings}, {"worst_members", worst}, {"ms", r.ms}, {"web_pages", r.webPages}};
         }
 
         bool fromBuildJson(const nlohmann::json& j, AtlasBuildResult& r) {
@@ -164,6 +166,7 @@ namespace jasperengine::editor::sprite {
             }
             r.duplicates = j.value("duplicates", 0);
             r.usage = j.value("usage", 0.0);
+            r.webPages = j.value("web_pages", std::vector<std::pair<int, int>>());
             return true;
         }
 
@@ -203,15 +206,16 @@ namespace jasperengine::editor::sprite {
         return it == memberFiles.end() ? fs::path() : dir / it->second;
     }
 
-    size_t AtlasBuildResult::vramBytes(const std::string&) const {
+    size_t AtlasBuildResult::vramBytes(const std::string& family) const {
         // lossless pages are RGBA8 everywhere; the platforms' sprite formats (BC7, ASTC 4x4, ETC2
         // RGBA, UASTC) are 8 bits a pixel
-        size_t bytes = 0;
-        for (const AtlasPageRow& p : pages) {
-            const size_t pixels = static_cast<size_t>(p.width) * static_cast<size_t>(p.height);
-            bytes += compression == "lossless" ? pixels * 4 : pixels;
+        size_t pixels = 0;
+        if (family == "web" && !webPages.empty()) {
+            for (const auto& [w, h] : webPages) pixels += static_cast<size_t>(w) * static_cast<size_t>(h);
+        } else {
+            for (const AtlasPageRow& p : pages) pixels += static_cast<size_t>(p.width) * static_cast<size_t>(p.height);
         }
-        return bytes;
+        return compression == "lossless" ? pixels * 4 : pixels;
     }
 
     std::string AtlasBuildResult::statsLine() const {
@@ -219,7 +223,14 @@ namespace jasperengine::editor::sprite {
         std::string line = std::to_string(pages.size()) + (pages.size() == 1 ? " page" : " pages") + " \xC2\xB7 " + thousands(static_cast<long long>(frames.size())) +
                            " frames \xC2\xB7 " + std::to_string(percent) + " % used";
         if (duplicates > 0) line += " \xC2\xB7 " + thousands(duplicates) + " duplicate frames merged";
-        line += " \xC2\xB7 " + megabytes(vramBytes("desktop")) + " VRAM (" + (platform.empty() ? std::string("desktop") : platform) + ")";
+        if (platform.empty() || platform == "desktop") {
+            // R29: the Desktop and Web families (the web layout when its max size differs)
+            line += " \xC2\xB7 " + megabytes(vramBytes("desktop")) + " VRAM (Desktop) \xC2\xB7 " + megabytes(vramBytes("web")) + " (Web)";
+        } else {
+            std::string family = platform;
+            family[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(family[0])));
+            line += " \xC2\xB7 " + megabytes(vramBytes(platform)) + " VRAM (" + family + ")";
+        }
         return line;
     }
 
@@ -234,7 +245,8 @@ namespace jasperengine::editor::sprite {
         }
         nlohmann::json j = {{"platform", platform}, {"compression", compression}, {"filter", filter}, {"pages", pagesJson},
                             {"frame_count", frames.size()}, {"duplicates", duplicates}, {"usage_percent", std::lround(usage * 100.0)},
-                            {"members", members}, {"stats", statsLine()}, {"relayout", relayout}, {"cache_hit", cacheHit}};
+                            {"members", members}, {"stats", statsLine()}, {"relayout", relayout}, {"cache_hit", cacheHit},
+                            {"vram_bytes", {{"desktop", vramBytes("desktop")}, {"web", vramBytes("web")}}}};
         nlohmann::json worst = nlohmann::json::array();
         for (size_t i = 0; i < worstMembers.size() && i < 5; i++) worst.push_back({{"member", worstMembers[i].first}, {"transparent_pixels", worstMembers[i].second}});
         j["worst_members"] = worst;
@@ -363,19 +375,50 @@ namespace jasperengine::editor::sprite {
         requestAll();
     }
 
-    void SpriteAtlasBuilder::forget(const std::string& path) {
+    void SpriteAtlasBuilder::forget(const std::string& path, bool removeCache) {
         const std::string atlasPath = assetPathOf(path);
         auto it = running.find(atlasPath);
         if (it != running.end()) it->second.cancel->cancel();
         again.erase(atlasPath);
         waitingImports.erase(atlasPath);
+        fs::path folder;
         {
             std::lock_guard<std::mutex> lock(mutex);
+            auto r = results.find(atlasPath);
+            if (r != results.end() && !r->second->dir.empty()) folder = r->second->dir.parent_path();
             results.erase(atlasPath);
             attempts.erase(atlasPath);
         }
         refreshRemaps();
         SpriteSheetPool::invalidate(atlasPath);
+        // a deleted atlas leaves no cache behind (a renamed one keeps its GUID: the next build
+        // writes the folder again)
+        if (removeCache && !folder.empty() && it == running.end()) {
+            std::error_code ec;
+            fs::remove_all(folder, ec);
+        }
+    }
+
+    void SpriteAtlasBuilder::pruneCache() {
+        if (!project) return;
+        // the folders of the project's atlases; in each, the editor's desktop build and the exports'
+        std::set<std::string> folders;
+        for (const std::string& atlas : atlasPaths()) {
+            std::optional<SpriteAtlasDocument> doc = readDocument(project->getAssetsPath() / atlas, nullptr);
+            if (doc) folders.insert(doc->guid.isNull() ? sha256Hex(atlas).substr(0, 32) : doc->guid.str());
+        }
+        std::error_code ec;
+        for (const fs::directory_entry& entry : fs::directory_iterator(cacheRoot(), ec)) {
+            if (!entry.is_directory(ec)) continue;
+            if (!folders.count(entry.path().filename().string())) {
+                fs::remove_all(entry.path(), ec);
+                continue;
+            }
+            for (const fs::directory_entry& family : fs::directory_iterator(entry.path(), ec)) {
+                const std::string name = family.path().filename().string();
+                if (family.is_directory(ec) && name != "desktop" && name.rfind("export-", 0) != 0) fs::remove_all(family.path(), ec);
+            }
+        }
     }
 
     AtlasMode SpriteAtlasBuilder::mode() const {
@@ -407,7 +450,9 @@ namespace jasperengine::editor::sprite {
     }
 
     void SpriteAtlasBuilder::requestAll() {
-        if (!project || currentMode == AtlasMode::Disabled) return;
+        if (!project) return;
+        if (running.empty()) pruneCache();
+        if (currentMode == AtlasMode::Disabled) return;
         for (const std::string& path : atlasPaths()) rebuild(path);
     }
 
@@ -533,6 +578,9 @@ namespace jasperengine::editor::sprite {
         out.compression = compression == "lossless" || (compression == "auto" && pixelArt) ? "lossless" : "platform_default";
         const std::string& filter = doc.settings.filter;
         out.filter = filter == "point" || (filter == "auto" && pixelArt) ? "point" : "bilinear";
+        // a power-of-two texture strategy resizes what is not one: the pages are made power-of-two
+        // instead, so nothing resamples them
+        if (textureProjectSettingsOf(project).strategy != TextureSizeStrategy::None) out.doc.settings.powerOfTwo = true;
         const std::string folder = doc.guid.isNull() ? sha256Hex(atlasPath).substr(0, 32) : doc.guid.str();
         out.outDir = cacheRootOf(project) / folder / out.platform;
         return true;
@@ -555,7 +603,7 @@ namespace jasperengine::editor::sprite {
             } else {
                 frames->sheet = std::move(*parsed.sheet);
                 std::vector<std::optional<PixelImage>> pages;
-                for (const fs::path& file : member.pageFiles) pages.push_back(PixelImage::loadPng(file, nullptr));
+                for (const fs::path& file : member.pageFiles) pages.push_back(loadSpriteImage(file, nullptr));
                 for (const SpriteFrame& f : frames->sheet.frames) {
                     auto image = std::make_shared<PixelImage>(static_cast<int>(f.sourceSize.x), static_cast<int>(f.sourceSize.y));
                     if (f.page < pages.size() && pages[f.page] && f.rect.getWidth() > 0 && f.rect.getHeight() > 0) {
@@ -573,7 +621,7 @@ namespace jasperengine::editor::sprite {
             }
         } else {
             std::string error;
-            std::optional<PixelImage> image = PixelImage::loadPng(member.absolute, &error);
+            std::optional<PixelImage> image = loadSpriteImage(member.absolute, &error);
             if (!image) {
                 frames->error = {"missing_member", member.path, member.path + ": " + error, "save it as an image this editor reads"};
             } else {
@@ -581,9 +629,23 @@ namespace jasperengine::editor::sprite {
                 TextureSheetBuild built = buildTextureSheet(member.absolute, member.path, info.settings, &*image);
                 frames->sheet = std::move(built.sheet);
                 for (const SpriteFrame& f : frames->sheet.frames) {
+                    // a trimmed frame (an Aseprite --trim export) goes back into its source frame
                     Rect r = f.rect;
-                    frames->images.push_back(std::make_shared<PixelImage>(
-                        image->crop({static_cast<int>(r.getX()), static_cast<int>(r.getY()), static_cast<int>(r.getWidth()), static_cast<int>(r.getHeight())})));
+                    const PixelImage cut = image->crop({static_cast<int>(r.getX()), static_cast<int>(r.getY()), static_cast<int>(r.getWidth()), static_cast<int>(r.getHeight())});
+                    const int sw = std::max(static_cast<int>(f.sourceSize.x), cut.width()), sh = std::max(static_cast<int>(f.sourceSize.y), cut.height());
+                    if (sw == cut.width() && sh == cut.height()) {
+                        frames->images.push_back(std::make_shared<PixelImage>(cut));
+                        continue;
+                    }
+                    auto source = std::make_shared<PixelImage>(sw, sh);
+                    source->blit(cut, static_cast<int>(f.offset.x), static_cast<int>(f.offset.y));
+                    frames->images.push_back(std::move(source));
+                }
+                for (SpriteFrame& f : frames->sheet.frames) {
+                    f.sourceSize = Vector2(static_cast<float>(std::max(static_cast<int>(f.sourceSize.x), static_cast<int>(f.rect.getWidth()))),
+                                           static_cast<float>(std::max(static_cast<int>(f.sourceSize.y), static_cast<int>(f.rect.getHeight()))));
+                    f.offset = Vector2(0.0f, 0.0f);
+                    f.rect = Rect(0.0f, 0.0f, f.sourceSize.x, f.sourceSize.y);
                 }
             }
         }
@@ -688,10 +750,14 @@ namespace jasperengine::editor::sprite {
         }
 
         // frame names: the member's when unique in the atlas, else "<member path without extension>/<name>"
+        // ("<member path>/<name>" when two members differ only in their extension: hero.png, hero.aseprite)
         std::map<std::string, int> nameCount;
+        std::map<std::string, int> prefixCount;
         for (const auto& m : members) {
             for (const SpriteFrame& f : m->sheet.frames) nameCount[f.name]++;
+            prefixCount[withoutExtension(m->path)]++;
         }
+        auto memberPrefix = [&](const std::string& path) { return prefixCount[withoutExtension(path)] > 1 ? path : withoutExtension(path); };
         SpriteSheetData& sheet = result->sheet;
         sheet.source = input.atlasPath;
         sheet.sourceGuid = input.doc.guid;
@@ -734,7 +800,7 @@ namespace jasperengine::editor::sprite {
                 frame.sourceSize = Vector2(static_cast<float>(pf.sourceSize.w), static_cast<float>(pf.sourceSize.h));
                 remap.frames[fi] = frame;
                 SpriteFrame atlasFrame = frame;
-                atlasFrame.name = nameCount[source.name] > 1 ? withoutExtension(m.path) + "/" + source.name : source.name;
+                atlasFrame.name = nameCount[source.name] > 1 ? memberPrefix(m.path) + "/" + source.name : source.name;
                 atlasFrame.key.clear();
                 sheet.frames.push_back(atlasFrame);
                 AtlasFrameRow row;
@@ -793,7 +859,7 @@ namespace jasperengine::editor::sprite {
                 if (!fs::exists(file, ec)) {
                     fs::create_directories(input.outDir, ec);
                     if (!image.savePng(file)) {
-                        result->error = {"missing_member", "", "cannot write " + file.generic_string(), "check the project's .jasperengine folder is writable"};
+                        result->error = {"write_failed", "", "cannot write " + file.generic_string(), "check the project's .jasperengine folder is writable"};
                         return result;
                     }
                     row.written = true;
@@ -804,6 +870,15 @@ namespace jasperengine::editor::sprite {
             if (progress) progress->done = static_cast<int>(p + 1);
         }
         result->usage = packed.usage;
+        // R29: the web family's page sizes, when its own max size lays the frames out otherwise
+        if (input.platform == "desktop" && input.doc.settings.maxSizeFor("web") != settings.maxSize && !cancelled()) {
+            PackSettings web = settings;
+            web.maxSize = input.doc.settings.maxSizeFor("web");
+            const PackResult webPacked = pack(packMembers, web);
+            if (webPacked.ok()) {
+                for (const PixelImage& page : webPacked.pages) result->webPages.emplace_back(page.width(), page.height());
+            }
+        }
 
         // the layout against the previous build of this atlas
         {
@@ -824,12 +899,12 @@ namespace jasperengine::editor::sprite {
             for (auto& [member, remap] : remaps) {
                 for (size_t p = 0; p < remap.pages.size(); p++) remap.pages[p].texture = sheet.pages[p].texture;
                 if (!writeCacheText(input.outDir / result->memberFiles[member], writeSheet(remap))) {
-                    result->error = {"missing_member", member, "cannot write the remap of " + member, "check the project's .jasperengine folder is writable"};
+                    result->error = {"write_failed", member, "cannot write the remap of " + member, "check the project's .jasperengine folder is writable"};
                     return result;
                 }
             }
             if (!writeCacheText(result->sheetFile(), writeSheet(sheet))) {
-                result->error = {"missing_member", "", "cannot write the atlas's sheet", "check the project's .jasperengine folder is writable"};
+                result->error = {"write_failed", "", "cannot write the atlas's sheet", "check the project's .jasperengine folder is writable"};
                 return result;
             }
         } else {
@@ -839,7 +914,7 @@ namespace jasperengine::editor::sprite {
         result->ms = elapsed();
         if (!input.outDir.empty() && !writeCacheText(input.outDir / "build.json", buildJson(*result).dump(1) + "\n")) {
             result->ok = false;
-            result->error = {"missing_member", "", "cannot write build.json", "check the project's .jasperengine folder is writable"};
+            result->error = {"write_failed", "", "cannot write build.json", "check the project's .jasperengine folder is writable"};
         }
         return result;
     }
@@ -891,7 +966,7 @@ namespace jasperengine::editor::sprite {
             } catch (const std::exception& e) {
                 auto failed = std::make_shared<AtlasBuildResult>();
                 failed->atlasPath = input.atlasPath;
-                failed->error = {"missing_member", "", e.what(), "build it again"};
+                failed->error = {"build_failed", "", e.what(), "build it again"};
                 return failed;
             }
         }, options);
@@ -933,16 +1008,11 @@ namespace jasperengine::editor::sprite {
             if (previous != results.end()) affected.insert(previous->second->members.begin(), previous->second->members.end());
             results[r.atlasPath] = swap.result;
         }
-        // files of earlier builds of this platform: gone once nothing names them
-        for (const AtlasPageRow& p : r.pages) keep.insert(p.file);
-        for (const auto& [member, file] : r.memberFiles) keep.insert(file);
-        keep.insert("sheet.json");
-        keep.insert("build.json");
-        std::error_code ec;
-        for (const fs::directory_entry& entry : fs::directory_iterator(r.dir, ec)) {
-            const std::string name = entry.path().filename().string();
-            if (!keep.count(name) && (name.rfind("page", 0) == 0 || name.rfind("member-", 0) == 0)) fs::remove(entry.path(), ec);
-        }
+        // files of earlier builds: gone once nothing names them, and never while another build of
+        // this atlas is running or queued (it may have written pages this one does not name)
+        bool pending = running.count(r.atlasPath) || again.count(r.atlasPath) || waitingImports.count(r.atlasPath);
+        for (const Swap& other : swaps) pending = pending || (&other != &swap && other.result->atlasPath == r.atlasPath);
+        if (!pending) removeStaleFiles(r);
         refreshRemaps();
         SpriteSheetPool::invalidate(r.atlasPath);
         for (const std::string& member : affected) SpriteSheetPool::invalidate(member);
@@ -954,6 +1024,29 @@ namespace jasperengine::editor::sprite {
                       thousands(static_cast<long long>(r.frames.size())).c_str(), static_cast<int>(std::lround(r.usage * 100.0)), r.ms);
         }
         for (const PixelProblem& w : r.warnings) Out::warning("[Sprite Atlas] %s: %s", r.atlasPath.c_str(), w.message.c_str());
+    }
+
+    fs::path SpriteAtlasBuilder::exportDir(const AtlasBuildInput& input) {
+        return input.outDir.empty() ? fs::path() : input.outDir.parent_path() / ("export-" + input.platform);
+    }
+
+    void SpriteAtlasBuilder::removeStaleFiles(const AtlasBuildResult& r) {
+        if (r.dir.empty()) return;
+        std::set<std::string> keep;
+        auto keepBuild = [&](const AtlasBuildResult& b) {
+            for (const AtlasPageRow& p : b.pages) keep.insert(p.file);
+            for (const auto& [member, file] : b.memberFiles) keep.insert(file);
+        };
+        keepBuild(r);
+        // the newest build written to the folder (a later build than this one, adopted after it)
+        AtlasBuildResult newest;
+        const nlohmann::json j = nlohmann::json::parse(readText(r.dir / "build.json"), nullptr, false);
+        if (!j.is_discarded() && fromBuildJson(j, newest)) keepBuild(newest);
+        std::error_code ec;
+        for (const fs::directory_entry& entry : fs::directory_iterator(r.dir, ec)) {
+            const std::string name = entry.path().filename().string();
+            if (!keep.count(name) && (name.rfind("page", 0) == 0 || name.rfind("member-", 0) == 0)) fs::remove(entry.path(), ec);
+        }
     }
 
     void SpriteAtlasBuilder::refreshRemaps() {
@@ -1055,6 +1148,14 @@ namespace jasperengine::editor::sprite {
             if (s.result->atlasPath == atlasPath) return true;
         }
         return false;
+    }
+
+    bool SpriteAtlasBuilder::progressOf(const std::string& path, int& done, int& total) const {
+        auto it = running.find(assetPathOf(path));
+        if (it == running.end()) return false;
+        done = it->second.progress->done.load();
+        total = it->second.progress->total.load();
+        return true;
     }
 
     std::string SpriteAtlasBuilder::statusText() const {

@@ -50,8 +50,14 @@ namespace jasperengine{
         std::string name;
         Rect rect;                        // pixels, top-left origin
         bool hasPivot = false;
-        Vector2 pivot;                    // pixels from the frame's top-left
-        Vector4 border;                   // left, top, right, bottom pixels
+        Vector2 pivot;                    // pixels from the source frame's top-left
+        Vector4 border;                   // left, top, right, bottom pixels of the source frame
+        // a trimmed frame (Aseprite's --trim): the untrimmed size and where `rect` sits in it;
+        // (0, 0) = untrimmed (the rect is the whole frame)
+        Vector2 sourceSize;
+        Vector2 offset;
+
+        bool trimmed() const { return sourceSize.x > 0.0f && sourceSize.y > 0.0f; }
     };
 
     // A texture's `import.spriteSheet` (§6.4)

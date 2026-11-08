@@ -11,6 +11,7 @@
 #include "PrefabStage.h"
 #include "Project.h"
 #include "Stream.h"
+#include "StreamMigrations.h"
 #include "asset/AssetFileWrite.h"
 #include "command/type/SetAssetMetaCmd.h"
 #include "util/EntityClipboard.h"
@@ -47,6 +48,13 @@ namespace jasperengine::editor::sprite {
         bool imageSizeOf(const fs::path& file, int& w, int& h) {
             int comp = 0;
             return stbi_info(file.string().c_str(), &w, &h, &comp) != 0;
+        }
+
+        Rect pixelRect(const Rect& rect, int w, int h) {
+            if (rect.isNormalized() && w > 0 && h > 0) {
+                return Rect(std::round(rect.getX() * w), std::round(rect.getY() * h), std::round(rect.getWidth() * w), std::round(rect.getHeight() * h));
+            }
+            return rect;
         }
 
         // the frame a texture rect shows: like the clip binding's comparison
@@ -91,6 +99,8 @@ namespace jasperengine::editor::sprite {
                             if (!assetsRoot.empty() && !legacy.texture.empty()) imageSizeOf(assetsRoot / legacy.texture, w, h);
                             const Rect shown = Stream::decodeRect(submesh["textureRect"]);
                             legacy.shown = shownFrame(shown, legacyPixelFrames(legacy.frames, w, h), w, h);
+                            legacy.shownRect = pixelRect(shown, w, h);
+                            legacy.hasShownRect = (w > 0 && h > 0) || !shown.isNormalized();
                         }
                         out.push_back(std::move(legacy));
                     }
@@ -152,7 +162,10 @@ namespace jasperengine::editor::sprite {
             for (unsigned i = 0; i < sprite.numFramesRect; i++) out.frames.push_back(sprite.framesRect[i]);
             int w = 0, h = 0;
             imageSizeOf(project.getAssetsPath() / out.texture, w, h);
-            out.shown = shownFrame(MeshSystem::spriteSourceRect(sprite, mesh), legacyPixelFrames(out.frames, w, h), w, h);
+            const Rect shown = MeshSystem::spriteSourceRect(sprite, mesh);
+            out.shown = shownFrame(shown, legacyPixelFrames(out.frames, w, h), w, h);
+            out.shownRect = pixelRect(shown, w, h);
+            out.hasShownRect = w > 0 && h > 0;
             out.open = true;
         }
 
@@ -196,9 +209,13 @@ namespace jasperengine::editor::sprite {
         sheet.mode = TextureSpriteMode::MULTIPLE;
         sheet.pivotPreset = PivotPreset::CENTER;   // inline frames had no pivot: their centre
         const std::string stem = fs::path(texture).stem().string();
+        std::set<std::string> used;
         for (size_t i = 0; i < pixelFrames.size(); i++) {
             TextureSheetFrame f;
-            f.name = pixelFrames[i].name.empty() ? stem + "_" + std::to_string(i) : pixelFrames[i].name;
+            const std::string wanted = pixelFrames[i].name.empty() ? stem + "_" + std::to_string(i) : pixelFrames[i].name;
+            f.name = wanted;
+            for (int n = 2; used.count(f.name); n++) f.name = wanted + " " + std::to_string(n);
+            used.insert(f.name);
             f.rect = pixelFrames[i].rect;
             sheet.frames.push_back(f);
         }
@@ -393,15 +410,49 @@ namespace jasperengine::editor::sprite {
                 return false;
             }
             plan.sheet = info.settings;
+            for (const SpriteFrame& f : built.sheet.frames) plan.frameNames.push_back(f.name);
+        } else {
+            for (const TextureSheetFrame& f : plan.sheet.frames) plan.frameNames.push_back(f.name);
         }
+        const bool keptSheet = info.isSheet();
         plan.targets.push_back(sprite);
-        if (!allUsers) return true;
-        std::set<std::pair<std::string, uint64_t>> seen = {{sprite.owner, sprite.entity}};
-        for (const LegacySprite& other : findLegacySprites(project)) {
-            if (other.texture != sprite.texture || seen.count({other.owner, other.entity})) continue;
-            if (!sameRects(legacyPixelFrames(other.frames, w, h), rects)) continue;
-            seen.insert({other.owner, other.entity});
-            plan.targets.push_back(other);
+        if (allUsers) {
+            std::set<std::pair<std::string, uint64_t>> seen = {{sprite.owner, sprite.entity}};
+            for (const LegacySprite& other : findLegacySprites(project)) {
+                if (other.texture != sprite.texture || seen.count({other.owner, other.entity})) continue;
+                if (!sameRects(legacyPixelFrames(other.frames, w, h), rects)) continue;
+                seen.insert({other.owner, other.entity});
+                plan.targets.push_back(other);
+            }
+        }
+        // the frame each one shows; a rect that is none of its frames is kept as a frame of its own
+        // (appended: the frames' indices stay), or, in a sheet the texture already has, warned about
+        const std::string stem = fs::path(sprite.texture).stem().string();
+        for (const LegacySprite& t : plan.targets) {
+            int frame = t.shown;
+            Rect shown = t.shownRect;
+            const bool usable = t.hasShownRect && shown.getWidth() > 0.0f && shown.getHeight() > 0.0f && shown.getX() >= 0.0f && shown.getY() >= 0.0f &&
+                                shown.getX() + shown.getWidth() <= static_cast<float>(w) && shown.getY() + shown.getHeight() <= static_cast<float>(h);
+            if (frame < 0 && usable && !keptSheet) {
+                for (size_t i = 0; i < plan.sheet.frames.size(); i++) {
+                    Rect r = plan.sheet.frames[i].rect;
+                    if (!(r != shown)) frame = static_cast<int>(i);
+                }
+                if (frame < 0) {
+                    TextureSheetFrame extra;
+                    std::set<std::string> used(plan.frameNames.begin(), plan.frameNames.end());
+                    extra.name = stem + "_" + std::to_string(plan.sheet.frames.size());
+                    for (int n = 2; used.count(extra.name); n++) extra.name = stem + "_" + std::to_string(plan.sheet.frames.size()) + " " + std::to_string(n);
+                    extra.rect = shown;
+                    plan.sheet.frames.push_back(extra);
+                    plan.frameNames.push_back(extra.name);
+                    frame = static_cast<int>(plan.sheet.frames.size()) - 1;
+                }
+            } else if (frame < 0) {
+                plan.warnings.push_back(t.owner + " \"" + t.entityPath + "\" showed a rect that is none of its frames: it shows frame 0 now");
+                frame = 0;
+            }
+            plan.targetFrames.push_back(frame);
         }
         return true;
     }
@@ -414,6 +465,43 @@ namespace jasperengine::editor::sprite {
     std::string ConvertInlineFramesCmd::describe() const {
         return "Convert " + std::to_string(plan.targets.size()) + (plan.targets.size() == 1 ? " Sprite" : " Sprites") + " to Sprite Sheet " +
                fs::path(plan.texture).filename().string();
+    }
+
+    namespace {
+
+        // a file's line endings kept (a Windows checkout's CRLF)
+        std::string withLineEndingsOf(const std::string& original, std::string text) {
+            if (original.find("\r\n") == std::string::npos) return text;
+            std::string out;
+            out.reserve(text.size() + text.size() / 16);
+            for (char c : text) {
+                if (c == '\n') out += '\r';
+                out += c;
+            }
+            return out;
+        }
+
+        DocumentKind documentKindOf(const std::string& owner) { return Util::isPrefabFile(owner) ? DocumentKind::Prefab : DocumentKind::Scene; }
+
+        // the file parsed and migrated to this editor's format; false with `error` when it cannot be
+        // edited here (newer, or a prefab older than its migrations, which only the prefab loader upgrades)
+        bool loadCurrentFormat(const std::string& owner, const std::string& bytes, YAML::Node& root, std::string& error) {
+            root = YAML::Load(bytes);
+            const DocumentKind kind = documentKindOf(owner);
+            const int read = StreamMigrations::readVersion(kind, root);
+            const std::vector<Migration>& table = StreamMigrations::table(kind);
+            if (read > StreamMigrations::currentVersion(kind)) {
+                error = owner + ": " + StreamMigrations::newerFormatMessage(kind, read);
+                return false;
+            }
+            if (kind == DocumentKind::Prefab && !table.empty() && read < table.front().from) {
+                error = owner + " is an old prefab (version " + std::to_string(read) + "): open and save it once, then convert";
+                return false;
+            }
+            StreamMigrations::migrate(kind, root);
+            return true;
+        }
+
     }
 
     bool ConvertInlineFramesCmd::execute() {
@@ -430,23 +518,25 @@ namespace jasperengine::editor::sprite {
             meta.reset();
             return false;
         }
-        std::vector<std::string> names;
-        for (const TextureSheetFrame& f : plan.sheet.frames) names.push_back(f.name);
-        std::map<std::string, std::vector<const LegacySprite*>> byOwner;
-        for (const LegacySprite& t : plan.targets) byOwner[t.owner].push_back(&t);
+        const std::vector<std::string>& names = plan.frameNames;
+        auto nameOf = [&](int frame) { return frame >= 0 && frame < static_cast<int>(names.size()) ? names[static_cast<size_t>(frame)] : std::string(); };
+        std::map<std::string, std::vector<std::pair<const LegacySprite*, int>>> byOwner;
+        for (size_t i = 0; i < plan.targets.size(); i++) {
+            const int frame = i < plan.targetFrames.size() ? plan.targetFrames[i] : std::max(0, plan.targets[i].shown);
+            byOwner[plan.targets[i].owner].push_back({&plan.targets[i], frame});
+        }
         for (const auto& [owner, sprites] : byOwner) {
             OwnerUndo entry;
             entry.owner = owner;
             const Loaded loaded = loadedOwner(*project, owner);
             if (EntityRegistry* registry = loaded.registry()) {
                 entry.wasModified = loaded.scene->isModified;
-                for (const LegacySprite* s : sprites) {
+                for (const auto& [s, frame] : sprites) {
                     const Entity entity = static_cast<Entity>(s->entity);
                     SpriteComponent* sprite = registry->findComponent<SpriteComponent>(entity);
                     if (!sprite) continue;
                     entry.sprites.push_back({entity, EntityClipboard::encodeComponent(registry, entity, ComponentType::SpriteComponent)});
-                    const int frame = std::max(0, s->shown);
-                    applyToComponent(*sprite, plan.texture, guid, frame, frame < static_cast<int>(names.size()) ? names[static_cast<size_t>(frame)] : std::string());
+                    applyToComponent(*sprite, plan.texture, guid, frame, nameOf(frame));
                     report->converted++;
                 }
                 loaded.scene->isModified = true;
@@ -456,31 +546,41 @@ namespace jasperengine::editor::sprite {
             }
             const fs::path full = project->getProjectPath() / owner;
             entry.closedFile = true;
+            const assetio::ReadStamp read = assetio::stampOf(full);
             if (!assetio::readFile(full, entry.bytes)) {
                 report->error = "cannot read " + owner;
                 revert();
                 return false;
             }
             try {
-                YAML::Node root = YAML::Load(entry.bytes);
-                for (const LegacySprite* s : sprites) {
+                YAML::Node root;
+                std::string formatError;
+                if (!loadCurrentFormat(owner, entry.bytes, root, formatError)) {
+                    report->error = formatError;
+                    revert();
+                    return false;
+                }
+                for (const auto& [s, frame] : sprites) {
                     YAML::Node entity;
                     if (!findEntityYaml(root["entities"], s->entity, entity) && !findEntityYaml(root["members"], s->entity, entity)) continue;
                     YAML::Node node = entity["components"]["sprite"];
+                    entry.sprites.push_back({static_cast<Entity>(s->entity), YAML::Clone(node)});
                     SpriteComponent sprite = Stream::decodeSpriteComponent(node);
-                    const int frame = std::max(0, s->shown);
-                    applyToComponent(sprite, plan.texture, guid, frame, frame < static_cast<int>(names.size()) ? names[static_cast<size_t>(frame)] : std::string());
+                    applyToComponent(sprite, plan.texture, guid, frame, nameOf(frame));
                     const YAML::Node encoded = Stream::encodeSpriteComponent(sprite);
                     node.remove("framesRect");
                     for (auto it = encoded.begin(); it != encoded.end(); ++it) node[it->first.as<std::string>()] = it->second;
                     report->converted++;
                 }
                 std::string writeError;
-                if (!assetio::writeFile(full, YAML::Dump(root) + "\n", assetio::Durability::Document, &writeError)) {
-                    report->error = "couldn't save " + owner + ": " + writeError;
+                bool superseded = false;
+                const std::string text = withLineEndingsOf(entry.bytes, YAML::Dump(root) + "\n");
+                if (!assetio::rewriteFile(full, text, assetio::Durability::Document, read, &superseded, &writeError)) {
+                    report->error = superseded ? owner + " changed while it was converted: convert again" : "couldn't save " + owner + ": " + writeError;
                     revert();
                     return false;
                 }
+                entry.written = assetio::stampOf(full);
             } catch (const std::exception& e) {
                 report->error = owner + ": " + e.what();
                 revert();
@@ -492,28 +592,56 @@ namespace jasperengine::editor::sprite {
             if (Util::isPrefabFile(owner) && project->getPrefab(fs::path(owner))) project->refreshPrefabInstances(fs::path(owner), true);
             undoData.push_back(std::move(entry));
         }
+        for (const std::string& w : plan.warnings) Out::warning("Convert to Sprite Sheet: %s", w.c_str());
         SpriteSheetBuilder::get().invalidate(plan.texture);
         return true;
+    }
+
+    bool ConvertInlineFramesCmd::restoreInFile(const OwnerUndo& entry, std::string& error) {
+        const fs::path full = project->getProjectPath() / entry.owner;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            const assetio::ReadStamp read = assetio::stampOf(full);
+            std::string bytes;
+            if (!assetio::readFile(full, bytes)) {
+                error = "cannot read " + entry.owner;
+                return false;
+            }
+            bool superseded = false;
+            if (entry.closedFile && read == entry.written) {
+                // nothing saved it since: its bytes as they were
+                if (assetio::rewriteFile(full, entry.bytes, assetio::Durability::Document, read, &superseded, &error)) return true;
+                if (!superseded) return false;
+                continue;
+            }
+            try {
+                YAML::Node root;
+                if (!loadCurrentFormat(entry.owner, bytes, root, error)) return false;
+                for (const auto& [id, node] : entry.sprites) {
+                    YAML::Node entity;
+                    if (!findEntityYaml(root["entities"], id, entity) && !findEntityYaml(root["members"], id, entity)) continue;
+                    YAML::Node components = entity["components"];
+                    components["sprite"] = YAML::Clone(node);
+                }
+                if (assetio::rewriteFile(full, withLineEndingsOf(bytes, YAML::Dump(root) + "\n"), assetio::Durability::Document, read, &superseded, &error)) return true;
+                if (!superseded) return false;
+            } catch (const std::exception& e) {
+                error = entry.owner + ": " + e.what();
+                return false;
+            }
+        }
+        error = entry.owner + " kept changing while it was restored";
+        return false;
     }
 
     void ConvertInlineFramesCmd::revert() {
         for (auto it = undoData.rbegin(); it != undoData.rend(); ++it) {
             const OwnerUndo& entry = *it;
-            if (entry.closedFile) {
-                const fs::path full = project->getProjectPath() / entry.owner;
-                std::string error;
-                if (!assetio::writeFile(full, entry.bytes, assetio::Durability::Document, &error)) {
-                    Out::error("Couldn't restore \"%s\": %s", entry.owner.c_str(), error.c_str());
-                    continue;
-                }
-                project->getAssetDatabase().importAssets(full);
-                project->getAssetIndex().updateReferrer(entry.owner);
-                if (Util::isPrefabFile(entry.owner) && project->getPrefab(fs::path(entry.owner))) project->refreshPrefabInstances(fs::path(entry.owner), true);
-                continue;
-            }
+            // the document as it is now: open (restored in memory, so nothing saved over it is lost),
+            // else its file (only the converted sprites put back; a save made since is kept)
             const Loaded loaded = loadedOwner(*project, entry.owner);
             if (EntityRegistry* registry = loaded.registry()) {
                 for (auto s = entry.sprites.rbegin(); s != entry.sprites.rend(); ++s) {
+                    if (!registry->findComponent<SpriteComponent>(s->first)) continue;
                     EntityClipboard::applyComponentValue(registry, s->first, ComponentType::SpriteComponent, s->second);
                     if (SpriteComponent* sprite = registry->findComponent<SpriteComponent>(s->first)) {
                         sprite->sheetData.reset();
@@ -521,9 +649,19 @@ namespace jasperengine::editor::sprite {
                         sprite->builtFrame = -1;
                     }
                 }
-                loaded.scene->isModified = entry.wasModified;
+                loaded.scene->isModified = entry.closedFile ? true : entry.wasModified;
                 loaded.scene->needUpdateRender = true;
+                continue;
             }
+            std::string error;
+            if (!restoreInFile(entry, error)) {
+                Out::error("Couldn't restore \"%s\": %s", entry.owner.c_str(), error.c_str());
+                continue;
+            }
+            const fs::path full = project->getProjectPath() / entry.owner;
+            project->getAssetDatabase().importAssets(full);
+            project->getAssetIndex().updateReferrer(entry.owner);
+            if (Util::isPrefabFile(entry.owner) && project->getPrefab(fs::path(entry.owner))) project->refreshPrefabInstances(fs::path(entry.owner), true);
         }
         undoData.clear();
         if (meta) {

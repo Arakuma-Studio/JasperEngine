@@ -9,6 +9,7 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "pixelart/aseprite/AsepriteEditorHooks.h"
+#include "sprite/SpriteSheetBuilder.h"
 #include "util/FileUtils.h"
 #include "util/ProjectFileWrites.h"
 #include "util/UIProbe.h"
@@ -104,7 +105,7 @@ SheetPreviewTextures::Image* SheetPreviewTextures::get(Project* project, const s
     }
     Image& image = images[path];
     image.time = time;
-    std::optional<pixelart::PixelImage> pixels = pixelart::PixelImage::loadPng(file, nullptr);
+    std::optional<pixelart::PixelImage> pixels = sprite::loadSpriteImage(file, nullptr);
     if (pixels) atlasInspectorUpload(image.texture, image.width, image.height, *pixels);
     return image.valid() ? &image : nullptr;
 }

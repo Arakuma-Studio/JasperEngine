@@ -736,6 +736,25 @@ async def test_texture_slicer(ed: Editor):
     await ed.call("respond_dialog", choice="cancel")
     ed.check_eq(await dialog(ed), None, "closed")
 
+    # a texture's stored Sprite Mode: the Slicer opens on it and Slice keeps its pivot (S45 R12)
+    (ed.project / "grid.png").write_bytes(png(64, 32))
+    (ed.project / "grid.png.meta").write_text("import:\n  spriteSheet: {version: 1, mode: grid, grid: {cell: [32, 32], offset: [0, 0], "
+                                             "spacing: [0, 0], count: 0, skipEmpty: false, prefix: g_}, pivot: bottom_center}\n")
+    await ed.call("sync_files", paths=["grid.png", "grid.png.meta"])
+    made = await ed.call("set_sprite_frames", create={"name": "GridSprite"}, sheet="grid.png", frame=0)
+    await ed.call("select_entities", entities=[made["sprite"]["id"]])
+    await ed.call("focus_window", window="inspector")
+    await helper.frames(4)
+    button = await helper.reveal("\uf58d Slicer Tool", "Inspector")
+    await helper.click(helper.centre(button["rect"]))
+    d = await frame_dialog(ed)
+    ed.check(d and "pivot" in fields(d), f"the Sprite Mode fields: {d}")
+    ed.check_eq(fields(d)["pivot"]["value"], "Bottom Center", f"the stored pivot is shown: {fields(d)['pivot']}")
+    await ed.call("respond_dialog", choice="yes")
+    await helper.frames(4)
+    meta = (ed.project / "grid.png.meta").read_text()
+    ed.check("bottom_center" in meta, f"Slice kept the pivot: {meta}")
+
 
 @clean
 async def test_shader_fork(ed: Editor):

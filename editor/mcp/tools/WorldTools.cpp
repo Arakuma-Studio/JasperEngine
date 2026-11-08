@@ -32,6 +32,7 @@
 #include "Stream.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "command/UndoTimeline.h"
 #include "command/type/AddComponentCmd.h"
 #include "util/RagdollWizard.h"
 #include "component/AnimationPlayerComponent.h"
@@ -339,6 +340,7 @@ public:
     }
     bool changed() const { return history->position() > start; }
     void commit() { history->groupSince(start); }
+    CommandHistory* historyOf() const { return history; }
     // Undoes what this step added (a failed call leaves the scene as it was)
     void rollback() {
         // a refused undo leaves the position, so it ends the loop too
@@ -3282,14 +3284,17 @@ void convertSpriteFrames(const CallPtr& call, Target& target, bool allUsers) {
         return;
     }
     Json sprites = Json::array();
-    for (const sprite::LegacySprite& t : plan.targets) {
-        sprites.push_back({{"owner", t.owner}, {"game_object", t.entityPath}, {"frame", std::max(0, t.shown)}, {"open", t.open}});
+    for (size_t i = 0; i < plan.targets.size(); i++) {
+        const sprite::LegacySprite& t = plan.targets[i];
+        const int frame = i < plan.targetFrames.size() ? plan.targetFrames[i] : std::max(0, t.shown);
+        sprites.push_back({{"owner", t.owner}, {"game_object", t.entityPath}, {"frame", frame}, {"open", t.open}});
     }
-    Json data = {{"texture", McpValues::assetPathToJson(target.project, plan.texture)}, {"frames", plan.sheet.frames.size()},
+    Json data = {{"texture", McpValues::assetPathToJson(target.project, plan.texture)}, {"frames", plan.frameNames.size()},
                  {"converted", sprites}, {"files_written", report->filesWritten},
                  {"next", "One undo (scope project) restores the sprites, their files and the texture's meta."}};
+    if (!plan.warnings.empty()) data["warnings"] = plan.warnings;
     call->ok("Converted " + std::to_string(plan.targets.size()) + " sprite(s) to frames of " + plan.texture + "'s Sprite Mode (" +
-             std::to_string(plan.sheet.frames.size()) + " frames, indices kept).", data);
+             std::to_string(plan.frameNames.size()) + " frames, indices kept).", data);
 }
 
 // S45 R35: slice / frames into the texture's Sprite Mode, the sprite showing one of its frames
@@ -3318,15 +3323,24 @@ void sliceIntoTextureSheet(const CallPtr& call, Target& target, UndoStep& step, 
     const fs::path absolute = target.project->getAssetsPath() / texture;
     Command* meta = new SetAssetMetaCmd(target.project, target.project->normalizeToProjectRelative(absolute), sprite::kSpriteSheetKey,
                                         sprite::sheetSettingsToYaml(sheet));
+    CommandHistory* projectHistory = target.project->getProjectCommandHistory();
+    bool metaAdded = false;
     if (meta->isNoOp()) {
         delete meta;
     } else {
         meta->setNoMerge();
-        if (!target.project->getProjectCommandHistory()->addCommand(meta)) {
+        if (!projectHistory->addCommand(meta)) {
             step.fail(call, "Couldn't write the Sprite Mode of " + texture + " (is its .meta writable?).");
             return;
         }
+        metaAdded = true;
     }
+    // a failure below takes the meta back too: the call changes nothing
+    auto fail = [&](const std::string& error) {
+        if (metaAdded && projectHistory->canUndo()) projectHistory->undo();
+        sprite::SpriteSheetBuilder::get().invalidate(texture);
+        step.fail(call, error);
+    };
     sprite::SpriteSheetBuilder::get().invalidate(texture);
     auto* multi = new MultiPropertyCmd();
     const ComponentType cp = ComponentType::SpriteComponent;
@@ -3345,7 +3359,7 @@ void sliceIntoTextureSheet(const CallPtr& call, Target& target, UndoStep& step, 
         Vector2 size;
         if (!readVec2(args, "size", size, error) || size.x < 1.0f || size.y < 1.0f) {
             delete multi;
-            step.fail(call, "size must be [width, height] pixels.");
+            fail("size must be [width, height] pixels.");
             return;
         }
         addProp<unsigned int>(*multi, target, target.entity, cp, "width", static_cast<unsigned int>(size.x));
@@ -3359,16 +3373,19 @@ void sliceIntoTextureSheet(const CallPtr& call, Target& target, UndoStep& step, 
         PivotPreset pivot;
         if (!pickName(pivotPresets(), stringOr(args, "pivot", ""), pivot, "pivot", error)) {
             delete multi;
-            step.fail(call, error);
+            fail(error);
             return;
         }
         addProp<PivotPreset>(*multi, target, target.entity, cp, "pivotPreset", pivot);
     }
     if (!step.add(multi)) {
-        step.fail(call, "The editor rejected the sprite edit.");
+        fail("The editor rejected the sprite edit.");
         return;
     }
     step.commit();
+    // the texture's Sprite Mode and the sprite: one step of the timeline (Ctrl+Z), as the
+    // Inspector's Slicer does
+    if (metaAdded) UndoTimeline::link({projectHistory, step.historyOf()});
     Json list = Json::array();
     for (size_t i = 0; i < sheet.frames.size(); i++) {
         Rect r = sheet.frames[i].rect;

@@ -35,7 +35,9 @@ Select a texture: its importer has a **Sprite Mode** section.
 **Slice...** opens the Texture Slicer on the texture: grid by cell count or cell size, offset,
 padding, prefix, Skip Empty, the default pivot, a frame's own pivot and border, and **From JSON**,
 which reads the frames from an Aseprite `--data` file next to the texture (`hero.json` beside
-`hero.png`, json-hash or json-array, with 9-patch slices as borders). The Sprite Inspector's
+`hero.png`, json-hash or json-array). A `--trim` export keeps each frame's place in its untrimmed
+frame; a 9-patch slice gives the frames from its key until the next key their border and pivot.
+Slice keeps the texture's pivot unless you pick another. The Sprite Inspector's
 **Slicer Tool** opens the same Slicer and also makes the Sprite show the texture's frames, in one
 undo step.
 
@@ -62,7 +64,7 @@ Inspector:
   the Project window; a double-click opens an Aseprite file in Aseprite.
 - The frame list: search by name, `member:<path>` and `page:<n>`; sort by name, size, page or
   waste; a thumbnail per frame.
-- The stats: `3 pages · 1,204 frames · 87 % used · 412 duplicate frames merged · 1.9 MB VRAM`,
+- The stats: `3 pages · 1,204 frames · 87 % used · 412 duplicate frames merged · 1.9 MB VRAM (Desktop) · 2.4 MB (Web)`,
   the wasted pixels per page and the members with the most transparent area. Warnings have a Fix
   button where one exists (remove a member packed twice, raise Max Size).
 
@@ -72,12 +74,15 @@ frame names, order, sizes, trim offsets and pivots. Old sprites with inline fram
 page too. Animation clips keyed on a source keep working; key the source, not the atlas.
 
 Packing is lossless for pixel art: page pixels equal the source pixels, transparent texels keep
-their colour. **Auto** compression is lossless when a member is an Aseprite file, a texture with
+their colour, and exports cook such pages as uncompressed RGBA8 with Zstandard. Members can be any
+image the engine reads, SVG included. Two members whose paths differ only in their extension
+(`hero.png`, `hero.aseprite`) name their shared frame names by their full paths. **Auto** compression is lossless when a member is an Aseprite file, a texture with
 lossless import settings or a texture with a Sprite Mode; otherwise each platform's sprite format,
 with every frame aligned to 4-pixel blocks. Builds run in the background (the status bar shows
 `Building sprite atlas ui (2/3 pages)` with Cancel) and are incremental: an unchanged member is not
-read again, an unchanged page is not written or cooked again. Saving a member (a texture, an
-Aseprite file) rebuilds the atlases that pack it. The Console reports
+read again, an unchanged page is not written or cooked again. Saving, deleting or renaming a member
+(a texture, an Aseprite file) rebuilds the atlases that pack it; a deleted atlas takes its cache
+along. The Console reports
 `[Sprite Atlas] Built ui/icons.spriteatlas: 3 pages, 1,204 frames, 87 % (210 ms)`; the Project
 window marks an atlas that is building or failed.
 
@@ -85,12 +90,13 @@ window marks an atlas that is building or failed.
 
 - **Enabled** (default): the editor, Play and builds draw from atlases.
 - **Enabled for Builds**: the editor and Play draw the sources; builds use the atlases.
-- **Disabled**: nothing is built or used.
+- **Disabled**: nothing is built or used (atlases you create or edit are written, not built).
 
 An atlas with **Include in Build** off is never used by builds; a script can still load it by
 path. A source packed by two atlases in use is a warning on both; the atlas whose path sorts
 first draws it. Exports build each atlas for their platform family (its Max Texture Size), ship
-the pages under `assets/je-imported/`, and leave out a packed texture that only sprites use.
+the pages under `assets/je-imported/`, and leave out a packed texture that only sprites use (one a
+script or a UI document names by path ships).
 
 ## Inline frames (legacy)
 
@@ -98,8 +104,11 @@ A Sprite made before sheets keeps its frame rectangles in itself. The Inspector 
 **Inline Frames (legacy)**; **Convert to Sprite Sheet** moves them into the texture's Sprite Mode
 (Multiple, names and order kept) and makes the Sprite show the same frame by index, so clips and
 Sprite Animations keep working. Every other sprite of the project that uses the texture with the
-same frames (open and closed scenes, prefabs) converts too; one undo restores everything. A
-texture that already has a different Sprite Mode cannot take them: keep the sprite inline.
+same frames (open and closed scenes, prefabs) converts too; one undo restores everything, without
+undoing a save made since (an open scene is restored in the editor, unsaved). A name used twice
+becomes `name 2`; a sprite showing a rect that is none of its frames gets it as an extra frame. A
+texture whose Sprite Mode already holds the same frames keeps it; one with different frames
+cannot take them: keep the sprite inline.
 **Assets > Convert Inline Sprite Frames...** lists every legacy sprite and converts them texture by
 texture. `jasperengine-editor check --project <dir> --sprites` lists them from the command line,
 with the atlas problems (exit 1 on an atlas error).

@@ -13,6 +13,8 @@
 #include "command/type/WriteFilesCmd.h"
 #include "component/SpriteComponent.h"
 #include "mcp/McpValues.h"
+#include "sprite/SpriteSheetPool.h"
+#include "sprite/SpriteSheetSources.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "texsynth/SynthesisSession.h"
 #include "util/EntityPath.h"
@@ -212,6 +214,35 @@ namespace jasperengine::editor::spritenormals {
             }
             info.texture = textureFile(info.stored);
             SpriteComponent* sprite = submesh == 0 ? s->findComponent<SpriteComponent>(entity) : nullptr;
+            if (sprite && !sprite->sheet.empty()) {
+                // a sheet sprite (S44/S45): the frames of the sheet it draws. A texture sheet drawn
+                // from its texture pairs a map with that texture; generated pages (an atlas, an
+                // .aseprite import) are rebuilt, so a map made from one would not stay paired
+                const std::string sheetPath = sprite->sheet.path;
+                const bool textureSheet = SpriteSheetSources::isTexturePath(sheetPath);
+                if (!textureSheet || jasperengine::editor::FileUtils::pathFromUtf8(info.stored).lexically_normal() !=
+                                         jasperengine::editor::FileUtils::pathFromUtf8(sheetPath).lexically_normal()) {
+                    return refuse("invalid_source",
+                                  "\"" + name + "\" draws " + (textureSheet ? sheetPath + " from a Sprite Atlas page" : "the generated pages of " + sheetPath) +
+                                      ": a normal map of a page would not stay paired with it.",
+                                  textureSheet ? "Remove " + sheetPath + " from its atlas (edit_sprite_atlas remove) or turn the atlas's Include in Build off, then generate."
+                                               : "Generate the map from the source image (source: its path) and pair it in the editor that made the sheet.");
+                }
+                std::shared_ptr<const SpriteSheetData> sheet = sprite->sheetData ? sprite->sheetData : SpriteSheetPool::get(sheetPath);
+                if (sheet) {
+                    for (const SpriteFrame& f : sheet->frames) {
+                        if (f.page != 0) continue;
+                        Rect r = f.rect;
+                        Cell cell;
+                        cell.x = static_cast<int>(std::lround(r.getX()));
+                        cell.y = static_cast<int>(std::lround(r.getY()));
+                        cell.width = static_cast<int>(std::lround(r.getWidth()));
+                        cell.height = static_cast<int>(std::lround(r.getHeight()));
+                        if (cell.width > 0 && cell.height > 0) info.cells.push_back(cell);
+                    }
+                }
+                return info;
+            }
             if (sprite) {
                 int w = 0, h = 0;
                 bool sized = false;

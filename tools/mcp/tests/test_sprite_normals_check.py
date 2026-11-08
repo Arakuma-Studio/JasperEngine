@@ -141,7 +141,7 @@ async def save(ed: Editor) -> None:
 
 
 async def sprite(ed: Editor, name: str, texture: str, filter: str = "nearest") -> None:
-    await ed.call("set_sprite_frames", create={"name": name}, texture=texture, frames=[{"name": "f", "rect": [0, 0, 32, 32]}], inline=True)
+    await ed.call("set_sprite_frames", create={"name": name}, texture=texture, frames=[{"name": "f", "rect": [0, 0, 32, 32]}])
     await ed.call("set_texture_settings", entity=name, component="mesh", property="submeshes[0].material.baseColorTexture",
                   min_filter=filter, mag_filter=filter)
 
@@ -161,7 +161,7 @@ async def test_clean_project(ed: Editor):
     for name in ("coin", "gem", "rock"):
         shutil.copy(FIXTURES / "ball.png", art / f"{name}.png")
         await gen(ed, source=f"{ART}/{name}.png", output=True)
-    await ed.call("set_sprite_frames", create={"name": "Hero"}, texture=f"{ART}/sheet.png", slice={"tile_size": [32, 32]}, inline=True)
+    await ed.call("set_sprite_frames", create={"name": "Hero"}, texture=f"{ART}/sheet.png", slice={"tile_size": [32, 32]})
     await ed.call("set_texture_settings", entity="Hero", component="mesh", property="submeshes[0].material.baseColorTexture",
                   min_filter="nearest", mag_filter="nearest")
     await gen(ed, source="Hero", output=True, apply=True)
@@ -261,7 +261,7 @@ async def test_light_height_and_frames(ed: Editor):
     check(any(f["code"] == "normals-no-light-height" and f["path"] == SCENE for f in normals(data)), f"no light height: {normals(data)}")
     await ed.call("set_properties", entity="Lamp", values={"light2d": {"height": 64}})
     # the Sprite resliced after its map was generated
-    await ed.call("set_sprite_frames", entity="Hero", slice={"tile_size": [64, 32]}, inline=True)
+    await ed.call("set_sprite_frames", entity="Hero", slice={"tile_size": [64, 32]})
     await save(ed)
     _, data = run_check(ed.project, "--normals")
     check(not any(f["code"] == "normals-no-light-height" for f in normals(data)), "height 64: gone")

@@ -535,7 +535,26 @@ Recorded by the implementation (`feature/s45-sprite-atlas`):
 - **AC2/AC3 suites** are `SpriteAtlasRenderGpu.AtlasEqualsSources` and
   `SpriteAtlasRenderGpu.SlicedKeepsItsCorners` (the naming rule wants `*Gpu` suites); both compare
   two renders (or exact pixels) instead of a committed golden image; both run on glcore and on
-  Vulkan (`GRAPHIC_BACKEND=vulkan`, lavapipe).
+  Vulkan (`GRAPHIC_BACKEND=vulkan`, lavapipe). The core tests cannot link the editor's builder, so
+  they draw its output: `engine/tests/core/fixtures/sprite-atlas/` is what `SpriteAtlasBuilder`
+  makes of the sources there (pages renamed `page<n>.png`), pinned by the editor test
+  `SpriteAtlasBuild.GpuFixtureIsTheBuildersOutput` (`JASPER_TEST_UPDATE_GOLDEN=1` writes it again).
+  AC2 also draws legacy sprites with a texture scale factor from the page.
+- **AC5** is `SpriteAtlasBuild.LosslessCookIsThePage`: the export cooks a lossless page through
+  S14 (quality none, RGBA8 + Zstandard, no mips, no alpha bleed, at its own size) and the test
+  decodes the KTX2's level 0 in process instead of running `cook-textures --decode`. Under a
+  power-of-two texture strategy the pages are made power-of-two, so the cook never resamples them.
+- **Exports build in their own folder** (`<guid>/export-<family>`), so an export never writes or
+  prunes the pages the editor draws, and a finished build never removes pages that a newer build
+  (queued after it) wrote: the folder's `build.json` names them.
+- **Sprite normals of sheet sprites** read the frames of a texture sheet drawn from its own
+  texture. A sprite drawing generated pages (an atlas page, an `.aseprite` import) is refused with
+  a fix: a normal map made from a page that is rebuilt would not stay paired with it.
+- **Aseprite JSON (R10)**: a `--trim` export keeps each frame's place (`sourceSize` and `offset` in
+  the Sprite Mode's frames; `source_size`, `offset` over MCP); slice keys hold until the next key;
+  borders and pivots are in the untrimmed frame. The fixtures are made with the Aseprite CLI
+  (`editor/tests/fixtures/sprite/aseprite-json/make_trimmed.lua`); its Lua API keys a slice at
+  frame 0 only, so the test adds the second key to the JSON.
 - **AC13's player screenshot** was not compared: the implementers' runs build no prebuilt players
   (`JASPER_SLOW_BUILD` is not allowed). `test_export` checks the exported files; a compiled game
   (`SMOKE_METHOD=compile`) of a project with a 300-frame legacy sprite whose texture an atlas packs
@@ -549,9 +568,12 @@ Recorded by the implementation (`feature/s45-sprite-atlas`):
   device number.
 - **AC17** reads the script's values from `eval_lua`'s results: its `print` does not reach
   `read_console`.
-- **SpriteComponent size.** S45 adds `drawMode`, `builtSliced`, the shared `inlineAtlas` pointer
-  and its checked revision (352 of `MeshMemory`'s 384 bytes); a legacy sprite's page data lives
-  outside the component.
+- **SpriteComponent size.** S45 adds 8 bytes: `drawMode` and `builtSliced` sit in padding, the
+  legacy sprite's checked pool revision is 32 bits in padding, and its page mapping is a
+  one-pointer intrusive handle (the mapping itself is outside the component). A side table in
+  `MeshSystem` keyed by entity was the suggestion; the static helpers the encoders, the cooker,
+  `ActionSystem` and the clip bindings call take a component and its mesh, not an entity, so the
+  handle keeps them as they are at the same cost.
 - **AC15** saves `screenshot view: editor` images of the harness' display instead of running
   `tools/editor-shot.sh`.
 

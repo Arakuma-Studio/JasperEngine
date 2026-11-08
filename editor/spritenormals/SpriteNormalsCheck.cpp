@@ -8,6 +8,7 @@
 #include "SpriteNormalsPreview.h"
 #include "SpriteNormalsRecipe.h"
 
+#include "sprite/SpriteSheetBuilder.h"
 #include "texsynth/SynthImage.h"
 #include "texsynth/SynthesisRecipe.h"
 
@@ -433,7 +434,21 @@ namespace jasperengine::editor::spritenormals {
                     double x, y, w, h;
                 };
                 std::vector<Frame> frames;
-                if (const YAML::Node sprite = components["sprite"]; sprite && sprite.IsMap() && sprite["framesRect"] && sprite["framesRect"].IsSequence()) {
+                // a sheet sprite drawing a texture sheet (S45): that texture's frames, and its colour texture
+                std::string sheetTexture;
+                if (const YAML::Node sprite = components["sprite"]; sprite && sprite.IsMap() && sprite["sheet"] && sprite["sheet"].IsScalar()) {
+                    const std::string sheet = sprite["sheet"].as<std::string>("");
+                    if (SpriteSheetSources::isTexturePath(sheet)) {
+                        sheetTexture = sheet;
+                        const fs::path texture = (assets / fs::u8path(sheet)).lexically_normal();
+                        const sprite::TextureSheetInfo info = sprite::textureSheetSettings(texture);
+                        const sprite::TextureSheetBuild built = sprite::buildTextureSheet(texture, sheet, info.settings);
+                        for (const SpriteFrame& f : built.sheet.frames) {
+                            Rect r = f.rect;
+                            frames.push_back({r.getX(), r.getY(), r.getWidth(), r.getHeight()});
+                        }
+                    }
+                } else if (const YAML::Node sprite = components["sprite"]; sprite && sprite.IsMap() && sprite["framesRect"] && sprite["framesRect"].IsSequence()) {
                     for (const YAML::Node& frame : sprite["framesRect"]) {
                         const YAML::Node r = frame.IsMap() ? frame["rect"] : YAML::Node();
                         if (!r || !r.IsSequence() || r.size() != 4) continue;
@@ -459,7 +474,8 @@ namespace jasperengine::editor::spritenormals {
                     if (seenMaps.insert(rel(normal)).second) result.maps++;
                     const std::string where = "GameObject '" + entityName + "' submesh " + std::to_string(i) + ": ";
                     const YAML::Node baseNode = material["baseColorTexture"];
-                    const std::string baseStored = texturePath(baseNode);
+                    // (a sheet sprite saves no colour texture path: its sheet's texture is it)
+                    const std::string baseStored = i == 0 && !sheetTexture.empty() ? sheetTexture : texturePath(baseNode);
                     const fs::path base = baseStored.empty() ? fs::path() : (assets / fs::u8path(baseStored)).lexically_normal();
                     const PngInfo info = png(normal);
                     int bw = 0, bh = 0;

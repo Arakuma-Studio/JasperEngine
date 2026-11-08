@@ -100,7 +100,7 @@ void TextureSlicerToolDialog::openTextureSheet(const Texture& previewTexture, co
     // a Sprite without a texture slices nothing (the dialog still opens, its Slice greyed out)
     std::error_code ec;
     m_image.reset();
-    if (!textureAbsolute.empty() && std::filesystem::is_regular_file(textureAbsolute, ec)) m_image = pixelart::PixelImage::loadPng(textureAbsolute, nullptr);
+    if (!textureAbsolute.empty() && std::filesystem::is_regular_file(textureAbsolute, ec)) m_image = sprite::loadSpriteImage(textureAbsolute, nullptr);
     if (m_image) {
         m_sheetWidth = m_image->width();
         m_sheetHeight = m_image->height();
@@ -111,7 +111,11 @@ void TextureSlicerToolDialog::openTextureSheet(const Texture& previewTexture, co
     m_jsonStatus.clear();
     m_selectedFrame = -1;
     m_skipEmpty = true;
-    m_pivotPreset = 0;
+    // the stored pivot, so Apply changes only what the user edits
+    m_customPivot = current.customPivot;
+    m_pivotNormalized = current.pivotNormalized;
+    const int preset = static_cast<int>(current.pivotPreset);
+    m_pivotPreset = m_customPivot ? 9 : (preset >= 0 && preset <= 8 ? preset : 0);
     const std::string stem = std::filesystem::path(textureAbsolute).stem().string();
     snprintf(m_prefixBuffer, sizeof(m_prefixBuffer), "%s_", stem.c_str());
     // the stored grid, as it is
@@ -134,7 +138,12 @@ void TextureSlicerToolDialog::openTextureSheet(const Texture& previewTexture, co
 
 TextureSheetSettings TextureSlicerToolDialog::sheetSettings() const {
     TextureSheetSettings settings;
-    settings.pivotPreset = static_cast<PivotPreset>(m_pivotPreset);
+    if (m_customPivot && m_pivotPreset == 9) {
+        settings.customPivot = true;
+        settings.pivotNormalized = m_pivotNormalized;
+    } else {
+        settings.pivotPreset = static_cast<PivotPreset>(std::clamp(m_pivotPreset, 0, 8));
+    }
     bool clipped = false;
     for (const SlicedRect& r : m_previewRects) {
         Rect rect = r.rect;
@@ -163,6 +172,8 @@ TextureSheetSettings TextureSlicerToolDialog::sheetSettings() const {
             f.hasPivot = m_jsonFrames[i].hasPivot;
             f.pivot = m_jsonFrames[i].pivot;
             f.border = m_jsonFrames[i].border;
+            f.sourceSize = m_jsonFrames[i].sourceSize;
+            f.offset = m_jsonFrames[i].offset;
         }
         settings.frames.push_back(f);
     }
@@ -413,8 +424,14 @@ void TextureSlicerToolDialog::show() {
             beginInputRow("Skip Empty", 6.0f * ImGui::GetFontSize());
             if (EditorModal::checkbox("##SkipEmpty", "skip_empty", &m_skipEmpty)) m_previewDirty = true;
             beginInputRow("Pivot", 10.0f * ImGui::GetFontSize());
-            EditorModal::combo("##Pivot", "pivot", &m_pivotPreset, {"Center", "Top Center", "Bottom Center", "Left Center", "Right Center",
-                                                                    "Top Left", "Bottom Left", "Top Right", "Bottom Right"});
+            std::vector<std::string> pivots = {"Center", "Top Center", "Bottom Center", "Left Center", "Right Center",
+                                               "Top Left", "Bottom Left", "Top Right", "Bottom Right"};
+            if (m_customPivot) {
+                char custom[64];
+                snprintf(custom, sizeof(custom), "Custom (%.2f, %.2f)", m_pivotNormalized.x, m_pivotNormalized.y);
+                pivots.push_back(custom);
+            }
+            EditorModal::combo("##Pivot", "pivot", &m_pivotPreset, pivots);
             ImGui::EndTable();
         }
         // Slice... > From JSON: the Aseprite --data file beside the texture

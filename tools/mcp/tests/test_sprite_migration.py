@@ -133,16 +133,129 @@ async def test_convert_all_users_and_undo(ed: Editor):
     await ed.call("undo", scene=S["main"])
     after = await play_frame(ed)
     check(after[0] == 2 and after[1] == "walk_2" and WALK in str(after[2]), f"the clip keyed frame 2 shows walk_2: {after}")
-    check(abs(after[3] - before[3]) < 1e-4 or after[3] > 0, f"the same rect: {before} {after}")
+    check(abs(after[3] - before[3]) < 1e-4 and abs(after[4] - before[4]) < 1e-4, f"the same rect: {before} {after}")
 
     # one undo restores the meta, the closed scene, the prefab and the open sprite
     await ed.call("undo", scope="project")
     now = meta.read_bytes() if meta.exists() else None
-    check(now == meta_before or (now is not None and b"spriteSheet" not in now), "the meta as it was")
+    check(now == meta_before, f"the meta as it was: {now!r} vs {meta_before!r}")
     check(S["closed"].read_bytes() == closed_before, "the closed scene as it was")
     sprite = (await ed.call("get_entity", scene=S["main"], entity="Walker", components=["sprite"]))["components"]["sprite"]
     check(not sprite.get("sheet") and sprite.get("numFramesRect") == 3, f"Walker is inline again: {sprite}")
-    check(S["prefab"].read_bytes() == prefab_before or "framesRect" in S["prefab"].read_text(), "the prefab as it was")
+    check(S["prefab"].read_bytes() == prefab_before, f"the prefab as it was: {S['prefab'].read_text()[-600:]}")
+
+
+KEPT = "assets/legacy/kept.png"
+KEPT_FRAMES = [{"name": "k_0", "rect": [0, 0, 16, 16]}, {"name": "k_0", "rect": [16, 0, 16, 16]}]
+
+
+async def test_undo_keeps_saves_made_since(ed: Editor):
+    """Undoing a conversion puts the sprites back without writing the old bytes over a save made
+    since (another program's), and through the open document when the scene was opened meanwhile;
+    a name used twice becomes unique, a shown rect that is none of the frames is kept as one, and a
+    CRLF file keeps its line endings"""
+    (ed.project / KEPT).write_bytes(png(32, 16))
+    await ed.call("sync_files", paths=[KEPT])
+    kept = (await ed.call("create_scene", name="Kept", type="2d", path="scenes/Kept.scene"))["scene"]["id"]
+    await ed.call("set_sprite_frames", scene=kept, create={"name": "K1"}, texture=KEPT, frames=KEPT_FRAMES, frame=0, inline=True)
+    # K2 shows a rect that is none of its frames (its texture rect set by hand)
+    await ed.call("set_sprite_frames", scene=kept, create={"name": "K2"}, texture=KEPT, frames=KEPT_FRAMES, frame=0, inline=True)
+    await ed.call("set_properties", scene=kept, entity="K2", values={"mesh": {"submeshes[0].textureRect": [0.25, 0, 0.5, 1]}})
+    await ed.call("wait", frames=3)
+    await ed.call("save_scene", scene=kept)
+    await ed.call("close_scene", scene=kept)
+    file = ed.project / "scenes" / "Kept.scene"
+    # a Windows checkout (CRLF) of a file from before sheet sprites (scene format 7: no sheet sprite in it)
+    text = file.read_bytes().replace(b"\r\n", b"\n")
+    check(b"formatVersion: 8" in text, f"saved at format 8: {text[:80]}")
+    file.write_bytes(text.replace(b"formatVersion: 8", b"formatVersion: 7").replace(b"\n", b"\r\n"))
+    await ed.call("sync_files", paths=["scenes/Kept.scene"])
+    await ed.call("set_sprite_frames", scene=S["main"], create={"name": "K0"}, texture=KEPT, frames=KEPT_FRAMES, frame=1, inline=True)
+
+    r = await ed.call("set_sprite_frames", scene=S["main"], entity="K0", convert=True, all_users=True)
+    check(len(r["converted"]) == 3, f"K0, K1, K2 converted: {r}")
+    meta = (ed.project / (KEPT + ".meta")).read_text()
+    check("k_0 2" in meta, f"the second k_0 is unique in the Sprite Mode: {meta}")
+    converted = file.read_bytes()
+    check(b"\r\n" in converted and b"\n" not in converted.replace(b"\r\n", b""), "the converted file keeps CRLF")
+    check(b"formatVersion: 8" in converted, f"the file holding sheet sprites now says format 8: {converted[:80]}")
+    k2 = next(c for c in r["converted"] if c["game_object"] == "K2")
+    check(k2["frame"] == 2, f"K2's rect is kept as a third frame: {r['converted']}")
+    k0 = (await ed.call("get_entity", scene=S["main"], entity="K0", components=["sprite"]))["components"]["sprite"]
+    check(k0.get("frameName") == "k_0 2", f"K0 shows the second frame by its unique name: {k0}")
+
+    # another program saves the closed scene (a rename) before the undo
+    text = file.read_bytes().replace(b"name: K1", b"name: K1-renamed")
+    file.write_bytes(text)
+    await ed.call("sync_files", paths=["scenes/Kept.scene"])
+    await ed.call("undo", scope="project")
+    after = file.read_text()
+    check("K1-renamed" in after, "the save made since is kept")
+    check(f"sheet: {KEPT}" not in after and after.count("framesRect") == 2, f"the sprites are inline again: {after[:600]}")
+
+    # converted again, then the scene opened before the undo: the open document is restored
+    await ed.call("set_sprite_frames", scene=S["main"], entity="K0", convert=True, all_users=True)
+    check(f"sheet: {KEPT}" in file.read_text(), "converted in its file")
+    await ed.call("open_scene", scene="scenes/Kept.scene")
+    on_disk = file.read_bytes()
+    await ed.call("undo", scope="project")
+    k1 = (await ed.call("get_entity", scene="Kept", entity="K1-renamed", components=["sprite"]))["components"]["sprite"]
+    check(not k1.get("sheet") and k1.get("numFramesRect") == 2, f"the open K1 is inline again: {k1}")
+    scenes = {sc["name"]: sc for sc in (await ed.call("list_scenes"))["scenes"]}
+    check(scenes["Kept"]["modified"], f"the restored document is modified (unsaved): {scenes['Kept']}")
+    check(file.read_bytes() == on_disk, "the file under the open document is not written behind its back")
+    await ed.call("close_scene", scene="Kept", unsaved="discard")
+    await ed.call("select_scene", scene=S["main"])
+    await ed.call("delete_entities", scene=S["main"], entities=["K0"])
+
+
+async def test_convert_onto_a_matching_grid_names_the_frame(ed: Editor):
+    """A texture whose Grid already holds the sprite's rects keeps its Grid; the sprite shows its frame by the grid's name"""
+    gridded = "assets/legacy/gridded.png"
+    (ed.project / gridded).write_bytes(png(32, 16))
+    (ed.project / (gridded + ".meta")).write_text("import:\n  spriteSheet: {version: 1, mode: grid, grid: {cell: [16, 16], offset: [0, 0], "
+                                                  "spacing: [0, 0], count: 0, skipEmpty: false, prefix: gr_}, pivot: center}\n")
+    await ed.call("sync_files", paths=[gridded, gridded + ".meta"])
+    await ed.call("set_sprite_frames", scene=S["main"], create={"name": "OnGrid"}, texture=gridded,
+                  frames=[{"name": "a", "rect": [0, 0, 16, 16]}, {"name": "b", "rect": [16, 0, 16, 16]}], frame=1, inline=True)
+    r = await ed.call("set_sprite_frames", scene=S["main"], entity="OnGrid", convert=True)
+    check(r["frames"] == 2, f"the grid's two frames: {r}")
+    sprite = (await ed.call("get_entity", scene=S["main"], entity="OnGrid", components=["sprite"]))["components"]["sprite"]
+    check(sprite.get("frame") == 1 and sprite.get("frameName") == "gr_1", f"frame 1 by the grid's name: {sprite}")
+    check("mode: grid" in (ed.project / (gridded + ".meta")).read_text(), "the Grid is kept")
+    await ed.call("delete_entities", scene=S["main"], entities=["OnGrid"])
+
+
+async def test_three_hundred_inline_frames_play(ed: Editor):
+    """AC8: a legacy sprite with 300 inline frames saves, loads again, draws and plays them all"""
+    strip = "assets/legacy/strip.png"
+    (ed.project / strip).write_bytes(png(160, 120))
+    await ed.call("sync_files", paths=[strip])
+    frames = [{"name": f"f{i}", "rect": [(i % 20) * 8, (i // 20) * 8, 8, 8]} for i in range(300)]
+    sid = (await ed.call("create_scene", name="Many", type="2d", path="scenes/Many.scene"))["scene"]["id"]
+    await ed.call("set_sprite_frames", scene=sid, create={"name": "Many", "position": [100, 100, 0]}, texture=strip, frames=frames, frame=0,
+                  size=[64, 64], inline=True)
+    await ed.call("set_sprite_animation", scene=sid, sprite="Many", fps=60, loop=True)
+    await ed.call("wait", frames=3)
+    await ed.call("save_scene", scene=sid)
+    await ed.call("close_scene", scene=sid)
+    await ed.call("open_scene", scene="scenes/Many.scene")
+    got = (await ed.call("get_entity", scene="Many", entity="Many", components=["sprite"]))["components"]["sprite"]
+    check(got.get("numFramesRect") == 300, f"300 frames saved and loaded: {got.get('numFramesRect')}")
+    shot = await ed.call_raw("screenshot", {"view": "game", "scene": "Many", "max_width": 0})
+    check(not shot.is_error and shot.images and not pngdiff.flat(pngdiff.decode(shot.images[0][0])), "it draws")
+    await ed.call("play", action="start", fixed_fps=60, auto_pause=True)
+    try:
+        seen = set()
+        for _ in range(4):
+            await ed.call("wait", game_seconds=1.25)
+            r = (await ed.call("eval_lua", code="local r = object('Many', 'Sprite').textureRect return r.x, r.y"))["values"]
+            seen.add((round(r[0] * 20), round(r[1] * 15)))
+        check(len(seen) >= 3 and any(y >= 10 for _, y in seen), f"it plays far into the 300 frames: {sorted(seen)}")
+    finally:
+        await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
+    await ed.call("close_scene", scene="Many", unsaved="discard")
+    await ed.call("select_scene", scene=S["main"])
 
 
 async def test_sheet_conflict(ed: Editor):
@@ -169,4 +282,9 @@ async def test_check_after_conversion_and_atlas_errors(ed: Editor):
     code, findings = check_sprites(ed)
     check(code == 1 and any(f.get("code") == "missing_member" and f["severity"] == "error" for f in findings),
           f"a missing member is an error: exit {code}, {findings}")
+    # a member that is there (the default project's assets folder is the project folder): exit 0
+    atlas.write_text(json.dumps({"format": "jasperengine.spriteatlas", "version": 1, "guid": "0" * 31 + "2", "include_in_build": True,
+                                 "members": [{"path": WALK}], "exclude": [], "settings": {}}))
+    code, findings = check_sprites(ed)
+    check(code == 0 and not any(f.get("code") == "missing_member" for f in findings), f"a present member: exit {code}, {findings}")
     atlas.unlink()

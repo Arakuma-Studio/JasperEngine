@@ -13,6 +13,9 @@
 
 #include <gtest/gtest.h>
 
+#include <fstream>
+#include <iterator>
+
 using namespace jasperengine;
 using namespace jasperengine::editor::sprite;
 using namespace jasperengine::editor::sprite::test;
@@ -156,4 +159,109 @@ TEST(SpriteSheetBuilder, FramesFromAsepriteJson) {
     EXPECT_EQ(frames[1].name, "b");
     EXPECT_FALSE(framesFromAsepriteJson("{\"nope\": 1}", frames, problem));
     EXPECT_EQ(problem.kind, "invalid_settings");
+}
+
+namespace {
+
+    std::string fixtureText(const std::string& name) {
+        std::ifstream in(std::filesystem::path(JASPER_TEST_FIXTURES_DIR) / "sprite" / "aseprite-json" / name, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    }
+
+}
+
+// R10 on Aseprite's own export (fixtures/sprite/aseprite-json, made by make_trimmed.lua with the
+// Aseprite CLI: --sheet --data --trim --list-slices): a trimmed frame keeps its place in the
+// untrimmed one; a slice's border is measured from the frame's edges (its bounds are not the
+// frame); a slice key holds from its frame until the next key's
+TEST(SpriteSheetBuilder, AsepriteTrimmedExportsAndSliceKeys) {
+    for (const char* file : {"trimmed.json", "trimmed-array.json"}) {
+        SCOPED_TRACE(file);
+        std::vector<TextureSheetFrame> frames;
+        editor::pixelart::PixelProblem problem;
+        ASSERT_TRUE(framesFromAsepriteJson(fixtureText(file), frames, problem)) << problem.message;
+        ASSERT_EQ(frames.size(), 3u);
+        const int expected[3][6] = {{0, 0, 10, 8, 2, 3}, {10, 0, 12, 12, 9, 1}, {22, 0, 16, 9, 4, 6}};   // rect, offset
+        for (size_t i = 0; i < 3; i++) {
+            Rect r = frames[i].rect;
+            EXPECT_FALSE(r != Rect(static_cast<float>(expected[i][0]), static_cast<float>(expected[i][1]), static_cast<float>(expected[i][2]),
+                                   static_cast<float>(expected[i][3]))) << "frame " << i;
+            EXPECT_TRUE(frames[i].trimmed());
+            EXPECT_EQ(frames[i].sourceSize, Vector2(24, 16));
+            EXPECT_EQ(frames[i].offset, Vector2(static_cast<float>(expected[i][4]), static_cast<float>(expected[i][5])));
+            // bounds (1, 2, 20, 12), centre (3, 2, 12, 7) in the 24 x 16 frame: the key of frame 0 holds for all three
+            EXPECT_EQ(frames[i].border, Vector4(4, 4, 8, 5)) << "frame " << i;
+            EXPECT_TRUE(frames[i].hasPivot);
+            EXPECT_EQ(frames[i].pivot, Vector2(11, 14));
+        }
+    }
+    // a second key (Aseprite's UI writes one per keyframe): frames from it take its values
+    nlohmann::json json = nlohmann::json::parse(fixtureText("trimmed.json"));
+    json["meta"]["slices"][0]["keys"].push_back({{"frame", 2}, {"bounds", {{"x", 0}, {"y", 0}, {"w", 24}, {"h", 16}}},
+                                                 {"center", {{"x", 5}, {"y", 5}, {"w", 14}, {"h", 6}}}});
+    std::vector<TextureSheetFrame> frames;
+    editor::pixelart::PixelProblem problem;
+    ASSERT_TRUE(framesFromAsepriteJson(json.dump(), frames, problem)) << problem.message;
+    EXPECT_EQ(frames[1].border, Vector4(4, 4, 8, 5)) << "frame 1: still the first key";
+    EXPECT_EQ(frames[2].border, Vector4(5, 5, 5, 5)) << "frame 2: the second key";
+    EXPECT_FALSE(frames[2].hasPivot) << "the second key has no pivot";
+
+    // the trim reaches the sheet's frames, the meta and the MCP forms
+    TextureSheetSettings settings;
+    settings.mode = TextureSpriteMode::MULTIPLE;
+    settings.frames = frames;
+    const std::filesystem::path png = std::filesystem::path(JASPER_TEST_FIXTURES_DIR) / "sprite" / "aseprite-json" / "trimmed.png";
+    const TextureSheetBuild built = buildTextureSheet(png, "trimmed.png", settings);
+    ASSERT_TRUE(built.ok);
+    ASSERT_EQ(built.sheet.frames.size(), 3u);
+    EXPECT_EQ(built.sheet.frames[1].sourceSize, Vector2(24, 16));
+    EXPECT_EQ(built.sheet.frames[1].offset, Vector2(9, 1));
+    EXPECT_EQ(built.sheet.frames[0].pivot, Vector2(11, 14)) << "the pivot is in the untrimmed frame";
+    std::vector<editor::pixelart::PixelProblem> problems;
+    TextureSheetSettings fromYaml;
+    ASSERT_TRUE(sheetSettingsFromYaml(YAML::Load(YAML::Dump(sheetSettingsToYaml(settings))), fromYaml, problems));
+    EXPECT_TRUE(fromYaml == settings) << YAML::Dump(sheetSettingsToYaml(settings));
+    TextureSheetSettings fromJson;
+    ASSERT_TRUE(sheetSettingsFromJson(sheetSettingsToJson(settings), TextureSheetSettings(), fromJson, problems));
+    EXPECT_TRUE(problems.empty()) << problems[0].message;
+    EXPECT_TRUE(fromJson == settings) << sheetSettingsToJson(settings).dump();
+
+    // packed: each trimmed frame goes back into its 24 x 16 source frame first
+    ScratchDir dir("trimmed-member");
+    const std::filesystem::path texture = dir.assets() / "anim" / "trimmed.png";
+    std::filesystem::create_directories(texture.parent_path());
+    std::filesystem::copy_file(png, texture);
+    writeSpriteMode(texture, settings);
+    AtlasMemberInput member;
+    member.path = "anim/trimmed.png";
+    member.absolute = texture;
+    member.kind = "texture";
+    member.stamp = "trimmed";
+    AtlasBuildInput input = atlasInput(dir, {member});
+    std::shared_ptr<AtlasBuildResult> r = SpriteAtlasBuilder::get().build(input);
+    ASSERT_TRUE(r->ok) << r->error.message;
+    ASSERT_EQ(r->frames.size(), 3u);
+    for (const AtlasFrameRow& f : r->frames) {
+        EXPECT_EQ(f.sourceSize, (editor::pixelart::IntSize{24, 16})) << f.name;
+    }
+    // (bordered frames are never trimmed by the packer: the whole source frame is packed, R6)
+    EXPECT_EQ(r->frames[1].rect.w, 24);
+    EXPECT_EQ(r->frames[1].rect.h, 16);
+    // without borders the packer trims them again: to the same boxes, at the same offsets
+    for (TextureSheetFrame& f : settings.frames) {
+        f.border = Vector4(0, 0, 0, 0);
+        f.hasPivot = false;
+    }
+    writeSpriteMode(texture, settings);
+    input.members[0].stamp = "trimmed-no-border";
+    input.outDir = dir.root / "no-border";
+    std::shared_ptr<AtlasBuildResult> trimmed = SpriteAtlasBuilder::get().build(input);
+    ASSERT_TRUE(trimmed->ok) << trimmed->error.message;
+    const int offsets[3][4] = {{2, 3, 10, 8}, {9, 1, 12, 12}, {4, 6, 16, 9}};
+    for (size_t i = 0; i < 3; i++) {
+        EXPECT_EQ(trimmed->frames[i].offset.x, offsets[i][0]) << i;
+        EXPECT_EQ(trimmed->frames[i].offset.y, offsets[i][1]) << i;
+        EXPECT_EQ(trimmed->frames[i].rect.w, offsets[i][2]) << i;
+        EXPECT_EQ(trimmed->frames[i].rect.h, offsets[i][3]) << i;
+    }
 }

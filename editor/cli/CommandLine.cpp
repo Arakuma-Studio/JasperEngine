@@ -3326,7 +3326,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     }
     if (sprites && !fileMode) {
         // S45 R22: the scene, prefab and atlas files (YAML, JSON, image headers): no engine
-        std::string assetsDir = "assets";
+        // the project's assets folder: its project.yaml's, else the default (the project folder)
+        std::string assetsDir = Project::defaultAssetsDir;
         try {
             const YAML::Node projectYaml = YAML::LoadFile((root / "project.yaml").string());
             if (projectYaml["assetsDir"]) assetsDir = projectYaml["assetsDir"].as<std::string>();
@@ -3346,7 +3347,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         auto atlasFinding = [&](const std::string& atlas, const pixelart::PixelProblem& p, const char* severity) {
             ProjectChecks::Finding f;
             f.tool = "sprites";
-            f.path = (fs::path(assetsDir) / atlas).generic_string();
+            f.path = (fs::path(assetsDir) / atlas).lexically_normal().generic_string();
             f.severity = severity;
             f.code = p.kind;
             f.message = p.message;

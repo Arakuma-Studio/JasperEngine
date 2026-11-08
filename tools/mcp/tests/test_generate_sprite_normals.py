@@ -406,7 +406,7 @@ async def test_overwrite(ed: Editor):
 # ---------------------------------------------------------------------------- 10.1.6 GameObject source
 
 async def test_sprite_source_and_apply(ed: Editor):
-    await ed.call("set_sprite_frames", create={"name": "Hero"}, texture=SHEET, slice={"tile_size": [32, 32]}, inline=True)
+    await ed.call("set_sprite_frames", create={"name": "Hero"}, texture=SHEET, slice={"tile_size": [32, 32]})
     await ed.call("set_texture_settings", entity="Hero", component="mesh", property="submeshes[0].material.baseColorTexture",
                   min_filter="nearest", mag_filter="nearest")
     r = await gen(ed, source="Hero")

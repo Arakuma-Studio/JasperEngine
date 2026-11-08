@@ -9,9 +9,11 @@
 #include "io/AtomicFile.h"
 #include "sprite/SpriteSheetIO.h"
 #include "sprite/SpriteSheetPool.h"
+#include "texture/TextureData.h"
 #include "util/Sha256.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <iterator>
@@ -175,6 +177,12 @@ namespace jasperengine::editor::sprite {
                     frame.border = Vector4(static_cast<float>(std::max(0, b[0])), static_cast<float>(std::max(0, b[1])),
                                            static_cast<float>(std::max(0, b[2])), static_cast<float>(std::max(0, b[3])));
                 }
+                // a trimmed frame: its untrimmed size and where the rect sits in it
+                int size[2] = {0, 0}, offset[2] = {0, 0};
+                if (f["sourceSize"] && intList(f["sourceSize"], 2, size) && size[0] >= r[2] && size[1] >= r[3]) {
+                    frame.sourceSize = Vector2(static_cast<float>(size[0]), static_cast<float>(size[1]));
+                    if (f["offset"] && intList(f["offset"], 2, offset)) frame.offset = Vector2(static_cast<float>(offset[0]), static_cast<float>(offset[1]));
+                }
                 out.frames.push_back(frame);
             }
         }
@@ -222,6 +230,10 @@ namespace jasperengine::editor::sprite {
                 if (f.hasPivot) frame["pivot"] = flowList({static_cast<int>(f.pivot.x), static_cast<int>(f.pivot.y)});
                 if (f.border.x > 0 || f.border.y > 0 || f.border.z > 0 || f.border.w > 0) {
                     frame["border"] = flowList({static_cast<int>(f.border.x), static_cast<int>(f.border.y), static_cast<int>(f.border.z), static_cast<int>(f.border.w)});
+                }
+                if (f.trimmed()) {
+                    frame["sourceSize"] = flowList({static_cast<int>(f.sourceSize.x), static_cast<int>(f.sourceSize.y)});
+                    frame["offset"] = flowList({static_cast<int>(f.offset.x), static_cast<int>(f.offset.y)});
                 }
                 frames.push_back(frame);
             }
@@ -303,9 +315,24 @@ namespace jasperengine::editor::sprite {
                             frame.pivot = Vector2(static_cast<float>(p[0]), static_cast<float>(p[1]));
                         }
                     }
+                    int size[2] = {0, 0}, offset[2] = {0, 0};
+                    if (f.contains("source_size")) {
+                        if (!jsonInts(f["source_size"], 2, size) || size[0] < r[2] || size[1] < r[3]) {
+                            problems.push_back(invalid(field + ".source_size", "source_size is the untrimmed [width, height], at least the rect's", ""));
+                        } else {
+                            frame.sourceSize = Vector2(static_cast<float>(size[0]), static_cast<float>(size[1]));
+                            if (f.contains("offset") && (!jsonInts(f["offset"], 2, offset) || offset[0] < 0 || offset[1] < 0 ||
+                                                         offset[0] + r[2] > size[0] || offset[1] + r[3] > size[1])) {
+                                problems.push_back(invalid(field + ".offset", "offset is [x, y]: where the rect sits in the untrimmed frame", ""));
+                            } else {
+                                frame.offset = Vector2(static_cast<float>(offset[0]), static_cast<float>(offset[1]));
+                            }
+                        }
+                    }
+                    const int fw = frame.trimmed() ? size[0] : r[2], fh = frame.trimmed() ? size[1] : r[3];
                     int b[4] = {0, 0, 0, 0};
                     if (f.contains("border")) {
-                        if (!jsonInts(f["border"], 4, b) || b[0] < 0 || b[1] < 0 || b[2] < 0 || b[3] < 0 || b[0] + b[2] > r[2] || b[1] + b[3] > r[3]) {
+                        if (!jsonInts(f["border"], 4, b) || b[0] < 0 || b[1] < 0 || b[2] < 0 || b[3] < 0 || b[0] + b[2] > fw || b[1] + b[3] > fh) {
                             problems.push_back(invalid(field + ".border", "border is [left, top, right, bottom] pixels inside the frame", ""));
                         } else {
                             frame.border = Vector4(static_cast<float>(b[0]), static_cast<float>(b[1]), static_cast<float>(b[2]), static_cast<float>(b[3]));
@@ -348,6 +375,10 @@ namespace jasperengine::editor::sprite {
                 if (f.border.x > 0 || f.border.y > 0 || f.border.z > 0 || f.border.w > 0) {
                     frame["border"] = {static_cast<int>(f.border.x), static_cast<int>(f.border.y), static_cast<int>(f.border.z), static_cast<int>(f.border.w)};
                 }
+                if (f.trimmed()) {
+                    frame["source_size"] = {static_cast<int>(f.sourceSize.x), static_cast<int>(f.sourceSize.y)};
+                    frame["offset"] = {static_cast<int>(f.offset.x), static_cast<int>(f.offset.y)};
+                }
                 frames.push_back(frame);
             }
             j["frames"] = frames;
@@ -364,18 +395,32 @@ namespace jasperengine::editor::sprite {
             problem = {"invalid_settings", "json", "not Aseprite --data JSON (no frames)", "export it with Aseprite's --data (json-hash or json-array)"};
             return false;
         }
+        auto rectOf = [](const nlohmann::json& j, int out4[4]) {
+            if (!j.is_object()) return false;
+            out4[0] = j.value("x", 0); out4[1] = j.value("y", 0); out4[2] = j.value("w", 0); out4[3] = j.value("h", 0);
+            return true;
+        };
         auto add = [&](const std::string& name, const nlohmann::json& f) {
             int r[4] = {0, 0, 0, 0};
-            const nlohmann::json& rect = f.contains("frame") ? f["frame"] : nlohmann::json();
-            if (!rect.is_object()) return;
-            r[0] = rect.value("x", 0); r[1] = rect.value("y", 0); r[2] = rect.value("w", 0); r[3] = rect.value("h", 0);
-            if (r[2] <= 0 || r[3] <= 0) return;
+            if (!f.contains("frame") || !rectOf(f["frame"], r) || r[2] <= 0 || r[3] <= 0) return;
             TextureSheetFrame frame;
             // Aseprite names frames "<file> <i>.<ext>": the extension is not part of the name
             frame.name = name;
             const size_t dot = frame.name.rfind('.');
             if (dot != std::string::npos && dot > 0 && frame.name.find(' ') != std::string::npos) frame.name = frame.name.substr(0, dot);
             frame.rect = Rect(static_cast<float>(r[0]), static_cast<float>(r[1]), static_cast<float>(r[2]), static_cast<float>(r[3]));
+            // --trim: the frame's pixels are the trimmed rect; spriteSourceSize places it in sourceSize
+            int sss[4] = {0, 0, 0, 0};
+            const bool rotated = f.value("rotated", false);
+            if (!rotated && f.value("trimmed", false) && f.contains("spriteSourceSize") && rectOf(f["spriteSourceSize"], sss) && f.contains("sourceSize") &&
+                f["sourceSize"].is_object()) {
+                const int sw = f["sourceSize"].value("w", 0), sh = f["sourceSize"].value("h", 0);
+                if (sw >= r[2] && sh >= r[3] && sss[0] >= 0 && sss[1] >= 0 && sss[0] + r[2] <= sw && sss[1] + r[3] <= sh &&
+                    (sw != r[2] || sh != r[3])) {
+                    frame.sourceSize = Vector2(static_cast<float>(sw), static_cast<float>(sh));
+                    frame.offset = Vector2(static_cast<float>(sss[0]), static_cast<float>(sss[1]));
+                }
+            }
             out.push_back(frame);
         };
         const nlohmann::json& frames = root["frames"];
@@ -386,25 +431,38 @@ namespace jasperengine::editor::sprite {
         } else if (frames.is_array()) {
             for (const nlohmann::json& f : frames) add(f.value("filename", std::string("frame_") + std::to_string(out.size())), f);
         }
-        // 9-patch slices name their frame by its index (Aseprite's meta.slices; key frame 0)
+        // 9-patch slices (Aseprite's meta.slices): a key holds from its frame until the next key's;
+        // bounds, centre and pivot are in the untrimmed frame
         if (root.contains("meta") && root["meta"].is_object() && root["meta"].contains("slices") && root["meta"]["slices"].is_array()) {
             for (const nlohmann::json& slice : root["meta"]["slices"]) {
                 if (!slice.contains("keys") || !slice["keys"].is_array()) continue;
+                std::vector<nlohmann::json> keys;
                 for (const nlohmann::json& key : slice["keys"]) {
-                    const int index = key.value("frame", -1);
-                    if (index < 0 || index >= static_cast<int>(out.size())) continue;
-                    if (key.contains("center") && key["center"].is_object() && key.contains("bounds") && key["bounds"].is_object()) {
-                        const nlohmann::json& b = key["bounds"];
-                        const nlohmann::json& c = key["center"];
-                        const int bw = b.value("w", 0), bh = b.value("h", 0);
-                        const int cx = c.value("x", 0), cy = c.value("y", 0), cw = c.value("w", 0), ch = c.value("h", 0);
-                        out[static_cast<size_t>(index)].border = Vector4(static_cast<float>(b.value("x", 0) + cx), static_cast<float>(b.value("y", 0) + cy),
-                                                                         static_cast<float>(std::max(0, bw - cx - cw)), static_cast<float>(std::max(0, bh - cy - ch)));
-                    }
-                    if (key.contains("pivot") && key["pivot"].is_object() && key.contains("bounds")) {
-                        out[static_cast<size_t>(index)].hasPivot = true;
-                        out[static_cast<size_t>(index)].pivot = Vector2(static_cast<float>(key["bounds"].value("x", 0) + key["pivot"].value("x", 0)),
-                                                                        static_cast<float>(key["bounds"].value("y", 0) + key["pivot"].value("y", 0)));
+                    if (key.is_object() && key.value("frame", -1) >= 0) keys.push_back(key);
+                }
+                std::stable_sort(keys.begin(), keys.end(), [](const nlohmann::json& a, const nlohmann::json& b) { return a.value("frame", 0) < b.value("frame", 0); });
+                for (size_t k = 0; k < keys.size(); k++) {
+                    const nlohmann::json& key = keys[k];
+                    const int first = key.value("frame", 0);
+                    const int last = k + 1 < keys.size() ? keys[k + 1].value("frame", 0) : static_cast<int>(out.size());
+                    int b[4] = {0, 0, 0, 0};
+                    if (!key.contains("bounds") || !rectOf(key["bounds"], b)) continue;
+                    for (int index = first; index < last && index < static_cast<int>(out.size()); index++) {
+                        TextureSheetFrame& frame = out[static_cast<size_t>(index)];
+                        Rect fr = frame.rect;
+                        const int fw = frame.trimmed() ? static_cast<int>(frame.sourceSize.x) : static_cast<int>(fr.getWidth());
+                        const int fh = frame.trimmed() ? static_cast<int>(frame.sourceSize.y) : static_cast<int>(fr.getHeight());
+                        int c[4] = {0, 0, 0, 0};
+                        if (key.contains("center") && rectOf(key["center"], c)) {
+                            const int left = b[0] + c[0], top = b[1] + c[1];
+                            const int right = fw - (b[0] + c[0] + c[2]), bottom = fh - (b[1] + c[1] + c[3]);
+                            frame.border = Vector4(static_cast<float>(std::max(0, left)), static_cast<float>(std::max(0, top)),
+                                                   static_cast<float>(std::max(0, right)), static_cast<float>(std::max(0, bottom)));
+                        }
+                        if (key.contains("pivot") && key["pivot"].is_object()) {
+                            frame.hasPivot = true;
+                            frame.pivot = Vector2(static_cast<float>(b[0] + key["pivot"].value("x", 0)), static_cast<float>(b[1] + key["pivot"].value("y", 0)));
+                        }
                     }
                 }
             }
@@ -436,13 +494,41 @@ namespace jasperengine::editor::sprite {
         return info;
     }
 
+    std::optional<pixelart::PixelImage> loadSpriteImage(const fs::path& file, std::string* error) {
+        std::string ext = file.extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (ext != ".svg") return pixelart::PixelImage::loadPng(file, error);
+        TextureData data;
+        if (!data.loadTextureFromFile(file.string().c_str()) || !data.getData() || data.getWidth() <= 0 || data.getHeight() <= 0) {
+            if (error) *error = "the SVG does not rasterize";
+            return std::nullopt;
+        }
+        const int channels = data.getChannels();
+        if (channels != 4 && channels != 3) {
+            if (error) *error = "the SVG rasterizes to " + std::to_string(channels) + " channel(s)";
+            return std::nullopt;
+        }
+        pixelart::PixelImage image(data.getWidth(), data.getHeight());
+        const uint8_t* src = static_cast<const uint8_t*>(data.getData());
+        std::span<uint8_t> out = image.editPixels();
+        const size_t count = static_cast<size_t>(image.width()) * static_cast<size_t>(image.height());
+        for (size_t i = 0; i < count; i++) {
+            const size_t from = i * static_cast<size_t>(channels);
+            out[i * 4 + 0] = src[from];
+            out[i * 4 + 1] = src[from + 1];
+            out[i * 4 + 2] = src[from + 2];
+            out[i * 4 + 3] = channels == 4 ? src[from + 3] : 255;
+        }
+        return image;
+    }
+
     TextureSheetBuild buildTextureSheet(const fs::path& absoluteTexture, const std::string& assetPath, const TextureSheetSettings& settings,
                                         const pixelart::PixelImage* image) {
         TextureSheetBuild out;
         std::optional<pixelart::PixelImage> loaded;
         if (!image) {
             std::string error;
-            loaded = pixelart::PixelImage::loadPng(absoluteTexture, &error);
+            loaded = loadSpriteImage(absoluteTexture, &error);
             if (!loaded) {
                 out.error = {"not_a_sheet", "texture", assetPath + ": " + error, "save the texture as an image this editor reads"};
                 return out;

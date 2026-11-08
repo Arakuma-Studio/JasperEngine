@@ -88,6 +88,9 @@ private:
     std::string m_jsonStatus;
     int m_selectedFrame = -1;
     int m_pivotPreset = 0;
+    // the stored custom pivot (normalized from the bottom-left), kept until a preset is picked
+    bool m_customPivot = false;
+    Vector2 m_pivotNormalized = Vector2(0.5f, 0.5f);
     std::function<void(const TextureSheetSettings&)> m_onApplySheet;
     TextureSheetSettings sheetSettings() const;
 

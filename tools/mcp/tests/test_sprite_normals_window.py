@@ -183,7 +183,7 @@ async def test_setup(ed: Editor):
     await ed.call("create_entity", type="sprite", name="Hero", position=[0, 0, 0],
                   values={"mesh": {"submeshes[0].material.baseColorTexture": "assets/hero.png"}, "sprite": {"width": 32, "height": 32}})
     await ed.call("set_sprite_frames", create={"name": "Walker", "position": [80, 0, 0]}, texture="assets/walk.png",
-                  slice={"tile_size": [32, 32]}, inline=True)
+                  slice={"tile_size": [32, 32]})
     await ed.call("create_entity", type="light_2d", name="Light 2D", position=[-40, 40, 0])
     await ed.call("save_scene")
 
