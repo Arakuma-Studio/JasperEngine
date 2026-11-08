@@ -189,6 +189,12 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
   T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- origin/main merge prepared on terrain/upstream-merge (13cf25705): 622 commits, WERROR build, core 810, editor 418 (2 failures,
+  one fixed), MCP 123/123, fan-out 148 of 150; SplineGpu.FenceAndWall now passes (upstream recaptured its golden; follow-up
+  closed). Found: T3's 12-layer variants use 226-241 GLES3 fragment uniform vectors against 224 (would break on WebGL2/Android;
+  T3 fixing on terrain/t3-gles3-fit); VoxelTerrainGpu.CaveMouth fails when repeated in one process (T6 fixing on
+  terrain/t6-cavemouth-flake); agent guide 53 bytes over budget (trimming our lines; eval deferred to the final gate); a forced
+  terrain tier shared bits with upstream lighting bits (fixed in the merge). The Xcode navigation check fails the same on origin/main.
 - T1 final batch part 1 landed (b6312c623). The rest of T1 split in two: window items stay with T1; pen readers and benches go
   to a second agent (terrain/t1-benches), since they live in their own files. The remote queue's false exit 1 came from editing
   rb-remote.sh while a job ran it; jobs now run a private copy.
