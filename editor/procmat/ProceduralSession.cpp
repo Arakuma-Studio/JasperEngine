@@ -13,8 +13,17 @@ ProceduralSession::ProceduralSession(ProceduralEvaluator& evaluator, std::shared
     : evaluator(evaluator), library(std::move(library)), options(std::move(options)) {}
 
 void ProceduralSession::setGraph(const graph::Graph& graph, double now) {
+    // R7: a value edit of what the evaluator holds writes the new values into its plan, with no planning: a
+    // slider drag must not plan the graph on every move. Whatever else waits or failed is planned again.
+    std::optional<PassPlan> edited;
+    if (current && active && !pending && problem.empty()) edited = planValueEdit(*active, *current, graph, library);
     current = graph;
-    replan(now);
+    if (edited) {
+        stale = true;
+        adopt(std::move(*edited), now);
+    } else {
+        replan(now);
+    }
 }
 
 void ProceduralSession::setOptions(const PlanOptions& newOptions, double now) {
@@ -33,6 +42,7 @@ void ProceduralSession::replan(double now) {
     stale = true;
     PassPlan plan;
     std::string planError;
+    plans++;
     if (!planGraph(*current, library, roots, options, plan, planError)) {
         problem = std::move(planError);
         // what was on its way was for a graph that no longer is
@@ -47,6 +57,10 @@ void ProceduralSession::replan(double now) {
         }
         return;
     }
+    adopt(std::move(plan), now);
+}
+
+void ProceduralSession::adopt(PassPlan plan, double now) {
     problem.clear();
     if (active && plan.sameStructure(*active)) {
         pending.reset();

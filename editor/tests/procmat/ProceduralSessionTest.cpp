@@ -12,6 +12,8 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 
 using namespace jasperengine;
 using namespace jasperengine::editor::procmat;
@@ -327,4 +329,73 @@ TEST_F(ProceduralSessionTest, AValueEditDoesNotHoldBackAPendingRebuild) {
     session.setGraph(file, 1.15);
     session.update(1.0 + ProceduralSession::REBUILD_DEBOUNCE_SECONDS, 8.0);
     EXPECT_EQ(evaluator.prepares, 2);
+}
+
+namespace {
+
+    graph::Graph brickWall() {
+        std::ifstream file(std::filesystem::path(JASPER_TEST_REPO_DIR) / "tools/fixtures/procmat-baked/assets/brick_wall.procmat");
+        std::stringstream text;
+        text << file.rdbuf();
+        graph::LoadReport report;
+        graph::Graph graph = graph::load(text.str(), report);
+        EXPECT_TRUE(report.ok) << report.error;
+        return graph;
+    }
+
+}
+
+// R7, R23: a slider drag on the 30-node fixture plans nothing, and the session holds what planning would give
+TEST_F(ProceduralSessionTest, FortyFloatEditsOfTheFixturePlanNothing) {
+    graph::Graph wall = brickWall();
+    ProceduralSession session(evaluator, library, options);
+    session.setRoots(materialBakeRoots(wall), 0.0);
+    session.setGraph(wall, 0.0);
+    session.update(0.0, 8.0);
+    ASSERT_TRUE(session.hasImage()) << session.error();
+    const uint64_t plans = session.planCount();
+
+    double now = 1.0;
+    for (int i = 0; i < 40; i++) {
+        wall.findNode("b")->params["mortar"] = 0.04 + 0.001 * i;
+        session.setGraph(wall, now);
+        session.update(now, 8.0);
+        now += 1.0 / 60.0;
+    }
+    EXPECT_EQ(session.planCount(), plans) << "a value edit is not planned";
+    EXPECT_EQ(evaluator.prepares, 1);
+    EXPECT_GE(evaluator.uniformEdits, 40) << "each edit reaches the passes that read it";
+    EXPECT_FALSE(session.isStale());
+
+    PassPlan planned;
+    std::string error;
+    ASSERT_TRUE(planGraph(wall, library, materialBakeRoots(wall), options, planned, error)) << error;
+    ASSERT_TRUE(session.activePlan());
+    for (size_t i = 0; i < planned.passes.size(); i++) {
+        EXPECT_EQ(session.activePlan()->passes[i].uniforms, planned.passes[i].uniforms) << "pass " << i;
+    }
+}
+
+TEST_F(ProceduralSessionTest, AnEnumEditOfTheFixtureIsPlannedAndRebuilt) {
+    graph::Graph wall = brickWall();
+    ProceduralSession session(evaluator, library, options);
+    session.setRoots(materialBakeRoots(wall), 0.0);
+    session.setGraph(wall, 0.0);
+    session.update(0.0, 8.0);
+    ASSERT_TRUE(session.hasImage()) << session.error();
+    const uint64_t plans = session.planCount();
+
+    wall.findNode("b")->params["pattern"] = 2;
+    session.setGraph(wall, 1.0);
+    EXPECT_EQ(session.planCount(), plans + 1);
+    EXPECT_TRUE(session.isRebuildPending());
+    session.update(1.0 + ProceduralSession::REBUILD_DEBOUNCE_SECONDS, 8.0);
+    EXPECT_EQ(evaluator.prepares, 2);
+
+    // and a float edit while the rebuild waits is planned with it
+    wall.findNode("b")->params["pattern"] = 3;
+    session.setGraph(wall, 2.0);
+    wall.findNode("b")->params["mortar"] = 0.07;
+    session.setGraph(wall, 2.05);
+    EXPECT_EQ(session.planCount(), plans + 3);
 }

@@ -12,11 +12,14 @@
 // - until a new image is ready, the previous one stays and isStale() says so. A graph that cannot be
 //   planned keeps it stale too, with the reason in error().
 //
-// Which edit is which is decided by generating the plan and comparing it, never by a list of parameter
-// kinds, so the two cannot drift apart. Time comes from the caller: the tests and the window pass theirs.
+// A value edit of a shader node's float, colour or ramp is written into the held plan's slots with no
+// planning (planValueEdit: a drag must not plan the graph on every move); any other edit is decided by
+// generating the plan and comparing it. PassPlanner.AValueEditGivesTheUniformsPlanningWould keeps the two
+// paths equal. Time comes from the caller: the tests and the window pass theirs.
 
 #include "PassPlanner.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -53,9 +56,13 @@ namespace jasperengine::editor::procmat {
         const PassPlan* activePlan() const { return active ? &*active : nullptr; }
         // a rebuild waits for its debounce
         bool isRebuildPending() const { return pending.has_value(); }
+        // how many times the graph was planned: a value edit plans nothing (R7)
+        uint64_t planCount() const { return plans; }
 
     private:
         void replan(double now);
+        // the plan of the graph as it is now: its values only, or a rebuild after the debounce
+        void adopt(PassPlan plan, double now);
 
         ProceduralEvaluator& evaluator;
         std::shared_ptr<const NodeLibrary> library;
@@ -67,6 +74,7 @@ namespace jasperengine::editor::procmat {
         double rebuildAt = 0.0;
         bool running = false;
         bool stale = false;
+        uint64_t plans = 0;
         std::string problem;
         EvaluationResult image;
     };

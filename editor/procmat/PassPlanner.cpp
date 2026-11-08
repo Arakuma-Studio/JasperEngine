@@ -206,6 +206,7 @@ namespace {
             planned.nodes.assign(pass.nodes.begin(), pass.nodes.end());
             planned.fragment = std::move(text);
             for (double value : pass.values) planned.uniforms.values.push_back((float)value);
+            planned.values = pass.valueSlots;
             const std::vector<PassBuilder::TextureUse> uses = pass.textures;
             // dependencies draw first: a Buffer's steps come before any step reading it
             for (const PassBuilder::TextureUse& use : uses) planned.textures.push_back({use.name, bufferFor(use.source)});
@@ -474,6 +475,7 @@ bool jasperengine::editor::procmat::planGraph(const graph::Graph& file, const st
                 }
                 const int genericSize = genericSizeOf(node);
                 item.instance = expander.instantiate(node.type, generatorParameters(*descriptor, node), 0.0, genericSize);
+                if (auto* shader = dynamic_cast<ShaderNode*>(item.instance.generator)) shader->paramsNode = node.id;
                 item.ports = nodePorts(*descriptor, genericSize);
             }
             built.emplace(node.id, std::move(item));
@@ -556,4 +558,69 @@ bool jasperengine::editor::procmat::planGraph(const graph::Graph& file, const st
         error = e.what();
         return false;
     }
+}
+
+namespace {
+
+    // what a parameter of a shader node is when the file does not give it, as ShaderNode takes it
+    Json effectiveValue(const Json& definition, const graph::Node& node, const std::string& name) {
+        if (auto given = node.params.find(name); given != node.params.end()) return *given;
+        if (auto fallback = definition.find("default"); fallback != definition.end()) return *fallback;
+        return nullptr;
+    }
+
+}
+
+std::optional<PassPlan> jasperengine::editor::procmat::planValueEdit(const PassPlan& plan, const graph::Graph& before, const graph::Graph& after,
+                                                                     const std::shared_ptr<const NodeLibrary>& library) {
+    if (before.nodes.size() != after.nodes.size() || before.edges.size() != after.edges.size()) return std::nullopt;
+    for (size_t i = 0; i < before.edges.size(); i++) {
+        const graph::Edge& a = before.edges[i];
+        const graph::Edge& b = after.edges[i];
+        if (a.id != b.id || a.from.node != b.from.node || a.from.port != b.from.port || a.to.node != b.to.node || a.to.port != b.to.port) {
+            return std::nullopt;
+        }
+    }
+    struct Edited {
+        std::string kind;
+        Json value;
+    };
+    std::map<std::pair<std::string, std::string>, Edited> edited;
+    for (size_t i = 0; i < before.nodes.size(); i++) {
+        const graph::Node& a = before.nodes[i];
+        const graph::Node& b = after.nodes[i];
+        if (a.id != b.id || a.type != b.type || a.passthrough != b.passthrough) return std::nullopt;
+        if (a.params == b.params) continue;
+        // only a shader node's parameters reach its block verbatim; a Buffer's, the Material Output's and a
+        // library graph's are planned
+        const Json* descriptor = a.type == BUFFER_NODE || a.type == MATERIAL_OUTPUT_NODE ? nullptr : library->descriptor(a.type);
+        if (!descriptor || descriptor->value("kind", std::string()) != "shader" || genericSizeOf(a) != genericSizeOf(b)) return std::nullopt;
+        std::set<std::string> names;
+        for (const Json* params : {&a.params, &b.params}) {
+            for (auto it = params->begin(); it != params->end(); ++it) names.insert(it.key());
+        }
+        const std::vector<Json> definitions = expandedParameters(*descriptor, genericSizeOf(b));
+        for (const std::string& name : names) {
+            const auto was = a.params.find(name);
+            const auto is = b.params.find(name);
+            if (was != a.params.end() && is != b.params.end() && *was == *is) continue;
+            const auto definition = std::find_if(definitions.begin(), definitions.end(), [&](const Json& d) { return d.value("name", std::string()) == name; });
+            if (definition == definitions.end()) return std::nullopt;
+            const std::string kind = definition->value("type", std::string());
+            const Json value = effectiveValue(*definition, b, name);
+            if (!isValueEdit(kind, effectiveValue(*definition, a, name), value)) return std::nullopt;
+            edited[{b.id, name}] = {kind, value};
+        }
+        if (!checkNodeParameters(*descriptor, b, true).empty()) return std::nullopt;
+    }
+    PassPlan out = plan;
+    for (PlannedPass& pass : out.passes) {
+        for (const ValueSlot& slot : pass.values) {
+            const auto found = edited.find({slot.node, slot.param});
+            if (found == edited.end()) continue;
+            const std::vector<double> floats = valueSlotFloats(found->second.kind, found->second.value, slot.part);
+            for (size_t f = 0; f < floats.size(); f++) pass.uniforms.values.at(slot.index + f) = (float)floats[f];
+        }
+    }
+    return out;
 }
