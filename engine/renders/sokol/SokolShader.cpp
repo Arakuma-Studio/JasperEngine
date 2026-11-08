@@ -131,6 +131,39 @@ bool SokolShader::createShader(ShaderData& shaderData){
         destroyShader();
     }
 
+    // A shader past sokol's bind slots is refused here, before its slots index shader_desc's
+    // arrays: the samplers of both stages share SG_MAX_SAMPLER_BINDSLOTS (16), and a slot past an
+    // array writes out of its bounds. The error names the shader, so the overflow is actionable.
+    {
+        const char* name = shaderData.stages.empty() ? "?" : shaderData.stages[0].name.c_str();
+        const int uniformSlots = (int)SG_MAX_UNIFORMBLOCK_BINDSLOTS;
+        const int textureSlots = (int)SOKOL_STORAGEBUFFER_VIEW_SLOT_OFFSET;
+        const int bufferSlots = (int)SG_MAX_VIEW_BINDSLOTS - (int)SOKOL_STORAGEBUFFER_VIEW_SLOT_OFFSET;
+        const int samplerSlots = (int)SG_MAX_SAMPLER_BINDSLOTS;
+        const int pairSlots = (int)SG_MAX_TEXTURE_SAMPLER_PAIRS;
+        auto refuse = [name](const char* what, int slot, int limit){
+            Log::error("Shader '%s' is over the engine's bind slots: %s slot %d, the limit is %d", name, what, slot, limit);
+            return false;
+        };
+        for (const ShaderStage& stage : shaderData.stages){
+            for (const ShaderUniformBlock& block : stage.uniformblocks)
+                if (block.slot >= (unsigned int)uniformSlots)
+                    return refuse("uniform block", (int)block.slot, uniformSlots);
+            for (const ShaderTexture& texture : stage.textures)
+                if (texture.slot >= (unsigned int)textureSlots)
+                    return refuse("texture", (int)texture.slot, textureSlots);
+            for (const ShaderStorageBuffer& buffer : stage.storagebuffers)
+                if (buffer.slot >= (unsigned int)bufferSlots)
+                    return refuse("storage buffer", (int)buffer.slot, bufferSlots);
+            for (const ShaderSampler& sampler : stage.samplers)
+                if (sampler.slot >= (unsigned int)samplerSlots)
+                    return refuse("sampler", (int)sampler.slot, samplerSlots);
+            for (const ShaderTextureSamplerPair& pair : stage.textureSamplerPairs)
+                if (pair.slot >= (unsigned int)pairSlots)
+                    return refuse("texture-sampler pair", (int)pair.slot, pairSlots);
+        }
+    }
+
     sg_shader_desc shader_desc = {0};
     sg_shader_stage shader_stage = SG_SHADERSTAGE_NONE;
 
@@ -292,22 +325,6 @@ bool SokolShader::createShader(ShaderData& shaderData){
             imgsamplerpair->sampler_slot = samIndex;
             imgsamplerpair->glsl_name = stage->textureSamplerPairs[ts].name.c_str();
         }
-    }
-
-    // A sokol shader-desc validation panic on texture/sampler pairs is almost
-    // always a bind-slot overflow; name the offending shader so it is actionable
-    // instead of an opaque VALIDATION_FAILED.
-    {
-        int smpCount = 0, pairCount = 0;
-        for (const auto& st : shaderData.stages){
-            smpCount += (int)st.samplers.size();
-            pairCount += (int)st.textureSamplerPairs.size();
-        }
-        const char* nm = shaderData.stages.empty() ? "?" : shaderData.stages[0].name.c_str();
-        if (smpCount > SG_MAX_SAMPLER_BINDSLOTS)
-            Log::error("Shader '%s' uses %d samplers but the limit is %d", nm, smpCount, SG_MAX_SAMPLER_BINDSLOTS);
-        if (pairCount > SG_MAX_TEXTURE_SAMPLER_PAIRS)
-            Log::error("Shader '%s' uses %d texture-sampler pairs but the limit is %d", nm, pairCount, SG_MAX_TEXTURE_SAMPLER_PAIRS);
     }
 
     // created off the render thread where the backend allows (spec S32): pending until then

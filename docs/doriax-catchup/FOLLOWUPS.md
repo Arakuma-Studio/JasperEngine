@@ -30,12 +30,12 @@ worktree `/var/lib/orquester/workspaces/jaspersito/dc-wt/fu-<name>` and branch `
 
 | workstream | items | status |
 |---|---|---|
-| water-uniforms | The 16-light water variant needs 245 to 248 fragment uniform vectors; GLES3/WebGL2 allows 224. 30 base water variants are over the uniform-block budget. Both came with water-reflections. | in progress |
+| water-uniforms | The 16-light water variant needs 245 to 248 fragment uniform vectors; GLES3/WebGL2 allows 224. 30 base water variants are over the uniform-block budget. Both came with water-reflections. | merged (train 4) |
 | water-tests | Particle custom blocks get frame time, not the scene clock (`RenderSystemParticles`). Regression tests for the four water-reflections fixes that have none: per-pass terrain view, HUD refraction, MVP rewrites, target sizing. | merged (train 1) |
-| pcss-gles | PCSS soft shadows on GLES3/WebGL2, using the texture units draw-perf's directional-only variant frees (draw-perf spec §13). | in progress |
+| pcss-gles | PCSS soft shadows on GLES3/WebGL2, using the texture units draw-perf's directional-only variant frees (draw-perf spec §13). | merged (train 4) |
 | mesh-memory | Compile the Android heap-trim branch (`tools/build.sh android`). Check the MSVC size limits. Explain the 421-pixel difference in the early clone test. Save about 1.6 KB per submesh in S55's warm tables, only after `fix/submesh-drop` lands. | merged (train 1) |
-| ssr | Run SSR before transparents and UI (shared with water-reflections' colour-pass order). Handle display-encoded colour under a tone curve. Store a higher-precision shading normal in the G-buffer; all 4 render targets are used, so repack. | in progress |
-| lints-keys | The LOD lint misses local per-fragment variables (render-correctness). The event-clear lint doesn't cover events outside components and Engine (runtime-core). F11 clashes with macOS Show Desktop (project-window). | in progress |
+| ssr | Run SSR before transparents and UI (shared with water-reflections' colour-pass order). Handle display-encoded colour under a tone curve. Store a higher-precision shading normal in the G-buffer; all 4 render targets are used, so repack. | merged (train 3) |
+| lints-keys | The LOD lint misses local per-fragment variables (render-correctness). The event-clear lint doesn't cover events outside components and Engine (runtime-core). F11 clashes with macOS Show Desktop (project-window). | merged (train 2) |
 | agent-authoring | An FBX foliage layer draws 0 instances in the headless editor (a foliage-loader question). The generated project AGENTS.md sits near its 5,000-byte cap (5,153 was measured once). | in progress |
 | platform-build | macOS CMake builds copy no plugin bundles. Carried-plugin lists include `.meta` files (mobile-shipping). `/MP` isn't capped, so Visual Studio can run N×N compilers (build-toolchain). | merged (train 1) |
 | code-editor-git | Subversion scene diffs, and the `diff_scene`/`diff_file` defaults flagged in the spec. Prebuilt players compare only the major format version. | merged (train 1) |
@@ -48,3 +48,16 @@ worktree `/var/lib/orquester/workspaces/jaspersito/dc-wt/fu-<name>` and branch `
   (S44's tag playback grew it to 320 bytes; ceiling 384). mesh-memory's S55 table item stays open until
   `fix/submesh-drop` lands. Still to run on real hardware: MSVC Debug/Release `MeshMemory.*`, a Visual Studio export timed
   both ways, a Mac export with signed frameworks (commands in the specs' Follow-ups).
+- Train 2 (2026-11-08): lints-keys alone, on box D: WERROR linux, core and editor units (its tests plus shared-data),
+  8 MCP files, lints, test_grade, tool budget, TOOLS.md check, web compile: all green. Not run: macOS (`BackendMac.mm`).
+- Train 3 (2026-11-08): ssr alone, on box C: WERROR linux, core `*Gpu*`/`*Golden*` suites, editor shared-data and shader
+  suites (146/146 after merging main), 9 MCP files (one failure, `test_post_fx_golden::test_defaults_unchanged`, also on main:
+  89 texels off by 1/255; fix/postfx-golden bisects it), lints, test_grade, TOOLS.md check, web and Android compiles.
+  Main's `ShaderKey*` tests were stale for MESH bits 42-44; fixed on main (7cd2ff1d9) and added to the shared-data list.
+- Train 4 (2026-11-08): water-uniforms with pcss-gles, on box C: WERROR linux, core `*Gpu*`/`*Golden*`/budget/PCSS
+  suites (363), editor shared-data and shader suites, 11 MCP files, lints, test_grade, TOOLS.md check, web compile, the
+  PCSS web gate (WebGL2, `WEB_PROJECT=pcss tools/build.sh web` then `GATE=pcss tools/build.sh web-gate`), Android. Fixed on
+  the landing tree: the zero-cost list's 48 painted-terrain hashes (records form), and a time-based wait in
+  `test_ssr_reflections`. Main's `test_post_fx_golden::test_defaults_unchanged` still fails (fix/postfx-golden).
+- New workstream **lit-uniforms** (found by water-uniforms): the built-in Lit with capsule or contact shadows, 2D lights
+  and fog is over GLES3's limits (307-339 vectors, 9 blocks); branch fu/lit-uniforms.

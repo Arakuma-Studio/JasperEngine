@@ -134,7 +134,8 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   web`) checks the logger's browser console sink and a Lua `Timer` that way.
 - `GATE=mesh-raycast` (after `WEB_PROJECT=mesh-raycast tools/build.sh web`) times 10,000
   MeshRaycast rays against 1,000 meshes in WebAssembly and fails on a p99 over 4 ms (S26 AC17).
-- The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13) and `terrain`, a
+- The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13), `pcss` (PCSS's two views
+  of the shadow atlas in one WebGL2 draw, the Ultra tier's contact hardening) and `terrain`, a
   terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
   renderer uploads it as R32F or R16F there).
 - `GATE=web-keys-audio` (after `WEB_PROJECT=web-keys-audio tools/build.sh web`) runs Chrome with the
@@ -394,9 +395,11 @@ tools/build.sh exec linux tools/check-changed # inside the Linux image (no web o
 ```
 
 - Lints with triggers: a changed MCP test file runs `tools/ci/check-mcp-ci-suite.py`; a changed
-  component header, `PhysicsSystem.h` or `Engine.h`/`.cpp` runs `tools/check_event_clears.py` (every
-  `FunctionSubscribe` event is in its holder's `forEachEvent` and every holder in `ComponentEvents.h`,
-  so the clears at Stop reach it; `tools/build.sh linux` runs it too).
+  engine source (not `engine/libs`, `engine/tests`) runs `tools/check_event_clears.py` (every
+  `FunctionSubscribe` member is in its holder's `forEachEvent`, every component holder in
+  `ComponentEvents.h`, every other holder in the lint's `WALKS` or `TRANSIENT`, and every static
+  event in Engine's clears, so the clears at Stop reach it; `Ease` members count; `tools/build.sh
+  linux` runs it too).
 - The change: committed since the base, staged, unstaged and untracked files. A checkout without
   the stream's history reads its diff from `build/.rb-changes.json` (with every file's sha256: a
   diff that does not match the files is refused).
@@ -575,7 +578,7 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   logger's drain thread or the workers may); `perfSlack()` is the factor wall-clock budgets are
   enforced with: `JASPER_TEST_PERF_SLACK`, unset (0) by default and under a sanitizer, where the
   budgets are only printed. `*Bench` suites (`LoggerBench`, `SchedulerBench`, `SignalBench`, S10's
-  `ShadowBench`), `SchedulerTest.Process10kUnder2ms` and S12's `AtmosphereNoise` bake budgets check
+  `ShadowBench`, S03's `AtomicFileBench` Document write), `SchedulerTest.Process10kUnder2ms` and S12's `AtmosphereNoise` bake budgets check
   their budgets that way and print `[bench]` lines (S34's `LuaBindingBench` prints the cost of a call
   through the Lua bindings, with no budget: builds are compared with it on the benchmark server); the
   editor suite's `editor::test::perfSlack()` does the same for `CommandHistoryBench` (S24),

@@ -170,6 +170,7 @@ namespace jasperengine{
         int slotFSObjectLights = -1;
         unsigned int sizeVSObjectLights = 0;
         unsigned int sizeFSObjectLights = 0;
+        std::pair<int, int> slotLightRecords = {-1, -1};
         int slotFSLitFrame = -1;
         unsigned int sizeFSLitFrame = 0;
         int slotFSLighting2D = -1;
@@ -286,6 +287,8 @@ namespace jasperengine{
         unsigned int sizeFSLightOcclusion = 0;
         std::pair<int, int> slotTiledLights = {-1, -1};
         std::pair<int, int> slotContactShadows = {-1, -1};
+        // u_lightRecords of a shader with the lights' records form (includes/lights.glsl)
+        std::pair<int, int> slotLightRecords = {-1, -1};
 
         int slotVSDepthParams = -1;
         unsigned int sizeVSDepthParams = 0; // reflected: an older fork declares the block without mvpMatrix

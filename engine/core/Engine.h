@@ -769,6 +769,8 @@ namespace jasperengine {
         // ready, and a step of the shader warm-up list
         static void updateGpuCreation();
 
+        // A loading thread (one other than the main thread): its GPU objects go through the render
+        // queue, which the frames run and endAsyncThread commits. On the main thread they do nothing.
         static void startAsyncThread();
         static void commitThreadQueue();
         static void endAsyncThread();
