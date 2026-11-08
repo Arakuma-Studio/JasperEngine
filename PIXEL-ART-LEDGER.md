@@ -177,7 +177,7 @@ never build or run them.
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | spec done |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | implementing |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
-| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | implementing |
+| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | in review |
 | S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | implementing |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
@@ -243,6 +243,21 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S51's review found 1 blocker: the "original" built-in pixel font matched the
+  classic 5×7 LCD table, so it must be redrawn, with an originality test. It also found 7
+  should-fix issues; all were sent back.
+  - All five implementers (S42, S43, S49, S51, S52) then stopped on an API weekly limit. The
+    session moved accounts, and all five were revived; the boxes were idle and nothing was lost.
+  - Heads at revival: S42 `5cf28fde2`, S43 `4c455647e`, S49 `9cc2fb3bd`, S51 `dc7f9c3b7`, S52
+    `6de6e4596` (+32 uncommitted files).
+- 2026-11-09: The mats-fx program landed (205 commits), so S43 is re-merging (9 conflicts) and
+  re-gating on box B before landing as batch 1.
+  - S51 implementation reported at `4e635a3bd` (main `c2ed0b8c3`), passing the lighter gate on box
+    A: core 53, editor shared-data 142, 122 MCP tests, GL core and Vulkan goldens.
+  - S51 misses one budget: a styled 200-character rebuild takes 0.134 ms against 0.05 ms. Its
+    independent review is running.
+  - `ShaderNeutralApi.NeutralClassesAreTheReviewedOnes` (Animator IK members) fails on `main`,
+    from S74/S77, not from us.
 - 2026-11-08: Owner decisions:
   1. Rent several Hetzner shared-vCPU build boxes. Three cpx51 are up (A, B, C), warmed with a
      `main` build and reached through `rbox`.
