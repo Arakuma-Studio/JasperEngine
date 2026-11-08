@@ -846,17 +846,42 @@ Branch `fu/mesh-memory` (docs/doriax-catchup/FOLLOWUPS.md).
    now also asserts that the frame after the clone is gone is the frame before it, writing both images when not,
    so a difference of that kind shows again if it ever returns. That assertion is a pin, not a regression test:
    it passes with the cloner fix reverted (the test's batch-variant checks fail there).
-4. **S55's batch render objects out of line: blocked.** `fix/submesh-drop` had not landed on `origin/main` at the
-   start or the end of this work, and the change touches the per-submesh split in `RenderSystem.cpp` (the
-   `isBatchVariant` reads beside the `localBounds` culling) that it rewrites, so it was not started. The design:
-   a `SubmeshBatchVariants` struct in `MeshComponent.h` holding what `Submesh` now holds inline for S55
-   (`batchRender`, `batchDepthRender`, both shaders, both property words, both shader ids), and `Submesh::batch`
-   a `std::shared_ptr<SubmeshBatchVariants>` like `extraPass` and `oit`: made by `loadSubmeshBatchVariants` only
-   when GPU Instancing is on and the submesh can batch, released where the variants are let go of today (the
-   unload path, `destroyMesh`) and when GPU Instancing turns off; the cloner resets the pointer instead of the
-   eight fields; readers test `batch && batch->render.isBatchVariant()`; `offerDrawBatch` takes the batch render
-   by pointer. A submesh drawn without instancing then holds 16 bytes instead of 1,720 (Linux; 2 x 832 for the
-   render objects plus the shader handles and keys): a sprite's mesh with its arrays goes from 10,400 to about
-   8,700 bytes. Its tests: `MeshMemory` measuring a sprite's and a model's mesh with GPU Instancing off (no batch
-   variants allocated, the bytes above) and the `InstancingGoldenGpu` suite unchanged (on: allocated and linked;
-   off then on: freed and made again, same image).
+4. **S55's batch render objects out of line.** Blocked until `fix/submesh-drop` landed (`2b893484f`, every
+   submesh culled by its own bounds), then built on it. `SubmeshBatchVariants` (`MeshComponent.h`) holds what
+   `Submesh` held inline for S55: both render objects, both shaders, their property words and ids. `Submesh::batch`
+   is a `std::shared_ptr` to it, null unless GPU Instancing is on and the submesh can batch:
+   `RenderSystem::requestSubmeshBatchShaders` makes it (or releases it when there is nothing to batch, which is
+   how GPU Instancing turning off frees it), `loadSubmeshBatchVariants` does nothing without it, and
+   `releaseSubmeshBatchVariants` and `destroyMesh` let it go. A copy of a component shares its source's variants
+   until its own load, which then makes new ones instead of writing the source's. The struct owns its GPU objects:
+   its destructor, run by the last holder, destroys both pipelines and removes both shaders' pool entries
+   (posted to the main thread through `MainThreadQueue` when the last holder goes on another thread), so a copy
+   game code keeps (`MeshComponent proto = ...`) frees the variants it copied when it goes, and neither holder
+   destroys what the other still draws. The cloner resets the pointer.
+   `MeshComponent::arrayHeapBytes` counts the variants a mesh holds. Sizes (Linux; MSVC Release / Debug computed as
+   in item 2): `Submesh` 8,664 -> 6,960 B on the merged tree (6,392 / 6,944), `SubmeshBatchVariants` 1,720 B (1,600 / 1,664) only while
+   instancing, a sprite's mesh with its arrays 10,432 -> 8,728 B (1,704 B a submesh drawn without instancing). The `MeshMemory` ceilings follow: `Submesh`
+   7,680, a sprite's mesh 9,472. Tests: `MeshMemory.SizeofCeilings` and `SpriteCostsAnOrderOfMagnitudeLess` (red
+   with the change reverted), `InstancingGoldenGpu.BatchVariantsHeldOnlyWhileInstancing` (none held with GPU
+   Instancing off, the arrays' heap bytes lower by exactly the variants, made again on, the same frame).
+5. **Review of item 4.** Ownership as above (a kept copy leaked its variants' pipelines and pool shaders when
+   the live mesh made new ones: `InstancingGoldenGpu.BatchVariantsFreedByTheirLastHolder`, red without the
+   destructor). `destroyMesh` with the assets kept releases the variants whole for a submesh past
+   `numSubmeshes` (left from a larger load: it draws nothing). Undo and redo of `MeshChangeCmd` and the restore
+   paths of `ModelLoadCmd` assign a decoded component over a loaded one, which left all of that component's GPU
+   objects alive (render, depth and G-buffer pipelines, buffers, shader pool entries, textures) on every undo and
+   redo, as before this program. `ModelClearCmd`'s `releaseMeshResources` (`prepareMeshForDataReload` and the
+   material textures) is now `ProjectUtils::releaseMeshResources`, called before each of those assignments
+   (`MeshChangeCmd` execute and undo, `ModelLoadCmd` undo and its synchronous-failure restore); the commands do
+   nothing else differently. The editor unit tests have no renderer (a mesh never loads there), so the test is an
+   MCP one: `test_mesh_undo_resources.py` counts the device's alive pipelines, buffers, images and shaders
+   (`get_render_stats`) across three undo/redo rounds of `set_mesh_geometry` and of `set_model`, each landing on
+   the counts of its state. Measured with the changes reverted: `set_mesh_geometry` kept one shader pool entry of
+   the replaced mesh alive and one buffer more every round; `set_model` showed no growth (a model's buffers and
+   pipelines are shared through the model's pool and the pipeline cache, and its first load of a file keeps one
+   image that does not grow), so that case is a pin. The per-round buffer was not the command's: S55's
+   position-only shadow indices (R5) made a GPU index buffer that nothing destroyed (a `BufferRender` handle
+   frees nothing), so every reload or destroy of a mesh whose shadow indices paid off leaked one. `ShadowIndexBuffer`
+   now owns it like `SubmeshBatchVariants` (non-copyable, destroyed by its last holder, posted to the main thread
+   from another): `InstancingGoldenGpu.ShadowIndicesFreedWithTheirMesh` reloads a shadow-casting box three times
+   and the alive buffers stay put (red without it).
