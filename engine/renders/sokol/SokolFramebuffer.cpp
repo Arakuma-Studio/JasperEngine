@@ -25,6 +25,7 @@ SokolFramebuffer::SokolFramebuffer(){
     numColorAttachments = 1;
     sampleCount = 1;
     ownsDepthAttachment = true;
+    ownsColorImage = true;
     msaaColorImage.id = SG_INVALID_ID;
     msaaDepthImage.id = SG_INVALID_ID;
     msaaSamples = 1;
@@ -105,6 +106,7 @@ namespace{
             SokolCmdQueue::add_command_destroy_image(image);
         }else{
             sg_destroy_image(image);
+            SokolSystem::forgetAppliedBindings();
         }
     }
     void destroyView(sg_view view){
@@ -112,6 +114,7 @@ namespace{
             SokolCmdQueue::add_command_destroy_view(view);
         }else{
             sg_destroy_view(view);
+            SokolSystem::forgetAppliedBindings();
         }
     }
 }
@@ -316,7 +319,23 @@ bool SokolFramebuffer::createFramebuffer(const FramebufferDesc& desc){
     sampleCount = (desc.sampleCount > 1) ? desc.sampleCount : 1;
     const bool msaa = sampleCount > 1;
 
-    for (int a = 0; a < numColorAttachments; a++){
+    if (desc.shareColor){
+        const SokolFramebuffer& shared = desc.shareColor->backend;
+        if (msaa || numColorAttachments != 1 || shared.colorAttachmentViews[0][0].id == SG_INVALID_ID || shared.sampleCount != 1){
+            Log::error("Framebuffer '%s' can share one single-sampled colour image only", desc.label.c_str());
+            destroyFramebuffer();
+            return false;
+        }
+        // the image, not owned: an attachment view of our own
+        colorTexture[0] = shared.colorTexture[0];
+        ownsColorImage = false;
+        sg_view_desc colorViewDesc = {};
+        colorViewDesc.color_attachment.image = colorTexture[0].backend.get();
+        colorViewDesc.label = "framebuffer-shared-color-attachment-view";
+        colorAttachmentViews[0][0] = makeView(colorViewDesc);
+    }
+
+    for (int a = 0; a < numColorAttachments && ownsColorImage; a++){
         const ColorFormat format = (a == 0) ? desc.color : desc.moreColors[a - 1];
         if (format == ColorFormat::RED16){
             Log::error("Framebuffer '%s': RED16 is not a colour attachment format", desc.label.c_str());
@@ -379,7 +398,8 @@ bool SokolFramebuffer::createFramebuffer(const FramebufferDesc& desc){
     bool created = isCreated();
     if (!created){
         destroyFramebuffer();
-    }else{
+    }else if (ownsColorImage || ownsDepthAttachment){
+        // (borrowed images were given their contents by their owners)
         initializeAttachments(1);
     }
 
@@ -429,6 +449,7 @@ void SokolFramebuffer::destroyFramebuffer(){
                     SokolCmdQueue::add_command_destroy_view(colorAttachmentViews[a][i]);
                 }else{
                     sg_destroy_view(colorAttachmentViews[a][i]);
+                    SokolSystem::forgetAppliedBindings();
                 }
             }
         }
@@ -441,6 +462,7 @@ void SokolFramebuffer::destroyFramebuffer(){
                 SokolCmdQueue::add_command_destroy_view(view);
             }else{
                 sg_destroy_view(view);
+                SokolSystem::forgetAppliedBindings();
             }
         };
         if (ownsDepthAttachment)
@@ -471,7 +493,10 @@ void SokolFramebuffer::destroyFramebuffer(){
     msaaSamples = 1;
 
     for (int a = 0; a < MAX_COLOR_ATTACHMENTS; a++){
-        colorTexture[a].destroyTexture();
+        if (a == 0 && !ownsColorImage)
+            colorTexture[a] = TextureRender();
+        else
+            colorTexture[a].destroyTexture();
     }
     depthTexture.destroyTexture();
     for (TextureRender& texture : msaaColorTexture){
@@ -490,6 +515,7 @@ void SokolFramebuffer::destroyFramebuffer(){
     numColorAttachments = 1;
     sampleCount = 1;
     ownsDepthAttachment = true;
+    ownsColorImage = true;
 }
 
 bool SokolFramebuffer::isCreated(){

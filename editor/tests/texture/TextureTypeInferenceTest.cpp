@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include "Catalog.h"
+#include "component/TerrainComponent.h"
 #include "texture/TextureTypeInference.h"
 
 using namespace jasperengine;
@@ -79,6 +80,19 @@ TEST(TextureTypeInference, SpritesFromTheirEntity){
     };
     EXPECT_TRUE(inferenceHas(inferenceSlots("entity:7/MeshComponent.submeshes[0].material.baseColorTexture", context), TextureSlot::Sprite));
     EXPECT_FALSE(inferenceHas(inferenceSlots("entity:8/MeshComponent.submeshes[0].material.baseColorTexture", context), TextureSlot::Sprite));
+}
+
+// T1 R77, R85 (AC61): a terrain a game paints keeps its blend maps readable in the cook; others
+// cook them as data the GPU alone reads
+TEST(TextureTypeInference, RuntimeEditedTerrainBlendMapsStayReadable){
+    TextureTypeInference::EdgeContext context;
+    context.componentsOf = [](const Guid&, uint64_t entity){
+        return entity == 3 ? std::set<std::string>{"TerrainComponent", TextureTypeInference::TERRAIN_RUNTIME_EDITS_MARK}
+                           : std::set<std::string>{"TerrainComponent"};
+    };
+    EXPECT_TRUE(inferenceHas(inferenceSlots("entity:3/TerrainComponent.blendMaps[0]", context), TextureSlot::CpuReadable));
+    EXPECT_FALSE(inferenceHas(inferenceSlots("entity:4/TerrainComponent.blendMaps[0]", context), TextureSlot::CpuReadable));
+    EXPECT_TRUE(inferenceHas(inferenceSlots("entity:4/TerrainComponent.heightMap", context), TextureSlot::CpuReadable));
 }
 
 TEST(TextureTypeInference, ShaderManifestTextures){

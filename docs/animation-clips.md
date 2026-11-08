@@ -144,6 +144,8 @@ tangents of imported clips. Rotations are shown as continuous Euler angles.
   `bounce`...) become linear tangents, and the window says how many did (steps stay: Constant).
   Rotations keep the Interpolation presets; their handles (imported glTF CUBICSPLINE tangents)
   are read-only.
+  A linear rotation segment plays the shortest arc: up to 30 degrees between keys a cheaper
+  normalised blend within 0.01 mm at 1 m of a true slerp, an exact slerp beyond.
 - Stepped properties (bools, ints, sprite frames) draw as steps and move in time only.
 - All curves share one value axis (rotations in degrees, positions in units, weights 0 to 1): hide
   curves or click a property name to frame the ones you work on. The axis shows `°` while only
@@ -249,6 +251,8 @@ everything else as stored. Values interpolate in those units (Unity's colour cur
   `onEnable` / `onDisable` they run never interrupt the player; clip events run after the values
   are written. A child the clip turns off keeps being animated (it can be turned on again). A clip
   that turns off its own root stops its player (an inactive GameObject's player waits), as in Unity.
+  An Animator keeps the same order across all its characters: see
+  [Order of a frame](animator.md#order-of-a-frame).
 - **A Button** writes its graphic's `ui.color` from its state colours every frame: animate
   `button.colorNormal` instead (the binding report says so).
 - **Lua fields.** The clip sets the instance field `self.<name>` (a fresh Vector for vectors) of the
@@ -501,9 +505,10 @@ Every animation in a glTF/GLB or FBX model is a read-only clip named `<model>#<a
 share a name, the later one is `"Wave 2"`, `"Wave 3"`. Its paths are relative to the model's
 GameObject and include the glTF scene's root nodes, as the Hierarchy shows them: bones and mesh
 nodes by their glTF names, for example `Hero/mixamorig:Hips/mixamorig:Spine` (the hero's glTF root
-node is named Hero too). It plays at 30 samples, wrap once (set the entry's Wrap to Loop to
-loop it). Model clips can be referenced like files: pick a model in a clip field, or drop the model
-on **+ Add Clip** and choose the animation.
+node is named Hero too). It plays at 30 samples and wraps once, unless its Wrap Mode is set (see
+[Model clip settings](#model-clip-settings-modelclips)) or the entry's Wrap says Loop. Model clips can
+be referenced like files: pick a model in a clip field, or drop the model on **+ Add Clip** and
+choose the animation.
 
 - **Extract to .anim** (the Model section's row button, the clip field's menu, the clip asset view,
   or the window's Read-Only banner) writes an editable copy. The default name is `<animation>.anim`
@@ -518,6 +523,48 @@ on **+ Add Clip** and choose the animation.
   adds an Animation Player listing every animation of the file. Afterwards the Model section says
   "Played by an Animation Player (no entity animations)". Scenes then store one short clip list
   instead of every key of every model instance.
+
+**Project Settings > Animation > Animation Entities** decides what placing a model in a scene does.
+**Always** makes an entity animation per clip, as every project before did. **Auto**, which new
+projects start with, places a model of 5 or more clips with no entity animations (as after Use
+Animation Player, without the player): play its clips with an Animation Player or an Animator. A
+model of fewer clips, and a model already in a scene, are not affected. A project without the
+setting in its `project.yaml` (`mesh: {animationEntities: auto}`) is Always.
+
+### Model clip settings (`<model>.clips`)
+
+Selecting a model in the Project window and opening the Inspector's **Animation** tab lists its clips
+as Unity's model importer does: **Clip**, **Length**, **Wrap Mode**, **Root Motion**, **Memory**,
+**Keys** and **Loop Match**. Click a row to select it; Ctrl adds or removes a row and Shift selects a
+range. Below the table, the selected clips' settings:
+
+- **Wrap Mode**: Once (the model's own: glTF has no loop flag), Loop, Ping Pong or Clamp Forever.
+- **Root Motion Node** (empty: Auto, the Animator's Root Motion bone, the hips, then the shallowest
+  bone the clip moves), **Root Transform Rotation**, **Root Transform Position (Y)** and **Root
+  Transform Position (XZ)**, each with **Bake Into Pose**: what stays in the pose instead of moving
+  the GameObject. These are the `.anim` file's `root_motion` block.
+
+A field whose value differs between the selected clips shows a dash. Edits stay in the Inspector
+until **Apply**, which writes them all as one undo step; **Revert** drops them, and leaving the model,
+closing the editor or pressing Play with edits not applied asks which. They are saved next to the
+model as `hero.gltf.clips` (JSON, like the `.humanoid` file): moving or renaming the model in the
+Project window takes it along, an edit of the file on disk is picked up at once, also in Play, and an
+export ships it, so the game plays what Play showed. A model with no `.clips` file, or a clip with no
+entry in it, plays exactly as before.
+
+**Loop Match** is how far the pose at the end is from the pose at the start, in millimetres, with the
+root's travel and turn taken out (so a walk that moves forward can still match). A clip with no
+setting whose name says it cycles (loop, idle, walk, run or cycle) and whose Loop Match is under
+10 mm shows **Suggestion: looks like a loop** with a **Use** button. Mixamo names every clip
+`mixamo.com`, so in a file like `hero@Running.fbx` the part after `@` names its longest clip. Nothing changes until you click
+it, and Use only sets Wrap Mode to Loop in the edits: Apply still writes it.
+
+**Memory** and **Keys** are the numbers `get_animation` and `get_asset_info` report for the clip.
+
+Two buttons act on the selected clips: **Extract to .anim...** asks for one folder and writes a
+`.anim` per clip there (a new name when one exists), one undo step; **Add to Animator...** lists the
+project's Animator Controllers (or **New Animator Controller...**) and adds a state per clip to the
+first layer, one undo step. Each state plays the model clip, with its Wrap Mode.
 
 Duplicate glTF names: the Model section labels the second entity animation row "Wave 2", matching
 the model clip name. The entity animations themselves are both named "Wave", but without a player
@@ -906,6 +953,59 @@ middle button pan, and dragging in the ruler scrubs. While the window has focus 
 its empty state) showing, Delete, Backspace, `Ctrl+D` and F2 act on the window, never on the
 selected GameObject.
 
+## What a clip costs in memory
+
+A loaded clip keeps its keys in shared arrays: tracks with the same key times share one array of
+times, and a track whose segments are all linear stores no eases. `get_animation` and `get_asset_info`
+report the result as `stats.runtime_bytes`, Jobs & Memory lists what is loaded as `Animation.Clips`,
+and the profiler has it as the `Clip memory` monitor. They are one number. `.anim` files do not
+change: this is only how a loaded clip is held.
+
+Select a clip in the Project window and the Inspector's first line says what it costs:
+`1.20 s · 30 Hz · 65 tracks · 2,340 keys · Memory 31 KB · File 112 KB · 9 constant tracks`. Memory is
+the heap it takes once loaded, File its size on disk, and a constant track one that holds a single value
+across several keys.
+
+**Window > Analysis > Animation Statistics** lists every clip: **Scan project** (or Scope **Open
+scenes**: the clips their Animation Players list), with Length, Tracks, Keys, Memory, Max Error (from its last
+reduction, `-` when it has none), Users and Loaded, the largest first, and the totals above. Show **All**,
+**Loaded**, **Unused** or **Over budget** (the Budget per clip beside it). Double-click a row to select its
+file. **Unused** means no Animation Player in an open scene lists the clip: scripts can name clips, so check
+before you delete one. The window changes nothing.
+
+### Reduce Keys...
+
+The Inspector's **Reduce Keys...** removes keys a skeleton does not need and measures what that does.
+**Error Tolerance** is the most any joint, or a point **Skin Distance** from it, may end up from where it was;
+the numbers are measured through the runtime's own sampler as you change them: **Memory** and **Keys** before and
+after, **Max Error**, **Mean Error** and **Worst Joint**. The preview writes nothing.
+
+**Expect a small gain, and sometimes none.** Clips that came through an FBX import are usually thin already: on
+one real project (51 clips) the median was 1.1x fewer keys at 1 mm. Tracks that lose different keys also stop
+sharing their key times, so Memory can stay as it was or grow while Keys falls. The dialog says so; keep the source
+when the numbers do not pay.
+
+- **Reduce** writes a new `.anim` (`walk.opt.anim`) as one undo step and shows the numbers again, read from the
+  file. **Replace This Clip** writes over the source instead, also one undo step. A model's clip always
+  becomes a new `.anim`: a model file is never changed.
+- Keys that stay keep their values, in order. Length, events, audio cues and every track stay. A track that never moves keeps
+  one key, a moving one its first and last. Tracks with tangents, eases or steps, and morph, lattice, property and
+  humanoid tracks keep all their keys.
+- Feet and toes get half the tolerance: a planted foot's slide shows under far less error than a hand's.
+- The error is measured on the clip's model: a model's clip knows it; an `.anim` needs its **Preview Model**.
+- The new file records how it was made (`optimize` in the file). `check --anims` warns when its source has
+  changed since (`anim-optimize-stale`).
+
+`check --anims` also warns of keys that only repeat their neighbours (`anim-redundant-keys`), tracks that never
+move (`anim-constant-track`) and rotations that flip between two keys (`anim-rotation-flip`): `docs/mcp/checks.md`.
+
+### Root Motion
+
+The Inspector's **Root Motion** section sets what the Animator takes from an `.anim`: **Root Motion Node** (empty:
+Auto, the Animator's bone, the hips, then the shallowest bone the clip moves), and **Bake Into Pose** for **Root
+Transform Rotation**, **Root Transform Position (Y)** and **Root Transform Position (XZ)**. Each change is one
+undo step.
+
 ## Not in this version
 
 For the Animator's features (sub-state machines, 2D and direct blend trees, IK, root motion,
@@ -916,6 +1016,6 @@ animating layer weights from clips (use Lua). Property tracks do not animate str
 fonts or meshes (only sprite frames swap), C++ script fields, properties that rebuild GPU state when
 they change (shader, blend mode, cast shadows, font size, shadow map size), physics body values
 other than Enabled, or the Animation Player's own Enabled. Also: importing Unity curves, tangent
-editing of rotations by handle (they take a tangent mode), importer clip ranges and per-model-clip
-events, a preview pane in the clip asset Inspector, event object parameters, and re-syncing an
+editing of rotations by handle (they take a tangent mode), importer clip ranges, Loop Pose and
+per-model-clip events, a preview pane in the clip asset Inspector, event object parameters, and re-syncing an
 extracted clip from its model.

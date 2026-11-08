@@ -7377,6 +7377,22 @@
   {
    "component": "sprite",
    "group": "",
+   "kind": "Asset",
+   "label": "Sprite",
+   "path": "sheet",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
+   "kind": "Enum",
+   "label": "Draw Mode",
+   "path": "drawMode",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
    "kind": "UInt",
    "label": "Width",
    "path": "width",
@@ -7412,6 +7428,22 @@
    "kind": "Bool",
    "label": "Flip Y",
    "path": "flipY",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Pixels Per Unit",
+   "path": "pixelsPerUnit",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
+   "kind": "Enum",
+   "label": "Pixel Rotation",
+   "path": "pixelRotation",
    "read_only": false
   }
  ],
@@ -8212,6 +8244,14 @@
    "kind": "Bool",
    "label": "Flip Y",
    "path": "flipY",
+   "read_only": false
+  },
+  {
+   "component": "tilemap",
+   "group": "",
+   "kind": "FloatPositive",
+   "label": "Pixels Per Unit",
+   "path": "pixelsPerUnit",
    "read_only": false
   },
   {

@@ -269,8 +269,8 @@ CASES = [
         "what_happened": "Asked to rebind a Curve window key, agents read the project, then the engine source, and told the user "
                          "to change the editor's code. The key is a catalog command: curve.frame, not the scene's Frame Selected, "
                          "which shares the key.",
-        "text_at_issue": "Generated AGENTS.md, Source references: 'An editor key is rebound with `set_shortcut` (tool group "
-                         "`editor_ux`), not in that source.'; list_shortcuts context: 'curve', 'color_picker'",
+        "text_at_issue": "Generated AGENTS.md, its list: 'An editor key is rebound with `set_shortcut` (tool group "
+                         "`editor_ux`), not in the editor's source.'; list_shortcuts context: 'curve', 'color_picker'",
         "source": "docs/specs/S61-window-commands.md R5",
         "prompt": "In the Curve window, make the key that frames the curve J instead of F.",
         "mocks": [
@@ -809,6 +809,127 @@ CASES = [
                    "must_not_call": ["set_properties", "set_material", "create_material"], "reply_must": [r"(?i)lod|level"]},
         "max_turns": 10,
     },
+    {
+        "id": "bad_aseprite_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked to put an Aseprite character in the scene, agents exported PNG strips with a shell "
+                         "aseprite --sheet, sliced them with set_sprite_frames {texture, slice} and built the walk "
+                         "animation frame by frame; the editor imports .aseprite files itself (S44).",
+        "text_at_issue": "guide Other areas: 'sprites (set_sprite_frames sheet)'; set_sprite_frames "
+                         "description: 'sheet (.aseprite + tag clips, texture, .spriteatlas)'",
+        "source": "S44 design review (pixel-art trial sessions, paraphrased)",
+        "files": {"assets/sprites/hero.aseprite": "binary placeholder"},
+        "prompt": "Add assets/sprites/hero.aseprite to the scene as an animated character that plays its idle animation.",
+        "mocks": [
+            {"tool": "get_asset_info", "args": {"path": "re:hero\\.aseprite"}, "result": ok(
+                "assets/sprites/hero.aseprite (Aseprite, RGBA 32x32): 12 frames, 3 layers, tags idle (0-3), walk (4-11); "
+                "imported: 1 page 128x96, clips assets/sprites/hero.aseprite#idle, #walk.",
+                {"path": "assets/sprites/hero.aseprite", "type": "aseprite_sprite", "frames": 12,
+                 "tags": ["idle", "walk"], "outputs": {"clips": [
+                     {"name": "idle", "reference": "assets/sprites/hero.aseprite#idle"},
+                     {"name": "walk", "reference": "assets/sprites/hero.aseprite#walk"}]}})},
+            {"tool": "set_sprite_frames", "args": {"sheet": "re:hero\\.aseprite"}, "result": ok(
+                "Sprite \"Hero\" shows frame 0 (\"hero 0\") of assets/sprites/hero.aseprite (12 frames); its Animation Player "
+                "lists 2 tag clip(s), Default Clip idle.",
+                {"sprite": {"id": 40, "path": "Hero"}, "created": True, "sheet": "assets/sprites/hero.aseprite",
+                 "frame": 0, "frame_name": "hero 0", "frame_count": 12, "added_player": True, "default_clip": "idle",
+                 "clips": ["assets/sprites/hero.aseprite#idle", "assets/sprites/hero.aseprite#walk"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_sprite_frames", "args": {"sheet": "re:hero\\.aseprite"}}],
+                   "must_not_call": [{"tool": "set_sprite_frames", "args": {"slice": "*"}},
+                                     {"tool": "set_sprite_animation"}],
+                   "shell_must_not": [r"aseprite\s+(-b|--batch)", r"--sheet"]},
+        "max_turns": 10,
+    },
+
+    {
+        "id": "bad_atlas_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked to pack the item icons into one texture so they batch, agents stitched a PNG with a shell "
+                         "script and re-sliced every sprite onto it with set_sprite_frames {texture, frames}: every scene "
+                         "changed and a new icon meant doing it again; the editor packs .spriteatlas files itself and sprites "
+                         "keep their own textures (S45).",
+        "text_at_issue": "edit_sprite_atlas description ('Without output: an in-memory pack ... output: true writes it'); "
+                         "its result's next",
+        "source": "S45 design review (pixel-art trial sessions, paraphrased)",
+        "files": {"assets/items/sword.png": "binary placeholder", "assets/items/shield.png": "binary placeholder",
+                  "assets/items/gem.png": "binary placeholder"},
+        "prompt": "The item icons in assets/items each cost a draw call. Pack them into one atlas so they batch.",
+        "mocks": [
+            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "edit_sprite_atlas", "args": {"output": True}, "result": ok(
+                "Created assets/items.spriteatlas: 1 page \u00b7 3 frames \u00b7 81 % used \u00b7 0.0 MB VRAM (desktop).",
+                {"written": True, "path": "assets/items.spriteatlas", "frame_count": 3, "usage_percent": 81,
+                 "next": "Created and built assets/items.spriteatlas (undo with scope project). Sprites keep referencing their "
+                         "sources; they now draw from its pages."})},
+            {"tool": "edit_sprite_atlas", "args": {}, "result": ok(
+                "Preview of assets/items.spriteatlas: 1 page \u00b7 3 frames \u00b7 81 % used. Nothing written.",
+                {"written": False, "frame_count": 3, "usage_percent": 81, "pages": [{"index": 0, "size": [64, 32], "frames": 3}],
+                 "next": "Nothing written. The same arguments plus output: true write assets/items.spriteatlas and build it."})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sprite_atlas", "args": {"output": True}}],
+                   "must_not_call": [{"tool": "set_sprite_frames", "args": {"frames": "*"}},
+                                     {"tool": "set_sprite_frames", "args": {"slice": "*"}}, {"tool": "write_file"}],
+                   "shell_must_not": [r"montage|convert\s+.*\+append|PIL|Image\.new"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_inline_frames_retyped",
+        "kind": "bad",
+        "what_happened": "Asked to move an old sprite's frames into its texture so other sprites can share them, agents read "
+                         "the inline rects and typed them back into set_sprite_frames {texture, frames} on each sprite, "
+                         "missing the ones in closed scenes; set_sprite_frames {convert, all_users} does it in one undo step (S45).",
+        "text_at_issue": "set_sprite_frames parameters convert, all_users; guide sprites 'Legacy inline frames'",
+        "source": "S45 design review (paraphrased)",
+        "files": {"assets/legacy/walk.png": "binary placeholder"},
+        "prompt": "The Walker sprite still keeps its own frame rects. Move them into walk.png so every sprite using that "
+                  "texture shares them, closed scenes included.",
+        "mocks": [
+            {"tool": "get_entity", "args": {}, "result": ok(
+                "Walker: Sprite Renderer (3 inline frames of assets/legacy/walk.png).",
+                {"components": {"sprite": {"framesRect": [{"name": "walk_0", "rect": [0, 0, 16, 16]},
+                                                          {"name": "walk_1", "rect": [16, 0, 16, 16]},
+                                                          {"name": "walk_2", "rect": [32, 0, 16, 16]}], "numFramesRect": 3}}})},
+            {"tool": "set_sprite_frames", "args": {"convert": True}, "result": ok(
+                "Converted 4 sprite(s) to frames of assets/legacy/walk.png's Sprite Mode (3 frames, indices kept).",
+                {"texture": "assets/legacy/walk.png", "frames": 3, "converted": [{"owner": "scenes/Main.scene", "game_object": "Walker"}],
+                 "next": "One undo (scope project) restores the sprites, their files and the texture's meta."})},
+        ],
+        "checks": {"calls": [{"tool": "set_sprite_frames", "args": {"convert": True, "all_users": True}}],
+                   "must_not_call": [{"tool": "set_sprite_frames", "args": {"frames": "*"}}, {"tool": "write_file"}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_atlas_mode_disabled",
+        "kind": "bad",
+        "what_happened": "In a project whose Sprite Atlas mode is Disabled, agents wrote the atlas with output: true and then "
+                         "polled get_sprite_atlas for a build that never came, or switched the project-wide mode on without "
+                         "asking; the result says it is not built and why (S45 review).",
+        "text_at_issue": "edit_sprite_atlas result's next when the mode is Disabled (built: false)",
+        "source": "S45 review (paraphrased)",
+        "files": {"assets/items/sword.png": "binary placeholder", "assets/items/shield.png": "binary placeholder"},
+        "prompt": "Pack the item icons in assets/items into one sprite atlas.",
+        "mocks": [
+            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "edit_sprite_atlas", "args": {"output": True}, "result": ok(
+                "Created assets/items.spriteatlas; not built: the project's Sprite Atlas mode is Disabled.",
+                {"path": "assets/items.spriteatlas", "written": True, "built": False, "mode": "disabled",
+                 "next": "Not built: the project's Sprite Atlas mode is Disabled (Project Settings > 2D), so sprites draw their "
+                         "sources. Tell the user; with their go-ahead set_project_settings {\"sprite_atlas.mode\": \"enabled\"} builds it."})},
+            {"tool": "edit_sprite_atlas", "args": {}, "result": ok(
+                "Preview of assets/items.spriteatlas: 1 page \u00b7 2 frames \u00b7 80 % used. Nothing written.",
+                {"written": False, "frame_count": 2, "usage_percent": 80,
+                 "next": "Nothing written. The same arguments plus output: true write assets/items.spriteatlas and build it."})},
+            {"tool": "get_sprite_atlas", "args": {}, "result": ok(
+                "assets/items.spriteatlas: not built (disabled).", {"build_state": "disabled", "mode": "disabled"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sprite_atlas", "args": {"output": True}}],
+                   "must_not_call": [{"tool": "set_project_settings"}],
+                   "max_calls": {"get_sprite_atlas": 1},
+                   "reply_must": [r"(?i)disabled"]},
+        "max_turns": 8,
+    },
 
     # -- guards: good behaviour seen in the sessions ---------------------------------------------
     {
@@ -1209,6 +1330,262 @@ CASES = [
                               {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:softShadows"}]}}]},
                               {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"shadows_quality": "*"}}}]}],
                    "must_not_call": ["fork_shader"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_nav_carve_tiles_per_tick",
+        "kind": "guard",
+        "what_happened": "The carving budget (tile builds per surface and fixed tick) is a navigation setting with its own "
+                         "parameter; without it an agent hand-edits project.yaml or reports it cannot be changed.",
+        "text_at_issue": "set_navigation_settings carve_tiles_per_tick: '0: Auto.'",
+        "source": "S74 R14, R24 (new parameter); no failure on record",
+        "prompt": "Carving NavMesh Obstacles make my web build hitch when they move. Limit runtime carving to one tile "
+                  "rebuild per surface per fixed tick.",
+        "groups_enabled": ["navigation"],
+        "mocks": [
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main:\n  surface Ground: baked, 4 tiles, 212 polys\n  0 link(s), 2 agent(s)",
+                {"scene_id": 1, "playing": False, "settings": {"crowd_max_agents": 128, "max_grid_solves_per_tick": 64,
+                                                               "carve_tiles_per_tick": 0, "include_in_builds": True},
+                 "surfaces": [{"entity": {"id": 7, "path": "Ground"}, "state": "baked", "carving": True,
+                               "max_carving_obstacles": 128}]})},
+            {"tool": "set_navigation_settings", "args": {"carve_tiles_per_tick": 1}, "result": ok(
+                "Navigation settings changed (one undo step). Surfaces of a changed agent type need a bake.",
+                {"carve_tiles_per_tick": 1, "undo_name": "Change Navigation Settings"})},
+            {"tool": "set_project_settings", "args": {"values": {"navigation.carve_tiles_per_tick": 1}}, "result": ok(
+                "Set 1 project setting (one undo step).", {"changed": ["navigation.carve_tiles_per_tick"]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_navigation_settings", "args": {"carve_tiles_per_tick": 1}}]},
+                              {"calls": [{"tool": "set_project_settings",
+                                          "args": {"values": {"navigation.carve_tiles_per_tick": 1}}}]}],
+                   "edits_must_not": [r"project\.yaml$"], "shell_must_not": [YAML_WRITE]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_nav_visualize_agent_type",
+        "kind": "guard",
+        "what_happened": "visualize_navigation drew its query path for the first agent type only; asked for another type's "
+                         "path, an agent must pass that agent type to the drawn path, not only to query_navigation.",
+        "text_at_issue": "visualize_navigation path {from, to, agent_type, area_mask} (agent_type: 'Name or id. Default: "
+                         "the first.')",
+        "source": "S74 R24 (new parameters); no failure on record",
+        "prompt": "Show me in the Scene view the path a Giant (the agent type) takes from (-10, 0, 0) to (10, 0, 5).",
+        "groups_enabled": ["navigation"],
+        "mocks": [
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main:\n  surface Ground: baked, 4 tiles, 212 polys\n  surface Ground Giant: baked, 4 tiles, 96 polys",
+                {"scene_id": 1, "settings": {"agents": [{"id": 0, "name": "Humanoid"}, {"id": 1, "name": "Giant"}]},
+                 "surfaces": [{"entity": {"id": 7, "path": "Ground"}, "agent_type": 0},
+                              {"entity": {"id": 9, "path": "Ground Giant"}, "agent_type": 1}]})},
+            {"tool": "query_navigation", "result": ok(
+                "Path complete: 4 corners, 23.4 long", {"target": "navmesh", "op": "path", "agent_type": 1, "status": "complete"})},
+            *[{"tool": "visualize_navigation", "args": {"path": {"agent_type": giant}}, "result": ok(
+                "AI Navigation overlay on. Path complete, 23.4 long (drawn magenta).",
+                {"scene_id": 1, "path": {"status": "complete", "corners": 4, "length": 23.4, "agent_type": 1}})}
+              for giant in ("re:(?i)^giant$", 1)],
+            {"tool": "visualize_navigation", "result": ok(
+                "AI Navigation overlay on. Path complete, 21.0 long (drawn magenta).",
+                {"scene_id": 1, "path": {"status": "complete", "corners": 3, "length": 21.0, "agent_type": 0}})},
+            {"tool": "screenshot", "result": ok("Scene view 1024x576.", {"view": "scene", "width": 1024, "height": 576})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "visualize_navigation", "args": {"path": {"agent_type": "re:(?i)^giant$"}}}]},
+                              {"calls": [{"tool": "visualize_navigation", "args": {"path": {"agent_type": 1}}}]}]},
+        "max_turns": 10,
+    },
+
+    # -- S75 navigation diagnostics: the new tool text (no failure on record yet) ----------------
+    {
+        "id": "guard_navigation_path_reason",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "A failed query_navigation path names its reason and, in structuredContent, the next call (locate "
+                         "at the end off the navmesh); locate's why[] names the cause. Guards that agents follow the result "
+                         "instead of guessing from scripts.",
+        "text_at_issue": "query_navigation: 'locate (is a point on the navmesh; if not, why). A failed path says why and what "
+                         "to do. from/to: a point or a GameObject'; result next: 'query_navigation op locate at to says why it "
+                         "is off the navmesh.'",
+        "source": "S75 R30 (docs/specs/S75-navigation-diagnostics.md); no failure on record",
+        "prompt": "In scene Main the Enemy's NavMesh Agent never reaches the Player. Find out why; don't change anything.",
+        "mocks": [
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main:\n  surface Ground: baked, 4 tiles, 212 polys, 1 island(s), 380.2 m\u00b2 walkable\n  0 link(s), "
+                "1 agent(s), 0 obstacle(s), 0 modifier(s)\n0 finding(s).",
+                {"scene_id": 1, "playing": False, "surfaces": [{"entity": {"id": 11, "path": "Ground"}, "state": "baked", "tiles": 4,
+                 "dirty_tiles": 0, "polys": 212, "coverage": {"walkable_area_m2": 380.2, "island_count": 1}}],
+                 "agents": [{"entity": {"id": 14, "path": "Enemy"}, "agent_type": 0, "speed": 3.5}], "findings": []})},
+            {"tool": "query_navigation", "args": {"op": "locate"}, "result": ok(
+                "Not on the navmesh; its nearest point [1.2, 0, 4.1] is 1.9 away.\n  too_steep: The ground slopes 52\u00b0 here; "
+                "Humanoid's Max Slope is 45\u00b0.",
+                {"target": "navmesh", "op": "locate", "on_mesh": False, "found": True, "position": [1.2, 0, 4.1], "snap_distance": 1.9,
+                 "island": 0, "surface": {"id": 11, "path": "Ground"},
+                 "why": [{"code": "too_steep", "message": "The ground slopes 52\u00b0 here; Humanoid's Max Slope is 45\u00b0.",
+                          "entity": {"id": 15, "path": "Crate"}, "value": 52, "limit": 45}]})},
+            {"tool": "query_navigation", "result": ok(
+                "Path invalid: 0 corners, 0 long. [end_off_mesh] The end is not on the navmesh: no polygon is near it. Gap 6.3. "
+                "Next: query_navigation op locate at to says why it is off the navmesh.",
+                {"target": "navmesh", "op": "path", "agent_type": 0, "area_mask": 65535, "status": "invalid", "length": 0,
+                 "corners": [], "reason": "end_off_mesh", "surface": {"id": 11, "path": "Ground"}, "closest_point": [-4, 0, 2],
+                 "gap": 6.3, "start": {"position": [-4, 0, 2], "snap_distance": 0, "island": 0},
+                 "end": {"position": [0, 1.4, 3], "snap_distance": -1, "island": -1},
+                 "next": "query_navigation op locate at to says why it is off the navmesh."})},
+        ],
+        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "locate"}}], "reply_must": [r"(?i)steep|slope"],
+                   "must_not_call": ["bake_navigation", "set_navigation_settings", "set_properties"],
+                   "edits_must_not": [r"\.(lua|scene)$"]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_navigation_findings",
+        "kind": "guard",
+        "what_happened": "get_navigation_info's findings say what is wrong with a scene's navigation and how to fix it; guards "
+                         "that an agent finds the navigation group from the guide's index and reads the findings first when "
+                         "agents do not move, instead of playing and reading scripts.",
+        "text_at_issue": "Guide 'Other areas': 'navigation (get_navigation_info)'; get_navigation_info: '... and its "
+                         "findings: each problem with its fix. Start here when agents do not move.'",
+        "source": "S75 R13, R32 (docs/specs/S75-navigation-diagnostics.md); no failure on record",
+        "prompt": "My enemies in scene Main just stand still when I press Play. What is wrong? Tell me; don't fix it yet.",
+        "mocks": [
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main:\n  surface Ground: not_baked, 0 tiles, 0 polys\n  0 link(s), 1 agent(s), 0 obstacle(s), 0 "
+                "modifier(s)\n2 finding(s):\n  warning not_baked: NavMesh Surface 'Ground' is not baked: its agents find no "
+                "navmesh in the build (Bake, or bake_navigation)\n  warning agent_off_mesh: NavMesh Agent 'Enemy' is not on the "
+                "navmesh: it does not move (move it onto the surface, warp it, or bake the surface under it)",
+                {"scene_id": 1, "playing": False, "surfaces": [{"entity": {"id": 11, "path": "Ground"}, "state": "not_baked"}],
+                 "agents": [{"entity": {"id": 14, "path": "Enemy"}, "agent_type": 0}],
+                 "findings": [{"code": "not_baked", "severity": "warning", "entity": {"id": 11, "path": "Ground"},
+                               "message": "NavMesh Surface 'Ground' is not baked: its agents find no navmesh in the build (Bake, "
+                                          "or bake_navigation)", "details": {}},
+                              {"code": "agent_off_mesh", "severity": "warning", "entity": {"id": 14, "path": "Enemy"},
+                               "message": "NavMesh Agent 'Enemy' is not on the navmesh: it does not move (move it onto the "
+                                          "surface, warp it, or bake the surface under it)", "details": {"snap_distance": -1}}]})},
+        ],
+        "checks": {"calls": ["get_navigation_info"], "reply_must": [r"(?i)not baked|bake"],
+                   "must_not_call": ["bake_navigation", "play"], "max_calls": {"*": 8}},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_navigation_frame_islands",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "visualize_navigation colours the navmesh by island and frames the Scene camera on it before its "
+                         "screenshot; guards that agents use it instead of moving the camera by hand and guessing.",
+        "text_at_issue": "visualize_navigation: 'navmesh in area, island or tile colours ... frame first moves the Scene "
+                         "camera to the navmesh or a GameObject.'; show.islands, frame",
+        "source": "S75 R33 (docs/specs/S75-navigation-diagnostics.md); no failure on record",
+        "prompt": "Show me a picture of scene Main's whole navmesh with each disconnected part in its own colour.",
+        "mocks": [
+            {"tool": "visualize_navigation", "result": ok(
+                "AI Navigation overlay on. Framed the navmesh. Image: the Scene view.",
+                {"scene_id": 1, "framed": "navmesh", "camera": {"position": [0, 30, -25], "target": [0, 0, 0]},
+                 "overlay": {"navmesh": True, "color_by": "islands"}, "image": {"view": "scene", "width": 1024, "height": 576}})},
+        ],
+        "checks": {"calls": [{"tool": "visualize_navigation", "args": {"show": {"islands": True}, "frame": "navmesh"}}],
+                   "must_not_call": ["set_scene_camera"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_navigation_many_targets",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "query_navigation's to takes a list of up to 64 targets; guards that an agent checks several spawn "
+                         "points in one call instead of one call each.",
+        "text_at_issue": "query_navigation to: '[x, y, z] or a GameObject. Or a list of up to 64.'",
+        "source": "S75 R30 (docs/specs/S75-navigation-diagnostics.md); no failure on record",
+        "prompt": "Which of these spawn points can the Enemy in scene Main walk to: [4, 0, 4], [-6, 0, 8], [12, 0, -3], "
+                  "[0, 0, 15], [-9, 0, -9], [7, 0, 11]?",
+        "mocks": [
+            {"tool": "query_navigation", "args": {"op": "reachable"}, "result": ok(
+                "query_navigation reachable to 6 target(s): 1 not reachable, 5 reachable.",
+                {"target": "navmesh", "op": "reachable", "agent_type": 0, "area_mask": 65535, "results": [
+                    {"to": [4, 0, 4], "reachable": True}, {"to": [-6, 0, 8], "reachable": True},
+                    {"to": [12, 0, -3], "reachable": True},
+                    {"to": [0, 0, 15], "reachable": False, "reason": "disconnected", "surface": {"id": 11, "path": "Ground"},
+                     "closest_point": [0, 0, 9.5], "gap": 5.5},
+                    {"to": [-9, 0, -9], "reachable": True}, {"to": [7, 0, 11], "reachable": True}]})},
+        ],
+        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "reachable"}}], "max_calls": {"query_navigation": 2},
+                   "reply_must": [r"0,\s*0,\s*15"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_navigation_random_point",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "S76 R42 added query_navigation's random op (around `from` within max_distance, seeded); guards that "
+                         "agents use it instead of sampling guessed points or writing Lua.",
+        "text_at_issue": "query_navigation: '... locate (...), random, move_along'; from: 'Optional for random.'; max_distance: "
+                         "'Default: sample 2, locate 5. closest_edge, random.'; seed: 'random.'",
+        "source": "docs/specs/S76-navigation-gameplay-api.md R42 (new op; no failure on record)",
+        "prompt": "The level's navmesh is baked. Give me a random spawn point on the navmesh within 10 m of (4, 0, -2) that an "
+                  "agent standing there can walk to. Make it repeatable (seed 3).",
+        "mocks": [
+            {"tool": "query_navigation", "args": {"op": "random"}, "result": ok(
+                "Random point [6.12,0,-4.3]",
+                {"target": "navmesh", "op": "random", "agent_type": 0, "area_mask": 65535, "found": True, "seed": 3,
+                 "position": [6.12, 0, -4.3], "area": 0})},
+            {"tool": "query_navigation", "result": ok(
+                "Nearest navmesh point [4,0,-2], 0 away",
+                {"target": "navmesh", "op": "sample", "found": True, "position": [4, 0, -2], "distance": 0})},
+        ],
+        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "random", "from": "*", "max_distance": "*", "seed": 3}}],
+                   "must_not_call": [{"tool": "eval_lua"}], "reply_must": [r"6\.12"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_navigation_move_along",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "S76 R42 added query_navigation's move_along (a controller step along the surface, blocked by walls); "
+                         "guards that agents use it rather than a raycast or a path for a one-step move.",
+        "text_at_issue": "query_navigation: '... locate (...), random, move_along'",
+        "source": "docs/specs/S76-navigation-gameplay-api.md R42 (new op; no failure on record)",
+        "prompt": "A player controller clamped to the navmesh stands at (18, 0, 3) and moves 3 m towards +x this tick. Where "
+                  "does it end up on the navmesh surface, and does a wall stop it?",
+        "mocks": [
+            {"tool": "query_navigation", "args": {"op": "move_along"}, "result": ok(
+                "Stopped at [19.5,0,3] after 1.5",
+                {"target": "navmesh", "op": "move_along", "found": True, "position": [19.5, 0, 3], "blocked": True,
+                 "distance": 1.5, "area": 0})},
+            {"tool": "query_navigation", "result": ok(
+                "Blocked at [19.5,0,3]", {"target": "navmesh", "op": "raycast", "blocked": True, "position": [19.5, 0, 3]})},
+        ],
+        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "move_along", "from": "*", "to": "*"}}],
+                   "must_not_call": [{"tool": "eval_lua"}], "reply_must": [r"19\.5"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_navigation_door_in_play",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "S76 runtime areas: a door is a NavMesh Modifier with Apply At Runtime and a bridge a NavMesh Link "
+                         "with Activated; in play the agent toggles them with set_runtime_property and reads the path again, "
+                         "instead of rebaking (bake_navigation is refused in play) or editing the scene.",
+        "text_at_issue": "docs/mcp/guide/navigation.md 'Doors and bridges in play'; get_navigation_info area_overrides / "
+                         "links[].activated; visualize_navigation show.area_overrides",
+        "source": "docs/specs/S76-navigation-gameplay-api.md R45 (no failure on record)",
+        "prompt": "The game is running. Close the door (the Door GameObject's NavMesh Modifier is a runtime door volume), "
+                  "then tell me whether a path from (-10, 0, 0) to (14, 0, 0) still gets through.",
+        "groups_enabled": ["navigation"],
+        "mocks": [
+            {"tool": "get_entity", "args": {"entity": "re:Door|^21$"}, "result": ok(
+                "Door [21] components: navmeshmodifier transform; navmeshmodifier: enabled false, useVolume true, "
+                "applyAtRuntime true, area 1, volumeSize [2, 3, 3]", {"id": 21})},
+            {"tool": "set_runtime_property", "args": {"component": "navmeshmodifier", "property": "enabled", "value": True},
+             "result": ok("Set navmeshmodifier.enabled of Door [21] to true (live; Stop restores it).",
+                          {"entity": {"id": 21, "path": "Door"}, "value": True})},
+            {"tool": "query_navigation", "after": "set_runtime_property", "result": ok(
+                "path: partial, 2 corners, 9.6 m (blocked_by_area)",
+                {"op": "path", "status": "partial", "corners": [[-10, 0, 0], [-0.6, 0, 0]], "length": 9.6})},
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main (playing):\n  1 link(s), 0 agent(s), 1 area override(s) (1 applied)",
+                {"playing": True, "area_overrides": [{"source": {"entity": {"id": 21, "path": "Door"}}, "area": 1,
+                                                      "applied": True, "polygons": 6}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_runtime_property", "args": {"component": "navmeshmodifier", "property": "enabled",
+                                                                       "value": True}},
+                             {"tool": "query_navigation", "args": {"op": "path"}}],
+                   "order": [["set_runtime_property", "query_navigation"]],
+                   "must_not_call": ["bake_navigation"], "reply_must": [r"(?i)partial|block|no(t| longer)"]},
         "max_turns": 12,
     },
     {
@@ -1794,6 +2171,55 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "bad_water_inside_boat",
+        "kind": "bad",
+        "what_happened": "An open boat floating on library:water showed the water's surface inside its hull; hiding it "
+                         "takes a Water Excluder on the boat (its mesh's convex hull by default), not a stencil mask, a "
+                         "forked water shader or a second mesh.",
+        "text_at_issue": "component Water Excluder 'Keeps water out of a boat or a dry space: no surface inside, no "
+                         "underwater fade, cargo stays dry'",
+        "source": "water-boats spec (Doriax 1ecdb8b41)",
+        "prompt": "The Rowboat floats on the Lake, but the lake's water shows inside the boat, above its floor. Make the "
+                  "inside of the boat dry.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("Rowboat [21] (mesh, rigidbody, buoyancy), Lake [12] (mesh, watervolume)",
+                                                   {"entities": [{"id": 21, "name": "Rowboat"}, {"id": 12, "name": "Lake"}]})},
+            {"tool": "get_entity", "result": ok("Rowboat [21] components: transform mesh rigidbody buoyancy", {"id": 21})},
+            {"tool": "list_component_types", "result": ok(
+                "... Water Volume (watervolume): A body of water: what has a Buoyancy floats in it; Water Excluder "
+                "(waterexcluder): Keeps water out of a boat or a dry space: no surface inside, no underwater fade, cargo "
+                "stays dry; Water Wake (waterwake): Foam and waves behind it while it moves through water ...",
+                {"components": [{"key": "waterexcluder", "name": "Water Excluder"}, {"key": "waterwake", "name": "Water Wake"}]})},
+            {"tool": "add_component", "args": {"component": "re:(?i)water.?excluder"}, "result": ok(
+                "Added Water Excluder to GameObject 21 \"Rowboat\" (shape convex_hull).", {"entity": {"id": 21}})},
+            {"tool": "sample_water", "result": ok("(0, -0.2, 0): dry (Water Excluder Rowboat), surface 0.01",
+                                                  {"samples": [{"in_water": False, "excluded_by": {"id": 21}}]})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)water.?excluder"}}],
+                   "must_not_call": ["fork_shader", {"tool": "write_file", "args": {"path": "re:\\.(frag|vert)$"}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_water_wake_check",
+        "kind": "guard",
+        "playing": True,
+        "what_happened": "Whether a moving boat leaves a wake (and whether its cargo is dry) is read from sample_water's "
+                         "per-point wake and excluded_by, not guessed from a screenshot.",
+        "text_at_issue": "sample_water description: 'the Water Excluder keeping it dry and the Water Wakes there. report: "
+                         "the excluders' hulls, the wakes and which waters draw them'",
+        "source": "water-boats spec (Doriax 755e7d723)",
+        "prompt": "The game is playing and the Speedboat is moving along +Z on the Lake. Is it leaving foam behind it? "
+                  "It is at about (0, 0, 10) now.",
+        "mocks": [
+            {"tool": "sample_water", "result": ok(
+                "(0, 0, 6): in water, surface 0.02\nwake Speedboat: emitting, 6.10 m/s\nwake map: active",
+                {"samples": [{"point": [0, 0, 6], "in_water": True, "wake": {"foam": 0.62, "height": 0.08}}],
+                 "wakes": [{"entity": {"id": 30}, "emitting": True, "speed": 6.1}], "wake_map": {"active": True}})},
+        ],
+        "checks": {"calls": [{"tool": "sample_water"}]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_ssr_reflection_source",
         "kind": "guard",
         "what_happened": "A floor under a reflection probe looked doubly bright with SSR on; the check is the SSR debug view "
@@ -1993,7 +2419,7 @@ CASES = [
         "kind": "guard",
         "what_happened": "A destructible cave is voxel work, and no voxel tool is listed until the group is enabled: the agent "
                          "must find the group or the doc rather than fake it with terrain and meshes.",
-        "text_at_issue": "Guide 'Other areas': voxels (edit_voxels); the voxels row of tool_groups",
+        "text_at_issue": "Guide 'Tool groups': voxels; tool_groups' voxels description (start with edit_voxels; jasper://docs/voxels)",
         "source": "docs/specs/T6-voxel-volumes.md R72, AC54",
         "prompt": "Add a destructible cave to this level, one the player can blast open while playing.",
         "mocks": [
@@ -2238,6 +2664,32 @@ CASES = [
         "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim", "audio": "*"}}],
                    "must_not_call": [{"tool": "create_script"}], "edits_must_not": [r"\.lua$"]},
         "max_turns": 12,
+    },
+    {
+        "id": "bad_model_clip_loop_by_extract",
+        "kind": "bad",
+        "what_happened": "Asked to make a model's Walk loop, an agent extracted it to a .anim and pointed the player at the copy: "
+                         "a second clip to keep in sync with the model. A model clip's wrap and root_motion are its import "
+                         "settings, which edit_animation writes to the model's .clips file.",
+        "text_at_issue": "get_asset_info's animations[i].wrap; animation.md Model clips: 'A model clip's wrap and root_motion are its import settings'",
+        "source": "docs/specs/S77-clip-quality.md R53",
+        "prompt": "The Hero's Animation Player plays assets/models/hero.gltf#Walk, and it stops after one step. Make the Walk "
+                  "clip of that model loop wherever it plays.",
+        "mocks": [
+            {"tool": "get_asset_info", "args": {"path": "re:hero\\.gltf"}, "result": ok(
+                "assets/models/hero.gltf: 2 meshes, 1 material, 2 animation(s).",
+                {"path": "assets/models/hero.gltf", "type": "model", "model": {"animations": [
+                    {"name": "Walk", "duration_seconds": 1.0, "keys": 40, "runtime_bytes": 2048, "wrap": "once", "root_motion": None},
+                    {"name": "Idle", "duration_seconds": 2.0, "keys": 12, "runtime_bytes": 1024, "wrap": "once", "root_motion": None}]}})},
+            {"tool": "edit_animation", "args": {"clip": "re:hero\\.gltf#Walk", "wrap": "loop"}, "result": ok(
+                "assets/models/hero.gltf#Walk: wrap loop (wrote assets/models/hero.gltf.clips: one project undo step, undo scope "
+                "project; its players reload)",
+                {"clip": "assets/models/hero.gltf#Walk", "settings_file": "assets/models/hero.gltf.clips", "wrap": "loop",
+                 "root_motion": None, "changed": True})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:hero\\.gltf#Walk", "wrap": "loop"}}],
+                   "must_not_call": [{"tool": "edit_animation", "args": {"create": "*"}}]},
+        "max_turns": 8,
     },
     {
         "id": "bad_music_manager_by_hand",
@@ -2646,7 +3098,7 @@ CASES = [
         "kind": "guard",
         "what_happened": "T1: terrain edits moved to edit_terrain in the terrain group, hidden until enabled; an agent asked to edit "
                          "a terrain must find the group or its guide and edit declaratively, not script brush strokes.",
-        "text_at_issue": "Guide 'Other areas': terrain (edit_terrain): jasper://docs/terrain; tool_groups' terrain description",
+        "text_at_issue": "Guide 'Tool groups': terrain; tool_groups' terrain description (start with edit_terrain; jasper://docs/terrain)",
         "source": "docs/specs/T1-terrain-authoring.md R73, AC74",
         "prompt": "The scene has a terrain called Island. Make its middle a plateau 30 m high, about 50 m across.",
         "mocks": [
@@ -2747,6 +3199,58 @@ CASES = [
         "checks": {"calls": ["export_terrain_heightmap"], "must_not_call": ["write_file", "sample_terrain"],
                    "shell_must_not": [r"struct\.pack|\.r16"]},
         "max_turns": 8,
+    },
+    {
+        "id": "terrain_large_edit_job",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "On a 4096 terrain an edit runs as a job and the call returns its job_id; agents read the job_id as a "
+                         "failure and edited again, or reported the edit as done without polling.",
+        "text_at_issue": "docs/mcp/guide/terrain.md edit_terrain: 'An edit over more than 4 M texels runs as a job'",
+        "source": "docs/specs/T1-terrain-authoring.md R69, AC74",
+        "prompt": "Raise the whole 4096 terrain by 5 m, without waiting on it, and tell me when it has landed.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok("Job 7 running: Edit Terrain (World).",
+                                                  {"job_id": "7", "status": "running", "message": "editing a copy of the maps"})},
+            {"tool": "get_job", "result": ok("Job 7 succeeded: Edited the terrain: 16785409 texel(s) changed in 1 map(s).",
+                                             {"id": "7", "status": "succeeded", "result": TERRAIN_EDIT_RESULT})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"wait": False}}, "get_job"], "max_calls": {"edit_terrain": 1},
+                   "order": [["edit_terrain", "get_job"]]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_place_objects",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "Asked to scatter rocks over a clearing, agents sent sculpt_terrain strokes point by point, guessing positions "
+                         "and spacing themselves, instead of one region for edit_terrain to plan.",
+        "text_at_issue": "docs/mcp/guide/terrain.md Which tool: 'Scatter rocks or props over a region | edit_terrain place_objects'",
+        "source": "docs/specs/T1-terrain-authoring.md R21",
+        "prompt": "Scatter about 20 copies of assets/rock.obj over the circle of radius 15 around the middle of the terrain, at least 2 m apart.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok("Placed 18 and erased 0 object(s) on \"World\" as one undo step.",
+                                                  {"placed": 18, "erased": 0, "undo_name": "Edit Terrain Objects (World)"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:place_objects"}}],
+                   "must_not_call": [{"tool": "sculpt_terrain", "args": {"strokes": "*"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_brush_shortcuts",
+        "kind": "guard",
+        "what_happened": "Asked which keys the terrain brush has, agents listed every shortcut and guessed from the names, or "
+                         "filtered by scene_view, which holds none of them; the brush's keys have a context of their own.",
+        "text_at_issue": "list_shortcuts context enum: 'terrain_brush'",
+        "source": "docs/specs/T1-terrain-authoring.md R57, Table 5",
+        "prompt": "Which keys pick the terrain brush's tools while it is armed? Just list them.",
+        "mocks": [
+            {"tool": "list_shortcuts", "args": {"context": "terrain_brush"}, "result": ok("21 shortcuts.", {"shortcuts": [
+                {"id": "terrain.tool.raise", "name": "Raise", "context": "terrain_brush", "chords": ["R"]},
+                {"id": "terrain.tool.setHeight", "name": "Set Height", "context": "terrain_brush", "chords": ["H"]}]})},
+        ],
+        "checks": {"calls": [{"tool": "list_shortcuts", "args": {"context": "terrain_brush"}}], "max_calls": {"list_shortcuts": 2}},
+        "max_turns": 6,
     },
     {
         "id": "terrain_lua_crater",
@@ -3123,6 +3627,37 @@ CASES = [
         "max_turns": 16,
     },
     {
+        "id": "guard_detail_layer_error_names_the_fix",
+        "kind": "guard",
+        "what_happened": "A detail layer whose density map had only a GPU-only cook drew nothing; sample_terrain showed drawn 0 and "
+                         "nothing else, so agents repainted or replaced the layer. The layer's error names the map and the fix.",
+        "text_at_issue": "sample_terrain details[i].error (MeshSystem foliage): 'its density map ... has no pixels the CPU can read: "
+                         "no CPU-readable cook of it arrived; reimport it (reimport_textures)'",
+        "source": "agent-authoring follow-ups (review of 767dfb9bb, item 3)",
+        "prompt": "The grass on the terrain Ground stopped showing. Find out why and fix it; don't change the layer.",
+        "groups_enabled": ["terrain", "assets_pipeline"],
+        "mocks": [
+            {"tool": "sample_terrain", "result": ok(
+                "Terrain Ground: 32 x 32, max height 4; 1 detail layer (0 drawn).",
+                {"info": {"size": 32, "mesh_built": True, "details": [{
+                    "index": 0, "mesh": "assets/models/grass.glb", "density_map": "assets/terrain/painted.png", "density": 2,
+                    "drawn": 0, "error": "its density map assets/terrain/painted.png has no pixels the CPU can read: no CPU-readable "
+                                         "cook of it arrived; reimport it (reimport_textures)"}]}})},
+            {"tool": "reimport_textures", "result": ok(
+                "Reimported 1 texture(s).",
+                {"textures": [{"path": "assets/terrain/painted.png", "platforms": {"desktop": {"status": "cooked", "cpu_readable": True,
+                                                                                            "format": "R8"}}}], "timed_out": False})},
+            {"tool": "edit_terrain_details", "result": ok("Ground has 1 detail layer(s).", {"terrain": {"id": 11}, "layers": [
+                {"index": 0, "mesh": "assets/models/grass.glb", "density_map": "assets/terrain/painted.png", "density": 2}]})},
+        ],
+        "checks": {"calls": [{"tool": "sample_terrain"}, {"tool": "reimport_textures", "args": {"paths": ["assets/terrain/painted.png"]}}],
+                   "order": [["sample_terrain", "reimport_textures"]],
+                   "must_not_call": [{"tool": "edit_terrain_details", "args": {"update": "*"}},
+                                     {"tool": "edit_terrain_details", "args": {"remove": "*"}},
+                                     {"tool": "sculpt_terrain"}, "write_file"]},
+        "max_turns": 14,
+    },
+    {
         "id": "bad_shader_override_by_building",
         "kind": "bad",
         "what_happened": "Shader overrides could only change through build_project, so agents started a build to exclude one "
@@ -3163,5 +3698,51 @@ CASES = [
         ],
         "checks": {"calls": ["get_build_info"], "reply_must": [r"(?i)(compiler|toolchain|build tools)"]},
         "max_turns": 16,
+    },
+    {
+        "id": "guard_pixel_perfect_camera",
+        "kind": "guard",
+        "what_happened": "Pixel art drawn at a fractional scale (columns 2 and 3 px wide, blur): the fix is the camera's Pixel "
+                         "Perfect Camera component (S41), not a post-processing pixelate, a shader fork or the scene's Fixed "
+                         "Resolution.",
+        "text_at_issue": "None since the guide's 'pixel art' line was cut (it passed without it): the component's name in list_component_types",
+        "source": "S41 (docs/specs/S41-pixel-perfect-camera.md R3, the @asynkimo failure); no failure on record",
+        "prompt": "My pixel-art game looks wrong at 1366x768: some pixel columns are wider than others and sprites shimmer "
+                  "when the camera moves. Make the Main Camera pixel perfect at 320x180.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nMain Camera [3] camera transform",
+                                                   {"entities": [{"id": 3, "path": "Main Camera"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:Main Camera|^3$"}, "result": ok(
+                "Main Camera [3] components: camera transform; camera: type ortho", {"id": 3, "path": "Main Camera"})},
+            {"tool": "add_component", "result": ok("Added pixelperfectcamera to GameObject 3 \"Main Camera\" (one undo step).",
+                                                   {"entity": {"id": 3, "path": "Main Camera"}, "component": "pixelperfectcamera"})},
+            {"tool": "set_properties", "result": ok("Set 2 properties on GameObject 3 \"Main Camera\".", {"entity": {"id": 3}})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)pixel.?perfect"}}],
+                   "must_not_call": ["fork_shader", "apply_post_processing_preset",
+                                     {"tool": "set_scene_settings", "args": {"settings": {"fixed_resolution_enabled": True}}}]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_game_view_pixel_scale",
+        "kind": "guard",
+        "what_happened": "Checking pixel art at 1x (one physical pixel per art pixel) is the Game view's Pixel Scale, not its "
+                         "zoom Scale (1 to 5, the image fitted first) or a resolution change.",
+        "text_at_issue": "configure_game_view pixel_scale: 'Pixel Perfect scale; 0 auto.'",
+        "source": "S41 (R20, AC15); no failure on record",
+        "prompt": "The main camera has a Pixel Perfect Camera. Show the Game view at 1x pixel scale so I can check the art pixel "
+                  "for pixel, then take a Game view screenshot.",
+        "mocks": [
+            {"tool": "configure_game_view", "args": {"pixel_scale": 1}, "result": ok(
+                "Game view: aspect free, scale 1, pixel scale 1.", {"aspect": "free", "scale": 1, "pixel_scale": 1})},
+            {"tool": "configure_game_view", "result": ok("Game view: aspect free, scale 1, pixel scale 0.",
+                                                         {"aspect": "free", "scale": 1, "pixel_scale": 0})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).",
+                                               {"view": "game", "width": 1280, "height": 720})},
+        ],
+        "checks": {"calls": [{"tool": "configure_game_view", "args": {"pixel_scale": 1}}],
+                   "must_not_call": [{"tool": "configure_game_view", "args": {"resolution": "*"}}]},
+        "max_turns": 12,
     },
 ]

@@ -6,6 +6,7 @@
 #include "Engine.h"
 #include "Scene.h"
 #include "component/MeshComponent.h"
+#include "component/SpriteComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "particles/ParticleEffectCodec.h"
@@ -360,6 +361,9 @@ namespace {
         bool changed = false;
         Entity entity = NULL_ENTITY;
         std::string component;
+        // the entity is a sheet sprite (S44 R48): submesh 0's base colour is its sheet's page, the
+        // sprite's reference, not the material's
+        bool sheetPage = false;
 
         AssetRefSite site(const AssetRefField& row, const std::string& field, uint32_t ordinal = 0,
                           AssetPathBase base = AssetPathBase::Project, bool baseOverride = false) const {
@@ -539,12 +543,13 @@ namespace {
         bool shader = false;
     };
 
-    MaterialChange visitMaterial(RefVisit& visit, Material& material, const std::string& prefix) {
+    // skipBaseColor: a sheet sprite's page (S44), the sheet's output, not a reference of the scene
+    MaterialChange visitMaterial(RefVisit& visit, Material& material, const std::string& prefix, bool skipBaseColor = false) {
         MaterialChange change;
         static const char* textureFields[] = {"baseColorTexture", "emissiveTexture", "metallicRoughnessTexture", "occlusionTexture", "normalTexture"};
         Texture* textures[] = {&material.baseColorTexture, &material.emissiveTexture, &material.metallicRoughnessTexture,
                                &material.occlusionTexture, &material.normalTexture};
-        for (size_t i = 0; i < 5; i++) {
+        for (size_t i = skipBaseColor ? 1 : 0; i < 5; i++) {
             change.texture |= visit.texture(*textures[i], materialRow(textureFields[i]), prefix + textureFields[i]);
         }
         change.texture |= visit.textureMap(material.shaderTextures, materialRow("shaderTextures{}"), prefix + "shaderTextures.");
@@ -696,7 +701,8 @@ namespace {
                     pathChanged = visitInlineEffect(visit, *static_cast<particles::ParticleEffectDocument*>(value), rows[node.row], path);
                     break;
                 case RefStep::Material: {
-                    const MaterialChange change = visitMaterial(visit, *static_cast<Material*>(value), path + ".");
+                    const MaterialChange change = visitMaterial(visit, *static_cast<Material*>(value), path + ".",
+                                                                visit.sheetPage && path == "submeshes[0].material");
                     if (change.texture) moved.flags |= UpdateFlags_Mesh_Texture;
                     if (change.shader) moved.flags |= UpdateFlags_Mesh_Reload;
                     moved.any |= change.texture || change.shader;
@@ -721,6 +727,8 @@ namespace {
         }
         visit.entity = entity;
         visit.component = Catalog::getComponentName(walk.desc->type);
+        const SpriteComponent* sprite = walk.desc->type == ComponentType::MeshComponent ? registry.findComponent<SpriteComponent>(entity) : nullptr;
+        visit.sheetPage = sprite && !sprite->sheet.empty();
         MovedRefs moved;
         walkRefFields(visit, walk.nodes, component, std::string(), moved);
         if (moved.any) {

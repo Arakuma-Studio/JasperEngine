@@ -4,6 +4,7 @@
 #ifndef LUA_FUNCTIONBASE_H
 #define LUA_FUNCTIONBASE_H
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -32,6 +33,7 @@ namespace jasperengine{
     class AABB;
     class GameObject;
     class VideoPlayer;
+    namespace nav { enum class PathFailure : uint8_t; }
 
     namespace lua_reload { struct CallbackRecord; }
 
@@ -94,6 +96,8 @@ namespace jasperengine{
         void push_value(lua_State *vm, ControllerColliderHit o);
         void push_value(lua_State *vm, NavMeshAgent o);
         void push_value(lua_State *vm, NavMeshSurface o);
+        // onPathFailed's reason: its snake_case name ("blocked_by_area", S75 D4)
+        void push_value(lua_State *vm, nav::PathFailure o);
         // an input action's callback gets the event itself: event:consume() reaches it
         void push_value(lua_State *vm, const InputActionEvent& o);
         // a Voxel Volume's events (T6 R31): onEdited's plain table, onCollisionUpdated's bounds, onBodyRescued's GameObject

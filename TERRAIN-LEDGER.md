@@ -90,6 +90,11 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 
 ## How the work runs
 
+- **Build boxes (owner, 2026-11-08):** three rented Hetzner shared-vCPU `cpx62` boxes (16 vCPU, 30 GB, about $0.24/h each,
+  48 h deadline): `db9262097667` for T1 (s41), `e704f0707dc6` for T4, `22b24a0ef193` for the upstream merge and the final
+  gates. `rb.sh L` runs a mapped worktree's job on its box (je-remote/boxes.conf, rb-remote.sh), 2 jobs of 7 per box, syncing
+  tracked and unignored files and copying back what the run wrote. Destroy them when the programme lands.
+- **Fewer verification rounds (owner, 2026-11-08):** verify once per batch, with red controls in the same pass.
 - **Everything builds on this host**, at the owner's instruction (this replaces the brief's rule against
   building here; no rented boxes). Docker was installed for this. 8 cores, 15 GB RAM, 32 GB swap, no GPU, no KVM.
 - **Build queue:** `/var/lib/orquester/workspaces/jaspersito/je-remote/rb.sh L ...`, a local stand-in for
@@ -119,13 +124,13 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | Merge of `origin/main` (pixel art, Doriax specs, lean MCP, no CI) | done | Specs renumbered from S41-S46 to T1-T6 |
 | Spec revision for the upstream changes | done | `terrain` 10 tools, `voxels` 4, no format bump, no new budget exceptions |
 | T1 foundation | done, verification continuing | On integration; writer migration has since moved to `terrain/s53-authoring` |
-| T1 implementation | checkpoint landed, rest in progress | Checkpoint 32b44659f merged into integration (e695a1bf3): core 162/162 and editor 129/129 with WERROR, MCP 41/41, collider red control. Remaining: UI items D-28 to D-37, the eval run |
+| T1 implementation | landed except pen readers and benches | Last batch merged: averaging alternate, Alt Alternates While Painting, Alt+click on release (T5's tree pick aligned), Layer and Noise Size eyedroppers, real-mouse stroke-log test, brush contexts in list_shortcuts. D-27 to D-37 all built. Pen readers and benches land from terrain/t1-benches |
 | T2 implementation | landed | Merged into integration (6af5f3b9d) at 2b280b147: core 133/133, editor 70/70 and 9/9, T2 and T1 MCP files pass, fan-out worst 129, lints. Not run: the test_noise_export player run, je-bench-noise, eval, web, Android, size checks, NDK armv7. Build tree deleted |
 | T3 implementation | landed | Merged into integration (9f3ffd6ba) at 8376cd9c4: core 560/560 (all 207 variants), editor 182/182, terrain MCP 35/35, fan-out worst 127. Driver workarounds recorded (llvmpipe GL path). Not run: web, Android, full Vulkan suite, perf checks |
 | T4 implementation | in progress | `terrain/t4-worlds` at 02f215f48 (integration with T2 merged). Built: tiles, tiled store, streaming, compound-shape collision paging, `Twd` variant, .terrainworld asset and cook, panel, inspector, undo, Lua, module, edit_terrain_world, sample_terrain {world}. Core 565/565, GPU (lavapipe) 418/418, editor 108/108, world MCP 11/11. Sent back to build: foliage on worlds, Convert to Terrain World, navigation, panel import and cancellable import job, streaming overlay, spline water fill, Physics Placement |
 | T5 implementation | landed | Merged into integration (caf5a42a0) at 34b6bf7a3: core 221/221, GPU 22/22 cold cache, editor 137/137, foliage/terrain/navigation MCP files, lints. Not run here: test_foliage_export (player), the eval case for `wait`, web, Android, other platforms. Build tree deleted for disk |
 | T6 implementation | landed | Merged into integration (e1021e82c) at 10bc59d4c: core 461/461 WERROR, editor 267/267 WERROR, test_voxels 12/12, voxel and hole GPU tests on Vulkan 48/48 and glcore 49/49. The Vulkan 'hang' was T6's own test giving up after 4 frames while Vulkan creates pipelines on a worker; no render bug (general runtime variant switch on Vulkan verified). Not run: web, Android, sanitizers, full suites, eval. Build tree deleted |
-| Merge `terrain/integration` to `main`, merge `origin/main`, push | not started | |
+| Merge `terrain/integration` to `main`, merge `origin/main`, push | in progress | origin/main (622 commits) merged into integration; final merge and push after T1b, T1 performance and T4 land and the final gates pass |
 
 ## Log
 
@@ -184,6 +189,39 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
   T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- origin/main merged into integration (2a414c895, via terrain/upstream-merge a0e90439f): 622 upstream commits plus T3's GLES3 fit,
+  T6's CaveMouth fix and a fan-out cut (TerrainSurfaceLayer.h 148 to 87; worst header now MeshComponent.h at 137). Core 819/819,
+  editor 431, MCP 139 (both single failures fixed and rerun), VoxelTerrainGpu stable over repeats. This is the new base for T1b,
+  T1's performance work and T4.
+- T1b done (terrain/t1-benches 47351285e): pen pressure on every platform (Linux reader header-free), benches, size script, and 14
+  Terrain Lua getters fixed (from T5's 3204d1e62 and T1's edf78d1cf). Measured T1 over budget: its code adds ~312 KiB to the Linux
+  player against 96 KiB (AC40 fails), and 9 of 18 bench budgets miss (whole-map ops 2-4x). Decision: fix, don't record. T1 makes the
+  runtime edit path a player module (no cost without runtime edits), shrinks the rest, and optimises the ops on terrain/t1-perf.
+  T1b holds to land on the new base after the upstream merge.
+- T3's GLES3 fit done (terrain/t3-gles3-fit 1d3fb3dde): the per-layer block packed from 5 vectors to 3 plus 1 component; worst
+  variant 217 of 224 (was 241), upstream's painted terrain 221 to 212, cross-compiles for every backend, 207/207 variants on glcore,
+  226 on Vulkan, goldens unchanged. Lua factors outside 0-1 are now clamped. T6's CaveMouth flake fixed (f4a854f33): the test read
+  the screen before the dig finished and its golden was an early frame; new isVolumeSettled. Both go into terrain/upstream-merge
+  with integration's latest, then one final filtered pass; that branch becomes the base T4 and T1b land on.
+- T1 window batch landed (3b8f715e7), identical to T1's tree. Its test run caught Esc both cancelling a stroke and putting the brush
+  down, turning the release into a stray Deselect All; fixed before landing.
+- Guide budget resolved on terrain/upstream-merge (aac58b2c9): the programme's two "Other areas" entries removed, 7 bytes of upstream
+  wording trimmed with the same meaning, and the terrain and voxels group descriptions now name edit_terrain/edit_voxels and their docs.
+- origin/main merge prepared on terrain/upstream-merge (13cf25705): 622 commits, WERROR build, core 810, editor 418 (2 failures,
+  one fixed), MCP 123/123, fan-out 148 of 150; SplineGpu.FenceAndWall now passes (upstream recaptured its golden; follow-up
+  closed). Found: T3's 12-layer variants use 226-241 GLES3 fragment uniform vectors against 224 (would break on WebGL2/Android;
+  T3 fixing on terrain/t3-gles3-fit); VoxelTerrainGpu.CaveMouth fails when repeated in one process (T6 fixing on
+  terrain/t6-cavemouth-flake); agent guide 53 bytes over budget (trimming our lines; eval deferred to the final gate); a forced
+  terrain tier shared bits with upstream lighting bits (fixed in the merge). The Xcode navigation check fails the same on origin/main.
+- T1 final batch part 1 landed (b6312c623). The rest of T1 split in two: window items stay with T1; pen readers and benches go
+  to a second agent (terrain/t1-benches), since they live in their own files. The remote queue's false exit 1 came from editing
+  rb-remote.sh while a job ran it; jobs now run a private copy.
+- Owner allowed rented build boxes and asked for fewer verification rounds. Three Hetzner boxes seeded with the repo, the build
+  images and the ccache; the build queue sends mapped worktrees' jobs there. Freed 25 GB of leftover Android build output.
+- T1 batch 1 landed (d822fb140), identical to T1's tested tree.
+- Sun 18:51: only two streams still building (T1's last batches, T4), leaving a build slot idle. Started the origin/main merge
+  (622 commits) in parallel on `terrain/upstream-merge` (.worktrees/upstream), so the final landing doesn't wait on it.
+  T4 has 271 uncommitted files; asked twice to commit them as WIP.
 - T6 landed (e1021e82c). The suspected Vulkan bug was not one: T6's test gave up 4 frames after the volume opened its holes,
   while Vulkan creates pipelines on a worker thread. A new runtime hole-cut test passes on glcore and Vulkan. All five original
   streams' work is now in integration except T1's remaining requirements; T4 is building.

@@ -320,7 +320,7 @@ TEST_F(FoliageGpu, LegacyLayerLooksTheSame){
         instanced.instances.push_back(data);
     }
     scene.addComponent<InstancedMeshComponent>(legacy, instanced);
-    scene.getSystem<MeshSystem>()->loadFoliageMesh(legacy, grassPath);
+    scene.getSystem<MeshSystem>()->loadPlacedModel(legacy, grassPath, true);
     component().foliageLayers.clear();
     component().needUpdateFoliage = true;
     ASSERT_TRUE(render());

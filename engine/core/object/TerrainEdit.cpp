@@ -3,6 +3,7 @@
 
 #include "TerrainEdit.h"
 
+#include "Engine.h"
 #include "Scene.h"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
@@ -13,6 +14,7 @@
 #include "jobs/JobSystem.h"
 #include "subsystem/TerrainWorldRuntime.h"
 #endif
+#include "texture/TexturePrepare.h"
 
 #include <algorithm>
 #include <atomic>
@@ -46,6 +48,15 @@ namespace {
     bool writableFormat(ColorFormat format) {
         return format == ColorFormat::RED || format == ColorFormat::RED16 || format == ColorFormat::RGBA;
     }
+
+    // and what it reads besides: a float map's CPU view (an .exr or .hdr source, TextureData's
+    // RGBA32F), which foliage, queries and sampling read and edits cannot write
+    bool readableFormat(ColorFormat format) {
+        return writableFormat(format) || format == ColorFormat::RGBA32F || format == ColorFormat::R32F;
+    }
+
+    const char* const FLOAT_MAP_ERROR = "the map is a float image (.exr or .hdr), which terrain edits cannot write: "
+                                        "import it as a 16-bit PNG or RAW (import_terrain_raw)";
 
     // A map made or removed is a structural change: the terrain builds again (T1 R23)
     void markMapRebuilt(TerrainComponent& terrain, MapId map) {
@@ -377,8 +388,32 @@ void jasperengine::noteTerrainMapEdited(const Scene* scene, Entity entity, Terra
             queued = true;
         }
     }
-    if (!queued) terrain.editState->uploads.push_back(TerrainEditState::Upload{map, 0, true});
+    for (TerrainEditState::Upload& upload : terrain.editState->uploads) {
+        if (upload.map == map) upload.dirty = unite(upload.dirty, rect);
+    }
+    if (!queued) {
+        TerrainEditState::Upload upload;
+        upload.map = map;
+        upload.waiting = true;
+        upload.dirty = rect;
+        terrain.editState->uploads.push_back(std::move(upload));
+    }
     TerrainEditEvents::publish(scene, entity, map, rect);
+}
+
+void jasperengine::convertTerrainHeightRect(const uint16_t* source, int width, TexelRect rect, TerrainUploadFormat format, uint8_t* shadow) {
+    for (int y = rect.y; y < rect.y + rect.h; y++) {
+        for (int x = rect.x; x < rect.x + rect.w; x++) {
+            const size_t i = static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x);
+            const float value = static_cast<float>(source[i]) / 65535.0f;
+            if (format == TerrainUploadFormat::Float32) {
+                std::memcpy(shadow + i * 4, &value, 4);
+            } else {
+                const uint16_t half = floatToHalf(value);
+                std::memcpy(shadow + i * 2, &half, 2);
+            }
+        }
+    }
 }
 
 uint64_t jasperengine::terrainUploadInterval(size_t mapBytes, size_t budget) {
@@ -396,6 +431,35 @@ TerrainWorldPlacement jasperengine::terrainWorldPlacement(Scene* scene, Entity e
     placement.scale = transform->worldScale;
     placement.rotated = transform->worldRotation != Quaternion::IDENTITY;
     return placement;
+}
+
+std::string jasperengine::terrainRuntimeEditRefusal(TerrainComponent& terrain) {
+    Texture& height = terrain.heightMap;
+    if (height.empty() || height.isFramebuffer()) return std::string();
+    if (!height.hasData()) {
+        height.setReleaseDataAfterLoad(false);
+        height.load();
+    }
+    if (!height.hasData()) return std::string();
+    // the 2 MB frame budget is the mobile and web one (Engine::defaultTerrainUploadBytes); an
+    // upload is the whole image, 32-bit floats where 16-bit heights do not filter (GLES3)
+    const GraphicBackend backend = Engine::getGraphicBackend();
+    return terrainRuntimeEditRefusalFor(height.getData().getWidth(), height.getData().getHeight(), Engine::defaultTerrainUploadBytes() < 8 * 1024 * 1024,
+                                        backend == GraphicBackend::VULKAN, backend == GraphicBackend::GLES3 ? 4 : 2,
+                                        Engine::getGpuResourceLimits().streamStagingBytes);
+}
+
+std::string jasperengine::terrainRuntimeEditRefusalFor(int width, int rows, bool smallDevice, bool vulkan, size_t texelBytes, int stagingBytes) {
+    if (smallDevice && std::max(width, rows) > MAX_RUNTIME_EDIT_SIDE_SMALL) {
+        return "the height map is " + std::to_string(width) + " x " + std::to_string(rows) + ", over " +
+               std::to_string(MAX_RUNTIME_EDIT_SIDE_SMALL) + " a side, which mobile and web devices do not edit at runtime";
+    }
+    const size_t bytes = static_cast<size_t>(width) * static_cast<size_t>(rows) * texelBytes;
+    if (vulkan && stagingBytes > 0 && bytes > static_cast<size_t>(stagingBytes)) {
+        return "one upload of the height map takes " + std::to_string(bytes) + " bytes, past the " + std::to_string(stagingBytes) +
+               "-byte stream staging buffer of this device";
+    }
+    return std::string();
 }
 
 bool jasperengine::detachTerrainMapsForRuntime(TerrainComponent& terrain, Entity entity) {
@@ -459,7 +523,7 @@ bool TerrainComponentStore::sync(MapId map) const {
     }
     if (!texture->hasData()) return false;
     TextureData& data = texture->getData();
-    if (!data.getData() || !writableFormat(data.getColorFormat())) return false;
+    if (!data.getData() || !readableFormat(data.getColorFormat())) return false;
     const int bits = TextureData::getBytesPerChannel(data.getColorFormat()) * 8;
     bytes.borrowMap(map, data.getWidth(), data.getHeight(), data.getChannels(), bits, static_cast<uint8_t*>(data.getData()));
     return true;
@@ -499,6 +563,7 @@ bool TerrainComponentStore::read(MapId map, TexelRect rect, std::span<float> out
 WriteResult TerrainComponentStore::write(MapId map, TexelRect rect, std::span<const float> in) {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->write(map, rect, in);
     if (!sync(map)) return WriteResult{false, "the terrain has no such map loaded", 0};
+    if (bytes.format(map).bitsPerChannel >= 32) return WriteResult{false, FLOAT_MAP_ERROR, 0};
     const WriteResult result = bytes.write(map, rect, in);
     afterWrite();
     return result;
@@ -512,6 +577,7 @@ bool TerrainComponentStore::readBytes(MapId map, TexelRect rect, std::span<uint8
 WriteResult TerrainComponentStore::writeBytes(MapId map, TexelRect rect, std::span<const uint8_t> in) {
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->writeBytes(map, rect, in);
     if (!sync(map)) return WriteResult{false, "the terrain has no such map loaded", 0};
+    if (bytes.format(map).bitsPerChannel >= 32) return WriteResult{false, FLOAT_MAP_ERROR, 0};
     const WriteResult result = bytes.writeBytes(map, rect, in);
     afterWrite();
     return result;
@@ -521,6 +587,10 @@ bool TerrainComponentStore::canWrite(MapId map, TexelRect rect, std::string* why
     if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->canWrite(map, rect, why);
     if (!sync(map)) {
         if (why) *why = "the terrain has no such map loaded";
+        return false;
+    }
+    if (bytes.format(map).bitsPerChannel >= 32) {
+        if (why) *why = FLOAT_MAP_ERROR;
         return false;
     }
     return bytes.canWrite(map, rect, why);

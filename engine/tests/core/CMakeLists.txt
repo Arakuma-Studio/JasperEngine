@@ -93,10 +93,13 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainStoreTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainSurfaceTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorHumanoidTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorPropertyThreadTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorRetargetTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorStateMachineTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorSystemTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/ClipIOTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/ClipMemoryTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/ProfilerAnimationTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/HumanoidModelTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/KeyframeSamplingTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/SubClipPoolTest.cpp
@@ -122,6 +125,7 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/render/ObjectRenderShaderGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/render/ParticlesGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/render/RenderGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/render/SpriteSheetRenderGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/render/WaterFeaturesGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/spline/SplineCornerTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/support/AllocationCounter.cpp
@@ -170,6 +174,11 @@ jasperengine_add_test_target(jasperengine-core-tests
         JASPER_TEST_CRASH_TEST_BINARY="$<TARGET_FILE:jasperengine-crash-test>"
 )
 add_dependencies(jasperengine-core-tests jasperengine-crash-test)
+# the navigation tests call into Recast/Detour directly (the vendored patches, the tile builds'
+# rcContext: docs/specs/S74-navigation-fixes.md AC1-AC3, AC7)
+if(TARGET recastnavigation)
+    target_link_libraries(jasperengine-core-tests PRIVATE recastnavigation)
+endif()
 # tools/crash/symbolicate.py names the crash-test binary's frames (ctest; docs/testing.md)
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND AND NOT WIN32)
@@ -250,6 +259,7 @@ add_executable(je-bench-nav ${CMAKE_CURRENT_SOURCE_DIR}/bench/NavBench.cpp ${COR
 # je-bench-splines: the spline budgets (S18 R18-R21, docs/perf/splines.md)
 add_executable(je-bench-splines ${CMAKE_CURRENT_SOURCE_DIR}/bench/SplineBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 add_executable(je-bench-anim ${CMAKE_CURRENT_SOURCE_DIR}/bench/AnimBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
+target_compile_definitions(je-bench-anim PRIVATE JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 # je-bench-audio: the loudness budgets (S38 R16-R17)
 add_executable(je-bench-audio ${CMAKE_CURRENT_SOURCE_DIR}/bench/AudioMeterBench.cpp)
 # je-bench-foliage: foliage's budgets (T5 R41, R42, R45, docs/perf/foliage.md)

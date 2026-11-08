@@ -13,6 +13,9 @@
 #include "command/type/WriteFilesCmd.h"
 #include "component/SpriteComponent.h"
 #include "mcp/McpValues.h"
+#include "sprite/SpriteSheetBuilder.h"
+#include "sprite/SpriteSheetPool.h"
+#include "sprite/SpriteSheetSources.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "texsynth/SynthesisSession.h"
 #include "util/EntityPath.h"
@@ -207,11 +210,49 @@ namespace jasperengine::editor::spritenormals {
                               "Pick a submesh from 0 to " + std::to_string(count - 1) + ".");
             }
             info.stored = mesh->submeshes[submesh].material.baseColorTexture.getPath();
+            // a texture sheet sprite not drawn yet (a scene loaded without an update: the CLI) has
+            // no mesh texture: its texture is the sheet's
+            if (SpriteComponent* sheetSprite = submesh == 0 ? s->findComponent<SpriteComponent>(entity) : nullptr;
+                info.stored.empty() && sheetSprite && SpriteSheetSources::isTexturePath(sheetSprite->sheet.path)) {
+                info.stored = sheetSprite->sheet.path;
+            }
             if (info.stored.empty()) {
                 return refuse("invalid_source", "\"" + name + "\" has no base colour texture.", "Give the Sprite a texture first.");
             }
             info.texture = textureFile(info.stored);
             SpriteComponent* sprite = submesh == 0 ? s->findComponent<SpriteComponent>(entity) : nullptr;
+            if (sprite && !sprite->sheet.empty()) {
+                // a sheet sprite (S44/S45): the frames of the texture sheet it draws, read from the
+                // texture's Sprite Mode (the CLI has no editor answering the pool). Generated pages
+                // (an atlas page, an .aseprite import) are rebuilt, so a map made from one would not
+                // stay paired with it
+                const std::string sheetPath = sprite->sheet.path;
+                const bool textureSheet = SpriteSheetSources::isTexturePath(sheetPath);
+                const std::string drawn = mesh->submeshes[submesh].material.baseColorTexture.getPath();
+                const bool onPage = !drawn.empty() && jasperengine::editor::FileUtils::pathFromUtf8(drawn).lexically_normal() !=
+                                                          jasperengine::editor::FileUtils::pathFromUtf8(sheetPath).lexically_normal();
+                if (!textureSheet || onPage) {
+                    return refuse("invalid_source",
+                                  "\"" + name + "\" draws " + (textureSheet ? sheetPath + " from a Sprite Atlas page" : "the generated pages of " + sheetPath) +
+                                      ": a normal map of a page would not stay paired with it.",
+                                  textureSheet ? "Remove " + sheetPath + " from its atlas (edit_sprite_atlas remove) or turn the atlas's Include in Build off, then generate."
+                                               : "Generate the map from the source image (source: its path) and pair it in the editor that made the sheet.");
+                }
+                info.stored = sheetPath;
+                info.texture = textureFile(sheetPath);
+                const sprite::TextureSheetInfo sheetInfo = sprite::textureSheetSettings(info.texture);
+                const sprite::TextureSheetBuild built = sprite::buildTextureSheet(info.texture, sheetPath, sheetInfo.settings);
+                for (const SpriteFrame& f : built.sheet.frames) {
+                    Rect r = f.rect;
+                    Cell cell;
+                    cell.x = static_cast<int>(std::lround(r.getX()));
+                    cell.y = static_cast<int>(std::lround(r.getY()));
+                    cell.width = static_cast<int>(std::lround(r.getWidth()));
+                    cell.height = static_cast<int>(std::lround(r.getHeight()));
+                    if (cell.width > 0 && cell.height > 0) info.cells.push_back(cell);
+                }
+                return info;
+            }
             if (sprite) {
                 int w = 0, h = 0;
                 bool sized = false;

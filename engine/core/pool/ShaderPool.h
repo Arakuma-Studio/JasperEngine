@@ -159,6 +159,8 @@ namespace jasperengine{
         // phase 4's in-shader tier) of a shader type, 0 for a type that never applies it (UI,
         // depth, effects)
         static uint64_t getPostColorProperty(ShaderType shaderType);
+        // 'Pxs': the pixel-snapped vertex stage of MESH, DEPTH, UI and PARTICLES (S41); 0 for the others
+        static uint64_t getPixelSnapProperty(ShaderType shaderType);
         // the G-buffer's HAS_VOXEL ('Vox', T6 R49): Lit defines reach only colour shaders
         static uint64_t getGBufferVoxelProperty();
         // the mesh variant bit of the High and Ultra shadow filters (USE_SHADOWS_HQ: the Vogel
@@ -174,10 +176,18 @@ namespace jasperengine{
         // the variant bit of automatic GPU instancing (HAS_AUTO_INSTANCING: the object block per
         // instance, spec S55) of MESH and DEPTH, 0 for another type
         static uint64_t getAutoInstancingProperty(ShaderType shaderType);
+        // MESH's Water Excluder and Water Wake bits ('Wex' USE_WATER_EXCLUSION, 'Wwk'
+        // USE_WATER_WAKE): a shader requiring waterexclusion / waterwake, in a scene with such
+        // components (includes/water_interaction.glsl)
+        static uint64_t getWaterExclusionProperty();
+        static uint64_t getWaterWakeProperty();
         // S57's MESH bits: 'Til' (Light Mode Tiled), 'Cap' (capsule shadows), 'Cts' (contact
         // shadows) and 'Oit' (an alpha-blended submesh's OIT accumulation render)
         enum class LightingFeature { TILED_LIGHTS, CAPSULE_SHADOWS, CONTACT_SHADOWS, OIT };
         static uint64_t getLightingProperty(LightingFeature feature);
+        // MESH's 'Dlo': the built-in Lit of a scene whose lights are all directional
+        // (DIRECTIONAL_LIGHTS_ONLY: no point or spot path, spot mask or point shadow resources)
+        static uint64_t getDirectionalOnlyProperty();
         // the variant bit of a terrain's holes (T3 R20: TERRAIN_HOLES) of MESH, DEPTH and GBUFFER, 0 for
         // another type. Never in getFallbackProperties: a dropped hole would draw over the hole.
         static uint64_t getTerrainHolesProperty(ShaderType shaderType);

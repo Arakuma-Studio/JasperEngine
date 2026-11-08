@@ -7,6 +7,7 @@
 #include "shortcuts/ShortcutTestSupport.h"
 #include "shortcuts/Chord.h"
 #include "shortcuts/CommandCatalog.h"
+#include "shortcuts/ShortcutDispatcher.h"
 
 #include "support/EditorTestSupport.h"
 
@@ -15,6 +16,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <set>
+#include <vector>
 
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -198,4 +200,93 @@ TEST(CommandCatalog, ProjectDuplicateAndMaximizeOnPlayAreBound) {
                            "assets.createPhysicsMaterial2D"}) {
         EXPECT_NE(catalog.find(id), nullptr) << id;
     }
+}
+
+// macOS takes F11 for Show Desktop: Maximize On Play is Control+Cmd+F there first, F11 still
+// behind it; every other platform keeps F11 alone (project-window spec, Follow-ups)
+TEST(CommandCatalog, MaximizeOnPlayIsControlCmdFOnMac) {
+    RecordingCatalog recording;
+    CommandCatalog& catalog = recording.catalog;
+    EXPECT_EQ(chordOf("Ctrl+Super+F").format(true), "Control+Cmd+F");
+    EXPECT_EQ(chordOf("Ctrl+Super+F").format(false), "Ctrl+Super+F");
+    catalog.setMac(true);
+    const std::vector<Chord> mac(catalog.bindings("playmode.maximizeOnPlay").begin(),
+                                 catalog.bindings("playmode.maximizeOnPlay").end());
+    EXPECT_EQ(mac, (std::vector<Chord>{chordOf("Ctrl+Super+F"), chordOf("F11")}));
+    EXPECT_EQ(catalog.menuShortcutText("playmode.maximizeOnPlay"), "Control+Cmd+F");
+    for (Chord chord : mac) {
+        EXPECT_EQ(catalog.findConflict("playmode.maximizeOnPlay", chord), nullptr) << chord.format(true);
+    }
+    catalog.setMac(false);
+    ASSERT_EQ(catalog.bindings("playmode.maximizeOnPlay").size(), 1u);
+    EXPECT_EQ(catalog.bindings("playmode.maximizeOnPlay")[0], chordOf("F11"));
+    EXPECT_EQ(catalog.menuShortcutText("playmode.maximizeOnPlay"), "F11");
+}
+
+// every chord list_shortcuts and the menus print on a platform reads back as that chord there
+// (an agent echoes them to set_shortcut): "Control+Cmd+F" on macOS, "Ctrl+Super+F" elsewhere
+TEST(Chord, EveryPrintedChordParsesBack) {
+    RecordingCatalog recording;
+    CommandCatalog& catalog = recording.catalog;
+    EXPECT_EQ(Chord::parse("Control+Cmd+F", true), chordOf("Ctrl+Super+F"));
+    EXPECT_EQ(Chord::parse("Control+S", false), chordOf("Ctrl+S"));
+    size_t checked = 0;
+    for (bool mac : {false, true}) {
+        catalog.setMac(mac);
+        for (const CommandDef& def : catalog.commands()) {
+            std::vector<Chord> chords(catalog.bindings(def.id).begin(), catalog.bindings(def.id).end());
+            for (Chord chord : catalog.defaults(def.id)) chords.push_back(chord);
+            for (Chord chord : chords) {
+                const std::string text = chord.format(mac);
+                EXPECT_EQ(Chord::parse(text, mac), std::optional<Chord>(chord)) << def.id << ": " << text << (mac ? " (macOS)" : "");
+                checked++;
+            }
+        }
+    }
+    catalog.setMac(false);
+    EXPECT_GT(checked, 100u);
+}
+
+// T1 R57 (AC43): the terrain brush's keys win over the panels only while a brush is armed, and stay rebindable
+TEST(CommandCatalogTest, TerrainBrushContextOutranksPanels) {
+    EXPECT_STREQ(shortcutContextName(ShortcutContext::TerrainBrush), "Terrain Brush");
+    EXPECT_EQ(parseShortcutContext("terrain_brush"), ShortcutContext::TerrainBrush);
+    RecordingCatalog recording;
+    CommandCatalog& catalog = recording.catalog;
+    ShortcutDispatcher dispatcher(catalog);
+    struct Row {
+        const char* id;
+        const char* chord;
+    };
+    const Row rows[] = {{"terrain.tool.raise", "R"}, {"terrain.tool.setHeight", "H"}, {"terrain.tool.smooth", "S"},
+                        {"terrain.tool.ramp", "A"}, {"terrain.tool.noise", "N"}, {"terrain.tool.terrace", "T"},
+                        {"terrain.tool.erode", "E"}, {"terrain.tool.stamp", "K"}, {"terrain.tool.paintTexture", "B"},
+                        {"terrain.tool.paintDetails", "D"}, {"terrain.tool.placeObjects", "P"}, {"terrain.tool.cutHoles", "X"},
+                        {"terrain.pick", "I"}, {"terrain.invertSlopeFilter", "Y"}, {"terrain.alternate", "C"},
+                        {"terrain.overlay.height", "1"}, {"terrain.overlay.slope", "2"}, {"terrain.overlay.contours", "3"},
+                        {"terrain.overlay.layerWeights", "4"}, {"terrain.overlay.off", "0"}};
+    ShortcutState armed;
+    armed.panels = {ShortcutContext::SceneView, ShortcutContext::TerrainBrush};
+    ShortcutState unarmed;
+    unarmed.panels = {ShortcutContext::SceneView};
+    for (const Row& row : rows) {
+        const CommandDef* def = catalog.find(row.id);
+        ASSERT_NE(def, nullptr) << row.id;
+        EXPECT_EQ(def->context, ShortcutContext::TerrainBrush);
+        const CommandDef* armedTarget = dispatcher.resolve(chordOf(row.chord), armed);
+        ASSERT_NE(armedTarget, nullptr) << row.chord;
+        EXPECT_EQ(armedTarget->id, row.id) << "the armed brush outranks the Scene view and the editor";
+        const CommandDef* unarmedTarget = dispatcher.resolve(chordOf(row.chord), unarmed);
+        if (unarmedTarget) {
+            EXPECT_NE(unarmedTarget->id, row.id) << "an unarmed brush leaves the key to the rest";
+        }
+    }
+    // R, T, E, X and H keep their editor meanings while no brush is armed
+    ASSERT_NE(dispatcher.resolve(chordOf("R"), unarmed), nullptr);
+    EXPECT_EQ(dispatcher.resolve(chordOf("R"), unarmed)->id, "tools.scale");
+    EXPECT_TRUE(catalog.resolveConflicts().empty());
+    EXPECT_NE(catalog.markdownReference().find("Terrain Brush"), std::string::npos);
+    std::string reason;
+    ASSERT_TRUE(catalog.setBindings("terrain.alternate", {chordOf("G")}, &reason)) << reason;
+    EXPECT_EQ(dispatcher.resolve(chordOf("G"), armed)->id, "terrain.alternate");
 }

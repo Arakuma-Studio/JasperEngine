@@ -12,6 +12,8 @@
 #include "component/TerrainComponent.h"
 #include "object/TerrainEdit.h"
 #include "texture/Texture.h"
+#include "render/TextureRender.h"
+#include "pool/TexturePool.h"
 #include "texture/TextureData.h"
 
 #include <algorithm>
@@ -39,6 +41,54 @@ namespace {
         return TexelRect{firstX, firstY, lastX - firstX + 1, lastY - firstY + 1};
     }
 
+
+    // T1 DC9: one paced upload of an edited map into its stream image; false when the frame's
+    // staging budget refused it
+    bool uploadEditedTerrainMap(Texture& texture, TerrainEditState::Upload& upload) {
+        // a map not drawn yet, a framebuffer or a cooked one: its next draw makes it from the pixels
+        std::shared_ptr<TextureRender> render = texture.empty() || texture.isFramebuffer() ? nullptr : TexturePool::get(texture.getRenderId());
+        if (!render || !render->isCreated() || !texture.hasData() || !texture.getData().getData()) {
+            texture.invalidateRender();
+            return true;
+        }
+        TextureData& data = texture.getData();
+        const ColorFormat format = data.getColorFormat();
+        if (format != ColorFormat::RED16 && format != ColorFormat::RED && format != ColorFormat::RGBA) {
+            texture.invalidateRender();
+            return true;
+        }
+        const int width = data.getWidth();
+        const int height = data.getHeight();
+        // the first upload makes the stream image in place of the texture the map was drawn with
+        // (those holding it bind it again: noteRebuilt), and every texel is new to it
+        if (!render->isDynamicMap() || render->getWidth() != width || render->getHeight() != height) {
+            if (!render->createDynamicMapTexture(texture.getId(), width, height, format)) {
+                texture.invalidateRender();
+                return true;
+            }
+            render->noteRebuilt();
+            upload.shadow.clear();
+            upload.dirty = TexelRect{0, 0, width, height};
+        }
+        const ColorFormat uploadFormat = render->getUploadFormat();
+        if (uploadFormat == format) {
+            return render->updateTexture(data.getData(), static_cast<size_t>(data.getSize()));
+        }
+        // R45: GLES3 and WebGL2 heights go up as floats; only the changed rows are converted
+        const TerrainUploadFormat shadowFormat = uploadFormat == ColorFormat::R32F ? TerrainUploadFormat::Float32 : TerrainUploadFormat::Half;
+        const size_t texelBytes = shadowFormat == TerrainUploadFormat::Float32 ? 4 : 2;
+        const size_t shadowBytes = static_cast<size_t>(width) * static_cast<size_t>(height) * texelBytes;
+        if (upload.shadow.size() != shadowBytes) {
+            upload.shadow.assign(shadowBytes, 0);
+            upload.dirty = TexelRect{0, 0, width, height};
+        }
+        const TexelRect rect = terrain::intersect(upload.dirty, TexelRect{0, 0, width, height});
+        if (!rect.empty()) {
+            convertTerrainHeightRect(static_cast<const uint16_t*>(data.getData()), width, rect, shadowFormat, upload.shadow.data());
+            upload.dirty = TexelRect{};
+        }
+        return render->updateTexture(upload.shadow.data(), upload.shadow.size());
+    }
 }
 
 bool MeshSystem::refitTerrainNode(TerrainComponent& terrain, size_t nodeIndex, int rectX, int rectY, int rectW, int rectH, int mapWidth, int mapHeight) {
@@ -104,9 +154,15 @@ void MeshSystem::flushTerrainEdit(TerrainComponent& terrain, double nowSeconds) 
             continue;
         }
         const size_t bytes = texture->hasData() ? texture->getData().getSize() : 0;
-        if (upload.lastFrame != 0 && state.frame - upload.lastFrame < terrainUploadInterval(bytes, budget)) continue;
-        texture->invalidateRender();
+        if (!upload.retry && upload.lastFrame != 0 && state.frame - upload.lastFrame < terrainUploadInterval(bytes, budget)) continue;
+        if (!uploadEditedTerrainMap(*texture, upload)) {
+            // R46: refused for this frame's staging budget; the next frame tries again
+            upload.retry = true;
+            continue;
+        }
+        upload.retry = false;
         upload.lastFrame = state.frame;
         upload.waiting = false;
+        upload.dirty = TexelRect{};
     }
 }

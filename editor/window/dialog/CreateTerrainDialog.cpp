@@ -20,15 +20,21 @@
 #include "noise/TerrainPresets.h"
 #include "physics/JoltShapeBuilder.h"
 #include "terrain/RawMapStore.h"
+#include "terrain/TerrainOpsUndo.h"
 #include "terrain/TerrainSizePresets.h"
+#include "util/FileDialogs.h"
 #include "util/TerrainMapUtils.h"
 #include "window/EditorModal.h"
+#include "window/HeightImportFields.h"
 
 #include "imgui.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <vector>
 
 using namespace jasperengine;
@@ -126,11 +132,32 @@ bool editor::CreateTerrainDialog::createGenerated(Project* project, uint32_t sce
     return true;
 }
 
+// R58: Start Shape > Import Raw... picks a file and decodes it with R61's detection
+void editor::CreateTerrainDialog::chooseImportFile(){
+    const std::string chosen = FileDialogs::openFileDialogFiltered(project->getAssetsPath().string(), "Heightmaps", "raw,r16,r8,r32,f32,png,exr");
+    if (chosen.empty()) return;
+    std::ifstream file(std::filesystem::u8path(chosen), std::ios::binary);
+    importBytes.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    importPath = chosen;
+    importOptions = HeightImportOptions();
+    settings.imported = TerrainRawIO::decode(chosen, importBytes, importOptions);
+    settings.shape = StartShape::ImportRaw;
+    useImportedSize();
+}
+
+void editor::CreateTerrainDialog::useImportedSize(){
+    if (settings.imported.ok && settings.imported.width == settings.imported.height) settings.heightmap = settings.imported.width;
+}
+
 void editor::CreateTerrainDialog::open(Project* project, uint32_t sceneId, Entity parent){
     this->project = project;
     this->sceneId = sceneId;
     this->parent = parent;
     settings = Settings();
+    importPath.clear();
+    importBytes.clear();
+    importOptions = HeightImportOptions();
+    importSetsHeight = false;
     applyPreset(settings.preset);
     error.clear();
     isOpen = true;
@@ -161,6 +188,18 @@ Entity editor::CreateTerrainDialog::create(Project* project, uint32_t sceneId, E
     }
     if (s.size <= 0.0f || s.height <= 0.0f || s.heightmap < 2){
         error = "Terrain Size and Terrain Height must be above 0, and the height map at least 2 texels.";
+        return NULL_ENTITY;
+    }
+    // R58: Import Raw... starts from the file's heights, which give the height map its size
+    const bool importing = !heights && s.shape == StartShape::ImportRaw;
+    if (importing && !s.imported.ok){
+        error = s.imported.error.empty() ? "Import Raw...: choose a heightmap file first." : "Import Raw...: " + s.imported.error;
+        return NULL_ENTITY;
+    }
+    if (importing && (s.imported.width != s.imported.height || s.imported.width != s.heightmap ||
+                      s.imported.normalized.size() != static_cast<size_t>(s.heightmap) * s.heightmap)){
+        error = "Import Raw... makes a square height map; this file is " + std::to_string(s.imported.width) + " x " +
+                std::to_string(s.imported.height) + ". Import it with the Terrain window's Settings tool (Import Raw...) instead.";
         return NULL_ENTITY;
     }
     CommandHistory* history = CommandHandle::get(sceneId);
@@ -202,6 +241,12 @@ Entity editor::CreateTerrainDialog::create(Project* project, uint32_t sceneId, E
     after.pixels.resize(static_cast<size_t>(s.heightmap) * s.heightmap * 2);
     if (heights && heights->size() == after.pixels.size()){
         std::copy(heights->begin(), heights->end(), after.pixels.begin());
+    }else if (importing){
+        for (size_t i = 0; i < s.imported.normalized.size(); i++){
+            const uint16_t value = static_cast<uint16_t>(std::lround(std::clamp(s.imported.normalized[i], 0.0f, 1.0f) * 65535.0f));
+            after.pixels[i * 2] = static_cast<uint8_t>(value & 0xFF);
+            after.pixels[i * 2 + 1] = static_cast<uint8_t>(value >> 8);
+        }
     }else{
         const float normalized = s.shape == StartShape::FlatAtMiddle ? 0.5f : std::clamp(s.baseHeight / s.height, 0.0f, 1.0f);
         const uint16_t value = static_cast<uint16_t>(std::lround(normalized * 65535.0f));
@@ -212,6 +257,30 @@ Entity editor::CreateTerrainDialog::create(Project* project, uint32_t sceneId, E
     }
     if (!history->addCommandNoMerge(new TerrainTextureEditCmd(project, sceneId, entity, ref, std::move(before), std::move(after), "Create Terrain"))){
         return fail("The height map could not be made.");
+    }
+    // R58: Base Layer is Terrain Layer 0 over the whole terrain, as a Unity splat map starts filled with
+    // its first layer: the layer, and the first blend map at full weight in its red channel
+    if (!s.baseLayer.empty()){
+        TerrainSurfaceLayer layer;
+        layer.colorTexture = Texture(s.baseLayer);
+        if (!history->addCommandNoMerge(new PropertyCmd<std::vector<TerrainSurfaceLayer>>(project, sceneId, entity, ComponentType::TerrainComponent,
+                                                                                         "surfaceLayers", std::vector<TerrainSurfaceLayer>{layer}))){
+            return fail("The Base Layer could not be added.");
+        }
+        terrain::MapFormat blendFormat;
+        blendFormat.bounds = terrain::TexelRect{0, 0, s.control, s.control};
+        blendFormat.channels = 4;
+        blendFormat.bitsPerChannel = 8;
+        blendFormat.exists = true;
+        TerrainMadeMap made;
+        if (!makeTerrainBlankMap(project, sceneProject, entity, terrain::MapId{terrain::MapKind::Blend, 0}, blendFormat, made)){
+            return fail("The Base Layer's blend map could not be made.");
+        }
+        TerrainMapSnapshot filled = made.blank;
+        for (size_t i = 0; i < filled.pixels.size(); i += 4) filled.pixels[i] = 255;
+        if (!history->addCommandNoMerge(new TerrainTextureEditCmd(project, sceneId, entity, made.ref, made.before, std::move(filled), "Create Terrain"))){
+            return fail("The Base Layer's blend map could not be made.");
+        }
     }
 
     if (s.collider){
@@ -249,7 +318,7 @@ void editor::CreateTerrainDialog::show(){
     if (!EditorModal::begin(popupName, &isOpen, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)){
         return;
     }
-    EditorModal::message("A new terrain from a preset: its sizes, a flat 16-bit height map and a collider, one undo step.");
+    EditorModal::message("A new terrain from a preset: its sizes, a 16-bit height map (flat, generated or imported) and a collider, one undo step.");
     EditorModal::error(error);
 
     const float width = ImGui::GetFontSize() * 12.0f;
@@ -282,12 +351,48 @@ void editor::CreateTerrainDialog::show(){
     EditorModal::inputInt("Levels", "levels", &settings.levels, 0, 0);
     int shape = static_cast<int>(settings.shape);
     ImGui::SetNextItemWidth(width);
-    if (EditorModal::combo("Start Shape", "start_shape", &shape, {"Flat", "Flat at Middle"})) settings.shape = static_cast<StartShape>(shape);
+    if (EditorModal::combo("Start Shape", "start_shape", &shape, {"Flat", "Flat at Middle", "Import Raw..."})){
+        if (static_cast<StartShape>(shape) == StartShape::ImportRaw){
+            chooseImportFile();
+        }else{
+            settings.shape = static_cast<StartShape>(shape);
+        }
+    }
     if (settings.shape == StartShape::Flat){
         ImGui::SetNextItemWidth(width);
         EditorModal::inputFloat("Base Height", "base_height", &settings.baseHeight, 0.0f, 0.0f, "%.1f m");
     }
-    // T2 R61: generated after Create, from a preset; its recommended size and height fill the fields above
+    if (settings.shape == StartShape::ImportRaw){
+        // R61's fields and preview; the file's size becomes Heightmap Resolution
+        if (EditorModal::button("Choose File...", "choose_import")) chooseImportFile();
+        if (drawHeightImportFields(importPath, importBytes, importOptions, settings.imported, settings.height, &importSetsHeight)) useImportedSize();
+        if (importSetsHeight && importOptions.range == HeightRange::Source && importOptions.sourceMax > importOptions.sourceMin){
+            settings.height = importOptions.sourceMax - importOptions.sourceMin;
+        }
+    }
+    // R58: Terrain Layer 0, covering the whole terrain until another layer is painted over it
+    ImGui::TextUnformatted("Base Layer");
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", settings.baseLayer.empty() ? "None" : settings.baseLayer.c_str());
+    ImGui::SameLine();
+    if (EditorModal::button("Browse...", "base_layer")){
+        const std::string chosen = FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_IMAGE);
+        if (!chosen.empty()){
+            if (project->isInsideAssetsPath(chosen)){
+                settings.baseLayer = project->normalizeToAssetsRelative(chosen).generic_string();
+            }else{
+                error = "The Base Layer must be an image inside the project's assets.";
+            }
+        }
+    }
+    if (!settings.baseLayer.empty()){
+        ImGui::SameLine();
+        if (EditorModal::button("Clear", "base_layer_clear")) settings.baseLayer.clear();
+    }
+    // T2 R61: generated after Create, from a preset; its recommended size and height fill the fields above.
+    // An imported file is the start shape instead.
+    if (settings.shape == StartShape::ImportRaw) settings.noisePreset.clear();
+    ImGui::BeginDisabled(settings.shape == StartShape::ImportRaw);
     static const std::vector<TerrainPreset> noisePresets = TerrainPresets::list();
     std::vector<std::string> noiseNames{"None"};
     for (const TerrainPreset& p : noisePresets) noiseNames.push_back(p.name);
@@ -304,6 +409,7 @@ void editor::CreateTerrainDialog::show(){
         ImGui::SetNextItemWidth(width);
         if (EditorModal::inputInt("Seed", "seed", &seed, 0, 0)) settings.seed = static_cast<uint32_t>(std::max(seed, 1));
     }
+    ImGui::EndDisabled();
     EditorModal::checkbox("Add Terrain Collider", "add_terrain_collider", &settings.collider);
     settings.heightmap = std::clamp(settings.heightmap, 2, 8192);
     settings.control = std::clamp(settings.control, 2, 8192);

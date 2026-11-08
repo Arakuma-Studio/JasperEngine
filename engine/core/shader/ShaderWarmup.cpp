@@ -101,12 +101,22 @@ namespace {
     }
 
     // A G-buffer pipeline recorded before the SSR G-buffer took its fourth attachment (the
-    // occlusion, R8): the desc the engine asks for now, its other colours as recorded
+    // occlusion), or while that one was R8 (before it held the normal's fine bits, RGBA8): the
+    // desc the engine asks for now, its other colours as recorded
     void upgradeGBufferDesc(json& desc){
-        if (!desc.contains("color_count") || !desc["color_count"].is_number_integer() || desc["color_count"].get<int>() != 3)
+        if (!desc.contains("color_count") || !desc["color_count"].is_number_integer())
             return;
         json& colors = desc["colors"];
         if (!colors.is_array())
+            return;
+        if (desc["color_count"].get<int>() == 4){
+            for (json& color : colors){
+                if (color.is_object() && color.value("slot", -1) == 3 && color.value("format", std::string()) == "r8")
+                    color["format"] = "rgba8";
+            }
+            return;
+        }
+        if (desc["color_count"].get<int>() != 3)
             return;
         json occlusion;
         for (const json& color : colors){
@@ -116,7 +126,7 @@ namespace {
         if (!occlusion.is_object())
             return;
         occlusion["slot"] = 3;
-        occlusion["format"] = "r8";
+        occlusion["format"] = "rgba8";
         // after the attachments in use (the list keeps them in slot order)
         json upgraded = json::array();
         bool placed = false;

@@ -491,6 +491,8 @@ namespace jasperengine::editor{
         virtual void updateSize(int width, int height);
         virtual void setOverlayScale(float scale);
         float getOverlayScale() const { return overlayScale; }
+        // the AI Navigation overlay (null until the scene had a navigation component)
+        NavigationOverlay* getNavigationOverlay() const { return navigationOverlay.get(); }
         float billboardScreenScale(const Vector3& worldPos, float logicalScale) const;
         virtual void updateSelLines(std::vector<OBB> obbs) = 0;
 

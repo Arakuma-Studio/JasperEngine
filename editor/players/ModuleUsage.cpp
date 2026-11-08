@@ -19,6 +19,7 @@
 
 #include "Scene.h"
 #include "component/BuoyancyComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
 #include "component/Joint2DComponent.h"
@@ -374,6 +375,10 @@ namespace {
                 }
                 // T4 R55: the tiles stream, draw and page their colliders in the module alone
                 if (has(registry->findComponent<TerrainWorldComponent>(entity))) add("terrainworld", content.label, "Terrain World on " + object);
+                // a Convex Hull excluder's hull is built by Jolt (a box of the mesh's bounds without it)
+                if (const WaterExcluderComponent* excluder = registry->findComponent<WaterExcluderComponent>(entity);
+                        excluder && excluder->shape == WaterExcluderShape::CONVEX_HULL)
+                    add("physics3d", content.label, "Water Excluder (Convex Hull) on " + object);
                 if (has(registry->findComponent<Rigidbody2DComponent>(entity))) add("physics2d", content.label, "Rigidbody 2D on " + object);
                 if (has(registry->findComponent<Joint2DComponent>(entity))) add("physics2d", content.label, "Joint 2D on " + object);
                 if (has(registry->findComponent<CharacterController2DComponent>(entity))) add("physics2d", content.label, "Character Controller 2D on " + object);

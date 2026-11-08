@@ -109,7 +109,9 @@ struct EnumMap {
 
 const EnumMap<Scaling> scalingModes[] = {
     {"fit_width", Scaling::FITWIDTH}, {"fit_height", Scaling::FITHEIGHT}, {"letterbox", Scaling::LETTERBOX},
-    {"crop", Scaling::CROP}, {"stretch", Scaling::STRETCH}, {"native", Scaling::NATIVE}};
+    {"crop", Scaling::CROP}, {"stretch", Scaling::STRETCH}, {"native", Scaling::NATIVE},
+    // S41: whole-number scales of the canvas
+    {"integer", Scaling::INTEGER}, {"integer_expand", Scaling::INTEGER_EXPAND}};
 const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
 const EnumMap<PbrTier> pbrTiers[] = {{"full", PbrTier::FULL}, {"reduced", PbrTier::REDUCED}};
@@ -1742,6 +1744,21 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
         {
+            // S41 R6
+            Setting s;
+            s.key = "graphics.pixels_per_unit";
+            s.type = "int";
+            s.description = "Texels per world unit of sprites and tilemaps whose own Pixels Per Unit is 0 (1: a unit is a pixel).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getPixelsPerUnit()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, Project::minPixelsPerUnit, Project::maxPixelsPerUnit, v, error)) return false;
+                if (apply) ctx.project()->setPixelsPerUnit(static_cast<int>(v));
+                return true;
+            };
+            add(s);
+        }
+        {
             Setting s;
             s.key = "graphics.ui_scale";
             s.type = "object";
@@ -1755,6 +1772,25 @@ std::vector<Setting> mcpSettingsTable() {
                 CanvasScalerSettings settings = ctx.project()->getUIScale();
                 if (!mcp::McpValues::canvasScalerFromJson(value, settings, error)) return false;
                 if (apply) ctx.project()->setUIScale(settings);
+                return true;
+            };
+            add(s);
+        }
+        {
+            // S45 R18
+            Setting s;
+            s.key = "sprite_atlas.mode";
+            s.type = "enum";
+            s.values = {"enabled", "enabled_for_builds", "disabled"};
+            s.description = "Sprite Atlases: enabled (editor, Play and builds draw from them), enabled_for_builds (only builds), disabled.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getSpriteAtlasMode()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                const std::string mode = value.is_string() ? value.get<std::string>() : std::string();
+                if (mode != "enabled" && mode != "enabled_for_builds" && mode != "disabled") {
+                    error = "sprite_atlas.mode is enabled, enabled_for_builds or disabled";
+                    return false;
+                }
+                if (apply) ctx.project()->setSpriteAtlasMode(mode);
                 return true;
             };
             add(s);
@@ -2035,6 +2071,23 @@ std::vector<Setting> mcpSettingsTable() {
                             e = "\"" + name + "\" is not one of automatic, keep, release";
                             return false;
                         }, {"automatic", "keep", "release"});
+            // Project Settings > Animation (S77 R38); stored with the model settings
+            meshSetting("animation.animation_entities", "enum",
+                        "Models placed in a scene: always make an Animation entity per clip, or auto: none for a model of 5+ clips "
+                        "(new projects; play its clips with an Animation Player or Animator).",
+                        [](const ModelProjectSettings& m) { return Json(animationEntitiesModeName(m.animationEntities)); },
+                        [](ModelProjectSettings& m, const Json& v, std::string& e) {
+                            std::string name;
+                            if (!readString(v, name, e)) return false;
+                            for (AnimationEntitiesMode mode : {AnimationEntitiesMode::Always, AnimationEntitiesMode::Auto}) {
+                                if (name == animationEntitiesModeName(mode)) {
+                                    m.animationEntities = mode;
+                                    return true;
+                                }
+                            }
+                            e = "\"" + name + "\" is not one of always, auto";
+                            return false;
+                        }, {"always", "auto"});
         }
         {
             Setting s;
@@ -2387,12 +2440,14 @@ std::vector<Setting> mcpSettingsTable() {
             struct NavCount {
                 const char* key;
                 const char* description;
+                int minimum;
                 int maximum;
                 int nav::NavigationSettings::*field;
             };
             const NavCount counts[] = {
-                {"navigation.crowd_max_agents", "Agents per crowd (one per surface and agent type) before it grows, with a warning (1-4096).", 4096, &nav::NavigationSettings::crowdMaxAgents},
-                {"navigation.max_grid_solves_per_tick", "Grid path requests solved per fixed tick; the rest wait (1-4096).", 4096, &nav::NavigationSettings::maxGridSolvesPerTick},
+                {"navigation.crowd_max_agents", "Agents per crowd (one per surface and agent type) before it grows, with a warning (1-4096).", 1, 4096, &nav::NavigationSettings::crowdMaxAgents},
+                {"navigation.max_grid_solves_per_tick", "Grid path requests solved per fixed tick; the rest wait (1-4096).", 1, 4096, &nav::NavigationSettings::maxGridSolvesPerTick},
+                {"navigation.carve_tiles_per_tick", "Carved tiles each NavMesh Surface rebuilds per fixed tick; 0: Auto (4 on desktop, 2 on Android, iOS and web) (0-64).", 0, 64, &nav::NavigationSettings::carveTilesPerTick},
             };
             for (const NavCount& count : counts) {
                 Setting s;
@@ -2400,11 +2455,12 @@ std::vector<Setting> mcpSettingsTable() {
                 s.type = "int";
                 s.description = count.description;
                 const auto field = count.field;
+                const int minimum = count.minimum;
                 const int maximum = count.maximum;
                 s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getNavigationSettings().settings.*field); };
-                s.set = [field, maximum](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                s.set = [field, minimum, maximum](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
                     long long v;
-                    if (!readInt(value, 1, maximum, v, error)) return false;
+                    if (!readInt(value, minimum, maximum, v, error)) return false;
                     if (apply) {
                         NavigationProjectSettings n = ctx.project()->getNavigationSettings();
                         n.settings.*field = static_cast<int>(v);
@@ -3410,6 +3466,8 @@ std::vector<Setting> mcpSettingsTable() {
         toolPreference("preferences.jdk_path", "jdk", "External Tools: the JDK (keytool, jarsigner, java) of Android builds (\"\" = JAVA_HOME / PATH).");
         toolPreference("preferences.steamcmd_path", "steamcmd", "External Tools: SteamCMD for Steam uploads (\"\" = STEAMCMD_HOME / PATH).");
         toolPreference("preferences.rcodesign_path", "rcodesign", "External Tools: rcodesign, which signs macOS builds on any computer (\"\" = PATH).");
+        // S44 §6.8: settings.yaml externalTools.aseprite.path
+        toolPreference("preferences.aseprite_path", "aseprite.path", "External Tools: the Aseprite executable Open in Aseprite starts (\"\" = JASPER_ASEPRITE, then the usual install places and PATH).");
         stringPreference("preferences.ffmpeg_path", "External Tools: ffmpeg for video imports and Recorder movies (\"\" = JASPER_FFMPEG / PATH).",
                          [] { return AppSettings::getFfmpegPath(); }, [](const std::string& v) { AppSettings::setFfmpegPath(v); });
         stringPreference("preferences.default_export_dir", "Default output directory for builds of projects that have none yet.",
@@ -3589,9 +3647,11 @@ const Placement placements[] = {
     {"android.permissions", "Player", "Android", "Permissions", "android"},
     {"android.allow_backup", "Player", "Android", "Application Options", "android allow backup"},
     {"android.fullscreen", "Player", "Android", "Screen Options", "android fullscreen"},
+    {"sprite_atlas.mode", "2D", "Sprite Atlas", "Mode", "sprite atlas packer pages enabled for builds"},
     {"graphics.canvas_width", "Graphics", "", "Canvas Width", "reference resolution"},
     {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution"},
-    {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch"},
+    {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch integer pixel perfect"},
+    {"graphics.pixels_per_unit", "Graphics", "", "Pixels Per Unit", "pixel art ppu sprite tilemap"},
     {"graphics.ui_scale", "Graphics", "", "UI Scale", "canvas scaler ui scaling reference resolution match width height constant pixel physical size dpi"},
     {"graphics.texture_strategy", "Graphics", "", "Texture Strategy", "power of two"},
     {"graphics.mobile_pbr_tier", "Graphics", "", "Mobile PBR Tier", "clear coat iridescence anisotropy lit android ios web"},
@@ -3628,9 +3688,11 @@ const Placement placements[] = {
     {"physics.max_contact_constraints", "Physics", "3D World Capacity", "Max Contact Constraints", "jolt capacity limit contacts"},
     {"physics2d.enabled", "Physics 2D", "", "2D Physics", "box2d rigidbody 2d"},
     {"physics2d.layer_collision_matrix", "Physics 2D", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
+    {"animation.animation_entities", "Animation", "", "Animation Entities", "model clips animation player animator entities auto"},
     {"navigation.include_in_builds", "Navigation", "", "Include in Builds", "navmesh recast detour strip export"},
     {"navigation.crowd_max_agents", "Navigation", "", "Crowd Max Agents", "navmesh agents crowd"},
     {"navigation.max_grid_solves_per_tick", "Navigation", "", "Grid Solves per Tick", "nav grid a* pathfinding"},
+    {"navigation.carve_tiles_per_tick", "Navigation", "", "Carve Tiles Per Tick", "navmesh obstacle carving budget tile cache"},
     {"navigation.web_bake_budget_ms", "Navigation", "", "Web Bake Budget", "navmesh bake web single thread"},
     {"voxel.max_dimension", "Voxels", "", "Max Dimension", "voxel volume limit size"},
     {"voxel.cpu_budget_mb", "Voxels", "", "CPU Memory Budget", "voxel volume memory limit"},
@@ -3728,6 +3790,7 @@ const Placement placements[] = {
     {"preferences.jdk_path", "External Tools", "Shipping", "JDK", "java keytool jarsigner"},
     {"preferences.steamcmd_path", "External Tools", "Shipping", "SteamCMD", "steam upload steampipe"},
     {"preferences.rcodesign_path", "External Tools", "Shipping", "rcodesign", "macos signing codesign"},
+    {"preferences.aseprite_path", "External Tools", "Aseprite", "Aseprite", "aseprite pixel art sprite editor executable"},
     {"preferences.logging.file_level", "Logging", "", "Log File Level", "editor log"},
     {"preferences.logging.backtrace_on_error", "Logging", "", "Capture Backtrace on Errors", "stack trace"},
     {"preferences.logging.show_source", "Logging", "", "Show Source Location", "file line"},
@@ -3921,7 +3984,9 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Editor", SettingsScope::Project, 12, "version control assets labels"},
         {"Navigation", SettingsScope::Project, 13, "navigation navmesh agents areas crowd grid pathfinding ai"},
         {"Mesh", SettingsScope::Project, 14, "mesh model import cook optimize compression lod meshopt read write cache audit"},
-        {"Voxels", SettingsScope::Project, 15, "voxel volumes caves destruction dimension limits memory budget"},
+        {"2D", SettingsScope::Project, 15, "2d sprite atlas packer pages pixel art"},
+        {"Animation", SettingsScope::Project, 16, "animation clips model animator animation player entities"},
+        {"Voxels", SettingsScope::Project, 17, "voxel volumes caves destruction dimension limits memory budget"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},
@@ -4127,6 +4192,9 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
     addOrAbort(registry, uiRow("preferences.scene_view.rulers", sceneView, "Views", "Rulers", "ruler scale 2d orthographic",
         [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().rulers); },
         "Top and left rulers in 2D, UI and orthographic axis views"));
+    addOrAbort(registry, uiRow("preferences.scene_view.alt_alternates", sceneView, "Brushes", "Alt Alternates While Painting", "alt alternate terrain voxel brush orbit",
+        [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().altAlternates); },
+        "With a terrain or voxel brush armed, Alt held is the tool's alternate and Alt+drag paints it instead of orbiting"));
     addOrAbort(registry, uiRow("preferences.scene_view.preview_particles", sceneView, "Animation", "Preview Particle Systems", "animator animation preview particles vfx scrub",
         [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().previewParticles); },
         "Animation previews in edit mode (Animator, Animation windows) play and scrub the Particle Systems under the previewed GameObject"));

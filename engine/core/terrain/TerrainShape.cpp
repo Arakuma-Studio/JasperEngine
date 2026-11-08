@@ -384,14 +384,18 @@ void jasperengine::terrain::evaluateFilter(const TerrainMapStore& store, const F
                         const float normalized = sampleWindow(window, px, z);
                         const float height = normalized * maxHeight;
                         float weight = 1.0f;
-                        if (filter.height) weight *= softRange(height, filter.height->min, filter.height->max, softness);
+                        if (filter.height) {
+                            const float inRange = softRange(height, filter.height->min, filter.height->max, softness);
+                            weight *= filter.invertHeight ? 1.0f - inRange : inRange;
+                        }
                         if (filter.slope && weight > 0.0f) {
                             // forward difference at the height map's own spacing, as the query's
                             const float dx = height - sampleWindow(window, px + delta, z) * maxHeight;
                             const float dz = height - sampleWindow(window, px, z + delta) * maxHeight;
                             const float length = std::sqrt(dx * dx + delta * delta + dz * dz);
                             const float normalY = length > 0.0f ? delta / length : 1.0f;
-                            weight *= softSlope(normalY, filter.slope->min, filter.slope->max, softness);
+                            const float inRange = softSlope(normalY, filter.slope->min, filter.slope->max, softness);
+                            weight *= filter.invertSlope ? 1.0f - inRange : inRange;
                         }
                         rowWeights[x - block.x] *= weight;
                     }

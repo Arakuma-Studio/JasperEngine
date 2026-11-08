@@ -5542,6 +5542,11 @@
      131072,
      true
     ],
+    "colliders[].slice": [
+     1,
+     131072,
+     true
+    ],
     "colliders[].type": [
      13,
      131072,
@@ -10297,6 +10302,18 @@
   {
    "display_name": "Sprite Renderer",
    "enum_options": {
+    "drawMode": [
+     [
+      0,
+      "simple",
+      "Simple"
+     ],
+     [
+      1,
+      "sliced",
+      "Sliced"
+     ]
+    ],
     "pivotPreset": [
      [
       0,
@@ -10342,6 +10359,28 @@
       8,
       "bottom_right",
       "Bottom Right"
+     ],
+     [
+      9,
+      "frame",
+      "From Frame"
+     ]
+    ],
+    "pixelRotation": [
+     [
+      0,
+      "camera",
+      "Camera"
+     ],
+     [
+      1,
+      "steps_90",
+      "90 Degree Steps"
+     ],
+     [
+      2,
+      "on_grid",
+      "Rotate On Grid"
      ]
     ]
    },
@@ -10350,11 +10389,18 @@
    "key": "sprite",
    "known_keys": [
     "automaticFlipY",
+    "drawMode",
     "enabled",
     "flipY",
+    "frame",
+    "frameName",
     "framesRect",
     "height",
     "pivotPreset",
+    "pixelRotation",
+    "pixelsPerUnit",
+    "sheet",
+    "sheetGuid",
     "textureScaleFactor",
     "width"
    ],
@@ -10362,6 +10408,11 @@
    "properties_of_default": {
     "automaticFlipY": [
      0,
+     1024,
+     true
+    ],
+    "drawMode": [
+     13,
      1024,
      true
     ],
@@ -10373,6 +10424,16 @@
     "flipY": [
      0,
      1024,
+     true
+    ],
+    "frame": [
+     8,
+     1024,
+     true
+    ],
+    "frameName": [
+     1,
+     0,
      true
     ],
     "height": [
@@ -10387,6 +10448,21 @@
     ],
     "pivotPreset": [
      13,
+     1024,
+     true
+    ],
+    "pixelRotation": [
+     13,
+     0,
+     true
+    ],
+    "pixelsPerUnit": [
+     2,
+     1024,
+     true
+    ],
+    "sheet": [
+     18,
      1024,
      true
     ],
@@ -10407,6 +10483,11 @@
      1024,
      true
     ],
+    "drawMode": [
+     13,
+     1024,
+     true
+    ],
     "enabled": [
      0,
      0,
@@ -10415,6 +10496,16 @@
     "flipY": [
      0,
      1024,
+     true
+    ],
+    "frame": [
+     8,
+     1024,
+     true
+    ],
+    "frameName": [
+     1,
+     0,
      true
     ],
     "height": [
@@ -10429,6 +10520,21 @@
     ],
     "pivotPreset": [
      13,
+     1024,
+     true
+    ],
+    "pixelRotation": [
+     13,
+     0,
+     true
+    ],
+    "pixelsPerUnit": [
+     2,
+     1024,
+     true
+    ],
+    "sheet": [
+     18,
      1024,
      true
     ],
@@ -10827,6 +10933,7 @@
     "enabled",
     "flipY",
     "height",
+    "pixelsPerUnit",
     "reserveTiles",
     "textureScaleFactor",
     "tiles",
@@ -10862,6 +10969,11 @@
     ],
     "numTilesRect": [
      9,
+     4194304,
+     true
+    ],
+    "pixelsPerUnit": [
+     2,
      4194304,
      true
     ],
@@ -10909,6 +11021,11 @@
     ],
     "numTilesRect": [
      9,
+     4194304,
+     true
+    ],
+    "pixelsPerUnit": [
+     2,
      4194304,
      true
     ],
@@ -15112,6 +15229,7 @@
     "followRadius",
     "followTerrainWorldFocus",
     "includeLayers",
+    "maxCarvingObstacles",
     "minRegionArea",
     "navMeshData",
     "navMeshDataGuid",
@@ -15163,6 +15281,11 @@
     ],
     "includeLayers": [
      9,
+     0,
+     true
+    ],
+    "maxCarvingObstacles": [
+     8,
      0,
      true
     ],
@@ -15255,6 +15378,11 @@
     ],
     "includeLayers": [
      9,
+     0,
+     true
+    ],
+    "maxCarvingObstacles": [
+     8,
      0,
      true
     ],
@@ -15385,8 +15513,12 @@
     "height",
     "obstacleAvoidance",
     "radius",
+    "repathWhenStuck",
     "speed",
     "stoppingDistance",
+    "stuckDetection",
+    "stuckSpeedRatio",
+    "stuckTimeout",
     "surface",
     "updatePosition",
     "updateRotation"
@@ -15463,12 +15595,32 @@
      0,
      true
     ],
+    "repathWhenStuck": [
+     0,
+     0,
+     true
+    ],
     "speed": [
      2,
      0,
      true
     ],
     "stoppingDistance": [
+     2,
+     0,
+     true
+    ],
+    "stuckDetection": [
+     0,
+     0,
+     true
+    ],
+    "stuckSpeedRatio": [
+     2,
+     0,
+     true
+    ],
+    "stuckTimeout": [
      2,
      0,
      true
@@ -15560,12 +15712,32 @@
      0,
      true
     ],
+    "repathWhenStuck": [
+     0,
+     0,
+     true
+    ],
     "speed": [
      2,
      0,
      true
     ],
     "stoppingDistance": [
+     2,
+     0,
+     true
+    ],
+    "stuckDetection": [
+     0,
+     0,
+     true
+    ],
+    "stuckSpeedRatio": [
+     2,
+     0,
+     true
+    ],
+    "stuckTimeout": [
      2,
      0,
      true
@@ -15739,6 +15911,7 @@
    "icon": "ee9388",
    "key": "navmeshlink",
    "known_keys": [
+    "activated",
     "agentType",
     "area",
     "autoUpdatePosition",
@@ -15751,6 +15924,11 @@
    ],
    "name": "NavMeshLinkComponent",
    "properties_of_default": {
+    "activated": [
+     0,
+     0,
+     true
+    ],
     "agentType": [
      8,
      0,
@@ -15798,6 +15976,11 @@
     ]
    },
    "properties_without_component": {
+    "activated": [
+     0,
+     0,
+     true
+    ],
     "agentType": [
      8,
      0,
@@ -15856,7 +16039,7 @@
      [
       0,
       "auto",
-      "Remove Object"
+      "Surface Policy"
      ],
      [
       1,
@@ -15866,7 +16049,7 @@
      [
       2,
       "exclude",
-      "Remove Object (always)"
+      "Remove Object"
      ]
     ]
    },
@@ -15874,6 +16057,7 @@
    "icon": "ef97ae",
    "key": "navmeshmodifier",
    "known_keys": [
+    "applyAtRuntime",
     "applyToChildren",
     "area",
     "enabled",
@@ -15885,6 +16069,11 @@
    ],
    "name": "NavMeshModifierComponent",
    "properties_of_default": {
+    "applyAtRuntime": [
+     0,
+     0,
+     true
+    ],
     "applyToChildren": [
      0,
      0,
@@ -15927,6 +16116,11 @@
     ]
    },
    "properties_without_component": {
+    "applyAtRuntime": [
+     0,
+     0,
+     true
+    ],
     "applyToChildren": [
      0,
      0,
@@ -18055,6 +18249,11 @@
      35184372088832,
      true
     ],
+    "ik[].aimOffset": [
+     5,
+     0,
+     true
+    ],
     "ik[].boneWeights": [
      15,
      0,
@@ -18086,6 +18285,11 @@
      true
     ],
     "ik[].forwardAxis": [
+     5,
+     0,
+     true
+    ],
+    "ik[].hingeAxis": [
      5,
      0,
      true
@@ -18145,6 +18349,11 @@
      0,
      true
     ],
+    "ik[].soften": [
+     2,
+     0,
+     true
+    ],
     "ik[].speedThreshold": [
      2,
      0,
@@ -18161,6 +18370,11 @@
      true
     ],
     "ik[].tolerance": [
+     2,
+     0,
+     true
+    ],
+    "ik[].twist": [
      2,
      0,
      true
@@ -21530,6 +21744,396 @@
    "type_of_name": 91
   },
   {
+   "display_name": "Water Excluder",
+   "enum_options": {
+    "shape": [
+     [
+      0,
+      "box",
+      "Box"
+     ],
+     [
+      1,
+      "sphere",
+      "Sphere"
+     ],
+     [
+      2,
+      "convex_hull",
+      "Convex Hull"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef889a",
+   "key": "waterexcluder",
+   "known_keys": [
+    "center",
+    "enabled",
+    "shape",
+    "size"
+   ],
+   "name": "WaterExcluderComponent",
+   "properties_of_default": {
+    "center": [
+     5,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "center": [
+     5,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 92,
+   "type_of_key": 92,
+   "type_of_name": 92
+  },
+  {
+   "display_name": "Water Wake",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef9db3",
+   "key": "waterwake",
+   "known_keys": [
+    "enabled",
+    "foam",
+    "length",
+    "waves",
+    "width"
+   ],
+   "name": "WaterWakeComponent",
+   "properties_of_default": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "foam": [
+     2,
+     0,
+     true
+    ],
+    "length": [
+     2,
+     0,
+     true
+    ],
+    "waves": [
+     2,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "foam": [
+     2,
+     0,
+     true
+    ],
+    "length": [
+     2,
+     0,
+     true
+    ],
+    "waves": [
+     2,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 93,
+   "type_of_key": 93,
+   "type_of_name": 93
+  },
+  {
+   "display_name": "Pixel Perfect Camera",
+   "enum_options": {
+    "rotationMode": [
+     [
+      1,
+      "steps_90",
+      "90 Degree Steps"
+     ],
+     [
+      2,
+      "on_grid",
+      "Rotate On Grid"
+     ]
+    ],
+    "upscaleMode": [
+     [
+      0,
+      "integer",
+      "Integer (Letterbox)"
+     ],
+     [
+      1,
+      "integer_expand",
+      "Integer (Expand)"
+     ],
+     [
+      2,
+      "stretch_fill",
+      "Stretch Fill"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef808a",
+   "key": "pixelperfectcamera",
+   "known_keys": [
+    "enabled",
+    "letterboxColor",
+    "pixelSnapping",
+    "referenceHeight",
+    "referenceWidth",
+    "rotationMode",
+    "subpixelSmoothing",
+    "upscaleMode",
+    "upscaleRenderTexture"
+   ],
+   "name": "PixelPerfectCameraComponent",
+   "properties_of_default": {
+    "baseHeight": [
+     8,
+     0,
+     false
+    ],
+    "baseWidth": [
+     8,
+     0,
+     false
+    ],
+    "cropped": [
+     0,
+     0,
+     false
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "letterboxColor": [
+     6,
+     0,
+     true
+    ],
+    "pixelRatio": [
+     8,
+     0,
+     false
+    ],
+    "pixelSnapping": [
+     0,
+     0,
+     true
+    ],
+    "referenceHeight": [
+     9,
+     0,
+     true
+    ],
+    "referenceWidth": [
+     9,
+     0,
+     true
+    ],
+    "rotationMode": [
+     13,
+     0,
+     true
+    ],
+    "snappedPosition": [
+     5,
+     0,
+     false
+    ],
+    "subpixelOffset": [
+     4,
+     0,
+     false
+    ],
+    "subpixelSmoothing": [
+     0,
+     0,
+     true
+    ],
+    "targetHeight": [
+     8,
+     0,
+     false
+    ],
+    "targetWidth": [
+     8,
+     0,
+     false
+    ],
+    "upscaleMode": [
+     13,
+     0,
+     true
+    ],
+    "upscaleRenderTexture": [
+     0,
+     0,
+     true
+    ],
+    "viewport": [
+     6,
+     0,
+     false
+    ]
+   },
+   "properties_without_component": {
+    "baseHeight": [
+     8,
+     0,
+     false
+    ],
+    "baseWidth": [
+     8,
+     0,
+     false
+    ],
+    "cropped": [
+     0,
+     0,
+     false
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "letterboxColor": [
+     6,
+     0,
+     true
+    ],
+    "pixelRatio": [
+     8,
+     0,
+     false
+    ],
+    "pixelSnapping": [
+     0,
+     0,
+     true
+    ],
+    "referenceHeight": [
+     9,
+     0,
+     true
+    ],
+    "referenceWidth": [
+     9,
+     0,
+     true
+    ],
+    "rotationMode": [
+     13,
+     0,
+     true
+    ],
+    "snappedPosition": [
+     5,
+     0,
+     false
+    ],
+    "subpixelOffset": [
+     4,
+     0,
+     false
+    ],
+    "subpixelSmoothing": [
+     0,
+     0,
+     true
+    ],
+    "targetHeight": [
+     8,
+     0,
+     false
+    ],
+    "targetWidth": [
+     8,
+     0,
+     false
+    ],
+    "upscaleMode": [
+     13,
+     0,
+     true
+    ],
+    "upscaleRenderTexture": [
+     0,
+     0,
+     true
+    ],
+    "viewport": [
+     6,
+     0,
+     false
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 94,
+   "type_of_key": 94,
+   "type_of_name": 94
+  },
+  {
    "display_name": "Voxel Volume",
    "enum_options": {
     "navigationUpdate": [
@@ -21908,148 +22512,9 @@
     ]
    },
    "structural_update_flags": 0,
-   "type": 92,
-   "type_of_key": 92,
-   "type_of_name": 92
-  },
-  {
-   "display_name": "Terrain World",
-   "enum_options": {},
-   "has_enabled": true,
-   "icon": "ef89b9",
-   "key": "terrainworld",
-   "known_keys": [
-    "autoAddTiles",
-    "collisionChunkQuads",
-    "collisionRadius",
-    "enabled",
-    "focus",
-    "lodDistance",
-    "overviewCastsShadows",
-    "poolSize",
-    "uploadBudget",
-    "useCameraFocus",
-    "worldData"
-   ],
-   "name": "TerrainWorldComponent",
-   "properties_of_default": {
-    "autoAddTiles": [
-     0,
-     0,
-     true
-    ],
-    "collisionChunkQuads": [
-     8,
-     0,
-     true
-    ],
-    "collisionRadius": [
-     2,
-     0,
-     true
-    ],
-    "enabled": [
-     0,
-     0,
-     true
-    ],
-    "focus": [
-     16,
-     0,
-     true
-    ],
-    "lodDistance": [
-     2,
-     0,
-     true
-    ],
-    "overviewCastsShadows": [
-     0,
-     0,
-     true
-    ],
-    "poolSize": [
-     8,
-     0,
-     true
-    ],
-    "uploadBudget": [
-     2,
-     0,
-     true
-    ],
-    "useCameraFocus": [
-     0,
-     0,
-     true
-    ],
-    "worldData": [
-     18,
-     0,
-     true
-    ]
-   },
-   "properties_without_component": {
-    "autoAddTiles": [
-     0,
-     0,
-     true
-    ],
-    "collisionChunkQuads": [
-     8,
-     0,
-     true
-    ],
-    "collisionRadius": [
-     2,
-     0,
-     true
-    ],
-    "enabled": [
-     0,
-     0,
-     true
-    ],
-    "focus": [
-     16,
-     0,
-     true
-    ],
-    "lodDistance": [
-     2,
-     0,
-     true
-    ],
-    "overviewCastsShadows": [
-     0,
-     0,
-     true
-    ],
-    "poolSize": [
-     8,
-     0,
-     true
-    ],
-    "uploadBudget": [
-     2,
-     0,
-     true
-    ],
-    "useCameraFocus": [
-     0,
-     0,
-     true
-    ],
-    "worldData": [
-     18,
-     0,
-     true
-    ]
-   },
-   "structural_update_flags": 0,
-   "type": 93,
-   "type_of_key": 93,
-   "type_of_name": 93
+   "type": 95,
+   "type_of_key": 95,
+   "type_of_name": 95
   }
  ],
  "ease_options": [
@@ -22424,6 +22889,11 @@
     35184372088832,
     true
    ],
+   "ik[N].aimOffset": [
+    5,
+    0,
+    true
+   ],
    "ik[N].boneWeights": [
     15,
     0,
@@ -22455,6 +22925,11 @@
     true
    ],
    "ik[N].forwardAxis": [
+    5,
+    0,
+    true
+   ],
+   "ik[N].hingeAxis": [
     5,
     0,
     true
@@ -22514,6 +22989,11 @@
     0,
     true
    ],
+   "ik[N].soften": [
+    2,
+    0,
+    true
+   ],
    "ik[N].speedThreshold": [
     2,
     0,
@@ -22530,6 +23010,11 @@
     true
    ],
    "ik[N].tolerance": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].twist": [
     2,
     0,
     true
@@ -26510,12 +26995,32 @@
     0,
     true
    ],
+   "repathWhenStuck": [
+    0,
+    0,
+    true
+   ],
    "speed": [
     2,
     0,
     true
    ],
    "stoppingDistance": [
+    2,
+    0,
+    true
+   ],
+   "stuckDetection": [
+    0,
+    0,
+    true
+   ],
+   "stuckSpeedRatio": [
+    2,
+    0,
+    true
+   ],
+   "stuckTimeout": [
     2,
     0,
     true
@@ -26537,6 +27042,11 @@
    ]
   },
   "NavMeshLinkComponent": {
+   "activated": [
+    0,
+    0,
+    true
+   ],
    "agentType": [
     8,
     0,
@@ -26584,6 +27094,11 @@
    ]
   },
   "NavMeshModifierComponent": {
+   "applyAtRuntime": [
+    0,
+    0,
+    true
+   ],
    "applyToChildren": [
     0,
     0,
@@ -26715,6 +27230,11 @@
    ],
    "includeLayers": [
     9,
+    0,
+    true
+   ],
+   "maxCarvingObstacles": [
+    8,
     0,
     true
    ],
@@ -27000,6 +27520,98 @@
     0,
     0,
     true
+   ]
+  },
+  "PixelPerfectCameraComponent": {
+   "baseHeight": [
+    8,
+    0,
+    false
+   ],
+   "baseWidth": [
+    8,
+    0,
+    false
+   ],
+   "cropped": [
+    0,
+    0,
+    false
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "letterboxColor": [
+    6,
+    0,
+    true
+   ],
+   "pixelRatio": [
+    8,
+    0,
+    false
+   ],
+   "pixelSnapping": [
+    0,
+    0,
+    true
+   ],
+   "referenceHeight": [
+    9,
+    0,
+    true
+   ],
+   "referenceWidth": [
+    9,
+    0,
+    true
+   ],
+   "rotationMode": [
+    13,
+    0,
+    true
+   ],
+   "snappedPosition": [
+    5,
+    0,
+    false
+   ],
+   "subpixelOffset": [
+    4,
+    0,
+    false
+   ],
+   "subpixelSmoothing": [
+    0,
+    0,
+    true
+   ],
+   "targetHeight": [
+    8,
+    0,
+    false
+   ],
+   "targetWidth": [
+    8,
+    0,
+    false
+   ],
+   "upscaleMode": [
+    13,
+    0,
+    true
+   ],
+   "upscaleRenderTexture": [
+    0,
+    0,
+    true
+   ],
+   "viewport": [
+    6,
+    0,
+    false
    ]
   },
   "PointsComponent": {
@@ -28543,6 +29155,11 @@
     1024,
     true
    ],
+   "drawMode": [
+    13,
+    1024,
+    true
+   ],
    "enabled": [
     0,
     0,
@@ -28551,6 +29168,16 @@
    "flipY": [
     0,
     1024,
+    true
+   ],
+   "frame": [
+    8,
+    1024,
+    true
+   ],
+   "frameName": [
+    1,
+    0,
     true
    ],
    "height": [
@@ -28565,6 +29192,21 @@
    ],
    "pivotPreset": [
     13,
+    1024,
+    true
+   ],
+   "pixelRotation": [
+    13,
+    0,
+    true
+   ],
+   "pixelsPerUnit": [
+    2,
+    1024,
+    true
+   ],
+   "sheet": [
+    18,
     1024,
     true
    ],
@@ -29138,6 +29780,11 @@
    ],
    "numTilesRect": [
     9,
+    4194304,
+    true
+   ],
+   "pixelsPerUnit": [
+    2,
     4194304,
     true
    ],
@@ -29954,6 +30601,28 @@
     true
    ]
   },
+  "WaterExcluderComponent": {
+   "center": [
+    5,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "shape": [
+    13,
+    0,
+    true
+   ],
+   "size": [
+    5,
+    0,
+    true
+   ]
+  },
   "WaterVolumeComponent": {
    "angularDrag": [
     2,
@@ -29997,6 +30666,33 @@
    ],
    "waves": [
     13,
+    0,
+    true
+   ]
+  },
+  "WaterWakeComponent": {
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "foam": [
+    2,
+    0,
+    true
+   ],
+   "length": [
+    2,
+    0,
+    true
+   ],
+   "waves": [
+    2,
+    0,
+    true
+   ],
+   "width": [
+    2,
     0,
     true
    ]
@@ -30368,7 +31064,8 @@
     "top_left",
     "bottom_left",
     "top_right",
-    "bottom_right"
+    "bottom_right",
+    "frame"
    ]
   },
   "PrimitiveType": {

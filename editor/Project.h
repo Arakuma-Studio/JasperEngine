@@ -591,7 +591,8 @@ namespace jasperengine::editor{
         bool filterAllTools = false;     // T1 R66: the Slope Filter reaches every map tool
         std::vector<TerrainPaintRule> paintRules;   // T1 R67
         int paintRulesSeed = 0;
-        bool slopeFilterInvert = false;  // T1 R66: the filter keeps what is outside its ranges
+        bool slopeFilterInvert = false;  // T1 R66: the Slope Filter keeps slopes outside its range
+        bool heightFilterInvert = false; // and heights outside the height range
         float paintMinSlope = 0.0f;      // degrees
         float paintMaxSlope = 90.0f;
         float paintMinHeight = 0.0f;     // normalized against the terrain maxHeight
@@ -934,6 +935,8 @@ namespace jasperengine::editor{
         float inputDeadzone = 0.15f;
         PlayerCrashSettings playerCrash;
         int htmlUiMsaaSamples;
+        // graphics.pixelsPerUnit (S41): texels per world unit of the sprites and tilemaps that take it
+        int pixelsPerUnit = 1;
         HtmlUiRenderSettings htmlUiRender;
         // graphics.gpu_instancing, quality.shadow_lod_bias (spec S55)
         DrawSubmissionSettings drawSubmission;
@@ -1004,6 +1007,8 @@ namespace jasperengine::editor{
         // Project Settings > Player > Strip Engine Code (docs/specs/S34-player-size.md R7): builds leave
         // out the engine modules the project cannot reach (export: stripEngineCode, default on)
         bool stripEngineCode = true;
+        // S45 R18: "enabled" | "enabled_for_builds" | "disabled"
+        std::string spriteAtlasMode = "enabled";
         ApplicationSettings applicationSettings;
         PresentationSettings presentationSettings;
         WebProjectSettings webProjectSettings;
@@ -1612,6 +1617,9 @@ namespace jasperengine::editor{
         static constexpr std::array<FoliageQuality, 3> newProjectFoliageQuality = {FoliageQuality::HIGH, FoliageQuality::LOW, FoliageQuality::LOW};
         static constexpr std::array<float, 3> defaultFoliageDistanceScale = {1.0f, 1.0f, 1.0f};
         static constexpr int defaultHtmlUiMsaaSamples = 4;
+        static constexpr int defaultPixelsPerUnit = 1;
+        static constexpr int minPixelsPerUnit = 1;
+        static constexpr int maxPixelsPerUnit = 256;
         // htmlUiGlyphAtlasMiB: 0 (the platform's default) or this range
         static constexpr int minHtmlUiGlyphAtlasMiB = 4;
         static constexpr int maxHtmlUiGlyphAtlasMiB = 256;
@@ -1772,6 +1780,9 @@ namespace jasperengine::editor{
         // them), applied to the editor's documents at once and written into exports
         void setHtmlUiMsaaSamples(int samples);
         int getHtmlUiMsaaSamples() const;
+        // Pixels Per Unit (S41, 1-256, clamped): applied to the editor's scenes at once and written into exports
+        void setPixelsPerUnit(int pixelsPerUnit);
+        int getPixelsPerUnit() const;
         static bool isValidHtmlUiMsaaSamples(int samples);
         // HTML UI rendering (S16): htmlUiGlyphAtlasMiB (clamped into its range, 0 = the
         // platform's default), htmlUiSdfPrimitives, htmlUiTransformAwareText; applied to the
@@ -2037,6 +2048,10 @@ namespace jasperengine::editor{
         void setPackContent(bool enabled) { packContent = enabled; }
         bool isStripEngineCode() const { return stripEngineCode; }
         void setStripEngineCode(bool enabled) { stripEngineCode = enabled; }
+        // Project Settings > 2D > Sprite Atlas > Mode (S45 R18); a change re-resolves which atlases
+        // the editor draws from
+        const std::string& getSpriteAtlasMode() const { return spriteAtlasMode; }
+        void setSpriteAtlasMode(const std::string& mode);
         // S30: what the generated main.cpp gives SceneManager::registerScene, for game.json
         void collectInvolvedScenesForExport(uint32_t sceneId, std::vector<uint32_t>& involvedSceneIds) {
             collectInvolvedScenes(sceneId, involvedSceneIds);

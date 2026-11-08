@@ -1456,6 +1456,7 @@ set(JASPERENGINE_SRCS
     core/animation/PropertyBindings.cpp
     core/animation/HumanoidClip.cpp
     core/animation/KeyframeSampling.cpp
+    core/animation/ModelClipSettings.cpp
     core/animation/ModelSubClips.cpp
     core/animation/VertexAnimation.cpp
     core/pose/HumanBones.cpp
@@ -1485,6 +1486,11 @@ set(JASPERENGINE_SRCS
     core/ecs/ChangeTracking.cpp
     core/ecs/CommandBuffer.cpp
     core/ecs/SystemScheduler.cpp
+    # pixel art (S41: the pixel-snap rule, the integer layout, the rotation policy)
+    core/pixelart/PixelPerfectLayout.cpp
+    core/pixelart/PixelRotation.cpp
+    core/pixelart/PixelsPerUnit.cpp
+    core/pixelart/PixelSnap.cpp
     core/picking/BinnedSah.cpp
     core/picking/MeshBvh.cpp
     core/picking/MeshBvhSimd_avx2.cpp
@@ -1563,6 +1569,14 @@ set(JASPERENGINE_SRCS
     core/htmlui/effects/EffectValue.cpp
     core/asset/AssetMap.cpp
     core/asset/Guid.cpp
+    core/asset/ImportedAssets.cpp
+    # sprite sheets (S44): the record, its IO, the pool, frame geometry
+    core/sprite/SpriteSheetIO.cpp
+    core/sprite/SpriteSheetPool.cpp
+    core/sprite/SpriteFrameGeometry.cpp
+    core/sprite/AsepriteClips.cpp
+    # S45: texture sheets, name@WxH, .spriteatlas and the atlas remap
+    core/sprite/SpriteSheetSources.cpp
     core/graph/Graph.cpp
     core/graph/GraphRegistry.cpp
     core/io/AssetIOService.cpp
@@ -1617,6 +1631,7 @@ set(JASPERENGINE_SRCS
     core/object/CameraShaker.cpp
     core/object/EntityHandle.cpp
     core/object/Light.cpp
+    core/object/PixelPerfectCamera.cpp
     core/object/Light2D.cpp
     core/object/LineRenderer.cpp
     core/object/TrailRenderer.cpp
@@ -1648,6 +1663,8 @@ set(JASPERENGINE_SRCS
     core/object/environment/Skybox.cpp
     core/object/environment/Water.cpp
     core/object/environment/WaterVolume.cpp
+    core/object/environment/WaterExcluder.cpp
+    core/object/environment/WaterWake.cpp
     core/object/physics/Buoyancy.cpp
     core/object/spline/Spline.cpp
     core/object/spline/SplineExtrude.cpp
@@ -1789,6 +1806,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/VertexAnimatorSystem.cpp
     core/subsystem/AnimatorSystem.cpp
     core/subsystem/TrailSystem.cpp
+    core/subsystem/WaterInteractionSystem.cpp
     core/subsystem/CameraControlSystem.cpp
     core/subsystem/FluidSystem.cpp
     core/subsystem/VideoPlayerSystem.cpp
@@ -1820,6 +1838,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/RenderSystemLighting.cpp
     core/subsystem/RenderSystemTerrain.cpp
     core/subsystem/RenderSystemTerrainWorld.cpp
+    core/subsystem/RenderSystemPixelArt.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp
     core/subsystem/UISystemNavigation.cpp
@@ -1894,6 +1913,8 @@ set(JASPERENGINE_SRCS
     core/util/TextShaper.cpp
     core/util/ThorVGRuntime.cpp
     core/util/UniqueToken.cpp
+    core/util/WaterExclusion.cpp
+    core/util/WaterWakeMap.cpp
     core/util/XMLUtils.cpp
 )
 
@@ -2196,6 +2217,9 @@ target_compile_definitions(jasperengine
         $<$<BOOL:${JASPERENGINE_PHYSICS_2D}>:JASPERENGINE_PHYSICS_2D>
         $<$<BOOL:${JASPERENGINE_PHYSICS_3D}>:JASPERENGINE_PHYSICS_3D>
         JASPERENGINE_PROFILER=$<BOOL:${JASPERENGINE_PROFILER}>
+        # RenderBackendTime (the graphics backend's share of a frame): the perf tests' alone, an
+        # empty type in every other build (a backend call pays nothing for it)
+        JASPERENGINE_BACKEND_TIME=$<OR:$<BOOL:${JASPERENGINE_TESTS}>,$<BOOL:${JASPERENGINE_HTMLUI_TESTS}>>
         JASPERENGINE_AUDIO_CAPTURE=$<BOOL:${JASPERENGINE_AUDIO_CAPTURE}>
         JASPERENGINE_DEVELOPMENT_BUILD=$<OR:$<BOOL:${JASPERENGINE_DEVELOPMENT_BUILD}>,$<CONFIG:Debug>>
         JASPERENGINE_TRACY=$<BOOL:${JASPERENGINE_TRACY}>
@@ -2284,6 +2308,11 @@ else()
     set(JASPERENGINE_ANIMATOR_FLAGS -ffp-contract=off)
 endif()
 set_source_files_properties(${JASPERENGINE_ANIMATOR_SRCS} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
+# the editor's audio analysis (S36) reads clips through these decoders, FFT and meter: without
+# contraction they give it the same samples and numbers on every CPU
+set_source_files_properties(core/audio/AudioMeter.cpp PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
+set_source_files_properties(libs/soloud/src/audiosource/wav/stb_vorbis.c libs/soloud/src/audiosource/wav/dr_impl.cpp
+    libs/soloud/src/audiosource/wav/soloud_wav.cpp libs/soloud/src/core/soloud_fft.cpp DIRECTORY libs/soloud PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
 if(EMSCRIPTEN)
     if(JASPERENGINE_WASM_SIMD)
         set_source_files_properties(core/animation/AnimatorPose.cpp PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS};-msimd128")
@@ -2664,6 +2693,21 @@ if(JASPERENGINE_HTMLUI_TESTS)
 endif()
 if(JASPERENGINE_TESTS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_subdirectory(tests/core)
+endif()
+
+# je-bench-anim as WebAssembly, run under node by tools/perf/bench-anim-wasm.sh (docs/perf/animator.md,
+# S77 R11); JASPERENGINE_WASM_SIMD says whether the pose kernels are built with -msimd128
+option(JASPERENGINE_WASM_BENCH "Build je-bench-anim for Emscripten and node" OFF)
+if(JASPERENGINE_WASM_BENCH AND EMSCRIPTEN AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_executable(je-bench-anim ${CMAKE_CURRENT_SOURCE_DIR}/tests/core/bench/AnimBench.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/core/support/AllocationCounter.cpp)
+    target_link_libraries(je-bench-anim PRIVATE jasperengine)
+    target_include_directories(je-bench-anim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/core/support)
+    target_compile_definitions(je-bench-anim PRIVATE JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/..")
+    jasperengine_apply_cxx_standard(je-bench-anim)
+    set_target_properties(je-bench-anim PROPERTIES
+        SUFFIX ".js"
+        LINK_FLAGS "--profiling-funcs -s ENVIRONMENT=node -s NODERAWFS=1 -s EXIT_RUNTIME=1 -s INITIAL_MEMORY=256MB -s STACK_SIZE=4MB ${ALLOW_MEMORY_GROWTH} ${USE_WEBGL2}")
 endif()
 
 if(JASPERENGINE_ECS_BENCH)

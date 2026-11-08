@@ -3,7 +3,8 @@
 
 // Lua's navigation (docs/specs/S19-navigation.md R38, docs/navigation.md): the scene's
 // NavigationSystem queries, NavMeshQueryFilter, NavMeshAgent with its events, NavMeshSurface
-// (runtime bakes), NavGrid and GridCell, and their enums.
+// (runtime bakes), NavGrid and GridCell, and their enums. S76 (docs/specs/S76-navigation-gameplay-api.md):
+// random points, surface moves, area costs per query and per agent, path costs and corner areas.
 
 #include "LuaBinding.h"
 
@@ -12,6 +13,7 @@
 #include "LuaBridge.h"
 #include "LuaBridgeAddon.h"
 
+#include "Log.h"
 #include "Scene.h"
 #include "navigation/NavTypes.h"
 #include "object/navigation/NavGrid.h"
@@ -19,12 +21,15 @@
 #include "object/navigation/NavMeshSurface.h"
 #include "subsystem/NavigationSystem.h"
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 using namespace jasperengine;
 // the API generator (tools/lua_api) reads the bound names as written: unqualified
 using nav::AreaMask;
 using nav::AvoidanceQuality;
+using nav::CornerFlag;
 using nav::GridCell;
 using nav::GridLayout;
 using nav::PathStatus;
@@ -43,9 +48,43 @@ namespace luabridge
     template<> struct Stack<NavAgentDriver> : EnumWrapper<NavAgentDriver>{};
     template<> struct Stack<NavCollectObjects> : EnumWrapper<NavCollectObjects>{};
     template<> struct Stack<NavUseGeometry> : EnumWrapper<NavUseGeometry>{};
+
+    // ---- S76 agents: onPathFailed's reason is S75's snake_case name in Lua ("blocked_by_area")
+    template<> struct Stack<nav::PathFailure>
+    {
+        [[nodiscard]] static Result push(lua_State* L, nav::PathFailure failure)
+        {
+            return Stack<std::string>::push(L, nav::pathFailureName(failure));
+        }
+
+        [[nodiscard]] static TypeResult<nav::PathFailure> get(lua_State* L, int index)
+        {
+            auto name = Stack<std::string>::get(L, index);
+            if (!name)
+                return name.error();
+            nav::PathFailure failure = nav::PathFailure::None;
+            if (!nav::pathFailureFromName(*name, failure))
+                return makeErrorCode(ErrorCode::InvalidTypeCast);
+            return failure;
+        }
+
+        [[nodiscard]] static bool isInstance(lua_State* L, int index)
+        {
+            return Stack<std::string>::isInstance(L, index);
+        }
+    };
 }
 
 namespace {
+
+    // ---- S76 queries
+    // NavMeshPathCorridor: what a path from calculatePath carries for NavMeshAgent:setPath, opaque
+    // in Lua (a script-built path table has none)
+    struct NavPathCorridor {
+        std::vector<uint32_t> polys;
+        uint64_t meshRevision = 0;
+        Entity surface = NULL_ENTITY;
+    };
 
     // NavMeshQueryFilter{agentType = "Humanoid" or an id, areaMask = 0xFFFF}
     nav::QueryFilter filterFrom(const luabridge::LuaRef& options) {
@@ -90,6 +129,7 @@ namespace {
         table["distance"] = hit.distance;
         table["area"] = (int)hit.area;
         table["mask"] = (int)(1u << hit.area);
+        table["cost"] = hit.cost;
         return table;
     }
 
@@ -113,6 +153,9 @@ namespace {
         return 2;
     }
 
+    // Unity's NavMeshPath as a table: status, corners, length; S76 adds cost, cornerAreas and
+    // cornerFlags (aligned with corners), areaLengths (area index -> length, areas walked only) and
+    // the corridor setPath reads (nil without polygons)
     luabridge::LuaRef pathTable(lua_State* L, const nav::NavPath& path) {
         luabridge::LuaRef table = luabridge::newTable(L);
         table["status"] = (int)path.status;
@@ -121,7 +164,195 @@ namespace {
             corners[(int)i + 1] = path.corners[i];
         table["corners"] = corners;
         table["length"] = path.length;
+        // S75 R35: why it is not Complete ("none" when it is), the surface that answered
+        table["reason"] = std::string(nav::pathFailureName(path.failure));
+        table["surface"] = (lua_Integer)path.surface;
+        table["closestPoint"] = path.closestPoint;
+        table["gap"] = path.gap;
+        table["cost"] = path.cost;
+        luabridge::LuaRef areas = luabridge::newTable(L);
+        for (size_t i = 0; i < path.cornerAreas.size(); i++)
+            areas[(int)i + 1] = (int)path.cornerAreas[i];
+        table["cornerAreas"] = areas;
+        luabridge::LuaRef flags = luabridge::newTable(L);
+        for (size_t i = 0; i < path.cornerFlags.size(); i++)
+            flags[(int)i + 1] = (int)path.cornerFlags[i];
+        table["cornerFlags"] = flags;
+        luabridge::LuaRef lengths = luabridge::newTable(L);
+        for (int area = 0; area < nav::AREA_COUNT; area++) {
+            if (path.areaLengths[(size_t)area] > 0.0f)
+                lengths[area] = path.areaLengths[(size_t)area];
+        }
+        table["areaLengths"] = lengths;
+        if (!path.polys.empty())
+            table["corridor"] = NavPathCorridor{path.polys, path.meshRevision, path.surface};
         return table;
+    }
+
+    // The path a table holds, for NavMeshAgent:setPath: false when it has no corridor (it was not
+    // made by calculatePath). Corners and status come back as the table has them.
+    bool pathFromTable(lua_State* L, int index, nav::NavPath& out) {
+        out = nav::NavPath();
+        if (!lua_istable(L, index))
+            return false;
+        const luabridge::LuaRef table = luabridge::LuaRef::fromStack(L, index);
+        const luabridge::LuaRef corridor = table["corridor"];
+        if (!corridor.isUserdata())
+            return false;
+        corridor.push(L);
+        auto data = luabridge::get<NavPathCorridor*>(L, -1);
+        lua_pop(L, 1);
+        if (!data || !*data)
+            return false;
+        out.polys = (*data)->polys;
+        out.meshRevision = (*data)->meshRevision;
+        out.surface = (*data)->surface;
+        const luabridge::LuaRef status = table["status"];
+        if (status.isNumber()) {
+            const lua_Integer value = status.unsafe_cast<lua_Integer>();
+            out.status = value == (lua_Integer)nav::PathStatus::Complete  ? nav::PathStatus::Complete
+                         : value == (lua_Integer)nav::PathStatus::Partial ? nav::PathStatus::Partial
+                                                                           : nav::PathStatus::Invalid;
+        }
+        const luabridge::LuaRef corners = table["corners"];
+        if (corners.isTable()) {
+            for (int i = 1; i <= corners.length(); i++) {
+                const luabridge::LuaRef corner = corners[i];
+                corner.push(L);
+                auto point = luabridge::get<Vector3>(L, -1);
+                lua_pop(L, 1);
+                if (point)
+                    out.corners.push_back(*point);
+            }
+        }
+        const luabridge::LuaRef length = table["length"];
+        if (length.isNumber())
+            out.length = length.unsafe_cast<float>();
+        return true;
+    }
+
+    // calculatePath options: {areaCrossings = true}
+    nav::PathOptions pathOptionsArg(lua_State* L, int index) {
+        nav::PathOptions options;
+        if (lua_gettop(L) < index || !lua_istable(L, index))
+            return options;
+        const luabridge::LuaRef table = luabridge::LuaRef::fromStack(L, index);
+        if (table["areaCrossings"].isBool())
+            options.areaCrossings = table["areaCrossings"].unsafe_cast<bool>();
+        return options;
+    }
+
+    // randomPoint options: {center = p, radius = r} (around), {sameIslandAs = p}, {seed = n}
+    nav::RandomPointQuery randomQueryArg(lua_State* L, int index) {
+        nav::RandomPointQuery query;
+        if (lua_gettop(L) < index || lua_isnil(L, index))
+            return query;
+        if (!lua_istable(L, index))
+            luaL_argerror(L, index, "a table {center, radius, sameIslandAs, seed}");
+        const luabridge::LuaRef table = luabridge::LuaRef::fromStack(L, index);
+        auto vectorField = [L](const luabridge::LuaRef& field, Vector3& out) {
+            if (field.isNil())
+                return false;
+            field.push(L);
+            auto value = luabridge::get<Vector3>(L, -1);
+            lua_pop(L, 1);
+            if (!value)
+                return false;
+            out = *value;
+            return true;
+        };
+        if (vectorField(table["center"], query.center)) {
+            query.around = true;
+            if (table["radius"].isNumber())
+                query.radius = table["radius"].unsafe_cast<float>();
+        }
+        query.sameIsland = vectorField(table["sameIslandAs"], query.islandOf);
+        if (table["seed"].isNumber()) {
+            query.seeded = true;
+            query.seed = (uint64_t)table["seed"].unsafe_cast<lua_Integer>();
+        }
+        return query;
+    }
+
+    // ---- S75 diagnostics tables (camelCase keys, the MCP codes as strings: spec D6)
+
+    luabridge::LuaRef islandTable(lua_State* L, const nav::NavIsland& island) {
+        luabridge::LuaRef table = luabridge::newTable(L);
+        table["id"] = island.id;
+        table["area"] = island.area;
+        table["polys"] = island.polys;
+        table["boundsMin"] = island.boundsMin;
+        table["boundsMax"] = island.boundsMax;
+        return table;
+    }
+
+    luabridge::LuaRef locationTable(lua_State* L, const nav::NavLocation& location) {
+        luabridge::LuaRef table = luabridge::newTable(L);
+        table["onMesh"] = location.onMesh;
+        table["found"] = location.found;
+        table["position"] = location.position;
+        table["snapDistance"] = location.snapDistance;
+        table["island"] = location.island;
+        table["area"] = (int)location.area;
+        table["surface"] = (lua_Integer)location.surface;
+        return table;
+    }
+
+    // NavMeshSurface.lastBakeResult: the bake report (bake_navigation's per-surface result)
+    luabridge::LuaRef bakeReportTable(lua_State* L, const NavBakeResult& result) {
+        luabridge::LuaRef table = luabridge::newTable(L);
+        table["ok"] = result.ok;
+        table["cancelled"] = result.cancelled;
+        table["error"] = result.error;
+        table["errorCode"] = std::string(nav::bakeErrorName(result.errorCode));
+        table["hint"] = result.hint;
+        table["tilesBuilt"] = result.tilesBuilt;
+        table["tilesTotal"] = result.tilesTotal;
+        table["polys"] = result.polys;
+        table["milliseconds"] = result.milliseconds;
+        luabridge::LuaRef warnings = luabridge::newTable(L);
+        for (size_t i = 0; i < result.warnings.size(); i++)
+            warnings[(int)i + 1] = result.warnings[i];
+        table["warnings"] = warnings;
+        luabridge::LuaRef sources = luabridge::newTable(L);
+        sources["meshes"] = result.sources.meshes;
+        sources["instances"] = result.sources.instances;
+        sources["terrains"] = result.sources.terrains;
+        sources["colliders"] = result.sources.colliders;
+        sources["colliders2D"] = result.sources.colliders2D;
+        sources["volumes"] = result.sources.volumes;
+        sources["links"] = result.sources.links;
+        sources["excluded"] = result.sources.excluded;
+        sources["triangles"] = (lua_Integer)result.sources.triangles;
+        table["sources"] = sources;
+        table["walkableArea"] = result.walkableArea;
+        table["islandCount"] = result.islandCount;
+        luabridge::LuaRef islands = luabridge::newTable(L);
+        for (size_t i = 0; i < result.islands.size(); i++)
+            islands[(int)i + 1] = islandTable(L, result.islands[i]);
+        table["islands"] = islands;
+        // the five slowest tiles of the bake
+        std::vector<nav::NavTileReport> slowest = result.tiles;
+        std::stable_sort(slowest.begin(), slowest.end(),
+                         [](const nav::NavTileReport& a, const nav::NavTileReport& b) { return a.milliseconds > b.milliseconds; });
+        if (slowest.size() > 5)
+            slowest.resize(5);
+        luabridge::LuaRef tiles = luabridge::newTable(L);
+        for (size_t i = 0; i < slowest.size(); i++) {
+            luabridge::LuaRef tile = luabridge::newTable(L);
+            tile["x"] = slowest[i].x;
+            tile["y"] = slowest[i].y;
+            tile["ms"] = slowest[i].milliseconds;
+            tile["polys"] = slowest[i].polys;
+            tile["kb"] = (double)slowest[i].bytes / 1024.0;
+            tiles[(int)i + 1] = tile;
+        }
+        table["slowestTiles"] = tiles;
+        return table;
+    }
+
+    Entity entityArg(lua_State* L, int index) {
+        return (Entity)luaL_checkinteger(L, index);
     }
 
     luabridge::LuaRef gridPathTable(lua_State* L, const NavGrid& grid, const nav::GridPath& path) {
@@ -154,18 +385,62 @@ namespace {
         return query;
     }
 
-    // currentOffMeshLinkData: {valid, startPos, endPos, link}
-    luabridge::LuaRef linkData(const NavMeshAgent& agent, lua_State* L) {
+    // ---- S76 agents
+
+    NavMeshAgent* agentSelf(lua_State* L) {
+        auto self = luabridge::get<NavMeshAgent*>(L, 1);
+        if (!self || !*self)
+            luaL_argerror(L, 1, "a NavMeshAgent (call it with ':')");
+        return *self;
+    }
+
+    // agent:setPath(path): a path table of calculatePath (its corridor); another table is refused
+    // with one warning. Refused, the agent has no path (Unity).
+    int setAgentPath(lua_State* L) {
+        NavMeshAgent* self = agentSelf(L);
+        nav::NavPath path;
+        if (!pathFromTable(L, 2, path)) {
+            static bool warned = false;
+            if (!warned) {
+                warned = true;
+                Log::warn("NavMeshAgent:setPath: the path has no corridor (only a path from calculatePath carries one): refused");
+            }
+            self->setPath(nav::NavPath());
+            lua_pushboolean(L, 0);
+            return 1;
+        }
+        lua_pushboolean(L, self->setPath(path) ? 1 : 0);
+        return 1;
+    }
+
+    // OffMeshLinkData {valid, activated, occupied, startPos, endPos, link}: activated and occupied
+    // are the link's state now (S76 R16, R17, R24)
+    luabridge::LuaRef linkTable(const NavMeshAgent& agent, lua_State* L, bool valid, const Vector3& start, const Vector3& end, Entity link) {
         luabridge::LuaRef table = luabridge::newTable(L);
-        Vector3 start, end;
-        Entity link = NULL_ENTITY;
-        const bool valid = agent.getCurrentOffMeshLink(start, end, link);
+        NavigationSystem* system = valid ? agent.getScene()->getSystem<NavigationSystem>().get() : nullptr;
         table["valid"] = valid;
-        table["activated"] = valid;
+        table["activated"] = system && system->isLinkActive(link);
+        table["occupied"] = system && system->isLinkOccupied(link);
         table["startPos"] = start;
         table["endPos"] = end;
         table["link"] = link;
         return table;
+    }
+
+    // nextOffMeshLinkData: the next link along its path
+    luabridge::LuaRef nextLinkData(const NavMeshAgent& agent, lua_State* L) {
+        Vector3 start, end;
+        Entity link = NULL_ENTITY;
+        const bool valid = agent.getNextOffMeshLink(start, end, link);
+        return linkTable(agent, L, valid, start, end, link);
+    }
+
+    // currentOffMeshLinkData: the link it is on
+    luabridge::LuaRef linkData(const NavMeshAgent& agent, lua_State* L) {
+        Vector3 start, end;
+        Entity link = NULL_ENTITY;
+        const bool valid = agent.getCurrentOffMeshLink(start, end, link);
+        return linkTable(agent, L, valid, start, end, link);
     }
 
 }
@@ -230,6 +505,17 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
             return area >= 0 && area < nav::AREA_COUNT ? nav::getSettings().areas[(size_t)area].cost : 0.0f;
         })
         .addFunction("maskOf", +[](int area) { return area >= 0 && area < nav::AREA_COUNT ? (int)(1u << area) : 0; })
+        .addFunction("getAreaName", +[](int area) {
+            return area >= 0 && area < nav::AREA_COUNT ? nav::getSettings().areas[(size_t)area].name : std::string();
+        })
+        .endNamespace();
+
+    // a path corner's flags (NavMeshPath.cornerFlags, Detour's values)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("NavCornerFlags")
+        .addVariable("START", CornerFlag::CORNER_START)
+        .addVariable("END", CornerFlag::CORNER_END)
+        .addVariable("OFF_MESH_LINK", CornerFlag::CORNER_OFF_MESH_LINK)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -240,6 +526,13 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addProperty("agentType", &QueryFilter::agentType)
         .addProperty("areaMask", +[](const nav::QueryFilter* self) { return (int)self->areaMask; },
                                  +[](nav::QueryFilter* self, int mask) { self->areaMask = (uint16_t)(mask & 0xFFFF); })
+        .addFunction("setAreaCost", &QueryFilter::setAreaCost)
+        .addFunction("getAreaCost", &QueryFilter::getAreaCost)
+        .addFunction("resetAreaCost", &QueryFilter::resetAreaCost)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<NavPathCorridor>("NavMeshPathCorridor")
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -259,6 +552,15 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addFunction("remove", &FunctionSubscribe<void(NavMeshAgent)>::remove)
         .endClass();
 
+    // ---- S76 agents: onPathFailed(agent, reason)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)>>("FunctionSubscribe_V_NavMeshAgent_PathFailure")
+        .addFunction("__call", &FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)>::call)
+        .addFunction("call", &FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(NavMeshAgent, nav::PathFailure)>::remove)
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .beginClass<FunctionSubscribe<void(NavMeshSurface)>>("FunctionSubscribe_V_NavMeshSurface")
         .addFunction("__call", &FunctionSubscribe<void(NavMeshSurface)>::call)
@@ -270,7 +572,7 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<NavigationSystem>("NavigationSystem")
         .addFunction("calculatePath", +[](NavigationSystem* self, const Vector3& from, const Vector3& to, lua_State* L) {
-            return pathTable(L, self->calculatePath(from, to, filterArg(L, 4)));
+            return pathTable(L, self->calculatePath(from, to, filterArg(L, 4), pathOptionsArg(L, 5)));
         })
         // (found, hit): two results, pushed by hand (LuaBridge returns a std::tuple as one table)
         .addFunction("samplePosition", +[](lua_State* L) -> int {
@@ -288,11 +590,59 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addFunction("findClosestEdge", +[](lua_State* L) -> int {
             NavigationSystem* self = navSelf(L);
             nav::NavHit hit;
-            const bool found = self->findClosestEdge(vectorArg(L, 2), hit, filterArg(L, 3));
+            const float maxDistance = lua_gettop(L) >= 4 && !lua_isnil(L, 4) ? (float)luaL_checknumber(L, 4) : -1.0f;
+            const bool found = self->findClosestEdge(vectorArg(L, 2), hit, filterArg(L, 3), maxDistance);
             return pushHit(L, found, hit);
         })
-        .addFunction("isReachable", +[](NavigationSystem* self, const Vector3& from, const Vector3& to, lua_State* L) {
-            return self->isReachable(from, to, filterArg(L, 4));
+        .addFunction("randomPoint", +[](lua_State* L) -> int {
+            NavigationSystem* self = navSelf(L);
+            nav::NavHit hit;
+            const bool found = self->randomPoint(hit, filterArg(L, 2), randomQueryArg(L, 3));
+            return pushHit(L, found, hit);
+        })
+        .addFunction("moveAlongSurface", +[](lua_State* L) -> int {
+            NavigationSystem* self = navSelf(L);
+            nav::NavHit hit;
+            const bool moved = self->moveAlongSurface(vectorArg(L, 2), vectorArg(L, 3), hit, filterArg(L, 4));
+            return pushHit(L, moved, hit);
+        })
+        .addProperty("randomSeed", +[](const NavigationSystem* self) { return (lua_Integer)self->getRandomSeed(); },
+                                   +[](NavigationSystem* self, lua_Integer seed) { self->setRandomSeed((uint64_t)seed); })
+        // (reachable, reason): S75 R35, the reason is ignorable
+        .addFunction("isReachable", +[](lua_State* L) -> int {
+            NavigationSystem* self = navSelf(L);
+            nav::PathFailure why = nav::PathFailure::None;
+            const bool reachable = self->isReachable(vectorArg(L, 2), vectorArg(L, 3), filterArg(L, 4), &why);
+            lua_pushboolean(L, reachable ? 1 : 0);
+            lua_pushstring(L, nav::pathFailureName(why));
+            return 2;
+        })
+        .addFunction("locate", +[](lua_State* L) -> int {
+            NavigationSystem* self = navSelf(L);
+            const float maxDistance = lua_gettop(L) >= 4 && !lua_isnil(L, 4) ? (float)luaL_checknumber(L, 4) : 5.0f;
+            locationTable(L, self->locate(vectorArg(L, 2), filterArg(L, 3), maxDistance)).push(L);
+            return 1;
+        })
+        .addFunction("getCoverage", +[](lua_State* L) -> int {
+            NavigationSystem* self = navSelf(L);
+            const nav::NavCoverage coverage = self->getCoverage(entityArg(L, 2));
+            luabridge::LuaRef table = luabridge::newTable(L);
+            table["walkableArea"] = coverage.walkableArea;
+            table["islandCount"] = coverage.islandCount;
+            table["largestIslandArea"] = coverage.largestIslandArea;
+            table["tilesArea"] = coverage.tilesArea;
+            table["fraction"] = coverage.fraction;
+            table.push(L);
+            return 1;
+        })
+        .addFunction("getIslands", +[](lua_State* L) -> int {
+            NavigationSystem* self = navSelf(L);
+            const std::vector<nav::NavIsland> islands = self->getIslands(entityArg(L, 2));
+            luabridge::LuaRef table = luabridge::newTable(L);
+            for (size_t i = 0; i < islands.size(); i++)
+                table[(int)i + 1] = islandTable(L, islands[i]);
+            table.push(L);
+            return 1;
         })
         .addFunction("isBaking", &NavigationSystem::isAnyBaking)
         .addProperty("agentCount", &NavigationSystem::getAgentCount)
@@ -341,16 +691,59 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addProperty("updateRotation", &NavMeshAgent::isUpdateRotation, &NavMeshAgent::setUpdateRotation)
         .addProperty("driver", &NavMeshAgent::getDriver, &NavMeshAgent::setDriver)
         .addProperty("surface", &NavMeshAgent::getSurface, &NavMeshAgent::setSurface)
+        // along the crowd's corridor; past a truncated corridor's end (paths over 256 polygons)
+        // plus the straight line to the destination, a lower bound
         .addProperty("remainingDistance", &NavMeshAgent::getRemainingDistance)
         .addProperty("pathPending", &NavMeshAgent::isPathPending)
         .addProperty("hasPath", &NavMeshAgent::hasPath)
+        // from the crowd's corridor: Complete when the path reaches the destination (also while
+        // the crowd extends a long one), Partial when none does
         .addProperty("pathStatus", &NavMeshAgent::getPathStatus)
-        .addProperty("velocity", &NavMeshAgent::getVelocity)
+        .addProperty("velocity", &NavMeshAgent::getVelocity, &NavMeshAgent::setVelocity)
         .addProperty("desiredVelocity", &NavMeshAgent::getDesiredVelocity)
-        .addProperty("nextPosition", &NavMeshAgent::getNextPosition)
+        .addProperty("nextPosition", &NavMeshAgent::getNextPosition, &NavMeshAgent::setNextPosition)
         .addProperty("isOnNavMesh", &NavMeshAgent::isOnNavMesh)
         .addProperty("isOnOffMeshLink", &NavMeshAgent::isOnOffMeshLink)
         .addProperty("currentOffMeshLinkData", +[](const NavMeshAgent* self, lua_State* L) { return linkData(*self, L); })
+        .addFunction("setAreaCost", &NavMeshAgent::setAreaCost)
+        .addFunction("getAreaCost", &NavMeshAgent::getAreaCost)
+        .addFunction("resetAreaCost", &NavMeshAgent::resetAreaCost)
+
+        // ---- S76 agents
+        .addFunction("calculatePath", +[](const NavMeshAgent* self, const Vector3& target, lua_State* L) {
+            return pathTable(L, self->calculatePath(target));
+        })
+        .addFunction("setPath", +[](lua_State* L) -> int { return setAgentPath(L); })
+        .addProperty("path", +[](const NavMeshAgent* self, lua_State* L) { return pathTable(L, self->getPath()); })
+        .addProperty("steeringTarget", &NavMeshAgent::getSteeringTarget)
+        .addProperty("isPathStale", &NavMeshAgent::isPathStale)
+        // (blocked, hit) / (found, hit): two results, pushed by hand
+        .addFunction("raycast", +[](lua_State* L) -> int {
+            nav::NavHit hit;
+            const bool blocked = agentSelf(L)->raycast(vectorArg(L, 2), hit);
+            return pushHit(L, blocked, hit);
+        })
+        .addFunction("findClosestEdge", +[](lua_State* L) -> int {
+            nav::NavHit hit;
+            const bool found = agentSelf(L)->findClosestEdge(hit);
+            return pushHit(L, found, hit);
+        })
+        .addFunction("samplePathPosition", +[](lua_State* L) -> int {
+            nav::NavHit hit;
+            const bool blocked = agentSelf(L)->samplePathPosition((int)luaL_checkinteger(L, 2), (float)luaL_checknumber(L, 3), hit);
+            return pushHit(L, blocked, hit);
+        })
+        .addProperty("nextOffMeshLinkData", +[](const NavMeshAgent* self, lua_State* L) { return nextLinkData(*self, L); })
+        .addProperty("stuckDetection", &NavMeshAgent::isStuckDetection, &NavMeshAgent::setStuckDetection)
+        .addProperty("stuckSpeedRatio", &NavMeshAgent::getStuckSpeedRatio, &NavMeshAgent::setStuckSpeedRatio)
+        .addProperty("stuckTimeout", &NavMeshAgent::getStuckTimeout, &NavMeshAgent::setStuckTimeout)
+        .addProperty("repathWhenStuck", &NavMeshAgent::isRepathWhenStuck, &NavMeshAgent::setRepathWhenStuck)
+        .addProperty("stuckTime", &NavMeshAgent::getStuckTime)
+        .addProperty("lastPathFailure", +[](const NavMeshAgent* self) { return std::string(nav::pathFailureName(self->getLastPathFailure())); })
+        .addProperty("onStuck",
+            [](NavMeshAgent* self, lua_State*) { return &self->getOnStuck(); },
+            [](NavMeshAgent* self, lua_State* L) { self->getOnStuck() = L; })
+        // once per destination, within stoppingDistance of it; never at the end of a Partial path
         .addProperty("onDestinationReached",
             [](NavMeshAgent* self, lua_State*) { return &self->getOnDestinationReached(); },
             [](NavMeshAgent* self, lua_State* L) { self->getOnDestinationReached() = L; })
@@ -375,6 +768,10 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addProperty("isBaking", &NavMeshSurface::isBaking)
         .addProperty("bakeProgress", &NavMeshSurface::getBakeProgress)
         .addProperty("lastBakeError", &NavMeshSurface::getLastBakeError)
+        .addProperty("lastBakeResult", +[](const NavMeshSurface* self, lua_State* L) {
+            const NavBakeResult* result = self->getLastBakeResult();
+            return result ? bakeReportTable(L, *result) : luabridge::LuaRef(L);
+        })
         .addProperty("tileCount", &NavMeshSurface::getTileCount)
         .addProperty("polyCount", &NavMeshSurface::getPolyCount)
         .addProperty("hasNavMesh", &NavMeshSurface::hasNavMesh)
@@ -416,6 +813,8 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addProperty("cellSize", &NavGrid::getCellSize)
         .addProperty("layout", &NavGrid::getLayout)
         .endClass();
+
+    registerNavigationComponentClasses(L);
 
 #endif //DISABLE_LUA_BINDINGS
 }

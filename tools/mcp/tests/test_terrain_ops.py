@@ -3,6 +3,10 @@
 One terrain per test, made with edit_terrain's smallest preset so each call stays a few milliseconds.
 """
 
+import asyncio
+import re
+
+import harness
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Terrain Ops"}
@@ -80,8 +84,9 @@ async def test_unknown_op_and_key_name_the_valid_ones(ed: Editor):
     ed.check("set_height" in message and "raise" in message, f"the valid ops are listed: {message}")
     message = await ed.check_error("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "raise", "amount": 2}])
     ed.check("ops[0].amount" in message and "jasper://docs/terrain" in message, f"the field and where the fields are: {message}")
-    message = await ed.check_error("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "place_objects", "asset": "a.obj"}])
-    ed.check("sculpt_terrain" in message, f"placing GameObjects points to sculpt_terrain: {message}")
+    message = await ed.check_error("edit_terrain", scene=sid, entity=terrain,
+                                   ops=[{"op": "raise", "delta": 1, "shape": CIRCLE}, {"op": "erase_objects", "shape": CIRCLE}])
+    ed.check("call of their own" in message, f"objects and map ops go in separate calls: {message}")
 
 
 async def test_outside_shape_fails_with_bounds(ed: Editor):
@@ -161,6 +166,10 @@ async def test_guide_is_served(ed: Editor):
     ed.check("jasper://docs/terrain" in ed.tool("edit_terrain").description, "the description points to the guide")
     got = await ed.session.read_resource("jasper://docs/terrain")
     guide = "".join(getattr(c, "text", "") or "" for c in got.contents)
+    # a guide past the split size serves its intro and an index of sections to read one by one
+    for uri in re.findall(r"`(jasper://docs/terrain/[^`]+)`", guide):
+        part = await ed.session.read_resource(uri)
+        guide += "".join(getattr(c, "text", "") or "" for c in part.contents)
     ed.check("import_heightmap" in guide and "paint_by_rules" in guide, f"the guide has the ops: {guide[:400]}")
 
 
@@ -188,3 +197,100 @@ async def test_navmesh_goes_stale(ed: Editor):
     await ed.call("bake_navigation", scene=sid, mode="dirty")
     issues = (await ed.call("sample_terrain", scene=sid, entity=terrain, issues=True))["issues"]
     ed.check(not any(i["code"] == "navmesh_stale" for i in issues), f"a bake clears it: {issues}")
+
+
+async def big_terrain(ed: Editor, name: str):
+    sid = (await ed.call("create_scene", name=name, type="3d"))["scene"]["id"]
+    terrain = (await ed.call("create_entity", scene=sid, name=name, type="terrain"))["entity_id"]
+    # 2049 squared is past the 4 M texels of R69
+    await ed.call("edit_terrain", scene=sid, entity=terrain, create="test_patch", map_resolution=2049)
+    return sid, terrain
+
+
+async def wait_job(ed: Editor, job_id: str) -> dict:
+    # polled from outside with no frame asked for: the result must reach an idle editor (a hand-back
+    # through jobs::postToMain waits for a frame that draws a scene, which an idle editor never has)
+    for _ in range(600):
+        job = await ed.call("get_job", job_id=job_id)
+        if job["status"] != "running":
+            return job
+        await asyncio.sleep(0.1)
+    raise AssertionError(f"job {job_id} never finished")
+
+
+async def test_large_edit_is_a_job(ed: Editor):
+    """AC54 (R69): past 4 M texels the edit runs as a job on a copy and lands as one undo step."""
+    sid, terrain = await big_terrain(ed, "Big")
+    before = await hashes(ed, sid, terrain)
+    started = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "raise", "delta": 2}], wait=False)
+    ed.check("job_id" in started and started["status"] in ("running", "succeeded"), f"a job: {started}")
+    job = await wait_job(ed, started["job_id"])
+    ed.check_eq(job["status"], "succeeded", f"the job: {job}")
+    ed.check(job["result"]["changed"][0]["texels"] > 4_000_000, f"the whole map changed: {job['result']['changed']}")
+    after = await hashes(ed, sid, terrain)
+    ed.check(after["height"] != before["height"], "the job's edit reached the map")
+    await ed.call("undo", scene=sid)
+    ed.check_eq((await hashes(ed, sid, terrain))["height"], before["height"], "one undo takes it back")
+
+
+async def test_job_conflict_fails(ed: Editor):
+    """AC54 (R69): a second call on a terrain a job is editing fails, naming get_job."""
+    sid, terrain = await big_terrain(ed, "Busy")
+    started = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "smooth", "iterations": 4}], wait=False)
+    ed.check_eq(started["status"], "running", "four smoothing passes over 4 M texels outlast the call")
+    await ed.check_error("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "raise", "delta": 1}], contains="get_job")
+    await wait_job(ed, started["job_id"])
+
+
+async def pegs(ed: Editor, sid) -> int:
+    return len(harness.find_key(await ed.call("find_entities", scene=sid, name="peg*"), "entities") or [])
+
+
+async def test_place_and_erase_objects(ed: Editor):
+    """R21: place_objects plans against what is there and lands as one undo step; erase_objects takes what is inside."""
+    sid, terrain = await new_terrain(ed, "Props")
+    model = ed.project / "assets" / "peg.obj"
+    model.parent.mkdir(parents=True, exist_ok=True)
+    model.write_text("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
+    region = {"type": "circle", "center": [0, 0], "radius": 6}
+    place = {"op": "place_objects", "asset": "assets/peg.obj", "shape": region, "count": 12, "spacing": 2, "seed": 3}
+    dry = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[place], dry_run=True)
+    ed.check_eq(await pegs(ed, sid), 0, "a dry run places nothing")
+    placed = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[place])
+    ed.check(0 < placed["placed"] <= 12, f"the plan placed some: {placed['placed']}")
+    ed.check_eq(placed["placed"], dry["placed"], "the dry run planned the same")
+    ed.check_eq(await pegs(ed, sid), placed["placed"], "one GameObject per planned object")
+    again = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[dict(place, spacing=40)])
+    ed.check_eq(again["placed"], 0, "spacing counts the objects already there, and nothing placed is no step")
+    await ed.call("undo", scene=sid)
+    ed.check_eq(await pegs(ed, sid), 0, "one undo takes the whole placement away")
+    await ed.call("redo", scene=sid)
+    erased = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "erase_objects", "shape": region}])
+    ed.check_eq(erased["erased"], placed["placed"], "erase_objects takes every object inside")
+    ed.check_eq(await pegs(ed, sid), 0, "none left")
+
+
+async def test_instanced_objects_are_trees(ed: Editor):
+    """R21 with T5: instanced place_objects plans into the Terrain's tree store; erase_objects takes those trees."""
+    (ed.project / "assets").mkdir(exist_ok=True)
+    (ed.project / "assets" / "tree.obj").write_text("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
+    sid = (await ed.call("create_scene", name="Grove", type="3d", path="scenes/Grove"))["scene"]["id"]
+    terrain = (await ed.call("create_entity", scene=sid, name="Grove", type="terrain"))["entity_id"]
+    await ed.call("edit_terrain", scene=sid, entity=terrain, create="test_patch", map_resolution=65)
+    region = {"type": "circle", "center": [0, 0], "radius": 6}
+    place = {"op": "place_objects", "asset": "assets/tree.obj", "instanced": True, "shape": region, "count": 10, "spacing": 2, "seed": 5}
+    message = await ed.check_error("edit_terrain", scene=sid, entity=terrain, ops=[place])
+    ed.check("treePrototypes" in message, f"a model the Terrain has no prototype for names the fix: {message}")
+    await ed.call("set_properties", scene=sid, entity=terrain, values={"terrain": {"treePrototypes": [{"id": 1, "meshPath": "assets/tree.obj"}]}})
+
+    async def trees() -> int:
+        got = await ed.call("sample_terrain", scene=sid, entity=terrain, foliage=True, grid=0)
+        return sum(item["count"] for item in got["foliage"]["trees"])
+
+    await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[place])
+    planted = await trees()
+    ed.check(0 < planted <= 10, f"the plan planted trees: {planted}")
+    await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[{"op": "erase_objects", "instanced": True, "shape": region}])
+    ed.check_eq(await trees(), 0, "erase_objects takes the trees inside")
+    await ed.call("undo", scene=sid)
+    ed.check_eq(await trees(), planted, "one undo brings them back")

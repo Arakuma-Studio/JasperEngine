@@ -1874,6 +1874,7 @@ YAML::Node editor::Stream::encodeTerrainEditorSettings(const TerrainEditorSettin
     terrainNode["paintUseMask"] = ts.paintUseMask;
     if (ts.filterAllTools) terrainNode["filterAllTools"] = true;
     if (ts.slopeFilterInvert) terrainNode["slopeFilterInvert"] = true;
+    if (ts.heightFilterInvert) terrainNode["heightFilterInvert"] = true;
     if (!ts.paintRules.empty()) {
         YAML::Node rules(YAML::NodeType::Sequence);
         for (const TerrainPaintRule& rule : ts.paintRules) {
@@ -1931,6 +1932,7 @@ editor::TerrainEditorSettings editor::Stream::decodeTerrainEditorSettings(const 
     if (tn["paintUseMask"].IsDefined())       ts.paintUseMask       = YamlNumbers::as<bool>(tn["paintUseMask"]);
     ts.filterAllTools = tn["filterAllTools"].IsDefined() && YamlNumbers::as<bool>(tn["filterAllTools"]);
     ts.slopeFilterInvert = tn["slopeFilterInvert"].IsDefined() && YamlNumbers::as<bool>(tn["slopeFilterInvert"]);
+    ts.heightFilterInvert = tn["heightFilterInvert"].IsDefined() && YamlNumbers::as<bool>(tn["heightFilterInvert"]);
     ts.paintRules.clear();
     // a missing key is an invalid node in yaml-cpp, which IsSequence() throws on
     if (tn["paintRules"].IsDefined() && tn["paintRules"].IsSequence()) {
@@ -2269,10 +2271,21 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["showPostProcessing"] = ds.showPostProcessing;
     if (ds.showAllLattices)
         sceneNode["showAllLattices"] = ds.showAllLattices;
+    if (ds.showIK)
+        sceneNode["showIK"] = ds.showIK;
+    if (ds.showRootMotion)
+        sceneNode["showRootMotion"] = ds.showRootMotion;
+    if (ds.showFootTrails)
+        sceneNode["showFootTrails"] = ds.showFootTrails;
     if (ds.drawMode != ViewDrawMode::SHADED)
         sceneNode["drawMode"] = drawModeKey(ds.drawMode);
     if (ds.showStats)
         sceneNode["showStats"] = ds.showStats;
+    // S41: written only when turned off (on by default)
+    if (!ds.pixelZoom) sceneNode["pixelZoom"] = false;
+    if (!ds.pixelGrid) sceneNode["pixelGrid"] = false;
+    if (!ds.pixelSnapPreview) sceneNode["pixelSnapPreview"] = false;
+    if (!ds.pixelMoveSnap) sceneNode["pixelMoveSnap"] = false;
     sceneNode["showGrid2D"]           = ds.showGrid2D;
     encodePositiveFinite(sceneNode, "gridSpacing2D", ds.gridSpacing2D);
     encodePositiveFinite(sceneNode, "gridSpacing3D", ds.gridSpacing3D);
@@ -2307,7 +2320,14 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["disableClouds"])        ds.disableClouds        = YamlNumbers::as<bool>(node["disableClouds"]);
     if (node["animateWater"])         ds.animateWater         = YamlNumbers::as<bool>(node["animateWater"]);
     ds.showPostProcessing = node["showPostProcessing"] ? YamlNumbers::as<bool>(node["showPostProcessing"]) : false;
+    ds.pixelZoom = node["pixelZoom"] ? YamlNumbers::as<bool>(node["pixelZoom"]) : true;
+    ds.pixelGrid = node["pixelGrid"] ? YamlNumbers::as<bool>(node["pixelGrid"]) : true;
+    ds.pixelSnapPreview = node["pixelSnapPreview"] ? YamlNumbers::as<bool>(node["pixelSnapPreview"]) : true;
+    ds.pixelMoveSnap = node["pixelMoveSnap"] ? YamlNumbers::as<bool>(node["pixelMoveSnap"]) : true;
     ds.showAllLattices = node["showAllLattices"] ? YamlNumbers::as<bool>(node["showAllLattices"]) : false;
+    ds.showIK = node["showIK"] ? YamlNumbers::as<bool>(node["showIK"]) : false;
+    ds.showRootMotion = node["showRootMotion"] ? YamlNumbers::as<bool>(node["showRootMotion"]) : false;
+    ds.showFootTrails = node["showFootTrails"] ? YamlNumbers::as<bool>(node["showFootTrails"]) : false;
     ds.drawMode = ViewDrawMode::SHADED;
     if (node["drawMode"] && node["drawMode"].IsScalar())
         drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
@@ -2724,6 +2744,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
         if (project->isShipAllTerrainTiers()) graphics["shipAllTerrainTiers"] = true;
         if (project->isCompressTerrainLayers()) graphics["compressTerrainLayers"] = true;
+        // graphics.pixelsPerUnit (S41), only away from 1
+        if (project->getPixelsPerUnit() != Project::defaultPixelsPerUnit)
+            graphics["pixelsPerUnit"] = project->getPixelsPerUnit();
         if (graphics.size() > 0)
             root["graphics"] = graphics;
     }
@@ -3249,6 +3272,10 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         Organisation::encodeSearches(project->getOrganisation().projectSearches(), searches);
         root["savedSearches"] = searches;
     }
+    // S45 R18: Project Settings > 2D > Sprite Atlas > Mode, written only when not the default
+    if (project->getSpriteAtlasMode() != "enabled") {
+        root["spriteAtlas"]["mode"] = project->getSpriteAtlasMode();
+    }
 
     return root;
 }
@@ -3438,6 +3465,14 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         project->setShadowTier(platform, tier);
     }
+    // graphics.pixelsPerUnit (S41): absent is 1
+    {
+        const YAML::Node graphics = node["graphics"];
+        int pixelsPerUnit = Project::defaultPixelsPerUnit;
+        if (graphics && graphics.IsMap() && graphics["pixelsPerUnit"] && graphics["pixelsPerUnit"].IsScalar())
+            pixelsPerUnit = YamlNumbers::as<int>(graphics["pixelsPerUnit"]);
+        project->setPixelsPerUnit(pixelsPerUnit);
+    }
     // graphics.lightMode: absent or unknown is Automatic
     {
         LightMode lightMode = Project::defaultLightMode;
@@ -3570,6 +3605,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (vcsNode["lockScenes"]) vcsSettings.lockScenes = YamlNumbers::as<bool>(vcsNode["lockScenes"]);
         }
         project->setVcsProjectSettings(vcsSettings, false);
+    }
+
+    // S45 R18: the Sprite Atlas mode (enabled when absent)
+    {
+        const std::string mode = node["spriteAtlas"] && node["spriteAtlas"].IsMap() && node["spriteAtlas"]["mode"]
+                                     ? node["spriteAtlas"]["mode"].as<std::string>("enabled") : std::string("enabled");
+        project->setSpriteAtlasMode(mode == "enabled_for_builds" || mode == "disabled" ? mode : "enabled");
     }
 
     // S25: label colours, saved searches of scope project
@@ -4665,6 +4707,13 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["planarReflectionClipOffset"] = scene->getPlanarReflectionClipOffset();
     if (scene->getMaxPlanarReflections() != SceneSettings().maxPlanarReflections)
         sceneNode["maxPlanarReflections"] = scene->getMaxPlanarReflections();
+    // the Water Wakes' map: written only away from its defaults
+    if (scene->getWaterWakeResolution() != SceneSettings().waterWakeResolution)
+        sceneNode["waterWakeResolution"] = StreamSchema::waterWakeResolution().toString(scene->getWaterWakeResolution());
+    if (scene->getWaterWakeArea() != SceneSettings().waterWakeArea)
+        sceneNode["waterWakeArea"] = scene->getWaterWakeArea();
+    if (scene->getWaterWakeFade() != SceneSettings().waterWakeFade)
+        sceneNode["waterWakeFade"] = scene->getWaterWakeFade();
     sceneNode["lightState"] = lightStateToString(scene->getLightState());
     sceneNode["globalIlluminationIntensity"] = scene->getGlobalIlluminationIntensity();
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
@@ -4815,6 +4864,11 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setPlanarReflectionClipOffset(node["planarReflectionClipOffset"] ? decodeFinite(node["planarReflectionClipOffset"], planarDefaults.planarReflectionClipOffset)
                                                                             : planarDefaults.planarReflectionClipOffset);
     scene->setMaxPlanarReflections(node["maxPlanarReflections"] ? YamlNumbers::as<int>(node["maxPlanarReflections"]) : planarDefaults.maxPlanarReflections);
+    // the Water Wakes' map: absent = the defaults
+    scene->setWaterWakeResolution(node["waterWakeResolution"]
+        ? decodeEnum(node, "waterWakeResolution", StreamSchema::waterWakeResolution()) : planarDefaults.waterWakeResolution);
+    scene->setWaterWakeArea(node["waterWakeArea"] ? decodeFinite(node["waterWakeArea"], planarDefaults.waterWakeArea) : planarDefaults.waterWakeArea);
+    scene->setWaterWakeFade(node["waterWakeFade"] ? decodeFinite(node["waterWakeFade"], planarDefaults.waterWakeFade) : planarDefaults.waterWakeFade);
 
     if (node["lightState"]) {
         scene->setLightState(decodeEnum(node, "lightState", StreamSchema::lightState()));

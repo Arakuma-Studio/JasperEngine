@@ -79,7 +79,7 @@ const CommandDef* ShortcutDispatcher::resolveCommand(Chord chord, const Shortcut
         for (ShortcutContext context : commandContexts(def)) {
             if (!contextActive(context, state)) continue;
             // an armed brush outranks the panels (T1 R57, T6 R60): its keys shadow theirs only while armed
-            const int contextRank = context == ShortcutContext::Global ? 2 : (context == ShortcutContext::Editor ? 1 : (context == ShortcutContext::VoxelBrush ? -1 : 0));
+            const int contextRank = context == ShortcutContext::Global ? 2 : (context == ShortcutContext::Editor ? 1 : (context == ShortcutContext::VoxelBrush || context == ShortcutContext::TerrainBrush ? -1 : 0));
             rank = std::min(rank, contextRank);
         }
         if (rank >= bestRank) continue;

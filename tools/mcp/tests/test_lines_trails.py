@@ -631,7 +631,8 @@ async def test_2d_hierarchy_order(ed: Editor):
                    component="trailrenderer")
     cover = find_key(await ed.call("create_entity", type="sprite", name="Cover", position=[200, 250, 0]), "entity_id", "id")
     await ed.call("set_properties", entity=cover, values={"sprite": {"width": 80, "height": 80}})
-    await ed.call("play", action="start", fixed_fps=60)
+    # Lines, saved first, is the start scene play runs by default (scene integrity, 179021ec6)
+    await ed.call("play", action="start", scene=SCENE_2D, fixed_fps=60)
     await ed.call("eval_lua", code="local o = object('Runner'); local s = {}; _G.mover_runner = s; "
                                    "function s:onUpdate() if o.position.x < 300 then "
                                    "o.position = o.position + Vector3(200 * Engine.deltatime, 0, 0) end end; "

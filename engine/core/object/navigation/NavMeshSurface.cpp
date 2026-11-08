@@ -63,6 +63,10 @@ std::string NavMeshSurface::getLastBakeError() const{
     return result ? result->error : std::string();
 }
 
+const NavBakeResult* NavMeshSurface::getLastBakeResult() const{
+    return system()->getLastBakeResult(entity);
+}
+
 int NavMeshSurface::getTileCount() const{ return system()->getSurfaceStatus(entity).tiles; }
 int NavMeshSurface::getPolyCount() const{ return system()->getSurfaceStatus(entity).polys; }
 bool NavMeshSurface::hasNavMesh() const{ return system()->getNavMesh(entity) != nullptr; }

@@ -229,6 +229,10 @@ namespace jasperengine::editor{
         CapsuleShadowCasterComponent,
         // a Mixer Snapshot action of the legacy action timeline (S40 R18)
         AudioSnapshotComponent,
+        WaterExcluderComponent,
+        WaterWakeComponent,
+        // pixel art (S41): integer scaling, Pixels Per Unit and the pixel-snap rule of a camera
+        PixelPerfectCameraComponent,
         // T6: a bounded box of smooth voxel terrain
         VoxelVolumeComponent,
         // T4: a Terrain's tiles past one map, streamed round its focuses
@@ -522,6 +526,7 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
                 if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
                 if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return PlanarReflectionResolution::HALF;
+                if constexpr (std::is_same_v<T, WaterWakeResolution>) return WaterWakeResolution::AUTO;
                 if constexpr (std::is_same_v<T, uint32_t>) return 0xFFFFFFFFu;
                 if constexpr (std::is_same_v<T, LitQuality>) return LitQuality::HIGH;
                 if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
@@ -700,6 +705,15 @@ namespace jasperengine::editor{
             else if (propertyName == "max_planar_reflections") {
                 if constexpr (std::is_same_v<T, int>) return scene->getMaxPlanarReflections();
             }
+            else if (propertyName == "water_wake_resolution") {
+                if constexpr (std::is_same_v<T, WaterWakeResolution>) return scene->getWaterWakeResolution();
+            }
+            else if (propertyName == "water_wake_area") {
+                if constexpr (std::is_same_v<T, float>) return scene->getWaterWakeArea();
+            }
+            else if (propertyName == "water_wake_fade") {
+                if constexpr (std::is_same_v<T, float>) return scene->getWaterWakeFade();
+            }
             else if (propertyName == "ssao_enabled") {
                 if constexpr (std::is_same_v<T, bool>) {
                     return scene->isSSAOEnabled();
@@ -840,6 +854,7 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, PostProcessingSettings>) return PostProcessingSettings();
             if constexpr (std::is_same_v<T, SceneCanvasScaler>) return SceneCanvasScaler();
             if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return PlanarReflectionResolution::HALF;
+            if constexpr (std::is_same_v<T, WaterWakeResolution>) return WaterWakeResolution::AUTO;
             if constexpr (std::is_same_v<T, uint32_t>) return 0xFFFFFFFFu;
             // Add other types as needed
         }
@@ -965,6 +980,15 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "max_planar_reflections") {
                 if constexpr (std::is_same_v<T, int>) return d.maxPlanarReflections;
+            }
+            else if (propertyName == "water_wake_resolution") {
+                if constexpr (std::is_same_v<T, WaterWakeResolution>) return d.waterWakeResolution;
+            }
+            else if (propertyName == "water_wake_area") {
+                if constexpr (std::is_same_v<T, float>) return d.waterWakeArea;
+            }
+            else if (propertyName == "water_wake_fade") {
+                if constexpr (std::is_same_v<T, float>) return d.waterWakeFade;
             }
             else if (propertyName == "ssao_enabled") {
                 if constexpr (std::is_same_v<T, bool>) return d.ssaoEnabled;
@@ -1220,6 +1244,15 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "max_planar_reflections") {
                 if constexpr (std::is_same_v<T, int>) scene->setMaxPlanarReflections(value);
+            }
+            else if (propertyName == "water_wake_resolution") {
+                if constexpr (std::is_same_v<T, WaterWakeResolution>) scene->setWaterWakeResolution(value);
+            }
+            else if (propertyName == "water_wake_area") {
+                if constexpr (std::is_same_v<T, float>) scene->setWaterWakeArea(value);
+            }
+            else if (propertyName == "water_wake_fade") {
+                if constexpr (std::is_same_v<T, float>) scene->setWaterWakeFade(value);
             }
             else if (propertyName == "ssao_enabled") {
                 if constexpr (std::is_same_v<T, bool>) {

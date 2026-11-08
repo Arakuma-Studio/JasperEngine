@@ -3,6 +3,8 @@
 
 #include "TerrainStrokeSession.h"
 
+#include "json.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -69,6 +71,12 @@ editor::TerrainStrokeSession::TerrainStrokeSession(TerrainMapStore& base, MapId 
 
 void editor::TerrainStrokeSession::buildOp(){
     op.type = opTypeOfMode(brush.mode);
+    // R56: Raise's alternate lifts what is below the picked height to it, Lower's (Ctrl) flattens what is above
+    if (brush.alternate && (brush.mode == TerrainBrushMode::Raise || brush.mode == TerrainBrushMode::Lower)){
+        op.type = brush.mode == TerrainBrushMode::Raise ? OpType::LiftFloors : OpType::FlattenPeaks;
+        op.height = std::clamp(brush.flattenTarget, 0.0f, 1.0f) * maxHeight;
+    }
+    op.smoothBlend = brush.alternate && brush.mode == TerrainBrushMode::PaintLayer;
     // The heights run in map units through terrain-local ops: maxHeight comes in here and goes out in
     // the kernel, which is one rounding away from the map units a brush always wrote
     switch (brush.mode){
@@ -104,7 +112,8 @@ void editor::TerrainStrokeSession::buildOp(){
     if (map.kind == MapKind::Blend || brush.filterAllMaps){
         op.filter.slope = brush.slope;
         op.filter.height = brush.height;
-        op.filter.invert = brush.invertFilter && (brush.slope || brush.height);
+        op.filter.invertSlope = brush.invertSlope;
+        op.filter.invertHeight = brush.invertHeight;
     }
 
     Shape& shape = op.shape;
@@ -313,4 +322,34 @@ float editor::TerrainStrokeSession::heightBefore(float x, float z) const{
     const float lower = at(x0, y0) + (at(x1, y0) - at(x0, y0)) * blendX;
     const float upper = at(x0, y1) + (at(x1, y1) - at(x0, y1)) * blendX;
     return lower + (upper - lower) * blendY;
+}
+
+std::string editor::TerrainStrokeSession::replayCall(const std::vector<StrokeSample>& samples) const{
+    const float texel = format.bounds.w > 0 ? terrainSize / static_cast<float>(format.bounds.w) : 0.0f;
+    if (samples.empty() || brush.maskWidth > 0 || brush.shape != TerrainBrushShape::Circle || brush.alternate || brush.slope || brush.height ||
+        radius < texel){
+        return std::string();
+    }
+    nlohmann::json op;
+    switch (brush.mode){
+        case TerrainBrushMode::Raise: op = {{"op", "raise"}, {"delta", maxHeight}}; break;
+        case TerrainBrushMode::Lower: op = {{"op", "lower"}, {"delta", maxHeight}}; break;
+        case TerrainBrushMode::Flatten: op = {{"op", "set_height"}, {"height", std::clamp(brush.flattenTarget, 0.0f, 1.0f) * maxHeight}}; break;
+        case TerrainBrushMode::Smooth: op = {{"op", "smooth"}}; break;
+        case TerrainBrushMode::PaintLayer: op = {{"op", "paint_layer"}, {"layer", brush.textureLayer}, {"normalize", brush.normalizeBlend}}; break;
+        case TerrainBrushMode::PaintBase: op = {{"op", "paint_base"}}; break;
+        default: return std::string();
+    }
+    nlohmann::json points = nlohmann::json::array();
+    nlohmann::json times = nlohmann::json::array();
+    for (const StrokeSample& sample : samples){
+        points.push_back({sample.x, sample.z});
+        times.push_back(sample.time);
+    }
+    const char* falloff = brush.falloff == TerrainBrushFalloff::Smooth ? "smooth" : (brush.falloff == TerrainBrushFalloff::Linear ? "linear" : "constant");
+    op["strength"] = brush.strength;
+    // the session's own spacing: the op's default measures a texel by the lattice, the session by the map's width
+    op["shape"] = {{"type", "stroke"}, {"points", points}, {"times", times}, {"radius", radius}, {"falloff", falloff}, {"feather", 1.0f},
+                   {"spacing", StrokeResampler::defaultSpacing(radius, texel)}};
+    return nlohmann::json{{"space", "local"}, {"ops", nlohmann::json::array({op})}}.dump();
 }

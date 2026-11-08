@@ -200,3 +200,35 @@ TEST(TerrainRuntimeEdit, UploadsArePacedAndTheLastGoes) {
     EXPECT_FALSE(terrain.editState->uploads[0].waiting);
     EXPECT_EQ(terrain.editState->uploads[0].lastFrame, 10u);
 }
+
+// AC65 (R46): what a device cannot upload in one go is refused for runtime edits, with the reason
+TEST(TerrainRuntimeEdit, TooLargeForRuntimeIsRefused) {
+    EXPECT_EQ(terrainRuntimeEditRefusalFor(2049, 2049, true, false, 4, 16 << 20), "") << "2049 is the mobile and web limit";
+    EXPECT_NE(terrainRuntimeEditRefusalFor(4097, 4097, true, false, 4, 16 << 20).find("over 2049"), std::string::npos);
+    EXPECT_EQ(terrainRuntimeEditRefusalFor(4097, 4097, false, false, 2, 1 << 20), "") << "desktop GL has no staging budget";
+    EXPECT_EQ(terrainRuntimeEditRefusalFor(1025, 1025, false, true, 2, 48 << 20), "");
+    EXPECT_NE(terrainRuntimeEditRefusalFor(1025, 1025, false, true, 2, 1 << 20).find("stream staging"), std::string::npos)
+        << "a small streamStagingBytes refuses on Vulkan";
+}
+
+// R45: a GLES3 or WebGL2 upload converts only the rectangle that changed into the float copy
+TEST(TerrainRuntimeEdit, HeightRowsConvertToFloats) {
+    std::vector<uint16_t> heights(16, 0);
+    heights[5] = 65535;
+    heights[6] = 32768;
+    std::vector<uint8_t> shadow(16 * 4, 0xAB);
+    convertTerrainHeightRect(heights.data(), 4, terrain::TexelRect{1, 1, 2, 1}, TerrainUploadFormat::Float32, shadow.data());
+    float value = 0.0f;
+    std::memcpy(&value, shadow.data() + 5 * 4, 4);
+    EXPECT_FLOAT_EQ(value, 1.0f);
+    std::memcpy(&value, shadow.data() + 6 * 4, 4);
+    EXPECT_NEAR(value, 0.5f, 1e-4f);
+    EXPECT_EQ(shadow[0], 0xAB) << "texels outside the rectangle keep what they had";
+    EXPECT_EQ(shadow[7 * 4], 0xAB);
+
+    std::vector<uint8_t> halves(16 * 2, 0);
+    convertTerrainHeightRect(heights.data(), 4, terrain::TexelRect{0, 0, 4, 4}, TerrainUploadFormat::Half, halves.data());
+    uint16_t half = 0;
+    std::memcpy(&half, halves.data() + 5 * 2, 2);
+    EXPECT_EQ(half, 0x3C00) << "1.0 as an IEEE half";
+}

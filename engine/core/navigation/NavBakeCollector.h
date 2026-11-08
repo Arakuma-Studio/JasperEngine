@@ -17,6 +17,7 @@
 #include "Export.h"
 #include "ecs/Entity.h"
 #include "navigation/NavBakeInput.h"
+#include "navigation/NavDiagnostics.h"
 #include "navigation/NavFrame.h"
 
 #include <memory>
@@ -25,6 +26,7 @@
 
 namespace jasperengine {
 
+    class AABB;
     class Scene;
     struct NavMeshSurfaceComponent;
 
@@ -49,6 +51,9 @@ namespace jasperengine::nav {
         // retried until every one is in (the collect fails meanwhile)
         int pendingTiles = 0;
         std::vector<std::string> warnings;
+        // S75, with NavCollectOptions::recordSources only: each GameObject left out and why
+        // ("layer", "inactive", "moving body", "agent", "obstacle", "exclude modifier")
+        std::vector<std::pair<Entity, std::string>> excludedEntities;
     };
 
     // the largest tile a web player bakes at runtime (NavBakeCollector::configOf)
@@ -56,10 +61,12 @@ namespace jasperengine::nav {
 
     class JASPERENGINE_API NavBakeCollector {
     public:
-        // The input of the surface's bake, null (with *error) when the surface cannot be baked.
+        // The input of the surface's bake, null (with *error, and *code) when the surface cannot be
+        // baked (NoSurface, NothingCollected, TooLarge; None while a Terrain World's tiles load).
         // world: what the surface keeps of its Terrain Worlds between collections (tiles held while
         // others load, its Follow region); null for a one-off collection.
         static std::shared_ptr<NavBakeInput> collect(Scene* scene, Entity surface, std::string& error, NavCollectStats* stats = nullptr,
+                                                     const NavCollectOptions& options = {}, NavBakeError* code = nullptr,
                                                      NavWorldContext* world = nullptr);
 
         // The surface's nav space now (its world position and rotation, its plane)
@@ -74,6 +81,20 @@ namespace jasperengine::nav {
         // connections); costAreas maps cost overrides to link cost areas (null: area costs)
         static void linkConnections(Scene* scene, Entity link, const NavFrame& frame, float agentRadius,
                                     std::vector<float>* costAreas, std::vector<NavLinkInput>& out);
+
+        // A box (center and size in the space worldOf maps to the world) as the frame's nav-space
+        // prism: the hull of its corners' footprint and their height range (unbounded on a 2D
+        // surface), with its bounds. False when it has no footprint. (Modifier volumes, S76's
+        // runtime volumes)
+        static bool boxVolume(const NavFrame& frame, const Matrix4& worldOf, const Vector3& center, const Vector3& size, NavConvexVolume& out);
+
+        // The GameObject whose NavMesh Modifier sets the entity's area: itself or the nearest
+        // ancestor applying to it (Override Area, Apply To Children), NULL_ENTITY for none (the
+        // editor's walkability probe names it)
+        static Entity areaModifierOf(Scene* scene, Entity entity);
+        // The entity's mesh box in the world, from its own transform (the render's world box is
+        // missing in a headless editor); false without a finite mesh box
+        static bool meshWorldBounds(Scene* scene, Entity entity, AABB& out);
     };
 
 }

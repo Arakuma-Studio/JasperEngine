@@ -54,6 +54,8 @@
 #include "component/SpriteComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
+#include "pixelart/aseprite/AsepriteSpriteSetup.h"
+#include "sprite/SpriteSheetPool.h"
 #include "spline/SplineEditor.h"
 #include "util/EditorScripts.h"
 #include "shortcuts/CommandCatalog.h"
@@ -97,6 +99,7 @@
 #include "vat/VatSceneActions.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/CapsuleShadowCasterComponent.h"
+#include "component/TerrainComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "command/type/ImportPrefabCmd.h"
 #include "command/type/RemoveEntityFromPrefabCmd.h"
@@ -1358,6 +1361,10 @@ void editor::HierarchyWindow::moveDraggedEntitiesToRootLevel(const std::vector<E
 bool editor::HierarchyWindow::acceptsModelDrop(const std::string& filePath) const {
     // As in the Scene window: a model file of the assets makes a Model GameObject of a 3D scene
     const SceneProject* sceneProject = project->getSelectedScene();
+    if (SpriteSheetPool::isAsepritePath(filePath)) {
+        // an .aseprite file (S44 R33): an animated Sprite in any scene
+        return sceneProject && sceneProject->playState == ScenePlayState::STOPPED;
+    }
     return (Util::isModelFile(filePath) || Util::isVertexAnimationFile(filePath)) && sceneProject &&
         sceneProject->sceneType == SceneType::SCENE_3D && sceneProject->playState == ScenePlayState::STOPPED;
 }
@@ -1376,6 +1383,17 @@ void editor::HierarchyWindow::handleEntityFilesDrop(const std::vector<std::strin
             if (createVatObject(project, project->getSelectedSceneId(), filePath, Vector3(0, 0, 0), parent, &error) == NULL_ENTITY) {
                 Out::error("%s", error.c_str());
             }
+            continue;
+        }
+
+        if (SpriteSheetPool::isAsepritePath(filePath) && acceptsModelDrop(filePath)) {
+            if (!project->isInsideAssetsPath(path)) {
+                Backend::getApp().registerOutsideAssetsAlert(filePath);
+                continue;
+            }
+            // onto a Sprite: its sheet; onto an Animation Player: its clips; else a child Sprite
+            pixelart::aseprite::dropAseprite(project, project->getSelectedSceneId(), project->normalizeToAssetsRelative(path).generic_string(),
+                                             parent, parent, Vector3(0, 0, 0));
             continue;
         }
 

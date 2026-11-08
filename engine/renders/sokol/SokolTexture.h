@@ -24,6 +24,11 @@ namespace jasperengine{
         std::shared_ptr<void> sharedSampler;
         size_t streamBytes;   // RGBA8/R8 dynamic textures: the size every update must have (0 = not checked)
         bool aliasImage = false;   // the image is another texture's (createAliasView): never destroyed here
+        // a terrain map's stream image (createDynamicMapTexture): what updateTexture takes
+        bool dynamicMap = false;
+        ColorFormat uploadFormat = ColorFormat::RGBA;
+        // sokol takes one update of a stream image a frame (two terrains may share one map)
+        uint64_t lastMapUpdateFrame = UINT64_MAX;
 
         sg_image_type getTextureType(TextureType textureType);
         sg_filter getFilter(TextureFilter textureFilter);
@@ -99,7 +104,7 @@ namespace jasperengine{
 
         bool createDynamicTexture(const std::string& label, int width, int height);
         bool createDynamicTexture(const std::string& label, int width, int height,
-                    ColorFormat colorFormat, TextureFilter filter);
+                    ColorFormat colorFormat, TextureFilter filter, TextureWrap wrap = TextureWrap::CLAMP_TO_EDGE);
         // a second view of source's image with a nearest, non-comparison sampler: the raw
         // depths of a shadow atlas (sampled as unfilterable_float). It does not own the image,
         // which must outlive it.
@@ -110,6 +115,13 @@ namespace jasperengine{
         // RGBA8, linear filtering, clamped, rewritten whole by updateTexture at most once a frame
         // (the post-processing colour LUTs)
         bool createDynamicColorTexture(const std::string& label, int width, int height);
+        // T1 DC9: a terrain map edited while it is drawn, rewritten whole by updateTexture at most
+        // once a frame. RED16 heights are R16 where the device filters it, else R32F where that
+        // filters, else R16F; RED is R8, RGBA is RGBA8. Linear, clamped, no mipmaps. Each update
+        // takes width * height texels of getUploadFormat() (RED16, R32F, R16F, RED or RGBA)
+        bool createDynamicMapTexture(const std::string& label, int width, int height, ColorFormat colorFormat);
+        bool isDynamicMap() const { return dynamicMap; }
+        ColorFormat getUploadFormat() const { return uploadFormat; }
         bool updateTexture(const void* data, size_t size);
 
         void destroyTexture();

@@ -62,6 +62,23 @@ namespace {
     // Engine.targetFrameRate: animation frames that are not due draw nothing
     jasperengine::FrameLimiter frameLimiter;
 
+    // S41 R16: while a Pixel Perfect Camera or an integer Scaling draws, the canvas backing store
+    // is its CSS size times devicePixelRatio and the browser never resamples it (pixelated): the
+    // integer scale is over physical pixels. Input arrives in CSS pixels and is scaled by it.
+    double webCanvasPixelRatio = 1.0;
+    bool webCanvasPixelated = false;
+    // a canvas the page does not size (its CSS size follows its width and height attributes, as
+    // the player's shell has it) gets its CSS size pinned while the backing store is larger:
+    // otherwise every frame would grow it by the ratio again
+    bool webCanvasCssPinned = false;
+    double webCanvasPinnedWidth = 0.0, webCanvasPinnedHeight = 0.0;
+
+    bool pixelArtView(){
+        const jasperengine::Scaling scaling = jasperengine::Engine::getScalingMode();
+        return jasperengine::Engine::getPixelPerfectView().active || scaling == jasperengine::Scaling::INTEGER ||
+               scaling == jasperengine::Scaling::INTEGER_EXPAND;
+    }
+
     // a string a JavaScript snippet made with _malloc (null: none)
     std::string takeJsString(char* value){
         if (!value) return std::string();
@@ -925,10 +942,38 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
     // Scaling mode (including intentional stretching) to this actual size.
     double cssWidth = 0, cssHeight = 0;
     if (emscripten_get_element_css_size(canvas.c_str(), &cssWidth, &cssHeight) == EMSCRIPTEN_RESULT_SUCCESS) {
-        const int width = (int)round(cssWidth);
-        const int height = (int)round(cssHeight);
-        if (width > 0 && height > 0 && (width != screenWidth || height != screenHeight)) {
-            changeCanvasSize(width, height);
+        // pixel art: physical pixels (S41 R16)
+        const bool pixelated = pixelArtView();
+        const double ratio = pixelated ? std::max(1.0, emscripten_get_device_pixel_ratio()) : 1.0;
+        if (pixelated != webCanvasPixelated) {
+            webCanvasPixelated = pixelated;
+            EM_ASM({
+                var element = document.querySelector(UTF8ToString($0));
+                if (element) element.style.imageRendering = $1 ? "pixelated" : "";
+            }, canvas.c_str(), pixelated ? 1 : 0);
+            if (pixelated && (int)round(cssWidth) == screenWidth && (int)round(cssHeight) == screenHeight) {
+                emscripten_set_element_css_size(canvas.c_str(), cssWidth, cssHeight);
+                webCanvasCssPinned = true;
+                webCanvasPinnedWidth = cssWidth;
+                webCanvasPinnedHeight = cssHeight;
+            } else if (!pixelated && webCanvasCssPinned) {
+                // back to a backing store of the CSS size, then the attributes size it again
+                webCanvasCssPinned = false;
+                changeCanvasSize((int)round(webCanvasPinnedWidth), (int)round(webCanvasPinnedHeight));
+                EM_ASM({
+                    var element = document.querySelector(UTF8ToString($0));
+                    if (element) { element.style.width = ""; element.style.height = ""; }
+                }, canvas.c_str());
+                cssWidth = webCanvasPinnedWidth;
+                cssHeight = webCanvasPinnedHeight;
+            }
+        }
+        const int width = (int)round(cssWidth * ratio);
+        const int height = (int)round(cssHeight * ratio);
+        if (width > 0 && height > 0) {
+            webCanvasPixelRatio = cssWidth > 0 ? (double)width / cssWidth : 1.0;
+            if (width != screenWidth || height != screenHeight)
+                changeCanvasSize(width, height);
         }
     }
 
@@ -1094,16 +1139,20 @@ EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEven
     bool mouseLocked = pointerLockStatus.isActive;
 
     if (!mouseLocked){
-        if (e->targetX < 0) return 0;
-        if (e->targetY < 0) return 0;
-        if (e->targetX > width) return 0;
-        if (e->targetY > height) return 0;
+        // CSS pixels to the backing store's (1 unless pixel art sizes it by the device ratio)
+        const double targetX = e->targetX * webCanvasPixelRatio;
+        const double targetY = e->targetY * webCanvasPixelRatio;
+        if (targetX < 0) return 0;
+        if (targetY < 0) return 0;
+        if (targetX > width) return 0;
+        if (targetY > height) return 0;
 
-        mousePosX = e->targetX;
-        mousePosY = e->targetY;
+        mousePosX = targetX;
+        mousePosY = targetY;
     }else{
-        mousePosX += e->movementX;
-        mousePosY += e->movementY;
+        // movement comes in CSS pixels too (S41 R16)
+        mousePosX += e->movementX * webCanvasPixelRatio;
+        mousePosY += e->movementY * webCanvasPixelRatio;
     }
 
     int modifiers = 0;
@@ -1176,21 +1225,21 @@ EM_BOOL JasperEngineWeb::touch_callback(int emsc_type, const EmscriptenTouchEven
             for (int i = 0; i < emsc_event->numTouches; i++) {
                 const EmscriptenTouchPoint* src = &emsc_event->touches[i];
                 if (!src->isChanged) continue;
-                jasperengine::Engine::systemTouchStart((int)src->identifier, src->targetX, src->targetY);
+                jasperengine::Engine::systemTouchStart((int)src->identifier, src->targetX * webCanvasPixelRatio, src->targetY * webCanvasPixelRatio);
             }
             break;
         case EMSCRIPTEN_EVENT_TOUCHMOVE:
             for (int i = 0; i < emsc_event->numTouches; i++) {
                 const EmscriptenTouchPoint* src = &emsc_event->touches[i];
                 if (!src->isChanged) continue;
-                jasperengine::Engine::systemTouchMove((int)src->identifier, src->targetX, src->targetY);
+                jasperengine::Engine::systemTouchMove((int)src->identifier, src->targetX * webCanvasPixelRatio, src->targetY * webCanvasPixelRatio);
             }
             break;
         case EMSCRIPTEN_EVENT_TOUCHEND:
             for (int i = 0; i < emsc_event->numTouches; i++) {
                 const EmscriptenTouchPoint* src = &emsc_event->touches[i];
                 if (!src->isChanged) continue;
-                jasperengine::Engine::systemTouchEnd((int)src->identifier, src->targetX, src->targetY);
+                jasperengine::Engine::systemTouchEnd((int)src->identifier, src->targetX * webCanvasPixelRatio, src->targetY * webCanvasPixelRatio);
             }
             // touchend is a user activation, touchstart is not: the mobile keyboard opens
             // only for a focus made here

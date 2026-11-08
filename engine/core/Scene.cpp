@@ -44,6 +44,7 @@
 #if JASPERENGINE_VOXEL
 #include "subsystem/VoxelSystem.h"
 #endif
+#include "subsystem/WaterInteractionSystem.h"
 #include "util/Color.h"
 
 #include <algorithm>
@@ -96,6 +97,9 @@ void Scene::init(){
     registerSystem<RenderSystem>();
     // after Render, whose update makes this frame's world transforms (the trails' heads)
     registerSystem<TrailSystem>();
+    // after Render too (this frame's world transforms): the Water Excluders the water draws test and
+    // the Water Wakes' map it uploads
+    registerSystem<WaterInteractionSystem>();
     // before physics: agents set their bodies' velocities before the world steps (S19 D2)
     registerSystem<NavigationSystem>();
     registerSystem<PhysicsSystem>();
@@ -356,6 +360,30 @@ void Scene::setMaxPlanarReflections(int count){
 
 int Scene::getMaxPlanarReflections() const{
     return settings.maxPlanarReflections;
+}
+
+void Scene::setWaterWakeResolution(WaterWakeResolution resolution){
+    settings.waterWakeResolution = resolution;
+}
+
+WaterWakeResolution Scene::getWaterWakeResolution() const{
+    return settings.waterWakeResolution;
+}
+
+void Scene::setWaterWakeArea(float area){
+    settings.waterWakeArea = std::isfinite(area) ? std::clamp(area, 8.0f, 1024.0f) : SceneSettings().waterWakeArea;
+}
+
+float Scene::getWaterWakeArea() const{
+    return settings.waterWakeArea;
+}
+
+void Scene::setWaterWakeFade(float fade){
+    settings.waterWakeFade = std::isfinite(fade) ? std::clamp(fade, 0.1f, 120.0f) : SceneSettings().waterWakeFade;
+}
+
+float Scene::getWaterWakeFade() const{
+    return settings.waterWakeFade;
 }
 
 double Scene::getSceneTime() const{

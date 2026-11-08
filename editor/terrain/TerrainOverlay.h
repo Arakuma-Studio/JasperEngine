@@ -92,6 +92,11 @@ namespace jasperengine::editor {
         static bool bake(Scene* scene, Entity entity, const TerrainOverlaySettings& settings, int width, int height,
                          std::vector<uint8_t>& rgba, std::vector<TerrainOverlayLegendStop>& legend, std::string& error);
 
+        // T1 R67: maps to bake from instead of the terrain's own (Paint by Rules' Preview), until cleared
+        static void setPreview(Scene* scene, Entity entity, std::shared_ptr<const terrain::TerrainMapStore> store);
+        static void clearPreview(Scene* scene, Entity entity);
+        static bool hasPreview(Scene* scene, Entity entity);
+
         explicit TerrainOverlay(Scene* scene);
         ~TerrainOverlay();
 
@@ -123,6 +128,7 @@ namespace jasperengine::editor {
         double lastBake = -1.0;
         // T4 R42: a World's LOD Level that render has not recorded a cut for yet: the next frame bakes again
         bool worldPending = false;
+        uint64_t previewsBaked = 0;
         Subscription edits;
 
         void refresh(Entity entity, Sheet& sheet, const TerrainOverlaySettings& settings);

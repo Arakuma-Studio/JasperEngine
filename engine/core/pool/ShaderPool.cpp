@@ -653,14 +653,38 @@ uint64_t ShaderPool::getLightingProperty(ShaderPool::LightingFeature feature){
     return 0;
 }
 
+uint64_t ShaderPool::getDirectionalOnlyProperty(){
+    return shaderPropertyBit(44);
+}
+
 // MESH's 'Lfd': the LOD cross-fade's dither (includes/lod_fade.glsl, spec S54 R6), only in the variant
 // fading draws use
 uint64_t ShaderPool::getLodFadeProperty(){
     return shaderPropertyBit(40);
 }
 
+uint64_t ShaderPool::getWaterExclusionProperty(){
+    return shaderPropertyBit(42);
+}
+
+uint64_t ShaderPool::getWaterWakeProperty(){
+    return shaderPropertyBit(43);
+}
+
 uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
     return getVatProperty(shaderType, false) | getVatProperty(shaderType, true);
+}
+
+// The pixel-snapped vertex stages (S41, includes/pixel_snap.glsl): 'Pxs' after each type's last
+// bit; set for the drawables of a scene whose camera has a Pixel Perfect Camera snapping
+uint64_t ShaderPool::getPixelSnapProperty(ShaderType shaderType){
+    switch (shaderType) {
+        case ShaderType::MESH:      return shaderPropertyBit(45);
+        case ShaderType::DEPTH:     return shaderPropertyBit(19);
+        case ShaderType::UI:        return shaderPropertyBit(5);
+        case ShaderType::PARTICLES: return shaderPropertyBit(11);
+        default:                    return 0;
+    }
 }
 
 uint64_t ShaderPool::getGBufferVoxelProperty(){
@@ -669,8 +693,8 @@ uint64_t ShaderPool::getGBufferVoxelProperty(){
 
 uint64_t ShaderPool::getTerrainWorldProperty(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:    return shaderPropertyBit(46);
-        case ShaderType::DEPTH:   return shaderPropertyBit(23);
+        case ShaderType::MESH:    return shaderPropertyBit(50);
+        case ShaderType::DEPTH:   return shaderPropertyBit(24);
         case ShaderType::GBUFFER: return shaderPropertyBit(27);
         default:                  return 0;
     }
@@ -678,8 +702,8 @@ uint64_t ShaderPool::getTerrainWorldProperty(ShaderType shaderType){
 
 uint64_t ShaderPool::getTerrainHolesProperty(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:    return shaderPropertyBit(45);
-        case ShaderType::DEPTH:   return shaderPropertyBit(22);
+        case ShaderType::MESH:    return shaderPropertyBit(49);
+        case ShaderType::DEPTH:   return shaderPropertyBit(23);
         case ShaderType::GBUFFER: return shaderPropertyBit(22);
         default:                  return 0;
     }
@@ -712,10 +736,10 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 47;
-        case ShaderType::DEPTH:  return 24;
+        case ShaderType::MESH:   return 51;
+        case ShaderType::DEPTH:  return 25;
         case ShaderType::GBUFFER: return 28;
-        case ShaderType::UI:     return 5;
+        case ShaderType::UI:     return 6;
         case ShaderType::POINTS: return 5;
         // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
         case ShaderType::LINES:  return 6;
@@ -726,7 +750,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::SSR_BLUR: return 0;
         case ShaderType::COMPOSITE: return 0;
         case ShaderType::SHADOW2D: return 0;
-        case ShaderType::BLIT:   return 18;
+        case ShaderType::BLIT:   return 19;
         case ShaderType::BLOOM:  return 4;
         case ShaderType::HTMLUI: return 1;
         case ShaderType::HTMLUI_GRADIENT: return 0;
@@ -740,7 +764,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         // the source's texture type: 2D (none), array, cube or 3D
         case ShaderType::PASS_PREVIEW: return 3;
         // ShaderPool::getParticlesProperties
-        case ShaderType::PARTICLES: return 11;
+        case ShaderType::PARTICLES: return 12;
         case ShaderType::HTMLUI_PRIM: return 0;
         // 'Oir': the OIT resolve, else the contact shadows' mask
         case ShaderType::LIGHTING_PASS: return 1;
@@ -812,14 +836,23 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // automatic GPU instancing (HAS_AUTO_INSTANCING, includes/object_params.glsl, S55):
             // the object block per instance (getAutoInstancingProperty)
             case 41: return shortName ? "Aui" : "Auto Instancing";
+            // what keeps water out and the wakes on it (includes/water_interaction.glsl): a
+            // shader requiring waterexclusion / waterwake in a scene with Water Excluders / Wakes
+            case 42: return shortName ? "Wex" : "Water Exclusion";
+            case 43: return shortName ? "Wwk" : "Water Wake";
+            // every light of the scene directional (getDirectionalOnlyProperty): the built-in Lit
+            // without the point and spot paths and their resources
+            case 44: return shortName ? "Dlo" : "Directional Lights Only";
+            // the pixel-snap rule on the vertices (S41, PIXEL_SNAP: includes/pixel_snap.glsl)
+            case 45: return shortName ? "Pxs" : "Pixel Snap";
             // foliage (T5 F3, F6, F8): the 32-byte instance, the wind block, the fade by dither
-            case 42: return shortName ? "Cin" : "Compact Instance";
-            case 43: return shortName ? "Wnd" : "Foliage Wind";
-            case 44: return shortName ? "Dth" : "Foliage Dither";
+            case 46: return shortName ? "Cin" : "Compact Instance";
+            case 47: return shortName ? "Wnd" : "Foliage Wind";
+            case 48: return shortName ? "Dth" : "Foliage Dither";
             // T3 R20: a terrain with a hole map (TERRAIN_HOLES, includes/terrain_holes_fs.glsl)
-            case 45: return shortName ? "Thl" : "Terrain Holes";
+            case 49: return shortName ? "Thl" : "Terrain Holes";
             // T4 R58: a Terrain World's pages and overview (HAS_TERRAIN_WORLD, includes/terrain_world_vs.glsl)
-            case 46: return shortName ? "Twd" : "Terrain World";
+            case 50: return shortName ? "Twd" : "Terrain World";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -848,11 +881,13 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 17: return shortName ? "Vab" : "Vertex Animation Bones";
             // automatic GPU instancing (includes/object_depth_params.glsl, S55)
             case 18: return shortName ? "Aui" : "Auto Instancing";
-            case 19: return shortName ? "Cin" : "Compact Instance";
-            case 20: return shortName ? "Wnd" : "Foliage Wind";
-            case 21: return shortName ? "Dth" : "Foliage Dither";
-            case 22: return shortName ? "Thl" : "Terrain Holes"; // T3 R20
-            case 23: return shortName ? "Twd" : "Terrain World"; // T4 R58
+            // as MESH 42: the depth program snaps as its colour pass does (S41)
+            case 19: return shortName ? "Pxs" : "Pixel Snap";
+            case 20: return shortName ? "Cin" : "Compact Instance";
+            case 21: return shortName ? "Wnd" : "Foliage Wind";
+            case 22: return shortName ? "Dth" : "Foliage Dither";
+            case 23: return shortName ? "Thl" : "Terrain Holes"; // T3 R20
+            case 24: return shortName ? "Twd" : "Terrain World"; // T4 R58
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -901,6 +936,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 3: return shortName ? "Vc4" : "Vertex Color 4";
             // a Text with outline or shadow: signed-distance glyphs
             case 4: return shortName ? "Sdf" : "Font SDF";
+            // images, nine-slices and text of a pixel-perfect camera (S41)
+            case 5: return shortName ? "Pxs" : "Pixel Snap";
         }
     } else if (shaderType == ShaderType::HTMLUI) {
         switch (bit) {
@@ -959,6 +996,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 8: return shortName ? "Rsh" : "Receive Shadows";
             case 9: return "Fog";
             case 10: return shortName ? "Pcl" : "Post Color";
+            // centres (and 90-degree quads' corners) on the pixel grid (S41)
+            case 11: return shortName ? "Pxs" : "Pixel Snap";
         }
     } else if (shaderType == ShaderType::LINES) {
         switch (bit) {
@@ -994,6 +1033,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 15: return shortName ? "Fdm" : "Film Damage";
             case 16: return shortName ? "Gln" : "Film Grain Lens";
             case 17: return shortName ? "Gfm" : "Film Grain Filmic";
+            // the Pixel Perfect Camera's Stretch Fill (S41 R11, UBER_SHARP_BILINEAR)
+            case 18: return shortName ? "Psb" : "Pixel Sharp Bilinear";
         }
     } else if (shaderType == ShaderType::BLOOM) {
         // the pass of the bloom and blur chain (bloom.frag); 0 is the dual-filter downsample
@@ -1238,7 +1279,11 @@ std::vector<uint64_t> ShaderPool::getFallbackProperties(ShaderType shaderType, u
     // block (Puc, Vtl, Lc4, L16), the u_fs_pbrParams layout (Ult, Ams, Sto), the output
     // encoding and litFrame prefix of the post colour (Pcl), nor the geometry (Ski, Mta,
     // Ter, Ist, Txr...).
-    static const int meshBits[] = {21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
+    // ('Wwk' and 'Wex' first: their block and textures are theirs alone, the water draws without
+    // wakes or holes; then 'Dlo': the general variant draws a directional-only scene the same, with
+    // the point and spot resources it binds by reflection. 'Dlo' is the built-in Lit's, the water
+    // bits a manifest shader's: never in one variant)
+    static const int meshBits[] = {43, 42, 44, 21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Wwk Wex Dlo Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
     static const int depthBits[] = {7, 0};                               // Ams Tex
     static const int gbufferBits[] = {16, 17, 8, 0};                     // Occ Uv2 Mrt Bct
 
@@ -1875,9 +1920,10 @@ uint64_t ShaderPool::getMeshProperties(
 }
 
 uint64_t ShaderPool::getFoliageProperties(ShaderType shaderType, bool compact, bool wind, bool dither){
-    // appended after each type's last bit: MESH 42-44, DEPTH and GBUFFER 19-21
-    int first = 42;
-    if (shaderType == ShaderType::DEPTH || shaderType == ShaderType::GBUFFER) first = 19;
+    // appended after each type's last bit: MESH 46-48, DEPTH 20-22, GBUFFER 19-21
+    int first = 46;
+    if (shaderType == ShaderType::DEPTH) first = 20;
+    if (shaderType == ShaderType::GBUFFER) first = 19;
     uint64_t prop = 0;
     prop |= compact ? shaderPropertyBit(first) : 0;
     prop |= wind    ? shaderPropertyBit(first + 1) : 0;

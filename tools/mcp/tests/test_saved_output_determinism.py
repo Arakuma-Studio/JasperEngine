@@ -147,7 +147,7 @@ async def test_sprite_frames_generate_as_authored(ed: Editor):
     path = ed.project / rel
     sid = (await ed.call("create_scene", name="Frames", type="2D", path=rel))["scene"]["id"]
     await ed.call("set_sprite_frames", scene=sid, create={"name": "Hero"}, texture=SHEET,
-                  frames=[{"name": "red", "rect": [0, 0, 32, 32]}, {"name": "green", "rect": [32, 0, 32, 32]}], frame=1)
+                  frames=[{"name": "red", "rect": [0, 0, 32, 32]}, {"name": "green", "rect": [32, 0, 32, 32]}], frame=1, inline=True)
     await draw_with_assets(ed, sid)
     await ed.call("save_scene", scene=sid)
     drawn, drawn_code = path.read_bytes(), scene_source(ed.project, "Frames")
@@ -178,13 +178,13 @@ async def test_a_save_while_the_texture_loads_generates_the_same(ed: Editor):
     rel = "Held.scene"
     path = ed.project / rel
     sid = (await ed.call("create_scene", name="Held", type="2D", path=rel))["scene"]["id"]
-    await ed.call("set_sprite_frames", scene=sid, create={"name": "Hero"}, texture=SHEET, frames=[{"rect": [32, 0, 32, 32]}], frame=0)
+    await ed.call("set_sprite_frames", scene=sid, create={"name": "Hero"}, texture=SHEET, frames=[{"rect": [32, 0, 32, 32]}], frame=0, inline=True)
     await draw_with_assets(ed, sid)
     await ed.call("save_scene", scene=sid)
     loaded, loaded_code = path.read_bytes(), scene_source(ed.project, "Held")
     await ed.call("save_project")
     project_copy = ed.scratch.root / "held-project"
-    shutil.copytree(ed.project, project_copy, ignore=shutil.ignore_patterns("editor.lock"))
+    shutil.copytree(ed.project, project_copy, ignore=shutil.ignore_patterns("editor.lock", "*.je-tmp"))
 
     async with Editor(project=str(project_copy), label="held-texture", env={TEXTURE_DELAY_ENV: "12000"}) as held:
         await held.call("create_scene", name="Holder", type="2D")

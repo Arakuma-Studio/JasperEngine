@@ -10,6 +10,7 @@
 #include <algorithm>
 
 #include "Stream.h"
+#include "component/TerrainComponent.h"
 #include "util/TerrainDetailRules.h"
 
 #include <yaml-cpp/yaml.h>

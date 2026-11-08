@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ShaderVariantCollector.h"
+#include "component/CameraComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 
 #include "Engine.h"
@@ -11,6 +12,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/TextEffectComponent.h"
 #include "component/TextComponent.h"
 #include "component/FogComponent.h"
@@ -30,6 +32,8 @@
 #include "component/ReflectionProbeComponent.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "component/CapsuleShadowCasterComponent.h"
+#include "component/WaterExcluderComponent.h"
+#include "component/WaterWakeComponent.h"
 #include "component/CameraComponent.h"
 #include "render/LightingTiers.h"
 #include "device/QualityResolver.h"
@@ -90,6 +94,9 @@ namespace {
         FACT_CONTACT_LIGHT   = 1u << 13, // a shadowed directional or spot light with contact shadows
         FACT_CAPSULE_CASTERS = 1u << 14, // Capsule Shadow Casters
         FACT_OIT_CAMERA      = 1u << 15, // a camera drawing Order Independent
+        // the water variants' 'Wex' and 'Wwk' (RenderSystem::update: the component counted, enabled or not)
+        FACT_WATER_EXCLUDERS = 1u << 16,
+        FACT_WATER_WAKES     = 1u << 17,
     };
 
     // whether a shader reference reads the scene depth with these features (manifest @require
@@ -143,6 +150,12 @@ namespace {
             }
             if (registry->findComponent<CapsuleShadowCasterComponent>(entity)){
                 facts |= FACT_CAPSULE_CASTERS;
+            }
+            if (registry->findComponent<WaterExcluderComponent>(entity)){
+                facts |= FACT_WATER_EXCLUDERS;
+            }
+            if (registry->findComponent<WaterWakeComponent>(entity)){
+                facts |= FACT_WATER_WAKES;
             }
             if (const CameraComponent* camera = registry->findComponent<CameraComponent>(entity)){
                 if (camera->transparencyMode == TransparencyMode::ORDER_INDEPENDENT)
@@ -239,19 +252,26 @@ namespace {
                                      (facts & FACT_CAPSULE_CASTERS);
         environment.contactShadows = environment.lights && environment.shadows && (facts & FACT_CONTACT_LIGHT);
         environment.tiledLights = environment.lights && (facts & FACT_LOCAL_LIGHTS) && LightingTiers::getLightMode() != LightMode::PER_OBJECT;
+        // RenderSystem::checkLightsAndShadow: no point or spot Light (a prefab that brings one
+        // reaches the other setup)
+        environment.directionalLightsOnly = environment.lights && !(facts & FACT_LOCAL_LIGHTS);
         environment.oit = (facts & FACT_OIT_CAMERA) != 0;
+        environment.waterExclusion = (facts & FACT_WATER_EXCLUDERS) != 0;
+        environment.waterWake = (facts & FACT_WATER_WAKES) != 0;
         return environment;
     }
 
-    uint32_t environmentBits(const MeshShaderEnvironment& e){
-        // T3 R34: the tier a build may force
-        return (e.terrainForced ? (1u << (static_cast<int>(e.terrainForcedTier) + 26)) : 0u) | (e.lights ? 1u : 0u) | (e.shadows ? 2u : 0u) | (e.ibl ? 4u : 0u) | (e.reflectionProbes ? 8u : 0u) |
+    uint64_t environmentBits(const MeshShaderEnvironment& e){
+        return (uint64_t)(e.lights ? 1u : 0u) | (e.shadows ? 2u : 0u) | (e.ibl ? 4u : 0u) | (e.reflectionProbes ? 8u : 0u) |
             (e.fog ? 16u : 0u) | (e.lights2D ? 32u : 0u) | (e.shadows2D ? 64u : 0u) | (e.ssao ? 128u : 0u) |
             (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u) | ((uint32_t)e.lightCapacity << 10) | (e.sceneDepth ? (1u << 20) : 0u) |
             (e.postColor ? (1u << 21) : 0u) | (e.shadowsHQ ? (1u << 22) : 0u) | (e.atmosphereDepth ? (1u << 23) : 0u) |
             (e.litQualityHigh ? (1u << 24) : 0u) | (e.pbrTier == PbrTier::REDUCED ? (1u << 25) : 0u) |
             (e.tiledLights ? (1u << 26) : 0u) | (e.capsuleShadows ? (1u << 27) : 0u) | (e.contactShadows ? (1u << 28) : 0u) |
-            (e.oit ? (1u << 29) : 0u);
+            (e.oit ? (1u << 29) : 0u) | (e.waterExclusion ? (1u << 30) : 0u) | (e.waterWake ? (1u << 31) : 0u) |
+            (e.directionalLightsOnly ? (1ull << 32) : 0ull) |
+            // T3 R34: the tier a build may force
+            (e.terrainForced ? (1ull << (static_cast<int>(e.terrainForcedTier) + 33)) : 0ull);
     }
 
     // the states of the High shadow filters' variant bit ('Shq', RenderSystem::updateShadowTier)
@@ -314,7 +334,7 @@ namespace {
         }
 
         std::vector<MeshShaderEnvironment> environments;
-        std::set<uint32_t> distinct;
+        std::set<uint64_t> distinct;
         for (uint32_t facts : withLoading){
             for (bool postColorOn : postColor){
                 for (bool highFilters : shadowHQ){
@@ -452,7 +472,9 @@ namespace {
         return probes;
     }
 
-    const ModelProbe& probeModel(const std::string& filename, bool mergeStaticMeshes){
+    // placed: a copy a system places (MeshSystem::loadPlacedModel: foliage), loaded the way it is,
+    // so the variants shipped are the ones the copy asks for
+    const ModelProbe& probeModel(const std::string& filename, bool mergeStaticMeshes, bool placed = false){
         // The file as the engine opens it, for its modification time: an FBX's import, which
         // also changes when only its textures do
         const std::filesystem::path path(editor::FbxImporter::isFbxFile(filename) ? MeshSystem::getImportedModelPath(filename)
@@ -462,7 +484,7 @@ namespace {
         const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(path, timeError);
         const uintmax_t size = std::filesystem::file_size(path, sizeError);
 
-        const std::string key = MeshSystem::getModelFilenameKey(filename) + (mergeStaticMeshes ? "|merged" : "");
+        const std::string key = MeshSystem::getModelFilenameKey(filename) + (mergeStaticMeshes ? "|merged" : "") + (placed ? "|placed" : "");
         auto cached = modelProbes().find(key);
         if (cached != modelProbes().end() && !timeError && !sizeError &&
                 cached->second.writeTime == writeTime && cached->second.size == size){
@@ -486,7 +508,8 @@ namespace {
 
         std::shared_ptr<MeshSystem> meshSystem = scene.getSystem<MeshSystem>();
         const bool obj = FileData::getFilePathExtension(filename) == "obj";
-        probe.loaded = obj ? meshSystem->loadOBJ(entity, filename, false) : meshSystem->loadGLTF(entity, filename, false, false, false);
+        probe.loaded = placed ? meshSystem->loadPlacedModel(entity, filename)
+            : obj ? meshSystem->loadOBJ(entity, filename, false) : meshSystem->loadGLTF(entity, filename, false, false, false);
 
         if (probe.loaded){
             probe.vatMesh = scene.getComponent<MeshComponent>(entity).vatMesh;
@@ -566,6 +589,9 @@ namespace {
         void collect(const editor::ShaderVariantContent& content){
             EntityRegistry* registry = content.registry;
             std::unordered_set<Entity> modelMeshes;
+            // S41: a camera of the scene snaps through a Pixel Perfect Camera (a script may turn it
+            // off: the plain variants come along)
+            const bool scenePixelSnap = scenePixelSnaps(registry);
 
             // Model meshes first: their geometry and materials come from the file
             for (Entity entity : content.entities){
@@ -589,7 +615,10 @@ namespace {
                         const FluidSimulationComponent* fluid = registry->isComponentRegistered<FluidSimulationComponent>()
                                                                 ? registry->findComponent<FluidSimulationComponent>(entity) : nullptr;
                         lentBaseColor = fluid && fluid->output == FluidOutput::MATERIAL;
+                        pixelSnapKeys = scenePixelSnap && (registry->findComponent<SpriteComponent>(entity) ||
+                                                           registry->findComponent<TilemapComponent>(entity));
                         collectMesh(registry, entity, *mesh);
+                        pixelSnapKeys = false;
                         lentBaseColor = false;
                     }
                 }
@@ -600,8 +629,10 @@ namespace {
                     collectVoxelVolume(*voxels);
                 }
                 if (const UIComponent* ui = registry->findComponent<UIComponent>(entity)){
+                    pixelSnapKeys = scenePixelSnap;
                     collectUI(*ui, registry->findComponent<TextComponent>(entity),
                               registry->isComponentRegistered<TextEffectComponent>() && registry->findComponent<TextEffectComponent>(entity));
+                    pixelSnapKeys = false;
                 }
                 // an HTML UI document draws geometry, gradients and its layer/filter passes
                 // (RmlRenderer) (asked first: an editor built without the document component's
@@ -619,7 +650,9 @@ namespace {
                     collectPoints(points);
                 }
                 if (const ParticleSystemComponent* particles = registry->findComponent<ParticleSystemComponent>(entity)){
+                    pixelSnapKeys = scenePixelSnap;
                     collectParticles(*particles);
+                    pixelSnapKeys = false;
                 }
                 // the hairline, or the ribbon variant a width loads (pixel widths, a base texture)
                 if (const LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)){
@@ -640,6 +673,21 @@ namespace {
         // the mesh being collected is a 3D mesh that may get detail levels (not a terrain,
         // sprite, tilemap or polygon: RenderSystem::updateMeshLods)
         bool meshHasLevels = false;
+        // the drawable being collected also draws pixel-snapped ('Pxs', S41)
+        bool pixelSnapKeys = false;
+
+        static bool scenePixelSnaps(EntityRegistry* registry){
+            if (!registry->isComponentRegistered<PixelPerfectCameraComponent>())
+                return false;
+            auto components = registry->getComponentArray<PixelPerfectCameraComponent>();
+            for (size_t i = 0; i < components->size(); i++){
+                const PixelPerfectCameraComponent& component = components->getComponentFromIndex(i);
+                const CameraComponent* camera = registry->findComponent<CameraComponent>(components->getEntity(i));
+                if (component.enabled && component.pixelSnapping && camera && camera->type != CameraType::CAMERA_PERSPECTIVE)
+                    return true;
+            }
+            return false;
+        }
         const std::vector<MeshShaderEnvironment>& environments;
         // the post colour bit's states, for the points, lines and sky (meshes: environments)
         const std::vector<bool>& postColor;
@@ -655,6 +703,11 @@ namespace {
 
         // A custom shader that fails to build falls back to the built-in variant at runtime
         void insertKeys(ShaderType type, uint64_t properties, uint16_t customId){
+            // the pixel-snapped twin of a snapping scene's drawable (its depth program too)
+            const uint64_t pixelSnapBit = pixelSnapKeys ? ShaderPool::getPixelSnapProperty(type) : 0;
+            if (pixelSnapBit && !(properties & pixelSnapBit)){
+                insertKeys(type, properties | pixelSnapBit, customId);
+            }
             // a mesh's post colour bit comes with its environment; the others take it here
             const uint64_t postColorBit = type == ShaderType::MESH ? 0 : ShaderPool::getPostColorProperty(type);
             for (bool postColorOn : postColor){
@@ -928,7 +981,7 @@ namespace {
                 if (layer.meshPath.empty()){
                     continue;
                 }
-                const ModelProbe& probe = probeModel(layer.meshPath, true);
+                const ModelProbe& probe = probeModel(layer.meshPath, true, true);
                 if (!probe.loaded){
                     continue;
                 }
@@ -1275,6 +1328,28 @@ std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const P
     return features;
 }
 
+void editor::ShaderVariantCollector::addDirectionalOnlyTwins(std::set<ShaderKey>& keys){
+    const uint64_t bit = ShaderPool::getDirectionalOnlyProperty();
+    const uint64_t tiled = ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS);
+    // a point or spot light arriving under Light Mode Tiled or Automatic draws the pixel lights
+    // from tiles (RenderSystem::updateLightingFeatures): the twin with 'Til' too, where a variant
+    // takes it (pixel lights, not a painted terrain surface: getSubmeshShaderVariant)
+    const bool tiles = LightingTiers::getLightMode() != LightMode::PER_OBJECT;
+    std::vector<ShaderKey> twins;
+    for (const ShaderKey& key : keys){
+        if (ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && (key.properties & bit)){
+            ShaderKey twin = key;
+            twin.properties &= ~bit;
+            twins.push_back(twin);
+            if (tiles && (twin.properties & shaderPropertyBit(3)) && !(twin.properties & shaderPropertyBit(27))){
+                twin.properties |= tiled;
+                twins.push_back(twin);
+            }
+        }
+    }
+    keys.insert(twins.begin(), twins.end());
+}
+
 void editor::ShaderVariantCollector::addBuildRequiredKeys(std::set<ShaderKey>& keys){
     keys.insert(ShaderPool::getShaderKey(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH)));
 }
@@ -1334,6 +1409,7 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         }
     }
     QualityResolver::popState();
+    addDirectionalOnlyTwins(keys);
 }
 
 void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const ShaderVariantContent& sceneContent,
@@ -1408,8 +1484,23 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
     bool bloom = false;
     bool blur = false;
     bool halation = false;
+    // a Pixel Perfect Camera's Stretch Fill: the sharp bilinear upscale alone and with each set of
+    // the post-processing's features (S41 R11)
+    bool stretchFill = false;
+    if (scene->isComponentRegistered<PixelPerfectCameraComponent>()){
+        auto pixelCameras = scene->getComponentArray<PixelPerfectCameraComponent>();
+        for (size_t i = 0; i < pixelCameras->size(); i++){
+            const PixelPerfectCameraComponent& pixelCamera = pixelCameras->getComponentFromIndex(i);
+            stretchFill = stretchFill || (pixelCamera.enabled && pixelCamera.upscaleRenderTexture &&
+                                          pixelCamera.upscaleMode == PixelUpscaleMode::STRETCH_FILL);
+        }
+    }
+    if (stretchFill)
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, UBER_SHARP_BILINEAR));
     for (uint32_t features : plausibleUberFeatures(scene->getPostProcessing(), scriptsSetPostProcessing, scriptPostProcessingFields)){
         keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, features));
+        if (stretchFill)
+            keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, features | UBER_SHARP_BILINEAR));
         bloom = bloom || (features & UBER_BLOOM);
         blur = blur || (features & UBER_BLUR);
         // halation without bloom runs its own prefilter and down pass (S13)

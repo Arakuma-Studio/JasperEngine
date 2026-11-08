@@ -25,6 +25,7 @@
 #include "Backend.h"
 #include "Out.h"
 #include "Engine.h"
+#include "pixelart/PixelPerfectEditor.h"
 #include "util/Util.h"
 #include "window/PlayInput.h"
 #include "animation/AnimationClipAppHooks.h"
@@ -32,7 +33,9 @@
 #include "pose/PoseViewportLogic.h"
 #include "window/AnimationWindowClip.h"
 #include "window/PoseAnimationWindow.h"
+#include "window/SpritePreviewWindow.h"
 #include "navigation/NavigationEditor.h"
+#include "navigation/NavPathTester.h"
 #include "sceneview/SceneViewController.h"
 #include "search/SearchPalette.h"
 #include "shortcuts/DefaultCommands.h"
@@ -46,6 +49,7 @@
 #include "widget/CurveField.h"
 #include "widget/GradientField.h"
 #include "window/InputActionsWindow.h"
+#include "window/AnimationStatisticsWindow.h"
 #include "window/JobsMemoryWindow.h"
 #include "window/vcs/VcsUi.h"
 #include "voxel/VoxelBrushTool.h"
@@ -234,6 +238,7 @@ void editor::App::registerCommands(){
     }
     enable("assets.createAnimationClip", []() { return static_cast<bool>(animationClipAppHooks().createClipAsset); });
     enable("assets.createSoundEventFromClips", [this]() { return projectWindow->hasAudioSelection(); });
+    enable("assets.createSpriteAtlasFromSelection", [this]() { return projectWindow->hasSpriteSelection(); });
     bind("soundEvent.audition", [this](const CommandArgs&) { inspectorWindow->requestSoundEventAudition(); },
          [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()); });
     bind("soundEvent.matchLevels", [this](const CommandArgs&) { inspectorWindow->requestSoundEventMatchLevels(); },
@@ -311,8 +316,23 @@ void editor::App::registerCommands(){
     };
     onView("sceneView.hideSelection", [](SceneViewController& view, SceneProject& scene) { view.hideSelection(scene); });
     onView("sceneView.showAll", [](SceneViewController& view, SceneProject& scene) { view.showAll(scene); });
+    // S41: the Pixel Zoom's 1x and Game (a 2D scene drawn through a Pixel Perfect Camera)
+    auto pixelScene = [this]() {
+        const SceneProject* scene = project.getSelectedScene();
+        return scene && scene->sceneRender && scene->sceneType == SceneType::SCENE_2D && pixelart::scenePixelPerfect(scene);
+    };
+    bind("sceneView.pixelZoom1x", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, 1.0f);
+    }, pixelScene, noDrag);
+    bind("sceneView.pixelZoomGame", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, sceneWindow->gamePixelZoom(*scene));
+    }, pixelScene, noDrag);
     onView("sceneView.togglePickLock", [](SceneViewController& view, SceneProject& scene) { view.togglePickLockSelection(scene); });
     onView("sceneView.measure", [](SceneViewController& view, SceneProject& scene) { view.setMeasuring(scene, !view.isMeasuring(scene.id)); });
+    // the Path Tester (S75 R25): in the selected scene's view, edit or play
+    bind("navigation.pathTester", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) NavPathTester::get().toggle(*scene);
+    }, sceneShown, noDrag);
     onView("sceneView.deleteMeasure", [](SceneViewController& view, SceneProject& scene) { view.deleteMeasure(scene, view.selectedMeasure(scene.id)); },
            [](SceneViewController& view, SceneProject& scene) { return view.hasSelectedMeasure(scene.id); });
     // under the pointer it must not take Delete from a panel that claims it
@@ -367,6 +387,40 @@ void editor::App::registerCommands(){
     brush("terrain.brushWeaker", false, 1.0f / 1.15f);
     brush("terrain.brushStronger", false, 1.15f);
 
+    // ---- A terrain brush's keys (T1 R57, Table 5); its context says when: armed, pointer over the Scene view
+    auto terrainTool = [this, &bind](const char* id, TerrainBrushMode mode) {
+        bind(id, [this, mode](const CommandArgs&) { terrainEditWindow->armBrush(mode); });
+    };
+    terrainTool("terrain.tool.raise", TerrainBrushMode::Raise);
+    terrainTool("terrain.tool.setHeight", TerrainBrushMode::Flatten);
+    terrainTool("terrain.tool.smooth", TerrainBrushMode::Smooth);
+    terrainTool("terrain.tool.ramp", TerrainBrushMode::Ramp);
+    terrainTool("terrain.tool.noise", TerrainBrushMode::Noise);
+    terrainTool("terrain.tool.terrace", TerrainBrushMode::Terrace);
+    terrainTool("terrain.tool.erode", TerrainBrushMode::Erode);
+    terrainTool("terrain.tool.stamp", TerrainBrushMode::Stamp);
+    terrainTool("terrain.tool.paintTexture", TerrainBrushMode::PaintLayer);
+    terrainTool("terrain.tool.paintDetails", TerrainBrushMode::PaintDensity);
+    terrainTool("terrain.tool.placeObjects", TerrainBrushMode::PlaceObject);
+    terrainTool("terrain.tool.cutHoles", TerrainBrushMode::CutHole);
+    bind("terrain.pick", [this](const CommandArgs&) { terrainEditWindow->armPickHeight(); });
+    bind("terrain.invertSlopeFilter", [this](const CommandArgs&) { terrainEditWindow->toggleSlopeFilterInvert(); });
+    bind("terrain.alternate", [this](const CommandArgs&) { terrainEditWindow->toggleAlternate(); });
+    auto terrainOverlay = [this, &bind](const char* id, const char* source) {
+        bind(id, [this, source](const CommandArgs&) {
+            if (SceneProject* scene = project.getSelectedScene()) scene->displaySettings.terrainOverlay.source = source;
+        });
+    };
+    terrainOverlay("terrain.overlay.height", "height");
+    terrainOverlay("terrain.overlay.slope", "slope");
+    terrainOverlay("terrain.overlay.contours", "contours");
+    terrainOverlay("terrain.overlay.layerWeights", "layer_weights");
+    terrainOverlay("terrain.overlay.off", "");
+    // Esc in a stroke is the history's cancel (App::handleInteractiveEdits), and the brush stays armed: while the
+    // button is held too, so the release after a cancel does not land as a selection click
+    bind("terrain.disarm", [this](const CommandArgs&) { terrainEditWindow->disarmBrush(); }, nullptr,
+         []() { return !CommandHistory::anyInteractiveOpen() && !ImGui::IsMouseDown(ImGuiMouseButton_Left); });
+
     // ---- A Voxel Volume's brush (T6 R60); its context says when: armed, pointer over the Scene view
     auto voxelTool = [&bind](const char* id, VoxelTool tool) {
         bind(id, [tool](const CommandArgs&) { VoxelBrushTool::get().arm(tool); });
@@ -414,6 +468,7 @@ void editor::App::registerCommands(){
     // ---- Animation window (clip mode) and Pose Animation window: their own commands
     AnimationWindowClip::bindCommands(catalog, [this]() { return animationWindow->getClipMode(); });
     poseAnimationWindow->bindCommands(catalog, [this]() { return poseKeysActive(); }, [this]() { return poseKeysFromSceneView(); });
+    spritePreviewWindow->bindCommands(catalog, [this]() { return spritePreviewWindow->isFocused(); });
 
     // ---- The Sound Browser, while it has focus: keys typed into its search stay text
     auto browser = [&bind, this](const char* id, std::function<void()> run, bool whileTyping = false) {
@@ -485,6 +540,7 @@ void editor::App::registerPanelClaims(){
                  {Verb::Paste, {{}, [this]() { return noiseGraphWindow->canPaste(); }, [this]() { noiseGraphWindow->paste(); }}},
                  {Verb::Duplicate, {{}, [this]() { return noiseGraphWindow->canDuplicate(); }, [this]() { noiseGraphWindow->duplicateSelection(); }}}}});
     claims.add({"Jobs & Memory", [this]() { return jobsMemoryWindow->isFocused(); }, {}});
+    claims.add({"Animation Statistics", [this]() { return animationStatisticsWindow->isFocused(); }, {}});
     claims.add({"Project", [this]() { return projectWindow->isFocused(); },
                 {{Verb::Delete, own("project.delete")}, {Verb::Copy, own("project.copy")}, {Verb::Cut, own("project.cut")},
                  {Verb::Paste, own("project.paste")}, {Verb::SelectAll, own("project.selectAll")}, {Verb::Rename, own("project.rename")},
@@ -571,6 +627,10 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (sceneWindow->isHovered() && project.getSelectedScene() && VoxelBrushTool::get().isEditingScene(project.getSelectedScene()->scene)) {
         state.panels.push_back(ShortcutContext::VoxelBrush);
     }
+    if (sceneWindow->isHovered() && project.getSelectedScene() && project.getSelectedScene()->scene &&
+        terrainEditWindow->isEditingScene(project.getSelectedScene()->scene)) {
+        state.panels.push_back(ShortcutContext::TerrainBrush);
+    }
     if (projectWindow->isFocused()) state.panels.push_back(ShortcutContext::Project);
     if (consoleWindow->isListFocused()) state.panels.push_back(ShortcutContext::Console);
     // the entity mode has the Animation context's keys too while it has focus (S40 R22: Align on an
@@ -583,6 +643,7 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (soundBrowserWindow->isFocused()) state.panels.push_back(ShortcutContext::SoundBrowser);
     if (audioCapturesWindow->isFocused()) state.panels.push_back(ShortcutContext::AudioCaptures);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
+    if (spritePreviewWindow->isFocused()) state.panels.push_back(ShortcutContext::SpritePreview);
     return state;
 }
 

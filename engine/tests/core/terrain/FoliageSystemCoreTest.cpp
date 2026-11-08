@@ -5,7 +5,9 @@
 
 #include "FoliageTestSupport.h"
 #include "component/Transform.h"
+#include "component/TerrainComponent.h"
 
+#include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
 #include "memory/MemoryStats.h"
 #include "subsystem/MeshSystem.h"
@@ -22,10 +24,14 @@ TEST(FoliageSystemCore, SameHashWithZeroOneAndFourWorkers) {
     uint64_t hashes[3] = {0, 0, 0};
     const int workers[3] = {0, 1, 4};
     for (int i = 0; i < 3; i++) {
+        // (the asset readers take the process job system only at start(): restarted with it, or a
+        // later test's reads go to the shut-down pool and end cancelled)
+        AssetIOService::instance().stop();
         jobs::shutdown();
         jobs::Config config;
         config.workers = workers[i];
         jobs::initialize(config);
+        AssetIOService::instance().start();
         FoliageFixture fixture;
         for (int frame = 0; frame < 5000; frame++) {
             fixture.frame();
@@ -36,8 +42,10 @@ TEST(FoliageSystemCore, SameHashWithZeroOneAndFourWorkers) {
         EXPECT_GT(fixture.foliage->getInstanceCount(fixture.entity, 0), 0u);
         hashes[i] = fixture.foliage->getPlacementHash(fixture.entity);
     }
+    AssetIOService::instance().stop();
     jobs::shutdown();
     jobs::initialize(jobs::Config{});
+    AssetIOService::instance().start();
     EXPECT_EQ(hashes[0], hashes[1]);
     EXPECT_EQ(hashes[0], hashes[2]);
 }

@@ -368,7 +368,11 @@ TEST(PbrVariant, TerrainHexLeavesStochasticOut){
     inputs.terrain = true;
     inputs.terrainBlendMaps = true;
     inputs.terrainSurface = true;
+    // T3: the variant reads the terrain's layers through terrainVariant, and a terrain with no layer
+    // draws its base material alone, with no terrain define (spec Deviations)
+    inputs.terrainVariant.layerCount = 2;
     inputs.terrainHex = true;
+    inputs.terrainVariant.hex = true;
     const auto has = [](const std::vector<std::string>& defines, const char* define){
         return std::find(defines.begin(), defines.end(), define) != defines.end();
     };
@@ -377,6 +381,7 @@ TEST(PbrVariant, TerrainHexLeavesStochasticOut){
     EXPECT_FALSE(has(hex.litDefines, MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE));
 
     inputs.terrainHexStochastic = true;
+    inputs.terrainVariant.hexStochastic = true;
     const SubmeshShaderVariant both = RenderSystem::getSubmeshShaderVariant(environment, inputs);
     EXPECT_TRUE(has(both.litDefines, MaterialPbr::TERRAIN_HEX_DEFINE));
     EXPECT_TRUE(has(both.litDefines, MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE));
@@ -388,6 +393,7 @@ TEST(PbrVariant, TerrainHexLeavesStochasticOut){
 
     // without a hex layer the define never comes (the plain surface path keeps Stochastic Tiling)
     inputs.terrainHex = false;
+    inputs.terrainVariant.hex = false;
     EXPECT_FALSE(has(RenderSystem::getSubmeshShaderVariant(environment, inputs).litDefines, MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE));
 
     // what the render system asks the Terrain
@@ -431,4 +437,11 @@ TEST(PbrVariant, UniformBlockLayout){
     MaterialPbr::getUniformBlock(pbr, block);
     EXPECT_EQ(block[23], 1.0f);
     EXPECT_EQ(block[3], 0.25f);
+}
+
+// the lit variants a project draws (get_material_variant's projectLitVariants): two submeshes with
+// the same lobes whose variants differ past bit 31 (the LOD cross-fade's 'Lfd', bit 40) are two
+TEST(MaterialPbr, CountLitVariantsSeesAll64Bits){
+    const uint64_t lit = (1ull << 1) | (1ull << 3);
+    EXPECT_EQ(MaterialPbr::countLitVariants({{1u, lit}, {1u, lit | (1ull << 40)}, {1u, lit}, {0u, lit}}), 2u);
 }

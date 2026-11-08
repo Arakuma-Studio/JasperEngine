@@ -110,6 +110,10 @@ bool Chord::isBindableKey(ImGuiKey key) {
 }
 
 std::optional<Chord> Chord::parse(std::string_view text) {
+    return parse(text, isMacPlatform());
+}
+
+std::optional<Chord> Chord::parse(std::string_view text, bool mac) {
     text = trimmed(text);
     if (text.empty()) return std::nullopt;
     ImGuiKeyChord mods = 0;
@@ -130,6 +134,9 @@ std::optional<Chord> Chord::parse(std::string_view text) {
                 mods |= ImGuiMod_Alt;
             } else if (equalsNoCase(token, "Super") || equalsNoCase(token, "Win") || equalsNoCase(token, "Meta")) {
                 mods |= ImGuiMod_Super;
+            } else if (equalsNoCase(token, "Control")) {
+                // the key labelled Control: ImGui's Super on macOS (swapped with Cmd), Ctrl elsewhere
+                mods |= mac ? ImGuiMod_Super : ImGuiMod_Ctrl;
             } else {
                 return std::nullopt;
             }
@@ -147,8 +154,11 @@ std::string Chord::format(bool mac) const {
     if (empty()) return {};
     std::string text;
     const ImGuiKeyChord modifiers = mods();
+    // macOS: Super is the Control key (ConfigMacOSXBehaviors swaps it with Cmd), named before Cmd as
+    // the Mac's menus do
+    if (mac && (modifiers & ImGuiMod_Super)) text += "Control+";
     if (modifiers & ImGuiMod_Ctrl) text += mac ? "Cmd+" : "Ctrl+";
-    if (modifiers & ImGuiMod_Super) text += "Super+";
+    if (!mac && (modifiers & ImGuiMod_Super)) text += "Super+";
     if (modifiers & ImGuiMod_Alt) text += mac ? "Option+" : "Alt+";
     if (modifiers & ImGuiMod_Shift) text += "Shift+";
     text += keyName(key());

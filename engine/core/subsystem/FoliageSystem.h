@@ -198,6 +198,8 @@ namespace jasperengine {
         void reloadMesh(const std::string& filename);
         // Exact over resident cells: the instances the placement holds for this layer
         uint64_t getInstanceCount(Entity terrainEntity, int layer) const;
+        // why the layer places nothing (a map without CPU-readable pixels), or empty
+        std::string getLayerError(Entity terrainEntity, int layer) const;
 
         // F11. A lone Terrain gets its region by itself. T4 adds one per resident tile.
         void addRegion(Entity owner, std::shared_ptr<terrain::FoliageRegion> region);

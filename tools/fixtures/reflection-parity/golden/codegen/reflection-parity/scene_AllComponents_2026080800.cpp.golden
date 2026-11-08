@@ -100,7 +100,10 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1090);
     scene->recreateEntity(1091);
     scene->recreateEntity(1092);
-    scene->setLastEntity(1092);
+    scene->recreateEntity(1093);
+    scene->recreateEntity(1094);
+    scene->recreateEntity(1095);
+    scene->setLastEntity(1095);
 
     {
         // Entity 1001 (Transform)
@@ -1467,6 +1470,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         sprite.flipY = true;
         sprite.pivotPreset = PivotPreset::BOTTOM_RIGHT;
         sprite.textureScaleFactor = 8.600000f;
+        sprite.pixelsPerUnit = 6.600000f;
+        sprite.pixelRotation = PixelRotation::ON_GRID;
         sprite.enabled = false;
         scene->addComponent<SpriteComponent>(1043, sprite);
 
@@ -1568,6 +1573,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         tilemap.automaticFlipY = false;
         tilemap.flipY = true;
         tilemap.textureScaleFactor = 4.200000f;
+        tilemap.pixelsPerUnit = 5.600000f;
         tilemap.reserveTiles = 10;
         tilemap.enabled = false;
         scene->addComponent<TilemapComponent>(1046, std::move(*tilemapStorage));
@@ -2275,6 +2281,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         navSurface.minRegionArea = 3.400000f;
         navSurface.plane = nav::NavPlane::XY;
         navSurface.runtimeCarving = true;
+        navSurface.maxCarvingObstacles = 128;
         navSurface.navMeshData = "";
         navSurface.enabled = false;
         scene->addComponent<NavMeshSurfaceComponent>(1068, navSurface);
@@ -2316,6 +2323,10 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         navAgent.updateRotation = false;
         navAgent.driver = NavAgentDriver::NONE;
         navAgent.surface = NULL_ENTITY;
+        navAgent.stuckDetection = false;
+        navAgent.stuckSpeedRatio = 0.100000f;
+        navAgent.stuckTimeout = 2.000000f;
+        navAgent.repathWhenStuck = true;
         navAgent.enabled = false;
         scene->addComponent<NavMeshAgentComponent>(1069, navAgent);
 
@@ -3099,6 +3110,87 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         audiosnapshot.revert = false;
         audiosnapshot.revertSeconds = 0.750000f;
         scene->addComponent<AudioSnapshotComponent>(1092, audiosnapshot);
+    }
+
+    {
+        // Entity 1093 (WaterExcluderComponent)
+        scene->setEntityName(1093, "WaterExcluderComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(92.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1093, transform);
+
+        WaterExcluderComponent waterExcluder;
+        waterExcluder.enabled = false;
+        waterExcluder.shape = WaterExcluderShape::SPHERE;
+        waterExcluder.center = Vector3(0.500000f, 1.500000f, 2.500000f);
+        waterExcluder.size = Vector3(3.500000f, 4.500000f, 5.500000f);
+        scene->addComponent<WaterExcluderComponent>(1093, waterExcluder);
+    }
+
+    {
+        // Entity 1094 (WaterWakeComponent)
+        scene->setEntityName(1094, "WaterWakeComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(93.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1094, transform);
+
+        WaterWakeComponent waterWake;
+        waterWake.enabled = false;
+        waterWake.foam = 1.500000f;
+        waterWake.waves = 0.500000f;
+        waterWake.width = 2.500000f;
+        waterWake.length = 6.500000f;
+        scene->addComponent<WaterWakeComponent>(1094, waterWake);
+    }
+
+    {
+        // Entity 1095 (PixelPerfectCameraComponent)
+        scene->setEntityName(1095, "PixelPerfectCameraComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(94.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1095, transform);
+
+        PixelPerfectCameraComponent pixelPerfectCamera;
+        pixelPerfectCamera.referenceWidth = 7;
+        pixelPerfectCamera.referenceHeight = 2;
+        pixelPerfectCamera.upscaleMode = PixelUpscaleMode::STRETCH_FILL;
+        pixelPerfectCamera.upscaleRenderTexture = false;
+        pixelPerfectCamera.pixelSnapping = false;
+        pixelPerfectCamera.rotationMode = PixelRotation::ON_GRID;
+        pixelPerfectCamera.subpixelSmoothing = true;
+        pixelPerfectCamera.letterboxColor = Vector4(0.633333f, 0.433333f, 0.555556f, 1.000000f);
+        pixelPerfectCamera.enabled = false;
+        scene->addComponent<PixelPerfectCameraComponent>(1095, pixelPerfectCamera);
     }
 
     // Default Camera 1

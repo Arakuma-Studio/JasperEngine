@@ -136,6 +136,54 @@ namespace {
 
 }
 
+// S77 R16: sample() shows its pose in the call, as without async loading
+TEST_F(Player, SampleLoadsAnAnimInTheCallInAsyncLoading){
+    // large enough for the thread pool otherwise
+    animtest::writeAsset(prefix + "slide.anim", anim::writeClip(slide("Arm", 3.0f)) + std::string(70000, ' '));
+    AnimationPlayer object(&scene, root);
+    object.addClip(prefix + "slide.anim", "slide");
+    const bool wasAsync = Engine::isAsyncLoading();
+    Engine::setAsyncLoading(true);
+    object.play("slide");
+    object.getState("slide").setTime(0.5f);
+    object.sample();
+    Engine::setAsyncLoading(wasAsync);
+    EXPECT_NEAR(x(arm), 1.5f, 1e-5f);
+}
+
+// AC8 (S77 R17): an idle player, one that never played and one holding its last pose, allocates
+// nothing per frame and marks nothing dirty
+TEST_F(Player, IdleAllocatesNothingAndMarksNothingDirty){
+    if (!testsupport::countsAllocations()) GTEST_SKIP() << "this build cannot count allocations";
+    constexpr double kIdleDt = 1.0 / 60.0;
+    AnimationPlayer idle = player({{"slide", slide("Arm", 3.0f)}});
+    step(kIdleDt, 3);
+    {
+        testsupport::AllocationCountScope scope;
+        step(kIdleDt, 600);
+        EXPECT_EQ(scope.count(), 0u) << "never played";
+    }
+    scene.getComponent<Transform>(arm).needUpdate = false;
+    step(kIdleDt);
+    EXPECT_FALSE(scene.getComponent<Transform>(arm).needUpdate);
+
+    idle.play("slide");
+    step(kIdleDt);
+    EXPECT_TRUE(scene.getComponent<Transform>(arm).needUpdate) << "a value that changes marks it";
+    step(1.0, 2);
+    const Vector3 last = scene.getComponent<Transform>(arm).position;
+    EXPECT_NEAR(last.x, 3.0f, 1e-5f);
+    {
+        testsupport::AllocationCountScope scope;
+        step(kIdleDt, 600);
+        EXPECT_EQ(scope.count(), 0u) << "holding its last pose";
+    }
+    scene.getComponent<Transform>(arm).needUpdate = false;
+    step(kIdleDt);
+    EXPECT_FALSE(scene.getComponent<Transform>(arm).needUpdate) << "the held value did not change";
+    EXPECT_EQ(scene.getComponent<Transform>(arm).position, last);
+}
+
 TEST_F(Player, PlaysAutomaticallyAndSamplesTheClip){
     AnimationPlayer object = player({{"walk", slide("Arm", 10)}}, true);
     EXPECT_FALSE(object.isPlaying());

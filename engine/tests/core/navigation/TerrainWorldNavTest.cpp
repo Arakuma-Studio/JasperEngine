@@ -177,12 +177,12 @@ TEST_F(TerrainWorldNav, CollectsTiles) {
     std::string error;
     nav::NavCollectStats stats;
     nav::NavWorldContext context;
-    EXPECT_FALSE(nav::NavBakeCollector::collect(scene.get(), surface, error, &stats, &context));
+    EXPECT_FALSE(nav::NavBakeCollector::collect(scene.get(), surface, error, &stats, {}, nullptr, &context));
     EXPECT_EQ(stats.pendingTiles, 4) << error;
     EXPECT_EQ(worldRuntime->resident(tw::TileCoord(0, 0)), nullptr);
     std::shared_ptr<nav::NavBakeInput> input;
     ASSERT_TRUE(pumpUntil([&] {
-        input = nav::NavBakeCollector::collect(scene.get(), surface, error, &stats, &context);
+        input = nav::NavBakeCollector::collect(scene.get(), surface, error, &stats, {}, nullptr, &context);
         return input != nullptr || stats.pendingTiles == 0;
     })) << error;
     ASSERT_TRUE(input) << error;
@@ -255,8 +255,11 @@ TEST_F(TerrainWorldNav, RefusesUnboundedSurface) {
                                 "Follow Terrain World Focus";
     std::string error;
     nav::NavCollectStats stats;
-    EXPECT_FALSE(nav::NavBakeCollector::collect(scene.get(), surface, error, &stats));
+    nav::NavBakeError code = nav::NavBakeError::None;
+    EXPECT_FALSE(nav::NavBakeCollector::collect(scene.get(), surface, error, &stats, {}, &code));
     EXPECT_EQ(error, refusal);
+    // the bake report's too_large code and hint (S75 R16) go with the refusal
+    EXPECT_EQ(code, nav::NavBakeError::TooLarge);
     EXPECT_EQ(stats.pendingTiles, 0);
     EXPECT_EQ(stats.terrains, 0);
     error.clear();
@@ -272,7 +275,7 @@ TEST_F(TerrainWorldNav, RefusesUnboundedSurface) {
     nav::NavWorldContext context;
     std::shared_ptr<nav::NavBakeInput> input;
     ASSERT_TRUE(pumpUntil([&] {
-        input = nav::NavBakeCollector::collect(scene.get(), surface, error, &stats, &context);
+        input = nav::NavBakeCollector::collect(scene.get(), surface, error, &stats, {}, nullptr, &context);
         return input != nullptr || stats.pendingTiles == 0;
     })) << error;
     ASSERT_TRUE(input) << error;
@@ -285,7 +288,7 @@ TEST_F(TerrainWorldNav, RefusesUnboundedSurface) {
     worldRuntime->addFocus(100.0f, 100.0f);
     nav::NavWorldContext followContext;
     ASSERT_TRUE(pumpUntil([&] {
-        input = nav::NavBakeCollector::collect(scene.get(), surface, error, &stats, &followContext);
+        input = nav::NavBakeCollector::collect(scene.get(), surface, error, &stats, {}, nullptr, &followContext);
         return input != nullptr || stats.pendingTiles == 0;
     })) << error;
     ASSERT_TRUE(input) << error;

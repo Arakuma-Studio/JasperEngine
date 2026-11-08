@@ -18,13 +18,13 @@
 
 #include "jobs/JobSystem.h"
 
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include "component/MeshComponent.h"
-#include "component/TerrainComponent.h"
 #include "io/watch/FileIdentity.h"
 #include "math/Rect.h"
 #include "texture/Material.h"
@@ -43,6 +43,8 @@ namespace tinygltf {
 namespace jasperengine{
 
     struct InstanceData;
+    struct SpriteSlicedMesh;
+    struct ObjModelData;
     struct Submesh;
     struct TerrainFoliageLayer;
 
@@ -55,6 +57,9 @@ namespace jasperengine{
         static std::mutex& getAsyncModelMutex();
         static async_model_loads_t& getPendingModelLoads();
 
+        // the project Pixels Per Unit the sprites and tilemaps that take it were built with (S41)
+        int builtPixelsPerUnit = 1;
+
         // Files that already failed to load, so createOrUpdateModel stops retrying them.
         std::set<std::string> failedModelLoads;
 
@@ -66,6 +71,19 @@ namespace jasperengine{
         // the sprite as grid x grid cells while a lattice deforms it (spec lattice §6.4)
         void createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
                               Vector2 pivotPos, int grid);
+        // createSpriteGrid with the quad's corners given (x0, y0 the first vertex): sheet frames
+        // draw their trimmed quad (S44 R49) through it
+        // (keepIndices: the buffer holds this grid's indices already, a frame change of S45 R26)
+        void buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
+                             float x0, float y0, float x1, float y1, int grid, bool keepIndices = false);
+        // a sheet sprite (S44 R48-R49): the frame's page, texture rect and trimmed quad, rebuilt
+        // only when the frame's geometry differs from the one built
+        bool updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh);
+        // the 9-slice of a bordered sheet frame (S45 R6, the Sliced draw mode)
+        void buildSpriteSliced(SpriteComponent& sprite, MeshComponent& mesh, const SpriteSlicedMesh& sliced);
+        // a legacy sprite whose texture an atlas in use packs (S45 R8): its inline rect drawn from
+        // the page; false when it draws from its own texture
+        bool updateInlineAtlas(SpriteComponent& sprite, MeshComponent& mesh);
         bool createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh);
         bool createTilemap(TilemapComponent& tilemap, MeshComponent& mesh);
 
@@ -81,6 +99,9 @@ namespace jasperengine{
         static bool fileExists(const std::string &abs_filename, void *);
         static bool readWholeFile(std::vector<unsigned char> *out, std::string *err, const std::string &filepath, void *);
         static bool getFileSizeInBytes(size_t *filesize_out, std::string *err, const std::string &filepath, void *userdata);
+        // The file read (its images decoded), with no scene; null, logged, when it cannot be read
+        static std::shared_ptr<tinygltf::Model> parseGLTFModel(const std::string& filename);
+        static std::shared_ptr<ObjModelData> parseOBJModel(const std::string& filename);
         // GltfNormalize::run on a parse; false with the error in `err` when the model cannot be used
         static bool normalizeGLTF(tinygltf::Model& model, const std::string& filename, std::string* err);
         static std::string getAsyncModelLoadScenePrefix(const Scene* scene);
@@ -111,10 +132,15 @@ namespace jasperengine{
         bool loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers);
         int convertGLTFByteIndicesToShort(const tinygltf::Accessor& indexAccessor, ModelComponent& model);
         int materializeGLTFSparseAccessor(tinygltf::Accessor& accessor, ModelComponent& model);
-        int bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model);
+        // morphs: (target accessor, weight) displacements added before the transform
+        int bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model,
+                                         const std::vector<std::pair<int, float>>& morphs = {});
         int bakeGLTFTransformedTangent(const tinygltf::Accessor& accessor, const Matrix3& tangentMatrix, ModelComponent& model);
         // The bake helpers need float positions, normals and tangents, and no morph targets
-        bool canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason = nullptr) const;
+        // unless the load bakes them too (a placed copy)
+        bool canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason = nullptr, bool bakesMorphs = false) const;
+        bool loadGLTFModel(Entity entity, const std::string& filename, bool asyncLoad, bool skipEntities, bool changeRootTransform,
+                           bool bakeSceneRoot, bool placedCopy);
         int convertGLTFColorToVec4(const tinygltf::Accessor& accessor, ModelComponent& model);
         bool loadGLTFTexture(int textureIndex, ModelComponent& model, Texture& texture, const std::string& textureName);
         // glTF material extensions (MeshSystemGltfPbr.cpp): the KHR_materials_* lobes into
@@ -157,11 +183,20 @@ namespace jasperengine{
 
 
     public:
+        // Sprite:playTag (S44 R38): the tag's frames at the sheet's durations, at the tag's speed; a
+        // step longer than the tag goes round whole loops (or ends it) at once
+        static void stepSpriteTag(SpriteComponent& sprite, double dt);
         MeshSystem(Scene* scene);
         virtual ~MeshSystem();
 
         // Frames are authored in pixels, textureRect is in UV space
         static void setSpriteFrameRect(MeshComponent& mesh, SpriteComponent& sprite, Rect frameRect);
+        // A legacy sprite's texture rect and texture as it saves them: its source's while it draws
+        // from an atlas page (S45 R8), else the mesh's
+        static Rect spriteSourceRect(const SpriteComponent& sprite, const MeshComponent& mesh);
+        static std::string spriteSourceTexture(const SpriteComponent& sprite, const MeshComponent& mesh);
+        // the source texture's size (unchanged when the sprite draws from its own texture)
+        static void spriteSourceSize(const SpriteComponent& sprite, const MeshComponent& mesh, float& width, float& height);
         // What a Terrain needs of its height and blend maps, whatever a file said: a save and the
         // generated code hold them too (the editor applies them on load and before a save)
         static void applyTerrainMapSettings(TerrainComponent& terrain);
@@ -200,11 +235,11 @@ namespace jasperengine{
         std::vector<Entity> getFoliageEntities(Entity terrainEntity) const;
         // The instances one detail layer (foliageLayers[layer]) holds now, over its resident cells (MCP readback)
         size_t getFoliageInstanceCount(Entity terrainEntity, size_t layer) const;
+        // why the layer draws nothing (a map without CPU-readable pixels), or empty
+        std::string getFoliageError(Entity terrainEntity, size_t layer) const;
         Entity getFoliageOwner(Entity foliageEntity) const;
         // Loads again what foliage draws from a model file that changed on disk
         void reloadFoliageMesh(const std::string& filename);
-        // A prototype's mesh, on the Background path: false while it loads (isAsyncModelLoadPending says which)
-        bool loadFoliageMesh(Entity entity, const std::string& path);
         // Retries the failed loads of a file that appeared or changed on disk
         void retryFailedModelLoads(const std::string& filename);
 
@@ -264,6 +299,21 @@ namespace jasperengine{
         // chunk), so a lone mesh node bakes its whole global transform into the vertices
         bool loadGLTF(Entity entity, const std::string filename, bool asyncLoad=false, bool skipEntities=false, bool changeRootTransform=true, bool bakeSceneRoot=false);
         bool loadOBJ(Entity entity, const std::string filename, bool asyncLoad=false);
+        // A copy a system places and draws instanced (a foliage or spline chunk; the editor's
+        // shader variant collector probes one the same way): an .obj, or a glTF/FBX with its node
+        // transforms baked and no skeleton, at rest as static geometry (no skin, the blend shapes'
+        // default weights baked), since instancing with blend shapes needs more vertex inputs than
+        // a GPU has. asyncLoad: on the Background path, false while it loads (foliage prototypes,
+        // T5 R6; isAsyncModelLoadPending says which)
+        bool loadPlacedModel(Entity entity, const std::string& path, bool asyncLoad = false);
+
+        // A game's loading thread (Engine::startAsyncThread) owns a scene the frames do not run, and
+        // loads into it what the main thread does: the whole entity tree. A running scene is the main
+        // thread's: this thread only reads the file, into ModelPool, and `commit` makes the tree on the
+        // main thread in a coming frame (MainThreadQueue; not if the scene or entity is gone by then).
+        // False when the file cannot be read.
+        bool isLoadOnMainThread() const;
+        bool prepareLoadOnMainThread(Entity entity, const std::string& filename, std::function<void()> commit);
 
         // Parses a model file into ModelPool without a scene, for SceneManager::preloadScene().
         // False while it loads; data then holds the model, or stays empty when it failed.
@@ -393,6 +443,7 @@ namespace jasperengine{
         bool rebuildModelFile(const std::string& filename);
 
         void calculateMeshAABB(MeshComponent& mesh);
+        void calculateSpriteAABB(MeshComponent& mesh);
 
         void load() override;
         void draw() override;

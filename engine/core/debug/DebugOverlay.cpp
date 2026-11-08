@@ -825,7 +825,7 @@ namespace {
             }
         }
         if (Rml::Element* table = byId("stats-table")){
-            static const char* const names[] = {"Frame ms", "1% low", "Draw calls", "Instances", "Triangles", "Memory", "Lua",
+            static const char* const names[] = {"Frame ms", "1% low", "Draw calls", "SetPass calls", "Instances", "Triangles", "Memory", "Lua",
                                                 "Audio", "Bodies 2D/3D", "Entities", "Scenes", "Coroutines", "HTML UI"};
             for (const char* name : names){
                 Rml::Element* row = table->AppendChild(s.document->CreateElement("div"));
@@ -877,6 +877,7 @@ namespace {
         snprintf(text, sizeof(text), "%.1f ms", stats.frameMs1PercentLow);
         setStatValue("1% low", text);
         setStatValue("Draw calls", std::to_string(stats.drawCalls));
+        setStatValue("SetPass calls", std::to_string(stats.setPassCalls));
         setStatValue("Instances", std::to_string(stats.instances));
         setStatValue("Triangles", std::to_string(stats.triangles));
         setStatValue("Memory", stats.processMemoryBytes ? formatBytes(stats.processMemoryBytes) : std::string("-"));

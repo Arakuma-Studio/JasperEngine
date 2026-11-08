@@ -20,6 +20,7 @@
 //   u_fs_planarReflection.viewProjection: the reflection camera's (logical: the shader handles
 //                                         the texture origin, as mesh.frag's mirror)
 //   u_fs_planarReflection.params:         x the plane's height, y 1 with a reflection, 0 without
+//   (with @require environment too, both are u_fs_environment's last members: one block)
 //   u_planarReflectionTexture:            its colour (display-encoded, decoded with sRGBToLinear)
 
 #ifndef PLANAR_REFLECTION_GLSL
@@ -29,24 +30,33 @@
 
 #include "includes/srgb.glsl"
 
-uniform u_fs_planarReflection {
-    mat4 viewProjection;
-    vec4 params;
-} planarReflection;
+#ifdef SURFACE_ENVIRONMENT
+    // with @require environment, its block holds these values (includes/environment.glsl)
+    #include "includes/environment.glsl"
+    #define PLANAR_REFLECTION_VIEW_PROJECTION environment.planarViewProjection
+    #define PLANAR_REFLECTION_PARAMS environment.planarParams
+#else
+    uniform u_fs_planarReflection {
+        mat4 viewProjection;
+        vec4 params;
+    } planarReflection;
+    #define PLANAR_REFLECTION_VIEW_PROJECTION planarReflection.viewProjection
+    #define PLANAR_REFLECTION_PARAMS planarReflection.params
+#endif
 
 uniform texture2D u_planarReflectionTexture;
 uniform sampler u_planarReflection_smp;
 
 bool planarReflectionPresent(){
-    return planarReflection.params.y > 0.5;
+    return PLANAR_REFLECTION_PARAMS.y > 0.5;
 }
 
 float planarReflectionLevel(){
-    return planarReflection.params.x;
+    return PLANAR_REFLECTION_PARAMS.x;
 }
 
 vec3 planarReflectionColor(vec3 worldPosition, vec2 screenShift){
-    vec4 clip = planarReflection.viewProjection * vec4(worldPosition.x, planarReflection.params.x, worldPosition.z, 1.0);
+    vec4 clip = PLANAR_REFLECTION_VIEW_PROJECTION * vec4(worldPosition.x, PLANAR_REFLECTION_PARAMS.x, worldPosition.z, 1.0);
     // y flipped for the top-left framebuffer origin (all backends), as mesh.frag's mirror
     vec2 uv = vec2(clip.x / clip.w * 0.5 + 0.5, 0.5 - clip.y / clip.w * 0.5) + vec2(screenShift.x, -screenShift.y);
     uv = clamp(uv, vec2(0.001), vec2(0.999));

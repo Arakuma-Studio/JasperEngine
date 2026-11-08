@@ -68,9 +68,9 @@ namespace {
     };
 
     constexpr EnumItem kNavModifierInclusionItems[] = {
-        {navValue(NavModifierInclusion::AUTO), "auto", "Remove Object", "NavModifierInclusion::AUTO"},
+        {navValue(NavModifierInclusion::AUTO), "auto", "Surface Policy", "NavModifierInclusion::AUTO"},
         {navValue(NavModifierInclusion::INCLUDE), "include", "Add or Modify Object", "NavModifierInclusion::INCLUDE"},
-        {navValue(NavModifierInclusion::EXCLUDE), "exclude", "Remove Object (always)", "NavModifierInclusion::EXCLUDE"},
+        {navValue(NavModifierInclusion::EXCLUDE), "exclude", "Remove Object", "NavModifierInclusion::EXCLUDE"},
     };
 
     constexpr EnumItem kNavGridLayoutItems[] = {
@@ -130,6 +130,8 @@ namespace {
         JE_FIELD(NavMeshSurfaceComponent, minRegionArea, .label = "Minimum Region Area", .tooltip = "Islands smaller than this (square metres) are dropped."),
         JE_FIELD(NavMeshSurfaceComponent, plane, .enumDesc = &enums::kNavPlane, .tooltip = "XZ for 3D scenes (Y up); XY for 2D scenes: Collider2D footprints on the scene's plane."),
         JE_FIELD(NavMeshSurfaceComponent, runtimeCarving, .tooltip = "Keep tile-cache layers so carving NavMesh Obstacles cut it at runtime (about 30% more memory)."),
+        JE_FIELD(NavMeshSurfaceComponent, maxCarvingObstacles, .min = 1.0f, .max = 4096.0f,
+                 .tooltip = "Carving NavMesh Obstacles it cuts at once (Runtime Carving); more are avoided instead, with a warning. Read when the navmesh is created."),
         JE_FIELD(NavMeshSurfaceComponent, followTerrainWorldFocus, .label = "Follow Terrain World Focus", .tooltip = "Bake the Terrain World's tiles round its focus (its Focus GameObject or camera) and rebake as the focus moves."),
         JE_FIELD(NavMeshSurfaceComponent, followRadius, .unit = Unit::Meters, .tooltip = "How far round the focus the Terrain World's tiles are baked."),
         JE_FIELD(NavMeshSurfaceComponent, navMeshData, .asset = AssetKind::NavMesh, .label = "NavMesh Data", .tooltip = "The baked .navmesh asset."),
@@ -139,7 +141,8 @@ namespace {
                                                                 decodeNavMeshSurfaceComponent);
 
     constexpr const char* kNavMeshSurfaceKnownKeys[] = {"agentType", "cellSize", "collectObjects", "defaultArea", "enabled", "followRadius",
-        "followTerrainWorldFocus", "includeLayers", "minRegionArea", "navMeshData", "navMeshDataGuid", "overrideCellSize", "overrideTileSize", "plane", "runtimeCarving", "tileSize",
+        "followTerrainWorldFocus", "includeLayers", "maxCarvingObstacles", "minRegionArea", "navMeshData", "navMeshDataGuid", "overrideCellSize",
+        "overrideTileSize", "plane", "runtimeCarving", "tileSize",
         "useGeometry", "volumeCenter", "volumeSize"};
 
     // ---------------------------------------------------------------- NavMesh Agent
@@ -164,13 +167,19 @@ namespace {
         JE_FIELD(NavMeshAgentComponent, updateRotation),
         JE_FIELD(NavMeshAgentComponent, driver, .enumDesc = &enums::kNavAgentDriver, .tooltip = "What moves it: its Transform, its Rigidbody's velocity, its Character Controller, or nothing (scripts)."),
         JE_FIELD(NavMeshAgentComponent, surface, .ops = &ops::Entity, .tooltip = "The NavMesh Surface or Nav Grid it walks; none: the surface of its type under it, else a grid holding it."),
+        // ---- S76 agents: the stuck watchdog (R25)
+        JE_FIELD(NavMeshAgentComponent, stuckDetection, .label = "Detect Stuck", .tooltip = "Fire onStuck when it makes no progress along its path for Stuck After seconds."),
+        JE_FIELD(NavMeshAgentComponent, stuckSpeedRatio, .tooltip = "Progress counts once it moved this fraction of Speed x Stuck After from where it was."),
+        JE_FIELD(NavMeshAgentComponent, stuckTimeout, .unit = Unit::Seconds, .label = "Stuck After", .tooltip = "Seconds without progress before onStuck fires."),
+        JE_FIELD(NavMeshAgentComponent, repathWhenStuck, .tooltip = "Ask for the destination again when stuck."),
     };
 
     const ComponentCodec kNavMeshAgentCodec = JE_STREAM_CODEC(NavMeshAgentComponent, encodeNavMeshAgentComponent, decodeNavMeshAgentComponent);
 
     constexpr const char* kNavMeshAgentKnownKeys[] = {"acceleration", "agentType", "angularSpeed", "areaMask", "autoBraking", "autoRepath",
-        "autoTraverseOffMeshLink", "avoidancePriority", "baseOffset", "driver", "enabled", "height", "obstacleAvoidance", "radius", "speed",
-        "stoppingDistance", "surface", "updatePosition", "updateRotation"};
+        "autoTraverseOffMeshLink", "avoidancePriority", "baseOffset", "driver", "enabled", "height", "obstacleAvoidance", "radius",
+        "repathWhenStuck", "speed", "stoppingDistance", "stuckDetection", "stuckSpeedRatio", "stuckTimeout", "surface", "updatePosition",
+        "updateRotation"};
 
     // ---------------------------------------------------------------- NavMesh Obstacle
 
@@ -205,30 +214,33 @@ namespace {
         JE_FIELD(NavMeshLinkComponent, bidirectional, .tooltip = "Agents may cross it both ways."),
         JE_FIELD(NavMeshLinkComponent, autoUpdatePosition, .label = "Auto Update Positions", .tooltip = "Follow the GameObject when it moves (the link is updated at runtime)."),
         JE_FIELD(NavMeshLinkComponent, area, .label = "Area Type"),
+        JE_FIELD(NavMeshLinkComponent, activated, .tooltip = "Agents may use it; off: paths and agents ignore it (an agent on it finishes). Not baked."),
     };
 
     const ComponentCodec kNavMeshLinkCodec = JE_STREAM_CODEC(NavMeshLinkComponent, encodeNavMeshLinkComponent, decodeNavMeshLinkComponent);
 
-    constexpr const char* kNavMeshLinkKnownKeys[] = {"agentType", "area", "autoUpdatePosition", "bidirectional", "costModifier", "enabled",
+    constexpr const char* kNavMeshLinkKnownKeys[] = {"activated", "agentType", "area", "autoUpdatePosition", "bidirectional", "costModifier", "enabled",
         "endPoint", "startPoint", "width"};
 
     // ---------------------------------------------------------------- NavMesh Modifier
 
     constexpr FieldDesc kNavMeshModifierFields[] = {
         JE_FIELD(NavMeshModifierComponent, enabled),
-        JE_FIELD(NavMeshModifierComponent, overrideInclusion, .enumDesc = &enums::kNavModifierInclusion, .label = "Mode"),
+        JE_FIELD(NavMeshModifierComponent, overrideInclusion, .enumDesc = &enums::kNavModifierInclusion, .label = "Mode",
+                 .tooltip = "Surface Policy: collected as the surface decides (moving bodies, agents and obstacles are left out); Add or Modify Object: collected even when the surface would leave it out; Remove Object: never collected."),
         JE_FIELD(NavMeshModifierComponent, overrideArea, .tooltip = "Give what it covers its own area."),
         JE_FIELD(NavMeshModifierComponent, area, .label = "Area Type"),
         JE_FIELD(NavMeshModifierComponent, applyToChildren, .tooltip = "Its descendants too (the nearest modifier wins)."),
         JE_FIELD(NavMeshModifierComponent, useVolume, .label = "Volume", .tooltip = "Mark a box (this GameObject's space) instead of the GameObject's geometry."),
         JE_FIELD(NavMeshModifierComponent, volumeCenter, .unit = Unit::Meters, .label = "Center"),
         JE_FIELD(NavMeshModifierComponent, volumeSize, .unit = Unit::Meters, .label = "Size"),
+        JE_FIELD(NavMeshModifierComponent, applyAtRuntime, .tooltip = "The bake only splits the navmesh along the volume; while enabled, the polygons inside take its Area Type (a door, a bridge)."),
     };
 
     const ComponentCodec kNavMeshModifierCodec = JE_STREAM_CODEC(NavMeshModifierComponent, encodeNavMeshModifierComponent,
                                                                  decodeNavMeshModifierComponent);
 
-    constexpr const char* kNavMeshModifierKnownKeys[] = {"applyToChildren", "area", "enabled", "overrideArea", "overrideInclusion",
+    constexpr const char* kNavMeshModifierKnownKeys[] = {"applyAtRuntime", "applyToChildren", "area", "enabled", "overrideArea", "overrideInclusion",
         "useVolume", "volumeCenter", "volumeSize"};
 
     // ---------------------------------------------------------------- Nav Grid

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // W4: assets, import, materials, shaders, text files, placeholder art
+#include "SpriteTools.h"
+#include "sprite/SpriteSheetPool.h"
 #include "asset/AssetOps.h"
 #include "io/watch/LinkedFolders.h"
 #include "asset/AssetTypes.h"
@@ -388,6 +390,52 @@ bool encodePng(const unsigned char* rgba, int width, int height, int maxSize, st
 
 // ------------------------------------------------------------------ model / audio info
 
+// The joints of a glTF's skins and the nodes between them, without loading it: what a model weighs
+// before it is placed (S77 R53). Bones with no parent joint are its `roots`.
+Json skeletonSummary(const Json& gltf) {
+    const Json nodes = gltf.value("nodes", Json::array());
+    std::vector<int> parents(nodes.size(), -1);
+    for (size_t i = 0; i < nodes.size(); i++) {
+        for (const Json& child : nodes[i].value("children", Json::array())) {
+            if (child.is_number_integer() && child.get<size_t>() < parents.size() && child.get<size_t>() != i) parents[child.get<size_t>()] = (int)i;
+        }
+    }
+    std::set<int> skinned;
+    for (const Json& skin : gltf.value("skins", Json::array())) {
+        for (const Json& joint : skin.value("joints", Json::array())) {
+            if (joint.is_number_integer() && joint.get<size_t>() < nodes.size()) skinned.insert(joint.get<int>());
+        }
+    }
+    // the nodes on the way between two joints move them too: joints of the skeleton, not of the skin
+    std::set<int> joints = skinned;
+    for (int joint : skinned) {
+        std::vector<int> chain;
+        size_t steps = 0;
+        for (int at = parents[(size_t)joint]; at >= 0 && steps <= nodes.size(); at = parents[(size_t)at], steps++) {
+            chain.push_back(at);
+            if (skinned.count(at)) {
+                joints.insert(chain.begin(), chain.end());
+                break;
+            }
+        }
+    }
+    size_t maxDepth = 0;
+    Json roots = Json::array();
+    for (int joint : joints) {
+        size_t depth = 0;
+        size_t steps = 0;
+        int above = -1;
+        for (int at = parents[(size_t)joint]; at >= 0 && steps <= nodes.size(); at = parents[(size_t)at], steps++) {
+            if (!joints.count(at)) continue;
+            depth++;
+            if (above < 0) above = at;
+        }
+        maxDepth = std::max(maxDepth, depth + 1);
+        if (above < 0) roots.push_back(nodes[(size_t)joint].value("name", "Node " + std::to_string(joint)));
+    }
+    return {{"joint_count", joints.size()}, {"skinned_joints", skinned.size()}, {"max_depth", maxDepth}, {"roots", roots}};
+}
+
 Json gltfSummary(const Json& gltf) {
     Json info = Json::object();
     auto names = [](const Json& list, const char* fallback) {
@@ -451,6 +499,7 @@ Json gltfSummary(const Json& gltf) {
         }
     }
     info["images"] = images;
+    info["skeleton_summary"] = skeletonSummary(gltf);
     return info;
 }
 
@@ -871,6 +920,15 @@ void getAssetInfoTool(const CallPtr& call) {
                            projectRelative(project, project->getAssetsPath()) + ".";
         }
     }
+    if (kind == "aseprite_sprite") {
+        Json sprite = asepriteAssetInfo(project, file, text);
+        for (auto it = sprite.begin(); it != sprite.end(); ++it) data[it.key()] = it.value();
+    }
+    // S45: a texture's Sprite Mode, packed_in of a sheet source, an atlas's build
+    if (kind == "texture" || kind == "aseprite_sprite" || kind == "sprite_atlas") {
+        Json sheet = spriteSheetAssetInfo(project, file, kind, text);
+        for (auto it = sheet.begin(); it != sheet.end(); ++it) data[it.key()] = it.value();
+    }
     if (kind == "texture") {
         int w = 0, h = 0, c = 0;
         if (extensionOf(file) != ".svg" && stbi_info(file.string().c_str(), &w, &h, &c)) {
@@ -927,6 +985,8 @@ void getAssetInfoTool(const CallPtr& call) {
             data["cook"] = ModelAudit::cookSummaryJson(*project, project->normalizeToAssetsRelative(file).generic_string());
         if (info.is_null()) data["error"] = error;
         else {
+            if (info.contains("animations")) clip_tools::addModelClipStats(file, info["animations"]);
+            if (!call->args().value("skeleton", false)) info.erase("skeleton_summary");
             data["model"] = info;
             if (info.contains("meshes")) {
                 text += ", " + std::to_string(info["meshes"].size()) + " mesh(es), " + std::to_string(info["materials"].size()) +
@@ -1113,6 +1173,10 @@ void viewAssetTool(const CallPtr& call) {
     if (Util::isImageFile(rel) && extensionOf(file) != ".svg") {
         replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json(),
                    spriteNormalsAssetInfo(project, file, false));
+        return;
+    }
+    if (SpriteSheetPool::isAsepritePath(rel)) {
+        replyAsepriteView(call, project, file, maxSize);
         return;
     }
     if (Util::isVertexAnimationFile(rel)) {
@@ -4129,12 +4193,12 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "get_asset_info";
         tool.title = "Get Asset Info";
         tool.description =
-            "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
+            "One file's details by type: image size/channels, Sprite Mode, packed_in (synthesized PNG: recipe, changed sources, "
             "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "audio format/duration; .material fields, "
-            ".anim clip settings, tracks, events, users; .vat clips, staleness, users; "
+            ".anim clip settings, tracks, events, users; .vat clips, staleness, users; .aseprite layers, tags, slices, outputs; "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
-        tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
+        tool.inputSchema = object({{"path", assetPath("")}, {"skeleton", boolean("")}}, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = getAssetInfoTool;
@@ -4147,7 +4211,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "View Asset";
         tool.description =
             "See an image asset as PNG image content; models, materials and prefabs give their Project window "
-            "thumbnail (may take seconds). SVGs are not rasterized.";
+            "thumbnail (may take seconds); .aseprite frames as a sheet. SVGs are not rasterized.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"max_size", withDefault(integer("Longest side, px.", 16, 2048), 512)}

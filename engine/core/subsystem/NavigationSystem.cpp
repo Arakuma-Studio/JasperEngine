@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "NavigationSystem.h"
+#include "NavigationAreas.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -50,6 +51,9 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <limits>
 #include <map>
 #include <set>
 #include <thread>
@@ -61,8 +65,12 @@ using namespace jasperengine::nav;
 namespace {
 
     constexpr float PI = 3.14159265358979323846f;
-    // carving work per fixed tick (spec R28: 1 ms of tile-cache work per tick)
-    constexpr double CARVE_BUDGET_MS = 1.0;
+    // the Recast warning lines a bake result keeps (spec S74 R4)
+    constexpr size_t MAX_BAKE_WARNINGS = 32;
+    // Max Carving Obstacles' range (spec S74 R17)
+    constexpr int MAX_CARVING_OBSTACLES = 4096;
+    // Detour cuts an obstacle into at most this many tile-cache layers (DT_MAX_TOUCHED_TILES)
+    constexpr int MAX_CUT_LAYERS = 8;
     // arrival never closer than this (spec R12)
     constexpr float MIN_STOPPING_DISTANCE = 0.01f;
     // auto braking: the final approach closes 1/8 of what is left per tick, and arrives within 5 mm
@@ -70,18 +78,27 @@ namespace {
     constexpr float ARRIVAL_TOLERANCE = 0.005f;
     // a grid agent waiting this long for an occupied cell plans around it
     constexpr float GRID_WAIT_SECONDS = 0.5f;
+    // dtCrowd extends a corridor that does not end at the target once fewer polygons than this
+    // are left (its CHECK_LOOKAHEAD)
+    constexpr int EXTENSION_POLYS = 10;
 
     enum class EventType : uint8_t {
         DestinationReached,
         PathFailed,
         LinkStart,
         LinkEnd,
-        BakeCompleted
+        BakeCompleted,
+        // ---- S76 agents
+        Stuck
     };
 
     struct Event {
         Entity entity;
         EventType type;
+        // ---- S76 agents: PathFailed's nav::PathFailure
+        uint8_t detail = 0;
+        // its place in the queue (dispatch keeps it within an entity)
+        uint32_t sequence = 0;
     };
 
     void warnOnce(std::set<std::string>& warned, const std::string& key, const std::string& message) {
@@ -137,11 +154,23 @@ struct NavigationSystem::Runtime {
         nav::NavWorldContext world;
         // Follow Terrain World Focus set by a script (single-threaded web follows only then)
         bool followScripted = false;
-        // the crowd of its agents and non-carving obstacles, made for one Detour mesh
+        // S75 R17: each tile's last build in this session, ms by (y, x); cleared on a load
+        std::map<std::pair<int, int>, double> tileMs;
+        // A bake that landed in play while its carved tiles still build (spec S74 R15): the new
+        // mesh of a full bake (staging, in service once complete) or the live mesh's queued
+        // builds, and the result reported when they are done
+        std::unique_ptr<NavMesh> staging;
+        std::unique_ptr<NavBakeResult> pendingResult;
+        // the crowd of its agents and non-carving obstacles, made for one Detour mesh (generation)
         std::unique_ptr<NavCrowd> crowd;
-        void* crowdMesh = nullptr;
+        uint64_t crowdGeneration = 0;
         int crowdCapacity = 0;
         bool crowdGrow = false;
+        // ---- S76 queries: the crowd ran out of query filters once (one warning per crowd)
+        bool warnedFilterFallback = false;
+
+        // the mesh that holds the carving obstacles: the staging one while it builds
+        NavMesh* carvingMesh() const { return staging ? staging.get() : mesh.get(); }
     };
 
     struct Agent {
@@ -166,6 +195,9 @@ struct NavigationSystem::Runtime {
         bool failed = false;
         bool wasPending = false;
         bool warnedOffMesh = false;
+        // what dtCrowd's corridor held at the last fixed tick (spec S74 R6, R8)
+        NavCrowdPath crowdPath = NavCrowdPath::Complete;
+        int corridorPolys = 0;
         // its own traversal of an off-mesh link (nav space)
         bool onLink = false;
         bool linkByDetour = false;
@@ -181,20 +213,50 @@ struct NavigationSystem::Runtime {
         Vector3 gridVelocity;
         uint64_t gridRevision = 0;
         GridCell gridGoal;
+        // ---- S76 queries: its own area costs (0: the project's), runtime only
+        float areaCosts[AREA_COUNT] = {};
+
+        // ---- S76 agents: the stuck watchdog's anchor (R25) and a script's velocity for the next
+        // fixed tick (world, R22)
+        Vector3 stuckAnchor;
+        bool stuckAnchored = false;
+        bool velocityOverride = false;
+        Vector3 overrideVelocity;
+    };
+
+    // what an obstacle's cut was made from (spec S74 R13): a re-cut once it moved past the
+    // threshold, turned (a box) or changed shape
+    struct Cut {
+        uint32_t id = 0;
+        Vector3 position;
+        float yaw = 0.0f;
+        NavObstacleShape shape = NavObstacleShape::BOX;
+        Vector3 center, size, scale;
+        float radius = 0.0f;
+        float height = 0.0f;
     };
 
     struct Obstacle {
         Entity entity = NULL_ENTITY;
         // the crowd slot it has in each surface's crowd
         std::map<Entity, int> crowdSlots;
-        // its tile-cache obstacle in each carving surface
-        std::map<Entity, uint32_t> carves;
-        Vector3 carvedPosition;
-        Quaternion carvedRotation;
+        // its cut in each carving surface's mesh (an id of the mesh's registry)
+        std::map<Entity, Cut> carves;
         Vector3 lastPosition;
+        // S76 R30: from its transform, per fixed tick
+        Vector3 velocity;
+        // stationary: within the move threshold of `anchor` for stationaryTime seconds
+        Vector3 anchor;
         float stationaryTime = 0.0f;
-        bool carved = false;
         bool hasLast = false;
+    };
+
+    // an auto-updating link on one surface (spec S74 R10): the connections last applied
+    struct LinkTrack {
+        uint64_t generation = 0;
+        std::vector<NavLinkInput> applied;
+        // the connections that failed to apply (a static tile left), not tried again
+        std::vector<NavLinkInput> refused;
     };
 
     struct Grid {
@@ -225,7 +287,22 @@ struct NavigationSystem::Runtime {
     uint64_t settingsVersion = 0;
     std::vector<NavLinkEntry> linkEntries;
     std::vector<int> detourLinks;
+    std::map<std::pair<Entity, Entity>, LinkTrack> links;
     bool inFixedUpdate = false;
+    // scratch of the fixed tick, reused so that a steady tick allocates nothing (spec S74 R19):
+    // the agents and obstacles in entity order (rebuilt when such components come or go), each
+    // crowd slot's agent, a grid agent's lookahead, a link's connections
+    std::vector<Entity> agentOrder;
+    std::vector<Entity> obstacleOrder;
+    bool orderDirty = true;
+    std::vector<Entity> crowdOwners;
+    std::vector<int> lookahead;
+    std::vector<NavLinkInput> connections;
+    std::vector<float> linkCosts;
+    // ---- S76 agents: crowd agents steered by a velocity request this tick (no path), and the
+    // events being dispatched (the two buffers swap, R18)
+    std::vector<int> velocityRequests;
+    std::vector<Event> dispatching;
 
     // the fixed tick's steps (spec D2)
     void syncSurfaces(NavigationSystem& system, Scene* scene);
@@ -233,13 +310,36 @@ struct NavigationSystem::Runtime {
     Entity pickSurface(NavigationSystem& system, Scene* scene, Entity entity, const NavMeshAgentComponent& component, const Vector3& position);
     void syncAgents(NavigationSystem& system, Scene* scene);
     void syncObstacles(NavigationSystem& system, Scene* scene, float dt);
+    void syncLinks(Scene* scene);
     void solveGrids(NavigationSystem& system, Scene* scene, uint32_t tick);
-    void updateCarving();
+    int updateCarving(NavigationSystem& system, Scene* scene, double ceilingMs);
     void stepCrowds(Scene* scene, float dt);
     void writeBack(NavigationSystem& system, Scene* scene, float dt, uint32_t tick);
     void moveGridAgent(NavigationSystem& system, Scene* scene, Agent& agent, NavMeshAgentComponent& component, float dt, uint32_t tick);
     void dispatch(Scene* scene);
-    std::vector<Entity> sortedAgents(Scene* scene) const;
+    const std::vector<Entity>& sortedAgents(Scene* scene);
+    // S76 step 1b: the agents whose path an area change touches ask again (R15)
+    void replanAreaChanges(NavigationSystem& system, Scene* scene);
+    std::vector<int> replanned;
+    // ---- S76 queries: an agent whose area mask and costs found no free crowd filter
+    void warnFilterFallback(Scene* scene, Surface& surface, Entity entity, int crowdIndex);
+    // ---- S76 agents
+    // why the agent's destination has no Complete path now: one search on its surface (S75's
+    // classification), else over the surfaces of its agent type
+    PathFailure classifyFailure(NavigationSystem& system, Scene* scene, Entity entity, const Agent& agent);
+    // queues onPathFailed with its reason, which lastPathFailure keeps
+    void failPath(Entity entity, NavMeshAgentComponent& component, PathFailure reason);
+    // the stuck watchdog (R25), after the agent's state of this tick is known; scale: the surface's
+    // units per metre
+    void watchStuck(NavigationSystem& system, Entity entity, Agent& agent, NavMeshAgentComponent& component, float dt, float scale);
+    static void stopWatchingStuck(Agent& agent, NavMeshAgentComponent& component);
+    const std::vector<Entity>& sortedObstacles(Scene* scene);
+
+    // a new mesh (or none) for the surface: its crowd goes, its agents are placed again
+    void releaseCrowd(Entity entity, Surface& surface);
+    // Puts `next` in service for the surface: it takes the obstacles of the mesh it replaces,
+    // and, outside a frame budget (a load, an editor bake), cuts them at once
+    void replaceMesh(Entity entity, Surface& surface, std::unique_ptr<NavMesh> next, bool landAtOnce);
 };
 
 NavigationSystem::NavigationSystem(Scene* scene): SubSystem(scene) {
@@ -265,10 +365,50 @@ bool NavigationSystem::hasNavigationComponents() const {
            scene->getComponentArray<NavGridComponent>()->size() > 0;
 }
 
+void NavigationSystem::Runtime::releaseCrowd(Entity entity, Surface& surface) {
+    surface.crowd.reset();
+    surface.crowdGeneration = 0;
+    for (auto& agent : agents) {
+        if (agent.second.surface == entity && !agent.second.onGrid) {
+            agent.second.placed = false;
+            agent.second.crowdIndex = -1;
+            agent.second.onLink = false;
+        }
+    }
+    for (auto& obstacle : obstacles)
+        obstacle.second.crowdSlots.erase(entity);
+}
+
+void NavigationSystem::Runtime::replaceMesh(Entity entity, Surface& surface, std::unique_ptr<NavMesh> next, bool landAtOnce) {
+    // a runtime bake still building is overtaken (its result: cancelled)
+    if (surface.pendingResult) {
+        surface.pendingResult->ok = false;
+        surface.pendingResult->cancelled = true;
+        surface.pendingResult->error = "cancelled";
+        surface.lastResult = std::move(surface.pendingResult);
+    }
+    // the cuts carry over: same ids, cut again on the new tile cache (spec S74 R12)
+    if (next && surface.carvingMesh())
+        next->adoptObstacles(*surface.carvingMesh());
+    surface.staging.reset();
+    if (next && landAtOnce && next->isCarving()) {
+        NavCarveBudget budget;
+        budget.maxTileBuilds = std::numeric_limits<int>::max();
+        budget.ceilingMs = 0.0;
+        bool upToDate = false;
+        int built = 0;
+        next->updateCarving(budget, upToDate, built);
+    }
+    surface.mesh = std::move(next);
+    releaseCrowd(entity, surface);
+}
+
 void NavigationSystem::load() {
 }
 
 void NavigationSystem::destroy() {
+    // S76: script volumes end with the system (Stop)
+    areas.reset();
     if (!runtime)
         return;
     for (auto& entry : runtime->surfaces) {
@@ -301,12 +441,15 @@ void NavigationSystem::setBakeInBackground(bool background) {
 void NavigationSystem::onComponentAdded(Entity entity, ComponentId componentId) {
     (void)entity;
     (void)componentId;
+    if (runtime)
+        runtime->orderDirty = true;
 }
 
 void NavigationSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     if (!runtime)
         return;
     Runtime& r = *runtime;
+    r.orderDirty = true;
     if (componentId == scene->getComponentId<NavMeshSurfaceComponent>()) {
         auto found = r.surfaces.find(entity);
         if (found != r.surfaces.end()) {
@@ -348,8 +491,8 @@ void NavigationSystem::onComponentRemoved(Entity entity, ComponentId componentId
             }
             for (auto& carve : found->second.carves) {
                 auto surface = r.surfaces.find(carve.first);
-                if (surface != r.surfaces.end() && surface->second.mesh)
-                    surface->second.mesh->removeObstacle(carve.second);
+                if (surface != r.surfaces.end() && surface->second.carvingMesh())
+                    surface->second.carvingMesh()->removeObstacle(carve.second.id);
             }
             r.obstacles.erase(found);
         }
@@ -371,6 +514,17 @@ namespace {
 
     NavMeshSurfaceComponent* surfaceComponent(Scene* scene, Entity entity) {
         return scene->findComponent<NavMeshSurfaceComponent>(entity);
+    }
+
+    // Max Carving Obstacles, in its range (spec S74 R17)
+    int maxCarvingObstaclesOf(const NavMeshSurfaceComponent* component) {
+        return std::clamp(component ? component->maxCarvingObstacles : 128, 1, MAX_CARVING_OBSTACLES);
+    }
+
+    NavMeshCreateOptions loadOptions(const NavMeshSurfaceComponent* component) {
+        NavMeshCreateOptions options;
+        options.maxObstacles = maxCarvingObstaclesOf(component);
+        return options;
     }
 
     bool readAsset(const std::string& path, std::vector<uint8_t>& bytes, std::string& error) {
@@ -411,26 +565,30 @@ bool NavigationSystem::reloadNavMesh(Entity surface, std::string& error) {
     state.loadedPath = component->navMeshData.path;
     state.loadError.clear();
     state.dirtyTiles = -1;
+    state.tileMs.clear();
+    Runtime& r = *runtime;
     if (component->navMeshData.path.empty()) {
-        state.mesh.reset();
+        r.replaceMesh(surface, state, nullptr, true);
         return true;
     }
     std::vector<uint8_t> bytes;
     NavMeshData data;
     if (!readAsset(component->navMeshData.path, bytes, error) || !NavMeshFile::read(bytes.data(), bytes.size(), data, error)) {
         state.loadError = error;
-        state.mesh.reset();
+        r.replaceMesh(surface, state, nullptr, true);
         Log::error("NavMeshSurface '%s': %s; it reports Not baked", scene->getEntityName(surface).c_str(), error.c_str());
         return false;
     }
     auto mesh = std::make_unique<NavMesh>();
-    if (!mesh->create(std::move(data), keepBakeData, error)) {
+    if (!mesh->create(std::move(data), keepBakeData, error, loadOptions(component))) {
         state.loadError = error;
-        state.mesh.reset();
+        r.replaceMesh(surface, state, nullptr, true);
         Log::error("NavMeshSurface '%s': %s; it reports Not baked", scene->getEntityName(surface).c_str(), error.c_str());
         return false;
     }
-    state.mesh = std::move(mesh);
+    // a load builds at once, its obstacles' cuts included (spec S74 R12, R15)
+    r.replaceMesh(surface, state, std::move(mesh), true);
+    onAreaMeshReplaced(surface);
     return true;
 }
 
@@ -454,13 +612,15 @@ bool NavigationSystem::setNavMeshData(Entity surface, NavMeshData data, std::str
     Runtime::Surface& state = rt().surfaces[surface];
     state.entity = surface;
     auto mesh = std::make_unique<NavMesh>();
-    if (!mesh->create(std::move(data), keepBakeData, error))
+    if (!mesh->create(std::move(data), keepBakeData, error, loadOptions(surfaceComponent(scene, surface))))
         return false;
-    state.mesh = std::move(mesh);
+    runtime->replaceMesh(surface, state, std::move(mesh), true);
     state.loaded = true;
     state.loadedPath = surfaceComponent(scene, surface)->navMeshData.path;
     state.loadError.clear();
     state.dirtyTiles = -1;
+    state.tileMs.clear();
+    onAreaMeshReplaced(surface);
     return true;
 }
 
@@ -491,31 +651,51 @@ NavSurfaceStatus NavigationSystem::getSurfaceStatus(Entity surface) {
     if (state.bake) {
         status.state = NavBakeState::BAKING;
         status.progress = state.bake->getProgress();
+    } else if (state.pendingResult) {
+        status.state = NavBakeState::BAKING;
+        status.progress = 1.0f;
     } else if (state.collectPending) {
         status.state = NavBakeState::BAKING;
     }
     if (state.crowd) {
         status.crowdAgents = state.crowd->getAgentCount();
         status.crowdCapacity = state.crowd->getCapacity();
+        status.crowdFilters = state.crowd->getFilterCount();
+        status.crowdFilterOverflow = state.crowd->getFilterOverflowCount();
     }
+    if (const NavMesh* building = state.carvingMesh())
+        status.queuedBuilds = building->getQueuedBuilds();
     return status;
 }
 
 int NavigationSystem::countDirtyTiles(Entity surface, std::string* error) {
+    const InputReport report = inspectInputs(surface);
+    if (error && report.dirtyTiles < 0)
+        *error = report.error;
+    return report.dirtyTiles;
+}
+
+NavigationSystem::InputReport NavigationSystem::inspectInputs(Entity surface, const NavCollectOptions& options, bool keepInput) {
+    InputReport report;
     NavMeshSurfaceComponent* component = surfaceComponent(scene, surface);
     if (!component) {
-        if (error) *error = "the GameObject has no NavMeshSurface";
-        return -1;
+        report.error = "the GameObject has no NavMeshSurface";
+        report.errorCode = NavBakeError::NoSurface;
+        return report;
     }
-    std::string collectError;
-    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, collectError);
+    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, report.error, nullptr, options, &report.errorCode);
     Runtime::Surface& state = rt().surfaces[surface];
     const NavMesh* mesh = getNavMesh(surface);
     if (!input) {
-        if (error) *error = collectError;
         state.dirtyTiles = -1;
-        return -1;
+        return report;
     }
+    report.tilesWide = input->tilesWide();
+    report.tilesHigh = input->tilesHigh();
+    report.tileSize = input->config.tileSize;
+    report.nonEmptyTiles = (int)input->nonEmptyTiles.size();
+    report.cellSize = input->config.cellSize;
+    report.agentRadius = input->config.agentRadius;
     // a tile is dirty when its input hash differs from the baked one, or it is baked and now empty
     std::map<std::pair<int, int>, uint64_t> baked;
     bool configChanged = true;
@@ -535,50 +715,80 @@ int NavigationSystem::countDirtyTiles(Entity surface, std::string* error) {
             }
         }
     }
-    int dirty = 0;
     std::set<std::pair<int, int>> seen;
     for (uint32_t index : input->nonEmptyTiles) {
         const NavTileCoord coord = input->tileCoord(index);
         seen.insert({coord.y, coord.x});
         auto found = baked.find({coord.y, coord.x});
-        if (configChanged || found == baked.end() || found->second != input->tileHashes[index])
-            dirty++;
+        if (!mesh || configChanged || found == baked.end() || found->second != input->tileHashes[index])
+            report.dirty.push_back(coord);
     }
-    for (const auto& entry : baked) {
-        if (!seen.count(entry.first))
-            dirty++;
+    if (mesh) {
+        for (const auto& entry : baked) {
+            if (!seen.count(entry.first))
+                report.dirty.push_back(NavTileCoord{entry.first.second, entry.first.first});
+        }
     }
-    if (!mesh)
-        dirty = (int)input->nonEmptyTiles.size();
-    state.dirtyTiles = dirty;
-    return dirty;
+    std::sort(report.dirty.begin(), report.dirty.end());
+    report.dirty.erase(std::unique(report.dirty.begin(), report.dirty.end()), report.dirty.end());
+    report.dirtyTiles = (int)report.dirty.size();
+    state.dirtyTiles = report.dirtyTiles;
+    if (keepInput)
+        report.input = std::move(input);
+    return report;
 }
 
-bool NavigationSystem::bake(Entity surface, NavBakeMode mode, std::string& error) {
+namespace {
+
+    // a bake that could not start: its code, and (when the surface exists and no bake runs) the
+    // surface's last result, so the report and the findings see it (S75 R16)
+    bool refuseBake(std::unique_ptr<NavBakeResult>* last, NavBakeError why, const std::string& error, NavBakeError* code,
+                    NavCollectStats* stats = nullptr) {
+        if (code)
+            *code = why;
+        if (last) {
+            *last = std::make_unique<NavBakeResult>();
+            (*last)->error = error;
+            (*last)->errorCode = why;
+            (*last)->hint = bakeErrorHint(why);
+            if (stats) {
+                (*last)->sources = std::move(*stats);
+                (*last)->warnings = (*last)->sources.warnings;
+            }
+        }
+        return false;
+    }
+
+}
+
+bool NavigationSystem::bake(Entity surface, NavBakeMode mode, std::string& error, NavBakeError* code) {
+    if (code)
+        *code = NavBakeError::None;
     NavMeshSurfaceComponent* component = surfaceComponent(scene, surface);
     if (!component) {
         error = "the GameObject has no NavMeshSurface";
-        return false;
-    }
-    if (!isNavMeshAvailable()) {
-        error = "navmesh support is not in this build (JASPERENGINE_NAVIGATION is off)";
-        Log::error("Navigation: %s", error.c_str());
-        return false;
+        return refuseBake(nullptr, NavBakeError::NoSurface, error, code);
     }
     Runtime::Surface& state = rt().surfaces[surface];
     state.entity = surface;
+    if (!isNavMeshAvailable()) {
+        error = "navmesh support is not in this build (JASPERENGINE_NAVIGATION is off)";
+        Log::error("Navigation: %s", error.c_str());
+        return refuseBake(&state.lastResult, NavBakeError::Unavailable, error, code);
+    }
     getNavMesh(surface);
-    if (state.bake) {
+    if (state.bake || state.pendingResult) {
         error = "a bake of this surface is running";
-        return false;
+        return refuseBake(nullptr, NavBakeError::Busy, error, code);
     }
     if (mode == NavBakeMode::CLEAR) {
         state.collectPending = false;
         state.world = nav::NavWorldContext();
-        state.mesh.reset();
+        runtime->replaceMesh(surface, state, nullptr, true);
         state.loaded = true;
         state.loadedPath = component->navMeshData.path;
         state.dirtyTiles = -1;
+        state.tileMs.clear();
         state.lastResult = std::make_unique<NavBakeResult>();
         state.lastResult->ok = true;
         return true;
@@ -586,11 +796,12 @@ bool NavigationSystem::bake(Entity surface, NavBakeMode mode, std::string& error
 
     JE_PROFILE_SCOPE("Nav.Bake");
     NavCollectStats stats;
-    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, error, &stats, &state.world);
+    NavBakeError collectError = NavBakeError::None;
+    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, error, &stats, {}, &collectError, &state.world);
     state.collectPending = false;
     if (!input) {
         if (stats.pendingTiles == 0)
-            return false;
+            return refuseBake(&state.lastResult, collectError, error, code, &stats);
         // T4 R25: started, waiting for its tiles
         state.collectPending = true;
         state.pendingUpdate = false;
@@ -636,18 +847,20 @@ bool NavigationSystem::bake(Entity surface, NavBakeMode mode, std::string& error
     return true;
 }
 
-bool NavigationSystem::updateTiles(Entity surface, const AABB& worldBounds, std::string& error) {
+bool NavigationSystem::updateTiles(Entity surface, const AABB& worldBounds, std::string& error, NavBakeError* code) {
+    if (code)
+        *code = NavBakeError::None;
     NavMeshSurfaceComponent* component = surfaceComponent(scene, surface);
     if (!component) {
         error = "the GameObject has no NavMeshSurface";
-        return false;
+        return refuseBake(nullptr, NavBakeError::NoSurface, error, code);
     }
     Runtime::Surface& state = rt().surfaces[surface];
     state.entity = surface;
     getNavMesh(surface);
-    if (state.bake) {
+    if (state.bake || state.pendingResult) {
         error = "a bake of this surface is running";
-        return false;
+        return refuseBake(nullptr, NavBakeError::Busy, error, code);
     }
     // without the tile records (a game's mesh) the asset is read again with them
     if (state.mesh && !state.mesh->getData()) {
@@ -657,11 +870,12 @@ bool NavigationSystem::updateTiles(Entity surface, const AABB& worldBounds, std:
         keepBakeData = keep;
     }
     NavCollectStats stats;
-    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, error, &stats, &state.world);
+    NavBakeError collectError = NavBakeError::None;
+    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, error, &stats, {}, &collectError, &state.world);
     state.collectPending = false;
     if (!input) {
         if (stats.pendingTiles == 0)
-            return false;
+            return refuseBake(&state.lastResult, collectError, error, code, &stats);
         // T4 R25: started, waiting for its tiles
         state.collectPending = true;
         state.pendingUpdate = true;
@@ -670,7 +884,7 @@ bool NavigationSystem::updateTiles(Entity surface, const AABB& worldBounds, std:
         return true;
     }
     if (!state.mesh || !state.mesh->getData() || state.mesh->getHeader().config.hash() != input->config.hash())
-        return bake(surface, NavBakeMode::FULL, error);
+        return bake(surface, NavBakeMode::FULL, error, code);
 
     // the tiles whose bounds (with their border) meet the box, in nav space
     const NavFrame frame = NavBakeCollector::frameOf(scene, surface);
@@ -722,8 +936,15 @@ bool NavigationSystem::updateTiles(Entity surface, const AABB& worldBounds, std:
 NavBakeResult NavigationSystem::bakeNow(Entity surface, NavBakeMode mode) {
     NavBakeResult result;
     std::string error;
-    if (!bake(surface, mode, error)) {
+    NavBakeError code = NavBakeError::None;
+    if (!bake(surface, mode, error, &code)) {
         result.error = error;
+        result.errorCode = code;
+        result.hint = bakeErrorHint(code);
+        if (code != NavBakeError::Busy && runtime && runtime->surfaces[surface].lastResult)
+            result = *runtime->surfaces[surface].lastResult;
+        // bake() logs only a build without navmesh support
+        result.logged = code == NavBakeError::Unavailable;
         return result;
     }
     Runtime::Surface& state = rt().surfaces[surface];
@@ -750,6 +971,7 @@ NavBakeResult NavigationSystem::bakeNow(Entity surface, NavBakeMode mode) {
         state.bake->wait();
     }
     processBakes(0.0);
+    // the report as it landed: its island fields fill on the first getLastBakeResult (R8)
     if (state.lastResult)
         result = *state.lastResult;
     return result;
@@ -778,24 +1000,38 @@ bool NavigationSystem::isBaking(Entity surface) const {
     if (!runtime)
         return false;
     auto found = runtime->surfaces.find(surface);
-    return found != runtime->surfaces.end() && (found->second.bake != nullptr || found->second.collectPending);
+    // a bake that landed in play is baking until its carved tiles are built (spec S74 R15)
+    return found != runtime->surfaces.end() && (found->second.bake || found->second.pendingResult || found->second.collectPending);
 }
 
 bool NavigationSystem::isAnyBaking() const {
     if (!runtime)
         return false;
     for (const auto& entry : runtime->surfaces) {
-        if (entry.second.bake || entry.second.collectPending)
+        if (entry.second.bake || entry.second.pendingResult || entry.second.collectPending)
             return true;
     }
     return false;
 }
 
-const NavBakeResult* NavigationSystem::getLastBakeResult(Entity surface) const {
+const NavBakeResult* NavigationSystem::getLastBakeResult(Entity surface) {
     if (!runtime)
         return nullptr;
     auto found = runtime->surfaces.find(surface);
-    return found != runtime->surfaces.end() ? found->second.lastResult.get() : nullptr;
+    if (found == runtime->surfaces.end() || !found->second.lastResult)
+        return nullptr;
+    NavBakeResult& result = *found->second.lastResult;
+    // the island fields on first read, never inside the landing (R8, R16)
+    if (result.ok && result.islandCount < 0 && found->second.mesh && found->second.mesh->isValid()) {
+        const NavCoverage coverage = getCoverage(surface);
+        result.walkableArea = coverage.walkableArea;
+        result.islandCount = coverage.islandCount;
+        result.islands = getIslands(surface);
+        std::stable_sort(result.islands.begin(), result.islands.end(), [](const NavIsland& a, const NavIsland& b) { return a.area > b.area; });
+        if (result.islands.size() > 16)
+            result.islands.resize(16);
+    }
+    return &result;
 }
 
 void NavigationSystem::processBakes(double budgetMs) {
@@ -807,12 +1043,15 @@ void NavigationSystem::processBakes(double budgetMs) {
         if (state.collectPending && !state.bake) {
             // T4 R25: collect again; it waits on while tiles are still loading
             std::string error;
-            const bool started = state.pendingUpdate ? updateTiles(entry.first, state.pendingBounds, error)
-                                                     : bake(entry.first, state.pendingMode, error);
+            NavBakeError code = NavBakeError::None;
+            const bool started = state.pendingUpdate ? updateTiles(entry.first, state.pendingBounds, error, &code)
+                                                     : bake(entry.first, state.pendingMode, error, &code);
             if (!started) {
                 state.world.hasTarget = false;
                 state.lastResult = std::make_unique<NavBakeResult>();
                 state.lastResult->error = error;
+                state.lastResult->errorCode = code;
+                state.lastResult->hint = bakeErrorHint(code);
                 Log::error("NavMeshSurface '%s' bake failed: %s", scene->getEntityName(entry.first).c_str(), error.c_str());
                 continue;
             }
@@ -836,21 +1075,41 @@ void NavigationSystem::processBakes(double budgetMs) {
         std::unique_ptr<NavBake> bake = std::move(state.bake);
         auto result = std::make_unique<NavBakeResult>();
         result->warnings = state.bakeStats.warnings;
+        result->sources = std::move(state.bakeStats);
+        state.bakeStats = NavCollectStats();
         result->tilesTotal = bake->getTilesTotal();
         result->milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - state.bakeStarted).count();
+        auto failWith = [&](NavBakeError code) {
+            result->errorCode = code;
+            result->hint = bakeErrorHint(code);
+        };
         if (bake->isCancelled()) {
             // the previous navmesh stays, tiles and hashes alike (spec R4)
             result->cancelled = true;
             result->error = "cancelled";
+            failWith(NavBakeError::Cancelled);
             state.lastResult = std::move(result);
             continue;
         }
 
-        // the tiles land in tile-index order (spec R40a)
+        // the tiles land in tile-index order (spec R40a); Recast's warnings go with them, as
+        // "tile (x, y): message", equal lines merged (spec S74 R4)
         std::vector<NavTileBlob> blobs;
         std::vector<NavTileCoord> coords;
+        std::vector<std::string> recastLines;
+        std::vector<int> recastCounts;
         bool failed = false;
         for (NavTileBuildResult& tile : bake->getResults()) {
+            for (const std::string& warning : tile.warnings) {
+                const std::string line = "tile (" + std::to_string(tile.coord.x) + ", " + std::to_string(tile.coord.y) + "): " + warning;
+                auto found = std::find(recastLines.begin(), recastLines.end(), line);
+                if (found == recastLines.end()) {
+                    recastLines.push_back(line);
+                    recastCounts.push_back(1);
+                } else {
+                    recastCounts[(size_t)(found - recastLines.begin())]++;
+                }
+            }
             if (!tile.ok) {
                 result->error = tile.error;
                 failed = true;
@@ -859,11 +1118,26 @@ void NavigationSystem::processBakes(double budgetMs) {
             coords.push_back(tile.coord);
             result->tilesBuilt++;
             result->polys += tile.polyCount;
-            for (NavTileBlob& blob : tile.blobs)
+            NavTileReport report;
+            report.x = tile.coord.x;
+            report.y = tile.coord.y;
+            report.polys = tile.polyCount;
+            report.milliseconds = tile.milliseconds;
+            for (NavTileBlob& blob : tile.blobs) {
+                report.bytes += blob.data.size();
                 blobs.push_back(std::move(blob));
+            }
+            result->tiles.push_back(report);
         }
+        for (size_t i = 0; i < recastLines.size() && i < MAX_BAKE_WARNINGS; i++)
+            result->warnings.push_back(recastCounts[i] > 1 ? recastLines[i] + " (" + std::to_string(recastCounts[i]) + " times)" : recastLines[i]);
+        if (recastLines.size() > MAX_BAKE_WARNINGS)
+            result->warnings.push_back("... and " + std::to_string(recastLines.size() - MAX_BAKE_WARNINGS) + " more");
         if (failed) {
+            failWith(NavBakeError::TileFailed);
+            result->tiles.clear();
             Log::error("NavMeshSurface '%s' bake failed: %s", scene->getEntityName(entry.first).c_str(), result->error.c_str());
+            result->logged = true;
             state.lastResult = std::move(result);
             continue;
         }
@@ -871,38 +1145,82 @@ void NavigationSystem::processBakes(double budgetMs) {
             coords.push_back(coord);
 
         const std::shared_ptr<const NavBakeInput>& input = bake->getInput();
+        const NavMeshSurfaceComponent* component = surfaceComponent(scene, entry.first);
+        // in play, carved tiles build within the carving budget (spec S74 R15); edit-mode bakes
+        // build at once, as no frame budget applies there
+        const bool defer = r.inFixedUpdate && input->config.carving;
         std::string error;
         bool ok = false;
-        if (state.bakeReplacesAll || !state.mesh || !state.mesh->getData()) {
+        bool staged = false;
+        const bool newMesh = state.bakeReplacesAll || !state.mesh || !state.mesh->getData();
+        if (newMesh) {
             NavMeshData data;
-            data.header.agent = getSettings().agentTypeOrDefault(surfaceComponent(scene, entry.first)
-                                                                      ? surfaceComponent(scene, entry.first)->agentType : 0);
+            data.header.agent = getSettings().agentTypeOrDefault(component ? component->agentType : 0);
             data.header.areaTableHash = hashAreaTable(getSettings());
             data.header.config = input->config;
             data.header.maxTiles = std::max({1, input->tileCount(), input->reserveTiles});
             data.header.linkAreaCosts = input->linkAreaCosts;
+            // informational in the file: a load takes the surface's own (spec S74 R17)
+            data.header.maxObstacles = maxCarvingObstaclesOf(component);
             data.tiles = std::move(blobs);
             auto mesh = std::make_unique<NavMesh>();
+            NavMeshCreateOptions options;
+            options.deferCarvedBuilds = defer;
+            options.maxObstacles = maxCarvingObstaclesOf(component);
             // a baked mesh keeps its records: the editor saves them, a game's updateTiles follows
-            ok = mesh->create(std::move(data), true, error);
-            if (ok)
-                state.mesh = std::move(mesh);
+            ok = mesh->create(std::move(data), true, error, options);
+            if (ok && defer) {
+                // the current mesh serves until this one is built; this one cuts the obstacles
+                // from now on, so its tiles build with their cuts
+                if (state.mesh)
+                    mesh->adoptObstacles(*state.mesh);
+                state.staging = std::move(mesh);
+                staged = true;
+            } else if (ok) {
+                r.replaceMesh(entry.first, state, std::move(mesh), true);
+            }
         } else {
+            const uint64_t generation = state.mesh->getGeneration();
+            state.mesh->setDeferCarvedBuilds(defer);
             ok = state.mesh->replaceTiles(coords, std::move(blobs), error);
+            // the pool grew: a new Detour mesh inside the same NavMesh (spec S74 R9)
+            if (state.mesh->getGeneration() != generation)
+                r.releaseCrowd(entry.first, state);
+            staged = ok && defer && !state.mesh->isComplete();
         }
         if (!ok) {
             result->error = error;
+            failWith(NavBakeError::NavMeshFailed);
+            result->tiles.clear();
             Log::error("NavMeshSurface '%s' bake failed: %s", scene->getEntityName(entry.first).c_str(), error.c_str());
+            result->logged = true;
             state.lastResult = std::move(result);
             continue;
         }
-        if (state.mesh)
-            result->polys = state.mesh->getPolyCount();
+        // the tiles' build times persist per surface (R17): a full bake replaces them all, an
+        // incremental one its own and drops the removed tiles
+        if (newMesh)
+            state.tileMs.clear();
+        for (const NavTileCoord& coord : state.bakeRemoved)
+            state.tileMs.erase({coord.y, coord.x});
+        for (const NavTileReport& tile : result->tiles)
+            state.tileMs[{tile.y, tile.x}] = tile.milliseconds;
         result->ok = true;
         state.dirtyTiles = 0;
         state.loaded = true;
-        if (NavMeshSurfaceComponent* component = surfaceComponent(scene, entry.first))
+        if (component)
             state.loadedPath = component->navMeshData.path;
+        if (staged) {
+            // reported once the carved tiles are built (updateCarving), which puts a staged mesh
+            // into service and gives it the overrides then
+            state.pendingResult = std::move(result);
+            continue;
+        }
+        // S76 R14: a full bake's new navmesh gets the overrides before anything queries it
+        if (newMesh)
+            onAreaMeshReplaced(entry.first);
+        if (state.mesh)
+            result->polys = state.mesh->getPolyCount();
         state.lastResult = std::move(result);
         r.events.push_back(Event{entry.first, EventType::BakeCompleted});
     }
@@ -966,14 +1284,21 @@ namespace {
 
 namespace {
 
-    // what a query needs of a surface: its mesh, frame and the search box of its agent type
-    bool makeQuery(NavigationSystem& system, Scene* scene, Entity entity, SurfaceQuery& out) {
+    // what a query needs of a surface: its mesh, frame and the search box of its agent type;
+    // why not (S75 R3 steps 1-2: not an enabled, active surface, or not baked)
+    bool makeQuery(NavigationSystem& system, Scene* scene, Entity entity, SurfaceQuery& out, PathFailure* why = nullptr) {
         const NavMeshSurfaceComponent* component = scene->findComponent<NavMeshSurfaceComponent>(entity);
-        if (!component || !activeSurface(scene, entity, *component))
+        if (!component || !activeSurface(scene, entity, *component)) {
+            if (why)
+                *why = PathFailure::NoSurface;
             return false;
+        }
         const NavMesh* mesh = system.getNavMesh(entity);
-        if (!mesh)
+        if (!mesh) {
+            if (why)
+                *why = PathFailure::NotBaked;
             return false;
+        }
         out.entity = entity;
         out.mesh = mesh;
         out.frame = NavBakeCollector::frameOf(scene, entity);
@@ -1009,12 +1334,60 @@ namespace {
 
 }
 
+namespace {
+
+    // a path that never reached a navmesh: from the requested start to the requested end
+    NavPath unanswered(PathFailure failure, const Vector3& from, const Vector3& to) {
+        NavPath path;
+        path.failure = failure;
+        path.start = path.closestPoint = from;
+        path.end = to;
+        path.gap = from.distance(to);
+        return path;
+    }
+
+    // R5: the lower the better among non-Complete answers
+    int failureRank(PathFailure failure) {
+        switch (failure) {
+            case PathFailure::None: return 0;
+            case PathFailure::OutOfNodes: return 1;
+            case PathFailure::BlockedByArea: return 2;
+            case PathFailure::Disconnected: return 3;
+            case PathFailure::EndFiltered: return 4;
+            case PathFailure::EndOffMesh: return 5;
+            case PathFailure::StartFiltered: return 6;
+            case PathFailure::StartOffMesh: return 7;
+            case PathFailure::NotBaked: return 8;
+            case PathFailure::NoSurface: return 9;
+        }
+        return 9;
+    }
+
+    // whether `a` answers better than `b` (equal ranks: the smaller gap; else the earlier surface)
+    bool betterAnswer(const NavPath& a, const NavPath& b) {
+        const int ra = failureRank(a.failure), rb = failureRank(b.failure);
+        if (ra != rb)
+            return ra < rb;
+        return a.gap < b.gap;
+    }
+
+}
+
 NavPath NavigationSystem::calculatePathOn(Entity surface, const Vector3& from, const Vector3& to, uint16_t areaMask) {
+    QueryFilter filter;
+    filter.areaMask = areaMask;
+    return calculatePathOn(surface, from, to, filter);
+}
+
+NavPath NavigationSystem::calculatePathOn(Entity surface, const Vector3& from, const Vector3& to, const QueryFilter& filter,
+                                          const PathOptions& options) {
     SurfaceQuery q;
-    if (!makeQuery(*this, scene, surface, q))
-        return NavPath();
+    PathFailure why = PathFailure::NoSurface;
+    if (!makeQuery(*this, scene, surface, q, &why))
+        return unanswered(why, from, to);
     JE_PROFILE_SCOPE("Nav.Query");
-    NavPath path = q.mesh->findPath(q.frame.toNav(from), q.frame.toNav(to), NavFilter::fromSettings(areaMask), q.halfExtents);
+    pathQueryCount++;
+    NavPath path = q.mesh->findPath(q.frame.toNav(from), q.frame.toNav(to), NavFilter::fromQuery(filter), q.halfExtents, options);
     const float planeZ = q.frame.planeZOf(from);
     path.length = 0.0f;
     for (size_t i = 0; i < path.corners.size(); i++) {
@@ -1022,6 +1395,13 @@ NavPath NavigationSystem::calculatePathOn(Entity surface, const Vector3& from, c
         if (i > 0)
             path.length += path.corners[i - 1].distance(path.corners[i]);
     }
+    // the S75 fields in the world (snap distances and the gap are lengths: the frame keeps them)
+    path.surface = surface;
+    path.start = path.startSnapDistance >= 0.0f ? q.frame.toWorld(path.start, planeZ) : from;
+    path.end = path.endSnapDistance >= 0.0f ? q.frame.toWorld(path.end, q.frame.planeZOf(to)) : to;
+    path.closestPoint = path.corners.empty() ? path.start : path.corners.back();
+    if (path.status != PathStatus::Complete)
+        path.gap = path.closestPoint.distance(path.end);
     return path;
 }
 
@@ -1038,34 +1418,47 @@ bool NavigationSystem::samplePositionOn(Entity surface, const Vector3& point, fl
 }
 
 bool NavigationSystem::raycastOn(Entity surface, const Vector3& from, const Vector3& to, NavHit& out, uint16_t areaMask) {
+    QueryFilter filter;
+    filter.areaMask = areaMask;
+    return raycastOn(surface, from, to, out, filter);
+}
+
+bool NavigationSystem::raycastOn(Entity surface, const Vector3& from, const Vector3& to, NavHit& out, const QueryFilter& filter) {
     SurfaceQuery q;
     out = NavHit();
     if (!makeQuery(*this, scene, surface, q))
         return false;
-    const NavHit hit = q.mesh->raycast(q.frame.toNav(from), q.frame.toNav(to), NavFilter::fromSettings(areaMask), q.halfExtents);
+    const NavHit hit = q.mesh->raycast(q.frame.toNav(from), q.frame.toNav(to), NavFilter::fromQuery(filter), q.halfExtents);
     out = hitToWorld(hit, q.frame, q.frame.planeZOf(from));
     return hit.hit;
 }
 
 bool NavigationSystem::findClosestEdgeOn(Entity surface, const Vector3& point, NavHit& out, uint16_t areaMask) {
+    QueryFilter filter;
+    filter.areaMask = areaMask;
+    return findClosestEdgeOn(surface, point, out, filter);
+}
+
+bool NavigationSystem::findClosestEdgeOn(Entity surface, const Vector3& point, NavHit& out, const QueryFilter& filter, float maxDistance) {
     SurfaceQuery q;
     out = NavHit();
     if (!makeQuery(*this, scene, surface, q))
         return false;
-    const NavHit hit = q.mesh->findClosestEdge(q.frame.toNav(point), NavFilter::fromSettings(areaMask), q.halfExtents);
-    if (!hit.hit)
-        return false;
-    out = hitToWorld(hit, q.frame, q.frame.planeZOf(point));
-    return true;
+    const NavHit hit = q.mesh->findClosestEdge(q.frame.toNav(point), NavFilter::fromQuery(filter), q.halfExtents, maxDistance);
+    // on the mesh without a wall within maxDistance: the distance says how far it looked
+    if (hit.hit || hit.distance > 0.0f)
+        out = hitToWorld(hit, q.frame, q.frame.planeZOf(point));
+    return hit.hit;
 }
 
-NavPath NavigationSystem::calculatePath(const Vector3& from, const Vector3& to, const QueryFilter& filter) {
-    NavPath best;
+NavPath NavigationSystem::calculatePath(const Vector3& from, const Vector3& to, const QueryFilter& filter, const PathOptions& options) {
+    // the first Complete answer (entity order), else the best ranked one (R5)
+    NavPath best = unanswered(PathFailure::NoSurface, from, to);
     for (Entity surface : surfacesOf(scene, filter.agentType)) {
-        NavPath path = calculatePathOn(surface, from, to, filter.areaMask);
+        NavPath path = calculatePathOn(surface, from, to, filter, options);
         if (path.status == PathStatus::Complete)
             return path;
-        if (path.status == PathStatus::Partial && best.status == PathStatus::Invalid)
+        if (betterAnswer(path, best))
             best = std::move(path);
     }
     return best;
@@ -1091,32 +1484,141 @@ bool NavigationSystem::raycast(const Vector3& from, const Vector3& to, NavHit& o
         // the surface the ray starts on answers
         if (!samplePositionOn(surface, from, 1.0f, start, filter.areaMask))
             continue;
-        return raycastOn(surface, from, to, out, filter.areaMask);
+        return raycastOn(surface, from, to, out, filter);
     }
     out.hit = true;
     out.position = from;
     return true;
 }
 
-bool NavigationSystem::findClosestEdge(const Vector3& point, NavHit& out, const QueryFilter& filter) {
+bool NavigationSystem::findClosestEdge(const Vector3& point, NavHit& out, const QueryFilter& filter, float maxDistance) {
     out = NavHit();
     bool found = false;
     for (Entity surface : surfacesOf(scene, filter.agentType)) {
         NavHit hit;
-        if (findClosestEdgeOn(surface, point, hit, filter.areaMask) && (!found || hit.distance < out.distance)) {
+        const bool wall = findClosestEdgeOn(surface, point, hit, filter, maxDistance);
+        if (wall && (!found || hit.distance < out.distance)) {
             out = hit;
             found = true;
+        } else if (!wall && !found && hit.distance > 0.0f) {
+            out = hit;
         }
     }
     return found;
 }
 
-bool NavigationSystem::isReachable(const Vector3& from, const Vector3& to, const QueryFilter& filter) {
-    return calculatePath(from, to, filter).status == PathStatus::Complete;
+bool NavigationSystem::isReachable(const Vector3& from, const Vector3& to, const QueryFilter& filter, PathFailure* why) {
+    PathFailure best = PathFailure::NoSurface;
+    const NavFilter navFilter = NavFilter::fromSettings(filter.areaMask);
+    for (Entity surface : surfacesOf(scene, filter.agentType)) {
+        SurfaceQuery q;
+        PathFailure failure = PathFailure::NoSurface;
+        if (makeQuery(*this, scene, surface, q, &failure)) {
+            JE_PROFILE_SCOPE("Nav.Query");
+            pathQueryCount++;
+            if (q.mesh->isReachable(q.frame.toNav(from), q.frame.toNav(to), navFilter, q.halfExtents, &failure)) {
+                if (why)
+                    *why = PathFailure::None;
+                return true;
+            }
+        }
+        if (failureRank(failure) < failureRank(best))
+            best = failure;
+    }
+    if (why)
+        *why = best;
+    return false;
+}
+
+// ---- S76 queries
+
+namespace {
+
+    // Random points need the surface's mesh and frame (makeQuery), the stream to draw from, and the
+    // island to stay on (S75's labels; -1: any)
+    bool randomPointWith(NavigationSystem& system, Scene* scene, Entity surface, NavHit& out, const QueryFilter& filter,
+                         const RandomPointQuery& query, NavRandom& stream) {
+        SurfaceQuery q;
+        out = NavHit();
+        if (!makeQuery(system, scene, surface, q))
+            return false;
+        const NavFilter navFilter = NavFilter::fromQuery(filter);
+        int island = -1;
+        if (query.sameIsland) {
+            // an explicit island use: locate labels a stale navmesh first (S75 R8)
+            const NavLocation under = q.mesh->locate(q.frame.toNav(query.islandOf), navFilter, q.halfExtents, 0.0f);
+            if (!under.onMesh || under.island < 0)
+                return false;
+            island = under.island;
+        }
+        NavHit hit;
+        float planeZ = 0.0f;
+        bool found = false;
+        if (query.around && query.radius > 0.0f) {
+            planeZ = q.frame.planeZOf(query.center);
+            found = q.mesh->findRandomPointAround(q.frame.toNav(query.center), query.radius, navFilter, q.halfExtents, stream, island, hit);
+        } else {
+            found = q.mesh->findRandomPoint(navFilter, stream, island, hit);
+        }
+        if (!found)
+            return false;
+        out = hitToWorld(hit, q.frame, planeZ);
+        return true;
+    }
+
+}
+
+bool NavigationSystem::randomPointOn(Entity surface, NavHit& out, const QueryFilter& filter, const RandomPointQuery& query) {
+    if (query.seeded) {
+        NavRandom stream(query.seed);
+        return randomPointWith(*this, scene, surface, out, filter, query, stream);
+    }
+    return randomPointWith(*this, scene, surface, out, filter, query, randomStream);
+}
+
+bool NavigationSystem::randomPoint(NavHit& out, const QueryFilter& filter, const RandomPointQuery& query) {
+    out = NavHit();
+    NavRandom seeded(query.seed);
+    NavRandom& stream = query.seeded ? seeded : randomStream;
+    for (Entity surface : surfacesOf(scene, filter.agentType)) {
+        if (randomPointWith(*this, scene, surface, out, filter, query, stream))
+            return true;
+    }
+    return false;
+}
+
+void NavigationSystem::setRandomSeed(uint64_t seed) {
+    randomStream = NavRandom(seed);
+    randomSeed = seed;
+}
+
+uint64_t NavigationSystem::getRandomSeed() const {
+    return randomSeed;
+}
+
+bool NavigationSystem::moveAlongSurfaceOn(Entity surface, const Vector3& from, const Vector3& to, NavHit& out, const QueryFilter& filter) {
+    SurfaceQuery q;
+    out = NavHit();
+    if (!makeQuery(*this, scene, surface, q))
+        return false;
+    NavHit hit;
+    if (!q.mesh->moveAlongSurface(q.frame.toNav(from), q.frame.toNav(to), NavFilter::fromQuery(filter), q.halfExtents, hit))
+        return false;
+    out = hitToWorld(hit, q.frame, q.frame.planeZOf(from));
+    return true;
+}
+
+bool NavigationSystem::moveAlongSurface(const Vector3& from, const Vector3& to, NavHit& out, const QueryFilter& filter) {
+    out = NavHit();
+    for (Entity surface : surfacesOf(scene, filter.agentType)) {
+        if (moveAlongSurfaceOn(surface, from, to, out, filter))
+            return true;
+    }
+    return false;
 }
 
 bool NavigationSystem::getDebugGeometry(Entity surface, const std::function<bool(const AABB& worldBounds)>& visible, size_t maxTriangles,
-                                        bool detailMesh, NavDebugGeometry& out) {
+                                        bool detailMesh, NavDebugGeometry& out, uint32_t extras) {
     out = NavDebugGeometry();
     SurfaceQuery q;
     if (!makeQuery(*this, scene, surface, q))
@@ -1131,7 +1633,7 @@ bool NavigationSystem::getDebugGeometry(Entity surface, const std::function<bool
         return box;
     };
     q.mesh->getDebugGeometry([&](const float* bmin, const float* bmax) { return !visible || visible(worldBox(bmin, bmax)); },
-                             maxTriangles, detailMesh, out);
+                             maxTriangles, detailMesh, out, extras);
     auto toWorld = [&](std::vector<float>& points) {
         for (size_t i = 0; i + 2 < points.size(); i += 3) {
             const Vector3 w = frame.toWorld(Vector3(points[i], points[i + 1], points[i + 2]));
@@ -1164,6 +1666,433 @@ bool NavigationSystem::getDebugGeometry(Entity surface, const std::function<bool
         link.end[0] = e.x; link.end[1] = e.y; link.end[2] = e.z;
     }
     return true;
+}
+
+// ---------------------------------------------------------------- S75 diagnostics
+
+namespace {
+
+    // nav units^2 per m^2 (a 2D surface is in scene points)
+    float areaScale(Scene* scene, Entity surface) {
+        const NavMeshSurfaceComponent* component = scene->findComponent<NavMeshSurfaceComponent>(surface);
+        const float scale = component ? NavBakeCollector::unitScaleOf(scene, *component) : 1.0f;
+        return scale * scale;
+    }
+
+    // a nav-space box as a world AABB (its 8 corners: a rotated surface's box is not axis-aligned)
+    void worldBounds(const NavFrame& frame, const Vector3& bmin, const Vector3& bmax, Vector3& outMin, Vector3& outMax) {
+        AABB box;
+        for (int c = 0; c < 8; c++)
+            box.merge(frame.toWorld(Vector3((c & 1) ? bmax.x : bmin.x, (c & 2) ? bmax.y : bmin.y, (c & 4) ? bmax.z : bmin.z)));
+        outMin = box.getMinimum();
+        outMax = box.getMaximum();
+    }
+
+    std::string navName(Scene* scene, Entity entity) {
+        return "'" + scene->getEntityName(entity) + "'";
+    }
+
+}
+
+Vector3 NavigationSystem::getSearchExtents(Entity surface) {
+    SurfaceQuery q;
+    return makeQuery(*this, scene, surface, q) ? q.halfExtents : Vector3();
+}
+
+NavLocation NavigationSystem::locateOn(Entity surface, const Vector3& point, uint16_t areaMask, float maxDistance) {
+    NavLocation location;
+    SurfaceQuery q;
+    if (!makeQuery(*this, scene, surface, q))
+        return location;
+    location = q.mesh->locate(q.frame.toNav(point), NavFilter::fromSettings(areaMask), q.halfExtents, maxDistance);
+    if (location.found)
+        location.position = q.frame.toWorld(location.position, q.frame.planeZOf(point));
+    location.surface = surface;
+    return location;
+}
+
+NavLocation NavigationSystem::locate(const Vector3& point, const QueryFilter& filter, float maxDistance) {
+    NavLocation best;
+    for (Entity surface : surfacesOf(scene, filter.agentType)) {
+        const NavLocation location = locateOn(surface, point, filter.areaMask, maxDistance);
+        if (!location.found)
+            continue;
+        // the on-mesh one with the smallest snap, else the closest found
+        const bool better = !best.found || (location.onMesh && !best.onMesh) ||
+                            (location.onMesh == best.onMesh && location.snapDistance < best.snapDistance);
+        if (better)
+            best = location;
+    }
+    return best;
+}
+
+std::vector<NavIsland> NavigationSystem::getIslands(Entity surface) {
+    std::vector<NavIsland> islands;
+    SurfaceQuery q;
+    if (!makeQuery(*this, scene, surface, q))
+        return islands;
+    const float scale = areaScale(scene, surface);
+    islands = q.mesh->getIslands();
+    for (NavIsland& island : islands) {
+        island.area /= scale;
+        worldBounds(q.frame, island.boundsMin, island.boundsMax, island.boundsMin, island.boundsMax);
+    }
+    return islands;
+}
+
+NavCoverage NavigationSystem::getCoverage(Entity surface) {
+    NavCoverage coverage;
+    SurfaceQuery q;
+    if (!makeQuery(*this, scene, surface, q))
+        return coverage;
+    const float scale = areaScale(scene, surface);
+    const std::vector<NavIsland>& islands = q.mesh->getIslands();
+    coverage.walkableArea = q.mesh->getWalkableArea() / scale;
+    coverage.islandCount = (int)islands.size();
+    for (const NavIsland& island : islands)
+        coverage.largestIslandArea = std::max(coverage.largestIslandArea, island.area / scale);
+    std::vector<NavTileInfo> tiles;
+    q.mesh->getTileInfos(tiles);
+    std::set<std::pair<int, int>> nonEmpty;
+    for (const NavTileInfo& tile : tiles) {
+        if (tile.polys > 0)
+            nonEmpty.insert({tile.y, tile.x});
+    }
+    const float tileSize = q.mesh->getHeader().config.tileWorldSize();
+    coverage.tilesArea = (float)nonEmpty.size() * tileSize * tileSize / scale;
+    coverage.fraction = coverage.tilesArea > 0.0f ? coverage.walkableArea / coverage.tilesArea : 0.0f;
+    return coverage;
+}
+
+std::vector<NavigationSystem::LinkStatus> NavigationSystem::getLinkStatus() {
+    std::vector<LinkStatus> out;
+    std::vector<Entity> links;
+    auto array = scene->getComponentArray<NavMeshLinkComponent>();
+    for (size_t i = 0; i < array->size(); i++) {
+        const Entity entity = array->getEntity(i);
+        if (array->getComponentFromIndex(i).enabled && scene->isEntityActiveInHierarchy(entity))
+            links.push_back(entity);
+    }
+    if (links.empty())
+        return out;
+    std::sort(links.begin(), links.end());
+    // every baked surface's connections, once
+    std::vector<std::pair<Entity, std::vector<NavLinkState>>> states;
+    auto surfaces = scene->getComponentArray<NavMeshSurfaceComponent>();
+    std::vector<Entity> surfaceEntities;
+    for (size_t i = 0; i < surfaces->size(); i++)
+        surfaceEntities.push_back(surfaces->getEntity(i));
+    std::sort(surfaceEntities.begin(), surfaceEntities.end());
+    for (Entity surface : surfaceEntities) {
+        SurfaceQuery q;
+        if (!makeQuery(*this, scene, surface, q))
+            continue;
+        states.emplace_back(surface, std::vector<NavLinkState>());
+        q.mesh->getLinkStates(states.back().second);
+    }
+    for (Entity link : links) {
+        bool baked = false;
+        for (const auto& entry : states) {
+            LinkStatus status;
+            status.link = link;
+            status.surface = entry.first;
+            status.connected = true;
+            for (const NavLinkState& state : entry.second) {
+                if (state.userId != (uint32_t)link)
+                    continue;
+                if (status.connections == 0) {
+                    status.islandStart = state.startIsland;
+                    status.islandEnd = state.endIsland;
+                }
+                status.connections++;
+                status.connected = status.connected && state.startConnected && state.endConnected;
+            }
+            if (status.connections == 0)
+                continue;
+            baked = true;
+            out.push_back(status);
+        }
+        if (!baked) {
+            LinkStatus status;
+            status.link = link;
+            out.push_back(status);
+        }
+    }
+    return out;
+}
+
+std::vector<NavTileReport> NavigationSystem::getTileReports(Entity surface) {
+    std::vector<NavTileReport> reports;
+    SurfaceQuery q;
+    if (!makeQuery(*this, scene, surface, q))
+        return reports;
+    const Runtime::Surface& state = rt().surfaces[surface];
+    std::vector<NavTileInfo> tiles;
+    q.mesh->getTileInfos(tiles);
+    reports.reserve(tiles.size());
+    for (const NavTileInfo& tile : tiles) {
+        NavTileReport report;
+        report.x = tile.x;
+        report.y = tile.y;
+        report.layer = tile.layer;
+        report.polys = tile.polys;
+        report.bytes = tile.bytes;
+        auto found = state.tileMs.find({tile.y, tile.x});
+        report.milliseconds = found != state.tileMs.end() ? found->second : -1.0;
+        reports.push_back(report);
+    }
+    return reports;
+}
+
+std::vector<NavFinding> NavigationSystem::getFindings(const NavFindingOptions& options) {
+    std::vector<NavFinding> findings;
+    const NavigationSettings& settings = getSettings();
+    auto add = [&](const char* code, FindingSeverity severity, Entity entity, std::string message,
+                   std::vector<std::pair<std::string, double>> details = {}) {
+        NavFinding finding;
+        finding.code = code;
+        finding.severity = severity;
+        finding.entity = entity;
+        finding.message = std::move(message);
+        finding.details = std::move(details);
+        findings.push_back(std::move(finding));
+    };
+
+    auto surfaceArray = scene->getComponentArray<NavMeshSurfaceComponent>();
+    auto agentArray = scene->getComponentArray<NavMeshAgentComponent>();
+    std::vector<Entity> surfaceEntities, agentEntities;
+    for (size_t i = 0; i < surfaceArray->size(); i++)
+        surfaceEntities.push_back(surfaceArray->getEntity(i));
+    for (size_t i = 0; i < agentArray->size(); i++)
+        agentEntities.push_back(agentArray->getEntity(i));
+    std::sort(surfaceEntities.begin(), surfaceEntities.end());
+    std::sort(agentEntities.begin(), agentEntities.end());
+    std::set<int> usedTypes;
+
+    // ---- surfaces: baked, readable, current, last bake
+    for (Entity entity : surfaceEntities) {
+        const NavMeshSurfaceComponent& surface = scene->getComponent<NavMeshSurfaceComponent>(entity);
+        usedTypes.insert(surface.agentType);
+        const std::string name = navName(scene, entity);
+        if (!settings.findAgentType(surface.agentType))
+            add("agent_type_missing", FindingSeverity::Error, entity,
+                "NavMesh Surface " + name + " uses agent type " + std::to_string(surface.agentType) +
+                    ", which the project does not define: it bakes for '" + settings.agentTypeOrDefault(surface.agentType).name +
+                    "' instead (pick an Agent Type, or add it in Window > AI > Navigation > Agents)",
+                {{"agent_type", (double)surface.agentType}});
+        if (!surface.enabled)
+            continue;
+        const NavMesh* mesh = getNavMesh(entity);
+        const Runtime::Surface& state = rt().surfaces[entity];
+        if (!state.loadError.empty()) {
+            add("navmesh_unreadable", FindingSeverity::Error, entity,
+                "NavMesh Surface " + name + ": its navmesh '" + surface.navMeshData.path + "' cannot be read (" + state.loadError +
+                    "); bake it again");
+        } else if (!mesh) {
+            // S19's text (test_checks.py)
+            add("not_baked", FindingSeverity::Warning, entity,
+                "NavMesh Surface " + name + " is not baked: its agents find no navmesh in the build (Bake, or bake_navigation)");
+        } else if (options.stale) {
+            const int dirty = options.dirtyTilesOf ? options.dirtyTilesOf(entity) : countDirtyTiles(entity);
+            if (dirty > 0)
+                add("stale_bake", FindingSeverity::Warning, entity,
+                    "NavMesh Surface " + name + " is out of date: " + std::to_string(dirty) +
+                        " tile(s) changed since its bake (Bake, or bake_navigation)",
+                    {{"dirty_tiles", (double)dirty}});
+        }
+        const NavBakeResult* last = state.lastResult.get();
+        if (last && !last->ok && !last->cancelled)
+            add("bake_failed", FindingSeverity::Error, entity,
+                "NavMesh Surface " + name + ": its last bake failed (" + std::string(bakeErrorName(last->errorCode)) + ": " + last->error +
+                    "). " + last->hint,
+                {{"error_code", (double)last->errorCode}});
+    }
+
+    // ---- links: every end on a polygon
+    const std::vector<LinkStatus> links = getLinkStatus();
+    for (const LinkStatus& link : links) {
+        if (link.surface == NULL_ENTITY || link.connected)
+            continue;
+        add("link_unconnected", FindingSeverity::Warning, link.link,
+            "NavMesh Link " + navName(scene, link.link) + " has an end on no polygon of NavMesh Surface " + navName(scene, link.surface) +
+                ": agents cannot use it (move its ends onto the navmesh, or widen its search with a smaller Voxel Size, then bake)",
+            {{"island_start", (double)link.islandStart}, {"island_end", (double)link.islandEnd}, {"connections", (double)link.connections}});
+    }
+
+    // ---- agents: on a surface of their type, or on a grid
+    std::vector<Entity> grids;
+    auto gridArray = scene->getComponentArray<NavGridComponent>();
+    for (size_t i = 0; i < gridArray->size(); i++) {
+        const Entity grid = gridArray->getEntity(i);
+        if (gridArray->getComponentFromIndex(i).enabled && scene->isEntityActiveInHierarchy(grid))
+            grids.push_back(grid);
+    }
+    std::sort(grids.begin(), grids.end());
+    // (surface, island) pairs agents stand on, and each surface's crowd masks
+    std::set<std::pair<Entity, int>> occupied;
+    std::map<Entity, std::set<uint16_t>> crowdMasks;
+    for (Entity entity : agentEntities) {
+        const NavMeshAgentComponent& agent = scene->getComponent<NavMeshAgentComponent>(entity);
+        usedTypes.insert(agent.agentType);
+        const std::string name = navName(scene, entity);
+        if (!settings.findAgentType(agent.agentType))
+            add("agent_type_missing", FindingSeverity::Error, entity,
+                "NavMesh Agent " + name + " uses agent type " + std::to_string(agent.agentType) +
+                    ", which the project does not define: it walks the first type's navmesh (pick an Agent Type, or add it in "
+                    "Window > AI > Navigation > Agents)",
+                {{"agent_type", (double)agent.agentType}});
+        const Transform* transform = scene->findComponent<Transform>(entity);
+        if (!agent.enabled || !transform || !scene->isEntityActiveInHierarchy(entity))
+            continue;
+        const uint16_t mask = (uint16_t)(agent.areaMask & ALL_AREAS);
+        const Vector3 position = transform->worldPosition;
+        // its surfaces: the one it names, else those of its type
+        std::vector<Entity> candidates;
+        bool onGrid = false;
+        if (agent.surface != NULL_ENTITY) {
+            if (scene->findComponent<NavGridComponent>(agent.surface))
+                onGrid = true;
+            else if (scene->findComponent<NavMeshSurfaceComponent>(agent.surface))
+                candidates.push_back(agent.surface);
+        } else {
+            for (Entity surface : surfacesOf(scene, agent.agentType)) {
+                const NavMeshSurfaceComponent& component = scene->getComponent<NavMeshSurfaceComponent>(surface);
+                if (activeSurface(scene, surface, component))
+                    candidates.push_back(surface);
+            }
+            if (candidates.empty()) {
+                for (Entity grid : grids)
+                    onGrid = onGrid || gridContains(grid, position);
+            }
+        }
+        if (onGrid)
+            continue;
+        if (candidates.empty()) {
+            add("agent_no_surface", FindingSeverity::Warning, entity,
+                "NavMesh Agent " + name + " has no NavMesh Surface of agent type '" + settings.agentTypeOrDefault(agent.agentType).name +
+                    "' and no NavGrid holds it: it does not move (add a NavMesh Surface of its type and bake, or a NavGrid under it)");
+            continue;
+        }
+        // where its feet are on each candidate (the closest answers)
+        NavLocation best;
+        for (Entity surface : candidates) {
+            const NavFrame frame = NavBakeCollector::frameOf(scene, surface);
+            const Vector3 feet = position - frame.up() * (agent.baseOffset * NavBakeCollector::unitScaleOf(scene, scene->getComponent<NavMeshSurfaceComponent>(surface)));
+            const NavLocation location = locateOn(surface, feet, mask);
+            if (location.found && (!best.found || (location.onMesh && !best.onMesh) ||
+                                   (location.onMesh == best.onMesh && location.snapDistance < best.snapDistance)))
+                best = location;
+        }
+        // in play its crowd says it (isOnNavMesh); in edit its feet do
+        bool onMesh = best.onMesh;
+        Entity crowdSurface = best.onMesh ? best.surface : NULL_ENTITY;
+        if (runtime) {
+            auto found = runtime->agents.find(entity);
+            if (found != runtime->agents.end() && found->second.placed && !found->second.onGrid) {
+                onMesh = agent.isOnNavMesh;
+                crowdSurface = found->second.surface;
+            }
+        }
+        if (best.found && best.island >= 0)
+            occupied.insert({best.surface, best.island});
+        if (crowdSurface != NULL_ENTITY)
+            crowdMasks[crowdSurface].insert(mask);
+        if (!onMesh)
+            add("agent_off_mesh", FindingSeverity::Warning, entity,
+                "NavMesh Agent " + name + " is not on the navmesh: it does not move (move it onto the surface, warp it, or bake the "
+                    "surface under it)",
+                {{"snap_distance", best.found ? (double)best.snapDistance : -1.0}});
+    }
+    for (const auto& entry : crowdMasks) {
+        if (entry.second.size() > 16)
+            add("crowd_filter_overflow", FindingSeverity::Warning, entry.first,
+                "The agents on NavMesh Surface " + navName(scene, entry.first) + " use " + std::to_string(entry.second.size()) +
+                    " different Area Masks; a crowd holds 16, the others walk every area (use fewer distinct masks)",
+                {{"masks", (double)entry.second.size()}});
+    }
+
+    // ---- small islands: no agent on them, no link reaching them, not the largest
+    for (Entity entity : surfaceEntities) {
+        const NavMeshSurfaceComponent& surface = scene->getComponent<NavMeshSurfaceComponent>(entity);
+        if (!surface.enabled || options.maxSmallIslands == 0)
+            continue;
+        SurfaceQuery q;
+        if (!makeQuery(*this, scene, entity, q))
+            continue;
+        const std::vector<NavIsland>& islands = q.mesh->getIslands();
+        if (islands.size() < 2)
+            continue;
+        const float scale = areaScale(scene, entity);
+        const float walkable = q.mesh->getWalkableArea();
+        int largest = 0;
+        for (const NavIsland& island : islands) {
+            if (island.area > islands[(size_t)largest].area)
+                largest = island.id;
+        }
+        std::set<int> linked;
+        for (const LinkStatus& link : links) {
+            if (link.surface == entity) {
+                linked.insert(link.islandStart);
+                linked.insert(link.islandEnd);
+            }
+        }
+        std::vector<const NavIsland*> small;
+        for (const NavIsland& island : islands) {
+            if (island.id != largest && island.area < 0.05f * walkable && !linked.count(island.id) && !occupied.count({entity, island.id}))
+                small.push_back(&island);
+        }
+        std::stable_sort(small.begin(), small.end(), [](const NavIsland* a, const NavIsland* b) { return a->area > b->area; });
+        if (small.size() > options.maxSmallIslands)
+            small.resize(options.maxSmallIslands);
+        for (const NavIsland* island : small) {
+            char area[32];
+            std::snprintf(area, sizeof(area), "%.1f", island->area / scale);
+            add("small_island", FindingSeverity::Info, entity,
+                "NavMesh Surface " + navName(scene, entity) + " has a small island (#" + std::to_string(island->id) + ", " + area +
+                    " m\xC2\xB2) no agent stands on and no link reaches: agents cannot get there (raise Minimum Region Area to drop "
+                    "it, or connect it with a NavMesh Link)",
+                {{"island", (double)island->id}, {"area_m2", (double)(island->area / scale)}});
+        }
+    }
+
+    // ---- obstacles that ask to carve a surface that cannot
+    auto obstacleArray = scene->getComponentArray<NavMeshObstacleComponent>();
+    std::vector<Entity> obstacleEntities;
+    for (size_t i = 0; i < obstacleArray->size(); i++)
+        obstacleEntities.push_back(obstacleArray->getEntity(i));
+    std::sort(obstacleEntities.begin(), obstacleEntities.end());
+    for (Entity entity : obstacleEntities) {
+        const NavMeshObstacleComponent& obstacle = scene->getComponent<NavMeshObstacleComponent>(entity);
+        if (!obstacle.enabled || !obstacle.carve || !scene->isEntityActiveInHierarchy(entity))
+            continue;
+        for (Entity surface : surfaceEntities) {
+            const NavMesh* mesh = scene->getComponent<NavMeshSurfaceComponent>(surface).enabled ? getNavMesh(surface) : nullptr;
+            if (!mesh || mesh->isCarving())
+                continue;
+            add("obstacle_carve_ignored", FindingSeverity::Warning, entity,
+                "NavMesh Obstacle " + navName(scene, entity) + " carves, but NavMesh Surface " + navName(scene, surface) +
+                    " has no Runtime Carving: it is avoided instead (turn on Runtime Carving and bake, or turn off Carve)");
+            break;
+        }
+    }
+
+    // ---- agent types nothing uses (a scene with navigation only)
+    if (!surfaceEntities.empty() || !agentEntities.empty()) {
+        for (const AgentTypeSettings& type : settings.agentTypes) {
+            if (!usedTypes.count(type.id))
+                add("agent_type_unused", FindingSeverity::Info, NULL_ENTITY,
+                    "Agent type '" + type.name + "' is used by no NavMesh Surface or NavMesh Agent (remove it in Window > AI > Navigation > "
+                        "Agents if it is not needed)",
+                    {{"agent_type", (double)type.id}});
+        }
+    }
+
+    std::stable_sort(findings.begin(), findings.end(), [](const NavFinding& a, const NavFinding& b) {
+        if (a.severity != b.severity) return a.severity > b.severity;
+        if (a.entity != b.entity) return a.entity < b.entity;
+        return a.code < b.code;
+    });
+    return findings;
 }
 
 // ---------------------------------------------------------------- grids
@@ -1258,6 +2187,19 @@ bool NavigationSystem::gridContains(Entity grid, const Vector3& world) {
     if (!map)
         return false;
     return map->contains(map->cellAt(gridLocal(gridFrame(scene, grid), world)));
+}
+
+bool NavigationSystem::getGridReservedCells(Entity grid, std::vector<int>& cells) {
+    cells.clear();
+    NavGridMap* map = getGridMap(grid);
+    if (!map)
+        return false;
+    const GridReservations& reservations = rt().grids[grid].reservations;
+    for (int cell = 0; cell < reservations.getCellCount(); cell++) {
+        if (reservations.holder(cell, fixedTick) != 0)
+            cells.push_back(cell);
+    }
+    return true;
 }
 
 GridCell NavigationSystem::gridWorldToCell(Entity grid, const Vector3& world) {
@@ -1582,7 +2524,8 @@ namespace {
     }
 
     // the agent's crowd parameters (its lengths and speeds in metres, scaled to the surface's units)
-    NavCrowdAgentParams agentParams(const NavMeshAgentComponent& agent, float scale) {
+    // with its own area costs
+    NavCrowdAgentParams agentParams(const NavMeshAgentComponent& agent, float scale, const float (&areaCosts)[AREA_COUNT]) {
         NavCrowdAgentParams params;
         params.radius = std::max(agent.radius, 1e-3f) * scale;
         params.height = std::max(agent.height, 1e-3f) * scale;
@@ -1591,12 +2534,32 @@ namespace {
         params.quality = agent.obstacleAvoidance;
         params.priority = (uint8_t)std::clamp(agent.avoidancePriority, 0, 99);
         params.areaMask = (uint16_t)(agent.areaMask & ALL_AREAS);
+        std::memcpy(params.areaCosts, areaCosts, sizeof(params.areaCosts));
         return params;
     }
 
     bool sameParams(const NavCrowdAgentParams& a, const NavCrowdAgentParams& b) {
         return a.radius == b.radius && a.height == b.height && a.maxSpeed == b.maxSpeed && a.maxAcceleration == b.maxAcceleration &&
-               a.quality == b.quality && a.priority == b.priority && a.areaMask == b.areaMask && a.obstacle == b.obstacle;
+               a.quality == b.quality && a.priority == b.priority && a.areaMask == b.areaMask && a.obstacle == b.obstacle &&
+               std::memcmp(a.areaCosts, b.areaCosts, sizeof(a.areaCosts)) == 0;
+    }
+
+}
+
+namespace {
+
+    // ---- S76 agents: a destination snapped to the mesh within twice the agent's height (S19 R12;
+    // setDestination and calculatePath)
+    Vector3 snapDestination(NavigationSystem& system, Scene* scene, Entity surface, bool onGrid, const NavMeshAgentComponent& agent,
+                            const Vector3& target) {
+        if (onGrid)
+            return target;
+        NavHit hit;
+        const float reach = 2.0f * std::max(agent.height, 1e-3f) * (surface != NULL_ENTITY ? unitScaleOfSurface(scene, surface) : 1.0f);
+        const uint16_t mask = (uint16_t)(agent.areaMask & ALL_AREAS);
+        const bool found = surface != NULL_ENTITY ? system.samplePositionOn(surface, target, reach, hit, mask)
+                                                  : system.samplePosition(target, reach, hit, QueryFilter{agent.agentType, mask});
+        return found ? hit.position : target;
     }
 
 }
@@ -1608,23 +2571,62 @@ Entity NavigationSystem::getAgentSurface(Entity agent) {
     return found != runtime->agents.end() ? found->second.surface : NULL_ENTITY;
 }
 
+// ---- S76 queries: an agent's own area costs
+
+void NavigationSystem::setAgentAreaCost(Entity agent, int area, float cost) {
+    if (area < 0 || area >= AREA_COUNT || !scene->findComponent<NavMeshAgentComponent>(agent))
+        return;
+    Runtime::Agent& state = rt().agents[agent];
+    state.entity = agent;
+    // the next fixed tick hands the crowd the agent's new filter (syncAgents)
+    state.areaCosts[area] = clampAreaCost(cost);
+}
+
+float NavigationSystem::getAgentAreaCost(Entity agent, int area) const {
+    if (area < 0 || area >= AREA_COUNT)
+        return 0.0f;
+    if (runtime) {
+        auto found = runtime->agents.find(agent);
+        if (found != runtime->agents.end() && found->second.areaCosts[area] > 0.0f)
+            return found->second.areaCosts[area];
+    }
+    return getSettings().areas[(size_t)area].cost;
+}
+
+void NavigationSystem::resetAgentAreaCost(Entity agent, int area) {
+    if (area < 0 || area >= AREA_COUNT || !runtime)
+        return;
+    auto found = runtime->agents.find(agent);
+    if (found != runtime->agents.end())
+        found->second.areaCosts[area] = 0.0f;
+}
+
+QueryFilter NavigationSystem::getAgentQueryFilter(Entity agent) const {
+    QueryFilter filter;
+    const NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(agent);
+    if (!component)
+        return filter;
+    filter.agentType = component->agentType;
+    filter.areaMask = (uint16_t)(component->areaMask & ALL_AREAS);
+    if (runtime) {
+        auto found = runtime->agents.find(agent);
+        if (found != runtime->agents.end()) {
+            for (int area = 0; area < AREA_COUNT; area++) {
+                if (found->second.areaCosts[area] > 0.0f)
+                    filter.setAreaCost(area, found->second.areaCosts[area]);
+            }
+        }
+    }
+    return filter;
+}
+
 bool NavigationSystem::setDestination(Entity entity, const Vector3& target) {
     NavMeshAgentComponent* agent = scene->findComponent<NavMeshAgentComponent>(entity);
     if (!agent)
         return false;
     Runtime::Agent& state = rt().agents[entity];
     state.entity = entity;
-    // the destination snaps to the mesh within twice the agent's height (spec R12)
-    Vector3 snapped = target;
-    if (!state.onGrid) {
-        NavHit hit;
-        const float reach = 2.0f * std::max(agent->height, 1e-3f) * (state.surface != NULL_ENTITY ? unitScaleOfSurface(scene, state.surface) : 1.0f);
-        const uint16_t mask = (uint16_t)(agent->areaMask & ALL_AREAS);
-        const bool found = state.surface != NULL_ENTITY ? samplePositionOn(state.surface, target, reach, hit, mask)
-                                                         : samplePosition(target, reach, hit, QueryFilter{agent->agentType, mask});
-        if (found)
-            snapped = hit.position;
-    }
+    const Vector3 snapped = snapDestination(*this, scene, state.surface, state.onGrid, *agent, target);
     agent->destination = snapped;
     agent->hasPath = true;
     agent->pathPending = true;
@@ -1635,6 +2637,8 @@ bool NavigationSystem::setDestination(Entity entity, const Vector3& target) {
     state.wasPending = true;
     state.gridPending = false;
     state.gridCells.clear();
+    state.stuckAnchored = false;
+    agent->stuckTime = 0.0f;
     if (state.placed && !state.onGrid && state.crowdIndex >= 0) {
         auto surface = runtime->surfaces.find(state.surface);
         if (surface != runtime->surfaces.end() && surface->second.crowd) {
@@ -1643,7 +2647,7 @@ bool NavigationSystem::setDestination(Entity entity, const Vector3& target) {
                 agent->pathPending = false;
                 agent->pathStatus = PathStatus::Invalid;
                 state.failed = true;
-                runtime->events.push_back(Event{entity, EventType::PathFailed});
+                runtime->failPath(entity, *agent, PathFailure::EndOffMesh);
                 return false;
             }
         }
@@ -1665,6 +2669,9 @@ void NavigationSystem::resetPath(Entity entity) {
     agent->hasPath = false;
     agent->pathPending = false;
     agent->remainingDistance = 0.0f;
+    agent->lastPathFailure = PathFailure::None;
+    agent->stuckTime = 0.0f;
+    state.stuckAnchored = false;
     if (state.placed && state.crowdIndex >= 0) {
         auto surface = runtime->surfaces.find(state.surface);
         if (surface != runtime->surfaces.end() && surface->second.crowd)
@@ -1792,6 +2799,305 @@ bool NavigationSystem::getAgentPath(Entity entity, std::vector<Vector3>& corners
     return true;
 }
 
+// ---- S76 agents (R19-R24)
+
+namespace {
+
+    // a path's world corners and lengths from nav space (calculatePathOn's conversion)
+    void agentPathToWorld(NavPath& path, const NavFrame& frame, float planeZ) {
+        path.length = 0.0f;
+        for (size_t i = 0; i < path.corners.size(); i++) {
+            path.corners[i] = frame.toWorld(path.corners[i], planeZ);
+            if (i > 0)
+                path.length += path.corners[i - 1].distance(path.corners[i]);
+        }
+        if (!path.corners.empty()) {
+            path.start = path.corners.front();
+            path.end = path.closestPoint = path.corners.back();
+        }
+    }
+
+}
+
+NavPath NavigationSystem::calculateAgentPath(Entity entity, const Vector3& target) {
+    NavPath path;
+    path.start = path.end = path.closestPoint = target;
+    NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime)
+        return path;
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed || found->second.surface == NULL_ENTITY)
+        return path;
+    const Runtime::Agent& state = found->second;
+    const Vector3 snapped = snapDestination(*this, scene, state.surface, state.onGrid, *component, target);
+    if (state.onGrid) {
+        // a grid answers with its cells' centres (no corridor: setPath refuses it)
+        NavGridMap* map = getGridMap(state.surface);
+        if (!map)
+            return path;
+        GridQuery query;
+        query.areaMask = (uint16_t)(component->areaMask & ALL_AREAS);
+        query.allowPartial = true;
+        const GridPath grid = findGridPath(state.surface, gridWorldToCell(state.surface, state.currentPosition),
+                                           gridWorldToCell(state.surface, snapped), query);
+        path.status = grid.status;
+        path.failure = grid.failure;
+        path.surface = state.surface;
+        path.corners = gridPathToWorld(state.surface, grid);
+        for (size_t i = 1; i < path.corners.size(); i++)
+            path.length += path.corners[i - 1].distance(path.corners[i]);
+        if (!path.corners.empty()) {
+            path.start = path.corners.front();
+            path.closestPoint = path.corners.back();
+        }
+        path.end = snapped;
+        path.gap = path.closestPoint.distance(snapped);
+        return path;
+    }
+    auto surface = runtime->surfaces.find(state.surface);
+    if (surface == runtime->surfaces.end() || !surface->second.crowd || state.crowdIndex < 0)
+        return path;
+    const Vector3 from = surface->second.frame.toWorld(surface->second.crowd->getPosition(state.crowdIndex), state.planeZ);
+    return calculatePathOn(state.surface, from, snapped, getAgentQueryFilter(entity));
+}
+
+bool NavigationSystem::setAgentPath(Entity entity, const NavPath& path) {
+    NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component)
+        return false;
+    bool accepted = false;
+    Runtime::Agent* state = nullptr;
+    if (runtime) {
+        auto found = runtime->agents.find(entity);
+        state = found != runtime->agents.end() ? &found->second : nullptr;
+    }
+    if (state && state->placed && !state->onGrid && !state->onLink && state->crowdIndex >= 0 && path.status != PathStatus::Invalid &&
+        path.surface == state->surface && !path.polys.empty() && !path.corners.empty()) {
+        auto surface = runtime->surfaces.find(state->surface);
+        if (surface != runtime->surfaces.end() && surface->second.crowd)
+            accepted = surface->second.crowd->setCorridor(state->crowdIndex, path.polys, surface->second.frame.toNav(path.corners.back()));
+    }
+    // refused: the agent has no path (Unity)
+    if (!accepted) {
+        resetPath(entity);
+        return false;
+    }
+    state->destination = component->destination = path.corners.back();
+    state->requested = true;
+    state->arrived = false;
+    state->failed = path.status != PathStatus::Complete;
+    state->wasPending = false;
+    state->stuckAnchored = false;
+    component->hasPath = true;
+    component->pathPending = false;
+    component->pathStatus = path.status;
+    component->stuckTime = 0.0f;
+    component->lastPathFailure = path.status == PathStatus::Complete ? PathFailure::None : path.failure;
+    return true;
+}
+
+NavPath NavigationSystem::getAgentCorridorPath(Entity entity) {
+    NavPath path;
+    const NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime)
+        return path;
+    path.failure = component->lastPathFailure;
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed || !component->hasPath || component->pathPending)
+        return path;
+    const Runtime::Agent& state = found->second;
+    if (state.onGrid) {
+        getAgentPath(entity, path.corners);
+        path.corners.insert(path.corners.begin(), state.currentPosition);
+        for (size_t i = 1; i < path.corners.size(); i++)
+            path.length += path.corners[i - 1].distance(path.corners[i]);
+    } else {
+        auto surface = runtime->surfaces.find(state.surface);
+        if (surface == runtime->surfaces.end() || !surface->second.crowd || state.crowdIndex < 0)
+            return path;
+        surface->second.crowd->getCorridorPath(state.crowdIndex, path);
+        agentPathToWorld(path, surface->second.frame, state.planeZ);
+    }
+    if (path.corners.empty())
+        return path;
+    path.status = component->pathStatus;
+    path.failure = component->pathStatus == PathStatus::Complete ? PathFailure::None : component->lastPathFailure;
+    path.surface = state.surface;
+    path.start = path.corners.front();
+    path.closestPoint = path.corners.back();
+    path.end = component->destination;
+    path.gap = path.status == PathStatus::Complete ? 0.0f : path.closestPoint.distance(path.end);
+    return path;
+}
+
+Vector3 NavigationSystem::getSteeringTarget(Entity entity) {
+    const NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime)
+        return component ? component->nextPosition : Vector3();
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed)
+        return component->nextPosition;
+    const Runtime::Agent& state = found->second;
+    if (state.onGrid) {
+        std::vector<Vector3> corners;
+        getAgentPath(entity, corners);
+        return corners.empty() ? state.currentPosition : corners.front();
+    }
+    auto surface = runtime->surfaces.find(state.surface);
+    if (surface == runtime->surfaces.end() || !surface->second.crowd || state.crowdIndex < 0)
+        return component->nextPosition;
+    return surface->second.frame.toWorld(surface->second.crowd->getSteeringTarget(state.crowdIndex), state.planeZ);
+}
+
+bool NavigationSystem::isAgentPathStale(Entity entity) {
+    const NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime || !component->hasPath || component->pathPending)
+        return false;
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed || found->second.onGrid || found->second.crowdIndex < 0)
+        return false;
+    auto surface = runtime->surfaces.find(found->second.surface);
+    return surface != runtime->surfaces.end() && surface->second.crowd && !surface->second.crowd->isCorridorValid(found->second.crowdIndex);
+}
+
+void NavigationSystem::setAgentNextPosition(Entity entity, const Vector3& position) {
+    NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime)
+        return;
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed || found->second.onLink)
+        return;
+    Runtime::Agent& state = found->second;
+    if (state.onGrid) {
+        state.currentPosition = component->nextPosition = position;
+        return;
+    }
+    auto surface = runtime->surfaces.find(state.surface);
+    if (surface == runtime->surfaces.end() || !surface->second.crowd || state.crowdIndex < 0)
+        return;
+    const NavFrame& frame = surface->second.frame;
+    const Vector3 offset = frame.up() * (component->baseOffset * unitScaleOfSurface(scene, state.surface));
+    NavCrowd& crowd = *surface->second.crowd;
+    crowd.movePosition(state.crowdIndex, frame.toNav(position - offset));
+    component->nextPosition = frame.toWorld(crowd.getPosition(state.crowdIndex), state.planeZ) + offset;
+}
+
+void NavigationSystem::setAgentVelocity(Entity entity, const Vector3& velocity) {
+    if (!scene->findComponent<NavMeshAgentComponent>(entity) || !runtime)
+        return;
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed)
+        return;
+    found->second.velocityOverride = true;
+    found->second.overrideVelocity = velocity;
+}
+
+namespace {
+
+    // where a placed navmesh agent stands on its surface (world), false when it is on none
+    bool agentQueryStart(Scene* scene, const NavMeshAgentComponent* component, Entity surface, bool onGrid, const Vector3& nextPosition,
+                         Vector3& out) {
+        if (!component || surface == NULL_ENTITY || onGrid)
+            return false;
+        const NavFrame frame = NavBakeCollector::frameOf(scene, surface);
+        out = nextPosition - frame.up() * (component->baseOffset * unitScaleOfSurface(scene, surface));
+        return true;
+    }
+
+}
+
+bool NavigationSystem::agentRaycast(Entity entity, const Vector3& target, NavHit& out) {
+    out = NavHit();
+    const NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime)
+        return false;
+    auto found = runtime->agents.find(entity);
+    Vector3 from;
+    if (found == runtime->agents.end() || !found->second.placed ||
+        !agentQueryStart(scene, component, found->second.surface, found->second.onGrid, component->nextPosition, from))
+        return false;
+    return raycastOn(found->second.surface, from, target, out, getAgentQueryFilter(entity));
+}
+
+bool NavigationSystem::agentFindClosestEdge(Entity entity, NavHit& out) {
+    out = NavHit();
+    const NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime)
+        return false;
+    auto found = runtime->agents.find(entity);
+    Vector3 from;
+    if (found == runtime->agents.end() || !found->second.placed ||
+        !agentQueryStart(scene, component, found->second.surface, found->second.onGrid, component->nextPosition, from))
+        return false;
+    return findClosestEdgeOn(found->second.surface, from, out, getAgentQueryFilter(entity));
+}
+
+bool NavigationSystem::samplePathPosition(Entity entity, uint16_t areaMask, float maxDistance, NavHit& out) {
+    out = NavHit();
+    const NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(entity);
+    if (!component || !runtime || !component->hasPath || component->pathPending)
+        return false;
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed || found->second.onGrid || found->second.crowdIndex < 0)
+        return false;
+    const Runtime::Agent& state = found->second;
+    auto surface = runtime->surfaces.find(state.surface);
+    if (surface == runtime->surfaces.end() || !surface->second.crowd)
+        return false;
+    // the corridor with a corner at each area change: each stretch is in one area
+    NavPath path;
+    surface->second.crowd->getCorridorPath(state.crowdIndex, path, true);
+    if (path.corners.empty())
+        return false;
+    const NavFrame& frame = surface->second.frame;
+    const float limit = std::max(0.0f, maxDistance);
+    float travelled = 0.0f;
+    for (size_t i = 0; i + 1 < path.corners.size(); i++) {
+        const uint8_t area = path.cornerAreas[i];
+        if (!(areaMask & (1u << area))) {
+            out.position = frame.toWorld(path.corners[i], state.planeZ);
+            out.area = area;
+            out.distance = travelled;
+            out.hit = true;
+            return true;
+        }
+        const float length = path.corners[i].distance(path.corners[i + 1]);
+        if (travelled + length >= limit) {
+            const float t = length > 0.0f ? (limit - travelled) / length : 0.0f;
+            out.position = frame.toWorld(path.corners[i].lerp(path.corners[i + 1], t), state.planeZ);
+            out.area = area;
+            out.distance = limit;
+            return false;
+        }
+        travelled += length;
+    }
+    out.position = frame.toWorld(path.corners.back(), state.planeZ);
+    out.area = path.cornerAreas.back();
+    out.distance = travelled;
+    return false;
+}
+
+bool NavigationSystem::getNextOffMeshLink(Entity entity, Vector3& start, Vector3& end, Entity& link) {
+    link = NULL_ENTITY;
+    if (!runtime)
+        return false;
+    auto found = runtime->agents.find(entity);
+    if (found == runtime->agents.end() || !found->second.placed || found->second.onGrid || found->second.crowdIndex < 0)
+        return false;
+    const Runtime::Agent& state = found->second;
+    auto surface = runtime->surfaces.find(state.surface);
+    if (surface == runtime->surfaces.end() || !surface->second.crowd)
+        return false;
+    Vector3 a, b;
+    uint32_t userId = 0;
+    if (!surface->second.crowd->getNextOffMeshLink(state.crowdIndex, a, b, userId))
+        return false;
+    start = surface->second.frame.toWorld(a, state.planeZ);
+    end = surface->second.frame.toWorld(b, state.planeZ);
+    link = (Entity)userId;
+    return true;
+}
+
 int NavigationSystem::getCrowdCount() const {
     if (!runtime)
         return 0;
@@ -1814,6 +3120,8 @@ size_t NavigationSystem::getMemoryBytes() const {
     for (const auto& entry : runtime->surfaces) {
         if (entry.second.mesh)
             bytes += entry.second.mesh->getMemoryBytes();
+        if (entry.second.staging)
+            bytes += entry.second.staging->getMemoryBytes();
         if (entry.second.crowd)
             bytes += entry.second.crowd->getMemoryBytes();
     }
@@ -1825,15 +3133,100 @@ size_t NavigationSystem::getMemoryBytes() const {
 
 // ---------------------------------------------------------------- the fixed tick
 
-std::vector<Entity> NavigationSystem::Runtime::sortedAgents(Scene* scene) const {
-    std::vector<Entity> entities;
-    auto array = scene->getComponentArray<NavMeshAgentComponent>();
-    entities.reserve(array->size());
-    for (size_t i = 0; i < array->size(); i++)
-        entities.push_back(array->getEntity(i));
-    // ascending entity order: the same order every run (spec R40c)
-    std::sort(entities.begin(), entities.end());
-    return entities;
+namespace {
+
+    // the entities of a component array in ascending order: the same order every run (spec R40c)
+    template <typename T>
+    void sortedEntities(Scene* scene, std::vector<Entity>& out) {
+        out.clear();
+        auto array = scene->getComponentArray<T>();
+        out.reserve(array->size());
+        for (size_t i = 0; i < array->size(); i++)
+            out.push_back(array->getEntity(i));
+        std::sort(out.begin(), out.end());
+    }
+
+}
+
+const std::vector<Entity>& NavigationSystem::Runtime::sortedAgents(Scene* scene) {
+    // rebuilt when navigation components come or go, not every tick (spec S74 R19)
+    if (orderDirty || agentOrder.size() != scene->getComponentArray<NavMeshAgentComponent>()->size() ||
+        obstacleOrder.size() != scene->getComponentArray<NavMeshObstacleComponent>()->size()) {
+        sortedEntities<NavMeshAgentComponent>(scene, agentOrder);
+        sortedEntities<NavMeshObstacleComponent>(scene, obstacleOrder);
+        orderDirty = false;
+    }
+    return agentOrder;
+}
+
+const std::vector<Entity>& NavigationSystem::Runtime::sortedObstacles(Scene* scene) {
+    sortedAgents(scene);
+    return obstacleOrder;
+}
+
+// ---- S76 agents: failure reasons (R27) and the stuck watchdog (R25)
+
+PathFailure NavigationSystem::Runtime::classifyFailure(NavigationSystem& system, Scene* scene, Entity entity, const Agent& agent) {
+    Vector3 from = agent.currentPosition;
+    if (!agent.placed) {
+        const Transform* transform = scene->findComponent<Transform>(entity);
+        from = transform ? transform->worldPosition : from;
+    }
+    auto surface = surfaces.find(agent.surface);
+    if (agent.placed && surface != surfaces.end() && surface->second.crowd && agent.crowdIndex >= 0)
+        from = surface->second.frame.toWorld(surface->second.crowd->getPosition(agent.crowdIndex), agent.planeZ);
+    const QueryFilter filter = system.getAgentQueryFilter(entity);
+    // a failure's one search is not a script's: getPathQueryCount (S74 R6) leaves it out
+    const uint64_t queries = system.pathQueryCount;
+    PathFailure failure = PathFailure::None;
+    if (agent.surface != NULL_ENTITY && scene->findComponent<NavMeshSurfaceComponent>(agent.surface))
+        failure = system.calculatePathOn(agent.surface, from, agent.destination, filter).failure;
+    else
+        failure = system.calculatePath(from, agent.destination, filter).failure;
+    system.pathQueryCount = queries;
+    return failure;
+}
+
+void NavigationSystem::Runtime::failPath(Entity entity, NavMeshAgentComponent& component, PathFailure reason) {
+    component.lastPathFailure = reason;
+    Event event{entity, EventType::PathFailed};
+    event.detail = (uint8_t)reason;
+    events.push_back(event);
+}
+
+void NavigationSystem::Runtime::stopWatchingStuck(Agent& agent, NavMeshAgentComponent& component) {
+    component.stuckTime = 0.0f;
+    agent.stuckAnchored = false;
+}
+
+void NavigationSystem::Runtime::watchStuck(NavigationSystem& system, Entity entity, Agent& agent, NavMeshAgentComponent& component, float dt,
+                                           float scale) {
+    // walking a path it has: placed, not waiting for it, not held, not on a link, not arriving
+    const bool walking = agent.placed && agent.requested && !agent.arrived && component.hasPath && !component.pathPending &&
+                         !component.isStopped && !agent.onLink && component.isOnNavMesh &&
+                         component.remainingDistance > (component.stoppingDistance + component.radius) * scale;
+    if (!walking) {
+        stopWatchingStuck(agent, component);
+        return;
+    }
+    const Vector3 position = component.nextPosition;
+    const float timeout = std::max(component.stuckTimeout, 1e-3f);
+    const float reach = std::max(component.stuckSpeedRatio, 0.0f) * std::max(component.speed, 0.0f) * timeout * scale;
+    // progress moves the anchor; back-and-forth jitter within reach counts as stuck
+    if (!agent.stuckAnchored || position.distance(agent.stuckAnchor) > reach) {
+        agent.stuckAnchor = position;
+        agent.stuckAnchored = true;
+        component.stuckTime = 0.0f;
+        return;
+    }
+    component.stuckTime += dt;
+    if (component.stuckTime < timeout)
+        return;
+    events.push_back(Event{entity, EventType::Stuck});
+    component.stuckTime = 0.0f;
+    agent.stuckAnchor = position;
+    if (component.repathWhenStuck)
+        system.setDestination(entity, agent.destination);
 }
 
 void NavigationSystem::Runtime::syncSurfaces(NavigationSystem& system, Scene* scene) {
@@ -1844,23 +3237,13 @@ void NavigationSystem::Runtime::syncSurfaces(NavigationSystem& system, Scene* sc
         surface.entity = entity;
         surface.frame = NavBakeCollector::frameOf(scene, entity);
         system.getNavMesh(entity);
-        // a new Detour mesh (a load, a full bake) needs a new crowd: its agents are placed again
-        const void* detour = surface.mesh && surface.mesh->isValid() ? surface.mesh->detourNavMesh() : nullptr;
-        if (surface.crowd && surface.crowdMesh != detour) {
-            surface.crowd.reset();
-            surface.crowdMesh = nullptr;
-            for (auto& agent : agents) {
-                if (agent.second.surface == entity) {
-                    agent.second.placed = false;
-                    agent.second.crowdIndex = -1;
-                    agent.second.onLink = false;
-                }
-            }
-            for (auto& obstacle : obstacles)
-                obstacle.second.crowdSlots.erase(entity);
-        }
+        // a new Detour mesh needs a new crowd, its agents placed again: told by the mesh's
+        // generation, as a mesh made again inside the same NavMesh may get the same address (spec S74 R9)
+        const bool valid = surface.mesh && surface.mesh->isValid();
+        if (surface.crowd && (!valid || surface.crowdGeneration != surface.mesh->getGeneration()))
+            releaseCrowd(entity, surface);
         // a mesh that went away (Clear) leaves its agents unplaced
-        if (!detour) {
+        if (!valid) {
             for (auto& agent : agents) {
                 if (agent.second.surface == entity && !agent.second.onGrid) {
                     agent.second.surface = NULL_ENTITY;
@@ -1875,7 +3258,7 @@ void NavigationSystem::Runtime::syncSurfaces(NavigationSystem& system, Scene* sc
 bool NavigationSystem::Runtime::ensureCrowd(Scene* scene, Surface& surface) {
     if (!surface.mesh || !surface.mesh->isValid())
         return false;
-    if (surface.crowd && !surface.crowdGrow && surface.crowdMesh == surface.mesh->detourNavMesh())
+    if (surface.crowd && !surface.crowdGrow && surface.crowdGeneration == surface.mesh->getGeneration())
         return true;
     const NavigationSettings& settings = getSettings();
     int capacity = std::max(settings.crowdMaxAgents, surface.crowdCapacity);
@@ -1901,7 +3284,8 @@ bool NavigationSystem::Runtime::ensureCrowd(Scene* scene, Surface& surface) {
     if (!crowd->init(*surface.mesh, capacity, maxRadius))
         return false;
     surface.crowd = std::move(crowd);
-    surface.crowdMesh = surface.mesh->detourNavMesh();
+    surface.warnedFilterFallback = false;
+    surface.crowdGeneration = surface.mesh->getGeneration();
     surface.crowdCapacity = capacity;
     surface.crowdGrow = false;
     for (auto& entry : agents) {
@@ -1955,6 +3339,15 @@ Entity NavigationSystem::Runtime::pickSurface(NavigationSystem& system, Scene* s
     return NULL_ENTITY;
 }
 
+void NavigationSystem::Runtime::warnFilterFallback(Scene* scene, Surface& surface, Entity entity, int crowdIndex) {
+    if (surface.warnedFilterFallback || !surface.crowd->isFilterFallback(crowdIndex))
+        return;
+    surface.warnedFilterFallback = true;
+    Log::warn("Navigation: the crowd of '%s' has no free query filter (16, one per area mask and costs) for NavMeshAgent '%s': it "
+              "uses one with its area mask and other costs, or every area",
+              scene->getEntityName(surface.entity).c_str(), scene->getEntityName(entity).c_str());
+}
+
 void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scene) {
     for (Entity entity : sortedAgents(scene)) {
         NavMeshAgentComponent& component = scene->getComponent<NavMeshAgentComponent>(entity);
@@ -1995,6 +3388,13 @@ void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scen
             if (!agent.warnedOffMesh) {
                 agent.warnedOffMesh = true;
                 Log::warn("NavMeshAgent '%s' is not on a navmesh or a NavGrid: it does not move", scene->getEntityName(entity).c_str());
+            }
+            // ---- S76 agents: its destination fails, with why (no surface, not baked, off the mesh)
+            if (agent.requested && !agent.failed) {
+                agent.failed = true;
+                component.pathPending = false;
+                component.pathStatus = PathStatus::Invalid;
+                failPath(entity, component, classifyFailure(system, scene, entity, agent));
             }
             continue;
         }
@@ -2054,12 +3454,19 @@ void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scen
         Surface& surface = surfaceIt->second;
         if (!ensureCrowd(scene, surface)) {
             component.isOnNavMesh = false;
+            // ---- S76 agents: its surface has no navmesh
+            if (agent.requested && !agent.failed) {
+                agent.failed = true;
+                component.pathPending = false;
+                component.pathStatus = PathStatus::Invalid;
+                failPath(entity, component, classifyFailure(system, scene, entity, agent));
+            }
             continue;
         }
         const NavFrame& frame = surface.frame;
         const float scale = unitScaleOfSurface(scene, agent.surface);
         const Vector3 offset = frame.up() * (component.baseOffset * scale);
-        const NavCrowdAgentParams params = agentParams(component, scale);
+        const NavCrowdAgentParams params = agentParams(component, scale, agent.areaCosts);
         if (params.radius > surface.mesh->getHeader().config.agentRadius * 1.0001f && params.radius > agent.params.radius && agent.placed) {
             // a larger agent than the crowd was sized for: the crowd is made again next tick
             surface.crowdGrow = true;
@@ -2073,6 +3480,7 @@ void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scen
             agent.placed = true;
             agent.crowdIndex = index;
             agent.params = params;
+            warnFilterFallback(scene, surface, entity, index);
             agent.planeZ = frame.planeZOf(transform->worldPosition);
             agent.previousPosition = agent.currentPosition = agent.writtenPosition = transform->worldPosition;
             agent.previousRotation = agent.currentRotation = agent.writtenRotation = transform->worldRotation;
@@ -2084,13 +3492,20 @@ void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scen
                 Log::warn("NavMeshAgent '%s' is not on the navmesh: it does not move (move it onto the surface, or warp it)",
                           scene->getEntityName(entity).c_str());
             }
-            if (agent.requested && !agent.arrived && component.isOnNavMesh)
-                surface.crowd->requestMoveTarget(index, frame.toNav(agent.destination));
+            if (agent.requested && !agent.arrived && component.isOnNavMesh &&
+                !surface.crowd->requestMoveTarget(index, frame.toNav(agent.destination)) && !agent.failed) {
+                // ---- S76 agents: the crowd refused the destination (R27)
+                agent.failed = true;
+                component.pathPending = false;
+                component.pathStatus = PathStatus::Invalid;
+                failPath(entity, component, PathFailure::EndOffMesh);
+            }
             continue;
         }
         if (!sameParams(params, agent.params)) {
             surface.crowd->setParams(agent.crowdIndex, params);
             agent.params = params;
+            warnFilterFallback(scene, surface, entity, agent.crowdIndex);
         }
         if (agent.onLink)
             continue;
@@ -2105,13 +3520,23 @@ void NavigationSystem::Runtime::syncAgents(NavigationSystem& system, Scene* scen
     }
 }
 
+namespace {
+
+    // the yaw of a rotation about the frame's up axis, as Detour's boxes take it (nav space)
+    float navYaw(const NavFrame& frame, const Quaternion& rotation) {
+        const Vector3 forward = frame.directionToNav(rotation * Vector3(0.0f, 0.0f, 1.0f));
+        return std::atan2(forward.x, forward.z);
+    }
+
+    float angleBetween(float a, float b) {
+        float d = std::fmod(std::fabs(a - b), 2.0f * PI);
+        return d > PI ? 2.0f * PI - d : d;
+    }
+
+}
+
 void NavigationSystem::Runtime::syncObstacles(NavigationSystem& system, Scene* scene, float dt) {
-    std::vector<Entity> entities;
-    auto array = scene->getComponentArray<NavMeshObstacleComponent>();
-    for (size_t i = 0; i < array->size(); i++)
-        entities.push_back(array->getEntity(i));
-    std::sort(entities.begin(), entities.end());
-    for (Entity entity : entities) {
+    for (Entity entity : sortedObstacles(scene)) {
         NavMeshObstacleComponent& component = scene->getComponent<NavMeshObstacleComponent>(entity);
         Transform* transform = scene->findComponent<Transform>(entity);
         Obstacle& obstacle = obstacles[entity];
@@ -2121,60 +3546,114 @@ void NavigationSystem::Runtime::syncObstacles(NavigationSystem& system, Scene* s
                                         : Vector3(1.0f);
         const Vector3 position = transform ? transform->modelMatrix * component.center : Vector3();
         const Vector3 velocity = obstacle.hasLast && dt > 0.0f ? (position - obstacle.lastPosition) / dt : Vector3();
-        // stationary time and whether it moved past the threshold since its carve
-        const bool moved = !obstacle.carved || position.distance(obstacle.carvedPosition) > component.moveThreshold ||
-                           (transform && std::fabs(obstacle.carvedRotation.dot(transform->worldRotation)) < std::cos(0.5f * component.moveThreshold));
-        if (obstacle.hasLast && position.distance(obstacle.lastPosition) <= 1e-5f)
-            obstacle.stationaryTime += dt;
-        else
+        // Unity's carving stationarity: within Move Threshold of where it came to rest, for Time
+        // To Stationary (spec S74 R13; sub-threshold jitter stays at rest)
+        const float threshold = std::max(component.moveThreshold, 0.0f);
+        if (!obstacle.hasLast || position.distance(obstacle.anchor) > threshold) {
+            obstacle.anchor = position;
             obstacle.stationaryTime = 0.0f;
+        } else {
+            obstacle.stationaryTime += dt;
+        }
         obstacle.lastPosition = position;
+        obstacle.velocity = velocity;
         obstacle.hasLast = true;
+        const bool stationary = obstacle.stationaryTime >= component.timeToStationary;
 
         for (auto& entry : surfaces) {
             Surface& surface = entry.second;
-            const bool usable = active && surface.mesh && surface.mesh->isValid();
-            const float unitScale = unitScaleOfSurface(scene, entry.first);
+            NavMesh* carving = surface.carvingMesh();
+            const bool usable = active && carving && carving->isValid();
             const NavFrame& frame = surface.frame;
             const Vector3 navPosition = frame.toNav(position);
-            bool carve = usable && component.carve && surface.mesh->isCarving();
-            if (usable && component.carve && !surface.mesh->isCarving()) {
+            const bool carve = usable && component.carve && carving->isCarving();
+            if (usable && component.carve && !carving->isCarving()) {
                 warnOnce(warned, "carve-" + std::to_string(entity) + "-" + std::to_string(entry.first),
                          "NavMeshObstacle '" + scene->getEntityName(entity) + "' carves, but NavMeshSurface '" +
                              scene->getEntityName(entry.first) + "' has no Runtime Carving: it is avoided instead");
             }
-            // carving: in the tile cache once stationary (or always), re-cut past the threshold
-            auto carved = obstacle.carves.find(entry.first);
-            const bool stationary = obstacle.stationaryTime >= component.timeToStationary;
+            // carving: in the tile cache once stationary (or always), re-cut past the thresholds
+            auto cut = obstacle.carves.find(entry.first);
+            // a cut of a mesh that is gone, or that did not keep it
+            if (cut != obstacle.carves.end() && (!carving || !carving->hasObstacle(cut->second.id))) {
+                obstacle.carves.erase(cut);
+                cut = obstacle.carves.end();
+            }
             const bool wantCarve = carve && (!component.carveOnlyStationary || stationary);
-            if (carved != obstacle.carves.end() && (!wantCarve || moved)) {
-                surface.mesh->removeObstacle(carved->second);
-                obstacle.carves.erase(carved);
-                carved = obstacle.carves.end();
+            if (cut != obstacle.carves.end() && !wantCarve) {
+                carving->removeObstacle(cut->second.id);
+                obstacle.carves.erase(cut);
+                cut = obstacle.carves.end();
             }
-            if (wantCarve && carved == obstacle.carves.end()) {
-                uint32_t ref = 0;
-                if (component.shape == NavObstacleShape::BOX) {
-                    const Vector3 half = component.size * scale * 0.5f;
-                    const Vector3 forward = frame.directionToNav(transform->worldRotation * Vector3(0.0f, 0.0f, 1.0f));
-                    const float yaw = std::atan2(forward.x, forward.z);
-                    ref = surface.mesh->addBoxObstacle(navPosition, frame.plane == NavPlane::XY ? Vector3(half.x, 1e6f, half.y) : half, yaw);
-                } else {
-                    const float radius = component.radius * std::max(scale.x, scale.z);
-                    const float height = component.height * scale.y;
-                    ref = surface.mesh->addCylinderObstacle(navPosition - Vector3(0.0f, height * 0.5f, 0.0f), radius,
-                                                            frame.plane == NavPlane::XY ? 1e6f : height);
+            if (wantCarve) {
+                const float yaw = navYaw(frame, transform->worldRotation);
+                bool changed = cut == obstacle.carves.end();
+                if (!changed) {
+                    const Cut& c = cut->second;
+                    changed = position.distance(c.position) > threshold || c.shape != component.shape || c.center != component.center ||
+                              c.size != component.size || c.radius != component.radius || c.height != component.height || c.scale != scale;
+                    // a box's farthest corner moves r * angle (r: half its XZ diagonal); Detour
+                    // turns boxes about the vertical only and has no turn for a cylinder
+                    if (!changed && component.shape == NavObstacleShape::BOX) {
+                        const float r = 0.5f * std::sqrt(component.size.x * scale.x * component.size.x * scale.x +
+                                                         (frame.plane == NavPlane::XY ? component.size.y * scale.y * component.size.y * scale.y
+                                                                                      : component.size.z * scale.z * component.size.z * scale.z));
+                        changed = r > 0.0f && angleBetween(yaw, c.yaw) > threshold / r;
+                    }
                 }
-                if (ref) {
-                    obstacle.carves[entry.first] = ref;
-                    obstacle.carvedPosition = position;
-                    obstacle.carvedRotation = transform->worldRotation;
+                if (changed) {
+                    NavObstacleDesc desc;
+                    if (component.shape == NavObstacleShape::BOX) {
+                        const Vector3 half = component.size * scale * 0.5f;
+                        desc.shape = NavObstacleDesc::Shape::Box;
+                        desc.position = navPosition;
+                        desc.halfExtents = frame.plane == NavPlane::XY ? Vector3(half.x, 1e6f, half.y) : half;
+                        desc.yRadians = yaw;
+                    } else {
+                        const float height = component.height * scale.y;
+                        desc.shape = NavObstacleDesc::Shape::Cylinder;
+                        desc.position = navPosition - Vector3(0.0f, height * 0.5f, 0.0f);
+                        desc.radius = component.radius * std::max(scale.x, scale.z);
+                        desc.height = frame.plane == NavPlane::XY ? 1e6f : height;
+                    }
+                    uint32_t id = 0;
+                    if (cut != obstacle.carves.end()) {
+                        id = cut->second.id;
+                        carving->moveObstacle(id, desc);
+                    } else {
+                        id = carving->addObstacle(desc);
+                        if (!id) {
+                            warnOnce(warned, "carve-limit-" + std::to_string(entity) + "-" + std::to_string(entry.first),
+                                     "NavMeshSurface '" + scene->getEntityName(entry.first) + "' holds its Max Carving Obstacles (" +
+                                         std::to_string(carving->getHeader().maxObstacles) + "): '" + scene->getEntityName(entity) +
+                                         "' is avoided instead of carved");
+                        }
+                    }
+                    if (id) {
+                        const int layers = carving->countTileLayers(desc);
+                        if (layers > MAX_CUT_LAYERS) {
+                            warnOnce(warned, "carve-large-" + std::to_string(entity) + "-" + std::to_string(entry.first),
+                                     "NavMeshObstacle '" + scene->getEntityName(entity) + "' covers " + std::to_string(layers) +
+                                         " tile layers of '" + scene->getEntityName(entry.first) + "' and is cut in " +
+                                         std::to_string(MAX_CUT_LAYERS) + ": make it smaller or the tiles larger");
+                        }
+                        Cut& record = obstacle.carves[entry.first];
+                        record.id = id;
+                        record.position = position;
+                        record.yaw = yaw;
+                        record.shape = component.shape;
+                        record.center = component.center;
+                        record.size = component.size;
+                        record.radius = component.radius;
+                        record.height = component.height;
+                        record.scale = scale;
+                    }
                 }
             }
-            obstacle.carved = !obstacle.carves.empty();
 
             // avoided: a crowd agent where it is not carving now (spec R9)
-            const bool avoid = usable && surface.crowd && obstacle.carves.find(entry.first) == obstacle.carves.end();
+            const bool avoid = active && surface.mesh && surface.mesh->isValid() && surface.crowd &&
+                               obstacle.carves.find(entry.first) == obstacle.carves.end();
             auto slot = obstacle.crowdSlots.find(entry.first);
             if (!avoid) {
                 if (slot != obstacle.crowdSlots.end()) {
@@ -2191,7 +3670,6 @@ void NavigationSystem::Runtime::syncObstacles(NavigationSystem& system, Scene* s
                                                                                                                        : component.size.z * scale.z * component.size.z * scale.z))
                                                                       : component.radius * std::max(scale.x, scale.z));
             params.height = component.shape == NavObstacleShape::BOX ? component.size.y * scale.y : component.height * scale.y;
-            (void)unitScale;
             if (slot == obstacle.crowdSlots.end()) {
                 const int index = surface.crowd->addAgent(navPosition, params);
                 if (index < 0) {
@@ -2206,6 +3684,85 @@ void NavigationSystem::Runtime::syncObstacles(NavigationSystem& system, Scene* s
         }
     }
     (void)system;
+}
+
+namespace {
+
+    bool linkMoved(const std::vector<NavLinkInput>& a, const std::vector<NavLinkInput>& b, float tolerance) {
+        if (a.size() != b.size())
+            return true;
+        for (size_t i = 0; i < a.size(); i++) {
+            const NavLinkInput& x = a[i];
+            const NavLinkInput& y = b[i];
+            if (Vector3(x.start[0], x.start[1], x.start[2]).distance(Vector3(y.start[0], y.start[1], y.start[2])) > tolerance ||
+                Vector3(x.end[0], x.end[1], x.end[2]).distance(Vector3(y.end[0], y.end[1], y.end[2])) > tolerance ||
+                x.bidirectional != y.bidirectional || x.area != y.area || x.polyArea != y.polyArea || x.radius != y.radius)
+                return true;
+        }
+        return false;
+    }
+
+}
+
+void NavigationSystem::Runtime::syncLinks(Scene* scene) {
+    auto array = scene->getComponentArray<NavMeshLinkComponent>();
+    for (size_t i = 0; i < array->size(); i++) {
+        // Auto Update Positions (Unity's NavMeshLink.autoUpdate, spec S74 R10); without it a
+        // moved link stays where it was baked
+        const NavMeshLinkComponent& link = array->getComponentFromIndex(i);
+        if (!link.autoUpdatePosition || !link.enabled)
+            continue;
+        const Entity entity = array->getEntity(i);
+        if (!scene->isEntityActiveInHierarchy(entity))
+            continue;
+        for (auto& entry : surfaces) {
+            NavMesh* mesh = entry.second.mesh.get();
+            if (!mesh || !mesh->isValid())
+                continue;
+            LinkTrack& track = links[{entity, entry.first}];
+            if (track.generation != mesh->getGeneration()) {
+                // what the mesh holds of the link: its baked connections (none: not on this surface)
+                track.generation = mesh->getGeneration();
+                track.refused.clear();
+                mesh->getLinkConnections((uint32_t)entity, track.applied);
+            }
+            if (track.applied.empty())
+                continue;
+            const NavMeshHeader& header = mesh->getHeader();
+            linkCosts = header.linkAreaCosts;
+            connections.clear();
+            NavBakeCollector::linkConnections(scene, entity, entry.second.frame, header.config.agentRadius, &linkCosts, connections);
+            if (linkCosts.size() > header.linkAreaCosts.size()) {
+                // a cost override the bake did not see has no cost area in this mesh
+                const int known = FIRST_LINK_COST_AREA + (int)header.linkAreaCosts.size();
+                for (NavLinkInput& connection : connections) {
+                    if (connection.polyArea >= known)
+                        connection.polyArea = connection.area;
+                }
+                warnOnce(warned, "link-cost-" + std::to_string(entity) + "-" + std::to_string(entry.first),
+                         "NavMeshLink '" + scene->getEntityName(entity) + "' has a cost NavMeshSurface '" + scene->getEntityName(entry.first) +
+                             "' was not baked with: it uses its area's cost until the surface is rebaked");
+            }
+            // moved more than half a voxel, or its flags, area, cost or connections changed
+            const float tolerance = 0.5f * header.config.cellSize;
+            if (!linkMoved(track.applied, connections, tolerance))
+                continue;
+            if (!track.refused.empty() && !linkMoved(track.refused, connections, tolerance))
+                continue;
+            // a carving surface rebuilds the touched tiles within the carving budget
+            mesh->setDeferCarvedBuilds(true);
+            std::string error;
+            if (mesh->updateLink((uint32_t)entity, connections, error)) {
+                track.applied = connections;
+                track.refused.clear();
+            } else {
+                track.refused = connections;
+                warnOnce(warned, "link-tile-" + std::to_string(entity) + "-" + std::to_string(entry.first),
+                         "NavMeshLink '" + scene->getEntityName(entity) + "' left its baked tile on NavMeshSurface '" +
+                             scene->getEntityName(entry.first) + "': turn on Runtime Carving or rebake");
+            }
+        }
+    }
 }
 
 void NavigationSystem::Runtime::solveGrids(NavigationSystem& system, Scene* scene, uint32_t tick) {
@@ -2276,13 +3833,15 @@ void NavigationSystem::Runtime::solveGrids(NavigationSystem& system, Scene* scen
             agent.gridCells.clear();
             if (!agent.failed) {
                 agent.failed = true;
-                events.push_back(Event{now[i].agent, EventType::PathFailed});
+                failPath(now[i].agent, *component, path.failure);
             }
             continue;
         }
         if (path.status == PathStatus::Partial && !agent.failed) {
             agent.failed = true;
-            events.push_back(Event{now[i].agent, EventType::PathFailed});
+            failPath(now[i].agent, *component, path.failure);
+        } else if (path.status == PathStatus::Complete) {
+            component->lastPathFailure = PathFailure::None;
         }
         agent.gridCells = std::move(path.cells);
         agent.gridNext = agent.gridCells.size() > 1 ? 1 : 0;
@@ -2290,14 +3849,56 @@ void NavigationSystem::Runtime::solveGrids(NavigationSystem& system, Scene* scen
     }
 }
 
-void NavigationSystem::Runtime::updateCarving() {
+int NavigationSystem::Runtime::updateCarving(NavigationSystem& system, Scene* scene, double ceilingMs) {
+    // a count of tile builds per surface and tick, so the tick a cut lands on is the same on
+    // every machine (spec S74 R14); the wall-clock ceiling only guards against a slow one
+    const int perTick = getSettings().effectiveCarveTilesPerTick();
+    int total = 0;
+    std::vector<Entity> promoted;
     for (auto& entry : surfaces) {
-        if (!entry.second.mesh || !entry.second.mesh->isCarving())
-            continue;
+        Surface& surface = entry.second;
+        NavCarveBudget budget;
+        budget.maxTileBuilds = perTick;
+        budget.ceilingMs = ceilingMs;
         bool upToDate = true;
-        int rebuilt = 0;
-        entry.second.mesh->updateCarving(CARVE_BUDGET_MS, upToDate, rebuilt);
+        int used = 0;
+        if (surface.mesh && surface.mesh->isCarving()) {
+            int built = 0;
+            surface.mesh->updateCarving(budget, upToDate, built);
+            used += built;
+        }
+        // a staged mesh takes what is left, at least one build a tick (spec S74 D2)
+        if (surface.staging && surface.staging->isCarving()) {
+            budget.maxTileBuilds = std::max(1, perTick - used);
+            int built = 0;
+            surface.staging->updateCarving(budget, upToDate, built);
+            used += built;
+        }
+        total += used;
+        if (!surface.pendingResult)
+            continue;
+        // the bake is reported once its carved tiles are built: a staged mesh goes into service
+        if (surface.staging) {
+            if (!surface.staging->isComplete())
+                continue;
+            surface.mesh = std::move(surface.staging);
+            releaseCrowd(entry.first, surface);
+            promoted.push_back(entry.first);
+        } else if (surface.mesh && !surface.mesh->isComplete()) {
+            continue;
+        }
+        std::unique_ptr<NavBakeResult> result = std::move(surface.pendingResult);
+        if (surface.mesh)
+            result->polys = surface.mesh->getPolyCount();
+        surface.lastResult = std::move(result);
+        events.push_back(Event{entry.first, EventType::BakeCompleted});
     }
+    // S76 R14: a staged navmesh gets the runtime overrides as it goes into service; after the
+    // loop, since the area sync can reset crowds
+    for (Entity entity : promoted)
+        system.onAreaMeshReplaced(entity);
+    (void)scene;
+    return total;
 }
 
 void NavigationSystem::Runtime::stepCrowds(Scene* scene, float dt) {
@@ -2307,20 +3908,25 @@ void NavigationSystem::Runtime::stepCrowds(Scene* scene, float dt) {
             continue;
         NavCrowd& crowd = *surface.crowd;
         const float scale = unitScaleOfSurface(scene, entry.first);
-        std::map<int, Entity> byIndex;
+        // each crowd slot's agent (NULL_ENTITY: an obstacle or free)
+        std::vector<Entity>& byIndex = crowdOwners;
+        byIndex.assign((size_t)crowd.getCapacity(), NULL_ENTITY);
         // the speed each agent may have this step: auto braking (spec R12), isStopped
         for (auto& agentEntry : agents) {
             Agent& agent = agentEntry.second;
-            if (agent.surface != entry.first || !agent.placed || agent.onGrid || agent.crowdIndex < 0)
+            if (agent.surface != entry.first || !agent.placed || agent.onGrid || agent.crowdIndex < 0 ||
+                agent.crowdIndex >= crowd.getCapacity())
                 continue;
-            byIndex[agent.crowdIndex] = agentEntry.first;
+            byIndex[(size_t)agent.crowdIndex] = agentEntry.first;
             NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(agentEntry.first);
             if (!component)
                 continue;
             NavCrowdAgentParams params = agent.params;
             if (component->isStopped) {
                 params.maxSpeed = 0.0f;
-            } else if (component->autoBraking && agent.requested && !agent.arrived && crowd.getTargetState(agent.crowdIndex) == NavCrowdTarget::Valid) {
+            } else if (component->autoBraking && agent.requested && !agent.arrived && crowd.getTargetState(agent.crowdIndex) == NavCrowdTarget::Valid &&
+                       crowd.getPathState(agent.crowdIndex) != NavCrowdPath::Truncated) {
+                // (a truncated corridor's end is not where it stops: dtCrowd extends it)
                 bool reachedEnd = false;
                 float remaining = crowd.getSteeringDistance(agent.crowdIndex, reachedEnd);
                 const float accel = std::max(params.maxAcceleration, 1e-4f);
@@ -2345,20 +3951,35 @@ void NavigationSystem::Runtime::stepCrowds(Scene* scene, float dt) {
             }
             if (params.maxSpeed != crowd.getParams(agent.crowdIndex).maxSpeed)
                 crowd.setParams(agent.crowdIndex, params);
+            // ---- S76 agents: a script's velocity for this tick (root motion, R22): along its path
+            // after the step, else steered by the crowd for the tick
+            if (agent.velocityOverride) {
+                agent.velocityOverride = false;
+                const Vector3 velocity = surface.frame.directionToNav(agent.overrideVelocity);
+                const NavCrowdTarget target = crowd.getTargetState(agent.crowdIndex);
+                if (agent.requested && !agent.arrived && (target == NavCrowdTarget::Valid || target == NavCrowdTarget::Pending)) {
+                    crowd.overrideVelocity(agent.crowdIndex, velocity, dt);
+                } else if (!agent.onLink) {
+                    crowd.requestMoveVelocity(agent.crowdIndex, velocity);
+                    velocityRequests.push_back(agent.crowdIndex);
+                }
+            }
         }
 
         // links reached take the agents off the crowd's steering (their own traversal)
         linkEntries.clear();
         float lookahead = 0.0f;
-        for (const auto& indexed : byIndex)
-            lookahead = std::max(lookahead, crowd.getParams(indexed.first).maxSpeed * dt);
+        for (size_t index = 0; index < byIndex.size(); index++) {
+            if (byIndex[index] != NULL_ENTITY)
+                lookahead = std::max(lookahead, crowd.getParams((int)index).maxSpeed * dt);
+        }
         crowd.takeOffMeshLinks(lookahead, linkEntries);
         for (const NavLinkEntry& link : linkEntries) {
-            auto owner = byIndex.find(link.agent);
-            if (owner == byIndex.end())
+            const Entity owner = link.agent >= 0 && (size_t)link.agent < byIndex.size() ? byIndex[(size_t)link.agent] : NULL_ENTITY;
+            if (owner == NULL_ENTITY)
                 continue;
-            Agent& agent = agents[owner->second];
-            NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(owner->second);
+            Agent& agent = agents[owner];
+            NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(owner);
             agent.onLink = true;
             agent.linkByDetour = false;
             agent.linkFrom = crowd.getPosition(link.agent);
@@ -2369,26 +3990,30 @@ void NavigationSystem::Runtime::stepCrowds(Scene* scene, float dt) {
             agent.linkWaiting = component && !component->autoTraverseOffMeshLink;
             if (component)
                 component->isOnOffMeshLink = true;
-            events.push_back(Event{owner->second, EventType::LinkStart});
+            events.push_back(Event{owner, EventType::LinkStart});
         }
 
         {
             JE_PROFILE_SCOPE("Nav.Crowd");
             crowd.update(dt);
         }
+        // ---- S76 agents: a velocity request lasts one tick
+        for (int index : velocityRequests)
+            crowd.resetMoveTarget(index);
+        velocityRequests.clear();
 
         detourLinks.clear();
         crowd.takeDetourTraversals(detourLinks);
         for (int index : detourLinks) {
-            auto owner = byIndex.find(index);
-            if (owner == byIndex.end())
+            const Entity owner = index >= 0 && (size_t)index < byIndex.size() ? byIndex[(size_t)index] : NULL_ENTITY;
+            if (owner == NULL_ENTITY)
                 continue;
-            Agent& agent = agents[owner->second];
+            Agent& agent = agents[owner];
             agent.onLink = true;
             agent.linkByDetour = true;
-            if (NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(owner->second))
+            if (NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(owner))
                 component->isOnOffMeshLink = true;
-            events.push_back(Event{owner->second, EventType::LinkStart});
+            events.push_back(Event{owner, EventType::LinkStart});
         }
     }
 }
@@ -2443,12 +4068,18 @@ void NavigationSystem::Runtime::moveGridAgent(NavigationSystem& system, Scene* s
                 desired = toGoal * (std::min(maxSpeed, distance / std::max(dt, 1e-6f)) / distance);
         }
     }
-    // the velocity follows the desired one within the acceleration
-    Vector3 change = desired - agent.gridVelocity;
-    const float maxChange = accel * dt;
-    if (change.length() > maxChange)
-        change = change * (maxChange / change.length());
-    agent.gridVelocity += change;
+    // the velocity follows the desired one within the acceleration; a script's velocity (S76 R22)
+    // is this tick's as given
+    if (agent.velocityOverride) {
+        agent.velocityOverride = false;
+        agent.gridVelocity = agent.overrideVelocity;
+    } else {
+        Vector3 change = desired - agent.gridVelocity;
+        const float maxChange = accel * dt;
+        if (change.length() > maxChange)
+            change = change * (maxChange / change.length());
+        agent.gridVelocity += change;
+    }
     position += agent.gridVelocity * dt;
 
     if (!agent.gridCells.empty() && agent.gridNext < agent.gridCells.size()) {
@@ -2464,7 +4095,8 @@ void NavigationSystem::Runtime::moveGridAgent(NavigationSystem& system, Scene* s
         const float step = Engine::getUpdateTime() > 0.0f ? Engine::getUpdateTime() : dt;
         const uint32_t lookaheadTicks = (uint32_t)std::max(1.0f, std::ceil(gridComponent->reservationLookahead / std::max(step, 1e-4f)));
         const size_t ahead = (size_t)std::ceil(speed * gridComponent->reservationLookahead / std::max(map->getCellSize(), 1e-4f)) + 1;
-        std::vector<int> cells;
+        std::vector<int>& cells = lookahead;
+        cells.clear();
         for (size_t i = agent.gridNext > 0 ? agent.gridNext - 1 : 0; i < agent.gridCells.size() && cells.size() <= ahead; i++)
             cells.push_back(map->index(agent.gridCells[i]));
         grid.reservations.reserve(self, cells, tick + lookaheadTicks);
@@ -2509,6 +4141,11 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
             forwardAxis = frame.plane == NavPlane::XY ? Vector3(1.0f, 0.0f, 0.0f) : Vector3(0.0f, 0.0f, 1.0f);
             moveGridAgent(system, scene, agent, component, dt, tick);
             worldVelocity = component.velocity;
+            // ---- S76 agents
+            if (component.stuckDetection)
+                watchStuck(system, entity, agent, component, dt, 1.0f);
+            else if (agent.stuckAnchored)
+                stopWatchingStuck(agent, component);
         } else {
             auto surfaceIt = surfaces.find(agent.surface);
             if (surfaceIt == surfaces.end() || !surfaceIt->second.crowd)
@@ -2553,32 +4190,42 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
                 events.push_back(Event{entity, EventType::LinkEnd});
             }
 
-            // the path's state and its events (spec R12)
+            // the path's state and its events (spec R12), read from dtCrowd's corridor: no path
+            // search runs for an agent (spec S74 R6)
             const NavCrowdTarget target = crowd.getTargetState(index);
             if (agent.requested && !agent.arrived) {
                 if (target == NavCrowdTarget::Pending) {
-                    if (!agent.wasPending && !component.autoRepath) {
-                        // a replan without autoRepath: the path is dropped
+                    // dtCrowd extending a truncated or partial corridor near its end keeps the
+                    // path; a replan of an invalid corridor is a repath (spec S74 R8)
+                    const bool extension = agent.crowdPath != NavCrowdPath::Complete && agent.corridorPolys < EXTENSION_POLYS;
+                    if (!agent.wasPending && !component.autoRepath && !extension) {
+                        // a repath without autoRepath: the path is dropped
                         crowd.resetMoveTarget(index);
-                        agent.requested = false;
                         component.hasPath = false;
                         component.pathStatus = PathStatus::Invalid;
-                        events.push_back(Event{entity, EventType::PathFailed});
+                        failPath(entity, component, classifyFailure(system, scene, entity, agent));
+                        agent.requested = false;
                     }
                     component.pathPending = agent.requested;
                     agent.wasPending = agent.requested;
                 } else if (target == NavCrowdTarget::Valid) {
                     component.pathPending = false;
-                    if (agent.wasPending) {
+                    const NavCrowdPath state = crowd.getPathState(index);
+                    // a new corridor (a plan that landed, or one dtCrowd's quick search finished
+                    // within a step) is read again
+                    const bool changed = agent.wasPending || state != agent.crowdPath;
+                    agent.crowdPath = state;
+                    agent.corridorPolys = crowd.getCorridorSize(index);
+                    if (changed) {
                         agent.wasPending = false;
-                        // the whole path's status (Detour's corridor holds 256 polygons)
-                        const Vector3 from = frame.toWorld(crowd.getPosition(index), agent.planeZ);
-                        component.pathStatus = system.calculatePathOn(agent.surface, from, agent.destination, (uint16_t)(component.areaMask & ALL_AREAS)).status;
-                        if (component.pathStatus == PathStatus::Invalid)
-                            component.pathStatus = crowd.isPathPartial(index) ? PathStatus::Partial : PathStatus::Complete;
+                        // a truncated corridor is the start of a Complete path; Partial: no path
+                        // reaches the destination, onPathFailed once per destination
+                        component.pathStatus = agent.crowdPath == NavCrowdPath::Partial ? PathStatus::Partial : PathStatus::Complete;
                         if (component.pathStatus != PathStatus::Complete && !agent.failed) {
                             agent.failed = true;
-                            events.push_back(Event{entity, EventType::PathFailed});
+                            failPath(entity, component, classifyFailure(system, scene, entity, agent));
+                        } else if (component.pathStatus == PathStatus::Complete) {
+                            component.lastPathFailure = PathFailure::None;
                         }
                     }
                 } else if (target == NavCrowdTarget::Failed) {
@@ -2587,19 +4234,22 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
                     agent.wasPending = false;
                     if (!agent.failed) {
                         agent.failed = true;
-                        events.push_back(Event{entity, EventType::PathFailed});
+                        failPath(entity, component, classifyFailure(system, scene, entity, agent));
                     }
                 }
             }
 
-            // arrival: within the stopping distance of the destination, once (spec R12)
+            // arrival: within the stopping distance of the destination, once (spec R12); only a
+            // corridor that ends in the destination's polygon arrives (spec S74 R7: the end of a
+            // Partial path is not the destination)
             if (agent.requested && !agent.arrived && target == NavCrowdTarget::Valid && !agent.onLink) {
                 bool reachedEnd = false;
                 // along the crowd's corners, the rest as the crow flies (no corridor walk per tick)
                 const float remaining = crowd.getSteeringRemaining(index, reachedEnd);
                 component.remainingDistance = remaining;
                 const float stop = std::max(component.stoppingDistance, MIN_STOPPING_DISTANCE) * scale;
-                if (reachedEnd && remaining <= stop + (component.autoBraking ? ARRIVAL_TOLERANCE * scale : 0.0f)) {
+                if (agent.crowdPath == NavCrowdPath::Complete && reachedEnd &&
+                    remaining <= stop + (component.autoBraking ? ARRIVAL_TOLERANCE * scale : 0.0f)) {
                     agent.arrived = true;
                     crowd.resetMoveTarget(index);
                     crowd.setVelocity(index, Vector3());
@@ -2616,6 +4266,11 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
             component.nextPosition = frame.toWorld(navPosition, agent.planeZ) + up * (component.baseOffset * scale);
             agent.previousPosition = agent.currentPosition;
             agent.currentPosition = component.nextPosition;
+            // ---- S76 agents: the watchdog; turned off, it lets go of its anchor once
+            if (component.stuckDetection)
+                watchStuck(system, entity, agent, component, dt, scale);
+            else if (agent.stuckAnchored)
+                stopWatchingStuck(agent, component);
         }
 
         // the driver moves the GameObject (spec R11)
@@ -2677,9 +4332,15 @@ void NavigationSystem::Runtime::dispatch(Scene* scene) {
         return;
     // after the step, in entity order (stable within an entity): a callback may call any
     // navigation API, and the events it causes fire in the next dispatch
-    std::vector<Event> batch;
+    // (the two buffers swap, so a tick allocates nothing)
+    std::vector<Event>& batch = dispatching;
+    batch.clear();
     batch.swap(events);
-    std::stable_sort(batch.begin(), batch.end(), [](const Event& a, const Event& b) { return a.entity < b.entity; });
+    for (size_t i = 0; i < batch.size(); i++)
+        batch[i].sequence = (uint32_t)i;
+    std::sort(batch.begin(), batch.end(), [](const Event& a, const Event& b) {
+        return a.entity != b.entity ? a.entity < b.entity : a.sequence < b.sequence;
+    });
     for (const Event& event : batch) {
         if (event.type == EventType::BakeCompleted) {
             if (NavMeshSurfaceComponent* surface = scene->findComponent<NavMeshSurfaceComponent>(event.entity))
@@ -2691,10 +4352,128 @@ void NavigationSystem::Runtime::dispatch(Scene* scene) {
             continue;
         switch (event.type) {
             case EventType::DestinationReached: agent->onDestinationReached.call(NavMeshAgent(scene, event.entity)); break;
-            case EventType::PathFailed: agent->onPathFailed.call(NavMeshAgent(scene, event.entity)); break;
+            case EventType::PathFailed: agent->onPathFailed.call(NavMeshAgent(scene, event.entity), (PathFailure)event.detail); break;
             case EventType::LinkStart: agent->onOffMeshLinkStart.call(NavMeshAgent(scene, event.entity)); break;
             case EventType::LinkEnd: agent->onOffMeshLinkEnd.call(NavMeshAgent(scene, event.entity)); break;
             case EventType::BakeCompleted: break;
+            case EventType::Stuck: agent->onStuck.call(NavMeshAgent(scene, event.entity)); break;
+        }
+    }
+}
+
+// ---------------------------------------------------------------- S76 areas
+
+NavMesh* NavigationSystem::editableNavMesh(Entity surface) {
+    if (!surfaceComponent(scene, surface))
+        return nullptr;
+    getNavMesh(surface);
+    auto found = rt().surfaces.find(surface);
+    return found != runtime->surfaces.end() ? found->second.mesh.get() : nullptr;
+}
+
+bool NavigationSystem::hasAreaCrowd(Entity surface) const {
+    if (!runtime)
+        return false;
+    auto found = runtime->surfaces.find(surface);
+    return found != runtime->surfaces.end() && found->second.crowd && found->second.crowd->getAgentCount() > 0;
+}
+
+bool NavigationSystem::isLinkOccupied(Entity link) const {
+    if (!runtime)
+        return false;
+    for (const auto& entry : runtime->agents) {
+        if (entry.second.placed && entry.second.onLink && entry.second.link == link)
+            return true;
+    }
+    return false;
+}
+
+Vector3 NavigationSystem::getObstacleVelocity(Entity obstacle) const {
+    if (!runtime)
+        return Vector3();
+    auto found = runtime->obstacles.find(obstacle);
+    return found != runtime->obstacles.end() ? found->second.velocity : Vector3();
+}
+
+bool NavigationSystem::updateLink(Entity link) {
+    const NavMeshLinkComponent* component = scene->findComponent<NavMeshLinkComponent>(link);
+    if (!component)
+        return false;
+    bool ok = true;
+    std::vector<NavLinkState> states;
+    for (Entity surface : surfacesOf(scene, component->agentType)) {
+        NavMesh* mesh = editableNavMesh(surface);
+        if (!mesh || !mesh->isValid())
+            continue;
+        // the surfaces whose navmesh holds the link
+        mesh->getLinkStates(states);
+        if (std::none_of(states.begin(), states.end(), [&](const NavLinkState& state) { return state.userId == (uint32_t)link; }))
+            continue;
+        std::vector<float> costs = mesh->getHeader().linkAreaCosts;
+        const size_t baked = costs.size();
+        std::vector<NavLinkInput> connections;
+        NavBakeCollector::linkConnections(scene, link, NavBakeCollector::frameOf(scene, surface), mesh->getHeader().config.agentRadius,
+                                          &costs, connections);
+        // a cost the bake did not see: the area's (a rebake gives it its own)
+        for (NavLinkInput& connection : connections) {
+            if (connection.polyArea >= FIRST_LINK_COST_AREA + (int)baked)
+                connection.polyArea = connection.area;
+        }
+        std::string error;
+        if (!mesh->updateLink((uint32_t)link, connections, error)) {
+            Log::warn("NavMeshLink '%s' on NavMeshSurface '%s': %s", scene->getEntityName(link).c_str(),
+                      scene->getEntityName(surface).c_str(), error.c_str());
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+void NavigationSystem::Runtime::replanAreaChanges(NavigationSystem& system, Scene* scene) {
+    if (!system.areas)
+        return;
+    for (auto& entry : system.areas->changed) {
+        if (entry.second.empty())
+            continue;
+        auto found = surfaces.find(entry.first);
+        if (found == surfaces.end() || !found->second.crowd) {
+            entry.second.clear();
+            continue;
+        }
+        Surface& surface = found->second;
+        NavCrowd& crowd = *surface.crowd;
+        crowd.replanCrossing(entry.second, replanned);
+        entry.second.clear();
+        for (auto& agentEntry : agents) {
+            Agent& agent = agentEntry.second;
+            if (agent.surface != entry.first || agent.onGrid || !agent.placed || agent.crowdIndex < 0 || !agent.requested || agent.arrived)
+                continue;
+            NavMeshAgentComponent* component = scene->findComponent<NavMeshAgentComponent>(agentEntry.first);
+            if (!component)
+                continue;
+            if (std::binary_search(replanned.begin(), replanned.end(), agent.crowdIndex)) {
+                if (!component->autoRepath) {
+                    // a path crossing a changed polygon is dropped without Auto Repath (R15)
+                    crowd.resetMoveTarget(agent.crowdIndex);
+                    agent.requested = false;
+                    component->hasPath = false;
+                    component->pathPending = false;
+                    component->pathStatus = PathStatus::Invalid;
+                    failPath(agentEntry.first, *component, classifyFailure(system, scene, agentEntry.first, agent));
+                    continue;
+                }
+                // its new path's status is taken when it lands, and a failure fires again
+                agent.failed = false;
+                agent.wasPending = true;
+                component->pathPending = true;
+                continue;
+            }
+            // a path that stopped short, or a target that failed, may go through now
+            const bool stoppedShort = component->pathStatus == PathStatus::Partial || crowd.getTargetState(agent.crowdIndex) == NavCrowdTarget::Failed;
+            if (stoppedShort && component->autoRepath && !agent.onLink && crowd.requestMoveTarget(agent.crowdIndex, surface.frame.toNav(agent.destination))) {
+                agent.wasPending = true;
+                component->pathPending = true;
+            }
         }
     }
 }
@@ -2731,13 +4510,17 @@ void NavigationSystem::fixedUpdate(double dt) {
     r.syncSurfaces(*this, scene);
     // grids that follow their tilemap or terrain
     updateGridSources();
+    // 1b. runtime area volumes and link states (S76 D9); agents whose path they touch ask again
+    syncAreaOverrides();
+    r.replanAreaChanges(*this, scene);
     // 2. transforms -> agents and obstacles
     r.syncAgents(*this, scene);
     r.syncObstacles(*this, scene, step);
+    r.syncLinks(scene);
     // 3. grid paths, a batch
     r.solveGrids(*this, scene, fixedTick);
     // 4. tile caches, budgeted
-    r.updateCarving();
+    carveTileBuilds = r.updateCarving(*this, scene, carveTimeCeilingMs);
     // 5. crowds
     r.stepCrowds(scene, step);
     // 6. drivers

@@ -7,6 +7,7 @@
 
 #include "TerrainGoldenSequences.h"
 
+#include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
 
 #include <gtest/gtest.h>
@@ -124,8 +125,12 @@ TEST(TerrainGolden, ThreadCountDoesNotMatter) {
     const auto hashAt = [](int workers) {
         jobs::Config config;
         config.workers = workers;
+        // (the asset readers take the process job system only at start(): restarted with it, or a
+        // later test's reads go to the shut-down pool and end cancelled)
+        AssetIOService::instance().stop();
         jobs::shutdown();
         jobs::initialize(config);
+        AssetIOService::instance().start();
 
         constexpr int LARGE = 513;
         RawMapStore store(static_cast<float>(LARGE), MAX_HEIGHT);
@@ -155,8 +160,10 @@ TEST(TerrainGolden, ThreadCountDoesNotMatter) {
     const uint64_t one = hashAt(1);
     const uint64_t eight = hashAt(8);
     const uint64_t inlined = hashAt(0);
+    AssetIOService::instance().stop();
     jobs::shutdown();
     jobs::initialize(jobs::Config{});
+    AssetIOService::instance().start();
     EXPECT_EQ(one, eight);
     EXPECT_EQ(one, inlined);
 }

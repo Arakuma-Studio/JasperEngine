@@ -772,3 +772,36 @@ Recorded during implementation (branch `dc/runtime-core`).
     put it at 99,028. A fixed Start Offset goes through `set_properties {action: {startOffset}}` on the
     Animation or a nested action; `get_animation` still reports `start_offset` and `random_start`.
     `edit_animation` stays within its old 3,606 limit.
+
+## Follow-ups (2026-11-07)
+
+1. **The event-clear lint covers every engine event** (`tools/check_event_clears.py`). An event is a
+   member of type `FunctionSubscribe<...>`, of a class derived from it (`Ease`) or of an alias of one,
+   alone or in a container, anywhere in the engine's sources (not `engine/libs`, `engine/tests`,
+   `engine/workspaces`). Declarations are read as statements (type arguments across lines,
+   `jasperengine::` qualification, `JASPERENGINE_API static`, `alignas` and attributes); locals,
+   parameters, references, pointers, functions and static definitions are not events. A holder's events
+   are in its `forEachEvent` (a container by name); a component holder is in `ComponentsWithEvents`;
+   any other holder is in the lint's `WALKS` table, with the clears that call its visitor checked
+   (PhysicsSystem's two, InputAction's `InputActions::unload` and `resetSession`), or in `TRANSIENT`
+   (`LegacyParticleSystem.h`, a view sampled into curves within one call); a static event is in
+   `Engine::clearAllSubscriptions` and `Engine::removeSubscriptionsByTag` (Engine's own unqualified,
+   not satisfied by another class's same-named event; others as `Class::member`). An event at
+   namespace scope fails, and so does an event type the lint cannot read where a declaration could
+   be (a macro, an unparsable statement), so nothing is skipped silently.
+2. **Real hits fixed.**
+   - `Audio::onMusicBeat` and `Audio::onMusicSection` were cleared only in `MusicPlayer::reset`,
+     which the editor's Stop runs in `finalizeStop`, after `conector.disconnect()`: a C++ script's
+     callback there was destroyed after its library was unloaded, and a tag removal never reached
+     them. Both are now in Engine's two clears (test `EngineEventsTest.ClearsReachOtherClassesStaticEvents`,
+     red before the fix).
+   - `TweenComponent::function`, an `Ease` a C++ script can set to its own lambda, was destroyed with
+     the runtime scene after the unload. TweenComponent is now in `ComponentsWithEvents` with a
+     `forEachEvent`, and `Ease::clear` keeps only the built-in curve of its type (a custom function
+     goes, the ease is linear again), so `clearComponentSubscriptions` destroys the script's function
+     while its code is loaded (test `ComponentEventsTest.ClearDropsAScriptsTweenEase`, red before).
+   - `InputAction`'s three events were cleared by two hand lists (complete): they now go through
+     `InputAction::forEachEvent` (test `InputActionsTest.UnloadAndANewSessionClearEveryActionEvent`
+     pins it; no red run, nothing was missed).
+3. **check-changed** runs the lint for any changed engine source outside the skipped directories (it
+   used to take component headers, PhysicsSystem.h and Engine.h/.cpp only).

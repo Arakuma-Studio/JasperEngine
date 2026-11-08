@@ -45,9 +45,10 @@ async def test_per_unit_typing_keeps_emoji(ed: Editor):
             {"type": "mouse", "action": "click", "x": P_FIELD[0], "y": P_FIELD[1]},
             {"type": "text", "text": "a" + EMOJI + "b", "per_unit": True}], "frames_after": 2})
         ed.check(not sent.is_error, f"send_input per_unit: {sent.text[:300]}")
-        values = await lua(ed, "return object('Field', 'InputField').text, #typed, typed[1], typed[2], typed[3]")
+        values = await lua(ed, "return object('Field', 'InputField').text, #typed")
         ed.check_eq(values[0], "a" + EMOJI + "b", "the InputField holds the emoji whole")
-        ed.check_eq(values[1:], [3, "a", EMOJI, "b"], "onCharInput got three whole characters")
+        # the typing guard (ui-components decision 17, 9ce0f4b00): the field's typing is not the game's
+        ed.check_eq(values[1], 0, "onCharInput does not see what the field takes")
 
         # a backspace erases the whole emoji, not half of it
         await ed.call("send_input", events=[{"type": "key", "key": "backspace"},
@@ -55,6 +56,13 @@ async def test_per_unit_typing_keeps_emoji(ed: Editor):
         text = (await lua(ed, "return object('Field', 'InputField').text"))[0]
         ed.check(text in ("a" + EMOJI, "a"), f"backspaces remove whole characters: {text!r}")
         ed.check("�" not in text, f"no replacement character: {text!r}")
+
+        # with no field typed in (a click beside it), the game's onCharInput gets the emoji whole
+        await ed.call("send_input", events=[{"type": "mouse", "action": "click", "x": 900, "y": 600}], frames_after=2)
+        await lua(ed, "typed = {}; return true")
+        await ed.call("send_input", events=[{"type": "text", "text": "a" + EMOJI + "b", "per_unit": True}], frames_after=2)
+        values = await lua(ed, "return #typed, typed[1], typed[2], typed[3]")
+        ed.check_eq(values, [3, "a", EMOJI, "b"], "onCharInput got three whole characters")
 
         refused = await ed.call_raw("send_input", {"events": [{"type": "text", "text": "x", "per_unit": "yes"}]})
         ed.check(refused.is_error and "per_unit" in refused.text, f"a non-boolean per_unit is refused: {refused.text[:200]}")

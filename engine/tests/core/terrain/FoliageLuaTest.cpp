@@ -5,6 +5,7 @@
 // name so the page cannot drift from the bindings.
 
 #include "FoliageTestSupport.h"
+#include "component/TerrainComponent.h"
 
 #include "TestPaths.h"
 #include "object/Terrain.h"
