@@ -934,6 +934,12 @@ Recorded by the S49 implementation (`feature/s49-pixel-particles`).
   and an unflattened block is limited to sokol's 16 members.
 - **A sub-emitter spawner** (Render Mode None with sub-emitters, the Debris preset) no longer gets
   S20's "None draws only trails" warning.
+- **Sub-emitter particles are simulated but not drawn (S20 gap, open).** S20's renderer draws a
+  system's own emitter only (`RenderSystem::drawParticles`); its sub-emitter children run (counts,
+  events, bounds) but no draw call shows them. So the Fire preset's smoke and the Debris preset's
+  shards and chunks do not show in the Scene view, the Game view or a contact sheet yet, though
+  `PixelPresetsTest` proves their motion and `capture_particles` counts and checks them. Drawing
+  children is an S20 renderer change (a render data per child emitter), left to its own task.
 - **Presets.** Sub-emitter children (`pixel_smoke` of `pixel_fire`; `pixel_debris_shard` and
   `pixel_debris_chunk` of `pixel_debris`) are written beside the created asset; `create_particle_effect`
   lists them in `children`. Rates the pixelfx demos do not state (smoke, fire, ember) are ours,
