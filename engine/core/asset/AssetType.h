@@ -40,6 +40,7 @@ namespace jasperengine {
         // 24 to 27 are the pixel art program's (docs/specs/S41-S52: Palette 24, AsepriteSprite 25,
         // SpriteAtlas 26, Tileset 27), each written explicitly whatever order they land in
         AsepriteSprite = 25,        // an .aseprite / .ase file (S44): its sheet, frames, clips and slices are sub-assets
+        SpriteAtlas = 26,           // a .spriteatlas Sprite Atlas (S45; its GUID in its JSON)
         SoundEvent = 28             // a .soundevent Sound Event (S37; its GUID in its .meta)
     };
 
@@ -73,6 +74,7 @@ namespace jasperengine {
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
             case AssetType::AsepriteSprite: return "aseprite_sprite";
+            case AssetType::SpriteAtlas: return "sprite_atlas";
             case AssetType::SoundEvent: return "sound_event";
             case AssetType::Unknown: break;
         }

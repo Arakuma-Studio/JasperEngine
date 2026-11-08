@@ -762,6 +762,11 @@ bool TextureImporterView::draw(const std::vector<fs::path>& selection){
     ImGui::Separator();
     drawPlatformTable();
 
+    if (assetPaths.size() == 1) {
+        ImGui::Separator();
+        drawSpriteMode(assetPaths[0]);
+    }
+
     ImGui::Separator();
     ImGui::BeginDisabled(touched.empty());
     if (ImGui::Button("Revert"))

@@ -830,3 +830,19 @@ Recorded during implementation (branch `dc/render-correctness`).
     inside loops (a `break` or `return` under one is an exit); a local computed from them is not seen.
     `SokolGlUniformArray` asserts the uploaded count only: a driver that clamps silently raises no GL error, so
     a `glGetError` check could not fail.
+
+## Follow-ups (2026-11-07)
+
+1. **The LOD lint follows per-fragment locals** (`tools/check_shader_lod.py`). A condition is per-fragment
+   when it reads a variable its function assigns from a varying, gl_FragCoord, gl_FrontFacing,
+   gl_PointCoord, a sample or another such variable (any order in the function, since a loop carries a
+   value back to its top); a loop whose own condition is per-fragment (`for`, `while`, a `do`'s trailer)
+   has a per-fragment exit. Parameters are not followed: a helper's caller decides what they hold, and
+   treating every parameter as per-fragment flags nothing more in the library today (measured). Tests:
+   `test_a_branch_on_a_per_fragment_local_is_flagged`, `test_a_loop_condition_on_a_per_fragment_local_is_flagged`
+   (both fail against the old lint), `test_a_local_of_uniform_values_passes`.
+2. **Real hits: none.** In `engine/shaderlib` 16 loops gain a per-fragment branch through a local
+   (mesh.frag's light loop on `NdotL`, ssr.frag, the volumetrics, terrain, water, ssao and others) and
+   none takes an implicit derivative there: render-correctness' 6.9 fixes already moved those to
+   `textureLod`/`textureGrad` and derivatives before the loop. No loop of the library has a
+   per-fragment condition. No shader changed, so no shader cache bump.

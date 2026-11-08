@@ -360,6 +360,8 @@ void registerSpriteTools(McpRegistry& registry) {
     tool.group = "sprites";
     tool.handler = setSpriteImportSettingsTool;
     registry.addTool(std::move(tool));
+    // S45: edit_sprite_atlas, get_sprite_atlas
+    registerSpriteAtlasTools(registry);
 }
 
 }

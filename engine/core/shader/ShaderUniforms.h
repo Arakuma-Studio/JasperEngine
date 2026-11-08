@@ -145,8 +145,10 @@ namespace jasperengine{
         unsigned int sceneInputsSize = 0;
         std::pair<int, int> slotSceneDepth = {-1, -1};
         std::pair<int, int> slotSceneColor = {-1, -1};
-        // the reflection environment (includes/environment.glsl, @require environment)
+        // the reflection environment (includes/environment.glsl, @require environment); its
+        // block holds the planar reflection's values too when the shader reads both
         int slotFSEnvironment = -1;
+        unsigned int environmentSize = 0;
         std::pair<int, int> slotEnvironment = {-1, -1};
         // the planar reflection (includes/planar_reflection.glsl, @require planarreflection)
         int slotFSPlanarReflection = -1;
@@ -183,6 +185,7 @@ namespace jasperengine{
             slotSceneDepth = {-1, -1};
             slotSceneColor = {-1, -1};
             slotFSEnvironment = -1;
+            environmentSize = 0;
             slotEnvironment = {-1, -1};
             slotFSPlanarReflection = -1;
             slotPlanarReflection = {-1, -1};

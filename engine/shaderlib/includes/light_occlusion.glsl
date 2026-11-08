@@ -10,6 +10,11 @@
 #define CAPSULE_SHADOWS_MAX 32
 
 // Engine-internal layout (RenderSystem's light occlusion block)
+#ifdef LIGHT_DATA_OCCLUSION
+    // the records form (includes/lights.glsl): these values at the end of the lights' block, the
+    // capsules rows of u_lightRecords
+    #define lightOcclusionParams objectLights
+#else
 uniform u_fs_lightOcclusion {
     vec4 contactViewport;    // xy the colour pass's origin in gl_FragCoord pixels, zw 1 / its size
     vec4 contactParams;      // x 1: the mask's rows run the other way (its depth orientation)
@@ -19,6 +24,7 @@ uniform u_fs_lightOcclusion {
         vec4 capsuleB[CAPSULE_SHADOWS_MAX];  // xyz the other end
     #endif
 } lightOcclusionParams;
+#endif
 
 #ifdef USE_CONTACT_SHADOWS
     uniform texture2D u_contactShadowTexture;
@@ -41,8 +47,10 @@ uniform u_fs_lightOcclusion {
 
 // which occlusions a light takes (bits: 1 capsule, 2 contact)
 int lightOcclusionFlags(int index){
-    #ifdef LIGHTS_TILED
+    #if defined(LIGHTS_TILED)
         return (int(tiledLightsTexel(tiledLightRecord(index) + 3).w) >> 12) & 3;
+    #elif defined(LIGHTS_RECORDS)
+        return (int(lightRecordEntry(index).y) >> 12) & 3;
     #else
         return (int(objectLights.spot_shadow[index].w) >> 12) & 3;
     #endif

@@ -34,6 +34,7 @@
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
+#include "sprite/SpriteAtlasBuilder.h"
 #include "component/TilemapComponent.h"
 #include "spline/SplineSceneTools.h"
 #include "spline/SplineEditor.h"
@@ -659,15 +660,20 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     for (const AssetCreateItem& item : assetCreateItems()) {
         // Animation Clip: once the clip asset task set its hook
         if (item.kind == AssetCreateKind::AnimationClip && !animationClipAppHooks().createClipAsset) continue;
+        // Sprite Atlas: in Create > 2D below
+        if (item.kind == AssetCreateKind::SpriteAtlas) continue;
         if (item.separatorBefore) assetsCreateItems.push_back(menuSeparator());
         assetsCreateItems.push_back(catalogItem(item.commandId, item.label));
     }
     assetsCreateItems.push_back(menuSeparator());
+    assetsCreateItems.push_back(menuSubmenu("2D", {catalogItem("assets.createSpriteAtlas", "Sprite Atlas"),
+                                                   catalogItem("assets.createSpriteAtlasFromSelection", "Sprite Atlas from Selection")}));
     assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
     assetsCreateItems.push_back(catalogItem("assets.createNativePlugin", "Native Plugin..."));
 
     menu.menus.push_back(menuSubmenu("Assets", {
         menuSubmenu("Create", assetsCreateItems),
+        catalogItem("assets.convertInlineSpriteFrames", "Convert Inline Sprite Frames..."),
         catalogItem("assets.showInFileManager"),
         catalogItem("assets.open"),
         catalogItem("assets.rename", "Rename"),
@@ -1239,6 +1245,15 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateShakePreset:
             projectWindow->createAsset(AssetCreateKind::ShakePreset, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateSpriteAtlas:
+            projectWindow->createAsset(AssetCreateKind::SpriteAtlas, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateSpriteAtlasFromSelection:
+            projectWindow->assetsCreateSpriteAtlasFromSelection();
+            break;
+        case AppMenuCommand::AssetsConvertInlineSpriteFrames:
+            spriteConversionDialog.open(&project);
             break;
         case AppMenuCommand::AssetsCreatePhysicsMaterial:
             projectWindow->createAsset(AssetCreateKind::PhysicsMaterial, projectWindow->createTargetDirectory());
@@ -2916,6 +2931,7 @@ void editor::App::show(){
     sceneSaveDialog.show();
     // the importers' edits not applied, asked about before a selection change, Play or the close
     ImporterPrompt::draw();
+    spriteConversionDialog.show();
     projectSaveDialog.show();
     dataSafetyDialogs.show(project);
     exportWindow.show();
@@ -3881,6 +3897,10 @@ void editor::App::pollExternalChanges(){
         pixelart::aseprite::AsepriteImporter& imports = pixelart::aseprite::AsepriteImporter::get();
         if (imports.getProject() != &project) imports.attach(&project);
         wake = imports.update() || wake;
+        // Sprite Atlas builds (S45): packed on the Background lane, swapped in here
+        sprite::SpriteAtlasBuilder& atlases = sprite::SpriteAtlasBuilder::get();
+        if (atlases.getProject() != &project) atlases.attach(&project);
+        wake = atlases.update() || wake;
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -4472,6 +4492,23 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
     Rect viewRect;
     Engine::computeViewLayout(width, height, (int)project.getCanvasWidth(), (int)project.getCanvasHeight(), project.getScalingMode(),
                               canvasWidth, canvasHeight, viewRect);
+    // a Pixel Perfect Camera on the game camera lays the view out as Play does (S41 R20); its layer
+    // scenes draw on the same viewport and canvas
+    PixelPerfectViewRequest pixelRequest;
+    if (Engine::getPixelPerfectRequest(sceneProject.scene, cameraEntity, pixelRequest)) {
+        // Use Project Canvas is the project's canvas (the Engine's is the editor's view here)
+        if (pixelRequest.referenceWidth <= 0 || pixelRequest.referenceHeight <= 0) {
+            pixelRequest.referenceWidth = (int)project.getCanvasWidth();
+            pixelRequest.referenceHeight = (int)project.getCanvasHeight();
+        }
+        const jasperengine::pixelart::PixelPerfectLayout layout = Engine::computePixelPerfectView(pixelRequest, width, height,
+                                                                                    Engine::getPixelPerfectForcedScale());
+        if (layout.baseWidth > 0) {
+            viewRect = layout.viewport;
+            canvasWidth = std::max(1, (int)std::lround(layout.canvasWidth));
+            canvasHeight = std::max(1, (int)std::lround(layout.canvasHeight));
+        }
+    }
 
     // a UI scene's camera covers its Canvas Scaler UI size (what it is laid out at), any other the canvas
     auto layerCanvas = [&](SceneProject* layerScene, Entity layerCamera, float& layerWidth, float& layerHeight) {
@@ -4578,6 +4615,9 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
     Engine::systemDraw();
     renderSystem->keepAtmosphereInfo(GAME_VIEW_ID);
 
+    // the game camera's Pixel Perfect Camera laid this pass out; the editor's views lay out
+    // without it (their next systemViewChanged would apply it over the editor's canvas)
+    Engine::setPixelPerfectView(PixelPerfectViewRequest());
     Engine::setCanvasSize(editCanvasWidth, editCanvasHeight);
     Engine::setScalingMode(editScaling);
 
@@ -5701,7 +5741,23 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      engine-written WATER_INTERACTION_PARAMS at the end of water.frag's custom block.
     // v53: draw-perf's directional-only Lit: MESH 'Dlo' (44; DIRECTIONAL_LIGHTS_ONLY in
     //      includes/lights.glsl and punctual.glsl)
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v53";
+    // v54: SSR follow-ups: the G-buffer's 16-bit normal (color[3] RGBA8, octEncode16), the
+    //      composite inside the colour pass under the transparents and its tone curve
+    //      (the composite's USE_POST_COLOR over a linear store: the colour pass's own
+    //      post-processing colour with an identity LUT)
+    // v55: PCSS on GLES3/WebGL2 and painted terrains (doriax-catchup pcss-gles): the raw-depth
+    //      shadow view in every 'Shq' variant, a GLES3 one compiled again with SHADOW_RAW_VIEW_OFF
+    //      where it would be the 17th fragment texture;
+    //      and water-uniforms: library:water and the painted Terrain ('Tpb') read their lights'
+    //      records from u_lightRecords (includes/lights.glsl LIGHTS_FS_RECORDS) and, with both
+    //      requires, the planar reflection's values come from u_fs_environment
+    // v56: lit-uniforms: a lit variant over its backend's fragment uniforms (GLES3 224 vectors,
+    //      desktop GL 256, 8 blocks) reads its lights, capsules and 2D lights from u_lightRecords
+    //      (LIGHTS_FS_RECORDS, the records form's tail in u_fs_objectLights; ShaderVariantCompiler::compile)
+    // v57: S41's pixel snap: the frame block's pixelSnap and pixelSnapOffset (last, in the 'Pxs'
+    //      vertex stages only), includes/pixel_snap.glsl in the mesh, depth, UI and particle
+    //      vertex stages; MESH 'Pxs' bit 45, DEPTH 19, UI 5, PARTICLES 11, BLIT 'Psb' 18.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v57";
 }
 
 void editor::App::pushTabNotificationStyle(){

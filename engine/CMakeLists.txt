@@ -1473,6 +1473,11 @@ set(JASPERENGINE_SRCS
     core/ecs/ChangeTracking.cpp
     core/ecs/CommandBuffer.cpp
     core/ecs/SystemScheduler.cpp
+    # pixel art (S41: the pixel-snap rule, the integer layout, the rotation policy)
+    core/pixelart/PixelPerfectLayout.cpp
+    core/pixelart/PixelRotation.cpp
+    core/pixelart/PixelsPerUnit.cpp
+    core/pixelart/PixelSnap.cpp
     core/picking/BinnedSah.cpp
     core/picking/MeshBvh.cpp
     core/picking/MeshBvhSimd_avx2.cpp
@@ -1557,6 +1562,8 @@ set(JASPERENGINE_SRCS
     core/sprite/SpriteSheetPool.cpp
     core/sprite/SpriteFrameGeometry.cpp
     core/sprite/AsepriteClips.cpp
+    # S45: texture sheets, name@WxH, .spriteatlas and the atlas remap
+    core/sprite/SpriteSheetSources.cpp
     core/graph/Graph.cpp
     core/graph/GraphRegistry.cpp
     core/io/AssetIOService.cpp
@@ -1611,6 +1618,7 @@ set(JASPERENGINE_SRCS
     core/object/CameraShaker.cpp
     core/object/EntityHandle.cpp
     core/object/Light.cpp
+    core/object/PixelPerfectCamera.cpp
     core/object/Light2D.cpp
     core/object/LineRenderer.cpp
     core/object/TrailRenderer.cpp
@@ -1805,6 +1813,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/RenderSystemShadows.cpp
     core/subsystem/RenderSystemBatch.cpp
     core/subsystem/RenderSystemLighting.cpp
+    core/subsystem/RenderSystemPixelArt.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp
     core/subsystem/UISystemNavigation.cpp

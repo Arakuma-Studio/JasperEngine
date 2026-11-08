@@ -65,6 +65,7 @@
 #include "htmlui/HtmlUiImportCli.h"
 #include "texsynth/SynthesisCli.h"
 #include "spritenormals/SpriteNormalsCheck.h"
+#include "sprite/SpriteMigration.h"
 #include "spritenormals/SpriteNormalsCli.h"
 #include "pixelart/aseprite/AsepriteCli.h"
 #include "physics/PlacementCli.h"
@@ -2136,6 +2137,7 @@ struct CheckOptions {
     bool vat = false;
     bool normals = false;
     bool videos = false;
+    bool sprites = false;
     bool all = false;
     bool filesGiven = false;
     std::vector<std::string> files;
@@ -2179,8 +2181,11 @@ void printCheckUsage(const std::string& commandName) {
         << "                           (video-codec-unsupported-on-target, a warning per platform) and URL MP4s\n"
         << "                           whose moov box follows the media data (video-not-faststart-url, info; an\n"
         << "                           http(s) url by the project's file of that name: nothing is downloaded).\n"
-        << "      --all                Lua, shaders, C++, UI, textures, clips, clip quality, vertex animations, normal maps\n"
-        << "                           and videos.\n"
+        << "      --sprites            Sprites: legacy sprites with inline frames (scene or prefab, GameObject, texture,\n"
+        << "                           frame count; info) and Sprite Atlas problems (missing members, a frame larger\n"
+        << "                           than the max size: errors; a source packed by two atlases: a warning).\n"
+        << "      --all                Lua, shaders, C++, UI, textures, clips, clip quality, vertex animations, normal maps,\n"
+        << "                           videos and sprites.\n"
         << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
@@ -2229,6 +2234,8 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.vat = true;
         } else if (arg == "--normals") {
             options.normals = true;
+        } else if (arg == "--sprites") {
+            options.sprites = true;
         } else if (arg == "--videos") {
             options.videos = true;
         } else if (arg == "--all") {
@@ -3362,8 +3369,9 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool vatAssets = options.vat || options.all;
     bool normals = options.normals || options.all;
     bool videos = options.videos || options.all;
+    const bool sprites = options.sprites || options.all;
     if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.normals &&
-        !options.videos && !options.animQuality && !options.all) {
+        !options.videos && !options.animQuality && !options.sprites && !options.all) {
         lua = shaders = ui = textures = anims = vatAssets = normals = videos = true;
     }
 
@@ -3502,6 +3510,40 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         run.findings.insert(run.findings.end(), normalsCheck.findings.begin(), normalsCheck.findings.end());
         run.checked.push_back({"normals", normalsCheck.recipes + normalsCheck.maps});
     }
+    if (sprites && !fileMode) {
+        // S45 R22: the scene, prefab and atlas files (YAML, JSON, image headers): no engine
+        // the project's assets folder: its project.yaml's, else the default (the project folder)
+        std::string assetsDir = Project::defaultAssetsDir;
+        try {
+            const YAML::Node projectYaml = YAML::LoadFile((root / "project.yaml").string());
+            if (projectYaml["assetsDir"]) assetsDir = projectYaml["assetsDir"].as<std::string>();
+        } catch (const std::exception&) {}
+        const sprite::SpriteCheckReport spriteCheck = sprite::scanProject(root, root / assetsDir);
+        for (const sprite::LegacySprite& legacy : spriteCheck.legacy) {
+            ProjectChecks::Finding f;
+            f.tool = "sprites";
+            f.path = legacy.owner;
+            f.severity = "info";
+            f.code = "sprite-inline-frames";
+            f.message = "legacy sprite \"" + legacy.entityPath + "\": " + std::to_string(legacy.frames.size()) + " inline frame(s) of " +
+                        (legacy.texture.empty() ? std::string("no texture") : legacy.texture);
+            f.suggestion = "set_sprite_frames {convert: true, all_users: true}, or Inspector > Convert to Sprite Sheet";
+            run.findings.push_back(f);
+        }
+        auto atlasFinding = [&](const std::string& atlas, const pixelart::PixelProblem& p, const char* severity) {
+            ProjectChecks::Finding f;
+            f.tool = "sprites";
+            f.path = (fs::path(assetsDir) / atlas).lexically_normal().generic_string();
+            f.severity = severity;
+            f.code = p.kind;
+            f.message = p.message;
+            f.suggestion = p.fix;
+            run.findings.push_back(f);
+        };
+        for (const auto& [atlas, p] : spriteCheck.atlasErrors) atlasFinding(atlas, p, "error");
+        for (const auto& [atlas, p] : spriteCheck.atlasWarnings) atlasFinding(atlas, p, "warning");
+        run.checked.push_back({"sprites", static_cast<size_t>(spriteCheck.files + spriteCheck.atlases)});
+    }
     if (videosWanted) {
         // the scene and prefab YAML and the clips' header boxes: no engine
         const VideoCheck videoCheck = checkVideoPlayers(root);
@@ -3567,7 +3609,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
                                                           {"textures", "recipe"}, {"texture_imports", "texture"}, {"anims", "clip"}, {"anim_quality", "clip"},
                                                           {"vat", "file"}, {"navigation", "surface"},
-                                                          {"normals", "map"}, {"videos", "Video Player"}};
+                                                          {"normals", "map"}, {"videos", "Video Player"}, {"sprites", "file"}};
         for (const auto& [category, count] : run.checked) {
             // a category without a unit here still prints (never a map::at abort after the results)
             const auto unit = units.find(category);

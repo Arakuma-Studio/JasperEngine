@@ -45,14 +45,29 @@ float capsuleVisibility(vec3 point, vec3 towardsLight, vec3 a, vec3 b, float r, 
 // (overlapping capsules at a joint hide the light once), faded by the scene's intensity
 float capsuleShadow(vec3 worldPosition, vec3 towardsLight){
     float visibility = 1.0;
-    int count = int(lightOcclusionParams.capsuleParams.x + 0.5);
     float softness = lightOcclusionParams.capsuleParams.z;
+#ifdef LIGHT_DATA_OCCLUSION
+    // the frame's capsules that reach the object, a bit each, in the frame's order (the block
+    // form's list order): rows of u_lightRecords from lightDataBases.x
+    int reachLow = int(lightOcclusionParams.capsuleParams.x + 0.5);
+    int reachHigh = int(lightOcclusionParams.capsuleParams.w + 0.5);
+    int first = int(objectLights.lightDataBases.x + 0.5);
+    for (int i = 0; i < CAPSULE_SHADOWS_MAX; i++){
+        int reach = (i < 16) ? (reachLow >> i) : (reachHigh >> (i - 16));
+        if ((reach & 1) == 0) continue;
+        vec4 a = lightRecordTexel(first + i, 0);
+        vec4 b = lightRecordTexel(first + i, 1);
+        visibility = min(visibility, capsuleVisibility(worldPosition, towardsLight, a.xyz, b.xyz, a.w, softness));
+    }
+#else
+    int count = int(lightOcclusionParams.capsuleParams.x + 0.5);
     for (int i = 0; i < CAPSULE_SHADOWS_MAX; i++){
         if (i >= count) break;
         vec4 a = lightOcclusionParams.capsuleA[i];
         vec4 b = lightOcclusionParams.capsuleB[i];
         visibility = min(visibility, capsuleVisibility(worldPosition, towardsLight, a.xyz, b.xyz, a.w, softness));
     }
+#endif
     return mix(1.0, visibility, lightOcclusionParams.capsuleParams.y);
 }
 

@@ -26,6 +26,7 @@
 #include <regex>
 #include "util/NativeExportAndroid.h"
 #include "util/NativePlugins.h"
+#include "platform/ExternalTools.h"
 #include "util/ApplePrivacy.h"
 #include "util/PngEditorChunks.h"
 #include "navigation/NavigationFindings.h"
@@ -64,6 +65,11 @@
 #include "texture/TextureExport.h"
 #include "model/ModelExport.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
+#include "sprite/SpriteAtlasBuilder.h"
+#include "sprite/SpriteAtlasCook.h"
+#include "sprite/SpriteSheetBuilder.h"
+#include "sprite/SpriteSheetSources.h"
+#include "asset/DepEdge.h"
 #include "asset/ImportedAssets.h"
 #include "sprite/SpriteSheetPool.h"
 #include "util/StringUtils.h"
@@ -112,6 +118,13 @@ namespace {
 }
 
 using namespace jasperengine;
+
+namespace jasperengine::editor {
+    struct ExportSpriteAtlas {
+        std::shared_ptr<const sprite::AtlasBuildResult> build;
+        bool remaps = false;
+    };
+}
 
 namespace {
 
@@ -1711,8 +1724,8 @@ bool editor::Exporter::configureBuild() {
         if (!platform.empty()) { argv.push_back("-A"); argv.push_back(platform); }
         if (!config.cmakeCCompiler.empty()) argv.push_back("-DCMAKE_C_COMPILER=" + toCMakePath(config.cmakeCCompiler));
         if (!config.cmakeCxxCompiler.empty()) argv.push_back("-DCMAKE_CXX_COMPILER=" + toCMakePath(config.cmakeCxxCompiler));
-        // the same cap as the build step's --parallel: cl's /MP under Visual Studio generators
-        // (jasperengine_msvc_parallel_compile)
+        // cl's /MP under Visual Studio generators (jasperengine_msvc_parallel_compile), which then
+        // build one project at a time (Generator::buildStepParallelJobs)
         argv.push_back("-DJASPERENGINE_PARALLEL_BUILD_JOBS=" + std::to_string(effectiveBuildJobs()));
     }
     argv.push_back("-DCMAKE_BUILD_TYPE=" + config.buildType);
@@ -1782,12 +1795,13 @@ bool editor::Exporter::runBuild() {
     const fs::path buildDir = config.targetDir / buildDirName;
 
     const unsigned int jobs = effectiveBuildJobs();
+    const unsigned int buildJobs = Generator::buildStepParallelJobs(buildDir, jobs);
 
     // the CMake that configured the tree (Web too: no emcmake picking its own any more)
     const std::string cmakeCmd = Generator::cmakeProgram();
 
     std::vector<std::string> argv = { cmakeCmd, "--build", buildDir.string(), "--config", config.buildType,
-                                      "--parallel", std::to_string(jobs) };
+                                      "--parallel", std::to_string(buildJobs) };
     // The build step invokes the compiler/linker, so it needs the same MSVC environment as configure.
     CommandRunner::Environment toolEnv;
     std::string msvcError;
@@ -1805,7 +1819,8 @@ bool editor::Exporter::runBuild() {
     // bar until MSBuild confirms work by emitting a source filename.
     MsBuildProgress msBuildProgress(buildDir, config.buildType);
 
-    Out::info("Building export with %u parallel jobs...", jobs);
+    if (buildJobs == jobs) Out::info("Building export with %u parallel jobs...", buildJobs);
+    else Out::info("Building export with %u parallel job(s), %u compiler processes each (Visual Studio /MP)...", buildJobs, jobs);
     buildErrors.clear();
     auto onBuild = [this, &msBuildProgress](const std::string& line) {
         Out::build("%s", line.c_str());
@@ -1886,6 +1901,15 @@ bool editor::Exporter::collectDesktopArtifacts() {
     {
         std::lock_guard<std::mutex> lock(progressMutex);
         producedExecutable = producedPath;
+    }
+    // macOS: the plugins' dynamic frameworks and resource bundles, where the executable's rpath
+    // and NSBundle.mainBundle look (the exported CMake links them; NativePlugins::macosCMake)
+    if (hostBuildPlatform() == BuildPlatform::MacOS) {
+        std::string sdkError;
+        if (!copyMacosNativeSdks(projectRoot, config.destinationDir, sdkError)) {
+            setError("Failed to copy the native plugin SDKs: " + sdkError);
+            return false;
+        }
     }
     if (!copyLicenses()) {
         return false;
@@ -2957,9 +2981,32 @@ namespace {
 bool editor::Exporter::copyImportedAssets(const fs::path& assetsDst) {
     std::error_code ec;
     fs::remove_all(assetsDst / ImportedAssets::kImportedDir, ec);
-    if (importedRecords.empty()) return true;
+    if (importedRecords.empty() && atlasBuilds.empty() && textureSheetFiles.empty()) return true;
     nlohmann::json files = nlohmann::json::object();
     auto ship = [&](const fs::path& from, const std::string& to) { return copyOrFail(from, assetsDst / editor::FileUtils::pathFromUtf8(to)); };
+    // S45: texture sheets, then the atlases (a packed member's remap replaces its own sheet)
+    for (const auto& [texture, file] : textureSheetFiles) {
+        const std::string to = std::string(ImportedAssets::kImportedDir) + "/sheets/" + fs::path(file).filename().string();
+        if (!ship(file, to)) return false;
+        files[ImportedAssets::reference(texture, "sheet")] = to;
+    }
+    std::set<std::string> shippedAtlasFiles;
+    std::map<std::string, std::string> claimed;
+    for (const auto& entry : atlasBuilds) {
+        const std::shared_ptr<const sprite::AtlasBuildResult>& atlas = entry->build;
+        for (const sprite::AtlasBuildResult::ExportedFile& f : atlas->exportedFiles(entry->remaps)) {
+            const bool cookedPage = f.key.rfind("image#", 0) == 0 && cookedTextureSources.count(f.exportPath);
+            if (!cookedPage && !shippedAtlasFiles.count(f.exportPath)) {
+                if (!ship(f.cacheFile, f.exportPath)) return false;
+                shippedAtlasFiles.insert(f.exportPath);
+            }
+            // two atlases packing one source: the one whose path sorts first draws it (R18; the
+            // builds come in path order)
+            if (f.source != atlas->atlasPath && claimed.count(f.source) && claimed[f.source] != atlas->atlasPath) continue;
+            if (f.source != atlas->atlasPath) claimed[f.source] = atlas->atlasPath;
+            files[ImportedAssets::reference(f.source, f.key)] = f.exportPath;
+        }
+    }
     for (const auto& record : importedRecords) {
         // the record's own table: the editor's provider answers the same keys from it
         for (const pixelart::aseprite::ImportRecord::ExportedFile& f : record->exportedFiles()) {
@@ -2977,6 +3024,124 @@ bool editor::Exporter::copyImportedAssets(const fs::path& assetsDst) {
     if (!written.ok()) {
         setError("Failed to write " + target.string() + ": " + written.message);
         return false;
+    }
+    return true;
+}
+
+bool editor::Exporter::gatherSpriteAtlases(const std::vector<std::string>& platforms) {
+    atlasBuilds.clear();
+    textureSheetFiles.clear();
+    atlasOnlySources.clear();
+    // one family's layout: a source export (every platform) takes the desktop one
+    std::string family = "desktop";
+    if (platforms.size() == 1) {
+        const std::string& p = platforms[0];
+        family = p == "web" ? "web" : (p == "android" || p == "ios") ? "mobile" : "desktop";
+    } else if (config.mode == ExportMode::SourceCode && config.selectedBackends.size() == 1 &&
+               *config.selectedBackends.begin() == ShaderBackend::GLES3) {
+        // a source export for GLES3 / WebGL2 only: the web family's layout
+        family = "web";
+    }
+    struct Gathered {
+        std::vector<sprite::AtlasBuildInput> inputs;
+        std::map<std::string, std::string> sheets;
+        std::map<std::string, std::vector<DepEdge>> referrers;
+        std::vector<fs::path> codeFiles;      // scripts and UI documents (they name textures by path)
+        std::string error;
+        bool disabled = false;
+    };
+    Gathered gathered;
+    std::promise<void> asked;
+    auto future = asked.get_future();
+    editor::getEditorHost().enqueueMainThreadTask([this, &gathered, &asked, family]() {
+        sprite::SpriteAtlasBuilder& builder = sprite::SpriteAtlasBuilder::get();
+        if (builder.getProject() != project) builder.attach(project);
+        gathered.disabled = project->getSpriteAtlasMode() == "disabled";
+        // textures with a Sprite Mode (or a name@WxH grid): their records ship
+        project->getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+            if (info.type != AssetType::Texture) return;
+            const fs::path absolute = project->getProjectPath() / info.path;
+            const std::string assetPath = absolute.lexically_normal().lexically_relative(project->getAssetsPath().lexically_normal()).generic_string();
+            if (assetPath.rfind("..", 0) == 0 || !SpriteSheetSources::isTexturePath(assetPath)) return;
+            std::string file;
+            if (sprite::SpriteSheetBuilder::get().resolve(assetPath, file)) gathered.sheets[assetPath] = file;
+        });
+        if (!gathered.disabled) {
+            project->getAssetIndex().waitUntilReady();
+            project->getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+                std::string ext = fs::path(info.path).extension().string();
+                std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                static const std::set<std::string> code = {".lua", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".rml", ".rcss", ".html", ".htm", ".css"};
+                if (code.count(ext)) gathered.codeFiles.push_back(project->getProjectPath() / info.path);
+            });
+            for (const std::string& atlasPath : builder.atlasPaths()) {
+                pixelart::PixelProblem problem;
+                std::optional<sprite::SpriteAtlasDocument> doc = sprite::SpriteAtlasBuilder::readDocument(project->getAssetsPath() / atlasPath, &problem);
+                if (!doc) {
+                    gathered.error = atlasPath + ": " + problem.message;
+                    return asked.set_value();
+                }
+                sprite::AtlasBuildInput input;
+                sprite::SpriteAtlasBuilder::gather(*project, atlasPath, *doc, family, input);
+                for (const sprite::AtlasMemberInput& m : input.members) {
+                    if (m.kind != "texture" || gathered.referrers.count(m.path)) continue;
+                    const fs::path absolute = project->getAssetsPath() / m.path;
+                    const std::string rel = project->normalizeToProjectRelative(absolute).generic_string();
+                    const AssetDatabase::Resolution res = project->getAssetDatabase().lookupPath(rel);
+                    gathered.referrers[m.path] = project->getAssetIndex().referencesTo(res.found() ? res.guid : Guid(), rel, false, 4096);
+                }
+                gathered.inputs.push_back(std::move(input));
+            }
+        }
+        asked.set_value();
+    });
+    future.get();
+    if (!gathered.error.empty()) {
+        setError("Cannot export: the Sprite Atlas " + gathered.error);
+        return false;
+    }
+    textureSheetFiles = gathered.sheets;
+    // what scripts and UI documents say (a texture a script loads by path ships whatever sprites do)
+    std::vector<std::string> codeTexts;
+    for (const fs::path& file : gathered.codeFiles) {
+        std::string text;
+        if (assetio::readFile(file, text)) codeTexts.push_back(std::move(text));
+    }
+    auto namedByCode = [&](const std::string& assetPath) {
+        const std::string projectRelative = project->normalizeToProjectRelative(project->getAssetsPath() / assetPath).generic_string();
+        for (const std::string& text : codeTexts) {
+            if (text.find(assetPath) != std::string::npos || text.find(projectRelative) != std::string::npos) return true;
+        }
+        return false;
+    };
+    for (sprite::AtlasBuildInput input : gathered.inputs) {
+        // the export's own folder: the editor's pages (and a build of it running now) are never touched
+        input.outDir = sprite::SpriteAtlasBuilder::exportDir(input);
+        for (const pixelart::PixelProblem& p : input.problems) {
+            if (p.kind == "importing" || p.kind == "missing_member") warn("W-SPRITE-ATLAS", input.atlasPath + ": " + p.message);
+        }
+        setDetail("Building sprite atlas " + fs::path(input.atlasPath).stem().string());
+        std::shared_ptr<sprite::AtlasBuildResult> built = sprite::SpriteAtlasBuilder::get().build(input);
+        if (!built->ok) {
+            setError("Cannot export: the Sprite Atlas " + input.atlasPath + " does not build: " + built->error.message +
+                     (built->error.fix.empty() ? std::string() : " (" + built->error.fix + ")"));
+            return false;
+        }
+        sprite::SpriteAtlasBuilder::removeStaleFiles(*built);
+        atlasBuilds.push_back(std::make_shared<const ExportSpriteAtlas>(ExportSpriteAtlas{built, input.doc.includeInBuild}));
+        if (!input.doc.includeInBuild) continue;
+        // R19: a packed texture only sprites read (their sheet) ships as the atlas's pages only; a
+        // member the build left out (no frames, unreadable) has no remap and ships as it is
+        for (const std::string& member : built->members) {
+            if (!SpriteSheetSources::isTexturePath(member) || namedByCode(member)) continue;
+            const std::vector<DepEdge>& edges = gathered.referrers[member];
+            bool onlySprites = !edges.empty();
+            for (const DepEdge& edge : edges) {
+                const FieldLocatorParts parts = parseFieldLocator(edge.field);
+                onlySprites = onlySprites && parts.hasEntity && parts.component == "SpriteComponent";
+            }
+            if (onlySprites) atlasOnlySources.insert(member);
+        }
     }
     return true;
 }
@@ -3008,6 +3173,18 @@ bool editor::Exporter::cookTextures() {
     if (!gatheredFuture.get()) {
         setError("Texture import settings: " + gatherError);
         return false;
+    }
+    // S45: the export family's atlases cook under their je-imported/ path (R16: lossless pages as
+    // S14 quality none, RGBA8 + Zstandard; the others as the project's sprites); a packed texture
+    // only sprites read is not cooked
+    if (!gatherSpriteAtlases(platforms)) return false;
+    for (const std::string& source : atlasOnlySources) inputs.erase(source);
+    for (const auto& entry : atlasBuilds) {
+        const std::shared_ptr<const sprite::AtlasBuildResult>& atlas = entry->build;
+        for (size_t p = 0; p < atlas->pages.size(); p++) {
+            TextureCookInputs in = sprite::atlasPageCookInputs(*atlas, p);
+            inputs[in.assetPath] = std::move(in);
+        }
     }
     // S44: the pages of imports set to compression "project" cook as the project's sprites do,
     // under their je-imported/ path (which the sheet records name)
@@ -3228,6 +3405,15 @@ void editor::Exporter::walkTree(const fs::path& root, const TreeVisitor& visit, 
             const fs::path real = link ? safewrite::resolvedPath(dir / name) : branch.back() / name;
             std::error_code typeError;
             const bool isDirectory = entry.is_directory(typeError);
+            // the export's own folder, or a link into it, first: isEarlierExport would call it an
+            // earlier export
+            if (isDirectory && !real.empty() && !realOutput.empty() && safewrite::isAtOrBelow(real, realOutput)) {
+                if (leftOutLinks.insert(branch.back() / name).second) {
+                    Out::warning("The folder \"%s\" is left out of the export: it is the export's own folder",
+                                 FileUtils::pathToGenericUtf8(relPath).c_str());
+                }
+                continue;
+            }
             // an earlier export left in the project ships nothing (W-EXPORT-FOLDER-SKIPPED)
             if (isDirectory && isEarlierExport(entry)) continue;
             const TreeStep step = visit(entry, relPath, isDirectory, real);
@@ -3236,13 +3422,6 @@ void editor::Exporter::walkTree(const fs::path& root, const TreeVisitor& visit, 
                 return;
             }
             if (step != TreeStep::Enter || !isDirectory || real.empty()) continue;
-            if (!realOutput.empty() && safewrite::isAtOrBelow(real, realOutput)) {
-                if (leftOutLinks.insert(branch.back() / name).second) {
-                    Out::warning("The folder \"%s\" is left out of the export: it is the export's own folder",
-                                 FileUtils::pathToGenericUtf8(relPath).c_str());
-                }
-                continue;
-            }
             if (link) {
                 const bool holdsItself = std::any_of(branch.begin(), branch.end(), [&](const fs::path& folder) { return safewrite::isAtOrBelow(folder, real); });
                 if (holdsItself) {
@@ -3358,6 +3537,10 @@ bool editor::Exporter::copyAssets() {
         // Skip project support files that should not ship as assets, and the assets' metas
         if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) return TreeStep::Enter;
 
+        // A texture only sprites read, packed in an atlas, ships as the atlas's pages only (S45 R19)
+        if (atlasOnlySources.count(relPath.generic_string())) {
+            return removeStale(assetsDst / relPath) ? TreeStep::Enter : stop();
+        }
         // A texture source the cooks replace ships as assets/je-cooked/<family>/ only
         if (cookedTextureSources.count(relPath.generic_string())) {
             return removeStale(assetsDst / relPath) ? TreeStep::Enter : stop();
@@ -3735,8 +3918,10 @@ namespace {
 
     // Mirrors the folder `src` (below `root`) into `dst` without following links: a link that
     // stays inside `root` (a framework's Versions/Current) is copied as that link (its target
-    // when links cannot be made), any other link is left out with a warning; unchanged files keep
-    // their time; what `src` no longer has goes
+    // when links cannot be made), any other link is left out with a warning; what the plugin scan
+    // skips is left out (NativePlugins::isSkippedEntry: a .meta in an Android res/ folder fails the
+    // resource compile, a .DS_Store or .meta in a framework breaks its signature's seal); unchanged
+    // files keep their time; what `src` no longer has goes
     bool mirrorNoFollow(const fs::path& root, const fs::path& src, const fs::path& dst, std::string& error) {
         std::error_code ec;
         const fs::file_status dstStatus = fs::symlink_status(dst, ec);
@@ -3750,8 +3935,9 @@ namespace {
         for (fs::directory_iterator it(src, ec), end; !ec && it != end; it.increment(ec)) {
             const fs::path from = it->path();
             const fs::path to = dst / from.filename();
-            names.insert(from.filename());
             const fs::file_status status = it->symlink_status(ec);
+            if (editor::NativePlugins::isSkippedEntry(from, fs::is_directory(status))) continue;
+            names.insert(from.filename());
             if (fs::is_symlink(status)) {
                 const fs::path target = fs::read_symlink(from, ec);
                 const fs::path resolved = (target.is_absolute() ? target : from.parent_path() / target).lexically_normal();
@@ -3833,6 +4019,80 @@ bool editor::Exporter::copyNativePluginFolders(const fs::path& destination, cons
             removeAllNoFollow(to, ec);
         }
     }
+    return true;
+}
+
+bool editor::Exporter::copyMacosNativeSdks(const fs::path& projectRoot, const fs::path& destination, std::string& error) {
+    error.clear();
+    const NativePlugins::Scan scan = NativePlugins::scan(projectRoot);
+    const fs::path frameworks = destination / "Frameworks";
+    std::set<fs::path> embedded, resources;
+    std::error_code ec;
+    for (const NativePlugins::MacosSdk& sdk : NativePlugins::macosSdks(scan)) {
+        if (!sdk.embedded && !sdk.resource) continue;
+        const fs::path from = scan.root / FileUtils::pathFromUtf8(sdk.library);
+        const fs::path to = (sdk.embedded ? frameworks : destination) / from.filename();
+        (sdk.embedded ? embedded : resources).insert(from.filename());
+        if (fs::is_directory(from, ec)) {
+            if (!mirrorNoFollow(scan.root, from, to, error)) return false;
+        } else {
+            // an .xcframework's dynamic library that is a file
+            fs::create_directories(to.parent_path(), ec);
+            if (fs::is_symlink(fs::symlink_status(to, ec)) || fs::is_directory(fs::symlink_status(to, ec))) removeAllNoFollow(to, ec);
+            ec.clear();
+            fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec);
+            if (ec) {
+                error = "cannot copy " + genericUtf8Path(from) + ": " + ec.message();
+                return false;
+            }
+        }
+        if (!sdk.embedded) continue;
+        // Xcode's RemoveHeadersOnCopy and CodeSignOnCopy (NativePlugins::macosCMake does the same)
+        std::vector<fs::path> headers;
+        for (auto it = fs::recursive_directory_iterator(to, ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+            const fs::path name = it->path().filename();
+            if (name == "Headers" || name == "PrivateHeaders") {
+                headers.push_back(it->path());
+                it.disable_recursion_pending();
+            }
+        }
+        ec.clear();
+        for (const fs::path& path : headers) removeAllNoFollow(path, ec);
+#ifdef __APPLE__
+        const platform::ToolLocation codesign = platform::ExternalTools::codesign();
+        if (codesign.found()) {
+            const char* identity = std::getenv("JASPER_MACOS_SIGN_IDENTITY");
+            CommandRunner runner;
+            int code = -1;
+            std::string log;
+            runner.runArgs({codesign.path.string(), "--force", "--sign", identity && *identity ? identity : "-",
+                            "--preserve-metadata=identifier,entitlements,flags", "--timestamp=none", to.string()},
+                           destination, [&log](const std::string& line) { log += line + "\n"; }, &code);
+            if (code != 0) {
+                error = "codesign failed for " + genericUtf8Path(to) + ":\n" + log;
+                return false;
+            }
+        }
+#endif
+    }
+    // what an earlier build carried and the project no longer has
+    auto lowerExtensionOf = [](const fs::path& path) {
+        std::string ext = path.extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return ext;
+    };
+    std::vector<fs::path> stale;
+    for (fs::directory_iterator it(frameworks, ec), end; !ec && it != end; it.increment(ec)) {
+        const std::string ext = lowerExtensionOf(it->path());
+        if ((ext == ".framework" || ext == ".dylib") && !embedded.count(it->path().filename())) stale.push_back(it->path());
+    }
+    ec.clear();
+    for (fs::directory_iterator it(destination, ec), end; !ec && it != end; it.increment(ec)) {
+        if (lowerExtensionOf(it->path()) == ".bundle" && !resources.count(it->path().filename())) stale.push_back(it->path());
+    }
+    for (const fs::path& path : stale) removeAllNoFollow(path, ec);
+    ec.clear();
+    if (embedded.empty() && fs::is_directory(fs::symlink_status(frameworks, ec)) && fs::is_empty(frameworks, ec)) fs::remove(frameworks, ec);
     return true;
 }
 
@@ -5567,13 +5827,22 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject, const 
                     "lastKnownFileType = " + type + "; path = " + pbxString(name) + "; sourceTree = \"<group>\"; };\n";
             });
             addToTree(path, fileId + " /* " + name + " */");
-            // a dynamic SDK is embedded too (a static one is only linked)
-            bool embed = false;
-            if (linked && ext != ".a") {
+            // a dynamic SDK is embedded too (a static one is only linked); an .xcframework by its
+            // library for the target's platform, as NativePlugins::macosSdks picks it for CMake
+            auto embedsOn = [&](bool ios) {
+                if (!linked || ext == ".a") return false;
                 const fs::path bundle = nativeRoot / FileUtils::pathFromUtf8(path);
-                const fs::path binary = ext == ".framework" ? NativePlugins::frameworkBinary(bundle) : NativePlugins::xcframeworkBinary(bundle);
-                embed = !binary.empty() && !NativePlugins::isStaticArchive(binary);
-            }
+                fs::path binary;
+                if (ext == ".framework") {
+                    binary = NativePlugins::frameworkBinary(bundle);
+                } else {
+                    const fs::path library = NativePlugins::xcframeworkLibrary(bundle, ios ? "ios" : "macos");
+                    // (an Info.plist that names no platform: its first library)
+                    if (library.empty()) binary = NativePlugins::xcframeworkBinary(bundle);
+                    else binary = library.extension() == ".framework" ? NativePlugins::frameworkBinary(bundle / library) : bundle / library;
+                }
+                return !binary.empty() && !NativePlugins::isStaticArchive(binary);
+            };
             for (AppTarget& target : targets) {
                 if (std::find(target.folders.begin(), target.folders.end(), folder) == target.folders.end()) continue;
                 const std::string phase = resource ? "Resources" : source ? "Sources" : "Frameworks";
@@ -5593,7 +5862,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject, const 
                 const std::string dir = "\"" + layout.pluginsPath + "/" + parentDir(path) + "\"";
                 if (ext == ".a") target.libraryDirs.insert(dir);
                 else target.frameworkDirs.insert(dir);
-                if (embed) {
+                if (embedsOn(target.ios)) {
                     const std::string embedId = addObject("embed:" + target.name + ":" + path, buildFiles, [&](const std::string& id) {
                         return "\t\t" + id + " /* " + name + " in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = " + fileId + " /* " + name +
                             " */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };\n";

@@ -16,6 +16,7 @@
 
 #include "texture/TextureCookQueue.h"
 #include "texture/Texture.h"
+#include "window/dialog/TextureSlicerToolDialog.h"
 
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
@@ -43,6 +44,13 @@ namespace jasperengine::editor {
         bool hasPendingEdits() const { return !touched.empty(); }
 
     private:
+        // S45 R31: the texture's Sprite Mode (Single / Grid / Multiple), Slice..., its frames, the
+        // name@WxH grid, the atlas packing it (TextureSpriteMode.cpp)
+        void drawSpriteMode(const std::string& assetPath);
+        TextureSlicerToolDialog slicer;
+        std::string spriteModeKey;                  // the path and the texture's and meta's times it was read at
+        std::shared_ptr<const void> spriteModeCache;
+
         struct PreviewImage {
             int width = 0, height = 0;
             std::vector<uint8_t> rgba;     // display-ready RGBA8

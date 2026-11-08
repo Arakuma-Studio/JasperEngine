@@ -142,6 +142,14 @@ namespace jasperengine{
         bool failed = false;
     };
 
+    // the records form's tail in u_fs_objectLights (includes/lights.glsl LIGHT_DATA_TAIL): the
+    // byte offsets of its members, -1 where the variant has none
+    struct LightDataTail{
+        int16_t bases = -1;       // lightDataBases
+        int16_t occlusion = -1;   // contactViewport, contactParams, capsuleParams
+        int16_t lights2D = -1;    // lights2DAmbient, lights2DAtlasInfo
+    };
+
     struct JASPERENGINE_API SubmeshExtraPass{
         ObjectRender render;
         std::shared_ptr<ShaderRender> shader;
@@ -160,6 +168,8 @@ namespace jasperengine{
         CustomUniformBlock customFSParams;
 
         int slotVSParams = -1;
+        // reflected: a pixel-snapped variant's block ends with pixelSnapDraw (S41), a fork's may not
+        unsigned int sizeVSParams = 0;
         int slotFSParams = -1;
         unsigned int sizeFSParams = 0; // reflected, read by the Stochastic Tiling ('Sto') variants
         int slotFSTexCoordSets = -1;
@@ -170,6 +180,8 @@ namespace jasperengine{
         int slotFSObjectLights = -1;
         unsigned int sizeVSObjectLights = 0;
         unsigned int sizeFSObjectLights = 0;
+        std::pair<int, int> slotLightRecords = {-1, -1};
+        LightDataTail lightDataTail;
         int slotFSLitFrame = -1;
         unsigned int sizeFSLitFrame = 0;
         int slotFSLighting2D = -1;
@@ -207,10 +219,43 @@ namespace jasperengine{
     // (meshopt_generateShadowIndexBuffer): a depth program reading positions only draws the same
     // triangles fetching and shading fewer vertices where the mesh splits its vertices for
     // normals or UVs. Made when they reference more than 10% fewer vertices; count 0 otherwise.
+    // It owns its GPU buffer: the last submesh holding it destroys it (a BufferRender handle
+    // frees nothing on its own).
     struct JASPERENGINE_API ShadowIndexBuffer{
         std::vector<unsigned char> bytes;
         ExternalBuffer buffer;
         unsigned int count = 0;
+
+        ShadowIndexBuffer() = default;
+        ShadowIndexBuffer(const ShadowIndexBuffer&) = delete;
+        ShadowIndexBuffer& operator=(const ShadowIndexBuffer&) = delete;
+        // off the main thread the destroy is posted there (MainThreadQueue)
+        ~ShadowIndexBuffer();
+    };
+
+    // Automatic GPU instancing (spec S55): the HAS_AUTO_INSTANCING variants of a submesh's render
+    // and depthRender (RenderSystem::loadSubmeshBatchVariants), which draw batches of its draws
+    // with those of every submesh like it, linked to render and depthRender (else they draw
+    // nothing). Held only while GPU Instancing is on and the submesh can batch (Submesh::batch).
+    // It owns them: its last holder (a copy of the component included) frees the pipelines and
+    // lets go of the shaders' pool entries.
+    struct JASPERENGINE_API SubmeshBatchVariants{
+        ObjectRender render;
+        ObjectRender depthRender;
+        std::shared_ptr<ShaderRender> shader;
+        std::shared_ptr<ShaderRender> depthShader;
+        uint64_t shaderProperties = 0;
+        uint64_t depthShaderProperties = 0;
+        uint16_t shaderId = 0;
+        uint16_t depthShaderId = 0;
+
+        SubmeshBatchVariants() = default;
+        SubmeshBatchVariants(const SubmeshBatchVariants&) = delete;
+        SubmeshBatchVariants& operator=(const SubmeshBatchVariants&) = delete;
+        // releases them; off the main thread the release is posted there (MainThreadQueue)
+        ~SubmeshBatchVariants();
+        // frees them now, leaving it empty (main thread)
+        void release();
     };
 
     struct JASPERENGINE_API Submesh{
@@ -240,6 +285,8 @@ namespace jasperengine{
         PbrMap pbrMaps[MaterialPbr::MAX_EXTENSION_MAPS] = {PbrMap::COUNT, PbrMap::COUNT, PbrMap::COUNT};
 
         int slotVSParams = -1;
+        // reflected: a pixel-snapped variant's block ends with pixelSnapDraw (S41), a fork's may not
+        unsigned int sizeVSParams = 0;
         int slotFSParams = -1;
         // reflected, read by the Stochastic Tiling ('Sto') variants: the material prefix with
         // its stochastic vec4 (16 floats), or less from a fork made before it
@@ -286,6 +333,10 @@ namespace jasperengine{
         unsigned int sizeFSLightOcclusion = 0;
         std::pair<int, int> slotTiledLights = {-1, -1};
         std::pair<int, int> slotContactShadows = {-1, -1};
+        // u_lightRecords of a shader with the lights' records form (includes/lights.glsl), and
+        // the records form's tail in its lights' block
+        std::pair<int, int> slotLightRecords = {-1, -1};
+        LightDataTail lightDataTail;
 
         int slotVSDepthParams = -1;
         unsigned int sizeVSDepthParams = 0; // reflected: an older fork declares the block without mvpMatrix
@@ -412,18 +463,10 @@ namespace jasperengine{
         // MeshComponent::smoothNormals entry its position attribute uses (-1: none)
         int smoothNormals = -1;
 
-        // Automatic GPU instancing (spec S55): the HAS_AUTO_INSTANCING variants of render and
-        // depthRender (RenderSystem::loadSubmeshBatchVariants), which draw batches of this
-        // submesh's draws with those of every submesh like it; loaded while GPU Instancing is on
-        // and the submesh can batch, linked to render and depthRender (else they draw nothing)
-        ObjectRender batchRender;
-        ObjectRender batchDepthRender;
-        std::shared_ptr<ShaderRender> batchShader;
-        std::shared_ptr<ShaderRender> batchDepthShader;
-        uint64_t batchShaderProperties = 0;
-        uint64_t batchDepthShaderProperties = 0;
-        uint16_t batchShaderId = 0;
-        uint16_t batchDepthShaderId = 0;
+        // its GPU Instancing variants (null: GPU Instancing off, the submesh cannot batch, or not
+        // loaded yet; 1.7 KB a submesh not paid then). A copy of the component shares them until
+        // its load makes its own (RenderSystem::requestSubmeshBatchShaders)
+        std::shared_ptr<SubmeshBatchVariants> batch;
         // the bounds of the vertices it draws in the mesh's space (null: not known, the mesh's
         // are used): a pass culls a visible mesh's submeshes one by one (spec S55 R4)
         AABB localBounds;
@@ -590,7 +633,12 @@ namespace jasperengine{
         // authored one)
         bool isTransparent() const { return autoTransparency ? derivedTransparent : transparent; }
         // what its arrays hold outside the component (ComponentArray::arrayHeapBytes)
-        size_t arrayHeapBytes() const { return submeshes.storageBytes() + eBuffers.storageBytes() + bonesMatrix.storageBytes(); }
+        size_t arrayHeapBytes() const {
+            size_t bytes = submeshes.storageBytes() + eBuffers.storageBytes() + bonesMatrix.storageBytes();
+            for (size_t i = 0; i < submeshes.stored(); i++)
+                bytes += submeshes[i].batch ? sizeof(SubmeshBatchVariants) : 0;
+            return bytes;
+        }
         // set at load: transparent-queue order (the lowest sortPriority of its blended
         // submeshes), opaque-queue order (the lowest of the others; before the distance)
         // and whether the camera depth pre-pass leaves it out (a forked color shader without

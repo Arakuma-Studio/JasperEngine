@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "Sprite.h"
+#include <algorithm>
 
 #include "component/ShadowCaster2DComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/Transform.h"
 #include "util/Color.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -139,6 +142,38 @@ void Sprite::setTextureScaleFactor(float textureScaleFactor){
     }
 }
 
+void Sprite::setPixelsPerUnit(float pixelsPerUnit){
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    pixelsPerUnit = std::max(0.0f, pixelsPerUnit);
+    if (spritecomp.pixelsPerUnit != pixelsPerUnit){
+        spritecomp.pixelsPerUnit = pixelsPerUnit;
+        spritecomp.needUpdateSprite = true;
+        markChanged<SpriteComponent>();
+    }
+}
+
+float Sprite::getPixelsPerUnit() const{
+    return getComponent<SpriteComponent>().pixelsPerUnit;
+}
+
+void Sprite::setPixelRotation(PixelRotation pixelRotation){
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    if (spritecomp.pixelRotation != pixelRotation){
+        spritecomp.pixelRotation = pixelRotation;
+        // its drawn matrix holds the policy (RenderSystem::pixelArtModel)
+        getComponent<Transform>().needUpdate = true;
+        markChanged<SpriteComponent>();
+    }
+}
+
+PixelRotation Sprite::getPixelRotation() const{
+    return getComponent<SpriteComponent>().pixelRotation;
+}
+
+Vector2 Sprite::getWorldSize() const{
+    return spriteWorldSize(getComponent<SpriteComponent>());
+}
+
 float Sprite::getTextureScaleFactor() const{
     SpriteComponent& spritecomp = getComponent<SpriteComponent>();
     
@@ -181,6 +216,18 @@ PivotPreset Sprite::getPivotPreset() const{
     SpriteComponent& spritecomp = getComponent<SpriteComponent>();
 
     return spritecomp.pivotPreset;
+}
+
+void Sprite::setDrawMode(SpriteDrawMode drawMode){
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    if (spritecomp.drawMode != drawMode){
+        spritecomp.drawMode = drawMode;
+        spritecomp.needUpdateSprite = true;
+    }
+}
+
+SpriteDrawMode Sprite::getDrawMode() const{
+    return getComponent<SpriteComponent>().drawMode;
 }
 
 void Sprite::addFrame(int id, const std::string& name, Rect rect){

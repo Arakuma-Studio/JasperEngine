@@ -41,6 +41,12 @@ namespace jasperengine::editor{
         bool showIK              = false;
         bool showRootMotion      = false;
         bool showFootTrails      = false;
+        // S41 R21, in a 2D scene whose main camera has a Pixel Perfect Camera: the wheel in whole
+        // pixel steps, the art-pixel grid from 6x, the snapped drawables, moves on whole pixels
+        bool pixelZoom           = true;
+        bool pixelGrid           = true;
+        bool pixelSnapPreview    = true;
+        bool pixelMoveSnap       = true;
         // the AI Navigation overlay (S19; navigation/NavigationOverlay.h)
         NavOverlaySettings navigation;
         // the Draw Mode (spec S54 R11) and the Stats overlay of the Scene view

@@ -4,6 +4,7 @@
 #include "Project.h"
 #include "util/ScriptPropertyCache.h"
 #include "util/ProjectChecks.h"
+#include "asset/ModelSubAssets.h"
 #include "memory/HeapTrim.h"
 #include "render/LayerViewCamera.h"
 #include "component/MirrorComponent.h"
@@ -143,6 +144,7 @@
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
+#include "sprite/SpriteAtlasBuilder.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "Engine.h"
@@ -1103,6 +1105,11 @@ static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs
         return state != editor::FbxImporter::State::Missing;
     }
     written = true;
+    // (the database sees the FBX, which has no contents of its own: the model is this file)
+    editor::ModelContents contents;
+    if (editor::scanModelFile(glbPath, contents)) {
+        editor::reportModelLimits(fbxName, contents);
+    }
     return true;
 }
 
@@ -1773,8 +1780,29 @@ void editor::Project::setHtmlUiMsaaSamples(int samples){
     UIDocumentSystem::setPreferredSampleCount(valid);
 }
 
+void editor::Project::setSpriteAtlasMode(const std::string& mode){
+    if (spriteAtlasMode == mode) return;
+    spriteAtlasMode = mode;
+    if (sprite::SpriteAtlasBuilder::get().getProject() == this) sprite::SpriteAtlasBuilder::get().modeChanged();
+}
+
 int editor::Project::getHtmlUiMsaaSamples() const{
     return htmlUiMsaaSamples;
+}
+
+void editor::Project::setPixelsPerUnit(int pixelsPerUnit){
+    const int previous = this->pixelsPerUnit;
+    this->pixelsPerUnit = std::clamp(pixelsPerUnit, minPixelsPerUnit, maxPixelsPerUnit);
+    // the edited scenes' sprites and tilemaps of PPU 0 build again (MeshSystem)
+    Engine::setPixelsPerUnit(this->pixelsPerUnit);
+    // .aseprite sheets of pixelsPerUnit "project" bake it: their imports' keys change with it
+    if (previous != this->pixelsPerUnit && pixelart::aseprite::AsepriteImporter::get().getProject() == this){
+        pixelart::aseprite::AsepriteImporter::get().requestAll();
+    }
+}
+
+int editor::Project::getPixelsPerUnit() const{
+    return pixelsPerUnit;
 }
 
 bool editor::Project::isValidHtmlUiGlyphAtlasMiB(int mib){
@@ -6163,7 +6191,9 @@ void editor::Project::resetConfigs() {
     buildMethod = "auto";
     packContent = false;
     stripEngineCode = true;
+    spriteAtlasMode = "enabled";
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
+    setPixelsPerUnit(defaultPixelsPerUnit);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
     setDrawSubmissionSettings(DrawSubmissionSettings());
     setDeviceSettings(DeviceSettings());
@@ -6237,6 +6267,9 @@ void editor::Project::resetConfigs() {
     }
     if (pixelart::aseprite::AsepriteImporter::get().getProject() == this){
         pixelart::aseprite::AsepriteImporter::get().attach(nullptr);
+    }
+    if (sprite::SpriteAtlasBuilder::get().getProject() == this){
+        sprite::SpriteAtlasBuilder::get().attach(nullptr);
     }
     textureSettings = {};
     modelSettings = {};
@@ -6957,8 +6990,9 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         }
 
         if (!std::filesystem::exists(projectFile)) {
-            if (!std::filesystem::exists(projectPath)) {
-                std::filesystem::create_directories(projectPath);
+            // a file in its place is no project folder: nothing could be saved there
+            if (!std::filesystem::is_directory(projectPath) && !std::filesystem::create_directories(projectPath)) {
+                throw std::runtime_error(FileUtils::pathToGenericUtf8(projectPath) + " is not a folder");
             }
             Out::info("Created project directory: \"%s\"", projectPath.string().c_str());
             refreshTrustedRoots();   // the folder exists now
@@ -8118,6 +8152,7 @@ void editor::Project::configureGenerator() {
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
+    generator.setPixelsPerUnit(pixelsPerUnit);
     generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings);
 }
 
@@ -10309,6 +10344,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
+    generator.setPixelsPerUnit(pixelsPerUnit);
     generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings);
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
@@ -10517,6 +10553,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 // Apply project display settings before scripts read the canvas size.
                 Engine::setCanvasSize(canvasWidth, canvasHeight);
                 Engine::setScalingMode(scalingMode);
+                Engine::setPixelsPerUnit(pixelsPerUnit);
                 Engine::setDefaultCanvasScaler(uiScale);
                 Engine::setTextureStrategy(textureStrategy);
                 Engine::systemViewChanged();

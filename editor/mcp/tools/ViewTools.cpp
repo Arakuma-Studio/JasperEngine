@@ -987,6 +987,11 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"show_ik", &SceneDisplaySettings::showIK},
         {"show_root_motion", &SceneDisplaySettings::showRootMotion},
         {"show_foot_trails", &SceneDisplaySettings::showFootTrails},
+        // S41 (in a scene with a Pixel Perfect Camera)
+        {"pixel_zoom", &SceneDisplaySettings::pixelZoom},
+        {"pixel_grid", &SceneDisplaySettings::pixelGrid},
+        {"pixel_snap_preview", &SceneDisplaySettings::pixelSnapPreview},
+        {"pixel_move_snap", &SceneDisplaySettings::pixelMoveSnap},
     };
     return flags;
 }
@@ -1701,6 +1706,14 @@ void configureGameViewTool(const CallPtr& call) {
         settings.scale = std::clamp(args.value("scale", 1.0f), 1.0f, 5.0f);
         changed.push_back("scale");
     }
+    if (args.contains("pixel_scale")) {
+        if (!args["pixel_scale"].is_number_integer() || args["pixel_scale"].get<int>() < 0 || args["pixel_scale"].get<int>() > 8) {
+            call->fail("pixel_scale must be an integer 0 (Auto) to 8.");
+            return;
+        }
+        settings.pixelScale = args["pixel_scale"].get<int>();
+        changed.push_back("pixel_scale");
+    }
     if (args.contains("maximize_on_play")) {
         settings.maximizeOnPlay = args.value("maximize_on_play", false);
         changed.push_back("maximize_on_play");
@@ -1932,6 +1945,7 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
     Json data = {
         {"aspect", aspectNames()[std::clamp(settings.aspect, 0, (int)aspectNames().size() - 1)]},
         {"scale", settings.scale},
+        {"pixel_scale", settings.pixelScale},
         {"maximize_on_play", settings.maximizeOnPlay},
         {"maximized", gw->isMaximizedNow()},
         {"show_stats", settings.showStats},
@@ -2136,6 +2150,7 @@ void registerViewTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
             {"scale", number("", 1, 5)},
+            {"pixel_scale", integer("Pixel Perfect scale; 0 auto.", 0, 8)},
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
             {"simulate_touch", boolean("")},

@@ -18,6 +18,7 @@
 #include "component/NavMeshModifierComponent.h"
 #include "component/NavMeshObstacleComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/SplineComponent.h"
 #include "component/SplineExtrudeComponent.h"
@@ -407,15 +408,16 @@ namespace {
             return true;
         }
         out[0] = -1.0f;
-        const Rect shown = sprite->needUpdateFrameRect ? sprite->pendingFrameRect : mesh->submeshes[0].textureRect;
+        const Rect shown = sprite->needUpdateFrameRect ? sprite->pendingFrameRect : MeshSystem::spriteSourceRect(*sprite, *mesh);
         const Texture& texture = mesh->submeshes[0].material.baseColorTexture;
+        float textureW = (float)texture.getWidth(), textureH = (float)texture.getHeight();
+        MeshSystem::spriteSourceSize(*sprite, *mesh, textureW, textureH);
         for (unsigned int id = 0; id < sprite->numFramesRect; id++){
             Rect rect = sprite->framesRect[id].rect;
             if (!shown.isNormalized() || rect.isNormalized()){
                 // compare like with like
-            }else if (texture.getWidth() > 0 && texture.getHeight() > 0){
-                rect = Rect(rect.getX() / texture.getWidth(), rect.getY() / texture.getHeight(),
-                            rect.getWidth() / texture.getWidth(), rect.getHeight() / texture.getHeight());
+            }else if (textureW > 0 && textureH > 0){
+                rect = Rect(rect.getX() / textureW, rect.getY() / textureH, rect.getWidth() / textureW, rect.getHeight() / textureH);
             }
             const float eps = 1e-4f;
             if (std::fabs(rect.getX() - shown.getX()) < eps && std::fabs(rect.getY() - shown.getY()) < eps &&
@@ -455,7 +457,9 @@ namespace {
             out[1] = out[2] = out[3] = 0.0f;
             return true;
         }
-        const Rect& rect = mesh->submeshes[0].textureRect;
+        // a legacy sprite drawn from an atlas page: its source's rect (S45 R8)
+        SpriteComponent* sprite = scene->findComponent<SpriteComponent>(entity);
+        const Rect rect = sprite ? MeshSystem::spriteSourceRect(*sprite, *mesh) : mesh->submeshes[0].textureRect;
         out[0] = rect.getX(); out[1] = rect.getY(); out[2] = rect.getWidth(); out[3] = rect.getHeight();
         return true;
     }
@@ -651,6 +655,7 @@ namespace {
         rows.push_back(enabledRow<VideoPlayerComponent>("videoplayer"));
         rows.push_back(enabledRow<SafeAreaComponent>("safearea"));
         rows.push_back(enabledRow<CapsuleShadowCasterComponent>("capsuleshadowcaster"));
+        rows.push_back(enabledRow<PixelPerfectCameraComponent>("pixelperfectcamera"));
         // oe-port's components with the Inspector's enabled checkbox (their Lua setters, where they
         // have one, only set the flag)
         rows.push_back(enabledRow<ForceFieldComponent>("forcefield"));

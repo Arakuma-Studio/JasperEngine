@@ -311,6 +311,8 @@ namespace jasperengine::editor {
         BuildErrorLog buildErrors;
         // the project's UI Scale, emitted by configure (setUIScale before it)
         CanvasScalerSettings uiScale;
+        // the project's Pixels Per Unit (S41), emitted by configure when it is not 1
+        int pixelsPerUnit = 1;
 
         static fs::path getGeneratedPath(const fs::path& projectInternalPath);
         static std::string getEditorPluginAbiCheck();
@@ -387,6 +389,12 @@ namespace jasperengine::editor {
         static constexpr unsigned int MAX_SUPPORTED_PARALLEL_BUILD_JOBS = 65536;
         static unsigned int getAutomaticParallelBuildJobs();
         static unsigned int getMaxParallelBuildJobs();
+        // cmake --build's --parallel for the tree configured at buildPath: `jobs`, but 1 under a
+        // Visual Studio generator. There each project's cl already compiles `jobs` files at once
+        // (/MP<jobs> from the configure's JASPERENGINE_PARALLEL_BUILD_JOBS), and --parallel is
+        // MSBuild's /m, how many projects build at once: both at `jobs` run up to jobs x jobs
+        // compilers while the engine's libraries build side by side.
+        static unsigned int buildStepParallelJobs(const fs::path& buildPath, unsigned int jobs);
         // prefabGuid: the asset GUID of a prefab path, empty for a missing prefab (Factory::createPrefab).
         // baked: each prefab's instance as the editor makes it (Project::bakePrefabsForExport),
         // what its build_prefab_* source is generated from
@@ -401,6 +409,7 @@ namespace jasperengine::editor {
         // Input Manager defaults)
         // the Canvas Scaler project default the next configure() writes into the generated main
         void setUIScale(const CanvasScalerSettings& settings) { uiScale = settings; }
+        void setPixelsPerUnit(int value) { pixelsPerUnit = value; }
         static std::string inputSettingsInitSource(const std::string& actionsAsset, float deadzone);
         // Project Settings > Graphics > Shader Globals in the generated main.cpp: the declarations
         // (with their defaults) before any scene loads; "" when the project declares none

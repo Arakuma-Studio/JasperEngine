@@ -801,6 +801,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
     ${EDITOR_DIR}/reflect/components/UpstreamReflect.cpp
     ${EDITOR_DIR}/reflect/components/UpstreamMediaReflect.cpp
+    ${EDITOR_DIR}/reflect/components/PixelArtReflect.cpp
+    # pixel art (S41: the editor's side of the Pixel Perfect Camera)
+    ${EDITOR_DIR}/pixelart/PixelPerfectEditor.cpp
     ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
     ${EDITOR_DIR}/reflect/components/UIReflect.cpp
     ${EDITOR_DIR}/reflect/components/LatticeFluidReflect.cpp
@@ -1186,6 +1189,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindowCamera.cpp
     ${EDITOR_DIR}/window/InspectorAudioClip.cpp
     ${EDITOR_DIR}/window/ProjectWindowSound.cpp
+    ${EDITOR_DIR}/window/InspectorPixelArt.cpp
     ${EDITOR_DIR}/window/InspectorVideo.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/InspectorVcs.cpp

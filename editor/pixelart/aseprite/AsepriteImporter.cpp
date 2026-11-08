@@ -99,8 +99,8 @@ namespace jasperengine::editor::pixelart::aseprite {
             }
         }
 
-        // the pixels per unit of the project (S41 adds the setting; until then 1 pixel = 1 unit)
-        int projectPixelsPerUnit(const Project&) { return 1; }
+        // a sheet of pixelsPerUnit "project" takes the project's Pixels Per Unit (S41)
+        int projectPixelsPerUnit(const Project& project) { return project.getPixelsPerUnit(); }
 
     }
 
@@ -426,6 +426,16 @@ namespace jasperengine::editor::pixelart::aseprite {
             Out::info("[Aseprite] Imported %s: %d frames, %zu clips (%.0f ms)", r.assetPath.c_str(), r.frames, r.clips.size(), r.ms);
         }
         for (const PixelProblem& w : r.warnings) Out::warning("[Aseprite] %s: %s", r.assetPath.c_str(), w.message.c_str());
+        const auto listeners = importListeners;
+        for (const auto& [owner, listener] : listeners) listener(r.assetPath);
+    }
+
+    void AsepriteImporter::addImportListener(const void* owner, std::function<void(const std::string&)> listener) {
+        importListeners[owner] = std::move(listener);
+    }
+
+    void AsepriteImporter::removeImportListener(const void* owner) {
+        importListeners.erase(owner);
     }
 
     bool AsepriteImporter::update() {

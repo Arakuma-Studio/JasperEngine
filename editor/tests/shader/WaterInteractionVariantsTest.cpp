@@ -176,8 +176,8 @@ TEST(WaterInteractionVariants, WorstWaterVariantsCompileForEveryBackend){
             EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), ShaderVariantCompiler::checkResourceBudget(plainData)) << name;
             EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), "") << name;
             // GLES3 / WebGL2 guarantee 224 fragment uniform vectors, and sokol's GL backends
-            // flatten the blocks into them: the bits add three, and the eight-light water with
-            // shadows stays within them (sixteen lights are over without the bits too)
+            // flatten the blocks into them: the bits add three, and the water with shadows stays
+            // within them at every light capacity (its lights' records: WaterUniformBudgetSlow)
             auto fragmentVectors = [](const ShaderData& shader){
                 size_t vectors = 0;
                 for (const ShaderStage& stage : shader.stages){
@@ -193,9 +193,7 @@ TEST(WaterInteractionVariants, WorstWaterVariantsCompileForEveryBackend){
                 const size_t plainVectors = fragmentVectors(plainData);
                 std::printf("[water] %s: %zu fragment uniform vectors, %zu without the bits (limit 224)\n", name.c_str(), vectors, plainVectors);
                 EXPECT_LE(vectors, plainVectors + 3) << name;
-                if (environment.lightCapacity <= 8){
-                    EXPECT_LE(vectors, 224u) << name;
-                }
+                EXPECT_LE(vectors, 224u) << name;
             }
             EXPECT_NE(data.getTextureIndexByName("u_waterExclusionMaps").first, -1) << name;
             EXPECT_NE(data.getTextureIndexByName("u_waterExclusionData").first, -1) << name;

@@ -377,7 +377,9 @@ Matrix4 Matrix4::affineInverse() const{
 
     t.set(1,0, (-get(1,0) * c[5] + get(1,2) * c[2]) * idet);
     t.set(1,1, ( get(0,0) * c[5] - get(0,2) * c[2]) * idet);
-    t.set(1,2, (- s[1]) * idet);
+    // inverse() subtracts s[1] from its zero terms: a zero comes out +0, not -0 (an identity's
+    // normal matrix written with a -0)
+    t.set(1,2, (0.0f - s[1]) * idet);
     t.set(1,3, 0.0f);
 
     t.set(2,0, ( get(1,0) * c[4] - get(1,1) * c[2]) * idet);

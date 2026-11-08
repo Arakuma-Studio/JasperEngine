@@ -30,8 +30,9 @@ namespace jasperengine::editor::vcs {
     bool keysOf(const VcsService& service, const std::vector<std::filesystem::path>& paths, std::vector<RepoPath>& keys, std::string* why);
 
     // Why these files cannot be reverted (empty when they can): new files have nothing to go back
-    // to (Delete them instead), unchanged ones nothing to undo
-    std::string revertRefusal(const VcsSnapshot& snapshot, const std::vector<RepoPath>& keys);
+    // to (Delete them instead; svn's revert unschedules an add and keeps the file:
+    // `unschedulesAdds`), unchanged ones nothing to undo
+    std::string revertRefusal(const VcsSnapshot& snapshot, const std::vector<RepoPath>& keys, bool unschedulesAdds);
 
     // The names of the open scenes and prefab stages among the files that have unsaved changes
     // ("Revert discards unsaved changes in <scene>")

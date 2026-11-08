@@ -109,7 +109,9 @@ struct EnumMap {
 
 const EnumMap<Scaling> scalingModes[] = {
     {"fit_width", Scaling::FITWIDTH}, {"fit_height", Scaling::FITHEIGHT}, {"letterbox", Scaling::LETTERBOX},
-    {"crop", Scaling::CROP}, {"stretch", Scaling::STRETCH}, {"native", Scaling::NATIVE}};
+    {"crop", Scaling::CROP}, {"stretch", Scaling::STRETCH}, {"native", Scaling::NATIVE},
+    // S41: whole-number scales of the canvas
+    {"integer", Scaling::INTEGER}, {"integer_expand", Scaling::INTEGER_EXPAND}};
 const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
 const EnumMap<PbrTier> pbrTiers[] = {{"full", PbrTier::FULL}, {"reduced", PbrTier::REDUCED}};
@@ -1738,6 +1740,21 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
         {
+            // S41 R6
+            Setting s;
+            s.key = "graphics.pixels_per_unit";
+            s.type = "int";
+            s.description = "Texels per world unit of sprites and tilemaps whose own Pixels Per Unit is 0 (1: a unit is a pixel).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getPixelsPerUnit()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, Project::minPixelsPerUnit, Project::maxPixelsPerUnit, v, error)) return false;
+                if (apply) ctx.project()->setPixelsPerUnit(static_cast<int>(v));
+                return true;
+            };
+            add(s);
+        }
+        {
             Setting s;
             s.key = "graphics.ui_scale";
             s.type = "object";
@@ -1751,6 +1768,25 @@ std::vector<Setting> mcpSettingsTable() {
                 CanvasScalerSettings settings = ctx.project()->getUIScale();
                 if (!mcp::McpValues::canvasScalerFromJson(value, settings, error)) return false;
                 if (apply) ctx.project()->setUIScale(settings);
+                return true;
+            };
+            add(s);
+        }
+        {
+            // S45 R18
+            Setting s;
+            s.key = "sprite_atlas.mode";
+            s.type = "enum";
+            s.values = {"enabled", "enabled_for_builds", "disabled"};
+            s.description = "Sprite Atlases: enabled (editor, Play and builds draw from them), enabled_for_builds (only builds), disabled.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getSpriteAtlasMode()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                const std::string mode = value.is_string() ? value.get<std::string>() : std::string();
+                if (mode != "enabled" && mode != "enabled_for_builds" && mode != "disabled") {
+                    error = "sprite_atlas.mode is enabled, enabled_for_builds or disabled";
+                    return false;
+                }
+                if (apply) ctx.project()->setSpriteAtlasMode(mode);
                 return true;
             };
             add(s);
@@ -3501,9 +3537,11 @@ const Placement placements[] = {
     {"android.permissions", "Player", "Android", "Permissions", "android"},
     {"android.allow_backup", "Player", "Android", "Application Options", "android allow backup"},
     {"android.fullscreen", "Player", "Android", "Screen Options", "android fullscreen"},
+    {"sprite_atlas.mode", "2D", "Sprite Atlas", "Mode", "sprite atlas packer pages enabled for builds"},
     {"graphics.canvas_width", "Graphics", "", "Canvas Width", "reference resolution"},
     {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution"},
-    {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch"},
+    {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch integer pixel perfect"},
+    {"graphics.pixels_per_unit", "Graphics", "", "Pixels Per Unit", "pixel art ppu sprite tilemap"},
     {"graphics.ui_scale", "Graphics", "", "UI Scale", "canvas scaler ui scaling reference resolution match width height constant pixel physical size dpi"},
     {"graphics.texture_strategy", "Graphics", "", "Texture Strategy", "power of two"},
     {"graphics.mobile_pbr_tier", "Graphics", "", "Mobile PBR Tier", "clear coat iridescence anisotropy lit android ios web"},
@@ -3829,7 +3867,8 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Editor", SettingsScope::Project, 12, "version control assets labels"},
         {"Navigation", SettingsScope::Project, 13, "navigation navmesh agents areas crowd grid pathfinding ai"},
         {"Mesh", SettingsScope::Project, 14, "mesh model import cook optimize compression lod meshopt read write cache audit"},
-        {"Animation", SettingsScope::Project, 15, "animation clips model animator animation player entities"},
+        {"2D", SettingsScope::Project, 15, "2d sprite atlas packer pages pixel art"},
+        {"Animation", SettingsScope::Project, 16, "animation clips model animator animation player entities"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},

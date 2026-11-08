@@ -46,7 +46,7 @@ namespace jasperengine::editor::pixelart::aseprite {
         std::vector<std::string> ignorePrefixes;
         std::vector<std::string> include;       // layer names or paths ("Body/Arm")
         std::vector<std::string> exclude;
-        std::optional<int> pixelsPerUnit;        // nullopt: the project's (S41; 1 until it lands)
+        std::optional<int> pixelsPerUnit;        // nullopt: the project's (S41)
         PivotSource pivotSource = PivotSource::Slice;
         std::string pivotSlice;                  // "": a slice named "pivot", else the first with a pivot
         PivotPreset pivotPreset = PivotPreset::BOTTOM_CENTER;

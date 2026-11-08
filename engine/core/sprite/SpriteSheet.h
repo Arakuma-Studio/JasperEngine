@@ -31,7 +31,8 @@ namespace jasperengine{
 
     struct JASPERENGINE_API SpriteFrame{
         std::string name;                 // display name ("hero 3", "Body/3"), unique in the sheet
-        std::string key;                  // the sub-asset key ("frame#3", "frame:Body/3"); "" for sources without one
+        std::string key;                  // the sub-asset key ("frame#3", "frame:Body/3"); S45's texture sheets:
+                                          // "rect:<x>,<y>,<w>,<h>", the frame's place in its texture; "" for others
         uint16_t page = 0;
         Rect rect;                        // the frame's pixels in its page (trimmed)
         Vector2 sourceSize;               // the untrimmed frame

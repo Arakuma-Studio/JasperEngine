@@ -1093,9 +1093,6 @@ async def test_guide_names_exist(ed: Editor):
               # results of calls this test does not repeat: create {from}, an extract, a missing path with a fix, > 50 users
               "added_player", "removed_tracks", "model_clip_users", "fix_with", "users_total", "fix_path", "fix_conflict",
               "rest_mismatch", "rig_mismatch",
-              # upstream guide lines on results these calls do not produce: an Animation with a start offset
-              # (get_animation reports it only when set) and a Button's transition (button.transition)
-              "start_offset", "sprite_swap",
               # layers, masks and controllers (test_animation_layers / test_animator_controller): their results, the
               # mask's humanoid parts and the clip / controller file keys
               "humanoid_rig", "coverage_total", "mask_coverage", "live_weight", "normalized_time", "additive_reference",
@@ -1121,7 +1118,10 @@ async def test_guide_names_exist(ed: Editor):
               "bytes_after", "bytes_before", "effective_tolerance_mm", "kept_all_keys", "keys_after", "keys_before", "max_error_mm",
               "no_gain", "no_rig", "skipped_tracks", "within_tolerance", "worst_joint",
               # its foot sliding and transition results (S77 R37, R54) and the IK type the guide suggests
-              "max_slide_mm", "matching_ground_speed_mps", "contact_source", "max_step_mm", "baseline_step_mm", "foot_lock"}
+              "max_slide_mm", "matching_ground_speed_mps", "contact_source", "max_step_mm", "baseline_step_mm", "foot_lock",
+              # a Button transition value (button.transition, ui-components) and get_animation's
+              # start_offset, reported only when an Animation has one (runtime-core)
+              "sprite_swap", "start_offset"}
     words = set(re.findall(r"(?<![\w./:-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(])", text))
     unknown = sorted(w for w in words if w not in known)
     ed.check(not unknown, f"the guide names unknown things: {unknown}")

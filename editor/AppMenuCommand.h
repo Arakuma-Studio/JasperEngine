@@ -151,7 +151,11 @@ namespace jasperengine::editor {
         AssetsCreatePhysicsMaterial2D,
         AssetsDuplicate,
         ToggleMaximizeOnPlay,
-        ToggleSpritePreview           // Window > 2D > Sprite Preview (S44)
+        ToggleSpritePreview,          // Window > 2D > Sprite Preview (S44)
+        // S45: Assets > Create > 2D > Sprite Atlas (and from the selection), Assets > Convert Inline Sprite Frames...
+        AssetsCreateSpriteAtlas,
+        AssetsCreateSpriteAtlasFromSelection,
+        AssetsConvertInlineSpriteFrames
     };
 
 }
