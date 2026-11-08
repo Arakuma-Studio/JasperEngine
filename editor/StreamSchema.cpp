@@ -547,6 +547,11 @@ const EnumTable<ParticleEmitterShape>& StreamSchema::particleEmitterShape() {
     return table;
 }
 
+const EnumTable<SpriteDrawMode>& StreamSchema::spriteDrawMode() {
+    static const EnumTable<SpriteDrawMode> table(reflect::enums::kSpriteDrawMode);
+    return table;
+}
+
 const EnumTable<PivotPreset>& StreamSchema::pivotPreset() {
     static const EnumTable<PivotPreset> table(reflect::enums::kPivotPreset);
     return table;

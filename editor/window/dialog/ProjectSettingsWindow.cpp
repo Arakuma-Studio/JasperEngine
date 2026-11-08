@@ -210,6 +210,7 @@ enum class ProjectCategory {
     Editor,
     Navigation,
     Mesh,
+    TwoD,   // "2D" (S45: Sprite Atlas)
     PixelArt,
     Count
 };
@@ -993,6 +994,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_scriptDirs = project->getScriptDirs();
     m_cxxStandardIndex = findCxxStandardIndex(project->getCxxStandard());
     m_physics2DEnabled = project->isPhysics2DEnabled();
+    m_spriteAtlasMode = project->getSpriteAtlasMode();
     m_physics3DEnabled = project->isPhysics3DEnabled();
     m_inputActionsAsset = project->getInputActionsAsset();
     m_inputDeadzone = project->getInputDeadzone();
@@ -1243,6 +1245,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Editor: drawEditorSettings(); break;
         case ProjectCategory::Navigation: drawNavigationSettings(); break;
         case ProjectCategory::Mesh: drawMeshSettings(); break;
+        case ProjectCategory::TwoD: draw2DSettings(); break;
         case ProjectCategory::PixelArt: drawPixelArtSettings(); break;
         default: break;
     }
@@ -2985,6 +2988,31 @@ void ProjectSettingsWindow::drawPhysics2DSettings() {
             drawSectionNote("Rigidbody 2D colliders on layers whose box is cleared pass through each other and report no contacts or triggers. "
                 "Scripts change it with Physics2D.ignoreLayerCollision; collider category, mask and group still apply to the checked pairs.");
             if (settingsui::beginRow("physics2d.layer_collision_matrix")) drawLayerCollisionMatrix("##LayerCollisionMatrix2D", m_layerCollision2D);
+        }
+    }
+    endSettingsPanel();
+}
+
+// S45 R18: Project Settings > 2D > Sprite Atlas > Mode
+void ProjectSettingsWindow::draw2DSettings() {
+    if (beginSettingsPanel("##TwoDSettingsPanel")) {
+        if (settingsFoldout("Sprite Atlas", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (beginSettingsTable("##SpriteAtlasTable")) {
+                if (settingsui::beginRow("sprite_atlas.mode")) {
+                    static const char* modes[] = {"Enabled", "Enabled for Builds", "Disabled"};
+                    static const char* tokens[] = {"enabled", "enabled_for_builds", "disabled"};
+                    int index = 0;
+                    for (int i = 0; i < 3; i++) {
+                        if (m_spriteAtlasMode == tokens[i]) index = i;
+                    }
+                    if (projectBeginSettingsRow("Mode", index != 0)) m_spriteAtlasMode = "enabled";
+                    ImGui::SetNextItemWidth(-helpMarkerWidth());
+                    if (ImGui::Combo("##SpriteAtlasMode", &index, modes, 3)) m_spriteAtlasMode = tokens[index];
+                    endSettingsRow("Enabled: the editor, Play and builds draw packed sprites from their atlases. Enabled for Builds: the editor "
+                                   "and Play draw the sources, builds the atlases. Disabled: no atlas is built or used.");
+                }
+                ImGui::EndTable();
+            }
         }
     }
     endSettingsPanel();
@@ -5323,6 +5351,7 @@ bool ProjectSettingsWindow::applySettings() {
     }
     m_project->setCxxStandard(cxxStandards[m_cxxStandardIndex]);
     m_project->setPhysics2DEnabled(m_physics2DEnabled);
+    m_project->setSpriteAtlasMode(m_spriteAtlasMode);
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
     m_project->setInputActionsAsset(m_inputActionsAsset);
     m_project->setInputDeadzone(m_inputDeadzone);

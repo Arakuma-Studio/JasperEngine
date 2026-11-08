@@ -7378,8 +7378,16 @@
    "component": "sprite",
    "group": "",
    "kind": "Asset",
-   "label": "Sprite Sheet",
+   "label": "Sprite",
    "path": "sheet",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
+   "kind": "Enum",
+   "label": "Draw Mode",
+   "path": "drawMode",
    "read_only": false
   },
   {

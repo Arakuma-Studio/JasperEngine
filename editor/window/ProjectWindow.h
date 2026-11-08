@@ -599,6 +599,10 @@ namespace jasperengine::editor {
         // a shuffle event of the selected audio files
         void assetsCreateSoundEventFromClips();
         bool hasAudioSelection() const;
+        // S45: a .spriteatlas (empty, or packing the selected textures and .aseprite files)
+        void assetsCreateSpriteAtlas(const fs::path& directory);
+        void assetsCreateSpriteAtlasFromSelection();
+        bool hasSpriteSelection() const;
         // the sound commands (ProjectWindowSound.cpp)
         void assetsImportSoundEssentials();
         void assetsCreatePlaceholderSound(const fs::path& directory);

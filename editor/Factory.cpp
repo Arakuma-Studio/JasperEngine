@@ -31,6 +31,7 @@
 #include "component/SkyboxComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/SpriteComponent.h"
+#include "subsystem/MeshSystem.h"
 #include "component/TerrainComponent.h"
 #include "component/TextComponent.h"
 #include "component/TilemapComponent.h"
@@ -1287,7 +1288,12 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
 
         // a sheet sprite's page is its sheet's (S44 R48), resolved by the game
         const SpriteComponent* sheetSprite = scene->findComponent<SpriteComponent>(entity);
-        if (s != 0 || !sheetSprite || sheetSprite->sheet.empty()){
+        if (s == 0 && sheetSprite && sheetSprite->sheet.empty() && sheetSprite->inlineAtlas){
+            // a legacy sprite drawn from an atlas page (S45 R8): its source texture
+            Texture source = mesh.submeshes[0].material.baseColorTexture;
+            source.setPath(MeshSystem::spriteSourceTexture(*sheetSprite, mesh));
+            code << formatTexture(indentSpaces, source, "mesh.submeshes[0].material.baseColorTexture", projectPath);
+        }else if (s != 0 || !sheetSprite || sheetSprite->sheet.empty()){
             code << formatTexture(indentSpaces, mesh.submeshes[s].material.baseColorTexture, "mesh.submeshes[" + idx + "].material.baseColorTexture", projectPath);
         }else{
             // its sampler (pixel art's Nearest), the page coming from the sheet
@@ -1337,7 +1343,9 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
             code << ind << "mesh.submeshes[" << idx << "].vertexCount = " << formatUInt(mesh.submeshes[s].vertexCount) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].faceCulling = " << formatBool(mesh.submeshes[s].faceCulling) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].textureShadow = " << formatBool(mesh.submeshes[s].textureShadow) << ";\n";
-        code << ind << "mesh.submeshes[" << idx << "].textureRect = " << formatRect(mesh.submeshes[s].textureRect) << ";\n";
+        const SpriteComponent* rectSprite = s == 0 ? scene->findComponent<SpriteComponent>(entity) : nullptr;
+        const Rect savedRect = rectSprite ? MeshSystem::spriteSourceRect(*rectSprite, mesh) : mesh.submeshes[s].textureRect;
+        code << ind << "mesh.submeshes[" << idx << "].textureRect = " << formatRect(savedRect) << ";\n";
         // a sprite or tilemap sets it once its texture loads: a mesh whose buffers load first would
         // pick a variant without the texture rect (the cooked scenes keep it too, Stream)
         if (mesh.submeshes[s].hasTextureRect)
@@ -1648,13 +1656,20 @@ std::string editor::Factory::createSpriteComponent(int indentSpaces, EntityRegis
     code << ind << "sprite.flipY = " << formatBool(sprite.flipY) << ";\n";
     code << ind << "sprite.pivotPreset = " << formatPivotPreset(sprite.pivotPreset) << ";\n";
     code << ind << "sprite.textureScaleFactor = " << formatFloat(sprite.textureScaleFactor) << ";\n";
+    if (sprite.drawMode != SpriteDrawMode::SIMPLE) {
+        code << ind << "sprite.drawMode = SpriteDrawMode::SLICED;\n";
+    }
     // S41: exported only away from their defaults
     if (sprite.pixelsPerUnit != 0.0f)
         code << ind << "sprite.pixelsPerUnit = " << formatFloat(sprite.pixelsPerUnit) << ";\n";
     if (sprite.pixelRotation != PixelRotation::CAMERA)
         code << ind << "sprite.pixelRotation = " << (sprite.pixelRotation == PixelRotation::STEPS_90 ? "PixelRotation::STEPS_90" : "PixelRotation::ON_GRID") << ";\n";
     // as authored, in pixels or normalised: the game normalises a frame when it shows it
-    // (MeshSystem::setSpriteFrameRect), once its texture's size is known
+    // (MeshSystem::setSpriteFrameRect), once its texture's size is known; the list sized first
+    // (S45 R8: no fixed capacity)
+    if (sprite.numFramesRect > 0) {
+        code << ind << "sprite.framesRect.resize(" << sprite.numFramesRect << ");\n";
+    }
     for (unsigned int i = 0; i < sprite.numFramesRect; i++) {
         if (!sprite.framesRect[i].name.empty()) {
             code << ind << "sprite.framesRect[" << i << "].name = " << formatString(sprite.framesRect[i].name) << ";\n";

@@ -51,6 +51,10 @@ namespace jasperengine{
         static std::shared_ptr<const SpriteSheetData> loadTexture(const std::string& path, std::string* error);
         // ".aseprite" / ".ase" (any case)
         static bool isAsepritePath(const std::string& path);
+
+        // S45 (docs/specs/S45-sprite-atlas.md §6.3): a legacy inline rect (pixels of `texture`) as
+        // drawn from the atlas page that packs it, if any (SpriteSheetSources::mapInlineRect)
+        static bool mapInlineRect(const std::string& texture, const Rect& rect, SpriteFrame& out);
     };
 
 }

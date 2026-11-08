@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <unordered_set>
@@ -532,4 +533,39 @@ TEST(ComponentArrayTest, FindOwnerOfComponentAddress){
     EXPECT_EQ(array.findOwner(&array.getComponent(1250)), (Entity)1250);
     Payload outside;
     EXPECT_EQ(array.findOwner(&outside), NULL_ENTITY);
+}
+
+// findNextAfter steps over runs of holes through skip links it shortens as it goes: whatever the
+// order of appends, removals (the last slot's too) and lookups, with no index read to close the
+// holes, it answers the next live component in slot order
+TEST(ComponentArray, FindNextAfterStepsOverHolesInAnyOrder){
+    std::mt19937 rng(7);
+    ComponentArray<Value> array;
+    std::vector<Entity> live; // slot order
+    Entity nextId = 1;
+    size_t mostHoles = 0;
+    for (int step = 0; step < 20000; step++){
+        const unsigned op = rng() % 10;
+        if (op < 3 || live.empty()){
+            array.insert(nextId, Value{int(nextId)});
+            live.push_back(nextId++);
+        }else if (op < 6){
+            // newest first half the time: the runs of holes behind a slot grow
+            const size_t i = (rng() % 2) ? live.size() - 1 - rng() % std::min<size_t>(live.size(), 3) : rng() % live.size();
+            array.remove(live[i]);
+            live.erase(live.begin() + (ptrdiff_t)i);
+        }else{
+            const size_t i = rng() % live.size();
+            const Value* next = array.findNextAfter(live[i]);
+            if (i + 1 < live.size()){
+                ASSERT_NE(next, nullptr) << "step " << step;
+                ASSERT_EQ(next->value, int(live[i + 1])) << "step " << step;
+            }else{
+                ASSERT_EQ(next, nullptr) << "step " << step;
+            }
+        }
+        mostHoles = std::max(mostHoles, array.getHoleCount());
+    }
+    EXPECT_GT(mostHoles, 100u) << "the lookups never met a long run of holes";
+    EXPECT_EQ(array.size(), live.size());
 }

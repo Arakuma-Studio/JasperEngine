@@ -13,7 +13,10 @@
 //   sprite whose flipY mirrors the image (automaticFlipY off, flipY set against its camera's
 //   convention) mirrors the trimmed area within the source frame too.
 // - textureRect: the frame's rect in its page, normalized (y down, as framesRect rects are).
-// S45 adds the 9-slice (Sliced draw mode) vertices next to this.
+// - Sliced (docs/specs/S45-sprite-atlas.md R6): a bordered frame as a 4 x 4 vertex lattice, its
+//   corners at their native size (scaled down only when the sprite is smaller than its two
+//   borders), edges and centre stretched to the sprite's width x height; a trimmed frame keeps its
+//   trim (its lattice lines clamped to the trimmed rect).
 
 #ifndef SPRITE_FRAME_GEOMETRY_H
 #define SPRITE_FRAME_GEOMETRY_H
@@ -24,6 +27,7 @@
 #include "math/Vector2.h"
 #include "sprite/SpriteSheet.h"
 
+#include <cstdint>
 #include <string_view>
 
 namespace jasperengine{
@@ -63,6 +67,29 @@ namespace jasperengine{
     // sheet has no such slice or it is hidden on that frame
     JASPERENGINE_API bool spriteSliceLocalRect(const SpriteComponent& sprite, const SpriteSheetData& sheet, bool uiCamera,
                                                std::string_view name, Rect& bounds, Rect* center = nullptr, Vector2* pivot = nullptr);
+
+    // The 9-slice of a bordered frame: 16 vertices, vertex (row r, column c) at (x[c], y[r]) with the
+    // frame-rect-local UV (u[c], v[r]) (v down the image, as the texture rect is); rows go up in y
+    // and columns right in x, so cells wind as the quad's
+    struct JASPERENGINE_API SpriteSlicedMesh{
+        float x[4] = {0, 0, 0, 0};
+        float y[4] = {0, 0, 0, 0};
+        float u[4] = {0, 0, 0, 0};
+        float v[4] = {0, 0, 0, 0};
+        Rect textureRect = Rect(0.0f, 0.0f, 0.0f, 0.0f);
+        float width = 0, height = 0;   // the drawn size in units
+        bool empty = true;
+    };
+
+    // a border wide enough to slice (any side > 0)
+    JASPERENGINE_API bool spriteFrameHasBorder(const SpriteFrame& frame);
+
+    JASPERENGINE_API SpriteSlicedMesh spriteFrameSliced(const SpriteFrame& frame, const SpriteFrameGeometryInput& input);
+
+    // the 54 indices of the 9-slice's 18 triangles (rows of 4 vertices, bottom row first)
+    JASPERENGINE_API const uint16_t* spriteSlicedIndices();
+    constexpr unsigned int SPRITE_SLICED_VERTICES = 16;
+    constexpr unsigned int SPRITE_SLICED_INDICES = 54;
 
     // a preset's pivot in source pixels, y up from the bottom-left (createSprite's pivotPos);
     // FRAME: the frame's pivot converted to y up

@@ -218,6 +218,18 @@ PivotPreset Sprite::getPivotPreset() const{
     return spritecomp.pivotPreset;
 }
 
+void Sprite::setDrawMode(SpriteDrawMode drawMode){
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    if (spritecomp.drawMode != drawMode){
+        spritecomp.drawMode = drawMode;
+        spritecomp.needUpdateSprite = true;
+    }
+}
+
+SpriteDrawMode Sprite::getDrawMode() const{
+    return getComponent<SpriteComponent>().drawMode;
+}
+
 void Sprite::addFrame(int id, const std::string& name, Rect rect){
     SpriteComponent& spritecomp = getComponent<SpriteComponent>();
     if (spritecomp.framesRect.validIndex(id)){

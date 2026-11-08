@@ -153,7 +153,11 @@ namespace jasperengine::editor {
         ToggleSpritePreview,          // Window > 2D > Sprite Preview (S44)
         // S43: Window > 2D > Palette (payload: a .palette to open), Assets > Create > Palette
         TogglePalette,
-        AssetsCreatePalette
+        AssetsCreatePalette,
+        // S45: Assets > Create > 2D > Sprite Atlas (and from the selection), Assets > Convert Inline Sprite Frames...
+        AssetsCreateSpriteAtlas,
+        AssetsCreateSpriteAtlasFromSelection,
+        AssetsConvertInlineSpriteFrames
     };
 
 }
