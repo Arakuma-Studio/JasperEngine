@@ -184,6 +184,20 @@ namespace jasperengine::titleart {
         // the atlas of a Glyph Atlas title that renders per glyph (null before its first job, and
         // for a title that falls back to Realtime)
         const std::shared_ptr<TitleGlyphAtlas>& glyphAtlas() const { return atlas; }
+        // S85 R18: an animation's re-render values (the field overrides every request of the state
+        // adds, part of its hash) and whether an animation plays (the title's share of the budget)
+        void setAnimationOverrides(std::vector<FieldOverride> overrides, uint64_t hash){
+            animOverrides = std::move(overrides);
+            animOverridesHash = hash;
+        }
+        const std::vector<FieldOverride>& animationOverrides() const { return animOverrides; }
+        uint64_t animationOverridesHash() const { return animOverridesHash; }
+        void setAnimating(bool on, double share){ animatingFlag = on; budgetShare = share; }
+        bool animating() const { return animatingFlag; }
+        double animationShare() const { return budgetShare; }
+        // the animation library the overrides were planned for (TitleArtRuntime::setAnimation)
+        std::shared_ptr<void> animationPlanCache;
+        const void* animationPlanKey = nullptr;
         // R55: the characters of the state its Characters set leaves out (they draw as nothing)
         void setMissingCharacters(std::string characters) { missingCharacters = std::move(characters); }
         const TitleGlyphAtlasPlan& glyphAtlasPlan() const { return glyphPlan; }
@@ -215,6 +229,10 @@ namespace jasperengine::titleart {
         // before the images: their targets may be its pool's (TitleDisplayImage::owner keeps it too)
         std::shared_ptr<TitleGlyphAtlas> atlas;
         std::string missingCharacters;
+        std::vector<FieldOverride> animOverrides;
+        uint64_t animOverridesHash = 0;
+        bool animatingFlag = false;
+        double budgetShare = 1.0;
         std::shared_ptr<const TitleArtDoc> doc;
         uint64_t docHash = 0;
 

@@ -44,6 +44,7 @@ namespace jasperengine::titleart {
     // belongs to (-1: whitespace or no ink) and the number of units
     struct JASPERENGINE_API GlyphUnits {
         std::vector<int32_t> clusterUnit;
+        std::vector<uint32_t> clusterIndex;     // each cluster's first code point index (its `chars` key)
         size_t count = 0;
     };
     JASPERENGINE_API GlyphUnits glyphUnitsOf(const Json& textLayer, titleanim::StaggerUnit unit, TitleTextLayout* layout);

@@ -236,10 +236,15 @@ TitleFrameReport TitleArtScheduler::schedule(const std::vector<TitleArtLive*>& e
     double spent = 0.0;
     for (TitleArtLive* live : order){
         bool ran = false;
+        // S85 R18: an animating title spends at most its share of the budget a frame (the budget
+        // over the animating visible titles, at least a quarter of it), so the others keep theirs
+        const double titleStart = spent;
+        const double shareUs = live->animating() ? std::max(0.25, std::min(1.0, live->animationShare())) * (double)budgetUs : (double)budgetUs;
         while (live->hasWork() && !live->jobDone()){
             const uint32_t next = live->nextCostUs(platformFactor);
             // R15: whole steps while they fit; the first step of the frame always runs
             if (report.steps > 0 && spent + next > budgetUs) break;
+            if (ran && spent - titleStart + next > shareUs) break;
             const double before = spent;
             if (!live->runStep(factory, platformFactor, budgetUs, spent)) break;
             report.steps++;

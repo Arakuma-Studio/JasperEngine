@@ -14,12 +14,15 @@
 #include "component/TitleArtRendererComponent.h"
 #include "shader/ShaderUniforms.h"
 #include "subsystem/TitleArtRuntime.h"
+#include "titleanim/TitleAnimPlayer.h"
+#include "animation/AnimationEvent.h"
 #include "texture/Texture.h"
 #include "util/FunctionSubscribe.h"
 #include "util/TitleArtBakeInfo.h"
 #include "asset/AssetRef.h"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -94,6 +97,27 @@ namespace jasperengine::titleart{
         std::shared_ptr<TitleArtLive> live;
         TitleArtLiveStatus liveStatus;
         uint32_t testFlags = 0;         // TITLE_ART_TEST_* copied into every request (R21)
+
+        // ---- S85's animations ----
+        titleanim::TitleAnimPlayer animation;
+        bool animationLoaded = false;       // the library was looked for (resolve resets it)
+        bool animationAutoStarted = false;  // Play Automatically ran for this enable
+        std::string animationSource;        // "document" (the module compiled it) or "data" (<file>.anim.json)
+        // a Baked title's flipbook pages, by animation id (textures of the pages beside the document)
+        std::map<std::string, std::vector<Texture>> flipbookPages;
+        // this frame's flipbook page lent instead of the bake (null: the bake or the live image)
+        Texture* animationPage = nullptr;
+        bool animationDrawn = false;        // the ANIM feature is on this frame
+        bool animationHasRest = false;      // the pose differs from the still (R13: else ANIM is off)
+        titleanim::TitlePoseSummary animationSummary;
+        titleanim::CompanionAnimUniforms animationUniforms;
+        float animationSpace[4] = {0.0f, 0.0f, 1.0f, 1.0f};    // the frame in the companion's own space (title_fx ANIM)
+        double animationLiveRest[(size_t)titleanim::TitleField::Count] = {};
+        // markers and ends of this frame, dispatched after the update (R28), reused
+        std::vector<titleanim::FiredMarker> firedMarkers;
+        std::vector<std::string> finishedAnimations;
+        double lastDrivenTime = 0.0;
+        FunctionSubscribe<void(const AnimationEvent&)> onAnimationEvent;
 
         // ---- warnings said once (R7, R19, R41, R51) ----
         std::set<std::string> said;

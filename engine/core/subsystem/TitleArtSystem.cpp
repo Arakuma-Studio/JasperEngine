@@ -431,6 +431,11 @@ TextureRender* TitleArtSystem::getDisplayTexture(Entity entity, bool* transparen
     if (instance.lendingRealtime && instance.live){
         if (TextureRender* texture = TitleArtRuntime::display(*instance.live)) return texture;
     }
+    // S85 R16: a Baked flipbook's frame shows by texture rect on its page
+    if (instance.animationPage){
+        TextureRender* page = instance.animationPage->getRender();
+        if (page && page->isCreated()) return page;
+    }
     TextureRender* bake = instance.bakeTexture.getRender();
     return bake && bake->isCreated() ? bake : nullptr;
 }
@@ -461,6 +466,11 @@ void TitleArtSystem::update(double dt){
     state->contextId = contextId;
 
     auto titles = scene->getComponentArray<TitleArtRendererComponent>();
+    animatingTitles = 0;
+    for (size_t i = 0; i < titles->size(); i++){
+        TitleArtRendererComponent& title = titles->getComponentFromIndex(i);
+        if (title.runtime && title.runtime->live && title.runtime->animation.isPlaying()) animatingTitles++;
+    }
     for (size_t i = 0; i < titles->size(); i++){
         const Entity entity = titles->getEntity(i);
         TitleArtRendererComponent& title = titles->getComponentFromIndex(i);
@@ -508,6 +518,9 @@ void TitleArtSystem::resolve(Entity entity, TitleArtRendererComponent& title, Ti
     instance.anchors.clear();
     instance.readyHash = 0;
     instance.failedHash = 0;
+    // S85: the animations load again from the new document or bake (what plays carries on by name)
+    instance.animationLoaded = false;
+    instance.animationPage = nullptr;
     if (title.title.path.empty()) return;
 
     const std::string name = scene->getEntityName(entity);
@@ -583,6 +596,9 @@ void TitleArtSystem::updateTitle(Entity entity, TitleArtRendererComponent& title
         restoreCompanion(entity, instance);
         instance.wasEnabled = false;
         title.sweepPositionKeyed = false;
+        title.animationTimeKeyed = false;
+        // S85: Play Automatically runs again at the next enable
+        instance.animationAutoStarted = false;
         return;
     }
 
@@ -601,10 +617,12 @@ void TitleArtSystem::updateTitle(Entity entity, TitleArtRendererComponent& title
     }
     title.sweepPositionKeyed = false;
 
+    updateAnimation(entity, title, instance, dt);
     updateLive(entity, title, instance);
     updateLiveEffects(entity, title, instance);
     updateStatus(entity, title, instance);
     subscribeEvents(entity);
+    dispatchAnimationEvents(entity, title, instance, dt);
 }
 
 // ---- Realtime and Glyph Atlas ----
@@ -689,6 +707,8 @@ void TitleArtSystem::updateLive(Entity entity, TitleArtRendererComponent& title,
     liveState.glowOutput = title.glowEnabled;
     auto simulated = simulatedCharacters().find(title.title.path);
     if (simulated != simulatedCharacters().end() && !paused) liveState.characters = simulated->second + title.additionalCharacters;
+    // S85 R14-R18: the animation's re-render values join the state (rate-limited)
+    TitleArtRuntime::setAnimation(*instance.live, instance.animation, animatingTitles);
     TitleArtRuntime::setState(*instance.live, liveState);
     if (!instance.prebakeChecked){
         // R11: a build ships the initial state's image; the first frame shows it at once
@@ -731,15 +751,40 @@ void TitleArtSystem::updateLiveEffects(Entity entity, TitleArtRendererComponent&
     if (instance.lendingRealtime && instance.live && title.transition == TitleArtTransition::CROSSFADE)
         previous = TitleArtRuntime::previousFramebuffer(*instance.live, &crossfade);
 
+    // S85 R13: a playing animation's Live Effect values are runtime values (never written to the
+    // component, so never saved); a live.* track turns its effect on with the instance's settings
+    const titleanim::TitlePoseSummary& pose = instance.animationSummary;
+    auto liveSet = [&](titleanim::TitleField f){ return instance.animationDrawn && pose.liveSet[(size_t)f]; };
+    auto liveValue = [&](titleanim::TitleField f, float fallback){ return liveSet(f) ? (float)pose.live[(size_t)f] : fallback; };
+    const bool flipbookFrame = instance.animationPage != nullptr;
+    const bool sweepOn = title.sweepEnabled || liveSet(titleanim::TitleField::SweepPosition) || liveSet(titleanim::TitleField::SweepAngle) ||
+                         liveSet(titleanim::TitleField::SweepWidth);
+    const bool glowOn = title.glowEnabled || liveSet(titleanim::TitleField::GlowPulse);
+    const bool tintOn = title.tintEnabled || liveSet(titleanim::TitleField::TintColor) || liveSet(titleanim::TitleField::TintAmount);
+    const bool glintsOn = title.glintsEnabled || liveSet(titleanim::TitleField::GlintAmount);
+    const float sweepPosition = liveValue(titleanim::TitleField::SweepPosition, title.sweepPosition);
+    const float sweepAngle = liveValue(titleanim::TitleField::SweepAngle, title.sweepAngle);
+    const float sweepWidth = liveValue(titleanim::TitleField::SweepWidth, title.sweepWidth);
+    // R16: Glow Pulse needs a glow output, which flipbook frames do not have: it holds 0 over them
+    const float glowPulse = flipbookFrame ? 0.0f : liveValue(titleanim::TitleField::GlowPulse, title.glowPulse);
+    const float tintAmount = liveValue(titleanim::TitleField::TintAmount, title.tintAmount);
+    const float glintAmount = liveValue(titleanim::TitleField::GlintAmount, title.glintAmount);
+    Vector4 tintColor = title.tintColor;
+    if (liveSet(titleanim::TitleField::TintColor)){
+        const Vector4 srgb((float)pose.tintColor[0], (float)pose.tintColor[1], (float)pose.tintColor[2], 1.0f);
+        tintColor = Color::sRGBToLinear(srgb);
+    }
+
     uint64_t features = 0;
-    if (title.sweepEnabled) features |= LIVE_SWEEP;
+    if (sweepOn) features |= LIVE_SWEEP;
     // R35: Glow Pulse needs a glow output (the bake's, or the render's)
     Framebuffer* liveGlow = instance.lendingRealtime && instance.live ? TitleArtRuntime::glowFramebuffer(*instance.live) : nullptr;
     const bool glowAvailable = instance.lendingRealtime ? liveGlow != nullptr : !instance.glowPath.empty();
-    if (title.glowEnabled && glowAvailable) features |= LIVE_GLOW;
-    if (title.tintEnabled) features |= LIVE_TINT;
-    if (title.glintsEnabled && !instance.anchors.empty()) features |= LIVE_GLINTS;
+    if (glowOn && glowAvailable && !flipbookFrame) features |= LIVE_GLOW;
+    if (tintOn) features |= LIVE_TINT;
+    if (glintsOn && !instance.anchors.empty()) features |= LIVE_GLINTS;
     if (previous) features |= LIVE_CROSSFADE;
+    if (instance.animationDrawn) features |= LIVE_ANIM;
 
     UIComponent* ui = instance.space == TitleArtSpace::UI ? scene->findComponent<UIComponent>(entity) : nullptr;
     MeshComponent* mesh = instance.space == TitleArtSpace::World ? scene->findComponent<MeshComponent>(entity) : nullptr;
@@ -812,24 +857,24 @@ void TitleArtSystem::updateLiveEffects(Entity entity, TitleArtRendererComponent&
     ShaderUniformValues values;
     auto put = [&values](const std::string& name, const Vector4& v){ values.push_back({name, v}); };
     if (features & LIVE_SWEEP){
-        put("sweepParams", Vector4(std::min(1.0f, std::max(0.0f, title.sweepPosition)), std::max(0.0f, title.sweepWidth), title.sweepAngle,
+        put("sweepParams", Vector4(std::min(1.0f, std::max(0.0f, sweepPosition)), std::max(0.0f, sweepWidth), sweepAngle,
                                    std::min(1.0f, std::max(0.0f, title.sweepSoftness))));
         put("sweepColor", title.sweepColor);
     }
     if (features & LIVE_GLOW){
         put("glowColor", title.glowColor);
-        put("glowParams", Vector4(std::max(0.0f, title.glowPulse), 0.0f, 0.0f, 0.0f));
+        put("glowParams", Vector4(std::max(0.0f, glowPulse), 0.0f, 0.0f, 0.0f));
     }
     if (features & LIVE_TINT){
-        put("tintColor", title.tintColor);
-        put("tintParams", Vector4(std::min(1.0f, std::max(0.0f, title.tintAmount)), 0.0f, 0.0f, 0.0f));
+        put("tintColor", tintColor);
+        put("tintParams", Vector4(std::min(1.0f, std::max(0.0f, tintAmount)), 0.0f, 0.0f, 0.0f));
     }
     if (features & LIVE_GLINTS){
         const int frameWidth = instance.lendingRealtime ? instance.liveStatus.frame.frame.width : instance.bake.frame.width;
         const int frameHeight = instance.lendingRealtime ? instance.liveStatus.frame.frame.height : instance.bake.frame.height;
         const float aspect = frameHeight > 0 && frameWidth > 0 ? (float)frameWidth / (float)frameHeight : 1.0f;
         put("glintColor", title.glintColor);
-        put("glintParams", Vector4(std::max(0.0f, title.glintAmount), std::max(0.0f, title.glintSize), title.glintRate,
+        put("glintParams", Vector4(std::max(0.0f, glintAmount), std::max(0.0f, title.glintSize), title.glintRate,
                                    (float)(title.glintSeed & 0xFFFFu)));
         put("glintInfo", Vector4((float)std::min(instance.anchors.size(), TITLE_ART_MAX_ANCHORS), title.liveTime, aspect, 0.0f));
         for (size_t a = 0; a < TITLE_ART_MAX_ANCHORS; a++){
@@ -842,6 +887,18 @@ void TitleArtSystem::updateLiveEffects(Entity entity, TitleArtRendererComponent&
         }
     }
     if (features & LIVE_CROSSFADE) put("crossfadeParams", Vector4(crossfade, 0.0f, 0.0f, 0.0f));
+    if (features & LIVE_ANIM){
+        const titleanim::CompanionAnimUniforms& u = instance.animationUniforms;
+        auto v4 = [](const float* f){ return Vector4(f[0], f[1], f[2], f[3]); };
+        put("animAffine0", v4(u.affine0));
+        put("animAffine1", v4(u.affine1));
+        put("animColor", v4(u.color));
+        put("frameRect", v4(u.frameRect));
+        put("frameRect2", v4(u.frameRect2));
+        put("animVertex0", v4(u.vertex0));
+        put("animVertex1", v4(u.vertex1));
+        put("animSpace", v4(instance.animationSpace));
+    }
 
     ShaderUniformValues& uniforms = ui ? ui->shaderUniforms : mesh->shaderUniforms;
     if (uniforms != values){
@@ -953,8 +1010,12 @@ void TitleArtSystem::handleEvent(Entity player, const AnimationEvent& event, con
     }
     std::string error;
     if (fn == "titleArtPlay"){
-        // S85 defines the animations; until it lands no name plays
-        warn("no Title Art animation '" + eventArgString(event, first) + "' (Title Art animations arrive with the animation tools)");
+        // S85 R27: starts an animation without a script
+        const std::string name = eventArgString(event, first);
+        if (!playAnimation(scene, target, name, titleanim::TitleAnimPlayOptions())){
+            const std::vector<std::string> names = animationNames(scene, target);
+            warn("no Title Art animation '" + name + "' (it has: " + joinNames(names) + ")");
+        }
         return;
     }
     bool ok = false;

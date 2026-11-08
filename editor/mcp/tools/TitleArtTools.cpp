@@ -27,6 +27,11 @@
 #include "titleart/fx/FxRecipes.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
+#include "titleart/anim/TitleAnimOps.h"
+#include "titleart/anim/TitleAnimPresets.h"
+#include "titleart/anim/TitleFlipbookBaker.h"
+#include "titleart/anim/TitleAnimChecks.h"
+#include "TitleArtToolsAnimation.h"
 #include "titleart/TitleArtSchema.h"
 #include "titleart/TitleEffectCatalog.h"
 #include "titleart/TitleEffectRegistry.h"
@@ -219,6 +224,7 @@ void listTitleLibraryTool(const CallPtr& call) {
             else if (std::strcmp(k.kind, "materials_3d") == 0) n = titleart::title3DMaterialPresetNames().size();
             else if (std::strcmp(k.kind, "environments") == 0) n = titleart::title3DEnvironmentNames().size();
             else if (std::strcmp(k.kind, "bevel_profiles") == 0) n = titleart::three_d::bevelProfileNames().size();
+            else if (std::strcmp(k.kind, "animation_presets") == 0) n = TitleAnimPresets::all().size();
             counts[k.kind] = n;
             text += " " + std::string(k.kind) + " " + std::to_string(n) + (*k.owner ? " (" + std::string(k.owner) + ")" : "") + ",";
         }
@@ -230,6 +236,10 @@ void listTitleLibraryTool(const CallPtr& call) {
     for (const LibraryKind& k : LIBRARY_KINDS) if (kind == k.kind) known = &k;
     if (!known) {
         call->fail("Unknown kind '" + kind + "'.");
+        return;
+    }
+    if (kind == "animation_presets") {
+        listAnimationPresets(call);
         return;
     }
     if (*known->owner && std::strcmp(known->owner, "S86") != 0) {
@@ -614,6 +624,17 @@ void getTitleTool(const CallPtr& call) {
     const titleart::Json stats3d = title3DStats(doc, TitleArtRenderHost::editor().resolver(project), titleart::TitleTier::Bake);
     if (!stats3d.empty()) out["stats_3d"] = fromOrdered(stats3d);
     out["exposed"] = fromOrdered(doc.root["exposed"]);
+    // S85 R51: the animations' outline, and one animation (or "*") in full
+    const Json animations = titleAnimationsOutline(project, file, doc);
+    if (!animations.is_null()) out["animations"] = animations;
+    if (args.contains("animation") && args["animation"].is_string()) {
+        Json detail;
+        if (!titleAnimationGet(doc, args["animation"].get<std::string>(), detail, error)) {
+            call->fail(error);
+            return;
+        }
+        out["animation"] = detail;
+    }
     out["outputs"] = outputsOf(project, file, doc);
     out["problems"] = problemsOf(project, doc, document->warnings());
     if (document->migrated()) out["migrated_from"] = document->versionRead();
@@ -733,9 +754,15 @@ void editTitleTool(const CallPtr& call) {
         options.expectRev = args.value("expect_rev", static_cast<int64_t>(-1));
         options.dryRun = dryRun;
         options.origin = TitleArtChangeOrigin::Agent;
+        const titleart::TitleArtDoc before = document->doc();
         const TitleOpsResult result = document->edit(toOrdered(args["ops"]), options);
         Json outcome = opsResultJson(result);
         for (auto it = outcome.begin(); it != outcome.end(); ++it) structured[it.key()] = it.value();
+        // S85 R50: the animations the batch changed, with their cost
+        if (result.ok) {
+            const Json changed = titleAnimationChanges(project, file, before, dryRun ? result.doc : document->doc());
+            if (!changed.is_null()) for (auto it = changed.begin(); it != changed.end(); ++it) structured[it.key()] = it.value();
+        }
         if (!result.ok) {
             structured["path"] = relative;
             structured["rev"] = document->revision();
@@ -843,27 +870,59 @@ void exportTitleTool(const CallPtr& call) {
         call->fail(code + ": " + error + ". Nothing was written.", Json{{"code", code}});
         return;
     }
+    // S85 R55: a document with animations bakes its flipbooks and <file>.anim.json after the outputs
+    std::shared_ptr<TitleFlipbookBakeJob> flipbooks = titleFlipbookJob(project, file, doc, args, error);
+    if (!flipbooks && !error.empty()) {
+        call->fail(error + ". Nothing was written.");
+        return;
+    }
     auto job = std::make_shared<TitleArtBakeJob>(project, file, std::move(doc), options);
     auto task = std::make_shared<FrameTask>();
     std::weak_ptr<FrameTask> weakTask = task;
-    task->tick = [job, relative, project, weakTask](McpJob& mcpJob) {
+    task->tick = [job, flipbooks, relative, project, weakTask](McpJob& mcpJob) {
         auto t = weakTask.lock();
         if (!t) return true;
-        const bool done = job->step(8.0);
-        mcpJob.setProgress(job->progress(), job->progressText());
-        if (!done) return false;
+        if (!job->done()) {
+            const bool done = job->step(8.0);
+            mcpJob.setProgress(job->progress() * (flipbooks ? 0.5 : 1.0), job->progressText());
+            if (!done || !job->result().ok) {
+                if (done) {
+                    Json out = fromOrdered(job->result().toJson());
+                    out["path"] = relative;
+                    mcpJob.fail(job->result().error, out);
+                    return true;
+                }
+                return false;
+            }
+        }
+        if (flipbooks && !flipbooks->done()) {
+            const bool done = flipbooks->step(8.0);
+            mcpJob.setProgress(0.5 + 0.5 * flipbooks->progress(), flipbooks->progressText());
+            if (!done) return false;
+        }
         const TitleBakeResult& result = job->result();
         Json out = fromOrdered(result.toJson());
         out["path"] = relative;
-        if (!result.ok) {
-            mcpJob.fail(result.error, out);
-            return true;
+        if (flipbooks) {
+            out["flipbooks"] = flipbookReportJson(flipbooks->result());
+            if (!flipbooks->result().ok) {
+                mcpJob.fail("The outputs were baked; the flipbooks failed: " + flipbooks->result().error, out);
+                return true;
+            }
         }
         size_t written = 0;
         for (const TitleBakeFile& f : result.files) written += f.status == "written" ? 1 : 0;
         t->text = (written ? "Baked " + std::to_string(written) + " output(s) of " : std::string("Nothing to write for ")) + relative;
         if (!result.files.empty()) t->text += ": " + result.files.front().path + " " + std::to_string(result.files.front().width) + " x " +
                                               std::to_string(result.files.front().height) + " (" + result.files.front().status + ")";
+        if (flipbooks) {
+            int frames = 0, pages = 0;
+            for (const TitleFlipbookReport& r : flipbooks->result().animations){
+                frames += r.unique;
+                pages += r.pages;
+            }
+            t->text += "; flipbooks: " + std::to_string(frames) + " unique frame(s) on " + std::to_string(pages) + " page(s)";
+        }
         if (!result.warnings.empty()) t->text += "; " + std::to_string(result.warnings.size()) + " warning(s)";
         t->text += ".";
         (void)project;
@@ -1058,13 +1117,16 @@ void registerTitleArtTools(McpRegistry& registry) {
     registerBuiltinTitleChecks();
     registerTitleFxOps();
     registerTitle3DEditor();
+    registerTitleAnimOps();
+    registerTitleAnimPresetOp();
+    registerTitleAnimChecks();
     {
         ToolDef tool;
         tool.name = "list_title_library";
         tool.title = "List Title Library";
         tool.description =
             "The Title Art catalogue. No args: counts per kind. kind effects, generators, blend_modes, fonts, environments, "
-            "materials_3d, bevel_profiles lists rows (looks, color_schemes, templates, animation_presets: later). "
+            "materials_3d, bevel_profiles, animation_presets lists rows (looks, color_schemes, templates: later). "
             "id: one effect's, recipe's or generator's params, presets and the op to paste. query searches names, aliases, presets; "
             "category filters.";
         std::vector<std::string> kinds;
@@ -1103,6 +1165,7 @@ void registerTitleArtTools(McpRegistry& registry) {
             {"layer", string("")},
             {"detail", withDefault(stringEnum("", {"outline", "overrides", "full"}), "outline")},
             {"fields", array(string(""), "")},
+            {"animation", string("A name, or *.")},
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -1193,6 +1256,7 @@ void registerTitleArtTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"path", string("")},
             {"checks", array(string(""), "")},
+            {"animation", string("")},
             {"backgrounds", array(string(""), "")},
             {"baseline", string("PNG or rev:<n>.")},
             {"save_baseline", string("PNG path.")},
@@ -1222,6 +1286,7 @@ void registerTitleArtTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"path", string("")},
             {"outputs", array(string(""), "")},
+            {"animations", array(string(""), "Flipbooks.")},
             {"format", withDefault(stringEnum("", formats), "bake")},
             {"options", anyObject("")},
             {"dry_run", boolean("")},

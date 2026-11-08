@@ -8,6 +8,7 @@
 // their names, types and errors.
 
 #include "subsystem/TitleArtRuntime.h"
+#include "titleanim/TitleAnimPlayer.h"
 
 #include "io/Data.h"
 #include "json.hpp"
@@ -115,6 +116,15 @@ void TitleArtRuntime::runFrame(double, bool){
 }
 
 void TitleArtRuntime::releaseAll(){
+}
+
+std::shared_ptr<titleanim::TitleAnimLibrary> TitleArtRuntime::compileAnimations(const std::string&, std::string* error){
+    // without the module a title plays what its bake wrote: <file>.anim.json (S85 R60)
+    if (error) *error = "this build has no Title Art module";
+    return nullptr;
+}
+
+void TitleArtRuntime::setAnimation(TitleArtLive&, const titleanim::TitleAnimPlayer&, int){
 }
 
 void TitleArtRuntime::setFrameBudget(double){

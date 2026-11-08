@@ -1,0 +1,52 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "halftone_in",
+  "name": "Halftone Dissolve",
+  "group": "in",
+  "role": "intro",
+  "duration": 0.6,
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Dissolves in from halftone dots.",
+  "params": [
+    {
+      "name": "size",
+      "label": "Dot Size (px)",
+      "type": "number",
+      "default": 12,
+      "min": 2,
+      "max": 120
+    }
+  ],
+  "adds": [
+    {
+      "id": "halftone",
+      "kind": "effect",
+      "type": "halftone",
+      "preset": "dissolve",
+      "params": {
+        "size": "size"
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "target": "add:halftone",
+      "field": "fx:halftone.fade",
+      "keys": [
+        [
+          0,
+          60,
+          "sine_out"
+        ],
+        [
+          "D",
+          0
+        ]
+      ]
+    }
+  ],
+  "markers": []
+}

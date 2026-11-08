@@ -36,6 +36,12 @@
 #include <string>
 #include <vector>
 
+namespace jasperengine::titleanim{
+    struct TitleAnimPlayOptions;
+    class TitleAnimPlayer;
+    struct CompiledMarker;
+}
+
 namespace jasperengine{
 
     class TextureRender;
@@ -145,6 +151,22 @@ namespace jasperengine{
         // every instance resolves again (the editor's reload and document hooks)
         static void notifyTitleChanged(const std::string& titlePath);
 
+        // ---- S85's animations (docs/specs/S85-title-animation.md R24-R31, §6.5) ----
+        // false (one warning per name and component, R30) for a name the title does not have
+        static bool playAnimation(EntityRegistry* scene, Entity entity, const std::string& name, const titleanim::TitleAnimPlayOptions& options,
+                                  bool overlay = false);
+        // "" stops every animation (the pose stays); a name stops that one; false when it does not play
+        static bool stopAnimation(EntityRegistry* scene, Entity entity, const std::string& name);
+        static void resetAnimation(EntityRegistry* scene, Entity entity);
+        static bool sampleAnimation(EntityRegistry* scene, Entity entity, const std::string& name, double time);
+        // Realtime prerender and Glyph Atlas cells asked for now; true when it plays at once
+        static bool prepareAnimation(EntityRegistry* scene, Entity entity, const std::string& name);
+        static bool isAnimationReady(EntityRegistry* scene, Entity entity, const std::string& name);
+        static std::vector<std::string> animationNames(EntityRegistry* scene, Entity entity);
+        static double animationDuration(EntityRegistry* scene, Entity entity, const std::string& name);
+        // the animations as the instance plays them (loaded on first use); null when none
+        static titleanim::TitleAnimPlayer* animationPlayer(EntityRegistry* scene, Entity entity);
+
         // tests: TITLE_ART_TEST_* flags copied into every request of the instance (R21)
         static void setDisabledFeaturesForTesting(EntityRegistry* scene, Entity entity, uint32_t flags);
 
@@ -157,6 +179,8 @@ namespace jasperengine{
     private:
         struct State;
         std::unique_ptr<State> state;
+        // S85 R18: the titles whose animation plays this frame (their share of the frame budget)
+        int animatingTitles = 0;
 
         void resolve(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance);
         void updateTitle(Entity entity, TitleArtRendererComponent& title, double dt);
@@ -166,6 +190,11 @@ namespace jasperengine{
         void restoreCompanion(Entity entity, titleart::TitleArtInstance& instance);
         void updateStatus(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance);
         void subscribeEvents(Entity entity);
+        // S85: the library, the frame's player update and its markers, the companion's draw values
+        static void loadAnimations(EntityRegistry* scene, Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance);
+        void updateAnimation(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance, double dt);
+        void dispatchAnimationEvents(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance, double dt);
+        void playMarkerSound(Entity entity, const titleanim::CompiledMarker& marker, float fraction, double dt);
         void handleEvent(Entity player, const AnimationEvent& event, const std::string& source);
         bool isVisible(Entity entity, const TitleArtRendererComponent& title, const titleart::TitleArtInstance& instance) const;
         float displayResolution(Entity entity, const TitleArtRendererComponent& title, const titleart::TitleArtInstance& instance) const;

@@ -16,11 +16,17 @@
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/runtime/TitleArtLive.h"
 #include "titleart/runtime/TitleArtScheduler.h"
+#include "titleart/anim/TitleAnimIO.h"
+#include "titleart/anim/TitleAnimPlan.h"
+#include "titleart/anim/TitleAnimRealtime.h"
+#include "titleart/text/TitleTextLayout.h"
+#include "titleanim/TitleAnimPlayer.h"
 #include "util/Color.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <map>
 
 using namespace jasperengine;
 using namespace jasperengine::titleart;
@@ -151,6 +157,7 @@ namespace {
         hash = hashCombine(hash, (uint64_t)std::llround(state.resolution * 8.0f));
         hash = hashCombine(hash, ((uint64_t)(uint32_t)state.region.x << 32) ^ (uint32_t)state.region.y);
         hash = hashCombine(hash, ((uint64_t)(uint32_t)state.region.width << 32) ^ (uint32_t)state.region.height);
+        hash = hashCombine(hash, live.animationOverridesHash());
         return hashCombine(hash, state.glowOutput ? 3u : 4u);
     }
 
@@ -171,10 +178,18 @@ uint64_t TitleArtRuntime::stateHashOf(TitleArtLive& live, const TitleArtLiveStat
     hash = hashCombine(hash, ((uint64_t)(uint32_t)state.region.width << 32) ^ (uint32_t)state.region.height);
     hash = hashCombine(hash, titleArtForceRgba8() || (state.testFlags & TITLE_ART_TEST_NO_FLOAT_TARGETS) ? 1u : 2u);
     hash = hashCombine(hash, state.glowOutput ? 3u : 4u);
+    hash = hashCombine(hash, live.animationOverridesHash());
     return hash == 0 ? 1 : hash;
 }
 
 namespace {
+
+    // the request's overrides: the exposed values', then the animation's (S85 R18)
+    std::vector<FieldOverride> withAnimation(const TitleArtLive& live, std::vector<FieldOverride> overrides){
+        const std::vector<FieldOverride>& animation = live.animationOverrides();
+        overrides.insert(overrides.end(), animation.begin(), animation.end());
+        return overrides;
+    }
 
     std::vector<uint32_t> decodeUtf8(const std::string& text){
         std::vector<uint32_t> out;
@@ -224,12 +239,51 @@ void TitleArtRuntime::setState(TitleArtLive& live, const TitleArtLiveState& stat
         for (uint32_t cp : missing) appendUtf8(missingText, cp);
         live.setMissingCharacters(missingText);
         const uint64_t hash = stateHashOf(live, filtered);
-        live.setState(filtered, hash, fieldOverrides(*live.document(), filtered.overrides));
+        live.setState(filtered, hash, withAnimation(live, fieldOverrides(*live.document(), filtered.overrides)));
         return;
     }
     live.setMissingCharacters(std::string());
     const uint64_t hash = stateHashOf(live, state);
-    live.setState(state, hash, fieldOverrides(*live.document(), state.overrides));
+    live.setState(state, hash, withAnimation(live, fieldOverrides(*live.document(), state.overrides)));
+}
+
+std::shared_ptr<titleanim::TitleAnimLibrary> TitleArtRuntime::compileAnimations(const std::string& titlePath, std::string* error){
+    std::shared_ptr<const TitleArtDoc> doc = loadDocument(titlePath, error);
+    if (!doc) return nullptr;
+    if (!hasAnimations(*doc)) return std::make_shared<titleanim::TitleAnimLibrary>();
+    TitleTextLayout layout(TitleArtScheduler::get().assetResolver());
+    return titleart::compileAnimations(*doc, &layout, nullptr);
+}
+
+void TitleArtRuntime::setAnimation(TitleArtLive& live, const titleanim::TitleAnimPlayer& player, int animatingTitles){
+    const std::shared_ptr<const titleanim::TitleAnimLibrary>& library = player.library();
+    if (!library || !player.active()){
+        if (!live.animationOverrides().empty() || live.animating()) live.setAnimationOverrides({}, 0);
+        live.setAnimating(false, 1.0);
+        return;
+    }
+    // the plan of this library in this mode, made once (the library changes with the document)
+    if (live.animationPlanKey != library.get()){
+        live.animationPlanKey = library.get();
+        live.animationPlanCache = std::make_shared<TitleAnimPlan>(buildAnimPlan(*live.document(), library->animations, live.mode()));
+    }
+    const TitleAnimPlan& plan = *static_cast<const TitleAnimPlan*>(live.animationPlanCache.get());
+    // R18: what re-renders (rerender, prerender, plate re-render) is a request per sample time;
+    // title-live tracks are the companion's, glyph cells compose at the display rate
+    std::map<const titleanim::CompiledTitleTrack*, bool> rerendered;
+    for (const titleanim::CompiledTitleAnimation& a : library->animations){
+        const AnimationPlan* ap = plan.find(a.name);
+        if (!ap) continue;
+        for (const TrackPlan& t : ap->tracks){
+            const bool rerender = t.how == "rerender" || t.how == "prerender" || t.how == "plate_rerender" || t.how == "layer_split";
+            if (rerender && t.track < a.tracks.size()) rerendered[&a.tracks[t.track]] = true;
+        }
+    }
+    PlayerPose pose;
+    playerPose(*live.document(), player, true, [&](const titleanim::CompiledTitleTrack& t){ return rerendered.count(&t) > 0; }, pose);
+    live.setAnimationOverrides(pose.values.overrides(), pose.values.hash());
+    const int n = std::max(1, animatingTitles);
+    live.setAnimating(player.isPlaying(), 1.0 / (double)n);
 }
 
 TitleArtLiveStatus TitleArtRuntime::status(const TitleArtLive& live){

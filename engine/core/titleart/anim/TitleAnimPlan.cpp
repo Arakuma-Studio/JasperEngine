@@ -142,6 +142,8 @@ GlyphUnits jasperengine::titleart::glyphUnitsOf(const Json& textLayer, ta::Stagg
     for (size_t i = 0; i < order.size(); i++) order[i] = i;
     std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b){ return elements[a].index < elements[b].index; });
     out.clusterUnit.assign(elements.size(), -1);
+    out.clusterIndex.resize(elements.size());
+    for (size_t i = 0; i < elements.size(); i++) out.clusterIndex[i] = elements[i].index;
     int32_t current = -1;
     uint32_t lastLine = ~0u;
     bool inWord = false;
@@ -228,17 +230,17 @@ ta::CompiledTitleAnimation jasperengine::titleart::compileAnimation(const TitleA
         c.cls = classOf(doc, track, info, &reason);
         const size_t width = c.width;
         const bool virtualField = info.target == ta::TrackTarget::Title || info.target == ta::TrackTarget::Glyph;
+        c.integer = info.integer;
+        if (virtualField){
+            const ta::VirtualFieldInfo v = info.target == ta::TrackTarget::Title ? ta::titleFieldInfo(info.titleField) : ta::glyphFieldInfo(info.glyphField);
+            c.relativeCombine = v.relativeCombine;
+        }else{
+            c.relativeCombine = multipliesWhenRelative(info, info.longPath) ? ta::TrackCombine::Multiply : ta::TrackCombine::Add;
+        }
         // R4: relative tracks add or multiply; stepped ones are refused (absolute)
         if (track.relative && info.stepped)
             note(TitleSeverity::Warning, "relative_stepped", track.layer, at, animation.name + ": " + track.field + " is stepped: it plays absolute");
-        if (track.relative && !info.stepped){
-            if (virtualField){
-                const ta::VirtualFieldInfo v = info.target == ta::TrackTarget::Title ? ta::titleFieldInfo(info.titleField) : ta::glyphFieldInfo(info.glyphField);
-                c.combine = v.relativeCombine;
-            }else{
-                c.combine = multipliesWhenRelative(info, info.longPath) ? ta::TrackCombine::Multiply : ta::TrackCombine::Add;
-            }
-        }
+        if (track.relative && !info.stepped) c.combine = c.relativeCombine;
         // rests: virtual and child fields hold raw values (their consumers combine per element);
         // a document field combines with the document's value
         if (virtualField || info.target == ta::TrackTarget::Child){
@@ -246,7 +248,12 @@ ta::CompiledTitleAnimation jasperengine::titleart::compileAnimation(const TitleA
             c.rest.assign(width, identity);
         }else if (!info.stepped){
             std::vector<float> rest = floatsOf(info.rest, info.value, info.width);
-            if (info.component >= 0) rest = {rest.size() > (size_t)info.component ? rest[(size_t)info.component] : 0.0f};
+            if (info.component >= 0){
+                // the whole value's rest, for the components the track leaves alone
+                const ta::TrackValue whole = info.value == ta::TrackValue::Number && info.rest.is_string() ? ta::TrackValue::Color : info.value;
+                c.wholeRest = floatsOf(info.rest, whole, info.rest.is_array() ? (int)info.rest.size() : (info.rest.is_string() ? 3 : 1));
+                rest = {(size_t)info.component < c.wholeRest.size() ? c.wholeRest[(size_t)info.component] : 0.0f};
+            }
             c.rest = rest;
         }
         if (track.reseed){
@@ -321,19 +328,23 @@ ta::CompiledTitleAnimation jasperengine::titleart::compileAnimation(const TitleA
             ta::compileNumericKeys(keys, width, c);
         }
         // stagger: units of the text (glyph tracks) or the group's children (child tracks)
-        if (track.stagger && (info.target == ta::TrackTarget::Glyph || info.target == ta::TrackTarget::Child)){
-            size_t units = 0;
-            if (info.target == ta::TrackTarget::Glyph && info.layer){
-                const GlyphUnits g = glyphUnitsOf(*info.layer, track.stagger->unit, layout);
+        // (each element's cluster or child index is kept for every glyph and child track)
+        if (info.target == ta::TrackTarget::Glyph && info.layer){
+            const GlyphUnits g = glyphUnitsOf(*info.layer, track.stagger ? track.stagger->unit : ta::StaggerUnit::Glyph, layout);
+            c.elementIndex = g.clusterIndex;
+            if (track.stagger && g.count > 0){
                 c.elementUnit = g.clusterUnit;
-                units = g.count;
-            }else if (info.layer){
-                const size_t children = layerChildren(*info.layer).size();
+                ta::staggerDelays(*track.stagger, g.count, documentSeed, c.unitDelays);
+            }
+        }else if (info.target == ta::TrackTarget::Child && info.layer){
+            const size_t children = layerChildren(*info.layer).size();
+            c.elementIndex.resize(children);
+            for (size_t k = 0; k < children; k++) c.elementIndex[k] = (uint32_t)k;
+            if (track.stagger && children > 0){
                 c.elementUnit.resize(children);
                 for (size_t k = 0; k < children; k++) c.elementUnit[k] = (int32_t)k;
-                units = children;
+                ta::staggerDelays(*track.stagger, children, documentSeed, c.unitDelays);
             }
-            if (units > 0) ta::staggerDelays(*track.stagger, units, documentSeed, c.unitDelays);
         }
         out.tracks.push_back(std::move(c));
     }

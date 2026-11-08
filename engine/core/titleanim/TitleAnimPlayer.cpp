@@ -16,36 +16,36 @@ namespace {
         return (float)(v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4));
     }
 
-    double lerp(double a, double b, double w){
+    double blendValue(double a, double b, double w){
         return a + (b - a) * w;
     }
 
     // the fade (R26): every value from the snapshot toward the new pose
     void blendSummary(const TitlePoseSummary& from, TitlePoseSummary& to, double w, const double* liveRest){
         for (int i = 0; i < 2; i++){
-            to.position[i] = lerp(from.position[i], to.position[i], w);
-            to.stretch[i] = lerp(from.stretch[i], to.stretch[i], w);
-            to.pivot[i] = lerp(from.pivot[i], to.pivot[i], w);
+            to.position[i] = blendValue(from.position[i], to.position[i], w);
+            to.stretch[i] = blendValue(from.stretch[i], to.stretch[i], w);
+            to.pivot[i] = blendValue(from.pivot[i], to.pivot[i], w);
         }
-        to.rotation = lerp(from.rotation, to.rotation, w);
-        to.scale = lerp(from.scale, to.scale, w);
-        to.opacity = lerp(from.opacity, to.opacity, w);
+        to.rotation = blendValue(from.rotation, to.rotation, w);
+        to.scale = blendValue(from.scale, to.scale, w);
+        to.opacity = blendValue(from.opacity, to.opacity, w);
         for (int i = 0; i < 3; i++){
-            to.flashColor[i] = lerp(from.flashColor[i], to.flashColor[i], w);
+            to.flashColor[i] = blendValue(from.flashColor[i], to.flashColor[i], w);
         }
-        to.flashAmount = lerp(from.flashAmount, to.flashAmount, w);
+        to.flashAmount = blendValue(from.flashAmount, to.flashAmount, w);
         to.transformed = to.transformed || from.transformed;
         for (size_t f = 0; f < (size_t)TitleField::Count; f++){
             if (!from.liveSet[f] && !to.liveSet[f]) continue;
             const double rest = liveRest ? liveRest[f] : (double)titleFieldInfo((TitleField)f).rest[0];
             const double a = from.liveSet[f] ? from.live[f] : rest;
             const double b = to.liveSet[f] ? to.live[f] : rest;
-            to.live[f] = lerp(a, b, w);
+            to.live[f] = blendValue(a, b, w);
             to.liveSet[f] = true;
         }
         const size_t tint = (size_t)TitleField::TintColor;
         if (from.liveSet[tint] || to.liveSet[tint]){
-            for (int i = 0; i < 3; i++) to.tintColor[i] = lerp(from.tintColor[i], to.tintColor[i], w);
+            for (int i = 0; i < 3; i++) to.tintColor[i] = blendValue(from.tintColor[i], to.tintColor[i], w);
         }
     }
 
@@ -110,6 +110,7 @@ bool TitleAnimPlayer::start(PlayingAnimation& slot, const CompiledTitleAnimation
     slot.started = false;
     slot.finished = false;
     slot.held = false;
+    slot.unscaled = options.unscaled;
     slot.serial = ++serials;
     slot.pose.size(animation);
     samplePose(slot);
@@ -275,9 +276,15 @@ bool TitleAnimPlayer::advance(PlayingAnimation& p, double dt, double frameDt, do
 }
 
 void TitleAnimPlayer::update(double dt, std::vector<FiredMarker>& markers, std::vector<std::string>& finished){
+    update(dt, dt, markers, finished);
+}
+
+void TitleAnimPlayer::update(double scaledDt, double unscaledDt, std::vector<FiredMarker>& markers, std::vector<std::string>& finished){
     if (!lib) return;
     const size_t firstMarker = markers.size();
-    const double frameDt = std::isfinite(dt) ? std::max(0.0, dt) : 0.0;
+    const double scaled = std::isfinite(scaledDt) ? std::max(0.0, scaledDt) : 0.0;
+    const double unscaled = std::isfinite(unscaledDt) ? std::max(0.0, unscaledDt) : 0.0;
+    const double frameDt = base.unscaled ? unscaled : scaled;
     const bool advancing = !pausedFlag && !stopped;
     if (base.animation && advancing && !base.held && !base.finished && !driven){
         double remaining = frameDt, offset = 0.0;
@@ -294,6 +301,7 @@ void TitleAnimPlayer::update(double dt, std::vector<FiredMarker>& markers, std::
             // R26: the next one starts in the same frame, at the overflow time
             TitleAnimPlayOptions options;
             options.speed = base.speed;
+            options.unscaled = base.unscaled;
             start(base, *next, options);
             base.started = true;
             emitMarkers(base, 0.0, 0.0, true, 1.0, frameDt, offset, markers);
@@ -303,7 +311,8 @@ void TitleAnimPlayer::update(double dt, std::vector<FiredMarker>& markers, std::
     for (size_t i = 0; i < overlayList.size();){
         PlayingAnimation& o = overlayList[i];
         if (advancing && !o.held && !o.finished){
-            if (advance(o, frameDt, frameDt, 0.0, markers, nullptr, nullptr)){
+            const double overlayDt = o.unscaled ? unscaled : scaled;
+            if (advance(o, overlayDt, overlayDt, 0.0, markers, nullptr, nullptr)){
                 o.finished = true;
                 finished.push_back(o.name);
             }

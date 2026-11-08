@@ -19,6 +19,7 @@
 #include "math/Vector3.h"
 #include "math/Vector4.h"
 #include "object/TitleArt.h"
+#include "titleanim/TitleAnimPlayer.h"
 #include "subsystem/TitleArtSystem.h"
 
 #include <optional>
@@ -233,29 +234,51 @@ namespace {
         return table;
     }
 
-    // play(name, {speed, loop, unscaled})
-    bool playArgs(lua_State* L, TitleArt* self){
-        const char* name = luaL_checkstring(L, 2);
-        float speed = 1.0f;
-        bool loop = false, unscaled = false;
-        if (lua_istable(L, 3)){
-            lua_getfield(L, 3, "speed");
-            if (lua_isnumber(L, -1)) speed = (float)lua_tonumber(L, -1);
-            lua_pop(L, 1);
-            lua_getfield(L, 3, "loop");
-            loop = lua_toboolean(L, -1) != 0;
-            lua_pop(L, 1);
-            lua_getfield(L, 3, "unscaled");
-            unscaled = lua_toboolean(L, -1) != 0;
-            lua_pop(L, 1);
-        }
-        return self->play(name, speed, loop, unscaled);
+    // play(name, {speed, loop, unscaled, fade, time}): loop nil keeps the animation's wrap
+    titleanim::TitleAnimPlayOptions playOptions(lua_State* L, int index){
+        titleanim::TitleAnimPlayOptions options;
+        if (!lua_istable(L, index)) return options;
+        lua_getfield(L, index, "speed");
+        if (lua_isnumber(L, -1)) options.speed = (float)lua_tonumber(L, -1);
+        lua_pop(L, 1);
+        lua_getfield(L, index, "loop");
+        if (!lua_isnil(L, -1)) options.loop = lua_toboolean(L, -1) != 0 ? 1 : 0;
+        lua_pop(L, 1);
+        lua_getfield(L, index, "unscaled");
+        options.unscaled = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+        lua_getfield(L, index, "fade");
+        if (lua_isnumber(L, -1)) options.fade = (float)lua_tonumber(L, -1);
+        lua_pop(L, 1);
+        lua_getfield(L, index, "time");
+        if (lua_isnumber(L, -1)) options.time = lua_tonumber(L, -1);
+        lua_pop(L, 1);
+        return options;
     }
 
     int play(lua_State* L){
         TitleArt* self = titleSelf(L);
-        lua_pushboolean(L, playArgs(L, self) ? 1 : 0);
+        const char* name = luaL_checkstring(L, 2);
+        lua_pushboolean(L, self->play(name, playOptions(L, 3)) ? 1 : 0);
         return 1;
+    }
+
+    int playOverlay(lua_State* L){
+        TitleArt* self = titleSelf(L);
+        const char* name = luaL_checkstring(L, 2);
+        lua_pushboolean(L, self->playOverlay(name, playOptions(L, 3)) ? 1 : 0);
+        return 1;
+    }
+
+    // stop() every animation, stop(name) one
+    int stop(lua_State* L){
+        TitleArt* self = titleSelf(L);
+        if (lua_isstring(L, 2)){
+            lua_pushboolean(L, self->stop(std::string(lua_tostring(L, 2))) ? 1 : 0);
+            return 1;
+        }
+        self->stop();
+        return 0;
     }
 
 }
@@ -301,6 +324,12 @@ void LuaBinding::registerTitleArtClasses(lua_State *L){
         .addProperty("glintColor", &TitleArt::getGlintColor, &TitleArt::setGlintColor)
         .addProperty("animations", +[](const TitleArt* self, lua_State* L) { return stringList(L, self->getAnimations()); })
         .addProperty("isPlaying", &TitleArt::isPlaying)
+        .addProperty("paused", &TitleArt::isPaused, &TitleArt::setPaused)
+        .addProperty("animation", &TitleArt::getAnimation)
+        .addProperty("animationTime", &TitleArt::getAnimationTime, &TitleArt::setAnimationTime)
+        .addProperty("animationSpeed", &TitleArt::getAnimationSpeed, &TitleArt::setAnimationSpeed)
+        .addProperty("onAnimationEvent", [](TitleArt* self) { return &self->getOnAnimationEvent(); },
+                                         [](TitleArt* self, lua_State* L) { self->getOnAnimationEvent() = L; })
         .addProperty("onReady", [](TitleArt* self) { return &self->getOnReady(); },
                                 [](TitleArt* self, lua_State* L) { self->getOnReady() = L; })
         .addProperty("onFailed", [](TitleArt* self) { return &self->getOnFailed(); },
@@ -317,7 +346,14 @@ void LuaBinding::registerTitleArtClasses(lua_State *L){
         .addFunction("refresh", &TitleArt::refresh)
         .addFunction("setNativeSize", &setNativeSize)
         .addFunction("play", &play)
-        .addFunction("stop", &TitleArt::stop)
+        .addFunction("playOverlay", &playOverlay)
+        .addFunction("stop", &stop)
+        .addFunction("reset", &TitleArt::reset)
+        .addFunction("isAnimationPlaying", &TitleArt::isAnimationPlaying)
+        .addFunction("prepare", &TitleArt::prepare)
+        .addFunction("isAnimationReady", &TitleArt::isAnimationReady)
+        .addFunction("sample", &TitleArt::sample)
+        .addFunction("getDuration", &TitleArt::getDuration)
         .addStaticFunction("setFrameBudget", &TitleArt::setFrameBudget)
         .addStaticFunction("getFrameBudget", &TitleArt::getFrameBudget)
         .endClass();

@@ -1,0 +1,43 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "float_loop",
+  "name": "Float",
+  "group": "loop",
+  "role": "idle",
+  "duration": 2.4,
+  "wrap": "loop",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Floats gently up and down.",
+  "params": [
+    {
+      "name": "height",
+      "label": "Height (%)",
+      "type": "number",
+      "default": 4,
+      "min": 0,
+      "max": 100
+    }
+  ],
+  "tracks": [
+    {
+      "target": "title",
+      "field": "transform.position",
+      "relative": true,
+      "drive": {
+        "from": [
+          0,
+          "-S*height/100"
+        ],
+        "to": [
+          0,
+          "S*height/100"
+        ],
+        "cycles": 1,
+        "ease": "sine_in_out"
+      }
+    }
+  ],
+  "markers": []
+}

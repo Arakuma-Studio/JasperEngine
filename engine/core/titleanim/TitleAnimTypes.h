@@ -214,6 +214,9 @@ namespace jasperengine::titleanim{
         uint8_t width = 1;              // values per sample (1..3; stepped 1)
         TrackSource source = TrackSource::Keys;
         TrackCombine combine = TrackCombine::Replace;   // relative tracks: Add or Multiply
+        // how the field combines when relative (an overlay combines every track this way, R25)
+        TrackCombine relativeCombine = TrackCombine::Add;
+        bool integer = false;           // a whole-number field (seeds, counts): written rounded
         TrackClass cls = TrackClass::Rerender;
         TrackPivot pivot = TrackPivot::Origin;
         bool mute = false;
@@ -240,6 +243,11 @@ namespace jasperengine::titleanim{
         // cluster (glyph tracks) or child (child tracks) the unit it belongs to, -1 none
         std::vector<float> unitDelays;
         std::vector<int32_t> elementUnit;
+        // glyph tracks: each element's grapheme cluster (its first code point's index in the text,
+        // the `chars` key); child tracks: the child's index
+        std::vector<uint32_t> elementIndex;
+        // a component track ("tint.r"): the whole value's rest (the other components it keeps)
+        std::vector<float> wholeRest;
 
         // where the samples go in a pose: `units` x `width` doubles from `poseOffset`
         uint32_t poseOffset = 0;

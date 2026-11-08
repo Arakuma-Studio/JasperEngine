@@ -134,6 +134,16 @@ std::vector<fs::path> editor::titleArtDerivedFiles(const fs::path& document, con
         add(fs::path(png.string() + ".meta"));
     }
     add(titleArtSidecarPath(document));
+    // S85: the animation data and the flipbook pages (<file>.<animation id>.flip<N>.png)
+    add(fs::path(document.string() + ".anim.json"));
+    const std::string prefix = document.filename().string() + ".";
+    for (const fs::directory_entry& e : fs::directory_iterator(document.parent_path(), ec)) {
+        const std::string name = e.path().filename().string();
+        if (name.size() > prefix.size() + 9 && name.compare(0, prefix.size(), prefix) == 0 && name.find(".flip", prefix.size()) != std::string::npos &&
+            (name.size() > 4 && (name.compare(name.size() - 4, 4, ".png") == 0 || name.compare(name.size() - 9, 9, ".png.meta") == 0))) {
+            add(e.path());
+        }
+    }
     return out;
 }
 

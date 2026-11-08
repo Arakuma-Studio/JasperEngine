@@ -400,7 +400,24 @@ TrackFieldInfo jasperengine::titleart::resolveTrackField(const TitleArtDoc& doc,
         path = field.substr(6);
         out.target = ta::TrackTarget::Child;
     }
-    const ExpandedFieldPath expanded = expandFieldShorthand(target, path);
+    // a component track ("tint.r", "transform.position.x") resolves its whole value
+    std::string resolved = path;
+    {
+        std::string whole;
+        int c = -1;
+        const ExpandedFieldPath direct = expandFieldShorthand(target, path);
+        std::vector<FieldSegment> probe;
+        bool directOk = direct.ok && parseFieldPath(direct.path, probe, nullptr);
+        if (directOk){
+            Json copy = *target;
+            directOk = lookupField(copy, *TitleArtSchema::get().kind("layer"), probe, true).ok;
+        }
+        if (!directOk && ta::splitComponent(path, whole, c)){
+            resolved = whole;
+            component = c;
+        }
+    }
+    const ExpandedFieldPath expanded = expandFieldShorthand(target, resolved);
     if (!expanded.ok){
         out.validHere = animatableFields(doc, layerId);
         out.nearest = expanded.nearest.empty() ? nearestName(path, out.validHere) : expanded.nearest;
@@ -424,10 +441,21 @@ TrackFieldInfo jasperengine::titleart::resolveTrackField(const TitleArtDoc& doc,
         out.nearest = nearestName(path, out.validHere);
         return fail("not_animatable", "'" + field + "' is not animatable (identity or structure)");
     }
+    if (component >= 0){
+        const bool vec2 = look.member ? look.member->type == ValueType::Vec2 : (look.param && look.param->kind == ParamKind::Vec2);
+        const bool color = look.member ? look.member->type == ValueType::Color : (look.param && look.param->kind == ParamKind::Color);
+        if (!(vec2 && component < 2) && !(color && component < 3)) return fail("bad_path", "'" + field + "' names no component of " + resolved);
+    }
     out.ok = true;
-    out.longPath = out.target == ta::TrackTarget::Child ? "child." + look.longPath : look.longPath;
+    const std::string longPath = component >= 0 ? look.longPath + "." + path.substr(path.size() - 1) : look.longPath;
+    out.longPath = out.target == ta::TrackTarget::Child ? "child." + longPath : longPath;
     if (out.target != ta::TrackTarget::Child) out.target = ta::TrackTarget::Field;
     fillFromMember(out, look);
+    if (component >= 0){
+        out.component = component;
+        out.value = ta::TrackValue::Number;
+        out.width = 1;
+    }
     out.label = labelFor(*target, look.longPath, look);
     out.rest = look.value ? *look.value : Json();
     return out;

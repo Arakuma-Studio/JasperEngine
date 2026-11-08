@@ -1,0 +1,94 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "flip_in",
+  "name": "Flip In",
+  "group": "in",
+  "role": "intro",
+  "duration": 0.5,
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Turns in about an axis, darkening as it turns (3D layers turn for real).",
+  "params": [
+    {
+      "name": "axis",
+      "label": "Axis",
+      "type": "enum",
+      "default": "y",
+      "options": [
+        "y",
+        "x"
+      ]
+    }
+  ],
+  "tracks": [
+    {
+      "target": "title",
+      "field": "transform.stretch.x",
+      "when": "axis_y",
+      "relative": true,
+      "keys": [
+        [
+          0,
+          0,
+          "back_out"
+        ],
+        [
+          "D",
+          1
+        ]
+      ]
+    },
+    {
+      "target": "title",
+      "field": "transform.stretch.y",
+      "when": "axis_x",
+      "relative": true,
+      "keys": [
+        [
+          0,
+          0,
+          "back_out"
+        ],
+        [
+          "D",
+          1
+        ]
+      ]
+    },
+    {
+      "target": "title",
+      "field": "flash.amount",
+      "keys": [
+        [
+          0,
+          -0.3,
+          "sine_out"
+        ],
+        [
+          "D",
+          0
+        ]
+      ]
+    },
+    {
+      "target": "main_text",
+      "field": "transform.rotation_y",
+      "when": "axis_y*is3d",
+      "relative": true,
+      "keys": [
+        [
+          0,
+          -90,
+          "back_out"
+        ],
+        [
+          "D",
+          0
+        ]
+      ]
+    }
+  ],
+  "markers": []
+}

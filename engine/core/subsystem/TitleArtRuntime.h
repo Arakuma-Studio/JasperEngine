@@ -22,6 +22,12 @@
 
 #include <cstdint>
 #include <memory>
+
+namespace jasperengine::titleanim{
+    class TitleAnimPlayer;
+    struct TitleAnimLibrary;
+}
+
 #include <string>
 #include <vector>
 
@@ -126,6 +132,15 @@ namespace jasperengine{
             static void invalidate(TitleArtLive& live);
             // a prebaked initial-state image shipped with the build (R11, R32), by state hash
             static void setPrebaked(TitleArtLive& live, const std::string& texturePath, uint64_t stateHash);
+
+            // S85: the document's animations compiled (every track; the text layout gives glyph
+            // tracks their units); null with `error` without the module or a readable document
+            static std::shared_ptr<titleanim::TitleAnimLibrary> compileAnimations(const std::string& titlePath, std::string* error);
+            // S85 R14, R15, R18: what plays of the player's animations beyond the companion: the
+            // re-render values sampled at the animation's rerender_fps (a request per sample time,
+            // under the title's share of the frame budget) and the glyph-cell poses; called each
+            // frame before setState (nothing when nothing plays)
+            static void setAnimation(TitleArtLive& live, const titleanim::TitleAnimPlayer& player, int animatingTitles);
 
             // the document's Exposed parameters with their values (R5); false with `error`
             static bool readExposed(const std::string& titlePath, std::vector<TitleArtExposedParam>& out, std::string* error);

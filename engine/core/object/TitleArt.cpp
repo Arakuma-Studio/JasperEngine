@@ -3,6 +3,8 @@
 
 #include "TitleArt.h"
 
+#include "titleanim/TitleAnimPlayer.h"
+
 #include "Log.h"
 #include "Scene.h"
 #include "subsystem/TitleArtSystem.h"
@@ -243,20 +245,103 @@ void TitleArt::setGlintSeed(unsigned int seed){
 // ---- S85 ----
 
 std::vector<std::string> TitleArt::getAnimations() const{
-    return {};
+    return component() ? TitleArtSystem::animationNames(getScene(), getEntity()) : std::vector<std::string>();
 }
 
 bool TitleArt::isPlaying() const{
-    return false;
+    titleanim::TitleAnimPlayer* player = component() ? TitleArtSystem::animationPlayer(getScene(), getEntity()) : nullptr;
+    return player && player->isPlaying();
 }
 
-bool TitleArt::play(const std::string& name, float, bool, bool){
-    // R44: S85 defines what plays; until it lands every name is unknown (false and a warning)
-    if (component()) Log::warn("TitleArt '%s': no Title Art animation '%s' (the title has none)", getName().c_str(), name.c_str());
-    return false;
+bool TitleArt::play(const std::string& name){
+    return play(name, titleanim::TitleAnimPlayOptions());
+}
+
+bool TitleArt::play(const std::string& name, const titleanim::TitleAnimPlayOptions& options){
+    return component() && TitleArtSystem::playAnimation(getScene(), getEntity(), name, options);
+}
+
+bool TitleArt::playOverlay(const std::string& name){
+    return playOverlay(name, titleanim::TitleAnimPlayOptions());
+}
+
+bool TitleArt::playOverlay(const std::string& name, const titleanim::TitleAnimPlayOptions& options){
+    return component() && TitleArtSystem::playAnimation(getScene(), getEntity(), name, options, true);
 }
 
 void TitleArt::stop(){
+    if (component()) TitleArtSystem::stopAnimation(getScene(), getEntity(), "");
+}
+
+bool TitleArt::stop(const std::string& name){
+    return component() && TitleArtSystem::stopAnimation(getScene(), getEntity(), name);
+}
+
+void TitleArt::reset(){
+    if (component()) TitleArtSystem::resetAnimation(getScene(), getEntity());
+}
+
+bool TitleArt::isPaused() const{
+    titleanim::TitleAnimPlayer* player = component() ? TitleArtSystem::animationPlayer(getScene(), getEntity()) : nullptr;
+    return player && player->isPaused();
+}
+
+void TitleArt::setPaused(bool paused){
+    if (titleanim::TitleAnimPlayer* player = component() ? TitleArtSystem::animationPlayer(getScene(), getEntity()) : nullptr) player->setPaused(paused);
+}
+
+bool TitleArt::isAnimationPlaying(const std::string& name) const{
+    titleanim::TitleAnimPlayer* player = component() ? TitleArtSystem::animationPlayer(getScene(), getEntity()) : nullptr;
+    return player && player->isPlaying(name);
+}
+
+bool TitleArt::prepare(const std::string& name){
+    return component() && TitleArtSystem::prepareAnimation(getScene(), getEntity(), name);
+}
+
+bool TitleArt::isAnimationReady(const std::string& name) const{
+    return component() && TitleArtSystem::isAnimationReady(getScene(), getEntity(), name);
+}
+
+bool TitleArt::sample(const std::string& name, double time){
+    return component() && TitleArtSystem::sampleAnimation(getScene(), getEntity(), name, time);
+}
+
+double TitleArt::getDuration(const std::string& name) const{
+    return component() ? TitleArtSystem::animationDuration(getScene(), getEntity(), name) : -1.0;
+}
+
+std::string TitleArt::getAnimation() const{
+    titleanim::TitleAnimPlayer* player = component() ? TitleArtSystem::animationPlayer(getScene(), getEntity()) : nullptr;
+    return player && player->baseAnimation() ? player->baseName() : std::string();
+}
+
+float TitleArt::getAnimationTime() const{
+    TitleArtRendererComponent* c = component();
+    return c ? c->animationTime : 0.0f;
+}
+
+void TitleArt::setAnimationTime(float seconds){
+    if (TitleArtRendererComponent* c = component()){
+        c->animationTime = std::isfinite(seconds) ? std::max(0.0f, seconds) : 0.0f;
+        c->animationTimeKeyed = true;
+        if (titleanim::TitleAnimPlayer* player = TitleArtSystem::animationPlayer(getScene(), getEntity())) player->seek(c->animationTime);
+    }
+}
+
+float TitleArt::getAnimationSpeed() const{
+    TitleArtRendererComponent* c = component();
+    return c ? c->animationSpeed : 1.0f;
+}
+
+void TitleArt::setAnimationSpeed(float speed){
+    if (TitleArtRendererComponent* c = component()) c->animationSpeed = std::isfinite(speed) ? std::max(0.0f, std::min(10.0f, speed)) : 1.0f;
+}
+
+FunctionSubscribe<void(const AnimationEvent&)>& TitleArt::getOnAnimationEvent(){
+    static FunctionSubscribe<void(const AnimationEvent&)> none;
+    TitleArtRendererComponent* c = component();
+    return c ? TitleArtSystem::instanceOf(*c).onAnimationEvent : none;
 }
 
 // ---- events ----

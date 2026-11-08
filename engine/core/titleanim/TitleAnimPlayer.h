@@ -45,6 +45,7 @@ namespace jasperengine::titleanim{
         int loop = -1;              // -1: the animation's wrap; 0: once; 1: loop
         float fade = 0.0f;          // seconds (R26)
         double time = 0.0;          // start time
+        bool unscaled = false;      // runs on unscaled time (R26)
     };
 
     struct JASPERENGINE_API PlayingAnimation{
@@ -56,6 +57,7 @@ namespace jasperengine::titleanim{
         bool started = false;       // false until the first update (which fires the start's markers)
         bool finished = false;      // a once animation at its end (holds its last pose)
         bool held = false;          // stopped: keeps its pose, does not advance
+        bool unscaled = false;      // advances by the unscaled dt
         uint64_t serial = 0;        // start order (the later overlay wins)
         TitleAnimPose pose;
         // the local time sampled (the wrap with this play's wrap override)
@@ -104,6 +106,8 @@ namespace jasperengine::titleanim{
         // samples every pose; appends the crossed markers in time order and the names of once
         // animations that reached their end (before their `next` starts).
         void update(double dt, std::vector<FiredMarker>& markers, std::vector<std::string>& finished);
+        // the same with the frame's unscaled dt for the animations played `unscaled`
+        void update(double dt, double unscaledDt, std::vector<FiredMarker>& markers, std::vector<std::string>& finished);
 
         bool isPlaying() const;                         // something advances
         bool isPlaying(const std::string& name) const;

@@ -8,6 +8,10 @@
 //                    the element's own space, in UI pixels (an Image spans 0..width,
 //                    0..height); for effects laid over the element whatever its texture
 //
+// UI_POSITION_HOOK (defined by the shader, which then defines
+// `vec3 uiPositionHook(vec3 position)` after this include) moves each vertex in the element's
+// own space before projection (title_fx's ANIM); v_localPosition stays the unmoved position.
+//
 // Varyings pair up by location, in declaration order: a fragment shader declares
 // v_localPosition after including includes/ui_fs.glsl (which declares the others).
 
@@ -35,6 +39,10 @@ in vec3 a_position;
     out vec2 v_localPosition;
 #endif
 
+#ifdef UI_POSITION_HOOK
+    vec3 uiPositionHook(vec3 position);
+#endif
+
 void main() {
     #if defined(HAS_VERTEX_COLOR_VEC3) || defined(HAS_VERTEX_COLOR_VEC4)
         v_color = a_color;
@@ -48,7 +56,11 @@ void main() {
         v_localPosition = a_position.xy;
     #endif
 
-    gl_Position = uiParams.mvpMatrix * vec4(a_position, 1.0);
+    #ifdef UI_POSITION_HOOK
+        gl_Position = uiParams.mvpMatrix * vec4(uiPositionHook(a_position), 1.0);
+    #else
+        gl_Position = uiParams.mvpMatrix * vec4(a_position, 1.0);
+    #endif
     #ifdef IS_VULKAN
         // GL [-1,1] to Vulkan [0,1] depth range (spirv-cross fixup_clipspace equivalent)
         gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;
