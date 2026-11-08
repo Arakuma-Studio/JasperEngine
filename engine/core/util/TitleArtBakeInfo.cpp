@@ -109,6 +109,7 @@ bool TitleArtBakeInfo::parse(const std::string& source, TitleArtBakeInfo& out, s
     out.sourceHash = text(json, "source_hash");
     out.bakeVersion = (uint32_t)std::max(0.0, number(json, "bake_version", 0.0));
     out.language = text(json, "language");
+    TitleArtLanguage::parseTable(source, out.languages);
     return true;
 }
 

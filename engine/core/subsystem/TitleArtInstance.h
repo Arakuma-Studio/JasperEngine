@@ -79,11 +79,27 @@ namespace jasperengine::titleart{
         uint64_t failedHash = 0;        // the state whose onFailed fired
         std::string missingReported;    // the character set onMissingCharacters last fired for
 
+        // ---- the language (S87 R12-R15, R27) ----
+        std::vector<std::string> languages;     // what the title offers: the source first (the sidecar's table, else the document's)
+        std::string resolvedLanguage;           // what R12-R13 picked ("" for a monolingual title)
+        std::string shownLanguage;              // the language of the image on screen
+        std::string languageAsked;              // the component's language the resolution used
+        uint64_t languageGeneration = ~uint64_t(0);  // TitleArtLanguage::generation() it resolved at
+        bool languageReady = true;
+        // a Baked switch on its way: the language's sidecar and textures, drawn once loaded
+        bool switching = false;
+        TitleArtBakeInfo pendingBake;
+        std::string pendingBakePath, pendingGlowPath;
+        Texture pendingTexture, pendingGlowTexture;
+        TitleArtBakeInfo sourceBake;            // the source set (a language without its own set uses it)
+        std::string sourceBakePath, sourceGlowPath;
+
         // ---- events (Lua `onReady`...) ----
         FunctionSubscribe<void()> onReady;
         FunctionSubscribe<void(const std::string&)> onFailed;
         FunctionSubscribe<void(const std::string&)> onMissingCharacters;
         FunctionSubscribe<void(const std::string&)> onAnimationFinished;
+        FunctionSubscribe<void(const std::string&)> onLanguageReady;    // S87: the first frame the new language is drawn
 
         // ---- live layers (R33-R38) ----
         std::vector<TitleArtAnchor> anchors;

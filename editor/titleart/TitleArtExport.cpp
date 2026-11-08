@@ -3,11 +3,14 @@
 
 #include "TitleArtExport.h"
 
+#include "titleart/TitleTranslations.h"
+
 #include "Project.h"
 #include "TitleArtBaker.h"
 #include "titleart/TitleArtDoc.h"
 #include "util/ProjectChecks.h"
 
+#include <algorithm>
 #include <map>
 #include <set>
 
@@ -53,14 +56,27 @@ TitleArtExport::Prepared TitleArtExport::prepare(Project* project, TitleStaleBak
             prepared.warnings.push_back(relative + ": not baked (" + error + ")");
             continue;
         }
-        const TitleBakeStatus status = titleArtStatusOf(project, document, doc);
-        const std::vector<std::string> notFresh = status.notFresh();
-        if (notFresh.empty()) continue;
+        // the source set, then (S87 R16) each language set the document bakes
+        std::vector<std::string> notFresh;
+        std::vector<std::string> staleLanguages;
         std::string outputs;
-        for (const TitleOutputState& o : status.outputs) {
-            if (o.status == TitleOutputStatus::Fresh) continue;
-            outputs += (outputs.empty() ? "" : ", ") + o.id + " " + titleOutputStatusName(o.status);
+        std::vector<std::string> sets = {""};
+        for (const std::string& code : titleart::titleLanguageCodes(doc.root)) {
+            const titleart::Json* language = titleart::findTitleLanguage(doc.root, code);
+            if (language && language->value("bake", true) && titleart::titleLanguageDiffers(doc, code)) sets.push_back(code);
         }
+        for (const std::string& set : sets) {
+            const TitleBakeStatus status = titleArtStatusOf(project, document, doc, set);
+            bool stale = false;
+            for (const TitleOutputState& o : status.outputs) {
+                if (o.status == TitleOutputStatus::Fresh) continue;
+                stale = true;
+                if (std::find(notFresh.begin(), notFresh.end(), o.id) == notFresh.end()) notFresh.push_back(o.id);
+                outputs += (outputs.empty() ? "" : ", ") + (set.empty() ? std::string() : set + " ") + o.id + " " + titleOutputStatusName(o.status);
+            }
+            if (stale) staleLanguages.push_back(set.empty() ? titleart::titleSourceLanguage(doc.root) : set);
+        }
+        if (notFresh.empty()) continue;
         const std::string line = relative + " (" + outputs + ")";
         if (policy == TitleStaleBakesPolicy::Fail) {
             failing.push_back(line);
@@ -72,6 +88,7 @@ TitleArtExport::Prepared TitleArtExport::prepare(Project* project, TitleStaleBak
         }
         TitleBakeOptions options;
         options.outputs = notFresh;
+        if (titleart::titleIsMultilingual(doc.root)) options.languages = staleLanguages;
         const TitleBakeResult result = bakeTitleArt(project, document, doc, options);
         if (result.ok) {
             prepared.rebaked.push_back(line);

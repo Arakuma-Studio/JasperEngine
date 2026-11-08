@@ -66,6 +66,7 @@ namespace jasperengine::editor::titledesigner {
         const ta::AssetResolver* assets = nullptr;      // null: the project's
         std::vector<ta::FieldOverride> overrides;       // S85's sampled time (§6.8)
         uint32_t testFlags = 0;
+        std::string language;                   // S87: the language shown ("" = the source)
     };
 
     // the backdrop behind the title (R30)

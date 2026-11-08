@@ -97,6 +97,15 @@ void editor::InspectorWindow::drawTitleArtRendererComponent(ComponentType cpType
     mode.help = "Baked shows the bake (no engine code); Realtime renders the title again when its text or a parameter changes; "
                 "Glyph Atlas renders each glyph once and lays out changing text every frame (counters, scores, timers)";
     propertyRow(RowPropertyType::Enum, cpType, "renderMode", "Render Mode", sceneProject, entities, mode);
+    // S87 R56: Language, empty = Auto (Device); the help lists what the title offers
+    if (!instance.languages.empty()){
+        RowSettings language;
+        std::string offered;
+        for (const std::string& code : instance.languages) offered += (offered.empty() ? "" : ", ") + code;
+        language.help = "Empty: Auto (Device): TitleArt.setLanguage, the device's languages, the project's default, the source. "
+                        "This title offers " + offered + (instance.resolvedLanguage.empty() ? "" : "; it shows " + instance.resolvedLanguage) + ".";
+        propertyRow(RowPropertyType::String, cpType, "language", "Language", sceneProject, entities, language);
+    }
     endTable();
 
     if (!title->title.path.empty() && InspectorWindowTitleArt::canOpenInDesigner()){

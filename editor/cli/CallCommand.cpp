@@ -1126,6 +1126,45 @@ int runEditors(const std::vector<std::string>& args, const char* executableName)
 
 } // namespace
 
+int CallCommand::runCalls(const std::string& project, const std::vector<std::pair<std::string, Json>>& calls, bool continueOnError,
+                          std::vector<CallResult>& results, const char* executableName) {
+    Options o;
+    o.project = project;
+    o.quiet = true;
+    o.timeout = 3600.0;
+    results.clear();
+    try {
+        Session session;
+        connect(session, o, executableName);
+        int worst = Ok;
+        for (const auto& [tool, arguments] : calls) {
+            CallOutcome out = outcomeOf(o, tool, toolCall(session, o, tool, arguments));
+            CallResult r;
+            r.tool = tool;
+            r.exit = out.exit;
+            r.ok = out.exit == Ok;
+            r.text = out.exit == Ok ? out.text : (out.error.empty() ? out.text : out.error);
+            r.structured = out.structured;
+            results.push_back(std::move(r));
+            worst = std::max(worst, out.exit);
+            if (out.exit != Ok && !continueOnError) break;
+        }
+        return worst;
+    } catch (const Failure& f) {
+        CallResult r;
+        r.exit = f.code;
+        r.text = f.message;
+        results.push_back(std::move(r));
+        return f.code;
+    } catch (const std::exception& e) {
+        CallResult r;
+        r.exit = Internal;
+        r.text = std::string("internal error: ") + e.what();
+        results.push_back(std::move(r));
+        return Internal;
+    }
+}
+
 int CallCommand::run(int argc, char** argv, const char* executableName) {
     attachConsole();
     const std::string subcommand = argc > 0 ? argv[0] : "call";

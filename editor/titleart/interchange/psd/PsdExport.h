@@ -92,6 +92,11 @@ namespace jasperengine::editor::psd {
         std::vector<std::string> warnings;
         int renders = 0;
     };
+    // export_title's `psd` format (R39, R40): one PSD per language on its trimmed frame (or the
+    // shared one with `registered`), named `<stem>[.<code>].psd`; options split_titles and the
+    // image options (bit_depth 8 or 16; PSD stores straight alpha, so `alpha` must stay straight)
+    void registerTitlePsdExport();
+
     // the PSD of a document through the editor's renderer; false with `error`
     // (bit_depth_unsupported, psd_too_large, render_failed)
     bool exportTitlePsd(Project* project, const titleart::TitleArtDoc& doc, const PsdExportOptions& options, PsdExportResult& out,

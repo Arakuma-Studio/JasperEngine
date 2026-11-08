@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleArtBuiltinChecks.h"
+#include "localisation/TitleLanguageChecks.h"
+#include "titleart/TitleTranslations.h"
 #include "fx/FxGeneratorChecks.h"
 #include "titleart/runtime/TitleArtRuntimeChecks.h"
 
@@ -436,7 +438,15 @@ namespace {
             out.push_back(result(TitleCheckStatus::Skip, "no document file: not measured", "recipes"));
             return;
         }
-        const TitleBakeStatus status = titleArtBakeStatus(ctx.file, ctx.doc, *ctx.assets);
+        // S87: a per-language run checks that language's set (one that renders as the source reuses its set)
+        const std::string language = ctx.options.language;
+        if (!language.empty() && ctx.source && !titleart::titleLanguageDiffers(*ctx.source, language)) {
+            TitleCheckResult same = result(TitleCheckStatus::Pass, "the language renders as the source and reuses its set", "recipes");
+            same.measured = TJson{{"set", nullptr}};
+            out.push_back(std::move(same));
+            return;
+        }
+        const TitleBakeStatus status = titleArtBakeStatus(ctx.file, ctx.source ? *ctx.source : ctx.doc, *ctx.assets, language);
         TJson outputs = TJson::array();
         size_t notFresh = 0;
         std::string first;
@@ -454,7 +464,11 @@ namespace {
         r.measured = TJson{{"outputs", outputs}, {"not_fresh", notFresh}};
         r.threshold = TJson{{"not_fresh", 0}};
         r.message = notFresh == 0 ? "every output is fresh" : first;
-        if (notFresh) r.fix = TJson{{"tool", "export_title"}, {"arguments", TJson{{"path", ctx.path}}}};
+        if (notFresh) {
+            TJson arguments = TJson{{"path", ctx.path}};
+            if (!language.empty()) arguments["languages"] = TJson::array({language});
+            r.fix = TJson{{"tool", "export_title"}, {"arguments", arguments}};
+        }
         out.push_back(std::move(r));
     }
 
@@ -1061,6 +1075,8 @@ void editor::registerBuiltinTitleChecks() {
         def.kind = b.kind;
         def.owner = "S80";
         def.description = b.description;
+        // S87: the glyphs and the bakes of each language as well
+        def.perLanguage = std::string(b.id) == "glyphs_present" || std::string(b.id) == "bake_fresh";
         auto run = b.run;
         def.run = [run](TitleCheckContext& context, std::vector<TitleCheckResult>& out) { run(context, out); };
         TitleArtChecks::registerCheck(std::move(def));
@@ -1070,6 +1086,8 @@ void editor::registerBuiltinTitleChecks() {
     // the later specs' checks, so every surface that runs the checks has them (S81: glyph_atlas, characters R55)
     registerTitleArtRuntimeChecks();
     registerTitleCharactersCheck();
+    // S87: the language checks
+    registerTitleLanguageChecks();
 }
 
 std::vector<titleart::TitleProblem> editor::titleArtMissingAssets(const titleart::TitleArtDoc& doc, const titleart::AssetResolver& assets) {

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleDesignerState.h"
+#include "titleart/localisation/TitleLanguageEditing.h"
+#include "titleart/TitleTranslations.h"
 
 #include "Project.h"
 #include "titleart/TitleArtIO.h"
@@ -408,6 +410,7 @@ bool TitleDesignerState::open(const fs::path& file, std::string* error) {
     if (opened == doc) return true;
     close();
     doc = opened;
+    languageCode.clear();
     listener = doc->addListener([this](TitleArtChangeOrigin origin) { documentChanged(origin); });
     selected.clear();
     rebuild();
@@ -452,7 +455,15 @@ std::shared_ptr<const TitleArtDoc> TitleDesignerState::shownSnapshot() const {
 }
 
 ta::Json TitleDesignerState::routed(const ta::Json& ops) const {
-    return editRouter ? editRouter(ops) : ops;
+    const ta::Json routedOps = editRouter ? editRouter(ops) : ops;
+    // S87 R52: in a translation language, overridable members go to its Translation
+    return languageCode.empty() ? routedOps : routeTitleLanguageOps(committed(), languageCode, routedOps);
+}
+
+void TitleDesignerState::setLanguage(const std::string& code) {
+    if (code == languageCode) return;
+    languageCode = ta::isSourceLanguage(committed().root, code) ? std::string() : code;
+    rebuild();
 }
 
 void TitleDesignerState::rebuild() {

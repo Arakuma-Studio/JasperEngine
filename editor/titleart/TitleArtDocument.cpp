@@ -437,6 +437,7 @@ TitleOpsResult TitleArtDocument::edit(const TitleJson& ops, const TitleArtEditOp
     if (opsOptions.projectPath.empty() && project) opsOptions.projectPath = project->getProjectPath().string();
     if (opsOptions.assetsPath.empty() && project) opsOptions.assetsPath = project->getAssetsPath().string();
     if (!opsOptions.assets && project) opsOptions.assets = TitleArtRenderHost::editor().resolver(project);
+    if (opsOptions.defaultLanguage.empty() && project) opsOptions.defaultLanguage = project->getLocalizationSettings().effectiveDefault();
     TitleOpsResult result = TitleArtOps::apply(value, ops, opsOptions);
     if (!result.ok || options.dryRun) return result;
     if (!options.undoName.empty()) result.undoName = options.undoName;

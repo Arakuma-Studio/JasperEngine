@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleArtLive.h"
+#include "titleart/TitleTranslations.h"
+#include "titleart/TitleArtHash.h"
 #include "TitleArtScheduler.h"
 
 #include "Log.h"
@@ -238,7 +240,21 @@ namespace {
 }
 
 TitleArtLive::TitleArtLive(std::string titlePath, TitleArtRenderMode mode, std::shared_ptr<const TitleArtDoc> document, uint64_t documentHash)
-    : path(std::move(titlePath)), renderMode(mode), doc(std::move(document)), docHash(documentHash){
+    : path(std::move(titlePath)), renderMode(mode), doc(std::move(document)), docHash(documentHash), sourceDoc(doc){
+}
+
+bool TitleArtLive::setLanguage(const std::string& code){
+    if (code == languageCode || !sourceDoc || !titleIsMultilingual(sourceDoc->root)) return false;
+    languageCode = code;
+    doc = std::make_shared<const TitleArtDoc>(resolveTitleLanguage(*sourceDoc, code));
+    docHash = hashTitleArt(*doc).document;
+    if (renderMode == TitleArtRenderMode::GLYPH_ATLAS){
+        // the atlas is keyed by (document, language): the new language's glyphs render into a
+        // new one; the running job keeps the old until the new image swaps in
+        glyphPlan = planTitleGlyphAtlas(*doc);
+        atlas.reset();
+    }
+    return true;
 }
 
 TitleArtLive::~TitleArtLive(){

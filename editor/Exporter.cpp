@@ -2902,9 +2902,12 @@ bool editor::Exporter::prepareTitleArt() {
         // S81 R52: the documents a shipped Realtime or Glyph Atlas title reads ship
         const TitleArtExportPlan plan = planTitleArtExport(project);
         TitleArtExport::setRuntimeTitles(project, std::vector<std::string>(plan.runtimeTitles.begin(), plan.runtimeTitles.end()));
+        // S87 R25: the languages localization.languages leaves out (after any rebake above)
+        titleLanguages = planTitleLanguageShipping(project);
         done.set_value();
     });
     doneFuture.get();
+    for (const std::string& line : titleLanguages.warnings) Out::warning("%s", line.c_str());
     for (const std::string& line : prepared.rebaked) Out::info("Rebaked Title Art %s", line.c_str());
     for (const std::string& line : prepared.warnings) Out::warning("%s", line.c_str());
     if (!prepared.ok) {
@@ -2941,6 +2944,14 @@ bool editor::Exporter::writeTitleArtRuntime() {
     if (!prebaked.ok) {
         setError(prebaked.error);
         return false;
+    }
+    // S87 R25: the build's source sidecars list only the shipped languages
+    for (const auto& [relative, text] : titleLanguages.sidecars) {
+        std::string writeError;
+        if (!assetio::writeFile(assetsDst / relative, text, assetio::Durability::Cache, &writeError)) {
+            setError("The Title Art languages of " + relative + ": " + writeError);
+            return false;
+        }
     }
     // R54: the shipped fonts' credits (copyLicenses carries the file to the build)
     const fs::path credits = config.targetDir / "licenses" / TITLE_FONT_CREDITS_FILE;
@@ -2985,6 +2996,8 @@ bool editor::Exporter::cookTextures() {
         setError("Texture import settings: " + gatherError);
         return false;
     }
+    // S87 R25: a Title Art language the build leaves out is not cooked
+    for (const std::string& dropped : titleLanguages.droppedFiles) inputs.erase(dropped);
     if (inputs.empty()) {
         std::error_code ec;
         fs::remove_all(getExportProjectRoot() / "assets" / CookedTextures::kCookedDir, ec);
@@ -3310,6 +3323,8 @@ bool editor::Exporter::copyAssets() {
         // A Title Art document ships only when a Realtime or Glyph Atlas title reads it (its baked
         // PNGs are ordinary textures)
         if (Util::isTitleArtFile(relPath.generic_string()) && !TitleArtExport::isNeeded(project, relPath.generic_string())) return TreeStep::Enter;
+        // S87 R25: the sets of the languages the build leaves out
+        if (titleLanguages.droppedFiles.count(relPath.generic_string())) return TreeStep::Enter;
         // A texture source the cooks replace ships as assets/je-cooked/<family>/ only
         if (cookedTextureSources.count(relPath.generic_string())) {
             return removeStale(assetsDst / relPath) ? TreeStep::Enter : stop();

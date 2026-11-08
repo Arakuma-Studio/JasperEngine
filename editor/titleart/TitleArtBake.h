@@ -45,10 +45,12 @@ namespace jasperengine::editor {
 
     // ---- names ----
 
-    // the PNG of an output, relative to the document's directory
-    std::string titleArtOutputFileName(const std::string& documentFileName, const titleart::Json& output);
-    std::filesystem::path titleArtOutputPath(const std::filesystem::path& document, const titleart::Json& output);
-    std::filesystem::path titleArtSidecarPath(const std::filesystem::path& document);
+    // the PNG of an output, relative to the document's directory; a translation language's set
+    // (S87 R16) puts `.<code lowercase>` right after the document's name ("logo.titleart.de.png",
+    // "logo.titleart.de.glow.png"; an output's own `file` gets it before its extension)
+    std::string titleArtOutputFileName(const std::string& documentFileName, const titleart::Json& output, const std::string& language = {});
+    std::filesystem::path titleArtOutputPath(const std::filesystem::path& document, const titleart::Json& output, const std::string& language = {});
+    std::filesystem::path titleArtSidecarPath(const std::filesystem::path& document, const std::string& language = {});
     // every derived file of a document that exists (its outputs' PNGs and their metas, the
     // sidecar), for renames, moves and deletes; `doc` null reads the document from disk
     std::vector<std::filesystem::path> titleArtDerivedFiles(const std::filesystem::path& document, const titleart::TitleArtDoc* doc = nullptr);
@@ -177,8 +179,12 @@ namespace jasperengine::editor {
         std::vector<std::string> notFresh() const;
     };
     // The status of every output of `doc` (at `document`, absolute); `assets` resolves the
-    // references (the editor's or the CLI's database)
+    // references (the editor's or the CLI's database). A multilingual document (S87 R16): the set
+    // of `language` ("" = the source), fresh when its recipes' `resolved_hash` equals the hash of
+    // the document resolved for that language, so a translation stales only its own set.
     TitleBakeStatus titleArtBakeStatus(const std::filesystem::path& document, const titleart::TitleArtDoc& doc,
-                                       const titleart::AssetResolver& assets);
+                                       const titleart::AssetResolver& assets, const std::string& language = {});
+    // S87: SHA-256 (hex) of the canonical text of the document resolved for `language`
+    std::string titleArtResolvedHash(const titleart::TitleArtDoc& doc, const std::string& language);
 
 }

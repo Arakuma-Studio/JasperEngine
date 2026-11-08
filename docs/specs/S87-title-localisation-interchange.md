@@ -1377,3 +1377,61 @@ rest of S82 lands in 6B.
    characters (was about 410).
 5. **Reconciled: the core-part share is 6 KiB of the program's 60 KiB** (S80 §6.15), not of
    S81's former 40.
+6. **Implementation: `create.from` importers register by kind and are chosen by content.** S80's
+   `registerCreateImporter(extension, fn)` became `registerCreateImporter(kind, sniffer, importer)`
+   with `TitleCreateRequest {sourcePath, documentPath, projectPath, assetsPath}` and
+   `TitleCreateResult {doc, kind, files, notes, warnings}`: an import needs its destination (for
+   `<stem>_assets/`) and returns the files it writes, and §6.2 detects the kind by content, not by
+   extension. `TitleArtDocument::create` and `commit` take those files and write them with the
+   document in one `WriteFilesCmd`, so one undo removes every file (R57). Ops that write files
+   (`import_svg`, `apply_ps_style`, `import_ps_styles`) put them in the new `TitleOpsResult::files`;
+   ops that report counts use `TitleOpsResult::reports` (by op index). `TitleOpsOptions` carries
+   the document's paths, the project default language and the font resolver
+   (`TitleArtDocument::edit` fills them).
+7. **Implementation: the renderer draws the resolved language.** `RenderRequest::language` makes
+   the snapshot copy the document resolved for it (`resolveTitleLanguage`), then the overrides,
+   then fit (`applyTitleFits`); a monolingual document without fit takes none of these steps. So
+   bakes, the Designer's canvas, previews, Realtime and Glyph Atlas share one path, and the S87
+   members feed no content hash themselves (`HashScope::Identity`): the resolved copy's members do.
+   A resolved copy has `languages: []` and `source_language` = the resolved code, so resolving it
+   again changes nothing and its canonical text is that language's alone: the bake's
+   `resolved_hash` is the SHA-256 of it.
+8. **Implementation: a Translation always holds `text` ("" = no translation).** The sparse kind
+   writes `text`, `status`, `source_hash` always (R63); an empty `text` is a Translation without
+   text (R2's "no `text` member"), which the checks report and the source shows.
+9. **Implementation: translation keys are canonical BCP 47 with `-`.** S80's map-key rule for
+   language codes takes letters, digits and `-`; ops and the strings importers canonicalise
+   (`pt_br` -> `pt-BR`), and normalize canonicalises keys and drops a duplicate after
+   canonicalising with a warning.
+10. **Decision: a Language's font applies to translatable text layers only.** A brand word
+    (`translate: false`) keeps its font and text in every language.
+11. **Decision: sheets, atlases and sequences take S85's poses through a registered frame source.**
+    S85 implements its sampling in parallel; `registerTitleAnimFrameSource {animations, pose}`
+    (`editor/titleart/interchange/sheet/TitleSheetExport.h`) is the seam S85 registers (its
+    animations with fps, duration and loop, and the document posed at a time for the export's
+    language). Until it does, a document with an `animation` member answers `not_available`
+    naming S85. The grid, packing, JSON shapes, names and per-language runs are S87's.
+12. **Deviation (Designer):** the override marker of R52 is drawn in a **Language** section of the
+    text layer's page (each override with the blue bar, Revert to Source and Apply to Source in its
+    menu), not on each Inspector row; edits in a language are routed to its Translation by the
+    designer state (`routeTitleLanguageOps`, after S85's edit router). The Designer's Export... and
+    Photoshop style imports are toolbar items (S82's toolbar hook) rather than File and Layer menu
+    entries; the Edit Languages font field takes an assets-relative path (the S82 picker is not
+    reachable from a toolbar item's popup). Drag-and-drop onto the Project window is not wired: the
+    import dialog is Assets > Import Title Art....
+13. **Deviation (Inspector):** the Title Art Renderer's Language is a text field (empty = Auto)
+    whose help lists the languages the title offers and the one it shows, not a dropdown.
+14. **Implementation: `dither: false`** renders 16-bit and rounds to 8 bits on the CPU (an
+    undithered output); the output pass has no dither switch.
+15. **Implementation: the KTX2 format** writes the PNG to the project's
+    `.jasperengine/cache/titleart/ktx2/` and cooks it there with its own cache (S14's cooker reads
+    files).
+16. **Implementation: the CLI's render formats** run through `CallCommand::runCalls` (one session,
+    one one-shot headless editor for the batch). An `--out` outside the project is written inside
+    `Recordings/Title Art/.cli/` by the editor (MCP writes only inside the project) and moved.
+17. **Implementation: the project default reaches games through the generated main**
+    (`TitleArtLanguage::setProjectDefault`), and Play through `Project::applyPresentationSettings`
+    (which also resets `TitleArt.setLanguage` to the device). The prebuilt Android package's
+    `presentation` is manifest data and needs no language.
+18. **Implementation: S84's member mapping.** S84's `PachislopPort` and `pachislop-map.json` are
+    not in this tree (S84 works in parallel); see the Pachislop import's own deviation below.

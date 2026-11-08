@@ -6,9 +6,15 @@
 
 #include "TitleImport.h"
 #include "psd/PsdImport.h"
+#include "titleart/localisation/TitleLanguageEditing.h"
 #include "titleart/localisation/TitleLanguageOps.h"
+#include "titleart/localisation/TitleStrings.h"
+#include "window/TitleArtInterchangeWindows.h"
 
 void jasperengine::editor::registerTitleInterchange() {
     registerTitleLanguageOps();
     psd::registerPsdInterchange();
+    registerTitleStringsOps();
+    registerTitleDesignerLanguages();
+    registerTitleArtInterchangeUi();
 }

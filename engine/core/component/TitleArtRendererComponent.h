@@ -51,6 +51,9 @@ namespace jasperengine{
         AssetRef title;                  // the .titleart, project-relative (GUID tracked by the editor)
         TitleArtRenderMode renderMode = TitleArtRenderMode::BAKED;
         std::vector<TitleArtOverride> overrides;   // "overrides.<name>" properties
+        // S87 R12: the language this title shows ("" = Auto: TitleArt.setLanguage, the device, the
+        // project default, the document's source); a language the title lacks resolves to its best match
+        std::string language;
 
         // size and placement
         bool pivotFromTitle = true;

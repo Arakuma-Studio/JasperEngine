@@ -10,6 +10,7 @@
 #include "PsdAdjustments.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtRenderHost.h"
+#include "titleart/interchange/TitleExport.h"
 
 #include <algorithm>
 #include <cmath>
@@ -69,11 +70,14 @@ namespace {
             return copy;
         }
 
-        // the layer alone, drawn whole: its masks off (they go on the record), unclipped, visible
+        // the layer alone, drawn whole: its masks off (they go on the record), unclipped, visible,
+        // at full opacity and normal blend (the record carries them)
         int alone(const Json& layer, bool dropMasks, const std::function<void(Json&)>& edit = {}) {
             auto d = variant(str(layer, "id"), [&](Json& l) {
                 l["clip"] = false;
                 l["visible"] = true;
+                l["opacity"] = 1.0;
+                l["blend"] = "normal";
                 if (dropMasks) l["masks"] = Json::array();
                 if (edit) edit(l);
             });
@@ -515,4 +519,88 @@ bool psd::exportTitlePsd(Project* project, const TitleArtDoc& doc, const PsdExpo
     out.warnings.push_back("psd_blending: Photoshop blends layers in sRGB and the engine in linear light, so the layers recombined in Photoshop "
                            "differ where they overlap with partial alpha; the merged image is the true render");
     return true;
+}
+
+namespace {
+
+    struct PsdLanguage {
+        std::string code;
+        std::shared_ptr<const TitleArtDoc> doc;
+        titleart::TitleRectI trimmed, frame;
+        double scale = 1.0;
+        int width = 0, height = 0;
+    };
+
+    bool planPsd(TitleExportContext& ctx) {
+        if (ctx.request.options.contains("split_titles") && !ctx.request.options["split_titles"].is_boolean()) {
+            return ctx.fail("bad_option", "split_titles is true or false");
+        }
+        if (ctx.image.alpha != "straight") {
+            return ctx.fail("bad_option", "alpha: a PSD stores straight alpha (Photoshop's own); premultiplied is for PNG");
+        }
+        const bool split = ctx.request.options.value("split_titles", false);
+        auto states = std::make_shared<std::vector<PsdLanguage>>();
+        if (ctx.request.languages.empty()) {
+            states->push_back({});
+        } else {
+            for (const std::string& code : ctx.request.languages) states->push_back({code, nullptr, {}, {}, 1.0, 0, 0});
+        }
+        for (size_t i = 0; i < states->size(); i++) {
+            (*states)[i].doc = std::make_shared<TitleArtDoc>(ctx.resolved((*states)[i].code));
+            ctx.measure((*states)[i].doc, "", "", [states, i](TitleRenderedImage&, const titleart::TitleRectI& frame) { (*states)[i].trimmed = frame; });
+        }
+        TitleExportContext* c = &ctx;
+        ctx.then([c, states, split] {
+            const bool registered = c->request.options.value("registered", false);
+            titleart::TitleRectI shared;
+            for (const PsdLanguage& s : *states) shared = titleart::unionRect(shared, s.trimmed);
+            bool blendingWarned = false;
+            for (PsdLanguage& s : *states) {
+                s.scale = c->image.scale;
+                s.frame = c->finishFrame(registered ? shared : s.trimmed, s.scale, &s.width, &s.height);
+                if (std::max(s.width, s.height) > PSD_MAX_SIDE) {
+                    return c->fail("psd_too_large", "a PSD is at most " + std::to_string(PSD_MAX_SIDE) + " px a side; this one would be " +
+                                                       std::to_string(s.width) + " x " + std::to_string(s.height) + ": lower scale or max_size");
+                }
+                c->result.frames[s.code.empty() ? titleart::titleSourceLanguage(c->request.doc.root) : s.code] =
+                    TitleJson::array({s.frame.x, s.frame.y, s.frame.width, s.frame.height});
+                PsdPlanOptions options;
+                options.splitTitles = split;
+                auto plan = std::make_shared<PsdExportPlan>(planPsdExport(*s.doc, options));
+                for (const std::string& w : plan->warnings) c->warn(w);
+                if (!blendingWarned) {
+                    c->warn("psd_blending: Photoshop blends layers in sRGB and the engine in linear light, so the layers recombined in "
+                            "Photoshop differ where they overlap with partial alpha; the merged image is the true render");
+                    blendingWarned = true;
+                }
+                auto renders = std::make_shared<std::vector<texsynth::Image>>(plan->jobs.size());
+                for (size_t j = 0; j < plan->jobs.size(); j++) {
+                    c->renderFrame(plan->jobs[j].doc, "", s.frame, s.scale, plan->jobs[j].isolateLayer,
+                                   [renders, j](texsynth::Image& pixels) { (*renders)[j] = std::move(pixels); }, s.width, s.height);
+                }
+                const std::string code = s.code;
+                const double dpi = s.doc->root.value("dpi", 72.0);
+                c->then([c, plan, renders, code, dpi] {
+                    PsdWriteDocument psd;
+                    std::string error;
+                    if (!assemblePsd(*plan, *renders, c->image.bitDepth, dpi, psd, error)) return c->fail("render_failed", error);
+                    renders->clear();
+                    std::vector<uint8_t> bytes;
+                    if (!writePsd(psd, bytes, error)) return c->fail(error.substr(0, error.find(':')), error);
+                    return c->write(c->fileName("", code, "psd"), std::string(bytes.begin(), bytes.end()));
+                });
+            }
+            return true;
+        });
+        return true;
+    }
+
+}
+
+void psd::registerTitlePsdExport() {
+    TitleExportFormat format;
+    format.name = "psd";
+    format.optionKeys = {"split_titles"};
+    format.plan = planPsd;
+    registerTitleExportFormat(std::move(format));
 }
