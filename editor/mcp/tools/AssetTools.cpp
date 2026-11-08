@@ -4161,7 +4161,7 @@ void registerAssetTools(McpRegistry& registry) {
             "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "audio format/duration; .material fields, "
             ".anim clip settings, tracks, events, users; .vat clips, staleness, users; .aseprite layers, tags, slices, outputs; "
-            "font metrics, glyphs, pixel report; "
+            "font metrics, pixel report; "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
@@ -4176,13 +4176,13 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "View Asset";
         tool.description =
             "See an image asset as PNG image content; models, materials and prefabs give their Project window "
-            "thumbnail (may take seconds); .aseprite frames as a sheet; fonts: the glyph grid, or `text` drawn at whole `scale`. "
+            "thumbnail (may take seconds); .aseprite frames as a sheet; fonts: glyphs, or `text` at a whole `scale`. "
             "SVGs are not rasterized.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"max_size", withDefault(integer("Longest side, px.", 16, 2048), 512)},
-            {"text", string("Fonts: \\n for lines, at most 256.")},
-            {"scale", integer("Fonts: default the largest fitting.", 1, 16)}
+            {"text", string("")},
+            {"scale", integer("")}
         }, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

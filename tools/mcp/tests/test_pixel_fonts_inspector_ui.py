@@ -151,21 +151,22 @@ async def test_bitmap_font_inspector(ed: Editor):
     ed.check_eq(font_doc(ed).get("baseline"), 8, "the baseline drag wrote the baseline")
     await ed.call("undo", scope="project")
 
-    # kerning: add T o -1, then remove it
-    await click(ed, await wait_item(ed, "Kerning", "Inspector"))
+    # kerning: add T o -1, then remove it (the Inspector scrolls to each row)
+    driver = ui_input.for_editor(ed)
+    await driver.click_revealed("Kerning", "Inspector")
     for label, text in (("##bfKernLeft", "T"), ("##bfKernRight", "o")):
-        await click(ed, await wait_item(ed, label, "Inspector"))
-        await ui_input.for_editor(ed).type(text)
-    await click(ed, await wait_item(ed, "Add Pair##bfKernAdd", "Inspector"))
+        await driver.click_revealed(label, "Inspector")
+        await driver.type(text)
+    await driver.click_revealed("Add Pair##bfKernAdd", "Inspector")
     await ui_input.frames(ed, 4)
     ed.check_eq(font_doc(ed).get("kerning"), [["T", "o", -1]], "the pair was added")
     await shot(ed, "4-kerning")
-    await click(ed, await wait_item(ed, "##bfKernRemove0", "Inspector"))
+    await driver.click_revealed("##bfKernRemove0", "Inspector")
     await ui_input.frames(ed, 4)
     ed.check("kerning" not in font_doc(ed), "the pair was removed")
 
     # the preview draws
-    await wait_item(ed, "##bfPreviewText", "Inspector")
+    await driver.reveal("##bfPreviewText", "Inspector")
     await shot(ed, "5-preview")
 
 
@@ -199,21 +200,22 @@ async def test_text_inspector(ed: Editor):
     await setup_files(ed)
     made = await ed.call("create_scene", name="Hud", type="UI", path="scenes/Hud")
     scene = made["scene"]["id"]
-    await ed.call("create_ui", scene=scene, root={"type": "text", "name": "Label", "text": "Hp 99", "font": "fonts/hud.bitmapfont",
+    await ed.call("create_ui", scene=scene, root={"type": "text", "name": "Label", "text": "Hp 99", "font": FONT,
                                                   "font_size": 20, "layout": {"anchor": "center"}})
     await ed.call("select_entities", scene=scene, entities=["Label"])
     await ed.call("focus_window", window="inspector")
-    await wait_item(ed, "Pixel Font", "Inspector")
+    await ui_input.for_editor(ed).reveal("Pixel Font", "Inspector")
     ed.check(await item(ed, "Shadow Softness", "Inspector") is None, "Softness is hidden for a bitmap font")
     ed.check(await item(ed, "Shadow Dilate", "Inspector") is None, "Dilate is hidden for a bitmap font")
-    await wait_item(ed, "##textPixelOutline", "Inspector")
+    await ui_input.for_editor(ed).reveal("##textPixelOutline", "Inspector")
     await shot(ed, "7-text-inspector")
     # 20 on a 9 px font: Snap writes 18, + writes 27, each one undo step
-    await click(ed, await wait_item(ed, "Snap##textPixelSizeSnap", "Inspector"))
+    driver = ui_input.for_editor(ed)
+    await driver.click_revealed("Snap##textPixelSizeSnap", "Inspector")
     await ui_input.frames(ed, 3)
     got = await ed.call("get_entity", scene=scene, entity="Label", components=["text"])
     ed.check_eq(got["components"]["text"]["fontSize"], 18)
-    await click(ed, await wait_item(ed, "+##textPixelSizeUp", "Inspector"))
+    await driver.click_revealed("+##textPixelSizeUp", "Inspector")
     await ui_input.frames(ed, 3)
     got = await ed.call("get_entity", scene=scene, entity="Label", components=["text"])
     ed.check_eq(got["components"]["text"]["fontSize"], 27)
