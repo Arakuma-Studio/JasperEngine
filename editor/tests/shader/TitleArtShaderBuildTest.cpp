@@ -116,7 +116,7 @@ TEST(TitleArtShaderBuild, EveryGeneratorProgramEveryBackend) {
                 ADD_FAILURE() << name << ": texture() inside a loop at byte " << i;
             }
         }
-        if (name.rfind("titleart/gen/", 0) == 0) EXPECT_NE(source.find("#ifndef TITLEART_GEN"), std::string::npos) << name << ": every generator include is guarded";
+        if (name.rfind("titleart/gen/", 0) == 0) { EXPECT_NE(source.find("#ifndef TITLEART_GEN"), std::string::npos) << name << ": every generator include is guarded"; }
     }
     EXPECT_GE(scanned, 5);
 }

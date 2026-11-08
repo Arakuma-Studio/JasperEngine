@@ -117,7 +117,7 @@ TEST(TitleFxPresetsTest, RecipesAndStyleSettings) {
         SCOPED_TRACE(r.id);
         EXPECT_TRUE(ids.insert(r.id).second);
         ASSERT_NE(titleart::findEffect(r.type), nullptr) << r.type;
-        if (r.preset) EXPECT_NE(TitleFxPresets::find(r.type, r.preset), nullptr) << r.preset;
+        if (r.preset) { EXPECT_NE(TitleFxPresets::find(r.type, r.preset), nullptr) << r.preset; }
         const titleart::EffectDef* def = titleart::findEffect(r.type);
         const Json params = titleFxRecipeParams(r);
         ASSERT_TRUE(params.is_object());

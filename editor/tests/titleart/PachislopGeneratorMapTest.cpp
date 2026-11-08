@@ -205,8 +205,8 @@ TEST(PachislopGeneratorMapTest, EveryParamKeyLandsOnOurs) {
             }
         }
         // the row's own keys name params Pachislop has
-        if (!row.follow.empty()) EXPECT_TRUE(theirs.count(row.follow)) << row.pachislop << " follow " << row.follow;
-        if (!row.rowCount.empty()) EXPECT_TRUE(theirs.count(row.rowCount)) << row.pachislop << " rows " << row.rowCount;
+        if (!row.follow.empty()) { EXPECT_TRUE(theirs.count(row.follow)) << row.pachislop << " follow " << row.follow; }
+        if (!row.rowCount.empty()) { EXPECT_TRUE(theirs.count(row.rowCount)) << row.pachislop << " rows " << row.rowCount; }
         for (const auto& [key, target] : row.vec2) EXPECT_TRUE(theirs.count(key)) << row.pachislop << " vec2 " << key;
         for (const auto& [key, target] : row.renames) EXPECT_TRUE(theirs.count(key)) << row.pachislop << " rename " << key;
         // value maps land on options of ours

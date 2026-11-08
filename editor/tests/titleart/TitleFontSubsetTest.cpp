@@ -243,7 +243,7 @@ TEST(TitleFontSubset, ShapesLikeTheFullFont) {
             expectSameShaping(a, b, std::string(name) + " \"" + text + "\"");
         }
         const std::vector<Shaped> office = shape(subset, "Office", HB_DIRECTION_LTR);
-        if (std::string(name) == "SourceSans3-Regular.otf") EXPECT_LT(office.size(), 6u) << "the ffi ligature survived";
+        if (std::string(name) == "SourceSans3-Regular.otf") { EXPECT_LT(office.size(), 6u) << "the ffi ligature survived"; }
     }
 }
 
