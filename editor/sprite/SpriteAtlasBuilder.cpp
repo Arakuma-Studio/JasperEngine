@@ -347,6 +347,7 @@ namespace jasperengine::editor::sprite {
             }
             running.clear();
             again.clear();
+            requested.clear();
             waitingImports.clear();
             ImportedAssets::setSheetProvider(nullptr);
             SetAssetMetaCmd::removeWriteListener(this);
@@ -380,6 +381,7 @@ namespace jasperengine::editor::sprite {
         auto it = running.find(atlasPath);
         if (it != running.end()) it->second.cancel->cancel();
         again.erase(atlasPath);
+        requested.erase(atlasPath);
         waitingImports.erase(atlasPath);
         fs::path folder;
         {
@@ -456,9 +458,12 @@ namespace jasperengine::editor::sprite {
         for (const std::string& path : atlasPaths()) rebuild(path);
     }
 
-    void SpriteAtlasBuilder::rebuild(const std::string& path) {
+    void SpriteAtlasBuilder::rebuild(const std::string& path, bool force) {
         const std::string atlasPath = assetPathOf(path);
         if (atlasPath.empty() || !project) return;
+        const std::string bytes = sha256Hex(readText(project->getAssetsPath() / atlasPath));
+        if (!force && requested.count(atlasPath) && requested[atlasPath] == bytes) return;
+        requested[atlasPath] = bytes;
         if (running.count(atlasPath)) {
             again.insert(atlasPath);
             return;

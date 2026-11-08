@@ -363,7 +363,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         }
         // S45: a Sprite Atlas written (by an agent, a pull, the inspector) builds again
         if (SpriteSheetSources::isAtlasPath(change.path.string()) && sprite::SpriteAtlasBuilder::get().getProject() == project) {
-            sprite::SpriteAtlasBuilder::get().rebuild(change.path.string());
+            sprite::SpriteAtlasBuilder::get().rebuild(change.path.string(), false);
         }
         const std::string kind = reload::kindOf(change.path);
         if (kind.empty()) continue;

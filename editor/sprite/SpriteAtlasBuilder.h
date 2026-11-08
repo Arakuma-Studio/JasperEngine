@@ -174,8 +174,10 @@ namespace jasperengine::editor::sprite {
 
         // every atlas of the project (project open, a mode change)
         void requestAll();
-        // a build of the atlas (asset-relative or absolute), queued behind a running one
-        void rebuild(const std::string& atlasPath);
+        // a build of the atlas (asset-relative or absolute), queued behind a running one; unforced
+        // (the file watcher's), nothing happens when the file's bytes are the ones last asked for
+        // (an editor write the watcher reports again, after a Cancel too)
+        void rebuild(const std::string& atlasPath, bool force = true);
         // a member's pixels or settings changed: the atlases that pack it build again
         void memberChanged(const std::string& memberPath);
         // an atlas file went away: its build is dropped and its members draw their sources again;
@@ -257,6 +259,7 @@ namespace jasperengine::editor::sprite {
         std::map<std::string, uint64_t> builds;
         std::map<std::string, Running> running;
         std::set<std::string> again;
+        std::map<std::string, std::string> requested;   // atlas -> the hash of its bytes last asked to build
         std::set<std::string> waitingImports;   // atlases waiting for a member's import
         AtlasMode currentMode = AtlasMode::Enabled;
 

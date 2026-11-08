@@ -547,8 +547,12 @@ Recorded by the implementation (`feature/s45-sprite-atlas`):
 - **Exports build in their own folder** (`<guid>/export-<family>`), so an export never writes or
   prunes the pages the editor draws, and a finished build never removes pages that a newer build
   (queued after it) wrote: the folder's `build.json` names them.
+- **A sidecar written before its GUID** (a texture's Sprite Mode set while the texture was still
+  being imported) kept only the GUID once the asset database wrote it: it now keeps its sections
+  (`AssetDatabase.SettingsWrittenBeforeTheGuidSurvive`).
 - **Sprite normals of sheet sprites** read the frames of a texture sheet drawn from its own
-  texture. A sprite drawing generated pages (an atlas page, an `.aseprite` import) is refused with
+  texture (from its Sprite Mode, so the CLI reads them too; the sheet Inspector has the
+  **Normal Map...** button beside the Slicer Tool). A sprite drawing generated pages (an atlas page, an `.aseprite` import) is refused with
   a fix: a normal map made from a page that is rebuilt would not stay paired with it.
 - **Aseprite JSON (R10)**: a `--trim` export keeps each frame's place (`sourceSize` and `offset` in
   the Sprite Mode's frames; `source_size`, `offset` over MCP); slice keys hold until the next key;
