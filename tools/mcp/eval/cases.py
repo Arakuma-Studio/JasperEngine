@@ -2992,8 +2992,7 @@ CASES = [
         "what_happened": "Asked whether a bitmap font covers a string and how it looks, an agent should draw the string with "
                          "view_asset text (its result lists the missing characters) instead of building a scene, playing and "
                          "taking screenshots (S51).",
-        "text_at_issue": "view_asset description: 'fonts: glyphs, or `text` at a whole `scale`'; its text and scale "
-                         "parameters",
+        "text_at_issue": "view_asset description: 'fonts: glyphs or `text`'; its text parameter",
         "source": "S51 (docs/specs/S51-pixel-fonts.md R26, AC16); no failure on record",
         "files": {"assets/fonts/hud.bitmapfont": "{\"format\": \"jasperengine.bitmapfont\", \"version\": 1, "
                                                  "\"source\": {\"type\": \"grid\", \"image\": \"hud@6x9.png\"}}"},
@@ -3042,7 +3041,7 @@ CASES = [
         "kind": "guard",
         "what_happened": "Asked for a pixel font's metrics, an agent should read them from get_asset_info (native size, "
                          "baseline, kerning, pixel report) instead of opening the sheet or the JSON and measuring (S51).",
-        "text_at_issue": "get_asset_info description: 'font metrics, pixel report'",
+        "text_at_issue": "get_asset_info description: 'font metrics'",
         "source": "S51 (docs/specs/S51-pixel-fonts.md R27, AC17); no failure on record",
         "files": {"assets/fonts/hud.fnt": "info face=\"Hud\" size=9\ncommon lineHeight=10 base=7\n"},
         "prompt": "What is the native pixel size and baseline of assets/fonts/hud.fnt, and does it have antialiased pixels?",

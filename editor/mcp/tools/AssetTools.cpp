@@ -4163,11 +4163,11 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Get Asset Info";
         tool.description =
             "One file's details by type: image size/channels, Sprite Mode, packed_in (synthesized PNG: recipe, changed sources, "
-            "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
+            "regenerate arguments); model meshes, materials, animations, nodes (FBX: of its glTF conversion, fbx_import.state); "
             "audio format/duration; .material fields, "
-            ".anim clip settings, tracks, events, users; .vat clips, staleness, users; .aseprite layers, tags, slices, outputs; "
-            "font metrics, pixel report; "
-            "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
+            ".anim settings, tracks, events, users; .vat clips, staleness, users; .aseprite layers, tags, slices, outputs; "
+            "font metrics; "
+            "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -4180,12 +4180,11 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "view_asset";
         tool.title = "View Asset";
         tool.description =
-            "See an image asset as PNG image content; models, materials and prefabs give their Project window "
-            "thumbnail (may take seconds); .aseprite frames as a sheet; fonts: glyphs, or `text` at a whole `scale`. "
-            "SVGs are not rasterized.";
+            "An image asset as a PNG image; models, materials, prefabs as their Project window thumbnail (may take "
+            "seconds); .aseprite frames as a sheet; fonts: glyphs or `text`. SVGs are not rasterized.";
         tool.inputSchema = object({
             {"path", assetPath("")},
-            {"max_size", withDefault(integer("Longest side, px.", 16, 2048), 512)},
+            {"max_size", withDefault(integer(""), 512)},
             {"text", string("")},
             {"scale", integer("")}
         }, {"path"});
@@ -4220,7 +4219,7 @@ void registerAssetTools(McpRegistry& registry) {
             "Create or change a project text file (undo scope project; for clients without file access) and "
             "validate it: Lua syntax, forks using it recompiled (errors with lines), materials, .anim, .vat, .bitmapfont parsed. content = "
             "whole file, or edits [{old_text, new_text}] (old_text must match once unless replace_all). Refuses "
-            "project.yaml, .scene, .prefab and files with unsaved code editor edits.";
+            "project.yaml, .scene, .prefab and files with unsaved code edits.";
         tool.inputSchema = object({
             {"path", assetPath("Parent folders are created.")},
             {"content", string("")},

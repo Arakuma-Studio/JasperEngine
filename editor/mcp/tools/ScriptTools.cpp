@@ -1737,7 +1737,7 @@ void registerScriptTools(McpRegistry& registry) {
             "rescan of code editor buffers, script properties, Lua syntax, materials, shaders, textures, assets; "
             "returns what changed and the problems. Not for .scene/.prefab/project.yaml.";
         tool.inputSchema = object({
-            {"paths", array(string(""), "Changed files (optional).")},
+            {"paths", array(string(""), "Changed files.")},
             {"full", withDefault(boolean("Scan the project, recheck all scripts."), true)},
             {"wait", withDefault(boolean("Return after the reloads it started finish (30 s max)."), true)},
             {"rebuild_models", withDefault(boolean("Rebuild a model whose node hierarchy changed (its GameObjects are made again)."), false)},

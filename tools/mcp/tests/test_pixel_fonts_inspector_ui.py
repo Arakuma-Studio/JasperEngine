@@ -99,6 +99,11 @@ async def open_in_project(ed: Editor, folder: str, name: str) -> None:
     await click(ed, entry(state, name))
 
 
+def main_font(text: dict) -> str:
+    font = text.get("font", "")
+    return font[0] if isinstance(font, list) and font else font
+
+
 def font_doc(ed: Editor) -> dict:
     return json.loads((ed.project / FONT).read_text())
 
@@ -176,7 +181,8 @@ async def test_create_and_banner(ed: Editor):
     await setup_files(ed)
     # the banner of a sheet named *@WxH.png
     await open_in_project(ed, "assets/fonts", "grid@6x9.png")
-    await wait_item(ed, "Create Bitmap Font##bfBanner", "Inspector")
+    # (the Inspector keeps the last asset's scroll: reveal scrolls back to the banner)
+    await ui_input.for_editor(ed).reveal("Create Bitmap Font##bfBanner", "Inspector")
     await shot(ed, "6-banner")
     # Create Bitmap Font from each source kind (the Project window's context menu)
     for name, made in (("grid@6x9.png", "grid.bitmapfont"), ("bm.fnt", "bm.bitmapfont"), ("pixel8.ttf", "pixel8.bitmapfont")):
@@ -202,12 +208,18 @@ async def test_text_inspector(ed: Editor):
     scene = made["scene"]["id"]
     await ed.call("create_ui", scene=scene, root={"type": "text", "name": "Label", "text": "Hp 99", "font": FONT,
                                                   "font_size": 20, "layout": {"anchor": "center"}})
-    await ed.call("select_entities", scene=scene, entities=["Label"])
+    await ed.call("create_ui", scene=scene, root={"type": "text", "name": "Vector", "text": "Hp 99", "font_size": 20})
     await ed.call("focus_window", window="inspector")
-    await ui_input.for_editor(ed).reveal("Pixel Font", "Inspector")
-    ed.check(await item(ed, "Shadow Softness", "Inspector") is None, "Softness is hidden for a bitmap font")
-    ed.check(await item(ed, "Shadow Dilate", "Inspector") is None, "Dilate is hidden for a bitmap font")
+    # a vector Text draws the Softness and Dilate rows (the labels the bitmap Text must not draw)
+    await ed.call("select_entities", scene=scene, entities=["Vector"])
+    for label in ("##input_float_shadowSoftness", "##input_float_shadowDilate"):
+        await ui_input.for_editor(ed).reveal(label, "Inspector")
+    await ed.call("select_entities", scene=scene, entities=["Label"])
+    # the Pixel Font section's rows (its separator has no item id); the vector rows are not drawn at all
     await ui_input.for_editor(ed).reveal("##textPixelOutline", "Inspector")
+    for label in ("##input_float_shadowSoftness", "##input_float_shadowDilate"):
+        drawn = (await ed.call("find_ui_item", label=label, window="Inspector"))["items"]
+        ed.check(not drawn, f"{label} is hidden for a bitmap font: {drawn}")
     await shot(ed, "7-text-inspector")
     # 20 on a 9 px font: Snap writes 18, + writes 27, each one undo step
     driver = ui_input.for_editor(ed)
@@ -222,3 +234,26 @@ async def test_text_inspector(ed: Editor):
     await ed.call("undo", scene=scene)
     got = await ed.call("get_entity", scene=scene, entity="Label", components=["text"])
     ed.check_eq(got["components"]["text"]["fontSize"], 18, "one undo step per edit")
+
+    # the font dropped on a Text in the Scene view: font and snapped size in one undo step
+    made = await ed.call("create_scene", name="Drop", type="UI", path="scenes/Drop")
+    drop_scene = made["scene"]["id"]
+    await ed.call("create_ui", scene=drop_scene, root={"type": "text", "name": "Target", "text": "Hp 99", "font_size": 20,
+                                                       "layout": {"anchor": "stretch", "margins": [0, 0, 0, 0]}})
+    await ed.call("select_scene", scene=drop_scene)
+    await ui_input.frames(ed, 4)
+    view = (await ed.call_raw("screenshot", {"view": "scene", "scene": drop_scene, "max_width": 0})).structured["view_rect_in_window"]
+    await ed.call("focus_window", window="project")
+    state = await wait_ui(ed, lambda s: entry(s, "hud.bitmapfont"), "hud.bitmapfont listed")
+    x, y, w, h = entry(state, "hud.bitmapfont")
+    driver = ui_input.for_editor(ed)
+    await driver.drag(driver.at((x + w / 2, y + h / 2)), driver.at((view["x"] + view["width"] / 2, view["y"] + view["height"] / 2)), steps=12)
+    await ui_input.frames(ed, 4)
+    await shot(ed, "8-font-dropped")
+    got = (await ed.call("get_entity", scene=drop_scene, entity="Target", components=["text"]))["components"]["text"]
+    ed.check_eq(main_font(got), FONT, f"the drop set the font: {got}")
+    ed.check_eq(got["fontSize"], 18, "the drop snapped 20 to 18 (9 x 2)")
+    await ed.call("undo", scene=drop_scene)
+    got = (await ed.call("get_entity", scene=drop_scene, entity="Target", components=["text"]))["components"]["text"]
+    ed.check_eq(got["fontSize"], 20, f"one undo restores the size with the font: {got}")
+    ed.check(main_font(got) != FONT, f"and the font: {got}")
