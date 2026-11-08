@@ -15,6 +15,7 @@
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/type/PropertyCmd.h"
+#include "command/type/TerrainTextureEditCmd.h"
 #include "external/IconsFontAwesome6.h"
 #include "math/AABB.h"
 #include "object/TerrainEdit.h"
@@ -237,12 +238,20 @@ void editor::TerrainEditWindow::drawSettingsTool(SceneProject* sceneProject, Ter
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Convert to 16-bit") && !convertHeightMapTo16Bit(sceneProject->id, selectedEntity, error)) Out::error("%s", error.c_str());
             }
+            ImGui::SameLine();
+            ImGui::PushID(name.c_str());
+            if (ImGui::SmallButton("Resize...")){
+                resizeMap = ResizeMapDialog();
+                resizeMap.open = true;
+                resizeMap.justOpened = true;
+                resizeMap.map = map;
+                resizeMap.size = format.bounds.w;
+            }
             if (map.kind == MapKind::Blend){
                 ImGui::SameLine();
-                ImGui::PushID(name.c_str());
                 if (ImGui::SmallButton("Remove")) deleteMapForTarget(TerrainMapRef(TerrainMapTarget::BlendMap, map.index));
-                ImGui::PopID();
             }
+            ImGui::PopID();
         }
         ImGui::EndTable();
     }
@@ -312,6 +321,100 @@ void editor::TerrainEditWindow::drawSettingsTool(SceneProject* sceneProject, Ter
     }
     drawImportRawDialog(sceneProject, terrain);
     drawExportRawDialog(sceneProject, terrain);
+
+    // R59: Resize... resamples one map to a new size, one undo step
+    if (resizeMap.justOpened){
+        ImGui::OpenPopup("Resize Terrain Map");
+        resizeMap.justOpened = false;
+    }
+    if (EditorModal::begin("Resize Terrain Map", &resizeMap.open, ImGuiWindowFlags_AlwaysAutoResize)){
+        EditorModal::message("Resample the map to a new size: heights and weights keep their place on the terrain.");
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
+        EditorModal::inputInt("Size", "size", &resizeMap.size, 0, 0);
+        resizeMap.size = std::clamp(resizeMap.size, 2, 8192);
+        if (EditorModal::button("Resize", "ok")){
+            std::string why;
+            if (!resizeTerrainMap(project, sceneProject, selectedEntity, TerrainMapUtils::refOfMap(resizeMap.map), resizeMap.size, resizeMap.size, why)){
+                Out::error("%s", why.c_str());
+            }
+            resizeMap.open = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (EditorModal::button("Cancel", "cancel")){
+            resizeMap.open = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
+editor::TerrainMapSnapshot editor::TerrainEditWindow::resizedSnapshot(const TerrainMapSnapshot& source, int width, int height, bool holes){
+    TerrainMapSnapshot out = source;
+    out.width = width;
+    out.height = height;
+    const int channels = std::max(1, source.channels);
+    const int bytes = static_cast<int>(TextureData::getBytesPerChannel(source.colorFormat));
+    out.pixels.assign(static_cast<size_t>(width) * height * channels * bytes, 0);
+    if (source.width < 1 || source.height < 1 || source.pixels.empty()) return out;
+    auto read = [&](int x, int y, int c){
+        const size_t at = ((static_cast<size_t>(y) * source.width + x) * channels + c) * bytes;
+        return bytes == 2 ? static_cast<float>(source.pixels[at] | (source.pixels[at + 1] << 8)) : static_cast<float>(source.pixels[at]);
+    };
+    // corner texels sit on the terrain's edges in both sizes
+    const float scaleX = width > 1 ? static_cast<float>(source.width - 1) / static_cast<float>(width - 1) : 0.0f;
+    const float scaleY = height > 1 ? static_cast<float>(source.height - 1) / static_cast<float>(height - 1) : 0.0f;
+    for (int y = 0; y < height; y++){
+        const float sy = y * scaleY;
+        const int y0 = std::min(static_cast<int>(sy), source.height - 1);
+        const int y1 = std::min(y0 + 1, source.height - 1);
+        const float fy = sy - static_cast<float>(y0);
+        for (int x = 0; x < width; x++){
+            const float sx = x * scaleX;
+            const int x0 = std::min(static_cast<int>(sx), source.width - 1);
+            const int x1 = std::min(x0 + 1, source.width - 1);
+            const float fx = sx - static_cast<float>(x0);
+            for (int c = 0; c < channels; c++){
+                float value;
+                if (holes){
+                    value = read(fx < 0.5f ? x0 : x1, fy < 0.5f ? y0 : y1, c);
+                }else{
+                    const float top = read(x0, y0, c) + (read(x1, y0, c) - read(x0, y0, c)) * fx;
+                    const float bottom = read(x0, y1, c) + (read(x1, y1, c) - read(x0, y1, c)) * fx;
+                    value = top + (bottom - top) * fy;
+                }
+                const unsigned rounded = static_cast<unsigned>(std::lround(value));
+                const size_t at = ((static_cast<size_t>(y) * width + x) * channels + c) * bytes;
+                out.pixels[at] = static_cast<unsigned char>(rounded & 0xFF);
+                if (bytes == 2) out.pixels[at + 1] = static_cast<unsigned char>(rounded >> 8);
+            }
+        }
+    }
+    return out;
+}
+
+bool editor::TerrainEditWindow::resizeTerrainMap(Project* project, SceneProject* sceneProject, Entity entity, const TerrainMapRef& ref, int width,
+                                                 int height, std::string& error){
+    TerrainComponent& terrain = sceneProject->scene->getComponent<TerrainComponent>(entity);
+    Texture* texture = TerrainMapUtils::findTexture(terrain, ref);
+    if (!texture || texture->empty()){
+        error = "The terrain has no such map to resize.";
+        return false;
+    }
+    TerrainMapSnapshot before = TerrainMapUtils::captureSnapshot(project, *texture, true);
+    if (before.empty || before.pixels.empty()){
+        error = "The map's pixels could not be read.";
+        return false;
+    }
+    TerrainMapSnapshot after = resizedSnapshot(before, width, height, ref.target == TerrainMapTarget::HoleMap);
+    after.path = TerrainMapUtils::makeEditableTexturePath(project, sceneProject->id, entity, ref);
+    after.id = after.path;
+    if (!CommandHandle::get(sceneProject->id)->addCommandNoMerge(
+            new TerrainTextureEditCmd(project, sceneProject->id, entity, ref, std::move(before), std::move(after), "Resize Terrain Map"))){
+        error = "The map could not be resized.";
+        return false;
+    }
+    return true;
 }
 
 void editor::TerrainEditWindow::drawImportRawDialog(SceneProject* sceneProject, TerrainComponent& terrain){

@@ -1,10 +1,11 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// T1 R55, R63: the Terrain window's brush decal and its eyedroppers, the parts that need no window open.
+// T1 R55, R59, R63: the Terrain window's brush decal and its eyedroppers, the parts that need no window open.
 
 #include "TerrainProjectFixture.h"
 
+#include "command/CommandHistory.h"
 #include "window/TerrainEditWindow.h"
 
 using namespace terrainprojecttest;
@@ -38,4 +39,29 @@ TEST_F(TerrainBrushWindowTest, EyedroppersReadHeightSlopeAndTheStrongestLayer) {
     giveFileMap(TerrainMapRef(TerrainMapTarget::BlendMap, 0), 33, ColorFormat::RGBA, 4, [](size_t i) { return (i % 4) == 3 ? 255 : 0; });
     settleFiles();
     EXPECT_EQ(TerrainEditWindow::pickValues(scene->scene, terrainEntity, 0.0f, 0.0f).layer, -1) << "the base, where no layer weighs";
+}
+
+// R59: Resize... resamples a map in place on the terrain, as one undo step
+TEST_F(TerrainBrushWindowTest, ResizeKeepsTheSurfaceAsOneStep) {
+    constexpr int N = 33;
+    giveFileMap(TerrainMapRef(TerrainMapTarget::HeightMap), N, ColorFormat::RED16, 1, [](size_t i) {
+        const unsigned value = static_cast<unsigned>((i / 2) % N) * 2000u;
+        return static_cast<unsigned char>(i % 2 == 0 ? value & 0xFF : value >> 8);
+    });
+    settleFiles();
+    const float half = terrain().terrainSize * 0.5f;
+    const float left = querySurface(terrain(), -half, 0.0f).height;
+    const float middle = querySurface(terrain(), 0.0f, 0.0f).height;
+    const float right = querySurface(terrain(), half, 0.0f).height;
+    CommandHistory* history = CommandHandle::get(scene->id);
+    const size_t before = history->position();
+    std::string error;
+    ASSERT_TRUE(TerrainEditWindow::resizeTerrainMap(project.get(), scene, terrainEntity, TerrainMapRef(TerrainMapTarget::HeightMap), 65, 65, error)) << error;
+    EXPECT_EQ(history->position(), before + 1) << "one undo step";
+    EXPECT_EQ(TerrainComponentStore(scene->scene, terrainEntity, terrain()).format(HEIGHT_MAP).bounds.w, 65);
+    EXPECT_NEAR(querySurface(terrain(), -half, 0.0f).height, left, 0.01f) << "the edges stay where they were";
+    EXPECT_NEAR(querySurface(terrain(), 0.0f, 0.0f).height, middle, 0.01f);
+    EXPECT_NEAR(querySurface(terrain(), half, 0.0f).height, right, 0.01f);
+    ASSERT_TRUE(history->undo());
+    EXPECT_EQ(TerrainComponentStore(scene->scene, terrainEntity, terrain()).format(HEIGHT_MAP).bounds.w, N) << "undo brings the old size back";
 }

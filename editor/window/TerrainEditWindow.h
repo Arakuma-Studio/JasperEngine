@@ -227,6 +227,14 @@ namespace jasperengine::editor{
             std::string message;
         };
         ImportRawDialog importRaw;
+        // T1 R59: the map Resize... is open for, and the size it offers
+        struct ResizeMapDialog{
+            bool open = false;
+            bool justOpened = false;
+            terrain::MapId map;
+            int size = 0;
+        };
+        ResizeMapDialog resizeMap;
         ExportRawDialog exportRaw;
         // T1 R59: a new Terrain Height keeps the surface where it is
         bool keepWorldHeights = true;
@@ -371,6 +379,11 @@ namespace jasperengine::editor{
         TerrainBrushMode effectiveModeFor(bool ctrl, bool shift) const;
         // T1 R55, Table 4: the decal's colour of an operation
         static Vector4 decalColor(TerrainBrushMode mode);
+        // T1 R59: a map resampled to width x height (bilinear; a hole map's texels stay 0 or 255)
+        static TerrainMapSnapshot resizedSnapshot(const TerrainMapSnapshot& source, int width, int height, bool holes);
+        // T1 R59: Resize...: the map at another size, one undo step; false with error
+        static bool resizeTerrainMap(Project* project, SceneProject* sceneProject, Entity entity, const TerrainMapRef& ref, int width, int height,
+                                     std::string& error);
         // T1 R63: the eyedroppers' values at a terrain-local point
         static TerrainPickValues pickValues(Scene* scene, Entity entity, float localX, float localZ);
         // T1 R55: the decal's opacity this long after the pointer last moved: whole for 0.5 s, then gone over 0.25 s
