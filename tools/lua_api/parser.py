@@ -2743,6 +2743,9 @@ PROPERTY_OVERRIDES = {
     ('Button', 'onClick'): ('FunctionSubscribe', False),
     ('BaseEventData', 'target'): ('GameObject?', False),
     ('BaseEventData', 'selectedObject'): ('GameObject?', False),
+    # T5 R33: write-only handlers (the getter is nil), docs/scripting/foliage.md
+    ('Terrain', 'onTreeHit'): ('fun(hit: table)|nil', False),
+    ('Terrain', 'onTreeRemoved'): ('fun(id: integer, pose: table)|nil', False),
 }
 
 # physics-contacts: the callbacks' values. Their GameObject / body / receiver getters are
