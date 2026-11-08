@@ -13,10 +13,17 @@
 #include "titleart/three_d/Title3DEditor.h"
 #include "titleart/three_d/TitleGlbWriter.h"
 #include "titleart/three_d/TitleMesh.h"
+#include "titleart/three_d/TitleMeshFile.h"
+#include "titleart/three_d/TitleEnvironmentCook.h"
+#include "titleart/three_d/TitleEnvironment.h"
+#include "texture/Ktx2.h"
+#include "texture/TextureEncoders.h"
 
 #include "tiny_gltf.h"
 
 #include <cmath>
+#include <cstring>
+#include <map>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -173,3 +180,69 @@ TEST(TitleGlbWriterTest, RoundTripThroughTinyGltf) {
     EXPECT_GT(maxX, 2.0 - 1e-3);
     EXPECT_LT(maxX, 2.3);
 }
+
+TEST(Title3DEditorTest, CookedMeshesReadBackAtTheirTier) {
+    // R38: a 3D layer's mesh cooked at Low reads back at Low with the triangles stats_3d counts
+    const TitleArtDoc doc = applyOps(sample(), Json{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "3d"}}).doc;
+    std::map<std::string, std::vector<uint8_t>> cooked;
+    std::string error;
+    ASSERT_TRUE(cookTitleMeshes(doc, nullptr, titleart::TitleTier::Low, cooked, error)) << error;
+    ASSERT_EQ(cooked.size(), 1u);
+    const std::shared_ptr<titleart::TitleMesh> mesh = titleart::readTitleMesh(cooked.begin()->second, &error);
+    ASSERT_TRUE(mesh) << error;
+    EXPECT_EQ(mesh->tier, titleart::TitleTier::Low);
+    const Json stats = title3DStats(doc, nullptr, titleart::TitleTier::Low);
+    ASSERT_EQ(stats.size(), 1u);
+    EXPECT_EQ(mesh->stats.triangles, stats[0]["triangles"].get<uint32_t>());
+}
+
+TEST(TitleEnvironmentCookTest, StudioCooksForEveryFamilyAndCaches) {
+    // AC14: studio at Low (256 px faces) for desktop (BC6H), mobile and android_etc2 (RGB9E5) and
+    // web (UASTC HDR): KTX2 cubes with every level and the key-values; the decoded top level is the
+    // CPU twin's within the format's error; a second cook is a cache hit (no encode)
+    registerEditorTextureCodecs();
+    const int face = titleart::titleEnvironmentFace(titleart::Environment3D{}, 1.0, titleart::TitleTier::Low);
+    const titleart::TitleEnvCube twin = titleart::buildTitleEnvironmentCpu(*titleart::titleEnvironmentPreset("studio"), nullptr, 0, face);
+    for (TextureFamily family : {TextureFamily::Desktop, TextureFamily::Mobile, TextureFamily::AndroidEtc2, TextureFamily::Web}) {
+        SCOPED_TRACE((int)family);
+        std::vector<uint8_t> file;
+        std::string error;
+        ASSERT_TRUE(cookTitleEnvironment("studio", titleart::TitleTier::Low, family, file, error)) << error;
+        ASSERT_TRUE(Ktx2::isKtx2(file));
+        Ktx2Info info;
+        ASSERT_TRUE(Ktx2::parseInfo(file, file.size(), info, error)) << error;
+        EXPECT_EQ(info.faces, 6u);
+        EXPECT_EQ((int)info.width, face);
+        EXPECT_EQ((int)info.levelCount, titleart::titleEnvironmentLevels(face));
+        EXPECT_EQ(info.keyValues["JE.titleart.environment"], "studio");
+        EXPECT_EQ(info.keyValues["JE.logical"], "title_environment");
+        // the decoded top level against the twin: the same mean radiance (3 %)
+        GpuTextureFormat format;
+        int width = 0, height = 0, faces = 0;
+        std::vector<uint8_t> pixels;
+        ASSERT_TRUE(decodeKtx2ForPreview(file, 0, format, width, height, faces, pixels, error)) << error;
+        ASSERT_EQ(format, GpuTextureFormat::RGBA16F);
+        double mean = 0;
+        const size_t texels = pixels.size() / 8;
+        for (size_t i = 0; i < texels; i++) {
+            uint16_t h[4];
+            std::memcpy(h, &pixels[i * 8], 8);
+            mean += (halfToFloat(h[0]) + halfToFloat(h[1]) + halfToFloat(h[2])) / 3.0;
+        }
+        mean /= (double)texels;
+        // the twin over the faces the decode gave
+        const size_t twinTexels = std::min(twin.levels[0].size(), (size_t)std::max(1, faces) * face * face);
+        double twinMean = 0;
+        for (size_t i = 0; i < twinTexels; i++) twinMean += (twin.levels[0][i][0] + twin.levels[0][i][1] + twin.levels[0][i][2]) / 3.0;
+        twinMean /= (double)twinTexels;
+        EXPECT_NEAR(mean, twinMean, 0.03 * twinMean);
+    }
+    const TitleEnvironmentCookStats before = titleEnvironmentCookStats();
+    std::vector<uint8_t> again;
+    std::string error;
+    ASSERT_TRUE(cookTitleEnvironment("studio", titleart::TitleTier::Low, TextureFamily::Desktop, again, error)) << error;
+    const TitleEnvironmentCookStats after = titleEnvironmentCookStats();
+    EXPECT_EQ(after.encodes, before.encodes);
+    EXPECT_EQ(after.hits, before.hits + 1);
+}
+

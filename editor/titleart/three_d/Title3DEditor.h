@@ -17,6 +17,7 @@
 #include "titleart/three_d/TitleMesh.h"
 
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -50,5 +51,10 @@ namespace jasperengine::editor {
     // get_title's 3D view of a layer: its effective style_3d and the lighting it renders with,
     // each value with its source (document, layer, part)
     titleart::Json title3DLayerInfo(const titleart::Json& layer, const titleart::TitleArtDoc& doc);
+    // R38: the cooked meshes (.titlemesh bytes) of `doc`'s 3D layers at a Realtime tier, by layer
+    // id: what the exporter writes for a Realtime 3D title whose text cannot change, so the player
+    // draws them without the mesher (RenderRequest::cookedMeshes3D); false with `error`
+    bool cookTitleMeshes(const titleart::TitleArtDoc& doc, const titleart::AssetResolver* assets, titleart::TitleTier tier,
+                         std::map<std::string, std::vector<uint8_t>>& out, std::string& error);
 
 }

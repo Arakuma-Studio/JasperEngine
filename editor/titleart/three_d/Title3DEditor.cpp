@@ -13,6 +13,7 @@
 #include "titleart/three_d/Title3DStyle.h"
 #include "titleart/three_d/TitleEnvironment.h"
 #include "titleart/three_d/TitleTierFeatures.h"
+#include "titleart/three_d/TitleMeshFile.h"
 #include "titleart/three_d/mesher/TitleMesher.h"
 #include "asset/AssetFileWrite.h"
 #include "texture/TexturePrepare.h"
@@ -469,6 +470,32 @@ Json editor::title3DStats(const titleart::TitleArtDoc& doc, const titleart::Asse
         out.push_back(row);
     });
     return out;
+}
+
+bool editor::cookTitleMeshes(const titleart::TitleArtDoc& doc, const titleart::AssetResolver* assets, titleart::TitleTier tier,
+                             std::map<std::string, std::vector<uint8_t>>& out, std::string& error) {
+    auto content = titleart::makeGeometryTitleContentProvider();
+    bool ok = true;
+    forEach3DLayer(doc, [&](const Json& layer) {
+        if (!ok) return;
+        titleart::three_d::TitleMeshRequest request;
+        std::vector<titleart::TitleProblem> problems;
+        request.source = titleart::three_d::collectTitleSource(layer, doc, *content, assets, &problems);
+        request.style = titleart::decodeStyle3D(layer);
+        request.blocks = titleart::three_d::collectCharBlocks(layer, request.style.bands.size());
+        request.tier = tier;
+        const Json& transform = layer.contains("transform") ? layer["transform"] : Json();
+        request.outputScale = transform.is_object() ? std::abs(transform.value("scale", 1.0)) : 1.0;
+        const std::string id = layer.value("id", std::string());
+        if (request.source.glyphs.empty()) {
+            error = "the 3D layer " + id + " has nothing to mesh" + (problems.empty() ? std::string() : ": " + problems.front().message);
+            ok = false;
+            return;
+        }
+        titleart::three_d::TitleMesher mesher;
+        out[id] = titleart::writeTitleMesh(*mesher.build(request));
+    });
+    return ok;
 }
 
 Json editor::title3DLayerInfo(const Json& layer, const titleart::TitleArtDoc& doc) {
