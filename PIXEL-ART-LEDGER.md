@@ -171,7 +171,7 @@ never build or run them.
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | spec done |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | in review |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
-| S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | in review |
+| S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | spec done |
@@ -221,6 +221,17 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-08: **S45 Sprite Atlas merged into `main` and pushed** (`32ebd1379`, branch
+  `0e31b42be`).
+  - Review round: 4 blockers, 9 should-fix issues and the nits, all fixed with red controls.
+  - Verified on main `39a8d61e3` + S45 (the 9 later `main` commits don't overlap): editor 464 and
+    core 143 filtered tests (with the shared-data, `ShaderKey` and `Pixel` suites); 241 MCP tests;
+    `WERROR` linux, web and android builds; lints; AC6 repack visible in 92 ms (budget 300).
+  - Open: AC13's player screenshot (needs `JASPER_SLOW_BUILD`); AC14's frame-swap benchmark
+    (0.55–0.73 ms on the busy host against 0.5 ms, enforced only on a quiet run).
+  - `SpriteComponent` is 344 of 384 bytes. S45 also changed a shared file, `AssetDatabase.cpp`
+    (meta sections kept when the GUID is assigned).
+  - Everything else waits for S43 (S42, S49, S52, then S48, S46, S47, S50).
 - 2026-11-08: **S41 Pixel Perfect Camera merged into `main` and pushed** (`e3a0d1ff9`, then
   `be6b8baf9`).
   - Merged twice more with `origin/main` (lit-uniforms took cache v56, so S41 is v57; S65 and
