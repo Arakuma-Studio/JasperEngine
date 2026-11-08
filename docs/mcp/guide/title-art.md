@@ -123,6 +123,8 @@ person a variant, use `render_title` `try`; to leave it on their screen, `focus_
   `{tab, family, query}`, `preview_as` (realtime, baked, or a registered mode), `background`
   (checker, black, white, gray, color, image, game_scene, in_context), `device`
   `{profile, orientation, display_height}`, `zoom` (number or `"fit"`). The result's `state`
-  has `path, selection, panel, zoom, preview_as, busy, staged, preview_active, last_render_ms, rect`.
+  has `path, selection, panel, zoom, preview_as, busy, staged, preview_active, last_render_ms, rect`,
+  `library {provider: starter|registered, shown}` and `notices` (`cjk_font_missing`: the person's
+  editor shows this title's CJK text as boxes; say so).
 - `screenshot {view: "title_designer"}`: the window as a person sees it.
 - `get_title` adds `designer {selection, staged, preview_active, view}` while it is open.
