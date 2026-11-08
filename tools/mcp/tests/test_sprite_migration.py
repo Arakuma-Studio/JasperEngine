@@ -213,7 +213,7 @@ async def test_convert_onto_a_matching_grid_names_the_frame(ed: Editor):
     """A texture whose Grid already holds the sprite's rects keeps its Grid; the sprite shows its frame by the grid's name"""
     gridded = "assets/legacy/gridded.png"
     (ed.project / gridded).write_bytes(png(32, 16))
-    (ed.project / (gridded + ".meta")).write_text("import:\n  spriteSheet: {version: 1, mode: grid, grid: {cell: [16, 16], offset: [0, 0], "
+    (ed.project / (gridded + ".meta")).write_text("guid: 9d1d9d1d9d1d9d1d9d1d9d1d9d1d9d1d\nimport:\n  spriteSheet: {version: 1, mode: grid, grid: {cell: [16, 16], offset: [0, 0], "
                                                   "spacing: [0, 0], count: 0, skipEmpty: false, prefix: gr_}, pivot: center}\n")
     await ed.call("sync_files", paths=[gridded, gridded + ".meta"])
     await ed.call("set_sprite_frames", scene=S["main"], create={"name": "OnGrid"}, texture=gridded,

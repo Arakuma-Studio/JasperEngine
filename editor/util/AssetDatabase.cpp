@@ -1246,7 +1246,11 @@ bool editor::AssetDatabase::writeIdentity(const Entry& entry) const {
     AssetMeta meta;
     std::string text;
     if (assetio::readFile(metaPath, text) && !AssetMeta::parse(text, meta)) {
-        meta = AssetMeta();
+        // a sidecar written before its GUID (an importer's settings set while the asset was being
+        // imported) keeps its sections: the GUID goes in front of them
+        if (text.find("guid:") != std::string::npos || !AssetMeta::parse("guid: " + entry.guid.str() + "\n" + text, meta)) {
+            meta = AssetMeta();
+        }
     }
     meta.guid = entry.guid;
     meta.formerGuids.clear();

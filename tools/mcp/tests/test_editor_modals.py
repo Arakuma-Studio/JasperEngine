@@ -738,7 +738,7 @@ async def test_texture_slicer(ed: Editor):
 
     # a texture's stored Sprite Mode: the Slicer opens on it and Slice keeps its pivot (S45 R12)
     (ed.project / "grid.png").write_bytes(png(64, 32))
-    (ed.project / "grid.png.meta").write_text("import:\n  spriteSheet: {version: 1, mode: grid, grid: {cell: [32, 32], offset: [0, 0], "
+    (ed.project / "grid.png.meta").write_text("guid: 5a1ce5a1ce5a1ce5a1ce5a1ce5a1ce5a\nimport:\n  spriteSheet: {version: 1, mode: grid, grid: {cell: [32, 32], offset: [0, 0], "
                                              "spacing: [0, 0], count: 0, skipEmpty: false, prefix: g_}, pivot: bottom_center}\n")
     await ed.call("sync_files", paths=["grid.png", "grid.png.meta"])
     made = await ed.call("set_sprite_frames", create={"name": "GridSprite"}, sheet="grid.png", frame=0)

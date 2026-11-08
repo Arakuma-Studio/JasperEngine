@@ -1172,6 +1172,16 @@ namespace jasperengine::editor::sprite {
         again.clear();
         waitingImports.clear();
         for (auto& [path, r] : running) r.cancel->cancel();
+        // a build whose pages are still loading is not adopted either: the editor keeps the last one
+        for (const Swap& s : swaps) {
+            auto cancelled = std::make_shared<AtlasBuildResult>();
+            cancelled->atlasPath = s.result->atlasPath;
+            cancelled->error = {"cancelled", "", "the build was cancelled", "build it again"};
+            std::lock_guard<std::mutex> lock(mutex);
+            attempts[s.result->atlasPath] = cancelled;
+            builds[s.result->atlasPath]++;
+        }
+        swaps.clear();
     }
 
     bool SpriteAtlasBuilder::waitFor(const std::vector<std::string>& paths, int timeoutMs) {

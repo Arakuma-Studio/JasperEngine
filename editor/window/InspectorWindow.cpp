@@ -9152,8 +9152,13 @@ void editor::InspectorWindow::drawSheetSpriteSection(ComponentType cpType, Scene
 
     // a texture sheet: its Slicer (S45 R12); an atlas or a packed source: where it is drawn from
     if (SpriteSheetSources::isTexturePath(sprite.sheet.path)) {
-        if (ImGui::Button(ICON_FA_GRIP " Slicer Tool", ImVec2(-FLT_MIN, 0))) openSpriteSlicer(cpType, sceneProject, entity, sprite.sheet.path);
+        // and the Sprite Normal Map of its frames, side by side
+        const float sheetHalf = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+        if (ImGui::Button(ICON_FA_GRIP " Slicer Tool", ImVec2(sheetHalf, 0))) openSpriteSlicer(cpType, sceneProject, entity, sprite.sheet.path);
         UIProbe::item("inspector.sprite.slicerTool");
+        ImGui::SameLine();
+        spritenormalsentry::normalMapButton(sceneProject, entity, ImGui::GetContentRegionAvail().x);
+        spritenormalsentry::normalMapHint(sceneProject, entity);
     }
     if (SpriteSheetSources::isPacked(sprite.sheet.path)) {
         ImGui::TextDisabled(ICON_FA_TABLE_CELLS " Drawn from a Sprite Atlas page");

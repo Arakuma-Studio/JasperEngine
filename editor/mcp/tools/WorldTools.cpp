@@ -3453,7 +3453,9 @@ void setSpriteFramesTool(const CallPtr& call) {
         failWith("clips needs an .aseprite sheet: pass sheet.");
         return;
     }
-    if (!sprite->sheet.empty() && !has(args, "texture")) {
+    // a texture sheet sprite sliced again: the texture is its sheet's (the mesh may draw an atlas page)
+    const bool textureSheet = !sprite->sheet.empty() && SpriteSheetSources::isTexturePath(sprite->sheet.path);
+    if (!sprite->sheet.empty() && !has(args, "texture") && !textureSheet) {
         // the mesh's texture is the sheet's page: slicing it would save the import cache's file
         failWith("\"" + scene->getEntityName(target.entity) + "\" shows " + sprite->sheet.path +
                  ": pass texture with slice or frames to go back to inline frames, or frame to pick a frame of the sheet.");
@@ -3467,6 +3469,14 @@ void setSpriteFramesTool(const CallPtr& call) {
         addProp<AssetRef>(*multi, target, target.entity, ComponentType::SpriteComponent, "sheet", AssetRef());
     }
     std::string stored = meshTexturePath(scene, target.entity, 0);
+    if (textureSheet && !has(args, "texture")) {
+        stored = sprite->sheet.path;
+        if (!addMeshTexture(target, target.entity, 0, Json(stored), *multi, error)) {
+            delete multi;
+            failWith("texture: " + error);
+            return;
+        }
+    }
     if (has(args, "texture")) {
         if (!addMeshTexture(target, target.entity, 0, args["texture"], *multi, error) ||
             !McpValues::assetPathFromJson(target.project, stringOr(args, "texture", ""), stored, error)) {
