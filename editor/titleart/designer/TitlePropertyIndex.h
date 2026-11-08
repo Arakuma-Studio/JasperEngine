@@ -107,13 +107,21 @@ namespace jasperengine::editor::titledesigner {
             std::vector<std::string> texts;    // folded, without duplicates
             std::string joined;                // texts joined by '\x1f' (never in a folded text): one scan rejects a word
         };
-
-    private:
         struct FoldedEntry {
             FoldedLabels labels;               // label and aliases
             std::string location;              // the location chain folded, joined by spaces
             std::vector<std::string> enums;    // the enum value labels, folded
         };
+        // entries [first, last) with their folded texts, to add again unchanged (the incremental
+        // collect pass replays the rows of objects that did not change)
+        struct Recorded {
+            std::vector<IndexEntry> entries;
+            std::vector<FoldedEntry> folded;
+        };
+        Recorded record(size_t first, size_t last) const;
+        void replay(const Recorded& recorded);
+
+    private:
 
         const SearchTerms* terms = nullptr;
         std::vector<IndexEntry> entries;

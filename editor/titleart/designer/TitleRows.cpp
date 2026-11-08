@@ -507,7 +507,7 @@ namespace {
     // gives the same index entries, so they are replayed rather than collected (R69: an edit to
     // one rim re-collects that rim, not the layer's 14 other cards)
     struct RecordedRows {
-        std::vector<jasperengine::editor::titledesigner::IndexEntry> entries;
+        jasperengine::editor::titledesigner::PropertyIndex::Recorded entries;
         std::vector<jasperengine::editor::titledesigner::RowAudit> audits;
     };
     std::unordered_map<std::string, RecordedRows>& recordedRows() {
@@ -536,7 +536,7 @@ namespace {
     bool replayRows(jasperengine::editor::titledesigner::RowContext& ctx, const std::string& key) {
         auto it = recordedRows().find(key);
         if (it == recordedRows().end()) return false;
-        for (const auto& entry : it->second.entries) ctx.sink->add(entry);
+        ctx.sink->replay(it->second.entries);
         for (const auto& a : it->second.audits) audit().push_back(a);
         return true;
     }
@@ -544,7 +544,7 @@ namespace {
     void recordRows(const jasperengine::editor::titledesigner::RowContext& ctx, const std::string& key, size_t entriesBefore, size_t auditsBefore) {
         if (recordedRows().size() > 8192) recordedRows().clear();
         RecordedRows recorded;
-        for (size_t i = entriesBefore; i < ctx.sink->size(); i++) recorded.entries.push_back(ctx.sink->entry(i));
+        recorded.entries = ctx.sink->record(entriesBefore, ctx.sink->size());
         recorded.audits.assign(audit().begin() + (long)auditsBefore, audit().end());
         recordedRows()[key] = std::move(recorded);
     }

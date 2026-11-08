@@ -206,6 +206,21 @@ void PropertyIndex::add(IndexEntry entry) {
     folded.push_back(std::move(f));
 }
 
+PropertyIndex::Recorded PropertyIndex::record(size_t first, size_t last) const {
+    Recorded out;
+    last = std::min(last, entries.size());
+    for (size_t i = first; i < last; i++) {
+        out.entries.push_back(entries[i]);
+        out.folded.push_back(folded[i]);
+    }
+    return out;
+}
+
+void PropertyIndex::replay(const Recorded& recorded) {
+    entries.insert(entries.end(), recorded.entries.begin(), recorded.entries.end());
+    folded.insert(folded.end(), recorded.folded.begin(), recorded.folded.end());
+}
+
 void PropertyIndex::addOffer(AddOffer offer) {
     FoldedLabels labels;
     addFolded(labels, offer.label);
