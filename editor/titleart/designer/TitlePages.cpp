@@ -102,7 +102,8 @@ namespace {
             const std::string key = section[0];
             const std::string kind = memberKind("material", key);
             const ta::Json* object = material && material->is_object() && material->contains(key) ? &(*material)[key] : nullptr;
-            const std::string summary = object ? objectSummary(kind, *object) : std::string();
+            // (a collect pass never shows a summary)
+            const std::string summary = object && !ctx.collecting() ? objectSummary(kind, *object) : std::string();
             // material groups open by default only if something in them is on (R19)
             const bool on = key == "fill" || (object && object->value("enabled", false)) ||
                             (object && object->contains("kind") && str(*object, "kind") != "none" && key != "fill");
