@@ -76,6 +76,7 @@ void editor::TerrainStrokeSession::buildOp(){
         op.type = brush.mode == TerrainBrushMode::Raise ? OpType::LiftFloors : OpType::FlattenPeaks;
         op.height = std::clamp(brush.flattenTarget, 0.0f, 1.0f) * maxHeight;
     }
+    op.smoothBlend = brush.alternate && brush.mode == TerrainBrushMode::PaintLayer;
     // The heights run in map units through terrain-local ops: maxHeight comes in here and goes out in
     // the kernel, which is one rounding away from the map units a brush always wrote
     switch (brush.mode){

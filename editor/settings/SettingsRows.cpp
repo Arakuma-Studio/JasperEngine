@@ -4127,6 +4127,9 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
     addOrAbort(registry, uiRow("preferences.scene_view.rulers", sceneView, "Views", "Rulers", "ruler scale 2d orthographic",
         [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().rulers); },
         "Top and left rulers in 2D, UI and orthographic axis views"));
+    addOrAbort(registry, uiRow("preferences.scene_view.alt_alternates", sceneView, "Brushes", "Alt Alternates While Painting", "alt alternate terrain voxel brush orbit",
+        [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().altAlternates); },
+        "With a terrain or voxel brush armed, Alt held is the tool's alternate and Alt+drag paints it instead of orbiting"));
     addOrAbort(registry, uiRow("preferences.scene_view.preview_particles", sceneView, "Animation", "Preview Particle Systems", "animator animation preview particles vfx scrub",
         [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().previewParticles); },
         "Animation previews in edit mode (Animator, Animation windows) play and scrub the Particle Systems under the previewed GameObject"));
