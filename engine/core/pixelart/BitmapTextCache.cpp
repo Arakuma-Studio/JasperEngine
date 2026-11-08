@@ -301,14 +301,19 @@ namespace jasperengine::pixelart {
     }
 
     const CachedGlyph* BitmapTextCache::find(int index, const BitmapFont& font, const BitmapTextStyle& style, uint32_t codepoint) const{
+        const std::unordered_map<uint32_t, CachedGlyph>* glyphs = glyphsOf(index, font, style);
+        if (!glyphs)
+            return nullptr;
+        auto glyph = glyphs->find(codepoint);
+        return glyph == glyphs->end() ? nullptr : &glyph->second;
+    }
+
+    const std::unordered_map<uint32_t, CachedGlyph>* BitmapTextCache::glyphsOf(int index, const BitmapFont& font, const BitmapTextStyle& style) const{
         if (!isValid(index))
             return nullptr;
         const Page& page = pages[(size_t)index];
         auto entry = page.entries.find(keyOf(font, style));
-        if (entry == page.entries.end())
-            return nullptr;
-        auto glyph = entry->second.find(codepoint);
-        return glyph == entry->second.end() ? nullptr : &glyph->second;
+        return entry == page.entries.end() ? nullptr : &entry->second;
     }
 
     void BitmapTextCache::touch(int index){

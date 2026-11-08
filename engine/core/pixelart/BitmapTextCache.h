@@ -63,6 +63,8 @@ namespace jasperengine::pixelart {
         // `style`, made on demand; -1 only when a glyph is larger than a page can be
         int acquire(const BitmapFont& font, const BitmapTextStyle& style, const std::vector<uint32_t>& codepoints);
         const CachedGlyph* find(int page, const BitmapFont& font, const BitmapTextStyle& style, uint32_t codepoint) const;
+        // every glyph of the font in that style on the page (one lookup for a whole Text), or null
+        const std::unordered_map<uint32_t, CachedGlyph>* glyphsOf(int page, const BitmapFont& font, const BitmapTextStyle& style) const;
         // a Text drew from the page in this frame
         void touch(int page);
 

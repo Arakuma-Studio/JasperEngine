@@ -12,7 +12,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <set>
 
 namespace jasperengine::pixelart {
 
@@ -124,12 +123,14 @@ namespace jasperengine::pixelart {
         page = 0;
         const bool styled = options.style.hasBack();
         if (styled || f.getPages().size() > 1){
-            std::set<uint32_t> needed;
+            std::vector<uint32_t> list;
+            list.reserve(cp.size());
             for (uint32_t c : cp){
                 if (c == 10) continue;
-                needed.insert(f.hasGlyph(c) ? c : kCacheFallbackGlyph);
+                list.push_back(f.hasGlyph(c) ? c : kCacheFallbackGlyph);
             }
-            std::vector<uint32_t> list(needed.begin(), needed.end());
+            std::sort(list.begin(), list.end());
+            list.erase(std::unique(list.begin(), list.end()), list.end());
             BitmapTextCache& cache = BitmapTextCache::get();
             cachePage = cache.acquire(f, options.style, list);
             if (cachePage < 0)
@@ -240,11 +241,17 @@ namespace jasperengine::pixelart {
 
         const Vector4 white(1.0f, 1.0f, 1.0f, 1.0f);
         const Vector4 face(options.faceColor.x, options.faceColor.y, options.faceColor.z, 1.0f);
-        BitmapTextCache& cache = BitmapTextCache::get();
+        // the Text's glyphs on its cache page, looked up once
+        const std::unordered_map<uint32_t, CachedGlyph>* cached = fromCache ? BitmapTextCache::get().glyphsOf(cachePage, f, options.style) : nullptr;
+        auto cachedGlyph = [cached](uint32_t key) -> const CachedGlyph*{
+            if (!cached) return nullptr;
+            auto it = cached->find(key);
+            return it == cached->end() ? nullptr : &it->second;
+        };
         if (fromCache && styled){
             for (const Placed& p : placed){
                 const BitmapGlyph* g = p.glyph;
-                const CachedGlyph* c = cache.find(cachePage, f, options.style, p.key);
+                const CachedGlyph* c = cachedGlyph(p.key);
                 const int x0 = p.pen + g->offsetX, y0 = (int)p.line * f.getLineHeight() + g->offsetY - f.getBaseline();
                 if (c && c->backW > 0)
                     addQuad(x0 + c->backOffsetX, y0 + c->backOffsetY, c->backW, c->backH, c->backX, c->backY, white, p, true);
@@ -257,7 +264,7 @@ namespace jasperengine::pixelart {
             const BitmapGlyph* g = p.glyph;
             const int x0 = p.pen + g->offsetX, y0 = (int)p.line * f.getLineHeight() + g->offsetY - f.getBaseline();
             if (fromCache){
-                const CachedGlyph* c = cache.find(cachePage, f, options.style, p.key);
+                const CachedGlyph* c = cachedGlyph(p.key);
                 if (c && c->faceW > 0)
                     addQuad(x0, y0, c->faceW, c->faceH, c->faceX, c->faceY, face, p, false);
                 else
