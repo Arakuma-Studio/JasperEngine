@@ -109,6 +109,7 @@ void ProceduralRun::start() {
     impl->stage = request.plan ? Impl::Stage::Evaluate : (request.sphere ? Impl::Stage::Sphere : Impl::Stage::Done);
     if (!request.plan) outputs = request.images;
     liveRuns().push_back(this);
+    if (onStage) onStage(getStage());
     if (runFrameRequester()) runFrameRequester()();
 }
 
@@ -162,6 +163,7 @@ void ProceduralRun::advance(double budgetMs) {
         outputs = std::move(result.outputs);
         impl->evaluator.reset();
         impl->stage = request.sphere ? Impl::Stage::Sphere : Impl::Stage::Done;
+        if (onStage && impl->stage == Impl::Stage::Sphere) onStage(getStage());
     }
     if (impl->stage == Impl::Stage::Sphere) {
         if (!impl->ball) {
@@ -242,5 +244,13 @@ void ProceduralRun::releaseGpu() {
     for (ProceduralRun* run : runs) {
         auto& live = liveRuns();
         if (std::find(live.begin(), live.end(), run) != live.end()) run->finish("The editor is closing.");
+    }
+}
+
+void ProceduralRun::projectSwitching() {
+    const std::vector<ProceduralRun*> runs = liveRuns();
+    for (ProceduralRun* run : runs) {
+        auto& live = liveRuns();
+        if (std::find(live.begin(), live.end(), run) != live.end()) run->finish("Another project was opened: the run stopped and wrote nothing.");
     }
 }

@@ -24,7 +24,9 @@
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <map>
@@ -140,6 +142,12 @@ uint32_t jasperengine::editor::procmat::graphSeed(const graph::Graph& file) {
     return value >= 0.0 && value <= 2147483647.0 && value == std::floor(value) ? (uint32_t)value : 0;
 }
 
+std::vector<std::string> jasperengine::editor::procmat::graphBakeOutputs(const graph::Graph& file) {
+    std::vector<std::string> names;
+    for (const PlanRoot& root : materialBakeRoots(file)) names.push_back(root.name);
+    return names;
+}
+
 bool jasperengine::editor::procmat::planBake(const graph::Graph& file, const std::shared_ptr<const NodeLibrary>& library, const BakeOptions& options,
                                              PassPlan& plan, std::vector<std::string>& outputs, std::string& error) {
     if (options.size < BAKE_SIZE_MIN || options.size > BAKE_SIZE_MAX || (options.size & (options.size - 1)) != 0) {
@@ -217,7 +225,8 @@ std::string jasperengine::editor::procmat::bakeInputHash(const PassPlan& plan) {
 nlohmann::json jasperengine::editor::procmat::recipeToJson(const BakeRecipe& recipe) {
     return {{"format", BAKE_RECIPE_FORMAT}, {"generator", "jasperengine-editor procedural-material"}, {"engine", JASPERENGINE_EDITOR_VERSION},
             {"graph", {{"guid", recipe.graphGuid}, {"path", recipe.graphPath}}}, {"input_hash", recipe.inputHash}, {"seed", recipe.seed},
-            {"size", recipe.size}, {"output", recipe.output}, {"outputs", recipe.outputs}, {"tier", recipe.tier}, {"device", recipe.device}};
+            {"size", recipe.size}, {"output", recipe.output}, {"outputs", recipe.outputs}, {"graph_outputs", recipe.graphOutputs},
+            {"seed_from_graph", recipe.seedFromGraph}, {"tier", recipe.tier}, {"device", recipe.device}};
 }
 
 bool jasperengine::editor::procmat::recipeFromJson(const nlohmann::json& json, BakeRecipe& recipe, std::string& error) {
@@ -257,6 +266,23 @@ bool jasperengine::editor::procmat::recipeFromJson(const nlohmann::json& json, B
         }
         recipe.outputs.push_back(name.get<std::string>());
     }
+    // optional: what the graph had and where the seed came from
+    recipe.graphOutputs = recipe.outputs;
+    if (json.contains("graph_outputs")) {
+        if (!json["graph_outputs"].is_array()) {
+            error = "graph_outputs is not a list";
+            return false;
+        }
+        recipe.graphOutputs.clear();
+        for (const nlohmann::json& name : json["graph_outputs"]) {
+            if (!name.is_string() || !isBakeOutput(name.get<std::string>())) {
+                error = "graph_outputs holds something other than an output's name";
+                return false;
+            }
+            recipe.graphOutputs.push_back(name.get<std::string>());
+        }
+    }
+    recipe.seedFromGraph = json.value("seed_from_graph", false) == true;
     return true;
 }
 
@@ -309,7 +335,9 @@ void jasperengine::editor::procmat::applyBakeToMaterial(Material& material, cons
     };
     for (const BakedSlot& slot : dropped) {
         for (Texture* texture : slots(slot.output)) {
-            if (holds(*texture, slot)) *texture = Texture();
+            if (!holds(*texture, slot)) continue;
+            *texture = Texture();
+            if (slot.output == "emission") material.emissiveFactor = Vector3(0.0f, 0.0f, 0.0f);
         }
     }
     for (const BakedSlot& slot : baked) {
@@ -432,7 +460,7 @@ bool jasperengine::editor::procmat::encodeBake(Project* project, const BakeWrite
     }
     // an output an earlier bake had and this one has not: its slot no longer shows this graph
     for (const std::string& name : bakeOutputNames()) {
-        if (std::find(outputs.begin(), outputs.end(), name) != outputs.end()) continue;
+        if (std::find(bake.graphOutputs.begin(), bake.graphOutputs.end(), name) != bake.graphOutputs.end()) continue;
         const fs::path absolute = folder / bakedImageName(stem, name);
         std::string existingMeta;
         readText(SetAssetMetaCmd::metaPathOf(absolute), existingMeta);
@@ -517,21 +545,41 @@ BakeStatus jasperengine::editor::procmat::bakeStatus(const fs::path& projectDir,
         status.reason = status.graphPath + " does not load" + (report.error.empty() ? std::string() : ": " + report.error);
         return status;
     }
+    // an output connected or disconnected since: the bake's .material no longer shows the graph
+    const std::vector<std::string> now = graphBakeOutputs(file);
+    std::vector<std::string> added, removed;
+    for (const std::string& name : now) {
+        if (std::find(recipe.graphOutputs.begin(), recipe.graphOutputs.end(), name) == recipe.graphOutputs.end()) added.push_back(name);
+    }
+    for (const std::string& name : recipe.graphOutputs) {
+        if (std::find(now.begin(), now.end(), name) == now.end()) removed.push_back(name);
+    }
+    if (!added.empty() || !removed.empty()) {
+        std::string what;
+        for (const std::string& name : added) what += (what.empty() ? "" : ", ") + name + " is connected";
+        for (const std::string& name : removed) what += (what.empty() ? "" : ", ") + name + " is no longer connected";
+        status.state = BakeState::Stale;
+        status.reason = status.graphPath + "'s outputs changed since this bake (" + what + ")";
+        return status;
+    }
     BakeOptions options;
     options.size = recipe.size;
-    options.seed = recipe.seed;
+    // the graph's own seed, when the bake took it: a reroll is an edit of the graph
+    options.seed = recipe.seedFromGraph ? graphSeed(file) : recipe.seed;
     options.outputs = recipe.outputs;
     PassPlan plan;
     std::vector<std::string> outputs;
     std::string error;
     if (!planBake(file, NodeLibrary::shipped(), options, plan, outputs, error)) {
         status.state = BakeState::GraphInvalid;
-        status.reason = status.graphPath + " no longer bakes: " + error;
+        status.reason = status.graphPath + " does not bake: " + error;
         return status;
     }
     if (bakeInputHash(plan) != recipe.inputHash) {
         status.state = BakeState::Stale;
-        status.reason = status.graphPath + " changed since this bake";
+        status.reason = options.seed != recipe.seed ? status.graphPath + "'s seed changed since this bake (" + std::to_string(recipe.seed) + " to " +
+                                                          std::to_string(options.seed) + ")"
+                                                    : status.graphPath + " changed since this bake";
     }
     return status;
 }
@@ -554,16 +602,22 @@ std::optional<BakeStatus> jasperengine::editor::procmat::cachedBakeStatus(const 
         fs::path graph;
         Stamp graphStamp;
         std::optional<BakeStatus> status;
+        std::chrono::steady_clock::time_point checkedAt;
     };
     static std::map<fs::path, Entry> cache;
     if (lowerExtension(png) != ".png") return std::nullopt;
     const Stamp image = stampOf(png);
     auto found = cache.find(png);
-    if (found != cache.end() && found->second.image == image && (found->second.graph.empty() || stampOf(found->second.graph) == found->second.graphStamp)) {
+    // a graph that is gone may come back (an undone delete): asked again every couple of seconds, not each frame
+    const auto now = std::chrono::steady_clock::now();
+    if (found != cache.end() && found->second.image == image &&
+        (found->second.graph.empty() ? (!found->second.status || now - found->second.checkedAt < std::chrono::seconds(2))
+                                     : stampOf(found->second.graph) == found->second.graphStamp)) {
         return found->second.status;
     }
     Entry entry;
     entry.image = image;
+    entry.checkedAt = now;
     if (const std::optional<BakeRecipe> recipe = readBakeRecipe(png)) {
         entry.status = bakeStatus(projectDir, *recipe);
         if (!entry.status->graphPath.empty()) {
@@ -648,12 +702,113 @@ MaterialsCheck jasperengine::editor::procmat::checkMaterials(const fs::path& pro
         finding.path = rel;
         finding.severity = "warning";
         finding.code = std::string("procmat-") + bakeStateName(status.state);
-        finding.message = "a stale bake: " + status.reason;
+        finding.message = status.state == BakeState::GraphInvalid ? "its graph does not bake now: " + status.reason : "a stale bake: " + status.reason;
         finding.suggestion = status.state == BakeState::GraphMissing ? "bake it again from its graph, or delete the baked files"
                                                                      : "bake it again (bake_procedural_material, or procedural-material bake " + status.graphPath + ")";
         check.findings.push_back(finding);
     }
     return check;
+}
+
+namespace {
+
+    // the material_output ports an output of the bake reads
+    std::vector<std::string> portsOf(const graph::Graph& file, const graph::Node& output, const std::string& name) {
+        if (name == "orm") return {"occlusion", "roughness", "metallic"};
+        if (name == "normal") {
+            const bool connected = std::any_of(file.edges.begin(), file.edges.end(), [&](const graph::Edge& edge) {
+                return edge.to.node == output.id && edge.to.port == "normal";
+            });
+            return {connected ? "normal" : "height"};
+        }
+        return {name};
+    }
+
+    // every node an output of the bake is drawn from
+    std::vector<const graph::Node*> upstreamOf(const graph::Graph& file, const graph::Node& output, const std::string& name) {
+        std::vector<std::string> pending;
+        for (const std::string& port : portsOf(file, output, name)) {
+            for (const graph::Edge& edge : file.edges) {
+                if (edge.to.node == output.id && edge.to.port == port) pending.push_back(edge.from.node);
+            }
+        }
+        std::set<std::string> seen;
+        std::vector<const graph::Node*> nodes;
+        while (!pending.empty()) {
+            const std::string id = pending.back();
+            pending.pop_back();
+            if (!seen.insert(id).second) continue;
+            if (const graph::Node* node = file.findNode(id)) nodes.push_back(node);
+            for (const graph::Edge& edge : file.edges) {
+                if (edge.to.node == id) pending.push_back(edge.from.node);
+            }
+        }
+        return nodes;
+    }
+
+    std::string numberText(double value) {
+        char text[32];
+        std::snprintf(text, sizeof(text), "%g", value);
+        return text;
+    }
+
+}
+
+void jasperengine::editor::procmat::attachGraphFixes(qa::Json& report, const graph::Graph& file, const std::shared_ptr<const NodeLibrary>& library) {
+    if (!report.contains("fixes") || !report["fixes"].is_array()) report["fixes"] = qa::Json::array();
+    const graph::Node* output = nullptr;
+    for (const graph::Node& node : file.nodes) {
+        if (node.type == MATERIAL_OUTPUT_NODE) output = &node;
+    }
+    if (!output || !report.contains("checks")) return;
+    for (qa::Json& row : report["checks"]) {
+        const std::string id = row.value("id", "");
+        const std::string status = row.value("status", "");
+        if (id == "tileability" && status == "FAIL" && row["measured"].is_object() && row["threshold"].is_number()) {
+            const double threshold = row["threshold"].get<double>();
+            std::vector<std::string> named;
+            std::set<std::string> seen;
+            for (auto it = row["measured"].begin(); it != row["measured"].end(); ++it) {
+                if (!it.value().is_number() || it.value().get<double>() <= threshold) continue;
+                for (const graph::Node* node : upstreamOf(file, *output, it.key())) {
+                    const Json* descriptor = library ? library->descriptor(node->type) : nullptr;
+                    if (!descriptor || !descriptor->contains("parameters")) continue;
+                    for (const Json& parameter : (*descriptor)["parameters"]) {
+                        const std::string name = parameter.value("name", std::string());
+                        if (parameter.value("type", std::string()) != "float" || name.find("scale") == std::string::npos) continue;
+                        const auto stored = node->params.find(name);
+                        const Json& value = stored != node->params.end() ? *stored : parameter.value("default", Json());
+                        if (!value.is_number() || std::floor(value.get<double>()) == value.get<double>()) continue;
+                        double whole = std::max(1.0, std::round(value.get<double>()));
+                        if (parameter.contains("max") && parameter["max"].is_number()) whole = std::min(whole, std::floor(parameter["max"].get<double>()));
+                        if (parameter.contains("min") && parameter["min"].is_number() && whole < parameter["min"].get<double>()) continue;
+                        if (!seen.insert(node->id + "|" + name).second) continue;
+                        named.push_back("node " + node->id + " (" + node->type + ") has " + name + " " + numberText(value.get<double>()));
+                        report["fixes"].push_back({{"check", "tileability"}, {"node", node->id},
+                                                   {"op", {{"op", "setParam"}, {"node", node->id}, {"name", name}, {"value", whole}}}});
+                    }
+                }
+            }
+            if (!named.empty()) {
+                std::string list;
+                for (const std::string& item : named) list += (list.empty() ? "" : "; ") + item;
+                row["limited_by"] = row.value("limited_by", std::string()) + " " + list + ": not a whole number of repeats.";
+                const qa::Json& op = report["fixes"].back()["op"];
+                row["fix_hint"] = named.size() == 1 ? "Set " + op.value("name", std::string()) + " of node " + op.value("node", std::string()) + " to " +
+                                                          numberText(op["value"].get<double>()) + ": a whole number of repeats tiles."
+                                                    : "Give each of them a whole number of repeats: a scale with a fraction does not tile.";
+            }
+        }
+        if (id == "normal" && (status == "FAIL" || status == "WARN")) {
+            const auto into = [&](const char* port) {
+                return std::find_if(file.edges.begin(), file.edges.end(), [&](const graph::Edge& edge) { return edge.to.node == output->id && edge.to.port == port; });
+            };
+            const auto normal = into("normal");
+            if (normal == file.edges.end() || into("height") == file.edges.end()) continue;
+            row["limited_by"] = row.value("limited_by", std::string()) + " Node " + normal->from.node + " feeds Normal.";
+            report["fixes"].push_back({{"check", "normal"}, {"node", output->id}, {"op", {{"op", "disconnect"}, {"id", normal->id}}}});
+        }
+    }
 }
 
 qa::FailRounds& jasperengine::editor::procmat::checkRounds() {
@@ -691,5 +846,7 @@ qa::Json jasperengine::editor::procmat::graphCheckReport(Project* project, const
     request.qa = project->getProcMatQaSettings();
     request.only = only;
     request.rounds = checkRounds().previous(path);
-    return ProceduralChecks::report(material, request);
+    qa::Json report = ProceduralChecks::report(material, request);
+    attachGraphFixes(report, graph, NodeLibrary::shipped());
+    return report;
 }

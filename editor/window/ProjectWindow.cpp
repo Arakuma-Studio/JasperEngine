@@ -2881,8 +2881,7 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         if (Util::isImageFile(fileEntry.extension)){
             fileEntry.type = FileType::IMAGE;
             // a Sprite Normal Map output (its recipe; read again only when the file changed)
-            updateSpriteNormalsBadge(fileEntry, path);
-            if (!fileEntry.generated) updateProceduralBakeBadge(fileEntry, path);
+            updateImageBadges(fileEntry, path);
         }else if (Util::isSceneFile(fileEntry.extension)){
             fileEntry.type = FileType::SCENE;
             fileEntry.icon = sceneIcon.getRender();
@@ -4109,7 +4108,7 @@ void editor::ProjectWindow::onFilesChanged(std::span<const FileChange> changes) 
         }
         return path.lexically_normal().parent_path() == current;
     };
-    bool rescan = false, folders = false, documents = false, prefabs = false;
+    bool rescan = false, folders = false, documents = false, prefabs = false, graphs = false;
     std::vector<fs::path> modified;
     for (const FileChange& change : changes) {
         if (change.kind == FileChangeKind::Rescan) {
@@ -4128,12 +4127,19 @@ void editor::ProjectWindow::onFilesChanged(std::span<const FileChange> changes) 
             modified.push_back(change.path);
             if (Util::isPrefabFile(name)) prefabs = true;
         }
+        // a Procedural Material edited, moved or gone: the bakes shown may be stale now (R16)
+        if (Util::isProceduralMaterialFile(name) || Util::isProceduralMaterialFile(watch::pathToUtf8(change.oldPath))) graphs = true;
     }
     if (rescan) {
         scanDirectory(currentPath);
     } else {
         if (folders) dirTreeGeneration++;
         if (documents) refreshProjectFiles();
+        if (graphs) {
+            for (FileEntry& f : files) {
+                if (f.type == FileType::IMAGE) updateImageBadges(f, currentPath / f.name);
+            }
+        }
     }
     for (const fs::path& path : modified) notifyResourceFileChanged(path);
     // a prefab's thumbnail also shows what it nests
@@ -4167,6 +4173,11 @@ void editor::ProjectWindow::updateSpriteNormalsBadge(FileEntry& file, const fs::
             file.generatedBy += "\nThe source " + spritenormalsentry::fileName(head.source) + " is missing";
         }
     }
+}
+
+void editor::ProjectWindow::updateImageBadges(FileEntry& file, const fs::path& path) {
+    updateSpriteNormalsBadge(file, path);
+    if (!file.generated) updateProceduralBakeBadge(file, path);
 }
 
 void editor::ProjectWindow::updateProceduralBakeBadge(FileEntry& file, const fs::path& path) {
@@ -4241,7 +4252,7 @@ void editor::ProjectWindow::show() {
         if (watcher->revision() != spriteNormalsRevision) {
             spriteNormalsRevision = watcher->revision();
             for (FileEntry& f : files) {
-                if (f.type == FileType::IMAGE) updateSpriteNormalsBadge(f, currentPath / f.name);
+                if (f.type == FileType::IMAGE) updateImageBadges(f, currentPath / f.name);
             }
         }
     }

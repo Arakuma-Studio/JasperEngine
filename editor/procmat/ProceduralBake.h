@@ -67,6 +67,9 @@ namespace jasperengine::editor::procmat {
     // Variations write it): what a bake and a preview use when not told another; 0 when it has none
     uint32_t graphSeed(const graph::Graph& graph);
 
+    // The names of materialBakeRoots, in R14's order: what a bake of the whole graph writes
+    std::vector<std::string> graphBakeOutputs(const graph::Graph& graph);
+
     // The plan of a bake (read back, Buffers at the sizes the graph asks) and the outputs it draws, in
     // plan order. False with why: an invalid size, an output the graph does not have, a graph that does
     // not plan.
@@ -84,6 +87,10 @@ namespace jasperengine::editor::procmat {
         int size = 0;
         std::string output;         // which output this file is
         std::vector<std::string> outputs;   // every output baked with it
+        // every output the graph had (materialBakeRoots): a bake of some of them is not stale for the others
+        std::vector<std::string> graphOutputs;
+        // the seed was the graph's metadata.seed, not one the call gave: a reroll makes the bake stale
+        bool seedFromGraph = false;
         std::string tier;
         std::string device;
     };
@@ -102,8 +109,9 @@ namespace jasperengine::editor::procmat {
 
     // A material after a bake into it: every baked output's slot points at its PNG (asset path and
     // GUID), and a slot's factor goes to 1 when the slot newly takes the bake (a factor someone tuned
-    // on a baked slot stays). A slot holding an earlier bake's output that this one does not have is
-    // emptied. Every other field is left as it was.
+    // on a baked slot stays). `dropped`: outputs the graph no longer has; a slot holding one is emptied,
+    // and an emptied emission slot's factor goes to 0, since without its texture the factor alone glows.
+    // Every other field is left as it was.
     struct BakedSlot {
         std::string output;
         std::string assetPath;      // assets-relative, as a .material stores it
@@ -123,6 +131,9 @@ namespace jasperengine::editor::procmat {
         std::string folder;         // project-relative, under the assets directory
         BakeRecipe recipe;          // the bake's (output and outputs filled per file)
         std::vector<OutputImage> images;
+        // every output the graph has (graphBakeOutputs): a slot of one of them that this bake leaves out
+        // keeps its earlier bake
+        std::vector<std::string> graphOutputs;
         // replace a PNG at an output's path that is not an earlier bake of this graph
         bool overwrite = false;
     };
@@ -161,6 +172,11 @@ namespace jasperengine::editor::procmat {
     // reader from the bake's own .material. `only`: the check ids, empty for all.
     qa::Json graphCheckReport(Project* project, const std::string& path, const graph::Graph& graph, const EvaluationResult& images,
                               const std::vector<std::string>& only = {});
+    // The single edits of the graph the rows point at (R27's Fix: `fixes` [{check, node, op}], and the row's
+    // limited_by and fix_hint name the node): a tileability FAIL on an output fed through a scale that is no
+    // whole number of repeats (setParam to the nearest whole one); a normal row that fails or warns while
+    // Normal is connected and Height is too (disconnect: the bake then makes the normal from the height)
+    void attachGraphFixes(qa::Json& report, const graph::Graph& graph, const std::shared_ptr<const NodeLibrary>& library);
     // the consecutive FAILs of each check, by the material's path, this editor session. Main thread.
     qa::FailRounds& checkRounds();
     // "the shader texture <uniform>" of the bake's .material beside the graph that samples a baked height;

@@ -412,6 +412,8 @@ namespace jasperengine::editor {
         // a PNG a Procedural Material baked (its jasper.procmat recipe): the badge, yellow once the graph
         // changed since (S90 R16), and what the tooltip says
         void updateProceduralBakeBadge(FileEntry& file, const fs::path& path);
+        // both badges of an image, from scratch: the sprite-normals one, else the bake's
+        void updateImageBadges(FileEntry& file, const fs::path& path);
         void drawSpriteNormalsMenuItems(const FileEntry& file, const fs::path& imagePath);
         void collectSearchResults();
 

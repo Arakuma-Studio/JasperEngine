@@ -5215,6 +5215,8 @@ void editor::App::prepareForProjectSwitch() {
     // a running bake or import is cancelled, its source and result forgotten
     vertexAnimationBakerWindow->resetForProjectSwitch();
     editor::texsynth::projectSwitching();
+    // a Procedural Material preview or bake stops: its result belongs to the project it began in
+    procmat::ProceduralRun::projectSwitching();
     // physics gestures are cancelled, the sessions and the decomposition cache dropped
     physicsPlacementWindow->resetForProjectSwitch();
     projectWindow->cancelThumbnailWork();

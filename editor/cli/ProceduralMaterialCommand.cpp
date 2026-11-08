@@ -19,7 +19,11 @@ namespace fs = std::filesystem;
 
 namespace {
 
+    // `call`'s codes, and one of this command's own: s90-tiers' in-process CPU bake takes EXIT_NO_EDITOR's case only,
+    // never a timeout, an interrupt or a lost connection, after which the editor may have written the files
     constexpr int EXIT_USAGE = 2;
+    constexpr int EXIT_CONNECTION = 3;
+    constexpr int EXIT_NO_EDITOR = 5;
 
     void printUsage(const std::string& exe) {
         std::cout
@@ -36,7 +40,9 @@ namespace {
             << "  --overwrite           Replace PNGs that are not this graph's.\n"
             << "  --timeout <seconds>   How long the bake may take (default 600).\n"
             << "  -h, --help            Show this help.\n\n"
-            << "Exit codes: 0 baked, 1 the bake failed, 2 usage, 3 no editor could start.\n";
+            << "Exit codes: 0 baked; 1 the bake failed (a bad graph, a failed evaluation, fail_on reached); 2 usage;\n"
+            << "3 the editor's connection was lost, timed out or interrupted (Ctrl-C), or another editor holds the project;\n"
+            << "4 internal error; 5 no editor could start (nothing ran).\n";
     }
 
     // the directory holding project.yaml at or above the file
@@ -96,7 +102,7 @@ int ProceduralMaterialCommand::run(int argc, char** argv, const char* executable
             if (!value(text)) return usage("--output needs a folder");
             tool["output"] = text;
         } else if (arg == "--size") {
-            if (!value(text) || !wholeNumber(text, 64, 8192, number)) return usage("--size is a power of two from 64 to 8192");
+            if (!value(text) || !wholeNumber(text, 64, 8192, number) || (number & (number - 1)) != 0) return usage("--size is a power of two from 64 to 8192");
             tool["size"] = number;
         } else if (arg == "--seed") {
             if (!value(text) || !wholeNumber(text, 0, 2147483647, number)) return usage("--seed is a whole number from 0");
@@ -142,5 +148,10 @@ int ProceduralMaterialCommand::run(int argc, char** argv, const char* executable
     std::vector<char*> callArgv;
     for (std::string& part : call) callArgv.push_back(part.data());
     callArgv.push_back(nullptr);
-    return CallCommand::run((int)call.size(), callArgv.data(), executableName);
+    const int code = CallCommand::run((int)call.size(), callArgv.data(), executableName);
+    if (code == EXIT_CONNECTION && CallCommand::spawnFailed()) {
+        std::cerr << exe << " procedural-material bake: no editor could start on " << project.string() << "; nothing was baked\n";
+        return EXIT_NO_EDITOR;
+    }
+    return code;
 }

@@ -625,8 +625,7 @@ Json ProceduralChecks::report(const MaterialImages& images, const CheckRequest& 
     }
     const bool stop = qa::countRounds(checks, request.rounds, request.qa.fixRounds);
     out["checks"] = checks;
-    // a check of the images names no node, so none is one edit of the graph (the window's Fix): the list
-    // the window reads stays, empty
+    // the images name no node: a graph's report adds the single edits its rows point at (attachGraphFixes)
     out["fixes"] = Json::array();
     out["verdict"] = qa::verdict(checks);
     out["thresholds"] = thresholds(request.qa);

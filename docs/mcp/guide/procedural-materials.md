@@ -33,6 +33,8 @@ measures a `.material`, an image, or `entity` + `submesh`. It changes nothing.
   numbers on one device; `device: {tier, name}` names it (`gpu`, or `software` for llvmpipe and lavapipe).
 - `checks` rows have S35's shape. A FAIL counts rounds: past `materials.qa.fix_rounds` in a row, stop and report.
 - `fail_on: "fail" | "warn"` makes a reached verdict an error.
+- For a graph, `fixes` lists the single edits the rows point at (`{check, node, op}`, an `edit_graph` op): a seam made
+  by a scale with a fraction, a Normal input the bake could make from Height instead.
 - Past `timeout_seconds` the call is an error with no image: a sheet is never an older material's.
 
 | Check | Fails or warns when | Threshold |
@@ -64,18 +66,22 @@ Numbers cannot judge a look: show the sheet to the user.
 - `stone.material` with the slots filled (the ORM in both the occlusion and metallic-roughness slots).
 
 It is one undo step (`undo` in the result has its id). A re-bake changes only the bake's slots: every other
-field of the `.material` stays, and so does a factor you tuned on a baked slot. It is refused while the graph has
+field of the `.material` stays, and so does a factor you tuned on a baked slot. A bake of some `outputs` leaves the
+others' slots as the earlier bake left them; an output the graph no longer has loses its slot (and emission its
+factor). A bake still running when another project opens writes nothing. It is refused while the graph has
 errors, and a PNG at an output's path that is not this graph's bake needs `overwrite: true`. `fail_on` writes
 nothing when the baked images' checks reach it. Defaults: size 1024 (64 to 8192), the graph's `metadata.seed`.
 
 Every baked PNG records how it was made (a `jasper.procmat` chunk the export strips). When the graph changes
-since, the bake is stale: the Project window's badge turns yellow, the Inspector says so, and `check --materials`
-warns. Moving nodes, or a device or tier change, does not make a bake stale. Nothing re-bakes on its own.
+since (a value, a connected or disconnected output, the graph's seed when the bake took it), the bake is stale: the
+Project window's badge turns yellow, the Inspector says so, and `check --materials` warns. Moving nodes, a device or
+tier change, or a seed the bake was given, does not make a bake stale. Nothing re-bakes on its own.
 
 ## From a shell
 
 - `jasperengine-editor check --project <dir> --materials`: graph problems (errors) and stale bakes (warnings),
   compiler style.
 - `jasperengine-editor procedural-material bake <file.procmat> [--size n] [--seed n] [--outputs a,b] [--output dir]`:
-  the bake through the editor that has the project open, else a one-shot headless one. It exits 1 on any failure
-  and 2 on an unknown flag.
+  the bake through the editor that has the project open, else a one-shot headless one. Exit codes: 0 baked; 1 the
+  bake failed; 2 usage (an unknown flag, a size that is no power of two); 3 the connection was lost, timed out or
+  interrupted, or another editor holds the project; 4 internal; 5 no editor could start (nothing ran).

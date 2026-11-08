@@ -18,6 +18,7 @@ Runs in one new empty project; tests run in order and share the editor.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -92,6 +93,9 @@ async def test_groups_are_hidden_until_enabled(ed: Editor):
         await ed.call("tool_groups", disable=["graphs", "materials"])
     kinds = await ed.call("list_graph_kinds")
     ed.check([k for k in kinds["kinds"] if k["id"] == "procedural_material"], "a hidden group's tool is still callable")
+    write_graph(ed, stone_graph(), "assets/mats/hidden.procmat")
+    hidden = await ed.call("preview_procedural_material", path="assets/mats/hidden.procmat", size=64, sheet=[])
+    ed.check(hidden["checks"], "a hidden materials tool is callable too")
 
 
 async def test_the_catalog_is_signature_lines(ed: Editor):
@@ -176,6 +180,8 @@ async def test_a_bake_is_one_undo_step(ed: Editor):
         meta = (ed.project / FOLDER / (name + ".meta")).read_text()
         ed.check_in("textureImporter", meta)
     ed.check_in("type: normal", (ed.project / FOLDER / "stone_normal.png.meta").read_text())
+    ed.check_in("srgb: true", (ed.project / FOLDER / "stone_base_color.png.meta").read_text())
+    ed.check_in("type: single_channel", (ed.project / FOLDER / "stone_height.png.meta").read_text())
     orm_meta = (ed.project / FOLDER / "stone_orm.png.meta").read_text()
     ed.check("type: default" in orm_meta and "srgb: false" in orm_meta, f"an ORM is linear and not inferred: {orm_meta}")
     material = (ed.project / FOLDER / "stone.material").read_text()
@@ -203,6 +209,24 @@ async def test_a_rebake_keeps_a_hand_edited_field(ed: Editor):
     ed.check("stone_base_color.png" in text, "the slots are the bake's")
 
 
+async def test_a_rebake_undoes_to_the_earlier_bake(ed: Editor):
+    """undo of a re-bake puts back the earlier PNG and meta bytes, rather than removing them"""
+    before = {n: (ed.project / FOLDER / n).read_bytes() for n in ("stone_base_color.png", "stone_base_color.png.meta", "stone.material")}
+    await ed.call("bake_procedural_material", path=GRAPH_PATH, size=64, seed=9)
+    ed.check((ed.project / FOLDER / "stone_base_color.png").read_bytes() != before["stone_base_color.png"], "another seed, other pixels")
+    await ed.call("undo", scope="project")
+    for name, data in before.items():
+        ed.check_eq((ed.project / FOLDER / name).read_bytes(), data, f"undo puts {name} back")
+
+
+async def test_a_partial_rebake_keeps_the_other_slots(ed: Editor):
+    """I1: a re-bake of base_color alone leaves the normal and ORM slots of the earlier bake"""
+    await ed.call("bake_procedural_material", path=GRAPH_PATH, size=64, seed=3, outputs=["base_color"])
+    material = yaml.safe_load((ed.project / FOLDER / "stone.material").read_text())
+    for slot, name in (("normalTexture", "stone_normal.png"), ("metallicRoughnessTexture", "stone_orm.png"), ("occlusionTexture", "stone_orm.png")):
+        ed.check(name in json.dumps(material.get(slot)), f"{slot} still holds {name}: {material.get(slot)}")
+
+
 async def test_a_baked_material_previews_from_its_files(ed: Editor):
     result = await ed.call("preview_procedural_material", path=f"{FOLDER}/stone.material", sheet=[])
     ed.check_eq(result["source"]["kind"], "material", "a .material")
@@ -223,8 +247,12 @@ async def test_a_sheet_past_its_wait_bound_is_an_error(ed: Editor):
         ed.check(not r.images, "no image of anything")
     finally:
         marker.unlink()
-    r = await ed.call_raw("preview_procedural_material", {"path": "assets/mats/other.procmat", "size": 64, "sheet": ["sphere"]})
+    r = await ed.call_raw("preview_procedural_material", {"path": "assets/mats/other.procmat", "size": 64, "sheet": ["flat", "sphere"]})
     ed.check(not r.is_error and len(r.images) == 1, f"once the ball draws, the sheet comes: {r.text[:500]}")
+    stone = await ed.call_raw("preview_procedural_material", {"path": GRAPH_PATH, "size": 64, "sheet": ["flat", "sphere"]})
+    again = await ed.call_raw("preview_procedural_material", {"path": "assets/mats/other.procmat", "size": 64, "sheet": ["flat", "sphere"]})
+    ed.check(r.images[0][0] != stone.images[0][0], "the sheet is not the material previewed before")
+    ed.check_eq(r.images[0][0], again.images[0][0], "it is other.procmat's: the same request gives the same sheet")
 
 
 async def test_check_reports_a_stale_bake(ed: Editor):
@@ -254,6 +282,13 @@ async def test_the_cli_bake(ed: Editor):
         ok = subprocess.run(base + [str(copy / GRAPH_PATH), "--size", "64"], capture_output=True, text=True, timeout=1200)
         ed.check_eq(ok.returncode, 0, (ok.stdout + ok.stderr)[-3000:])
         ed.check((copy / FOLDER / "stone_orm.png").exists() and (copy / FOLDER / "stone.material").exists(), "the files")
+        # no editor comes up within the spawn bound: its own code, where s90-tiers bakes on the CPU instead
+        env = dict(os.environ, JASPER_CALL_SPAWN_TIMEOUT="0.001")
+        none = subprocess.run(base + [str(copy / GRAPH_PATH), "--size", "64"], capture_output=True, text=True, timeout=600, env=env)
+        ed.check_eq(none.returncode, 5, (none.stdout + none.stderr)[-2000:])
+        ed.check_in("no editor could start", none.stderr)
+        sized = subprocess.run(base + [str(copy / GRAPH_PATH), "--size", "100"], capture_output=True, text=True, timeout=600)
+        ed.check_eq(sized.returncode, 2, f"a size that is no power of two is a usage error: {sized.stderr[-500:]}")
         bad = stone_graph()
         bad["nodes"][0]["params"]["scale_q"] = 1
         (copy / "assets/mats/bad.procmat").write_text(json.dumps(bad))
@@ -271,7 +306,39 @@ async def test_a_baked_png_ships_without_its_recipe(ed: Editor):
     ed.check_eq(r["status"], "succeeded", f"{r}")
     files = [p for p in (out / "project" / "assets").rglob("*") if p.is_file()]
     ed.check(not [p for p in files if p.suffix == ".procmat"], "no .procmat ships")
-    shipped = [p for p in files if "stone_" in p.name or (p.name == "index.json" and b"stone_" in p.read_bytes())]
-    ed.check(shipped, f"the baked textures ship: {[str(p) for p in files][:30]}")
+    shipped = [p for p in files if p.name == "stone_base_color.png" or (p.name == "index.json" and b"stone_base_color.png" in p.read_bytes())]
+    ed.check(shipped, f"the baked base colour ships, as its PNG or a cook of it: {[str(p) for p in files][:30]}")
     carrying = [str(p) for p in files if b"jasper.procmat" in p.read_bytes()]
     ed.check(not carrying, f"no recipe ships: {carrying}")
+
+
+async def test_a_tileability_fail_names_its_node_and_edit(ed: Editor):
+    """R27, R36: a seam a scale with a fraction makes names the node, and its fix is one edit the window applies"""
+    write_graph(ed, stone_graph(scale=4.5), "assets/mats/seam.procmat")
+    seam = await ed.call("preview_procedural_material", path="assets/mats/seam.procmat", size=128, sheet=[])
+    row = check_of(seam, "tileability")
+    ed.check_eq(row["status"], "FAIL", f"a scale of 4.5 does not tile: {row}")
+    ed.check_in("node n1 (perlin) has scale_x 4.5", row["limited_by"])
+    fixes = [f for f in seam["fixes"] if f["check"] == "tileability"]
+    ed.check(fixes, f"a single edit: {seam['fixes']}")
+    for fix in fixes:
+        await ed.call("edit_graph", path="assets/mats/seam.procmat", ops=[fix["op"]])
+    tiled = await ed.call("preview_procedural_material", path="assets/mats/seam.procmat", size=128, sheet=[])
+    ed.check_eq(check_of(tiled, "tileability")["status"], "PASS", f"applied, it tiles: {check_of(tiled, 'tileability')}")
+
+
+async def test_a_bake_finishing_in_another_project_writes_nothing(ed: Editor):
+    """I5: open another project while a bake runs: nothing lands in it (runs last, it switches the project)"""
+    # (in the harness's scratch, which outlives the editor that will hold it open)
+    other = ed.scratch.root / "other"
+    shutil.copytree(ed.project, other, ignore=shutil.ignore_patterns(".jasperengine"))
+    shutil.rmtree(other / FOLDER, ignore_errors=True)
+    started = await ed.call("bake_procedural_material", path=GRAPH_PATH, size=2048, wait=False)
+    await ed.call("open_project", path=str(other), unsaved="discard")
+    for _ in range(120):
+        job = await ed.call("get_job", job_id=started["job_id"])
+        if job["status"] != "running":
+            break
+        await ed.call("wait", frames=10)
+    ed.check(job["status"] in ("failed", "cancelled"), f"the bake did not finish into the other project: {job}")
+    ed.check(not (other / FOLDER).exists(), f"nothing written into {other / FOLDER}")

@@ -396,6 +396,10 @@ void attach(Session& session, int port, const std::string& path, const std::stri
                           {"version", instance ? Json(instance->version) : Json(nullptr)}};
 }
 
+// the last call's editor was one it started, which stopped or never answered before it had the project
+// open (a project another editor holds is not that: it started and refused): CallCommand::spawnFailed
+bool lastSpawnFailed = false;
+
 // `mcp --project DIR --headless`, in a scratch working directory with an empty settings.yaml
 void spawn(Session& session, const std::string& project, const char* executableName) {
     session.scratch = makeScratchDirectory();
@@ -403,8 +407,13 @@ void spawn(Session& session, const std::string& project, const char* executableN
     cache.durability = io::Durability::Cache;
     io::writeFileAtomic(session.scratch / "settings.yaml", "", cache);
     const fs::path exe = executablePath(executableName);
-    auto client = std::make_unique<StdioClient>(exe, std::vector<std::string>{"mcp", "--project", project, "--headless"},
-                                                session.scratch);
+    std::unique_ptr<StdioClient> client;
+    try {
+        client = std::make_unique<StdioClient>(exe, std::vector<std::string>{"mcp", "--project", project, "--headless"}, session.scratch);
+    } catch (const ClientError&) {
+        lastSpawnFailed = true;
+        throw;
+    }
     session.spawned = client.get();
     session.editor = Json{{"url", nullptr}, {"pid", client->pid()}, {"project", project}, {"spawned", true}, {"version", nullptr}};
     if (!session.quiet) {
@@ -423,6 +432,7 @@ void spawn(Session& session, const std::string& project, const char* executableN
         throw Failure{Connection, tail.substr(locked, end == std::string::npos ? std::string::npos : end - locked) +
                                   " (attach to that editor with --port, or close it)"};
     }
+    lastSpawnFailed = true;
     throw Failure{error.exitCode, std::string(error.what())};
 }
 
@@ -1126,7 +1136,12 @@ int runEditors(const std::vector<std::string>& args, const char* executableName)
 
 } // namespace
 
+bool CallCommand::spawnFailed() {
+    return lastSpawnFailed;
+}
+
 int CallCommand::run(int argc, char** argv, const char* executableName) {
+    lastSpawnFailed = false;
     attachConsole();
     const std::string subcommand = argc > 0 ? argv[0] : "call";
     const std::vector<std::string> args = argList(argc, argv);

@@ -29,6 +29,8 @@
 #include "procmat/ProceduralChecks.h"
 #include "procmat/ProceduralMaterialKind.h"
 #include "procmat/ProceduralRun.h"
+#include "render/SystemRender.h"
+#include "texsynth/SynthesisSession.h"
 #include "texsynth/SynthImage.h"
 #include "texture/TextureImportSettings.h"
 #include "util/AssetDatabase.h"
@@ -59,6 +61,16 @@ const std::vector<std::string> SHEET_PARTS = {"flat", "sphere", "tiled", "channe
 std::vector<std::shared_ptr<ProceduralRun>>& liveRuns() {
     static std::vector<std::shared_ptr<ProceduralRun>> runs;
     return runs;
+}
+
+// R34: every result names the device, a refusal before anything ran too
+Json editorDevice() {
+    const std::string name = SystemRender::getDeviceName();
+    return {{"tier", evaluatorTierName(ProceduralRun::editorTier(name))}, {"name", name}};
+}
+
+void refuse(const CallPtr& call, const std::string& message) {
+    call->fail(message, Json{{"device", editorDevice()}});
 }
 
 std::string relativeTo(Project* project, const fs::path& absolute) {
@@ -184,7 +196,7 @@ bool resolveSource(const CallPtr& call, Source& source) {
         fs::path file;
         const std::string rel = args.value("path", std::string());
         if (!McpRefs::resolveProjectPath(project, rel, file, error, true)) {
-            call->fail(error);
+            refuse(call, error);
             return false;
         }
         source.scope = relativeTo(project, file);
@@ -193,7 +205,7 @@ bool resolveSource(const CallPtr& call, Source& source) {
             source.kind = "procmat";
             source.graphPath = source.scope;
             if (!readGraph(source.scope, file, source.graph, error)) {
-                call->fail(error);
+                refuse(call, error);
                 return false;
             }
             return true;
@@ -201,7 +213,7 @@ bool resolveSource(const CallPtr& call, Source& source) {
         if (extension == ".material") {
             source.kind = "material";
             if (!readMaterialFile(file, source.material, error)) {
-                call->fail(source.scope + ": " + error);
+                refuse(call, source.scope + ": " + error);
                 return false;
             }
             materialImages(project, source.material, source.images);
@@ -216,7 +228,7 @@ bool resolveSource(const CallPtr& call, Source& source) {
             const std::string role = type == TextureImportType::Normal ? "normal" : (type == TextureImportType::SingleChannel ? "height" : "base_color");
             OutputImage image;
             if (!loadRgba(file, role, image, error)) {
-                call->fail(source.scope + ": " + error);
+                refuse(call, source.scope + ": " + error);
                 return false;
             }
             source.images.outputs[role] = image;
@@ -226,28 +238,28 @@ bool resolveSource(const CallPtr& call, Source& source) {
             else source.material.baseColorTexture = texture;
             return true;
         }
-        call->fail(source.scope + " is not a .procmat, a .material or an image.");
+        refuse(call, source.scope + " is not a .procmat, a .material or an image.");
         return false;
     }
     if (args.contains("entity")) {
         SceneProject* sceneProject = McpRefs::resolveScene(project, args.contains("scene") ? args["scene"] : Json(), error);
         if (!sceneProject || !sceneProject->scene) {
-            call->fail(error.empty() ? "The scene is not open." : error);
+            refuse(call, error.empty() ? "The scene is not open." : error);
             return false;
         }
         const Entity entity = McpRefs::resolveEntity(sceneProject, args["entity"], error);
         if (entity == NULL_ENTITY) {
-            call->fail(error);
+            refuse(call, error);
             return false;
         }
         const MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
         if (!mesh || mesh->numSubmeshes == 0) {
-            call->fail("The GameObject has no Mesh component with submeshes.");
+            refuse(call, "The GameObject has no Mesh component with submeshes.");
             return false;
         }
         const int submesh = args.value("submesh", 0);
         if (submesh < 0 || (unsigned int)submesh >= mesh->numSubmeshes) {
-            call->fail("submesh must be 0.." + std::to_string(mesh->numSubmeshes - 1) + ".");
+            refuse(call, "submesh must be 0.." + std::to_string(mesh->numSubmeshes - 1) + ".");
             return false;
         }
         source.kind = "submesh";
@@ -256,7 +268,7 @@ bool resolveSource(const CallPtr& call, Source& source) {
         materialImages(project, source.material, source.images);
         return true;
     }
-    call->fail("Give path (a .procmat, a .material or an image) or entity (and submesh) of a mesh.");
+    refuse(call, "Give path (a .procmat, a .material or an image) or entity (and submesh) of a mesh.");
     return false;
 }
 
@@ -356,6 +368,7 @@ void runJob(const CallPtr& call, ProceduralRunRequest request, const std::string
         if (auto r = weak.lock()) r->cancel();
     });
     job->setProgress(-1.0, run->getStage());
+    run->setOnStage([job](const std::string& stage) { job->setProgress(-1.0, stage); });
     run->setOnFinished([weak, job, reply, done]() {
         auto r = weak.lock();
         if (!r) return;
@@ -406,7 +419,7 @@ std::filesystem::path pendingMarker(Project* project) {
 bool sizeArg(const CallPtr& call, int fallback, int low, int high, int& size) {
     size = call->args().value("size", fallback);
     if (size < low || size > high || (size & (size - 1)) != 0) {
-        call->fail("size is a power of two from " + std::to_string(low) + " to " + std::to_string(high) + ".");
+        refuse(call, "size is a power of two from " + std::to_string(low) + " to " + std::to_string(high) + ".");
         return false;
     }
     return true;
@@ -415,7 +428,7 @@ bool sizeArg(const CallPtr& call, int fallback, int low, int high, int& size) {
 bool failOnArg(const CallPtr& call, std::string& failOn) {
     failOn = call->args().value("fail_on", std::string());
     if (!failOn.empty() && failOn != "fail" && failOn != "warn") {
-        call->fail("fail_on is fail or warn.");
+        refuse(call, "fail_on is fail or warn.");
         return false;
     }
     return true;
@@ -448,7 +461,7 @@ void previewTool(const CallPtr& call) {
         for (const Json& part : args["sheet"]) {
             const std::string name = part.is_string() ? part.get<std::string>() : std::string();
             if (std::find(SHEET_PARTS.begin(), SHEET_PARTS.end(), name) == SHEET_PARTS.end()) {
-                call->fail("sheet holds flat, sphere, tiled and channels ([] for metrics only).");
+                refuse(call, "sheet holds flat, sphere, tiled and channels ([] for metrics only).");
                 return;
             }
             parts.push_back(name);
@@ -466,7 +479,7 @@ void previewTool(const CallPtr& call) {
             if (std::find(ids.begin(), ids.end(), name) == ids.end()) {
                 std::string list;
                 for (const std::string& known : ids) list += (list.empty() ? "" : ", ") + known;
-                call->fail("checks: '" + name + "' is not a check (" + list + ").");
+                refuse(call, "checks: '" + name + "' is not a check (" + list + ").");
                 return;
             }
             only.push_back(name);
@@ -479,7 +492,7 @@ void previewTool(const CallPtr& call) {
         fs::path file;
         std::string error;
         if (!McpRefs::resolveProjectPath(project, args.value("reference", std::string()), file, error, true) || !loadRgba(file, "reference", *reference, error)) {
-            call->fail("reference: " + error);
+            refuse(call, "reference: " + error);
             return;
         }
     }
@@ -488,11 +501,13 @@ void previewTool(const CallPtr& call) {
         std::string error;
         const std::string value = args.value("save_path", std::string());
         if (lowerExtension(FileUtils::pathFromUtf8(value)) != ".png" || !McpRefs::resolveProjectWritePath(project, value, saveTarget, error, false)) {
-            call->fail("save_path must be a project-relative .png path" + (error.empty() ? std::string(".") : ": " + error));
+            refuse(call, "save_path must be a project-relative .png path" + (error.empty() ? std::string(".") : ": " + error));
             return;
         }
     }
 
+    const uint64_t generation = texsynth::projectGeneration();
+    const fs::path root = project->getProjectPath();
     ProceduralRunRequest request;
     if (source->kind == "procmat") {
         PlanOptions options;
@@ -502,13 +517,13 @@ void previewTool(const CallPtr& call) {
         PassPlan plan;
         std::string error;
         if (!planGraph(source->graph, NodeLibrary::shipped(), materialBakeRoots(source->graph), options, plan, error)) {
-            call->fail(source->scope + " does not evaluate: " + error);
+            refuse(call, source->scope + " does not evaluate: " + error);
             return;
         }
         request.plan = std::move(plan);
     } else {
         if (source->images.outputs.empty() && std::find(parts.begin(), parts.end(), "sphere") == parts.end()) {
-            call->fail(source->scope + " has no texture the editor can read: nothing to measure.");
+            refuse(call, source->scope + " has no texture the editor can read: nothing to measure.");
             return;
         }
         for (const auto& [name, image] : source->images.outputs) request.images.push_back(image);
@@ -519,6 +534,9 @@ void previewTool(const CallPtr& call) {
     request.pendingMarker = pendingMarker(project);
     runJob(call, std::move(request), "preview_procedural_material", "Preview Procedural Material " + source->scope,
            [=](ProceduralRun& run) {
+        if (generation != texsynth::projectGeneration() || project->getProjectPath() != root) {
+            return ToolResult::error("Another project was opened during the preview of " + source->scope + ".", Json{{"device", deviceJson(run)}});
+        }
         MaterialImages images;
         images.heightReader = source->images.heightReader;
         for (const OutputImage& image : run.getOutputs()) images.outputs[image.name] = image;
@@ -566,7 +584,7 @@ void previewTool(const CallPtr& call) {
             if (!saveTarget.empty()) {
                 std::string error;
                 if (!safewrite::writeFileResolvedBeneath(McpRefs::rootFor(project, saveTarget), saveTarget, std::string(png.begin(), png.end()), error)) {
-                    return ToolResult::error("Could not write the sheet to " + relativeTo(project, saveTarget) + ": " + error);
+                    return ToolResult::error("Could not write the sheet to " + relativeTo(project, saveTarget) + ": " + error, data);
                 }
                 data["saved_to"] = relativeTo(project, saveTarget);
                 text += "\nSaved to " + relativeTo(project, saveTarget) + ".";
@@ -589,27 +607,27 @@ void bakeTool(const CallPtr& call) {
     std::string error;
     const std::string given = args.value("path", std::string());
     if (!McpRefs::resolveProjectPath(project, given, file, error, true)) {
-        call->fail(error);
+        refuse(call, error);
         return;
     }
     const std::string rel = relativeTo(project, file);
     if (lowerExtension(file) != PROCEDURAL_MATERIAL_EXTENSION) {
-        call->fail(rel + " is not a .procmat: bake_procedural_material bakes a Procedural Material graph.");
+        refuse(call, rel + " is not a .procmat: bake_procedural_material bakes a Procedural Material graph.");
         return;
     }
     graph::Graph graphFile;
     if (!readGraph(rel, file, graphFile, error)) {
-        call->fail(error);
+        refuse(call, error);
         return;
     }
     const std::string folder = args.contains("output") ? args.value("output", std::string()) : defaultBakeFolder(rel);
     fs::path folderPath;
     if (!McpRefs::resolveProjectWritePath(project, folder + "/" + bakedMaterialName(bakeStem(rel)), folderPath, error, false)) {
-        call->fail("output: " + error);
+        refuse(call, "output: " + error);
         return;
     }
     if (!project->isInsideAssetsPath(folderPath)) {
-        call->fail("output must be a folder inside the assets directory (" + FileUtils::pathToGenericUtf8(project->getAssetsDir()) + ").");
+        refuse(call, "output must be a folder inside the assets directory (" + FileUtils::pathToGenericUtf8(project->getAssetsDir()) + ").");
         return;
     }
     BakeOptions options;
@@ -623,7 +641,7 @@ void bakeTool(const CallPtr& call) {
     PassPlan plan;
     std::vector<std::string> outputs;
     if (!planBake(graphFile, NodeLibrary::shipped(), options, plan, outputs, error)) {
-        call->fail(rel + " does not bake: " + error + ".");
+        refuse(call, rel + " does not bake: " + error + ".");
         return;
     }
     // the graph's identity: the database writes it into the file; one written a moment ago gets it now
@@ -642,6 +660,12 @@ void bakeTool(const CallPtr& call) {
     bake.recipe.seed = options.seed;
     bake.recipe.size = options.size;
     bake.overwrite = args.value("overwrite", false);
+    bake.graphOutputs = graphBakeOutputs(graphFile);
+    bake.recipe.graphOutputs = bake.graphOutputs;
+    bake.recipe.seedFromGraph = !args.contains("seed");
+    // the project it was asked in: a bake finishing after a switch writes nothing (synthesize_texture's rule)
+    const uint64_t generation = texsynth::projectGeneration();
+    const fs::path root = project->getProjectPath();
     const std::string stem = bakeStem(rel);
     ProceduralRunRequest request;
     request.plan = std::move(plan);
@@ -660,6 +684,9 @@ void bakeTool(const CallPtr& call) {
                 return ToolResult::error(rel + ": verdict " + report.value("verdict", "") + " reaches fail_on " + failOn + "; nothing was written." +
                                          checksText(report), data);
             }
+        }
+        if (generation != texsynth::projectGeneration() || project->getProjectPath() != root) {
+            return ToolResult::error("Another project was opened while " + rel + " baked; nothing was written.", data);
         }
         bake.recipe.tier = evaluatorTierName(run.tier());
         bake.recipe.device = run.deviceName();

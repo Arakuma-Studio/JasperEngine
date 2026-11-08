@@ -130,6 +130,9 @@ void resolveAssetTool(const CallPtr& call) {
         call->fail("asset must be a project-relative path or a 32-hex-digit GUID.");
         return;
     }
+    // files an agent wrote with its own tools since the last frame's look count now (as whenIndexed does): a
+    // file on disk the database has not seen yet is not missing
+    project->refreshAssetDatabase(true);
     const AssetDatabase::Resolution found = resolveArg(project, asset, hint, expected);
     Json data{{"resolved_by", resolvedByName(found.by)}, {"exists", found.found()}};
     data["guid"] = found.found() ? Json(found.guid.str()) : (Guid::isValidText(asset) ? Json(asset) : Json(nullptr));

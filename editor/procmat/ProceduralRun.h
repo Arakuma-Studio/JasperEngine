@@ -71,6 +71,8 @@ namespace jasperengine::editor::procmat {
 
         // Called when the run ends (ok or not), on the main thread from processFrame
         void setOnFinished(std::function<void()> done) { onFinished = std::move(done); }
+        // Called with getStage() each time it changes
+        void setOnStage(std::function<void(const std::string&)> changed) { onStage = std::move(changed); }
 
         // The tier of the editor's context (R8): a known software renderer's name is `software`, anything
         // else `gpu`
@@ -82,6 +84,8 @@ namespace jasperengine::editor::procmat {
         static void setFrameRequester(std::function<void()> requester);
         // the graphics view goes away (editor shutdown): every run fails, the GPU objects go
         static void releaseGpu();
+        // the editor is about to open another project (App::prepareForProjectSwitch): every run fails
+        static void projectSwitching();
 
     private:
         struct Impl;
@@ -97,6 +101,7 @@ namespace jasperengine::editor::procmat {
         bool started = false;
         bool finished = false;
         std::function<void()> onFinished;
+        std::function<void(const std::string&)> onStage;
     };
 
 }

@@ -103,6 +103,8 @@ namespace {
             recipe.seed = 0;
             recipe.output = "height";
             recipe.outputs = {"normal", "orm", "height"};
+            recipe.graphOutputs = recipe.outputs;
+            recipe.seedFromGraph = true;
             recipe.tier = "gpu";
             recipe.device = "a GPU";
         }
@@ -274,6 +276,7 @@ TEST(ProceduralBake, ARebakeKeepsTheMaterialsOtherFieldsAndATunedFactor) {
     EXPECT_EQ(material.baseColorFactor, Vector4(0.8f, 0.6f, 0.6f, 1.0f));
     EXPECT_EQ(material.alphaCutoff, 0.4f);
     EXPECT_TRUE(material.emissiveTexture.empty()) << "a slot holding an output this bake no longer has";
+    EXPECT_EQ(material.emissiveFactor, Vector3(0.0f, 0.0f, 0.0f)) << "without its texture a factor of 1 makes the whole surface glow";
 }
 
 TEST(ProceduralBake, AMetaSaysWhatItIsAndKeepsWhatItHad) {
@@ -422,4 +425,84 @@ TEST(ProceduralBake, TheSeedIsTheGraphsOwnUnlessToldAnother) {
     EXPECT_EQ(graphSeed(file), 0u) << "no seed a bake could record";
     file.metadata["seed"] = "seven";
     EXPECT_EQ(graphSeed(file), 0u);
+}
+
+TEST(ProceduralBake, ARerollOfTheGraphsSeedMakesItsBakeStaleAndAGivenSeedDoesNot) {
+    BakedProject project(stoneGraph());
+    graph::Graph rerolled = stoneGraph();
+    rerolled.metadata["seed"] = 1234;
+    project.write(rerolled);
+    const BakeStatus status = bakeStatus(project.dir.path(), project.recipe);
+    EXPECT_EQ(status.state, BakeState::Stale) << "the bake took the graph's seed, which changed";
+    EXPECT_NE(status.reason.find("seed changed"), std::string::npos) << status.reason;
+
+    BakeRecipe given = project.recipe;
+    given.seedFromGraph = false;
+    EXPECT_EQ(bakeStatus(project.dir.path(), given).state, BakeState::Fresh) << "a bake at a seed the call gave does not follow the graph's";
+}
+
+TEST(ProceduralBake, ConnectingOrDisconnectingAnOutputMakesItsBakeStale) {
+    BakedProject project(stoneGraph());
+    graph::Graph more = graphOf({{"n1", "perlin"}, {"out", MATERIAL_OUTPUT_NODE}},
+                                {{"n1", "output", "out", "height"}, {"n1", "output", "out", "roughness"}, {"n1", "output", "out", "emission"}});
+    more.passthrough["guid"] = GRAPH_GUID;
+    project.write(more);
+    BakeStatus status = bakeStatus(project.dir.path(), project.recipe);
+    EXPECT_EQ(status.state, BakeState::Stale) << "the .material lacks the emission now connected";
+    EXPECT_NE(status.reason.find("emission is connected"), std::string::npos) << status.reason;
+
+    graph::Graph fewer = graphOf({{"n1", "perlin"}, {"out", MATERIAL_OUTPUT_NODE}}, {{"n1", "output", "out", "roughness"}});
+    fewer.passthrough["guid"] = GRAPH_GUID;
+    project.write(fewer);
+    status = bakeStatus(project.dir.path(), project.recipe);
+    EXPECT_EQ(status.state, BakeState::Stale) << "out of date, not a broken graph";
+    EXPECT_NE(status.reason.find("height is no longer connected"), std::string::npos) << status.reason;
+
+    // a bake of some outputs is not stale for the others
+    project.write(stoneGraph());
+    BakeRecipe some = project.recipe;
+    BakeOptions orm;
+    orm.size = 64;
+    orm.outputs = {"orm"};
+    PassPlan plan;
+    std::vector<std::string> outputs;
+    std::string error;
+    ASSERT_TRUE(planBake(stoneGraph(), NodeLibrary::shipped(), orm, plan, outputs, error)) << error;
+    some.outputs = {"orm"};
+    some.inputHash = bakeInputHash(plan);
+    EXPECT_EQ(bakeStatus(project.dir.path(), some).state, BakeState::Fresh);
+}
+
+TEST(ProceduralBake, ATileabilityFailNamesTheScaleAndItsSingleEdit) {
+    graph::Graph file = stoneGraph();
+    file.findNode("n1")->params["scale_x"] = 4.5;
+    qa::Json report = {{"checks", qa::Json::array({{{"id", "tileability"}, {"status", "FAIL"}, {"threshold", 1.5},
+                                                    {"measured", {{"orm", 2.4}, {"height", 1.1}}}, {"limited_by", "seam 2.4 on orm."}}})},
+                       {"fixes", qa::Json::array()}};
+    attachGraphFixes(report, file, NodeLibrary::shipped());
+    ASSERT_EQ(report["fixes"].size(), 1u) << report.dump();
+    const qa::Json& fix = report["fixes"][0];
+    EXPECT_EQ(fix["check"], "tileability");
+    EXPECT_EQ(fix["node"], "n1");
+    EXPECT_EQ(fix["op"], (qa::Json{{"op", "setParam"}, {"node", "n1"}, {"name", "scale_x"}, {"value", 5.0}}));
+    const std::string limited = report["checks"][0]["limited_by"];
+    EXPECT_NE(limited.find("node n1 (perlin) has scale_x 4.5"), std::string::npos) << limited;
+    EXPECT_NE(report["checks"][0].value("fix_hint", std::string()).find("Set scale_x of node n1 to 5"), std::string::npos);
+
+    // a seam no scale explains has no edit to offer
+    file.findNode("n1")->params["scale_x"] = 4.0;
+    report["fixes"] = qa::Json::array();
+    attachGraphFixes(report, file, NodeLibrary::shipped());
+    EXPECT_TRUE(report["fixes"].empty());
+}
+
+TEST(ProceduralBake, ANormalRowOffersToLetTheBakeMakeTheNormal) {
+    const graph::Graph file = graphOf({{"n1", "perlin"}, {"n2", "normal_map2"}, {"out", MATERIAL_OUTPUT_NODE}},
+                                      {{"n1", "output", "n2", "Bump"}, {"n2", "normal", "out", "normal"}, {"n1", "output", "out", "height"}});
+    qa::Json report = {{"checks", qa::Json::array({{{"id", "normal"}, {"status", "WARN"}, {"limited_by", "a DirectX normal map."}}})},
+                       {"fixes", qa::Json::array()}};
+    attachGraphFixes(report, file, NodeLibrary::shipped());
+    ASSERT_EQ(report["fixes"].size(), 1u);
+    EXPECT_EQ(report["fixes"][0]["op"], (qa::Json{{"op", "disconnect"}, {"id", "e2"}}));
+    EXPECT_NE(report["checks"][0]["limited_by"].get<std::string>().find("Node n2 feeds Normal"), std::string::npos);
 }

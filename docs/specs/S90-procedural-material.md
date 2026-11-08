@@ -639,6 +639,13 @@ preview pane and Problems strip are a later branch: they call `ProceduralChecks:
   metallic and roughness, emissive) goes to 1 only when its slot newly takes the bake: a factor someone tuned on
   a baked slot stays. A slot holding an output the graph no longer has is emptied; its PNG stays on disk.
   A PNG at an output's path that is not a bake of this graph (its recipe's GUID) needs `overwrite`.
+- **R16, round 1.** A recipe also records the graph's outputs at bake time (`graph_outputs`) and whether the seed
+  was the graph's (`seed_from_graph`): an output connected or disconnected since is stale (not "graph invalid"),
+  and a reroll of `metadata.seed` makes a bake that took it stale, while a seed a call gave does not. A bake of
+  some outputs empties only the slots of outputs the graph no longer has, and an emptied emission slot's factor
+  goes to 0. A bake finishing after a project switch writes nothing (`texsynth::projectGeneration`, as
+  `synthesize_texture`), and `App::prepareForProjectSwitch` stops the runs. The Project window re-reads its images'
+  badges when a `.procmat` changes, and the sprite-normals refresh redraws both badges.
 - **R16.** The input hash is a SHA-256 of the plan (every pass's text and uniform values, Buffers, steps,
   outputs) and the bake's own version: the graph's meaning with every node source resolved. Positions,
   unconnected nodes, the tier and the device do not count. **Deviation:** no node of the shipped library reads
@@ -670,9 +677,12 @@ preview pane and Problems strip are a later branch: they call `ProceduralChecks:
 - **R34, R35, the seed.** Both tools default to the graph's `metadata.seed` (the window's lock, reroll and
   Variations write it; 0 when absent), and a `seed` argument overrides it without writing it back.
 - **R27's rows.** `graphCheckReport(project, path, graph, images)` (`ProceduralBake.h`) is the window's
-  `Services::checks` shape and what `preview_procedural_material` returns for a graph. Its `fixes` list is empty:
-  the checks measure images and name no node, so none is a single edit of the graph. FAIL rounds are recorded by
-  the tools only, so a window redrawing does not use up an agent's rounds.
+  `Services::checks` shape and what `preview_procedural_material` returns for a graph. `attachGraphFixes` adds the
+  single edits the rows can name: a tileability FAIL on an output fed by a node whose `scale*` parameter is no
+  whole number (setParam to the nearest one in its range, the node named in `limited_by` and `fix_hint`); a
+  normal row that fails or warns while Normal and Height are both connected (disconnect Normal's edge). The other
+  rows measure images and name no node. FAIL rounds are recorded by the tools only, so a window redrawing does
+  not use up an agent's rounds. Wiring `Services::checks` and `startBake` is the window's agent's, after landing.
 - **R35, `fail_on`.** The bake runs the checks on the images it baked and writes nothing when the verdict
   reaches `fail_on`. Without it, nothing is checked.
 - **R38.** The wait bound is the call's `timeout_seconds`: a run past it fails with the stage it was in, and
@@ -680,9 +690,11 @@ preview pane and Problems strip are a later branch: they call `ProceduralChecks:
   `JASPER_TEST_PROCMAT_SPHERE_PENDING=<file>`: while that file exists in the project the ball counts as pending,
   as `isPending` does while a variant compiles.
 - **R39.** `procedural-material bake` runs `bake_procedural_material` through `call` (the editor that has the
-  project open, else a one-shot headless one): exit 0 baked, 1 failed, 2 usage, 3 no editor could start. The
-  in-process CPU tier is s90-tiers': it slots in where exit 3 is returned today. `check --materials` (also in
-  `--all`, not in the default set) needs no engine or device: it plans each graph and reads the PNGs' recipes.
+  project open, else a one-shot headless one): exit 0 baked, 1 failed, 2 usage, 3 connection lost, timed out or
+  interrupted, or the project held by another editor, 4 internal, 5 no editor could start (the spawned editor
+  stopped, or did not open the project within the spawn bound, before any tool ran: `CallCommand::spawnFailed`).
+  The in-process CPU tier is s90-tiers': it takes exit 5's case only, never 3's, after which files may exist.
+  `check --materials` (also in `--all`, not in the default set) needs no engine or device: it plans each graph and reads the PNGs' recipes.
 - **AC12.** The misspelled parameter and the new ids are tested on this kind in `test_graph.py`; "a positionless
   graph opens laid out" is s90-canvas's (R30), not on this branch's base.
 
