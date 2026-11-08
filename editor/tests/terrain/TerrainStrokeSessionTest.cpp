@@ -18,6 +18,8 @@
 #include <cmath>
 #include <cstring>
 #include <functional>
+#include <utility>
+#include <vector>
 
 using namespace terrainprojecttest;
 
@@ -180,6 +182,67 @@ TEST(TerrainStrokeSession, AHeldBrushStampsAtSixtyASecond) {
     session.flush();
     const unsigned held = heightAt(*store, N, N / 2, N / 2) - 20000;
     EXPECT_NEAR(static_cast<double>(held) / static_cast<double>(once), 31.0, 1.5) << "half a second of frames is 30 more stamps";
+}
+
+namespace {
+
+    // One sample of a stroke at `time` seconds in, run and shown: the map's bytes
+    std::vector<uint8_t> penClick(TerrainStrokeBrush brush, float time, float pressure) {
+        constexpr int N = 65;
+        terrain::RawMapStore store(static_cast<float>(N), 10.0f);
+        addHeight(store, N, 0);
+        TerrainStrokeSession session(store, HEIGHT_MAP, static_cast<float>(N), std::move(brush));
+        session.addSample(time, 0.0f, 0.0f, pressure);
+        session.run(0.0);
+        session.flush();
+        return std::vector<uint8_t>(store.mapBytes(HEIGHT_MAP), store.mapBytes(HEIGHT_MAP) + store.mapByteCount(HEIGHT_MAP));
+    }
+
+    unsigned heightIn(const std::vector<uint8_t>& bytes, int size, int x, int y) {
+        const size_t index = (static_cast<size_t>(y) * size + x) * 2;
+        return bytes[index] | (static_cast<unsigned>(bytes[index + 1]) << 8);
+    }
+
+}
+
+// AC27 (R37): Pressure Strength scales a stamp's deposit, Pressure Size its radius; a mouse presses fully
+TEST(TerrainStroke, PressureScalesStrengthAndSize) {
+    constexpr int N = 65;
+    const std::vector<uint8_t> mouse = penClick(raiseBrush(8.0f, 0.5f), 0.0f, -1.0f);
+    const std::vector<uint8_t> half = penClick(raiseBrush(8.0f, 0.5f), 0.0f, 0.5f);
+    const std::vector<uint8_t> full = penClick(raiseBrush(8.0f, 0.5f), 0.0f, 1.0f);
+    EXPECT_EQ(full, mouse) << "a mouse is a pen pressed all the way";
+    const unsigned centre = heightIn(full, N, 32, 32);
+    ASSERT_GT(centre, 0u);
+    EXPECT_NEAR(static_cast<double>(heightIn(half, N, 32, 32)), centre * 0.5, 1.0) << "Pressure Strength, on by default";
+
+    TerrainStrokeBrush strengthOff = raiseBrush(8.0f, 0.5f);
+    strengthOff.pressureStrength = false;
+    EXPECT_EQ(penClick(strengthOff, 0.0f, 0.5f), full) << "with both options off a pen paints as a mouse";
+
+    TerrainStrokeBrush sized = raiseBrush(8.0f, 0.5f);
+    sized.pressureStrength = false;
+    sized.pressureSize = true;
+    const std::vector<uint8_t> narrow = penClick(sized, 0.0f, 0.5f);
+    EXPECT_NEAR(static_cast<double>(heightIn(narrow, N, 32, 32)), centre, 1.0) << "the centre keeps its strength";
+    EXPECT_GT(heightIn(full, N, 32 + 6, 32), 0u) << "6 texels out is inside a radius of 8";
+    EXPECT_EQ(heightIn(narrow, N, 32 + 6, 32), 0u) << "and outside half of it";
+}
+
+// AC27 (R37): a tap's zero, read before the pen's sensor has any pressure, is a click; a zero later in a
+// stroke presses nothing
+TEST(TerrainStroke, ZeroPressureAfterPenIsClick) {
+    EXPECT_EQ(terrain::StrokeResampler::samplePressure(0.0f, 0.0f), 1.0f);
+    EXPECT_EQ(terrain::StrokeResampler::samplePressure(0.0f, terrain::StrokeResampler::PEN_CLICK_SECONDS), 1.0f);
+    EXPECT_EQ(terrain::StrokeResampler::samplePressure(0.0f, 0.2f), 0.0f);
+    EXPECT_EQ(terrain::StrokeResampler::samplePressure(0.25f, 0.0f), 0.25f) << "only a zero is taken for a click";
+    EXPECT_EQ(terrain::StrokeResampler::samplePressure(-1.0f, 5.0f), 1.0f) << "the input layer's no-pen";
+    EXPECT_EQ(terrain::StrokeResampler::samplePressure(std::nanf(""), 5.0f), 1.0f);
+
+    const std::vector<uint8_t> click = penClick(raiseBrush(4.0f, 0.5f), 0.0f, -1.0f);
+    EXPECT_EQ(penClick(raiseBrush(4.0f, 0.5f), 0.05f, 0.0f), click) << "a pen's zero 50 ms in is the mouse's click";
+    const std::vector<uint8_t> late = penClick(raiseBrush(4.0f, 0.5f), 0.2f, 0.0f);
+    EXPECT_EQ(heightIn(late, 65, 32, 32), 0u) << "200 ms in, a zero is a pen resting without pressure";
 }
 
 // R27: Esc goes back through the before tiles

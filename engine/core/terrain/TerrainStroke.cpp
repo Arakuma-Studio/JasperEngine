@@ -12,6 +12,12 @@ float StrokeResampler::defaultSpacing(float radius, float texelSize) {
     return std::max(0.25f * radius, 0.5f * texelSize);
 }
 
+float StrokeResampler::samplePressure(float reading, float secondsIntoStroke) {
+    if (!(reading >= 0.0f && reading <= 1.0f)) return 1.0f;
+    if (reading == 0.0f && secondsIntoStroke <= PEN_CLICK_SECONDS) return 1.0f;
+    return reading;
+}
+
 StrokeResampler::StrokeResampler(float spacing): spacing(spacing > 0.0f ? spacing : 1.0f) {}
 
 void StrokeResampler::add(const StrokeSample& sample, std::vector<StrokeStamp>& out) {

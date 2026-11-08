@@ -29,3 +29,22 @@ TEST(StreamTerrainSettings, GenerateKeysDefault) {
     EXPECT_EQ(back.generateGraph, "preset:mountains");
     EXPECT_EQ(back.generateSeed, 7u);
 }
+
+// T1 R37: Pressure Strength defaults on and Pressure Size off; an old file has neither key and an
+// untouched one writes neither
+TEST(StreamTerrainSettings, PressureKeysDefault) {
+    const TerrainEditorSettings old = Stream::decodeTerrainEditorSettings(YAML::Load("{brushSize: 8.0}"));
+    EXPECT_TRUE(old.pressureStrength);
+    EXPECT_FALSE(old.pressureSize);
+
+    const YAML::Node untouched = Stream::encodeTerrainEditorSettings(TerrainEditorSettings());
+    EXPECT_FALSE(untouched["pressureStrength"].IsDefined());
+    EXPECT_FALSE(untouched["pressureSize"].IsDefined());
+
+    TerrainEditorSettings set;
+    set.pressureStrength = false;
+    set.pressureSize = true;
+    const TerrainEditorSettings back = Stream::decodeTerrainEditorSettings(Stream::encodeTerrainEditorSettings(set));
+    EXPECT_FALSE(back.pressureStrength);
+    EXPECT_TRUE(back.pressureSize);
+}

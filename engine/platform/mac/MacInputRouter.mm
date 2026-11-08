@@ -5,8 +5,32 @@
 #include "KeyCodesMac.h"
 
 #include "Engine.h"
+#include "Input.h"
+
+#include <algorithm>
 
 using namespace jasperengine;
+
+namespace {
+
+    // A mouse or tablet event's pen pressure: a tablet's point (also a mouse event's subtype), 0
+    // for a pen coming into proximity, -1 for a mouse, a puck or a pen leaving (the editor's
+    // BackendMac.mm reads it the same way)
+    float macPenPressure(NSEvent* event) {
+        // subtype throws on the events that have none: only mouse events reach it
+        const bool proximity = event.type == NSEventTypeTabletProximity ||
+            (event.type != NSEventTypeTabletPoint && event.subtype == NSEventSubtypeTabletProximity);
+        if (proximity) {
+            const bool pen = event.pointingDeviceType == NSPointingDeviceTypePen ||
+                             event.pointingDeviceType == NSPointingDeviceTypeEraser;
+            return event.isEnteringProximity && pen ? 0.0f : -1.0f;
+        }
+        if (event.type == NSEventTypeTabletPoint || event.subtype == NSEventSubtypeTabletPoint)
+            return std::clamp(static_cast<float>(event.pressure), 0.0f, 1.0f);
+        return -1.0f;
+    }
+
+}
 
 @implementation MacInputRouter {
     // The view owns the router, so a strong reference here would be a cycle
@@ -126,18 +150,25 @@ using namespace jasperengine;
 }
 
 - (void)mouseDown:(NSEvent*)event button:(int)button {
+    Input::setPenPressure(macPenPressure(event));
     const CGPoint point = [self trackedMousePointOf:event];
     Engine::systemMouseDown(button, point.x, point.y, macKeyModifiers([event modifierFlags]));
 }
 
 - (void)mouseUp:(NSEvent*)event button:(int)button {
+    Input::setPenPressure(macPenPressure(event));
     const CGPoint point = [self trackedMousePointOf:event];
     Engine::systemMouseUp(button, point.x, point.y, macKeyModifiers([event modifierFlags]));
 }
 
 - (void)mouseMoved:(NSEvent*)event {
+    Input::setPenPressure(macPenPressure(event));
     const CGPoint point = [self trackedMousePointOf:event];
     Engine::systemMouseMove(point.x, point.y, macKeyModifiers([event modifierFlags]));
+}
+
+- (void)tabletEvent:(NSEvent*)event {
+    Input::setPenPressure(macPenPressure(event));
 }
 
 - (void)scrollWheel:(NSEvent*)event {

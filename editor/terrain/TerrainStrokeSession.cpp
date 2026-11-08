@@ -233,8 +233,7 @@ bool editor::TerrainStrokeSession::moveTo(float x, float z, float seconds){
 }
 
 void editor::TerrainStrokeSession::addSample(float time, float x, float z, float pressure){
-    // a pen reading 0..1; anything else is a mouse, which presses fully
-    const float pressed = pressure >= 0.0f && pressure <= 1.0f ? pressure : 1.0f;
+    const float pressed = StrokeResampler::samplePressure(pressure, time);
     if (brush.mode == TerrainBrushMode::Ramp && !brush.accumulateRamp){
         queue.clear();
         moveTo(x, z, 0.0f);
