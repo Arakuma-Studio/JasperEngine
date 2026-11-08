@@ -588,6 +588,12 @@ namespace jasperengine::editor {
         static TextEffectComponent decodeTextEffectComponent(const YAML::Node& node, const TextEffectComponent* oldEffect = nullptr);
         static YAML::Node encodeTextEffectLayer(const TextEffectLayer& layer);
         static TextEffectLayer decodeTextEffectLayer(const YAML::Node& node);
+        // a renderer's Sorting Layer (id) and Order in Layer (S52 R2): written only away from 0, read
+        // as 0 when absent (over an old component too)
+        static void encodeSortingFields(YAML::Node& node, int32_t sortingLayer, int32_t sortingOrder);
+        // a load-report line for the renderers of a decoded scene whose Sorting Layer is unknown
+        static void reportUnknownSortingLayers(Scene* scene);
+        static void decodeSortingFields(const YAML::Node& node, int32_t& sortingLayer, int32_t& sortingOrder);
         static YAML::Node encodeSpriteComponent(const SpriteComponent& sprite);
         static SpriteComponent decodeSpriteComponent(const YAML::Node& node, const SpriteComponent* oldSprite = nullptr);
 

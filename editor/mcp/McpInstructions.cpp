@@ -128,7 +128,8 @@ light's softShadows, the scene's shadows_quality), reflections (SSR replaces pro
 check with ssr_debug_mode 7), profiling (get_frame_times), navigation (get_navigation_info), sound
 (analyze_audio), shipping (build_project), palettes (edit_palette, apply_palette), data safety
 (allow_data_loss), meshes (inspect_models, check_render_budgets), device tiers
-(set_device_simulation, then play), sprites (set_sprite_frames sheet): jasper://docs/<area>.
+(set_device_simulation, then play), sprites (set_sprite_frames sheet), rendering-2d (set_properties
+sortingLayer): jasper://docs/<area>.
 )JE";
 }
 

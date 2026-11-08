@@ -160,6 +160,10 @@ namespace jasperengine::editor{
         float curveValueMin = 0.0f;
         float curveValueMax = 1.0f;
         std::vector<EnumEntry>* enumEntries = nullptr;
+        // Enum rows: one more item after a separator that runs this instead of choosing a value
+        // (the Sorting Layer's "Add Sorting Layer...", which opens Tags and Layers)
+        const char* enumExtraLabel = nullptr;
+        std::function<void()> enumExtraAction = nullptr;
         std::vector<int>* sliderValues = nullptr;
         std::function<void()> onValueChanged = nullptr;
         // Some texture properties only accept file/data-backed images.
@@ -910,6 +914,14 @@ namespace jasperengine::editor{
         void drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the Pixel Perfect Camera (InspectorPixelArt.cpp, S41)
         void drawPixelPerfectCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // 2D sorting and Sprite Batch (InspectorSorting.cpp, S52 R31-R33): a renderer's "Sorting
+        // Layer" (the project's layers, then Add Sorting Layer...) and "Order in Layer" rows, inside
+        // a table begun by the caller; cpType is the component holding the two fields
+        void drawSortingRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawSortingGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawSpriteBatchComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        std::vector<std::string> sortingLayerNames;
+        std::vector<EnumEntry> sortingLayerEntries;
         // "Inherited alpha 0.25 · not interactable · click-through (Canvas Group: Panel)" and a
         // Select button, when the entity is under a Canvas Group
         void drawCanvasGroupInheritedLine(SceneProject* sceneProject, Entity entity);

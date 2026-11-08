@@ -5773,7 +5773,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v58: S43's palettes: library:sprite's PALETTE_SWAP and PALETTE_CYCLE (includes/palette.glsl,
     //      the custom block's paletteRow, paletteCycleSpeed and sceneTime), the uber pass's
     //      Palette Quantize (BLIT 'Pal' 19, includes/bayer.glsl).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v58";
+    // v59: S52's pixel-art batching: library:sprite @batchable (instance=fx.x/fx.y read through
+    //      includes/sprite_fx.glsl, a_frameRect), MESH 'Sfx' 46, 'Sfr' 47, 'Spv' 48, DEPTH 'Spv'
+    //      20, the instanced snap's per-instance mode (pixelSnapInstanceMode).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v59";
 }
 
 void editor::App::pushTabNotificationStyle(){

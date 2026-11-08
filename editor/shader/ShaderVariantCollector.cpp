@@ -600,8 +600,11 @@ namespace {
                         lentBaseColor = fluid && fluid->output == FluidOutput::MATERIAL;
                         pixelSnapKeys = scenePixelSnap && (registry->findComponent<SpriteComponent>(entity) ||
                                                            registry->findComponent<TilemapComponent>(entity));
+                        // S52: a snapped Sprite carries its snap pivot ('Spv', not when instanced)
+                        snapPivotKeys = pixelSnapKeys && registry->findComponent<SpriteComponent>(entity) && !mesh->spriteInstanced;
                         collectMesh(registry, entity, *mesh);
                         pixelSnapKeys = false;
+                        snapPivotKeys = false;
                         lentBaseColor = false;
                     }
                 }
@@ -655,6 +658,8 @@ namespace {
         bool meshHasLevels = false;
         // the drawable being collected also draws pixel-snapped ('Pxs', S41)
         bool pixelSnapKeys = false;
+        // and, a Sprite, with its snap pivot then ('Spv', S52)
+        bool snapPivotKeys = false;
 
         static bool scenePixelSnaps(EntityRegistry* registry){
             if (!registry->isComponentRegistered<PixelPerfectCameraComponent>())
@@ -687,6 +692,9 @@ namespace {
             const uint64_t pixelSnapBit = pixelSnapKeys ? ShaderPool::getPixelSnapProperty(type) : 0;
             if (pixelSnapBit && !(properties & pixelSnapBit)){
                 insertKeys(type, properties | pixelSnapBit, customId);
+                const uint64_t pivotBit = snapPivotKeys ? ShaderPool::getSpriteBatchProperty(type, ShaderPool::SpriteBatchInput::SNAP_PIVOT) : 0;
+                if (pivotBit)
+                    insertKeys(type, properties | pixelSnapBit | pivotBit, customId);
             }
             // a mesh's post colour bit comes with its environment; the others take it here
             const uint64_t postColorBit = type == ShaderType::MESH ? 0 : ShaderPool::getPostColorProperty(type);

@@ -118,7 +118,9 @@ namespace jasperengine::editor{
         // a clip or a Sound Event, and a Mixer Snapshot action
         AUDIO_ACTION,
         SOUND_EVENT_ACTION,
-        MIXER_SNAPSHOT_ACTION
+        MIXER_SNAPSHOT_ACTION,
+        // GameObject > 2D Object > Sprite Batch (S52 R10): a Sprite with a Sprite Batch
+        SPRITE_BATCH
     };
 
     class CreateEntityCmd: public Command{

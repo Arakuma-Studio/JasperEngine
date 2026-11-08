@@ -20,6 +20,7 @@
 #include "Stream.h"
 #include "Scene.h"
 #include "component/ParticleSystemComponent.h"
+#include "registry/SortingLayers.h"
 #include "component/Transform.h"
 #include "math/Curve.h"
 #include "particles/ParticleEffect.h"
@@ -35,6 +36,7 @@
 #include "stb_image_write.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cmath>
 #include <fstream>
 #include <functional>
@@ -1129,6 +1131,25 @@ namespace {
         return readBool(module, "inWorldSpace") ? particles::ValueSpace::World : particles::ValueSpace::Local;
     }
 
+    // a Unity Sorting Layer's name by its unique id (ProjectSettings/TagManager.asset m_SortingLayers),
+    // "" when the project does not list it
+    std::string unitySortingLayerName(Context& ctx, int64_t uniqueId){
+        YamlFile tags;
+        std::string error;
+        if (!tags.load(ctx.project.root() / "ProjectSettings" / "TagManager.asset", error))
+            return std::string();
+        for (const Document& document : tags.documents){
+            const YAML::Node layers = document.body["m_SortingLayers"];
+            if (!layers || !layers.IsSequence())
+                continue;
+            for (const YAML::Node& layer : layers){
+                if (layer["uniqueID"] && std::strtoll(layer["uniqueID"].Scalar().c_str(), nullptr, 10) == uniqueId && layer["name"])
+                    return layer["name"].Scalar();
+            }
+        }
+        return std::string();
+    }
+
     // a Unity ParticleSystem as an S20 effect (and the component's own Play On Awake and seed);
     // `modules` the report
     void convertSystem(const YAML::Node& ps, ParticleEffectDocument& d, ParticleSystemComponent& c, Json& modules, Context& ctx){
@@ -1454,7 +1475,7 @@ namespace {
     }
 
     // the renderer's values on the effect's Renderer module (its first material's in it)
-    void convertRenderer(const YAML::Node& r, ParticleEffectDocument& d, Context& ctx){
+    void convertRenderer(const YAML::Node& r, ParticleEffectDocument& d, ParticleSystemComponent& c, Context& ctx){
         using namespace particles;
         RendererModule& rm = d.renderer;
         const int mode = readInt(r, "m_RenderMode");
@@ -1475,7 +1496,20 @@ namespace {
         rm.lengthScale = readFloat(r, "m_LengthScale", 2.0f);
         rm.pivot = readVector3(r, "m_Pivot");
         rm.flip = readVector3(r, "m_Flip");
-        rm.sortPriority = readInt(r, "m_SortingOrder");
+        // S52 R41: Unity's Order in Layer and Sorting Layer are the system's own (effects
+        // imported earlier keep their sortPriority, which sorts after them); the layer by name
+        c.sortingOrder = std::clamp(readInt(r, "m_SortingOrder"), -32768, 32767);
+        const int64_t unityLayer = r["m_SortingLayerID"] ? std::strtoll(r["m_SortingLayerID"].Scalar().c_str(), nullptr, 10) : 0;
+        if (unityLayer != 0){
+            const std::string name = unitySortingLayerName(ctx, unityLayer);
+            const int32_t id = name.empty() ? -1 : SortingLayers::nameToId(name);
+            if (id >= 0){
+                c.sortingLayer = id;
+            }else{
+                note(ctx, "sorting-layer-missing", "the Sorting Layer " + (name.empty() ? "id " + std::to_string(unityLayer) : "\"" + name + "\"") +
+                     " is not in Project Settings > Tags and Layers: it draws on Default (add the layer, then set Sorting Layer)");
+            }
+        }
 
         if (rm.renderMode == RenderMode::Mesh){
             const Ref meshRef = readRef(r, "m_Mesh");
@@ -1553,7 +1587,7 @@ namespace {
             convertSystem(ps->body, component.inlineEffect, component, modules, ctx);
             particles::ParticleEffectDocument& effect = component.inlineEffect;
             if (const Object* renderer = componentOfClass(graph, go, CLASS_PARTICLESYSTEMRENDERER)){
-                convertRenderer(renderer->body, effect, ctx);
+                convertRenderer(renderer->body, effect, component, ctx);
                 modules["ParticleSystemRenderer"] = "imported";
             }else{
                 note(ctx, "renderer-missing", "no ParticleSystemRenderer: drawn with the default particle material");

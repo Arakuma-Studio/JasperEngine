@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "CreateEntityCmd.h"
+#include "component/SpriteBatchComponent.h"
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
@@ -506,7 +507,7 @@ bool editor::CreateEntityCmd::execute(){
         layout.width = 100;
         layout.height = 100;
 
-    }else if (type == EntityCreationType::SPRITE){
+    }else if (type == EntityCreationType::SPRITE || type == EntityCreationType::SPRITE_BATCH){
 
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
@@ -515,6 +516,8 @@ bool editor::CreateEntityCmd::execute(){
         SpriteComponent& sprite = scene->getComponent<SpriteComponent>(entity);
         sprite.width = 100;
         sprite.height = 100;
+        if (type == EntityCreationType::SPRITE_BATCH)
+            scene->addComponent<SpriteBatchComponent>(entity, {});
 
     }else if (type == EntityCreationType::TILEMAP){
 

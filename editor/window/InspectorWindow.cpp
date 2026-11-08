@@ -4640,7 +4640,29 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
         if (dif)
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-        if (ImGui::Combo(("##combo_" + id).c_str(), &item_current, names.data(), static_cast<int>(names.size()))) {
+        bool chosen = false;
+        if (settings.enumExtraLabel) {
+            // a value not among the entries (a removed Sorting Layer) shows as its number
+            const bool known = !enumEntries->empty() && (*enumEntries)[(size_t)item_current].value == *value;
+            const std::string preview = known ? std::string(names[(size_t)item_current]) : std::to_string(*value);
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::BeginCombo(("##combo_" + id).c_str(), preview.c_str())) {
+                for (size_t i = 0; i < names.size(); i++) {
+                    const bool selected = known && (int)i == item_current;
+                    if (ImGui::Selectable(names[i], selected) && !selected) {
+                        item_current = (int)i;
+                        chosen = true;
+                    }
+                }
+                ImGui::Separator();
+                if (ImGui::Selectable(settings.enumExtraLabel) && settings.enumExtraAction)
+                    settings.enumExtraAction();
+                ImGui::EndCombo();
+            }
+        } else {
+            chosen = ImGui::Combo(("##combo_" + id).c_str(), &item_current, names.data(), static_cast<int>(names.size()));
+        }
+        if (chosen) {
             int newValue = (*enumEntries)[item_current].value;
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<int>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
@@ -8046,6 +8068,7 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
     instancingSettings.help = "Let this mesh draw in one instanced draw with the opaque meshes of the same mesh, material and shader "
                               "while Project Settings > Graphics > GPU Instancing is on (the image stays the same). Turn off to draw it alone.";
     propertyRow(RowPropertyType::Bool, cpType, "allowGpuInstancing", "Allow GPU Instancing", sceneProject, entities, instancingSettings);
+    drawSortingRows(cpType, sceneProject, entities);
 
     RowSettings reflectionProbeSettings;
     reflectionProbeSettings.help = "Draw this mesh into Reflection Probe captures. Turn off to keep a GameObject out of its own reflection.";
@@ -9251,6 +9274,12 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
     propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, settingsPpu);
     propertyRow(RowPropertyType::Enum, cpType, "pixelRotation", "Pixel Rotation", sceneProject, entities, settingsPixelRotation);
+    // S52: the Mesh's Sorting Layer and Order in Layer, and the point Custom Axis sorting measures
+    drawSortingRows(ComponentType::MeshComponent, sceneProject, entities);
+    RowSettings settingsSortPoint;
+    settingsSortPoint.enumEntries = enumEntries(reflect::enums::kSpriteSortPoint);
+    settingsSortPoint.help = "What Transparency Sort Mode Custom Axis measures: the sprite's bounds' centre or its pivot.";
+    propertyRow(RowPropertyType::Enum, cpType, "spriteSortPoint", "Sprite Sort Point", sceneProject, entities, settingsSortPoint);
 
     endTable();
 

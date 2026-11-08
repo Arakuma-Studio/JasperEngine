@@ -5,6 +5,13 @@
 
 #include <unordered_map>
 #include <unordered_set>
+#include "component/MeshComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/PointsComponent.h"
+#include "component/LineRendererComponent.h"
+#include "component/TrailRendererComponent.h"
+#include "component/SortingGroupComponent.h"
+#include "registry/SortingLayers.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/ImageComponent.h"
@@ -2800,6 +2807,31 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
     }
     {
+        // Sorting Layers in draw order, written only past Default alone (S52 R39)
+        const std::vector<SortingLayerInfo>& sortingLayers = project->getSortingLayers();
+        if (sortingLayers.size() > 1) {
+            YAML::Node layersNode;
+            for (const SortingLayerInfo& layer : sortingLayers) {
+                YAML::Node entry;
+                entry["id"] = layer.id;
+                entry["name"] = layer.name;
+                layersNode.push_back(entry);
+            }
+            root["sortingLayers"] = layersNode;
+        }
+        if (project->getTransparencySortMode() == TransparencySortMode::CUSTOM_AXIS)
+            root["transparencySortMode"] = "custom_axis";
+        const Vector3 axis = project->getTransparencySortAxis();
+        if (axis != Vector3(0.0f, 1.0f, 0.0f)) {
+            YAML::Node axisNode(YAML::NodeType::Sequence);
+            axisNode.push_back(editor::YamlNumbers::text(axis.x));
+            axisNode.push_back(editor::YamlNumbers::text(axis.y));
+            axisNode.push_back(editor::YamlNumbers::text(axis.z));
+            axisNode.SetStyle(YAML::EmitterStyle::Flow);
+            root["transparencySortAxis"] = axisNode;
+        }
+    }
+    {
         // Layer Collision Matrices: the layer pairs that do not collide, e.g. [8, 9]
         auto encodeIgnoredPairs = [](const LayerCollisionRows& rows) {
             YAML::Node pairs;
@@ -3592,6 +3624,36 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setTagsAndLayers(tags, layerNames);
+    }
+
+    {
+        // Sorting Layers (S52 R39): [{id, name}] in draw order, absent = Default alone; the
+        // Transparency Sort settings (absent = Default, (0, 1, 0))
+        std::vector<SortingLayerInfo> sortingLayers;
+        if (node["sortingLayers"] && node["sortingLayers"].IsSequence()) {
+            for (const auto& layerNode : node["sortingLayers"]) {
+                int id = -1;
+                if (!layerNode.IsMap() || !layerNode["id"] || !layerNode["name"] ||
+                        !YAML::convert<int>::decode(layerNode["id"], id) || !layerNode["name"].IsScalar()) {
+                    Out::warning("Ignoring a sortingLayers entry in project settings: it needs an id and a name");
+                    continue;
+                }
+                sortingLayers.push_back({(int32_t)id, layerNode["name"].as<std::string>()});
+            }
+        }
+        project->setSortingLayers(sortingLayers);
+        TransparencySortMode mode = TransparencySortMode::DEFAULT;
+        if (node["transparencySortMode"] && node["transparencySortMode"].IsScalar()) {
+            const std::string name = node["transparencySortMode"].as<std::string>();
+            if (name == "custom_axis") mode = TransparencySortMode::CUSTOM_AXIS;
+            else if (name != "default") Out::warning("Ignoring transparencySortMode \"%s\" in project settings (default or custom_axis)", name.c_str());
+        }
+        Vector3 axis(0.0f, 1.0f, 0.0f);
+        if (node["transparencySortAxis"] && node["transparencySortAxis"].IsSequence() && node["transparencySortAxis"].size() == 3) {
+            axis = Vector3(editor::YamlNumbers::as<float>(node["transparencySortAxis"][0]), editor::YamlNumbers::as<float>(node["transparencySortAxis"][1]),
+                           editor::YamlNumbers::as<float>(node["transparencySortAxis"][2]));
+        }
+        project->setTransparencySort(mode, axis);
     }
 
     {
@@ -4556,6 +4618,33 @@ void editor::Stream::decodeSceneProjectEntities(Project* project, SceneProject* 
     sceneProject->reservedEntityIds.clear();
 
     CameraTextureLink::resolve(sceneProject->scene);
+    reportUnknownSortingLayers(sceneProject->scene);
+}
+
+void editor::Stream::reportUnknownSortingLayers(Scene* scene){
+    // S52 R39: a renderer naming a Sorting Layer the project does not have draws on Default; one
+    // line per scene says how many (the ids stay, so restoring the layer restores the order)
+    size_t unknown = 0;
+    auto count = [&unknown](auto array){
+        for (size_t i = 0; i < array->size(); i++){
+            if (!SortingLayers::isValid(array->getComponentFromIndex(i).sortingLayer)) unknown++;
+        }
+    };
+    count(scene->getComponentArray<MeshComponent>());
+    count(scene->getComponentArray<ParticleSystemComponent>());
+    count(scene->getComponentArray<PointsComponent>());
+    count(scene->getComponentArray<LineRendererComponent>());
+    count(scene->getComponentArray<TrailRendererComponent>());
+    count(scene->getComponentArray<SortingGroupComponent>());
+    if (unknown == 0)
+        return;
+    LoadIssue issue;
+    issue.kind = LoadIssueKind::Fallback;
+    issue.fate = LoadIssueFate::Info;
+    issue.field = "sortingLayer";
+    issue.message = std::to_string(unknown) + " renderer(s) name a Sorting Layer the project does not have: they draw on Default "
+                    "(tags_and_layers.sorting_layers)";
+    recordLoadIssue(issue);
 }
 
 YAML::Node editor::Stream::encodeEditorCamera(Camera* camera, float zoom, float walkSpeedOffset) {

@@ -459,6 +459,9 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::CanvasGroupComponent: return &InspectorWindow::drawCanvasGroupComponent;
         // pixel art (InspectorPixelArt.cpp)
         case ComponentType::PixelPerfectCameraComponent: return &InspectorWindow::drawPixelPerfectCameraComponent;
+        // 2D sorting and Sprite Batch (InspectorSorting.cpp)
+        case ComponentType::SortingGroupComponent: return &InspectorWindow::drawSortingGroupComponent;
+        case ComponentType::SpriteBatchComponent: return &InspectorWindow::drawSpriteBatchComponent;
         default: return nullptr;
     }
 }

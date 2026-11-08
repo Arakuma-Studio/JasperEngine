@@ -32,6 +32,14 @@
 #include "subsystem/AudioSystem.h"
 #include "EditorHost.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "command/type/SortingLayersCmd.h"
+#include "component/SortingGroupComponent.h"
+#include "component/MeshComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/PointsComponent.h"
+#include "component/LineRendererComponent.h"
+#include "component/TrailRendererComponent.h"
+#include "util/UIProbe.h"
 #include "command/type/ApplePrivacySettingsCmd.h"
 #include "util/NativeNeeds.h"
 #include "input/InputActions.h"
@@ -2076,6 +2084,43 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
         }
         drawUploadBudgetSettings();
 
+        // 2D sorting (S52 R4): applied at once, each change one undo step of the project
+        {
+            const SortingSettings current = SortingSettings::current();
+            auto applySorting = [this](const SortingSettings& changed) {
+                if (changed == SortingSettings::current()) return;
+                auto* command = new SortingLayersCmd(m_project, changed, "Change Transparency Sort");
+                command->setNoMerge();
+                m_project->getProjectCommandHistory()->addCommand(command);
+            };
+            if (settingsui::beginRow("graphics.transparency_sort_mode")) {
+                SortingSettings changed = current;
+                if (projectBeginSettingsRow("Transparency Sort Mode", current.mode != TransparencySortMode::DEFAULT))
+                    changed.mode = TransparencySortMode::DEFAULT;
+                int mode = current.mode == TransparencySortMode::CUSTOM_AXIS ? 1 : 0;
+                const char* modes[] = {"Default", "Custom Axis"};
+                ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+                if (ImGui::Combo("##TransparencySortMode", &mode, modes, 2))
+                    changed.mode = mode == 1 ? TransparencySortMode::CUSTOM_AXIS : TransparencySortMode::DEFAULT;
+                UIProbe::item("graphics.transparency_sort_mode");
+                endSettingsRow("Custom Axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw along the "
+                               "Transparency Sort Axis, a larger dot(axis, position) first. Default keeps the Hierarchy order.");
+                applySorting(changed);
+            }
+            if (settingsui::beginRow("graphics.transparency_sort_axis")) {
+                SortingSettings changed = current;
+                if (projectBeginSettingsRow("Transparency Sort Axis", current.axis != Vector3(0.0f, 1.0f, 0.0f)))
+                    changed.axis = Vector3(0.0f, 1.0f, 0.0f);
+                float axis[3] = {current.axis.x, current.axis.y, current.axis.z};
+                ImGui::SetNextItemWidth(Theme::dpi(220.0f));
+                ImGui::InputFloat3("##TransparencySortAxis", axis);
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                    changed.axis = Vector3(axis[0], axis[1], axis[2]);
+                endSettingsRow("The Custom Axis. (0, 1, 0): a higher y draws first, so lower sprites cover higher ones (top-down).");
+                applySorting(changed);
+            }
+        }
+
         if (settingsui::beginRow("graphics.runtime_shaders")) {
             if (projectBeginSettingsRow("Runtime Shader Compilation", m_runtimeShadersEnabled != Project::defaultRuntimeShadersEnabled)) {
                 m_runtimeShadersEnabled = Project::defaultRuntimeShadersEnabled;
@@ -3532,8 +3577,182 @@ void ProjectSettingsWindow::drawTagsAndLayersSettings() {
             }
             ImGui::EndTable();
         }
+
+        drawSortingLayersSettings();
     }
     endSettingsPanel();
+}
+
+size_t ProjectSettingsWindow::countSortingLayerUses(int32_t id) const {
+    size_t uses = 0;
+    for (const SceneProject& sceneProject : m_project->getScenes()) {
+        Scene* scene = sceneProject.scene;
+        if (!scene) continue;
+        auto count = [&](auto array) {
+            for (size_t i = 0; i < array->size(); i++) {
+                if (array->getComponentFromIndex(i).sortingLayer == id) uses++;
+            }
+        };
+        count(scene->getComponentArray<MeshComponent>());
+        count(scene->getComponentArray<ParticleSystemComponent>());
+        count(scene->getComponentArray<PointsComponent>());
+        count(scene->getComponentArray<LineRendererComponent>());
+        count(scene->getComponentArray<TrailRendererComponent>());
+        count(scene->getComponentArray<SortingGroupComponent>());
+    }
+    return uses;
+}
+
+// Unity's Sorting Layers list: the draw order (first drawn first), Default locked (its name stays,
+// it cannot be removed), + adds, - removes (a layer in use asks first), rename inline, drag (or the
+// arrows) to reorder. Every edit is one undo step of the project (SortingLayersCmd).
+void ProjectSettingsWindow::drawSortingLayersSettings() {
+    if (!settingsFoldout("Sorting Layers", ImGuiTreeNodeFlags_DefaultOpen) || !beginSettingsTable("##SortingLayersTable"))
+        return;
+    const float buttonWidth = ImGui::GetFrameHeight();
+    const ImVec4 errorColor(1.0f, 0.45f, 0.35f, 1.0f);
+    const std::vector<SortingLayerInfo> layers = SortingLayers::getLayers();
+    auto applyLayers = [this](const std::vector<SortingLayerInfo>& changed, const char* description) {
+        SortingSettings settings = SortingSettings::current();
+        settings.layers = changed;
+        if (settings == SortingSettings::current()) return;
+        auto* command = new SortingLayersCmd(m_project, settings, description);
+        command->setNoMerge();
+        m_project->getProjectCommandHistory()->addCommand(command);
+    };
+    int moveFrom = -1, moveTo = -1;
+    int removeIndex = -1;
+    for (size_t i = 0; i < layers.size(); i++) {
+        const SortingLayerInfo& layer = layers[i];
+        const bool isDefault = layer.id == DEFAULT_SORTING_LAYER_ID;
+        ImGui::PushID(layer.id);
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        // the handle: drag a row onto another to move it there
+        ImGui::Selectable((ICON_FA_GRIP_VERTICAL " Layer " + std::to_string(i)).c_str(), false, ImGuiSelectableFlags_None);
+        UIProbe::item("sorting_layers.row." + std::to_string(i));
+        if (ImGui::BeginDragDropSource()) {
+            const int from = (int)i;
+            ImGui::SetDragDropPayload("JE_SORTING_LAYER", &from, sizeof(from));
+            ImGui::TextUnformatted(layer.name.c_str());
+            ImGui::EndDragDropSource();
+        }
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("JE_SORTING_LAYER")) {
+                moveFrom = *static_cast<const int*>(payload->Data);
+                moveTo = (int)i;
+            }
+            ImGui::EndDragDropTarget();
+        }
+        ImGui::TableNextColumn();
+        const float buttons = 3.0f * buttonWidth + 2.0f * ImGui::GetStyle().ItemSpacing.x;
+        if (isDefault) {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("%s", layer.name.c_str());
+            ImGui::SetItemTooltip("Default always exists and keeps its name; move it to change where it draws.");
+        } else {
+            if (m_sortingLayerRenaming != layer.id)
+                snprintf(m_sortingLayerRenameBuffer, sizeof(m_sortingLayerRenameBuffer), "%s", layer.name.c_str());
+            char buffer[128];
+            snprintf(buffer, sizeof(buffer), "%s", m_sortingLayerRenaming == layer.id ? m_sortingLayerRenameBuffer : layer.name.c_str());
+            ImGui::SetNextItemWidth(-buttons - ImGui::GetStyle().ItemSpacing.x);
+            if (ImGui::InputText("##SortingLayerName", buffer, sizeof(buffer))) {
+                m_sortingLayerRenaming = layer.id;
+                snprintf(m_sortingLayerRenameBuffer, sizeof(m_sortingLayerRenameBuffer), "%s", buffer);
+            }
+            UIProbe::item("sorting_layers.name." + std::to_string(i));
+            if (ImGui::IsItemDeactivatedAfterEdit() && m_sortingLayerRenaming == layer.id) {
+                // the id stays: renaming rewrites no scene
+                const std::string name = TagManager::trimName(m_sortingLayerRenameBuffer);
+                const int32_t clash = SortingLayers::nameToId(name);
+                if (!name.empty() && name != "Default" && (clash < 0 || clash == layer.id)) {
+                    std::vector<SortingLayerInfo> changed = layers;
+                    changed[i].name = name;
+                    applyLayers(changed, "Rename Sorting Layer");
+                }
+                m_sortingLayerRenaming = -1;
+            }
+        }
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - buttons));
+        ImGui::BeginDisabled(i == 0);
+        if (ImGui::Button(ICON_FA_ARROW_UP, ImVec2(buttonWidth, 0))) { moveFrom = (int)i; moveTo = (int)i - 1; }
+        ImGui::EndDisabled();
+        UIProbe::item("sorting_layers.up." + std::to_string(i));
+        ImGui::SameLine();
+        ImGui::BeginDisabled(i + 1 == layers.size());
+        if (ImGui::Button(ICON_FA_ARROW_DOWN, ImVec2(buttonWidth, 0))) { moveFrom = (int)i; moveTo = (int)i + 1; }
+        ImGui::EndDisabled();
+        UIProbe::item("sorting_layers.down." + std::to_string(i));
+        ImGui::SameLine();
+        ImGui::BeginDisabled(isDefault);
+        if (ImGui::Button(ICON_FA_MINUS, ImVec2(buttonWidth, 0))) removeIndex = (int)i;
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("%s", isDefault ? "Default cannot be removed" : "Remove this Sorting Layer");
+        UIProbe::item("sorting_layers.remove." + std::to_string(i));
+        // a layer still used in the open scenes asks first: its renderers then draw on Default
+        if (m_sortingLayerRemoving == layer.id) {
+            ImGui::TextColored(errorColor, "%zu renderer(s) in open scenes use \"%s\"; they will draw on Default.", m_sortingLayerRemovingUses,
+                               layer.name.c_str());
+            if (ImGui::Button("Remove")) {
+                std::vector<SortingLayerInfo> changed = layers;
+                changed.erase(changed.begin() + (long)i);
+                applyLayers(changed, "Remove Sorting Layer");
+                m_sortingLayerRemoving = -1;
+            }
+            UIProbe::item("sorting_layers.confirm_remove");
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel")) m_sortingLayerRemoving = -1;
+        }
+        ImGui::PopID();
+    }
+    if (removeIndex >= 0) {
+        const SortingLayerInfo& layer = layers[(size_t)removeIndex];
+        const size_t uses = countSortingLayerUses(layer.id);
+        if (uses > 0) {
+            m_sortingLayerRemoving = layer.id;
+            m_sortingLayerRemovingUses = uses;
+        } else {
+            std::vector<SortingLayerInfo> changed = layers;
+            changed.erase(changed.begin() + removeIndex);
+            applyLayers(changed, "Remove Sorting Layer");
+        }
+    }
+    if (moveFrom >= 0 && moveTo >= 0 && moveFrom != moveTo && moveTo < (int)layers.size()) {
+        std::vector<SortingLayerInfo> changed = layers;
+        const SortingLayerInfo moved = changed[(size_t)moveFrom];
+        changed.erase(changed.begin() + moveFrom);
+        changed.insert(changed.begin() + moveTo, moved);
+        applyLayers(changed, "Reorder Sorting Layers");
+    }
+
+    // + adds the name typed here at the end (drawn last)
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("New Sorting Layer");
+    ImGui::TableNextColumn();
+    const std::string name = TagManager::trimName(m_newSortingLayerBuffer);
+    const std::string addError = name.empty() ? "Type a name" : (SortingLayers::nameToId(name) >= 0 ? "A Sorting Layer has this name" : "");
+    ImGui::SetNextItemWidth(-(buttonWidth + ImGui::GetStyle().ItemSpacing.x));
+    bool add = ImGui::InputTextWithHint("##NewSortingLayerName", "Sorting Layer name", m_newSortingLayerBuffer, sizeof(m_newSortingLayerBuffer),
+                                        ImGuiInputTextFlags_EnterReturnsTrue);
+    UIProbe::item("sorting_layers.new_name");
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!addError.empty());
+    add = ImGui::Button(ICON_FA_PLUS "##AddSortingLayer", ImVec2(buttonWidth, 0)) || add;
+    ImGui::EndDisabled();
+    UIProbe::item("sorting_layers.add");
+    ImGui::SetItemTooltip("%s", addError.empty() ? "Add the Sorting Layer (drawn after the others)" : addError.c_str());
+    if (add && addError.empty()) {
+        std::vector<std::string> names;
+        for (const SortingLayerInfo& layer : layers) names.push_back(layer.name);
+        names.push_back(name);
+        applyLayers(SortingLayers::fromNames(names), "Add Sorting Layer");
+        m_newSortingLayerBuffer[0] = '\0';
+    }
+    ImGui::EndTable();
 }
 
 void ProjectSettingsWindow::drawEditorSettings() {

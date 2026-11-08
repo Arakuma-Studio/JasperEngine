@@ -14,6 +14,7 @@
 #include "Configs.h"
 #include "util/Prefab.h"
 #include "LoadReport.h"
+#include "registry/SortingLayers.h"
 #include "StreamMigrations.h"
 #include "SceneBackup.h"
 #include "io/ScopedFileLock.h"
@@ -1833,6 +1834,15 @@ namespace jasperengine::editor{
         const std::vector<std::string>& getTags() const;
         // MAX_LAYERS entries, index = layer; empty for built-in and unnamed layers
         const std::vector<std::string>& getLayerNames() const;
+
+        // Project Settings > Tags and Layers > Sorting Layers and Graphics > Transparency Sort Mode /
+        // Axis (spec S52 R1, R4): the engine's SortingLayers holds them (the Inspector, Play and
+        // the render systems read it); setSortingLayers keeps what SortingLayers accepts
+        void setSortingLayers(const std::vector<SortingLayerInfo>& layers);
+        const std::vector<SortingLayerInfo>& getSortingLayers() const;
+        void setTransparencySort(TransparencySortMode mode, const Vector3& axis);
+        TransparencySortMode getTransparencySortMode() const;
+        Vector3 getTransparencySortAxis() const;
 
         // Project Settings > Physics and Physics 2D > Layer Collision Matrix. Kept symmetric
         // (a pair collides only when both rows say so) and applied to the engine's
