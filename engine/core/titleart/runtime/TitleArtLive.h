@@ -30,6 +30,7 @@
 #include <cstdint>
 #include <functional>
 #include <list>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -45,6 +46,7 @@ namespace jasperengine::titleart {
     class TitleArtRenderer;
     class AssetResolver;
     class TitleGlyphAtlas;
+    struct TitleMesh;
 
     // S81's flags in S80's per-request set (RenderRequest::testFlags, after TITLE_ART_TEST_S80_LAST_BIT)
     constexpr uint32_t TITLE_ART_TEST_FAIL_TARGETS = 1u << 6;   // every target allocation of the request fails
@@ -66,6 +68,8 @@ namespace jasperengine::titleart {
         int glowWidth = 0, glowHeight = 0;
         // a prebaked image shipped with the build (R11): a texture of the file, no target
         std::shared_ptr<Texture> prebaked;
+        // S86 R63: the meshes of its Dimension 3D layers (the render's)
+        std::vector<TitleArtMeshStats> meshes;
         bool valid() const { return width > 0 && height > 0; }
         // the colour texture and the framebuffer of a GPU target (null for a test's image)
         TextureRender* texture() const;
@@ -88,6 +92,17 @@ namespace jasperengine::titleart {
         TitleGlyphAtlasPlan glyphPlan;
         uint64_t docHash = 0;           // the document's content hash (the atlas style's)
         std::string titlePath;          // the title's path (its prebaked atlas sits beside it)
+        // S86 R26, R38: what the build's export cooked for the title (RenderRequest's members)
+        std::map<std::string, std::shared_ptr<const TitleMesh>> cookedMeshes3D;
+        std::map<std::string, std::shared_ptr<const std::vector<uint8_t>>> cookedEnvironments3D;
+    };
+
+    // S86 R26, R38: a title's cooked 3D data from its export (three_d/TitleCooked3D.cpp): what a
+    // job at `tier` hands the renderer
+    class JASPERENGINE_API TitleCooked3DSource {
+    public:
+        virtual ~TitleCooked3DSource() = default;
+        virtual void fill(int tier, TitleJobSpec& spec) = 0;
     };
 
     // The scheduler's view of one render (S80's TitleRenderJob in a game; a fake in tests)
@@ -138,6 +153,10 @@ namespace jasperengine::titleart {
         TitleArtRenderMode mode() const { return renderMode; }
         const std::shared_ptr<const TitleArtDoc>& document() const { return doc; }
         uint64_t documentHash() const { return docHash; }
+        // the document has a Dimension 3D layer (S86: its tier matters)
+        bool has3D() const { return hasLayers3D; }
+        // what the export cooked for it (a build's; none in the editor)
+        void setCooked3D(std::shared_ptr<TitleCooked3DSource> source) { cooked3D = std::move(source); }
 
         // ---- the state (TitleArtSystem, once a frame) ----
         void setState(const TitleArtLiveState& state, uint64_t stateHash, std::vector<FieldOverride> overrides);
@@ -217,6 +236,8 @@ namespace jasperengine::titleart {
         std::string missingCharacters;
         std::shared_ptr<const TitleArtDoc> doc;
         uint64_t docHash = 0;
+        bool hasLayers3D = false;
+        std::shared_ptr<TitleCooked3DSource> cooked3D;
 
         TitleArtLiveState wanted;
         uint64_t wantedHash = 0;

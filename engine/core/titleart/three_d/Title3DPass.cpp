@@ -132,6 +132,7 @@ namespace jasperengine::titleart {
 #endif
         if (useCooked) {
             plan->mesh = cooked->second;
+            plan->cookedMesh = true;
         } else if (!mesherAvailable) {
             TitleProblem p;
             p.code = "mesher_unavailable";
@@ -322,6 +323,26 @@ namespace jasperengine::titleart {
         return plan;
     }
 
+}
+
+std::vector<TitleMeshReport> TitlePlanner::title3DMeshReports() const {
+    std::vector<TitleMeshReport> out;
+    for (const auto& [layerId, held] : title3DPlans) {
+        const Title3DPlan* plan = static_cast<const Title3DPlan*>(held.get());
+        if (!plan || !plan->mesh) continue;
+        const TitleMesh& mesh = *plan->mesh;
+        TitleMeshReport r;
+        r.layerId = layerId;
+        r.triangles = mesh.stats.triangles;
+        r.vertices = mesh.stats.vertices;
+        r.solids = mesh.stats.solids;
+        r.buildMs = plan->cookedMesh ? 0.0f : mesh.stats.buildMs;
+        r.tier = (int)plan->tier;
+        r.overBudget = !titleTierFit(mesh.stats, mesh.bytes(), plan->tier).fits;
+        r.cooked = plan->cookedMesh;
+        out.push_back(std::move(r));
+    }
+    return out;
 }
 
 std::shared_ptr<TitleCacheEntry> TitlePlanner::title3DAsset(const Json& ref, const std::string& layerId, const std::string& path) {

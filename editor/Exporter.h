@@ -384,6 +384,8 @@ namespace jasperengine::editor {
         bool prepareTitleArt();
         // S81: what the build's Realtime and Glyph Atlas titles need at runtime (after copyAssets)
         bool writeTitleArtRuntime();
+        // the platforms this export builds for (buildPlatformName's names; a source export: all)
+        std::vector<std::string> exportPlatformNames() const;
         bool cookTextures();
         // S53: every model source cooked for the families of the export, into
         // assets/je-cooked/models; a cook error fails the export, naming the file

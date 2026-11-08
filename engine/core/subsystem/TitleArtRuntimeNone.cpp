@@ -100,6 +100,16 @@ Framebuffer* TitleArtRuntime::glowFramebuffer(TitleArtLive&){
 void TitleArtRuntime::invalidate(TitleArtLive&){
 }
 
+int TitleArtRuntime::tierFor(const TitleArtLive&, const std::string&){
+    return 0;
+}
+
+bool TitleArtRuntime::meshStats(const TitleArtLive&, const std::string&, TitleArtMeshStats&, bool& found, std::string* error){
+    found = false;
+    if (error) *error = "this build has no Title Art module (titleart)";
+    return false;
+}
+
 void TitleArtRuntime::setPrebaked(TitleArtLive&, const std::string&, uint64_t){
 }
 

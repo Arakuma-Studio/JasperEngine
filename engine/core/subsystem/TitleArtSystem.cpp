@@ -678,12 +678,14 @@ void TitleArtSystem::updateLive(Entity entity, TitleArtRendererComponent& title,
     liveState.priority = std::max(-100, std::min(100, title.priority));
     liveState.visible = isVisible(entity, title, instance);
     liveState.renderWhenHidden = title.renderWhenHidden;
+    instance.liveRuns = liveState.visible || liveState.renderWhenHidden;
     liveState.prebake = title.prebakeInitialState;
     liveState.transition = title.transition;
     liveState.transitionDuration = std::max(0.0f, std::min(2.0f, title.transitionDuration));
     liveState.atlasPageSize = title.atlasPageSize == 512 || title.atlasPageSize == 2048 ? title.atlasPageSize : 1024;
     liveState.atlasMaxPages = std::max(1, std::min(8, title.atlasMaxPages));
     liveState.qualityTier = title.qualityTier;
+    liveState.tier = TitleArtRuntime::tierFor(*instance.live, title.qualityTier);
     liveState.label = "TitleArt/" + scene->getEntityName(entity);
     liveState.testFlags = instance.testFlags;
     liveState.glowOutput = title.glowEnabled;
@@ -999,6 +1001,49 @@ void TitleArtSystem::setDisabledFeaturesForTesting(EntityRegistry* scene, Entity
 void TitleArtSystem::refresh(EntityRegistry* scene, Entity entity){
     TitleArtRendererComponent* title = titleOf(scene, entity);
     if (title && title->runtime && title->runtime->live) TitleArtRuntime::invalidate(*title->runtime->live);
+}
+
+bool TitleArtSystem::areTitlesReady(std::string* waiting) const{
+    if (!scene->isComponentRegistered<TitleArtRendererComponent>()) return true;
+    auto titles = scene->getComponentArray<TitleArtRendererComponent>();
+    for (size_t i = 0; i < titles->size(); i++){
+        const TitleArtRendererComponent& title = titles->getComponentFromIndex(i);
+        if (!title.enabled || title.renderMode == TitleArtRenderMode::BAKED || !title.runtime) continue;
+        const TitleArtInstance& instance = *title.runtime;
+        if (!instance.live || !instance.liveRuns || instance.ready || instance.failed) continue;
+        if (waiting) *waiting = "Title Art '" + scene->getEntityName(titles->getEntity(i)) + "' " + (instance.pending.empty() ? "queued" : instance.pending);
+        return false;
+    }
+    return true;
+}
+
+bool TitleArtSystem::meshStats(EntityRegistry* scene, Entity entity, const std::string& layerPath, TitleArtMeshStats& out, bool& found,
+                               std::string& error){
+    found = false;
+    TitleArtRendererComponent* title = titleOf(scene, entity);
+    const std::string name = displayName(scene, entity);
+    if (!title){
+        error = "TitleArt: GameObject '" + name + "' has no Title Art Renderer.";
+        return false;
+    }
+    if (title->renderMode == TitleArtRenderMode::BAKED){
+        error = "TitleArt '" + name + "' is Baked: it draws its bake and has no mesh. Set its Render Mode to Realtime for live 3D.";
+        return false;
+    }
+    if (!title->runtime || !title->runtime->live){
+        // not resolved yet (the first frame), or a build without the module (R51)
+        if (title->runtime && title->runtime->moduleMissing){
+            error = "TitleArt '" + name + "': this build has no Title Art module (titleart), so it renders no mesh.";
+            return false;
+        }
+        return true;
+    }
+    std::string why;
+    if (!TitleArtRuntime::meshStats(*title->runtime->live, layerPath, out, found, &why)){
+        error = "TitleArt '" + name + "': getMeshStats: " + why + ".";
+        return false;
+    }
+    return true;
 }
 
 std::vector<std::string> TitleArtSystem::parameterNames(EntityRegistry* scene, Entity entity){

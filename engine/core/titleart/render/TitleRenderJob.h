@@ -123,6 +123,17 @@ namespace jasperengine::titleart {
         bool premultiplied = true;      // intermediates are; the output pass writes straight sRGB
     };
 
+    // S86 R61, R63: the mesh a Dimension 3D layer of the render drew (get_title's stats_3d, Lua
+    // getMeshStats); `tier` is S86's TitleTier (0 bake, 1 high, 2 medium, 3 low)
+    struct TitleMeshReport {
+        std::string layerId;
+        uint32_t triangles = 0, vertices = 0, solids = 0;
+        float buildMs = 0.0f;
+        int tier = 0;
+        bool overBudget = false;        // over the tier's limits (S86 §6.7)
+        bool cooked = false;            // RenderRequest::cookedMeshes3D's (no mesher ran)
+    };
+
     // what a request asked to keep besides the image (R18a)
     struct TitleSplits {
         std::map<std::string, TitleImage> layers;   // RenderRequest::keepSplits, by layer id
@@ -165,11 +176,14 @@ namespace jasperengine::titleart {
         const TitleImage& image() const { return result; }
         const TitleSplits& splits() const { return kept; }
         const std::vector<TitleProblem>& problems() const { return found; }
+        // the meshes of its Dimension 3D layers (planned with the job)
+        const std::vector<TitleMeshReport>& meshReports() const { return meshes; }
 
         // ---- the renderer's side ----
         TitleImage& resultImage() { return result; }
         TitleSplits& resultSplits() { return kept; }
         void addProblem(TitleProblem problem) { found.push_back(std::move(problem)); }
+        void addMeshReport(TitleMeshReport report) { meshes.push_back(std::move(report)); }
         // state the steps share that must live as long as the job (CPU stage outputs, targets)
         void keepAlive(std::shared_ptr<void> state) { held.push_back(std::move(state)); }
         // the estimate of one step in us (GPU: pixels x costWeight / 1000, at least 1)
@@ -188,6 +202,7 @@ namespace jasperengine::titleart {
         TitleImage result;
         TitleSplits kept;
         std::vector<TitleProblem> found;
+        std::vector<TitleMeshReport> meshes;
         std::vector<std::shared_ptr<void>> held;
         bool blocked = false;
         TitleStepCosts* costModel = nullptr;

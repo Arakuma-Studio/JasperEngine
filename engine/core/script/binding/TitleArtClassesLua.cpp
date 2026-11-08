@@ -182,6 +182,65 @@ namespace {
         return 0;
     }
 
+    // S86 R37: the Realtime 3D tier
+    bool doSetQualityTier(lua_State* L, TitleArt* self){
+        if (lua_type(L, 2) != LUA_TSTRING){
+            pushError(L, "TitleArt '" + self->getName() + "': 'qualityTier' is \"auto\", \"high\", \"medium\" or \"low\"; got " +
+                         luaL_typename(L, 2) + ".");
+            return false;
+        }
+        std::string error;
+        if (!self->setQualityTier(lua_tostring(L, 2), &error)){
+            pushError(L, error);
+            return false;
+        }
+        return true;
+    }
+
+    int setQualityTier(lua_State* L){
+        TitleArt* self = titleSelf(L);
+        if (!doSetQualityTier(L, self)) return lua_error(L);
+        return 0;
+    }
+
+    // S86 R63: getMeshStats(layerPath) -> {triangles, vertices, solids, buildMs, tier, overBudget} or nil
+    bool pushMeshStats(lua_State* L, TitleArt* self, const char* layerPath){
+        titleart::TitleArtMeshStats stats;
+        bool found = false;
+        std::string error;
+        if (!self->getMeshStats(layerPath, stats, found, &error)){
+            pushError(L, error);
+            return false;
+        }
+        if (!found){
+            lua_pushnil(L);
+            return true;
+        }
+        lua_createtable(L, 0, 7);
+        lua_pushinteger(L, (lua_Integer)stats.triangles);
+        lua_setfield(L, -2, "triangles");
+        lua_pushinteger(L, (lua_Integer)stats.vertices);
+        lua_setfield(L, -2, "vertices");
+        lua_pushinteger(L, (lua_Integer)stats.solids);
+        lua_setfield(L, -2, "solids");
+        lua_pushnumber(L, stats.buildMs);
+        lua_setfield(L, -2, "buildMs");
+        lua_pushlstring(L, stats.tier.data(), stats.tier.size());
+        lua_setfield(L, -2, "tier");
+        lua_pushboolean(L, stats.overBudget ? 1 : 0);
+        lua_setfield(L, -2, "overBudget");
+        lua_pushboolean(L, stats.cooked ? 1 : 0);
+        lua_setfield(L, -2, "cooked");
+        return true;
+    }
+
+    int getMeshStats(lua_State* L){
+        TitleArt* self = titleSelf(L);
+        const char* layerPath = luaL_checkstring(L, 2);
+        if (!pushMeshStats(L, self, layerPath)) return lua_error(L);
+        return 1;
+    }
+
     // R67: title and renderMode cannot change from a script
     bool doReadOnly(lua_State* L, TitleArt* self, const char* field){
         pushError(L, "TitleArt '" + self->getName() + "': '" + field + "' is read-only: a script cannot change the asset or the Render Mode (set "
@@ -283,6 +342,7 @@ void LuaBinding::registerTitleArtClasses(lua_State *L){
         .addProperty("error", &TitleArt::getError)
         .addProperty("pixelPath", &TitleArt::getPixelPath)
         .addProperty("priority", &TitleArt::getPriority, &TitleArt::setPriority)
+        .addProperty("qualityTier", &TitleArt::getQualityTier, &setQualityTier)
         .addProperty("liveTime", &TitleArt::getLiveTime, &TitleArt::setLiveTime)
         .addProperty("sweepPosition", &TitleArt::getSweepPosition, &TitleArt::setSweepPosition)
         .addProperty("sweepWidth", &TitleArt::getSweepWidth, &TitleArt::setSweepWidth)
@@ -314,6 +374,7 @@ void LuaBinding::registerTitleArtClasses(lua_State *L){
         .addFunction("hasParameter", &TitleArt::hasParameter)
         .addFunction("resetParameter", &resetParameter)
         .addFunction("setColorScheme", &setColorScheme)
+        .addFunction("getMeshStats", &getMeshStats)
         .addFunction("refresh", &TitleArt::refresh)
         .addFunction("setNativeSize", &setNativeSize)
         .addFunction("play", &play)

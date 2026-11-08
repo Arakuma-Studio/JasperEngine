@@ -21,6 +21,7 @@
 
 #include "titleart/support/TitleTestAssets.h"
 #include "titleart/three_d/Title3DConvert.h"
+#include "titleart/three_d/TitleEnvironment.h"
 
 #include "ImageCompare.h"
 #include "TestPaths.h"
@@ -264,16 +265,37 @@ namespace {
         return list;
     }
 
+    // the editor's bundled HDRIs (editor/resources/titleart/hdri), which the softbox and photo
+    // looks light with; without them the studio stands in (environment_missing)
+    std::string bundledHdriDir() {
+        return (std::filesystem::path(jasperengine::test::testPaths().sourceDir) / ".." / ".." / ".." / "editor" / "resources" / "titleart" / "hdri")
+            .lexically_normal()
+            .string();
+    }
+
     class Title3DParityGpu : public ::testing::Test {
     protected:
-        void SetUp() override { JASPER_REQUIRE_GPU(); }
+        void SetUp() override {
+            JASPER_REQUIRE_GPU();
+            useBundledHdris(true);
+        }
+        void TearDown() override { setTitleHdriLoader(nullptr); }
+
+        static void useBundledHdris(bool on) {
+            if (!on) {
+                setTitleHdriLoader(nullptr);
+                return;
+            }
+            const std::string dir = bundledHdriDir();
+            setTitleHdriLoader([dir](const std::string& slug) { return loadTitleHdriFromDirectory(slug, dir); });
+        }
 
         // a look on BIG, rendered at 0.25 (straight sRGB)
         // the red controls: Neutral for Punch (the metric), half the exposure (the tone guard: a
         // broken exposure or material path darkens a look as kin-gin's face once was)
         enum class Variant { Look, Neutral, HalfExposure };
 
-        Image8 renderLook(const Json& look, Variant variant, std::vector<std::string>& missing) {
+        Image8 renderLook(const Json& look, Variant variant, std::vector<std::string>& missing, std::vector<TitleProblem>* problems = nullptr) {
             static TestAssetResolver assets;
             Json style3d = title3DFromPachislop(look["style3d"]);
             if (variant == Variant::Neutral && style3d.contains("lighting")) style3d["lighting"]["tone_mapping"] = "neutral";
@@ -294,7 +316,9 @@ namespace {
             r.doc = doc;
             r.pxScale = 0.25f;
             r.assets = &assets;
-            const Pixels p = render(*renderer, r);
+            std::unique_ptr<TitleRenderJob> job;
+            const Pixels p = render(*renderer, r, &job);
+            if (problems && job) *problems = job->problems();
             Image8 out;
             out.width = p.width;
             out.height = p.height;
@@ -331,8 +355,12 @@ TEST_F(Title3DParityGpu, PachislopLooks) {
                                                 ref.width, ref.height))
             << id;
         std::vector<std::string> missing;
-        const Image8 ours = renderLook(look, Variant::Look, missing);
+        std::vector<TitleProblem> problems;
+        const Image8 ours = renderLook(look, Variant::Look, missing, &problems);
         ASSERT_GT(ours.width, 0);
+        for (const TitleProblem& problem : problems) {
+            EXPECT_NE(problem.code, "environment_missing") << problem.message << ": the look must light with its own environment";
+        }
         const Parity p = compareLook(ref, ours);
         std::string note;
         for (const std::string& m : missing) note += (note.empty() ? " (left out: " : ", ") + m;
@@ -369,4 +397,32 @@ TEST_F(Title3DParityGpu, PachislopLooks) {
         EXPECT_TRUE(toneOff.count(id)) << id << "'s tone is within the band now: take it off (" << cause << ")";
     }
     EXPECT_GE(darkToneOff, 30) << "the tone guard sees a look one stop too dark";
+}
+
+TEST_F(Title3DParityGpu, SoftboxLooksLightWithTheirHdri) {
+    // the softbox looks (gold, box-plate, red...) reflect Studio Small 09 with its key softbox; a
+    // render without the HDRI lights them with the procedural studio, whose bright band on a flat
+    // face sat above the reference's (Deviation 28): red control, the stand-in reports itself and
+    // moves the reflection
+    std::ifstream in(std::filesystem::path(jasperengine::test::testPaths().sourceDir) / "titleart" / "fixtures" / "pachislop3d" / "f-3d-red.json");
+    const Json look = Json::parse(in, nullptr, false);
+    ASSERT_TRUE(look.is_object());
+    std::vector<std::string> missing;
+    std::vector<TitleProblem> problems;
+    const Image8 lit = renderLook(look, Variant::Look, missing, &problems);
+    bool standIn = false;
+    for (const TitleProblem& p : problems) standIn = standIn || p.code == "environment_missing";
+    EXPECT_FALSE(standIn) << "the bundled HDRI lights the softbox look";
+
+    useBundledHdris(false);
+    renderer.reset();
+    const Image8 studio = renderLook(look, Variant::Look, missing, &problems);
+    standIn = false;
+    for (const TitleProblem& p : problems) standIn = standIn || p.code == "environment_missing";
+    EXPECT_TRUE(standIn) << "red control: without the HDRI the studio stands in and says so";
+    ASSERT_EQ(lit.width, studio.width);
+    ASSERT_EQ(lit.height, studio.height);
+    double sum = 0;
+    for (size_t i = 0; i < lit.rgba.size(); i++) sum += std::abs((int)lit.rgba[i] - (int)studio.rgba[i]);
+    EXPECT_GT(sum / (double)lit.rgba.size(), 4.0) << "the HDRI and the studio stand-in reflect differently";
 }

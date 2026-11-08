@@ -3175,6 +3175,33 @@ void ProjectSettingsWindow::drawTitleArtSettings() {
                 ImGui::Checkbox("##TitleArtSimulateCharacters", &m_titleArt.simulateExportCharacters);
                 endSettingsRow("In Play, characters outside a Realtime or Glyph Atlas title's Characters set draw as nothing, as in a build.");
             }
+            // S86 R37: the tier of Realtime 3D titles whose Quality Tier is Auto, per platform
+            if (settingsui::beginRow("title_art.realtime_3d_quality")) {
+                if (projectBeginSettingsRow("Realtime 3D Quality", m_titleArt.realtime3DQuality != defaults.realtime3DQuality)) {
+                    m_titleArt.realtime3DQuality = defaults.realtime3DQuality;
+                }
+                static const char* const platforms[6] = {"windows", "linux", "macos", "ios", "android", "web"};
+                static const char* const labels[6] = {"Windows", "Linux", "macOS", "iOS", "Android", "HTML5"};
+                static const char* const tiers[3] = {"high", "medium", "low"};
+                static const char* const tierLabels[3] = {"High", "Medium", "Low"};
+                const float width = (ImGui::GetContentRegionAvail().x - helpMarkerWidth()) / 6 - ImGui::GetStyle().ItemSpacing.x;
+                for (int i = 0; i < 6; i++) {
+                    if (i) ImGui::SameLine();
+                    std::string* tier = m_titleArt.realtime3DQuality.find(platforms[i]);
+                    int current = 0;
+                    for (int t = 0; t < 3; t++) if (*tier == tiers[t]) current = t;
+                    ImGui::SetNextItemWidth(width);
+                    if (ImGui::BeginCombo((std::string("##TitleArt3DQuality") + platforms[i]).c_str(), tierLabels[current])) {
+                        for (int t = 0; t < 3; t++) {
+                            if (ImGui::Selectable(tierLabels[t], t == current)) *tier = tiers[t];
+                        }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::SetItemTooltip("%s", labels[i]);
+                }
+                endSettingsRow("The quality tier of Realtime 3D titles whose Quality Tier is Auto, per platform (Windows, Linux, macOS, iOS, "
+                               "Android, HTML5). A device tier wins where one applies; GLES3 and WebGL2 draw High as Medium.");
+            }
             ImGui::EndTable();
         }
         drawSectionNote("Baked PNGs ship as ordinary textures; a .titleart ships only when a Realtime or Glyph Atlas title reads it.");

@@ -182,6 +182,27 @@ void TitleArt::setPriority(int priority){
     if (TitleArtRendererComponent* c = component()) c->priority = std::max(-100, std::min(100, priority));
 }
 
+std::string TitleArt::getQualityTier() const{
+    const TitleArtRendererComponent* c = component();
+    return c ? c->qualityTier : std::string("auto");
+}
+
+bool TitleArt::setQualityTier(const std::string& tier, std::string* error){
+    TitleArtRendererComponent* c = component();
+    if (!c) return fail("TitleArt: GameObject '" + getName() + "' has no Title Art Renderer.", error);
+    if (tier != "auto" && tier != "high" && tier != "medium" && tier != "low"){
+        return fail("TitleArt '" + getName() + "': qualityTier \"" + tier + "\" is not auto, high, medium or low.", error);
+    }
+    c->qualityTier = tier;
+    return true;
+}
+
+bool TitleArt::getMeshStats(const std::string& layerPath, titleart::TitleArtMeshStats& out, bool& found, std::string* error) const{
+    std::string message;
+    if (!TitleArtSystem::meshStats(getScene(), getEntity(), layerPath, out, found, message)) return fail(message, error);
+    return true;
+}
+
 void TitleArt::refresh(){
     if (component()) TitleArtSystem::refresh(getScene(), getEntity());
 }

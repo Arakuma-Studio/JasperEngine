@@ -400,6 +400,9 @@ std::unique_ptr<TitleRenderJob> TitleArtRenderer::begin(const RenderRequest& req
     impl->counters.floodPasses += planner.floodPasses;
     impl->counters.floodPassesUnbounded += planner.unboundedFloodPasses;
     auto job = std::make_unique<TitleRenderJob>(std::move(steps));
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+    for (TitleMeshReport& report : planner.title3DMeshReports()) job->addMeshReport(std::move(report));
+#endif
     planner.state()->job = job.get();
     job->keepAlive(planner.state());
     // a request that draws nothing (an empty region) still reports what planning found

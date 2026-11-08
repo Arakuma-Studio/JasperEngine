@@ -109,6 +109,8 @@ namespace {
             if (titleArtForceRgba8()) request.testFlags |= TITLE_ART_TEST_NO_FLOAT_TARGETS;
             request.output = TitleOutputFormat::Srgb8;
             request.tier = spec.tier;
+            request.cookedMeshes3D = spec.cookedMeshes3D;
+            request.cookedEnvironments3D = spec.cookedEnvironments3D;
             request.assets = assets;
             path = TitleArtCaps::select(SystemRender::getFeatures(), request.testFlags).pathName();
             main = renderer.begin(request);
@@ -182,6 +184,19 @@ namespace {
             out.frame = image.frame;
             out.bytes = targetBytes(image.target.key());
             out.target = std::move(image.target);
+            for (const TitleMeshReport& r : main->meshReports()){
+                static const char* const tiers[4] = {"bake", "high", "medium", "low"};
+                TitleArtMeshStats m;
+                m.layerId = r.layerId;
+                m.triangles = r.triangles;
+                m.vertices = r.vertices;
+                m.solids = r.solids;
+                m.buildMs = r.buildMs;
+                m.tier = tiers[std::clamp(r.tier, 0, 3)];
+                m.overBudget = r.overBudget;
+                m.cooked = r.cooked;
+                out.meshes.push_back(std::move(m));
+            }
             if (glow && glow->done()){
                 TitleImage& g = glow->resultImage();
                 out.glowWidth = g.width;
@@ -239,6 +254,12 @@ namespace {
 
 TitleArtLive::TitleArtLive(std::string titlePath, TitleArtRenderMode mode, std::shared_ptr<const TitleArtDoc> document, uint64_t documentHash)
     : path(std::move(titlePath)), renderMode(mode), doc(std::move(document)), docHash(documentHash){
+    if (doc){
+        forEachLayer(doc->root, [this](const Json& layer, const Json*, int){
+            hasLayers3D = hasLayers3D || layer.value("dimension", std::string()) == "3d";
+            return !hasLayers3D;
+        });
+    }
 }
 
 TitleArtLive::~TitleArtLive(){
@@ -343,6 +364,8 @@ void TitleArtLive::startJob(const TitleJobFactory& factory, uint32_t budgetUs, d
     spec.testFlags = wanted.testFlags;
     spec.glow = wanted.glowOutput;
     spec.label = wanted.label;
+    spec.tier = wanted.tier;
+    if (cooked3D && hasLayers3D) cooked3D->fill(wanted.tier, spec);
     if (renderMode == TitleArtRenderMode::GLYPH_ATLAS && glyphPlan.fallback.empty() && !glyphPlan.textLayer.empty()){
         // R25-R29: per glyph; a title whose plan falls back renders as Realtime
         if (!atlas) atlas = std::make_shared<TitleGlyphAtlas>();
@@ -567,6 +590,7 @@ TitleArtLiveStatus TitleArtLive::status() const{
         s.frame.alphaBounds = s.frame.frame;
     }
     s.missingCharacters = missingCharacters;
+    s.meshes = frontImage.meshes;
     if (renderMode == TitleArtRenderMode::GLYPH_ATLAS){
         s.glyphUnsafe = glyphPlan.unsafeLabels();
         s.glyphApproximate = glyphPlan.approximateLabels();

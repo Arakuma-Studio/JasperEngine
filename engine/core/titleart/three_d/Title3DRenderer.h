@@ -87,6 +87,7 @@ namespace jasperengine::titleart {
         bool valid = false;
         std::string layerId;
         std::shared_ptr<const TitleMesh> mesh;
+        bool cookedMesh = false;                        // RenderRequest::cookedMeshes3D's (R38)
         Title3D style;
         Lighting3D lighting;
         std::vector<TitleMaterial3D> materials;         // <= 16

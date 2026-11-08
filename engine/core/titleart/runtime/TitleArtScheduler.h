@@ -42,6 +42,10 @@ namespace jasperengine::titleart {
         // the project's assets directory, project-relative ("assets/"): a document's asset
         // references are relative to it
         std::string assetsPrefix = "assets/";
+        // S86 R37, Realtime 3D Quality: the tier (S86's TitleTier: 1 high, 2 medium, 3 low) of a
+        // 3D title whose Quality Tier is auto, per Engine::Platform (MacOS, iOS, Web, Android,
+        // Linux, Windows). A build reads its export's (je-titleart/index.json)
+        int realtime3DTier[6] = {1, 2, 3, 3, 1, 1};
     };
 
     // §6.3: estimates are the desktop reference's; a slower platform's steps cost more
