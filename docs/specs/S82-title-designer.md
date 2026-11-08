@@ -1492,3 +1492,30 @@ rest of S82 lands in 6B.
     a text or a layer name, the window shows one line under the toolbar naming
     `cjk_font_language` and linking `docs/editor/text-and-languages.md`; dismissed, it is not shown
     again that session. `state().notices` lists `cjk_font_missing` while it shows.
+18. **Implementation: the Letters gizmo's steps** (R38, AC18). Its drags are named "Move Letters",
+    "Rotate Letters" and "Scale Letters" (one `set` of `chars.<i>.offset|rotation|scale` for every
+    selected character). A step taken while the text is being edited carries the text typed so far
+    (`set_text` first: the indexes are of that text), and the edit goes on from it, so Esc no
+    longer reverts what that step kept.
+19. **Implementation: Tab is the window's key** (R76). While no field takes text, the window owns
+    `ImGuiKey_Tab`, so ImGui's own tabbing between widgets does not run inside it; the region Tab
+    reaches is outlined and `state().keyboard_focus` names it. On a narrow window Layers and
+    Properties are the side column's tabs, selected by Tab and by `focus_window`'s `panel`.
+20. **AC31 measured on this host, not on server A.** `tools/perf/title_designer_bench.py` builds
+    the reference documents with `edit_title` ops (S80 has no `bench_2d_rims` / `bench_40_layers`
+    fixtures) and reads the window's `state().timings` and canvas render times. Host numbers
+    (software GL, llvmpipe; the CPU shared with other streams' builds; window 956 x 538; run of
+    `26b8c2d03`, result `bench3.json`):
+    - Draft / Full render: 0.010 (bench_2d_rims: 68.6 ms / 7011 ms) and 0.108 (bench_40_layers:
+      75.8 ms / 703.6 ms): met.
+    - Search query: 0.38 ms (605 entries): met.
+    - **Missed:** the window's ImGui work per frame with bench_40_layers is 8.4 ms (Layers shown)
+      and 9.3 ms (Properties shown), budget 1.5 ms; the search index of the 6-rim, 8-effect layer
+      builds in 10.5 ms (median of 5), budget 3 ms; the 256-layer tree costs 4.6 x the 40-layer
+      one (38.5 ms against 8.4 ms), budget 1.1 x. The first run measured 16.8 ms and 93 ms a
+      frame: layer bounds (a text layer's bounds lay its text out) and hashes are now made once per
+      change and the snapping edges only during drags. The rest scales with the layer count
+      outside the clipped Layers rows and is not found yet; server A's numbers are still to take.
+21. **Open: the Windows and macOS IME manual checks** (M5, R37). They need a person on those
+    systems (Microsoft IME, Kotoeri); this host builds Linux only. The `imgui_impl_osx` patch
+    compiles by reading only. AC28's chip drag and In Context wait for S81, at integration.
