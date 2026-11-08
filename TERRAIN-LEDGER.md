@@ -184,6 +184,9 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
   T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- Sun 18:51: only two streams still building (T1's last batches, T4), leaving a build slot idle. Started the origin/main merge
+  (622 commits) in parallel on `terrain/upstream-merge` (.worktrees/upstream), so the final landing doesn't wait on it.
+  T4 has 271 uncommitted files; asked twice to commit them as WIP.
 - T6 landed (e1021e82c). The suspected Vulkan bug was not one: T6's test gave up 4 frames after the volume opened its holes,
   while Vulkan creates pipelines on a worker thread. A new runtime hole-cut test passes on glcore and Vulkan. All five original
   streams' work is now in integration except T1's remaining requirements; T4 is building.
