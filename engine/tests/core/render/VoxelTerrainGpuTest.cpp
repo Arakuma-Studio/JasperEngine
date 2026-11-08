@@ -42,10 +42,14 @@ namespace {
 
         // A flat terrain with one textured layer, a 64 m volume attached over its middle whose slot is
         // that layer, and a mouth dug at the middle
-        bool caveMouth(VoxelQuality quality, const std::string& name) {
+        void ground() {
             makeTerrain(40.0f, [](float, float) { return GROUND / 40.0f; });
             terrain->setTextureLayer(0, writeColorMap("ground", 120, 150, 80));
             setBlendMap(0, [](float, float) { return TerrainGpuColor{255, 0, 0, 255}; });
+        }
+
+        bool caveMouth(VoxelQuality quality, const std::string& name) {
+            if (!terrain) ground();
 
             GeneratorDesc generator;
             generator.kind = "terrain";
@@ -89,7 +93,7 @@ namespace {
             RenderSystem* render = scene.getSystem<RenderSystem>().get();
             const Entity volume = owner;
             const bool ready = GpuEnvironment::runFrames([&]() {
-                return system->isVolumeReady(volume) && render->isAllLoaded();
+                return (volume == NULL_ENTITY || system->isVolumeReady(volume)) && render->isAllLoaded();
             }, 600);
             GpuEnvironment::drawFrames(4);
             return ready && render->isAllLoaded();
@@ -115,8 +119,8 @@ namespace {
         }
 
         // Across every hole texel's edge to a solid neighbour along x, the mean colour difference of a
-        // pixel a texel inside and one a texel outside; and the same pair moved 20 m along z, on terrain
-        void seamSteps(const std::vector<uint8_t>& frame, float& acrossEdge, float& acrossTerrain, int& edges) {
+        // pixel a texel inside and one a texel outside; and of the same pair in the frame of the terrain alone
+        void seamSteps(const std::vector<uint8_t>& frame, const std::vector<uint8_t>& terrainOnly, float& acrossEdge, float& acrossTerrain, int& edges) {
             TerrainComponent& terrainComponent = component();
             TerrainComponentStore store(&scene, terrain->getEntity(), terrainComponent);
             const terrain::MapId map{terrain::MapKind::Hole, 0};
@@ -136,10 +140,12 @@ namespace {
                     const Vector2 a = store.worldOfTexel(map, tx, ty);
                     const Vector2 b = store.worldOfTexel(map, tx + 1, ty);
                     const float midX = (a.x + b.x) * 0.5f, z = a.y;
-                    const uint8_t* inside = pixelAt(frame, midX - texel, z);
-                    const uint8_t* outside = pixelAt(frame, midX + texel, z);
-                    const uint8_t* stripA = pixelAt(frame, midX - texel, z + 20.0f > VIEW_HEIGHT * 0.5f ? z - 20.0f : z + 20.0f);
-                    const uint8_t* stripB = pixelAt(frame, midX + texel, z + 20.0f > VIEW_HEIGHT * 0.5f ? z - 20.0f : z + 20.0f);
+                    // the hole side is the voxel ground; the same two pixels before the volume were terrain
+                    const float holeX = hole ? midX - texel : midX + texel, solidX = hole ? midX + texel : midX - texel;
+                    const uint8_t* inside = pixelAt(frame, holeX, z);
+                    const uint8_t* outside = pixelAt(frame, solidX, z);
+                    const uint8_t* stripA = pixelAt(terrainOnly, holeX, z);
+                    const uint8_t* stripB = pixelAt(terrainOnly, solidX, z);
                     if (!inside || !outside || !stripA || !stripB) continue;
                     acrossEdge += difference(inside, outside);
                     acrossTerrain += difference(stripA, stripB);
@@ -152,15 +158,20 @@ namespace {
             }
         }
 
+        // The step across each edge against the step between the same two pixels while both were terrain
         void expectSeamMatches(VoxelQuality quality, const std::string& name) {
-            ASSERT_TRUE(caveMouth(quality, name));
+            ground();
             lookDown();
+            ASSERT_TRUE(settled());
+            std::vector<uint8_t> terrainOnly;
+            ASSERT_TRUE(readFrame(terrainOnly));
+            ASSERT_TRUE(caveMouth(quality, name));
             ASSERT_TRUE(settled());
             std::vector<uint8_t> frame;
             ASSERT_TRUE(readFrame(frame));
             float acrossEdge = 0.0f, acrossTerrain = 0.0f;
             int edges = 0;
-            seamSteps(frame, acrossEdge, acrossTerrain, edges);
+            seamSteps(frame, terrainOnly, acrossEdge, acrossTerrain, edges);
             std::printf("[gpu] %s: colour step across the hole's edge %.2f, across a strip of terrain %.2f, %d edges\n", name.c_str(), acrossEdge, acrossTerrain, edges);
             ASSERT_GT(edges, 8);
             // within 3 % of what the terrain itself steps by over the same distance
