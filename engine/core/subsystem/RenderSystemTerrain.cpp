@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 
 using namespace jasperengine;
 
@@ -268,9 +269,21 @@ RenderSystem::TerrainDetailArray* RenderSystem::getTerrainDetailArray(Entity ent
     return &detail;
 }
 
+namespace jasperengine{ namespace {
+
+    // two 0-1 factors in one float, 12 bits each: an integer under 2^24, which a float holds exactly
+    // (terrainUnpack12 in includes/terrain_fs.glsl)
+    float packTerrainFactors(float high, float low){
+        const auto quantise = [](float value){ return std::round(std::clamp(value, 0.0f, 1.0f) * 4095.0f); };
+        return quantise(high) * 4096.0f + quantise(low);
+    }
+
+} }
+
 // Factors change without rebuilding the array, so the block is filled at draw time. T3 R33: the arrays
 // hold 9 entries or 12 and the features' parameters end the block, in the order of terrain_fs.glsl, so
-// a variant uploads exactly the block it declares.
+// a variant uploads exactly the block it declares. A layer takes three vectors and a component, so 12
+// layers with every feature fit GLES3 / WebGL2's 224 fragment uniform vectors.
 void RenderSystem::applyTerrainLayersUniform(ObjectRender& render, int slot, Entity entity, TerrainComponent& terrainComponent, uint64_t litDefineBits, bool extendedBlock){
     if (slot == -1){
         return;
@@ -282,27 +295,33 @@ void RenderSystem::applyTerrainLayersUniform(ObjectRender& render, int slot, Ent
     static const TerrainSurfaceLayer emptyLayer;
 
     const int entries = extendedBlock ? MAX_TERRAIN_LAYERS : TERRAIN_SHADER_BASE_LAYERS;
-    Vector4 block[5 * MAX_TERRAIN_LAYERS + 3 + 1 + 3 + 1 + 1 + 1];
+    const int codeVectors = (entries + 3) / 4;
+    Vector4 block[3 * MAX_TERRAIN_LAYERS + (MAX_TERRAIN_LAYERS + 3) / 4 + 3 + 1 + 1 + 1 + 1];
+    float codes[4 * ((MAX_TERRAIN_LAYERS + 3) / 4)] = {};
     for (int i = 0; i < entries; i++){
         const bool present = i < (int)terrainComponent.surfaceLayers.size();
         const TerrainSurfaceLayer& layer = present ? terrainComponent.surfaceLayers[i] : emptyLayer;
         const bool pbr = present && layer.pbr;
+        // a cell size of 0 turns the layer's stochastic branch off, and a layer with both takes it
+        const bool stochastic = present && layer.stochasticTiling && layer.stochasticCellSize > 0.0f;
+        const bool hex = present && layer.hexTiling && !stochastic;
 
-        block[i] = Vector4(layer.colorFactor.x, layer.colorFactor.y, layer.colorFactor.z, pbr ? 1.0f : 0.0f);
+        block[i] = Vector4(layer.colorFactor.x, layer.colorFactor.y, layer.colorFactor.z, layer.normalStrength);
         block[entries + i] = Vector4(layer.uvScale.x, layer.uvScale.y, layer.uvOffset.x, layer.uvOffset.y);
-        block[entries * 2 + i] = Vector4(layer.roughnessFactor, layer.metallicFactor, layer.normalStrength, layer.occlusionStrength);
-        block[entries * 3 + i] = Vector4((float)i,
-                                         detail ? (float)detail->normalSlice[i] : -1.0f,
-                                         detail ? (float)detail->surfaceSlice[i] : -1.0f,
-                                         // the hex rotation of a hex tiled layer, < 0 for the others (TERRAIN_HEX_TILING)
-                                         (present && layer.hexTiling) ? std::clamp(layer.hexRotation, 0.0f, 1.0f) : -1.0f);
-        // The user values as they are (includes/stochastic.glsl maps them), a cell size of 0
-        // turning the layer's stochastic branch off
-        block[entries * 4 + i] = Vector4((present && layer.stochasticTiling) ? layer.stochasticCellSize : 0.0f,
-                                         layer.stochasticBlendSharpness, layer.stochasticContrast, layer.stochasticRotation);
+        block[entries * 2 + i] = Vector4(stochastic ? layer.stochasticCellSize : (hex ? -1.0f - std::clamp(layer.hexRotation, 0.0f, 1.0f) : 0.0f),
+                                         packTerrainFactors(layer.roughnessFactor, layer.metallicFactor),
+                                         packTerrainFactors(layer.occlusionStrength, layer.stochasticBlendSharpness),
+                                         packTerrainFactors(layer.stochasticContrast, layer.stochasticRotation));
+        const int normalSlice = detail ? detail->normalSlice[i] : -1;
+        const int surfaceSlice = detail ? detail->surfaceSlice[i] : -1;
+        const bool flatOnly = present && layer.cliffProjection == TerrainCliffProjection::FLAT_ONLY;
+        codes[i] = (float)((pbr ? 1 : 0) + (flatOnly ? 2 : 0) + 4 * (normalSlice + 1) + 256 * (surfaceSlice + 1));
+    }
+    for (int v = 0; v < codeVectors; v++){
+        block[entries * 3 + v] = Vector4(codes[v * 4], codes[v * 4 + 1], codes[v * 4 + 2], codes[v * 4 + 3]);
     }
 
-    int size = entries * 5;
+    int size = entries * 3 + codeVectors;
     if (litDefineBits & MaterialPbr::getDefineBit("TERRAIN_MACRO")){
         const float scale = terrainComponent.macroScale > 0.0f ? terrainComponent.macroScale : 1.0f;
         block[size++] = Vector4(1.0f / scale, terrainComponent.macroStrength, terrainComponent.macroSlopeFade,
@@ -315,16 +334,6 @@ void RenderSystem::applyTerrainLayersUniform(ObjectRender& render, int slot, Ent
         const float tiles = terrainComponent.terrainSize > 0.0f ? terrainComponent.textureDetailTiles / terrainComponent.terrainSize : 0.0f;
         const float nearTiles = terrainComponent.resampleNear * tiles;
         block[size++] = Vector4(nearTiles, std::max(terrainComponent.resampleFar * tiles, nearTiles + 0.0001f), terrainComponent.resampleReduction, 0.0f);
-    }
-    if (litDefineBits & MaterialPbr::getDefineBit("TERRAIN_CLIFF")){
-        for (int v = 0; v < 3; v++){
-            float flags[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-            for (int c = 0; c < 4; c++){
-                const size_t layer = (size_t)(v * 4 + c);
-                flags[c] = layer < terrainComponent.surfaceLayers.size() && terrainComponent.surfaceLayers[layer].cliffProjection == TerrainCliffProjection::FLAT_ONLY ? 1.0f : 0.0f;
-            }
-            block[size++] = Vector4(flags[0], flags[1], flags[2], flags[3]);
-        }
     }
     if (litDefineBits & MaterialPbr::getDefineBit("TERRAIN_HEIGHT_BLEND")){
         block[size++] = Vector4(terrainComponent.heightBlendSharpness, 0.0f, 0.0f, 0.0f);

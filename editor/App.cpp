@@ -5807,7 +5807,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      terrain's Lit defines) and T6's Voxel Volumes (HAS_VOXEL and its tiers as Lit defines,
     //      GBUFFER 'Vox' 26; includes/voxel_vs.glsl and voxel_fs.glsl). The programme's own v52-v57
     //      caches held other numbers for these bits, so they are never read.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v58";
+    // v59: T3's u_fs_terrainLayers packed to three vectors and a component a layer (12-bit factor
+    //      pairs, the slices and flags in one exact integer, Flat Only among them), so 12 layers fit
+    //      GLES3's 224 fragment vectors (includes/terrain_fs.glsl)
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v59";
 }
 
 void editor::App::pushTabNotificationStyle(){
