@@ -54,6 +54,13 @@ option(JASPERENGINE_VIDEO "Compile the HTML UI's <video> (needs JASPERENGINE_HTM
 # text, geometry, effects and runtime (engine/core/titleart, listed by TitleArtSources.cmake).
 # The editor's shared engine has it; OFF compiles nothing under engine/core/titleart.
 option(JASPERENGINE_TITLE_ART "Compile Title Art (engine/core/titleart)" ON)
+# Its sub-options (docs/specs/S81-title-art-runtime.md R51; S86's code behind them): Realtime 3D
+# titles (engine/core/titleart/three_d/) and their runtime mesher (dynamic 3D text). The prebuilt
+# variants with the module carry both; a Compile build turns them off when its shipped titles
+# need neither (ModuleUsage).
+include(CMakeDependentOption)
+cmake_dependent_option(JASPERENGINE_TITLE_ART_3D "Compile Realtime 3D titles (engine/core/titleart/three_d)" ON "JASPERENGINE_TITLE_ART" OFF)
+cmake_dependent_option(JASPERENGINE_TITLE_ART_MESHER "Compile the runtime mesher of 3D titles (dynamic 3D text)" ON "JASPERENGINE_TITLE_ART_3D" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -1167,6 +1174,8 @@ add_subdirectory(libs/basisu)
 if(JASPERENGINE_TEXTURE_ENCODERS)
     add_subdirectory(libs/bc7enc_rdo)
     add_subdirectory(libs/astcenc)
+    # the export's font subsetter of Title Art (S81 R50), editor only like the encoders
+    add_subdirectory(libs/harfbuzz/subset)
 endif()
 # The RmlUi debugger (Source/Debugger, UIDocumentSystem::setDebuggerVisible): the editor, Debug
 # exports and the HTML UI tests have it; release games leave it out
@@ -1324,7 +1333,8 @@ jasperengine_apply_cxx_standard(
     sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer
     lunasvg ${jasperengineCxxHtmlUILibs} ${JASPERENGINE_TITLE_ART_LIBS} ${JASPERENGINE_PHYSICS_LIBS} basisu_transcoder)
 if(JASPERENGINE_TEXTURE_ENCODERS)
-    jasperengine_apply_cxx_standard(basisu_encoder bc7enc_rdo astcenc)
+    jasperengine_apply_cxx_standard(basisu_encoder bc7enc_rdo astcenc harfbuzz-subset)
+    target_compile_options(harfbuzz-subset PRIVATE ${EXTERNAL_WARNING_FLAG})
 endif()
 if(JASPERENGINE_RUNTIME_SHADERS)
     # shadercompiler and every glslang, SPIRV and spirv-cross target it creates
@@ -1643,6 +1653,7 @@ set(JASPERENGINE_SRCS
     core/object/Points.cpp
     core/object/Primitive.cpp
     core/object/Sprite.cpp
+    core/object/TitleArt.cpp
     core/object/Terrain.cpp
     core/object/Tilemap.cpp
     core/object/sound/AudioSource.cpp
@@ -1763,6 +1774,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/NetClassesLua.cpp
     core/script/binding/ParticleClassesLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
+    core/script/binding/TitleArtClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp
     core/script/binding/SplineClassesLua.cpp
@@ -1794,6 +1806,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/WaterInteractionSystem.cpp
     core/subsystem/CameraControlSystem.cpp
     core/subsystem/FluidSystem.cpp
+    core/subsystem/TitleArtSystem.cpp
     core/subsystem/VideoPlayerSystem.cpp
     core/fluid/FluidSimulator.cpp
     core/fluid/FluidPresets.cpp
@@ -1888,6 +1901,7 @@ set(JASPERENGINE_SRCS
     core/util/StringUtils.cpp
     core/util/SubscriptionOwnerIndex.cpp
     core/util/TextShaper.cpp
+    core/util/TitleArtBakeInfo.cpp
     core/util/ThorVGRuntime.cpp
     core/util/UniqueToken.cpp
     core/util/WaterExclusion.cpp
@@ -1980,6 +1994,9 @@ endif()
 if(JASPERENGINE_TITLE_ART)
     include(core/titleart/TitleArtSources.cmake)
     list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_TITLE_ART_SRCS})
+else()
+    # S81 R51: without the module every title shows its bake (the UIDocumentSystemNone precedent)
+    list(APPEND JASPERENGINE_SRCS core/subsystem/TitleArtRuntimeNone.cpp)
 endif()
 # Particles (S20): the SIMD kernels' flags, the subsystem and its drawing
 include(core/particles/ParticleSources.cmake)
@@ -2189,6 +2206,8 @@ target_compile_definitions(jasperengine
         JASPERENGINE_HTMLUI=$<BOOL:${JASPERENGINE_HTMLUI}>
         JASPERENGINE_VIDEO=$<BOOL:${JASPERENGINE_VIDEO}>
         JASPERENGINE_TITLE_ART=$<BOOL:${JASPERENGINE_TITLE_ART}>
+        JASPERENGINE_TITLE_ART_3D=$<BOOL:${JASPERENGINE_TITLE_ART_3D}>
+        JASPERENGINE_TITLE_ART_MESHER=$<BOOL:${JASPERENGINE_TITLE_ART_MESHER}>
     PRIVATE
         $<$<BOOL:${JE_JOLT_OWN_POOL}>:JE_JOLT_OWN_POOL>
 )

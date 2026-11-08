@@ -43,11 +43,12 @@ namespace jasperengine::titleart {
         MaskKeep = 38,
         Grow = 39,
         SeedAlpha = 40,
-        ResolveAlpha = 41
+        ResolveAlpha = 41,
+        GlyphCompose = 42           // S81's Glyph Atlas compose (TitleGlyphAtlas)
     };
 
     constexpr uint32_t TITLE_RENDER_PROGRAM_FIRST = 18;
-    constexpr uint32_t TITLE_RENDER_PROGRAM_COUNT = 24;
+    constexpr uint32_t TITLE_RENDER_PROGRAM_COUNT = 25;
     constexpr uint32_t TITLE_RENDER_PROGRAM_LAST = 63;
 
     // the program's name in titleart/render/programs.glsl without its TA_PROGRAM_ prefix ("COPY")

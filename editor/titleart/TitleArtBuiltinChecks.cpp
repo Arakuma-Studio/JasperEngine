@@ -3,9 +3,11 @@
 
 #include "TitleArtBuiltinChecks.h"
 #include "fx/FxGeneratorChecks.h"
+#include "titleart/runtime/TitleArtRuntimeChecks.h"
 
 #include "TitleArtBake.h"
 #include "TitleArtRenderHost.h"
+#include "runtime/TitleCharacterChecks.h"
 #include "texsynth/SynthImage.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtRefs.h"
@@ -1065,6 +1067,9 @@ void editor::registerBuiltinTitleChecks() {
     }
     // S83's generator checks
     registerTitleGeneratorChecks();
+    // the later specs' checks, so every surface that runs the checks has them (S81: glyph_atlas, characters R55)
+    registerTitleArtRuntimeChecks();
+    registerTitleCharactersCheck();
 }
 
 std::vector<titleart::TitleProblem> editor::titleArtMissingAssets(const titleart::TitleArtDoc& doc, const titleart::AssetResolver& assets) {

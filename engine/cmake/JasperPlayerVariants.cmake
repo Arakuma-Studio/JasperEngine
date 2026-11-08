@@ -16,6 +16,9 @@ set(JASPERENGINE_MODULE_OPTION_physics3d JASPERENGINE_PHYSICS_3D)
 set(JASPERENGINE_MODULE_OPTION_physics2d JASPERENGINE_PHYSICS_2D)
 set(JASPERENGINE_MODULE_OPTION_navigation JASPERENGINE_NAVIGATION)
 set(JASPERENGINE_MODULE_OPTION_soundlayer JASPERENGINE_SOUND_LAYER)
+# (S81 R51: a variant with titleart carries its sub-options, JASPERENGINE_TITLE_ART_3D and _MESHER,
+# which default ON with it)
+set(JASPERENGINE_MODULE_OPTION_titleart JASPERENGINE_TITLE_ART)
 
 # jasperengine_player_variant(<name> <suffix variable>): sets every module option of the caller's
 # scope ON or OFF as the variant lists it, and the variant's id suffix ("" for the full player)

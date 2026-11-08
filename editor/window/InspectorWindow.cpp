@@ -9,6 +9,7 @@
 #include "component/InputFieldComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/TextEffectComponent.h"
+#include "component/TitleArtRendererComponent.h"
 #include "EditorModal.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
@@ -8555,15 +8556,24 @@ void editor::InspectorWindow::drawUIComponent(ComponentType cpType, SceneProject
         colorByButton = colorByButton && button && UISystem::buttonOwnsUIColor(*button);
         textureByButton = textureByButton && button && UISystem::buttonOwnsUITexture(*button);
     }
+    // S81 R2: a Title Art Renderer lends the Image its picture and, with a Live Effect, its shader
+    const bool driven = std::any_of(entities.begin(), entities.end(), [&](Entity entity) {
+        return sceneProject->scene->isComponentRegistered<TitleArtRendererComponent>() &&
+               sceneProject->scene->findComponent<TitleArtRendererComponent>(entity) != nullptr;
+    });
 
     beginTable(cpType, getLabelSize("Texture"));
     ImGui::BeginDisabled(colorByButton);
     propertyRow(RowPropertyType::Color4L, cpType, "color", "Color", sceneProject, entities);
     ImGui::EndDisabled();
-    ImGui::BeginDisabled(textureByButton);
+    ImGui::BeginDisabled(textureByButton || driven);
     propertyRow(RowPropertyType::Texture, cpType, "texture", "Texture", sceneProject, entities);
     ImGui::EndDisabled();
     endTable();
+    if (driven){
+        ImGui::TextColored(Theme::Colors::SubtleText, ICON_FA_WAND_MAGIC_SPARKLES " Texture and shader driven by Title Art Renderer");
+        return;
+    }
     if (colorByButton || textureByButton){
         const char* note = (colorByButton && textureByButton) ? "Color and Texture are set by the Button's transition: edit its Normal Color and Normal Texture"
                          : colorByButton ? "Color is set by the Button's transition: edit its Normal Color"
@@ -9128,6 +9138,11 @@ void editor::InspectorWindow::drawImageComponent(ComponentType cpType, SceneProj
 }
 
 void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    // S81 R2: a Title Art Renderer lends the Sprite its picture and, with a Live Effect, its shader
+    if (sceneProject->scene->isComponentRegistered<TitleArtRendererComponent>() &&
+        std::any_of(entities.begin(), entities.end(), [&](Entity e) { return sceneProject->scene->findComponent<TitleArtRendererComponent>(e) != nullptr; })){
+        ImGui::TextColored(Theme::Colors::SubtleText, ICON_FA_WAND_MAGIC_SPARKLES " Texture and shader driven by Title Art Renderer");
+    }
     RowSettings settingsInt;
     settingsInt.stepSize = 1.0f;
     settingsInt.secondColSize = 6 * ImGui::GetFontSize();

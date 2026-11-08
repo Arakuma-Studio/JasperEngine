@@ -12,6 +12,7 @@
 #include "Project.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpJobs.h"
+#include "mcp/tools/TitleArtToolsRuntime.h"
 #include "mcp/McpRefs.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "titleart/fx/FxCost.h"
@@ -633,6 +634,12 @@ bool checkRenderOptions(const Json& options, std::string& error) {
         for (const OptionKey& k : RENDER_OPTIONS) {
             if (it.key() != k.key) continue;
             known = true;
+            // S81's keys are an instance's (render_title {entity}): with a path there is none
+            if (std::string(k.owner) == "S81") {
+                error = std::string("bad_option: render_title option '") + k.key + "' belongs to a Title Art Renderer: pass `entity` (and `scene`) "
+                        "instead of `path`.";
+                return false;
+            }
             error = std::string("not_available: render_title option '") + k.key + "' arrives with " + k.owner + "; this build serves cost.";
             return false;
         }
@@ -790,6 +797,8 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
 // ==================================================================== tools
 
 void renderTitleTool(const CallPtr& call) {
+    // S81 R70: render_title {entity} renders a Title Art Renderer's state
+    if (renderTitleInstance(call)) return;
     Project* project = call->ctx().project();
     const Json& args = call->args();
     fs::path file;

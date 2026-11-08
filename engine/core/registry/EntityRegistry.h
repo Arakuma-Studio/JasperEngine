@@ -52,6 +52,7 @@
 #include "component/SafeAreaComponent.h"
 #include "component/CapsuleShadowCasterComponent.h"
 #include "component/AudioSnapshotComponent.h"
+#include "component/TitleArtRendererComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/Transform.h"

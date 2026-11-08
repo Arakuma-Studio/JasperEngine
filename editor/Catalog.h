@@ -230,12 +230,14 @@ namespace jasperengine::editor{
         // a Mixer Snapshot action of the legacy action timeline (S40 R18)
         AudioSnapshotComponent,
         WaterExcluderComponent,
-        WaterWakeComponent
+        WaterWakeComponent,
+        // shows a .titleart through its Image or Sprite (S81 R1)
+        TitleArtRendererComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::WaterWakeComponent;
+    constexpr ComponentType LastComponentType = ComponentType::TitleArtRendererComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

@@ -2207,6 +2207,69 @@ std::vector<Setting> mcpSettingsTable() {
                                 }
                                 return true;
                             }));
+        // S81 R58: the runtime's budgets, per S56 platform group (desktop, mobile, web)
+        {
+            auto groupJson = [](const TitleArtGroupValues& v) { return Json{{"desktop", v.desktop}, {"mobile", v.mobile}, {"web", v.web}}; };
+            auto readGroup = [](const Json& value, TitleArtGroupValues& v, double lo, double hi, std::string& error) {
+                if (!value.is_object()) {
+                    error = "must be an object {desktop, mobile, web}";
+                    return false;
+                }
+                for (auto it = value.begin(); it != value.end(); ++it) {
+                    double* field = it.key() == "desktop" ? &v.desktop : it.key() == "mobile" ? &v.mobile : it.key() == "web" ? &v.web : nullptr;
+                    if (!field) {
+                        error = "'" + it.key() + "' is not desktop, mobile or web";
+                        return false;
+                    }
+                    if (!readNumber(it.value(), lo, hi, *field, error)) return false;
+                }
+                return true;
+            };
+            add(titleArtSetting("title_art.frame_budget_ms", "object",
+                                "Realtime and Glyph Atlas titles: ms of estimated GPU + main-thread work a frame may spend rendering them, per "
+                                "platform group {desktop, mobile, web} (0.25..16; default 4, 2, 2) and `editor` for the editor's Edit mode (8).",
+                                {}, [groupJson](const TitleArtProjectSettings& t) {
+                                    Json j = groupJson(t.frameBudgetMs);
+                                    j["editor"] = t.editorFrameBudgetMs;
+                                    return j;
+                                },
+                                [readGroup](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    Json groups = value;
+                                    if (groups.is_object() && groups.contains("editor")) {
+                                        if (!readNumber(groups["editor"], 0.25, 16.0, t.editorFrameBudgetMs, error)) return false;
+                                        groups.erase("editor");
+                                    }
+                                    return readGroup(groups, t.frameBudgetMs, 0.25, 16.0, error);
+                                }));
+            add(titleArtSetting("title_art.release_delay_s", "object",
+                                "Seconds without a render after which the titles' render targets are freed, {desktop, mobile, web} (default 10, 3, 3).",
+                                {}, [groupJson](const TitleArtProjectSettings& t) { return groupJson(t.releaseDelaySeconds); },
+                                [readGroup](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    return readGroup(value, t.releaseDelaySeconds, 0.0, 600.0, error);
+                                }));
+            add(titleArtSetting("title_art.cache_budget_mib", "object",
+                                "MiB of shown-before title images and render caches kept, {desktop, mobile, web} (default 64, 16, 16).",
+                                {}, [groupJson](const TitleArtProjectSettings& t) { return groupJson(t.cacheBudgetMiB); },
+                                [readGroup](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    return readGroup(value, t.cacheBudgetMiB, 1.0, 4096.0, error);
+                                }));
+            add(titleArtSetting("title_art.reference_height", "int",
+                                "The display height (px) the export prebakes Realtime titles' initial states for (default 1080).", {},
+                                [](const TitleArtProjectSettings& t) { return Json(t.referenceHeight); },
+                                [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    long long height = 0;
+                                    if (!readInt(value, 120, 8192, height, error)) return false;
+                                    t.referenceHeight = (int)height;
+                                    return true;
+                                }));
+            add(titleArtSetting("title_art.simulate_export_characters", "bool",
+                                "Play in the editor shows only the characters a build ships for Realtime and Glyph Atlas titles (their "
+                                "Characters set), as the build would.", {},
+                                [](const TitleArtProjectSettings& t) { return Json(t.simulateExportCharacters); },
+                                [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    return readBool(value, t.simulateExportCharacters, error);
+                                }));
+        }
         // the tiers of volumetric fog and clouds per platform group
         for (int group = 0; group < 3; group++) {
             static const char* const keys[3] = {"quality.atmosphere_quality_desktop", "quality.atmosphere_quality_mobile", "quality.atmosphere_quality_web"};
@@ -3547,6 +3610,11 @@ const Placement placements[] = {
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
     {"title_art.auto_bake", "Title Art", "", "Auto Bake", "titleart bake automatic outputs png"},
     {"title_art.stale_bakes_on_export", "Title Art", "", "Stale Bakes On Export", "titleart export rebake warn fail outputs"},
+    {"title_art.frame_budget_ms", "Title Art", "Runtime", "Frame Budget", "titleart realtime glyph atlas render time slice ms"},
+    {"title_art.release_delay_s", "Title Art", "Runtime", "Release Delay", "titleart realtime render targets memory idle"},
+    {"title_art.cache_budget_mib", "Title Art", "Runtime", "Cache Budget", "titleart realtime memory images vram"},
+    {"title_art.reference_height", "Title Art", "Runtime", "Reference Height", "titleart prebake initial state export display"},
+    {"title_art.simulate_export_characters", "Title Art", "Runtime", "Simulate Export Characters in Play", "titleart characters subset glyphs missing"},
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},

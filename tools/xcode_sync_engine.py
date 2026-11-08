@@ -47,7 +47,10 @@ HEADER_DIRECTORIES = ["core/component"]
 # them per platform): the HTTP client's NSURLSession backend, the video backend, the native bridge's
 # platform layer and its Objective-C helper (JasperNative.h, which plugin code imports)
 APPLE_ENGINE_SOURCES = ["platform/apple/HttpBackendApple.mm", "platform/apple/AVFoundationBackend.mm",
-                        "platform/apple/NativePlatformApple.mm", "platform/apple/JasperNative.m"]
+                        "platform/apple/NativePlatformApple.mm", "platform/apple/JasperNative.m",
+                        # the project compiles no Title Art module (engine/core/titleart): its stub
+                        # (S81 R51; CMake picks it when JASPERENGINE_TITLE_ART is OFF)
+                        "core/subsystem/TitleArtRuntimeNone.cpp"]
 
 # libraries whose CMake add_library(...) source list the project's targets of the anchor follow:
 # (CMakeLists.txt relative to engine/, the source prefix relative to engine/, the anchor source)

@@ -936,6 +936,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerProfilerClasses(L);
     registerGameplayClasses(L);
     registerNavigationClasses(L);
+    registerTitleArtClasses(L);
     registerSplineClasses(L);
     registerCrashClasses(L);
 #if JASPERENGINE_HTMLUI

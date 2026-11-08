@@ -1,0 +1,15 @@
+{
+  "format": "jasperengine.titleart",
+  "version": 1,
+  "guid": "5181a0000000000000000000000000a1",
+  "name": "gate",
+  "canvas": {"width": 512, "height": 256, "background": {"transparent": true, "color": "#000000"}},
+  "layers": [
+    {"id": "00000001", "type": "shape", "name": "Plate", "shape": "rect", "size": 200,
+     "style": {"face": {"fill": {"kind": "solid", "color": "#ffcc00"}}, "rims": []}}
+  ],
+  "exposed": [
+    {"name": "plate_color", "type": "color", "targets": [{"layer": "00000001", "field": "style.face.fill.color"}]}
+  ],
+  "outputs": [{"id": "main"}]
+}

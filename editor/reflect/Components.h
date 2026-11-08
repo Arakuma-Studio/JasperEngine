@@ -135,6 +135,8 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kAudioSnapshotDesc;
     extern const ComponentDesc kWaterExcluderDesc;
     extern const ComponentDesc kWaterWakeDesc;
+    // editor/titleart/runtime/TitleArtRendererReflect.cpp (S81)
+    extern const ComponentDesc kTitleArtRendererDesc;
 
 }
 

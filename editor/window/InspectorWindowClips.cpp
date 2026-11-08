@@ -1552,6 +1552,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawTitleArtAsset(asset);
         return true;
     }
+    // a font: its names, licence and embedding permission (InspectorWindowTitleArtFont.cpp)
+    if (Util::isFontFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawFontAsset(asset);
+        return true;
+    }
     // a .shake: its own view (InspectorWindowCamera.cpp)
     if (Util::isShakePresetFile(file)){
         std::error_code ec;

@@ -3129,6 +3129,52 @@ void ProjectSettingsWindow::drawTitleArtSettings() {
                 endSettingsRow("Outputs that are stale or were never baked when an export starts: Rebake bakes them first, Warn lists "
                                "them in the Console, Fail stops the export naming them.");
             }
+            // S81 R58: Realtime and Glyph Atlas titles, per S56 platform group
+            auto groupRow = [&](const char* key, const char* label, TitleArtGroupValues& values, const TitleArtGroupValues& defaultValues,
+                                float lo, float hi, const char* format, const char* help, double* editor, double editorDefault) {
+                if (!settingsui::beginRow(key)) return;
+                const bool changed = values != defaultValues || (editor && *editor != editorDefault);
+                if (projectBeginSettingsRow(label, changed)) {
+                    values = defaultValues;
+                    if (editor) *editor = editorDefault;
+                }
+                const int count = editor ? 4 : 3;
+                const float width = (ImGui::GetContentRegionAvail().x - helpMarkerWidth()) / count - ImGui::GetStyle().ItemSpacing.x;
+                const char* names[4] = {"Desktop", "Mobile", "Web", "Edit Mode"};
+                double* fields[4] = {&values.desktop, &values.mobile, &values.web, editor};
+                for (int i = 0; i < count; i++) {
+                    if (i) ImGui::SameLine();
+                    float v = (float)*fields[i];
+                    ImGui::SetNextItemWidth(width);
+                    if (ImGui::DragFloat((std::string("##") + key + names[i]).c_str(), &v, 0.05f, lo, hi, format)) *fields[i] = std::clamp((double)v, (double)lo, (double)hi);
+                    ImGui::SetItemTooltip("%s", names[i]);
+                }
+                endSettingsRow(help);
+            };
+            groupRow("title_art.frame_budget_ms", "Frame Budget", m_titleArt.frameBudgetMs, defaults.frameBudgetMs, 0.25f, 16.0f, "%.2f ms",
+                     "Estimated GPU and main-thread work a frame may spend on Realtime and Glyph Atlas titles: Desktop, Mobile and Web "
+                     "games, and the editor's Edit mode. A render spreads over frames within it; the old image stays meanwhile.",
+                     &m_titleArt.editorFrameBudgetMs, defaults.editorFrameBudgetMs);
+            groupRow("title_art.release_delay_s", "Release Delay", m_titleArt.releaseDelaySeconds, defaults.releaseDelaySeconds, 0.0f, 600.0f,
+                     "%.1f s", "Seconds without a render after which the titles' render targets are freed.", nullptr, 0.0);
+            groupRow("title_art.cache_budget_mib", "Cache Budget", m_titleArt.cacheBudgetMiB, defaults.cacheBudgetMiB, 1.0f, 4096.0f,
+                     "%.0f MiB", "Memory for images shown before (toggling back to a text renders nothing) and the render caches.", nullptr, 0.0);
+            if (settingsui::beginRow("title_art.reference_height")) {
+                if (projectBeginSettingsRow("Reference Height", m_titleArt.referenceHeight != defaults.referenceHeight)) {
+                    m_titleArt.referenceHeight = defaults.referenceHeight;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputInt("##TitleArtReferenceHeight", &m_titleArt.referenceHeight);
+                m_titleArt.referenceHeight = std::clamp(m_titleArt.referenceHeight, 120, 8192);
+                endSettingsRow("The display height the export prebakes Realtime titles' first images for.");
+            }
+            if (settingsui::beginRow("title_art.simulate_export_characters")) {
+                if (projectBeginSettingsRow("Simulate Export Characters in Play", m_titleArt.simulateExportCharacters != defaults.simulateExportCharacters)) {
+                    m_titleArt.simulateExportCharacters = defaults.simulateExportCharacters;
+                }
+                ImGui::Checkbox("##TitleArtSimulateCharacters", &m_titleArt.simulateExportCharacters);
+                endSettingsRow("In Play, characters outside a Realtime or Glyph Atlas title's Characters set draw as nothing, as in a build.");
+            }
             ImGui::EndTable();
         }
         drawSectionNote("Baked PNGs ship as ordinary textures; a .titleart ships only when a Realtime or Glyph Atlas title reads it.");

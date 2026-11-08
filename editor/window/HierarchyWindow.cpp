@@ -566,6 +566,8 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"2D Object", "Mesh Polygon", ICON_FA_VECTOR_SQUARE, T::MESH_POLYGON, "Mesh Polygon", CREATE_IN_WORLD},
         {"2D Object", "Shadow Caster 2D", ICON_FA_CIRCLE_HALF_STROKE, T::SHADOW_CASTER_2D, "Shadow Caster 2D", CREATE_IN_2D, true},
         {"2D Object", "Lattice", ICON_FA_BORDER_NONE, T::LATTICE, "Lattice", CREATE_IN_2D, true},
+        // a Sprite showing a .titleart (S81 R6)
+        {"2D Object", "Title Art", ICON_FA_WAND_MAGIC_SPARKLES, T::TITLE_ART_SPRITE, "Title Art", CREATE_IN_WORLD, true},
 
         {"Effects", "Particle System", ICON_FA_FIRE, T::PARTICLE_SYSTEM, "Particle System", CREATE_IN_WORLD},
         {"Effects", "Force Field", ICON_FA_WIND, T::FORCE_FIELD, "Force Field", CREATE_IN_3D},
@@ -598,6 +600,8 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"UI", "Input Field", ICON_FA_I_CURSOR, T::INPUT_FIELD, "Input Field", CREATE_IN_ALL},
         {"UI", "Panel", ICON_FA_WINDOW_MAXIMIZE, T::PANEL, "Panel", CREATE_IN_ALL},
         {"UI", "Polygon", ICON_FA_DRAW_POLYGON, T::POLYGON, "Polygon", CREATE_IN_ALL},
+        // an Image showing a .titleart (S81 R6)
+        {"UI", "Title Art", ICON_FA_WAND_MAGIC_SPARKLES, T::TITLE_ART_UI, "Title Art", CREATE_IN_ALL},
         {"UI", "On-Screen Stick (Fixed)", ICON_FA_GAMEPAD, T::ONSCREEN_STICK_FIXED, "On-Screen Stick", CREATE_IN_ALL, true},
         {"UI", "On-Screen Stick (Floating)", ICON_FA_GAMEPAD, T::ONSCREEN_STICK_FLOATING, "On-Screen Stick", CREATE_IN_ALL},
         {"UI", "On-Screen Stick (Dynamic)", ICON_FA_GAMEPAD, T::ONSCREEN_STICK_DYNAMIC, "On-Screen Stick", CREATE_IN_ALL},

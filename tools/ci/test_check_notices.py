@@ -11,6 +11,7 @@ import importlib.util
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -120,6 +121,26 @@ class CheckNoticesTest(unittest.TestCase):
         self.write_game_notices({"beta": {"dir": "engine/libs/beta", "when": "always"},
                                  "delta": {"dir": "engine/libs/delta", "when": ["htmlui", "sometimes"]}})
         self.assertTrue(any("delta: when must be one of" in p for p in check_notices.check_game_notices(self.repo)))
+
+    # S81 R50: a library inside another's directory (HarfBuzz's editor-only subsetter) has its own
+    # NOTICE.md location, licence file and engine/notices.json entry under its nested name
+    def test_nested_library_needs_its_own_entries(self):
+        nested = "engine/libs/beta/sub"
+        (self.repo / nested).mkdir()
+        (self.repo / nested / "COPYING").write_text("zlib")
+        with mock.patch.dict(check_notices.NESTED_LIBRARIES, {nested: "beta-sub"}, clear=True):
+            problems = check_notices.check_repository(self.repo)
+            self.assertEqual(problems, ["engine/libs/beta/sub: no NOTICE.md row names `engine/libs/beta/sub/`",
+                                        "engine/libs/beta/sub: no engine/notices.json entry (when: always, a player feature or editor)"])
+            (self.repo / "NOTICE.md").write_text(NOTICE.replace("| zlib | b |", "; `engine/libs/beta/sub/` (`COPYING`) | zlib | b |"))
+            self.write_game_notices({"beta": {"dir": "engine/libs/beta", "when": "always"},
+                                     "beta-sub": {"dir": nested, "when": "editor"}})
+            self.assertEqual(check_notices.check_repository(self.repo), [])
+            self.assertIn("beta-sub-LICENSE", [name for _, name in check_notices.install_manifest(self.repo)])
+            self.assertEqual(check_notices.player_libraries(self.repo, ["titleart"]), ["beta"])
+            self.write_game_notices({"beta": {"dir": "engine/libs/beta", "when": "always"},
+                                     "sub": {"dir": nested, "when": "editor"}})
+            self.assertTrue(any("sub: the name must be its directory's" in p for p in check_notices.check_repository(self.repo)))
 
     def test_third_party_notices_text(self):
         text = check_notices.third_party_notices(self.repo, [])

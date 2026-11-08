@@ -429,6 +429,9 @@ namespace jasperengine::editor{
         void drawVatAsset(const std::filesystem::path& asset);
         // the inspected .titleart (InspectorWindowTitleArt.cpp)
         void drawTitleArtAsset(const std::filesystem::path& asset);
+        // an inspected font file: what Title Art reads of it and its embedding acknowledgement
+        // (InspectorWindowTitleArtFont.cpp, S81 R56)
+        void drawFontAsset(const std::filesystem::path& asset);
         // InspectorWindowCamera.cpp (camera shake spec 9)
         void drawCameraShakerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraFollowComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -885,6 +888,8 @@ namespace jasperengine::editor{
         void drawButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTouchAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTextEffectComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the Title Art Renderer (InspectorTitleArtRenderer.cpp, S81 R60-R62, §6.4)
+        void drawTitleArtRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // "Inherited alpha 0.25 · not interactable · click-through (Canvas Group: Panel)" and a

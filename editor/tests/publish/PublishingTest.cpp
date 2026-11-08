@@ -587,3 +587,29 @@ TEST(Notices, ALicenceMayNameItselfInItsExtension) {
     ASSERT_EQ(files.size(), 1u);
     EXPECT_EQ(files[0].filename().string(), "COPYING.LGPLv2.1");
 }
+
+// S80 R40 / S81 R50: ThorVG's `when` is a list of player features (it ships with the HTML UI or
+// with Title Art) and the repository's notices.json loads; HarfBuzz's subsetter is editor only
+TEST(Notices, WhenListShipsWithAnyOfItsFeatures) {
+    TestTempDir directory("notices-when");
+    TestTempDir::write(directory.path() / "notices.json",
+                       R"({"schemaVersion": 1, "libraries": {"sokol": {"dir": "engine/libs/sokol", "when": "always"},
+                           "thorvg": {"dir": "engine/libs/thorvg", "when": ["htmlui", "titleart"]},
+                           "harfbuzz-subset": {"dir": "engine/libs/harfbuzz/subset", "when": "editor"}}})");
+    std::vector<NoticeLibrary> all;
+    std::string error;
+    ASSERT_TRUE(loadNoticeLibraries(directory.path() / "notices.json", all, error)) << error;
+    auto names = [&](const std::vector<std::string>& features) {
+        std::vector<std::string> out;
+        for (const NoticeLibrary& library : shippedLibraries(all, features)) out.push_back(library.name);
+        return out;
+    };
+    EXPECT_EQ(names({}), std::vector<std::string>({"sokol"}));
+    EXPECT_EQ(names({"titleart"}), std::vector<std::string>({"sokol", "thorvg"}));
+    EXPECT_EQ(names({"htmlui"}), std::vector<std::string>({"sokol", "thorvg"}));
+
+    ASSERT_TRUE(loadNoticeLibraries(fs::path(JASPER_TEST_REPO_DIR) / "engine" / "notices.json", all, error)) << error;
+    const std::vector<std::string> titleArt = names({"titleart"});
+    EXPECT_NE(std::find(titleArt.begin(), titleArt.end(), "thorvg"), titleArt.end());
+    EXPECT_EQ(std::find(titleArt.begin(), titleArt.end(), "harfbuzz-subset"), titleArt.end());
+}

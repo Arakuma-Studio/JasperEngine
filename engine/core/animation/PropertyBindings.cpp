@@ -58,6 +58,8 @@
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/TextEffectComponent.h"
+#include "component/TitleArtRendererComponent.h"
+#include "subsystem/TitleArtSystem.h"
 #include "component/TilemapComponent.h"
 #include "component/TrailRendererComponent.h"
 #include "component/Transform.h"
@@ -450,6 +452,55 @@ namespace {
         return true;
     }
 
+    // ---- the Title Art Renderer (S81 R40) ----
+
+    // a written Live Effect value: the system reads it at its next update; a keyed sweep keeps
+    // sweepAuto off for the frame (R34: the track writes after the system)
+    void titleArtSweepKeyed(Scene*, Entity, TitleArtRendererComponent& title){
+        title.sweepPositionKeyed = true;
+    }
+
+    // the document's Exposed parameter of an "overrides.<name>" row, null when it has none
+    const titleart::TitleArtExposedParam* titleArtExposed(EntityRegistry* registry, Entity entity, const std::string& name){
+        TitleArtRendererComponent* title = registry && registry->isComponentRegistered<TitleArtRendererComponent>()
+                                           ? registry->findComponent<TitleArtRendererComponent>(entity) : nullptr;
+        if (!title) return nullptr;
+        TitleArtSystem::parameterNames(registry, entity);
+        for (const titleart::TitleArtExposedParam& p : TitleArtSystem::instanceOf(*title).exposed)
+            if (p.name == name) return &p;
+        return nullptr;
+    }
+
+    // R40: number, color and bool parameters are keyable (text, font, image and color schemes
+    // change through clip events)
+    bool hasTitleArtOverride(EntityRegistry* registry, Entity entity, const PropertyParams& params){
+        const titleart::TitleArtExposedParam* p = titleArtExposed(registry, entity, params.member);
+        return p && (p->type == "number" || p->type == "color" || p->type == "bool");
+    }
+    bool readTitleArtOverride(Scene* scene, Entity entity, const PropertyParams& params, float* out){
+        TitleArtValue value;
+        std::string error;
+        if (!scene || !TitleArtSystem::getParameter(scene, entity, params.member, value, error)) return false;
+        out[0] = out[1] = out[2] = 0.0f;
+        out[3] = 1.0f;
+        if (value.kind == TitleArtValue::Kind::Number) out[0] = (float)value.number;
+        else if (value.kind == TitleArtValue::Kind::Bool) out[0] = value.boolean ? 1.0f : 0.0f;
+        else if (value.kind == TitleArtValue::Kind::Color){ out[0] = value.color.x; out[1] = value.color.y; out[2] = value.color.z; }
+        return true;
+    }
+    bool writeTitleArtOverride(Scene* scene, Entity entity, const PropertyParams& params, const float* in){
+        const titleart::TitleArtExposedParam* p = titleArtExposed(scene, entity, params.member);
+        if (!p) return false;
+        TitleArtValue value;
+        if (p->type == "number") value = TitleArtValue::fromNumber(in[0]);
+        else if (p->type == "bool") value = TitleArtValue::fromBool(in[0] > 0.5f);
+        else if (p->type == "color") value = TitleArtValue::fromColor(Vector4(in[0], in[1], in[2], 1.0f));
+        else return false;
+        // an unchanged value does nothing (setParameter compares; no render)
+        std::string error;
+        return TitleArtSystem::setParameter(scene, entity, params.member, value, error);
+    }
+
     // ---- the registry ----
 
     using Row = AnimatableProperty;
@@ -648,6 +699,24 @@ namespace {
         rows.push_back(enabledRow<SplineAnimateComponent>("splineanimate"));
         rows.push_back(enabledRow<AnimatorComponent>("animator"));
 
+        // the Title Art Renderer (S81 R40): its live layers' values and its numeric Exposed
+        // parameters; S85 adds titleart.animationTime
+        using TA = TitleArtRendererComponent;
+        rows.push_back(enabledRow<TA>("titleart"));
+        rows.push_back(fieldRow<TA, float, &TA::liveTime>("titleart", "liveTime", "Live Time", "", F));
+        rows.push_back(fieldRow<TA, float, &TA::sweepPosition, &titleArtSweepKeyed>("titleart", "sweepPosition", "Sweep Position", "", F));
+        rows.push_back(fieldRow<TA, float, &TA::sweepWidth>("titleart", "sweepWidth", "Sweep Width", "", F));
+        rows.push_back(fieldRow<TA, float, &TA::sweepSoftness>("titleart", "sweepSoftness", "Sweep Softness", "", F));
+        rows.push_back(fieldRow<TA, float, &TA::glowPulse>("titleart", "glowPulse", "Glow Pulse", "", F));
+        rows.push_back(fieldRow<TA, float, &TA::tintAmount>("titleart", "tintAmount", "Tint Amount", "", F));
+        rows.push_back(fieldRow<TA, float, &TA::glintAmount>("titleart", "glintAmount", "Glint Amount", "", F));
+        rows.push_back(fieldRow<TA, Vector4, &TA::sweepColor>("titleart", "sweepColor", "Sweep Color", "", C4, SRGB));
+        rows.push_back(fieldRow<TA, Vector4, &TA::glowColor>("titleart", "glowColor", "Glow Color", "", C4, SRGB));
+        rows.push_back(fieldRow<TA, Vector4, &TA::glintColor>("titleart", "glintColor", "Glint Color", "", C4, SRGB));
+        rows.push_back(fieldRow<TA, Vector4, &TA::tintColor>("titleart", "tintColor", "Tint Color", "", C4, SRGB));
+        rows.push_back({"titleart", "overrides.<member>", "Parameter", "", PropertyKind::None, 0, false, false, ID, false,
+                        &hasTitleArtOverride, &readTitleArtOverride, &writeTitleArtOverride, nullptr, nullptr});
+
         // the canvas group rows' functions (filled here: the table holds plain pointers)
         for (Row& row : rows){
             if (std::strcmp(row.component, "canvasgroup") != 0) continue;
@@ -691,7 +760,7 @@ namespace {
 
     // "...shaderParams.<member>" / "shaderUniforms.<member>": the member and the pattern
     bool memberPattern(const std::string& property, std::string& member, std::string& pattern){
-        for (const char* collection : {"shaderParams.", "shaderUniforms."}){
+        for (const char* collection : {"shaderParams.", "shaderUniforms.", "overrides."}){
             const size_t at = property.find(collection);
             if (at == std::string::npos) continue;
             if (at != 0 && property[at - 1] != '.') continue;
@@ -1174,7 +1243,14 @@ anim::PropertyBinding anim::bindProperty(EntityRegistry* scene, Entity entity, c
                               "no '" + std::string(row.component) + "' component";
             return binding;
         }
-        if (row.kind == PropertyKind::None){
+        if (row.kind == PropertyKind::None && std::strcmp(row.component, "titleart") == 0){
+            // an Exposed parameter: the document's type (R40: number Float, color Color3 sRGB, bool Bool)
+            const titleart::TitleArtExposedParam* p = titleArtExposed(scene, entity, ref.params.member);
+            binding.kind = p && p->type == "color" ? PropertyKind::Color3 : p && p->type == "bool" ? PropertyKind::Bool : PropertyKind::Float;
+            binding.display = binding.kind == PropertyKind::Color3 ? PropertyDisplay::SRGB : PropertyDisplay::Identity;
+            binding.width = kindWidth(binding.kind);
+            binding.discrete = binding.kind == PropertyKind::Bool;
+        }else if (row.kind == PropertyKind::None){
             // a shader member: the manifest's type, else the keys' width
             std::string shader;
             if (MeshComponent* mesh = (ref.params.submesh >= 0) ? scene->findComponent<MeshComponent>(entity) : nullptr){
@@ -1389,6 +1465,18 @@ std::vector<anim::AnimatablePropertyInfo> anim::listAnimatableProperties(Scene* 
                 if (!row.has(scene, entity, params)) continue;
                 add(component, property, (pattern.find("textureRect") != std::string::npos ? "Submesh [" + std::to_string(s) + "] : " : labelPrefix) + row.label,
                     row.kind, row.discrete);
+            }
+            continue;
+        }
+        if (row.kind == PropertyKind::None && component == "titleart"){
+            // the title's numeric Exposed parameters (S81 R40)
+            TitleArtRendererComponent* title = scene->findComponent<TitleArtRendererComponent>(entity);
+            if (!title) continue;
+            TitleArtSystem::parameterNames(scene, entity);
+            for (const titleart::TitleArtExposedParam& p : TitleArtSystem::instanceOf(*title).exposed){
+                if (p.type != "number" && p.type != "color" && p.type != "bool") continue;
+                const PropertyKind kind = p.type == "color" ? PropertyKind::Color3 : p.type == "bool" ? PropertyKind::Bool : PropertyKind::Float;
+                add(component, "overrides." + p.name, "Parameter : " + (p.label.empty() ? p.name : p.label), kind, kind == PropertyKind::Bool);
             }
             continue;
         }

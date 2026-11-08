@@ -18,6 +18,7 @@
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
+#include "mcp/tools/TitleArtToolsRuntime.h"
 #include "titleart/TitleArtBake.h"
 #include "titleart/TitleArtBaker.h"
 #include "titleart/TitleArtBuiltinChecks.h"
@@ -518,6 +519,8 @@ Json previewQueueJson() {
 }
 
 void getTitleTool(const CallPtr& call) {
+    // S81 R69: get_title {entity} reads a Title Art Renderer's state
+    if (getTitleInstance(call)) return;
     Project* project = call->ctx().project();
     const Json& args = call->args();
     fs::path file;
@@ -972,13 +975,18 @@ void registerTitleArtTools(McpRegistry& registry) {
             "Reads a .titleart: rev, canvas, layers (path, id, type, text, font, parts, effects as fx:<type>, masks, clip, blend), "
             "exposed, outputs (fresh/stale/missing), problems, previews (the editor's preview budget: frames over it, worst step). "
             "detail overrides: non-default values; full: layer objects. fields: "
-            "exact values by glob (style.rims[*].width). Document y is up.";
+            "exact values by glob (style.rims[*].width). Document y is up. entity instead of path: a Title Art Renderer's state "
+            "(ready, pending, overrides, effective, live, particles); wait_ready waits for its image.";
         tool.inputSchema = object({
             {"path", string("")},
+            {"entity", entityRef()},
+            {"scene", sceneRef()},
+            {"wait_ready", boolean("")},
+            {"timeout_seconds", number("")},
             {"layer", string("")},
             {"detail", withDefault(stringEnum("", {"outline", "overrides", "full"}), "outline")},
             {"fields", array(string(""), "")},
-        }, {"path"});
+        });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.activity = ToolActivity::Read;
@@ -1027,9 +1035,11 @@ void registerTitleArtTools(McpRegistry& registry) {
         tool.description =
             "Renders a .titleart with real alpha on backgrounds (checker, black, white, #rrggbb, transparent, an image) plus "
             "alpha_bounds, coverage_pct, flat. ops / try (what-if sheets) leave the file alone. compare: rev:<n> or a PNG. "
-            "layer isolates; output: its frame and content; crop: canvas px. More: jasper://docs/title-art.";
+            "layer isolates; output: its frame and content; crop: canvas px. entity: an instance's state. More: jasper://docs/title-art.";
         tool.inputSchema = object({
             {"path", string("")},
+            {"entity", entityRef()},
+            {"scene", sceneRef()},
             {"ops", array(anyObject(""), "")},
             {"try", array(object({{"label", string("")}, {"ops", array(anyObject(""), "")}}), "")},
             {"layer", string("")},
@@ -1045,7 +1055,7 @@ void registerTitleArtTools(McpRegistry& registry) {
             {"save_path", string("")},
             {"wait", withDefault(boolean(""), true)},
             {"timeout_seconds", withDefault(number(""), 120)},
-        }, {"path"});
+        });
         tool.inputSchema["properties"]["try"]["maxItems"] = 9;
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

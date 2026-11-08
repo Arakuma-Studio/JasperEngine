@@ -84,7 +84,7 @@ TEST_F(TitleArtIOTest, EveryMemberIsWrittenWithItsDefault) {
     std::vector<std::string> order;
     for (auto it = root.begin(); it != root.end(); ++it) order.push_back(it.key());
     EXPECT_EQ(order, (std::vector<std::string>{"format", "version", "guid", "name", "canvas", "global_light", "seed",
-                                               "material_links", "layers", "exposed", "outputs"}));
+                                               "material_links", "layers", "exposed", "outputs", "runtime"}));
 }
 
 TEST_F(TitleArtIOTest, EveryLayerTypeTakesItsDefaults) {

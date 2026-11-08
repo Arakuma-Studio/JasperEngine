@@ -2670,6 +2670,37 @@ OVERRIDES.update({
         'overloads': [([('code', 'NativeErrorCode|string'), ('message?', 'string')], 'boolean')]},
 })
 
+# Title Art (S81 §6.6, TitleArtClassesLua.cpp): the calls that can raise (one sentence naming the
+# title, what failed, why and the fix) are lua_CFunctions; a parameter value is a number, a
+# boolean, a string or a colour (Vector3/Vector4, linear)
+_TITLE_VALUE = 'number|boolean|string|Vector3|Vector4'
+OVERRIDES.update({
+    ('TitleArt', '__call'): {
+        'doc': ['The Title Art Renderer of a GameObject: `TitleArt(scene, entity)`. Raises when the GameObject has none',
+                '(`gameObject:getTitleArt()` gives nil instead).'],
+        'overloads': [([('scene', 'Scene'), ('entity', 'integer')], 'TitleArt')]},
+    ('TitleArt', 'setParameter'): {
+        'doc': ['Sets the Exposed parameter `name` (a number, a boolean, a string or a linear colour). Raises on a',
+                'Baked title, an unknown name (listing the Exposed ones) or a value of the wrong type.'],
+        'overloads': [([('name', 'string'), ('value', _TITLE_VALUE)], '')]},
+    ('TitleArt', 'getParameter'): {
+        'doc': ['The Exposed parameter\'s value now (the override, else the document\'s). Raises on an unknown name.'],
+        'overloads': [([('name', 'string')], _TITLE_VALUE)]},
+    ('TitleArt', 'resetParameter'): {
+        'doc': ['Drops the override of `name`: the document\'s value again. Raises on a Baked title or an unknown name.'],
+        'overloads': [([('name', 'string')], '')]},
+    ('TitleArt', 'setColorScheme'): {
+        'doc': ['Selects a color scheme of the document by id. Raises on a Baked title or an unknown id.'],
+        'overloads': [([('id', 'string')], '')]},
+    ('TitleArt', 'setNativeSize'): {
+        'doc': ['Sizes the Image (or the Sprite) to the title\'s pixels, as the Inspector\'s Set Native Size. Raises',
+                'when the title has no image yet.'],
+        'overloads': [([], '')]},
+    ('TitleArt', 'play'): {
+        'doc': ['Plays the title\'s animation `name`. False (warned once) while titles have no animations (S85).'],
+        'overloads': [([('name', 'string'), ('options?', '{speed?: number, loop?: boolean, unscaled?: boolean}')], 'boolean')]},
+})
+
 # Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
 # (Lua type, a copy)
 PROPERTY_OVERRIDES = {
@@ -2705,6 +2736,10 @@ PROPERTY_OVERRIDES = {
     ('HttpResponse', 'data'): ('JsonValue', False),
     ('HttpResponse', 'textureData'): ('TextureData|nil', True),
 
+    # Title Art (S81): name lists built as tables
+    ('TitleArt', 'colorSchemes'): ('string[]', True),
+    ('TitleArt', 'parameterNames'): ('string[]', True),
+    ('TitleArt', 'animations'): ('string[]', True),
     # the joint's bodies (std::optional<GameObject> lambdas): nil = the world
     ('Joint2D', 'bodyA'): ('GameObject|nil', False),
     ('Joint2D', 'bodyB'): ('GameObject|nil', False),

@@ -268,6 +268,33 @@ TitleRectI TitlePlanner::title2DRect(const DrawNode& node) {
     return intersectRect({ix0, iy0, (int)std::ceil(maxX) - ix0, (int)std::ceil(maxY) - iy0}, outRegion);
 }
 
+TitleRectI TitlePlanner::title2DInkRect(const DrawNode& node) {
+    const TitleContentPlan& plan = contentPlan(node);
+    if (!plan.valid || plan.elements.elements.empty()) return {};
+    double x0 = 1e300, y0 = 1e300, x1 = -1e300, y1 = -1e300;
+    const TitleRect b = plan.elements.baseBounds;
+    for (const geometry::TitleElement& e : plan.elements.elements) {
+        const bool miter = e.join == geometry::StrokeJoin::Miter && !plan.elements.fromAlpha;
+        const double pad = miter ? e.grow * MITER_LIMIT : e.grow;
+        x0 = std::min(x0, b.x - pad + e.offset.x);
+        y0 = std::min(y0, b.y - pad + e.offset.y);
+        x1 = std::max(x1, b.x + b.width + pad + e.offset.x);
+        y1 = std::max(y1, b.y + b.height + pad + e.offset.y);
+    }
+    const TitleFrame whole = TitleFrame::canvas(document->canvasWidth(), document->canvasHeight(), scale);
+    double minX = 1e300, minY = 1e300, maxX = -1e300, maxY = -1e300;
+    for (const TitleVec2& corner : {TitleVec2{x0, y0}, TitleVec2{x1, y0}, TitleVec2{x0, y1}, TitleVec2{x1, y1}}) {
+        const TitleVec2 px = whole.toFrame(plan.place.toDocument.apply(corner));
+        minX = std::min(minX, px.x);
+        minY = std::min(minY, px.y);
+        maxX = std::max(maxX, px.x);
+        maxY = std::max(maxY, px.y);
+    }
+    // one output pixel of antialiasing around
+    const int ix0 = (int)std::floor(minX) - 1, iy0 = (int)std::floor(minY) - 1;
+    return intersectRect({ix0, iy0, (int)std::ceil(maxX) + 1 - ix0, (int)std::ceil(maxY) + 1 - iy0}, outRegion);
+}
+
 std::shared_ptr<TitleCacheEntry> TitlePlanner::assetTexture(const Json& refJson, TitleAssetKind kind, TextureWrap wrap, int blur,
                                                             const std::string& layerId, const std::string& path) {
     const TitleAssetRef ref = decodeAssetRef(refJson);

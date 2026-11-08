@@ -18,6 +18,8 @@
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "component/TextEffectComponent.h"
+#include "component/TitleArtRendererComponent.h"
+#include "titleart/runtime/TitleArtOverrides.h"
 #include "object/ParticleSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "script/ScriptRuntime.h"
@@ -1410,6 +1412,16 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
 void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity sourceEntity, 
                                        EntityRegistry* targetRegistry, Entity targetEntity, 
                                        ComponentType compType, const std::string& property) {
+
+    // one Exposed parameter's entry of a Title Art Renderer, by name (made or removed to match:
+    // a prefab variant may override an entry its base does not have, S81 R4)
+    std::string overrideName;
+    if (compType == ComponentType::TitleArtRendererComponent && splitTitleArtOverrideProperty(property, overrideName)) {
+        const TitleArtRendererComponent* source = sourceRegistry->findComponent<TitleArtRendererComponent>(sourceEntity);
+        TitleArtRendererComponent* target = targetRegistry->findComponent<TitleArtRendererComponent>(targetEntity);
+        if (source && target) copyTitleArtOverride(*source, *target, overrideName);
+        return;
+    }
 
     // Get the property data to determine the type: the enumerated names, else the lookup (names
     // it resolves but does not list, such as a 2D collider's "colliders[i].points[j]")

@@ -8,16 +8,36 @@
 #include "titleart/TitleArtDoc.h"
 #include "util/ProjectChecks.h"
 
+#include <map>
+#include <set>
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
+namespace {
+
+    // the export's documents read at runtime (assets-relative), by project (S81's plan)
+    std::map<const Project*, std::set<std::string>>& runtimeTitles() {
+        static std::map<const Project*, std::set<std::string>> titles;
+        return titles;
+    }
+
+}
+
 bool TitleArtExport::isNeeded(Project* project, const std::string& assetsRelativePath) {
     // S81 answers from the shipped scenes' Title Art Renderers (Render Mode Realtime or Glyph
-    // Atlas); S80 ships no runtime that reads a document
-    (void)project;
-    (void)assetsRelativePath;
-    return false;
+    // Atlas): their plan, set before the assets are copied
+    auto it = runtimeTitles().find(project);
+    return it != runtimeTitles().end() && it->second.count(fs::path(assetsRelativePath).generic_string()) > 0;
+}
+
+void TitleArtExport::setRuntimeTitles(Project* project, const std::vector<std::string>& projectRelativePaths) {
+    std::set<std::string>& titles = runtimeTitles()[project];
+    titles.clear();
+    for (const std::string& path : projectRelativePaths) {
+        titles.insert(project ? project->normalizeToAssetsRelative(project->getProjectPath() / fs::path(path)).generic_string() : path);
+    }
 }
 
 TitleArtExport::Prepared TitleArtExport::prepare(Project* project, TitleStaleBakesPolicy policy) {

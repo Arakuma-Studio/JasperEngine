@@ -312,8 +312,9 @@ then screenshots the device (`adb exec-out screencap`) and checks it with
 `debug.jasperengine.scene` set to it (a test project reads it, `JASPERENGINE_SCENE` elsewhere),
 each run checked on its own in `--out/<scene>/`; `{scene}` in an expectation is the run's scene.
 The gate's project is `tools/test-projects/render-gate`: a lit 3D scene (`lit3d`), 2D and UI
-(`ui2d`: a textured Image, Polygons, a Text) and an HTML UI document (`htmlui`), goldens in its
-`golden/`:
+(`ui2d`: a textured Image, Polygons, a Text), an HTML UI document (`htmlui`) and Title Art
+Renderers (`titleart`, S81; run it also with `debug.jasperengine.titleart_rgba8=1` against the same
+golden), goldens in its `golden/`:
 
 ```sh
 ANDROID_PROJECT=render-gate ANDROID_ABIS=x86_64 tools/build.sh android

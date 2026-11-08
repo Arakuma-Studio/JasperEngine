@@ -20,6 +20,7 @@
         "ffmpeg-headers": {"dir": "engine/libs/ffmpeg-headers", "when": "video"},
         "glslang": {"dir": "engine/libs/shadercompiler/libs/glslang", "when": "runtimeshaders"},
         "harfbuzz": {"dir": "engine/libs/harfbuzz", "when": "always"},
+        "harfbuzz-subset": {"dir": "engine/libs/harfbuzz/subset", "when": "editor"},
         "joltphysics": {"dir": "engine/libs/joltphysics", "when": "physics3d"},
         "json": {"dir": "engine/libs/json", "when": "always"},
         "lexbor": {"dir": "engine/libs/lexbor", "when": "htmlui"},

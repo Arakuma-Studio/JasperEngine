@@ -47,6 +47,20 @@ YAML::Node TitleArtProjectSettings::encode() const {
     YAML::Node node(YAML::NodeType::Map);
     if (autoBake != defaults.autoBake) node["autoBake"] = autoBake;
     if (staleBakesOnExport != defaults.staleBakesOnExport) node["staleBakesOnExport"] = titleStaleBakesPolicyName(staleBakesOnExport);
+    auto groups = [&node](const char* key, const TitleArtGroupValues& values, const TitleArtGroupValues& d, const double* editor, double editorDefault) {
+        if (values == d && (!editor || *editor == editorDefault)) return;
+        YAML::Node group(YAML::NodeType::Map);
+        group["desktop"] = values.desktop;
+        group["mobile"] = values.mobile;
+        group["web"] = values.web;
+        if (editor) group["editor"] = *editor;
+        node[key] = group;
+    };
+    groups("frameBudgetMs", frameBudgetMs, defaults.frameBudgetMs, &editorFrameBudgetMs, defaults.editorFrameBudgetMs);
+    groups("releaseDelaySeconds", releaseDelaySeconds, defaults.releaseDelaySeconds, nullptr, 0.0);
+    groups("cacheBudgetMiB", cacheBudgetMiB, defaults.cacheBudgetMiB, nullptr, 0.0);
+    if (referenceHeight != defaults.referenceHeight) node["referenceHeight"] = referenceHeight;
+    if (simulateExportCharacters != defaults.simulateExportCharacters) node["simulateExportCharacters"] = simulateExportCharacters;
     return node;
 }
 
@@ -63,6 +77,36 @@ TitleArtProjectSettings TitleArtProjectSettings::decode(const YAML::Node& node, 
         if (!titleStaleBakesPolicyFromName(value, out.staleBakesOnExport) && warnings) {
             warnings->push_back("titleArt.staleBakesOnExport \"" + value + "\" is not rebake, warn or fail");
         }
+    }
+    // S81's: a value that does not read keeps its default
+    auto number = [&](const YAML::Node& value, double& out, double lo, double hi, const std::string& path) {
+        if (!value) return;
+        try {
+            out = std::clamp(value.as<double>(), lo, hi);
+        } catch (const std::exception&) {
+            if (warnings) warnings->push_back("titleArt." + path + " is not a number");
+        }
+    };
+    auto groups = [&](const char* key, TitleArtGroupValues& values, double lo, double hi, double* editor) {
+        const YAML::Node group = node[key];
+        if (!group || !group.IsMap()) return;
+        number(group["desktop"], values.desktop, lo, hi, std::string(key) + ".desktop");
+        number(group["mobile"], values.mobile, lo, hi, std::string(key) + ".mobile");
+        number(group["web"], values.web, lo, hi, std::string(key) + ".web");
+        if (editor) number(group["editor"], *editor, lo, hi, std::string(key) + ".editor");
+    };
+    groups("frameBudgetMs", out.frameBudgetMs, 0.25, 16.0, &out.editorFrameBudgetMs);
+    groups("releaseDelaySeconds", out.releaseDelaySeconds, 0.0, 600.0, nullptr);
+    groups("cacheBudgetMiB", out.cacheBudgetMiB, 1.0, 4096.0, nullptr);
+    if (node["referenceHeight"]) {
+        double height = out.referenceHeight;
+        number(node["referenceHeight"], height, 120.0, 8192.0, "referenceHeight");
+        out.referenceHeight = (int)height;
+    }
+    try {
+        if (node["simulateExportCharacters"]) out.simulateExportCharacters = node["simulateExportCharacters"].as<bool>();
+    } catch (const std::exception&) {
+        if (warnings) warnings->push_back("titleArt.simulateExportCharacters is not true or false");
     }
     return out;
 }

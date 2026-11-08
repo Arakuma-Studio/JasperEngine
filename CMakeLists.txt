@@ -1614,6 +1614,7 @@ function(configure_jasperengine_editor_target target_name)
         bc7enc_rdo
         astcenc
         basisu_encoder
+        harfbuzz-subset
         ufbx
         tinyexr
         draco_decoder

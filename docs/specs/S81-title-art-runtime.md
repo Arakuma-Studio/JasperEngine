@@ -1338,3 +1338,142 @@ rest of S82 lands in 6B.
 5. **Reconciled: `title_fx` gains the ANIM feature and texture-rect frames here** (S85's A2), and
    the component gains `qualityTier` and `runtimeEnvironments` (S86), so the wave-6C and same-wave
    specs need nothing new from S81's files.
+6. **Implementation: budgets on S56's platform groups.** Frame Budget, Release Delay and Cache
+   Budget are per S56 `DevicePlatformGroup` (`QualityResolver::getPlatformGroup()`: Desktop,
+   Mobile, Web; the editor's Game view simulation follows it in Play), with the editor's Edit mode
+   apart; the §6.3 platform factor is the group's (desktop 1, mobile 6, web 4). S86's `qualityTier`
+   "auto" maps from the S56 `DeviceTier` (`titleQualityTierFor`: Low → low, Medium → medium, High and
+   Ultra → high). No parallel tier system.
+7. **Implementation: the image is lent at draw time.** As `FluidSystem::getMaterialTexture` does,
+   `TitleArtSystem::getDisplayTexture` lends the companion its image in RenderSystem's loads and draws
+   (`RenderSystem::lentTexture` serves both): the companion's texture field is never written, so it
+   is never saved and never becomes a prefab override. Only a Live Effect writes companion fields
+   (custom shader, uniforms, shader textures and features); `TitleArtCompanionScope` gives the
+   editor's encoders and the exported code the companion's own values while they are driven.
+8. **Implementation: Pivot From Title applies with Set Native Size** (and at creation), as an
+   undoable edit, instead of driving the pivot every frame (a driven pivot would be saved). Sprites
+   have no free pivot: they take the nearest of the nine presets.
+9. **Implementation: world sizes.** `SpriteComponent` sizes are whole units and a 2D scene's unit is
+   a pixel; S41's project Pixels Per Unit is not in this tree, so Pixels Per Unit 0 means 1 pixel per
+   unit (a value > 0 divides the frame).
+10. **Implementation: glints stay inside the frame.** A companion's vertices (nine-slice Images,
+    sprite rects) are not a plain quad, so the vertex stage does not grow the quad by the star
+    radius; the bake frame's padding holds most stars and a larger one is cut at the frame edge.
+11. **Implementation: field shapes.** `title` is an `AssetRef` (path and GUID in one value); the
+    `overrides` entries save as a list of `{name, type, value, text}` and list as one property per
+    entry, `overrides.<name>` (a String for text, font, image and color_scheme; a Float for number
+    and bool; a linear Vector4 for color); prefab overrides copy an entry by name
+    (`Catalog::copyPropertyValue`), set_properties writes entries by name into the component's YAML.
+12. **Implementation: title_fx names.** Its textures are `u_glowTexture` and `u_prevTexture`; ANIM
+    packs the opacity in `animAffine0.w`, the flipbook blend in `animAffine1.w`, and `animColor` is
+    the flash colour (rgb) and amount (a). The anchors are `anchors[16]`, written through the custom
+    block's array members (`anchors[i]` values).
+13. **Implementation: Realtime renders the bake's frame.** `RenderRequest::region` is the sidecar's
+    frame, so the display image covers the rectangle the PNG covers and the companion's native size
+    stays right; the resolution multiplies the main output's own scale. The display scale is the UI
+    rect's in reference units (so a build's prebaked state matches any device resolution); a world
+    title renders at its canvas pixels.
+14. **Implementation: the prebake key leaves out the pixel path** (`TitleArtRuntime::prebakeKeyOf`):
+    the export renders each distinct state once and a device of either path finds it at
+    `<title>.prebake-<16 hex>.png` beside the document.
+15. **Implementation: Realtime's glow output** is S80's Glow content rendered RGBA8 at half the
+    resolution (no R8 output format exists in the renderer).
+16. **Implementation: CPU stages run as S80's job steps.** The scheduler steps a job one step at a
+    time; how a CPU stage uses the job system is S80's renderer's.
+17. **Implementation: TITLE_ART_TEST_FAIL_TARGETS** (bit 6) fails the request's first step with
+    `out_of_target_memory` in S81's job wrapper (`RendererJob`), and `TITLE_ART_TEST_SLOW_STEPS` (bit
+    7) multiplies its estimates by 64; neither touches S80's pool.
+18. **Implementation: `render_title {entity}`** renders the instance's state (or a what-if) through
+    S80's render sheet, cut to the bake frame, and answers `live_layers_composited: false`: the live
+    layers draw in the companion only.
+19. **Implementation: Realtime anchors** are the sidecar's (the bake's analysis) until S83's runtime
+    analysis lands in the tree; the render job does no readback.
+20. **Implementation: hot reload** goes through `TitleArtSystem::notifyTitleChanged`, called by the
+    editor's document change hook (commits, undo, outside edits, assets a document reads) and by
+    every finished bake (the sidecar and PNGs).
+21. **Implementation: the web gate's project** is `tools/test-projects/title-art` (a C++ test project,
+    as every gate of `tools/web/gates/` is: `WEB_PROJECT` names a directory of `tools/test-projects`),
+    not `tools/fixtures/title-art-runtime`. Its document is a plate shape (no font, so the gate needs
+    no font file); the gate checks two ready lines (the second after an Exposed colour changes from
+    C++) and the centre pixel in the second colour.
+22. **Open: the Android render gate's golden and the device run (AC18).** The gate's `titleart`
+    scene draws a Realtime and a Glyph Atlas title of a plate (the Glyph Atlas document has no
+    exposed text layer, so it falls back to Realtime, R25) with the sweep at a fixed position and the
+    tint; no glints, as the gate's document has no bake sidecar to take anchors from. The render-gate
+    APK builds (`ANDROID_PROJECT=render-gate tools/build.sh android`), but `golden/titleart.png` is not
+    in the tree and AC18's device figures are not recorded: the build host has no KVM (no
+    `/dev/kvm`, no vmx or svm CPU flag), so the emulator cannot run, and no phone is attached. The
+    first emulator run (`tools/android-emulator-test.sh --scene titleart`, default and with
+    `debug.jasperengine.titleart_rgba8=1`) makes the golden; AC18 stays a manual device run.
+23. **Implementation: Glyph Atlas** (`titleart/runtime/TitleGlyphAtlas.*`, R25-R32), complete
+    with these choices:
+    - Cells are S80's `glyphCell` renders (back: rims and the layer's effects; front: the face) of
+      a cell document (unsafe members made safe), keyed by the cluster's text (a cluster renders
+      as a glyph of the same chain, rather than by glyph index and face), the style (the
+      document's content hash, the instance's values other than the text, the resolution), the
+      character's and its line's adjustments, and the sub-pixel phase.
+    - Per-character looks (`chars.<index>`: scale, h/v scale, rotation, `face` material) and the
+      line's (`lines.<index>`) render in the cell: the cell document carries them as the single
+      glyph's (`chars."0"`, `lines."0"`), one cell document per distinct adjustment; offsets move
+      the glyph like the string does.
+    - Phase: a cell renders at the 1/32-pixel phase the string puts its glyph at (its character
+      offset moved by that fraction; moving the layer would resample it), so its quad moves by
+      whole pixels. S80 centres a text by its ink, so each value moves the string by a fraction of
+      a pixel: Glyph Atlas snaps the string (its first pen) to the pixel grid, under half a pixel
+      from Realtime's place, so a counter's glyphs keep their phases and cells from value to
+      value. AC11's golden compares with the Realtime render of the same text at that snap (every
+      character's offset; mean <= 1/255, at most 1 % of pixels over 8/255).
+    - A cell keeps only the pixels its content and reach can cover (S80's planner now records
+      that rectangle, `TitleImage::reach`, beside its 64-pixel ROI grid). Both parts of a glyph
+      share one atlas rectangle (one page per glyph). LRU eviction frees whole pages (the least
+      recently used page no shown or wanted string uses), not single cells.
+    - The compose uses S80's passes and a new renderer program `GLYPH_COMPOSE` (42): up to 20
+      quads per pass from one page. A text change is a clear, the back plate copy, one pass per 20
+      quads, the front plate copy and the output pass. A text layer with an opacity (its own and
+      its groups') or a non-normal blend composes its glyphs into their own target, then onto the
+      back plate (a copy with the opacity, or S80's blend pass over a backdrop copy: +2 passes).
+      The front plate renders with a transparent canvas background.
+    - R32: the export renders each Glyph Atlas instance's initial text and every digit at every
+      digit place of it (a counter's every value of that length; at most 1,024 cells), reads the
+      pages and plates back and ships them beside the title (`<title>.glyphs-<style>.json`,
+      `-p<n>.png`, `-plate<n>.png`; RGBA8 linear premultiplied, not cooked). A player's first job
+      of that style restores them and renders no cell they hold. Because cells are per phase and
+      place, "every glyph of the Characters" is not prebaked: characters outside the initial text's
+      digit places render on the device on first use, one per step. Prebaked plates are 8-bit
+      linear (a few codes in the darkest colours against the float plates). The export now keys
+      every prebake (R11 and R32) by the build's copy of the document, after the fonts' relink,
+      as the player hashes it. The prebake's driver, files and restore are tested in the core
+      tests on the headless GPU; the export's glue (`writeTitleArtPrebakes`: the shipped
+      document's hash, the paths) builds but is not run by a unit test (the editor test binary
+      has no GPU context).
+24. **Implementation: the Digits preset has 24 code points** (the explicit list; the spec said 25),
+    and the test asserts 24.
+25. **Implementation: the Reserved Font Name rename** (R57) also covers name IDs 3, 18, 21 and 25;
+    PostScript names (IDs 6, 25) become `TA-<hex>` (no spaces allowed); names inside CFF stay.
+26. **Implementation: the Characters check's Lua literal scan** has its own lexer (ModuleUsage's is
+    local to its file and does not decode escapes); the check warns only for characters given one by
+    one (Custom, Custom File, texts exposed text reaches); presets' gaps are counted
+    (`preset_gaps`), not warned. `check-notices.py` gained `NESTED_LIBRARIES` for the
+    `harfbuzz-subset` entry, and `editor/publish/Notices.cpp` reads a list `when` (ThorVG ships with
+    htmlui or titleart).
+27. **Implementation: where subsets go.** The export writes a font's subset next to it as
+    `<stem>.subset-<font hash 8><characters hash 8><ext>` and points the build's copies of the
+    runtime documents at it; the original leaves the build only when the asset index shows nothing
+    but Title Art documents referencing it (a Text component or a page keeps it). A font collection
+    (.ttc/.otc) ships whole (W-TITLEART-FONT-COLLECTION): its subset would be one face and the
+    documents' face indices would change. An Exposed parameter of type `font` overridden on an
+    instance is not followed: only the fonts the document names are subset.
+28. **Implementation: the AC17 bench** is the core test `TitleArtRuntimeBench.HostNumbers`
+    (5 warm-ups, then median and p90 of 30 text changes), not `tools/perf/title_art_bench.py` with
+    `bench-thresholds.json`; there is no WebGL2 timing through `browser_gate.py`. It prints
+    wall-clock frame times on whatever device runs it and checks only what holds on any device (a
+    cached Glyph Atlas change costs less than a Realtime render; a render is sliced over frames).
+    The "budget + 0.5 ms" frame bound is the scheduler's estimate, tested in
+    `TitleArtSchedulerTest`; on a software rasterizer the measured frames exceed it. Host run
+    (this build host: llvmpipe, no GPU, float path; a counter of 4 tabular digits at 96 px on a
+    640 x 160 canvas; 5 warm-ups, 30 samples): Realtime text change (one unsliced render) median
+    72.7 ms, p90 79.5 ms; Glyph Atlas change with every glyph cached (22 of 30 samples) median
+    5.3 ms, p90 6.1 ms; Glyph Atlas over all samples (new cells on first use) median 5.5 ms, p90
+    51.7 ms; a Realtime render sliced at a 4 ms budget took 3 frames, the largest multi-step frame
+    measuring 81.3 ms (the estimates are desktop-GPU figures; llvmpipe runs the passes on the CPU).
+    These are host measurements, not device figures (AC18 is open, Deviation 22).

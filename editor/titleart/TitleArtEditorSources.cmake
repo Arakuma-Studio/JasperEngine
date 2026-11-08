@@ -55,3 +55,20 @@ file(WRITE "${GENERATED_DIR}/title_pachislop_fx_map.h.in"
     "// Generated from editor/resources/titleart/pachislop-fx-map.yaml by editor/titleart/TitleArtEditorSources.cmake. Do not edit.\n#pragma once\n\nstatic const unsigned char title_pachislop_fx_map[] = {${jasperengineTitleFxMapBytes}0x00};\n")
 configure_file("${GENERATED_DIR}/title_pachislop_fx_map.h.in" "${GENERATED_DIR}/title_pachislop_fx_map.h" COPYONLY)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${jasperengineTitleFxMapFile}")
+
+# S81's built-in data, embedded in the editor (editor/titleart/runtime/TitleRuntimeResources.cpp, the
+# only includer): the Joyo Kanji preset of a title's Characters (R53) and the OFL text of the font
+# credits (R57)
+set(jasperengineTitleRuntimeHeader "// Generated from editor/resources/titleart by TitleArtEditorSources.cmake. Do not edit.\n#pragma once\n\n")
+foreach(jasperengineTitleRuntimeEntry IN ITEMS "joyo_kanji|charsets/joyo-kanji.txt" "ofl_1_1|OFL-1.1.txt")
+    string(REPLACE "|" ";" jasperengineTitleRuntimeEntry "${jasperengineTitleRuntimeEntry}")
+    list(GET jasperengineTitleRuntimeEntry 0 jasperengineTitleRuntimeName)
+    list(GET jasperengineTitleRuntimeEntry 1 jasperengineTitleRuntimeFile)
+    set(jasperengineTitleRuntimeFile "${jasperengineTitleArtEditorDir}/resources/titleart/${jasperengineTitleRuntimeFile}")
+    file(READ "${jasperengineTitleRuntimeFile}" jasperengineTitleRuntimeHex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," jasperengineTitleRuntimeBytes "${jasperengineTitleRuntimeHex}")
+    string(APPEND jasperengineTitleRuntimeHeader "static const unsigned char title_runtime_${jasperengineTitleRuntimeName}[] = {${jasperengineTitleRuntimeBytes}0x00};\n")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${jasperengineTitleRuntimeFile}")
+endforeach()
+file(WRITE "${GENERATED_DIR}/titleart_runtime_resources.h.in" "${jasperengineTitleRuntimeHeader}")
+configure_file("${GENERATED_DIR}/titleart_runtime_resources.h.in" "${GENERATED_DIR}/titleart_runtime_resources.h" COPYONLY)

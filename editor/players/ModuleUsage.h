@@ -53,6 +53,10 @@ namespace jasperengine::editor {
     struct ModuleUsage {
         std::set<std::string> modules;          // needed
         std::vector<ModuleEvidence> evidence;   // at most a few per module, the first first
+        // S81 R51: titleart's sub-options a Compile build keeps (a shipped Realtime title with a
+        // Dimension 3D layer; one whose 3D text changes at runtime needs the mesher)
+        bool titleArt3D = false;
+        bool titleArtMesher = false;
 
         bool needs(const std::string& module) const { return modules.count(module) > 0; }
         // the needed modules in player::allModules() order
