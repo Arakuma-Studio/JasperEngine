@@ -285,7 +285,25 @@ void TitleDesignerWindow::drawLayers() {
                 face.part = "face";
                 face.depth = depth + 2;
                 rows.push_back(face);
-                const ta::Json& rims = layer.contains("style") && layer["style"].contains("rims") ? layer["style"]["rims"] : ta::Json::array();
+                // a Dimension 3D layer's parts are S86's: Face, Bevel, Side, Band 1..N (R10)
+                const bool threeD = layer.value("dimension", std::string("2d")) == "3d";
+                if (threeD) {
+                    for (const char* key : {"bevel", "side"}) {
+                        Row part = face;
+                        part.part = key;
+                        rows.push_back(part);
+                    }
+                    const auto style3d = layer.find("style_3d");
+                    if (style3d != layer.end() && style3d->is_object() && style3d->contains("bands") && (*style3d)["bands"].is_array()) {
+                        for (const ta::Json& band : (*style3d)["bands"]) {
+                            Row part = face;
+                            part.part = "band:" + str(band, "id");
+                            rows.push_back(part);
+                        }
+                    }
+                }
+                static const ta::Json noRims = ta::Json::array();
+                const ta::Json& rims = !threeD && layer.contains("style") && layer["style"].contains("rims") ? layer["style"]["rims"] : noRims;
                 for (size_t r = 0; r < rims.size(); r++) {
                     Row rim = face;
                     rim.part = "rim:" + str(rims[r], "id");
@@ -706,7 +724,23 @@ void TitleDesignerWindow::drawLayers() {
                     // colour swatch of a part's fill, link icon
                     float x = x0;
                     const float y = start.y + (rowHeight - ImGui::GetFontSize()) * 0.5f;
-                    if (row.kind == Row::Kind::Part) {
+                    if (row.kind == Row::Kind::Part && row.layer->value("dimension", std::string("2d")) == "3d") {
+                        // the 3D part's material colour (S86)
+                        ta::TitleColor c{0.75f, 0.75f, 0.75f};
+                        const ta::Json style = row.layer->contains("style_3d") && (*row.layer)["style_3d"].is_object() ? (*row.layer)["style_3d"] : ta::Json::object();
+                        ta::Json material = style.value("face", ta::Json::object());
+                        if (row.part == "bevel" && style.contains("bevel_material") && style["bevel_material"].is_object()) material = style["bevel_material"];
+                        if (row.part == "side" && style.contains("side") && style["side"].is_object()) material = style["side"];
+                        if (row.part.rfind("band:", 0) == 0) {
+                            for (const ta::Json& band : style.value("bands", ta::Json::array())) {
+                                if ("band:" + str(band, "id") == row.part) material = band.value("material", ta::Json::object());
+                            }
+                        }
+                        ta::parseTitleColor(material.value("color", ta::Json("#c0c0c0")), c);
+                        const float sw = ImGui::GetFontSize() * 0.8f;
+                        dl->AddRectFilled(ImVec2(x, y + 1), ImVec2(x + sw, y + 1 + sw), ImGui::ColorConvertFloat4ToU32(ImVec4(c.r, c.g, c.b, 1.0f)), 2.0f);
+                        x += sw + 6.0f;
+                    } else if (row.kind == Row::Kind::Part) {
                         const ta::Json* material = nullptr;
                         if (row.part == "face") {
                             if (row.layer->contains("style") && (*row.layer)["style"].contains("face")) material = &(*row.layer)["style"]["face"];

@@ -10,16 +10,20 @@
 #include "TitleDesignerWindow.h"
 
 #include "Project.h"
+#include "util/ProjectChecks.h"
 #include "component/TitleArtRendererComponent.h"
+#include "titleart/designer/TitleLayerThumbnails.h"
 #include "titleart/fx/FxCost.h"
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::titledesigner;
 namespace ta = jasperengine::titleart;
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -224,5 +228,33 @@ std::vector<ta::FieldOverride> TitleDesignerWindow::liveOverrides(double* phaseK
         ++it;
     }
     if (livePreviews.empty()) liveStart = -1.0;
+    return out;
+}
+
+// ---- S86's pickers and Realtime Preview (through PropertyHost) ----
+
+ImTextureID TitleDesignerWindow::previewTile(const std::string& slot, const std::shared_ptr<const ta::TitleArtDoc>& tileDoc, const std::string& layerId,
+                                             const ta::TitleRect& bounds, uint64_t content, int pixels) {
+    if (!thumbnails || !tileDoc) return 0;
+    return thumbnails->thumbnail("tile:" + slot, tileDoc, layerId, bounds, content, pixels, true, TitlePreviewPriority::Thumbnails);
+}
+
+std::string TitleDesignerWindow::previewMode() const {
+    const DocumentView* v = viewOrNull();
+    return v ? v->previewAs : std::string("realtime");
+}
+
+void TitleDesignerWindow::choosePreviewMode(const std::string& mode) {
+    std::string error;
+    if (!setPreviewAs(mode, &error)) reportError(error);
+}
+
+std::vector<std::string> TitleDesignerWindow::projectFiles(const std::vector<std::string>& extensions) {
+    std::vector<std::string> out;
+    if (!project) return out;
+    for (const fs::path& file : ProjectChecks::findProjectFiles(project->getAssetsPath(), extensions)) {
+        out.push_back(project->normalizeToProjectRelative(file).generic_string());
+    }
+    std::sort(out.begin(), out.end());
     return out;
 }

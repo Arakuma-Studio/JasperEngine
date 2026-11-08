@@ -64,7 +64,15 @@ namespace jasperengine::editor::titledesigner {
     const TimeSource& timeSource();
 
     // ---- the 3D gizmo (R35): S86 supplies the target of a Dimension 3D layer or letter ----
-    using Gizmo3DProvider = std::function<bool(const TitleDesignerState& state, const std::string& layerId, Gizmo3DTarget& out)>;
+    // the characters selected in the canvas text editor (R38): their indexes and the document
+    // point of their em cells' centre
+    struct Gizmo3DLetters {
+        std::vector<int> indexes;
+        TitleVec2 centre;
+    };
+    // `letters` null: the layer's target; else the target of those characters of the layer
+    using Gizmo3DProvider = std::function<bool(const TitleDesignerState& state, const std::string& layerId, const Gizmo3DLetters* letters,
+                                               Gizmo3DTarget& out)>;
     void setGizmo3DProvider(Gizmo3DProvider provider);
     const Gizmo3DProvider& gizmo3DProvider();
 
@@ -77,6 +85,9 @@ namespace jasperengine::editor::titledesigner {
         // false while it has nothing to show (the canvas shows the checker and a spinner)
         std::function<bool(TitleDesignerState& state, ImDrawList* drawList, ImVec2 min, ImVec2 max, const CanvasXform& xform)> draw;
         std::function<void()> close;    // the mode was left (free its renderer)
+        // a mode without `draw`: the canvas renders the working document as usual, at this
+        // RenderRequest::tier (S86's Realtime tiers: TitleTier High 1, Medium 2, Low 3)
+        int renderTier = 0;
     };
     void addPreviewMode(PreviewModeDef mode);
     void removePreviewMode(const std::string& id);
@@ -184,5 +195,11 @@ namespace jasperengine::editor::titledesigner {
     };
     void setLibraryProvider(std::shared_ptr<TitleLibraryProvider> provider);
     TitleLibraryProvider* libraryProvider();
+
+    // ---- the editor's own extensions ----
+    // registers the hooks of the title specs built into this editor (S81's Runtime section and
+    // Glyph Atlas mode, S83's checks, S86's 3D rows, pickers, tiers and gizmo target); the window
+    // calls it once (TitleDesignerExtensions.cpp)
+    void registerTitleDesignerExtensions();
 
 }

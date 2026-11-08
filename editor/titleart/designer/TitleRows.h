@@ -78,6 +78,19 @@ namespace jasperengine::editor::titledesigner {
         // S83 R41: the cost of effect `index` of a layer's stack (part "" ) or a part's stack,
         // of a layer's effects together (index -1), of a generator layer (its own row)
         virtual bool effectCost(const std::string& /*layer*/, const std::string& /*part*/, int /*index*/, CostBadge& /*out*/) { return false; }
+        // S86's picker tiles: layer `layerId` of `doc` rendered through the window's preview queue
+        // at priority Thumbnails under its own slot (0 while it has no picture yet)
+        virtual ImTextureID previewTile(const std::string& /*slot*/, const std::shared_ptr<const jasperengine::titleart::TitleArtDoc>& /*doc*/,
+                                        const std::string& /*layerId*/, const jasperengine::titleart::TitleRect& /*bounds*/, uint64_t /*content*/,
+                                        int /*pixels*/) {
+            return 0;
+        }
+        // the project's files with one of these extensions (".hdr"), project-relative (S86's
+        // environment picker lists the project's HDRIs)
+        virtual std::vector<std::string> projectFiles(const std::vector<std::string>& /*extensions*/) { return {}; }
+        // Preview As (S86's Realtime Preview row drives it)
+        virtual std::string previewMode() const { return "realtime"; }
+        virtual void choosePreviewMode(const std::string& /*mode*/) {}
         // S83 R39: an effect's or generator's L params play on the canvas (view state, never saved)
         virtual bool livePreviewOn(const std::string& /*layer*/, const std::string& /*effectId*/) const { return false; }
         virtual void setLivePreview(const std::string& /*layer*/, const std::string& /*effectId*/, bool /*on*/) {}

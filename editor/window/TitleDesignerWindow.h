@@ -79,6 +79,9 @@ namespace jasperengine::editor {
         float x = 0.0f, y = 0.0f, width = 0.0f, height = 0.0f;
         int screenWidth = 0, screenHeight = 0;
         std::vector<uint8_t> snapshotRgba;          // RGBA8 rows top first, screenWidth x screenHeight
+        // the bake frame (canvas px) the instance's image covers; empty = the whole canvas
+        jasperengine::titleart::TitleRectI frame;
+        bool located = false;                       // the rectangle was found on screen
     };
 
     class TitleDesignerWindow : public titledesigner::PropertyHost {
@@ -116,11 +119,16 @@ namespace jasperengine::editor {
         // ---- the scripted API: every UI entry and MCP call goes through these ----
         bool open(const std::filesystem::path& file, std::string* error = nullptr);
         bool openInContext(const TitleInContext& context, std::string* error = nullptr);
+        // the Title Art Renderer's button: opens its document In Context, snapshots the instance's
+        // scene with and without it (their difference is the instance's screen rectangle)
+        bool openInContextOf(const std::filesystem::path& document, uint32_t sceneId, Entity instance, std::string* error = nullptr);
         bool select(const std::vector<std::string>& paths, std::string* error = nullptr);
         bool runOps(const titledesigner::Json& ops, const std::string& stepName, std::string* error = nullptr);
         void setTool(titledesigner::Tool tool);
         titledesigner::Tool tool() const { return currentTool; }
         bool setPreviewAs(const std::string& mode, std::string* error = nullptr);
+        // the registered Preview As mode shown (null: Realtime or Baked)
+        const titledesigner::PreviewModeDef* activePreviewMode() const;
         bool setBackground(const titledesigner::BackdropChoice& backdrop, std::string* error = nullptr);
         bool setDevice(const titledesigner::DeviceChoice& device, std::string* error = nullptr);
         void setZoom(float zoom);
@@ -165,6 +173,11 @@ namespace jasperengine::editor {
         bool effectCost(const std::string& layer, const std::string& part, int index, titledesigner::CostBadge& out) override;
         bool livePreviewOn(const std::string& layer, const std::string& effectId) const override;
         void setLivePreview(const std::string& layer, const std::string& effectId, bool on) override;
+        ImTextureID previewTile(const std::string& slot, const std::shared_ptr<const jasperengine::titleart::TitleArtDoc>& doc, const std::string& layerId,
+                                const jasperengine::titleart::TitleRect& bounds, uint64_t content, int pixels) override;
+        std::string previewMode() const override;
+        std::vector<std::string> projectFiles(const std::vector<std::string>& extensions) override;
+        void choosePreviewMode(const std::string& mode) override;
 
     private:
         Project* project = nullptr;
@@ -294,7 +307,7 @@ namespace jasperengine::editor {
         std::vector<std::string> forceOpenSections;   // a landing opens the hit's sections
 
         // ---- canvas interaction ----
-        enum class Drag : uint8_t { None, Gizmo, Gizmo3D, Handle, Marquee, Guide, NewGuide, Pan, TextSelect, Letters };
+        enum class Drag : uint8_t { None, Gizmo, Gizmo3D, Handle, Marquee, Guide, NewGuide, Pan, TextSelect, Letters, EnvRotate };
         Drag drag = Drag::None;
         ImVec2 dragStart = ImVec2(0, 0);
         int guideIndex = -1;
@@ -305,6 +318,11 @@ namespace jasperengine::editor {
         double nudgeAt = -1.0;
         std::string nudgeKey;
         std::unique_ptr<titledesigner::Gizmo3DTarget> gizmo3dTarget;
+        titledesigner::Gizmo3DLetters editLetters;     // the selected letters of a 3D layer being edited
+        bool editLetters3D = false;
+        // Alt+drag on a 3D layer scrubs its Environment Rotation (S86 R55)
+        double envDragStart = 0.0;
+        std::string envDragLayer;
 
         // ---- text editing (R36-R39) ----
         std::string renamePromptOld, renamePromptNew;

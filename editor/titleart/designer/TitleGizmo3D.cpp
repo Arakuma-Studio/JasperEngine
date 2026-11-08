@@ -510,6 +510,12 @@ std::string TitleGizmo3D::actionName() const {
     return actionOf(drag.handle);
 }
 
+std::string TitleGizmo3D::stepName() const {
+    const bool move = isMoveAxis(drag.handle) || drag.handle == Gizmo3DHandle::MovePlane;
+    const std::string& named = move ? drag.target.moveStep : drag.target.rotateStep;
+    return named.empty() ? actionName() : named;
+}
+
 std::string TitleGizmo3D::readout(Gizmo3DHandle hovered) const {
     if (!active()) return actionOf(hovered);
     const bool move = isMoveAxis(drag.handle) || drag.handle == Gizmo3DHandle::MovePlane;

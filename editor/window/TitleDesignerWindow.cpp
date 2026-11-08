@@ -70,6 +70,8 @@ namespace {
 
 TitleDesignerWindow::TitleDesignerWindow(Project* project) : project(project), doc(project) {
     settings = TitleDesignerSettings::load();
+    // S81's, S83's and S86's rows, modes and gizmo target (§6.8)
+    registerTitleDesignerExtensions();
     // reopened as it was: its live parts are made by the first show() (R64, R65)
     windowOpen = settings.windowOpen;
 }
@@ -327,13 +329,29 @@ void TitleDesignerWindow::setTool(Tool tool) {
     currentTool = tool;
 }
 
+const PreviewModeDef* TitleDesignerWindow::activePreviewMode() const {
+    const DocumentView* v = viewOrNull();
+    if (!v) return nullptr;
+    for (const PreviewModeDef& mode : previewModes()) {
+        if (mode.id == v->previewAs) return &mode;
+    }
+    return nullptr;
+}
+
 bool TitleDesignerWindow::setPreviewAs(const std::string& mode, std::string* error) {
+    // the mode left frees what it made (S81's Glyph Atlas title)
+    auto leave = [&] {
+        const PreviewModeDef* previous = activePreviewMode();
+        if (previous && previous->id != mode && previous->close) previous->close();
+    };
     if (mode == "realtime" || mode == "baked") {
+        leave();
         view().previewAs = mode;
         return true;
     }
     for (const PreviewModeDef& def : previewModes()) {
         if (def.id == mode) {
+            leave();
             view().previewAs = mode;
             return true;
         }
