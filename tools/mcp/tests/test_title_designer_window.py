@@ -4,11 +4,13 @@ screenshot view of the window, get_title's `designer` block, the window's action
 documents edit_title produces, and an agent's edit while the document is open.
 """
 
+import asyncio
 import json
 import re
 import struct
 
 import harness
+import pngdiff
 from harness import Editor
 
 CI = True
@@ -186,3 +188,40 @@ async def test_canvas_shows_edits(ed: Editor):
     await ed.call("edit_title", path=path, ops=[{"op": "set", "layer": "Title", "values": {"style.face.fill.color": "#ff2020"}}])
     changed = await ed.screenshot("title_designer", max_width=600)
     ed.check(changed != first, "the canvas shows the edit")
+
+
+async def settled_state(ed: Editor) -> dict:
+    """The window's state once the canvas has drawn a finished image (llvmpipe compiles slowly)."""
+    state: dict = {}
+    for _ in range(240):
+        state = (await focus(ed))["state"]
+        canvas = state.get("canvas", {})
+        if not state.get("busy") and canvas.get("has_image") and canvas.get("title_drawn"):
+            await ed.call("editor_status")
+            return (await focus(ed))["state"]
+        await asyncio.sleep(1.0)
+    ed.fail(f"the canvas never settled: {state}")
+    return state
+
+
+def red_pixels(data: bytes) -> int:
+    w, h, rgba = pngdiff.decode(data)
+    return sum(1 for i in range(0, w * h * 4, 4) if rgba[i] > 180 and rgba[i + 1] < 70 and rgba[i + 2] < 70)
+
+
+async def test_canvas_title_over_backdrop(ed: Editor):
+    """R28: the canvas shows the title over its backdrop at any zoom, with the Library open (a
+    shorter canvas) too. Red control: both canvas sprites in one queue order, where the transparent
+    queue's distance sort can put the title under the backdrop: some of these views show none."""
+    await setup(ed)
+    path = "assets/designer/over.titleart"
+    await create(ed, path, text="OVER")
+    await ed.call("edit_title", path=path, bake="never",
+                  ops=[{"op": "set", "layer": "Title", "values": {"style.face.fill": {"kind": "solid", "color": "#ff0000"}}}])
+    await focus(ed, path=path, select="", background="black", panel="library", zoom="fit")
+    for zoom in ("fit", 0.17, 0.183, 0.205, 0.31):
+        await focus(ed, zoom=zoom)
+        state = await settled_state(ed)
+        shot = await ed.screenshot("title_designer", max_width=0)
+        ed.check(red_pixels(shot) > 40, f"zoom {zoom}: the red title shows on the canvas ({state.get('canvas')})")
+
