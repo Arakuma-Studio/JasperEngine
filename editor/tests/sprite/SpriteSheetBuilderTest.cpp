@@ -127,7 +127,7 @@ TEST(SpriteSheetBuilder, CellSizeFileNameNeedsNoMeta) {
     EXPECT_EQ(built.sheet.frames[2].name, "coin_2");
     ASSERT_FALSE(built.warnings.empty());
     EXPECT_NE(built.warnings[0].find("leaves 5 pixel(s) on the right"), std::string::npos) << built.warnings[0];
-    EXPECT_FALSE(std::filesystem::exists(SetAssetMetaCmd::metaPathOf(file))) << "nothing is written to the meta";
+    EXPECT_FALSE(std::filesystem::exists(editor::SetAssetMetaCmd::metaPathOf(file))) << "nothing is written to the meta";
 }
 
 TEST(SpriteSheetBuilder, FramesFromAsepriteJson) {
