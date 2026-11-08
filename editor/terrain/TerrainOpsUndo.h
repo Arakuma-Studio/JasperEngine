@@ -12,6 +12,7 @@
 #include "terrain/OverlayMapStore.h"
 #include "terrain/RawMapStore.h"
 #include "terrain/TerrainOps.h"
+#include "util/TerrainMapUtils.h"
 
 #include <cstdint>
 #include <memory>
@@ -23,6 +24,23 @@ namespace jasperengine::editor {
 
     class Project;
     struct SceneProject;
+
+    // A map an edit makes: its slot as it was, and the blank map the edit runs on (what the engine's
+    // createMap fills: 0, opaque, holes solid)
+    struct TerrainMadeMap {
+        terrain::MapId map;
+        TerrainMapRef ref;
+        TerrainMapSnapshot before;
+        TerrainMapSnapshot blank;
+    };
+
+    // Makes the blank map at once, so the edit has a map to write; keepTerrainMadeMap adds the step that keeps it
+    bool makeTerrainBlankMap(Project* project, SceneProject* scene, Entity entity, terrain::MapId map, const terrain::MapFormat& format,
+                             TerrainMadeMap& made);
+    // The structural step of a made map, holding its final pixels as `edited` has them: its undo takes the map
+    // away, its redo brings it back whole, so the edit's tile delta skips it (TerrainMapDeltaCmd's skipMaps)
+    bool keepTerrainMadeMap(Project* project, SceneProject* scene, Entity entity, const TerrainMadeMap& made,
+                            const terrain::TerrainMapStore& edited, const std::string& stepName, std::string& error);
 
     // The list as a dry run: what it would change, the maps it would make and remove
     terrain::TerrainOpResult previewTerrainOps(Project* project, SceneProject* scene, Entity entity, const std::vector<terrain::Op>& ops,

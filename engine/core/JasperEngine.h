@@ -81,6 +81,7 @@
 #include "component/NavGridComponent.h"
 #include "component/SplineComponent.h"
 #include "component/SplineExtrudeComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "component/SplineInstantiateComponent.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/PhysicsCommon.h"

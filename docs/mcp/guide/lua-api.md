@@ -3482,3 +3482,16 @@ assert(math.abs(Vector3(3, 4, 0):length() - 5) < 1e-6)
 local q = Quaternion(0, 0, 45)
 assert(math.abs(q:getRoll() - 45) < 1e-3)
 ```
+
+## Noise and NoiseGraph
+
+Module `noise`: naming `Noise` or `NoiseGraph` makes the project carry it. Same bits as the editor's
+generation on every target. `NoiseGraph.load` returns nil for a graph with an erosion or Terrain Height
+node, and `sample` errors on a grid-only one. Details: `jasper://docs/noise-graphs`.
+
+```lua
+local v = Noise.perlin(1.5, 2.5, 7)
+assert(v >= -1 and v <= 1)
+local r = Noise.ridged(1.5, 2.5, 7, 4)
+assert(r >= 0 and r <= 1)
+```

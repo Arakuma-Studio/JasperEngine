@@ -58,6 +58,8 @@ endif()
 # contraction there either, or arm64 would seed its maps differently (docs/specs/T1-terrain-authoring.md R8)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set_source_files_properties(
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageRulesTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageScatterTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainGoldenTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainStoreTest.cpp
         PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
@@ -69,6 +71,15 @@ jasperengine_skip_unity_build(
     REASON "file-local fixtures or helpers named as in another test source"
     SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorBlendTreeTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/navigation/NavBakeFoliageTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/render/FoliageGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageCullTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageLuaTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliagePhysicsTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageRulesTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageScatterTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageSystemCoreTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TreeStoreTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainBatchTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainEditTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainFilterTest.cpp
@@ -119,14 +130,33 @@ jasperengine_skip_unity_build(
     REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/platform/X11VisibilityTest.cpp)
 
+# The noise suites compile kernels' arithmetic in their own units and compare it with the library's, so
+# they take the same flag. The golden cases are shared with tools/noise/golden, and the presets are
+# embedded as the tool embeds them (T2 R41).
+set(CORE_TEST_NOISE_SOURCES "")
+if(JASPERENGINE_NOISE)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/noise/golden/EmbedPresets.cmake)
+    jasperengine_embed_noise_presets("${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/resources/noisegraphs" "${CMAKE_CURRENT_BINARY_DIR}/noise_presets.gen.h")
+    set(CORE_TEST_NOISE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/noise/NoiseGoldenCases.cpp)
+    file(GLOB CORE_TEST_NOISE_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/noise/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/terrain/HeightfieldErosion*Test.cpp)
+    if(MSVC)
+        set_source_files_properties(${CORE_TEST_NOISE_FILES} PROPERTIES COMPILE_OPTIONS "/fp:precise")
+    else()
+        set_source_files_properties(${CORE_TEST_NOISE_FILES} PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+    endif()
+    set_property(SOURCE ${CORE_TEST_NOISE_FILES} PROPERTY SKIP_UNITY_BUILD_INCLUSION ON)
+else()
+    list(FILTER CORE_TEST_SOURCES EXCLUDE REGEX "/noise/|/terrain/HeightfieldErosion")
+endif()
+
 jasperengine_add_test_target(jasperengine-core-tests
-    SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}
+    SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER} ${CORE_TEST_NOISE_SOURCES}
         # the animation clip tests' asset root (a temporary directory around each of them)
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimTestEnvironment.cpp
         # the vertex animation tests' asset root, and their asset and GLB fixtures
         ${CMAKE_CURRENT_SOURCE_DIR}/vat/VatTestEnvironment.cpp
     # (platform/android: the soft keyboard's text conversions, plain C++, AndroidTextInputTest)
-    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support
+    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support ${CMAKE_CURRENT_SOURCE_DIR}/noise ${CMAKE_CURRENT_BINARY_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/android
         # WebKeyMap.h, the web platform's key map (plain C++)
         ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/emscripten
@@ -221,7 +251,21 @@ add_executable(je-bench-splines ${CMAKE_CURRENT_SOURCE_DIR}/bench/SplineBench.cp
 add_executable(je-bench-anim ${CMAKE_CURRENT_SOURCE_DIR}/bench/AnimBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 # je-bench-audio: the loudness budgets (S38 R16-R17)
 add_executable(je-bench-audio ${CMAKE_CURRENT_SOURCE_DIR}/bench/AudioMeterBench.cpp)
-foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-audio)
+# je-bench-foliage: foliage's budgets (T5 R41, R42, R45, docs/perf/foliage.md)
+add_executable(je-bench-foliage ${CMAKE_CURRENT_SOURCE_DIR}/bench/FoliageBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
+set(CORE_BENCH_TARGETS je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-audio je-bench-foliage)
+# je-bench-voxel: the Voxel Volume budgets (T6 R55, R56)
+if(JASPERENGINE_VOXEL)
+    add_executable(je-bench-voxel ${CMAKE_CURRENT_SOURCE_DIR}/bench/VoxelBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
+    list(APPEND CORE_BENCH_TARGETS je-bench-voxel)
+endif()
+# je-bench-noise: the noise budgets (T2 R46-R49, docs/perf/noise.md)
+if(JASPERENGINE_NOISE)
+    add_executable(je-bench-noise ${CMAKE_CURRENT_SOURCE_DIR}/bench/NoiseBench.cpp)
+    target_compile_definitions(je-bench-noise PRIVATE JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+    list(APPEND CORE_BENCH_TARGETS je-bench-noise)
+endif()
+foreach(target ${CORE_BENCH_TARGETS})
     target_link_libraries(${target} PRIVATE jasperengine Threads::Threads)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support)
     jasperengine_apply_cxx_standard(${target})
@@ -229,7 +273,7 @@ foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-b
     set_target_properties(${target} PROPERTIES FOLDER "tests")
 endforeach()
 
-foreach(target jasperengine-core-tests je-bench-jobs je-bench-memory je-bench-particles je-bench-nav je-bench-splines je-bench-anim)
+foreach(target jasperengine-core-tests je-bench-jobs je-bench-memory je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-voxel)
     if(CORE_TEST_COUNTS_ALLOCATIONS)
         target_compile_definitions(${target} PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
         target_link_options(${target} PRIVATE "-Wl,--wrap=malloc" "-Wl,--wrap=calloc" "-Wl,--wrap=realloc" "-rdynamic")
@@ -239,6 +283,11 @@ endforeach()
 # core's floating-point flags (core/spline/SplineSources.cmake, S18 R16): with contraction, as
 # clang does on arm64, the bowl ground's heights round differently from x86-64's, and the bit-exact
 # checks (SplineFillMesherTests seams and zero-area triangles) compared other inputs
+# The voxel tests compute inputs and expected hashes in their own units: no contraction there either (T6 R28)
+file(GLOB CORE_TEST_VOXEL_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/voxel/*.cpp)
+if(CORE_TEST_VOXEL_SOURCES AND JASPERENGINE_VOXEL_FLAGS)
+    set_source_files_properties(${CORE_TEST_VOXEL_SOURCES} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_VOXEL_FLAGS}")
+endif()
 file(GLOB CORE_TEST_SPLINE_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/spline/*.cpp)
 if(CORE_TEST_SPLINE_SOURCES AND JASPERENGINE_SPLINE_FLAGS)
     set_source_files_properties(${CORE_TEST_SPLINE_SOURCES} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_SPLINE_FLAGS}")

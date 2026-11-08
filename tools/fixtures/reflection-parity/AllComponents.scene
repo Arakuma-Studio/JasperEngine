@@ -2891,3 +2891,30 @@ entities:
         unscaled: true
         revert: false
         revertSeconds: 0.75
+  - type: Entity
+    entity: 1093
+    name: VoxelVolumeComponent
+    components:
+      transform:
+        position: [92, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      voxelvolume:
+        enabled: false
+        quality: low
+        lodLevels: 6
+        lodRadius: 5
+        maxDrawDistance: 4.4
+        castShadows: false
+        collision: false
+        collisionRadius: 7
+        rescueBodies: false
+        terrainCut: automatic
+        overlapDepth: 2
+        cutTolerance: 1
+        runtimeGeneration: true

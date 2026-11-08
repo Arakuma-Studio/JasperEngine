@@ -861,6 +861,10 @@ std::string editor::Factory::formatAttributeType(AttributeType type) {
         case AttributeType::MORPHNORMAL3: return "AttributeType::MORPHNORMAL3";
         case AttributeType::MORPHTANGENT0: return "AttributeType::MORPHTANGENT0";
         case AttributeType::MORPHTANGENT1: return "AttributeType::MORPHTANGENT1";
+        case AttributeType::INSTANCEPACKED0: return "AttributeType::INSTANCEPACKED0";
+        case AttributeType::INSTANCEPACKED1: return "AttributeType::INSTANCEPACKED1";
+        case AttributeType::INSTANCEPACKED2: return "AttributeType::INSTANCEPACKED2";
+        case AttributeType::INSTANCEPACKED3: return "AttributeType::INSTANCEPACKED3";
         case AttributeType::INSTANCEMATRIXCOL1: return "AttributeType::INSTANCEMATRIXCOL1";
         case AttributeType::INSTANCEMATRIXCOL2: return "AttributeType::INSTANCEMATRIXCOL2";
         case AttributeType::INSTANCEMATRIXCOL3: return "AttributeType::INSTANCEMATRIXCOL3";
@@ -1737,6 +1741,9 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
         if (layer.hexRotation != TerrainSurfaceLayer().hexRotation){
             code << ind << var << ".hexRotation = " << formatFloat(layer.hexRotation) << ";\n";
         }
+        if (layer.cliffProjection != TerrainCliffProjection::AUTO){
+            code << ind << var << ".cliffProjection = static_cast<TerrainCliffProjection>(" << static_cast<int>(layer.cliffProjection) << ");\n";
+        }
     }
     code << ind << "terrain.autoSetRanges = " << formatBool(terrain.autoSetRanges) << ";\n";
     code << ind << "terrain.offset = " << formatVector2(terrain.offset) << ";\n";
@@ -1747,6 +1754,23 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
     code << ind << "terrain.textureDetailTiles = " << formatFloat(terrain.textureDetailTiles) << ";\n";
     code << ind << "terrain.rootGridSize = " << formatInt(terrain.rootGridSize) << ";\n";
     code << ind << "terrain.levels = " << formatInt(terrain.levels) << ";\n";
+    // T3 R50: only what differs from the defaults
+    const TerrainComponent terrainDefaults{};
+    if (terrain.quality != terrainDefaults.quality) code << ind << "terrain.quality = static_cast<TerrainQualitySetting>(" << static_cast<int>(terrain.quality) << ");\n";
+    if (terrain.limitLayersPerPixel) code << ind << "terrain.limitLayersPerPixel = true;\n";
+    if (terrain.offscreenShadows != terrainDefaults.offscreenShadows) code << ind << "terrain.offscreenShadows = static_cast<TerrainOffscreenShadows>(" << static_cast<int>(terrain.offscreenShadows) << ");\n";
+    if (terrain.macroMode != terrainDefaults.macroMode) code << ind << "terrain.macroMode = static_cast<TerrainMacroMode>(" << static_cast<int>(terrain.macroMode) << ");\n";
+    if (terrain.macroScale != terrainDefaults.macroScale) code << ind << "terrain.macroScale = " << formatFloat(terrain.macroScale) << ";\n";
+    if (terrain.macroStrength != terrainDefaults.macroStrength) code << ind << "terrain.macroStrength = " << formatFloat(terrain.macroStrength) << ";\n";
+    if (terrain.macroTintA != terrainDefaults.macroTintA) code << ind << "terrain.macroTintA = " << formatVector3(terrain.macroTintA) << ";\n";
+    if (terrain.macroTintB != terrainDefaults.macroTintB) code << ind << "terrain.macroTintB = " << formatVector3(terrain.macroTintB) << ";\n";
+    if (terrain.macroSlopeFade != terrainDefaults.macroSlopeFade) code << ind << "terrain.macroSlopeFade = " << formatFloat(terrain.macroSlopeFade) << ";\n";
+    if (terrain.resampleEnabled) code << ind << "terrain.resampleEnabled = true;\n";
+    if (terrain.resampleNear != terrainDefaults.resampleNear) code << ind << "terrain.resampleNear = " << formatFloat(terrain.resampleNear) << ";\n";
+    if (terrain.resampleFar != terrainDefaults.resampleFar) code << ind << "terrain.resampleFar = " << formatFloat(terrain.resampleFar) << ";\n";
+    if (terrain.resampleReduction != terrainDefaults.resampleReduction) code << ind << "terrain.resampleReduction = " << formatFloat(terrain.resampleReduction) << ";\n";
+    if (terrain.heightBlendSharpness != terrainDefaults.heightBlendSharpness) code << ind << "terrain.heightBlendSharpness = " << formatFloat(terrain.heightBlendSharpness) << ";\n";
+    if (terrain.macroNormal) code << ind << "terrain.macroNormal = true;\n";
     // (Auto Ranges: the terrain sets them from the camera's far clip when it runs)
     if (!terrain.autoSetRanges && !terrain.ranges.empty()) {
         code << ind << "terrain.ranges = {";
@@ -1776,7 +1800,56 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
             code << ind << var << ".minDrawDistance = " << formatFloat(layer.minDrawDistance) << ";\n";
         code << ind << var << ".seed = " << formatUInt(layer.seed) << ";\n";
         code << ind << var << ".castShadows = " << formatBool(layer.castShadows) << ";\n";
+        code << ind << var << ".minDrawDistance = " << formatFloat(layer.minDrawDistance) << ";\n";
+        code << ind << var << ".minHeightRatio = " << formatFloat(layer.minHeightRatio) << ";\n";
+        code << ind << var << ".maxHeightRatio = " << formatFloat(layer.maxHeightRatio) << ";\n";
+        code << ind << var << ".healthyColor = " << formatVector4(layer.healthyColor) << ";\n";
+        code << ind << var << ".dryColor = " << formatVector4(layer.dryColor) << ";\n";
+        code << ind << var << ".noiseSpread = " << formatFloat(layer.noiseSpread) << ";\n";
+        code << ind << var << ".windBend = " << formatFloat(layer.windBend) << ";\n";
+        code << ind << var << ".densityFalloffStart = " << formatFloat(layer.densityFalloffStart) << ";\n";
+        code << ind << var << ".farDensity = " << formatFloat(layer.farDensity) << ";\n";
+        code << ind << var << ".densityScale = " << formatFloat(layer.densityScale) << ";\n";
+        code << ind << var << ".algorithmVersion = " << formatUInt(layer.algorithmVersion) << ";\n";
         code << ind << "terrain.foliageLayers.push_back(" << var << ");\n";
+    }
+    code << ind << "terrain.detailDistance = " << formatFloat(terrain.detailDistance) << ";\n";
+    code << ind << "terrain.detailDensity = " << formatFloat(terrain.detailDensity) << ";\n";
+    code << ind << "terrain.treeDistance = " << formatFloat(terrain.treeDistance) << ";\n";
+    code << ind << "terrain.billboardStart = " << formatFloat(terrain.billboardStart) << ";\n";
+    code << ind << "terrain.fadeLength = " << formatFloat(terrain.fadeLength) << ";\n";
+    code << ind << "terrain.maxMeshTrees = " << terrain.maxMeshTrees << ";\n";
+    code << ind << "terrain.windDirection = " << formatVector3(terrain.windDirection) << ";\n";
+    code << ind << "terrain.windSpeed = " << formatFloat(terrain.windSpeed) << ";\n";
+    code << ind << "terrain.windSize = " << formatFloat(terrain.windSize) << ";\n";
+    code << ind << "terrain.windBending = " << formatFloat(terrain.windBending) << ";\n";
+    code << ind << "terrain.treeData = " << formatString(terrain.treeData) << ";\n";
+    for (size_t i = 0; i < terrain.treePrototypes.size(); i++) {
+        const TerrainTreePrototype& prototype = terrain.treePrototypes[i];
+        const std::string var = "treePrototype" + std::to_string(i);
+        code << ind << "TerrainTreePrototype " << var << ";\n";
+        code << ind << var << ".id = " << formatUInt(prototype.id) << ";\n";
+        code << ind << var << ".meshPath = " << formatString(prototype.meshPath) << ";\n";
+        for (const AssetRef& lod : prototype.lodMeshes) {
+            code << ind << var << ".lodMeshes.push_back(AssetRef(" << formatString(lod) << "));\n";
+        }
+        for (float distance : prototype.lodDistances) {
+            code << ind << var << ".lodDistances.push_back(" << formatFloat(distance) << ");\n";
+        }
+        code << ind << var << ".bendFactor = " << formatFloat(prototype.bendFactor) << ";\n";
+        code << ind << var << ".windMask = " << (prototype.windMask == TerrainTreeWindMask::VertexColor ? "TerrainTreeWindMask::VertexColor" : "TerrainTreeWindMask::Height") << ";\n";
+        code << ind << var << ".shadowLodMask = " << formatUInt(prototype.shadowLodMask) << ";\n";
+        code << ind << var << ".collision = " << (prototype.collision == TerrainTreeCollision::Capsule ? "TerrainTreeCollision::Capsule" : "TerrainTreeCollision::None") << ";\n";
+        code << ind << var << ".collisionRadius = " << formatFloat(prototype.collisionRadius) << ";\n";
+        code << ind << var << ".collisionHeight = " << formatFloat(prototype.collisionHeight) << ";\n";
+        code << ind << var << ".navObstacle = " << formatBool(prototype.navObstacle) << ";\n";
+        code << formatTexture(indentSpaces, prototype.impostorAlbedo, var + ".impostorAlbedo", projectPath);
+        code << formatTexture(indentSpaces, prototype.impostorNormal, var + ".impostorNormal", projectPath);
+        code << ind << var << ".impostorViews = " << prototype.impostorViews << ";\n";
+        code << ind << var << ".impostorBoundsCenter = " << formatVector3(prototype.impostorBoundsCenter) << ";\n";
+        code << ind << var << ".impostorSize = " << formatVector2(prototype.impostorSize) << ";\n";
+        code << ind << var << ".impostorSourceHash = " << formatString(prototype.impostorSourceHash) << ";\n";
+        code << ind << "terrain.treePrototypes.push_back(" << var << ");\n";
     }
     code << ind << "terrain.needUpdateTerrain = true;\n";
     code << ind << "terrain.needUpdateTexture = true;\n";

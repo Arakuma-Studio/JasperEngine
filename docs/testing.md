@@ -14,6 +14,7 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | `jasperengine-htmlui-editor-tests` | the HTML UI importers against a local HTTP fixture server | `tools/build.sh htmlui-editor-tests` | `build/test-results/htmlui-editor.xml` |
 | MCP tests | the editor's MCP server, driven like an agent (`tools/mcp/tests/test_*.py`) | `tools/build.sh linux`, then `tools/build.sh mcp-tests -j 2` | `build/test-results/mcp.json` |
 | Benchmarks | the job system's and the allocators' budgets (S06 R23-R26): `je-bench-jobs`, `je-bench-memory`, gated by `tools/perf/check_bench.py` against `tools/perf/bench-thresholds.json` | `docs/jobs-memory.md` (on an otherwise idle machine) | their `--json` files |
+| Foliage (T5) | placement, cull, tree store, rules (`Foliage*`, `TreeStore*`: core CPU), the system (`FoliageSystemCore`, `FoliageTreesCore`, `FoliageRuntime`), the draws (`FoliageGpu`: goldens in `engine/tests/core/render/golden/foliage_*`), `je-bench-foliage`, `tools/mcp/tests/test_foliage*.py`; `docs/specs/checklists/T5.md` by hand | `UNIT_SUITE=core UNIT_TEST_ARGS=--gtest_filter='Foliage*:TreeStore*' tools/build.sh unit-tests`; `MCP_SUITE=all tools/build.sh mcp-tests -k foliage -j 2` | `docs/perf/foliage.md` |
 | Smoke test | export, build and run a project, then open it in the editor; screenshots | `tools/smoke-test.sh tools/fixtures/post-processing` | `build/smoke/` |
 | Upgrade from origin/main | a game an origin/main editor made (`tools/test-projects/upgrade-from-main`) opened, migrated, played, exported for Linux and the web in this editor, against the old editor's transcripts ([upgrading-from-main.md](upgrading-from-main.md)) | `tools/build.sh linux`, then `tools/ci/upgrade_from_main/check.sh` (the editor part also in the MCP suite: `test_upgrade_from_main.py`) | `build/upgrade-from-main/check/report.md` |
 | Web gate | the web build in headless Chrome (WebGL2 on SwiftShader) | `tools/build.sh web`, then `tools/build.sh web-gate` | `build/test-results/web/` |
@@ -138,7 +139,8 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
   renderer uploads it as R32F or R16F there). `terrain-edit` runs the op sequences of
   `TerrainGolden.*` in WebAssembly and fails when their digest differs from the one the native
-  core suite pins (T1 AC5).
+  core suite pins (T1 AC5). `foliage` hashes T5's placement fixture the same way, then fills a new
+  ring after a camera jump with one thread, within 4 ms a frame at the p99 (T5 AC1, AC4).
 - `GATE=web-keys-audio` (after `WEB_PROJECT=web-keys-audio tools/build.sh web`) runs Chrome with the
   desktop autoplay policy (`chrome_flags` in the baseline): the page's audio is suspended until the
   first key press (`keys`: trusted CDP key events, `eval_before_input` before them, `eval` after),
@@ -229,6 +231,18 @@ The cache cannot hide a bug:
 A new test that needs a game that runs builds it prebuilt. One that needs what only a compiled
 game has (C++ scripts, `ProjectBuild.cmake`, capacities above the player's, native plugins a player cannot carry, no runtime
 shader compiler, compiler output) compiles, and joins the table above with its reason.
+
+### The noise golden tool
+
+`jasperengine-noise-golden` (`tools/noise/golden`: noise, graph and the table, no engine) is the self-check of
+T2's one golden table: `cmake -S tools/noise/golden -B build/noise-golden -G Ninja -DCMAKE_BUILD_TYPE=Release`,
+then `build/noise-golden/jasperengine-noise-golden --all-backends --report -`. It prints
+`noise-golden <target> <backend> <cases> pass|FAIL table=<hash>`, exits 1 on any mismatch, and `--self-test` must
+exit 1. `tools/build.sh exec android tools/noise/cross_check.sh` runs it on the four Android ABIs (ARM under
+qemu-user); `--red-contract` must fail. `WEB_PROJECT=noise tools/build.sh web`, then `GATE=noise tools/build.sh web-gate`,
+runs the same table on the web, also with `WASM_SIMD=0`. `python3 tools/noise/check_kernels.py [--self-test]` is
+the lint for this area, which `tools/check-changed` does not run. A difference is a kernel bug, never a new
+table; record each platform's report in `docs/perf/noise.md`.
 
 ### Linked folders in a web game (S68 AC2)
 

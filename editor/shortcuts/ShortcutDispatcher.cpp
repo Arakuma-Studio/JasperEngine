@@ -69,7 +69,7 @@ const CommandDef* ShortcutDispatcher::resolveIgnoringEnabled(Chord chord, const 
 
 const CommandDef* ShortcutDispatcher::resolveCommand(Chord chord, const ShortcutState& state, bool ignoreEnabled) const {
     if (chord.empty() || capturing || state.popupOpen) return nullptr;
-    // panel contexts first, then Editor, then Global; catalog order within each
+    // the armed brush first, then panel contexts, then Editor, then Global; catalog order within each
     const CommandDef* best = nullptr;
     int bestRank = 3;
     for (const CommandDef& def : catalog.commands()) {
@@ -78,7 +78,8 @@ const CommandDef* ShortcutDispatcher::resolveCommand(Chord chord, const Shortcut
         int rank = 3;
         for (ShortcutContext context : commandContexts(def)) {
             if (!contextActive(context, state)) continue;
-            const int contextRank = context == ShortcutContext::Global ? 2 : (context == ShortcutContext::Editor ? 1 : 0);
+            // an armed brush outranks the panels (T1 R57, T6 R60): its keys shadow theirs only while armed
+            const int contextRank = context == ShortcutContext::Global ? 2 : (context == ShortcutContext::Editor ? 1 : (context == ShortcutContext::VoxelBrush ? -1 : 0));
             rank = std::min(rank, contextRank);
         }
         if (rank >= bestRank) continue;

@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 #include "RenderSystem.h"
+#include "TerrainRenderInfo.h"
+#include "FoliageSystem.h"
 #include "component/CameraComponent.h"
+#if JASPERENGINE_VOXEL
+#include "subsystem/VoxelSystem.h"
+#endif
+#include "component/Transform.h"
 #include "model/ModelCpuData.h"
 #include "device/QualityResolver.h"
 #include "component/UIDocumentComponent.h"
@@ -1186,9 +1192,16 @@ void RenderSystem::destroy(){
     }
 
     // Cached GPU arrays cannot survive renderer shutdown, even when CPU assets are retained.
+#if JASPERENGINE_VOXEL
+    destroyVoxelDetailArrays();
+#endif
+    while (!terrainMacroNormals.empty()){
+        destroyTerrainMacroNormal(terrainMacroNormals.begin()->first);
+    }
     while (!terrainDetailArrays.empty()){
         destroyTerrainDetailArray(terrainDetailArrays.begin()->first);
     }
+    destroyTerrainHoleOverlays();
 }
 
 void RenderSystem::updateFramebuffer(CameraComponent& camera){
@@ -3270,6 +3283,16 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.postColor = postColorVariants;
     environment.litQualityHigh = QualityResolver::litQuality(scene->getLitQuality()) == LitQuality::HIGH;
     environment.pbrTier = MaterialPbr::getRuntimeTier();
+    environment.terrainTier = terrain::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
+    environment.terrainShippedMask = terrain::TerrainQualitySettings::getShippedMask();
+    environment.terrainDebugView = static_cast<int>(terrain::TerrainQualitySettings::getDebugView());
+    {
+        terrain::TerrainQuality forced;
+        if (terrain::TerrainQualitySettings::getEditorPreview(forced) || terrain::TerrainQualitySettings::getGlobalOverride(forced)){
+            environment.terrainForced = true;
+            environment.terrainForcedTier = forced;
+        }
+    }
     environment.tiledLights = lighting.tiledLights;
     environment.capsuleShadows = lighting.capsuleShadows;
     environment.contactShadows = lighting.contactShadows;
@@ -3354,6 +3377,7 @@ SubmeshShaderInputs RenderSystem::getExtraPassShaderInputs(const SubmeshShaderIn
     inputs.pbrTransmission = false;
     inputs.terrainHex = false;
     inputs.terrainHexStochastic = false;
+    inputs.terrainHoles = false;
     return inputs;
 }
 
@@ -3792,10 +3816,21 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     // Painted layers that bring their own surface need the wider terrain path; a
     // terrain of plain color layers keeps the cheaper one it always had.
     inputs.terrainSurface = terrain && hasTerrainSurfaceLayers(*terrain);
+    inputs.voxelTier = mesh.voxelTier;
+    inputs.terrainHoles = terrain && !terrain->holeMap.empty();
+    if (terrain){
+        inputs.terrainVariant = getTerrainVariantInputs(*terrain);
+    }
     inputs.instanced = instmesh != nullptr;
     // Opted in per field, not per band, so emptying the band (editor preview) neither
     // rebuilds the shader nor drops the variant from an export.
     inputs.instanceFade = instmesh && instmesh->distanceFade;
+    if (instmesh && instmesh->foliage){
+        inputs.compactInstance = !instmesh->foliageExpanded;
+        // a material already on library:foliage keeps its own wind, so it doesn't sway twice (F8)
+        inputs.foliageWind = inputs.compactInstance && instmesh->foliageWind && ShaderReference::getBase(shader) != "library:foliage";
+        inputs.foliageDither = instmesh->foliageDither && shaderSupportsFoliageDither(shader);
+    }
     inputs.mirror = mirror;
     // LatticeRender::prepare decides it each frame (a terrain is never deformed)
     inputs.lattice = mesh.lattice.count > 0 && !terrain;
@@ -3818,6 +3853,8 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     }
     inputs.terrainHex = terrain && hasTerrainHexLayers(*terrain);
     inputs.terrainHexStochastic = inputs.terrainHex && hasTerrainStochasticLayers(*terrain);
+    inputs.terrainVariant.hex = inputs.terrainHex;
+    inputs.terrainVariant.hexStochastic = inputs.terrainHexStochastic;
 
     return inputs;
 }
@@ -3909,7 +3946,12 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     }
     // painted layer surfaces are Lit's (a shader with a manifest draws a terrain with its
     // own surface, its uv1 the terrain's tiled UV)
-    const bool p_terrainSurface = inputs.terrain && inputs.terrainSurface && !inputs.manifest;
+    // (a terrain with no layer draws its base material alone, views included: getTerrainDefineBits)
+    const bool p_terrainDebug = inputs.terrain && !inputs.manifest && environment.terrainDebugView != 0 && inputs.terrainVariant.layerCount > 0;
+    const bool p_terrainSurface = inputs.terrain && (inputs.terrainSurface || p_terrainDebug) && !inputs.manifest;
+    const terrain::TerrainQuality p_terrainTier = inputs.terrain ? resolveTerrainTier(environment, inputs.terrainVariant).quality : terrain::TerrainQuality::HIGH;
+    // T3 R14: the macro normal takes the base material's normal map's place, and its slot
+    const bool p_terrainMacroNormal = p_terrainSurface && inputs.terrainVariant.macroNormal && terrain::terrainTierInfo(p_terrainTier).macroNormal && inputs.normal;
     const bool useIBL = (environment.ibl || environment.reflectionProbes) && inputs.receiveIBL;
     // the stages evaluating the object's lights: pixel (USE_PUNCTUAL), vertex
     // (USE_VERTEX_LIGHTS) or both, which the lights' own shading then splits (MIXED)
@@ -3938,7 +3980,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         if (p_hasNormal && inputs.tangent){
             p_hasTangent = true;
         }
-        if (inputs.normalTexture){
+        if (inputs.normalTexture && !p_terrainMacroNormal){
             p_hasNormalMap = true;
         }
         // only pixel lights take shadows
@@ -4073,6 +4115,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
                     p_alphaMask, p_alphaOpaque, p_instanceFade, p_terrainSurface,
                     p_vertexLights, lightCapacity, p_stochastic, p_lattice,
                     inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES);
+    variant.properties |= ShaderPool::getFoliageProperties(ShaderType::MESH, inputs.compactInstance, inputs.foliageWind, inputs.foliageDither);
     // the post-processing colour (phase 4): the scene's, for every colour variant
     if (environment.postColor)
         variant.properties |= ShaderPool::getPostColorProperty(ShaderType::MESH);
@@ -4092,13 +4135,18 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // Lit Quality
     if (!manifest){
         variant.litDefines = variant.pbr.defines;
-        if (p_terrainSurface && inputs.terrainHex){
-            variant.litDefines.push_back(MaterialPbr::TERRAIN_HEX_DEFINE);
-            if (inputs.terrainHexStochastic)
-                variant.litDefines.push_back(MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE);
+        if (inputs.terrain){
+            const std::vector<std::string> terrainDefines = MaterialPbr::getDefinesFromBits(
+                getTerrainDefineBits(environment, inputs.terrainVariant, p_terrainSurface, p_unlit, inputs.normal));
+            variant.litDefines.insert(variant.litDefines.end(), terrainDefines.begin(), terrainDefines.end());
         }
         if (environment.litQualityHigh && !p_unlit)
             variant.litDefines.push_back(MaterialPbr::LIT_QUALITY_DEFINE);
+        if (inputs.voxelTier != 0){
+            variant.litDefines.push_back(MaterialPbr::VOXEL_DEFINE);
+            variant.litDefines.push_back(inputs.voxelTier == 1 ? MaterialPbr::VOXEL_TIER_HIGH_DEFINE
+                                         : inputs.voxelTier == 2 ? MaterialPbr::VOXEL_TIER_MEDIUM_DEFINE : MaterialPbr::VOXEL_TIER_LOW_DEFINE);
+        }
         std::sort(variant.litDefines.begin(), variant.litDefines.end());
     }
 
@@ -4133,6 +4181,11 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             inputs.morphNormal, inputs.morphTangent, inputs.terrain, inputs.instanced,
             p_depthAlphaMask, p_instanceFade, d_normals, d_vertexColorVec3, d_vertexColorVec4, d_uv1, d_textureRect,
             d_stochastic, p_lattice, inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES);
+        variant.depthProperties |= ShaderPool::getFoliageProperties(ShaderType::DEPTH, inputs.compactInstance, inputs.foliageWind, inputs.foliageDither);
+        // the wind's mask reads what the colour pass reads
+        if (inputs.foliageWind && !manifest){
+            variant.depthProperties |= ShaderPool::getDepthMeshProperties(false, false, false, false, false, false, false, false, false, false, inputs.vertexColor3, inputs.vertexColor4);
+        }
     }
 
     // the environment specular the colour pass adds, which the SSR composite swaps for its
@@ -4172,6 +4225,26 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             inputs.terrain, inputs.instanced, inputs.metallicRoughnessTexture, p_terrainSurface && inputs.normal,
             g_stochastic, p_lattice, p_lattice && inputs.vertexColor3, p_lattice && inputs.vertexColor4,
             inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES, g_occlusion, g_uv2, p_instanceFade);
+        variant.gbufferProperties |= ShaderPool::getFoliageProperties(ShaderType::GBUFFER, inputs.compactInstance, inputs.foliageWind, inputs.foliageDither);
+        if (inputs.foliageWind){
+            // the wind mask may read the vertex colour (T5 R19)
+            variant.gbufferProperties |= ShaderPool::getGBufferMeshProperties(false, false, false, false, false, false, false, false, false, false, false, false, inputs.vertexColor3, inputs.vertexColor4);
+        }
+        if (inputs.voxelTier != 0)
+            variant.gbufferProperties |= ShaderPool::getGBufferVoxelProperty();
+    }
+
+    // T3 R20: every pass cuts the same holes, on every shader of the terrain
+    if (inputs.terrainHoles){
+        variant.properties |= ShaderPool::getTerrainHolesProperty(ShaderType::MESH);
+        variant.depthProperties |= ShaderPool::getTerrainHolesProperty(ShaderType::DEPTH);
+        variant.gbufferProperties |= ShaderPool::getTerrainHolesProperty(ShaderType::GBUFFER);
+    }
+    // a G-buffer of a painted terrain reads what its tier reads, and all of its layers
+    if (variant.gbuffer && p_terrainSurface){
+        variant.gbufferProperties |= ShaderPool::getTerrainTierProperty(p_terrainTier);
+        if (inputs.terrainVariant.layerCount > TERRAIN_SHADER_BASE_LAYERS)
+            variant.gbufferProperties |= ShaderPool::getTerrainExtendedProperty();
     }
 
     return variant;
@@ -5671,286 +5744,6 @@ bool RenderSystem::loadGBufferTextures(Material& material, ShaderData& shaderDat
     return true;
 }
 
-namespace {
-    // The loader parses the scale back out of the suffix, so the cache key carries it
-    std::string terrainSourceKey(const Texture& texture){
-        const std::string path = texture.getPath(0);
-        if (path.empty()){
-            return std::string();
-        }
-        return TextureData::hasSvgExtension(path.c_str()) ? TextureData::buildSvgScalePath(path, texture.getSvgScale()) : path;
-    }
-
-    bool terrainLayerHasSurfaceMaps(const TerrainSurfaceLayer& layer){
-        return !layer.occlusionTexture.empty() || !layer.roughnessTexture.empty() ||
-               !layer.metallicTexture.empty() || !layer.heightTexture.empty();
-    }
-
-    // A map is read from its conventional channel when it has color, and from its only
-    // channel when it is grayscale, so packed and separate sources both work
-    unsigned char terrainSourceChannel(TextureData* source, size_t texel, int channel, unsigned char fallback){
-        if (!source || !source->getData()){
-            return fallback;
-        }
-        const int channels = source->getChannels();
-        if (channel == 3 && channels < 4){
-            return fallback;
-        }
-        const unsigned char* pixels = static_cast<const unsigned char*>(source->getData());
-        return pixels[texel * channels + ((channels < 3) ? 0 : channel)];
-    }
-}
-
-// Read here rather than through Texture, which would upload a 2D image per layer on top
-// of the array. Rebuilt when the set of source files changes, and when a file of it does
-// (invalidateTerrainDetailArray: the editor's file pick-up).
-RenderSystem::TerrainDetailArray* RenderSystem::getTerrainDetailArray(Entity entity, TerrainComponent& terrain){
-    // The shader reaches all three layers of any bound blend map, so colors come in threes
-    const size_t layerCount = std::min(terrain.surfaceLayers.size(), (size_t)MAX_TERRAIN_LAYERS);
-    const size_t colorSlices = ((layerCount + 2) / 3) * 3;
-
-    // One slice key per array slice: the color slices first, then the normal and packed
-    // surface slices of the layers that have them
-    std::vector<std::string> sliceKeys(colorSlices);
-    std::array<int, MAX_TERRAIN_LAYERS> normalSlice;
-    std::array<int, MAX_TERRAIN_LAYERS> surfaceSlice;
-    normalSlice.fill(-1);
-    surfaceSlice.fill(-1);
-
-    bool anySource = false;
-    for (size_t i = 0; i < layerCount; i++){
-        const TerrainSurfaceLayer& layer = terrain.surfaceLayers[i];
-        sliceKeys[i] = terrainSourceKey(layer.colorTexture);
-        anySource = anySource || !sliceKeys[i].empty();
-
-        if (!layer.pbr){
-            continue;
-        }
-        if (!layer.normalTexture.empty()){
-            normalSlice[i] = (int)sliceKeys.size();
-            sliceKeys.push_back("normal|" + terrainSourceKey(layer.normalTexture));
-            anySource = true;
-        }
-        if (terrainLayerHasSurfaceMaps(layer)){
-            surfaceSlice[i] = (int)sliceKeys.size();
-            sliceKeys.push_back("surface|" + terrainSourceKey(layer.occlusionTexture) + "|" + terrainSourceKey(layer.roughnessTexture) +
-                                "|" + terrainSourceKey(layer.metallicTexture) + "|" + terrainSourceKey(layer.heightTexture));
-            anySource = true;
-        }
-    }
-
-    if (!anySource){
-        destroyTerrainDetailArray(entity);
-        return NULL;
-    }
-
-    // One sampler covers every slice, so the first assigned layer sets it for all of them
-    const Texture* sampled = &terrain.surfaceLayers[0].colorTexture;
-    for (size_t i = 0; i < layerCount; i++){
-        if (!terrain.surfaceLayers[i].colorTexture.empty()){
-            sampled = &terrain.surfaceLayers[i].colorTexture;
-            break;
-        }
-    }
-
-    // Tiled surface maps alias badly at distance without mipmaps. A color-only terrain
-    // keeps whatever filter its layer textures ask for, so its look is unchanged.
-    TextureFilter minFilter = sampled->getMinFilter();
-    if (minFilter == TextureFilter::LINEAR && hasTerrainSurfaceLayers(terrain)){
-        minFilter = TextureFilter::LINEAR_MIPMAP_LINEAR;
-    }
-
-    auto it = terrainDetailArrays.find(entity);
-    if (it != terrainDetailArrays.end()){
-        const TerrainDetailArray& cached = it->second;
-        if (cached.sliceKeys == sliceKeys && cached.minFilter == minFilter && cached.magFilter == sampled->getMagFilter() &&
-            cached.wrapU == sampled->getWrapU() && cached.wrapV == sampled->getWrapV()){
-            // A set that could not be built is remembered, not retried every frame
-            return cached.failed ? NULL : &it->second;
-        }
-        destroyTerrainDetailArray(entity);
-    }
-
-    auto remember = [&](bool failed) -> TerrainDetailArray& {
-        TerrainDetailArray& entry = terrainDetailArrays[entity];
-        entry.sliceKeys = sliceKeys;
-        entry.colorSlices = (int)colorSlices;
-        entry.normalSlice = normalSlice;
-        entry.surfaceSlice = surfaceSlice;
-        entry.minFilter = minFilter;
-        entry.magFilter = sampled->getMagFilter();
-        entry.wrapU = sampled->getWrapU();
-        entry.wrapV = sampled->getWrapV();
-        entry.failed = failed;
-        return entry;
-    };
-
-    // A map shared by several layers is read once, and the array takes the largest of them
-    std::map<std::string, TextureData> sources;
-    int width = 0;
-    int height = 0;
-    auto source = [&](const Texture& texture) -> TextureData* {
-        const std::string key = terrainSourceKey(texture);
-        if (key.empty()){
-            return NULL;
-        }
-        auto found = sources.find(key);
-        if (found == sources.end()){
-            found = sources.emplace(key, TextureData()).first;
-            if (!found->second.loadTextureFromFile(key.c_str())){
-                return NULL;
-            }
-            // stb hands over the pixels, and nothing else will free them
-            found->second.setDataOwned(true);
-            width = std::max(width, found->second.getWidth());
-            height = std::max(height, found->second.getHeight());
-        }
-        return found->second.getData() ? &found->second : NULL;
-    };
-
-    struct SliceSources{
-        enum Kind{ SLICE_COLOR, SLICE_NORMAL, SLICE_SURFACE };
-        Kind kind = SLICE_COLOR;
-        TextureData* color = NULL;
-        TextureData* normal = NULL;
-        TextureData* occlusion = NULL;
-        TextureData* roughness = NULL;
-        TextureData* metallic = NULL;
-        TextureData* height = NULL;
-    };
-    std::vector<SliceSources> sliceSources(sliceKeys.size());
-    for (size_t i = 0; i < layerCount; i++){
-        const TerrainSurfaceLayer& layer = terrain.surfaceLayers[i];
-        sliceSources[i].color = source(layer.colorTexture);
-        if (normalSlice[i] >= 0){
-            sliceSources[normalSlice[i]].kind = SliceSources::SLICE_NORMAL;
-            sliceSources[normalSlice[i]].normal = source(layer.normalTexture);
-        }
-        if (surfaceSlice[i] >= 0){
-            SliceSources& packed = sliceSources[surfaceSlice[i]];
-            packed.kind = SliceSources::SLICE_SURFACE;
-            packed.occlusion = source(layer.occlusionTexture);
-            packed.roughness = source(layer.roughnessTexture);
-            packed.metallic = source(layer.metallicTexture);
-            packed.height = source(layer.heightTexture);
-        }
-    }
-
-    if (width == 0){
-        remember(true);
-        return NULL;
-    }
-    if (width > MAX_TERRAIN_DETAIL_SIZE || height > MAX_TERRAIN_DETAIL_SIZE){
-        Log::warn("Terrain detail maps are capped at %d px, larger sources are downscaled", MAX_TERRAIN_DETAIL_SIZE);
-        width = std::min(width, MAX_TERRAIN_DETAIL_SIZE);
-        height = std::min(height, MAX_TERRAIN_DETAIL_SIZE);
-    }
-
-    for (auto& entry : sources){
-        // A map that failed to load is kept so it is not retried, but it has nothing to resize
-        if (!entry.second.getData()){
-            continue;
-        }
-        if (entry.second.getWidth() != width || entry.second.getHeight() != height){
-            entry.second.resize(width, height);
-        }
-    }
-
-    // Slices share one format, and the packed ones need four channels anyway
-    const size_t texels = (size_t)width * height;
-    std::vector<std::vector<unsigned char>> slices(sliceKeys.size());
-    for (size_t s = 0; s < sliceKeys.size(); s++){
-        const SliceSources& src = sliceSources[s];
-        // An unassigned map falls back to the neutral value of its channel: white for
-        // color and surface, and a flat normal that leaves the geometry alone
-        slices[s].resize(texels * 4, 0xFF);
-        for (size_t t = 0; t < texels; t++){
-            unsigned char* texel = &slices[s][t * 4];
-            if (src.kind == SliceSources::SLICE_NORMAL){
-                texel[0] = terrainSourceChannel(src.normal, t, 0, 0x80);
-                texel[1] = terrainSourceChannel(src.normal, t, 1, 0x80);
-                texel[2] = terrainSourceChannel(src.normal, t, 2, 0xFF);
-            }else if (src.kind == SliceSources::SLICE_SURFACE){
-                texel[0] = terrainSourceChannel(src.occlusion, t, 0, 0xFF);
-                texel[1] = terrainSourceChannel(src.roughness, t, 1, 0xFF);
-                texel[2] = terrainSourceChannel(src.metallic, t, 2, 0xFF);
-                texel[3] = terrainSourceChannel(src.height, t, 0, 0xFF);
-            }else{
-                texel[0] = terrainSourceChannel(src.color, t, 0, 0xFF);
-                texel[1] = terrainSourceChannel(src.color, t, 1, 0xFF);
-                texel[2] = terrainSourceChannel(src.color, t, 2, 0xFF);
-                texel[3] = terrainSourceChannel(src.color, t, 3, 0xFF);
-            }
-        }
-    }
-
-    // the mips of each slice by its kind: colour in linear light, normals renormalized, packed
-    // surface data per channel (MipChain, as every texture: spec S14 D6)
-    const bool mipmapped = minFilter == TextureFilter::LINEAR_MIPMAP_LINEAR || minFilter == TextureFilter::LINEAR_MIPMAP_NEAREST ||
-                           minFilter == TextureFilter::NEAREST_MIPMAP_LINEAR || minFilter == TextureFilter::NEAREST_MIPMAP_NEAREST;
-    std::vector<std::vector<MipLevel>> sliceLevels(sliceKeys.size());
-    for (size_t s = 0; s < sliceKeys.size(); s++){
-        MipChainOptions options;
-        options.maxLevels = mipmapped ? 0 : 1;
-        options.wrap = true;
-        MipLevel base;
-        base.width = width;
-        base.height = height;
-        if (sliceSources[s].kind == SliceSources::SLICE_NORMAL){
-            options.channels = 3;
-            options.type = MipPixelType::F32;
-            options.normalMap = true;
-            base.pixels.resize(texels * 3 * sizeof(float));
-            float* v = reinterpret_cast<float*>(base.pixels.data());
-            for (size_t t = 0; t < texels * 3; t++)
-                v[t] = slices[s][(t / 3) * 4 + t % 3] / 255.0f * 2.0f - 1.0f;
-        }else{
-            const bool colour = sliceSources[s].kind == SliceSources::SLICE_COLOR;
-            options.srgb = colour;
-            options.alphaWeighted = colour;
-            base.pixels = std::move(slices[s]);
-        }
-        sliceLevels[s].push_back(std::move(base));
-        MipChain::build(sliceLevels[s], options);
-        if (sliceSources[s].kind == SliceSources::SLICE_NORMAL){
-            for (MipLevel& level : sliceLevels[s]){
-                const size_t n = (size_t)level.width * (size_t)level.height;
-                const float* v = reinterpret_cast<const float*>(level.pixels.data());
-                std::vector<uint8_t> rgba(n * 4, 0xFF);
-                for (size_t t = 0; t < n; t++)
-                    for (int c = 0; c < 3; c++)
-                        rgba[t * 4 + c] = (uint8_t)std::clamp((int)std::lround((v[t * 3 + c] * 0.5f + 0.5f) * 255.0f), 0, 255);
-                level.pixels = std::move(rgba);
-            }
-        }
-    }
-    std::vector<std::vector<uint8_t>> combined(sliceLevels.empty() ? 0 : sliceLevels[0].size());
-    std::vector<TextureLevel> levels(combined.size());
-    for (size_t level = 0; level < combined.size(); level++){
-        for (const std::vector<MipLevel>& slice : sliceLevels)
-            combined[level].insert(combined[level].end(), slice[level].pixels.begin(), slice[level].pixels.end());
-        levels[level].width = sliceLevels[0][level].width;
-        levels[level].height = sliceLevels[0][level].height;
-        levels[level].data = combined[level].data();
-        levels[level].size = combined[level].size();
-    }
-
-    TerrainDetailArray& detail = remember(false);
-    if (!detail.render.createTextureLevels("terrain|detail|" + std::to_string(entity), TextureType::TEXTURE_ARRAY,
-            GpuTextureFormat::RGBA8, width, height, (int)sliceKeys.size(), levels,
-            minFilter, sampled->getMagFilter(), sampled->getWrapU(), sampled->getWrapV())){
-        detail.failed = true;
-        return NULL;
-    }
-    // sokol copied the levels, or the queue holds them until it runs
-    if (Engine::isAsyncThread()){
-        auto* keep = new std::vector<std::vector<uint8_t>>(std::move(combined));
-        SystemRender::scheduleCleanup([](void* buffers){ delete static_cast<std::vector<std::vector<uint8_t>>*>(buffers); }, keep);
-    }
-
-    return &detail;
-}
-
 void RenderSystem::destroyTerrainDetailArray(Entity entity){
     auto it = terrainDetailArrays.find(entity);
     if (it != terrainDetailArrays.end()){
@@ -5972,42 +5765,6 @@ void RenderSystem::invalidateTerrainDetailArray(Entity entity){
             mesh->submeshes[s].needUpdateTexture = true;
         }
     }
-}
-
-// Factors change without rebuilding the array, so the block is filled at draw time
-void RenderSystem::applyTerrainLayersUniform(ObjectRender& render, int slot, Entity entity, TerrainComponent& terrain){
-    if (slot == -1){
-        return;
-    }
-
-    auto it = terrainDetailArrays.find(entity);
-    const TerrainDetailArray* detail = (it != terrainDetailArrays.end() && !it->second.failed) ? &it->second : NULL;
-
-    static const TerrainSurfaceLayer emptyLayer;
-
-    fs_terrain_layers_t layers;
-    for (int i = 0; i < MAX_TERRAIN_LAYERS; i++){
-        const bool present = i < (int)terrain.surfaceLayers.size();
-        const TerrainSurfaceLayer& layer = present ? terrain.surfaceLayers[i] : emptyLayer;
-        const bool pbr = present && layer.pbr;
-
-        layers.colorFactor[i] = Vector4(layer.colorFactor.x, layer.colorFactor.y, layer.colorFactor.z, pbr ? 1.0f : 0.0f);
-        layers.uvTransform[i] = Vector4(layer.uvScale.x, layer.uvScale.y, layer.uvOffset.x, layer.uvOffset.y);
-        layers.surface[i] = Vector4(layer.roughnessFactor, layer.metallicFactor, layer.normalStrength, layer.occlusionStrength);
-        layers.slices[i] = Vector4((float)i,
-                                   detail ? (float)detail->normalSlice[i] : -1.0f,
-                                   detail ? (float)detail->surfaceSlice[i] : -1.0f,
-                                   // the hex rotation of a hex tiled layer, < 0 for the others (TERRAIN_HEX_TILING)
-                                   (present && layer.hexTiling) ? std::clamp(layer.hexRotation, 0.0f, 1.0f) : -1.0f);
-        // The user values as they are (includes/stochastic.glsl maps them), a cell size of 0
-        // turning the layer's stochastic branch off
-        layers.stochastic[i] = (present && layer.stochasticTiling)
-            ? Vector4(std::clamp(layer.stochasticCellSize, 0.01f, 64.0f), std::clamp(layer.stochasticBlendSharpness, 0.0f, 1.0f),
-                      std::clamp(layer.stochasticContrast, 0.0f, 1.0f), std::clamp(layer.stochasticRotation, 0.0f, 1.0f))
-            : Vector4(0.0f, 0.0f, 0.0f, 0.0f);
-    }
-
-    render.applyUniformBlock(slot, sizeof(fs_terrain_layers_t), &layers);
 }
 
 bool RenderSystem::loadTerrainTextures(Entity entity, TerrainComponent& terrain, ObjectRender& render, ShaderData& shaderData){
@@ -6035,7 +5792,7 @@ bool RenderSystem::loadTerrainTextures(Entity entity, TerrainComponent& terrain,
     render.addTexture(slotTex, ShaderStageType::FRAGMENT, arrayCreated ? &detail->render : &emptyArrayWhite);
 
     // The rest bind black, which weights none of their layers
-    const int coveredMaps = arrayCreated ? detail->colorSlices / 3 : 0;
+    const int coveredMaps = arrayCreated ? std::min(detail->colorSlices, TERRAIN_SHADER_BASE_LAYERS) / 3 : 0;
     for (int m = 0; m < MAX_TERRAIN_BLENDMAPS; m++){
         const bool covered = m < coveredMaps && m < static_cast<int>(terrain.blendMaps.size());
         textureRender = covered ? terrain.blendMaps[m].getRender(&emptyBlack) : NULL;
@@ -6053,7 +5810,12 @@ bool RenderSystem::loadTerrainTextures(Entity entity, TerrainComponent& terrain,
         }
     }
 
-    return true;
+    // T3 R14: the macro normal in the normal map's slot, flat until its bake is ready
+    if (auto macro = terrainMacroNormals.find(entity); macro != terrainMacroNormals.end() && macro->second.render.isCreated()){
+        render.addTexture(shaderData.getTextureIndex(TextureShaderType::NORMAL), ShaderStageType::FRAGMENT, &macro->second.render);
+    }
+
+    return loadTerrainHoleTexture(terrain, render, shaderData);
 }
 
 bool RenderSystem::loadTerrainHeightTexture(TerrainComponent& terrain, ObjectRender& render, ShaderData& shaderData){
@@ -6068,14 +5830,15 @@ bool RenderSystem::loadTerrainHeightTexture(TerrainComponent& terrain, ObjectRen
     }
 
     render.addTexture(slotTex, ShaderStageType::VERTEX, textureRender);
-    return true;
+    return loadTerrainHoleTexture(terrain, render, shaderData);
 }
 
 bool RenderSystem::updateTerrainRenderTextures(Entity entity, TerrainComponent& terrain, MeshComponent& mesh){
     // a render target its maps show was made again (a fluid's output, a camera's after a view
     // loss): bound again, as meshes do (checkPBRFrabebufferUpdate)
     if (!terrain.needUpdateTexture){
-        bool outdated = terrain.heightMap.isFramebufferOutdated() || terrain.heightMap.isRenderOutdated();
+        bool outdated = terrain.heightMap.isFramebufferOutdated() || terrain.heightMap.isRenderOutdated() ||
+                        terrain.holeMap.isRenderOutdated();
         for (const Texture& blendMap : terrain.blendMaps)
             outdated = outdated || blendMap.isFramebufferOutdated() || blendMap.isRenderOutdated();
         if (outdated)
@@ -6132,6 +5895,7 @@ void RenderSystem::updateAllTerrainRenderTextures(){
         Entity entity = meshes->getEntity(i);
         TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
         if (terrain){
+            updateTerrainMacroNormal(entity, *terrain, mesh);
             updateTerrainRenderTextures(entity, *terrain, mesh);
         }
     }
@@ -6814,6 +6578,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (p_instanceFade){
             mesh.submeshes[i].slotVSFade = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE);
         }
+        mesh.submeshes[i].slotVSFoliage = (meshProperties & ShaderPool::getFoliageProperties(ShaderType::MESH, false, true, true)) ?
+            shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FOLIAGE) : -1;
         if (hasFog){
             mesh.submeshes[i].slotFSFog = shaderData.getUniformBlockIndex(UniformBlockType::FS_FOG);
         }
@@ -6908,8 +6674,18 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             render.addTexture(shaderData.getTextureIndex(TextureShaderType::REFLECTIONPROBE), ShaderStageType::FRAGMENT, &emptyCubeBlack);
         }
 
+#if JASPERENGINE_VOXEL
+        if (mesh.voxelTier != 0){
+            mesh.submeshes[i].slotFSVoxelLayers = shaderData.getUniformBlockIndex(UniformBlockType::FS_VOXEL_LAYERS);
+            if (!loadVoxelTextures(mesh.voxelOwner, mesh.submeshes[i].render, shaderData)){
+                return false;
+            }
+        }
+#endif
+
         if (terrain){
             mesh.submeshes[i].slotVSTerrain = shaderData.getUniformBlockIndex(UniformBlockType::TERRAIN_VS_PARAMS);
+            mesh.submeshes[i].slotVSTerrainMacro = shaderData.getUniformBlockIndexByName("u_vs_terrainMacro");
             if (p_terrainSurface){
                 mesh.submeshes[i].slotFSTerrainLayers = shaderData.getUniformBlockIndex(UniformBlockType::FS_TERRAIN_LAYERS);
             }
@@ -7085,6 +6861,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             if (p_instanceFade){
                 mesh.submeshes[i].slotVSDepthFade = depthShaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE);
             }
+            mesh.submeshes[i].slotVSDepthFoliage = (variant.depthProperties & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, true, true)) ?
+                depthShaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FOLIAGE) : -1;
             // the sprite rect an alpha-clipping depth program's UV goes through ('Txr')
             if (mesh.submeshes[i].hasTextureRect){
                 mesh.submeshes[i].slotVSDepthSprite = depthShaderData.getUniformBlockIndex(UniformBlockType::SPRITE_VS_PARAMS);
@@ -7247,6 +7025,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             ShaderData& gbufferShaderData = mesh.submeshes[i].gbufferShader.get()->shaderData;
 
             mesh.submeshes[i].slotVSGBufferParams = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_VS_PARAMS);
+            mesh.submeshes[i].slotVSGBufferFoliage = (variant.gbufferProperties & ShaderPool::getFoliageProperties(ShaderType::GBUFFER, false, true, true)) ?
+                gbufferShaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FOLIAGE) : -1;
             // the instance distance fade, as the colour and depth passes shrink it ('Ifd')
             mesh.submeshes[i].slotVSGBufferFade = (mesh.submeshes[i].gbufferShaderProperties & shaderPropertyBit(18)) ?
                 gbufferShaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE) : -1;
@@ -7265,6 +7045,14 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 mesh.submeshes[i].slotVSGBufferLattice = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_VS_LATTICE);
                 mesh.submeshes[i].slotVSGBufferLatticeTexture = gbufferShaderData.getTextureIndex(TextureShaderType::LATTICE);
             }
+#if JASPERENGINE_VOXEL
+            if (mesh.voxelTier != 0){
+                mesh.submeshes[i].slotFSGBufferVoxelLayers = gbufferShaderData.getUniformBlockIndex(UniformBlockType::FS_VOXEL_LAYERS);
+                if (!loadVoxelTextures(mesh.voxelOwner, gbufferRender, gbufferShaderData)){
+                    return false;
+                }
+            }
+#endif
             if (variant.gbufferProperties & (shaderPropertyBit(14) | shaderPropertyBit(15))){ // 'Vat', 'Vab'
                 mesh.submeshes[i].slotVSGBufferVat = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_VS_VAT);
                 mesh.submeshes[i].slotVSGBufferVatTexture = gbufferShaderData.getTextureIndex(TextureShaderType::VAT);
@@ -9310,6 +9098,8 @@ const LodDraw& RenderSystem::planMeshLod(Entity entity, MeshComponent& mesh, con
 // culled slice of every instanced mesh for the main camera and each shadow slot;
 // runs when a list or a camera changed, so a still frame uploads nothing
 void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& mainCameraTransform){
+    buildFoliageLists(&primaryView, mainCamera, mainCameraTransform, rv().lodView, true);
+
     if (!instanceViewsDirty)
         return;
     instanceViewsDirty = false;
@@ -9324,6 +9114,8 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
     auto instmeshes = scene->getComponentArray<InstancedMeshComponent>();
     for (int i = 0; i < instmeshes->size(); i++){
         InstancedMeshComponent& instmesh = instmeshes->getComponentFromIndex(i);
+        if (instmesh.foliage)
+            continue;
         MeshComponent* mesh = scene->findComponent<MeshComponent>(instmeshes->getEntity(i));
         Transform* transform = scene->findComponent<Transform>(instmeshes->getEntity(i));
         if (!mesh || !transform || !mesh->loaded){
@@ -9513,6 +9305,10 @@ void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& rang
 
 // instances and detail level a pass draws a mesh with; false when there is nothing to draw
 bool RenderSystem::selectMeshDraw(Entity entity, MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh, bool ownLod, int instanceView, const LodView* lodView, MeshDraw& draw){
+    if (instmesh && instmesh->foliage){
+        draw.instanceCount = foliageDrawCount(*instmesh, instanceView);
+        return draw.instanceCount != 0;
+    }
     if (instmesh){
         // a view whose upload was refused this frame draws nothing rather than stale instances
         if (instanceView >= 0 && !instanceViewOf(instanceView).current)
@@ -9672,6 +9468,11 @@ void RenderSystem::releaseSubmeshLodFade(Submesh& submesh){
 // one level
 void RenderSystem::drawSubmeshGeometry(ObjectRender& render, Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView, unsigned int lod, unsigned int instanceCount,
                                        const std::function<void(unsigned int)>* beforeLevel){
+    // T5 F4: foliage draws its view's slices by vertex-buffer offset
+    if (instmesh && instmesh->foliage){
+        drawFoliageSubmesh(render, entity, mesh, submeshIndex, *instmesh, instanceView);
+        return;
+    }
     Submesh& submesh = mesh.submeshes[submeshIndex];
 
     if (instmesh && instanceView >= 0){
@@ -9902,6 +9703,7 @@ void RenderSystem::updateInstanceBuffers(){
     }
 
     uploadInstanceViews(rv());
+    uploadFoliageViews();
 }
 
 // the culled lists a view rebuilt, each into its own buffer
@@ -10421,8 +10223,15 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 // morph from this view's eye position (paired with its node selection)
                 terrain->eyePos = terrainNodes->nodesEyePos;
                 render.applyUniformBlock(mesh.submeshes[i].slotVSTerrain, sizeof(float) * 8, &(terrain->eyePos));
-                applyTerrainLayersUniform(render, mesh.submeshes[i].slotFSTerrainLayers, entity, *terrain);
+                applyTerrainLayersUniform(render, mesh.submeshes[i].slotFSTerrainLayers, entity, *terrain, mesh.submeshes[i].litDefineBits,
+                                          (mesh.submeshes[i].litDefineBits & MaterialPbr::getDefineBit("TERRAIN_EXTENDED_LAYERS")) != 0);
+                applyTerrainMacroVertexUniform(render, mesh.submeshes[i].slotVSTerrainMacro, *terrain);
             }
+#if JASPERENGINE_VOXEL
+            if (mesh.voxelTier != 0){
+                applyVoxelLayersUniform(render, mesh.submeshes[i].slotFSVoxelLayers, mesh.voxelOwner, camTransform.worldPosition);
+            }
+#endif
 
             //model, normal and mvp matrix
             render.applyUniformBlock(mesh.submeshes[i].slotVSParams, sizeof(float) * 48, (void*)objectBlock);
@@ -11551,7 +11360,7 @@ bool RenderSystem::collectGBufferDraw(Entity entity, MeshComponent& mesh, Transf
     return true;
 }
 
-void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams){
+void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, const Vector3& eye){
     Entity entity = record.entity;
     MeshComponent& mesh = *record.mesh;
     Transform& transform = *record.transform;
@@ -11659,10 +11468,16 @@ void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, c
             continue;
         }
 
+#if JASPERENGINE_VOXEL
+        if (mesh.voxelTier != 0){
+            applyVoxelLayersUniform(gbufferRender, mesh.submeshes[i].slotFSGBufferVoxelLayers, mesh.voxelOwner, eye);
+        }
+#endif
         if (terrain){
             terrain->eyePos = terrainNodes->nodesEyePos;
             gbufferRender.applyUniformBlock(mesh.submeshes[i].slotVSGBufferTerrain, sizeof(float) * 8, &(terrain->eyePos));
-            applyTerrainLayersUniform(gbufferRender, mesh.submeshes[i].slotFSGBufferTerrainLayers, entity, *terrain);
+            applyTerrainLayersUniform(gbufferRender, mesh.submeshes[i].slotFSGBufferTerrainLayers, entity, *terrain, 0,
+                                      (mesh.submeshes[i].gbufferShaderProperties & ShaderPool::getTerrainExtendedProperty()) != 0);
             instanceCount = terrainNodes->nodesbuffer[i].getCount();
             gbufferRender.replaceVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), terrainNodes->nodesbuffer[i].getRender());
         }
@@ -11687,6 +11502,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
     // view-space normal (octahedral) + roughness + metallic at the same texel layout.
     Matrix4 renderVP = camera.viewProjectionMatrix;
     Matrix4 viewMatrix = camera.viewMatrix;
+    const Vector3 eye = viewMatrix.inverse() * Vector3(0.0f, 0.0f, 0.0f);
     SSRView& ssr = rv().ssr;
 
     // 1. the meshes that draw, and the screen the probes they are under cover
@@ -11773,7 +11589,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
     gbufferPassRender.startRenderPass(&rv().gbufferFramebuffer.getRender());
     for (GBufferDraw& record : ssr.draws){
         vs_gbuffer_t params = {objectModel(*record.transform), renderVP, record.normalMatrix};
-        drawMeshGBuffer(record, camera.farClip, camera.frustumPlanes, params);
+        drawMeshGBuffer(record, camera.farClip, camera.frustumPlanes, params, eye);
     }
     gbufferPassRender.endRenderPass();
 }
@@ -12715,6 +12531,8 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSVatTexture = {-1, -1};
         submesh.slotVSTerrain = -1;
         submesh.slotFSTerrainLayers = -1;
+        submesh.slotFSVoxelLayers = -1;
+        submesh.slotVSTerrainMacro = -1;
 
         submesh.slotVSDepthParams = -1;
         submesh.slotVSDepthFade = -1;
@@ -12741,6 +12559,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSGBufferVatTexture = {-1, -1};
         submesh.slotVSGBufferTerrain = -1;
         submesh.slotFSGBufferTerrainLayers = -1;
+        submesh.slotFSGBufferVoxelLayers = -1;
 
         submesh.customVSParams.clear();
         submesh.customFSParams.clear();
@@ -14610,7 +14429,7 @@ void RenderSystem::driveReflectionCamera(CameraComponent& refCam, Transform& ref
     updateCameraFrustumPlanes(refCam.viewProjectionMatrix, refCam.frustumPlanes);
 }
 
-RenderSystem::WaterReflectionPass::WaterReflectionPass(){
+RenderSystem::WaterReflectionPass::WaterReflectionPass() : transform(std::make_unique<Transform>()){
     // the reflection renders into the pass's own framebuffer
     delete camera.framebuffer;
     camera.framebuffer = &framebuffer;
@@ -14790,7 +14609,7 @@ void RenderSystem::renderWaterReflections(RenderView& view, CameraComponent& vie
         pass.camera.framebufferHeight = height;
 
         const ReflectionPlane& plane = planes[p];
-        driveReflectionCamera(pass.camera, pass.transform, reflectionViewer, Vector3(0.0f, 1.0f, 0.0f), Vector3(0.0f, plane.level, 0.0f), clipOffset);
+        driveReflectionCamera(pass.camera, *pass.transform, reflectionViewer, Vector3(0.0f, 1.0f, 0.0f), Vector3(0.0f, plane.level, 0.0f), clipOffset);
 
         // the viewer's lighting and maps (shadows are world-space): none of its own to draw
         shareCameraShadows(pass.shadows, viewerShadows, pass.camera, reflectionShadows);
@@ -14801,13 +14620,13 @@ void RenderSystem::renderWaterReflections(RenderView& view, CameraComponent& vie
 #ifdef JASPERENGINE_EDITOR
         if (view.secondary){
             passObjects = &pass.objects;
-            buildPassObjects(pass.objects, pass.camera, pass.transform);
-            selectPassTerrain(pass.objects, pass.camera, pass.transform);
+            buildPassObjects(pass.objects, pass.camera, *pass.transform);
+            selectPassTerrain(pass.objects, pass.camera, *pass.transform);
             passTerrainView = TERRAIN_PASS_VIEW;
         }else
 #endif
         if (passTerrainView != 0){
-            selectCameraTerrain(pass.camera, pass.transform, passTerrainView);
+            selectCameraTerrain(pass.camera, *pass.transform, passTerrainView);
         }
 
         // (the cut mainTerrainView gives the pass's draws)
@@ -14815,7 +14634,7 @@ void RenderSystem::renderWaterReflections(RenderView& view, CameraComponent& vie
 
         CameraPass cameraPass;
         cameraPass.camera = &pass.camera;
-        cameraPass.cameraTransform = &pass.transform;
+        cameraPass.cameraTransform = pass.transform.get();
         cameraPass.isMain = false;
         cameraPass.renderToTexture = true;
         cameraPass.reflection = true;
@@ -15438,6 +15257,12 @@ std::vector<std::string> RenderSystem::describeNotLoaded() const{
 }
 
 void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char*)>& visit) const{
+#if JASPERENGINE_VOXEL
+    // R20: a volume is not loaded until its first LOD set is on screen
+    if (std::shared_ptr<VoxelSystem> voxels = scene->findSystem<VoxelSystem>()){
+        voxels->forEachLoading([&visit](Entity owner){ visit(false, owner, "voxel volume"); });
+    }
+#endif
 
     // Check MeshComponents
     auto meshes = scene->getComponentArray<MeshComponent>();
@@ -17035,7 +16860,8 @@ void RenderSystem::update(double dt){
             TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
 
             InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
-            if (instmesh){
+            // a foliage prototype has no instances of its own: its bounds and lists are FoliageSystem's
+            if (instmesh && !instmesh->foliage){
                 if (instmesh->distanceFade){
                     // The range is a model-space distance, so the eye moves into that space
                     // instead: scaling the range into world space breaks on a scaled mesh.
@@ -17159,21 +16985,30 @@ void RenderSystem::update(double dt){
                     mesh.needReload = true;
                 }
 
+                // T3 R29: the first cut and the last fill swap the variant, the loaded one drawing
+                // meanwhile (a stand-in for holes binds an all-solid map)
+                if (terrain && mesh.loaded && !mesh.needReload &&
+                        ((mesh.submeshes[s].shaderProperties & ShaderPool::getTerrainHolesProperty(ShaderType::MESH)) != 0) != !terrain->holeMap.empty()){
+                    mesh.needVariantReload = true;
+                }
+
                 // A layer gains or loses its own surface from the editor, a script or an AI
                 // action, and only a reload can swap the terrain variant that reads it
                 if (terrain && !mesh.submeshes[s].manifest){
+                    const MeshShaderEnvironment terrainEnvironment = getMeshShaderEnvironment();
                     const bool shaderTerrainSurface = (mesh.submeshes[s].shaderProperties & (1u << 27)) != 0;
-                    if (shaderTerrainSurface != hasTerrainSurfaceLayers(*terrain)){
+                    const bool wantsSurface = hasTerrainSurfaceLayers(*terrain) || (terrainEnvironment.terrainDebugView != 0 && !terrain->surfaceLayers.empty());
+                    if (shaderTerrainSurface != wantsSurface){
                         mesh.needReload = true;
-                    }else if (shaderTerrainSurface && mesh.loaded && !mesh.needReload){
-                        // so can a layer's hex tiling, a define of the built-in Lit's variant
-                        // (as asked for: the plain variant standing in for it reloads on its own)
-                        const bool shaderHex = (mesh.submeshes[s].litDefineBits & MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_DEFINE)) != 0;
-                        // and whether that variant carries Stochastic Tiling beside it
-                        const bool shaderHexStochastic = (mesh.submeshes[s].litDefineBits &
-                                                          MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE)) != 0;
-                        const bool hex = hasTerrainHexLayers(*terrain);
-                        if (shaderHex != hex || shaderHexStochastic != (hex && hasTerrainStochasticLayers(*terrain))){
+                    }else if (mesh.loaded && !mesh.needReload){
+                        // so can a layer's hex tiling, a tier or a feature: defines of the built-in Lit's
+                        // variant (as asked for: the plain variant standing in for it reloads on its own)
+                        terrain::TerrainVariantInputs variantInputs = getTerrainVariantInputs(*terrain);
+                        variantInputs.hex = hasTerrainHexLayers(*terrain);
+                        variantInputs.hexStochastic = variantInputs.hex && hasTerrainStochasticLayers(*terrain);
+                        const bool unlit = (mesh.submeshes[s].shaderProperties & (1u << 0)) != 0;
+                        const uint64_t expected = getTerrainDefineBits(terrainEnvironment, variantInputs, shaderTerrainSurface, unlit, mesh.submeshes[s].hasNormal);
+                        if ((mesh.submeshes[s].litDefineBits & MaterialPbr::getTerrainDefineBits()) != expected){
                             mesh.needVariantReload = true;
                         }
                     }
@@ -17222,7 +17057,9 @@ void RenderSystem::update(double dt){
                             mesh.needReload = true;
                         }
                         const bool shaderNormalMap = (mesh.submeshes[s].shaderProperties & (1 << 7)) != 0; // 'Nmp'
-                        if (shaderNormalMap != !mesh.submeshes[s].material.normalTexture.empty()){
+                        // T3 R14: the macro normal stands in the base normal map's place, so no 'Nmp' to follow
+                        const bool macroNormal = (mesh.submeshes[s].litDefineBits & MaterialPbr::getDefineBit("TERRAIN_MACRO_NORMAL")) != 0;
+                        if (!macroNormal && shaderNormalMap != !mesh.submeshes[s].material.normalTexture.empty()){
                             mesh.needReload = true;
                         }
                     }else if (mesh.loaded && !mesh.needReload && !rebindOnly){
@@ -17859,6 +17696,7 @@ void RenderSystem::drawCameras(bool includeMain){
             if (terrainView != 0){
                 selectCameraTerrain(camera, *cameraTransformPtr, terrainView);
             }
+            buildFoliageCameraList(camera, *cameraTransformPtr, terrainView);
             cameraLighting = &getCameraShadows(cameraEntity);
             prepareCameraShadows(*cameraLighting, camera, *cameraTransformPtr, terrainView, true);
             buildCameraShadowInstances(*cameraLighting);
@@ -17881,7 +17719,9 @@ void RenderSystem::drawCameras(bool includeMain){
         pass.renderToTexture = camera.renderToTexture;
         pass.terrainView = terrainView;
         passShadows = cameraLighting;
+        foliagePassView = terrainView;
         renderCameraPass(pass);
+        foliagePassView = 0;
         passShadows = nullptr;
     }
 
@@ -17929,6 +17769,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     const bool isMainCamera = pass.isMain;
     passCamera = &camera;
     const int terrainView = pass.terrainView;
+    foliagePassEye = pass.cameraTransform->worldPosition;
     // layers this camera draws (Unity Camera.cullingMask)
     const uint32_t cullingMask = camera.cullingMask;
 
@@ -19631,7 +19472,7 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 
 //-----Editor overlays and secondary views-----
 
-RenderSystem::MirrorView::MirrorView(){
+RenderSystem::MirrorView::MirrorView() : transform(std::make_unique<Transform>()){
     // the reflection renders into the view's own framebuffer
     delete camera.framebuffer;
     camera.framebuffer = &framebuffer;
@@ -20178,6 +20019,7 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
     }
 
     collectShadowSlots();
+    buildFoliageLists(&view, camera, cameraTransform, view.lodView, false);
 
     // what the lists depend on besides the batches themselves
     uint64_t shadowHash = 1469598103934665603ULL;
@@ -20215,6 +20057,8 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
     for (int i = 0; i < instmeshes->size(); i++){
         InstancedMeshComponent& instmesh = instmeshes->getComponentFromIndex(i);
         Entity entity = instmeshes->getEntity(i);
+        if (instmesh.foliage)
+            continue;
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
         Transform* transform = scene->findComponent<Transform>(entity);
 
@@ -20327,7 +20171,7 @@ void RenderSystem::renderViewMirrors(RenderView& view, CameraComponent& camera){
             continue;
 
         CameraComponent& refCam = mirrorView.camera;
-        Transform& refCamTransform = mirrorView.transform;
+        Transform& refCamTransform = *mirrorView.transform;
 
         Vector3 worldNormal = (mirrorTransform->worldRotation * mirror.normal).normalize();
         driveReflectionCamera(refCam, refCamTransform, viewer, worldNormal, mirrorTransform->worldPosition, 0.0f);

@@ -68,8 +68,10 @@ const ToolModule TOOL_MODULES[] = {
     {registerDeviceTools, "Device tiers: GPU, thermal and memory state, simulation", "device"},   // S56
     {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23
     {registerGraphTools, "Graphs", "scripting"},   // S23
+    {registerTerrainGenerationTools, "Terrain generation: Noise Graphs", "terrain"},   // T2
     {registerGameplayTools, "Gameplay: input, character controller, water", "gameplay"},   // S22
     {registerSplineTools, "Splines: roads, walls, placement, terrain and water", "splines"},   // S18
+    {registerVoxelTools, "Voxel Volumes", "voxels"},   // T6
     {registerTerrainTools, "Terrain: declarative edits and heightmap files", "terrain"},   // T1
     {registerEditorToolsTools, "Editor tools: recorder, colour sampling, swatches, curves", "editor_tools"},   // S27
     {registerParticleTools, "Particles: effects and playback", "particles"},   // S20

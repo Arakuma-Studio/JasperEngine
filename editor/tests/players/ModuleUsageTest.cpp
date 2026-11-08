@@ -23,10 +23,13 @@
 #include "component/Rigidbody2DComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "component/ScriptComponent.h"
+#include "component/TerrainComponent.h"
 #include "component/SplineExtrudeComponent.h"
 #include "component/Transform.h"
 #include "component/UIDocumentComponent.h"
+#include "component/NavMeshSurfaceComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/VoxelVolumeComponent.h"
 
 #include <gtest/gtest.h>
 
@@ -88,6 +91,20 @@ TEST(ModuleUsage, AnEmptyProjectNeedsNothing) {
     EXPECT_EQ(modules(withLua("local v = Vector3(1, 2, 3)\nif Input.isKeyPressed(1) then Log.info(tostring(v:length())) end")), "");
 }
 
+// T5 AC17: a tree's capsule is a body the physics module has to build
+TEST(ModuleUsage, TreeCapsulesNeedPhysics3d) {
+    OneEntity plain;
+    TerrainComponent terrain;
+    TerrainTreePrototype prototype;
+    prototype.id = 1;
+    terrain.treePrototypes.push_back(prototype);
+    plain.scene.addComponent<TerrainComponent>(plain.entity, terrain);
+    EXPECT_EQ(modules(plain.usage()).find("physics3d"), std::string::npos) << "no collision, no module";
+
+    plain.scene.getComponent<TerrainComponent>(plain.entity).treePrototypes[0].collision = TerrainTreeCollision::Capsule;
+    EXPECT_NE(modules(plain.usage()).find("physics3d"), std::string::npos);
+}
+
 TEST(ModuleUsage, TheSoundLayerFollowsTheImportTable) {
     ModuleScan scan = empty();
     EXPECT_EQ(modules(ModuleUsageDetector::analyze(scan)), "");
@@ -135,6 +152,70 @@ TEST(ModuleUsage, ASplineExtrudeCollisionNeedsPhysics) {
         one.scene.addComponent<SplineExtrudeComponent>(one.entity, extrude);
         EXPECT_EQ(modules(one.usage()), expected);
     }
+}
+
+// T6 R48: each kind of evidence, and what a volume's fields add
+TEST(ModuleUsage, VoxelComponentNeedsTheModule) {
+    OneEntity one;
+    VoxelVolumeComponent volume;
+    volume.collision = false;
+    volume.navigationUpdate = VoxelNavigationUpdate::Off;
+    one.scene.addComponent<VoxelVolumeComponent>(one.entity, volume);
+    const ModuleUsage usage = one.usage();
+    // its generators reach Noise Graphs (R48), on the volume's own evidence
+    EXPECT_EQ(modules(usage), "noise voxel");
+    EXPECT_EQ(usage.firstEvidence("voxel"), "scene Main: Voxel Volume on Thing");
+    EXPECT_EQ(usage.firstEvidence("noise"), "scene Main: Voxel Volume on Thing: Voxel Volume (its generators use Noise Graphs)");
+}
+
+TEST(ModuleUsage, VoxelCollisionAddsPhysics) {
+    OneEntity one;
+    VoxelVolumeComponent volume;
+    volume.navigationUpdate = VoxelNavigationUpdate::Off;
+    one.scene.addComponent<VoxelVolumeComponent>(one.entity, volume);
+    const ModuleUsage usage = one.usage();
+    EXPECT_EQ(modules(usage), "physics3d noise voxel");
+    EXPECT_EQ(usage.firstEvidence("physics3d"), "scene Main: Voxel Volume collision on Thing");
+}
+
+TEST(ModuleUsage, VoxelNavigationUpdateAddsNavigationOnlyWithASurface) {
+    OneEntity one;
+    VoxelVolumeComponent volume;
+    volume.collision = false;
+    one.scene.addComponent<VoxelVolumeComponent>(one.entity, volume);
+    // Automatic, and nothing to rebake
+    EXPECT_EQ(modules(one.usage()), "noise voxel");
+    one.scene.addComponent<NavMeshSurfaceComponent>(one.entity, {});
+    const ModuleUsage usage = one.usage();
+    EXPECT_EQ(modules(usage), "navigation noise voxel");
+    EXPECT_EQ(usage.firstEvidence("navigation"), "scene Main: Voxel Volume navigation update on Thing");
+    // Off: nothing rebakes it
+    one.scene.getComponent<VoxelVolumeComponent>(one.entity).navigationUpdate = VoxelNavigationUpdate::Off;
+    EXPECT_EQ(modules(one.usage()), "noise voxel");
+}
+
+TEST(ModuleUsage, VoxelScriptPropertyNeedsTheModule) {
+    OneEntity one;
+    ScriptComponent scripts;
+    ScriptEntry entry;
+    entry.type = ScriptType::LUA;
+    entry.className = "Digger";
+    ScriptProperty property;
+    property.name = "cave";
+    property.ptrTypeName = "VoxelVolume*";
+    entry.properties.push_back(property);
+    scripts.scripts.push_back(entry);
+    one.scene.addComponent<ScriptComponent>(one.entity, scripts);
+    const ModuleUsage usage = one.usage();
+    EXPECT_TRUE(usage.needs("voxel"));
+    EXPECT_NE(usage.firstEvidence("voxel").find("script property cave (VoxelVolume)"), std::string::npos) << usage.firstEvidence("voxel");
+}
+
+TEST(ModuleUsage, VoxelLuaNameNeedsTheModule) {
+    const ModuleUsage usage = withLua("local v = VoxelVolume.fromGameObject(self)");
+    EXPECT_TRUE(usage.needs("voxel"));
+    EXPECT_NE(usage.firstEvidence("voxel").find("lua/test.lua:1"), std::string::npos) << usage.firstEvidence("voxel");
+    EXPECT_FALSE(withLua("local v = 1").needs("voxel"));
 }
 
 TEST(ModuleUsage, ScriptPropertyTypesNeedTheirModules) {
@@ -193,7 +274,7 @@ TEST(ModuleUsage, LuaNamesNeedTheirModules) {
 }
 
 TEST(ModuleUsage, DynamicAccessNeedsEveryModule) {
-    const std::string every = "htmlui video runtimeshaders physics3d physics2d";
+    const std::string every = "htmlui video runtimeshaders physics3d physics2d noise voxel";
     for (const char* code : {"local f = _G[name]", "local f = _ENV[name]", "local chunk = load(text)", "local s = loadstring(text)",
                              "dofile(path)", "local r = debug.getregistry()", "local g = package.loaded", "local m = require(name)",
                              "local g = require('_G')"}) {
@@ -209,7 +290,7 @@ TEST(ModuleUsage, CppScriptsNeedEveryModule) {
     ModuleScan scan = empty();
     scan.cppScripts.push_back("scripts/Player.cpp");
     const ModuleUsage usage = ModuleUsageDetector::analyze(scan);
-    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d");
+    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d noise voxel");
     EXPECT_NE(usage.firstEvidence("htmlui").find("scripts/Player.cpp"), std::string::npos);
 }
 
@@ -419,6 +500,14 @@ TEST(PlayerVariants, TheSmallestVariantHoldingTheModules) {
     EXPECT_EQ(PlayerRuntimes::variantFor({"runtimeshaders", "physics3d"}).name, "core");
     EXPECT_EQ(PlayerRuntimes::variantFor({"htmlui", "physics2d"}).name, "ui");
     EXPECT_EQ(PlayerRuntimes::variantFor({"htmlui", "video"}).name, "full");
+    // T6 R47: full, ui and core hold Voxel Volumes, the lite ones do not
+    EXPECT_EQ(PlayerRuntimes::variantFor({"voxel"}).name, "core");
+    EXPECT_EQ(PlayerRuntimes::variantFor({"htmlui", "voxel"}).name, "ui");
+    EXPECT_EQ(PlayerRuntimes::variantFor({"htmlui", "video", "voxel"}).name, "full");
+    for (const PlayerVariant& variant : variants) {
+        const bool has = std::find(variant.modules.begin(), variant.modules.end(), "voxel") != variant.modules.end();
+        EXPECT_EQ(has, variant.name != "lite3d" && variant.name != "lite2d") << variant.name;
+    }
     for (const PlayerVariant& variant : variants)
         for (const std::string& module : variant.modules)
             EXPECT_NE(std::find(player::allModules().begin(), player::allModules().end(), module), player::allModules().end()) << module;
@@ -437,6 +526,23 @@ TEST(PlayerVariants, TheSmallestVariantHoldingTheModules) {
     EXPECT_EQ(PlayerRuntimes::smallestWith({lite}, {"htmlui"}), nullptr);
     EXPECT_EQ(PlayerRuntimes::runtimeId("linux", "x64", "glcore", false, "lite3d"), "linux-x64-glcore-release-lite3d");
     EXPECT_EQ(PlayerRuntimes::runtimeId("linux", "x64", "glcore", false), "linux-x64-glcore-release");
+}
+
+// T2 R43, AC34: each kind of evidence for noise, and what is not evidence
+TEST(ModuleUsage, NoiseEvidence) {
+    EXPECT_TRUE(withLua("local v = Noise.perlin(1, 2)").needs("noise"));
+    EXPECT_TRUE(withLua("local g = NoiseGraph.load('a.noisegraph')").needs("noise"));
+    // dynamic access and C++ code reach anything, which detectedModules covers
+    EXPECT_TRUE(withLua("local t = _G[name]").needs("noise"));
+    ModuleScan cpp = empty();
+    cpp.cppScripts.push_back("scripts/Player.cpp");
+    EXPECT_TRUE(ModuleUsageDetector::analyze(cpp).needs("noise"));
+}
+
+TEST(ModuleUsage, ABakedProjectDoesNotNeedNoise) {
+    EXPECT_FALSE(ModuleUsageDetector::analyze(empty()).needs("noise"));
+    // a script that never names it; a .noisegraph on disk is not part of the scan at all
+    EXPECT_FALSE(withLua("local noise = 1; print(noise)").needs("noise"));
 }
 
 // docs/specs/S37-sound-events.md 6.6: what needs the soundlayer module, and every variant has it

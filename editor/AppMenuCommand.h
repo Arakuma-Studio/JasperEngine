@@ -40,6 +40,8 @@ namespace jasperengine::editor {
         ToggleConsole,
         ToggleAnimation,
         ToggleTerrain,
+        ToggleVoxelVolume,
+        ToggleVoxelSlice,
         ToggleTextureSynthesis,
         ToggleSpriteNormals,
         TogglePhysicsPlacement,
@@ -143,6 +145,9 @@ namespace jasperengine::editor {
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
         AddCameraShakerToMainCamera,  // GameObject > Add Camera Shaker to Main Camera
+        // T2 R55, R62
+        ToggleNoiseGraph,             // Window > Terrain > Noise Graph
+        AssetsCreateNoiseGraph,
         // the Doriax catch-up's project-window: the one Create list, Duplicate, Maximize On Play
         AssetsCreateCppSource,
         AssetsCreateCppHeader,

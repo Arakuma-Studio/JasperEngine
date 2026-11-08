@@ -430,6 +430,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         project->audioFilesChanged(paths);
     }
     reload::reloadParticleEffects(ctx, files(external, "particles"));
+    reload::reloadVoxelVolumes(ctx, files(external, "voxel"));
     reload::reloadFonts(ctx, files(external, "font"));
     reload::reloadAnimations(ctx, both("animation"), files(external, "model"), options.full);
     // another program's changes not reloaded yet (the dedupe above): the documents' own stamps

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "component/ButtonComponent.h"
+#include "component/Transform.h"
 #include "util/ProjectChecks.h"
 #include "component/CanvasGroupComponent.h"
 #include "camera/ShakePresets.h"

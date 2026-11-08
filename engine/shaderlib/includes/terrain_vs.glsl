@@ -48,6 +48,23 @@ in float i_terrainnode_resolution; //int
     }
 #endif
 
+#ifdef TERRAIN_HOLES
+    // T3 R20: the one UV the hole test reads, in every pass (includes/terrain_holes_fs.glsl)
+    out vec2 v_terrainHoleUV;
+#endif
+
+// T3 R9: at Low the noise of Macro Variation is computed here: one varying, no fragment cost
+#if defined(TERRAIN_MACRO) && defined(TERRAIN_QUALITY_LOW) && defined(TERRAIN_SURFACE_VARYINGS)
+    #define TERRAIN_MACRO_VERTEX
+    #include "includes/terrain_macro.glsl"
+    uniform u_vs_terrainMacro {
+        vec4 params; // x = 1 / scale, y = strength, z = slope fade
+        vec4 tintA;
+        vec4 tintB;
+    } terrainMacroBlock;
+    out vec3 v_terrainMacroTint;
+#endif
+
 float morphFactor;
 
 
@@ -88,6 +105,14 @@ vec3 getTerrainPosition(vec3 pos, mat4 modelMatrix){
 
     pos = vec3(pos.x, getHeight(pos), pos.z);
 
+    #ifdef TERRAIN_HOLES
+        v_terrainHoleUV = (pos.xz + (terrain.size / 2.0)) / terrain.size;
+    #endif
+    #if defined(TERRAIN_MACRO_VERTEX) && !defined(HAS_NORMALS)
+        v_terrainMacroTint = terrainMacroTint(pos.xz + vec2(terrain.size / 2.0), 1.0, terrainMacroBlock.params,
+                                              terrainMacroBlock.tintA.rgb, terrainMacroBlock.tintB.rgb);
+    #endif
+
     return pos;
 }
 
@@ -114,6 +139,10 @@ vec3 getTerrainNormal(vec3 normal, vec3 position){
 
         #ifdef TERRAIN_SURFACE_VARYINGS
             v_terrainNormal = normal;
+        #endif
+        #ifdef TERRAIN_MACRO_VERTEX
+            v_terrainMacroTint = terrainMacroTint(position.xz + vec2(terrain.size / 2.0), abs(normal.y), terrainMacroBlock.params,
+                                                  terrainMacroBlock.tintA.rgb, terrainMacroBlock.tintB.rgb);
         #endif
     #endif
 

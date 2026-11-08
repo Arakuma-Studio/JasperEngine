@@ -81,6 +81,7 @@ namespace jasperengine {
         // in binding directory
         static void registerActionClasses(lua_State *L);
         static void registerParticleClasses(lua_State *L);
+        static void registerFoliageClasses(lua_State *L);
         static void registerCoreClasses(lua_State *L);
         static void registerECSClasses(lua_State *L);
         static void registerAudioClasses(lua_State *L);
@@ -95,7 +96,11 @@ namespace jasperengine {
         static void registerGameplayClasses(lua_State *L);
         static void registerNavigationClasses(lua_State *L);
         static void registerSplineClasses(lua_State *L);
+        static void registerNoiseClasses(lua_State *L);
         static void registerTerrainClasses(lua_State *L);
+#if JASPERENGINE_VOXEL
+        static void registerVoxelClasses(lua_State *L);
+#endif
         static void registerCrashClasses(lua_State *L);
 #if JASPERENGINE_HTMLUI
         static void registerHtmlUIClasses(lua_State *L);

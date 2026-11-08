@@ -106,6 +106,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `meshes` | S53 (model import and cook, render budgets), S54 (`capture_model_lods`) |
 | `splines` | S18 |
 | `terrain` | S31: `sculpt_terrain`, `set_terrain_maps`, `sample_terrain` (out of core to fit the budget) |
+| `voxels` | T6 |
 | `navigation` | S19 |
 | `particles` | S20, upstream's `import_unity_particles` (out of core to fit the budget) |
 | `animation` | S21 |

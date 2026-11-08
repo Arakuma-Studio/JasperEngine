@@ -1,25 +1,28 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Terrain foliage chunks (docs/superpowers/specs/2026-11-04-render-correctness-design.md 6.6,
-// 6.8). The chunk ring was sized from the current view span, which changes as the camera crosses
-// chunk borders (Draw Distance 50: 4 then 5 chunks a side): each change destroyed or created chunk
-// entities, each parsing the mesh again, and refilled every slot (Doriax de70fa31c). It is sized
-// for the widest span now, so walking never destroys a chunk. Min Draw Distance sets the chunks'
-// near fade, and the Foliage Distance quality scale multiplies both distances (0 draws none). A
-// scale changed at runtime refills every slot: one past the new span kept its old chunk, its
-// instances doubling the new chunks' under the old fade.
+// Terrain foliage's ring and distances (docs/superpowers/specs/2026-11-04-render-correctness-design.md
+// 6.6, 6.8), on T5's FoliageSystem (docs/specs/T5-foliage.md R66: render-correctness landed first, and
+// T5 keeps what these pin). The ring was sized from the current view span, which changes as the camera
+// crosses chunk borders (Draw Distance 50: 4 then 5 chunks a side): each change destroyed or created
+// entities, each parsing the mesh again, and refilled every slot (Doriax de70fa31c). Now a layer has one
+// entity for its life, and walking places only the cells that enter. Min Draw Distance sets the near
+// fade, and the Foliage Distance quality scale multiplies both distances (0 draws none). A scale changed
+// at runtime refills every cell, so no instance is drawn twice under two fades.
 // glcore and Vulkan.
 
 #include "Engine.h"
 #include "Scene.h"
 #include "component/InstancedMeshComponent.h"
+#include "component/CameraComponent.h"
 #include "component/TerrainComponent.h"
 #include "object/Camera.h"
 #include "object/Light.h"
 #include "object/Terrain.h"
+#include "subsystem/FoliageSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "terrain/FoliageTypes.h"
 
 #include "GpuEnvironment.h"
 #include "LogCapture.h"
@@ -30,6 +33,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <fstream>
 #include <map>
@@ -126,24 +130,36 @@ namespace {
             }, 600)) << "the foliage never settled";
         }
 
-        // every drawn chunk fades at the layer's scaled Draw Distance, and no instance is in two
+        // what the main camera's view draws of the layer, as FoliageSystem builds it for the frame
+        FoliageViewList drawnView(){
+            CameraComponent& cameraComponent = scene.getComponent<CameraComponent>(camera.getEntity());
+            FoliageViewRequest request;
+            request.planes = cameraComponent.frustumPlanes;
+            request.farClip = cameraComponent.farClip;
+            request.eye = camera.getWorldPosition();
+            FoliageViewList list;
+            scene.getSystem<FoliageSystem>()->buildView(list, request);
+            return list;
+        }
+
+        // every drawn instance is within the layer's scaled Draw Distance (shrinking past its fade
+        // start), and no instance is drawn twice
         void expectChunksFor(float drawDistance, const char* when){
+            const FoliageViewList list = drawnView();
+            const Vector3 eye = camera.getWorldPosition();
             std::map<std::array<float, 3>, int> positions;
-            int drawn = 0;
-            for (Entity entity : chunkEntities()){
-                const InstancedMeshComponent& chunk = scene.getComponent<InstancedMeshComponent>(entity);
-                if (chunk.instances.empty())
-                    continue;
-                drawn++;
-                EXPECT_FLOAT_EQ(chunk.fadeEnd, drawDistance) << when << ": a chunk keeps another Draw Distance";
-                for (const InstanceData& instance : chunk.instances)
-                    positions[{instance.position.x, instance.position.y, instance.position.z}]++;
+            for (const terrain::FoliageInstance& instance : list.stream){
+                const float dx = instance.position[0] - eye.x;
+                const float dz = instance.position[2] - eye.z;
+                const float distance = std::sqrt(dx * dx + dz * dz);
+                EXPECT_LE(distance, drawDistance + 0.5f) << when << ": an instance past the scaled Draw Distance";
+                positions[{instance.position[0], instance.position[1], instance.position[2]}]++;
             }
-            EXPECT_GT(drawn, 0) << when << ": no chunk draws";
+            EXPECT_GT(list.stream.size(), 0u) << when << ": nothing draws";
             int doubled = 0;
             for (const auto& entry : positions)
                 doubled += entry.second > 1 ? 1 : 0;
-            EXPECT_EQ(doubled, 0) << when << ": instances drawn by two chunks";
+            EXPECT_EQ(doubled, 0) << when << ": instances drawn twice";
         }
 
         std::set<Entity> chunkEntities(){
@@ -158,19 +174,25 @@ TEST_F(TerrainFoliageGpu, WalkingKeepsTheChunkEntities){
     JASPER_REQUIRE_GPU();
     settle();
     std::set<Entity> seen = chunkEntities();
-    ASSERT_FALSE(seen.empty()) << "the layer made no chunk";
+    ASSERT_FALSE(seen.empty()) << "the layer made no entity";
+    const uint32_t placedBefore = scene.getSystem<FoliageSystem>()->getStats(terrain.getEntity()).detailCellsPlaced;
     // across chunk borders (32 m chunks): the span is 4 then 5 chunks a side
     for (int step = 1; step <= 40; step++){
         camera.setPosition(1.6f * (float)step, 2.0f, 0.0f);
         GpuEnvironment::drawFrames(1);
         const std::set<Entity> now = chunkEntities();
         for (Entity entity : seen){
-            EXPECT_TRUE(now.count(entity)) << "a chunk entity was destroyed at x = " << 1.6f * (float)step;
+            EXPECT_TRUE(now.count(entity)) << "the layer's entity was destroyed at x = " << 1.6f * (float)step;
         }
         seen.insert(now.begin(), now.end());
     }
-    // one ring: 5 x 5 chunks at most (ceil(2 * 50 / 32) + 1)
-    EXPECT_LE(seen.size(), 25u);
+    settle();
+    // 64 m of walking enters at most 9 columns of 8 m cells, each as tall as the ring
+    const uint32_t placed = scene.getSystem<FoliageSystem>()->getStats(terrain.getEntity()).detailCellsPlaced - placedBefore;
+    const uint32_t ringSide = static_cast<uint32_t>(std::ceil(2.0f * 50.0f / terrain::FOLIAGE_DETAIL_CELL_SIZE)) + 1;
+    EXPECT_LE(placed, 9u * ringSide) << "walking refilled cells that stayed";
+    // one entity for the layer, for its life (the ring is cells, not entities: T5 F1, R66)
+    EXPECT_EQ(seen.size(), 1u);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -179,18 +201,30 @@ TEST_F(TerrainFoliageGpu, MinDrawDistanceAndTheScaleSetTheChunksFades){
     scene.getComponent<TerrainComponent>(terrain.getEntity()).foliageLayers[0].minDrawDistance = 20.0f;
     Engine::setFoliageDistanceScale(0.5f);
     settle();
-    const std::set<Entity> entities = chunkEntities();
-    ASSERT_FALSE(entities.empty());
-    const InstancedMeshComponent& chunk = scene.getComponent<InstancedMeshComponent>(*entities.begin());
-    EXPECT_FLOAT_EQ(chunk.fadeEnd, 25.0f) << "Draw Distance is not scaled";
-    EXPECT_FLOAT_EQ(chunk.fadeStart, 25.0f * 0.75f);
-    EXPECT_FLOAT_EQ(chunk.nearFadeEnd, 10.0f) << "Min Draw Distance is not scaled";
-    EXPECT_FLOAT_EQ(chunk.nearFadeStart, 10.0f * 0.75f);
+    const FoliageViewList list = drawnView();
+    ASSERT_FALSE(list.stream.empty());
+    const Vector3 eye = camera.getWorldPosition();
+    float nearest = 1e9f, farthest = 0.0f;
+    for (const terrain::FoliageInstance& instance : list.stream){
+        const float dx = instance.position[0] - eye.x;
+        const float dz = instance.position[2] - eye.z;
+        const float distance = std::sqrt(dx * dx + dz * dz);
+        nearest = std::min(nearest, distance);
+        farthest = std::max(farthest, distance);
+        // the scale: full between the fades, shrinking within them
+        if (distance < 10.0f * 0.75f || distance > 25.0f) {
+            ADD_FAILURE() << "an instance at " << distance << " m draws";
+        }
+        if (distance > 10.0f && distance < 25.0f * 0.75f) {
+            EXPECT_GT(instance.scale, 0.0f);
+        }
+    }
+    EXPECT_LE(farthest, 25.0f) << "Draw Distance is not scaled";
+    EXPECT_GE(nearest, 10.0f * 0.75f) << "Min Draw Distance is not scaled";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// 50 m: 32 m chunks; 25 m: 16 m chunks; a ring of 5 a side for both, the span 4 chunks a side.
-// At x = 20 the span is chunks -1..2 for both: the slot of chunk -2, past it, keeps that 32 m chunk
+// The camera walks first, so cells past the new span hold instances when the scale changes
 TEST_F(TerrainFoliageGpu, ChangingTheScaleRefillsEverySlot){
     JASPER_REQUIRE_GPU();
     settle();
@@ -216,12 +250,13 @@ TEST_F(TerrainFoliageGpu, ZeroScaleRemovesTheLayer){
     ASSERT_FALSE(chunkEntities().empty());
     Engine::setFoliageDistanceScale(0.0f);
     GpuEnvironment::drawFrames(2);
-    EXPECT_TRUE(chunkEntities().empty()) << "Foliage Distance 0 still draws foliage";
+    EXPECT_TRUE(drawnView().stream.empty()) << "Foliage Distance 0 still draws foliage";
+    EXPECT_EQ(scene.getSystem<FoliageSystem>()->getStats(terrain.getEntity()).detailVisible, 0u);
 
     // the editor's terrain preview shows the layer whatever the game's scale
     meshes()->setFoliagePreviewEntity(terrain.getEntity());
     settle();
-    EXPECT_FALSE(chunkEntities().empty()) << "the preview follows the game's Foliage Distance";
+    EXPECT_FALSE(drawnView().stream.empty()) << "the preview follows the game's Foliage Distance";
     meshes()->setFoliagePreviewEntity(NULL_ENTITY);
     EXPECT_NO_ENGINE_ERRORS();
 }

@@ -234,7 +234,7 @@ namespace jasperengine{
         // the built-in Lit's defines its colour variant was loaded with (the "builtin:lit#..."
         // reference, SubmeshShaderVariant::litDefines, as MaterialPbr::getDefineBits) and the
         // extension maps that variant binds, in slot order (u_pbrExtTexture0..2; COUNT: none)
-        uint32_t litDefineBits = 0;
+        uint64_t litDefineBits = 0;
         PbrMap pbrMaps[MaterialPbr::MAX_EXTENSION_MAPS] = {PbrMap::COUNT, PbrMap::COUNT, PbrMap::COUNT};
 
         int slotVSParams = -1;
@@ -243,6 +243,7 @@ namespace jasperengine{
         // its stochastic vec4 (16 floats), or less from a fork made before it
         unsigned int sizeFSParams = 0;
         int slotFSTexCoordSets = -1;
+        int slotVSFoliage = -1;
         int slotVSFade = -1;
         int slotFSLighting = -1;        // legacy u_fs_lighting of an older fork
         int slotVSObjectLights = -1;    // includes/lights.glsl
@@ -271,6 +272,8 @@ namespace jasperengine{
         std::pair<int, int> slotVSVatTexture = {-1, -1};
         int slotVSTerrain = -1;
         int slotFSTerrainLayers = -1;
+        int slotFSVoxelLayers = -1;
+        int slotVSTerrainMacro = -1;    // u_vs_terrainMacro: Low's Macro Variation (T3 R9)
         // u_fs_pbrParams of a built-in Lit lobe variant ends with the lobes' values (and the UV
         // sets with a second set): its size, their offsets (bytes; size 0: no lobes)
         uint16_t pbrParamsSize = 0;
@@ -290,6 +293,7 @@ namespace jasperengine{
         int slotFSDepthMaterial = -1;
         unsigned int sizeFSDepthMaterial = 0; // reflected: 2 vec4 with Stochastic Tiling, else 1
         int slotVSDepthFade = -1;
+        int slotVSDepthFoliage = -1;
         int slotVSDepthSkinning = -1;
         int slotVSDepthMorphTarget = -1;
         int slotVSDepthLattice = -1;
@@ -300,6 +304,7 @@ namespace jasperengine{
         int slotVSDepthSprite = -1;
 
         int slotVSGBufferParams = -1;
+        int slotVSGBufferFoliage = -1;
         int slotVSGBufferFade = -1;
         int slotFSGBufferMaterial = -1;
         unsigned int sizeFSGBufferMaterial = 0; // reflected: 3 vec4 with Stochastic Tiling, else 2
@@ -311,6 +316,7 @@ namespace jasperengine{
         std::pair<int, int> slotVSGBufferVatTexture = {-1, -1};
         int slotVSGBufferTerrain = -1;
         int slotFSGBufferTerrainLayers = -1;
+        int slotFSGBufferVoxelLayers = -1;
 
         // custom uniform blocks of the forked shaders, filled from MeshComponent::shaderUniforms
         CustomUniformBlock customVSParams;
@@ -462,6 +468,11 @@ namespace jasperengine{
     struct MeshComponent{
         // component checkbox: its system skips a disabled component
         bool enabled = true;
+
+        // a Voxel Volume's chunk (T6 R19): its owner and tier (0: not a chunk; 1 High, 2 Medium, 3 Low),
+        // which pick the Lit defines and the volume's texture array. Never saved.
+        Entity voxelOwner = NULL_ENTITY;
+        uint8_t voxelTier = 0;
 
         bool loaded = false;
         bool loadCalled = false;

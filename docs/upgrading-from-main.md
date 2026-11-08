@@ -207,3 +207,16 @@ git add tools/test-projects/upgrade-from-main && git commit -m "upgrade test: fi
 commit), `--old-editor <editor-install> --commit <sha>` uses an editor already
 built. A feature that only the newer `origin/main` has fails the check until it is synced: list it
 under "Features that need a sync" above.
+
+## Foliage (T5)
+
+Scenes made before foliage's upgrade place the same grass from the same seeds and look the same, with no
+conversion. A project without the new settings stays High, with no caps, on every platform. These behave
+differently, on purpose:
+
+1. Grass and detail meshes no longer enter navmesh bakes. They used to, depending on where the editor's
+   camera was.
+2. `MeshRaycast` no longer hits detail instances unless asked (`PICK_DETAIL`), and its hit's `entity` is the
+   Terrain, not a hidden chunk.
+3. Paint Trees places Trees by default in new strokes. Place As: GameObject keeps what it did.
+4. A disabled Terrain hides its foliage. `sculpt_terrain`'s `place_object` keeps today's result.

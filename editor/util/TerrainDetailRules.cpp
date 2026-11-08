@@ -33,12 +33,13 @@ const DetailPair kPairs[] = {
     {"min_slope", "max_slope", &TerrainFoliageLayer::minSlope, &TerrainFoliageLayer::maxSlope},
     {"min_height", "max_height", &TerrainFoliageLayer::minHeight, &TerrainFoliageLayer::maxHeight},
     {"min_draw_distance", "draw_distance", &TerrainFoliageLayer::minDrawDistance, &TerrainFoliageLayer::drawDistance},
+    {"min_height_ratio", "max_height_ratio", &TerrainFoliageLayer::minHeightRatio, &TerrainFoliageLayer::maxHeightRatio},
 };
 
 }
 
 const std::vector<editor::terraindetail::DetailRange>& editor::terraindetail::detailRanges() {
-    // density: MeshSystem draws at most 8192 instances per 8 m cell (128 per square unit)
+    // density: FoliageSystem places at most 8192 instances per 8 m cell (128 per square unit)
     static const std::vector<DetailRange> ranges = {
         {"density", &TerrainFoliageLayer::density, 0.0f, 128.0f,
          "instances per square world unit where the density map is full; the engine draws at most 8192 per 8 m cell"},
@@ -53,6 +54,14 @@ const std::vector<editor::terraindetail::DetailRange>& editor::terraindetail::de
         {"draw_distance", &TerrainFoliageLayer::drawDistance, 1.0f, 500.0f, "world units from the camera"},
         {"min_draw_distance", &TerrainFoliageLayer::minDrawDistance, 0.0f, 500.0f,
          "world units from the camera where instances start to show (a nearer copy of the layer ends there)"},
+        // T5 R65: the foliage fields, here so the tool, set_properties and the load clamp all hold them
+        {"min_height_ratio", &TerrainFoliageLayer::minHeightRatio, 0.01f, 1.99f, "height over the width scale; 1 keeps the mesh's own proportions"},
+        {"max_height_ratio", &TerrainFoliageLayer::maxHeightRatio, 0.01f, 1.99f, "height over the width scale; 1 keeps the mesh's own proportions"},
+        {"noise_spread", &TerrainFoliageLayer::noiseSpread, 0.0f, 10.0f, "noise cells per world unit between the dry and healthy colours; 0 picks per instance"},
+        {"wind_bend", &TerrainFoliageLayer::windBend, 0.0f, 1.0f, "how far the wind bends the layer's tips; 0 draws it still"},
+        {"density_falloff_start", &TerrainFoliageLayer::densityFalloffStart, 0.0f, 1.0f, "the share of the draw distance where density starts to fall"},
+        {"far_density", &TerrainFoliageLayer::farDensity, 0.0f, 1.0f, "the share of the density left at the draw distance"},
+        {"density_scale", &TerrainFoliageLayer::densityScale, 0.0f, 1.0f, "the layer's own multiplier of the Terrain's Detail Density"},
     };
     return ranges;
 }

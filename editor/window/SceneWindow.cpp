@@ -1,13 +1,17 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "TerrainQualityPanel.h"
+#include "component/TerrainComponent.h"
 #include "SceneWindow.h"
 #include "audio/SoundDrop.h"
 #include "component/TextComponent.h"
+#include "component/Transform.h"
 #include "component/TranslateTracksComponent.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "component/MeshPolygonComponent.h"
 #include "widget/ColorField.h"
+#include "voxel/VoxelBrushTool.h"
 #include "util/EditorScripts.h"
 #include "DocumentFile.h"
 #include "util/PhysicsMaterialAssets.h"
@@ -1932,6 +1936,26 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }
     }
 
+    // T6 R60 (T1 DC12): Alt on an armed Voxel Volume brush starts no stroke. Past the drag threshold it
+    // is the orbit below, and a release before it picks the material under the pointer.
+    VoxelBrushTool& voxelBrush = VoxelBrushTool::get();
+    // Alt pressed mid-stroke keeps the release from the view's own path below
+    if (voxelBrush.isStrokeActive() && altHeld && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        voxelBrush.endStroke();
+    }
+    if (voxelBrush.isEditingScene(sceneProject->scene)) {
+        if (isMouseInWindow && altHeld && !gizmoSideActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !suppressLeftMouse) {
+            voxelBrush.altPress(mousePos.x, mousePos.y);
+        }
+        voxelBrush.altMove(mousePos.x, mousePos.y, io.MouseDragThreshold);
+        if (voxelBrush.altActive() && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+            float pickX = mousePos.x - windowPos.x;
+            float pickY = mousePos.y - windowPos.y;
+            toEngineCanvas(sceneId, pickX, pickY);
+            voxelBrush.altRelease(sceneProject->scene, sceneProject->sceneRender->screenToRay(pickX, pickY));
+        }
+    }
+
     if (isMouseInWindow && (ImGui::IsMouseClicked(ImGuiMouseButton_Middle) || ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||
             (altHeld && !gizmoSideActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !suppressLeftMouse))) {
         draggingMouse[sceneId] = true;
@@ -2101,7 +2125,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }
 
         // Alt+LMB orbit
-        if (draggingMouse[sceneId] && altHeld && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !axisLocked) {
+        if (draggingMouse[sceneId] && altHeld && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !axisLocked && !voxelBrush.altHolding()) {
             camera->rotatePosition(-0.1 * mouseDelta.x);
             camera->elevatePosition(0.1 * mouseDelta.y);
 
@@ -2897,6 +2921,11 @@ void editor::SceneWindow::show() {
                 // align to surface, Scene Camera
                 if (!isCameraPreview) {
                     viewController->drawToolbar(sceneProject, rightX);
+                    // T3 R42: the terrain's preview, for scenes with a terrain
+                    if (sceneProject.scene && sceneProject.scene->getComponentArray<TerrainComponent>()->size() > 0) {
+                        ImGui::SameLine();
+                        drawTerrainPreviewDropdown("##SceneTerrain" + std::to_string(sceneProject.id));
+                    }
                 }
                 ImGui::SameLine();
                 if (rightX > ImGui::GetCursorPosX()) {

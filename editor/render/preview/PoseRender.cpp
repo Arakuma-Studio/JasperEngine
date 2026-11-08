@@ -5,6 +5,7 @@
 
 #include "Engine.h"
 #include "component/BoneComponent.h"
+#include "component/Transform.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "render/ObjectRender.h"

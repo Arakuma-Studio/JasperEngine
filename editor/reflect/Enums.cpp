@@ -3,6 +3,7 @@
 
 #include "reflect/Enums.h"
 #include "component/ActionComponent.h"
+#include "component/TerrainComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/FogComponent.h"
@@ -22,6 +23,7 @@
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/TerrainComponent.h"
 
 #include "Project.h"
 #include "component/FluidSimulationComponent.h"
@@ -553,6 +555,30 @@ namespace {
         {v(MaterialDepthWrite::DISABLED), "DISABLED", "Disabled", "MaterialDepthWrite::DISABLED", "off"},
     };
 
+    constexpr EnumItem kTerrainQualitySettingItems[] = {
+        {v(TerrainQualitySetting::AUTO), "AUTO", "Auto", "TerrainQualitySetting::AUTO", "auto"},
+        {v(TerrainQualitySetting::HIGH), "HIGH", "High", "TerrainQualitySetting::HIGH", "high"},
+        {v(TerrainQualitySetting::MEDIUM), "MEDIUM", "Medium", "TerrainQualitySetting::MEDIUM", "medium"},
+        {v(TerrainQualitySetting::LOW), "LOW", "Low", "TerrainQualitySetting::LOW", "low"},
+    };
+
+    constexpr EnumItem kTerrainOffscreenShadowsItems[] = {
+        {v(TerrainOffscreenShadows::AUTO), "AUTO", "Auto", "TerrainOffscreenShadows::AUTO", "auto"},
+        {v(TerrainOffscreenShadows::ON), "ON", "On", "TerrainOffscreenShadows::ON", "on"},
+        {v(TerrainOffscreenShadows::OFF), "OFF", "Off", "TerrainOffscreenShadows::OFF", "off"},
+    };
+
+    constexpr EnumItem kTerrainMacroModeItems[] = {
+        {v(TerrainMacroMode::OFF), "OFF", "Off", "TerrainMacroMode::OFF", "off"},
+        {v(TerrainMacroMode::NOISE), "NOISE", "Noise", "TerrainMacroMode::NOISE", "noise"},
+        {v(TerrainMacroMode::BASE_MAP), "BASE_MAP", "Base Map", "TerrainMacroMode::BASE_MAP", "base_map"},
+    };
+
+    constexpr EnumItem kTerrainCliffProjectionItems[] = {
+        {v(TerrainCliffProjection::AUTO), "AUTO", "Auto", "TerrainCliffProjection::AUTO", "auto"},
+        {v(TerrainCliffProjection::FLAT_ONLY), "FLAT_ONLY", "Flat Only", "TerrainCliffProjection::FLAT_ONLY", "flat_only"},
+    };
+
     constexpr EnumItem kMaterialLightingItems[] = {
         {v(MaterialLighting::AUTO), "AUTO", "Auto", "MaterialLighting::AUTO", "auto"},
         {v(MaterialLighting::PIXEL), "PIXEL", "Per Pixel", "MaterialLighting::PIXEL", "pixel"},
@@ -597,6 +623,16 @@ namespace {
         {v(ParticleEmitterShape::Hemisphere), "Hemisphere", "Hemisphere", "ParticleEmitterShape::Hemisphere", "hemisphere"},
         {v(ParticleEmitterShape::Circle), "Circle", "Circle", "ParticleEmitterShape::Circle", "circle"},
         {v(ParticleEmitterShape::Cone), "Cone", "Cone", "ParticleEmitterShape::Cone", "cone"},
+    };
+
+    constexpr EnumItem kTerrainTreeWindMaskItems[] = {
+        {v(TerrainTreeWindMask::Height), "Height", "Height", "TerrainTreeWindMask::Height", "height"},
+        {v(TerrainTreeWindMask::VertexColor), "VertexColor", "Vertex Color", "TerrainTreeWindMask::VertexColor", "vertex_color"},
+    };
+
+    constexpr EnumItem kTerrainTreeCollisionItems[] = {
+        {v(TerrainTreeCollision::None), "None", "None", "TerrainTreeCollision::None", "none"},
+        {v(TerrainTreeCollision::Capsule), "Capsule", "Capsule", "TerrainTreeCollision::Capsule", "capsule"},
     };
 
     constexpr EnumItem kPivotPresetItems[] = {
@@ -806,11 +842,17 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kMaterialDepthTest{"MaterialDepthTest", kMaterialDepthTestItems, v(MaterialDepthTest::AUTO)};
     const EnumDesc kMaterialDepthWrite{"MaterialDepthWrite", kMaterialDepthWriteItems, v(MaterialDepthWrite::AUTO)};
     const EnumDesc kMaterialLighting{"MaterialLighting", kMaterialLightingItems, v(MaterialLighting::AUTO)};
+    const EnumDesc kTerrainQualitySetting{"TerrainQualitySetting", kTerrainQualitySettingItems, v(TerrainQualitySetting::AUTO)};
+    const EnumDesc kTerrainOffscreenShadows{"TerrainOffscreenShadows", kTerrainOffscreenShadowsItems, v(TerrainOffscreenShadows::AUTO)};
+    const EnumDesc kTerrainMacroMode{"TerrainMacroMode", kTerrainMacroModeItems, v(TerrainMacroMode::OFF)};
+    const EnumDesc kTerrainCliffProjection{"TerrainCliffProjection", kTerrainCliffProjectionItems, v(TerrainCliffProjection::AUTO)};
     const EnumDesc kMaterialPassOrder{"MaterialPassOrder", kMaterialPassOrderItems, v(MaterialPassOrder::AFTER), nullptr, kMaterialPassOrderOrder};
     const EnumDesc kMaterialStencilCompare{"MaterialStencilCompare", kMaterialStencilCompareItems, v(MaterialStencilCompare::AUTO)};
     const EnumDesc kMaterialStencilOp{"MaterialStencilOp", kMaterialStencilOpItems, v(MaterialStencilOp::KEEP)};
     const EnumDesc kParticleEmitterShape{"ParticleEmitterShape", kParticleEmitterShapeItems, v(ParticleEmitterShape::Box)};
     const EnumDesc kPivotPreset{"PivotPreset", kPivotPresetItems, v(PivotPreset::BOTTOM_LEFT)};
+    const EnumDesc kTerrainTreeWindMask{"TerrainTreeWindMask", kTerrainTreeWindMaskItems, v(TerrainTreeWindMask::Height)};
+    const EnumDesc kTerrainTreeCollision{"TerrainTreeCollision", kTerrainTreeCollisionItems, v(TerrainTreeCollision::None)};
     const EnumDesc kPrimitiveType{"PrimitiveType", kPrimitiveTypeItems, v(PrimitiveType::TRIANGLES)};
     const EnumDesc kProgressbarType{"ProgressbarType", kProgressbarTypeItems, v(ProgressbarType::HORIZONTAL)};
     const EnumDesc kReflectionProbeMode{"ReflectionProbeMode", kReflectionProbeModeItems, v(ReflectionProbeMode::STATIC)};

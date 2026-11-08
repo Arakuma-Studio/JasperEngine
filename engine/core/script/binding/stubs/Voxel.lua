@@ -1,0 +1,12 @@
+---@meta _
+-- Hand-written shapes of the Voxel Volume's Lua (engine/core/script/binding/VoxelClassesLua.cpp, T6
+-- R73), appended to the generated stubs. Rules: docs/mcp/guide/voxels.md, "Lua".
+
+---The options of VoxelVolume:dig, fill, smooth and paint. Stated values, not rates.
+---@class VoxelEditOptions
+---@field blend? number # smooth-CSG radius in metres (default 0)
+---@field material? integer # the slot; fill writes it, paint needs it (default none)
+---@field weight? number # 0-1, the slot's absolute weight (default 1)
+---@field falloff? number # 0-1, the shape's edge softness for paint and smooth (default 0)
+---@field amount? number # 0-1, smooth (default 0.5)
+---@field iterations? integer # 1-8, smooth (default 1)

@@ -1,7 +1,13 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "object/TerrainEdit.h"
+#include "terrain/TerrainHoles.h"
+#include "terrain/TerrainQuality.h"
+#include "TerrainQualityPanel.h"
 #include "TerrainEditWindow.h"
+#include "TerrainFoliagePanel.h"
+#include "foliage/TreeDataFile.h"
 #include "component/TerrainComponent.h"
 #include "component/MeshComponent.h"
 #include "component/PrefabComponent.h"
@@ -39,10 +45,12 @@
 #include "terrain/TerrainPlacement.h"
 #include "terrain/TerrainSurface.h"
 #include "util/NormalMapTilt.h"
+#include "noise/NoiseCompat.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
 #include "window/dialog/CreateTerrainDialog.h"
+#include "window/TerrainGenerateSection.h"
 #include "window/Widgets.h"
 #include "util/FileUtils.h"
 
@@ -113,6 +121,8 @@ static void collectTerrainMapTokens(const std::string& content, std::unordered_s
         }
         if (content.compare(end, 4, ".png") == 0){
             out.insert(content.substr(pos, end + 4 - pos));
+        }else if (content.compare(end, 8, ".jetrees") == 0){
+            out.insert(content.substr(pos, end + 8 - pos));
         }
         pos = content.find(prefix, end);
     }
@@ -176,7 +186,8 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
     // Settle pending background writes first, so a late write can't resurrect a
     // file this scan is about to delete. This runs on every scene save, so a
     // failure here means the save is incomplete — say so, loudly.
-    const bool flushOk = TerrainMapPersistence::get().flushAll();
+    bool flushOk = TerrainMapPersistence::get().flushAll();
+    flushOk = TreeDataFile::flushAll(project) && flushOk;
     if (!flushOk){
         Out::error("Scene saved, but %zu terrain map(s) could not be written to disk; the scene stays marked as unsaved — save again after checking free disk space and permissions.",
                    TerrainMapFileWriter::get().failedCount());
@@ -203,6 +214,14 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
                     if (!blendMap.getPath(0).empty() && TerrainMapUtils::isEditableTexturePath(blendMap.getPath(0))){
                         activeFiles.insert(fs::path(blendMap.getPath(0)).filename().string());
                     }
+                }
+                // T5 R61: the tree file and the baked atlases are the maps folder's too
+                if (!terrain->treeData.empty()){
+                    activeFiles.insert(fs::path(terrain->treeData.str()).filename().string());
+                }
+                for (const TerrainTreePrototype& prototype : terrain->treePrototypes){
+                    if (!prototype.impostorAlbedo.getPath(0).empty()) activeFiles.insert(fs::path(prototype.impostorAlbedo.getPath(0)).filename().string());
+                    if (!prototype.impostorNormal.getPath(0).empty()) activeFiles.insert(fs::path(prototype.impostorNormal.getPath(0)).filename().string());
                 }
                 for (const TerrainFoliageLayer& layer : terrain->foliageLayers){
                     const std::string& densityPath = layer.densityMap.getPath(0);
@@ -431,6 +450,7 @@ bool editor::TerrainEditWindow::raycastTerrainStrokeSurface(const Ray& localRay,
 
 editor::TerrainEditWindow::TerrainEditWindow(Project* project){
     this->project = project;
+    foliagePanel = std::make_unique<TerrainFoliagePanel>(project, this);
     windowOpen = false;
     focusRequested = false;
     brushActive = false;
@@ -474,6 +494,7 @@ editor::TerrainEditWindow::~TerrainEditWindow(){
     // Drain pending map writes while the app is still fully alive (the writer's
     // own static destructor runs during late shutdown, where it makes one final
     // synchronous attempt at anything still failing).
+    TreeDataFile::flushAll(project);
     if (!TerrainMapPersistence::get().flushAll()){
         Out::error("%zu terrain map(s) could not be written to disk; one final attempt will be made at exit, but the sculpt may be lost. Check free disk space and permissions.",
                    TerrainMapFileWriter::get().failedCount());
@@ -856,14 +877,31 @@ bool editor::TerrainEditWindow::hasValidTarget(SceneProject* sceneProject) const
            targetScene->scene->findComponent<Transform>(selectedEntity);
 }
 
+bool editor::TerrainEditWindow::ensureDensityMap(Project* project, SceneProject* sceneProject, Entity entity, int layer){
+    const TerrainMapRef ref(TerrainMapTarget::DensityMap, layer);
+    TerrainMapUtils::ensureMapSlot(sceneProject->scene->getComponent<TerrainComponent>(entity), ref);
+    return TerrainMapUtils::ensureEditableMap(project, sceneProject, entity, ref, mapResolutionFor(TerrainMapTarget::DensityMap), false);
+}
+
 int editor::TerrainEditWindow::mapResolutionFor(TerrainMapTarget target) const{
     if (target == TerrainMapTarget::HeightMap){
+        return heightMapResolution;
+    }
+    if (target == TerrainMapTarget::HoleMap){
+        // the height map's (T3 R18), which a query takes in UV whatever it comes to
         return heightMapResolution;
     }
     return target == TerrainMapTarget::DensityMap ? densityMapResolution : blendMapResolution;
 }
 
+bool editor::TerrainEditWindow::isHoleBrush() const{
+    return brushMode == TerrainBrushMode::CutHole || brushMode == TerrainBrushMode::FillHole;
+}
+
 editor::TerrainMapRef editor::TerrainEditWindow::getBrushMapRef() const{
+    if (isHoleBrush()){
+        return TerrainMapRef(TerrainMapTarget::HoleMap);
+    }
     if (isHeightBrush()){
         return TerrainMapRef(TerrainMapTarget::HeightMap);
     }
@@ -914,7 +952,7 @@ bool editor::TerrainEditWindow::findTerrainHit(Scene* scene, const Ray& ray, Ent
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
     Matrix4 inverseModel = transform.modelMatrix.inverse();
     if (!strokeHoldsHeights(activeStroke)){
-        if (!scene->getSystem<MeshSystem>()->raycastTerrainSurface(ray, terrain, transform, worldPoint)){
+        if (!scene->getSystem<MeshSystem>()->raycastTerrainSurface(ray, terrain, transform, worldPoint, true)){
             return false;
         }
 
@@ -1267,6 +1305,8 @@ bool editor::TerrainEditWindow::openMapStroke(SceneProject* sceneProject, Entity
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
     stroke.store = std::make_unique<EditorTerrainStore>(project, sceneProject->id, scene, entity, terrain);
     stroke.store->beginStroke();
+    // T3 R29: the last fill keeps the hole map through the stroke; its end takes the map away as one step
+    stroke.store->setKeepsMaps(true);
     stroke.session = std::make_unique<TerrainStrokeSession>(*stroke.store, TerrainMapUtils::mapOfRef(ref), terrain.terrainSize,
                                                             makeStrokeBrush(mode, terrain, pickedHeight, scripted));
     stroke.session->setRampStart(startPoint.x, startPoint.z);
@@ -1572,6 +1612,9 @@ float editor::TerrainEditWindow::drawAssetThumbnail(const std::string& path, con
 // The blend map channels as a material list, so nobody has to remember which one is the rock
 void editor::TerrainEditWindow::drawTextureLayers(TerrainComponent& terrain){
     SceneProject* sceneProject = getTargetSceneProject();
+    // T3 R39: what the layers cost, for the effective tier or another one
+    static int shownTier = -1;
+    drawTerrainCostStrip(terrain, shownTier);
     const ImVec2 buttonSize(ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
     const ImVec2 spacing = ImGui::GetStyle().ItemSpacing;
     const ImVec2 detailsSpacing(spacing.x * 0.5f, spacing.y * 0.5f);
@@ -2217,6 +2260,8 @@ static const char* sculptToolName(editor::TerrainBrushMode mode){
         case editor::TerrainBrushMode::Stamp: return "Stamp Terrain";
         case editor::TerrainBrushMode::Erode: return "Erosion";
         case editor::TerrainBrushMode::Ramp: return "Ramp";
+        case editor::TerrainBrushMode::CutHole:
+        case editor::TerrainBrushMode::FillHole: return "Paint Holes";
         default: return "Paint Terrain";
     }
 }
@@ -2349,6 +2394,11 @@ void editor::TerrainEditWindow::show(){
                 toolCategory = tool.category;
                 brushActive = false;
             }
+            // T5 R46: Paint Trees with Place As Tree is its brush, as Unity's: choosing it arms it
+            if (clicked && tool.category == TerrainToolCategory::Trees && foliagePanel->placesTrees()){
+                brushMode = TerrainBrushMode::PlaceObject;
+                brushActive = true;
+            }
         }
         ImGui::Spacing();
         const TerrainTool* currentTool = &terrainTools[0];
@@ -2368,6 +2418,21 @@ void editor::TerrainEditWindow::show(){
         ImGui::TextWrapped("%s", currentTool->description);
         ImGui::PopStyleColor();
         ImGui::Spacing();
+    }
+
+    // T3 R41: the Holes overlay comes on with the brush, and goes with it
+    {
+        static bool overlayFromBrush = false;
+        if (isHoleBrush() && terrain::TerrainQualitySettings::getDebugView() == terrain::TerrainDebugView::SHADED && !overlayFromBrush){
+            terrain::TerrainQualitySettings::setDebugView(terrain::TerrainDebugView::HOLES);
+            overlayFromBrush = true;
+        }else if (!isHoleBrush() && overlayFromBrush){
+            terrain::TerrainQualitySettings::setDebugView(terrain::TerrainDebugView::SHADED);
+            overlayFromBrush = false;
+        }
+        if (isHoleBrush()){
+            drawHoleBrushInfo(terrain);
+        }
     }
 
     if (toolCategory == TerrainToolCategory::Sculpt && beginTerrainProperties("sculpt_properties")){
@@ -2395,6 +2460,9 @@ void editor::TerrainEditWindow::show(){
         brushButton(TerrainBrushMode::Erode, ICON_FA_DROPLET, "terrain_erode", "Erode with water and slope, cutting channels and settling scree");
         ImGui::SameLine();
         brushButton(TerrainBrushMode::Ramp, ICON_FA_ROAD, "terrain_ramp", "Drag a ramp between the height where the stroke starts and where it ends");
+        brushButton(TerrainBrushMode::CutHole, ICON_FA_CIRCLE_NOTCH, "terrain_cut_hole", "Cut Hole: no falloff or strength (Ctrl fills)");
+        ImGui::SameLine();
+        brushButton(TerrainBrushMode::FillHole, ICON_FA_CIRCLE, "terrain_fill_hole", "Fill Hole (Ctrl cuts)");
         ImGui::EndDisabled();
         ImGui::EndTable();
     }
@@ -2479,7 +2547,7 @@ void editor::TerrainEditWindow::show(){
                 setFoliageLayerProperty("density", std::clamp(layer.density, 0.0f, 128.0f));
             }
             const TerrainFoliageLayer& currentLayer = terrain.foliageLayers[selectedFoliageLayer];
-            terrainPropertyRow("Scale range", "Minimum and maximum random scale per instance.");
+            terrainPropertyRow("Min/Max Width", "Minimum and maximum random scale per instance.");
             if (ImGui::DragFloatRange2("##foliage_scale", &layer.minScale, &layer.maxScale, 0.01f, 0.01f, 20.0f, "%.2f", "%.2f", ImGuiSliderFlags_AlwaysClamp)){
                 layer.minScale = std::max(0.01f, layer.minScale);
                 layer.maxScale = std::max(layer.minScale, layer.maxScale);
@@ -2539,9 +2607,14 @@ void editor::TerrainEditWindow::show(){
             }
         }
         ImGui::EndTable();
+        // T5 R47: its Unity rows, Show Density, the settings and the stats
+        foliagePanel->drawDetails(sceneProject, selectedEntity, terrain, selectedFoliageLayer);
     }
 
-    if (toolCategory == TerrainToolCategory::Trees && beginTerrainProperties("object_properties")){
+    // T5: the prototypes, the tree brush and what goes with them; GameObjects are below it
+    const bool placesTrees = toolCategory == TerrainToolCategory::Trees && foliagePanel->drawTrees(sceneProject, selectedEntity, terrain, brushSize);
+
+    if (toolCategory == TerrainToolCategory::Trees && !placesTrees && beginTerrainProperties("object_properties")){
         drawPlacementAsset();
         terrainPropertyRow("Place", "Placed GameObjects are parented to the terrain, so they show in the Hierarchy and can be transformed one by one.");
         ImGui::BeginDisabled(placeAssetPath.empty());
@@ -2578,7 +2651,9 @@ void editor::TerrainEditWindow::show(){
 
     const bool placementBrush = isPlacementBrush();
     Texture* brushTexture = placementBrush ? nullptr : TerrainMapUtils::findTexture(terrain, getBrushMapRef());
-    const bool brushTargetAvailable = placementBrush ? isPlacementReady() : (brushTexture && !brushTexture->empty());
+    // the tree brush needs a prototype, not the GameObject brush's asset (T5 R46)
+    const bool treeBrushReady = foliagePanel->placesTrees() && (brushMode == TerrainBrushMode::EraseObject || foliagePanel->isReady(terrain));
+    const bool brushTargetAvailable = placementBrush ? (foliagePanel->placesTrees() ? treeBrushReady : isPlacementReady()) : (brushTexture && !brushTexture->empty());
     if (brushActive && !brushTargetAvailable){
         brushActive = false;
         endStroke();
@@ -2669,6 +2744,7 @@ void editor::TerrainEditWindow::show(){
     }
     // R62: what the pointer is over
     drawInfoPanel(sceneProject, terrain);
+    drawTerrainGenerateSection(project, selectedSceneId, selectedEntity);
     ImGui::End();
 
     // only over the settings this window read: never constructor defaults or another project's
@@ -2700,6 +2776,7 @@ void editor::TerrainEditWindow::show(){
         ts.paintMaxHeight = paintMaxHeight;
         ts.placeAssetPath = placeAssetPath;
         ts.placeInstanced = placeInstanced;
+        ts.placeAsTree = foliagePanel->placesTrees();
         ts.placeSpacing = placeSpacing;
         ts.placeMinScale = placeMinScale;
         ts.placeMaxScale = placeMaxScale;
@@ -2775,6 +2852,7 @@ void editor::TerrainEditWindow::loadSettings(){
     paintMaxHeight = std::clamp(ts.paintMaxHeight, paintMinHeight, 1.0f);
     placeAssetPath = ts.placeAssetPath;
     placeInstanced = ts.placeInstanced;
+    foliagePanel->setPlacesTrees(ts.placeAsTree);
     placeSpacing = std::max(MIN_PLACE_SPACING, ts.placeSpacing);
     placeMinScale = std::max(0.01f, ts.placeMinScale);
     placeMaxScale = std::max(placeMinScale, ts.placeMaxScale);
@@ -2809,7 +2887,7 @@ bool editor::TerrainEditWindow::isEditingScene(Scene* scene) const{
     }
 
     if (isPlacementBrush()){
-        return isPlacementReady();
+        return foliagePanel->placesTrees() ? (brushMode == TerrainBrushMode::EraseObject || foliagePanel->isReady(*terrain)) : isPlacementReady();
     }
     // Stamp lays the mask down, so without one there is nothing for a stroke to write
     if (brushMode == TerrainBrushMode::Stamp && brushMaskPath.empty()){
@@ -2845,6 +2923,22 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
         }
         pickHeightArmed = false;
         return false;
+    }
+
+    // T5 R46: Alt+click with no drag picks the prototype under the cursor (Alt+drag orbits before this)
+    if (isPlacementBrush() && foliagePanel->placesTrees()){
+        if (io.KeyAlt){
+            foliagePanel->pickPrototype(sceneProject, entity, localPoint, std::max(brushSize, 1.0f));
+            return false;
+        }
+        clearStroke();
+        stroke.active = true;
+        stroke.placement = true;
+        stroke.treeStroke = true;
+        stroke.sceneId = sceneProject->id;
+        stroke.entity = entity;
+        openStrokeEdit(sceneProject);
+        return foliagePanel->beginStroke(sceneProject, entity, localPoint, brushSize, io.KeyShift, io.KeyCtrl || brushMode == TerrainBrushMode::EraseObject);
     }
 
     if (isPlacementBrush()){
@@ -2926,6 +3020,10 @@ bool editor::TerrainEditWindow::paintStroke(Scene* scene, const Ray& ray){
         return false;
     }
 
+    if (stroke.treeStroke){
+        return foliagePanel->stamp(sceneProject, entity, localPoint, brushSize);
+    }
+
     if (stroke.placement){
         if (stroke.effectiveMode == TerrainBrushMode::EraseObject){
             return applyObjectErase(sceneProject, entity, localPoint);
@@ -2942,6 +3040,9 @@ void editor::TerrainEditWindow::endStroke(){
     }
 
     // Placement already pushed its own commands; there is no map to diff.
+    if (stroke.treeStroke){
+        foliagePanel->endStroke();
+    }
     if (stroke.placement){
         clearStroke();
         return;
@@ -2953,6 +3054,10 @@ void editor::TerrainEditWindow::endStroke(){
         stroke.session->run(0.0);
         stroke.session->flush();
         CommandHistory* history = CommandHandle::get(stroke.sceneId);
+        if (removeFilledHoleMap(sceneProject)){
+            clearStroke();
+            return;
+        }
         if (stroke.rebound){
             Texture* texture = TerrainMapUtils::findTexture(stroke.store->component(), stroke.ref);
             if (texture){
@@ -2972,6 +3077,50 @@ void editor::TerrainEditWindow::endStroke(){
     clearStroke();
 }
 
+void editor::TerrainEditWindow::drawHoleBrushInfo(TerrainComponent& terrain){
+    const terrain::HoleMapView view = terrainSurfaceView(terrain).holes;
+    const int samples = terrain.heightMap.hasData() ? std::clamp(std::min(terrain.heightMap.getData().getWidth(), terrain.heightMap.getData().getHeight()), 4, 1025) : 4;
+    const float cell = terrain.terrainSize / static_cast<float>(samples - 1);
+    const float texel = view.width > 0 ? terrain.terrainSize / static_cast<float>(view.width) : cell;
+    ImGui::Text("Texel %.2f m, collision cell %.2f m", texel, cell);
+    if (hoverValid){
+        const terrain::SurfaceSample sample = querySurface(terrain, hoverLocal.x, hoverLocal.z);
+        ImGui::Text("Under the cursor: %s", sample.hole ? "hole" : "solid");
+    }
+    if (view.texels){
+        std::vector<uint8_t> open;
+        std::vector<uint8_t> gaps;
+        terrain::openSquares(view, samples, 1.0f, 1.0f, open);
+        if (terrain::noCollisionSamples(open, samples, gaps) == 0 && terrain::countHoleTexels(view, 0, 0, view.width, view.height) > 0){
+            ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "This hole opens no collision sample: a body stays on it. Cut at least 3 collision cells across.");
+        }
+    }
+}
+
+bool editor::TerrainEditWindow::removeFilledHoleMap(SceneProject* sceneProject){
+    TerrainComponent& terrain = stroke.store->component();
+    if (stroke.ref.target != TerrainMapTarget::HoleMap || terrain.holeMap.empty() || terrain.holeMapHolds > 0){
+        return false;
+    }
+    const terrain::HoleMapView view = terrainSurfaceView(terrain).holes;
+    if (!view.texels || terrain::countHoleTexels(view, 0, 0, view.width, view.height) > 0){
+        return false;
+    }
+    // the map as the stroke found it; a map the stroke made has nothing to give back
+    TerrainMapSnapshot before = std::move(stroke.rebindSnapshot);
+    if (!stroke.rebound){
+        stroke.session->cancel();
+        before = TerrainMapUtils::captureSnapshot(project, terrain.holeMap, true);
+    }
+    if (before.empty){
+        TerrainMapUtils::applySnapshotToTexture(project, terrain.holeMap, TerrainMapSnapshot());
+        TerrainMapUtils::refresh(sceneProject, stroke.entity, stroke.ref);
+        return true;
+    }
+    CommandHandle::get(stroke.sceneId)->addCommandNoMerge(new TerrainTextureEditCmd(project, stroke.sceneId, stroke.entity, stroke.ref, std::move(before), TerrainMapSnapshot()));
+    return true;
+}
+
 bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, TerrainBrushCursor& cursor) const{
     if (!isEditingScene(scene)){
         return false;
@@ -2986,6 +3135,8 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
         return false;
     }
 
+    hoverValid = true;
+    hoverLocal = localPoint;
     Transform& transform = scene->getComponent<Transform>(entity);
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
     infoValid = true;
@@ -3047,6 +3198,32 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
         }
     };
 
+    // T3 R41: the hole brush's texels, when there are few enough to see
+    if (isHoleBrush()){
+        TerrainComponent& holeTerrain = scene->getComponent<TerrainComponent>(entity);
+        const int side = holeTerrain.holeMap.hasData() ? static_cast<int>(holeTerrain.holeMap.getData().getWidth()) : std::max(2, heightMapResolution);
+        const float texel = holeTerrain.terrainSize / static_cast<float>(side);
+        if (brushSize / texel <= 12.0f){
+            const float half = holeTerrain.terrainSize * 0.5f;
+            const int cx = static_cast<int>(std::floor((localPoint.x + half) / texel));
+            const int cz = static_cast<int>(std::floor((localPoint.z + half) / texel));
+            const int reach = static_cast<int>(std::ceil(brushSize / texel));
+            const auto corner = [&](int x, int z){
+                const float lx = static_cast<float>(x) * texel - half;
+                const float lz = static_cast<float>(z) * texel - half;
+                return transform.modelMatrix * Vector3(lx, querySurface(holeTerrain, lx, lz).height + 0.02f, lz);
+            };
+            for (int z = cz - reach; z <= cz + reach; z++){
+                for (int x = cx - reach; x <= cx + reach; x++){
+                    const float dx = (static_cast<float>(x) + 0.5f) * texel - half - localPoint.x;
+                    const float dz = (static_cast<float>(z) + 0.5f) * texel - half - localPoint.z;
+                    if (dx * dx + dz * dz <= brushSize * brushSize && x >= 0 && z >= 0 && x < side && z < side){
+                        cursor.texelLoops.push_back({corner(x, z), corner(x + 1, z), corner(x + 1, z + 1), corner(x, z + 1)});
+                    }
+                }
+            }
+        }
+    }
     cursor.visible = true;
     // R55: the colour of what a click would do now, modifiers included; under one texel the warning
     const ImGuiIO& io = ImGui::GetIO();
@@ -3063,6 +3240,16 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
     }else{
         cursor.innerPoints.clear();
     }
+    cursor.capsuleLines.clear();
+    if (isPlacementBrush() && foliagePanel->placesTrees()){
+        const int selected = foliagePanel->selectedPrototype();
+        if (selected >= 0 && selected < static_cast<int>(terrain.treePrototypes.size())
+                && terrain.treePrototypes[selected].collision == TerrainTreeCollision::Capsule){
+            const TerrainTreePrototype& prototype = terrain.treePrototypes[selected];
+            const Vector3 base = surfacePoint(localPoint.x, localPoint.z);
+            TerrainFoliagePanel::appendCapsuleLines(base, prototype.collisionRadius, prototype.collisionHeight, cursor.capsuleLines);
+        }
+    }
     return true;
 }
 
@@ -3077,6 +3264,9 @@ TerrainBrushMode editor::TerrainEditWindow::effectiveModeFor(bool ctrl, bool shi
         if (ctrl && brushMode == TerrainBrushMode::Lower){
             return TerrainBrushMode::Raise;
         }
+    }else if (isHoleBrush() && ctrl){
+        // T3 R41: Ctrl inverts (programme D16)
+        return brushMode == TerrainBrushMode::CutHole ? TerrainBrushMode::FillHole : TerrainBrushMode::CutHole;
     }else if (isDensityBrush() && ctrl){
         return brushMode == TerrainBrushMode::PaintDensity ? TerrainBrushMode::EraseDensity : TerrainBrushMode::PaintDensity;
     }else if (isPlacementBrush() && ctrl){
@@ -3103,6 +3293,9 @@ Vector4 editor::TerrainEditWindow::decalColor(TerrainBrushMode mode){
         case TerrainBrushMode::EraseDensity: return Vector4(0.5f, 0.2f, 0.5f, 1.0f);
         case TerrainBrushMode::PlaceObject: return Vector4(0.86f, 0.08f, 0.24f, 1.0f);
         case TerrainBrushMode::EraseObject: return Vector4(0.2f, 0.9f, 0.6f, 1.0f);
+        // T3 R41: the hole brush's magenta, darker as it fills
+        case TerrainBrushMode::CutHole: return Vector4(0.95f, 0.1f, 0.75f, 1.0f);
+        case TerrainBrushMode::FillHole: return Vector4(0.55f, 0.1f, 0.45f, 1.0f);
     }
     return Vector4(1.0f, 0.78f, 0.22f, 1.0f);
 }

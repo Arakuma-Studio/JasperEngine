@@ -280,12 +280,20 @@ namespace jasperengine{
         // TERRAIN_HEX_STOCHASTIC, USE_LIT_QUALITY)
         static bool isBuiltinLitDefine(const std::string& define);
         // those defines as bits (one per define, in the basename's order) and back, sorted
-        static uint32_t getDefineBits(const std::vector<std::string>& defines);
-        static uint32_t getDefineBit(const std::string& define);
-        static std::vector<std::string> getDefinesFromBits(uint32_t bits);
+        static uint64_t getDefineBits(const std::vector<std::string>& defines);
+        static uint64_t getDefineBit(const std::string& define);
+        static std::vector<std::string> getDefinesFromBits(uint64_t bits);
+        // T3 D2: every define the terrain's own state decides: the one mask the
+        // terrain's reload hook compares
+        static uint64_t getTerrainDefineBits();
 
         // the High Lit Quality's define (SceneSettings::litQuality)
         static const char* const LIT_QUALITY_DEFINE;   // USE_LIT_QUALITY
+        // a Voxel Volume chunk (T6 R49) and its tier
+        static const char* const VOXEL_DEFINE;
+        static const char* const VOXEL_TIER_HIGH_DEFINE;
+        static const char* const VOXEL_TIER_MEDIUM_DEFINE;
+        static const char* const VOXEL_TIER_LOW_DEFINE;
         // a Terrain with a hex tiled layer (TerrainSurfaceLayer::hexTiling)
         static const char* const TERRAIN_HEX_DEFINE;   // TERRAIN_HEX_TILING
         // and a layer of it (or another) takes Stochastic Tiling: without it, the hex variant

@@ -39,6 +39,13 @@ NOT_OPEN = ("Scene 3 \"Level2\" is not open (its contents are not loaded). Open 
             "{\"scene\": \"scenes/Level2.scene\", \"close_previous\": false} (then select_scene to switch back).")
 
 
+# edit_voxels and sample_voxels, in their real shapes
+VOXEL_CREATED = {"entity": {"id": 21, "name": "Cave", "path": "Cave"}, "asset": "voxels/Cave.voxelvolume", "dimensions": [64, 64, 64],
+                 "voxel_size": 1.0, "estimated_memory": 1048576, "over_budget_targets": []}
+VOXEL_CONNECTED = {"connected": True, "open_to_sky": True, "component_count": 1, "from_in_air": True, "to_in_air": True, "from_component": 0, "to_component": 0,
+                   "air_components": [{"index": 0, "voxels": 180000, "volume": 180000.0, "open_to_sky": True,
+                                       "voxel_bounds": {"min": [0, 0, 0], "max": [63, 63, 63]}, "bounds": {"min": [0, 0, 0], "max": [64, 64, 64]}}]}
+
 # import_project's structuredContent with a leftover beside the new project
 LEFTOVER_IMPORT = {
     "path": "/home/me/Games/Game", "opened": True, "log": [],
@@ -1980,6 +1987,158 @@ CASES = [
                    "shell_must_not": [r"\brm\b.*importing"]},
         "max_turns": 10,
     },
+    # -- T6 AC54: the Voxel Volume tools. Each fails against a surface from before the tool. --------
+    {
+        "id": "voxel_find_docs",
+        "kind": "guard",
+        "what_happened": "A destructible cave is voxel work, and no voxel tool is listed until the group is enabled: the agent "
+                         "must find the group or the doc rather than fake it with terrain and meshes.",
+        "text_at_issue": "Guide 'Other areas': voxels (edit_voxels); the voxels row of tool_groups",
+        "source": "docs/specs/T6-voxel-volumes.md R72, AC54",
+        "prompt": "Add a destructible cave to this level, one the player can blast open while playing.",
+        "mocks": [
+            {"tool": "edit_voxels", "result": ok("Created Cave (voxels/Cave.voxelvolume).", VOXEL_CREATED)},
+            {"tool": "sample_voxels", "result": ok("2 air components.", VOXEL_CONNECTED)},
+        ],
+        "checks": {"calls": [{"tool": "tool_groups", "args": {"enable": ["voxels"]}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "voxel_create_and_dig",
+        "kind": "bad",
+        "groups_enabled": ["voxels"],
+        "what_happened": "An agent made the volume in one call and each dig in others, and never checked that the tunnel joined "
+                         "anything: create takes ops in the same call, and connectivity is the proof.",
+        "text_at_issue": "edit_voxels description and jasper://docs/voxels, 'The loop'",
+        "source": "docs/specs/T6-voxel-volumes.md R67, R72, AC54",
+        "prompt": "Make a voxel volume of ground and dig a tunnel through it, then check that the tunnel really goes through.",
+        "mocks": [
+            {"tool": "edit_voxels", "args": {"ops": "*"}, "result": ok("Created Cave (voxels/Cave.voxelvolume). Dig Capsule: 2120 voxels changed, 8 blocks touched.",
+                                                                      dict(VOXEL_CREATED, voxels_changed=2120))},
+            {"tool": "sample_voxels", "args": {"mode": "connectivity"}, "result": ok("1 air components; from and to are connected.", VOXEL_CONNECTED)},
+        ],
+        "checks": {"calls": [{"tool": "edit_voxels", "args": {"create": "*", "ops": "*"}}, {"tool": "sample_voxels", "args": {"mode": "connectivity"}}],
+                   "order": [["edit_voxels", "sample_voxels"]], "max_calls": {"edit_voxels": 2}},
+        "max_turns": 10,
+    },
+    {
+        "id": "voxel_generate_from_graph",
+        "kind": "guard",
+        "groups_enabled": ["voxels"],
+        "what_happened": "Given a Noise Graph for a whole volume, the agent must give it as a base, a job, not rebuild the shape by "
+                         "hand with ops.",
+        "text_at_issue": "generate_voxels description",
+        "source": "docs/specs/T6-voxel-volumes.md R71, R82, AC54",
+        "prompt": "The Voxel Volume called Caves should take its shape from the noise graph graphs/caves.noisegraph. Set it up.",
+        "mocks": [
+            {"tool": "generate_voxels", "args": {"source": "noise_graph"}, "result": ok(
+                "Generating as job j1.", {"job_id": "j1", "status": "running", "next": "get_job {job_id: \"j1\"} until it ends; cancel_job stops it"})},
+            {"tool": "get_job", "result": ok("Generated: 212 non-uniform blocks, 3473408 bytes.", {"id": "j1", "status": "succeeded", "result": {
+                "blocks_non_uniform": 212, "memory": 3473408, "triangles_estimate": 91000, "content_hash": "1f0c9a7e5d3b2a10",
+                "base_changed": True, "non_watertight": False}})},
+            {"tool": "sample_voxels", "result": ok("Content hash 1f0c9a7e5d3b2a10.", {"content_hash": "1f0c9a7e5d3b2a10"})},
+        ],
+        "checks": {"calls": [{"tool": "generate_voxels", "args": {"source": "noise_graph", "graph": "re:caves\\.noisegraph"}}],
+                   "must_not_call": [{"tool": "edit_voxels", "args": {"ops": "*"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "voxel_control_hill_is_terrain",
+        "kind": "control",
+        "groups_enabled": ["voxels", "terrain"],
+        "what_happened": "A hill is what a heightmap holds: the voxel tools, listed, must not pull it in.",
+        "text_at_issue": "edit_voxels description: a plain hill belongs on a Terrain",
+        "source": "docs/specs/T6-voxel-volumes.md AC54",
+        "prompt": "Raise a gentle hill in the middle of the Terrain.",
+        "mocks": [
+            {"tool": "sculpt_terrain", "result": ok("Sculpted 1 stroke.", {"changed": True})},
+            {"tool": "edit_terrain", "result": ok("Sculpted 1 stroke.", {"changed": True})},
+            {"tool": "sample_terrain", "result": ok("1 sample.", {"samples": [{"height": 3.2}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "sculpt_terrain"}]}, {"calls": [{"tool": "edit_terrain"}]}],
+                   "must_not_call": ["edit_voxels", "generate_voxels"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "voxel_cave_mouth_not_holes_only",
+        "kind": "guard",
+        "groups_enabled": ["voxels", "terrain"],
+        "what_happened": "A hole in a Terrain shows the void under it. A cave entrance needs a volume attached to the Terrain, "
+                         "whose dig cuts the holes.",
+        "text_at_issue": "jasper://docs/voxels, opening and 'Terrain attachment'",
+        "source": "docs/specs/T6-voxel-volumes.md R38, R39, AC54",
+        "prompt": "Add a cave entrance to the hillside of the Terrain called Ground: the player should be able to walk in.",
+        "mocks": [
+            {"tool": "edit_voxels", "result": ok("Created Cave (voxels/Cave.voxelvolume).", VOXEL_CREATED)},
+            {"tool": "generate_voxels", "result": ok(
+                "Generating as job j1.", {"job_id": "j1", "status": "running", "next": "get_job {job_id: \"j1\"} until it ends; cancel_job stops it"})},
+            {"tool": "get_job", "result": ok("Generated: 90 non-uniform blocks, 1474560 bytes.", {"id": "j1", "status": "succeeded", "result": {
+                "blocks_non_uniform": 90, "memory": 1474560, "triangles_estimate": 41000, "content_hash": "77ac01b2c3d4e5f6",
+                "base_changed": True, "non_watertight": False}})},
+            {"tool": "sample_voxels", "result": ok("1 air components; from and to are connected.", VOXEL_CONNECTED)},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "edit_voxels", "args": {"create": {"terrain": "*"}}}]},
+                              {"calls": [{"tool": "generate_voxels", "args": {"preset": "cave_entrance"}}]}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "terrain_foliage_add_details",
+        "kind": "guard",
+        "what_happened": "Asked for grass, an agent has to fill an existing layer's density by rules, not place objects one by one.",
+        "text_at_issue": "edit_terrain's description and jasper://docs/terrain: scatter_by_rules with target detail_layer; sample_terrain foliage reads drawn.",
+        "source": "T5 R65, AC41",
+        "prompt": "Terrain [12] has a grass detail layer 0. Fill it on the flat ground, under 15 degrees, at 2 per square unit.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"ops": "re:scatter_by_rules"}, "result": ok(
+                "Scatter Foliage (Terrain): 0 trees.",
+                {"dry_run": False, "undo_name": "Scatter Foliage (Terrain)", "ops": [{"op": "scatter_by_rules", "changed_texels": 40960, "instances_added": 0, "instances_removed": 0,
+                 "rejected": {"slope": 2024, "height": 0, "layer": 0, "noise": 0, "hole": 0, "spline": 0, "spacing": 0}}], "changed": [], "warnings": [], "trees": 0})},
+            {"tool": "sample_terrain", "args": {"foliage": True}, "result": ok(
+                "Sampled terrain \"Terrain\".",
+                {"foliage": {"details": [{"layer": 0, "instances": 81344, "mean_density": 1.6, "drawn": 12033}], "trees": [], "totals": {"resident": 12033}}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:detail_layer"}}],
+                   "must_not_call": ["sculpt_terrain", "create_entity"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_foliage_mass_trees",
+        "kind": "bad",
+        "what_happened": "Asked for a forest, an agent placed thousands of GameObjects with create_entity or sculpt_terrain place_object, which the scene YAML then carried.",
+        "text_at_issue": "edit_terrain's op scatter_by_rules in its listing and guide: dry_run first, then the real run.",
+        "source": "T5 R24, AC41",
+        "prompt": "Plant a pine forest over the whole of Terrain [12]; the prototype Pine exists.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"dry_run": True}, "result": ok(
+                "Dry run of Scatter Foliage (Terrain): 18422 trees.",
+                {"dry_run": True, "undo_name": "Scatter Foliage (Terrain)", "ops": [{"op": "scatter_by_rules", "changed_texels": 0, "instances_added": 18422, "instances_removed": 0,
+                 "rejected": {"slope": 311, "height": 0, "layer": 0, "noise": 0, "hole": 0, "spline": 0, "spacing": 90}, "hash": "5c6872872df93554"}], "changed": [], "warnings": [], "trees": 18422})},
+            {"tool": "edit_terrain", "result": ok(
+                "Scatter Foliage (Terrain): 18422 trees.",
+                {"dry_run": False, "undo_name": "Scatter Foliage (Terrain)", "ops": [{"op": "scatter_by_rules", "changed_texels": 0, "instances_added": 18422, "instances_removed": 0,
+                 "rejected": {"slope": 311, "height": 0, "layer": 0, "noise": 0, "hole": 0, "spline": 0, "spacing": 90}, "hash": "5c6872872df93554"}], "changed": [], "warnings": [], "trees": 18422,
+                 "next": ["The Terrain has 18422 trees, past the Mobile budget of 8000 visible: bake_impostors, and check sample_terrain foliage on a Low tier."]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:scatter_by_rules", "dry_run": True}}],
+                   "must_not_call": ["create_entity", "sculpt_terrain"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_foliage_impostors",
+        "kind": "guard",
+        "what_happened": "Asked why far trees cost so much, an agent has to bake impostors through edit_terrain, not look for a tool of its own.",
+        "text_at_issue": "edit_terrain's op bake_impostors, and the next hint on a tree count past the Mobile budget.",
+        "source": "T5 R56, AC41",
+        "prompt": "The far trees on Terrain [12] cost too much. Fix that with impostors.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"ops": "re:bake_impostors"}, "result": ok(
+                "Baked 2 impostor(s).",
+                {"dry_run": False, "undo_name": "Bake Impostors", "ops": [{"op": "bake_impostors", "entries": [
+                    {"prototype": 0, "albedo": "terrain_maps/a.png", "normal": "terrain_maps/n.png", "views": 8, "ms": 900}]}], "job_id": "7", "status": "succeeded"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:bake_impostors"}}]},
+        "max_turns": 10,
+    },
     {
         "id": "bad_footsteps_built_in_lua",
         "kind": "bad",
@@ -2156,6 +2315,161 @@ CASES = [
                               "args": {"values": {"quality.device_tiers.mobile.low": {"render_scale": 0.6}}}}],
                    "must_not_call": ["set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
         "max_turns": 12,
+    },
+    # -- T2: terrain generation. Red: a surface from before the tools (AC49) ---------------------
+    {
+        "id": "terrain_generate_preset",
+        "kind": "bad",
+        "what_happened": "Asked for mountains with a seed, an agent scripted noise strokes instead of generating: it must take generate_terrain's preset.",
+        "text_at_issue": "TerrainGenerationTools.cpp generate_terrain: name and description",
+        "source": "docs/specs/T2-noise-graphs.md AC49",
+        "prompt": "Make the terrain in this scene into mountains, seed 7.",
+        "mocks": [
+            {"tool": "generate_terrain", "args": {"preset": "mountains", "seed": 7}, "result": ok(
+                "Generate Terrain (Mountains, seed 7): height 0.02 to 0.98, 1 map(s) changed.",
+                {"seed": 7, "undo_name": "Generate Terrain (Mountains, seed 7)", "changed": [{"map": "height", "rect": [0, 0, 513, 513], "texels": 263169}]})},
+        ],
+        "checks": {"calls": [{"tool": "generate_terrain", "args": {"preset": "mountains", "seed": 7}}],
+                   "must_not_call": ["edit_terrain", "sculpt_terrain", "set_terrain_maps"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "noise_graph_edit_loop",
+        "kind": "guard",
+        "what_happened": "Tuning a graph: the loop is edit_graph, then preview_noise_graph, then a dry run before any write.",
+        "text_at_issue": "docs/mcp/guide/noise-graphs.md The loop; generate_terrain's and preview_noise_graph's descriptions",
+        "source": "docs/specs/T2-noise-graphs.md AC49, R65",
+        "prompt": "Tune graphs/Hills.noisegraph so the hills are gentler (lower its fbm frequency to 2), and show me what the terrain would look like. Don't change the terrain yet.",
+        "mocks": [
+            {"tool": "edit_graph", "args": {"path": "re:Hills"}, "result": ok("Edit: 1 op(s), 0 issue(s).", {"applied": 1, "issues": []})},
+            {"tool": "preview_noise_graph", "args": {"path": "re:Hills"}, "result": ok("Hills: 3 node(s) at 128, seed 1.", {"nodes": [], "outputs": {"height": "00"}})},
+            {"tool": "generate_terrain", "args": {"graph": "re:Hills", "dry_run": True}, "result": ok("Dry run: nothing was written.", {"dry_run": True, "hash": {"height": "00"}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_graph", "args": {"path": "re:Hills"}}, {"tool": "generate_terrain", "args": {"dry_run": True}}],
+                   "must_not_call": [{"tool": "generate_terrain", "args": {"dry_run": False}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "noise_graph_create",
+        "kind": "guard",
+        "what_happened": "A new graph file: edit_graph's create makes it, as one undo step. write_file refuses the extension.",
+        "text_at_issue": "GraphTools.cpp edit_graph: create",
+        "source": "docs/specs/T2-noise-graphs.md AC49, R16",
+        "prompt": "Start a new noise graph at graphs/Peaks.noisegraph from the alpine preset.",
+        "mocks": [
+            {"tool": "edit_graph", "args": {"path": "re:Peaks", "create": {"kind": "noise", "from_preset": "alpine"}}, "result": ok(
+                "Create Peaks.noisegraph: 0 op(s), 0 issue(s).", {"applied": 0, "issues": [], "undo_name": "Create Peaks.noisegraph"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_graph", "args": {"create": {"kind": "noise"}}}], "must_not_call": ["write_file"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_generate_error_next",
+        "kind": "guard",
+        "what_happened": "A graph error's result names the fix in next; the agent follows it with edit_graph on that node instead of giving up.",
+        "text_at_issue": "TerrainGenerationTools.cpp addNext",
+        "source": "docs/specs/T2-noise-graphs.md AC49, R65",
+        "prompt": "Generate the terrain from graphs/Bad.noisegraph. Fix it if something is wrong with the graph.",
+        "mocks": [
+            {"tool": "generate_terrain", "args": {"graph": "re:Bad"}, "result": err(
+                "octaves must be 1..12, not 40 (next: edit_graph on node n1 of graphs/Bad.noisegraph, then preview_noise_graph.)")},
+            {"tool": "edit_graph", "args": {"path": "re:Bad"}, "result": ok("Edit: 1 op(s), 0 issue(s).", {"applied": 1, "issues": []})},
+        ],
+        "checks": {"calls": [{"tool": "edit_graph", "args": {"path": "re:Bad"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "noise_graph_undo_timeline",
+        "kind": "guard",
+        "what_happened": "After an edit_graph, 'undo that' with undo's default scene scope found nothing: graph files are project history. The error names the timeline scope.",
+        "text_at_issue": "CoreTools.cpp undo: the empty scene history's error",
+        "source": "docs/specs/T2-noise-graphs.md R57",
+        "history": [
+            {"user": "Set the fbm frequency in graphs/Hills.noisegraph to 9."},
+            {"assistant": "Done.", "calls": [{"tool": "edit_graph", "args": {"path": "graphs/Hills.noisegraph",
+                "ops": [{"op": "setParam", "node": "n1", "name": "frequency", "value": 9}]},
+                "result": json.dumps({"applied": 1, "issues": [], "undo_name": "Set frequency"})}]},
+        ],
+        "prompt": "Actually, undo that.",
+        "mocks": [
+            {"tool": "undo", "args": {"scope": "timeline"}, "result": ok("Undid Set frequency.", {"undone": [{"id": 12, "name": "Set frequency"}]})},
+            {"tool": "undo", "args": {}, "result": err("Nothing to undo in the scene history. The last step is an asset edit: undo scope timeline takes it, as Ctrl+Z does.")},
+        ],
+        "checks": {"calls": [{"tool": "undo", "args": {"scope": "timeline"}}], "must_not_call": ["edit_graph"]},
+        "max_turns": 8,
+    },
+    # -- T3: holes and tiers (docs/mcp/guide/terrain-materials.md) ---------------------------------------------
+    {
+        "id": "terrain_cut_hole_check",
+        "kind": "guard",
+        "what_happened": "A hole that draws can still stop a ball: the agent checks the collider, not only the picture.",
+        "text_at_issue": "docs/mcp/guide/terrain-materials.md: Holes end to end; sample_terrain collision_gap",
+        "source": "T3 AC51",
+        "prompt": "Cut a cave mouth in the terrain at local (0, 0), 6 m across, and check a ball falls in.",
+        "results": [
+            {"tool": "edit_terrain", "result": ok("Applied 1 op.", {"ops": [{"op": "cut_holes", "changed_texels": 113, "hole_texels": 113,
+                "map_created": True, "collision_samples_open": 64}]})},
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"samples": [{"hole": True, "collision_gap": True, "nav_excluded": True}]})},
+        ],
+        "checks": {"calls": ["edit_terrain", "sample_terrain"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_mobile_budget",
+        "kind": "bad",
+        "what_happened": "Asked why a terrain is slow on phones, an agent listed materials instead of reading what the pixels cost.",
+        "text_at_issue": "docs/mcp/guide/terrain-materials.md: Material budget and tiers; sample_terrain info.material",
+        "source": "T3 AC51",
+        "prompt": "Why is this terrain slow on phones?",
+        "results": [
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"info": {"material": {"quality": "high", "quality_source": "project",
+                "fetches": {"flat": 9, "slope": 27, "worst": 111, "by_tier": {"high": {"worst": 111}, "medium": {"worst": 21}, "low": {"worst": 6}}}}}})},
+        ],
+        "checks": {"calls": ["sample_terrain"], "must_not_call": ["list_materials"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_set_quality_tier",
+        "kind": "guard",
+        "what_happened": "A tier per platform is a project setting, not a file edit.",
+        "text_at_issue": "docs/mcp/guide/terrain-materials.md: Material budget and tiers; graphics.terrainQuality.<platform>",
+        "source": "T3 AC51",
+        "prompt": "Use the Low terrain quality on Android.",
+        "results": [
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.", {"changed": ["graphics.terrainQuality.android"]})},
+        ],
+        "checks": {"calls": ["set_project_settings"], "edits_must_not": [r"project\.yaml$"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_point_material_cap",
+        "kind": "guard",
+        "what_happened": "A dense sample_terrain grid says only hole per point; the agent asks again at the few points it cares about.",
+        "text_at_issue": "sample_terrain's result note: over 64 points each says only hole",
+        "source": "T3 R43",
+        "prompt": "Sample the terrain on a 16 x 16 grid of local points over its whole area, then tell me which layers draw at local (0, 0).",
+        "results": [
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"samples": [{"hole": False}] * 256,
+                "note": "Over 64 points each says only hole: ask for collision_gap, nav_excluded, layers_painted, layers_drawn and fetches at fewer points."})},
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"samples": [{"hole": False, "layers_drawn": [{"layer": 0, "weight": 1.0}], "fetches": 3}]})},
+        ],
+        "checks": {"calls": ["sample_terrain", {"tool": "sample_terrain", "args": {"points": [[0, 0]]}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_macro_without_layers",
+        "kind": "guard",
+        "what_happened": "Macro Variation on a terrain with no layer draws nothing; sample_terrain's issue says why, and the agent adds a layer instead of retuning the macro.",
+        "text_at_issue": "sample_terrain issues: macro_without_layers",
+        "source": "T3 (spec Deviations: a terrain with no layer draws its base material alone)",
+        "prompt": "I turned on Macro Variation on the terrain but I see no change. Fix it so it shows.",
+        "results": [
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"issues": [{"code": "macro_without_layers", "severity": "warning",
+                "message": "Macro Variation applies once the terrain has a layer: set_terrain_maps layers adds one."}]})},
+            {"tool": "set_terrain_maps", "result": ok("Set terrain maps (one undo step).", {"layers": [{"index": 0}]})},
+        ],
+        "checks": {"calls": ["sample_terrain", "set_terrain_maps"]},
+        "max_turns": 10,
     },
     # -- T1 terrain (docs/specs/T1-terrain-authoring.md AC74) -----------------------------------
     {

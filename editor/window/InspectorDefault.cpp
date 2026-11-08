@@ -448,6 +448,8 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::SplineAnimateComponent: return &InspectorWindow::drawSplineAnimateComponent;
         case ComponentType::AnimatorComponent: return &InspectorWindow::drawAnimatorComponent;
         case ComponentType::VertexAnimatorComponent: return &InspectorWindow::drawVertexAnimatorComponent;
+        // T6 R65 (InspectorVoxels.cpp)
+        case ComponentType::VoxelVolumeComponent: return &InspectorWindow::drawVoxelVolumeComponent;
         // upstream's (InspectorUpstream.cpp)
         case ComponentType::OnScreenStickComponent: return &InspectorWindow::drawOnScreenStickComponent;
         case ComponentType::OnScreenButtonComponent: return &InspectorWindow::drawOnScreenButtonComponent;

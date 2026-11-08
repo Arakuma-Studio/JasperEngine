@@ -6,10 +6,14 @@
 // Limited and contributors, MIT License, as a reference; the code is our own. See NOTICE.md.
 
 #include "NavBakeCollector.h"
+#if JASPERENGINE_VOXEL
+#include "subsystem/VoxelSystem.h"
+#endif
 #include "subsystem/RenderSystem.h"
 
 #include "Scene.h"
 #include "component/InstancedMeshComponent.h"
+#include "subsystem/FoliageSystem.h"
 #include "component/MeshComponent.h"
 #include "component/NavMeshAgentComponent.h"
 #include "component/NavMeshLinkComponent.h"
@@ -17,6 +21,8 @@
 #include "component/NavMeshObstacleComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/TerrainComponent.h"
+#include "object/TerrainEdit.h"
+#include "terrain/TerrainHoles.h"
 #include "component/Transform.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -30,6 +36,7 @@
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/CharacterControllerComponent.h"
 #include "component/RigidbodyComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #endif
 
 #include <algorithm>
@@ -84,7 +91,6 @@ namespace {
 #endif
 
     // a closed surface of revolution about y: rings from bottom to top (radius, y)
-#ifdef JASPERENGINE_PHYSICS_3D
     void addRevolution(Mesh& mesh, const std::vector<std::pair<float, float>>& profile) {
         const uint32_t base = (uint32_t)mesh.vertices.size();
         const int rings = (int)profile.size();
@@ -118,7 +124,6 @@ namespace {
             mesh.indices.insert(mesh.indices.end(), {top, d, c});
         }
     }
-#endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
     void addSphere(Mesh& mesh, float radius) {
@@ -148,11 +153,9 @@ namespace {
     }
 #endif
 
-#ifdef JASPERENGINE_PHYSICS_3D
     void addCylinder(Mesh& mesh, float halfHeight, float radius) {
         addRevolution(mesh, {{radius, -halfHeight}, {radius, halfHeight}});
     }
-#endif
 
     // ---- a 3D convex hull (QuickHull) of a point cloud, its faces wound outwards
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -432,6 +435,7 @@ namespace {
         void addMeshComponent(Entity entity, const Matrix4& worldOf, uint8_t area);
         void collectRenderMeshes();
         void collectTerrains();
+        void collectTrees();
         void addTerrainLattice(TerrainComponent& terrain, const Matrix4& world, uint8_t area, int samplesOverride);
         void collectColliders3D();
         void collectColliders2D();
@@ -586,6 +590,11 @@ namespace {
         std::sort(entities.begin(), entities.end());
         for (Entity entity : entities) {
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+#if JASPERENGINE_VOXEL
+            // a volume's drawn chunks depend on the focus: it adds its level-0 geometry below (T6 R25)
+            if (mesh.voxelOwner != NULL_ENTITY)
+                continue;
+#endif
             // skinned meshes move; terrains and instanced meshes have their own paths
             if (!mesh.enabled || mesh.numSubmeshes == 0 || !mesh.bonesAABB.empty() || scene->findComponent<TerrainComponent>(entity))
                 continue;
@@ -596,6 +605,9 @@ namespace {
             if (!transform)
                 continue;
             if (InstancedMeshComponent* instanced = scene->findComponent<InstancedMeshComponent>(entity)) {
+                // T5 R34: grass and tree prototypes never enter a bake; trees come by collectTrees
+                if (instanced->foliage)
+                    continue;
                 Mesh local;
                 MeshTriangles::appendMeshTriangles(&mesh, Matrix4(), local.vertices, local.indices);
                 for (const InstanceData& instance : instanced->instances) {
@@ -610,6 +622,25 @@ namespace {
             addMeshComponent(entity, transform->modelMatrix, policy.area);
             stats.meshes++;
         }
+#if JASPERENGINE_VOXEL
+        if (std::shared_ptr<VoxelSystem> voxels = scene->findSystem<VoxelSystem>()) {
+            auto volumes = scene->getComponentArray<VoxelVolumeComponent>();
+            for (size_t i = 0; i < volumes->size(); i++) {
+                Policy policy;
+                if (!volumes->getComponentFromIndex(i).enabled || !collectable(volumes->getEntity(i), policy))
+                    continue;
+                Mesh local;
+                std::vector<Vector3> vertices;
+                std::vector<uint32_t> indices;
+                voxels->appendNavTriangles(AABB(-1e7f, -1e7f, -1e7f, 1e7f, 1e7f, 1e7f), vertices, indices);
+                local.vertices = std::move(vertices);
+                local.indices = std::move(indices);
+                addTriangles(local, navFromWorld, policy.area);
+                stats.meshes++;
+                break;
+            }
+        }
+#endif
     }
 
     void Collector::addTerrainLattice(TerrainComponent& terrain, const Matrix4& world, uint8_t area, int samplesOverride) {
@@ -665,6 +696,11 @@ namespace {
                            : 0.0f;
             }
         }
+        if (!terrain.holeMap.empty()) {
+            // T3 R23, R24: the walkable area stays inside the drawn ground
+            if (terrain::navHoleCells(terrainSurfaceView(terrain).holes, samples, lattice.holeCells) == 0)
+                lattice.holeCells.clear();
+        }
         lattice.computeBounds();
         grow(Vector3(lattice.bmin[0], lattice.bmin[1], lattice.bmin[2]));
         grow(Vector3(lattice.bmax[0], lattice.bmax[1], lattice.bmax[2]));
@@ -690,6 +726,27 @@ namespace {
             if (!transform)
                 continue;
             addTerrainLattice(terrain, transform->modelMatrix, policy.area, 0);
+        }
+    }
+
+    // T5 R34: a cylinder per visible tree with navObstacle, under every Use Geometry, following the
+    // Terrain's NavMeshModifier policy
+    void Collector::collectTrees() {
+        std::shared_ptr<FoliageSystem> foliage = scene->getSystem<FoliageSystem>();
+        if (!foliage)
+            return;
+        auto terrains = scene->getComponentArray<TerrainComponent>();
+        for (size_t i = 0; i < terrains->size(); i++) {
+            const Entity entity = terrains->getEntity(i);
+            Policy policy;
+            if (!collectable(entity, policy))
+                continue;
+            foliage->forEachNavObstacle(entity, [&](const Vector3& base, float radius, float height) {
+                Mesh mesh;
+                addCylinder(mesh, height * 0.5f, radius);
+                addTriangles(mesh, navFromWorld * Matrix4::translateMatrix(base + Vector3(0.0f, height * 0.5f, 0.0f)), policy.area);
+                stats.instances++;
+            });
         }
     }
 
@@ -1064,6 +1121,7 @@ namespace {
             boundsMax.y = input->config.cellSize;
         } else {
             collectTerrains();
+            collectTrees();
             collectRenderMeshes();
             collectColliders3D();
             collectVolumes();

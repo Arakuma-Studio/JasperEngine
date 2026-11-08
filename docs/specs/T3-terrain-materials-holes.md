@@ -738,4 +738,30 @@ a fourth blend map has no slot. Base Map macro multiplies with a neutral at 0.5 
 ## Deviations
 
 - Upstream revision, 2026-11-04: `set_terrain_maps` keeps its schema (R45); bits are names plus order (D2); guide text goes in `docs/mcp/guide/terrain.md`, not the agent guide, with eval cases (R47, R58).
+- **R20: `mesh.frag` discards at the end of `main`, not the top.** A discard at the top of the lit shader crashed llvmpipe (Mesa 23.2, LLVM 15) in its fragment JIT: a `vpgatherdd` whose index register held the bits of 1.0. Measured: the crash needs llvmpipe's native 256-bit width (`LP_NATIVE_VECTOR_WIDTH=128` draws correctly) and the discard ahead of the lit code (at the end it draws correctly); `textureLod` in place of `texelFetch`, and dropping `textureSize`, did not change it. The cause is inferred to be the JIT, not proven. A hole pixel so shades before it goes, which is R36's colour cost on hole pixels only. `depth.frag`, `gbuffer.frag`, `surface_depth_fs.glsl` and the library's finalizers are as specified; only the finalizers run at the end of a shader, as the spec has them.
+- **R53: no `TERRAIN_LAYER_LIMIT` when a terrain has no more layers than the cap keeps** (High's 4). A cap
+  that keeps every layer draws the same image without the selection, so the variant skips it, which is a
+  saving in itself; and it works around llvmpipe's GL path (Mesa 23.2.1, LLVM 15), which dies on an illegal
+  instruction in its fragment JIT drawing the colour-only High variant with the cap and High Lit Quality
+  (`mesh_lit_LqLl_PucShwNorTerShq`), the variant every new terrain (no layers, the limit on) would draw. The
+  shader is valid: glslangValidator and spirv-val accept it, lavapipe draws it, and the same crash happens at
+  `LP_NATIVE_VECTOR_WIDTH=128`. `TerrainQuality.LayerLimitOnlyWhenItCuts` pins the rule,
+  `TerrainMaterialsGpu.LimitThatCutsNothingDrawsTheSame` the image, and `EveryVariant/TerrainVariantGpu.Draws/*`
+  draws the capped variant with nine layers on glcore at both vector widths and on lavapipe.
+- **A terrain with no layer draws its base material alone:** no tier, cap, feature or Terrain view define, and
+  the narrow path (`hasTerrainSurfaceLayers` is false without a layer); its holes still cut. The tiers, the
+  cap, the features and the views act on layers, so the image is the same, but for Macro Variation, which
+  waits for a layer, and the Holes view, which shows such a terrain's holes as gaps rather than hatched: the Inspector, `sample_terrain`'s issue `macro_without_layers` and `docs/terrain.md` say so. It
+  is the cheapest path, and a workaround for llvmpipe's GL path (Mesa 23.2.1, LLVM 15), which faults in its
+  fragment JIT (SIGILL, and SIGSEGV with holes) on every tier and feature variant of a terrain without layers,
+  e.g. `NoLayers_medium_LitStandard` and `NoLayers_high_LitStandard_Limited_MacroNoise` of
+  `EveryVariant/TerrainVariantGpu.Draws`: 44 of 180 at the default width, none with layers. sokol's validation
+  reports nothing for them, and lavapipe draws all of them. `TerrainQuality.NoLayersDrawTheBaseAlone` pins it.
+  At `LP_NATIVE_VECTOR_WIDTH=128` llvmpipe aborts on most variants, layers or not (not chased).
+- **R20: no extra pass on a terrain.** `RenderSystem::hasExtraPass` returns false for a terrain, so the extra pass has nothing to cut; `mesh.frag` covers it if that ever changes.
+- **R26: `TerrainComponent::holeMapRevision`** (not saved, not reflected) is new: `SplineSystem` rebuilds on a hole change by it, which the spec's "Spline conform" and "Instantiate" rows need and no existing flag said without also firing on a density stroke.
+- **AC31:** the tests are `NavBake.*` in `engine/tests/core/navigation/NavBakeHolesTest.cpp`: `NavBakeTest.cpp`'s fixtures have a function named `terrain`, which the `jasperengine::terrain` namespace makes ambiguous. **AC33:** `NavigationSystem.GridHole` is `NavGridTest.GridHole`; `ParticleCollision.TerrainHole` is `TerrainHolesConsumers.ParticlesPassThroughAHole`; `SplineSystem.InstantiateDropsOverHole` and `.ConformOverHole` are one test, `SplineGpu.InstantiateDropsOverHole`, because pool models load on the device.
+- **AC1 on Vulkan:** `legacyOptions` holds Vulkan to the cross-backend bound of the other suites (threshold 16, 3 %, mean 3), not to a difference measured on the pre-change commit: that needed a second full build of the base. The difference each run measures is printed.
+- **AC29, AC30:** `JoltShapeBuilder.*` is `HeightfieldHoles.*` in `engine/tests/core/physics/HeightfieldHolesTest.cpp`: it tests engine code and needs no editor, which keeps it in the fast suite. It asks the shape itself (`IsNoCollision`, `CastRay`).
+- **R17 rides on upstream's per-slot terrain cut.** The merge of origin/main brought Doriax's `RenderSystem::shadowTerrainCut` (S55 R5): each shadow slot selects its own terrain nodes, from the slot's eye for a Static Shadow Caster, else as the camera's cut filtered by the slot's frustum. T3's second per-camera cut and its buffers are gone; with Off-screen Shadows on, the non-static branch runs the CDLOD selection from the camera's eye and ranges with the slot's frustum in place of the camera's, which is R17's rule per slot. Its nodes stream through upstream's per-draw binding, so no buffer is allocated at all and `NoAllocationWhenOff` was dropped. Red control for AC24: the same test on the merged tree before this change (`terrain-evidence/T3/merge-gpu-2.log`: lit 139, shadowed 139); with it, 139 against 60.
 - Implementers record further deviations here.

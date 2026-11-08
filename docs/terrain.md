@@ -35,3 +35,10 @@ was authored.
   mobile and web, 8 MB on desktop) every few frames. The last edit always goes up.
 - Foliage and conforming splines follow at most four times a second during a stroke or a game's edits.
 - A NavMesh is not baked again: `sample_terrain`'s issues report `navmesh_stale` until the next bake.
+
+## Materials
+
+A terrain with no layer draws its base material alone: its Quality tier, Limit Layers Per Pixel and the
+material features have no layer to act on, and Macro Variation applies once the terrain has a layer
+(the Inspector and `sample_terrain`'s issues, `macro_without_layers`, say so). A terrain whose layers
+all fit under the cap (High keeps four) draws without the cap, the same image.

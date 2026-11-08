@@ -19,7 +19,7 @@
 #include "reflect/Reflect.h"
 #include "Project.h"
 #include "Generator.h"
-#include "window/TerrainEditWindow.h"
+#include "terrain/TerrainBrush.h"
 #include "render/shadow/ShadowTiers.h"
 #include "render/shadow/ShadowTypes.h"
 
@@ -37,6 +37,11 @@
 
 namespace jasperengine{
     enum class LodFadeMode;
+    // T3's terrain settings (component/TerrainComponent.h, component/TerrainSurfaceLayer.h)
+    enum class TerrainQualitySetting : int;
+    enum class TerrainOffscreenShadows : int;
+    enum class TerrainMacroMode : int;
+    enum class TerrainCliffProjection : int;
 }
 
 namespace jasperengine{
@@ -73,6 +78,10 @@ namespace jasperengine{
     enum class ProgressbarType;
     enum class ScrollbarType;
     enum class ShadowCaster2DShape;
+    enum class TerrainCliffProjection;
+    enum class TerrainMacroMode;
+    enum class TerrainOffscreenShadows;
+    enum class TerrainQualitySetting;
     enum class UIDocumentRenderMode;
     enum class WaterVolumeWaves;
 }
@@ -211,6 +220,7 @@ namespace jasperengine::editor {
         static const EnumTable<EaseType>& easeType();
         static const EnumTable<FluidOutput>& fluidOutput();
         static const EnumTable<AtmosphereQuality>& atmosphereQuality();
+        static const EnumTable<FoliageQuality>& foliageQuality();
         static const EnumTable<AtmosphereQualityOverride>& atmosphereQualityOverride();
         static const EnumTable<CloudsPreset>& cloudsPreset();
         static const EnumTable<CloudsRendering>& cloudsRendering();
@@ -253,6 +263,10 @@ namespace jasperengine::editor {
         static const EnumTable<MaterialDepthTest>& materialDepthTest();
         static const EnumTable<MaterialDepthWrite>& materialDepthWrite();
         static const EnumTable<MaterialLighting>& materialLighting();
+        static const EnumTable<TerrainQualitySetting>& terrainQualitySetting();
+        static const EnumTable<TerrainOffscreenShadows>& terrainOffscreenShadows();
+        static const EnumTable<TerrainMacroMode>& terrainMacroMode();
+        static const EnumTable<TerrainCliffProjection>& terrainCliffProjection();
         static const EnumTable<MaterialPassOrder>& materialPassOrder();
         static const EnumTable<MaterialStencilCompare>& materialStencilCompare();
         static const EnumTable<MaterialStencilOp>& materialStencilOp();

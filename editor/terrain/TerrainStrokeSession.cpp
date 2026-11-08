@@ -48,6 +48,8 @@ namespace {
             case TerrainBrushMode::PaintLayer: return OpType::PaintLayer;
             case TerrainBrushMode::PaintDensity: return OpType::PaintDensity;
             case TerrainBrushMode::EraseDensity: return OpType::EraseDensity;
+            case TerrainBrushMode::CutHole: return OpType::CutHoles;
+            case TerrainBrushMode::FillHole: return OpType::FillHoles;
             case TerrainBrushMode::PlaceObject:
             case TerrainBrushMode::EraseObject:
                 break;
@@ -107,11 +109,13 @@ void editor::TerrainStrokeSession::buildOp(){
     }
 
     Shape& shape = op.shape;
-    shape.falloff = brush.falloff == TerrainBrushFalloff::Smooth ? Falloff::Smooth :
+    // T3 R41: a hole is cut or it is not, so the brush's falloff, strength and mask stay out of it
+    const bool holes = brush.mode == TerrainBrushMode::CutHole || brush.mode == TerrainBrushMode::FillHole;
+    shape.falloff = holes || brush.falloff == TerrainBrushFalloff::Smooth ? Falloff::Smooth :
                     (brush.falloff == TerrainBrushFalloff::Linear ? Falloff::Linear : Falloff::Constant);
-    shape.feather = 1.0f;
+    shape.feather = holes ? -1.0f : 1.0f;
     shape.nearestTexel = true;
-    const bool masked = !brush.mask.empty();
+    const bool masked = !holes && !brush.mask.empty();
     if (masked){
         shape.maskPixels = std::move(brush.mask);
         shape.maskWidth = brush.maskWidth;
@@ -186,7 +190,7 @@ bool editor::TerrainStrokeSession::applyStamp(float x, float z, float seconds){
         return ok;
     }
 
-    op.strength = std::clamp(deposit, 0.0f, 1.0f);
+    op.strength = op.type == OpType::CutHoles || op.type == OpType::FillHoles ? 1.0f : std::clamp(deposit, 0.0f, 1.0f);
     OpOptions options;
     options.inPlace = true;
     return applyOps(transaction, std::span<const Op>(&op, 1), options).ok;

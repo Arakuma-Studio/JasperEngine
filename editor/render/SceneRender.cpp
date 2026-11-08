@@ -44,14 +44,18 @@ extern unsigned int bulb_icon_png_len;
 #include "util/GraphicUtils.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "voxel/VoxelBrushTool.h"
+#include "voxel/VoxelSceneOverlay.h"
 #include "render/LineDrawUtils.h"
 #include "render/Joint2DAnchors.h"
 #include "util/Angle.h"
 #include "util/FluidEditorTools.h"
 #include "pose/PoseViewport.h"
 #include "component/ParticleSystemComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "particles/ParticleCompiler.h"
 #include "subsystem/ParticleSubsystem.h"
+#include "subsystem/VoxelSystem.h"
 
 #include <algorithm>
 #include <chrono>
@@ -201,6 +205,7 @@ editor::SceneRender::~SceneRender(){
     for (auto& pair : particleShapeLines) {
         delete pair.second;
     }
+    VoxelSceneOverlay::release(scene);
     delete terrainBrushLines;
     delete physicsLines;
     delete camera;
@@ -212,6 +217,15 @@ AABB editor::SceneRender::getMeshLocalAABB(const MeshComponent& mesh){
 
 AABB editor::SceneRender::getAABB(Scene* target, Entity entity, bool local){
     Signature signature = target->getSignature(entity);
+    // a Voxel Volume is its whole box, which its chunks fill (T6 R59): Frame Selected and the outline
+    if (signature.test(target->getComponentId<VoxelVolumeComponent>())){
+        std::shared_ptr<VoxelSystem> voxels = target->findSystem<VoxelSystem>();
+        const AABB box = voxels ? voxels->getGeneratedBounds(entity) : AABB();
+        const Transform* transform = target->findComponent<Transform>(entity);
+        if (!box.isNull() && transform){
+            return local ? transform->modelMatrix.inverse() * box : box;
+        }
+    }
     if (signature.test(target->getComponentId<MeshComponent>())){
         MeshComponent& mesh = target->getComponent<MeshComponent>(entity);
         if (local){
@@ -1384,6 +1398,13 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
         poseViewport->removeCovered(selEntities);
     }
 
+    // T6 R60: the armed Voxel Volume brush takes the press, Alt never reaches here
+    if (VoxelBrushTool::get().isEditingScene(scene)){
+        const ImGuiIO& io = ImGui::GetIO();
+        VoxelBrushTool::get().beginStroke(scene, ownerMouseRay, VoxelBrushModifiers{io.KeyCtrl, io.KeyShift});
+        return;
+    }
+
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         if (terrainEditWindow->isEditingScene(scene)){
             terrainEditWindow->beginStroke(scene, ownerMouseRay);
@@ -1646,6 +1667,7 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
         poseViewport->mouseUp();
     }
 
+    VoxelBrushTool::get().endStroke();
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         terrainEditWindow->endStroke();
     }
@@ -1797,6 +1819,12 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
     }
     if (poseViewport && !editLayer.active){
         poseViewport->removeCovered(selEntities);
+    }
+
+    if (VoxelBrushTool::get().isEditingScene(scene)){
+        VoxelBrushTool::get().paintStroke(scene, ownerMouseRay);
+        VoxelBrushTool::get().updateCursor(scene, ownerMouseRay);
+        return;
     }
 
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
@@ -2666,6 +2694,10 @@ bool editor::SceneRender::isFluidPainting() const{
 }
 
 bool editor::SceneRender::isTerrainEditing() const{
+    // the armed Voxel Volume brush (T6 R60) takes the left button the same way
+    if (VoxelBrushTool::get().isEditingScene(scene)){
+        return true;
+    }
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         return terrainEditWindow->isEditingScene(scene);
     }
@@ -2914,6 +2946,9 @@ void editor::SceneRender::updateTerrainBrushCursor(){
     if (!terrainBrushLines){
         return;
     }
+    if (VoxelBrushTool::get().isEditingScene(scene)){
+        VoxelBrushTool::get().updateCursor(scene, ownerMouseRay);
+    }
 
     TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow();
     TerrainBrushCursor cursor;
@@ -2936,6 +2971,12 @@ void editor::SceneRender::updateTerrainBrushCursor(){
     // over the terrain surface by updateCursor.
     addLoop(cursor.outerPoints, cursor.color);
     addLoop(cursor.innerPoints, Vector4(cursor.color.x * 0.75f, cursor.color.y * 0.75f, cursor.color.z * 0.75f, cursor.color.w));
+    for (size_t i = 0; i + 1 < cursor.capsuleLines.size(); i += 2){
+        terrainBrushLines->addLine(cursor.capsuleLines[i], cursor.capsuleLines[i + 1], Vector4(0.45f, 0.9f, 0.45f, 1.0f));
+    }
+    for (const std::vector<Vector3>& loop : cursor.texelLoops){
+        addLoop(loop, Vector4(cursor.color.x, cursor.color.y, cursor.color.z, 0.6f));
+    }
 
     terrainBrushLines->setVisible(true);
 }

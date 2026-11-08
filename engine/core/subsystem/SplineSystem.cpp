@@ -6,6 +6,7 @@
 #include "Engine.h"
 #include "Log.h"
 #include "Scene.h"
+#include "object/TerrainEdit.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
@@ -437,6 +438,7 @@ struct SplineSystem::Resolve{
     // the sum of the scene's terrains' surface revisions, at the last look
     uint64_t surfaceRevisions = 0;
     uint64_t splineVersion = 0;
+    uint64_t holeStamp = 0;
     uint64_t extrudeHash = 0;
     uint64_t instantiateHash = 0;
     Matrix4 world;
@@ -723,6 +725,19 @@ void SplineSystem::updateConsumers(Entity entity, SplineComponent& spline, Trans
         resolve.surfaceRevisions = surfaceRevisions;
     }
 
+    // T3 R26: a hole cut or filled: a road over it warns, an item over it goes. Only a terrain's holes count
+    if (wantsExtrude || wantsInstantiate){
+        auto terrains = scene->getComponentArray<TerrainComponent>();
+        uint64_t holeStamp = 0;
+        for (size_t t = 0; t < terrains->size(); t++){
+            holeStamp += terrains->getComponentFromIndex(t).holeMapRevision;
+        }
+        if (holeStamp != resolve.holeStamp){
+            resolve.holeStamp = holeStamp;
+            common = true;
+        }
+    }
+
     if (wantsExtrude){
         const uint64_t h = hashExtrude(*extrude);
         if (!resolve.hadExtrude || h != resolve.extrudeHash || common ||
@@ -829,10 +844,12 @@ bool SplineSystem::collectStations(Entity entity, const SplineComponent& spline,
 
     // terrain probe: the named terrain, else the first one under each point
     const Entity named = spline.terrain.terrain;
+    // a probe outlives this call in what it was handed to, so the count is shared
+    auto stationsOverHole = std::make_shared<int>(0);
     if (options.conform != spline::SplineDrape::None){
         Scene* s = scene;
         const SplineSystem* self = this;
-        options.probe = [s, self, named](const Vector3& point) -> spline::SplineSurfaceSample{
+        options.probe = [s, self, named, stationsOverHole](const Vector3& point) -> spline::SplineSurfaceSample{
             spline::SplineSurfaceSample sample;
             Entity terrainEntity = named;
             TerrainComponent* terrain = nullptr;
@@ -850,14 +867,16 @@ bool SplineSystem::collectStations(Entity entity, const SplineComponent& spline,
             if (local.x < -half || local.x > half || local.z < -half || local.z > half || !terrain->heightMap.hasData()){
                 return sample;
             }
-            float height = 0.0f;
-            Vector3 normal;
-            MeshSystem::sampleTerrainSurface(*terrain, local.x, local.z, height, normal);
-            const Vector3 surface = terrainTransform->modelMatrix * Vector3(local.x, height, local.z);
+            // T3 R26: the height map stays defined under a hole, so a road bridges it
+            const terrain::SurfaceSample ground = querySurface(*terrain, local.x, local.z);
+            if (ground.hole){
+                (*stationsOverHole)++;
+            }
+            const Vector3 surface = terrainTransform->modelMatrix * Vector3(local.x, ground.height, local.z);
             const Vector3 origin = terrainTransform->modelMatrix * Vector3(0.0f, 0.0f, 0.0f);
             sample.hit = true;
             sample.height = surface.y;
-            sample.normal = (terrainTransform->modelMatrix * normal - origin).normalized();
+            sample.normal = (terrainTransform->modelMatrix * ground.normal - origin).normalized();
             return sample;
         };
     }
@@ -870,6 +889,10 @@ bool SplineSystem::collectStations(Entity entity, const SplineComponent& spline,
         }else if (report.probeMisses > 0){
             addWarning(warnings, SplineWarningKind::ConformMiss, -1,
                        std::to_string(report.probeMisses) + " stations are off the terrain: they hold the nearest height.");
+        }
+        if (*stationsOverHole > 0){
+            addWarning(warnings, SplineWarningKind::OverHole, -1,
+                       std::to_string(*stationsOverHole) + " stations are over a terrain hole: they hold the height map's height, so the spline bridges it.");
         }
     }
     (void)entity;
@@ -1756,7 +1779,40 @@ void SplineSystem::BuildJob::layoutPieces(){
     instances = static_cast<uint32_t>(placed.size());
 }
 
+// T3 R26: an item whose origin is over a hole goes, as dropout takes one: after the layout, so the
+// items that stay keep their places and picks. On the main thread, where the terrain's maps are.
+void SplineSystem::dropPiecesOverHoles(const SplineComponent& spline, BuildJob& job){
+    auto terrains = scene->getComponentArray<TerrainComponent>();
+    bool anyHoles = false;
+    for (size_t i = 0; i < terrains->size() && !anyHoles; i++){
+        anyHoles = !terrains->getComponentFromIndex(i).holeMap.empty();
+    }
+    if (!anyHoles){
+        return;
+    }
+    const Entity named = spline.terrain.terrain;
+    for (auto& group : job.poses){
+        std::vector<spline::SplinePiecePose>& poses = group.second;
+        const auto kept = std::remove_if(poses.begin(), poses.end(), [&](const spline::SplinePiecePose& pose){
+            Entity terrainEntity = named;
+            TerrainComponent* terrain = named != NULL_ENTITY ? scene->findComponent<TerrainComponent>(named)
+                                                             : findTerrainUnder(pose.position, terrainEntity);
+            const Transform* transform = terrain ? scene->findComponent<Transform>(terrainEntity) : nullptr;
+            if (!terrain || !transform || terrain->holeMap.empty()){
+                return false;
+            }
+            const Vector3 local = transform->modelMatrix.inverse() * pose.position;
+            return querySurface(*terrain, local.x, local.z).hole;
+        });
+        job.instances -= static_cast<uint32_t>(poses.end() - kept);
+        poses.erase(kept, poses.end());
+    }
+}
+
 void SplineSystem::applyPieces(Entity entity, Resolve& resolve, BuildJob& job){
+    if (const SplineComponent* spline = scene->findComponent<SplineComponent>(entity)){
+        dropPiecesOverHoles(*spline, job);
+    }
     std::vector<PieceChunk> previous = std::move(resolve.pieceChunks);
     std::vector<uint8_t> reused(previous.size(), 0);
     std::vector<PieceChunk> next;

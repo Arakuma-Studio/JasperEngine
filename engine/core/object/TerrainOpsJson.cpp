@@ -387,6 +387,7 @@ Json opResultJson(const TerrainOpResult& result, const OpSpace& space, const std
             item["hole_fraction"] = entry.holeFraction;
             item["map_created"] = entry.mapCreated;
             item["map_removed"] = entry.mapRemoved;
+            item["collision_samples_open"] = entry.collisionSamplesOpen;
         }
         for (const auto& [key, value] : entry.fields) item[key] = opJsonOfParam(value);
         entries.push_back(item);

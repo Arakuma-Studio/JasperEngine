@@ -12,6 +12,7 @@
 #include "terrain/EditorTerrainStore.h"
 #include "terrain/OverlayMapStore.h"
 #include "util/TerrainMapUtils.h"
+#include "texture/TextureData.h"
 
 #include <algorithm>
 #include <memory>
@@ -21,43 +22,47 @@ using namespace jasperengine::editor;
 using terrain::MapId;
 using terrain::MapKind;
 
-namespace {
-
-    // A map an op makes: its slot as it was, and the blank map the ops run on (what the engine's
-    // createMap fills: 0, opaque, holes solid)
-    struct TerrainMadeMap {
-        MapId map;
-        TerrainMapRef ref;
-        TerrainMapSnapshot before;
-        TerrainMapSnapshot blank;
-    };
-
-    bool terrainMakeBlankMap(Project* project, SceneProject* scene, Entity entity, MapId map, const terrain::MapFormat& format, TerrainMadeMap& made) {
-        made.map = map;
-        made.ref = TerrainMapUtils::refOfMap(map);
-        TerrainComponent& terrain = scene->scene->getComponent<TerrainComponent>(entity);
-        TerrainMapUtils::ensureMapSlot(terrain, made.ref);
-        Texture* texture = TerrainMapUtils::findTexture(terrain, made.ref);
-        if (!texture) return false;
-        made.before = TerrainMapUtils::captureSnapshot(project, *texture, true);
-        TerrainMapSnapshot& blank = made.blank;
-        blank.empty = false;
-        blank.path = TerrainMapUtils::makeEditableTexturePath(project, scene->id, entity, made.ref);
-        blank.id = blank.path;
-        blank.colorFormat = TerrainMapUtils::expectedFormat(made.ref.target);
-        blank.channels = TerrainMapUtils::expectedChannels(made.ref.target);
-        blank.width = format.bounds.w;
-        blank.height = format.bounds.h;
-        const size_t texels = static_cast<size_t>(blank.width) * blank.height;
-        blank.pixels.assign(texels * blank.channels, map.kind == MapKind::Hole ? 255 : 0);
-        if (blank.channels == 4) {
-            for (size_t i = 3; i < blank.pixels.size(); i += 4) blank.pixels[i] = 255;
-        }
-        // made at once so the ops have a map to write; the step that keeps it comes after them
-        TerrainTextureEditCmd making(project, scene->id, entity, made.ref, made.before, made.blank);
-        return making.execute();
+bool editor::makeTerrainBlankMap(Project* project, SceneProject* scene, Entity entity, MapId map, const terrain::MapFormat& format, TerrainMadeMap& made) {
+    made.map = map;
+    made.ref = TerrainMapUtils::refOfMap(map);
+    TerrainComponent& terrain = scene->scene->getComponent<TerrainComponent>(entity);
+    TerrainMapUtils::ensureMapSlot(terrain, made.ref);
+    Texture* texture = TerrainMapUtils::findTexture(terrain, made.ref);
+    if (!texture) return false;
+    made.before = TerrainMapUtils::captureSnapshot(project, *texture, true);
+    TerrainMapSnapshot& blank = made.blank;
+    blank.empty = false;
+    blank.path = TerrainMapUtils::makeEditableTexturePath(project, scene->id, entity, made.ref);
+    blank.id = blank.path;
+    blank.colorFormat = TerrainMapUtils::expectedFormat(made.ref.target);
+    blank.channels = TerrainMapUtils::expectedChannels(made.ref.target);
+    blank.width = format.bounds.w;
+    blank.height = format.bounds.h;
+    // a height map's texels are 16-bit
+    const size_t texels = static_cast<size_t>(blank.width) * blank.height;
+    blank.pixels.assign(texels * blank.channels * TextureData::getBytesPerChannel(blank.colorFormat), map.kind == MapKind::Hole ? 255 : 0);
+    if (blank.channels == 4) {
+        for (size_t i = 3; i < blank.pixels.size(); i += 4) blank.pixels[i] = 255;
     }
+    // made at once so the edit has a map to write; the step that keeps it comes after it
+    TerrainTextureEditCmd making(project, scene->id, entity, made.ref, made.before, made.blank);
+    return making.execute();
+}
 
+bool editor::keepTerrainMadeMap(Project* project, SceneProject* scene, Entity entity, const TerrainMadeMap& made,
+                                const terrain::TerrainMapStore& edited, const std::string& stepName, std::string& error) {
+    TerrainMapSnapshot after = made.blank;
+    if (!edited.readBytes(made.map, terrain::TexelRect{0, 0, after.width, after.height}, after.pixels)) {
+        error = "A new map could not be read back.";
+        return false;
+    }
+    Command* command = new TerrainTextureEditCmd(project, scene->id, entity, made.ref, made.before, std::move(after), stepName);
+    command->setNoMerge();
+    if (!CommandHandle::get(scene->id)->addCommand(command)) {
+        error = "A new map could not be made.";
+        return false;
+    }
+    return true;
 }
 
 terrain::TerrainOpResult editor::previewTerrainOps(Project* project, SceneProject* scene, Entity entity, const std::vector<terrain::Op>& ops,
@@ -81,7 +86,7 @@ bool editor::applyTerrainOpsWithUndo(Project* project, SceneProject* scene, Enti
         terrain::MapFormat format = store.format(MapId{MapKind::Height, 0});
         if (options.newMapResolution > 0) format.bounds = terrain::TexelRect{0, 0, options.newMapResolution, options.newMapResolution};
         made.emplace_back();
-        if (!terrainMakeBlankMap(project, scene, entity, map, format, made.back())) {
+        if (!makeTerrainBlankMap(project, scene, entity, map, format, made.back())) {
             error = "The " + std::string(map.kind == MapKind::Hole ? "hole" : map.kind == MapKind::Blend ? "blend" : "density") + " map could not be made.";
             return false;
         }
@@ -106,18 +111,8 @@ bool editor::applyTerrainOpsWithUndo(Project* project, SceneProject* scene, Enti
 
     // a made map's step holds its final pixels: its undo takes the map away, its redo brings it back
     // whole, and the delta below carries only the maps that were there
-    for (TerrainMadeMap& map : made) {
-        TerrainMapSnapshot after = map.blank;
-        if (!overlay.readBytes(map.map, terrain::TexelRect{0, 0, after.width, after.height}, after.pixels)) {
-            error = "A new map could not be read back.";
-            return false;
-        }
-        Command* command = new TerrainTextureEditCmd(project, scene->id, entity, map.ref, map.before, std::move(after), stepName);
-        command->setNoMerge();
-        if (!history->addCommand(command)) {
-            error = "A new map could not be made.";
-            return false;
-        }
+    for (const TerrainMadeMap& map : made) {
+        if (!keepTerrainMadeMap(project, scene, entity, map, overlay, stepName, error)) return false;
     }
 
     auto delta = std::make_unique<TerrainMapDeltaCmd>(project, scene->id, entity, entity, overlay, false, stepName, madeIds);

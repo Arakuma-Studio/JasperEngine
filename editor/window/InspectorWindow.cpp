@@ -1,6 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "TerrainQualityPanel.h"
+#include "Engine.h"
+#include "mcp/TerrainMaterialInfo.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "component/Transform.h"
@@ -11,7 +14,7 @@
 #include "component/LayoutGroupComponent.h"
 #include "component/TextEffectComponent.h"
 #include "EditorModal.h"
-#include "window/dialog/CreateTerrainDialog.h"
+#include "window/TerrainEditWindow.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
 
@@ -10489,6 +10492,69 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
     }
 }
 
+// T3 R40: Quality, its features, the cost strip and what they took from the base material
+void editor::InspectorWindow::drawTerrainQualitySection(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities){
+    TerrainComponent& terrain = sceneProject->scene->getComponent<TerrainComponent>(entities[0]);
+    const terrain::TerrainQuality tier = mcp::terrainEffectiveTier(terrain).quality;
+
+    separatorText("Quality");
+    RowSettings qualitySettings;
+    qualitySettings.enumEntries = enumEntries(reflect::enums::kTerrainQualitySetting);
+    static std::string autoLabel;
+    autoLabel = std::string("Auto (Project: ") + terrain::terrainQualityName(terrain::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()))) + ")";
+    if (!qualitySettings.enumEntries->empty()){
+        qualitySettings.enumEntries->front().name = autoLabel.c_str();
+    }
+    RowSettings shadowSettings;
+    shadowSettings.enumEntries = enumEntries(reflect::enums::kTerrainOffscreenShadows);
+    RowSettings macroSettings;
+    macroSettings.enumEntries = enumEntries(reflect::enums::kTerrainMacroMode);
+
+    const auto greyed = [&](const char* feature){
+        const std::string reason = terrainFeatureGreyReason(feature, tier);
+        if (!reason.empty()){
+            ImGui::TextDisabled("%s", reason.c_str());
+        }
+        return !reason.empty();
+    };
+
+    beginTable(cpType, getLabelSize("Limit Layers Per Pixel"), "terrain_quality");
+    propertyRow(RowPropertyType::Enum, cpType, "quality", "Quality", sceneProject, entities, qualitySettings);
+    propertyRow(RowPropertyType::Bool, cpType, "limitLayersPerPixel", "Limit Layers Per Pixel", sceneProject, entities);
+    propertyRow(RowPropertyType::Enum, cpType, "offscreenShadows", "Off-screen Shadows", sceneProject, entities, shadowSettings);
+    propertyRow(RowPropertyType::Enum, cpType, "macroMode", "Macro Variation", sceneProject, entities, macroSettings);
+    if (terrain.macroMode != TerrainMacroMode::OFF){
+        propertyRow(RowPropertyType::Float_0_1, cpType, "macroStrength", "Strength", sceneProject, entities);
+    }
+    if (terrain.macroMode == TerrainMacroMode::NOISE){
+        propertyRow(RowPropertyType::FloatPositive, cpType, "macroScale", "Scale", sceneProject, entities);
+        propertyRow(RowPropertyType::Float_0_1, cpType, "macroSlopeFade", "Slope Fade", sceneProject, entities);
+        propertyRow(RowPropertyType::Vector3, cpType, "macroTintA", "Tint A", sceneProject, entities);
+        propertyRow(RowPropertyType::Vector3, cpType, "macroTintB", "Tint B", sceneProject, entities);
+    }
+    propertyRow(RowPropertyType::Bool, cpType, "resampleEnabled", "Distance Resampling", sceneProject, entities);
+    if (terrain.resampleEnabled){
+        propertyRow(RowPropertyType::FloatPositive, cpType, "resampleNear", "Near", sceneProject, entities);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "resampleFar", "Far", sceneProject, entities);
+        propertyRow(RowPropertyType::Float_0_1, cpType, "resampleReduction", "Reduction", sceneProject, entities);
+    }
+    propertyRow(RowPropertyType::Float_0_1, cpType, "heightBlendSharpness", "Height Blend Sharpness", sceneProject, entities);
+    propertyRow(RowPropertyType::Bool, cpType, "macroNormal", "Macro Normal Map", sceneProject, entities);
+    endTable();
+
+    if (terrain.limitLayersPerPixel) greyed("limit");
+    if (terrain.resampleEnabled) greyed("resample");
+    if (terrain.macroNormal) greyed("macroNormal");
+
+    static int shownTier = -1;
+    drawTerrainCostStrip(terrain, shownTier);
+    if (MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entities[0]); mesh && mesh->numSubmeshes > 0){
+        for (const std::string& warning : terrainQualityWarnings(terrain, mesh->submeshes[0].material)){
+            ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "%s", warning.c_str());
+        }
+    }
+}
+
 void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     TerrainComponent& terrain = sceneProject->scene->getComponent<TerrainComponent>(entities[0]);
 
@@ -10638,6 +10704,8 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
     propertyRow(RowPropertyType::FloatPositive, cpType, "textureBaseTiles", "Base Tiles", sceneProject, entities, settingsResolution);
     propertyRow(RowPropertyType::FloatPositive, cpType, "textureDetailTiles", "Detail Tiles", sceneProject, entities, settingsResolution);
     endTable();
+
+    drawTerrainQualitySection(cpType, sceneProject, entities);
 
     separatorText("Ranges");
     beginTable(cpType, getLabelSize("Auto Ranges"), "terrain_ranges_auto");
@@ -13828,7 +13896,6 @@ void editor::InspectorWindow::show(){
     scriptCreateDialog.show();
     shaderForkDialog.show();
     RagdollWizardDialog::instance().show();
-    CreateTerrainDialog::instance().show();
     textureSlicerToolDialog.show();
 
     ImGui::End();

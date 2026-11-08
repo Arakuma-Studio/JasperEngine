@@ -165,6 +165,7 @@ namespace jasperengine::terrain {
         float holeFraction = 0.0f;
         bool mapCreated = false;
         bool mapRemoved = false;
+        int collisionSamplesOpen = 0;
 
         // place_objects, erase_objects: pure data the editor turns into commands (R21)
         PlacementPlan plan;

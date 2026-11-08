@@ -4,6 +4,7 @@
 1005 light/spotMask texture
 1006 terrain/heightMap texture
 1006 terrain/holeMap texture
+1006 terrain/treeData tree_data
 1007 points/texture texture
 1007 points/customShader shader
 1008 skybox/texture cubemap
@@ -17,6 +18,7 @@
 1021 button/textureHovered texture
 1021 button/texturePressed texture
 1021 button/textureDisabled texture
+1021 button/textureSelected texture
 1033 particlesystem/effect particle_effect
 1044 text/font[0] font
 1052 reflectionprobe/texture cubemap
@@ -27,3 +29,4 @@
 1073 navgrid/gridData navgrid
 1078 animator/controller animator_controller
 1080 trailrenderer/customShader shader
+1093 voxelvolume/volumeData any

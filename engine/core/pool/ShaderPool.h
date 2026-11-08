@@ -4,6 +4,7 @@
 #ifndef SHADERPOOL_H
 #define SHADERPOOL_H
 
+#include "terrain/TerrainQuality.h"
 #include "Engine.h"
 #include "render/ShaderRender.h"
 #include "shader/ShaderBuildTypes.h"
@@ -158,6 +159,8 @@ namespace jasperengine{
         // phase 4's in-shader tier) of a shader type, 0 for a type that never applies it (UI,
         // depth, effects)
         static uint64_t getPostColorProperty(ShaderType shaderType);
+        // the G-buffer's HAS_VOXEL ('Vox', T6 R49): Lit defines reach only colour shaders
+        static uint64_t getGBufferVoxelProperty();
         // the mesh variant bit of the High and Ultra shadow filters (USE_SHADOWS_HQ: the Vogel
         // disk, PCSS and the raw-depth view of the atlas; docs/rendering/shadows.md), set on a
         // variant that receives shadows when the shadow tier is High or above (MESH bit 33)
@@ -175,6 +178,13 @@ namespace jasperengine{
         // shadows) and 'Oit' (an alpha-blended submesh's OIT accumulation render)
         enum class LightingFeature { TILED_LIGHTS, CAPSULE_SHADOWS, CONTACT_SHADOWS, OIT };
         static uint64_t getLightingProperty(LightingFeature feature);
+        // the variant bit of a terrain's holes (T3 R20: TERRAIN_HOLES) of MESH, DEPTH and GBUFFER, 0 for
+        // another type. Never in getFallbackProperties: a dropped hole would draw over the hole.
+        static uint64_t getTerrainHolesProperty(ShaderType shaderType);
+        // the GBUFFER bits of a terrain's tier and of its twelve layers (T3 D2: Lit defines do not reach
+        // a G-buffer); High has no bit, so its keys stay
+        static uint64_t getTerrainTierProperty(terrain::TerrainQuality quality);
+        static uint64_t getTerrainExtendedProperty();
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);
         static uint64_t getPropertiesFromKey(ShaderKey key);
@@ -266,6 +276,9 @@ namespace jasperengine{
                         bool terrainPBR = false,
                         bool vertexLights = false, int lightCapacity = 8, bool stochasticTiling = false,
                         bool lattice = false, bool vat = false, bool vatBones = false);
+        // foliage's bits of a MESH, DEPTH or GBUFFER key (T5 F3, F6, F8). They change a uniform block or
+        // the inputs, so they are in no fallback list (R37).
+        static uint64_t getFoliageProperties(ShaderType shaderType, bool compact, bool wind, bool dither);
         // normals, vertexColorVec3/4 and uv1: the inputs a library depth program requires
         // (vertexColorVec3/4 also a lattice's vertex colour mask); textureRect: the sprite
         // texture rect its UV (texture or uv1) goes through
