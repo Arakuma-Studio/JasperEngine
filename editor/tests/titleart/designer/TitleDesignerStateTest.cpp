@@ -327,6 +327,49 @@ TEST_F(TitleDesignerStateTest, IndexFromViews) {
     EXPECT_TRUE(labels("Fit").count("style.face.bevel.fit")) << "shown once size_mode is fit";
 }
 
+// R69: after an edit the index re-collects only the objects that changed (the layer's size here,
+// not its rims and effects), and gives what a full build gives. Counted rows, not milliseconds.
+// Red control: no replay re-collects every row (incremental == full).
+TEST_F(TitleDesignerStateTest, IncrementalIndexMatchesAFullBuild) {
+    TitleDesignerState state(project());
+    ASSERT_TRUE(state.open(makeDocument("incremental"), nullptr));
+    const std::string title = layerId(state, "Title");
+    const std::string ref = "id:" + title;
+    ta::Json ops = ta::Json::array();
+    for (int i = 0; i < 4; i++) ops.push_back({{"op", "add_rim"}, {"layer", ref}});
+    for (const char* type : {"outer_glow", "drop_shadow", "inner_glow", "gradient_overlay"}) ops.push_back({{"op", "add_effect"}, {"layer", ref}, {"type", type}});
+    ASSERT_TRUE(state.commit(ops, "Add Rims and Effects", nullptr));
+    state.selectOne({NodeKind::Layer, title, {}, {}});
+    Host host(state);
+    PropertyIndex index;
+    auto snapshot = [&]() {
+        std::vector<std::string> out;
+        for (size_t i = 0; i < index.size(); i++) {
+            const IndexEntry& e = index.entry(i);
+            std::string location;
+            for (const std::string& part : e.location) location += part + ">";
+            out.push_back(e.rowId + "|" + e.label + "|" + e.fieldPath + "|" + location + "|" + e.kind);
+        }
+        return out;
+    };
+    clearRecordedRows();
+    collectIndex(state, &host, index, false);
+    const int full = lastCollectTimes().rowCount;
+    ASSERT_TRUE(state.commit(editsToOps({{title, "size", 150}}), "Change Size", nullptr));
+    collectIndex(state, &host, index, false);
+    const int incremental = lastCollectTimes().rowCount;
+    const std::vector<std::string> replayed = snapshot();
+    clearRecordedRows();
+    collectIndex(state, &host, index, false);
+    EXPECT_EQ(replayed, snapshot()) << "the incremental index is the full one";
+    EXPECT_GT(full, 100);
+    EXPECT_LT(incremental * 2, full) << "rows re-collected after a size change: " << incremental << " of " << full;
+    // an edit to one rim re-collects that rim
+    ASSERT_TRUE(state.commit(editsToOps({{title, "style.rims[1].width", 9}}), "Change Rim Width", nullptr));
+    collectIndex(state, &host, index, false);
+    EXPECT_LT(lastCollectTimes().rowCount * 2, full);
+}
+
 // AC7 (R20, R21): every numeric row the collect pass sees on every page of a document with every
 // layer type has its schema (or ParamDef) default and a hard range, so its reset arrow has a
 // target. Red control: a row whose default the lookup drops (an override that returns null) is

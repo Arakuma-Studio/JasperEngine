@@ -180,6 +180,8 @@ namespace jasperengine::editor::titledesigner {
         int rowCount = 0;
     };
     const CollectTimes& lastCollectTimes();
+    // forgets the rows a Collect pass replays (tests: a full build to compare with)
+    void clearRecordedRows();
     // the numeric rows a Collect pass saw, with their schema defaults
     const std::vector<RowAudit>& lastCollectAudit();
     void clearCollectAudit();

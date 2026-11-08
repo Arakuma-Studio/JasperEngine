@@ -550,6 +550,10 @@ namespace {
     }
 }
 
+void jasperengine::editor::titledesigner::clearRecordedRows() {
+    recordedRows().clear();
+}
+
 const jasperengine::editor::titledesigner::CollectTimes& jasperengine::editor::titledesigner::lastCollectTimes() {
     return collectTimes;
 }
