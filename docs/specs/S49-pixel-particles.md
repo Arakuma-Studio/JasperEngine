@@ -899,4 +899,33 @@ uniform u_vs_analyticParams { /* AnalyticProgram, with t split as loop phase + s
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+Recorded by the S49 implementation (`feature/s49-pixel-particles`).
+
+- **S48 is not implemented.** `capture_particles {checks}` reports S48's ids (`off_palette`,
+  `partial_alpha`, `spill`, `one_shot_end`, `loop_seam`, `determinism`) as SKIP with "needs S48
+  (Pixel FX)" (`editor/pixelart/particles/ParticleCaptureChecks.cpp`); S49's own `off_grid` and
+  `over_budget` run. AC11's `partial_alpha` and `loop_seam` red controls wait for S48.
+  `PixelParticles::emitAt` (R21a) is provided for S48 to call; it adds one system entity per
+  (scene, effect) and is not itself an undo step (the particles are runtime state, not data).
+- **Variant bits** (R23): `Pxl` is particle bit 12 and `Ana` bit 13 (count 14), pinned by
+  `PixelSnapShaderTest`; the shader cache version is taken at the batch landing.
+- **AC2, AC3, AC6 (GPU) and AC8** live in their own suite, `engine/tests/core/render/ParticlesPixelGpuTest.cpp`
+  (`ParticlesPixelGpu.*`), beside S20's `ParticlesGpuTest.cpp`. Per the owner's per-feature gate
+  they ran on glcore only; gles3 and Vulkan run at the batch landing.
+- **AC13 and AC16** (benchmarks, mobile numbers, web/android builds and the smoke export) are not
+  run per feature (owner decision of 2026-11-08); they belong to the batch landing.
+- **AC15** is covered through the Inspector's command path in `test_particles_editor.py::test_pixel_analytic_scrub`
+  (Pixel Art added, Pixel/Streak, a Ramp, Analytic with one undo step, ten exact scrubs whose
+  captures do not depend on the scrub's path), plus screenshots; the shape icons, the palette drag
+  and the Pixel Grid toggle are not driven by a UI robot.
+- **Analytic Velocity over Lifetime and Force** follow R15 (constant, dragged with the start
+  velocity; force folded into g). Analytic Start Color as a Ramp takes the random step from the
+  same stream as Simulated mode. A Hold Frames rate on an Analytic effect quantises t (R5); the
+  compiler clears the Simulated pack-hold for it.
+- **Hold Frames packing** keeps the last pack per (emitter, view) in `HeldPack` and repacks only
+  when the step changes; AC4's "pack calls drop by >= 70 %" is measured with `packCount()`.
+- **Presets.** Sub-emitter children (`pixel_smoke` of `pixel_fire`; `pixel_debris_shard` and
+  `pixel_debris_chunk` of `pixel_debris`) are written beside the created asset; `create_particle_effect`
+  lists them in `children`. Rates the pixelfx demos do not state (smoke, fire, ember) are ours,
+  as `docs/particles-pixel.md` says.
+

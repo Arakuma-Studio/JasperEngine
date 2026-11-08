@@ -36,15 +36,15 @@ namespace {
         return h ^ pack.count;
     }
 
-    struct Run {
+    struct HoldRun {
         std::vector<uint64_t> hashes;
         uint64_t packs = 0;
     };
 
-    Run run(float holdRate){
+    HoldRun run(float holdRate){
         Sim sim(heldEffect(holdRate));
         HeldPack held;
-        Run out;
+        HoldRun out;
         const uint64_t before = ParticleRenderPrep::packCount();
         for (int frame = 0; frame < 120; frame++){
             sim.runtime.advance(sim.input, 1.0 / 60.0);
@@ -60,7 +60,7 @@ namespace {
 }
 
 TEST(HoldFrames, DrawnStateChangesOnlyAtSteps){
-    const Run held = run(12.0f);
+    const HoldRun held = run(12.0f);
     // after the first frames (the first particles), the state holds for 5 frames at a time
     int changes = 0;
     for (size_t f = 1; f < held.hashes.size(); f++){
@@ -72,7 +72,7 @@ TEST(HoldFrames, DrawnStateChangesOnlyAtSteps){
     }
     EXPECT_GE(changes, 20);
     // the packs: one per step (24 in two seconds), against one per frame without it
-    const Run every = run(0.0f);
+    const HoldRun every = run(0.0f);
     EXPECT_EQ(every.packs, 120u);
     EXPECT_LE((double)held.packs, 0.3 * (double)every.packs) << held.packs << " packs with Hold Frames";
     int everyChanges = 0;

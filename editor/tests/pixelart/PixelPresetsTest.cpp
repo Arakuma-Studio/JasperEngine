@@ -38,11 +38,11 @@ namespace {
         return effect;
     }
 
-    struct Run {
+    struct PresetRun {
         EmitterRuntime runtime;
         EmitterInput input;
         float transform[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
-        explicit Run(std::shared_ptr<const CompiledEffect> effect, uint32_t seed = 1){
+        explicit PresetRun(std::shared_ptr<const CompiledEffect> effect, uint32_t seed = 1){
             runtime.bind(effect);
             runtime.reset(seed);
             input.seed = seed;
@@ -98,7 +98,7 @@ TEST(PixelPresets, EveryPresetValidates){
 
 TEST(PixelPresets, SparkFliesAsPixelfx){
     const float vx0 = 140.0f, vy0 = 210.0f;
-    Run run(compiled(oneSpark(vx0, vy0, false)));
+    PresetRun run(compiled(oneSpark(vx0, vy0, false)));
     // sim.js SPARK (y down there: here g is -950 x 0.45 on y)
     const double dt = 1.0 / 120.0, g = -950.0 * 0.45;
     run.runtime.step(run.input);   // the burst's tick: born
@@ -121,7 +121,7 @@ TEST(PixelPresets, SparkFliesAsPixelfx){
 }
 
 TEST(PixelPresets, SparkBouncesAtPixelfxsShare){
-    Run run(compiled(oneSpark(60.0f, -50.0f, true)));
+    PresetRun run(compiled(oneSpark(60.0f, -50.0f, true)));
     run.runtime.step(run.input);
     float previousVy = -50.0f;
     bool bounced = false;
@@ -150,7 +150,7 @@ TEST(PixelPresets, GritAndDebrisSettleUntilTheyDie){
             b.count = MinMaxCurve(20.0f);
             d.emission.bursts = {b};
         }
-        Run run(compiled(d), 4);
+        PresetRun run(compiled(d), 4);
         std::map<uint32_t, std::pair<float, float>> rested;   // spawn id -> where it came to rest
         size_t moved = 0;
         for (int tick = 0; tick < 30 * 3; tick++){
@@ -176,7 +176,7 @@ TEST(PixelPresets, FireLeavesSmokeAtAThirdOfItsDeaths){
     ParticleEffectDocument fire = preset("pixel_fire");
     fire.emission.rateOverTime = MinMaxCurve(300.0f);   // more deaths a second, the same share
     auto smoke = compiled(preset("pixel_smoke"));
-    Run run(compiled(fire), 9);
+    PresetRun run(compiled(fire), 9);
     run.runtime.bindSubEmitters([&](const SubEmitterEntry& entry) -> std::shared_ptr<const CompiledEffect> {
         return entry.effect == "preset:pixel_smoke" ? smoke : nullptr;
     });

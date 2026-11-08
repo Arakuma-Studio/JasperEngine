@@ -94,7 +94,9 @@ TEST(AnalyticParticles, UnsupportedModulesAreDiagnosedByPath){
     EXPECT_TRUE(hasDiagnostic(effect->diagnostics, "analytic_unsupported", "modules.collision"));
     EXPECT_TRUE(hasDiagnostic(effect->diagnostics, "analytic_unsupported", "modules.renderer.sortMode"));
     for (const Diagnostic& diagnostic : effect->diagnostics){
-        if (diagnostic.code == "analytic_unsupported") EXPECT_EQ(diagnostic.fix, "disable it or use Simulated");
+        if (diagnostic.code == "analytic_unsupported"){
+            EXPECT_EQ(diagnostic.fix, "disable it or use Simulated");
+        }
     }
     // a disabled module is not in the way
     d.noise.enabled = false;
