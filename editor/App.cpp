@@ -5671,7 +5671,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      normal and shadowed caustics; @role in water.frag and underwater.frag.
     // v52: foliage's compact instance, wind and dither (T5: MESH 'Cin' 'Wnd' 'Dth' at 42-44, DEPTH
     //      and GBUFFER at 19-21, in mesh.vert and its siblings), library:impostor.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v52";
+    // v53: terrain holes and tiers (T3): TERRAIN_HOLES ('Thl': MESH 45, DEPTH 22, GBUFFER 22), the terrain's
+    //      Lit defines (TERRAIN_QUALITY_*, TERRAIN_MACRO*, TERRAIN_RESAMPLE, ...), GBUFFER 'Tqm' 'Tql' 'Txl' at 23-25.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v53";
 }
 
 void editor::App::pushTabNotificationStyle(){

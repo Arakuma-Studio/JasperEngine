@@ -143,3 +143,10 @@ TEST(TextureTypeInference, ConflictsAreWarnings){
     EXPECT_TRUE(TextureTypeInference::conflicts(TextureImportType::Default,
                                                 TextureTypeInference::fromUses({U{TextureSlot::Color, "a"}}, "a.png")).empty());
 }
+
+// T3 R52, AC44: a hole map is CPU readable and linear: never block compressed, like the height map
+TEST(TextureTypeInference, HoleMapStaysReadable){
+    const std::vector<TextureSlot> hole = inferenceSlots("entity:2/TerrainComponent.holeMap");
+    EXPECT_TRUE(inferenceHas(hole, TextureSlot::CpuReadable));
+    EXPECT_TRUE(inferenceHas(hole, TextureSlot::LinearData));
+}

@@ -121,6 +121,8 @@ const EnumMap<AtmosphereQuality> atmosphereQualities[] = {
     {"off", AtmosphereQuality::OFF}, {"low", AtmosphereQuality::LOW}, {"medium", AtmosphereQuality::MEDIUM}, {"high", AtmosphereQuality::HIGH}};
 const EnumMap<ShadowTier> shadowTiers[] = {
     {"low", ShadowTier::LOW}, {"medium", ShadowTier::MEDIUM}, {"high", ShadowTier::HIGH}, {"ultra", ShadowTier::ULTRA}};
+const EnumMap<terrain::TerrainQuality> terrainQualities[] = {
+    {"high", terrain::TerrainQuality::HIGH}, {"medium", terrain::TerrainQuality::MEDIUM}, {"low", terrain::TerrainQuality::LOW}};
 const EnumMap<WindowMode> windowModes[] = {
     {"windowed", WindowMode::WINDOWED}, {"maximized", WindowMode::MAXIMIZED}, {"fullscreen", WindowMode::FULLSCREEN}};
 const EnumMap<ScreenOrientation> playerOrientations[] = {
@@ -2142,6 +2144,51 @@ std::vector<Setting> mcpSettingsTable() {
                 if (!parseEnum(shadowTiers, value, tier, error)) return false;
                 if (apply) ctx.project()->setShadowTier(platform, tier);
                 return true;
+            };
+            add(s);
+        }
+        // graphics.terrainQuality.<platform>: the terrain material's tier a terrain of Quality Auto draws with (T3 R51)
+        for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+            Setting s;
+            s.key = std::string("graphics.terrainQuality.") + Project::getShadowTierPlatformName(platform);
+            s.type = "enum";
+            s.values = enumNames(terrainQualities);
+            s.description = std::string("Terrain Quality of ") + Project::getShadowTierPlatformName(platform) +
+                            " builds (and of the editor on it) for terrains whose Quality is Auto: high, medium, low "
+                            "(absent means high; docs/mcp/guide/terrain.md)";
+            s.get = [platform](SettingsContext& ctx) { return Json(enumName(terrainQualities, ctx.project()->getTerrainQualityTier(platform))); };
+            s.set = [platform](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                terrain::TerrainQuality tier;
+                if (!parseEnum(terrainQualities, value, tier, error)) return false;
+                if (apply) {
+                    ctx.project()->setTerrainQualityTier(platform, tier);
+                    ctx.project()->setTerrainQualityWritten(true);
+                }
+                return true;
+            };
+            add(s);
+        }
+        add(boolSetting("graphics.ship_all_terrain_tiers", "Export the variants of all three terrain Quality tiers, for a game that changes them at runtime.",
+                        [](Project& p) { return p.isShipAllTerrainTiers(); }, [](Project& p, bool v) { p.setShipAllTerrainTiers(v); }));
+        add(boolSetting("graphics.compress_terrain_layers", "Exports cook each terrain layer map as a compressed array slice, and the sources no longer ship.",
+                        [](Project& p) { return p.isCompressTerrainLayers(); }, [](Project& p, bool v) { p.setCompressTerrainLayers(v); }));
+        // get_project_settings says what an export would ship (T3 R46); the tiers follow from the rows above
+        {
+            Setting s;
+            s.key = "graphics.shipped_terrain_tiers";
+            s.type = "string";
+            s.set = [](SettingsContext&, const Json&, bool, std::string& error) {
+                error = "graphics.shipped_terrain_tiers follows from the other terrain settings: set those";
+                return false;
+            };
+            s.description = "The terrain Quality tiers an export ships: the platforms' tiers, any component's own, all three when a script names them or Ship All is on.";
+            s.get = [](SettingsContext& ctx) {
+                const uint32_t mask = ctx.project()->getShippedTerrainTiers();
+                std::string text;
+                for (int tier = 0; tier < terrain::TERRAIN_QUALITY_COUNT; tier++) {
+                    if (mask & (1u << tier)) text += (text.empty() ? "" : ",") + std::string(terrain::terrainQualityName(static_cast<terrain::TerrainQuality>(tier)));
+                }
+                return Json(text);
             };
             add(s);
         }

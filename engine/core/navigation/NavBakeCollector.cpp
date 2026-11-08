@@ -18,6 +18,8 @@
 #include "component/NavMeshObstacleComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/TerrainComponent.h"
+#include "object/TerrainEdit.h"
+#include "terrain/TerrainHoles.h"
 #include "component/Transform.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -665,6 +667,11 @@ namespace {
                                                                                  terrain.terrainSize, x, z)
                            : 0.0f;
             }
+        }
+        if (!terrain.holeMap.empty()) {
+            // T3 R23, R24: the walkable area stays inside the drawn ground
+            if (terrain::navHoleCells(terrainSurfaceView(terrain).holes, samples, lattice.holeCells) == 0)
+                lattice.holeCells.clear();
         }
         lattice.computeBounds();
         grow(Vector3(lattice.bmin[0], lattice.bmin[1], lattice.bmin[2]));

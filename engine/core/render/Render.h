@@ -376,7 +376,8 @@ namespace jasperengine{
         PARTICLESIXWAYA,     // six-way lighting: the two response maps
         PARTICLESIXWAYB,
         PARTICLEEMISSION,    // the emission map
-        VAT                  // a Vertex Animation payload (RGBA16F/32F, includes/vat.glsl)
+        VAT,                 // a Vertex Animation payload (RGBA16F/32F, includes/vat.glsl)
+        TERRAINHOLES         // a terrain's hole map (R8, texelFetch: T3 R18, includes/terrain_holes_fs.glsl)
     };
 
     enum class TextureType {

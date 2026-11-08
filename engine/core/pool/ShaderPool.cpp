@@ -663,6 +663,27 @@ uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
     return getVatProperty(shaderType, false) | getVatProperty(shaderType, true);
 }
 
+uint64_t ShaderPool::getTerrainHolesProperty(ShaderType shaderType){
+    switch (shaderType) {
+        case ShaderType::MESH:    return shaderPropertyBit(45);
+        case ShaderType::DEPTH:   return shaderPropertyBit(22);
+        case ShaderType::GBUFFER: return shaderPropertyBit(22);
+        default:                  return 0;
+    }
+}
+
+uint64_t ShaderPool::getTerrainTierProperty(terrain::TerrainQuality quality){
+    switch (quality) {
+        case terrain::TerrainQuality::MEDIUM: return shaderPropertyBit(23);
+        case terrain::TerrainQuality::LOW:    return shaderPropertyBit(24);
+        default:                              return 0;
+    }
+}
+
+uint64_t ShaderPool::getTerrainExtendedProperty(){
+    return shaderPropertyBit(25);
+}
+
 uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return shaderPropertyBit(31);
@@ -678,9 +699,9 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 45;
-        case ShaderType::DEPTH:  return 22;
-        case ShaderType::GBUFFER: return 22;
+        case ShaderType::MESH:   return 46;
+        case ShaderType::DEPTH:  return 23;
+        case ShaderType::GBUFFER: return 26;
         case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
         // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
@@ -782,6 +803,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 42: return shortName ? "Cin" : "Compact Instance";
             case 43: return shortName ? "Wnd" : "Foliage Wind";
             case 44: return shortName ? "Dth" : "Foliage Dither";
+            // T3 R20: a terrain with a hole map (TERRAIN_HOLES, includes/terrain_holes_fs.glsl)
+            case 45: return shortName ? "Thl" : "Terrain Holes";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -813,6 +836,7 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 19: return shortName ? "Cin" : "Compact Instance";
             case 20: return shortName ? "Wnd" : "Foliage Wind";
             case 21: return shortName ? "Dth" : "Foliage Dither";
+            case 22: return shortName ? "Thl" : "Terrain Holes"; // T3 R20
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -845,6 +869,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 19: return shortName ? "Cin" : "Compact Instance";
             case 20: return shortName ? "Wnd" : "Foliage Wind";
             case 21: return shortName ? "Dth" : "Foliage Dither";
+            case 22: return shortName ? "Thl" : "Terrain Holes"; // T3 R20
+            case 23: return shortName ? "Tqm" : "Terrain Quality Medium"; // T3 D2
+            case 24: return shortName ? "Tql" : "Terrain Quality Low";
+            case 25: return shortName ? "Txl" : "Terrain Extended Layers"; // T3 R15
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {

@@ -72,6 +72,9 @@ uniform u_fs_gbufferMaterial {
 #ifdef GBUFFER_STOCHASTIC
     #include "includes/stochastic.glsl"
 #endif
+#ifdef TERRAIN_HOLES
+    #include "includes/terrain_holes_fs.glsl"
+#endif
 
 #ifdef GBUFFER_UV
     // the UV set a map is read on: 0 = UV1, 1 = UV2 (as includes/pbr.glsl selectUV)
@@ -113,6 +116,9 @@ uniform u_fs_gbufferMaterial {
 void main() {
     #ifdef USE_FOLIAGE_DITHER
         foliageDitherDiscard();
+    #endif
+    #ifdef TERRAIN_HOLES
+        terrainDiscardHole();
     #endif
     #ifdef GBUFFER_STOCHASTIC
         {

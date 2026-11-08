@@ -54,6 +54,11 @@ namespace {
             case MapKind::Blend:
             case MapKind::Hole:
                 terrain.needUpdateTexture = true;
+                // T3 R26: a hole takes its foliage with it, and a filled one gives it back
+                if (map.kind == MapKind::Hole) {
+                    terrain.needUpdateFoliage = true;
+                    terrain.holeMapRevision++;
+                }
                 break;
             case MapKind::Density:
                 break;
@@ -106,6 +111,17 @@ SurfaceView jasperengine::terrainSurfaceView(TerrainComponent& terrain) {
     return view;
 }
 
+ResourceLoadState jasperengine::prepareTerrainHoleMap(TerrainComponent& terrain) {
+    Texture& map = terrain.holeMap;
+    if (map.empty()) return ResourceLoadState::Finished;
+    map.setReleaseDataAfterLoad(false);
+    if (map.getMinFilter() != TextureFilter::NEAREST) map.setMinFilter(TextureFilter::NEAREST);
+    if (map.getMagFilter() != TextureFilter::NEAREST) map.setMagFilter(TextureFilter::NEAREST);
+    if (map.getWrapU() != TextureWrap::CLAMP_TO_EDGE) map.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    if (map.getWrapV() != TextureWrap::CLAMP_TO_EDGE) map.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    return map.load().state;
+}
+
 SurfaceSample jasperengine::querySurface(TerrainComponent& terrain, float localX, float localZ) {
     return sampleSurface(terrainSurfaceView(terrain), localX, localZ);
 }
@@ -116,6 +132,7 @@ bool jasperengine::raycastTerrain(TerrainComponent& terrain, const Transform& tr
         terrain.heightMap.setReleaseDataAfterLoad(false);
         terrain.heightMap.load();
     }
+    prepareTerrainHoleMap(terrain);
     const SurfaceView view = terrainSurfaceView(terrain);
 
     const Matrix4 inverseModel = transform.modelMatrix.inverse();
@@ -160,7 +177,10 @@ void jasperengine::snapshotTerrainSurface(TerrainComponent& terrain, TerrainSurf
 }
 
 void jasperengine::applyNewTerrainDefaults(TerrainComponent& terrain) {
-    // T5 F12: an old scene's 0 means no Terrain-wide limit; T3 R53 adds its own here
+    // T3 R53: a new terrain keeps the strongest layers of a pixel; the struct default stays off, so an
+    // old terrain draws what it drew
+    terrain.limitLayersPerPixel = true;
+    // T5 F12: an old scene's 0 means no Terrain-wide limit
     terrain.detailDistance = 80.0f;
 }
 
@@ -289,6 +309,9 @@ void jasperengine::noteTerrainMapEdited(const Scene* scene, Entity entity, Terra
         }
         case MapKind::Hole:
             terrain.needUpdateTexture = true;
+            // T3 R26: a hole takes its foliage with it, and a filled one gives it back
+            terrain.needUpdateFoliage = true;
+            terrain.holeMapRevision++;
             markCollision(terrain, map, rect);
             break;
         case MapKind::Blend:
@@ -510,7 +533,8 @@ WriteResult TerrainComponentStore::createMap(MapId map, MapFormat newFormat, flo
 }
 
 bool TerrainComponentStore::canRemoveMap(MapId map) const {
-    return map.kind == MapKind::Hole && !terrainPtr->holeMap.empty();
+    // T3 R29: while a volume holds it, a last fill keeps the map, all solid
+    return map.kind == MapKind::Hole && !terrainPtr->holeMap.empty() && terrainPtr->holeMapHolds == 0;
 }
 
 WriteResult TerrainComponentStore::removeMap(MapId map) {

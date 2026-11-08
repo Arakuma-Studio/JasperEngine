@@ -1741,6 +1741,9 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
         if (layer.hexRotation != TerrainSurfaceLayer().hexRotation){
             code << ind << var << ".hexRotation = " << formatFloat(layer.hexRotation) << ";\n";
         }
+        if (layer.cliffProjection != TerrainCliffProjection::AUTO){
+            code << ind << var << ".cliffProjection = static_cast<TerrainCliffProjection>(" << static_cast<int>(layer.cliffProjection) << ");\n";
+        }
     }
     code << ind << "terrain.autoSetRanges = " << formatBool(terrain.autoSetRanges) << ";\n";
     code << ind << "terrain.offset = " << formatVector2(terrain.offset) << ";\n";
@@ -1751,6 +1754,23 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
     code << ind << "terrain.textureDetailTiles = " << formatFloat(terrain.textureDetailTiles) << ";\n";
     code << ind << "terrain.rootGridSize = " << formatInt(terrain.rootGridSize) << ";\n";
     code << ind << "terrain.levels = " << formatInt(terrain.levels) << ";\n";
+    // T3 R50: only what differs from the defaults
+    const TerrainComponent terrainDefaults{};
+    if (terrain.quality != terrainDefaults.quality) code << ind << "terrain.quality = static_cast<TerrainQualitySetting>(" << static_cast<int>(terrain.quality) << ");\n";
+    if (terrain.limitLayersPerPixel) code << ind << "terrain.limitLayersPerPixel = true;\n";
+    if (terrain.offscreenShadows != terrainDefaults.offscreenShadows) code << ind << "terrain.offscreenShadows = static_cast<TerrainOffscreenShadows>(" << static_cast<int>(terrain.offscreenShadows) << ");\n";
+    if (terrain.macroMode != terrainDefaults.macroMode) code << ind << "terrain.macroMode = static_cast<TerrainMacroMode>(" << static_cast<int>(terrain.macroMode) << ");\n";
+    if (terrain.macroScale != terrainDefaults.macroScale) code << ind << "terrain.macroScale = " << formatFloat(terrain.macroScale) << ";\n";
+    if (terrain.macroStrength != terrainDefaults.macroStrength) code << ind << "terrain.macroStrength = " << formatFloat(terrain.macroStrength) << ";\n";
+    if (terrain.macroTintA != terrainDefaults.macroTintA) code << ind << "terrain.macroTintA = " << formatVector3(terrain.macroTintA) << ";\n";
+    if (terrain.macroTintB != terrainDefaults.macroTintB) code << ind << "terrain.macroTintB = " << formatVector3(terrain.macroTintB) << ";\n";
+    if (terrain.macroSlopeFade != terrainDefaults.macroSlopeFade) code << ind << "terrain.macroSlopeFade = " << formatFloat(terrain.macroSlopeFade) << ";\n";
+    if (terrain.resampleEnabled) code << ind << "terrain.resampleEnabled = true;\n";
+    if (terrain.resampleNear != terrainDefaults.resampleNear) code << ind << "terrain.resampleNear = " << formatFloat(terrain.resampleNear) << ";\n";
+    if (terrain.resampleFar != terrainDefaults.resampleFar) code << ind << "terrain.resampleFar = " << formatFloat(terrain.resampleFar) << ";\n";
+    if (terrain.resampleReduction != terrainDefaults.resampleReduction) code << ind << "terrain.resampleReduction = " << formatFloat(terrain.resampleReduction) << ";\n";
+    if (terrain.heightBlendSharpness != terrainDefaults.heightBlendSharpness) code << ind << "terrain.heightBlendSharpness = " << formatFloat(terrain.heightBlendSharpness) << ";\n";
+    if (terrain.macroNormal) code << ind << "terrain.macroNormal = true;\n";
     // (Auto Ranges: the terrain sets them from the camera's far clip when it runs)
     if (!terrain.autoSetRanges && !terrain.ranges.empty()) {
         code << ind << "terrain.ranges = {";

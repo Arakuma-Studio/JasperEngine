@@ -7,11 +7,13 @@
 #include "util/SafeWrite.h"
 
 #include "Out.h"
+#include "object/TerrainEdit.h"
 #include "pool/TextureDataPool.h"
 #include "terrain/TerrainMapPersistence.h"
 #include "terrain/TerrainSurface.h"
 #include "util/TerrainMapFileWriter.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdlib>
@@ -117,8 +119,15 @@ void editor::TerrainMapUtils::refresh(SceneProject* sceneProject, Entity entity,
         terrain->needUpdateTexture = true;
         // Instances sit on the surface, so a sculpt moves them.
         terrain->needUpdateFoliage = true;
-    }else if (ref.target == TerrainMapTarget::BlendMap || ref.target == TerrainMapTarget::HoleMap){
+    }else if (ref.target == TerrainMapTarget::BlendMap){
         terrain->needUpdateTexture = true;
+    }else if (ref.target == TerrainMapTarget::HoleMap){
+        // T3 R26, R28: a map made, removed or rebound moves the foliage and the collider as an edit does
+        terrain::TexelRect whole;
+        if (terrain->holeMap.hasData()){
+            whole = terrain::TexelRect{0, 0, static_cast<int>(terrain->holeMap.getData().getWidth()), static_cast<int>(terrain->holeMap.getData().getHeight())};
+        }
+        noteTerrainMapEdited(sceneProject->scene, entity, *terrain, terrain::MapId{terrain::MapKind::Hole, 0}, whole);
     }else{
         terrain->needUpdateFoliage = true;
     }
@@ -526,6 +535,9 @@ std::vector<unsigned char> editor::TerrainMapUtils::makeInitialMapPixels(Terrain
         for (size_t i = 0; i < texelCount; i++){
             encodeHeightTexel(pixels.data(), i, bytesPerChannel, 0.5f);
         }
+    }else if (target == TerrainMapTarget::HoleMap){
+        // T3 R8: 255 is solid, so a new hole map changes nothing until a hole is cut
+        std::fill(pixels.begin(), pixels.end(), static_cast<unsigned char>(255));
     }else if (target == TerrainMapTarget::BlendMap){
         // Opaque alpha, no painted channels yet. A density map starts empty and keeps the zeros.
         for (size_t i = 3; i < pixels.size(); i += 4){

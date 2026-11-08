@@ -155,6 +155,31 @@ TEST(FoliageRules, SlopeHeightLayerRules) {
     }
 }
 
+// T3 R15: a layer past the ninth weighs by a blend map's alpha, inverted (terrain::terrainLayerChannel),
+// so a rule on layer 10 reads blend map 1's alpha, not a fourth map
+TEST(FoliageRules, LayerPastNineReadsTheAlpha) {
+    std::unique_ptr<RawMapStore> store = makeRampStore();
+    FoliageTreeScatter scatter = basicScatter();
+    const FoliageTreeScatterResult all = scatterTreesByRules(*store, scatter, {});
+    ASSERT_GT(all.trees.size(), 100u);
+
+    // blend map 1 opaque (layer 10 at 0) on the +X half, alpha 0 (layer 10 full) on the -X half
+    store->addMap(blend(1), 16, 16, 4, 8);
+    std::vector<float> weights(16 * 16 * 4, 0.0f);
+    for (int y = 0; y < 16; y++) {
+        for (int x = 8; x < 16; x++) weights[(static_cast<size_t>(y) * 16 + x) * 4 + 3] = 1.0f;
+    }
+    store->write(blend(1), TexelRect{0, 0, 16, 16}, weights);
+    FoliageTreeScatter painted = scatter;
+    painted.rules.layers.push_back(FoliageRuleLayer{10, 0.5f, 1.0f});
+    const FoliageTreeScatterResult onLayer = scatterTreesByRules(*store, painted, {});
+    EXPECT_GT(onLayer.rejected.layer, 0);
+    ASSERT_GT(onLayer.trees.size(), 0u);
+    for (const TreeRecord& tree : onLayer.trees) {
+        EXPECT_LT(foliageTreeLocalX(tree, SIZE), 1.0f) << "layer 10 is the -X half, where blend map 1's alpha is 0";
+    }
+}
+
 TEST(FoliageRules, NoiseMask) {
     std::unique_ptr<RawMapStore> store = makeRampStore();
     // a mask the caller evaluated (the editor's op evaluates T2's graph into one)

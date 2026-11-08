@@ -588,6 +588,7 @@ YAML::Node editor::Stream::encodeTerrainSurfaceLayer(const TerrainSurfaceLayer& 
     // hex tiling: written only when on, or with a rotation of its own
     if (layer.hexTiling) node["hexTiling"] = true;
     if (layer.hexRotation != TerrainSurfaceLayer().hexRotation) node["hexRotation"] = YamlNumbers::text(finiteOr(layer.hexRotation, 1.0f));
+    if (layer.cliffProjection != TerrainCliffProjection::AUTO) node["cliffProjection"] = std::string(StreamSchema::terrainCliffProjection().toString(layer.cliffProjection));
     return node;
 }
 
@@ -614,6 +615,7 @@ TerrainSurfaceLayer editor::Stream::decodeTerrainSurfaceLayer(const YAML::Node& 
     layer.stochasticRotation = decodeFinite(node["stochasticRotation"], layer.stochasticRotation);
     if (node["hexTiling"]) layer.hexTiling = YamlNumbers::as<bool>(node["hexTiling"]);
     layer.hexRotation = std::clamp(decodeFinite(node["hexRotation"], layer.hexRotation), 0.0f, 1.0f);
+    if (node["cliffProjection"]) layer.cliffProjection = decodeEnum(node, "cliffProjection", StreamSchema::terrainCliffProjection());
     return layer;
 }
 
@@ -795,6 +797,24 @@ YAML::Node editor::Stream::encodeTerrainComponent(const TerrainComponent& terrai
     node["rootGridSize"] = terrain.rootGridSize;
     node["levels"] = terrain.levels;
 
+    // T3 R50: each at its default stays out, so an old scene saves back byte-identical
+    const TerrainComponent defaults{};
+    if (terrain.quality != defaults.quality) node["quality"] = std::string(StreamSchema::terrainQualitySetting().toString(terrain.quality));
+    if (terrain.limitLayersPerPixel) node["limitLayersPerPixel"] = true;
+    if (terrain.offscreenShadows != defaults.offscreenShadows) node["offscreenShadows"] = std::string(StreamSchema::terrainOffscreenShadows().toString(terrain.offscreenShadows));
+    if (terrain.macroMode != defaults.macroMode) node["macroMode"] = std::string(StreamSchema::terrainMacroMode().toString(terrain.macroMode));
+    if (terrain.macroScale != defaults.macroScale) node["macroScale"] = YamlNumbers::text(finiteOr(terrain.macroScale, defaults.macroScale));
+    if (terrain.macroStrength != defaults.macroStrength) node["macroStrength"] = YamlNumbers::text(finiteOr(terrain.macroStrength, defaults.macroStrength));
+    if (terrain.macroTintA != defaults.macroTintA) node["macroTintA"] = encodeVector3(terrain.macroTintA);
+    if (terrain.macroTintB != defaults.macroTintB) node["macroTintB"] = encodeVector3(terrain.macroTintB);
+    if (terrain.macroSlopeFade != defaults.macroSlopeFade) node["macroSlopeFade"] = YamlNumbers::text(finiteOr(terrain.macroSlopeFade, defaults.macroSlopeFade));
+    if (terrain.resampleEnabled) node["resampleEnabled"] = true;
+    if (terrain.resampleNear != defaults.resampleNear) node["resampleNear"] = YamlNumbers::text(finiteOr(terrain.resampleNear, defaults.resampleNear));
+    if (terrain.resampleFar != defaults.resampleFar) node["resampleFar"] = YamlNumbers::text(finiteOr(terrain.resampleFar, defaults.resampleFar));
+    if (terrain.resampleReduction != defaults.resampleReduction) node["resampleReduction"] = YamlNumbers::text(finiteOr(terrain.resampleReduction, defaults.resampleReduction));
+    if (terrain.heightBlendSharpness != defaults.heightBlendSharpness) node["heightBlendSharpness"] = YamlNumbers::text(finiteOr(terrain.heightBlendSharpness, defaults.heightBlendSharpness));
+    if (terrain.macroNormal) node["macroNormal"] = true;
+
     // Auto Ranges: set from the camera's far clip when the terrain runs (MeshSystem::updateTerrainAutoRanges)
     if (!terrain.ranges.empty() && (!terrain.autoSetRanges || reflect::encodesComputedValues())) {
         YAML::Node rangesNode;
@@ -902,6 +922,24 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
     if (node["textureDetailTiles"]) terrain.textureDetailTiles = YamlNumbers::as<float>(node["textureDetailTiles"]);
     if (node["rootGridSize"]) terrain.rootGridSize = YamlNumbers::as<int>(node["rootGridSize"]);
     if (node["levels"]) terrain.levels = YamlNumbers::as<int>(node["levels"]);
+
+    // T3 R50: an absent key is the default, also when decoding over a terrain that had another value
+    const TerrainComponent defaults{};
+    terrain.quality = node["quality"] ? decodeEnum(node, "quality", StreamSchema::terrainQualitySetting()) : defaults.quality;
+    terrain.limitLayersPerPixel = node["limitLayersPerPixel"] ? YamlNumbers::as<bool>(node["limitLayersPerPixel"]) : defaults.limitLayersPerPixel;
+    terrain.offscreenShadows = node["offscreenShadows"] ? decodeEnum(node, "offscreenShadows", StreamSchema::terrainOffscreenShadows()) : defaults.offscreenShadows;
+    terrain.macroMode = node["macroMode"] ? decodeEnum(node, "macroMode", StreamSchema::terrainMacroMode()) : defaults.macroMode;
+    terrain.macroScale = decodeFinite(node["macroScale"], defaults.macroScale);
+    terrain.macroStrength = decodeFinite(node["macroStrength"], defaults.macroStrength);
+    terrain.macroTintA = node["macroTintA"] ? decodeVector3(node["macroTintA"]) : defaults.macroTintA;
+    terrain.macroTintB = node["macroTintB"] ? decodeVector3(node["macroTintB"]) : defaults.macroTintB;
+    terrain.macroSlopeFade = decodeFinite(node["macroSlopeFade"], defaults.macroSlopeFade);
+    terrain.resampleEnabled = node["resampleEnabled"] ? YamlNumbers::as<bool>(node["resampleEnabled"]) : defaults.resampleEnabled;
+    terrain.resampleNear = decodeFinite(node["resampleNear"], defaults.resampleNear);
+    terrain.resampleFar = decodeFinite(node["resampleFar"], defaults.resampleFar);
+    terrain.resampleReduction = decodeFinite(node["resampleReduction"], defaults.resampleReduction);
+    terrain.heightBlendSharpness = decodeFinite(node["heightBlendSharpness"], defaults.heightBlendSharpness);
+    terrain.macroNormal = node["macroNormal"] ? YamlNumbers::as<bool>(node["macroNormal"]) : defaults.macroNormal;
 
     // The encoder omits empty ranges, so applying a full component must clear old values.
     terrain.ranges.clear();

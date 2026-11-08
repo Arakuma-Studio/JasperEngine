@@ -26,12 +26,18 @@ in vec2 v_projZW;
 #endif
 
 #include "includes/depth_util.glsl"
+#ifdef TERRAIN_HOLES
+    #include "includes/terrain_holes_fs.glsl"
+#endif
 
 #include "includes/foliage_dither.glsl"
 
 void main() {
     #ifdef USE_FOLIAGE_DITHER
         foliageDitherDiscard();
+    #endif
+    #ifdef TERRAIN_HOLES
+        terrainDiscardHole();
     #endif
     #ifdef SURFACE_DEPTH_DISCARD
         vec2 uv = vec2(0.0);

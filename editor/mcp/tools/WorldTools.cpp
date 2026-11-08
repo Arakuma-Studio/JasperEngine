@@ -5,6 +5,7 @@
 // tilemaps, sprite sheets and sprite animations, keyframe animations and tweens, physics
 // colliders and joints, UI widget trees and rect layouts, particle systems, models, and the
 // point lists of polygons / shadow casters / line renderers.
+#include "mcp/TerrainMaterialInfo.h"
 #include "util/ProjectUtils.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/OnScreenControlComponents.h"
@@ -555,7 +556,8 @@ Json terrainInfo(Project* project, Scene* scene, Entity entity) {
         {"height_map_loaded", terrain.heightMap.hasData()},
         // false until the editor has rebuilt the mesh (and collision) from the current height map
         {"mesh_built", terrain.heightMapLoaded && !terrain.needUpdateTerrain},
-        {"blend_maps", blendMaps}, {"surface_layers", terrain.surfaceLayers.size()}, {"details", details}
+        {"blend_maps", blendMaps}, {"surface_layers", terrain.surfaceLayers.size()}, {"details", details},
+        {"material", terrainMaterialJson(scene, entity)}, {"holes", terrainHolesJson(terrain)}
     };
 }
 
@@ -1234,13 +1236,20 @@ void sampleTerrainTool(const CallPtr& call) {
             return;
         }
         Json samples = Json::array();
+        const bool fullMaterial = args["points"].size() <= MAX_MATERIAL_POINTS;
+        if (!fullMaterial) {
+            data["note"] = "Over " + std::to_string(MAX_MATERIAL_POINTS) + " points each says only hole: ask for collision_gap, "
+                           "nav_excluded, layers_painted, layers_drawn and fetches at fewer points.";
+        }
         for (const Json& p : args["points"]) {
             Vector3 local;
             if (!terrainPoint(p, world, inverseModel, transform.worldPosition.y, local)) {
                 call->fail("points: each point is [x, z] or [x, y, z] numbers.");
                 return;
             }
-            samples.push_back(terrainSample(scene, target.entity, local));
+            Json sample = terrainSample(scene, target.entity, local);
+            addTerrainPointMaterial(scene, target.entity, local.x, local.z, fullMaterial, sample);
+            samples.push_back(std::move(sample));
         }
         data["samples"] = samples;
     }
@@ -6081,7 +6090,7 @@ void registerWorldTools(McpRegistry& registry) {
         "(middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image path, or "
         "{path|color, index}: slot index's r,g,b weight layers 3*index..+2. layers: textures, uv_scale, tint and "
         "factors per surface layer, stochastic_tiling (up to 3x the reads) and its cell_size/blend_sharpness/"
-        "contrast/rotation. Images under the assets dir.",
+        "contrast/rotation. Images in the assets dir.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Default: the only terrain.")},
@@ -6140,7 +6149,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"space", withDefault(stringEnum("", {"world", "local"}), "world")},
             {"grid", integer("Default 9 without points.", 0, 65)},
             {"region", anyObject("{min:[x,z],max:[x,z]}")},
-            {"stats", array(string(""), "height, slope, layers.")},
+            {"stats", array(string(""), "height, slope, layers, coverage (holes, layer counts).")},
             {"slope_bins", withDefault(integer("Over 0-90 degrees.", 1, 90), 9)},
             {"issues", withDefault(boolean("Problems and fixes."), false)},
             {"hash", withDefault(boolean("Content hash of each map."), false)},

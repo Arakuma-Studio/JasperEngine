@@ -10,6 +10,8 @@
 #include "component/RigidbodyComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
+#include "object/TerrainEdit.h"
+#include "terrain/TerrainHoles.h"
 #include "subsystem/MeshSystem.h"
 #include "util/MeshTriangles.h"
 
@@ -269,14 +271,22 @@ void JoltShapeBuilder::sampleHeightField(Scene* scene, TerrainComponent& terrain
     const float mirrorX = scale.x < 0.0f ? -1.0f : 1.0f;
     const float mirrorZ = scale.z < 0.0f ? -1.0f : 1.0f;
 
+    // T3 R22: the collider's gap never includes drawn ground. A terrain without a map pays this test
+    const terrain::HoleMapView holes = terrain.holeMap.empty() ? terrain::HoleMapView{} : terrainSurfaceView(terrain).holes;
+
     for (unsigned int y = y0; y < y0 + h; y++){
         const float localZ = mirrorZ * ((y == samplesSize - 1) ? halfSize : (-halfSize + spacing * y));
         for (unsigned int x = x0; x < x0 + w; x++){
+            float& sample = out[(x - x0) + (y - y0) * w];
+            if (holes.texels && terrain::noCollisionSample(holes, static_cast<int>(samplesSize), mirrorX, mirrorZ, static_cast<int>(x), static_cast<int>(y))){
+                sample = JPH::HeightFieldShapeConstants::cNoCollisionValue;
+                continue;
+            }
             const float localX = mirrorX * ((x == samplesSize - 1) ? halfSize : (-halfSize + spacing * x));
             float height = 0.0f;
             Vector3 normal;
             meshSystem->sampleTerrainSurface(terrain, localX, localZ, height, normal);
-            out[(x - x0) + (y - y0) * w] = height;
+            sample = height;
         }
     }
 }

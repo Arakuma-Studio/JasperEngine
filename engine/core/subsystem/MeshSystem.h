@@ -335,7 +335,7 @@ namespace jasperengine{
 
         void resetModelToBindPose(Entity entity, ModelComponent& model);
 
-        bool raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint);
+        bool raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint, bool ignoreHoles = false);
         // T1 R23, DC10: a height edit refits the node ranges over the rectangle and their ancestors
         // instead of rebuilding the tree, and the surface revision follows (MeshSystemTerrainEdit.cpp)
         void refitTerrainNodes(TerrainComponent& terrain, int rectX, int rectY, int rectW, int rectH);

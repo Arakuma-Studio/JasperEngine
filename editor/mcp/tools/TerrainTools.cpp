@@ -16,6 +16,7 @@
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
+#include "mcp/TerrainMaterialInfo.h"
 
 #include "Catalog.h"
 #include "Project.h"
@@ -248,7 +249,6 @@ void addImportDetection(Json& out, const std::vector<Op>& ops, const HeightImpor
 std::string nextFor(const terrain::TerrainOpResult& result) {
     if (result.hasWarning("clipped_high")) return "Heights reached the terrain's top: raise maxHeight with set_properties, then remap_heights to keep the shape.";
     if (result.hasWarning("filter_excluded_all")) return "The filter kept every texel out: check it with sample_terrain stats [\"height\", \"slope\"].";
-    if (result.hasWarning("holes_not_rendered")) return "Holes are stored and the surface query answers them; renderers follow when T3 lands.";
     return "Check the result with sample_terrain (stats, hash) or look with visualize_terrain.";
 }
 
@@ -315,17 +315,18 @@ bool sampleTerrainExtras(const CallPtr& call, Project* project, SceneProject* sc
 
     if (!hasKey(args, "stats")) return true;
     if (!args["stats"].is_array()) {
-        call->fail("stats must list height, slope or layers.");
+        call->fail("stats must list height, slope, layers or coverage.");
         return false;
     }
-    bool wantHeight = false, wantSlope = false, wantLayers = false;
+    bool wantHeight = false, wantSlope = false, wantLayers = false, wantCoverage = false;
     for (const Json& name : args["stats"]) {
         const std::string stat = name.is_string() ? name.get<std::string>() : "";
         if (stat == "height") wantHeight = true;
         else if (stat == "slope") wantSlope = true;
         else if (stat == "layers") wantLayers = true;
+        else if (stat == "coverage") wantCoverage = true;
         else {
-            call->fail("stats: \"" + stat + "\" is not a statistic: height, slope, layers.");
+            call->fail("stats: \"" + stat + "\" is not a statistic: height, slope, layers, coverage.");
             return false;
         }
     }
@@ -391,6 +392,8 @@ bool sampleTerrainExtras(const CallPtr& call, Project* project, SceneProject* sc
     }
 
     Json stats = {{"texels", texels}, {"stride", stride}};
+    // T3 R43: the region's hole fraction and drawn-layer histogram
+    if (wantCoverage) stats["coverage"] = mcp::terrainCoverageJson(terrain, minX, minZ, maxX, maxZ);
     if (wantHeight && !heights.empty()) {
         double sum = 0.0;
         for (float h : heights) sum += h;

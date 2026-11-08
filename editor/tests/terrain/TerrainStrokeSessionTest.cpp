@@ -344,3 +344,44 @@ TEST_F(TerrainEditorRoutesTest, ASharingTerrainFollows) {
     EXPECT_TRUE(followed.editState->surfaceMoved);
     EXPECT_FALSE(followed.needUpdateTerrain) << "no rebuild for the follower either";
 }
+
+// T3 R41, R29: the hole brush cuts whole texels whatever its strength, and while a stroke runs the
+// map stays, so filling the last hole shows at once; only the stroke's end may take the map away
+TEST_F(TerrainEditorRoutesTest, HoleBrushKeepsTheMapThroughAStroke) {
+    constexpr terrain::MapId HOLE_MAP{terrain::MapKind::Hole, 0};
+    giveHeight16(128);
+    const TerrainMapRef holeRef(TerrainMapTarget::HoleMap);
+    ASSERT_TRUE(TerrainMapUtils::ensureEditableMap(project.get(), scene, terrainEntity, holeRef, 128, false));
+    madeIds.push_back(terrain().holeMap.getId());
+    EXPECT_FALSE(querySurface(terrain(), 0.0f, 0.0f).hole) << "a new hole map is solid";
+
+    EditorTerrainStore store(project.get(), scene->id, scene->scene, terrainEntity, terrain());
+    store.beginStroke();
+    store.setKeepsMaps(true);
+    TerrainStrokeBrush cut;
+    cut.mode = TerrainBrushMode::CutHole;
+    cut.size = 4.0f;
+    cut.strength = 0.05f;
+    cut.falloff = TerrainBrushFalloff::Linear;
+    {
+        TerrainStrokeSession session(store, HOLE_MAP, terrain().terrainSize, cut);
+        ASSERT_TRUE(session.moveTo(0.0f, 0.0f, CLICK_SECONDS));
+        ASSERT_TRUE(session.flush());
+    }
+    EXPECT_TRUE(querySurface(terrain(), 0.0f, 0.0f).hole) << "a whole texel, though the strength is low";
+    EXPECT_FALSE(querySurface(terrain(), 10.0f, 0.0f).hole) << "past the radius";
+
+    TerrainStrokeBrush fill = cut;
+    fill.mode = TerrainBrushMode::FillHole;
+    {
+        TerrainStrokeSession session(store, HOLE_MAP, terrain().terrainSize, fill);
+        ASSERT_TRUE(session.moveTo(0.0f, 0.0f, CLICK_SECONDS));
+        ASSERT_TRUE(session.flush());
+    }
+    EXPECT_FALSE(terrain().holeMap.empty()) << "the stroke holds the map";
+    EXPECT_FALSE(querySurface(terrain(), 0.0f, 0.0f).hole) << "the last fill shows";
+    EXPECT_FALSE(store.canRemoveMap(HOLE_MAP));
+    store.setKeepsMaps(false);
+    store.endStroke();
+    EXPECT_TRUE(store.canRemoveMap(HOLE_MAP)) << "the stroke's end may take it away";
+}

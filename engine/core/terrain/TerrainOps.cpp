@@ -106,6 +106,21 @@ namespace {
         return type == OpType::PaintDensity || type == OpType::EraseDensity;
     }
 
+    // T3 R27: what the map's holes open on the lattice of the default collider: a sample per height
+    // texel of the smaller side, at most 1025 (JoltShapeBuilder::defaultHeightFieldSamples)
+    int collisionSamplesOpen(const TerrainMapStore& store) {
+        const MapFormat holes = store.format(HOLE_MAP);
+        const MapFormat heights = store.format(HEIGHT_MAP);
+        if (!holes.exists || !heights.exists) return 0;
+        std::vector<uint8_t> texels(static_cast<size_t>(holes.bounds.area()));
+        if (!store.readBytes(HOLE_MAP, holes.bounds, texels)) return 0;
+        const int samples = std::clamp(std::min(heights.bounds.w, heights.bounds.h), 4, 1025);
+        std::vector<uint8_t> open;
+        std::vector<uint8_t> gaps;
+        openSquares(HoleMapView{texels.data(), holes.bounds.w, holes.bounds.h}, samples, 1.0f, 1.0f, open);
+        return noCollisionSamples(open, samples, gaps);
+    }
+
     bool isHoleOp(OpType type) {
         return type == OpType::CutHoles || type == OpType::FillHoles;
     }
@@ -1146,7 +1161,15 @@ namespace {
                 const float wanted = c == painted ? goal : (normalize ? 0.0f : cur[c]);
                 next[c] = cur[c] + (wanted - cur[c]) * w;
             }
-            if (block.channels >= 4 && painted != 3) next[3] = 1.0f;
+            // T3 R15: a layer in the alpha takes its inverted weight there; a layer in the RGB leaves
+            // what the alpha holds, and brings an unwritten map's alpha to opaque with its normalize
+            if (block.channels >= 4) {
+                if (painted == 3) {
+                    next[3] = cur[3] + (goal - cur[3]) * w;
+                } else if (normalize) {
+                    next[3] = cur[3] + (1.0f - cur[3]) * w;
+                }
+            }
         });
     }
 
@@ -1423,9 +1446,10 @@ namespace {
         entry.mapCreated = detail.mapCreated;
         entry.mapRemoved = detail.mapRemoved;
         if (detail.mapCreated) warn("map_created", "This op created the hole map.");
-        // Nothing draws a hole until T3's consumers land (T1 R12, DC3)
-        if (op.type == OpType::CutHoles && detail.changed > 0) {
-            warn("holes_not_rendered", "Holes are stored and answered by the surface query, but no renderer, collider or navmesh acts on them yet.");
+        entry.collisionSamplesOpen = collisionSamplesOpen(target);
+        // T3 R22, R27: a hole with no interior sample is drawn and opens nothing for a body
+        if (op.type == OpType::CutHoles && detail.changed > 0 && entry.collisionSamplesOpen == 0) {
+            warn("hole_no_collision", "This hole opens no collision sample: a body stays on the collider. Cut at least 3 collision cells across.");
         }
     }
 
@@ -1980,7 +2004,8 @@ bool Batch::setLayerWeights(TexelRect rect, std::span<const int> layers, std::sp
                 if (quantizeChannel(stored[channel.channel], format.bitsPerChannel) != quantizeChannel(value, format.bitsPerChannel)) changed = true;
                 stored[channel.channel] = value;
             }
-            if (channels >= 4) stored[3] = 1.0f;
+            // up to 9 layers the alpha is unused, and saved opaque; past them it holds a layer's weight
+            if (channels >= 4 && slots <= static_cast<size_t>(TERRAIN_LAYERS_IN_RGB)) stored[3] = 1.0f;
             if (changed) entry.changedTexels++;
         }
         const WriteResult wrote = transaction.write(map, rect, values);

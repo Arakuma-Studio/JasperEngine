@@ -2312,6 +2312,8 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
+uint32_t editor::Generator::exportTerrainTiers = terrain::TERRAIN_ALL_TIERS;
+
 void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const ThreadingProjectSettings& threading, const HtmlUiRenderSettings& htmlUiRender, PbrTier mobilePbrTier, const ShaderCreationProjectSettings& shaderCreation, bool allowInsecureHttp, const std::vector<ShaderGlobalDecl>& shaderGlobals, const PlayerSettings& playerSettings, const AudioSettings& audioSettings, const DebugSettings& debugSettings){
     // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
     // folder, which an MCP call's deny-by-default guard refuses otherwise (util/SafeWrite.h)
@@ -2627,6 +2629,18 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     if (lightMode != LightMode::AUTOMATIC)
         mainContent += std::string("    LightingTiers::setLightMode(") +
             (lightMode == LightMode::TILED ? "LightMode::TILED" : "LightMode::PER_OBJECT") + ");\n";
+    // T3 R2, R34: the terrain Quality tiers of the platforms and the tiers this build shipped
+    {
+        static const char* const terrainTierNames[] = {"HIGH", "MEDIUM", "LOW"};
+        for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+            const terrain::TerrainQuality tier = terrain::TerrainQualitySettings::getPlatformTier(platform);
+            if (tier != terrain::TerrainQuality::HIGH) {
+                mainContent += "    terrain::TerrainQualitySettings::setPlatformTier(" + std::to_string(platform) + ", terrain::TerrainQuality::" +
+                    terrainTierNames[static_cast<int>(tier)] + ");\n";
+            }
+        }
+        mainContent += "    terrain::TerrainQualitySettings::setShippedMask(" + std::to_string(exportTerrainTiers) + "u);\n";
+    }
     // Project Settings > Player > Allow Insecure HTTP: the same policy as the editor's Play
     mainContent += std::string("    Http::setInsecureHttpAllowed(") + (allowInsecureHttp ? "true" : "false") + ");\n";
     // The native plugins of plugins/native that the platform being built cannot run: a call to

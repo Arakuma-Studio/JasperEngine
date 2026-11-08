@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 #include "Terrain.h"
+#include "Engine.h"
 #include "util/Color.h"
 
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "subsystem/TerrainRenderInfo.h"
+#include "object/TerrainEdit.h"
 #include "component/Transform.h"
 
 using namespace jasperengine;
@@ -300,4 +303,73 @@ void Terrain::setEnabled(bool enabled){
 
 bool Terrain::isEnabled() const{
     return getComponent<TerrainComponent>().enabled;
+}
+
+// ---------------------------------------------------------------- T3 R48
+
+namespace {
+    terrain::TerrainQualityResolved resolvedTierOf(const TerrainComponent& component){
+        terrain::TerrainQualityRequest request;
+        terrain::TerrainQuality forced;
+        if (terrain::TerrainQualitySettings::getEditorPreview(forced)){
+            request.hasPreview = true;
+            request.preview = forced;
+        }else if (terrain::TerrainQualitySettings::getGlobalOverride(forced)){
+            request.hasOverride = true;
+            request.globalOverride = forced;
+        }
+        const terrain::TerrainVariantInputs variant = getTerrainVariantInputs(component);
+        request.hasComponent = variant.hasComponentQuality;
+        request.component = variant.componentQuality;
+        request.project = terrain::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
+        request.shippedMask = terrain::TerrainQualitySettings::getShippedMask();
+        return terrain::resolveTerrainQuality(request);
+    }
+}
+
+#define JE_TERRAIN_FIELD(Type, Setter, Getter, field) \
+    void Terrain::Setter(Type value){ \
+        TerrainComponent& terrain = getComponent<TerrainComponent>(); \
+        terrain.field = value; \
+        terrain.needUpdateTexture = true; \
+        markChanged<TerrainComponent>(); \
+    } \
+    Type Terrain::Getter() const{ \
+        return getComponent<TerrainComponent>().field; \
+    }
+
+JE_TERRAIN_FIELD(TerrainQualitySetting, setTerrainQuality, getTerrainQuality, quality)
+JE_TERRAIN_FIELD(bool, setLimitLayersPerPixel, isLimitLayersPerPixel, limitLayersPerPixel)
+JE_TERRAIN_FIELD(TerrainOffscreenShadows, setOffscreenShadows, getOffscreenShadows, offscreenShadows)
+JE_TERRAIN_FIELD(TerrainMacroMode, setMacroMode, getMacroMode, macroMode)
+JE_TERRAIN_FIELD(float, setMacroScale, getMacroScale, macroScale)
+JE_TERRAIN_FIELD(float, setMacroStrength, getMacroStrength, macroStrength)
+JE_TERRAIN_FIELD(bool, setResampleEnabled, isResampleEnabled, resampleEnabled)
+JE_TERRAIN_FIELD(float, setResampleNear, getResampleNear, resampleNear)
+JE_TERRAIN_FIELD(float, setResampleFar, getResampleFar, resampleFar)
+JE_TERRAIN_FIELD(float, setHeightBlendSharpness, getHeightBlendSharpness, heightBlendSharpness)
+JE_TERRAIN_FIELD(bool, setMacroNormal, isMacroNormal, macroNormal)
+
+#undef JE_TERRAIN_FIELD
+
+std::string Terrain::getEffectiveQuality() const{
+    return terrain::terrainQualityName(resolvedTierOf(getComponent<TerrainComponent>()).quality);
+}
+
+void Terrain::setHoleMap(const std::string& path){
+    TerrainComponent& terrain = getComponent<TerrainComponent>();
+    if (path.empty()){
+        terrain.holeMap = Texture();
+    }else{
+        terrain.holeMap.setPath(path);
+        terrain.holeMapWarned = false;
+        prepareTerrainHoleMap(terrain);
+    }
+    terrain.needUpdateTexture = true;
+    terrain.needUpdateFoliage = true;
+    markChanged<TerrainComponent>();
+}
+
+std::string Terrain::getHoleMapPath() const{
+    return getComponent<TerrainComponent>().holeMap.getPath(0);
 }

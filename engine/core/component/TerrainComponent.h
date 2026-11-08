@@ -18,10 +18,12 @@
 #define MAX_TERRAIN_LEVELS 20
 #define MAX_TERRAIN_NODES 2000000u
 
-// A blend map weights three layers in its RGB. Alpha is not a fourth weight: saved
-// maps are opaque, so it would read as full strength.
+// A blend map weights three layers in its RGB, and on a terrain of more than nine layers one more by
+// its alpha, inverted (T3 R15): saved maps are opaque, which reads as weight 0. A shader's block keeps
+// 9 entries up to 9 layers (TERRAIN_EXTENDED_LAYERS: 12).
 #define MAX_TERRAIN_BLENDMAPS 3
-#define MAX_TERRAIN_LAYERS (MAX_TERRAIN_BLENDMAPS * 3)
+#define MAX_TERRAIN_LAYERS 12
+#define TERRAIN_SHADER_BASE_LAYERS 9
 
 // One array texture holds every layer map, so a bigger source is downscaled into it
 // instead of resizing every other slice up with it.
@@ -67,6 +69,11 @@ namespace jasperengine{
     // captures), each selecting and morphing its own node cut. Grouping the per-view
     // buffers in a struct (instead of a 2-D array of InterleavedBuffer) keeps MSVC's
     // code generation from crashing when the ECS pool instantiates TerrainComponent.
+    // T3 R49. All stored as ints: append only.
+    enum class TerrainQualitySetting : int { AUTO, HIGH, MEDIUM, LOW };
+    enum class TerrainOffscreenShadows : int { AUTO, ON, OFF };
+    enum class TerrainMacroMode : int { OFF, NOISE, BASE_MAP };
+
     struct TerrainView{
         // 0 = fullRes, 1 = halfRes; selected and uploaded independently once per frame
         InterleavedBuffer nodesbuffer[2];
@@ -205,6 +212,32 @@ namespace jasperengine{
         // R8, 0 = hole, 255 = solid (T3 R18); absent means no holes, and no cost anywhere
         Texture holeMap;
 
+        // T3 R49: the terrain's material features. Each costs nothing at its default.
+        TerrainQualitySetting quality = TerrainQualitySetting::AUTO;
+        bool limitLayersPerPixel = false;
+        TerrainOffscreenShadows offscreenShadows = TerrainOffscreenShadows::AUTO;
+        TerrainMacroMode macroMode = TerrainMacroMode::OFF;
+        float macroScale = 64; //metres
+        float macroStrength = 0.35f;
+        Vector3 macroTintA = Vector3(0.80f, 0.84f, 0.76f);
+        Vector3 macroTintB = Vector3(1.04f, 1.0f, 0.92f);
+        float macroSlopeFade = 0.33f;
+        bool resampleEnabled = false;
+        float resampleNear = 30; //metres
+        float resampleFar = 120; //metres
+        float resampleReduction = 0.25f;
+        float heightBlendSharpness = 0;
+        bool macroNormal = false;
+
+        // T3 R29, T6 R40: while above 0 (a terrain with an attached Automatic Voxel Volume, in Play) a
+        // last fill keeps the map, all solid, and reloads nothing, so a first in-game dig costs no
+        // variant reload. Not saved, not reflected, and reset on clone.
+        int holeMapHolds = 0;
+        // a hole map that fails to load, or is not R8, warns once and draws no holes (T3 R29)
+        bool holeMapWarned = false;
+        // bumped by each change of the map's texels, for who placed something by them (T3 R26). Not saved
+        uint32_t holeMapRevision = 0;
+
         // Whether a running game may write this terrain's maps (T1 R77, R81)
         bool allowRuntimeEdits = false;
 
@@ -225,7 +258,22 @@ namespace jasperengine{
     inline bool hasTerrainSurfaceLayers(const TerrainComponent& terrain){
         for (const TerrainSurfaceLayer& layer : terrain.surfaceLayers){
             if (layer.pbr || layer.uvScale != Vector2(1, 1) || layer.uvOffset != Vector2(0, 0) || layer.stochasticTiling ||
-                    layer.hexTiling){
+                    layer.hexTiling || layer.cliffProjection != TerrainCliffProjection::AUTO){
+                return true;
+            }
+        }
+        // a terrain with no layer draws its base material alone, on the narrow path (T3, spec Deviations)
+        if (terrain.surfaceLayers.empty()){
+            return false;
+        }
+        // T3 R9-R14: a material feature works on the wide path
+        return terrain.macroMode != TerrainMacroMode::OFF || terrain.resampleEnabled ||
+               terrain.heightBlendSharpness > 0.0f || terrain.macroNormal;
+    }
+
+    inline bool hasTerrainCliffLayers(const TerrainComponent& terrain){
+        for (const TerrainSurfaceLayer& layer : terrain.surfaceLayers){
+            if (layer.cliffProjection != TerrainCliffProjection::AUTO){
                 return true;
             }
         }

@@ -7,6 +7,7 @@
 #ifdef JASPERENGINE_PHYSICS_3D
 
 #include "FoliageTestSupport.h"
+#include "component/Transform.h"
 
 #include "component/RigidbodyComponent.h"
 #include "math/Ray.h"

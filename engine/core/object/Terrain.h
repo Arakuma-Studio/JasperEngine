@@ -69,6 +69,35 @@ namespace jasperengine{
 
         void setLevels(int levels);
         int getLevels() const;
+
+        // T3 R48: the terrain material's Quality and features
+        void setTerrainQuality(TerrainQualitySetting quality);
+        TerrainQualitySetting getTerrainQuality() const;
+        // the tier it draws at (read only: R2's resolution): "high", "medium" or "low"
+        std::string getEffectiveQuality() const;
+        void setLimitLayersPerPixel(bool limit);
+        bool isLimitLayersPerPixel() const;
+        void setOffscreenShadows(TerrainOffscreenShadows shadows);
+        TerrainOffscreenShadows getOffscreenShadows() const;
+        void setMacroMode(TerrainMacroMode mode);
+        TerrainMacroMode getMacroMode() const;
+        void setMacroScale(float scale);
+        float getMacroScale() const;
+        void setMacroStrength(float strength);
+        float getMacroStrength() const;
+        void setResampleEnabled(bool enabled);
+        bool isResampleEnabled() const;
+        void setResampleNear(float metres);
+        float getResampleNear() const;
+        void setResampleFar(float metres);
+        float getResampleFar() const;
+        void setHeightBlendSharpness(float sharpness);
+        float getHeightBlendSharpness() const;
+        void setMacroNormal(bool enabled);
+        bool isMacroNormal() const;
+        // an 8-bit single channel image, 0 = hole, 255 = solid; an empty path takes the map away
+        void setHoleMap(const std::string& path);
+        std::string getHoleMapPath() const;
     };
 
 }

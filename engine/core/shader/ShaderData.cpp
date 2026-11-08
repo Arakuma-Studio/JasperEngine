@@ -415,6 +415,8 @@ std::pair<int, int> ShaderData::getTextureIndex(TextureShaderType type){
         texstr = "u_blendMap2";
     }else if (type == TextureShaderType::TERRAINDETAIL){
         texstr = "u_terrainDetail";
+    }else if (type == TextureShaderType::TERRAINHOLES){
+        texstr = "u_terrainHoles";
     }else if (type == TextureShaderType::DEPTHTEXTURE){
         texstr = "u_depthTexture";
     }else if (type == TextureShaderType::SSAOTEXTURE){

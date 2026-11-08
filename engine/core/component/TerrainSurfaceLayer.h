@@ -14,6 +14,9 @@
 
 namespace jasperengine{
 
+    // T3 R11: a layer's projection on steep ground. Stored as an int: append only.
+    enum class TerrainCliffProjection : int { AUTO, FLAT_ONLY };
+
     // One painted surface. The maps are separate inputs so an existing material can fill
     // them without repacking images; the renderer packs them into its own array slices.
     struct TerrainSurfaceLayer{
@@ -51,6 +54,9 @@ namespace jasperengine{
         // side planes stay planar. hexRotation 0..1 is the share of a turn a tile may rotate.
         bool hexTiling = false;
         float hexRotation = 1;
+        // T3 R11: Auto is the tier's (triplanar at High, one plane below); Flat Only never reads a
+        // side plane, for grass or sand that never sits on a cliff
+        TerrainCliffProjection cliffProjection = TerrainCliffProjection::AUTO;
 
         bool operator == (const TerrainSurfaceLayer& other) const{
             return pbr == other.pbr &&
@@ -73,7 +79,8 @@ namespace jasperengine{
                    stochasticContrast == other.stochasticContrast &&
                    stochasticRotation == other.stochasticRotation &&
                    hexTiling == other.hexTiling &&
-                   hexRotation == other.hexRotation;
+                   hexRotation == other.hexRotation &&
+                   cliffProjection == other.cliffProjection;
         }
 
         bool operator != (const TerrainSurfaceLayer& other) const{
@@ -101,6 +108,9 @@ namespace jasperengine{
         layer.stochasticBlendSharpness = previous.stochasticBlendSharpness;
         layer.stochasticContrast = previous.stochasticContrast;
         layer.stochasticRotation = previous.stochasticRotation;
+        layer.hexTiling = previous.hexTiling;
+        layer.hexRotation = previous.hexRotation;
+        layer.cliffProjection = previous.cliffProjection;
         return layer;
     }
 

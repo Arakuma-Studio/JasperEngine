@@ -466,6 +466,8 @@ void prepare<TerrainComponent>(TerrainComponent& terrain, Entity, CloneContext& 
     terrain.needUpdateTerrain = true;
     terrain.needUpdateTexture = false;
     terrain.needUpdateFoliage = true;
+    // a hold belongs to the volume attached to the original (T3 R29)
+    terrain.holeMapHolds = 0;
     terrain.surfaceRevision = 0;
     terrain.editState.reset();
 }

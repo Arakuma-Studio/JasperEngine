@@ -37,6 +37,11 @@
 
 namespace jasperengine{
     enum class LodFadeMode;
+    // T3's terrain settings (component/TerrainComponent.h, component/TerrainSurfaceLayer.h)
+    enum class TerrainQualitySetting : int;
+    enum class TerrainOffscreenShadows : int;
+    enum class TerrainMacroMode : int;
+    enum class TerrainCliffProjection : int;
 }
 
 namespace jasperengine{
@@ -254,6 +259,10 @@ namespace jasperengine::editor {
         static const EnumTable<MaterialDepthTest>& materialDepthTest();
         static const EnumTable<MaterialDepthWrite>& materialDepthWrite();
         static const EnumTable<MaterialLighting>& materialLighting();
+        static const EnumTable<TerrainQualitySetting>& terrainQualitySetting();
+        static const EnumTable<TerrainOffscreenShadows>& terrainOffscreenShadows();
+        static const EnumTable<TerrainMacroMode>& terrainMacroMode();
+        static const EnumTable<TerrainCliffProjection>& terrainCliffProjection();
         static const EnumTable<MaterialPassOrder>& materialPassOrder();
         static const EnumTable<MaterialStencilCompare>& materialStencilCompare();
         static const EnumTable<MaterialStencilOp>& materialStencilOp();
