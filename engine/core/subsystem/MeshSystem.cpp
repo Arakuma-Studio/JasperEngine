@@ -925,7 +925,7 @@ void MeshSystem::createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, 
 }
 
 void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
-                                 float x0, float y0, float x1, float y1, int grid){
+                                 float x0, float y0, float x1, float y1, int grid, bool keepIndices){
     float texCutRatioW = 0;
     float texCutRatioH = 0;
     if (texWidth != 0 && texHeight != 0){
@@ -970,12 +970,26 @@ void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, u
         }
     }
 
-    // the quad (a sheet sprite's frame change): its indices without an allocation (S45 R26)
+    // the grid's bounds are its corners' (calculateMeshAABB's result, without its buffer map: a
+    // frame change allocates nothing, S45 R26)
+    auto cornerBounds = [&](){
+        mesh.verticesAABB = AABB(std::min(x0, x1), std::min(y0, y1), 0.0f, std::max(x0, x1), std::max(y0, y1), 0.0f);
+        mesh.bonesAABB.clear();
+        mesh.skinnedAABB.setNull();
+        mesh.aabb = mesh.verticesAABB;
+        mesh.needUpdateAABB = true;
+        mesh.pickGeometryHash = 0;
+    };
+    if (keepIndices){
+        cornerBounds();
+        return;
+    }
+    // the quad: its indices without an allocation
     if (grid == 1){
         static const uint16_t quadIndices[] = {0, 1, 3, 0, 3, 2};
         mesh.indices.clear();
         mesh.indices.setValues(0, mesh.indices.getAttribute(AttributeType::INDEX), 6, (char*)&quadIndices[0], sizeof(uint16_t));
-        calculateMeshAABB(mesh);
+        cornerBounds();
         return;
     }
 
@@ -1023,7 +1037,27 @@ void MeshSystem::buildSpriteSliced(SpriteComponent& sprite, MeshComponent& mesh,
     mesh.indices.clear();
     mesh.indices.setValues(0, mesh.indices.getAttribute(AttributeType::INDEX), SPRITE_SLICED_INDICES,
                            (char*)spriteSlicedIndices(), sizeof(uint16_t));
-    calculateMeshAABB(mesh);
+    calculateSpriteAABB(mesh);
+}
+
+// calculateMeshAABB for a sprite's own buffer (no external buffers, no bones), without its buffer
+// map: a sheet sprite's frame change allocates nothing (S45 R26)
+void MeshSystem::calculateSpriteAABB(MeshComponent& mesh){
+    mesh.verticesAABB.setNull();
+    mesh.bonesAABB.clear();
+    mesh.skinnedAABB.setNull();
+    Attribute* position = mesh.buffer.getAttribute(AttributeType::POSITION);
+    if (position && position->getDataType() == AttributeDataType::FLOAT){
+        const int count = int(position->getCount());
+        for (int v = 0; v < count; v++){
+            mesh.verticesAABB.merge(mesh.buffer.getVector3(position, v));
+        }
+    }
+    if (mesh.verticesAABB.isNull())
+        mesh.verticesAABB = AABB::ZERO;
+    mesh.aabb = mesh.verticesAABB;
+    mesh.needUpdateAABB = true;
+    mesh.pickGeometryHash = 0;
 }
 
 bool MeshSystem::createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh){
@@ -7537,7 +7571,9 @@ bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh)
 
     const SpriteFrameQuad quad = spriteFrameQuad(frame, input);
 
-    bool rebuild = sprite.needUpdateSprite || sprite.builtFrame < 0 || sprite.builtFrame >= frameCount || previousGrid != grid;
+    // a frame of another trim on the grid built: the buffer keeps its layout and its indices
+    const bool geometryOnly = !sprite.needUpdateSprite && sprite.builtFrame >= 0 && sprite.builtFrame < frameCount && previousGrid == grid;
+    bool rebuild = !geometryOnly;
     if (!rebuild){
         // frames with the same trim geometry only swap the texture rect
         rebuild = !spriteFrameQuad(sheet.frames[(size_t)sprite.builtFrame], input).sameGeometry(quad);
@@ -7547,8 +7583,12 @@ bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh)
     sprite.frameName = frame.name;
     sprite.needUpdateFrameRect = false;
     if (rebuild){
-        prepareSpriteMesh(mesh);
-        buildSpriteGrid(sprite, mesh, (unsigned int)page.width, (unsigned int)page.height, quad.x0, quad.y0, quad.x1, quad.y1, grid);
+        if (geometryOnly){
+            mesh.buffer.clear();
+        }else{
+            prepareSpriteMesh(mesh);
+        }
+        buildSpriteGrid(sprite, mesh, (unsigned int)page.width, (unsigned int)page.height, quad.x0, quad.y0, quad.x1, quad.y1, grid, geometryOnly);
         if (mesh.loaded){
             // a GPU buffer keeps the size it was created with: another grid reloads the mesh
             if (previousGrid != 0 && previousGrid != grid){
