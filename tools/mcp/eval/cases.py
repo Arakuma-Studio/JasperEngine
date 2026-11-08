@@ -2368,6 +2368,33 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "terrain_world_convert",
+        "kind": "bad",
+        "what_happened": "Asked to grow an existing Terrain into a streamed world, an agent made an empty Terrain World beside it and tried to copy the heights by hand.",
+        "text_at_issue": "edit_terrain_world's description (create.from_terrain converts a Terrain, which stays, inactive) and jasper://docs/terrain: Terrain Worlds.",
+        "source": "T4 R33, R43",
+        "prompt": "The Terrain called Valley needs to become a streamed Terrain World so I can extend it later. Keep its shape and paint.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain_world", "args": {"create": {"from_terrain": "*"}, "dry_run": True}, "result": ok(
+                "Dry run: a Terrain World of 4 tile(s) at Valley World.terrainworld.",
+                {"dry_run": True, "asset_path": "Valley World.terrainworld", "tile_count": 4, "predicted_bytes": 2134016, "tile_size": 512.0,
+                 "tile_quads": 512, "spacing": 1.0, "job": False, "ops_checked": 0, "warnings": [],
+                 "next": "Nothing changed. Call again without dry_run to convert; the Terrain is deactivated, not deleted."})},
+            {"tool": "edit_terrain_world", "args": {"create": {"from_terrain": "*"}}, "result": ok(
+                "Converted into Terrain World \"Valley World\": 4 tile(s), 0 added, 0 removed, 0 repaired.",
+                {"entity": {"id": 9, "name": "Valley World", "path": "Valley World"}, "guid": "0b8e7c1d-2a3f-4e5d-8c6b-7a9f1e2d3c4b",
+                 "asset_path": "Valley World.terrainworld", "tile_count": 4, "predicted_bytes": 2134016, "tile_size": 512.0,
+                 "changed_tiles": {"added": [], "removed": [], "imported": [], "repaired": []}, "frozen": False, "warnings": [], "dry_run": False,
+                 "undo_name": "Convert to Terrain World (Valley World)", "ready": True,
+                 "next": "Sculpt and paint across tiles with edit_terrain or sculpt_terrain on this entity; sample_terrain {world} reports streaming."})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain_world", "args": {"create": {"from_terrain": "*"}}}],
+                   "must_not_call": [{"tool": "edit_terrain_world", "args": {"create": {"grid": "*"}}}, "delete_entity", "import_heightmap"],
+                   "max_calls": {"edit_terrain_world": 3}},
+        "max_turns": 10,
+    },
+    {
         "id": "terrain_world_wait_ready",
         "kind": "guard",
         "what_happened": "Asked for a screenshot of a far corner of a streamed world, an agent has to wait for its tiles and hold them, not shoot the low-detail overview.",

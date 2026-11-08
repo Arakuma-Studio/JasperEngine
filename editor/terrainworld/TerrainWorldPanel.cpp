@@ -13,6 +13,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "subsystem/TerrainWorldRuntime.h"
 #include "subsystem/TerrainWorldSystem.h"
+#include "terrainworld/TerrainWorldConvert.h"
 #include "terrainworld/TerrainWorldFiles.h"
 #include "window/EditorModal.h"
 
@@ -126,6 +127,93 @@ void CreateTerrainWorldDialog::show() {
         isOpen = false;
         ImGui::CloseCurrentPopup();
     }
+    ImGui::EndPopup();
+}
+
+// ------------------------------------------------------------------ convert
+
+ConvertTerrainWorldDialog& ConvertTerrainWorldDialog::instance() {
+    static ConvertTerrainWorldDialog dialog;
+    return dialog;
+}
+
+void ConvertTerrainWorldDialog::open(Project* project, uint32_t sceneId, Entity source) {
+    if (running) return;
+    this->project = project;
+    this->sceneId = sceneId;
+    this->source = source;
+    SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
+    name = sceneProject && sceneProject->scene ? sceneProject->scene->getEntityName(source) + " World" : "Terrain World";
+    error.clear();
+    isOpen = true;
+    justOpened = true;
+}
+
+void ConvertTerrainWorldDialog::show() {
+    if (!isOpen || !project) return;
+    const char* popupName = "Convert to Terrain World##ConvertTerrainWorldModal";
+    if (justOpened) {
+        ImGui::OpenPopup(popupName);
+        justOpened = false;
+    }
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    bool keepOpen = true;
+    if (!EditorModal::begin(popupName, running ? nullptr : &keepOpen, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+        if (!running) isOpen = keepOpen && isOpen;
+        return;
+    }
+    EditorModal::message("A new Terrain World at the Terrain's place, from its heights, paint, holes, details and trees, one undo step. "
+                         "The Terrain stays, inactive.");
+    EditorModal::error(error);
+
+    SceneProject* sceneProject = project->getScene(sceneId);
+    Scene* scene = sceneProject ? sceneProject->scene : nullptr;
+    TerrainConvertOptions options;
+    options.name = name;
+    TerrainConvertPlan plan;
+    std::string why;
+    const bool possible = planTerrainConversion(scene, source, options, plan, why);
+    const float width = ImGui::GetFontSize() * 12.0f;
+    char text[128];
+    std::snprintf(text, sizeof(text), "%s", name.c_str());
+    ImGui::SetNextItemWidth(width);
+    ImGui::BeginDisabled(running);
+    if (EditorModal::inputText("Name", "name", text, sizeof(text))) name = text;
+    ImGui::EndDisabled();
+    if (possible) {
+        const float side = static_cast<float>(plan.world.tileQuads) * plan.world.spacing;
+        ImGui::TextDisabled("%i x %i tiles of %.0f m (%i quads at %.2f m)", plan.world.gridWidth, plan.world.gridLength, side, plan.world.tileQuads,
+                            plan.world.spacing);
+    } else {
+        EditorModal::error(why);
+    }
+
+    ImGui::Separator();
+    ImGui::BeginDisabled(!possible || running);
+    if (EditorModal::button(running ? "Converting..." : "Convert", "ok", ImVec2(8.0f * ImGui::GetFontSize(), 0))) {
+        running = true;
+        error.clear();
+        cancel = convertTerrainLater(project, sceneId, source, options, [this](const TerrainConvertResult& result) {
+            running = false;
+            cancel = nullptr;
+            if (result.entity == NULL_ENTITY) {
+                error = result.error;
+                return;
+            }
+            isOpen = false;
+            TerrainWorldPanel::instance().open(project);
+        });
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (EditorModal::button("Cancel", "cancel", ImVec2(8.0f * ImGui::GetFontSize(), 0))) {
+        if (running && cancel) cancel();
+        if (!running) {
+            isOpen = false;
+            ImGui::CloseCurrentPopup();
+        }
+    }
+    if (!isOpen) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
 }
 

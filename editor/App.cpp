@@ -2955,6 +2955,7 @@ void editor::App::show(){
 #if JASPERENGINE_TERRAIN_WORLD
     // T4 R40, R41: drawn here, so they show whichever tab opened them
     CreateTerrainWorldDialog::instance().show();
+    ConvertTerrainWorldDialog::instance().show();
     TerrainWorldPanel::instance().show();
 #endif
     textureSynthesisWindow->show();

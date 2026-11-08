@@ -25,6 +25,7 @@
 #include "component/Transform.h"
 #include "subsystem/TerrainWorldRuntime.h"
 #include "subsystem/TerrainWorldSystem.h"
+#include "terrainworld/TerrainWorldConvert.h"
 #include "terrainworld/TerrainWorldEditor.h"
 #include "terrain/TerrainRawIO.h"
 #include "terrain/world/WorldImport.h"
@@ -321,12 +322,7 @@ bool parseCreate(const Json& value, TerrainWorldSettings& settings, std::string&
         error = "create must be {name, asset_path, tile_quads, spacing, max_height, base_height, grid: {width, length, origin: [x, z]}}.";
         return false;
     }
-    if (!checkKeys(value, {"name", "asset_path", "tile_quads", "spacing", "max_height", "base_height", "grid", "from_terrain"}, "create", error)) return false;
-    if (given(value, "from_terrain")) {
-        error = "create.from_terrain: converting a Terrain into a Terrain World is not available yet. Create one with grid, then shape it with "
-                "edit_terrain on the World.";
-        return false;
-    }
+    if (!checkKeys(value, {"name", "asset_path", "tile_quads", "spacing", "max_height", "base_height", "grid"}, "create", error)) return false;
     if (given(value, "name")) {
         if (!value["name"].is_string() || value["name"].get<std::string>().empty()) {
             error = "create.name must be a non-empty string.";
@@ -388,6 +384,51 @@ bool parseCreate(const Json& value, TerrainWorldSettings& settings, std::string&
         error = "create: " + error + ".";
         return false;
     }
+    return true;
+}
+
+// R33: create {from_terrain}: the Terrain to convert and what the call chooses; the rest comes from it
+bool parseConvert(const Json& value, SceneProject* sceneProject, Entity& source, TerrainConvertOptions& options, std::string& error) {
+    for (const char* key : {"grid", "max_height", "base_height"}) {
+        if (given(value, key)) {
+            error = "create.from_terrain takes its grid and heights from the Terrain: leave out grid, max_height and base_height.";
+            return false;
+        }
+    }
+    if (!checkKeys(value, {"from_terrain", "name", "asset_path", "tile_quads", "spacing"}, "create", error)) return false;
+    source = McpRefs::resolveEntity(sceneProject, value["from_terrain"], error);
+    if (source == NULL_ENTITY) {
+        error = "create.from_terrain: " + error;
+        return false;
+    }
+    if (given(value, "name")) {
+        if (!value["name"].is_string() || value["name"].get<std::string>().empty()) {
+            error = "create.name must be a non-empty string.";
+            return false;
+        }
+        options.name = value["name"].get<std::string>();
+    }
+    if (given(value, "asset_path")) {
+        if (!value["asset_path"].is_string() || value["asset_path"].get<std::string>().empty()) {
+            error = "create.asset_path must be a folder path under assets, such as \"Worlds/Island.terrainworld\".";
+            return false;
+        }
+        options.assetPath = value["asset_path"].get<std::string>();
+        const std::string suffix = ".terrainworld";
+        if (options.assetPath.size() < suffix.size() || options.assetPath.compare(options.assetPath.size() - suffix.size(), suffix.size(), suffix) != 0) {
+            options.assetPath += suffix;
+        }
+    }
+    if (given(value, "tile_quads")) {
+        if (!value["tile_quads"].is_number_integer()) {
+            error = "create.tile_quads must be 64, 128, 256, 512 or 1024.";
+            return false;
+        }
+        options.tileQuads = static_cast<int>(value["tile_quads"].get<long long>());
+    }
+    std::optional<double> number;
+    if (!readNumber(value, "spacing", 0.25, 8, "create", number, error)) return false;
+    if (number) options.spacing = static_cast<float>(*number);
     return true;
 }
 
@@ -579,6 +620,37 @@ bool applyImport(TerrainWorldRuntime& world, const HeightImport& imported, TileC
         nullptr, failure);
 }
 
+// R33: the conversion's job; its result is the GameObject made, or why nothing was
+void convertFromTerrainJob(const CallPtr& call, Project* project, uint32_t sceneId, Entity source, const TerrainConvertOptions& options,
+                           const std::string& name, bool wait, double timeout) {
+    JobPtr job = call->ctx().jobs().create("terrain_world_convert", "Convert to Terrain World (" + name + ")");
+    job->setProgress(-1.0, "Resampling the Terrain into tiles");
+    std::function<void()> cancel = convertTerrainLater(project, sceneId, source, options, [job, project, sceneId, name](const TerrainConvertResult& result) {
+        if (result.cancelled) {
+            job->markCancelled("Cancelled; nothing changed.");
+            return;
+        }
+        if (result.entity == NULL_ENTITY) {
+            job->fail("create.from_terrain: " + result.error + ". Nothing was changed.");
+            return;
+        }
+        SceneProject* sceneProject = project->getScene(sceneId);
+        Json data = {{"entity", sceneProject ? McpRefs::entityJson(sceneProject, result.entity) : Json()}, {"asset_path", result.assetPath},
+                     {"tile_count", result.tiles}, {"undo_name", "Convert to Terrain World (" + name + ")"},
+                     {"next", "Sculpt and paint across tiles with edit_terrain or sculpt_terrain on this entity; sample_terrain {world} reports streaming."}};
+        job->succeed("Converted into Terrain World \"" + name + "\": " + std::to_string(result.tiles) + " tile(s).", data);
+    });
+    job->setCancelHandler(cancel);
+    call->detach();
+    replyWhenJobDone(call, job, wait, timeout, [](const McpJob& finished) {
+        Json result = finished.result();
+        result["job_id"] = finished.id();
+        result["status"] = jobStatusName(finished.status());
+        if (finished.status() != JobStatus::Succeeded) return ToolResult::error(finished.message(), result);
+        return ToolResult::success(finished.message(), result);
+    });
+}
+
 void editTerrainWorldTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -606,7 +678,23 @@ void editTerrainWorldTool(const CallPtr& call) {
 
     // everything is checked before anything runs (programme D15)
     TerrainWorldSettings settings;
-    if (creating && !parseCreate(args["create"], settings, error)) {
+    const bool fromTerrain = creating && args["create"].is_object() && given(args["create"], "from_terrain");
+    Entity source = NULL_ENTITY;
+    TerrainConvertOptions convert;
+    TerrainConvertPlan plan;
+    if (fromTerrain) {
+        if (!parseConvert(args["create"], sceneProject, source, convert, error)) {
+            call->fail(error + " Nothing was changed.");
+            return;
+        }
+        if (!planTerrainConversion(sceneProject->scene, source, convert, plan, error)) {
+            call->fail("create.from_terrain: " + error + ". Nothing was changed.");
+            return;
+        }
+        settings = plan.world;
+        if (convert.assetPath.empty()) convert.assetPath = freeTerrainWorldAssetPath(project, settings.name);
+        settings.assetPath = convert.assetPath;
+    } else if (creating && !parseCreate(args["create"], settings, error)) {
         call->fail(error + " Nothing was changed.");
         return;
     }
@@ -653,9 +741,25 @@ void editTerrainWorldTool(const CallPtr& call) {
             Json out = {{"dry_run", true}, {"asset_path", assetPath}, {"tile_count", tiles}, {"predicted_bytes", predictTerrainWorldBytes(settings)},
                         {"tile_size", static_cast<double>(settings.tileQuads) * settings.spacing}, {"ops_checked", ops.size()},
                         {"warnings", Json::array()}, {"next", "Nothing changed. Call again without dry_run to create it."}};
+            if (fromTerrain) {
+                out["tile_quads"] = settings.tileQuads;
+                out["spacing"] = settings.spacing;
+                out["job"] = plan.samples > TERRAIN_CONVERT_JOB_SAMPLES;
+                out["next"] = "Nothing changed. Call again without dry_run to convert; the Terrain is deactivated, not deleted.";
+            }
             call->ok("Dry run: a Terrain World of " + std::to_string(tiles) + " tile(s) at " + assetPath + ".", out);
             return;
         }
+    }
+
+    // R33, R43: a large Terrain resamples on a job; the call waits for it unless wait is false
+    if (fromTerrain && plan.samples > TERRAIN_CONVERT_JOB_SAMPLES) {
+        if (!ops.empty()) {
+            call->fail("create.from_terrain: a Terrain this large converts as a job, so send ops in a second call once it is done. Nothing was changed.");
+            return;
+        }
+        convertFromTerrainJob(call, project, sceneProject->id, source, convert, settings.name, wait, timeout);
+        return;
     }
 
     CommandHistory* history = CommandHandle::get(sceneProject->id);
@@ -665,7 +769,14 @@ void editTerrainWorldTool(const CallPtr& call) {
     };
 
     Entity entity = NULL_ENTITY;
-    if (creating) {
+    if (fromTerrain) {
+        const TerrainConvertResult converted = convertTerrainNow(project, sceneProject->id, source, convert);
+        entity = converted.entity;
+        if (entity == NULL_ENTITY) {
+            call->fail("create.from_terrain: " + converted.error + ". Nothing was changed.");
+            return;
+        }
+    } else if (creating) {
         entity = createTerrainWorld(project, sceneProject->id, NULL_ENTITY, settings, error);
         if (entity == NULL_ENTITY) {
             call->fail("create: " + error);
@@ -927,7 +1038,7 @@ void editTerrainWorldTool(const CallPtr& call) {
     }
     std::string undoName;
     if (history->position() > start) {
-        undoName = (creating ? "Create Terrain World (" : "Edit Terrain World (") + name + ")";
+        undoName = (fromTerrain ? "Convert to Terrain World (" : creating ? "Create Terrain World (" : "Edit Terrain World (") + name + ")";
         history->groupSince(start, undoName);
     }
 
@@ -939,7 +1050,7 @@ void editTerrainWorldTool(const CallPtr& call) {
     out["dry_run"] = false;
     if (!undoName.empty()) out["undo_name"] = undoName;
     const std::string next = "Sculpt and paint across tiles with edit_terrain or sculpt_terrain on this entity; sample_terrain {world} reports streaming.";
-    std::string text = (creating ? "Created Terrain World \"" : "Edited Terrain World \"") + name + "\": " +
+    std::string text = (fromTerrain ? "Converted into Terrain World \"" : creating ? "Created Terrain World \"" : "Edited Terrain World \"") + name + "\": " +
                        std::to_string(runtime->occupancy().tileCount()) + " tile(s), " + std::to_string(added.size()) + " added, " +
                        std::to_string(removed.size()) + " removed, " + std::to_string(repaired.size()) + " repaired.";
     if (runtime->isReady() || !wait) {
@@ -1120,14 +1231,15 @@ void registerTerrainWorldTools(McpRegistry& registry) {
     tool.allowedWhilePlaying = true;
     tool.description =
         "Create a Terrain World (one streamed terrain of many tiles: for land past about 2 km, never many Terrain GameObjects) and run ops "
-        "on it, all checked before any runs, one undo step. create makes the asset and GameObject. Ops: add_tiles, remove_tiles, "
+        "on it, all checked before any runs, one undo step. create makes the asset and GameObject; create.from_terrain converts a Terrain, "
+        "which stays, inactive. Ops: add_tiles, remove_tiles, "
         "import_heightmap, repair_seams, rebuild_overview, set_streaming (freeze holds tiles still for screenshots), set_focus, remove_focus, set_collision. "
         "In Play only set_streaming, set_focus and remove_focus run. Heights and paint: edit_terrain with entity. Status: sample_terrain "
         "world. Fields: jasper://docs/terrain.";
     tool.inputSchema = object({
         {"scene", sceneRef()},
         {"entity", entityRef("Default: the only Terrain World.")},
-        {"create", anyObject("{name, asset_path, tile_quads, spacing, max_height, base_height, grid: {width, length, origin}}")},
+        {"create", anyObject("{name, asset_path, tile_quads, spacing, max_height, base_height, grid: {width, length, origin} | from_terrain}")},
         {"ops", Json{{"type", "array"}, {"maxItems", 64}, {"items", anyObject("{op, ...}")}}},
         {"dry_run", withDefault(boolean(""), false)},
         {"wait", withDefault(boolean("Wait until the world draws."), true)},

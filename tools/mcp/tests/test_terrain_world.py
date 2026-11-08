@@ -267,3 +267,56 @@ async def test_import_heightmap_makes_tiles(ed: Editor):
 
     await ed.call("undo", scene=sid)
     ed.check_eq(await settled(folder, before), before, "one undo takes the import back, files byte for byte")
+
+
+async def convert_source(ed: Editor, scene: str, name: str) -> str:
+    """A Terrain with heights of its own, at the scene's origin."""
+    terrain = (await ed.call("create_entity", scene=scene, name=name, type="terrain"))["entity_id"]
+    await ed.call("edit_terrain", scene=scene, entity=terrain, create="test_patch", map_resolution=65)
+    return terrain
+
+
+async def test_convert_from_terrain_with_undo(ed: Editor):
+    sid = (await ed.call("create_scene", name="Convert", type="3d"))["scene"]["id"]
+    terrain = await convert_source(ed, sid, "Hills")
+    points = [[0, 0], [5, -7], [12, 3], [-20, 9]]
+    before = [p["height"] for p in (await ed.call("sample_terrain", scene=sid, entity=terrain, points=points))["samples"]]
+
+    dry = await ed.call("edit_terrain_world", scene=sid, create={"from_terrain": terrain}, dry_run=True)
+    ed.check(dry["dry_run"] and dry["tile_count"] >= 4 and dry["tile_quads"] >= 64 and dry["spacing"] > 0, f"the plan from the Terrain: {dry}")
+    ed.check(not [p for p in ed.project.rglob("Hills World*.terrainworld")], "a dry run writes nothing")
+
+    out = await ed.call("edit_terrain_world", scene=sid, create={"from_terrain": terrain})
+    ed.check_eq(out["undo_name"], "Convert to Terrain World (Hills World)")
+    ed.check_eq(out["tile_count"], dry["tile_count"], "the tiles the dry run said")
+    folder = world_folder(ed, "Hills World")
+    ed.check((folder / "manifest.yaml").is_file(), "the world's folder is written")
+    world = out["entity"]["id"]
+    after = [p["height"] for p in (await ed.call("sample_terrain", scene=sid, entity=world, points=points))["samples"]]
+    for point, was, now in zip(points, before, after):
+        ed.check(abs(was - now) < 0.01, f"the World lies on the Terrain's surface at {point}: {was} then {now}")
+    # T4 R27: foliage on a World reports its tile regions; tree ops are refused with the way round
+    foliage = (await ed.call("sample_terrain", scene=sid, entity=world, foliage=True, grid=0))["foliage"]
+    ed.check("regions" in foliage["totals"], f"a World's foliage counts its tile regions: {foliage['totals']}")
+    message = await ed.check_error("edit_terrain", scene=sid, entity=world, ops=[{"op": "place_trees", "prototype": 0, "points": [[0, 0]]}])
+    ed.check("from_terrain" in message, f"tree ops on a World name the fix: {message}")
+
+    # undo: the World goes, the Terrain is back; the folder stays, so the next conversion picks another name
+    await ed.call("undo", scene=sid)
+    await ed.check_error("sample_terrain", scene=sid, entity=world, world={})
+    again = [p["height"] for p in (await ed.call("sample_terrain", scene=sid, entity=terrain, points=points))["samples"]]
+    ed.check_eq(again, before, "the Terrain is as it was")
+    ed.check((folder / "manifest.yaml").is_file(), "an undone conversion leaves its folder")
+    dry = await ed.call("edit_terrain_world", scene=sid, create={"from_terrain": terrain}, dry_run=True)
+    ed.check_eq(dry["asset_path"].split("/")[-1], "Hills World 1.terrainworld", "the next conversion picks another name")
+
+
+async def test_convert_refuses_rotated_terrain(ed: Editor):
+    sid = (await ed.call("create_scene", name="Tilted", type="3d"))["scene"]["id"]
+    terrain = await convert_source(ed, sid, "Tilted")
+    await ed.call("set_transform", scene=sid, entity=terrain, rotation={"euler": [0, 30, 0]})
+    message = await ed.check_error("edit_terrain_world", scene=sid, create={"from_terrain": terrain})
+    ed.check("does not rotate or scale" in message and "Nothing was changed" in message, f"the refusal names the fix: {message}")
+    ed.check(not [p for p in ed.project.rglob("Tilted World*.terrainworld")], "nothing is written")
+    message = await ed.check_error("edit_terrain_world", scene=sid, create={"from_terrain": terrain, "grid": {"width": 2}})
+    ed.check("leave out grid" in message, f"a converted world's grid is the Terrain's: {message}")

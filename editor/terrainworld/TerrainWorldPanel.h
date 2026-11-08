@@ -12,6 +12,7 @@
 #include "terrainworld/TerrainWorldEditor.h"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 namespace jasperengine::editor {
@@ -34,6 +35,27 @@ namespace jasperengine::editor {
         Entity parent = NULL_ENTITY;
         TerrainWorldSettings settings;
         std::string error;
+    };
+
+    // R33, R40: Terrain inspector > Convert to Terrain World...: what the Terrain becomes, then the
+    // resampling as a job; the Terrain stays, inactive
+    class ConvertTerrainWorldDialog {
+    public:
+        static ConvertTerrainWorldDialog& instance();
+        void open(Project* project, uint32_t sceneId, Entity source);
+        void show();
+        bool opened() const { return isOpen; }
+
+    private:
+        bool isOpen = false;
+        bool justOpened = false;
+        bool running = false;
+        Project* project = nullptr;
+        uint32_t sceneId = 0;
+        Entity source = NULL_ENTITY;
+        std::string name;
+        std::string error;
+        std::function<void()> cancel;
     };
 
     class TerrainWorldPanel {

@@ -256,6 +256,9 @@ GameObjects.
 - Making one: `edit_terrain_world {create: {name, grid: {width, length}, tile_quads, spacing, max_height}}`.
   `tile_quads` is 64 to 1024 and `spacing` a power of two from 0.25 to 8 m, so a tile is `tile_quads * spacing`
   metres a side; `dry_run` gives the tile count and memory first.
+- A Terrain into a World: `edit_terrain_world {create: {from_terrain: <entity>}}`. Tiles and spacing come from the
+  Terrain (`tile_quads`, `spacing` override them); the Terrain stays, inactive. `dry_run` shows the plan.
+- Trees on a World: place them on a Terrain first, then convert it; `edit_terrain`'s foliage ops refuse a World.
 - Heights, paint and holes across tiles: `edit_terrain` or `sculpt_terrain` with the World as `entity`. A
   stroke past the last tile makes the tile it reaches; one undo removes it.
 - More land, or less: ops `add_tiles` / `remove_tiles` with `tiles: [[x, z], ...]`.

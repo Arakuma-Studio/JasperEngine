@@ -15,6 +15,8 @@
 #include "component/TextEffectComponent.h"
 #include "EditorModal.h"
 #include "window/TerrainEditWindow.h"
+#include "terrainworld/TerrainWorldPanel.h"
+#include "component/TerrainWorldComponent.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
 
@@ -10571,6 +10573,12 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
 
     // T4 R40: a World's maps, sizes and LOD are its tiles' and its asset's
     const bool world = terrain.world != nullptr;
+    if (entities.size() == 1 && !world && !sceneProject->scene->findComponent<TerrainWorldComponent>(entities[0])){
+        // R33: the Terrain becomes a World at its place; it stays, inactive
+        if (ImGui::Button("Convert to Terrain World...", ImVec2(-1, 0))){
+            ConvertTerrainWorldDialog::instance().open(project, sceneProject->id, entities[0]);
+        }
+    }
     if (!world){
         separatorText("Maps");
         beginTable(cpType, getLabelSize("Height Map"), "terrain_maps");
