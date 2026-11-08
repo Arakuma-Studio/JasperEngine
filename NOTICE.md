@@ -284,6 +284,53 @@ Test assets (never shipped: `engine/tests/` stays out of the editor install and 
 
 The 3D titles' environment HDRIs (`editor/resources/titleart/hdri/`, staged beside the editor, never in a player) are Poly Haven's Studio Small 09, Autumn Road, Potsdamer Platz and Derelict Highway Midday (2k Radiance files, CC0 1.0, https://polyhaven.com/license), downloaded from Poly Haven by `tools/titleart/fetch_hdris.py`; `manifest.json` there lists each file's source URL and SHA-256.
 
+S84's photo environments for the Title Art library (the same folder and fetcher, set `s84` in `manifest.json`), and the editor's material preview environment:
+
+| Environment | Poly Haven asset | Location | License | Author |
+|---|---|---|---|---|
+| `night_city` | Shanghai Bund (`shanghai_bund_2k.hdr`, https://polyhaven.com/a/shanghai_bund) | `editor/resources/titleart/hdri/` | CC0-1.0 | Greg Zaal |
+| `night_dark` | Moonless Golf (`moonless_golf_2k.hdr`, https://polyhaven.com/a/moonless_golf) | `editor/resources/titleart/hdri/` | CC0-1.0 | Greg Zaal |
+| `sunset_harbour` | Venice Sunset (`venice_sunset_2k.hdr`, https://polyhaven.com/a/venice_sunset) | `editor/resources/titleart/hdri/` | CC0-1.0 | Greg Zaal |
+| `warehouse` | Empty Warehouse 01 (`empty_warehouse_01_2k.hdr`, https://polyhaven.com/a/empty_warehouse_01) | `editor/resources/titleart/hdri/` | CC0-1.0 | Sergej Majboroda |
+| material previews | Lythwood Room (`lythwood_room`, https://polyhaven.com/a/lythwood_room), tone-mapped to six JPEG cubemap faces embedded in the editor | `editor/render/preview/PreviewEnvironment.h` | CC0-1.0 | Greg Zaal |
+
+Fonts of the Title Art library (editor install; copied into a project when a document uses them), fetched from [google/fonts](https://github.com/google/fonts)' `ofl/` tree by `tools/titleart/fetch_fonts.py`, byte-identical to upstream (each directory's `SOURCE.json` holds the upstream path and SHA-256, `fonts.json` the manifest). Where the Licence column names a Reserved Font Name (its `OFL.txt`), a modified version (such as a subset) may not carry that name:
+
+| Font | Version | Location | Licence | Used for |
+|---|---|---|---|---|
+| Dela Gothic One (`DelaGothicOne-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 1.005 | `editor/resources/titleart/fonts/dela-gothic-one/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: casino, anime, elements |
+| M PLUS 1p Black (`MPLUS1p-Black.ttf`) | google/fonts `2fe1e8c6b137`, 1.062 | `editor/resources/titleart/fonts/mplus1p-black/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: minimal, anime |
+| Zen Kaku Gothic New Black (`ZenKakuGothicNew-Black.ttf`) | google/fonts `2fe1e8c6b137`, 1.002 | `editor/resources/titleart/fonts/zen-kaku-gothic-new-black/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: metal, sports, minimal |
+| Zen Old Mincho Black (`ZenOldMincho-Black.ttf`) | google/fonts `2fe1e8c6b137`, 1.500 | `editor/resources/titleart/fonts/zen-old-mincho-black/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: casino, wa, fantasy, gems |
+| Yuji Syuku (`YujiSyuku-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 3.002 | `editor/resources/titleart/fonts/yuji-syuku/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: wa, horror |
+| Reggae One (`ReggaeOne-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 1.100 | `editor/resources/titleart/fonts/reggae-one/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: anime |
+| RocknRoll One (`RocknRollOne-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 1.100 | `editor/resources/titleart/fonts/rocknroll-one/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: neon |
+| Rampart One (`RampartOne-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 1.100 | `editor/resources/titleart/fonts/rampart-one/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: retro |
+| Train One (`TrainOne-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 1.100 | `editor/resources/titleart/fonts/train-one/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: scifi, retro |
+| Potta One (`PottaOne-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 1.000 | `editor/resources/titleart/fonts/potta-one/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: cartoon |
+| Mochiy Pop One (`MochiyPopOne-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 2.000 | `editor/resources/titleart/fonts/mochiy-pop-one/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: cartoon, anime |
+| Playfair Italic, variable `opsz`, `wdth`, `wght` (`Playfair-Italic[opsz,wdth,wght].ttf`) | google/fonts `2fe1e8c6b137`, 2.203 | `editor/resources/titleart/fonts/playfair-black-italic/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: casino, gems |
+| Anton (`Anton-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 2.116 | `editor/resources/titleart/fonts/anton/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: metal, sports |
+| Russo One (`RussoOne-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 1.001 | `editor/resources/titleart/fonts/russo-one/` with `OFL.txt` | OFL-1.1, Reserved Font Name "Russo" | Title Art looks and templates: metal, scifi, anime |
+| Bungee (`Bungee-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 2.000 | `editor/resources/titleart/fonts/bungee/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: casino, retro |
+| Monoton (`Monoton-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 1.000 | `editor/resources/titleart/fonts/monoton/` with `OFL.txt` | OFL-1.1, Reserved Font Name "Monoton" | Title Art looks and templates: neon |
+| Tilt Neon, variable `XROT`, `YROT` (`TiltNeon[XROT,YROT].ttf`) | google/fonts `2fe1e8c6b137`, 1.000 | `editor/resources/titleart/fonts/tilt-neon/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: neon |
+| Cinzel Decorative Black (`CinzelDecorative-Black.ttf`) | google/fonts `2fe1e8c6b137`, 1.002 | `editor/resources/titleart/fonts/cinzel-decorative-black/` with `OFL.txt` | OFL-1.1, Reserved Font Name "Cinzel" | Title Art looks and templates: fantasy, horror |
+| MedievalSharp (`MedievalSharp.ttf`) | google/fonts `2fe1e8c6b137`, 1.0 | `editor/resources/titleart/fonts/medievalsharp/` with `OFL.txt` | OFL-1.1, Reserved Font Name "MedievalSharp" | Title Art looks and templates: fantasy |
+| Orbitron, variable `wght` (`Orbitron[wght].ttf`) | google/fonts `2fe1e8c6b137`, 2.001 | `editor/resources/titleart/fonts/orbitron/` with `OFL.txt` | OFL-1.1, Reserved Font Name "Orbitron" | Title Art looks and templates: scifi |
+| Audiowide (`Audiowide-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 1.003 | `editor/resources/titleart/fonts/audiowide/` with `OFL.txt` | OFL-1.1, Reserved Font Name "Audiowide" | Title Art looks and templates: scifi, neon, retro |
+| Creepster (`Creepster-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 1.002 | `editor/resources/titleart/fonts/creepster/` with `OFL.txt` | OFL-1.1, Reserved Font Name "Creepster" | Title Art looks and templates: horror |
+| Nosifer (`Nosifer-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 001.002 | `editor/resources/titleart/fonts/nosifer/` with `OFL.txt` | OFL-1.1, Reserved Font Name "Nosifer" | Title Art looks and templates: horror |
+| Bangers (`Bangers-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 2.100 | `editor/resources/titleart/fonts/bangers/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: cartoon |
+| Lilita One (`LilitaOne-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 1.002 | `editor/resources/titleart/fonts/lilita-one/` with `OFL.txt` | OFL-1.1, Reserved Font Name "Lilita" | Title Art looks and templates: cartoon |
+| Titan One (`TitanOne-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 1.001 | `editor/resources/titleart/fonts/titan-one/` with `OFL.txt` | OFL-1.1, Reserved Font Name "Titan" | Title Art looks and templates: cartoon, casino |
+| Press Start 2P (`PressStart2P-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 3.000 | `editor/resources/titleart/fonts/press-start-2p/` with `OFL.txt` | OFL-1.1, Reserved Font Name "Press Start 2P" | Title Art looks and templates: retro |
+| Silkscreen Regular, Bold (`Silkscreen-Regular.ttf`, `Silkscreen-Bold.ttf`) | google/fonts `2fe1e8c6b137`, 1.001 | `editor/resources/titleart/fonts/silkscreen/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: retro |
+| Teko, variable `wght` (`Teko[wght].ttf`) | google/fonts `2fe1e8c6b137`, 2.000 | `editor/resources/titleart/fonts/teko/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: sports |
+| Black Ops One (`BlackOpsOne-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 1.004 | `editor/resources/titleart/fonts/black-ops-one/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: sports, horror |
+| Inter, variable `opsz`, `wght` (`Inter[opsz,wght].ttf`) | google/fonts `2fe1e8c6b137`, 4.001 | `editor/resources/titleart/fonts/inter/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: minimal |
+| Archivo Black (`ArchivoBlack-Regular.ttf`) | google/fonts `2fe1e8c6b137`, 1.006 | `editor/resources/titleart/fonts/archivo-black/` with `OFL.txt` | OFL-1.1 | Title Art looks and templates: sports, minimal |
+
 Test fonts of Title Art (`engine/tests/core/titleart/fonts/`, each with its licence file beside it; never shipped), downloaded from their original sources, none copied out of the Pachislop repository:
 
 | Font | Source | License | Credit |

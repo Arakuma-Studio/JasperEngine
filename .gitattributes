@@ -2,3 +2,9 @@
 # merge keeps both (docs/specs/S83-title-effects-generators.md Deviations)
 editor/resources/titleart/pachislop-fx-map.yaml merge=union
 editor/titleart/fx/FxCost.cpp merge=union
+# Fonts, HDRIs and images (the Title Art library's upstream fonts and HDRIs, its baked thumbnails) are
+# bytes: never converted, diffed or merged as text (docs/specs/S84-title-library.md R50)
+*.ttf binary
+*.otf binary
+*.hdr binary
+*.png binary

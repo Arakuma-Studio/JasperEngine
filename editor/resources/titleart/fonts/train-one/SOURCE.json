@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/trainone/OFL.txt",
+    "sha256": "709f9689eabbab61e913ddc288187e7e3d09550339f7df894a909548f90af814",
+    "bytes": 4481
+  },
+  "path": "ofl/trainone/TrainOne-Regular.ttf",
+  "sha256": "07d67ad14231a4a41f0ee501b14bd6f9c7a9beada5ee6af2924114863a034623",
+  "bytes": 2152516
+}

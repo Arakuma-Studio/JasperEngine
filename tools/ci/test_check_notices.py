@@ -176,6 +176,50 @@ class CheckNoticesTest(unittest.TestCase):
         self.assertIn("no licenses/beta-LICENSE", problems[0])
         self.assertIn("CMakePresets.json", problems[1])
 
+    # S84 R31, AC19: every Title Art library font directory has a NOTICE.md row and its OFL.txt,
+    # installed as licenses/titleart-font-<dir>-OFL.txt
+    def add_font(self, name, licence=True, row=True):
+        directory = self.repo / "editor/resources/titleart/fonts" / name
+        directory.mkdir(parents=True)
+        (directory / "Font-Regular.ttf").write_bytes(b"\0\1\0\0")
+        if licence:
+            (directory / "OFL.txt").write_text("SIL Open Font License")
+        if row:
+            with (self.repo / "NOTICE.md").open("a") as notice:
+                notice.write(f"| {name} | 1.000 | `editor/resources/titleart/fonts/{name}/` with `OFL.txt` | OFL-1.1 | titles |\n")
+
+    def test_font_directory_with_row_and_licence_passes(self):
+        self.add_font("anton")
+        self.assertEqual(check_notices.check_repository(self.repo), [])
+        self.assertIn((self.repo / "editor/resources/titleart/fonts/anton/OFL.txt", "titleart-font-anton-OFL.txt"),
+                      check_notices.install_manifest(self.repo))
+
+    def test_font_directory_without_licence_fails(self):
+        self.add_font("anton", licence=False)
+        self.assertEqual(check_notices.check_repository(self.repo), ["editor/resources/titleart/fonts/anton: no OFL.txt"])
+
+    def test_font_directory_without_notice_row_fails(self):
+        self.add_font("anton", row=False)
+        self.assertEqual(check_notices.check_repository(self.repo),
+                         ["editor/resources/titleart/fonts/anton: no NOTICE.md row names `editor/resources/titleart/fonts/anton/`"])
+
+    def test_installed_tree_needs_the_font_licences(self):
+        self.add_font("anton")
+        self.add_font("dela-gothic-one")
+        install = self.repo / "install/bin"
+        (install / "licenses").mkdir(parents=True)
+        for name in ("NOTICE.md", "LICENSE"):
+            (install / name).write_text("x")
+        for _, name in check_notices.install_manifest(self.repo):
+            if not name.startswith("titleart-font-"):
+                (install / "licenses" / name).write_text("x")
+        self.assertEqual(sorted(check_notices.check_installed(install, self.repo)),
+                         [f"{install}: no licenses/titleart-font-anton-OFL.txt",
+                          f"{install}: no licenses/titleart-font-dela-gothic-one-OFL.txt"])
+        for name in ("titleart-font-anton-OFL.txt", "titleart-font-dela-gothic-one-OFL.txt"):
+            (install / "licenses" / name).write_text("OFL")
+        self.assertEqual(check_notices.check_installed(install, self.repo), [])
+
     def test_this_repository_passes(self):
         self.assertEqual(check_notices.check_repository(check_notices.REPO), [])
 

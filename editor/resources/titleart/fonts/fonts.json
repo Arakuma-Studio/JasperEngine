@@ -1,0 +1,781 @@
+{
+  "version": 1,
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "license": "OFL-1.1",
+  "fonts": {
+    "dela-gothic-one": {
+      "family": "Dela Gothic One",
+      "style": "Regular",
+      "files": [
+        "DelaGothicOne-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin",
+        "ja"
+      ],
+      "category": "display",
+      "look_families": [
+        "casino",
+        "anime",
+        "elements"
+      ],
+      "font_version": "Version 1.005",
+      "bytes": 2508848,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/delagothicone/DelaGothicOne-Regular.ttf"
+    },
+    "mplus1p-black": {
+      "family": "M PLUS 1p",
+      "style": "Black",
+      "files": [
+        "MPLUS1p-Black.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin",
+        "ja"
+      ],
+      "category": "sans",
+      "look_families": [
+        "minimal",
+        "anime"
+      ],
+      "font_version": "Version 1.062",
+      "bytes": 1774332,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mplus1p/MPLUS1p-Black.ttf"
+    },
+    "zen-kaku-gothic-new-black": {
+      "family": "Zen Kaku Gothic New",
+      "style": "Black",
+      "files": [
+        "ZenKakuGothicNew-Black.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin",
+        "ja"
+      ],
+      "category": "sans",
+      "look_families": [
+        "metal",
+        "sports",
+        "minimal"
+      ],
+      "font_version": "Version 1.002",
+      "bytes": 2300600,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/zenkakugothicnew/ZenKakuGothicNew-Black.ttf"
+    },
+    "zen-old-mincho-black": {
+      "family": "Zen Old Mincho",
+      "style": "Black",
+      "files": [
+        "ZenOldMincho-Black.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin",
+        "ja"
+      ],
+      "category": "serif",
+      "look_families": [
+        "casino",
+        "wa",
+        "fantasy",
+        "gems"
+      ],
+      "font_version": "Version 1.500",
+      "bytes": 5416348,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/zenoldmincho/ZenOldMincho-Black.ttf"
+    },
+    "yuji-syuku": {
+      "family": "Yuji Syuku",
+      "style": "Regular",
+      "files": [
+        "YujiSyuku-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin",
+        "ja"
+      ],
+      "category": "serif",
+      "look_families": [
+        "wa",
+        "horror"
+      ],
+      "font_version": "Version 3.002",
+      "bytes": 8430348,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/yujisyuku/YujiSyuku-Regular.ttf"
+    },
+    "reggae-one": {
+      "family": "Reggae One",
+      "style": "Regular",
+      "files": [
+        "ReggaeOne-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin",
+        "ja"
+      ],
+      "category": "display",
+      "look_families": [
+        "anime"
+      ],
+      "font_version": "Version 1.100",
+      "bytes": 2153256,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/reggaeone/ReggaeOne-Regular.ttf"
+    },
+    "rocknroll-one": {
+      "family": "RocknRoll One",
+      "style": "Regular",
+      "files": [
+        "RocknRollOne-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin",
+        "ja"
+      ],
+      "category": "sans",
+      "look_families": [
+        "neon"
+      ],
+      "font_version": "Version 1.100",
+      "bytes": 2682824,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/rocknrollone/RocknRollOne-Regular.ttf"
+    },
+    "rampart-one": {
+      "family": "Rampart One",
+      "style": "Regular",
+      "files": [
+        "RampartOne-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin",
+        "ja"
+      ],
+      "category": "display",
+      "look_families": [
+        "retro"
+      ],
+      "font_version": "Version 1.100",
+      "bytes": 3722352,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/rampartone/RampartOne-Regular.ttf"
+    },
+    "train-one": {
+      "family": "Train One",
+      "style": "Regular",
+      "files": [
+        "TrainOne-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin",
+        "ja"
+      ],
+      "category": "display",
+      "look_families": [
+        "scifi",
+        "retro"
+      ],
+      "font_version": "Version 1.100",
+      "bytes": 2152516,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/trainone/TrainOne-Regular.ttf"
+    },
+    "potta-one": {
+      "family": "Potta One",
+      "style": "Regular",
+      "files": [
+        "PottaOne-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin",
+        "ja"
+      ],
+      "category": "display",
+      "look_families": [
+        "cartoon"
+      ],
+      "font_version": "Version 1.000",
+      "bytes": 4918516,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/pottaone/PottaOne-Regular.ttf"
+    },
+    "mochiy-pop-one": {
+      "family": "Mochiy Pop One",
+      "style": "Regular",
+      "files": [
+        "MochiyPopOne-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin",
+        "ja"
+      ],
+      "category": "sans",
+      "look_families": [
+        "cartoon",
+        "anime"
+      ],
+      "font_version": "Version 2.000",
+      "bytes": 5163948,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mochiypopone/MochiyPopOne-Regular.ttf"
+    },
+    "playfair-black-italic": {
+      "family": "Playfair",
+      "style": "Italic",
+      "files": [
+        "Playfair-Italic[opsz,wdth,wght].ttf"
+      ],
+      "variations": {
+        "wght": 900,
+        "opsz": 5
+      },
+      "axes": {
+        "opsz": [
+          5.0,
+          5.0,
+          1200.0
+        ],
+        "wdth": [
+          87.5,
+          112.5,
+          112.5
+        ],
+        "wght": [
+          300.0,
+          300.0,
+          900.0
+        ]
+      },
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "casino",
+        "gems"
+      ],
+      "font_version": "Version 2.203",
+      "bytes": 1783732,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/playfair/Playfair-Italic[opsz,wdth,wght].ttf"
+    },
+    "anton": {
+      "family": "Anton",
+      "style": "Regular",
+      "files": [
+        "Anton-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "metal",
+        "sports"
+      ],
+      "font_version": "Version 2.116; ttfautohint (v1.8.3)",
+      "bytes": 170812,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/anton/Anton-Regular.ttf"
+    },
+    "russo-one": {
+      "family": "Russo One",
+      "style": "Regular",
+      "files": [
+        "RussoOne-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin",
+        "cyrillic"
+      ],
+      "category": "sans",
+      "look_families": [
+        "metal",
+        "scifi",
+        "anime"
+      ],
+      "font_version": "Version 1.001",
+      "bytes": 39124,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/russoone/RussoOne-Regular.ttf"
+    },
+    "bungee": {
+      "family": "Bungee",
+      "style": "Regular",
+      "files": [
+        "Bungee-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "casino",
+        "retro"
+      ],
+      "font_version": "Version 2.000",
+      "bytes": 118996,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/bungee/Bungee-Regular.ttf"
+    },
+    "monoton": {
+      "family": "Monoton",
+      "style": "Regular",
+      "files": [
+        "Monoton-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "neon"
+      ],
+      "font_version": "Version 1.000",
+      "bytes": 51604,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/monoton/Monoton-Regular.ttf"
+    },
+    "tilt-neon": {
+      "family": "Tilt Neon",
+      "style": "Regular",
+      "files": [
+        "TiltNeon[XROT,YROT].ttf"
+      ],
+      "variations": {
+        "XROT": 0,
+        "YROT": 0
+      },
+      "axes": {
+        "XROT": [
+          -45.0,
+          0.0,
+          45.0
+        ],
+        "YROT": [
+          -45.0,
+          0.0,
+          45.0
+        ]
+      },
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "neon"
+      ],
+      "font_version": "Version 1.000",
+      "bytes": 583288,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/tiltneon/TiltNeon[XROT,YROT].ttf"
+    },
+    "cinzel-decorative-black": {
+      "family": "Cinzel Decorative",
+      "style": "Black",
+      "files": [
+        "CinzelDecorative-Black.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "fantasy",
+        "horror"
+      ],
+      "font_version": "Version 1.002;PS 001.002;hotconv 1.0.56;makeotf.lib2.0.21325",
+      "bytes": 62692,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/cinzeldecorative/CinzelDecorative-Black.ttf"
+    },
+    "medievalsharp": {
+      "family": "MedievalSharp",
+      "style": "Regular",
+      "files": [
+        "MedievalSharp.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "fantasy"
+      ],
+      "font_version": "Version 1.0",
+      "bytes": 148712,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/medievalsharp/MedievalSharp.ttf"
+    },
+    "orbitron": {
+      "family": "Orbitron",
+      "style": "Regular",
+      "files": [
+        "Orbitron[wght].ttf"
+      ],
+      "variations": {
+        "wght": 900
+      },
+      "axes": {
+        "wght": [
+          400.0,
+          400.0,
+          900.0
+        ]
+      },
+      "scripts": [
+        "latin"
+      ],
+      "category": "sans",
+      "look_families": [
+        "scifi"
+      ],
+      "font_version": "Version 2.001",
+      "bytes": 38576,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/orbitron/Orbitron[wght].ttf"
+    },
+    "audiowide": {
+      "family": "Audiowide",
+      "style": "Regular",
+      "files": [
+        "Audiowide-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "scifi",
+        "neon",
+        "retro"
+      ],
+      "font_version": "Version 1.003",
+      "bytes": 69916,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/audiowide/Audiowide-Regular.ttf"
+    },
+    "creepster": {
+      "family": "Creepster",
+      "style": "Regular",
+      "files": [
+        "Creepster-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "horror"
+      ],
+      "font_version": "Version 1.002",
+      "bytes": 62724,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/creepster/Creepster-Regular.ttf"
+    },
+    "nosifer": {
+      "family": "Nosifer",
+      "style": "Regular",
+      "files": [
+        "Nosifer-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "horror"
+      ],
+      "font_version": "Version 001.002",
+      "bytes": 43272,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/nosifer/Nosifer-Regular.ttf"
+    },
+    "bangers": {
+      "family": "Bangers",
+      "style": "Regular",
+      "files": [
+        "Bangers-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "cartoon"
+      ],
+      "font_version": "Version 2.100; ttfautohint (v1.8.4.7-5d5b);gftools[0.9.31]",
+      "bytes": 93148,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/bangers/Bangers-Regular.ttf"
+    },
+    "lilita-one": {
+      "family": "Lilita One",
+      "style": "Regular",
+      "files": [
+        "LilitaOne-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "cartoon"
+      ],
+      "font_version": "Version 1.002",
+      "bytes": 28092,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/lilitaone/LilitaOne-Regular.ttf"
+    },
+    "titan-one": {
+      "family": "Titan One",
+      "style": "Regular",
+      "files": [
+        "TitanOne-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "cartoon",
+        "casino"
+      ],
+      "font_version": "Version 1.001",
+      "bytes": 55712,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/titanone/TitanOne-Regular.ttf"
+    },
+    "press-start-2p": {
+      "family": "Press Start 2P",
+      "style": "Regular",
+      "files": [
+        "PressStart2P-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "retro"
+      ],
+      "font_version": "Version 3.000",
+      "bytes": 118204,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/pressstart2p/PressStart2P-Regular.ttf"
+    },
+    "silkscreen": {
+      "family": "Silkscreen",
+      "style": "Regular, Bold",
+      "files": [
+        "Silkscreen-Regular.ttf",
+        "Silkscreen-Bold.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "retro"
+      ],
+      "font_version": "Version 1.001; ttfautohint (v1.8.4.7-5d5b)",
+      "bytes": 62852,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/silkscreen/Silkscreen-Regular.ttf"
+    },
+    "teko": {
+      "family": "Teko",
+      "style": "Regular",
+      "files": [
+        "Teko[wght].ttf"
+      ],
+      "variations": {
+        "wght": 700
+      },
+      "axes": {
+        "wght": [
+          300.0,
+          300.0,
+          700.0
+        ]
+      },
+      "scripts": [
+        "latin",
+        "devanagari"
+      ],
+      "category": "sans",
+      "look_families": [
+        "sports"
+      ],
+      "font_version": "Version 2.000;gftools[0.9.28.dev9+g7d2139d.d20230707]",
+      "bytes": 292108,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/teko/Teko[wght].ttf"
+    },
+    "black-ops-one": {
+      "family": "Black Ops One",
+      "style": "Regular",
+      "files": [
+        "BlackOpsOne-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin"
+      ],
+      "category": "display",
+      "look_families": [
+        "sports",
+        "horror"
+      ],
+      "font_version": "Version 1.004; ttfautohint (v1.8.4.7-5d5b)",
+      "bytes": 166532,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/blackopsone/BlackOpsOne-Regular.ttf"
+    },
+    "inter": {
+      "family": "Inter",
+      "style": "Regular",
+      "files": [
+        "Inter[opsz,wght].ttf"
+      ],
+      "variations": {
+        "wght": 800
+      },
+      "axes": {
+        "opsz": [
+          14.0,
+          14.0,
+          32.0
+        ],
+        "wght": [
+          100.0,
+          400.0,
+          900.0
+        ]
+      },
+      "scripts": [
+        "latin",
+        "greek",
+        "cyrillic"
+      ],
+      "category": "sans",
+      "look_families": [
+        "minimal"
+      ],
+      "font_version": "Version 4.001;git-66647c0bb",
+      "bytes": 876576,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/inter/Inter[opsz,wght].ttf"
+    },
+    "archivo-black": {
+      "family": "Archivo Black",
+      "style": "Regular",
+      "files": [
+        "ArchivoBlack-Regular.ttf"
+      ],
+      "variations": {},
+      "axes": {},
+      "scripts": [
+        "latin"
+      ],
+      "category": "sans",
+      "look_families": [
+        "sports",
+        "minimal"
+      ],
+      "font_version": "Version 1.006",
+      "bytes": 90988,
+      "license": "OFL-1.1",
+      "license_file": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/archivoblack/ArchivoBlack-Regular.ttf"
+    }
+  },
+  "bytes": 46181548
+}

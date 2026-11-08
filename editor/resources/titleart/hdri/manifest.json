@@ -22,6 +22,28 @@
       "title": "Autumn Road",
       "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/autumn_road_2k.hdr"
     },
+    "night_city": {
+      "bytes": 6467753,
+      "file": "shanghai_bund_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s84",
+      "sha256": "ed4be21489e86a915bc872072e7e6d83c163a2d2fbb1c260979f7b9224a3322b",
+      "slug": "shanghai_bund",
+      "title": "Shanghai Bund",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/shanghai_bund_2k.hdr"
+    },
+    "night_dark": {
+      "bytes": 6688317,
+      "file": "moonless_golf_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s84",
+      "sha256": "d85421f5a0ed59f6f761babf088b80472e7b3b122e492f30668393dd1c1363bd",
+      "slug": "moonless_golf",
+      "title": "Moonless Golf",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/moonless_golf_2k.hdr"
+    },
     "sky": {
       "bytes": 5594896,
       "file": "derelict_highway_midday_2k.hdr",
@@ -43,6 +65,28 @@
       "slug": "studio_small_09",
       "title": "Studio Small 09",
       "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/studio_small_09_2k.hdr"
+    },
+    "sunset_harbour": {
+      "bytes": 5723224,
+      "file": "venice_sunset_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s84",
+      "sha256": "cbfac020ee17ab36016ccc7fbe9020b828587b9864af6ecda0a93089914889a6",
+      "slug": "venice_sunset",
+      "title": "Venice Sunset",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/venice_sunset_2k.hdr"
+    },
+    "warehouse": {
+      "bytes": 6581920,
+      "file": "empty_warehouse_01_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s84",
+      "sha256": "9734d30c83fe480a2a7c7521b7bdb816d869c2468d45d3794bde729d6181f830",
+      "slug": "empty_warehouse_01",
+      "title": "Empty Warehouse 01",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/empty_warehouse_01_2k.hdr"
     }
   },
   "version": 1

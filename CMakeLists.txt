@@ -1853,6 +1853,21 @@ endif()
 add_custom_command(TARGET jasperengine-editor POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/editor/resources/titleart/hdri ${JASPERENGINE_EDITOR_TITLE_HDRI_DIR}
     VERBATIM)
+# The Title Art library's font pack and thumbnails (S84 R39) beside them, read in place
+# (FileUtils::getTitleArtLibraryDir); a project gets a copy of a font only when a document uses it
+if(APPLE)
+    set(JASPERENGINE_EDITOR_TITLEART_DIR $<TARGET_BUNDLE_CONTENT_DIR:jasperengine-editor>/Resources/titleart)
+else()
+    set(JASPERENGINE_EDITOR_TITLEART_DIR $<TARGET_FILE_DIR:jasperengine-editor>/titleart)
+endif()
+add_custom_command(TARGET jasperengine-editor POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/editor/resources/titleart/fonts ${JASPERENGINE_EDITOR_TITLEART_DIR}/fonts
+    VERBATIM)
+if(EXISTS ${CMAKE_SOURCE_DIR}/editor/resources/titleart/thumbnails)
+    add_custom_command(TARGET jasperengine-editor POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/editor/resources/titleart/thumbnails ${JASPERENGINE_EDITOR_TITLEART_DIR}/thumbnails
+        VERBATIM)
+endif()
 
 set(JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor)
 
@@ -2003,6 +2018,17 @@ if(APPLE)
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/editor/resources/titleart/hdri DESTINATION bin/${JASPERENGINE_BUNDLE_NAME}.app/Contents/Resources/titleart)
 else()
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/editor/resources/titleart/hdri DESTINATION bin/titleart)
+endif()
+# The Title Art library's fonts and thumbnails beside them (S84 R39); each font directory's OFL.txt
+# is also in licenses/ as titleart-font-<dir>-OFL.txt, through the licence manifest above (R31)
+if(APPLE)
+    set(JASPERENGINE_TITLEART_INSTALL_DIR bin/${JASPERENGINE_BUNDLE_NAME}.app/Contents/Resources/titleart)
+else()
+    set(JASPERENGINE_TITLEART_INSTALL_DIR bin/titleart)
+endif()
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/editor/resources/titleart/fonts DESTINATION ${JASPERENGINE_TITLEART_INSTALL_DIR})
+if(EXISTS ${CMAKE_SOURCE_DIR}/editor/resources/titleart/thumbnails)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/editor/resources/titleart/thumbnails DESTINATION ${JASPERENGINE_TITLEART_INSTALL_DIR})
 endif()
 
 # The starter library beside the editor: the editor reads it in place (FileUtils::getSoundLibraryDir),
