@@ -5,6 +5,8 @@
 options with stats_3d, try on 3D fields, the 3D ops through edit_title, get_title's three_d and
 stats_3d, check_title's 3d group and export_title format glb."""
 
+import time
+
 from harness import Editor
 
 CI = True
@@ -22,6 +24,22 @@ async def setup(ed: Editor) -> dict:
     await ed.call("tool_groups", enable=["title_art"])
     await ed.call("set_project_settings", values={"title_art.auto_bake": False})
     return S
+
+
+async def render(ed: Editor, args: dict):
+    """render_title, waiting for its job when the render outlasts the call (a cold environment or
+    new programs drawn a frame apart)."""
+    r = await ed.call_raw("render_title", args)
+    job = (r.structured or {}).get("job_id") if not r.is_error else None
+    if not job:
+        return r
+    deadline = time.monotonic() + TIMEOUT
+    state = await ed.call("get_job", job_id=job)
+    while state.get("status") == "running" and time.monotonic() < deadline:
+        state = await ed.call("get_job", job_id=job)
+    ed.check_eq(state.get("status"), "succeeded", f"the render job: {state}")
+    # the finished render is cached: asked again, it answers with the image at once
+    return await ed.call_raw("render_title", args)
 
 
 async def create3D(ed: Editor, path: str) -> None:
@@ -45,7 +63,7 @@ async def test_quality_and_debug_views(ed: Editor):
     await setup(ed)
     path = "assets/titles/gold3d.titleart"
     await create3D(ed, path)
-    low = await ed.call_raw("render_title", {"path": path, "options": {"quality": "low"}})
+    low = await render(ed, {"path": path, "options": {"quality": "low"}})
     ed.check(not low.is_error and low.images, f"a low tier image: {low.text[:300]}")
     ed.check_eq(low.structured.get("quality"), "low", "the tier is reported")
     stats = low.structured.get("stats_3d") or []
@@ -55,7 +73,7 @@ async def test_quality_and_debug_views(ed: Editor):
     ed.check(stats[0]["triangles"] > 0, "the mesh has triangles")
     ed.check_in("low", stats[0]["tiers"], "the tier fits are listed")
     for view in ["none", "normals", "environment", "ao", "glint", "ink", "wireframe"]:
-        r = await ed.call_raw("render_title", {"path": path, "options": {"debug_view": view}})
+        r = await render(ed, {"path": path, "options": {"debug_view": view}})
         ed.check(not r.is_error and r.images, f"debug_view {view}: {r.text[:300]}")
     msg = await ed.check_error("render_title", path=path, options={"debug_view": "x"})
     ed.check_in("bad_option", msg, "an unknown view")
