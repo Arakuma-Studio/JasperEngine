@@ -189,6 +189,11 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
   T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- T3's GLES3 fit done (terrain/t3-gles3-fit 1d3fb3dde): the per-layer block packed from 5 vectors to 3 plus 1 component; worst
+  variant 217 of 224 (was 241), upstream's painted terrain 221 to 212, cross-compiles for every backend, 207/207 variants on glcore,
+  226 on Vulkan, goldens unchanged. Lua factors outside 0-1 are now clamped. T6's CaveMouth flake fixed (f4a854f33): the test read
+  the screen before the dig finished and its golden was an early frame; new isVolumeSettled. Both go into terrain/upstream-merge
+  with integration's latest, then one final filtered pass; that branch becomes the base T4 and T1b land on.
 - T1 window batch landed (3b8f715e7), identical to T1's tree. Its test run caught Esc both cancelling a stroke and putting the brush
   down, turning the release into a stray Deselect All; fixed before landing.
 - Guide budget resolved on terrain/upstream-merge (aac58b2c9): the programme's two "Other areas" entries removed, 7 bytes of upstream
