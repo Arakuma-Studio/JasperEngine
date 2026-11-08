@@ -711,3 +711,28 @@ async def test_scene_view_resource(ed: Editor):
         ed.check(key in data, f"jasper://scene-view has {key}")
     for key in ("built", "pending", "bytes", "build_ms_total"):
         ed.check(key in data["bvh_cache"], f"bvh_cache.{key}")
+
+
+# -- straight down (agent-authoring) -----------------------------------------------
+
+
+async def test_camera_straight_down_and_degenerate_aims(ed: Editor):
+    """red before the fix: aimed straight down the camera kept up (0, 1, 0), parallel to the view
+    (lookAt's side vector was zero); a target equal to the position was accepted"""
+    sid = await new_scene(ed, "TopDown")
+    # away from the new scene's camera and light, whose icons the centre would pick
+    floor = await cube(ed, sid, "Floor", (40, 0, 40), (6, 0.2, 6))
+    got = await ed.call("set_scene_camera", scene=sid, position=[40, 25, 40], target=[40, 0, 40])
+    ed.check(close(got["camera"]["up"], [0, 0, 1]), f"the Top view's up: {got['camera']}")
+    picked = await ed.call("pick_at", scene=sid, u=0.5, v=0.5)
+    ed.check_eq(picked["would_select"]["entity"], floor, "the view's centre is the floor under it")
+    got = await ed.call("set_scene_camera", scene=sid, position=[0, -25, 0], target=[0, 0, 0])
+    ed.check(close(got["camera"]["up"], [0, 0, -1]), f"the Bottom view's up: {got['camera']}")
+    got = await ed.call("set_scene_camera", scene=sid, position=[0, 5, -10], target=[0, 0, 0])
+    ed.check(close(got["camera"]["up"], [0, 1, 0]), f"an oblique view keeps the world up: {got['camera']}")
+    err = await ed.call("set_scene_camera", scene=sid, position=[1, 2, 3], target=[1, 2, 3], expect_error=True)
+    ed.check_in("target must differ from position", err, "a zero view direction is refused")
+    err = await ed.call("set_scene_camera", scene=sid, position=[0, 0, 0], expect_error=True)
+    ed.check_in("target must differ", err, "a position on the current target is refused")
+    got = await ed.call("set_scene_camera", scene=sid)
+    ed.check(close(got["camera"]["position"], [0, 5, -10]), f"nothing changed: {got['camera']}")

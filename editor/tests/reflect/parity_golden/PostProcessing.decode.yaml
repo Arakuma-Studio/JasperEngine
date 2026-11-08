@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest f81b2be8d44f9959
+digest 57cefad0837d5b9b
 --- 0
 exposure: 10
 tonemap: agx
@@ -60,6 +60,9 @@ halationThreshold: 0
 halationTint: [0, 1, 0]
 dynamicResolutionEnabled: true
 dynamicResolutionMinScale: 1
+palette: textures/a.png
+paletteDither: bayer2
+paletteDistance: rgb
 --- 1
 exposure: 10
 tint: 1e-45
@@ -98,6 +101,9 @@ blurRadius: 0
 halationTint: [1, 0, 0.34099245]
 renderScale: 0.5
 dynamicResolutionMinScale: 1
+palette: textures/a.png
+paletteDither: bayer2
+paletteDistance: rgb
 --- 2
 tonemap: neutral
 tint: -1
@@ -157,6 +163,10 @@ halationRadius: 1
 halationTint: [-0, 0.88957304, 0]
 msaaSamples: 4
 dynamicResolutionMinScale: 0.5
+palette: ui/menu.html
+paletteDither: bayer8
+paletteDistance: rgb
+palettePrecision: high
 --- 3
 exposure: -10
 tonemap: neutral
@@ -197,6 +207,9 @@ halationThreshold: 1
 halationTint: [0, 0, 0]
 renderScale: 0.5
 dynamicResolutionTargetFps: 20
+palette: textures/a.png
+paletteDither: bayer2
+palettePrecision: high
 --- 4
 exposure: 10
 tonemap: agx
@@ -256,6 +269,10 @@ renderScale: 0.5
 msaaSamples: 4
 dynamicResolutionEnabled: true
 dynamicResolutionTargetFps: 8
+paletteDither: bayer8
+paletteDitherStrength: -0
+paletteDistance: rgb
+palettePrecision: high
 --- 5
 exposure: -10
 tonemap: neutral
@@ -302,6 +319,9 @@ halationRadius: 0
 halationTint: [1, 1, 1]
 msaaSamples: 4
 dynamicResolutionMinScale: 1
+palette: ui/menu.html
+paletteDither: bayer2
+paletteDitherStrength: 0.042260047
 --- 6
 exposure: 1e-45
 temperature: -1
@@ -363,6 +383,12 @@ halationThreshold: 1
 halationTint: [0, 1, 1]
 renderScale: 0.5
 dynamicResolutionTargetFps: 1
+paletteEnabled: true
+palette: fonts/Main.ttf
+paletteDither: bayer8
+paletteDitherStrength: 0
+paletteDistance: rgb
+palettePrecision: high
 --- 7
 exposure: 1e-45
 tonemap: agx
@@ -406,3 +432,4 @@ blurIntensity: 0
 halationThreshold: 1e-45
 halationRadius: 1
 halationTint: [0, 0, 0]
+paletteDistance: rgb

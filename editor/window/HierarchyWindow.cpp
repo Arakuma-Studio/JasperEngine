@@ -54,10 +54,13 @@
 #include "component/SpriteComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
+#include "pixelart/aseprite/AsepriteSpriteSetup.h"
+#include "sprite/SpriteSheetPool.h"
 #include "spline/SplineEditor.h"
 #include "util/EditorScripts.h"
 #include "shortcuts/CommandCatalog.h"
 #include "search/HierarchyFilter.h"
+#include "util/EntityLabels.h"
 #include "organisation/Bookmarks.h"
 #include "window/BookmarksWindow.h"
 #include "window/dialog/DataSafetyDialogs.h"
@@ -1337,6 +1340,10 @@ void editor::HierarchyWindow::moveDraggedEntitiesToRootLevel(const std::vector<E
 bool editor::HierarchyWindow::acceptsModelDrop(const std::string& filePath) const {
     // As in the Scene window: a model file of the assets makes a Model GameObject of a 3D scene
     const SceneProject* sceneProject = project->getSelectedScene();
+    if (SpriteSheetPool::isAsepritePath(filePath)) {
+        // an .aseprite file (S44 R33): an animated Sprite in any scene
+        return sceneProject && sceneProject->playState == ScenePlayState::STOPPED;
+    }
     return (Util::isModelFile(filePath) || Util::isVertexAnimationFile(filePath)) && sceneProject &&
         sceneProject->sceneType == SceneType::SCENE_3D && sceneProject->playState == ScenePlayState::STOPPED;
 }
@@ -1355,6 +1362,17 @@ void editor::HierarchyWindow::handleEntityFilesDrop(const std::vector<std::strin
             if (createVatObject(project, project->getSelectedSceneId(), filePath, Vector3(0, 0, 0), parent, &error) == NULL_ENTITY) {
                 Out::error("%s", error.c_str());
             }
+            continue;
+        }
+
+        if (SpriteSheetPool::isAsepritePath(filePath) && acceptsModelDrop(filePath)) {
+            if (!project->isInsideAssetsPath(path)) {
+                Backend::getApp().registerOutsideAssetsAlert(filePath);
+                continue;
+            }
+            // onto a Sprite: its sheet; onto an Animation Player: its clips; else a child Sprite
+            pixelart::aseprite::dropAseprite(project, project->getSelectedSceneId(), project->normalizeToAssetsRelative(path).generic_string(),
+                                             parent, parent, Vector3(0, 0, 0));
             continue;
         }
 
@@ -1501,11 +1519,16 @@ void editor::HierarchyWindow::updateSearchAndSelectionOrder(TreeNode& root, bool
                 names.push_back(Catalog::getComponentDisplayName(type));
             }
             return names;
-        });
+        }, [](const TreeNode& node) { return nodeText(node); });
     }
 
     visibleEntitySelectionOrder.clear();
     collectVisibleEntitySelectionOrder(root, hasSearch);
+}
+
+std::string editor::HierarchyWindow::nodeText(const TreeNode& node) {
+    if (node.isScene || node.isChildScene) return node.name;
+    return entityDisplayName(node.name, node.id);
 }
 
 EntityPayload editor::HierarchyWindow::buildEntityPayload(const TreeNode& node, bool& allowed) {
@@ -1693,7 +1716,14 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     }
 
     const bool renamingNode = isRenaming(node);
-    std::string nodeLabel = BidiText::toVisual(node.name);
+    // an object a script made without a name reads "GameObject <id>", dimmed (unless a colour
+    // rule above already took the row)
+    const bool unnamed = !node.isScene && !node.isChildScene && isUnnamedEntity(node.name);
+    if (unnamed && !pushedHighlightColor) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        pushedHighlightColor = true;
+    }
+    std::string nodeLabel = BidiText::toVisual(nodeText(node));
     SceneProject* headerScene = node.isScene ? project->getScene(node.id) : nullptr;
     if (node.isScene) {
         // Unity's scene header row: framed, always spans the panel, "*" while unsaved
@@ -1829,7 +1859,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                 }
             }
 
-            ImGui::Text("Moving %s", node.name.c_str());
+            ImGui::Text("Moving %s", nodeText(node).c_str());
             ImGui::EndDragDropSource();
         }
     }
@@ -1851,7 +1881,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                 ImGui::SetDragDropPayload("entity", &payload, sizeof(payload), ImGuiCond_Once);
             }
 
-            ImGui::Text("Reference %s", node.name.c_str());
+            ImGui::Text("Reference %s", nodeText(node).c_str());
             ImGui::EndDragDropSource();
         }
     }

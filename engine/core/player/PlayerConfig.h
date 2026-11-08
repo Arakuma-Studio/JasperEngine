@@ -22,6 +22,7 @@
 #include "json.hpp"
 
 #include <array>
+#include <map>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -70,6 +71,8 @@ namespace jasperengine::player {
         unsigned int canvasHeight = 480;
         Scaling scaling = Scaling::FITWIDTH;
         TextureStrategy textureStrategy = TextureStrategy::NONE;
+        // Project Settings > Graphics > Pixels Per Unit (S41)
+        int pixelsPerUnit = 1;
 
         // loading
         uint32_t loadingScene = 0;         // 0: none
@@ -124,6 +127,11 @@ namespace jasperengine::player {
         std::string audioIosSession = "default";
         // the group music plays through when nothing names one ("" = Master)
         std::string audioMusicGroup;
+
+        // the project's native plugins with code for other platforms only (the Compile build's
+        // NativeBridge::setPlatformOnlyPlugins): a call to one fails with "unavailable", and its
+        // Lua mock answering logs a warning
+        std::map<std::string, std::string> nativePlatformOnly;
 
         PlayerConfig();
 

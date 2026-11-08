@@ -14,6 +14,8 @@ file(GLOB_RECURSE EDITOR_TEST_SOURCES CONFIGURE_DEPENDS
 # the reflection codec's benchmark against the frozen numbers of the codecs it replaced
 # (docs/specs/S08-reflection.md R17)
 list(APPEND EDITOR_TEST_SOURCES ${CMAKE_SOURCE_DIR}/tools/performance/reflect_codec.cpp)
+# the Aseprite codec's and importer's budgets (docs/specs/S44-aseprite-import.md AC15)
+list(APPEND EDITOR_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR}/pixelart/AsepriteBench.cpp)
 
 # the process LoggerCrashFlushTest crashes: the logger's queue, a file sink and the editor's
 # crash handler (editor/tests/util/LogCrashHelper.cpp)
@@ -125,3 +127,11 @@ endif()
 # through Scene.h, without the engine's own JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES)
 file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt CONTENT
 "$<JOIN:$<TARGET_PROPERTY:jasperengine,INCLUDE_DIRECTORIES>,\n>\n#defines\n$<JOIN:$<FILTER:$<TARGET_PROPERTY:jasperengine,COMPILE_DEFINITIONS>,EXCLUDE,^JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES$>,\n>\n")
+
+# The ramp generator's golden lists (S43 AC6): the test's own transcription of Pixelorama's rule
+# without floating-point contraction, as the generator itself (editor/pixelart/PixelArtEditorSources.cmake)
+if(MSVC)
+    set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/pixelart/RampGeneratorTest.cpp PROPERTIES COMPILE_OPTIONS "/fp:precise")
+else()
+    set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/pixelart/RampGeneratorTest.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()

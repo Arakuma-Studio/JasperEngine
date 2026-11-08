@@ -1,0 +1,38 @@
+{ "frames": {
+   "trimmed 0.aseprite": {
+    "frame": { "x": 0, "y": 0, "w": 10, "h": 8 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 2, "y": 3, "w": 10, "h": 8 },
+    "sourceSize": { "w": 24, "h": 16 },
+    "duration": 100
+   },
+   "trimmed 1.aseprite": {
+    "frame": { "x": 10, "y": 0, "w": 12, "h": 12 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 9, "y": 1, "w": 12, "h": 12 },
+    "sourceSize": { "w": 24, "h": 16 },
+    "duration": 100
+   },
+   "trimmed 2.aseprite": {
+    "frame": { "x": 22, "y": 0, "w": 16, "h": 9 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 4, "y": 6, "w": 16, "h": 9 },
+    "sourceSize": { "w": 24, "h": 16 },
+    "duration": 100
+   }
+ },
+ "meta": {
+  "app": "http://www.aseprite.org/",
+  "version": "1.3.18.6-dev",
+  "image": "trimmed.png",
+  "format": "RGBA8888",
+  "size": { "w": 38, "h": 12 },
+  "scale": "1",
+  "slices": [
+   { "name": "panel", "keys": [{ "frame": 0, "bounds": {"x": 1, "y": 2, "w": 20, "h": 12 }, "center": {"x": 3, "y": 2, "w": 12, "h": 7 }, "pivot": {"x": 10, "y": 12 } }] }
+  ]
+ }
+}

@@ -1,0 +1,144 @@
+formatVersion: 7
+guid: 1bab233c76dc7d2ce4fee77a15559fc2
+id: 90113872
+name: ColorReplace
+scene:
+  backgroundColor: [0.3, 0.5, 0.7, 1]
+  shadowQuality: auto
+  meshLodEnabled: true
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: off
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  litQuality: high
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_2d
+mainCamera: 0
+maxValues:
+  maxSubmeshes: 1
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 128
+shaderKeys:
+  - type: mesh
+    properties: 3075
+  - type: blit
+  - type: blit
+    properties: 4096
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE
+entities:
+  - type: Entity
+    entity: 1001
+    name: Sprite
+    components:
+      transform:
+        position: [160, 90, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: textures/sprite.png
+                guid: 077e54ce5990c5958f15a0446a01ad47
+                minFilter: nearest
+                magFilter: nearest
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:sprite
+              shaderTextures:
+                u_replaceMaskTexture:
+                  textureType: 2D
+                  source: path
+                  path: textures/mask.png
+                  guid: f20edc826a355e7ac9118237ce2cd7a0
+                  minFilter: nearest
+                  magFilter: nearest
+                  wrapU: repeat
+                  wrapV: repeat
+                  releaseDataAfterLoad: true
+              shaderFeatures: [COLOR_REPLACE]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            faceCulling: false
+            textureShadow: true
+            overrideFields: 851968
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 128
+        height: 128
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: center

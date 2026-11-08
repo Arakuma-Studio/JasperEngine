@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "object/GameObject.h"
 #include "LuaBinding.h"
 #include <optional>
 #include "log/Logger.h"
@@ -1285,6 +1286,7 @@ namespace {
         number("frameMsMax", s.frameMsMax);
         number("frameMs1PercentLow", s.frameMs1PercentLow);
         integer("drawCalls", s.drawCalls);
+        integer("setPassCalls", s.setPassCalls);
         integer("instances", s.instances);
         integer("triangles", s.triangles);
         integer("processMemoryBytes", s.processMemoryBytes);
@@ -1411,6 +1413,23 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("CROP", Scaling::CROP)
         .addVariable("STRETCH", Scaling::STRETCH)
         .addVariable("NATIVE", Scaling::NATIVE)
+        .addVariable("INTEGER", Scaling::INTEGER)
+        .addVariable("INTEGER_EXPAND", Scaling::INTEGER_EXPAND)
+        .endNamespace();
+
+    // the Pixel Perfect Camera's choices (S41)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PixelUpscaleMode")
+        .addVariable("INTEGER", PixelUpscaleMode::INTEGER)
+        .addVariable("INTEGER_EXPAND", PixelUpscaleMode::INTEGER_EXPAND)
+        .addVariable("STRETCH_FILL", PixelUpscaleMode::STRETCH_FILL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PixelRotation")
+        .addVariable("CAMERA", PixelRotation::CAMERA)
+        .addVariable("STEPS_90", PixelRotation::STEPS_90)
+        .addVariable("ON_GRID", PixelRotation::ON_GRID)
         .endNamespace();
 
     // the Canvas Scaler (Unity's CanvasScaler.ScaleMode, ScreenMatchMode, Unit)
@@ -1458,6 +1477,31 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("canvasToUI", &UIStatics::canvasToUI)
         .addStaticFunction("uiToCanvas", &UIStatics::uiToCanvas)
         .addStaticProperty("reducedMotion", &UISystem::isReducedMotion, &UISystem::setReducedMotion)
+        // ui-components: the scene's selection (Unity's EventSystem.currentSelectedGameObject):
+        // a GameObject or nil
+        .addStaticFunction("getSelected", +[](Scene* scene) -> std::optional<GameObject> {
+            if (!scene) return std::nullopt;
+            const Entity entity = scene->getSystem<UISystem>()->getSelected();
+            if (entity == NULL_ENTITY || !scene->isEntityCreated(entity)) return std::nullopt;
+            return GameObject(scene, entity);
+        })
+        // Unity's SetSelectedGameObject: a Button (GameObject or entity), nil to deselect; false
+        // when it cannot be selected (not a Button, inactive, hidden, an on-screen control)
+        .addStaticFunction("setSelected", +[](Scene* scene, luabridge::LuaRef value) -> bool {
+            if (!scene) return false;
+            Entity entity = NULL_ENTITY;
+            if (value.isNumber()){
+                entity = (Entity)value.unsafe_cast<lua_Integer>();
+            }else if (!value.isNil()){
+                lua_State* Lv = value.state();
+                value.push(Lv);
+                auto handle = luabridge::get<EntityHandle*>(Lv, -1);
+                lua_pop(Lv, 1);
+                if (!handle || !handle.value()) return false;
+                entity = handle.value()->getEntity();
+            }
+            return scene->getSystem<UISystem>()->setSelected(entity);
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1780,14 +1824,6 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
-        .beginNamespace("AdMobRating")
-        .addVariable("General", AdMobRating::General)
-        .addVariable("ParentalGuidance", AdMobRating::ParentalGuidance)
-        .addVariable("Teen", AdMobRating::Teen)
-        .addVariable("MatureAudience", AdMobRating::MatureAudience)
-        .endNamespace();
-
-    luabridge::getGlobalNamespace(L)
         .beginNamespace("CursorType")
         .addVariable("ARROW", CursorType::ARROW)
         .addVariable("IBEAM", CursorType::IBEAM)
@@ -1908,6 +1944,24 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("HALF", SceneColorScale::HALF)
         .endNamespace();
 
+    // the resolution of the water reflection passes (Scene.planarReflectionResolution)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PlanarReflectionResolution")
+        .addVariable("OFF", PlanarReflectionResolution::OFF)
+        .addVariable("QUARTER", PlanarReflectionResolution::QUARTER)
+        .addVariable("HALF", PlanarReflectionResolution::HALF)
+        .addVariable("FULL", PlanarReflectionResolution::FULL)
+        .endNamespace();
+
+    // the side of the Water Wakes' map (Scene.waterWakeResolution): AUTO 256, 128 on mobile and web
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("WaterWakeResolution")
+        .addVariable("AUTO", WaterWakeResolution::AUTO)
+        .addVariable("LOW", WaterWakeResolution::LOW)
+        .addVariable("MEDIUM", WaterWakeResolution::MEDIUM)
+        .addVariable("HIGH", WaterWakeResolution::HIGH)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("TonemapMode")
         .addVariable("NONE", TonemapMode::NONE)
@@ -1928,6 +1982,25 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("CLASSIC", FilmGrainType::CLASSIC)
         .addVariable("LENS", FilmGrainType::LENS)
         .addVariable("FILMIC", FilmGrainType::FILMIC)
+        .endNamespace();
+
+    // Palette Quantize (S43)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PaletteDither")
+        .addVariable("NONE", PaletteDither::NONE)
+        .addVariable("BAYER2", PaletteDither::BAYER2)
+        .addVariable("BAYER4", PaletteDither::BAYER4)
+        .addVariable("BAYER8", PaletteDither::BAYER8)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PaletteDistance")
+        .addVariable("OKLAB", PaletteDistance::OKLAB)
+        .addVariable("RGB", PaletteDistance::RGB)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PalettePrecision")
+        .addVariable("NORMAL", PalettePrecision::NORMAL)
+        .addVariable("HIGH", PalettePrecision::HIGH)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -2235,6 +2308,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("preferredCanvasHeight", &Engine::getPreferredCanvasHeight)
         .addStaticProperty("viewRect", &Engine::getViewRect)
         .addStaticProperty("scalingMode", &Engine::getScalingMode, &Engine::setScalingMode)
+        .addStaticFunction("getPixelsPerUnit", &Engine::getPixelsPerUnit)
         .addStaticProperty("textureStrategy", &Engine::getTextureStrategy, &Engine::setTextureStrategy)
         .addStaticFunction("setTextureQuality", &Engine::setTextureQuality)
         .addStaticFunction("getTextureQuality", &Engine::getTextureQuality)
@@ -2257,6 +2331,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("ignoreEventsHandledByUI", &Engine::isIgnoreEventsHandledByUI, &Engine::setIgnoreEventsHandledByUI)
         .addStaticFunction("isUIEventReceived", &Engine::isUIEventReceived)
         .addStaticFunction("wantsGamepadNavigation", &Engine::wantsGamepadNavigation)
+        .addStaticFunction("wantsKeyboardNavigation", &Engine::wantsKeyboardNavigation)
         .addStaticProperty("updateTime", &Engine::getUpdateTime, &Engine::setUpdateTime)
         .addStaticFunction("setUpdateTimeMS", &Engine::setUpdateTimeMS)
         .addStaticProperty("interpolationAlpha", &Engine::getInterpolationAlpha)
@@ -2450,6 +2525,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("dynamicResolutionEnabled", &PostProcessingSettings::dynamicResolutionEnabled, &PostProcessingSettings::dynamicResolutionEnabled)
         .addProperty("dynamicResolutionMinScale", &PostProcessingSettings::dynamicResolutionMinScale, &PostProcessingSettings::dynamicResolutionMinScale)
         .addProperty("dynamicResolutionTargetFps", &PostProcessingSettings::dynamicResolutionTargetFps, &PostProcessingSettings::dynamicResolutionTargetFps)
+        // Palette Quantize (S43)
+        .addProperty("paletteEnabled", &PostProcessingSettings::paletteEnabled, &PostProcessingSettings::paletteEnabled)
+        .addProperty("palette", &PostProcessingSettings::palette, &PostProcessingSettings::palette)
+        .addProperty("paletteDither", &PostProcessingSettings::paletteDither, &PostProcessingSettings::paletteDither)
+        .addProperty("paletteDitherStrength", &PostProcessingSettings::paletteDitherStrength, &PostProcessingSettings::paletteDitherStrength)
+        .addProperty("paletteDistance", &PostProcessingSettings::paletteDistance, &PostProcessingSettings::paletteDistance)
+        .addProperty("palettePrecision", &PostProcessingSettings::palettePrecision, &PostProcessingSettings::palettePrecision)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -3307,6 +3389,16 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("crossFadeDuration", &Scene::getMeshLodCrossFadeDuration, &Scene::setMeshLodCrossFadeDuration)
         .addProperty("depthPrepassEnabled", &Scene::isDepthPrepassEnabled, &Scene::setDepthPrepassEnabled)
         .addProperty("sceneColorScale", &Scene::getSceneColorScale, &Scene::setSceneColorScale)
+        // water planar reflections (library:water's PLANAR_REFLECTION; a quality menu sets OFF)
+        .addProperty("planarReflectionResolution", &Scene::getPlanarReflectionResolution, &Scene::setPlanarReflectionResolution)
+        .addProperty("planarReflectionLayers", &Scene::getPlanarReflectionLayers, &Scene::setPlanarReflectionLayers)
+        .addProperty("planarReflectionShadows", &Scene::getPlanarReflectionShadows, &Scene::setPlanarReflectionShadows)
+        .addProperty("planarReflectionFarClip", &Scene::getPlanarReflectionFarClip, &Scene::setPlanarReflectionFarClip)
+        .addProperty("planarReflectionClipOffset", &Scene::getPlanarReflectionClipOffset, &Scene::setPlanarReflectionClipOffset)
+        .addProperty("maxPlanarReflections", &Scene::getMaxPlanarReflections, &Scene::setMaxPlanarReflections)
+        .addProperty("waterWakeResolution", &Scene::getWaterWakeResolution, &Scene::setWaterWakeResolution)
+        .addProperty("waterWakeArea", &Scene::getWaterWakeArea, &Scene::setWaterWakeArea)
+        .addProperty("waterWakeFade", &Scene::getWaterWakeFade, &Scene::setWaterWakeFade)
         // a copy (edit it and assign it back, which applies it)
         .addProperty("postProcessing", [] (const Scene* self) { return PostProcessingSettings(self->getPostProcessing()); }, &Scene::setPostProcessing)
         .addProperty("ssaoDebug", &Scene::isSSAODebug, &Scene::setSSAODebug)
@@ -3917,12 +4009,6 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("hapticFeedback", [] (HapticFeedback type) { return System::instance().hapticFeedback(type); })
 
         //UserSettings not need here
-
-        .addStaticFunction("initializeAdMob", [] () { return System::instance().initializeAdMob(); })
-        .addStaticFunction("setMaxAdContentRating", [] (AdMobRating rating) { return System::instance().setMaxAdContentRating(rating); })
-        .addStaticFunction("loadInterstitialAd", [] (const std::string& adUnitID) { return System::instance().loadInterstitialAd(adUnitID); })
-        .addStaticFunction("isInterstitialAdLoaded", [] () { return System::instance().isInterstitialAdLoaded(); })
-        .addStaticFunction("showInterstitialAd", [] () { return System::instance().showInterstitialAd(); })
 
         .addStaticFunction("initializeCrazyGamesSDK", [] () { return System::instance().initializeCrazyGamesSDK(); })
         .addStaticFunction("showCrazyGamesAd", [] (std::string type) { return System::instance().showCrazyGamesAd(type); })

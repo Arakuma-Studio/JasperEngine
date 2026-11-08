@@ -778,3 +778,77 @@ Less contended: `editor/command/type/CopyFileCmd.{h,cpp}`, `editor/asset/AssetOp
   treat an empty id as "no texture", as `Texture::empty()` does.
 - `code-editor-git`: the Code Editor tab handling after a moved or undone file (`handleFileRename`, `closeFile`) is used
   as is.
+
+## Deviations
+
+Recorded while implementing on `dc/project-window`; each keeps the spec's intent.
+
+1. **Cut items** are dimmed with the alpha the listing already uses for files outside the build (0.4), not 50%: one
+   dimming look in the window.
+2. **HTML Document**: `HtmlUITemplates` gains no `documentFiles`; the Project window builds the two write items from
+   `documentText` / `styleSheetText` and writes them as one undo step. `createDocument` stays for the HTML UI tests
+   (it is the no-project writer).
+3. **Two catalog commands for Duplicate**, as Rename has (`assets.rename` / `project.rename`): `assets.duplicate`
+   (Assets > Duplicate, no key) and `project.duplicate` (Ctrl+D, Project context). The palette lists both, like Rename.
+4. **Save Project As** does not save the open scenes on its own: the copy is made from disk, the editor continues in
+   it, and unsaved scene edits are written into the copy by the next Save (as a saved scene's edits always are).
+5. **Protected roots** (D10): `ProjectWindow::rootRefusal` has its own check (lexical and resolved, as
+   `McpRefs::trustedRootTouched`) to word the Project Settings path the user needs; it also refuses the project folder.
+6. **Edit menu routing** goes through `main`'s panel claims (S61, `PanelClaims`), which landed after the spec: the
+   Project window's claim gains Duplicate (`project.duplicate`) beside its Delete, Copy, Cut, Paste, Select All and
+   Rename, so Edit > Duplicate and Ctrl+D act on the assets while the Project window has focus. No `App` routing of
+   its own.
+7. **Tests not written as named**: the Vertex Animation pair half of `HumanoidSidecarAndVatPairMoveWithTheirFile` (the
+   pair move reuses `vat::existingPairOf` and the planned-move path the sidecar test covers; a valid baked pair fixture
+   is VatEditorTest's), and the MCP `test_unsaved_buffer_of_a_moving_file_refuses` (no MCP tool makes a Code Editor
+   buffer dirty; the refusal is the plan's `unsavedBuffers` check).
+8. **MCP text** follows the lean rules merged after the spec (`fe3e90b97`): the agent guide is untouched; the new
+   `move_asset` `to` wording and `set_project_settings` `dry_run` parameter each have an eval case
+   (`guard_duplicate_asset_beside`, `guard_asset_root_dry_run`).
+9. **The texture slot's MCP check** (`test_texture_slot_shows_the_file_name`) is a unit test only
+   (`TextureLabelsTest`): `find_ui_item` sees items with an id, and the slot's name is plain text. Its red control is
+   the helper run with the old id-based text.
+10. **The shortcuts doc** is regenerated as AGENTS.md says: the unit test with `JASPER_UPDATE_SHORTCUT_DOCS=1` run
+    inside the image (`tools/build.sh exec linux`), since `build.sh` does not forward the variable.
+11. **Linked folders (S68, `docs/specs/S68-linked-folders.md`)**: a linked folder is a folder of the project. In the
+    Project window a copy, paste-copy or duplicate of one copies what it holds (a real copy, new GUIDs); a cut-paste,
+    drag or rename moves the link entry itself, never its target; the into-itself guard compares both as named and
+    resolved, so a link leading back into a copied folder is refused too. The asset-root change treats containment by
+    path (a link leading out of the project is inside it, R7) and **moves the link, not its target**: a referenced file
+    reached through a linked folder relocates by moving the topmost link on its path as one entry, so the target (a
+    library shared with other projects, say) is never emptied, and every file reached through the link keeps its layout
+    under the link's new place. Test: `AssetRootChangeTest.ALinkedFolderMovesAsTheLinkAndItsTargetStays`.
+12. **Modals (S69, landed after the spec)**: the Create name dialog, the delete refusal and Change Asset Directories go
+    through `EditorModal`, so agents see and answer them (`respond_dialog`, field `name`). The folder prompt's three
+    nested error boxes became the one name dialog with its error inline (`EditorModal::error`), so
+    `test_editor_modals.py` drives "New Folder" instead of "Create New Directory" and counts three modal sites fewer (71 with the sound layer's and the importer's);
+    its error-box test uses the rename prompt's Invalid Name box instead.
+13. **Maximize On Play's key** never takes a key from a running game: F11 fires only while the game does not have the
+    keyboard (`GameWindow::hasKeyboardFocus` during Play); Edit > Maximize On Play always does, and the maximized
+    hint names that menu item. F11 stays the default elsewhere. On macOS F11 is the system's Show Desktop by default:
+    the key reaches the editor with fn held or once rebound (Edit > Shortcuts).
+14. **Review fixes**: Save Project As drops the project undo history (its steps name the old folder's files) and
+    re-keys the Code Editor's tabs to the copy (`CodeEditor::retargetProject`); a failed Save As keeps the old folder's
+    lock; the copy leaves `.trash` behind; relocation treats junctions as links (`watch::isLink`, S68 D6); a `.meta` or
+    `.humanoid` that cannot follow its file, even by copy across volumes, undoes the whole change; a folder in the
+    way is a preflight blocker, an orphan sidecar file (its own file is not there) is replaced, as Unity drops orphan
+    metas; Unity numbering continues (`hero 1` duplicates to `hero 2`); one `set_project_settings`
+    call moving both roots reports both relocations; refusals name their fix. Test of the tabs' re-keying: none (no
+    unit test builds a Code Editor; inferred from the code: relative keys follow the project path, absolute ones are
+    re-keyed).
+
+## Follow-ups (2026-11-07)
+
+1. **Maximize On Play on macOS is Control+Cmd+F** (the Mac's own full-screen key), with F11 kept behind
+   it (`macPrimary`, as Redo keeps Cmd+Y); every other platform keeps F11 alone. macOS takes F11 for Show
+   Desktop by default. The editor names no menu "View" and sets no windows menu, so AppKit adds no Enter
+   Full Screen item holding the same key (inferred from `BackendMac.mm`; not run on a Mac).
+2. On macOS a chord with the Control key (ImGui's `ImGuiMod_Super` there, swapped with Cmd) reads
+   "Control+Cmd+F" in menus, tooltips, the hint and Edit > Shortcuts; the native menu maps "Control" to
+   `NSEventModifierFlagControl`. Test `CommandCatalog.MaximizeOnPlayIsControlCmdFOnMac` (red before);
+   docs/editor/keyboard-shortcuts.md regenerated.
+3. **Every printed chord reads back.** `Chord::parse(text, mac)` takes every name `format(mac)` writes:
+   Control is the Control key (ImGui's Super on macOS, Ctrl elsewhere), so an agent echoing
+   `list_shortcuts`' "Control+Cmd+F" to `set_shortcut` binds it (which parses with the catalog's
+   platform). Test `Chord.EveryPrintedChordParsesBack` round-trips every bound and default chord on
+   both platforms.

@@ -339,6 +339,10 @@ namespace jasperengine::editor {
         // custom-block members that follow a global shader value: {member: global}
         static YAML::Node encodeShaderGlobalBindings(const ShaderGlobalBindings& bindings);
         static ShaderGlobalBindings decodeShaderGlobalBindings(const YAML::Node& node);
+        // @palette bindings (S43 Palette Swap): {uniform: {source, sourceGuid, targets: [{palette,
+        // paletteGuid, variant}], useVariants (written only when false)}}
+        static YAML::Node encodeShaderPalettes(const jasperengine::pixelart::ShaderPalettes& palettes);
+        static jasperengine::pixelart::ShaderPalettes decodeShaderPalettes(const YAML::Node& node);
         // The Line and Trail Renderers' width curve and colour gradient: S27's one curve encoding
         // (stream/CurveCodec.h). The reader also takes upstream's (lines and trails) form, so its
         // files read without loss: {keys, pre, post} curves, numbers, "#RRGGBB" / linear colours
@@ -593,7 +597,10 @@ namespace jasperengine::editor {
         static YAML::Node encodeTerrainSurfaceLayer(const TerrainSurfaceLayer& layer);
         static TerrainSurfaceLayer decodeTerrainSurfaceLayer(const YAML::Node& node);
         static YAML::Node encodeTerrainFoliageLayer(const TerrainFoliageLayer& layer);
-        static TerrainFoliageLayer decodeTerrainFoliageLayer(const YAML::Node& node);
+        // clamp: values the renderer cannot use are clamped with a warning (scene loads); off, they
+        // stay as written so a caller can refuse them (set_properties)
+        // index: the layer's place in foliageLayers, named in the load report's issue
+        static TerrainFoliageLayer decodeTerrainFoliageLayer(const YAML::Node& node, bool clamp = true, int index = -1);
         static YAML::Node encodeTerrainComponent(const TerrainComponent& terrain);
         static TerrainComponent decodeTerrainComponent(const YAML::Node& node, const TerrainComponent* oldTerrain = nullptr);
 

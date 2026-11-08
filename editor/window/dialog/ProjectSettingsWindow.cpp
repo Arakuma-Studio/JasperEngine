@@ -17,6 +17,7 @@
 #include "util/FileUtils.h"
 #include "util/NativePlugins.h"
 #include "Backend.h"
+#include "asset/AssetTypes.h"
 #include "App.h"
 #include "util/Util.h"
 #include "window/Widgets.h"
@@ -31,6 +32,8 @@
 #include "subsystem/AudioSystem.h"
 #include "EditorHost.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "command/type/ApplePrivacySettingsCmd.h"
+#include "util/NativeNeeds.h"
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
 #include "input/InputManagerFormat.h"
@@ -47,6 +50,9 @@
 #include "navigation/NavigationSettingsCmd.h"
 #include "model/ModelCookQueue.h"
 #include "model/ModelSettingsCmd.h"
+#include "pixelart/BuiltinPalettes.h"
+#include "pixelart/PaletteAssets.h"
+#include "pixelart/PaletteUse.h"
 #include "command/type/ShaderGlobalsCmd.h"
 #include "util/Color.h"
 #include "imgui_internal.h"
@@ -61,11 +67,13 @@
 #include <cfloat>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 
 namespace jasperengine::editor {
 
-static const char* scalingModeNames[] = { "Fit Width", "Fit Height", "Letterbox", "Crop", "Stretch", "Native" };
-static const Scaling scalingModeValues[] = { Scaling::FITWIDTH, Scaling::FITHEIGHT, Scaling::LETTERBOX, Scaling::CROP, Scaling::STRETCH, Scaling::NATIVE };
+static const char* scalingModeNames[] = { "Fit Width", "Fit Height", "Letterbox", "Crop", "Stretch", "Native", "Integer (Letterbox)", "Integer (Expand)" };
+static const Scaling scalingModeValues[] = { Scaling::FITWIDTH, Scaling::FITHEIGHT, Scaling::LETTERBOX, Scaling::CROP, Scaling::STRETCH, Scaling::NATIVE,
+                                             Scaling::INTEGER, Scaling::INTEGER_EXPAND };
 static const int scalingModeCount = sizeof(scalingModeValues) / sizeof(scalingModeValues[0]);
 
 static const char* textureStrategyNames[] = { "Fit", "Resize", "None" };
@@ -202,6 +210,8 @@ enum class ProjectCategory {
     Editor,
     Navigation,
     Mesh,
+    TwoD,   // "2D" (S45: Sprite Atlas)
+    PixelArt,
     Count
 };
 
@@ -832,6 +842,13 @@ static void drawScalingPreview(Scaling mode, int canvasWidth, int canvasHeight) 
             scaleX = vw / baseW;
             scaleY = vh / baseH;
             break;
+        case Scaling::INTEGER:
+        case Scaling::INTEGER_EXPAND: {
+            // the preview's whole-number fit (at least 1, as the layout's k)
+            float s = std::floor((vw / baseW < vh / baseH) ? vw / baseW : vh / baseH);
+            scaleX = scaleY = s < 1.0f ? 1.0f : s;
+            break;
+        }
         case Scaling::NATIVE:
         default:
             scaleX = scaleY = 1.0f;
@@ -949,6 +966,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_canvasWidth = project->getCanvasWidth();
     m_canvasHeight = project->getCanvasHeight();
     m_scalingModeIndex = findScalingIndex(project->getScalingMode());
+    m_pixelsPerUnit = project->getPixelsPerUnit();
     m_uiScale = project->getUIScale();
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
@@ -976,6 +994,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_scriptDirs = project->getScriptDirs();
     m_cxxStandardIndex = findCxxStandardIndex(project->getCxxStandard());
     m_physics2DEnabled = project->isPhysics2DEnabled();
+    m_spriteAtlasMode = project->getSpriteAtlasMode();
     m_physics3DEnabled = project->isPhysics3DEnabled();
     m_inputActionsAsset = project->getInputActionsAsset();
     m_inputDeadzone = project->getInputDeadzone();
@@ -991,6 +1010,10 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
         }
         std::sort(m_inputActionsFiles.begin(), m_inputActionsFiles.end());
     }
+    m_defaultPalette = FileUtils::pathToGenericUtf8(project->getDefaultPalette());
+    m_paletteFiles.clear();
+    for (const pixelart::ProjectPalette& entry : pixelart::listProjectPalettes(*project))
+        m_paletteFiles.push_back({entry.path, entry.palette.name});
     m_physics3DWorld = project->getPhysics3DWorldSettings();
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
     m_dynamicBatching = project->isDynamicBatching();
@@ -1044,11 +1067,10 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     snprintf(m_iosVersionNameBuffer, sizeof(m_iosVersionNameBuffer), "%s", ios.versionName.c_str());
     snprintf(m_iosBuildNumberBuffer, sizeof(m_iosBuildNumberBuffer), "%s", ios.buildNumber.c_str());
     m_iosIcon = ios.icon;
+    m_applePrivacy = m_project->getApplePrivacy();
     m_iosHideStatusBar = ios.hideStatusBar;
     m_iosHideHomeIndicator = ios.hideHomeIndicator;
     m_iosSupportsHighRefreshRate = ios.supportsHighRefreshRate;
-    m_iosAdmobEnabled = ios.admobEnabled;
-    snprintf(m_iosAdmobAppIdBuffer, sizeof(m_iosAdmobAppIdBuffer), "%s", ios.admobAppId.c_str());
     snprintf(m_iosTeamIdBuffer, sizeof(m_iosTeamIdBuffer), "%s", ios.teamId.c_str());
     m_iosExportMethodIndex = indexOfName(iosExportMethods, ios.exportMethod);
 
@@ -1074,8 +1096,6 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_androidInternetAccessIndex = android.internetAccess == AndroidInternetAccess::Require ? 1 : 0;
     m_androidAllowBackup = android.allowBackup;
     m_androidFullscreen = android.fullscreen;
-    m_androidAdmobEnabled = android.admobEnabled;
-    snprintf(m_androidAdmobAppIdBuffer, sizeof(m_androidAdmobAppIdBuffer), "%s", android.admobAppId.c_str());
     m_androidPackageFormatIndex = indexOfName(androidPackageFormats, android.packageFormat);
     m_androidKeystorePath = android.keystorePath;
     snprintf(m_androidKeystoreAliasBuffer, sizeof(m_androidKeystoreAliasBuffer), "%s", android.keystoreAlias.c_str());
@@ -1225,6 +1245,8 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Editor: drawEditorSettings(); break;
         case ProjectCategory::Navigation: drawNavigationSettings(); break;
         case ProjectCategory::Mesh: drawMeshSettings(); break;
+        case ProjectCategory::TwoD: draw2DSettings(); break;
+        case ProjectCategory::PixelArt: drawPixelArtSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -1244,16 +1266,34 @@ void ProjectSettingsWindow::drawSettings() {
     const std::string tagsAndLayersProblem = tagsAndLayersError();
     const std::string inputProblem = inputError();
     const std::string shaderGlobalsProblem = m_globalsEdit.error();
-    const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty();
+    const std::string privacyProblem = applePrivacyError();
+    const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty() && privacyProblem.empty();
 
+    // other asset roots move the referenced files: a confirmation says what moves first
+    if (!m_rootsError.empty()) {
+        ImGui::SetCursorPos(ImVec2(style.WindowPadding.x, footerY));
+        ImGui::PushTextWrapPos(ImGui::GetWindowContentRegionMax().x - buttonsWidth - style.ItemSpacing.x);
+        ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.4f, 1.0f), "Asset directories not changed: %s", m_rootsError.c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::SetCursorPos(ImVec2(std::max(style.WindowPadding.x, ImGui::GetWindowContentRegionMax().x - buttonsWidth), footerY));
+    }
     ImGui::BeginDisabled(!canSave);
     if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
-        if (applySettings()) {
+        if (m_assetsDir != m_project->getAssetsDir() || m_luaDir != m_project->getLuaDir()) {
+            m_rootsPlan = m_project->planAssetRootChange(m_assetsDir, m_luaDir, false);
+            m_rootsConfirmRequested = true;
+        } else if (applySettings()) {
             m_isOpen = false;
             ImGui::CloseCurrentPopup();
         }
     }
     ImGui::EndDisabled();
+    drawRootsConfirmation();
+    if (m_rootsCloseWindow) {
+        m_rootsCloseWindow = false;
+        m_isOpen = false;
+        ImGui::CloseCurrentPopup();
+    }
     if (!canSave && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
         if (!hasAbi) {
             ImGui::SetTooltip("Select at least one Android architecture (Player > Android).");
@@ -1261,8 +1301,10 @@ void ProjectSettingsWindow::drawSettings() {
             ImGui::SetTooltip("%s (Tags and Layers).", tagsAndLayersProblem.c_str());
         } else if (!inputProblem.empty()) {
             ImGui::SetTooltip("%s (Input).", inputProblem.c_str());
-        } else {
+        } else if (!shaderGlobalsProblem.empty()) {
             ImGui::SetTooltip("%s (Graphics > Shader Globals).", shaderGlobalsProblem.c_str());
+        } else {
+            ImGui::SetTooltip("Privacy manifest: %s (Player > iOS or macOS > Privacy Manifest).", privacyProblem.c_str());
         }
     }
 
@@ -1277,6 +1319,89 @@ void ProjectSettingsWindow::drawSettings() {
     // Per-frame lifecycle, matching Properties: the pool keeps the underlying
     // thumbnail textures cached, so re-creating the wrappers next frame is cheap.
     m_thumbnailTextures.clear();
+}
+
+void ProjectSettingsWindow::drawRootsConfirmation() {
+    constexpr const char* POPUP = "Change Asset Directories";
+    if (m_rootsConfirmRequested) {
+        ImGui::OpenPopup(POPUP);
+        m_rootsConfirmRequested = false;
+    }
+    if (!EditorModal::begin(POPUP, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        return;
+    }
+    auto rel = [this](const fs::path& path) { return FileUtils::pathToGenericUtf8(m_project->normalizeToProjectRelative(path)); };
+    const AssetRootChange& plan = m_rootsPlan;
+    const float width = Theme::dpi(460.0f);
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width);
+    if (!plan.blocker.empty()) {
+        ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.4f, 1.0f), "Can't change the asset directories: %s.", plan.blocker.c_str());
+        ImGui::TextUnformatted("Nothing was changed.");
+        EditorModal::message("Can't change the asset directories: " + plan.blocker + ". Nothing was changed.");
+    } else {
+        size_t files = 0;
+        for (const AssetRootChange::Move& move : plan.moves) {
+            if (!AssetTypes::isMetaFile(move.from)) files++;
+        }
+        ImGui::Text("%zu referenced file(s) or folder(s) move into the new directories:", files);
+        if (!plan.moves.empty() && ImGui::BeginChild("##RootMoves", ImVec2(width, Theme::dpi(120.0f)), ImGuiChildFlags_Borders)) {
+            for (const AssetRootChange::Move& move : plan.moves) {
+                if (AssetTypes::isMetaFile(move.from)) continue;
+                ImGui::BulletText("%s  ->  %s", rel(move.from).c_str(), rel(move.to).c_str());
+            }
+        }
+        if (!plan.moves.empty()) ImGui::EndChild();
+        ImGui::Text("%zu file(s) are rewritten (scenes, prefabs, materials, project.yaml). Files nothing references stay where they are.",
+                    plan.rewritten.size());
+        if (!plan.alreadyThere.empty()) {
+            ImGui::Text("%zu identical file(s) already at the destination are used as they are.", plan.alreadyThere.size());
+        }
+        if (!plan.keptOutside.empty()) {
+            ImGui::Text("%zu reference(s) outside both directories keep their paths.", plan.keptOutside.size());
+        }
+        if (!plan.savedScenesWithEdits.empty()) {
+            ImGui::Text("Open scenes with unsaved changes are saved: %zu.", plan.savedScenesWithEdits.size());
+        }
+        if (!plan.unsavedBuffers.empty()) {
+            ImGui::Text("Unsaved script edits are saved first: %zu file(s).", plan.unsavedBuffers.size());
+        }
+        if (!plan.textReferencesBroken.empty()) {
+            ImGui::Text("%zu text reference(s) (require, HTML, CSS, #include) will still name the old paths.", plan.textReferencesBroken.size());
+        }
+        ImGui::TextDisabled("This cannot be undone; changing the directories back moves the files back.");
+        EditorModal::message(std::to_string(files) + " referenced file(s) or folder(s) move into the new directories; " +
+                             std::to_string(plan.rewritten.size()) + " file(s) are rewritten. This cannot be undone.");
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::Separator();
+    const float buttonWidth = Theme::dpi(projectSettingsButtonWidth);
+    if (plan.blocker.empty()) {
+        if (EditorModal::button("Move and Apply", "yes", ImVec2(buttonWidth * 1.4f, 0))) {
+            const AssetRootChange done = m_project->changeAssetRoots(m_assetsDir, m_luaDir, false);
+            ImGui::CloseCurrentPopup();
+            if (!done.ok()) {
+                // the window stays open, nothing else is applied
+                m_rootsError = done.refusal();
+            } else {
+                m_rootsError.clear();
+                if (!done.failedSaves.empty()) {
+                    std::string files;
+                    for (const fs::path& path : done.failedSaves) files += "\n" + rel(path);
+                    Backend::getApp().registerAlert("Change Asset Directories",
+                        "The directories changed, but these files could not be saved and still hold the old paths on disk "
+                        "(the editor keeps the new ones; save them again):" + files);
+                }
+                // the window closes after this popup ended (CloseCurrentPopup there closes it)
+                m_rootsCloseWindow = applySettings();
+            }
+        }
+        ImGui::SameLine();
+    }
+    if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        if (!plan.blocker.empty()) m_rootsError = plan.blocker;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
 }
 
 std::string ProjectSettingsWindow::inheritedApplicationName() const {
@@ -1701,7 +1826,7 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                 ImGui::SetNextItemWidth(-helpMarkerWidth());
                 ImGui::Combo("##BuildMethod", &m_buildMethodIndex, buildMethodLabels, IM_ARRAYSIZE(buildMethodLabels));
                 endSettingsRow("How Build makes the game. Auto: a prebuilt player (no compiler needed) unless the project needs native code "
-                               "(C++ scripts, ProjectBuild.cmake, capacities above the player's, AdMob), then compiled from source.");
+                               "(C++ scripts, ProjectBuild.cmake, capacities above the player's, native plugins it cannot carry), then compiled from source.");
             }
             if (settingsui::beginRow("player.pack_content")) {
                 if (projectBeginSettingsRow("Content Pack", m_packContent)) m_packContent = false;
@@ -1801,6 +1926,13 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             drawComboSetting("Scaling Mode", "##ScalingMode", scalingModeNames, scalingModeCount, m_scalingModeIndex, findScalingIndex(Project::defaultScalingMode));
             ImGui::Spacing();
             drawScalingPreview(scalingModeValues[m_scalingModeIndex], m_canvasWidth, m_canvasHeight);
+        }
+
+        if (settingsui::beginRow("graphics.pixels_per_unit")) {
+            drawIntSetting("Pixels Per Unit", "##PixelsPerUnit", m_pixelsPerUnit, Project::defaultPixelsPerUnit, Project::minPixelsPerUnit,
+                           "Texels per world unit of sprites and tilemaps whose own Pixels Per Unit is 0 (1: a world unit is a pixel). "
+                           "1 to 256.");
+            m_pixelsPerUnit = std::min(m_pixelsPerUnit, Project::maxPixelsPerUnit);
         }
 
         // the Canvas Scaler's project default: the UI's own space, apart from the game canvas
@@ -1925,7 +2057,8 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                     static_cast<int>(ShadowTiers::defaultTier(platform)),
                     "The shadow quality tier of this platform's builds (and of the editor running on it) for scenes whose shadow "
                     "Quality is Auto: cascades, resolution, distance, filter and the memory budget (docs/rendering/shadows.md). "
-                    "Ultra adds PCSS contact hardening.");
+                    "Ultra adds PCSS contact hardening: two to three times the High filter's shadow lookups per pixel, heavy for phones "
+                    "and the web (where a variant with every texture slot used keeps the High filter).");
             }
         }
 
@@ -2860,6 +2993,31 @@ void ProjectSettingsWindow::drawPhysics2DSettings() {
     endSettingsPanel();
 }
 
+// S45 R18: Project Settings > 2D > Sprite Atlas > Mode
+void ProjectSettingsWindow::draw2DSettings() {
+    if (beginSettingsPanel("##TwoDSettingsPanel")) {
+        if (settingsFoldout("Sprite Atlas", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (beginSettingsTable("##SpriteAtlasTable")) {
+                if (settingsui::beginRow("sprite_atlas.mode")) {
+                    static const char* modes[] = {"Enabled", "Enabled for Builds", "Disabled"};
+                    static const char* tokens[] = {"enabled", "enabled_for_builds", "disabled"};
+                    int index = 0;
+                    for (int i = 0; i < 3; i++) {
+                        if (m_spriteAtlasMode == tokens[i]) index = i;
+                    }
+                    if (projectBeginSettingsRow("Mode", index != 0)) m_spriteAtlasMode = "enabled";
+                    ImGui::SetNextItemWidth(-helpMarkerWidth());
+                    if (ImGui::Combo("##SpriteAtlasMode", &index, modes, 3)) m_spriteAtlasMode = tokens[index];
+                    endSettingsRow("Enabled: the editor, Play and builds draw packed sprites from their atlases. Enabled for Builds: the editor "
+                                   "and Play draw the sources, builds the atlases. Disabled: no atlas is built or used.");
+                }
+                ImGui::EndTable();
+            }
+        }
+    }
+    endSettingsPanel();
+}
+
 // Text turned a quarter left, read bottom to top, from bottomLeft upwards
 static void addVerticalText(ImDrawList* drawList, const ImVec2& bottomLeft, ImU32 color, const char* text) {
     const int firstVertex = drawList->VtxBuffer.Size;
@@ -2964,6 +3122,24 @@ void ProjectSettingsWindow::drawNavigationSettings() {
                 }
                 endSettingsRow("NavGrid path requests solved per fixed tick (in parallel); the rest wait for the next tick.");
             }
+            if (settingsui::beginRow("navigation.carve_tiles_per_tick")) {
+                if (projectBeginSettingsRow("Carve Tiles Per Tick", settings.carveTilesPerTick != defaults.carveTilesPerTick)) {
+                    settings.carveTilesPerTick = defaults.carveTilesPerTick;
+                }
+                // 0 is Auto: the platform's count (4 on desktop, 2 on Android, iOS and web)
+                bool automatic = settings.carveTilesPerTick == 0;
+                if (ImGui::Checkbox("Auto##NavCarveAuto", &automatic)) {
+                    settings.carveTilesPerTick = automatic ? 0 : settings.effectiveCarveTilesPerTick();
+                }
+                ImGui::SameLine();
+                ImGui::BeginDisabled(automatic);
+                int tiles = settings.effectiveCarveTilesPerTick();
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::InputInt("##NavCarveTiles", &tiles) && !automatic) settings.carveTilesPerTick = std::clamp(tiles, 1, 64);
+                ImGui::EndDisabled();
+                endSettingsRow("Carved tiles each NavMesh Surface rebuilds per fixed tick, the same on every machine. Auto: 4 on "
+                    "desktop, 2 on Android, iOS and web.");
+            }
             if (settingsui::beginRow("navigation.web_bake_budget_ms")) {
                 if (projectBeginSettingsRow("Web Bake Budget", settings.webBakeBudgetMs != defaults.webBakeBudgetMs)) {
                     settings.webBakeBudgetMs = defaults.webBakeBudgetMs;
@@ -2975,6 +3151,48 @@ void ProjectSettingsWindow::drawNavigationSettings() {
             ImGui::EndTable();
         }
         drawSectionNote("Agent types and areas: Window > AI > Navigation (Agents and Areas tabs).");
+    }
+    endSettingsPanel();
+}
+
+void ProjectSettingsWindow::drawPixelArtSettings() {
+    if (beginSettingsPanel("##PixelArtSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("palettes.default")) {
+                if (projectBeginSettingsRow("Default Palette", !m_defaultPalette.empty())) {
+                    m_defaultPalette.clear();
+                }
+                std::string current = m_defaultPalette.empty() ? std::string("None") : m_defaultPalette;
+                for (const auto& [path, name] : m_paletteFiles) {
+                    if (path == m_defaultPalette && !name.empty()) current = name + "  (" + path + ")";
+                }
+                if (const pixelart::BuiltinPalette* builtin = pixelart::findBuiltinPalette(m_defaultPalette)) {
+                    if (m_defaultPalette.rfind(pixelart::kBuiltinPrefix, 0) == 0) current = builtin->palette.name + "  (built-in)";
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::BeginCombo("##DefaultPalette", current.c_str(), ImGuiComboFlags_HeightLarge)) {
+                    if (ImGui::Selectable("None", m_defaultPalette.empty())) m_defaultPalette.clear();
+                    ImGui::SeparatorText("Project");
+                    if (m_paletteFiles.empty()) ImGui::TextDisabled("No .palette in the project yet");
+                    for (const auto& [path, name] : m_paletteFiles) {
+                        const std::string label = (name.empty() ? path : name + "  (" + path + ")") + "##" + path;
+                        if (ImGui::Selectable(label.c_str(), path == m_defaultPalette)) m_defaultPalette = path;
+                    }
+                    ImGui::SeparatorText("Built-in");
+                    for (const pixelart::BuiltinPalette& builtin : pixelart::builtinPalettes()) {
+                        const std::string alias = pixelart::kBuiltinPrefix + builtin.id;
+                        const std::string label = (builtin.palette.name.empty() ? builtin.id : builtin.palette.name) + "##" + alias;
+                        if (ImGui::Selectable(label.c_str(), alias == m_defaultPalette)) m_defaultPalette = alias;
+                        ImGui::SetItemTooltip("%s: copied to the project's Palettes folder on OK", alias.c_str());
+                    }
+                    ImGui::EndCombo();
+                }
+                endSettingsRow("The palette used where none is named: Apply Palette without a palette, the colour picker's "
+                    "Snap to Palette, the Palette window's first open and new pixel art. A built-in is copied into the "
+                    "project when you press OK.");
+            }
+            ImGui::EndTable();
+        }
     }
     endSettingsPanel();
 }
@@ -3646,6 +3864,8 @@ void ProjectSettingsWindow::drawMacOSSettings() {
         ImGui::Checkbox("##MacOSHighDpi", &m_macOSHighDpi);
         endSettingsRow("Allow high-DPI rendering on macOS.");
     }
+
+    drawApplePrivacySection("macos");
 }
 
 void ProjectSettingsWindow::drawIOSSettings() {
@@ -3721,28 +3941,7 @@ void ProjectSettingsWindow::drawIOSSettings() {
         endSettingsRow("Allow 120 Hz displays when supported.");
     }
 
-    if (settingsui::beginRow("ios.admob_enabled")) {
-        if (projectBeginSettingsRow("Google AdMob", m_iosAdmobEnabled)) {
-            m_iosAdmobEnabled = false;
-        }
-        ImGui::Checkbox("##IOSAdMob", &m_iosAdmobEnabled);
-        endSettingsRow("Links Google Mobile Ads for System.initializeAdMob and the interstitial ad calls. Without it the export leaves the SDK out and those calls do nothing.");
-    }
-
-    if (settingsui::beginRow("ios.admob_app_id")) {
-        ImGui::BeginDisabled(!m_iosAdmobEnabled);
-        projectBeginSettingsRow("AdMob App ID");
-        ImGui::SetNextItemWidth(-helpMarkerWidth());
-        ImGui::InputTextWithHint("##IOSAdMobAppId", "ca-app-pub-0000000000000000~0000000000", m_iosAdmobAppIdBuffer, sizeof(m_iosAdmobAppIdBuffer));
-        endSettingsRow((std::string("GADApplicationIdentifier from the AdMob console, required with AdMob. Google's sample app ") +
-            iosSampleAdMobAppId + " only serves test ads.").c_str());
-        drawOverrideWarning(m_iosAdmobAppIdBuffer, isAdMobAppIdValid,
-            "Use the app ID (with ~), not an ad unit ID (with /).");
-        if (m_iosAdmobEnabled && m_iosAdmobAppIdBuffer[0] == '\0') {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Exports need the AdMob App ID.");
-        }
-        ImGui::EndDisabled();
-    }
+    drawApplePrivacySection("ios");
 }
 
 void ProjectSettingsWindow::drawAndroidSettings() {
@@ -3894,29 +4093,6 @@ void ProjectSettingsWindow::drawAndroidSettings() {
         ImGui::SetNextItemWidth(-helpMarkerWidth());
         ImGui::InputTextWithHint("##AndroidKeystoreAlias", "upload", m_androidKeystoreAliasBuffer, sizeof(m_androidKeystoreAliasBuffer));
         endSettingsRow("The key of the keystore that signs the build.");
-        ImGui::EndDisabled();
-    }
-
-    if (settingsui::beginRow("android.admob_enabled")) {
-        if (projectBeginSettingsRow("Google AdMob", m_androidAdmobEnabled != defaults.admobEnabled)) {
-            m_androidAdmobEnabled = defaults.admobEnabled;
-        }
-        ImGui::Checkbox("##AndroidAdMob", &m_androidAdmobEnabled);
-        endSettingsRow("Compiles in Google Mobile Ads for System.initializeAdMob and the interstitial ad calls. Without it the export leaves the SDK out and those calls do nothing. Declare ads and Ad ID use in the Play Console.");
-    }
-
-    if (settingsui::beginRow("android.admob_app_id")) {
-        ImGui::BeginDisabled(!m_androidAdmobEnabled);
-        projectBeginSettingsRow("AdMob App ID");
-        ImGui::SetNextItemWidth(-helpMarkerWidth());
-        ImGui::InputTextWithHint("##AndroidAdMobAppId", "ca-app-pub-0000000000000000~0000000000", m_androidAdmobAppIdBuffer, sizeof(m_androidAdmobAppIdBuffer));
-        endSettingsRow((std::string("APPLICATION_ID from the AdMob console, required with AdMob. Google's sample app ") +
-            androidSampleAdMobAppId + " only serves test ads.").c_str());
-        drawOverrideWarning(m_androidAdmobAppIdBuffer, isAdMobAppIdValid,
-            "Use the app ID (with ~), not an ad unit ID (with /).");
-        if (m_androidAdmobEnabled && m_androidAdmobAppIdBuffer[0] == '\0') {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Exports need the AdMob App ID.");
-        }
         ImGui::EndDisabled();
     }
 }
@@ -4145,6 +4321,211 @@ void ProjectSettingsWindow::refreshNativeSummary() {
           "), " + std::to_string(mocks) + " Lua mock(s). Lua calls them with Native.call / callAsync."
         : "No plugins/native folder yet. Create Plugin writes one plugin for the chosen platforms and its Lua mock; "
           "Lua calls it with Native.call / callAsync (jasper://docs/native-bridge).";
+    // what a prebuilt player's build of each platform does with them
+    std::vector<BuildPlatform> buildPlatforms = {BuildPlatform::Android, BuildPlatform::IOS, BuildPlatform::MacOS, BuildPlatform::Web};
+    if (hostBuildPlatform() != BuildPlatform::MacOS) buildPlatforms.push_back(hostBuildPlatform());
+    for (BuildPlatform platform : buildPlatforms) {
+        const NativeNeeds needs = nativeNeedsFor(*m_project, platform, nullptr);
+        if (needs.compileReasons.empty() && needs.carried.empty()) continue;
+        m_nativeSummary += std::string("\n") + buildPlatformName(platform) + ": " +
+            (needs.compileReasons.empty() ? "the prebuilt build carries them" : "compiles from source (" + needs.compileReasons.front() + ")");
+    }
+}
+
+namespace {
+
+    // "DeviceID" -> "Device ID", "ThirdPartyAdvertising" -> "Third Party Advertising"
+    std::string spacedName(const std::string& name) {
+        std::string out;
+        for (size_t i = 0; i < name.size(); i++) {
+            const bool upper = std::isupper(static_cast<unsigned char>(name[i])) != 0;
+            const bool nextLower = i + 1 < name.size() && std::islower(static_cast<unsigned char>(name[i + 1])) != 0;
+            const bool prevLower = i > 0 && std::islower(static_cast<unsigned char>(name[i - 1])) != 0;
+            if (i > 0 && upper && (prevLower || nextLower)) out += ' ';
+            out += name[i];
+        }
+        return out;
+    }
+
+    // A combo with a check box per choice; true when the set changed
+    bool multiSelect(const char* id, std::vector<std::string>& selected, const std::vector<std::string>& choices,
+                     const std::function<std::string(const std::string&)>& label) {
+        std::string preview;
+        for (const std::string& item : selected) preview += (preview.empty() ? "" : ", ") + item;
+        if (preview.empty()) preview = "(none)";
+        bool changed = false;
+        if (ImGui::BeginCombo(id, preview.c_str())) {
+            for (const std::string& choice : choices) {
+                bool on = std::find(selected.begin(), selected.end(), choice) != selected.end();
+                if (ImGui::Checkbox(label(choice).c_str(), &on)) {
+                    if (on) selected.push_back(choice);
+                    else selected.erase(std::remove(selected.begin(), selected.end(), choice), selected.end());
+                    std::sort(selected.begin(), selected.end());
+                    changed = true;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        return changed;
+    }
+
+    // A combo of names; the current one kept when it is not in the list
+    void nameCombo(const char* id, std::string& value, const std::vector<std::string>& names) {
+        if (ImGui::BeginCombo(id, value.empty() ? "(choose)" : spacedName(value).c_str())) {
+            for (const std::string& name : names) {
+                if (ImGui::Selectable(spacedName(name).c_str(), name == value)) value = name;
+            }
+            ImGui::EndCombo();
+        }
+    }
+
+}
+
+ApplePrivacy::Manifest ProjectSettingsWindow::editedApplePrivacy() const {
+    ApplePrivacy::Manifest privacy = m_applePrivacy;
+    privacy.trackingDomains.clear();
+    for (const std::string& domain : m_applePrivacy.trackingDomains) {
+        if (!trimmed(domain).empty()) privacy.trackingDomains.push_back(trimmed(domain));
+    }
+    std::erase_if(privacy.collectedData, [](const ApplePrivacy::CollectedData& data) { return data.type.empty(); });
+    std::erase_if(privacy.accessedApis, [](const ApplePrivacy::AccessedApi& api) { return api.type.empty(); });
+    return ApplePrivacy::normalized(privacy);
+}
+
+std::string ProjectSettingsWindow::applePrivacyError() const {
+    return ApplePrivacy::validate(editedApplePrivacy());
+}
+
+void ProjectSettingsWindow::drawApplePrivacySection(const char* platform) {
+    ImGui::PushID(platform);
+    const bool ios = std::string(platform) == "ios";
+    // the search rows: apple.privacy_* on iOS, their macos.privacy_* copies on macOS
+    auto rowKey = [ios](const char* name) { return std::string(ios ? "apple." : "macos.") + name; };
+
+    projectBeginSettingsRow("Privacy Manifest");
+    ImGui::TextDisabled("iOS and macOS");
+    endSettingsRow("PrivacyInfo.xcprivacy of every iOS and macOS build: the engine's entries (always), what you add here, and the "
+                   "PrivacyInfo.xcprivacy files of static plugins in plugins/native. App Store Connect refuses apps that use "
+                   "required-reason APIs without declaring them.");
+
+    projectBeginSettingsRow("Engine");
+    for (const ApplePrivacy::AccessedApi& api : ApplePrivacy::engineManifest().accessedApis) {
+        for (const std::string& reason : api.reasons) {
+            ImGui::TextDisabled("%s: %s (%s)", spacedName(api.type).c_str(), reason.c_str(), ApplePrivacy::reasonText(reason).c_str());
+        }
+    }
+    endSettingsRow("What the engine itself uses: UserSettings (UserDefaults), the timestamps of the game's own files, and timers. "
+                   "Always included; no tracking, no collected data.");
+
+    if (settingsui::beginRow(rowKey("privacy_tracking").c_str())) {
+        if (projectBeginSettingsRow("Tracking", m_applePrivacy.tracking)) m_applePrivacy.tracking = false;
+        ImGui::Checkbox("##PrivacyTracking", &m_applePrivacy.tracking);
+        endSettingsRow("NSPrivacyTracking: the game or one of its SDKs tracks users (most ads SDKs do). iOS also needs "
+                       "NSUserTrackingUsageDescription in Native Plugins > iOS > Info.plist Entries.");
+    }
+    if (settingsui::beginRow(rowKey("privacy_tracking_domains").c_str())) {
+        drawStringList("Tracking Domains", "##PrivacyDomains", m_applePrivacy.trackingDomains, "ads.example.com",
+                       "NSPrivacyTrackingDomains: host names the SDKs use for tracking; iOS blocks them until the user allows tracking.");
+        for (const std::string& domain : m_applePrivacy.trackingDomains) {
+            if (!trimmed(domain).empty() && !ApplePrivacy::isDomain(trimmed(domain))) {
+                ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.3f, 1.0f), "\"%s\" is not a host name like ads.example.com", domain.c_str());
+            }
+        }
+    }
+    if (settingsui::beginRow(rowKey("privacy_collected_data").c_str())) {
+        projectBeginSettingsRow("Collected Data");
+        int remove = -1;
+        for (size_t i = 0; i < m_applePrivacy.collectedData.size(); i++) {
+            ApplePrivacy::CollectedData& data = m_applePrivacy.collectedData[i];
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.35f);
+            nameCombo("##type", data.type, ApplePrivacy::dataTypes());
+            ImGui::SameLine();
+            ImGui::Checkbox("Linked", &data.linked);
+            ImGui::SetItemTooltip("Linked to the user's identity");
+            ImGui::SameLine();
+            ImGui::Checkbox("Tracking", &data.tracking);
+            ImGui::SetItemTooltip("Used to track the user");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x);
+            multiSelect("##purposes", data.purposes, ApplePrivacy::purposes(), spacedName);
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_MINUS, ImVec2(ImGui::GetFrameHeight(), 0.0f))) remove = static_cast<int>(i);
+            ImGui::PopID();
+        }
+        if (remove >= 0) m_applePrivacy.collectedData.erase(m_applePrivacy.collectedData.begin() + remove);
+        if (ImGui::SmallButton(ICON_FA_PLUS "##AddCollectedData")) m_applePrivacy.collectedData.push_back({});
+        endSettingsRow("NSPrivacyCollectedDataTypes: what the game or its SDKs collect, whether it is linked to the user, used for "
+                       "tracking, and why. Match what you declare in App Store Connect's App Privacy.");
+    }
+    if (settingsui::beginRow(rowKey("privacy_accessed_apis").c_str())) {
+        projectBeginSettingsRow("Required Reason APIs");
+        int remove = -1;
+        for (size_t i = 0; i < m_applePrivacy.accessedApis.size(); i++) {
+            ApplePrivacy::AccessedApi& api = m_applePrivacy.accessedApis[i];
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.35f);
+            nameCombo("##type", api.type, ApplePrivacy::apiTypes());
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x);
+            multiSelect("##reasons", api.reasons, ApplePrivacy::reasonsOf(api.type),
+                        [](const std::string& reason) { return reason + ": " + ApplePrivacy::reasonText(reason); });
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_MINUS, ImVec2(ImGui::GetFrameHeight(), 0.0f))) remove = static_cast<int>(i);
+            ImGui::PopID();
+        }
+        if (remove >= 0) m_applePrivacy.accessedApis.erase(m_applePrivacy.accessedApis.begin() + remove);
+        if (ImGui::SmallButton(ICON_FA_PLUS "##AddAccessedApi")) m_applePrivacy.accessedApis.push_back({});
+        endSettingsRow("NSPrivacyAccessedAPITypes your own native code adds (C++ scripts, plugins without a manifest of their own), "
+                       "with Apple's reason codes. The engine's are already included.");
+    }
+
+    // what is wrong, and what the export will warn about
+    const ApplePrivacy::Manifest edited = editedApplePrivacy();
+    const std::string problem = applePrivacyError();
+    std::vector<std::string> plistKeys;
+    for (const auto& [key, value] : m_iosPlistEntries) plistKeys.push_back(trimmed(key));
+    const bool trackingUsage = ApplePrivacy::declaresTrackingUsage(plistKeys, m_iosPlistXml);
+
+    projectBeginSettingsRow("Composed");
+    if (!problem.empty()) {
+        ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.3f, 1.0f), "%s (fix it to save)", problem.c_str());
+    }
+    if (ImGui::Button(ios ? ICON_FA_EYE " Preview iOS##PrivacyPreview" : ICON_FA_EYE " Preview macOS##PrivacyPreview")) {
+        const ApplePrivacy::Composed composed = ApplePrivacy::compose(m_project->getProjectPath(), problem.empty() ? edited : m_project->getApplePrivacy(),
+                                                                      platform, trackingUsage);
+        m_privacyPreview = ApplePrivacy::toXml(composed.manifest);
+        std::string notes;
+        for (const std::string& manifest : composed.pluginManifests) notes += "plugin manifest: " + manifest + "\n";
+        for (const std::string& warning : composed.warnings) notes += "warning: " + warning + "\n";
+        if (!notes.empty()) m_privacyPreview = notes + "\n" + m_privacyPreview;
+        m_privacyPreviewTitle = ios ? "iOS PrivacyInfo.xcprivacy" : "macOS PrivacyInfo.xcprivacy";
+        m_openPrivacyPreview = true;
+    }
+    if (m_applePrivacy.tracking && edited.trackingDomains.empty()) {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Tracking is on with no tracking domain.");
+    }
+    if (ios && m_applePrivacy.tracking && !trackingUsage) {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Tracking needs NSUserTrackingUsageDescription (Native Plugins > iOS).");
+    }
+    endSettingsRow("The manifest the next build ships: the engine's entries, these additions and the plugin manifests.");
+
+    if (m_openPrivacyPreview) {
+        ImGui::OpenPopup("Privacy Manifest Preview");
+        m_openPrivacyPreview = false;
+    }
+    ImGui::SetNextWindowSize(ImVec2(Theme::dpi(620.0f), Theme::dpi(460.0f)), ImGuiCond_Appearing);
+    if (EditorModal::begin("Privacy Manifest Preview", nullptr)) {
+        EditorModal::message(m_privacyPreviewTitle + "\n" + m_privacyPreview);
+        ImGui::TextUnformatted(m_privacyPreviewTitle.c_str());
+        ImGui::InputTextMultiline("##PrivacyXml", m_privacyPreview.data(), m_privacyPreview.size() + 1,
+                                  ImVec2(-1.0f, -ImGui::GetFrameHeightWithSpacing()), ImGuiInputTextFlags_ReadOnly);
+        if (ImGui::Button(ICON_FA_COPY " Copy")) ImGui::SetClipboardText(m_privacyPreview.c_str());
+        ImGui::SameLine();
+        if (EditorModal::button("Close", "ok")) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+    ImGui::PopID();
 }
 
 void ProjectSettingsWindow::drawNativePluginsSettings() {
@@ -4201,7 +4582,7 @@ void ProjectSettingsWindow::drawNativePluginsSettings() {
 
         if (settingsFoldout("iOS", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##NativeIOSTable")) {
             if (settingsui::beginRow("ios.plist_entries")) {
-                drawPlistEntries("##IOSPlist", m_iosPlistEntries, "Info.plist keys, replacing the export's (NSUserTrackingUsageDescription, GADApplicationIdentifier...).");
+                drawPlistEntries("##IOSPlist", m_iosPlistEntries, "Info.plist keys, replacing the export's (NSUserTrackingUsageDescription, NSCameraUsageDescription...).");
             }
             if (settingsui::beginRow("ios.plist_xml")) {
                 drawXmlSetting("Info.plist XML", "##IOSPlistXml", m_iosPlistXml, 70.0f,
@@ -4919,6 +5300,7 @@ bool ProjectSettingsWindow::applySettings() {
 
     m_project->setCanvasSize(m_canvasWidth, m_canvasHeight);
     m_project->setScalingMode(scalingModeValues[m_scalingModeIndex]);
+    m_project->setPixelsPerUnit(m_pixelsPerUnit);
     if (m_project->getUIScale() != m_uiScale)
         m_project->setUIScale(m_uiScale);
     m_project->setTextureStrategy(textureStrategyValues[m_textureStrategyIndex]);
@@ -4963,17 +5345,28 @@ bool ProjectSettingsWindow::applySettings() {
     application.build = static_cast<unsigned int>(std::max(1, m_applicationBuild));
     application.allowInsecureHttp = m_allowInsecureHttp;
 
-    // Moves the referenced files in and rewrites every reference to the new roots
-    m_project->changeAssetRoots(m_assetsDir, m_luaDir);
     m_project->setScriptDirs(m_scriptDirs);
     if (m_cxxStandardIndex < 0 || m_cxxStandardIndex >= cxxStandardCount) {
         m_cxxStandardIndex = 0;
     }
     m_project->setCxxStandard(cxxStandards[m_cxxStandardIndex]);
     m_project->setPhysics2DEnabled(m_physics2DEnabled);
+    m_project->setSpriteAtlasMode(m_spriteAtlasMode);
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
     m_project->setInputActionsAsset(m_inputActionsAsset);
     m_project->setInputDeadzone(m_inputDeadzone);
+    // a built-in Default Palette is the project's copy of it (S43 R7), made now
+    if (m_defaultPalette.rfind(pixelart::kBuiltinPrefix, 0) == 0) {
+        pixelart::ResolvedPalette resolved;
+        bool wroteCopy = false;
+        std::string error;
+        if (pixelart::usePalette(*m_project, m_defaultPalette, resolved, wroteCopy, error))
+            m_defaultPalette = resolved.path;
+        else
+            Out::warning("Default Palette: %s", error.c_str());
+    }
+    if (m_defaultPalette.rfind(pixelart::kBuiltinPrefix, 0) != 0)
+        m_project->setDefaultPalette(FileUtils::pathFromUtf8(m_defaultPalette));
     m_project->setPhysics3DWorldSettings(m_physics3DWorld);
     m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
     m_project->setDynamicBatching(m_dynamicBatching);
@@ -5059,8 +5452,6 @@ bool ProjectSettingsWindow::applySettings() {
     ios.hideStatusBar = m_iosHideStatusBar;
     ios.hideHomeIndicator = m_iosHideHomeIndicator;
     ios.supportsHighRefreshRate = m_iosSupportsHighRefreshRate;
-    ios.admobEnabled = m_iosAdmobEnabled;
-    applyTextBuffer(ios.admobAppId, m_iosAdmobAppIdBuffer);
     applyTextBuffer(ios.teamId, m_iosTeamIdBuffer);
     ios.exportMethod = iosExportMethods[std::clamp(m_iosExportMethodIndex, 0, static_cast<int>(IM_ARRAYSIZE(iosExportMethods)) - 1)];
 
@@ -5093,8 +5484,6 @@ bool ProjectSettingsWindow::applySettings() {
     android.manifestApplicationXml = m_manifestApplicationXml;
     android.allowBackup = m_androidAllowBackup;
     android.fullscreen = m_androidFullscreen;
-    android.admobEnabled = m_androidAdmobEnabled;
-    applyTextBuffer(android.admobAppId, m_androidAdmobAppIdBuffer);
     android.packageFormat = androidPackageFormats[std::clamp(m_androidPackageFormatIndex, 0, static_cast<int>(IM_ARRAYSIZE(androidPackageFormats)) - 1)];
     android.keystorePath = m_androidKeystorePath;
     applyTextBuffer(android.keystoreAlias, m_androidKeystoreAliasBuffer);
@@ -5107,6 +5496,16 @@ bool ProjectSettingsWindow::applySettings() {
     }
 
     m_project->getLoadingSettings() = m_loadingSettings;
+    // undoable: the next Apple export composes its privacy manifest from them
+    {
+        // OK stays disabled while the manifest is invalid (applePrivacyError)
+        const ApplePrivacy::Manifest privacy = editedApplePrivacy();
+        if (privacy != m_project->getApplePrivacy() && ApplePrivacy::validate(privacy).empty()) {
+            ApplePrivacySettingsCmd* command = new ApplePrivacySettingsCmd(m_project, privacy);
+            command->setNoMerge();
+            m_project->getProjectCommandHistory()->addCommand(command);
+        }
+    }
     // undoable: the reserve applies to the editor's job system at once
     if (m_threading != m_project->getThreadingSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new ThreadingSettingsCmd(m_project, m_threading));

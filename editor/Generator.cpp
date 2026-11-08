@@ -399,7 +399,12 @@ bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::pa
         Out::error("%s", msvcError.c_str());
         return false;
     }
-    bool result = commandRunner.run(cmakeArgv, projectPath, {}, msvcEnv.empty() ? nullptr : &msvcEnv);
+    // its errors (CMake Error at ...) repeated at the end of a failed Play build, as the compile's are
+    buildErrors.clear();
+    bool result = commandRunner.run(cmakeArgv, projectPath, [this](const std::string& line) {
+        Out::build("%s", line.c_str());
+        buildErrors.add(line);
+    }, msvcEnv.empty() ? nullptr : &msvcEnv);
 
     // Record which kit was used so we can detect changes next time.
     if (result) {
@@ -428,10 +433,23 @@ unsigned int editor::Generator::getMaxParallelBuildJobs() {
     ));
 }
 
+unsigned int editor::Generator::buildStepParallelJobs(const fs::path& buildPath, unsigned int jobs) {
+    // the generator the tree was configured with (an empty choice is CMake's default, Visual
+    // Studio on Windows)
+    std::ifstream cache(buildPath / "CMakeCache.txt");
+    const std::string key = "CMAKE_GENERATOR:INTERNAL=";
+    for (std::string line; std::getline(cache, line);) {
+        if (line.rfind(key, 0) == 0) return line.compare(key.size(), 14, "Visual Studio ") == 0 ? 1u : jobs;
+    }
+    return jobs;
+}
+
 bool editor::Generator::buildProject(const fs::path& buildPath, const std::string& configType, const std::string& generator, unsigned int parallelJobs) {
+    const unsigned int buildJobs = buildStepParallelJobs(buildPath, parallelJobs);
     std::vector<std::string> buildArgv = { cmakeProgram(), "--build", buildPath.string(),
-                                           "--config", configType, "--parallel", std::to_string(parallelJobs) };
-    Out::info("Building project with %u parallel jobs...", parallelJobs);
+                                           "--config", configType, "--parallel", std::to_string(buildJobs) };
+    if (buildJobs == parallelJobs) Out::info("Building project with %u parallel jobs...", buildJobs);
+    else Out::info("Building project with %u parallel job(s), %u compiler processes each (Visual Studio /MP)...", buildJobs, parallelJobs);
     // The build step invokes the compiler/linker again, so it needs the same
     // MSVC environment as configure (see CommandRunner::msvcEnvironment). Launched as argv (no
     // shell). Its lines go to the Console as before, and their progress to the script status
@@ -445,8 +463,10 @@ bool editor::Generator::buildProject(const fs::path& buildPath, const std::strin
     MsBuildProgress msbuild(buildPath, configType);
     const std::string row = statusRow;
     float lastFraction = -1.0f;
+    buildErrors.clear();
     return commandRunner.run(buildArgv, buildPath, [&](const std::string& line) {
         Out::build(line);
+        buildErrors.add(line);
         float fraction = -1.0f;
         if (msbuild.consumeLine(line, fraction) || parseBuildProgress(line, fraction)) {
             if (fraction - lastFraction >= 0.01f || fraction >= 1.0f) {
@@ -1356,7 +1376,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "target_link_libraries(" + libName + " PRIVATE ${JASPERENGINE_LIB} ${PLATFORM_LIBS})\n";
     // macOS: the Objective-C native plugins run in the Play library and desktop builds too
     cmakeContent += NativePlugins::macosCMake(NativePlugins::scan(projectPath), libName, "${CMAKE_CURRENT_SOURCE_DIR}/plugins/native",
-                                              macOSFrameworks, engineApiPathStr + "/platform/apple");
+                                              macOSFrameworks, engineApiPathStr + "/platform/apple", false);
     cmakeContent += "\n";
     cmakeContent += "# Set compile options based on compiler and platform\n";
     cmakeContent += "# A C++ reload during Play links a new library while the old one (and, under a debugger, its\n";
@@ -1705,60 +1725,54 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "# JasperEngine Project Context\n\n";
     agentsContent += "Made with JasperEngine Editor version `" JASPERENGINE_EDITOR_VERSION "`.\n\n";
     agentsContent += "## Working with the editor (MCP)\n\n";
-    agentsContent += "Build scenes, prefabs, UI and project settings, and playtest, through the editor's MCP tools, never by editing "
-                     "`*.scene`, `*.prefab` or `project.yaml` by hand (the open editor overwrites such edits). Start the server with "
-                     "`jasperengine-editor mcp --project <this directory>` (stdio), or attach to an open editor over HTTP (Window > MCP, "
-                     "`http://127.0.0.1:47615/mcp`, with the bearer token that window copies). Its instructions and the "
-                     "`jasper://docs/...` resources explain the tools. From a shell, `jasperengine-editor call <tool> [--flags]` runs any of them "
-                     "(`call <tool> --help` lists its parameters).\n\n";
+    agentsContent += "Edit scenes, prefabs, UI and project settings, and playtest, with the editor's MCP tools, never by hand-editing "
+                     "`*.scene`, `*.prefab` or `project.yaml` (the open editor overwrites them). Server: `jasperengine-editor mcp "
+                     "--project <this directory>` (stdio), or an open editor over HTTP (Window > MCP: `http://127.0.0.1:47615/mcp` and "
+                     "the bearer token it copies); its instructions and `jasper://docs/...` explain the tools. From a shell, "
+                     "`jasperengine-editor call <tool> [--flags]` runs any of them (`call <tool> --help`: its parameters).\n\n";
     agentsContent += "- Scripts, shaders and other text files: edit them on disk; the editor reloads them before the next tool "
-                     "call and reports problems under `external_changes`.\n";
-    agentsContent += "- Lua API stubs: `" + api + "/lua/` (lua-language-server: `.luarc.json`); start a script with "
-                     "`---@class <FileName> : ScriptInstance`. C++ API: the headers in `" + api + "/` (clangd: `.clangd`).\n";
-    agentsContent += "- Sound files: never script or download audio; the editor makes and finds them. `tool_groups` {\"enable\": [\"audio\"]}, then "
-                     "`generate_sound` (a placeholder), `search_sounds` (built-in clips), `analyze_audio` (measure a clip) or `edit_sound_event` "
-                     "(clips that vary: footsteps, hits).\n";
+                     "call and reports problems in `external_changes`.\n";
+    agentsContent += "- API: Lua stubs in `" + api + "/lua/` (`.luarc.json`; a script starts `---@class <FileName> : ScriptInstance`), "
+                     "C++ headers in `" + api + "/` (`.clangd`). Read them first.\n";
+    agentsContent += "- Sound files: never script or download audio. `tool_groups` {\"enable\": [\"audio\"]}, then `generate_sound` "
+                     "(a placeholder), `search_sounds` (built-in clips), `analyze_audio` (measure) or `edit_sound_event` (clips that vary: "
+                     "footsteps, hits).\n";
     agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp] [--ui]` (exit 1 on "
                      "errors); as a hook after every edit: `check --project <this directory> --hook`.\n";
     agentsContent += "- Models ship cooked (settings in their `.meta`): `inspect_models` finds costly ones, `check_render_budgets` checks "
-                     "`quality.render_budgets` (tool group `meshes`).\n\n";
+                     "`quality.render_budgets` (tool group `meshes`).\n";
+    agentsContent += "- An editor key is rebound with `set_shortcut` (tool group `editor_ux`), not in the editor's source.\n\n";
     agentsContent += "## HTML/CSS UI\n\n";
-    agentsContent += "Game UI is standard HTML and CSS with Lua logic (no JavaScript), one UI Document per GameObject (MCP: "
-                     "`create_ui_document`), under `assets/ui/`. `check --ui` reports what the engine drops or rewrites. Supported CSS: "
-                     "`jasper://docs/html-ui-support`; guide: `jasper://docs/html-ui`; examples to copy: `" + api +
-                     "/html-ui-examples/`.\n\n";
-    agentsContent += "## Source references\n\n";
-    agentsContent += "The runtime API this project links against: `" + api + "` (use it first). Engine and editor source: "
-                     "https://github.com/JasperRaccoon/JasperEngine, at the tag or commit of the editor version above. The `.scene`, `.prefab` and `project.yaml` formats are defined in its `editor/` directory. An editor "
-                     "key is rebound with `set_shortcut` (tool group `editor_ux`), not in that source.\n\n";
+    agentsContent += "Standard HTML and CSS with Lua logic (no JavaScript), one UI Document per GameObject (`create_ui_document`), under "
+                     "`assets/ui/`; `check --ui` reports what the engine drops or rewrites. Supported CSS: `jasper://docs/html-ui-support`; "
+                     "guide: `jasper://docs/html-ui`; examples: `" + api + "/html-ui-examples/`.\n\n";
+    agentsContent += "## Source\n\n";
+    agentsContent += "Engine and editor: https://github.com/JasperRaccoon/JasperEngine at the editor version above; its `editor/` "
+                     "defines the `.scene`, `.prefab` and `project.yaml` formats.\n\n";
     agentsContent += "## Generated files\n\n";
-    agentsContent += "The editor regenerates these on play and build; never edit them: the root `CMakeLists.txt`, `" + internal +
-                     "/LocalPaths.cmake`, `" + internal + "/scene_scripts.cpp`, `" + internal + "/generated/`, `" + api + "/`. After "
-                     "an edit of a `.scene`, `.prefab` or `project.yaml` outside the editor, play it in the editor before validating a "
-                     "build.\n\n";
+    agentsContent += "Regenerated on play and build, never edited: the root `CMakeLists.txt`, `" + internal + "/LocalPaths.cmake`, `" +
+                     internal + "/scene_scripts.cpp`, `" + internal + "/generated/`, `" + api + "/`. After a `.scene`, `.prefab` or "
+                     "`project.yaml` changes outside the editor, play in the editor before validating a build.\n\n";
     agentsContent += "## Version control\n\n";
-    agentsContent += "Commit `project.yaml`, `*.scene`, `*.prefab`, `ProjectBuild.cmake`, `AGENTS.md` and the assets. `" + internal +
-                     "/` (generated code, machine settings, layouts, `data://` play data) and `CMakeLists.txt` are not "
-                     "committed. Per-user or per-machine values belong in `" + internal + "/user/`, never in `project.yaml`.\n\n";
+    agentsContent += "Commit `project.yaml`, `*.scene`, `*.prefab`, `ProjectBuild.cmake`, `AGENTS.md` and the assets, not `" + internal +
+                     "/` (generated code, machine settings, layouts, `data://` play data) or `CMakeLists.txt`. Per-user or per-machine "
+                     "values go in `" + internal + "/user/`, never `project.yaml`.\n\n";
     agentsContent += "## Custom build settings\n\n";
-    agentsContent += "Put your own CMake in `ProjectBuild.cmake` at the project root (the editor never writes it; play and export include "
-                     "it). Use `${JASPERENGINE_TARGET}` for the target and `${JASPERENGINE_SCRIPTS_DIR}` as the root of script paths:\n\n";
-    agentsContent += "```cmake\n";
-    agentsContent += "target_include_directories(${JASPERENGINE_TARGET} PRIVATE ${JASPERENGINE_SCRIPTS_DIR}/Source/Game/Public)\n";
-    agentsContent += "target_link_libraries(${JASPERENGINE_TARGET} PRIVATE mylib)\n";
-    agentsContent += "```\n\n";
+    agentsContent += "Your CMake goes in `ProjectBuild.cmake` at the root (the editor never writes it; play and export include it): "
+                     "`${JASPERENGINE_TARGET}` is the target, `${JASPERENGINE_SCRIPTS_DIR}` the root of script paths, as in "
+                     "`target_link_libraries(${JASPERENGINE_TARGET} PRIVATE mylib)`.\n\n";
     agentsContent += "## C++ scripts\n\n";
     agentsContent += "`.h`/`.cpp` files anywhere outside `" + internal + "/`. A script class inherits `jasperengine::ScriptBase` "
-                     "(`#include \"ScriptBase.h\"`) or the GameObject's own class (`jasperengine::Sprite`...), declares a "
-                     "`(jasperengine::Scene* scene, jasperengine::Entity entity)` constructor, and marks Inspector fields "
-                     "`DPROPERTY(\"Name\")`; it overrides `init()`, `onEnable()`, `start()`, `onDisable()`, `onDestroy()` as needed. The "
-                     "editor finds and builds scripts on play (or `compile_scripts`); a script root directory (Project Settings > "
-                     "Directories) is compiled whole and is an include root. Lua scripts are loaded at runtime, not compiled.\n\n";
+                     "(`#include \"ScriptBase.h\"`) or its GameObject's class (`jasperengine::Sprite`...), has a "
+                     "`(jasperengine::Scene*, jasperengine::Entity)` constructor, marks Inspector fields `DPROPERTY(\"Name\")` and "
+                     "overrides `init()`, `onEnable()`, `start()`, `onDisable()`, `onDestroy()` as needed. Play (or `compile_scripts`) "
+                     "builds them; a script root directory (Project Settings > Directories) is compiled whole and is an include root. "
+                     "Lua scripts load at runtime, uncompiled.\n\n";
     agentsContent += "## Prefabs at runtime\n\n";
-    agentsContent += "Unity's Instantiate / Destroy are `GameObject::instantiate(prefab or GameObject [, parent | position, rotation])` "
-                     "(returns `<name>(Clone)`, its scripts started) and `GameObject::destroy(object, delay)` (Lua: "
-                     "`GameObject.instantiate`, `GameObject.destroy`). A prefab loaded only by path (`PrefabAsset::load`) must be listed "
-                     "under `standalonePrefabs` (editor: Assets > Prefabs) or the build lacks it.\n\n";
+    agentsContent += "Unity's Instantiate / Destroy: `GameObject::instantiate(prefab or GameObject [, parent | position, rotation])` "
+                     "(returns `<name>(Clone)`, its scripts started), `GameObject::destroy(object, delay)` (Lua: `GameObject.instantiate`, "
+                     "`GameObject.destroy`). A prefab loaded only by path (`PrefabAsset::load`) must be in `standalonePrefabs` "
+                     "(Assets > Prefabs) or the build lacks it.\n\n";
     agentsContent += "## Physics backends\n\n";
     agentsContent += "Project Settings > Build > 2D/3D Physics only changes the export, which drops a disabled backend: code that must "
                      "build either way guards on `JASPERENGINE_PHYSICS_2D` / `JASPERENGINE_PHYSICS_3D`.\n";
@@ -2533,7 +2547,11 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         case Scaling::CROP:      mainContent += "    Engine::setScalingMode(Scaling::CROP);\n"; break;
         case Scaling::STRETCH:   mainContent += "    Engine::setScalingMode(Scaling::STRETCH);\n"; break;
         case Scaling::NATIVE:    mainContent += "    Engine::setScalingMode(Scaling::NATIVE);\n"; break;
+        case Scaling::INTEGER:   mainContent += "    Engine::setScalingMode(Scaling::INTEGER);\n"; break;
+        case Scaling::INTEGER_EXPAND: mainContent += "    Engine::setScalingMode(Scaling::INTEGER_EXPAND);\n"; break;
     }
+    if (pixelsPerUnit != 1)
+        mainContent += "    Engine::setPixelsPerUnit(" + std::to_string(pixelsPerUnit) + ");\n";
 
     // the Canvas Scaler's project default (absent: Follow Game Canvas, the engine default)
     if (uiScale != CanvasScalerSettings())
@@ -2639,6 +2657,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
             mainContent += "#if TARGET_OS_IPHONE\n" + ios + "#elif defined(JASPERENGINE_MACOS_CMAKE)\n" + macosCMake + "#else\n" + macos + "#endif\n";
             mainContent += "#else\n" + desktop;
             mainContent += "#endif\n";
+            // a shipped game: a Lua mock standing in for one of them says so once
+            mainContent += "    NativeBridge::setMockWarnings(true);\n";
         }
     }
 
@@ -3358,7 +3378,8 @@ void editor::Generator::runBuild(const fs::path& projectPath, const fs::path& bu
         }
 
         // Resolve automatic mode and the per-machine safety cap once. The
-        // exact same value must drive both MSVC /MP and cmake --parallel.
+        // exact same value drives MSVC's /MP and cmake --parallel (one project
+        // at a time under Visual Studio: buildStepParallelJobs).
         const unsigned int requestedOrAutomaticJobs = parallelJobs == 0
             ? getAutomaticParallelBuildJobs()
             : parallelJobs;
@@ -3369,6 +3390,10 @@ void editor::Generator::runBuild(const fs::path& projectPath, const fs::path& bu
             if (commandRunner.isCancelRequested()) {
                 Out::warning("Build configuration cancelled.");
             } else {
+                if (!buildErrors.errors().empty()) {
+                    Out::info("CMake configuration failed with %zu error(s):", buildErrors.errorCount());
+                    for (const BuildDiagnostic& error : buildErrors.errors()) Out::info("%s", error.text.c_str());
+                }
                 Out::error("CMake configuration failed");
             }
             lastBuildSucceeded.store(false, std::memory_order_relaxed);
@@ -3379,6 +3404,12 @@ void editor::Generator::runBuild(const fs::path& projectPath, const fs::path& bu
             if (commandRunner.isCancelRequested()) {
                 Out::warning("Build cancelled.");
             } else {
+                // the errors again at the end of the output, where a long build leaves the reader
+                if (!buildErrors.errors().empty()) {
+                    // not errors again: the compiler's lines count once each in the Console
+                    Out::info("C++ scripts failed to build with %zu error(s):", buildErrors.errorCount());
+                    for (const BuildDiagnostic& error : buildErrors.errors()) Out::info("%s", error.text.c_str());
+                }
                 Out::error("Build failed");
             }
             lastBuildSucceeded.store(false, std::memory_order_relaxed);

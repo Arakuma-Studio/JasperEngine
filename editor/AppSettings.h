@@ -137,6 +137,8 @@ struct CustomDeviceSettings {
 struct GameViewSettings {
     int aspect = 0;              // index into the Game view's aspect list (0 = Free Aspect)
     float scale = 1.0f;          // zoom of the game image
+    // S41: a Pixel Perfect Camera's scale k this view forces (0 = Auto, the largest that fits; 1..8)
+    int pixelScale = 0;
     bool maximizeOnPlay = false;
     bool showStats = false;
     // Preview Atmosphere Quality: -1 the project's, else an AtmosphereQuality (Off..High)
@@ -166,7 +168,7 @@ struct GameViewSettings {
     CustomDeviceSettings custom{};
 
     bool operator==(const GameViewSettings& other) const {
-        return aspect == other.aspect && scale == other.scale
+        return aspect == other.aspect && scale == other.scale && pixelScale == other.pixelScale
             && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats
             && atmosphereQuality == other.atmosphereQuality
             && deviceTier == other.deviceTier && devicePlatform == other.devicePlatform && deviceThermal == other.deviceThermal
@@ -263,6 +265,7 @@ private:
     static YAML::Node loadedSettings;
     static bool autosaveEnabled;
     static int autosaveIntervalSeconds;
+    static bool networkOffline;
     // settingsData parsed into the members
     static bool applySettings(const YAML::Node& node);
     static bool writeMerged();
@@ -313,6 +316,8 @@ private:
 
     // Editor viewport settings
     static bool multiViewportEnabled;
+    // the Scene view draws the component UI's navigation arrows (a Button's Navigation > Visualize)
+    static bool uiNavigationVisualize;
     static bool editorVSyncEnabled;
     // Preferences > General > Show Project Hub at Startup (S27 R16): "when_no_project" or "always"
     static bool projectHubAlways;
@@ -455,6 +460,8 @@ public:
     // Multi-viewport: allow dockable windows to be dragged out into their own OS window
     static bool getMultiViewportEnabled();
     static void setMultiViewportEnabled(bool enabled);
+    static bool getUINavigationVisualize();
+    static void setUINavigationVisualize(bool visualize);
 
     // The Pose Animation window grew the bottom dock once on its first open (not again)
     static bool getPoseDockGrown();
@@ -593,6 +600,11 @@ public:
     static void setAutosaveEnabled(bool enabled);
     static int getAutosaveIntervalSeconds();
     static void setAutosaveIntervalSeconds(int seconds);
+
+    // Preferences > General > Network > Offline (settings.yaml network.offline): the editor
+    // makes no network request of its own (Lospec, S43 R8) and says so before trying
+    static bool isNetworkOffline();
+    static void setNetworkOffline(bool offline);
 };
 
 } // namespace jasperengine::editor

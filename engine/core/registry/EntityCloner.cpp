@@ -51,6 +51,7 @@
 #include "component/RotationTweenComponent.h"
 #include "component/SafeAreaComponent.h"
 #include "component/AudioSnapshotComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"
@@ -70,7 +71,9 @@
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "component/VolumetricCloudsComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterWakeComponent.h"
 #include "component/CameraComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
@@ -242,16 +245,8 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
         submesh.render = ObjectRender();
         submesh.depthRender = ObjectRender();
         submesh.gbufferRender = ObjectRender();
-        // the batch variants too (spec S55): the clone's load destroys what they hold, which
-        // were the original's pipelines
-        submesh.batchRender = ObjectRender();
-        submesh.batchDepthRender = ObjectRender();
-        submesh.batchShader.reset();
-        submesh.batchDepthShader.reset();
-        submesh.batchShaderProperties = 0;
-        submesh.batchDepthShaderProperties = 0;
-        submesh.batchShaderId = 0;
-        submesh.batchDepthShaderId = 0;
+        // the batch variants too (spec S55): the clone's load makes its own
+        submesh.batch.reset();
         // the clone's load makes its own extra pass (sharing it would let the clone write the
         // original's parameter blocks, and leave its pipelines to whichever is freed last)
         submesh.extraPass.reset();
@@ -793,16 +788,30 @@ void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity
 
 template<>
 void prepare<ButtonComponent>(ButtonComponent& button, Entity, CloneContext& ctx) {
-    for (Texture* texture : {&button.textureNormal, &button.textureHovered, &button.texturePressed, &button.textureDisabled}) {
+    for (Texture* texture : {&button.textureNormal, &button.textureHovered, &button.texturePressed, &button.textureDisabled,
+                             &button.textureSelected}) {
         remapFramebufferTexture(*texture, ctx);
     }
     button.label = ctx.remap(button.label);
+    // Explicit navigation follows the copy (another GameObject of the source stays, or means nothing elsewhere)
+    button.selectOnUp = ctx.remap(button.selectOnUp);
+    button.selectOnDown = ctx.remap(button.selectOnDown);
+    button.selectOnLeft = ctx.remap(button.selectOnLeft);
+    button.selectOnRight = ctx.remap(button.selectOnRight);
     button.pressed = false;
     button.hovered = false;
+    // the runtime state starts over: not selected, no hold, no fade (appliedScale is kept: the
+    // copied Transform holds that factor, which the copy's next look takes back)
+    button.selected = false;
+    button.submitPressed = false;
+    button.wasLive = false;
+    button.fading = false;
+    button.state = SelectionState::NORMAL;
     button.needUpdateButton = true;
     if (!ctx.move) {
         button.onPress.clear();
         button.onRelease.clear();
+        button.onClick.clear();
     }
 }
 
@@ -907,6 +916,16 @@ void prepare<AudioSnapshotComponent>(AudioSnapshotComponent& snapshot, Entity, C
     // a copy has not started: it has nothing to revert
     snapshot.previousSnapshot.clear();
     snapshot.applied = false;
+}
+
+template<>
+void prepare<PixelPerfectCameraComponent>(PixelPerfectCameraComponent& camera, Entity, CloneContext&) {
+    // the copy's layout is made by the next render update
+    const PixelPerfectCameraComponent defaults;
+    camera.layout = defaults.layout;
+    camera.snappedPosition = defaults.snappedPosition;
+    camera.subpixelOffset = defaults.subpixelOffset;
+    camera.active = false;
 }
 
 template<>
@@ -1154,10 +1173,13 @@ void prepare<NavMeshAgentComponent>(NavMeshAgentComponent& agent, Entity, CloneC
     agent.nextPosition = defaults.nextPosition;
     agent.isOnNavMesh = false;
     agent.isOnOffMeshLink = false;
+    agent.stuckTime = 0.0f;
+    agent.lastPathFailure = defaults.lastPathFailure;
     agent.onDestinationReached.clear();
     agent.onPathFailed.clear();
     agent.onOffMeshLinkStart.clear();
     agent.onOffMeshLinkEnd.clear();
+    agent.onStuck.clear();
 }
 
 template<>
@@ -1283,6 +1305,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteAnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<PixelPerfectCameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LightComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<Light2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ShadowCaster2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
@@ -1332,6 +1355,8 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<RagdollComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 #endif
     copyComponent<WaterVolumeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<WaterExcluderComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<WaterWakeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<BuoyancyComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<NavMeshSurfaceComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<NavMeshAgentComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
@@ -1450,6 +1475,7 @@ void handOver(EntityRegistry* source, Entity entity, const CloneContext& ctx, En
     if (ButtonComponent* button = componentOf<ButtonComponent>(source, entity, signature)) {
         button->onPress.clear();
         button->onRelease.clear();
+        button->onClick.clear();
     }
     if (PanelComponent* panel = componentOf<PanelComponent>(source, entity, signature)) {
         panel->onMove.clear();

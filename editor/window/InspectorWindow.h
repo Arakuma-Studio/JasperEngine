@@ -17,6 +17,8 @@
 #include "window/dialog/ScriptCreateDialog.h"
 #include "util/ScriptAttach.h"
 #include "window/dialog/ShaderForkDialog.h"
+#include "window/AsepriteImporterView.h"
+#include "window/SheetPreviewTextures.h"
 #include "window/TextureImporterView.h"
 #include "window/ModelImporterView.h"
 #include "window/dialog/ComponentAddDialog.h"
@@ -65,10 +67,12 @@ namespace jasperengine::editor{
 
     class SceneWindow;
     class CommandHistory;
+    struct PostProcessingPreset;
     class ForkShaderCmd;
     class MultiPropertyCmd;
     class AnimationClipDocument;
     class AnimatorAssetDocument;
+    class SpriteAtlasInspector;
     struct InspectorClipState;
     struct InspectorClipStateDeleter{
         void operator()(InspectorClipState* state) const;
@@ -206,6 +210,10 @@ namespace jasperengine::editor{
         std::unique_ptr<TextureImporterView> textureImporter;
         // and its model files (S53)
         std::unique_ptr<ModelImporterView> modelImporter;
+        std::unique_ptr<AsepriteImporterView> asepriteImporter;
+        // (shared: the type stays out of this header, which App.h includes; its sprite:: names would
+        // make `sprite` a namespace in every source that includes App.h)
+        std::shared_ptr<SpriteAtlasInspector> spriteAtlasInspector;
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;
@@ -300,7 +308,8 @@ namespace jasperengine::editor{
             SliderFloat,
             ColorRGB,
             ColorRGBA,
-            Combo
+            Combo,
+            LayerMask   // a uint32_t layer mask: Unity's mask field
         };
 
         struct DirtyMaterialEntry {
@@ -460,6 +469,14 @@ namespace jasperengine::editor{
         void writeDirtyMaterial(const DirtyMaterialEntry& entry);
         template<typename T>
         void drawScenePropertyRow(SceneProject* sceneProject, const std::string& propertyName, const char* label, ScenePropertyInputType inputType, float inputWidth = -1.0f, float minValue = 0.0f, float maxValue = 1.0f, const std::string& help = "");
+        // the Planar Reflections section of the scene settings (water-reflections)
+        void drawScenePlanarReflections(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
+        // the scene's Water Wakes map: resolution, area, fade
+        void drawSceneWaterWakes(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
+    public:
+        // Unity's mask field label: Nothing, Everything, the one layer's name, or Mixed...
+        static std::string sceneLayerMaskLabel(uint32_t mask);
+    private:
 
         // Sound preview helpers
         bool ensureSoundPreviewInitialized();
@@ -700,9 +717,11 @@ namespace jasperengine::editor{
         // @category (with @description tooltips) and "Custom file..." (the Edit Shader Files
         // popup named popupName, which the caller draws)
         // builtInLabel names the empty entry instead ("None" for an extra pass)
+        // onForkLibrary, when given: a "Fork" item while a library shader is picked, called with it
         void drawLibraryShaderCombo(const std::string& currentShader, ShaderType type,
                                     const std::function<void(const std::string&)>& setShader, const std::string& popupName,
-                                    const char* builtInLabel = nullptr);
+                                    const char* builtInLabel = nullptr,
+                                    const std::function<void(const std::string&)>& onForkLibrary = nullptr);
         // The manifest rows of `shader` for one GameObject, into the current table: feature
         // checkboxes, keyword combos, parameters (colour pickers editing sRGB, sliders for
         // ranges, checkboxes for toggles, drag fields) and texture slots, hiding the ones
@@ -717,6 +736,15 @@ namespace jasperengine::editor{
         // (its own undo step) and true while dragging (merged until released)
         bool drawShaderPropertyValue(const ShaderManifestProperty& property, const std::string& id, const Vector4& value,
                                      Vector4& edited, bool& continuous, float itemWidth = -1.0f);
+        // A material's Palette Swap rows (S43 R35, under the manifest rows of materialPrefix
+        // "submeshes[N].material."), for each @palette slot that is on: Source Palette with
+        // Detect, Use Variants, Extra Targets, Active Palette (paletteRow), Cycling Speed
+        // (paletteCycleSpeed), and the warnings (the binding's build errors, a lossy texture with
+        // its Fix, the colours that will not swap with Show)
+        void drawShaderPaletteRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::string& shader,
+                                   const ShaderManifest& manifest, const std::string& materialPrefix,
+                                   const std::vector<std::string>& features, const ShaderUniformValues& params,
+                                   const std::function<void()>& onValueChanged);
         // A submesh material's Shader row and manifest rows; true when the built-in PBR rows
         // apply (built-in Lit or a fork)
         bool drawMaterialShaderRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
@@ -800,6 +828,12 @@ namespace jasperengine::editor{
                                         const PostProcessingSettings::Field& field, const char* label,
                                         const std::string& help, bool indent);
         void drawPostProcessingCost(SceneProject* sceneProject, const PostProcessingSettings& settings);
+        // Palette Quantize's Palette cell (S43 R36): the palette field (a built-in is copied into
+        // the project), its swatches, "Baking..." while the renderer bakes its table, and the
+        // warning when the effect is on without a palette
+        void drawPostProcessingPaletteField(SceneProject* sceneProject, const PostProcessingSettings& settings);
+        // Applies a preset as one undo step (a built-in palette it names copied in with it)
+        void applyPostProcessingPreset(SceneProject* sceneProject, const PostProcessingPreset& preset);
 
         // ---- Fluid Simulation (InspectorFluid.cpp): Post-processing-style groups, presets, the
         // preview bar (FluidSystem::setPreview), the Scene view's Paint Dye toggle and the stats
@@ -867,16 +901,32 @@ namespace jasperengine::editor{
         void drawInputFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawOnScreenStickComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawOnScreenButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // Unity's Button: Interactable, then the reflected rows by transition and navigation mode,
+        // Visualize and the state while playing (InspectorButton.cpp)
+        void drawButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTouchAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTextEffectComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the Pixel Perfect Camera (InspectorPixelArt.cpp, S41)
+        void drawPixelPerfectCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // "Inherited alpha 0.25 · not interactable · click-through (Canvas Group: Panel)" and a
         // Select button, when the entity is under a Canvas Group
         void drawCanvasGroupInheritedLine(SceneProject* sceneProject, Entity entity);
         void drawSafeAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAudioSnapshotComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // a sheet sprite's frame, Open in Aseprite, slice colliders, sprite properties (S44)
+        void drawSheetSpriteSection(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        // S45 (InspectorSpriteSheet.cpp): the frame picker, Native Size, the Slicer writing a
+        // texture's Sprite Mode, the legacy frames' Convert to Sprite Sheet
+        void drawSheetFramePicker(ComponentType cpType, SceneProject* sceneProject, Entity entity, const SpriteSheetData& sheet);
+        void drawSpriteNativeSize(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        void openSpriteSlicer(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::string& texture);
+        void drawLegacyFramesHeader(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        SheetPreviewTextures sheetThumbnails;
+        char sheetFrameSearch[96] = "";
+        std::string legacyConvertError;
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -956,6 +1006,8 @@ namespace jasperengine::editor{
         void drawCharacterController2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCharacterControllerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawWaterVolumeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawWaterExcluderComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawWaterWakeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawBuoyancyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // InspectorSplines.cpp (S18)
         void drawSplineComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

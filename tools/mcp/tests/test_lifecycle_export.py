@@ -1,8 +1,11 @@
 """Script lifecycle parity (script-lifecycle 12): the same scripted scene (Lua and C++ scripts) logs
 the same lifecycle in editor Play and in an exported Linux player, a scene reload included.
 
-The Desktop build compiles the engine from source (~20-60 min at 3 jobs on this host): set
-JASPER_SLOW_BUILD=1 to run it.
+The Desktop build compiles the game (a C++ script ships only in a compiled game): set
+JASPER_SLOW_BUILD=1 to run it. It compiles as test_build.py's do: through ccache, a job per CPU of the
+container (harness.build_jobs) and without link-time optimisation (harness.compile_env). At 3 jobs,
+without ccache and with LTO, the build took 33 minutes on a quiet server (26 compiling, 6 in the LTO
+link) and up to two hours on a loaded one; with a warm ccache it takes about two minutes.
 """
 
 import asyncio
@@ -10,10 +13,12 @@ import os
 import time
 from pathlib import Path
 
-from harness import Editor, skip
+import harness
+from harness import Editor, build_jobs, skip
 
-EDITOR = {"create": True, "name": "Lifecycle Export"}
-CI_EXCLUDED = ("long-running (about an hour on a loaded server: its test builds and runs a real Desktop player); "
+# its compile: a fixed compile-tree path and ccache (harness.compile_env)
+EDITOR = {"create": True, "name": "Lifecycle Export", "env": harness.compile_env("test_lifecycle_export")}
+CI_EXCLUDED = ("long-running (it compiles a real Desktop player, minutes with a warm ccache); "
                "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
 
@@ -90,7 +95,7 @@ async def test_play_and_export_log_the_same_lifecycle(ed: Editor):
     await ed.call("edit_build_scenes", action="set_start", scene=saved["scenes_in_build"][0]["id"])
     await ed.call("set_project_settings", values={
         "graphics.runtime_shaders": False,       # smaller, faster player build
-        "preferences.build_jobs": 3,
+        "preferences.build_jobs": build_jobs(),
         "player.window_width": 640,
         "player.window_height": 480,
     })
@@ -109,7 +114,8 @@ async def test_play_and_export_log_the_same_lifecycle(ed: Editor):
 
     out = ed.scratch.root / "export-desktop"
     t0 = time.monotonic()
-    r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=3, timeout_seconds=30)
+    r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=build_jobs(), timeout_seconds=30,
+                      method="compile")
     job = r
     while job["status"] == "running":
         await asyncio.sleep(15)
@@ -117,6 +123,7 @@ async def test_play_and_export_log_the_same_lifecycle(ed: Editor):
         if time.monotonic() - t0 > TIMEOUT:
             ed.fail(f"build still running: {job}")
     ed.check_eq(job["status"], "succeeded", f"{job}")
+    ed.check_eq(job["result"]["method_used"], "compile", f"{job}")
     exe = Path(job["result"]["executable"])
     raw = await ed.call_raw("run_build", {"seconds": 6, "screenshot": False})
     ed.check(not raw.is_error, raw.text)

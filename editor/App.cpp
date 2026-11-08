@@ -11,6 +11,7 @@
 #include "window/AnimationWindow.h"
 #include "window/AnimatorWindow.h"
 #include "window/AssetPanels.h"
+#include "window/ApplyPaletteDialog.h"
 #include "window/AudioMixerWindow.h"
 #include "window/AudioCapturesWindow.h"
 #include "window/SoundBrowserWindow.h"
@@ -22,21 +23,25 @@
 #include "window/InspectorWindow.h"
 #include "window/LoadingWindow.h"
 #include "window/MainToolbar.h"
+#include "window/PaletteWindow.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "window/PlayInput.h"
 #include "window/PoseAnimationWindow.h"
 #include "window/ProjectWindow.h"
 #include "window/SceneWindow.h"
 #include "window/SpriteNormalsWindow.h"
+#include "window/SpritePreviewWindow.h"
 #include "window/StatusBar.h"
 #include "window/SystemsWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
+#include "sprite/SpriteAtlasBuilder.h"
 #include "component/TilemapComponent.h"
 #include "spline/SplineSceneTools.h"
 #include "spline/SplineEditor.h"
 #include "particles/ParticleEffectLibrary.h"
+#include "pixelart/PaletteSwap.h"
 #include "util/ParticleMigrationReport.h"
 #include "AppMenuCommand.h"
 #include "util/NumericExpression.h"
@@ -109,6 +114,8 @@
 #include "window/BookmarksWindow.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
+#include "pixelart/aseprite/AsepriteEditorHooks.h"
+#include "pixelart/aseprite/AsepriteImporter.h"
 
 #include "util/CrashHandler.h"
 #include "util/EditorDiagnostics.h"
@@ -241,11 +248,15 @@ editor::App::App(){
     audioMixerWindow = new AudioMixerWindow(&project);
     soundBrowserWindow = new SoundBrowserWindow(&project);
     audioCapturesWindow = new AudioCapturesWindow(&project);
+    applyPaletteDialog = new ApplyPaletteDialog(&project);
+    paletteWindow = new PaletteWindow(&project, projectWindow, applyPaletteDialog);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
     spriteNormalsWatcher = new SpriteNormalsWatcher(&project);
     SpriteNormalsWatcher::setActive(spriteNormalsWatcher);
+    spritePreviewWindow = new SpritePreviewWindow(&project, projectWindow);
+    pixelart::aseprite::asepriteEditorHooks().openSpritePreview = [this](const std::string& p) { spritePreviewWindow->open(p); };
     mcpActivityWindow = new mcp::McpActivityWindow();
     systemsWindow = new SystemsWindow(&project);
     missingAssetsWindow = new MissingAssetsWindow(&project);
@@ -637,6 +648,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("edit.pause", "Pause", mainToolbar->isPaused()),
         catalogItem("edit.step"),
         catalogItem("edit.stop"),
+        catalogItem("playmode.maximizeOnPlay", "Maximize On Play", gameWindow->isMaximizeOnPlay()),
         menuSeparator(),
         catalogItem("edit.projectSettings"),
         catalogItem("edit.clearUserSettings"),
@@ -644,37 +656,30 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("edit.shortcuts")
     }));
 
-    std::vector<PlatformMenuItem> assetsCreateItems = {
-        catalogItem("assets.createFolder", "Folder"),
-        menuSeparator(),
-        catalogItem("assets.createLuaScript", "Lua Script"),
-        catalogItem("assets.createCppScript", "C++ Script"),
-        menuSeparator(),
-        catalogItem("assets.createHtmlDocument", "HTML Document"),
-        menuSeparator(),
-        catalogItem("assets.createAudioMixer", "Audio Mixer"),
-        catalogItem("assets.createPlaceholderSound", "Placeholder Sound..."),
-        menuSeparator(),
-        catalogItem("assets.createPoseAnimation", "Pose Animation"),
-        menuSeparator(),
-        catalogItem("assets.createNativePlugin", "Native Plugin...")
-    };
-    // Animation Clip: once the clip asset task set its hook
-    if (animationClipAppHooks().createClipAsset) {
-        assetsCreateItems.push_back(catalogItem("assets.createAnimationClip", "Animation Clip"));
+    // the one Create list (AssetCreateMenu: the Project window shows the same), then what only
+    // the main menu makes: a new scene, a native plugin
+    std::vector<PlatformMenuItem> assetsCreateItems;
+    for (const AssetCreateItem& item : assetCreateItems()) {
+        // Animation Clip: once the clip asset task set its hook
+        if (item.kind == AssetCreateKind::AnimationClip && !animationClipAppHooks().createClipAsset) continue;
+        // Sprite Atlas: in Create > 2D below
+        if (item.kind == AssetCreateKind::SpriteAtlas) continue;
+        if (item.separatorBefore) assetsCreateItems.push_back(menuSeparator());
+        assetsCreateItems.push_back(catalogItem(item.commandId, item.label));
     }
-    assetsCreateItems.push_back(catalogItem("assets.createAnimatorController", "Animator Controller"));
-    assetsCreateItems.push_back(catalogItem("assets.createAvatarMask", "Avatar Mask"));
-    assetsCreateItems.push_back(catalogItem("assets.createAnimationMontage", "Animation Montage"));
-    assetsCreateItems.push_back(catalogItem("assets.createShakePreset", "Shake Preset"));
     assetsCreateItems.push_back(menuSeparator());
+    assetsCreateItems.push_back(menuSubmenu("2D", {catalogItem("assets.createSpriteAtlas", "Sprite Atlas"),
+                                                   catalogItem("assets.createSpriteAtlasFromSelection", "Sprite Atlas from Selection")}));
     assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
+    assetsCreateItems.push_back(catalogItem("assets.createNativePlugin", "Native Plugin..."));
 
     menu.menus.push_back(menuSubmenu("Assets", {
         menuSubmenu("Create", assetsCreateItems),
+        catalogItem("assets.convertInlineSpriteFrames", "Convert Inline Sprite Frames..."),
         catalogItem("assets.showInFileManager"),
         catalogItem("assets.open"),
         catalogItem("assets.rename", "Rename"),
+        catalogItem("assets.duplicate", "Duplicate"),
         catalogItem("assets.delete", "Delete"),
         menuSeparator(),
         catalogItem("assets.import"),
@@ -747,6 +752,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.audioCaptures", windowMenuLabel(AudioCapturesWindow::WINDOW_NAME)),
             catalogItem("window.soundBrowser", windowMenuLabel(SoundBrowserWindow::WINDOW_NAME))
         }),
+        menuSubmenu("2D", {
+            catalogItem("window.palette", windowMenuLabel(PaletteWindow::WINDOW_NAME))
+        }),
         catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
         menuSubmenu("AI", {
@@ -767,6 +775,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
+        menuSubmenu("2D", {
+            catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME))
+        }),
         menuSubmenu("MCP", {
             catalogItem("window.mcpActivity", windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
         }),
@@ -1047,8 +1058,14 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleAudioMixer:
             audioMixerWindow->open();
             break;
+        case AppMenuCommand::TogglePalette:
+            paletteWindow->open(FileUtils::pathFromUtf8(command.payload));
+            break;
         case AppMenuCommand::ToggleSpriteNormals:
             spriteNormalsWindow->open();
+            break;
+        case AppMenuCommand::ToggleSpritePreview:
+            spritePreviewWindow->open();
             break;
         case AppMenuCommand::ToggleVertexAnimationBaker:
             vertexAnimationBakerWindow->open();
@@ -1190,41 +1207,72 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 inspectorWindow->requestAddComponent();
             break;
         }
+        // Assets > Create: in the folder the Project window shows (the one Create list, AssetCreateMenu)
         case AppMenuCommand::AssetsCreateFolder:
-            projectWindow->assetsCreateFolder();
+            projectWindow->createAsset(AssetCreateKind::Folder, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateLuaScript:
-            projectWindow->assetsCreateScript(true);
+            projectWindow->createAsset(AssetCreateKind::LuaScript, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateCppScript:
-            projectWindow->assetsCreateScript(false);
+            projectWindow->createAsset(AssetCreateKind::CppScript, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateCppSource:
+            projectWindow->createAsset(AssetCreateKind::CppSource, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateCppHeader:
+            projectWindow->createAsset(AssetCreateKind::CppHeader, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateHtmlDocument:
-            projectWindow->assetsCreateHtmlDocument();
+            projectWindow->createAsset(AssetCreateKind::HtmlDocument, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsImportSoundEssentials:
             projectWindow->assetsImportSoundEssentials();
             break;
         case AppMenuCommand::AssetsCreatePlaceholderSound:
-            projectWindow->assetsCreatePlaceholderSound();
+            projectWindow->createAsset(AssetCreateKind::PlaceholderSound, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsReanalyzeAudio:
             projectWindow->assetsReanalyzeAudio(projectWindow->getSelectedFiles());
             break;
         case AppMenuCommand::AssetsCreateAudioMixer:
-            projectWindow->assetsCreateAudioMixer();
+            projectWindow->createAsset(AssetCreateKind::AudioMixer, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateSoundEvent:
-            projectWindow->assetsCreateSoundEvent();
+            projectWindow->createAsset(AssetCreateKind::SoundEvent, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateSoundEventFromClips:
             projectWindow->assetsCreateSoundEventFromClips();
             break;
         case AppMenuCommand::AssetsCreatePoseAnimation:
-            projectWindow->assetsCreatePoseAnimation();
+            projectWindow->createAsset(AssetCreateKind::PoseAnimation, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateShakePreset:
-            projectWindow->assetsCreateShakePreset();
+            projectWindow->createAsset(AssetCreateKind::ShakePreset, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreatePalette:
+            projectWindow->createAsset(AssetCreateKind::Palette, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateSpriteAtlas:
+            projectWindow->createAsset(AssetCreateKind::SpriteAtlas, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateSpriteAtlasFromSelection:
+            projectWindow->assetsCreateSpriteAtlasFromSelection();
+            break;
+        case AppMenuCommand::AssetsConvertInlineSpriteFrames:
+            spriteConversionDialog.open(&project);
+            break;
+        case AppMenuCommand::AssetsCreatePhysicsMaterial:
+            projectWindow->createAsset(AssetCreateKind::PhysicsMaterial, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreatePhysicsMaterial2D:
+            projectWindow->createAsset(AssetCreateKind::PhysicsMaterial2D, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsDuplicate:
+            projectWindow->duplicateSelection();
+            break;
+        case AppMenuCommand::ToggleMaximizeOnPlay:
+            gameWindow->toggleMaximizeOnPlay();
             break;
         case AppMenuCommand::AddCameraShakerToMainCamera: {
             SceneProject* scene = project.getSelectedScene();
@@ -1243,17 +1291,16 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreateAnimationClip:
             if (animationClipAppHooks().createClipAsset) {
                 animationClipAppHooks().createClipAsset(&project);
-                projectWindow->refreshCurrentDirectory();
             }
             break;
         case AppMenuCommand::AssetsCreateAnimatorController:
-            projectWindow->assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Controller);
+            projectWindow->createAsset(AssetCreateKind::AnimatorController, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateAvatarMask:
-            projectWindow->assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Mask);
+            projectWindow->createAsset(AssetCreateKind::AvatarMask, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsCreateAnimationMontage:
-            projectWindow->assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Montage);
+            projectWindow->createAsset(AssetCreateKind::AnimationMontage, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::AssetsShowInFileManager:
             projectWindow->assetsShowInFileManager();
@@ -2173,6 +2220,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_middle_top);
     // the Sprite Normal Map window: a preview too
     ImGui::DockBuilderDockWindow(SpriteNormalsWindow::WINDOW_NAME, dock_id_middle_top);
+    ImGui::DockBuilderDockWindow(SpritePreviewWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -2457,6 +2505,9 @@ void editor::App::setup() {
     setupLayouts();
     // the command catalog and the user's rebindings (shortcuts.yaml, next to settings.yaml)
     registerCommands();
+    // the Palette context's commands (a later add takes the user's stored binding too)
+    paletteWindow->bindCommands(CommandCatalog::editor());
+    applyPaletteDialog->bindCommands(CommandCatalog::editor());
 
     // Separate from the window scale: the layout keeps the scale it was built at,
     // while the window is measured on whichever monitor it closes on.
@@ -2814,7 +2865,8 @@ void editor::App::show(){
         // runs (the timeline's undo cancels it first: CommandHistory::beforeChange)
         const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
         // the Animator window edits project assets (its selection in the Inspector too)
-        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() ||
+        // the Sprite Preview's Exclude from Import is a project step (the file's .meta)
+        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() || spritePreviewWindow->isFocused() ||
                 (focusedWindowName() == InspectorWindow::WINDOW_NAME && animatorWindow->inspectorShowsSelection())) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (animatorWindow->isFocused()) {
@@ -2882,10 +2934,13 @@ void editor::App::show(){
     ImGui::DockSpaceOverViewport(dockspace_id, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
 
     showAlert();
+    // Open in Aseprite (S44 R32): a request waiting on detection, the Aseprite Not Found dialog
+    pixelart::aseprite::updateAsepriteOpen();
 
     sceneSaveDialog.show();
     // the importers' edits not applied, asked about before a selection change, Play or the close
     ImporterPrompt::draw();
+    spriteConversionDialog.show();
     projectSaveDialog.show();
     dataSafetyDialogs.show(project);
     exportWindow.show();
@@ -2926,8 +2981,12 @@ void editor::App::show(){
     audioMixerWindow->show();
     soundBrowserWindow->show();
     audioCapturesWindow->show();
+    // also the tick of its workers (Lospec, Usage, From Texture) with the window closed
+    paletteWindow->show();
+    applyPaletteDialog->show();
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
+    spritePreviewWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
     vertexAnimationBakerWindow->show();
     // also the tick of the Scene view's physics sessions, with the panel closed too
@@ -2972,6 +3031,7 @@ void editor::App::show(){
     ui::CurveWindow::get().show();
     ui::GradientWindow::get().show();
     ui::ColorPickerWindow::get().setProjectPath(project.getProjectPath());
+    ui::ColorPickerWindow::get().setProject(&project);
     ui::ColorPickerWindow::get().show();
 
     loadingWindow->show();
@@ -3840,6 +3900,14 @@ void editor::App::pollExternalChanges(){
         ModelCookQueue& models = ModelCookQueue::get();
         if (models.getProject() != &project) models.attach(&project);
         wake = models.update() || wake;
+        // .aseprite imports (S44): run on the Background lane, swapped in here
+        pixelart::aseprite::AsepriteImporter& imports = pixelart::aseprite::AsepriteImporter::get();
+        if (imports.getProject() != &project) imports.attach(&project);
+        wake = imports.update() || wake;
+        // Sprite Atlas builds (S45): packed on the Background lane, swapped in here
+        sprite::SpriteAtlasBuilder& atlases = sprite::SpriteAtlasBuilder::get();
+        if (atlases.getProject() != &project) atlases.attach(&project);
+        wake = atlases.update() || wake;
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -4431,6 +4499,23 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
     Rect viewRect;
     Engine::computeViewLayout(width, height, (int)project.getCanvasWidth(), (int)project.getCanvasHeight(), project.getScalingMode(),
                               canvasWidth, canvasHeight, viewRect);
+    // a Pixel Perfect Camera on the game camera lays the view out as Play does (S41 R20); its layer
+    // scenes draw on the same viewport and canvas
+    PixelPerfectViewRequest pixelRequest;
+    if (Engine::getPixelPerfectRequest(sceneProject.scene, cameraEntity, pixelRequest)) {
+        // Use Project Canvas is the project's canvas (the Engine's is the editor's view here)
+        if (pixelRequest.referenceWidth <= 0 || pixelRequest.referenceHeight <= 0) {
+            pixelRequest.referenceWidth = (int)project.getCanvasWidth();
+            pixelRequest.referenceHeight = (int)project.getCanvasHeight();
+        }
+        const jasperengine::pixelart::PixelPerfectLayout layout = Engine::computePixelPerfectView(pixelRequest, width, height,
+                                                                                    Engine::getPixelPerfectForcedScale());
+        if (layout.baseWidth > 0) {
+            viewRect = layout.viewport;
+            canvasWidth = std::max(1, (int)std::lround(layout.canvasWidth));
+            canvasHeight = std::max(1, (int)std::lround(layout.canvasHeight));
+        }
+    }
 
     // a UI scene's camera covers its Canvas Scaler UI size (what it is laid out at), any other the canvas
     auto layerCanvas = [&](SceneProject* layerScene, Entity layerCamera, float& layerWidth, float& layerHeight) {
@@ -4537,6 +4622,9 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
     Engine::systemDraw();
     renderSystem->keepAtmosphereInfo(GAME_VIEW_ID);
 
+    // the game camera's Pixel Perfect Camera laid this pass out; the editor's views lay out
+    // without it (their next systemViewChanged would apply it over the editor's canvas)
+    Engine::setPixelPerfectView(PixelPerfectViewRequest());
     Engine::setCanvasSize(editCanvasWidth, editCanvasHeight);
     Engine::setScalingMode(editScaling);
 
@@ -5148,10 +5236,14 @@ void editor::App::prepareForProjectSwitch() {
     audioMixerWindow->resetForProjectSwitch();
     soundBrowserWindow->resetForProjectSwitch();
     audioCapturesWindow->resetForProjectSwitch();
+    // a Lospec fetch is cancelled; the palette, its selection and the dialogs are forgotten
+    paletteWindow->resetForProjectSwitch();
+    applyPaletteDialog->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
     spriteNormalsWatcher->reset();
     editor::spritenormals::SpriteNormalsRun::cancelRunning();
+    spritePreviewWindow->resetForProjectSwitch();
     // a running bake or import is cancelled, its source and result forgotten
     vertexAnimationBakerWindow->resetForProjectSwitch();
     editor::texsynth::projectSwitching();
@@ -5168,9 +5260,14 @@ void editor::App::prepareForProjectSwitch() {
     consoleWindow->clear();
     sceneWindow->resetProjectState();
     gameWindow->resetProjectState();
+    // the next project's Terrain settings are read before the window writes any back
+    terrainEditWindow->resetProjectState();
     inputActionsWindow->reset();
     // the next project's .particles files are other files under the same paths
     particles::ParticleEffectLibrary::clear();
+    // and its palettes (S43): the swap textures first, they were made from them
+    jasperengine::pixelart::PaletteSwapCache::clear();
+    jasperengine::pixelart::PaletteLibrary::clear();
     ParticleMigrationReport::clear();
     dockspaceNeedsRebuild = true;
 }
@@ -5650,7 +5747,33 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v50: render-correctness: includes/instance_fade.glsl (the near fade, the G-buffer's 'Ifd'),
     //      lighting2d's and the SSAO's explicit-LOD lookups, mesh.frag's shadow derivatives before
     //      the light loop (lightShadowD), pbr.glsl's derived (flat) normals turned toward the eye.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v50";
+    // v51: water-reflections: library:water on the scene clock (sceneTime), GERSTNER,
+    //      PLANAR_REFLECTION (includes/planar_reflection.glsl), its shadow lookup with the smooth
+    //      normal and shadowed caustics; @role in water.frag and underwater.frag.
+    // v52: water-boats: MESH 'Wex' and 'Wwk' (42, 43), includes/water_interaction.glsl and the
+    //      engine-written WATER_INTERACTION_PARAMS at the end of water.frag's custom block.
+    // v53: draw-perf's directional-only Lit: MESH 'Dlo' (44; DIRECTIONAL_LIGHTS_ONLY in
+    //      includes/lights.glsl and punctual.glsl)
+    // v54: SSR follow-ups: the G-buffer's 16-bit normal (color[3] RGBA8, octEncode16), the
+    //      composite inside the colour pass under the transparents and its tone curve
+    //      (the composite's USE_POST_COLOR over a linear store: the colour pass's own
+    //      post-processing colour with an identity LUT)
+    // v55: PCSS on GLES3/WebGL2 and painted terrains (doriax-catchup pcss-gles): the raw-depth
+    //      shadow view in every 'Shq' variant, a GLES3 one compiled again with SHADOW_RAW_VIEW_OFF
+    //      where it would be the 17th fragment texture;
+    //      and water-uniforms: library:water and the painted Terrain ('Tpb') read their lights'
+    //      records from u_lightRecords (includes/lights.glsl LIGHTS_FS_RECORDS) and, with both
+    //      requires, the planar reflection's values come from u_fs_environment
+    // v56: lit-uniforms: a lit variant over its backend's fragment uniforms (GLES3 224 vectors,
+    //      desktop GL 256, 8 blocks) reads its lights, capsules and 2D lights from u_lightRecords
+    //      (LIGHTS_FS_RECORDS, the records form's tail in u_fs_objectLights; ShaderVariantCompiler::compile)
+    // v57: S41's pixel snap: the frame block's pixelSnap and pixelSnapOffset (last, in the 'Pxs'
+    //      vertex stages only), includes/pixel_snap.glsl in the mesh, depth, UI and particle
+    //      vertex stages; MESH 'Pxs' bit 45, DEPTH 19, UI 5, PARTICLES 11, BLIT 'Psb' 18.
+    // v58: S43's palettes: library:sprite's PALETTE_SWAP and PALETTE_CYCLE (includes/palette.glsl,
+    //      the custom block's paletteRow, paletteCycleSpeed and sceneTime), the uber pass's
+    //      Palette Quantize (BLIT 'Pal' 19, includes/bayer.glsl).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v58";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -5795,6 +5918,11 @@ void editor::App::openMeshAudit(){
 
 void editor::App::openConsole(){
     showEditorWindow(consoleWindow);
+}
+
+void editor::App::openPaletteWindow(const std::string& palettePath, const std::string& texturePath){
+    // the material inspector's Show: the palette's Usage of the sprite's texture (project-relative)
+    paletteWindow->showUsage(FileUtils::pathFromUtf8(palettePath), FileUtils::pathFromUtf8(texturePath));
 }
 
 void editor::App::openAudioMixerWindow(const std::filesystem::path& mixer){

@@ -1,4 +1,4 @@
-formatVersion: 7
+formatVersion: 8
 guid: 82542eaa9438c61a4644909803eb59fb
 id: 3575974884
 name: TweenCurve
@@ -51,6 +51,14 @@ shaderKeys:
     properties: 1112
   - type: mesh
     properties: 8589935704
+  - type: mesh
+    properties: 68719477848
+  - type: mesh
+    properties: 77309412440
+  - type: mesh
+    properties: 17592186045528
+  - type: mesh
+    properties: 17600775980120
   - type: sky
   - type: depth
   - type: blit
@@ -62,6 +70,18 @@ shaderKeys:
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
     properties: 8589935704
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 68719477848
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412440
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 17592186045528
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 17600775980120
     customShader: builtin:lit#USE_LIT_QUALITY
 entities:
   - type: Entity

@@ -1,0 +1,10 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "Game Boy (DMG)",
+  "author": "Nintendo",
+  "description": "The original Game Boy's (DMG-01) four LCD greens, darkest to lightest, as commonly approximated; colours from Lospec's 'Original Gameboy'.",
+  "source": {"kind": "builtin", "id": "game-boy", "url": "https://lospec.com/palette-list/original-gameboy"},
+  "columns": 4,
+  "colors": ["#0f380f", "#306230", "#8bac0f", "#9bbc0f"]
+}

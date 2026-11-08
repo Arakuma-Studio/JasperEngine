@@ -36,6 +36,7 @@
 #include "picking/SceneBvh.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/SplineSystem.h"
+#include "subsystem/WaterInteractionSystem.h"
 #include "util/Color.h"
 
 #include <algorithm>
@@ -79,6 +80,9 @@ void Scene::init(){
     registerSystem<RenderSystem>();
     // after Render, whose update makes this frame's world transforms (the trails' heads)
     registerSystem<TrailSystem>();
+    // after Render too (this frame's world transforms): the Water Excluders the water draws test and
+    // the Water Wakes' map it uploads
+    registerSystem<WaterInteractionSystem>();
     // before physics: agents set their bodies' velocities before the world steps (S19 D2)
     registerSystem<NavigationSystem>();
     registerSystem<PhysicsSystem>();
@@ -291,6 +295,100 @@ void Scene::setSceneColorScale(SceneColorScale scale){
 
 SceneColorScale Scene::getSceneColorScale() const{
     return settings.sceneColorScale;
+}
+
+void Scene::setPlanarReflectionResolution(PlanarReflectionResolution resolution){
+    settings.planarReflectionResolution = resolution;
+}
+
+PlanarReflectionResolution Scene::getPlanarReflectionResolution() const{
+    return settings.planarReflectionResolution;
+}
+
+void Scene::setPlanarReflectionLayers(uint32_t layers){
+    settings.planarReflectionLayers = layers;
+}
+
+uint32_t Scene::getPlanarReflectionLayers() const{
+    return settings.planarReflectionLayers;
+}
+
+void Scene::setPlanarReflectionShadows(bool shadows){
+    settings.planarReflectionShadows = shadows;
+}
+
+bool Scene::getPlanarReflectionShadows() const{
+    return settings.planarReflectionShadows;
+}
+
+void Scene::setPlanarReflectionFarClip(float farClip){
+    settings.planarReflectionFarClip = std::isfinite(farClip) ? std::max(farClip, 0.0f) : 0.0f;
+}
+
+float Scene::getPlanarReflectionFarClip() const{
+    return settings.planarReflectionFarClip;
+}
+
+void Scene::setPlanarReflectionClipOffset(float offset){
+    settings.planarReflectionClipOffset = std::isfinite(offset) ? offset : 0.0f;
+}
+
+float Scene::getPlanarReflectionClipOffset() const{
+    return settings.planarReflectionClipOffset;
+}
+
+void Scene::setMaxPlanarReflections(int count){
+    settings.maxPlanarReflections = std::clamp(count, 1, 4);
+}
+
+int Scene::getMaxPlanarReflections() const{
+    return settings.maxPlanarReflections;
+}
+
+void Scene::setWaterWakeResolution(WaterWakeResolution resolution){
+    settings.waterWakeResolution = resolution;
+}
+
+WaterWakeResolution Scene::getWaterWakeResolution() const{
+    return settings.waterWakeResolution;
+}
+
+void Scene::setWaterWakeArea(float area){
+    settings.waterWakeArea = std::isfinite(area) ? std::clamp(area, 8.0f, 1024.0f) : SceneSettings().waterWakeArea;
+}
+
+float Scene::getWaterWakeArea() const{
+    return settings.waterWakeArea;
+}
+
+void Scene::setWaterWakeFade(float fade){
+    settings.waterWakeFade = std::isfinite(fade) ? std::clamp(fade, 0.1f, 120.0f) : SceneSettings().waterWakeFade;
+}
+
+float Scene::getWaterWakeFade() const{
+    return settings.waterWakeFade;
+}
+
+double Scene::getSceneTime() const{
+    return Engine::hasPinnedShaderTime() ? Engine::getPinnedShaderTime() : sceneTime;
+}
+
+void Scene::setSceneTime(double seconds){
+    if (std::isfinite(seconds))
+        sceneTime = seconds;
+}
+
+void Scene::advanceSceneTime(double delta, bool evenWhenPaused){
+    if ((!sceneTimePaused || evenWhenPaused) && std::isfinite(delta) && delta > 0.0)
+        sceneTime += delta;
+}
+
+void Scene::setSceneTimePaused(bool paused){
+    sceneTimePaused = paused;
+}
+
+bool Scene::isSceneTimePaused() const{
+    return sceneTimePaused;
 }
 
 void Scene::setSSAOEnabled(bool ssaoEnabled){

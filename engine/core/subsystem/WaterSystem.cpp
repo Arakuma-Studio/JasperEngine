@@ -14,6 +14,8 @@
 #include "texture/Material.h"
 #include "util/WaterWaves.h"
 #include "subsystem/SplineSystem.h"
+#include "subsystem/WaterInteractionSystem.h"
+#include "component/WaterExcluderComponent.h"
 
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/RigidbodyComponent.h"
@@ -32,9 +34,9 @@ namespace{
 
     std::atomic<uint64_t> waveEvaluations{0};
 
-    WaterWaveSample evaluate(float x, float z, float time, const Vector2& direction, float height, float length, float speed){
+    WaterWaveSample evaluate(const WaterWaveParams& waves, float x, float z, float time){
         waveEvaluations.fetch_add(1, std::memory_order_relaxed);
-        return waterWaves(Vector2(x, z), time, direction, height, length, speed);
+        return waterSurfaceAt(waves, Vector2(x, z), time);
     }
 
 }
@@ -51,7 +53,7 @@ void WaterSystem::gatherVolumes() const{
     auto components = scene->getComponentArray<WaterVolumeComponent>();
     if (components->size() == 0)
         return;
-    time = Engine::getShaderTime();
+    time = Water::getTime(scene);
     for (size_t i = 0; i < components->size(); i++){
         const WaterVolumeComponent& component = components->getComponentFromIndex(i);
         const Entity entity = components->getEntity(i);
@@ -81,25 +83,17 @@ void WaterSystem::gatherVolumes() const{
         // the waves are the material's (R30): never copied into the volume
         if (component.waves == WaterVolumeWaves::FROM_MATERIAL){
             if (const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity); mesh && mesh->numSubmeshes > 0){
-                const Material& material = mesh->submeshes[0].material;
-                if (ShaderReference::getBase(material.shader) == Water::SHADER){
-                    const std::vector<std::string> features = ShaderReference::getEnabledFeatures(material.shader, material.shaderFeatures);
-                    if (std::find(features.begin(), features.end(), "WAVES") != features.end()){
-                        const Vector4 direction = ShaderLibraryValues::getParam(material.shaderParams, Water::SHADER, "waveDirection");
-                        volume.waves = true;
-                        volume.waveDirection = Vector2(direction.x, direction.y);
-                        volume.waveHeight = ShaderLibraryValues::getParam(material.shaderParams, Water::SHADER, "waveHeight").x;
-                        volume.waveLength = ShaderLibraryValues::getParam(material.shaderParams, Water::SHADER, "waveLength").x;
-                        volume.waveSpeed = ShaderLibraryValues::getParam(material.shaderParams, Water::SHADER, "waveSpeed").x;
-                    }
-                }
+                // library:water or a fork of it (@role water); without WAVES a flat surface
+                WaterWaveParams waves;
+                if (Water::readWaves(mesh->submeshes[0].material, waves) && waves.waves)
+                    volume.waves = waves;
             }
         }
         volumes.push_back(volume);
     }
 }
 
-const WaterSystem::Volume* WaterSystem::findVolume(float x, float y, float z, float& height, float& rate, Vector2& slope, Vector3& flow) const{
+const WaterSystem::Volume* WaterSystem::findVolume(float x, float y, float z, float& height, WaterWaveSample& wave, Vector3& flow) const{
     const Volume* found = nullptr;
     std::shared_ptr<SplineSystem> splines;
     for (const Volume& volume : volumes){
@@ -122,20 +116,16 @@ const WaterSystem::Volume* WaterSystem::findVolume(float x, float y, float z, fl
             if (y < volume.surface - volume.depth)
                 continue;
         }
-        float surfaceRate = 0.0f;
-        Vector2 surfaceSlope(0.0f, 0.0f);
-        if (volume.waves && volume.waveHeight != 0.0f){
-            const WaterWaveSample wave = evaluate(x, z, time, volume.waveDirection, volume.waveHeight, volume.waveLength, volume.waveSpeed);
-            surface += wave.height;
-            surfaceRate = wave.heightRate;
-            surfaceSlope = wave.slope;
+        WaterWaveSample surfaceWave;
+        if (volume.waves.waves && volume.waves.height != 0.0f){
+            surfaceWave = evaluate(volume.waves, x, z, time);
+            surface += surfaceWave.height;
         }
         // overlapping volumes: the highest surface wins
         if (!found || surface > height){
             found = &volume;
             height = surface;
-            rate = surfaceRate;
-            slope = surfaceSlope;
+            wave = surfaceWave;
             flow = surfaceFlow;
         }
     }
@@ -143,19 +133,34 @@ const WaterSystem::Volume* WaterSystem::findVolume(float x, float y, float z, fl
 }
 
 WaterSample WaterSystem::sample(const Vector3& point) const{
+    WaterSample result = sampleSurface(point);
+    if (!result.hasWater())
+        return result;
+    // what keeps it dry, and the wakes on that water
+    if (std::shared_ptr<WaterInteractionSystem> interaction = scene->findSystem<WaterInteractionSystem>()){
+        result.excluder = interaction->findExcluder(point);
+        if (result.excluder != NULL_ENTITY)
+            result.inWater = false;
+        float crest = 0.0f;
+        if (interaction->sampleWake(point.x, point.z, result.volume, result.wakeFoam, crest))
+            result.wakeHeight = crest * WATER_WAKE_CREST_HEIGHT;
+    }
+    return result;
+}
+
+WaterSample WaterSystem::sampleSurface(const Vector3& point) const{
     WaterSample result;
     gatherVolumes();
     float height = 0.0f;
-    float rate = 0.0f;
-    Vector2 slope;
+    WaterWaveSample wave;
     Vector3 flow;
-    if (const Volume* volume = findVolume(point.x, point.y, point.z, height, rate, slope, flow)){
+    if (const Volume* volume = findVolume(point.x, point.y, point.z, height, wave, flow)){
         result.volume = volume->entity;
         result.surfaceHeight = height;
         result.inWater = point.y <= height;
-        // as water.frag bends the flat surface's normal by the slope
-        result.normal = Vector3(-slope.x, 1.0f, -slope.y).normalized();
-        result.flowVelocity = flow + Vector3(0.0f, rate, 0.0f);
+        result.normal = wave.normal;
+        // the current plus the waves' motion (rising and falling; rolling with GERSTNER)
+        result.flowVelocity = flow + wave.velocity;
         return result;
     }
     // a spline river or lake without a Water Volume (SplineSystem::sampleWaterSurface)
@@ -173,22 +178,21 @@ WaterSample WaterSystem::sample(const Vector3& point) const{
     // a library:water mesh without a Water Volume: its surface over its bounds (Water.h)
     const std::vector<WaterSurface> surfaces = Water::getSurfaces(scene);
     if (const WaterSurface* surface = Water::findSurface(surfaces, point)){
-        const float shaderTime = Engine::getShaderTime();
         result.volume = surface->entity;
-        result.surfaceHeight = surface->getHeight(point.x, point.z, shaderTime);
-        result.inWater = point.y <= result.surfaceHeight;
-        result.normal = surface->getNormal(point.x, point.z, shaderTime);
-        if (surface->waves){
-            waveEvaluations.fetch_add(1, std::memory_order_relaxed);
-            result.flowVelocity = Vector3(0.0f, waterWaves(Vector2(point.x, point.z), shaderTime, surface->waveDirection,
-                                                          surface->waveHeight, surface->waveLength, surface->waveSpeed).heightRate, 0.0f);
+        result.surfaceHeight = surface->level;
+        if (surface->waves.waves){
+            const WaterWaveSample wave = evaluate(surface->waves, point.x, point.z, Water::getTime(scene));
+            result.surfaceHeight += wave.height;
+            result.normal = wave.normal;
+            result.flowVelocity = wave.velocity;
         }
+        result.inWater = point.y <= result.surfaceHeight;
     }
     return result;
 }
 
 float WaterSystem::sampleHeight(float x, float z) const{
-    const WaterSample result = sample(Vector3(x, std::numeric_limits<float>::infinity(), z));
+    const WaterSample result = sampleSurface(Vector3(x, std::numeric_limits<float>::infinity(), z));
     return result.hasWater() ? result.surfaceHeight : std::numeric_limits<float>::quiet_NaN();
 }
 
@@ -204,6 +208,10 @@ void WaterSystem::applyBuoyancy(float dt){
 
     const float gravity = physics->getGravity3D().length();
     JPH::BodyInterface& bodies = physics->getBodyInterface3D();
+    // columns inside a Water Excluder its body does not own are dry (cargo in a boat)
+    std::shared_ptr<WaterInteractionSystem> interaction;
+    if (scene->getComponentArray<WaterExcluderComponent>()->size() > 0)
+        interaction = scene->findSystem<WaterInteractionSystem>();
     // between steps, on the thread that steps: one body lock each, no mutex (R37's budget)
     const JPH::BodyLockInterface& locks = physics->world3D.GetBodyLockInterfaceNoLock();
     for (size_t i = 0; i < buoyancies->size(); i++){
@@ -288,11 +296,12 @@ void WaterSystem::applyBuoyancy(float dt){
         for (int c = 0; c < columns; c++){
             const JPH::RVec3 bottom = frame * bottoms[c];
             float height = 0.0f;
-            float rate = 0.0f;
-            Vector2 slope;
+            WaterWaveSample wave;
             Vector3 flow;
-            const Volume* volume = findVolume((float)bottom.GetX(), (float)bottom.GetY(), (float)bottom.GetZ(), height, rate, slope, flow);
+            const Volume* volume = findVolume((float)bottom.GetX(), (float)bottom.GetY(), (float)bottom.GetZ(), height, wave, flow);
             if (!volume)
+                continue;
+            if (interaction && interaction->findExcluder(Vector3((float)bottom.GetX(), (float)bottom.GetY(), (float)bottom.GetZ()), entity) != NULL_ENTITY)
                 continue;
             const float depth = std::clamp(height - (float)bottom.GetY(), 0.0f, columnHeight);
             if (depth <= 0.0f)
@@ -301,8 +310,8 @@ void WaterSystem::applyBuoyancy(float dt){
             column.point = bottom + JPH::Vec3(0.0f, depth * 0.5f, 0.0f);
             column.depth = depth;
             column.volume = volume;
-            column.waterVelocity = flow + Vector3(0.0f, rate, 0.0f);
-            if (volume->waves || flow.x != 0.0f || flow.y != 0.0f || flow.z != 0.0f)
+            column.waterVelocity = flow + wave.velocity;
+            if (volume->waves.waves || flow.x != 0.0f || flow.y != 0.0f || flow.z != 0.0f)
                 movingWater = true;
         }
         if (submerged == 0)

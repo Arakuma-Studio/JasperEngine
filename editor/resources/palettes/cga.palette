@@ -1,0 +1,14 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "CGA",
+  "author": "IBM",
+  "description": "The IBM Color Graphics Adapter's 16 RGBI colours in hardware index order (colour 6 is the brown the monitor makes of dark yellow); colours from Lospec's 'Color Graphics Adapter'.",
+  "source": {"kind": "builtin", "id": "cga", "url": "https://lospec.com/palette-list/color-graphics-adapter"},
+  "columns": 8,
+  "colors": [
+    "#000000", "#0000aa", "#00aa00", "#00aaaa", "#aa0000", "#aa00aa", "#aa5500", "#aaaaaa",
+    "#555555", "#5555ff", "#55ff55", "#55ffff", "#ff5555", "#ff55ff", "#ffff55", "#ffffff"
+  ],
+  "names": {"0": "black", "1": "blue", "2": "green", "3": "cyan", "4": "red", "5": "magenta", "6": "brown", "7": "light grey", "8": "dark grey", "9": "light blue", "10": "light green", "11": "light cyan", "12": "light red", "13": "light magenta", "14": "yellow", "15": "white"}
+}

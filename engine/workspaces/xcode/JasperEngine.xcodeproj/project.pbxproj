@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5A1E0F0C2F5A000000000003 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 5A1E0F0C2F5A000000000001 /* PrivacyInfo.xcprivacy */; };
+		5A1E0F0C2F5A000000000004 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 5A1E0F0C2F5A000000000002 /* PrivacyInfo.xcprivacy */; };
         5E5280000000000000000010 /* HangStackCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000012 /* HangStackCapture.cpp */; };
         5E5280000000000000000011 /* HangStackCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000012 /* HangStackCapture.cpp */; };
 		5E5150000000000000000014 /* EngineProfiling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000001 /* EngineProfiling.cpp */; };
@@ -550,14 +552,6 @@
 		7AB1C0042F2A000000000001 /* PhysicsLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7AB1C0022F2A000000000001 /* PhysicsLayers.cpp */; };
 		7AA5E0052F2A000000000001 /* TagManager.h in Headers */ = {isa = PBXBuildFile; fileRef = 7AA5E0012F2A000000000001 /* TagManager.h */; };
 		7AB1C0052F2A000000000001 /* PhysicsLayers.h in Headers */ = {isa = PBXBuildFile; fileRef = 7AB1C0012F2A000000000001 /* PhysicsLayers.h */; };
-		711607082A0D1F0C0052A9C3 /* AdMobAdapter.m in Sources */ = {isa = PBXBuildFile; fileRef = 711607072A0D1F0C0052A9C3 /* AdMobAdapter.m */; };
-		7116070B2A0D84660052A9C3 /* GoogleMobileAds.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070A2A0D84660052A9C3 /* GoogleMobileAds.xcframework */; };
-		711607122A0D86500052A9C3 /* GoogleAppMeasurement.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070C2A0D864F0052A9C3 /* GoogleAppMeasurement.xcframework */; };
-		711607132A0D86500052A9C3 /* FBLPromises.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070D2A0D86500052A9C3 /* FBLPromises.xcframework */; };
-		711607142A0D86500052A9C3 /* GoogleUtilities.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070E2A0D86500052A9C3 /* GoogleUtilities.xcframework */; };
-		711607152A0D86500052A9C3 /* nanopb.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7116070F2A0D86500052A9C3 /* nanopb.xcframework */; };
-		711607162A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 711607102A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework */; };
-		711607172A0D86500052A9C3 /* UserMessagingPlatform.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 711607112A0D86500052A9C3 /* UserMessagingPlatform.xcframework */; };
 		71165BBF282981BE00CF79C1 /* Base64.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71165BBD282981BE00CF79C1 /* Base64.cpp */; };
 		71165BC0282981BE00CF79C1 /* Base64.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71165BBD282981BE00CF79C1 /* Base64.cpp */; };
 		71165BC1282981BE00CF79C1 /* Base64.h in Headers */ = {isa = PBXBuildFile; fileRef = 71165BBE282981BE00CF79C1 /* Base64.h */; };
@@ -1189,6 +1183,7 @@
 		434F4D50150191D288E00CDA /* GridPathfinder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50CF9183C86C5E3D30 /* GridPathfinder.cpp */; };
 		511A000D0000000000000000 /* MeshSystemGltfPbr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */; };
 		71ABBD4B27A87A2E001CE3AF /* MeshSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD4827A87A2E001CE3AF /* MeshSystem.h */; };
+		434F4D502DD2B190656F4392 /* NavRandom.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D507D42600285C43AB1 /* NavRandom.h */; };
 		434F4D5030DE4ED4671C2A46 /* MeshTriangles.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50290007DFE40AC9CB /* MeshTriangles.h */; };
 		434F4D50BD0DE86696C01B02 /* NavigationSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50918B791D9DA25DA7 /* NavigationSystem.h */; };
 		434F4D50C2498E27D7F92D4C /* NavTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D503F0117111AE20581 /* NavTypes.h */; };
@@ -4372,6 +4367,7 @@
 		4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A4609FEFF72DC9EF /* PlayerModules.h */; };
 		4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4760C1D1328627EB69 /* UIDocumentInput.h */; };
 		4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */; };
+		4A534E47A2C24EA2C9A98F2B /* WaterLayering.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A3C926279EC37FB5 /* WaterLayering.h */; };
 		4A534E47D3FE7A3BDC14E1FD /* VisibleList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47261DED0CDC733CE1 /* VisibleList.cpp */; };
 		4A534E47CB4A1456D094C81E /* VisibleList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47261DED0CDC733CE1 /* VisibleList.cpp */; };
 		4A534E47F01A7D2355E67B37 /* VisibleList.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478899E2BB41CC207E /* VisibleList.h */; };
@@ -4486,6 +4482,44 @@
 		4A534E47D9D64A1F2922561D /* DrawBatcher.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475065F0D282851FFA /* DrawBatcher.h */; };
 		4A534E4753AE5E337EEF8298 /* FrustumCull.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E7BE6C143B079A81 /* FrustumCull.h */; };
 		4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477B2FB8E9277F0AE4 /* ContentHash.h */; };
+		4A534E4738A73EDC2D33FCDF /* UISystemNavigation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */; };
+		4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */; };
+		4A534E4727874604BB05EB02 /* UISelectable.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B4E493A883DC863A /* UISelectable.h */; };
+		4A534E47E123E026E8155148 /* UIEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F8386218660CC63D /* UIEventData.h */; };
+		4A534E4764CC451056144EC2 /* WaterExcluder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47545C10CF0EFCC376 /* WaterExcluder.cpp */; };
+		4A534E47A571DE006C5D4C74 /* WaterExcluder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47545C10CF0EFCC376 /* WaterExcluder.cpp */; };
+		4A534E4784ABCD90E01BE30E /* WaterWake.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C812977268010C9B /* WaterWake.cpp */; };
+		4A534E471C54C5B9FE7FF54A /* WaterWake.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C812977268010C9B /* WaterWake.cpp */; };
+		4A534E472BC25BFFE464BDF9 /* WaterInteractionSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B7A94BBFE58710AB /* WaterInteractionSystem.cpp */; };
+		4A534E474B569D512A444926 /* WaterInteractionSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B7A94BBFE58710AB /* WaterInteractionSystem.cpp */; };
+		4A534E4703A766F23392A387 /* WaterExclusion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477609E88E6C406D11 /* WaterExclusion.cpp */; };
+		4A534E476AE031A9A9F54C53 /* WaterExclusion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477609E88E6C406D11 /* WaterExclusion.cpp */; };
+		4A534E471120211E6C5BC051 /* WaterWakeMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47924BA624B2ED75D2 /* WaterWakeMap.cpp */; };
+		4A534E47D453076BA16956C1 /* WaterWakeMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47924BA624B2ED75D2 /* WaterWakeMap.cpp */; };
+		4A534E47C6CB8B435C8021F5 /* WaterExcluderComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CE9FB71853CA5540 /* WaterExcluderComponent.h */; };
+		4A534E4728C8AFB94874E742 /* WaterWakeComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F9098224B2B02009 /* WaterWakeComponent.h */; };
+		4A534E47792DBDD1E2C7DBA5 /* WaterExcluder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B7C8C6FB41E8D4F1 /* WaterExcluder.h */; };
+		4A534E4742F9C29545DE16D3 /* WaterWake.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47EEAEA234128B30D2 /* WaterWake.h */; };
+		4A534E47C677145CCB1C3CAA /* WaterInteractionSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B790A1EA35BBD60C /* WaterInteractionSystem.h */; };
+		4A534E479912D77D7BDDF538 /* WaterExclusion.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4770610EDBE3BF2F84 /* WaterExclusion.h */; };
+		4A534E47DCF10E9F1AEB8966 /* WaterWakeMap.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4774FB09A9615E4FA5 /* WaterWakeMap.h */; };
+		4A534E47F2CD91899A5516E7 /* PixelPerfectLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */; };
+		4A534E47F6F783BAE5B25B2E /* PixelPerfectLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */; };
+		4A534E47FC51F1B3A7B60422 /* PixelRotation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4729B77C264D072B9E /* PixelRotation.cpp */; };
+		4A534E478CE6807E3A08DEE2 /* PixelRotation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4729B77C264D072B9E /* PixelRotation.cpp */; };
+		4A534E47BAE152DFB7C3B8C0 /* PixelsPerUnit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472B25A401BD02EB09 /* PixelsPerUnit.cpp */; };
+		4A534E47D9601CF893F61A9F /* PixelsPerUnit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472B25A401BD02EB09 /* PixelsPerUnit.cpp */; };
+		4A534E47BF4EF1850A27F348 /* PixelSnap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F2BFD84A29C801DF /* PixelSnap.cpp */; };
+		4A534E47E018CE2E97B085F6 /* PixelSnap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F2BFD84A29C801DF /* PixelSnap.cpp */; };
+		4A534E47611B141644A354FB /* PixelPerfectCamera.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476E7497A030BB3E4B /* PixelPerfectCamera.cpp */; };
+		4A534E476C92FA1FA0E80B1E /* PixelPerfectCamera.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476E7497A030BB3E4B /* PixelPerfectCamera.cpp */; };
+		4A534E47C7919DBFFB70D497 /* RenderSystemPixelArt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */; };
+		4A534E47B22CC36E554C21C2 /* RenderSystemPixelArt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */; };
+		4A534E47121FD6387E508980 /* PixelPerfectCameraComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */; };
+		4A534E4796FEBF33733E2DFB /* PixelPerfectCamera.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479A02188939300830 /* PixelPerfectCamera.h */; };
+		4A534E473C40ED72D5D87706 /* PixelPerfectLayout.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */; };
+		4A534E47182EAC07119845A8 /* PixelRotation.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D3B649BD59C300EB /* PixelRotation.h */; };
+		4A534E47B5C474A07FEAAB76 /* PixelSnap.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474815DCD00E6D3674 /* PixelSnap.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -4898,6 +4932,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		5A1E0F0C2F5A000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = ios/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		5A1E0F0C2F5A000000000002 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = macos/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
         5E5280000000000000000012 /* HangStackCapture.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = HangStackCapture.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000001 /* EngineProfiling.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = EngineProfiling.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000002 /* EngineProfiling.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EngineProfiling.h; sourceTree = "<group>"; };
@@ -5531,15 +5567,6 @@
 		7AA5E0022F2A000000000001 /* TagManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = TagManager.cpp; sourceTree = "<group>"; };
 		7AB1C0012F2A000000000001 /* PhysicsLayers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PhysicsLayers.h; sourceTree = "<group>"; };
 		7AB1C0022F2A000000000001 /* PhysicsLayers.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsLayers.cpp; sourceTree = "<group>"; };
-		711607072A0D1F0C0052A9C3 /* AdMobAdapter.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AdMobAdapter.m; sourceTree = "<group>"; };
-		711607092A0D1F360052A9C3 /* AdMobAdapter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AdMobAdapter.h; sourceTree = "<group>"; };
-		7116070A2A0D84660052A9C3 /* GoogleMobileAds.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GoogleMobileAds.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/GoogleMobileAds.xcframework"; sourceTree = "<group>"; };
-		7116070C2A0D864F0052A9C3 /* GoogleAppMeasurement.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GoogleAppMeasurement.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurement.xcframework"; sourceTree = "<group>"; };
-		7116070D2A0D86500052A9C3 /* FBLPromises.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = FBLPromises.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/FBLPromises.xcframework"; sourceTree = "<group>"; };
-		7116070E2A0D86500052A9C3 /* GoogleUtilities.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GoogleUtilities.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/GoogleUtilities.xcframework"; sourceTree = "<group>"; };
-		7116070F2A0D86500052A9C3 /* nanopb.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = nanopb.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/nanopb.xcframework"; sourceTree = "<group>"; };
-		711607102A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GoogleAppMeasurementIdentitySupport.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurementIdentitySupport.xcframework"; sourceTree = "<group>"; };
-		711607112A0D86500052A9C3 /* UserMessagingPlatform.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = UserMessagingPlatform.xcframework; path = "../../platform/apple/GoogleMobileAdsSdkiOS-10.14.0/UserMessagingPlatform.xcframework"; sourceTree = "<group>"; };
 		71165BBD282981BE00CF79C1 /* Base64.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Base64.cpp; sourceTree = "<group>"; };
 		71165BBE282981BE00CF79C1 /* Base64.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Base64.h; sourceTree = "<group>"; };
 		711BFE392E6E5AE500677D11 /* ScriptComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ScriptComponent.h; sourceTree = "<group>"; };
@@ -6453,6 +6480,7 @@
 		434F4D50CF9183C86C5E3D30 /* GridPathfinder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/GridPathfinder.cpp; sourceTree = "<group>"; };
 		511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = MeshSystemGltfPbr.cpp; sourceTree = "<group>"; };
 		71ABBD4827A87A2E001CE3AF /* MeshSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshSystem.h; sourceTree = "<group>"; };
+		434F4D507D42600285C43AB1 /* NavRandom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavRandom.h; sourceTree = "<group>"; };
 		434F4D50290007DFE40AC9CB /* MeshTriangles.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../util/MeshTriangles.h; sourceTree = "<group>"; };
 		434F4D50918B791D9DA25DA7 /* NavigationSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NavigationSystem.h; sourceTree = "<group>"; };
 		434F4D503F0117111AE20581 /* NavTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavTypes.h; sourceTree = "<group>"; };
@@ -8686,6 +8714,7 @@
 		4A534E47A4609FEFF72DC9EF /* PlayerModules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerModules.h; sourceTree = "<group>"; };
 		4A534E4760C1D1328627EB69 /* UIDocumentInput.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentInput.h; sourceTree = "<group>"; };
 		4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentSystemNone.h; sourceTree = "<group>"; };
+		4A534E47A3C926279EC37FB5 /* WaterLayering.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterLayering.h; sourceTree = "<group>"; };
 		4A534E47261DED0CDC733CE1 /* VisibleList.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VisibleList.cpp; sourceTree = "<group>"; };
 		4A534E478899E2BB41CC207E /* VisibleList.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VisibleList.h; sourceTree = "<group>"; };
 		4A534E47238F638B6921C9C5 /* AudioMeter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioMeter.cpp; sourceTree = "<group>"; };
@@ -8768,6 +8797,32 @@
 		4A534E475065F0D282851FFA /* DrawBatcher.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DrawBatcher.h; sourceTree = "<group>"; };
 		4A534E47E7BE6C143B079A81 /* FrustumCull.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrustumCull.h; sourceTree = "<group>"; };
 		4A534E477B2FB8E9277F0AE4 /* ContentHash.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ContentHash.h; sourceTree = "<group>"; };
+		4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemNavigation.cpp; sourceTree = "<group>"; };
+		4A534E47B4E493A883DC863A /* UISelectable.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UISelectable.h; sourceTree = "<group>"; };
+		4A534E47F8386218660CC63D /* UIEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIEventData.h; sourceTree = "<group>"; };
+		4A534E47545C10CF0EFCC376 /* WaterExcluder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterExcluder.cpp; sourceTree = "<group>"; };
+		4A534E47C812977268010C9B /* WaterWake.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterWake.cpp; sourceTree = "<group>"; };
+		4A534E47B7A94BBFE58710AB /* WaterInteractionSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterInteractionSystem.cpp; sourceTree = "<group>"; };
+		4A534E477609E88E6C406D11 /* WaterExclusion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterExclusion.cpp; sourceTree = "<group>"; };
+		4A534E47924BA624B2ED75D2 /* WaterWakeMap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterWakeMap.cpp; sourceTree = "<group>"; };
+		4A534E47CE9FB71853CA5540 /* WaterExcluderComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterExcluderComponent.h; sourceTree = "<group>"; };
+		4A534E47F9098224B2B02009 /* WaterWakeComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterWakeComponent.h; sourceTree = "<group>"; };
+		4A534E47B7C8C6FB41E8D4F1 /* WaterExcluder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterExcluder.h; sourceTree = "<group>"; };
+		4A534E47EEAEA234128B30D2 /* WaterWake.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterWake.h; sourceTree = "<group>"; };
+		4A534E47B790A1EA35BBD60C /* WaterInteractionSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterInteractionSystem.h; sourceTree = "<group>"; };
+		4A534E4770610EDBE3BF2F84 /* WaterExclusion.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterExclusion.h; sourceTree = "<group>"; };
+		4A534E4774FB09A9615E4FA5 /* WaterWakeMap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterWakeMap.h; sourceTree = "<group>"; };
+		4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelPerfectLayout.cpp; sourceTree = "<group>"; };
+		4A534E4729B77C264D072B9E /* PixelRotation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelRotation.cpp; sourceTree = "<group>"; };
+		4A534E472B25A401BD02EB09 /* PixelsPerUnit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelsPerUnit.cpp; sourceTree = "<group>"; };
+		4A534E47F2BFD84A29C801DF /* PixelSnap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelSnap.cpp; sourceTree = "<group>"; };
+		4A534E476E7497A030BB3E4B /* PixelPerfectCamera.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelPerfectCamera.cpp; sourceTree = "<group>"; };
+		4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemPixelArt.cpp; sourceTree = "<group>"; };
+		4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectCameraComponent.h; sourceTree = "<group>"; };
+		4A534E479A02188939300830 /* PixelPerfectCamera.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectCamera.h; sourceTree = "<group>"; };
+		4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectLayout.h; sourceTree = "<group>"; };
+		4A534E47D3B649BD59C300EB /* PixelRotation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelRotation.h; sourceTree = "<group>"; };
+		4A534E474815DCD00E6D3674 /* PixelSnap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelSnap.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8852,13 +8907,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				711607122A0D86500052A9C3 /* GoogleAppMeasurement.xcframework in Frameworks */,
-				711607132A0D86500052A9C3 /* FBLPromises.xcframework in Frameworks */,
-				711607142A0D86500052A9C3 /* GoogleUtilities.xcframework in Frameworks */,
-				711607152A0D86500052A9C3 /* nanopb.xcframework in Frameworks */,
-				711607162A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework in Frameworks */,
-				711607172A0D86500052A9C3 /* UserMessagingPlatform.xcframework in Frameworks */,
-				7116070B2A0D84660052A9C3 /* GoogleMobileAds.xcframework in Frameworks */,
 				713D82D7259D324700567F9F /* libjasperengine-ios.a in Frameworks */,
 				17995BFA3003C40000411B78 /* GameController.framework in Frameworks */,
 				4A534E47723A6ABA786CF3A1 /* AVFoundation.framework in Frameworks */,
@@ -10002,8 +10050,6 @@
 				713D8335259D407A00567F9F /* main.m */,
 				713D8337259D407A00567F9F /* ViewController.h */,
 				713D8334259D407A00567F9F /* ViewController.m */,
-				711607072A0D1F0C0052A9C3 /* AdMobAdapter.m */,
-				711607092A0D1F360052A9C3 /* AdMobAdapter.h */,
 			);
 			path = ios;
 			sourceTree = "<group>";
@@ -10041,6 +10087,8 @@
 			children = (
 				710EE4A12A2E2A2000EB04EC /* macos */,
 				710EE49F2A2E291100EB04EC /* ios */,
+				5A1E0F0C2F5A000000000001 /* PrivacyInfo.xcprivacy */,
+				5A1E0F0C2F5A000000000002 /* PrivacyInfo.xcprivacy */,
 				710EE49C2A2E1E9200EB04EC /* Assets.xcassets */,
 				7162FEAA25993F810075B97D /* project */,
 				7162FE2D2597C7990075B97D /* platform */,
@@ -10610,6 +10658,20 @@
 			path = memory;
 			sourceTree = "<group>";
 		};
+		4A534E47F4CE7F7900B70B3C /* pixelart */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */,
+				4A534E4729B77C264D072B9E /* PixelRotation.cpp */,
+				4A534E472B25A401BD02EB09 /* PixelsPerUnit.cpp */,
+				4A534E47F2BFD84A29C801DF /* PixelSnap.cpp */,
+				4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */,
+				4A534E47D3B649BD59C300EB /* PixelRotation.h */,
+				4A534E474815DCD00E6D3674 /* PixelSnap.h */,
+			);
+			path = pixelart;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -10690,6 +10752,7 @@
 				4A534E473659413B6A589E09 /* device */,
 				4A534E474D0727C81240C154 /* model */,
 				4A534E47FD9CD85331CEC557 /* memory */,
+				4A534E47F4CE7F7900B70B3C /* pixelart */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -10779,6 +10842,10 @@
 				4A534E47C4F45D33EE25F2E9 /* StableArray.h */,
 				4A534E477812D37EDE027E54 /* ContentHash.cpp */,
 				4A534E477B2FB8E9277F0AE4 /* ContentHash.h */,
+				4A534E477609E88E6C406D11 /* WaterExclusion.cpp */,
+				4A534E47924BA624B2ED75D2 /* WaterWakeMap.cpp */,
+				4A534E4770610EDBE3BF2F84 /* WaterExclusion.h */,
+				4A534E4774FB09A9615E4FA5 /* WaterWakeMap.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -10855,6 +10922,7 @@
 				4A534E476309E3EF32DDB09B /* LineRibbonBuilder.cpp */,
 				4A534E47197C345843945889 /* LineRibbonBuilder.h */,
 				4A534E4737234843A0260B98 /* UIDrawColor.h */,
+				4A534E47A3C926279EC37FB5 /* WaterLayering.h */,
 				4A534E47261DED0CDC733CE1 /* VisibleList.cpp */,
 				4A534E478899E2BB41CC207E /* VisibleList.h */,
 				4A534E474A83C09CDE4EC26D /* CapsuleShadows.cpp */,
@@ -10977,6 +11045,10 @@
 				4A534E47B67CC1427EC3B96B /* CapsuleShadowCasterComponent.h */,
 				4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */,
 				4A534E47D9914C150209E5CB /* ComponentEvents.h */,
+				4A534E47B4E493A883DC863A /* UISelectable.h */,
+				4A534E47CE9FB71853CA5540 /* WaterExcluderComponent.h */,
+				4A534E47F9098224B2B02009 /* WaterWakeComponent.h */,
+				4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -11088,6 +11160,8 @@
 				4A534E477741740820D741F9 /* VideoPlayer.h */,
 				4A534E47566C2DC1D064EB2A /* CapsuleShadowCaster.cpp */,
 				4A534E47BBCC2318C93E86D2 /* CapsuleShadowCaster.h */,
+				4A534E476E7497A030BB3E4B /* PixelPerfectCamera.cpp */,
+				4A534E479A02188939300830 /* PixelPerfectCamera.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -11182,6 +11256,7 @@
 				434F4D50CF9183C86C5E3D30 /* GridPathfinder.cpp */,
 				511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */,
 				71ABBD4827A87A2E001CE3AF /* MeshSystem.h */,
+				434F4D507D42600285C43AB1 /* NavRandom.h */,
 				434F4D50290007DFE40AC9CB /* MeshTriangles.h */,
 				434F4D50918B791D9DA25DA7 /* NavigationSystem.h */,
 				434F4D503F0117111AE20581 /* NavTypes.h */,
@@ -11256,6 +11331,10 @@
 				4A534E47F7FB625C23466BAF /* RenderSystemLighting.cpp */,
 				4A534E472FCC66B498BDDE06 /* RenderSystemLighting.h */,
 				4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */,
+				4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */,
+				4A534E47B7A94BBFE58710AB /* WaterInteractionSystem.cpp */,
+				4A534E47B790A1EA35BBD60C /* WaterInteractionSystem.h */,
+				4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -11378,15 +11457,8 @@
 			children = (
 				717AD972290B67B8007D7DB5 /* AudioToolbox.framework */,
 				717AD970290B67A5007D7DB5 /* AVFoundation.framework */,
-				7116070D2A0D86500052A9C3 /* FBLPromises.xcframework */,
 				17995BF93003C40000411B78 /* GameController.framework */,
 				A5E05A7C0000000000000003 /* CoreServices.framework */,
-				7116070C2A0D864F0052A9C3 /* GoogleAppMeasurement.xcframework */,
-				711607102A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework */,
-				7116070A2A0D84660052A9C3 /* GoogleMobileAds.xcframework */,
-				7116070E2A0D86500052A9C3 /* GoogleUtilities.xcframework */,
-				7116070F2A0D86500052A9C3 /* nanopb.xcframework */,
-				711607112A0D86500052A9C3 /* UserMessagingPlatform.xcframework */,
 				4A534E47982642CBDC327A37 /* CoreMedia.framework */,
 				4A534E478AD9CA0DD4CAF8DB /* CoreVideo.framework */,
 			);
@@ -11516,6 +11588,10 @@
 				434F4D505D19875CF883CFC3 /* WaterVolume.cpp */,
 				4A534E472E658AD463ED1A16 /* LocalVolumetricFog.h */,
 				4A534E47252827BC13C6F95F /* VolumetricClouds.h */,
+				4A534E47545C10CF0EFCC376 /* WaterExcluder.cpp */,
+				4A534E47C812977268010C9B /* WaterWake.cpp */,
+				4A534E47B7C8C6FB41E8D4F1 /* WaterExcluder.h */,
+				4A534E47EEAEA234128B30D2 /* WaterWake.h */,
 			);
 			path = environment;
 			sourceTree = "<group>";
@@ -12396,6 +12472,7 @@
 				4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */,
 				4A534E477650920F4D670D0F /* OnScreenControls.h */,
 				4A534E47AD6F5BB381B88CCB /* PointerEventData.h */,
+				4A534E47F8386218660CC63D /* UIEventData.h */,
 			);
 			path = ui;
 			sourceTree = "<group>";
@@ -15018,6 +15095,7 @@
 				71E54514284D5BE000C68FAB /* ScaleTracksComponent.h in Headers */,
 				717AD992292FC30A007D7DB5 /* Framebuffer.h in Headers */,
 				71ABBD4B27A87A2E001CE3AF /* MeshSystem.h in Headers */,
+				434F4D502DD2B190656F4392 /* NavRandom.h in Headers */,
 				434F4D5030DE4ED4671C2A46 /* MeshTriangles.h in Headers */,
 				434F4D50BD0DE86696C01B02 /* NavigationSystem.h in Headers */,
 				434F4D50C2498E27D7F92D4C /* NavTypes.h in Headers */,
@@ -15539,6 +15617,7 @@
 				4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */,
 				4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */,
 				4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */,
+				4A534E47A2C24EA2C9A98F2B /* WaterLayering.h in Headers */,
 				4A534E47F01A7D2355E67B37 /* VisibleList.h in Headers */,
 				4A534E47A5B06992D7443434 /* AudioMeter.h in Headers */,
 				4A534E4743D9DE5C59F781F2 /* TruePeak.h in Headers */,
@@ -15589,6 +15668,20 @@
 				4A534E47D9D64A1F2922561D /* DrawBatcher.h in Headers */,
 				4A534E4753AE5E337EEF8298 /* FrustumCull.h in Headers */,
 				4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */,
+				4A534E4727874604BB05EB02 /* UISelectable.h in Headers */,
+				4A534E47E123E026E8155148 /* UIEventData.h in Headers */,
+				4A534E47C6CB8B435C8021F5 /* WaterExcluderComponent.h in Headers */,
+				4A534E4728C8AFB94874E742 /* WaterWakeComponent.h in Headers */,
+				4A534E47792DBDD1E2C7DBA5 /* WaterExcluder.h in Headers */,
+				4A534E4742F9C29545DE16D3 /* WaterWake.h in Headers */,
+				4A534E47C677145CCB1C3CAA /* WaterInteractionSystem.h in Headers */,
+				4A534E479912D77D7BDDF538 /* WaterExclusion.h in Headers */,
+				4A534E47DCF10E9F1AEB8966 /* WaterWakeMap.h in Headers */,
+				4A534E47121FD6387E508980 /* PixelPerfectCameraComponent.h in Headers */,
+				4A534E4796FEBF33733E2DFB /* PixelPerfectCamera.h in Headers */,
+				4A534E473C40ED72D5D87706 /* PixelPerfectLayout.h in Headers */,
+				4A534E47182EAC07119845A8 /* PixelRotation.h in Headers */,
+				4A534E47B5C474A07FEAAB76 /* PixelSnap.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -16932,6 +17025,7 @@
 				717D9B4E27338381002C0803 /* lua in Resources */,
 				7128CFAE25BA717500965B51 /* Main.storyboard in Resources */,
 				710EE49D2A2E1E9200EB04EC /* Assets.xcassets in Resources */,
+				5A1E0F0C2F5A000000000003 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -16942,6 +17036,7 @@
 				7128CEE425BA705600965B51 /* Main.storyboard in Resources */,
 				717D9B4F27338382002C0803 /* lua in Resources */,
 				710EE49E2A2E1E9200EB04EC /* Assets.xcassets in Resources */,
+				5A1E0F0C2F5A000000000004 /* PrivacyInfo.xcprivacy in Resources */,
 				71BE60E525B1D019006D6E02 /* assets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -18118,6 +18213,18 @@
 				4A534E4771794B0938C50F3F /* DrawBatcher.cpp in Sources */,
 				4A534E47780F1FB63C92E44A /* RenderSystemBatch.cpp in Sources */,
 				4A534E47EC1527BD9215708F /* ContentHash.cpp in Sources */,
+				4A534E4738A73EDC2D33FCDF /* UISystemNavigation.cpp in Sources */,
+				4A534E4764CC451056144EC2 /* WaterExcluder.cpp in Sources */,
+				4A534E4784ABCD90E01BE30E /* WaterWake.cpp in Sources */,
+				4A534E472BC25BFFE464BDF9 /* WaterInteractionSystem.cpp in Sources */,
+				4A534E4703A766F23392A387 /* WaterExclusion.cpp in Sources */,
+				4A534E471120211E6C5BC051 /* WaterWakeMap.cpp in Sources */,
+				4A534E47F2CD91899A5516E7 /* PixelPerfectLayout.cpp in Sources */,
+				4A534E47FC51F1B3A7B60422 /* PixelRotation.cpp in Sources */,
+				4A534E47BAE152DFB7C3B8C0 /* PixelsPerUnit.cpp in Sources */,
+				4A534E47BF4EF1850A27F348 /* PixelSnap.cpp in Sources */,
+				4A534E47611B141644A354FB /* PixelPerfectCamera.cpp in Sources */,
+				4A534E47C7919DBFFB70D497 /* RenderSystemPixelArt.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18139,7 +18246,6 @@
 				713D835B259D408C00567F9F /* AppDelegate.m in Sources */,
 				7885CE65446ED78C3C4BEB63 /* SceneDelegate.m in Sources */,
 				713D82E4259D32FE00567F9F /* JasperEngineApple.mm in Sources */,
-				711607082A0D1F0C0052A9C3 /* AdMobAdapter.m in Sources */,
 				7158F43F259C2C82006E55D3 /* Renderer.mm in Sources */,
 				7162FEAC25993F810075B97D /* main.cpp in Sources */,
 				17995BF73003C3A800411B78 /* JasperEngineGameController.mm in Sources */,
@@ -18941,6 +19047,18 @@
 				4A534E47C1EDEEFB7A4DB287 /* DrawBatcher.cpp in Sources */,
 				4A534E47C54C9AAC683562BB /* RenderSystemBatch.cpp in Sources */,
 				4A534E474E1AD9E2E230BD31 /* ContentHash.cpp in Sources */,
+				4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */,
+				4A534E47A571DE006C5D4C74 /* WaterExcluder.cpp in Sources */,
+				4A534E471C54C5B9FE7FF54A /* WaterWake.cpp in Sources */,
+				4A534E474B569D512A444926 /* WaterInteractionSystem.cpp in Sources */,
+				4A534E476AE031A9A9F54C53 /* WaterExclusion.cpp in Sources */,
+				4A534E47D453076BA16956C1 /* WaterWakeMap.cpp in Sources */,
+				4A534E47F6F783BAE5B25B2E /* PixelPerfectLayout.cpp in Sources */,
+				4A534E478CE6807E3A08DEE2 /* PixelRotation.cpp in Sources */,
+				4A534E47D9601CF893F61A9F /* PixelsPerUnit.cpp in Sources */,
+				4A534E47E018CE2E97B085F6 /* PixelSnap.cpp in Sources */,
+				4A534E476C92FA1FA0E80B1E /* PixelPerfectCamera.cpp in Sources */,
+				4A534E47B22CC36E554C21C2 /* RenderSystemPixelArt.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -21594,7 +21712,6 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
-					JASPERENGINE_ADMOB,
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
@@ -21660,7 +21777,6 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
-					JASPERENGINE_ADMOB,
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
@@ -23619,7 +23735,7 @@
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/zstd/lib/common",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -23646,7 +23762,7 @@
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/zstd/lib/common",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -23676,7 +23792,7 @@
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/zstd/lib/common",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -23703,7 +23819,7 @@
 					"$(SRCROOT)/../../libs/zstd/lib",
 					"$(SRCROOT)/../../libs/zstd/lib/common",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;

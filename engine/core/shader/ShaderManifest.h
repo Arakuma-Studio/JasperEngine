@@ -91,7 +91,29 @@ namespace jasperengine{
         // tangents and uv1, the variant samples it (HAS_NORMAL_MAP) and the shader lights
         // through includes/lighting2d.glsl's getNormal2D (it must include that file, which
         // reads the tangent frame surface_vs.glsl writes then). Mesh shaders only
-        ShaderRequire_NormalMap = 1 << 11
+        ShaderRequire_NormalMap = 1 << 11,
+        // the scene mirrored about the horizontal plane of the draw's water level
+        // (includes/planar_reflection.glsl, SURFACE_PLANAR_REFLECTION, u_planarReflectionTexture):
+        // a reflection pass of the camera per plane height (scene setting Planar Reflections),
+        // bound per draw; without one this frame the shader is told so and falls back. Mesh
+        // shaders only, fragment stage
+        ShaderRequire_PlanarReflection = 1 << 12,
+        // what keeps water out and what moving hulls leave on it (includes/water_interaction.glsl,
+        // engine-written members at the end of the shader's u_fs_customParams): the Water Excluders
+        // over the draw's mesh and the scene's Water Wake map. Not SURFACE_* defines: the variant takes 'Wex' (USE_WATER_EXCLUSION) / 'Wwk'
+        // (USE_WATER_WAKE) only while its scene has such components, so without them the shader
+        // compiles as if it did not ask. They imply position. Mesh shaders only, fragment stage
+        ShaderRequire_WaterExclusion = 1 << 13,
+        ShaderRequire_WaterWake = 1 << 14
+    };
+
+    // What the engine treats a shader as (manifest @role), whatever its name: forks of
+    // library:water copy "@role water" with the manifest, and keep the buoyancy, the Water
+    // queries and the underwater switch (object/environment/Water.h)
+    enum class ShaderRole{
+        NONE,
+        WATER,       // a water surface: library:water's parameters, buoyancy, layering
+        UNDERWATER   // the view from inside a water: library:underwater's switch and values
     };
 
     struct JASPERENGINE_API ShaderManifestProperty{
@@ -120,6 +142,22 @@ namespace jasperengine{
 
         // the default an unset slot binds with these defines on (ShaderReference::getEnabledFeatures)
         ShaderTextureDefault getDefault(const std::vector<std::string>& enabledFeatures) const;
+    };
+
+    // `// @palette <uniform> ["label"] [feature=A,B]`: a material palette binding (S43 Palette
+    // Swap, includes/palette.glsl). The shader declares <uniform>Cells and <uniform>Rows
+    // (texture2D) and <uniform>_smp; the engine binds a PaletteSwapCache entry built from the
+    // material's shaderPalettes[<uniform>] while one of the features is on.
+    struct JASPERENGINE_API ShaderManifestPalette{
+        std::string uniform;
+        std::string label;
+        std::vector<std::string> features; // empty: always
+        int line = 0;
+
+        std::string cellsTexture() const { return uniform + "Cells"; }
+        std::string rowsTexture() const { return uniform + "Rows"; }
+        // whether a variant with these enabled defines (resolveFeatures) reads the binding
+        bool isEnabled(const std::vector<std::string>& enabledFeatures) const;
     };
 
     struct JASPERENGINE_API ShaderManifestFeature{
@@ -226,9 +264,11 @@ namespace jasperengine{
         std::vector<ShaderManifestStateRule> stateRules;
         std::vector<ShaderManifestProperty> properties;
         std::vector<ShaderManifestTexture> textures;
+        std::vector<ShaderManifestPalette> palettes;
         std::vector<ShaderManifestFeature> features;
         std::vector<ShaderManifestKeywords> keywords;
         bool depth = false;      // has its own depth program
+        ShaderRole role = ShaderRole::NONE; // @role
         // A fork's .frag defines LIT_STOCHASTIC_PARAMS (definesLitStochasticParams): a fork of
         // the built-in Lit that samples the material's Stochastic Tiling (includes/pbr.glsl).
         // Set by ShaderManifests::get for forks, from the entry point an export ships, so the
@@ -248,6 +288,7 @@ namespace jasperengine{
 
         const ShaderManifestProperty* findProperty(const std::string& member) const;
         const ShaderManifestTexture* findTexture(const std::string& uniform) const;
+        const ShaderManifestPalette* findPalette(const std::string& uniform) const;
         const ShaderManifestFeature* findFeature(const std::string& define) const;
         // the group a "<group>_<value>" define belongs to, or null
         const ShaderManifestKeywords* findKeywordGroup(const std::string& define) const;
@@ -288,7 +329,8 @@ namespace jasperengine{
         static std::vector<std::string> getRequireDefines(uint32_t require);
 
         // the @require input names of a mask: position, normals, tangents, uv1, uv2, color,
-        // rawcolor, smoothnormals, scenedepth, scenecolor, environment, normalmap (in that order)
+        // rawcolor, smoothnormals, scenedepth, scenecolor, environment, normalmap, planarreflection,
+        // waterexclusion, waterwake (in that order)
         static std::vector<std::string> getRequireNames(uint32_t require);
 
         // the source declares manifest lines (a fork the runtime needs the file of)

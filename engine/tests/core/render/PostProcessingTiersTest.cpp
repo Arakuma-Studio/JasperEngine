@@ -40,8 +40,10 @@ TEST(PostProcessingTiers, S13Bits){
     EXPECT_EQ(UBER_FILM_DAMAGE, 1u << 15);
     EXPECT_EQ(UBER_GRAIN_LENS, 1u << 16);
     EXPECT_EQ(UBER_GRAIN_FILMIC, 1u << 17);
-    EXPECT_EQ(UBER_FEATURE_COUNT, 18);
-    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::BLIT), 18);
+    // (S41's Stretch Fill, 'Psb', is bit 18 after them; S43's Palette Quantize, 'Pal', 19:
+    // PaletteQuantizeBit)
+    EXPECT_EQ(UBER_FEATURE_COUNT, 20);
+    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::BLIT), 20);
     const char* const shortNames[] = {"Vhs", "Hal", "Fdm", "Gln", "Gfm"};
     for (int i = 0; i < 5; i++)
         EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 13 + i, true), shortNames[i]);
@@ -142,4 +144,47 @@ TEST(PostProcessingTiers, DynamicResolutionKeepsUber){
     // with an effect the uber pass runs anyway, without the plain upscale bit
     s.vignetteEnabled = true;
     EXPECT_EQ(featuresOf(s), UBER_VIGNETTE);
+}
+
+// S43 R19, R21, R28, AC12 (e), AC13: Palette Quantize's bit, appended; off without a palette
+// (and said so); never with the anti-banding dither
+TEST(PostProcessingTiers, PaletteQuantizeBit){
+    // the next free bit after S41's Stretch Fill ('Psb', 18): saved shader keys hold it
+    EXPECT_EQ(UBER_PALETTE, 1u << 19);
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 19, true), "Pal");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 19, false), "Palette Quantize");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 18, true), "Psb");
+
+    PostProcessingSettings s;
+    EXPECT_FALSE(s.paletteEnabled);
+    EXPECT_EQ(s.paletteDither, PaletteDither::BAYER4);
+    EXPECT_FLOAT_EQ(s.paletteDitherStrength, 1.0f);
+    EXPECT_EQ(s.paletteDistance, PaletteDistance::OKLAB);
+    EXPECT_EQ(s.palettePrecision, PalettePrecision::NORMAL);
+
+    // a palette named but not enabled: nothing
+    s.palette = "palettes/gameboy.palette";
+    PostProcessingTiers tiers = RenderSystem::getPostProcessingTiers(s);
+    EXPECT_FALSE(tiers.uber);
+    EXPECT_EQ(tiers.uberFeatures & UBER_PALETTE, 0u);
+    EXPECT_FALSE(tiers.paletteMissing);
+
+    // enabled without a palette: still off, with the warning flag
+    s.palette = AssetRef();
+    s.paletteEnabled = true;
+    tiers = RenderSystem::getPostProcessingTiers(s);
+    EXPECT_FALSE(tiers.uber);
+    EXPECT_EQ(tiers.uberFeatures & UBER_PALETTE, 0u);
+    EXPECT_TRUE(tiers.paletteMissing);
+
+    // enabled with a palette: the uber pass quantizes, and the dither is not compiled with it
+    s.palette = "palettes/gameboy.palette";
+    s.ditherEnabled = true;
+    tiers = RenderSystem::getPostProcessingTiers(s);
+    EXPECT_TRUE(tiers.uber);
+    EXPECT_EQ(tiers.uberFeatures, UBER_PALETTE);
+    EXPECT_FALSE(tiers.paletteMissing);
+    s.pixelateEnabled = true;
+    s.pixelateSize = 4.0f;
+    EXPECT_EQ(featuresOf(s), UBER_PALETTE | UBER_PIXELATE);
 }

@@ -671,3 +671,139 @@ frame, 16×16 tiles, a nine-slice panel, a 5×7 bitmap text sheet).
 
 ## Deviations
 
+
+Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
+
+1. **Guide entry (the ledger's upstream-rule override).** The agent guide gets no `## Pixel art`
+   section: the upstream rules of 2026-11-04 give a new area one entry of the "Other areas" index.
+   It read "pixel art (a camera's Pixel Perfect Camera component): jasper://docs/<area>", and is
+   cut since (deviation 26: its case passes without it, and the guide's byte budget). It
+   names no tool: `check_pixel_art` does not exist before S42, and `test_autosync.py` refuses a
+   guide name that does not exist; S42 adds it to the entry. Its eval cases are in
+   `tools/mcp/eval/cases.py` (`guard_pixel_perfect_camera`, `guard_game_view_pixel_scale`).
+2. **YAML key and fields.** The component's key is `pixelperfectcamera`, lowercase as every other
+   component key (the YAML and MCP key are one, `ComponentDesc::key`); the sketch's
+   `pixelPerfectCamera` names it in MCP and Lua calls (a key alias), not in a scene file. The reference resolution is stored as the struct's
+   two fields `referenceWidth` and `referenceHeight` (the sketch's `referenceResolution: [w, h]`);
+   Lua keeps `referenceResolution` as a `Vector2`. The read-only layout values are catalog
+   properties in the catalog's camelCase: `pixelRatio`, `baseWidth`, `baseHeight`, `targetWidth`,
+   `targetHeight`, `viewport`, `cropped`, `snappedPosition`, `subpixelOffset` (R23's `pixel_ratio`,
+   `base_resolution`, `target_resolution`).
+3. **The per-draw snap mode.** The vertex stage needs to know, per draw, whether to snap every
+   vertex or the pivot (or nothing: a shadow map, a pass without a Pixel Perfect Camera). It is a
+   `vec4 pixelSnapDraw` appended to the draw's own block (`u_vs_pbrParams`, `u_vs_depthParams`,
+   `u_vs_uiParams`) in `Pxs` variants only, `x` = 0 none, 1 every vertex, 2 the pivot; the pivot
+   is the MVP's origin column (`mvpMatrix[3]`, an instance's `mvpMatrix * i_matrix_col4`). The
+   include adds `pixelSnapApply(clip, mode, pivot)`. Particles have no per-draw block: they snap
+   when the frame's `pixelSnap.x > 0`, and `pixelSnapOffset.z` is 1 when the pass's view is on the
+   grid (no camera roll), so a quarter-turned quad snaps its corners (§6.2 had `zw 0`).
+4. **Direct mode (Upscale Render Texture off).** T = B there (no smoothing margin: sub-pixel
+   smoothing moves the projection, R12 "Off"). Stretch Fill needs the target's blit, so without it
+   the camera lays out and draws as Integer. Bars of another colour than the background cost one
+   pass: it clears the destination to the Letterbox Color and fills the viewport with the
+   background (an 8 x 8 texture of it), and the colour pass loads it.
+5. **Engine canvas.** `Engine::getCanvasWidth/Height` are integers: the canvas is B / PPU rounded
+   to whole units when the PPU does not divide the base; the camera's span is the exact T / PPU.
+6. **Test names and homes.** The GPU suites are `PixelPerfectGpu`, `PixelPerfectOffGpu` and
+   `PixelPerfectBenchGpu` (docs/testing.md: a GPU suite ends in `Gpu`), in
+   `engine/tests/core/pixelart/` with the CPU suites `PixelSnapTest`, `PixelPerfectLayoutTest`,
+   `EngineViewLayoutTest`, `SpritePpuTest`, `PixelSnapShaderTest`. The CPU compositor of AC4 is in
+   the GPU test itself: the GPU suites run in the engine's test tree, the editor tests have no
+   device.
+7. **AC3, the bias.** The rule's bias reaches the vertex stage as `frame.pixelSnapOffset.w` (2^-7,
+   the CPU twin's constant): `PixelPerfectGpu.SnapParity` sets it to 0 for its red control, and a
+   third of its quads lie just under the half pixel, where only the bias rounds them up.
+8. **AC4 reference.** The compositor draws ring sprites (one texel of border, so any flip or
+   quarter turn draws the same texels): a CENTER-pivoted 15 x 16 sprite at a half pixel, a
+   quarter-turned and a flipped 15 x 7 sprite and a floor of ten 16-pixel tiles, against layouts
+   written by hand (k = 1, 3, 3 with bars, 4, and Integer (Expand) at 1366 x 768). UI is checked by
+   `PixelPerfectGpu.UiImageParity` (1-pixel Images at k = 1 and 3 against the CPU twin). The
+   nine-slice panel and the text are left out of the compositor: a CPU reference of their texels
+   would need the UI's own nine-slice and glyph rasterisation; they draw with the same rule.
+9. **AC6 sweep.** 74 camera positions (64 even ones plus the neighbourhoods of the rounding ties)
+   instead of 10,000: each needs a frame and a readback. The red control draws without the rule at
+   positions where the unsnapped edges straddle pixel centres.
+10. **AC9.** The Stretch Fill check is analytic (each interior pixel equals its texel, each seam
+    pixel lies between its two texels) instead of a golden image.
+11. **AC10.** The fixed-resolution size is checked through the colour pass's render area (the
+    pass list); SSAO, SSR, the lighting viewport, LOD and point sizes read the same
+    `fixedResolutionWidth/Height()`.
+12. **Rotation policy coverage.** 90 Degree Steps applies to sprites (their `pixelRotation`),
+    tilemaps and UI elements (the camera's policy); a sprite's `CAMERA` follows the camera.
+13. **Scene view.** The Pixel Zoom, Pixel Grid, Snap Preview and Pixel Move Snap flags default to
+    on and take effect only in a 2D scene whose main camera has an applicable Pixel Perfect
+    Camera. The toolbar has the Pixel Zoom toggle and a menu beside it with Pixel Grid, Snap
+    Preview and Pixel Move Snap (and MCP's `display_settings`). Snap Preview's grid is the view's
+    pixels over the zoom's scale at any zoom. The camera frames of R22 are drawn as an overlay of
+    the Scene view (a 2D scene's UI camera has no frustum gizmo).
+14. **Lua.** The handle has no `getGameObject()` (Camera already is one).
+15. **AC6 floor size.** The floor is 40 x 23 tiles of 8 pixels (a 320 x 184 floor over the 320 x 180
+    base) instead of 64 x 36 tiles of 5: a tilemap holds at most `MAX_TILEMAP_TILES` (2,048) tiles.
+16. **R17, the vertex snap's instruction count.** `PixelSnapShaderTest.VertexCost` counts 11 SPIR-V
+    arithmetic instructions on the per-vertex path (`pixelSnapClip` with its helpers; glslang
+    without an optimizer, each helper counted): the vertex stage gets half the target and where NDC
+    0 lands (`pixelart::snapTerms`, computed once on the CPU), so a pixel is `ndc * half + centre`,
+    and both axes round in one `vec2` step with the bias's two additions. The whole `mesh.vert`
+    sprite variant goes from 6 to 19 counted instructions. The test pins at most 14.
+17. **R17, R18, measured.** On this host only (llvmpipe, no reference device), so the GPU timings of
+    R17 stay a tracked follow-up:
+    | Measure | Budget | Measured |
+    | --- | --- | --- |
+    | `pixel_perfect_bench` frame CPU, snapping on vs off (`PixelPerfectBenchGpu.SnappingFrameCost`) | ≤ 102 % | 102.0 % and 104.2 % in two runs on a shared, loaded host (the test applies `perfSlack()`) |
+    | `mesh.vert` per-vertex snap path, SPIR-V | ≤ 14 | 11 (item 16) |
+    | GPU time, blit times on the reference devices | R17 | not measured: no reference GPU here |
+18. **AC13 coverage.** The core GPU suites run on glcore, Vulkan (lavapipe: there the pass's
+    matrices are not Y-flipped, so the rule's `flipY = +1` path runs) and GLES3 (an OpenGL ES 3.2
+    context on llvmpipe, `GRAPHIC_BACKEND=gles3 tools/build.sh unit-tests`, added for this spec in
+    the linux-backends image). D3D11 and Metal have no device on this host. The web half is the
+    gate `GATE=pixel-perfect` (test project `tools/test-projects/pixel-perfect`, Chrome at a device
+    scale factor of 2, through a new `chrome_flags` key of the gate baselines).
+19. **AC17 homes.** `editor/tests/pixelart/PixelPerfectStreamTest.cpp`: the round trip, the kept
+    unknown keys, and every scene (75) and `project.yaml` (31) of `tools/fixtures` and the editor's
+    test fixtures re-saved without S41's keys and stable on a second save
+    (`FixturesResaveWithoutS41Keys`); the AllComponents fixture gains the component's entity and the
+    Sprite and Tilemap keys, so `ReflectFixtures.AllComponentsScene` and the `CookedScene` round
+    trips cover them. A fixture is compared with its own re-save, not byte for byte with the file:
+    older fixtures are not in today's output format whatever S41 does.
+20. **Editor checks and the main camera.** In the editor a Scene's camera is the view's own camera,
+    so the Scene view's pixel tools and the "not the main camera" warning read the SceneProject's
+    `mainCamera`.
+21. **The Engine's view and the main scene.** `Engine::setScene` with another scene (or none) and
+    `Engine::removeScene` of the main scene drop the Pixel Perfect Camera's view; the new main
+    scene's camera sets its own on its update. Without it a scene switch kept the old scene's
+    integer layout (`EngineViewLayoutTest.ThePixelPerfectViewGoesWithItsMainScene`).
+22. **Variant bits and S55.** `Pxs` is MESH bit 45 and DEPTH bit 19 (S57 and S55 took MESH 36-41 and
+    DEPTH 18, the water interaction MESH 42-43, draw-perf MESH 44), UI bit 5, PARTICLES bit 11;
+    Stretch Fill is BLIT bit 18 (`Psb`). The per-draw
+    `pixelSnapDraw` is part of the per-draw object blocks (`includes/object_params.glsl`,
+    `object_depth_params.glsl`), so a pixel-snapped drawable never joins an automatic GPU
+    instancing batch (`getSubmeshBatchVariant`).
+23. **The frame block's members (R14).** `pixelSnap` and `pixelSnapOffset` come last in `frame_t`,
+    after the fragment stage's `postColor`, and only a `Pxs` vertex stage declares them (with the
+    post-colour vectors before them, unread): every other program's frame block, and the bytes
+    uploaded to it, are what they were. `pixelSnap` holds half the target (`xy`), `flipY` and k;
+    `pixelSnapOffset` where NDC 0 lands (`xy`), the on-grid view flag and the bias. The editor's
+    shader cache moves to `v57` (`v53` to `v56` are draw-perf's, SSR's, PCSS's and lit-uniforms').
+24. **Shadow maps and uploads.** A depth draw into a shadow map never snaps (its frame block holds
+    the camera's grid; `RenderSystem::depthSnapMode`). A block the engine extends with
+    `pixelSnapDraw` is uploaded at most at the shader's reflected size (a fork without the member).
+25. **AC11's reference.** `PixelPerfectOffGpu.ZeroCost` compares within one process: the frame
+    without the component (printed: passes, draws, variants, allocations, pixels) against the same
+    frame with the component disabled, and after it was added and removed. A list stored from main
+    ages with every change on main: main's dynamic batching took the scene from 4 draws to 3, with
+    the same pixels (the image hash recorded on main before S41, 13037468019309210060, is still
+    this build's without the component).
+26. **The eval of S41's MCP text** (`tools/mcp/eval/run.py`, sonnet, an Orquester-lent account; the
+    surface recorded from this branch's editor, and a copy without S41's text):
+    | Case | With the text | Without it |
+    | --- | --- | --- |
+    | `guard_game_view_pixel_scale` (`pixel_scale`'s description) | 5 of 6 pass | 3 of 6 pass (the case fails: half its samples) |
+    | `guard_pixel_perfect_camera` (the "Other areas" line) | 2 of 2 pass | 6 of 6 pass |
+    The `pixel_scale` description earns its bytes. The guide line does not change this case: the
+    agent finds the component through `list_component_types` without it. After S44's sprites line
+    the agent guide passed its byte budget (`tools/mcp/budget.json`), so the "Other areas" pixel
+    art line is cut; the case stays as a guard of the component's name.
+27. **S44's sheets.** An `.aseprite` sheet whose `pixelsPerUnit` is `project` imports with the
+    project's Pixels Per Unit (S44 used 1 until S41 landed), and changing the project's value
+    imports those sheets again. A sheet Sprite's own Pixels Per Unit, when not 0, wins over its
+    sheet's, as it does over the project's for a texture Sprite.

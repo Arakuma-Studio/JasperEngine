@@ -45,6 +45,10 @@ namespace jasperengine{
         // the Scene view's shadow debug view: editor state, not a setting (never saved)
         ShadowDebugView shadowDebugView = ShadowDebugView::NONE;
 
+        // the scene clock (getSceneTime), never saved
+        double sceneTime = 0.0;
+        bool sceneTimePaused = false;
+
         UIEventState uiEventState;
 
         // the Canvas Scaler's last result (updateCanvasScale)
@@ -247,6 +251,47 @@ namespace jasperengine{
 
         void setSceneColorScale(SceneColorScale scale);
         SceneColorScale getSceneColorScale() const;
+
+        // Planar reflections (SceneSettings): read each frame by RenderSystem, no reload
+        void setPlanarReflectionResolution(PlanarReflectionResolution resolution);
+        PlanarReflectionResolution getPlanarReflectionResolution() const;
+        void setPlanarReflectionLayers(uint32_t layers);
+        uint32_t getPlanarReflectionLayers() const;
+        void setPlanarReflectionShadows(bool shadows);
+        bool getPlanarReflectionShadows() const;
+        // metres, 0: the viewing camera's far clip (negative values read as 0)
+        void setPlanarReflectionFarClip(float farClip);
+        float getPlanarReflectionFarClip() const;
+        void setPlanarReflectionClipOffset(float offset);
+        float getPlanarReflectionClipOffset() const;
+        // 1..4 (clamped)
+        void setMaxPlanarReflections(int count);
+        int getMaxPlanarReflections() const;
+
+        // The wake map of Water Wakes (SceneSettings): read each step by WaterInteractionSystem
+        void setWaterWakeResolution(WaterWakeResolution resolution);
+        WaterWakeResolution getWaterWakeResolution() const;
+        // metres across, 8..1024 (clamped)
+        void setWaterWakeArea(float area);
+        float getWaterWakeArea() const;
+        // seconds, 0.1..120 (clamped)
+        void setWaterWakeFade(float fade);
+        float getWaterWakeFade() const;
+
+        // The clock of this scene's game-time animation (library:water's waves, ripples and
+        // caustics, any shader declaring a sceneTime member, Water.getTime): the seconds the scene
+        // has run, scaled by Time.timeScale. Engine::runFrame advances it with the game's frame
+        // delta, so it holds while the game, the editor's Play or this scene is paused, at time
+        // scale 0 and while the simulation is held; the editor moves a stopped scene's clock (the
+        // Scene view's Animate water). 0 when the scene is made. A pinned shader time
+        // (Engine::setPinnedShaderTime, golden tests) replaces it wherever it is read.
+        double getSceneTime() const;
+        void setSceneTime(double seconds);
+        // adds delta (seconds) unless the clock is paused (evenWhenPaused: the editor's clock of
+        // a stopped scene, whose engine clock is paused)
+        void advanceSceneTime(double delta, bool evenWhenPaused = false);
+        void setSceneTimePaused(bool paused);
+        bool isSceneTimePaused() const;
 
         void setSSAOEnabled(bool ssaoEnabled);
         bool isSSAOEnabled() const;

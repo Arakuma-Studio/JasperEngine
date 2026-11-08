@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "HotReloadService.h"
+#include "sprite/SpriteAtlasBuilder.h"
+#include "sprite/SpriteSheetBuilder.h"
+#include "sprite/SpriteSheetPool.h"
+#include "sprite/SpriteSheetSources.h"
 
 #include "handlers/ReloadHandlers.h"
 
@@ -65,6 +69,7 @@ namespace {
         if (kind == "audio") noun = "audio clip";
         else if (kind == "ui") noun = "UI file";
         else if (kind == "particles") noun = "particle effect";
+        else if (kind == "palette") noun = "palette";
         return std::to_string(count) + " " + noun + (count == 1 ? "" : "s");
     }
 
@@ -314,9 +319,29 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         if (change.kind == FileChangeKind::Moved) gone.push_back(change.oldPath);
         if (change.kind == FileChangeKind::Removed) {
             notify(change.path, reload::kindOf(change.path), Event::Dropped);
+            if (sprite::SpriteAtlasBuilder::get().getProject() == project) {
+                // S45: an atlas gone takes its build along; a member gone rebuilds the atlases packing it
+                if (SpriteSheetSources::isAtlasPath(change.path.string())) sprite::SpriteAtlasBuilder::get().forget(change.path.string());
+                else if (SpriteSheetSources::isTexturePath(change.path.string()) || SpriteSheetPool::isAsepritePath(change.path.string())) {
+                    sprite::SpriteSheetBuilder::get().invalidate(project->normalizeToAssetsRelative(change.path).generic_string());
+                    sprite::SpriteAtlasBuilder::get().memberChanged(change.path.string());
+                }
+            }
             // a removed HTML document is reported missing by its scene's documents
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) external["ui"].push_back(change.path);
             continue;
+        }
+        // S45: a renamed atlas is forgotten under its old name (built again under the new one
+        // below); a renamed member rebuilds the atlases that packed it and those it joins now
+        if (change.kind == FileChangeKind::Moved && sprite::SpriteAtlasBuilder::get().getProject() == project) {
+            const std::string oldPath = change.oldPath.string();
+            if (SpriteSheetSources::isAtlasPath(oldPath)) {
+                sprite::SpriteAtlasBuilder::get().forget(oldPath, false);
+            } else if (SpriteSheetSources::isTexturePath(oldPath) || SpriteSheetPool::isAsepritePath(oldPath)) {
+                sprite::SpriteSheetBuilder::get().invalidate(project->normalizeToAssetsRelative(change.oldPath).generic_string());
+                sprite::SpriteAtlasBuilder::get().memberChanged(oldPath);
+                sprite::SpriteAtlasBuilder::get().memberChanged(change.path.string());
+            }
         }
         // so is a renamed one under its old name (a document reading the old name reloads and
         // reports it missing; the new name is handled below like an added file)
@@ -331,6 +356,15 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             const std::string assetPath = project->normalizeToAssetsRelative(asset).generic_string();
             if (ModelCookQueue::get().getProject() == project) ModelCookQueue::get().settingsChanged(assetPath);
             if (TextureCookQueue::get().getProject() == project) TextureCookQueue::get().settingsChanged(assetPath);
+            // S45: a texture's Sprite Mode, an atlas member's settings
+            if (sprite::SpriteAtlasBuilder::get().getProject() == project) {
+                sprite::SpriteSheetBuilder::get().invalidate(assetPath);
+                sprite::SpriteAtlasBuilder::get().memberChanged(assetPath);
+            }
+        }
+        // S45: a Sprite Atlas written (by an agent, a pull, the inspector) builds again
+        if (SpriteSheetSources::isAtlasPath(change.path.string()) && sprite::SpriteAtlasBuilder::get().getProject() == project) {
+            sprite::SpriteAtlasBuilder::get().rebuild(change.path.string(), false);
         }
         const std::string kind = reload::kindOf(change.path);
         if (kind.empty()) continue;
@@ -360,7 +394,10 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         if (change.origin == ChangeOrigin::Editor) {
             // (an agent's write_file of a clip or a pose animation: their documents reload too,
             // and its load problems are the call's)
-            if (kind == "material" || kind == "texture" || kind == "animation") editorWritten[kind].push_back(change.path);
+            // (a palette the Palette window or edit_palette wrote: the swaps drawn with it update; an
+            // .aseprite an editor tool wrote: imported again like another program's save, S44 R23)
+            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "palette" || kind == "aseprite")
+                editorWritten[kind].push_back(change.path);
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) editorWritten["ui"].push_back(change.path);
             continue;
         }
@@ -420,6 +457,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     }
     reload::reloadTextures(ctx, textures);
     reload::reloadModels(ctx, files(external, "model"));
+    reload::reloadAseprite(ctx, both("aseprite"));
     reload::reloadAudio(ctx, files(external, "audio"));
     // the project's audio mixer is heard as its file now says, in Edit mode and Play alike: the
     // editor's own writes (audio_mixer edit, the Audio Mixer window, their undo) and another
@@ -430,6 +468,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         project->audioFilesChanged(paths);
     }
     reload::reloadParticleEffects(ctx, files(external, "particles"));
+    reload::reloadPalettes(ctx, both("palette"));
     reload::reloadFonts(ctx, files(external, "font"));
     reload::reloadAnimations(ctx, both("animation"), files(external, "model"), options.full);
     // another program's changes not reloaded yet (the dedupe above): the documents' own stamps

@@ -6,6 +6,7 @@
 
 #include "asset/AssetRef.h"
 #include "math/Vector3.h"
+#include "pixelart/PaletteBinding.h"
 #include "texture/Texture.h"
 #include "texture/MaterialPbr.h"
 #include "util/OutOfLineValue.h"
@@ -259,6 +260,9 @@ namespace jasperengine{
         MaterialExtraPass extraPass;
         // the built-in Lit's extended lobes and hex tiling, out of line (MaterialPbr.h)
         OutOfLineValue<MaterialPbrExtensions> pbr;
+        // @palette bindings by uniform name (S43 Palette Swap), out of line: almost no
+        // material has one; an unset binding draws unchanged
+        OutOfLineValue<pixelart::ShaderPalettes> shaderPalettes;
 
         bool operator == (const Material& other) const {
             return baseColorFactor == other.baseColorFactor &&
@@ -301,7 +305,8 @@ namespace jasperengine{
                    colorWrite == other.colorWrite &&
                    emissiveStrength == other.emissiveStrength &&
                    extraPass == other.extraPass &&
-                   pbr == other.pbr;
+                   pbr == other.pbr &&
+                   shaderPalettes == other.shaderPalettes;
         }
 
         bool operator != (const Material& other) const {

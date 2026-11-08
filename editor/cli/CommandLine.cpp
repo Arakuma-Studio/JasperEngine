@@ -8,7 +8,7 @@
 #include "CommandLine.h"
 #include "log/Logger.h"
 #include "io/AtomicFile.h"
-#include "navigation/NavigationEditor.h"
+#include "navigation/NavigationFindings.h"
 #include "util/FileUtils.h"
 
 #include "AppSettings.h"
@@ -60,7 +60,9 @@
 #include "htmlui/HtmlUiImportCli.h"
 #include "texsynth/SynthesisCli.h"
 #include "spritenormals/SpriteNormalsCheck.h"
+#include "sprite/SpriteMigration.h"
 #include "spritenormals/SpriteNormalsCli.h"
+#include "pixelart/aseprite/AsepriteCli.h"
 #include "physics/PlacementCli.h"
 #include "vat/VatCli.h"
 #include "htmlui/effects/EffectManifest.h"
@@ -295,6 +297,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " bake-vat [options]       Bake a Vertex Animation (.vat) from a model, clips or GameObject, or import one.\n"
         << "  " << commandName << " import-unity-particles <file> [options]  Import Unity Particle Systems as engine prefabs.\n"
         << "  " << commandName << " generate-sprite-normals [options]  Normal maps for sprites, sheets, GIF/APNG animations and tiles.\n"
+        << "  " << commandName << " aseprite info|render|resave  Describe, render or resave .aseprite files (no project).\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " audio-analyze [options] <file|essentials:id|library:id>...\n"
@@ -708,11 +711,23 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     const ExportProgress progress = exporter.getProgress();
 
     if (!success) {
+        // the build's errors, then what failed
+        for (const BuildDiagnostic& error : progress.errors) std::cerr << error.text << "\n";
+        if (progress.errorCount > progress.errors.size()) {
+            std::cerr << "(and " << progress.errorCount - progress.errors.size() << " more error(s))\n";
+        }
         if (!progress.errorMessage.empty()) {
             std::cerr << commandName << " export: " << progress.errorMessage << "\n";
         }
         return 1;
     }
+
+    const ExportResult result = exporter.getResult();
+    if (!result.warnings.empty()) {
+        std::cerr << commandName << " export: completed with " << result.warnings.size() << " warning(s):\n";
+        for (const BuildWarning& warning : result.warnings) std::cerr << "  " << warning.code << ": " << warning.message << "\n";
+    }
+    for (const std::string& note : result.notes) std::cout << note << "\n";
 
     return 0;
 }
@@ -2116,6 +2131,7 @@ struct CheckOptions {
     bool vat = false;
     bool normals = false;
     bool videos = false;
+    bool sprites = false;
     bool all = false;
     bool filesGiven = false;
     std::vector<std::string> files;
@@ -2155,7 +2171,11 @@ void printCheckUsage(const std::string& commandName) {
         << "                           (video-codec-unsupported-on-target, a warning per platform) and URL MP4s\n"
         << "                           whose moov box follows the media data (video-not-faststart-url, info; an\n"
         << "                           http(s) url by the project's file of that name: nothing is downloaded).\n"
-        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps and videos.\n"
+        << "      --sprites            Sprites: legacy sprites with inline frames (scene or prefab, GameObject, texture,\n"
+        << "                           frame count; info) and Sprite Atlas problems (missing members, a frame larger\n"
+        << "                           than the max size: errors; a source packed by two atlases: a warning).\n"
+        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps, videos and\n"
+        << "                           sprites.\n"
         << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
@@ -2202,6 +2222,8 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.vat = true;
         } else if (arg == "--normals") {
             options.normals = true;
+        } else if (arg == "--sprites") {
+            options.sprites = true;
         } else if (arg == "--videos") {
             options.videos = true;
         } else if (arg == "--all") {
@@ -3051,11 +3073,14 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         run.vatRan = true;
     }
 
-    // S19 R42: the scenes' NavMesh Surfaces that are not baked or out of date (whole-project checks)
+    // S19 R42, S75 R36: the scenes' navigation findings with their severities (an error fails the
+    // check; whole-project checks)
     if (shadersWanted && shadersAll) {
         size_t surfaces = 0;
-        for (const NavigationEditor::Finding& finding : NavigationEditor::checkSurfaces(&project, &surfaces))
-            run.findings.push_back({"navigation", finding.scenePath, 0, 0, "warning", finding.message});
+        for (const ProjectNavFinding& item : collectProjectFindings(&project, &surfaces)) {
+            run.findings.push_back({"navigation", item.scenePath, 0, 0, nav::findingSeverityName(item.finding.severity),
+                                    item.finding.message, item.finding.code, ""});
+        }
         run.checked.push_back({"navigation", surfaces});
     }
 
@@ -3087,6 +3112,9 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         if (shadersAll) {
             const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(&project);
             run.findings.insert(run.findings.end(), stochastic.begin(), stochastic.end());
+            // water forks without @role, planar reflections on sloped meshes
+            const std::vector<ProjectChecks::Finding> water = ProjectChecks::waterFindings(&project);
+            run.findings.insert(run.findings.end(), water.begin(), water.end());
             // Line and Trail Renderers drawing nothing or reading no texture coordinates
             const std::vector<ProjectChecks::Finding> lines = ProjectChecks::lineTrailFindings(&project);
             run.findings.insert(run.findings.end(), lines.begin(), lines.end());
@@ -3157,8 +3185,9 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool vatAssets = options.vat || options.all;
     bool normals = options.normals || options.all;
     bool videos = options.videos || options.all;
+    const bool sprites = options.sprites || options.all;
     if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.normals &&
-        !options.videos && !options.all) {
+        !options.videos && !options.sprites && !options.all) {
         lua = shaders = ui = textures = anims = vatAssets = normals = videos = true;
     }
 
@@ -3295,6 +3324,40 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         run.findings.insert(run.findings.end(), normalsCheck.findings.begin(), normalsCheck.findings.end());
         run.checked.push_back({"normals", normalsCheck.recipes + normalsCheck.maps});
     }
+    if (sprites && !fileMode) {
+        // S45 R22: the scene, prefab and atlas files (YAML, JSON, image headers): no engine
+        // the project's assets folder: its project.yaml's, else the default (the project folder)
+        std::string assetsDir = Project::defaultAssetsDir;
+        try {
+            const YAML::Node projectYaml = YAML::LoadFile((root / "project.yaml").string());
+            if (projectYaml["assetsDir"]) assetsDir = projectYaml["assetsDir"].as<std::string>();
+        } catch (const std::exception&) {}
+        const sprite::SpriteCheckReport spriteCheck = sprite::scanProject(root, root / assetsDir);
+        for (const sprite::LegacySprite& legacy : spriteCheck.legacy) {
+            ProjectChecks::Finding f;
+            f.tool = "sprites";
+            f.path = legacy.owner;
+            f.severity = "info";
+            f.code = "sprite-inline-frames";
+            f.message = "legacy sprite \"" + legacy.entityPath + "\": " + std::to_string(legacy.frames.size()) + " inline frame(s) of " +
+                        (legacy.texture.empty() ? std::string("no texture") : legacy.texture);
+            f.suggestion = "set_sprite_frames {convert: true, all_users: true}, or Inspector > Convert to Sprite Sheet";
+            run.findings.push_back(f);
+        }
+        auto atlasFinding = [&](const std::string& atlas, const pixelart::PixelProblem& p, const char* severity) {
+            ProjectChecks::Finding f;
+            f.tool = "sprites";
+            f.path = (fs::path(assetsDir) / atlas).lexically_normal().generic_string();
+            f.severity = severity;
+            f.code = p.kind;
+            f.message = p.message;
+            f.suggestion = p.fix;
+            run.findings.push_back(f);
+        };
+        for (const auto& [atlas, p] : spriteCheck.atlasErrors) atlasFinding(atlas, p, "error");
+        for (const auto& [atlas, p] : spriteCheck.atlasWarnings) atlasFinding(atlas, p, "warning");
+        run.checked.push_back({"sprites", static_cast<size_t>(spriteCheck.files + spriteCheck.atlases)});
+    }
     if (videosWanted) {
         // the scene and prefab YAML and the clips' header boxes: no engine
         const VideoCheck videoCheck = checkVideoPlayers(root);
@@ -3360,7 +3423,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
                                                           {"textures", "recipe"}, {"texture_imports", "texture"}, {"anims", "clip"},
                                                           {"vat", "file"}, {"navigation", "surface"},
-                                                          {"normals", "map"}, {"videos", "Video Player"}};
+                                                          {"normals", "map"}, {"videos", "Video Player"}, {"sprites", "file"}};
         for (const auto& [category, count] : run.checked) {
             // a category without a unit here still prints (never a map::at abort after the results)
             const auto unit = units.find(category);
@@ -3726,6 +3789,11 @@ int CommandLine::runImportUnityParticlesCommand(int argc, char** argv, const cha
 int CommandLine::runGenerateSpriteNormalsCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return spritenormals::runGenerateSpriteNormals(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+int CommandLine::runAsepriteCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return pixelart::aseprite::runAsepriteCommand(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
 int CommandLine::runPlacePhysicsCommand(int argc, char** argv, const char* executableName) {

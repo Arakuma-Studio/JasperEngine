@@ -3,6 +3,7 @@
 
 // W1: the Inspector: get_entity, components (add, remove, reset, copy/paste values),
 // set_properties (every property type), set_transform, list_component_types
+#include "pixelart/PixelPerfectEditor.h"
 #include "McpTools.h"
 #include "component/TrailRendererComponent.h"
 #include "component/ModelComponent.h"
@@ -32,6 +33,8 @@
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/RemoveComponentCmd.h"
 #include "component/MeshComponent.h"
+#include "pixelart/PaletteMaterial.h"
+#include "pixelart/PaletteSwapChecks.h"
 #include "registry/TagManager.h"
 #include "subsystem/MeshSystem.h"
 #include "util/EntityClipboard.h"
@@ -258,6 +261,8 @@ void getEntityTool(const CallPtr& call) {
     };
     // the GUIDs of the asset fields read ("<Component>.<property>" -> GUID, S04)
     Json assetGuids = Json::object();
+    // a Pixel Perfect Camera's layout values at the Game view's size outside Play (S41 R23)
+    pixelart::refreshEditLayout(*project, scene->scene, entity, scene->playState != ScenePlayState::STOPPED);
     for (ComponentType type : Catalog::findComponents(registry, entity)) {
         if (!filter.empty() && std::find(filter.begin(), filter.end(), type) == filter.end()) continue;
         const std::string name = McpRefs::componentName(type);
@@ -401,6 +406,12 @@ void getEntityTool(const CallPtr& call) {
         data["canvas_group_state"] = groupState;
         text += ". canvas_group_state: " + groupState.dump();
     }
+    // a Button: where the keyboard, the d-pad and a TV remote move from it (its navigation)
+    const Json selectable = McpValues::selectableToJson(registry, entity, false);
+    if (!selectable.is_null()) {
+        data["selectable"] = selectable;
+        text += ". selectable: " + selectable.dump();
+    }
     // what its draws read of the scene (phase 3) in their current variants, and the cost
     const Json sceneInputs = McpValues::entitySceneInputsToJson(registry, entity);
     if (!sceneInputs.empty()) {
@@ -417,6 +428,36 @@ void getEntityTool(const CallPtr& call) {
         data["scene_inputs_cost"] = Catalog::getSceneInputsCost(reads);
         text += ". Reads the scene " + Catalog::getSceneInputsLabel(reads) + " (" + Catalog::getSceneInputsCost(reads, true) + ")" +
                 (error ? "; ERROR: a reader draws in the opaque queue (scene_inputs[].error, .fix)" : "");
+    }
+    // Palette Swap (S43 R41): per submesh with a palette binding, the row names sprite.palette and
+    // shaderParams.paletteRow take ("" is row 0, the source's own colours) and the active row; and
+    // R15's warning when its texture is lossy (the swap needs the exact colours)
+    if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::MeshComponent) != filter.end()) {
+        if (const MeshComponent* mesh = registry->findComponent<MeshComponent>(entity)) {
+            Json paletteRows = Json::array();
+            Json paletteWarnings = Json::array();
+            for (unsigned int s = 0; s < usedSubmeshes && s < (unsigned int)mesh->submeshes.stored(); s++) {
+                const Material& material = mesh->submeshes[s].material;
+                if (jasperengine::pixelart::findPaletteBinding(material)) {
+                    paletteRows.push_back({{"submesh", s}, {"rows", jasperengine::pixelart::paletteRowNames(material)},
+                                           {"row", jasperengine::pixelart::getPaletteRow(material)}});
+                }
+                const std::string lossy = jasperengine::editor::pixelart::paletteSwapLossyTexture(*project, material);
+                if (!lossy.empty()) {
+                    paletteWarnings.push_back({{"kind", "palette_swap_lossy_texture"}, {"submesh", s}, {"message", lossy},
+                                               {"fix", "set_texture_import_settings {settings: {quality: \"none\", mipmaps: false}} on the "
+                                                       "texture, and Nearest filters (min_filter, mag_filter) on the material's texture"}});
+                }
+            }
+            if (!paletteRows.empty()) {
+                data["palette_rows"] = paletteRows;
+                text += ". palette_rows: " + paletteRows.dump();
+            }
+            if (!paletteWarnings.empty()) {
+                data["warnings"] = paletteWarnings;
+                for (const Json& warning : paletteWarnings) text += ". Warning: " + warning["message"].get<std::string>();
+            }
+        }
     }
     if (elided) data["note"] = std::to_string(elided) + " large custom value(s) elided; name them in properties to read them.";
     call->ok(text, data);
@@ -644,9 +685,10 @@ void setTransformTool(const CallPtr& call) {
         }
         if (args.contains("rotation")) {
             Quaternion value = relative ? Quaternion::IDENTITY : rotation;
-            if (!McpValues::parseQuaternion(args["rotation"], value)) {
+            std::string why;
+            if (!McpValues::parseQuaternion(args["rotation"], value, &why)) {
                 delete multi;
-                call->fail("rotation must be {\"euler\":[x,y,z]} degrees, [x,y,z,w] or {\"quat\":[...]}.");
+                call->fail("rotation: " + why);
                 return;
             }
             rotation = relative ? value * rotation : value;

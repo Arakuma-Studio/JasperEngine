@@ -72,9 +72,11 @@ const ToolModule TOOL_MODULES[] = {
     {registerSplineTools, "Splines: roads, walls, placement, terrain and water", "splines"},   // S18
     {registerEditorToolsTools, "Editor tools: recorder, colour sampling, swatches, curves", "editor_tools"},   // S27
     {registerParticleTools, "Particles: effects and playback", "particles"},   // S20
+    {registerPaletteTools, "Pixel art: palettes", "pixel_art"},   // S43
     {registerOrganisationTools, "Search, shortcuts, layouts, labels, saved searches and bookmarks", "organisation"},   // S25
     {registerNavigationTools, "Navigation: navmeshes, agents, crowds and grids", "navigation"},   // S19
     {registerVcsTools, "Git/SVN status, diffs, commits, locks", "vcs"},   // S29
+    {registerSpriteTools, "Sprites: Aseprite import, atlases, drawing", "sprites"},   // S44 (S45, S47)
 };
 
 // JASPER_MCP_SELFTEST_GROUP: one tool in the test-only group "selftest", for the tests of

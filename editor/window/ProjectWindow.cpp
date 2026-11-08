@@ -6,9 +6,15 @@
 #include "EditorModal.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "ProjectWindow.h"
+#include "sprite/SpriteAtlasBuilder.h"
+#include "sprite/SpriteSheetSources.h"
+#include "sprite/SpriteSheetPool.h"
 #include "window/vcs/VcsUi.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
+#include "pixelart/aseprite/AsepriteEditorHooks.h"
+#include "pixelart/aseprite/AsepriteImporter.h"
+#include "sprite/SpriteSheetPool.h"
 #include "util/EditorScripts.h"
 #include "asset/AssetTypes.h"
 #include "window/AssetPanels.h"
@@ -41,6 +47,10 @@
 #include "Out.h"
 #include "util/HtmlUITemplates.h"
 #include "command/type/CopyFileCmd.h"
+#include "asset/AssetOps.h"
+#include "util/SafeWrite.h"
+#include "util/ScriptTemplates.h"
+#include "window/dialog/ScriptCreateDialog.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateMaterialFileCmd.h"
 #include "camera/ShakePreset.h"
@@ -61,6 +71,9 @@
 #include "vat/VatDocument.h"
 #include "util/UIProbe.h"
 #include "util/PhysicsMaterialAssets.h"
+#include "window/ApplyPaletteDialog.h"
+#include "window/PaletteWindow.h"
+#include "pixelart/Palette.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseEditSession.h"
 #include "pose/PoseImage.h"
@@ -104,6 +117,7 @@
 #include <mutex>
 #include <atomic>
 #include <algorithm>
+#include <cassert>
 #include <unordered_set>
 #include "audio/AudioAnalysis.h"
 #include "audio/AudioImages.h"
@@ -237,6 +251,102 @@ static void makePhysicsMaterialIcon(int size, std::vector<uint8_t>& rgba) {
     image.fillCircle(30 * s, 28 * s, 20 * s, ball);
     image.fillCircle(26 * s, 24 * s, 6 * s, shine);
     rgba = image.getPixels();
+}
+
+// The .palette icon (until its swatch thumbnail is made): a card of colour chips
+static void makePaletteFileIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    auto px = [s](float v) { return static_cast<int>(v * s); };
+    image.fillRect(px(4), px(8), px(56), px(48), editor::PoseColor::hex(0x2B2F36));
+    const uint32_t chips[] = {0x1A1C2C, 0x5D275D, 0xB13E53, 0xEF7D57, 0xFFCD75, 0xA7F070, 0x38B764, 0x257179, 0x29366F, 0x3B5DC9, 0x41A6F6, 0x73EFF7};
+    for (int i = 0; i < 12; i++) {
+        image.fillRect(px(8 + (i % 4) * 12.5f), px(12 + (i / 4) * 14.0f), px(11), px(12), editor::PoseColor::hex(chips[i]));
+    }
+    rgba = image.getPixels();
+}
+
+// "+N" over a palette thumbnail of more than 64 colours: a 3 x 5 pixel font, no text renderer
+// on the thumbnail worker
+static void drawPaletteThumbnailCount(std::vector<uint8_t>& rgba, int width, int height, int hidden) {
+    static const uint16_t glyphs[11] = {
+        0x7B6F, 0x2C97, 0x73E7, 0x73CF, 0x5BC9, 0x79CF, 0x79EF, 0x7249, 0x7BEF, 0x7BCF,   // 0-9
+        0x05D0,                                                                            // +
+    };
+    const std::string text = "+" + std::to_string(hidden);
+    const int scale = std::max(1, width / 40);
+    const int textWidth = (static_cast<int>(text.size()) * 4 - 1) * scale;
+    const int textHeight = 5 * scale;
+    const int x0 = width - textWidth - 3 * scale, y0 = height - textHeight - 3 * scale;
+    auto put = [&](int x, int y, uint8_t r, uint8_t g, uint8_t b) {
+        if (x < 0 || y < 0 || x >= width || y >= height) return;
+        uint8_t* p = rgba.data() + (static_cast<size_t>(y) * width + x) * 4;
+        p[0] = r;
+        p[1] = g;
+        p[2] = b;
+        p[3] = 255;
+    };
+    for (int y = y0 - scale; y < y0 + textHeight + scale; y++) {
+        for (int x = x0 - scale; x < x0 + textWidth + scale; x++) put(x, y, 20, 20, 24);
+    }
+    for (size_t c = 0; c < text.size(); c++) {
+        const uint16_t glyph = text[c] == '+' ? glyphs[10] : glyphs[text[c] - '0'];
+        for (int row = 0; row < 5; row++) {
+            for (int column = 0; column < 3; column++) {
+                if (!(glyph & (1u << (14 - row * 3 - column)))) continue;
+                for (int dy = 0; dy < scale; dy++) {
+                    for (int dx = 0; dx < scale; dx++) {
+                        put(x0 + (static_cast<int>(c) * 4 + column) * scale + dx, y0 + row * scale + dy, 240, 240, 240);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The .palette thumbnail (S43 R37): its first 64 colours as a square grid, "+N" for the rest
+static bool writePaletteSwatchThumbnail(const fs::path& sourcePath, const fs::path& thumbnailPath) {
+    std::ifstream in(sourcePath, std::ios::binary);
+    if (!in) return false;
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    jasperengine::pixelart::Palette palette;
+    std::vector<jasperengine::pixelart::Diagnostic> diagnostics;
+    if (!jasperengine::pixelart::PaletteCodec::read(text, palette, diagnostics) || palette.colors.empty()) return false;
+    const int shown = std::min(palette.count(), 64);
+    int columns = 1;
+    while (columns * columns < shown) columns++;
+    const int rows = (shown + columns - 1) / columns;
+    const int cell = std::max(1, THUMBNAIL_SIZE / std::max(columns, rows));
+    const int width = cell * columns, height = cell * rows;
+    const int gap = cell >= 8 ? 1 : 0;
+    std::vector<uint8_t> rgba(static_cast<size_t>(width) * static_cast<size_t>(height) * 4, 0);
+    for (int i = 0; i < shown; i++) {
+        const jasperengine::pixelart::Rgba8 color = palette.colors[i];
+        const int cx = (i % columns) * cell, cy = (i / columns) * cell;
+        for (int y = cy; y < cy + cell - gap; y++) {
+            for (int x = cx; x < cx + cell - gap; x++) {
+                // a see-through colour over a checker, as the swatches show it
+                const uint8_t checker = ((x / 4 + y / 4) % 2) ? 200 : 128;
+                uint8_t* p = rgba.data() + (static_cast<size_t>(y) * width + x) * 4;
+                const int a = color.a;
+                p[0] = static_cast<uint8_t>((color.r * a + checker * (255 - a)) / 255);
+                p[1] = static_cast<uint8_t>((color.g * a + checker * (255 - a)) / 255);
+                p[2] = static_cast<uint8_t>((color.b * a + checker * (255 - a)) / 255);
+                p[3] = 255;
+            }
+        }
+    }
+    if (palette.count() > shown) drawPaletteThumbnailCount(rgba, width, height, palette.count() - shown);
+    std::error_code ec;
+    fs::create_directories(thumbnailPath.parent_path(), ec);
+    return editor::writePng(thumbnailPath, width, height, 4, rgba.data(), width * 4, io::Durability::Cache);
+}
+
+// what Apply Palette reads and writes (S43 R23)
+static bool isPaletteApplicableTexture(const fs::path& path) {
+    std::string extension = path.extension().string();
+    for (char& c : extension) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return extension == ".png" || extension == ".bmp" || extension == ".tga" || extension == ".gif";
 }
 
 // The .vat icon: a crowd of three figures over a texture grid (the baked frames)
@@ -394,6 +504,9 @@ editor::FileType editor::ProjectWindow::classifyThumbnailFileType(const fs::path
     if (editor::Util::isPoseAnimationFile(extension)) {
         return editor::FileType::POSE_ANIMATION;
     }
+    if (editor::PaletteWindow::isPaletteFile(filePath)) {
+        return editor::FileType::PALETTE;
+    }
     if (editor::Util::isAudioFile(extension)) {
         return editor::FileType::AUDIO;
     }
@@ -414,10 +527,8 @@ editor::ProjectWindow::ProjectWindow(Project* project, CodeEditor* codeEditor, I
     this->requestSort = true;
     this->iconSize = 32;
     this->isExternalDragHovering = false;
-    this->clipboardCut = false;
     this->isRenaming = false;
     this->renameSelectPending = false;
-    this->isCreatingNewDirectory = false;
     this->windowOpen = true;
     this->focusRequested = false;
     this->windowFocused = false;
@@ -428,14 +539,14 @@ editor::ProjectWindow::ProjectWindow(Project* project, CodeEditor* codeEditor, I
 
     // the main menu's Assets > Create > Animation Clip (shown once this is set)
     animationClipAppHooks().createClipAsset = [this](Project*) {
-        assetsCreateAnimationClip();
+        assetsCreateAnimationClip(createTargetDirectory());
     };
     // Assets > Create > Animator Controller / Avatar Mask through the hooks too: S21's assets
     animationClipAppHooks().createControllerAsset = [this](Project*) {
-        assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Controller);
+        assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Controller, createTargetDirectory());
     };
     animationClipAppHooks().createMaskAsset = [this](Project*) {
-        assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Mask);
+        assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Mask, createTargetDirectory());
     };
 }
 
@@ -492,6 +603,8 @@ void editor::ProjectWindow::notifyProjectPathChange(){
     // Clear thumbnail textures when changing projects
     clearThumbnailTextures();
     dirTreeCache.clear();
+    // copied paths of the project before are no files of this one
+    clipboard.clear();
 
     resumeThumbnailWork();
     scanDirectory(project->getProjectPath());
@@ -1074,6 +1187,8 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.82f, 0.48f, 0.15f, 1.0f));
         case FileType::PHYSICS_MATERIAL:
             return ImGui::GetColorU32(ImVec4(0.31f, 0.76f, 0.97f, 1.0f));
+        case FileType::PALETTE:
+            return ImGui::GetColorU32(ImVec4(0.94f, 0.49f, 0.34f, 1.0f));
         case FileType::NONE:
         default:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
@@ -1105,69 +1220,38 @@ static float drawToolbarStrip(float height) {
     return height;
 }
 
-void editor::ProjectWindow::renderCreateMenuItems() {
-    if (ImGui::MenuItem(ICON_FA_FOLDER_PLUS " Create Folder")){
-        isCreatingNewDirectory = true;
-        memset(nameBuffer, 0, sizeof(nameBuffer));
-        ImGui::CloseCurrentPopup();
+// The Create items for `directory` (the one list, AssetCreateMenu), then the imports
+void editor::ProjectWindow::renderCreateItems(const fs::path& directory) {
+    for (const AssetCreateItem& item : assetCreateItems()) {
+        if (item.kind == AssetCreateKind::AnimationClip && !animationClipAppHooks().createClipAsset) {
+            continue;
+        }
+        if (item.separatorBefore) ImGui::Separator();
+        // a Lua script lives in the Lua directory (create_script refuses one elsewhere)
+        const std::string refused = item.kind == AssetCreateKind::LuaScript ? luaScriptRefusal(directory) : std::string();
+        const std::string label = std::string(item.icon) + " " + item.label;
+        const bool chosen = ImGui::MenuItem(label.c_str(), nullptr, false, refused.empty());
+        uiBuilding.contextMenu.push_back({item.label, lastItemRect()});
+        if (!refused.empty()) {
+            ImGui::SetItemTooltip("%s", refused.c_str());
+        }
+        if (chosen) {
+            createAsset(item.kind, directory);
+            ImGui::CloseCurrentPopup();
+        }
     }
-    if (ImGui::MenuItem(ICON_FA_PERSON " Create Pose Animation")){
-        assetsCreatePoseAnimation();
-        ImGui::CloseCurrentPopup();
-    }
-    if (ImGui::MenuItem(ICON_FA_FILM " Create Animation Clip")){
-        assetsCreateAnimationClip();
-        ImGui::CloseCurrentPopup();
-    }
-    if (ImGui::MenuItem(ICON_FA_DIAGRAM_PROJECT " Create Animator Controller")){
-        assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Controller);
-        ImGui::CloseCurrentPopup();
-    }
-    if (ImGui::MenuItem(ICON_FA_PERSON " Create Avatar Mask")){
-        assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Mask);
-        ImGui::CloseCurrentPopup();
-    }
-    if (ImGui::MenuItem(ICON_FA_FILM " Create Animation Montage")){
-        assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Montage);
-        ImGui::CloseCurrentPopup();
-    }
-    if (ImGui::MenuItem(ICON_FA_BURST " Create Shake Preset")){
-        assetsCreateShakePreset();
-        ImGui::CloseCurrentPopup();
-    }
-    if (ImGui::MenuItem(ICON_FA_SLIDERS " Create Audio Mixer")){
-        assetsCreateAudioMixer();
-        ImGui::CloseCurrentPopup();
-    }
-    if (ImGui::MenuItem(ICON_FA_MUSIC " Create Sound Event")){
-        assetsCreateSoundEvent();
-        ImGui::CloseCurrentPopup();
-    }
-    if (ImGui::MenuItem(ICON_FA_VOLUME_HIGH " Create Placeholder Sound...")){
-        assetsCreatePlaceholderSound();
-        ImGui::CloseCurrentPopup();
-    }
-    if (ImGui::MenuItem(ICON_FA_VOLUME_HIGH " Import Sound Essentials")){
-        assetsImportSoundEssentials();
-        ImGui::CloseCurrentPopup();
-    }
-    if (ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE " Create Physics Material")){
-        assetsCreatePhysicsMaterial(false);
-        ImGui::CloseCurrentPopup();
-    }
-    if (ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE " Create Physics Material 2D")){
-        assetsCreatePhysicsMaterial(true);
-        ImGui::CloseCurrentPopup();
-    }
-
     ImGui::Separator();
 
     if (ImGui::MenuItem(ICON_FA_FILE_IMPORT " Import New Asset...")){
-        importExternalPaths(editor::FileDialogs::openFileDialogMultiple());
+        importExternalPaths(editor::FileDialogs::openFileDialogMultiple(), directory);
     }
 
     if (ImGui::MenuItem(ICON_FA_FOLDER_OPEN " Import Folder...")){
-        importExternalPaths(editor::FileDialogs::pickFolderDialogMultiple());
+        importExternalPaths(editor::FileDialogs::pickFolderDialogMultiple(), directory);
+    }
+
+    if (ImGui::MenuItem(ICON_FA_VOLUME_HIGH " Import Sound Essentials")){
+        assetsImportSoundEssentials();
     }
 }
 
@@ -1187,7 +1271,7 @@ void editor::ProjectWindow::renderHeader() {
         ImGui::OpenPopup("##ProjectCreateMenu");
     }
     if (ImGui::BeginPopup("##ProjectCreateMenu")) {
-        renderCreateMenuItems();
+        renderCreateItems(listingFolder());
         ImGui::EndPopup();
     }
 
@@ -1402,6 +1486,7 @@ void editor::ProjectWindow::renderPathBreadcrumb(const ImVec2& size) {
     // handleInternalDragAndDrop don't mutate state mid-layout
     fs::path navigateTo;
     fs::path dropTarget;
+    std::vector<fs::path> dropSources;
 
     ImVec2 barMin = ImGui::GetCursorScreenPos();
     ImGui::BeginChild("##ResourcesPath", size, false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
@@ -1464,8 +1549,11 @@ void editor::ProjectWindow::renderPathBreadcrumb(const ImVec2& size) {
             navigateTo = segments[i].second;
         }
         if (!isCurrent && ImGui::BeginDragDropTarget()) {
-            if (ImGui::AcceptDragDropPayload("resource_files")) {
+            const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+            std::vector<fs::path> sources = peek && peek->IsDataType("resource_files") ? payloadPaths(peek) : std::vector<fs::path>();
+            if (acceptsDrop(segments[i].second, sources) && ImGui::AcceptDragDropPayload("resource_files")) {
                 dropTarget = segments[i].second;
+                dropSources = std::move(sources);
             }
             ImGui::EndDragDropTarget();
         }
@@ -1500,7 +1588,7 @@ void editor::ProjectWindow::renderPathBreadcrumb(const ImVec2& size) {
         selectedFiles.clear();
     }
     if (!dropTarget.empty()) {
-        handleInternalDragAndDrop(dropTarget);
+        handleInternalDragAndDrop(dropTarget, dropSources);
     }
 }
 
@@ -1536,18 +1624,12 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
     bool clickedInFile = false;
     hoveredFile.clear();
 
-    // --- Start marquee selection on empty click -----------------------------
-    if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(0) && !ImGui::IsAnyItemHovered()){
-        isDragging = true;
-        dragStart = ImGui::GetMousePos();
-        dragStart.x -= scrollRegionMin.x;
-        dragStart.y -= scrollRegionMin.y;
-        dragStart.x += ImGui::GetScrollX();
-        dragStart.y += ImGui::GetScrollY();
-        selectedFiles.clear();
-    }
-
     // --- Update marquee rectangle and auto-scroll ---------------------------
+    // (it starts after the items, below: a press arriving with the pointer move must see the file
+    // under it, which only this frame's items know; a drag of files ends it)
+    if (isDragging && ImGui::GetDragDropPayload()){
+        isDragging = false;
+    }
     if (isDragging){
         ImVec2 mousePos = ImGui::GetMousePos();
         float scrollMargin = Theme::dpi(20.0f);
@@ -1587,11 +1669,14 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
     const float contentYOffset = pad * 0.75f; // Extra vertical offset so thumbnail, line, and text start a bit lower
 
     if (ImGui::BeginTable("FileTable", columns, ImGuiTableFlags_SizingStretchSame, ImVec2(totalTableWidth, 0))){
+        // scanDirectory waits until the loop ended (it rebuilds `files`)
+        listingIterating = true;
         for (auto& file : files){
             if (!showDirectories && file.isDirectory) continue;
 
             bool deferredDirectoryChange = false;
             fs::path dropTarget;
+            std::vector<fs::path> dropSources;
 
             ImGui::TableNextColumn();
             ImGui::PushID(file.name.c_str());
@@ -1707,6 +1792,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
             ImTextureID fileIconImage = Backend::getImGuiTexture(file.icon);
             float dispW = uiIconSize;
             float dispH = uiIconSize;
+            // a frame of an .aseprite file's page: a part of the texture
+            ImVec2 iconUv0(0.0f, 0.0f), iconUv1(1.0f, 1.0f);
 
             // Only resolve thumbnails for items inside the visible region, so
             // the GPU texture cache stays bounded with large directories
@@ -1722,6 +1809,19 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         dispH = std::max(1.0f, th * scale);
                     }
                     fileIconImage = thumbTex;
+                }
+            }
+            if (!file.isDirectory && ImGui::IsItemVisible() && SpriteSheetPool::isAsepritePath(file.name)){
+                int tw = 0;
+                int th = 0;
+                if (ImTextureID frameTex = getAsepriteThumbnail(currentPath / file.name, hovered, tw, th, iconUv0, iconUv1)){
+                    if (tw > 0 && th > 0){
+                        float scale = std::min(uiIconSize / static_cast<float>(tw),
+                                               uiIconSize / static_cast<float>(th));
+                        dispW = std::max(1.0f, tw * scale);
+                        dispH = std::max(1.0f, th * scale);
+                    }
+                    fileIconImage = frameTex;
                 }
             }
 
@@ -1761,7 +1861,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         float availWidth = ImGui::GetCurrentWindow()->Size.x;
                         float xPos = (availWidth - previewW) * 0.5f;
                         ImGui::SetCursorPosX(xPos);
-                        Widgets::image(fileIconImage, ImVec2(previewW, previewH));
+                        if (fileIconImage != ImTextureID{}) ImGui::Image(fileIconImage, ImVec2(previewW, previewH), iconUv0, iconUv1);
+                        else Widgets::image(fileIconImage, ImVec2(previewW, previewH));
                     }
 
                     ImGui::EndDragDropSource();
@@ -1769,10 +1870,14 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
             }
 
             // --- Directory as drop target ----------------------------------
+            // (not one of the dragged folders, nor a folder below one)
             if (file.isDirectory){
                 if (ImGui::BeginDragDropTarget()){
-                    if (ImGui::AcceptDragDropPayload("resource_files")){
+                    const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+                    std::vector<fs::path> sources = peek && peek->IsDataType("resource_files") ? payloadPaths(peek) : std::vector<fs::path>();
+                    if (acceptsDrop(currentPath / file.name, sources) && ImGui::AcceptDragDropPayload("resource_files")){
                         dropTarget = currentPath / file.name;
+                        dropSources = std::move(sources);
                     }
                     ImGui::EndDragDropTarget();
                 }
@@ -1781,7 +1886,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
             // =================================================================
             // Draw content per style
             // =================================================================
-            const bool notInProject = fileNotInProject(file);
+            // outside the project's build, or cut to the clipboard: dimmed
+            const bool notInProject = fileNotInProject(file) || clipboard.isCutItem(currentPath / file.name);
 
             if (useCardView){
                 ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -1836,13 +1942,30 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 float imageY = contentMin.y + contentYOffset + (thumbHeight - dispH) * 0.5f;
                 ImGui::SetCursorScreenPos(ImVec2(imageX, imageY));
                 if (notInProject) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, style.Alpha * 0.4f);
-                Widgets::image(fileIconImage, ImVec2(dispW, dispH));
+                if (fileIconImage != ImTextureID{}) ImGui::Image(fileIconImage, ImVec2(dispW, dispH), iconUv0, iconUv1);
+                else Widgets::image(fileIconImage, ImVec2(dispW, dispH));
                 if (file.type == FileType::PREFAB && isVariantFile(currentPath / file.name)){
                     const float badge = std::max(Theme::dpi(10.0f), std::min(dispW, dispH) * 0.34f);
                     UIUtils::drawPrefabVariantBadge(ImGui::GetWindowDrawList(), ImVec2(imageX + Theme::dpi(3.0f), imageY + dispH - badge - Theme::dpi(2.0f)),
                         ImVec2(imageX + Theme::dpi(3.0f) + badge, imageY + dispH - Theme::dpi(2.0f)), IM_COL32(140, 205, 255, 255));
                 }
                 drawTextureCookBadge(ImGui::GetWindowDrawList(), file, ImVec2(imageX, imageY), ImVec2(imageX + dispW, imageY + dispH));
+                // S45 R32: a Sprite Atlas building or failed
+                if (!file.isDirectory && SpriteSheetSources::isAtlasPath(file.name)){
+                    sprite::SpriteAtlasBuilder& atlases = sprite::SpriteAtlasBuilder::get();
+                    const std::string atlasFile = (currentPath / file.name).string();
+                    std::shared_ptr<const sprite::AtlasBuildResult> attempt = atlases.lastAttempt(atlasFile);
+                    const bool building = atlases.isBuilding(atlasFile);
+                    const bool failed = !building && attempt && !attempt->ok && attempt->error.kind != "cancelled";
+                    if (building || failed){
+                        const float r = std::max(Theme::dpi(4.0f), std::min(dispW, dispH) * 0.12f);
+                        const ImVec2 c(imageX + dispW - r - Theme::dpi(2.0f), imageY + dispH - r - Theme::dpi(2.0f));
+                        ImGui::GetWindowDrawList()->AddCircleFilled(c, r, failed ? IM_COL32(230, 80, 60, 255) : IM_COL32(240, 190, 40, 255));
+                        if (ImGui::IsMouseHoveringRect(ImVec2(c.x - r, c.y - r), ImVec2(c.x + r, c.y + r))){
+                            ImGui::SetTooltip("%s", failed ? ("Sprite Atlas build failed: " + attempt->error.message).c_str() : "Building the Sprite Atlas");
+                        }
+                    }
+                }
                 if (file.generated){
                     drawGeneratedBadge(ImGui::GetWindowDrawList(), ImVec2(imageX, imageY + dispH - std::min(dispW, dispH) * 0.32f), std::min(dispW, dispH), file.name, file.generatedStale);
                 }
@@ -1951,7 +2074,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     }
                     ImVec2 iconMin(itemMin.x + Theme::dpi(4.0f) + (iconExtent - w) * 0.5f, itemMin.y + (rowH - h) * 0.5f);
                     if (fileIconImage != ImTextureID{}){
-                        drawList->AddImage(fileIconImage, iconMin, ImVec2(iconMin.x + w, iconMin.y + h), ImVec2(0, 0), ImVec2(1, 1), tintCol);
+                        drawList->AddImage(fileIconImage, iconMin, ImVec2(iconMin.x + w, iconMin.y + h), iconUv0, iconUv1, tintCol);
                     }
                     if (file.type == FileType::PREFAB && isVariantFile(currentPath / file.name)){
                         const float badge = std::max(Theme::dpi(8.0f), iconExtent * 0.55f);
@@ -1986,7 +2109,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     // Center the scaled thumbnail inside the icon box
                     ImVec2 imgMin(iconBoxMin.x + (uiIconSize - dispW) * 0.5f, iconBoxMin.y + (uiIconSize - dispH) * 0.5f);
                     if (fileIconImage != ImTextureID{}){
-                        drawList->AddImage(fileIconImage, imgMin, ImVec2(imgMin.x + dispW, imgMin.y + dispH), ImVec2(0, 0), ImVec2(1, 1), tintCol);
+                        drawList->AddImage(fileIconImage, imgMin, ImVec2(imgMin.x + dispW, imgMin.y + dispH), iconUv0, iconUv1, tintCol);
                     }
                     // Unity's Prefab Variant icon: the prefab's with an arrow
                     if (file.type == FileType::PREFAB && isVariantFile(currentPath / file.name)){
@@ -2085,6 +2208,23 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
             }
 
             if (ImGui::BeginPopup("FileContextMenu")){
+                // Unity's right-click menu starts with Create: into a folder, beside a file
+                {
+                    const fs::path entryPath = currentPath / file.name;
+                    const fs::path into = file.isDirectory ? entryPath : entryPath.parent_path();
+                    const bool createOpen = ImGui::BeginMenu(ICON_FA_PLUS " Create");
+                    uiBuilding.contextMenu.push_back({"Create", lastItemRect()});
+                    if (createOpen) {
+                        renderCreateItems(into);
+                        ImGui::EndMenu();
+                    }
+                    ImGui::Separator();
+                }
+                if (!file.isDirectory && hasSpriteSelection() && (SpriteSheetSources::isTexturePath(file.name) || SpriteSheetPool::isAsepritePath(file.name))) {
+                    if (ImGui::MenuItem(ICON_FA_TABLE_CELLS " Create Sprite Atlas from Selection")) {
+                        assetsCreateSpriteAtlasFromSelection();
+                    }
+                }
                 if (!file.isDirectory && Util::isAudioFile(file.name) && hasAudioSelection()) {
                     if (ImGui::MenuItem(ICON_FA_MUSIC " Create Sound Event from Clips")) {
                         assetsCreateSoundEventFromClips();
@@ -2135,6 +2275,19 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         }
                         ImGui::SetItemTooltip("This Prefab Variant's base: %s", base.generic_string().c_str());
                     }
+                    ImGui::Separator();
+                }
+
+                // .aseprite files (S44 R32): the selected ones in Aseprite
+                if (!file.isDirectory && SpriteSheetPool::isAsepritePath(file.name)) {
+                    if (ImGui::MenuItem(ICON_FA_UP_RIGHT_FROM_SQUARE " Open in Aseprite")) {
+                        std::vector<std::string> paths;
+                        for (const fs::path& selected : getSelectedFiles()) {
+                            if (SpriteSheetPool::isAsepritePath(selected.string())) paths.push_back(FileUtils::pathToUtf8(selected));
+                        }
+                        pixelart::aseprite::openInAsepriteOrFallback(project, paths, false);
+                    }
+                    uiBuilding.contextMenu.push_back({"Open in Aseprite", lastItemRect()});
                     ImGui::Separator();
                 }
 
@@ -2191,6 +2344,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     drawSpriteNormalsMenuItems(file, imagePath);
                     ImGui::Separator();
                 }
+
+                drawPaletteMenuItems(file, currentPath / file.name);
 
                 // Vertex Animation: bake a model or a clip, import a Houdini / OpenVAT export, open a
                 // .vat's recipe (the baker window's hook; hidden until it is set)
@@ -2312,10 +2467,26 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     ImGui::Separator();
                 }
 
-                if (ImGui::MenuItem(ICON_FA_COPY " Copy")) copySelectedFiles(false);
-                if (ImGui::MenuItem(ICON_FA_SCISSORS " Cut")) copySelectedFiles(true);
-                if (ImGui::MenuItem(ICON_FA_PASTE " Paste", nullptr, false, !clipboardFiles.empty())){
-                    pasteFiles(currentPath / lastSelectedFile);
+                {
+                    auto keys = [](const char* id) { return CommandCatalog::editor().menuShortcutText(id); };
+                    const std::string copyKeys = keys("project.copy"), cutKeys = keys("project.cut"),
+                                      pasteKeys = keys("project.paste"), duplicateKeys = keys("project.duplicate");
+                    const bool copyItem = ImGui::MenuItem(ICON_FA_COPY " Copy", copyKeys.empty() ? nullptr : copyKeys.c_str());
+                    uiBuilding.contextMenu.push_back({"Copy", lastItemRect()});
+                    const bool cutItem = ImGui::MenuItem(ICON_FA_SCISSORS " Cut", cutKeys.empty() ? nullptr : cutKeys.c_str());
+                    uiBuilding.contextMenu.push_back({"Cut", lastItemRect()});
+                    const bool pasteItem = ImGui::MenuItem(ICON_FA_PASTE " Paste", pasteKeys.empty() ? nullptr : pasteKeys.c_str(), false, !clipboard.empty());
+                    uiBuilding.contextMenu.push_back({"Paste", lastItemRect()});
+                    const bool duplicateItem = ImGui::MenuItem(ICON_FA_CLONE " Duplicate", duplicateKeys.empty() ? nullptr : duplicateKeys.c_str());
+                    uiBuilding.contextMenu.push_back({"Duplicate", lastItemRect()});
+                    if (copyItem) copySelectedFiles(false);
+                    if (cutItem) copySelectedFiles(true);
+                    if (pasteItem) {
+                        // into a folder, beside a file (D1); scanDirectory waits for the loop's end
+                        const fs::path clicked = currentPath / file.name;
+                        pasteFiles(AssetClipboard::pasteTarget(listingFolder(), &clicked, file.isDirectory));
+                    }
+                    if (duplicateItem) duplicateSelection();
                 }
 
                 ImGui::Separator();
@@ -2323,7 +2494,10 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 renderLabelsMenu();
                 if (ImGui::MenuItem(ICON_FA_BOOKMARK " Add to Bookmarks")) addSelectionToBookmarks();
                 ImGui::Separator();
-                if (ImGui::MenuItem(ICON_FA_TRASH " Delete")) showDeleteConfirmation = true;
+                const std::string deleteKeys = CommandCatalog::editor().menuShortcutText("project.delete");
+                const bool deleteItem = ImGui::MenuItem(ICON_FA_TRASH " Delete", deleteKeys.empty() ? nullptr : deleteKeys.c_str());
+                uiBuilding.contextMenu.push_back({"Delete", lastItemRect()});
+                if (deleteItem) showDeleteConfirmation = true;
                 const std::string renameKeys = CommandCatalog::editor().menuShortcutText("project.rename");
                 const bool rename = ImGui::MenuItem(ICON_FA_I_CURSOR " Rename", renameKeys.empty() ? nullptr : renameKeys.c_str());
                 uiBuilding.contextMenu.push_back({"Rename", lastItemRect()});
@@ -2364,6 +2538,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
             ImGui::PopID();
 
             if (deferredDirectoryChange){
+                listingIterating = false;
                 scanDirectory(currentPath / file.name);
                 selectedFiles.clear();
                 break;
@@ -2371,12 +2546,25 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
             // Rebuilds files, so the entry this iteration holds is gone from here on
             if (!dropTarget.empty()){
-                handleInternalDragAndDrop(dropTarget);
+                listingIterating = false;
+                handleInternalDragAndDrop(dropTarget, dropSources);
                 break;
             }
         }
+        listingIterating = false;
 
         ImGui::EndTable();
+    }
+    // what an item's menu asked for meanwhile
+    if (deferredScan) {
+        const fs::path path = *deferredScan;
+        deferredScan.reset();
+        scanDirectory(path);
+    }
+    if (afterListing) {
+        std::function<void()> action = std::move(afterListing);
+        afterListing = nullptr;
+        action();
     }
     if (!searchText.empty() && searchMoreResults > 0) {
         ImGui::TextDisabled("%zu more results: narrow the search", searchMoreResults);
@@ -2392,27 +2580,49 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
     }
 
     if (ImGui::BeginPopup("ResourcesContextMenu")){
-        renderCreateMenuItems();
+        const fs::path folder = listingFolder();
+        const bool createOpen = ImGui::BeginMenu(ICON_FA_PLUS " Create");
+        uiBuilding.contextMenu.push_back({"Create", lastItemRect()});
+        if (createOpen) {
+            renderCreateItems(folder);
+            ImGui::EndMenu();
+        }
 
         ImGui::Separator();
 
-        if (ImGui::MenuItem(ICON_FA_PASTE " Paste", nullptr, false, !clipboardFiles.empty())){
-            pasteFiles(currentPath);
+        const std::string pasteKeys = CommandCatalog::editor().menuShortcutText("project.paste");
+        const bool paste = ImGui::MenuItem(ICON_FA_PASTE " Paste", pasteKeys.empty() ? nullptr : pasteKeys.c_str(), false, !clipboard.empty());
+        uiBuilding.contextMenu.push_back({"Paste", lastItemRect()});
+        if (paste){
+            pasteFiles(folder);
         }
 
         ImGui::Separator();
 
         if (ImGui::MenuItem(ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE " Open in File Manager")){
-            openInFileManager(currentPath);
+            openInFileManager(folder);
         }
 
         ImGui::EndPopup();
     }
 
-    // --- Clear selection when clicking empty space -------------------------
-    if (ImGui::IsMouseClicked(0) && ImGui::IsWindowHovered() && !clickedInFile){
-        selectedFiles.clear();
-        updateInspectedAsset("");
+    // --- Empty click: the marquee starts, the selection clears -------------
+    // After the items, so a press that comes with the pointer move still sees the file under it
+    // (Doriax 9050bbaca); Ctrl or Shift held: the marquee adds to the selection. A press on an
+    // item leaves the selection to the item (its release selects; a drag takes the selection)
+    if (ImGui::IsMouseClicked(0) && ImGui::IsWindowHovered() && !clickedInFile && !ImGui::IsAnyItemHovered() &&
+        !ImGui::GetDragDropPayload()){
+        isDragging = true;
+        dragStart = ImGui::GetMousePos();
+        dragStart.x -= scrollRegionMin.x;
+        dragStart.y -= scrollRegionMin.y;
+        dragStart.x += ImGui::GetScrollX();
+        dragStart.y += ImGui::GetScrollY();
+        dragEnd = dragStart;
+        if (!ctrlPressed && !shiftPressed){
+            selectedFiles.clear();
+            updateInspectedAsset("");
+        }
     }
 
     // --- Draw marquee rectangle --------------------------------------------
@@ -2440,7 +2650,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
     // --- Create Prefab or Variant? (a Prefab instance dropped in) ----------
     showPrefabOrVariantPopup();
 
-    // --- Delete confirmation modal (unchanged) -----------------------------
+    // --- Delete confirmation modal -----------------------------------------
     if (showDeleteConfirmation){
         ImGui::OpenPopup("Delete Confirmation");
     }
@@ -2448,6 +2658,23 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
     drawPlaceholderSoundDialog();
 
     if (EditorModal::begin("Delete Confirmation", NULL, ImGuiWindowFlags_AlwaysAutoResize)){
+        // the assets or Lua directory goes only through Project Settings (D10): nothing is deleted
+        std::string refused;
+        for (const auto& fileName : selectedFiles){
+            refused = rootRefusal(currentPath / fileName);
+            if (!refused.empty()) break;
+        }
+        if (!refused.empty()){
+            ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.4f, 1.0f), "%s", refused.c_str());
+            EditorModal::message(refused);
+            ImGui::Separator();
+            if (EditorModal::button("OK", "ok", ImVec2(120.0f, 0))){
+                showDeleteConfirmation = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+            return;
+        }
         ImGui::Text("Are you sure you want to delete the following items?");
         ImGui::Separator();
         int fileCount = 0;
@@ -2645,10 +2872,22 @@ void editor::ProjectWindow::renderDirectoryTree(const fs::path& rootPath) {
         }
     }
 
-    // Handle drag and drop target
+    // Unity's folder menu: Create, Copy, Cut, Paste, Duplicate for this folder
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+        ImGui::OpenPopup("FolderTreeContextMenu");
+    }
+    if (ImGui::BeginPopup("FolderTreeContextMenu")) {
+        renderTreeContextMenu(rootPath);
+        ImGui::EndPopup();
+    }
+
+    // Handle drag and drop target (not a dragged folder, nor below one)
     if (ImGui::BeginDragDropTarget()) {
-        if (ImGui::AcceptDragDropPayload("resource_files")) {
-            handleInternalDragAndDrop(rootPath);
+        const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+        std::vector<fs::path> sources = peek && peek->IsDataType("resource_files") ? payloadPaths(peek) : std::vector<fs::path>();
+        if (acceptsDrop(rootPath, sources) && ImGui::AcceptDragDropPayload("resource_files")) {
+            const fs::path target = rootPath;
+            pendingTreeAction = [this, target, sources]() { handleInternalDragAndDrop(target, sources); };
         }
         ImGui::EndDragDropTarget();
     }
@@ -2666,6 +2905,12 @@ void editor::ProjectWindow::renderDirectoryTree(const fs::path& rootPath) {
 }
 
 void editor::ProjectWindow::scanDirectory(const fs::path& path) {
+    // the listing loop walks `files`: rebuilt after it (a paste, a create or a navigation from an
+    // item's menu)
+    if (listingIterating) {
+        deferredScan = path;
+        return;
+    }
     currentPath = path;
 
     std::error_code ec;
@@ -2716,6 +2961,7 @@ void editor::ProjectWindow::scanDirectory(const fs::path& path) {
 }
 
 void editor::ProjectWindow::rebuildFileIndex() {
+    assert(!listingIterating);
     fileIndex.clear();
     fileIndex.reserve(files.size());
     for (size_t i = 0; i < files.size(); ++i) {
@@ -2770,6 +3016,9 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         }else if (PhysicsMaterialAssets::isPhysicsMaterialFile(fileEntry.extension)){
             fileEntry.type = FileType::PHYSICS_MATERIAL;
             fileEntry.icon = physicsMaterialIcon.getRender();
+        }else if (PaletteWindow::isPaletteFile(path)){
+            fileEntry.type = FileType::PALETTE;
+            fileEntry.icon = paletteIcon.getRender();
         }else if (Util::isLuaFile(fileEntry.extension)){
             fileEntry.type = FileType::LUA;
             fileEntry.icon = luaIcon.getRender();
@@ -2809,7 +3058,8 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         }
 
         if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL ||
-            fileEntry.type == FileType::PREFAB || fileEntry.type == FileType::POSE_ANIMATION || fileEntry.type == FileType::AUDIO) {
+            fileEntry.type == FileType::PREFAB || fileEntry.type == FileType::POSE_ANIMATION || fileEntry.type == FileType::AUDIO ||
+            fileEntry.type == FileType::PALETTE) {
             queueThumbnailGeneration(path, fileEntry.type);
         }
         // its asset labels (S25)
@@ -2887,129 +3137,47 @@ void editor::ProjectWindow::highlightDragAndDrop(){
         0.0f, 0, 2.0f);
 }
 
-void editor::ProjectWindow::handleInternalDragAndDrop(const fs::path& targetDirectory) {
-    std::vector<std::string> filesVector(selectedFiles.begin(), selectedFiles.end());
-    project->getProjectCommandHistory()->addCommand(new CopyFileCmd(project, filesVector, currentPath.string(), targetDirectory.string(), false));
+std::vector<fs::path> editor::ProjectWindow::payloadPaths(const ImGuiPayload* payload) {
+    std::vector<fs::path> paths;
+    if (!payload || !payload->Data || payload->DataSize <= 0) return paths;
+    const char* data = static_cast<const char*>(payload->Data);
+    const char* end = data + payload->DataSize;
+    while (data < end) {
+        const char* stop = std::find(data, end, '\0');
+        if (stop > data) paths.push_back(fs::path(std::string(data, stop)).lexically_normal());
+        data = stop + 1;
+    }
+    return paths;
+}
 
+bool editor::ProjectWindow::acceptsDrop(const fs::path& targetDirectory, const std::vector<fs::path>& sources) const {
+    for (const fs::path& source : sources) {
+        if (!AssetOps::moveRefusal(source, targetDirectory / source.filename()).empty() || !rootRefusal(source).empty()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void editor::ProjectWindow::handleInternalDragAndDrop(const fs::path& targetDirectory, const std::vector<fs::path>& sources) {
+    if (sources.empty()) return;
+    std::vector<std::string> paths;
+    for (const fs::path& source : sources) paths.push_back(source.string());
+    auto report = std::make_shared<CopyFileCmd::Report>();
+    auto* command = new CopyFileCmd(project, paths, targetDirectory.string(), false);
+    command->reportTo(report);
+    if (!project->getProjectCommandHistory()->addCommand(command) && !report->error.empty()) {
+        Backend::getApp().registerAlert("Move", report->error);
+    }
     selectedFiles.clear();
     scanDirectory(currentPath);
 }
 
-void editor::ProjectWindow::handleNewDirectory(){
-    // Handle new directory creation popup
-    if (isCreatingNewDirectory) {
-        ImGui::OpenPopup("Create New Directory");
-        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-        ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    }
-
-    if (EditorModal::begin("Create New Directory", &isCreatingNewDirectory, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::Text("Enter directory name:");
-
-        // Auto-focus the input field when the popup opens
-        if (ImGui::IsWindowAppearing()) {
-            ImGui::SetKeyboardFocusHere();
-        }
-
-        bool enterPressed = EditorModal::inputText("##newdir", "name", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
-        EditorModal::message(std::string("Enter directory name: \"") + nameBuffer + "\" (in " + currentPath.filename().string() + ")");
-
-        // Calculate total width of the buttons
-        float buttonWidth = 120.0f;
-        float buttonSpacing = ImGui::GetStyle().ItemSpacing.x;
-        float totalWidth = (buttonWidth * 2) + buttonSpacing;
-
-        // Center the buttons
-        float windowWidth = ImGui::GetWindowSize().x;
-        ImGui::SetCursorPosX((windowWidth - totalWidth) * 0.5f);
-
-        if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0))) {
-            isCreatingNewDirectory = false;
-            ImGui::CloseCurrentPopup();
-        }
-
-        ImGui::SameLine();
-
-        bool confirmed = EditorModal::button("Create", "yes", ImVec2(buttonWidth, 0)) || enterPressed;
-        if (confirmed) {
-            std::string dirName = nameBuffer;
-            if (!dirName.empty()) {
-                try {
-                    fs::path newDirPath = currentPath / dirName;
-
-                    // Check if directory already exists
-                    if (fs::exists(newDirPath)) {
-                        ImGui::OpenPopup("Directory Already Exists");
-                    } else {
-                        project->getProjectCommandHistory()->addCommand(new CreateDirCmd(dirName, currentPath.string()));
-                        scanDirectory(currentPath);
-                        isCreatingNewDirectory = false;
-                        ImGui::CloseCurrentPopup();
-                    }
-                } catch (const fs::filesystem_error& e) {
-                    ImGui::OpenPopup("Creation Error");
-                }
-            }
-            if (dirName.empty()) {
-                ImGui::OpenPopup("Invalid Name");
-            }
-        }
-
-        // Error popup for existing directory
-        if (EditorModal::begin("Directory Already Exists", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("A directory with this name already exists.");
-            EditorModal::message("A directory with this name already exists.");
-            ImGui::Separator();
-
-            float popupWidth = ImGui::GetWindowSize().x;
-            float buttonWidth = 120.0f;
-            ImGui::SetCursorPosX((popupWidth - buttonWidth) * 0.5f);
-
-            if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndPopup();
-        }
-
-        // Error popup for creation failure
-        if (EditorModal::begin("Creation Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Failed to create the directory.");
-            EditorModal::message("Failed to create the directory.");
-            ImGui::Separator();
-
-            float popupWidth = ImGui::GetWindowSize().x;
-            float buttonWidth = 120.0f;
-            ImGui::SetCursorPosX((popupWidth - buttonWidth) * 0.5f);
-
-            if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndPopup();
-        }
-
-        // Error popup for invalid name
-        if (EditorModal::begin("Invalid Name", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Please enter a valid directory name.");
-            EditorModal::message("Please enter a valid directory name.");
-            ImGui::Separator();
-
-            float popupWidth = ImGui::GetWindowSize().x;
-            float buttonWidth = 120.0f;
-            ImGui::SetCursorPosX((popupWidth - buttonWidth) * 0.5f);
-
-            if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndPopup();
-        }
-
-        ImGui::EndPopup();
-    }
-}
-
 void editor::ProjectWindow::startRename(const std::string& fileName){
-    if (fileName != newLuaScriptFile) {
-        newLuaScriptFile.clear();
+    // the assets or Lua directory is renamed through Project Settings (D10)
+    if (const std::string refused = rootRefusal(currentPath / fileName); !refused.empty()) {
+        Backend::getApp().registerAlert("Rename", refused);
+        return;
     }
     isRenaming = true;
     renameSelectPending = true;
@@ -3084,12 +3252,7 @@ void editor::ProjectWindow::handleRename(){
                     } else if (fs::exists(newPath) || pairTaken) {
                         ImGui::OpenPopup("File Already Exists");
                     } else {
-                        const bool newLuaScript = !newLuaScriptFile.empty() && fileBeingRenamed == newLuaScriptFile;
-                        newLuaScriptFile.clear();
                         const bool renamed = project->getProjectCommandHistory()->addCommand(new RenameFileCmd(project, fileBeingRenamed, newName, currentPath.string()));
-                        if (renamed && newLuaScript && Util::isLuaFile(newName)) {
-                            renameNewLuaScript(newPath, newPath.stem().string());
-                        }
                         if (renamed && (Util::isLuaFile(fileBeingRenamed) || Util::isLuaFile(newName))) {
                             Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {oldPath, newPath});
                         }
@@ -3175,26 +3338,164 @@ void editor::ProjectWindow::handleRename(){
 }
 
 void editor::ProjectWindow::copySelectedFiles(bool cut) {
-    clipboardFiles.clear();
-    clipboardCut = cut;
-
+    std::vector<fs::path> paths;
     for (const auto& fileName : selectedFiles) {
-        clipboardFiles.push_back((currentPath / fileName).string());
+        paths.push_back(currentPath / fileName);
     }
+    copyPaths(std::move(paths), cut);
 }
 
-void editor::ProjectWindow::pasteFiles(const fs::path& targetDirectory) {
-    project->getProjectCommandHistory()->addCommand(new CopyFileCmd(project, clipboardFiles, targetDirectory.string(), !clipboardCut));
-
-    // Clear clipboard if it was a cut operation
-    if (clipboardCut) {
-        clipboardFiles.clear();
+void editor::ProjectWindow::copyPaths(std::vector<fs::path> paths, bool cut) {
+    if (cut) {
+        // the assets or Lua directory moves only through Project Settings (D10)
+        for (const fs::path& path : paths) {
+            if (const std::string refused = rootRefusal(path); !refused.empty()) {
+                Backend::getApp().registerAlert("Cut", refused);
+                return;
+            }
+        }
     }
+    clipboard.set(std::move(paths), cut);
+}
 
+bool editor::ProjectWindow::pasteFiles(const fs::path& targetDirectory) {
+    size_t gone = 0;
+    const std::vector<fs::path> sources = clipboard.existing(&gone);
+    if (sources.empty()) {
+        clipboard.clear();
+        Out::warning("Nothing to paste: the copied files were moved or deleted");
+        return false;
+    }
+    if (gone > 0) {
+        Out::info("%zu of %zu copied files are gone: pasting the others", gone, gone + sources.size());
+    }
+    const bool cut = clipboard.isCut();
+    // the assets or Lua directory moves only through Project Settings (D10); a folder into itself
+    // and the like the command refuses below, and a refused or failed paste keeps a cut
+    for (const fs::path& source : sources) {
+        if (const std::string refused = cut ? rootRefusal(source) : std::string(); !refused.empty()) {
+            Backend::getApp().registerAlert("Paste", refused);
+            return false;
+        }
+    }
+    std::vector<std::string> paths;
+    for (const fs::path& source : sources) paths.push_back(source.string());
+    auto report = std::make_shared<CopyFileCmd::Report>();
+    auto* command = new CopyFileCmd(project, paths, targetDirectory.string(), !cut);
+    command->reportTo(report);
+    const bool done = project->getProjectCommandHistory()->addCommand(command);
+    if (!done && !report->error.empty()) {
+        Backend::getApp().registerAlert("Paste", report->error);
+    }
+    clipboard.pasted(done && !report->landed.empty());
     scanDirectory(currentPath);
+    if (done) {
+        selectLanded(report->landed, targetDirectory);
+    }
+    return done && !report->landed.empty();
 }
 
-void editor::ProjectWindow::importExternalPaths(const std::vector<std::string>& sourcePaths) {
+void editor::ProjectWindow::selectLanded(const std::vector<fs::path>& landed, const fs::path& target) {
+    if (landed.empty()) return;
+    selectedFiles.clear();
+    const fs::path listing = listingFolder().lexically_normal();
+    if (target.lexically_normal() == listing || !searchText.empty()) {
+        // the copies, as the listing names them (a search: relative paths)
+        for (const fs::path& path : landed) {
+            const fs::path relative = path.lexically_normal().lexically_relative(currentPath.lexically_normal());
+            if (relative.empty() || *relative.begin() == "..") continue;
+            selectedFiles.insert(FileUtils::pathToGenericUtf8(relative));
+            lastSelectedFile = FileUtils::pathToGenericUtf8(relative);
+        }
+        if (!lastSelectedFile.empty() && selectedFiles.count(lastSelectedFile)) {
+            updateInspectedAsset(lastSelectedFile);
+            pingAsset(lastSelectedFile);
+        }
+    } else if (target.parent_path().lexically_normal() == currentPath.lexically_normal()) {
+        // pasted into a folder of the listing: that folder stays selected
+        const std::string folder = FileUtils::pathToUtf8(target.lexically_normal().filename());
+        selectedFiles.insert(folder);
+        lastSelectedFile = folder;
+    }
+}
+
+std::string editor::ProjectWindow::rootRefusal(const fs::path& path) const {
+    const fs::path normal = path.lexically_normal();
+    const fs::path projectNormal = project->getProjectPath().lexically_normal();
+    if (normal == projectNormal) {
+        return "The project folder itself can't be moved, renamed or deleted from the Project window.";
+    }
+    struct Root {
+        fs::path configured;
+        const char* what;
+        const char* setting;
+    };
+    const Root roots[] = {{project->getAssetsPath(), "assets directory", "Project Settings > Editor > Assets Directory"},
+                          {project->getLuaPath(), "Lua directory", "Project Settings > Scripting > Lua Directory"}};
+    for (const Root& root : roots) {
+        const fs::path configured = root.configured.lexically_normal();
+        if (configured.empty() || configured == projectNormal) continue;
+        const fs::path resolved = safewrite::resolvedPath(configured);
+        const fs::path entry = safewrite::entryLocation(normal);
+        if (!safewrite::isAtOrBelow(configured, normal) && (entry.empty() || resolved.empty() || !safewrite::isAtOrBelow(resolved, entry))) {
+            continue;
+        }
+        const std::string name = "'" + FileUtils::pathToUtf8(normal.filename()) + "'";
+        return name + (configured == normal ? " is" : " holds") + " the project's " + root.what + ": change it in " + root.setting +
+               ", which moves the referenced files.";
+    }
+    return std::string();
+}
+
+fs::path editor::ProjectWindow::listingFolder() const {
+    if (!searchText.empty() && !searchReturnPath.empty()) {
+        return searchReturnPath;
+    }
+    return currentPath.empty() ? project->getProjectPath() : currentPath;
+}
+
+fs::path editor::ProjectWindow::createTargetDirectory() const {
+    return listingFolder();
+}
+
+std::string editor::ProjectWindow::luaScriptRefusal(const fs::path& directory) const {
+    const fs::path lua = project->getLuaPath().lexically_normal();
+    if (safewrite::isAtOrBelow(directory.lexically_normal(), lua)) {
+        return std::string();
+    }
+    return "Lua scripts live in the Lua directory (" + FileUtils::pathToGenericUtf8(project->getLuaDir()) +
+           "): Project Settings > Scripting > Lua Directory";
+}
+
+bool editor::ProjectWindow::canDuplicate() const {
+    return !selectedFiles.empty() && !isRenaming && !pendingNewItem.open;
+}
+
+void editor::ProjectWindow::duplicateSelection() {
+    if (selectedFiles.empty()) return;
+    std::vector<FileCopyData> entries;
+    for (const fs::path& path : getSelectedFiles()) {
+        FileCopyData entry;
+        entry.filename = path.filename();
+        entry.sourceDirectory = path.parent_path();
+        entry.targetDirectory = entry.sourceDirectory;
+        entries.push_back(entry);
+    }
+    auto report = std::make_shared<CopyFileCmd::Report>();
+    auto* command = new CopyFileCmd(project, std::move(entries), true);
+    command->setDuplicate(true);
+    command->reportTo(report);
+    const bool done = project->getProjectCommandHistory()->addCommand(command);
+    if (!done && !report->error.empty()) {
+        Backend::getApp().registerAlert("Duplicate", report->error);
+    }
+    scanDirectory(currentPath);
+    if (done) {
+        selectLanded(report->landed, listingFolder());
+    }
+}
+
+void editor::ProjectWindow::importExternalPaths(const std::vector<std::string>& sourcePaths, const fs::path& targetDirectory) {
     std::vector<std::string> validPaths;
     std::vector<fs::path> videos;
 
@@ -3209,7 +3510,7 @@ void editor::ProjectWindow::importExternalPaths(const std::vector<std::string>& 
         }
         if (fs::is_directory(source, ec) && !ec) {
             // copying a directory into itself would recurse forever
-            fs::path relative = currentPath.lexically_normal().lexically_relative(source);
+            fs::path relative = targetDirectory.lexically_normal().lexically_relative(source);
             if (!relative.empty() && *relative.begin() != "..") {
                 Log::error("Cannot import '%s': destination is inside it", source.string().c_str());
                 continue;
@@ -3220,14 +3521,14 @@ void editor::ProjectWindow::importExternalPaths(const std::vector<std::string>& 
     }
 
     if (!videos.empty()) {
-        importVideos(videos, currentPath);
+        importVideos(videos, targetDirectory);
     }
 
     if (validPaths.empty()) {
         return;
     }
 
-    project->getProjectCommandHistory()->addCommand(new CopyFileCmd(project, validPaths, currentPath.string(), true));
+    project->getProjectCommandHistory()->addCommand(new CopyFileCmd(project, validPaths, targetDirectory.string(), true));
     scanDirectory(currentPath);
 }
 
@@ -3417,6 +3718,16 @@ void editor::ProjectWindow::thumbnailStep() {
                 std::lock_guard<std::mutex> lock(thumbnailMutex);
                 pendingThumbnailRequests.erase(thumbnailRequestKey(thumbFile.path));
             }
+        } else if (thumbFile.type == FileType::PALETTE) {
+            // the swatches, drawn on this worker as an image's thumbnail is
+            if (writePaletteSwatchThumbnail(thumbFile.path, project->getThumbnailPath(thumbFile.path))) {
+                std::lock_guard<std::mutex> lock(completedThumbnailMutex);
+                completedThumbnailQueue.push(thumbFile);
+            }
+            {
+                std::lock_guard<std::mutex> lock(thumbnailMutex);
+                pendingThumbnailRequests.erase(thumbnailRequestKey(thumbFile.path));
+            }
         } else if (thumbFile.type == FileType::MATERIAL) {
             try {
                 if (YAML::Node materialNode = DocumentFiles::read(thumbFile.path, DocumentKind::Material).root) {
@@ -3463,11 +3774,10 @@ void editor::ProjectWindow::thumbnailStep() {
 
         } else if (thumbFile.type == FileType::MODEL) {
             try {
-                // Run the load under the async-thread flag: building the multi-node child-entity
-                // hierarchy mutates the ECS, which is only safe on the main thread, so off-thread the
-                // loader bakes node transforms into one static preview mesh instead.
+                // Run the load under the async-thread flag, with texture decode capped (a 128px preview
+                // never needs full 4K maps): that is a preview load, which bakes node transforms into
+                // one static mesh, with no entities to build for a picture.
                 // GPU work is deferred to the main thread; ModelRender frames whatever entities exist.
-                // Cap texture decode resolution too: a 128px preview never needs full 4K maps.
                 // An FBX previews through its import, created here on first sight
                 const bool loadable = !FbxImporter::isFbxFile(thumbFile.path) || project->importFbxModel(thumbFile.path);
 
@@ -3569,6 +3879,41 @@ ImTextureID editor::ProjectWindow::getThumbnailTexture(const std::string& thumbn
     return Backend::getImGuiTexture(render);
 }
 
+ImTextureID editor::ProjectWindow::getAsepriteThumbnail(const fs::path& filePath, bool animate, int& outWidth, int& outHeight, ImVec2& uv0, ImVec2& uv1) {
+    pixelart::aseprite::AsepriteImporter& imports = pixelart::aseprite::AsepriteImporter::get();
+    if (imports.getProject() != project || !project->isInsideAssetsPath(filePath)) return ImTextureID{};
+    const std::string assetPath = project->normalizeToAssetsRelative(filePath).generic_string();
+    // before the first import the pool would only remember a failure
+    const std::shared_ptr<const pixelart::aseprite::ImportRecord> record = imports.record(assetPath);
+    if (!record || !record->ok || record->pages.empty()) return ImTextureID{};
+    const std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(assetPath);
+    if (!sheet || sheet->frames.empty()) return ImTextureID{};
+    size_t frame = 0;
+    if (animate && sheet->frames.size() > 1) {
+        uint64_t total = 0;
+        for (const SpriteFrame& f : sheet->frames) total += std::max<uint32_t>(f.durationMs, 1);
+        uint64_t at = static_cast<uint64_t>(ImGui::GetTime() * 1000.0) % total;
+        while (frame + 1 < sheet->frames.size() && at >= std::max<uint32_t>(sheet->frames[frame].durationMs, 1)) {
+            at -= std::max<uint32_t>(sheet->frames[frame].durationMs, 1);
+            frame++;
+        }
+        // the idle loop draws on input only: keep it drawing while the hovered file plays
+        Backend::getApp().requestRedraw();
+    }
+    const SpriteFrame& shown = sheet->frames[frame];
+    int pageWidth = 0;
+    int pageHeight = 0;
+    ImTextureID texture = getThumbnailTexture(record->pageFile(shown.page).string(), pageWidth, pageHeight);
+    if (texture == ImTextureID{} || pageWidth <= 0 || pageHeight <= 0) return ImTextureID{};
+    const float x = shown.rect.getX(), y = shown.rect.getY(), w = shown.rect.getWidth(), h = shown.rect.getHeight();
+    if (w <= 0.0f || h <= 0.0f) return ImTextureID{};
+    uv0 = ImVec2(x / pageWidth, y / pageHeight);
+    uv1 = ImVec2((x + w) / pageWidth, (y + h) / pageHeight);
+    outWidth = static_cast<int>(w);
+    outHeight = static_cast<int>(h);
+    return texture;
+}
+
 ImTextureID editor::ProjectWindow::getAssetThumbnail(const fs::path& filePath, int& outWidth, int& outHeight) {
     outWidth = outHeight = 0;
     if (filePath.empty() || !Engine::isViewLoaded()) {
@@ -3642,7 +3987,7 @@ fs::path editor::ProjectWindow::uniqueRelativePath(const fs::path& directory, co
     fs::path targetFile = directory / fileName;
     int counter = 1;
     while (fs::exists(targetFile)) {
-        fileName = sanitized + "_" + std::to_string(counter) + extension;
+        fileName = sanitized + " " + std::to_string(counter) + extension;
         targetFile = directory / fileName;
         counter++;
     }
@@ -4134,6 +4479,7 @@ void editor::ProjectWindow::show() {
             TextureData(clipIconSize, clipIconSize, static_cast<unsigned int>(physicsMaterialIconPixels.size()), ColorFormat::RGBA, 4,
                         physicsMaterialIconPixels.data()));
         physicsMaterialIcon.load();
+        proceduralIcon(paletteIcon, paletteIconPixels, "editor:resources:palette_icon", makePaletteFileIcon);
 
         scanDirectory(project->getProjectPath().string());
 
@@ -4232,7 +4578,7 @@ void editor::ProjectWindow::show() {
     auto acceptListingDrops = [&]() {
         if (ImGui::BeginDragDropTarget()) {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("external_files")) {
-                importExternalPaths(Util::getStringsFromPayload(payload));
+                importExternalPaths(Util::getStringsFromPayload(payload), currentPath);
             }
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("material")) {
                 const char* materialContent = static_cast<const char*>(payload->Data);
@@ -4312,6 +4658,12 @@ void editor::ProjectWindow::show() {
         // Unity's Favorites: saved searches and bookmarks over the folders (S25 R26)
         renderFavorites();
         renderDirectoryTree(project->getProjectPath());
+        // a node's menu item, now that the walk (which holds references into its cache) is over
+        if (pendingTreeAction) {
+            std::function<void()> action = std::move(pendingTreeAction);
+            pendingTreeAction = nullptr;
+            action();
+        }
         ImGui::PopStyleVar();
         ImGui::EndChild();
         ImGui::PopStyleVar(2);
@@ -4384,6 +4736,10 @@ void editor::ProjectWindow::show() {
     uiBuilding.directory = project->normalizeToProjectRelative(currentPath).generic_string();
     uiBuilding.search = searchText;
     uiBuilding.selected = lastSelectedFile;
+    for (const fs::path& path : clipboard.paths()) {
+        uiBuilding.clipboard.push_back(project->normalizeToProjectRelative(path).generic_string());
+    }
+    uiBuilding.clipboardCut = clipboard.isCut();
     uiState = std::move(uiBuilding);
 
     ImGui::End();
@@ -4396,7 +4752,7 @@ void editor::ProjectWindow::show() {
         setOpen(false);
     }
 
-    handleNewDirectory();
+    handleNewItem();
     handleRename();
 }
 
@@ -4428,159 +4784,9 @@ void editor::ProjectWindow::revealAsset(const fs::path& absolutePath) {
     focusProjectPanel(this);
 }
 
-void editor::ProjectWindow::assetsCreateFolder() {
-    focusProjectPanel(this);
-    isCreatingNewDirectory = true;
-    memset(nameBuffer, 0, sizeof(nameBuffer));
-}
-
-// Create > Lua Script's template. The module is declared a ScriptInstance subclass with a
-// field per property: lua-language-server then types self and reports typos.
-static std::string newLuaScriptTemplate(const std::string& name) {
-    std::string t;
-    t += "-- " + name + ".lua\n\n";
-    t += "---@class " + name + " : ScriptInstance\n";
-    t += "---@field speed number\n";
-    t += "local " + name + " = {\n";
-    t += "    -- Editor-exposed properties\n";
-    t += "    properties = {\n";
-    t += "        {\n";
-    t += "            name = \"speed\",\n";
-    t += "            displayName = \"Speed\",\n";
-    t += "            type = \"float\",\n";
-    t += "            default = 5.0\n";
-    t += "        }\n";
-    t += "    }\n";
-    t += "}\n\n";
-    t += "function " + name + ":init()\n";
-    t += "    -- 'self.scene' and 'self.entity' are provided by the engine\n";
-    t += "    RegisterEngineEvent(self, \"onUpdate\")\n";
-    t += "end\n\n";
-    t += "function " + name + ":onUpdate()\n";
-    t += "end\n\n";
-    t += "return " + name + "\n";
-    return t;
-}
-
-// Create > Lua Script writes NewLuaScript.lua and opens the rename box at once. Renamed while
-// still untouched, the script is rewritten with its new name as module and class name, as if
-// created with it (as Unity names a new script's class): two renamed scripts would otherwise
-// both declare `---@class NewLuaScript` and lua-language-server would merge them.
-void editor::ProjectWindow::renameNewLuaScript(const fs::path& file, const std::string& newStem) {
-    static const std::unordered_set<std::string> luaKeywords = {
-        "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "goto", "if", "in",
-        "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while"};
-    const std::string name = Factory::toIdentifier(newStem);
-    if (name.empty() || luaKeywords.count(name)) {
-        return;
-    }
-    std::ifstream in(file, std::ios::binary);
-    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    in.close();
-    if (text != newLuaScriptText) {
-        return;  // edited since: leave it to its author
-    }
-    DocumentFiles::write(file, newLuaScriptTemplate(name));
-}
-
-void editor::ProjectWindow::assetsCreateScript(bool lua) {
-    if (currentPath.empty()) {
-        return;
-    }
-    focusProjectPanel(this);
-
-    // Unique base name: the C++ class and the Lua module are named after the file
-    const std::string baseName = lua ? "NewLuaScript" : "NewScript";
-    std::string name = baseName;
-    for (int counter = 1;; counter++) {
-        const bool taken = lua
-            ? fs::exists(currentPath / (name + ".lua"))
-            : (fs::exists(currentPath / (name + ".h")) || fs::exists(currentPath / (name + ".cpp")));
-        if (!taken) break;
-        name = baseName + std::to_string(counter);
-    }
-
-    if (lua) {
-        newLuaScriptFile = name + ".lua";
-        newLuaScriptText = newLuaScriptTemplate(name);
-        const io::WriteResult written = DocumentFiles::write(currentPath / newLuaScriptFile, newLuaScriptText);
-        if (!written.ok()) {
-            Backend::getApp().registerAlert("Create Lua Script", DocumentFiles::saveFailureMessage(currentPath / newLuaScriptFile, written));
-            return;
-        }
-        Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {currentPath / newLuaScriptFile});
-    } else {
-        std::ostringstream h;
-        std::ostringstream c;
-        h << "#pragma once\n\n";
-        h << "#include \"ScriptBase.h\"\n";
-        h << "#include \"Engine.h\"\n";
-        h << "#include \"ScriptProperty.h\"\n\n";
-        h << "class " << name << " : public jasperengine::ScriptBase {\n";
-        h << "public:\n";
-        h << "    DPROPERTY(\"Speed\")\n";
-        h << "    float speed = 5.0f;\n\n";
-        h << "    " << name << "(jasperengine::Scene* scene, jasperengine::Entity entity);\n";
-        h << "    ~" << name << "();\n\n";
-        h << "    void onUpdate();\n";
-        h << "};\n";
-
-        c << "#include \"" << name << ".h\"\n\n";
-        c << "using namespace jasperengine;\n\n";
-        c << name << "::" << name << "(Scene* scene, Entity entity): ScriptBase(scene, entity) {\n";
-        c << "    REGISTER_ENGINE_EVENT(onUpdate);\n";
-        c << "}\n\n";
-        c << name << "::~" << name << "() {\n";
-        c << "}\n\n";
-        c << "void " << name << "::onUpdate() {\n";
-        c << "}\n";
-        io::WriteResult written = DocumentFiles::write(currentPath / (name + ".h"), h.str());
-        if (written.ok()) {
-            written = DocumentFiles::write(currentPath / (name + ".cpp"), c.str());
-        }
-        if (!written.ok()) {
-            Backend::getApp().registerAlert("Create C++ Script", DocumentFiles::saveFailureMessage(currentPath, written));
-            return;
-        }
-    }
-
-    scanDirectory(currentPath);
-    const std::string fileName = name + (lua ? ".lua" : ".h");
-    selectedFiles.clear();
-    selectedFiles.insert(fileName);
-    lastSelectedFile = fileName;
-    if (lua) {
-        startRename(fileName);
-    }
-}
-
-void editor::ProjectWindow::assetsCreateHtmlDocument() {
-    if (currentPath.empty()) {
-        return;
-    }
-    focusProjectPanel(this);
-
-    const std::string name = HtmlUITemplates::uniqueDocumentName(currentPath);
-    std::string error;
-    if (!HtmlUITemplates::createDocument(currentPath, name, error)) {
-        Backend::getApp().registerAlert("Create HTML Document", error);
-        return;
-    }
-    if (!project->isInsideAssetsPath(currentPath / (name + ".html"))) {
-        Out::warning("[HTML UI] %s.html is outside the assets directory: a UI Document can only use files under %s",
-                     name.c_str(), project->getAssetsPath().string().c_str());
-    }
-
-    scanDirectory(currentPath);
-    const std::string fileName = name + ".html";
-    selectedFiles.clear();
-    selectedFiles.insert(fileName);
-    lastSelectedFile = fileName;
-    startRename(fileName);
-}
-
-void editor::ProjectWindow::assetsCreatePoseAnimation() {
-    if (currentPath.empty()) {
+void editor::ProjectWindow::assetsCreatePoseAnimation(const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
         return;
     }
     focusProjectPanel(this);
@@ -4593,43 +4799,35 @@ void editor::ProjectWindow::assetsCreatePoseAnimation() {
         }
     }
     std::string error;
-    const std::string created = PoseAnimationWindow::createAsset(project, currentPath, "New Pose Animation", previewModel, &error);
+    const std::string created = PoseAnimationWindow::createAsset(project, directory, "New Pose Animation", previewModel, &error);
     if (created.empty()) {
         Backend::getApp().registerAlert("Create Pose Animation", error);
         return;
     }
-    scanDirectory(currentPath);
-    const std::string fileName = FileUtils::pathToUtf8(FileUtils::pathFromUtf8(created).filename());
-    selectedFiles.clear();
-    selectedFiles.insert(fileName);
-    lastSelectedFile = fileName;
+    selectCreated(directory, FileUtils::pathToUtf8(FileUtils::pathFromUtf8(created).filename()), false);
 }
 
-void editor::ProjectWindow::assetsCreateShakePreset() {
-    if (currentPath.empty()) {
+void editor::ProjectWindow::assetsCreateShakePreset(const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
         return;
     }
     focusProjectPanel(this);
     camera::ShakePresetFile file;
     file.guid = anim::generateClipGuid();
     file.preset = *camera::findBuiltinShakePreset(camera::defaultNewShakePresetName());
-    const fs::path relative = uniqueRelativePath(currentPath, "New Shake Preset", camera::SHAKE_EXTENSION);
+    const fs::path relative = uniqueRelativePath(directory, "New Shake Preset", camera::SHAKE_EXTENSION);
     std::string error;
     if (!ProjectFileWrites::writeUndoable(project, {{project->getProjectPath() / relative, camera::writeShakePreset(file)}}, error)) {
         Backend::getApp().registerAlert("Create Shake Preset", error);
         return;
     }
-    scanDirectory(currentPath);
-    const std::string fileName = relative.filename().string();
-    selectedFiles.clear();
-    selectedFiles.insert(fileName);
-    lastSelectedFile = fileName;
-    updateInspectedAsset(fileName);
-    startRename(fileName);
+    selectCreated(directory, relative.filename().string(), true);
 }
 
-void editor::ProjectWindow::assetsCreateAnimationClip() {
-    if (currentPath.empty()) {
+void editor::ProjectWindow::assetsCreateAnimationClip(const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
         return;
     }
     focusProjectPanel(this);
@@ -4637,7 +4835,7 @@ void editor::ProjectWindow::assetsCreateAnimationClip() {
     // the tracks
     ClipData initial;
     std::string error;
-    const fs::path relative = uniqueRelativePath(currentPath, "New Animation", anim::ANIM_EXTENSION);
+    const fs::path relative = uniqueRelativePath(directory, "New Animation", anim::ANIM_EXTENSION);
     const uint64_t clock = AnimationClipController::clipCommitClock(project);
     if (!AnimationClipDocument::create(project, relative.generic_string(), initial, "Create Animation Clip", &error)) {
         Backend::getApp().registerAlert("Create Animation Clip", error);
@@ -4645,17 +4843,12 @@ void editor::ProjectWindow::assetsCreateAnimationClip() {
     }
     // a clip file write of the editor UI: Ctrl+Z undoes it from any window (9.R5c)
     AnimationClipController::markClipCommit(clock);
-    scanDirectory(currentPath);
-    const std::string fileName = relative.filename().string();
-    selectedFiles.clear();
-    selectedFiles.insert(fileName);
-    lastSelectedFile = fileName;
-    updateInspectedAsset(fileName);
-    startRename(fileName);
+    selectCreated(directory, relative.filename().string(), true);
 }
 
-void editor::ProjectWindow::assetsCreateAnimatorAsset(int kindValue) {
-    if (currentPath.empty()) {
+void editor::ProjectWindow::assetsCreateAnimatorAsset(int kindValue, const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
         return;
     }
     focusProjectPanel(this);
@@ -4665,69 +4858,119 @@ void editor::ProjectWindow::assetsCreateAnimatorAsset(int kindValue) {
     const char* extension = kind == AnimatorAssetDocument::Kind::Controller ? ".controller"
                           : kind == AnimatorAssetDocument::Kind::Mask ? ".mask" : ".montage";
     const std::string title = std::string("Create ") + AnimatorAssetDocument::kindName(kind);
-    const fs::path relative = uniqueRelativePath(currentPath, name, extension);
+    const fs::path relative = uniqueRelativePath(directory, name, extension);
     std::string error;
     if (!AnimatorAssetDocument::create(project, relative.generic_string(), kind, title, &error)) {
         Backend::getApp().registerAlert(title, error);
         return;
     }
-    scanDirectory(currentPath);
-    const std::string fileName = relative.filename().string();
-    selectedFiles.clear();
-    selectedFiles.insert(fileName);
-    lastSelectedFile = fileName;
-    updateInspectedAsset(fileName);
-    startRename(fileName);
+    selectCreated(directory, relative.filename().string(), true);
 }
 
-void editor::ProjectWindow::assetsCreatePhysicsMaterial(bool preset2D) {
-    if (currentPath.empty()) {
+void editor::ProjectWindow::assetsCreatePhysicsMaterial(bool preset2D, const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
         return;
     }
     focusProjectPanel(this);
     std::string error;
-    const fs::path created = PhysicsMaterialAssets::create(project, currentPath, preset2D ? "New Physics Material 2D" : "New Physics Material",
+    const fs::path created = PhysicsMaterialAssets::create(project, directory, preset2D ? "New Physics Material 2D" : "New Physics Material",
                                                            preset2D ? PhysicsMaterialData::preset2D() : PhysicsMaterialData::preset3D(), error);
     if (created.empty()) {
         Backend::getApp().registerAlert(preset2D ? "Create Physics Material 2D" : "Create Physics Material", error);
         return;
     }
-    scanDirectory(currentPath);
-    const std::string fileName = created.filename().string();
-    selectedFiles.clear();
-    selectedFiles.insert(fileName);
-    lastSelectedFile = fileName;
-    updateInspectedAsset(fileName);
-    startRename(fileName);
+    selectCreated(directory, created.filename().string(), true);
 }
 
-void editor::ProjectWindow::assetsCreateAudioMixer() {
-    if (currentPath.empty()) {
+void editor::ProjectWindow::assetsCreatePalette(const fs::path& directory) {
+    PaletteWindow* palettes = Backend::getApp().getPaletteWindow();
+    if (!palettes) return;
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
+        return;
+    }
+    focusProjectPanel(this);
+    const fs::path created = palettes->createNew(directory, false);
+    if (created.empty()) {
+        Backend::getApp().registerAlert("Create Palette", "The palette could not be written (see the Console).");
+        return;
+    }
+    selectCreated(directory, created.filename().string(), true);
+}
+
+void editor::ProjectWindow::drawPaletteMenuItems(const FileEntry& file, const fs::path& filePath) {
+    if (file.isDirectory) return;
+    PaletteWindow* palettes = Backend::getApp().getPaletteWindow();
+    ApplyPaletteDialog* apply = Backend::getApp().getApplyPaletteDialog();
+    if (!palettes) return;
+    bool shown = false;
+    if (file.type == FileType::PALETTE) {
+        const bool openIt = ImGui::MenuItem(ICON_FA_PALETTE " Open in Palette Window");
+        uiBuilding.contextMenu.push_back({"Open in Palette Window", lastItemRect()});
+        if (openIt) palettes->open(filePath);
+        const bool exportOpen = ImGui::BeginMenu(ICON_FA_FILE_EXPORT " Export");
+        uiBuilding.contextMenu.push_back({"Export", lastItemRect()});
+        if (exportOpen) {
+            for (editor::pixelart::PaletteFormat format : PaletteWindow::exportFormats()) {
+                const bool chosen = ImGui::MenuItem(PaletteWindow::exportLabel(format));
+                uiBuilding.contextMenu.push_back({PaletteWindow::exportLabel(format), lastItemRect()});
+                if (chosen) palettes->exportPalette(filePath, format);
+            }
+            ImGui::EndMenu();
+        }
+        shown = true;
+    }
+    if (isPaletteApplicableTexture(filePath) && project->isInsideAssetsPath(filePath)) {
+        if (apply) {
+            const bool applyIt = ImGui::MenuItem(ICON_FA_PALETTE " Apply Palette...");
+            uiBuilding.contextMenu.push_back({"Apply Palette...", lastItemRect()});
+            ImGui::SetItemTooltip("Map every pixel to its nearest palette colour: a preview first, then one undo step");
+            if (applyIt) apply->open(filePath, "", false);
+            const bool reduceIt = ImGui::MenuItem(ICON_FA_PALETTE " Reduce Colours...");
+            uiBuilding.contextMenu.push_back({"Reduce Colours...", lastItemRect()});
+            ImGui::SetItemTooltip("Find the best N colours for this texture and map it to them");
+            if (reduceIt) apply->open(filePath, "", true);
+        }
+        const bool extract = ImGui::MenuItem(ICON_FA_PALETTE " Extract Palette");
+        uiBuilding.contextMenu.push_back({"Extract Palette", lastItemRect()});
+        ImGui::SetItemTooltip("A new .palette beside it with the texture's colours (Reduce Colours when it has more than 256)");
+        if (extract) palettes->importFile(filePath);
+        shown = true;
+    }
+    if (PaletteWindow::isForeignPaletteFile(filePath) && project->isInsideAssetsPath(filePath)) {
+        const bool import = ImGui::MenuItem(ICON_FA_FILE_IMPORT " Import as Palette");
+        uiBuilding.contextMenu.push_back({"Import as Palette", lastItemRect()});
+        ImGui::SetItemTooltip("A new .palette beside it with its colours (the file itself stays as it is)");
+        if (import) palettes->importFile(filePath);
+        shown = true;
+    }
+    if (shown) ImGui::Separator();
+}
+
+void editor::ProjectWindow::assetsCreateAudioMixer(const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
         return;
     }
     focusProjectPanel(this);
     // Unity's Create > Audio Mixer: Master only; the Audio Mixer window adds the groups
-    const fs::path relative = uniqueRelativePath(currentPath, "New Audio Mixer", AudioMixerIO::EXTENSION);
+    const fs::path relative = uniqueRelativePath(directory, "New Audio Mixer", AudioMixerIO::EXTENSION);
     std::string error;
     if (!AudioMixerDocument::commit(project, project->getProjectPath() / relative, AudioMixerIO::createDefault(), "", &error)) {
         Backend::getApp().registerAlert("Create Audio Mixer", error);
         return;
     }
-    scanDirectory(currentPath);
-    const std::string fileName = relative.filename().string();
-    selectedFiles.clear();
-    selectedFiles.insert(fileName);
-    lastSelectedFile = fileName;
-    updateInspectedAsset(fileName);
-    startRename(fileName);
+    selectCreated(directory, relative.filename().string(), true);
 }
 
-void editor::ProjectWindow::assetsCreateSoundEvent() {
-    if (currentPath.empty()) {
+void editor::ProjectWindow::assetsCreateSoundEvent(const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
         return;
     }
     focusProjectPanel(this);
-    const fs::path relative = uniqueRelativePath(currentPath, "New Sound Event", ".soundevent");
+    const fs::path relative = uniqueRelativePath(directory, "New Sound Event", ".soundevent");
     SoundEventDef def;
     def.mode = SoundEventMode::Shuffle;
     std::string error;
@@ -4735,13 +4978,7 @@ void editor::ProjectWindow::assetsCreateSoundEvent() {
         Backend::getApp().registerAlert("Create Sound Event", error);
         return;
     }
-    scanDirectory(currentPath);
-    const std::string fileName = relative.filename().string();
-    selectedFiles.clear();
-    selectedFiles.insert(fileName);
-    lastSelectedFile = fileName;
-    updateInspectedAsset(fileName);
-    startRename(fileName);
+    selectCreated(directory, relative.filename().string(), true);
 }
 
 bool editor::ProjectWindow::hasAudioSelection() const {
@@ -4749,6 +4986,65 @@ bool editor::ProjectWindow::hasAudioSelection() const {
         if (Util::isAudioFile(name)) return true;
     }
     return false;
+}
+
+namespace {
+    // a new atlas packing `members` (asset-relative files), written as one undo step
+    bool writeNewSpriteAtlas(jasperengine::editor::Project* project, const std::filesystem::path& file, const std::vector<std::string>& members, std::string& error) {
+        namespace je = jasperengine::editor;
+        je::sprite::SpriteAtlasDocument doc;
+        doc.guid = jasperengine::Guid::parse(je::AssetDatabase::generateGuid());
+        for (const std::string& path : members) {
+            je::sprite::SpriteAtlasMember m;
+            m.path = path;
+            m.guid = project->getAssetDatabase().getAssetGuid(project->normalizeToProjectRelative(project->getAssetsPath() / path));
+            doc.members.push_back(m);
+        }
+        return je::ProjectFileWrites::writeUndoable(project, {{file, je::sprite::writeSpriteAtlas(doc)}}, error, nullptr, nullptr, {}, false,
+                                                    "Create Sprite Atlas " + file.filename().string());
+    }
+}
+
+void editor::ProjectWindow::assetsCreateSpriteAtlas(const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
+        return;
+    }
+    focusProjectPanel(this);
+    const fs::path relative = uniqueRelativePath(directory, "New Sprite Atlas", ".spriteatlas");
+    std::string error;
+    if (!writeNewSpriteAtlas(project, project->getProjectPath() / relative, {}, error)) {
+        Backend::getApp().registerAlert("Create Sprite Atlas", error);
+        return;
+    }
+    selectCreated(directory, relative.filename().string(), true);
+}
+
+bool editor::ProjectWindow::hasSpriteSelection() const {
+    for (const std::string& name : selectedFiles) {
+        if (SpriteSheetSources::isTexturePath(name) || SpriteSheetPool::isAsepritePath(name)) return true;
+    }
+    return false;
+}
+
+void editor::ProjectWindow::assetsCreateSpriteAtlasFromSelection() {
+    if (currentPath.empty() || !hasSpriteSelection()) return;
+    focusProjectPanel(this);
+    std::vector<std::string> members;
+    for (const std::string& name : selectedFiles) {
+        if (!SpriteSheetSources::isTexturePath(name) && !SpriteSheetPool::isAsepritePath(name)) continue;
+        const std::string asset = (currentPath / name).lexically_normal().lexically_relative(project->getAssetsPath().lexically_normal()).generic_string();
+        if (!asset.empty() && asset.rfind("..", 0) != 0) members.push_back(asset);
+    }
+    std::sort(members.begin(), members.end());
+    const fs::path relative = uniqueRelativePath(currentPath, "New Sprite Atlas", ".spriteatlas");
+    std::string error;
+    if (!writeNewSpriteAtlas(project, project->getProjectPath() / relative, members, error)) {
+        Backend::getApp().registerAlert("Create Sprite Atlas from Selection", error);
+        return;
+    }
+    selectCreated(currentPath, relative.filename().string(), true);
+    sprite::SpriteAtlasBuilder::get().rebuild((project->getProjectPath() / relative).string());
 }
 
 void editor::ProjectWindow::assetsCreateSoundEventFromClips() {
@@ -4821,7 +5117,20 @@ void editor::ProjectWindow::drawTextureCookBadge(ImDrawList* drawList, const Fil
     const char* icon = nullptr;
     ImU32 color = 0;
     std::string tooltip;
-    if (file.type == FileType::IMAGE) {
+    if (SpriteSheetPool::isAsepritePath(file.name)) {
+        // .aseprite files: importing or failed (S44)
+        pixelart::aseprite::AsepriteImporter& imports = pixelart::aseprite::AsepriteImporter::get();
+        if (imports.getProject() != project) return;
+        const std::string assetPath = project->normalizeToAssetsRelative(absolute).generic_string();
+        const std::shared_ptr<const pixelart::aseprite::ImportRecord> record = imports.record(assetPath);
+        if (imports.isPending(assetPath)) {
+            icon = ICON_FA_GEAR; color = IM_COL32(120, 200, 255, 240); tooltip = "Importing the Aseprite file";
+        } else if (record && !record->ok) {
+            icon = ICON_FA_TRIANGLE_EXCLAMATION; color = IM_COL32(255, 110, 90, 255); tooltip = "The import failed: the Inspector shows why";
+        } else {
+            return;
+        }
+    } else if (file.type == FileType::IMAGE) {
         TextureCookQueue& cooks = TextureCookQueue::get();
         if (cooks.getProject() != project) return;
         switch (cooks.badgeStatus(project->normalizeToAssetsRelative(absolute).generic_string())) {
@@ -4950,6 +5259,9 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
             ? project->normalizeToAssetsRelative(filePath).generic_string()
             : filePath.generic_string();
         animationClipInspectorHooks().openClip(project, 0, NULL_ENTITY, clip);
+    } else if (SpriteSheetPool::isAsepritePath(filePath.string())) {
+        // Aseprite; when it is not found, the Sprite Preview (S44 R32)
+        pixelart::aseprite::openInAsepriteOrFallback(project, {FileUtils::pathToUtf8(filePath)}, true);
     } else if (Util::isPrefabFile(filePath.string())) {
         editor::getEditorHost().openPrefabAsset(filePath);  // Unity: Prefab Mode
     } else if (filePath.extension() == ".inputactions") {
@@ -4958,6 +5270,8 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         assignColorLut(filePath);  // the open scene's Color Grading LUT
     } else if (filePath.extension() == AudioMixerIO::EXTENSION) {
         editor::getEditorHost().openAudioMixerWindow(filePath);
+    } else if (file.type == FileType::PALETTE) {
+        if (PaletteWindow* palettes = Backend::getApp().getPaletteWindow()) palettes->open(filePath);
     } else {
         // text files (an .anim only when the clip hooks are unset: its JSON text)
         codeEditor->openFile(filePath.string(), true);
@@ -5000,7 +5314,7 @@ void editor::ProjectWindow::assetsImport() {
         return;
     }
     focusProjectPanel(this);
-    importExternalPaths(editor::FileDialogs::openFileDialogMultiple());
+    importExternalPaths(editor::FileDialogs::openFileDialogMultiple(), createTargetDirectory());
 }
 
 void editor::ProjectWindow::assetsRefresh() {
@@ -5023,11 +5337,11 @@ void editor::ProjectWindow::copySelection(bool cut) {
 }
 
 bool editor::ProjectWindow::canPasteClipboard() const {
-    return !clipboardFiles.empty();
+    return !clipboard.empty();
 }
 
 void editor::ProjectWindow::pasteClipboard() {
-    if (!clipboardFiles.empty()) pasteFiles(currentPath);
+    if (!clipboard.empty()) pasteFiles(listingFolder());
 }
 
 void editor::ProjectWindow::selectAllInListing() {
@@ -5053,6 +5367,339 @@ void editor::ProjectWindow::renameSelectedOrHovered() {
         if (std::any_of(files.begin(), files.end(), [&](const FileEntry& f){ return f.name == selected; })) target = selected;
     }
     if (!target.empty()) startRename(target);
+}
+
+// ---- Create (project-window spec 6.6) ------------------------------------
+
+void editor::ProjectWindow::createAsset(AssetCreateKind kind, const fs::path& directory) {
+    std::error_code ec;
+    if (!fs::is_directory(directory, ec)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
+        return;
+    }
+    if (assetCreateItem(kind).nameFirst) {
+        startNewItem(kind, directory);
+        return;
+    }
+    switch (kind) {
+        case AssetCreateKind::AnimationClip: assetsCreateAnimationClip(directory); break;
+        case AssetCreateKind::AnimatorController: assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Controller, directory); break;
+        case AssetCreateKind::AvatarMask: assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Mask, directory); break;
+        case AssetCreateKind::AnimationMontage: assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Montage, directory); break;
+        case AssetCreateKind::PoseAnimation: assetsCreatePoseAnimation(directory); break;
+        case AssetCreateKind::AudioMixer: assetsCreateAudioMixer(directory); break;
+        case AssetCreateKind::SoundEvent: assetsCreateSoundEvent(directory); break;
+        case AssetCreateKind::PlaceholderSound: assetsCreatePlaceholderSound(directory); break;
+        case AssetCreateKind::PhysicsMaterial: assetsCreatePhysicsMaterial(false, directory); break;
+        case AssetCreateKind::PhysicsMaterial2D: assetsCreatePhysicsMaterial(true, directory); break;
+        case AssetCreateKind::ShakePreset: assetsCreateShakePreset(directory); break;
+        case AssetCreateKind::SpriteAtlas: assetsCreateSpriteAtlas(directory); break;
+        case AssetCreateKind::Palette: assetsCreatePalette(directory); break;
+        default: break;
+    }
+}
+
+namespace {
+
+    // the extensions a named item's files take
+    const char* newItemExtension(editor::AssetCreateKind kind) {
+        switch (kind) {
+            case editor::AssetCreateKind::LuaScript: return ".lua";
+            case editor::AssetCreateKind::CppSource: return ".cpp";
+            case editor::AssetCreateKind::CppHeader: return ".h";
+            case editor::AssetCreateKind::HtmlDocument: return ".html";
+            default: return "";
+        }
+    }
+
+    bool identifierKind(editor::AssetCreateKind kind) {
+        return kind == editor::AssetCreateKind::LuaScript || kind == editor::AssetCreateKind::CppScript;
+    }
+
+    // the files a named item writes into `directory` (a folder: itself)
+    std::vector<fs::path> newItemFiles(editor::AssetCreateKind kind, const fs::path& directory, const std::string& name) {
+        switch (kind) {
+            case editor::AssetCreateKind::Folder: return {directory / editor::FileUtils::pathFromUtf8(name)};
+            case editor::AssetCreateKind::CppScript:
+                return {directory / editor::FileUtils::pathFromUtf8(name + ".h"), directory / editor::FileUtils::pathFromUtf8(name + ".cpp")};
+            case editor::AssetCreateKind::HtmlDocument:
+                return {directory / editor::FileUtils::pathFromUtf8(name + ".html"), directory / editor::FileUtils::pathFromUtf8(name + ".css")};
+            default: return {directory / editor::FileUtils::pathFromUtf8(name + newItemExtension(kind))};
+        }
+    }
+
+    // the name typed without the extension its kind adds ("Goblin.lua" = "Goblin")
+    std::string newItemName(editor::AssetCreateKind kind, std::string name) {
+        name.erase(0, name.find_first_not_of(" \t"));
+        name.erase(name.find_last_not_of(" \t") + 1);
+        std::vector<std::string> extensions;
+        if (kind == editor::AssetCreateKind::CppScript) extensions = {".h", ".cpp"};
+        else if (kind != editor::AssetCreateKind::Folder) extensions = {newItemExtension(kind)};
+        if (kind == editor::AssetCreateKind::HtmlDocument) extensions.push_back(".css");
+        for (const std::string& extension : extensions) {
+            if (!extension.empty() && name.size() > extension.size() &&
+                name.compare(name.size() - extension.size(), extension.size(), extension) == 0) {
+                name.erase(name.size() - extension.size());
+                break;
+            }
+        }
+        return name;
+    }
+
+    // why `name` can't be the name of a new item in `directory` ("" when it can)
+    std::string newItemProblem(editor::AssetCreateKind kind, const fs::path& directory, const std::string& name) {
+        static const std::unordered_set<std::string> luaKeywords = {
+            "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "goto", "if", "in",
+            "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while"};
+        if (name.empty()) return "Enter a name.";
+        if (identifierKind(kind)) {
+            if (editor::Factory::toIdentifier(name) != name) return "A script's name is its class: letters, digits and _, not starting with a digit.";
+            if (kind == editor::AssetCreateKind::LuaScript && luaKeywords.count(name)) return "\"" + name + "\" is a Lua keyword.";
+        } else {
+            if (name == "." || name == ".." || name.find_first_of("/\\:*?\"<>|") != std::string::npos) {
+                return "A name can't be . or .. or hold / \\ : * ? \" < > |";
+            }
+        }
+        for (const fs::path& file : newItemFiles(kind, directory, name)) {
+            std::error_code ec;
+            if (fs::exists(fs::symlink_status(file, ec))) {
+                return editor::FileUtils::pathToUtf8(file.filename()) + " already exists here.";
+            }
+        }
+        return std::string();
+    }
+
+}
+
+void editor::ProjectWindow::startNewItem(AssetCreateKind kind, const fs::path& directory) {
+    focusProjectPanel(this);
+    pendingNewItem = PendingNewItem();
+    pendingNewItem.kind = kind;
+    pendingNewItem.directory = directory;
+    pendingNewItem.open = true;
+    pendingNewItem.focus = true;
+    // a free default, selected for typing over (Unity's "New Folder", "NewBehaviourScript")
+    const char* base = kind == AssetCreateKind::Folder ? "New Folder"
+                     : kind == AssetCreateKind::LuaScript ? "NewLuaScript"
+                     : kind == AssetCreateKind::CppScript ? "NewScript"
+                     : kind == AssetCreateKind::CppSource ? "NewSource"
+                     : kind == AssetCreateKind::CppHeader ? "NewHeader" : "NewDocument";
+    std::string name = base;
+    for (int counter = 1; !newItemProblem(kind, directory, name).empty() && counter < 10000; counter++) {
+        name = std::string(base) + (kind == AssetCreateKind::Folder ? " " : "") + std::to_string(counter);
+    }
+    std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", name.c_str());
+}
+
+bool editor::ProjectWindow::createNamedItem(AssetCreateKind kind, const fs::path& directory, const std::string& name, std::string& error) {
+    if (kind == AssetCreateKind::Folder) {
+        if (!project->getProjectCommandHistory()->addCommand(new CreateDirCmd(name, directory.string()))) {
+            error = "The folder could not be created (permissions, or a file of that name).";
+            return false;
+        }
+        return true;
+    }
+    const std::vector<fs::path> files = newItemFiles(kind, directory, name);
+    std::vector<WriteFilesCmd::Item> items;
+    std::string step;
+    switch (kind) {
+        case AssetCreateKind::LuaScript:
+            items.push_back({files[0], ScriptTemplates::lua(name)});
+            step = "Create Lua Script " + name + ".lua";
+            break;
+        case AssetCreateKind::CppScript: {
+            const ScriptTemplates::Files templates = ScriptTemplates::cppScript(name, name + ".h");
+            items.push_back({files[0], templates.header});
+            items.push_back({files[1], templates.source});
+            step = "Create C++ Script " + name;
+            break;
+        }
+        case AssetCreateKind::CppSource: {
+            std::error_code ec;
+            const bool header = fs::is_regular_file(directory / FileUtils::pathFromUtf8(name + ".h"), ec);
+            items.push_back({files[0], ScriptTemplates::cppSource(name, header)});
+            step = "Create File " + name + ".cpp";
+            break;
+        }
+        case AssetCreateKind::CppHeader:
+            items.push_back({files[0], ScriptTemplates::cppHeader(name)});
+            step = "Create File " + name + ".h";
+            break;
+        case AssetCreateKind::HtmlDocument:
+            items.push_back({files[0], HtmlUITemplates::documentText(name)});
+            items.push_back({files[1], HtmlUITemplates::styleSheetText()});
+            step = "Create HTML Document " + name;
+            break;
+        default:
+            return false;
+    }
+    Project* owner = project;
+    CodeEditor* editor = codeEditor;
+    const bool lua = kind == AssetCreateKind::LuaScript;
+    // after the write, its undo and its redo: the editor refreshes, Lua stubs follow, and a tab of a
+    // file the undo removed closes when it holds no edits
+    auto afterChange = [owner, editor, lua](const std::vector<fs::path>& changed) {
+        ProjectFileWrites::filesWritten(owner, changed);
+        if (lua) Generator::writeLuaScriptStubs(owner->getProjectPath(), owner->getProjectInternalPath(), changed);
+        for (const fs::path& path : changed) {
+            std::error_code ec;
+            if (!fs::exists(path, ec) && editor && editor->isFileOpen(path.string()) && !editor->isFileModified(path.string())) {
+                editor->closeFile(path.string());
+            }
+        }
+    };
+    if (!ProjectFileWrites::writeUndoable(project, std::move(items), error, afterChange, nullptr, {}, false, step)) {
+        return false;
+    }
+    if (!project->isInsideAssetsPath(files[0]) && kind == AssetCreateKind::HtmlDocument) {
+        Out::warning("[HTML UI] %s is outside the assets directory: a UI Document can only use files under %s",
+                     FileUtils::pathToUtf8(files[0].filename()).c_str(), project->getAssetsPath().string().c_str());
+    }
+    return true;
+}
+
+void editor::ProjectWindow::handleNewItem() {
+    if (!pendingNewItem.open) return;
+    const AssetCreateItem& item = assetCreateItem(pendingNewItem.kind);
+    const std::string title = std::string("New ") + item.label + "###ProjectNewItem";
+    if (!ImGui::IsPopupOpen("###ProjectNewItem")) {
+        ImGui::OpenPopup(title.c_str());
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    }
+    if (!EditorModal::begin(title.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        return;
+    }
+    const AssetCreateKind kind = pendingNewItem.kind;
+    ImGui::TextUnformatted(kind == AssetCreateKind::Folder ? "Folder name:" : identifierKind(kind) ? "Class name:" : "File name:");
+    ImGui::SetNextItemWidth(Theme::dpi(320.0f));
+    if (pendingNewItem.focus) {
+        ImGui::SetKeyboardFocusHere();
+    }
+    ImGuiInputTextFlags flags = ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll;
+    if (identifierKind(kind)) flags |= ImGuiInputTextFlags_CallbackCharFilter;
+    const bool enter = EditorModal::inputText("##newItemName", "name", nameBuffer, sizeof(nameBuffer), flags,
+                                              identifierKind(kind) ? ScriptCreateDialog::classNameCharFilter : nullptr);
+    const std::string where = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(pendingNewItem.directory));
+    EditorModal::message(std::string("New ") + item.label + " \"" + nameBuffer + "\" in " + where);
+    UIProbe::rect("project.newItem.name", ImGui::GetItemRectMin().x, ImGui::GetItemRectMin().y, ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y);
+    pendingNewItem.focus = false;
+    ImGui::TextDisabled("in %s", where.c_str());
+    // a C++ file outside the Script Directories is compiled only when attached as a script
+    bool inScriptDirs = false;
+    for (const fs::path& scriptDir : project->getScriptDirs()) {
+        const fs::path root = scriptDir.is_absolute() ? scriptDir : project->getProjectPath() / scriptDir;
+        if (safewrite::isAtOrBelow(pendingNewItem.directory.lexically_normal(), root.lexically_normal())) inScriptDirs = true;
+    }
+    if ((kind == AssetCreateKind::CppScript || kind == AssetCreateKind::CppSource) && !inScriptDirs) {
+        ImGui::TextDisabled("Outside the Script Directories: compiled only when attached as a script.");
+    }
+    if (!pendingNewItem.error.empty()) {
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + Theme::dpi(320.0f));
+        ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.4f, 1.0f), "%s", pendingNewItem.error.c_str());
+        ImGui::PopTextWrapPos();
+        EditorModal::error(pendingNewItem.error);
+    }
+    const float buttonWidth = Theme::dpi(120.0f);
+    const bool create = EditorModal::button("Create", "yes", ImVec2(buttonWidth, 0)) || enter;
+    ImGui::SameLine();
+    const bool cancel = EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0)) || (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape));
+    if (create) {
+        const std::string name = newItemName(kind, nameBuffer);
+        pendingNewItem.error = newItemProblem(kind, pendingNewItem.directory, name);
+        std::string error;
+        if (pendingNewItem.error.empty() && !createNamedItem(kind, pendingNewItem.directory, name, error)) {
+            pendingNewItem.error = error;
+        }
+        if (pendingNewItem.error.empty()) {
+            const fs::path first = newItemFiles(kind, pendingNewItem.directory, name).front();
+            const fs::path directory = pendingNewItem.directory;
+            pendingNewItem = PendingNewItem();
+            ImGui::CloseCurrentPopup();
+            selectCreated(directory, FileUtils::pathToUtf8(first.filename()), false);
+        } else {
+            pendingNewItem.focus = true;
+        }
+    } else if (cancel) {
+        pendingNewItem = PendingNewItem();
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+}
+
+void editor::ProjectWindow::selectCreated(const fs::path& directory, const std::string& fileName, bool rename) {
+    auto finish = [this, directory, fileName, rename]() {
+        // Unity shows what it made: the folder it is in, the new item selected
+        if (searchText.empty() && directory.lexically_normal() != currentPath.lexically_normal()) {
+            scanDirectory(directory);
+        } else {
+            scanDirectory(currentPath);
+        }
+        const fs::path relative = (directory / FileUtils::pathFromUtf8(fileName)).lexically_normal().lexically_relative(currentPath.lexically_normal());
+        const std::string name = FileUtils::pathToGenericUtf8(relative);
+        selectedFiles.clear();
+        selectedFiles.insert(name);
+        lastSelectedFile = name;
+        updateInspectedAsset(name);
+        pingAsset(name);
+        if (rename) {
+            startRename(name);
+        }
+    };
+    if (listingIterating) {
+        afterListing = std::move(finish);
+    } else {
+        finish();
+    }
+}
+
+void editor::ProjectWindow::renderTreeContextMenu(const fs::path& folder) {
+    const bool isProjectRoot = folder.lexically_normal() == project->getProjectPath().lexically_normal();
+    const bool createOpen = ImGui::BeginMenu(ICON_FA_PLUS " Create");
+    uiBuilding.contextMenu.push_back({"Create", lastItemRect()});
+    if (createOpen) {
+        // the items run at once (they write, or open the name dialog): no listing is iterated here
+        renderCreateItems(folder);
+        ImGui::EndMenu();
+    }
+    ImGui::Separator();
+    auto keys = [](const char* id) { return CommandCatalog::editor().menuShortcutText(id); };
+    const std::string copyKeys = keys("project.copy"), cutKeys = keys("project.cut"), pasteKeys = keys("project.paste"),
+                      duplicateKeys = keys("project.duplicate");
+    const bool copyItem = ImGui::MenuItem(ICON_FA_COPY " Copy", copyKeys.empty() ? nullptr : copyKeys.c_str(), false, !isProjectRoot);
+    uiBuilding.contextMenu.push_back({"Copy", lastItemRect()});
+    const bool cutItem = ImGui::MenuItem(ICON_FA_SCISSORS " Cut", cutKeys.empty() ? nullptr : cutKeys.c_str(), false,
+                                         !isProjectRoot && rootRefusal(folder).empty());
+    uiBuilding.contextMenu.push_back({"Cut", lastItemRect()});
+    const bool pasteItem = ImGui::MenuItem(ICON_FA_PASTE " Paste", pasteKeys.empty() ? nullptr : pasteKeys.c_str(), false, !clipboard.empty());
+    uiBuilding.contextMenu.push_back({"Paste", lastItemRect()});
+    const bool duplicateItem = ImGui::MenuItem(ICON_FA_CLONE " Duplicate", duplicateKeys.empty() ? nullptr : duplicateKeys.c_str(), false, !isProjectRoot);
+    uiBuilding.contextMenu.push_back({"Duplicate", lastItemRect()});
+    ImGui::Separator();
+    const bool showItem = ImGui::MenuItem(ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE " Show in File Manager");
+    if (copyItem || cutItem) {
+        const bool cut = cutItem;
+        pendingTreeAction = [this, folder, cut]() { copyPaths({folder}, cut); };
+    } else if (pasteItem) {
+        pendingTreeAction = [this, folder]() { pasteFiles(folder); };
+    } else if (duplicateItem) {
+        pendingTreeAction = [this, folder]() {
+            FileCopyData entry;
+            entry.filename = folder.filename();
+            entry.sourceDirectory = folder.parent_path();
+            entry.targetDirectory = entry.sourceDirectory;
+            auto report = std::make_shared<CopyFileCmd::Report>();
+            auto* command = new CopyFileCmd(project, std::vector<FileCopyData>{entry}, true);
+            command->setDuplicate(true);
+            command->reportTo(report);
+            if (!project->getProjectCommandHistory()->addCommand(command) && !report->error.empty()) {
+                Backend::getApp().registerAlert("Duplicate", report->error);
+            }
+            scanDirectory(currentPath);
+            selectLanded(report->landed, folder.parent_path());
+        };
+    } else if (showItem) {
+        openInFileManager(folder);
+    }
 }
 
 void editor::ProjectWindow::pingAsset(const std::string& projectRelative) {

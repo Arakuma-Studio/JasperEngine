@@ -1792,6 +1792,8 @@ _INT_TYPES = {'int', 'unsigned', 'unsigned int', 'signed', 'signed int', 'short'
 _NUM_TYPES = {'float', 'double', 'long double', 'lua_Number'}
 _STR_TYPES = {'std::string', 'string', 'std::string_view', 'std::basic_string<char>', 'basic_string<char>', 'std::wstring', 'wstring', 'char', 'wchar_t',
               'char16_t', 'char32_t',
+              # onPathFailed's reason: its snake_case name (luabridge::Stack<nav::PathFailure>, S76)
+              'PathFailure', 'nav::PathFailure', 'jasperengine::nav::PathFailure',
               # asset path fields: plain path strings in Lua (luabridge::Stack<AssetRef>, LuaBridgeAddon.h)
               'AssetRef', 'ShaderRef', 'jasperengine::AssetRef', 'jasperengine::ShaderRef'}
 _SEQ = re.compile(r'^(?:std::)?(?:vector|list|deque|set|unordered_set|multiset)<(.+)>$')
@@ -2128,6 +2130,26 @@ OVERRIDES.update({
     ('Input', 'addAxisDelta'): {
         'doc': ['Adds `delta` to the action for this frame only, unclamped (like mouse movement).'],
         'overloads': [([('name', 'string'), ('delta', 'number'), ('source?', _INPUT_SOURCE)], '')]},
+    # ui-components: the selection (Unity's EventSystem.currentSelectedGameObject)
+    ('UI', 'getSelected'): {
+        'doc': ['The Button selected in `scene` (keyboard, gamepad and TV menus), nil for none.'],
+        'overloads': [([('scene', 'Scene')], 'GameObject?')]},
+    ('UI', 'setSelected'): {
+        'doc': ['Selects a Button of `scene` (Unity\'s SetSelectedGameObject); nil deselects. False when it',
+                'cannot be selected (not a Button, inactive, hidden, an on-screen control).'],
+        'overloads': [([('scene', 'Scene'), ('button', 'GameObject|integer|nil')], 'boolean')]},
+    ('Button', 'findSelectableOnUp'): {
+        'doc': ['Where the selection moves up from this Button (its Navigation), nil for nowhere.'],
+        'overloads': [([], 'GameObject?')]},
+    ('Button', 'findSelectableOnDown'): {
+        'doc': ['Where the selection moves down from this Button (its Navigation), nil for nowhere.'],
+        'overloads': [([], 'GameObject?')]},
+    ('Button', 'findSelectableOnLeft'): {
+        'doc': ['Where the selection moves left from this Button (its Navigation), nil for nowhere.'],
+        'overloads': [([], 'GameObject?')]},
+    ('Button', 'findSelectableOnRight'): {
+        'doc': ['Where the selection moves right from this Button (its Navigation), nil for nowhere.'],
+        'overloads': [([], 'GameObject?')]},
     ('UIComponent', 'getPointerEventData'): {
         'doc': ['The PointerEventData of the legacy callback running now (`onPointerDown(x, y)`, `onClick`...):',
                 'its pointerId, button, positions; nil outside one.'],
@@ -2690,6 +2712,14 @@ PROPERTY_OVERRIDES = {
     ('Joint3D', 'bodyA'): ('GameObject|nil', False),
     ('Joint3D', 'bodyB'): ('GameObject|nil', False),
     ('Joint3D', 'connectedBody'): ('GameObject|nil', False),
+    # ui-components: a Button's Explicit navigation targets and the selection events' GameObjects
+    ('Button', 'selectOnUp'): ('GameObject|nil', False),
+    ('Button', 'selectOnDown'): ('GameObject|nil', False),
+    ('Button', 'selectOnLeft'): ('GameObject|nil', False),
+    ('Button', 'selectOnRight'): ('GameObject|nil', False),
+    ('Button', 'onClick'): ('FunctionSubscribe', False),
+    ('BaseEventData', 'target'): ('GameObject?', False),
+    ('BaseEventData', 'selectedObject'): ('GameObject?', False),
 }
 
 # physics-contacts: the callbacks' values. Their GameObject / body / receiver getters are
@@ -2974,6 +3004,14 @@ OVERRIDES[('UIDocument', 'reload')] = {
     'overloads': [([], ''), ([('options', '{mode: "patch"|"rebuild"}')], '')]}
 PROPERTY_OVERRIDES[('UIDocument', 'onReload')] = ('fun(report: UIReloadReport)|nil', False)
 
+# S76 runtime areas (NavigationComponentsLua.cpp): script volumes
+OVERRIDES[('NavigationSystem', 'setAreaInVolume')] = {
+    'doc': ['A script volume (a world box): the navmesh polygons whose centre lies in it take `area` (1 Not',
+            'Walkable: nothing walks there) until `remove()`, on every surface of `options.agentType` (all by',
+            'default); it ends at Stop. nil for an area outside 0-15.'],
+    'overloads': [([('center', 'Vector3'), ('size', 'Vector3'), ('area', 'integer'),
+                    ('options?', '{rotation: Quaternion|nil, agentType: string|integer|nil}')], 'NavAreaOverride|nil')]}
+
 # S19 navigation: the queries returning (bool, hit) and the link data table
 _NAV_FILTER = 'NavMeshQueryFilter|integer'
 OVERRIDES[('NavigationSystem', 'samplePosition')] = {
@@ -2990,7 +3028,89 @@ OVERRIDES[('NavigationSystem', 'findClosestEdge')] = {
             'the hit (position, normal, distance).'],
     'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('NavMeshAgent', 'currentOffMeshLinkData')] = ('OffMeshLinkData', False)
+# S75 navigation diagnostics: path reasons, isReachable's reason, locate, coverage, islands, the bake report
+OVERRIDES[('NavigationSystem', 'isReachable')] = {
+    'doc': ['Whether a Complete path joins the points, then why not ("none" when it does): rejected at once',
+            'when their islands differ.'],
+    'overloads': [([('from', 'Vector3'), ('to', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, string')]}
+OVERRIDES[('NavigationSystem', 'locate')] = {
+    'doc': ['Where `point` is on the navmesh: onMesh when a path from here would start, else the nearest',
+            'point within maxDistance (5) with its snap distance, island, area and surface.'],
+    'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER), ('maxDistance?', 'number')], 'NavLocation')]}
+OVERRIDES[('NavigationSystem', 'getCoverage')] = {
+    'doc': ['The walkable area of a surface (m\u00b2), its island count, the largest island and the share of its',
+            'tiles\' footprint that is walkable.'],
+    'overloads': [([('surface', 'integer')], 'NavCoverage')]}
+OVERRIDES[('NavigationSystem', 'getIslands')] = {
+    'doc': ['The connected parts of a surface\'s navmesh (links included): id, area (m\u00b2), polygons, world bounds.'],
+    'overloads': [([('surface', 'integer')], 'NavIsland[]')]}
+PROPERTY_OVERRIDES[('NavMeshSurface', 'lastBakeResult')] = ('NavBakeReport|nil', True)
+
+# S76 navigation queries: random points, surface moves, the closest edge within a distance, path
+# options (docs/specs/S76-navigation-gameplay-api.md R1-R5, R42)
+OVERRIDES[('NavigationSystem', 'calculatePath')] = {
+    'doc': ['A path from `from` to `to` (Unity\'s NavMesh.CalculatePath): status, corners, length, cost, cornerAreas,',
+            'cornerFlags, areaLengths and the corridor NavMeshAgent:setPath takes; when it is not Complete why',
+            '(`reason`, "disconnected", ...), the answering surface, the closest point and the gap left to the end.',
+            '`options.areaCrossings` adds a corner wherever the path changes area.'],
+    'overloads': [([('from', 'Vector3'), ('to', 'Vector3'), ('filter?', _NAV_FILTER), ('options?', 'NavMeshPathOptions')], 'NavMeshPath')]}
+OVERRIDES[('NavigationSystem', 'findClosestEdge')] = {
+    'doc': ['The navmesh boundary point closest to `point` (Unity\'s NavMesh.FindClosestEdge): found, then',
+            'the hit (position, normal from the wall towards the point, distance). With maxDistance only walls',
+            'that close count: none gives false with hit.distance = maxDistance.'],
+    'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER), ('maxDistance?', 'number')], 'boolean, NavMeshHit')]}
+OVERRIDES[('NavigationSystem', 'randomPoint')] = {
+    'doc': ['A random navmesh point: anywhere (uniform by area), around `options.center` within `options.radius`',
+            '(reachable from it, not uniform) and/or on the island of `options.sameIslandAs`. Draws come from the',
+            'system\'s stream (randomSeed), or from `options.seed`\'s own. Found, then the hit.'],
+    'overloads': [([('filter?', _NAV_FILTER + '|nil'), ('options?', 'NavRandomPointOptions')], 'boolean, NavMeshHit')]}
+OVERRIDES[('NavigationSystem', 'moveAlongSurface')] = {
+    'doc': ['A controller step along the navmesh from `from` towards `to` (at most 64 polygons): moved, then the',
+            'hit (position on the surface, hit = stopped short of `to` by a wall, distance moved, area). False when',
+            '`from` is off the mesh.'],
+    'overloads': [([('from', 'Vector3'), ('to', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('UIDocument', 'lastReloadReport')] = ('UIReloadReport|nil', False)
+
+# S76 agents: the NavMeshAgent's paths, queries and link data (docs/specs/S76-navigation-gameplay-api.md
+# R19-R27)
+OVERRIDES[('NavMeshAgent', 'calculatePath')] = {
+    'doc': ['A path from where the agent stands to `target` (snapped as setDestination snaps it), planned now',
+            'on its surface with its area mask and costs (Unity\'s CalculatePath). Its own path is unchanged.'],
+    'overloads': [([('target', 'Vector3')], 'NavMeshPath')]}
+OVERRIDES[('NavMeshAgent', 'setPath')] = {
+    'doc': ['Follows a path of calculatePath (Unity\'s SetPath): planned on its surface, still open to it, and',
+            'starting where it stands. False when refused (a script-built table has no corridor); the agent',
+            'then has no path.'],
+    'overloads': [([('path', 'NavMeshPath')], 'boolean')]}
+OVERRIDES[('NavMeshAgent', 'raycast')] = {
+    'doc': ['NavigationSystem:raycast from where the agent stands with its filter: blocked, then the hit.'],
+    'overloads': [([('target', 'Vector3')], 'boolean, NavMeshHit')]}
+OVERRIDES[('NavMeshAgent', 'findClosestEdge')] = {
+    'doc': ['The wall nearest the agent with its filter: found, then the hit.'],
+    'overloads': [([], 'boolean, NavMeshHit')]}
+OVERRIDES[('NavMeshAgent', 'samplePathPosition')] = {
+    'doc': ['Walks its path up to maxDistance: true, with the point where the path first enters an area',
+            'outside areaMask, else false with the point maxDistance along it (or its end).'],
+    'overloads': [([('areaMask', 'integer'), ('maxDistance', 'number')], 'boolean, NavMeshHit')]}
+PROPERTY_OVERRIDES[('NavMeshAgent', 'path')] = ('NavMeshPath', False)
+PROPERTY_OVERRIDES[('NavMeshAgent', 'nextOffMeshLinkData')] = ('OffMeshLinkData', False)
+
+# Palettes (docs/specs/S43-palettes.md R42): Palette.new and setPaletteTarget read the Lua stack
+OVERRIDES[('Palette', 'new')] = {
+    'doc': ['A palette made at runtime from colours ("#rrggbb", "#rrggbbaa" or Vector4, linear), for',
+            'setPaletteTarget; it lives while a Palette or a material holds it.'],
+    'overloads': [([('colors', '(string|Vector4)[]')], 'Palette')]}
+for _owner in ('Sprite', 'Tilemap', 'MeshPolygon'):
+    OVERRIDES[(_owner, 'setPaletteTarget')] = {
+        'doc': ['Sets the palette a Palette Swap row draws with (row 1 and up; 0 is the original): a Palette',
+                '(Palette.load, Palette.new) or a .palette path. Errors on a row the material does not have.'],
+        'overloads': [([('row', 'integer'), ('palette', 'Palette|string')], '')]}
+    PROPERTY_OVERRIDES[(_owner, 'palette')] = ('string|integer', False)
+OVERRIDES[('Palette', 'getRamp')] = {
+    'doc': ['The colours of the named ramp, dark to light (linear); empty for an unknown ramp.'],
+    'overloads': [([('name', 'string')], 'Vector4[]')]}
+PROPERTY_OVERRIDES[('Palette', 'variants')] = ('string[]', True)
+PROPERTY_OVERRIDES[('Palette', 'ramps')] = ('string[]', True)
 
 # HTML UI (phase 4, p4-guide): class doc lines appended to the generated ones (the guide's URI)
 HTML_UI_CLASS_DOCS = {

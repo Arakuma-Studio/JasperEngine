@@ -1266,6 +1266,57 @@ ShaderGlobalBindings editor::Stream::decodeShaderGlobalBindings(const YAML::Node
     return bindings;
 }
 
+YAML::Node editor::Stream::encodeShaderPalettes(const jasperengine::pixelart::ShaderPalettes& palettes) {
+    YAML::Node node(YAML::NodeType::Map);
+    for (const auto& [uniform, binding] : palettes) {
+        YAML::Node entry(YAML::NodeType::Map);
+        encodeAssetRef(entry, "source", binding.source);
+        if (!binding.targets.empty()) {
+            YAML::Node targets(YAML::NodeType::Sequence);
+            for (const jasperengine::pixelart::PaletteTarget& target : binding.targets) {
+                YAML::Node item(YAML::NodeType::Map);
+                encodeAssetRef(item, "palette", target.palette);
+                if (!target.variant.empty()) item["variant"] = target.variant;
+                targets.push_back(item);
+            }
+            entry["targets"] = targets;
+        }
+        if (!binding.useVariants) entry["useVariants"] = false;
+        node[uniform] = entry;
+    }
+    return node;
+}
+
+jasperengine::pixelart::ShaderPalettes editor::Stream::decodeShaderPalettes(const YAML::Node& node) {
+    jasperengine::pixelart::ShaderPalettes palettes;
+    if (!node || !node.IsMap()) return palettes;
+    for (const auto& entry : node) {
+        const std::string uniform = entry.first.as<std::string>();
+        const YAML::Node value = entry.second;
+        if (uniform.empty() || !value.IsMap()) continue;
+        jasperengine::pixelart::PaletteBinding binding;
+        binding.source = decodeAssetRef(value, "source");
+        const YAML::Node targets = value["targets"];
+        if (targets && targets.IsSequence()) {
+            for (const YAML::Node& item : targets) {
+                jasperengine::pixelart::PaletteTarget target;
+                if (item.IsScalar()) {
+                    target = jasperengine::pixelart::PaletteTarget::parse(item.as<std::string>());
+                } else if (item.IsMap()) {
+                    target.palette = decodeAssetRef(item, "palette");
+                    if (item["variant"] && item["variant"].IsScalar()) target.variant = item["variant"].as<std::string>();
+                } else {
+                    continue;
+                }
+                binding.targets.push_back(target);
+            }
+        }
+        if (value["useVariants"] && value["useVariants"].IsScalar()) binding.useVariants = value["useVariants"].as<bool>();
+        palettes.push_back({uniform, binding});
+    }
+    return palettes;
+}
+
 YAML::Node editor::Stream::encodeQuaternion(const Quaternion& quat) {
     YAML::Node node;
     node.SetStyle(YAML::EmitterStyle::Flow);
@@ -2184,7 +2235,7 @@ const char* const sceneDisplayKeys[] = {
     "hideLightIcons", "hideSoundIcons", "hideContainerGuides", "showOrigin",
     "showGrid3D", "hideSelectionOutline", "disableFaceCulling", "showGrid2D",
     "gridSpacing2D", "gridSpacing3D", "snapToGrid", "snapTile", "snapRotation",
-    "rotationSnapDegrees",
+    "rotationSnapDegrees", "animateWater",
 };
 
 } // namespace
@@ -2212,6 +2263,9 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
     sceneNode["disableFaceCulling"]   = ds.disableFaceCulling;
     sceneNode["disableFog"]           = ds.disableFog;
     sceneNode["disableClouds"]        = ds.disableClouds;
+    // written only when off (the default is on)
+    if (!ds.animateWater)
+        sceneNode["animateWater"] = ds.animateWater;
     if (ds.showPostProcessing)
         sceneNode["showPostProcessing"] = ds.showPostProcessing;
     if (ds.showAllLattices)
@@ -2220,6 +2274,11 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["drawMode"] = drawModeKey(ds.drawMode);
     if (ds.showStats)
         sceneNode["showStats"] = ds.showStats;
+    // S41: written only when turned off (on by default)
+    if (!ds.pixelZoom) sceneNode["pixelZoom"] = false;
+    if (!ds.pixelGrid) sceneNode["pixelGrid"] = false;
+    if (!ds.pixelSnapPreview) sceneNode["pixelSnapPreview"] = false;
+    if (!ds.pixelMoveSnap) sceneNode["pixelMoveSnap"] = false;
     sceneNode["showGrid2D"]           = ds.showGrid2D;
     encodePositiveFinite(sceneNode, "gridSpacing2D", ds.gridSpacing2D);
     encodePositiveFinite(sceneNode, "gridSpacing3D", ds.gridSpacing3D);
@@ -2249,7 +2308,12 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["disableFaceCulling"])   ds.disableFaceCulling   = YamlNumbers::as<bool>(node["disableFaceCulling"]);
     if (node["disableFog"])           ds.disableFog           = YamlNumbers::as<bool>(node["disableFog"]);
     if (node["disableClouds"])        ds.disableClouds        = YamlNumbers::as<bool>(node["disableClouds"]);
+    if (node["animateWater"])         ds.animateWater         = YamlNumbers::as<bool>(node["animateWater"]);
     ds.showPostProcessing = node["showPostProcessing"] ? YamlNumbers::as<bool>(node["showPostProcessing"]) : false;
+    ds.pixelZoom = node["pixelZoom"] ? YamlNumbers::as<bool>(node["pixelZoom"]) : true;
+    ds.pixelGrid = node["pixelGrid"] ? YamlNumbers::as<bool>(node["pixelGrid"]) : true;
+    ds.pixelSnapPreview = node["pixelSnapPreview"] ? YamlNumbers::as<bool>(node["pixelSnapPreview"]) : true;
+    ds.pixelMoveSnap = node["pixelMoveSnap"] ? YamlNumbers::as<bool>(node["pixelMoveSnap"]) : true;
     ds.showAllLattices = node["showAllLattices"] ? YamlNumbers::as<bool>(node["showAllLattices"]) : false;
     ds.drawMode = ViewDrawMode::SHADED;
     if (node["drawMode"] && node["drawMode"].IsScalar())
@@ -2285,6 +2349,71 @@ std::vector<std::string> decodeStringList(const YAML::Node& node) {
         if (item.IsScalar()) values.push_back(item.as<std::string>());
     }
     return values;
+}
+
+// apple.privacy: the project's additions to the Apple privacy manifest, short names; nothing
+// when there are none
+void encodeApplePrivacy(YAML::Node& root, const jasperengine::editor::ApplePrivacy::Manifest& privacy) {
+    if (privacy.empty()) return;
+    YAML::Node node;
+    if (privacy.tracking) node["tracking"] = true;
+    encodeStringList(node, "trackingDomains", privacy.trackingDomains);
+    if (!privacy.collectedData.empty()) {
+        YAML::Node list(YAML::NodeType::Sequence);
+        for (const auto& data : privacy.collectedData) {
+            YAML::Node item;
+            item["type"] = data.type;
+            item["linked"] = data.linked;
+            item["tracking"] = data.tracking;
+            encodeStringList(item, "purposes", data.purposes);
+            list.push_back(item);
+        }
+        node["collectedData"] = list;
+    }
+    if (!privacy.accessedApis.empty()) {
+        YAML::Node list(YAML::NodeType::Sequence);
+        for (const auto& api : privacy.accessedApis) {
+            YAML::Node item;
+            item["type"] = api.type;
+            encodeStringList(item, "reasons", api.reasons);
+            list.push_back(item);
+        }
+        node["accessedApis"] = list;
+    }
+    root["apple"]["privacy"] = node;
+}
+
+// Long names (NSPrivacy...) are read too; what is no YAML of that shape is left out
+jasperengine::editor::ApplePrivacy::Manifest decodeApplePrivacy(const YAML::Node& node) {
+    namespace ApplePrivacy = jasperengine::editor::ApplePrivacy;
+    ApplePrivacy::Manifest privacy;
+    if (!node || !node.IsMap()) return privacy;
+    auto flag = [](const YAML::Node& value) {
+        return value && value.IsScalar() && (value.as<std::string>() == "true" || value.as<std::string>() == "yes");
+    };
+    privacy.tracking = flag(node["tracking"]);
+    privacy.trackingDomains = decodeStringList(node["trackingDomains"]);
+    if (node["collectedData"] && node["collectedData"].IsSequence()) {
+        for (const YAML::Node& item : node["collectedData"]) {
+            if (!item.IsMap() || !item["type"] || !item["type"].IsScalar()) continue;
+            ApplePrivacy::CollectedData data;
+            data.type = item["type"].as<std::string>();
+            data.linked = flag(item["linked"]);
+            data.tracking = flag(item["tracking"]);
+            data.purposes = decodeStringList(item["purposes"]);
+            privacy.collectedData.push_back(data);
+        }
+    }
+    if (node["accessedApis"] && node["accessedApis"].IsSequence()) {
+        for (const YAML::Node& item : node["accessedApis"]) {
+            if (!item.IsMap() || !item["type"] || !item["type"].IsScalar()) continue;
+            ApplePrivacy::AccessedApi api;
+            api.type = item["type"].as<std::string>();
+            api.reasons = decodeStringList(item["reasons"]);
+            privacy.accessedApis.push_back(api);
+        }
+    }
+    return ApplePrivacy::normalized(privacy);
 }
 
 // A plain scalar read back as a plist value: true/false, an integer, a real, else a string
@@ -2518,6 +2647,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         scale["web"] = project->getFoliageDistanceScale()[2];
         root["foliageDistanceScale"] = scale;
     }
+    // Project Settings > Default Palette (S43), omitted when there is none
+    if (!project->getDefaultPalette().empty()) {
+        YAML::Node palettes;
+        palettes["default"] = project->getDefaultPalette().generic_string();
+        root["palettes"] = palettes;
+    }
     // Project Settings > Input, omitted at its defaults
     if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
         YAML::Node input;
@@ -2583,6 +2718,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             graphics["gpuInstancing"] = drawSubmission.gpuInstancing;
         if (project->getLightMode() != Project::defaultLightMode)
             graphics["lightMode"] = LightingTiers::getModeName(project->getLightMode());
+        // graphics.pixelsPerUnit (S41), only away from 1
+        if (project->getPixelsPerUnit() != Project::defaultPixelsPerUnit)
+            graphics["pixelsPerUnit"] = project->getPixelsPerUnit();
         if (graphics.size() > 0)
             root["graphics"] = graphics;
     }
@@ -2834,8 +2972,6 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (ios.hideStatusBar != defaultIOS.hideStatusBar) iosNode["hideStatusBar"] = ios.hideStatusBar;
         if (ios.hideHomeIndicator != defaultIOS.hideHomeIndicator) iosNode["hideHomeIndicator"] = ios.hideHomeIndicator;
         if (ios.supportsHighRefreshRate != defaultIOS.supportsHighRefreshRate) iosNode["supportsHighRefreshRate"] = ios.supportsHighRefreshRate;
-        if (ios.admobEnabled != defaultIOS.admobEnabled) iosNode["admobEnabled"] = ios.admobEnabled;
-        if (!ios.admobAppId.empty()) iosNode["admobAppId"] = ios.admobAppId;
         if (!ios.teamId.empty()) iosNode["teamId"] = ios.teamId;
         if (ios.exportMethod != defaultIOS.exportMethod) iosNode["exportMethod"] = ios.exportMethod;
         encodePlistEntries(iosNode, ios.plistEntries);
@@ -2867,6 +3003,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (ios.deploymentTarget != defaultIOS.deploymentTarget) iosNode["deploymentTarget"] = ios.deploymentTarget;
         if (iosNode.size() != 0) root["ios"] = iosNode;
     }
+    encodeApplePrivacy(root, project->getApplePrivacy());
 
     {
         const AndroidProjectSettings& android = project->getAndroidProjectSettings();
@@ -2908,8 +3045,6 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
 
         if (android.allowBackup != defaults.allowBackup) androidNode["allowBackup"] = android.allowBackup;
         if (android.fullscreen != defaults.fullscreen) androidNode["fullscreen"] = android.fullscreen;
-        if (android.admobEnabled != defaults.admobEnabled) androidNode["admobEnabled"] = android.admobEnabled;
-        if (!android.admobAppId.empty()) androidNode["admobAppId"] = android.admobAppId;
         if (android.packageFormat != defaults.packageFormat) androidNode["packageFormat"] = android.packageFormat;
         if (!android.keystorePath.empty() || !android.keystoreAlias.empty()) {
             YAML::Node keystoreNode;
@@ -3105,6 +3240,10 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         Organisation::encodeSearches(project->getOrganisation().projectSearches(), searches);
         root["savedSearches"] = searches;
     }
+    // S45 R18: Project Settings > 2D > Sprite Atlas > Mode, written only when not the default
+    if (project->getSpriteAtlasMode() != "enabled") {
+        root["spriteAtlas"]["mode"] = project->getSpriteAtlasMode();
+    }
 
     return root;
 }
@@ -3160,6 +3299,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setAtmosphereQuality(quality);
+    }
+
+    {
+        const YAML::Node palettes = node["palettes"];
+        // (a missing key is an undefined node: IsMap on it would throw)
+        const bool hasDefaultPalette = palettes.IsDefined() && palettes.IsMap() && palettes["default"].IsDefined() && palettes["default"].IsScalar();
+        project->setDefaultPalette(hasDefaultPalette ? fs::path(palettes["default"].as<std::string>()) : fs::path());
     }
 
     {
@@ -3281,6 +3427,14 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         project->setShadowTier(platform, tier);
     }
+    // graphics.pixelsPerUnit (S41): absent is 1
+    {
+        const YAML::Node graphics = node["graphics"];
+        int pixelsPerUnit = Project::defaultPixelsPerUnit;
+        if (graphics && graphics.IsMap() && graphics["pixelsPerUnit"] && graphics["pixelsPerUnit"].IsScalar())
+            pixelsPerUnit = YamlNumbers::as<int>(graphics["pixelsPerUnit"]);
+        project->setPixelsPerUnit(pixelsPerUnit);
+    }
     // graphics.lightMode: absent or unknown is Automatic
     {
         LightMode lightMode = Project::defaultLightMode;
@@ -3396,6 +3550,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (vcsNode["lockScenes"]) vcsSettings.lockScenes = YamlNumbers::as<bool>(vcsNode["lockScenes"]);
         }
         project->setVcsProjectSettings(vcsSettings, false);
+    }
+
+    // S45 R18: the Sprite Atlas mode (enabled when absent)
+    {
+        const std::string mode = node["spriteAtlas"] && node["spriteAtlas"].IsMap() && node["spriteAtlas"]["mode"]
+                                     ? node["spriteAtlas"]["mode"].as<std::string>("enabled") : std::string("enabled");
+        project->setSpriteAtlasMode(mode == "enabled_for_builds" || mode == "disabled" ? mode : "enabled");
     }
 
     // S25: label colours, saved searches of scope project
@@ -3621,6 +3782,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         macOS.frameworks = decodeStringList(macOSNode["frameworks"]);
     }
 
+    project->setApplePrivacy(node["apple"] && node["apple"].IsMap() ? decodeApplePrivacy(node["apple"]["privacy"])
+                                                                    : ApplePrivacy::Manifest());
+
     if (node["ios"] && node["ios"].IsMap()) {
         const YAML::Node& iosNode = node["ios"];
         IOSProjectSettings& ios = project->getIOSProjectSettings();
@@ -3632,8 +3796,6 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (iosNode["hideStatusBar"].IsDefined()) ios.hideStatusBar = YamlNumbers::as<bool>(iosNode["hideStatusBar"]);
         if (iosNode["hideHomeIndicator"].IsDefined()) ios.hideHomeIndicator = YamlNumbers::as<bool>(iosNode["hideHomeIndicator"]);
         if (iosNode["supportsHighRefreshRate"].IsDefined()) ios.supportsHighRefreshRate = YamlNumbers::as<bool>(iosNode["supportsHighRefreshRate"]);
-        if (iosNode["admobEnabled"].IsDefined()) ios.admobEnabled = YamlNumbers::as<bool>(iosNode["admobEnabled"]);
-        if (iosNode["admobAppId"]) ios.admobAppId = iosNode["admobAppId"].as<std::string>();
         if (iosNode["teamId"]) ios.teamId = iosNode["teamId"].as<std::string>();
         if (iosNode["exportMethod"]) {
             const std::string method = iosNode["exportMethod"].as<std::string>();
@@ -3711,8 +3873,6 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (androidNode["fullscreen"].IsDefined()) android.fullscreen = YamlNumbers::as<bool>(androidNode["fullscreen"]);
         // android.keepScreenOn is dropped: exported games always kept the screen on (the native
         // window flag), which presentation.keepScreenOn (default true) keeps doing
-        if (androidNode["admobEnabled"].IsDefined()) android.admobEnabled = YamlNumbers::as<bool>(androidNode["admobEnabled"]);
-        if (androidNode["admobAppId"]) android.admobAppId = androidNode["admobAppId"].as<std::string>();
         if (androidNode["packageFormat"]) {
             // aab, apk-per-abi or apk (universal); an unknown word reads as the default
             AndroidFormat format = AndroidFormat::Aab;
@@ -3846,7 +4006,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     if (workspace.hasTerrainEditorSettings()) {
-        project->getTerrainEditorSettings() = workspace.getTerrainEditorSettings();
+        project->setTerrainEditorSettings(workspace.getTerrainEditorSettings());
     }
     project->getPhysicsPlacementSettings() = workspace.getPhysicsPlacementSettings();
     project->getSpriteNormalsSettings() = workspace.getSpriteNormalsSettings();
@@ -4478,6 +4638,26 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     // written only when not the default (half), so scenes saved before it existed re-save unchanged
     if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
         sceneNode["sceneColorScale"] = sceneColorScaleToString(scene->getSceneColorScale());
+    // planar reflections: written only away from their defaults
+    if (scene->getPlanarReflectionResolution() != SceneSettings().planarReflectionResolution)
+        sceneNode["planarReflectionResolution"] = StreamSchema::planarReflectionResolution().toString(scene->getPlanarReflectionResolution());
+    if (scene->getPlanarReflectionLayers() != SceneSettings().planarReflectionLayers)
+        sceneNode["planarReflectionLayers"] = scene->getPlanarReflectionLayers();
+    if (scene->getPlanarReflectionShadows() != SceneSettings().planarReflectionShadows)
+        sceneNode["planarReflectionShadows"] = scene->getPlanarReflectionShadows();
+    if (scene->getPlanarReflectionFarClip() != SceneSettings().planarReflectionFarClip)
+        sceneNode["planarReflectionFarClip"] = scene->getPlanarReflectionFarClip();
+    if (scene->getPlanarReflectionClipOffset() != SceneSettings().planarReflectionClipOffset)
+        sceneNode["planarReflectionClipOffset"] = scene->getPlanarReflectionClipOffset();
+    if (scene->getMaxPlanarReflections() != SceneSettings().maxPlanarReflections)
+        sceneNode["maxPlanarReflections"] = scene->getMaxPlanarReflections();
+    // the Water Wakes' map: written only away from its defaults
+    if (scene->getWaterWakeResolution() != SceneSettings().waterWakeResolution)
+        sceneNode["waterWakeResolution"] = StreamSchema::waterWakeResolution().toString(scene->getWaterWakeResolution());
+    if (scene->getWaterWakeArea() != SceneSettings().waterWakeArea)
+        sceneNode["waterWakeArea"] = scene->getWaterWakeArea();
+    if (scene->getWaterWakeFade() != SceneSettings().waterWakeFade)
+        sceneNode["waterWakeFade"] = scene->getWaterWakeFade();
     sceneNode["lightState"] = lightStateToString(scene->getLightState());
     sceneNode["globalIlluminationIntensity"] = scene->getGlobalIlluminationIntensity();
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
@@ -4617,6 +4797,22 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     }
     // absent = the default (half): it is only written when it differs
     scene->setSceneColorScale(node["sceneColorScale"] ? decodeEnum(node, "sceneColorScale", StreamSchema::sceneColorScale()) : SceneSettings().sceneColorScale);
+    // planar reflections: absent = the defaults
+    const SceneSettings planarDefaults;
+    scene->setPlanarReflectionResolution(node["planarReflectionResolution"]
+        ? decodeEnum(node, "planarReflectionResolution", StreamSchema::planarReflectionResolution()) : planarDefaults.planarReflectionResolution);
+    scene->setPlanarReflectionLayers(node["planarReflectionLayers"] ? YamlNumbers::as<uint32_t>(node["planarReflectionLayers"]) : planarDefaults.planarReflectionLayers);
+    scene->setPlanarReflectionShadows(node["planarReflectionShadows"] ? YamlNumbers::as<bool>(node["planarReflectionShadows"]) : planarDefaults.planarReflectionShadows);
+    scene->setPlanarReflectionFarClip(node["planarReflectionFarClip"] ? decodeFinite(node["planarReflectionFarClip"], planarDefaults.planarReflectionFarClip)
+                                                                      : planarDefaults.planarReflectionFarClip);
+    scene->setPlanarReflectionClipOffset(node["planarReflectionClipOffset"] ? decodeFinite(node["planarReflectionClipOffset"], planarDefaults.planarReflectionClipOffset)
+                                                                            : planarDefaults.planarReflectionClipOffset);
+    scene->setMaxPlanarReflections(node["maxPlanarReflections"] ? YamlNumbers::as<int>(node["maxPlanarReflections"]) : planarDefaults.maxPlanarReflections);
+    // the Water Wakes' map: absent = the defaults
+    scene->setWaterWakeResolution(node["waterWakeResolution"]
+        ? decodeEnum(node, "waterWakeResolution", StreamSchema::waterWakeResolution()) : planarDefaults.waterWakeResolution);
+    scene->setWaterWakeArea(node["waterWakeArea"] ? decodeFinite(node["waterWakeArea"], planarDefaults.waterWakeArea) : planarDefaults.waterWakeArea);
+    scene->setWaterWakeFade(node["waterWakeFade"] ? decodeFinite(node["waterWakeFade"], planarDefaults.waterWakeFade) : planarDefaults.waterWakeFade);
 
     if (node["lightState"]) {
         scene->setLightState(decodeEnum(node, "lightState", StreamSchema::lightState()));
@@ -5290,6 +5486,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     }
     if (!material.shaderFeatures.empty()) node["shaderFeatures"] = encodeShaderFeatures(material.shaderFeatures);
     if (!material.shaderGlobalBindings.empty()) node["shaderGlobalBindings"] = encodeShaderGlobalBindings(material.shaderGlobalBindings);
+    if (!material.shaderPalettes->empty()) node["shaderPalettes"] = encodeShaderPalettes(material.shaderPalettes.get());
     if (material.blendMode != MaterialBlendMode::AUTO) node["blendMode"] = materialBlendModeToString(material.blendMode);
     if (material.cullMode != MaterialCullMode::AUTO) node["cullMode"] = materialCullModeToString(material.cullMode);
     if (material.depthWrite != MaterialDepthWrite::AUTO) node["depthWrite"] = materialDepthWriteToString(material.depthWrite);
@@ -5434,6 +5631,7 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
     material.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
     material.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
+    material.shaderPalettes = decodeShaderPalettes(node["shaderPalettes"]);
     material.blendMode = node["blendMode"] ? decodeEnum(node, "blendMode", StreamSchema::materialBlendMode()) : MaterialBlendMode::AUTO;
     material.cullMode = node["cullMode"] ? decodeEnum(node, "cullMode", StreamSchema::materialCullMode()) : MaterialCullMode::AUTO;
     material.depthWrite = node["depthWrite"] ? decodeEnum(node, "depthWrite", StreamSchema::materialDepthWrite()) : MaterialDepthWrite::AUTO;
@@ -5508,6 +5706,10 @@ unsigned int editor::Stream::savedSubmeshCount(const MeshComponent& mesh, const 
     // a Terrain has its two (full and half resolution) only once it first ran (MeshSystem::createTerrain)
     if (signature.test(registry->getComponentId<TerrainComponent>())) {
         return std::max(mesh.numSubmeshes, 2u);
+    }
+    // a Spline Extrude's template has the one holding its chunks' material only once SplineSystem ran
+    if (signature.test(registry->getComponentId<SplineExtrudeComponent>())) {
+        return std::max(mesh.numSubmeshes, 1u);
     }
     return mesh.numSubmeshes;
 }

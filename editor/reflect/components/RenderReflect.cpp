@@ -20,6 +20,7 @@
 #include "component/PrefabComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/SpriteComponent.h"
+#include "subsystem/MeshSystem.h"
 #include "component/TerrainComponent.h"
 #include "component/TilemapComponent.h"
 
@@ -218,8 +219,40 @@ namespace {
         const bool isModel = Stream::isModelBackedMesh(ctx.entity, ctx.registry, ctx.signature);
         const bool generatesGeometry = Stream::isGeneratedMesh(ctx.registry, ctx.signature);
         const bool isGenerated = isModel || generatesGeometry;
-        return Stream::encodeMeshComponent(mesh, !isGenerated, !isModel, !isGenerated, Stream::savedSubmeshCount(mesh, ctx.registry, ctx.signature),
-                                           !generatesGeometry);
+        YAML::Node node = Stream::encodeMeshComponent(mesh, !isGenerated, !isModel, !isGenerated, Stream::savedSubmeshCount(mesh, ctx.registry, ctx.signature),
+                                                      !generatesGeometry);
+        // a sheet sprite's page is its sheet's (S44 R48): never saved as the mesh's texture
+        // (the registry's lookups are not const; nothing is changed through it)
+        const SpriteComponent* sprite = const_cast<EntityRegistry*>(ctx.registry)->findComponent<SpriteComponent>(ctx.entity);
+        if (sprite && !sprite->sheet.empty() && node["submeshes"] && node["submeshes"].IsSequence() && node["submeshes"].size() > 0) {
+            YAML::Node material = node["submeshes"][0]["material"];
+            if (material && material.IsMap()) {
+                // the sampler stays (R15/R49: pixel art keeps its Nearest filter), the page goes;
+                // encoded from a copy with a stand-in path, so an unloaded page keeps it too
+                Texture sampler = mesh.submeshes[0].material.baseColorTexture;
+                sampler.setPath("sheet-page");
+                const YAML::Node encoded = Stream::encodeTexture(sampler, false);
+                YAML::Node kept;
+                for (const char* key : {"minFilter", "magFilter", "wrapU", "wrapV", "alphaBorder"}) {
+                    if (encoded[key]) kept[key] = encoded[key];
+                }
+                material["baseColorTexture"] = kept;
+            }
+        }
+        // a legacy sprite drawn from an atlas page (S45 R8): its source texture and frame rect are
+        // what it saves, the page is the runtime's
+        if (sprite && sprite->sheet.empty() && sprite->inlineAtlas && node["submeshes"] && node["submeshes"].IsSequence() &&
+            node["submeshes"].size() > 0) {
+            const std::string source = MeshSystem::spriteSourceTexture(*sprite, mesh);
+            if (source != mesh.submeshes[0].material.baseColorTexture.getPath()) {
+                YAML::Node submesh = node["submeshes"][0];
+                Texture original = mesh.submeshes[0].material.baseColorTexture;
+                original.setPath(source);
+                if (submesh["material"] && submesh["material"].IsMap()) submesh["material"]["baseColorTexture"] = Stream::encodeTexture(original, false);
+                submesh["textureRect"] = Stream::encodeRect(MeshSystem::spriteSourceRect(*sprite, mesh));
+            }
+        }
+        return node;
     }
 
     void decodeMesh(const YAML::Node& node, void* comp, const DecodeContext& ctx) {
@@ -378,6 +411,18 @@ namespace {
         JE_FIELD(SpriteComponent, flipY, .updateFlags = kSprite),
         JE_FIELD(SpriteComponent, textureScaleFactor, .updateFlags = kSprite, .min = 0.0f),
         JE_FIELD(SpriteComponent, pivotPreset, .enumDesc = &enums::kPivotPreset, .updateFlags = kSprite, .label = "Pivot"),
+        // a sheet sprite's frames come from its sheet (S44): an .aseprite file or a texture
+        JE_FIELD(SpriteComponent, sheet, .updateFlags = kSprite, .asset = AssetKind::Any, .label = "Sprite Sheet"),
+        JE_FIELD(SpriteComponent, frame, .updateFlags = kSprite, .min = 0.0f),
+        JE_FIELD(SpriteComponent, frameName, .flags = ReadOnly | NoMcpWrite, .label = "Frame Name"),
+        // S45 R6: Simple or Sliced (9-slice from the frame's border)
+        JE_FIELD(SpriteComponent, drawMode, .enumDesc = &enums::kSpriteDrawMode, .updateFlags = kSprite, .label = "Draw Mode"),
+        // S41: texels per world unit (0: the project's) and the rotation policy under a Pixel Perfect Camera
+        JE_FIELD(SpriteComponent, pixelsPerUnit, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kSprite, .min = 0.0f, .max = 4096.0f,
+                 .label = "Pixels Per Unit", .tooltip = "Texels per world unit. 0: the Sprite Sheet's, else the project's Pixels Per Unit."),
+        JE_FIELD(SpriteComponent, pixelRotation, .enumDesc = &enums::kPixelRotation, .flags = OmitIfDefault | CodegenIfChanged,
+                 .label = "Pixel Rotation",
+                 .tooltip = "Under a Pixel Perfect Camera: the camera's rotation policy, 90 Degree Steps or Rotate On Grid."),
         // frame definitions are animation metadata: they do not change the quad
         JE_FIELD(SpriteComponent, numFramesRect),
         JE_FIELD(SpriteComponent, framesRect, .count = JE_COUNT(SpriteComponent, numFramesRect)),
@@ -390,6 +435,9 @@ namespace {
         JE_FIELD(TilemapComponent, automaticFlipY, .updateFlags = kTilemap),
         JE_FIELD(TilemapComponent, flipY, .updateFlags = kTilemap),
         JE_FIELD(TilemapComponent, textureScaleFactor, .updateFlags = kTilemap, .min = 0.0f),
+        // S41: texels per world unit (0: the project's)
+        JE_FIELD(TilemapComponent, pixelsPerUnit, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kTilemap, .min = 0.0f,
+                 .max = 4096.0f, .label = "Pixels Per Unit", .tooltip = "Texels per world unit. 0: the project's Pixels Per Unit."),
         JE_FIELD(TilemapComponent, reserveTiles, .updateFlags = kTilemap),
         JE_FIELD(TilemapComponent, numTilesRect, .updateFlags = kTilemap),
         JE_FIELD(TilemapComponent, tilesRect, .count = JE_COUNT(TilemapComponent, numTilesRect)),
@@ -638,7 +686,8 @@ const ComponentDesc kTerrainDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kSpriteKnownKeys[] = {"automaticFlipY", "enabled", "flipY", "framesRect", "height", "pivotPreset", "textureScaleFactor", "width"};
+    constexpr const char* kSpriteKnownKeys[] = {"automaticFlipY", "drawMode", "enabled", "flipY", "frame", "frameName", "framesRect", "height",
+                                                "pivotPreset", "pixelRotation", "pixelsPerUnit", "sheet", "sheetGuid", "textureScaleFactor", "width"};
 
 }
 
@@ -654,7 +703,8 @@ const ComponentDesc kSpriteDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kTilemapKnownKeys[] = {"automaticFlipY", "enabled", "flipY", "height", "reserveTiles", "textureScaleFactor", "tiles", "tilesRect", "width"};
+    constexpr const char* kTilemapKnownKeys[] = {"automaticFlipY", "enabled", "flipY", "height", "pixelsPerUnit", "reserveTiles", "textureScaleFactor", "tiles",
+                                                 "tilesRect", "width"};
 
 }
 

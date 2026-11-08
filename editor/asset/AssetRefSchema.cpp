@@ -6,6 +6,7 @@
 #include "Engine.h"
 #include "Scene.h"
 #include "component/MeshComponent.h"
+#include "component/SpriteComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "particles/ParticleEffectCodec.h"
@@ -66,6 +67,9 @@ namespace {
         row("shader", Shape::Shader, AssetType::Shader, Base::Project, Kind::MaterialShader);
         row("extraPass.shader", Shape::Shader, AssetType::Shader, Base::Project, Kind::MaterialShader);
         row("extraPass.shaderTextures{}", Shape::Texture, AssetType::Texture, Base::Assets, Kind::MaterialTexture);
+        // Palette Swap's bindings (S43): the source palette and each target palette
+        row("shaderPalettes{}.source", Shape::Asset, AssetType::Palette, Base::Assets, Kind::Other);
+        row("shaderPalettes{}.targets[].palette", Shape::Asset, AssetType::Palette, Base::Assets, Kind::Other);
         // the linked .material file (in a .material file: the file itself, not a reference)
         row("name", Shape::Asset, AssetType::Material, Base::Project, Kind::MeshMaterialFile);
         return rows;
@@ -114,6 +118,7 @@ namespace {
             case K::NavMesh: return AssetType::NavMesh;
             case K::NavGrid: return AssetType::NavGrid;
             case K::ParticleEffect: return AssetType::ParticleEffect;
+            case K::Palette: return AssetType::Palette;
             case K::None: case K::Any: case K::ModelOrPrefab: break;
         }
         return AssetType::Unknown;
@@ -302,6 +307,8 @@ namespace {
         row(Scope::SceneSettings, "postProcess[].shader", Shape::Shader, AssetType::Shader, Base::Project, Kind::SceneSettings);
         row(Scope::SceneSettings, "postProcess[].textures{}", Shape::Texture, AssetType::Texture, Base::Assets, Kind::SceneSettings);
         row(Scope::SceneSettings, "postProcessing.lutTexture", Shape::Asset, AssetType::Texture, Base::Assets, Kind::SceneSettings);
+        // Palette Quantize's palette (S43)
+        row(Scope::SceneSettings, "postProcessing.palette", Shape::Asset, AssetType::Palette, Base::Assets, Kind::SceneSettings);
 
         row(Scope::SceneFile, "prefabs[]", Shape::PrefabRef, AssetType::Prefab, Base::Project, Kind::ScenePrefabList);
         row(Scope::SceneFile, "cppScripts[].path", Shape::Asset, AssetType::Script, Base::Project, Kind::CppScript);
@@ -358,6 +365,9 @@ namespace {
         bool changed = false;
         Entity entity = NULL_ENTITY;
         std::string component;
+        // the entity is a sheet sprite (S44 R48): submesh 0's base colour is its sheet's page, the
+        // sprite's reference, not the material's
+        bool sheetPage = false;
 
         AssetRefSite site(const AssetRefField& row, const std::string& field, uint32_t ordinal = 0,
                           AssetPathBase base = AssetPathBase::Project, bool baseOverride = false) const {
@@ -537,12 +547,13 @@ namespace {
         bool shader = false;
     };
 
-    MaterialChange visitMaterial(RefVisit& visit, Material& material, const std::string& prefix) {
+    // skipBaseColor: a sheet sprite's page (S44), the sheet's output, not a reference of the scene
+    MaterialChange visitMaterial(RefVisit& visit, Material& material, const std::string& prefix, bool skipBaseColor = false) {
         MaterialChange change;
         static const char* textureFields[] = {"baseColorTexture", "emissiveTexture", "metallicRoughnessTexture", "occlusionTexture", "normalTexture"};
         Texture* textures[] = {&material.baseColorTexture, &material.emissiveTexture, &material.metallicRoughnessTexture,
                                &material.occlusionTexture, &material.normalTexture};
-        for (size_t i = 0; i < 5; i++) {
+        for (size_t i = skipBaseColor ? 1 : 0; i < 5; i++) {
             change.texture |= visit.texture(*textures[i], materialRow(textureFields[i]), prefix + textureFields[i]);
         }
         change.texture |= visit.textureMap(material.shaderTextures, materialRow("shaderTextures{}"), prefix + "shaderTextures.");
@@ -559,6 +570,17 @@ namespace {
         if (MaterialPass* pass = material.extraPass.editIfSet()) {
             change.shader |= visit.shader(pass->shader, materialRow("extraPass.shader"), prefix + "extraPass.shader");
             change.texture |= visit.textureMap(pass->shaderTextures, materialRow("extraPass.shaderTextures{}"), prefix + "extraPass.shaderTextures.");
+        }
+        // the palette bindings, only on a material that has them; the draw binds a changed one itself
+        if (jasperengine::pixelart::ShaderPalettes* palettes = material.shaderPalettes.editIfSet()) {
+            for (auto& [uniform, binding] : *palettes) {
+                const std::string at = prefix + "shaderPalettes." + uniform + ".";
+                visit.asset(binding.source, materialRow("shaderPalettes{}.source"), at + "source");
+                for (size_t t = 0; t < binding.targets.size(); t++) {
+                    visit.asset(binding.targets[t].palette, materialRow("shaderPalettes{}.targets[].palette"),
+                                at + "targets[" + std::to_string(t) + "].palette");
+                }
+            }
         }
         if (!prefix.empty()) {
             visit.asset(material.name, materialRow("name"), prefix + "name");
@@ -694,7 +716,8 @@ namespace {
                     pathChanged = visitInlineEffect(visit, *static_cast<particles::ParticleEffectDocument*>(value), rows[node.row], path);
                     break;
                 case RefStep::Material: {
-                    const MaterialChange change = visitMaterial(visit, *static_cast<Material*>(value), path + ".");
+                    const MaterialChange change = visitMaterial(visit, *static_cast<Material*>(value), path + ".",
+                                                                visit.sheetPage && path == "submeshes[0].material");
                     if (change.texture) moved.flags |= UpdateFlags_Mesh_Texture;
                     if (change.shader) moved.flags |= UpdateFlags_Mesh_Reload;
                     moved.any |= change.texture || change.shader;
@@ -719,6 +742,8 @@ namespace {
         }
         visit.entity = entity;
         visit.component = Catalog::getComponentName(walk.desc->type);
+        const SpriteComponent* sprite = walk.desc->type == ComponentType::MeshComponent ? registry.findComponent<SpriteComponent>(entity) : nullptr;
+        visit.sheetPage = sprite && !sprite->sheet.empty();
         MovedRefs moved;
         walkRefFields(visit, walk.nodes, component, std::string(), moved);
         if (moved.any) {
@@ -1196,6 +1221,11 @@ bool AssetRefSchema::forEachSceneSettingsRef(Scene& scene, const AssetRefVisitor
     if (visit.asset(settings.lutTexture, documentRow(Scope::SceneSettings, "postProcessing.lutTexture"), "postProcessing.lutTexture",
                     AssetPathBase::Project, false, lutExpectedType(settings.lutTexture.path)) ||
         settings.lutTexture != scene.getPostProcessing().lutTexture) {
+        scene.setPostProcessing(settings);
+    }
+    settings = scene.getPostProcessing();
+    if (visit.asset(settings.palette, documentRow(Scope::SceneSettings, "postProcessing.palette"), "postProcessing.palette") ||
+        settings.palette != scene.getPostProcessing().palette) {
         scene.setPostProcessing(settings);
     }
     return visit.changed;

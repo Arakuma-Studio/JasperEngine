@@ -50,7 +50,8 @@ Vector4 ShaderUniforms::resolve(const UniformChain& chain, const std::string& na
 }
 
 bool ShaderUniforms::isReserved(const std::string& name){
-    return name == "time" || name == "resolution";
+    return name == "time" || name == "resolution" || name == "sceneTime" || name == "waterExclusion" ||
+           name == "waterWakeArea" || name == "waterWakeParams";
 }
 
 bool ShaderUniforms::isEditable(const ShaderUniform& uniform){
@@ -134,8 +135,16 @@ bool CustomUniformBlock::resolve(ShaderData& shaderData, const std::string& bloc
         uniform.name = ShaderData::getUniformShortName(uniform.name);
         if (uniform.name == "time"){
             timeMember = (int)members.size();
+        }else if (uniform.name == "gameTime"){
+            gameTimeMember = (int)members.size();
         }else if (uniform.name == "resolution"){
             resolutionMember = (int)members.size();
+        }else if (uniform.name == "sceneTime"){
+            sceneTimeMember = (int)members.size();
+        }else if (uniform.name == "waterExclusion"){
+            waterInteractionOffset = (int)uniform.offset;
+        }else if (uniform.name == "waterWakeParams"){
+            waterWakeParamsOffset = (int)uniform.offset;
         }
         if (uniform.type >= ShaderUniformType::INT && uniform.type <= ShaderUniformType::INT4){
             hasInt = true;
@@ -154,13 +163,17 @@ void CustomUniformBlock::clear(){
     members.clear();
     data.clear();
     timeMember = -1;
+    gameTimeMember = -1;
     resolutionMember = -1;
+    sceneTimeMember = -1;
+    waterInteractionOffset = -1;
+    waterWakeParamsOffset = -1;
     mixedTypes = false;
 }
 
 void CustomUniformBlock::writeValues(const ShaderUniformValues& values){
     for (size_t m = 0; m < members.size(); m++){
-        if ((int)m == timeMember || (int)m == resolutionMember)
+        if ((int)m == timeMember || (int)m == resolutionMember || (int)m == sceneTimeMember || ShaderUniforms::isReserved(members[m].name))
             continue;
         // unset (or removed) members read zero
         writeUniform(data, members[m], ShaderUniforms::get(values, members[m].name));
@@ -179,7 +192,7 @@ void CustomUniformBlock::writeValues(const ShaderUniformValues& values, const Sh
 
 void CustomUniformBlock::writeValues(const UniformChain& chain){
     for (size_t m = 0; m < members.size(); m++){
-        if ((int)m == timeMember || (int)m == resolutionMember)
+        if ((int)m == timeMember || (int)m == resolutionMember || (int)m == sceneTimeMember || ShaderUniforms::isReserved(members[m].name))
             continue;
         writeUniform(data, members[m], ShaderUniforms::resolve(chain, members[m].name));
     }
@@ -188,6 +201,20 @@ void CustomUniformBlock::writeValues(const UniformChain& chain){
 void CustomUniformBlock::writeTime(float seconds){
     if (timeMember != -1)
         writeUniform(data, members[timeMember], Vector4(seconds, seconds, seconds, seconds));
+}
+
+bool CustomUniformBlock::writeWaterInteraction(const void* values, size_t size){
+    // the members are WATER_INTERACTION_PARAMS, in order (std140: vec4s back to back)
+    if (waterInteractionOffset < 0 || waterWakeParamsOffset != waterInteractionOffset + (int)size - 16 ||
+            (size_t)waterInteractionOffset + size > data.size())
+        return false;
+    std::memcpy(data.data() + waterInteractionOffset, values, size);
+    return true;
+}
+
+void CustomUniformBlock::writeSceneTime(float seconds){
+    if (sceneTimeMember != -1)
+        writeUniform(data, members[sceneTimeMember], Vector4(seconds, seconds, seconds, seconds));
 }
 
 void CustomUniformBlock::writeResolution(float width, float height){

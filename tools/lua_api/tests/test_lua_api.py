@@ -169,7 +169,10 @@ class Emitters(unittest.TestCase):
     #    initializers, modifiers and colour gradient are gone (deprecated setters stay on the
     #    ParticleSystem object, S20 D9), and so is ActionSystem::particleActionReset;
     #  - the lattice merge moved setTimes/setEasings/setEasing to KeyframeTracks, where every
-    #    tracks class inherits them (a base class's member counts for the derived one).
+    #    tracks class inherits them (a base class's member counts for the derived one);
+    #  - mobile-shipping retired built-in AdMob (ads go through the native bridge).
+    ADMOB_SYSTEM_STATICS = {'initializeAdMob', 'setMaxAdContentRating', 'loadInterstitialAd', 'isInterstitialAdLoaded',
+                            'showInterstitialAd'}
     S20_LEGACY_PARTICLE_FIELDS = {
         'accelerationInitializer', 'accelerationModifier', 'alphaInitializer', 'alphaModifier', 'bursts',
         'colorGradient', 'colorInitializer', 'colorModifier', 'currentBurst', 'emitter', 'lastUsedParticle',
@@ -184,6 +187,8 @@ class Emitters(unittest.TestCase):
         if re.fullmatch(r'Particle\w*(Initializer|Modifier)|ParticleColorGradient', owner):
             return True
         if parent == 'ParticleSystemComponent' and kind == 'Property' and name in cls.S20_LEGACY_PARTICLE_FIELDS:
+            return True
+        if owner == 'AdMobRating' or (parent == 'System' and name in cls.ADMOB_SYSTEM_STATICS):
             return True
         # SYNC#4: upstream's collider vectors replaced PhysicsSystem::loadCollider2D
         return (kind, parent, name) in (('CppMethod', 'ActionSystem', 'particleActionReset'),
@@ -224,6 +229,19 @@ class Emitters(unittest.TestCase):
                     continue
                 missing.append(line)
         self.assertEqual(missing, [], 'symbols the regex parser listed and the one parser does not')
+
+    def test_sprite_sheets_and_atlases(self):
+        """S45 R36 (AC17): the API lists Sprite.drawMode and its SpriteDrawMode values, and the sheet
+        members an atlas is used through (Sprite.sheet/frameName/frameCount, SpriteSheet.load/getFrame)"""
+        classes = {c['name']: c for c in api()['classes']}
+        enums = {e['name']: e for e in api()['enums']}
+        sprite = {p['name'] for p in classes['Sprite']['properties']}
+        self.assertTrue({'drawMode', 'sheet', 'frame', 'frameName', 'frameCount'} <= sprite, sprite)
+        self.assertEqual([v['name'] for v in enums['SpriteDrawMode']['values']], ['SIMPLE', 'SLICED'])
+        sheet = classes['SpriteSheet']
+        self.assertTrue({'load', 'getFrame', 'findFrame'} <= {m['name'] for m in sheet['methods']})
+        self.assertIn('frameCount', {p['name'] for p in sheet['properties']})
+        self.assertTrue(any(m['name'] == 'load' and m['static'] for m in sheet['methods']), 'SpriteSheet.load is static')
 
     def test_lua_only_marked(self):
         """C++ completion offers Engine::deltatime only if C++ has it (Doriax 755972f92): a static

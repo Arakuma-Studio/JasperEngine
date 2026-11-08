@@ -12,6 +12,9 @@
 #include "asset/ContentHash.h"
 #include "asset/ModelSubAssets.h"
 #include "io/watch/LinkedFolders.h"
+#include "pixelart/aseprite/AsepriteImport.h"
+#include "sprite/SpriteAtlasDocument.h"
+#include "sprite/SpriteSheetSources.h"
 #include "util/SafeWrite.h"
 #include "util/SHA1.h"
 #include "util/Util.h"
@@ -244,9 +247,13 @@ namespace {
 
     // .anim clips, .vat Vertex Animations and the Animator's .controller / .mask / .montage files are JSON: their GUID is the top-level "guid" member
     // (AnimationClipIO reads and replaces it in any JSON object that has a "version" member)
+    bool isSpriteAtlasFile(const fs::path& path) {
+        return SpriteSheetSources::isAtlasPath(path.string());
+    }
+
     bool isClipFile(const fs::path& path) {
         return editor::Util::isAnimationClipFile(path.string()) || editor::Util::isVertexAnimationFile(path.string()) ||
-               editor::Util::isAnimatorAssetFile(path.string());
+               editor::Util::isAnimatorAssetFile(path.string()) || isSpriteAtlasFile(path);
     }
 
     // the Animator asset text parses (its writer is what the identity rewrite uses)
@@ -292,6 +299,9 @@ namespace {
     // the JSON asset parses as its own type; a broken or foreign file (a Unity YAML .anim, .mask
     // or .controller, broken JSON) is left alone: its error must keep its line
     bool parsesAsJsonAsset(const fs::path& path, const std::string& text) {
+        if (isSpriteAtlasFile(path)) {
+            return editor::sprite::parseSpriteAtlas(text).ok();
+        }
         if (editor::Util::isVertexAnimationFile(path.string())) {
             return vat::parseVat(text).ok();
         }
@@ -343,6 +353,22 @@ namespace {
     // are no former GUIDs to write or drop; else the asset written again canonically. False for
     // a text that is not one (a Unity YAML .anim, broken JSON: its error must keep its line).
     bool withJsonAssetIdentity(const fs::path& path, std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
+        // Sprite Atlases (S45): their own reader and canonical writer
+        if (isSpriteAtlasFile(path)) {
+            editor::sprite::SpriteAtlasParseResult parsed = editor::sprite::parseSpriteAtlas(text);
+            if (!parsed.ok()) {
+                return false;
+            }
+            editor::sprite::SpriteAtlasDocument& doc = *parsed.document;
+            std::vector<std::pair<std::string, std::string>> unknown;
+            for (const auto& [key, value] : doc.unknown.items()) unknown.emplace_back(key, value.dump());
+            setFormerGuids(unknown, formerGuids);
+            doc.unknown = nlohmann::ordered_json::object();
+            for (const auto& [key, value] : unknown) doc.unknown[key] = nlohmann::ordered_json::parse(value);
+            doc.guid = guid;
+            text = editor::sprite::writeSpriteAtlas(doc);
+            return true;
+        }
         // the Animator's assets (S21): their own readers and writers
         if (editor::Util::isAnimatorAssetFile(path.string()) || !anim::animatorAssetKind(text).empty()) {
             return withAnimatorAssetIdentity(text, guid, formerGuids);
@@ -1220,7 +1246,11 @@ bool editor::AssetDatabase::writeIdentity(const Entry& entry) const {
     AssetMeta meta;
     std::string text;
     if (assetio::readFile(metaPath, text) && !AssetMeta::parse(text, meta)) {
-        meta = AssetMeta();
+        // a sidecar written before its GUID (an importer's settings set while the asset was being
+        // imported) keeps its sections: the GUID goes in front of them
+        if (text.find("guid:") != std::string::npos || !AssetMeta::parse("guid: " + entry.guid.str() + "\n" + text, meta)) {
+            meta = AssetMeta();
+        }
     }
     meta.guid = entry.guid;
     meta.formerGuids.clear();
@@ -1255,7 +1285,16 @@ bool editor::AssetDatabase::refreshSubAssets(Entry& entry, const Entry* previous
         return had;
     }
     ModelContents contents;
-    scanModelFile(projectPath / entry.path, contents);
+    if (entry.type == AssetType::Palette) {
+        scanPaletteFile(projectPath / entry.path, contents);
+    } else if (entry.type == AssetType::AsepriteSprite) {
+        // its named outputs (tag clips, slices, tilesets): the index-keyed ones (frames, pages,
+        // the palette) are always derived, never kept (S44 §6.5)
+        pixelart::aseprite::scanAsepriteSubAssets(projectPath / entry.path, contents.subAssets);
+    } else {
+        scanModelFile(projectPath / entry.path, contents);
+        reportModelLimits(entry.path, contents);
+    }
 
     // §6.4: match by key, then an unmatched old entry to an unmatched new one of the same
     // kind at the same index; what stays unmatched is dropped

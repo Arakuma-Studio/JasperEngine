@@ -27,6 +27,7 @@
 #include <future>
 
 #include "window/dialog/ProjectSaveDialog.h"
+#include "window/dialog/SpriteConversionDialog.h"
 #include "window/dialog/SceneSaveDialog.h"
 #include "window/dialog/DataSafetyDialogs.h"
 #include "window/dialog/ExportWindow.h"
@@ -78,10 +79,13 @@ namespace jasperengine::editor{
     class AudioMixerWindow;
     class SoundBrowserWindow;
     class AudioCapturesWindow;
+    class ApplyPaletteDialog;
+    class PaletteWindow;
     class VertexAnimationBakerWindow;
     class PhysicsPlacementWindow;
     class SystemsWindow;
     class SpriteNormalsWindow;
+    class SpritePreviewWindow;
     class GameWindow;
     class MainToolbar;
     class StatusBar;
@@ -254,11 +258,15 @@ namespace jasperengine::editor{
         AudioMixerWindow* audioMixerWindow;
         SoundBrowserWindow* soundBrowserWindow;
         AudioCapturesWindow* audioCapturesWindow;
+        // S43: Window > 2D > Palette and the Apply Palette / Reduce Colours dialog
+        PaletteWindow* paletteWindow = nullptr;
+        ApplyPaletteDialog* applyPaletteDialog = nullptr;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
         SpriteNormalsWindow* spriteNormalsWindow;
         // which generated normal maps are stale, and their opt-in auto-regenerate
         SpriteNormalsWatcher* spriteNormalsWatcher;
+        SpritePreviewWindow* spritePreviewWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
         SystemsWindow* systemsWindow;
         MissingAssetsWindow* missingAssetsWindow;
@@ -319,6 +327,7 @@ namespace jasperengine::editor{
         // An MCP agent's answer to the alert, pressed by showAlert on the next frame
         std::string alertPendingChoice;
         ProjectSaveDialog projectSaveDialog;
+        SpriteConversionDialog spriteConversionDialog;   // S45 R21
         SceneSaveDialog sceneSaveDialog;
         // Recover Unsaved Changes, Saving Would Lose Data, the second-instance dialog
         DataSafetyDialogs dataSafetyDialogs;
@@ -708,6 +717,7 @@ namespace jasperengine::editor{
         PhysicsPlacementWindow* getPhysicsPlacementWindow() const;
         SpriteNormalsWindow* getSpriteNormalsWindow() const;
         SpriteNormalsWatcher* getSpriteNormalsWatcher() const;
+        SpritePreviewWindow* getSpritePreviewWindow() const { return spritePreviewWindow; }
         void openSpriteNormals(const std::vector<std::filesystem::path>& images, bool editRecipe) override;
         void openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now) override;
         MainToolbar* getMainToolbar() const;
@@ -716,6 +726,9 @@ namespace jasperengine::editor{
         void openBuildReport(const std::filesystem::path& report) override;
         void openMeshAudit() override;
         void openConsole() override;
+        void openPaletteWindow(const std::string& palettePath, const std::string& texturePath) override;
+        PaletteWindow* getPaletteWindow() const { return paletteWindow; }
+        ApplyPaletteDialog* getApplyPaletteDialog() const { return applyPaletteDialog; }
         void openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;

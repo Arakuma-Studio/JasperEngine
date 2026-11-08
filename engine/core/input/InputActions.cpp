@@ -420,8 +420,15 @@ namespace {
     bool suppressedByUI(const InputActionsRuntime& r, const InputControlPath& control, const RMap& map){
         if (!map.ignoreUI)
             return false;
-        if (control.kind == InputControlKind::KEY)
-            return r.suppression.keyboard;
+        if (control.kind == InputControlKind::KEY){
+            if (r.suppression.keyboard)
+                return true;
+            // a selected Button's keys (ui-components): the menu's, not the game's
+            return r.suppression.keyboardNavigation &&
+                   (control.index == D_KEY_UP || control.index == D_KEY_DOWN || control.index == D_KEY_LEFT ||
+                    control.index == D_KEY_RIGHT || control.index == D_KEY_TAB || control.index == D_KEY_ENTER ||
+                    control.index == D_KEY_KP_ENTER || control.index == D_KEY_SPACE);
+        }
         if (!r.suppression.gamepadNavigation)
             return false;
         switch (control.kind){
@@ -1391,9 +1398,7 @@ void InputActions::unload(){
     r.clearConsumed();
     for (auto& [path, object] : r.actionObjects){
         InputActionsRuntime::resetActionState(*object);
-        object->onStarted.clear();
-        object->onPerformed.clear();
-        object->onCanceled.clear();
+        object->forEachEvent([](auto& event) { event.clear(); });
     }
     // a game without an actions asset has Unity's defaults (and their rebinding overrides)
     r.installDefaults();
@@ -1944,9 +1949,7 @@ void InputActions::resetSession(){
         r.virtuals[i].value = Vector2(0.0f, 0.0f);
     for (auto& [path, object] : r.actionObjects){
         InputActionsRuntime::resetActionState(*object);
-        object->onStarted.clear();
-        object->onPerformed.clear();
-        object->onCanceled.clear();
+        object->forEachEvent([](auto& event) { event.clear(); });
     }
     if (r.loaded || r.builtin){
         // the maps start again as the asset has them

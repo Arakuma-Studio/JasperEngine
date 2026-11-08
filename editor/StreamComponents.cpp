@@ -34,14 +34,19 @@
 #include "component/ScriptComponent.h"
 #include "component/LineRendererComponent.h"
 #include "subsystem/MeshSystem.h"
+#include "sprite/SpriteSheetPool.h"
+#include "sprite/SpriteSheet.h"
 #include "reflect/Reflect.h"
 #include "log/Logger.h"
+#include "StreamPreserved.h"
 #include "StreamSchema.h"
 #include "Catalog.h"
 #include "util/ProjectUtils.h"
 #include "util/YamlNumbers.h"
+#include "util/TerrainDetailRules.h"
 #include "lattice/LatticeTypes.h"
 #include "Out.h"
+#include "LoadReport.h"
 #include "particles/ParticleEffectCodec.h"
 #include "stream/CurveCodec.h"
 #include "animation/AnimationClipIO.h"
@@ -411,6 +416,21 @@ YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) 
     node["flipY"] = YamlNumbers::text(sprite.flipY);
     node["textureScaleFactor"] = YamlNumbers::text(sprite.textureScaleFactor);
     node["pivotPreset"] = pivotPresetToString(sprite.pivotPreset);
+    // S45 R6: optional, written only when not Simple (an older editor keeps it as unknown data)
+    if (sprite.drawMode != SpriteDrawMode::SIMPLE) node["drawMode"] = StreamSchema::spriteDrawMode().toString(sprite.drawMode);
+    // S41: written only away from their defaults (a scene of before is unchanged)
+    if (sprite.pixelsPerUnit != 0.0f)
+        node["pixelsPerUnit"] = YamlNumbers::text(sprite.pixelsPerUnit);
+    if (sprite.pixelRotation != PixelRotation::CAMERA)
+        node["pixelRotation"] = sprite.pixelRotation == PixelRotation::STEPS_90 ? "steps_90" : "on_grid";
+
+    // a sheet sprite (S44 R48): the sheet decides its frames; the inline ones are not saved
+    if (!sprite.sheet.empty()) {
+        encodeAssetRef(node, "sheet", sprite.sheet);
+        node["frame"] = YamlNumbers::integerText(sprite.frame);
+        node["frameName"] = sprite.frameName;
+        return node;
+    }
 
     YAML::Node framesNode;
     for (unsigned int i = 0; i < sprite.numFramesRect; i++) {
@@ -442,6 +462,35 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
     if (node["flipY"]) sprite.flipY = YamlNumbers::as<bool>(node["flipY"]);
     if (node["textureScaleFactor"]) sprite.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["pivotPreset"]) sprite.pivotPreset = decodeEnum(node, "pivotPreset", StreamSchema::pivotPreset());
+    if (node["drawMode"]) sprite.drawMode = decodeEnum(node, "drawMode", StreamSchema::spriteDrawMode());
+    if (node["sheet"]) {
+        const AssetRef sheet = decodeAssetRef(node, "sheet");
+        if (sheet.path != sprite.sheet.path) {
+            sprite.sheetData.reset();
+            sprite.builtFrame = -1;
+        }
+        sprite.sheet = sheet;
+        sprite.resolveFrameName = true;
+        sprite.needUpdateSprite = true;
+    }
+    if (node["frame"]) sprite.frame = YamlNumbers::as<int>(node["frame"]);
+    if (node["frameName"]) sprite.frameName = node["frameName"].as<std::string>();
+    // R48: a saved frame name the sheet no longer has falls back to the saved index, said in the
+    // load report (the sheet is the import the editor already has; none yet: nothing to check)
+    if (!sprite.sheet.empty() && !sprite.frameName.empty() && node["frameName"]) {
+        if (std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite.sheet.path)) {
+            if (sheet->findFrame(sprite.frameName) < 0 && sheet->frameCount() > 0) {
+                const int shown = std::clamp(sprite.frame, 0, sheet->frameCount() - 1);
+                StreamLoad::fallbackValue(node["frameName"], "the sheet " + sprite.sheet.path + " has no frame \"" + sprite.frameName +
+                                          "\": frame " + std::to_string(shown) + " (\"" + sheet->frames[static_cast<size_t>(shown)].name + "\") is shown");
+            }
+        }
+    }
+    if (node["pixelsPerUnit"]) sprite.pixelsPerUnit = std::max(0.0f, YamlNumbers::as<float>(node["pixelsPerUnit"]));
+    if (node["pixelRotation"]){
+        const std::string rotation = node["pixelRotation"].IsScalar() ? node["pixelRotation"].Scalar() : std::string();
+        sprite.pixelRotation = rotation == "steps_90" ? PixelRotation::STEPS_90 : (rotation == "on_grid" ? PixelRotation::ON_GRID : PixelRotation::CAMERA);
+    }
 
     if (node["framesRect"]) {
         const YAML::Node& framesNode = node["framesRect"];
@@ -476,6 +525,9 @@ YAML::Node editor::Stream::encodeTilemapComponent(const TilemapComponent& tilema
     node["automaticFlipY"] = tilemap.automaticFlipY;
     node["flipY"] = tilemap.flipY;
     node["textureScaleFactor"] = tilemap.textureScaleFactor;
+    // S41: written only away from its default
+    if (tilemap.pixelsPerUnit != 0.0f)
+        node["pixelsPerUnit"] = tilemap.pixelsPerUnit;
     node["reserveTiles"] = tilemap.reserveTiles;
 
     YAML::Node tilesRectNode;
@@ -510,6 +562,7 @@ TilemapComponent editor::Stream::decodeTilemapComponent(const YAML::Node& node, 
     if (node["flipY"]) tilemap.flipY = YamlNumbers::as<bool>(node["flipY"]);
     if (node["textureScaleFactor"]) tilemap.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["reserveTiles"]) tilemap.reserveTiles = YamlNumbers::as<unsigned int>(node["reserveTiles"]);
+    if (node["pixelsPerUnit"]) tilemap.pixelsPerUnit = std::max(0.0f, YamlNumbers::as<float>(node["pixelsPerUnit"]));
 
     if (node["tilesRect"]) {
         const YAML::Node& tilesRectNode = node["tilesRect"];
@@ -635,7 +688,7 @@ YAML::Node editor::Stream::encodeTerrainFoliageLayer(const TerrainFoliageLayer& 
     return node;
 }
 
-TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& node) {
+TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& node, bool clamp, int index) {
     TerrainFoliageLayer layer;
     if (node["meshPath"]) layer.meshPath = decodeAssetRef(node, "meshPath");
     if (node["densityMap"]) layer.densityMap = decodeTexture(node["densityMap"]);
@@ -652,6 +705,30 @@ TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& 
     layer.maxHeight = decodeFinite(node["maxHeight"], layer.maxHeight);
     layer.drawDistance = decodeFinite(node["drawDistance"], layer.drawDistance);
     layer.minDrawDistance = std::max(0.0f, decodeFinite(node["minDrawDistance"], layer.minDrawDistance));
+    // a hand-edited or older file: values the renderer cannot use are clamped, and said so
+    if (!clamp) return layer;
+    const std::vector<std::string> clamped = editor::terrain::clampDetailLayer(layer);
+    if (!clamped.empty()) {
+        std::string what;
+        for (const std::string& change : clamped) what += (what.empty() ? "" : ", ") + change;
+        // the load report names the file and line, so the terrain; the console line the layer too
+        LoadIssue issue;
+        issue.kind = LoadIssueKind::InvalidValue;
+        issue.fate = LoadIssueFate::Info;
+        issue.component = "Terrain";
+        issue.field = index >= 0 ? "foliageLayers[" + std::to_string(index) + "]" : "foliageLayers";
+        issue.message = "detail layer out of range, clamped: " + what;
+        const YAML::Mark mark = node.Mark();
+        if (mark.line >= 0) {
+            issue.line = mark.line + 1;
+            issue.column = mark.column + 1;
+        }
+        if (ScopedLoadReport::current()) {
+            recordLoadIssue(std::move(issue));
+        } else {
+            Out::warning("Terrain %s: detail layer out of range, clamped: %s.", issue.field.c_str(), what.c_str());
+        }
+    }
     return layer;
 }
 
@@ -786,7 +863,7 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
             if (!node["foliageLayers"][i] || node["foliageLayers"][i].IsNull()) {
                 continue;
             }
-            terrain.foliageLayers.push_back(decodeTerrainFoliageLayer(node["foliageLayers"][i]));
+            terrain.foliageLayers.push_back(decodeTerrainFoliageLayer(node["foliageLayers"][i], true, static_cast<int>(i)));
         }
     }
 
@@ -1219,6 +1296,10 @@ YAML::Node editor::Stream::encodeRigidbody2DComponent(const Rigidbody2DComponent
         if (collider.receiver != NULL_ENTITY) {
             shapeNode["receiver"] = collider.receiver;
         }
+        // S44: written only when set (an older editor keeps it as unknown data)
+        if (!collider.slice.empty()) {
+            shapeNode["slice"] = collider.slice;
+        }
 
         YAML::Node pointsNode;
         for (const Vector2& point : collider.points) {
@@ -1306,6 +1387,8 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
             if (shapeNode["maskBits"]) collider.maskBits = YamlNumbers::as<uint16_t>(shapeNode["maskBits"]);
             if (shapeNode["groupIndex"]) collider.groupIndex = YamlNumbers::as<int16_t>(shapeNode["groupIndex"]);
             collider.receiver = shapeNode["receiver"] ? YamlNumbers::as<Entity>(shapeNode["receiver"]) : NULL_ENTITY;
+            collider.slice = shapeNode["slice"] ? shapeNode["slice"].as<std::string>() : std::string();
+            collider.sliceVisible = false;
 
             // "vertices": files of before
             const YAML::Node pointsNode = shapeNode["points"] ? shapeNode["points"] : shapeNode["vertices"];

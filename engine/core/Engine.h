@@ -119,6 +119,8 @@
 #include "texture/Framebuffer.h"
 #include "ecs/Entity.h"
 #include "render/AtmosphereQuality.h"
+#include "pixelart/PixelPerfectLayout.h"
+#include "math/Vector2.h"
 #include <atomic>
 #include <mutex>
 #include <unordered_set>
@@ -146,7 +148,28 @@ namespace jasperengine {
         LETTERBOX,
         CROP,
         STRETCH,
-        NATIVE
+        NATIVE,
+        // whole-number scales of the preferred canvas (S41, pixelart::computePixelPerfectLayout at
+        // PPU 1): bars around it, or a canvas that grows to fill the screen (bars under the scale)
+        INTEGER,
+        INTEGER_EXPAND
+    };
+
+    // What a Pixel Perfect Camera on the main scene's main camera asks of the Engine's view
+    // (RenderSystem sets it, S41 R3): its layout replaces the Scaling's canvas and view rect
+    struct PixelPerfectViewRequest {
+        bool active = false;
+        int referenceWidth = 0;     // the base resolution (the preferred canvas when 0)
+        int referenceHeight = 0;
+        PixelUpscaleMode mode = PixelUpscaleMode::INTEGER;
+        bool smoothing = false;
+        int pixelsPerUnit = 1;
+
+        bool operator==(const PixelPerfectViewRequest& other) const {
+            return active == other.active && referenceWidth == other.referenceWidth && referenceHeight == other.referenceHeight &&
+                   mode == other.mode && smoothing == other.smoothing && pixelsPerUnit == other.pixelsPerUnit;
+        }
+        bool operator!=(const PixelPerfectViewRequest& other) const { return !(*this == other); }
     };
 
     // texture power of two strategy
@@ -207,6 +230,9 @@ namespace jasperengine {
             uint32_t visible = 0;
             uint32_t culled = 0;
             uint64_t vertices = 0;
+            // pipelines applied (Unity's SetPass calls): a draw with the pipeline applied last in
+            // its pass applies none
+            uint32_t setPassCalls = 0;
         };
 
         // How many GPU objects of each kind can be alive at once (sokol's resource pools, each
@@ -308,6 +334,9 @@ namespace jasperengine {
         };
 
     private:
+        // TEST-ONLY seam: a view loaded without a GPU (canvas refresh tests)
+        friend struct EngineTestAccess;
+
         //-----JasperEngine config-----
         static std::vector<Scene*> scenes;
         static std::unordered_set<Scene*> oneTimeScenes;
@@ -323,6 +352,14 @@ namespace jasperengine {
         static Rect viewRect;
 
         static Scaling scalingMode;
+        // S41: the project's Pixels Per Unit, the Pixel Perfect Camera's request, its layout and
+        // the Game view's Pixel Scale; the screen pixels the smoothed image is shifted by
+        static int pixelsPerUnit;
+        static PixelPerfectViewRequest pixelPerfectRequest;
+        static pixelart::PixelPerfectLayout pixelPerfectLayout;
+        static int pixelPerfectForcedScale;
+        static Vector2 viewShift;
+        static void applyPixelPerfectView(int screenWidth, int screenHeight);
         // the project's Canvas Scaler (Project Settings > Graphics > UI Scale)
         static CanvasScalerSettings defaultCanvasScaler;
         static TextureStrategy textureStrategy;
@@ -450,7 +487,10 @@ namespace jasperengine {
         static void deliverCodepoints(const std::vector<uint32_t>& codepoints);
         // systemDraw: the held gamepad directions a document took repeat (UI clock)
         static void updateGamepadNavigation();
-        static void calculateCanvas();
+        // the canvas and view rect for the current screen, then what follows them: every scene's
+        // and the debug overlay's camera (Canvas Scaler), Screen.safeArea; with notify, the events
+        // of a view change when the canvas or the view rect changed (a nested call does not notify)
+        static void refreshCanvas(bool notify);
         // logs once that every scene is loaded and no shader build is pending
         // (JASPERENGINE_READY_SIGNAL set: tools/smoke-test.sh waits for it)
         static void signalReadyOnce();
@@ -495,6 +535,9 @@ namespace jasperengine {
         static bool isSceneRunning(Scene* scene);
         static bool hasScenesToExecuteOnce();
         static Scene* getMainScene();
+        // The scene drawn first, which clears the frame: the main scene, or before there is one
+        // (a loading scene covering the start scene) the bottom running scene
+        static Scene* getBaseScene();
         static Scene* getLastScene();
         // every running scene: the main scene and its layers (child scenes), bottom first
         static std::vector<Scene*> getSceneLayers();
@@ -521,6 +564,33 @@ namespace jasperengine {
         
         static void setScalingMode(Scaling scalingMode);
         static Scaling getScalingMode();
+
+        // Project Settings > Graphics > Pixels Per Unit (1-256, default 1: a world unit is a base
+        // pixel). Sprites and tilemaps with a pixelsPerUnit of 0 take it, and so does a Pixel
+        // Perfect Camera's span (docs/pixel-art.md)
+        static void setPixelsPerUnit(int pixelsPerUnit);
+        static int getPixelsPerUnit();
+
+        // The layout a Pixel Perfect Camera asks for (S41): on, it replaces the Scaling's canvas
+        // (B / PPU, rounded to whole units) and view rect (the integer viewport); a change
+        // recomputes them at once. RenderSystem sets it from the main scene's main camera.
+        static void setPixelPerfectView(const PixelPerfectViewRequest& request);
+        static const PixelPerfectViewRequest& getPixelPerfectView();
+        // what the Pixel Perfect Camera on that camera asks of a view (false: none, disabled, or a
+        // perspective camera): RenderSystem, the editor's Game view and MCP lay a view out with it
+        static bool getPixelPerfectRequest(Scene* scene, Entity cameraEntity, PixelPerfectViewRequest& request);
+        // the layout in effect (an empty one while no Pixel Perfect Camera drives the view)
+        static const pixelart::PixelPerfectLayout& getPixelPerfectLayout();
+        // the request's layout on a screen of that size (the editor's Game view, MCP)
+        static pixelart::PixelPerfectLayout computePixelPerfectView(const PixelPerfectViewRequest& request, int screenWidth,
+                                                                    int screenHeight, int forcedScale);
+        // caps the scale (the Game view's Pixel Scale, 0 = Auto)
+        static void setPixelPerfectForcedScale(int scale);
+        static int getPixelPerfectForcedScale();
+        // the screen pixels (x right, y down) the drawn image is moved by (sub-pixel smoothing):
+        // input maps through the same shift, so a click hits what is seen
+        static void setViewShift(Vector2 shift);
+        static Vector2 getViewShift();
 
         // The UI's own space, the project default each scene uses unless it overrides it
         // (Scene::setCanvasScaler). FollowGameCanvas (the default) lays the UI out in the game
@@ -660,7 +730,10 @@ namespace jasperengine {
         // vertices: the vertex shader runs, indices or vertices drawn times the instances
         static void addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices = 0);
         static void addVisibilityStats(uint32_t visible, uint32_t culled);
+        static void addSetPassCall();
         static const FrameStats& getFrameStats();
+        // the draw calls of the frame being drawn, so far
+        static uint32_t getFrameDrawCalls();
         // the draws submitted so far in the frame being drawn (a pass's own count: before and after)
         static uint32_t getPendingDrawCalls();
 
@@ -698,6 +771,9 @@ namespace jasperengine {
         // it there, whatever the wall clock or the fixed delta. A negative value unpins it: the
         // next latch reads the clock again (a fixed delta then starts from the pinned time).
         static void setPinnedShaderTime(double seconds);
+        // whether the shader clock is pinned, and at what (Scene::getSceneTime follows it)
+        static bool hasPinnedShaderTime();
+        static double getPinnedShaderTime();
 
         // A shipped game started with --headless (docs/specs/S30-shipping.md R17): no window shown,
         // no audio output, no input; frames still render
@@ -751,6 +827,8 @@ namespace jasperengine {
         // ready, and a step of the shader warm-up list
         static void updateGpuCreation();
 
+        // A loading thread (one other than the main thread): its GPU objects go through the render
+        // queue, which the frames run and endAsyncThread commits. On the main thread they do nothing.
         static void startAsyncThread();
         static void commitThreadQueue();
         static void endAsyncThread();
@@ -826,6 +904,9 @@ namespace jasperengine {
             bool shadows = true;
             // the Scene view's Draw Mode (RenderSystem::ViewDrawMode; 0 Shaded)
             uint8_t drawMode = 0;
+            // the Scene view's Snap Preview (S41 R21): view pixels per base pixel of its own grid
+            // (0: none; a scene without a snapping Pixel Perfect Camera has nothing to preview)
+            float snapPreviewScale = 0.0f;
         };
 
         // Draws a secondary view: the editor's Scene view while the game plays, or its
@@ -979,9 +1060,13 @@ namespace jasperengine {
         static void systemGamepadButtonDown(int gamepad, int button);
         static void systemGamepadButtonUp(int gamepad, int button);
         static void systemGamepadAxisMove(int gamepad, int axis, float value);
-        // an element of a document has focus, so the d-pad, the left stick and A go to the UI
-        // (a game that polls Input can check it)
+        // an element of a document has focus, or a component UI Button is selected, so the d-pad,
+        // the left stick and A go to the UI (a game that polls Input can check it)
         static bool wantsGamepadNavigation();
+        // a component UI Button is selected: the arrows, Tab, Enter, keypad Enter and Space are the UI's
+        static bool wantsKeyboardNavigation();
+        // both at once, from one look at the scenes (Input::beginFrame)
+        static void getUINavigationWants(bool& gamepad, bool& keyboard);
         // a text field has keyboard focus (a native InputField or a document text control): the
         // keyboard does not drive input actions then (Input::beginFrame)
         static bool isTextInputFocused();

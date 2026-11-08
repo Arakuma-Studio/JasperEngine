@@ -3,6 +3,7 @@
 
 #include "Texture.h"
 
+#include "pixelart/PaletteRampTexture.h"
 #include "render/SystemRender.h"
 
 using namespace jasperengine;
@@ -201,6 +202,16 @@ void Texture::setPath(const std::string& path){
     this->needLoad = true;
 
     this->id = buildPathTextureId();
+    // a palette's ramp strip ("hero.palette#ramp:fire", S43 R4a): made from the palette, never
+    // read as a file, and sampled as the colour steps it is
+    if (pixelart::parsePaletteRampPath(newPath)) {
+        this->loadFromPath = false;
+        this->minFilter = TextureFilter::NEAREST;
+        this->magFilter = TextureFilter::NEAREST;
+        this->wrapU = TextureWrap::CLAMP_TO_EDGE;
+        this->wrapV = TextureWrap::CLAMP_TO_EDGE;
+        pixelart::registerPaletteRampTexture(this->id, newPath);
+    }
     this->render = TexturePool::get(getRenderId());
 }
 
@@ -418,8 +429,8 @@ std::string Texture::buildCubeTextureId(const std::string paths[6]) {
 // to the plain path too, so ids stay identical to the pre-svgScale-field format.
 std::string Texture::buildPathTextureId() const {
     std::string pathId = TextureData::hasSvgExtension(paths[0].c_str()) ? TextureData::buildSvgScalePath(paths[0], svgScale) : paths[0];
-    // a file loaded with and without the fix is two pool entries
-    if (isAlphaBorderFixed()) {
+    // a file loaded with and without the fix is two pool entries; no path is no file
+    if (isAlphaBorderFixed() && !pathId.empty()) {
         pathId += "|alphaborder";
     }
     return pathId;

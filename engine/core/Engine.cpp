@@ -34,6 +34,7 @@
 #include "audio/AudioMixer.h"
 #if JASPERENGINE_SOUND_LAYER
 #include "audio/MusicPlayer.h"
+#include "object/sound/Audio.h"
 #endif
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -50,6 +51,8 @@
 #include "component/ScriptComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/UIComponent.h"
+#include "component/CameraComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/PanelComponent.h"
 #include "component/ScrollbarComponent.h"
 #include "component/InputFieldComponent.h"
@@ -73,6 +76,7 @@
 #include "pool/AnimatorAssetPool.h"
 #include "pool/ShakePresetPool.h"
 #include "pool/PhysicsMaterialPool.h"
+#include "pixelart/PaletteSwap.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #include "native/NativeBridge.h"
@@ -106,6 +110,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <map>
+#include <set>
 #include <functional>
 #include <optional>
 
@@ -134,6 +139,11 @@ int Engine::preferredCanvasHeight;
 Rect Engine::viewRect;
 
 Scaling Engine::scalingMode = Scaling::FITWIDTH;
+int Engine::pixelsPerUnit = 1;
+PixelPerfectViewRequest Engine::pixelPerfectRequest;
+pixelart::PixelPerfectLayout Engine::pixelPerfectLayout;
+int Engine::pixelPerfectForcedScale = 0;
+Vector2 Engine::viewShift = Vector2(0, 0);
 AtmosphereQuality Engine::atmosphereQualityDefaults[3] = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
 bool Engine::atmosphereQualityOverridden = false;
 AtmosphereQuality Engine::atmosphereQualityOverride = AtmosphereQuality::HIGH;
@@ -271,9 +281,11 @@ void Engine::setScene(Scene* scene){
     if (Engine::isAsyncThread())
         drawSemaphore.acquire();
 
+    bool mainChanged = false;
     {
         std::lock_guard<std::mutex> lock(sceneListMutex);
 
+        mainChanged = mainScene != scene;
         if (mainScene){
             scenes.erase(std::remove(scenes.begin(), scenes.end(), mainScene), scenes.end());
         }
@@ -287,6 +299,10 @@ void Engine::setScene(Scene* scene){
             mainScene = scene;
         }
     }
+
+    // a Pixel Perfect Camera's view is its main scene's: a new main scene sets its own (S41)
+    if (mainChanged)
+        setPixelPerfectView(PixelPerfectViewRequest());
 
     // includeScene() runs scene->load(), which can re-enter the scene list, so it stays
     // outside sceneListMutex. Same reasoning in addSceneLayer and executeSceneOnce.
@@ -374,6 +390,7 @@ void Engine::removeScene(Scene* scene){
         drawSemaphore.acquire();
 
     bool unlinked = false;
+    bool mainRemoved = false;
 
     {
         std::lock_guard<std::mutex> lock(sceneListMutex);
@@ -388,6 +405,7 @@ void Engine::removeScene(Scene* scene){
 
             if (mainScene == scene){
                 mainScene = NULL;
+                mainRemoved = true;
             }
 
             // A scene removed explicitly must not remain in the one-shot registry.
@@ -398,6 +416,9 @@ void Engine::removeScene(Scene* scene){
 
     if (unlinked)
         scene->getSystem<UISystem>()->resetButtonStates();
+    // its Pixel Perfect Camera's view goes with the main scene (S41)
+    if (mainRemoved)
+        setPixelPerfectView(PixelPerfectViewRequest());
 
     if (Engine::isAsyncThread())
         drawSemaphore.release();
@@ -479,6 +500,10 @@ Scene* Engine::getMainScene(){
     return mainScene;
 }
 
+Scene* Engine::getBaseScene(){
+    return mainScene ? mainScene : getScene();
+}
+
 Scene* Engine::getLastScene(){
     std::lock_guard<std::mutex> lock(sceneListMutex);
     return scenes.empty() ? nullptr : scenes.back();
@@ -541,7 +566,8 @@ void Engine::setCanvasSize(int canvasWidth, int canvasHeight){
     Engine::preferredCanvasHeight = canvasHeight;
 
     if (viewLoaded){
-        calculateCanvas();
+        // at runtime (Lua Engine.setCanvasSize): the cameras follow now, not at the next resize
+        refreshCanvas(true);
     }else{
         // Scenes and scripts can start before the view exists; the screen refines this once it loads
         Engine::canvasWidth = canvasWidth;
@@ -565,12 +591,100 @@ void Engine::setScalingMode(Scaling scalingMode){
     Engine::scalingMode = scalingMode;
 
     if (viewLoaded){
-        calculateCanvas();
+        refreshCanvas(true);
     }
 }
 
 Scaling Engine::getScalingMode(){
     return scalingMode;
+}
+
+void Engine::setPixelsPerUnit(int pixelsPerUnit){
+    Engine::pixelsPerUnit = std::clamp(pixelsPerUnit, 1, 256);
+}
+
+int Engine::getPixelsPerUnit(){
+    return pixelsPerUnit;
+}
+
+void Engine::setPixelPerfectView(const PixelPerfectViewRequest& request){
+    if (request == pixelPerfectRequest)
+        return;
+    pixelPerfectRequest = request;
+    if (viewLoaded)
+        systemViewChanged();
+}
+
+bool Engine::getPixelPerfectRequest(Scene* scene, Entity cameraEntity, PixelPerfectViewRequest& request){
+    if (!scene || !scene->isComponentRegistered<PixelPerfectCameraComponent>())
+        return false;
+    const PixelPerfectCameraComponent* component = scene->findComponent<PixelPerfectCameraComponent>(cameraEntity);
+    const CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
+    if (!component || !camera || !component->enabled || camera->type == CameraType::CAMERA_PERSPECTIVE)
+        return false;
+    request.active = true;
+    request.referenceWidth = (int)component->referenceWidth;
+    request.referenceHeight = (int)component->referenceHeight;
+    request.mode = component->upscaleMode;
+    request.smoothing = component->subpixelSmoothing;
+    request.pixelsPerUnit = pixelsPerUnit;
+    return true;
+}
+
+const PixelPerfectViewRequest& Engine::getPixelPerfectView(){
+    return pixelPerfectRequest;
+}
+
+const pixelart::PixelPerfectLayout& Engine::getPixelPerfectLayout(){
+    return pixelPerfectLayout;
+}
+
+pixelart::PixelPerfectLayout Engine::computePixelPerfectView(const PixelPerfectViewRequest& request, int screenWidth, int screenHeight,
+                                                             int forcedScale){
+    const int referenceWidth = request.referenceWidth > 0 ? request.referenceWidth : preferredCanvasWidth;
+    const int referenceHeight = request.referenceHeight > 0 ? request.referenceHeight : preferredCanvasHeight;
+    return pixelart::computePixelPerfectLayout(screenWidth, screenHeight, referenceWidth, referenceHeight, request.mode, forcedScale,
+                                               request.smoothing, request.pixelsPerUnit);
+}
+
+void Engine::setPixelPerfectForcedScale(int scale){
+    scale = std::max(0, scale);
+    if (scale == pixelPerfectForcedScale)
+        return;
+    pixelPerfectForcedScale = scale;
+    if (viewLoaded && pixelPerfectRequest.active)
+        systemViewChanged();
+}
+
+int Engine::getPixelPerfectForcedScale(){
+    return pixelPerfectForcedScale;
+}
+
+void Engine::setViewShift(Vector2 shift){
+    viewShift = shift;
+}
+
+Vector2 Engine::getViewShift(){
+    return viewShift;
+}
+
+void Engine::applyPixelPerfectView(int screenWidth, int screenHeight){
+    if (!pixelPerfectRequest.active){
+        pixelPerfectLayout = pixelart::PixelPerfectLayout();
+        viewShift = Vector2(0, 0);
+        return;
+    }
+    const pixelart::PixelPerfectLayout layout = computePixelPerfectView(pixelPerfectRequest, screenWidth, screenHeight, pixelPerfectForcedScale);
+    if (layout.baseWidth <= 0 || layout.baseHeight <= 0)
+        return;
+    if (layout.cropped && !pixelPerfectLayout.cropped)
+        Log::warn("Pixel Perfect Camera: the screen (%ix%i) is smaller than the reference (%ix%i): the image is cropped",
+                  screenWidth, screenHeight, layout.baseWidth, layout.baseHeight);
+    pixelPerfectLayout = layout;
+    // the canvas is in whole units: B / PPU, rounded when the PPU does not divide the base
+    canvasWidth = std::max(1, (int)std::lround(layout.canvasWidth));
+    canvasHeight = std::max(1, (int)std::lround(layout.canvasHeight));
+    viewRect = layout.viewport;
 }
 
 void Engine::setDefaultCanvasScaler(const CanvasScalerSettings& settings){
@@ -792,8 +906,8 @@ void Engine::systemFocusChanged(bool focused){
             systemKeyUp(key, false, 0);
     }
     const Vector2 mouse = Input::getMousePosition();
-    float screenX = viewRect.getX();
-    float screenY = viewRect.getY();
+    float screenX = viewRect.getX() + viewShift.x;
+    float screenY = viewRect.getY() + viewShift.y;
     if (canvasWidth != 0)
         screenX += (mouse.x / (float)canvasWidth) * viewRect.getWidth();
     if (canvasHeight != 0)
@@ -831,8 +945,8 @@ void Engine::setMousePosition(float x, float y){
     if (!viewLoaded)
         return;
 
-    float screenX = viewRect.getX();
-    float screenY = viewRect.getY();
+    float screenX = viewRect.getX() + viewShift.x;
+    float screenY = viewRect.getY() + viewShift.y;
     if (canvasWidth != 0)
         screenX += (x / (float)canvasWidth) * viewRect.getWidth();
     if (canvasHeight != 0)
@@ -1010,11 +1124,19 @@ void Engine::beginFrameStats(){
     currentFrameStats = FrameStats();
 }
 
+uint32_t Engine::getFrameDrawCalls(){
+    return currentFrameStats.drawCalls;
+}
+
 void Engine::addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices){
     currentFrameStats.drawCalls++;
     currentFrameStats.instances += instances;
     currentFrameStats.triangles += triangles;
     currentFrameStats.vertices += vertices;
+}
+
+void Engine::addSetPassCall(){
+    currentFrameStats.setPassCalls++;
 }
 
 void Engine::addVisibilityStats(uint32_t visible, uint32_t culled){
@@ -1115,6 +1237,14 @@ void Engine::setPinnedShaderTime(double seconds){
     }
 }
 
+bool Engine::hasPinnedShaderTime(){
+    return pinnedShaderTime >= 0.0;
+}
+
+double Engine::getPinnedShaderTime(){
+    return pinnedShaderTime;
+}
+
 float Engine::getShaderTime(){
     return (float)shaderTime;
 }
@@ -1192,8 +1322,14 @@ void Engine::updateGpuCreation(){
     drawSemaphore.release();
 }
 
+// The main thread runs the render queue a loading thread fills, so it never takes that role: in the
+// scope it would wait for itself (a script's init, which runs before the view starts the queue; a
+// second commit before a frame ran the first; a scene change inside a frame, which holds the draw
+// semaphore). There a scope changes nothing, on every backend.
 void Engine::startAsyncThread(){
     #ifndef NO_THREAD_SUPPORT
+        if (jobs::isMainThread())
+            return;
         getAsyncThreadDepthStorage()++;
     #else
         Log::warn("Threads are not available");
@@ -1201,11 +1337,16 @@ void Engine::startAsyncThread(){
 }
 
 void Engine::commitThreadQueue(){
+    // the main thread queues nothing (outside a scope it makes its GPU objects at once)
+    if (jobs::isMainThread())
+        return;
     SystemRender::commitQueue();
 }
 
 void Engine::endAsyncThread(){
     #ifndef NO_THREAD_SUPPORT
+        if (jobs::isMainThread())
+            return;
         unsigned int& asyncThreadDepth = getAsyncThreadDepthStorage();
         if (asyncThreadDepth == 0){
             Log::warn("Engine::endAsyncThread called without matching startAsyncThread");
@@ -1418,8 +1559,10 @@ void Engine::endCompositeFramebuffer(){
 
     framebuffer = nullptr;
 
-    if (mainScene)
-        mainScene->getSystem<RenderSystem>()->presentFramebufferToSwapchain(&compositeFramebuffer);
+    // the loading scene covers the start as a layer, before there is a main scene
+    Scene* scene = getBaseScene();
+    if (scene)
+        scene->getSystem<RenderSystem>()->presentFramebufferToSwapchain(&compositeFramebuffer);
 }
 
 void Engine::clearPools(){
@@ -1440,6 +1583,9 @@ void Engine::clearPools(){
     AnimatorAssetPool::clear();
     ShakePresetPool::clear();
     PhysicsMaterialPool::clear();
+    // the Palette Swap textures, then the palettes they were made from (S43)
+    pixelart::PaletteSwapCache::clear();
+    pixelart::PaletteLibrary::clear();
 }
 
 void Engine::clearUnusedPools(){
@@ -1504,6 +1650,10 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     Log::onMessageReceived.removeByTagSubstring(substring);
     Device::onThermalStateChanged.removeByTagSubstring(substring);
     Device::onLowMemory.removeByTagSubstring(substring);
+#if JASPERENGINE_SOUND_LAYER
+    Audio::onMusicBeat.removeByTagSubstring(substring);
+    Audio::onMusicSection.removeByTagSubstring(substring);
+#endif
     DebugOverlay::removeCommandsByTag(substring);
 
     // a released script instance's tag is "_<address>_": the input sources it owned go too
@@ -1552,6 +1702,11 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     Log::onMessageReceived.clear();
     Device::onThermalStateChanged.clear();
     Device::onLowMemory.clear();
+#if JASPERENGINE_SOUND_LAYER
+    // here too, not only in MusicPlayer::reset: the editor's Stop runs that after the C++ script library is unloaded
+    Audio::onMusicBeat.clear();
+    Audio::onMusicSection.clear();
+#endif
     DebugOverlay::removeOwnedCommands();
 
     if (includeLifecycle) {
@@ -1586,6 +1741,20 @@ void Engine::computeViewLayout(int screenWidth, int screenHeight, int preferredW
                                int& canvasWidth, int& canvasHeight, Rect& viewRect){
     canvasWidth = preferredWidth;
     canvasHeight = preferredHeight;
+
+    // the Pixel Perfect Camera's layout without one: the preferred canvas is the base, PPU 1
+    if (scalingMode == Scaling::INTEGER || scalingMode == Scaling::INTEGER_EXPAND){
+        const pixelart::PixelPerfectLayout layout = pixelart::computePixelPerfectLayout(screenWidth, screenHeight, preferredWidth,
+            preferredHeight, scalingMode == Scaling::INTEGER ? PixelUpscaleMode::INTEGER : PixelUpscaleMode::INTEGER_EXPAND, 0, false, 1);
+        if (layout.baseWidth > 0 && layout.baseHeight > 0){
+            canvasWidth = layout.baseWidth;
+            canvasHeight = layout.baseHeight;
+            viewRect = layout.viewport;
+        }else{
+            viewRect.setRect(0, 0, (float)screenWidth, (float)screenHeight);
+        }
+        return;
+    }
 
     //When canvas size is changed
     if (screenWidth != 0 && screenHeight != 0){
@@ -1649,11 +1818,42 @@ void Engine::computeViewLayout(int screenWidth, int screenHeight, int preferredW
     viewRect.setRect(viewX, viewY, viewWidth, viewHeight);
 }
 
-void Engine::calculateCanvas(){
-    Rect unusedViewRect;
+namespace {
+    // refreshCanvas runs inside one of its own events (a handler that sets the canvas again)
+    bool inCanvasRefresh = false;
+}
+
+void Engine::refreshCanvas(bool notify){
+    const int oldWidth = Engine::canvasWidth;
+    const int oldHeight = Engine::canvasHeight;
+    const Rect oldViewRect = viewRect;
+
     computeViewLayout(System::instance().getScreenWidth(), System::instance().getScreenHeight(),
                       preferredCanvasWidth, preferredCanvasHeight, scalingMode,
-                      Engine::canvasWidth, Engine::canvasHeight, unusedViewRect);
+                      Engine::canvasWidth, Engine::canvasHeight, viewRect);
+    // a Pixel Perfect Camera's layout replaces it (S41 R3)
+    applyPixelPerfectView(System::instance().getScreenWidth(), System::instance().getScreenHeight());
+
+    for (Scene* scene : getScenesSnapshot()){
+        scene->updateCameraSize();
+    }
+    if (Scene* overlay = DebugOverlay::getScene())
+        overlay->updateCameraSize();
+
+    // the canvas mapping changed: Screen.safeArea follows (its event after onCanvasChanged)
+    Screen::updateSafeArea();
+
+    const bool changed = oldWidth != Engine::canvasWidth || oldHeight != Engine::canvasHeight ||
+                         oldViewRect.getX() != viewRect.getX() || oldViewRect.getY() != viewRect.getY() ||
+                         oldViewRect.getWidth() != viewRect.getWidth() || oldViewRect.getHeight() != viewRect.getHeight();
+    if (!notify || !changed || inCanvasRefresh)
+        return;
+
+    inCanvasRefresh = true;
+    onViewChanged.call();
+    systemOrientationChanged();
+    if (!paused) Screen::dispatchSafeAreaEvent();
+    inCanvasRefresh = false;
 }
 
 // Project Settings > Player > Crash Handling: whether the crash handler and the hang watchdog are
@@ -1922,6 +2122,8 @@ void Engine::systemViewChanged(){
 
     computeViewLayout(screenWidth, screenHeight, preferredCanvasWidth, preferredCanvasHeight, scalingMode,
                       Engine::canvasWidth, Engine::canvasHeight, viewRect);
+    // a Pixel Perfect Camera's layout replaces it (S41 R3)
+    applyPixelPerfectView(screenWidth, screenHeight);
 
     if (framebuffer){
         const unsigned int fbWidth = static_cast<unsigned int>(std::max(screenWidth, 0));
@@ -2284,6 +2486,10 @@ void Engine::runFrame(bool draw){
         double frameDelta = deltatime;
         gameTime += frameDelta;
         gameFrames++;
+        // the scenes' game-time clocks (Scene::getSceneTime), before the fixed steps, so the
+        // physics, the update and the draw of the frame see one value; a paused scene holds
+        for (int i = 0; i < scenes.size(); i++)
+            scenes[i]->advanceSceneTime(frameDelta);
         // the scheduler's game clocks: stopped by the editor's Pause too (gameTime is not)
         const bool gameClocks = advanceGameClocks(scheduler, frameTime);
 
@@ -2532,6 +2738,7 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.atmosphereQuality = layer.atmosphereQuality;
         desc.shadows = layer.shadows;
         desc.drawMode = (ViewDrawMode)layer.drawMode;
+        desc.snapPreviewScale = layer.snapPreviewScale;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
         layer.scene->getSystem<RenderSystem>()->drawView(viewId, desc);
@@ -2922,16 +3129,25 @@ std::vector<Scene*> Engine::getInputScenes(bool keys){
 
 bool Engine::transformCoordPos(float& x, float& y){
 
-    x = (x - viewRect.getX()) / viewRect.getWidth();
-    y = (y - viewRect.getY()) / viewRect.getHeight();
+    // the sub-pixel smoothing's shift of the drawn image (S41 R12)
+    x = (x - viewShift.x - viewRect.getX()) / viewRect.getWidth();
+    y = (y - viewShift.y - viewRect.getY()) / viewRect.getHeight();
     
-    x = (float)Engine::getCanvasWidth() * x;
-    y = (float)Engine::getCanvasHeight() * y;
+    // a Pixel Perfect Camera's canvas is its base image over the Pixels Per Unit, which the
+    // integer canvas rounds (R6): the camera spans the exact one
+    float canvasWidth = (float)Engine::getCanvasWidth();
+    float canvasHeight = (float)Engine::getCanvasHeight();
+    if (pixelPerfectRequest.active && pixelPerfectLayout.canvasWidth > 0.0f && pixelPerfectLayout.canvasHeight > 0.0f){
+        canvasWidth = pixelPerfectLayout.canvasWidth;
+        canvasHeight = pixelPerfectLayout.canvasHeight;
+    }
+    x = canvasWidth * x;
+    y = canvasHeight * y;
     
     if (allowEventsOutCanvas || mouseMode == MouseMode::CAPTURED)
         return true;
     
-    return ((x >= 0) && (x <= Engine::getCanvasWidth()) && (y >= 0) && (y <= Engine::getCanvasHeight()));
+    return ((x >= 0) && (x <= canvasWidth) && (y >= 0) && (y <= canvasHeight));
 }
 
 // ---- input. Order per pointer event (phase-1 spec §3.6.1, §3.15): HTML UI screen documents,
@@ -3050,17 +3266,21 @@ namespace {
     constexpr float triggerPressThreshold = 0.0f;    // triggers rest at -1: pressed past half way
     constexpr float triggerReleaseThreshold = -0.2f;
 
+    // who took a held gamepad key: its ups and repeats go there (ui-components spec 6.5)
+    enum class GamepadUIOwner : uint8_t { NONE, DOCUMENTS, COMPONENT };
+
     struct GamepadUIHeld {
         int gamepad;
         GamepadUIKey key;
-        bool consumed;      // a document took the down
-        double nextRepeat;  // UI clock
+        GamepadUIOwner owner;   // a document or the component UI's selection took the down
+        double nextRepeat;      // UI clock
     };
 
     struct GamepadUIState {
         std::vector<GamepadUIHeld> held;
         std::map<int, GamepadUIKey> stick;                 // the direction each pad's left stick holds
         std::map<std::pair<int, int>, float> gameAxes;     // the last value of each axis the game got
+        std::set<std::pair<int, int>> takenAxes;           // the axes the UI holds from the game now
     };
     GamepadUIState gamepadUI;
 
@@ -3093,6 +3313,109 @@ namespace {
         return axis == D_GAMEPAD_AXIS_LEFT_TRIGGER || axis == D_GAMEPAD_AXIS_RIGHT_TRIGGER;
     }
 
+    // ---- the component UI's selection (ui-components spec 6.5): keys and the gamepad reach it only
+    // while a Button is selected, so a visible HUD button never takes them
+
+    // the keys whose press the selection took: their release is the UI's too (whatever the press
+    // did: a hold, e:use(), a scene its onClick removed)
+    std::set<int> navigationKeysDown;
+    // the character a Submit key's press types next (Space, Enter's return): not the game's
+    uint32_t navigationSwallowedChar = 0;
+
+    // the top scene (layer order) whose component UI holds a live selection; null: none
+    Scene* selectionScene(const std::vector<Scene*>& scenes){
+        for (auto it = scenes.rbegin(); it != scenes.rend(); ++it){
+            if (canSendUIEvents(*it) && (*it)->getSystem<UISystem>()->hasLiveSelection())
+                return *it;
+        }
+        return nullptr;
+    }
+
+    // a component InputField being typed in, top layer first; null: none
+    Scene* componentTypingScene(const std::vector<Scene*>& scenes){
+        for (auto it = scenes.rbegin(); it != scenes.rend(); ++it){
+            if (canSendUIEvents(*it) && (*it)->getSystem<UISystem>()->isInputFieldTyping())
+                return *it;
+        }
+        return nullptr;
+    }
+
+    bool documentTyping(const std::vector<Scene*>& scenes){
+        for (Scene* scene : scenes){
+            if (canSendDocumentEvents(scene) && scene->getSystem<UIDocumentSystem>()->hasFocusedTextInput())
+                return true;
+        }
+        return false;
+    }
+
+    // a key of a live selection: arrows move, Tab / Shift+Tab, Enter / keypad Enter / Space
+    // submit, Escape cancels (when a script handles it). Ctrl, Alt or Super held: the game's
+    bool keyToNavigation(const std::vector<Scene*>& scenes, int key, bool repeat, int mods){
+        if (mods & (D_MODIFIER_CONTROL | D_MODIFIER_ALT | D_MODIFIER_SUPER))
+            return false;
+        if ((mods & D_MODIFIER_SHIFT) && key != D_KEY_TAB)
+            return false;
+        bool navigation = false;
+        switch (key){
+            case D_KEY_UP: case D_KEY_DOWN: case D_KEY_LEFT: case D_KEY_RIGHT:
+            case D_KEY_TAB: case D_KEY_ENTER: case D_KEY_KP_ENTER: case D_KEY_SPACE: case D_KEY_ESCAPE:
+                navigation = true;
+                break;
+            default:
+                break;
+        }
+        if (!navigation)
+            return false;
+        Scene* target = selectionScene(scenes);
+        if (!target)
+            return false;
+        UISystem* ui = target->getSystem<UISystem>().get();
+        switch (key){
+            case D_KEY_UP: return ui->eventOnMove(MoveDirection::UP);
+            case D_KEY_DOWN: return ui->eventOnMove(MoveDirection::DOWN);
+            case D_KEY_LEFT: return ui->eventOnMove(MoveDirection::LEFT);
+            case D_KEY_RIGHT: return ui->eventOnMove(MoveDirection::RIGHT);
+            case D_KEY_TAB: return ui->eventOnTab((mods & D_MODIFIER_SHIFT) != 0);
+            case D_KEY_ESCAPE: return !repeat && ui->eventOnCancel();
+            default:
+                // a held Submit key repeats nothing, but stays the UI's
+                return repeat ? true : ui->eventOnSubmitDown(key);
+        }
+    }
+
+    MoveDirection gamepadMoveDirection(GamepadUIKey key){
+        switch (key){
+            case GamepadUIKey::DPAD_UP: case GamepadUIKey::LEFT_STICK_UP: return MoveDirection::UP;
+            case GamepadUIKey::DPAD_DOWN: case GamepadUIKey::LEFT_STICK_DOWN: return MoveDirection::DOWN;
+            case GamepadUIKey::DPAD_LEFT: case GamepadUIKey::LEFT_STICK_LEFT: return MoveDirection::LEFT;
+            case GamepadUIKey::DPAD_RIGHT: case GamepadUIKey::LEFT_STICK_RIGHT: return MoveDirection::RIGHT;
+            default: return MoveDirection::NONE;
+        }
+    }
+
+    int gamepadSubmitSource(int gamepad, GamepadUIKey key){
+        return 1000 + gamepad * 32 + static_cast<int>(key);
+    }
+
+    // a gamepad key of a live selection: directions move, A submits, B cancels (when handled)
+    bool gamepadKeyToNavigation(const std::vector<Scene*>& scenes, int gamepad, GamepadUIKey key){
+        const MoveDirection dir = gamepadMoveDirection(key);
+        if (dir == MoveDirection::NONE && key != GamepadUIKey::A && key != GamepadUIKey::B)
+            return false;
+        // a field typed in keeps its keys; the pad does not move a menu meanwhile
+        if (componentTypingScene(scenes))
+            return false;
+        Scene* target = selectionScene(scenes);
+        if (!target)
+            return false;
+        UISystem* ui = target->getSystem<UISystem>().get();
+        if (dir != MoveDirection::NONE)
+            return ui->eventOnMove(dir);
+        if (key == GamepadUIKey::A)
+            return ui->eventOnSubmitDown(gamepadSubmitSource(gamepad, key));
+        return ui->eventOnCancel();
+    }
+
     GamepadUIHeld* findGamepadHeld(int gamepad, GamepadUIKey key){
         for (GamepadUIHeld& held : gamepadUI.held){
             if (held.gamepad == gamepad && held.key == key)
@@ -3107,24 +3430,31 @@ namespace {
             return false;
         // a down without an up between (a platform repeating it) is a repeat
         if (GamepadUIHeld* held = findGamepadHeld(gamepad, key)){
-            dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
-                return documents->eventOnGamepadKeyDown(gamepad, key, true);
-            });
-            return held->consumed;
+            if (held->owner == GamepadUIOwner::DOCUMENTS || held->owner == GamepadUIOwner::NONE){
+                dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
+                    return documents->eventOnGamepadKeyDown(gamepad, key, true);
+                });
+            }
+            return held->owner != GamepadUIOwner::NONE;
         }
-        const bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
+        GamepadUIOwner owner = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
             return documents->eventOnGamepadKeyDown(gamepad, key, false);
-        }) != nullptr;
-        gamepadUI.held.push_back(GamepadUIHeld{gamepad, key, consumed, HtmlUIClock::now() + gamepadRepeatDelay});
-        return consumed;
+        }) != nullptr ? GamepadUIOwner::DOCUMENTS : GamepadUIOwner::NONE;
+        // then the component UI's selection
+        if (owner == GamepadUIOwner::NONE && gamepadKeyToNavigation(scenes, gamepad, key))
+            owner = GamepadUIOwner::COMPONENT;
+        gamepadUI.held.push_back(GamepadUIHeld{gamepad, key, owner, HtmlUIClock::now() + gamepadRepeatDelay});
+        return owner != GamepadUIOwner::NONE;
     }
 
     // every scene's documents hear the up (each consumes the ups of the downs it consumed), as key ups
     bool gamepadKeyUp(const std::vector<Scene*>& scenes, int gamepad, GamepadUIKey key){
         if (key == GamepadUIKey::COUNT)
             return false;
+        GamepadUIOwner owner = GamepadUIOwner::NONE;
         for (auto it = gamepadUI.held.begin(); it != gamepadUI.held.end(); ++it){
             if (it->gamepad == gamepad && it->key == key){
+                owner = it->owner;
                 gamepadUI.held.erase(it);
                 break;
             }
@@ -3133,6 +3463,14 @@ namespace {
         for (Scene* scene : scenes){
             if (scene->getSystem<UIDocumentSystem>()->eventOnGamepadKeyUp(gamepad, key))
                 consumed = true;
+        }
+        if (owner == GamepadUIOwner::COMPONENT){
+            // the up of a down the selection took: its Submit hold ends where it is
+            if (key == GamepadUIKey::A){
+                for (Scene* scene : scenes)
+                    scene->getSystem<UISystem>()->eventOnSubmitUp(gamepadSubmitSource(gamepad, key));
+            }
+            consumed = true;
         }
         return consumed;
     }
@@ -3174,9 +3512,11 @@ namespace {
                 gamepadKeyUp(scenes, gamepad, current);
                 gamepadKeyDown(scenes, gamepad, next);
             }
-            // a focused document takes the stick, so the player does not move while a menu is used
+            // a focused document or a selected Button takes the stick, so the player does not
+            // move while a menu is used
             const GamepadUIHeld* held = findGamepadHeld(gamepad, next);
-            return (held && held->consumed) || documentsHaveGamepadFocus(scenes);
+            return (held && held->owner != GamepadUIOwner::NONE) || documentsHaveGamepadFocus(scenes) ||
+                   (!componentTypingScene(scenes) && selectionScene(scenes) != nullptr);
         }
         if (isGamepadTrigger(axis)){
             const GamepadUIKey key = (axis == D_GAMEPAD_AXIS_LEFT_TRIGGER) ? GamepadUIKey::LEFT_TRIGGER : GamepadUIKey::RIGHT_TRIGGER;
@@ -3186,7 +3526,7 @@ namespace {
             else if (held && value < triggerReleaseThreshold)
                 gamepadKeyUp(scenes, gamepad, key);
             held = findGamepadHeld(gamepad, key);
-            return held && held->consumed;
+            return held && held->owner != GamepadUIOwner::NONE;
         }
         return false;
     }
@@ -3607,22 +3947,54 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
 
     const std::vector<Scene*> scenes = getInputScenes(true);
 
-    // the focused document first: a text field takes the keys it types with
-    const bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
-        return documents->eventOnKeyDown(key, repeat, mods);
-    }) != nullptr;
+    // a component InputField typed in, in any scene, takes the keys first: all but Escape and
+    // F1-F25 are its (the player does not walk while typing; documents' text fields do the same)
+    bool consumed = false;
+    Scene* typing = componentTypingScene(scenes);
+    if (typing){
+        typing->getSystem<UISystem>()->eventOnKeyDown(key, repeat, mods);
+        consumed = key != D_KEY_ESCAPE && !(key >= D_KEY_F1 && key <= D_KEY_F25);
+    }
+
+    // then the documents: one with a text field being typed in first (an upper document's
+    // focused button must not take Space or Enter from it), then top layer first
+    const bool docTyping = documentTyping(scenes);
+    if (!consumed){
+        Scene* typingDocument = nullptr;
+        if (docTyping){
+            for (auto it = scenes.rbegin(); it != scenes.rend() && !typingDocument; ++it){
+                if (canSendDocumentEvents(*it) && (*it)->getSystem<UIDocumentSystem>()->hasFocusedTextInput())
+                    typingDocument = *it;
+            }
+            if (typingDocument && typingDocument->getSystem<UIDocumentSystem>()->eventOnKeyDown(key, repeat, mods))
+                consumed = true;
+        }
+        // while a field is typed in, the other documents get only what typing leaves (Escape, F1-F25)
+        const bool typingKey = key != D_KEY_ESCAPE && !(key >= D_KEY_F1 && key <= D_KEY_F25);
+        if (!consumed && !(typingDocument && typingKey)){
+            const UIDocumentSystem* asked = typingDocument ? typingDocument->getSystem<UIDocumentSystem>().get() : nullptr;
+            consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
+                return documents != asked && documents->eventOnKeyDown(key, repeat, mods);
+            }) != nullptr;
+        }
+    }
+
+    // then the component UI's selection (a keyboard menu), never while something is typed in
+    navigationSwallowedChar = 0;
+    if (!consumed && !typing && !docTyping && keyToNavigation(scenes, key, repeat, mods)){
+        consumed = true;
+        navigationKeysDown.insert(key);
+        if (key == D_KEY_SPACE)
+            navigationSwallowedChar = ' ';
+        else if (key == D_KEY_ENTER || key == D_KEY_KP_ENTER)
+            navigationSwallowedChar = '\r';
+    }
+
     if (consumed && !repeat)
         Input::setPressConsumedByUI(Input::keyControl(key));
 
     if (!ignoreEventsHandledByUI || !consumed)
         Engine::onKeyDown.call(key, repeat, mods);
-
-    if (!consumed){
-        for (Scene* scene : scenes){
-            if (canSendUIEvents(scene))
-                scene->getSystem<UISystem>()->eventOnKeyDown(key, repeat, mods);
-        }
-    }
 }
 
 void Engine::systemKeyUp(int key, bool repeat, int mods){
@@ -3632,12 +4004,26 @@ void Engine::systemKeyUp(int key, bool repeat, int mods){
     Input::releaseKeyPressed(key);
     Input::setModifiers(mods); // Now it can be 0
 
-    // every document hears the release; the one that took the press consumes it
+    // every document hears the release; the one that took the press consumes it. While a text
+    // field is typed in, the other documents do not hear a typing key's release either (a focused
+    // button clicks on Space's release)
+    const std::vector<Scene*> scenes = getInputScenes(false);
+    const bool typingKey = key != D_KEY_ESCAPE && !(key >= D_KEY_F1 && key <= D_KEY_F25);
+    const bool docTyping = typingKey && documentTyping(scenes);
     bool consumed = false;
-    for (Scene* scene : getInputScenes(false)){
-        if (scene->getSystem<UIDocumentSystem>()->eventOnKeyUp(key, mods))
+    for (Scene* scene : scenes){
+        UIDocumentSystem* documents = scene->getSystem<UIDocumentSystem>().get();
+        const bool hears = !docTyping || (canSendDocumentEvents(scene) && documents->hasFocusedTextInput());
+        if (hears && documents->eventOnKeyUp(key, mods))
+            consumed = true;
+        // the release of a Submit key that holds a Button pressed
+        if ((key == D_KEY_ENTER || key == D_KEY_KP_ENTER || key == D_KEY_SPACE) &&
+            scene->getSystem<UISystem>()->eventOnSubmitUp(key))
             consumed = true;
     }
+
+    if (navigationKeysDown.erase(key))
+        consumed = true;
 
     if (!ignoreEventsHandledByUI || !consumed)
         Engine::onKeyUp.call(key, repeat, mods);
@@ -3659,12 +4045,32 @@ void Engine::flushCharInput(){
         deliverCodepoints(codepoints);
 }
 
-void Engine::deliverCodepoints(const std::vector<uint32_t>& codepoints){
+void Engine::deliverCodepoints(const std::vector<uint32_t>& input){
     const std::vector<Scene*> scenes = getInputScenes(true);
+
+    // the character of a key the selection submitted with is not typed anywhere
+    std::vector<uint32_t> codepoints = input;
+    if (navigationSwallowedChar != 0 && !codepoints.empty() &&
+        (codepoints.front() == navigationSwallowedChar || (navigationSwallowedChar == '\r' && codepoints.front() == '\n'))){
+        codepoints.erase(codepoints.begin());
+        navigationSwallowedChar = 0;
+        if (codepoints.empty())
+            return;
+    }
 
     // Input.inputString (Unity's: the text typed this frame)
     for (uint32_t typed : codepoints)
         Input::addInputCharacter(typed);
+
+    // a component InputField typed in takes the characters (the typing guard)
+    if (Scene* typing = componentTypingScene(scenes)){
+        for (uint32_t codepoint : codepoints){
+            typing->getSystem<UISystem>()->eventOnCharInput(static_cast<char32_t>(codepoint));
+            if (!ignoreEventsHandledByUI)
+                Engine::onCharInput.call(static_cast<char32_t>(codepoint));
+        }
+        return;
+    }
 
     const std::string utf8 = toUtf8(codepoints);
     const bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
@@ -3675,7 +4081,13 @@ void Engine::deliverCodepoints(const std::vector<uint32_t>& codepoints){
         sendCharacterToGame(codepoint, !consumed, !ignoreEventsHandledByUI || !consumed, scenes);
 }
 
-void Engine::systemTextInput(const std::string& utf8){
+void Engine::systemTextInput(const std::string& typed){
+    // the character of a key the selection submitted with is not typed anywhere
+    std::string utf8 = typed;
+    if (navigationSwallowedChar != 0 && !utf8.empty() && (unsigned char)utf8[0] == navigationSwallowedChar){
+        utf8.erase(0, 1);
+        navigationSwallowedChar = 0;
+    }
     if (utf8.empty())
         return;
 
@@ -3686,6 +4098,16 @@ void Engine::systemTextInput(const std::string& utf8){
     // Input.inputString
     for (uint32_t codepoint : codepoints)
         Input::addInputCharacter(codepoint);
+
+    // a component InputField typed in takes the text (the typing guard)
+    if (Scene* typing = componentTypingScene(scenes)){
+        for (uint32_t codepoint : codepoints){
+            typing->getSystem<UISystem>()->eventOnCharInput(static_cast<char32_t>(codepoint));
+            if (!ignoreEventsHandledByUI)
+                Engine::onCharInput.call(static_cast<char32_t>(codepoint));
+        }
+        return;
+    }
 
     const bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
         return documents->eventOnTextInput(utf8);
@@ -3726,8 +4148,8 @@ void Engine::setTextInputArea(const Rect& canvasRect){
     // the inverse of transformCoordPos: canvas to the platform's screen pixels
     const float scaleX = viewRect.getWidth() / canvasWidth;
     const float scaleY = viewRect.getHeight() / canvasHeight;
-    System::instance().setTextInputArea(viewRect.getX() + canvasRect.getX() * scaleX,
-                                        viewRect.getY() + canvasRect.getY() * scaleY,
+    System::instance().setTextInputArea(viewRect.getX() + viewShift.x + canvasRect.getX() * scaleX,
+                                        viewRect.getY() + viewShift.y + canvasRect.getY() * scaleY,
                                         canvasRect.getWidth() * scaleX,
                                         canvasRect.getHeight() * scaleY);
 }
@@ -3750,6 +4172,10 @@ void Engine::systemGamepadDisconnect(int gamepad){
     gamepadUI.stick.erase(gamepad);
     for (auto it = gamepadUI.gameAxes.begin(); it != gamepadUI.gameAxes.end();){
         if (it->first.first == gamepad) it = gamepadUI.gameAxes.erase(it); else ++it;
+    }
+    // nothing of a pad that went is handed back to the game later
+    for (auto it = gamepadUI.takenAxes.begin(); it != gamepadUI.takenAxes.end();){
+        if (it->first == gamepad) it = gamepadUI.takenAxes.erase(it); else ++it;
     }
 
     Input::removeGamepad(gamepad);
@@ -3790,6 +4216,11 @@ void Engine::systemGamepadAxisMove(int gamepad, int axis, float value){
     Input::setGamepadAxisConsumedByUI(gamepad, axis, consumed);
 
     const std::pair<int, int> id(gamepad, axis);
+    // the axes the UI holds go back to the game once no UI wants the pad (updateGamepadNavigation)
+    if (consumed)
+        gamepadUI.takenAxes.insert(id);
+    else
+        gamepadUI.takenAxes.erase(id);
     if (ignoreEventsHandledByUI && consumed){
         // the game does not keep a value it got before the documents took the axis (a player
         // walking on when a menu opens): it gets the rest value once
@@ -3805,8 +4236,29 @@ void Engine::systemGamepadAxisMove(int gamepad, int axis, float value){
     Engine::onGamepadAxisMove.call(gamepad, axis, value);
 }
 
+void Engine::getUINavigationWants(bool& gamepad, bool& keyboard){
+    const std::vector<Scene*> scenes = getScenesSnapshot();
+    // a selected Button (the component UI's menu, or one its history gives back); no callbacks here
+    keyboard = false;
+    for (Scene* scene : scenes){
+        if (canSendUIEvents(scene) && scene->getSystem<UISystem>()->hasSelection()){
+            keyboard = true;
+            break;
+        }
+    }
+    gamepad = keyboard || documentsHaveGamepadFocus(scenes);
+}
+
 bool Engine::wantsGamepadNavigation(){
-    return documentsHaveGamepadFocus(getScenesSnapshot());
+    bool gamepad = false, keyboard = false;
+    getUINavigationWants(gamepad, keyboard);
+    return gamepad;
+}
+
+bool Engine::wantsKeyboardNavigation(){
+    bool gamepad = false, keyboard = false;
+    getUINavigationWants(gamepad, keyboard);
+    return keyboard;
 }
 
 bool Engine::isTextInputFocused(){
@@ -3820,6 +4272,28 @@ bool Engine::isTextInputFocused(){
 }
 
 void Engine::updateGamepadNavigation(){
+    if (gamepadUI.held.empty() && gamepadUI.takenAxes.empty())
+        return;
+
+    // no menu wants the pad any more (a document hidden or blurred, a selection gone): the axes
+    // the UI held go back to the game as they are now, a stick held still included
+    if (!gamepadUI.takenAxes.empty() && !wantsGamepadNavigation()){
+        const std::set<std::pair<int, int>> taken = gamepadUI.takenAxes;
+        gamepadUI.takenAxes.clear();
+        for (GamepadUIHeld& held : gamepadUI.held){
+            if (held.key >= GamepadUIKey::LEFT_STICK_UP && held.key <= GamepadUIKey::LEFT_STICK_RIGHT)
+                held.owner = GamepadUIOwner::NONE;
+        }
+        for (const std::pair<int, int>& id : taken){
+            const float value = Input::getGamepadAxis(id.first, id.second);
+            Input::setGamepadAxisConsumedByUI(id.first, id.second, false);
+            auto it = gamepadUI.gameAxes.find(id);
+            if (it == gamepadUI.gameAxes.end() || it->second != value){
+                gamepadUI.gameAxes[id] = value;
+                Engine::onGamepadAxisMove.call(id.first, id.second, value);
+            }
+        }
+    }
     if (gamepadUI.held.empty())
         return;
 
@@ -3828,15 +4302,24 @@ void Engine::updateGamepadNavigation(){
     // by index: a listener may press or release keys (send_input, Lua)
     for (size_t i = 0; i < gamepadUI.held.size(); i++){
         GamepadUIHeld& held = gamepadUI.held[i];
-        if (!isGamepadDirectionKey(held.key) || !held.consumed || now < held.nextRepeat)
+        if (!isGamepadDirectionKey(held.key) || held.owner == GamepadUIOwner::NONE || now < held.nextRepeat)
             continue;
         held.nextRepeat += gamepadRepeatInterval;
         if (held.nextRepeat <= now)
             held.nextRepeat = now + gamepadRepeatInterval;
         const int gamepad = held.gamepad;
         const GamepadUIKey key = held.key;
+        const GamepadUIOwner owner = held.owner;
         if (scenes.empty())
             scenes = getScenesSnapshot();
+        if (owner == GamepadUIOwner::COMPONENT){
+            // the selection moves again; gone, the repeat does nothing (the up stays the UI's)
+            if (!componentTypingScene(scenes)){
+                if (Scene* target = selectionScene(scenes))
+                    target->getSystem<UISystem>()->eventOnMove(gamepadMoveDirection(key));
+            }
+            continue;
+        }
         dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
             return documents->eventOnGamepadKeyDown(gamepad, key, true);
         });

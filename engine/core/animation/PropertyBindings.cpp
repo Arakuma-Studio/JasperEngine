@@ -5,6 +5,7 @@
 
 #include "Scene.h"
 #include "animation/CanvasGroupTracks.h"
+#include "sprite/SpriteSheet.h"
 #include "component/AudioSourceComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/BuoyancyComponent.h"
@@ -17,11 +18,14 @@
 #include "component/NavMeshModifierComponent.h"
 #include "component/NavMeshObstacleComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/SplineComponent.h"
 #include "component/SplineExtrudeComponent.h"
 #include "component/SplineInstantiateComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterWakeComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/CameraComponent.h"
 #include "component/CameraFollowComponent.h"
@@ -393,21 +397,27 @@ namespace {
 
     // ---- sprite frame (Unity's m_Sprite swap): Sprite::setFrame(int) ----
 
-    // the frame whose rect the sprite shows (-1: none of them)
+    // the frame whose rect the sprite shows (-1: none of them); a sheet sprite's frame is its index
+    // into the sheet (S44 R50: no rect comparison)
     bool readSpriteFrame(Scene* scene, Entity entity, const PropertyParams&, float* out){
         SpriteComponent* sprite = scene ? scene->findComponent<SpriteComponent>(entity) : nullptr;
         MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
         if (!sprite || !mesh) return false;
+        if (!sprite->sheet.empty()){
+            out[0] = (float)sprite->frame;
+            return true;
+        }
         out[0] = -1.0f;
-        const Rect shown = sprite->needUpdateFrameRect ? sprite->pendingFrameRect : mesh->submeshes[0].textureRect;
+        const Rect shown = sprite->needUpdateFrameRect ? sprite->pendingFrameRect : MeshSystem::spriteSourceRect(*sprite, *mesh);
         const Texture& texture = mesh->submeshes[0].material.baseColorTexture;
+        float textureW = (float)texture.getWidth(), textureH = (float)texture.getHeight();
+        MeshSystem::spriteSourceSize(*sprite, *mesh, textureW, textureH);
         for (unsigned int id = 0; id < sprite->numFramesRect; id++){
             Rect rect = sprite->framesRect[id].rect;
             if (!shown.isNormalized() || rect.isNormalized()){
                 // compare like with like
-            }else if (texture.getWidth() > 0 && texture.getHeight() > 0){
-                rect = Rect(rect.getX() / texture.getWidth(), rect.getY() / texture.getHeight(),
-                            rect.getWidth() / texture.getWidth(), rect.getHeight() / texture.getHeight());
+            }else if (textureW > 0 && textureH > 0){
+                rect = Rect(rect.getX() / textureW, rect.getY() / textureH, rect.getWidth() / textureW, rect.getHeight() / textureH);
             }
             const float eps = 1e-4f;
             if (std::fabs(rect.getX() - shown.getX()) < eps && std::fabs(rect.getY() - shown.getY()) < eps &&
@@ -425,6 +435,12 @@ namespace {
         MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
         if (!sprite || !mesh) return false;
         const long id = std::lround(in[0]);
+        if (!sprite->sheet.empty()){
+            // before the sheet loads any index is kept (the sprite clamps it once it knows the count)
+            if (id < 0 || (sprite->sheetData && id >= (long)sprite->sheetData->frames.size())) return false;
+            sprite->frame = (int)id;
+            return true;
+        }
         if (id < 0 || (unsigned long)id >= sprite->numFramesRect) return false;
         MeshSystem::setSpriteFrameRect(*mesh, *sprite, sprite->framesRect[(size_t)id].rect);
         return true;
@@ -432,11 +448,18 @@ namespace {
     bool hasSprite(EntityRegistry* registry, Entity entity, const PropertyParams&){
         return registry && registry->findComponent<SpriteComponent>(entity) && registry->findComponent<MeshComponent>(entity);
     }
-    // the texture rect a frame write replaces
+    // the texture rect a frame write replaces (a sheet sprite: its frame index, the rest unused)
     bool snapshotSpriteRect(Scene* scene, Entity entity, const PropertyParams&, float* out){
         MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
         if (!mesh) return false;
-        const Rect& rect = mesh->submeshes[0].textureRect;
+        if (SpriteComponent* sprite = scene->findComponent<SpriteComponent>(entity); sprite && !sprite->sheet.empty()){
+            out[0] = (float)sprite->frame;
+            out[1] = out[2] = out[3] = 0.0f;
+            return true;
+        }
+        // a legacy sprite drawn from an atlas page: its source's rect (S45 R8)
+        SpriteComponent* sprite = scene->findComponent<SpriteComponent>(entity);
+        const Rect rect = sprite ? MeshSystem::spriteSourceRect(*sprite, *mesh) : mesh->submeshes[0].textureRect;
         out[0] = rect.getX(); out[1] = rect.getY(); out[2] = rect.getWidth(); out[3] = rect.getHeight();
         return true;
     }
@@ -444,6 +467,10 @@ namespace {
         MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
         SpriteComponent* sprite = scene ? scene->findComponent<SpriteComponent>(entity) : nullptr;
         if (!mesh || !sprite) return false;
+        if (!sprite->sheet.empty()){
+            sprite->frame = std::max(0, (int)std::lround(in[0]));
+            return true;
+        }
         MeshSystem::setSpriteFrameRect(*mesh, *sprite, Rect(in[0], in[1], in[2], in[3]));
         return true;
     }
@@ -507,6 +534,7 @@ namespace {
         rows.push_back(fieldRow<ButtonComponent, Vector4, &ButtonComponent::colorHovered, &buttonDirty>("button", "colorHovered", "Color Hovered", "m_Colors.m_HighlightedColor", C4, SRGB));
         rows.push_back(fieldRow<ButtonComponent, Vector4, &ButtonComponent::colorPressed, &buttonDirty>("button", "colorPressed", "Color Pressed", "m_Colors.m_PressedColor", C4, SRGB));
         rows.push_back(fieldRow<ButtonComponent, Vector4, &ButtonComponent::colorDisabled, &buttonDirty>("button", "colorDisabled", "Color Disabled", "m_Colors.m_DisabledColor", C4, SRGB));
+        rows.push_back(fieldRow<ButtonComponent, Vector4, &ButtonComponent::colorSelected, &buttonDirty>("button", "colorSelected", "Color Selected", "m_Colors.m_SelectedColor", C4, SRGB));
         rows.push_back(fieldRow<ButtonComponent, bool, &ButtonComponent::disabled, &buttonDirty>("button", "disabled", "Disabled", "m_Interactable", B));
 
         // Rect Transform (the RectTransform Lua setters)
@@ -624,12 +652,15 @@ namespace {
         rows.push_back(enabledRow<VideoPlayerComponent>("videoplayer"));
         rows.push_back(enabledRow<SafeAreaComponent>("safearea"));
         rows.push_back(enabledRow<CapsuleShadowCasterComponent>("capsuleshadowcaster"));
+        rows.push_back(enabledRow<PixelPerfectCameraComponent>("pixelperfectcamera"));
         // oe-port's components with the Inspector's enabled checkbox (their Lua setters, where they
         // have one, only set the flag)
         rows.push_back(enabledRow<ForceFieldComponent>("forcefield"));
         rows.push_back(enabledRow<CharacterController2DComponent>("charactercontroller2d"));
         rows.push_back(enabledRow<CharacterControllerComponent>("charactercontroller"));
         rows.push_back(enabledRow<WaterVolumeComponent>("watervolume"));
+        rows.push_back(enabledRow<WaterExcluderComponent>("waterexcluder"));
+        rows.push_back(enabledRow<WaterWakeComponent>("waterwake"));
         rows.push_back(enabledRow<BuoyancyComponent>("buoyancy"));
         rows.push_back(enabledRow<NavMeshSurfaceComponent>("navmeshsurface"));
         rows.push_back(enabledRow<NavMeshAgentComponent>("navmeshagent"));

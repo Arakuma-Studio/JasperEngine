@@ -30,6 +30,8 @@ namespace jasperengine::editor {
         // Drawn in the last show(): the view the engine should size the game for
         bool visible = false;
         bool maximizedShown = false;
+        // Maximize On Play's hint (the key that shows the editor again) fades out by then
+        double maximizeHintUntil = 0.0;
         bool focused = false;
         bool cursorInView = false;
         bool hostedLastFrame = false;
@@ -105,6 +107,10 @@ namespace jasperengine::editor {
         void drawStats(ImVec2 imageMin, ImVec2 imageMax, const SceneProject* sceneProject);
         bool computeAspect(float& aspect) const;
         uint32_t getTargetSceneId() const;
+        // S41: the shown scene's main camera draws through a Pixel Perfect Camera (its request)
+        bool shownPixelPerfect(PixelPerfectViewRequest& request) const;
+        // the toolbar's Pixel Scale (Auto, 1x .. 8x; scales that do not fit are disabled) and readout
+        void drawPixelScale(const PixelPerfectViewRequest& request);
 
     public:
         static constexpr const char* WINDOW_NAME = "Game";
@@ -148,6 +154,12 @@ namespace jasperengine::editor {
         // sets them as if picked there (MCP configure_game_view)
         const GameViewSettings& getSettings();
         void applySettings(const GameViewSettings& newSettings);
+        // Maximize On Play (F11, Edit > Maximize On Play, the toolbar): the saved setting, acting
+        // at once during Play
+        void toggleMaximizeOnPlay();
+        bool isMaximizeOnPlay();
+        // the Game view fills the editor now (maximized in the last show())
+        bool isMaximizedNow() const { return maximizedShown; }
         // what Play simulates of the device (Device::setSimulation, applied each frame of Play):
         // the toolbar's Device Tier, platform family (Auto: Mobile with a simulated phone) and
         // thermal state

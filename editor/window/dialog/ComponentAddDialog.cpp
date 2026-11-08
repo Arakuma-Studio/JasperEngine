@@ -7,6 +7,7 @@
 #include "util/UIUtils.h"
 #include "Theme.h"
 #include "search/SearchScorer.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include <cctype>
 #include <cstring>
 
@@ -68,6 +69,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::CameraComponent, "Renders the scene to the screen or a texture"},
             {ComponentType::CameraShakerComponent, "Shakes the camera (or this GameObject) from presets and trauma, never fighting what moves it"},
             {ComponentType::CameraFollowComponent, "Follows a target with damping, look-at, a 2D dead zone and bounds"},
+            {ComponentType::PixelPerfectCameraComponent, "Pixel art on this camera: whole-number scaling, one pixel size, every sprite on the pixel grid"},
             {ComponentType::LightComponent, "Directional, point or spot light"},
             {ComponentType::CapsuleShadowCasterComponent, "Soft capsule shadows of a character from its bones"},
             {ComponentType::SpriteComponent, "Draws a 2D sprite"},
@@ -94,6 +96,8 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::Joint3DComponent, "Connects two Rigidbodies"},
             {ComponentType::CharacterControllerComponent, "A capsule moved by script that climbs steps and slopes"},
             {ComponentType::WaterVolumeComponent, "A body of water: what has a Buoyancy floats in it"},
+            {ComponentType::WaterExcluderComponent, "Keeps water out of a boat or a dry space: no surface inside, no underwater fade, cargo stays dry"},
+            {ComponentType::WaterWakeComponent, "Foam and waves behind it while it moves through water"},
             {ComponentType::BuoyancyComponent, "Floats its dynamic Rigidbody in Water Volumes"},
             {ComponentType::RagdollComponent, "Switches a character's bone bodies between animated and simulated"},
         }},

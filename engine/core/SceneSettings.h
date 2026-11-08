@@ -58,6 +58,25 @@ namespace jasperengine{
         HIGH
     };
 
+    // Planar reflections (shaders requiring planarreflection: library:water's PLANAR_REFLECTION):
+    // the resolution of their reflection passes, per axis of the camera pass; OFF draws none
+    // (those shaders show their fallback, the environment). Stored as ints: append only.
+    enum class PlanarReflectionResolution {
+        OFF,
+        QUARTER,
+        HALF,
+        FULL
+    };
+
+    // The side of the scene's wake map (Water Wakes, WaterInteractionSystem): AUTO is MEDIUM on
+    // desktop and LOW on Android, iOS and the web. Stored as ints: append only.
+    enum class WaterWakeResolution {
+        AUTO,
+        LOW,        // 128 texels
+        MEDIUM,     // 256
+        HIGH        // 512
+    };
+
     // Resolution of the scene-colour copy sampled by shaders requiring scenecolor.
     enum class SceneColorScale {
         FULL,   // the camera pass's resolution
@@ -87,6 +106,24 @@ namespace jasperengine{
         CLASSIC,    // a new hash per pixel and frame (the original grain)
         LENS,       // FidelityFX Lens-derived simplex cells of filmGrainSize pixels
         FILMIC      // a 5x5 lattice of grain particles (desktop / high-end)
+    };
+
+    // Palette Quantize (S43 R19, PostProcessingSettings::palette*): the ordered dither of the
+    // pick between a cell's two palette colours, the distance the table is baked by, and its
+    // grid (32^3 cells, or 64^3: slower to bake, for palettes of many close shades)
+    enum class PaletteDither : int {
+        NONE,
+        BAYER2,
+        BAYER4,
+        BAYER8
+    };
+    enum class PaletteDistance : int {
+        OKLAB,
+        RGB
+    };
+    enum class PalettePrecision : int {
+        NORMAL,     // 32^3 cells
+        HIGH        // 64^3 cells
     };
 
     // The frame of the film gate (PostProcessingSettings::filmGateMask): the image's aspect
@@ -274,6 +311,16 @@ namespace jasperengine{
         float dynamicResolutionMinScale = 0.6f;     // 0.5..1
         int dynamicResolutionTargetFps = 0;         // 0..240
 
+        // Palette Quantize (S43 R19-R21): the frame forced onto a palette in the uber pass, after
+        // the grade, edges and vignette and before the display emulations (CRT, film, grain);
+        // the dither is per art pixel (the source texel, or the pixelate block)
+        bool paletteEnabled = false;
+        AssetRef palette;                           // a .palette asset
+        PaletteDither paletteDither = PaletteDither::BAYER4;
+        float paletteDitherStrength = 1.0f;         // 0..1
+        PaletteDistance paletteDistance = PaletteDistance::OKLAB;
+        PalettePrecision palettePrecision = PalettePrecision::NORMAL;
+
         bool operator==(const PostProcessingSettings& o) const;
         bool operator!=(const PostProcessingSettings& o) const { return !(*this == o); }
 
@@ -364,6 +411,24 @@ namespace jasperengine{
         // resolution of the scene-colour copy that shaders requiring scenecolor sample (shader
         // library phase 3): FULL = the camera pass's resolution, HALF = half of it (default; mobile)
         SceneColorScale sceneColorScale = SceneColorScale::HALF;
+
+        // Planar reflections (RenderSystem's water reflection passes, one per water height and
+        // viewing camera): their resolution, the layers they draw (with the viewer's culling
+        // mask), whether they sample the viewer's shadow maps, their far clip (0: the viewer's),
+        // how far above the water's rest level they start (Unity's Clip Plane Offset), and the
+        // most heights reflected per camera (the others show the environment)
+        PlanarReflectionResolution planarReflectionResolution = PlanarReflectionResolution::HALF;
+        uint32_t planarReflectionLayers = 0xFFFFFFFFu;
+        bool planarReflectionShadows = true;
+        float planarReflectionFarClip = 0.0f;
+        float planarReflectionClipOffset = 0.05f;
+        int maxPlanarReflections = 2;
+
+        // the wake map of Water Wakes (one per scene, around the main camera): its resolution, the
+        // metres it spans and the seconds a wake takes to fade (an eighth of its foam left)
+        WaterWakeResolution waterWakeResolution = WaterWakeResolution::AUTO;
+        float waterWakeArea = 64.0f;
+        float waterWakeFade = 8.0f;
 
         LightState lightState = LightState::AUTO;
         Vector3 globalIllumColor = Vector3(1.0, 1.0, 1.0);    // stored linear

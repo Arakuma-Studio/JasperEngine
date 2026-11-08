@@ -135,6 +135,7 @@ std::filesystem::path AppSettings::configFilePath;
 YAML::Node AppSettings::settingsData;
 YAML::Node AppSettings::loadedSettings;
 bool AppSettings::autosaveEnabled = true;
+bool AppSettings::networkOffline = false;
 int AppSettings::autosaveIntervalSeconds = AppSettings::defaultAutosaveInterval;
 std::vector<hub::RecentProject> AppSettings::recentProjects;
 std::filesystem::path AppSettings::lastProjectPath;
@@ -157,6 +158,7 @@ int AppSettings::resourcesItemViewStyle = 1;
 float AppSettings::resourcesLeftPanelWidth = 200.0f;
 float AppSettings::codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
 bool AppSettings::multiViewportEnabled = false;
+bool AppSettings::uiNavigationVisualize = false;
 bool AppSettings::poseDockGrown = false;
 bool AppSettings::editorVSyncEnabled = true;
 bool AppSettings::projectHubAlways = false;
@@ -368,6 +370,9 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             externalToolPaths.clear();
             for (const auto& item : settingsData["externalTools"]) {
                 if (item.second.IsScalar()) externalToolPaths[item.first.as<std::string>()] = item.second.as<std::string>();
+                // a tool with its own section (externalTools.aseprite.path, S44 §6.8): "<tool>.path"
+                else if (item.second.IsMap() && item.second["path"] && item.second["path"].IsScalar())
+                    externalToolPaths[item.first.as<std::string>() + ".path"] = item.second["path"].as<std::string>();
             }
         }
         if (settingsData["emsdk"] && settingsData["emsdk"]["path"]) {
@@ -437,11 +442,19 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             }
         }
 
+        // Network: the editor's own requests (Lospec)
+        if (settingsData["network"] && settingsData["network"]["offline"]) {
+            networkOffline = settingsData["network"]["offline"].as<bool>();
+        }
+
         // Load editor viewport settings
         if (settingsData["editor"]) {
             auto editorNode = settingsData["editor"];
             if (editorNode["multi_viewport"]) {
                 multiViewportEnabled = editorNode["multi_viewport"].as<bool>();
+            }
+            if (editorNode["ui_navigation_visualize"]) {
+                uiNavigationVisualize = editorNode["ui_navigation_visualize"].as<bool>();
             }
             if (editorNode["pose_dock_grown"]) {
                 poseDockGrown = editorNode["pose_dock_grown"].as<bool>();
@@ -494,6 +507,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 auto gameNode = editorNode["game_view"];
                 if (gameNode["aspect"]) gameViewSettings.aspect = gameNode["aspect"].as<int>();
                 if (gameNode["scale"]) gameViewSettings.scale = gameNode["scale"].as<float>();
+                if (gameNode["pixelScale"]) gameViewSettings.pixelScale = std::clamp(gameNode["pixelScale"].as<int>(), 0, 8);
                 if (gameNode["maximize_on_play"]) gameViewSettings.maximizeOnPlay = gameNode["maximize_on_play"].as<bool>();
                 if (gameNode["stats"]) gameViewSettings.showStats = gameNode["stats"].as<bool>();
                 if (gameNode["atmosphere_quality"]) gameViewSettings.atmosphereQuality = std::clamp(gameNode["atmosphere_quality"].as<int>(), -1, 3);
@@ -704,7 +718,11 @@ bool AppSettings::saveSettings() {
         // Preferences > External Tools
         if (!externalToolPaths.empty()) {
             YAML::Node toolsNode;
-            for (const auto& [tool, path] : externalToolPaths) toolsNode[tool] = path;
+            for (const auto& [tool, path] : externalToolPaths) {
+                const size_t dot = tool.find('.');
+                if (dot == std::string::npos) toolsNode[tool] = path;
+                else toolsNode[tool.substr(0, dot)][tool.substr(dot + 1)] = path;
+            }
             settingsData["externalTools"] = toolsNode;
         } else {
             settingsData.remove("externalTools");
@@ -772,9 +790,14 @@ bool AppSettings::saveSettings() {
         codeNode["font_size"] = codeEditorFontSize;
         settingsData["code_editor"] = codeNode;
 
+        YAML::Node networkNode;
+        networkNode["offline"] = networkOffline;
+        settingsData["network"] = networkNode;
+
         // Editor viewport settings
         YAML::Node editorNode;
         editorNode["multi_viewport"] = multiViewportEnabled;
+        editorNode["ui_navigation_visualize"] = uiNavigationVisualize;
         editorNode["pose_dock_grown"] = poseDockGrown;
         editorNode["vsync"] = editorVSyncEnabled;
         editorNode["project_hub_at_startup"] = projectHubAlways ? "always" : "when_no_project";
@@ -809,6 +832,7 @@ bool AppSettings::saveSettings() {
         YAML::Node gameNode;
         gameNode["aspect"] = gameViewSettings.aspect;
         gameNode["scale"] = gameViewSettings.scale;
+        if (gameViewSettings.pixelScale != 0) gameNode["pixelScale"] = gameViewSettings.pixelScale;
         gameNode["maximize_on_play"] = gameViewSettings.maximizeOnPlay;
         gameNode["stats"] = gameViewSettings.showStats;
         gameNode["atmosphere_quality"] = gameViewSettings.atmosphereQuality;
@@ -1213,6 +1237,14 @@ bool AppSettings::getMultiViewportEnabled() {
 
 void AppSettings::setMultiViewportEnabled(bool enabled) {
     multiViewportEnabled = enabled;
+}
+
+bool AppSettings::getUINavigationVisualize() {
+    return uiNavigationVisualize;
+}
+
+void AppSettings::setUINavigationVisualize(bool visualize) {
+    uiNavigationVisualize = visualize;
 }
 
 bool AppSettings::getAutoRefresh() {
@@ -1743,6 +1775,14 @@ int AppSettings::getAutosaveIntervalSeconds() {
 
 void AppSettings::setAutosaveIntervalSeconds(int seconds) {
     autosaveIntervalSeconds = std::clamp(seconds, minAutosaveInterval, maxAutosaveInterval);
+}
+
+bool AppSettings::isNetworkOffline() {
+    return networkOffline;
+}
+
+void AppSettings::setNetworkOffline(bool offline) {
+    networkOffline = offline;
 }
 
 } // namespace jasperengine::editor

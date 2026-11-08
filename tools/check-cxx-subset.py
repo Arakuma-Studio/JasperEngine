@@ -21,7 +21,7 @@ import sys
 
 SCANNED = ("engine", "editor")
 SKIPPED = ("engine/libs", "editor/libs")
-SKIPPED_PREFIXES = ("engine/platform/apple/GoogleMobileAds",)
+SKIPPED_PREFIXES: tuple[str, ...] = ()
 EXTENSIONS = {".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp", ".c", ".cc", ".cpp", ".cxx", ".m", ".mm"}
 
 BANNED_HEADERS = ("format", "semaphore", "latch", "barrier", "stop_token", "syncstream",

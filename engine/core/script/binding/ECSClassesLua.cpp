@@ -38,6 +38,7 @@
 #include "component/OnScreenControlComponents.h"
 #include "object/GameObject.h"
 #include "PointerEventData.h"
+#include "UIEventData.h"
 #include "component/ParticleSystemComponent.h"
 #include "particles/LegacyParticleSystem.h"
 #include "component/AudioSourceComponent.h"
@@ -281,6 +282,13 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("BOTTOM_LEFT", PivotPreset::BOTTOM_LEFT)
         .addVariable("TOP_RIGHT", PivotPreset::TOP_RIGHT)
         .addVariable("BOTTOM_RIGHT", PivotPreset::BOTTOM_RIGHT)
+        .addVariable("FRAME", PivotPreset::FRAME)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SpriteDrawMode")
+        .addVariable("SIMPLE", SpriteDrawMode::SIMPLE)
+        .addVariable("SLICED", SpriteDrawMode::SLICED)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -295,6 +303,42 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .beginNamespace("CanvasGroupRenderMode")
         .addVariable("PER_ELEMENT", CanvasGroupRenderMode::PER_ELEMENT)
         .addVariable("FLATTEN", CanvasGroupRenderMode::FLATTEN)
+        .endNamespace();
+
+    // ui-components: Unity's Selectable
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ButtonTransition")
+        .addVariable("NONE", ButtonTransition::NONE)
+        .addVariable("COLOR_TINT", ButtonTransition::COLOR_TINT)
+        .addVariable("SPRITE_SWAP", ButtonTransition::SPRITE_SWAP)
+        .addVariable("COLOR_TINT_AND_SPRITE_SWAP", ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("NavigationMode")
+        .addVariable("NONE", NavigationMode::NONE)
+        .addVariable("HORIZONTAL", NavigationMode::HORIZONTAL)
+        .addVariable("VERTICAL", NavigationMode::VERTICAL)
+        .addVariable("AUTOMATIC", NavigationMode::AUTOMATIC)
+        .addVariable("EXPLICIT", NavigationMode::EXPLICIT)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SelectionState")
+        .addVariable("NORMAL", SelectionState::NORMAL)
+        .addVariable("HIGHLIGHTED", SelectionState::HIGHLIGHTED)
+        .addVariable("PRESSED", SelectionState::PRESSED)
+        .addVariable("SELECTED", SelectionState::SELECTED)
+        .addVariable("DISABLED", SelectionState::DISABLED)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MoveDirection")
+        .addVariable("LEFT", MoveDirection::LEFT)
+        .addVariable("UP", MoveDirection::UP)
+        .addVariable("RIGHT", MoveDirection::RIGHT)
+        .addVariable("DOWN", MoveDirection::DOWN)
+        .addVariable("NONE", MoveDirection::NONE)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -839,9 +883,28 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("colorDisabled", &ButtonComponent::colorDisabled, &setTrackedMember<&ButtonComponent::colorDisabled>)
         .addProperty("onPress", [] (ButtonComponent* self, lua_State* L) { return &self->onPress; }, [] (ButtonComponent* self, lua_State* L) { self->onPress = L; })
         .addProperty("onRelease", [] (ButtonComponent* self, lua_State* L) { return &self->onRelease; }, [] (ButtonComponent* self, lua_State* L) { self->onRelease = L; })
+        // the click: released over it, or a Submit while selected (Unity's Button.onClick)
+        .addProperty("onClick", [] (ButtonComponent* self, lua_State* L) { return &self->onClick; }, [] (ButtonComponent* self, lua_State* L) { self->onClick = L; })
         .addProperty("pressed", &ButtonComponent::pressed)
         .addProperty("hovered", &ButtonComponent::hovered)
         .addProperty("disabled", &ButtonComponent::disabled, &setTrackedMember<&ButtonComponent::disabled>)
+        .addProperty("textureSelected", &ButtonComponent::textureSelected, &setTrackedMember<&ButtonComponent::textureSelected>)
+        .addProperty("colorSelected", &ButtonComponent::colorSelected, &setTrackedMember<&ButtonComponent::colorSelected>)
+        .addProperty("transition", &ButtonComponent::transition, &setTrackedMember<&ButtonComponent::transition>)
+        .addProperty("fadeDuration", &ButtonComponent::fadeDuration, &setTrackedMember<&ButtonComponent::fadeDuration>)
+        .addProperty("scaleHovered", &ButtonComponent::scaleHovered, &setTrackedMember<&ButtonComponent::scaleHovered>)
+        .addProperty("scalePressed", &ButtonComponent::scalePressed, &setTrackedMember<&ButtonComponent::scalePressed>)
+        .addProperty("scaleSelected", &ButtonComponent::scaleSelected, &setTrackedMember<&ButtonComponent::scaleSelected>)
+        .addProperty("navigationMode", &ButtonComponent::navigationMode, &setTrackedMember<&ButtonComponent::navigationMode>)
+        .addProperty("wrapAround", &ButtonComponent::wrapAround, &setTrackedMember<&ButtonComponent::wrapAround>)
+        .addProperty("selectOnUp", &ButtonComponent::selectOnUp, &setTrackedMember<&ButtonComponent::selectOnUp>)
+        .addProperty("selectOnDown", &ButtonComponent::selectOnDown, &setTrackedMember<&ButtonComponent::selectOnDown>)
+        .addProperty("selectOnLeft", &ButtonComponent::selectOnLeft, &setTrackedMember<&ButtonComponent::selectOnLeft>)
+        .addProperty("selectOnRight", &ButtonComponent::selectOnRight, &setTrackedMember<&ButtonComponent::selectOnRight>)
+        .addProperty("selectOnEnable", &ButtonComponent::selectOnEnable, &setTrackedMember<&ButtonComponent::selectOnEnable>)
+        // runtime: the scene's selection is this Button, the state shown
+        .addProperty("selected", &ButtonComponent::selected)
+        .addProperty("state", &ButtonComponent::state)
         .addProperty("needUpdateButton", &ButtonComponent::needUpdateButton, &setTrackedMember<&ButtonComponent::needUpdateButton>)
         .endClass();
 
@@ -871,6 +934,19 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("pointerDrag", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->pointerDrag); })
         .addProperty("target", [] (const PointerEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->target); })
         .addFunction("use", &PointerEventData::use)
+        .endClass();
+
+    // ui-components: the selection callbacks' arguments (Unity's BaseEventData, AxisEventData)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<BaseEventData>("BaseEventData")
+        .addProperty("used", &BaseEventData::used)
+        .addProperty("target", [] (const BaseEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->target); })
+        .addProperty("selectedObject", [] (const BaseEventData* self, lua_State* L) -> luabridge::LuaRef { return pointerEventEntity(L, self->liveScene(), self->selectedObject); })
+        .addFunction("use", &BaseEventData::use)
+        .endClass()
+        .deriveClass<AxisEventData, BaseEventData>("AxisEventData")
+        .addProperty("moveDir", &AxisEventData::moveDir)
+        .addProperty("moveVector", &AxisEventData::moveVector)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

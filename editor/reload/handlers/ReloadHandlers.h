@@ -45,10 +45,15 @@ namespace jasperengine::editor::reload {
     // Whether a fork's entry points or #include closure hold one of `changed` (project- or
     // assets-relative); a fork whose sources no longer resolve counts as reached
     bool shaderSourcesReach(Project* project, const std::string& fork, int shaderType, const std::set<std::string>& changed);
+    // .aseprite/.ase: imported again on a worker; the sheet, pages, clips and previews swap in
+    // once the new pages are loaded (S44 R22)
+    void reloadAseprite(Context& ctx, const std::vector<std::filesystem::path>& files);
     // gltf/glb/obj/fbx: meshes, skins, morphs, animations of an unchanged hierarchy
     void reloadModels(Context& ctx, const std::vector<std::filesystem::path>& files);
     // .particles effects: read again; every Particle System playing one rebinds (S20 R1)
     void reloadParticleEffects(Context& ctx, const std::vector<std::filesystem::path>& files);
+    // .palette files (S43 R3): Palette Swap, Palette Quantize and the ramp strips made from them
+    void reloadPalettes(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Audio: a new sample for the next plays
     void reloadAudio(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Fonts: a new pool entry; the texts using it rebuild their atlas

@@ -110,6 +110,9 @@ namespace {
         &kSafeAreaDesc,
         &kCapsuleShadowCasterDesc,
         &kAudioSnapshotDesc,
+        &kWaterExcluderDesc,
+        &kWaterWakeDesc,
+        &kPixelPerfectCameraDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -208,6 +211,9 @@ namespace {
         &kVideoPlayerDesc,
         &kSafeAreaDesc,
         &kAudioSnapshotDesc,
+        &kWaterExcluderDesc,
+        &kWaterWakeDesc,
+        &kPixelPerfectCameraDesc,
     };
 
     // the order a GameObject lists its components in (Catalog::findComponents: the exported code)
@@ -304,6 +310,9 @@ namespace {
         &kVideoPlayerDesc,
         &kSafeAreaDesc,
         &kAudioSnapshotDesc,
+        &kWaterExcluderDesc,
+        &kWaterWakeDesc,
+        &kPixelPerfectCameraDesc,
     };
 
     constexpr const EnumDesc* kEnums[] = {
@@ -312,14 +321,14 @@ namespace {
         &enums::kAnimatorEventMode, &enums::kAnimatorRetarget, &enums::kAnimatorIKType, &enums::kCascadeSplitMode, &enums::kCloudsPreset,
         &enums::kCloudsRendering, &enums::kCollider2DType, &enums::kCollider3DSource, &enums::kCollider3DType, &enums::kCullingMode,
         &enums::kEaseType, &enums::kFogColorMode, &enums::kFogType, &enums::kFogVolumeFalloff, &enums::kFogVolumeShape,
-        &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kWaterVolumeWaves, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,
+        &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kWaterVolumeWaves, &enums::kWaterExcluderShape, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,
         &enums::kLatticeMaskChannel, &enums::kLatticeOutside, &enums::kLatticeStage, &enums::kLayoutGroupType, &enums::kLightShading,
         &enums::kLightType, &enums::kLightUnit, &enums::kLodFadeMode,
         &enums::kMaterialAlphaMode, &enums::kMaterialBlendMode, &enums::kMaterialCullMode, &enums::kMaterialDepthTest,
         &enums::kMaterialDepthWrite, &enums::kMaterialLighting, &enums::kMaterialPassOrder, &enums::kMaterialStencilCompare,
         &enums::kMaterialStencilOp, &enums::kParticleEmitterShape, &enums::kPivotPreset, &enums::kPrimitiveType,
         &enums::kProgressbarType, &enums::kReflectionProbeMode, &enums::kReflectionProbeUpdateMode, &enums::kRigidbodyMotionQuality,
-        &enums::kScriptType, &enums::kScrollbarType, &enums::kShadowCaster2DShape, &enums::kShadowUpdateMode,
+        &enums::kButtonTransition, &enums::kNavigationMode, &enums::kScriptType, &enums::kScrollbarType, &enums::kShadowCaster2DShape, &enums::kShadowUpdateMode,
         &enums::kTextureAlphaBorder, &enums::kTextureFilter, &enums::kTextureWrap, &enums::kUIDocumentRenderMode,
         &enums::kUIEventState, &enums::kWindingOrder,
         &enums::kNavCollectObjects, &enums::kNavUseGeometry, &enums::kNavPlane, &enums::kNavAvoidanceQuality, &enums::kNavAgentDriver,
@@ -332,6 +341,8 @@ namespace {
         &enums::kOnScreenStickAxes, &enums::kOnScreenVisibility, &enums::kJointAnchorSpace, &enums::kCollisionDetection2D, &enums::kSleepMode2D, &enums::kRigidbodyInterpolation, &enums::kJointBreakAction,
         &enums::kJointMotion, &enums::kJointSwingType, &enums::kAlphaTweenTarget, &enums::kTransparencyMode, &enums::kCapsuleCastShadows,
         &enums::kCapsuleDirection,
+        // pixel art (S41)
+        &enums::kPixelUpscaleMode, &enums::kPixelRotation,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {

@@ -21,7 +21,8 @@ namespace {
     };
 
     const EnumNames<Scaling> kScaling[] = {{Scaling::FITWIDTH, "fitwidth"}, {Scaling::FITHEIGHT, "fitheight"},
-        {Scaling::LETTERBOX, "letterbox"}, {Scaling::CROP, "crop"}, {Scaling::STRETCH, "stretch"}, {Scaling::NATIVE, "native"}};
+        {Scaling::LETTERBOX, "letterbox"}, {Scaling::CROP, "crop"}, {Scaling::STRETCH, "stretch"}, {Scaling::NATIVE, "native"},
+        {Scaling::INTEGER, "integer"}, {Scaling::INTEGER_EXPAND, "integer_expand"}};
     const EnumNames<TextureStrategy> kTextureStrategy[] = {{TextureStrategy::FIT, "fit"}, {TextureStrategy::RESIZE, "resize"},
         {TextureStrategy::NONE, "none"}};
     const EnumNames<AtmosphereQuality> kAtmosphere[] = {{AtmosphereQuality::OFF, "off"}, {AtmosphereQuality::LOW, "low"},
@@ -74,7 +75,7 @@ json PlayerConfig::toJson() const {
     out["window"] = {{"mode", kWindowModes[std::clamp(windowMode, 0, 2)]}, {"width", windowWidth}, {"height", windowHeight},
                      {"resizable", resizable}, {"title", title}, {"vsync", vsync}, {"icon", icon}, {"storageId", storageId}};
     out["canvas"] = {{"width", canvasWidth}, {"height", canvasHeight}, {"scaling", nameOf(kScaling, scaling)},
-                     {"textureStrategy", nameOf(kTextureStrategy, textureStrategy)}};
+                     {"textureStrategy", nameOf(kTextureStrategy, textureStrategy)}, {"pixelsPerUnit", pixelsPerUnit}};
     out["loading"] = {{"scene", loadingScene}, {"delay", loadingDelay}, {"timeout", loadingTimeout}, {"async", asyncLoading}};
     out["threading"] = {{"workers", threading.workers}, {"reservedFrameWorkers", threading.reservedFrameWorkers},
                         {"ioThreads", threading.ioThreads}, {"webPumpBudgetMs", threading.webPumpBudgetMs}};
@@ -114,6 +115,7 @@ json PlayerConfig::toJson() const {
     out["audio"] = {{"mixer", audioMixer}, {"maxRealVoices", audioMaxRealVoices}, {"maxVoices", audioMaxVoices},
                     {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}, {"seed", audioSeed},
                     {"musicGroup", audioMusicGroup}};
+    if (!nativePlatformOnly.empty()) out["nativePlatformOnly"] = nativePlatformOnly;
     return out;
 }
 
@@ -171,6 +173,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.canvasHeight = canvas->value("height", config.canvasHeight);
             valueOf(kScaling, canvas->value("scaling", "fitwidth"), config.scaling);
             valueOf(kTextureStrategy, canvas->value("textureStrategy", "none"), config.textureStrategy);
+            config.pixelsPerUnit = canvas->value("pixelsPerUnit", 1);
         }
         if (const auto loading = in.find("loading"); loading != in.end()) {
             config.loadingScene = loading->value("scene", 0u);
@@ -281,6 +284,12 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.audioOutputStage = audio->value("outputStage", config.audioOutputStage);
             config.audioIosSession = audio->value("iosSessionCategory", config.audioIosSession);
             config.audioMusicGroup = audio->value("musicGroup", config.audioMusicGroup);
+        }
+        // absent: no native plugin of the project is for other platforms only
+        if (const auto native = in.find("nativePlatformOnly"); native != in.end() && native->is_object()) {
+            for (const auto& [plugin, message] : native->items()) {
+                if (message.is_string()) config.nativePlatformOnly[plugin] = message.get<std::string>();
+            }
         }
         if (config.title.empty()) config.title = config.name;
         if (config.storageId.empty()) config.storageId = config.appId.empty() ? config.name : config.appId;

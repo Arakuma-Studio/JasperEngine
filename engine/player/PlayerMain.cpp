@@ -308,6 +308,7 @@ JASPERENGINE_INIT void init() {
         Engine::setThreadingSettings(game.threading);
     Engine::setCanvasSize(game.canvasWidth, game.canvasHeight);
     Engine::setScalingMode(game.scaling);
+    Engine::setPixelsPerUnit(game.pixelsPerUnit);
     Engine::setTextureStrategy(game.textureStrategy);
     Engine::setAtmosphereQualityDefaults(game.atmosphereQuality[0], game.atmosphereQuality[1], game.atmosphereQuality[2]);
     Engine::setFoliageDistanceScaleDefaults(game.foliageDistanceScale[0], game.foliageDistanceScale[1], game.foliageDistanceScale[2]);
@@ -333,6 +334,12 @@ JASPERENGINE_INIT void init() {
     }
     // the voices and the project's mixer, before the first scene (as a Compile build's init)
     player::applyAudio(game);
+    // native plugins with code for other platforms only: "unavailable" here, and a Lua mock
+    // standing in for one says so once (as a Compile build's init)
+    if (!game.nativePlatformOnly.empty()) {
+        NativeBridge::setPlatformOnlyPlugins(game.nativePlatformOnly);
+        NativeBridge::setMockWarnings(true);
+    }
 
     for (const GameScene& scene : game.scenes) {
         const GameScene stack = scene;

@@ -19,11 +19,14 @@
 #include "window/GameWindow.h"
 #include "window/SpriteNormalsWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "window/ApplyPaletteDialog.h"
+#include "window/PaletteWindow.h"
 
 #include "AppMenuCommand.h"
 #include "Backend.h"
 #include "Out.h"
 #include "Engine.h"
+#include "pixelart/PixelPerfectEditor.h"
 #include "util/Util.h"
 #include "window/PlayInput.h"
 #include "animation/AnimationClipAppHooks.h"
@@ -31,7 +34,9 @@
 #include "pose/PoseViewportLogic.h"
 #include "window/AnimationWindowClip.h"
 #include "window/PoseAnimationWindow.h"
+#include "window/SpritePreviewWindow.h"
 #include "navigation/NavigationEditor.h"
+#include "navigation/NavPathTester.h"
 #include "sceneview/SceneViewController.h"
 #include "search/SearchPalette.h"
 #include "shortcuts/DefaultCommands.h"
@@ -210,13 +215,29 @@ void editor::App::registerCommands(){
              return project.isPlaySessionActive() && !playInput->isCursorReleased() &&
                     (mode == MouseMode::CAPTURED || mode == MouseMode::CONFINED);
          });
+    // the key toggles the saved setting, at once during Play, but never takes a key from the game:
+    // while the running game has the keyboard, F11 is the game's (the menu item still works)
+    bind("playmode.maximizeOnPlay", [this](const CommandArgs&) { gameWindow->toggleMaximizeOnPlay(); }, nullptr,
+         [this]() { return !(project.isAnyScenePlaying() && gameWindow->hasKeyboardFocus()); });
 
     // ---- Assets
     enable("assets.open", [this]() { return projectWindow->hasSingleAssetSelection(); });
     enable("assets.rename", [this]() { return projectWindow->hasSingleAssetSelection(); });
     enable("assets.delete", [this]() { return projectWindow->hasAssetSelection(); });
+    enable("assets.duplicate", [this]() { return projectWindow->canDuplicate(); });
+    // a Lua script lives in the Lua directory (the folder Assets > Create makes things in)
+    {
+        const CommandDef* existing = catalog.find("assets.createLuaScript");
+        if (existing) {
+            CommandDef def = *existing;
+            def.enabled = [this]() { return projectWindow->luaScriptRefusal(projectWindow->createTargetDirectory()).empty(); };
+            def.disabledReason = [this]() { return projectWindow->luaScriptRefusal(projectWindow->createTargetDirectory()); };
+            catalog.add(std::move(def));
+        }
+    }
     enable("assets.createAnimationClip", []() { return static_cast<bool>(animationClipAppHooks().createClipAsset); });
     enable("assets.createSoundEventFromClips", [this]() { return projectWindow->hasAudioSelection(); });
+    enable("assets.createSpriteAtlasFromSelection", [this]() { return projectWindow->hasSpriteSelection(); });
     bind("soundEvent.audition", [this](const CommandArgs&) { inspectorWindow->requestSoundEventAudition(); },
          [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()); });
     bind("soundEvent.matchLevels", [this](const CommandArgs&) { inspectorWindow->requestSoundEventMatchLevels(); },
@@ -294,8 +315,23 @@ void editor::App::registerCommands(){
     };
     onView("sceneView.hideSelection", [](SceneViewController& view, SceneProject& scene) { view.hideSelection(scene); });
     onView("sceneView.showAll", [](SceneViewController& view, SceneProject& scene) { view.showAll(scene); });
+    // S41: the Pixel Zoom's 1x and Game (a 2D scene drawn through a Pixel Perfect Camera)
+    auto pixelScene = [this]() {
+        const SceneProject* scene = project.getSelectedScene();
+        return scene && scene->sceneRender && scene->sceneType == SceneType::SCENE_2D && pixelart::scenePixelPerfect(scene);
+    };
+    bind("sceneView.pixelZoom1x", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, 1.0f);
+    }, pixelScene, noDrag);
+    bind("sceneView.pixelZoomGame", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, sceneWindow->gamePixelZoom(*scene));
+    }, pixelScene, noDrag);
     onView("sceneView.togglePickLock", [](SceneViewController& view, SceneProject& scene) { view.togglePickLockSelection(scene); });
     onView("sceneView.measure", [](SceneViewController& view, SceneProject& scene) { view.setMeasuring(scene, !view.isMeasuring(scene.id)); });
+    // the Path Tester (S75 R25): in the selected scene's view, edit or play
+    bind("navigation.pathTester", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) NavPathTester::get().toggle(*scene);
+    }, sceneShown, noDrag);
     onView("sceneView.deleteMeasure", [](SceneViewController& view, SceneProject& scene) { view.deleteMeasure(scene, view.selectedMeasure(scene.id)); },
            [](SceneViewController& view, SceneProject& scene) { return view.hasSelectedMeasure(scene.id); });
     // under the pointer it must not take Delete from a panel that claims it
@@ -369,6 +405,8 @@ void editor::App::registerCommands(){
          [this]() { return projectWindow->hasAssetSelection(); }, projectKeys);
     bind("project.paste", [this](const CommandArgs&) { projectWindow->pasteClipboard(); },
          [this]() { return projectWindow->canPasteClipboard(); }, projectKeys);
+    bind("project.duplicate", [this](const CommandArgs&) { projectWindow->duplicateSelection(); },
+         [this]() { return projectWindow->canDuplicate(); }, projectKeys);
     bind("project.selectAll", [this](const CommandArgs&) { projectWindow->selectAllInListing(); }, nullptr, projectKeys);
     bind("project.delete", [this](const CommandArgs&) { projectWindow->requestDeleteSelection(); },
          [this]() { return projectWindow->hasAssetSelection(); }, projectKeys);
@@ -381,6 +419,7 @@ void editor::App::registerCommands(){
     // ---- Animation window (clip mode) and Pose Animation window: their own commands
     AnimationWindowClip::bindCommands(catalog, [this]() { return animationWindow->getClipMode(); });
     poseAnimationWindow->bindCommands(catalog, [this]() { return poseKeysActive(); }, [this]() { return poseKeysFromSceneView(); });
+    spritePreviewWindow->bindCommands(catalog, [this]() { return spritePreviewWindow->isFocused(); });
 
     // ---- The Sound Browser, while it has focus: keys typed into its search stay text
     auto browser = [&bind, this](const char* id, std::function<void()> run, bool whileTyping = false) {
@@ -448,7 +487,8 @@ void editor::App::registerPanelClaims(){
     claims.add({"Jobs & Memory", [this]() { return jobsMemoryWindow->isFocused(); }, {}});
     claims.add({"Project", [this]() { return projectWindow->isFocused(); },
                 {{Verb::Delete, own("project.delete")}, {Verb::Copy, own("project.copy")}, {Verb::Cut, own("project.cut")},
-                 {Verb::Paste, own("project.paste")}, {Verb::SelectAll, own("project.selectAll")}, {Verb::Rename, own("project.rename")}}});
+                 {Verb::Paste, own("project.paste")}, {Verb::SelectAll, own("project.selectAll")}, {Verb::Rename, own("project.rename")},
+                 {Verb::Duplicate, own("project.duplicate")}}});
     claims.add({"Console", [this]() { return consoleWindow->isListFocused(); }, {{Verb::Copy, own("console.copy")}}});
     claims.add({"Sprite Normal Map", [this]() { return spriteNormalsWindow->isFocused(); },
                 {{Verb::Frame, {{}, nullptr, [this]() { spriteNormalsWindow->requestFit(); }}}}});
@@ -539,7 +579,9 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (ui::ColorPickerWindow::get().isFocused()) state.panels.push_back(ShortcutContext::ColorPicker);
     if (soundBrowserWindow->isFocused()) state.panels.push_back(ShortcutContext::SoundBrowser);
     if (audioCapturesWindow->isFocused()) state.panels.push_back(ShortcutContext::AudioCaptures);
+    if (paletteWindow->takesKeys() || applyPaletteDialog->takesKeys()) state.panels.push_back(ShortcutContext::Palette);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
+    if (spritePreviewWindow->isFocused()) state.panels.push_back(ShortcutContext::SpritePreview);
     return state;
 }
 

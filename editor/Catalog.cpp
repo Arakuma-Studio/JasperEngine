@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 #include "Catalog.h"
+#include "component/ButtonComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
+#include "component/CameraComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/Joint2DComponent.h"
 #include "component/Joint3DComponent.h"
 #include "component/LatticeModifierComponent.h"
 #include "component/MeshPolygonComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/RagdollComponent.h"
 #include "component/Rigidbody2DComponent.h"
@@ -139,6 +142,7 @@ namespace {
         {"material.shaderTextures", SubmeshOverride_ShaderTextures},
         {"material.shaderFeatures", SubmeshOverride_ShaderFeatures},
         {"material.shaderGlobalBindings", SubmeshOverride_ShaderGlobalBindings},
+        {"material.shaderPalettes", SubmeshOverride_ShaderPalettes},
         {"material.blendMode", SubmeshOverride_BlendMode},
         {"material.cullMode", SubmeshOverride_CullMode},
         {"material.depthWrite", SubmeshOverride_DepthWrite},
@@ -268,6 +272,10 @@ ComponentType editor::Catalog::getConflictingComponent(ComponentType type){
 }
 
 std::string editor::Catalog::getComponentConflict(EntityRegistry* registry, Entity entity, ComponentType type){
+    // a Pixel Perfect Camera goes on a camera (S41 R19)
+    if (type == ComponentType::PixelPerfectCameraComponent && registry && registry->isEntityCreated(entity) &&
+            !registry->findComponent<CameraComponent>(entity))
+        return "A Pixel Perfect Camera goes on a GameObject with a Camera (add a Camera first).";
     const ComponentType other = getConflictingComponent(type);
     if (other == ComponentType::Transform || !registry || !registry->isEntityCreated(entity))
         return "";
@@ -952,6 +960,11 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
 }
 
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
+    if (updateFlags & UpdateFlags_Button){
+        if (ButtonComponent* button = registry->findComponent<ButtonComponent>(entity)){
+            button->needUpdateButton = true;
+        }
+    }
     if (updateFlags & UpdateFlags_CanvasGroup){
         // alpha in [0, 1] at once (a NaN keeps the value UISystem last saw)
         if (CanvasGroupComponent* group = registry->findComponent<CanvasGroupComponent>(entity)){

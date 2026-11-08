@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "pixelart/PixelPerfectEditor.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "pool/ShaderPool.h"
@@ -43,6 +44,8 @@
 #include "window/CodeEditor.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/UISystem.h"
+#include "subsystem/RenderSystem.h"
+#include "component/ButtonComponent.h"
 #include "htmlui/HtmlUiImportPanel.h"
 #include "util/EntityPayload.h"
 #include "util/CameraTextureLink.h"
@@ -144,6 +147,13 @@
 #include "component/AnimationPlayerComponent.h"
 #include "action/Action.h"
 #include "pool/TexturePool.h"
+#include "pixelart/aseprite/AsepriteEditorHooks.h"
+#include "pixelart/aseprite/AsepriteSpriteSetup.h"
+#include "sprite/SpriteSheetPool.h"
+#include "subsystem/MeshSystem.h"
+#include "sprite/SpriteSheetSources.h"
+#include "window/SpriteAtlasInspector.h"
+#include "command/CommandHistory.h"
 #include "yaml-cpp/yaml.h"
 #include "soloud.h"
 #include "soloud_wav.h"
@@ -155,6 +165,9 @@
 #include <fstream>
 #include <cctype>
 #include <cfloat>
+#include "util/EntityLabels.h"
+#include "util/TextureLabels.h"
+
 #include <algorithm>
 #include <unordered_set>
 #include <memory>
@@ -169,7 +182,12 @@ static std::string droppedAssetPath(editor::Project* project, const std::string&
 }
 
 // Redraws the component a dropped texture belongs to, used when a preview is undone.
-static void markTextureUpdate(Scene* scene, Entity entity, editor::ComponentType componentType) {
+static void markTextureUpdate(Scene* scene, Entity entity, editor::ComponentType componentType, const std::string& property) {
+    // the row's own update flags redraw any component (a Button's state textures included)
+    const editor::PropertyData prop = editor::Catalog::findProperty(scene, entity, componentType, property);
+    if (prop.ref && prop.updateFlags) {
+        editor::Catalog::updateEntity(scene, entity, prop.updateFlags & ~(uint64_t)editor::UpdateFlags_SceneWide);
+    }
     if (componentType == editor::ComponentType::MeshComponent) {
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         for (unsigned int i = 0; i < mesh.numSubmeshes; i++) {
@@ -200,6 +218,7 @@ static std::vector<float> rotationValue(const Quaternion& value) {
 static std::vector<editor::EnumEntry>& entriesPrimitiveType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kPrimitiveType);
 static std::vector<editor::EnumEntry>& entriesMaterialAlphaMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kMaterialAlphaMode);
 static std::vector<editor::EnumEntry>& entriesPivotPreset = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kPivotPreset);
+static std::vector<editor::EnumEntry>& entriesSpriteDrawMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kSpriteDrawMode);
 static std::vector<editor::EnumEntry>& entriesLightType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLightType);
 static std::vector<editor::EnumEntry>& entriesShadowCaster2DShape = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kShadowCaster2DShape);
 static std::vector<editor::EnumEntry>& entriesLightShading = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLightShading);
@@ -486,6 +505,22 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                     value = static_cast<LitQuality>(currentItem);
                 }
             }
+            if constexpr (std::is_same_v<T, PlanarReflectionResolution>) {
+                const char* resolutionNames[] = { "Off", "Quarter", "Half", "Full" };
+                int currentItem = std::clamp(static_cast<int>(value), 0, 3);
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, resolutionNames, IM_ARRAYSIZE(resolutionNames));
+                if (changed) {
+                    value = static_cast<PlanarReflectionResolution>(currentItem);
+                }
+            }
+            if constexpr (std::is_same_v<T, WaterWakeResolution>) {
+                const char* resolutionNames[] = { "Auto", "Low (128)", "Medium (256)", "High (512)" };
+                int currentItem = std::clamp(static_cast<int>(value), 0, 3);
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, resolutionNames, IM_ARRAYSIZE(resolutionNames));
+                if (changed) {
+                    value = static_cast<WaterWakeResolution>(currentItem);
+                }
+            }
             if constexpr (std::is_same_v<T, SceneColorScale>) {
                 const char* scaleNames[] = { "Full", "Half" };
                 int currentItem = static_cast<int>(value);
@@ -500,6 +535,45 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                 changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, filterNames, IM_ARRAYSIZE(filterNames));
                 if (changed) {
                     value = (currentItem == 1) ? TextureFilter::LINEAR : TextureFilter::NEAREST;
+                }
+            }
+            break;
+        case ScenePropertyInputType::LayerMask:
+            if constexpr (std::is_same_v<T, uint32_t>) {
+                // Unity's mask field: toggles keep the list open, Nothing and Everything set every bit
+                if (ImGui::BeginCombo(("##" + propertyName).c_str(), sceneLayerMaskLabel(value).c_str())) {
+                    ImGui::PushItemFlag(ImGuiItemFlags_AutoClosePopups, false);
+                    uint32_t namedMask = 0;
+                    for (int layer = 0; layer < MAX_LAYERS; layer++) {
+                        if (!TagManager::layerToName(layer).empty()) namedMask |= (1u << layer);
+                    }
+                    if (ImGui::MenuItem("Nothing", nullptr, value == LAYER_MASK_NOTHING)) {
+                        value = LAYER_MASK_NOTHING;
+                        changed = true;
+                    }
+                    if (ImGui::MenuItem("Everything", nullptr, value == LAYER_MASK_EVERYTHING)) {
+                        value = LAYER_MASK_EVERYTHING;
+                        changed = true;
+                    }
+                    for (int layer = 0; layer < MAX_LAYERS; layer++) {
+                        const std::string name = TagManager::layerToName(layer);
+                        if (name.empty()) continue;
+                        const uint32_t bit = 1u << layer;
+                        if (ImGui::MenuItem((std::to_string(layer) + ": " + name).c_str(), nullptr, (value & bit) != 0)) {
+                            value = (value & bit) ? (value & ~bit) : (value | bit);
+                            // every named layer on reads as Everything, as Unity stores it
+                            if ((value & namedMask) == namedMask) value = LAYER_MASK_EVERYTHING;
+                            changed = true;
+                        }
+                    }
+                    ImGui::PopItemFlag();
+                    ImGui::EndCombo();
+                }
+                if (changed) {
+                    // one undo step per toggle
+                    Command* maskCmd = new ScenePropertyCmd<T>(project, sceneProject->id, propertyName, value);
+                    CommandHandle::get(sceneProject->id)->addCommandNoMerge(maskCmd);
+                    changed = false;
                 }
             }
             break;
@@ -1475,15 +1549,7 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
                             originalTex[id][entity] = Texture(*valueRef);
                             if (*valueRef != Texture(droppedRelativePath)){
                                 *valueRef = Texture(droppedRelativePath);
-                                if (cpType == ComponentType::MeshComponent){
-                                    unsigned int numSubmeshes = sceneProject->scene->getComponent<MeshComponent>(entity).numSubmeshes;
-                                    for (unsigned int i = 0; i < numSubmeshes; i++){
-                                        sceneProject->scene->getComponent<MeshComponent>(entity).submeshes[i].needUpdateTexture = true;
-                                    }
-                                }
-                                if (cpType == ComponentType::UIComponent){
-                                    sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
-                                }
+                                markTextureUpdate(sceneProject->scene, entity, cpType, id);
                             }
                         }
                     }
@@ -1493,7 +1559,7 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
                             Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                             *valueRef = originalTex[id][entity];
                             if (!insideAssets){
-                                markTextureUpdate(sceneProject->scene, entity, cpType);
+                                markTextureUpdate(sceneProject->scene, entity, cpType, id);
                                 continue;
                             }
                             cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture);
@@ -1532,15 +1598,7 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
                 Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                 if (*valueRef != originalTex[id][entity]){
                     *valueRef = originalTex[id][entity];
-                    if (cpType == ComponentType::MeshComponent){
-                        unsigned int numSubmeshes = sceneProject->scene->getComponent<MeshComponent>(entity).numSubmeshes;
-                        for (unsigned int i = 0; i < numSubmeshes; i++){
-                            sceneProject->scene->getComponent<MeshComponent>(entity).submeshes[i].needUpdateTexture = true;
-                        }
-                    }
-                    if (cpType == ComponentType::UIComponent){
-                        sceneProject->scene->getComponent<UIComponent>(entity).needUpdateTexture = true;
-                    }
+                    markTextureUpdate(sceneProject->scene, entity, cpType, id);
                 }
             }
 
@@ -1581,7 +1639,7 @@ void editor::InspectorWindow::dragDropResourcesTextureCube(ComponentType cpType,
                             }
                             if (*valueRef != updated){
                                 *valueRef = updated;
-                                markTextureUpdate(sceneProject->scene, entity, cpType);
+                                markTextureUpdate(sceneProject->scene, entity, cpType, id);
                             }
                         }
                     }
@@ -1591,7 +1649,7 @@ void editor::InspectorWindow::dragDropResourcesTextureCube(ComponentType cpType,
                             Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                             *valueRef = originalTex[dragId][entity];
                             if (!insideAssets){
-                                markTextureUpdate(sceneProject->scene, entity, cpType);
+                                markTextureUpdate(sceneProject->scene, entity, cpType, id);
                                 continue;
                             }
 
@@ -1626,7 +1684,7 @@ void editor::InspectorWindow::dragDropResourcesTextureCube(ComponentType cpType,
                 Texture* valueRef = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
                 if (*valueRef != originalTex[dragId][entity]){
                     *valueRef = originalTex[dragId][entity];
-                    markTextureUpdate(sceneProject->scene, entity, cpType);
+                    markTextureUpdate(sceneProject->scene, entity, cpType, id);
                 }
             }
 
@@ -1825,8 +1883,80 @@ static std::string layerDisplayName(int layer){
     return name.empty() ? "Layer " + std::to_string(layer) : name;
 }
 
+void editor::InspectorWindow::drawScenePlanarReflections(SceneProject* sceneProject, ImGuiTableFlags tableFlags){
+    ImGui::SeparatorText("Planar Reflections");
+    if (!ImGui::BeginTable("scene_planar_reflection_table", 2, tableFlags))
+        return;
+    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Clip Plane Offset"));
+    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+    const float comboWidth = ImGui::CalcTextSize("Quarter").x + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f;
+    drawScenePropertyRow<PlanarReflectionResolution>(sceneProject, "planar_reflection_resolution", "Resolution", ScenePropertyInputType::Combo, comboWidth, 0.0f, 1.0f,
+        "Water with Planar Reflection shows the scene mirrored in it: each camera draws the scene again, mirrored, once for every water height it sees. "
+        "This is the size of that pass, per side of the camera's view: Half (default) draws a quarter of the pixels, Quarter a sixteenth (mobile). "
+        "Off draws none: such water shows the sky or reflection probe reflection instead.");
+    if (jasperengine::editor::Catalog::getSceneProperty<PlanarReflectionResolution>(sceneProject->scene, "planar_reflection_resolution") != PlanarReflectionResolution::OFF) {
+        drawScenePropertyRow<uint32_t>(sceneProject, "planar_reflection_layers", "Layers", ScenePropertyInputType::LayerMask, -1.0f, 0.0f, 1.0f,
+            "The layers the reflection draws (with the camera's Culling Mask): leave out small or far objects to save draws.");
+        drawScenePropertyRow<bool>(sceneProject, "planar_reflection_shadows", "Shadows", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
+            "The reflection samples the camera's shadow maps (no shadow map is drawn for it). Off: the reflected scene is lit unshadowed, cheaper on mobile.");
+        drawScenePropertyRow<float>(sceneProject, "planar_reflection_far_clip", "Far Clip Plane", ScenePropertyInputType::DragFloat, -1.0f, 0.0f, 100000.0f,
+            "How far the reflection draws (metres; 0: as far as the camera). A shorter distance culls more objects.");
+        drawScenePropertyRow<float>(sceneProject, "planar_reflection_clip_offset", "Clip Plane Offset", ScenePropertyInputType::DragFloat, -1.0f, -10.0f, 10.0f,
+            "The reflection leaves out what is within this distance above the water's rest level (Unity's Clip Plane Offset), so objects crossing the surface do not show their wet parts mirrored.");
+        drawScenePropertyRow<int>(sceneProject, "max_planar_reflections", "Max Planes", ScenePropertyInputType::DragInt, -1.0f, 1.0f, 4.0f,
+            "The most water heights a camera reflects (the nearest ones); water at other heights shows the sky or reflection probe reflection.");
+    }
+
+    // what the last frame drew for them
+    const RenderSystem::PlanarReflectionStats stats = sceneProject->scene->getSystem<RenderSystem>()->getPlanarReflectionStats();
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::TextUnformatted("In Use");
+    ImGui::TableSetColumnIndex(1);
+    if (stats.passes > 0) {
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_GAUGE_HIGH " %u pass%s, %u x %u", stats.passes, stats.passes == 1 ? "" : "es", stats.width, stats.height);
+    } else {
+        ImGui::TextDisabled("None");
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 32.0f);
+        if (stats.passes > 0 || stats.fallbacks > 0)
+            ImGui::Text("Last frame: %u water height%s seen, %u reflection pass%s drawn, %u over Max Planes (showing the sky reflection).",
+                        stats.planes, stats.planes == 1 ? "" : "s", stats.passes, stats.passes == 1 ? "" : "es", stats.fallbacks);
+        else
+            ImGui::TextUnformatted("Last frame drew no planar reflection: no visible water with Planar Reflection, so they cost nothing.");
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+    ImGui::EndTable();
+}
+
+void editor::InspectorWindow::drawSceneWaterWakes(SceneProject* sceneProject, ImGuiTableFlags tableFlags){
+    ImGui::SeparatorText("Water Wakes");
+    if (!ImGui::BeginTable("scene_water_wakes_table", 2, tableFlags))
+        return;
+    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Resolution"));
+    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+    const float comboWidth = ImGui::CalcTextSize("Medium (256)").x + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f;
+    drawScenePropertyRow<WaterWakeResolution>(sceneProject, "water_wake_resolution", "Resolution", ScenePropertyInputType::Combo, comboWidth, 0.0f, 1.0f,
+        "The wakes of Water Wake components live in one map around the main camera, updated on the CPU and sent to the GPU each frame "
+        "while a wake shows. Auto: 256 texels a side, 128 on mobile and web.");
+    drawScenePropertyRow<float>(sceneProject, "water_wake_area", "Area", ScenePropertyInputType::DragFloat, -1.0f, 8.0f, 1024.0f,
+        "Metres the wake map spans around the main camera; wakes farther away are not drawn. A smaller area shows finer wakes.");
+    drawScenePropertyRow<float>(sceneProject, "water_wake_fade", "Fade", ScenePropertyInputType::DragFloat, -1.0f, 0.1f, 120.0f,
+        "Seconds a wake takes to fade (an eighth of its foam is left by then, as scattered foam).");
+    ImGui::EndTable();
+}
+
 // Unity's mask field label: Nothing, Everything, the one layer's name, or Mixed...
 static std::string layerMaskLabel(uint32_t mask){
+    return editor::InspectorWindow::sceneLayerMaskLabel(mask);
+}
+
+std::string editor::InspectorWindow::sceneLayerMaskLabel(uint32_t mask){
     if (mask == LAYER_MASK_NOTHING) return "Nothing";
     if (mask == LAYER_MASK_EVERYTHING) return "Everything";
     for (int layer = 0; layer < MAX_LAYERS; layer++){
@@ -1910,7 +2040,9 @@ void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, c
     ImGui::BeginDisabled(!single || readOnly);
     if (nameFocusFrames > 0 && single) ImGui::SetKeyboardFocusHere();
     if (nameOverridden) ImGui::PushFont(App::getBoldFont(), 0.0f);
-    ImGui::InputText("##input_name", nameBuffer, IM_ARRAYSIZE(nameBuffer));
+    // an object a script made without a name: "GameObject <id>" as the hint (the name stays empty)
+    const std::string nameHint = single ? entityDisplayName(std::string(), entities[0]) : std::string();
+    ImGui::InputTextWithHint("##input_name", nameHint.c_str(), nameBuffer, IM_ARRAYSIZE(nameBuffer));
     if (nameOverridden) ImGui::PopFont();
     if (ImGui::IsItemActive()) nameFocusFrames = 0;
     ImGui::EndDisabled();
@@ -4763,22 +4895,17 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         ImGui::BeginChild("textureframe", ImVec2(-texButtonsReserve, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2),
             false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
-        std::string texName = newValue.getId();
+        // the file's name, never the pool id ("ship.png", not "sprites/ship.png|alphaborder")
+        const TextureSlotLabel slotLabel = textureSlotLabel(newValue, [this](const std::string& path) {
+            return project->assetHintToProjectPath(path, AssetPathBase::Assets);
+        });
+        std::string texName = slotLabel.text;
         if (isCameraTexture) {
             texName = std::string(ICON_FA_VIDEO) + " " + CameraTextureLink::cameraName(sceneProject->scene, newValue);
         } else if (isFluidTexture) {
             texName = std::string(ICON_FA_DROPLET) + " " + FluidTextureLink::fluidName(sceneProject->scene, newValue);
         } else if (isVideoTexture) {
             texName = std::string(ICON_FA_FILM) + " " + VideoTextureLink::videoName(sceneProject->scene, newValue);
-        } else {
-            // Never show the "?svgScale=" suffix in the slot; display the clean path/name.
-            texName = TextureData::parseSvgScalePath(texName);
-            if (std::filesystem::exists(texName)) {
-                texName = std::filesystem::path(texName).filename().string();
-            }
-        }
-        if (texName.empty()) {
-            texName = "< Not set >";
         }
         // S04 R28: a reference whose asset is gone stays, shown red with its last path
         std::string missingTooltip;
@@ -4806,8 +4933,8 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         ImGui::EndChild();
         if (!missingTooltip.empty()){
             ImGui::SetItemTooltip("%s", missingTooltip.c_str());
-        } else if (!newValue.getId().empty()){
-            ImGui::SetItemTooltip("%s", newValue.getId().c_str());
+        } else if (!slotLabel.tooltip.empty()){
+            ImGui::SetItemTooltip("%s", (isCameraTexture || isFluidTexture || isVideoTexture ? newValue.getId() : slotLabel.tooltip).c_str());
         }
         ImGui::PopStyleColor();
 
@@ -4883,7 +5010,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                     continue;
 
                 hasCamera = true;
-                std::string cameraLabel = std::string(ICON_FA_VIDEO) + " " + scene->getEntityName(cameraEntity);
+                std::string cameraLabel = std::string(ICON_FA_VIDEO) + " " + entityDisplayName(scene->getEntityName(cameraEntity), cameraEntity);
                 if (ImGui::MenuItem(cameraLabel.c_str())) {
                     applyCameraTexture(cameraEntity, cpType, id, sceneProject, entities, settings.onValueChanged);
                     finishProperty = true;
@@ -4904,7 +5031,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                         ImGui::Separator();
                         separated = true;
                     }
-                    const std::string videoLabel = std::string(ICON_FA_FILM) + " Video Player: " + scene->getEntityName(videoEntity) +
+                    const std::string videoLabel = std::string(ICON_FA_FILM) + " Video Player: " + entityDisplayName(scene->getEntityName(videoEntity), videoEntity) +
                                                    "##video_" + std::to_string(videoEntity);
                     const bool linked = VideoTextureLink::parse(newValue.getId()) == videoEntity && !dif;
                     if (ImGui::MenuItem(videoLabel.c_str(), nullptr, linked)) {
@@ -4929,7 +5056,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
                 hasFluid = true;
                 const FluidSimulationComponent& fluid = fluidsArray->getComponentFromIndex(f);
-                std::string fluidLabel = std::string(ICON_FA_DROPLET) + " " + scene->getEntityName(fluidEntity) + "##fluid_" + std::to_string(fluidEntity);
+                std::string fluidLabel = std::string(ICON_FA_DROPLET) + " " + entityDisplayName(scene->getEntityName(fluidEntity), fluidEntity) + "##fluid_" + std::to_string(fluidEntity);
                 const bool linked = FluidTextureLink::parse(newValue.getId()) == fluidEntity && !dif;
                 if (ImGui::MenuItem(fluidLabel.c_str(), nullptr, linked)) {
                     applyFluidTexture(fluidEntity, cpType, id, sceneProject, entities, settings.onValueChanged);
@@ -6710,6 +6837,10 @@ bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform,
         ImGui::SameLine();
         helpMarker(name == "resolution"
             ? "Reserved uniform, written every frame with the size of the render target: xy = width and height, zw = 1 / width and 1 / height.\n\nRename it to edit a value of your own here."
+            : name == "sceneTime"
+            ? "Reserved uniform, written every frame with the scene's game clock: seconds the scene has run, scaled by the time scale, held while the game is paused.\n\nRename it to edit a value of your own here."
+            : name.rfind("water", 0) == 0
+            ? "Reserved uniform, written every draw with the Water Excluders over the mesh and the scene's Water Wake map (includes/water_interaction_params.glsl)."
             : "Reserved uniform, written every frame with the seconds elapsed since startup.\n\nRename it to edit a value of your own here.");
         return false;
     }
@@ -7320,7 +7451,28 @@ void editor::InspectorWindow::drawScenePostProcess(SceneProject* sceneProject){
 
             // the library's post-process shaders (@shader postprocess), a project file, or a fork
             const std::string passId = "post_process_" + std::to_string(i);
-            drawLibraryShaderCombo(passes[i].shader, ShaderType::POSTPROCESS, setShader, "Edit Shader Files##" + passId);
+            // a fork of the pass's library shader (library:underwater keeps its switch, @role)
+            auto onForkLibrary = [this, sceneId, i](const std::string& library){
+                std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(library);
+                const std::string defaultName = (manifest && !manifest->name.empty()) ? manifest->name : ShaderReference::getLibraryName(library);
+                shaderForkDialog.open(project, ShaderType::POSTPROCESS, defaultName,
+                    [this, sceneId, i, library](const std::filesystem::path& directory, const std::string& name, bool forkIncludes){
+                        SceneProject* currentScene = project->getScene(sceneId);
+                        if (!currentScene || !currentScene->scene)
+                            return;
+                        std::vector<PostProcessPass> newPasses = Catalog::getSceneProperty<std::vector<PostProcessPass>>(currentScene->scene, "post_process");
+                        if (i >= newPasses.size() || ShaderReference::getBase(newPasses[i].shader) != library)
+                            return;
+                        // the fork keeps the pass's values (the same members)
+                        auto makePropertyCmd = [this, sceneId, i, newPasses](const std::string& forkBase) mutable {
+                            newPasses[i].shader = forkBase;
+                            return std::make_unique<ScenePropertyCmd<std::vector<PostProcessPass>>>(project, sceneId, "post_process", newPasses);
+                        };
+                        commitShaderFork(sceneId, std::make_unique<ForkShaderCmd>(project, ShaderType::POSTPROCESS, makePropertyCmd, directory,
+                                                                                 name, forkIncludes, library));
+                    }, nullptr, library);
+            };
+            drawLibraryShaderCombo(passes[i].shader, ShaderType::POSTPROCESS, setShader, "Edit Shader Files##" + passId, nullptr, onForkLibrary);
             drawShaderRowContents(passes[i].shader, setShader, onFork, passId);
 
             drawPostProcessPassFields(sceneProject, passes, i);
@@ -8403,10 +8555,33 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
 }
 
 void editor::InspectorWindow::drawUIComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    // a Button writes the colour and/or the texture from its state (its transition): those rows
+    // are read-only, the Button's Normal values are what to edit
+    bool colorByButton = !entities.empty();
+    bool textureByButton = !entities.empty();
+    for (Entity entity : entities){
+        const ButtonComponent* button = sceneProject->scene->findComponent<ButtonComponent>(entity);
+        colorByButton = colorByButton && button && UISystem::buttonOwnsUIColor(*button);
+        textureByButton = textureByButton && button && UISystem::buttonOwnsUITexture(*button);
+    }
+
     beginTable(cpType, getLabelSize("Texture"));
+    ImGui::BeginDisabled(colorByButton);
     propertyRow(RowPropertyType::Color4L, cpType, "color", "Color", sceneProject, entities);
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(textureByButton);
     propertyRow(RowPropertyType::Texture, cpType, "texture", "Texture", sceneProject, entities);
+    ImGui::EndDisabled();
     endTable();
+    if (colorByButton || textureByButton){
+        const char* note = (colorByButton && textureByButton) ? "Color and Texture are set by the Button's transition: edit its Normal Color and Normal Texture"
+                         : colorByButton ? "Color is set by the Button's transition: edit its Normal Color"
+                                         : "Texture is set by the Button's transition: edit its Normal Texture";
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::TextWrapped("%s", note);
+        ImGui::PopStyleColor();
+        ImGui::SetItemTooltip("A Button whose Normal is unset takes these values when it loads; set the Button's Transition to None to edit them yourself");
+    }
 
     drawCustomShaderRow(cpType, ShaderType::UI, sceneProject, entities);
 
@@ -8961,6 +9136,82 @@ void editor::InspectorWindow::drawImageComponent(ComponentType cpType, SceneProj
     endTable();
 }
 
+void editor::InspectorWindow::drawSheetSpriteSection(ComponentType cpType, SceneProject* sceneProject, Entity entity){
+    namespace ase = pixelart::aseprite;
+    const SpriteComponent& sprite = sceneProject->scene->getComponent<SpriteComponent>(entity);
+    std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite.sheet.path);
+    const bool isAseprite = SpriteSheetPool::isAsepritePath(sprite.sheet.path);
+    separatorText("Sprite Sheet");
+    if (!sheet || sheet->frames.empty()) {
+        const bool importing = isAseprite && ase::AsepriteImporter::get().isPending(sprite.sheet.path);
+        ImGui::TextColored(Theme::Colors::WarningText, "%s", importing ? "Importing..." : "The sheet has no frames (see the Console).");
+        return;
+    }
+    const int count = sheet->frameCount();
+    drawSheetFramePicker(cpType, sceneProject, entity, *sheet);
+    ImGui::TextDisabled("%d frames, %d tags, %d slices", count, (int)sheet->tags.size(), (int)sheet->slices.size());
+
+    // a texture sheet: its Slicer (S45 R12); an atlas or a packed source: where it is drawn from
+    if (SpriteSheetSources::isTexturePath(sprite.sheet.path)) {
+        // and the Sprite Normal Map of its frames, side by side
+        const float sheetHalf = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+        if (ImGui::Button(ICON_FA_GRIP " Slicer Tool", ImVec2(sheetHalf, 0))) openSpriteSlicer(cpType, sceneProject, entity, sprite.sheet.path);
+        UIProbe::item("inspector.sprite.slicerTool");
+        ImGui::SameLine();
+        spritenormalsentry::normalMapButton(sceneProject, entity, ImGui::GetContentRegionAvail().x);
+        spritenormalsentry::normalMapHint(sceneProject, entity);
+    }
+    if (SpriteSheetSources::isPacked(sprite.sheet.path)) {
+        ImGui::TextDisabled(ICON_FA_TABLE_CELLS " Drawn from a Sprite Atlas page");
+    }
+    const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+    if (isAseprite) {
+        if (ImGui::Button(ICON_FA_PEN_TO_SQUARE " Open in Aseprite", ImVec2(half, 0))) {
+            ase::openInAsepriteOrFallback(project, {sprite.sheet.path}, true);
+        }
+        ImGui::SameLine();
+    }
+    ImGui::BeginDisabled(sheet->slices.empty());
+    if (ImGui::Button(ICON_FA_VECTOR_SQUARE " Create Colliders from Slices", ImVec2(isAseprite ? -FLT_MIN : half, 0))) {
+        std::vector<Command*> commands;
+        std::vector<std::string> names;
+        pixelart::PixelProblem problem;
+        if (!ase::sliceColliderCommands(project, sceneProject->id, entity, commands, names, problem)) {
+            Out::warning("Create Colliders from Slices: %s", problem.message.c_str());
+        } else if (ase::runAsOneStep(sceneProject->id, std::move(commands))) {
+            Out::info("Created %d slice collider(s) on \"%s\"", (int)names.size(), sceneProject->scene->getEntityName(entity).c_str());
+        }
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("A Rigidbody 2D collider per slice, following the slice's box on every frame (Is Trigger when its user data says sensor: true)");
+    }
+    const nlohmann::json& ud = sheet->userData;
+    const bool hasProperties = ud.is_object() && ud.contains("properties") && ud["properties"].is_object() && !ud["properties"].empty();
+    if (hasProperties) {
+        if (ImGui::Button(ICON_FA_LIST_CHECK " Apply Sprite Properties", ImVec2(-FLT_MIN, 0))) {
+            CommandHistory* history = CommandHandle::get(sceneProject->id);
+            const size_t mark = history->mark();
+            std::vector<std::string> applied;
+            std::vector<pixelart::PixelProblem> problems;
+            const bool ok = ase::applySpriteProperties(project, sceneProject->id, entity, *sheet, [history](Command* command) {
+                command->setNoMerge();
+                return history->addCommand(command);
+            }, applied, problems);
+            if (ok) {
+                history->groupSince(mark);
+            } else {
+                while (history->position() > mark && history->canUndo() && history->undo()) {}
+            }
+            for (const pixelart::PixelProblem& p : problems) Out::warning("Apply Sprite Properties: %s: %s", p.field.c_str(), p.message.c_str());
+            if (ok) Out::info("Applied %d sprite propert%s", (int)applied.size(), applied.size() == 1 ? "y" : "ies");
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Sets the Aseprite file's user properties named <component>.<property> (light2d.intensity...) on this GameObject");
+        }
+    }
+}
+
 void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsInt;
     settingsInt.stepSize = 1.0f;
@@ -8973,14 +9224,41 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
     RowSettings settingsPivot;
     settingsPivot.enumEntries = &entriesPivotPreset;
 
-    beginTable(cpType, getLabelSize("Texture Scale"));
+    RowSettings settingsSheet;
+    settingsSheet.help = "A texture, an .aseprite file or a .spriteatlas: the Sprite shows one of its frames (an atlas packing it draws it from its page)";
+    RowSettings settingsDrawMode;
+    settingsDrawMode.enumEntries = &entriesSpriteDrawMode;
+    settingsDrawMode.help = "Sliced: a frame with a border as 9 quads at Width x Height, corners unscaled";
+    // S41: texels per world unit (0: the project's) and the rotation policy under a Pixel Perfect Camera
+    RowSettings settingsPpu;
+    settingsPpu.secondColSize = 6 * ImGui::GetFontSize();
+    settingsPpu.help = "Texels per world unit. 0 = the Sprite Sheet's, else Project (" + std::to_string(project->getPixelsPerUnit()) + ").";
+    RowSettings settingsPixelRotation;
+    settingsPixelRotation.enumEntries = enumEntries(reflect::enums::kPixelRotation);
+    settingsPixelRotation.help = "Under a Pixel Perfect Camera: the camera's rotation policy, 90 Degree Steps or Rotate On Grid.";
+
+    const bool singleSheetSprite = entities.size() == 1 && !sceneProject->scene->getComponent<SpriteComponent>(entities[0]).sheet.empty();
+    beginTable(cpType, getLabelSize("Pixels Per Unit"));
+    propertyRow(RowPropertyType::Asset, cpType, "sheet", "Sprite", sceneProject, entities, settingsSheet);
+    propertyRow(RowPropertyType::Enum, cpType, "drawMode", "Draw Mode", sceneProject, entities, settingsDrawMode);
+    endTable();
+    if (singleSheetSprite) drawSpriteNativeSize(cpType, sceneProject, entities[0]);
+    beginTable(cpType, getLabelSize("Pixels Per Unit"), "sprite_size");
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Enum, cpType, "pivotPreset", "Pivot", sceneProject, entities, settingsPivot);
     propertyRow(RowPropertyType::Float, cpType, "textureScaleFactor", "Texture Scale", sceneProject, entities, settingsTexScale);
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, settingsPpu);
+    propertyRow(RowPropertyType::Enum, cpType, "pixelRotation", "Pixel Rotation", sceneProject, entities, settingsPixelRotation);
 
     endTable();
+
+    // a sheet sprite (S44): its frame by name, and what its .aseprite file brings
+    if (entities.size() == 1 && !sceneProject->scene->getComponent<SpriteComponent>(entities[0]).sheet.empty()) {
+        drawSheetSpriteSection(cpType, sceneProject, entities[0]);
+        return;
+    }
 
     // --- Frames Rect Section ---
     if (entities.size() == 1) {
@@ -8993,65 +9271,19 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
             }
         }
 
-        separatorText("Sprite Frames");
+        // a legacy sprite drawn from an atlas page shows its source texture's frames (S45 R8)
+        if (meshComp && meshComp->numSubmeshes > 0) previewTexture.setPath(MeshSystem::spriteSourceTexture(sprite, *meshComp));
+        drawLegacyFramesHeader(cpType, sceneProject, entities[0]);
 
         // Frame count from numFramesRect
         int activeFrameCount = (int)sprite.numFramesRect;
 
-        // Sprite slicer tool button
-        // the Slicer Tool and the Sprite Normal Map (this texture with these frames), side by side
+        // the Slicer Tool (S45 R12: it writes the texture's Sprite Mode and makes this a sheet
+        // sprite) and the Sprite Normal Map (this texture with these frames), side by side
         const float spriteFramesHalf = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+        const std::string slicedTexture = previewTexture.getPath();
         if (ImGui::Button(ICON_FA_GRIP " Slicer Tool", ImVec2(spriteFramesHalf, 0))) {
-            textureSlicerToolDialog.open(
-                previewTexture,
-                static_cast<int>(sprite.width),
-                static_cast<int>(sprite.height),
-                [this, sceneProject, entities, cpType, previewTexture](const TextureSlicerToolDialog::SliceResult& result) {
-                    editor::MultiPropertyCmd* multiCmd = new editor::MultiPropertyCmd();
-
-                    // Clear existing frames beyond new count
-                    SpriteComponent& sprite = sceneProject->scene->getComponent<SpriteComponent>(entities[0]);
-                    for (unsigned int i = (unsigned int)result.rects.size(); i < sprite.numFramesRect; i++) {
-                        std::string prefix = "framesRect[" + std::to_string(i) + "]";
-                        multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entities[0], cpType,
-                            prefix + ".name", std::string(""));
-                        multiCmd->addPropertyCmd<Vector4>(project, sceneProject->id, entities[0], cpType,
-                            prefix + ".rect", Vector4(0, 0, 0, 0));
-                    }
-
-                    // Set new frames from slicer result
-                    for (size_t i = 0; i < result.rects.size(); i++) {
-                        std::string prefix = "framesRect[" + std::to_string(i) + "]";
-                        multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entities[0], cpType,
-                            prefix + ".name", result.rects[i].name);
-                        multiCmd->addPropertyCmd<Vector4>(project, sceneProject->id, entities[0], cpType,
-                            prefix + ".rect", Vector4(result.rects[i].rect.getX(), result.rects[i].rect.getY(),
-                                result.rects[i].rect.getWidth(), result.rects[i].rect.getHeight()));
-                    }
-
-                    // Update numFramesRect
-                    unsigned int newCount = (unsigned int)result.rects.size();
-                    multiCmd->addPropertyCmd<unsigned int>(project, sceneProject->id, entities[0], cpType,
-                        "numFramesRect", newCount);
-
-                    // Apply first frame to sprite mesh
-                    MeshComponent* meshComp = sceneProject->scene->findComponent<MeshComponent>(entities[0]);
-                    int sheetWidth = !previewTexture.empty() ? previewTexture.getWidth() : (int)sprite.width;
-                    int sheetHeight = !previewTexture.empty() ? previewTexture.getHeight() : (int)sprite.height;
-                    if (meshComp && meshComp->numSubmeshes > 0 && !result.rects.empty() && sheetWidth > 0 && sheetHeight > 0) {
-                        const Rect& firstFrameRect = result.rects[0].rect;
-                        multiCmd->addPropertyCmd<Vector4>(project, sceneProject->id, entities[0], ComponentType::MeshComponent,
-                            "submeshes[0].textureRect", Vector4(
-                                firstFrameRect.getX() / (float)sheetWidth,
-                                firstFrameRect.getY() / (float)sheetHeight,
-                                firstFrameRect.getWidth() / (float)sheetWidth,
-                                firstFrameRect.getHeight() / (float)sheetHeight));
-                    }
-
-                    multiCmd->setNoMerge();
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-                }
-            );
+            openSpriteSlicer(cpType, sceneProject, entities[0], slicedTexture);
         }
         ImGui::SameLine();
         spritenormalsentry::normalMapButton(sceneProject, entities[0], ImGui::GetContentRegionAvail().x);
@@ -9858,11 +10090,16 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
     settingsTexScale.secondColSize = 6 * ImGui::GetFontSize();
     settingsTexScale.help = "Increase or decrease texture area by a factor";
 
-    beginTable(cpType, getLabelSize("Reserve Tiles"));
+    RowSettings settingsPpu;
+    settingsPpu.secondColSize = 6 * ImGui::GetFontSize();
+    settingsPpu.help = "Texels per world unit. 0 = Project (" + std::to_string(project->getPixelsPerUnit()) + ").";
+
+    beginTable(cpType, getLabelSize("Pixels Per Unit"));
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Float, cpType, "textureScaleFactor", "Texture Scale", sceneProject, entities, settingsTexScale);
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, settingsPpu);
     propertyRow(RowPropertyType::UInt, cpType, "reserveTiles", "Reserve Tiles", sceneProject, entities, settingsInt);
     endTable();
 
@@ -13062,7 +13299,17 @@ void editor::InspectorWindow::show(){
         if (!inspectedImage.empty() && Util::isImageFile(inspectedImage.string()) && drawSpriteNormalsAsset(inspectedImage)) {
             ImGui::Separator();
         }
-        const bool drewAssets = textureImporter->draw(project->getInspectedAssets());
+        bool drewAssets = textureImporter->draw(project->getInspectedAssets());
+        // .aseprite files: the Aseprite Importer (S44 R30)
+        if (!drewAssets) {
+            if (!asepriteImporter) asepriteImporter = std::make_unique<AsepriteImporterView>(project);
+            drewAssets = asepriteImporter->draw(project->getInspectedAssets());
+        }
+        if (!drewAssets) {
+            // S45: a .spriteatlas
+            if (!spriteAtlasInspector) spriteAtlasInspector = std::make_shared<SpriteAtlasInspector>(project);
+            drewAssets = spriteAtlasInspector->draw(project->getInspectedAssets());
+        }
         if (assetsLocked) ImGui::EndDisabled();
         if (drewAssets) {
             ImGui::End();
@@ -13431,6 +13678,9 @@ void editor::InspectorWindow::show(){
                     ImGui::EndTable();
                 }
 
+                drawScenePlanarReflections(sceneProject, tableFlags);
+                drawSceneWaterWakes(sceneProject, tableFlags);
+
                 ImGui::SeparatorText("Ambient Occlusion (SSAO)");
 
                 if (ImGui::BeginTable("scene_ssao_settings_table", 2, tableFlags)) {
@@ -13591,6 +13841,9 @@ void editor::InspectorWindow::show(){
             }
 
             ImGui::SeparatorText("Fixed Resolution");
+            // R4: a Pixel Perfect Camera on the main camera drives the target instead
+            if (const std::string note = pixelart::fixedResolutionNote(sceneProject); !note.empty())
+                ImGui::TextDisabled("%s", note.c_str());
 
             if (ImGui::BeginTable("scene_fixed_resolution_table", 2, tableFlags)) {
                 ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Enabled"));

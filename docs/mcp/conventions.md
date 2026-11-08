@@ -117,6 +117,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `html_ui` | S17 (`edit_ui_view`) |
 | `scripting` | S23 (`reload_scripts`, `get_script_status`, `set_script_settings`, `list_editor_menus`, `run_editor_menu`, `eval_expression`, the graph tools), upstream's `user_settings` (PlayerPrefs) |
 | `shipping` | S30, upstream's native-bridge `native_plugins` (out of core to fit the budget) |
+| `pixel_art` | S43 (`edit_palette`, `apply_palette`); S42, S46 and S48 add theirs |
 
 A spec may add a group: one row in `McpToolGroups.cpp` (name, one-line description), and a
 `budget.json` `groups` entry only if it needs other limits than the defaults. Registering a tool
@@ -206,6 +207,14 @@ has a budget too: the `guide` entry of `tools/mcp/budget.json`.
   physics, prefabs, shaders, HTML UI); every other area is one entry of the "Other areas" index
   (its key tool and `jasper://docs/<area>`). A guide line needs a case of `tools/mcp/eval` that
   fails without it (`tools/mcp/eval/README.md`).
+- **The client cut.** Clients may keep only the start of the instructions: Claude Code keeps the
+  first 4,096 characters and appends "… [truncated]" (`CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH`).
+  So the guide puts first what an agent needs before any call (the intro, Addressing, The loop,
+  Building scenes and the generated Tool groups line), and the intro tells an agent that cannot see
+  the last section ("## Other areas") to read the whole guide with `read_file jasper://guide`
+  (`read_file` reads any `jasper://` resource, for clients without MCP resources too). The
+  `client_cut` entry of the budget lists those sections; the gate fails when one ends after the
+  cut (counted in UTF-16 code units, as JavaScript counts) or the intro lacks the pointer.
 - An area's detail lives in `docs/mcp/guide/<area>.md`. A file there is embedded at build time
   and served as `jasper://docs/<area>` (`docs/mcp/guide/README.md` lists them); long ones split
   into `### ` section resources.

@@ -165,6 +165,9 @@ void EditorHost::registerProjectSaveDialog(std::function<void(bool)> callback) {
     }
 }
 
+void EditorHost::openPaletteWindow(const std::string&, const std::string&) {
+}
+
 InspectorWindow* EditorHost::getInspectorWindow() const {
     return nullptr;
 }

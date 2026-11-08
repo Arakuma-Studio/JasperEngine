@@ -195,6 +195,12 @@ public:
     // with it (a re-decoded Particle System keeps its runtime)
     static void clearPreviewParticles(Scene* scene, Entity entity);
 
+    // Before a component is assigned over a mesh (a model cleared, an undo or redo restoring
+    // one): its GPU objects, shaders and textures go. Textures a mesh holds keep their pooled data
+    // and render until destroyed; the render system destroys them with a loaded mesh only, so
+    // this also covers one never drawn.
+    static void releaseMeshResources(Scene* scene, Entity entity, MeshComponent& mesh);
+
     // Fills a Texture with the editor built-in default skybox cubemap.
     static void setDefaultSkyTexture(Texture& outTexture);
 
@@ -233,10 +239,14 @@ public:
     // project-relative directory and baseName the exact filename stem. Without includes
     // the entry points stay loose in it; with them the fork takes <targetDirRel>/<base>/,
     // so its copies override the engine library for no other shader.
+    // librarySource ("library:water"): a fork of that library shader instead, its entry files
+    // as the library has them (its .vert, else the generic one of its type), with their
+    // manifest lines, so the fork keeps its Inspector rows and engine role (@role)
     static ShaderForkPlan prepareShaderFork(Project* project, ShaderType shaderType,
                                             const std::filesystem::path& targetDirRel,
                                             const std::string& baseName,
-                                            bool forkIncludes = false);
+                                            bool forkIncludes = false,
+                                            const std::string& librarySource = std::string());
 
     // Writes all planned files. It refuses collisions and removes partial output when a
     // later write fails, so a failed command never truncates or strands source files.

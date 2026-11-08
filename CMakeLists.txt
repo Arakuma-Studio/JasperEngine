@@ -442,6 +442,27 @@ string(APPEND pose_templates_header "static const PoseTemplateEmbeddedFile pose_
 file(WRITE "${GENERATED_DIR}/pose_templates.h.in" "${pose_templates_header}")
 configure_file("${GENERATED_DIR}/pose_templates.h.in" "${GENERATED_DIR}/pose_templates.h" COPYONLY)
 
+# Built-in palettes (editor/resources/palettes/*.palette, S43 R9) embedded in the editor
+# (editor/pixelart/BuiltinPalettes.cpp, the only includer)
+file(GLOB BUILTIN_PALETTE_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/palettes/*.palette")
+list(SORT BUILTIN_PALETTE_FILES)
+set(builtin_palettes_header "// Generated from editor/resources/palettes by CMakeLists.txt. Do not edit.\n#pragma once\n\n")
+set(builtin_palettes_entries "")
+set(builtin_palette_index 0)
+foreach(builtin_palette IN LISTS BUILTIN_PALETTE_FILES)
+    get_filename_component(builtin_palette_name "${builtin_palette}" NAME)
+    file(READ "${builtin_palette}" builtin_palette_hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," builtin_palette_bytes "${builtin_palette_hex}")
+    string(APPEND builtin_palettes_header "static const unsigned char builtin_palette_${builtin_palette_index}[] = {${builtin_palette_bytes}0x00};\n")
+    string(APPEND builtin_palettes_entries "    { \"${builtin_palette_name}\", builtin_palette_${builtin_palette_index}, sizeof(builtin_palette_${builtin_palette_index}) - 1 },\n")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${builtin_palette}")
+    math(EXPR builtin_palette_index "${builtin_palette_index} + 1")
+endforeach()
+string(APPEND builtin_palettes_header "\nstruct BuiltinPaletteEmbeddedFile { const char* name; const unsigned char* data; unsigned int size; };\n")
+string(APPEND builtin_palettes_header "static const BuiltinPaletteEmbeddedFile builtin_palette_embedded_files[] = {\n${builtin_palettes_entries}    { nullptr, nullptr, 0 }\n};\n")
+file(WRITE "${GENERATED_DIR}/palettes_builtin.h.in" "${builtin_palettes_header}")
+configure_file("${GENERATED_DIR}/palettes_builtin.h.in" "${GENERATED_DIR}/palettes_builtin.h" COPYONLY)
+
 # HTML/CSS UI example library (docs/mcp/guide/html-ui-examples/**) embedded in the editor: written
 # into every project's .jasperengine/engine-api/html-ui-examples, served as MCP resources and used
 # as create_ui_document templates (editor/util/HtmlUiExamples.cpp, the only includer)
@@ -715,6 +736,15 @@ else()
     set(JASPERENGINE_NO_FMA_FLAGS "-ffp-contract=off")
 endif()
 set_source_files_properties(${JASPERENGINE_SPRITENORMALS_NO_FMA_SOURCES} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
+# The model cook (S53): its normalised normals, their octahedral decode and the LODs they guide
+# are the same bytes on every CPU, so a cooked model and its cache key do not depend on the machine
+set_source_files_properties(${EDITOR_DIR}/model/ModelCooker.cpp ${EDITOR_DIR}/model/GltfDocument.cpp
+    PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
+# The audio analysis (S36, S39's tempo grid): the committed library analysis.json and every agent's
+# numbers are the same on every CPU (arm64 Clang fuses a multiply and an add by default); the
+# decoders and AudioMeter it reads get the same in engine/CMakeLists.txt
+set_source_files_properties(${EDITOR_DIR}/audio/AudioAnalysis.cpp ${EDITOR_DIR}/audio/AudioMusicGrid.cpp
+    PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
 
 set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/main.cpp
@@ -792,6 +822,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
     ${EDITOR_DIR}/reflect/components/UpstreamReflect.cpp
     ${EDITOR_DIR}/reflect/components/UpstreamMediaReflect.cpp
+    ${EDITOR_DIR}/reflect/components/PixelArtReflect.cpp
+    # pixel art (S41: the editor's side of the Pixel Perfect Camera)
+    ${EDITOR_DIR}/pixelart/PixelPerfectEditor.cpp
     ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
     ${EDITOR_DIR}/reflect/components/UIReflect.cpp
     ${EDITOR_DIR}/reflect/components/LatticeFluidReflect.cpp
@@ -825,6 +858,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Exporter.cpp
     ${EDITOR_DIR}/ExporterPrebuilt.cpp
     ${EDITOR_DIR}/ShippingTypes.cpp
+    ${EDITOR_DIR}/export/ExportFiles.cpp
+    ${EDITOR_DIR}/util/BuildDiagnostics.cpp
 
     ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
     ${EDITOR_DIR}/window/JobsMemoryWindow.cpp
@@ -900,6 +935,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/VatTools.cpp
     ${EDITOR_DIR}/mcp/tools/VcsTools.cpp
     ${EDITOR_DIR}/mcp/tools/SpriteNormalsTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PaletteTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -920,6 +956,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/CMakeText.cpp
     ${EDITOR_DIR}/util/VersionControlFiles.cpp
     ${EDITOR_DIR}/util/NativePlugins.cpp
+    ${EDITOR_DIR}/util/ApplePrivacy.cpp
+    ${EDITOR_DIR}/util/NativeNeeds.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
     ${EDITOR_DIR}/reload/HotReloadService.cpp
     ${EDITOR_DIR}/window/StatusBar.cpp
@@ -927,6 +965,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Assets.cpp
     ${EDITOR_DIR}/reload/handlers/Audio.cpp
     ${EDITOR_DIR}/reload/handlers/Particles.cpp
+    ${EDITOR_DIR}/reload/handlers/Palettes.cpp
     ${EDITOR_DIR}/reload/handlers/Common.cpp
     ${EDITOR_DIR}/reload/handlers/Fonts.cpp
     ${EDITOR_DIR}/reload/handlers/HtmlUi.cpp
@@ -937,6 +976,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Textures.cpp
     ${EDITOR_DIR}/util/YamlFootprint.cpp
     ${EDITOR_DIR}/util/AssetDatabase.cpp
+    ${EDITOR_DIR}/asset/AssetClipboard.cpp
     ${EDITOR_DIR}/asset/AssetFileWrite.cpp
     ${EDITOR_DIR}/asset/AssetIndex.cpp
     ${EDITOR_DIR}/asset/AssetOps.cpp
@@ -953,6 +993,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ProjectUtils.cpp
     ${EDITOR_DIR}/util/WaterEditorUtils.cpp
     ${EDITOR_DIR}/util/TerrainSplineBake.cpp
+    ${EDITOR_DIR}/util/TerrainDetailRules.cpp
     ${EDITOR_DIR}/util/SplineBakeObjects.cpp
     ${EDITOR_DIR}/util/ParticleEffectEdit.cpp
     ${EDITOR_DIR}/util/ParticleMigrationReport.cpp
@@ -983,6 +1024,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/SourceLocation.cpp
     ${EDITOR_DIR}/util/ScriptEvents.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
+    ${EDITOR_DIR}/util/ScriptTemplates.cpp
+    ${EDITOR_DIR}/util/TextureLabels.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
     ${EDITOR_DIR}/util/FloatImage.cpp
     ${EDITOR_DIR}/util/FbxImporter.cpp
@@ -1149,6 +1192,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorShadows.cpp
     ${EDITOR_DIR}/window/InspectorDefault.cpp
     ${EDITOR_DIR}/window/InspectorUpstream.cpp
+    ${EDITOR_DIR}/window/InspectorButton.cpp
     ${EDITOR_DIR}/window/InspectorPhysics.cpp
     ${EDITOR_DIR}/window/InspectorAnimation.cpp
     ${EDITOR_DIR}/window/InspectorRenderers.cpp
@@ -1158,6 +1202,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindowCamera.cpp
     ${EDITOR_DIR}/window/InspectorAudioClip.cpp
     ${EDITOR_DIR}/window/ProjectWindowSound.cpp
+    ${EDITOR_DIR}/window/InspectorPixelArt.cpp
     ${EDITOR_DIR}/window/InspectorVideo.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/InspectorVcs.cpp
@@ -1180,6 +1225,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/HierarchyWindow.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabMode.cpp
     ${EDITOR_DIR}/window/HierarchyVcs.cpp
+    ${EDITOR_DIR}/window/AssetCreateMenu.cpp
     ${EDITOR_DIR}/window/ProjectWindow.cpp
     ${EDITOR_DIR}/window/ProjectWindowSearch.cpp
     ${EDITOR_DIR}/window/ProjectWindowVcs.cpp
@@ -1373,6 +1419,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ShaderGlobalsCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsCmd.cpp
     ${EDITOR_DIR}/command/type/DebugSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/ShaderOverridesCmd.cpp
+    ${EDITOR_DIR}/command/type/ApplePrivacySettingsCmd.cpp
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp
     ${EDITOR_DIR}/command/type/CreateDirCmd.cpp
@@ -1430,6 +1478,11 @@ endif()
 include(${EDITOR_DIR}/navigation/NavigationEditorSources.cmake)
 # the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
+# the pixel-art family (S43...): palettes, Apply Palette, the Palette window, the pixel_art tools
+include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
+
+# the pixel-art family (S41-S52): PixelImage, the .aseprite codec, the importer and its windows
+include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
 
 # The engine build C++ script libraries must be made for (S23 toolchain fingerprint): the
 # editor version, on this one file (as on the engine's ToolchainFingerprint.cpp)

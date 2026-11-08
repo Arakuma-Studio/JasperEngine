@@ -147,6 +147,10 @@ namespace jasperengine::editor {
         // ... with a GameObject's submesh texture as the source and Assign on (the Inspector's
         // wand and "Normal Map..."); now: generate, save and assign without opening it
         virtual void openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now);
+        // Window > 2D > Palette on a palette (project-relative), with a texture's usage shown
+        // (project-relative; empty: none): the material inspector's "Show" of the colours that
+        // will not swap (S43 R33, R35). The base host does nothing.
+        virtual void openPaletteWindow(const std::string& palettePath, const std::string& texturePath);
 
         virtual InspectorWindow* getInspectorWindow() const;
         virtual CodeEditor* getCodeEditor() const;

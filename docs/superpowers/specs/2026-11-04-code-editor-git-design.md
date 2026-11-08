@@ -707,3 +707,37 @@ Recorded during the implementation (branch `dc/code-editor-git`).
    record is length-prefixed), without a warning of its own. Not changed: a prebuilt export takes only a player of the
    editor's own version (`PlayerRuntimes::find`), so its minor is the editor's; `--allow-player-mismatch` already
    warns (W-PLAYER-MISMATCH) and publish verify refuses that build.
+
+## Follow-ups (2026-11-07)
+
+Branch `fu/code-editor-git` (docs/doriax-catchup/FOLLOWUPS.md), with the lead's review decisions.
+
+1. **Subversion scene diffs.** Deviation 1 already read BASE for "HEAD"; what still differed from git:
+   - A scheduled add (`svn add`) was not a new file: `VcsChange::newFile` looked at the index only, which svn
+     never sets, so the Scene Diff, `diff_scene` and the code editor asked svn for a BASE the file does not have
+     ("has no pristine version until it is committed"). `newFile` also takes a worktree add (git's intent-to-add
+     too): the diff lists every GameObject as added. Revert keeps svn's own behaviour: it unschedules the add and
+     keeps the file (`revertRefusal(..., unschedulesAdds)`); git still refuses a new file ("Delete it instead").
+   - Moves: svn's `moved-from` (on an added or a replaced path) makes the path Renamed with `oldPath`, so it
+     compares with its source, as a git rename does, and Revert takes the source along. A changed file inside a
+     moved folder has no `moved-from` of its own; the folder's names its source, so it is Renamed too.
+   - Copies (git `C` with `status.renames=copies`, `svn copy`): `VcsChange::copied`. A copy is a new file whose
+     diff base is its source (`hasBaseline`, `diffSource`: git reads `oldPath`, svn reads the copy's own BASE,
+     which is the source's text, as `svn diff` does). Revert never touches the source: it refuses a git copy as a
+     new file and unschedules an svn copy; the Commit window says "Copied".
+   - The scene diff read a rename's new path from the baseline: a git staged rename of a scene failed ("not a
+     valid object name HEAD:..."). `SceneDiffTracker` reads `diffSource`, as `TextBaselines` and `diff_file` do.
+   - svn's "HEAD" and "BASE" share one baseline memo (`contentMemoKey` keys the revision read).
+2. **Defaults.** The defaults stay `"HEAD"`, which is the baseline everywhere (svn reads BASE for it, deviation 1:
+   offline, never someone else's commit as yours); the guide already says so. `diff_scene` and `diff_file`
+   results now name the revision read (`rev: "BASE"`, "against BASE" with svn). No tool or guide text changed:
+   the review found the planned text needed by no eval case, so it was cut. The Scene Diff window shows the
+   provider's name (its button and "No changes against BASE" with svn) and still watches the baseline as
+   "HEAD", so it shares the Hierarchy's and Inspector's diff.
+3. **Content format of prebuilt players.** Minors are additive and length-prefixed (deviation 9), so a player
+   keeps reading a newer minor and now logs one warning per version ("content 1.6 was made by a newer editor;
+   features newer than 1.5 are skipped", `cook::playerReadsContentFormat`); it refuses another major only, as
+   before. The editor no longer pairs its content with a runtime of an older minor, which compared majors only
+   before: `PlayerRuntimes::find` refuses it ("reads content format 1.4, older than the 1.5 this editor writes:
+   update the player runtime") unless `--allow-player-mismatch` asks for it, which warns W-PLAYER-MISMATCH and
+   publish verify refuses. `test_build_method.py`'s fake runtimes declare the tree's format.

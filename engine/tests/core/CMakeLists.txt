@@ -90,6 +90,7 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/render/ObjectRenderShaderGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/render/ParticlesGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/render/RenderGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/render/SpriteSheetRenderGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/render/WaterFeaturesGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/spline/SplineCornerTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/support/AllocationCounter.cpp
@@ -119,6 +120,11 @@ jasperengine_add_test_target(jasperengine-core-tests
         JASPER_TEST_CRASH_TEST_BINARY="$<TARGET_FILE:jasperengine-crash-test>"
 )
 add_dependencies(jasperengine-core-tests jasperengine-crash-test)
+# the navigation tests call into Recast/Detour directly (the vendored patches, the tile builds'
+# rcContext: docs/specs/S74-navigation-fixes.md AC1-AC3, AC7)
+if(TARGET recastnavigation)
+    target_link_libraries(jasperengine-core-tests PRIVATE recastnavigation)
+endif()
 # tools/crash/symbolicate.py names the crash-test binary's frames (ctest; docs/testing.md)
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND AND NOT WIN32)
@@ -166,12 +172,37 @@ string(FIND "${WATER_WAVES_REST}" "\n}\n" WATER_WAVES_END)
 math(EXPR WATER_WAVES_LENGTH "${WATER_WAVES_END} + 2")
 string(SUBSTRING "${WATER_WAVES_REST}" 0 ${WATER_WAVES_LENGTH} WATER_WAVES_FUNCTION)
 string(SHA256 WATER_WAVES_GLSL_SHA256 "${WATER_WAVES_FUNCTION}")
+# and of waterGerstnerWave with waterGerstner (GERSTNER), from the first's signature to the
+# second's closing brace
+string(FIND "${WATER_GLSL_SOURCE}" "void waterGerstnerWave(" WATER_GERSTNER_BEGIN)
+string(FIND "${WATER_GLSL_SOURCE}" "vec3 waterGerstner(" WATER_GERSTNER_LAST)
+if(WATER_GERSTNER_BEGIN EQUAL -1 OR WATER_GERSTNER_LAST EQUAL -1)
+    message(FATAL_ERROR "library/water.glsl has no waterGerstnerWave / waterGerstner (WaterWavesTest, engine/core/util/WaterWaves.h)")
+endif()
+string(SUBSTRING "${WATER_GLSL_SOURCE}" ${WATER_GERSTNER_LAST} -1 WATER_GERSTNER_REST)
+string(FIND "${WATER_GERSTNER_REST}" "\n}\n" WATER_GERSTNER_REST_END)
+math(EXPR WATER_GERSTNER_LENGTH "${WATER_GERSTNER_LAST} - ${WATER_GERSTNER_BEGIN} + ${WATER_GERSTNER_REST_END} + 2")
+string(SUBSTRING "${WATER_GLSL_SOURCE}" ${WATER_GERSTNER_BEGIN} ${WATER_GERSTNER_LENGTH} WATER_GERSTNER_FUNCTIONS)
+string(SHA256 WATER_GERSTNER_GLSL_SHA256 "${WATER_GERSTNER_FUNCTIONS}")
 set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/util/WaterWavesTest.cpp PROPERTIES
-    COMPILE_DEFINITIONS "WATER_WAVES_GLSL_SHA256=\"${WATER_WAVES_GLSL_SHA256}\"")
+    COMPILE_DEFINITIONS "WATER_WAVES_GLSL_SHA256=\"${WATER_WAVES_GLSL_SHA256}\";WATER_GERSTNER_GLSL_SHA256=\"${WATER_GERSTNER_GLSL_SHA256}\"")
 # a unit of its own: it redefines JASPERENGINE_PROFILER to 0 before the profiling macros
 jasperengine_skip_unity_build(
     REASON "ProfilerCompileOutTest compiles the profiling macros with the profiler off"
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/profiler/ProfilerCompileOutTest.cpp)
+
+# PixelColorDeterminism.UnoptimisedBuildMatches (S43 AC5): the pixel-art colour maths built a
+# second time without optimisation, in a namespace of its own, against the engine's optimised copy
+set(PIXELART_O0_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/pixelart/PixelColorO0.cpp)
+target_sources(jasperengine-core-tests PRIVATE ${PIXELART_O0_SOURCE})
+if(MSVC)
+    set_source_files_properties(${PIXELART_O0_SOURCE} PROPERTIES COMPILE_OPTIONS "/Od;/fp:precise")
+else()
+    set_source_files_properties(${PIXELART_O0_SOURCE} PROPERTIES COMPILE_OPTIONS "-O0;-ffp-contract=off")
+endif()
+jasperengine_skip_unity_build(
+    REASON "PixelColorO0.cpp compiles engine/core/pixelart/PixelColor.cpp again in a renamed namespace"
+    SOURCES ${PIXELART_O0_SOURCE})
 
 # the logger's backtraces name the test functions (LoggerTest.ErrorCarriesBacktrace): dladdr
 # sees the executable's symbols

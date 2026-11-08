@@ -29,7 +29,10 @@
 #include "component/TerrainComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
+#include "pixelart/PixelSnap.h"
 #include "component/Transform.h"
+#include "render/WaterLayering.h"
 #include "render/ObjectRender.h"
 #include "render/VisibleList.h"
 #include "render/CameraRender.h"
@@ -58,6 +61,10 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+
+namespace jasperengine::pixelart{
+    class PaletteQuantizer;
+}
 
 namespace jasperengine{
 
@@ -130,6 +137,12 @@ namespace jasperengine{
 		Vector4 fogDensity_start_end;   // x density, z linear start, w linear end
 		// the fragment block of a variant with the post-processing colour (USE_POST_COLOR)
 		post_color_t postColor;
+		// the pass's pixel-snap grid (S41, includes/pixel_snap.glsl; zero without one): xy T in base
+		// pixels, z flipY, w k; and xy the direct smoothing offset, z 1 when the view is on the grid.
+		// Last, and declared by the 'Pxs' vertex stages only: every other program's block, and the
+		// bytes uploaded to it, stay what they were (R14)
+		Vector4 pixelSnap;
+		Vector4 pixelSnapOffset;
 	} frame_t;
 
 	// u_vs_objectLights / u_fs_objectLights (shaderlib/includes/lights.glsl) at the largest
@@ -140,6 +153,15 @@ namespace jasperengine{
 	typedef struct object_lights_t {
 		Vector4 data[4 + 4 * MAX_LIGHTS_PER_OBJECT];
 	} object_lights_t;
+
+	// u_fs_objectLights of the records form (includes/lights.glsl, LIGHTS_FS_RECORDS): the
+	// pixel lights' records are rows of the frame's u_lightRecords (RenderSystem::syncLightRecords)
+	typedef struct object_light_records_t {
+		Vector4 counts;      // x pixel lights, y vertex lights
+		Vector4 sh[3];
+		// per pixel light, two a vector: its scene light, its spot_shadow.w
+		Vector4 records[(MAX_LIGHTS_PER_OBJECT + 1) / 2];
+	} object_light_records_t;
 
 	// u_fs_litFrame (shaderlib/includes/lit_frame.glsl): what the built-in Lit's lit variants
 	// read of the camera pass, filled with the frame block (RenderSystem::updatePassFrame). A
@@ -168,11 +190,34 @@ namespace jasperengine{
 		Vector4 stochastic[MAX_TERRAIN_LAYERS];  // Stochastic Tiling: cell size (0 = off), blend sharpness, contrast, rotation
 	} fs_terrain_layers_t;
 
+	// u_fs_planarReflection (includes/planar_reflection.glsl)
+	typedef struct fs_planar_reflection_t {
+		Matrix4 viewProjection; // the reflection camera's, logical
+		Vector4 params;         // x the plane's height, y 1 with a reflection
+	} fs_planar_reflection_t;
+
+	// WATER_INTERACTION_PARAMS (includes/water_interaction_params.glsl), the engine-written members
+	// at the end of a water shader's u_fs_customParams: the Water Excluders over a draw and the
+	// scene's wake map
+	constexpr int WATER_EXCLUDERS_PER_DRAW = 8;
+	typedef struct fs_water_interaction_t {
+		Vector4 exclusion;      // x the excluders tested; y, z, w their rows in the data texture, three bytes each
+		Vector4 wakeArea;       // xy the map's world corner, z 1 / its world size, w 1 while it holds a wake
+		Vector4 wakeParams;     // x slope per unit of crest over a texel, y 1 / texels, z the body tag / 255
+	} fs_water_interaction_t;
+	static_assert(sizeof(fs_water_interaction_t) == 3 * 16, "WATER_INTERACTION_PARAMS is 3 vec4");
+
 	// includes/environment.glsl (u_fs_environment)
 	typedef struct fs_environment_t {
 		Vector4 colorRotation; // rgb linear tint, w rotation about +Y (radians)
 		Vector4 params;        // x highest mip level, y 1 with an environment
 	} fs_environment_t;
+
+	// u_fs_environment of a shader reading the planar reflection too: both in one block
+	typedef struct fs_environment_planar_t {
+		fs_environment_t environment;
+		fs_planar_reflection_t planar;
+	} fs_environment_planar_t;
 
 	typedef struct fs_reflection_probe_t {
 		Vector4 position_weight; // xyz = capture position, w = local probe blend weight
@@ -248,6 +293,8 @@ namespace jasperengine{
 		Matrix4 modelMatrix;
 		Matrix4 lightVPMatrix;
 		Matrix4 mvpMatrix; // lightVPMatrix * modelMatrix
+		// a pixel-snapped variant's ('Pxs') snap of the draw: 0 none (shadow maps), 1 every vertex, 2 the pivot
+		Vector4 pixelSnapDraw;
 	} vs_depth_t;
 
 	typedef struct vs_gbuffer_t {
@@ -297,6 +344,9 @@ namespace jasperengine{
 		Vector4 probePosition[SSR_PROBE_SLOTS]; // xyz = capture position
 		Vector4 probeBoxMin[SSR_PROBE_SLOTS];   // xyz = influence AABB min, w = intensity
 		Vector4 probeBoxMax[SSR_PROBE_SLOTS];   // xyz = influence AABB max, w = max mip LOD (0 = unfiltered)
+		// how the colour pass stored what the composite reads: x 1 = linear light (the shaper's code,
+		// under the post-processing colour), 0 = display-encoded, as drawn
+		Vector4 sceneEncoding;
 	} fs_composite_t;
 
 	// What the SSR G-buffer pass of a view last drew (RenderSystem::getSSRStats): the reflection
@@ -339,6 +389,7 @@ namespace jasperengine{
 		Vector4 damage;              // x strength, y hair, z scratch, w dust candidates
 		Vector4 gateWeave;           // xy offset (output pixels), z cos, w sin of the rotation
 		Vector4 gateMask;            // xy half size, z corner radius, w feather (output pixels); x 0: none
+		Vector4 palette;             // Palette Quantize: x cells per axis, y dither size (0 none), w 1 when its table is baked
 	} fs_uber_t;
 
 	// the bloom and blur chain's passes (shaderlib/bloom.vert, bloom.frag)
@@ -438,6 +489,16 @@ namespace jasperengine{
 		bool capsuleShadows = false;
 		bool contactShadows = false;
 		bool oit = false;
+		// every Light component of the scene is Directional (enabled or not, so a flashlight
+		// switched on keeps the variant): the built-in Lit's 'Dlo' variant
+		bool directionalLightsOnly = false;
+		// the scene has a Water Excluder / a Water Wake (enabled or not): a shader requiring
+		// waterexclusion / waterwake takes 'Wex' / 'Wwk' (includes/water_interaction.glsl)
+		bool waterExclusion = false;
+		bool waterWake = false;
+		// a camera of the scene draws through a Pixel Perfect Camera that snaps (S41): sprites,
+		// tilemaps (and their depth programs) take the 'Pxs' variants
+		bool pixelSnap = false;
 	};
 
 	// The uber pass's compile-time features (shader library phase 4): the property bits of a
@@ -462,7 +523,9 @@ namespace jasperengine{
 		UBER_FILM_DAMAGE  = 1u << 15, // 'Fdm' film damage: hairs, scratches, dust, gate weave and mask
 		UBER_GRAIN_LENS   = 1u << 16, // 'Gln' the Lens film grain (with UBER_GRAIN)
 		UBER_GRAIN_FILMIC = 1u << 17, // 'Gfm' the Filmic film grain (with UBER_GRAIN)
-		UBER_FEATURE_COUNT = 18
+		UBER_SHARP_BILINEAR = 1u << 18, // 'Psb' the Pixel Perfect Camera's Stretch Fill (S41 R11)
+		UBER_PALETTE      = 1u << 19, // 'Pal' Palette Quantize (S43): the frame onto a palette, ordered dither per art pixel
+		UBER_FEATURE_COUNT = 20
 	};
 
 	// What a PostProcessingSettings turns on (shader library phase 4): the in-shader colour
@@ -487,6 +550,8 @@ namespace jasperengine{
 		bool halationChain = false;
 		// dynamic resolution drives the scale (S13): the uber pass stays on at any scale
 		bool dynamicResolution = false;
+		// Palette Quantize is enabled with no palette: it stays off (the inspector and the log say so)
+		bool paletteMissing = false;
 	};
 
 	// Dynamic resolution as the renderer applies it now (RenderSystem::getDynamicResolutionStatus,
@@ -543,6 +608,9 @@ namespace jasperengine{
 		// the built-in Lit, a fork of it defining LIT_STOCHASTIC_PARAMS); a fork made before it
 		// samples plainly, so its depth and G-buffer passes must too
 		bool stochasticShader = true;
+		// the shader is the engine's Lit (empty, or a builtin:lit reference; not a fork or a
+		// library shader): the one 'Dlo' applies to
+		bool builtinLit = true;
 		// mesh
 		bool receiveLights = true;
 		bool receiveIBL = true;
@@ -581,6 +649,27 @@ namespace jasperengine{
 		bool terrainHex = false;
 		// and a layer takes Stochastic Tiling (TERRAIN_HEX_STOCHASTIC, with terrainHex only)
 		bool terrainHexStochastic = false;
+		// a pixel-art drawable (a Sprite or a Tilemap): snapped under a Pixel Perfect Camera (S41)
+		bool pixelArt = false;
+	};
+
+	// A camera that draws through a Pixel Perfect Camera this frame (S41, RenderSystemPixelArt.cpp)
+	struct PixelPerfectDrive {
+		Entity cameraEntity = NULL_ENTITY;
+		// the camera component it drives (refreshed once the frame's cameras are made)
+		const CameraComponent* camera = nullptr;
+		pixelart::PixelPerfectLayout layout;
+		// the base image goes into the fixed-resolution target at T and the blit scales it by k;
+		// otherwise the camera draws straight into the viewport on the same grid
+		bool renderTexture = false;
+		bool snapping = true;
+		PixelRotation rotation = PixelRotation::STEPS_90;
+		PixelUpscaleMode mode = PixelUpscaleMode::INTEGER;
+		int pixelsPerUnit = 1;
+		bool smoothing = false;
+		// the sub-pixel smoothing's move of the image, base pixels (x right, y up of the image)
+		Vector2 shift;
+		Vector4 letterboxColor = Vector4(0, 0, 0, 1);
 	};
 
 	// The shaders one submesh draws with
@@ -646,6 +735,11 @@ namespace jasperengine{
 			ParticleSystemComponent* particles = nullptr;
 			LineRendererComponent* lines = nullptr;
 			TrailRendererComponent* trail = nullptr;
+			// its rank among the pass's waters (render/WaterLayering.h): what a water covers
+			// draws before it, what is in front of it after; and the distance it sorts at (its
+			// own, or its waters' group's: waterPlace)
+			int8_t waterRank = 0;
+			float waterSortDistance = 0.0f;
 		};
 
 		// which of the LOD cross-fade's draws a pass makes (spec S54 R6-R8)
@@ -655,6 +749,8 @@ namespace jasperengine{
 			FADE    // only the fading draws: an instanced mesh's second queue entry (its fade copies)
 		};
 
+	public:
+		// (public: their order is tested, RenderQueueOrderTest)
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
 		struct OpaqueRenderData{
 			Entity entity;
@@ -680,6 +776,11 @@ namespace jasperengine{
 			uint64_t batchKey = 0;
 			// its bounds were culled by the visible list (drawMesh does not test them again)
 			bool preCulled = false;
+			// a colour pass's visible list sorted by state (buildVisibleQueue): its distance band
+			// (distanceBand) and its render state (pipeline, material and mesh of its first draw),
+			// so draws of one state run together inside a band and skip applying it again
+			uint8_t band = 0;
+			uint64_t stateKey = 0;
 		};
 
 		// One merged run of tilemap indices to draw, in elements relative to the
@@ -689,14 +790,19 @@ namespace jasperengine{
 			unsigned int count;
 		};
 
-		// draw order of the transparent queue: the lowest sort priority, then the farthest, then
-		// the submission order (a total order, so std::sort is deterministic)
+		// draw order of the transparent queue: the lowest sort priority, then around the waters
+		// (waterSortOrder: the farthest sort distance, the higher rank, the farthest), then the
+		// submission order (a total order, so std::sort is deterministic)
+		// (Sorting Layers and Order in Layer, pixel-art S52, go before sortPriority; the water
+		// order stays right after it)
 		struct TransparentRenderComparison{
 			bool operator()(const TransparentRenderData& lhs, const TransparentRenderData& rhs) const{
 				if (lhs.sortPriority != rhs.sortPriority)
 					return lhs.sortPriority < rhs.sortPriority;
-				if (lhs.distanceToCamera != rhs.distanceToCamera)
-					return lhs.distanceToCamera > rhs.distanceToCamera;
+				const int water = waterSortOrder(lhs.waterSortDistance, lhs.waterRank, lhs.distanceToCamera,
+				                                 rhs.waterSortDistance, rhs.waterRank, rhs.distanceToCamera);
+				if (water != 0)
+					return water < 0;
 				return lhs.order < rhs.order;
 			}
 		};
@@ -704,19 +810,26 @@ namespace jasperengine{
 		// draw order of the opaque queue of a 3D pass: the lowest sort priority, then the meshes
 		// that do not fade (the discard of fading ones turns off early depth and hidden surface
 		// removal for their draws only, so they come after: Apple, PowerVR and Arm's order), then
-		// the nearest, then the submission order
+		// the nearest distance band (one per doubling of the distance: early depth keeps most of
+		// its use), then the render state (equal states in a run apply once), then the nearest,
+		// then the submission order (a total order, so std::sort is deterministic)
 		struct OpaqueRenderComparison{
 			bool operator()(const OpaqueRenderData& lhs, const OpaqueRenderData& rhs) const{
 				if (lhs.sortPriority != rhs.sortPriority)
 					return lhs.sortPriority < rhs.sortPriority;
 				if (lhs.fading != rhs.fading)
 					return !lhs.fading;
+				if (lhs.band != rhs.band)
+					return lhs.band < rhs.band;
+				if (lhs.stateKey != rhs.stateKey)
+					return lhs.stateKey < rhs.stateKey;
 				if (lhs.distanceToCamera != rhs.distanceToCamera)
 					return lhs.distanceToCamera < rhs.distanceToCamera;
 				return lhs.order < rhs.order;
 			}
 		};
 
+	private:
 		// the queues of the camera pass being drawn (renderCameraPass, the reflection probe
 		// face), kept between passes so a pass allocates nothing once they have grown
 		std::vector<OpaqueRenderData> opaqueQueue;
@@ -727,6 +840,9 @@ namespace jasperengine{
 		// passes like the queues
 		std::vector<VisibleCandidate> visibleCandidates;
 		std::vector<VisibleResult> visibleResults;
+		// the candidates' submesh bounds, one pointer a submesh (a mesh's submeshes are allocated
+		// one by one, not side by side)
+		std::vector<const AABB*> visibleSubmeshBounds;
 		std::vector<OpaqueRenderData> visibleEntries;
 		std::vector<int> visiblePriorities;
 		std::vector<uint64_t> visibleKeys;
@@ -836,6 +952,22 @@ namespace jasperengine{
 		bool hasFog = false;
 		bool hasIBL = false;
 		bool hasReflectionProbes = false;
+		// the scene has a Water Excluder / a Water Wake (enabled or not): the water variants'
+		// 'Wex' / 'Wwk' (MeshShaderEnvironment), and the GPU side of WaterInteractionSystem
+		bool hasWaterExcluders = false;
+		bool hasWaterWakes = false;
+		TextureRender waterExclusionMaps;
+		int waterExclusionMapLayers = 0;
+		// the frame's excluders (RGBA32F, 4 texels a row: includes/water_interaction.glsl), the
+		// rows uploaded this frame and the frame they were
+		TextureRender waterExclusionData;
+		std::vector<Vector4> waterExclusionTexels;
+		size_t waterExclusionRows = 0;
+		uint64_t waterExclusionDataFrame = UINT64_MAX;
+		uint64_t waterExclusionMapsVersion = 0;
+		TextureRender waterWakeTexture;
+		uint64_t waterWakeUploadFrame = UINT64_MAX;
+		bool waterExcluderCapWarned = false;
 		bool hasMultipleCameras = false;
 		// extra cameras the last frame drew, to catch the switch back to main only
 		bool lastMultiCameraDraw = false;
@@ -844,6 +976,8 @@ namespace jasperengine{
 		bool lastBatchSort = true;
 		// scene mesh LOD switch the levels were built (or freed) for
 		bool lastMeshLodEnabled = false;
+		// updateObjectLights zeroed every mesh's pick while the scene has no lights
+		bool objectLightsCleared = false;
 		// pipelines the objects were loaded with, to catch a destination change
 		uint16_t loadedPipelines = 0;
 
@@ -1094,6 +1228,9 @@ namespace jasperengine{
 			bool isMain = false;
 			// draws into camera->framebuffer
 			bool renderToTexture = false;
+			// a water reflection pass (renderWaterReflections): no planar reflection reader,
+			// no scene input reader, the viewer's detail levels
+			bool reflection = false;
 			// terrain node cut the pass draws (TERRAIN_PASS_VIEW: the secondary pass's own)
 			int terrainView = 0;
 		};
@@ -1183,6 +1320,29 @@ namespace jasperengine{
 			bool isCreated() const{ return levels >= 0; }
 		};
 
+		// A water reflection pass of a view (renderWaterReflections): the view's camera mirrored
+		// about the plane of the waters at one height, drawn into its own target; reused from
+		// frame to frame, freed once unused for a while
+		struct WaterReflectionPass{
+			float level = 0.0f;
+			// drawn this frame for the view's camera, and the frame (drawCount) it last was
+			bool active = false;
+			uint64_t lastUsed = 0;
+			Framebuffer framebuffer;
+			CameraComponent camera;
+			Transform transform;
+			// the viewer's lighting and shadow maps (strengths 0 without the scene's shadows)
+			CameraShadows shadows;
+#ifdef JASPERENGINE_EDITOR
+			PassObjects objects;
+#endif
+
+			WaterReflectionPass();
+			~WaterReflectionPass();
+			WaterReflectionPass(const WaterReflectionPass&) = delete;
+			WaterReflectionPass& operator=(const WaterReflectionPass&) = delete;
+		};
+
 		// what one pass draws of a mesh
 		struct MeshDraw{
 			unsigned int instanceCount = 1;
@@ -1253,6 +1413,15 @@ namespace jasperengine{
 			// the contact shadows' mask and the OIT targets of its main camera (null: none drawn)
 			std::unique_ptr<LightingViewTargets> lightingTargets;
 			Framebuffer sceneColorFramebuffer; // offscreen opaque scene color (top-left)
+			// a distance-sorted pass's colour after the SSR composite: the composite, then the
+			// transparents, UI and overlays drawn over it with sceneColorFramebuffer's depth-stencil
+			// (made on first use, destroyed before it)
+			FramebufferRender ssrSceneTarget;
+			// the same with the pass's destination for colour (same size: no target, no blit), for
+			// the destination image and depth it was made with
+			FramebufferRender ssrSceneAlias;
+			uint32_t ssrSceneAliasImage = 0;
+			uint32_t ssrSceneAliasDepth = 0;
 			Framebuffer ssrFramebuffer;        // reflection color + mask (logical orientation)
 			Framebuffer ssrBlurFramebuffer;    // glossy-blurred reflection
 
@@ -1304,6 +1473,15 @@ namespace jasperengine{
 			// the scene camera's colour pass when only the scene colour needs it offscreen
 			// (exported builds drawing to the swapchain): blitted to the swapchain after
 			Framebuffer sceneColorRedirect;
+			// the water reflection passes of the view's camera, and which one each reflecting mesh
+			// reads this frame (none: its fallback)
+			std::vector<std::unique_ptr<WaterReflectionPass>> waterReflections;
+			std::unordered_map<Entity, int> waterReflectionOf;
+			// the camera they were drawn for (its pass alone reads them), and the view whose
+			// passes waterReflectionOf indexes (null: this one; an editor view through the
+			// frame's own camera reads the frame's)
+			const CameraComponent* waterReflectionCamera = nullptr;
+			RenderView* waterReflectionSource = nullptr;
 			// the scene's post-processing applies to the view camera (ViewDesc::postProcessing;
 			// always for the frame's own view)
 			bool postProcessing = true;
@@ -1335,6 +1513,12 @@ namespace jasperengine{
 			// drawn through the camera draw() used this frame: culling, detail levels,
 			// terrain cut, shadow cascades and mirrors are the frame's own
 			bool sharesPrimaryCamera = false;
+			// S41: the view's Pixel Perfect Camera (its layout on the view's target), and the Scene
+			// view's Snap Preview grid
+			PixelPerfectDrive pixelPerfect;
+			bool pixelPerfectActive = false;
+			bool snapPreview = false;
+			pixelart::SnapGrid snapPreviewGrid;
 
 			PassObjects objects;
 
@@ -1682,6 +1866,13 @@ namespace jasperengine{
 		int lightListCap;
 		// capacity tier the meshes loaded their variants with
 		int lightCapacityTier;
+		// every Light component is Directional (checkLightsAndShadow), and as the meshes loaded
+		bool directionalLightsOnly = false;
+		bool loadedDirectionalLightsOnly = false;
+		bool directionalLightsOnlyKnown = false;
+		// a point or spot Light was in the scene since load(): the general Lit stays until the
+		// next load, so lights that come and go never reload every mesh again
+		bool nonDirectionalLightSeen = false;
 		// the Lit Quality and the lobe tier the meshes loaded their variants with
 		LitQuality loadedLitQuality;
 		PbrTier loadedPbrTier;
@@ -1691,6 +1882,28 @@ namespace jasperengine{
 		// S57: the fragment block of a Tiled variant, the capsule and contact shadows' block and
 		// what the scene's lighting features are this update
 		tiled_object_lights_t tiledObjectLightsBlock;
+		// the fragment block of the lights' records form, the frame's records (a row of 512
+		// texels holds 128 scene lights) and the meshes drawing with them (none: no texture)
+		static constexpr int LIGHT_RECORDS_WIDTH = 512;
+		object_light_records_t lightRecordsBlock;
+		// a lights' block with the records form's tail, and where the frame's capsules and 2D
+		// lights start among the records (after the scene lights)
+		Vector4 lightBlockScratch[24];
+		int lightDataCapsuleBase = 0;
+		int lightData2DBase = 0;
+		TextureRender lightRecords;
+		// what the texture holds (uploaded only when a record changed) and the next frame's
+		std::vector<Vector4> lightRecordTexels;
+		std::vector<Vector4> lightRecordScratch;
+		uint64_t lightRecordsFrame = UINT64_MAX;
+		bool lightRecordsUploaded = false;
+		// what each mesh's variants read of the records (LIGHT_RECORDS_* bits)
+		std::unordered_map<Entity, uint8_t> lightRecordMeshes;
+		// the variants whose left-out lighting was said (describeLeftOutLighting)
+		std::unordered_set<std::string> reportedLeftOutLighting;
+		static constexpr uint8_t LIGHT_RECORDS_LIGHTS = 1;
+		static constexpr uint8_t LIGHT_RECORDS_CAPSULES = 2;
+		static constexpr uint8_t LIGHT_RECORDS_2D = 4;
 		light_occlusion_t lightOcclusionBlock;
 		LightingFeatureState lighting;
 		// the camera pass being drawn: its contact mask (null: white), whether it draws OIT
@@ -1727,9 +1940,11 @@ namespace jasperengine{
 		int ssaoSlotParams;
 		int ssaoBlurSlotParams;
 
-		// engine-written custom uniforms: seconds since startup, sampled once per draw(),
-		// and the size of the target being drawn (shadow slot, SSAO depth or camera color)
+		// engine-written custom uniforms: seconds since startup and the scene clock
+		// (Scene::getSceneTime), sampled once per draw(), and the size of the target being
+		// drawn (shadow slot, SSAO depth or camera color)
 		float frameTime;
+		float frameSceneTime = 0.0f;
 		Vector2 passResolution;
 
 		// the engine frame block (u_vs_frame / u_fs_frame) of the camera pass being drawn,
@@ -1766,10 +1981,34 @@ namespace jasperengine{
 		int compositeSlotParams;
 		int compositeSlotFog;              // u_fs_fog (the distance fog the swap is attenuated by)
 		int compositeSlotHeightFog;        // u_fs_heightFog
+		int compositeSlotPostColor;        // u_fs_postColor (the tail it applies after a linear store)
+		std::pair<int, int> compositePostLutSlot;                 // u_postColorLut
+		// the colour pass's post-processing colour while it stores linear light for the SSR
+		// composite (post_color.glsl), and the composite's own (the scene's), else neutral
+		post_color_t ssrCompositePostColor;
+		bool ssrLinearStore = false;
+		// the shaper code the linear store clears to, which the tail turns back into the clear colour,
+		// for the clear colour and tail LUT (postTailLutVersion) it was found for
+		struct SSRStoredClear{
+			Vector3 display;
+			Vector3 code;
+			uint32_t version = 0;
+			bool valid = false;
+		} ssrStoredClear;
+		uint32_t postTailLutVersion = 0;
+		Vector3 ssrStoredClearColor(const Vector3& clear);
+		// the linear store's LUT (its texels their coordinates), bound in place of the scene's while
+		// the colour pass stores linear light (passPostColorLut; null: the scene's)
+		static constexpr int SSR_IDENTITY_LUT_SIDE = 16;
+		TextureRender ssrIdentityLut;
+		bool ssrIdentityLutFailed = false;
+		TextureRender* passPostColorLut = nullptr;
+		bool ensureSSRIdentityLut();
 		std::pair<int, int> compositeProbeSlots[SSR_PROBE_SLOTS]; // u_probeTexture0..3
 		std::pair<int, int> compositeOcclusionSlot;               // u_occlusionGBufferTexture
 		std::pair<int, int> compositeSSAOSlot;                    // u_ssaoTexture
 		std::pair<int, int> ssrAlbedoSlot;                        // ssr.frag's u_albedoTexture
+		std::pair<int, int> ssrExtraSlot;                         // ssr.frag's u_occlusionGBufferTexture (the normal's fine bits)
 		bool ssrProbeOverflowWarned = false; // the overflow warning, once until the next scene load
 		bool swapchainRedirect;            // exported builds: the last pass targets the swapchain
 		// exported builds, a scene with a scene-colour reader (phase 3): the scene camera may draw
@@ -1790,6 +2029,28 @@ namespace jasperengine{
 		// fixed-resolution blit when that is on, else one pass after the scene
 		bool uberLoaded = false;
 		uint32_t uberFeatures = 0;         // the variant loaded
+		// S41: what a Pixel Perfect Camera asks of the uber pass this frame (renderCameraPass):
+		// the source rect, the bars' colour and Stretch Fill's screen pixels per base pixel
+		Vector4 uberInnerUV = Vector4(1.0f, 0.0f, 1.0f, 0.0f);
+		const Vector4* uberClearColor = nullptr;
+		Vector2 uberSharpBilinear = Vector2(0.0f, 0.0f);
+		// the Pixel Perfect Cameras of this frame, and the main camera's (-1: none drives it)
+		std::vector<PixelPerfectDrive> pixelPerfectDrives;
+		std::vector<PixelPerfectDrive> previousPixelPerfectDrives;  // updatePixelPerfect's last frame
+		// the rounding bias the vertex stages are given (the rule's 2^-7; a test sets 0 to show
+		// what it protects, setPixelSnapBias)
+		static float pixelSnapBias;
+		int mainPixelPerfect = -1;
+		// objects load with the 'Pxs' bit (a snapping Pixel Perfect Camera in the scene)
+		bool pixelSnapVariants = false;
+		// the pass being drawn snaps (its grid, the frame block's)
+		bool passPixelSnap = false;
+		pixelart::SnapGrid passSnapGrid;
+		const PixelPerfectDrive* passPixelPerfect = nullptr;
+		// direct mode: the background colour as a texture, to fill the viewport inside the bars
+		TextureRender pixelPerfectFill;
+		uint32_t pixelPerfectFillColor = 0;
+		bool pixelPerfectFillCreated = false;
 		CameraRender uberPassRender;
 		ObjectRender uberRender;
 		std::shared_ptr<ShaderRender> uberShader;
@@ -1801,6 +2062,10 @@ namespace jasperengine{
 		std::pair<int, int> uberSlotBlur = {-1, -1};
 		std::pair<int, int> uberSlotHalation = {-1, -1};
 		std::pair<int, int> uberSlotHalationWide = {-1, -1};
+		std::pair<int, int> uberSlotPaletteCells = {-1, -1};
+		std::pair<int, int> uberSlotPaletteRow = {-1, -1};
+		// Palette Quantize's table and its bake (S43), made while UBER_PALETTE is on
+		std::shared_ptr<pixelart::PaletteQuantizer> paletteQuantizer;
 		vs_uber_t vs_uber;
 		fs_uber_t fs_uber;
 		// what the uber pass composites (the bloom chain's output and its blurred copy, phase 4
@@ -1947,6 +2212,11 @@ namespace jasperengine{
 		// pre-pass SSAO, SSR or a post pass already ran, else its own) and, for scenecolor, one
 		// copy of its colour target after the opaque queue and the sky.
 		std::unordered_map<Entity, uint32_t> sceneInputMeshes;
+		// the meshes drawn with a water (library:water, @role water) and those reading a planar
+		// reflection (@require planarreflection), as their last load resolved them: empty in a
+		// scene without, so the passes skip the water layering and the reflection passes at once
+		std::unordered_set<Entity> waterMeshes;
+		std::unordered_set<Entity> planarReflectionMeshes;
 		std::unordered_map<Entity, uint32_t> sceneInputPoints;
 		std::unordered_map<Entity, uint32_t> sceneInputParticles;
 		uint32_t sceneInputUsage = 0;          // the bits of both maps
@@ -1992,6 +2262,7 @@ namespace jasperengine{
 			uint32_t depthPrePasses = 0;   // scene depth pre-passes run for them
 			uint32_t sharedDepth = 0;      // passes that reused the SSAO / SSR / post-process depth
 			uint32_t colorCopies = 0;
+			uint32_t colorRecopies = 0;    // copies taken again for readers over other readers
 			uint32_t targetsCreated = 0;   // since the scene started (reuse keeps it constant)
 		};
 		SceneInputStats sceneInputStats;
@@ -2059,6 +2330,41 @@ namespace jasperengine{
 		bool isLight2DActive(Entity entity, const Light2DComponent& light) const;
 		bool isRenderingFlipped(const CameraComponent& camera) const;
 		bool isFixedResolutionActive() const;
+		// the fixed-resolution target's size: the Pixel Perfect Camera's T when one drives the
+		// main camera (S41 R4), else the scene's Fixed Resolution
+		unsigned int fixedResolutionWidth() const;
+		unsigned int fixedResolutionHeight() const;
+		TextureFilter fixedResolutionFilter() const;
+
+		// ---- S41: Pixel Perfect Camera (RenderSystemPixelArt.cpp)
+		// the cameras of the scene with an applicable Pixel Perfect Camera: their layout, the
+		// Engine's view request, their clips; the variants' 'Pxs' environment
+		void updatePixelPerfect(Entity mainCameraEntity);
+		// a Sprite or a Tilemap while the scene snaps: its submeshes take 'Pxs'
+		bool isPixelArtDrawable(Entity entity) const;
+		void refreshPixelPerfectCameras();
+		PixelPerfectDrive* findPixelPerfectDrive(Entity cameraEntity);
+		const PixelPerfectDrive* findPixelPerfectDrive(const CameraComponent& camera) const;
+		// the main camera's of the view being drawn (the Game view's own in a secondary view)
+		const PixelPerfectDrive* viewPixelPerfect() const;
+		bool makePixelPerfectDrive(Entity cameraEntity, const CameraComponent& camera, const PixelPerfectCameraComponent& component,
+		                           bool mainOfBaseLayer, int screenWidth, int screenHeight, PixelPerfectDrive& drive) const;
+		void applyPixelPerfectClips(CameraComponent& camera, const PixelPerfectDrive& drive) const;
+		// R8: the view at the camera's snapped position, its residual into the drive (shift)
+		void snapPixelPerfectView(CameraComponent& camera, const Transform& transform, PixelPerfectDrive& drive) const;
+		// R10 Steps90: the model with its rotation rounded to 90 degrees when the pass's policy says so
+		Matrix4 pixelArtModel(Entity entity, const Matrix4& model, const PixelPerfectDrive* drive) const;
+		// the pass's grid into the frame block (zero without one)
+		void fillPassPixelSnap(frame_t& frame, const CameraComponent& camera);
+		// a draw's mode for pixelSnapDraw.x: 0 none, 1 every vertex, 2 the pivot
+		float pixelSnapDrawMode(const Matrix4& mvp) const;
+		// u_vs_pbrParams of a draw (model, normal, mvp; and the snap mode of a 'Pxs' variant)
+		void applyObjectBlock(ObjectRender& render, int slot, unsigned int reflectedSize, uint64_t meshProperties, const Matrix4* objectBlock);
+		// the blit's source rect within a pixel-perfect target (its smoothing margin and shift)
+		Vector4 pixelPerfectInnerUV(const PixelPerfectDrive& drive) const;
+		// direct mode's bars: a pass that clears to the letterbox colour and fills the viewport with
+		// the background, before a colour pass that loads it
+		bool renderPixelPerfectBars(const PixelPerfectDrive& drive, const Rect& viewport);
 		void updateSwapchainRedirect();
 		void updateSceneColorRedirect(CameraComponent& mainCamera);
 		void updateMVP(size_t index, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
@@ -2093,7 +2399,33 @@ namespace jasperengine{
 		int lightOcclusionBits(int sceneLight) const;
 		// the object's lights of a variant into its blocks (the Tiled form for 'Til')
 		void applyObjectLights(ObjectRender& render, int slotVS, unsigned int sizeVS, int slotFS, unsigned int sizeFS,
-		                       const MeshComponent& mesh, uint64_t properties, uint32_t& builtLightBits);
+		                       std::pair<int, int> slotLightRecords, const LightDataTail& tail, const MeshComponent& mesh,
+		                       uint64_t properties, uint32_t& builtLightBits);
+		// the records form's tail of a variant's lights' block (includes/lights.glsl LIGHT_DATA_TAIL)
+		static LightDataTail resolveLightDataTail(ShaderData& shaderData);
+	public:
+		// what a lit variant's build left out to stay within the bind limits, as the runtime warns
+		// it once a variant ("" when nothing: ShaderVariantCompiler::compile's SHADOWS_2D_OFF)
+		static std::string describeLeftOutLighting(uint64_t properties, ShaderData& shaderData);
+	private:
+		// its values for a draw of the mesh in the pass being drawn, into the block's bytes
+		void writeLightDataTail(const LightDataTail& tail, const MeshComponent& mesh, uint64_t properties, unsigned char* block, size_t size) const;
+		// the records form's block (includes/lights.glsl, LIGHTS_FS_RECORDS): the object's pixel
+		// lights as rows of u_lightRecords
+		void buildObjectLightRecords(const MeshComponent& mesh, uint64_t properties, object_light_records_t& block) const;
+		// a pixel light's spot_shadow.w in the pass being drawn: its shadow slot, cascades, mask
+		// tile and occlusions (vertex lights: none)
+		float packObjectLightShadow(int sceneLight, bool perPixel) const;
+		// the frame's light records, once a frame while a mesh draws with them; a float texture
+		// of at least the rows given, made again smaller with shrink once they take under half (false: none)
+		void syncLightRecords();
+		bool ensureLightRecords(int rows, bool shrink = false);
+		void setLightRecordsMesh(Entity entity, uint8_t reads);
+	public:
+		// the light records' uploads so far (tests: none while no light changes)
+		uint64_t lightRecordUploads = 0;
+		const TextureRender& getLightRecordsTexture() const { return lightRecords; }
+	private:
 		// a submesh variant's S57 blocks and textures: resolved at load, bound per draw
 		void loadLightingFeatureSlots(Submesh& submesh, ShaderData& shaderData);
 		void applyLightingFeatures(Submesh& submesh, ObjectRender& render, const MeshComponent& mesh);
@@ -2205,6 +2537,8 @@ namespace jasperengine{
 		void setPassPostColor(const post_color_t& postColor);
 		void fillPassPostColor(bool active, const Rect& viewport, float targetHeight);
 		void applyPostColor(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// the post-processing colour's LUT of the draws now (the scene's, or the SSR linear store's)
+		TextureRender* currentPostColorLut();
 		// the vignette's parameters for a viewport of a target targetHeight high (gl_FragCoord)
 		void fillVignette(const PostProcessingSettings& settings, const Rect& viewport, float targetHeight,
 		                  Vector4& scaleOffset, Vector4& color, float& falloffScale, float& falloffBias) const;
@@ -2273,13 +2607,19 @@ namespace jasperengine{
 		void applySceneInputs(ObjectRender& render, const ShaderLibraryBindings& bindings);
 		// the reflection environment around a mesh, to a draw whose shader declares it
 		// (includes/environment.glsl): its reflection probe, else the sky's prefiltered map
-		void applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, const MeshComponent& mesh, const Transform& transform);
+		void applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity, const MeshComponent& mesh, const Transform& transform);
 		// resolves the frame block slots and the custom textures of a loaded shader, then
 		// binds the textures (false while one is still loading); enabledFeatures (the variant's,
 		// ShaderReference::getEnabledFeatures) pick a @texture's default[<DEFINE>]= default
 		bool loadShaderLibraryBindings(ShaderLibraryBindings& bindings, ShaderData& shaderData, ObjectRender& render,
 		                               std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest,
-		                               const std::vector<std::string>& enabledFeatures = {});
+		                               const std::vector<std::string>& enabledFeatures = {},
+		                               const pixelart::ShaderPalettes* palettes = nullptr);
+		// the swap textures of the shader's @palette slots (S43 Palette Swap), from the
+		// material's bindings (none: the identity, which draws unchanged); update binds again
+		// only when a binding or the palette library changed (an edit, a hot reload)
+		void bindShaderPalettes(ShaderLibraryBindings& bindings, ObjectRender& render, const pixelart::ShaderPalettes* palettes);
+		void updateShaderPalettes(ShaderLibraryBindings& bindings, ObjectRender& render, const pixelart::ShaderPalettes* palettes);
 		// binds the resolved custom textures again (they changed or a render target was redrawn)
 		bool bindShaderTextures(const ShaderLibraryBindings& bindings, ObjectRender& render, std::vector<std::pair<std::string, Texture>>& textures);
 		static bool shaderTexturesOutdated(const ShaderLibraryBindings& bindings, const std::vector<std::pair<std::string, Texture>>& textures);
@@ -2430,12 +2770,15 @@ namespace jasperengine{
 		bool usesShadowIndices(const MeshComponent& mesh, const Submesh& submesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain) const;
 		// what the next draw of this object may join (ObjectRender::setNextDrawBatch), when the
 		// draw can batch: the plain pipeline of a batch-variant submesh
-		void offerDrawBatch(ObjectRender& render, ObjectRender& variant, int objectSlot, bool mirrored);
+		void offerDrawBatch(ObjectRender& render, ObjectRender* variant, int objectSlot, bool mirrored);
 		// The opaque queue of a pass with GPU Instancing (spec S55 R2, R4), in the order it has: the
 		// entries culled at once (on jobs) against the pass's frustum, mesh then submesh, those of
 		// a mesh that can batch split one per submesh, the draws of one batch key brought together
-		// within their priority (VisibleList::groupBatches); the culled ones counted
-		void buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const VisibleFrustum& frustum, PipelineType pipType, bool depthPipelines);
+		// within their priority (VisibleList::groupBatches); the culled ones counted. sortByState
+		// (a colour pass's opaque queue): the visible entries are then sorted by
+		// OpaqueRenderComparison with their band and state, before the batches are grouped
+		void buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const VisibleFrustum& frustum, PipelineType pipType, bool depthPipelines,
+		                       bool sortByState = false);
 		unsigned int bindSubmeshAttributes(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh,
 		                                   BufferMap& buffers, BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride,
 		                                   InstancedMeshComponent* instmesh);
@@ -2472,6 +2815,20 @@ namespace jasperengine{
 		// variant's bindings (spec S54 §6); false while not ready, or never for this submesh
 		bool prepareSubmeshLodFade(Submesh& submesh, PipelineType pipType, bool mirrored);
 	public:
+		// the snap mode of a depth draw: its colour pass's, but none into a shadow map (the frame
+		// block still holds the camera's grid there)
+		// the bias of the pixel-snap rule the vertex stages round with: pixelart::kSnapBias, the CPU
+		// twin's; any other value is for a test's red control (the GPU then disagrees with the CPU)
+		static void setPixelSnapBias(float bias){ pixelSnapBias = bias; }
+		static float getPixelSnapBias(){ return pixelSnapBias; }
+		static float depthSnapMode(PipelineType pipeline, float colourMode){
+			return pipeline == PIP_SHADOW_DEPTH ? 0.0f : colourMode;
+		}
+		// the bytes of a block to upload: ours, or less when the shader's reflected block is smaller
+		// (a fork made without a member the engine appends); 0 reflected is not known
+		static unsigned int uniformUploadSize(unsigned int bytes, unsigned int reflectedSize){
+			return reflectedSize > 0 && reflectedSize < bytes ? reflectedSize : bytes;
+		}
 		// a LOD fade variant's reflection binds what its base variant's does (checked at load)
 		static bool sameLodFadeBindings(const ShaderData& base, const ShaderData& fade);
 		// a loaded submesh's positions (mesh space) and the triangles of one of its detail levels
@@ -2769,6 +3126,8 @@ namespace jasperengine{
 		void beginBatchPass(BatchPass pass, BatchMode mode, CameraComponent* camera, Transform* cameraTransform, PipelineType pipType,
 		                    const Matrix4& viewProjection, float farClip, const Plane* frustumPlanes);
 		void endBatchPass();
+		// draws what the batcher holds now (as the pass's end would), inside a batch pass
+		void flushHeldBatchDraws();
 		bool batchingActive() const { return batchPassActive; }
 		// colour pass: drawn alone (drawMesh) or held for a batch
 		bool submitMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType,
@@ -2844,6 +3203,64 @@ namespace jasperengine{
 		// scene inputs (phase 3)
 		// records what a loaded mesh or points component reads of the scene (0: nothing)
 		void setSceneInputUser(Entity entity, bool points, uint32_t inputs);
+		// waterMeshes and planarReflectionMeshes for a mesh as its load resolved it
+		void setWaterMesh(Entity entity, bool water, bool planarReflection);
+		// the pass's waters a transparent queue layers around (WaterLayering.h): the visible
+		// transparent meshes of waterMeshes in the queue, with their levels and wave bands
+		void gatherPassWaters(const std::vector<TransparentRenderData>& queue, std::vector<WaterLayer>& waters) const;
+		// The water reflection passes of a view's camera (spec water-reflections 6.4): the
+		// heights of the visible meshes reading a planar reflection, nearest first up to the
+		// scene's cap, each drawn mirrored about its plane before the camera's own pass;
+		// terrainView: the terrain cut the passes draw (the primary view's next free slot)
+		void renderWaterReflections(RenderView& view, CameraComponent& viewer, Transform& viewerTransform, int terrainView);
+		// whether the camera sees a mesh reading a planar reflection from above it, with the
+		// scene's resolution on (its water reflection passes draw this frame)
+		bool planarReflectionVisible(Entity cameraEntity);
+		// the view's reflection passes unused for a while freed (all of them: everything)
+		void releaseWaterReflections(RenderView& view, bool everything);
+		// what a reflection camera takes of the camera it mirrors (copied: making a camera entity
+		// may move the camera arrays)
+		struct ReflectionViewer{
+			Matrix4 viewMatrix;
+			Vector3 eye;
+			CameraType type = CameraType::CAMERA_PERSPECTIVE;
+			float yfov = 0.0f, aspect = 1.0f, nearClip = 0.1f, farClip = 1000.0f;
+			float leftClip = 0.0f, rightClip = 0.0f, bottomClip = 0.0f, topClip = 0.0f;
+			uint32_t cullingMask = LAYER_MASK_EVERYTHING;
+
+			static ReflectionViewer of(const CameraComponent& camera);
+		};
+		// a reflection camera: the viewer mirrored about a plane (its normal, a point of it), its
+		// near plane moved onto the plane raised by clipOffset along the normal, so nothing
+		// behind it shows (mirrors and water reflections)
+		void driveReflectionCamera(CameraComponent& reflectionCamera, Transform& reflectionTransform, const ReflectionViewer& viewer,
+		                           const Vector3& normal, const Vector3& point, float clipOffset);
+		// target takes source's lighting and shadow maps (its own camera's viewport), without
+		// shadows at strength 0
+		void shareCameraShadows(CameraShadows& target, const CameraShadows& source, const CameraComponent& camera, bool shadows);
+		// the camera of the camera pass being drawn (renderCameraPass)
+		const CameraComponent* passCamera = nullptr;
+		// u_fs_planarReflection and its texture for a draw of a mesh reading one
+		void applyPlanarReflection(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity);
+		// the planar reflection a draw of the mesh reads in the pass being drawn (none: params.y 0, black)
+		void getPlanarReflection(Entity entity, fs_planar_reflection_t& block, TextureRender*& texture);
+		// the eye of the camera pass being drawn (its camera's Transform)
+		Vector3 passEye;
+		// the Water Excluders' and Wakes' members of a draw's custom block and their textures: the
+		// excluders over the mesh in the pass camera's view, nearest first, and the wake map with the
+		// mesh's body tag
+		void applyWaterInteraction(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity, const MeshComponent& mesh,
+		                           const Material& material, CustomUniformBlock& customParams);
+		// the world box a transparent draw covers (null when it has none to tell)
+		AABB transparentBounds(const TransparentRenderData& renderData) const;
+		// whether a draw of the transparent queue samples the scene colour (and is drawn)
+		bool readsSceneColor(const TransparentRenderData& renderData, CameraComponent& camera, int instanceView);
+		// the box's extent in normalized device coordinates (xmin, ymin, xmax, ymax): the whole
+		// screen when it is unknown or reaches behind the eye
+		static Vector4 screenBoundsOf(const AABB& bounds, const Matrix4& viewProjection);
+		// the scene colour copies a camera pass may take (the first and the re-copies for readers
+		// drawn over other readers)
+		static constexpr unsigned int MAX_SCENE_COLOR_COPIES = 4;
 		// registers what the meshes and points about to load will read, before update() decides
 		// from the readers what every mesh loads with (depth programs, offscreen pipelines)
 		void predictSceneInputUsers();
@@ -2877,14 +3294,30 @@ namespace jasperengine{
 		void drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams);
 		// destination == nullptr renders the composite to the swapchain (backbuffer)
 		void renderSSR(CameraComponent& camera, FramebufferRender* destination);
+		// the SSR march and its glossy blur (their own passes): the reflection the composite reads
+		TextureRender* renderSSRReflections(CameraComponent& camera);
+		// the composite's block (flipDestination: a GL swapchain destination), its sky's map out
+		void fillSSRComposite(CameraComponent& camera, bool flipDestination, TextureRender*& prefiltered, bool debugView);
+		// the composite's draw into the open pass (target: that pass's format)
+		void drawSSRComposite(const RenderTargetFormat& target, TextureRender* reflection, TextureRender* prefiltered);
+		// the target a distance-sorted pass resumes on after its SSR composite (ssrSceneTarget)
+		bool ensureSSRSceneTarget();
+		// the destination with the scene colour's depth (ssrSceneAlias), null when it cannot be
+		FramebufferRender* ensureSSRSceneAlias(FramebufferRender* destination);
+		// a view's SSR targets, freed while it draws no SSR
+		void releaseSSRTargets();
 
 		// fixed game resolution
 		void loadBlit();
 		void destroyBlit();
 		bool ensureFixedResFramebuffer(unsigned int width, unsigned int height, TextureFilter filter);
-		// draws source over the real destination (Engine framebuffer in the editor,
-		// swapchain in exported builds)
-		void renderBlit(TextureRender* source, Rect viewport);
+		// draws source over the real destination at viewport: destination, else the Engine
+		// framebuffer in the editor, the swapchain in exported builds
+		// clearColor: the bars' (a Pixel Perfect Camera's letterbox colour); innerUV: the source
+		// rect (scale x, offset x, scale y, offset y) the blit reads
+		void renderBlit(TextureRender* source, Rect viewport, const Vector4* clearColor = nullptr,
+		                const Vector4& innerUV = Vector4(1.0f, 0.0f, 1.0f, 0.0f), FramebufferRender* destination = nullptr,
+		                const char* label = "blit");
 		// upscales fixedResFramebuffer to the view rect
 		void renderFixedResolutionBlit();
 
@@ -3024,6 +3457,11 @@ namespace jasperengine{
 		};
 		const CanvasGroupRenderStats& getCanvasGroupRenderStats() const { return lastCanvasGroupRenderStats; }
 
+		// S41: the layout of the Pixel Perfect Camera driving the main camera (null: none), and
+		// whether the scene's objects draw pixel-snapped variants
+		const pixelart::PixelPerfectLayout* getPixelPerfectLayout() const;
+		bool hasPixelSnapVariants() const { return pixelSnapVariants; }
+
 	private:
 		CanvasGroupRenderStats canvasGroupRenderStats;
 		CanvasGroupRenderStats lastCanvasGroupRenderStats;
@@ -3099,15 +3537,9 @@ namespace jasperengine{
 		// the bounds culling and the world AABB take for a mesh's vertices: a Vertex Animator's
 		// animatedBounds when set, else verticesAABB
 		static const AABB& getMeshLocalBounds(const MeshComponent& mesh);
-
-		// Planes around the casters that can shadow the surfaces reading a directional cascade:
-		// its receiver slice (the camera's projection cut to the cascade's depths) extruded toward the light
-		// (lightDirection, the way the light travels), widened by the normal offset and the PCF
-		// reach of a shadow atlas slot of slotResolution texels through lightProjection. At most
-		// 18 planes, a box wholly behind one casts nothing there; 0 culls nothing. (Upstream's
-		// receiver culling of the old cascades: S10's shadow passes do not call it yet.)
-		static int getShadowReceiverPlanes(const Matrix4& receiverViewProjection, const Matrix4& lightProjection,
-		                                   unsigned int slotResolution, float normalBias, const Vector3& lightDirection, Plane* planes);
+		// the distance band of an opaque draw (its squared distance): 0 up to 1, then one per
+		// doubling of the distance (NaN 0, infinity 63); the opaque queues sort by it before the state
+		static uint8_t distanceBand(float squaredDistance);
 
 		// Shader variants, derived the same way by loadMesh and by the editor collecting the
 		// variants a build needs (from content, without loading anything on the GPU).
@@ -3148,6 +3580,8 @@ namespace jasperengine{
 		// its own STOCHASTIC feature). Read from the fork's entry point at runtime and by the
 		// editor alike, so a build ships the variants the game asks for.
 		static bool supportsStochasticTiling(const std::string& shader);
+		// the shader reference is the engine's Lit: empty, or builtin:lit with its variant features
+		static bool isBuiltinLit(const std::string& shader);
 		MeshShaderEnvironment getMeshShaderEnvironment() const;
 		// capacity tier (4, 8 or 16 lights) of the per-object lights blocks for a scene's
 		// maxLightsPerObject: the light-capacity bits of every lit mesh variant
@@ -3299,6 +3733,13 @@ namespace jasperengine{
 		// as needReloadMeshes does. Once they are built, the loaded objects make their pipelines
 		// on the new variants and warm them (spec S32 R4, R8), and the reload waits for those too
 		void needReloadMeshVariants();
+		// the meshes with a submesh whose shader can ask for the Water Excluders or Wakes
+		void needReloadWaterVariants();
+		// the hull map array and the wake map (once a frame, before the passes draw)
+		void syncWaterInteraction();
+		void destroyWaterInteraction();
+		// the excluders' data texture with room for that many rows (made again only to grow)
+		bool ensureWaterExclusionData(size_t rows);
 		bool meshVariantShadersReady(Entity entity, MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain);
 		// the inputs a load of the submesh would resolve now, from its attributes of the last load
 		SubmeshShaderInputs getCurrentSubmeshInputs(Entity entity, const MeshComponent& mesh, unsigned int index, const TerrainComponent* terrain,
@@ -3328,6 +3769,8 @@ namespace jasperengine{
 		// The user LUT is read through the CubeLut cache to know its stage (a scene-stage .cube
 		// changes the curve, not the grade); the second form takes the loaded one (null: none)
 		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings);
+		// Palette Quantize's table is being baked (the previous one, or none, draws meanwhile: S43 R20)
+		bool isPaletteQuantizeBaking() const;
 		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings, const CubeLut* lut);
 		// the k of the in-shader LUT's shaper s = sqrt(x / (x + k)) for a LUT of that side
 		// (PostColorLut::bake, includes/post_color.glsl): 1, or with tone mapping NONE the
@@ -3360,11 +3803,29 @@ namespace jasperengine{
 			uint32_t depthPrePasses = 0;   // last frame: scene depth pre-passes run for them
 			uint32_t sharedDepth = 0;      // last frame: passes that reused the SSAO / SSR / post depth
 			uint32_t colorCopies = 0;      // last frame: colour copies
+			uint32_t colorRecopies = 0;    // last frame: of them, taken again for readers over other readers
 			uint32_t targets = 0;          // depth and copy targets alive (the editor's views included)
 			bool depthPrograms = false;    // every mesh keeps a depth program for the scene depth
 			bool colorRedirect = false;    // the exported scene camera draws offscreen for the copy now
 		};
+
+		// what the last frame's water reflection passes were (get_render_stats, the scene
+		// settings' In Use row)
+		struct PlanarReflectionStats{
+			uint32_t planes = 0;     // water heights seen by the views' cameras
+			uint32_t passes = 0;     // reflection passes drawn
+			uint32_t fallbacks = 0;  // heights over the cap (their waters show the environment)
+			uint32_t width = 0;      // the last pass's target
+			uint32_t height = 0;
+		};
+
 		SceneInputDetails getSceneInputDetails();
+		// what the last frame's water reflection passes were
+		PlanarReflectionStats getPlanarReflectionStats() const{ return lastPlanarReflectionStats; }
+	private:
+		PlanarReflectionStats planarReflectionStats;
+		PlanarReflectionStats lastPlanarReflectionStats;
+	public:
 		bool hasPendingMeshLods() const;
 
 		// the detail levels the main view (draw()) drew in its last frame
@@ -3412,6 +3873,13 @@ namespace jasperengine{
 			// off: no shadow maps are drawn for the view and its fragments read no shadow
 			bool shadows = true;
 			ViewDrawMode drawMode = ViewDrawMode::SHADED;
+			// the Scene view's Snap Preview (S41 R21): a scene with a Pixel Perfect Camera draws its
+			// snapped drawables on this view's own grid of base pixels (snapPreviewScale view pixels
+			// each, fractions for zooms below 1x); 0: no preview
+			float snapPreviewScale = 0.0f;
+			// a Pixel Perfect Camera on the view camera lays its image out on the view's target
+			// (the Game view): viewRect is then its viewport
+			bool pixelPerfect = true;
 		};
 		void drawView(uint32_t viewId, const ViewDesc& desc);
 		// the level a mesh drew in an editor view's last frame (its plan's dominant level;

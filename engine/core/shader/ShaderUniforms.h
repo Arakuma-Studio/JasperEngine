@@ -6,11 +6,16 @@
 
 #include "ShaderData.h"
 #include "math/Vector4.h"
+#include "pixelart/PaletteBinding.h"
 #include <string>
 #include <vector>
 #include <utility>
 #include <cstdint>
 #include <memory>
+
+namespace jasperengine::pixelart{
+    struct PaletteSwapTextures;
+}
 
 namespace jasperengine{
 
@@ -47,7 +52,8 @@ namespace jasperengine{
 
     class JASPERENGINE_API ShaderUniforms{
     public:
-        // "time" and "resolution", written by the engine every frame
+        // "time", "resolution" and "sceneTime" (Scene::getSceneTime), written by the engine every frame,
+        // and the Water Excluders' and Wakes' members (includes/water_interaction_params.glsl)
         static bool isReserved(const std::string& name);
         // float/int scalars and vectors; matrices and arrays take no value
         static bool isEditable(const ShaderUniform& uniform);
@@ -71,7 +77,12 @@ namespace jasperengine{
         std::vector<ShaderUniform> members; // short names
         std::vector<uint8_t> data; // rounded up to the vec4 stride
         int timeMember = -1;
+        int gameTimeMember = -1;
         int resolutionMember = -1;
+        int sceneTimeMember = -1;
+        // the byte offsets of WATER_INTERACTION_PARAMS' first and last members (-1 without them)
+        int waterInteractionOffset = -1;
+        int waterWakeParamsOffset = -1;
         bool mixedTypes = false; // int and float members together, which GL uploads wrong
 
         bool resolve(ShaderData& shaderData, const std::string& blockName);
@@ -87,6 +98,11 @@ namespace jasperengine{
         // every member from ShaderUniforms::resolve of the chain, reserved ones skipped
         void writeValues(const UniformChain& chain);
         void writeTime(float seconds);
+        // the scene clock (Scene::getSceneTime) of the scene drawing it
+        void writeSceneTime(float seconds);
+        // the Water Excluders' and Wakes' members as one run of bytes (fs_water_interaction_t);
+        // false when the block does not hold them
+        bool writeWaterInteraction(const void* values, size_t size);
         void writeResolution(float width, float height);
 
         static void writeUniform(std::vector<uint8_t>& block, const ShaderUniform& uniform, const Vector4& value);
@@ -102,6 +118,18 @@ namespace jasperengine{
         int source = -1;      // index in the object's shaderTextures, -1: the default texture
         int fallback = 0;     // ShaderTextureDefault
         bool cube = false;    // declared as a textureCube
+    };
+
+    // A manifest @palette a loaded shader reads (a feature of it is on): its two texture slots,
+    // and the swap textures bound there, made from `bound` (the material's binding) at palette
+    // library `generation` (a change of either binds again: hot reload, an edit)
+    struct JASPERENGINE_API ShaderPaletteSlot{
+        std::string uniform;
+        std::pair<int, int> cells = {-1, -1};
+        std::pair<int, int> rows = {-1, -1};
+        std::shared_ptr<pixelart::PaletteSwapTextures> textures;
+        pixelart::PaletteBinding bound;
+        uint32_t generation = 0;
     };
 
     // a texture uniform of a loaded shader that a texture global (ShaderGlobals) binds to: one
@@ -131,13 +159,24 @@ namespace jasperengine{
         // load after the render state is resolved, 0 (its own colour) otherwise
         uint8_t postColorBlend = 0;
         std::vector<ShaderTextureSlot> textures;
+        std::vector<ShaderPaletteSlot> palettes;
         int slotFSSceneInputs = -1;
         unsigned int sceneInputsSize = 0;
         std::pair<int, int> slotSceneDepth = {-1, -1};
         std::pair<int, int> slotSceneColor = {-1, -1};
-        // the reflection environment (includes/environment.glsl, @require environment)
+        // the reflection environment (includes/environment.glsl, @require environment); its
+        // block holds the planar reflection's values too when the shader reads both
         int slotFSEnvironment = -1;
+        unsigned int environmentSize = 0;
         std::pair<int, int> slotEnvironment = {-1, -1};
+        // the planar reflection (includes/planar_reflection.glsl, @require planarreflection)
+        int slotFSPlanarReflection = -1;
+        std::pair<int, int> slotPlanarReflection = {-1, -1};
+        // the Water Excluders' hull maps and the wake map (includes/water_interaction.glsl,
+        // @require waterexclusion / waterwake); their values go into the custom block
+        std::pair<int, int> slotWaterExclusionMaps = {-1, -1};
+        std::pair<int, int> slotWaterExclusionData = {-1, -1};
+        std::pair<int, int> slotWaterWake = {-1, -1};
         // the frame's blurred scene (phase 4, includes/blurred_scene.glsl: frosted UI panels)
         int slotFSBlurredScene = -1;
         std::pair<int, int> slotBlurredScene = {-1, -1};
@@ -160,12 +199,19 @@ namespace jasperengine{
             slotPostColorLut = {-1, -1};
             postColorBlend = 0;
             textures.clear();
+            palettes.clear();
             slotFSSceneInputs = -1;
             sceneInputsSize = 0;
             slotSceneDepth = {-1, -1};
             slotSceneColor = {-1, -1};
             slotFSEnvironment = -1;
+            environmentSize = 0;
             slotEnvironment = {-1, -1};
+            slotFSPlanarReflection = -1;
+            slotPlanarReflection = {-1, -1};
+            slotWaterExclusionMaps = {-1, -1};
+            slotWaterExclusionData = {-1, -1};
+            slotWaterWake = {-1, -1};
             slotFSBlurredScene = -1;
             slotBlurredScene = {-1, -1};
             slotFSHeightFog = -1;

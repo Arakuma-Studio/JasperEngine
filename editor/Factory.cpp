@@ -31,6 +31,7 @@
 #include "component/SkyboxComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/SpriteComponent.h"
+#include "subsystem/MeshSystem.h"
 #include "component/TerrainComponent.h"
 #include "component/TextComponent.h"
 #include "component/TilemapComponent.h"
@@ -555,6 +556,19 @@ std::string editor::Factory::formatMaterialShaderLibrary(int indentSpaces, const
         code << ind << target << ".shaderFeatures = " << formatShaderFeatures(material.shaderFeatures) << ";\n";
     if (!material.shaderGlobalBindings.empty())
         code << ind << target << ".shaderGlobalBindings = " << formatShaderGlobalBindings(material.shaderGlobalBindings) << ";\n";
+    // Palette Swap bindings (S43): the paths as the editor resolved them
+    for (const auto& [uniform, binding] : material.shaderPalettes.get()) {
+        code << ind << "{\n";
+        code << ind << "    jasperengine::pixelart::PaletteBinding binding;\n";
+        code << ind << "    binding.source = " << formatString(binding.source.path) << ";\n";
+        for (const jasperengine::pixelart::PaletteTarget& paletteTarget : binding.targets) {
+            code << ind << "    binding.targets.push_back(jasperengine::pixelart::PaletteTarget{AssetRef(" << formatString(paletteTarget.palette.path) << "), "
+                 << formatString(paletteTarget.variant) << "});\n";
+        }
+        if (!binding.useVariants) code << ind << "    binding.useVariants = false;\n";
+        code << ind << "    " << target << ".shaderPalettes.edit().push_back({" << formatString(uniform) << ", binding});\n";
+        code << ind << "}\n";
+    }
     if (material.blendMode != MaterialBlendMode::AUTO)
         code << ind << target << ".blendMode = " << formatBlendMode(material.blendMode) << ";\n";
     if (material.cullMode != MaterialCullMode::AUTO)
@@ -1272,7 +1286,24 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.submeshes[" << idx << "].material.alphaMode = static_cast<MaterialAlphaMode>(" << static_cast<int>(mesh.submeshes[s].material.alphaMode) << ");\n";
         code << ind << "mesh.submeshes[" << idx << "].material.emissiveFactor = " << formatVector3(mesh.submeshes[s].material.emissiveFactor) << ";\n";
 
-        code << formatTexture(indentSpaces, mesh.submeshes[s].material.baseColorTexture, "mesh.submeshes[" + idx + "].material.baseColorTexture", projectPath);
+        // a sheet sprite's page is its sheet's (S44 R48), resolved by the game
+        const SpriteComponent* sheetSprite = scene->findComponent<SpriteComponent>(entity);
+        if (s == 0 && sheetSprite && sheetSprite->sheet.empty() && sheetSprite->inlineAtlas){
+            // a legacy sprite drawn from an atlas page (S45 R8): its source texture
+            Texture source = mesh.submeshes[0].material.baseColorTexture;
+            source.setPath(MeshSystem::spriteSourceTexture(*sheetSprite, mesh));
+            code << formatTexture(indentSpaces, source, "mesh.submeshes[0].material.baseColorTexture", projectPath);
+        }else if (s != 0 || !sheetSprite || sheetSprite->sheet.empty()){
+            code << formatTexture(indentSpaces, mesh.submeshes[s].material.baseColorTexture, "mesh.submeshes[" + idx + "].material.baseColorTexture", projectPath);
+        }else{
+            // its sampler (pixel art's Nearest), the page coming from the sheet
+            const Texture& page = mesh.submeshes[0].material.baseColorTexture;
+            const std::string var = "mesh.submeshes[0].material.baseColorTexture";
+            code << ind << var << ".setMinFilter(" << formatTextureFilter(page.getMinFilter()) << ");\n";
+            code << ind << var << ".setMagFilter(" << formatTextureFilter(page.getMagFilter()) << ");\n";
+            code << ind << var << ".setWrapU(" << formatTextureWrap(page.getWrapU()) << ");\n";
+            code << ind << var << ".setWrapV(" << formatTextureWrap(page.getWrapV()) << ");\n";
+        }
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.emissiveTexture, "mesh.submeshes[" + idx + "].material.emissiveTexture", projectPath);
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.metallicRoughnessTexture, "mesh.submeshes[" + idx + "].material.metallicRoughnessTexture", projectPath);
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.occlusionTexture, "mesh.submeshes[" + idx + "].material.occlusionTexture", projectPath);
@@ -1312,7 +1343,13 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
             code << ind << "mesh.submeshes[" << idx << "].vertexCount = " << formatUInt(mesh.submeshes[s].vertexCount) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].faceCulling = " << formatBool(mesh.submeshes[s].faceCulling) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].textureShadow = " << formatBool(mesh.submeshes[s].textureShadow) << ";\n";
-        code << ind << "mesh.submeshes[" << idx << "].textureRect = " << formatRect(mesh.submeshes[s].textureRect) << ";\n";
+        const SpriteComponent* rectSprite = s == 0 ? scene->findComponent<SpriteComponent>(entity) : nullptr;
+        const Rect savedRect = rectSprite ? MeshSystem::spriteSourceRect(*rectSprite, mesh) : mesh.submeshes[s].textureRect;
+        code << ind << "mesh.submeshes[" << idx << "].textureRect = " << formatRect(savedRect) << ";\n";
+        // a sprite or tilemap sets it once its texture loads: a mesh whose buffers load first would
+        // pick a variant without the texture rect (the cooked scenes keep it too, Stream)
+        if (mesh.submeshes[s].hasTextureRect)
+            code << ind << "mesh.submeshes[" << idx << "].hasTextureRect = true;\n";
 
         // The model load puts these fields back over the ones the file gives the new submesh.
         if (mesh.submeshes[s].overrideFields != 0){
@@ -1619,8 +1656,20 @@ std::string editor::Factory::createSpriteComponent(int indentSpaces, EntityRegis
     code << ind << "sprite.flipY = " << formatBool(sprite.flipY) << ";\n";
     code << ind << "sprite.pivotPreset = " << formatPivotPreset(sprite.pivotPreset) << ";\n";
     code << ind << "sprite.textureScaleFactor = " << formatFloat(sprite.textureScaleFactor) << ";\n";
+    if (sprite.drawMode != SpriteDrawMode::SIMPLE) {
+        code << ind << "sprite.drawMode = SpriteDrawMode::SLICED;\n";
+    }
+    // S41: exported only away from their defaults
+    if (sprite.pixelsPerUnit != 0.0f)
+        code << ind << "sprite.pixelsPerUnit = " << formatFloat(sprite.pixelsPerUnit) << ";\n";
+    if (sprite.pixelRotation != PixelRotation::CAMERA)
+        code << ind << "sprite.pixelRotation = " << (sprite.pixelRotation == PixelRotation::STEPS_90 ? "PixelRotation::STEPS_90" : "PixelRotation::ON_GRID") << ";\n";
     // as authored, in pixels or normalised: the game normalises a frame when it shows it
-    // (MeshSystem::setSpriteFrameRect), once its texture's size is known
+    // (MeshSystem::setSpriteFrameRect), once its texture's size is known; the list sized first
+    // (S45 R8: no fixed capacity)
+    if (sprite.numFramesRect > 0) {
+        code << ind << "sprite.framesRect.resize(" << sprite.numFramesRect << ");\n";
+    }
     for (unsigned int i = 0; i < sprite.numFramesRect; i++) {
         if (!sprite.framesRect[i].name.empty()) {
             code << ind << "sprite.framesRect[" << i << "].name = " << formatString(sprite.framesRect[i].name) << ";\n";
@@ -1629,6 +1678,12 @@ std::string editor::Factory::createSpriteComponent(int indentSpaces, EntityRegis
     }
     if (sprite.numFramesRect > 0) {
         code << ind << "sprite.numFramesRect = " << sprite.numFramesRect << ";\n";
+    }
+    // a sheet sprite (S44): the sheet, its frame and that frame's name
+    if (!sprite.sheet.empty()) {
+        code << ind << "sprite.sheet = " << formatString(sprite.sheet.path) << ";\n";
+        code << ind << "sprite.frame = " << sprite.frame << ";\n";
+        code << ind << "sprite.frameName = " << formatString(sprite.frameName) << ";\n";
     }
     if (!sprite.enabled) code << ind << "sprite.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "SpriteComponent", "sprite", assignExisting);
@@ -1646,6 +1701,8 @@ std::string editor::Factory::createTilemapComponent(int indentSpaces, EntityRegi
     code << ind << "tilemap.automaticFlipY = " << formatBool(tilemap.automaticFlipY) << ";\n";
     code << ind << "tilemap.flipY = " << formatBool(tilemap.flipY) << ";\n";
     code << ind << "tilemap.textureScaleFactor = " << formatFloat(tilemap.textureScaleFactor) << ";\n";
+    if (tilemap.pixelsPerUnit != 0.0f)
+        code << ind << "tilemap.pixelsPerUnit = " << formatFloat(tilemap.pixelsPerUnit) << ";\n";
     code << ind << "tilemap.reserveTiles = " << formatUInt(tilemap.reserveTiles) << ";\n";
     for (unsigned int i = 0; i < tilemap.numTilesRect; i++) {
         if (!tilemap.tilesRect[i].name.empty()) {
@@ -1983,6 +2040,7 @@ std::string editor::Factory::createRigidbody2DComponent(int indentSpaces, Entity
         if (collider.receiver != defCollider.receiver) {
             code << ind << target << ".receiver = " << formatEntity(collider.receiver, entityVarNames) << ";\n";
         }
+        if (!collider.slice.empty()) code << ind << target << ".slice = " << formatString(collider.slice) << ";\n";
     }
 
     if (!body.enabled) code << ind << "rigidbody2d.enabled = false;\n";
@@ -3085,6 +3143,33 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     out << ind2 << "scene->setDepthPrepassEnabled(" << formatBool(scene->isDepthPrepassEnabled()) << ");\n";
     if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
         out << ind2 << "scene->setSceneColorScale(" << formatSceneColorScale(scene->getSceneColorScale()) << ");\n";
+    // planar reflections, away from their defaults
+    {
+        const SceneSettings defaults;
+        if (scene->getPlanarReflectionResolution() != defaults.planarReflectionResolution){
+            static const char* const names[] = {"OFF", "QUARTER", "HALF", "FULL"};
+            out << ind2 << "scene->setPlanarReflectionResolution(PlanarReflectionResolution::" << names[(int)scene->getPlanarReflectionResolution()] << ");\n";
+        }
+        if (scene->getPlanarReflectionLayers() != defaults.planarReflectionLayers)
+            out << ind2 << "scene->setPlanarReflectionLayers(" << scene->getPlanarReflectionLayers() << "u);\n";
+        if (scene->getPlanarReflectionShadows() != defaults.planarReflectionShadows)
+            out << ind2 << "scene->setPlanarReflectionShadows(" << formatBool(scene->getPlanarReflectionShadows()) << ");\n";
+        if (scene->getPlanarReflectionFarClip() != defaults.planarReflectionFarClip)
+            out << ind2 << "scene->setPlanarReflectionFarClip(" << formatFloat(scene->getPlanarReflectionFarClip()) << ");\n";
+        if (scene->getPlanarReflectionClipOffset() != defaults.planarReflectionClipOffset)
+            out << ind2 << "scene->setPlanarReflectionClipOffset(" << formatFloat(scene->getPlanarReflectionClipOffset()) << ");\n";
+        if (scene->getMaxPlanarReflections() != defaults.maxPlanarReflections)
+            out << ind2 << "scene->setMaxPlanarReflections(" << scene->getMaxPlanarReflections() << ");\n";
+        // the Water Wakes' map
+        if (scene->getWaterWakeResolution() != defaults.waterWakeResolution){
+            static const char* const names[] = {"AUTO", "LOW", "MEDIUM", "HIGH"};
+            out << ind2 << "scene->setWaterWakeResolution(WaterWakeResolution::" << names[(int)scene->getWaterWakeResolution()] << ");\n";
+        }
+        if (scene->getWaterWakeArea() != defaults.waterWakeArea)
+            out << ind2 << "scene->setWaterWakeArea(" << formatFloat(scene->getWaterWakeArea()) << ");\n";
+        if (scene->getWaterWakeFade() != defaults.waterWakeFade)
+            out << ind2 << "scene->setWaterWakeFade(" << formatFloat(scene->getWaterWakeFade()) << ");\n";
+    }
     out << ind2 << "scene->setGlobalIllumination(" << formatFloat(scene->getGlobalIlluminationIntensity()) << ");\n";
     out << ind2 << "scene->setGlobalIllumination(" << formatVector3(scene->getGlobalIlluminationColor()) << ");\n";
     if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)

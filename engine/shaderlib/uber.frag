@@ -31,13 +31,21 @@ precision highp int;
 //      (UBER_GRAIN: the classic hash, or with UBER_GRAIN_LENS / UBER_GRAIN_FILMIC the film
 //      simulation's), dither (UBER_DITHER, last)
 //
+// Palette Quantize (UBER_PALETTE, S43) sits between 6 and 7: the graded, edged and vignetted
+// colour onto the palette, and the display emulations on top of it the way a real screen would
+// show it. The table (engine/core/pixelart/PaletteQuantize.h) gives each display colour two
+// palette colours and a ratio; the Bayer threshold of the art pixel (the source texel, or the
+// pixelate block) picks one, so the pattern never smears across an upscaled pixel. The anti-banding
+// UBER_DITHER is never compiled with it (it would push pixels off the palette).
+//
 // Colour maths is mediump (fp16 on GLES where the GPU has it); UVs and texel sizes stay highp
 // (the parameter block too: GL uploads it as one vec4 array).
 // The source is always sampled bilinear (the corner taps and the FXAA search rely on it): the
 // engine binds a linear sampler when the fixed-resolution target is NEAREST, and the UV snaps
 // to the centre of its source texel (sampling.x 1), so that upscale stays nearest and every
 // effect works per source texel. UBER_UPSCALE (none of the effects) is the plain upscale of a
-// render scale below 1.
+// render scale below 1. UBER_SHARP_BILINEAR (the Pixel Perfect Camera's Stretch Fill, S41) maps
+// the UV so each source texel's interior is flat and only its seams blend, before that snap.
 // The bloom, halation and blur textures are the phase 4 bloom chain's (SRGB8A8: linear when
 // sampled, in the gamma-2 domain the chain's prefilter decoded the scene to; halation reads the
 // bloom chain's first two levels, or its own two-level chain without bloom); with none bound the
@@ -72,6 +80,11 @@ uniform sampler u_sceneColor_smp;
     uniform texture2D u_blurTexture;
     uniform sampler u_blur_smp;
 #endif
+#ifdef UBER_PALETTE
+    uniform texture2D u_paletteQuantize;
+    uniform texture2D u_paletteQuantizeRow;
+    uniform sampler u_paletteQuantize_smp;
+#endif
 #ifdef UBER_HALATION
     uniform texture2D u_halationTexture;
     uniform sampler u_halation_smp;
@@ -91,7 +104,8 @@ uniform u_fs_uberParams {
     vec4 vignetteColor;             // rgb display colour, a intensity
     vec4 vignetteLutScan;     // x, y vignette falloff, z LUT side, w scanline period (output pixels)
     vec4 bloomBlur;                 // rgb bloom tint * intensity (linear), a blur mix
-    vec4 sampling;            // x 1: snap the UV to source texel centres (a NEAREST upscale)
+    vec4 sampling;            // x 1: snap the UV to source texel centres (a NEAREST upscale); yz the
+                              // screen pixels per source pixel (UBER_SHARP_BILINEAR)
     // S13 (includes/post_vhs.glsl, includes/post_film.glsl)
     vec4 vhs0;                      // x intensity, y wobble, z tracking, w colour bleed
     vec4 vhs1;                      // x tape noise, y chroma streaks, z dropouts, w scanlines
@@ -101,6 +115,7 @@ uniform u_fs_uberParams {
     vec4 damage;                    // x strength, y hair, z scratch, w dust candidates
     vec4 gateWeave;           // xy offset (output px), z cos, w sin of the rotation
     vec4 gateMask;            // xy half size, z corner radius, w feather (output px); x 0: none
+    vec4 palette;             // x cells per axis (32, 64), y dither size (0 none), w 1: the table is baked
 } uber;
 
 mediump vec3 sceneTap(highp vec2 uv){
@@ -160,6 +175,25 @@ mediump vec3 sceneTap(highp vec2 uv){
 #if defined(UBER_FILM_DAMAGE) || defined(UBER_GRAIN_LENS) || defined(UBER_GRAIN_FILMIC)
     #include "includes/post_film.glsl"
 #endif
+#ifdef UBER_PALETTE
+    #include "includes/bayer.glsl"
+
+    // the display colour onto the palette: the cell's (a, b, ratio), b where the dither cell's
+    // threshold is below the ratio
+    mediump vec3 paletteQuantize(mediump vec3 color, ivec2 ditherCell){
+        ivec3 c = ivec3(clamp(color, 0.0, 1.0) * 255.0 + 0.5);
+        int cellsPerAxis = int(uber.palette.x + 0.5);
+        ivec3 cell = c / (256 / cellsPerAxis);
+        ivec4 entry = ivec4(texelFetch(sampler2D(u_paletteQuantize, u_paletteQuantize_smp),
+                                       ivec2(cell.r + cellsPerAxis * (cell.b % 8), cell.g + cellsPerAxis * (cell.b / 8)), 0) * 255.0 + 0.5);
+        int index = entry.r;
+        int ditherSize = int(uber.palette.y + 0.5);
+        // the ratio is in steps of the matrix's cells (4, 16, 64)
+        if (entry.b > 0 && ditherSize > 0 && bayerThreshold(ditherSize, ditherCell) < float(entry.b) / float(ditherSize * ditherSize))
+            index = entry.g;
+        return texelFetch(sampler2D(u_paletteQuantizeRow, u_paletteQuantize_smp), ivec2(index, 0), 0).rgb;
+    }
+#endif
 
 // interleaved gradient noise in 0..1 (stable per pixel)
 highp float uberNoise(highp vec2 pixel){
@@ -196,6 +230,15 @@ void main(){
         // the image's position in output pixels from its top-left (the unwarped source UV is
         // the image's, y down on every backend): where the film damage and grain lie
         highp vec2 imagePixel = v_texcoord * uber.outputTexel.zw;
+    #endif
+    #ifdef UBER_SHARP_BILINEAR
+        // Stretch Fill (S41 R11): sharp bilinear in one pass. Each base pixel's interior is one
+        // flat colour; only the screen pixels on a seam blend its two neighbours (sampling.yz:
+        // screen pixels per base pixel; the source is read through a linear sampler)
+        highp vec2 basePixel = uv * uber.sourceTexel.zw;
+        highp vec2 seam = floor(basePixel + 0.5);
+        basePixel = seam + clamp((basePixel - seam) * uber.sampling.yz, -0.5, 0.5);
+        uv = basePixel * uber.sourceTexel.xy;
     #endif
     // a NEAREST upscale: the centre of the source texel (bilinear there is that texel)
     highp vec2 snapped = (floor(uv * uber.sourceTexel.zw) + 0.5) * uber.sourceTexel.xy;
@@ -283,6 +326,18 @@ void main(){
         color *= filmGateMask(imagePixel) * gate;
     #endif
 
+    #ifdef UBER_PALETTE
+        if (uber.palette.w > 0.5){
+            // one art pixel: the pixelate block, else the source texel
+            #ifdef UBER_PIXELATE
+                ivec2 ditherCell = ivec2(floor(screen / block));
+            #else
+                ivec2 ditherCell = ivec2(floor(uv * uber.sourceTexel.zw));
+            #endif
+            color = paletteQuantize(color, max(ditherCell, ivec2(0)));
+        }
+    #endif
+
     #ifdef UBER_VHS
         color = vhsNoise(color, vhs, v_texcoord);
     #endif
@@ -315,7 +370,7 @@ void main(){
         color += (noise - 0.5) * uber.effects.z * 0.5 * mix(1.0, 1.0 - luma, uber.effects.w);
     #endif
 
-    #ifdef UBER_DITHER
+    #if defined(UBER_DITHER) && !defined(UBER_PALETTE)
         color += (uberNoise(gl_FragCoord.xy) - 0.5) * uber.edgeColorDither.a;
     #endif
 

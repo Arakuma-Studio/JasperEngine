@@ -204,6 +204,19 @@ def choose_generator(platform, build_dir, given):
         return "Ninja", []
     return None, []
 
+def build_step_jobs(build_dir, jobs):
+    """cmake --build's --parallel: 1 under a Visual Studio generator, where each project's cl already
+    compiles `jobs` files at once (/MP) and --parallel is MSBuild's /m (projects at once): both at
+    `jobs` ran up to jobs x jobs compilers."""
+    try:
+        with open(os.path.join(build_dir, "CMakeCache.txt"), encoding="utf-8", errors="replace") as cache:
+            for line in cache:
+                if line.startswith("CMAKE_GENERATOR:INTERNAL="):
+                    return 1 if line[len("CMAKE_GENERATOR:INTERNAL="):].startswith("Visual Studio ") else jobs
+    except OSError:
+        pass
+    return jobs
+
 def pbx_string(value):
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
@@ -338,6 +351,8 @@ def build():
         cmake_command.append("-DNO_CPP_INIT=1")
     if args.no_lua_init:
         cmake_command.append("-DNO_LUA_INIT=1")
+    # cl's /MP under Visual Studio generators (jasperengine_msvc_parallel_compile)
+    cmake_command.append("-DJASPERENGINE_PARALLEL_BUILD_JOBS=%d" % args.jobs)
     cmake_command.extend("-D" + define for define in args.define)
 
     run(cmake_command, tool_env)
@@ -365,12 +380,22 @@ def build():
             "cmake",
             "--build", build_dir,
             "--config", build_type,
-            "--parallel", str(args.jobs),
+            "--parallel", str(build_step_jobs(build_dir, args.jobs)),
             ]
         if platform == "ios-xcode":
             cmake_build_command.extend(["--", "-sdk", "iphonesimulator"])
 
         run(cmake_build_command, tool_env)
+
+        if platform == "web":
+            # export-settings/apply.cmake writes index.html next to <app>.export.html; an app
+            # named index has its linker output there, and the page is index.export.html. The
+            # newest page is this build's (an earlier --appname leaves its own behind)
+            pages = glob.glob(os.path.join(glob.escape(build_dir), "*.export.html"))
+            page = "index.html"
+            if pages and os.path.basename(max(pages, key=os.path.getmtime)).lower() == "index.export.html":
+                page = os.path.basename(max(pages, key=os.path.getmtime))
+            print("Web build ready: serve %s over HTTP and open %s" % (build_dir, page), flush=True)
 
 
 def print_utf8():

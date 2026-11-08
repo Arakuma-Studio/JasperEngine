@@ -737,3 +737,128 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
   `Project.cpp:7500-7590`): the save hold relies on `SAVING` being set for every person's save and cleared on every
   outcome; the test hook sits in `saveSceneToPathAsync`.
 - **code-editor-git**: none in code; guide budget only.
+
+## Deviations (implementation, 2026-11-04)
+
+1. **The guide plan follows the lean MCP rules (`fe3e90b97`), not section 6.1.** `main` halved the guide (6,241
+   bytes, limit 8,192 with 1,500 headroom: at most 6,692) and made every new guide or tool text need an eval case.
+   The client cut is **not** handled by that change: measured on `main`'s guide (Python, the gate's own functions,
+   `dc-work/aa-evidence/red-client-cut.txt`), Claude Code's 4,096 characters end inside "Lua scripts", so a Claude Code
+   agent never saw C++, Physics, Prefabs, Shaders, HTML/CSS UI, Other areas or the Tool groups line (the line that
+   tells it to call `tool_groups`; the eval itself runs Claude Code, so it measured the cut guide). What changed:
+   - `McpInstructions.cpp` is two literals around the generated groups line: head = intro (with the pointer
+     `Text cut before "## Other areas"? read_file jasper://guide.`), Addressing,
+     The loop, Building scenes, then **Tool groups**; tail = Code, Undo, Lua, Unity names, C++, Physics, Prefabs,
+     Shaders, HTML/CSS UI, Other areas. Unity names moved after the cut (the pointer leads there).
+   - "Building scenes" is one short section (assemble in the editor, script properties, spawn from a Prefab, make what
+     repeats a Prefab, animation through `edit_animation`); the HUD rule is not repeated there (the HTML/CSS UI digest
+     and `create_ui`'s result carry it). The Prefabs digest loses its runtime signature (in `prefabs.md` and the Lua
+     digest). Measured after merging `main` on 2026-11-06: about 6,680 bytes (the first gate run measured 6,682 before the last trim), just under the line; the cut keeps intro, Addressing, The loop, Building scenes,
+     Tool groups, Code and Undo.
+   - Rules agents need at the moment they act went into results (`next`, the lean rules' preferred place):
+     `create_ui` in a 3D scene says where a HUD goes; `duplicate_entities` of a plain GameObject suggests a Prefab.
+   - `budget.json` `guide.client_cut` lists `(intro)`, Addressing, The loop, Building scenes and Tool groups; the gate
+     also checks the pointer. Eval cases added (`tools/mcp/eval/cases.py`): `bad_repeat_without_prefab`,
+     `bad_bob_in_script`, `bad_hud_widgets_in_3d`, `guard_rotation_not_euler`, `guard_guide_past_the_cut`,
+     `bad_terrain_grass`, `bad_shader_override_by_building`, `bad_cpp_without_toolchain`.
+2. **Shader overrides: a tool in the `shipping` group (`edit_build_shaders`), not settings rows.** The settings
+   registry's rows are Project Settings / Preferences rows: the palette and the settings search would send a person to
+   a Project Settings page that does not draw them (the overrides live in Build Settings). `edit_build_shaders
+   {add, exclude, remove, clear}` (no arguments: lists) is one project undo step (`ShaderOverridesCmd`), and
+   `build_project shaders` goes through the same code. The Build Settings window applies each edit through the command
+   and shows the project's lists every frame (it no longer writes a working copy back).
+3. **`left_preview` has no MCP test**: no tool turns the Inspector's camera preview on, so the branch is covered by
+   reading only (inferred).
+4. **`editor_status` no longer reports `playing: true` during a person's save** (same class as 4.7): it reports
+   `saving: true`.
+5. **The Terrain window reloads by generation, not only on a project switch.** `Project::setTerrainEditorSettings`
+   bumps a generation (workspace load, project close); the window reads the settings when the generation changed and
+   writes back only over the generation it read, so a frame drawn before the workspace loads cannot overwrite it.
+6. **The generated `AGENTS.md` gets no authoring text.** Its cap is 5,000 bytes (`test_generators.py`), and after the
+   2026-11-06 merge `main`'s own text measures about 5,150 bytes (estimated from the literals; the first gate run
+   measured 5,160 with one authoring paragraph). The guide, `jasper://docs/authoring` and the results' `next` hints
+   carry the rules instead.
+7. **`get_build_info`'s description does not name `cpp_scripts`.** The core listing is capped at 99,000 characters
+   and measured 99,053 with it after the 2026-11-06 merge; the field is in every result (AGENTS.md "MCP text":
+   descriptions hold no result field lists), and `read_file`'s description names only `jasper://guide`.
+8. **The Terrain window's regression test drives the bug through MCP.** In a headless test editor the window opened
+   from Window > Terrain need not draw (a docked tab), so the red build passed that test. The test now makes a
+   `sculpt_terrain` stroke on a terrain with no height map before the window ever opens: the missing map is created
+   at the window's resolution, the saved 64 pixels, where the old code used the constructor's 512.
+9. **`Camera::upFor` is the free function `cameraUpFor`** in `engine/core/component/CameraComponent.h`: the
+   render system and the editor call it with no Camera object. After review it catches only truly parallel
+   vectors (sine below 1e-6), so an orbit clamped 1 degree from vertical keeps its up, and its fallback is
+   perpendicular to the view (looking along Y: the Top/Bottom views' Z; otherwise world Y).
+10. **The near-unit quaternion rule is documented in `docs/mcp/DESIGN.md` (Values)** and the `read_file`
+    route in `editor-integration.md` ("Reading the API"); reads return the stored rotation normalized, so a
+    read-modify-write of a rotation stored off unit length succeeds.
+11. **Detail meshes are every model the import pipeline loads** (`Util::isModelFile`: .obj, .gltf, .glb, .fbx,
+    an FBX through its import as in the Terrain window); `edit_terrain_details` writes its density maps
+    inside its undoable step (undo removes them) only after every item was checked, and `set_properties`
+    checks only the detail layers it changes. A layer clamped on load is a load-report issue naming the
+    layer, at the terrain's line of the scene file.
+12. **After the 2026-11-07 merge** (`main` 8e21b1dd2: ssr-probes' and the sound layer's index entries) the guide
+    measured 6,744 bytes, 52 into the headroom. The intro's "Build scenes with tools, write code with your own
+    file tools, verify by playing..." sentence went (The loop and Building scenes say it), and Building scenes
+    and the pointer were shortened: 6,613 bytes, 79 under the line.
+
+## Follow-ups (2026-11-07)
+
+1. **An FBX detail layer drew 0 instances: blend shapes plus instancing, not FBX and not headless.** The
+   test's `rigged_cube.fbx` is textured, skinned and has a blend shape. Every foliage chunk asked for the Lit
+   variant with instancing and morph targets: position, normal, UV, the instance's six vectors and eight morph
+   slots make 17 vertex inputs (skinning adds two), past the 16 of GL 3.3, GLES3/WebGL2 and the other backends.
+   The variant never compiled, so the chunks never finished loading. A copy a system places never animates:
+   it builds no skeleton (its bones stay at the identity) and nothing sets its blend shape weights.
+   - `MeshSystem::loadPlacedModel` (foliage chunks, spline chunks and their probe) loads it at rest as static
+     geometry. The skin goes, and the blend shapes' default weights (the file's mesh weights) are baked into
+     positions and normals. Its node transform now bakes too, as for a mesh without blend shapes
+     (`GltfMeshOffset.FoliageBakesTheWholeNodeTransform` changed with it). The decision lives in a private
+     loader parameter that only `loadPlacedModel` passes; `loadGLTF` (and its Lua binding) keeps skins and
+     blend shapes whatever its flags.
+   - The export's shader variant collector probes foliage through `loadPlacedModel`, so it ships the variant
+     the chunk asks for (it shipped the skinned one).
+   - An Instanced Mesh a person adds to a textured model with a blend shape still cannot draw (its weights
+     can change at runtime, so nothing is baked). The Console says so once, naming the GameObject and the fix,
+     in place of only the shader compiler's lines.
+   - Tests: `test_terrain_details.py::test_fbx_layer` (the FBX, textured), `PlacedModel.*` (the bake, the Lua
+     flags, the collected variant), `test_render_correctness.py::test_instanced_blend_shapes_say_why_they_do_not_draw`.
+     The draw checks wait for the state with a hang guard and report their time (`over_budget`): on a box's
+     first run (8 editors, cold shader variants) the OBJ layer of the older test drew 0 within the old
+     100-frame budget too.
+   - A second cause of the same symptom: a CPU-read map cooked GPU-only. On a loaded box a layer sometimes
+     drew 0 instances with its shader built. Its density map had been cooked to BC1 before the layer pointed
+     at it (the file is written first), and a BC cook has GPU levels but no CPU pixels, so
+     `sampleFoliageDensity` read nothing. The editor's cook decision now uses the inference an export uses,
+     live: `TextureCookQueue::isReadOnCpu` (an open scene's terrain height or density map) makes a cook
+     CPU-readable while something reads it, and a later cook may compress again once nothing does. A layer
+     that finds its map cooked GPU-only calls `CookedTextures::requireCpuReadable`; the queue recooks that
+     texture in memory and logs one line. No `.meta` is written: a first design turned on the maps' Read/Write
+     (`readable: true`), which wrote tracked files of old projects on load, could not be undone, bypassed the
+     VCS lock-on-edit and waited forever on a read-only sidecar. The user's own Read/Write still forces
+     CPU-readable. The wait is bounded: a failed CPU-readable cook (the queue's `setCpuReadFailure`), no
+     handler (a game) or 30 s without a cook stops the layer with one error, in `sample_terrain`'s
+     `details[i].error`, until the map's pixels change. Float maps (.exr, .hdr) cook to RGBA16F; a
+     CPU-readable float cook now gets a linear RGBA32F CPU view, and the height and density samplers read
+     32-bit floats (the raw source was read as bytes). Tests: `test_density_map_cooked_before_its_layer`,
+     `test_float_density_map`, `test_reopening_a_project_writes_no_file`, and
+     `TerrainFoliageGpu.AGpuOnlyDensityMapStopsWithOneError` / `AFailedCpuReadableCookStopsTheWaitWithOneError`.
+   - The layer's error reaches agents through `sample_terrain` (`details[i].error`); eval case
+     `guard_detail_layer_error_names_the_fix` (an agent asked why grass stopped showing must reimport the named
+     map, not repaint or replace the layer). Only `test_grade.py` ran here: the live eval needs Orquester accounts.
+   - Open, not reproduced: in the first of five runs of the 11-file MCP set at -j 8 on box A (after be2e1807b's
+     sources were built), the editor of `test_saved_output_determinism.py::test_fixture_scenes_save_the_same_drawn_or_not`
+     closed its connection during the `screenshot` of `physics-placement/TableCrate.scene` (`JSON-RPC error -32000:
+     Connection closed`, after 143.8 s; the scenes before it re-saved the same bytes). The container kept no
+     scratch or stderr. It did not happen in the other four runs or in two more runs of that file with the
+     terrain, spline and FBX tests (32 passed each). Log: `dc-work/evidence/fu-agent-authoring/crash-determinism-run1.log`.
+2. **The generated `AGENTS.md` has headroom under its 5,000-byte cap** (`test_generators.py`, not raised). The text
+   is the same for every template (2D, 3D, Empty, UI): `writeAgentsFile` takes only the project paths, which are
+   always `.jasperengine/...`. Only the editor version string changes its size. Before: 4,929 bytes (version
+   `unknown`) to 4,955 (`doriax-base-7478-g17c19b941-dirty`). After: 4,373 to 4,399 bytes (4,401 with a
+   30-character version), so about 600 bytes of headroom. Wording was cut, not rules. The second CMake example line
+   went, the Source references paragraph became a link plus the formats line, and the `set_shortcut` sentence
+   moved into the list. The lines the eval cases pin stay: the sound tools and their group, `edit_sound_event`
+   for clips that vary, `set_shortcut` (tool group `editor_ux`), `inspect_models`/`check_render_budgets`, and
+   `jasperengine-editor call`. No template under `editor/resources/templates` embeds the file, so nothing was
+   regenerated.

@@ -166,20 +166,19 @@ async def test_no_project_open_keeps_drawing():
         (broken / "project.yaml").write_text("{ this is not a project: [\n")
         temp_dir = work / "tmp"
         temp_dir.mkdir()
-        held = hold_temp_project(temp_dir, "name: held\n")
-        try:
-            async with Editor(project=broken, env={"TMPDIR": str(temp_dir)}) as ed:
-                # each answer is after frames with the Inspector and the other windows drawn
-                for _ in range(5):
-                    await ed.call("editor_status")
-                    await ed.call("wait", frames=2)
-                summary = await ed.call("get_project_summary")
-                check(not summary.get("scenes"), f"no scene is open: {summary}")
-                stderr = ed.stderr_text()
-                check("no project is open" in stderr, "stderr says no project is open:\n" + stderr[-2000:])
+        # a busy temporary project only moves this editor to the next free one (Doriax 41a2ed0d5,
+        # one per editor): a file where it goes leaves no temporary project to open
+        (temp_dir / TEMP_PROJECT).write_text("not a folder\n")
+        async with Editor(project=broken, env={"TMPDIR": str(temp_dir)}) as ed:
+            # each answer is after frames with the Inspector and the other windows drawn
+            for _ in range(5):
                 await ed.call("editor_status")
-        finally:
-            held.close()
+                await ed.call("wait", frames=2)
+            summary = await ed.call("get_project_summary")
+            check(not summary.get("scenes"), f"no scene is open: {summary}")
+            stderr = ed.stderr_text()
+            check("no project is open" in stderr, "stderr says no project is open:\n" + stderr[-2000:])
+            await ed.call("editor_status")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -302,7 +301,7 @@ async def test_mcp_degraded_save(ed: Editor):
     saved = await ed.call("save_scene", scene="dropped.scene", allow_data_loss=True)
     check(saved["degraded"]["dropped"] == 0, f"after Save Anyway: {saved['degraded']}")
     text = (ed.project / "dropped.scene").read_text()
-    check("Hologram" not in text and "glint" not in text and text.startswith("formatVersion: 7"), "written without them")
+    check("Hologram" not in text and "glint" not in text and text.startswith("formatVersion: 8"), "written without them")
 
     # Save All: the clean scenes are written (unknown data kept), the degraded one refused
     await ed.call("open_scene", scene="future.scene")

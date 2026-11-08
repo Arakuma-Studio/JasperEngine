@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import plistlib
 from pathlib import Path
 
 import pbxproj
@@ -158,6 +159,39 @@ async def test_native_settings_keys(ed: Editor):
     ed.check_eq(listed["settings"]["web.script_urls"], ["https://sdk.example.com/sdk.js"])
 
 
+async def test_privacy_manifest_tool(ed: Editor):
+    """mobile-shipping: native_plugins privacy_manifest returns the Apple manifest the next build
+    ships, where each entry comes from, and what is missing."""
+    import shutil
+    # without NSUserTrackingUsageDescription (test_native_settings_keys sets one; test_source_export reads it)
+    kept = (await ed.call("get_project_settings", keys=["ios.plist_entries", "ios.plist_xml"]))["settings"]
+    await ed.call("set_project_settings", values={"apple.privacy_tracking": True, "ios.plist_entries": {}, "ios.plist_xml": ""})
+    manifest = ed.project / "plugins" / "native" / "apple" / "Sdk" / "PrivacyInfo.xcprivacy"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text('<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>NSPrivacyTrackingDomains</key>'
+                        '<array><string>sdk.example.com</string></array><key>Mystery</key><true/></dict></plist>\n')
+    try:
+        r = await ed.call("native_plugins", action="privacy_manifest", platform="ios")
+        ed.check_eq(r["platform"], "ios")
+        ed.check(r["tracking"], "the project tracks")
+        ed.check_eq(r["tracking_domains"], ["sdk.example.com"])
+        ed.check_eq(r["plugin_manifests"], ["plugins/native/apple/Sdk/PrivacyInfo.xcprivacy"])
+        ed.check_in({"what": "UserDefaults CA92.1", "origin": "engine"}, r["sources"])
+        ed.check_in({"what": "domain sdk.example.com", "origin": "plugins/native/apple/Sdk/PrivacyInfo.xcprivacy"}, r["sources"])
+        ed.check_in("<key>NSPrivacyTracking</key>\n\t<true/>", r["xml"])
+        ed.check(any("unknown key Mystery" in w for w in r["warnings"]), f"{r['warnings']}")
+        ed.check(any(w.startswith("W-PRIVACY-ATT") for w in r["warnings"]), "tracking needs NSUserTrackingUsageDescription")
+        mac = await ed.call("native_plugins", action="privacy_manifest", platform="macos")
+        ed.check(not any(w.startswith("W-PRIVACY-ATT") for w in mac["warnings"]), "no App Tracking Transparency on macOS")
+        await ed.check_error("native_plugins", action="privacy_manifest", platform="android", contains="platform")
+        listed = await ed.call("native_plugins", action="list")
+        ed.check_eq(listed["settings"].get("apple.privacy_tracking"), True, "the privacy keys are native settings")
+    finally:
+        await ed.call("set_project_settings", values={"apple.privacy_tracking": False, "ios.plist_entries": kept["ios.plist_entries"],
+                                                      "ios.plist_xml": kept["ios.plist_xml"]})
+        shutil.rmtree(ed.project / "plugins", ignore_errors=True)
+
+
 async def test_play_cpp_plugin_and_mock(ed: Editor):
     ed.require_tools("play", "wait", "eval_lua", "create_script")
     import shutil
@@ -200,7 +234,7 @@ async def test_play_cpp_plugin_and_mock(ed: Editor):
 
 
 # the system frameworks every Apple export links explicitly (Exporter appleEngineFrameworks*): an
-# iOS export without AdMob once linked AVFoundation only through the AdMob SDK's module. At least
+# iOS export once linked AVFoundation only through an ads SDK's module. At least
 # the template's APP_FRAMEWORKS (tools/xcode_sync_engine.py on main), each linked once.
 APP_FRAMEWORKS = ["AVFoundation", "AudioToolbox", "CoreMedia", "CoreVideo"]
 IOS_ENGINE_FRAMEWORKS = APP_FRAMEWORKS + ["CoreGraphics", "Foundation", "GameController", "Metal", "MetalKit", "QuartzCore", "UIKit"]
@@ -245,11 +279,27 @@ def write_stub_xcframework(root: Path, name: str, static: bool) -> None:
         '\t\t</dict>\n\t</array>\n</dict>\n</plist>\n')
 
 
+def write_mixed_xcframework(root: Path, name: str) -> None:
+    """An .xcframework whose first library is a static iOS one and whose macOS one is dynamic."""
+    bundle = root / f"{name}.xcframework"
+    libraries = ""
+    for identifier, platform, binary in (("ios-arm64", "ios", b"!<arch>\n"), ("macos-arm64_x86_64", "macos", b"\xcf\xfa\xed\xfe")):
+        lib = bundle / identifier / f"{name}.framework"
+        lib.mkdir(parents=True, exist_ok=True)
+        (lib / name).write_bytes(binary + b"\0" * 64)
+        libraries += (f"\t\t<dict>\n\t\t\t<key>LibraryIdentifier</key>\n\t\t\t<string>{identifier}</string>\n"
+                      f"\t\t\t<key>LibraryPath</key>\n\t\t\t<string>{name}.framework</string>\n"
+                      f"\t\t\t<key>SupportedPlatform</key>\n\t\t\t<string>{platform}</string>\n\t\t</dict>\n")
+    (bundle / "Info.plist").write_text('<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n'
+                                       f'\t<key>AvailableLibraries</key>\n\t<array>\n{libraries}\t</array>\n</dict>\n</plist>\n')
+
+
 def digest(paths: list[Path]) -> dict[str, str]:
     return {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths if p.is_file()}
 
 
 async def test_source_export(ed: Editor):
+    await ed.call("save_project", untitled_scene_dir="scenes")
     native = ed.project / "plugins" / "native"
     import shutil
     for folder in ("android", "apple", "ios", "macos", "web"):
@@ -274,6 +324,13 @@ async def test_source_export(ed: Editor):
                                                 "    @objc public static func price(_ args: [Any]) -> Any? { return 0.99 }\n}\n")
     write_stub_xcframework(native / "ios" / "sdk", "StaticSdk", static=True)
     write_stub_xcframework(native / "ios" / "sdk", "DynamicSdk", static=False)
+    # platform-build review: each target embeds by its own platform's library, as the CMake build does
+    write_mixed_xcframework(native / "apple", "MixedSdk")
+    # a static SDK's resource bundle, its privacy manifest inside (mobile-shipping review)
+    privacy_bundle = native / "ios" / "sdk" / "StaticSdk_Privacy.bundle"
+    privacy_bundle.mkdir(parents=True, exist_ok=True)
+    (privacy_bundle / "PrivacyInfo.xcprivacy").write_bytes(plistlib.dumps({"NSPrivacyAccessedAPITypes": [
+        {"NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryActiveKeyboards", "NSPrivacyAccessedAPITypeReasons": ["54BD.1"]}]}))
     (native / "macos").mkdir(parents=True, exist_ok=True)
     (native / "macos" / "MacOnly.m").write_text("#import <Foundation/Foundation.h>\n@interface MacOnly : NSObject\n@end\n@implementation MacOnly\n@end\n")
     # a framework with its version links (kept as links), a link out of the project (left out), a
@@ -283,6 +340,7 @@ async def test_source_export(ed: Editor):
     (linked / "Versions" / "A" / "Linked").write_bytes(b"\xcf\xfa\xed\xfe" + b"\0" * 64)
     os.symlink("A", linked / "Versions" / "Current")
     os.symlink("Versions/Current/Linked", linked / "Linked")
+    (linked / "Versions" / "A" / ".DS_Store").write_bytes(b"\0\0\0\1Bud1")
     os.symlink("/etc/hostname", native / "ios" / "outside.txt")
     (native / "ios" / "helper.cpp").write_text("int nativeHelper() { return 1; }\n")
     (native / "web").mkdir(parents=True, exist_ok=True)
@@ -372,6 +430,21 @@ async def test_source_export(ed: Editor):
     embedded = [objects[objects[b]["fileRef"]]["path"] for b in embed[0]["files"]]
     ed.check_eq(sorted(embedded), ["DynamicSdk.xcframework", "Linked.framework"], "only the dynamic SDKs are embedded")
     ed.check_eq(embed[0]["dstSubfolderSpec"], "10")
+    mac_target = pbxproj.target(root, "JasperEngine macOS")
+    mac_embedded = [objects[objects[b]["fileRef"]]["path"] for p in mac_target["buildPhases"]
+                    if objects[p]["isa"] == "PBXCopyFilesBuildPhase" for b in objects[p]["files"]]
+    ed.check_eq(mac_embedded, ["MixedSdk.xcframework"], "macOS embeds the xcframework by its dynamic macOS library")
+    # the resource bundle is copied into the iOS app, and its manifest is the app's
+    def resources(target: str) -> list:
+        return [objects[objects[b]["fileRef"]].get("path") for p in pbxproj.target(root, target)["buildPhases"]
+                if objects[p]["isa"] == "PBXResourcesBuildPhase" for b in objects[p]["files"]]
+    ed.check_in("StaticSdk_Privacy.bundle", resources("JasperEngine iOS"), "the SDK's resource bundle is in the app")
+    ed.check("StaticSdk_Privacy.bundle" not in resources("JasperEngine macOS"), "ios/ stays out of macOS")
+    ed.check("StaticSdk_Privacy.bundle" not in linked, "a resource bundle is not linked")
+    ed.check((out / "project" / "plugins" / "native" / "ios" / "sdk" / "StaticSdk_Privacy.bundle" / "PrivacyInfo.xcprivacy").is_file(),
+             "the bundle is exported")
+    apis = [a["NSPrivacyAccessedAPIType"] for a in plistlib.loads((xcode / "ios" / "PrivacyInfo.xcprivacy").read_bytes())["NSPrivacyAccessedAPITypes"]]
+    ed.check_in("NSPrivacyAccessedAPICategoryActiveKeyboards", apis, "the bundle's manifest is merged")
     packages = [o for o in objects.values() if o.get("isa") == "XCRemoteSwiftPackageReference"]
     ed.check_eq([(p["repositoryURL"], p["requirement"]["kind"], p["requirement"]["minimumVersion"]) for p in packages],
                 [("https://github.com/RevenueCat/purchases-ios", "upToNextMajorVersion", "4.0.0")])  # "4" padded
@@ -383,6 +456,7 @@ async def test_source_export(ed: Editor):
     ed.check_eq(header_refs, [], "plugin headers are no file references (they would shadow engine headers)")
     exported_link = out / "project" / "plugins" / "native" / "ios" / "sdk" / "Linked.framework"
     ed.check((exported_link / "Versions" / "Current").is_symlink(), "a framework's Versions/Current stays a link")
+    ed.check(not (exported_link / "Versions" / "A" / ".DS_Store").exists(), "a .DS_Store would break the framework's seal")
     ed.check(not (out / "project" / "plugins" / "native" / "ios" / "outside.txt").exists(), "a link out of the project is not exported")
     ed.check_in("Linked.framework", embedded, "the dynamic framework behind its links is embedded")
     ed.check_eq(len(objects[root["rootObject"]]["packageReferences"]), 1)

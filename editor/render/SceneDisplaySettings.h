@@ -25,6 +25,9 @@ namespace jasperengine::editor{
         bool disableClouds       = false;
         // the scene's post-processing in the Scene view (off by default: the Game view shows it)
         bool showPostProcessing  = false;
+        // a stopped scene's clock runs (Scene::getSceneTime: the water's waves and ripples, the
+        // shaders declaring sceneTime); off holds it. Play always runs it
+        bool animateWater        = true;
         bool showGrid2D          = false;
         float gridSpacing2D      = 50.0f;
         float gridSpacing3D      = 1.0f;
@@ -34,6 +37,12 @@ namespace jasperengine::editor{
         float rotationSnapDegrees = 15.0f;
         // every lattice's cage, not only the selected ones' (faint)
         bool showAllLattices     = false;
+        // S41 R21, in a 2D scene whose main camera has a Pixel Perfect Camera: the wheel in whole
+        // pixel steps, the art-pixel grid from 6x, the snapped drawables, moves on whole pixels
+        bool pixelZoom           = true;
+        bool pixelGrid           = true;
+        bool pixelSnapPreview    = true;
+        bool pixelMoveSnap       = true;
         // the AI Navigation overlay (S19; navigation/NavigationOverlay.h)
         NavOverlaySettings navigation;
         // the Draw Mode (spec S54 R11) and the Stats overlay of the Scene view

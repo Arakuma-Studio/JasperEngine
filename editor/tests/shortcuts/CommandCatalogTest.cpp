@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <set>
+#include <vector>
 
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -175,4 +176,72 @@ TEST(CommandCatalog, DynamicCommandsTakeTheirStoredOverride) {
     // dynamic rows are not in the generated reference
     catalog.add(script);
     EXPECT_EQ(catalog.markdownReference().find("Align Scripted Objects"), std::string::npos);
+}
+
+// Ctrl+D duplicates assets in the Project window (one copy per press) and F11 is Maximize On Play
+// everywhere (project-window spec D5, D14)
+TEST(CommandCatalog, ProjectDuplicateAndMaximizeOnPlayAreBound) {
+    RecordingCatalog recording;
+    CommandCatalog& catalog = recording.catalog;
+    const CommandDef* duplicate = catalog.find("project.duplicate");
+    ASSERT_NE(duplicate, nullptr);
+    EXPECT_EQ(duplicate->context, ShortcutContext::Project);
+    EXPECT_FALSE(duplicate->repeat) << "a held Ctrl+D makes one copy";
+    ASSERT_EQ(catalog.bindings("project.duplicate").size(), 1u);
+    EXPECT_EQ(catalog.bindings("project.duplicate")[0], chordOf("Ctrl+D"));
+    const CommandDef* maximize = catalog.find("playmode.maximizeOnPlay");
+    ASSERT_NE(maximize, nullptr);
+    EXPECT_EQ(maximize->context, ShortcutContext::Global);
+    ASSERT_EQ(catalog.bindings("playmode.maximizeOnPlay").size(), 1u);
+    EXPECT_EQ(catalog.bindings("playmode.maximizeOnPlay")[0], chordOf("F11"));
+    EXPECT_TRUE(maximize->menuCommand.has_value());
+    for (const char* id : {"assets.duplicate", "assets.createCppSource", "assets.createCppHeader", "assets.createPhysicsMaterial",
+                           "assets.createPhysicsMaterial2D"}) {
+        EXPECT_NE(catalog.find(id), nullptr) << id;
+    }
+}
+
+// macOS takes F11 for Show Desktop: Maximize On Play is Control+Cmd+F there first, F11 still
+// behind it; every other platform keeps F11 alone (project-window spec, Follow-ups)
+TEST(CommandCatalog, MaximizeOnPlayIsControlCmdFOnMac) {
+    RecordingCatalog recording;
+    CommandCatalog& catalog = recording.catalog;
+    EXPECT_EQ(chordOf("Ctrl+Super+F").format(true), "Control+Cmd+F");
+    EXPECT_EQ(chordOf("Ctrl+Super+F").format(false), "Ctrl+Super+F");
+    catalog.setMac(true);
+    const std::vector<Chord> mac(catalog.bindings("playmode.maximizeOnPlay").begin(),
+                                 catalog.bindings("playmode.maximizeOnPlay").end());
+    EXPECT_EQ(mac, (std::vector<Chord>{chordOf("Ctrl+Super+F"), chordOf("F11")}));
+    EXPECT_EQ(catalog.menuShortcutText("playmode.maximizeOnPlay"), "Control+Cmd+F");
+    for (Chord chord : mac) {
+        EXPECT_EQ(catalog.findConflict("playmode.maximizeOnPlay", chord), nullptr) << chord.format(true);
+    }
+    catalog.setMac(false);
+    ASSERT_EQ(catalog.bindings("playmode.maximizeOnPlay").size(), 1u);
+    EXPECT_EQ(catalog.bindings("playmode.maximizeOnPlay")[0], chordOf("F11"));
+    EXPECT_EQ(catalog.menuShortcutText("playmode.maximizeOnPlay"), "F11");
+}
+
+// every chord list_shortcuts and the menus print on a platform reads back as that chord there
+// (an agent echoes them to set_shortcut): "Control+Cmd+F" on macOS, "Ctrl+Super+F" elsewhere
+TEST(Chord, EveryPrintedChordParsesBack) {
+    RecordingCatalog recording;
+    CommandCatalog& catalog = recording.catalog;
+    EXPECT_EQ(Chord::parse("Control+Cmd+F", true), chordOf("Ctrl+Super+F"));
+    EXPECT_EQ(Chord::parse("Control+S", false), chordOf("Ctrl+S"));
+    size_t checked = 0;
+    for (bool mac : {false, true}) {
+        catalog.setMac(mac);
+        for (const CommandDef& def : catalog.commands()) {
+            std::vector<Chord> chords(catalog.bindings(def.id).begin(), catalog.bindings(def.id).end());
+            for (Chord chord : catalog.defaults(def.id)) chords.push_back(chord);
+            for (Chord chord : chords) {
+                const std::string text = chord.format(mac);
+                EXPECT_EQ(Chord::parse(text, mac), std::optional<Chord>(chord)) << def.id << ": " << text << (mac ? " (macOS)" : "");
+                checked++;
+            }
+        }
+    }
+    catalog.setMac(false);
+    EXPECT_GT(checked, 100u);
 }

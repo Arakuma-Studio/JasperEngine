@@ -355,7 +355,9 @@ A dynamic Rigidbody floats in a water surface (a mesh drawn with `library:water`
 GameObject menu's 3D Object > Water, `create_entity type=water`) when its `buoyancy` is above 0:
 before each fixed step, with its centre of mass over the mesh's world bounds (XZ) and not
 deeper than the water's floating depth, it gets Jolt's buoyancy impulse at the surface over
-the centre of mass, waves included (the same waves the shader draws, on its clock).
+the centre of mass, waves included (the same waves the shader draws, on its clock: the scene
+clock, which holds while the game is paused and follows the time scale, so bodies and waves stay
+together in a pause and in slow motion).
 
 | Rigidbody field | Default | |
 |---|---|---|
@@ -384,13 +386,35 @@ For water with a box (or an ocean), a density, a current and drags, add a **Wate
   its colliders' bounds, or `customPoints`): each carries its share of the colliders' volume
   (`volumeScale`), pushed up by `density x |g| x` its submerged part and slowed by the volume's
   `linearDrag` / `angularDrag` (`dragScale`) against the water's own motion (`flow` and the
-  waves rising). A box floats as deep as its density is of the water's. It rides the waves the
-  shader draws (one shader time a frame). A body with a Buoyancy ignores the Rigidbody `buoyancy`.
+  waves rising; with `GERSTNER` also rolling back and forth under the crests). A box floats as deep as its density is of the water's. It rides the waves the
+  shader draws (one scene clock value a frame). A body with a Buoyancy ignores the Rigidbody `buoyancy`.
 - `Water.sample(scene, point)` / `Water.sampleHeight(scene, x, z)` and the `sample_water` tool
   read the volumes first, then the `library:water` meshes; they work in edit mode.
 - The inspector warns when the mesh is too coarse for the waves (the drawn surface is linear
   between vertices; things float on the exact curve), when a Buoyancy has no dynamic Rigidbody
   or no volume to float in, and when it is as dense as the water.
+
+### Boats: Water Excluders and Water Wakes
+
+- A **Water Excluder** (`WaterExcluderComponent`) keeps water out of a boat's hull, a cabin, a
+  dry tunnel: shape `convex_hull` (default: the hull of the GameObject's own mesh or its model's
+  mesh nodes), `box` or `sphere` (`center`, `size`, local; Inspector **Fit to Mesh**). A point
+  inside an active one is dry: no buoyancy (neither path: a Buoyancy's columns, the Rigidbody
+  `buoyancy` factor's centre of mass), `Water.sample` gives `inWater` false with `excluder` set
+  (the surface stays: the waterline outside), `Water.isUnderwater` is false, and a camera inside
+  sees no underwater fade; the water surface inside is not drawn.
+- An excluder never dries the body it belongs to: the nearest GameObject with a Rigidbody at or
+  above it. Put the boat's excluder on its Rigidbody's GameObject (or under it): cargo with its
+  own Rigidbody inside stays put while the boat floats. A static one (no Rigidbody above) dries
+  everything, the Inspector warns when a floating body is under it.
+- Disabled, inactive or hidden (Transform `visible` off): it keeps nothing out.
+- A **Water Wake** (`WaterWakeComponent`) leaves foam and waves behind a GameObject moving through
+  a water's surface in a running scene: `foam`, `waves` (0..2), `width`, `length` (metres along
+  local X and Z; 0: the excluder's box or the mesh's). The wakes are visual (the physics does not
+  feel them), fade over the scene's `water_wake_fade`, pause with the game and clear at Stop.
+- Check: `sample_water` gives each point `excluded_by` and `wake` {foam, height}; `report: true`
+  adds the excluders (`hull_status`: ready, pending, no_mesh, flat, no_physics), the wakes
+  (`emitting`, `speed`) and which waters draw with them.
 ## Collision and trigger callbacks
 
 Define the Unity methods on a script of the body's GameObject; no registration, no flag:

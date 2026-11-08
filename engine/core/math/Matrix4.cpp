@@ -312,6 +312,108 @@ Matrix4 Matrix4::inverse() const{
     return t;
 }
 
+bool Matrix4::isAffine() const{
+    return matrix[0][3] == 0.0f && matrix[1][3] == 0.0f && matrix[2][3] == 0.0f && matrix[3][3] == 1.0f;
+}
+
+float Matrix4::determinant3x3() const{
+    return matrix[0][0] * (matrix[1][1] * matrix[2][2] - matrix[2][1] * matrix[1][2]) -
+           matrix[1][0] * (matrix[0][1] * matrix[2][2] - matrix[2][1] * matrix[0][2]) +
+           matrix[2][0] * (matrix[0][1] * matrix[1][2] - matrix[1][1] * matrix[0][2]);
+}
+
+Matrix4 Matrix4::affineMultiply(const Matrix4& m) const{
+    // operator*'s sums without the terms of the zero rows (column 3 of m's first three
+    // columns, row 3 of this)
+    Matrix4 prod;
+    for (int c = 0; c < 3; c++){
+        for (int r = 0; r < 3; r++){
+            prod.matrix[c][r] = m.matrix[c][0] * matrix[0][r] + m.matrix[c][1] * matrix[1][r] + m.matrix[c][2] * matrix[2][r];
+        }
+        prod.matrix[c][3] = 0.0f;
+    }
+    for (int r = 0; r < 3; r++){
+        prod.matrix[3][r] = m.matrix[3][0] * matrix[0][r] + m.matrix[3][1] * matrix[1][r] + m.matrix[3][2] * matrix[2][r] + matrix[3][r];
+    }
+    prod.matrix[3][3] = 1.0f;
+    return prod;
+}
+
+Vector3 Matrix4::transformAffine(const Vector3& v) const{
+    // operator*(Vector3)'s accumulation order
+    const float x = v.x * matrix[0][0] + v.y * matrix[1][0] + v.z * matrix[2][0] + matrix[3][0];
+    const float y = v.x * matrix[0][1] + v.y * matrix[1][1] + v.z * matrix[2][1] + matrix[3][1];
+    const float z = v.x * matrix[0][2] + v.y * matrix[1][2] + v.z * matrix[2][2] + matrix[3][2];
+    return Vector3(x, y, z);
+}
+
+Matrix4 Matrix4::affineInverse() const{
+    // inverse() with the terms of the last row's zeros left out (s[2], s[4], s[5] are zero,
+    // c[2], c[4], c[5] the third column's entries), in its order
+    float s[6];
+    float c[6];
+    s[0] = get(0,0)*get(1,1) - get(1,0)*get(0,1);
+    s[1] = get(0,0)*get(1,2) - get(1,0)*get(0,2);
+    s[3] = get(0,1)*get(1,2) - get(1,1)*get(0,2);
+
+    c[0] = get(2,0)*get(3,1) - get(3,0)*get(2,1);
+    c[1] = get(2,0)*get(3,2) - get(3,0)*get(2,2);
+    c[2] = get(2,0);
+    c[3] = get(2,1)*get(3,2) - get(3,1)*get(2,2);
+    c[4] = get(2,1);
+    c[5] = get(2,2);
+
+    float idet = 1.0f/( s[0]*c[5]-s[1]*c[4]+s[3]*c[2] );
+    // singular (a zero scale) or not finite: inverse()'s own result, the infinities included
+    if (!std::isfinite(idet))
+        return inverse();
+
+    Matrix4 t;
+
+    t.set(0,0, ( get(1,1) * c[5] - get(1,2) * c[4]) * idet);
+    t.set(0,1, (-get(0,1) * c[5] + get(0,2) * c[4]) * idet);
+    t.set(0,2, ( s[3]) * idet);
+    t.set(0,3, 0.0f);
+
+    t.set(1,0, (-get(1,0) * c[5] + get(1,2) * c[2]) * idet);
+    t.set(1,1, ( get(0,0) * c[5] - get(0,2) * c[2]) * idet);
+    // inverse() subtracts s[1] from its zero terms: a zero comes out +0, not -0 (an identity's
+    // normal matrix written with a -0)
+    t.set(1,2, (0.0f - s[1]) * idet);
+    t.set(1,3, 0.0f);
+
+    t.set(2,0, ( get(1,0) * c[4] - get(1,1) * c[2]) * idet);
+    t.set(2,1, (-get(0,0) * c[4] + get(0,1) * c[2]) * idet);
+    t.set(2,2, ( s[0]) * idet);
+    t.set(2,3, 0.0f);
+
+    t.set(3,0, (-get(1,0) * c[3] + get(1,1) * c[1] - get(1,2) * c[0]) * idet);
+    t.set(3,1, ( get(0,0) * c[3] - get(0,1) * c[1] + get(0,2) * c[0]) * idet);
+    t.set(3,2, (-get(3,0) * s[3] + get(3,1) * s[1] - get(3,2) * s[0]) * idet);
+    t.set(3,3, ( get(2,0) * s[3] - get(2,1) * s[1] + get(2,2) * s[0]) * idet);
+
+    return t;
+}
+
+Matrix4 Matrix4::composeTRS(const Vector3& t, const Quaternion& r, const Vector3& s){
+    // the rotation's columns scaled, the translation in the last column: the products' only
+    // non-zero terms
+    Matrix4 m = r.getRotationMatrix();
+    for (int row = 0; row < 3; row++){
+        m.matrix[0][row] = m.matrix[0][row] * s.x;
+        m.matrix[1][row] = m.matrix[1][row] * s.y;
+        m.matrix[2][row] = m.matrix[2][row] * s.z;
+    }
+    m.matrix[0][3] = 0.0f;
+    m.matrix[1][3] = 0.0f;
+    m.matrix[2][3] = 0.0f;
+    m.matrix[3][0] = t.x;
+    m.matrix[3][1] = t.y;
+    m.matrix[3][2] = t.z;
+    m.matrix[3][3] = 1.0f;
+    return m;
+}
+
 Matrix4 Matrix4::transpose() const{
     Matrix4 tmp;
 
@@ -620,25 +722,25 @@ Matrix4 Matrix4::obliqueNearClip(const Vector4& clipPlane) const {
 
     auto sgn = [](float v) -> float { return (v > 0.0f) - (v < 0.0f); };
 
-    // clip-space corner opposite the clip plane, transformed to view space
-    Vector4 q;
-    q.x = (sgn(clipPlane.x) + get(2, 0)) / get(0, 0);
-    q.y = (sgn(clipPlane.y) + get(2, 1)) / get(1, 1);
-    q.z = -1.0f;
-    q.w = (1.0f + get(2, 2)) / get(3, 2);
+    // the view-space point of the far clip-space corner opposite the clip plane, from the
+    // inverse projection, so perspective and orthographic projections both work (the
+    // perspective-only shortcut divides by a w that an orthographic matrix does not have)
+    Vector4 q = inverse() * Vector4(sgn(clipPlane.x), sgn(clipPlane.y), 1.0f, 1.0f);
+    // the projection's w row: (0, 0, -1, 0) perspective, (0, 0, 0, 1) orthographic
+    Vector4 wRow(get(0, 3), get(1, 3), get(2, 3), get(3, 3));
 
-    // scale the plane so the new near plane lands exactly on it
+    // scale the plane so the new near plane lands exactly on it and that corner stays at far
     float denom = clipPlane.dotProduct(q);
     if (std::fabs(denom) < 1e-6f) {
         return m; // plane nearly parallel to view direction (mirror edge-on)
     }
-    Vector4 c = clipPlane * (2.0f / denom);
+    Vector4 c = clipPlane * (2.0f * wRow.dotProduct(q) / denom);
 
-    // replace the projection's depth (3rd) row; x/y/w rows untouched
-    m.set(0, 2, c.x);
-    m.set(1, 2, c.y);
-    m.set(2, 2, c.z + 1.0f);
-    m.set(3, 2, c.w);
+    // replace the projection's depth (3rd) row with c - w; x/y/w rows untouched
+    m.set(0, 2, c.x - wRow.x);
+    m.set(1, 2, c.y - wRow.y);
+    m.set(2, 2, c.z - wRow.z);
+    m.set(3, 2, c.w - wRow.w);
 
     return m;
 }

@@ -13,6 +13,7 @@
 #include "input/InputActions.h"
 #include "component/CharacterCollision.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/BuoyancyComponent.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/SplineExtrudeComponent.h"
@@ -34,6 +35,7 @@
 #include "render/LightingTiers.h"
 #include "render/OrderIndependentTransparency.h"
 #include "component/CapsuleShadowCasterComponent.h"
+#include "component/UISelectable.h"
 #include "texture/MaterialPbr.h"
 #include "device/DeviceTypes.h"
 #include "debug/DebugOverlay.h"
@@ -162,7 +164,6 @@ namespace luabridge
     template<> struct Stack<MaterialLighting> : EnumWrapper<MaterialLighting>{};
     template<> struct Stack<TextureFilter> : EnumWrapper<TextureFilter>{};
     template<> struct Stack<TextureWrap> : EnumWrapper<TextureWrap>{};
-    template<> struct Stack<AdMobRating> : EnumWrapper<AdMobRating>{};
     template<> struct Stack<CursorType> : EnumWrapper<CursorType>{};
     template<> struct Stack<MouseMode> : EnumWrapper<MouseMode>{};
     template<> struct Stack<TouchPhase> : EnumWrapper<TouchPhase>{};
@@ -171,6 +172,8 @@ namespace luabridge
     template<> struct Stack<InputActionType> : EnumWrapper<InputActionType>{};
     template<> struct Stack<CharacterCollisionFlags> : EnumWrapper<CharacterCollisionFlags>{};
     template<> struct Stack<WaterVolumeWaves> : EnumWrapper<WaterVolumeWaves>{};
+    template<> struct Stack<WaterExcluderShape> : EnumWrapper<WaterExcluderShape>{};
+    template<> struct Stack<WaterWakeResolution> : EnumWrapper<WaterWakeResolution>{};
     template<> struct Stack<BuoyancyColumns> : EnumWrapper<BuoyancyColumns>{};
     template<> struct Stack<spline::SplineType> : EnumWrapper<spline::SplineType>{};
     template<> struct Stack<spline::TangentMode> : EnumWrapper<spline::TangentMode>{};
@@ -235,12 +238,16 @@ namespace luabridge
     template<> struct Stack<CascadeSplitMode> : EnumWrapper<CascadeSplitMode>{};
     template<> struct Stack<ShadowTier> : EnumWrapper<ShadowTier>{};
     template<> struct Stack<SceneColorScale> : EnumWrapper<SceneColorScale>{};
+    template<> struct Stack<PlanarReflectionResolution> : EnumWrapper<PlanarReflectionResolution>{};
     template<> struct Stack<LitQuality> : EnumWrapper<LitQuality>{};
     template<> struct Stack<LightUnit> : EnumWrapper<LightUnit>{};
     template<> struct Stack<TonemapMode> : EnumWrapper<TonemapMode>{};
     template<> struct Stack<MonochromeMode> : EnumWrapper<MonochromeMode>{};
     template<> struct Stack<FilmGrainType> : EnumWrapper<FilmGrainType>{};
     template<> struct Stack<FilmGateMask> : EnumWrapper<FilmGateMask>{};
+    template<> struct Stack<PaletteDither> : EnumWrapper<PaletteDither>{};
+    template<> struct Stack<PaletteDistance> : EnumWrapper<PaletteDistance>{};
+    template<> struct Stack<PalettePrecision> : EnumWrapper<PalettePrecision>{};
     template<> struct Stack<LutInputEncoding> : EnumWrapper<LutInputEncoding>{};
     template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
     template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};
@@ -264,8 +271,16 @@ namespace luabridge
     template<> struct Stack<TextEffectType> : EnumWrapper<TextEffectType>{};
     template<> struct Stack<TextEffectMix> : EnumWrapper<TextEffectMix>{};
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
+    template<> struct Stack<SpriteDrawMode> : EnumWrapper<SpriteDrawMode>{};
+    template<> struct Stack<PixelUpscaleMode> : EnumWrapper<PixelUpscaleMode>{};
+    template<> struct Stack<PixelRotation> : EnumWrapper<PixelRotation>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
+    // ui-components: the Button's Selectable enums
+    template<> struct Stack<ButtonTransition> : EnumWrapper<ButtonTransition>{};
+    template<> struct Stack<NavigationMode> : EnumWrapper<NavigationMode>{};
+    template<> struct Stack<SelectionState> : EnumWrapper<SelectionState>{};
+    template<> struct Stack<MoveDirection> : EnumWrapper<MoveDirection>{};
     template<> struct Stack<ProgressbarType> : EnumWrapper<ProgressbarType>{};
 
     template<> struct Stack<Collider2DType> : EnumWrapper<Collider2DType>{};

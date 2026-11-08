@@ -15,6 +15,10 @@ Two ways to keyframe in JasperEngine, both edited with `edit_animation`:
 Pose animations (`.poseanim`, `jasper://docs/pose-animation`) are a third, humanoid-only
 format; `edit_pose_animation` can bake them into a clip (`bake: {model, clip: true}`).
 
+Motion that can be authored ahead of time (spins, bobs, patrols, doors, fades, UI transitions)
+belongs in a clip or an entity Animation that a script starts (`play`, `crossFade`, `stop`), not in
+script code that moves a transform every frame (`jasper://docs/authoring`).
+
 State machines, blend trees, layers, IK and humanoid retargeting over these clips are the
 **Animator** (Unity's Animator Controller): `edit_animator_controller`, `control_animator`,
 `jasper://docs/animator`.
@@ -203,7 +207,7 @@ List what a GameObject has with `get_animation {root, list_properties: "Panel/St
 | `gameobject` | `active` (bool) |
 | components with the checkbox | `enabled` (bool) |
 | `ui` (Image, Text, Button graphic) | `color` (sRGB) |
-| `button` | `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled`, `disabled` |
+| `button` | `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled`, `colorSelected`, `disabled` |
 | `canvasgroup` | `alpha` (0-1), `interactable`, `blocksRaycasts`, `ignoreParentGroups` |
 | `recttransform` | `positionOffset` (anchored position), `width`, `height`, `pivot`, `anchorPointLeft/Top/Right/Bottom`, `anchorOffsetLeft/Top/Right/Bottom` |
 | `mesh` | `submeshes[N].material.baseColorFactor` (a sprite's colour: N = 0), `.emissiveFactor`, `.metallicFactor`, `.roughnessFactor`, `.alphaCutoff`, `submeshes[N].textureRect`, `submeshes[N].material.shaderParams.<member>` |
@@ -223,7 +227,7 @@ List what a GameObject has with `get_animation {root, list_properties: "Panel/St
 - `active` changes apply after the other values, parents first; events run after the values (a
   handler at 0.5 sees the GameObject turned on at 0.5). A clip that turns off its own root stops
   its player until something turns it on.
-- A Button overwrites `ui.color` from its state colours: animate `button.colorNormal`.
+- A Button whose transition tints (the default) overwrites `ui.color` from its state colours: animate `button.colorNormal`, or set its transition to `none` or `sprite_swap`.
 - Bindings report `missing_component` (no such component, submesh, shader member or script field
   on the GameObject) and `unknown_property`. `preview_animation` lists `properties` (the first
   16 previewed values; `properties_total` counts them all); `get_runtime_entity` shows them in play.
