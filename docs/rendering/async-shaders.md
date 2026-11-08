@@ -56,6 +56,9 @@ The render thread finishes what the worker or the driver created within a per-fr
 A model may load off the main thread (the editor's thumbnail strand, a game's
 `Engine.startAsyncThread`). Its GPU objects are the frames' to make (`SokolCmdQueue`, executed on the
 main thread), and `Engine::executeSceneOnce` keeps that thread off the frames with their semaphore.
+On the main thread the scope does nothing: that thread runs the queue, so it would wait for itself
+(a script's init runs before the view starts the queue), and it makes its objects at once anyway. A
+loading thread needs no shared GL context on any backend (GLES3 and WebGL have none): it only queues.
 It does not keep it off what the main thread does outside a frame, so two things take a lock of
 their own, around their containers' operations alone:
 

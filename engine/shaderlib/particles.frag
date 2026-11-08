@@ -5,7 +5,9 @@
 // Renderer's blend (particlesFsParams.blend; the library shaders compile one variant per blend).
 //
 // A fork may declare a u_fs_customParams block: its members are filled by name from the
-// Renderer module's shader properties.
+// Renderer module's shader properties. Three names are written by the engine instead: "time"
+// (seconds since startup), "sceneTime" (the scene clock: scaled game seconds, held while
+// paused) and "resolution" (xy = render target size, zw = 1 / size).
 
 out vec4 g_finalColor;
 
