@@ -43,6 +43,7 @@ const char* jasperengine::editor::shortcutContextName(ShortcutContext context) {
         case ShortcutContext::SoundBrowser: return "Sound Browser";
         case ShortcutContext::AudioCaptures: return "Audio Captures";
         case ShortcutContext::VoxelBrush: return "Voxel Brush";
+        case ShortcutContext::TerrainBrush: return "Terrain Brush";
     }
     return "Editor";
 }
@@ -62,12 +63,13 @@ const char* jasperengine::editor::shortcutContextKey(ShortcutContext context) {
         case ShortcutContext::SoundBrowser: return "sound_browser";
         case ShortcutContext::AudioCaptures: return "audio_captures";
         case ShortcutContext::VoxelBrush: return "voxel_brush";
+        case ShortcutContext::TerrainBrush: return "terrain_brush";
     }
     return "editor";
 }
 
 std::optional<ShortcutContext> jasperengine::editor::parseShortcutContext(std::string_view text) {
-    for (uint8_t value = 0; value <= static_cast<uint8_t>(ShortcutContext::VoxelBrush); value++) {
+    for (uint8_t value = 0; value <= static_cast<uint8_t>(ShortcutContext::TerrainBrush); value++) {
         const auto context = static_cast<ShortcutContext>(value);
         if (text == shortcutContextName(context) || text == shortcutContextKey(context)) return context;
     }

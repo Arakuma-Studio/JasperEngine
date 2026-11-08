@@ -157,14 +157,55 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Shrink Point Selection | Ctrl+- / Ctrl+NumpadSubtract | Scene View |
 | Toggle Falloff | O | Scene View |
 
+## Voxel Brush
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Dig | D | Voxel Brush |
+| Add | A | Voxel Brush |
+| Smooth | S | Voxel Brush |
+| Paint | P | Voxel Brush |
+| Pick | K | Voxel Brush |
+| Brush Smaller | [ | Voxel Brush |
+| Brush Larger | ] | Voxel Brush |
+| Put the Brush Down | Escape | Voxel Brush |
+| Pick Material | Alt+Left Click | Voxel Brush |
+| Orbit | Alt+Left Drag | Voxel Brush |
+
 ## Terrain
 
 | Command | Shortcut | Context |
 |---|---|---|
 | Brush Smaller | [ | Scene View |
 | Brush Larger | ] | Scene View |
-| Brush Weaker | Shift+[ | Scene View |
-| Brush Stronger | Shift+] | Scene View |
+| Brush Weaker | Shift+[ / - | Scene View |
+| Brush Stronger | Shift+] / = | Scene View |
+
+## Terrain Brush
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Raise | R | Terrain Brush |
+| Set Height | H | Terrain Brush |
+| Smooth | S | Terrain Brush |
+| Ramp | A | Terrain Brush |
+| Noise | N | Terrain Brush |
+| Terrace | T | Terrain Brush |
+| Erode | E | Terrain Brush |
+| Stamp | K | Terrain Brush |
+| Paint Texture | B | Terrain Brush |
+| Paint Details | D | Terrain Brush |
+| Paint Trees | P | Terrain Brush |
+| Cut Holes | X | Terrain Brush |
+| Pick Height | I | Terrain Brush |
+| Invert Slope Filter | Y | Terrain Brush |
+| Alternate | C | Terrain Brush |
+| Height Overlay | 1 | Terrain Brush |
+| Slope Overlay | 2 | Terrain Brush |
+| Contours Overlay | 3 | Terrain Brush |
+| Layer Weights Overlay | 4 | Terrain Brush |
+| Overlay Off | 0 | Terrain Brush |
+| Put the Brush Down | Escape | Terrain Brush |
 
 ## Animation
 

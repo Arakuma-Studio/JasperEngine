@@ -41,6 +41,17 @@ namespace jasperengine::editor{
         Settings    // T1 R59: Terrain Settings
     };
 
+    // T1 R63: what an armed eyedropper takes from the terrain
+    enum class TerrainPick{ None, Height, SlopeMin, SlopeMax, HeightMin, HeightMax, Layer };
+
+    // What the eyedroppers read at one terrain-local point: height 0-1 of maxHeight, slope in degrees,
+    // and the strongest layer (-1: the base shows most)
+    struct TerrainPickValues{
+        float height = 0.0f;
+        float slope = 0.0f;
+        int layer = -1;
+    };
+
     struct TerrainBrushCursor{
         bool visible = false;
         // World-space closed loops draped over the terrain surface: the brush
@@ -106,6 +117,8 @@ namespace jasperengine::editor{
         // the samples' clock (T1 R33, R35: only holding still deposits by time)
         bool started = false;
         std::chrono::steady_clock::time_point startTime;
+        // T1 R39: the drag's samples, kept when JASPER_TERRAIN_STROKE_LOG names a log
+        std::vector<terrain::StrokeSample> logSamples;
         // Placement strokes write entities instead of a map, so none of the map state applies
         bool placement = false;
         // Fixed at stroke start, cleared if the asset turns out not to be instanceable
@@ -182,8 +195,10 @@ namespace jasperengine::editor{
         bool filterAllTools = false;
         bool filterInvert = false;
         bool heightFilterInvert = false;
-        // T1 R63: the next click picks the Set Height value instead of painting
-        bool pickHeightArmed = false;
+        // T1 R63: the next click picks this value from the terrain instead of painting
+        TerrainPick pickTarget = TerrainPick::None;
+        // T1 R56: the armed tool's alternate (C)
+        bool alternate = false;
         float paintMinSlope;
         float paintMaxSlope;
         float paintMinHeight;
@@ -214,6 +229,14 @@ namespace jasperengine::editor{
             std::string message;
         };
         ImportRawDialog importRaw;
+        // T1 R59: the map Resize... is open for, and the size it offers
+        struct ResizeMapDialog{
+            bool open = false;
+            bool justOpened = false;
+            terrain::MapId map;
+            int size = 0;
+        };
+        ResizeMapDialog resizeMap;
         ExportRawDialog exportRaw;
         // T1 R59: a new Terrain Height keeps the surface where it is
         bool keepWorldHeights = true;
@@ -221,6 +244,9 @@ namespace jasperengine::editor{
         mutable bool infoValid = false;
         mutable Entity infoEntity = NULL_ENTITY;
         mutable Vector3 infoLocal;
+        // T1 R55: where the pointer was and when it last moved, for the decal's fade
+        mutable float decalPointerX = -1.0f, decalPointerY = -1.0f;
+        mutable double decalMovedAt = 0.0;
 
         void drawIssuesBanner(SceneProject* sceneProject, TerrainComponent& terrain);
         void drawSettingsTool(SceneProject* sceneProject, TerrainComponent& terrain);
@@ -230,6 +256,8 @@ namespace jasperengine::editor{
         // T1 R67: Paint by Rules under Paint Texture; Apply is one undo step
         void drawPaintByRules(SceneProject* sceneProject, TerrainComponent& terrain);
         std::string paintRulesMessage;
+        // T1 R67: Preview on: the Layer Weights overlay shows the rules' result until they change or Apply runs
+        bool paintRulesPreview = false;
         void frameTerrain(SceneProject* sceneProject);
         // An undoable property of the selected terrain
         template<typename T> bool setTerrainProperty(const char* property, const T& value);
@@ -355,9 +383,34 @@ namespace jasperengine::editor{
         TerrainBrushMode effectiveModeFor(bool ctrl, bool shift) const;
         // T1 R55, Table 4: the decal's colour of an operation
         static Vector4 decalColor(TerrainBrushMode mode);
+        // T1 R59: a map resampled to width x height (bilinear; a hole map's texels stay 0 or 255)
+        static TerrainMapSnapshot resizedSnapshot(const TerrainMapSnapshot& source, int width, int height, bool holes);
+        // T1 R59: Resize...: the map at another size, one undo step; false with error
+        static bool resizeTerrainMap(Project* project, SceneProject* sceneProject, Entity entity, const TerrainMapRef& ref, int width, int height,
+                                     std::string& error);
+        // T1 R67: Paint by Rules' Preview: the op run on a copy of the maps, shown by the Layer Weights overlay;
+        // the terrain's maps stay as they are. false with error
+        static bool previewPaintByRules(Project* project, SceneProject* sceneProject, Entity entity, const terrain::Op& op, int newMapResolution,
+                                        std::string& error);
+        // T1 R63: the eyedroppers' values at a terrain-local point
+        static TerrainPickValues pickValues(Scene* scene, Entity entity, float localX, float localZ);
+        // T1 R55: the decal's opacity this long after the pointer last moved: whole for 0.5 s, then gone over 0.25 s
+        static float decalOpacity(double secondsSinceMoved);
 
         void adjustBrushSize(float factor);
         void adjustBrushStrength(float factor);
+
+        // T1 R57, Table 5: what the TerrainBrush shortcut context does while a brush is armed
+        bool isBrushArmed() const { return windowOpen && brushActive; }
+        void armBrush(TerrainBrushMode mode);
+        void armPickHeight();
+        void toggleSlopeFilterInvert() { filterInvert = !filterInvert; }
+        // T1 R56: Raise and Lower: Lift Floors and Flatten Peaks; Set Height: Pick and Flatten
+        void toggleAlternate() { alternate = !alternate; }
+        bool hasAlternate() const;
+        bool isAlternateOn() const { return alternate && hasAlternate(); }
+        // Esc: the eyedropper first, then the brush; false when neither was armed
+        bool disarmBrush();
 
         // One stroke through terrain-local points (y ignored) with `brush`, the same brush code
         // a mouse drag runs, as undoable commands (a missing map is created first). Returns

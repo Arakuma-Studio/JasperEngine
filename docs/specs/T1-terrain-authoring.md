@@ -1656,10 +1656,11 @@ the sketch's names, which all still exist unless a line below says otherwise.
 - **D-30 `edit_terrain` refuses `import_heightmap`'s `set_max_height` and `resolution`.** An import of another size is the Terrain
   window's path (Import Raw... makes the new map first). `place_objects` and `erase_objects` run in a call of their own (they are
   commands, not map writes); `instanced` plants a tree prototype through T5's `place_trees` and `remove_trees`.
-- **D-32 Window work not done yet:** R39's stroke log, R56's alternates (the `C` key and Alt Alternates While Painting),
-  R57's `TerrainBrush` shortcut context with Table 5's keys and the Cut Holes brush they name, R63's Pick beyond Set Height's
-  eyedropper, R55's fade and hide during camera moves, R59's Resize..., R61's hillshade preview, R67's Preview, R37's pen
-  readers, and R47-R54's benches. They are open, not given up: none of them is impossible on this host.
+- **D-32 Window items left open:** R56's alternate for Paint Texture (a smoothing of the blend by a true average) and the preference
+  Alt Alternates While Painting (it needs the Scene view to stop orbiting on Alt+LMB for a tool with an alternate); R63's eyedropper
+  for Noise Size, and its Alt+click picks on the press, as T5's tree pick does, rather than on a release with no drag. R39's log is
+  checked by `TerrainStrokeSession.TheStrokeLogReplaysToTheSameBytes`, not yet by AC29's real mouse drag. R37's pen readers and
+  R47-R54's benches are `terrain/t1-benches`'.
 - **D-35 `visualize_terrain` without T3's and T5's keys and with one sheet.** `quality` and `foliage_quality` are theirs to add. The sheet is
   one mesh of at most 255 x 255 cells; DC8's second copy at 25 % in the tools layer is not done.
 - **D-36 The Lua terrain functions that take tables are raw functions** with their stubs in `tools/lua_api/parser.py`'s `OVERRIDES`;

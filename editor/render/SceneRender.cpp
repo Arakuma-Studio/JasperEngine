@@ -1352,6 +1352,9 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 
     if (!terrainEditing && terrainBrushLines){
         terrainBrushLines->setVisible(false);
+    }else if (terrainEditing){
+        // T1 R55: each frame, so the decal fades once the pointer rests and hides while the camera moves
+        updateTerrainBrushCursor();
     }
 
     syncObject2DGizmoMode();

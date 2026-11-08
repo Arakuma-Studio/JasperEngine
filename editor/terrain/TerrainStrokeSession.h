@@ -11,6 +11,8 @@
 #include <cstdint>
 #include <deque>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace jasperengine::editor{
 
@@ -60,6 +62,11 @@ namespace jasperengine::editor{
 
         // The op a stamp of this brush runs: the shape's place and the deposit are set per stamp (tests)
         const terrain::Op& currentOp() const { return op; }
+
+        // T1 R39: the drag's samples as one edit_terrain call ({"space": "local", "ops": [...]}) whose stroke
+        // replays it to the same bytes; empty for a brush the op list does not express (a mask, a square,
+        // Ramp, Erode, Noise, Terrace, Stamp, an alternate, a filter or a radius under a texel)
+        std::string replayCall(const std::vector<terrain::StrokeSample>& samples) const;
 
     private:
         void buildOp();

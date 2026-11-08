@@ -16,6 +16,7 @@
 #include "util/ScopedDefaultEntityPool.h"
 
 #include <algorithm>
+#include <map>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -326,6 +327,34 @@ std::vector<std::string> TerrainOverlay::sourceNames() {
     return names;
 }
 
+namespace {
+
+    // T1 R67: the previews by terrain, and a count that changes with each, so a sheet bakes again
+    struct OverlayPreviews {
+        std::map<std::pair<Scene*, Entity>, std::shared_ptr<const terrain::TerrainMapStore>> stores;
+        uint64_t serial = 0;
+    };
+
+    OverlayPreviews& overlayPreviews() {
+        static OverlayPreviews previews;
+        return previews;
+    }
+
+}
+
+void TerrainOverlay::setPreview(Scene* scene, Entity entity, std::shared_ptr<const terrain::TerrainMapStore> store) {
+    overlayPreviews().stores[{scene, entity}] = std::move(store);
+    overlayPreviews().serial++;
+}
+
+void TerrainOverlay::clearPreview(Scene* scene, Entity entity) {
+    if (overlayPreviews().stores.erase({scene, entity})) overlayPreviews().serial++;
+}
+
+bool TerrainOverlay::hasPreview(Scene* scene, Entity entity) {
+    return overlayPreviews().stores.count({scene, entity}) != 0;
+}
+
 bool TerrainOverlay::bake(Scene* scene, Entity entity, const TerrainOverlaySettings& settings, int width, int height,
                           std::vector<uint8_t>& rgba, std::vector<TerrainOverlayLegendStop>& legendOut, std::string& error) {
     ensureBuiltInSources();
@@ -339,7 +368,9 @@ bool TerrainOverlay::bake(Scene* scene, Entity entity, const TerrainOverlaySetti
         error = "not a terrain";
         return false;
     }
-    TerrainComponentStore store(scene, entity, *terrain);
+    TerrainComponentStore own(scene, entity, *terrain);
+    const auto preview = overlayPreviews().stores.find({scene, entity});
+    const terrain::TerrainMapStore& store = preview != overlayPreviews().stores.end() ? *preview->second : static_cast<const terrain::TerrainMapStore&>(own);
     if (width <= 0 || height <= 0) overlayImageSize(store, width, height);
     const TerrainOverlayBake context = bakeContext(scene, entity, *terrain, store, settings, width, height);
     rgba.assign(static_cast<size_t>(width) * height * 4, 0);
@@ -371,7 +402,8 @@ void TerrainOverlay::update(SceneProject& sceneProject, const TerrainOverlaySett
         if (!sheets.empty()) hide();
         return;
     }
-    const bool changed = settings != drawn;
+    const bool changed = settings != drawn || previewsBaked != overlayPreviews().serial;
+    previewsBaked = overlayPreviews().serial;
     if (!changed && nowSeconds - lastBake < MIN_SECONDS) return;
 
     std::set<Entity> present;
