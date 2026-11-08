@@ -93,6 +93,12 @@ namespace jasperengine::editor::titledesigner {
     void removePreviewMode(const std::string& id);
     const std::vector<PreviewModeDef>& previewModes();
 
+    // ---- work in the engine's render phase ----
+    // a mode's work that must run in the engine's render phase this frame (S81's Glyph Atlas title
+    // runs its scheduler there while no scene draws); one-shot, drained by the canvas view
+    void requestEngineFrame(std::function<void()> work);
+    void runEngineFrameRequests();
+
     // ---- lint (R53) ----
     struct CheckFinding {
         std::string id;                 // the check

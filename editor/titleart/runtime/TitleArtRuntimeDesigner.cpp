@@ -6,6 +6,7 @@
 #include "Backend.h"
 #include "external/IconsFontAwesome6.h"
 #include "subsystem/TitleArtRuntime.h"
+#include "subsystem/TitleArtSystem.h"
 #include "titleart/TitleArtDocument.h"
 #include "titleart/designer/TitleDesignerHooks.h"
 #include "titleart/designer/TitlePages.h"
@@ -250,6 +251,8 @@ namespace {
                 ta::TitleArtRuntime::setState(*p.live, live);
             }
         }
+        // its scheduler runs in the render phase even while no scene draws a title this frame
+        requestEngineFrame([] { TitleArtSystem::runRuntimeFrame(true); });
         if (!p.error.empty()) {
             drawList->AddText(ImVec2(min.x + 12.0f, min.y + 30.0f), IM_COL32(240, 170, 50, 255), p.error.c_str());
             return true;

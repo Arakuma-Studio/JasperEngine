@@ -35,13 +35,13 @@ async def focus(ed: Editor, **keys) -> dict:
 
 
 async def palette(ed: Editor, filter: str, query: str) -> dict:
-    """The Add palette's state once it has drawn with this query."""
-    await focus(ed, add={"filter": filter, "query": query})
-    for _ in range(30):
-        await ed.call("editor_status")
-        state = (await focus(ed))["state"]
+    """The Add palette's state once it has drawn with this query (focus_window's result state is
+    read after the palette opens over the window's focus)."""
+    state: dict = {}
+    for _ in range(5):
+        state = (await focus(ed, add={"filter": filter, "query": query}))["state"]
         add = state.get("add")
-        if add is not None and add.get("query") == query:
+        if add is not None and add.get("query") == query and add.get("rail") is not None:
             return add
     ed.fail(f"the Add palette did not open: {state}")
     return {}
@@ -101,11 +101,15 @@ async def test_seed_dice_and_cost_badge(ed: Editor):
     await ed.call("edit_title", path=path, create={"text": "SEED"}, bake="never",
                   ops=[{"op": "add_effect", "layer": "Title", "type": "light_glow"},
                        {"op": "add_layer", "type": "generator", "generator": "speed_lines", "follow": "Title"}])
-    await focus(ed, path=path, select="Title", panel="properties")
+    await focus(ed, path=path, select="Title/fx:light_glow", panel="properties")
     badges = []
-    for cls in ("C0", "C1", "C2", "C3", "C4"):
-        badges += (await ed.call("find_ui_item", label=cls)).get("items", [])
-    ed.check(len(badges) > 0, "the Effects stack shows a cost badge")
+    for _ in range(10):
+        await ui.frames(2)
+        for cls in ("C0", "C1", "C2", "C3", "C4"):
+            badges += (await ed.call("find_ui_item", label=cls)).get("items", [])
+        if badges:
+            break
+    ed.check(len(badges) > 0, "the effect's page shows its cost badge")
     got = await ed.call("get_title", path=path)
     generator = next(layer["name"] for layer in got["layers"] if layer.get("type") == "generator")
     await focus(ed, select=generator, panel="properties")

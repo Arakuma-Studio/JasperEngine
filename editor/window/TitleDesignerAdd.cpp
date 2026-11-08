@@ -53,6 +53,7 @@ AddTarget TitleDesignerWindow::addTarget() const {
 
 void TitleDesignerWindow::drawAddPalette() {
     JE_PROFILE_SCOPE("TD drawAddPalette");
+    if (addOpenDelay > 0 && --addOpenDelay == 0) addOpenRequested = true;
     if (addOpenRequested) {
         ImGui::OpenPopup("Add###addpalette");
         addOpenRequested = false;

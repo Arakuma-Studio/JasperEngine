@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleCanvasView.h"
+#include "TitleDesignerHooks.h"
 
 #include "render/RenderUtil.h"
 #include "titleart/TitleArtRenderHost.h"
@@ -433,6 +434,8 @@ void TitleCanvasView::drawSnapshot() {
 }
 
 void TitleCanvasView::processFrame() {
+    // the hooks' render-phase work of this frame (S81's Glyph Atlas preview)
+    runEngineFrameRequests();
     const std::vector<TitleCanvasView*> views = liveViews();
     for (TitleCanvasView* view : views) {
         if (view->snapshotScene) view->drawSnapshot();

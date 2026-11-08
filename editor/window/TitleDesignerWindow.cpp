@@ -618,6 +618,10 @@ void TitleDesignerWindow::openAddPalette(const std::string& filter) {
 void TitleDesignerWindow::openAddPalette(const std::string& filter, const std::string& query) {
     openAddPalette(filter);
     addQuery = query;
+    // focus_window focuses the window one frame after its keys run, which closes popups: the
+    // palette opens two frames later, over it
+    addOpenRequested = false;
+    addOpenDelay = 3;
 }
 
 void TitleDesignerWindow::closeAddPalette() {

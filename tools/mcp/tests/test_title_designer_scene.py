@@ -57,6 +57,8 @@ async def test_document_chip_drag(ed: Editor):
         hierarchy = [r["x"], r["y"], r["width"], r["height"]]
     before = (await ed.call("find_entities", component="titleart")).get("entities", [])
     # the empty area at the bottom of the Hierarchy (a row would parent it)
+    if isinstance(hierarchy, dict):
+        hierarchy = [hierarchy["x"], hierarchy["y"], hierarchy["width"], hierarchy["height"]]
     target = ui.centre([hierarchy[0], hierarchy[1] + hierarchy[3] - 60, hierarchy[2], 60])
     await focus(ed)
     await ui.frames(2)
@@ -84,7 +86,9 @@ async def test_open_in_context(ed: Editor):
     await ed.call("create_ui", scene=scene, root={"type": "image", "name": "Logo", "layout": {"anchor": "center", "size": [480, 270]}})
     await ed.call("add_component", scene=scene, entity="Logo", component="titleart")
     await ed.call("set_properties", scene=scene, entity="Logo", values={"titleart": {"title": path}})
+    await ed.call("select_scene", scene=scene)
     await ed.call("select_entities", scene=scene, entities=["Logo"])
+    await ed.call("focus_window", window="inspector")
     await ui.frames(6)
     await ui.click_revealed("Open in Title Designer", "Inspector")
     state = {}

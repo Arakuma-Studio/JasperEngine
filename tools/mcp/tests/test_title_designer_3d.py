@@ -4,6 +4,8 @@ the Realtime tiers are Preview As modes, and the fixed-schematic gizmo's ring dr
 drag) commits "Rotate 3D Layer" once, writing the layer's 3D rotation.
 """
 
+import json
+
 import harness
 from harness import Editor
 from ui_input import Ui
@@ -46,11 +48,10 @@ async def test_rows_parts_and_tiers(ed: Editor):
     await setup(ed)
     path = "assets/designer3d/rows.titleart"
     await create_3d(ed, path)
-    r = await focus(ed, path=path, select="Title", panel="properties", search="lock environment")
-    await ed.call("editor_status")
-    for label in ("Lock Environment To Layer",):
-        items = (await ed.call("find_ui_item", label=label)).get("items", [])
-        ed.check(len(items) > 0, f"the 3D row {label} is a search result")
+    ui = Ui(ed)
+    await focus(ed, path=path, select="Title", panel="properties", search="lock environment")
+    item = await ui.find("Lock Environment To Layer", frames=120)
+    ed.check(item is not None, "the 3D row Lock Environment To Layer is a search result")
     r = await focus(ed, search="", select="Title/band#0")
     ed.check_eq(r["state"]["selection"], ["Title/band#0"], "the band is a part")
     await ed.call("editor_status")
@@ -90,6 +91,5 @@ async def test_gizmo_ring_drag_is_one_step(ed: Editor):
     await ui.frames(4)
     steps = await top_steps(ed, 2)
     ed.check_eq(steps[0], "Rotate 3D Layer", f"one step: {steps} (before {before})")
-    got = await ed.call("get_title", path=path)
-    t = got["layers"][0].get("transform", {})
+    t = json.loads((ed.project / path).read_text())["layers"][0]["transform"]
     ed.check(abs(t.get("rotation_x", 0)) + abs(t.get("rotation_y", 0)) + abs(t.get("rotation", 0)) > 1.0, f"the layer turned: {t}")

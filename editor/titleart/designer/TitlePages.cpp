@@ -970,6 +970,19 @@ void jasperengine::editor::titledesigner::effectPage(RowContext& ctx, const Node
     if (!ctx.collecting()) {
         ImGui::TextWrapped("%s", def->description);
         if (!def->gizmos.empty()) ImGui::TextDisabled("\xE2\x9C\xA5 Its handles are on the canvas");
+        // its cost class (S83 R41)
+        const ta::Json* stack = node.part.empty() ? (object->contains("effects") ? &(*object)["effects"] : nullptr)
+                                                  : (object->contains("part_effects") && (*object)["part_effects"].contains(node.part) ? &(*object)["part_effects"][node.part] : nullptr);
+        int index = -1;
+        for (size_t i = 0; stack && stack->is_array() && i < stack->size(); i++) {
+            if (str((*stack)[i], "id") == node.item) index = (int)i;
+        }
+        CostBadge badge;
+        if (index >= 0 && ctx.host && ctx.host->effectCost(node.layer, node.part, index, badge)) {
+            ImGui::TextDisabled("Cost");
+            ImGui::SameLine();
+            drawCostBadge(badge);
+        }
     }
     presetChips(ctx, node.layer, base + ".params", def->type, def->params);
     paramRows(ctx, {node.layer}, base + ".params", def->params, def, nullptr);

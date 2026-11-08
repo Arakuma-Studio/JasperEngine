@@ -335,6 +335,7 @@ namespace jasperengine::editor {
         bool addOpen = false;
         bool addOpenRequested = false;
         bool addCloseRequested = false;
+        int addOpenDelay = 0;                       // frames until a scripted open (focus_window's add)
         std::string addFilter;                     // "" | "layers" | "generators" | "effects"
         std::string addQuery;
         std::string addCategory;

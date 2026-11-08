@@ -440,13 +440,17 @@ bool TitleArtSystem::hasDisplayTextures() const{
 }
 
 void TitleArtSystem::renderTitles(){
-    // one scheduler for the engine (R13): whichever scene draws first runs the frame's steps
+    runRuntimeFrame(paused);
+}
+
+void TitleArtSystem::runRuntimeFrame(bool editorEditMode){
+    // one scheduler for the engine (R13): whichever asks first in a frame runs its steps
     static uint64_t lastFrame = ~uint64_t(0);
     const uint64_t frame = SystemRender::getFrameCount();
     if (frame == lastFrame) return;
     lastFrame = frame;
     if (!TitleArtRuntime::isBuilt()) return;
-    TitleArtRuntime::runFrame(Engine::getUnscaledDeltatime(), paused);
+    TitleArtRuntime::runFrame(Engine::getUnscaledDeltatime(), editorEditMode);
 }
 
 // ==================================================================== update
