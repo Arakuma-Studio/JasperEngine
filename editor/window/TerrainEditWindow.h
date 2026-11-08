@@ -343,6 +343,13 @@ namespace jasperengine::editor{
 
         // T1 R60: half a heightmap texel up to the whole terrain
         static void brushSizeLimits(const TerrainComponent& terrain, float& minSize, float& maxSize);
+        // T1 R21: what one placed object is, for the brush and for edit_terrain's place_objects: a prefab root or
+        // a model GameObject under the terrain; null for any other asset
+        static Command* placementCommand(Project* project, uint32_t sceneId, const std::string& asset, Entity terrainEntity,
+                                         const Vector3& localPosition, const Quaternion& rotation, const Vector3& scale);
+        // The terrain's placed GameObjects, instanced hosts left out, with their terrain-local x and z: what
+        // place_objects spaces against and erase_objects may take
+        static std::vector<std::pair<Entity, Vector2>> placedGameObjects(SceneProject* sceneProject, Entity terrainEntity);
 
         // The operation a stroke started now would run: Ctrl inverts, Shift smooths (T1 R56)
         TerrainBrushMode effectiveModeFor(bool ctrl, bool shift) const;

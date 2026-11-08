@@ -2599,6 +2599,23 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "terrain_place_objects",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "Asked to scatter rocks over a clearing, agents sent sculpt_terrain strokes point by point, guessing positions "
+                         "and spacing themselves, instead of one region for edit_terrain to plan.",
+        "text_at_issue": "docs/mcp/guide/terrain.md Which tool: 'Scatter rocks or props over a region | edit_terrain place_objects'",
+        "source": "docs/specs/T1-terrain-authoring.md R21",
+        "prompt": "Scatter about 20 copies of assets/rock.obj over the circle of radius 15 around the middle of the terrain, at least 2 m apart.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok("Placed 18 and erased 0 object(s) on \"World\" as one undo step.",
+                                                  {"placed": 18, "erased": 0, "undo_name": "Edit Terrain Objects (World)"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:place_objects"}}],
+                   "must_not_call": [{"tool": "sculpt_terrain", "args": {"strokes": "*"}}]},
+        "max_turns": 8,
+    },
+    {
         "id": "terrain_lua_crater",
         "kind": "guard",
         "what_happened": "Asked for a game that digs craters, agents wrote height loops over textures or called the editor's tools "

@@ -26,6 +26,7 @@
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/type/ComponentValuesCmd.h"
+#include "command/type/DeleteEntityCmd.h"
 #include "command/type/TerrainMapDeltaCmd.h"
 #include "command/type/TerrainTextureEditCmd.h"
 #include "util/Angle.h"
@@ -33,6 +34,12 @@
 #include "sceneview/SceneViewController.h"
 #include "terrain/TerrainOverlay.h"
 #include "window/SceneWindow.h"
+#include "window/TerrainEditWindow.h"
+#include "subsystem/FoliageSystem.h"
+#include "subsystem/MeshSystem.h"
+#include "terrain/FoliageRules.h"
+#include "terrain/TreeStore.h"
+#include "util/Util.h"
 #include "object/TerrainEdit.h"
 #include "terrain/EditorTerrainStore.h"
 #include "terrain/TerrainIssues.h"
@@ -142,12 +149,9 @@ bool readProjectFile(Project* project, const std::string& path, std::vector<uint
     return true;
 }
 
-// What edit_terrain adds to the engine's op reader: project files for masks and imports, and the
-// ops that place GameObjects stay with sculpt_terrain
+// What edit_terrain adds to the engine's op reader: project files for masks and imports
 terrain::OpJsonHooks editorHooks(Project* project, HeightImport& lastImport) {
     terrain::OpJsonHooks hooks;
-    hooks.refused = {{OpType::PlaceObjects, "places GameObjects: use sculpt_terrain with place_object or erase_object."},
-                     {OpType::EraseObjects, "places GameObjects: use sculpt_terrain with place_object or erase_object."}};
     hooks.loadMask = [project](const std::string& path, terrain::Shape& shape, std::string& error) {
         std::vector<uint8_t> bytes;
         if (!readProjectFile(project, path, bytes, error)) return false;
@@ -352,6 +356,196 @@ void startTerrainJob(const CallPtr& call, const TerrainCallTarget& target, const
         if (finished.status() != JobStatus::Succeeded) return ToolResult::error(finished.message(), result);
         return ToolResult::success(finished.message(), result);
     });
+}
+
+// R21: place_objects and erase_objects. The engine plans (TerrainPlacement) against the objects there;
+// the editor makes the brush's own commands, one undo step. instanced: T5's tree store, through
+// place_trees and remove_trees, the prototype named by the asset's file stem as T5's tools name it.
+void editObjectsFromOps(const CallPtr& call, const TerrainCallTarget& target, std::vector<Op> ops, const terrain::OpSpace& space, bool dryRun) {
+    const Json& list = call->args()["ops"];
+    Project* project = target.project;
+    SceneProject* sceneProject = target.scene;
+    Scene* scene = sceneProject->scene;
+    const Entity entity = target.entity;
+    const std::string name = scene->getEntityName(entity);
+    bool trees = false;
+    std::vector<std::string> assets(ops.size());
+    std::vector<float> aligns(ops.size(), 0.0f);
+    for (size_t i = 0; i < ops.size(); i++) {
+        const std::string where = "ops[" + std::to_string(i) + "]";
+        if (ops[i].type != OpType::PlaceObjects && ops[i].type != OpType::EraseObjects) {
+            call->fail(where + ": place_objects and erase_objects run in a call of their own: send the other ops in a second edit_terrain call.");
+            return;
+        }
+        const bool instanced = list[i].contains("instanced") && list[i]["instanced"].is_boolean() && list[i]["instanced"].get<bool>();
+        if (i > 0 && instanced != trees) {
+            call->fail(where + ".instanced: trees (instanced true) and GameObjects run in separate calls.");
+            return;
+        }
+        trees = instanced;
+        if (list[i].contains("align_to_normal") && list[i]["align_to_normal"].is_number()) {
+            aligns[i] = std::clamp(list[i]["align_to_normal"].get<float>(), 0.0f, 1.0f);
+        }
+        if (!list[i].contains("asset")) {
+            if (ops[i].type == OpType::PlaceObjects) {
+                call->fail(where + ".asset is required: a model or a prefab (instanced: a model the Terrain has as a tree prototype).");
+                return;
+            }
+            continue;
+        }
+        std::string error;
+        if (!list[i]["asset"].is_string() || !McpValues::assetPathFromJson(project, list[i]["asset"].get<std::string>(), assets[i], error)) {
+            call->fail(where + ".asset: " + (error.empty() ? std::string("must be a project path.") : error));
+            return;
+        }
+        if (!trees && ops[i].type == OpType::PlaceObjects && !Util::isModelFile(assets[i]) && !Util::isPrefabFile(assets[i])) {
+            call->fail(where + ".asset: place_objects places a model or a prefab.");
+            return;
+        }
+    }
+
+    TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
+    std::vector<std::vector<uint32_t>> treeIds(ops.size());
+    std::vector<std::string> prototypes(ops.size());
+    std::shared_ptr<terrain::TreeStore> store;
+    std::vector<std::pair<Entity, Vector2>> placed;
+    if (trees) {
+        FoliageSystem* foliage = scene->getSystem<FoliageSystem>().get();
+        store = foliage ? foliage->getTreeStore(entity) : nullptr;
+        for (size_t i = 0; i < ops.size(); i++) {
+            int prototypeId = -1;
+            if (!assets[i].empty()) {
+                prototypes[i] = std::filesystem::path(assets[i]).stem().string();
+                for (const TerrainTreePrototype& prototype : terrain.treePrototypes) {
+                    if (std::filesystem::path(prototype.meshPath.path).stem().string() == prototypes[i]) prototypeId = static_cast<int>(prototype.id);
+                }
+                if (prototypeId < 0) {
+                    call->fail("ops[" + std::to_string(i) + "].asset: this Terrain has no tree prototype \"" + prototypes[i] +
+                               "\": add it with set_properties treePrototypes, or place GameObjects with instanced false.");
+                    return;
+                }
+            }
+            if (!store) continue;
+            for (const terrain::TreeRecord& record : store->records()) {
+                if (prototypeId >= 0 && record.prototypeId != static_cast<uint16_t>(prototypeId)) continue;
+                ops[i].existingObjects.push_back(Vector2(terrain::foliageTreeLocalX(record, terrain.terrainSize), terrain::foliageTreeLocalZ(record, terrain.terrainSize)));
+                treeIds[i].push_back(record.id);
+            }
+        }
+    } else {
+        placed = TerrainEditWindow::placedGameObjects(sceneProject, entity);
+        for (Op& op : ops) {
+            for (const auto& object : placed) op.existingObjects.push_back(object.second);
+        }
+    }
+
+    TerrainComponentStore planner(scene, entity, terrain);
+    terrain::OpOptions plan;
+    plan.dryRun = true;
+    const terrain::TerrainOpResult result = terrain::applyOps(planner, ops, plan);
+    if (!result.ok) {
+        call->fail(result.error);
+        return;
+    }
+
+    if (trees) {
+        // T5 writes the trees: its job is the one undo step, and its result lists them
+        std::vector<Op> foliageOps;
+        for (size_t i = 0; i < ops.size(); i++) {
+            Op op;
+            op.type = OpType::Registered;
+            op.params.kind = terrain::OpParam::Kind::Object;
+            auto number = [](double value) { terrain::OpParam p; p.kind = terrain::OpParam::Kind::Number; p.number = value; return p; };
+            terrain::OpParam items;
+            items.kind = terrain::OpParam::Kind::List;
+            if (ops[i].type == OpType::PlaceObjects) {
+                for (const terrain::PlacedObject& object : result.ops[i].plan.objects) {
+                    terrain::OpParam point;
+                    point.kind = terrain::OpParam::Kind::List;
+                    point.items = {number(object.x), number(object.z), number(object.yaw * 180.0 / 3.14159265358979323846), number(object.scale)};
+                    items.items.push_back(point);
+                }
+                if (items.items.empty()) continue;
+                terrain::OpParam prototype;
+                prototype.kind = terrain::OpParam::Kind::String;
+                prototype.text = prototypes[i];
+                op.registeredName = "place_trees";
+                op.params.fields = {{"prototype", prototype}, {"points", items}, {"align_to_normal", number(aligns[i])}};
+            } else {
+                for (int index : result.ops[i].erasedObjects) items.items.push_back(number(treeIds[i][static_cast<size_t>(index)]));
+                if (items.items.empty()) continue;
+                op.registeredName = "remove_trees";
+                op.params.fields = {{"ids", items}};
+            }
+            foliageOps.push_back(std::move(op));
+        }
+        if (foliageOps.empty()) {
+            call->ok("Nothing to place or erase: the region holds no room or no tree.", Json{{"terrain", McpRefs::entityJson(sceneProject, entity)}, {"placed", 0}, {"erased", 0}});
+            return;
+        }
+        editFoliageFromOps(call, TerrainTarget{project, sceneProject, entity}, std::move(foliageOps), space, dryRun);
+        return;
+    }
+
+    size_t placedCount = 0, erasedCount = 0;
+    for (size_t i = 0; i < ops.size(); i++) {
+        placedCount += result.ops[i].plan.objects.size();
+        erasedCount += result.ops[i].erasedObjects.size();
+    }
+    const std::string undoName = "Edit Terrain Objects (" + name + ")";
+    Json out = terrain::opResultJson(result, space, ops);
+    out["terrain"] = McpRefs::entityJson(sceneProject, entity);
+    out["placed"] = placedCount;
+    out["erased"] = erasedCount;
+    out["dry_run"] = dryRun;
+    if (dryRun) {
+        call->ok("Dry run: " + std::to_string(placedCount) + " placed, " + std::to_string(erasedCount) + " erased.", out);
+        return;
+    }
+    CommandHistory* history = CommandHandle::get(sceneProject->id);
+    const size_t start = history->mark();
+    auto rollback = [&](const std::string& why) {
+        while (history->position() > start && history->canUndo() && history->undo()) {}
+        call->fail(why);
+    };
+    for (size_t i = 0; i < ops.size(); i++) {
+        if (ops[i].type == OpType::PlaceObjects) {
+            for (const terrain::PlacedObject& object : result.ops[i].plan.objects) {
+                float height = 0.0f;
+                Vector3 normal(0.0f, 1.0f, 0.0f);
+                MeshSystem::sampleTerrainSurface(scene->getComponent<TerrainComponent>(entity), object.x, object.z, height, normal);
+                // as the brush turns and tilts what it places (TerrainEditWindow::applyPlacement)
+                Quaternion rotation(Angle::radToDefault(object.yaw), Vector3(0.0f, 1.0f, 0.0f));
+                if (aligns[i] > 0.0f) {
+                    const float slope = Angle::radToDefault(std::acos(std::clamp(normal.y, -1.0f, 1.0f)));
+                    const Vector3 axis = Vector3(0.0f, 1.0f, 0.0f).crossProduct(normal);
+                    if (axis.length() > std::numeric_limits<float>::epsilon()) {
+                        rotation = Quaternion::slerp(aligns[i], Quaternion(), Quaternion(slope, axis.normalized())) * rotation;
+                    }
+                }
+                Command* command = TerrainEditWindow::placementCommand(project, sceneProject->id, assets[i], entity, Vector3(object.x, height, object.z),
+                                                                       rotation, Vector3(object.scale));
+                if (!command || !history->addCommandNoMerge(command)) {
+                    rollback("ops[" + std::to_string(i) + "]: " + assets[i] + " could not be placed.");
+                    return;
+                }
+            }
+        } else if (!result.ops[i].erasedObjects.empty()) {
+            std::vector<Entity> targets;
+            for (int index : result.ops[i].erasedObjects) {
+                const Entity object = placed[static_cast<size_t>(index)].first;
+                if (scene->isEntityCreated(object)) targets.push_back(object);
+            }
+            if (!targets.empty() && !history->addCommandNoMerge(new DeleteEntityCmd(project, sceneProject->id, targets))) {
+                rollback("ops[" + std::to_string(i) + "]: the objects could not be erased.");
+                return;
+            }
+        }
+    }
+    if (history->position() > start) history->groupSince(start, undoName);
+    out["undo_name"] = undoName;
+    out["next"] = "Check the objects with find_entities under the terrain, or look with visualize_terrain.";
+    call->ok("Placed " + std::to_string(placedCount) + " and erased " + std::to_string(erasedCount) + " object(s) on \"" + name + "\" as one undo step.", out);
 }
 
 // R68: what import_heightmap guessed, on its op's entry, so a wrong guess is seen before it is kept
@@ -678,6 +872,17 @@ void editTerrainTool(const CallPtr& call) {
     if (!parser.parseList(args["ops"], ops)) {
         rollback();
         call->fail(parser.error);
+        return;
+    }
+
+    // R21: objects are commands, not map writes: a call of their own
+    if (std::any_of(ops.begin(), ops.end(), [](const Op& op) { return op.type == OpType::PlaceObjects || op.type == OpType::EraseObjects; })) {
+        if (hasKey(args, "create")) {
+            rollback();
+            call->fail("create: place_objects and erase_objects run in a call of their own; create the terrain first, then send them.");
+            return;
+        }
+        editObjectsFromOps(call, target, std::move(ops), space, dryRun);
         return;
     }
 
