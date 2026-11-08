@@ -20,6 +20,7 @@
 1021 button/textureDisabled texture
 1021 button/textureSelected texture
 1033 particlesystem/effect particle_effect
+1043 sprite/sheet any
 1044 text/font[0] font
 1052 reflectionprobe/texture cubemap
 1053 uidocument/filename ui_document
@@ -29,4 +30,4 @@
 1073 navgrid/gridData navgrid
 1078 animator/controller animator_controller
 1080 trailrenderer/customShader shader
-1093 voxelvolume/volumeData any
+1096 voxelvolume/volumeData any

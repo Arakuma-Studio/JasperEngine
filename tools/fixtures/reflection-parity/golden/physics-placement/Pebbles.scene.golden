@@ -1,4 +1,4 @@
-formatVersion: 7
+formatVersion: 8
 guid: d3b47554805d165d7bca8f6a611ca93d
 id: 2550074908
 name: Pebbles
@@ -55,9 +55,33 @@ shaderKeys:
   - type: mesh
     properties: 8590065754
   - type: mesh
+    properties: 68719477848
+  - type: mesh
+    properties: 68719607898
+  - type: mesh
+    properties: 77309412440
+  - type: mesh
+    properties: 77309542490
+  - type: mesh
     properties: 2199023256664
   - type: mesh
     properties: 2207613191256
+  - type: mesh
+    properties: 2267742733400
+  - type: mesh
+    properties: 2276332667992
+  - type: mesh
+    properties: 17592186045528
+  - type: mesh
+    properties: 17592186175578
+  - type: mesh
+    properties: 17600775980120
+  - type: mesh
+    properties: 17600776110170
+  - type: mesh
+    properties: 19791209301080
+  - type: mesh
+    properties: 19799799235672
   - type: sky
   - type: depth
   - type: depth

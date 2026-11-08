@@ -393,6 +393,28 @@ For water with a box (or an ocean), a density, a current and drags, add a **Wate
 - The inspector warns when the mesh is too coarse for the waves (the drawn surface is linear
   between vertices; things float on the exact curve), when a Buoyancy has no dynamic Rigidbody
   or no volume to float in, and when it is as dense as the water.
+
+### Boats: Water Excluders and Water Wakes
+
+- A **Water Excluder** (`WaterExcluderComponent`) keeps water out of a boat's hull, a cabin, a
+  dry tunnel: shape `convex_hull` (default: the hull of the GameObject's own mesh or its model's
+  mesh nodes), `box` or `sphere` (`center`, `size`, local; Inspector **Fit to Mesh**). A point
+  inside an active one is dry: no buoyancy (neither path: a Buoyancy's columns, the Rigidbody
+  `buoyancy` factor's centre of mass), `Water.sample` gives `inWater` false with `excluder` set
+  (the surface stays: the waterline outside), `Water.isUnderwater` is false, and a camera inside
+  sees no underwater fade; the water surface inside is not drawn.
+- An excluder never dries the body it belongs to: the nearest GameObject with a Rigidbody at or
+  above it. Put the boat's excluder on its Rigidbody's GameObject (or under it): cargo with its
+  own Rigidbody inside stays put while the boat floats. A static one (no Rigidbody above) dries
+  everything, the Inspector warns when a floating body is under it.
+- Disabled, inactive or hidden (Transform `visible` off): it keeps nothing out.
+- A **Water Wake** (`WaterWakeComponent`) leaves foam and waves behind a GameObject moving through
+  a water's surface in a running scene: `foam`, `waves` (0..2), `width`, `length` (metres along
+  local X and Z; 0: the excluder's box or the mesh's). The wakes are visual (the physics does not
+  feel them), fade over the scene's `water_wake_fade`, pause with the game and clear at Stop.
+- Check: `sample_water` gives each point `excluded_by` and `wake` {foam, height}; `report: true`
+  adds the excluders (`hull_status`: ready, pending, no_mesh, flat, no_physics), the wakes
+  (`emitting`, `speed`) and which waters draw with them.
 ## Collision and trigger callbacks
 
 Define the Unity methods on a script of the body's GameObject; no registration, no flag:

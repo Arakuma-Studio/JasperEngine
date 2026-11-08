@@ -472,7 +472,8 @@ async def test_edit_in_play_leaves_edit_mode(ed: Editor):
 
 
 async def test_guide_served(ed: Editor):
-    """R72: jasper://docs/voxels is served, and the agent guide's index leads to it."""
+    """R72: jasper://docs/voxels is served, and the agent guide leads to it: the guide names the
+    voxels group, whose tool_groups description routes to edit_voxels and the doc."""
     await setup(ed)
     got = await ed.session.read_resource("jasper://docs/voxels")
     text = "".join(c.text for c in got.contents)
@@ -480,8 +481,11 @@ async def test_guide_served(ed: Editor):
         ed.check(needle in text, f"the doc names {needle}")
     guide = await ed.session.read_resource("jasper://guide")
     guide_text = "".join(c.text for c in guide.contents)
-    ed.check("voxels (edit_voxels)" in guide_text, "the Other areas index has the entry")
     ed.check("voxels" in guide_text.split("## Tool groups")[-1], "the group is named")
+    groups = {g["name"]: g for g in (await ed.call("tool_groups"))["groups"]}
+    description = groups["voxels"]["description"]
+    ed.check("edit_voxels" in description and "jasper://docs/voxels" in description,
+             f"the group's description routes to the tool and the doc: {description}")
 
 
 async def test_presets(ed: Editor):

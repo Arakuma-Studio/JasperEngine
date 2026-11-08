@@ -12,6 +12,7 @@
 #include "SceneSettings.h"
 #include "LogCapture.h"
 #include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 #include "pool/ShaderPool.h"
 #include "terrain/TerrainLayers.h"
 #include "terrain/TerrainMacroNormal.h"
@@ -473,17 +474,20 @@ TEST_F(TerrainMaterialsGpu, BlockSizes){
         mesh.submeshes[0].shader.get()->shaderData.getUniformBlockMembers("u_fs_terrainLayers", size);
         return size / 16u;
     };
-    EXPECT_EQ(blockVectors(), 5u * 9u);
+    // three vectors a layer and a component of the codes' vectors (GLES3's 224 fragment vectors)
+    const unsigned int layers = 3u * 9u + 3u;
+    EXPECT_EQ(blockVectors(), layers);
     component().macroMode = TerrainMacroMode::NOISE;
-    EXPECT_EQ(blockVectors(), 5u * 9u + 3u);
+    EXPECT_EQ(blockVectors(), layers + 3u);
     component().resampleEnabled = true;
-    EXPECT_EQ(blockVectors(), 5u * 9u + 3u + 1u);
+    EXPECT_EQ(blockVectors(), layers + 3u + 1u);
     component().heightBlendSharpness = 0.5f;
-    EXPECT_EQ(blockVectors(), 5u * 9u + 3u + 1u + 1u);
+    EXPECT_EQ(blockVectors(), layers + 3u + 1u + 1u);
+    // Flat Only is a flag of the layer's code: the cliff variant's block is the same size
     TerrainSurfaceLayer layer = terrain->getSurfaceLayer(0);
     layer.cliffProjection = TerrainCliffProjection::FLAT_ONLY;
     terrain->setSurfaceLayer(0, layer);
-    EXPECT_EQ(blockVectors(), 5u * 9u + 3u + 1u + 3u + 1u);
+    EXPECT_EQ(blockVectors(), layers + 3u + 1u + 1u);
     EXPECT_NO_ENGINE_ERRORS();
 }
 

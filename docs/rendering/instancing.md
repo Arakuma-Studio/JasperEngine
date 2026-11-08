@@ -25,6 +25,14 @@ has shrunk to nothing; it rebuilds that list only when the camera has moved past
 (0.25 m at least, 4 % of the fade band), so walking costs little. A forked mesh shader made before
 the near fade existed ignores it; fork it again to get it.
 
+## Skinned models and blend shapes
+
+A terrain detail layer or a spline's pieces draw their model at rest: a skinned model without its
+skin, a model with blend shapes with the file's default weights baked in. An Instanced Mesh you add
+to a model with blend shapes keeps them, but instanced, with a texture or a skin, they need more vertex inputs
+than the 16 a GPU has, so it does not draw and the Console says so: remove the Instanced Mesh, or
+bake the blend shapes into the model.
+
 ## Billboards
 
 **Billboard** turns every instance to face the camera (one rotation for the batch: the view's).

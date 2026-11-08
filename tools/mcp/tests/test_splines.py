@@ -232,7 +232,7 @@ async def test_round_trip(ed: Editor):
     await ed.call("save_scene", scene=older["scene"]["id"])
     await ed.call("close_scene", scene=older["scene"]["id"])
     current = (ed.project / "scenes/Before.scene").read_text()
-    ed.check(current.startswith("formatVersion: 7\n"), "this editor writes format 7")
+    ed.check(current.startswith("formatVersion: 8\n"), "this editor writes format 8")
     pre = "formatVersion: 3\n" + current.split("\n", 1)[1]
     (ed.project / "scenes/Before.scene").write_text(pre)
     await ed.call("sync_files")

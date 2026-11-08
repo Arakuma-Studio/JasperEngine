@@ -30,6 +30,7 @@ namespace jasperengine::editor {
         PhysicsMaterial,
         PhysicsMaterial2D,
         ShakePreset,
+        SpriteAtlas,    // S45 (the main menu's Create > 2D)
         NoiseGraph
     };
 

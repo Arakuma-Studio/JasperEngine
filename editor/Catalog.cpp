@@ -6,11 +6,13 @@
 #include "component/Transform.h"
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
+#include "component/CameraComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/Joint2DComponent.h"
 #include "component/Joint3DComponent.h"
 #include "component/LatticeModifierComponent.h"
 #include "component/MeshPolygonComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/RagdollComponent.h"
 #include "component/Rigidbody2DComponent.h"
@@ -32,6 +34,7 @@
 #include "component/FluidSimulationComponent.h"
 #include "component/SplineComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/TerrainComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "lattice/LatticeTypes.h"
 #include "pose/PoseAnimatorRuntime.h"
@@ -270,6 +273,10 @@ ComponentType editor::Catalog::getConflictingComponent(ComponentType type){
 }
 
 std::string editor::Catalog::getComponentConflict(EntityRegistry* registry, Entity entity, ComponentType type){
+    // a Pixel Perfect Camera goes on a camera (S41 R19)
+    if (type == ComponentType::PixelPerfectCameraComponent && registry && registry->isEntityCreated(entity) &&
+            !registry->findComponent<CameraComponent>(entity))
+        return "A Pixel Perfect Camera goes on a GameObject with a Camera (add a Camera first).";
     const ComponentType other = getConflictingComponent(type);
     if (other == ComponentType::Transform || !registry || !registry->isEntityCreated(entity))
         return "";

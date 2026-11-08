@@ -488,6 +488,9 @@ namespace jasperengine::editor {
         // state a thumbnail step waits on changed: wakes cancelThumbnailWork's wait, schedules a step
         void notifyThumbnailWork();
         ImTextureID getThumbnailTexture(const std::string& thumbnailPath, int& outWidth, int& outHeight);
+        // S44 R34: an .aseprite file's frame 0 from its import (its frames in turn when animate):
+        // the page texture, the frame's size and UVs; null before the first import
+        ImTextureID getAsepriteThumbnail(const fs::path& filePath, bool animate, int& outWidth, int& outHeight, ImVec2& uv0, ImVec2& uv1);
         void evictThumbnailTexture(const std::string& thumbnailKey);
         void enforceThumbnailCacheLimit();
         void clearThumbnailTextures();
@@ -595,6 +598,10 @@ namespace jasperengine::editor {
         // a shuffle event of the selected audio files
         void assetsCreateSoundEventFromClips();
         bool hasAudioSelection() const;
+        // S45: a .spriteatlas (empty, or packing the selected textures and .aseprite files)
+        void assetsCreateSpriteAtlas(const fs::path& directory);
+        void assetsCreateSpriteAtlasFromSelection();
+        bool hasSpriteSelection() const;
         // the sound commands (ProjectWindowSound.cpp)
         void assetsImportSoundEssentials();
         void assetsCreatePlaceholderSound(const fs::path& directory);
@@ -605,7 +612,7 @@ namespace jasperengine::editor {
         void assetsShowInFileManager();
         // The files selected in the folder view (absolute), for editor-script menu items
         std::vector<fs::path> getSelectedFiles() const;
-        // queued / cooking / failed over a texture's icon (S14 R23)
+        // queued / cooking / failed over a texture's icon (S14 R23), importing / failed over an .aseprite file's (S44 R34)
         void drawTextureCookBadge(ImDrawList* drawList, const FileEntry& file, ImVec2 min, ImVec2 max);
         void assetsOpenSelected();
         void assetsRenameSelected();

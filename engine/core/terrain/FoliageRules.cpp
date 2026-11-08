@@ -65,7 +65,7 @@ FoliageRuleSurface::FoliageRuleSurface(const TerrainMapStore& store): store(&sto
         heightWidth = format.bounds.w;
         heightHeight = format.bounds.h;
         heightChannels = format.channels;
-        heightBytesPerChannel = format.bitsPerChannel >= 16 ? 2 : 1;
+        heightBytesPerChannel = bytesPerChannelOf(format.bitsPerChannel);
         heightBytes.resize(static_cast<size_t>(format.bounds.area()) * bytesPerTexel(format));
         if (!store.readBytes(FOLIAGE_HEIGHT_MAP, format.bounds, heightBytes)) heightBytes.clear();
         // the size the map's lattice stands for: its texels' outer edges

@@ -277,6 +277,11 @@ bool VoxelSystem::isVolumeReady(Entity owner) const{
     return state && state->firstSetActive;
 }
 
+bool VoxelSystem::isVolumeSettled(Entity owner) const{
+    const VolumeState* state = stateOf(owner);
+    return state && state->firstSetActive && state->scheduler.idle() && state->pendingOpens.empty() && state->swaps.empty();
+}
+
 void VoxelSystem::forEachLoading(const std::function<void(Entity)>& visit) const{
     auto volumes = scene->getComponentArray<VoxelVolumeComponent>();
     for (size_t i = 0; i < volumes->size(); i++){

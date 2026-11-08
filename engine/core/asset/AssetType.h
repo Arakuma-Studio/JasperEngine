@@ -37,7 +37,10 @@ namespace jasperengine {
         AvatarMask = 21,            // a .mask avatar mask (S21)
         AnimationMontage = 22,      // a .montage animation montage (S21)
         VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
-        // 24 to 27 are the pixel art program's (docs/specs/S41-S52)
+        // 24 to 27 are the pixel art program's (docs/specs/S41-S52: Palette 24, AsepriteSprite 25,
+        // SpriteAtlas 26, Tileset 27), each written explicitly whatever order they land in
+        AsepriteSprite = 25,        // an .aseprite / .ase file (S44): its sheet, frames, clips and slices are sub-assets
+        SpriteAtlas = 26,           // a .spriteatlas Sprite Atlas (S45; its GUID in its JSON)
         SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
         // 30 Terrain World (programme D19, D22); NoiseGraph took 32 when upstream took 28. Stored in
         // assetmap.bin: these never move.
@@ -45,6 +48,9 @@ namespace jasperengine {
         VoxelVolume = 31,           // a .voxelvolume (T6 R77, its GUID in a sidecar)
         NoiseGraph = 32             // a .noisegraph Noise Graph (T2)
     };
+
+    // the highest value present (a sibling's reserved value below it may still be missing)
+    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::NoiseGraph);
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
     inline const char* assetTypeName(AssetType type) {
@@ -73,6 +79,8 @@ namespace jasperengine {
             case AssetType::TreeData: return "tree_data";
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
+            case AssetType::AsepriteSprite: return "aseprite_sprite";
+            case AssetType::SpriteAtlas: return "sprite_atlas";
             case AssetType::SoundEvent: return "sound_event";
             case AssetType::NoiseGraph: return "noise_graph";
             case AssetType::VoxelVolume: return "voxel_volume";
@@ -82,10 +90,10 @@ namespace jasperengine {
     }
 
     inline AssetType assetTypeFromName(std::string_view name) {
-        // (a reserved number has no name: it never matches)
-        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::NoiseGraph); value++) {
+        // values without a name (a reserved one not added yet) read "unknown" and never match
+        for (uint8_t value = 1; value <= kLastAssetType; value++) {
             const AssetType type = static_cast<AssetType>(value);
-            if (name == assetTypeName(type)) {
+            if (name != "unknown" && name == assetTypeName(type)) {
                 return type;
             }
         }

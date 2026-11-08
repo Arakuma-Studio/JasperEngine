@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include "Catalog.h"
+#include "component/TerrainComponent.h"
 #include "texture/TextureTypeInference.h"
 
 using namespace jasperengine;

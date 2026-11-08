@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include "PhysicsTestScene.h"
+#include "component/TerrainComponent.h"
 #include "math/Ray.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"

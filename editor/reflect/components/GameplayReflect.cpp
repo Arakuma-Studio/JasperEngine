@@ -14,6 +14,8 @@
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterExcluderComponent.h"
+#include "component/WaterWakeComponent.h"
 
 namespace jasperengine::editor::reflect {
 
@@ -109,6 +111,34 @@ namespace {
 
     constexpr const char* kBuoyancyKnownKeys[] = {"columns", "customPoints", "dragScale", "enabled", "volumeScale"};
 
+    // ---------------------------------------------------------------- Water Excluder, Water Wake
+
+    bool waterExcluderHasBox(const void* owner){
+        return static_cast<const WaterExcluderComponent*>(owner)->shape != WaterExcluderShape::CONVEX_HULL;
+    }
+
+    constexpr FieldDesc kWaterExcluderFields[] = {
+        JE_FIELD(WaterExcluderComponent, enabled),
+        JE_FIELD(WaterExcluderComponent, shape, .enumDesc = &enums::kWaterExcluderShape,
+                 .tooltip = "Convex Hull: the hull of this GameObject's mesh (or its model's meshes); Box and Sphere: Center and Size."),
+        JE_FIELD(WaterExcluderComponent, center, .unit = Unit::Meters, .tooltip = "Local centre of the Box or Sphere.",
+                 .visibleIf = &waterExcluderHasBox),
+        JE_FIELD(WaterExcluderComponent, size, .unit = Unit::Meters, .tooltip = "Local size of the Box (a Sphere fills it).",
+                 .visibleIf = &waterExcluderHasBox),
+    };
+
+    constexpr FieldDesc kWaterWakeFields[] = {
+        JE_FIELD(WaterWakeComponent, enabled),
+        JE_FIELD(WaterWakeComponent, foam, .min = 0.0f, .max = 2.0f, .uiMin = 0.0f, .uiMax = 2.0f, .step = 0.05f,
+                 .tooltip = "Churn behind the stern, spray along the hull and breaking bow waves."),
+        JE_FIELD(WaterWakeComponent, waves, .min = 0.0f, .max = 2.0f, .uiMin = 0.0f, .uiMax = 2.0f, .step = 0.05f,
+                 .tooltip = "The diverging and transverse waves of the wake."),
+        JE_FIELD(WaterWakeComponent, width, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "Waterline width along local X; 0: from the Water Excluder or the mesh."),
+        JE_FIELD(WaterWakeComponent, length, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "Waterline length along local Z; 0: from the Water Excluder or the mesh (or as Width)."),
+    };
+
 }
 
 const ComponentDesc kCharacterController2DDesc{
@@ -150,6 +180,22 @@ const ComponentDesc kWaterVolumeDesc{
         return Factory::createWaterVolumeComponent(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, ctx.assignExisting);
     },
     .extraKeys = kWaterVolumeKnownKeys,
+};
+
+const ComponentDesc kWaterExcluderDesc{
+    .type = ComponentType::WaterExcluderComponent, .cppName = "WaterExcluderComponent", .key = "waterexcluder",
+    .displayName = "Water Excluder", .icon = ICON_FA_SHIP,
+    .body = JE_STRUCT_DESC(WaterExcluderComponent, "WaterExcluderComponent", kWaterExcluderFields),
+    .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(WaterExcluderComponent),
+    .codegenVar = "waterExcluder",
+};
+
+const ComponentDesc kWaterWakeDesc{
+    .type = ComponentType::WaterWakeComponent, .cppName = "WaterWakeComponent", .key = "waterwake",
+    .displayName = "Water Wake", .icon = ICON_FA_WATER,
+    .body = JE_STRUCT_DESC(WaterWakeComponent, "WaterWakeComponent", kWaterWakeFields),
+    .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(WaterWakeComponent),
+    .codegenVar = "waterWake",
 };
 
 const ComponentDesc kBuoyancyDesc{

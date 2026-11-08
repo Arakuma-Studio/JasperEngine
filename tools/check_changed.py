@@ -17,7 +17,9 @@ unit and MCP tests that can see it; the full suite is for pushes to origin main 
    tests for its code, web for engine/ code and its CMake, Android for its own platform code;
    everything for the root CMake, docker/, tools/build.sh, the toolchain and the lockfiles
    (ALL_TRIGGERS); nothing for a change that builds nothing (docs). This tool's and the harness's
-   own Python run their self-tests (SELF_TESTS).
+   own Python run their self-tests (SELF_TESTS). Navigation's runtime, Recast/Detour and the
+   engine's CMake also build the engine with navigation OFF and run its stub tests
+   (NAVIGATION_OFF_PATHS: tools/check-navigation-off.sh).
 3. Unit tests, exactly: Ninja's dependency database of the test trees (`ninja -t deps`) maps every
    changed file (a changed Foo.cpp through its Foo.h too) to the test translation units that
    include it; their gtest suites run (--gtest_filter), in the core and the editor binary. A
@@ -99,10 +101,10 @@ SHADER_LINT_TEST = "tools/ci/test_check_shader_lod.py"
 # an MCP test file, or what classifies it, changes: every file must stay classified for the CI suite
 CI_SUITE_GUARD = "tools/ci/check-mcp-ci-suite.py"
 CI_SUITE_GUARD_TRIGGERS = ("tools/mcp/tests/test_*.py", "tools/mcp/run_tests.py", CI_SUITE_GUARD)
-# an engine event's holder, or the clears that walk them, changes: every event must stay cleared at Stop
+# an engine source changes (any can hold an event or walk one): every event must stay cleared at Stop.
+# The lint reads every engine source but the vendored libraries, the tests and the IDE projects
 EVENT_CLEARS_LINT = "tools/check_event_clears.py"
-EVENT_CLEARS_TRIGGERS = ("engine/core/component/*.h", "engine/core/subsystem/PhysicsSystem.h", "engine/core/Engine.h",
-                         "engine/core/Engine.cpp", EVENT_CLEARS_LINT)
+EVENT_CLEARS_SKIPPED = ("engine/libs/", "engine/tests/", "engine/workspaces/")
 # the engine with every optional module off: a header's include can reach a source only through a
 # module's code, and the editor's engine, which has them all, never shows it
 MODULES_OFF_CHECK = "tools/check-physics-off.sh"
@@ -118,6 +120,11 @@ EDITOR_INPUTS = ("libs/*", "docs/mcp/guide/*", "docs/unity-glossary.md", "tools/
 HTMLUI_PATHS = ("engine/tests/htmlui/*", "engine/core/htmlui/*", "engine/libs/rmlui/*", "engine/libs/lexbor/*")
 WEB_DIRS = ("engine/platform/web/*", "engine/platform/emscripten/*", "tools/web/*")
 ANDROID_DIRS = ("engine/platform/android/*", "engine/project/android/*", "tools/android-*", "tools/ci/android_*")
+# what a JASPERENGINE_NAVIGATION=OFF build compiles differently: tools/check-navigation-off.sh
+# builds the engine that way and runs NavStubTest (compiled only then) and NavGridTest (S74 R28)
+NAVIGATION_OFF_PATHS = ("engine/core/navigation/*", "engine/libs/recastnavigation/*", "engine/core/subsystem/NavigationSystem.*",
+                        "engine/core/object/navigation/*", "engine/core/component/Nav*", "engine/CMakeLists.txt",
+                        "engine/tests/core/navigation/*", "tools/check-navigation-off.sh")
 # the MCP files that run a game built with a prebuilt player: the engine's runtime code runs in the
 # game, which no editor coverage sees; and those that compile one, for what the compile path reads
 # (the full gate compiles for every change)
@@ -253,7 +260,7 @@ def read_changes(explicit_base: str | None, cwd: Path = ROOT, rb_file: Path = RB
 
 @dataclass
 class Plan:
-    builds: list[str] = field(default_factory=list)          # linux, unit-tests, web, android, everything
+    builds: list[str] = field(default_factory=list)          # linux, unit-tests, web, android, navigation-off
     reasons: dict[str, str] = field(default_factory=dict)
     unit_all: bool = False
     unit_core: list[str] = field(default_factory=list)       # gtest suites
@@ -287,7 +294,8 @@ def plan_builds(files: list[str], plan: Plan) -> None:
             plan.self_tests.append(test)
         if match(f, CI_SUITE_GUARD_TRIGGERS) and CI_SUITE_GUARD not in plan.self_tests:
             plan.self_tests.append(CI_SUITE_GUARD)
-        if match(f, EVENT_CLEARS_TRIGGERS) and EVENT_CLEARS_LINT not in plan.self_tests:
+        holds_events = f.startswith("engine/") and f.endswith(CXX) and not f.startswith(EVENT_CLEARS_SKIPPED)
+        if (holds_events or f == EVENT_CLEARS_LINT) and EVENT_CLEARS_LINT not in plan.self_tests:
             plan.self_tests.append(EVENT_CLEARS_LINT)
     # engine code may call a required-reason API the Apple privacy manifest must declare
     if any(f.startswith("engine/") and f.endswith(CXX) for f in files) or "engine/workspaces/xcode/ios/PrivacyInfo.xcprivacy" in files:
@@ -331,6 +339,9 @@ def plan_builds(files: list[str], plan: Plan) -> None:
         plan.add_build("web", f"{web[0]} changed (the engine's web build)")
     if android:
         plan.add_build("android", f"{android[0]} changed (Android's own code)")
+    navigation = [f for f in files if match(f, NAVIGATION_OFF_PATHS)]
+    if navigation:
+        plan.add_build("navigation-off", f"{navigation[0]} changed (the engine without Recast/Detour: NavStubTest)")
 
 
 # ---------------------------------------------------------------------------------------- 3. unit tests
@@ -927,6 +938,11 @@ def main(argv: list[str], root: Path | None = None) -> int:
             # (their images are not this one: the check goes on, its pass is not cached, and the summary says so)
             runner.steps.append((f"build {b}", "SKIP (not in the Linux image: tools/check-changed outside it builds it)", 0.0))
             runner.partial = True
+            continue
+        if b == "navigation-off":
+            # (a script of the Linux image, not a build.sh target)
+            script = ["tools/check-navigation-off.sh"]
+            runner.run("navigation OFF (NavStubTest, NavGridTest)", script if in_image() else ["tools/build.sh", "exec", "linux", *script])
             continue
         env = dict(build_env, SKIP_ENGINE="1") if b == "linux" else dict(build_env)
         runner.run(f"build {b}", ["tools/build.sh", b], env)

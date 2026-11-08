@@ -5,6 +5,7 @@
 #define NOISE_TESTSUPPORT_H
 
 #include "graph/Graph.h"
+#include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
 #include "noise/NoiseGraphRuntime.h"
 
@@ -91,17 +92,23 @@ namespace noisetest {
     }
 
     // A pool of that many workers for one test; the next test gets a default one back
+    // (the asset readers take the process job system only at start(): stopped and started with it,
+    // or later reads, a foliage mesh in a later test, go to the shut-down pool and end cancelled)
     class WorkerScope {
     public:
         explicit WorkerScope(int workers) {
+            AssetIOService::instance().stop();
             jobs::shutdown();
             jobs::Config config;
             config.workers = workers;
             jobs::initialize(config);
+            AssetIOService::instance().start();
         }
         ~WorkerScope() {
+            AssetIOService::instance().stop();
             jobs::shutdown();
             jobs::initialize(jobs::Config{});
+            AssetIOService::instance().start();
         }
     };
 

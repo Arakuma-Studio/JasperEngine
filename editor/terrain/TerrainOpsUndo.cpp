@@ -151,7 +151,7 @@ std::shared_ptr<editor::TerrainOpsSnapshot> editor::snapshotTerrainMaps(Project*
     for (const MapId& map : maps) {
         const terrain::MapFormat format = live.format(map);
         if (!format.exists) continue;
-        std::vector<uint8_t> bytes(static_cast<size_t>(format.bounds.area()) * format.channels * (format.bitsPerChannel >= 16 ? 2 : 1));
+        std::vector<uint8_t> bytes(static_cast<size_t>(format.bounds.area()) * terrain::bytesPerTexel(format));
         if (!live.readBytes(map, format.bounds, bytes)) continue;
         snapshot->store->addMap(map, format.bounds.w, format.bounds.h, format.channels, format.bitsPerChannel, std::move(bytes));
         snapshot->hashes.emplace_back(map, terrain::mapHash(live, map));

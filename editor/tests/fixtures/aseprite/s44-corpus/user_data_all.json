@@ -1,0 +1,38 @@
+{ "frames": [
+   {
+    "filename": "user_data_all 0.aseprite",
+    "frame": { "x": 0, "y": 0, "w": 8, "h": 8 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 8, "h": 8 },
+    "sourceSize": { "w": 8, "h": 8 },
+    "duration": 100
+   },
+   {
+    "filename": "user_data_all 1.aseprite",
+    "frame": { "x": 8, "y": 0, "w": 8, "h": 8 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 8, "h": 8 },
+    "sourceSize": { "w": 8, "h": 8 },
+    "duration": 100
+   }
+ ],
+ "meta": {
+  "app": "http://www.aseprite.org/",
+  "version": "1.3.18.6-dev",
+  "image": "user_data_all.png",
+  "format": "RGBA8888",
+  "size": { "w": 16, "h": 8 },
+  "scale": "1",
+  "frameTags": [
+   { "name": "tagged", "from": 0, "to": 1, "direction": "forward", "color": "#0000c8ff", "data": "tag text", "properties": {"b_false": false, "b_true": true, "dbl": 7.25, "i16": -29996, "i32": -1999999996, "i64": -8999999999996, "i8": -96, "id": "[unsupported type]", "map3": {"level2": {"level3": {"deep": 11, "s": "x"}}}, "pt": "[unsupported type]", "rc": "[unsupported type]", "str": "text 4 é", "sz": "[unsupported type]", "u16": 60004, "u32": 4000000004, "u8": 204, "vec_int": "[unsupported type]", "vec_mixed": "[unsupported type]", "je_ext": {"n": 4, "owner": "tag text"}} }
+  ],
+  "layers": [
+   { "name": "layer", "opacity": 255, "blendMode": "normal", "color": "#c80000ff", "data": "layer text", "properties": {"b_false": false, "b_true": true, "dbl": 5.25, "i16": -29998, "i32": -1999999998, "i64": -8999999999998, "i8": -98, "id": "[unsupported type]", "map3": {"level2": {"level3": {"deep": 9, "s": "x"}}}, "pt": "[unsupported type]", "rc": "[unsupported type]", "str": "text 2 é", "sz": "[unsupported type]", "u16": 60002, "u32": 4000000002, "u8": 202, "vec_int": "[unsupported type]", "vec_mixed": "[unsupported type]", "je_ext": {"n": 2, "owner": "layer text"}}, "cels": [{ "frame": 0, "color": "#00c80080", "data": "cel text", "properties": {"b_false": false, "b_true": true, "dbl": 6.25, "i16": -29997, "i32": -1999999997, "i64": -8999999999997, "i8": -97, "id": "[unsupported type]", "map3": {"level2": {"level3": {"deep": 10, "s": "x"}}}, "pt": "[unsupported type]", "rc": "[unsupported type]", "str": "text 3 é", "sz": "[unsupported type]", "u16": 60003, "u32": 4000000003, "u8": 203, "vec_int": "[unsupported type]", "vec_mixed": "[unsupported type]", "je_ext": {"n": 3, "owner": "cel text"}} }] }
+  ],
+  "slices": [
+   { "name": "noted", "color": "#ffff00ff", "data": "slice text", "properties": {"b_false": false, "b_true": true, "dbl": 8.25, "i16": -29995, "i32": -1999999995, "i64": -8999999999995, "i8": -95, "id": "[unsupported type]", "map3": {"level2": {"level3": {"deep": 12, "s": "x"}}}, "pt": "[unsupported type]", "rc": "[unsupported type]", "str": "text 5 é", "sz": "[unsupported type]", "u16": 60005, "u32": 4000000005, "u8": 205, "vec_int": "[unsupported type]", "vec_mixed": "[unsupported type]", "je_ext": {"n": 5, "owner": "slice text"}}, "keys": [{ "frame": 0, "bounds": {"x": 1, "y": 1, "w": 4, "h": 4 } }] }
+  ]
+ }
+}

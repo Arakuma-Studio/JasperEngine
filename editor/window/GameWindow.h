@@ -107,6 +107,10 @@ namespace jasperengine::editor {
         void drawStats(ImVec2 imageMin, ImVec2 imageMax, const SceneProject* sceneProject);
         bool computeAspect(float& aspect) const;
         uint32_t getTargetSceneId() const;
+        // S41: the shown scene's main camera draws through a Pixel Perfect Camera (its request)
+        bool shownPixelPerfect(PixelPerfectViewRequest& request) const;
+        // the toolbar's Pixel Scale (Auto, 1x .. 8x; scales that do not fit are disabled) and readout
+        void drawPixelScale(const PixelPerfectViewRequest& request);
 
     public:
         static constexpr const char* WINDOW_NAME = "Game";

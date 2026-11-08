@@ -403,6 +403,9 @@ void applyShortcut(NSMenuItem* menuItem, const std::string& shortcut) {
             start, plus == std::string::npos ? std::string::npos : plus - start);
         if (token == "Ctrl" || token == "Cmd")
             modifiers |= NSEventModifierFlagCommand;
+        // the Control key (Chord::format names ImGuiMod_Super so on macOS)
+        else if (token == "Control" || token == "Super")
+            modifiers |= NSEventModifierFlagControl;
         else if (token == "Shift")
             modifiers |= NSEventModifierFlagShift;
         else if (token == "Alt" || token == "Option")

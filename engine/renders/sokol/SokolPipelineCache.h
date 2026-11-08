@@ -69,17 +69,9 @@ namespace jasperengine{
         static uint64_t descHash(const sg_pipeline_desc& desc);
         static bool descEqual(const sg_pipeline_desc& a, const sg_pipeline_desc& b);
 
-        // sg_apply_pipeline of the dynamic path, skipped when the pipeline is the one applied
-        // last in this pass. True when it was applied
+        // sg_apply_pipeline through SokolSystem::applyPipeline (skipped when the pipeline is the
+        // one applied last in this pass), counted when applied (getApplyCount). True when applied
         static bool apply(sg_pipeline pipeline);
-        // a pass began, or another path applied a pipeline: the next apply() applies
-        static void invalidateApplied();
-        // changes with every pipeline applied and every invalidateApplied: the uniform blocks
-        // applied in an earlier epoch are not applied any more (sokol asks for them again after
-        // sg_apply_pipeline), those of this one stay until the next (SokolDrawBatch, spec S55)
-        static uint32_t appliedEpoch();
-        // the pipeline applied last in this pass (SG_INVALID_ID when unknown)
-        static uint32_t appliedPipeline();
 
         // counters since start: misses (pipelines created) and sg_apply_pipeline calls of apply()
         static uint64_t getMissCount();

@@ -243,7 +243,8 @@ TEST(ShaderWarmup, RoundTrip){
 }
 
 TEST(ShaderWarmup, UpgradesThreeAttachmentGBufferRecords){
-    // a G-buffer pipeline recorded before the SSR occlusion attachment (R8, colors[3])
+    // a G-buffer pipeline recorded before the SSR occlusion attachment (colors[3], RGBA8 since it
+    // holds the normal's fine bits too)
     sg_pipeline_desc old = {};
     old.layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT3;
     old.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
@@ -254,7 +255,7 @@ TEST(ShaderWarmup, UpgradesThreeAttachmentGBufferRecords){
         old.colors[i].pixel_format = SG_PIXELFORMAT_RGBA8;
     sg_pipeline_desc current = old;
     current.color_count = 4;
-    current.colors[3].pixel_format = SG_PIXELFORMAT_R8;
+    current.colors[3].pixel_format = SG_PIXELFORMAT_RGBA8;
 
     const std::string gbufferKey = ShaderPool::getShaderKeyText(ShaderPool::getShaderKey(ShaderType::GBUFFER, shaderPropertyBit(1)));
     const std::string meshKey = ShaderPool::getShaderKeyText(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(6)));
@@ -270,6 +271,42 @@ TEST(ShaderWarmup, UpgradesThreeAttachmentGBufferRecords){
     const nlohmann::json saved = nlohmann::json::parse(ShaderWarmup::saveToString());
     ASSERT_EQ(saved["pipelines"].size(), 2u);
     // the G-buffer's is the layout the engine asks for now, the other kept as recorded
+    sg_pipeline_desc read = {};
+    ASSERT_TRUE(SokolPipelineRecord::fromJson(saved["pipelines"][0]["desc"].dump(), read, &error)) << error;
+    EXPECT_TRUE(SokolPipelineCache::descEqual(read, current)) << saved["pipelines"][0]["desc"].dump();
+    ASSERT_TRUE(SokolPipelineRecord::fromJson(saved["pipelines"][1]["desc"].dump(), read, &error)) << error;
+    EXPECT_TRUE(SokolPipelineCache::descEqual(read, old)) << saved["pipelines"][1]["desc"].dump();
+    ShaderWarmup::clear();
+}
+
+TEST(ShaderWarmup, UpgradesR8OcclusionGBufferRecords){
+    // a G-buffer pipeline recorded while colors[3] was the occlusion alone (R8): RGBA8 now (the
+    // normal's fine bits), the G-buffer's only; another shader's R8 target is kept
+    sg_pipeline_desc old = {};
+    old.layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT3;
+    old.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+    old.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+    old.depth.write_enabled = true;
+    old.color_count = 4;
+    for (int i = 0; i < 3; i++)
+        old.colors[i].pixel_format = SG_PIXELFORMAT_RGBA8;
+    old.colors[3].pixel_format = SG_PIXELFORMAT_R8;
+    sg_pipeline_desc current = old;
+    current.colors[3].pixel_format = SG_PIXELFORMAT_RGBA8;
+
+    const std::string gbufferKey = ShaderPool::getShaderKeyText(ShaderPool::getShaderKey(ShaderType::GBUFFER, shaderPropertyBit(16)));
+    const std::string meshKey = ShaderPool::getShaderKeyText(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(6)));
+    const std::string record = SokolPipelineRecord::toJson(old);
+    const std::string list = R"({"version":1,"shaders":[{"key":")" + gbufferKey + R"(","custom":""},{"key":")" + meshKey +
+                             R"(","custom":""}],"pipelines":[{"shader":0,"family":"gl","desc":)" + record +
+                             R"(},{"shader":1,"family":"gl","desc":)" + record + "}]}";
+    std::string error;
+    ASSERT_TRUE(ShaderWarmup::loadFromString(list, &error)) << error;
+    EXPECT_EQ(ShaderWarmup::getPipelineCount(), 2u);
+    EXPECT_EQ(ShaderWarmup::getSkippedCount(), 0u);
+
+    const nlohmann::json saved = nlohmann::json::parse(ShaderWarmup::saveToString());
+    ASSERT_EQ(saved["pipelines"].size(), 2u);
     sg_pipeline_desc read = {};
     ASSERT_TRUE(SokolPipelineRecord::fromJson(saved["pipelines"][0]["desc"].dump(), read, &error)) << error;
     EXPECT_TRUE(SokolPipelineCache::descEqual(read, current)) << saved["pipelines"][0]["desc"].dump();

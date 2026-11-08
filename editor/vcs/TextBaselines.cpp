@@ -93,7 +93,7 @@ void TextBaselines::update(VcsService& service, std::span<const std::filesystem:
             fixed = BaselineState::Ignored;
         } else if ((change = snapshot ? snapshot->find(key) : nullptr)) {
             if (change->index == FileState::Untracked) fixed = BaselineState::Untracked;
-            else if (change->newFile()) fixed = BaselineState::NewFile;
+            else if (!change->hasBaseline()) fixed = BaselineState::NewFile;
         }
         if (fixed != BaselineState::None) {
             entry.read.reset();
@@ -103,8 +103,8 @@ void TextBaselines::update(VcsService& service, std::span<const std::filesystem:
             continue;
         }
 
-        // a staged rename compares with the file it came from
-        const RepoPath source = change && !change->oldPath.empty() ? change->oldPath : key;
+        // a rename or a copy compares with the file it came from
+        const RepoPath source = change ? change->diffSource() : key;
         const std::string memo = service.contentMemoKey(key, revision);
         if (memo != entry.memo) {
             entry.memo = memo;

@@ -72,6 +72,7 @@
 #include "component/FluidSimulationComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "component/VoxelVolumeComponent.h"
+#include "component/TerrainComponent.h"
 #include "particles/LegacyParticleConverter.h"
 
 #include <algorithm>

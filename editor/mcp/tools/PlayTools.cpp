@@ -61,10 +61,14 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "component/ScriptComponent.h"
 #include "component/NavMeshAgentComponent.h"
+#include "component/NavMeshLinkComponent.h"
+#include "component/NavMeshModifierComponent.h"
+#include "component/NavMeshObstacleComponent.h"
 #include "component/Joint2DComponent.h"
 #include "component/Rigidbody2DComponent.h"
 #include "object/physics/Joint2D.h"
 #include "object/physics/Rigidbody2D.h"
+#include "subsystem/NavigationSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "script/LuaBinding.h"
 #include "script/ScriptScheduler.h"
@@ -2360,6 +2364,23 @@ void addRuntimeState(Scene* scene, Entity entity, ComponentType type, const std:
         put("desiredVelocity", vec3(c->desiredVelocity));
         put("isOnNavMesh", c->isOnNavMesh);
         put("isOnOffMeshLink", c->isOnOffMeshLink);
+        // ---- S76 agents (R44)
+        put("stuckTime", c->stuckTime);
+        put("lastPathFailure", nav::pathFailureName(c->lastPathFailure));
+        if (NavigationSystem* navigation = scene->getSystem<NavigationSystem>().get()) {
+            put("isPathStale", navigation->isAgentPathStale(entity));
+            put("steeringTarget", vec3(navigation->getSteeringTarget(entity)));
+        }
+    }
+    // S76 R44: link, modifier and obstacle state the navigation system holds
+    NavigationSystem* navigation = scene->getSystem<NavigationSystem>().get();
+    if (type == ComponentType::NavMeshLinkComponent && navigation && scene->findComponent<NavMeshLinkComponent>(entity))
+        put("occupied", navigation->isLinkOccupied(entity));
+    if (type == ComponentType::NavMeshModifierComponent && navigation && scene->findComponent<NavMeshModifierComponent>(entity))
+        put("appliedPolygons", navigation->getModifierAppliedPolygons(entity));
+    if (type == ComponentType::NavMeshObstacleComponent && navigation && scene->findComponent<NavMeshObstacleComponent>(entity)) {
+        const Vector3 v = navigation->getObstacleVelocity(entity);
+        put("velocity", Json::array({v.x, v.y, v.z}));
     }
 }
 

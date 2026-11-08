@@ -110,6 +110,9 @@ namespace {
         &kSafeAreaDesc,
         &kCapsuleShadowCasterDesc,
         &kAudioSnapshotDesc,
+        &kWaterExcluderDesc,
+        &kWaterWakeDesc,
+        &kPixelPerfectCameraDesc,
         &kVoxelVolumeDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
@@ -209,6 +212,9 @@ namespace {
         &kVideoPlayerDesc,
         &kSafeAreaDesc,
         &kAudioSnapshotDesc,
+        &kWaterExcluderDesc,
+        &kWaterWakeDesc,
+        &kPixelPerfectCameraDesc,
         &kVoxelVolumeDesc,
     };
 
@@ -306,6 +312,9 @@ namespace {
         &kVideoPlayerDesc,
         &kSafeAreaDesc,
         &kAudioSnapshotDesc,
+        &kWaterExcluderDesc,
+        &kWaterWakeDesc,
+        &kPixelPerfectCameraDesc,
         &kVoxelVolumeDesc,
     };
 
@@ -315,7 +324,7 @@ namespace {
         &enums::kAnimatorEventMode, &enums::kAnimatorRetarget, &enums::kAnimatorIKType, &enums::kCascadeSplitMode, &enums::kCloudsPreset,
         &enums::kCloudsRendering, &enums::kCollider2DType, &enums::kCollider3DSource, &enums::kCollider3DType, &enums::kCullingMode,
         &enums::kEaseType, &enums::kFogColorMode, &enums::kFogType, &enums::kFogVolumeFalloff, &enums::kFogVolumeShape,
-        &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kWaterVolumeWaves, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,
+        &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kWaterVolumeWaves, &enums::kWaterExcluderShape, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,
         &enums::kLatticeMaskChannel, &enums::kLatticeOutside, &enums::kLatticeStage, &enums::kLayoutGroupType, &enums::kLightShading,
         &enums::kLightType, &enums::kLightUnit, &enums::kLodFadeMode,
         &enums::kMaterialAlphaMode, &enums::kMaterialBlendMode, &enums::kMaterialCullMode, &enums::kMaterialDepthTest,
@@ -337,6 +346,8 @@ namespace {
         &enums::kJointMotion, &enums::kJointSwingType, &enums::kAlphaTweenTarget, &enums::kTransparencyMode, &enums::kCapsuleCastShadows,
         &enums::kCapsuleDirection,
         &enums::kVoxelQuality, &enums::kVoxelNavigationUpdate, &enums::kVoxelTerrainCut,
+        // pixel art (S41)
+        &enums::kPixelUpscaleMode, &enums::kPixelRotation,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {
