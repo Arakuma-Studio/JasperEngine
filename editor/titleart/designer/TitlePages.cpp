@@ -706,7 +706,8 @@ void jasperengine::editor::titledesigner::partPage(RowContext& ctx, const std::s
         if (!ctx.collecting()) ImGui::SeparatorText(parts.size() > 1 ? (std::to_string(parts.size()) + " Rims").c_str() : partLabel(*object, part).c_str());
         for (const char* key : {"enabled", "width", "join", "fill_counters", "offset"}) fieldRow(ctx, rimRefs(key));
         const ta::Json* plate = ctx.collecting() ? nullptr : fieldValue(doc, {layer, bases[0] + ".plate"});
-        if (beginSection(ctx, "plate", "Plate", plate ? objectSummary("plate", *plate) : std::string(), false)) {
+        const std::string plateSummary = ctx.collecting() ? std::string() : objectSummary("plate", plate ? *plate : ta::Json::object());
+        if (beginSection(ctx, "plate", "Plate", plateSummary, false)) {
             ctx.stepPrefix = prefix + "Plate ";
             for (const char* key : {"kind", "close", "corner", "slant"}) fieldRow(ctx, rimRefs(std::string("plate.") + key));
             ctx.stepPrefix = prefix;
