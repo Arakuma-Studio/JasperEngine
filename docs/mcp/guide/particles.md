@@ -155,3 +155,39 @@ Automatic culling pauses off-screen emitters and catches up when they come back,
 thins far ones. Collision against the world (`collision.collisionType: world`) is the costly module:
 Medium quality caches planes and caps the ray casts per tick (`maxQueriesPerTick`). Sorting
 (`renderer.sortMode`) costs a sort per view; additive particles need none.
+
+## Pixel particles
+
+For pixel-art games (docs/particles-pixel.md has the walkthrough).
+
+- `create_particle_effect {path, preset: pixel_spark | pixel_smoke | pixel_fire | pixel_ember |
+  pixel_grit | pixel_debris | pixel_light_flash | pixel_smoke_loop | pixel_ember_loop}`: pixelfx's
+  tuned effects, scaled by the project's Pixels Per Unit, their colours ramps of the project's copy
+  of `builtin:pixelfx-effects` (made on first use); a sub-emitter's effect is written beside it.
+  Then `set_particle_effect`.
+- The **Pixel Art module** (`modules.pixelArt`): `snap` (the box's lower-left corner on the pixel
+  grid), `pixelSizes` (sizes in base pixels), `integerSize`, `fade` (`dither` | `cutout` |
+  `alpha`) with `ditherSize` 2/4/8 and `ditherSpace` (`screen` | `particle`), `fadeOverLifetime`,
+  `holdFrameRate` (Hz, 0 every frame), `secondary` (`rampOffset` with `secondaryOffset`, or `color`
+  with `secondaryColor`), `wobbleAmplitude`/`wobbleFrequency` ([x, y] base px and Hz),
+  `flickerBelow`/`flickerRate`.
+- **Render Mode Pixel**: `{"renderer": {"renderMode": "pixel", "pixelShape": "streak"}}`; shapes
+  dot, cross, disc, ring, streak, puff, shard, chunk, glow, each with its own fields
+  (`streakLengthScale`, `streakMaxLength`, `streakHeadFraction`, `streakWidth`, `discRim`,
+  `ringWidth`, `dotShadeBottom`, `glowBands`, `rotationSteps`).
+- A **Palette Ramp** colour: `{"mode": "ramp", "ramp": "palettes/fx.palette#ramp:fire", "rampSteps":
+  0, "rampReverse": false, "rampBias": 0.62}` (or `rampColors: ["#rrggbb", ...]`), exact palette
+  steps, never blended; in Start Color a random step.
+- `collision.settleSpeed`: a hit slower than it rests the particle until it dies.
+- `{"simulationMode": "analytic"}`: every particle computed on the GPU from its slot and the time
+  (exact loops and seeks, no CPU cost per particle). It takes constant start values, constant
+  rate, at most 4 bursts, the simple shapes, constant velocity, force and drag, colour and size
+  over lifetime, constant rotation speed, a Grid sheet, Pixel Art and the billboard and Pixel
+  renderers; anything else is refused as `analytic_unsupported` with its path. No events.
+- `capture_particles {entity, time, frames, time_end, scale, background, checks}`: the effect
+  alone as a labelled contact sheet (frames from time to time_end, default one loop) at an integer
+  scale on a key colour, with `checks` the pixel-art lint results (`off_grid`, `over_budget`;
+  `off_palette`, `partial_alpha`, `spill`, `one_shot_end`, `loop_seam` and `determinism` are
+  S48's and SKIP until it lands). `save_path` with frames bakes a sprite strip PNG and its
+  Aseprite JSON (Bake to Sprite Sheet).
+- `get_particle_stats` adds `simulation_mode`, `pixel` and `analytic_slots`.

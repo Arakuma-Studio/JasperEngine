@@ -28,12 +28,13 @@ PROXIES = [
     ("sizeOverLifetime", "sizeOverLifetime"), ("sizeBySpeed", "sizeBySpeed"), ("rotationOverLifetime", "rotationOverLifetime"),
     ("rotationBySpeed", "rotationBySpeed"), ("textureSheetAnimation", "textureSheetAnimation"), ("collision", "collision"),
     ("trails", "trails"), ("customData", "customData"), ("externalForces", "externalForces"), ("renderer", "renderer"),
+    ("pixelArt", "pixelArt"),
 ]
 
 TYPES = {
     "Bool": "boolean", "Int": "integer", "UInt": "integer", "Mask": "integer", "Float": "number", "Enum": "string",
     "Vector2": "Vector2", "Vector3": "Vector3", "Vector4": "Vector4", "Color": "Vector4", "String": "string",
-    "MinMaxCurve": "MinMaxCurve|number|{min: number, max: number}", "MinMaxGradient": "MinMaxGradient|Vector4|Gradient",
+    "MinMaxCurve": "MinMaxCurve|number|{min: number, max: number}", "MinMaxGradient": "ParticleSystemGradient|MinMaxGradient|Vector4|Gradient",
 }
 
 # the effect's own fields Unity puts in Main (ParticleClassesLua.cpp pathOf)
