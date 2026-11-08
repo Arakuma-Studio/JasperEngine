@@ -399,11 +399,14 @@ LightDataTail RenderSystem::resolveLightDataTail(ShaderData& shaderData){
     if (!members)
         return tail;
     for (const ShaderUniform& member : *members){
-        if (member.name == "lightDataBases")
+        // (reflected as "objectLights.<member>")
+        const size_t dot = member.name.rfind('.');
+        const std::string name = (dot == std::string::npos) ? member.name : member.name.substr(dot + 1);
+        if (name == "lightDataBases")
             tail.bases = (int16_t)member.offset;
-        else if (member.name == "contactViewport")
+        else if (name == "contactViewport")
             tail.occlusion = (int16_t)member.offset;
-        else if (member.name == "lights2DAmbient")
+        else if (name == "lights2DAmbient")
             tail.lights2D = (int16_t)member.offset;
     }
     return tail;
