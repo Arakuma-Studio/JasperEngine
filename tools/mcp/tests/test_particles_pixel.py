@@ -56,7 +56,7 @@ async def test_group_hidden_until_enabled(ed: Editor):
     await ed.call("tool_groups", enable=["particles"])
     listed = {t.name for t in await ed.tools(groups=None)}
     ed.check({"capture_particles", "create_particle_effect"} <= listed, "listed once enabled")
-    schema = next(t for t in await ed.tools(groups=None) if t.name == "create_particle_effect").inputSchema
+    schema = next(t for t in await ed.tools(groups=None) if t.name == "create_particle_effect").input_schema
     ed.check(set(PRESETS) <= set(schema["properties"]["preset"]["enum"]), "the preset enum has the pixel presets")
 
 
@@ -75,8 +75,8 @@ async def test_presets_sheets_and_checks(ed: Editor):
                                                     "checks": True})
         ed.check(not r.is_error and len(r.images) == 1, f"{name}: {r.text[:300]}")
         value = r.value
-        image = pngdiff.decode(r.images[0][0])
-        ed.check_eq((image.width, image.height), (value["width"], value["height"]), f"{name}: the sheet's size")
+        width, height, _ = pngdiff.decode(r.images[0][0])
+        ed.check_eq((width, height), (value["width"], value["height"]), f"{name}: the sheet's size")
         cell_w, cell_h = value["cell"]
         # 8 frames in 3 columns and 3 rows, 1 px between cells, a label band under each
         ed.check(value["width"] == 3 * cell_w * 4 + 2, f"{name}: width {value['width']} for cells of {cell_w}")
@@ -122,9 +122,9 @@ async def test_bake_and_undo(ed: Editor):
     first = next(iter(sheet["frames"].values()))
     ed.check_eq(first["frame"]["w"], r["cell"][0] * 2)
     ed.check(first["duration"] > 0, "a frame's duration")
-    strip = pngdiff.decode(png.read_bytes())
-    ed.check_eq((strip.width, strip.height), (r["cell"][0] * 2 * 6, r["cell"][1] * 2))
-    ed.check_eq(sheet["meta"]["size"], {"w": strip.width, "h": strip.height})
+    strip_w, strip_h, _ = pngdiff.decode(png.read_bytes())
+    ed.check_eq((strip_w, strip_h), (r["cell"][0] * 2 * 6, r["cell"][1] * 2))
+    ed.check_eq(sheet["meta"]["size"], {"w": strip_w, "h": strip_h})
     await ed.call("undo", scope="project")
     ed.check(not png.exists() and not data.exists(), "one undo removes the strip and its JSON")
 
@@ -132,7 +132,9 @@ async def test_bake_and_undo(ed: Editor):
 async def test_patch_paths(ed: Editor):
     """R37's example patches apply and round-trip (AC12); an Analytic patch with Noise is refused."""
     s = await setup(ed)
-    await ed.call("set_particle_effect", scene=s["scene"], entity=s["system"], effect="inline")
+    # a system of its own, on the default (Simulated, Billboard) effect
+    system = (await ed.call("create_particles", scene=s["scene"], name="Patched", preset="none", position=[0, 0, 0]))["particle_system"]["id"]
+    s = dict(s, system=system)
     patches = [
         ({"modules": {"pixelArt": {"fade": "dither", "ditherSize": 4}}}, lambda e: e["modules"]["pixelArt"].get("ditherSize", 4) == 4),
         ({"modules": {"renderer": {"renderMode": "pixel", "pixelShape": "streak"}}},

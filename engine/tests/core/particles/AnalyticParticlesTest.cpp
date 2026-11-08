@@ -179,11 +179,24 @@ TEST(AnalyticParticles, AliveCountMatchesEveryBirth){
 }
 
 TEST(AnalyticParticles, MatchesPixelfxFly){
-    // pixelfx's fly(), transcribed in double (y here is up: g's sign is the caller's)
+    // pixelfx's fly(), transcribed in double (y here is up: g's sign is the caller's). Below k t = 1e-3
+    // its form cancels (g / k is huge and 1 - e^-kt keeps few digits), so there the reference is the
+    // same function's exact Taylor series, summed until its terms vanish
     auto fly = [](double p, double v, double g, double drag, double t){
         if (drag <= 0.0) return p + v * t + 0.5 * g * t * t;
-        const double f = (1.0 - std::exp(-drag * t)) / drag, vt = g / drag;
-        return p + vt * t + (v - vt) * f;
+        const double kt = drag * t;
+        if (kt >= 1.0e-3){
+            const double f = (1.0 - std::exp(-drag * t)) / drag, vt = g / drag;
+            return p + vt * t + (v - vt) * f;
+        }
+        // f = sum (-kt)^n t / (n+1)!, h = (t - f) / k = sum (-kt)^n t^2 / (n+2)!
+        double f = 0.0, h = 0.0, term = 1.0;
+        for (int n = 0; n < 12; n++){
+            f += term * t / (double)(n + 1);
+            h += term * t * t / ((double)(n + 1) * (double)(n + 2));
+            term *= -kt / (double)(n + 1);
+        }
+        return p + v * f + g * h;
     };
     std::mt19937 rng(9);
     std::uniform_real_distribution<float> velocity(-300.0f, 300.0f), gravity(-1000.0f, 1000.0f), time(0.0f, 1.0f), drag(0.0f, 5.0f);

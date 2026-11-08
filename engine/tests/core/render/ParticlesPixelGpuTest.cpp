@@ -32,6 +32,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <set>
 #include <string>
@@ -451,7 +452,7 @@ TEST_F(ParticlesPixelGpu, AnalyticMatchesCpu){
     const ParticleSystemState* state = scene.getComponent<ParticleSystemComponent>(ps.getEntity()).state.get();
     ASSERT_TRUE(state && state->runtime.isAnalytic());
 
-    size_t particles = 0, exact = 0, near = 0, missing = 0, extra = 0;
+    size_t particles = 0, exact = 0, near = 0, missing = 0, extra = 0, litTotal = 0;
     for (int i = 0; i < 10; i++){
         const double t = 0.37 + 0.71 * i;
         ASSERT_TRUE(render(t));
@@ -482,6 +483,22 @@ TEST_F(ParticlesPixelGpu, AnalyticMatchesCpu){
                 for (int dx = -1; dx <= 1 && !found; dx++) found = lit.count({p.first + dx, p.second + dy}) > 0;
             (found ? near : missing)++;
         }
+        litTotal += lit.size();
+        if (i == 0 && std::getenv("JASPER_TEST_WRITE_ACTUAL")){
+            // the read-back and the twin's pixels side by side, for a failure's evidence
+            std::vector<uint8_t> both((size_t)image.width * 2 * image.height * 4, 0);
+            for (int y = 0; y < image.height; y++){
+                for (int x = 0; x < image.width; x++){
+                    uint8_t* left = &both[((size_t)(image.height - 1 - y) * image.width * 2 + x) * 4];
+                    uint8_t* right = left + (size_t)image.width * 4;
+                    const uint8_t v = lit.count({x, y}) ? 255 : 0, w = expected.count({x, y}) ? 255 : 0;
+                    left[0] = left[1] = left[2] = v;
+                    right[0] = right[1] = right[2] = w;
+                    left[3] = right[3] = 255;
+                }
+            }
+            writePng(getOutputDirectory() + "/particles_analytic_vs_cpu.png", both, image.width * 2, image.height);
+        }
         for (const auto& p : lit){
             bool found = false;
             for (int dy = -1; dy <= 1 && !found; dy++)
@@ -491,7 +508,7 @@ TEST_F(ParticlesPixelGpu, AnalyticMatchesCpu){
     }
     EXPECT_GT(particles, 30000u);
     EXPECT_GE((double)exact, 0.999 * (double)(exact + near)) << exact << " exact, " << near << " a pixel off";
-    EXPECT_EQ(missing, 0u);
+    EXPECT_EQ(missing, 0u) << particles << " particles, " << litTotal << " lit pixels, " << exact << " exact, " << near << " near";
     EXPECT_EQ(extra, 0u);
     EXPECT_NO_ENGINE_ERRORS();
 }

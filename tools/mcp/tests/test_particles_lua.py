@@ -15,6 +15,7 @@ EDITOR = {"create": True, "name": "Particles Lua CI"}
 TIMEOUT = 900
 
 S: dict = {}
+SCENES: list = []   # the scene setup made: Play starts it, and stop() forgets S
 
 CAP = 8
 
@@ -34,6 +35,7 @@ async def setup(ed: Editor) -> dict:
     await ed.call("tool_groups", enable=["particles"])
     made = await ed.call("create_scene", name="ParticleLua", type="3D", path="scenes/ParticleLua")
     S["scene"] = made["scene"]["id"]
+    SCENES.append(S["scene"])
     await ed.call("select_scene", scene=S["scene"])
     await ed.call("create_particle_effect", path="assets/fx/burst.particles", preset="sparks")
     rain = await ed.call("create_particles", scene=S["scene"], name="Rain", preset="none", position=[0, 3, 0])
@@ -157,7 +159,10 @@ async def test_pixel_particles_lua(ed: Editor):
     made = await ed.call("create_particle_effect", path="assets/fx/ember.particles", preset="pixel_ember")
     ramp = (await ed.call("get_particle_effect", path=made["path"]))["effect"]["modules"]["colorOverLifetime"]["color"]["ramp"]
     palette = ramp.split("#ramp:")[0]
-    scene = (await ed.call("create_scene", name="PixelLua", type="2D", path="scenes/PixelLua"))["scene"]["id"]
+    if not SCENES:
+        await setup(ed)
+        await stop(ed)
+    scene = SCENES[-1]   # the scene Play starts
     await ed.call("select_scene", scene=scene)
     embers = (await ed.call("create_particles", scene=scene, name="Embers", preset="none", position=[0, 0, 0]))["particle_system"]["id"]
     # the ember preset as the system's inline effect: Cutout dots on the hot ramp, Simulated

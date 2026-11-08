@@ -32,7 +32,7 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"GradientAlphaKey", 0x51d0e120u},
         {"Gradient", 0x3b609eadu},
         {"MinMaxCurve", 0x9309ffd5u},
-        {"MinMaxGradient", 0x18ba741eu},
+        {"MinMaxGradient", 0xd41b5db4u},
         {"Ease", 0x9897fd4eu},
         {"LayerMask", 0xc0bc567fu},
         {"Input", 0x42affea3u},

@@ -107,6 +107,10 @@ TEST(PixelPresets, SparkFliesAsPixelfx){
     double x = run.ch(ChPosX, 0), y = run.ch(ChPosY, 0), vx = run.ch(ChVelX, 0), vy = run.ch(ChVelY, 0);
     EXPECT_NEAR(vx, vx0, 10.0);
     EXPECT_NEAR(vy, vy0, 10.0);
+    // S20 moves a particle by the tick's mean velocity, pixelfx by its end velocity: the two paths
+    // stay (v0 - v) dt / 2 apart by construction (spec Deviations), so that offset is taken out
+    // before the 1 px budget
+    const double startVx = vx, startVy = vy;
     double worst = 0.0;
     for (int tick = 0; tick < 60; tick++){
         run.runtime.step(run.input);
@@ -115,7 +119,8 @@ TEST(PixelPresets, SparkFliesAsPixelfx){
         vy -= vy * 2.2 * dt;
         x += vx * dt;
         y += vy * dt;
-        worst = std::max(worst, std::hypot(run.ch(ChPosX, 0) - x, run.ch(ChPosY, 0) - y));
+        const double ox = (startVx - vx) * dt * 0.5, oy = (startVy - vy) * dt * 0.5;
+        worst = std::max(worst, std::hypot(run.ch(ChPosX, 0) - (x + ox), run.ch(ChPosY, 0) - (y + oy)));
     }
     EXPECT_LT(worst, 1.0) << "the spark left pixelfx's path by " << worst << " px";
 }

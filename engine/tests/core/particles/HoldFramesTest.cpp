@@ -39,6 +39,7 @@ namespace {
     struct HoldRun {
         std::vector<uint64_t> hashes;
         uint64_t packs = 0;
+        uint64_t liveFrames = 0;   // frames with particles: an empty emitter is not packed
     };
 
     HoldRun run(float holdRate){
@@ -48,6 +49,7 @@ namespace {
         const uint64_t before = ParticleRenderPrep::packCount();
         for (int frame = 0; frame < 120; frame++){
             sim.runtime.advance(sim.input, 1.0 / 60.0);
+            out.liveFrames += sim.runtime.count() > 0 ? 1 : 0;
             memory::Arena arena("HoldFramesTest");
             const PackResult pack = holdRate > 0.0f ? held.get(sim.runtime, RenderView(), arena, nullptr, holdRate)
                                                     : ParticleRenderPrep::pack(sim.runtime, RenderView(), arena);
@@ -73,7 +75,8 @@ TEST(HoldFrames, DrawnStateChangesOnlyAtSteps){
     EXPECT_GE(changes, 20);
     // the packs: one per step (24 in two seconds), against one per frame without it
     const HoldRun every = run(0.0f);
-    EXPECT_EQ(every.packs, 120u);
+    EXPECT_GE(every.liveFrames, 115u);
+    EXPECT_EQ(every.packs, every.liveFrames);
     EXPECT_LE((double)held.packs, 0.3 * (double)every.packs) << held.packs << " packs with Hold Frames";
     int everyChanges = 0;
     for (size_t f = 1; f < every.hashes.size(); f++) everyChanges += every.hashes[f] != every.hashes[f - 1] ? 1 : 0;
