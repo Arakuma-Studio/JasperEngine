@@ -23,6 +23,9 @@ namespace jasperengine{
         TextureFilter minFilter = TextureFilter::LINEAR, magFilter = TextureFilter::LINEAR;
         TextureWrap wrapU = TextureWrap::CLAMP_TO_EDGE, wrapV = TextureWrap::CLAMP_TO_EDGE;
         const FramebufferRender* shareDepthStencil = nullptr; // reuse its depth-stencil attachment (same size and samples)
+        // draw into its first colour image (one sample, same size; it must outlive this one): a
+        // second set of attachments for that image, with this one's depth
+        const FramebufferRender* shareColor = nullptr;
         // more colour attachments (MRT): colorCount in all, the second to the fourth of
         // moreColors' formats, each multisampled and resolved like the first under MSAA
         int colorCount = 1;

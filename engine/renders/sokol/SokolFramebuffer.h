@@ -34,6 +34,8 @@ namespace jasperengine{
         int sampleCount;
         // false when the depth-stencil attachment view belongs to another framebuffer
         bool ownsDepthAttachment;
+        // false when colorTexture[0] is another framebuffer's (FramebufferDesc::shareColor)
+        bool ownsColorImage;
 
         // a multisampled target (createMultisampleFramebuffer): its colour and depth-stencil
         // images, which are never sampled, and the resolve views of the targets it resolved

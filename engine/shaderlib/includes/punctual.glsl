@@ -87,6 +87,8 @@ int getSpotMaskTile(int lightIndex)
 {
     #if defined(LIGHTS_SPOT_MASKS) && defined(LIGHTS_TILED)
         return (int(tiledLightsTexel(tiledLightRecord(lightIndex) + 3).w) >> 9) & 7;
+    #elif defined(LIGHTS_SPOT_MASKS) && defined(LIGHTS_RECORDS)
+        return (int(lightRecordEntry(lightIndex).y) >> 9) & 7;
     #elif defined(LIGHTS_SPOT_MASKS)
         return (int(objectLights.spot_shadow[lightIndex].w) >> 9) & 7;
     #else
@@ -172,9 +174,10 @@ vec3 getLighIntensity(Light light, vec3 pointToLight, int lightIndex)
     return getLightAttenuation(light, pointToLight, lightIndex) * light.intensity * light.color;
 }
 
-#elif defined(DIRECTIONAL_LIGHTS_ONLY)
+#elif defined(DIRECTIONAL_LIGHTS_ONLY) || defined(SPOT_MASKS_OFF)
 
-// a directional-only variant ('Dlo') has no spot light to mask: the same functions, unattenuated
+// a directional-only variant ('Dlo') has no spot light to mask, and one built without the masks
+// (SPOT_MASKS_OFF, includes/lights.glsl) lights a masked spot with its cone: the same functions
 float getLightAttenuation(Light light, vec3 pointToLight, int lightIndex)
 {
     return getLightConeAttenuation(light, pointToLight);

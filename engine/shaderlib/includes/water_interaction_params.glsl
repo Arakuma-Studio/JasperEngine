@@ -9,7 +9,7 @@
 
 #if defined(USE_WATER_EXCLUSION) || defined(USE_WATER_WAKE)
     // (three vectors: GLES3 / WebGL2 guarantee 224 fragment uniform vectors, and a lit water
-    // with shadows takes 213 before them; the excluders themselves are in a data texture)
+    // with shadows takes 189 at sixteen lights before them; the excluders are in a data texture)
     #define WATER_INTERACTION_PARAMS \
         vec4 waterExclusion; \
         vec4 waterWakeArea; \

@@ -8,6 +8,8 @@
 
 #include "support/EditorTestSupport.h"
 
+#include "App.h"
+
 #include "DocumentFile.h"
 #include "Project.h"
 #include "Stream.h"
@@ -225,4 +227,10 @@ TEST(PixelPerfectStream, FixturesResaveWithoutS41Keys){
     std::printf("[S41] re-saved %zu fixture scenes and %zu projects\n", scenes, projects);
     EXPECT_GT(scenes, 20u);
     EXPECT_GT(projects, 5u);
+}
+
+// S41's shader sources ('Pxs', pixel_snap.glsl, the frame block's last members) are cached under
+// v56: a cache of an older version holds programs without them
+TEST(PixelPerfectStream, ShaderCacheVersionCoversThePixelSnap){
+    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v56");
 }
