@@ -956,10 +956,12 @@ bool Title3DRenderer::ready(const Title3DPlan& plan, uint32_t testFlags) {
         impl->deferred = false;
         const bool complete = impl->advance(*slot, share, used, error);
         const double ms = millisSince(start);
-        // a call that stopped at its first pass's first draw ran nothing: no step, no share change
-        if (used == 0 && !complete && error.empty()) return false;
-        counters.environmentSteps++;
-        counters.environmentMaxStepUnits = std::max(counters.environmentMaxStepUnits, used);
+        // a call cut short by a program's first draw (TitleFirstDraws) is not a share of the
+        // build: neither counted nor a measure of it
+        if (!impl->deferred) {
+            counters.environmentSteps++;
+            counters.environmentMaxStepUnits = std::max(counters.environmentMaxStepUnits, used);
+        }
         if (!(testFlags & TITLE_ART_TEST_ENV_ONE_SHOT) && !impl->deferred) {
             if (ms < ENV_FAST_MS) impl->envShare = std::min(TITLE_ENV_STEP_UNITS_MAX, impl->envShare * 2);
             else if (ms > ENV_SLOW_MS) impl->envShare = std::max(TITLE_ENV_STEP_UNITS / 4, impl->envShare / 2);

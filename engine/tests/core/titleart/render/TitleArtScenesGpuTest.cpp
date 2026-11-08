@@ -8,10 +8,13 @@
 // asymmetric fixture that catches a flip of the frame, each Material member on the analytic
 // shapes, bounded against unbounded distance fields, and the forced RGBA8 path against the float
 // path on every scene within §6.3's tolerance. Goldens are written on glcore
-// (JASPER_TEST_UPDATE_GOLDEN=1) and Vulkan matches them.
+// (JASPER_TEST_UPDATE_GOLDEN=1) and Vulkan matches them. Each Material member drawn with its
+// ELEMENT variant is the whole program's image (S80 Deviation 58).
 
 #include "TitleRenderTestEffects.h"
 #include "TitleRenderTestSupport.h"
+
+#include "titleart/render/TitleElementVariant.h"
 
 #include "ImageCompare.h"
 
@@ -284,5 +287,26 @@ TEST_F(TitleArtScenesGpu, Deterministic) {
     for (const auto& [name, scene] : compositorScenes()) {
         auto doc = sceneDoc(scene());
         EXPECT_TRUE(identical(renderScene(doc), renderScene(doc))) << name;
+    }
+}
+
+// S80 Deviation 58: every Material member drawn with the ELEMENT variant of its material
+// (TitleElementVariant.h) is the image the whole program draws, on both pixel paths. The variants
+// make the members the material leaves off constants that equal the block's values; a variant
+// that dropped a member the material uses (or kept a wrong kind) shades differently. Red control:
+// with satin, glass and reflection made constants regardless of the block, those cases differ
+// (run by hand, Deviation 58).
+TEST_F(TitleArtScenesGpu, ElementVariantsDrawTheWholeProgram) {
+    for (uint32_t path : {0u, TITLE_ART_TEST_NO_FLOAT_TARGETS | TITLE_ART_TEST_NO_R16F | TITLE_ART_TEST_NO_RGBA32F}) {
+        for (const auto& [name, face] : materialCases()) {
+            SCOPED_TRACE(name + (path ? " (rgba8)" : ""));
+            auto doc = materialDoc(face);
+            const Pixels variant = renderScene(doc, path);
+            const Pixels whole = renderScene(doc, path | TITLE_ART_TEST_ELEMENT_WHOLE);
+            const Difference d = compare(variant, whole, 1.0);
+            std::printf("[ variant ] %-28s %s max %.2f, mean %.4f\n", name.c_str(), path ? "rgba8" : "float", d.max, d.mean);
+            EXPECT_LE(d.max, 1.0) << "max " << d.max << ", mean " << d.mean;
+            EXPECT_EQ(d.overFraction, 0.0);
+        }
     }
 }

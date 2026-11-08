@@ -110,6 +110,7 @@ comparison of the old golden against the new image (before) and after the update
 | `pachislop/scene/clipping` | copied unchanged from Pachislop's `tests/golden/refs/scene/clipping.png` (scene parity reference, AC12) |
 | `pachislop/scene/effects-only-gaussian-blur` | copied unchanged from Pachislop's `tests/golden/refs/scene/effects-only-gaussian-blur.png` (scene parity reference, AC12) |
 | `pachislop/scene/flip-2d` | copied unchanged from Pachislop's `tests/golden/refs/scene/flip-2d.png` (scene parity reference, AC12) |
+| `pachislop/scene/mask-from-layer-luminance` | copied unchanged from Pachislop's `tests/golden/refs/scene/mask-from-layer-luminance.png` (scene parity reference, AC12) |
 | `pachislop/scene/mask-group-radial` | copied unchanged from Pachislop's `tests/golden/refs/scene/mask-group-radial.png` (scene parity reference, AC12) |
 | `pachislop/scene/mask-shape-feather` | copied unchanged from Pachislop's `tests/golden/refs/scene/mask-shape-feather.png` (scene parity reference, AC12) |
 | `pachislop/scene/nested-hidden-groups` | copied unchanged from Pachislop's `tests/golden/refs/scene/nested-hidden-groups.png` (scene parity reference, AC12) |
