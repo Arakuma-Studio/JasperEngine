@@ -108,6 +108,7 @@
    "name": "x_scale",
    "short_description": "X Repeat",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {
@@ -153,6 +154,7 @@
    "name": "y_scale",
    "short_description": "Y Repeat",
    "step": 1,
+   "tiles": true,
    "type": "float"
   }
  ],

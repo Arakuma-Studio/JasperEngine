@@ -121,6 +121,19 @@ class ImportTest(unittest.TestCase):
 
     # -- AC11: attribution comments --
 
+    def test_a_repeat_count_the_node_lacks_fails(self):
+        self.source.add("n", shader(parameters=[{"name": "scale", "type": "float", "default": 1, "min": 0, "max": 1, "step": 0.01}]))
+        saved = dict(importer.REPEAT_COUNTS)
+        try:
+            importer.REPEAT_COUNTS["n"] = ("rows",)
+            self.assertRefuses("REPEAT_COUNTS names rows")
+            importer.REPEAT_COUNTS["n"] = ("scale",)
+            self.source.run(self.out)
+            self.assertTrue(self.descriptor("n")["parameters"][0]["tiles"])
+        finally:
+            importer.REPEAT_COUNTS.clear()
+            importer.REPEAT_COUNTS.update(saved)
+
     def test_a_formula_fix_applies_once_or_fails(self):
         outputs = [{"expr": "0.5*(sign(a-b)+1.0)"}]
         saved = dict(importer.TEXT_FIXES)
@@ -412,6 +425,18 @@ class CommittedOutputTest(unittest.TestCase):
             if path.name == "_manifest.json":
                 continue
             self.assertIsNone(markers.search(text), path.name)
+
+    def test_repeat_counts_are_marked_and_nothing_else(self):
+        flagged = set()
+        for path in NODES.glob("*.json"):
+            if path.name.startswith("_"):
+                continue
+            descriptor = json.loads(path.read_text(encoding="utf-8"))
+            flagged.update((descriptor["id"], p["name"]) for p in descriptor.get("parameters", []) if p.get("tiles"))
+        listed = {(node, name) for node, names in importer.REPEAT_COUNTS.items() for name in names}
+        self.assertEqual(flagged, listed)
+        self.assertIn(("bricks3", "rows"), flagged)
+        self.assertNotIn(("tiler", "scale"), flagged, "a Tiler's Rnd Scale is a fraction by design")
 
     def test_no_float_hash_survives(self):
         for path, text in self.texts().items():

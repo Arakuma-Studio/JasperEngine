@@ -65,6 +65,7 @@
    "name": "scale_x",
    "short_description": "Scale.x",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {
@@ -76,6 +77,7 @@
    "name": "scale_y",
    "short_description": "Scale.y",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {

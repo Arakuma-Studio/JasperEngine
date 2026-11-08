@@ -114,3 +114,16 @@ TEST(ProjectResolveAsset, AHitTouchesNothingAndAMissImportsOnlyThatPath) {
     EXPECT_FALSE(h.project->getAssetDatabase().lookupPath("assets/other.txt").found()) << "a miss imports the path asked for, alone";
     EXPECT_FALSE(h.project->resolveAsset("assets/absent.txt", "", AssetType::Unknown).found());
 }
+
+TEST(ProjectResolveAsset, AMissOutsideTheProjectImportsNothing) {
+    AssetFilesProject& h = assetFilesProject();
+    ASSERT_TRUE(h.ready);
+    const fs::path outside = h.root / "outside.txt";
+    std::ofstream(outside) << "not the project's\n";
+    for (const std::string& asked : {std::string("../outside.txt"), std::string("assets/../../outside.txt"), outside.generic_string()}) {
+        EXPECT_FALSE(h.project->resolveAsset(asked, "", AssetType::Unknown).found()) << asked;
+        EXPECT_FALSE(h.project->importUnseenAsset(asked)) << asked;
+    }
+    std::error_code ec;
+    EXPECT_FALSE(fs::exists(h.root / "outside.txt.meta", ec)) << "no identity is written next to a file outside the project";
+}

@@ -87,6 +87,7 @@
    "name": "rows",
    "short_description": "Rows",
    "step": 1.0,
+   "tiles": true,
    "type": "float"
   },
   {
@@ -98,6 +99,7 @@
    "name": "columns",
    "short_description": "Columns",
    "step": 1.0,
+   "tiles": true,
    "type": "float"
   },
   {

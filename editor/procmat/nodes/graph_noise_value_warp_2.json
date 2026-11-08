@@ -109,6 +109,7 @@
    "min": 1,
    "name": "param0",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {
@@ -124,6 +125,7 @@
    "min": 1,
    "name": "param1",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {

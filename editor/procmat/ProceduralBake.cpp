@@ -805,15 +805,14 @@ void jasperengine::editor::procmat::attachGraphFixes(qa::Json& report, const gra
                     if (!descriptor || !descriptor->contains("parameters")) continue;
                     for (const Json& parameter : (*descriptor)["parameters"]) {
                         const std::string name = parameter.value("name", std::string());
-                        // a repeat count: a scale the library steps by whole numbers from 1 (perlin's Scale X);
-                        // a Tiler's Rnd Scale or a Transform's scale steps by fractions, which are their meaning
-                        const bool wholeSteps = parameter.contains("step") && parameter["step"].is_number() && parameter["step"].get<double>() == 1.0 &&
-                                                parameter.contains("min") && parameter["min"].is_number() && parameter["min"].get<double>() >= 1.0;
-                        if (parameter.value("type", std::string()) != "float" || name.find("scale") == std::string::npos || !wholeSteps) continue;
+                        // a count the pattern repeats by across the tile, as the importer's reviewed list marks it
+                        // (REPEAT_COUNTS): perlin's Scale X, bricks' rows; never a Tiler's Rnd Scale
+                        if (!parameter.value("tiles", false)) continue;
                         const auto stored = node->params.find(name);
                         const Json& value = stored != node->params.end() ? *stored : parameter.value("default", Json());
                         if (!value.is_number() || std::floor(value.get<double>()) == value.get<double>()) continue;
-                        double whole = std::max(1.0, std::round(value.get<double>()));
+                        double whole = std::max({1.0, std::round(value.get<double>()),
+                                                 parameter.contains("min") && parameter["min"].is_number() ? std::ceil(parameter["min"].get<double>()) : 1.0});
                         if (parameter.contains("max") && parameter["max"].is_number()) whole = std::min(whole, std::floor(parameter["max"].get<double>()));
                         if (parameter.contains("min") && parameter["min"].is_number() && whole < parameter["min"].get<double>()) continue;
                         if (!seen.insert(node->id + "|" + name).second) continue;

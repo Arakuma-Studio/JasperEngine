@@ -222,6 +222,7 @@
    "name": "param0",
    "short_description": "Scale X",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {
@@ -243,6 +244,7 @@
    "name": "param1",
    "short_description": "Scale Y",
    "step": 1,
+   "tiles": true,
    "type": "float"
   }
  ],

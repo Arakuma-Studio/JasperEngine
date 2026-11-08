@@ -1876,6 +1876,7 @@
    "named": true,
    "short_description": "Scale",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {

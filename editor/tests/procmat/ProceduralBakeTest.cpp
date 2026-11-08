@@ -512,3 +512,15 @@ TEST(ProceduralBake, AScaleThatIsNoRepeatCountGetsNoFix) {
     EXPECT_TRUE(report["fixes"].empty()) << report.dump();
     EXPECT_EQ(report["checks"][0]["limited_by"], "seam 3.0 on orm.") << "nor is a node named for it";
 }
+
+TEST(ProceduralBake, ARepeatCountOtherThanAScaleGetsItsFix) {
+    // bricks' rows are a repeat count across the tile, as the descriptor's `tiles` says
+    graph::Graph file = graphOf({{"b1", "bricks3"}, {"out", MATERIAL_OUTPUT_NODE}}, {{"b1", "bricks_pattern", "out", "height"}});
+    file.findNode("b1")->params["rows"] = 6.5;
+    qa::Json report = {{"checks", qa::Json::array({{{"id", "tileability"}, {"status", "FAIL"}, {"threshold", 1.5},
+                                                    {"measured", {{"height", 4.0}}}, {"limited_by", "seam 4.0 on height."}}})},
+                       {"fixes", qa::Json::array()}};
+    attachGraphFixes(report, file, NodeLibrary::shipped());
+    ASSERT_EQ(report["fixes"].size(), 1u) << report.dump();
+    EXPECT_EQ(report["fixes"][0]["op"], (qa::Json{{"op", "setParam"}, {"node", "b1"}, {"name", "rows"}, {"value", 7.0}}));
+}

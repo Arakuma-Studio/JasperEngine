@@ -678,8 +678,8 @@ preview pane and Problems strip are a later branch: they call `ProceduralChecks:
 - **R27's rows.** `graphCheckReport(project, path, graph, images)` (`ProceduralBake.h`) is the window's
   `Services::checks` shape and what `preview_procedural_material` returns for a graph. `attachGraphFixes` adds the
   single edits the rows can name: a tileability FAIL on an output fed by a node whose repeat count has a fraction
-  (a `scale*` float the descriptor steps by 1 from a minimum of 1: perlin's Scale X; a Tiler's Rnd Scale, stepped by
-  0.01, is a fraction by design and is never named) (setParam to the nearest one in its range, the node named in `limited_by` and `fix_hint`); a
+  (a parameter the descriptor marks `"tiles": true`, from the importer's reviewed `REPEAT_COUNTS` list: perlin's
+  Scale X, bricks' rows; a Tiler's Rnd Scale, a fraction by design, is not on it) (setParam to the nearest one in its range, the node named in `limited_by` and `fix_hint`); a
   normal row that fails or warns while Normal and Height are both connected (disconnect Normal's edge). The other
   rows measure images and name no node. FAIL rounds are recorded by the tools only, so a window redrawing does
   not use up an agent's rounds. Wiring `Services::checks` and `startBake` is the window's agent's, after landing.

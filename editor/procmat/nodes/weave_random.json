@@ -52,6 +52,7 @@
    "name": "scale_x",
    "short_description": "Size X",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {
@@ -63,6 +64,7 @@
    "name": "scale_y",
    "short_description": "Size Y",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {

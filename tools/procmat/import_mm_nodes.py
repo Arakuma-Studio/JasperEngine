@@ -58,6 +58,46 @@ FUNCTIONS_FILE = "addons/material_maker/shader_functions.tres"
 LIBRARY_FILE = "material_maker/library/base.json"
 ALIASES_FILE = "material_maker/library/aliases.json"
 
+# S90 R27, R36: the parameters that count repeats across the tile. A fraction in one of them breaks the wrap, so
+# the tileability check offers the nearest whole number, and the descriptor marks them `"tiles": true`. Reviewed
+# by hand against each node's code: a count the pattern repeats by over [0, 1], not a size, an amount, a rate or a
+# random scale (a Tiler's Rnd Scale, a Transform's scale). A listed parameter a node no longer has fails the import.
+REPEAT_COUNTS = {
+    "arc_pavement": ("repeat", "rows", "bricks"),
+    "beehive2": ("sx", "sy"),
+    "bricks": ("repeat", "rows", "columns"),
+    "bricks3": ("repeat", "rows", "columns"),
+    "bricks_uneven3_2": ("rows",),
+    "cairo": ("sx", "sy"),
+    "clouds_noise2": ("n_scale",),
+    "crystal": ("param0", "param1"),
+    "custom_tiles": ("rows", "columns"),
+    "diagonal_weave": ("size",),
+    "directional_noise": ("n_scale",),
+    "dirt": ("d_scale",),
+    "fbm": ("scale_x", "scale_y"),
+    "fbm2": ("scale_x", "scale_y"),
+    "fbm4": ("scale_x", "scale_y"),
+    "graph_noise_value_warp_1": ("param0", "param1"),
+    "graph_noise_value_warp_2": ("param0", "param1"),
+    "iching": ("columns", "rows"),
+    "noise_anisotropic": ("scale_x", "scale_y"),
+    "pattern": ("x_scale", "y_scale"),
+    "perlin": ("scale_x", "scale_y"),
+    "perlin_color": ("scale_x", "scale_y"),
+    "runes": ("columns", "rows"),
+    "tiler": ("tx", "ty"),
+    "tiler_advanced": ("tx", "ty"),
+    "tiler_advanced_color": ("tx", "ty"),
+    "tiler_color": ("tx", "ty"),
+    "truchet": ("size",),
+    "voronoi": ("scale_x", "scale_y"),
+    "voronoi2": ("scale_x", "scale_y"),
+    "wavelet_noise2": ("scale_x", "scale_y"),
+    "weave2": ("columns", "rows"),
+    "weave_random": ("scale_x", "scale_y"),
+}
+
 # R18: never imported as they stand; a dependant goes with them
 DENY_LIST = {
     "skewed_bricks": "CC BY-SA 3.0 code (get_line_intersection); may return after a rewrite from scratch",
@@ -1365,6 +1405,19 @@ class Importer:
                           "source": {"file": f"{NODE_DIR}/{node_id}.mmg" if not node_id.startswith("graph_") else LIBRARY_FILE, "commit": self.commit},
                           "notices": [notices[k] for k in sorted(notices)], **body}
             self.descriptors[node_id] = descriptor
+        self.mark_repeat_counts()
+
+    def mark_repeat_counts(self) -> None:
+        for node_id, names in sorted(REPEAT_COUNTS.items()):
+            descriptor = self.descriptors.get(node_id)
+            if descriptor is None:
+                continue
+            parameters = {p["name"]: p for p in descriptor.get("parameters", [])}
+            for name in names:
+                parameter = parameters.get(name)
+                if parameter is None or parameter.get("type") not in ("float", "size"):
+                    raise ImportFailure(f"{node_id}: REPEAT_COUNTS names {name}, which is no number parameter of the node")
+                parameter["tiles"] = True
 
     def write(self, out: Path) -> None:
         out.mkdir(parents=True, exist_ok=True)

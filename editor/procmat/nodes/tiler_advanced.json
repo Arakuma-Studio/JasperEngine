@@ -165,6 +165,7 @@
    "name": "tx",
    "short_description": "Tile.x",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {
@@ -176,6 +177,7 @@
    "name": "ty",
    "short_description": "Tile.y",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {

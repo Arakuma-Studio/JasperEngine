@@ -48,6 +48,7 @@
    "name": "size",
    "short_description": "Size",
    "step": 1,
+   "tiles": true,
    "type": "float"
   }
  ],

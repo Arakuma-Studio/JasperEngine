@@ -52,6 +52,7 @@
    "name": "columns",
    "short_description": "Size.x",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {
@@ -63,6 +64,7 @@
    "name": "rows",
    "short_description": "Size.y",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {

@@ -42,6 +42,7 @@
    "name": "sx",
    "short_description": "Size.x",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {
@@ -53,6 +54,7 @@
    "name": "sy",
    "short_description": "Size.y",
    "step": 1,
+   "tiles": true,
    "type": "float"
   }
  ],

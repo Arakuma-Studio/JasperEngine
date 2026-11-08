@@ -71,6 +71,7 @@
    "name": "rows",
    "short_description": "Rows",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {

@@ -48,6 +48,7 @@
    "name": "repeat",
    "short_description": "Repeat",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {
@@ -59,6 +60,7 @@
    "name": "rows",
    "short_description": "Rows",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {
@@ -70,6 +72,7 @@
    "name": "bricks",
    "short_description": "Bricks",
    "step": 1,
+   "tiles": true,
    "type": "float"
   },
   {
