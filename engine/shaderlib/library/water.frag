@@ -292,7 +292,9 @@ in vec3 v_normal;
     #define LIGHTS_FS
     // the lights' records from the frame's light data (two floats a light in the block): with
     // shadows and fog, sixteen lights stay within GLES3 / WebGL2's 224 fragment uniform vectors
-    #define LIGHTS_FS_RECORDS
+    #ifndef LIGHTS_FS_RECORDS
+        #define LIGHTS_FS_RECORDS
+    #endif
     #include "includes/lights.glsl"
 #endif
 

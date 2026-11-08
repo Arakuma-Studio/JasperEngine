@@ -2326,16 +2326,17 @@ void RenderSystem::buildObjectLightRecords(const MeshComponent& mesh, uint64_t p
     }
 }
 
-void RenderSystem::setLightRecordsMesh(Entity entity, bool records){
-    if (records)
-        lightRecordMeshes.insert(entity);
+void RenderSystem::setLightRecordsMesh(Entity entity, uint8_t reads){
+    if (reads)
+        lightRecordMeshes[entity] = reads;
     else if (!lightRecordMeshes.empty())
         lightRecordMeshes.erase(entity);
 }
 
-bool RenderSystem::ensureLightRecords(int rows){
+bool RenderSystem::ensureLightRecords(int rows, bool shrink){
     rows = std::max(rows, 1);
-    if (lightRecords.isCreated() && lightRecords.getHeight() >= rows)
+    // kept while it holds them; the frame's sync makes it again smaller once they take under half of it
+    if (lightRecords.isCreated() && lightRecords.getHeight() >= rows && (!shrink || lightRecords.getHeight() <= 2 * rows))
         return true;
     if (lightRecords.isCreated())
         lightRecords.destroyTexture();
@@ -2355,14 +2356,37 @@ void RenderSystem::syncLightRecords(){
     const uint64_t frame = SystemRender::getFrameCount();
     if (frame == lightRecordsFrame)
         return;
+    // the scene lights, then the frame's capsules (a, b: includes/capsule_shadows.glsl), then the
+    // 2D lights (position_range, color_intensity, falloff_shadow: includes/lighting2d.glsl), each
+    // kind only while a loaded variant reads it (moving capsules upload nothing otherwise)
+    uint8_t reads = 0;
+    for (const auto& mesh : lightRecordMeshes)
+        reads |= mesh.second;
     const int lightsPerRow = LIGHT_RECORDS_WIDTH / 4;
-    const int rows = std::max(1, ((int)sceneLights.size() + lightsPerRow - 1) / lightsPerRow);
-    if (!ensureLightRecords(rows))
+    const int capsules = (reads & LIGHT_RECORDS_CAPSULES) ? (int)lighting.capsules.size() : 0;
+    const int lights2D = (reads & LIGHT_RECORDS_2D) ? std::clamp(numLights2D, 0, MAX_LIGHTS_2D) : 0;
+    lightDataCapsuleBase = (int)sceneLights.size();
+    lightData2DBase = lightDataCapsuleBase + capsules;
+    const int records = lightData2DBase + lights2D;
+    const int rows = std::max(1, (records + lightsPerRow - 1) / lightsPerRow);
+    if (!ensureLightRecords(rows, true))
         return;
     lightRecordScratch.assign((size_t)LIGHT_RECORDS_WIDTH * (size_t)lightRecords.getHeight(), Vector4(0.0f, 0.0f, 0.0f, 0.0f));
     for (size_t i = 0; i < sceneLights.size(); i++){
         for (int t = 0; t < 4; t++)
             lightRecordScratch[i * 4 + (size_t)t] = sceneLights[i].packed[t];
+    }
+    for (size_t c = 0; c < (size_t)capsules; c++){
+        const CapsuleShadows::World& capsule = lighting.capsules[c];
+        const size_t at = ((size_t)lightDataCapsuleBase + c) * 4;
+        lightRecordScratch[at] = Vector4(capsule.a, capsule.radius);
+        lightRecordScratch[at + 1] = Vector4(capsule.b, 0.0f);
+    }
+    for (int k = 0; k < lights2D; k++){
+        const size_t at = ((size_t)lightData2DBase + (size_t)k) * 4;
+        lightRecordScratch[at] = fs_lighting2d.position_range[k];
+        lightRecordScratch[at + 1] = fs_lighting2d.color_intensity[k];
+        lightRecordScratch[at + 2] = fs_lighting2d.falloff_shadow[k];
     }
     // no upload while no record changed (the texture keeps what it was given)
     if (lightRecordsUploaded && lightRecordScratch.size() == lightRecordTexels.size() &&
@@ -7685,14 +7709,25 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         planarReflection = planarReflection || reads;
     }
     setWaterMesh(entity, water, planarReflection);
-    // a mesh drawing a shader with the lights' records form (the frame's records, syncLightRecords)
-    bool lightRecordsForm = false;
+    // a mesh drawing a shader with the lights' records form (the frame's records, syncLightRecords),
+    // and whether one reads the capsules' or the 2D lights' rows
+    uint8_t lightRecordsRead = 0;
+    auto readsRecords = [&](std::pair<int, int> slot, const LightDataTail& tail, uint64_t properties){
+        if (slot.first == -1)
+            return;
+        lightRecordsRead |= LIGHT_RECORDS_LIGHTS;
+        if (tail.occlusion >= 0 && (properties & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::CAPSULE_SHADOWS)))
+            lightRecordsRead |= LIGHT_RECORDS_CAPSULES;
+        if (tail.lights2D >= 0)
+            lightRecordsRead |= LIGHT_RECORDS_2D;
+    };
     for (int i = 0; i < mesh.numSubmeshes; i++){
         const Submesh& submesh = mesh.submeshes[i];
-        lightRecordsForm = lightRecordsForm || submesh.slotLightRecords.first != -1 ||
-            (submesh.extraPass && submesh.extraPass->loaded && submesh.extraPass->slotLightRecords.first != -1);
+        readsRecords(submesh.slotLightRecords, submesh.lightDataTail, submesh.shaderProperties);
+        if (submesh.extraPass && submesh.extraPass->loaded)
+            readsRecords(submesh.extraPass->slotLightRecords, submesh.extraPass->lightDataTail, submesh.extraPass->shaderProperties);
     }
-    setLightRecordsMesh(entity, lightRecordsForm);
+    setLightRecordsMesh(entity, lightRecordsRead);
     // a mixed mesh whose blended submeshes read the scene keeps its opaque ones in the opaque
     // queue: the basin under a water surface is in the depth and colour the water reads
     mesh.splitQueues = mesh.autoTransparency && mesh.isTransparent() && hasOpaqueSubmesh && hasTransparentSubmesh &&
@@ -9194,6 +9229,7 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     extra.sizeVSObjectLights = 0;
     extra.sizeFSObjectLights = 0;
     extra.slotLightRecords = {-1, -1};
+    extra.lightDataTail = LightDataTail();
     extra.slotFSLitFrame = -1;
     extra.sizeFSLitFrame = 0;
     extra.slotFSLighting = -1;
@@ -9205,6 +9241,7 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
         extra.sizeVSObjectLights = std::min(extra.sizeVSObjectLights, (unsigned int)sizeof(object_lights_t));
         extra.sizeFSObjectLights = std::min(extra.sizeFSObjectLights, (unsigned int)sizeof(object_lights_t));
         extra.slotLightRecords = shaderData.getTextureIndexByName("u_lightRecords");
+        extra.lightDataTail = resolveLightDataTail(shaderData);
         if (extra.slotLightRecords.first != -1 && ensureLightRecords(1))
             extra.render.addTexture(extra.slotLightRecords, ShaderStageType::FRAGMENT, &lightRecords);
         extra.slotFSLitFrame = shaderData.getUniformBlockIndexByName("u_fs_litFrame");
@@ -9308,7 +9345,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
         loadSpotMaskTexture(shaderData, render);
         if (extra.slotVSObjectLights != -1 || extra.slotFSObjectLights != -1){
             applyObjectLights(render, extra.slotVSObjectLights, extra.sizeVSObjectLights, extra.slotFSObjectLights, extra.sizeFSObjectLights,
-                              extra.slotLightRecords, mesh, properties, builtLightBits);
+                              extra.slotLightRecords, extra.lightDataTail, mesh, properties, builtLightBits);
             // a Tiled variant's lists (S57)
             if (properties & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS)){
                 const TiledLightsView* tiles = ps().tiledLights.get();
@@ -10566,7 +10603,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 if (mesh.submeshes[i].slotVSObjectLights != -1 || mesh.submeshes[i].slotFSObjectLights != -1){
                     applyObjectLights(render, mesh.submeshes[i].slotVSObjectLights, mesh.submeshes[i].sizeVSObjectLights,
                                       mesh.submeshes[i].slotFSObjectLights, mesh.submeshes[i].sizeFSObjectLights,
-                                      mesh.submeshes[i].slotLightRecords, mesh, mesh.submeshes[i].shaderProperties, builtLightBits);
+                                      mesh.submeshes[i].slotLightRecords, mesh.submeshes[i].lightDataTail, mesh, mesh.submeshes[i].shaderProperties,
+                                      builtLightBits);
                 }
                 if (mesh.submeshes[i].slotFSLitFrame != -1){
                     // a variant with the post colour has its parameters first (lit_frame_block_t)
@@ -13099,6 +13137,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.sizeFSLightOcclusion = 0;
         submesh.slotTiledLights = {-1, -1};
         submesh.slotLightRecords = {-1, -1};
+        submesh.lightDataTail = LightDataTail();
         submesh.slotContactShadows = {-1, -1};
         submesh.slotVSFade = -1;
         // set only when the variant has them (loadMesh): a reload without must not keep them
@@ -20302,7 +20341,7 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
         // (kept over reloads, which load it again)
         setSceneInputUser(entity, false, 0);
         setWaterMesh(entity, false, false);
-        setLightRecordsMesh(entity, false);
+        setLightRecordsMesh(entity, 0);
         setGBufferDepthMismatch(entity, false);
     } else if (componentId == scene->getComponentId<UIComponent>()) {
         UIComponent& ui = scene->getComponent<UIComponent>(entity);

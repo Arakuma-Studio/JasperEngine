@@ -88,6 +88,36 @@ uniform u_vs_objectLights {
 } objectLights;
 #endif
 
+// The records form's tail (LIGHTS_FS_RECORDS, the records or the Tiled form of the fragment block):
+// what S57's capsule and contact shadows and the 2D lights read takes no block and arrays of its own
+// (their blocks hold 67 and 50 vectors), but these members at the end of the lights' block, the
+// frame's capsules and 2D lights being rows of u_lightRecords after the scene lights':
+//   lightDataBases     x the first capsule's record, y the first 2D light's
+//   contactViewport,   includes/light_occlusion.glsl's, but capsuleParams x and w: the capsules
+//   contactParams,     reaching the object, a bit each (x the first 16, w the next 16)
+//   capsuleParams
+//   lights2DAmbient,   includes/lighting2d.glsl's ambient and atlasInfo
+//   lights2DAtlasInfo
+#if defined(LIGHTS_FS) && defined(LIGHTS_FS_RECORDS)
+    #if defined(USE_SHADOWS) && (defined(USE_CAPSULE_SHADOWS) || defined(USE_CONTACT_SHADOWS))
+        #define LIGHT_DATA_OCCLUSION
+        #define LIGHT_DATA_TAIL_OCCLUSION vec4 contactViewport; vec4 contactParams; vec4 capsuleParams;
+    #else
+        #define LIGHT_DATA_TAIL_OCCLUSION
+    #endif
+    #ifdef USE_LIGHT2D
+        #define LIGHT_DATA_2D
+        #define LIGHT_DATA_TAIL_2D vec4 lights2DAmbient; vec4 lights2DAtlasInfo;
+    #else
+        #define LIGHT_DATA_TAIL_2D
+    #endif
+    #if defined(LIGHT_DATA_OCCLUSION) || defined(LIGHT_DATA_2D)
+        #define LIGHT_DATA_TAIL vec4 lightDataBases; LIGHT_DATA_TAIL_OCCLUSION LIGHT_DATA_TAIL_2D
+    #else
+        #define LIGHT_DATA_TAIL
+    #endif
+#endif
+
 #if defined(LIGHTS_FS) && !defined(LIGHTS_FS_DECLARED) && defined(USE_TILED_LIGHTS)
 // Light Mode Tiled: the fragment stage's pixel lights are its screen tile's (includes/tiled_lights.glsl)
 #define LIGHTS_FS_DECLARED
@@ -111,9 +141,8 @@ uniform u_fs_objectLights {
     vec4 shB;
     // per pixel light, two a vector (xy, zw): its scene light (the record), its spot_shadow.w
     vec4 records[(LIGHT_CAPACITY + 1) / 2];
+    LIGHT_DATA_TAIL
 } objectLights;
-// @image_sample_type u_lightRecords unfilterable_float
-uniform texture2D u_lightRecords;
 
 // a pixel light's two floats: x its scene light, y its packed shadow, mask tile and occlusion
 vec2 lightRecordEntry(int index){
@@ -168,11 +197,19 @@ uniform u_fs_objectLights {
     #endif
 #endif
 
+// the frame's light data: the scene lights' records (the records form), the capsules (with capsule
+// shadows) and the 2D lights (with them), a texture for all three
+#if defined(LIGHTS_RECORDS) || (defined(LIGHTS_TILED) && (defined(LIGHT_DATA_2D) || (defined(LIGHT_DATA_OCCLUSION) && defined(USE_CAPSULE_SHADOWS))))
+    #define LIGHT_DATA_TEXTURE
+    // @image_sample_type u_lightRecords unfilterable_float
+    uniform texture2D u_lightRecords;
+#endif
+
 #include "includes/punctual.glsl"
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS)
     #include "includes/shadow_sampling.glsl"
 #endif
-#ifdef LIGHTS_RECORDS
+#ifdef LIGHT_DATA_TEXTURE
     // the records' sampler: PCSS's raw view's where the variant has one (both nearest and clamped
     // to the edge, and texelFetch reads neither), so the records take no sampler slot there
     #ifdef SHADOW_DATA_RAW
