@@ -195,6 +195,12 @@ public:
     // with it (a re-decoded Particle System keeps its runtime)
     static void clearPreviewParticles(Scene* scene, Entity entity);
 
+    // Before a component is assigned over a mesh (a model cleared, an undo or redo restoring
+    // one): its GPU objects, shaders and textures go. Textures a mesh holds keep their pooled data
+    // and render until destroyed; the render system destroys them with a loaded mesh only, so
+    // this also covers one never drawn.
+    static void releaseMeshResources(Scene* scene, Entity entity, MeshComponent& mesh);
+
     // Fills a Texture with the editor built-in default skybox cubemap.
     static void setDefaultSkyTexture(Texture& outTexture);
 
