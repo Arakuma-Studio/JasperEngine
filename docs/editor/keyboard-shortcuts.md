@@ -224,6 +224,16 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Zoom In | = / NumpadAdd | Sprite Preview |
 | Zoom Out | - / NumpadSubtract | Sprite Preview |
 
+## Palette
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Delete Colours | Delete / Backspace | Palette |
+| Duplicate Colours | Ctrl+D | Palette |
+| Move Colours Left | Alt+Left | Palette |
+| Move Colours Right | Alt+Right | Palette |
+| Flicker Compare | Space | Palette |
+
 ## Project
 
 | Command | Shortcut | Context |

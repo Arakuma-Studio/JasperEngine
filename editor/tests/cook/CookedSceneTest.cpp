@@ -364,10 +364,10 @@ TEST(CookedScene, MaterialKeepsPaletteBindings) {
     ProjectUtils::addEntityComponent(scene, entity, ComponentType::MeshComponent, source.scene->entities, YAML::Node());
     MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
     mesh.numSubmeshes = 1;
-    pixelart::PaletteBinding binding;
+    jasperengine::pixelart::PaletteBinding binding;
     binding.source = AssetRef("Palettes/hero.palette", Guid::parse("0123456789abcdef0123456789abcdef"));
-    binding.targets.push_back(pixelart::PaletteTarget::parse("Palettes/enemy.palette#Night"));
-    binding.targets.push_back(pixelart::PaletteTarget::parse("Palettes/gray.palette"));
+    binding.targets.push_back(jasperengine::pixelart::PaletteTarget::parse("Palettes/enemy.palette#Night"));
+    binding.targets.push_back(jasperengine::pixelart::PaletteTarget::parse("Palettes/gray.palette"));
     binding.useVariants = false;
     mesh.submeshes[0].material.shaderPalettes.edit().push_back({"u_palette", binding});
     mesh.submeshes[0].material.shaderFeatures = {"PALETTE_SWAP"};
@@ -377,7 +377,7 @@ TEST(CookedScene, MaterialKeepsPaletteBindings) {
     ASSERT_TRUE(roundTrip(scene, {entity}, loaded, error)) << error;
     const MeshComponent& after = loaded.scene->scene->getComponent<MeshComponent>(entity);
     ASSERT_GE(after.numSubmeshes, 1u);
-    const pixelart::ShaderPalettes& palettes = after.submeshes[0].material.shaderPalettes.get();
+    const jasperengine::pixelart::ShaderPalettes& palettes = after.submeshes[0].material.shaderPalettes.get();
     ASSERT_EQ(palettes.size(), 1u);
     EXPECT_EQ(palettes[0].first, "u_palette");
     EXPECT_EQ(palettes[0].second, binding);
