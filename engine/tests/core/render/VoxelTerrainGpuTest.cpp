@@ -83,7 +83,11 @@ namespace {
             mouth.shape.kind = ShapeKind::Sphere;
             mouth.shape.center = Vec3d{32.0, GROUND + 1.0, 32.0};
             mouth.shape.radius = 7.0;
-            if (!scene.getSystem<VoxelSystem>()->edit(owner, std::span<const EditOp>(&mouth, 1), EditOptions{}).ok) return false;
+            const EditResult dug = scene.getSystem<VoxelSystem>()->edit(owner, std::span<const EditOp>(&mouth, 1), EditOptions{});
+            if (!dug.ok) {
+                std::printf("[gpu] the mouth's edit failed: %s\n", editErrorCode(dug.error));
+                return false;
+            }
             return settled();
         }
 
@@ -96,7 +100,15 @@ namespace {
                 return (volume == NULL_ENTITY || system->isVolumeReady(volume)) && render->isAllLoaded();
             }, 600);
             GpuEnvironment::drawFrames(4);
-            return ready && render->isAllLoaded();
+            if (!ready || !render->isAllLoaded()) {
+                if (volume != NULL_ENTITY) {
+                    const VoxelStats stats = system->getStats(volume);
+                    std::printf("[gpu] not settled: ready %d, chunks %d, jobs %d, error '%s'; terrain %u, volume %u\n", system->isVolumeReady(volume) ? 1 : 0, stats.chunks, stats.jobsPending, system->getError(volume).c_str(), terrain ? terrain->getEntity() : 0u, volume);
+                }
+                for (const std::string& line : render->describeNotLoaded()) std::printf("[gpu] not loaded: %s\n", line.c_str());
+                return false;
+            }
+            return true;
         }
 
         void lookDown() {
