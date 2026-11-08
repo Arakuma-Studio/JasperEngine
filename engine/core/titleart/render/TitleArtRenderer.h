@@ -71,8 +71,9 @@ namespace jasperengine::titleart {
         std::vector<std::string> keepSplits;        // layer ids whose own composite is kept as a split
         std::optional<GlyphCellRequest> glyphCell;
         int tier = 0;                               // 0 = bake quality; S86's TitleTier for Realtime 3D
-        // the device tier S83's generators draw for (D12, §6.7's mobile tier: GeneratorContext::
-        // tier); S81 sets it per device, tests set it. Named apart from S86's `tier` above
+        // the device tier S83's effects and generators draw for (D11, D12, §6.7's mobile tier:
+        // EffectContext::tier, GeneratorContext::tier); S81 sets it per device, tests set it.
+        // Named apart from S86's `tier` above
         FxTier fxTier = FxTier::Desktop;
         bool includeGuides = false;                 // the editor's views draw guides; outputs never do
         // the output pass (§6.9): 8 writes straight-alpha sRGB with dither into RGBA8; 16 writes

@@ -1011,13 +1011,15 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
     const Json& light = document->root.value("global_light", Json::object());
     const double lightAngle = light.value("angle", 120.0), lightAltitude = light.value("altitude", 30.0);
     const uint32_t seed = (uint32_t)document->root.value("seed", (int64_t)1);
+    // S83's effects take their mobile reductions on the mobile tier (D11, D12)
+    const FxTier tier = req.fxTier;
     const std::string layerId = layer ? layer->value("id", std::string()) : std::string();
     // run one definition on `src` into a new target, with the context's content and ink
     auto apply = [&](const Run& r, TitlePx src, TitlePx contentPx, TitlePx inkPx, TitlePx inputInkPx, const std::string& id, uint64_t srcAlpha) {
         TitlePx out{newSlot(TitleBuffer::Accumulator, src.rect.width, src.rect.height), src.rect};
         uint32_t passes = 1;
         if (r.def->estimate) {
-            const FxCost cost = r.def->estimate(paramsOf(*r.def, r.effect, *doc), FxSize{src.rect.width, src.rect.height, (float)s}, FxTier::Desktop);
+            const FxCost cost = r.def->estimate(paramsOf(*r.def, r.effect, *doc), FxSize{src.rect.width, src.rect.height, (float)s}, tier);
             passes = (uint32_t)std::max(1, cost.passes);
         }
         const EffectDef* def = r.def;
@@ -1053,6 +1055,7 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
             ctx.inputInk = refOf(inputInkSlot >= 0 ? inputInkSlot : srcSlot);
             ctx.layerId = id;
             ctx.image = image;
+            ctx.tier = tier;
             ctx.inputAlphaKey = srcAlpha;
             ctx.alphaKeyed = srcAlpha ? refOf(srcSlot) : nullptr;
             TitleJobState::Slot& outRef = state.slots[(size_t)outSlot];

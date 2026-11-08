@@ -155,6 +155,7 @@ EffectContext gen::effectContext(const GeneratorContext& ctx) {
     e.lightAngle = ctx.lightAngle;
     e.lightAltitude = ctx.lightAltitude;
     e.layerId = ctx.layerId;
+    e.tier = ctx.tier;
     return e;
 }
 
