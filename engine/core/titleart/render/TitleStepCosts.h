@@ -16,6 +16,10 @@
 //   the pass, not the document: "flood", "outer_glow blur x"). Callers may also measure work of
 //   their own under a name of their own (the preview's "preview build", "preview readback").
 // - Clock: nowUs() is the clock jobs measure with (steady_clock; tests pass a fake one).
+// - Settle: where the GPU's work is the main thread's (a software rasterizer runs a pass when a
+//   later one samples it, or at the readback or the present), a settle function (the GPU finish)
+//   runs after every GPU step, so each step's measurement holds its own drawing and the budget
+//   can slice it; null elsewhere, where waiting would only stall the CPU.
 // - Thread-safety: main thread (the jobs that use it run there).
 
 #pragma once
@@ -38,6 +42,8 @@ namespace jasperengine::titleart {
         explicit TitleStepCosts(std::function<double()> clockUs = {});
 
         double nowUs() const { return clock(); }
+        void setSettle(std::function<void()> settleFn) { settler = std::move(settleFn); }
+        void settle() const { if (settler) settler(); }
 
         // the predicted main-thread cost in us of `estimateUs` of static estimate (at least 1)
         uint32_t predictUs(const std::string& kind, uint32_t estimateUs) const;
@@ -61,6 +67,7 @@ namespace jasperengine::titleart {
             void learn(double observed);
         };
         std::function<double()> clock;
+        std::function<void()> settler;
         Ratio machine;
         std::map<std::string, Ratio> byKind;
     };

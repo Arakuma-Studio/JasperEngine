@@ -3,6 +3,7 @@
 
 #include "TitlePreviewQueue.h"
 
+#include "render/FrameReadback.h"
 #include "render/SystemRender.h"
 
 #include <algorithm>
@@ -42,7 +43,13 @@ TitlePreviewQueue::TitlePreviewQueue(std::function<double()> clockMs, std::funct
 TitlePreviewQueue::~TitlePreviewQueue() = default;
 
 TitlePreviewQueue& TitlePreviewQueue::editor() {
-    static TitlePreviewQueue* queue = new TitlePreviewQueue({}, [] { return SystemRender::getContextId(); });
+    static TitlePreviewQueue* queue = [] {
+        auto* made = new TitlePreviewQueue({}, [] { return SystemRender::getContextId(); });
+        made->setSettle([] {
+            if (SystemRender::isSoftwareGpu()) FrameReadback::finishGpu();
+        });
+        return made;
+    }();
     return *queue;
 }
 
@@ -189,6 +196,7 @@ void TitlePreviewQueue::runFrame(double budgetMs) {
         counters.restFrames++;
     } else {
         const double budget = budgetMs - side;
+        if (settle && budget > 0 && pick()) settle();
         const double start = clock();
         while (budget > 0) {
             Item* item = pick();

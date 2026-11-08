@@ -213,3 +213,33 @@ TEST_F(TitleRenderJobTest, CostModelLearnsPerKind) {
     for (size_t i = 0; i < TitleStepCosts::MAX_KINDS + 10; i++) costs.observe("kind " + std::to_string(i), 10, 10.0);
     EXPECT_EQ(costs.kinds(), TitleStepCosts::MAX_KINDS) << "kinds are capped";
 }
+
+TEST_F(TitleRenderJobTest, SettledStepsAndPredictedSplits) {
+    // a software rasterizer: recording a pass takes 100 us, the drawing it settles 1900 more; the
+    // settle belongs to the step that drew
+    double now = 0;
+    int settles = 0;
+    TitleStepCosts costs([&now] { return now; });
+    costs.setSettle([&] {
+        now += 1900;
+        settles++;
+    });
+    TitleRenderJob job(slowPasses(3, 100, 100, &now));
+    job.useCosts(&costs);
+    StepReport report;
+    job.step(StepBudget{1, 0}, &report);
+    EXPECT_EQ(settles, 1);
+    EXPECT_EQ(report.measuredUs, 2000u) << "the settle is measured with its step";
+    EXPECT_EQ(job.nextStepCostUs(), 2000u);
+    // a 2048 x 1000 px pass estimated at 2048 us, predicted at 20 x that: cut by the prediction
+    std::vector<TitleRectI> ran;
+    TitleRenderJob big(passes(1, 2048, 1000, &ran));
+    big.useCosts(&costs);
+    TitleRenderStep probe = passes(1, 2048, 1000, nullptr).steps().front();
+    costs.observe(probe, 20.0 * TitleRenderJob::estimateUs(probe));
+    big.splitOversizedSteps(4000);
+    EXPECT_GT(big.passesTotal(), 1u) << "split where the static estimate alone would not";
+    TitleRenderStep tile = probe;
+    tile.label = probe.label + " tile 1/8 tile 2/2";
+    EXPECT_EQ(TitleStepCosts::kindOf(tile), TitleStepCosts::kindOf(probe)) << "a tile split again keeps its kind";
+}

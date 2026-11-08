@@ -4,6 +4,8 @@
 #include "TitleArtPreviewRender.h"
 
 #include "Project.h"
+#include "render/FrameReadback.h"
+#include "render/SystemRender.h"
 #include "titleart/TitleArtBake.h"
 #include "titleart/TitleArtBaker.h"
 #include "titleart/TitleArtDocument.h"
@@ -61,6 +63,9 @@ namespace {
     constexpr uint32_t BUILD_ESTIMATE_US = 500;
     constexpr const char* BUILD_KIND = "preview build";
     constexpr const char* READBACK_KIND = "preview readback";
+    // the editor's preview budget a frame (App::engineRender's runFrame): passes predicted over it
+    // are cut into tiles
+    constexpr uint32_t SPLIT_US = 4000;
 
     // charges the main-thread time of its scope to the preview queue's frame
     class SideWork {
@@ -77,7 +82,13 @@ namespace {
 }
 
 titleart::TitleStepCosts& editor::titleArtPreviewCosts() {
-    static titleart::TitleStepCosts* costs = new titleart::TitleStepCosts();
+    static titleart::TitleStepCosts* costs = [] {
+        auto* made = new titleart::TitleStepCosts();
+        // a software rasterizer draws on the CPU when a later pass, the readback or the present
+        // waits for it: finished after each step, each step's measurement is its own drawing
+        if (SystemRender::isSoftwareGpu()) made->setSettle([] { FrameReadback::finishGpu(); });
+        return made;
+    }();
     return *costs;
 }
 
@@ -131,6 +142,8 @@ bool TitleArtPreviewJob::step(uint32_t budgetUs) {
         first = false;
     }
     if (!job->done()) {
+        // a pass predicted over the whole budget is cut into tiles where it allows (>= 256 px)
+        job->splitOversizedSteps(SPLIT_US);
         if (!fits(job->nextStepCostUs())) return false;
         titleart::StepBudget budget;
         const double left = static_cast<double>(budgetUs) - (costs.nowUs() - start);

@@ -110,6 +110,9 @@ namespace jasperengine::editor {
         void cancelAll(TitlePreviewOwner owner);
 
         void runFrame(double budgetMs = 4.0);
+        // run before a frame's first step and left out of its time: on a software rasterizer the
+        // GPU finish, so the views the editor drew before do not count as the previews' (null: none)
+        void setSettle(std::function<void()> settleFn) { settle = std::move(settleFn); }
         // main-thread work done for previews outside their jobs, counted in this frame's budget
         void charge(double ms);
         // what is left of this frame's budget after the side work charged so far
@@ -144,6 +147,7 @@ namespace jasperengine::editor {
         };
         std::function<double()> clock;
         std::function<uint64_t()> context;
+        std::function<void()> settle;
         uint64_t lastContext = 0;
         std::vector<std::unique_ptr<Item>> items;
         std::map<uint64_t, Item*> byRequest;

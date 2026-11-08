@@ -19,8 +19,8 @@
 //   job schedules by are the model's predictions, every step that ran teaches the model what it
 //   took, and step() stops on the clock too: a step starts only while the time already spent
 //   (measured, or predicted when that is more) plus its prediction fits the budget, so steps that
-//   cost more than estimated end the call instead of running on. Without a model the static
-//   estimates predict and the steady clock measures.
+//   cost more than estimated end the call instead of running on, and splitOversizedSteps cuts by
+//   the predictions. Without a model the static estimates predict and the steady clock measures.
 // - Double buffering is the owner's: keep the previous finished job (and its image) until the
 //   new one is done.
 // - Thread-safety: main thread (GPU steps record draw calls); a CPU step may hand work to the
@@ -148,7 +148,8 @@ namespace jasperengine::titleart {
         uint32_t passesTotal() const { return passCount; }
         // the next step's estimate in us, the model's prediction when there is one (0 when done)
         uint32_t nextStepCostUs() const;
-        // cuts the remaining splittable GPU steps estimated above maxUs into scissor tiles >= 256 x 256
+        // cuts the remaining splittable GPU steps estimated (predicted, with a model) above maxUs into
+        // scissor tiles >= 256 x 256
         void splitOversizedSteps(uint32_t maxUs);
         // every program variant the job binds, in first-use order (S81 R18 warm-up, R47)
         std::vector<ShaderKey> shaderKeys() const;

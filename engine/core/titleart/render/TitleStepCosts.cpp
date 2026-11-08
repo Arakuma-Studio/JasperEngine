@@ -42,7 +42,7 @@ void TitleStepCosts::Ratio::learn(double observed) {
 
 std::string TitleStepCosts::kindOf(const TitleRenderStep& step) {
     std::string label = step.label;
-    const size_t tile = label.rfind(" tile ");
+    const size_t tile = label.find(" tile ");
     if (tile != std::string::npos) label.resize(tile);
     return (step.kind == StepKind::Cpu ? "cpu:" : "gpu:") + label;
 }
