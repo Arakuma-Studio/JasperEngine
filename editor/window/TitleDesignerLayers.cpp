@@ -11,6 +11,7 @@
 #include "Project.h"
 #include "external/IconsFontAwesome6.h"
 #include "profiler/Profile.h"
+#include "shortcuts/CommandCatalog.h"
 #include "titleart/TitleArtHash.h"
 #include "titleart/TitleArtRenderHost.h"
 #include "titleart/designer/TitleLayerThumbnails.h"
@@ -141,14 +142,16 @@ void TitleDesignerWindow::layerContextMenu(const std::string& layerId) {
     const bool editable = doc.editable();
     const ta::Json* layer = layerById(doc.committed(), layerId);
     const ta::LayerType type = layer ? ta::layerTypeOf(*layer) : ta::LayerType::Unknown;
-    if (ImGui::MenuItem("Rename", "F2", false, editable)) runCommand("titleDesigner.rename");
-    if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, editable)) duplicateSelection();
-    if (ImGui::MenuItem("Delete", "Delete", false, editable)) deleteSelection();
+    // the texts are the catalog's, so a rebound key shows its new binding
+    auto keys = [](std::string_view id) { return CommandCatalog::editor().menuShortcutText(id); };
+    if (ImGui::MenuItem("Rename", keys("titleDesigner.rename").c_str(), false, editable)) runCommand("titleDesigner.rename");
+    if (ImGui::MenuItem("Duplicate", keys("titleDesigner.duplicate").c_str(), false, editable)) duplicateSelection();
+    if (ImGui::MenuItem("Delete", keys("titleDesigner.delete").c_str(), false, editable)) deleteSelection();
     ImGui::Separator();
-    if (ImGui::MenuItem("Group", "Ctrl+G", false, editable)) groupSelection();
-    if (ImGui::MenuItem("Ungroup", "Ctrl+Shift+G", false, editable && type == ta::LayerType::Group)) ungroupSelection();
+    if (ImGui::MenuItem("Group", keys("titleDesigner.group").c_str(), false, editable)) groupSelection();
+    if (ImGui::MenuItem("Ungroup", keys("titleDesigner.ungroup").c_str(), false, editable && type == ta::LayerType::Group)) ungroupSelection();
     const bool clipped = layer && layer->value("clip", false);
-    if (ImGui::MenuItem(clipped ? "Release Clipping Mask" : "Create Clipping Mask", "Ctrl+Alt+G", false, editable)) toggleClip();
+    if (ImGui::MenuItem(clipped ? "Release Clipping Mask" : "Create Clipping Mask", keys("titleDesigner.clip").c_str(), false, editable)) toggleClip();
     if (ta::layerTypeHasStyle(type)) {
         const std::string owner = TitleArtOps::pendingOwner("set_dimension");
         const bool is3d = layer && layer->value("dimension", std::string("2d")) == "3d";

@@ -765,7 +765,7 @@ ui::EditPhase ui::rampField(const char* id, jasperengine::titleart::TitleGradien
     // Delete removes the selected stop while this field holds the last click
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsItemHovered()) state.focused = false;
     if (state.focused && ImGui::IsWindowFocused() && !ImGui::GetIO().WantTextInput &&
-        (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false))) {
+        (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false))) {   // shortcut-lint: allow the focused field's own stop deletion
         editor.deleteSelected();
     }
 

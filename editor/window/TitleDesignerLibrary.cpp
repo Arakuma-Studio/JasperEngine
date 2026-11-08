@@ -512,11 +512,11 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
             libraryHighlight = std::max(0, libraryHighlight - 1);
             arrowed = true;
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_Home)) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Home)) {   // shortcut-lint: allow list navigation in the focused strip, as its arrows
             libraryHighlight = 0;
             arrowed = true;
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_End)) {
+        if (ImGui::IsKeyPressed(ImGuiKey_End)) {   // shortcut-lint: allow list navigation in the focused strip, as its arrows
             libraryHighlight = (int)filtered.size() - 1;
             arrowed = true;
         }
