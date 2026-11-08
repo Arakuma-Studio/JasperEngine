@@ -801,3 +801,64 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
     measured 6,744 bytes, 52 into the headroom. The intro's "Build scenes with tools, write code with your own
     file tools, verify by playing..." sentence went (The loop and Building scenes say it), and Building scenes
     and the pointer were shortened: 6,613 bytes, 79 under the line.
+
+## Follow-ups (2026-11-07)
+
+1. **An FBX detail layer drew 0 instances: blend shapes plus instancing, not FBX and not headless.** The
+   test's `rigged_cube.fbx` is textured, skinned and has a blend shape. Every foliage chunk asked for the Lit
+   variant with instancing and morph targets: position, normal, UV, the instance's six vectors and eight morph
+   slots make 17 vertex inputs (skinning adds two), past the 16 of GL 3.3, GLES3/WebGL2 and the other backends.
+   The variant never compiled, so the chunks never finished loading. A copy a system places never animates:
+   it builds no skeleton (its bones stay at the identity) and nothing sets its blend shape weights.
+   - `MeshSystem::loadPlacedModel` (foliage chunks, spline chunks and their probe) loads it at rest as static
+     geometry. The skin goes, and the blend shapes' default weights (the file's mesh weights) are baked into
+     positions and normals. Its node transform now bakes too, as for a mesh without blend shapes
+     (`GltfMeshOffset.FoliageBakesTheWholeNodeTransform` changed with it). The decision lives in a private
+     loader parameter that only `loadPlacedModel` passes; `loadGLTF` (and its Lua binding) keeps skins and
+     blend shapes whatever its flags.
+   - The export's shader variant collector probes foliage through `loadPlacedModel`, so it ships the variant
+     the chunk asks for (it shipped the skinned one).
+   - An Instanced Mesh a person adds to a textured model with a blend shape still cannot draw (its weights
+     can change at runtime, so nothing is baked). The Console says so once, naming the GameObject and the fix,
+     in place of only the shader compiler's lines.
+   - Tests: `test_terrain_details.py::test_fbx_layer` (the FBX, textured), `PlacedModel.*` (the bake, the Lua
+     flags, the collected variant), `test_render_correctness.py::test_instanced_blend_shapes_say_why_they_do_not_draw`.
+     The draw checks wait for the state with a hang guard and report their time (`over_budget`): on a box's
+     first run (8 editors, cold shader variants) the OBJ layer of the older test drew 0 within the old
+     100-frame budget too.
+   - A second cause of the same symptom: a CPU-read map cooked GPU-only. On a loaded box a layer sometimes
+     drew 0 instances with its shader built. Its density map had been cooked to BC1 before the layer pointed
+     at it (the file is written first), and a BC cook has GPU levels but no CPU pixels, so
+     `sampleFoliageDensity` read nothing. The editor's cook decision now uses the inference an export uses,
+     live: `TextureCookQueue::isReadOnCpu` (an open scene's terrain height or density map) makes a cook
+     CPU-readable while something reads it, and a later cook may compress again once nothing does. A layer
+     that finds its map cooked GPU-only calls `CookedTextures::requireCpuReadable`; the queue recooks that
+     texture in memory and logs one line. No `.meta` is written: a first design turned on the maps' Read/Write
+     (`readable: true`), which wrote tracked files of old projects on load, could not be undone, bypassed the
+     VCS lock-on-edit and waited forever on a read-only sidecar. The user's own Read/Write still forces
+     CPU-readable. The wait is bounded: a failed CPU-readable cook (the queue's `setCpuReadFailure`), no
+     handler (a game) or 30 s without a cook stops the layer with one error, in `sample_terrain`'s
+     `details[i].error`, until the map's pixels change. Float maps (.exr, .hdr) cook to RGBA16F; a
+     CPU-readable float cook now gets a linear RGBA32F CPU view, and the height and density samplers read
+     32-bit floats (the raw source was read as bytes). Tests: `test_density_map_cooked_before_its_layer`,
+     `test_float_density_map`, `test_reopening_a_project_writes_no_file`, and
+     `TerrainFoliageGpu.AGpuOnlyDensityMapStopsWithOneError` / `AFailedCpuReadableCookStopsTheWaitWithOneError`.
+   - The layer's error reaches agents through `sample_terrain` (`details[i].error`); eval case
+     `guard_detail_layer_error_names_the_fix` (an agent asked why grass stopped showing must reimport the named
+     map, not repaint or replace the layer). Only `test_grade.py` ran here: the live eval needs Orquester accounts.
+   - Open, not reproduced: in the first of five runs of the 11-file MCP set at -j 8 on box A (after be2e1807b's
+     sources were built), the editor of `test_saved_output_determinism.py::test_fixture_scenes_save_the_same_drawn_or_not`
+     closed its connection during the `screenshot` of `physics-placement/TableCrate.scene` (`JSON-RPC error -32000:
+     Connection closed`, after 143.8 s; the scenes before it re-saved the same bytes). The container kept no
+     scratch or stderr. It did not happen in the other four runs or in two more runs of that file with the
+     terrain, spline and FBX tests (32 passed each). Log: `dc-work/evidence/fu-agent-authoring/crash-determinism-run1.log`.
+2. **The generated `AGENTS.md` has headroom under its 5,000-byte cap** (`test_generators.py`, not raised). The text
+   is the same for every template (2D, 3D, Empty, UI): `writeAgentsFile` takes only the project paths, which are
+   always `.jasperengine/...`. Only the editor version string changes its size. Before: 4,929 bytes (version
+   `unknown`) to 4,955 (`doriax-base-7478-g17c19b941-dirty`). After: 4,373 to 4,399 bytes (4,401 with a
+   30-character version), so about 600 bytes of headroom. Wording was cut, not rules. The second CMake example line
+   went, the Source references paragraph became a link plus the formats line, and the `set_shortcut` sentence
+   moved into the list. The lines the eval cases pin stay: the sound tools and their group, `edit_sound_event`
+   for clips that vary, `set_shortcut` (tool group `editor_ux`), `inspect_models`/`check_render_budgets`, and
+   `jasperengine-editor call`. No template under `editor/resources/templates` embeds the file, so nothing was
+   regenerated.

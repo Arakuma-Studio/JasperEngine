@@ -122,6 +122,13 @@ namespace jasperengine::editor {
         void sourceChanged(const std::string& assetPath);
         // A sidecar write (SetAssetMetaCmd): reloads the texture's settings, invalidates on change
         void settingsChanged(const std::string& assetPath);
+        // The engine found a texture it reads on the CPU cooked GPU-only (CookedTextures::
+        // requireCpuReadable: a terrain's heights, a foliage layer's density): it is cooked again,
+        // in memory, CPU-readable. Any thread; applied by update().
+        void requireCpuReadable(const std::string& assetPath);
+        // whether an open scene reads the texture on the CPU now (its terrains' height and
+        // density maps): its cooks are CPU-readable while one does, as an export's are. Main thread.
+        bool isReadOnCpu(const std::string& assetPath) const;
         // stops every queued and running cook (the status bar's cancel)
         void cancelAll();
 
@@ -191,6 +198,8 @@ namespace jasperengine::editor {
         std::vector<std::shared_ptr<Job>> running;
         std::vector<std::shared_ptr<SwapIn>> swaps;
         std::deque<std::pair<std::string, std::string>> metaWrites;   // assetPath, YAML of inferred settings
+        std::vector<std::string> cpuRequests;   // found cooked GPU-only by a CPU reader, for update()
+        std::set<std::string> cpuRecooks;       // their next cook goes CPU-readable
         uint64_t sequence = 0;              // request order among equal priorities
         int progressDone = 0;
         int progressTotal = 0;
@@ -203,6 +212,7 @@ namespace jasperengine::editor {
         void startSwap(const std::string& assetPath);
         void collectSwaps();
         void writeInferredSettings();
+        void applyCpuRequests();
         void scanProject();
         std::filesystem::path absoluteOf(const std::string& assetPath) const;
         std::string assetPathOf(const std::filesystem::path& absolute) const;

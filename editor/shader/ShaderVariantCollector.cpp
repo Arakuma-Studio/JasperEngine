@@ -455,7 +455,9 @@ namespace {
         return probes;
     }
 
-    const ModelProbe& probeModel(const std::string& filename, bool mergeStaticMeshes){
+    // placed: a copy a system places (MeshSystem::loadPlacedModel: foliage), loaded the way it is,
+    // so the variants shipped are the ones the copy asks for
+    const ModelProbe& probeModel(const std::string& filename, bool mergeStaticMeshes, bool placed = false){
         // The file as the engine opens it, for its modification time: an FBX's import, which
         // also changes when only its textures do
         const std::filesystem::path path(editor::FbxImporter::isFbxFile(filename) ? MeshSystem::getImportedModelPath(filename)
@@ -465,7 +467,7 @@ namespace {
         const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(path, timeError);
         const uintmax_t size = std::filesystem::file_size(path, sizeError);
 
-        const std::string key = MeshSystem::getModelFilenameKey(filename) + (mergeStaticMeshes ? "|merged" : "");
+        const std::string key = MeshSystem::getModelFilenameKey(filename) + (mergeStaticMeshes ? "|merged" : "") + (placed ? "|placed" : "");
         auto cached = modelProbes().find(key);
         if (cached != modelProbes().end() && !timeError && !sizeError &&
                 cached->second.writeTime == writeTime && cached->second.size == size){
@@ -489,7 +491,8 @@ namespace {
 
         std::shared_ptr<MeshSystem> meshSystem = scene.getSystem<MeshSystem>();
         const bool obj = FileData::getFilePathExtension(filename) == "obj";
-        probe.loaded = obj ? meshSystem->loadOBJ(entity, filename, false) : meshSystem->loadGLTF(entity, filename, false, false, false);
+        probe.loaded = placed ? meshSystem->loadPlacedModel(entity, filename)
+            : obj ? meshSystem->loadOBJ(entity, filename, false) : meshSystem->loadGLTF(entity, filename, false, false, false);
 
         if (probe.loaded){
             probe.vatMesh = scene.getComponent<MeshComponent>(entity).vatMesh;
@@ -923,7 +926,7 @@ namespace {
                 if (layer.meshPath.empty()){
                     continue;
                 }
-                const ModelProbe& probe = probeModel(layer.meshPath, true);
+                const ModelProbe& probe = probeModel(layer.meshPath, true, true);
                 if (!probe.loaded){
                     continue;
                 }

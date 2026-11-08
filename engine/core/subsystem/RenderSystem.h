@@ -2752,7 +2752,7 @@ namespace jasperengine{
 		bool usesShadowIndices(const MeshComponent& mesh, const Submesh& submesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain) const;
 		// what the next draw of this object may join (ObjectRender::setNextDrawBatch), when the
 		// draw can batch: the plain pipeline of a batch-variant submesh
-		void offerDrawBatch(ObjectRender& render, ObjectRender& variant, int objectSlot, bool mirrored);
+		void offerDrawBatch(ObjectRender& render, ObjectRender* variant, int objectSlot, bool mirrored);
 		// The opaque queue of a pass with GPU Instancing (spec S55 R2, R4), in the order it has: the
 		// entries culled at once (on jobs) against the pass's frustum, mesh then submesh, those of
 		// a mesh that can batch split one per submesh, the draws of one batch key brought together

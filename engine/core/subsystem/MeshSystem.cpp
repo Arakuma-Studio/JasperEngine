@@ -2501,7 +2501,8 @@ int MeshSystem::materializeGLTFSparseAccessor(tinygltf::Accessor& accessor, Mode
     return denseViewIndex;
 }
 
-int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model){
+int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model,
+                                             const std::vector<std::pair<int, float>>& morphs){
     // Bakes a node's world transform into a copy of a POSITION/NORMAL attribute, into a synthetic
     // tightly-packed FLOAT VEC3 buffer/view. Used by flattened previews and static merged models.
     // Caller must reserve buffers/bufferViews up-front.
@@ -2531,6 +2532,41 @@ int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor,
         return -1;
     }
 
+    // the displacements (float, or normalized bytes and shorts) of one vertex count each
+    struct Displacement {
+        const unsigned char* data;
+        size_t stride;
+        int componentType;
+        float weight;
+    };
+    std::vector<Displacement> displacements;
+    for (const auto& [index, weight] : morphs) {
+        if (!isValidGLTFIndex(index, model.gltfModel->accessors)) {
+            continue;
+        }
+        const tinygltf::Accessor& delta = model.gltfModel->accessors[index];
+        const bool readable = delta.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT ||
+            (delta.normalized && (delta.componentType == TINYGLTF_COMPONENT_TYPE_BYTE || delta.componentType == TINYGLTF_COMPONENT_TYPE_SHORT));
+        if (delta.type != TINYGLTF_TYPE_VEC3 || delta.count != count || !readable ||
+                !isValidGLTFIndex(delta.bufferView, model.gltfModel->bufferViews)) {
+            Log::warn("GLTF blend shape displacement %i cannot be baked; drawn without it", index);
+            continue;
+        }
+        const tinygltf::BufferView& view = model.gltfModel->bufferViews[delta.bufferView];
+        if (!isValidGLTFIndex(view.buffer, model.gltfModel->buffers)) {
+            continue;
+        }
+        const std::vector<unsigned char>& data = model.gltfModel->buffers[view.buffer].data;
+        const size_t deltaStride = static_cast<size_t>(delta.ByteStride(view));
+        const size_t deltaElement = 3 * static_cast<size_t>(tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(delta.componentType)));
+        const size_t deltaBase = view.byteOffset + delta.byteOffset;
+        if (deltaStride < deltaElement || deltaBase + (count - 1) * deltaStride + deltaElement > data.size()) {
+            Log::error("GLTF blend shape displacement range out of bounds");
+            continue;
+        }
+        displacements.push_back({data.data() + deltaBase, deltaStride, delta.componentType, weight});
+    }
+
     tinygltf::Buffer newBuffer;
     newBuffer.data.resize(count * 3 * sizeof(float));
     float* dst = reinterpret_cast<float*>(newBuffer.data.data());
@@ -2538,6 +2574,11 @@ int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor,
         float src[3];
         readGLTFComponents(srcData.data() + base + i * static_cast<size_t>(stride), accessor.componentType, 3, src);
         Vector3 v(src[0], src[1], src[2]);
+        for (const Displacement& displacement : displacements) {
+            float d[3];
+            readGLTFComponents(displacement.data + i * displacement.stride, displacement.componentType, 3, d);
+            v += Vector3(d[0], d[1], d[2]) * displacement.weight;
+        }
         Vector3 r = isNormal ? (normalMatrix * v).normalized() : (matrix * v);
         dst[i * 3 + 0] = r.x;
         dst[i * 3 + 1] = r.y;
@@ -2839,7 +2880,7 @@ bool MeshSystem::hasCustomMeshParenting(Entity modelEntity, const ModelComponent
     return false;
 }
 
-bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason) const {
+bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason, bool bakesMorphs) const {
     auto reject = [reason](const char* message) {
         if (reason) *reason = message;
         return false;
@@ -2850,7 +2891,7 @@ bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std
     }
 
     for (const tinygltf::Primitive& primitive : model.gltfModel->meshes[meshIndex].primitives) {
-        if (!primitive.targets.empty()) {
+        if (!primitive.targets.empty() && !bakesMorphs) {
             return reject("Models with morph targets cannot be merged as static geometry");
         }
         for (const auto& attribute : primitive.attributes) {
@@ -3598,6 +3639,22 @@ float MeshSystem::terrainTexelCoord(float local, float terrainSize, int size){
     return ((local + terrainSize * 0.5f) / terrainSize) * static_cast<float>(size) - 0.5f;
 }
 
+// channel 0 of a height or density map texel, 0-1: 8-bit, 16-bit (R16) or 32-bit float (a linear
+// .exr/.hdr map, raw or its CPU-readable cook)
+static float readMapTexel(const unsigned char* pixels, size_t index, int bytesPerChannel){
+    if (bytesPerChannel >= 4){
+        float value;
+        std::memcpy(&value, pixels + index, sizeof(value));
+        return std::isfinite(value) ? value : 0.0f;
+    }
+    if (bytesPerChannel >= 2){
+        // 16-bit little-endian (native unsigned short)
+        const unsigned int value = static_cast<unsigned int>(pixels[index]) | (static_cast<unsigned int>(pixels[index + 1]) << 8);
+        return static_cast<float>(value) / 65535.0f;
+    }
+    return pixels[index] / 255.0f;
+}
+
 float MeshSystem::sampleTerrainHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY){
     if (!pixels || width <= 0 || height <= 0 || channels <= 0){
         return 0.0f;
@@ -3616,13 +3673,7 @@ float MeshSystem::sampleTerrainHeightTexels(const unsigned char* pixels, int wid
     auto texel = [&](int x, int y){
         const size_t texelIndex = static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x);
         const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
-        if (bytesPerChannel >= 2){
-            // 16-bit little-endian (native unsigned short) heightmap sample
-            const unsigned int value = static_cast<unsigned int>(pixels[index]) |
-                                       (static_cast<unsigned int>(pixels[index + 1]) << 8);
-            return static_cast<float>(value) / 65535.0f;
-        }
-        return pixels[index] / 255.0f;
+        return readMapTexel(pixels, index, bytesPerChannel);
     };
 
     const float lower = texel(lowerX, lowerY) + (texel(upperX, lowerY) - texel(lowerX, lowerY)) * blendX;
@@ -3822,13 +3873,7 @@ void MeshSystem::getTerrainHeightRangeArea(TerrainComponent& terrain, float x, f
     auto sampleHeight = [&](int sampleX, int sampleZ){
         const size_t texelIndex = static_cast<size_t>(sampleZ) * static_cast<size_t>(width) + static_cast<size_t>(sampleX);
         const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
-        if (bytesPerChannel >= 2){
-            // 16-bit little-endian (native unsigned short) heightmap sample
-            const unsigned int value = static_cast<unsigned int>(pixels[index]) |
-                                       (static_cast<unsigned int>(pixels[index + 1]) << 8);
-            return terrain.maxHeight * static_cast<float>(value) / 65535.0f;
-        }
-        return terrain.maxHeight * pixels[index] / 255.0f;
+        return terrain.maxHeight * readMapTexel(pixels, index, bytesPerChannel);
     };
 
     // one texel of margin covers the bilinear filter of the vertices on the area border
@@ -3922,8 +3967,21 @@ void MeshSystem::resetTerrainToUnbuilt(TerrainComponent& terrain, MeshComponent&
     terrain.needUpdateTerrain = false;
 }
 
+// a cook in a GPU format only (block-compressed): levels, no CPU pixels for the terrain's readers
+static bool isGpuOnlyData(Texture& texture){
+    if (texture.empty() || texture.isFramebuffer() || !texture.hasData()){
+        return false;
+    }
+    TextureData& data = texture.getData();
+    return data.hasLevels() && !data.getData();
+}
+
 bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
     applyTerrainMapSettings(terrain);
+    // the heights are read on the CPU (collision, placement): a GPU-only cook is cooked again
+    if (isGpuOnlyData(terrain.heightMap)){
+        CookedTextures::requireCpuReadable(terrain.heightMap.getPath());
+    }
 
     // Check heightmap loading state BEFORE clearing buffers to avoid leaving
     // the mesh with empty data when the heightmap is still loading.
@@ -4021,6 +4079,8 @@ static const float TERRAIN_FOLIAGE_CELL_SIZE = 8.0f;
 static const unsigned int TERRAIN_FOLIAGE_MAX_CHUNK_INSTANCES = 8192;
 // Share of the draw distance that stays full size; the rest shrinks out.
 static const float TERRAIN_FOLIAGE_FADE_START = 0.75f;
+// how long a layer waits for the CPU-readable cook of a map found cooked GPU-only
+static const int TERRAIN_FOLIAGE_CPU_READ_WAIT_SECONDS = 30;
 
 bool MeshSystem::setFoliagePreviewEntity(Entity entity){
     if (foliagePreviewEntity == entity){
@@ -4151,6 +4211,11 @@ size_t MeshSystem::getFoliageInstanceCount(Entity terrainEntity, size_t layer) c
     return count;
 }
 
+std::string MeshSystem::getFoliageError(Entity terrainEntity, size_t layer) const{
+    auto it = terrainFoliage.find(terrainEntity);
+    return (it == terrainFoliage.end() || layer >= it->second.size()) ? std::string() : it->second[layer].cpuReadError;
+}
+
 Entity MeshSystem::getFoliageOwner(Entity foliageEntity) const{
     if (foliageEntity == NULL_ENTITY){
         return NULL_ENTITY;
@@ -4202,13 +4267,13 @@ void MeshSystem::reloadFoliageMesh(const std::string& filename){
     }
 }
 
-bool MeshSystem::loadFoliageMesh(Entity entity, const std::string& path){
-    // changeRootTransform is off: the terrain places the field, not the file's root transform.
+bool MeshSystem::loadPlacedModel(Entity entity, const std::string& path){
     if (FileData::getFilePathExtension(path).compare("obj") == 0){
         return loadOBJ(entity, path);
     }
-    // Keep all geometry on the instanced root, with the file's node transforms baked in.
-    return loadGLTF(entity, path, false, true, false, true);
+    // All geometry on the instanced root, the file's node transforms baked in; the system
+    // places the copy, not the file's root transform
+    return loadGLTFModel(entity, path, false, true, false, true, true);
 }
 
 // Sample height and normal in terrain-local space.
@@ -4261,8 +4326,9 @@ float MeshSystem::sampleFoliageDensity(TerrainComponent& terrain, TerrainFoliage
     const float halfSize = terrain.terrainSize * 0.5f;
     const int texelX = std::clamp(static_cast<int>((localX + halfSize) / terrain.terrainSize * width), 0, width - 1);
     const int texelZ = std::clamp(static_cast<int>((localZ + halfSize) / terrain.terrainSize * height), 0, height - 1);
+    const int bytesPerChannel = TextureData::getBytesPerChannel(textureData.getColorFormat());
 
-    return pixels[(static_cast<size_t>(texelZ) * width + texelX) * channels] / 255.0f;
+    return std::clamp(readMapTexel(pixels, (static_cast<size_t>(texelZ) * width + texelX) * channels * bytesPerChannel, bytesPerChannel), 0.0f, 1.0f);
 }
 
 // Placement depends on the cell and seed, independent of the camera.
@@ -4416,6 +4482,48 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
         instances.pending = true;
         return;
     }
+    // A GPU-only cook of a map (made before anything read it on the CPU) is never sampled: the
+    // editor cooks it again CPU-readable, and new pixels (that swap, a repaint) refill the layer.
+    // The wait is bounded: a cook that fails or cannot happen leaves the layer empty with one error.
+    const bool densityGpuOnly = isGpuOnlyData(layer.densityMap);
+    if (densityGpuOnly || isGpuOnlyData(terrain.heightMap)){
+        const Texture& map = densityGpuOnly ? layer.densityMap : terrain.heightMap;
+        // (a texture made in memory has an id and no path)
+        const std::string name = map.getPath().empty() ? map.getId() : map.getPath();
+        const auto now = std::chrono::steady_clock::now();
+        if (instances.cpuReadMap != name){
+            instances.cpuReadMap = name;
+            instances.cpuReadSince = now;
+            instances.cpuReadError.clear();
+            CookedTextures::requireCpuReadable(instances.cpuReadMap);
+        }
+        if (instances.cpuReadError.empty()){
+            std::string why = CookedTextures::getCpuReadFailure(instances.cpuReadMap);
+            if (why.empty() && !CookedTextures::hasCpuReadHandler()){
+                why = "its cook is GPU-only; turn on its Read/Write in its import settings and export again";
+            }else if (why.empty() && now - instances.cpuReadSince > std::chrono::seconds(TERRAIN_FOLIAGE_CPU_READ_WAIT_SECONDS)){
+                why = "no CPU-readable cook of it arrived; reimport it (reimport_textures)";
+            }
+            if (!why.empty()){
+                instances.cpuReadError = (densityGpuOnly ? "its density map " : "its terrain's height map ") +
+                                         instances.cpuReadMap + " has no pixels the CPU can read: " + why;
+                Log::error("A detail layer of %s draws nothing: %s", layer.meshPath.c_str(), instances.cpuReadError.c_str());
+            }
+        }
+        // stopped (until the map's pixels change), or still waiting for the CPU-readable cook
+        instances.pending = instances.cpuReadError.empty();
+        instances.needUpdate = true;
+        return;
+    }
+    instances.cpuReadMap.clear();
+    instances.cpuReadError.clear();
+    const void* densityPixels = layer.densityMap.hasData() ? layer.densityMap.getData().getData() : nullptr;
+    const void* heightPixels = terrain.heightMap.hasData() ? terrain.heightMap.getData().getData() : nullptr;
+    if (instances.densityPixels != densityPixels || instances.heightPixels != heightPixels){
+        instances.densityPixels = densityPixels;
+        instances.heightPixels = heightPixels;
+        instances.needUpdate = true;
+    }
 
     // Layer-wide invalidation only: a single slot going stale clears its own assigned flag.
     const bool refillAll = instances.needUpdate || terrain.needUpdateFoliage;
@@ -4474,7 +4582,7 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
             bool justLoaded = false;
             if (!chunk.meshLoaded && !instances.loadFailed && meshLoadBudget > 0){
                 meshLoadBudget--;
-                instances.loadFailed = !loadFoliageMesh(chunk.entity, layer.meshPath);
+                instances.loadFailed = !loadPlacedModel(chunk.entity, layer.meshPath);
                 chunk.meshLoaded = !instances.loadFailed;
                 chunk.assigned = false;
                 justLoaded = true;
@@ -5469,9 +5577,14 @@ bool MeshSystem::prepareLoadOnMainThread(Entity entity, const std::string& filen
 }
 
 bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncLoad, bool skipEntities, bool changeRootTransform, bool bakeSceneRoot){
+    return loadGLTFModel(entity, filename, asyncLoad, skipEntities, changeRootTransform, bakeSceneRoot, false);
+}
+
+bool MeshSystem::loadGLTFModel(Entity entity, const std::string& filename, bool asyncLoad, bool skipEntities, bool changeRootTransform,
+                               bool bakeSceneRoot, bool placedCopy){
     if (isLoadOnMainThread()) {
-        return prepareLoadOnMainThread(entity, filename, [this, entity, filename, asyncLoad, skipEntities, changeRootTransform, bakeSceneRoot]() {
-            loadGLTF(entity, filename, asyncLoad, skipEntities, changeRootTransform, bakeSceneRoot);
+        return prepareLoadOnMainThread(entity, filename, [this, entity, filename, asyncLoad, skipEntities, changeRootTransform, bakeSceneRoot, placedCopy]() {
+            loadGLTFModel(entity, filename, asyncLoad, skipEntities, changeRootTransform, bakeSceneRoot, placedCopy);
         });
     }
 
@@ -5668,6 +5781,11 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // export). Non-skinned nodes bake their own global transform.
     bool bakingFlatten = (preview && (meshNodes.size() > 1 || anyNodeSkinned))
         || mergeMeshNodes;
+    // A copy a system places (loadPlacedModel) builds no skeleton and never animates its blend
+    // shapes: it stands at rest as static geometry, its bones the identity and the blend shapes'
+    // default weights baked into its positions and normals. Instanced, a textured mesh's blend
+    // shapes alone need 17 vertex inputs, past the 16 every backend has.
+    const bool restPose = placedCopy && !vatGltf;
 
     if (meshNode < 0) {
         meshNode = meshNodes[0];
@@ -5684,7 +5802,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // chunk) bakes the node's whole global transform, as the merged nodes of a model do.
     Matrix4 meshOffset;
     if (!useChildEntities && !bakingFlatten && !anyNodeSkinned &&
-            canBakeGLTFMesh(model, model.gltfModel->nodes[meshNodes[0]].mesh)) {
+            canBakeGLTFMesh(model, model.gltfModel->nodes[meshNodes[0]].mesh, nullptr, restPose)) {
         if (bakeSceneRoot) {
             meshOffset = getGLTFMeshGlobalMatrix(meshNodes[0], model, nodesParent);
         } else {
@@ -5940,7 +6058,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             // flatten path's one mesh takes its largest skin's)
             if (mesh.bonesMatrix.stored() < nodeSkin->joints.size())
                 mesh.bonesMatrix.resize(nodeSkin->joints.size());
-        }else if (!bakingFlatten && nodeSkin && !nodeSkin->joints.empty()){
+        }else if (!bakingFlatten && !restPose && nodeSkin && !nodeSkin->joints.empty()){
             Log::error("Model %s has a skin of %zu joints, more than %zu",
                 filename.c_str(), nodeSkin->joints.size(), ARRAY_INDEX_LIMIT);
             if (asyncLoad) {
@@ -6124,15 +6242,36 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 int attrBufferView = accessor.bufferView;
                 size_t attrByteOffset = accessor.byteOffset;
                 int byteStride = accessor.ByteStride(model.gltfModel->bufferViews[accessor.bufferView]);
-                if (bakingFlatten && !vatGltf && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
-                    continue; // baked preview is static geometry; drop the skinning attributes
+                if ((bakingFlatten || restPose) && !vatGltf && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
+                    continue; // static geometry (a baked preview, a placed copy); drop the skinning attributes
                 }
                 // (the bakes write floats, also from a quantized normal or tangent)
                 bool bakedToFloat = false;
-                if ((bakingFlatten || bakeMeshOffset) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
+                // a copy at rest: the displacements of the blend shapes its file weighs in
+                std::vector<std::pair<int, float>> morphs;
+                std::string morphKey;
+                if (restPose && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
+                    for (size_t t = 0; t < primitive.targets.size() && t < gltfmesh.weights.size(); t++) {
+                        const float weight = static_cast<float>(gltfmesh.weights[t]);
+                        auto target = primitive.targets[t].find(attrib.first);
+                        if (weight == 0.0f || target == primitive.targets[t].end() ||
+                                !isValidGLTFIndex(target->second, model.gltfModel->accessors)) {
+                            continue;
+                        }
+                        tinygltf::Accessor& delta = model.gltfModel->accessors[target->second];
+                        if (delta.sparse.isSparse && materializeGLTFSparseAccessor(delta, model) < 0) {
+                            continue;
+                        }
+                        morphs.emplace_back(target->second, weight);
+                        uint32_t bits;
+                        std::memcpy(&bits, &weight, sizeof(bits));
+                        morphKey += "|" + std::to_string(target->second) + ":" + std::to_string(bits);
+                    }
+                }
+                if ((bakingFlatten || bakeMeshOffset || !morphs.empty()) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
                     const bool isNormal = attrib.first == "NORMAL";
-                    int baked = synthView(gltfSynthKey(isNormal ? "normal" : "position", accessor, &nodeBakeMatrix), [&]() {
-                        return bakeGLTFTransformedAttribute(accessor, nodeBakeMatrix, nodeBakeNormalMatrix, isNormal, model);
+                    int baked = synthView(gltfSynthKey(isNormal ? "normal" : "position", accessor, &nodeBakeMatrix) + morphKey, [&]() {
+                        return bakeGLTFTransformedAttribute(accessor, nodeBakeMatrix, nodeBakeNormalMatrix, isNormal, model, morphs);
                     });
                     if (baked >= 0) {
                         attrBufferView = baked;
@@ -6306,6 +6445,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             int  morphIndex    = 0;
 
             for (auto& morphs : primitive.targets) {
+                if (restPose) {
+                    break; // baked above
+                }
                 // Capacity must follow semantics in the prefix actually loaded. A later,
                 // truncated target must not reduce the shader's attribute capacity.
                 const int supportedMorphTargets = (morphNormals && morphTangents) ? 2

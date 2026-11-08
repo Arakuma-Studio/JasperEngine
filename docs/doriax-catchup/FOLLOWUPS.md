@@ -36,7 +36,7 @@ worktree `/var/lib/orquester/workspaces/jaspersito/dc-wt/fu-<name>` and branch `
 | mesh-memory | Compile the Android heap-trim branch (`tools/build.sh android`). Check the MSVC size limits. Explain the 421-pixel difference in the early clone test. Save about 1.6 KB per submesh in S55's warm tables, only after `fix/submesh-drop` lands. | merged (train 1) |
 | ssr | Run SSR before transparents and UI (shared with water-reflections' colour-pass order). Handle display-encoded colour under a tone curve. Store a higher-precision shading normal in the G-buffer; all 4 render targets are used, so repack. | merged (train 3) |
 | lints-keys | The LOD lint misses local per-fragment variables (render-correctness). The event-clear lint doesn't cover events outside components and Engine (runtime-core). F11 clashes with macOS Show Desktop (project-window). | merged (train 2) |
-| agent-authoring | An FBX foliage layer draws 0 instances in the headless editor (a foliage-loader question). The generated project AGENTS.md sits near its 5,000-byte cap (5,153 was measured once). | in progress |
+| agent-authoring | An FBX foliage layer draws 0 instances in the headless editor (a foliage-loader question). The generated project AGENTS.md sits near its 5,000-byte cap (5,153 was measured once). | merged (train 6) |
 | platform-build | macOS CMake builds copy no plugin bundles. Carried-plugin lists include `.meta` files (mobile-shipping). `/MP` isn't capped, so Visual Studio can run N×N compilers (build-toolchain). | merged (train 1) |
 | code-editor-git | Subversion scene diffs, and the `diff_scene`/`diff_file` defaults flagged in the spec. Prebuilt players compare only the major format version. | merged (train 1) |
 
@@ -65,3 +65,26 @@ worktree `/var/lib/orquester/workspaces/jaspersito/dc-wt/fu-<name>` and branch `
   shader suites, 11 MCP files (post-fx golden green after fix/postfx-golden: Dynamic Batching's world-space vertices moved
   89 pixels by 1/255), lints, test_grade, tool budget, TOOLS.md check, the water shader matrix (1740 compiles, 0 failed),
   web, the PCSS web gate, Android (rerun after box D's disk filled). tools/build.sh now forwards the MCP golden update modes.
+- Train 6 (2026-11-08): agent-authoring, on box B, merged with S65's main-thread model loads (the deferral moved into
+  loadGLTFModel with the placed-copy flag): WERROR linux, core foliage/spline/instancing/mesh-memory/texture suites, editor
+  shared-data and placed-model suites, 12 MCP files, lints, test_grade, tool budget, TOOLS.md check, web, Android: green.
+  Open: one unreproduced editor crash in test_saved_output_determinism (TableCrate screenshot), recorded in its spec.
+
+- Train 7 (2026-11-08): mesh-memory's S55 item after fix/submesh-drop landed, with two leak fixes (mesh/model undo/redo,
+  S55's shadow index buffer), on box D: WERROR linux, core `*Gpu*`/`*Golden*`/culling/batching suites, editor shared-data
+  and command suites, 11 MCP files (new test_mesh_undo_resources), lints, test_grade, TOOLS.md check, web, Android (rerun
+  after a JDK download timeout): green. Every workstream is merged.
+
+## Not compiled or run (owner, 2026-11-08: skip the Windows and Mac check)
+
+Nothing here ran on Windows, macOS or iOS. What each workstream left for those machines (commands in its spec's
+Follow-ups section):
+
+- mesh-memory: `MeshMemory.*` in MSVC Debug and Release builds (the ceilings rest on computed MSVC layouts).
+- platform-build: a Visual Studio export build timed with `--parallel 1` + `/MP<n>` against the old flags; a Mac export
+  with a team-signed dynamic framework, an `.xcframework`, an `.a` and a `.bundle` through CMake (`otool -l`, `codesign -dv`,
+  launch) and through `jasperengine.py --platform macos-xcode`.
+- lints-keys: Maximize On Play's Control+Cmd+F in the native macOS menu (`BackendMac.mm`).
+- ssr, pcss-gles, water-uniforms, lit-uniforms: D3D11 and Metal only through the editor's shader matrix (all six backends
+  compile), not through GPU tests; ssr's exported-swapchain blit path only runs in exported builds.
+- code-editor-git, agent-authoring: portable C++ only, not compiled on Windows or macOS.
