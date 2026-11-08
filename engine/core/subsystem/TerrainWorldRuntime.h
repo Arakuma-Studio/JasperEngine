@@ -46,6 +46,8 @@ namespace jasperengine {
         virtual std::string tilePath(terrain::TileCoord tile) const = 0;
         // overview.jtile, or empty: the runtime assembles it from the tiles (the editor's stale cache)
         virtual std::string overviewPath() const = 0;
+        // R27: T5's tiles/x_z.jetrees beside the tile (the manifest says whether it is there)
+        virtual std::string treePath(terrain::TileCoord tile) const;
         // The project folder, which the editor writes: Play never writes (R31)
         virtual bool editable() const { return false; }
     };
@@ -64,6 +66,8 @@ namespace jasperengine {
 
     // tiles/x_z.jtile under a world's folder
     JASPERENGINE_API std::string terrainWorldTileName(terrain::TileCoord tile);
+    // R27: tiles/x_z.jetrees, T5's trees of that tile
+    JASPERENGINE_API std::string terrainWorldTreeName(terrain::TileCoord tile);
     // zstd's decompressor: every player has it (D7)
     JASPERENGINE_API terrain::TileCodec terrainWorldDecodeCodec();
     // R34's defaults for the platform this build runs on

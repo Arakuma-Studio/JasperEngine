@@ -189,6 +189,18 @@ std::string jasperengine::terrainWorldTileName(TileCoord tile) {
     return "tiles/" + std::to_string(tile.x) + "_" + std::to_string(tile.z) + ".jtile";
 }
 
+std::string jasperengine::terrainWorldTreeName(TileCoord tile) {
+    return "tiles/" + std::to_string(tile.x) + "_" + std::to_string(tile.z) + ".jetrees";
+}
+
+// beside the tile, wherever the source keeps it
+std::string TerrainWorldSource::treePath(TileCoord tile) const {
+    std::string path = tilePath(tile);
+    const std::string tileName = terrainWorldTileName(tile);
+    if (path.size() >= tileName.size()) path.replace(path.size() - tileName.size(), tileName.size(), terrainWorldTreeName(tile));
+    return path;
+}
+
 TileCodec jasperengine::terrainWorldDecodeCodec() {
     TileCodec codec;
     codec.decompress = [](std::span<const uint8_t> in, std::span<uint8_t> out) {

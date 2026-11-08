@@ -176,6 +176,12 @@ namespace {
 void editFoliageFromOps(const CallPtr& call, const TerrainTarget& target, std::vector<Op> ops, const OpSpace& space, bool dryRun) {
     const Json& args = call->args();
     Scene* scene = target.engineScene();
+    // T4 R27: a World's trees are a file per tile, and these ops edit one Terrain's tree data
+    if (scene->getComponent<TerrainComponent>(target.entity).world) {
+        call->fail("Foliage ops do not run on a Terrain World: its trees are a file per tile. Place them on a Terrain, then convert it with "
+                   "edit_terrain_world {create: {from_terrain}}. Nothing was changed.");
+        return;
+    }
     for (size_t i = 0; i < ops.size(); i++) {
         if (!isFoliageOp(ops[i])) {
             call->fail("ops[" + std::to_string(i) + "]: foliage ops (scatter_by_rules, clear_foliage, place_trees, remove_trees, convert_placed_to_trees, "
@@ -247,6 +253,37 @@ Json foliageStatsJson(Project* project, SceneProject* sceneProject, Entity entit
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
     FoliageSystem* foliage = scene->getSystem<FoliageSystem>().get();
     const FoliageStats& stats = foliage->getStats(entity);
+    const auto totalsOf = [&](const FoliageStats& counts) {
+        char hash[17];
+        snprintf(hash, sizeof(hash), "%016llx", static_cast<unsigned long long>(foliage->getPlacementHash(entity)));
+        return Json{
+            {"resident", counts.detailResident + counts.treesResident}, {"visible", counts.detailVisible + counts.treesVisible},
+            {"mesh_trees", counts.meshTrees}, {"trees_total", counts.treesTotal},
+            {"cells", counts.cells}, {"draws", counts.draws}, {"stream_bytes", counts.streamBytes}, {"buffer_bytes", counts.bufferBytes},
+            {"cpu_bytes", counts.cpuBytes}, {"gpu_bytes", counts.gpuBytes}, {"main_thread_ms", counts.mainThreadMs},
+            {"pending_cells", counts.pendingCells}, {"budget_exceeded", counts.budgetExceeded}, {"hash", hash}
+        };
+    };
+
+    if (terrain.world) {
+        // T4 R27: a World's foliage is what its resident tiles hold now, one region a tile
+        Json details = Json::array();
+        for (int l = 0; l < static_cast<int>(terrain.foliageLayers.size()); l++) {
+            const uint64_t drawn = foliage->getInstanceCount(entity, l);
+            details.push_back({{"layer", l}, {"mesh", McpValues::assetPathToJson(project, terrain.foliageLayers[l].meshPath)}, {"drawn", drawn}, {"instances", drawn}});
+        }
+        Json trees = Json::array();
+        for (int p = 0; p < static_cast<int>(terrain.treePrototypes.size()); p++) {
+            int64_t count = 0;
+            foliage->forEachTreeStore(entity, [&](const TreeStore& store) {
+                for (const TreeRecord& record : store.records()) count += record.prototypeId == terrain.treePrototypes[p].id ? 1 : 0;
+            });
+            trees.push_back({{"prototype", p}, {"mesh", McpValues::assetPathToJson(project, terrain.treePrototypes[p].meshPath)}, {"count", count}});
+        }
+        Json totals = totalsOf(stats);
+        totals["regions"] = foliage->getRegionCount(entity);
+        return Json{{"details", details}, {"trees", trees}, {"totals", totals}};
+    }
 
     const float half = terrain.terrainSize * 0.5f;
     const FoliageRegionXZ bounds = region.value_or(FoliageRegionXZ{-half, -half, half, half});
@@ -362,16 +399,7 @@ Json foliageStatsJson(Project* project, SceneProject* sceneProject, Entity entit
                          {"impostor_state", state == ImpostorState::None ? "none" : state == ImpostorState::Baked ? "baked" : "out_of_date"}});
     }
 
-    char hash[17];
-    snprintf(hash, sizeof(hash), "%016llx", static_cast<unsigned long long>(foliage->getPlacementHash(entity)));
-    Json totals = {
-        {"resident", stats.detailResident + stats.treesResident}, {"visible", stats.detailVisible + stats.treesVisible},
-        {"mesh_trees", stats.meshTrees}, {"trees_total", stats.treesTotal},
-        {"cells", stats.cells}, {"draws", stats.draws}, {"stream_bytes", stats.streamBytes}, {"buffer_bytes", stats.bufferBytes},
-        {"cpu_bytes", stats.cpuBytes}, {"gpu_bytes", stats.gpuBytes}, {"main_thread_ms", stats.mainThreadMs},
-        {"pending_cells", stats.pendingCells}, {"budget_exceeded", stats.budgetExceeded}, {"hash", hash}
-    };
-    return Json{{"details", details}, {"trees", trees}, {"totals", totals}};
+    return Json{{"details", details}, {"trees", trees}, {"totals", totalsOf(stats)}};
 }
 
 }

@@ -11,6 +11,7 @@
 #include "object/Camera.h"
 #include "object/Light.h"
 #include "object/Terrain.h"
+#include "subsystem/FoliageSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/TerrainWorldRuntime.h"
 #include "terrain/world/TerrainTileFormat.h"
@@ -24,6 +25,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdlib>
 #include <fstream>
 #include <memory>
 #include <vector>
@@ -51,12 +53,13 @@ namespace {
     }
 
     // A cooked world (world.bin, overview.jtile, tiles), as an export writes it; raw sections
-    void writeWorld(const std::filesystem::path& folder, int low, int high) {
+    void writeWorld(const std::filesystem::path& folder, int low, int high, bool density = false) {
         WorldManifest manifest;
         manifest.guid = "7d3a1b2c4e5f60718293a4b5c6d7e8f9";
         manifest.lattice.tileQuads = TILE_QUADS;
         manifest.lattice.spacing = 1.0f;
         manifest.maps.maxHeight = MAX_HEIGHT;
+        manifest.maps.densityMaps = density ? 1 : 0;
         WorldOverview overview;
         initOverview(overview, manifest.lattice, TileCoord(low, low), TileCoord(high, high), 0);
         for (int z = low; z <= high; z++) {
@@ -65,6 +68,11 @@ namespace {
                 initTile(tile, manifest.lattice, TileCoord(x, z), 0);
                 for (int j = 0; j < TILE_QUADS + 3; j++) {
                     for (int i = 0; i < TILE_QUADS + 3; i++) tile.setSample(i, j, bumpySample(x * TILE_QUADS + i - 1, z * TILE_QUADS + j - 1));
+                }
+                if (density) {
+                    // T4 R27: a detail layer full everywhere
+                    tile.density.resize(1);
+                    tile.density[0].allocate(manifest.lattice.densitySide(), 1, 8, 255);
                 }
                 const float colours[] = {0.35f, 0.6f, 0.3f, 1.0f};
                 buildDerived(tile, manifest.lattice, colours, 0);
@@ -109,8 +117,8 @@ namespace {
             Engine::removeScene(&scene);
         }
 
-        void makeWorld(int low, int high, int poolSize) {
-            writeWorld(files.path() / "Island.terrainworld", low, high);
+        void makeWorld(int low, int high, int poolSize, bool density = false) {
+            writeWorld(files.path() / "Island.terrainworld", low, high, density);
             terrain = std::make_unique<Terrain>(&scene);
             terrain->setColor(0.35f, 0.6f, 0.3f);
             TerrainWorldComponent world;
@@ -138,6 +146,12 @@ namespace {
             const bool done = jasperengine::test::GpuEnvironment::runFrames(ready, 900);
             jasperengine::test::GpuEnvironment::drawFrames(3);
             return done && ready();
+        }
+
+        std::vector<uint8_t> pixels() {
+            std::vector<uint8_t> rgba;
+            jasperengine::test::readTexture(jasperengine::test::GpuEnvironment::target().getRender().getColorTexture(), FRAME_WIDTH, FRAME_HEIGHT, rgba);
+            return rgba;
         }
 
         int magentaPixels() {
@@ -204,4 +218,52 @@ TEST_F(TerrainWorldGpu, CastsShadowsAsAStaticCaster) {
     ASSERT_TRUE(settle(true));
     EXPECT_EQ(magentaPixels(), 0);
     EXPECT_GT(runtime()->stats().draws[0][1], 0) << "the shadow passes drew the world";
+}
+
+TEST_F(TerrainWorldGpu, FoliageDrawsOnResidentTiles) {
+    // T4 R27: a detail layer on the World's Terrain grows on its resident tiles, drawn from each tile's
+    // region, in front of the ground it stands on
+    makeWorld(-2, 1, 0, true);
+    const std::filesystem::path mesh = files.path() / "blade.obj";
+    {
+        std::ofstream out(mesh);
+        out << "v -0.6 0 0\nv 0.6 0 0\nv 0.6 3 0\nv -0.6 3 0\nv 0 0 -0.6\nv 0 0 0.6\nv 0 3 0.6\nv 0 3 -0.6\nvn 0 0 1\nvn 1 0 0\n"
+               "f 1//1 2//1 3//1\nf 1//1 3//1 4//1\nf 5//2 6//2 7//2\nf 5//2 7//2 8//2\n";
+    }
+    TerrainFoliageLayer layer;
+    layer.meshPath = AssetRef(mesh.generic_string());
+    layer.density = 0.4f;
+    layer.maxSlope = 90.0f;
+    layer.drawDistance = 120.0f;
+    layer.seed = 3;
+    scene.getComponent<TerrainComponent>(terrain->getEntity()).foliageLayers.push_back(layer);
+    lookDown(0.0f, 0.0f, 40.0f);
+    ASSERT_TRUE(settle(true));
+    FoliageSystem* foliage = scene.getSystem<FoliageSystem>().get();
+    const auto grown = [foliage]() { return !foliage->hasPendingUpdates(); };
+    ASSERT_TRUE(jasperengine::test::GpuEnvironment::runFrames(grown, 900));
+    jasperengine::test::GpuEnvironment::drawFrames(3);
+    const Entity world = terrain->getEntity();
+    EXPECT_GT(foliage->getRegionCount(world), 0u);
+    EXPECT_GT(foliage->getStats(world).detailVisible, 0u) << "the main view drew the tiles' details";
+    EXPECT_GT(foliage->getStats(world).draws, 0u);
+    const std::vector<uint8_t> with = pixels();
+
+    // the same frame with the layer's density at nothing: the ground alone
+    scene.getComponent<TerrainComponent>(terrain->getEntity()).foliageLayers[0].density = 0.0f;
+    const auto cleared = [foliage, world]() { return !foliage->hasPendingUpdates() && foliage->getInstanceCount(world, 0) == 0; };
+    ASSERT_TRUE(jasperengine::test::GpuEnvironment::runFrames(cleared, 900));
+    jasperengine::test::GpuEnvironment::drawFrames(3);
+    const std::vector<uint8_t> without = pixels();
+    ASSERT_EQ(with.size(), without.size());
+    ASSERT_FALSE(with.empty());
+    int changed = 0;
+    for (size_t i = 0; i + 3 < with.size(); i += 4) {
+        if (std::abs(static_cast<int>(with[i]) - static_cast<int>(without[i])) + std::abs(static_cast<int>(with[i + 1]) - static_cast<int>(without[i + 1])) +
+                std::abs(static_cast<int>(with[i + 2]) - static_cast<int>(without[i + 2])) > 24) {
+            changed++;
+        }
+    }
+    EXPECT_GT(changed, 200) << "the details show over the ground";
+    EXPECT_EQ(magentaPixels(), 0);
 }

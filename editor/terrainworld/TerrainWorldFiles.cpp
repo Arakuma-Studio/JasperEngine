@@ -167,6 +167,8 @@ bool jasperengine::editor::readWorldManifest(const fs::path& folder, WorldManife
             info.maxHeight = whole.max;
             manifest.skirtDepth = std::max(manifest.skirtDepth, data.skirtDepth);
         }
+        std::error_code ec;
+        info.trees = fs::is_regular_file(folder / terrainWorldTreeName(tile), ec);
         manifest.tiles.push_back(info);
     }
     out = std::move(manifest);
@@ -246,6 +248,36 @@ bool jasperengine::editor::createWorldFolder(const fs::path& folder, WorldManife
     return writeWorldManifest(folder, manifest, error);
 }
 
+bool jasperengine::editor::writeWorldFolder(const fs::path& folder, WorldManifest& manifest, const std::vector<std::shared_ptr<WorldTile>>& tiles,
+                                            const std::map<uint32_t, std::vector<uint8_t>>& trees, std::string& error) {
+    std::error_code ec;
+    if (fs::exists(folder, ec)) {
+        error = "a file or folder is already at " + folder.string();
+        return false;
+    }
+    if (manifest.guid.empty()) manifest.guid = AssetDatabase::generateGuid();
+    manifest.tiles.clear();
+    // the tiles first and the manifest last: a folder without a manifest is not yet a world
+    for (const std::shared_ptr<WorldTile>& tile : tiles) {
+        if (!writeTileFile(folder, *tile, error)) return false;
+        WorldTileInfo info;
+        info.coord = tile->coord;
+        const TileMinMax whole = tileNodeMinMax(*tile, manifest.lattice, manifest.lattice.tileLevel(), 0, 0);
+        info.minHeight = whole.min;
+        info.maxHeight = whole.max;
+        const auto treeFile = trees.find(tile->coord.key());
+        if (treeFile != trees.end()) {
+            if (!writeAtomic(folder / terrainWorldTreeName(tile->coord), std::string(treeFile->second.begin(), treeFile->second.end()), io::Durability::Document, error)) {
+                return false;
+            }
+            info.trees = true;
+        }
+        manifest.skirtDepth = std::max(manifest.skirtDepth, tile->skirtDepth);
+        manifest.tiles.push_back(info);
+    }
+    return writeWorldManifest(folder, manifest, error);
+}
+
 fs::path jasperengine::editor::worldOverviewCachePath(const fs::path& projectInternal, const std::string& guid) {
     return projectInternal / "cache" / "terrainworld" / guid / "overview.jtile";
 }
@@ -272,6 +304,10 @@ bool EditorWorldSource::manifest(WorldManifest& out, std::string& error) {
 
 std::string EditorWorldSource::tilePath(TileCoord tile) const {
     return (worldFolder / terrainWorldTileName(tile)).string();
+}
+
+std::string EditorWorldSource::treePath(TileCoord tile) const {
+    return (worldFolder / terrainWorldTreeName(tile)).string();
 }
 
 fs::path EditorWorldSource::overviewCache() const {

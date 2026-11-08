@@ -13,6 +13,8 @@
 #include "terrain/world/TerrainWorldData.h"
 
 #include <filesystem>
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -36,6 +38,11 @@ namespace jasperengine::editor {
     // that exists.
     bool createWorldFolder(const std::filesystem::path& folder, terrain::WorldManifest& manifest, const std::vector<terrain::TileCoord>& tiles,
                            std::string& error, const std::vector<float>& layerColours = {}, int layerCount = 0);
+    // R33: a new world folder of tiles made elsewhere (a converted Terrain), each with T5's tree file
+    // when it has trees (tiles/x_z.jetrees, R27); the manifest last. Refuses a folder that exists.
+    bool writeWorldFolder(const std::filesystem::path& folder, terrain::WorldManifest& manifest,
+                          const std::vector<std::shared_ptr<terrain::WorldTile>>& tiles,
+                          const std::map<uint32_t, std::vector<uint8_t>>& trees, std::string& error);
 
     // R52: the overview cache of a world and the fingerprint (tile names, sizes, times) it was made from
     std::filesystem::path worldOverviewCachePath(const std::filesystem::path& projectInternal, const std::string& guid);
@@ -48,6 +55,7 @@ namespace jasperengine::editor {
         bool manifest(terrain::WorldManifest& out, std::string& error) override;
         std::string tilePath(terrain::TileCoord tile) const override;
         std::string overviewPath() const override;
+        std::string treePath(terrain::TileCoord tile) const override;
         bool editable() const override { return true; }
 
         const std::filesystem::path& folder() const { return worldFolder; }

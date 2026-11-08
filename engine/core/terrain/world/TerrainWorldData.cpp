@@ -112,6 +112,17 @@ void jasperengine::terrain::encodeWorldBin(const WorldManifest& manifest, std::v
         w.u16(tile.minHeight);
         w.u16(tile.maxHeight);
     }
+    // R27: the tiles with trees, a tail a world without any leaves out, so its bytes stay as they were
+    uint32_t treeTiles = 0;
+    for (const WorldTileInfo& tile : manifest.tiles) treeTiles += tile.trees ? 1u : 0u;
+    if (treeTiles > 0) {
+        w.u32(treeTiles);
+        for (const WorldTileInfo& tile : manifest.tiles) {
+            if (!tile.trees) continue;
+            w.u16(static_cast<uint16_t>(tile.coord.x));
+            w.u16(static_cast<uint16_t>(tile.coord.z));
+        }
+    }
     w.u64(fnv1a64(out.data(), out.size()));
 }
 
@@ -162,6 +173,18 @@ bool jasperengine::terrain::decodeWorldBin(std::span<const uint8_t> bytes, World
         tile.minHeight = r.u16();
         tile.maxHeight = r.u16();
         if (!tile.coord.addressable()) return fail("world.bin names a tile past the addressable grid");
+    }
+    if (r.ok && r.at < r.in.size()) {
+        const uint32_t treeTiles = r.u32();
+        if (treeTiles > tileCount || !r.need(static_cast<size_t>(treeTiles) * 4)) return fail("world.bin is truncated");
+        std::vector<uint32_t> keys(treeTiles);
+        for (uint32_t& key : keys) {
+            const int16_t x = static_cast<int16_t>(r.u16());
+            const int16_t z = static_cast<int16_t>(r.u16());
+            key = TileCoord(x, z).key();
+        }
+        std::sort(keys.begin(), keys.end());
+        for (WorldTileInfo& tile : manifest.tiles) tile.trees = std::binary_search(keys.begin(), keys.end(), tile.coord.key());
     }
     if (!r.ok || r.at != r.in.size()) return fail("world.bin is truncated");
     std::string why;

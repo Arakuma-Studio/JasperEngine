@@ -23,6 +23,9 @@
 namespace jasperengine {
 
     struct TerrainWorldComponent;
+    namespace terrain {
+        class FoliageRegion;
+    }
 
     class JASPERENGINE_API TerrainWorldSystem : public SubSystem {
     public:
@@ -80,11 +83,20 @@ namespace jasperengine {
             std::function<void()> callback;
         };
 
+        // R27: T5's foliage, one region per resident tile
+        struct FoliageTile {
+            std::shared_ptr<terrain::FoliageRegion> region;
+            uint32_t revision = 0;
+        };
+
         void syncRuntimes();
         void updateFocuses(TerrainWorldRuntime& runtime, const TerrainWorldComponent& component);
+        void syncFoliage(Entity entity, TerrainWorldRuntime& runtime);
+        void releaseFoliage(Entity entity);
         void release(Entity entity);
 
         std::map<Entity, std::unique_ptr<TerrainWorldRuntime>> runtimes;
+        std::map<Entity, std::map<uint32_t, FoliageTile>> foliageTiles;
         std::map<Entity, std::string> errors;
         std::vector<AreaCallback> areaCallbacks;
         int nextCallbackId = 1;

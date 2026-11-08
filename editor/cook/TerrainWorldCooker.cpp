@@ -132,6 +132,20 @@ bool TerrainWorldCooker::cook(const fs::path& source, const fs::path& destinatio
         report.compressedBytes += bytes.size();
         report.tiles++;
 
+        // R27: T5's trees of the tile ship beside it, as they are (world.bin lists them)
+        if (info.trees) {
+            std::ifstream file(source / terrainWorldTreeName(tile), std::ios::binary);
+            std::ostringstream text;
+            text << file.rdbuf();
+            if (!file) {
+                error = terrainWorldTreeName(tile) + " of " + source.filename().string() + " could not be read";
+                return false;
+            }
+            const std::string treeBytes = text.str();
+            if (!writeCooked(destination / terrainWorldTreeName(tile), std::vector<uint8_t>(treeBytes.begin(), treeBytes.end()), error)) return false;
+            report.compressedBytes += treeBytes.size();
+        }
+
         auto patch = std::make_shared<WorldTile>();
         patch->coord = tile;
         patch->overviewHeight = data->overviewHeight;

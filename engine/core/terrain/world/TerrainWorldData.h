@@ -30,6 +30,8 @@ namespace jasperengine::terrain {
     struct WorldTileInfo {
         TileCoord coord;
         uint16_t minHeight = 0, maxHeight = 0xFFFF;
+        // R27: T5's tiles/x_z.jetrees is beside it
+        bool trees = false;
     };
 
     struct WorldManifest {
