@@ -169,13 +169,13 @@ never build or run them.
 |---|---|---|---|---|---|
 | S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | merged and pushed |
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | implementing |
-| S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | in review |
+| S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | landing (batch 1) |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | spec done |
-| S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | implementing |
+| S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | in review |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | in review |
 | S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | implementing |
@@ -243,6 +243,19 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S43 is ready at `0762ecd1d` (main `c5e0a2a92` merged; shader cache v59, uber
+  `Pal` bit 19).
+  - Its gate on box B passed apart from failures in code identical on `main`: the Animator
+    `ShaderNeutralApi` hash, and three mats-fx `procmat-baked` fixture tests.
+  - With `WERROR`, two of `main`'s test files don't compile (`ParticleEffectAuthoringTest.cpp`,
+    `ProjectAssetFilesTest.cpp`).
+  - Batch 1 is S43 alone. Its web, android and Vulkan checks are running on box B in
+    `.worktrees/land` (`land/batch1`).
+- 2026-11-09: S49 passed its lighter gate at `0c27d5d98` (core 169, editor 143, 120 MCP tests;
+  PARTICLES bits 12 `Pxl`, 13 `Ana`). Gap: Fire's smoke and Debris draw nothing, because S20 draws
+  no sub-emitters. An independent review is running.
+  - `rbox` stale-build bug fixed: rsync kept source mtimes, so a file edited during a box compile
+    never rebuilt. `rbox` now touches every file each sync transfers (verified).
 - 2026-11-09: S51's review found 1 blocker: the "original" built-in pixel font matched the
   classic 5×7 LCD table, so it must be redrawn, with an originality test. It also found 7
   should-fix issues; all were sent back.
