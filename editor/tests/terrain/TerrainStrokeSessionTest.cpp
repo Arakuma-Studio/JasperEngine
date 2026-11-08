@@ -460,3 +460,34 @@ TEST(TerrainStrokeSession, TheStrokeLogReplaysToTheSameBytes) {
         EXPECT_EQ(std::memcmp(dragged.mapBytes(HEIGHT_MAP), replayed.mapBytes(HEIGHT_MAP), bytes), 0) << "byte for byte, mode " << static_cast<int>(mode);
     }
 }
+
+// R56: Paint Texture's alternate moves the weights toward their true 3 x 3 average, so a hard edge softens
+TEST(TerrainStrokeSession, PaintTextureAlternateAveragesTheBlend) {
+    constexpr int N = 33;
+    const terrain::MapId blend{terrain::MapKind::Blend, 0};
+    terrain::RawMapStore store(static_cast<float>(N), 10.0f);
+    addHeight(store, N, 9000);
+    std::vector<uint8_t> bytes(static_cast<size_t>(N) * N * 4, 0);
+    for (int y = 0; y < N; y++) {
+        for (int x = 0; x < N; x++) {
+            const size_t at = (static_cast<size_t>(y) * N + x) * 4;
+            bytes[at] = x < N / 2 ? 255 : 0;   // layer 0 on the left half
+            bytes[at + 3] = 255;
+        }
+    }
+    store.addMap(blend, N, N, 4, 8, std::move(bytes));
+    TerrainStrokeBrush brush = raiseBrush(6.0f, 1.0f);
+    brush.mode = TerrainBrushMode::PaintLayer;
+    brush.textureLayer = 0;
+    brush.alternate = true;
+    TerrainStrokeSession session(store, blend, static_cast<float>(N), brush);
+    for (int i = 0; i < 30; i++) ASSERT_TRUE(session.moveTo(0.0f, 0.0f, CLICK_SECONDS));
+    ASSERT_TRUE(session.flush());
+    const uint8_t* after = store.mapBytes(blend);
+    const uint8_t left = after[(static_cast<size_t>(N / 2) * N + N / 2 - 1) * 4];
+    const uint8_t right = after[(static_cast<size_t>(N / 2) * N + N / 2) * 4];
+    EXPECT_GT(left, 20);
+    EXPECT_LT(left, 255) << "the full side gave some weight to the edge";
+    EXPECT_GT(right, 0) << "and the empty side took some";
+    EXPECT_LT(right, 235);
+}
