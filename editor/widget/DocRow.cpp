@@ -148,7 +148,7 @@ namespace {
         ImGui::PushID("menu");
         if (ImGui::BeginPopupContextItem("##rowmenu")) {
             if (ImGui::MenuItem("Reset", nullptr, false, options.canReset && !options.readOnly && !options.isDefault)) frame.menuReset = true;
-            if (options.source != SourceDot::None && ImGui::MenuItem("Use Global Light", nullptr, false, !options.readOnly)) frame.menuUseSource = true;
+            if (options.source != SourceDot::None && ImGui::MenuItem(options.sourceMenu.c_str(), nullptr, false, !options.readOnly)) frame.menuUseSource = true;
             ImGui::Separator();
             if (ImGui::MenuItem("Copy Value", nullptr, false, !options.mixed)) frame.menuCopyValue = true;
             if (ImGui::MenuItem("Paste Value", nullptr, false, !options.readOnly && ImGui::GetClipboardText() != nullptr)) frame.menuPaste = true;

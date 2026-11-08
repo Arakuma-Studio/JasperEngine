@@ -472,6 +472,7 @@ const InheritanceRule* jasperengine::editor::titledesigner::inheritanceOf(const 
             continue;
         }
         if (!binding && rule.pattern == kindName + "." + member) return &rule;
+        if (!binding && rule.pattern == kindName + ".*") return &rule;
     }
     return nullptr;
 }
@@ -796,9 +797,11 @@ void jasperengine::editor::titledesigner::fieldRow(RowContext& ctx, const std::v
     bool inherited = false;
     ta::Json shownValue = values[0];
     if (rule && parent->is_object()) {
-        inherited = parent->value(rule->flagMember, false);
+        inherited = rule->sparse ? !parent->contains(key) : parent->value(rule->flagMember, false);
         if (inherited) {
-            if (rule->value) {
+            if (rule->valueAt) {
+                shownValue = rule->valueAt(doc, targets[0], key);
+            } else if (rule->value) {
                 shownValue = rule->value(doc, *parent, key);
             } else {
                 const ta::GlobalLightBinding& binding = effect ? effect->globalLight : generator->globalLight;
@@ -819,6 +822,7 @@ void jasperengine::editor::titledesigner::fieldRow(RowContext& ctx, const std::v
     options.readOnlyReason = ctx.readOnlyReason;
     options.source = rule ? (inherited ? ui::SourceDot::Inherited : ui::SourceDot::SetHere) : ui::SourceDot::None;
     options.canReset = !rule;
+    if (rule && rule->sparse) options.sourceMenu = "Inherit";
     options.flash = ctx.host && !ctx.host->flashingRow().empty() && ctx.host->flashingRow() == rowId;
     ta::Json defaultValue = param ? param->defaultValue : member->defaultValue;
     const bool numeric = kind == "number" || kind == "integer";
@@ -1129,7 +1133,7 @@ void jasperengine::editor::titledesigner::fieldRow(RowContext& ctx, const std::v
                 v = encodeNumber(ui::shiftEach(from, r.delta, options), options.integer);
             }
             edits.push_back({targets[i].layer, targets[i].path, v});
-            if (override && rule) {
+            if (override && rule && !rule->sparse) {
                 const std::string flagPath = parentPath.empty() ? rule->flagMember : parentPath + "." + rule->flagMember;
                 edits.push_back({targets[i].layer, flagPath, false});
             }
@@ -1175,12 +1179,25 @@ void jasperengine::editor::titledesigner::fieldRow(RowContext& ctx, const std::v
         std::vector<FieldEdit> edits;
         const bool toInherited = result.useSource ? true : !inherited;
         for (const FieldRef& target : targets) {
+            if (rule->sparse) {
+                // inherit: the sparse object without the member; set here: the value it showed
+                if (toInherited) {
+                    const ta::Json* object = parentPath.empty() ? nullptr : fieldValue(doc, {target.layer, parentPath});
+                    ta::Json rest = object && object->is_object() ? *object : ta::Json::object();
+                    rest.erase(key);
+                    edits.push_back({target.layer, parentPath, rest});
+                } else {
+                    edits.push_back({target.layer, target.path, shownValue});
+                }
+                continue;
+            }
             const std::string flagPath = parentPath.empty() ? rule->flagMember : parentPath + "." + rule->flagMember;
             edits.push_back({target.layer, flagPath, toInherited});
             // set here: the row keeps the value it showed
             if (!toInherited) edits.push_back({target.layer, target.path, shownValue});
         }
-        ctx.state->commit(editsToOps(edits), toInherited ? "Use Global Light" : stepName("Override", stepLabel, targets.size(), ctx.countNoun), &error);
+        const std::string sourceStep = rule->sparse ? stepName("Inherit", stepLabel, targets.size(), ctx.countNoun) : std::string("Use Global Light");
+        ctx.state->commit(editsToOps(edits), toInherited ? sourceStep : stepName("Override", stepLabel, targets.size(), ctx.countNoun), &error);
     }
     if (!error.empty() && ctx.host) ctx.host->reportError(error);
 }
@@ -1280,4 +1297,21 @@ void jasperengine::editor::titledesigner::paramRows(RowContext& ctx, const std::
         fieldRow(ctx, targets);
     }
     if (!replayKey.empty()) recordRows(ctx, replayKey, entriesBefore, auditsBefore);
+}
+
+// ---- S83 R41's cost badges ----
+
+ImVec4 jasperengine::editor::titledesigner::costBadgeColor(const CostBadge& badge) {
+    if (badge.amber) return ImVec4(0.96f, 0.68f, 0.18f, 1.0f);
+    if (badge.cls == "C0") return ImVec4(0.55f, 0.58f, 0.62f, 1.0f);
+    if (badge.cls == "C1") return ImVec4(0.45f, 0.76f, 0.47f, 1.0f);
+    if (badge.cls == "C2") return ImVec4(0.80f, 0.80f, 0.40f, 1.0f);
+    if (badge.cls == "C3") return ImVec4(0.92f, 0.58f, 0.30f, 1.0f);
+    return ImVec4(0.92f, 0.36f, 0.32f, 1.0f);
+}
+
+void jasperengine::editor::titledesigner::drawCostBadge(const CostBadge& badge) {
+    if (badge.cls.empty()) return;
+    ImGui::TextColored(costBadgeColor(badge), "%s", badge.amber ? (badge.cls + " Baked on mobile").c_str() : badge.cls.c_str());
+    if (!badge.tooltip.empty() && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", badge.tooltip.c_str());
 }

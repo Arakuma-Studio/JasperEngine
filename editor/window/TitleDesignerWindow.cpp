@@ -125,6 +125,8 @@ void TitleDesignerWindow::destroyLive() {
     for (const PreviewModeDef& mode : previewModes()) {
         if (mode.close) mode.close();
     }
+    livePreviews.clear();
+    liveStart = -1.0;
     canvas.reset();
     thumbnails.reset();
     libraryTiles.reset();
@@ -249,6 +251,9 @@ bool TitleDesignerWindow::open(const fs::path& file, std::string* error) {
     lintChange = ~0ull;
     searchText.clear();
     findings.clear();
+    livePreviews.clear();
+    liveStart = -1.0;
+    realtimeCheckedAt = -1.0;
     workspace.save();
     if (!windowOpen) setOpen(true);
     focusRequested = true;
@@ -311,7 +316,7 @@ bool TitleDesignerWindow::needsFrames() const {
     const CanvasRenderInfo& info = canvas->info();
     return info.busy || info.rebuilding || now() - lastViewChange < 0.5 || doc.gestureActive() || (thumbnails && thumbnails->pendingCount() > 0) ||
            (libraryTiles && libraryTiles->pendingCount() > 0) ||
-           textEditing() || drag != Drag::None;
+           textEditing() || drag != Drag::None || !livePreviews.empty();
 }
 
 bool TitleDesignerWindow::typing() const {
@@ -541,6 +546,15 @@ ta::Json TitleDesignerWindow::state() const {
                           return units;
                       }()}, {"index_units_frame", indexUnitsLastFrame}};
     out["library"] = {{"provider", libraryProvider() ? "registered" : "starter"}, {"shown", libraryShown}};
+    if (addOpen) {
+        // the Add palette as drawn last: its rail with counts and the listed entries
+        ta::Json rail = ta::Json::array();
+        for (const auto& [category, count] : addRail) rail.push_back({{"category", category}, {"count", count}});
+        out["add"] = {{"query", addQuery}, {"filter", addFilter}, {"rail", rail}, {"entries", addVisible}};
+    }
+    ta::Json live = ta::Json::array();
+    for (const auto& [layer, effect] : livePreviews) live.push_back(nodePath(doc.shown(), {NodeKind::Effect, layer, {}, effect}));
+    out["live_previews"] = live;
     ta::Json notices = ta::Json::array();
     if (cjkNoticeShown) notices.push_back("cjk_font_missing");
     out["notices"] = notices;

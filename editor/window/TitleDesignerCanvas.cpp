@@ -226,6 +226,12 @@ void TitleDesignerWindow::requestCanvasRender() {
         // S85's playhead reaches the canvas as overrides it samples; the time feeds the key
         request.docChange ^= (uint64_t)std::llround(time() * 1000.0) << 20;
     }
+    if (!livePreviews.empty() && !doc.previewActive()) {
+        // Preview Live (S83 D10): the live params' values at this step of the cycle
+        double phase = 0.0;
+        request.overrides = liveOverrides(&phase);
+        request.docChange ^= ((uint64_t)std::llround(phase * 6.0) + 1) << 40;
+    }
     canvas->requestRender(request);
 }
 

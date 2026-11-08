@@ -16,6 +16,7 @@
 #include "titleart/TitleArtRenderHost.h"
 #include "titleart/designer/TitleLayerThumbnails.h"
 #include "titleart/designer/TitlePages.h"
+#include "titleart/fx/FxGeneratorChecks.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -232,6 +233,14 @@ void TitleDesignerWindow::drawLayers() {
     DocumentView& v = view();
     const std::shared_ptr<const ta::TitleArtDoc> snapshot = doc.shownSnapshot();
     const ta::TitleArtHashes& hashes = shownHashes();
+    if (followMissingDoc != &shown || followMissingChange != doc.changeCount()) {
+        // following generators whose layer is gone (S83 R43), once per change
+        followMissingDoc = &shown;
+        followMissingChange = doc.changeCount();
+        followMissing.clear();
+        for (const TitleFollowProblem& p : titleFollowProblems(shown)) followMissing.insert(p.layerId);
+        documentPasses++;
+    }
 
     // flatten the tree: top of the list = front (S80 stores bottom first: D17)
     const uint64_t twirls = twirlsKey(v.twirls);
@@ -571,9 +580,26 @@ void TitleDesignerWindow::drawLayers() {
                     if (exposed) badges += " " ICON_FA_LINK;
                     const ImVec2 badgeSize = ImGui::CalcTextSize(badges.c_str());
                     dl->AddText(ImVec2(start.x + width - badgeSize.x - 6.0f, y), ImGui::GetColorU32(ImGuiCol_TextDisabled), badges.c_str());
+                    // the generator's or the stack's cost class (S83 R41), left of the badges
+                    float warnX = start.x + width - badgeSize.x - 24.0f;
+                    CostBadge cost;
+                    const bool hasEffects = !layer.value("effects", ta::Json::array()).empty();
+                    if ((type == ta::LayerType::Generator || hasEffects) && effectCost(row.layerId, std::string(), -1, cost)) {
+                        const std::string text = cost.amber ? cost.cls + "!" : cost.cls;
+                        const float cw = ImGui::CalcTextSize(text.c_str()).x;
+                        const float cx = start.x + width - badgeSize.x - cw - 12.0f;
+                        dl->AddText(ImVec2(cx, y), ImGui::ColorConvertFloat4ToU32(costBadgeColor(cost)), text.c_str());
+                        if (ImGui::IsMouseHoveringRect(ImVec2(cx, start.y), ImVec2(cx + cw, start.y + rowHeight))) ImGui::SetTooltip("%s", cost.tooltip.c_str());
+                        warnX = cx - 18.0f;
+                    }
                     if (type == ta::LayerType::Unknown) {
-                        dl->AddText(ImVec2(start.x + width - badgeSize.x - 24.0f, y), IM_COL32(240, 170, 50, 255), ICON_FA_TRIANGLE_EXCLAMATION);
+                        dl->AddText(ImVec2(warnX, y), IM_COL32(240, 170, 50, 255), ICON_FA_TRIANGLE_EXCLAMATION);
                         if (hovered) ImGui::SetTooltip("Unknown layer type '%s': kept as it is, not drawn", str(layer, "type").c_str());
+                    }
+                    if (type == ta::LayerType::Generator && followMissing.count(row.layerId)) {
+                        // S83 R43: the row warning; Pick Layer is on its Properties page
+                        dl->AddText(ImVec2(warnX, y), IM_COL32(240, 170, 50, 255), ICON_FA_TRIANGLE_EXCLAMATION);
+                        if (hovered) ImGui::SetTooltip("Follows a deleted layer: it draws nothing. Pick Layer on its Properties page");
                     }
                     if (row.layerId == primary.layer && primary.kind == NodeKind::Layer && pendingScrollRow == "layer:" + row.layerId) {
                         ImGui::SetScrollHereY(0.5f);
@@ -714,6 +740,21 @@ void TitleDesignerWindow::drawLayers() {
                         ImGui::PopStyleColor();
                     }
                     dl->AddText(ImVec2(x, y), ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
+                    if (row.kind == Row::Kind::Effect) {
+                        // its cost class (S83 R41)
+                        const ta::Json& stack = row.part.empty() ? (*row.layer)["effects"] : (*row.layer)["part_effects"][row.part];
+                        int index = -1;
+                        for (size_t k = 0; k < stack.size(); k++) {
+                            if (str(stack[k], "id") == row.item) index = (int)k;
+                        }
+                        CostBadge badge;
+                        if (index >= 0 && effectCost(row.layerId, row.part, index, badge)) {
+                            const std::string text = badge.amber ? badge.cls + " Baked on mobile" : badge.cls;
+                            const float bx = start.x + width - ImGui::CalcTextSize(text.c_str()).x - 6.0f;
+                            dl->AddText(ImVec2(bx, y), ImGui::ColorConvertFloat4ToU32(costBadgeColor(badge)), text.c_str());
+                            if (ImGui::IsMouseHoveringRect(ImVec2(bx, start.y), ImVec2(start.x + width, start.y + rowHeight))) ImGui::SetTooltip("%s", badge.tooltip.c_str());
+                        }
+                    }
                 }
                 ImGui::SetCursorScreenPos(ImVec2(start.x, start.y + rowHeight));
             }

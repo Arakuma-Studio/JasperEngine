@@ -9,6 +9,8 @@
 
 #include "profiler/Profile.h"
 #include "titleart/TitleArtIO.h"
+#include "titleart/fx/FxGeneratorChecks.h"
+#include "titleart/fx/FxPresets.h"
 #include "widget/ColorField.h"
 
 #include "external/IconsFontAwesome6.h"
@@ -17,6 +19,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <random>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -81,16 +84,41 @@ namespace {
         return member ? member->kind : std::string();
     }
 
+    void drawRegistered(RowContext& ctx, const SectionDef& def, const std::vector<std::string>& layers, const std::vector<std::string>& parts,
+                        bool defaultOpen) {
+        const std::string summary = def.summary && !ctx.collecting() ? def.summary(*ctx.state) : std::string();
+        if (beginSection(ctx, "reg_" + def.id, def.title, summary, defaultOpen)) {
+            def.draw(ctx, layers, parts);
+            endSection(ctx);
+        }
+    }
+
     void registeredSections(RowContext& ctx, SectionDef::Page page, const std::vector<std::string>& layers, const std::vector<std::string>& parts) {
         for (const SectionDef& def : sections()) {
-            if (def.page != page || !def.draw) continue;
+            if (def.page != page || !def.draw || !def.parent.empty() || !def.replaces.empty()) continue;
             if (def.applies && !def.applies(*ctx.state)) continue;
-            const std::string summary = def.summary ? def.summary(*ctx.state) : std::string();
-            if (beginSection(ctx, "reg_" + def.id, def.title, summary, false)) {
-                def.draw(ctx, layers, parts);
-                endSection(ctx);
-            }
+            drawRegistered(ctx, def, layers, parts, false);
         }
+    }
+
+    // the sections registered inside S82's section `parent` (§6.8)
+    void childSections(RowContext& ctx, SectionDef::Page page, const std::string& parent, const std::vector<std::string>& layers,
+                       const std::vector<std::string>& parts) {
+        for (const SectionDef& def : sections()) {
+            if (def.page != page || !def.draw || def.parent != parent) continue;
+            if (def.applies && !def.applies(*ctx.state)) continue;
+            drawRegistered(ctx, def, layers, parts, false);
+        }
+    }
+
+    // a registered section that takes the place of S82's section `id` for this selection
+    const SectionDef* replacingSection(RowContext& ctx, SectionDef::Page page, const std::string& id) {
+        for (const SectionDef& def : sections()) {
+            if (def.page != page || !def.draw || def.replaces != id) continue;
+            if (def.applies && !def.applies(*ctx.state)) continue;
+            return &def;
+        }
+        return nullptr;
     }
 
     // a material (face, a rim's, a character's face): its sub-objects as sections
@@ -175,8 +203,35 @@ namespace {
             if (ctx.readOnly) ImGui::EndDisabled();
             ImGui::SameLine();
             const std::string label = std::string(def ? def->label : type.c_str()) + (def && !def->gizmos.empty() ? "  \xE2\x9C\xA5" : "");
-            if (ImGui::Selectable((label + "##fx").c_str(), ctx.state->isSelected(node)) && ctx.host) ctx.host->selectNode(node);
+            CostBadge badge;
+            const bool costed = ctx.host && ctx.host->effectCost(layer, part, (int)i, badge);
+            const bool live = def && def->live.kind != ta::LiveKind::None && ctx.host;
+            const float right = (costed ? ImGui::CalcTextSize(badge.amber ? "C4 Baked on mobile" : "C0").x + 8.0f : 0.0f) +
+                                (live ? ImGui::GetFrameHeight() + 4.0f : 0.0f);
+            if (ImGui::Selectable((label + "##fx").c_str(), ctx.state->isSelected(node), 0, ImVec2(ImGui::GetContentRegionAvail().x - right, 0.0f)) && ctx.host) {
+                ctx.host->selectNode(node);
+            }
             if (ImGui::IsItemHovered() && def) ImGui::SetTooltip("%s", def->description);
+            if (costed) {
+                ImGui::SameLine();
+                drawCostBadge(badge);
+            }
+            if (live) {
+                // S83 D10's live variant played on the canvas (view state, never saved)
+                ImGui::SameLine();
+                const std::string id = str(effect, "id");
+                const bool on = ctx.host->livePreviewOn(layer, id);
+                if (on) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+                if (ImGui::SmallButton(on ? ICON_FA_STOP "##live" : ICON_FA_PLAY "##live")) ctx.host->setLivePreview(layer, id, !on);
+                if (on) ImGui::PopStyleColor();
+                if (ImGui::IsItemHovered()) {
+                    std::string params;
+                    for (const char* p : def->live.params) params += (params.empty() ? "" : ", ") + std::string(p);
+                    ImGui::SetTooltip("Preview Live: plays %s on the canvas as a Realtime title animates them without re-rendering "
+                                      "(view only, not saved)",
+                                      params.c_str());
+                }
+            }
             if (!def) {
                 ImGui::SameLine();
                 ImGui::TextColored(ImVec4(0.95f, 0.65f, 0.2f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION);
@@ -185,6 +240,131 @@ namespace {
             ImGui::PopID();
         }
         if (!ctx.readOnly && ImGui::Button(ICON_FA_PLUS " Add Effect", ImVec2(-1.0f, 0.0f)) && ctx.host) ctx.host->openAddPalette("effects");
+    }
+
+    // S83 R39: an effect's or generator's presets as chips over its rows; a chip sets every
+    // param to the preset's value over the type's defaults (one step "Apply Preset <name>"),
+    // hovering it previews that (no step); a seed param gets the dice ("Randomize Seed")
+    void presetChips(RowContext& ctx, const std::string& layer, const std::string& base, const std::string& type, const std::vector<ta::ParamDef>& params) {
+        if (ctx.collecting()) return;
+        const std::vector<TitleFxPreset>& presets = TitleFxPresets::forType(type);
+        bool hovering = false;
+        auto valuesOf = [&](const TitleFxPreset& preset) {
+            std::vector<FieldEdit> edits;
+            for (const ta::ParamDef& param : params) {
+                auto it = preset.params.find(param.key);
+                edits.push_back({layer, base + "." + param.key, it != preset.params.end() ? *it : param.defaultValue});
+            }
+            return editsToOps(edits);
+        };
+        if (!presets.empty()) {
+            ImGui::TextDisabled("Presets");
+            float x = ImGui::GetItemRectMax().x;
+            const float right = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+            if (ctx.readOnly) ImGui::BeginDisabled();
+            for (size_t i = 0; i < presets.size(); i++) {
+                const TitleFxPreset& preset = presets[i];
+                const float w = ImGui::CalcTextSize(preset.name.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+                if (x + ImGui::GetStyle().ItemSpacing.x + w < right) ImGui::SameLine();
+                ImGui::PushID((int)i);
+                if (ImGui::SmallButton(preset.name.c_str())) {
+                    ctx.state->clearPreview();
+                    std::string error;
+                    ctx.state->commit(valuesOf(preset), "Apply Preset " + preset.name, &error);
+                    if (!error.empty() && ctx.host) ctx.host->reportError(error);
+                }
+                if (ImGui::IsItemHovered() && !ctx.readOnly) {
+                    hovering = true;
+                    const std::string id = "preset:" + layer + ":" + base + ":" + preset.id;
+                    if (!ctx.state->preview() || ctx.state->preview()->id != id) {
+                        PreviewItem item;
+                        item.kind = PreviewItem::Kind::Effect;
+                        item.id = id;
+                        item.label = preset.name;
+                        item.ops = valuesOf(preset);
+                        item.stepName = "Apply Preset " + preset.name;
+                        std::string error;
+                        ctx.state->setPreview(item, &error);
+                    }
+                }
+                x = ImGui::GetItemRectMax().x;
+                ImGui::PopID();
+            }
+            if (ctx.readOnly) ImGui::EndDisabled();
+        }
+        // leaving the chips restores the document (R42's transient state)
+        if (!hovering && ctx.state->preview() && ctx.state->preview()->id.rfind("preset:" + layer + ":" + base + ":", 0) == 0) ctx.state->clearPreview();
+        for (const ta::ParamDef& param : params) {
+            if (std::string(param.key) != "seed") continue;
+            if (ctx.readOnly) ImGui::BeginDisabled();
+            if (ImGui::SmallButton(ICON_FA_DICE " Randomize Seed")) {
+                static std::mt19937 random(std::random_device{}());
+                const int64_t hi = param.max > param.min ? (int64_t)param.max : 2147483647;
+                std::uniform_int_distribution<int64_t> pick(param.max > param.min ? (int64_t)param.min : 0, hi);
+                std::string error;
+                ctx.state->commit(editsToOps({{layer, base + ".seed", pick(random)}}), "Randomize Seed", &error);
+                if (!error.empty() && ctx.host) ctx.host->reportError(error);
+            }
+            if (ctx.readOnly) ImGui::EndDisabled();
+        }
+    }
+
+    // a following generator's Follow Layer (S83 R43): the layer picker, and the row warning
+    // "Follows a deleted layer" with Pick Layer when its layer is gone
+    void followRow(RowContext& ctx, const std::string& layerId, const ta::GeneratorDef& def) {
+        if (ctx.collecting()) {
+            fieldRow(ctx, {{layerId, "follow"}}, {.label = "Follow Layer"});
+            return;
+        }
+        const ta::TitleArtDoc& doc = ctx.state->shown();
+        const ta::Json* layer = layerById(doc, layerId);
+        if (!layer) return;
+        const std::string follow = str(*layer, "follow");
+        const ta::Json* followed = follow.empty() ? nullptr : layerById(doc, follow);
+        bool missing = false;
+        for (const TitleFollowProblem& p : titleFollowProblems(doc)) missing = missing || p.layerId == layerId;
+        if (missing) {
+            ImGui::TextColored(ImVec4(0.95f, 0.65f, 0.2f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " %s",
+                               follow.empty() && def.follow == ta::FollowMode::Required ? "Follows no layer: it draws nothing" : "Follows a deleted layer");
+            ImGui::SameLine();
+            if (!ctx.readOnly && ImGui::SmallButton("Pick Layer")) ImGui::OpenPopup("##followpick");
+        }
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Follow Layer");
+        ImGui::SameLine(ImGui::GetContentRegionAvail().x * 0.42f);
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ctx.readOnly) ImGui::BeginDisabled();
+        const std::string current = followed ? str(*followed, "name") : follow.empty() ? std::string("None") : std::string("(deleted layer)");
+        if (ImGui::BeginCombo("##follow", current.c_str())) {
+            auto choose = [&](const std::string& id, const std::string& name) {
+                std::string error;
+                ctx.state->commit(editsToOps({{layerId, "follow", id}}), id.empty() ? std::string("Unfollow Layer") : "Follow " + name, &error);
+                if (!error.empty() && ctx.host) ctx.host->reportError(error);
+            };
+            if (def.follow == ta::FollowMode::Optional && ImGui::Selectable("None", follow.empty())) choose(std::string(), std::string());
+            ta::forEachLayer(doc.root, [&](const ta::Json& other, const ta::Json*, int) {
+                if (!ta::layerTypeHasStyle(ta::layerTypeOf(other))) return true;
+                const std::string id = str(other, "id");
+                if (ImGui::Selectable((str(other, "name") + "##" + id).c_str(), id == follow)) choose(id, str(other, "name"));
+                return true;
+            });
+            ImGui::EndCombo();
+        }
+        if (ImGui::BeginPopup("##followpick")) {
+            ImGui::TextDisabled("Follow which layer?");
+            ta::forEachLayer(doc.root, [&](const ta::Json& other, const ta::Json*, int) {
+                if (!ta::layerTypeHasStyle(ta::layerTypeOf(other))) return true;
+                const std::string id = str(other, "id");
+                if (ImGui::Selectable((str(other, "name") + "##p" + id).c_str())) {
+                    std::string error;
+                    ctx.state->commit(editsToOps({{layerId, "follow", id}}), "Follow " + str(other, "name"), &error);
+                    if (!error.empty() && ctx.host) ctx.host->reportError(error);
+                }
+                return true;
+            });
+            ImGui::EndPopup();
+        }
+        if (ctx.readOnly) ImGui::EndDisabled();
     }
 
     std::string rimSummary(const ta::Json& rim) {
@@ -446,8 +626,17 @@ void jasperengine::editor::titledesigner::layerPage(RowContext& ctx, const std::
             const ta::GeneratorDef* def = ta::findGenerator(str(gen, "type"));
             if (beginSection(ctx, "generator", def ? def->label : "Generator", def ? def->category : std::string(), true)) {
                 if (!ctx.collecting() && def) ImGui::TextWrapped("%s", def->description);
+                if (def && layers.size() == 1) {
+                    CostBadge badge;
+                    if (!ctx.collecting() && ctx.host && ctx.host->effectCost(layers[0], std::string(), -1, badge)) {
+                        ImGui::TextDisabled("Cost");
+                        ImGui::SameLine();
+                        drawCostBadge(badge);
+                    }
+                    presetChips(ctx, layers[0], "generator.params", def->type, def->params);
+                }
+                if (def && def->follow != ta::FollowMode::None && layers.size() == 1) followRow(ctx, layers[0], *def);
                 if (def) paramRows(ctx, layers, "generator.params", def->params, nullptr, def);
-                if (def && def->follow != ta::FollowMode::None) fieldRow(ctx, refs(layers, "follow"), {.label = "Follow Layer"});
                 if (!def && !ctx.collecting()) ImGui::TextDisabled("Unknown generator '%s' (kept as it is)", str(gen, "type").c_str());
                 endSection(ctx);
             }
@@ -474,7 +663,9 @@ void jasperengine::editor::titledesigner::layerPage(RowContext& ctx, const std::
         const ta::Json rimsCopy = ctx.collecting() ? ta::Json() : style.value("rims", ta::Json::array());
         const ta::Json& rims = ctx.collecting() ? memberOr(style, "rims", emptyArray()) : rimsCopy;
         std::string appearance = std::to_string(rims.size()) + (rims.size() == 1 ? " rim" : " rims");
-        if (beginSection(ctx, "appearance", "Appearance", appearance, true)) {
+        if (const SectionDef* replaced = replacingSection(ctx, SectionDef::Page::Layer, "appearance")) {
+            drawRegistered(ctx, *replaced, layers, {}, true);
+        } else if (beginSection(ctx, "appearance", "Appearance", appearance, true)) {
             if (!ctx.collecting()) {
                 const float width = ImGui::GetContentRegionAvail().x;
                 auto partRow = [&](const std::string& key, const std::string& name, const std::string& summary, const ta::Json* material, int rimIndex) {
@@ -613,7 +804,17 @@ void jasperengine::editor::titledesigner::layerPage(RowContext& ctx, const std::
 
     const ta::Json effectsCopy = ctx.collecting() ? ta::Json() : first->value("effects", ta::Json::array());
     const ta::Json& effects = ctx.collecting() ? memberOr(*first, "effects", emptyArray()) : effectsCopy;
-    if (layers.size() == 1 && beginSection(ctx, "effects", "Effects", effects.empty() ? std::string() : std::to_string(effects.size()), true)) {
+    std::string effectsSummary = effects.empty() ? std::string() : std::to_string(effects.size());
+    CostBadge stackCost;
+    if (!effects.empty() && layers.size() == 1 && !ctx.collecting() && ctx.host && ctx.host->effectCost(layers[0], std::string(), -1, stackCost)) {
+        effectsSummary += " \xC2\xB7 " + stackCost.cls;
+    }
+    if (layers.size() == 1 && beginSection(ctx, "effects", "Effects", effectsSummary, true)) {
+        if (!ctx.collecting() && !stackCost.cls.empty()) {
+            ImGui::TextDisabled("Stack");
+            ImGui::SameLine();
+            drawCostBadge(stackCost);
+        }
         effectCards(ctx, layers[0], std::string());
         endSection(ctx);
     }
@@ -666,6 +867,8 @@ void jasperengine::editor::titledesigner::layerPage(RowContext& ctx, const std::
                 ImGui::TextDisabled("(3D titles arrive with %s)", owner.c_str());
             }
         }
+        // S86's subsections (Geometry, Bands, Lighting, Glint, ...) of a Dimension 3D layer
+        childSections(ctx, SectionDef::Page::Layer, "dimension", layers, {});
         endSection(ctx);
     }
     registeredSections(ctx, SectionDef::Page::Layer, layers, {});
@@ -678,6 +881,20 @@ void jasperengine::editor::titledesigner::partPage(RowContext& ctx, const std::s
     if (!object || parts.empty()) return;
     const std::string& part = parts[0];
     std::vector<std::string> layers(parts.size(), layer);
+    if (const SectionDef* replaced = replacingSection(ctx, SectionDef::Page::Part, "material")) {
+        // a Dimension 3D layer's Face, Bevel, Side and Bands (S86 R51)
+        ctx.nodeKind = "3d_" + part.substr(0, part.find(':'));
+        ctx.stepPrefix.clear();
+        ctx.countNoun.clear();
+        if (!ctx.collecting()) ImGui::SeparatorText(partLabel(*object, part).c_str());
+        replaced->draw(ctx, {layer}, parts);
+        if (parts.size() == 1 && beginSection(ctx, "partfx", "Effects", std::string(), true)) {
+            effectCards(ctx, layer, part);
+            endSection(ctx);
+        }
+        registeredSections(ctx, SectionDef::Page::Part, {layer}, parts);
+        return;
+    }
     if (part == "face") {
         ctx.nodeKind = "face";
         ctx.stepPrefix.clear();
@@ -747,6 +964,7 @@ void jasperengine::editor::titledesigner::effectPage(RowContext& ctx, const Node
         ImGui::TextWrapped("%s", def->description);
         if (!def->gizmos.empty()) ImGui::TextDisabled("\xE2\x9C\xA5 Its handles are on the canvas");
     }
+    presetChips(ctx, node.layer, base + ".params", def->type, def->params);
     paramRows(ctx, {node.layer}, base + ".params", def->params, def, nullptr);
 }
 

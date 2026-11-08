@@ -19,6 +19,7 @@
 
 #include "titleart/TitleArtBake.h"
 #include "titleart/TitleArtHash.h"
+#include "titleart/designer/TitleAddCatalog.h"
 #include "titleart/designer/TitleDesignerHooks.h"
 #include "titleart/designer/TitleDesignerPrefs.h"
 #include "titleart/designer/TitleDesignerState.h"
@@ -161,6 +162,9 @@ namespace jasperengine::editor {
         const jasperengine::titleart::AssetResolver* assets() override;
         void reportError(const std::string& message) override;
         bool selectedCharacters(std::string& layer, std::vector<int>& indexes) override;
+        bool effectCost(const std::string& layer, const std::string& part, int index, titledesigner::CostBadge& out) override;
+        bool livePreviewOn(const std::string& layer, const std::string& effectId) const override;
+        void setLivePreview(const std::string& layer, const std::string& effectId, bool on) override;
 
     private:
         Project* project = nullptr;
@@ -317,6 +321,45 @@ namespace jasperengine::editor {
         std::string addHovered;
         double addHoverSince = 0.0;
         ImVec2 addHoverMouse = ImVec2(0, 0);
+        std::vector<std::pair<std::string, int>> addRail;   // the rail drawn last (state().add)
+        std::vector<std::string> addVisible;                // the entries listed last
+        titledesigner::AddTarget addTarget() const;
+        bool previewAddEntry(const titledesigner::AddEntry& entry);
+        bool addEntry(const titledesigner::AddEntry& entry, std::string* error);
+
+        // ---- S83: cost badges (R41), Preview Live (D10) ----
+        struct CostCache {
+            struct Row {
+                bool valid = false;
+                jasperengine::titleart::CostClass desktop = jasperengine::titleart::CostClass::C0;
+                jasperengine::titleart::CostClass mobile = jasperengine::titleart::CostClass::C0;
+                double desktopMs = 0.0, mobileMs = 0.0;
+            };
+            struct Layer {
+                std::vector<Row> effects;   // the stack's enabled effects, in order
+                Row generator;
+                size_t desktopEffects = 0, mobileEffects = 0;
+                jasperengine::titleart::CostClass total = jasperengine::titleart::CostClass::C0;
+                jasperengine::titleart::CostClass totalMobile = jasperengine::titleart::CostClass::C0;
+                double desktopMs = 0.0, mobileMs = 0.0;
+            };
+            const void* shown = nullptr;
+            uint64_t change = ~0ull;
+            std::map<std::string, Layer> layers;
+        };
+        CostCache costCache;
+        const CostCache& costs();
+        bool documentRealtime();
+        bool realtimeUse = false;
+        double realtimeCheckedAt = -1.0;
+        std::string realtimeCheckedPath;
+        std::set<std::string> followMissing;     // generator layers whose followed layer is gone (S83 R43)
+        const void* followMissingDoc = nullptr;
+        uint64_t followMissingChange = ~0ull;
+        std::set<std::pair<std::string, std::string>> livePreviews;   // (layer, effect id)
+        double liveStart = -1.0;
+        // the overrides that play the live params now; `phaseKey` the time step they show
+        std::vector<jasperengine::titleart::FieldOverride> liveOverrides(double* phaseKey);
 
         // ---- Library (R40-R49) ----
         std::string libraryHover;                  // hovered tile id
