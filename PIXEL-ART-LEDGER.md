@@ -169,7 +169,7 @@ never build or run them.
 |---|---|---|---|---|---|
 | S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | merged and pushed |
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | implementing |
-| S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | landing (batch 1) |
+| S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | merged and pushed |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
@@ -243,6 +243,14 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: **Batch 1: S43 Palettes merged into `main` and pushed** (branch `0762ecd1d`).
+  - Verified on the landing tree (`main` `c5e0a2a92` + S43): S43's gate on box B (`WERROR`; core
+    584 and editor 389 filtered tests; 152 MCP tests), plus the batch checks on box B: web build,
+    android build, Vulkan 89/89 (`Palette*`, `PixelPerfect*`, `SpriteAtlasRenderGpu*`,
+    `SpriteBatchGpu*`).
+  - Shader cache v59, uber `Pal` bit 19. Pre-existing `main` failures (Animator hash,
+    `procmat-baked` fixtures) are not ours.
+  - Next: S42, S49, S51 and S52 to the next batches; then S48, S46, S47 and S50 can start.
 - 2026-11-09: S43 is ready at `0762ecd1d` (main `c5e0a2a92` merged; shader cache v59, uber
   `Pal` bit 19).
   - Its gate on box B passed apart from failures in code identical on `main`: the Animator
