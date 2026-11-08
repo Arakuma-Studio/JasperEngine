@@ -1300,7 +1300,7 @@ All window tests run headless in a child process with the editor's App (the
 | AC28 (R61, R62) | `test_title_designer_window.py::test_document_chip_drag`: `send_input` drags the window's document chip into the Hierarchy: S81's drop creates one GameObject with a Title Art Renderer referencing the shown file, one step "Create Title Art (logo)" (S81 owns the Project-window drops and their tests); double-click on the `.titleart` in the Project window opens the window (`focus_window` state names it); the Inspector buttons of S80 and S81 open it |
 | AC29 (R75, §6.4) | `TitleDesignerUndoTest.OneStepPerGesture` (parameterized over every gesture of §6.3: gizmo drag, row scrub, wheel burst, nudge burst, handle drag, ramp stop drag, text session, Library apply, Add palette, drop): exactly one project-history step with the expected name; Esc mid-gesture: zero steps and the document hash unchanged. Red control: committing per frame (a test flag) produces N steps and fails |
 | AC30 (R74) | `test_title_designer_window.py::test_agent_edit_while_open`: an `edit_title` while a person's drag is staged cancels the drag, reloads, keeps the selection by id, shows the chip; the chip's Undo removes the agent's step only (`get_undo_history`) |
-| AC31 (R68, R69, R70) | `tools/perf/title_designer_bench` on server A, reference documents `bench_2d_rims`, `bench_40_layers`: Draft ≤ 1/4 of Full render time; ImGui work ≤ 1.5 ms per frame; search index ≤ 3 ms, query ≤ 1 ms; 256-layer tree costs within 10 % of the 40-layer one. Results appended to Deviations when a budget is missed. `TitleDesignerWindowTest.SoftwareRendererNotice`: a device name "llvmpipe" sets Draft and 8 ms and shows the notice once |
+| AC31 (R68, R69, R70) | `tools/perf/title_designer_bench` on server A, reference documents `bench_2d_rims`, `bench_40_layers`: Draft ≤ 1/4 of Full render time; ImGui work ≤ 1.5 ms per frame; search index ≤ 3 ms, query ≤ 1 ms; 256-layer tree costs within 10 % of the 40-layer one. Results appended to Deviations when a budget is missed. `TitleDesignerWindowTest.SoftwareRendererNotice`: a device name "llvmpipe" sets Draft and 8 ms and shows the notice once. Load-insensitive halves: `TitleDesignerWindowDeathTest.IdleFramesMakeNoDocumentPasses` (no whole-document pass on idle frames at 40 and 256 layers), `TitleDesignerWindowDeathTest.IndexBuildSpansFrames` (the index builds a counted page per frame and equals one pass), `TitleDesignerStateTest.IncrementalIndexMatchesAFullBuild`. Host numbers: Deviation 20 |
 | AC32 (R64, R71) | `TitleCanvasViewTest.RebuildsAfterInvalidation`: a new context id (the test hook S80 R19's tests use) and S81's `TITLE_ART_TEST_FAIL_TARGETS` mid-render → the overlay shows, resources are recreated, the next settled image equals the one before (S80's float/RGBA8 tolerance); no frame in between presents an all-black or partial image (frame readbacks checked); visible Library tiles are requested again. Red control: skipping the rebuild leaves a blank image and fails |
 | AC33 (visible changes) | `tools/editor-shot.sh` on a scratch copy of `build/fixture-unity` with S80's fixtures, an isolated editor: `title-designer-empty`, `-layers-parts-effects`, `-search-glow`, `-library-hover`, `-gizmo-rect`, `-gizmo-3d` (S86 fixture, or skipped and listed as skipped until S86), `-device-iphone`, `-font-picker`, `-lint-popover`, `-narrow`. Kept outside the repository, linked in the evidence |
 | AC34 (R77, §6.3) | `test_title_designer_window.py::test_parity`: for each row of §6.3, the window action through the scripted API and `edit_title` with the listed ops on a fresh copy produce identical `.titleart` bytes and step names |
@@ -1503,27 +1503,31 @@ rest of S82 lands in 6B.
     Properties are the side column's tabs, selected by Tab and by `focus_window`'s `panel`.
 20. **AC31 measured on this host, not on server A.** `tools/perf/title_designer_bench.py` builds
     the reference documents with `edit_title` ops (S80 has no `bench_2d_rims` / `bench_40_layers`
-    fixtures) and reads the window's `state().timings`, its canvas render times and, with
-    `--profile`, the profiler's `TD ...` scopes. Host: software GL (llvmpipe), the CPU shared with
-    other streams' builds (load average 6.7-7.5 during the runs), window 956 x 538; medians of four
-    runs at `68e251f25` (`uid1-3.json`, `bench7.json`):
-    - Draft / Full render: 0.009 (bench_2d_rims: 63 ms / 6875 ms) and 0.090 (bench_40_layers:
-      60 ms / 661 ms): met.
-    - The window's ImGui work per frame: 0.65 ms (Layers shown) and 0.73 ms (Properties shown) with
-      bench_40_layers: met. The first runs measured 8.4-16.8 ms; the profiler put 8.6 of 9.7 ms in
-      the toolbar's bake status (a document hash and every output's recipe read, every frame), now
-      made once per change.
-    - The 256-layer tree against the 40-layer one: 1.01 x (0.65 ms / 0.65 ms): met (was 4.6 x).
-      Layer bounds, hashes, the flattened tree, the empty-state check and the empty-text boxes are
-      made once per change, and `IdleFramesMakeNoDocumentPasses` counts the whole-document passes of
-      idle frames at 40 and 256 layers (none), load-insensitive.
-    - Search query: 0.25 ms: met.
-    - **Missed: the index build.** After an edit it is incremental (the rows of objects that did
-      not change are replayed: 125 of 790 rows re-collected, `IncrementalIndexMatchesAFullBuild`):
-      5.1 ms; a full build (a newly selected layer) takes 12.8 ms, budget 3 ms. Of the incremental
-      pass, the rows take 1.3 ms; the rest is the pages' own work and the per-object keys. Either
-      build runs ahead, 300 ms after the document and the selection settle, so a search keystroke
-      never pays it; the frame that builds does. Server A's numbers are still to take.
+    fixtures) and reads the window's `state().timings` (frame, index per frame and per page), its
+    canvas render times and, with `--profile`, the profiler's `TD ...` scopes. Host: software GL
+    (llvmpipe), the CPU shared with other streams' builds (load average 5.4-10.7 during the runs),
+    window 956 x 538; medians of four runs at the final commit (`uij1-3.json`, `bench10.json`):
+    - Draft / Full render: 0.008 (bench_2d_rims: 67 ms / 7868 ms) and 0.072 (bench_40_layers:
+      65 ms / 905 ms): met.
+    - The window's ImGui work per frame with bench_40_layers: 0.72 ms (Layers shown), 0.88 ms
+      (Properties shown): met. The first runs measured 8.4-16.8 ms; the profiler put 8.6 of 9.7 ms
+      in the toolbar's bake status (a document hash and every output's recipe read, every frame).
+    - The 256-layer tree against the 40-layer one: 1.05 x: met (was 4.6 x). Bounds, hashes, the
+      flattened tree, the empty-state check and the empty-text boxes are made once per change;
+      `IdleFramesMakeNoDocumentPasses` counts the whole-document passes of idle frames at 40 and 256
+      layers (none).
+    - Search query: 0.30 ms: met.
+    - The search index (R69's 3 ms): it builds a page at a time across frames, within 2 ms a frame
+      (a unit per top-level section of the layer page, per part, effect and mask page, the Document
+      page and the offers; another page only when the costliest so far still fits), the previous
+      index answering a search meanwhile, merged with the rows already collected. After an edit it
+      is also incremental (the rows of objects that did not change are replayed): 3.5 ms in all over
+      2 frames, the costliest frame 2.2 ms: met. `IndexBuildSpansFrames` (one page a frame, counted,
+      and the result equals one full pass) and `IncrementalIndexMatchesAFullBuild` hold it.
+      **Missed:** the first build of a newly selected layer has one frame at 4.8 ms (median; 7.5 ms
+      the worst, the session's first build): a single page, a rim's, collected cold, which cannot
+      be cut further without collecting a section in parts. Its other frames stay within 2.3 ms.
+      Server A's numbers are still to take.
 21. **Open: the Windows and macOS IME manual checks** (M5, R37). They need a person on those
     systems (Microsoft IME, Kotoeri); this host builds Linux only. The `imgui_impl_osx` patch
     compiles by reading only. AC28's chip drag and In Context wait for S81, at integration.
