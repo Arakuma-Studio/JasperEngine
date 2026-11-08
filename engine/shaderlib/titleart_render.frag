@@ -83,6 +83,14 @@ precision highp int;
 #if TA_PROGRAM == TA_PROGRAM_ELEMENT
     // the custom pattern's tile (titleart/patterns.glsl reads it)
     #define TA_PATTERN_IMAGE TA_TEX2
+    // a variant's one pattern kind (render/TitleElementVariant.h; the whole program has them all)
+    #ifndef TA_EL_WHOLE
+        #ifdef TA_EL_PATTERN
+            #define TA_PATTERN_ONLY TA_EL_PATTERN
+        #else
+            #define TA_PATTERN_ONLY 0
+        #endif
+    #endif
     #include "titleart/patterns.glsl"
     #include "titleart/render/element.glsl"
 void main() {

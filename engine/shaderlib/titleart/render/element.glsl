@@ -124,11 +124,21 @@
 
 // The element's variant (render/TitleElementVariant.h): the planner names the pattern kind, the
 // texture kind and whether relief, glass, reflection, satin and spans shade, from the same values
-// it writes into the block, so each is a constant here and the code of every other kind folds
-// away (llvmpipe compiled the program with all of them for 5 s). A member made a constant holds
-// the value the block would: the pixels are the same. TA_EL_WHOLE is the program with every
-// feature read from the block (tests).
-#ifndef TA_EL_WHOLE
+// it writes into the block, so each is a constant here, and the code of every other kind and of
+// what is off is left out by the preprocessor (llvmpipe compiled the program with all of them for
+// 5 s, and a GL front end parses and optimizes what it is given). A member made a constant holds
+// the value the block would, and what is left out is what that value skips: the pixels are the
+// same. TA_EL_WHOLE is the program with every feature read from the block (tests).
+#ifdef TA_EL_WHOLE
+  #define TA_EL_HAS_PATTERN 1
+  #define TA_EL_HAS_RELIEF 1
+  #define TA_EL_TEX_ON(n) 1
+  #define TA_EL_HAS_TEXTURE 1
+  #define TA_EL_HAS_GLASS 1
+  #define TA_EL_HAS_REFLECTION 1
+  #define TA_EL_HAS_SATIN 1
+  #define TA_EL_HAS_SPAN 1
+#else
   #ifndef TA_EL_PATTERN
     #define TA_EL_PATTERN 0
   #endif
@@ -158,6 +168,34 @@
   #ifndef TA_EL_SPAN
     #undef uSpan
     #define uSpan 0
+  #endif
+  #define TA_EL_HAS_PATTERN (TA_EL_PATTERN > 0)
+  #define TA_EL_TEX_ON(n) (TA_EL_TEXTURE == (n))
+  #define TA_EL_HAS_TEXTURE (TA_EL_TEXTURE > 0)
+  #ifdef TA_EL_RELIEF
+    #define TA_EL_HAS_RELIEF 1
+  #else
+    #define TA_EL_HAS_RELIEF 0
+  #endif
+  #ifdef TA_EL_GLASS
+    #define TA_EL_HAS_GLASS 1
+  #else
+    #define TA_EL_HAS_GLASS 0
+  #endif
+  #ifdef TA_EL_REFLECTION
+    #define TA_EL_HAS_REFLECTION 1
+  #else
+    #define TA_EL_HAS_REFLECTION 0
+  #endif
+  #ifdef TA_EL_SATIN
+    #define TA_EL_HAS_SATIN 1
+  #else
+    #define TA_EL_HAS_SATIN 0
+  #endif
+  #ifdef TA_EL_SPAN
+    #define TA_EL_HAS_SPAN 1
+  #else
+    #define TA_EL_HAS_SPAN 0
   #endif
 #endif
 
@@ -336,23 +374,38 @@ float flakeFacing(vec2 cell) {
 // Height-like value 0..1 of the noise-type textures (1–6, 10–12), 0.5 = neutral. px: grid px
 // (pa, see uPxOff) in the texture's axes; q: feature units.
 float textureHeight(vec2 px, vec2 q) {
+#if TA_EL_TEX_ON(1)
   if (uTex == 1) return clamp(0.5 + (vnoise(q * 2.0) - 0.5) * 1.3 + (hash12(px + uTexSeed) - 0.5) * 0.35, 0.0, 1.0);
+#endif
+#if TA_EL_TEX_ON(2)
   if (uTex == 2) return sparkle(q * 0.5);
+#endif
+#if TA_EL_TEX_ON(3)
   if (uTex == 3) return clamp(0.5 + (fbm(vec2(q.x * 0.06, q.y * 2.5)) - 0.5) * 1.6, 0.0, 1.0);
+#endif
+#if TA_EL_TEX_ON(4)
   if (uTex == 4) return 0.5 + 0.45 * sin(6.2831853 * 2.5 * fbm(q * 0.35));
+#endif
+#if TA_EL_TEX_ON(5)
   if (uTex == 5) {
     float blot = smoothstep(0.5, 0.72, fbm(q * 0.45));
     float speck = step(0.93, hash12(floor(q * 3.0)));
     float scratch = smoothstep(0.985, 1.0, 1.0 - abs(vnoise(vec2(q.x * 0.12 + q.y * 0.5, q.y * 0.04)) - 0.5) * 2.0);
     return clamp(0.5 - blot * 0.45 - speck * 0.25 + scratch * 0.4, 0.0, 1.0);
   }
+#endif
+#if TA_EL_TEX_ON(6)
   if (uTex == 6) return clamp(0.5 + (fbm(q * 0.25) - 0.5) * 1.6, 0.0, 1.0);
+#endif
+#if TA_EL_TEX_ON(10)
   if (uTex == 10) {
     // Hairline: fine lines across the grain, long slow variation along it.
     float lines = 0.55 * metalN1(q.y, 1.0) + 0.3 * metalN1(q.y * 2.7, 2.0) + 0.15 * hash12(vec2(floor(q.y * 4.0), 3.0));
     float along = vnoise(vec2(q.x / 90.0, q.y * 0.21));
     return mix(lines, lines * along * 1.6, 0.35);
   }
+#endif
+#if TA_EL_TEX_ON(11)
   if (uTex == 11) {
     // Spun: rings around the element centre.
     vec2 dv = (px - texRotate(gBoxC)) / max(uTexPx, 0.5);
@@ -360,6 +413,8 @@ float textureHeight(vec2 px, vec2 q) {
     float lines = 0.6 * metalN1(ring, 4.0) + 0.4 * metalN1(ring * 3.1, 5.0);
     return lines * (0.75 + 0.5 * vnoise(dv / max(ring, 1e-3) * 3.0 + floor(ring) * 0.13));
   }
+#endif
+#if TA_EL_TEX_ON(12)
   if (uTex == 12) {
     // Flakes / gold leaf: facets lit by how squarely they catch the light.
     vec2 cell;
@@ -367,6 +422,7 @@ float textureHeight(vec2 px, vec2 q) {
     flakeCell(q, cell, best);
     return 0.3 + 0.7 * flakeFacing(cell) * (0.6 + 0.4 * hash12(cell));
   }
+#endif
   return 0.5;
 }
 
@@ -377,12 +433,21 @@ vec2 textureSlope(vec2 p) {
   float S = max(uTexPx, 0.5);
   vec2 q = px / S + uTexSeed;
   vec2 s;
+#if TA_EL_TEX_ON(7)
   if (uTex == 7) s = hammeredSlope(q * 0.5) * 0.5;
-  else if (uTex == 8) s = crumpleSlope(q * 0.35) * 0.35 * 2.2;
-  else if (uTex == 9) {
+  else
+#endif
+#if TA_EL_TEX_ON(8)
+  if (uTex == 8) s = crumpleSlope(q * 0.35) * 0.35 * 2.2;
+  else
+#endif
+#if TA_EL_TEX_ON(9)
+  if (uTex == 9) {
     const float e = 0.02;
     s = vec2(liquidH(q + vec2(e, 0.0)) - liquidH(q - vec2(e, 0.0)), liquidH(q + vec2(0.0, e)) - liquidH(q - vec2(0.0, e))) / (2.0 * e) * 2.4;
-  } else {
+  } else
+#endif
+  {
     // Finite differences over one frame pixel.
     vec2 ex = vec2(1.0, 0.0), ey = vec2(0.0, 1.0);
     s = vec2(textureHeight(px + ex, q + ex / S) - textureHeight(px - ex, q - ex / S),
@@ -395,11 +460,13 @@ vec2 textureSlope(vec2 p) {
 // (hammered keeps its v4 dimple depth: twice its surface slope).
 float textureValue(vec2 p) {
   vec2 px = texRotate(p);
+#if TA_EL_TEX_ON(7) || TA_EL_TEX_ON(8) || TA_EL_TEX_ON(9)
   if (uTex >= 7 && uTex <= 9) {
     vec2 g = uTex == 7 ? texUnrotate(hammeredSlope(px / max(uTexPx, 0.5) * 0.5 + uTexSeed * 0.5)) : textureSlope(p) / max(uTexAmt, 1e-3);
     vec3 n = normalize(vec3(-g, 1.0));
     return clamp(0.5 + (dot(n, uLight) - uLight.z) * 1.4, 0.0, 1.0);
   }
+#endif
   return textureHeight(px, px / max(uTexPx, 0.5) + uTexSeed);
 }
 
@@ -409,11 +476,14 @@ float sheenShape(vec2 p) {
   vec2 px = texRotate(p);
   vec2 q = px / max(uTexPx, 0.5) + uTexSeed;
   float grain = uTex >= 10 ? textureHeight(px, q) : 0.5;
+#if TA_EL_TEX_ON(11)
   if (uTex == 11) {
     vec2 dv = p - gBoxC;
     float th = atan(dv.y, dv.x) - uSheenPos * 3.1415927 - atan(uTexRot.y, uTexRot.x);
     return pow(abs(cos(th)), 6.0 / max(uSheenWidth * uSheenWidth, 0.01)) * (0.5 + grain);
   }
+#endif
+#if TA_EL_TEX_ON(12)
   if (uTex == 12) {
     vec2 cell;
     float best;
@@ -422,6 +492,7 @@ float sheenShape(vec2 p) {
     // A bright facet, and a sparkle point at its centre.
     return g * step(0.4, hash12(cell + 19.0)) * (1.2 + 3.0 * exp(-best * 30.0));
   }
+#endif
   float u = dot((p - gBoxC) / gBoxH, uTexRot);
   return exp(-pow((u - uSheenPos * 1.2) / uSheenWidth, 2.0)) * (0.5 + grain);
 }
@@ -481,10 +552,12 @@ void taElementMain() {
   vec4 pat = vec4(0.0);
   vec2 pg = vec2(0.0); // relief: pattern height gradient, height px per frame px
   bool relief = false;
+#if TA_EL_HAS_PATTERN
   if (uPatKind > 0) {
     vec2 pm = patternCoord(pa);
     vec2 ex = vec2(uPatXform.x, uPatXform.z), ey = vec2(uPatXform.y, uPatXform.w);
     pat = patternSampleD(pm, ex, ey, uPatKind, uPatSeed);
+#if TA_EL_HAS_RELIEF
     if (uPatRelief > 0.0) {
       relief = true;
       // Raised marks stand 6 % of a motif tall at relief 1, whatever the pattern scale.
@@ -492,7 +565,9 @@ void taElementMain() {
       pg = vec2(patternSampleD(pm + ex, ex, ey, uPatKind, uPatSeed).z - patternSampleD(pm - ex, ex, ey, uPatKind, uPatSeed).z,
                 patternSampleD(pm + ey, ex, ey, uPatKind, uPatSeed).z - patternSampleD(pm - ey, ex, ey, uPatKind, uPatSeed).z) * 0.5 * hpx;
     }
+#endif
   }
+#endif
 
   // Element box: frame px.
   vec2 emin = uBmin, emax = uBmax;
@@ -506,7 +581,9 @@ void taElementMain() {
   if (lit) {
     vec2 g = pg;
     if (uBevel) g += vec2(hFetch(ip + ivec2(1, 0)) - hFetch(ip - ivec2(1, 0)), hFetch(ip + ivec2(0, 1)) - hFetch(ip - ivec2(0, 1))) * 0.5 * uBevelK;
+#if TA_EL_HAS_TEXTURE
     if (surface) g += textureSlope(pa);
+#endif
     n = normalize(vec3(-g, 1.0));
   }
   // Refraction: the fill is read where the tilted surface bends the view (< 0: mirrors, like chrome).
@@ -515,6 +592,7 @@ void taElementMain() {
 
   vec2 bmin = emin, bmax = emax;
   int gi = 0, gn = 0;
+#if TA_EL_HAS_SPAN
   if (uSpan > 0) {
     ivec2 mx = textureSize(TA_RAW2, 0) - 1;
     ivec2 q = clamp(ivec2(p - uElemOff), ivec2(0), mx);
@@ -528,6 +606,7 @@ void taElementMain() {
     }
     spanBox(gi, bmin, bmax);
   }
+#endif
   float burst = 0.0;
   if (uFillKind == 6 && uHasSdf) {
     float depth = uBurstPx > 0.0 ? uBurstPx : taDecodeScalar(texelFetch(TA_RAW4, ivec2(0), 0), TA_BURST_ENC);
@@ -542,18 +621,21 @@ void taElementMain() {
       fill = vec4(toSrgb(s.rgb / max(s.a, 1e-4)), 1.0);
     } else fill = vec4(s.rgb, 1.0);
   } else fill = fillColor(pf, bmin, bmax, burst);
+#if TA_EL_HAS_SPAN
   if (gn != gi) {
     // Antialias the span seam: blend in the neighbour's fill by its share of this pixel.
     vec2 nmin, nmax;
     spanBox(gn, nmin, nmax);
     if (nmin != bmin || nmax != bmax) fill = mix(fill, fillColor(pf, nmin, nmax, burst), clamp(0.5 - seamPx(gi, gn, p), 0.0, 1.0));
   }
+#endif
   vec3 c = fill.rgb;
 
   // Glass body, in linear light: what is seen through takes the glass colour and deepens like
   // thick glass; steep slopes darken (Fresnel rim); light entering on the lit side focuses into a
   // caustic band inside the far edge. Rims and caustics are more opaque than the body.
   float glassA = 1.0;
+#if TA_EL_HAS_GLASS
   if (uGlass) {
     vec3 base = mix(toLinear(c), toLinear(uGlassColor), uGlassTint);
     vec3 gc = base * base * 0.3 + base * 0.14;
@@ -574,9 +656,11 @@ void taElementMain() {
     glassA = clamp(uGlassOp + (1.0 - uGlassOp) * (fres * uGlassEdge * 0.8 + caus * uGlassCaustic * 0.6), 0.0, 1.0);
     c = toSrgb(gc);
   }
+#endif
 
   // Mirror the view ray (straight into the screen) off the surface into the panorama; screen
   // space, so the sky stays up when the layer turns. The fill keeps its hue under colorize.
+#if TA_EL_HAS_REFLECTION
   if (uRefl) {
     vec3 ns = vec3(uReflM * n.xy, n.z);
     vec3 R = vec3(2.0 * ns.z * ns.xy, 2.0 * ns.z * ns.z - 1.0);
@@ -589,6 +673,7 @@ void taElementMain() {
     vec3 tinted = l < 0.5 ? 2.0 * c * l : mix(c, vec3(1.0), w * w);
     c = mix(c, mix(rc, tinted, uReflTint), uReflAmt);
   }
+#endif
 
   float hi = 0.0, sh = 0.0;
   if (lit) {
@@ -604,6 +689,7 @@ void taElementMain() {
   }
 
   // Marks, then color2 over them; uPatShade keeps that much of the bevel lighting on both.
+#if TA_EL_HAS_PATTERN
   if (uPatKind > 0) {
     vec3 m1 = uPatColor, m2 = uPatColor2;
     if (lit) {
@@ -613,9 +699,11 @@ void taElementMain() {
     c = mix(c, m1, pat.x * uPatOpacity);
     c = mix(c, m2, pat.y * uPatOpacity);
   }
+#endif
 
   // Satin: |difference| of two blurred copies of the silhouette shifted ±distance, through the
   // contour (inverted like Photoshop's default), blended in its colour.
+#if TA_EL_HAS_SATIN
   if (uSatin) {
     vec2 ts = vec2(textureSize(TA_TEX1, 0));
     float s1 = texture(TA_TEX1, (p + uSatinOff) / ts).r;
@@ -629,8 +717,11 @@ void taElementMain() {
             : sc;
     c = mix(c, bl, clamp(v * uSatinOp, 0.0, 1.0));
   }
+#endif
 
+#if TA_EL_HAS_TEXTURE
   if (uTex > 0 && uTexAmt > 0.0 && !uTexSurface) c = mix(c, clamp(blendTex(c, textureValue(pa)), 0.0, 1.0), uTexAmt);
+#endif
 
   if (uSheen) c += uSheenColor * sheenShape(pa) * uSheenAmt * (0.4 + 0.6 * c);
 
@@ -661,6 +752,8 @@ void taElementMain() {
 
   float alpha = a * fill.a * uOpacity;
   // Glass: the body's own opacity; the bevel highlight stays visible on clear glass.
+#if TA_EL_HAS_GLASS
   if (uGlass) alpha *= clamp(glassA + hi * uHiOp, 0.0, 1.0);
+#endif
   frag_color = vec4(toLinear(c) * alpha, alpha);
 }

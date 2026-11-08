@@ -8,9 +8,10 @@
 // - TitleElementVariant.BitsFollowTheBlock: the bits are what element.glsl branches on.
 // - TitleElementVariantGpu.CompileCostIsBounded: a title with every heavy member on one face (a
 //   relief pattern, a relief texture, glass, reflection, satin, per-character spans) and its rims
-//   plans its variants; the first draw of the largest is at most 40 % of the whole program's (the
-//   driver's compile, timed in one process, so the ratio holds under load; measured 25 % on
-//   llvmpipe) or under 250 ms where the driver compiles fast (a GPU). Red control in the test: the
+//   plans its variants; what the largest costs the render thread (its creation's share there and
+//   its first draw: the driver's compiles) is at most 40 % of the whole program's (timed in one
+//   process, so the ratio holds under load) or under 250 ms where the driver compiles fast (a
+//   GPU). Red control in the test: the
 //   same title planned with TITLE_ART_TEST_ELEMENT_WHOLE (every element on the whole program, as
 //   before) is over the bound on llvmpipe.
 
@@ -55,14 +56,23 @@ namespace {
         return false;
     }
 
-    // the first draw of `number` into `target`, ms: the driver's compile of the variant
-    // (llvmpipe's LLVM JIT) is in it. Blended straight-alpha, a state no render draws an element
-    // in, so a variant an earlier test drew compiles again here
-    double firstDrawMs(TitleGpu& gpu, uint32_t number, TitleTarget* target, std::string& error, double* buildMs = nullptr) {
-        const auto built = std::chrono::steady_clock::now();
-        if (!build(gpu, number, error)) return -1.0;
-        // (a synchronous shader creation links on this thread: what a GL driver compiles there)
-        if (buildMs) *buildMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - built).count();
+    // What a program costs the render thread: its creation's share there (a GL driver parses,
+    // links and optimizes the GLSL in glCompileShader / glLinkProgram where no worker context
+    // takes them: llvmpipe), and its first draw (llvmpipe's LLVM JIT of the variant)
+    struct ProgramCost {
+        double createMs = 0.0;
+        double firstDrawMs = 0.0;
+        double total() const { return createMs + firstDrawMs; }
+    };
+
+    // `number` built (its creation's render-thread time, the most of one frame) and drawn into
+    // `target` for the first time. Blended straight-alpha, a state no render draws an element in,
+    // so a variant an earlier test drew compiles again here (its creation, if it was made before,
+    // does not: an earlier test of the process may have made it)
+    bool measure(TitleGpu& gpu, uint32_t number, TitleTarget* target, ProgramCost& cost, std::string& error) {
+        SystemRender::resetGpuCreationMax();
+        if (!build(gpu, number, error)) return false;
+        cost.createMs = SystemRender::getGpuCreationStats().maxMainMs;
         TitleGpuPass pass;
         pass.program = (TitleRenderProgram)(number & 0x7Fu);
         pass.variant = number & ~0x7Fu;
@@ -70,10 +80,10 @@ namespace {
         pass.blend = BlendMode::ALPHA;
         TitleFirstDraws::SynchronousScope synchronous;
         const auto start = std::chrono::steady_clock::now();
-        if (!gpu.run(pass, error)) return -1.0;
-        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        if (!gpu.run(pass, error)) return false;
+        cost.firstDrawMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
         SystemRender::commit();
-        return ms;
+        return true;
     }
 
     // the standard title with every heavy Material member on its face (S83's patterns and the
@@ -169,21 +179,20 @@ TEST_F(TitleElementVariantGpu, CompileCostIsBounded) {
     double largest = 0.0;
     std::string largestName;
     for (uint32_t v : variants) {
-        double buildMs = 0.0;
-        const double ms = firstDrawMs(gpu, v, target.get(), error, &buildMs);
-        ASSERT_GE(ms, 0.0) << ShaderPool::getShaderStr(ShaderType::TITLE_ART, v) << ": " << error;
-        std::printf("[ element ] %-56s first draw %8.1f ms, built in %8.1f ms\n", ShaderPool::getShaderStr(ShaderType::TITLE_ART, v).c_str(), ms,
-                    buildMs);
-        if (ms > largest) {
-            largest = ms;
+        ProgramCost cost;
+        ASSERT_TRUE(measure(gpu, v, target.get(), cost, error)) << ShaderPool::getShaderStr(ShaderType::TITLE_ART, v) << ": " << error;
+        std::printf("[ element ] %-56s created %8.1f ms, first draw %8.1f ms\n", ShaderPool::getShaderStr(ShaderType::TITLE_ART, v).c_str(),
+                    cost.createMs, cost.firstDrawMs);
+        if (cost.total() > largest) {
+            largest = cost.total();
             largestName = ShaderPool::getShaderStr(ShaderType::TITLE_ART, v);
         }
     }
-    double wholeBuildMs = 0.0;
-    const double whole = firstDrawMs(gpu, before[0], target.get(), error, &wholeBuildMs);
-    ASSERT_GE(whole, 0.0) << error;
-    std::printf("[ element ] %-56s first draw %8.1f ms, built in %8.1f ms (before: every element)\n",
-                ShaderPool::getShaderStr(ShaderType::TITLE_ART, before[0]).c_str(), whole, wholeBuildMs);
+    ProgramCost wholeCost;
+    ASSERT_TRUE(measure(gpu, before[0], target.get(), wholeCost, error)) << error;
+    const double whole = wholeCost.total();
+    std::printf("[ element ] %-56s created %8.1f ms, first draw %8.1f ms (before: every element)\n",
+                ShaderPool::getShaderStr(ShaderType::TITLE_ART, before[0]).c_str(), wholeCost.createMs, wholeCost.firstDrawMs);
     const double bound = std::max(MAX_SHARE_OF_WHOLE * whole, FAST_DRIVER_MS);
     ::testing::Test::RecordProperty("largest", largestName + " " + std::to_string(largest) + " ms of the whole program's " + std::to_string(whole) + " ms");
     EXPECT_LE(largest, bound) << largestName << " " << largest << " ms, the whole program " << whole << " ms";
