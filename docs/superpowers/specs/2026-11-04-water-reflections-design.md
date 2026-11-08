@@ -775,6 +775,19 @@ the library's compile matrix builds (`WaterUniformBudgetSlow`), a fragment stage
    rare, and without one the terrain draws the same. Pinned by `TerrainUniformBudgetSlow` (normal-mapped, 8 and 16
    lights, High and Medium tiers, directional only or not). The records are uploaded only when one changed, and a
    scene past 128 lights reads the texture's second row (`WaterLightRecordsGpu`).
-8. **Open follow-up (next):** S57's capsule and contact shadows on water and the painted terrain, and the built-in Lit
-   with capsule shadows, 2D lights and fog on GLES3 (307 to 339 fragment vectors and a ninth block); the painted
-   terrain with 2D lights (its 2D lights' block, 50 vectors) keeps the block form and is over 224 with them.
+8. **Capsule and contact shadows, 2D lights, the built-in Lit** (workstream `lit-uniforms`, branch `fu/lit-uniforms`):
+   the Lit compile matrix's heavy scenes (sixteen lights per object or tiled, eight at the Medium tier, directional
+   only; capsule and contact shadows, 2D lights and their shadows, fog, probes, SSAO, the post colour; the plain
+   mesh, every lobe, the painted terrain) were at up to 384 vectors and 10 blocks, water with capsules at 277 and 9.
+   - The records form now also carries the frame's capsules (two texels each) and 2D lights (three) as rows of
+     `u_lightRecords` after the scene lights, and a tail at the end of `u_fs_objectLights` (records or Tiled form):
+     `lightDataBases`, the contact and capsule values with the capsules that reach the object as a 32-bit mask, the
+     2D lights' ambient and atlas. `u_fs_lightOcclusion` (67 vectors) and `u_fs_lighting2d` (50) are gone there.
+   - `ShaderVariantCompiler::compile` gives the form to any lit variant whose blocks would be over 224 fragment
+     vectors or 8 blocks (a `light-records` log line), on every backend; the rest keep the blocks, so they draw
+     the same programs. Every painted terrain takes it. The bind-limit fallbacks then run in order: PCSS's raw view,
+     the spot masks, the 2D lights' shadows (`shadows-2d-left-out`: only the normal-mapped painted terrain lit by
+     shadowed 2D lights reaches it).
+   - After: Lit matrix at most 217 vectors and 8 blocks (`LitUniformBudgetSlow`), water's worst scene 216, the painted
+     terrain 217; `shaders --library builtin_lit` and `water` compile on all six backends. `LitLightRecordsGpu`'s
+     goldens were drawn by the blocks and match exactly on glcore.
