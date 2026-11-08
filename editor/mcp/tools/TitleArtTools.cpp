@@ -27,6 +27,8 @@
 #include "titleart/TitleArtSchema.h"
 #include "titleart/TitleEffectCatalog.h"
 #include "titleart/TitleEffectRegistry.h"
+#include "titleart/TitlePreviewQueue.h"
+#include "render/preview/TitleArtPreviewRender.h"
 #include "util/FontFace.h"
 #include "util/Util.h"
 
@@ -407,6 +409,33 @@ Json outputsOf(Project* project, const fs::path& file, const titleart::TitleArtD
     return list;
 }
 
+// the editor's preview queue (R45): every title preview of the editor shares its per-frame budget
+Json previewQueueJson() {
+    const TitlePreviewQueue& queue = TitlePreviewQueue::editor();
+    const TitlePreviewStats& stats = queue.stats();
+    const titleart::TitleStepCosts& costs = titleArtPreviewCosts();
+    const auto ms = [](double v) { return std::round(v * 1000.0) / 1000.0; };
+    Json overruns = Json::array();
+    for (const TitlePreviewOverrun& o : stats.overruns) {
+        overruns.push_back(Json{{"frame", o.frame}, {"ms", ms(o.ms)}, {"side_work_ms", ms(o.sideWorkMs)},
+                                {"longest", Json{{"label", o.longestLabel}, {"ms", ms(o.longestMs)}}}});
+    }
+    return Json{{"budget_ms", ms(stats.budgetMs)},
+                {"queued", stats.queued},
+                {"working_frames", stats.workingFrames},
+                {"over_budget_frames", stats.overBudgetFrames},
+                {"alone_frames", stats.aloneFrames},
+                {"p95_ms", ms(queue.p95FrameMs())},
+                {"p95_frames", queue.windowFrames()},
+                {"worst_frame_ms", ms(stats.maxFrameMs)},
+                {"worst_step", Json{{"label", stats.worstStepLabel}, {"ms", ms(stats.worstStepMs)}}},
+                {"side_work_ms", ms(stats.sideWorkMs)},
+                {"late_starts", stats.lateStarts},
+                {"prediction_error", Json{{"first", ms(costs.firstError())}, {"recent", ms(costs.recentError())},
+                                          {"observations", costs.observations()}}},
+                {"recent_overruns", overruns}};
+}
+
 void getTitleTool(const CallPtr& call) {
     Project* project = call->ctx().project();
     const Json& args = call->args();
@@ -463,6 +492,7 @@ void getTitleTool(const CallPtr& call) {
     out["outputs"] = outputsOf(project, file, doc);
     out["problems"] = problemsOf(project, doc, document->warnings());
     if (document->migrated()) out["migrated_from"] = document->versionRead();
+    out["previews"] = previewQueueJson();
     size_t stale = 0;
     for (const Json& o : out["outputs"]) if (o.value("status", std::string()) != "fresh") stale++;
     call->ok(relative + " rev " + std::to_string(document->revision()) + ": " + std::to_string(titleart::countLayers(doc.root)) + " layers, canvas " +
@@ -856,7 +886,8 @@ void registerTitleArtTools(McpRegistry& registry) {
         tool.title = "Get Title";
         tool.description =
             "Reads a .titleart: rev, canvas, layers (path, id, type, text, font, parts, effects as fx:<type>, masks, clip, blend), "
-            "exposed, outputs (fresh/stale/missing), problems. detail overrides: non-default values; full: layer objects. fields: "
+            "exposed, outputs (fresh/stale/missing), problems, previews (the editor's preview budget: frames over it, worst step). "
+            "detail overrides: non-default values; full: layer objects. fields: "
             "exact values by glob (style.rims[*].width). Document y is up.";
         tool.inputSchema = object({
             {"path", string("")},

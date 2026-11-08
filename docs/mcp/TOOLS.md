@@ -5374,7 +5374,7 @@ Bakes a .titleart's outputs (all, or `outputs` ids) to PNGs with recipes and the
 
 Group: `title_art` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-Reads a .titleart: rev, canvas, layers (path, id, type, text, font, parts, effects as fx:<type>, masks, clip, blend), exposed, outputs (fresh/stale/missing), problems. detail overrides: non-default values; full: layer objects. fields: exact values by glob (style.rims[*].width). Document y is up.
+Reads a .titleart: rev, canvas, layers (path, id, type, text, font, parts, effects as fx:<type>, masks, clip, blend), exposed, outputs (fresh/stale/missing), problems, previews (the editor's preview budget: frames over it, worst step). detail overrides: non-default values; full: layer objects. fields: exact values by glob (style.rims[*].width). Document y is up.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

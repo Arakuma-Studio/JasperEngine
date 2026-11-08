@@ -270,6 +270,35 @@ bool FrameReadback::finishGpu() {
 #endif
 }
 
+#if (defined(SOKOL_GLCORE) && !defined(_WIN32)) || defined(SOKOL_GLES3)
+namespace {
+    GLsync gpuFence = nullptr;
+}
+
+void FrameReadback::fenceGpu() {
+    if (gpuFence) glDeleteSync(gpuFence);
+    gpuFence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    glFlush();
+}
+
+bool FrameReadback::gpuFencePassed() {
+    if (!gpuFence) return true;
+    const GLenum state = glClientWaitSync(gpuFence, 0, 0);
+    if (state == GL_TIMEOUT_EXPIRED) return false;
+    // signalled, or failed (a lost context): no fence to wait for
+    glDeleteSync(gpuFence);
+    gpuFence = nullptr;
+    return true;
+}
+#else
+void FrameReadback::fenceGpu() {
+}
+
+bool FrameReadback::gpuFencePassed() {
+    return true;
+}
+#endif
+
 bool FrameReadback::readTexture(TextureRender& texture, int width, int height, int bytesPerPixel,
                                 std::vector<uint8_t>& pixels, std::string* error) {
     pixels.clear();

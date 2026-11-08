@@ -149,6 +149,10 @@ bool SystemRender::waitGpuCreationIdle(double timeoutMs){
     return SokolAsyncCreate::waitIdle(timeoutMs);
 }
 
+bool SystemRender::isSoftwareGpu(){
+    return SokolAsyncCreate::isSoftwareGl();
+}
+
 void SystemRender::resetGpuCreationMax(){
     SokolAsyncCreate::resetMaxMainMs();
 }

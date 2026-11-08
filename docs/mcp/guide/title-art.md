@@ -105,6 +105,9 @@ color schemes, templates, library S84; animation S85; 3D S86; languages and impo
   are rebaked first (title_art.stale_bakes_on_export: rebake, warn or fail).
 - Headless: `jasperengine-editor check --titles` (no GPU) reports `title-*` problems with the
   fix command; `jasperengine-editor call export_title --project <p> path=<doc>` bakes.
+- The editor's previews (thumbnails, the Inspector, the Designer) share 4 ms of each frame;
+  `get_title`'s `previews` says how that holds: `p95_ms` of the last 200 working frames,
+  `over_budget_frames`, `worst_step` (a step that alone takes longer cannot be sliced).
 
 ### Common mistakes
 

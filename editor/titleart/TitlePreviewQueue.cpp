@@ -125,6 +125,8 @@ void TitlePreviewQueue::resetStats() {
     counters = TitlePreviewStats();
     counters.queued = queued;
     counters.done = done;
+    recent.clear();
+    recentNext = 0;
 }
 
 void TitlePreviewQueue::refreshCounts() {
@@ -136,10 +138,11 @@ void TitlePreviewQueue::refreshCounts() {
     }
 }
 
-TitlePreviewQueue::Item* TitlePreviewQueue::pick() const {
+TitlePreviewQueue::Item* TitlePreviewQueue::pick(const std::vector<Item*>& passed) const {
     Item* best = nullptr;
     for (const auto& item : items) {
         if (item->state != TitlePreviewState::Queued && item->state != TitlePreviewState::Running) continue;
+        if (std::find(passed.begin(), passed.end(), item.get()) != passed.end()) continue;
         if (!best) {
             best = item.get();
             continue;
@@ -150,8 +153,24 @@ TitlePreviewQueue::Item* TitlePreviewQueue::pick() const {
     return best;
 }
 
+void TitlePreviewQueue::charge(double ms) {
+    if (ms <= 0) return;
+    charged += ms;
+    counters.sideWorkMs += ms;
+}
+
+double TitlePreviewQueue::p95FrameMs() const {
+    if (recent.empty()) return 0.0;
+    std::vector<double> sorted = recent;
+    std::sort(sorted.begin(), sorted.end());
+    // nearest rank
+    const size_t rank = (size_t)std::ceil(0.95 * (double)sorted.size());
+    return sorted[std::clamp<size_t>(rank, 1, sorted.size()) - 1];
+}
+
 void TitlePreviewQueue::runFrame(double budgetMs) {
     counters.frames++;
+    counters.budgetMs = budgetMs;
     if (context) {
         const uint64_t now = context();
         if (now != lastContext) {
@@ -159,47 +178,93 @@ void TitlePreviewQueue::runFrame(double budgetMs) {
             deviceLost();
         }
     }
+    // the side work charged since the last frame belongs to this one
+    const double side = charged;
+    charged = 0;
+    double spent = 0;
+    bool ran = false;
+    bool ranAlone = false;
+    TitlePreviewOverrun frame;
     if (restFrames > 0) {
         restFrames--;
-        counters.lastFrameMs = 0;
-        return;
-    }
-    const double start = clock();
-    double spent = 0;
-    bool ranAlone = false;
-    for (;;) {
-        Item* item = pick();
-        if (!item) break;
-        if (!item->job) {
-            item->job = item->factory ? item->factory() : nullptr;
+        counters.restFrames++;
+    } else {
+        const double budget = budgetMs - side;
+        const double start = clock();
+        std::vector<Item*> passed;      // waiting this frame
+        while (budget > 0) {
+            Item* item = pick(passed);
+            if (!item) break;
             if (!item->job) {
-                item->state = TitlePreviewState::Failed;
+                item->job = item->factory ? item->factory() : nullptr;
+                if (!item->job) {
+                    item->state = TitlePreviewState::Failed;
+                    continue;
+                }
+            }
+            // a step that does not fit what is left runs only as the frame's first work; one
+            // predicted over the whole budget then runs alone
+            const double cost = item->job->nextStepCostUs() / 1000.0;
+            if (cost * VARIANCE_MARGIN > budget - spent && (ran || side > 0)) break;
+            ranAlone = cost > budgetMs;
+            const bool late = (ran || side > 0) && cost > budget - spent;
+            item->state = TitlePreviewState::Running;
+            const double left = std::max(0.0, budget - spent);
+            const double stepStart = clock();
+            const bool finished = item->job->step((uint32_t)std::max(1.0, std::floor(left * 1000.0)));
+            const double stepMs = clock() - stepStart;
+            if (item->job->idle() && !finished && !item->job->failed()) {
+                passed.push_back(item);
+                ranAlone = false;
+                spent = clock() - start;
                 continue;
             }
+            ran = true;
+            counters.steps++;
+            counters.lateStarts += (late ? 1 : 0) + item->job->lateStarts();
+            // the job's own longest piece, else the whole call (an upper bound)
+            std::string label = item->job->longestStepLabel();
+            double longest = item->job->longestStepMs();
+            if (label.empty()) {
+                label = item->key;
+                longest = stepMs;
+            }
+            if (longest >= frame.longestMs) {
+                frame.longestMs = longest;
+                frame.longestLabel = label;
+            }
+            if (longest >= counters.worstStepMs) {
+                counters.worstStepMs = longest;
+                counters.worstStepLabel = label;
+            }
+            if (item->job->failed()) item->state = TitlePreviewState::Failed;
+            else if (finished) item->state = TitlePreviewState::Done;
+            spent = clock() - start;
+            if (ranAlone || spent >= budget) break;
         }
-        const double cost = item->job->nextStepCostUs() / 1000.0;
-        if (cost > budgetMs) {
-            // runs alone: only as a frame's first step, then the queue rests
-            if (spent > 0) break;
-            ranAlone = true;
-        } else if (spent > 0 && spent + cost > budgetMs) {
-            break;
-        }
-        item->state = TitlePreviewState::Running;
-        const double left = std::max(0.0, budgetMs - spent);
-        const bool finished = item->job->step((uint32_t)std::max(1.0, std::floor(left * 1000.0)));
-        counters.steps++;
-        if (item->job->failed()) item->state = TitlePreviewState::Failed;
-        else if (finished) item->state = TitlePreviewState::Done;
-        spent = clock() - start;
-        if (ranAlone) {
-            counters.aloneFrames++;
-            restFrames = std::max(0, (int)std::ceil(cost / std::max(budgetMs, 1e-6)) - 1);
-            break;
-        }
-        if (spent >= budgetMs) break;
     }
-    counters.lastFrameMs = spent;
-    counters.maxFrameMs = std::max(counters.maxFrameMs, ranAlone ? 0.0 : spent);
+    const double total = side + spent;
+    counters.lastFrameMs = total;
+    if (ran || side > 0) {
+        counters.workingFrames++;
+        counters.maxFrameMs = std::max(counters.maxFrameMs, total);
+        if (ranAlone) counters.aloneFrames++;
+        if (total > budgetMs) {
+            counters.overBudgetFrames++;
+            frame.frame = counters.frames;
+            frame.ms = total;
+            frame.sideWorkMs = side;
+            if (counters.overruns.size() >= OVERRUNS) counters.overruns.erase(counters.overruns.begin());
+            counters.overruns.push_back(std::move(frame));
+            // idle frames that bring the average back within the budget
+            restFrames = std::max(restFrames, (int)std::ceil(total / std::max(budgetMs, 1e-6)) - 1);
+        }
+        if (recent.size() < WINDOW) {
+            recent.push_back(total);
+        } else {
+            recent[recentNext] = total;
+            recentNext = (recentNext + 1) % WINDOW;
+        }
+    }
     refreshCounts();
 }
