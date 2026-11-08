@@ -275,8 +275,10 @@ void diffFileTool(const CallPtr& call) {
     std::vector<fs::path> absolute;
     std::vector<RepoPath> keys;
     if (!resolvePaths(call, *service, Json::array({args.value("path", std::string())}), absolute, keys, true)) return;
-    const std::string rev = args.value("rev", std::string("HEAD"));
+    std::string rev = args.value("rev", std::string("HEAD"));
     if (!validRevision(call, *service, rev)) return;
+    // the result names the revision read (svn's HEAD is its BASE)
+    rev = service->effectiveRevision(rev);
     const size_t maxBytes = static_cast<size_t>(std::clamp(args.value("max_bytes", 65536), 1024, 1 << 20));
     const std::string path = args.value("path", std::string());
     const std::string source = args.value("source", std::string("editor"));
@@ -303,11 +305,11 @@ void diffFileTool(const CallPtr& call) {
         std::string text = FileUtils::withLineEndings(absolute[0], *buffer);
         const vcs::SnapshotPtr& snapshot = service->snapshot();
         const vcs::VcsChange* change = snapshot ? snapshot->find(key) : nullptr;
-        if (rev == "HEAD" && change && (change->index == vcs::FileState::Untracked || change->newFile())) {
+        if (rev == service->baselineRevision() && change && !change->hasBaseline()) {
             reply(LineDiff::unified({}, text, key, key), "editor", true);
             return;
         }
-        const RepoPath source = change && !change->oldPath.empty() ? change->oldPath : key;
+        const RepoPath source = change ? change->diffSource() : key;
         service->baseContent(source, rev, [call, path, rev, reply, source, key, text = std::move(text)](const VcsResult& result, std::string base) {
             if (!result.ok) {
                 call->fail("diff_file " + path + ": " + source + " at " + rev + " did not read: " + result.message);
@@ -425,8 +427,9 @@ void diffSceneTool(const CallPtr& call) {
     const Json& args = call->args();
     SceneTarget target;
     if (!resolveSceneTarget(call, project, false, target)) return;
-    const std::string rev = args.value("rev", std::string("HEAD"));
+    std::string rev = args.value("rev", std::string("HEAD"));
     if (!validRevision(call, *service, rev)) return;
+    rev = service->effectiveRevision(rev);
     const std::string source = args.value("source", std::string("editor"));
     vcs::SceneDiffTracker::Request request;
     request.sceneId = source == "editor" ? target.sceneId : 0;

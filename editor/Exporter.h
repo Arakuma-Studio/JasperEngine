@@ -526,6 +526,11 @@ namespace jasperengine::editor {
         // ./gradlew and ./jasperengine.py (an installed or unzipped editor may have lost them); a
         // no-op on Windows. False with error naming the file when one can't be changed.
         static bool ensureExecutable(const std::vector<fs::path>& files, std::string& error);
+        // A macOS CMake build's plugin SDKs (NativePlugins::macosSdks of projectRoot's
+        // plugins/native) beside its executable in `destination`: the dynamic frameworks in
+        // Frameworks/ (the executable's rpath), the resource bundles beside it, as the exported
+        // CMake's post-build step lays them out; frameworks an earlier build embedded go
+        static bool copyMacosNativeSdks(const fs::path& projectRoot, const fs::path& destination, std::string& error);
 
         // a scene or prefab file's text: a Video Player with an http(s) url
         static bool hasUrlVideoPlayer(const std::string& sceneText);
