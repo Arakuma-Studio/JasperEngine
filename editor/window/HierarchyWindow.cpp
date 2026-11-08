@@ -98,6 +98,7 @@
 #include "vat/VatSceneActions.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/CapsuleShadowCasterComponent.h"
+#include "component/TerrainComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "command/type/ImportPrefabCmd.h"
 #include "command/type/RemoveEntityFromPrefabCmd.h"

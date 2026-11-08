@@ -86,6 +86,7 @@
 #include "component/SpriteComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
+#include "component/TerrainComponent.h"
 #include "EntityRegistry.h"
 #include "Scene.h"
 #include "subsystem/MeshSystem.h"

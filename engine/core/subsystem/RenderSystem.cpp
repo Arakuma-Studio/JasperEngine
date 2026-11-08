@@ -70,6 +70,7 @@
 #include "object/environment/Water.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterWakeComponent.h"
+#include "component/TerrainComponent.h"
 #include "subsystem/WaterInteractionSystem.h"
 #include "subsystem/FluidSystem.h"
 #include "particles/ParticleRender.h"

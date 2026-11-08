@@ -11,6 +11,7 @@
 #include "component/InstancedMeshComponent.h"
 #include "component/Joint3DComponent.h"
 #include "component/ModelComponent.h"
+#include "component/TerrainComponent.h"
 #include "physics/ConvexDecomposition.h"
 #include "physics/JoltShapeBuilder.h"
 #include "physics/PlacementWorld.h"

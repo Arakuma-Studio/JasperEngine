@@ -16,6 +16,7 @@
 #include "component/TranslateTracksComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/InstancedMeshComponent.h"
+#include "component/TerrainComponent.h"
 #include "pixelart/PixelSnap.h"
 
 #include "Scene.h"

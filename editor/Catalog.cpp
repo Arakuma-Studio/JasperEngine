@@ -34,6 +34,7 @@
 #include "component/FluidSimulationComponent.h"
 #include "component/SplineComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/TerrainComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "lattice/LatticeTypes.h"
 #include "pose/PoseAnimatorRuntime.h"

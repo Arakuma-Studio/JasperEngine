@@ -14,7 +14,7 @@
 
 #include "component/ForceFieldComponent.h"
 #include "component/ParticleSystemComponent.h"
-#include "component/TerrainComponent.h"
+#include "ecs/ComponentFwd.h"
 #include "math/Matrix4.h"
 #include "particles/ParticleWorld.h"
 #include "subsystem/ParticleSystemState.h"

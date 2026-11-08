@@ -91,6 +91,7 @@
 #include "component/WaterVolumeComponent.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterWakeComponent.h"
+#include "component/TerrainComponent.h"
 #include "subsystem/WaterInteractionSystem.h"
 #include "util/WaterExclusion.h"
 #include "subsystem/AudioSystem.h"

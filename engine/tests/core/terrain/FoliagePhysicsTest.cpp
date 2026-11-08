@@ -10,6 +10,7 @@
 #include "component/Transform.h"
 
 #include "component/RigidbodyComponent.h"
+#include "component/TerrainComponent.h"
 #include "math/Ray.h"
 #include "registry/PhysicsLayers.h"
 #include "subsystem/PhysicsSystem.h"

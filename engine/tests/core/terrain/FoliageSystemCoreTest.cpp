@@ -5,6 +5,7 @@
 
 #include "FoliageTestSupport.h"
 #include "component/Transform.h"
+#include "component/TerrainComponent.h"
 
 #include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"

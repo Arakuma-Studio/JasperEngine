@@ -8,6 +8,7 @@
 
 #include "LogCapture.h"
 #include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 #include "object/Primitive.h"
 #include "object/TerrainEdit.h"
 #include "pool/ShaderPool.h"

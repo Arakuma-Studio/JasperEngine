@@ -24,6 +24,7 @@
 
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/RigidbodyComponent.h"
+#include "component/TerrainComponent.h"
 #endif
 
 #if JASPERENGINE_NAVIGATION

@@ -25,7 +25,6 @@
 #include <string>
 #include <unordered_map>
 #include "component/MeshComponent.h"
-#include "component/TerrainComponent.h"
 #include "io/watch/FileIdentity.h"
 #include "math/Rect.h"
 #include "texture/Material.h"

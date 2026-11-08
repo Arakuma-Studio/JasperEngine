@@ -32,7 +32,7 @@
 #include "jobs/JobSystem.h"
 #include <atomic>
 #include "terrain/TerrainQuality.h"
-#include "component/TerrainComponent.h"
+#include "render/TerrainNodes.h"
 #include "component/TilemapComponent.h"
 #include "component/SpriteComponent.h"
 #include "ecs/ComponentFwd.h"

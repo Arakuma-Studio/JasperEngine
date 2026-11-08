@@ -12,6 +12,7 @@
 #include "SceneSettings.h"
 #include "LogCapture.h"
 #include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 #include "pool/ShaderPool.h"
 #include "terrain/TerrainLayers.h"
 #include "terrain/TerrainMacroNormal.h"
