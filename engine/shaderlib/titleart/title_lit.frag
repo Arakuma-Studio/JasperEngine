@@ -129,12 +129,6 @@ vec4 tlMaterial(int m, int k) {
     return tl.materials[m * TL_MATERIAL_VEC4S + k];
 }
 
-#ifdef TL_FACE_IMAGE
-vec3 tlSrgbToLinear(vec3 c) {
-    return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
-}
-#endif
-
 #if defined(TL_PATTERN) || defined(TL_SURFACE_KIND) || defined(TL_FLAKES)
 // the layer-space position for screen-derivative work: on caps (layer normal +-z, an exact
 // constant across earcut's sliver triangles) rebuilt from the pixel's view ray and the cap's
@@ -293,7 +287,8 @@ void main() {
     vec3 iblDiff = envRadianceLambertian(diffLight, NdotV, roughness, diffuseColor, F0) * m1.z;
 
     // ---- direct light ----
-    vec3 directDiff = tl.ambient.rgb * diffuseColor;
+    // three.js's light units (Pachislop's): irradiance x BRDF, the Lambert term diffuse / pi
+    vec3 directDiff = tl.ambient.rgb * diffuseColor / M_PI;
     vec3 directSpec = vec3(0.0);
     float alpha = roughness * roughness;
 #ifdef TL_LIGHTS
@@ -308,8 +303,8 @@ void main() {
         if (NdotL <= 0.0) continue;
         float NdotH = clamp(dot(N, H), 0.0, 1.0);
         float VdotH = clamp(dot(V, H), 0.0, 1.0);
-        directDiff += radiance * NdotL * BRDF_lambertian(F0, vec3(1.0), diffuseColor, VdotH) * M_PI;
-        directSpec += radiance * NdotL * BRDF_specularGGX(F0, vec3(1.0), alpha, VdotH, NdotL, NdotV, NdotH) * M_PI * m1.w;
+        directDiff += radiance * NdotL * BRDF_lambertian(F0, vec3(1.0), diffuseColor, VdotH);
+        directSpec += radiance * NdotL * BRDF_specularGGX(F0, vec3(1.0), alpha, VdotH, NdotL, NdotV, NdotH) * m1.w;
     }
 #endif
 
@@ -347,7 +342,7 @@ void main() {
         vec3 H = normalize(L + V);
         float NdotL = clamp(dot(Nc, L), 0.0, 1.0);
         coat += tl.lights[i * 2 + 1].rgb * NdotL * BRDF_specularGGX(vec3(0.04), vec3(1.0), ccRough * ccRough, clamp(dot(V, H), 0.0, 1.0), NdotL, ccNdotV,
-                                                                     clamp(dot(Nc, H), 0.0, 1.0)) * M_PI * m1.w * m2.x;
+                                                                     clamp(dot(Nc, H), 0.0, 1.0)) * m1.w * m2.x;
     }
     #endif
     vec3 attenuation = vec3(1.0) - ccF;

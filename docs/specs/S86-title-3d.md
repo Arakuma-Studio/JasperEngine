@@ -1443,4 +1443,9 @@ rest of S82 lands in 6B.
     S83's (deepGlow) are left out. The looks that do not pass are listed in the test with their causes.
 29. **Measured: benches on this host** (`docs/perf/title3d.md`): the figures are this host's (a container on a shared CPU,
     llvmpipe for the GPU), not build server A's; `tools/perf/bench-thresholds.json` keeps the spec's budgets.
+30. **Implementation: Pachislop's units, found by the parity goldens.** A material's gradient overrides its colour
+    (Pachislop sets three's colour white under a ramp; R19's "base colour x ramp" read as a multiply darkened every
+    ramped look, the gold and silver faces most), in the renderer and the GLB (white factor under the ramp texture); and
+    direct and ambient light use three.js's units (irradiance x BRDF with the Lambert term diffuse / pi), not the engine's
+    pi-scaled lobes, which made the lights pi times brighter than the references.
 

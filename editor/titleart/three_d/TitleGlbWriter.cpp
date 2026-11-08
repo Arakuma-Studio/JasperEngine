@@ -126,7 +126,8 @@ namespace {
                       std::vector<std::string>& warnings) {
         tinygltf::Material mat;
         mat.name = m.preset;
-        const auto base = linear(m.color);
+        // a ramp overrides the colour (the renderer's rule): the factor is white under its texture
+        const auto base = m.gradient ? std::array<float, 3>{1, 1, 1} : linear(m.color);
         mat.pbrMetallicRoughness.baseColorFactor = {base[0], base[1], base[2], m.opacity};
         mat.pbrMetallicRoughness.metallicFactor = m.metallic;
         mat.pbrMetallicRoughness.roughnessFactor = m.roughness;

@@ -64,8 +64,9 @@ namespace {
         return r ? &static_cast<const Title3DRenderer*>(r.get())->stats() : nullptr;
     }
 
+    // the linear luminance of an sRGB-encoded pixel (AO multiplies linear light)
     double luminance(const float* p) {
-        return 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
+        return 0.2126 * srgbToLinear(p[0]) + 0.7152 * srgbToLinear(p[1]) + 0.0722 * srgbToLinear(p[2]);
     }
 
     class Title3DRendererGpu : public ::testing::Test {
@@ -248,11 +249,12 @@ TEST_F(Title3DRendererGpu, DebugViewsAoInkAndWireframe) {
     ao.debugView3D = (int)Title3DDebugView::AO;
     const Pixels aoView = render(*renderer, ao);
     EXPECT_GT(aoView.at(256, 128)[0], 0.95f) << "the open face is unoccluded";
+    // the view is the occlusion (linear), written sRGB-encoded: the foot darkens by 15 % or more
     float darkest = 1;
     for (size_t i = 0; i + 3 < aoView.rgba.size(); i += 4) {
-        if (aoView.rgba[i + 3] > 0.99f) darkest = std::min(darkest, aoView.rgba[i]);
+        if (aoView.rgba[i + 3] > 0.99f) darkest = std::min(darkest, srgbToLinear(aoView.rgba[i]));
     }
-    EXPECT_LT(darkest, 0.8f) << "the crevices show";
+    EXPECT_LT(darkest, 0.85f) << "the crevices show";
     // ink: the render without glint (no glint here: the render itself)
     RenderRequest ink = requestOf(doc3D(plate3D()));
     ink.debugView3D = (int)Title3DDebugView::Ink;

@@ -1115,7 +1115,8 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
     for (size_t i = 0; i < plan.materials.size() && i < (size_t)MATERIALS_MAX; i++) {
         const TitleMaterial3D& m = plan.materials[i];
         float(*v)[4] = &fs.materials[i * MATERIAL_VEC4S];
-        const auto base = linear(m.color);
+        // a gradient overrides the colour (Pachislop: the material's colour white under a ramp)
+        const auto base = m.gradient ? std::array<float, 3>{1, 1, 1} : linear(m.color);
         set4(v[0], base[0], base[1], base[2], (float)m.opacity);
         set4(v[1], (float)m.metallic, (float)m.roughness, (float)m.envMultiplier, (float)m.specularMultiplier);
         set4(v[2], (float)m.clearcoat, (float)m.clearcoatRoughness, (float)m.iridescence, (float)m.iridescenceIor);
