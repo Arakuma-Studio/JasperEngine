@@ -1802,3 +1802,34 @@ rest of S82 lands in 6B.
     `PachislopGeneratorMap` (the `generators:` section of the same data file) and their tests.
     `.gitattributes` merges `pachislop-fx-map.yaml` and `FxCost.cpp` with the union driver, where
     each stream appends its own lines.
+
+### W1 wiring (`ta/w1-runtime-live`)
+
+37. **Implementation: the runtime checks** (`editor/titleart/fx/FxRuntimeChecks.*`, §6.11).
+    `fx_bake_only_realtime` reads each effect's and visible generator's mobile-tier class at its
+    values (C4 warns; the fix removes it, or says to set Render Mode to Baked); `fx_live_budget` runs,
+    per Exposed parameter whose targets are all live, the runtime's own decision (S81
+    `TitleLiveCompose`: the suffix rule, then the predicted live cost on the mobile tier against
+    0.5 ms; the fix lowers the definition's number param that saves most, found by the model, to the
+    largest value that fits, e.g. Particles `count`); `fx_realtime_budget` warns over 15 ms predicted
+    for a re-render on the mobile tier with the same kind of fix on the heaviest definition. The three
+    know which project titles show the document (`TitleCheckContext::runtimeInstances`, filled by
+    check_title from S81's export plan): a document only Baked titles show passes with what it would
+    cost. `fx_hdr_on_8bit` (a pixels check) renders the document's light (its Glow content) with
+    `RenderRequest::lightScale` 1/4, so a full code is light above 4.0; above 0.5 % of the canvas it
+    reports, as info, a PASS whose message starts "info:" (check results have no info status).
+38. **Implementation: Pattern Fill's `offset`** (§6.7.17): the generators stream left it out; it is a
+    Vec2 px param that scrolls the pattern (the pass's layer map shifted, no shader change, the
+    default 0 renders as before) and, with `rotation`, Pattern Fill's `kernel` live variant.
+39. **Implementation: no 'Liv' variants are compiled.** No pass family's source tests `TFX_LIVE`, so
+    S81's live compose runs each definition's bake programs over the kept inputs: the same program,
+    so bake and live cannot drift (D10), without a second compile of every live program. The bit
+    stays reserved (Deviation 36) for a family whose live form ever needs different code.
+40. **Open: D12's runtime skip.** A C4 layer of a Realtime document on the mobile tier still renders
+    (sliced); keeping its output as an editor-baked split and skipping the effect when its layer
+    changes is not implemented. `fx_bake_only_realtime` reports every such effect.
+41. **Tests: AC29 without S85.** S85's plan is not in the tree; `TitleFxLiveGpu.S58MinimumSet` drives
+    §6.12's list (S85's §6.2 table) as a keyed track does, a new value each frame for five frames, and
+    checks every frame composed live (no re-render, no fallback reason) and the last against a
+    re-render; the suffix rule's red control is
+    `TitleFxLiveGpu.ALiveEffectBeforeOneWithoutALiveVariantReRenders`.

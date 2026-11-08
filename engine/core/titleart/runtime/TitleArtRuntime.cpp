@@ -8,6 +8,8 @@
 
 #include "subsystem/TitleArtRuntime.h"
 
+#include "Engine.h"
+#include "device/QualityResolver.h"
 #include "io/Data.h"
 #include "texture/Texture.h"
 #include "texture/TextureData.h"
@@ -16,7 +18,11 @@
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/runtime/TitleArtLive.h"
 #include "titleart/runtime/TitleArtScheduler.h"
+#include "titleart/runtime/TitleLiveCompose.h"
 #include "util/Color.h"
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+#include "titleart/three_d/TitleTierFeatures.h"
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -143,6 +149,32 @@ std::shared_ptr<TitleArtLive> TitleArtRuntime::create(const std::string& titlePa
 
 namespace {
 
+    // S83's and S86's tiers on this device: S56's platform group and tier (the editor's Game view
+    // simulation sets both), S86's component Quality Tier, and GLES3 / WebGL2's clamp
+    TitleArtLiveState withTiers(const TitleArtLiveState& state){
+        TitleArtLiveState out = state;
+        const DevicePlatformGroup group = QualityResolver::getPlatformGroup();
+        const std::optional<DeviceTier> deviceTier = QualityResolver::getTier();
+        out.fxTier = (int)titleFxTierFor(group, deviceTier);
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+        // R37's project tier: the running platform's, or the simulated group's (desktop High,
+        // mobile and web Low, as Android and HTML5)
+        const int platform = (int)Engine::getPlatform();
+        const TitleTier project = group == QualityResolver::platformGroupOf(platform) ? defaultTitleTier(platform)
+                                  : group == DevicePlatformGroup::Desktop                ? TitleTier::High
+                                                                                           : TitleTier::Low;
+#if defined(SOKOL_GLES3)
+        const bool gles = true;
+#else
+        const bool gles = false;
+#endif
+        out.renderTier = (int)resolveTitleTier(state.qualityTier, project, deviceTier.has_value(), deviceTier.value_or(DeviceTier::High), gles);
+#else
+        out.renderTier = 0;
+#endif
+        return out;
+    }
+
     // R9 without the pixel path
     uint64_t contentHashOf(TitleArtLive& live, const TitleArtLiveState& state){
         uint64_t hash = hashCombine(live.documentHash(), (uint64_t)live.mode());
@@ -161,8 +193,10 @@ uint64_t TitleArtRuntime::prebakeKeyOf(TitleArtLive& live, const TitleArtLiveSta
     return hash == 0 ? 1 : hash;
 }
 
-uint64_t TitleArtRuntime::stateHashOf(TitleArtLive& live, const TitleArtLiveState& state){
-    // R9: the document's content, the effective values, the resolution and the pixel path
+uint64_t TitleArtRuntime::stateHashOf(TitleArtLive& live, const TitleArtLiveState& given){
+    // R9: the document's content, the effective values, the resolution, the pixel path and the
+    // device's tiers (the prebake key leaves the last two out: its image serves either)
+    const TitleArtLiveState state = withTiers(given);
     uint64_t hash = hashCombine(live.documentHash(), (uint64_t)live.mode());
     for (const FieldOverride& o : fieldOverrides(*live.document(), state.overrides))
         hash = hashCombine(hash, fnv1a64(o.layerId + "\x1f" + o.path + "\x1f" + o.value.dump()));
@@ -171,6 +205,7 @@ uint64_t TitleArtRuntime::stateHashOf(TitleArtLive& live, const TitleArtLiveStat
     hash = hashCombine(hash, ((uint64_t)(uint32_t)state.region.width << 32) ^ (uint32_t)state.region.height);
     hash = hashCombine(hash, titleArtForceRgba8() || (state.testFlags & TITLE_ART_TEST_NO_FLOAT_TARGETS) ? 1u : 2u);
     hash = hashCombine(hash, state.glowOutput ? 3u : 4u);
+    hash = hashCombine(hash, ((uint64_t)(uint32_t)state.fxTier << 8) ^ (uint32_t)state.renderTier);
     return hash == 0 ? 1 : hash;
 }
 
@@ -202,7 +237,9 @@ namespace {
 
 }
 
-void TitleArtRuntime::setState(TitleArtLive& live, const TitleArtLiveState& state){
+void TitleArtRuntime::setState(TitleArtLive& live, const TitleArtLiveState& given){
+    const TitleArtLiveState state = withTiers(given);
+    live.setLiveBudgetMs(TitleArtScheduler::get().liveBudgetMs());
     // R55: with a Characters set (the editor's Play simulating the build), characters outside it
     // draw as nothing, as a subset font would leave them; the title says which once per set
     if (!state.characters.empty()){

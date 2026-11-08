@@ -150,7 +150,9 @@ namespace {
         out["last_render"] = s.lastFrames > 0 ? Json{{"frames", s.lastFrames}, {"gpu_ms_est", s.lastGpuMsEstimate}, {"gpu_ms", nullptr},
                                                      {"cpu_ms", s.lastCpuMs}, {"over_budget_steps", s.overBudgetSteps}} : Json(nullptr);
         out["live"] = Json{{"sweep", title.sweepEnabled}, {"glow", title.glowEnabled}, {"tint", title.tintEnabled}, {"glints", title.glintsEnabled},
-                           {"live_time", title.liveTime}, {"anchors", instance.anchors.size()}};
+                           {"live_time", title.liveTime}, {"anchors", instance.anchors.size()},
+                           // R9: full renders and live composes of Exposed effect parameters, and why the last live change re-rendered
+                           {"renders", s.renders}, {"composes", s.liveComposes}, {"fallback", s.liveFallback}, {"input_bytes", s.liveBytes}};
         Json missing = Json::array();
         if (!s.missingCharacters.empty()) missing.push_back(s.missingCharacters);
         out["characters"] = Json{{"missing", missing}};

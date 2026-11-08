@@ -123,11 +123,17 @@ namespace jasperengine::titleart {
         bool premultiplied = true;      // intermediates are; the output pass writes straight sRGB
     };
 
+    struct TitleCacheEntry;
+
     // what a request asked to keep besides the image (R18a)
     struct TitleSplits {
         std::map<std::string, TitleImage> layers;   // RenderRequest::keepSplits, by layer id
         TitleImage glow;                            // the light of the document (OutputContent::Glow)
         TitleImage glyphBack, glyphFront;           // RenderRequest::glyphCell's two parts
+        // RenderRequest::keepLive, by name (S81's live compose reads them in a later request)
+        std::map<std::string, std::shared_ptr<TitleCacheEntry>> live;
+        // how many of RenderRequest::liveInputs the plan read (known when the job is made)
+        uint32_t liveInputsUsed = 0;
     };
 
     class JASPERENGINE_API TitleRenderJob {

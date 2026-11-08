@@ -8,6 +8,7 @@
 
 #include "titleart/effects/TitleFx.h"
 #include "titleart/effects/TitleFxFamilies.h"
+#include "titleart/effects/TfxCommon.h"
 #include "titleart/effects/TitleFxParams.h"
 
 #include <algorithm>
@@ -80,7 +81,11 @@ namespace {
 
     void renderPatternFill(GeneratorContext& ctx, TargetRef& target, const ParamValues& p) {
         TitlePass pass = fx::makePass(ctx, TitleProgram::PatternFill, "pattern_fill", target);
-        const TitleAffine toLayer = ctx.layerToTarget.inverse();
+        // S83 §6.7.17's scroll: the pattern sampled `offset` back along the layer (y up)
+        TitleAffine toLayer = ctx.layerToTarget.inverse();
+        const TitleVec2 offset = p.vec2("offset");
+        toLayer.tx -= offset.x;
+        toLayer.ty -= offset.y;
         const int kind = std::max(1, fx::patternKindId(p.string("kind")));
         // the document seed and the element seed together (R17); the hash stays exact in fp32
         const int seed = (int)((((int64_t)ctx.seed - 1 + p.integer("seed")) % 65536 + 65536) % 65536);
@@ -115,7 +120,10 @@ namespace {
             degrees("rotation", "Rotation", 0, "The pattern's rotation, clockwise", -180, 180),
             degrees("tilt", "Perspective Tilt", 0, "Lays the pattern on a floor tilted back by this much", 0, 80),
             seed("seed", "Seed", "Reshuffles the random kinds (the document's seed adds to it)"),
+            tfx::vec2("offset", "Offset", 0, 0, "Scrolls the pattern (px); animate it for a moving pattern"),
         };
+        // S83 §6.7.17: a scroll and a turn play live (one full-canvas pass)
+        markLive(d, {"offset", "rotation"}, LiveKind::Kernel, (uint32_t)TitleProgram::PatternFill);
         d.gizmos = {{GizmoKind::Direction, "rotation", nullptr}};
         d.costClass = CostClass::C0;
         d.fallback = FallbackClass::F0;

@@ -131,6 +131,10 @@ templates, library S84; animation S85; 3D S86; languages and import S87); `apply
   returns per effect `{class, passes, fre, taps, desktop_ms, mobile_ms, live}` and the shared
   distance field as its own row; mobile milliseconds are predictions. Prefer C0-C2 effects on
   titles that animate on phones; Lens Blur and long Extrudes are bake only there.
+- `check_title` says what a Realtime title costs on a phone, with fix ops: `fx_bake_only_realtime`
+  (C4 on the mobile tier), `fx_live_budget` (an exposed live param that re-renders instead),
+  `fx_realtime_budget` (a re-render over 15 ms), `fx_hdr_on_8bit` (info: light above 4.0 clips on
+  devices without float targets).
 - Strobes (Glitch, Grain, Neon flicker, Scanlines flicker) animate by reseeding: their `seed` is
   a stepped live param.
 
@@ -162,7 +166,13 @@ prefab variant may override one alone), the Live Effects (`sweepEnabled`, `sweep
 - **Baked** (default): the bake, at an Image's cost, no engine code. Overrides do not apply.
 - **Realtime**: re-renders when its text or a parameter changes, spread over frames within the
   frame budget (2 ms mobile and web, 4 ms desktop, 8 ms in Edit mode; per S56 platform group);
-  the old image stays until the new one is ready. Builds add the `titleart` module.
+  the old image stays until the new one is ready. Builds add the `titleart` module. Slicing
+  follows what steps measure on the device, not desktop estimates. An exposed parameter whose
+  targets are effect or generator params marked `live` composes in the same frame, no re-render
+  (`get_title`'s `live.composes`); over the title's live budget (0.5 ms mobile and web, 1 ms
+  desktop, predicted), or with an effect without a live variant after it, it re-renders and
+  `live.fallback` says why. Phones and the web draw the effects' mobile tier (the Game view's
+  device simulation shows it in Play).
 - **Glyph Atlas**: for text that changes every frame (counters). Each glyph renders once with the
   look into atlas pages (`get_title`'s `glyph_atlas.pages`); a change then costs a compose of the
   plates and cells, no render. Effects that read neighbours (warp, distort, hull plates, masks)

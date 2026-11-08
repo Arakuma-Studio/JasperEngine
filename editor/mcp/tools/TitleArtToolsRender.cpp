@@ -18,6 +18,7 @@
 #include "mcp/McpRefs.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "titleart/fx/FxCost.h"
+#include "titleart/runtime/TitleArtRuntimeExport.h"
 #include "titleart/TitleArtBake.h"
 #include "titleart/TitleArtBuiltinChecks.h"
 #include "titleart/TitleArtChecks.h"
@@ -925,6 +926,13 @@ void checkTitleTool(const CallPtr& call) {
         context.assets = TitleArtRenderHost::editor().resolver(project);
         context.loadWarnings = doc->warnings();
         context.versionError = doc->versionError();
+        // S83's runtime checks: the project's Realtime and Glyph Atlas titles that show it
+        std::vector<std::string> runtimeUses;
+        for (const TitleArtShippedInstance& instance : planTitleArtExport(project).instances) {
+            if (instance.title != rel || instance.mode == TitleArtRenderMode::BAKED) continue;
+            runtimeUses.push_back(instance.where + ": " + instance.object + (instance.mode == TitleArtRenderMode::REALTIME ? " (realtime)" : " (glyph_atlas)"));
+        }
+        context.runtimeInstances = runtimeUses;
         if (a.contains("backgrounds") && a["backgrounds"].is_array() && !a["backgrounds"].empty()) {
             context.options.backgrounds.clear();
             for (const Json& b : a["backgrounds"]) if (b.is_string()) context.options.backgrounds.push_back(b.get<std::string>());

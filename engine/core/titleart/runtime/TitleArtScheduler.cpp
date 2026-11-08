@@ -11,7 +11,10 @@
 #include "render/SystemRender.h"
 #include "texture/TextureData.h"
 #include "titleart/TitleArtAssets.h"
+#include "render/FrameReadback.h"
 #include "titleart/render/TitleArtRenderer.h"
+#include "titleart/render/TitleStepCosts.h"
+#include "titleart/runtime/TitleLiveCompose.h"
 #include "util/FontFace.h"
 #include "util/FontRegistry.h"
 
@@ -144,6 +147,10 @@ const char* jasperengine::titleart::titleQualityTierFor(DeviceTier tier){
 
 TitleArtScheduler::TitleArtScheduler() = default;
 
+double TitleArtScheduler::liveBudgetMs() const{
+    return titleLiveBudgetMs(platformGroup());
+}
+
 TitleArtScheduler& TitleArtScheduler::get(){
     static TitleArtScheduler* scheduler = new TitleArtScheduler();
     return *scheduler;
@@ -224,26 +231,43 @@ void TitleArtScheduler::releaseAll(){
 
 TitleFrameReport TitleArtScheduler::schedule(const std::vector<TitleArtLive*>& entries, const TitleJobFactory& factory, uint32_t budgetUs,
                                              double platformFactor){
+    TitleScheduleContext context;
+    context.factory = factory;
+    context.budgetUs = budgetUs;
+    context.platformFactor = platformFactor;
+    return schedule(entries, context);
+}
+
+TitleFrameReport TitleArtScheduler::schedule(const std::vector<TitleArtLive*>& entries, const TitleScheduleContext& context){
     TitleFrameReport report;
+    // R9: live composes first, whole (a hidden title's waits as its render would, R13)
+    for (TitleArtLive* live : entries){
+        if (!live->liveWaiting() || !live->runnable()) continue;
+        if (live->runLive(context)) report.liveComposes++;
+    }
     std::vector<TitleArtLive*> order;
-    for (TitleArtLive* live : entries) if (live->runnable()) order.push_back(live);
+    for (TitleArtLive* live : entries) if (live->runnable() && !live->liveWaiting()) order.push_back(live);
     // R13: priority, then visible before not visible, then the oldest request
     std::stable_sort(order.begin(), order.end(), [](const TitleArtLive* a, const TitleArtLive* b){
         if (a->priority() != b->priority()) return a->priority() > b->priority();
         if (a->visible() != b->visible()) return a->visible();
         return a->requestOrder() < b->requestOrder();
     });
+    const uint32_t budgetUs = context.budgetUs;
     double spent = 0.0;
     for (TitleArtLive* live : order){
         bool ran = false;
-        while (live->hasWork() && !live->jobDone()){
-            const uint32_t next = live->nextCostUs(platformFactor);
+        // what the model learned since the job's steps were last cut
+        if (context.costs) live->resplit(context);
+        while (live->hasWork() && !live->jobDone() && !live->liveWaiting()){
+            const uint32_t next = live->nextCostUs(context);
             // R15: whole steps while they fit; the first step of the frame always runs
             if (report.steps > 0 && spent + next > budgetUs) break;
             const double before = spent;
-            if (!live->runStep(factory, platformFactor, budgetUs, spent)) break;
-            report.steps++;
+            if (!live->runStep(context, spent)) break;
             if (spent - before > budgetUs) report.overBudgetSteps++;
+            if (report.steps > 0 && spent > budgetUs) report.lateStarts++;
+            report.steps++;
             ran = true;
             if (spent >= budgetUs) break;
         }
@@ -260,7 +284,10 @@ void TitleArtScheduler::runFrame(double dt, bool editorEditMode){
     }
     // R22: a lost device took every target: the live titles render again from their documents
     const uint64_t context = SystemRender::getContextId();
-    if (contextId != 0 && context != contextId) releaseAll();
+    if (contextId != 0 && context != contextId){
+        releaseAll();
+        costs.reset();
+    }
     contextId = context;
     if (lives.empty()) return;
 
@@ -270,8 +297,22 @@ void TitleArtScheduler::runFrame(double dt, bool editorEditMode){
     bool anyWork = false;
     for (TitleArtLive* live : lives) anyWork = anyWork || live->hasWork();
     if (anyWork){
-        const TitleJobFactory factory = testFactory ? testFactory : makeRendererJobFactory(renderer(), assetResolver());
-        schedule(lives, factory, budgetUs, factor);
+        // the device's cost model, its prior the group's factor (a simulated group, or a new
+        // device, starts again from its own)
+        if (!costs || costsGroup != group){
+            costs = std::make_unique<TitleStepCosts>(std::function<double()>(), factor);
+            costsGroup = group;
+            // a software rasterizer draws on its own threads: a step that samples what it has not
+            // drawn yet would wait for it on the main thread, so steps wait for the fence (as the
+            // editor's previews do)
+            if (SystemRender::isSoftwareGpu()) costs->setGpuGate([]{ return !FrameReadback::gpuFencePassed(); }, []{ FrameReadback::fenceGpu(); });
+        }
+        TitleScheduleContext context;
+        context.factory = testFactory ? testFactory : makeRendererJobFactory(renderer(), assetResolver());
+        context.budgetUs = budgetUs;
+        context.platformFactor = factor;
+        context.costs = costs.get();
+        schedule(lives, context);
     }
 
     limits.cacheBytes = (size_t)(config.cacheBudgetMiB[(size_t)group] * 1024.0 * 1024.0) / 2;

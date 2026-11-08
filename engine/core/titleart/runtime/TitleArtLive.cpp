@@ -9,10 +9,14 @@
 #include "texture/Texture.h"
 #include "texture/Framebuffer.h"
 #include "titleart/TitleArtAssets.h"
+#include "titleart/TitleArtHash.h"
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/render/TitleArtRenderer.h"
 #include "titleart/render/TitleGpu.h"
+#include "titleart/render/TitleRenderServices.h"
+#include "titleart/render/TitleStepCosts.h"
 #include "titleart/runtime/TitleGlyphAtlas.h"
+#include "titleart/runtime/TitleLiveCompose.h"
 
 #include <algorithm>
 #include <cmath>
@@ -74,6 +78,12 @@ Framebuffer* TitleDisplayImage::framebuffer() const{
     return target && t ? &t->framebufferObject() : nullptr;
 }
 
+size_t TitleDisplayImage::liveBytes() const{
+    size_t bytes = 0;
+    for (const auto& input : liveInputs) if (input.second) bytes += input.second->bytes;
+    return bytes;
+}
+
 Framebuffer* TitleDisplayImage::glowFramebuffer() const{
     SokolTitleTarget* t = glow.as<SokolTitleTarget>();
     return glow && t ? &t->framebufferObject() : nullptr;
@@ -109,7 +119,11 @@ namespace {
             if (titleArtForceRgba8()) request.testFlags |= TITLE_ART_TEST_NO_FLOAT_TARGETS;
             request.output = TitleOutputFormat::Srgb8;
             request.tier = spec.tier;
+            request.fxTier = spec.fxTier;
             request.assets = assets;
+            // R9: a full render keeps the live inputs; a live compose starts from them
+            request.keepLive = spec.keepLive;
+            request.liveInputs = spec.liveInputs;
             path = TitleArtCaps::select(SystemRender::getFeatures(), request.testFlags).pathName();
             main = renderer.begin(request);
             if (!main){
@@ -118,6 +132,8 @@ namespace {
             }
             if (spec.glow){
                 RenderRequest glowRequest = request;
+                glowRequest.keepLive.clear();
+                glowRequest.liveInputs.clear();
                 glowRequest.content = OutputContent::Glow;
                 glowRequest.pxScale = spec.pxScale * 0.5f;
                 glow = renderer.begin(glowRequest);
@@ -173,9 +189,21 @@ namespace {
         bool floatTargetFailure() const override{ return floatFailure; }
         const char* pathName() const override{ return path; }
 
+        void useCosts(TitleStepCosts* model) override{
+            if (main) main->useCosts(model);
+            if (glow) glow->useCosts(model);
+        }
+
+        bool composesLive() const override{
+            return spec.live && main && main->splits().liveInputsUsed == spec.liveInputs.size();
+        }
+
         TitleDisplayImage takeImage() override{
             TitleDisplayImage out;
             if (!main || !main->done()) return out;
+            // the inputs stay those of the state's live parameters: a live compose's are the
+            // ones it started from (they did not change), a full render's the ones it kept
+            out.liveInputs = composesLive() ? spec.liveInputs : main->resultSplits().live;
             TitleImage& image = main->resultImage();
             out.width = image.width;
             out.height = image.height;
@@ -239,6 +267,8 @@ namespace {
 
 TitleArtLive::TitleArtLive(std::string titlePath, TitleArtRenderMode mode, std::shared_ptr<const TitleArtDoc> document, uint64_t documentHash)
     : path(std::move(titlePath)), renderMode(mode), doc(std::move(document)), docHash(documentHash){
+    // R9: only Realtime composes live (Glyph Atlas lays its glyphs out instead)
+    if (renderMode == TitleArtRenderMode::REALTIME && doc) keepLive = titleLiveKeeps(*doc);
 }
 
 TitleArtLive::~TitleArtLive(){
@@ -262,8 +292,39 @@ void TitleArtLive::setState(const TitleArtLiveState& state, uint64_t stateHash, 
     queueWanted();
 }
 
+uint64_t TitleArtLive::renderKeyOf(const TitleArtLiveState& state) const{
+    // what of a state shapes its pixels besides the field overrides
+    uint64_t key = hashCombine((uint64_t)std::llround(state.resolution * 8.0f), ((uint64_t)(uint32_t)state.region.x << 32) ^ (uint32_t)state.region.y);
+    key = hashCombine(key, ((uint64_t)(uint32_t)state.region.width << 32) ^ (uint32_t)state.region.height);
+    key = hashCombine(key, ((uint64_t)state.testFlags << 8) ^ (state.glowOutput ? 1u : 2u) ^ (titleArtForceRgba8() ? 4u : 8u));
+    return hashCombine(key, ((uint64_t)(uint32_t)state.fxTier << 16) ^ (uint32_t)state.renderTier);
+}
+
+bool TitleArtLive::liveChange(){
+    if (keepLive.empty() || wanted.glowOutput || !frontImage.valid() || frontImage.prebaked || frontImage.liveInputs.empty() ||
+        frontImage.renderKey != renderKeyOf(wanted)){
+        return false;
+    }
+    const TitleLiveDecision decision = decideTitleLive(*doc, frontImage.overrides, wantedOverrides, (FxTier)wanted.fxTier, liveBudget);
+    if (!decision.live){
+        // a live parameter that re-renders says why (the suffix rule, the budget)
+        if (!decision.reason.empty()) liveReason = decision.reason;
+        return false;
+    }
+    // inputs a live compose since their render made stale (an effect before them, a layer
+    // inside them) re-render, which keeps fresh ones
+    for (const std::string& name : decision.inputs)
+        if (!frontImage.liveInputs.count(name) || !titleLiveInputValid(*doc, name, frontImage.liveTouched)) return false;
+    liveInputNames = decision.inputs;
+    liveChanged = frontImage.liveTouched;
+    touchTitleLive(liveChanged, decision.changed);
+    liveReason.clear();
+    return true;
+}
+
 void TitleArtLive::queueWanted(){
     cacheSwapPending = false;
+    liveQueued = false;
     // R14: the image already shown
     if (frontImage.valid() && frontImage.hash == wantedHash && !running.job){
         queued = false;
@@ -281,6 +342,15 @@ void TitleArtLive::queueWanted(){
         queued = false;
         return;
     }
+    // R9: a change of live parameters only composes in one frame (a live compose of an older
+    // state that has not finished is made again for this one)
+    if ((!running.job || running.live) && liveChange()){
+        running = Running();
+        queued = false;
+        liveQueued = true;
+        return;
+    }
+    if (running.live) running = Running();
     if (running.job && running.started && running.job->progress() < 0.5f){
         // R12: under half done: start again with the new state
         running = Running();
@@ -296,6 +366,7 @@ void TitleArtLive::invalidate(){
     cache.clear();
     retryWaiting = false;
     retries = 0;
+    liveQueued = false;
     if (hasWanted){
         if (running.job) running = Running();
         queued = true;
@@ -317,7 +388,7 @@ void TitleArtLive::setPrebaked(TitleDisplayImage image){
 }
 
 bool TitleArtLive::hasWork() const{
-    return !retryWaiting && (queued || running.job != nullptr);
+    return !retryWaiting && (queued || liveQueued || running.job != nullptr);
 }
 
 bool TitleArtLive::runnable() const{
@@ -325,16 +396,16 @@ bool TitleArtLive::runnable() const{
     return hasWork() && (wanted.visible || wanted.renderWhenHidden);
 }
 
-uint32_t TitleArtLive::nextCostUs(double platformFactor) const{
-    if (running.job) return (uint32_t)std::ceil(running.job->nextStepCostUs() * platformFactor);
+uint32_t TitleArtLive::nextCostUs(const TitleScheduleContext& context) const{
+    if (running.job){
+        // a model predicts what this device takes; the static estimates are the desktop reference's
+        const uint32_t next = running.job->nextStepCostUs();
+        return jobCosts ? next : (uint32_t)std::ceil(next * context.platformFactor);
+    }
     return queued ? 1u : 0u;
 }
 
-void TitleArtLive::startJob(const TitleJobFactory& factory, uint32_t budgetUs, double platformFactor){
-    running = Running();
-    running.hash = wantedHash;
-    running.state = wanted;
-    running.overrides = wantedOverrides;
+TitleJobSpec TitleArtLive::specOf() const{
     TitleJobSpec spec;
     spec.doc = doc;
     spec.overrides = wantedOverrides;
@@ -343,6 +414,18 @@ void TitleArtLive::startJob(const TitleJobFactory& factory, uint32_t budgetUs, d
     spec.testFlags = wanted.testFlags;
     spec.glow = wanted.glowOutput;
     spec.label = wanted.label;
+    spec.fxTier = (FxTier)wanted.fxTier;
+    spec.tier = wanted.renderTier;
+    return spec;
+}
+
+void TitleArtLive::startJob(const TitleScheduleContext& context){
+    running = Running();
+    running.hash = wantedHash;
+    running.state = wanted;
+    running.overrides = wantedOverrides;
+    running.renderKey = renderKeyOf(wanted);
+    TitleJobSpec spec = specOf();
     if (renderMode == TitleArtRenderMode::GLYPH_ATLAS && glyphPlan.fallback.empty() && !glyphPlan.textLayer.empty()){
         // R25-R29: per glyph; a title whose plan falls back renders as Realtime
         if (!atlas) atlas = std::make_shared<TitleGlyphAtlas>();
@@ -351,37 +434,48 @@ void TitleArtLive::startJob(const TitleJobFactory& factory, uint32_t budgetUs, d
         spec.glyphPlan = glyphPlan;
         spec.docHash = docHash;
         spec.titlePath = path;
+    }else if (!wanted.glowOutput){
+        // R9: the inputs a later live compose starts from
+        spec.keepLive = keepLive;
     }
-    running.job = factory(spec);
+    running.job = context.factory(spec);
     queued = false;
+    jobCosts = context.costs;
     if (running.job){
-        // R15: GPU steps over the budget become scissor tiles (>= 256 x 256)
-        const uint32_t maxUs = (uint32_t)std::max(1.0, budgetUs / std::max(platformFactor, 1e-3));
-        running.job->splitOversizedSteps(maxUs);
+        running.job->useCosts(context.costs);
+        // R15: GPU steps over the budget become scissor tiles (>= 256 x 256), by the model's
+        // predictions when there is one
+        resplit(context);
         running.estimatedUs = 0;
     }
 }
 
-bool TitleArtLive::runStep(const TitleJobFactory& factory, double platformFactor, uint32_t budgetUs, double& spentUs){
+void TitleArtLive::resplit(const TitleScheduleContext& context){
+    if (!running.job || running.live) return;
+    const double maxUs = jobCosts ? context.budgetUs : context.budgetUs / std::max(context.platformFactor, 1e-3);
+    running.job->splitOversizedSteps((uint32_t)std::max(1.0, maxUs));
+}
+
+bool TitleArtLive::runStep(const TitleScheduleContext& context, double& spentUs){
     if (!running.job){
         if (!queued) return false;
-        startJob(factory, budgetUs, platformFactor);
+        startJob(context);
         if (!running.job){
             failJob("the renderer refused the document", false, false);
             return false;
         }
     }
-    if (running.job->done()) return false;
+    if (running.live || running.job->done()) return false;
     running.started = true;
     StepReport report;
-    // one step at a time: the scheduler packs steps by their scaled estimates
+    // one step at a time: the scheduler packs steps by their predictions
     running.job->step(StepBudget{1, 0}, &report);
     shadersWaiting = running.job->waiting() && report.steps == 0;
-    const double estimate = report.estimatedUs * platformFactor;
-    spentUs += std::max(estimate, (double)report.measuredUs);
-    running.estimatedUs += (uint32_t)std::min(4.0e9, estimate);
+    const double predicted = jobCosts ? (double)report.estimatedUs : report.estimatedUs * context.platformFactor;
+    spentUs += std::max(predicted, (double)report.measuredUs);
+    running.estimatedUs += (uint32_t)std::min(4.0e9, predicted);
     running.cpuMs += report.measuredUs / 1000.0;
-    if (estimate > budgetUs) running.overBudget++;
+    if (predicted > context.budgetUs) running.overBudget++;
     totalSteps += report.steps;
     path8 = running.job->pathName();
     if (running.job->failed()){
@@ -389,6 +483,63 @@ bool TitleArtLive::runStep(const TitleJobFactory& factory, double platformFactor
         return false;
     }
     return report.steps > 0;
+}
+
+bool TitleArtLive::runLive(const TitleScheduleContext& context){
+    if (!liveQueued) return false;
+    if (!running.job){
+        running = Running();
+        running.hash = wantedHash;
+        running.state = wanted;
+        running.overrides = wantedOverrides;
+        running.renderKey = renderKeyOf(wanted);
+        running.live = true;
+        TitleJobSpec spec = specOf();
+        spec.live = true;
+        // kept only where the plan cannot start from the inputs (then it is a full render)
+        spec.keepLive = keepLive;
+        for (const std::string& name : liveInputNames) spec.liveInputs[name] = frontImage.liveInputs[name];
+        running.job = context.factory(spec);
+        // the compose runs whole in its frame: no model gates or slices it
+        jobCosts = nullptr;
+        if (!running.job || !running.job->composesLive()){
+            // the plan could not start from every input (a stack the render could not keep, as
+            // one whose ink a skipped effect traces): a re-render, time-sliced like any change
+            liveQueued = false;
+            liveReason = "the render could not start from the kept inputs of the live effect: the change re-renders";
+            if (running.job){
+                running.live = false;
+                running.job->useCosts(context.costs);
+                jobCosts = context.costs;
+                resplit(context);
+            }else{
+                running = Running();
+                queued = true;
+                requestSerial = nextRequestSerial();
+            }
+            return false;
+        }
+    }
+    running.started = true;
+    StepReport report;
+    running.job->step(StepBudget{0, 0}, &report);
+    shadersWaiting = running.job->waiting() && report.steps == 0;
+    running.estimatedUs += report.estimatedUs;
+    running.cpuMs += report.measuredUs / 1000.0;
+    totalSteps += report.steps;
+    path8 = running.job->pathName();
+    if (running.job->failed()){
+        // a lost input (device loss) or target: the change re-renders
+        liveReason = "the live compose failed (" + running.job->error() + "): the change re-renders";
+        running = Running();
+        liveQueued = false;
+        queued = true;
+        requestSerial = nextRequestSerial();
+        return false;
+    }
+    if (!running.job->done()) return false;
+    liveQueued = false;
+    return true;
 }
 
 void TitleArtLive::failJob(std::string error, bool allocation, bool floatTarget){
@@ -441,6 +592,9 @@ void TitleArtLive::finishJob(TitleLiveLimits& limits, size_t& cacheBytesInUse){
     (void)cacheBytesInUse;
     TitleDisplayImage image = running.job->takeImage();
     image.hash = running.hash;
+    image.overrides = running.overrides;
+    image.renderKey = running.renderKey;
+    const bool live = running.live;
     lastFrames = running.frames;
     lastGpuMs = running.estimatedUs / 1000.0;
     lastCpuMs = running.cpuMs;
@@ -451,6 +605,18 @@ void TitleArtLive::finishJob(TitleLiveLimits& limits, size_t& cacheBytesInUse){
     retries = 0;
     retryWaiting = false;
     if (!image.valid()) return;
+    if (live){
+        // R9: a live frame cuts to the new image; the old one is not kept (a keyed parameter
+        // would fill the cache with a frame per frame)
+        liveCount++;
+        // every input the render kept stays, with what the composes since changed
+        image.liveInputs = frontImage.liveInputs;
+        image.liveTouched = liveChanged;
+        frontImage = std::move(image);
+        if (hasWanted && frontImage.hash != wantedHash && !queued && !liveQueued && !cacheSwapPending) queueWanted();
+        return;
+    }
+    renderCount++;
     // R17: the old front becomes the previous image (a crossfade's start) and a cache entry
     if (frontImage.valid()){
         if (wanted.transition == TitleArtTransition::CROSSFADE && wanted.transitionDuration > 0.0f){
@@ -504,7 +670,8 @@ void TitleArtLive::endFrame(double now, double dt, TitleLiveLimits& limits, size
 
 size_t TitleArtLive::cacheBytes() const{
     size_t bytes = 0;
-    for (const Cached& c : cache) bytes += c.image.bytes;
+    // a shown-before image keeps its live inputs (a live change from it composes again)
+    for (const Cached& c : cache) bytes += c.image.bytes + c.image.liveBytes();
     return bytes;
 }
 
@@ -519,6 +686,7 @@ void TitleArtLive::dropGpu(){
     previousImage = TitleDisplayImage();
     cache.clear();
     running = Running();
+    liveQueued = false;
     if (atlas) atlas->clear();
     if (hasWanted){
         queued = true;
@@ -562,6 +730,10 @@ TitleArtLiveStatus TitleArtLive::status() const{
     s.lastCpuMs = lastCpuMs;
     s.overBudgetSteps = lastOverBudget;
     s.steps = totalSteps;
+    s.renders = renderCount;
+    s.liveComposes = liveCount;
+    s.liveFallback = liveReason;
+    s.liveBytes = frontImage.liveBytes();
     if (frontImage.valid()){
         s.frame.frame = {frontImage.frame.x, frontImage.frame.y, frontImage.frame.width, frontImage.frame.height};
         s.frame.alphaBounds = s.frame.frame;

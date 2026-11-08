@@ -15,6 +15,7 @@
 
 #include "titleart/TitleArtDoc.h"
 #include "titleart/TitleEffectRegistry.h"
+#include "titleart/effects/TfxCommon.h"
 
 #include <string>
 #include <vector>
@@ -23,10 +24,11 @@ namespace jasperengine::editor {
 
     // the cost of one FRE (ms) and of one instance on each tier (§6.4): the desktop constant is
     // TitleFxBench.Calibrate's on the RTX 3080 Ti server, the mobile one an estimate
-    constexpr double TITLE_FX_DESKTOP_MS_PER_FRE = 0.012;
-    constexpr double TITLE_FX_MOBILE_MS_PER_FRE = 0.35;
-    constexpr double TITLE_FX_DESKTOP_MS_PER_INSTANCE = 0.0004;
-    constexpr double TITLE_FX_MOBILE_MS_PER_INSTANCE = 0.002;
+    // (titleart/effects/TfxCommon.h holds them: S81's runtime live budget predicts with them too)
+    constexpr double TITLE_FX_DESKTOP_MS_PER_FRE = titleart::tfx::DESKTOP_MS_PER_FRE;
+    constexpr double TITLE_FX_MOBILE_MS_PER_FRE = titleart::tfx::MOBILE_MS_PER_FRE;
+    constexpr double TITLE_FX_DESKTOP_MS_PER_INSTANCE = titleart::tfx::DESKTOP_MS_PER_INSTANCE;
+    constexpr double TITLE_FX_MOBILE_MS_PER_INSTANCE = titleart::tfx::MOBILE_MS_PER_INSTANCE;
 
     struct TitleFxCostRow {
         std::string layer, path;            // the layer id and the effect's field path ("fx:light_glow")

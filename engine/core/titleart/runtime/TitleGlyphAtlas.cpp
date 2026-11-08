@@ -3,6 +3,7 @@
 
 #include "TitleGlyphAtlas.h"
 
+#include "Log.h"
 #include "io/AtomicFile.h"
 #include "io/Data.h"
 #include "render/FrameReadback.h"
@@ -12,6 +13,7 @@
 #include "texture/TextureData.h"
 #include "titleart/TitleArtHash.h"
 #include "titleart/TitleArtIO.h"
+#include "titleart/render/TitleStepCosts.h"
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/render/TitleArtRenderer.h"
 #include "titleart/render/TitleFrame.h"
@@ -42,6 +44,8 @@ namespace {
     constexpr int QUADS_PER_PASS = 20;
     // the compose and output steps' estimate
     constexpr uint32_t COMPOSE_US = 150;
+    // the compose's kind in the scheduler's cost model (TitleStepCosts)
+    constexpr const char* COMPOSE_KIND = "gpu:glyph compose";
 
     void setMap(TitleGpuPass& pass, int index, float sx, float sy, float ox, float oy){
         pass.params.set(index, sx, sy, ox, oy);
@@ -781,6 +785,7 @@ namespace {
         bool step(const StepBudget&, StepReport* report) override{
             if (!failure.empty() || finished) return finished;
             StepReport local;
+            bool composed = false;
             const auto start = std::chrono::steady_clock::now();
             if (!prepared){
                 // the prebaked pages and plates, then the state's layout
@@ -807,8 +812,14 @@ namespace {
             }else if (!startNext()){
                 // every plate and cell is in: compose (one step)
                 if (compose(local)) finished = true;
+                composed = finished;
             }
             local.measuredUs = (uint32_t)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+            if (composed && costs){
+                // what the compose costs this device (the scheduler's prediction of the next one)
+                local.estimatedUs = costs->predictUs(COMPOSE_KIND, COMPOSE_US);
+                costs->observe(COMPOSE_KIND, COMPOSE_US, local.measuredUs);
+            }
             if (local.steps == 0 && !blocked) local.steps = 1;
             if (report) *report = local;
             return finished;
@@ -824,7 +835,11 @@ namespace {
         uint32_t nextStepCostUs() const override{
             if (finished) return 0;
             if (sub) return sub->nextStepCostUs();
-            return COMPOSE_US;
+            return costs ? costs->predictUs(COMPOSE_KIND, COMPOSE_US) : COMPOSE_US;
+        }
+        void useCosts(TitleStepCosts* model) override{
+            costs = model;
+            if (sub) sub->useCosts(model);
         }
         void splitOversizedSteps(uint32_t maxUs) override{ splitLimit = maxUs; }
         uint32_t passesDone() const override{ return passesRun + (sub ? sub->passesDone() : 0); }
@@ -881,6 +896,7 @@ namespace {
         bool hasPrebaked = false;
         TitleGlyphAtlasSnapshot prebaked;
         uint32_t splitLimit = 0;
+        TitleStepCosts* costs = nullptr;
         uint32_t passesRun = 0;
         size_t work = 0, workDone = 0;
         std::vector<ShaderKey> subKeys;
@@ -1106,12 +1122,14 @@ namespace {
             request.pxScale = spec.pxScale;
             request.output = TitleOutputFormat::Linear;
             request.tier = spec.tier;
+            request.fxTier = spec.fxTier;
             request.testFlags = renderFlags;
             sub = renderer.begin(request);
             if (!sub){
                 fail("the renderer refused the document");
                 return false;
             }
+            if (costs) sub->useCosts(costs);
             if (splitLimit) sub->splitOversizedSteps(splitLimit);
             subKind = kind;
             collectKeys();
@@ -1347,6 +1365,11 @@ namespace {
             passesRun += passes;
             atlas->mutableStats().composes++;
             atlas->mutableStats().composePasses = passes + 1;    // and the clear
+            if (atlas->stats().composes == 1){
+                // R32: what a shipped counter's first value cost (0 cell renders with its prebake)
+                Log::print("Title Art '%s': the glyph atlas showed its first string after %llu cell renders (%llu cells from the build's prebaked atlas)",
+                           spec.label.c_str(), (unsigned long long)atlas->stats().cellRenders, (unsigned long long)atlas->stats().restoredCells);
+            }
             report.passes += passes;
             report.steps = 1;
             report.estimatedUs = COMPOSE_US;

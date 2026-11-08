@@ -140,3 +140,59 @@ async def test_realtime_text_change(ed: Editor):
         ed.check_eq(after["effective"].get("text"), "WIN", "a what-if leaves the instance alone")
     finally:
         await ed.call("play", action="stop")
+
+
+FX_DOC = "assets/titles/glow.titleart"
+
+
+async def test_lua_live_effect_params(ed: Editor):
+    """S83 AC27 (S81 R9, R66): with fx:light_glow.intensity exposed as glow and fx:light_glow.radius as
+    glow_radius on a Realtime title, setParameter('glow', 2) changes the next frame with no re-render (a
+    live compose), and setParameter('glow_radius', 300) causes exactly one re-render."""
+    s = await setup(ed)
+    await ed.call("edit_title", path=FX_DOC, create={"text": "WIN", "canvas": [800, 400]}, bake="never",
+                  ops=[{"op": "add_effect", "layer": "Title", "type": "light_glow"},
+                       {"op": "expose", "name": "glow", "type": "number", "min": 0, "max": 10,
+                        "targets": [{"layer": "Title", "field": "fx:light_glow.intensity"}]},
+                       {"op": "expose", "name": "glow_radius", "type": "number", "min": 4, "max": 1000,
+                        "targets": [{"layer": "Title", "field": "fx:light_glow.radius"}]}])
+    await ed.call("export_title", path=FX_DOC)
+    await ed.call("create_ui", scene=s["scene"], root={"type": "image", "name": "Glow", "layout": {"anchor": "top", "size": [400, 200]}})
+    await ed.call("add_component", scene=s["scene"], entity="Glow", component="titleart")
+    await ed.call("set_properties", scene=s["scene"], entity="Glow", values={"titleart": {"title": FX_DOC, "renderMode": "realtime"}})
+    checked = await ed.call("check_title", path=FX_DOC, checks=["fx_live_budget"])
+    ed.check_eq(checked["checks"][0]["status"], "PASS", f"glow composes within the mobile live budget: {checked['checks'][0]}")
+    await ed.call("play", action="start", scene=s["scene"])
+    try:
+        state = await ed.call("get_title", entity="Glow", scene=s["scene"], wait_ready=True, timeout_seconds=120)
+        ed.check(state.get("ready") is True, f"the first render: {state.get('pending')} {state.get('error')}")
+        before = state["live"]
+        ed.check(before["input_bytes"] > 0, f"the render kept the live inputs: {before}")
+        await ed.call("eval_lua", code="object('Glow'):getTitleArt():setParameter('glow', 2)")
+        await ed.call("wait", frames=2)
+        live = await ed.call("get_title", entity="Glow", scene=s["scene"])
+        ed.check(live.get("ready") is True, f"the next frame shows it: {live.get('pending')} {live['live']}")
+        ed.check_eq(live["effective"].get("glow"), 2)
+        ed.check_eq(live["live"]["renders"], before["renders"], f"no re-render: {live['live']}")
+        ed.check_eq(live["live"]["composes"], before["composes"] + 1, f"one live compose: {live['live']}")
+        await ed.call("eval_lua", code="object('Glow'):getTitleArt():setParameter('glow_radius', 300)")
+        after = await ed.call("get_title", entity="Glow", scene=s["scene"], wait_ready=True, timeout_seconds=120)
+        ed.check(after.get("ready") is True, f"ready after the radius: {after.get('pending')} {after.get('error')}")
+        ed.check_eq(after["live"]["renders"], before["renders"] + 1, f"exactly one re-render: {after['live']}")
+        ed.check_eq(after["live"]["composes"], live["live"]["composes"])
+    finally:
+        await ed.call("play", action="stop")
+
+
+async def test_hdr_on_8bit_reads_the_light(ed: Editor):
+    """S83 §6.11 fx_hdr_on_8bit (info): a check_title render of the light at 1/4 measures the light above 4.0."""
+    await setup(ed)
+    path = "assets/titles/hdr.titleart"
+    await ed.call("edit_title", path=path, create={"text": "HOT", "canvas": [600, 300]}, bake="never",
+                  ops=[{"op": "add_effect", "layer": "Title", "type": "light_glow"},
+                       {"op": "set", "layer": "Title", "values": {"fx:light_glow.intensity": 10}}])
+    r = await ed.call("check_title", path=path, checks=["fx_hdr_on_8bit"])
+    check = r["checks"][0]
+    ed.check_eq(check["status"], "PASS", f"info, never a warning: {check}")
+    ed.check(check["measured"]["over_4_fraction"] > 0.005, f"light at intensity 10 is above 4.0 somewhere: {check}")
+    ed.check_in("info:", check["message"])

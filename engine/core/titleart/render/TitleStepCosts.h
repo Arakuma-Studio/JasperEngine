@@ -8,7 +8,8 @@
 //   estimates (pixels x costWeight, cpuUs). Those are desktop-GPU figures: on a software
 //   rasterizer the GPU passes and the readback run on the main thread far above them.
 // - Model: per kind a ratio of measured to static estimate, so a kind learned at one size predicts
-//   another; a kind never measured uses the ratio of every kind (the machine's), a fresh model 1.
+//   another; a kind never measured uses the ratio of every kind (the machine's), a fresh model its
+//   prior (1, or what the owner expects of the device: S81's runtime starts at its platform factor).
 //   The ratio rises fast on a slower measurement and falls slower, so one quick run does not
 //   undo what slow ones taught. Kinds are capped (MAX_KINDS); past the cap only the machine's
 //   ratio learns.
@@ -42,7 +43,7 @@ namespace jasperengine::titleart {
     public:
         static constexpr size_t MAX_KINDS = 512;
 
-        explicit TitleStepCosts(std::function<double()> clockUs = {});
+        explicit TitleStepCosts(std::function<double()> clockUs = {}, double priorRatio = 1.0);
 
         double nowUs() const { return clock(); }
         void setGpuGate(std::function<bool()> busyFn, std::function<void()> fenceFn) {
