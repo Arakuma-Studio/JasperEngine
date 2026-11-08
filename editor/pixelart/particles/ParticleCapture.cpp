@@ -201,12 +201,19 @@ void ParticleCapture::collectParticles(CapturedFrame& frame){
     // every emitter of the effect: its sub-emitters draw too
     forEachEmitter(state->runtime, [&](const particles::EmitterRuntime& runtime){
         const particles::ParticleProgram* program = runtime.program();
-        const bool pixelSizes = program && program->render.pixel.active && program->render.pixel.pixelSizes;
+        const particles::PixelParams* pixel = program ? &program->render.pixel : nullptr;
+        const bool pixelSizes = pixel && pixel->active && pixel->pixelSizes;
         auto add = [&](float x, float y, float size){
             CapturedParticle p;
             p.x = (x - frameOrigin.x) * ppu;
             p.y = (y - frameOrigin.y) * ppu;
             p.size = pixelSizes ? size : size * ppu;
+            if (pixel){
+                p.pixel = pixel->active != 0;
+                p.snap = pixel->module && pixel->snap;
+                p.integerSize = !pixel->module || pixel->integerSize;
+                p.streak = pixel->shapes && pixel->shape == particles::PixelShape::Streak;
+            }
             frame.particles.push_back(p);
         };
         if (runtime.isAnalytic()){

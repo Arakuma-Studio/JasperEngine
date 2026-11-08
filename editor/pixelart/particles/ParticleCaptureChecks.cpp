@@ -21,10 +21,11 @@ const std::vector<std::string>& editor::pixelart::particleCheckIds(){
 
 lint::LintReport editor::pixelart::particleCaptureChecks(const ParticleCapture& capture, uint32_t budget){
     lint::LintReport report;
-    const particles::ParticleEffectDocument& d = capture.settings().document;
-    const particles::PixelArtModule& pa = d.pixelArt;
-    const bool module = pa.present && pa.enabled;
-    const bool pixelEffect = module || d.renderer.renderMode == particles::RenderMode::Pixel;
+    // a pixel effect: one of its emitters (the effect's, or a sub-emitter's) draws on the grid
+    bool pixelEffect = false;
+    for (const CapturedFrame& frame : capture.frames()){
+        for (const CapturedParticle& p : frame.particles) pixelEffect = pixelEffect || p.pixel;
+    }
 
     // off_grid: each particle's pixel box where the vertex stage puts it, against the grid
     lint::LintResult grid;
@@ -34,17 +35,16 @@ lint::LintReport editor::pixelart::particleCaptureChecks(const ParticleCapture& 
         grid.status = lint::LintStatus::Skip;
         grid.message = "not a pixel effect (no Pixel Art module, Render Mode not Pixel)";
     }else{
-        const bool snap = module && pa.snap;
-        const bool integer = !module || pa.integerSize;
-        const bool streak = d.renderer.renderMode == particles::RenderMode::Pixel && d.renderer.pixelShape == particles::PixelShape::Streak;
         int total = 0;
         for (size_t f = 0; f < capture.frames().size(); f++){
             for (const CapturedParticle& p : capture.frames()[f].particles){
+                if (!p.pixel)
+                    continue;
                 total++;
-                const float n = streak ? 1.0f : particles::ParticlePixel::drawnSize(Vector2(p.size, p.size), integer).x;
+                const float n = p.streak ? 1.0f : particles::ParticlePixel::drawnSize(Vector2(p.size, p.size), p.integerSize).x;
                 const float cx = p.x - n * 0.5f, cy = p.y - n * 0.5f;
-                const float x = snap ? jasperengine::pixelart::snap(cx) : cx;
-                const float y = snap ? jasperengine::pixelart::snap(cy) : cy;
+                const float x = p.snap ? jasperengine::pixelart::snap(cx) : cx;
+                const float y = p.snap ? jasperengine::pixelart::snap(cy) : cy;
                 if (std::fabs(x - std::round(x)) > 1.0e-3f || std::fabs(y - std::round(y)) > 1.0e-3f)
                     grid.addSpot({(int)f + 1, (int)std::floor(p.x), capture.height() - 1 - (int)std::floor(p.y)});
             }

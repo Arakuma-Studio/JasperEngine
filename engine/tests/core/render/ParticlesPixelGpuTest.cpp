@@ -447,6 +447,9 @@ TEST_F(ParticlesPixelGpu, AnalyticMatchesCpu){
     d.pixelArt.fade = PixelFade::Cutout;
     d.renderer.renderMode = RenderMode::Pixel;
     d.renderer.pixelShape = PixelShape::Dot;
+    // the random directions are 3D: depth wide enough for every particle the twin places
+    camera.setNearClip(-1000.0f);
+    camera.setFarClip(1000.0f);
     ParticleSystem& ps = add(Vector3(128.0f, 128.0f, 0.0f), d, 21);
     ASSERT_TRUE(render(0.05));
     const ParticleSystemState* state = scene.getComponent<ParticleSystemComponent>(ps.getEntity()).state.get();

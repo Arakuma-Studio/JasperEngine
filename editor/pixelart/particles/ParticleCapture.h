@@ -41,6 +41,8 @@ namespace jasperengine::editor::pixelart {
     struct CapturedParticle {
         float x = 0.0f, y = 0.0f;
         float size = 1.0f;
+        // its own emitter's pixel settings (a sub-emitter's may differ from the effect's)
+        bool pixel = false, snap = false, integerSize = true, streak = false;
     };
 
     struct CapturedFrame {

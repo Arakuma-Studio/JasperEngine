@@ -132,18 +132,20 @@ async def test_bake_and_undo(ed: Editor):
 async def test_patch_paths(ed: Editor):
     """R37's example patches apply and round-trip (AC12); an Analytic patch with Noise is refused."""
     s = await setup(ed)
-    # a system of its own, on the default (Simulated, Billboard) effect
+    # a system of its own on the ember preset (Simulated; every module Analytic can run), inline
+    made = await ed.call("create_particle_effect", path="assets/fx/pixel/ramp_ref.particles", preset="pixel_ember")
     system = (await ed.call("create_particles", scene=s["scene"], name="Patched", preset="none", position=[0, 0, 0]))["particle_system"]["id"]
     s = dict(s, system=system)
+    await ed.call("set_particle_effect", scene=s["scene"], entity=system, effect=made["path"])
+    await ed.call("set_particle_effect", scene=s["scene"], entity=system, effect="inline")
     patches = [
         ({"modules": {"pixelArt": {"fade": "dither", "ditherSize": 4}}}, lambda e: e["modules"]["pixelArt"].get("ditherSize", 4) == 4),
         ({"modules": {"renderer": {"renderMode": "pixel", "pixelShape": "streak"}}},
          lambda e: e["modules"]["renderer"]["renderMode"] == "pixel" and e["modules"]["renderer"]["pixelShape"] == "streak"),
-        ({"modules": {"colorOverLifetime": {"color": {"mode": "ramp", "rampColors": ["#fff3a6", "#ffe26b", "#ff8a2a"], "rampBias": 0.62}}}},
+        ({"modules": {"colorOverLifetime": {"color": {"mode": "ramp", "ramp": None, "rampColors": ["#fff3a6", "#ffe26b", "#ff8a2a"], "rampBias": 0.62}}}},
          lambda e: e["modules"]["colorOverLifetime"]["color"]["mode"] == "ramp" and e["modules"]["colorOverLifetime"]["color"]["rampBias"] == 0.62),
         ({"modules": {"collision": {"settleSpeed": 70}}}, lambda e: e["modules"]["collision"]["settleSpeed"] == 70),
-        # (the default effect's Start Velocity is not Analytic's: removed in the same patch)
-        ({"simulationMode": "analytic", "modules": {"collision": None, "startVelocity": None}}, lambda e: e["simulationMode"] == "analytic"),
+        ({"simulationMode": "analytic", "modules": {"collision": None}}, lambda e: e["simulationMode"] == "analytic"),
     ]
     for patch, check in patches:
         edited = await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch=patch)
@@ -151,7 +153,6 @@ async def test_patch_paths(ed: Editor):
         effect = (await ed.call("get_particle_effect", scene=s["scene"], entity=s["system"]))["effect"]
         ed.check(check(effect), f"round trip of {patch}: {json.dumps(effect)[:400]}")
     # the palette reference form too
-    made = await ed.call("create_particle_effect", path="assets/fx/pixel/ramp_ref.particles", preset="pixel_ember")
     ref = (await ed.call("get_particle_effect", path=made["path"]))["effect"]["modules"]["colorOverLifetime"]["color"]["ramp"]
     ed.check(ref.endswith(".palette#ramp:hot"), f"a ramp reference into the project's palette copy: {ref}")
     await ed.call("edit_particle_effect", path=made["path"], patch={"modules": {"colorOverLifetime": {"color": {"ramp": ref.replace("#ramp:hot", "#ramp:fire")}}}})
