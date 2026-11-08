@@ -555,11 +555,12 @@ void addTitleArtPropertyDefinitions(std::vector<shadercompiler::define_t>& defs,
 
 // the TL_* bits of TitleTierFeatures.h (titleart/title_lit.frag)
 void addTitleLitPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
-    static const char* const FLAGS[24] = {"TL_RAMP", "TL_CLEARCOAT", "TL_IRIDESCENCE", "TL_GEM", "TL_GEM_BEHIND", "TL_DISPERSION",
+    static const char* const FLAGS[25] = {"TL_RAMP", "TL_CLEARCOAT", "TL_IRIDESCENCE", "TL_GEM", "TL_GEM_BEHIND", "TL_DISPERSION",
                                           "TL_GLASS_DEPTH", "TL_FLAKES", "TL_PATTERN", nullptr, nullptr, "TL_ENV_LOCK",
                                           "TL_BASE_TEXTURE", "TL_WRAP_UV", "TL_EMISSIVE", "TL_TRANSPARENT", "TL_RIGS", "TL_LIGHTS",
-                                          "TL_HDR_COMPRESS", nullptr, nullptr, "TL_MATCAP", "TL_SPECULAR_AA", "TL_SURFACE_LITE"};
-    for (int bit = 0; bit < 24; bit++) {
+                                          "TL_HDR_COMPRESS", nullptr, nullptr, "TL_MATCAP", "TL_SPECULAR_AA", "TL_SURFACE_LITE",
+                                          "TL_FACE_IMAGE"};
+    for (int bit = 0; bit < 25; bit++) {
         if (FLAGS[bit] && (prop & shaderPropertyBit(bit))) defs.push_back({FLAGS[bit], "1"});
     }
     const uint64_t surface = (prop >> 9) & 3u;

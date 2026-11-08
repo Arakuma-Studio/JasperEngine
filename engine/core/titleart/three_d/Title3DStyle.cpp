@@ -244,7 +244,12 @@ const char* titleart::toneMappingName(ToneMapping3D tone) {
 }
 
 bool TitleMaterial3D::hasPattern() const {
-    return pattern.is_object() && pattern.value("kind", std::string("none")) != "none";
+    // Pachislop's patternActive: a kind, some ink or relief, and a custom kind's image
+    if (!pattern.is_object()) return false;
+    const std::string kind = pattern.value("kind", std::string("none"));
+    if (kind == "none") return false;
+    if (!(pattern.value("opacity", 1.0) > 0 || pattern.value("relief", 0.0) > 0)) return false;
+    return kind != "custom" || !decodeAssetRef(pattern.contains("image") ? pattern["image"] : Json()).empty();
 }
 
 TitleMaterial3D titleart::decodeMaterial3D(const Json& m) {

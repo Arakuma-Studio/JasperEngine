@@ -20,6 +20,7 @@
 #include "titleart/three_d/TitleMesh.h"
 
 #include <array>
+#include <map>
 #include <functional>
 #include <memory>
 #include <string>
@@ -86,6 +87,24 @@ namespace jasperengine::titleart {
     JASPERENGINE_API std::shared_ptr<const TitleHdri> loadTitleHdri(const std::string& slug);
     // the yaw of a panorama (Pachislop's spheres: softbox 0, the photos pi / 2)
     JASPERENGINE_API float titleHdriYaw(const std::string& preset);
+
+    // ---- the builder's CPU twin (R25, R26: the cook of Realtime environments) ----
+    // a cube of `face` px built as title_env.frag builds it: a procedural scene evaluated per
+    // texel on each level's own 4 x 4 grid, or an HDRI's panorama 2 x 2 supersampled (its additive
+    // elements added) with each level a box of the one above; then every level GGX-prefiltered
+    // (128 samples, the source level by solid angle; level 0 copied). Linear RGB, levels[level]
+    // holds the six faces one after the other, each size x size texels rows first in the
+    // builder's texel order (titleEnvFaceDirection's st). Runs on the job system.
+    struct TitleEnvCube {
+        int face = 0;
+        std::vector<std::vector<std::array<float, 3>>> levels;
+    };
+    JASPERENGINE_API TitleEnvCube buildTitleEnvironmentCpu(const TitleEnvScene& scene, const TitleHdri* hdri, float hdriYaw, int face);
+    // a cube as an uncompressed RGBA16F KTX2 cube file (every level, the faces in the cube order),
+    // with `keyValues`: the cook's uncompressed form and what RenderRequest::cookedEnvironments3D
+    // takes; false with `error`
+    JASPERENGINE_API bool writeTitleEnvironmentKtx2(const TitleEnvCube& cube, const std::map<std::string, std::string>& keyValues,
+                                                    std::vector<uint8_t>& out, std::string& error);
 
     // the grade of R27 applied to a radiance (tint, saturation, contrast about 0.5, intensity),
     // the shader's tlGrade

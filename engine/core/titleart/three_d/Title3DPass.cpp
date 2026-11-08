@@ -16,6 +16,7 @@
 
 #include "render/SystemRender.h"
 #include "titleart/TitleArtHash.h"
+#include "titleart/render/TitleContent.h"
 #include "titleart/render/TitleFrame.h"
 #include "titleart/three_d/Title3DMath.h"
 #include "titleart/three_d/Title3DRenderer.h"
@@ -135,43 +136,55 @@ namespace jasperengine::titleart {
         plan->layerScale = std::max(1e-6, std::sqrt((double)plan->model.at(0, 0) * plan->model.at(0, 0) + (double)plan->model.at(1, 0) * plan->model.at(1, 0) +
                                                     (double)plan->model.at(2, 0) * plan->model.at(2, 0)));
 
-        // the mesh
-#if defined(JASPERENGINE_TITLE_ART_MESHER) && JASPERENGINE_TITLE_ART_MESHER
-        if (!svc.content) return plan;
-        std::vector<TitleProblem> problems;
-        three_d::TitleMeshRequest meshRequest;
-        meshRequest.source = three_d::collectTitleSource(layer, doc, *svc.content, req.assets, &problems);
-        for (TitleProblem& p : problems) {
-            if (p.layer.empty()) p.layer = node.layerId;
-            planner.problem(p);
-        }
-        meshRequest.style = plan->style;
-        meshRequest.blocks = three_d::collectCharBlocks(layer, plan->style.bands.size());
-        meshRequest.tier = plan->tier;
-        meshRequest.outputScale = planner.pxScale() * planner.placementOf(layer).scale;
-        // the wrap stream only when a material projects its base texture `wrap`
-        auto wraps = [](const TitleMaterial3D& m) { return m.baseWrap && !m.baseTexture.empty(); };
-        meshRequest.wrap = wraps(plan->style.face) || (plan->style.bevelMaterial && wraps(*plan->style.bevelMaterial)) ||
-                           (plan->style.side && wraps(*plan->style.side));
-        for (const Band3D& b : plan->style.bands) meshRequest.wrap = meshRequest.wrap || wraps(b.material) || (b.side && wraps(*b.side));
-        if (meshRequest.source.glyphs.empty()) return plan;
-        plan->mesh = mesher().build(meshRequest);
-        if (plan->mesh->stats.fallbackUsed) {
-            TitleProblem p;
-            p.severity = TitleSeverity::Info;
-            p.code = "mesh_fallback";
-            p.layer = node.layerId;
-            p.message = "an outward bevel band was cut by the Clipper difference (touching contours)";
-            planner.problem(p);
-        }
-#else
-        TitleProblem p;
-        p.code = "mesher_unavailable";
-        p.layer = node.layerId;
-        p.message = "this build has no 3D mesher and the layer has no cooked mesh";
-        planner.problem(p);
-        return plan;
+        // the mesh: a cooked one at this tier (R38), else the mesher's
+        const auto cooked = req.cookedMeshes3D.find(node.layerId);
+        const bool useCooked = cooked != req.cookedMeshes3D.end() && cooked->second && cooked->second->tier == plan->tier;
+        bool mesherAvailable = (req.testFlags & TITLE_ART_TEST_NO_MESHER) == 0;
+#if !(defined(JASPERENGINE_TITLE_ART_MESHER) && JASPERENGINE_TITLE_ART_MESHER)
+        mesherAvailable = false;
 #endif
+        if (useCooked) {
+            plan->mesh = cooked->second;
+        } else if (!mesherAvailable) {
+            TitleProblem p;
+            p.code = "mesher_unavailable";
+            p.layer = node.layerId;
+            p.message = "this build has no 3D mesher and the layer has no cooked mesh at the " + std::string(titleTierName(plan->tier)) + " tier";
+            planner.problem(p);
+            return plan;
+        }
+#if defined(JASPERENGINE_TITLE_ART_MESHER) && JASPERENGINE_TITLE_ART_MESHER
+        if (!useCooked) {
+            if (!svc.content) return plan;
+            std::vector<TitleProblem> problems;
+            three_d::TitleMeshRequest meshRequest;
+            meshRequest.source = three_d::collectTitleSource(layer, doc, *svc.content, req.assets, &problems);
+            for (TitleProblem& p : problems) {
+                if (p.layer.empty()) p.layer = node.layerId;
+                planner.problem(p);
+            }
+            meshRequest.style = plan->style;
+            meshRequest.blocks = three_d::collectCharBlocks(layer, plan->style.bands.size());
+            meshRequest.tier = plan->tier;
+            meshRequest.outputScale = planner.pxScale() * planner.placementOf(layer).scale;
+            // the wrap stream only when a material projects its base texture `wrap`
+            auto wraps = [](const TitleMaterial3D& m) { return m.baseWrap && !m.baseTexture.empty(); };
+            meshRequest.wrap = wraps(plan->style.face) || (plan->style.bevelMaterial && wraps(*plan->style.bevelMaterial)) ||
+                               (plan->style.side && wraps(*plan->style.side));
+            for (const Band3D& b : plan->style.bands) meshRequest.wrap = meshRequest.wrap || wraps(b.material) || (b.side && wraps(*b.side));
+            if (meshRequest.source.glyphs.empty()) return plan;
+            plan->mesh = mesher().build(meshRequest);
+            if (plan->mesh->stats.fallbackUsed) {
+                TitleProblem p;
+                p.severity = TitleSeverity::Info;
+                p.code = "mesh_fallback";
+                p.layer = node.layerId;
+                p.message = "an outward bevel band was cut by the Clipper difference (touching contours)";
+                planner.problem(p);
+            }
+        }
+#endif
+        if (!plan->mesh) return plan;
         const TitleMesh& mesh = *plan->mesh;
 
         // the environments: the layer's, then each part's own (a material with environment overrides)
@@ -187,8 +200,9 @@ namespace jasperengine::titleart {
                 e.hdriYaw = titleHdriYaw(env.preset);
             }
             // a photo, softbox or custom HDRI not built into this renderer lights with the studio
-            // and reports it
-            if (!scene3d || (!scene3d->procedural && !e.hdri)) {
+            // and reports it (unless the request brings its cooked cube)
+            const bool cookedHere = req.cookedEnvironments3D.count(env.preset) > 0;
+            if (!cookedHere && (!scene3d || (!scene3d->procedural && !e.hdri))) {
                 if (env.preset != "matcap") {
                     TitleProblem p;
                     p.code = "environment_missing";
@@ -201,7 +215,17 @@ namespace jasperengine::titleart {
                 scene3d = titleEnvironmentPreset("studio");
                 e.hdri.reset();
             }
+            if (!scene3d) scene3d = titleEnvironmentPreset("studio");
             e.scene = scene3d;
+            // a cooked cube of the preset (a player's): uploaded as it is
+            const auto cookedEnv = req.cookedEnvironments3D.find(env.preset);
+            if (cookedEnv != req.cookedEnvironments3D.end() && cookedEnv->second) {
+                e.cooked = cookedEnv->second;
+                e.missing = false;
+                e.hdri.reset();
+                e.key = hashCombine(fnv1a64("cooked:" + env.preset), (uint64_t)(uintptr_t)cookedEnv->second.get());
+                return e;
+            }
             e.face = titleEnvironmentFace(env, planner.pxScale(), plan->tier);
             if (e.missing) e.face = std::min(e.face, 1024);
             e.key = hashCombine(hashCombine(fnv1a64(scene3d->id + (e.hdri ? ":" + scene3d->hdri : std::string())), (uint64_t)e.face),
@@ -238,6 +262,27 @@ namespace jasperengine::titleart {
         }
         const bool lights = countNonAmbientLights(plan->lighting.lights) > 0;
         const Json& chars = memberOf(layer, "chars");
+        // R1a: an Image or artwork Vector layer whose face fill is `source` projects its picture
+        const LayerType type = layerTypeOf(layer);
+        const bool ownPixels = type == LayerType::Image || (type == LayerType::Vector && layer.value("mode", std::string()) == "artwork");
+        const Json& faceFill = memberOf(memberOf(memberOf(layer, "style"), "face"), "fill");
+        plan->faceImage = std::clamp(plan->style.faceImage, 0.0, 1.0);
+        plan->edgeImage = std::clamp(plan->style.edgeImage, 0.0, 1.0);
+        const bool picture = ownPixels && svc.content && req.doc && faceFill.value("kind", std::string("source")) == "source" &&
+                             (plan->faceImage > 0 || plan->edgeImage > 0);
+        if (picture) {
+            const Json layerCopy = layer;
+            const std::shared_ptr<const TitleArtDoc> docHeld = req.doc;
+            const std::shared_ptr<TitleContentProvider> content = svc.content;
+            const AssetResolver* assets = req.assets;
+            const double pxPerUnit = std::max(1.0, planner.pxScale() * 2.0);
+            jobs::SubmitOptions options;
+            options.lane = jobs::Lane::Background;
+            options.name = "title-3d-picture";
+            plan->picture = std::make_shared<jobs::Task<std::shared_ptr<TitlePicture3D>>>(jobs::submit(
+                [layerCopy, docHeld, content, assets, pxPerUnit]() { return makeTitlePicture3D(layerCopy, *docHeld, *content, assets, pxPerUnit); },
+                options));
+        }
         plan->slots.resize(mesh.slots.size());
         for (size_t s = 0; s < mesh.slots.size(); s++) {
             const uint8_t materialIndex = materials.slotMaterial[s];
@@ -250,6 +295,11 @@ namespace jasperengine::titleart {
             if (plan->environments[plan->slots[s].environment].environment.preset == "matcap") bits |= TitleLitBits::MATCAP;
             if (bits & TitleLitBits::WRAP_UV && mesh.wrap.empty()) bits &= ~TitleLitBits::WRAP_UV;
             bits |= debugOutput(plan->debugView) << TitleLitBits::OUTPUT_SHIFT;
+            const TitleSlotRole role = mesh.slots[s].role;
+            if (picture && ((role == TitleSlotRole::Face && plan->faceImage > 0) ||
+                            ((role == TitleSlotRole::Bevel || role == TitleSlotRole::Side) && plan->edgeImage > 0))) {
+                bits |= TitleLitBits::FACE_IMAGE;
+            }
             plan->slots[s].bits = bits;
             plan->behind = plan->behind || features.behind;
             plan->ao = features.ao;
@@ -262,6 +312,13 @@ namespace jasperengine::titleart {
         for (size_t i = 0; i < plan->materials.size(); i++) {
             if (plan->materials[i].baseTexture.empty()) continue;
             plan->baseTextures[i] = planner.title3DAsset(encodeAssetRef(plan->materials[i].baseTexture), node.layerId, "style_3d.face.base_texture");
+        }
+        // custom patterns' images per material
+        plan->patternTextures.resize(plan->materials.size());
+        for (size_t i = 0; i < plan->materials.size(); i++) {
+            const TitleMaterial3D& m = plan->materials[i];
+            if (!m.hasPattern() || m.pattern.value("kind", std::string()) != "custom") continue;
+            plan->patternTextures[i] = planner.title3DAsset(m.pattern["image"], node.layerId, "style_3d.face.pattern.image");
         }
 
         // per-part rigs: the rigged character's matrix, identity elsewhere

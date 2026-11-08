@@ -23,6 +23,14 @@ precision highp int;
 // projected, at lod log2(behind width x frame span) x roughness x clamp(2 ior - 2, 0, 1) (three.js
 // transmission, as Pachislop); where nothing is behind, the environment path, and the alpha
 // lets the uncovered rest show through.
+// TL_PATTERN (R22): S80's pattern GLSL (patterns.glsl) in layer space: marks over the base colour,
+// colour 2 over the marks, a flat share by (1 - shade) after lighting, relief bending the normal
+// by finite differences. Caps (the layer normal +-z, unrigged) read a layer position rebuilt
+// per pixel from the view ray and their plane, so the earcut slivers' interpolation shows no
+// seams (Pachislop's layerSurfacePos); surface relief and flakes read it too.
+// TL_FACE_IMAGE (R1a): the layer's own picture projected straight on in layer space: on the face
+// (slot role 0) the premultiplied picture over the base colour by face_image x its alpha against
+// the traced edge's; on the bevel and side walls the opaque edge-extended copy by edge_image.
 
 const float M_PI = 3.141592653589793;
 
@@ -33,7 +41,7 @@ const float M_PI = 3.141592653589793;
 #include "titleart/hdr_compress.glsl"
 
 #define TL_MAX_MATERIALS 16
-#define TL_MATERIAL_VEC4S 10
+#define TL_MATERIAL_VEC4S 14
 #define TL_MAX_LIGHTS 4
 
 in vec3 v_world;
@@ -69,6 +77,16 @@ uniform sampler u_tlBase_smp;
 uniform texture2D u_tlBehind;
 uniform sampler u_tlBehind_smp;
 #endif
+#ifdef TL_PATTERN
+uniform texture2D u_tlPattern;
+uniform sampler u_tlPattern_smp;
+#endif
+#ifdef TL_FACE_IMAGE
+uniform texture2D u_tlFace;
+uniform sampler u_tlFace_smp;
+uniform texture2D u_tlFaceEdge;
+uniform sampler u_tlFaceEdge_smp;
+#endif
 
 uniform u_fs_titleLit {
     vec4 camera;        // xyz: camera position (world), w: the tone map's exposure (shoulder)
@@ -88,6 +106,11 @@ uniform u_fs_titleLit {
     vec4 aoDepth;       // the AO prepass: x the title centre's view depth, y the title's radius
     vec4 behind;        // x: log2(behind width x frame span), y: gem thickness (world), z: 1 = behind bound, w: 1 = origin top left
     mat4 viewProj;      // the main pass's projection x view (the gem's exit point)
+    mat4 viewProjInv;   // its inverse (the caps' rebuilt position)
+    mat4 layerInv;      // world -> layer space (after the shear)
+    vec4 viewport;      // xy: the main target's size (px), zw: the skew
+    vec4 faceBox;       // the picture's layer-space box (x0, y0, x1, y1, y up)
+    vec4 faceMix;       // x: face_image, y: the traced edge's alpha, z: edge_image
     vec4 lights[TL_MAX_LIGHTS * 2];     // per light: (direction or position, type 0 dir / 1 point), (colour x intensity, 0)
     vec4 slots[16];     // the material index of slot 4i + c
     vec4 materials[TL_MAX_MATERIALS * TL_MATERIAL_VEC4S];
@@ -97,10 +120,45 @@ uniform u_fs_titleLit {
 #include "titleart/title_ramp.glsl"
 #include "titleart/title_surface.glsl"
 #include "titleart/title_gem.glsl"
+#ifdef TL_PATTERN
+    #define TA_PATTERN_IMAGE sampler2D(u_tlPattern, u_tlPattern_smp)
+    #include "titleart/patterns.glsl"
+#endif
 
 vec4 tlMaterial(int m, int k) {
     return tl.materials[m * TL_MATERIAL_VEC4S + k];
 }
+
+#ifdef TL_FACE_IMAGE
+vec3 tlSrgbToLinear(vec3 c) {
+    return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+}
+#endif
+
+#if defined(TL_PATTERN) || defined(TL_SURFACE_KIND) || defined(TL_FLAKES)
+// the layer-space position for screen-derivative work: on caps (layer normal +-z, an exact
+// constant across earcut's sliver triangles) rebuilt from the pixel's view ray and the cap's
+// plane, so their interpolated varyings' unstable derivatives show no seams
+vec3 tlSurfacePos() {
+#ifdef TL_RIGS
+    return v_layerPos;
+#else
+    if (abs(v_layerNormal.z) < 0.999) return v_layerPos;
+    vec2 f = gl_FragCoord.xy / tl.viewport.xy;
+    vec2 ndc = vec2(f.x * 2.0 - 1.0, tl.behind.w > 0.5 ? 1.0 - f.y * 2.0 : f.y * 2.0 - 1.0);
+    vec4 far = tl.viewProjInv * vec4(ndc, 0.5, 1.0);
+    vec3 dir = far.xyz / far.w - tl.camera.xyz;
+    vec3 o = (tl.layerInv * vec4(tl.camera.xyz, 1.0)).xyz;
+    vec3 d = mat3(tl.layerInv) * dir;
+    // the cap's plane after the shear (a shear moves xy by z only)
+    float z = v_layerPos.z;
+    if (abs(d.z) < 1e-6) return v_layerPos;
+    vec3 p = o + d * ((z - o.z) / d.z);
+    p.xy -= tl.viewport.zw * (-z);
+    return p;
+#endif
+}
+#endif
 
 void main() {
     int slot = int(v_ids.w) & 4095;
@@ -142,10 +200,57 @@ void main() {
     baseColor *= baseTex.rgb;
 #endif
 
+    // ---- the layer's own picture ----
+#ifdef TL_FACE_IMAGE
+    {
+        vec2 faceUv = vec2((v_layerPos.x - tl.faceBox.x) / (tl.faceBox.z - tl.faceBox.x),
+                           (tl.faceBox.w - v_layerPos.y) / (tl.faceBox.w - tl.faceBox.y));
+        if ((int(v_ids.w) >> 12) == 0) {
+            vec4 t = texture(sampler2D(u_tlFace, u_tlFace_smp), faceUv);
+            vec3 c = tlSrgbToLinear(min(t.rgb / max(t.a, 1e-4), vec3(1.0)));
+            baseColor = mix(baseColor, c, tl.faceMix.x * clamp(t.a / max(tl.faceMix.y, 1e-3), 0.0, 1.0));
+        } else {
+            vec4 t = texture(sampler2D(u_tlFaceEdge, u_tlFaceEdge_smp), faceUv);
+            baseColor = mix(baseColor, tlSrgbToLinear(t.rgb), tl.faceMix.z);
+        }
+    }
+#endif
+
+    // ---- the pattern: marks over the base colour, colour 2 over the marks ----
+#if defined(TL_PATTERN) || defined(TL_SURFACE_KIND) || defined(TL_FLAKES)
+    vec3 surfL = tlSurfacePos();
+#endif
+#ifdef TL_PATTERN
+    vec4 pk = tlMaterial(m, 10);    // kind, seed, opacity, shade
+    vec4 pc = tlMaterial(m, 11);    // colour (linear), relief
+    vec4 pc2 = tlMaterial(m, 12);   // colour 2 (linear), motif size (layer units)
+    vec4 px = tlMaterial(m, 13);    // layer -> motif units (rows xy, zw)
+    vec2 patUv = vec2(dot(px.xy, surfL.xy), dot(px.zw, surfL.xy));
+    vec2 patDx = dFdx(patUv), patDy = dFdy(patUv);
+    int patKind = int(pk.x + 0.5);
+    vec4 patS = patternSampleD(patUv, patDx, patDy, patKind, pk.y);
+    float patWx = clamp(patS.x, 0.0, 1.0) * pk.z;
+    float patWy = clamp(patS.y, 0.0, 1.0) * pk.z;
+    float patW = 1.0 - (1.0 - patWx) * (1.0 - patWy);
+    vec3 patCol = (pc.rgb * patWx * (1.0 - patWy) + pc2.rgb * patWy) / max(patW, 1e-5);
+    baseColor = mix(baseColor, patCol, patW);
+#endif
+
     // ---- normal detail (front on, in layer space) ----
     float roughness = clamp(m1.y, 0.02, 1.0);
+#ifdef TL_PATTERN
+    // relief: the height's change per motif, by finite differences of 2 % of a motif
+    if (pc.w > 0.0) {
+        const float patE = 0.02;
+        vec2 stepX = patE * pc2.w * vec2(px.x, px.z), stepY = patE * pc2.w * vec2(px.y, px.w);
+        vec2 patGL = vec2(patternSampleD(patUv + stepX, patDx, patDy, patKind, pk.y).z - patS.z,
+                          patternSampleD(patUv + stepY, patDx, patDy, patKind, pk.y).z - patS.z) / patE;
+        vec3 reliefTilt = (tl.axisX.xyz * patGL.x + tl.axisY.xyz * patGL.y) * (pc.w * 0.06);
+        N = normalize(N - (reliefTilt - dot(reliefTilt, N) * N));
+    }
+#endif
 #if defined(TL_SURFACE_KIND) || defined(TL_FLAKES)
-    vec3 layerPos = v_layerPos;
+    vec3 layerPos = surfL;
     vec3 layerTilt = vec3(0.0);
     #ifdef TL_SURFACE_KIND
         layerTilt += tlSurfaceTilt(layerPos.xy / max(m8.y, 1e-4), m8.z) * m8.x;
@@ -251,6 +356,12 @@ void main() {
 #endif
 
     vec3 added = specular;
+#ifdef TL_PATTERN
+    // the flat (unlit) share of the marks
+    float patFlat = patW * (1.0 - pk.w);
+    diffuse = mix(diffuse, patCol, patFlat);
+    added *= 1.0 - patFlat;
+#endif
 #ifdef TL_EMISSIVE
     // emission is tinted by the same ramp as the base colour
     added += m5.rgb * (m0.rgb == vec3(0.0) ? vec3(1.0) : baseColor / max(m0.rgb, vec3(1e-4)));

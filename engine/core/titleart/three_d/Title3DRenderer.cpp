@@ -15,8 +15,10 @@
 #include "render/ShaderRender.h"
 #include "render/SystemRender.h"
 #include "render/TextureRender.h"
+#include "texture/TextureData.h"
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/render/TitleGpu.h"
+#include "titleart/effects/TitleFx.h"
 #include "titleart/render/TitleRenderServices.h"
 
 #include <algorithm>
@@ -31,7 +33,7 @@ using namespace jasperengine::titleart;
 namespace {
 
     constexpr int MATERIALS_MAX = 16;
-    constexpr int MATERIAL_VEC4S = 10;
+    constexpr int MATERIAL_VEC4S = 14;
     constexpr int PARTS_MAX = 64;
     constexpr int LIGHTS_MAX = 4;
     constexpr int RAMP_ROWS = 16;
@@ -61,6 +63,10 @@ namespace {
         float ambient[4], axisX[4], axisY[4];
         float view2[4], aoDepth[4], behind[4];
         float viewProj[16];
+        float viewProjInv[16];
+        float layerInv[16];
+        float viewport[4];
+        float faceBox[4], faceMix[4];
         float lights[LIGHTS_MAX * 2][4];
         float slots[16][4];
         float materials[MATERIALS_MAX * MATERIAL_VEC4S][4];
@@ -99,7 +105,15 @@ namespace {
     struct LitObject {
         ObjectRender object;
         int vsBlock = -1, fsBlock = -1;
-        std::pair<int, int> env{-1, -1}, ramps{-1, -1}, spans{-1, -1}, base{-1, -1}, matcap{-1, -1}, behind{-1, -1};
+        std::pair<int, int> env{-1, -1}, ramps{-1, -1}, spans{-1, -1}, base{-1, -1}, matcap{-1, -1}, behind{-1, -1}, pattern{-1, -1};
+        std::pair<int, int> face{-1, -1}, faceEdge{-1, -1};
+    };
+
+    // a layer picture's face and edge textures (R1a)
+    struct PictureGpu {
+        std::shared_ptr<TitlePicture3D> picture;
+        TitleUpload face, edge;
+        uint64_t lastUse = 0;
     };
 
     struct GpuMesh {
@@ -173,6 +187,7 @@ struct Title3DRenderer::Impl {
     std::map<uint64_t, std::unique_ptr<GpuMesh>> meshes;
     std::map<uint64_t, std::unique_ptr<Cube>> cubes;
     std::map<uint64_t, std::unique_ptr<EnvBuild>> builds;
+    std::map<const TitlePicture3D*, std::unique_ptr<PictureGpu>> pictures;
     uint64_t envShare = TITLE_ENV_STEP_UNITS;
     // placeholders: filtering samplers, and a nearest one for the slots that declare nonfiltering
     TextureRender placeholder2D, placeholderCube, placeholderNearest;
@@ -534,14 +549,41 @@ struct Title3DRenderer::Impl {
         return true;
     }
 
-    // the cube of an environment: cached, else built to the end now (a render that did not wait
-    // for ready())
+    // a cooked KTX2 cube uploaded (in the device's format, or its fallback)
+    Cube* uploadCooked(const Title3DEnvPlan& env, std::string& error, Title3DStats& stats) {
+        TextureData data;
+        const TextureFormatSupport support = SystemRender::getTextureFormatSupport();
+        std::string loadError;
+        if (!data.loadKtx2(env.cooked->data(), (unsigned)env.cooked->size(), 0, &support, false, &loadError)) {
+            error = "the cooked title environment could not be read: " + loadError;
+            return nullptr;
+        }
+        auto made = std::make_unique<Cube>();
+        made->key = env.key;
+        made->face = data.getWidth();
+        made->levels = (int)data.getLevels().size();
+        if (!made->texture.createTextureLevels("title environment (cooked)", TextureType::TEXTURE_CUBE, data.getGpuFormat(), data.getWidth(),
+                                               data.getHeight(), 6, data.getLevels(), TextureFilter::LINEAR_MIPMAP_LINEAR, TextureFilter::LINEAR,
+                                               TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE)) {
+            error = "the cooked title environment could not be uploaded";
+            return nullptr;
+        }
+        made->lastUse = ++clock;
+        Cube* out = made.get();
+        cubes[env.key] = std::move(made);
+        stats.cookedEnvironments++;
+        return out;
+    }
+
+    // the cube of an environment: cached, else uploaded (cooked) or built to the end now (a render
+    // that did not wait for ready())
     Cube* cube(const Title3DEnvPlan& env, std::string& error, Title3DStats& stats) {
         auto it = cubes.find(env.key);
         if (it != cubes.end()) {
             it->second->lastUse = ++clock;
             return it->second.get();
         }
+        if (env.cooked) return uploadCooked(env, error, stats);
         std::unique_ptr<EnvBuild>& slot = builds[env.key];
         if (!slot) slot = startBuild(env, error);
         if (!slot) {
@@ -558,6 +600,34 @@ struct Title3DRenderer::Impl {
         std::unique_ptr<EnvBuild> done = std::move(slot);
         builds.erase(env.key);
         return finish(std::move(done), stats);
+    }
+
+    // ---- pictures ----
+
+    // the textures of a layer's picture (uploaded once, the last few kept)
+    PictureGpu* picture(const std::shared_ptr<TitlePicture3D>& p, std::string& error) {
+        auto it = pictures.find(p.get());
+        if (it != pictures.end()) {
+            it->second->lastUse = ++clock;
+            return it->second.get();
+        }
+        auto g = std::make_unique<PictureGpu>();
+        g->picture = p;
+        if (!g->face.create("title 3d picture", p->width, p->height, ColorFormat::RGBA, p->face.data(), p->face.size(), TextureFilter::LINEAR) ||
+            !g->edge.create("title 3d picture edges", p->edgeWidth, p->edgeHeight, ColorFormat::RGBA, p->edge.data(), p->edge.size(),
+                            TextureFilter::LINEAR)) {
+            error = "the 3D layer's picture could not be uploaded";
+            return nullptr;
+        }
+        g->lastUse = ++clock;
+        PictureGpu* out = g.get();
+        pictures[p.get()] = std::move(g);
+        while (pictures.size() > 4) {
+            auto oldest = std::min_element(pictures.begin(), pictures.end(), [](const auto& a, const auto& b) { return a.second->lastUse < b.second->lastUse; });
+            if (oldest->second.get() == out) break;
+            pictures.erase(oldest);
+        }
+        return out;
     }
 
     // ---- meshes ----
@@ -645,6 +715,9 @@ struct Title3DRenderer::Impl {
         o->spans = data.getTextureIndexByName("u_tlSpans");
         o->base = data.getTextureIndexByName("u_tlBase");
         o->behind = data.getTextureIndexByName("u_tlBehind");
+        o->pattern = data.getTextureIndexByName("u_tlPattern");
+        o->face = data.getTextureIndexByName("u_tlFace");
+        o->faceEdge = data.getTextureIndexByName("u_tlFaceEdge");
         const PrimitiveType primitive = edges ? PrimitiveType::LINES : PrimitiveType::TRIANGLES;
         ObjectRender& r = o->object;
         r.beginLoad(primitive);
@@ -661,7 +734,7 @@ struct Title3DRenderer::Impl {
         for (auto slot : {o->env, o->matcap}) {
             if (slot.first >= 0) r.addTexture(slot, ShaderStageType::FRAGMENT, slot == o->env ? &placeholderCube : &placeholder2D);
         }
-        for (auto slot : {o->ramps, o->base, o->behind}) {
+        for (auto slot : {o->ramps, o->base, o->behind, o->pattern, o->face, o->faceEdge}) {
             if (slot.first >= 0) r.addTexture(slot, ShaderStageType::FRAGMENT, &placeholder2D);
         }
         if (o->spans.first >= 0) r.addTexture(o->spans, ShaderStageType::FRAGMENT, &placeholderNearest);
@@ -819,32 +892,48 @@ bool Title3DRenderer::ready(const Title3DPlan& plan, uint32_t testFlags) {
     const bool compressed = compressedLight(plan, testFlags);
     const bool behind = behindActive(plan, testFlags);
     std::string error;
+    // the layer's picture is made on a job
+    if (plan.picture && !plan.picture->isReady()) return false;
+    // the programs the render draws (their first draws go together: TitleFirstDraws)
+    std::vector<uint64_t> drawKeys;
+    auto need = [&](ShaderType type, uint64_t properties) {
+        drawKeys.push_back(((uint64_t)type << 48) ^ properties);
+        return impl->shaderOf(type, properties, &error) != nullptr || !error.empty();
+    };
     for (const Title3DSlotMaterial& s : plan.slots) {
-        if (!impl->shaderOf(ShaderType::TITLE_LIT, slotBits(s, compressed, behind), &error) && error.empty()) return false;
+        if (!need(ShaderType::TITLE_LIT, slotBits(s, compressed, behind))) return false;
     }
     std::vector<uint32_t> posts = {TONEMAP, MITCHELL_H, MITCHELL_V};
     if (wantsAO(plan)) {
         posts.insert(posts.end(), {AO, AO_BLUR});
-        if (!impl->shaderOf(ShaderType::TITLE_LIT, geometryBits(plan, 3), &error) && error.empty()) return false;
+        if (!need(ShaderType::TITLE_LIT, geometryBits(plan, 3))) return false;
     }
     if (behind) posts.insert(posts.end(), {BEHIND, BOX_DOWN});
     if (plan.debugView == Title3DDebugView::Wireframe) {
-        if (!impl->shaderOf(ShaderType::TITLE_LIT, geometryBits(plan, 1), &error) && error.empty()) return false;
+        if (!need(ShaderType::TITLE_LIT, geometryBits(plan, 1))) return false;
     }
     for (uint32_t p : posts) {
-        if (!impl->shaderOf(ShaderType::TITLE_3D_POST, p, &error) && error.empty()) return false;
+        if (!need(ShaderType::TITLE_3D_POST, p)) return false;
     }
     const GlintMode glint = glintMode(plan);
     if (glint != GlintMode::Off) {
         if (!impl->glint) impl->glint = std::make_unique<Glint3D>();
         if (!impl->glint->ready(glint, &error) && error.empty()) return false;
+        drawKeys.push_back(((uint64_t)ShaderType::TITLE_GLINT << 48) ^ (uint64_t)glint);
     }
     // the environments: a share of a build per call, so a cube never stalls a frame
     for (const Title3DEnvPlan& env : plan.environments) {
-        if (env.matcap || impl->cubes.count(env.key)) continue;
+        if (env.matcap || env.cooked || impl->cubes.count(env.key)) continue;
         if (!impl->envProgramsReady(env, error)) return !error.empty();
         std::unique_ptr<EnvBuild>& slot = impl->builds[env.key];
-        if (!slot) slot = impl->startBuild(env, error);
+        if (!slot) {
+            // the builder's programs' first draws
+            const uint64_t t = (uint64_t)ShaderType::TITLE_ENV << 48;
+            const std::vector<uint64_t> envKeys = env.hdri ? std::vector<uint64_t>{t ^ EQUIRECT, t ^ DOWNSAMPLE, t ^ PREFILTER}
+                                                           : std::vector<uint64_t>{t ^ PROCEDURAL, t ^ PREFILTER};
+            if (!TitleFirstDraws::allowGroup(envKeys)) return false;
+            slot = impl->startBuild(env, error);
+        }
         if (!slot) {
             impl->builds.erase(env.key);
             return true;    // the render reports the error
@@ -870,7 +959,7 @@ bool Title3DRenderer::ready(const Title3DPlan& plan, uint32_t testFlags) {
         impl->finish(std::move(done), counters);
         return false;   // the next call goes on with the next build, or renders
     }
-    return true;
+    return TitleFirstDraws::allowGroup(drawKeys);
 }
 
 bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, double pxScale, const std::vector<std::string>& parts,
@@ -895,6 +984,15 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
     GpuMesh* gpuMesh = im.mesh(plan, error, counters);
     if (!gpuMesh) return false;
     const TitleMesh& mesh = *plan.mesh;
+    // the layer's picture (R1a)
+    PictureGpu* pictureGpu = nullptr;
+    if (plan.picture) {
+        const std::shared_ptr<TitlePicture3D> p = plan.picture->get();
+        if (p) {
+            pictureGpu = im.picture(p, error);
+            if (!pictureGpu) return false;
+        }
+    }
 
     // ---- the uploads of this render: ramps and spans ----
     std::vector<uint8_t> ramps((size_t)256 * RAMP_ROWS * 4, 255);
@@ -980,7 +1078,13 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
         set4(fs.view2, c.view.at(2, 0), c.view.at(2, 1), c.view.at(2, 2), c.view.at(2, 3));
         const Mat4 vp = c.projection * c.view;
         std::memcpy(fs.viewProj, vp.m.data(), sizeof(fs.viewProj));
+        const Mat4 vpInv = inverse(vp);
+        std::memcpy(fs.viewProjInv, vpInv.m.data(), sizeof(fs.viewProjInv));
     };
+    {
+        const Mat4 layerInv = inverse(plan.model);
+        std::memcpy(fs.layerInv, layerInv.m.data(), sizeof(fs.layerInv));
+    }
     setView(camera);
     // the layer's axes in world space (surface relief and flakes tilt along them)
     {
@@ -1024,6 +1128,35 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
         set4(v[7], (float)m.gradientScale, (float)m.gradientOffset);
         set4(v[8], (float)m.surfaceAmount, (float)(m.surfaceScale / 100.0 * plan.size), (float)m.surfaceSeed, m.baseWrap ? 0.0f : 1.0f);
         set4(v[9], (float)m.baseTiling[0], (float)m.baseTiling[1], (float)m.baseOffset[0], (float)m.baseOffset[1]);
+        // the pattern: layer units -> motif units (Pachislop patternMatrix), its colours linear
+        if (m.hasPattern()) {
+            const Json& p = m.pattern;
+            const double cell = std::max(1e-3, p.value("scale", 12.0) / 100.0 * plan.size);
+            const double a = p.value("angle", 0.0) * 3.14159265358979323846 / 180.0;
+            double aspect = 1;
+            const std::shared_ptr<TitleCacheEntry>& image = i < plan.patternTextures.size() ? plan.patternTextures[i] : nullptr;
+            if (image && image->upload && image->upload->height() > 0) aspect = (double)image->upload->width() / image->upload->height();
+            const double c = std::cos(a) / cell, s = std::sin(a) / cell;
+            TitleColor ink{0, 0, 0}, ink2{1, 1, 1};
+            if (p.contains("color")) parseTitleColor(p["color"], ink);
+            if (p.contains("color2")) parseTitleColor(p["color2"], ink2);
+            const auto color = linear(ink);
+            const auto color2 = linear(ink2);
+            set4(v[10], (float)fx::patternKindId(p.value("kind", std::string("none"))), (float)p.value("seed", 1), (float)p.value("opacity", 1.0),
+                 (float)p.value("shade", 0.6));
+            set4(v[11], color[0], color[1], color[2], (float)p.value("relief", 0.0));
+            set4(v[12], color2[0], color2[1], color2[2], (float)cell);
+            set4(v[13], (float)c, (float)-s, (float)(s * aspect), (float)(c * aspect));
+        }
+    }
+    set4(fs.viewport, (float)(region.width * k), (float)(region.height * k), (float)plan.style.skew.x, (float)plan.style.skew.y);
+    if (pictureGpu) {
+        const TitlePicture3D& p = *pictureGpu->picture;
+        set4(fs.faceBox, (float)p.x0, (float)p.y0, (float)p.x1, (float)p.y1);
+        set4(fs.faceMix, (float)plan.faceImage, (float)p.edgeAlpha, (float)plan.edgeImage);
+    } else {
+        set4(fs.faceBox, -1, -1, 1, 1);
+        set4(fs.faceMix, 0, 0.5f, 0);
     }
     // the title's bounding sphere (world): the AO prepass's depth encoding
     std::array<float, 3> centreWorld{0, 0, 0};
@@ -1191,6 +1324,16 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
                 o->object.addTexture(o->base, ShaderStageType::FRAGMENT, t ? t : &im.placeholder2D);
             }
             if (o->behind.first >= 0) o->object.addTexture(o->behind, ShaderStageType::FRAGMENT, behind ? &im.behindCopy : &im.placeholder2D);
+            if (o->face.first >= 0) o->object.addTexture(o->face, ShaderStageType::FRAGMENT, pictureGpu ? &pictureGpu->face.texture() : &im.placeholder2D);
+            if (o->faceEdge.first >= 0) {
+                o->object.addTexture(o->faceEdge, ShaderStageType::FRAGMENT, pictureGpu ? &pictureGpu->edge.texture() : &im.placeholder2D);
+            }
+            if (o->pattern.first >= 0) {
+                TextureRender* t = sm.material < plan.patternTextures.size() && plan.patternTextures[sm.material]
+                                       ? plan.patternTextures[sm.material]->texture()
+                                       : nullptr;
+                o->object.addTexture(o->pattern, ShaderStageType::FRAGMENT, t ? t : &im.placeholder2D);
+            }
             o->object.applyUniformBlock(o->vsBlock, sizeof(VsBlock), &vs);
             o->object.applyUniformBlock(o->fsBlock, sizeof(FsBlock), &fs);
             o->object.draw(slot.firstIndex, slot.indexCount, 1);

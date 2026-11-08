@@ -7,9 +7,13 @@
 #include "TitleEnvironment.h"
 
 #include "titleart/three_d/TitleTierFeatures.h"
+#include "jobs/JobSystem.h"
+#include "texture/Ktx2.h"
+#include "texture/TexturePrepare.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <map>
 #include <mutex>
 
@@ -425,3 +429,232 @@ std::shared_ptr<const TitleHdri> titleart::loadTitleHdri(const std::string& slug
 float titleart::titleHdriYaw(const std::string& preset) {
     return preset == "softbox" ? 0.0f : (float)(PI / 2);
 }
+
+// ---- the builder's CPU twin ----
+
+namespace {
+
+    using Level = std::vector<std::array<float, 3>>;
+
+    // a direction's face and st (the inverse of titleEnvFaceDirection)
+    void faceOf(const std::array<float, 3>& d, int& face, float& s, float& t) {
+        const float ax = std::abs(d[0]), ay = std::abs(d[1]), az = std::abs(d[2]);
+        float cx = 0, cy = 0;
+        if (ax >= ay && ax >= az) {
+            face = d[0] > 0 ? 0 : 1;
+            cx = (d[0] > 0 ? -d[2] : d[2]) / ax;
+            cy = -d[1] / ax;
+        } else if (ay >= az) {
+            face = d[1] > 0 ? 2 : 3;
+            cx = d[0] / ay;
+            cy = (d[1] > 0 ? d[2] : -d[2]) / ay;
+        } else {
+            face = d[2] > 0 ? 4 : 5;
+            cx = (d[2] > 0 ? d[0] : -d[0]) / az;
+            cy = -d[1] / az;
+        }
+        s = cx * 0.5f + 0.5f;
+        t = cy * 0.5f + 0.5f;
+    }
+
+    std::array<float, 3> sampleLevel(const Level& level, int size, const std::array<float, 3>& d) {
+        int face = 0;
+        float s = 0, t = 0;
+        faceOf(d, face, s, t);
+        const float x = s * size - 0.5f, y = t * size - 0.5f;
+        const int x0 = (int)std::floor(x), y0 = (int)std::floor(y);
+        const float fx = x - x0, fy = y - y0;
+        auto at = [&](int xi, int yi) -> const std::array<float, 3>& {
+            xi = std::clamp(xi, 0, size - 1);
+            yi = std::clamp(yi, 0, size - 1);
+            return level[((size_t)face * size + yi) * size + xi];
+        };
+        std::array<float, 3> out{};
+        for (int c = 0; c < 3; c++) {
+            const float top = at(x0, y0)[c] * (1 - fx) + at(x0 + 1, y0)[c] * fx;
+            const float bottom = at(x0, y0 + 1)[c] * (1 - fx) + at(x0 + 1, y0 + 1)[c] * fx;
+            out[c] = top * (1 - fy) + bottom * fy;
+        }
+        return out;
+    }
+
+    std::array<float, 3> sampleCube(const std::vector<Level>& levels, int face, const std::array<float, 3>& d, float lod) {
+        const float l = std::clamp(lod, 0.0f, (float)levels.size() - 1);
+        const int l0 = (int)std::floor(l);
+        const int l1 = std::min(l0 + 1, (int)levels.size() - 1);
+        const float f = l - l0;
+        const auto a = sampleLevel(levels[(size_t)l0], std::max(1, face >> l0), d);
+        if (f <= 0) return a;
+        const auto b = sampleLevel(levels[(size_t)l1], std::max(1, face >> l1), d);
+        return {a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f};
+    }
+
+    float radicalInverse(uint32_t bits) {
+        bits = (bits << 16u) | (bits >> 16u);
+        bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+        bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+        bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+        bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+        return (float)bits * 2.3283064365386963e-10f;
+    }
+
+    // runs body(row) for every row of n, on the job system
+    template <typename F>
+    void parallelRows(int n, F body) {
+        jobs::parallelFor((size_t)std::max(0, n), [&](size_t row) { body((int)row); });
+    }
+
+}
+
+TitleEnvCube titleart::buildTitleEnvironmentCpu(const TitleEnvScene& scene, const TitleHdri* hdri, float hdriYaw, int face) {
+    TitleEnvCube out;
+    out.face = face;
+    const int levels = titleEnvironmentLevels(face);
+    std::vector<Level> source((size_t)levels);
+    // the HDRI's additive elements alone (the softbox preset's key softbox)
+    TitleEnvScene additive;
+    for (const TitleEnvElement& e : scene.elements) {
+        if (e.kind == TitleEnvElementKind::SoftPanel) additive.elements.push_back(e);
+    }
+    auto panorama = [&](const std::array<float, 3>& d) {
+        const float c = std::cos(hdriYaw), s = std::sin(hdriYaw);
+        const std::array<float, 3> l = {c * d[0] + s * d[2], d[1], -s * d[0] + c * d[2]};
+        float u = std::atan2(l[2], -l[0]) / (2 * 3.14159265358979f);
+        u -= std::floor(u);
+        const float v = std::acos(std::clamp(l[1], -1.0f, 1.0f)) / 3.14159265358979f;
+        const float x = u * hdri->width - 0.5f, y = v * hdri->height - 0.5f;
+        const int x0 = (int)std::floor(x), y0 = (int)std::floor(y);
+        const float fx = x - x0, fy = y - y0;
+        std::array<float, 3> o{};
+        for (int k = 0; k < 4; k++) {
+            int xi = x0 + (k & 1), yi = std::clamp(y0 + (k >> 1), 0, hdri->height - 1);
+            xi = ((xi % hdri->width) + hdri->width) % hdri->width;
+            const float w = ((k & 1) ? fx : 1 - fx) * ((k >> 1) ? fy : 1 - fy);
+            const uint16_t* p = &hdri->rgba[((size_t)yi * hdri->width + xi) * 4];
+            for (int ch = 0; ch < 3; ch++) o[ch] += halfToFloat(p[ch]) * w;
+        }
+        const auto add = evaluateTitleEnvironment(additive, d);
+        return std::array<float, 3>{o[0] + add[0], o[1] + add[1], o[2] + add[2]};
+    };
+    for (int level = 0; level < levels; level++) {
+        const int size = std::max(1, face >> level);
+        Level& dst = source[(size_t)level];
+        dst.assign((size_t)6 * size * size, {0, 0, 0});
+        const float texel = 1.0f / size;
+        if (hdri && level > 0) {
+            // a 2 x 2 box of the level above
+            const Level& up = source[(size_t)level - 1];
+            const int upSize = std::max(1, face >> (level - 1));
+            parallelRows(6 * size, [&](int row) {
+                const int f = row / size, y = row % size;
+                for (int x = 0; x < size; x++) {
+                    std::array<float, 3> sum{};
+                    for (int k = 0; k < 4; k++) {
+                        const int sx = std::min(upSize - 1, x * 2 + (k & 1)), sy = std::min(upSize - 1, y * 2 + (k >> 1));
+                        const auto& v = up[((size_t)f * upSize + sy) * upSize + sx];
+                        for (int c = 0; c < 3; c++) sum[c] += v[c] * 0.25f;
+                    }
+                    dst[((size_t)f * size + y) * size + x] = sum;
+                }
+            });
+            continue;
+        }
+        const int grid = hdri ? 2 : 4;
+        parallelRows(6 * size, [&](int row) {
+            const int f = row / size, y = row % size;
+            for (int x = 0; x < size; x++) {
+                std::array<float, 3> sum{};
+                for (int j = 0; j < grid; j++) {
+                    for (int i = 0; i < grid; i++) {
+                        const float s = (x + 0.5f + ((i + 0.5f) / grid - 0.5f)) * texel, t = (y + 0.5f + ((j + 0.5f) / grid - 0.5f)) * texel;
+                        std::array<float, 3> d = titleEnvFaceDirection(f, s, t);
+                        const float l = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+                        for (float& c : d) c /= l;
+                        const auto v = hdri ? panorama(d) : evaluateTitleEnvironment(scene, d);
+                        for (int c = 0; c < 3; c++) sum[c] += v[c];
+                    }
+                }
+                for (float& c : sum) c /= (float)(grid * grid);
+                dst[((size_t)f * size + y) * size + x] = sum;
+            }
+        });
+    }
+    // the GGX prefilter of every level (level 0 the source's top level)
+    out.levels.resize((size_t)levels);
+    const float texelSolidAngle = 4.0f * 3.14159265358979f / (6.0f * face * face);
+    for (int level = 0; level < levels; level++) {
+        const int size = std::max(1, face >> level);
+        const float roughness = titleEnvironmentRoughness(level, face);
+        Level& dst = out.levels[(size_t)level];
+        dst.assign((size_t)6 * size * size, {0, 0, 0});
+        if (roughness <= 0) {
+            dst = source[(size_t)level];
+            continue;
+        }
+        const float a2 = roughness * roughness * roughness * roughness;
+        constexpr int COUNT = 128;
+        parallelRows(6 * size, [&](int row) {
+            const int f = row / size, y = row % size;
+            for (int x = 0; x < size; x++) {
+                std::array<float, 3> n = titleEnvFaceDirection(f, (x + 0.5f) / size, (y + 0.5f) / size);
+                const float nl = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+                for (float& c : n) c /= nl;
+                const std::array<float, 3> up = std::abs(n[2]) < 0.999f ? std::array<float, 3>{0, 0, 1} : std::array<float, 3>{1, 0, 0};
+                std::array<float, 3> tangent = {up[1] * n[2] - up[2] * n[1], up[2] * n[0] - up[0] * n[2], up[0] * n[1] - up[1] * n[0]};
+                const float tl = std::sqrt(tangent[0] * tangent[0] + tangent[1] * tangent[1] + tangent[2] * tangent[2]);
+                for (float& c : tangent) c /= tl;
+                const std::array<float, 3> bitangent = {n[1] * tangent[2] - n[2] * tangent[1], n[2] * tangent[0] - n[0] * tangent[2],
+                                                        n[0] * tangent[1] - n[1] * tangent[0]};
+                std::array<float, 3> color{};
+                float weight = 0;
+                for (int i = 0; i < COUNT; i++) {
+                    const float xi0 = (float)i / COUNT, xi1 = radicalInverse((uint32_t)i);
+                    const float phi = 2 * 3.14159265358979f * xi0;
+                    const float cosTheta = std::sqrt((1 - xi1) / (1 + (a2 - 1) * xi1));
+                    const float sinTheta = std::sqrt(std::max(0.0f, 1 - cosTheta * cosTheta));
+                    std::array<float, 3> h{};
+                    for (int c = 0; c < 3; c++) h[c] = tangent[c] * std::cos(phi) * sinTheta + bitangent[c] * std::sin(phi) * sinTheta + n[c] * cosTheta;
+                    const float hl = std::sqrt(h[0] * h[0] + h[1] * h[1] + h[2] * h[2]);
+                    for (float& c : h) c /= hl;
+                    const float nh = n[0] * h[0] + n[1] * h[1] + n[2] * h[2];
+                    const std::array<float, 3> l = {2 * nh * h[0] - n[0], 2 * nh * h[1] - n[1], 2 * nh * h[2] - n[2]};
+                    const float ndotl = n[0] * l[0] + n[1] * l[1] + n[2] * l[2];
+                    if (ndotl <= 0) continue;
+                    const float dd = cosTheta * cosTheta * (a2 - 1) + 1;
+                    const float pdf = a2 / (3.14159265358979f * dd * dd) * 0.25f + 0.0001f;
+                    const float sampleSolidAngle = 1.0f / (COUNT * pdf);
+                    const float lod = std::clamp(0.5f * std::log2(sampleSolidAngle / texelSolidAngle) + 1.0f, 0.0f, (float)levels - 1);
+                    const auto v = sampleCube(source, face, l, lod);
+                    for (int c = 0; c < 3; c++) color[c] += v[c] * ndotl;
+                    weight += ndotl;
+                }
+                for (float& c : color) c /= std::max(weight, 0.0001f);
+                dst[((size_t)f * size + y) * size + x] = color;
+            }
+        });
+    }
+    return out;
+}
+
+bool titleart::writeTitleEnvironmentKtx2(const TitleEnvCube& cube, const std::map<std::string, std::string>& keyValues, std::vector<uint8_t>& out,
+                                         std::string& error) {
+    std::vector<std::vector<uint8_t>> levels;
+    for (const auto& level : cube.levels) {
+        std::vector<uint8_t> bytes(level.size() * 8);
+        for (size_t i = 0; i < level.size(); i++) {
+            const uint16_t h[4] = {floatToHalf(level[i][0]), floatToHalf(level[i][1]), floatToHalf(level[i][2]), floatToHalf(1.0f)};
+            std::memcpy(&bytes[i * 8], h, 8);
+        }
+        levels.push_back(std::move(bytes));
+    }
+    Ktx2::WriteDesc desc;
+    desc.format = GpuTextureFormat::RGBA16F;
+    desc.srgb = false;
+    desc.alpha = false;
+    desc.width = desc.height = (uint32_t)cube.face;
+    desc.faces = 6;
+    for (const auto& l : levels) desc.levels.emplace_back(l.data(), l.size());
+    desc.keyValues = keyValues;
+    return Ktx2::write(desc, out, error);
+}
+

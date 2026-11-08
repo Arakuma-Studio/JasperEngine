@@ -743,7 +743,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         // the program number (bits 0-6) and the RGBA8 encodings Sfx, Dfx (titleart/render/TitlePasses.h)
         case ShaderType::TITLE_ART: return 9;
         // the TL_* bits (titleart/three_d/TitleTierFeatures.h TitleLitBits)
-        case ShaderType::TITLE_LIT: return 24;
+        case ShaderType::TITLE_LIT: return 25;
         // the pass number (bits 0-3)
         case ShaderType::TITLE_3D_POST: return 4;
         case ShaderType::TITLE_ENV: return 4;
@@ -992,13 +992,13 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 1: return shortName ? "Mfl" : "Manual Filtering";
         }
     } else if (shaderType == ShaderType::TITLE_LIT) {
-        static const char* const SHORT[24] = {"Rmp", "Ccl", "Irs", "Gem", "Gbh", "Dsp", "Gld", "Flk", "Pat", "Sf0", "Sf1", "Elk",
-                                              "Btx", "Wuv", "Ems", "Trn", "Rig", "Lgt", "Hdc", "Ou0", "Ou1", "Mtc", "Saa", "Sfl"};
-        static const char* const LONG[24] = {"Ramp", "Clearcoat", "Iridescence", "Gem", "Gem Behind", "Dispersion", "Glass Depth",
+        static const char* const SHORT[25] = {"Rmp", "Ccl", "Irs", "Gem", "Gbh", "Dsp", "Gld", "Flk", "Pat", "Sf0", "Sf1", "Elk", "Btx",
+                                              "Wuv", "Ems", "Trn", "Rig", "Lgt", "Hdc", "Ou0", "Ou1", "Mtc", "Saa", "Sfl", "Fim"};
+        static const char* const LONG[25] = {"Ramp", "Clearcoat", "Iridescence", "Gem", "Gem Behind", "Dispersion", "Glass Depth",
                                              "Flakes", "Pattern", "Surface Bit 0", "Surface Bit 1", "Env Lock", "Base Texture", "Wrap UV",
                                              "Emissive", "Transparent", "Rigs", "Lights", "HDR Compress", "Output Bit 0", "Output Bit 1",
-                                             "Matcap", "Specular AA", "Surface Lite"};
-        if (bit >= 0 && bit < 24) return shortName ? SHORT[bit] : LONG[bit];
+                                             "Matcap", "Specular AA", "Surface Lite", "Face Image"};
+        if (bit >= 0 && bit < 25) return shortName ? SHORT[bit] : LONG[bit];
     } else if (shaderType == ShaderType::TITLE_3D_POST || shaderType == ShaderType::TITLE_ENV || shaderType == ShaderType::TITLE_GLINT) {
         // the pass number (title3d_post.frag TP_PROGRAM, title_env.frag TE_PROGRAM, glint3d.frag TG_PROGRAM)
         if (bit < 4) return (shortName ? "Pb" : "Pass Bit ") + std::to_string(bit);

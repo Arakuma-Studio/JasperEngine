@@ -13,9 +13,10 @@ std::vector<std::string> titleart::titleLitBitNames(uint32_t bits) {
     static const char* const NAMES[] = {"TL_RAMP",        "TL_CLEARCOAT", "TL_IRIDESCENCE", "TL_GEM",        "TL_GEM_BEHIND", "TL_DISPERSION",
                                         "TL_GLASS_DEPTH", "TL_FLAKES",    "TL_PATTERN",     "TL_SURFACE",    nullptr,         "TL_ENV_LOCK",
                                         "TL_BASE_TEXTURE", "TL_WRAP_UV",  "TL_EMISSIVE",    "TL_TRANSPARENT", "TL_RIGS",      "TL_LIGHTS",
-                                        "TL_HDR_COMPRESS", "TL_OUTPUT",   nullptr,          "TL_MATCAP",     "TL_SPECULAR_AA", "TL_SURFACE_LITE"};
+                                        "TL_HDR_COMPRESS", "TL_OUTPUT",   nullptr,          "TL_MATCAP",     "TL_SPECULAR_AA", "TL_SURFACE_LITE",
+                                        "TL_FACE_IMAGE"};
     std::vector<std::string> out;
-    for (uint32_t i = 0; i < 24; i++) {
+    for (uint32_t i = 0; i < 25; i++) {
         if (!(bits & (1u << i))) continue;
         const char* name = NAMES[i] ? NAMES[i] : NAMES[i - 1];
         if (out.empty() || out.back() != name) out.push_back(name);

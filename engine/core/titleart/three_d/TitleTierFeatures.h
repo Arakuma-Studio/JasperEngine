@@ -51,6 +51,7 @@ namespace jasperengine::titleart {
         constexpr uint32_t MATCAP = 1u << 21;
         constexpr uint32_t SPECULAR_AA = 1u << 22;
         constexpr uint32_t SURFACE_LITE = 1u << 23;
+        constexpr uint32_t FACE_IMAGE = 1u << 24;      // the layer's own picture on its face, its edge copy on bevel and sides (R1a)
         constexpr uint32_t MATERIAL_MASK = RAMP | CLEARCOAT | IRIDESCENCE | GEM | GEM_BEHIND | DISPERSION | GLASS_DEPTH | FLAKES | PATTERN |
                                            SURFACE_MASK | ENV_LOCK | BASE_TEXTURE | WRAP_UV | EMISSIVE | TRANSPARENT | SPECULAR_AA | SURFACE_LITE;
     }

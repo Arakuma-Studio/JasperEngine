@@ -32,6 +32,7 @@
 #include "titleart/render/TitleRenderJob.h"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -59,6 +60,8 @@ namespace jasperengine::titleart {
         Linear              // the accumulator itself: linear premultiplied (S81's live compose)
     };
 
+    struct TitleMesh;
+
     struct RenderRequest {
         std::shared_ptr<const TitleArtDoc> doc;     // immutable snapshot (what-if copies are snapshots too)
         float pxScale = 1.0f;                       // output pixels per canvas pixel
@@ -72,6 +75,12 @@ namespace jasperengine::titleart {
         int tier = 0;                               // 0 = bake quality; S86's TitleTier for Realtime 3D
         int debugView3D = 0;                        // S86 render_title debug_view (Title3DDebugView): 0 none, 1 normals,
                                                     // 2 environment, 3 ao, 4 glint, 5 ink, 6 wireframe
+        // S86 R38: cooked meshes (.titlemesh) by 3D layer id; a layer with one at the request's tier
+        // draws it and skips the mesher (a player built without it)
+        std::map<std::string, std::shared_ptr<const TitleMesh>> cookedMeshes3D;
+        // S86 R26: cooked environment cubes (KTX2) by environment preset id; a 3D layer lights with
+        // the one of its environment instead of building it (a player has no builder's sources)
+        std::map<std::string, std::shared_ptr<const std::vector<uint8_t>>> cookedEnvironments3D;
         bool includeGuides = false;                 // the editor's views draw guides; outputs never do
         // the output pass (§6.9): 8 writes straight-alpha sRGB with dither into RGBA8; 16 writes
         // straight sRGB-encoded half floats into RGBA16F (16-bit bakes, read back with 8 bytes

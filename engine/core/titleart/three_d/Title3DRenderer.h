@@ -36,6 +36,8 @@
 #include "titleart/three_d/TitleEnvironment.h"
 #include "titleart/three_d/TitleMesh.h"
 #include "titleart/three_d/TitleTierFeatures.h"
+#include "titleart/three_d/TitlePicture3D.h"
+#include "jobs/JobSystem.h"
 
 #include <map>
 #include <memory>
@@ -74,6 +76,7 @@ namespace jasperengine::titleart {
         int face = 1024;
         uint64_t key = 0;
         std::shared_ptr<TitleCacheEntry> matcap;        // the matcap environment's image
+        std::shared_ptr<const std::vector<uint8_t>> cooked;    // a cooked KTX2 cube: uploaded, not built
     };
 
     // render_title's debug_view (RenderRequest::debugView3D)
@@ -99,12 +102,16 @@ namespace jasperengine::titleart {
         int supersample = 3;                            // the document's (Bake's k cap)
         std::vector<Title3DEnvPlan> environments;       // [0]: the layer's; then the parts' own
         std::vector<std::shared_ptr<TitleCacheEntry>> baseTextures;     // per material (null: none)
+        std::vector<std::shared_ptr<TitleCacheEntry>> patternTextures;  // per material: a custom pattern's image
         bool ao = false;                                // the AO passes run (the tier allows it and it is on)
         AO3DParams aoParams;
         GlintMode glint = GlintMode::Off;               // the tier's glint chain
         Glint3DParams glintParams;
         double layerScale = 1;                          // world units per layer unit (the model's scale)
         bool behind = false;                            // a gem refracts the opaque parts (the behind copy runs)
+        // R1a: the layer's own picture, made on a job (null when the layer has none)
+        std::shared_ptr<jobs::Task<std::shared_ptr<TitlePicture3D>>> picture;
+        double faceImage = 1, edgeImage = 0;
     };
 
     struct Title3DStats {
@@ -112,6 +119,7 @@ namespace jasperengine::titleart {
         uint64_t mainPasses = 0;
         uint64_t postPasses = 0;
         uint64_t environmentBuilds = 0;
+        uint64_t cookedEnvironments = 0;    // cooked cubes uploaded
         uint64_t environmentSteps = 0;      // ready() calls that advanced a cube build
         uint64_t environmentMaxStepUnits = 0;   // the most build work one call ran (texel samples)
         uint64_t meshUploads = 0;
@@ -128,6 +136,8 @@ namespace jasperengine::titleart {
     constexpr uint32_t TITLE_ART_TEST_ENV_ONE_SHOT = 1u << 17;
     // the red control of the gem behind copy: gems refract the environment only
     constexpr uint32_t TITLE_ART_TEST_NO_BEHIND = 1u << 18;
+    // a player built without the mesher: only cooked meshes (RenderRequest::cookedMeshes3D) draw
+    constexpr uint32_t TITLE_ART_TEST_NO_MESHER = 1u << 19;
 
     class JASPERENGINE_API Title3DRenderer {
     public:
