@@ -76,6 +76,7 @@ bool build_prefab_prefabs_Rock(Scene* scene, Entity root, std::vector<Entity>& m
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = false;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         scene->addComponent<MeshComponent>(e0, std::move(*meshStorage));
 
         SpriteComponent sprite;
@@ -130,6 +131,7 @@ bool build_prefab_prefabs_Rock(Scene* scene, Entity root, std::vector<Entity>& m
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = false;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         scene->addComponent<MeshComponent>(e1, std::move(*meshStorage));
 
         SpriteComponent sprite;
@@ -184,6 +186,7 @@ bool build_prefab_prefabs_Rock(Scene* scene, Entity root, std::vector<Entity>& m
         mesh.submeshes[0].faceCulling = false;
         mesh.submeshes[0].textureShadow = false;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
+        mesh.submeshes[0].hasTextureRect = true;
         scene->addComponent<MeshComponent>(e2, std::move(*meshStorage));
 
         SpriteComponent sprite;

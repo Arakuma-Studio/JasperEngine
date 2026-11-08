@@ -115,8 +115,29 @@ namespace jasperengine::editor {
         void requestOpenParentScene(uint32_t childSceneId, uint32_t parentSceneId);
         void drawParentSceneButton(const SceneProject& sceneProject);
         void drawGizmosMenu(SceneProject& sceneProject);
+        // S41 R21: a 2D scene whose main camera has a Pixel Perfect Camera, with Pixel Zoom on
+        bool pixelZoomActive(const SceneProject* sceneProject) const;
+        // the toolbar's Pixel Zoom toggle, its readout and list, 1x and Game
+        void drawPixelZoomToolbar(SceneProject& sceneProject);
+    public:
+        // the Scene view at k view pixels per base pixel, anchored at the view's centre (the
+        // 1x and Game buttons, sceneView.pixelZoom1x / pixelZoomGame)
+        void setPixelZoom(SceneProject& sceneProject, float scale);
+        // the Game view's current k (its Pixel Perfect Camera's layout), 1 without one
+        float gamePixelZoom(SceneProject& sceneProject) const;
+    private:
+        // the Pixel Grid overlay (from 6x): 1-pixel lines on art-pixel edges
+        void drawPixelGrid(SceneProject& sceneProject, const ImVec2& canvasMin, const ImVec2& canvasAvail);
+        // R22: the main camera's Pixel Perfect Camera frames: its reference resolution, and in
+        // Integer (Expand) the frame the Game view's size shows (dashed)
+        void drawPixelPerfectFrames(SceneProject& sceneProject, const ImVec2& canvasMin);
         // the right-click menu of the selected lattice (LatticeSceneTools draws its items)
         void drawLatticeContextMenu(SceneProject& sceneProject);
+        // the Path Tester's press, drag and release in the view (engine canvas x, y): true when it
+        // took the left button
+        bool pathTesterInput(SceneProject& sceneProject, float x, float y, bool hovered);
+        // the AI Navigation overlay's tile labels and the Path Tester's panel over the canvas
+        void drawNavigationHud(SceneProject& sceneProject, ImVec2 canvasMin, ImVec2 canvasSize);
         // the camera moves to show bounds whole (focusOnEntities' framing)
         void focusOnBounds(SceneProject* sceneProject, const AABB& bounds);
         std::string getWindowTitle(const SceneProject& sceneProject) const;
@@ -166,6 +187,9 @@ namespace jasperengine::editor {
         void frameEntities(uint32_t viewSceneId, uint32_t entitySceneId, const std::vector<Entity>& entities);
         // The selection Frame Selected works on in the Scene view of sceneId
         bool hasFrameableSelection(uint32_t sceneId);
+        // Frames world bounds in the Scene view of sceneId, as Frame Selected frames (eased by
+        // Camera Easing; an agent's caller finishes the tween): visualize_navigation's frame
+        void frameBounds(uint32_t sceneId, const AABB& worldBounds);
         // Frame All (Alt+F, Home): what the view shows and can pick, in any scene type (S26 R18)
         void frameAll(uint32_t sceneId);
         // The numpad views (3D): the camera looks along direction (Front: +Z)

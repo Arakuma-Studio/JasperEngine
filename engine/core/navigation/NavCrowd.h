@@ -44,6 +44,9 @@ namespace jasperengine::nav {
         uint16_t areaMask = ALL_AREAS;
         // a non-carving obstacle: it never steers and every agent avoids it
         bool obstacle = false;
+        // ---- S76 queries
+        // the agent's own area costs; 0: the project's (which follow its later edits)
+        float areaCosts[AREA_COUNT] = {};
     };
 
     // An agent's movement request state (dtCrowd's)
@@ -52,6 +55,15 @@ namespace jasperengine::nav {
         Pending,
         Valid,
         Failed
+    };
+
+    // What the corridor of an agent with a valid target holds (S74 R6, D5): the way to the
+    // target's polygon, its first 256 polygons (the search reached the target), or the way to
+    // the polygon nearest an unreachable target
+    enum class NavCrowdPath : uint8_t {
+        Complete,
+        Truncated,
+        Partial
     };
 
     // A link an agent reached this update
@@ -90,6 +102,9 @@ namespace jasperengine::nav {
         void resetMoveTarget(int agent);
         NavCrowdTarget getTargetState(int agent) const;
         bool isPathPartial(int agent) const;
+        NavCrowdPath getPathState(int agent) const;
+        // the polygons of the agent's corridor
+        int getCorridorSize(int agent) const;
         Vector3 getTargetPosition(int agent) const;
 
         // One crowd step (spec D2 step 5); the path queue runs 100 iterations at most
@@ -139,8 +154,47 @@ namespace jasperengine::nav {
         // the area costs of every filter from the project's settings and the mesh's link costs
         void refreshFilters();
 
+        // ---- S76 queries: Detour's 16 query filters, keyed by area mask and costs, shared by
+        // the agents with the same key and freed when none uses them (spec S76 R10)
+        // the filters in use (the all-areas filter included)
+        int getFilterCount() const;
+        // the agents on a fallback filter now (no free filter: one with their mask, else all areas)
+        int getFilterOverflowCount() const;
+        bool isFilterFallback(int agent) const;
+
         // what the crowd holds (agents, grids, path queue), approximately
         size_t getMemoryBytes() const;
+
+        // ---- S76 areas (R15): every walking agent whose whole corridor (not dtCrowd's 10-polygon
+        // lookahead) holds one of the changed polygons (sorted) requests its target again; their
+        // indices, ascending. Agents on a link finish it.
+        void replanCrossing(const std::vector<uint32_t>& changedPolys, std::vector<int>& replanned);
+
+        // ---- S76 agents (docs/specs/S76-navigation-gameplay-api.md R20-R24, D7)
+        // Hands the agent a planned corridor (setPath): its current polygon must be among the first
+        // 16 (those before it are dropped) and each polygon kept must still pass its filter. At most
+        // 256 are kept, with `target` (the path's end) as the target: the crowd plans the rest near
+        // their end. The crowd follows it as given (no shortcuts) until its next move request or
+        // replan. False (nothing changed) when refused.
+        bool setCorridor(int agent, const std::vector<uint32_t>& polys, const Vector3& target);
+        // its corridor, the polygon it stands on first
+        void getCorridor(int agent, std::vector<uint32_t>& polys) const;
+        // every polygon of its corridor still exists and passes its filter
+        bool isCorridorValid(int agent) const;
+        // Its velocity during the next update: it moves velocity x dt along the surface from where
+        // it stood (after the crowd's step, which keeps its corridor) and reports velocity. For an
+        // agent with a move target; without one, requestMoveVelocity.
+        void overrideVelocity(int agent, const Vector3& velocity, float dt);
+        // Detour's velocity request (steered with avoidance, no path) until resetMoveTarget
+        void requestMoveVelocity(int agent, const Vector3& velocity);
+        // the corner it steered to in the last update (its position when it has none)
+        Vector3 getSteeringTarget(int agent) const;
+        // Its corridor as a path from its position to the corridor's end, through its links:
+        // corners with their flags and areas, length, cost and length per area (its filter), the
+        // polygons. areaCrossings adds a corner wherever the area changes.
+        void getCorridorPath(int agent, NavPath& out, bool areaCrossings = false) const;
+        // the first link ahead of it within maxCorners corners: its ends and user id
+        bool getNextOffMeshLink(int agent, Vector3& start, Vector3& end, uint32_t& userId, int maxCorners = 64) const;
 
     private:
         struct Impl;

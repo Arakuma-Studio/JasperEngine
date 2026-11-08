@@ -7,6 +7,7 @@
 
 #include "TerrainProjectFixture.h"
 #include "component/RigidbodyComponent.h"
+#include "component/TerrainComponent.h"
 
 #include "command/CommandHistory.h"
 #include "terrain/TerrainOpsUndo.h"

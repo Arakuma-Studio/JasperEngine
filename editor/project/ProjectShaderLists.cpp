@@ -463,6 +463,8 @@ std::set<ShaderKey> editor::Project::finishBuildShaderKeys(const std::set<Shader
             }
         }
     }
+    // (a scene saved while its lights were all directional holds the 'Dlo' variants alone)
+    ShaderVariantCollector::addDirectionalOnlyTwins(keys);
     // a deleted fork's variants the additions or the warm-up list still name
     dropDeadForkKeys(keys, deadForks);
     for (ShaderKey key : exclusions) {

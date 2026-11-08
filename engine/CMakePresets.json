@@ -38,6 +38,10 @@
       "cacheVariables": { "GRAPHIC_BACKEND": "vulkan" }
     },
     {
+      "name": "engine-linux-tests-gles3", "displayName": "Linux core tests (OpenGL ES 3 GPU suites, linux-backends image), warnings as errors", "inherits": "tests",
+      "cacheVariables": { "GRAPHIC_BACKEND": "gles3" }
+    },
+    {
       "name": "engine-linux-asan", "displayName": "Linux core tests, Debug, ASan + UBSan", "inherits": "sanitizer-tests",
       "cacheVariables": { "JASPERENGINE_SANITIZE": "address;undefined" }
     },
@@ -62,6 +66,7 @@
     { "name": "engine-linux-debug", "configurePreset": "engine-linux-debug", "targets": ["jasperengine-project"] },
     { "name": "engine-linux-tests", "configurePreset": "engine-linux-tests", "targets": ["jasperengine-core-tests"] },
     { "name": "engine-linux-tests-vulkan", "configurePreset": "engine-linux-tests-vulkan", "targets": ["jasperengine-core-tests"] },
+    { "name": "engine-linux-tests-gles3", "configurePreset": "engine-linux-tests-gles3", "targets": ["jasperengine-core-tests"] },
     { "name": "engine-linux-asan", "configurePreset": "engine-linux-asan", "targets": ["jasperengine-core-tests"] },
     { "name": "engine-linux-tsan", "configurePreset": "engine-linux-tsan", "targets": ["jasperengine-core-tests"] },
     { "name": "engine-windows-msvc-tests", "configurePreset": "engine-windows-msvc-tests", "targets": ["jasperengine-core-tests"] },

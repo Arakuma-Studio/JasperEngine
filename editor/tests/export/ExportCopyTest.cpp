@@ -52,8 +52,9 @@ TEST(ExportCopy, UnchangedFileGetsTheSourcesPermissions) {
     std::string error;
     ASSERT_TRUE(exportfiles::mirrorTree(src, dst, false, error)) << error;
     EXPECT_EQ(exportCopyPerms(dst / "workspaces" / "gradlew"), fs::perms(0755));
-    // still unchanged for the incremental build
-    EXPECT_EQ(fs::last_write_time(dst / "workspaces" / "gradlew"), mtime);
+    // still unchanged for the incremental build (compared as counts: gtest would print a time_point
+    // through libc++'s std::format, whose floating-point to_chars macOS has only from 13.3)
+    EXPECT_EQ(fs::last_write_time(dst / "workspaces" / "gradlew").time_since_epoch().count(), mtime.time_since_epoch().count());
 }
 
 TEST(ExportCopy, EnsureExecutableAddsTheExecuteBits) {

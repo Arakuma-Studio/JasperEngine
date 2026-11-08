@@ -3,6 +3,7 @@
 
 // W1: the Inspector: get_entity, components (add, remove, reset, copy/paste values),
 // set_properties (every property type), set_transform, list_component_types
+#include "pixelart/PixelPerfectEditor.h"
 #include "McpTools.h"
 #include "component/TrailRendererComponent.h"
 #include "component/ModelComponent.h"
@@ -258,6 +259,8 @@ void getEntityTool(const CallPtr& call) {
     };
     // the GUIDs of the asset fields read ("<Component>.<property>" -> GUID, S04)
     Json assetGuids = Json::object();
+    // a Pixel Perfect Camera's layout values at the Game view's size outside Play (S41 R23)
+    pixelart::refreshEditLayout(*project, scene->scene, entity, scene->playState != ScenePlayState::STOPPED);
     for (ComponentType type : Catalog::findComponents(registry, entity)) {
         if (!filter.empty() && std::find(filter.begin(), filter.end(), type) == filter.end()) continue;
         const std::string name = McpRefs::componentName(type);

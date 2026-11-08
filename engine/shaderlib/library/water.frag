@@ -3,7 +3,7 @@
 // @shader mesh
 // @name "Water"
 // @category "Nature"
-// @description "Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine or Gerstner waves; lit per pixel with a specular glint, distant waves and ripples fading so they do not shimmer. Optional features: BUILTIN_TEXTURES (the engine's seamless ripples and foam noise where the material sets no texture, so no image files are needed), GERSTNER (with WAVES: four Gerstner waves, sharp crests and the surface rolling forward), REFLECTION (the sky or the reflection probe around it by Schlick's fresnel, a GGX sun glint), PLANAR_REFLECTION (with REFLECTION: the scene mirrored in the water, from a camera pass per water height at the scene's Planar Reflections resolution, else the environment), UNDERSIDE (both faces drawn: seen from below, the sky only through Snell's window, the depths mirrored around it; with library:underwater in the post-processing chain the view under the surface fades into the water), and the scene-reading DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness; with REFRACTION the bed seen through it also loses each colour at its own rate) reading the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth, CAUSTICS (with REFRACTION: the sunlight focused on the bed). For meshes that carry their water (a spline's river or lake): FLOW (rivers: the ripples and the foam carried along the flow the vertex colour gives) and MESH_DEPTH (shore foam and shallow to deep colour from the depth the mesh's first UV set gives, with no scene-depth pass: the mobile path). Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass; REFLECTION, CAUSTICS and MESH_DEPTH are a few instructions (one cube map read for REFLECTION), GERSTNER about thirty, FLOW doubles the four texture reads; PLANAR_REFLECTION draws the scene again (at half resolution by default) for each water height a camera sees. REFRACTION needs the Alpha or Premultiplied blend (Additive and Multiply draw it unrefracted). Limits of reading the depth: no shore foam where a vertical face meets the water seen from straight above (no depth gap there), and REFRACTION leaves a faint line along outlines crossing the water (samples in front are rejected). Floats rigidbodies with a Buoyancy (Water in Lua: the surface height and normal at a point, the same waves); the waves run on the scene clock, so they hold while the game is paused. Alpha blended; casts no shadows."
+// @description "Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine or Gerstner waves; lit per pixel with a specular glint, distant waves and ripples fading so they do not shimmer. Optional features: BUILTIN_TEXTURES (the engine's seamless ripples and foam noise where the material sets no texture, so no image files are needed), GERSTNER (with WAVES: four Gerstner waves, sharp crests and the surface rolling forward), REFLECTION (the sky or the reflection probe around it by Schlick's fresnel, a GGX sun glint), PLANAR_REFLECTION (with REFLECTION: the scene mirrored in the water, from a camera pass per water height at the scene's Planar Reflections resolution, else the environment), UNDERSIDE (both faces drawn: seen from below, the sky only through Snell's window, the depths mirrored around it; with library:underwater in the post-processing chain the view under the surface fades into the water), and the scene-reading DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness; with REFRACTION the bed seen through it also loses each colour at its own rate) reading the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth, CAUSTICS (with REFRACTION: the sunlight focused on the bed). For meshes that carry their water (a spline's river or lake): FLOW (rivers: the ripples and the foam carried along the flow the vertex colour gives) and MESH_DEPTH (shore foam and shallow to deep colour from the depth the mesh's first UV set gives, with no scene-depth pass: the mobile path). Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass; REFLECTION, CAUSTICS and MESH_DEPTH are a few instructions (one cube map read for REFLECTION), GERSTNER about thirty, FLOW doubles the four texture reads; PLANAR_REFLECTION draws the scene again (at half resolution by default) for each water height a camera sees. REFRACTION needs the Alpha or Premultiplied blend (Additive and Multiply draw it unrefracted). Limits of reading the depth: no shore foam where a vertical face meets the water seen from straight above (no depth gap there), and REFRACTION leaves a faint line along outlines crossing the water (samples in front are rejected). Floats rigidbodies with a Buoyancy (Water in Lua: the surface height and normal at a point, the same waves); the waves run on the scene clock, so they hold while the game is paused. Water Excluders (boats, cabins, dry tunnels) cut it, and Water Wakes leave foam and waves on it: engine variants only scenes with those components draw. Alpha blended; casts no shadows."
 // @lighting none pixel
 // @role water
 // @require position normals
@@ -12,6 +12,7 @@
 // @require scenecolor scenedepth feature=REFRACTION
 // @require environment feature=REFLECTION
 // @require planarreflection feature=PLANAR_REFLECTION
+// @require waterexclusion waterwake
 // @require rawcolor feature=FLOW
 // @require uv1 feature=MESH_DEPTH
 // @state blend=alpha shadows=off
@@ -191,6 +192,16 @@
 // floats on its surface (the same waves), unless buoyancy is off or the centre of mass is
 // more than buoyancyDepth below the surface; where waters overlap, the one whose bottom is
 // highest wins (a pool over a lake).
+//
+// Water Excluders and Water Wakes (includes/water_interaction.glsl): in a scene with a Water
+// Excluder the variant ('Wex') discards the pixels inside the excluders over the mesh in the
+// camera's view (8 at most, nearest first), last, after every derivative read; in a scene with a
+// Water Wake ('Wwk') the scene's wake map adds its foam (broken up by the foam noise, none where
+// there is no wake) and bends the normal by its waves, calming the ripples under the foam.
+// Without those components neither is compiled.
+
+// the engine-written members of the Water Excluders and Wakes (none without them)
+#include "includes/water_interaction_params.glsl"
 
 uniform u_fs_customParams {
     vec4 shallowColor;
@@ -235,6 +246,7 @@ uniform u_fs_customParams {
     // written by the engine: the scene clock (Scene::getSceneTime), which the waves, the ripples,
     // the flow and the caustics run on, so they hold while the game is paused
     float sceneTime;
+    WATER_INTERACTION_PARAMS
 } customParams;
 
 #define FRAME_FS
@@ -258,6 +270,7 @@ uniform sampler u_noise_smp;
 
 #include "includes/environment.glsl"
 #include "includes/planar_reflection.glsl"
+#include "includes/water_interaction.glsl"
 
 in vec3 v_position;
 in vec3 v_normal;
@@ -277,6 +290,11 @@ in vec3 v_normal;
 
 #ifdef USE_PUNCTUAL
     #define LIGHTS_FS
+    // the lights' records from the frame's light data (two floats a light in the block): with
+    // shadows and fog, sixteen lights stay within GLES3 / WebGL2's 224 fragment uniform vectors
+    #ifndef LIGHTS_FS_RECORDS
+        #define LIGHTS_FS_RECORDS
+    #endif
     #include "includes/lights.glsl"
 #endif
 
@@ -390,6 +408,11 @@ void main() {
     vec2 uv1 = waterLayerUV(xz, customParams.layerScale, customParams.layerSpeed);
     vec2 uv2 = waterLayerUV(xz, customParams.secondLayerScale, customParams.secondLayerSpeed);
 
+    #ifdef USE_WATER_WAKE
+        // the wakes of the Water Wakes on this water: x foam, yz their waves' slope
+        vec3 wake = waterWake(xz);
+    #endif
+
     #ifdef FLOW
         // two phases half a cycle apart, each sampled where the flow brought the surface from
         // since the phase restarted; the second at another part of the tiles
@@ -418,7 +441,14 @@ void main() {
     #endif
     float rippleDetail = 1.0 - 0.7 * smoothstep(0.01, 0.1, footprint / max(min(customParams.layerScale, customParams.secondLayerScale), 1e-3));
     detail = min(detail, rippleDetail);
-    n = normalize(n + vec3(ripple.x, 0.0, ripple.y) * (2.0 * customParams.normalStrength * rippleDetail * (fromBelow ? -1.0 : 1.0)));
+    #ifdef USE_WATER_WAKE
+        // wake foam calms the ripples; the wake waves bend the surface as the ripples do
+        float rippleCalm = 1.0 - 0.6 * clamp(wake.x * 3.0, 0.0, 1.0);
+        n = normalize(n + (vec3(ripple.x, 0.0, ripple.y) * (2.0 * customParams.normalStrength * rippleDetail * rippleCalm) -
+                           vec3(wake.y, 0.0, wake.z)) * (fromBelow ? -1.0 : 1.0));
+    #else
+        n = normalize(n + vec3(ripple.x, 0.0, ripple.y) * (2.0 * customParams.normalStrength * rippleDetail * (fromBelow ? -1.0 : 1.0)));
+    #endif
 
     float fresnel = pow(1.0 - clamp(abs(dot(n, v)), 0.0, 1.0), customParams.fresnelPower);
 
@@ -523,6 +553,11 @@ void main() {
     float noise = foamNoise + crest;
     float threshold = 1.0 - customParams.foamAmount;
     float foam = smoothstep(threshold, threshold + customParams.foamSoftness, noise) * step(0.001, customParams.foamAmount);
+    #ifdef USE_WATER_WAKE
+        // wake foam breaks up by the noise as it fades, and is none where there is no wake
+        foam = max(foam, smoothstep(foamNoise - 0.15, foamNoise + 0.15, wake.x * 1.5) * min(0.35 + wake.x * 2.0, 1.0) *
+                         smoothstep(0.0, 0.03, wake.x));
+    #endif
 
     #ifdef DEPTH_FOAM
         // depth below the surface along its normal, in foam widths: 0 at the contact line
@@ -646,6 +681,12 @@ void main() {
     #ifdef USE_PUNCTUAL
         // a glint shows at full strength on clear water
         alpha = clamp(alpha + dot(specular, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+    #endif
+
+    #ifdef USE_WATER_EXCLUSION
+        // no water inside a Water Excluder; last, after every derivative this pixel's quad needs
+        if (waterExcluded(v_position))
+            discard;
     #endif
 
     #ifdef REFRACTION

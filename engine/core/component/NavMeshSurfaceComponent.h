@@ -56,6 +56,8 @@ namespace jasperengine{
         nav::NavPlane plane = nav::NavPlane::XZ;
         // keep tile-cache layers, so carving NavMeshObstacles cut the navmesh at runtime
         bool runtimeCarving = false;
+        // the carving obstacles the navmesh holds at once (1-4096; more are avoided instead)
+        int maxCarvingObstacles = 128;
         // the baked .navmesh
         AssetRef navMeshData;
 

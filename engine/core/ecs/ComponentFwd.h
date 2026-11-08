@@ -57,6 +57,7 @@ namespace jasperengine{
     struct OnScreenStickComponent;
     struct PanelComponent;
     struct ParticleSystemComponent;
+    struct PixelPerfectCameraComponent;
     struct PointsComponent;
     struct PolygonComponent;
     struct PoseAnimatorComponent;
@@ -99,7 +100,9 @@ namespace jasperengine{
     struct VideoPlayerComponent;
     struct VolumetricCloudsComponent;
     struct VoxelVolumeComponent;
+    struct WaterExcluderComponent;
     struct WaterVolumeComponent;
+    struct WaterWakeComponent;
 
 }
 

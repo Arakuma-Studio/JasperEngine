@@ -405,7 +405,8 @@ void anim::RigClipBinding::bind(const std::shared_ptr<const AnimationClip>& newC
         for (size_t g = 0; g < groups.size(); g++){
             const AnimationClip::Track& other = tracks[groups[g].track];
             if (other.keyCount != track.keyCount || other.loop != track.loop || other.duration != track.duration) continue;
-            if (std::memcmp(other.times, track.times, track.keyCount * sizeof(float)) != 0) continue;
+            // tracks with the same times usually share one range (AnimationClip::Track::times)
+            if (other.times != track.times && std::memcmp(other.times, track.times, track.keyCount * sizeof(float)) != 0) continue;
             if ((other.easings == nullptr) != (track.easings == nullptr)) continue;
             if (track.easings && std::memcmp(other.easings, track.easings, track.keyCount * sizeof(EaseType)) != 0) continue;
             group = (int)g;

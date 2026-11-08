@@ -144,12 +144,15 @@ void SokolCmdQueue::run_command(const SokolRenderCommand& command)
 		break;
 	case SokolRenderCommand::TYPE::DESTROY_BUFFER:
 		sg_uninit_buffer(command.destroy_buffer.buffer);
+		SokolSystem::forgetAppliedBindings();
 		break;
 	case SokolRenderCommand::TYPE::DESTROY_IMAGE:
 		sg_uninit_image(command.destroy_image.image);
+		SokolSystem::forgetAppliedBindings();
 		break;
 	case SokolRenderCommand::TYPE::DESTROY_SAMPLER:
 		sg_uninit_sampler(command.destroy_sampler.sampler);
+		SokolSystem::forgetAppliedBindings();
 		break;
 	case SokolRenderCommand::TYPE::DESTROY_SHADER:
 		// the whole destroy (a pending one's waits for its creation): no deferred dealloc
@@ -160,6 +163,7 @@ void SokolCmdQueue::run_command(const SokolRenderCommand& command)
 		break;
 	case SokolRenderCommand::TYPE::DESTROY_VIEW:
 		sg_uninit_view(command.destroy_view.view);
+		SokolSystem::forgetAppliedBindings();
 		break;
 	case SokolRenderCommand::TYPE::UPDATE_BUFFER:
 		SokolSystem::updateBuffer(command.update_buffer.buffer, command.update_buffer.data);
@@ -367,12 +371,15 @@ void SokolCmdQueue::wait_for_flush()
 				{
 				case SokolRenderCommand::TYPE::DESTROY_BUFFER:
 					sg_uninit_buffer(command.destroy_buffer.buffer);
+					SokolSystem::forgetAppliedBindings();
 					break;
 				case SokolRenderCommand::TYPE::DESTROY_IMAGE:
 					sg_uninit_image(command.destroy_image.image);
+					SokolSystem::forgetAppliedBindings();
 					break;
 				case SokolRenderCommand::TYPE::DESTROY_SAMPLER:
 					sg_uninit_sampler(command.destroy_sampler.sampler);
+					SokolSystem::forgetAppliedBindings();
 					break;
 				case SokolRenderCommand::TYPE::DESTROY_SHADER:
 					SokolAsyncCreate::destroyShader(command.destroy_shader.shader);
@@ -382,6 +389,7 @@ void SokolCmdQueue::wait_for_flush()
 					break;
 				case SokolRenderCommand::TYPE::DESTROY_VIEW:
 					sg_uninit_view(command.destroy_view.view);
+					SokolSystem::forgetAppliedBindings();
 					break;
 				default:
 					break;

@@ -60,6 +60,9 @@ namespace jasperengine::editor {
         // Generates sprite normal maps (sprites, sheets, GIF/APNG, tiles), no window (editor/spritenormals/SpriteNormalsCli.h)
         static int runGenerateSpriteNormalsCommand(int argc, char** argv, const char* executableName);
 
+        // Reads, renders and resaves .aseprite files, no project (editor/pixelart/aseprite/AsepriteCli.h)
+        static int runAsepriteCommand(int argc, char** argv, const char* executableName);
+
         // Prints the top level usage, or reports an unrecognized argument.
         static int runHelpCommand(int argc, char** argv, const char* executableName);
 

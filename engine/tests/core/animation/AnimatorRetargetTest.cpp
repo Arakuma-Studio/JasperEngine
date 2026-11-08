@@ -9,12 +9,17 @@
 #include <gtest/gtest.h>
 
 #include "AnimatorTestUtil.h"
+#include "component/Transform.h"
 
 #include "Engine.h"
+#include "animation/AnimatorIK.h"
 #include "component/RigidbodyComponent.h"
+#include "component/CameraComponent.h"
+#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "object/Model.h"
 #include "pose/HumanBones.h"
+#include "script/LuaBinding.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -22,6 +27,9 @@
 #include <cmath>
 #include <memory>
 #include <vector>
+
+#include "lua.hpp"
+#include "LuaBridge.h"
 
 using namespace jasperengine;
 using namespace jasperengine::anim;
@@ -158,11 +166,11 @@ namespace {
             }
         }
 
-        void ramp(){
+        void ramp(float degrees = 20.0f){
             const Entity entity = scene.createEntity();
             Transform transform;
             transform.position = Vector3(0, -0.5f, 0);
-            transform.rotation = aboutX(-20.0f);
+            transform.rotation = aboutX(-degrees);
             scene.addComponent<Transform>(entity, transform);
             RigidbodyComponent body;
             body.type = BodyType::STATIC;
@@ -175,9 +183,9 @@ namespace {
         }
 
         // the ramp's surface height at z: the top face of the 1 m box centred at y = -0.5, rotated
-        // -20 degrees about x (it rises toward +z)
-        static float ground(float z){
-            const float slope = 20.0f * 0.0174532925f;
+        // -`degrees` about x (it rises toward +z)
+        static float ground(float z, float degrees = 20.0f){
+            const float slope = degrees * 0.0174532925f;
             return -0.5f + 0.5f / std::cos(slope) + std::tan(slope) * z;
         }
 
@@ -185,6 +193,11 @@ namespace {
             // the hips held at 0.92 m with straight legs: the feet at the rig's y = 0 (0.08 m soles)
             ClipData data = hold("Hips", Vector3(0, 0.92f + 0.08f, 0));
             AnimatorComponent& component = animator(controllerFile("stand", controller({}, {state("Stand", clip("stand", data))})));
+            addFootIK(component);
+            return component;
+        }
+
+        void addFootIK(AnimatorComponent& component){
             for (int i = 0; i < 2; i++){
                 AnimatorIKConstraint c;
                 c.name = i == 0 ? "LeftFoot" : "RightFoot";
@@ -195,7 +208,6 @@ namespace {
                 c.footHeight = 0.08f;
                 component.ik.push_back(c);
             }
-            return component;
         }
 
         void frame(){
@@ -203,6 +215,27 @@ namespace {
             scene.fixedUpdate(kDt);
             step(kDt);
             resolveTransforms();
+        }
+
+        // both soles' centres on a ramp of `degrees`, measured across its plane
+        void expectSolesOnTheRamp(float degrees){
+            ramp(degrees);
+            AnimatorComponent& component = rig();
+            for (AnimatorIKConstraint& c : component.ik) c.smoothing = 0.0f;
+            step(0.0);
+            ASSERT_TRUE(instance().bound);
+            for (int i = 0; i < 10; i++) frame();
+            for (int i = 0; i < 2; i++){
+                const Transform& foot = scene.getComponent<Transform>(ankles[i]);
+                const Vector3 sole = foot.worldPosition - foot.worldRotation * Vector3(0, 0.08f, 0);
+                const float across = (sole.y - ground(sole.z, degrees)) * std::cos(degrees * 0.0174532925f);
+                EXPECT_NEAR(across, 0.0f, 0.001f) << (i == 0 ? "left" : "right") << " at " << degrees << " degrees";
+                EXPECT_TRUE(instance().ik[(size_t)i].reached) << instance().ik[(size_t)i].reachError;
+                // the sole faces the slope up to the clamp, whatever the bent knee did to the shin
+                const float tilt = std::min(degrees, 30.0f) * 0.0174532925f;
+                const Vector3 up(0, std::cos(tilt), std::sin(-tilt));
+                EXPECT_LE(angleBetween(foot.worldRotation * Vector3(0, 1, 0), up), 0.5f) << "at " << degrees << " degrees";
+            }
         }
     };
 
@@ -224,6 +257,255 @@ TEST_F(AnimatorFootIK, SlopeGrounding){
         EXPECT_NEAR(sole, ground(ankle.z), 0.01f) << (i == 0 ? "left" : "right") << " sole on the ramp";
     }
     EXPECT_LT(position(hips).y, 1.0f) << "the pelvis dropped for the lower foot";
+}
+
+// AC6 (R15): Cull Update Transforms has no pose while culled, so no IK reads the ground
+TEST_F(AnimatorFootIK, CulledCastsNoRays){
+    ramp();
+    AnimatorComponent& component = rig();
+    // a skin to cull by, and a camera whose frustum excludes everything (its planes all face away)
+    const Entity mesh = node(root, "Mesh", Vector3(0, 0, 0));
+    scene.addComponent<MeshComponent>(mesh, {});
+    ModelComponent model;
+    ModelSkinBinding skin;
+    skin.mesh = mesh;
+    skin.joints = {hips};
+    skin.inverseBindMatrices = {Matrix4()};
+    model.skinBindings.push_back(skin);
+    scene.addComponent<ModelComponent>(root, model);
+    scene.getComponent<ModelComponent>(root).needUpdateModel = false;
+    const Entity camera = scene.createEntity();
+    scene.addComponent<Transform>(camera, {});
+    scene.addComponent<CameraComponent>(camera, {});
+    CameraComponent& c = scene.getComponent<CameraComponent>(camera);
+    for (int p = 0; p < 6; p++) c.frustumPlanes[p] = Plane(Vector3(0, 1, 0), -1000.0f);
+    c.farClip = 1.0f;
+
+    step(0.0);
+    ASSERT_TRUE(instance().bound);
+    component.cullingMode = AnimatorCullingMode::AlwaysAnimate;
+    frame();
+    EXPECT_EQ(system().getStats().footRaycasts, 2u) << "a ray per foot";
+    EXPECT_TRUE(instance().ik[0].hit);
+
+    component.cullingMode = AnimatorCullingMode::CullUpdateTransforms;
+    for (int i = 0; i < 5; i++){
+        frame();
+        EXPECT_GT(system().getStats().culled, 0u);
+        EXPECT_EQ(system().getStats().footRaycasts, 0u) << "frame " << i;
+        EXPECT_FALSE(instance().ik[0].hit);
+    }
+}
+
+// S77 R34, the red case: an ankle `footHeight` straight above the hit sinks the sole on a slope,
+// 1.07 cm at 30 degrees: the foot turns to the slope, so its sole is measured along the normal.
+// Past the default 30 degree clamp the centre of the sole is what stays on the plane.
+TEST_F(AnimatorFootIK, SoleStaysOnTheFlat){ expectSolesOnTheRamp(0.0f); }
+TEST_F(AnimatorFootIK, SoleStaysOnA20DegreeSlope){ expectSolesOnTheRamp(20.0f); }
+TEST_F(AnimatorFootIK, SoleStaysOnA30DegreeSlope){ expectSolesOnTheRamp(30.0f); }
+TEST_F(AnimatorFootIK, SoleCentreStaysOnASlopePastTheClamp){ expectSolesOnTheRamp(45.0f); }
+
+// S77 R32: `reached` and what goes with it, as scripts, tools and overlays read them
+TEST_F(AnimatorFootIK, ReachedReadsTheSolve){
+    AnimatorComponent& component = rig();
+    component.ik.clear();
+    AnimatorIKConstraint c;
+    c.name = "Leg";
+    c.type = AnimatorIKType::TwoBone;
+    c.bones = {"Hips/RUpperLeg", "Hips/RUpperLeg/RLowerLeg", "Hips/RUpperLeg/RLowerLeg/RFoot"};
+    c.targetPosition = Vector3(0.0f, 0.4f, -0.1f);
+    component.ik.push_back(c);
+    step(0.0);
+    ASSERT_TRUE(instance().bound);
+    Animator object(&scene, root);
+    step(kDt);
+    EXPECT_TRUE(object.isIKReached("Leg"));
+    const anim::AnimatorIKRun& run = instance().ik[0];
+    EXPECT_LE(run.reachError, kIKReachTolerance);
+    EXPECT_EQ(run.solvedWeight, 1.0f);
+    EXPECT_EQ(run.solvedTargetWorld, c.targetPosition);
+    // beyond the leg: the miss in world metres
+    component.ik[0].targetPosition = Vector3(0.0f, -3.0f, 0.0f);
+    step(kDt);
+    EXPECT_FALSE(object.isIKReached("Leg"));
+    EXPECT_GT(instance().ik[0].reachError, 2.0f);
+    // weight 0 solves nothing; a script's weight the same
+    component.ik[0].targetPosition = c.targetPosition;
+    step(kDt);
+    EXPECT_TRUE(object.isIKReached("Leg"));
+    object.setIKWeight("Leg", 0.0f);
+    step(kDt);
+    EXPECT_FALSE(object.isIKReached("Leg"));
+    EXPECT_EQ(instance().ik[0].solvedWeight, 0.0f);
+    EXPECT_EQ(instance().ik[0].reachError, 0.0f);
+    // a partial weight leaves the end short of it
+    object.setIKWeight("Leg", 0.4f);
+    step(kDt);
+    EXPECT_FALSE(object.isIKReached("Leg"));
+    EXPECT_NEAR(instance().ik[0].solvedWeight, 0.4f, 1e-6f);
+    EXPECT_GT(instance().ik[0].reachError, 0.01f);
+    object.clearIKTarget("Leg");
+    step(kDt);
+    EXPECT_TRUE(object.isIKReached("Leg"));
+    // an Animator that does not run reports nothing stale
+    component.enabled = false;
+    step(kDt);
+    EXPECT_FALSE(object.isIKReached("Leg"));
+    component.enabled = true;
+    step(kDt);
+    EXPECT_TRUE(object.isIKReached("Leg"));
+    EXPECT_FALSE(object.isIKReached("Nobody"));
+}
+
+// The constraint's shape, set by scripts as the Inspector sets it, works on the next solve
+TEST_F(AnimatorFootIK, ScriptSettersReachTheSolver){
+    AnimatorComponent& component = rig();
+    component.ik.clear();
+    AnimatorIKConstraint leg;
+    leg.name = "Leg";
+    leg.type = AnimatorIKType::TwoBone;
+    leg.bones = {"Hips/RUpperLeg", "Hips/RUpperLeg/RLowerLeg", "Hips/RUpperLeg/RLowerLeg/RFoot"};
+    leg.targetPosition = Vector3(-0.12f, 1.0f - 0.90f, -0.2f);
+    component.ik.push_back(leg);
+    step(0.0);
+    ASSERT_TRUE(instance().bound);
+    Animator object(&scene, root);
+    step(kDt);
+    resolveTransforms();
+    EXPECT_TRUE(object.isIKReached("Leg")) << instance().ik[0].reachError;
+    object.setIKSoften("Leg", 0.2f);
+    step(kDt);
+    EXPECT_FALSE(object.isIKReached("Leg")) << "near the full reach a soft leg stops short of the target";
+    EXPECT_EQ(component.ik[0].soften, 0.2f);
+    object.setIKSoften("Leg", 5.0f);
+    EXPECT_EQ(component.ik[0].soften, 1.0f) << "clamped";
+    object.setIKSoften("Leg", 0.0f);
+    step(kDt);
+    resolveTransforms();
+    const Vector3 plain = scene.getComponent<Transform>(lower[1]).worldPosition;
+    object.setIKTwist("Leg", 90.0f);
+    step(kDt);
+    resolveTransforms();
+    EXPECT_GT((scene.getComponent<Transform>(lower[1]).worldPosition - plain).length(), 1e-3f) << "the knee turned about the line";
+    object.setIKTwist("Leg", 0.0f);
+    object.setIKHingeAxis("Leg", Vector3(1, 0, 0));
+    EXPECT_EQ(component.ik[0].hingeAxis, Vector3(1, 0, 0));
+    // unknown names change nothing
+    object.setIKSoften("Nobody", 0.5f);
+    object.setIKTwist("Nobody", 5.0f);
+    object.setIKHingeAxis("Nobody", Vector3(1, 0, 0));
+    object.setIKAimOffset("Nobody", Vector3(1, 0, 0));
+    EXPECT_EQ(component.ik[0].twist, 0.0f);
+    AnimatorIKConstraint look;
+    look.name = "Look";
+    look.type = AnimatorIKType::LookAt;
+    look.bones = {"Hips"};
+    look.targetPosition = Vector3(0, 1.1f, 3.0f);
+    component.ik.push_back(look);
+    component.needsLoad = true;
+    step(kDt);
+    const Vector3 offset(0, 0.1f, 0);
+    object.setIKAimOffset("Look", offset);
+    EXPECT_EQ(component.ik[1].aimOffset, offset);
+    step(kDt);
+    EXPECT_TRUE(object.isIKReached("Look")) << instance().ik[1].reachError;
+}
+
+// S77 R57: the same from Lua
+TEST_F(AnimatorFootIK, LuaReadsReachedAndSetsTheShape){
+    AnimatorComponent& component = rig();
+    component.ik.clear();
+    AnimatorIKConstraint c;
+    c.name = "Leg";
+    c.type = AnimatorIKType::TwoBone;
+    c.bones = {"Hips/RUpperLeg", "Hips/RUpperLeg/RLowerLeg", "Hips/RUpperLeg/RLowerLeg/RFoot"};
+    c.targetPosition = Vector3(0.0f, 0.4f, -0.1f);
+    component.ik.push_back(c);
+    step(0.0);
+    step(kDt);
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_TRUE(L != nullptr);
+    luabridge::setGlobal(L, Animator(&scene, root), "ikAnimator");
+    ASSERT_EQ(luaL_dostring(L,
+        "local a = ikAnimator\n"
+        "ikResult = tostring(a:isIKReached('Leg')) .. '|' .. tostring(a:isIKReached('Nobody'))\n"
+        "a:setIKSoften('Leg', 0.25)\n"
+        "a:setIKTwist('Leg', 12)\n"
+        "a:setIKHingeAxis('Leg', Vector3(1, 0, 0))\n"
+        "a:setIKAimOffset('Leg', Vector3(0, 1, 0))\n"), LUA_OK) << lua_tostring(L, -1);
+    lua_getglobal(L, "ikResult");
+    EXPECT_STREQ(lua_tostring(L, -1), "true|false");
+    lua_pop(L, 1);
+    luabridge::setGlobal(L, luabridge::LuaRef(L), "ikAnimator");
+    EXPECT_EQ(component.ik[0].soften, 0.25f);
+    EXPECT_EQ(component.ik[0].twist, 12.0f);
+    EXPECT_EQ(component.ik[0].hingeAxis, Vector3(1, 0, 0));
+    EXPECT_EQ(component.ik[0].aimOffset, Vector3(0, 1, 0));
+}
+
+// A locked foot's position is held by a two-bone solve, which bends the knee as the hips move: the
+// foot must not turn with the shin
+TEST_F(AnimatorFootIK, FootLockKeepsTheAnimatedFootRotation){
+    ClipData data;
+    data.wrap = ClipWrapMode::Once;
+    data.tracks = {track("Hips", ClipChannel::Position, {key(0, {0, 1, 0}), key(1, {0, 1, 0.1f})})};
+    ControllerDef def = controller({parameter("Contact", AnimatorParameterType::Float, 1.0f)}, {state("Move", clip("move", data))});
+    for (int i = 0; i < 2; i++){
+        scene.getComponent<Transform>(upper[i]).rotation = aboutX(-20.0f);
+        scene.getComponent<Transform>(lower[i]).rotation = aboutX(40.0f);
+        scene.getComponent<Transform>(ankles[i]).rotation = aboutX(-20.0f);
+    }
+    AnimatorComponent& component = animator(controllerFile("lock", def));
+    AnimatorIKConstraint c;
+    c.name = "Lock";
+    c.type = AnimatorIKType::FootLock;
+    c.bones = {"Hips/RUpperLeg", "Hips/RUpperLeg/RLowerLeg", "Hips/RUpperLeg/RLowerLeg/RFoot"};
+    c.contactParameter = "Contact";
+    component.ik.push_back(c);
+    step(0.0);
+    for (int i = 0; i < 40; i++){
+        step(kDt);
+        resolveTransforms();
+    }
+    // the free foot only rides the hips: it holds what the animation gives the locked one too
+    const Vector3 locked = scene.getComponent<Transform>(ankles[1]).worldRotation * Vector3(0, 1, 0);
+    const Vector3 animated = scene.getComponent<Transform>(ankles[0]).worldRotation * Vector3(0, 1, 0);
+    EXPECT_LE(angleBetween(locked, animated), 0.5f);
+}
+
+// S77 R34 with a lock on the same leg, the usual stack: the lock runs after Foot IK and must not
+// take the foot off the slope Foot IK put it on
+TEST_F(AnimatorFootIK, SoleStaysOnTheSlopeUnderFootLock){
+    const float degrees = 30.0f;
+    ramp(degrees);
+    // the hips move toward the left foot, the uphill one with the bent knee: it stays in reach
+    ClipData data;
+    data.wrap = ClipWrapMode::Once;
+    data.tracks = {track("Hips", ClipChannel::Position, {key(0, {0, 1, 0}), key(5, {0, 1, 0.5f})})};
+    ControllerDef def = controller({parameter("Contact", AnimatorParameterType::Float, 0.0f)}, {state("Move", clip("move", data))});
+    AnimatorComponent& component = animator(controllerFile("lockOnSlope", def));
+    addFootIK(component);
+    for (AnimatorIKConstraint& foot : component.ik) foot.smoothing = 0.0f;
+    AnimatorIKConstraint lock;
+    lock.name = "Lock";
+    lock.type = AnimatorIKType::FootLock;
+    lock.bones = component.ik[0].bones;
+    lock.contactParameter = "Contact";
+    component.ik.push_back(lock);
+    step(0.0);
+    ASSERT_TRUE(instance().bound);
+    for (int i = 0; i < 10; i++) frame();
+    Animator(&scene, root).setFloat("Contact", 1.0f);
+    frame();
+    const Vector3 start = scene.getComponent<Transform>(ankles[0]).worldPosition;
+    for (int i = 0; i < 40; i++) frame();
+    const Transform& foot = scene.getComponent<Transform>(ankles[0]);
+    EXPECT_LE((foot.worldPosition - start).length(), 0.002f) << "the lock holds";
+    const float tilt = degrees * 0.0174532925f;
+    const Vector3 normal(0, std::cos(tilt), -std::sin(tilt));
+    EXPECT_LE(angleBetween(foot.worldRotation * Vector3(0, 1, 0), normal), 0.5f);
+    const Vector3 sole = foot.worldPosition - foot.worldRotation * Vector3(0, 0.08f, 0);
+    EXPECT_NEAR((sole.y - ground(sole.z, degrees)) * std::cos(tilt), 0.0f, 0.001f);
 }
 
 TEST_F(AnimatorFootIK, FootLockNoSlide){

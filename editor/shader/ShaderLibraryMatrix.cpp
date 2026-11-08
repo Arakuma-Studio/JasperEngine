@@ -291,6 +291,13 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
                     }else{
                         addMesh(label, referenceOf({}), inputs, lightingEnvironment);
                         addMesh(label + ", all features", referenceOf(allOn), inputs, lightingEnvironment);
+                        // the Water Excluders and Wakes over the most a lit water binds (its textures' budget)
+                        if (manifest.getPossibleRequire() & (ShaderRequire_WaterExclusion | ShaderRequire_WaterWake)){
+                            MeshShaderEnvironment waterEnvironment = lightingEnvironment;
+                            waterEnvironment.waterExclusion = true;
+                            waterEnvironment.waterWake = true;
+                            addMesh(label + ", water excluders and wakes, all features", referenceOf(allOn), inputs, waterEnvironment);
+                        }
                         if (capacity == 8){
                             // the other keyword values in this mode, with every feature on
                             for (const ShaderManifestKeywords& group : manifest.keywords){
@@ -378,16 +385,18 @@ void editor::ShaderLibraryMatrix::compileVariants(const std::vector<Variant>& va
     std::set<std::string> reported;
 
     for (const Variant& variant : variants){
-        const uint16_t customId = ShaderPool::registerCustomShader(variant.reference);
+        // (no reference: the engine's own shader of the type)
+        const uint16_t customId = variant.reference.empty() ? 0 : ShaderPool::registerCustomShader(variant.reference);
         const ShaderKey key = ShaderPool::getShaderKey(variant.type, variant.properties, customId);
-        const CustomShaderSources sources = ShaderVariantCompiler::resolveCustomShaderSources(variant.reference, nullptr, variant.type);
+        const CustomShaderSources sources = variant.reference.empty() ? CustomShaderSources() :
+            ShaderVariantCompiler::resolveCustomShaderSources(variant.reference, nullptr, variant.type);
         const std::string variantName = ShaderPool::getShaderStr(variant.type, variant.properties, customId);
 
         for (ShaderBackend backend : backends){
             ShaderData data;
             std::string error;
             std::string log;
-            if (ShaderVariantCompiler::compile(key, backend, &sources, data, &error, &log)){
+            if (ShaderVariantCompiler::compile(key, backend, variant.reference.empty() ? nullptr : &sources, data, &error, &log)){
                 result.compiled++;
                 // the per-stage budget every backend has (a GLES3 device: 16 texture units)
                 const std::string over = ShaderVariantCompiler::checkResourceBudget(data);
@@ -477,10 +486,11 @@ editor::ShaderLibraryMatrix::Result editor::ShaderLibraryMatrix::run(const std::
 
 std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::buildBuiltinLitVariants(){
     std::vector<Variant> variants;
-    std::set<std::pair<uint32_t, std::string>> seen;
-    auto add = [&](const std::string& label, const SubmeshShaderVariant& variant){
-        const std::string reference = ShaderReference::withFeatures(ShaderReference::BUILTIN_LIT, variant.litDefines);
-        if (!variant.litDefines.empty() && seen.insert({variant.properties, reference}).second)
+    std::set<std::pair<uint64_t, std::string>> seen;
+    // (engine: a variant without a Lit define, the engine's own Lit, no reference: only where asked)
+    auto add = [&](const std::string& label, const SubmeshShaderVariant& variant, bool engine = false){
+        const std::string reference = variant.litDefines.empty() ? std::string() : ShaderReference::withFeatures(ShaderReference::BUILTIN_LIT, variant.litDefines);
+        if ((!variant.litDefines.empty() || engine) && seen.insert({variant.properties, reference}).second)
             variants.push_back({label + " [" + featureLabel(variant.litDefines) + "]", reference, ShaderType::MESH, variant.properties});
     };
     // a map's presence is all a variant knows of it
@@ -653,6 +663,63 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
         MeshShaderEnvironment ambient;
         ambient.lights = true;
         add("all lobes, scene ambient", RenderSystem::getSubmeshShaderVariant(ambient, inputs));
+    }
+
+    // the scenes with the most fragment uniforms and blocks (the GLES3 / WebGL2 budget of 224
+    // vectors and 8 blocks): sixteen lights per object, from screen tiles, eight at the Medium tier
+    // and directional only, each with S57's capsule and contact shadows, 2D lights with their
+    // shadows, fog, reflection probes, SSAO and the post colour; the plain textured mesh (the engine's
+    // own variant), every lobe with three maps, and the normal-mapped and hex tiled painted terrain
+    struct HeavyScene { const char* label; int capacity; bool tiled; bool high; bool directionalOnly; };
+    const HeavyScene heavyScenes[] = {
+        {"16 lights", 16, false, true, false},
+        {"tiled", 16, true, true, false},
+        {"8 lights, medium tier", 8, false, false, false},
+        {"directional only", 16, false, true, true},
+    };
+    for (const HeavyScene& heavy : heavyScenes){
+        MeshShaderEnvironment scene = worst;
+        scene.reflectionProbes = true;
+        scene.lightCapacity = heavy.capacity;
+        scene.tiledLights = heavy.tiled;
+        scene.shadowsHQ = heavy.high;
+        scene.directionalLightsOnly = heavy.directionalOnly;
+        scene.capsuleShadows = true;
+        scene.contactShadows = true;
+        scene.lights2D = true;
+        scene.shadows2D = true;
+        const std::string tag = std::string("heavy scene, ") + heavy.label + ", ";
+        for (MaterialLighting lighting : {MaterialLighting::PIXEL, MaterialLighting::MIXED}){
+            SubmeshShaderInputs inputs = mesh;
+            inputs.lighting = lighting;
+            add(tag + (lighting == MaterialLighting::PIXEL ? "pixel" : "mixed"), RenderSystem::getSubmeshShaderVariant(scene, inputs), true);
+        }
+        SubmeshShaderInputs inputs = mesh;
+        inputs.lighting = MaterialLighting::PIXEL;
+        inputs.material = &all;
+        inputs.pbrTransmission = true;
+        add(tag + "all lobes, 3 maps", RenderSystem::getSubmeshShaderVariant(scene, inputs));
+        Material noTransmission = all;
+        noTransmission.pbr.edit().transmission.enabled = false;
+        noTransmission.pbr.edit().volume.enabled = false;
+        inputs.material = &noTransmission;
+        inputs.pbrTransmission = false;
+        add(tag + "all lobes but transmission, 3 maps", RenderSystem::getSubmeshShaderVariant(scene, inputs));
+        inputs.texCoord2 = true;
+        add(tag + "all lobes but transmission, 3 maps, uv2", RenderSystem::getSubmeshShaderVariant(scene, inputs));
+
+        SubmeshShaderInputs terrain = baseMeshInputs(nullptr);
+        terrain.terrain = true;
+        terrain.terrainBlendMaps = true;
+        terrain.terrainSurface = true;
+        terrain.baseColorTexture = true;
+        terrain.normalTexture = true;
+        add(tag + "normal-mapped painted terrain", RenderSystem::getSubmeshShaderVariant(scene, terrain), true);
+        terrain.terrainHex = true;
+        terrain.texCoord1 = false;
+        terrain.tangent = false;
+        terrain.normalTexture = false;
+        add(tag + "terrain hex tiling", RenderSystem::getSubmeshShaderVariant(scene, terrain));
     }
     return variants;
 }

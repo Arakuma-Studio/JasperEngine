@@ -1,0 +1,30 @@
+{
+  "description": "tools/test-projects/pixel-perfect (WEB_PROJECT=pixel-perfect tools/build.sh web): a Pixel Perfect Camera at 320 x 180 (S41 AC13, R16), run at a device pixel ratio of 2. The canvas backing store is its CSS size times devicePixelRatio and draws pixelated while the component is active; the layout logs its pixel ratio over the 320 x 180 base. Its CSS size stays what the page gave it (a canvas sized by its attributes is pinned, not grown by the ratio every frame).",
+  "isolated": true,
+  "chrome_flags": [
+    "--force-device-scale-factor=2"
+  ],
+  "console": [
+    {
+      "text": "[gate] pixel_perfect k ",
+      "level": "log"
+    },
+    {
+      "text": " base 320x180",
+      "level": "log"
+    }
+  ],
+  "eval": "(() => { const c = document.querySelector('canvas'); if (!c) return 'no canvas'; const r = c.getBoundingClientRect(); const backing = c.width === Math.round(r.width * devicePixelRatio) && c.height === Math.round(r.height * devicePixelRatio); const fits = r.width <= innerWidth && r.height <= innerHeight; return (backing ? 'backing = css x dpr' : 'backing ' + c.width + 'x' + c.height + ' for css ' + r.width + 'x' + r.height) + ', ' + (fits ? 'css fits the window' : 'css ' + r.width + 'x' + r.height + ' past the window') + ', dpr ' + devicePixelRatio + ', ' + getComputedStyle(c).imageRendering; })()",
+  "eval_expect": [
+    "backing = css x dpr",
+    "css fits the window",
+    "dpr 2",
+    "pixelated"
+  ],
+  "rgb": [
+    26,
+    28,
+    36
+  ],
+  "tolerance": 24
+}

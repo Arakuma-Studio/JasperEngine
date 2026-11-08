@@ -726,6 +726,15 @@ else()
     set(JASPERENGINE_NO_FMA_FLAGS "-ffp-contract=off")
 endif()
 set_source_files_properties(${JASPERENGINE_SPRITENORMALS_NO_FMA_SOURCES} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
+# The model cook (S53): its normalised normals, their octahedral decode and the LODs they guide
+# are the same bytes on every CPU, so a cooked model and its cache key do not depend on the machine
+set_source_files_properties(${EDITOR_DIR}/model/ModelCooker.cpp ${EDITOR_DIR}/model/GltfDocument.cpp
+    PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
+# The audio analysis (S36, S39's tempo grid): the committed library analysis.json and every agent's
+# numbers are the same on every CPU (arm64 Clang fuses a multiply and an add by default); the
+# decoders and AudioMeter it reads get the same in engine/CMakeLists.txt
+set_source_files_properties(${EDITOR_DIR}/audio/AudioAnalysis.cpp ${EDITOR_DIR}/audio/AudioMusicGrid.cpp
+    PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
 
 include(${EDITOR_DIR}/terrain/TerrainEditorSources.cmake)
 set(JASPERENGINE_EDITOR_SOURCES
@@ -810,6 +819,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
     ${EDITOR_DIR}/reflect/components/UpstreamReflect.cpp
     ${EDITOR_DIR}/reflect/components/UpstreamMediaReflect.cpp
+    ${EDITOR_DIR}/reflect/components/PixelArtReflect.cpp
+    # pixel art (S41: the editor's side of the Pixel Perfect Camera)
+    ${EDITOR_DIR}/pixelart/PixelPerfectEditor.cpp
     ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
     ${EDITOR_DIR}/reflect/components/UIReflect.cpp
     ${EDITOR_DIR}/reflect/components/LatticeFluidReflect.cpp
@@ -848,6 +860,8 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
     ${EDITOR_DIR}/window/JobsMemoryWindow.cpp
+    ${EDITOR_DIR}/window/AnimationStatisticsWindow.cpp
+    ${EDITOR_DIR}/window/ReduceKeysDialog.cpp
     ${EDITOR_DIR}/window/profiler/FrameDebuggerWindow.cpp
     ${EDITOR_DIR}/window/profiler/ProfilerWindow.cpp
     ${EDITOR_DIR}/mcp/McpAutoSync.cpp
@@ -926,6 +940,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
     ${EDITOR_DIR}/mcp/tools/VatTools.cpp
+    ${EDITOR_DIR}/mcp/tools/AnimationQualityTools.cpp
     ${EDITOR_DIR}/mcp/tools/VcsTools.cpp
     ${EDITOR_DIR}/mcp/tools/SpriteNormalsTools.cpp
 
@@ -1060,7 +1075,13 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/animation/PreviewParticles.cpp
     ${EDITOR_DIR}/animation/ClipConverters.cpp
     ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
+    ${EDITOR_DIR}/animation/AnimatorDebug.cpp
     ${EDITOR_DIR}/animation/ActionPreviewSnapshot.cpp
+    ${EDITOR_DIR}/animation/ClipOptimize.cpp
+    ${EDITOR_DIR}/animation/ClipReduction.cpp
+    ${EDITOR_DIR}/animation/ClipReport.cpp
+    ${EDITOR_DIR}/animation/ClipStatistics.cpp
+    ${EDITOR_DIR}/animation/ModelClipSettingsFile.cpp
     ${EDITOR_DIR}/animation/ClipValidation.cpp
     ${EDITOR_DIR}/animation/ClipPropertyNames.cpp
     ${EDITOR_DIR}/animation/ClipTangents.cpp
@@ -1173,6 +1194,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindowAnimLayers.cpp
     ${EDITOR_DIR}/window/InspectorAnimLayers.cpp
     ${EDITOR_DIR}/window/InspectorModelRig.cpp
+    ${EDITOR_DIR}/window/ModelClipSettingsView.cpp
     ${EDITOR_DIR}/window/InspectorWindowVat.cpp
     ${EDITOR_DIR}/window/InspectorPhysics2D.cpp
     ${EDITOR_DIR}/window/InspectorWindowSpriteNormals.cpp
@@ -1194,6 +1216,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindowCamera.cpp
     ${EDITOR_DIR}/window/InspectorAudioClip.cpp
     ${EDITOR_DIR}/window/ProjectWindowSound.cpp
+    ${EDITOR_DIR}/window/InspectorPixelArt.cpp
     ${EDITOR_DIR}/window/InspectorVideo.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/InspectorVcs.cpp
@@ -1487,6 +1510,9 @@ include(${EDITOR_DIR}/voxel/VoxelEditorSources.cmake)
 # the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
 
+# the pixel-art family (S41-S52): PixelImage, the .aseprite codec, the importer and its windows
+include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
+
 # The engine build C++ script libraries must be made for (S23 toolchain fingerprint): the
 # editor version, on this one file (as on the engine's ToolchainFingerprint.cpp)
 set_source_files_properties(${EDITOR_DIR}/util/EditorFingerprint.cpp PROPERTIES
@@ -1581,6 +1607,10 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/tests/animation/AnimationWindowClipTest.cpp
         ${EDITOR_DIR}/tests/animation/AnimatorEditorTest.cpp
         ${EDITOR_DIR}/tests/animation/ClipConvertersTest.cpp
+        ${EDITOR_DIR}/tests/animation/AnimatorDebugTest.cpp
+        ${EDITOR_DIR}/tests/animation/BoneOverlayTest.cpp
+        ${EDITOR_DIR}/tests/animation/ClipReductionTest.cpp
+        ${EDITOR_DIR}/tests/animation/ClipReportTest.cpp
         ${EDITOR_DIR}/tests/animation/InspectorClipPrefabTest.cpp
         ${EDITOR_DIR}/tests/animation/PlayerModelLayoutTest.cpp
         ${EDITOR_DIR}/tests/command/CommandHistoryHookTest.cpp

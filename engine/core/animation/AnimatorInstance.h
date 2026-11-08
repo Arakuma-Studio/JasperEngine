@@ -116,6 +116,12 @@ namespace jasperengine::anim{
         Pose output;                        // this update's layer pose (a delta for additive layers)
         Pose snapshotPose;
         bool hasOutput = false;
+        // weight 0 and nothing that needs the pose: `output` was not sampled (S77 R14). An
+        // interruption before the next evaluation freezes what the layer would have shown, the
+        // state as it was then: sampled into snapshotPose by the next evaluateLayer
+        bool outputSkipped = false;
+        bool snapshotPending = false;
+        AnimatorStateRun skippedState;
         std::vector<float> mask;            // per bone (pose stride), null when the layer has no mask
         std::vector<float> channelMask;
         bool masked = false;
@@ -167,6 +173,12 @@ namespace jasperengine::anim{
         bool scriptTarget = false;
         Vector3 scriptTargetWorld = Vector3(0, 0, 0);
         float scriptWeight = -1.0f;         // < 0: none
+        // The outcome of the last solve, in world space, for scripts (isIKReached), get_animator
+        // and debug overlays. Cleared while nothing solves (weight 0, disabled, culled).
+        bool reached = false;
+        float reachError = 0.0f;            // metres (anim::IKResult)
+        float solvedWeight = 0.0f;          // the effective weight the solve ran with
+        Vector3 solvedTargetWorld = Vector3(0, 0, 0); // what it aimed at: FootIK's spring target, FootLock's lock too
         // FootIK: last update's foot position (world, for the ray), the hit, the spring
         bool hasFoot = false;
         Vector3 footWorld = Vector3(0, 0, 0);
@@ -180,7 +192,12 @@ namespace jasperengine::anim{
         Vector3 lockWorld = Vector3(0, 0, 0);
         float lockWeight = 0.0f;
         bool hadPrevious = false;
-        Vector3 previousWorld = Vector3(0, 0, 0);
+        Vector3 previousWorld = Vector3(0, 0, 0);   // FootLock: this update's animated foot (world)
+        // FootIK and FootLock, for the debug readouts (S77 R36): whether the leg's own rule has the
+        // foot in contact this update (Foot Lock's contact; Foot IK: on the ground with the
+        // animated ankle at its planted height) and the animated foot's world velocity, m/s
+        bool contact = false;
+        Vector3 footVelocity = Vector3(0, 0, 0);
     };
 
     struct JASPERENGINE_API AnimatorStateNote{
@@ -237,6 +254,7 @@ namespace jasperengine::anim{
         bool hasRootMotion = false;
         Vector3 rootDeltaPosition = Vector3(0, 0, 0);   // rig space (the Animator entity's local space)
         float rootDeltaYaw = 0.0f;                      // radians about the rig's up (+y)
+        float deltaTime = 0.0f;                         // the update's step, seconds (unscaled): rates
         bool sampled = false;                           // the pose was evaluated and written
     };
 
@@ -288,6 +306,14 @@ namespace jasperengine::anim{
         std::vector<uint64_t> warnedKeys;   // warnOnce(key): the per-event warnings, no string built
 
         AnimatorOutput output;
+        // the root motion of every update since the bind, in the rig frame the Animator had at
+        // the bind (each delta turned by the yaw before it): debug readouts (S77 R36)
+        Vector3 rootMotionTotal = Vector3(0, 0, 0);
+        float rootMotionTotalYaw = 0.0f;                // radians
+        // the values of the property rows that wait for the main thread (RigProperty::inWave
+        // false), by rig channel: sized at bind, filled by the wave, applied by AnimatorSystem
+        std::vector<float> deferredProperties;
+        bool propertiesPending = false;
         // main thread (AnimatorSystem): the state_exit cues' voices
         std::vector<AnimatorCueVoice> cueVoices;
         float clock = 0.0f;                 // seconds the Animator ran (retry throttles)
@@ -383,6 +409,9 @@ namespace jasperengine::anim{
         bool isInTransition(int layer) const;
         float transitionProgress(int layer) const;
 
+        // nothing solves this frame (disabled, culled): no constraint reports a stale outcome
+        void clearIKResults();
+
         // true the first time a message is given (the caller logs it): one warning per name
         bool warnOnce(const std::string& message);
         // the same by a key (a hash the caller makes without allocating)
@@ -441,6 +470,8 @@ namespace jasperengine::anim{
         bool rootSample(const AnimatorClipSlot& slot, float clipTime, Vector3& position, Quaternion& rotation) const;
         void rootDelta(const AnimatorClipSlot& slot, double from, double to, bool loops, bool pingPong, Vector3& delta, float& yaw) const;
         void applyMontages(size_t layer, Pose& out, const AnimatorComponent& component);
+        bool layerNeedsPose(size_t layer) const;
+        void freezeLayerOutput(AnimatorLayerRun& run);
         void runIK(const AnimatorComponent& component, const AnimatorUpdateContext& context);
         void fireEvents(int slot, ClipWrapMode wrap, double from, double to, bool includeStart, int state, int layer);
         struct LeafRun{

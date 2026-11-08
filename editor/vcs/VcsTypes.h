@@ -25,7 +25,7 @@ namespace jasperengine::editor::vcs {
 
     struct VcsChange {
         RepoPath path;
-        RepoPath oldPath;                   // Renamed: the path it was renamed from
+        RepoPath oldPath;                   // renamed or moved: the path it came from; a git copy: its source
         FileState index = FileState::Unmodified;      // staged against HEAD (git); svn: Unmodified
         FileState worktree = FileState::Unmodified;   // the working copy against the index / BASE
         bool conflict = false;
@@ -35,14 +35,22 @@ namespace jasperengine::editor::vcs {
         bool remoteChanged = false;         // the server has a newer revision of it
         // git: the blob of HEAD the status reported; svn: the BASE revision; empty: none known
         std::string baseOid;
+        // added with history and not a move (git C, svn copy): new, its source the diff base
+        // (git: oldPath; svn: its own BASE, which svn reads from the source)
+        bool copied = false;
 
         // A change to commit or revert: staged, modified, untracked or conflicted
         bool changed() const;
         // Nothing to show: unchanged, no lock of anyone, nothing newer on the server
         bool clean() const;
-        // Untracked, or added and not in HEAD: nothing to revert to (R11)
+        // Untracked, added or copied: nothing in the baseline to revert to (R11)
         bool newFile() const;
         bool deleted() const;
+        // Renamed (git) or moved (svn): oldPath is the same file before
+        bool renamed() const;
+        // There is a text to diff with: not new, or a copy (diffSource())
+        bool hasBaseline() const { return !newFile() || copied; }
+        const RepoPath& diffSource() const { return oldPath.empty() ? path : oldPath; }
     };
 
     // What every provider call returns (R1): never an exception

@@ -33,6 +33,7 @@
 //   spritenormals::Result result = spritenormals::generate(request);   // blocking
 //   if (result.status == spritenormals::Status::Ok) { result.normal ... }
 
+#include "pixelart/PixelProblem.h"
 #include "texsynth/SynthImage.h"
 
 #include <array>
@@ -152,12 +153,10 @@ namespace jasperengine::editor::spritenormals {
 
     // ---- problems (shared kinds: contract + section 11)
 
-    struct Problem {
-        std::string kind;      // "invalid_settings", "frames_mismatch", "no_alpha", ...
-        std::string field;     // "strength", "regions[1].tolerance", "frames.tile_size", "source", "" ...
-        std::string message;   // one sentence naming the value and the limit
-        std::string fix;       // what to do instead ("" when there is nothing to do)
-    };
+    // the pixel-art family's typed error: kind ("invalid_settings", "frames_mismatch", "no_alpha",
+    // ...), field ("strength", "regions[1].tolerance", "frames.tile_size", "source", "" ...),
+    // message and fix
+    using Problem = pixelart::PixelProblem;
 
     // Every problem of the settings (never only the first): non-finite values, values out of
     // range ("strength must be between 0 and 8 (got 9)"), too many regions or colours

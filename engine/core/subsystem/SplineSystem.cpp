@@ -1598,13 +1598,7 @@ bool SplineSystem::preparePools(Entity entity, Resolve& resolve, const SplineIns
         scene->getComponent<ModelComponent>(model.probe).mergeStaticMeshes = true;
         generatedOwners[model.probe] = entity;
         scene->getComponent<Transform>(model.probe).visible = false;
-        bool ok = false;
-        const std::string extension = model.path.size() > 4 ? model.path.substr(model.path.size() - 4) : std::string();
-        if (extension == ".obj"){
-            ok = meshSystem->loadOBJ(model.probe, model.path);
-        }else{
-            ok = meshSystem->loadGLTF(model.probe, model.path, false, true, false, true);
-        }
+        const bool ok = meshSystem->loadPlacedModel(model.probe, model.path);
         if (!ok){
             model.failed = true;
             destroyGenerated(model.probe);
@@ -1894,12 +1888,7 @@ void SplineSystem::applyPieces(Entity entity, Resolve& resolve, BuildJob& job){
                 scene->addComponent<ModelComponent>(chunk.entity);
                 scene->addComponent<InstancedMeshComponent>(chunk.entity);
                 scene->getComponent<ModelComponent>(chunk.entity).mergeStaticMeshes = true;
-                bool ok = false;
-                if (meshSystem){
-                    const std::string extension = path.size() > 4 ? path.substr(path.size() - 4) : std::string();
-                    ok = extension == ".obj" ? meshSystem->loadOBJ(chunk.entity, path)
-                                             : meshSystem->loadGLTF(chunk.entity, path, false, true, false, true);
-                }
+                const bool ok = meshSystem && meshSystem->loadPlacedModel(chunk.entity, path);
                 if (!ok){
                     destroyGenerated(chunk.entity);
                     continue;

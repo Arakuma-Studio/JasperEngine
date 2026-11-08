@@ -42,7 +42,7 @@ void dtFreeProximityGrid(dtProximityGrid* ptr)
 
 inline int hashPos2(int x, int y, int n)
 {
-	return ((x*73856093) ^ (y*19349663)) & (n-1);
+	return (int)((((unsigned int)x*73856093u) ^ ((unsigned int)y*19349663u)) & (unsigned int)(n-1)); // JasperEngine patch: wraps in unsigned, not signed (UB) int
 }
 
 

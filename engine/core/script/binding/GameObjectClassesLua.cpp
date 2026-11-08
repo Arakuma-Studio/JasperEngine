@@ -12,6 +12,7 @@
 #include "component/ButtonComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/PanelComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/SafeAreaComponent.h"
 #include "component/ActionComponent.h"
 
@@ -66,6 +67,9 @@
 #include "LineRenderer.h"
 #include "TrailRenderer.h"
 #include "Sprite.h"
+#include "script/LuaJson.h"
+#include "sprite/SpriteSheet.h"
+#include "sprite/SpriteSheetPool.h"
 #include "object/ui/Text.h"   // by path: lexbor has a dom/interfaces/text.h (Xcode header maps ignore case)
 #include "object/ui/TextEffect.h"
 #include "Image.h"
@@ -80,6 +84,7 @@
 #include <cmath>
 #include "LayoutGroup.h"
 #include "object/ui/CanvasGroup.h"
+#include "object/PixelPerfectCamera.h"
 #include "AudioSource.h"
 #include "Engine.h"
 #include "ObjectManager.h"
@@ -88,6 +93,8 @@
 #include "component/PhysicsCommon.h"
 #include <optional>
 #include "WaterVolume.h"
+#include "WaterExcluder.h"
+#include "WaterWake.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "CharacterController2D.h"
@@ -124,6 +131,101 @@ namespace{
         out.speed = info.speed;
         out.loop = info.loop;
         return out;
+    }
+
+}
+
+// The Lua SpriteSheet (docs/specs/S44-aseprite-import.md R38, R51): a shared immutable sheet and
+// the path it was loaded from; frames, tags and slices as plain tables (0-based frame indices)
+namespace {
+
+    struct LuaSpriteSheet {
+        std::string path;
+        std::shared_ptr<const SpriteSheetData> data;
+    };
+
+    luabridge::LuaRef luaSpriteSheetJson(lua_State* L, const nlohmann::json& value){
+        if (value.is_null()){
+            return luabridge::LuaRef(L);
+        }
+        LuaJson::push(L, value);
+        return luabridge::LuaRef::fromStack(L);
+    }
+
+    luabridge::LuaRef luaSpriteSheetFrame(lua_State* L, const SpriteSheetData& sheet, int index){
+        if (index < 0 || index >= sheet.frameCount()){
+            return luabridge::LuaRef(L);
+        }
+        const SpriteFrame& f = sheet.frames[(size_t)index];
+        luabridge::LuaRef t = luabridge::newTable(L);
+        t["name"] = f.name;
+        t["index"] = index;
+        t["page"] = (int)f.page;
+        t["rect"] = f.rect;
+        t["sourceSize"] = f.sourceSize;
+        t["offset"] = f.offset;
+        t["pivot"] = f.pivot;
+        t["border"] = f.border;
+        t["durationMs"] = (int)f.durationMs;
+        return t;
+    }
+
+    luabridge::LuaRef luaSpriteSheetTag(lua_State* L, const SpriteSheetData& sheet, const SpriteTag& tag){
+        luabridge::LuaRef t = luabridge::newTable(L);
+        t["name"] = tag.name;
+        t["from"] = tag.from;
+        t["to"] = tag.to;
+        t["direction"] = std::string(spriteTagDirectionName(tag.direction));
+        t["repeat"] = tag.repeat;
+        // one pass (repeat 0) or the whole playback
+        int ms = 0;
+        for (int f : tag.playback()){
+            if (f >= 0 && f < sheet.frameCount()) ms += (int)sheet.frames[(size_t)f].durationMs;
+        }
+        t["durationMs"] = ms;
+        t["color"] = tag.color;
+        t["userData"] = luaSpriteSheetJson(L, tag.userData);
+        return t;
+    }
+
+    // a slice on a frame in the sheet's pixels (y down)
+    luabridge::LuaRef luaSpriteSheetSlicePixels(lua_State* L, const SpriteSlice& slice, int frame){
+        luabridge::LuaRef t = luabridge::newTable(L);
+        t["name"] = slice.name;
+        const SpriteSliceKey* key = slice.keyAt(frame);
+        t["visible"] = key != nullptr;
+        if (key){
+            t["rect"] = key->bounds;
+            if (key->hasCenter) t["center"] = key->center;
+            if (key->hasPivot) t["pivot"] = key->pivot;
+        }
+        t["userData"] = luaSpriteSheetJson(L, slice.userData);
+        return t;
+    }
+
+    // a slice on the sprite's shown frame in its local units
+    luabridge::LuaRef luaSpriteSlice(lua_State* L, const Sprite& sprite, const SpriteSheetData& sheet, const SpriteSlice& slice){
+        luabridge::LuaRef t = luabridge::newTable(L);
+        t["name"] = slice.name;
+        Rect bounds, center;
+        Vector2 pivot;
+        const bool visible = sprite.getSliceRect(slice.name, bounds, &center, &pivot);
+        t["visible"] = visible;
+        if (visible){
+            t["rect"] = bounds;
+            const int frame = std::clamp(sprite.getFrameIndex(), 0, std::max(0, sheet.frameCount() - 1));
+            const SpriteSliceKey* key = slice.keyAt(frame);
+            if (key && key->hasCenter) t["center"] = center;
+            t["pivot"] = pivot;
+        }
+        t["userData"] = luaSpriteSheetJson(L, slice.userData);
+        return t;
+    }
+
+    luabridge::LuaRef luaSpriteSheetList(lua_State* L, const std::vector<std::string>& names){
+        luabridge::LuaRef t = luabridge::newTable(L);
+        for (size_t i = 0; i < names.size(); i++) t[(int)i + 1] = names[i];
+        return t;
     }
 
 }
@@ -1178,6 +1280,11 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("flowVelocity", &WaterSample::getFlowVelocity)
         .addProperty("volume", &WaterSample::getVolume)
         .addProperty("hasWater", &WaterSample::hasWater)
+        // the Water Excluder keeping the point dry (inWater false), and the Water Wakes there
+        .addProperty("excluder", &WaterSample::getExcluder)
+        .addProperty("excluded", &WaterSample::isExcluded)
+        .addProperty("wakeFoam", &WaterSample::getWakeFoam)
+        .addProperty("wakeHeight", &WaterSample::getWakeHeight)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1199,6 +1306,41 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("linearDrag", &WaterVolume::getLinearDrag, &WaterVolume::setLinearDrag)
         .addProperty("angularDrag", &WaterVolume::getAngularDrag, &WaterVolume::setAngularDrag)
         .addProperty("waves", &WaterVolume::getWaves, &WaterVolume::setWaves)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("WaterExcluderShape")
+        .addVariable("BOX", WaterExcluderShape::BOX)
+        .addVariable("SPHERE", WaterExcluderShape::SPHERE)
+        .addVariable("CONVEX_HULL", WaterExcluderShape::CONVEX_HULL)
+        .endNamespace();
+
+    // keeps water out: no surface drawn inside, no underwater fade, nothing floated but its own body
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<WaterExcluder, EntityHandle>("WaterExcluder")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &WaterExcluder::isValid)
+        .addProperty("enabled", &WaterExcluder::isEnabled, &WaterExcluder::setEnabled)
+        .addProperty("shape", &WaterExcluder::getShape, &WaterExcluder::setShape)
+        .addProperty("center", &WaterExcluder::getCenter, &WaterExcluder::setCenter)
+        .addProperty("size", &WaterExcluder::getSize, &WaterExcluder::setSize)
+        .addProperty("hullStatus", &WaterExcluder::getHullStatus)
+        .addProperty("hullFaces", &WaterExcluder::getHullFaces)
+        .addFunction("contains", &WaterExcluder::contains)
+        .endClass();
+
+    // foam and waves left on the water while it moves
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<WaterWake, EntityHandle>("WaterWake")
+        .addConstructor <void (Scene*, Entity)> ()
+        .addProperty("valid", &WaterWake::isValid)
+        .addProperty("enabled", &WaterWake::isEnabled, &WaterWake::setEnabled)
+        .addProperty("foam", &WaterWake::getFoam, &WaterWake::setFoam)
+        .addProperty("waves", &WaterWake::getWaves, &WaterWake::setWaves)
+        .addProperty("width", &WaterWake::getWidth, &WaterWake::setWidth)
+        .addProperty("length", &WaterWake::getLength, &WaterWake::setLength)
+        .addProperty("emitting", &WaterWake::isEmitting)
+        .addProperty("speed", &WaterWake::getSpeed)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1361,6 +1503,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         })
 #endif
         .addFunction("getWaterVolume", &GameObject::getWaterVolume)
+        .addFunction("getWaterExcluder", &GameObject::getWaterExcluder)
+        .addFunction("getWaterWake", &GameObject::getWaterWake)
         .addFunction("getSpline", &GameObject::getSpline)
         .addFunction("getSplineExtrude", &GameObject::getSplineExtrude)
         .addFunction("getSplineInstantiate", &GameObject::getSplineInstantiate)
@@ -1538,6 +1682,15 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .deriveClass<Camera, GameObject>("Camera")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("enabled", &Camera::isEnabled, &Camera::setEnabled)
+        // its Pixel Perfect Camera, nil without one (S41)
+        .addFunction("getPixelPerfectCamera", +[](Camera* self) -> std::optional<PixelPerfectCamera> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<PixelPerfectCameraComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return PixelPerfectCamera(scene, self->getEntity());
+        })
         .addFunction("activate", &Camera::activate)
         .addFunction("setOrtho", &Camera::setOrtho)
         .addFunction("setPerspective", &Camera::setPerspective)
@@ -2245,6 +2398,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("findRectByString", &Tilemap::findRectByString)
         .addFunction("findTileByString", &Tilemap::findTileByString)
         .addProperty("textureScaleFactor", &Tilemap::getTextureScaleFactor, &Tilemap::setTextureScaleFactor)
+        .addProperty("pixelsPerUnit", &Tilemap::getPixelsPerUnit, &Tilemap::setPixelsPerUnit)
         .addFunction("addRect", 
             luabridge::overload<int, const std::string&, const std::string&, TextureFilter, Rect>(&Tilemap::addRect),
             luabridge::overload<int, const std::string&, const std::string&, Rect>(&Tilemap::addRect),
@@ -2847,6 +3001,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("height", &Sprite::getHeight, &Sprite::setHeight)
         .addProperty("flipY", &Sprite::isFlipY, &Sprite::setFlipY)
         .addProperty("textureScaleFactor", &Sprite::getTextureScaleFactor, &Sprite::setTextureScaleFactor)
+        .addProperty("pixelsPerUnit", &Sprite::getPixelsPerUnit, &Sprite::setPixelsPerUnit)
+        .addProperty("pixelRotation", &Sprite::getPixelRotation, &Sprite::setPixelRotation)
+        .addProperty("worldSize", &Sprite::getWorldSize)
         .addProperty("textureRect", &Sprite::getTextureRect, (void(Sprite::*)(Rect))&Sprite::setTextureRect)
         .addFunction("setTextureRect",(void(Sprite::*)(float, float, float, float)) &Sprite::setTextureRect)
         .addProperty("pivotPreset", &Sprite::getPivotPreset, &Sprite::setPivotPreset)
@@ -2867,6 +3024,102 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, int, bool>(&Sprite::startAnimation))
         .addFunction("pauseAnimation", &Sprite::pauseAnimation)
         .addFunction("stopAnimation", &Sprite::stopAnimation)
+        // a sheet sprite (S44): setting the sheet shows its frame 0
+        .addProperty("drawMode", &Sprite::getDrawMode, &Sprite::setDrawMode)
+        .addProperty("sheet", &Sprite::getSheet, &Sprite::setSheet)
+        .addProperty("frame", &Sprite::getFrameIndex, (void(Sprite::*)(int))&Sprite::setFrame)
+        .addProperty("frameName", &Sprite::getFrameName, (void(Sprite::*)(const std::string&))&Sprite::setFrame)
+        .addProperty("frameCount", &Sprite::getFrameCount)
+        .addFunction("getSheet", [](const Sprite* self) -> std::optional<LuaSpriteSheet> {
+            std::shared_ptr<const SpriteSheetData> data = self->getSheetData();
+            if (!data) return std::nullopt;
+            return LuaSpriteSheet{self->getSheet(), data};
+        })
+        .addFunction("playTag", [](Sprite* self, const std::string& name, std::optional<float> speed) -> void { self->playTag(name, speed.value_or(1.0f)); })
+        .addFunction("stopTag", &Sprite::stopTag)
+        .addProperty("tag", [](const Sprite* self) -> std::optional<std::string> {
+            const std::string tag = self->getTag();
+            if (tag.empty()) return std::nullopt;
+            return tag;
+        })
+        .addProperty("isTagPlaying", &Sprite::isTagPlaying)
+        .addFunction("getTag", [](const Sprite* self, const std::string& name, lua_State* L) -> luabridge::LuaRef {
+            std::shared_ptr<const SpriteSheetData> data = self->getSheetData();
+            const int index = data ? data->findTag(name) : -1;
+            return index < 0 ? luabridge::LuaRef(L) : luaSpriteSheetTag(L, *data, data->tags[(size_t)index]);
+        })
+        .addFunction("getTags", [](const Sprite* self, lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef t = luabridge::newTable(L);
+            std::shared_ptr<const SpriteSheetData> data = self->getSheetData();
+            if (data){
+                for (size_t i = 0; i < data->tags.size(); i++) t[(int)i + 1] = luaSpriteSheetTag(L, *data, data->tags[i]);
+            }
+            return t;
+        })
+        .addFunction("getSlice", [](const Sprite* self, const std::string& name, lua_State* L) -> luabridge::LuaRef {
+            std::shared_ptr<const SpriteSheetData> data = self->getSheetData();
+            const int index = data ? data->findSlice(name) : -1;
+            return index < 0 ? luabridge::LuaRef(L) : luaSpriteSlice(L, *self, *data, data->slices[(size_t)index]);
+        })
+        .addFunction("getSlices", [](const Sprite* self, lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef t = luabridge::newTable(L);
+            std::shared_ptr<const SpriteSheetData> data = self->getSheetData();
+            if (data){
+                for (size_t i = 0; i < data->slices.size(); i++) t[(int)i + 1] = luaSpriteSlice(L, *self, *data, data->slices[i]);
+            }
+            return t;
+        })
+        .addFunction("getUserData", [](const Sprite* self, lua_State* L) -> luabridge::LuaRef {
+            std::shared_ptr<const SpriteSheetData> data = self->getSheetData();
+            return data ? luaSpriteSheetJson(L, data->userData) : luabridge::LuaRef(L);
+        })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<LuaSpriteSheet>("SpriteSheet")
+        .addStaticFunction("load", [](const std::string& path) -> std::optional<LuaSpriteSheet> {
+            std::shared_ptr<const SpriteSheetData> data = SpriteSheetPool::get(path);
+            if (!data){
+                Log::error("SpriteSheet.load: no sprite sheet at %s", path.c_str());
+                return std::nullopt;
+            }
+            return LuaSpriteSheet{path, data};
+        })
+        .addProperty("path", [](const LuaSpriteSheet* self) -> std::string { return self->path; })
+        .addProperty("frameCount", [](const LuaSpriteSheet* self) -> int { return self->data->frameCount(); })
+        .addProperty("pageCount", [](const LuaSpriteSheet* self) -> int { return (int)self->data->pages.size(); })
+        .addProperty("frameNames", [](const LuaSpriteSheet* self, lua_State* L) -> luabridge::LuaRef {
+            std::vector<std::string> names;
+            for (const SpriteFrame& f : self->data->frames) names.push_back(f.name);
+            return luaSpriteSheetList(L, names);
+        })
+        .addFunction("findFrame", [](const LuaSpriteSheet* self, const std::string& name) -> int { return self->data->findFrame(name); })
+        .addFunction("getFrame", [](const LuaSpriteSheet* self, luabridge::LuaRef which, lua_State* L) -> luabridge::LuaRef {
+            const int index = which.isNumber() ? which.unsafe_cast<int>() : which.isString() ? self->data->findFrame(which.unsafe_cast<std::string>()) : -1;
+            return luaSpriteSheetFrame(L, *self->data, index);
+        })
+        .addFunction("getTag", [](const LuaSpriteSheet* self, const std::string& name, lua_State* L) -> luabridge::LuaRef {
+            const int index = self->data->findTag(name);
+            return index < 0 ? luabridge::LuaRef(L) : luaSpriteSheetTag(L, *self->data, self->data->tags[(size_t)index]);
+        })
+        .addFunction("getSlice", [](const LuaSpriteSheet* self, const std::string& name, std::optional<int> frame, lua_State* L) -> luabridge::LuaRef {
+            const int index = self->data->findSlice(name);
+            return index < 0 ? luabridge::LuaRef(L) : luaSpriteSheetSlicePixels(L, self->data->slices[(size_t)index], frame.value_or(0));
+        })
+        .addProperty("tags", [](const LuaSpriteSheet* self, lua_State* L) -> luabridge::LuaRef {
+            std::vector<std::string> names;
+            for (const SpriteTag& t : self->data->tags) names.push_back(t.name);
+            return luaSpriteSheetList(L, names);
+        })
+        .addProperty("slices", [](const LuaSpriteSheet* self, lua_State* L) -> luabridge::LuaRef {
+            std::vector<std::string> names;
+            for (const SpriteSlice& sl : self->data->slices) names.push_back(sl.name);
+            return luaSpriteSheetList(L, names);
+        })
+        .addProperty("properties", [](const LuaSpriteSheet* self, lua_State* L) -> luabridge::LuaRef {
+            const nlohmann::json& ud = self->data->userData;
+            return luaSpriteSheetJson(L, ud.is_object() && ud.contains("properties") ? ud["properties"] : nlohmann::json());
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -2963,6 +3216,31 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("isFading", &CanvasGroup::isFading)
         .addFunction("getGameObject", &CanvasGroup::getGameObject)
         .addFunction("getCanvasGroupComponent", &CanvasGroup::getComponent<CanvasGroupComponent>)
+        .endClass();
+
+    // S41: the Pixel Perfect Camera (docs/mcp/guide/lua-api.md)
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<PixelPerfectCamera, EntityHandle>("PixelPerfectCamera")
+        .addConstructor <void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &PixelPerfectCamera::isEnabled, &PixelPerfectCamera::setEnabled)
+        .addProperty("referenceResolution", &PixelPerfectCamera::getReferenceResolution, &PixelPerfectCamera::setReferenceResolution)
+        .addProperty("upscaleMode", &PixelPerfectCamera::getUpscaleMode, &PixelPerfectCamera::setUpscaleMode)
+        .addProperty("upscaleRenderTexture", &PixelPerfectCamera::isUpscaleRenderTexture, &PixelPerfectCamera::setUpscaleRenderTexture)
+        .addProperty("pixelSnapping", &PixelPerfectCamera::isPixelSnapping, &PixelPerfectCamera::setPixelSnapping)
+        .addProperty("rotationMode", &PixelPerfectCamera::getRotationMode, &PixelPerfectCamera::setRotationMode)
+        .addProperty("subpixelSmoothing", &PixelPerfectCamera::isSubpixelSmoothing, &PixelPerfectCamera::setSubpixelSmoothing)
+        .addProperty("letterboxColor", &PixelPerfectCamera::getLetterboxColor, &PixelPerfectCamera::setLetterboxColor)
+        .addProperty("pixelRatio", &PixelPerfectCamera::getPixelRatio)
+        .addProperty("baseResolution", &PixelPerfectCamera::getBaseResolution)
+        .addProperty("targetResolution", &PixelPerfectCamera::getTargetResolution)
+        .addProperty("viewport", &PixelPerfectCamera::getViewport)
+        .addProperty("snappedPosition", &PixelPerfectCamera::getSnappedPosition)
+        .addProperty("subpixelOffset", &PixelPerfectCamera::getSubpixelOffset)
+        .addProperty("cropped", &PixelPerfectCamera::isCropped)
+        .addFunction("worldToPixel", &PixelPerfectCamera::worldToPixel)
+        .addFunction("pixelToWorld", &PixelPerfectCamera::pixelToWorld)
+        .addFunction("roundToPixel", &PixelPerfectCamera::roundToPixel)
+        .addFunction("getPixelPerfectCameraComponent", &PixelPerfectCamera::getComponent<PixelPerfectCameraComponent>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -4070,6 +4348,11 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector3&, float>(&Animator::setIKTarget))
         .addFunction("clearIKTarget", &Animator::clearIKTarget)
         .addFunction("setIKWeight", &Animator::setIKWeight)
+        .addFunction("isIKReached", &Animator::isIKReached)
+        .addFunction("setIKSoften", &Animator::setIKSoften)
+        .addFunction("setIKHingeAxis", &Animator::setIKHingeAxis)
+        .addFunction("setIKTwist", &Animator::setIKTwist)
+        .addFunction("setIKAimOffset", &Animator::setIKAimOffset)
         .addFunction("setLookAt",
             luabridge::overload<const Vector3&>(&Animator::setLookAt),
             luabridge::overload<const Vector3&, float>(&Animator::setLookAt))

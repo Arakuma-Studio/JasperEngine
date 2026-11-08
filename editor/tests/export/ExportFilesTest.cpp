@@ -126,7 +126,8 @@ TEST(ExportFiles, MirrorKeepsTheTimeOfUnchangedFiles) {
     const fs::file_time_type old = fs::last_write_time(dir / "out/core/a.cpp") - std::chrono::hours(1);
     fs::last_write_time(dir / "out/core/a.cpp", old);
     ASSERT_TRUE(exportfiles::mirrorTree(dir / "sdk", dir / "out", false, error)) << error;
-    EXPECT_EQ(fs::last_write_time(dir / "out/core/a.cpp"), old) << "an incremental build recompiles nothing";
+    EXPECT_EQ(fs::last_write_time(dir / "out/core/a.cpp").time_since_epoch().count(), old.time_since_epoch().count())
+        << "an incremental build recompiles nothing";
 }
 
 TEST(ExportFiles, ExportFolderMarkers) {

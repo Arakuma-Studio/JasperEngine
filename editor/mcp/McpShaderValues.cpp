@@ -6,6 +6,7 @@
 // or a UI/Points/LineRenderer/Skybox component.
 
 #include "McpValues.h"
+#include "component/TerrainComponent.h"
 #include "shader/ShaderGlobals.h"
 
 #include "McpRefs.h"

@@ -52,7 +52,10 @@ normal map should call it too.
 
 Textures the CPU reads are never block-compressed: terrain height and density maps, colour
 grading LUTs, spot light masks and anything marked Read/Write cook to R16 (16-bit sources), R8
-or RGBA8 with Zstandard. Cube maps that light the scene (IBL) also get a 256 px RGBA8 copy.
+or RGBA8 with Zstandard (a float source: RGBA16F, which the CPU reads as floats). In the editor,
+a texture an open scene's terrain reads on the CPU is cooked so while it does, as an export
+would, even if it was cooked as a colour texture before; its import settings do not change. Cube
+maps that light the scene (IBL) also get a 256 px RGBA8 copy.
 Files only read from their source by their references (HTML UI images, terrain surface layers)
 are not cooked; when some reference reads the source, the export ships it next to the cooks. A
 glTF's external images are cooked by the slots its materials sample them with (normal, occlusion,

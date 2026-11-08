@@ -260,7 +260,9 @@ TEST(Sprite2DNormalMapManifest, FeatureGatesIt) {
 TEST(Sprite2DNormalMapManifest, Errors) {
     ShaderManifest unknown;
     unknown.parse("// @shader mesh\n// @name \"T\"\n// @require normalmaps\n", "t.frag");
-    EXPECT_TRUE(reported(unknown, "environment, normalmap)")) << "the unknown-input error lists normalmap";
+    // (the list grows: d33b22638 and b2beef162 added inputs after normalmap)
+    EXPECT_TRUE(reported(unknown, "unknown input 'normalmaps'")) << "the unknown-input error names the misspelling";
+    EXPECT_TRUE(reported(unknown, ", normalmap,")) << "the unknown-input error lists normalmap";
 
     ShaderManifest notMesh;
     notMesh.parse("// @shader ui\n// @name \"T\"\n// @require uv1 normalmap\n", "t.frag");

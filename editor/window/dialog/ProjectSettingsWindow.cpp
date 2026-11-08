@@ -70,8 +70,9 @@
 
 namespace jasperengine::editor {
 
-static const char* scalingModeNames[] = { "Fit Width", "Fit Height", "Letterbox", "Crop", "Stretch", "Native" };
-static const Scaling scalingModeValues[] = { Scaling::FITWIDTH, Scaling::FITHEIGHT, Scaling::LETTERBOX, Scaling::CROP, Scaling::STRETCH, Scaling::NATIVE };
+static const char* scalingModeNames[] = { "Fit Width", "Fit Height", "Letterbox", "Crop", "Stretch", "Native", "Integer (Letterbox)", "Integer (Expand)" };
+static const Scaling scalingModeValues[] = { Scaling::FITWIDTH, Scaling::FITHEIGHT, Scaling::LETTERBOX, Scaling::CROP, Scaling::STRETCH, Scaling::NATIVE,
+                                             Scaling::INTEGER, Scaling::INTEGER_EXPAND };
 static const int scalingModeCount = sizeof(scalingModeValues) / sizeof(scalingModeValues[0]);
 
 static const char* textureStrategyNames[] = { "Fit", "Resize", "None" };
@@ -208,6 +209,8 @@ enum class ProjectCategory {
     Editor,
     Navigation,
     Mesh,
+    TwoD,   // "2D" (S45: Sprite Atlas)
+    Animation,
     Count
 };
 
@@ -838,6 +841,13 @@ static void drawScalingPreview(Scaling mode, int canvasWidth, int canvasHeight) 
             scaleX = vw / baseW;
             scaleY = vh / baseH;
             break;
+        case Scaling::INTEGER:
+        case Scaling::INTEGER_EXPAND: {
+            // the preview's whole-number fit (at least 1, as the layout's k)
+            float s = std::floor((vw / baseW < vh / baseH) ? vw / baseW : vh / baseH);
+            scaleX = scaleY = s < 1.0f ? 1.0f : s;
+            break;
+        }
         case Scaling::NATIVE:
         default:
             scaleX = scaleY = 1.0f;
@@ -955,6 +965,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_canvasWidth = project->getCanvasWidth();
     m_canvasHeight = project->getCanvasHeight();
     m_scalingModeIndex = findScalingIndex(project->getScalingMode());
+    m_pixelsPerUnit = project->getPixelsPerUnit();
     m_uiScale = project->getUIScale();
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
@@ -989,6 +1000,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_scriptDirs = project->getScriptDirs();
     m_cxxStandardIndex = findCxxStandardIndex(project->getCxxStandard());
     m_physics2DEnabled = project->isPhysics2DEnabled();
+    m_spriteAtlasMode = project->getSpriteAtlasMode();
     m_physics3DEnabled = project->isPhysics3DEnabled();
     m_inputActionsAsset = project->getInputActionsAsset();
     m_inputDeadzone = project->getInputDeadzone();
@@ -1235,6 +1247,8 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Editor: drawEditorSettings(); break;
         case ProjectCategory::Navigation: drawNavigationSettings(); break;
         case ProjectCategory::Mesh: drawMeshSettings(); break;
+        case ProjectCategory::TwoD: draw2DSettings(); break;
+        case ProjectCategory::Animation: drawAnimationSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -1916,6 +1930,13 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             drawScalingPreview(scalingModeValues[m_scalingModeIndex], m_canvasWidth, m_canvasHeight);
         }
 
+        if (settingsui::beginRow("graphics.pixels_per_unit")) {
+            drawIntSetting("Pixels Per Unit", "##PixelsPerUnit", m_pixelsPerUnit, Project::defaultPixelsPerUnit, Project::minPixelsPerUnit,
+                           "Texels per world unit of sprites and tilemaps whose own Pixels Per Unit is 0 (1: a world unit is a pixel). "
+                           "1 to 256.");
+            m_pixelsPerUnit = std::min(m_pixelsPerUnit, Project::maxPixelsPerUnit);
+        }
+
         // the Canvas Scaler's project default: the UI's own space, apart from the game canvas
         if (settingsui::beginRow("graphics.ui_scale")) {
             ImGui::TableNextRow();
@@ -2038,7 +2059,8 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                     static_cast<int>(ShadowTiers::defaultTier(platform)),
                     "The shadow quality tier of this platform's builds (and of the editor running on it) for scenes whose shadow "
                     "Quality is Auto: cascades, resolution, distance, filter and the memory budget (docs/rendering/shadows.md). "
-                    "Ultra adds PCSS contact hardening.");
+                    "Ultra adds PCSS contact hardening: two to three times the High filter's shadow lookups per pixel, heavy for phones "
+                    "and the web (where a variant with every texture slot used keeps the High filter).");
             }
         }
 
@@ -2984,6 +3006,31 @@ void ProjectSettingsWindow::drawPhysics2DSettings() {
     endSettingsPanel();
 }
 
+// S45 R18: Project Settings > 2D > Sprite Atlas > Mode
+void ProjectSettingsWindow::draw2DSettings() {
+    if (beginSettingsPanel("##TwoDSettingsPanel")) {
+        if (settingsFoldout("Sprite Atlas", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (beginSettingsTable("##SpriteAtlasTable")) {
+                if (settingsui::beginRow("sprite_atlas.mode")) {
+                    static const char* modes[] = {"Enabled", "Enabled for Builds", "Disabled"};
+                    static const char* tokens[] = {"enabled", "enabled_for_builds", "disabled"};
+                    int index = 0;
+                    for (int i = 0; i < 3; i++) {
+                        if (m_spriteAtlasMode == tokens[i]) index = i;
+                    }
+                    if (projectBeginSettingsRow("Mode", index != 0)) m_spriteAtlasMode = "enabled";
+                    ImGui::SetNextItemWidth(-helpMarkerWidth());
+                    if (ImGui::Combo("##SpriteAtlasMode", &index, modes, 3)) m_spriteAtlasMode = tokens[index];
+                    endSettingsRow("Enabled: the editor, Play and builds draw packed sprites from their atlases. Enabled for Builds: the editor "
+                                   "and Play draw the sources, builds the atlases. Disabled: no atlas is built or used.");
+                }
+                ImGui::EndTable();
+            }
+        }
+    }
+    endSettingsPanel();
+}
+
 // Text turned a quarter left, read bottom to top, from bottomLeft upwards
 static void addVerticalText(ImDrawList* drawList, const ImVec2& bottomLeft, ImU32 color, const char* text) {
     const int firstVertex = drawList->VtxBuffer.Size;
@@ -3055,6 +3102,21 @@ void ProjectSettingsWindow::drawInputSettings() {
     endSettingsPanel();
 }
 
+// Project Settings > Animation (S77 R38): stored with the model settings, one undo step on Apply
+void ProjectSettingsWindow::drawAnimationSettings() {
+    projectDrawSettingsPanel("##AnimationSettingsPanel", [this]() {
+        if (settingsui::beginRow("animation.animation_entities")) {
+            static const char* const labels[] = {"Always", "Auto"};
+            int value = (int)m_modelSettings.animationEntities;
+            drawComboSetting("Animation Entities", "##AnimationEntities", labels, 2, value, 0,
+                             "When a model is placed in a scene. Always: an Animation entity per clip. Auto: none for a model "
+                             "of 5 or more clips, whose clips play through an Animation Player or an Animator. New projects "
+                             "start with Auto; a model already placed keeps its setting.");
+            m_modelSettings.animationEntities = (AnimationEntitiesMode)value;
+        }
+    });
+}
+
 void ProjectSettingsWindow::drawNavigationSettings() {
     const nav::NavigationSettings defaults;
     nav::NavigationSettings& settings = m_navigation.settings;
@@ -3087,6 +3149,24 @@ void ProjectSettingsWindow::drawNavigationSettings() {
                     settings.maxGridSolvesPerTick = std::clamp(settings.maxGridSolvesPerTick, 1, 4096);
                 }
                 endSettingsRow("NavGrid path requests solved per fixed tick (in parallel); the rest wait for the next tick.");
+            }
+            if (settingsui::beginRow("navigation.carve_tiles_per_tick")) {
+                if (projectBeginSettingsRow("Carve Tiles Per Tick", settings.carveTilesPerTick != defaults.carveTilesPerTick)) {
+                    settings.carveTilesPerTick = defaults.carveTilesPerTick;
+                }
+                // 0 is Auto: the platform's count (4 on desktop, 2 on Android, iOS and web)
+                bool automatic = settings.carveTilesPerTick == 0;
+                if (ImGui::Checkbox("Auto##NavCarveAuto", &automatic)) {
+                    settings.carveTilesPerTick = automatic ? 0 : settings.effectiveCarveTilesPerTick();
+                }
+                ImGui::SameLine();
+                ImGui::BeginDisabled(automatic);
+                int tiles = settings.effectiveCarveTilesPerTick();
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::InputInt("##NavCarveTiles", &tiles) && !automatic) settings.carveTilesPerTick = std::clamp(tiles, 1, 64);
+                ImGui::EndDisabled();
+                endSettingsRow("Carved tiles each NavMesh Surface rebuilds per fixed tick, the same on every machine. Auto: 4 on "
+                    "desktop, 2 on Android, iOS and web.");
             }
             if (settingsui::beginRow("navigation.web_bake_budget_ms")) {
                 if (projectBeginSettingsRow("Web Bake Budget", settings.webBakeBudgetMs != defaults.webBakeBudgetMs)) {
@@ -5206,6 +5286,7 @@ bool ProjectSettingsWindow::applySettings() {
 
     m_project->setCanvasSize(m_canvasWidth, m_canvasHeight);
     m_project->setScalingMode(scalingModeValues[m_scalingModeIndex]);
+    m_project->setPixelsPerUnit(m_pixelsPerUnit);
     if (m_project->getUIScale() != m_uiScale)
         m_project->setUIScale(m_uiScale);
     m_project->setTextureStrategy(textureStrategyValues[m_textureStrategyIndex]);
@@ -5269,6 +5350,7 @@ bool ProjectSettingsWindow::applySettings() {
     }
     m_project->setCxxStandard(cxxStandards[m_cxxStandardIndex]);
     m_project->setPhysics2DEnabled(m_physics2DEnabled);
+    m_project->setSpriteAtlasMode(m_spriteAtlasMode);
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
     m_project->setInputActionsAsset(m_inputActionsAsset);
     m_project->setInputDeadzone(m_inputDeadzone);
