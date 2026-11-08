@@ -5,8 +5,10 @@
 // strings ops, then each importer of create.from and its ops, one line per module.
 
 #include "TitleImport.h"
+#include "pachislop/PachislopImport.h"
 #include "titleart/localisation/TitleLanguageOps.h"
 
 void jasperengine::editor::registerTitleInterchange() {
     registerTitleLanguageOps();
+    registerPachislopImport();
 }

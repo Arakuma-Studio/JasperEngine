@@ -17,6 +17,7 @@
 
 using namespace jasperengine;
 using namespace jasperengine::titleart;
+using namespace jasperengine::titleart::geometry;
 
 namespace {
 
