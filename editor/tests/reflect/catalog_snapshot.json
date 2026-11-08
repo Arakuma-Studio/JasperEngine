@@ -15109,6 +15109,8 @@
     "collectObjects",
     "defaultArea",
     "enabled",
+    "followRadius",
+    "followTerrainWorldFocus",
     "includeLayers",
     "minRegionArea",
     "navMeshData",
@@ -15145,6 +15147,16 @@
      true
     ],
     "enabled": [
+     0,
+     0,
+     true
+    ],
+    "followRadius": [
+     2,
+     0,
+     true
+    ],
+    "followTerrainWorldFocus": [
      0,
      0,
      true
@@ -15227,6 +15239,16 @@
      true
     ],
     "enabled": [
+     0,
+     0,
+     true
+    ],
+    "followRadius": [
+     2,
+     0,
+     true
+    ],
+    "followTerrainWorldFocus": [
      0,
      0,
      true
@@ -26677,6 +26699,16 @@
     true
    ],
    "enabled": [
+    0,
+    0,
+    true
+   ],
+   "followRadius": [
+    2,
+    0,
+    true
+   ],
+   "followTerrainWorldFocus": [
     0,
     0,
     true

@@ -66,6 +66,18 @@ A surface too large for Detour's 32-bit polygon references is refused before any
 rebuilds only the tiles touching a box (procedural levels). Agents keep moving on the previous
 navmesh until the new tiles land; `onBakeCompleted` fires then.
 
+### Terrain Worlds
+
+A surface bakes a Terrain World from its tiles, one height lattice per tile at the tile's sample
+spacing (coarser when the voxels are larger), with each tile's holes left out. Tiles that are not in
+memory are loaded by the World's streamer while the bake shows Baking. A surface without a Volume is
+refused on a World of more than 64 tiles: set **Collect Objects** to Volume, or turn on **Follow
+Terrain World Focus**. With Follow on, the surface bakes the tiles within **Radius** (128 m by
+default) of the World's focus (its Focus GameObject, else its camera) and, in play, rebakes with
+`updateTiles` once the focus has moved a quarter of a tile, dropping tiles beyond Radius plus half a
+tile; agents keep walking meanwhile. A single-threaded web build follows only when a script sets
+`NavMeshSurface.followTerrainWorldFocus`.
+
 ### Runtime carving
 
 Turn on **Runtime Carving** on a surface to keep tile-cache layers (about 30 % more memory):

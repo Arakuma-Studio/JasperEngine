@@ -2066,6 +2066,8 @@ const FieldEntry kBody_NavMeshSurfaceComponent_fields[] = {
     JE_RF(NavMeshSurfaceComponent, minRegionArea, 0x911c6021u, Float),
     JE_RF(NavMeshSurfaceComponent, plane, 0x6ffdbefau, Enum),
     JE_RF(NavMeshSurfaceComponent, runtimeCarving, 0x69e7e4fcu, Bool),
+    JE_RF(NavMeshSurfaceComponent, followTerrainWorldFocus, 0xed13cc96u, Bool),
+    JE_RF(NavMeshSurfaceComponent, followRadius, 0x2c8cc853u, Float),
     JE_RF(NavMeshSurfaceComponent, navMeshData, 0x1e9815acu, AssetPath),
 };
 const StructTable kBody_NavMeshSurfaceComponent{"navmeshsurface", kBody_NavMeshSurfaceComponent_fields, std::size(kBody_NavMeshSurfaceComponent_fields)};
