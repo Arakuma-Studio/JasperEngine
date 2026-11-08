@@ -1398,9 +1398,7 @@ void InputActions::unload(){
     r.clearConsumed();
     for (auto& [path, object] : r.actionObjects){
         InputActionsRuntime::resetActionState(*object);
-        object->onStarted.clear();
-        object->onPerformed.clear();
-        object->onCanceled.clear();
+        object->forEachEvent([](auto& event) { event.clear(); });
     }
     // a game without an actions asset has Unity's defaults (and their rebinding overrides)
     r.installDefaults();
@@ -1951,9 +1949,7 @@ void InputActions::resetSession(){
         r.virtuals[i].value = Vector2(0.0f, 0.0f);
     for (auto& [path, object] : r.actionObjects){
         InputActionsRuntime::resetActionState(*object);
-        object->onStarted.clear();
-        object->onPerformed.clear();
-        object->onCanceled.clear();
+        object->forEachEvent([](auto& event) { event.clear(); });
     }
     if (r.loaded || r.builtin){
         // the maps start again as the asset has them
