@@ -472,7 +472,7 @@ TEST_F(NavCrowdTest, CrowdRebuiltOnNewMesh){
     for (Entity entity : agents)
         stood.push_back(position(entity));
     const auto since = std::chrono::steady_clock::now();
-    for (int tick = 0; bakeRunning(surface, since); tick++) {
+    while (bakeRunning(surface, since)) {
         if (mesh->getGeneration() == generation) {
             for (size_t i = 0; i < agents.size(); i++)
                 stood[i] = position(agents[i]);
@@ -652,7 +652,7 @@ TEST_F(NavObstacleTest, CutsSurviveUpdateTiles){
     std::string error;
     ASSERT_TRUE(nav->updateTiles(surface, AABB(Vector3(-2.0f, -1.0f, -2.0f), Vector3(2.0f, 3.0f, 2.0f)), error)) << error;
     const auto since = std::chrono::steady_clock::now();
-    for (int tick = 0; bakeRunning(surface, since); tick++)
+    while (bakeRunning(surface, since))
         step();
     ASSERT_FALSE(nav->isBaking(surface));
     ASSERT_TRUE(nav->getLastBakeResult(surface) && nav->getLastBakeResult(surface)->ok);

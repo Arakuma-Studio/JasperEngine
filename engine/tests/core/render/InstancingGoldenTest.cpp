@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -201,6 +202,34 @@ namespace {
             return submesh.batch && submesh.batch->render.isBatchVariant();
         }
 
+        // The frames compare exactly, except on Metal. There a batch variant, which reads the draw's
+        // matrices (bit for bit: packInstance) as vertex attributes, and its base, which reads them
+        // from a uniform block, shade a few isolated pixels of the spheres' shadowed sides
+        // differently: on an M4 Max 54-67 pixels, at most 9/255. The positions match (the shadow
+        // atlas and the depth pre-pass compare exactly everywhere), and neither Metal's fast math
+        // nor SPIRV-Cross's contraction is the cause (with invariant_float_math on every stage and
+        // fast math off they stay). So on Metal a frame may differ in at most 1 pixel in 1000, by
+        // at most 16/255: the instance normals transposed differ in 31,845 pixels, by up to 85/255.
+        static void expectSameFrame(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, const char* what){
+            ASSERT_EQ(a.size(), b.size()) << what;
+            size_t different = 0;
+            int largest = 0;
+            for (size_t i = 0; i < a.size(); i += 4){
+                int pixel = 0;
+                for (size_t c = 0; c < 3; c++)
+                    pixel = std::max(pixel, std::abs((int)a[i + c] - (int)b[i + c]));
+                different += pixel > 0 ? 1 : 0;
+                largest = std::max(largest, pixel);
+            }
+            std::printf("[instancing] %s: %zu pixels differ, by at most %d/255\n", what, different, largest);
+#if defined(SOKOL_METAL)
+            EXPECT_LE(different, a.size() / 4 / 1000) << what;
+            EXPECT_LE(largest, 16) << what;
+#else
+            EXPECT_EQ(different, 0u) << what;
+#endif
+        }
+
         static std::vector<uint8_t> readTarget(){
             Framebuffer& target = GpuEnvironment::target();
             std::vector<uint8_t> rgba;
@@ -244,18 +273,13 @@ TEST_F(InstancingGoldenGpu, BatchedFrameMatchesUnbatched){
     EXPECT_GE(stats.batchedInstances, 30u);
 
     ASSERT_EQ(batched.size(), unbatched.size());
-    size_t different = 0;
-    for (size_t i = 0; i < batched.size(); i += 4){
-        if (batched[i] != unbatched[i] || batched[i + 1] != unbatched[i + 1] || batched[i + 2] != unbatched[i + 2])
-            different++;
-    }
-    if (different > 0){
+    if (differentPixels(batched, unbatched) > 0){
         const int width = (int)GpuEnvironment::target().getWidth();
         const int height = (int)GpuEnvironment::target().getHeight();
         writePng(getOutputDirectory() + "/instancing_off.png", unbatched, width, height);
         writePng(getOutputDirectory() + "/instancing_on.png", batched, width, height);
     }
-    EXPECT_EQ(different, 0u) << "pixels that differ with GPU Instancing on";
+    expectSameFrame(unbatched, batched, "pixels that differ with GPU Instancing on");
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -483,7 +507,7 @@ TEST_F(InstancingGoldenGpu, ShadowAndDepthPassesBatch){
     EXPECT_EQ(differentPixels(shadowImageOff, shadowImageOffAgain), 0u) << "the atlas read twice, nothing changed: the readback does not hold";
     EXPECT_EQ(differentPixels(shadowImageOff, shadowImageOn), 0u) << "shadow atlas pixels that differ";
     EXPECT_EQ(differentPixels(depthImageOff, depthImageOn), 0u) << "depth pre-pass pixels that differ";
-    EXPECT_EQ(differentPixels(frameOff, frameOn), 0u) << "frame pixels that differ";
+    expectSameFrame(frameOff, frameOn, "frame pixels that differ");
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -522,7 +546,7 @@ TEST_F(InstancingGoldenGpu, BatchedFrameMatchesUnderTiledLights){
     EXPECT_NE(first.batch->shaderProperties & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS), 0u);
     EXPECT_GT(stats.instancedDraws, 0u);
     EXPECT_GE(stats.batchedInstances, 30u);
-    EXPECT_EQ(differentPixels(unbatched, batched), 0u) << "pixels that differ with GPU Instancing on under Tiled lights";
+    expectSameFrame(unbatched, batched, "pixels that differ with GPU Instancing on under Tiled lights");
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -587,7 +611,7 @@ TEST_F(InstancingGoldenGpu, FadingMeshAmongBatchesMatchesUnbatched){
     EXPECT_NE(mesh.submeshes[0].render.getAppliedPipelineId(), steadyOn) << "a fading draw uses the fade variant";
     EXPECT_GT(stats.instancedDraws, 0u);
     EXPECT_GE(stats.batchedInstances, 30u);
-    EXPECT_EQ(differentPixels(unbatched, batched), 0u) << "pixels that differ mid-fade with GPU Instancing on";
+    expectSameFrame(unbatched, batched, "pixels that differ mid-fade with GPU Instancing on");
     EXPECT_NO_ENGINE_ERRORS();
 }
 
