@@ -373,3 +373,13 @@ async def test_check_cli_skips_sub_emitter_effects(ed: Editor):
     warn = subprocess.run(cmd + ["--files", str(ed.project / "assets/fx/visible.particles"), "--fail-on", "warn"],
                           capture_output=True, text=True, timeout=600)
     ed.check_eq(warn.returncode, 1, f"--fail-on warn makes its pop WARN an error: {(warn.stdout + warn.stderr)[-1500:]}")
+
+
+async def test_focus_window_refuses_path_before_opening_anything(ed: Editor):
+    """F14: path belongs to graph_editor; a call that fails for it leaves the Particle Effect window as it was"""
+    ed.check(not (await ed.call("editor_status"))["ui"]["particle_effect"]["open"], "the window starts closed")
+    err = await ed.call("focus_window", window="particle_effect", path="assets/fx/square.particles", expect_error=True)
+    ed.check_in("only for window", err)
+    await ed.call("wait", frames=3)
+    ed.check(not (await ed.call("editor_status"))["ui"]["particle_effect"]["open"], "the failed call opened nothing")
+

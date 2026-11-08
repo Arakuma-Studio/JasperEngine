@@ -1508,6 +1508,15 @@ void focusWindowTool(const CallPtr& call) {
     Project* project = ctx.project();
     const std::string window = args.value("window", "");
     std::string imguiName;
+    // refused before any window opens: a failing call leaves the layout as it was
+    if (args.contains("pose") && window != "pose_animation") {
+        call->fail("pose: only for window \"pose_animation\".");
+        return;
+    }
+    if (args.contains("path") && window != "graph_editor") {
+        call->fail("path: only for window \"graph_editor\".");
+        return;
+    }
 
     if (window == "game") {
         ctx.gameWindow()->requestFocus();
@@ -1639,14 +1648,6 @@ void focusWindowTool(const CallPtr& call) {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, particle_effect, pose_animation, terrain, mcp, "
                    "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
                    "vertex_animation_baker, sprite_normals, graph_editor.");
-        return;
-    }
-    if (args.contains("pose") && window != "pose_animation") {
-        call->fail("pose: only for window \"pose_animation\".");
-        return;
-    }
-    if (args.contains("path") && window != "graph_editor") {
-        call->fail("path: only for window \"graph_editor\".");
         return;
     }
     // A window opened just now exists after its next draw.
