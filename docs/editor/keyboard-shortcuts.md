@@ -50,7 +50,7 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Play or Resume | F5 | Global |
 | Pause | F6 | Global |
 | Stop | F7 | Global |
-| Maximize On Play | F11 | Global |
+| Maximize On Play | F11 (macOS: Control+Cmd+F) | Global |
 
 ## Assets
 
