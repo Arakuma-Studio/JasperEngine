@@ -149,13 +149,15 @@ async def ui_numbers(ed: Editor, docs: dict[str, str], profile: bool) -> dict:
         await ed.call("edit_title", path=docs["rims"], ops=[{"op": "set", "layer": "Title", "values": {"size": 220 + len(index)}}], bake="never")
         t = (await state(ed, panel="properties", search=word))["timings"]
         # the results draw (and the index builds) on the next frames
-        for _ in range(40):
+        for _ in range(80):
             await asyncio.sleep(0.25)
             t = (await state(ed))["timings"]
-            if t["index_entries"] > 0 and t["query_ms"] > 0.0:
+            if t["index_entries"] > 0 and t["query_ms"] > 0.0 and not t.get("index_building", False):
                 break
         index.append(t["index_ms"])
         query.append(t["query_ms"])
+        out.setdefault("index_frame_ms_max", []).append(t.get("index_frame_ms_max"))
+        out.setdefault("index_frames", []).append(t.get("index_frames"))
         out.setdefault("index_parts", []).append({k: t.get(k) for k in ("index_rows_ms", "index_lookup_ms", "index_values_ms", "index_add_ms", "index_rows")})
     out["index_ms"] = index
     out["query_ms"] = query
@@ -193,7 +195,9 @@ def summarise(full: dict, draft: dict, label: str) -> dict:
         r[f"draft_ms_{key}"] = d
     ui = full["ui"]
     r["frame_ms"] = max(ui["frame_layers_40"]["avg"], ui["frame_properties_40"]["avg"])
-    r["index_ms"] = statistics.median(ui["index_ms"])
+    # the index builds across frames (R69): the budget holds per frame; the total is reported too
+    r["index_ms"] = statistics.median(ui["index_frame_ms_max"]) if ui.get("index_frame_ms_max") else statistics.median(ui["index_ms"])
+    r["index_total_ms"] = statistics.median(ui["index_ms"])
     r["query_ms"] = statistics.median(ui["query_ms"])
     r["tree_256_over_40"] = ui["frame_layers_256"]["avg"] / ui["frame_layers_40"]["avg"] if ui["frame_layers_40"]["avg"] > 0 else None
     checks = [("draft_over_full_rims", "draft_over_full"), ("draft_over_full_forty", "draft_over_full"), ("frame_ms", "frame_ms"),

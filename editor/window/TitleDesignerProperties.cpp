@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <set>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -78,25 +79,97 @@ bool TitleDesignerWindow::indexStale() const {
     return indexChange != doc.changeCount() || indexSelectionKey != indexSelection();
 }
 
-void TitleDesignerWindow::rebuildIndexIfNeeded() {
-    JE_PROFILE_SCOPE("TD rebuildIndexIfNeeded");
-    const std::string selectionKey = indexSelection();
-    const double t = now();
-    const bool stale = indexChange != doc.changeCount() || indexSelectionKey != selectionKey;
-    if (!stale) return;
-    // while a result is edited the list keeps its order and re-indexes 250 ms after the last change
-    if (!editingHit.empty() && t - editingHitAt < 0.25 && indexSelectionKey == selectionKey) return;
+void TitleDesignerWindow::stepIndexBuild(bool urgent) {
+    JE_PROFILE_SCOPE("TD stepIndexBuild");
+    const std::string selection = indexSelection();
+    // the document or the selection moved on: the build starts over (the old index still serves)
+    if (indexBuild.active && (indexBuild.change != doc.changeCount() || indexBuild.selection != selection)) indexBuild.active = false;
+    if (!indexBuild.active) {
+        if (indexChange == doc.changeCount() && indexSelectionKey == selection) {
+            indexIdleSince = -1.0;
+            return;
+        }
+        // while a result is edited the list keeps its order and re-indexes 250 ms after the last change
+        if (!editingHit.empty() && now() - editingHitAt < 0.25 && indexSelectionKey == selection) return;
+        if (!urgent) {
+            if (indexIdleSince < 0.0) indexIdleSince = now();
+            if (now() - indexIdleSince < 0.3) return;
+        }
+        indexIdleSince = -1.0;
+        indexBuild.active = true;
+        indexBuild.units = planCollect(doc, searchEveryLayer);
+        indexBuild.next = 0;
+        indexBuild.pending.clear();
+        clearCollectAudit();
+        indexBuild.change = doc.changeCount();
+        indexBuild.selection = selection;
+        indexBuild.ms = 0.0;
+        indexBuild.frameMsMax = 0.0;
+        indexBuild.frames = 0;
+        indexBuild.generation++;
+        documentPasses++;
+    }
+    // pages until this frame's budget is spent (one at least)
     const auto start = std::chrono::steady_clock::now();
-    collectIndex(doc, this, index, searchEveryLayer);
-    documentPasses++;
-    indexMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-    indexChange = doc.changeCount();
-    indexSelectionKey = selectionKey;
+    int count = 0;
+    {
+        const CollectLayerLookup lookup(doc.shown());
+        while (indexBuild.next < indexBuild.units.size()) {
+            collectUnit(doc, this, indexBuild.pending, indexBuild.units[indexBuild.next++]);
+            count++;
+            const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            if (count >= indexUnitsPerFrame || elapsed >= INDEX_FRAME_BUDGET_MS) break;
+        }
+    }
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    indexUnitsLastFrame = count;
+    indexBuild.ms += ms;
+    indexBuild.frameMsMax = std::max(indexBuild.frameMsMax, ms);
+    indexBuild.frames++;
+    if (indexBuild.next < indexBuild.units.size()) return;
+    index = std::move(indexBuild.pending);
+    indexBuild.pending = PropertyIndex();
+    indexChange = indexBuild.change;
+    indexSelectionKey = indexBuild.selection;
+    indexMs = indexBuild.ms;
+    indexFrames = indexBuild.frames;
+    indexFrameMsMax = indexBuild.frameMsMax;
+    indexBuild.active = false;
+    mergedKey = ~0ull;
+}
+
+const PropertyIndex& TitleDesignerWindow::searchIndex() {
+    if (!indexBuild.active || indexBuild.pending.size() == 0) return index;
+    const uint64_t key = (indexBuild.generation << 40) ^ ((uint64_t)indexBuild.pending.size() << 20) ^ (uint64_t)index.size();
+    if (key != mergedKey) {
+        mergedKey = key;
+        mergedIndex.clear();
+        const PropertyIndex& pending = indexBuild.pending;
+        mergedIndex.replay(pending.record(0, pending.size()));
+        std::set<std::string> fresh;
+        for (size_t i = 0; i < pending.size(); i++) fresh.insert(pending.entry(i).rowId);
+        for (size_t i = 0; i < index.size(); i++) {
+            if (!fresh.count(index.entry(i).rowId)) mergedIndex.replay(index.record(i, i + 1));
+        }
+        mergedIndex.copyOffers(pending.offerCount() ? pending : index);
+    }
+    return mergedIndex;
+}
+
+void TitleDesignerWindow::rebuildIndexIfNeeded() {
+    // the whole build now (tests; the window itself never waits for it)
+    const int saved = indexUnitsPerFrame;
+    indexUnitsPerFrame = 1 << 30;
+    do {
+        stepIndexBuild(true);
+    } while (indexBuild.active);
+    indexUnitsPerFrame = saved;
 }
 
 void TitleDesignerWindow::jumpToHit(size_t i) {
-    if (i >= index.size()) return;
-    const IndexEntry& entry = index.entry(i);
+    const PropertyIndex& served = searchIndex();
+    if (i >= served.size()) return;
+    const IndexEntry entry = served.entry(i);
     selectNode(entry.node);
     // its sections open, the row scrolls to the centre and flashes for 1.6 s (R26)
     flashRow = entry.rowId;
@@ -139,8 +212,8 @@ void TitleDesignerWindow::drawSearch() {
         if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) highlightedHit++;
         if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) highlightedHit = std::max(0, highlightedHit - 1);
         if (ImGui::IsKeyPressed(ImGuiKey_Enter)) {
-            rebuildIndexIfNeeded();
-            const std::vector<SearchHit> hits = index.query(searchText, resultLimit);
+            stepIndexBuild(true);
+            const std::vector<SearchHit> hits = searchIndex().query(searchText, resultLimit);
             if (!hits.empty()) jumpToHit(hits[(size_t)std::clamp(highlightedHit, 0, (int)hits.size() - 1)].entry);
         }
     }
@@ -148,29 +221,31 @@ void TitleDesignerWindow::drawSearch() {
 
 void TitleDesignerWindow::drawSearchResults() {
     JE_PROFILE_SCOPE("TD drawSearchResults");
-    rebuildIndexIfNeeded();
+    // never waits for a build: the served index answers, stale until the new one is complete
+    stepIndexBuild(true);
+    const PropertyIndex& served = searchIndex();
     const auto start = std::chrono::steady_clock::now();
-    std::vector<SearchHit> hits = index.query(searchText, 0);
+    std::vector<SearchHit> hits = served.query(searchText, 0);
     queryMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     // stable keys while a result is being edited (R26)
     if (!editingHit.empty() && !stableOrder.empty()) {
         std::vector<SearchHit> ordered;
         for (const std::string& rowId : stableOrder) {
             for (const SearchHit& hit : hits) {
-                if (index.entry(hit.entry).rowId == rowId) ordered.push_back(hit);
+                if (served.entry(hit.entry).rowId == rowId) ordered.push_back(hit);
             }
         }
         hits = ordered;
     } else {
         stableOrder.clear();
-        for (const SearchHit& hit : hits) stableOrder.push_back(index.entry(hit.entry).rowId);
+        for (const SearchHit& hit : hits) stableOrder.push_back(served.entry(hit.entry).rowId);
     }
     if (hits.empty()) ImGui::TextDisabled("No setting matches \"%s\"", searchText.c_str());
     highlightedHit = std::clamp(highlightedHit, 0, std::max(0, (int)hits.size() - 1));
     const size_t shown = std::min(hits.size(), resultLimit);
     std::string group;
     for (size_t i = 0; i < shown; i++) {
-        const IndexEntry& entry = index.entry(hits[i].entry);
+        const IndexEntry& entry = served.entry(hits[i].entry);
         if (searchEveryLayer && entry.nodeLabel != group) {
             group = entry.nodeLabel;
             ImGui::SeparatorText(group.c_str());
@@ -232,9 +307,9 @@ void TitleDesignerWindow::drawSearchResults() {
 
     // effects the layer does not have: + Add (R26)
     if (!doc.selectedLayers().empty() && doc.editable()) {
-        const std::vector<OfferHit> offers = index.queryOffers(searchText, 6);
+        const std::vector<OfferHit> offers = served.queryOffers(searchText, 6);
         for (const OfferHit& hit : offers) {
-            const AddOffer& offer = index.offer(hit.offer);
+            const AddOffer& offer = served.offer(hit.offer);
             ImGui::PushID(("offer" + offer.type).c_str());
             const std::string label = offer.kind == "generator" ? "+ Add Generator Layer " + offer.label : "+ Add " + offer.label;
             const bool clicked = ImGui::Selectable(label.c_str());
@@ -358,15 +433,7 @@ void TitleDesignerWindow::drawProperties() {
     ImGui::Separator();
     // the index is made ahead, once the document and the selection have settled for 300 ms, so
     // typing a search finds it made (R69)
-    if (searchText.empty() && !doc.gestureActive() && indexStale()) {
-        if (indexIdleSince < 0.0) indexIdleSince = now();
-        else if (now() - indexIdleSince >= 0.3) {
-            rebuildIndexIfNeeded();
-            indexIdleSince = -1.0;
-        }
-    } else {
-        indexIdleSince = -1.0;
-    }
+    if (searchText.empty() && !doc.gestureActive()) stepIndexBuild(false);
     ImGui::BeginChild("##propertiespage", ImVec2(0, 0), false);
     if (!searchText.empty()) {
         drawSearchResults();

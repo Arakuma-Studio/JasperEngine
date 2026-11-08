@@ -94,6 +94,13 @@ namespace jasperengine::editor {
         static TitleLetterGizmo& letters(W& w) { return w.letterGizmo; }
         static void commitLetters(W& w, const ta::Json& values, const std::string& name) { w.commitLetters(values, name); }
         static void requestFocus(W& w) { w.focusRequested = true; }
+        static void setIndexUnitsPerFrame(W& w, int units) { w.indexUnitsPerFrame = units; }
+        static size_t servedHits(W& w, const std::string& query) { return w.searchIndex().query(query, 0).size(); }
+        static std::vector<std::string> indexRows(W& w) {
+            std::vector<std::string> out;
+            for (size_t i = 0; i < w.index.size(); i++) out.push_back(w.index.entry(i).rowId + "|" + w.index.entry(i).label);
+            return out;
+        }
         static void setSystemCjk(W& w, std::function<int()> found) { w.systemCjkOverride = std::move(found); }
     };
 
@@ -534,6 +541,59 @@ TEST(TitleDesignerWindowDeathTest, IdleFramesMakeNoDocumentPasses) {
                 EXPECT_EQ(after - before, 0u) << count << " layers, " << panel << " shown: passes on idle frames";
             }
         }
+    });
+}
+
+// R69: the search index builds across frames, never more than the frame's share of pages (here
+// one, counted, not timed), the previous index answering a search meanwhile, and the finished
+// index is the one a single full pass makes. Red control: the whole pass in one frame (the per-frame
+// cap ignored) builds in one frame.
+TEST(TitleDesignerWindowDeathTest, IndexBuildSpansFrames) {
+    IN_EDITOR("indexframes", {
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        const fs::path file = newTitle(w, "indexframes");
+        ASSERT_TRUE(window->open(file, nullptr));
+        const std::string layer = titleLayer(*window);
+        ta::Json ops = ta::Json::array();
+        for (int i = 0; i < 4; i++) ops.push_back({{"op", "add_rim"}, {"layer", "id:" + layer}});
+        for (const char* type : {"outer_glow", "drop_shadow", "inner_glow", "gradient_overlay"}) ops.push_back({{"op", "add_effect"}, {"layer", "id:" + layer}, {"type", type}});
+        std::string error;
+        ASSERT_TRUE(window->runOps(ops, "Add Rims and Effects", &error)) << error;
+        ASSERT_TRUE(window->select({"Title"}, &error)) << error;
+        ASSERT_TRUE(window->setPanel("properties", &error)) << error;
+        window->setSearch("glow");
+        Access::setIndexUnitsPerFrame(*window, 1);
+        auto timings = [&]() { return window->state()["timings"]; };
+        auto drain = [&](int& frames, int& most) {
+            frames = 0;
+            most = 0;
+            for (int i = 0; i < 200; i++) {
+                Access::drawFrame(*window);
+                most = std::max(most, timings().value("index_units_frame", 0));
+                if (timings().value("index_building", false)) frames++;
+                else if (timings().value("index_entries", (size_t)0) > 0) break;
+            }
+        };
+        int frames = 0, most = 0;
+        drain(frames, most);
+        EXPECT_GE(timings().value("index_frames", 0), 10) << "the first build spans a frame per page";
+        EXPECT_LE(most, 1) << "no frame collects more than its share";
+        // an edit: the old index answers the search while the new one builds
+        ASSERT_TRUE(window->runOps(ta::Json::array({{{"op", "set"}, {"layer", "id:" + layer}, {"values", {{"size", 150}}}}}), "Change Size", &error)) << error;
+        Access::drawFrame(*window);
+        ASSERT_TRUE(timings().value("index_building", false)) << "a build after the edit";
+        EXPECT_GT(Access::servedHits(*window, "glow"), 0u) << "the stale index answers mid-build";
+        drain(frames, most);
+        EXPECT_GE(timings().value("index_frames", 0), 10);
+        EXPECT_LE(most, 1);
+        const std::vector<std::string> spread = Access::indexRows(*window);
+        // the same document in one pass
+        PropertyIndex full;
+        clearRecordedRows();
+        collectIndex(window->designer(), window, full, false);
+        std::vector<std::string> once;
+        for (size_t i = 0; i < full.size(); i++) once.push_back(full.entry(i).rowId + "|" + full.entry(i).label);
+        EXPECT_EQ(spread, once) << "the index built across frames is the one-pass index";
     });
 }
 

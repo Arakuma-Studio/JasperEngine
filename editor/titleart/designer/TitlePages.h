@@ -50,6 +50,17 @@ namespace jasperengine::editor::titledesigner {
     // the collect pass (D4): the selection's pages, each part, effect and mask of its layers, and
     // the Document page; with `everyLayer` every layer of the document (R26's "Search every layer")
     void collectIndex(TitleDesignerState& state, PropertyHost* host, PropertyIndex& index, bool everyLayer);
+    // the same pass as units of one page each, so the window builds a few per frame (R69): a
+    // layer page, a part's, an effect's, a mask's, the Document page, then the "+ Add" offers
+    struct CollectUnit {
+        enum class Kind : uint8_t { Layer, Part, Effect, Mask, Document, Offers };
+        Kind kind = Kind::Layer;
+        NodeRef node;
+    };
+    std::vector<CollectUnit> planCollect(const TitleDesignerState& state, bool everyLayer);
+    // collects one unit into `index` (a unit whose node is gone adds nothing); the caller keeps a
+    // CollectLayerLookup of the shown document alive around a batch of units
+    void collectUnit(TitleDesignerState& state, PropertyHost* host, PropertyIndex& index, const CollectUnit& unit);
     // the effects and generators the search offers as "+ Add" (every registry entry)
     void collectAddOffers(PropertyIndex& index);
 

@@ -23,6 +23,7 @@
 #include "titleart/designer/TitleDesignerPrefs.h"
 #include "titleart/designer/TitleDesignerState.h"
 #include "titleart/designer/TitleLetterGizmo.h"
+#include "titleart/designer/TitlePages.h"
 #include "titleart/designer/TitlePropertyIndex.h"
 #include "titleart/designer/TitleRows.h"
 #include "titleart/designer/TransientAssetResolver.h"
@@ -249,6 +250,30 @@ namespace jasperengine::editor {
         std::string indexSelectionKey;
         double indexDirtyAt = -1.0;
         double indexIdleSince = -1.0;       // the index stale and the document still since
+        // the index builds a few pages per frame (R69); the previous index serves meanwhile
+        static constexpr double INDEX_FRAME_BUDGET_MS = 2.0;
+        struct IndexBuild {
+            bool active = false;
+            std::vector<titledesigner::CollectUnit> units;
+            size_t next = 0;
+            uint64_t change = 0;
+            std::string selection;
+            titledesigner::PropertyIndex pending;
+            double ms = 0.0, frameMsMax = 0.0;
+            int frames = 0;
+            uint64_t generation = 0;
+        };
+        IndexBuild indexBuild;
+        int indexUnitsPerFrame = 1 << 30;   // tests cap it
+        int indexUnitsLastFrame = 0;
+        int indexFrames = 0;                // frames the last complete build spanned
+        double indexFrameMsMax = 0.0;       // its costliest frame
+        titledesigner::PropertyIndex mergedIndex;   // old + collected so far, while searching mid-build
+        uint64_t mergedKey = ~0ull;
+        // starts (urgent: now; else once the document settled for 300 ms) or continues the build
+        void stepIndexBuild(bool urgent);
+        // the index a search reads: the built one, or mid-build the new rows plus the old others
+        const titledesigner::PropertyIndex& searchIndex();
         std::string indexSelection() const;
         bool indexStale() const;
         std::vector<std::string> stableOrder;      // while a hit is edited the list keeps its order

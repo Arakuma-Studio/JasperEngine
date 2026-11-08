@@ -805,16 +805,13 @@ void jasperengine::editor::titledesigner::collectIndex(TitleDesignerState& state
     JE_PROFILE_SCOPE("TD collectIndex");
     index.clear();
     clearCollectAudit();
-    const ta::TitleArtDoc& doc = state.shown();
-    const CollectLayerLookup lookup(doc);
-    RowContext base;
-    base.mode = RowMode::Collect;
-    base.host = host;
-    base.state = &state;
-    base.sink = &index;
-    base.allOpen = true;
-    base.readOnly = !state.editable();
+    const CollectLayerLookup lookup(state.shown());
+    for (const CollectUnit& unit : planCollect(state, everyLayer)) collectUnit(state, host, index, unit);
+}
 
+std::vector<CollectUnit> jasperengine::editor::titledesigner::planCollect(const TitleDesignerState& state, bool everyLayer) {
+    std::vector<CollectUnit> units;
+    const ta::TitleArtDoc& doc = state.shown();
     std::vector<std::string> layers;
     if (everyLayer) {
         ta::forEachLayer(doc.root, [&](const ta::Json& l, const ta::Json*, int) {
@@ -824,55 +821,97 @@ void jasperengine::editor::titledesigner::collectIndex(TitleDesignerState& state
     } else {
         layers = state.selectedLayers();
     }
+    auto array = [](const ta::Json& object, const char* key) -> const ta::Json* {
+        auto it = object.find(key);
+        return it != object.end() && it->is_array() ? &*it : nullptr;
+    };
     for (const std::string& id : layers) {
         const ta::Json* layer = layerById(doc, id);
         if (!layer) continue;
-        const std::string name = str(*layer, "name");
-        {
-            RowContext ctx = base;
-            ctx.node = {NodeKind::Layer, id, {}, {}};
-            ctx.nodeLabel = name;
-            layerPage(ctx, {id});
-        }
+        units.push_back({CollectUnit::Kind::Layer, {NodeKind::Layer, id, {}, {}}});
         if (ta::layerTypeHasStyle(ta::layerTypeOf(*layer))) {
-            std::vector<std::string> parts = {"face"};
-            const ta::Json rims = layer->value("style", ta::Json::object()).value("rims", ta::Json::array());
-            for (size_t i = 0; i < rims.size(); i++) parts.push_back("rim:" + str(rims[i], "id"));
-            for (const std::string& part : parts) {
-                RowContext ctx = base;
-                ctx.node = {NodeKind::Part, id, part, {}};
-                ctx.nodeLabel = name;
-                ctx.sectionChain = {partLabel(*layer, part)};
-                partPage(ctx, id, {part});
+            units.push_back({CollectUnit::Kind::Part, {NodeKind::Part, id, "face", {}}});
+            auto style = layer->find("style");
+            if (style != layer->end() && style->is_object()) {
+                if (const ta::Json* rims = array(*style, "rims")) {
+                    for (const ta::Json& rim : *rims) units.push_back({CollectUnit::Kind::Part, {NodeKind::Part, id, "rim:" + str(rim, "id"), {}}});
+                }
             }
         }
-        auto effectsOf = [&](const ta::Json& list, const std::string& part) {
-            if (!list.is_array()) return;
-            for (const ta::Json& effect : list) {
-                RowContext ctx = base;
-                ctx.node = {NodeKind::Effect, id, part, str(effect, "id")};
-                ctx.nodeLabel = name;
-                const ta::EffectDef* def = ta::findEffect(str(effect, "type"));
-                if (!part.empty()) ctx.sectionChain.push_back(partLabel(*layer, part));
-                ctx.sectionChain.push_back(def ? def->label : str(effect, "type"));
-                effectPage(ctx, ctx.node);
+        if (const ta::Json* effects = array(*layer, "effects")) {
+            for (const ta::Json& effect : *effects) units.push_back({CollectUnit::Kind::Effect, {NodeKind::Effect, id, {}, str(effect, "id")}});
+        }
+        auto parts = layer->find("part_effects");
+        if (parts != layer->end() && parts->is_object()) {
+            for (auto it = parts->begin(); it != parts->end(); ++it) {
+                if (!it.value().is_array()) continue;
+                for (const ta::Json& effect : it.value()) units.push_back({CollectUnit::Kind::Effect, {NodeKind::Effect, id, it.key(), str(effect, "id")}});
             }
-        };
-        effectsOf(layer->value("effects", ta::Json::array()), std::string());
-        const ta::Json parts = layer->value("part_effects", ta::Json::object());
-        for (auto it = parts.begin(); it != parts.end(); ++it) effectsOf(it.value(), it.key());
-        const ta::Json masks = layer->value("masks", ta::Json::array());
-        for (const ta::Json& mask : masks) {
-            RowContext ctx = base;
-            ctx.node = {NodeKind::Mask, id, {}, str(mask, "id")};
-            ctx.nodeLabel = name;
-            ctx.sectionChain = {enumLabel(str(mask, "type")) + " Mask"};
-            maskPage(ctx, ctx.node);
+        }
+        if (const ta::Json* masks = array(*layer, "masks")) {
+            for (const ta::Json& mask : *masks) units.push_back({CollectUnit::Kind::Mask, {NodeKind::Mask, id, {}, str(mask, "id")}});
         }
     }
-    RowContext ctx = base;
-    ctx.node = {};
-    ctx.nodeLabel = "Document";
-    documentPage(ctx);
-    collectAddOffers(index);
+    units.push_back({CollectUnit::Kind::Document, {}});
+    units.push_back({CollectUnit::Kind::Offers, {}});
+    return units;
+}
+
+void jasperengine::editor::titledesigner::collectUnit(TitleDesignerState& state, PropertyHost* host, PropertyIndex& index, const CollectUnit& unit) {
+    JE_PROFILE_SCOPE("TD collectUnit");
+    const ta::TitleArtDoc& doc = state.shown();
+    RowContext ctx;
+    ctx.mode = RowMode::Collect;
+    ctx.host = host;
+    ctx.state = &state;
+    ctx.sink = &index;
+    ctx.allOpen = true;
+    ctx.readOnly = !state.editable();
+    ctx.node = unit.node;
+    if (unit.kind == CollectUnit::Kind::Document) {
+        ctx.node = {};
+        ctx.nodeLabel = "Document";
+        documentPage(ctx);
+        return;
+    }
+    if (unit.kind == CollectUnit::Kind::Offers) {
+        collectAddOffers(index);
+        return;
+    }
+    const ta::Json* layer = layerById(doc, unit.node.layer);
+    if (!layer) return;
+    ctx.nodeLabel = str(*layer, "name");
+    switch (unit.kind) {
+        case CollectUnit::Kind::Layer:
+            layerPage(ctx, {unit.node.layer});
+            break;
+        case CollectUnit::Kind::Part:
+            ctx.sectionChain = {partLabel(*layer, unit.node.part)};
+            partPage(ctx, unit.node.layer, {unit.node.part});
+            break;
+        case CollectUnit::Kind::Effect: {
+            const ta::Json* effect = effectOf(*layer, unit.node);
+            if (!effect) return;
+            const ta::EffectDef* def = ta::findEffect(str(*effect, "type"));
+            if (!unit.node.part.empty()) ctx.sectionChain.push_back(partLabel(*layer, unit.node.part));
+            ctx.sectionChain.push_back(def ? def->label : str(*effect, "type"));
+            effectPage(ctx, ctx.node);
+            break;
+        }
+        case CollectUnit::Kind::Mask: {
+            const ta::Json* mask = nullptr;
+            auto masks = layer->find("masks");
+            if (masks != layer->end() && masks->is_array()) {
+                for (const ta::Json& m : *masks) {
+                    if (str(m, "id") == unit.node.item) mask = &m;
+                }
+            }
+            if (!mask) return;
+            ctx.sectionChain = {enumLabel(str(*mask, "type")) + " Mask"};
+            maskPage(ctx, ctx.node);
+            break;
+        }
+        default:
+            break;
+    }
 }

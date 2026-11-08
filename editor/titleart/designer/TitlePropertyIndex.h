@@ -120,6 +120,8 @@ namespace jasperengine::editor::titledesigner {
         };
         Recorded record(size_t first, size_t last) const;
         void replay(const Recorded& recorded);
+        // the "+ Add" offers of another index (a merged view while a build runs)
+        void copyOffers(const PropertyIndex& from);
 
     private:
 

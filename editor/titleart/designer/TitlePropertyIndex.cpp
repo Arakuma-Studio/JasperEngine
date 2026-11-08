@@ -221,6 +221,11 @@ void PropertyIndex::replay(const Recorded& recorded) {
     folded.insert(folded.end(), recorded.folded.begin(), recorded.folded.end());
 }
 
+void PropertyIndex::copyOffers(const PropertyIndex& from) {
+    offers = from.offers;
+    offerLabels = from.offerLabels;
+}
+
 void PropertyIndex::addOffer(AddOffer offer) {
     FoldedLabels labels;
     addFolded(labels, offer.label);
