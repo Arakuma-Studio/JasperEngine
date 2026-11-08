@@ -33,6 +33,7 @@
 #include "titleart/render/TitleRenderJob.h"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -42,6 +43,7 @@ namespace jasperengine::titleart {
 
     class AssetResolver;
     class TitleContentProvider;
+    struct TitleGpuStats;
 
     // one glyph of a text layer rendered alone in a cell padded by the style's reach (S81's
     // Glyph Atlas, S85's cells): its back part (rims, glows) or front part (the face)
@@ -60,6 +62,8 @@ namespace jasperengine::titleart {
         Linear              // the accumulator itself: linear premultiplied (S81's live compose)
     };
 
+    struct TitleMesh;
+
     struct RenderRequest {
         std::shared_ptr<const TitleArtDoc> doc;     // immutable snapshot (what-if copies are snapshots too)
         float pxScale = 1.0f;                       // output pixels per canvas pixel
@@ -75,6 +79,14 @@ namespace jasperengine::titleart {
         // EffectContext::tier, GeneratorContext::tier); S81 sets it per device, tests set it.
         // Named apart from S86's `tier` above
         FxTier fxTier = FxTier::Desktop;
+        int debugView3D = 0;                        // S86 render_title debug_view (Title3DDebugView): 0 none, 1 normals,
+                                                    // 2 environment, 3 ao, 4 glint, 5 ink, 6 wireframe
+        // S86 R38: cooked meshes (.titlemesh) by 3D layer id; a layer with one at the request's tier
+        // draws it and skips the mesher (a player built without it)
+        std::map<std::string, std::shared_ptr<const TitleMesh>> cookedMeshes3D;
+        // S86 R26: cooked environment cubes (KTX2) by environment preset id; a 3D layer lights with
+        // the one of its environment instead of building it (a player has no builder's sources)
+        std::map<std::string, std::shared_ptr<const std::vector<uint8_t>>> cookedEnvironments3D;
         bool includeGuides = false;                 // the editor's views draw guides; outputs never do
         // the output pass (§6.9): 8 writes straight-alpha sRGB with dither into RGBA8; 16 writes
         // straight sRGB-encoded half floats into RGBA16F (16-bit bakes, read back with 8 bytes
@@ -122,9 +134,14 @@ namespace jasperengine::titleart {
         void setContentProvider(std::shared_ptr<TitleContentProvider> provider);
         // tests: the next job sees a lost device (R19)
         void simulateDeviceLossForTesting();
+        // tests: the S86 3D renderer of this renderer's services (a Title3DRenderer), null until a
+        // 3D layer made it
+        std::shared_ptr<void> title3DRendererForTesting() const;
         // the cache's entries and bytes, the pool's targets (tests, the editor's stats)
         size_t cacheEntries() const;
         const TitleTargetPoolStats& poolStats() const;
+        // the GPU passes' counters (the longest pass: a new variant's driver compile)
+        const TitleGpuStats& gpuStats() const;
 
     private:
         struct Impl;

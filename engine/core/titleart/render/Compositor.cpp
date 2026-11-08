@@ -214,13 +214,20 @@ void TitlePlanner::pass(const std::string& label, const std::string& layerId, in
     step.splittable = splittable && !clear;
     step.shader = titleRenderProgramKey((uint32_t)program);
     TitleRenderServices* services = &svc;
-    step.ready = [services, program]() {
+    // a pass whose first draw went to a later frame (TitleFirstDraws) runs again then
+    auto deferred = std::make_shared<bool>(false);
+    step.ready = [services, program, deferred]() {
         std::string error;
         // a program that failed to build is "ready": its run reports the error
-        return services->gpu.ensureProgram(program, &error) || !error.empty();
+        if (!services->gpu.ensureProgram(program, &error) && error.empty()) return false;
+        if (*deferred) {
+            if (!TitleFirstDraws::available()) return false;
+            *deferred = false;
+        }
+        return true;
     };
     std::shared_ptr<TitleJobState> state = st;
-    step.run = [state, slot, program, fill, blend, clear](const TitleRectI& rows, std::string& error) {
+    step.run = [state, slot, program, fill, blend, clear, deferred](const TitleRectI& rows, std::string& error) {
         if (!state->alive(error)) return false;
         TitleGpuPass p;
         p.program = program;
@@ -230,7 +237,9 @@ void TitlePlanner::pass(const std::string& label, const std::string& layerId, in
         p.blend = blend;
         p.clear = clear;
         if (fill && !fill(*state, p, error)) return false;
-        return state->services.gpu.run(p, error);
+        const bool ok = state->services.gpu.run(p, error);
+        *deferred = ok && state->services.gpu.lastRunDeferred();
+        return ok;
     };
     steps.add(std::move(step));
 }
@@ -281,13 +290,16 @@ void TitlePlanner::kernel(const std::string& label, const std::string& layerId, 
     auto compiling = std::make_shared<std::vector<uint32_t>>();
     TitleRenderServices* services = &svc;
     step.ready = [services, compiling]() {
-        bool ready = true;
+        if (compiling->empty()) return true;
         for (uint32_t program : *compiling) {
             std::string error;
-            ready = (services->gpu.ensureProgram(program, &error) || !error.empty()) && ready;
+            if (!services->gpu.ensureProgram(program, &error) && error.empty()) return false;
         }
-        if (ready) compiling->clear();
-        return ready;
+        // a pass whose first draw went to a later frame (TitleFirstDraws)
+        if (!TitleFirstDraws::available()) return false;
+        // every program can draw now: the step runs again on the next call (the passes it skipped)
+        compiling->clear();
+        return false;
     };
     std::shared_ptr<TitleJobState> state = st;
     step.run = [state, run, compiling](const TitleRectI&, std::string& error) {
@@ -481,6 +493,9 @@ TitleRectI TitlePlanner::contentRect(const DrawNode& node) {
         const TitleFrame whole = TitleFrame::canvas(document->canvasWidth(), document->canvasHeight(), scale);
         return intersectRect(whole.toFrameRect(b), outRegion);
     }
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+    if (layerTypeHasStyle(node.type) && is3D(node)) return title3DRect(node);
+#endif
     if (layerTypeHasStyle(node.type)) return title2DRect(node);
     return {};
 }
@@ -742,6 +757,14 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
         both(inkOnly ? 1 : 2);
         // generators draw their mobile reductions on the mobile tier (S83 D12)
         if (req.fxTier != FxTier::Desktop) both(fnv1a64("fx tier mobile"));
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+        // a 3D layer's pixels depend on the tier, the 3D path's test flags and the debug view too (S86)
+        if (is3D(node)) {
+            both((uint64_t)(req.tier + 1));
+            both((uint64_t)req.testFlags + 1);
+            both((uint64_t)req.debugView3D + 1);
+        }
+#endif
         // the ancestors' rotation, scale and flips shape the pixels
         const geometry::Affine& m = place.toDocument;
         const double linear[4] = {m.a, m.b, m.c, m.d};
@@ -848,8 +871,16 @@ TitlePlanner::Content TitlePlanner::unitContent(const DrawNode& node, bool wantM
         withFx.push_back(anyEnabled(partEffects(layer, part)));
         anyFx = anyFx || withFx.back();
     }
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+    const bool threeD = is3D(node);
+    auto content = [&](const std::vector<std::string>& run, const TitleRectI* fixed) {
+        return threeD ? title3D(node, run, fixed) : title2D(node, run, fixed);
+    };
+#else
+    auto content = [&](const std::vector<std::string>& run, const TitleRectI* fixed) { return title2D(node, run, fixed); };
+#endif
     if (!anyFx) {
-        out.px = title2D(node, {});
+        out.px = content({}, nullptr);
         out.mask = out.px;
         return out;
     }
@@ -864,7 +895,7 @@ TitlePlanner::Content TitlePlanner::unitContent(const DrawNode& node, bool wantM
             while (j < parts.size() && !withFx[j]) j++;
         }
         const std::vector<std::string> run(parts.begin() + (long)i, parts.begin() + (long)j);
-        TitlePx rt = title2D(node, run, &rect);
+        TitlePx rt = content(run, &rect);
         if (mask.valid()) blendOnto(mask, rt, 1.0f, (int)TitleBlend::Normal, nullptr, node.layerId);
         Effects post{rt, {}};
         if (alone) post = applyEffects(node.layerId + "#" + parts[i], partEffects(layer, parts[i]), rt, false, {}, wantInk, &layer);

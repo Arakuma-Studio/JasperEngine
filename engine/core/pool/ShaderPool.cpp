@@ -196,6 +196,26 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::TITLE_ART;
         return true;
     }
+    if (typeToken == "titlelit") {
+        shaderType = ShaderType::TITLE_LIT;
+        return true;
+    }
+    if (typeToken == "title3dpost") {
+        shaderType = ShaderType::TITLE_3D_POST;
+        return true;
+    }
+    if (typeToken == "titleenv") {
+        shaderType = ShaderType::TITLE_ENV;
+        return true;
+    }
+    if (typeToken == "titleglintsprite") {
+        shaderType = ShaderType::TITLE_GLINT_SPRITE;
+        return true;
+    }
+    if (typeToken == "titleglint") {
+        shaderType = ShaderType::TITLE_GLINT;
+        return true;
+    }
 
     return false;
 }
@@ -619,6 +639,11 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::HTMLUI_PRIM: return lowerCase ? "htmluiprim" : "HTML UI Primitives";
         case ShaderType::LIGHTING_PASS: return lowerCase ? "lightingpass" : "Lighting Pass";
         case ShaderType::TITLE_ART: return lowerCase ? "titleart" : "Title Art";
+        case ShaderType::TITLE_LIT: return lowerCase ? "titlelit" : "Title Lit";
+        case ShaderType::TITLE_3D_POST: return lowerCase ? "title3dpost" : "Title 3D Post";
+        case ShaderType::TITLE_ENV: return lowerCase ? "titleenv" : "Title Environment";
+        case ShaderType::TITLE_GLINT_SPRITE: return lowerCase ? "titleglintsprite" : "Title Glint Sprite";
+        case ShaderType::TITLE_GLINT: return lowerCase ? "titleglint" : "Title Glint";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -730,6 +755,13 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         // the program number (bits 0-6), the RGBA8 encodings Sfx, Dfx, S83's effect programs Efx,
         // the live kernels Liv and S83's generator programs Gen (titleart/render/TitlePasses.h)
         case ShaderType::TITLE_ART: return 12;
+        // the TL_* bits (titleart/three_d/TitleTierFeatures.h TitleLitBits)
+        case ShaderType::TITLE_LIT: return 25;
+        // the pass number (bits 0-3)
+        case ShaderType::TITLE_3D_POST: return 4;
+        case ShaderType::TITLE_ENV: return 4;
+        case ShaderType::TITLE_GLINT_SPRITE: return 0;
+        case ShaderType::TITLE_GLINT: return 4;
         default:                 return 0;
     }
 }
@@ -979,6 +1011,17 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 0: return shortName ? "Lok" : "Look";
             case 1: return shortName ? "Mfl" : "Manual Filtering";
         }
+    } else if (shaderType == ShaderType::TITLE_LIT) {
+        static const char* const SHORT[25] = {"Rmp", "Ccl", "Irs", "Gem", "Gbh", "Dsp", "Gld", "Flk", "Pat", "Sf0", "Sf1", "Elk", "Btx",
+                                              "Wuv", "Ems", "Trn", "Rig", "Lgt", "Hdc", "Ou0", "Ou1", "Mtc", "Saa", "Sfl", "Fim"};
+        static const char* const LONG[25] = {"Ramp", "Clearcoat", "Iridescence", "Gem", "Gem Behind", "Dispersion", "Glass Depth",
+                                             "Flakes", "Pattern", "Surface Bit 0", "Surface Bit 1", "Env Lock", "Base Texture", "Wrap UV",
+                                             "Emissive", "Transparent", "Rigs", "Lights", "HDR Compress", "Output Bit 0", "Output Bit 1",
+                                             "Matcap", "Specular AA", "Surface Lite", "Face Image"};
+        if (bit >= 0 && bit < 25) return shortName ? SHORT[bit] : LONG[bit];
+    } else if (shaderType == ShaderType::TITLE_3D_POST || shaderType == ShaderType::TITLE_ENV || shaderType == ShaderType::TITLE_GLINT) {
+        // the pass number (title3d_post.frag TP_PROGRAM, title_env.frag TE_PROGRAM, glint3d.frag TG_PROGRAM)
+        if (bit < 4) return (shortName ? "Pb" : "Pass Bit ") + std::to_string(bit);
     } else if (shaderType == ShaderType::TITLE_ART) {
         // titleart.frag: bits 0-6 hold the TA_PROGRAM number, then the RGBA8 fallback encodings
         if (bit < 7) return (shortName ? "Pb" : "Program Bit ") + std::to_string(bit);

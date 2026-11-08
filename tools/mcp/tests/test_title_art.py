@@ -183,8 +183,6 @@ async def test_reserved_and_options(ed: Editor):
     await create(ed, path)
     msg = await ed.check_error("edit_title", path=path, ops=[{"op": "apply_look", "look": "gold"}])
     ed.check_in("S84", msg, "apply_look names S84")
-    msg = await ed.check_error("edit_title", path=path, ops=[{"op": "add_band", "layer": "Title"}])
-    ed.check_in("S86", msg, "add_band names S86")
     msg = await ed.check_error("render_title", path=path, options={"x": 1})
     ed.check_in("bad_option", msg, "an unknown option key")
     ed.check_in("languages", msg, "lists the keys later features add")

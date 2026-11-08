@@ -137,6 +137,9 @@ namespace jasperengine::titleart {
         std::vector<TitleCurvePoint> points;
         // the curve at x (clamped to 0..1)
         double evaluate(double x) const;
+        // its slope at x: the segment's on the left of a key when `fromLeft` (a corner key has
+        // a slope on each side), else the one on the right (S86's custom bevel normals)
+        double derivative(double x, bool fromLeft = false) const;
         // `count` samples from x = 0 to 1 (the 256-entry LUTs of the renderer)
         std::vector<float> sample(int count) const;
     };

@@ -1,0 +1,49 @@
+{
+  "environments": {
+    "city": {
+      "bytes": 6042302,
+      "file": "potsdamer_platz_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s86",
+      "sha256": "bd71819f767a03f1342aa4c1abb56dbed7bd53c6b9ce414184366267dc9d8320",
+      "slug": "potsdamer_platz",
+      "title": "Potsdamer Platz",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/potsdamer_platz_2k.hdr"
+    },
+    "highway": {
+      "bytes": 6837932,
+      "file": "autumn_road_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s86",
+      "sha256": "30ed60b6866cbaafd9e0ec53acff75712f73a7eeae625e4c319991f5cc1e985f",
+      "slug": "autumn_road",
+      "title": "Autumn Road",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/autumn_road_2k.hdr"
+    },
+    "sky": {
+      "bytes": 5594896,
+      "file": "derelict_highway_midday_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s86",
+      "sha256": "0ee162628dc421c863d390ff483ce09747104f3461eed2c6d69b2b5e2da900b4",
+      "slug": "derelict_highway_midday",
+      "title": "Derelict Highway Midday",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/derelict_highway_midday_2k.hdr"
+    },
+    "softbox": {
+      "bytes": 6312947,
+      "file": "studio_small_09_2k.hdr",
+      "license": "CC0-1.0 (Poly Haven, https://polyhaven.com/license)",
+      "resolution": "2k",
+      "set": "s86",
+      "sha256": "36724313c0fc66dab126ff90f081b85a0b1ef47be65eda1417bd20b033f0573f",
+      "slug": "studio_small_09",
+      "title": "Studio Small 09",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/studio_small_09_2k.hdr"
+    }
+  },
+  "version": 1
+}

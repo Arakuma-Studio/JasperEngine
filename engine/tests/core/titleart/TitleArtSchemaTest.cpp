@@ -249,19 +249,25 @@ TEST_F(TitleArtSchemaTest, SparseKind) {
 
 TEST_F(TitleArtSchemaTest, ReservedNamesNameTheirOwner) {
     const TitleArtSchema& schema = TitleArtSchema::get();
+    // S86's names are reserved until its 3D module registers them
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+    const std::string S86_OWNER;
+#else
+    const std::string S86_OWNER = "S86";
+#endif
     EXPECT_EQ(schema.reservedOwner("document", "animation"), "S85");
     // S81 registered `runtime`: the member names its owner, the reservation is gone
     EXPECT_EQ(schema.reservedOwner("document", "runtime"), "");
     const SchemaMember* runtime = schema.member(*schema.kind("document"), "runtime");
     ASSERT_NE(runtime, nullptr);
     EXPECT_EQ(runtime->owner, "S81");
-    EXPECT_EQ(schema.reservedOwner("document", "scene_3d"), "S86");
+    EXPECT_EQ(schema.reservedOwner("document", "scene_3d"), S86_OWNER);
     EXPECT_EQ(schema.reservedOwner("document", "color_schemes"), "S84");
     EXPECT_EQ(schema.reservedOwner("document", "languages"), "S87");
-    EXPECT_EQ(schema.reservedOwner("transform", "z"), "S86");
+    EXPECT_EQ(schema.reservedOwner("transform", "z"), S86_OWNER);
     EXPECT_EQ(schema.reservedOwner("layer.text", "translations"), "S87");
     EXPECT_EQ(schema.reservedOwner("layer.text", "tint"), "S85") << "a variant has its base's reservations";
-    EXPECT_EQ(schema.reservedOwner("char_adjust", "rig"), "S86");
+    EXPECT_EQ(schema.reservedOwner("char_adjust", "rig"), S86_OWNER);
     EXPECT_EQ(schema.reservedOwner("document", "variants"), "") << "S87 released `variants`";
 }
 

@@ -119,6 +119,7 @@ void TitleRenderServices::reset() {
     cache.clear();
     pool.clear();
     gpu.release();
+    title3D.reset();
     generation++;
 }
 

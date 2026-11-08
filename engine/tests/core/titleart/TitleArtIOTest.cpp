@@ -83,8 +83,12 @@ TEST_F(TitleArtIOTest, EveryMemberIsWrittenWithItsDefault) {
     EXPECT_EQ(main["alpha_bleed"], true);
     std::vector<std::string> order;
     for (auto it = root.begin(); it != root.end(); ++it) order.push_back(it.key());
-    EXPECT_EQ(order, (std::vector<std::string>{"format", "version", "guid", "name", "canvas", "global_light", "seed",
-                                               "material_links", "layers", "exposed", "outputs", "runtime"}));
+    std::vector<std::string> expected = {"format", "version", "guid", "name", "canvas", "global_light", "seed",
+                                         "material_links", "layers", "exposed", "outputs", "runtime"};
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+    expected.push_back("scene_3d");     // S86's member (null in a 2D document)
+#endif
+    EXPECT_EQ(order, expected);
 }
 
 TEST_F(TitleArtIOTest, EveryLayerTypeTakesItsDefaults) {
@@ -352,8 +356,14 @@ TEST_F(TitleArtIOTest, FieldShorthandsExpand) {
     const ExpandedFieldPath noRim = expand("rim#5.width");
     EXPECT_FALSE(noRim.ok);
     EXPECT_NE(std::find(noRim.validHere.begin(), noRim.validHere.end(), "rim#1"), noRim.validHere.end());
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+    // S86 registers style_3d: a band that does not exist is a bad path, 3d. expands
+    EXPECT_EQ(expand("band#0.depth").code, "bad_path");
+    EXPECT_EQ(expand("3d.depth").path, "style_3d.depth");
+#else
     EXPECT_EQ(expand("band#0.depth").code, "not_available");
     EXPECT_EQ(expand("3d.extrude").code, "not_available");
+#endif
 }
 
 TEST_F(TitleArtIOTest, FieldWritesValidateAndClamp) {

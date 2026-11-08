@@ -1339,3 +1339,143 @@ rest of S82 lands in 6B.
    `engine/tests/core/golden/titleart/3d/`, Pachislop references beside S80's.
 7. **Reconciled: no product names.** The fixture look is "Gold 3D" (the structure of S84's `metal/gold-3d`) and the goal says "a lit
    solid" (third-party product names are S84's denied terms).
+8. **Implementation (wave 6B, `ta/s86-3d`): the sub-options are declared in S86's own CMake file.** S81 owns
+   `JASPERENGINE_TITLE_ART_3D` / `_MESHER` and their `ModuleUsage` wiring, but its stream is not in this tree:
+   `engine/core/titleart/three_d/Title3DSources.cmake` declares both (ON; `option()` keeps the first declaration, so S81's
+   later one merges without a conflict), globs `three_d/*.cpp` (3D) and `three_d/mesher/*.cpp` (mesher, with earcut) and
+   adds the two compile definitions. The core tests of `titleart/three_d/` build only with both ON.
+9. **Implementation: the document's 3D members are nullable.** `style_3d` and `scene_3d` default to `null` (not to their
+   objects), so a 2D document writes `null` for them and re-saves byte-identically (R45); a 3D layer whose `style_3d` is null
+   renders R2's derivation (R64), and `set_dimension 3d` writes it. A layer's `lighting` and a material's `environment` are
+   S80 sparse kinds (only the values set are written). Light positions are a `Json` member checked as `[x, y, z]` (the schema
+   has no Vec3). S80's normalize keeps `null` entries of a nullable ObjectArray (for `bands_3d`).
+10. **Implementation: interface additions to S80.** `TitleCurve::derivative(x, fromLeft)` (custom bevel normals, inflate
+    slopes); `GlyphOutline::charIndex` and `pivot` (the CharAdjust key and em-cell centre of each glyph);
+    `TitleContentProvider::outlines` (a virtual with a default, the module's provider implements it);
+    `TitleRenderServices::title3D` (the 3D renderer, made by the first 3D layer planned, dropped on device loss);
+    `TitlePlanner::is3D / title3D / title3DRect / title3DParts / title3DAsset` (one dispatch line each in `contentRect`,
+    `unitContent` and `titleParts`); `TitleOpContext::undoName` (a registered op names its own undo step).
+11. **Implementation: the vertex ids.** `a_ids.w` holds the material **slot** (12 bits) and its role (4 bits) instead of a
+    material index: the slot table (a uniform) maps slots to the layer's ≤ 16 materials, so a material edit, a preset or a
+    link never touches a vertex buffer (R14). The vertex stage reads each part's rig matrix, shear flag and z range from a
+    per-part uniform array (≤ 64 parts) instead of the span table, so it binds no texture.
+12. **Implementation: the mesh is built at planning, on the planner's thread.** The 3D layer's region is the projected bounds of
+    its mesh, which the planner needs before any step; the mesher (shapes, meshes and inflate fields cached, process-wide)
+    runs there. S81's scheduler units (R14's per-island jobs, the single-thread web budget) and the double-buffered previous
+    mesh are S81's to wire when its scheduler lands; the mesher itself is pure and thread-safe for that.
+13. **Implementation: environments are built in the engine's renderer**, not by an editor-only builder: `Title3DRenderer`
+    evaluates a procedural preset per cube texel (`title_env.frag`, every level box-filtered on its own 4 × 4 grid), or maps
+    a Poly Haven panorama onto the top level and box-reduces it level by level (the softbox preset adds its key softbox), then
+    GGX-prefilters into levels down to 8 px. HDRIs come through `setTitleHdriLoader`: the editor reads its bundled files
+    (`editor/resources/titleart/hdri/`, fetched by `tools/titleart/fetch_hdris.py`, staged beside the editor). The preset
+    scenes were transcribed by hand from `environment.ts` into a C++ table (`TitleEnvironment.cpp`, also the CPU twin of
+    the scene evaluation); there is no `port_environments.py` and no per-preset JSON. Poly Haven titles the third photo
+    "Derelict Highway Midday" (no parentheses). Not in this branch: custom `.hdr`/`.exr` project assets (they render the
+    studio with `environment_missing`). The cook to KTX2 cubes and their runtime loading are deviation 26.
+14. **Implementation: the roughness-to-level map below r = 1/6.** `level = 6 r + log2(face / 512)` holds from r = 1/6 up;
+    below it the level runs linearly from 0 (the face's own top level) so the extra top levels of 1024 and 2048 faces sharpen
+    near-mirrors as the text says (the formula alone would never read level 0).
+15. **Implementation: no culling, no `mirrored`.** The main pass depth-tests closed solids without face culling and turns each
+    normal toward the viewer, which gives the same image for flipped (negative-determinant) layers and the GL Y flip without
+    reversed winding; `PipelineState::mirrored` (R44) is therefore not added.
+16. **Implementation: what this branch does not implement** (each is listed in the final report): the 3D Designer rows,
+    pickers and gizmo target (R50-R58: S82's panel hooks and `Gizmo3DTarget` are not in this tree), Lua (R63: S81's
+    component is not in this tree), the exporter's calls (S81's export scan decides which titles ship cooked meshes and
+    which environments ship cubes: `cookTitleMeshes` and `cookTitleEnvironment` are what it calls), the `title3d-fixed`
+    smoke case and the Compile builds with the sub-options OFF (S81), custom `.hdr`/`.exr` project environments, and the
+    device runs (AC23: no phone and no KVM on this host). The cap seam count of AC12 is not measured (the rebuild is in).
+17. **Implementation: `fit_to_tier` applies the tier's reductions** (curve segments, bevel segments, bands past the tier's solid
+    count) without measuring the mesh; `3d_tier_budget` measures it per Realtime tier and offers `fit_to_tier` as the fix.
+18. **Implementation: inflate slopes are analytic.** The smooth inflate normals take the profile curve's derivative instead of
+    a 1e-3 finite difference (R11 "exactly" otherwise holds).
+19. **Implementation: caps are wound as one surface.** Each cap's earcut triangulation takes one winding from its total
+    signed area instead of rewinding triangle by triangle, so a sliver a clamped ring folds keeps its neighbours' orientation
+    and the solid stays a closed, consistently oriented 2-manifold. AC3's red control (caps on the outline) therefore shows
+    as triangles facing away from their normals rather than as open edges.
+20. **Measured: vertices per triangle.** AC8's "vertices ≤ 0.65 × triangles" does not hold with faceted bevel and band
+    profiles: each facet has its own profile normal, so its rings' vertices are split per facet (BIG BONUS, Gold 3D with a
+    chamfer ring, a step ring and a plate: 21,216 triangles, 26,381 vertices, 1.24 per triangle against a triangle soup's 3).
+    The test asserts ≤ 1.5; sharing would need averaged normals across facets, which would soften the bevels' highlights.
+21. **Implementation: the glint is S86's** (`three_d/Glint3D`, `ShaderType::TITLE_GLINT`, `titleart/glint3d.frag`): S83 owns
+    `Glint3D` in the text, but its streams do not carry it, so this branch ports Pachislop's `glint.ts` whole: the full
+    chain (Bake, High), the mobile reduction (Medium: half resolution, two rays, no star budget) and the sprite glints
+    (Low: the bright pass, its 1D blurs and the point detector on the stars' mip, then one instanced draw of a star per
+    local maximum, `ShaderType::TITLE_GLINT_SPRITE`, no readback). It reads S86's compressed light (decoded, the MSAA
+    shoulder expanded, in its bright pass). S83 may take it over at integration; its interface is `Glint3D.h`.
+22. **Implementation: environment builds are spread over frames.** The 21 s main-thread stalls of MCP 3D renders were the
+    builder's draws (a 1024 cube with 128-sample GGX levels rasterised by llvmpipe in one call; hang reports from an
+    isolated editor), not shader compiles. `Title3DRenderer::ready()` runs the build as 128 px tile passes, a share a call
+    (a texel-sample budget that doubles while calls stay under 4 ms and halves past 16 ms), and the job waits on it.
+    `TITLE_ART_TEST_ENV_ONE_SHOT` is the red control. The cube cache never evicts a cube the render itself needs: a
+    layer with more environments than it keeps built them round forever (`MoreEnvironmentsThanTheCacheKeepsBuildOnce`).
+23. **Implementation: first draws of Title Art programs go one a frame (`TitleFirstDraws`, `TitleGpu.h`).** The 2D stalls
+    (4-5 s each) were llvmpipe's LLVM JIT inside the first draw of a TITLE_ART program on the render thread (hang report
+    stacks: `TitleGpu::run` -> `SokolObject::draw` -> `llvm::MCJIT`), not the shader build (async through S32: no builder
+    or create call over 5 ms with `JASPER_SHADER_TIMING`). S32 moves that compile to a worker context on hardware GL but
+    not on a software rasteriser (S32 deviation 6), and Title Art passes use immediate pipelines (S32 §6.4), so it cannot
+    leave the render thread here. Title Art therefore lets one new (program, state) draw a frame: a pass or kernel whose
+    first draw is deferred runs again on a later frame (S80's step re-run, also closing a race where a program finished
+    compiling between a kernel's run and its readiness check); a 3D layer's programs go as one group. A frame ends at a
+    main-loop heartbeat or a commit: the editor commits only when a view redraws, and with commits alone an MCP render
+    waited forever ("rendering main"; `TitleFirstDraws.AHeartbeatEndsTheFrame`). This bounds a frame
+    to one driver compile (milliseconds on a GPU; `TitleFirstDrawGpu.NewProgramsDrawOneAFrame` times it: the longest frame
+    is the slowest pass and under 1 s more). On llvmpipe that does not bring the stall under the 3 s hang threshold:
+    S80's `ELEMENT` program alone compiles for 4.8-5.3 s here (its first draw, or a later draw with other textures,
+    which llvmpipe compiles as another variant), so the longest frame of that render was 5.8 s bounded and 5.5 s
+    unbounded. The remaining cause is that one program's size; splitting it into smaller variants is S80's shader, left
+    to its stream. A 3D layer's group is one frame of several compiles (MCP renders here still log 5-10 s stalls). A
+    shader build never runs on the main thread (S32).
+24. **Implementation: render_title's debug views** are `RenderRequest::debugView3D` (`Title3DDebugView`): normals and
+    environment are Title Lit outputs (`TL_OUTPUT` 1, 2); ao is the SAO result (computed with the layer's AO values even
+    when AO is off); glint is the glint light tone mapped alone (the full chain when the layer has none); ink is the render
+    without the glint; wireframe draws the mesh's unique edges (coloured by their normals) over the solids' depth.
+25. **Implementation: cooked meshes.** `RenderRequest::cookedMeshes3D` (by layer id) hands a player's `.titlemesh` meshes to
+    the renderer, which draws a cooked mesh of the request's tier and skips the mesher (`TITLE_ART_TEST_NO_MESHER` stands
+    for a build without it); the editor's `cookTitleMeshes` writes them per tier. S81's exporter wiring is open.
+26. **Implementation: cooked environments.** `buildTitleEnvironmentCpu` is the builder's CPU twin (the procedural scene or
+    the panorama, every level, the GGX prefilter as `title_env.frag`); the editor's `cookTitleEnvironment` encodes it
+    through the texture cook's HDR row (BC6H desktop, RGB9E5 mobile and android_etc2, UASTC HDR web) into a KTX2 cube
+    stamped `JE.logical = title_environment`, `JE.titleart.environment / .face / .builder`, cached in memory;
+    `RenderRequest::cookedEnvironments3D` (by preset id) hands a player's cubes to the renderer, which uploads them
+    (`createTextureLevels`, the device's format or its fallback) instead of building. The cube is linear radiance (not
+    the display encoding of colour textures).
+27. **Implementation: patterns and pictures on 3D faces.** `TL_PATTERN` reads S80's `patterns.glsl` in layer space (marks,
+    colour 2, shade, relief by finite differences; a custom kind's image per material); `TL_FACE_IMAGE` (property bit 24,
+    so `TITLE_LIT` has 25 bits) projects an Image or artwork Vector layer's picture: the face texture premultiplied, the
+    edge texture of nearest inside colours (Felzenszwalb-Huttenlocher), made on a job (`TitlePicture3D`). Caps rebuild
+    their layer position from the view ray (unrigged parts).
+28. **Implementation: the parity goldens are a core GPU test** (`Title3DParityGpu.PachislopLooks`), not
+    `test_title_art_3d_parity.py`: S84's look converter is not in this tree, so the 40 looks are transcribed as JSON
+    (`titleart/fixtures/pachislop3d/`, by hand from Pachislop's look helpers, no code run) and `title3DFromPachislop`
+    (R67) converts their 3D part; their 2D effects map onto S80's (keyline -> outline, outerGlow -> outer_glow) and
+    S83's (deepGlow) are left out. **AC21 is not met: none of the 40 looks passes its per-pixel metric** (re-measured
+    2026-11-08 after the alignment search and the iridescence fix: means 4.1-36.9/255, 4-63 % of pixels over 24/255; 20
+    looks under 10/255; matte-glow, carbon-orange, titanium and sometsuke closest, at 4-5/255 and 5-10 %).
+    - The 1-2 px outline offset was a comparison artefact: centring trimmed boxes of different sizes (a glint, a glow or
+      a missing deepGlow reaching further on one side) moves the letters; every look whose box matches the reference's
+      aligns best at 0, 0. The test therefore takes the best shift within +-2 px (as the generators stream did) and
+      reports it; the means fell from 4-54/255 to 4-37/255.
+    - The residue after alignment: sub-pixel antialiasing of the outlines (5-20 % of the pixels of a 131 x 50 px
+      render on looks that match by eye); **S83's deepGlow on 35 looks (re-measure them at integration)**; glint
+      streaks starting at other highlights; crumple, flake and liquid cells and gem refraction; Pachislop's taller,
+      wider inflate field; on the metal faces lit by the softbox the dark reflection band sits higher than the
+      reference's (seen on gold, box-plate and red; gold-plate, popout, fire and rose-chocolate share the setup; the
+      ramp's direction matches, rainbow-glass-gold is red on top in both; the cause is not found). The test lists each look's cause and fails when a look
+      starts passing; its Neutral-for-Punch red control fails all 40.
+    - **Tone guard:** the mean luminance of the pixels both images cover must be within 16/255 of the reference's.
+      Ranking the 40 looks and viewing the worst sheets found one broken path, the iridescence: Title Lit used the
+      engine's film (base reflectance against air, no phase jump) where three.js sees the base through the film, so
+      obsidian's black iridescent face came out green instead of purple (now `title_iridescence.glsl`, three.js's
+      `evalIridescence`; aurora, holo-silver, pearl-pink and sakura use it too). The tone guard would not have caught that
+      hue (obsidian's face is dark: its green channel was off by 14/255); the sheets did. Kin-gin's nearly black face in the first
+      sheets was deviation 30's colour-times-ramp (fixed before this round; its tone is now +5/255). Inflate is the one
+      look outside the band (+22/255: the smaller inflate field leaves more of the white band showing); diamond (+16)
+      and pearl-pink (-16, deepGlow) sit at its edge. Red control: half the exposure puts 33 of 40 out of the band.
+29. **Measured: benches on this host** (`docs/perf/title3d.md`): the figures are this host's (a container on a shared CPU,
+    llvmpipe for the GPU), not build server A's; `tools/perf/bench-thresholds.json` keeps the spec's budgets.
+30. **Implementation: Pachislop's units, found by the parity goldens.** A material's gradient overrides its colour
+    (Pachislop sets three's colour white under a ramp; R19's "base colour x ramp" read as a multiply darkened every
+    ramped look, the gold and silver faces most), in the renderer and the GLB (white factor under the ramp texture); and
+    direct and ambient light use three.js's units (irradiance x BRDF with the Lambert term diffuse / pi), not the engine's
+    pi-scaled lobes, which made the lights pi times brighter than the references.
+

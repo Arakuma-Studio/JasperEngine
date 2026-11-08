@@ -127,6 +127,37 @@ namespace jasperengine::titleart {
     struct TitleGpuStats {
         uint64_t passes = 0;            // draw passes run
         uint64_t clears = 0;            // clear-only passes
+        // the longest pass (its draw holds the driver's compile of a new variant) and its program
+        double slowestPassMs = 0.0;
+        uint32_t slowestProgram = 0;
+        bool slowestWasFirstDraw = false;   // its (program, state) key drew for the first time
+    };
+
+    // The first draw of a program in a pipeline state makes the driver compile that variant on the
+    // render thread (llvmpipe's LLVM JIT: 4-5 s for a title art program; a GL worker context, S32,
+    // takes it off the render thread on hardware, not on a software rasteriser). Title Art lets one
+    // new (program, state) draw per frame: the others wait for a later frame (their steps run
+    // again), so a render that meets many new programs spreads their compiles over frames instead
+    // of holding one frame for all of them. Main thread.
+    struct TitleFirstDrawStats {
+        uint64_t granted = 0;       // new (program, state) keys let through
+        uint64_t deferred = 0;      // draws sent to a later frame
+        uint64_t maxPerFrame = 0;   // the most new keys one frame let through
+    };
+    class JASPERENGINE_API TitleFirstDraws {
+    public:
+        // true when `key` drew before, or no new key went this frame (then this one goes now)
+        static bool allow(uint64_t key);
+        // `key` drew before
+        static bool drew(uint64_t key);
+        // the keys of one step that draws them all at once (a 3D layer's render): as one new key
+        static bool allowGroup(const std::vector<uint64_t>& keys);
+        // no new key went this frame
+        static bool available();
+        static const TitleFirstDrawStats& stats();
+        // tests: forget every key and the counters; `unbounded` lets every new key through (the
+        // red control: the frames' compiles are no longer spread)
+        static void resetForTesting(bool unbounded = false);
     };
 
     class JASPERENGINE_API TitleGpu {
@@ -141,8 +172,11 @@ namespace jasperengine::titleart {
         // built (error set). The renderer's programs and the effects' (TitlePasses.h) alike.
         bool ensureProgram(uint32_t properties, std::string* error = nullptr);
         bool ensureProgram(TitleRenderProgram program, std::string* error = nullptr) { return ensureProgram((uint32_t)program, error); }
-        // one pass; false with `error` when it could not draw
+        // one pass; false with `error` when it could not draw. A pass whose program draws for the
+        // first time in this state while another program did this frame is not drawn:
+        // lastRunDeferred() says so, and the step runs again on a later frame (TitleFirstDraws)
         bool run(const TitleGpuPass& pass, std::string& error);
+        bool lastRunDeferred() const { return deferredRun; }
         // a target cleared to a colour (one clear pass)
         bool clear(TitleTarget* target, const float color[4], std::string& error);
 
@@ -157,6 +191,7 @@ namespace jasperengine::titleart {
         bool placeholderMade = false;
         CameraRender pass;
         TitleGpuStats counters;
+        bool deferredRun = false;
 
         bool ensurePlaceholder();
     };

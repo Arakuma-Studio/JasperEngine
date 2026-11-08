@@ -15,6 +15,10 @@ author's permission (`NOTICE.md`), commit `1c32502dc9feaff1086f615b07f2ca978722d
   `split-image` and `mask-adjustment` (outside AC11's list).
 - the other `generator/*.png` from `tests/golden/refs/generator/` (S83: every preset of the other
   fifteen generators, a following one with the standard title, at 0.25 and trimmed).
+- `look/f-3d-*.png` from `tests/golden/refs/look/` (Pachislop's 40 3D looks on "BIG" in Dela Gothic
+  One at 0.25, trimmed; S86 AC21, `engine/tests/core/titleart/three_d/Title3DParityGpuTest.cpp`,
+  compared with AC21's metric: size within 2 px, mean at most 6/255, at most 4 % of pixels over
+  24/255).
 
 They were drawn by Chromium's WebGL on unknown hardware, so they are cross-implementation
 references compared with S80 AC12's loose structural metric (4 x 4 block means, block threshold

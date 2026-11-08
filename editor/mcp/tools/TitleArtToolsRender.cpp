@@ -6,6 +6,8 @@
 // compare with a kept revision or a PNG, the forced RGBA8 path, and the checks of the registry.
 
 #include "TitleArtToolsShared.h"
+#include "titleart/three_d/Title3DEditor.h"
+#include "titleart/three_d/TitleMesh.h"
 
 #include "App.h"
 #include "EditorHost.h"
@@ -29,6 +31,8 @@
 #include "util/ImageDiff.h"
 #include "util/PngWriter.h"
 #include "util/SafeWrite.h"
+
+#include <cstring>
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -615,6 +619,15 @@ namespace {
 
 }
 
+// render_title's debug_view as RenderRequest::debugView3D (Title3DDebugView), -1 when unknown
+static int titleDebugView(const std::string& view) {
+    static const char* const VIEWS[] = {"none", "normals", "environment", "ao", "glint", "ink", "wireframe"};
+    for (int i = 0; i < 7; i++) {
+        if (view == VIEWS[i]) return i;
+    }
+    return -1;
+}
+
 bool checkRenderOptions(const Json& options, std::string& error) {
     if (options.is_null()) return true;
     if (!options.is_object()) {
@@ -630,9 +643,25 @@ bool checkRenderOptions(const Json& options, std::string& error) {
             }
             continue;
         }
+        // S86's keys: the tier to render 3D layers at, and the intermediate image of 3D layers
+        if (it.key() == "quality") {
+            titleart::TitleTier tier;
+            if (!it.value().is_string() || !titleart::titleTierFromName(it.value().get<std::string>(), tier)) {
+                error = "bad_option: `options.quality` is bake, high, medium or low.";
+                return false;
+            }
+            continue;
+        }
+        if (it.key() == "debug_view") {
+            const std::string view = it.value().is_string() ? it.value().get<std::string>() : std::string();
+            if (titleDebugView(view) >= 0) continue;
+            error = "bad_option: `options.debug_view` is none, normals, environment, ao, glint, ink or wireframe.";
+            return false;
+        }
         bool known = false;
         for (const OptionKey& k : RENDER_OPTIONS) {
             if (it.key() != k.key) continue;
+            if (std::strcmp(k.owner, "S86") == 0) continue;
             known = true;
             // S81's keys are an instance's (render_title {entity}): with a path there is none
             if (std::string(k.owner) == "S81") {
@@ -640,13 +669,15 @@ bool checkRenderOptions(const Json& options, std::string& error) {
                         "instead of `path`.";
                 return false;
             }
-            error = std::string("not_available: render_title option '") + k.key + "' arrives with " + k.owner + "; this build serves cost.";
+            error = std::string("not_available: render_title option '") + k.key + "' arrives with " + k.owner + "; this build serves cost, quality and debug_view.";
             return false;
         }
         if (!known) {
             std::string list;
-            for (const OptionKey& k : RENDER_OPTIONS) list += (list.empty() ? "" : ", ") + std::string(k.key) + " (" + k.owner + ")";
-            error = "bad_option: render_title has no option '" + it.key() + "'. This build serves cost; later features add: " + list + ".";
+            for (const OptionKey& k : RENDER_OPTIONS) {
+                if (std::strcmp(k.owner, "S86") != 0) list += (list.empty() ? "" : ", ") + std::string(k.key) + " (" + k.owner + ")";
+            }
+            error = "bad_option: render_title has no option '" + it.key() + "'. This build serves cost, quality and debug_view; later features add: " + list + ".";
             return false;
         }
     }
@@ -752,6 +783,15 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
     const float scale = std::min(1.0f, static_cast<float>(s->maxWidth) / static_cast<float>(std::max(1, regionW * columns)));
     uint32_t flags = 0;
     if (s->fallback == "rgba8") flags = titleart::TITLE_ART_TEST_NO_FLOAT_TARGETS | titleart::TITLE_ART_TEST_NO_R16F | titleart::TITLE_ART_TEST_NO_RGBA32F;
+    // options.quality (S86): 3D layers render at that tier (RenderRequest::tier: 0 bake, 1 high, 2 medium, 3 low)
+    titleart::TitleTier tier = titleart::TitleTier::Bake;
+    if (args.contains("options") && args["options"].is_object() && args["options"].contains("quality")) {
+        titleart::titleTierFromName(args["options"].value("quality", std::string("bake")), tier);
+    }
+    int debugView = 0;
+    if (args.contains("options") && args["options"].is_object()) {
+        debugView = std::max(0, titleDebugView(args["options"].value("debug_view", std::string("none"))));
+    }
     for (size_t v = 0; v < s->variants.size(); v++) {
         PendingRender r;
         r.variant = static_cast<int>(v);
@@ -763,6 +803,8 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
         r.request.content = content;
         r.request.contentLayers = contentLayers;
         r.request.testFlags = flags;
+        r.request.tier = static_cast<int>(tier);
+        r.request.debugView3D = debugView;
         s->renders.push_back(r);
         if (v == 0 && s->fallback == "compare") {
             PendingRender forced = s->renders.back();
@@ -784,6 +826,12 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
         s->renders.push_back(c);
     }
     (void)ch;
+    // stats_3d (S86 R60): every 3D layer's mesh at the requested tier
+    const titleart::Json stats3d = title3DStats(*s->variants[0].doc, TitleArtRenderHost::editor().resolver(project), tier);
+    if (!stats3d.empty()) {
+        s->extra["stats_3d"] = fromOrdered(stats3d);
+        s->extra["quality"] = titleart::titleTierName(tier);
+    }
     s->spec = std::move(spec);
     auto task = std::make_shared<FrameTask>();
     std::weak_ptr<FrameTask> weakTask = task;

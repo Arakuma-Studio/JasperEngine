@@ -432,6 +432,14 @@ void TitleArtRenderer::setContentProvider(std::shared_ptr<TitleContentProvider> 
     impl->services.cache.clear();
 }
 
+const TitleGpuStats& TitleArtRenderer::gpuStats() const {
+    return impl->services.gpu.stats();
+}
+
+std::shared_ptr<void> TitleArtRenderer::title3DRendererForTesting() const {
+    return impl->services.title3D;
+}
+
 void TitleArtRenderer::simulateDeviceLossForTesting() {
     impl->services.simulatedLoss = true;
     impl->services.checkDevice();

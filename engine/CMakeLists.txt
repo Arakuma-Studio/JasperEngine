@@ -1993,6 +1993,7 @@ endif()
 # Title Art (S80-S87): the module's sources, globbed per directory
 if(JASPERENGINE_TITLE_ART)
     include(core/titleart/TitleArtSources.cmake)
+    include(core/titleart/three_d/Title3DSources.cmake)
     list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_TITLE_ART_SRCS})
 else()
     # S81 R51: without the module every title shows its bake (the UIDocumentSystemNone precedent)

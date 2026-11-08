@@ -94,7 +94,7 @@ namespace jasperengine::titleart {
         std::string kind;                       // Object / ObjectArray / ObjectMap element kind
         size_t maxItems = 0;                    // ObjectArray / AssetRefList / StringList limit, Vec2List count
         MapKeys mapKeys = MapKeys::Any;
-        bool nullable = false;                  // Object members that may be null (CharAdjust.face)
+        bool nullable = false;                  // Object members that may be null (CharAdjust.face), ObjectArray entries
         bool readOnly = false;                  // not settable by `set` (ids, type, format, version, guid)
         ParamUnit unit = ParamUnit::None;
         std::string label;                      // Inspector label, Unity-like ("Line Height")

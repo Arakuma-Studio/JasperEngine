@@ -1,5 +1,5 @@
 {
-  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), je-bench-diag (S28 R26), je-bench-particles (docs/specs/S20-particles.md R20-R26, AC10-AC12), je-bench-nav (docs/specs/S19-navigation.md R25-R30: the desktop budgets + 10 % for the timing server, gated on the median of runs) and je-bench-splines (docs/specs/S18-splines.md R18-R21, AC16), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss. je-bench-picking: docs/specs/S26-scene-view.md R28-R31, measured on the benchmark server E. je-bench-anim: docs/specs/S21-animation.md R19-R20 (AC12), measured on the benchmark server E with --workers 3 --count-allocs (docs/perf/animator.md). async-shaders: docs/specs/S32-async-shaders.md R21-R22 (tools/perf/async_shaders_bench.py on E, median of 5 runs).",
+  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), je-bench-diag (S28 R26), je-bench-particles (docs/specs/S20-particles.md R20-R26, AC10-AC12), je-bench-nav (docs/specs/S19-navigation.md R25-R30: the desktop budgets + 10 % for the timing server, gated on the median of runs) and je-bench-splines (docs/specs/S18-splines.md R18-R21, AC16), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss. je-bench-picking: docs/specs/S26-scene-view.md R28-R31, measured on the benchmark server E. je-bench-anim: docs/specs/S21-animation.md R19-R20 (AC12), measured on the benchmark server E with --workers 3 --count-allocs (docs/perf/animator.md). async-shaders: docs/specs/S32-async-shaders.md R21-R22 (tools/perf/async_shaders_bench.py on E, median of 5 runs). je-bench-titlemesh and je-bench-titlebake: docs/specs/S86-title-3d.md R46-R47 (AC24), the budgets of the reference build server A; docs/perf/title3d.md records this host's figures (titlebake: Title3DBakeBench.GoldBigBonusAndAColdEnvironment with JASPER_TITLE3D_BENCH_JSON).",
   "je-bench-jobs": {
     "submit_throughput_jobs_per_s": {"min": 3000000, "spec": "R23 empty-job submit+execute from one producer"},
     "parallel_for_dispatch_ns": {"max": 150, "spec": "R23 parallelFor of 1 unit, 0 helpers"},
@@ -136,5 +136,18 @@
     "main_draw_call_ratio": {"min": 7.0, "spec": "S55 R9, measured (target 10x, not met): GPU Instancing off to on"},
     "shadow_triangle_drop": {"min": 0.11, "spec": "S54 R7, measured: Shadow LOD Bias 2.0 to 1.0"},
     "uniform_byte_drop": {"min": 0.97, "spec": "S55 R3, measured: GPU Instancing off to on"}
+  },
+  "je-bench-titlemesh": {
+    "big_bonus_gold_ms": {"max": 40, "spec": "R46 BIG BONUS Gold 3D, one worker"},
+    "big_bonus_triangles": {"max": 55000, "spec": "R46 at most 55k triangles"},
+    "big_bonus_vertex_ratio": {"max": 0.65, "spec": "R46 vertices <= 0.65 x triangles"},
+    "kanji_gold_ms": {"max": 300, "spec": "R46 the two kanji (Yuji Syuku in the spec; Dela Gothic One here)"},
+    "inflate_3_kanji_detail4_ms": {"max": 400, "spec": "R46 inflate of 3 kanji at detail 4"},
+    "retype_last_letter_ms": {"max": 15, "spec": "R46 retyping the last letter of BIG BONUS"},
+    "material_edit_mesh_builds": {"max": 0, "spec": "R46 a material edit: 0 ms of geometry"}
+  },
+  "je-bench-titlebake": {
+    "gold_big_bonus_bake_ms": {"max": 1500, "spec": "R47 Gold 3D BIG BONUS, 1920x1080, k = 3, full glint, warm environment"},
+    "cold_environment_1024_ms": {"max": 400, "spec": "R47 a cold procedural environment build at 1024"}
   }
 }

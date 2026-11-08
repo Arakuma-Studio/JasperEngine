@@ -227,3 +227,31 @@ person a variant, use `render_title` `try`; to leave it on their screen, `focus_
   editor shows this title's CJK text as boxes; say so).
 - `screenshot {view: "title_designer"}`: the window as a person sees it.
 - `get_title` adds `designer {selection, staged, preview_active, view}` while it is open.
+### 3D
+
+A Text, Shape, Vector or Image layer becomes a lit solid with `{"op":"set_dimension","layer":"Logo","dimension":"3d"}`: the first
+switch derives `style_3d` from the 2D style (the face fill as the face material, each enabled rim a band, the side at half the
+face's value), so switching back to 2D restores the 2D look exactly. Edit it with `set` (`3d.` means `style_3d.`, `band#0.` and
+`band:<id>.` mean a band): `3d.depth`, `3d.bevel.width` / `profile` (flat, chamfer, round, cove, step, inset, tube, custom),
+`3d.bevel_position` (outside, center, inside), `3d.mode` (extrude, inflate, orb), `3d.skew`, `band#0.grow`, `band#0.offset`,
+`transform.rotation_y`, `chars.2.tilt_x` (a tilted, `dz`-moved or `rig` letter becomes a rigid part that never remeshes). Document
+values live in `scene_3d` (`scene_3d.environment.preset`, `scene_3d.tone_mapping`, `scene_3d.supersample`); a layer overrides them
+value by value in `3d.lighting`, a material's environment in `3d.face.environment`.
+
+- Ops: `add_band` / `remove_band` / `move_band` `{layer, band, index?, values?, preset?}` (presets bright_ring, dark_step, plate,
+  tube_rim), `apply_material {layer, part: face|bevel|side|band#n, preset}` (gold, chrome, sapphire... `list_title_library
+  {kind: materials_3d}`), `fit_to_tier {layer, tier}`.
+- Environments (`list_title_library {kind: environments}`): the procedural studios (studio, strips, backlit, under, sunset, neon,
+  gold, night) build in the editor; a photo environment without its HDRI renders the studio and reports `environment_missing`.
+  Tone maps: none, aces_filmic, agx, neutral, punch (punch keeps gold saturated).
+- `render_title {options: {quality: "low"}}` renders 3D layers as that Realtime tier would; every result with a 3D layer carries
+  `stats_3d` (triangles, vertices, solids, build_ms, k, environment_face and per tier `{fits, over}`); `get_title` adds each 3D
+  layer's effective style and lighting with the source of every value (`document`, `layer`, `part`).
+- `options.debug_view` shows why a look reads wrong: `normals` (the shading normal as colour) and `environment` (the
+  reflected environment, unweighted) with no tone map; `ao` (the occlusion alone), `glint` (the glint light alone), `ink`
+  (the render without the glint) and `wireframe` (the mesh's edges).
+- Budgets per layer: High 150k triangles / 8 solids, Medium 60k / 5, Low 30k / 3 (Android and HTML5 default to Low). Check them
+  with `check_title {checks: ["3d"]}` (`3d_tier_budget.<tier>` FAILs come with a `fit_to_tier` fix; also `3d_z_fighting`,
+  `3d_environment_missing`, `3d_light_limit`, `3d_mesh_fallback`).
+- Bake a 3D title for anything static (an image costs nothing at run time); `export_title {format: "glb"}` writes the solids
+  with their materials (`KHR_materials_*`) beside the title for use as a model.

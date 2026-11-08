@@ -17,6 +17,7 @@
         "box2d": {"dir": "engine/libs/box2d", "when": "physics2d"},
         "clipper2": {"dir": "engine/libs/clipper2", "when": "titleart"},
         "dav1d": {"dir": "engine/libs/dav1d", "when": "video"},
+        "earcut": {"dir": "engine/libs/earcut", "when": "titleart"},
         "ffmpeg-headers": {"dir": "engine/libs/ffmpeg-headers", "when": "video"},
         "glslang": {"dir": "engine/libs/shadercompiler/libs/glslang", "when": "runtimeshaders"},
         "harfbuzz": {"dir": "engine/libs/harfbuzz", "when": "always"},

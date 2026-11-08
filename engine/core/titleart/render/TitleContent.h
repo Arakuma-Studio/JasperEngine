@@ -64,6 +64,21 @@ namespace jasperengine::titleart {
                            TitleSpans& out) = 0;
         // a shape mask's outline (its `shape` object: the shape layer's geometry members), layer units
         virtual geometry::Path shapeOutline(const Json& shape) = 0;
+        // S86's 3D mesher: the final outlines of a Text, Shape, Vector or Image layer per glyph or fill
+        // group (pixel layers: their alpha trace), and for text each glyph's span boxes, index-aligned
+        // with `glyphs`; false when the provider has none (the layer then draws no 3D content)
+        struct Outlines {
+            std::vector<geometry::GlyphOutline> glyphs;
+            std::vector<geometry::GlyphSpan> spans;
+            std::vector<TitleProblem> problems;
+        };
+        virtual bool outlines(const Json& layer, const TitleArtDoc& doc, const AssetResolver* assets, Outlines& out) {
+            (void)layer;
+            (void)doc;
+            (void)assets;
+            (void)out;
+            return false;
+        }
     };
 
     using TitleContentFactory = std::function<std::shared_ptr<TitleContentProvider>()>;

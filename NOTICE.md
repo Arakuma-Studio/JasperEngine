@@ -54,6 +54,7 @@ Geometry of Title Art (`engine/core/titleart`, `JASPERENGINE_TITLE_ART`; ThorVG 
 | Library | Version | Location | License | Used for |
 |---|---|---|---|---|
 | [Clipper2](https://github.com/AngusJohnson/Clipper2) (Angus Johnson) | 2.0.1 (`Clipper2_2.0.1`), the C++ library `CPP/Clipper2Lib` only | `engine/libs/clipper2/` (`LICENSE`, `README.jasper.md`) | BSL-1.0 | polygon offsets and unions of title outlines: face weight, plate closing, stroke outlines |
+| [earcut.hpp](https://github.com/mapbox/earcut.hpp) (Mapbox) | 2.2.4 (`v2.2.4`) | `engine/libs/earcut/` (`LICENSE`, `README.jasper.md`) | ISC | triangulating the caps, bevel bands and inflate cells of 3D titles (S86) |
 
 HTML parsing of the HTML/CSS UI's compatibility layer:
 
@@ -262,6 +263,10 @@ The renderer's 2D title shading hashes its procedural textures with Dave Hoskins
 | `src/model/gradient.ts` (sampleGradientRgba, midpointBlend, the OKLCH `vivid` blend), `src/ui/GradientEditor.tsx` (the gradient bar's gestures, reverse with mirrored midpoints) | `editor/widget/RampField.cpp` | the Title Designer's gradient row (S82) |
 | `src/ui/controls.tsx` (`NumberField`, `ScrubLabel`: the scrub slop, modifier steps and logarithmic sliders), `src/ui/properties/AppearanceRow.tsx`, `GroupTitle` (part rows and section summaries), `PropertySearch.tsx` and `Findable` (live results, landing, flash) | `editor/widget/DocRow.cpp`, `editor/titleart/designer/TitlePages.cpp`, `editor/window/TitleDesignerProperties.cpp` | the Title Designer's Properties rows and search (S82) |
 | `src/ui/layers/LayersPanel.tsx`, `LayerRow.tsx`, `rows.ts`, `dnd.ts` (the drop zones), `src/ui/properties/AddEffectMenu.tsx` (the category rail, hover and arrow preview), `src/ui/library/LibraryPanel.tsx`, `src/store/store.ts` (`previewOverride`, hover intent), `src/ui/FontBrowser.tsx`, `src/ui/Viewport.tsx`, `viewport/drag.ts`, `pick.ts` (auto select, snapping, the full-frame generator pick) | `editor/window/TitleDesignerLayers.cpp`, `TitleDesignerAdd.cpp`, `TitleDesignerLibrary.cpp`, `TitleDesignerFonts.cpp`, `TitleDesignerCanvas.cpp` | the Title Designer's panels and canvas (S82) |
+| `src/engine/three/outline.ts`, `bevel.ts`, `extrude.ts`, `inflate.ts`, `title.ts` (outline normalisation, bevel profiles, the ring-stack extruder and its clamps, outward bevels, band stacks, inflate, the orb) | `engine/core/titleart/three_d/mesher/TitleOutline3D.cpp`, `RingExtruder.cpp`, `InflateMesher.cpp`, `TitleSolids.cpp`, `engine/core/titleart/three_d/BevelProfile.cpp` | the 3D title mesher (S86) |
+| `src/engine/three/materials.ts` (ramp, bend, glass depth, surfaces, flakes, gems, env lock, blur and repeat, the output rule; its iridescence is three.js's thin film, MIT, taken from three.js), `src/model/defaults.ts`, `types.ts`, `lighting.ts` (the 22 material presets and their ramps, the 3D defaults, lighting inheritance) | `engine/shaderlib/titleart/title_lit.frag`, `title_ramp.glsl`, `title_surface.glsl`, `title_gem.glsl`, `title_env.glsl`, `title_iridescence.glsl`, `engine/core/titleart/three_d/Title3DStyle.cpp`, `Title3DSchema.cpp` | Title Lit and the 3D document members (S86) |
+| `src/engine/three/environment.ts` (the preset scenes, the key softbox, the grade) | `engine/core/titleart/three_d/TitleEnvironment.cpp`, `engine/shaderlib/titleart/title_env.frag` | the title environments (S86) |
+| `src/engine/three/tonemap.ts` (Punch; its ACES Filmic and AgX are three.js's, MIT, taken from three.js), `hdrResolve.ts` (the shoulder and its inverse), `resample.ts` (Mitchell), `Layer3DRenderer.ts` (the pass order) | `engine/shaderlib/titleart/title_tonemap.glsl`, `hdr_compress.glsl`, `title3d_post.frag`, `engine/core/titleart/three_d/Title3DRenderer.cpp` | the 3D post (S86) |
 
 The extended lobes' formulas (`engine/shaderlib/includes/pbr_ext.glsl`) follow the [Khronos glTF-Sample-Renderer](https://github.com/KhronosGroup/glTF-Sample-Renderer) shaders (Apache-2.0, Copyright The Khronos Group Inc.), as `includes/pbr.glsl`, `brdf.glsl` and `ibl.glsl` already do.
 
@@ -276,6 +281,8 @@ Test assets (never shipped: `engine/tests/` stays out of the editor install and 
 | SpecularTest | `engine/tests/render/assets/khronos/SpecularTest/` | CC-BY-4.0 | Ed Mackey, © 2021 Analytical Graphics, Inc. |
 | EmissiveStrengthTest | `engine/tests/render/assets/khronos/EmissiveStrengthTest/` | CC-BY-4.0 | Ed Mackey, © 2022 AGI |
 | SheenTestGrid, AnisotropyStrengthTest, IridescenceDielectricSpheres, IridescenceMetallicSpheres, TransmissionTest, IORTestGrid, MetalRoughSpheresNoTextures | `engine/tests/render/assets/khronos/` | CC0-1.0 | Eric Chadwick, Ed Mackey, Khronos, UX3D, Adobe, Krill Gavrilov (their `metadata.json`) |
+
+The 3D titles' environment HDRIs (`editor/resources/titleart/hdri/`, staged beside the editor, never in a player) are Poly Haven's Studio Small 09, Autumn Road, Potsdamer Platz and Derelict Highway Midday (2k Radiance files, CC0 1.0, https://polyhaven.com/license), downloaded from Poly Haven by `tools/titleart/fetch_hdris.py`; `manifest.json` there lists each file's source URL and SHA-256.
 
 Test fonts of Title Art (`engine/tests/core/titleart/fonts/`, each with its licence file beside it; never shipped), downloaded from their original sources, none copied out of the Pachislop repository:
 

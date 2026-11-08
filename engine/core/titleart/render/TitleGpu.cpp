@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleGpu.h"
+#include "diag/HangWatchdog.h"
 
 #include "pool/ShaderPool.h"
 #include "render/PipelineState.h"
@@ -9,6 +10,8 @@
 #include "render/SystemRender.h"
 
 #include <algorithm>
+#include <chrono>
+#include <unordered_set>
 #include <cstring>
 
 using namespace jasperengine;
@@ -259,6 +262,7 @@ bool TitleGpu::clear(TitleTarget* target, const float color[4], std::string& err
 }
 
 bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
+    deferredRun = false;
     auto* t = static_cast<SokolTitleTarget*>(desc.target);
     if (!t) {
         error = "device_lost: a title art target is gone";
@@ -271,6 +275,14 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
     }
     Program& p = *programs[number];
     const TargetKey& key = t->key();
+    // the first draw in this state compiles the driver's variant: one a frame
+    const uint64_t drawKey = ((uint64_t)number << 32) ^ ((uint64_t)key.format << 24) ^ ((uint64_t)key.samples << 16) ^ ((uint64_t)key.depth << 8) ^
+                             (uint64_t)desc.blend;
+    const bool firstDraw = !TitleFirstDraws::drew(drawKey);
+    if (!TitleFirstDraws::allow(drawKey)) {
+        deferredRun = true;
+        return true;
+    }
     const TitleRectI whole{0, 0, key.width, key.height};
     TitleRectI scissor = desc.scissor.empty() ? whole : desc.scissor;
     const int x0 = std::max(0, scissor.x), y0 = std::max(0, scissor.y);
@@ -303,6 +315,7 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
     state.target.sampleCount = std::max(1, key.samples);
     state.blend = desc.blend;
     bool drawn = false;
+    const auto drawStart = std::chrono::steady_clock::now();
     if (p.object.beginDraw(state)) {
         for (int i = 0; i < TITLE_TEXTURE_SLOTS; i++) {
             if (p.tex[i].first >= 0) p.object.addTexture(p.tex[i], ShaderStageType::FRAGMENT, desc.tex[i] ? desc.tex[i] : &placeholder);
@@ -319,9 +332,90 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
     }
     pass.endRenderPass();
     counters.passes++;
+    const double drawMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - drawStart).count();
+    if (drawMs > counters.slowestPassMs) {
+        counters.slowestPassMs = drawMs;
+        counters.slowestProgram = number;
+        counters.slowestWasFirstDraw = firstDraw;
+    }
     if (!drawn) {
         error = std::string("the title art program ") + titleRenderProgramName(number) + " could not draw";
         return false;
     }
     return true;
 }
+
+// ---- first draws ----
+
+namespace {
+
+    struct FirstDraws {
+        std::unordered_set<uint64_t> drawn;
+        uint64_t beats = UINT64_MAX, commits = UINT64_MAX;
+        uint64_t grants = 0;
+        bool unbounded = false;
+        TitleFirstDrawStats stats;
+
+        // the grants of the frame now: a frame ends at a main-loop heartbeat or at a commit (the
+        // editor commits only when a view redraws, so commits alone could hold a render forever)
+        uint64_t& frameGrants() {
+            const uint64_t nowBeats = diag::heartbeats(), nowCommits = SystemRender::getFrameCount();
+            if (nowBeats != beats || nowCommits != commits) {
+                beats = nowBeats;
+                commits = nowCommits;
+                grants = 0;
+            }
+            return grants;
+        }
+    };
+
+    FirstDraws& firstDraws() {
+        static FirstDraws f;
+        return f;
+    }
+
+}
+
+bool TitleFirstDraws::drew(uint64_t key) {
+    return firstDraws().drawn.count(key) > 0;
+}
+
+bool TitleFirstDraws::allow(uint64_t key) {
+    return allowGroup({key});
+}
+
+bool TitleFirstDraws::allowGroup(const std::vector<uint64_t>& keys) {
+    FirstDraws& f = firstDraws();
+    size_t fresh = 0;
+    for (uint64_t k : keys) fresh += f.drawn.count(k) ? 0 : 1;
+    if (fresh == 0) return true;
+    uint64_t& grants = f.frameGrants();
+    if (grants > 0 && !f.unbounded) {
+        f.stats.deferred++;
+        return false;
+    }
+    for (uint64_t k : keys) f.drawn.insert(k);
+    grants += f.unbounded ? fresh : 1;
+    f.stats.granted += fresh;
+    f.stats.maxPerFrame = std::max(f.stats.maxPerFrame, grants);
+    return true;
+}
+
+bool TitleFirstDraws::available() {
+    FirstDraws& f = firstDraws();
+    return f.unbounded || f.frameGrants() == 0;
+}
+
+const TitleFirstDrawStats& TitleFirstDraws::stats() {
+    return firstDraws().stats;
+}
+
+void TitleFirstDraws::resetForTesting(bool unbounded) {
+    FirstDraws& f = firstDraws();
+    f.drawn.clear();
+    f.grants = 0;
+    f.beats = f.commits = UINT64_MAX;
+    f.unbounded = unbounded;
+    f.stats = TitleFirstDrawStats();
+}
+

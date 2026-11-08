@@ -204,6 +204,20 @@ namespace jasperengine::titleart {
         // the parts of a 2D title in back-to-front order (rim:<id> outermost first, then face)
         std::vector<std::string> titleParts(const Json& layer);
 
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+        // ---- 3D titles (S86, three_d/Title3DPass.cpp) ----
+        // a Text, Shape, Vector or Image layer with Dimension 3D
+        bool is3D(const DrawNode& node) const;
+        // its content: the region's 3D render, tone mapped (parts: the part keys coloured, empty = all)
+        TitlePx title3D(const DrawNode& node, const std::vector<std::string>& parts, const TitleRectI* fixedRect = nullptr);
+        // its region: the projected bounds of its mesh
+        TitleRectI title3DRect(const DrawNode& node);
+        // its parts back to front: bands outermost first, side, bevel, face
+        std::vector<std::string> title3DParts(const Json& layer);
+        // an image asset of a 3D material or environment (base texture, matcap), uploaded at planning
+        std::shared_ptr<TitleCacheEntry> title3DAsset(const Json& ref, const std::string& layerId, const std::string& path);
+#endif
+
         // ---- generators ----
         TitlePx generator(const DrawNode& node);
 
@@ -237,6 +251,7 @@ namespace jasperengine::titleart {
         std::map<const DrawNode*, TitleRectI> reachRects;   // the same before the ROI grid: content and reach
         TitleRectI glyphReach;                          // a glyph cell's content and reach (RenderRequest::glyphCell)
         std::map<std::string, TitleContentPlan> contentPlans;
+        std::map<std::string, std::shared_ptr<void>> title3DPlans;     // S86: per layer, its Title3DPlan
         TitleElementFilter elementFilter;               // the glyph cell's, for its layer only
         std::string filteredLayer;
         std::vector<std::unique_ptr<std::vector<DrawNode>>> trees;

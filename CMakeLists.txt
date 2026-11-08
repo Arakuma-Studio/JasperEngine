@@ -1843,6 +1843,17 @@ add_custom_command(
 add_custom_target(copy_jasperengine_editor_sound_library DEPENDS ${JASPERENGINE_SOUND_LIBRARY_STAMP})
 add_dependencies(jasperengine-editor copy_jasperengine_editor_sound_library)
 
+# The 3D titles' Poly Haven HDRIs (S86, editor/resources/titleart/hdri) beside the editor, which reads
+# them in place (Title3DEditor.cpp); players get cooked environments only
+if(APPLE)
+    set(JASPERENGINE_EDITOR_TITLE_HDRI_DIR $<TARGET_BUNDLE_CONTENT_DIR:jasperengine-editor>/Resources/titleart/hdri)
+else()
+    set(JASPERENGINE_EDITOR_TITLE_HDRI_DIR $<TARGET_FILE_DIR:jasperengine-editor>/titleart/hdri)
+endif()
+add_custom_command(TARGET jasperengine-editor POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/editor/resources/titleart/hdri ${JASPERENGINE_EDITOR_TITLE_HDRI_DIR}
+    VERBATIM)
+
 set(JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor)
 
 # jasperengine-htmlui-editor-tests: the HTML UI importers (editor/htmlui) against a local HTTP
@@ -1986,6 +1997,13 @@ foreach(entry IN LISTS JASPERENGINE_LICENSE_MANIFEST)
         )
     endif()
 endforeach()
+
+# The 3D titles' HDRIs beside the editor (S86)
+if(APPLE)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/editor/resources/titleart/hdri DESTINATION bin/${JASPERENGINE_BUNDLE_NAME}.app/Contents/Resources/titleart)
+else()
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/editor/resources/titleart/hdri DESTINATION bin/titleart)
+endif()
 
 # The starter library beside the editor: the editor reads it in place (FileUtils::getSoundLibraryDir),
 # no player ever does. The install's folder is replaced, not merged, so a clip dropped from the

@@ -84,6 +84,8 @@ namespace jasperengine::titleart {
         uint64_t generation = 1;                // bumped by every reset(): jobs of an older one fail
         uint32_t testFlags = 0;
         bool simulatedLoss = false;             // tests: the next check sees a new context
+        // S86's 3D layer renderer (three_d/Title3DRenderer.h), made by the first 3D layer planned
+        std::shared_ptr<void> title3D;
 
         // a target for a buffer kind of the current caps; empty with `error`
         TargetRef acquire(TitleBuffer buffer, int width, int height, std::string* error = nullptr);
