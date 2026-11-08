@@ -2088,7 +2088,8 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                     static_cast<int>(ShadowTiers::defaultTier(platform)),
                     "The shadow quality tier of this platform's builds (and of the editor running on it) for scenes whose shadow "
                     "Quality is Auto: cascades, resolution, distance, filter and the memory budget (docs/rendering/shadows.md). "
-                    "Ultra adds PCSS contact hardening.");
+                    "Ultra adds PCSS contact hardening: two to three times the High filter's shadow lookups per pixel, heavy for phones "
+                    "and the web (where a variant with every texture slot used keeps the High filter).");
             }
         }
 
@@ -3126,6 +3127,24 @@ void ProjectSettingsWindow::drawNavigationSettings() {
                     settings.maxGridSolvesPerTick = std::clamp(settings.maxGridSolvesPerTick, 1, 4096);
                 }
                 endSettingsRow("NavGrid path requests solved per fixed tick (in parallel); the rest wait for the next tick.");
+            }
+            if (settingsui::beginRow("navigation.carve_tiles_per_tick")) {
+                if (projectBeginSettingsRow("Carve Tiles Per Tick", settings.carveTilesPerTick != defaults.carveTilesPerTick)) {
+                    settings.carveTilesPerTick = defaults.carveTilesPerTick;
+                }
+                // 0 is Auto: the platform's count (4 on desktop, 2 on Android, iOS and web)
+                bool automatic = settings.carveTilesPerTick == 0;
+                if (ImGui::Checkbox("Auto##NavCarveAuto", &automatic)) {
+                    settings.carveTilesPerTick = automatic ? 0 : settings.effectiveCarveTilesPerTick();
+                }
+                ImGui::SameLine();
+                ImGui::BeginDisabled(automatic);
+                int tiles = settings.effectiveCarveTilesPerTick();
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::InputInt("##NavCarveTiles", &tiles) && !automatic) settings.carveTilesPerTick = std::clamp(tiles, 1, 64);
+                ImGui::EndDisabled();
+                endSettingsRow("Carved tiles each NavMesh Surface rebuilds per fixed tick, the same on every machine. Auto: 4 on "
+                    "desktop, 2 on Android, iOS and web.");
             }
             if (settingsui::beginRow("navigation.web_bake_budget_ms")) {
                 if (projectBeginSettingsRow("Web Bake Budget", settings.webBakeBudgetMs != defaults.webBakeBudgetMs)) {

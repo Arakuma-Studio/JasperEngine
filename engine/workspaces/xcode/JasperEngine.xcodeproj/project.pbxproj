@@ -1183,6 +1183,7 @@
 		434F4D50150191D288E00CDA /* GridPathfinder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50CF9183C86C5E3D30 /* GridPathfinder.cpp */; };
 		511A000D0000000000000000 /* MeshSystemGltfPbr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */; };
 		71ABBD4B27A87A2E001CE3AF /* MeshSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD4827A87A2E001CE3AF /* MeshSystem.h */; };
+		434F4D502DD2B190656F4392 /* NavRandom.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D507D42600285C43AB1 /* NavRandom.h */; };
 		434F4D5030DE4ED4671C2A46 /* MeshTriangles.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50290007DFE40AC9CB /* MeshTriangles.h */; };
 		434F4D50BD0DE86696C01B02 /* NavigationSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50918B791D9DA25DA7 /* NavigationSystem.h */; };
 		434F4D50C2498E27D7F92D4C /* NavTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D503F0117111AE20581 /* NavTypes.h */; };
@@ -4485,6 +4486,40 @@
 		4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */; };
 		4A534E4727874604BB05EB02 /* UISelectable.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B4E493A883DC863A /* UISelectable.h */; };
 		4A534E47E123E026E8155148 /* UIEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F8386218660CC63D /* UIEventData.h */; };
+		4A534E4764CC451056144EC2 /* WaterExcluder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47545C10CF0EFCC376 /* WaterExcluder.cpp */; };
+		4A534E47A571DE006C5D4C74 /* WaterExcluder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47545C10CF0EFCC376 /* WaterExcluder.cpp */; };
+		4A534E4784ABCD90E01BE30E /* WaterWake.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C812977268010C9B /* WaterWake.cpp */; };
+		4A534E471C54C5B9FE7FF54A /* WaterWake.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C812977268010C9B /* WaterWake.cpp */; };
+		4A534E472BC25BFFE464BDF9 /* WaterInteractionSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B7A94BBFE58710AB /* WaterInteractionSystem.cpp */; };
+		4A534E474B569D512A444926 /* WaterInteractionSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B7A94BBFE58710AB /* WaterInteractionSystem.cpp */; };
+		4A534E4703A766F23392A387 /* WaterExclusion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477609E88E6C406D11 /* WaterExclusion.cpp */; };
+		4A534E476AE031A9A9F54C53 /* WaterExclusion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477609E88E6C406D11 /* WaterExclusion.cpp */; };
+		4A534E471120211E6C5BC051 /* WaterWakeMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47924BA624B2ED75D2 /* WaterWakeMap.cpp */; };
+		4A534E47D453076BA16956C1 /* WaterWakeMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47924BA624B2ED75D2 /* WaterWakeMap.cpp */; };
+		4A534E47C6CB8B435C8021F5 /* WaterExcluderComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CE9FB71853CA5540 /* WaterExcluderComponent.h */; };
+		4A534E4728C8AFB94874E742 /* WaterWakeComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F9098224B2B02009 /* WaterWakeComponent.h */; };
+		4A534E47792DBDD1E2C7DBA5 /* WaterExcluder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B7C8C6FB41E8D4F1 /* WaterExcluder.h */; };
+		4A534E4742F9C29545DE16D3 /* WaterWake.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47EEAEA234128B30D2 /* WaterWake.h */; };
+		4A534E47C677145CCB1C3CAA /* WaterInteractionSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B790A1EA35BBD60C /* WaterInteractionSystem.h */; };
+		4A534E479912D77D7BDDF538 /* WaterExclusion.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4770610EDBE3BF2F84 /* WaterExclusion.h */; };
+		4A534E47DCF10E9F1AEB8966 /* WaterWakeMap.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4774FB09A9615E4FA5 /* WaterWakeMap.h */; };
+		4A534E473A79D5D1AC205710 /* ImportedAssets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476130ECA207E12DC7 /* ImportedAssets.cpp */; };
+		4A534E472C51F51CC89A9659 /* ImportedAssets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476130ECA207E12DC7 /* ImportedAssets.cpp */; };
+		4A534E47328B4BA46394653E /* SpriteSheetIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47397D75D36BE3F85C /* SpriteSheetIO.cpp */; };
+		4A534E47FD9D769130AF3608 /* SpriteSheetIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47397D75D36BE3F85C /* SpriteSheetIO.cpp */; };
+		4A534E47CA35D3020595BD0B /* SpriteSheetPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FDDCBBC7F7DE4C53 /* SpriteSheetPool.cpp */; };
+		4A534E4796341A11F6B296A1 /* SpriteSheetPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FDDCBBC7F7DE4C53 /* SpriteSheetPool.cpp */; };
+		4A534E4708701B0A20191854 /* SpriteFrameGeometry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478EF2A23FF69A4654 /* SpriteFrameGeometry.cpp */; };
+		4A534E470EEAE37D2691B3F8 /* SpriteFrameGeometry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478EF2A23FF69A4654 /* SpriteFrameGeometry.cpp */; };
+		4A534E47B61CE4D4BE2CB2FA /* AsepriteClips.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476D1EF436C4248790 /* AsepriteClips.cpp */; };
+		4A534E475671C5EB980CA830 /* AsepriteClips.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476D1EF436C4248790 /* AsepriteClips.cpp */; };
+		4A534E47F3DE7ADE7A0E6EC2 /* ImportedAssets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4746D0B86B789216FF /* ImportedAssets.h */; };
+		4A534E4789BE4447B0BE862D /* AsepriteClips.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C385CFF60004F992 /* AsepriteClips.h */; };
+		4A534E47CA6751633AFFF568 /* SpriteFrameGeometry.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475F4C6ED983E6C5D1 /* SpriteFrameGeometry.h */; };
+		4A534E47F7C8985BD1DEAD06 /* SpriteSheet.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47097F5720C5B4B818 /* SpriteSheet.h */; };
+		4A534E47FE7E98B8E828924B /* SpriteSheetIO.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4717796360C2B35E36 /* SpriteSheetIO.h */; };
+		4A534E479E45969CDF15D15B /* SpriteSheetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F916164B86075842 /* SpriteSheetPool.h */; };
+		4A534E47D87F5455BEE3D153 /* NavigationAreas.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477308C84C63C31D40 /* NavigationAreas.h */; };
 		4A534E47F70E7AE87350F4F9 /* NearestName.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474365841B0820D5A8 /* NearestName.h */; };
 /* End PBXBuildFile section */
 
@@ -6446,6 +6481,7 @@
 		434F4D50CF9183C86C5E3D30 /* GridPathfinder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/GridPathfinder.cpp; sourceTree = "<group>"; };
 		511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = MeshSystemGltfPbr.cpp; sourceTree = "<group>"; };
 		71ABBD4827A87A2E001CE3AF /* MeshSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshSystem.h; sourceTree = "<group>"; };
+		434F4D507D42600285C43AB1 /* NavRandom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavRandom.h; sourceTree = "<group>"; };
 		434F4D50290007DFE40AC9CB /* MeshTriangles.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../util/MeshTriangles.h; sourceTree = "<group>"; };
 		434F4D50918B791D9DA25DA7 /* NavigationSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NavigationSystem.h; sourceTree = "<group>"; };
 		434F4D503F0117111AE20581 /* NavTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavTypes.h; sourceTree = "<group>"; };
@@ -8765,6 +8801,30 @@
 		4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemNavigation.cpp; sourceTree = "<group>"; };
 		4A534E47B4E493A883DC863A /* UISelectable.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UISelectable.h; sourceTree = "<group>"; };
 		4A534E47F8386218660CC63D /* UIEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIEventData.h; sourceTree = "<group>"; };
+		4A534E47545C10CF0EFCC376 /* WaterExcluder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterExcluder.cpp; sourceTree = "<group>"; };
+		4A534E47C812977268010C9B /* WaterWake.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterWake.cpp; sourceTree = "<group>"; };
+		4A534E47B7A94BBFE58710AB /* WaterInteractionSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterInteractionSystem.cpp; sourceTree = "<group>"; };
+		4A534E477609E88E6C406D11 /* WaterExclusion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterExclusion.cpp; sourceTree = "<group>"; };
+		4A534E47924BA624B2ED75D2 /* WaterWakeMap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterWakeMap.cpp; sourceTree = "<group>"; };
+		4A534E47CE9FB71853CA5540 /* WaterExcluderComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterExcluderComponent.h; sourceTree = "<group>"; };
+		4A534E47F9098224B2B02009 /* WaterWakeComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterWakeComponent.h; sourceTree = "<group>"; };
+		4A534E47B7C8C6FB41E8D4F1 /* WaterExcluder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterExcluder.h; sourceTree = "<group>"; };
+		4A534E47EEAEA234128B30D2 /* WaterWake.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterWake.h; sourceTree = "<group>"; };
+		4A534E47B790A1EA35BBD60C /* WaterInteractionSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterInteractionSystem.h; sourceTree = "<group>"; };
+		4A534E4770610EDBE3BF2F84 /* WaterExclusion.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterExclusion.h; sourceTree = "<group>"; };
+		4A534E4774FB09A9615E4FA5 /* WaterWakeMap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterWakeMap.h; sourceTree = "<group>"; };
+		4A534E476130ECA207E12DC7 /* ImportedAssets.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ImportedAssets.cpp; sourceTree = "<group>"; };
+		4A534E47397D75D36BE3F85C /* SpriteSheetIO.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteSheetIO.cpp; sourceTree = "<group>"; };
+		4A534E47FDDCBBC7F7DE4C53 /* SpriteSheetPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteSheetPool.cpp; sourceTree = "<group>"; };
+		4A534E478EF2A23FF69A4654 /* SpriteFrameGeometry.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteFrameGeometry.cpp; sourceTree = "<group>"; };
+		4A534E476D1EF436C4248790 /* AsepriteClips.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AsepriteClips.cpp; sourceTree = "<group>"; };
+		4A534E4746D0B86B789216FF /* ImportedAssets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ImportedAssets.h; sourceTree = "<group>"; };
+		4A534E47C385CFF60004F992 /* AsepriteClips.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AsepriteClips.h; sourceTree = "<group>"; };
+		4A534E475F4C6ED983E6C5D1 /* SpriteFrameGeometry.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteFrameGeometry.h; sourceTree = "<group>"; };
+		4A534E47097F5720C5B4B818 /* SpriteSheet.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteSheet.h; sourceTree = "<group>"; };
+		4A534E4717796360C2B35E36 /* SpriteSheetIO.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteSheetIO.h; sourceTree = "<group>"; };
+		4A534E47F916164B86075842 /* SpriteSheetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteSheetPool.h; sourceTree = "<group>"; };
+		4A534E477308C84C63C31D40 /* NavigationAreas.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NavigationAreas.h; sourceTree = "<group>"; };
 		4A534E474365841B0820D5A8 /* NearestName.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NearestName.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -9223,6 +9283,8 @@
 				C5A54E00000005104A55E702 /* Guid.cpp */,
 				C5A54E00000005104A55E701 /* Guid.h */,
 				C5A54E00000005104A55E707 /* SubAssetKeys.h */,
+				4A534E476130ECA207E12DC7 /* ImportedAssets.cpp */,
+				4A534E4746D0B86B789216FF /* ImportedAssets.h */,
 			);
 			path = asset;
 			sourceTree = "<group>";
@@ -10601,6 +10663,22 @@
 			path = memory;
 			sourceTree = "<group>";
 		};
+		4A534E47575B4D95E57EA00F /* sprite */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47397D75D36BE3F85C /* SpriteSheetIO.cpp */,
+				4A534E47FDDCBBC7F7DE4C53 /* SpriteSheetPool.cpp */,
+				4A534E478EF2A23FF69A4654 /* SpriteFrameGeometry.cpp */,
+				4A534E476D1EF436C4248790 /* AsepriteClips.cpp */,
+				4A534E47C385CFF60004F992 /* AsepriteClips.h */,
+				4A534E475F4C6ED983E6C5D1 /* SpriteFrameGeometry.h */,
+				4A534E47097F5720C5B4B818 /* SpriteSheet.h */,
+				4A534E4717796360C2B35E36 /* SpriteSheetIO.h */,
+				4A534E47F916164B86075842 /* SpriteSheetPool.h */,
+			);
+			path = sprite;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -10681,6 +10759,7 @@
 				4A534E473659413B6A589E09 /* device */,
 				4A534E474D0727C81240C154 /* model */,
 				4A534E47FD9CD85331CEC557 /* memory */,
+				4A534E47575B4D95E57EA00F /* sprite */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -10770,6 +10849,10 @@
 				4A534E47C4F45D33EE25F2E9 /* StableArray.h */,
 				4A534E477812D37EDE027E54 /* ContentHash.cpp */,
 				4A534E477B2FB8E9277F0AE4 /* ContentHash.h */,
+				4A534E477609E88E6C406D11 /* WaterExclusion.cpp */,
+				4A534E47924BA624B2ED75D2 /* WaterWakeMap.cpp */,
+				4A534E4770610EDBE3BF2F84 /* WaterExclusion.h */,
+				4A534E4774FB09A9615E4FA5 /* WaterWakeMap.h */,
 				4A534E474365841B0820D5A8 /* NearestName.h */,
 			);
 			path = util;
@@ -10971,6 +11054,8 @@
 				4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */,
 				4A534E47D9914C150209E5CB /* ComponentEvents.h */,
 				4A534E47B4E493A883DC863A /* UISelectable.h */,
+				4A534E47CE9FB71853CA5540 /* WaterExcluderComponent.h */,
+				4A534E47F9098224B2B02009 /* WaterWakeComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -11176,6 +11261,7 @@
 				434F4D50CF9183C86C5E3D30 /* GridPathfinder.cpp */,
 				511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */,
 				71ABBD4827A87A2E001CE3AF /* MeshSystem.h */,
+				434F4D507D42600285C43AB1 /* NavRandom.h */,
 				434F4D50290007DFE40AC9CB /* MeshTriangles.h */,
 				434F4D50918B791D9DA25DA7 /* NavigationSystem.h */,
 				434F4D503F0117111AE20581 /* NavTypes.h */,
@@ -11251,6 +11337,9 @@
 				4A534E472FCC66B498BDDE06 /* RenderSystemLighting.h */,
 				4A534E4791220FC2AEBCD87B /* RenderSystemBatch.cpp */,
 				4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */,
+				4A534E47B7A94BBFE58710AB /* WaterInteractionSystem.cpp */,
+				4A534E47B790A1EA35BBD60C /* WaterInteractionSystem.h */,
+				4A534E477308C84C63C31D40 /* NavigationAreas.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -11504,6 +11593,10 @@
 				434F4D505D19875CF883CFC3 /* WaterVolume.cpp */,
 				4A534E472E658AD463ED1A16 /* LocalVolumetricFog.h */,
 				4A534E47252827BC13C6F95F /* VolumetricClouds.h */,
+				4A534E47545C10CF0EFCC376 /* WaterExcluder.cpp */,
+				4A534E47C812977268010C9B /* WaterWake.cpp */,
+				4A534E47B7C8C6FB41E8D4F1 /* WaterExcluder.h */,
+				4A534E47EEAEA234128B30D2 /* WaterWake.h */,
 			);
 			path = environment;
 			sourceTree = "<group>";
@@ -15007,6 +15100,7 @@
 				71E54514284D5BE000C68FAB /* ScaleTracksComponent.h in Headers */,
 				717AD992292FC30A007D7DB5 /* Framebuffer.h in Headers */,
 				71ABBD4B27A87A2E001CE3AF /* MeshSystem.h in Headers */,
+				434F4D502DD2B190656F4392 /* NavRandom.h in Headers */,
 				434F4D5030DE4ED4671C2A46 /* MeshTriangles.h in Headers */,
 				434F4D50BD0DE86696C01B02 /* NavigationSystem.h in Headers */,
 				434F4D50C2498E27D7F92D4C /* NavTypes.h in Headers */,
@@ -15581,6 +15675,20 @@
 				4A534E47CBA5ACFC2959BEA7 /* ContentHash.h in Headers */,
 				4A534E4727874604BB05EB02 /* UISelectable.h in Headers */,
 				4A534E47E123E026E8155148 /* UIEventData.h in Headers */,
+				4A534E47C6CB8B435C8021F5 /* WaterExcluderComponent.h in Headers */,
+				4A534E4728C8AFB94874E742 /* WaterWakeComponent.h in Headers */,
+				4A534E47792DBDD1E2C7DBA5 /* WaterExcluder.h in Headers */,
+				4A534E4742F9C29545DE16D3 /* WaterWake.h in Headers */,
+				4A534E47C677145CCB1C3CAA /* WaterInteractionSystem.h in Headers */,
+				4A534E479912D77D7BDDF538 /* WaterExclusion.h in Headers */,
+				4A534E47DCF10E9F1AEB8966 /* WaterWakeMap.h in Headers */,
+				4A534E47F3DE7ADE7A0E6EC2 /* ImportedAssets.h in Headers */,
+				4A534E4789BE4447B0BE862D /* AsepriteClips.h in Headers */,
+				4A534E47CA6751633AFFF568 /* SpriteFrameGeometry.h in Headers */,
+				4A534E47F7C8985BD1DEAD06 /* SpriteSheet.h in Headers */,
+				4A534E47FE7E98B8E828924B /* SpriteSheetIO.h in Headers */,
+				4A534E479E45969CDF15D15B /* SpriteSheetPool.h in Headers */,
+				4A534E47D87F5455BEE3D153 /* NavigationAreas.h in Headers */,
 				4A534E47F70E7AE87350F4F9 /* NearestName.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -18114,6 +18222,16 @@
 				4A534E47780F1FB63C92E44A /* RenderSystemBatch.cpp in Sources */,
 				4A534E47EC1527BD9215708F /* ContentHash.cpp in Sources */,
 				4A534E4738A73EDC2D33FCDF /* UISystemNavigation.cpp in Sources */,
+				4A534E4764CC451056144EC2 /* WaterExcluder.cpp in Sources */,
+				4A534E4784ABCD90E01BE30E /* WaterWake.cpp in Sources */,
+				4A534E472BC25BFFE464BDF9 /* WaterInteractionSystem.cpp in Sources */,
+				4A534E4703A766F23392A387 /* WaterExclusion.cpp in Sources */,
+				4A534E471120211E6C5BC051 /* WaterWakeMap.cpp in Sources */,
+				4A534E473A79D5D1AC205710 /* ImportedAssets.cpp in Sources */,
+				4A534E47328B4BA46394653E /* SpriteSheetIO.cpp in Sources */,
+				4A534E47CA35D3020595BD0B /* SpriteSheetPool.cpp in Sources */,
+				4A534E4708701B0A20191854 /* SpriteFrameGeometry.cpp in Sources */,
+				4A534E47B61CE4D4BE2CB2FA /* AsepriteClips.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18937,6 +19055,16 @@
 				4A534E47C54C9AAC683562BB /* RenderSystemBatch.cpp in Sources */,
 				4A534E474E1AD9E2E230BD31 /* ContentHash.cpp in Sources */,
 				4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */,
+				4A534E47A571DE006C5D4C74 /* WaterExcluder.cpp in Sources */,
+				4A534E471C54C5B9FE7FF54A /* WaterWake.cpp in Sources */,
+				4A534E474B569D512A444926 /* WaterInteractionSystem.cpp in Sources */,
+				4A534E476AE031A9A9F54C53 /* WaterExclusion.cpp in Sources */,
+				4A534E47D453076BA16956C1 /* WaterWakeMap.cpp in Sources */,
+				4A534E472C51F51CC89A9659 /* ImportedAssets.cpp in Sources */,
+				4A534E47FD9D769130AF3608 /* SpriteSheetIO.cpp in Sources */,
+				4A534E4796341A11F6B296A1 /* SpriteSheetPool.cpp in Sources */,
+				4A534E470EEAE37D2691B3F8 /* SpriteFrameGeometry.cpp in Sources */,
+				4A534E475671C5EB980CA830 /* AsepriteClips.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -8,7 +8,7 @@
 #include "CommandLine.h"
 #include "log/Logger.h"
 #include "io/AtomicFile.h"
-#include "navigation/NavigationEditor.h"
+#include "navigation/NavigationFindings.h"
 #include "util/FileUtils.h"
 
 #include "AppSettings.h"
@@ -70,6 +70,7 @@
 #include "texsynth/SynthesisCli.h"
 #include "spritenormals/SpriteNormalsCheck.h"
 #include "spritenormals/SpriteNormalsCli.h"
+#include "pixelart/aseprite/AsepriteCli.h"
 #include "physics/PlacementCli.h"
 #include "vat/VatCli.h"
 #include "htmlui/effects/EffectManifest.h"
@@ -305,6 +306,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " procedural-material bake <file.procmat> [options]  Bake a Procedural Material (exit 0/1/2/3/4).\n"
         << "  " << commandName << " import-unity-particles <file> [options]  Import Unity Particle Systems as engine prefabs.\n"
         << "  " << commandName << " generate-sprite-normals [options]  Normal maps for sprites, sheets, GIF/APNG animations and tiles.\n"
+        << "  " << commandName << " aseprite info|render|resave  Describe, render or resave .aseprite files (no project).\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " audio-analyze [options] <file|essentials:id|library:id>...\n"
@@ -3144,11 +3146,14 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         run.checked.push_back({"particles", checkedEffects});
     }
 
-    // S19 R42: the scenes' NavMesh Surfaces that are not baked or out of date (whole-project checks)
+    // S19 R42, S75 R36: the scenes' navigation findings with their severities (an error fails the
+    // check; whole-project checks)
     if (shadersWanted && shadersAll) {
         size_t surfaces = 0;
-        for (const NavigationEditor::Finding& finding : NavigationEditor::checkSurfaces(&project, &surfaces))
-            run.findings.push_back({"navigation", finding.scenePath, 0, 0, "warning", finding.message});
+        for (const ProjectNavFinding& item : collectProjectFindings(&project, &surfaces)) {
+            run.findings.push_back({"navigation", item.scenePath, 0, 0, nav::findingSeverityName(item.finding.severity),
+                                    item.finding.message, item.finding.code, ""});
+        }
         run.checked.push_back({"navigation", surfaces});
     }
 
@@ -3935,6 +3940,11 @@ int CommandLine::runImportUnityParticlesCommand(int argc, char** argv, const cha
 int CommandLine::runGenerateSpriteNormalsCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return spritenormals::runGenerateSpriteNormals(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+int CommandLine::runAsepriteCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return pixelart::aseprite::runAsepriteCommand(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
 int CommandLine::runPlacePhysicsCommand(int argc, char** argv, const char* executableName) {

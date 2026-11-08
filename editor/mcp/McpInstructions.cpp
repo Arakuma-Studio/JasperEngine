@@ -89,7 +89,7 @@ Getters are properties (go.position is a copy: assign it back; Engine.deltatime)
 string. No on_start, getComponent or setProperty. Static functions use a dot (GameObject.instantiate),
 methods a colon (go:setScale(2)). Never carry over Unity, Godot or Unreal API names: confirm them.
 
-## Unity names -> engine names
+## Unity names
 GameObject = entity (script class GameObject); Create Empty = type empty. Prefab = .prefab asset.
 Mesh Filter/Renderer = MeshComponent (box, sphere, plane...); Sprite Renderer = SpriteComponent;
 Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent (Box2D); a Collider is an
@@ -122,13 +122,13 @@ main_menu, hud, settings...) writes the files; edit them yourself; inspect_ui / 
 layouts. Read jasper://docs/html-ui first.
 
 ## Other areas
-2D (points, y up; Box2D 64 points per meter), cameras (useTarget ignores rotation), animation
-(edit_animation), post-processing (apply_post_processing_preset), atmosphere (Fog type height,
-apply_atmosphere_preset), shadows (a light's softShadows, the scene's shadows_quality), reflections
-(SSR replaces probe reflections; check with ssr_debug_mode 7), profiling (get_frame_times), sound
-(analyze_audio), shipping (build_project), data safety (save after each step; allow_data_loss),
-meshes (inspect_models, check_render_budgets), device tiers (set_device_simulation, then play),
-procedural materials (preview_procedural_material): jasper://docs/<area>.
+2D (points, y up; 64 per meter), cameras, animation, post-processing (apply_post_processing_preset),
+atmosphere (Fog type height, apply_atmosphere_preset), shadows (a light's softShadows, the scene's
+shadows_quality), reflections (SSR replaces probe reflections; check with ssr_debug_mode 7),
+profiling (get_frame_times), navigation (get_navigation_info), sound (analyze_audio), shipping
+(build_project), data safety (save after each step; allow_data_loss), meshes (inspect_models,
+check_render_budgets), device tiers (set_device_simulation, then play), sprites (set_sprite_frames
+sheet), procedural materials (preview_procedural_material): jasper://docs/<area>.
 )JE";
 }
 

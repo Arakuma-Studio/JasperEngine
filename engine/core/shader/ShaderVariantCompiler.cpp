@@ -409,7 +409,10 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (vat) defs.push_back({"HAS_VAT", "1"});                                              // 'Vat', 'Vab'
     if (vat && (prop & ShaderPool::getVatProperty(ShaderType::MESH, true))) defs.push_back({"HAS_VAT_BONES", "1"}); // 'Vab'
     if (prop & ShaderPool::getAutoInstancingProperty(ShaderType::MESH)) defs.push_back({"HAS_AUTO_INSTANCING", "1"}); // 'Aui'
+    if (prop & ShaderPool::getDirectionalOnlyProperty()) defs.push_back({"DIRECTIONAL_LIGHTS_ONLY", "1"}); // 'Dlo'
     if (prop & ShaderPool::getLodFadeProperty()) defs.push_back({"USE_LOD_FADE", "1"});    // 'Lfd'
+    if (prop & ShaderPool::getWaterExclusionProperty()) defs.push_back({"USE_WATER_EXCLUSION", "1"}); // 'Wex'
+    if (prop & ShaderPool::getWaterWakeProperty()) defs.push_back({"USE_WATER_WAKE", "1"});           // 'Wwk'
     // S57's lighting: the screen-tile lights of a pixel-lit variant, the capsule and contact
     // shadows of a shadowed one, and the OIT accumulation (its main is wrapped, prepareVariantArgs)
     if (prop & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS)) defs.push_back({"USE_TILED_LIGHTS", "1"});       // 'Til'
@@ -1104,6 +1107,18 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
 #ifdef JASPERENGINE_RUNTIME_SHADERS
 namespace {
 
+// past what every backend can bind: the 16 samplers sokol has for both stages together
+// (SG_MAX_SAMPLER_BINDSLOTS), or the 16 fragment texture units of GLES3, WebGL2 and macOS GL
+bool isOverBindLimits(const ShaderData& data){
+    size_t samplers = 0;
+    for (const ShaderStage& stage : data.stages){
+        samplers += stage.samplers.size();
+        if (stage.type == ShaderStageType::FRAGMENT && (stage.textures.size() > 16 || stage.textureSamplerPairs.size() > 16))
+            return true;
+    }
+    return samplers > 16;
+}
+
 // The compiler arguments of one variant for a backend: entry points, sources and #defines
 // (compile and preprocess). False with an error when the key or its sources are unusable.
 bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
@@ -1389,60 +1404,90 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
     const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
     const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
 
-    shadercompiler::args_t args;
-    std::string setupError;
-    if (!prepareVariantArgs(key, backend, customSources, args, setupError))
-        return fail(setupError);
-
     std::string compileLog;
-    args.error_output = &compileLog;
+    // one pass of the pipeline: "" when out holds the variant, else what failed
+    auto build = [&](bool rawViewOff, bool spotMasksOff) -> std::string {
+        shadercompiler::args_t args;
+        std::string setupError;
+        if (!prepareVariantArgs(key, backend, customSources, args, setupError))
+            return setupError;
+        if (rawViewOff)
+            args.defines.push_back({"SHADOW_RAW_VIEW_OFF", "1"});
+        if (spotMasksOff)
+            args.defines.push_back({"SPOT_MASKS_OFF", "1"});
+        args.error_output = &compileLog;
 
-    if (stopped())
-        return fail("Cancelled");
-    report(0.3f);
+        if (stopped())
+            return "Cancelled";
+        if (!rawViewOff)
+            report(0.3f);
 
-    std::vector<shadercompiler::input_t> inputs;
-    if (!shadercompiler::load_input(inputs, args))
-        return fail("Error loading shader input");
+        std::vector<shadercompiler::input_t> inputs;
+        if (!shadercompiler::load_input(inputs, args))
+            return "Error loading shader input";
 
-    if (stopped())
-        return fail("Cancelled");
-    report(0.5f);
+        if (stopped())
+            return "Cancelled";
+        if (!rawViewOff)
+            report(0.5f);
 
-    std::vector<shadercompiler::spirv_t> spirvvec;
-    spirvvec.resize(inputs.size());
-    if (!shadercompiler::compile_to_spirv(spirvvec, inputs, args)) {
-        if (log)
+        std::vector<shadercompiler::spirv_t> spirvvec;
+        spirvvec.resize(inputs.size());
+        if (!shadercompiler::compile_to_spirv(spirvvec, inputs, args))
+            return "Error compiling to SPIRV";
+
+        if (stopped())
+            return "Cancelled";
+        if (!rawViewOff)
+            report(0.8f);
+
+        std::vector<shadercompiler::spirvcross_t> spirvcrossvec;
+        spirvcrossvec.resize(inputs.size());
+        bool crossCompiled = false;
+        try {
+            crossCompiled = shadercompiler::compile_to_lang(spirvcrossvec, spirvvec, inputs, args);
+        } catch (const std::exception& e) {
+            compileLog += std::string("SPIRV-Cross: ") + e.what() + "\n";
+        }
+        if (!crossCompiled)
+            return "Error cross-compiling";
+
+        if (stopped())
+            return "Cancelled";
+        if (!rawViewOff)
+            report(0.9f);
+
+        // A deterministic basename names the stages
+        args.output_basename = ShaderPool::getShaderStr(shaderType, properties, customId) +
+                               getLangSuffix(args.lang, args.version, args.es, args.platform);
+        out = convertToShaderData(spirvcrossvec, args);
+        return "";
+    };
+
+    std::string failure = build(false, false);
+    // a variant the raw-depth view of the shadow atlas (PCSS) takes past the bind limits is built
+    // without it (on every backend: the same program everywhere), and filters the Ultra tier's
+    // shadows with the High tier's Vogel disk
+    if (failure.empty() && isOverBindLimits(out) && out.getTextureIndex(TextureShaderType::SHADOWATLASRAW).first >= 0) {
+        compileLog += std::string(PCSS_LEFT_OUT) + ": the raw-depth shadow view would take the variant past 16 samplers or "
+                      "16 fragment textures; it filters Ultra shadows with the Vogel disk\n";
+        failure = build(true, false);
+    }
+    // a variant whose lights' records (u_lightRecords, includes/lights.glsl: the painted terrain's)
+    // still leave it past them is built without the spot lights' masks (SPOT_MASKS_OFF): a masked
+    // spot light lights it with its plain cone
+    if (failure.empty() && isOverBindLimits(out) && out.getTextureIndexByName("u_lightRecords").first >= 0 &&
+            out.getTextureIndex(TextureShaderType::SPOTMASKATLAS).first >= 0) {
+        compileLog += std::string(SPOT_MASKS_LEFT_OUT) + ": the lights' records would take the variant past 16 samplers or "
+                      "16 fragment textures; masked spot lights light it with their cones\n";
+        const bool rawViewOff = compileLog.find(PCSS_LEFT_OUT) != std::string::npos;
+        failure = build(rawViewOff, true);
+    }
+    if (!failure.empty()) {
+        if (log && failure != "Cancelled")
             *log = compileLog;
-        return fail("Error compiling to SPIRV");
+        return fail(failure);
     }
-
-    if (stopped())
-        return fail("Cancelled");
-    report(0.8f);
-
-    std::vector<shadercompiler::spirvcross_t> spirvcrossvec;
-    spirvcrossvec.resize(inputs.size());
-    bool crossCompiled = false;
-    try {
-        crossCompiled = shadercompiler::compile_to_lang(spirvcrossvec, spirvvec, inputs, args);
-    } catch (const std::exception& e) {
-        compileLog += std::string("SPIRV-Cross: ") + e.what() + "\n";
-    }
-    if (!crossCompiled) {
-        if (log)
-            *log = compileLog;
-        return fail("Error cross-compiling");
-    }
-
-    if (stopped())
-        return fail("Cancelled");
-    report(0.9f);
-
-    // A deterministic basename names the stages
-    args.output_basename = ShaderPool::getShaderStr(shaderType, properties, customId) +
-                           getLangSuffix(args.lang, args.version, args.es, args.platform);
-    out = convertToShaderData(spirvcrossvec, args);
 
     // a globals block (ShaderGlobals) takes at most 64 vec4 slots of a stage's uniform space
     // (GLES3 guarantees 256 vertex uniform vectors in all): a larger one fails like any error
@@ -1492,6 +1537,14 @@ std::string ShaderVariantCompiler::checkResourceBudget(const ShaderData& data) {
         check(stage.textures.size(), 16, "textures");
         check(stage.samplers.size(), 16, "samplers");
         check(stage.textureSamplerPairs.size(), 16, "texture-sampler pairs");
+    }
+    // sokol's sampler slots are shared by the stages (SG_MAX_SAMPLER_BINDSLOTS)
+    size_t samplers = 0;
+    for (const ShaderStage& stage : data.stages)
+        samplers += stage.samplers.size();
+    if (samplers > 16) {
+        if (!over.empty()) over += "; ";
+        over += "all stages: " + std::to_string(samplers) + " samplers (limit 16)";
     }
     return over;
 }

@@ -34,6 +34,7 @@
 #include "audio/AudioMixer.h"
 #if JASPERENGINE_SOUND_LAYER
 #include "audio/MusicPlayer.h"
+#include "object/sound/Audio.h"
 #endif
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -1027,6 +1028,10 @@ void Engine::addDrawStats(uint32_t instances, uint64_t triangles, uint64_t verti
     currentFrameStats.vertices += vertices;
 }
 
+void Engine::addSetPassCall(){
+    currentFrameStats.setPassCalls++;
+}
+
 void Engine::addVisibilityStats(uint32_t visible, uint32_t culled){
     currentFrameStats.visible += visible;
     currentFrameStats.culled += culled;
@@ -1210,8 +1215,14 @@ void Engine::updateGpuCreation(){
     drawSemaphore.release();
 }
 
+// The main thread runs the render queue a loading thread fills, so it never takes that role: in the
+// scope it would wait for itself (a script's init, which runs before the view starts the queue; a
+// second commit before a frame ran the first; a scene change inside a frame, which holds the draw
+// semaphore). There a scope changes nothing, on every backend.
 void Engine::startAsyncThread(){
     #ifndef NO_THREAD_SUPPORT
+        if (jobs::isMainThread())
+            return;
         getAsyncThreadDepthStorage()++;
     #else
         Log::warn("Threads are not available");
@@ -1219,11 +1230,16 @@ void Engine::startAsyncThread(){
 }
 
 void Engine::commitThreadQueue(){
+    // the main thread queues nothing (outside a scope it makes its GPU objects at once)
+    if (jobs::isMainThread())
+        return;
     SystemRender::commitQueue();
 }
 
 void Engine::endAsyncThread(){
     #ifndef NO_THREAD_SUPPORT
+        if (jobs::isMainThread())
+            return;
         unsigned int& asyncThreadDepth = getAsyncThreadDepthStorage();
         if (asyncThreadDepth == 0){
             Log::warn("Engine::endAsyncThread called without matching startAsyncThread");
@@ -1524,6 +1540,10 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     Log::onMessageReceived.removeByTagSubstring(substring);
     Device::onThermalStateChanged.removeByTagSubstring(substring);
     Device::onLowMemory.removeByTagSubstring(substring);
+#if JASPERENGINE_SOUND_LAYER
+    Audio::onMusicBeat.removeByTagSubstring(substring);
+    Audio::onMusicSection.removeByTagSubstring(substring);
+#endif
     DebugOverlay::removeCommandsByTag(substring);
 
     // a released script instance's tag is "_<address>_": the input sources it owned go too
@@ -1572,6 +1592,11 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     Log::onMessageReceived.clear();
     Device::onThermalStateChanged.clear();
     Device::onLowMemory.clear();
+#if JASPERENGINE_SOUND_LAYER
+    // here too, not only in MusicPlayer::reset: the editor's Stop runs that after the C++ script library is unloaded
+    Audio::onMusicBeat.clear();
+    Audio::onMusicSection.clear();
+#endif
     DebugOverlay::removeOwnedCommands();
 
     if (includeLifecycle) {

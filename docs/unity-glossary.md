@@ -17,7 +17,7 @@ Projects made before the rename are migrated once with
 | Project window | Resources window |
 | Edit > Duplicate (Ctrl+D) on assets: copies beside the originals named `hero 1.png`, the copies selected | none (new); Copy then Paste in the same folder made such a copy |
 | The Project window's Create menu (toolbar "+", right-click > Create on empty space, a file, a folder, a folder of the tree), the same as Assets > Create, into the right-clicked folder | a Create menu without scripts, only in the folder shown ([docs/editor/project-window.md](editor/project-window.md)) |
-| Maximize On Play (the Game view toolbar; F11, Edit > Maximize On Play) | the toolbar toggle only |
+| Maximize On Play (the Game view toolbar; F11, on macOS Control+Cmd+F; Edit > Maximize On Play) | the toolbar toggle only |
 | Console window | Output window |
 | Game view (Window > General > Game) | none: play ran inside the scene tab |
 | Main toolbar: Hand, Move, Rotate, Scale, Rect tools; Play, Pause, Step | Per-scene toolbar: Pan, Translate, Rotate, Scale, 2D gizmo; Play, Pause, Stop |
@@ -253,6 +253,8 @@ and timers); C++ timers: [cpp-scripting.md](mcp/guide/cpp-scripting.md).
 | `Time.timeScale`, `maximumDeltaTime`, `captureDeltaTime`, `smoothDeltaTime`, `inFixedTimeStep` | the same names on `Time` (`Engine.timeScale`, `Engine.maxDeltatime`, `Engine.fixedDeltatime`: a fixed frame delta, not the fixed step) |
 | A shader's `_Time` (game time: held while paused, scaled by `Time.timeScale`); the Scene view's Always Refresh | the engine-written `sceneTime` member of a shader's custom block (`frame.time` stays the wall clock); library:water runs on it, `Water.getTime(scene)`; the Scene view's Rendering > Animate water |
 | HDRP Planar Reflection Probe (Resolution, Culling Mask, Clipping Planes) on a water surface | library:water's `PLANAR_REFLECTION` feature with the scene's Planar Reflections settings (Resolution, Layers, Shadows, Far Clip Plane, Clip Plane Offset, Max Planes) |
+| HDRP Water Excluder (a boat's hull keeping the water out) | Water Excluder (`WaterExcluderComponent`): Convex Hull of the GameObject's mesh, Box or Sphere; also dry for buoyancy, `Water.sample` and the underwater fade |
+| HDRP Water Deformer (Bow Wave) and Water Foam Generator behind a moving boat | Water Wake (`WaterWakeComponent`): foam and Kelvin waves in the scene's wake map (Water Wakes scene settings) |
 
 ## Camera shake and camera follow
 
@@ -296,6 +298,7 @@ Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
 | `Debug.isDebugBuild`, the Development Build checkbox | `Engine.isDevelopmentBuild`: the editor's Play and exports built with the Debug build type |
 | IngameDebugConsole (`DebugLogManager`, `DebugLogConsole.AddCommand`, `ExecuteCommand`, the popup) | `DebugOverlay` (`showConsole`, `toggleConsole`, `addCommand`, `executeCommand`; the popup and the backquote key), Project Settings > Debug |
 | Graphy (FPS, RAM, audio monitors) | the debug overlay's stats panel (`DebugOverlay.statsMode`, F3) and `DebugOverlay.getStats()` |
+| Game view Stats: SetPass calls (`UnityStats.setPassCalls`) | the Game view's Stats overlay and the debug overlay's "SetPass calls", `Profiler.frameStats().setPassCalls`, `DebugOverlay.getStats().setPassCalls`, `pipelines_applied` of `get_render_stats` |
 | Dynamic Batching (Player Settings), SpriteRenderer batching | Dynamic Batching (Project Settings > Graphics, on by default; `Engine.dynamicBatching`): Sprites, small meshes and UI elements, [rendering/batching.md](rendering/batching.md) |
 | Game view Stats: Batches, Saved by batching | the same lines in the Game view's Stats; MCP `get_render_stats` `batching` |
 | Frame Debugger: "Why this draw call can't be batched with the previous one" | the Frame Debugger's Dynamic Batch rows (hover: the reason); MCP `get_render_stats batch_breaks` |

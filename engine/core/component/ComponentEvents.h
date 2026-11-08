@@ -25,6 +25,7 @@
 #include "component/ScrollbarComponent.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/TextEffectComponent.h"
+#include "component/TweenComponent.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
@@ -55,6 +56,7 @@ namespace jasperengine {
         ScrollbarComponent,
         SplineAnimateComponent,
         TextEffectComponent,
+        TweenComponent,
         UIComponent,
         UIDocumentComponent,
         VertexAnimatorComponent,

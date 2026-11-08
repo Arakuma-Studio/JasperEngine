@@ -217,6 +217,9 @@ bool editor::Exporter::resolvePlayer() {
     if (config.allowPlayerMismatch && player->engineVersion != PlayerRuntimes::editorVersion())
         warn("W-PLAYER-MISMATCH", "player " + id + " is for editor " + player->engineVersion + ", this is " + PlayerRuntimes::editorVersion() +
                                   " (--allow-player-mismatch; publish verify refuses the build)");
+    else if (config.allowPlayerMismatch && !::jasperengine::cook::readsContentFormat(player->contentFormatVersion, ::jasperengine::cook::contentFormatVersion()))
+        warn("W-PLAYER-MISMATCH", "player " + id + " reads content format " + player->contentFormatVersion + ", this editor writes " +
+                                  ::jasperengine::cook::contentFormatVersion() + ": it skips what is newer (--allow-player-mismatch; publish verify refuses the build)");
     return true;
 }
 

@@ -194,6 +194,65 @@ float shade(){
 }
 """), [])
 
+    def test_a_branch_on_a_per_fragment_local_is_flagged(self):
+        # NdotL comes from the varying normal through n; lit from a sample (mesh.frag's light loop)
+        findings = scan(a="""
+float shade(){
+    float sum = 0.0;
+    vec3 n = normalize(v_normal);
+    float lit;
+    for (int i = 0; i < 4; i++){
+        float NdotL = dot(n, u_lightDir[i]);
+        if (NdotL > 0.0)
+            sum += dFdx(v_position).x;
+        lit = texture(sampler2D(u_tex, u_smp), v_uv).r;
+        if (lit > u_cut) break;
+        sum += texture(sampler2D(u_tex, u_smp), v_uv).g;
+    }
+    return sum;
+}
+""")
+        self.assertEqual(len(findings), 3)
+        self.assertIn("a.glsl:9: dFdx()", findings[0])
+        self.assertIn("a.glsl:10: texture()", findings[1])
+        self.assertIn("a.glsl:12: texture()", findings[2])
+
+    def test_a_loop_condition_on_a_per_fragment_local_is_flagged(self):
+        findings = scan(a="""
+float march(){
+    int steps = int(v_depth * 16.0);
+    float sum = 0.0;
+    for (int i = 0; i < steps; i++)
+        sum += texture(sampler2D(u_tex, u_smp), v_uv).r;
+    do {
+        sum -= fwidth(v_uv.x);
+    } while (sum > v_depth);
+    return sum;
+}
+""")
+        self.assertEqual(len(findings), 2)
+        self.assertIn("a.glsl:6: texture()", findings[0])
+        self.assertIn("a.glsl:8: fwidth()", findings[1])
+
+    def test_a_local_of_uniform_values_passes(self):
+        # the same names per-fragment in another function do not count here
+        self.assertEqual(scan(a="""
+float other(){
+    float NdotL = dot(normalize(v_normal), u_dir);
+    return NdotL;
+}
+float shade(){
+    float sum = 0.0;
+    int count = u_count * 2;
+    for (int i = 0; i < count; i++){
+        float NdotL = u_weights[i] * 0.5;
+        if (NdotL > 0.0 || i == count) sum += texture(sampler2D(u_tex, u_smp), v_uv).r;
+        if (NdotL >= u_cut) break;
+    }
+    return sum;
+}
+"""), [])
+
     def test_the_engine_shader_library_passes(self):
         self.assertEqual(check_shader_lod.main([]), 0)
 

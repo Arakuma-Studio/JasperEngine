@@ -367,7 +367,9 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         if (change.origin == ChangeOrigin::Editor) {
             // (an agent's write_file of a clip or a pose animation: their documents reload too,
             // and its load problems are the call's)
-            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "graph") editorWritten[kind].push_back(change.path);
+            // (an .aseprite an editor tool wrote: imported again like another program's save, S44 R23)
+            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "graph" || kind == "aseprite")
+                editorWritten[kind].push_back(change.path);
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) editorWritten["ui"].push_back(change.path);
             continue;
         }
@@ -427,6 +429,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     }
     reload::reloadTextures(ctx, textures);
     reload::reloadModels(ctx, files(external, "model"));
+    reload::reloadAseprite(ctx, both("aseprite"));
     reload::reloadAudio(ctx, files(external, "audio"));
     // the project's audio mixer is heard as its file now says, in Edit mode and Play alike: the
     // editor's own writes (audio_mixer edit, the Audio Mixer window, their undo) and another

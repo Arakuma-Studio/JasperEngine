@@ -59,11 +59,11 @@ int dtMergeCorridorStartMoved(dtPolyRef* path, const int npath, const int maxPat
 	int size = dtMax(0, npath-orig);
 	if (req+size > maxPath)
 		size = maxPath-req;
-	if (size)
+	if (size > 0) // JasperEngine patch: upstream 599fd0f (#635), size < 0 when req > maxPath
 		memmove(path+req, path+orig, size*sizeof(dtPolyRef));
 	
 	// Store visited
-	for (int i = 0; i < req; ++i)
+	for (int i = 0, n = dtMin(req, maxPath); i < n; ++i) // JasperEngine patch: upstream 599fd0f (#635), at most maxPath
 		path[i] = visited[(nvisited-1)-i];				
 	
 	return req+size;
@@ -512,7 +512,7 @@ void dtPathCorridor::setCorridor(const float* target, const dtPolyRef* path, con
 {
 	dtAssert(m_path);
 	dtAssert(npath > 0);
-	dtAssert(npath < m_maxPath);
+	dtAssert(npath <= m_maxPath); // JasperEngine patch: upstream 9147d09 (#619), a full corridor is valid
 	
 	dtVcopy(m_target, target);
 	memcpy(m_path, path, sizeof(dtPolyRef)*npath);

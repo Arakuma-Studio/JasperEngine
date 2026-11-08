@@ -39,6 +39,8 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"materials", "Procedural Materials: preview any material with checks, bake a graph to PNGs and a .material (jasper://docs/procedural-materials)."},
         {"html_ui", "HTML UI views in play: scroll, select, activate, expand, collapse and sort list/grid/tree/table views."},
         {"shipping", "Player runtimes, native plugins, build shader overrides, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
+        // the pixel-art family's sprites (S44 adds the row; S45 and S47 add their tools)
+        {"sprites", "Aseprite import settings, sprite atlases, and agent sprite drawing on .aseprite files (jasper://docs/sprites)."},
     };
     if (selftestGroupMode() > 0) {
         groups.push_back({"selftest", "Test-only group of the MCP tests (JASPER_MCP_SELFTEST_GROUP)."});

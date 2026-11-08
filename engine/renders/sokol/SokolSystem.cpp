@@ -6,6 +6,7 @@
 #include "SokolAsyncCreate.h"
 
 #include <algorithm>
+#include <cassert>
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -74,7 +75,10 @@ extern "C" void jasperengine_sg_pool_usage(int kind, int* used, int* free);
 extern "C" void jasperengine_sg_wait_gpu_idle(void);
 // (sokol.cpp) Vulkan's per-frame buffers: 0 stream staging, 1 uniforms, 2 descriptors
 extern "C" bool jasperengine_sg_vk_frame_buffer_usage(int which, uint32_t* used, uint32_t* size, bool* overflown);
-extern "C" bool jasperengine_sg_vk_next_draw_descriptors(uint32_t limit, uint32_t* need, uint32_t* used, uint32_t* size);
+extern "C" bool jasperengine_sg_vk_next_draw_descriptors(uint32_t limit, bool bindings, uint32_t* need, uint32_t* used, uint32_t* size);
+// (sokol.cpp) the draw being set up is still valid (a failed sg_apply_bindings or uniform block turns
+// it off until the next sg_apply_pipeline)
+extern "C" bool jasperengine_sg_next_draw_valid(void);
 // (sokol.cpp) Vulkan: an upload past the stream staging buffer, through the copy staging path
 extern "C" bool jasperengine_sg_vk_update_buffer_alone(sg_buffer buf_id, const void* data, size_t size);
 extern "C" bool jasperengine_sg_vk_update_image_alone(sg_image img_id, const sg_image_data* data);
@@ -290,6 +294,9 @@ void sokol_log(const char* tag,                // e.g. 'sg'
         }
         message_or_null = unnamed;
     }
+    // a call that failed can leave sokol skipping draws until the next sg_apply_pipeline
+    if (log_level <= 1 && !Engine::isAsyncThread())
+        SokolSystem::forgetAppliedState();
     if (log_level == 0){
         Log::print("(PANIC): %s\n", message_or_null);
     }else if (log_level == 1){
@@ -334,6 +341,8 @@ void SokolSystem::setup(){
     descriptorFrameSkippedBytes = 0;
 
     sg_setup(&desc);
+    // a new context: nothing of an earlier one is applied
+    forgetAppliedState();
 
     // diagnostics: the passes, draws and resources of each frame (getFrameStatsLine); with the
     // profiler, sokol's counters are always on (get_render_stats' upload bytes)
@@ -599,8 +608,8 @@ void SokolSystem::beginPass(const sg_pass& pass){
     measurePass(pass);
     requestedScissor = wholePass();
     appliedScissor = requestedScissor;
-    // a new pass has no pipeline applied (the dynamic path's "applied last") nor uniforms
-    SokolPipelineCache::invalidateApplied();
+    // a new pass has no pipeline, uniforms or bindings applied
+    forgetAppliedState();
 }
 
 void SokolSystem::endPass(){
@@ -609,6 +618,7 @@ void SokolSystem::endPass(){
     SokolDrawBatch::flush();
     sg_end_pass();
     passOpen = false;
+    forgetAppliedState();
     // the Frame Debugger's preview of the pass that ended, when it asked for it (S15; its blit is
     // a pass of its own, which does not preview itself)
     SokolPassPreview::afterEndPass();
@@ -717,6 +727,9 @@ namespace{
 bool SokolSystem::updateBuffer(sg_buffer buffer, const sg_range& data){
     // (a held draw may read it: drawn before)
     SokolDrawBatch::flush();
+    // sokol may write another of the buffer's backend buffers (dynamic and stream ones rotate):
+    // the same handle in a draw's bindings names other memory
+    forgetAppliedBindings();
     if (streamUpdated(buffer)){
         const uint64_t size = data.size;
         if (streamBudget.enforced && size > streamBudget.limit){
@@ -735,6 +748,8 @@ bool SokolSystem::updateBuffer(sg_buffer buffer, const sg_range& data){
 }
 
 int SokolSystem::appendBuffer(sg_buffer buffer, const sg_range& data){
+    // (as updateBuffer)
+    forgetAppliedBindings();
     if (streamUpdated(buffer)){
         const uint64_t size = data.size;
         if (!reserveStreamBytes(&size, 1))
@@ -745,6 +760,8 @@ int SokolSystem::appendBuffer(sg_buffer buffer, const sg_range& data){
 
 bool SokolSystem::updateImage(sg_image image, const sg_image_data& data){
     SokolDrawBatch::flush();
+    // (as updateBuffer)
+    forgetAppliedBindings();
     if (sg_query_image_state(image) == SG_RESOURCESTATE_VALID && sg_query_image_usage(image).stream_update){
         // sokol stages the image's mip levels (each slice of one together)
         const int mips = std::min(std::max(sg_query_image_num_mipmaps(image), 1), (int)SG_MAX_MIPMAPS);
@@ -770,16 +787,99 @@ bool SokolSystem::updateImage(sg_image image, const sg_image_data& data){
     return true;
 }
 
-bool SokolSystem::reserveDescriptorBytes(){
+bool SokolSystem::reserveDescriptorBytes(bool bindings){
     if (!descriptorBudget.enforced)
         return true;
     uint32_t need = 0, used = 0, size = 0;
     const uint32_t limit = (uint32_t)std::min<uint64_t>(descriptorBudget.limit, UINT32_MAX);
-    if (jasperengine_sg_vk_next_draw_descriptors(limit, &need, &used, &size))
+    if (jasperengine_sg_vk_next_draw_descriptors(limit, bindings, &need, &used, &size))
         return true;
     descriptorFrameSkippedBytes += need;
     descriptorBudget.skip();
     return false;
+}
+
+namespace {
+    // what the current pass applied last (SokolSystem::applyPipeline, applyBindings)
+    struct AppliedDrawState {
+        uint32_t pipeline = SG_INVALID_ID;
+        uint32_t epoch = 1;
+        bool bindingsApplied = false;
+        sg_bindings bindings = {};
+        bool skipping = true;
+    };
+
+    AppliedDrawState& appliedDrawState(){
+        static AppliedDrawState state;
+        return state;
+    }
+}
+
+bool SokolSystem::applyPipeline(uint32_t pipelineId){
+    assert(!Engine::isAsyncThread() && "the applied state is the render thread's");
+    AppliedDrawState& state = appliedDrawState();
+    if (pipelineId == state.pipeline && state.skipping)
+        return false;
+    // recorded before the call: an error inside it forgets them again (sokol_log)
+    state.pipeline = pipelineId;
+    state.epoch++;
+    // sokol wants the bindings again after every sg_apply_pipeline
+    state.bindingsApplied = false;
+    sg_apply_pipeline({pipelineId});
+    Engine::addSetPassCall();
+    return true;
+}
+
+void SokolSystem::setRepeatedStateSkipped(bool skipped){
+    appliedDrawState().skipping = skipped;
+    forgetAppliedState();
+}
+
+bool SokolSystem::isBindingsApplied(const sg_bindings& bindings){
+    const AppliedDrawState& state = appliedDrawState();
+    return state.skipping && state.bindingsApplied && std::memcmp(&state.bindings, &bindings, sizeof(sg_bindings)) == 0;
+}
+
+void SokolSystem::applyBindings(const sg_bindings& bindings){
+    assert(!Engine::isAsyncThread() && "the applied state is the render thread's");
+    AppliedDrawState& state = appliedDrawState();
+    state.bindings = bindings;
+    state.bindingsApplied = true;
+    sg_apply_bindings(&bindings);
+    // a binding that is not ready (a buffer still being created) turns the pipeline's later draws
+    // off in sokol until it is applied again: the next draw applies both
+    if (!jasperengine_sg_next_draw_valid())
+        forgetAppliedState();
+}
+
+void SokolSystem::draw(int baseElement, int numElements, int numInstances){
+    sg_draw(baseElement, numElements, numInstances);
+    if (!jasperengine_sg_next_draw_valid())
+        forgetAppliedState();
+}
+
+void SokolSystem::forgetAppliedState(){
+    // (the render thread's state: a loading thread neither draws nor holds it)
+    if (Engine::isAsyncThread())
+        return;
+    AppliedDrawState& state = appliedDrawState();
+    state.pipeline = SG_INVALID_ID;
+    state.epoch++;
+    state.bindingsApplied = false;
+}
+
+void SokolSystem::forgetAppliedBindings(){
+    if (Engine::isAsyncThread())
+        return;
+    appliedDrawState().bindingsApplied = false;
+}
+
+uint32_t SokolSystem::appliedEpoch(){
+    return appliedDrawState().epoch;
+}
+
+uint32_t SokolSystem::appliedPipeline(){
+    return appliedDrawState().pipeline;
 }
 
 uint64_t SokolSystem::getBudgetLastFrame(int kind){
@@ -865,6 +965,7 @@ void SokolSystem::shutdown(){
     sgj_gpu_timer_shutdown();
     pendingInitializations.clear();
     passOpen = false;
+    forgetAppliedState();
     deferredFlush = nullptr;
     deferredOwner = nullptr;
     sg_shutdown();

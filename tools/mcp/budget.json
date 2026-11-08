@@ -80,6 +80,10 @@
         }
     },
     "exceptions": {
+        "visualize_navigation": {
+            "limit": 1725,
+            "reason": "S74 path filter (agent_type, area_mask) and S75 R33 (frame, island / tile colours, slope and tile label flags, GameObject path ends, the Game view screenshot): 1642 measured + 5 %"
+        },
         "set_scene_camera": {
             "limit": 1960,
             "reason": "S26 (R17-R21): the Scene view camera's projection, ortho size, axis view, Frame All and Scene Camera settings (field of view, clip planes, speed, easing, ...) on the one camera tool agents already use"

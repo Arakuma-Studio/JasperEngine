@@ -290,6 +290,10 @@ bool SystemRender::hasTextureFormatSupportOverride(){
     return textureSupportOverridden;
 }
 
+void SystemRender::setRepeatedStateSkipped(bool skipped){
+    SokolSystem::setRepeatedStateSkipped(skipped);
+}
+
 uint64_t SystemRender::getPipelineCacheMisses(){
     return SokolSystem::getPipelineCacheMisses();
 }

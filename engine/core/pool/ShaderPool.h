@@ -171,10 +171,18 @@ namespace jasperengine{
         // the variant bit of automatic GPU instancing (HAS_AUTO_INSTANCING: the object block per
         // instance, spec S55) of MESH and DEPTH, 0 for another type
         static uint64_t getAutoInstancingProperty(ShaderType shaderType);
+        // MESH's Water Excluder and Water Wake bits ('Wex' USE_WATER_EXCLUSION, 'Wwk'
+        // USE_WATER_WAKE): a shader requiring waterexclusion / waterwake, in a scene with such
+        // components (includes/water_interaction.glsl)
+        static uint64_t getWaterExclusionProperty();
+        static uint64_t getWaterWakeProperty();
         // S57's MESH bits: 'Til' (Light Mode Tiled), 'Cap' (capsule shadows), 'Cts' (contact
         // shadows) and 'Oit' (an alpha-blended submesh's OIT accumulation render)
         enum class LightingFeature { TILED_LIGHTS, CAPSULE_SHADOWS, CONTACT_SHADOWS, OIT };
         static uint64_t getLightingProperty(LightingFeature feature);
+        // MESH's 'Dlo': the built-in Lit of a scene whose lights are all directional
+        // (DIRECTIONAL_LIGHTS_ONLY: no point or spot path, spot mask or point shadow resources)
+        static uint64_t getDirectionalOnlyProperty();
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);
         static uint64_t getPropertiesFromKey(ShaderKey key);

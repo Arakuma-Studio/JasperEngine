@@ -11,6 +11,9 @@
 #include "window/vcs/VcsUi.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
+#include "pixelart/aseprite/AsepriteEditorHooks.h"
+#include "pixelart/aseprite/AsepriteImporter.h"
+#include "sprite/SpriteSheetPool.h"
 #include "util/EditorScripts.h"
 #include "asset/AssetTypes.h"
 #include "window/AssetPanels.h"
@@ -1720,6 +1723,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
             ImTextureID fileIconImage = Backend::getImGuiTexture(file.icon);
             float dispW = uiIconSize;
             float dispH = uiIconSize;
+            // a frame of an .aseprite file's page: a part of the texture
+            ImVec2 iconUv0(0.0f, 0.0f), iconUv1(1.0f, 1.0f);
 
             // Only resolve thumbnails for items inside the visible region, so
             // the GPU texture cache stays bounded with large directories
@@ -1735,6 +1740,19 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         dispH = std::max(1.0f, th * scale);
                     }
                     fileIconImage = thumbTex;
+                }
+            }
+            if (!file.isDirectory && ImGui::IsItemVisible() && SpriteSheetPool::isAsepritePath(file.name)){
+                int tw = 0;
+                int th = 0;
+                if (ImTextureID frameTex = getAsepriteThumbnail(currentPath / file.name, hovered, tw, th, iconUv0, iconUv1)){
+                    if (tw > 0 && th > 0){
+                        float scale = std::min(uiIconSize / static_cast<float>(tw),
+                                               uiIconSize / static_cast<float>(th));
+                        dispW = std::max(1.0f, tw * scale);
+                        dispH = std::max(1.0f, th * scale);
+                    }
+                    fileIconImage = frameTex;
                 }
             }
 
@@ -1774,7 +1792,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         float availWidth = ImGui::GetCurrentWindow()->Size.x;
                         float xPos = (availWidth - previewW) * 0.5f;
                         ImGui::SetCursorPosX(xPos);
-                        Widgets::image(fileIconImage, ImVec2(previewW, previewH));
+                        if (fileIconImage != ImTextureID{}) ImGui::Image(fileIconImage, ImVec2(previewW, previewH), iconUv0, iconUv1);
+                        else Widgets::image(fileIconImage, ImVec2(previewW, previewH));
                     }
 
                     ImGui::EndDragDropSource();
@@ -1854,7 +1873,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 float imageY = contentMin.y + contentYOffset + (thumbHeight - dispH) * 0.5f;
                 ImGui::SetCursorScreenPos(ImVec2(imageX, imageY));
                 if (notInProject) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, style.Alpha * 0.4f);
-                Widgets::image(fileIconImage, ImVec2(dispW, dispH));
+                if (fileIconImage != ImTextureID{}) ImGui::Image(fileIconImage, ImVec2(dispW, dispH), iconUv0, iconUv1);
+                else Widgets::image(fileIconImage, ImVec2(dispW, dispH));
                 if (file.type == FileType::PREFAB && isVariantFile(currentPath / file.name)){
                     const float badge = std::max(Theme::dpi(10.0f), std::min(dispW, dispH) * 0.34f);
                     UIUtils::drawPrefabVariantBadge(ImGui::GetWindowDrawList(), ImVec2(imageX + Theme::dpi(3.0f), imageY + dispH - badge - Theme::dpi(2.0f)),
@@ -1969,7 +1989,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     }
                     ImVec2 iconMin(itemMin.x + Theme::dpi(4.0f) + (iconExtent - w) * 0.5f, itemMin.y + (rowH - h) * 0.5f);
                     if (fileIconImage != ImTextureID{}){
-                        drawList->AddImage(fileIconImage, iconMin, ImVec2(iconMin.x + w, iconMin.y + h), ImVec2(0, 0), ImVec2(1, 1), tintCol);
+                        drawList->AddImage(fileIconImage, iconMin, ImVec2(iconMin.x + w, iconMin.y + h), iconUv0, iconUv1, tintCol);
                     }
                     if (file.type == FileType::PREFAB && isVariantFile(currentPath / file.name)){
                         const float badge = std::max(Theme::dpi(8.0f), iconExtent * 0.55f);
@@ -2004,7 +2024,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     // Center the scaled thumbnail inside the icon box
                     ImVec2 imgMin(iconBoxMin.x + (uiIconSize - dispW) * 0.5f, iconBoxMin.y + (uiIconSize - dispH) * 0.5f);
                     if (fileIconImage != ImTextureID{}){
-                        drawList->AddImage(fileIconImage, imgMin, ImVec2(imgMin.x + dispW, imgMin.y + dispH), ImVec2(0, 0), ImVec2(1, 1), tintCol);
+                        drawList->AddImage(fileIconImage, imgMin, ImVec2(imgMin.x + dispW, imgMin.y + dispH), iconUv0, iconUv1, tintCol);
                     }
                     // Unity's Prefab Variant icon: the prefab's with an arrow
                     if (file.type == FileType::PREFAB && isVariantFile(currentPath / file.name)){
@@ -2174,6 +2194,19 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         }
                         ImGui::SetItemTooltip("This Prefab Variant's base: %s", base.generic_string().c_str());
                     }
+                    ImGui::Separator();
+                }
+
+                // .aseprite files (S44 R32): the selected ones in Aseprite
+                if (!file.isDirectory && SpriteSheetPool::isAsepritePath(file.name)) {
+                    if (ImGui::MenuItem(ICON_FA_UP_RIGHT_FROM_SQUARE " Open in Aseprite")) {
+                        std::vector<std::string> paths;
+                        for (const fs::path& selected : getSelectedFiles()) {
+                            if (SpriteSheetPool::isAsepritePath(selected.string())) paths.push_back(FileUtils::pathToUtf8(selected));
+                        }
+                        pixelart::aseprite::openInAsepriteOrFallback(project, paths, false);
+                    }
+                    uiBuilding.contextMenu.push_back({"Open in Aseprite", lastItemRect()});
                     ImGui::Separator();
                 }
 
@@ -3758,6 +3791,41 @@ ImTextureID editor::ProjectWindow::getThumbnailTexture(const std::string& thumbn
     return Backend::getImGuiTexture(render);
 }
 
+ImTextureID editor::ProjectWindow::getAsepriteThumbnail(const fs::path& filePath, bool animate, int& outWidth, int& outHeight, ImVec2& uv0, ImVec2& uv1) {
+    pixelart::aseprite::AsepriteImporter& imports = pixelart::aseprite::AsepriteImporter::get();
+    if (imports.getProject() != project || !project->isInsideAssetsPath(filePath)) return ImTextureID{};
+    const std::string assetPath = project->normalizeToAssetsRelative(filePath).generic_string();
+    // before the first import the pool would only remember a failure
+    const std::shared_ptr<const pixelart::aseprite::ImportRecord> record = imports.record(assetPath);
+    if (!record || !record->ok || record->pages.empty()) return ImTextureID{};
+    const std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(assetPath);
+    if (!sheet || sheet->frames.empty()) return ImTextureID{};
+    size_t frame = 0;
+    if (animate && sheet->frames.size() > 1) {
+        uint64_t total = 0;
+        for (const SpriteFrame& f : sheet->frames) total += std::max<uint32_t>(f.durationMs, 1);
+        uint64_t at = static_cast<uint64_t>(ImGui::GetTime() * 1000.0) % total;
+        while (frame + 1 < sheet->frames.size() && at >= std::max<uint32_t>(sheet->frames[frame].durationMs, 1)) {
+            at -= std::max<uint32_t>(sheet->frames[frame].durationMs, 1);
+            frame++;
+        }
+        // the idle loop draws on input only: keep it drawing while the hovered file plays
+        Backend::getApp().requestRedraw();
+    }
+    const SpriteFrame& shown = sheet->frames[frame];
+    int pageWidth = 0;
+    int pageHeight = 0;
+    ImTextureID texture = getThumbnailTexture(record->pageFile(shown.page).string(), pageWidth, pageHeight);
+    if (texture == ImTextureID{} || pageWidth <= 0 || pageHeight <= 0) return ImTextureID{};
+    const float x = shown.rect.getX(), y = shown.rect.getY(), w = shown.rect.getWidth(), h = shown.rect.getHeight();
+    if (w <= 0.0f || h <= 0.0f) return ImTextureID{};
+    uv0 = ImVec2(x / pageWidth, y / pageHeight);
+    uv1 = ImVec2((x + w) / pageWidth, (y + h) / pageHeight);
+    outWidth = static_cast<int>(w);
+    outHeight = static_cast<int>(h);
+    return texture;
+}
+
 ImTextureID editor::ProjectWindow::getAssetThumbnail(const fs::path& filePath, int& outWidth, int& outHeight) {
     outWidth = outHeight = 0;
     if (filePath.empty() || !Engine::isViewLoaded()) {
@@ -4876,7 +4944,20 @@ void editor::ProjectWindow::drawTextureCookBadge(ImDrawList* drawList, const Fil
     const char* icon = nullptr;
     ImU32 color = 0;
     std::string tooltip;
-    if (file.type == FileType::IMAGE) {
+    if (SpriteSheetPool::isAsepritePath(file.name)) {
+        // .aseprite files: importing or failed (S44)
+        pixelart::aseprite::AsepriteImporter& imports = pixelart::aseprite::AsepriteImporter::get();
+        if (imports.getProject() != project) return;
+        const std::string assetPath = project->normalizeToAssetsRelative(absolute).generic_string();
+        const std::shared_ptr<const pixelart::aseprite::ImportRecord> record = imports.record(assetPath);
+        if (imports.isPending(assetPath)) {
+            icon = ICON_FA_GEAR; color = IM_COL32(120, 200, 255, 240); tooltip = "Importing the Aseprite file";
+        } else if (record && !record->ok) {
+            icon = ICON_FA_TRIANGLE_EXCLAMATION; color = IM_COL32(255, 110, 90, 255); tooltip = "The import failed: the Inspector shows why";
+        } else {
+            return;
+        }
+    } else if (file.type == FileType::IMAGE) {
         TextureCookQueue& cooks = TextureCookQueue::get();
         if (cooks.getProject() != project) return;
         switch (cooks.badgeStatus(project->normalizeToAssetsRelative(absolute).generic_string())) {
@@ -5005,6 +5086,9 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
             ? project->normalizeToAssetsRelative(filePath).generic_string()
             : filePath.generic_string();
         animationClipInspectorHooks().openClip(project, 0, NULL_ENTITY, clip);
+    } else if (SpriteSheetPool::isAsepritePath(filePath.string())) {
+        // Aseprite; when it is not found, the Sprite Preview (S44 R32)
+        pixelart::aseprite::openInAsepriteOrFallback(project, {FileUtils::pathToUtf8(filePath)}, true);
     } else if (Util::isPrefabFile(filePath.string())) {
         editor::getEditorHost().openPrefabAsset(filePath);  // Unity: Prefab Mode
     } else if (filePath.extension() == ".inputactions") {

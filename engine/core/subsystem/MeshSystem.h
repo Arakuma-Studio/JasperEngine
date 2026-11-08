@@ -94,6 +94,13 @@ namespace jasperengine{
         // the sprite as grid x grid cells while a lattice deforms it (spec lattice §6.4)
         void createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
                               Vector2 pivotPos, int grid);
+        // createSpriteGrid with the quad's corners given (x0, y0 the first vertex): sheet frames
+        // draw their trimmed quad (S44 R49) through it
+        void buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
+                             float x0, float y0, float x1, float y1, int grid);
+        // a sheet sprite (S44 R48-R49): the frame's page, texture rect and trimmed quad, rebuilt
+        // only when the frame's geometry differs from the one built
+        bool updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh);
         bool createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh);
         bool createTilemap(TilemapComponent& tilemap, MeshComponent& mesh);
 
@@ -192,6 +199,9 @@ namespace jasperengine{
         void updateTerrainFoliage(Entity entity, TerrainComponent& terrain, Transform& transform);
 
     public:
+        // Sprite:playTag (S44 R38): the tag's frames at the sheet's durations, at the tag's speed; a
+        // step longer than the tag goes round whole loops (or ends it) at once
+        static void stepSpriteTag(SpriteComponent& sprite, double dt);
         MeshSystem(Scene* scene);
         virtual ~MeshSystem();
 

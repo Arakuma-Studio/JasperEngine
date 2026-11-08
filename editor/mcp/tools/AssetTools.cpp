@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // W4: assets, import, materials, shaders, text files, placeholder art
+#include "SpriteTools.h"
+#include "sprite/SpriteSheetPool.h"
 #include "asset/AssetOps.h"
 #include "io/watch/LinkedFolders.h"
 #include "asset/AssetTypes.h"
@@ -870,6 +872,10 @@ void getAssetInfoTool(const CallPtr& call) {
                            projectRelative(project, project->getAssetsPath()) + ".";
         }
     }
+    if (kind == "aseprite_sprite") {
+        Json sprite = asepriteAssetInfo(project, file, text);
+        for (auto it = sprite.begin(); it != sprite.end(); ++it) data[it.key()] = it.value();
+    }
     if (kind == "texture") {
         int w = 0, h = 0, c = 0;
         if (extensionOf(file) != ".svg" && stbi_info(file.string().c_str(), &w, &h, &c)) {
@@ -1112,6 +1118,10 @@ void viewAssetTool(const CallPtr& call) {
     if (Util::isImageFile(rel) && extensionOf(file) != ".svg") {
         replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json(),
                    spriteNormalsAssetInfo(project, file, false));
+        return;
+    }
+    if (SpriteSheetPool::isAsepritePath(rel)) {
+        replyAsepriteView(call, project, file, maxSize);
         return;
     }
     if (Util::isVertexAnimationFile(rel)) {
@@ -4167,7 +4177,7 @@ void registerAssetTools(McpRegistry& registry) {
             "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
             "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "audio format/duration; .material fields, "
-            ".anim clip settings, tracks, events, users; .vat clips, staleness, users; "
+            ".anim clip settings, tracks, events, users; .vat clips, staleness, users; .aseprite layers, tags, slices, outputs; "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
@@ -4182,7 +4192,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "View Asset";
         tool.description =
             "See an image asset as PNG image content; models, materials and prefabs give their Project window "
-            "thumbnail (may take seconds). SVGs are not rasterized.";
+            "thumbnail (may take seconds); .aseprite frames as a sheet. SVGs are not rasterized.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"max_size", withDefault(integer("Longest side, px.", 16, 2048), 512)}

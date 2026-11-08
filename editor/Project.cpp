@@ -108,6 +108,7 @@
 #include "audio/AudioImportRegistry.h"
 #include "subsystem/VideoPlayerSystem.h"
 #include "subsystem/TrailSystem.h"
+#include "subsystem/WaterInteractionSystem.h"
 #include "subsystem/CameraControlSystem.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseAnimatorRuntime.h"
@@ -141,6 +142,7 @@
 #include "texture/Texture.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
+#include "pixelart/aseprite/AsepriteImporter.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "Engine.h"
@@ -6255,6 +6257,9 @@ void editor::Project::resetConfigs() {
     if (ModelCookQueue::get().getProject() == this){
         ModelCookQueue::get().attach(nullptr);
     }
+    if (pixelart::aseprite::AsepriteImporter::get().getProject() == this){
+        pixelart::aseprite::AsepriteImporter::get().attach(nullptr);
+    }
     textureSettings = {};
     modelSettings = {};
     inspectedAssets.clear();
@@ -6353,6 +6358,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     }
     // Camera Follow and the Camera Shakers hold in edit mode (the Inspector's shake preview runs)
     scene->getSystem<CameraControlSystem>()->setPaused(pause);
+    // the wakes hold with the game (a hull dragged in edit mode leaves none)
+    if (auto water = scene->findSystem<WaterInteractionSystem>()) water->setPaused(pause);
 }
 
 void editor::Project::stopCameraShakePreviews() {
@@ -6738,6 +6745,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         }
 
         pauseEngineScene(sceneProject->scene, true);
+        // the wakes the game left go with it (paused, the system would hold them in edit mode)
+        if (auto water = sceneProject->scene->findSystem<WaterInteractionSystem>()) water->clearWakes();
         applyEditCanvasScale(sceneProject->scene, sceneProject->sceneType, sceneProject->sceneRender);
 
         // GameObject.destroy calls still pending; what the game made goes with the snapshot

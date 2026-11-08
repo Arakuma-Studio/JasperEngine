@@ -31,6 +31,8 @@
 #include "component/ReflectionProbeComponent.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "component/CapsuleShadowCasterComponent.h"
+#include "component/WaterExcluderComponent.h"
+#include "component/WaterWakeComponent.h"
 #include "component/CameraComponent.h"
 #include "render/LightingTiers.h"
 #include "device/QualityResolver.h"
@@ -89,6 +91,9 @@ namespace {
         FACT_CONTACT_LIGHT   = 1u << 13, // a shadowed directional or spot light with contact shadows
         FACT_CAPSULE_CASTERS = 1u << 14, // Capsule Shadow Casters
         FACT_OIT_CAMERA      = 1u << 15, // a camera drawing Order Independent
+        // the water variants' 'Wex' and 'Wwk' (RenderSystem::update: the component counted, enabled or not)
+        FACT_WATER_EXCLUDERS = 1u << 16,
+        FACT_WATER_WAKES     = 1u << 17,
     };
 
     // whether a shader reference reads the scene depth with these features (manifest @require
@@ -156,6 +161,12 @@ namespace {
             }
             if (registry->findComponent<CapsuleShadowCasterComponent>(entity)){
                 facts |= FACT_CAPSULE_CASTERS;
+            }
+            if (registry->findComponent<WaterExcluderComponent>(entity)){
+                facts |= FACT_WATER_EXCLUDERS;
+            }
+            if (registry->findComponent<WaterWakeComponent>(entity)){
+                facts |= FACT_WATER_WAKES;
             }
             if (const CameraComponent* camera = registry->findComponent<CameraComponent>(entity)){
                 if (camera->transparencyMode == TransparencyMode::ORDER_INDEPENDENT)
@@ -252,18 +263,24 @@ namespace {
                                      (facts & FACT_CAPSULE_CASTERS);
         environment.contactShadows = environment.lights && environment.shadows && (facts & FACT_CONTACT_LIGHT);
         environment.tiledLights = environment.lights && (facts & FACT_LOCAL_LIGHTS) && LightingTiers::getLightMode() != LightMode::PER_OBJECT;
+        // RenderSystem::checkLightsAndShadow: no point or spot Light (a prefab that brings one
+        // reaches the other setup)
+        environment.directionalLightsOnly = environment.lights && !(facts & FACT_LOCAL_LIGHTS);
         environment.oit = (facts & FACT_OIT_CAMERA) != 0;
+        environment.waterExclusion = (facts & FACT_WATER_EXCLUDERS) != 0;
+        environment.waterWake = (facts & FACT_WATER_WAKES) != 0;
         return environment;
     }
 
-    uint32_t environmentBits(const MeshShaderEnvironment& e){
-        return (e.lights ? 1u : 0u) | (e.shadows ? 2u : 0u) | (e.ibl ? 4u : 0u) | (e.reflectionProbes ? 8u : 0u) |
+    uint64_t environmentBits(const MeshShaderEnvironment& e){
+        return (uint64_t)(e.lights ? 1u : 0u) | (e.shadows ? 2u : 0u) | (e.ibl ? 4u : 0u) | (e.reflectionProbes ? 8u : 0u) |
             (e.fog ? 16u : 0u) | (e.lights2D ? 32u : 0u) | (e.shadows2D ? 64u : 0u) | (e.ssao ? 128u : 0u) |
             (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u) | ((uint32_t)e.lightCapacity << 10) | (e.sceneDepth ? (1u << 20) : 0u) |
             (e.postColor ? (1u << 21) : 0u) | (e.shadowsHQ ? (1u << 22) : 0u) | (e.atmosphereDepth ? (1u << 23) : 0u) |
             (e.litQualityHigh ? (1u << 24) : 0u) | (e.pbrTier == PbrTier::REDUCED ? (1u << 25) : 0u) |
             (e.tiledLights ? (1u << 26) : 0u) | (e.capsuleShadows ? (1u << 27) : 0u) | (e.contactShadows ? (1u << 28) : 0u) |
-            (e.oit ? (1u << 29) : 0u);
+            (e.oit ? (1u << 29) : 0u) | (e.waterExclusion ? (1u << 30) : 0u) | (e.waterWake ? (1u << 31) : 0u) |
+            (e.directionalLightsOnly ? (1ull << 32) : 0ull);
     }
 
     // the states of the High shadow filters' variant bit ('Shq', RenderSystem::updateShadowTier)
@@ -326,7 +343,7 @@ namespace {
         }
 
         std::vector<MeshShaderEnvironment> environments;
-        std::set<uint32_t> distinct;
+        std::set<uint64_t> distinct;
         for (uint32_t facts : withLoading){
             for (bool postColorOn : postColor){
                 for (bool highFilters : shadowHQ){
@@ -1246,6 +1263,28 @@ std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const P
     return features;
 }
 
+void editor::ShaderVariantCollector::addDirectionalOnlyTwins(std::set<ShaderKey>& keys){
+    const uint64_t bit = ShaderPool::getDirectionalOnlyProperty();
+    const uint64_t tiled = ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS);
+    // a point or spot light arriving under Light Mode Tiled or Automatic draws the pixel lights
+    // from tiles (RenderSystem::updateLightingFeatures): the twin with 'Til' too, where a variant
+    // takes it (pixel lights, not a painted terrain surface: getSubmeshShaderVariant)
+    const bool tiles = LightingTiers::getLightMode() != LightMode::PER_OBJECT;
+    std::vector<ShaderKey> twins;
+    for (const ShaderKey& key : keys){
+        if (ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && (key.properties & bit)){
+            ShaderKey twin = key;
+            twin.properties &= ~bit;
+            twins.push_back(twin);
+            if (tiles && (twin.properties & shaderPropertyBit(3)) && !(twin.properties & shaderPropertyBit(27))){
+                twin.properties |= tiled;
+                twins.push_back(twin);
+            }
+        }
+    }
+    keys.insert(twins.begin(), twins.end());
+}
+
 void editor::ShaderVariantCollector::addBuildRequiredKeys(std::set<ShaderKey>& keys){
     keys.insert(ShaderPool::getShaderKey(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH)));
 }
@@ -1305,6 +1344,7 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         }
     }
     QualityResolver::popState();
+    addDirectionalOnlyTwins(keys);
 }
 
 void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const ShaderVariantContent& sceneContent,

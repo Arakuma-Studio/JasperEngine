@@ -618,6 +618,11 @@ void ActionSystem::setSpriteTextureRect(MeshComponent& mesh, SpriteComponent& sp
     }
 
     int frameId = spriteanim.frames[spriteanim.frameIndex];
+    // a sheet sprite's frames are indices into its sheet (S44 R50); MeshSystem clamps them
+    if (!sprite.sheet.empty()) {
+        if (frameId >= 0) sprite.frame = frameId;
+        return;
+    }
     if (frameId < 0 || (unsigned int)frameId >= sprite.numFramesRect) {
         return;
     }

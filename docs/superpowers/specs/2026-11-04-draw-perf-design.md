@@ -391,12 +391,16 @@ builds are kept compiling by reading (no new includes beyond `<cstring>`, `<cmat
   are depth-tested, so only exact depth ties can show it); `opaqueSortPriority` stays the tool for a fixed order.
 - A culled mesh is not in the opaque or transparent queue; its Trail Renderer is unaffected (trails are culled
   on their own bounds). Editor billboard overrides and per-view instance bounds cull as `isBatchVisible` does.
-- `Dlo`: a scene with lighting forced on and no light gets `Dlo` (nothing to shade either way). Adding,
-  removing, retyping or (un)disabling lights only switches when the set of types changes. Several scene layers
-  decide each for its own lights. Vertex-lit and terrain meshes of the built-in Lit get it; unlit submeshes,
-  forks and library shaders never do.
+- `Dlo`: a scene with lighting forced on and no light gets `Dlo` (nothing to shade either way). The first
+  point or spot Light the scene has (enabled or not) switches it to the general variant until the scene loads
+  again: removing, retyping or adding lights afterwards reloads nothing. A mesh still drawing `Dlo` while its
+  general variant builds takes the new light in its SH ambient: drawn, never shaded as a sun nor dropped.
+  Several scene layers decide each for its own lights. Vertex-lit and terrain meshes of the built-in Lit get
+  it; unlit submeshes, forks, library shaders and Light Mode Tiled variants never do.
 - `Dlo` key missing from a build: the general variant draws (warned once, existing fallback). General key
-  missing while a `Dlo` scene gains a point light: impossible after the twin rule.
+  missing while a `Dlo` scene gains a point light: impossible after the twin rule, which ships the general
+  twin and, unless Light Mode is Per Object, its tiled (`Til`) form (a point light under Automatic or Tiled
+  draws the pixel lights from tiles).
 - Bone bounds: a skinned mesh keeps today's behaviour; a Vertex Animator's `animatedBounds` is unchanged.
 - Zero or negative scales: `composeTRS` and `affineMultiply` give today's values; `affineInverse` falls back to
   `inverse()` on a zero determinant; `isMirroredDraw` gives today's answer.
@@ -603,4 +607,136 @@ backend and a web-gate run.
 
 ## Deviations
 
-None yet (the implementer records any here).
+Recorded during implementation (2026-11-06), after mesh-memory, S54 (LOD cross-fade), S55 (automatic
+GPU instancing, visible lists) and S57 (Forge lighting) had landed on `main` and changed the draw path.
+
+- **The tracker builds on S55's.** S55 had put a pipeline-only skip in `SokolPipelineCache`
+  (`lastApplied`, `appliedEpoch`), on only while GPU Instancing is on. Its state moved to
+  `SokolSystem` (`applyPipeline`, `applyBindings`, `isBindingsApplied`, `draw`,
+  `forgetAppliedState`, `forgetAppliedBindings`, `appliedEpoch`, `appliedPipeline`) and is on in
+  every mode; S55's uniform-block cache keys on `SokolSystem::appliedEpoch()`. S55's R10 ("GPU
+  Instancing off restores the previous submission") now covers its batches and uniform skips only:
+  a repeated pipeline or binding is skipped either way. `jasperengine_sg_next_draw_valid` already
+  existed (S55); `SokolSystem::draw` checks it after every draw, `applyBindings` after the bind.
+  Uploads and resource destroys forget only the bindings (`forgetAppliedBindings`), so the uniform
+  cache survives them; passes, errors, a pipeline destroyed and context changes forget everything.
+- **Cull before sort is S55's visible list.** `buildVisibleQueue` (jobs, per-submesh bounds,
+  `preCulled`) now runs for every 3D colour pass and probe face whatever GPU Instancing is, before
+  the sort (`sortByState`), and S55's batch grouping runs over that order. The state key reuses
+  S55's batch key ingredients (pipeline id, `materialKey`, `meshKey` of the entry's first submesh)
+  instead of a key read from `SokolObject`'s bindings. No `passQueueCulled` member and no
+  `getOpaqueQueueSize`: S55's `passPreCulled` is the flag, and the tests read the visible list's
+  `Engine::FrameStats::culled`. Transparent mesh entries are culled with `isBatchVisible` before
+  they are queued, and drawn with `passPreCulled`.
+- **LOD polling** was already gated on the scene's LOD on `main` (S54): nothing to change.
+- **Bone bounds (F3):** mesh-memory's palette holds only the entries a skin gives, so a rigid mesh
+  no longer scans 128 matrices. The `hasSkinning` gate still fixes the inflated bounds of a rigid
+  mesh that holds palette entries (a script's write, a posed palette in a file); its regression
+  test writes one.
+- **`Dlo` is MESH bit 44** (36-41 went to S57's `Til`/`Cap`/`Cts`/`Oit`, S54's `Lfd`, S55's `Aui`; 42-43 to
+  water-boats' `Wex`/`Wwk`).
+  It is not combined with Light Mode Tiled (the tiles list the scene's lights as they come). The
+  object lights of a `Dlo` variant leave non-directional lights out in `orderObjectLights`; the
+  cached light bits keep their `uint32_t` and take `Dlo` as bit 1 (UV1's, never in the mask)
+  instead of widening. The editor's prediction reuses S57's `FACT_LOCAL_LIGHTS`. The twin rule runs
+  in `ShaderVariantCollector::collectScene` and `Project::finishBuildShaderKeys` (the list every
+  build reads). The shader cache moved to `v49` (lead rule: a branch changing shaders bumps it).
+- **Tests.** The math guards are one file (`engine/tests/core/math/AffineMathTest.cpp`), the bench a
+  gtest suite in `engine/tests/core/math/DrawPerfBenchTest.cpp` (`engine/tests/core/bench` holds
+  separate executables). `DrawPerfGpu` uses only engine API older than this branch, so all of it is
+  a red control. The dedicated tracker guards (buffer update between draws, a binding not ready, a
+  destroyed resource, a new pass, Vulkan descriptor bytes) are not separate tests: every GPU golden
+  suite (RenderGpu, InstancingGoldenGpu, LightingGpu, SkinPaletteGpu, SpriteFramesGpu, ParticlesGpu,
+  TextureRebindGpu, the HTML UI suites) draws through the tracker and would show a stale binding.
+  The MCP test covers what agents and scripts read (`directional_only`, `setPassCalls`); the
+  SetPass and binding counts are `DrawPerfGpu.RepeatedDrawsApplyStateOnce`.
+- **`scene:getRenderStats()`** keeps its fields (it has no SetPass count; `Profiler.frameStats()`
+  and `DebugOverlay.getStats()` do).
+- **Review round (2026-11-07).** The first point or spot light keeps the general Lit until the scene
+  loads again (`nonDirectionalLightSeen`), so lights coming and going never reload every mesh; a mesh
+  still on `Dlo` takes such a light in its SH (`selectMeshLights`, `MeshLights::directionalOnly`
+  re-picks when it leaves `Dlo`) instead of dropping it. The first update takes the scene's state
+  without a reload. The twin rule adds the tiled (`Til`) form unless Light Mode is Per Object. Dropping
+  `Til` is not added to `ShaderPool::getFallbackProperties`: the tiled and the object lights blocks
+  differ, and the draw uploads by the key it asked for, so a build lacking the tiled twin cannot fall
+  back that way; the collector ships it instead. `SystemRender::setRepeatedStateSkipped` (diagnostics,
+  tests) turns the skipping off: `DrawPerfMixedGpu` compares the two with batched sprites, S55
+  batches, lone meshes and shared-buffer Models in one pass. Every resource and pipeline destroy in
+  `renders/sokol` forgets the state (loading threads excepted: they hold none); the tracker asserts
+  the render thread and `computeWorldTransform` the parent's affine matrix in debug builds.
+  `TransformPropagation.WorldValuesMatchTheGeneralProducts` lives in `engine/tests/core/ecs` (beside
+  its registry helpers); the queue order structs are public for `RenderQueueOrderTest`. Shader cache
+  v53 (v51 is water-reflections', v52 water-boats').
+- **D8 is withdrawn.** Skipping the swapchain pipelines while `Engine::getFramebuffer()` is set lost
+  draws on Vulkan: in `SpriteBatchGpu.SettledSpritesShowDirectWrites` run alone, a sprite turned
+  alpha-masked never drew in its batched single run (one draw counted for two runs) while it drew with
+  batching off, in every run with the skip; with `PIP_DEFAULT` built it passes (20 of 20 alone). Not
+  every path follows the scene's pipeline set either: `getBatchEligibility` asks for `PIP_DEFAULT`,
+  which the editor would never have. The cause in the batched path is not found, so
+  `getScenePipelines` is `main`'s again and `EditorFramebufferSkipsSwapchainPipelines` (criterion 13)
+  is not shipped.
+- **`SettledSpritesShowDirectWrites` waits for the masked variant.** After the suites added here, the
+  masked sprite's new variant could still be waiting for its first, warmed draw (spec S32) in the three
+  batched and three unbatched frames it compares; the warm request is made by that first draw, so the
+  wait for idle GPU creation does not cover it. The test now compares from a frame in which no draw
+  waited.
+
+## Follow-ups (2026-11-07)
+
+**PCSS on GLES3/WebGL2** (the follow-up of section 13; workstream `fu/pcss-gles`).
+
+- **Where it was off.** `includes/lights.glsl` declared PCSS's raw-depth view of the shadow atlas
+  (`SHADOW_DATA_RAW`) only `!IS_GLES && !HAS_TERRAIN_PBR`, and `RenderSystem::processLights` never
+  set the PCSS flag (header.z 8) on `GraphicBackend::GLES3`: the view is one more fragment texture
+  and sampler, and S10 counted the worst GLES3 Lit variant at 16 of GLES3's 16 guaranteed units.
+- **What changed.** Every `Shq` variant declares the view (`SHADOW_RAW_VIEW_OFF` leaves it out).
+  On every backend, `ShaderVariantCompiler::compile` builds a variant again without it when the
+  view would take it past 16 samplers across both stages (sokol's `SG_MAX_SAMPLER_BINDSLOTS`, whose
+  slots the stages share) or 16 fragment textures or texture-sampler pairs (GLES3, WebGL2, macOS GL);
+  its log then has a `pcss-left-out` line and the editor's shader build prints "no PCSS" for it.
+  `checkResourceBudget` counts the samplers of both stages too, and `SokolShader::createShader`
+  refuses a shader past any of sokol's bind slots before writing its descriptor (it wrote
+  `samplers[16]` out of bounds before checking). The flag is set on every backend: a variant without
+  the view filters with the Vogel disk whatever it says. The look is the desktop's: the same GLSL.
+- **Which variants get it** (measured with the compiler, `ShadowPcssGles` and `ShadowPcssVariants`):
+  - the directional-only Lit (`Dlo`) always: two textures and a sampler fewer (spot mask, point
+    atlas), so at most 15 fragment textures with the view;
+  - a general Lit when its textures leave a slot: most do (13 + 1 for a normal-mapped Lit with IBL,
+    SSAO and the LUT); one at 16 already (three extension maps with IBL, SSAO and the LUT) does not;
+  - painted terrains likewise: the directional-only one does; the general one with a normal-mapped
+    material, IBL, SSAO and the LUT is at 16 fragment textures and 16 samplers (the vertex stage's
+    height map) and does not. S10's blanket terrain exclusion is gone.
+  - The fallback is the same on every backend (a desktop variant past the limits, as the three
+    extension maps one, loses PCSS too): an over-limit variant could not be created on macOS GL and
+    overflowed sokol's sampler slots everywhere.
+- **Cost** (the GLES3 fragment stage, from the compiler; the red run printed the same variants
+  without the view): one texture and one sampler more, no uniform vector more; the source grows by
+  about 6 KB (the `Dlo` Lit with three extension maps: 67,942 to 74,002 bytes, 9 %). Per shadowed
+  fragment of the sun, the Vogel disk takes 16 comparison taps and PCSS 16 raw-depth taps (the
+  blocker search; a fragment with no blocker stops there) plus 16 to 32 comparison taps (twice in
+  the cascade blend band): two to three times the shadow lookups where there is a penumbra or a
+  shadow. On llvmpipe (640 x 360, `ShadowPcssGlesGpu`, printed, frames read back) the runs gave
+  High 17.4 to 18.7 ms, Ultra 17.3 to 19.6 ms and Ultra through the GLES3 programs 13.8 to 18.5 ms
+  a frame: no difference above the noise of a shared software rasterizer, which proves nothing for
+  a phone's GPU: on an Adreno 640 / Mali-G76 class device at 1080p the S10 budget table gives the
+  Low tier's grid (4 fetches) 1.0 ms for a full-screen sun, so PCSS's 32 to 48 lookups are several
+  milliseconds.
+- **Decision (as Unity does with soft shadow quality).** PCSS on GLES3 is the user's choice, never a
+  default: Android keeps the Low tier and the web Medium; Ultra is opt-in per platform in Project
+  Settings, whose tooltip now says what it costs on phones and the web. A project that picks Ultra
+  for them gets PCSS wherever the variant has the slots, and the Vogel disk with a build line saying
+  so where it has not. No new shader property bit; the shader cache moved to `v54`.
+- **Tests.** `ShadowPcssGles` (core: the GLES3 `Dlo` Lit and normal-mapped terrain have the view
+  within the texture, sampler and uniform limits; the general ones have it where it fits and are
+  built without it, saying so, on GLES3, GL and Vulkan where it does not), `ShadowPcssVariants`
+  (editor: the heaviest Lit and terrain variants on every backend within 16 samplers in both stages
+  and 16 fragment textures), `ShadowPcssGlesGpu` (core, glcore: the GL device runs the GLES3 programs
+  of the mesh variants, which draw the desktop's Ultra image exactly, and that image differs from
+  High's; a painted terrain takes contact hardening at Ultra; the heaviest painted terrain is
+  created and drawn within the slots), `ShadowDataLayout.HighFiltersAddTheRawDepthView` and
+  `test_shadows.py::test_shader_cross_compile` (now: GLES3 has the view), `DirectionalOnlyVariants`
+  (editor: `Shq` bases on every backend). `GATE=pcss tools/build.sh web-gate`
+  (`tools/test-projects/pcss`) draws the pole scene in WebGL2 (SwiftShader): no WebGL error, and
+  the centre pixel is PCSS's (135; llvmpipe 136, the Vogel disk 143).
+- **Open.** The general painted terrain's GLES3 fragment stage has 235 uniform vectors, over GLES3's
+  guaranteed 224, with or without PCSS (its layer blocks): a terrain-uniforms item, not this one.

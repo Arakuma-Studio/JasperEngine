@@ -184,7 +184,7 @@ async def test_a_save_while_the_texture_loads_generates_the_same(ed: Editor):
     loaded, loaded_code = path.read_bytes(), scene_source(ed.project, "Held")
     await ed.call("save_project")
     project_copy = ed.scratch.root / "held-project"
-    shutil.copytree(ed.project, project_copy, ignore=shutil.ignore_patterns("editor.lock"))
+    shutil.copytree(ed.project, project_copy, ignore=shutil.ignore_patterns("editor.lock", "*.je-tmp"))
 
     async with Editor(project=str(project_copy), label="held-texture", env={TEXTURE_DELAY_ENV: "12000"}) as held:
         await held.call("create_scene", name="Holder", type="2D")

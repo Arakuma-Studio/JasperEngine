@@ -803,7 +803,8 @@ void setMainCameraTool(const CallPtr& call) {
 // ------------------------------------------------------------------ scene settings
 
 enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, LitQuality, Filter, PostProcess,
-                         PostProcessing, PostProcessingField, ShadowDebugView, CanvasScaler, PlanarReflectionResolution, LayerMask, ShaderUniforms };
+                         PostProcessing, PostProcessingField, ShadowDebugView, CanvasScaler, PlanarReflectionResolution, LayerMask, ShaderUniforms,
+                         WaterWakeResolution };
 
 struct SceneSetting {
     std::string name;
@@ -862,6 +863,10 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"planar_reflection_far_clip", SettingKind::Float, "metres the planar reflections draw (0: the camera's far clip)"},
         {"planar_reflection_clip_offset", SettingKind::Float, "planar reflections leave out what is within this above the water's rest level"},
         {"max_planar_reflections", SettingKind::Int, "water heights a camera reflects, 1-4 (the nearest; the others show the environment)"},
+        {"water_wake_resolution", SettingKind::WaterWakeResolution,
+         "texels a side of the Water Wakes' map around the main camera: auto (256; 128 on mobile and web), low 128, medium 256, high 512"},
+        {"water_wake_area", SettingKind::Float, "metres the Water Wakes' map spans, 8-1024 (64)"},
+        {"water_wake_fade", SettingKind::Float, "seconds a Water Wake takes to fade, 0.1-120 (8)"},
         {"ssao_enabled", SettingKind::Bool, "screen-space ambient occlusion"},
         {"ssao_radius", SettingKind::Float, "SSAO radius"},
         {"ssao_intensity", SettingKind::Float, "SSAO intensity"},
@@ -1079,6 +1084,7 @@ const char* kindName(SettingKind kind) {
         case SettingKind::LitQuality:
         case SettingKind::ShadowDebugView:
         case SettingKind::PlanarReflectionResolution:
+        case SettingKind::WaterWakeResolution:
         case SettingKind::Filter: return "enum";
         case SettingKind::LayerMask: return "layer_mask";
         case SettingKind::PostProcess: return "post_process";
@@ -1096,6 +1102,7 @@ const McpValues::EnumOptions* settingOptions(SettingKind kind) {
         case SettingKind::ShadowDebugView: return McpValues::enumTable("shadow_debug_view");
         case SettingKind::SceneColorScale: return McpValues::enumTable("scene_color_scale");
         case SettingKind::PlanarReflectionResolution: return McpValues::enumTable("planar_reflection_resolution");
+        case SettingKind::WaterWakeResolution: return McpValues::enumTable("water_wake_resolution");
         case SettingKind::LightState: return McpValues::enumTable("light_state");
         case SettingKind::LitQuality: return McpValues::enumTable("lit_quality");
         case SettingKind::Filter: return McpValues::enumTable("framebuffer_filter");
@@ -1219,6 +1226,10 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<PlanarReflectionResolution>(setting.name)
                                                         : Catalog::getSceneProperty<PlanarReflectionResolution>(scene, setting.name)),
                                          *settingOptions(setting.kind));
+        case SettingKind::WaterWakeResolution:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<WaterWakeResolution>(setting.name)
+                                                        : Catalog::getSceneProperty<WaterWakeResolution>(scene, setting.name)),
+                                         *settingOptions(setting.kind));
         case SettingKind::LayerMask:
             return layerMaskToJson(defaults ? Catalog::getScenePropertyDefault<uint32_t>(setting.name)
                                             : Catalog::getSceneProperty<uint32_t>(scene, setting.name));
@@ -1310,6 +1321,8 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (name == "physical_light_ev100" && (value.get<float>() < -6.0f || value.get<float>() > 24.0f)) return expect("-6 to 24");
             if (name == "capsule_shadow_intensity" && (value.get<float>() < 0.0f || value.get<float>() > 1.0f)) return expect("0 to 1");
             if (name == "capsule_shadow_softness" && (value.get<float>() < 0.0f || value.get<float>() > 2.0f)) return expect("0 to 2");
+            if (name == "water_wake_area" && (value.get<float>() < 8.0f || value.get<float>() > 1024.0f)) return expect("8 to 1024");
+            if (name == "water_wake_fade" && (value.get<float>() < 0.1f || value.get<float>() > 120.0f)) return expect("0.1 to 120");
             return new ScenePropertyCmd<float>(project, id, name, value.get<float>());
         case SettingKind::String: {
             if (!value.is_string()) return expect("a string (\"\" for the built-in shader)");
@@ -1355,6 +1368,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             return new ScenePropertyCmd<uint32_t>(project, id, name, mask);
         }
         case SettingKind::PlanarReflectionResolution:
+        case SettingKind::WaterWakeResolution:
         case SettingKind::ShadowQuality:
         case SettingKind::SceneColorScale:
         case SettingKind::LightState:
@@ -1370,6 +1384,8 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (setting.kind == SettingKind::SceneColorScale) return new ScenePropertyCmd<SceneColorScale>(project, id, name, (SceneColorScale)parsed);
             if (setting.kind == SettingKind::PlanarReflectionResolution)
                 return new ScenePropertyCmd<PlanarReflectionResolution>(project, id, name, (PlanarReflectionResolution)parsed);
+            if (setting.kind == SettingKind::WaterWakeResolution)
+                return new ScenePropertyCmd<WaterWakeResolution>(project, id, name, (WaterWakeResolution)parsed);
             if (setting.kind == SettingKind::LightState) return new ScenePropertyCmd<LightState>(project, id, name, (LightState)parsed);
             if (setting.kind == SettingKind::LitQuality) return new ScenePropertyCmd<LitQuality>(project, id, name, (LitQuality)parsed);
             return new ScenePropertyCmd<TextureFilter>(project, id, name, (TextureFilter)parsed);

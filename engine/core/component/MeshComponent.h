@@ -119,6 +119,8 @@ namespace jasperengine{
         uint64_t epoch = 0;     // RenderSystem's light list epoch, 0 = not picked yet
         // a directional light went into the SH (more directional lights than the cap)
         bool foldedDirectional = false;
+        // picked for a directional-only ('Dlo') variant: its point and spot lights went into the SH
+        bool directionalOnly = false;
     };
 
     // The extra draw of a submesh whose material has an extra pass (Material::extraPass,
@@ -168,6 +170,7 @@ namespace jasperengine{
         int slotFSObjectLights = -1;
         unsigned int sizeVSObjectLights = 0;
         unsigned int sizeFSObjectLights = 0;
+        std::pair<int, int> slotLightRecords = {-1, -1};
         int slotFSLitFrame = -1;
         unsigned int sizeFSLitFrame = 0;
         int slotFSLighting2D = -1;
@@ -284,6 +287,8 @@ namespace jasperengine{
         unsigned int sizeFSLightOcclusion = 0;
         std::pair<int, int> slotTiledLights = {-1, -1};
         std::pair<int, int> slotContactShadows = {-1, -1};
+        // u_lightRecords of a shader with the lights' records form (includes/lights.glsl)
+        std::pair<int, int> slotLightRecords = {-1, -1};
 
         int slotVSDepthParams = -1;
         unsigned int sizeVSDepthParams = 0; // reflected: an older fork declares the block without mvpMatrix

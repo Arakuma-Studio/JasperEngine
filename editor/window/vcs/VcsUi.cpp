@@ -175,7 +175,7 @@ bool VcsUi::canRun(VcsAction action, const std::vector<fs::path>& files, std::st
             std::vector<RepoPath> keys;
             std::string reason;
             if (!keysOf(service, files, keys, &reason)) return refuse(reason);
-            reason = revertRefusal(*snapshot, keys);
+            reason = revertRefusal(*snapshot, keys, service.caps().provider == "svn");
             return reason.empty() ? true : refuse(reason);
         }
         case VcsAction::Lock:

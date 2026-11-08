@@ -36,6 +36,8 @@
 //     block). Add it as is: light += v_vertexLight.
 //   - USE_SHADOWS (pixel lights that receive shadows): call lightShadow for the pixel
 //     lights; it computes the shadow coordinates from the world position (no varyings).
+//   - LIGHTS_FS_RECORDS (defined with LIGHTS_FS): the records form of the fragment block
+//     below, for a shader near GLES3's 224 fragment uniform vectors; the same functions.
 //
 // Light Mode Tiled (USE_TILED_LIGHTS, includes/tiled_lights.glsl): the fragment stage's pixel
 // lights are the lights of its screen tile, up to 32 (LIGHT_CAPACITY is that cap there), in
@@ -93,6 +95,34 @@ uniform u_vs_objectLights {
 #include "includes/tiled_lights.glsl"
 #endif
 
+#if defined(LIGHTS_FS) && !defined(LIGHTS_FS_DECLARED) && defined(LIGHTS_FS_RECORDS)
+// The records form (a shader defining LIGHTS_FS_RECORDS with LIGHTS_FS): the same lights, with
+// their four vectors read from the frame's light records (u_lightRecords, RGBA32F, 128 lights a
+// row of 512 texels, four texels a scene light: position_type, direction_inner, color_outer and
+// spot_shadow's xyz) and only two floats a light in the block, so a shader near GLES3 / WebGL2's
+// 224 fragment uniform vectors (library:water with shadows) holds sixteen lights. It draws what
+// the block form draws on every backend; Light Mode Tiled keeps its own form.
+#define LIGHTS_FS_DECLARED
+#define LIGHTS_RECORDS
+uniform u_fs_objectLights {
+    vec4 counts;                          // x pixel lights, y vertex lights (as floats)
+    vec4 shR;                             // L1 SH ambient: rgb_c(n) = dot(sh_c.xyz, n) + sh_c.w
+    vec4 shG;
+    vec4 shB;
+    // per pixel light, two a vector (xy, zw): its scene light (the record), its spot_shadow.w
+    vec4 records[(LIGHT_CAPACITY + 1) / 2];
+} objectLights;
+// @image_sample_type u_lightRecords unfilterable_float
+uniform texture2D u_lightRecords;
+
+// a pixel light's two floats: x its scene light, y its packed shadow, mask tile and occlusion
+vec2 lightRecordEntry(int index){
+    vec4 pair = objectLights.records[index >> 1];
+    return ((index & 1) == 0) ? pair.xy : pair.zw;
+}
+
+#endif
+
 #if defined(LIGHTS_FS) && !defined(LIGHTS_FS_DECLARED)
 #define LIGHTS_FS_DECLARED
 uniform u_fs_objectLights {
@@ -110,23 +140,30 @@ uniform u_fs_objectLights {
 #if (defined(LIGHTS_VS_DECLARED) || defined(LIGHTS_FS_DECLARED)) && !defined(LIGHTS_DECLARED)
 #define LIGHTS_DECLARED
 
-#if defined(LIGHTS_FS_DECLARED) && defined(USE_PUNCTUAL)
+// (a directional-only variant, DIRECTIONAL_LIGHTS_ONLY ('Dlo'), has no spot light to mask nor point
+// light to shadow: neither the mask atlas nor the point shadow block and atlas are declared; a
+// variant its lights' records leave over the bind limits, SPOT_MASKS_OFF (ShaderVariantCompiler::
+// compile), lights masked spots with their cones)
+#if defined(LIGHTS_FS_DECLARED) && defined(USE_PUNCTUAL) && !defined(DIRECTIONAL_LIGHTS_ONLY) && !defined(SPOT_MASKS_OFF)
     #define LIGHTS_SPOT_MASKS
     uniform texture2D u_spotMaskAtlas;
     uniform sampler u_spotMaskAtlas_smp;
 #endif
 
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS)
-    #define SHADOW_DATA_POINT
+    #ifndef DIRECTIONAL_LIGHTS_ONLY
+        #define SHADOW_DATA_POINT
+    #endif
     // the High and Ultra filters (the Vogel disk, PCSS) only in the 'Shq' variants
     // (USE_SHADOWS_HQ: the tier is High or above); the others filter with the Medium grid
     #ifdef USE_SHADOWS_HQ
         #define SHADOW_SAMPLING_HQ
     #endif
-    // PCSS reads raw depths through a second view of the atlas: a texture unit GLES3/WebGL2
-    // (16 units) and the painted terrain (at 16 textures already) cannot spare; they filter
-    // the Ultra tier with the High tier's Vogel disk
-    #if defined(USE_SHADOWS_HQ) && !defined(IS_GLES) && !defined(HAS_TERRAIN_PBR)
+    // PCSS reads raw depths through a second view of the atlas, one texture and sampler more. A
+    // variant it would take past 16 samplers (both stages) or 16 fragment textures (GLES3, WebGL2,
+    // macOS GL) is compiled again with SHADOW_RAW_VIEW_OFF (ShaderVariantCompiler::compile) and
+    // filters the Ultra tier with the High tier's Vogel disk
+    #if defined(USE_SHADOWS_HQ) && !defined(SHADOW_RAW_VIEW_OFF)
         #define SHADOW_DATA_RAW
     #endif
 #endif
@@ -134,6 +171,20 @@ uniform u_fs_objectLights {
 #include "includes/punctual.glsl"
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS)
     #include "includes/shadow_sampling.glsl"
+#endif
+#ifdef LIGHTS_RECORDS
+    // the records' sampler: PCSS's raw view's where the variant has one (both nearest and clamped
+    // to the edge, and texelFetch reads neither), so the records take no sampler slot there
+    #ifdef SHADOW_DATA_RAW
+        #define LIGHT_RECORDS_SAMPLER u_shadowAtlasRaw_smp
+    #else
+        // @sampler_type u_lightRecords_smp nonfiltering
+        uniform sampler u_lightRecords_smp;
+        #define LIGHT_RECORDS_SAMPLER u_lightRecords_smp
+    #endif
+vec4 lightRecordTexel(int light, int texel){
+    return texelFetch(sampler2D(u_lightRecords, LIGHT_RECORDS_SAMPLER), ivec2((light & 127) * 4 + texel, light >> 7), 0);
+}
 #endif
 // capsule and contact shadows (S57): occlusion of the shadowed lights that take them
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS) && (defined(USE_CAPSULE_SHADOWS) || defined(USE_CONTACT_SHADOWS))
@@ -185,19 +236,33 @@ Light getLightData(int index){
         colorOuter.xyz = vec3(0.0);
         tiledSpotShadow.w = 0.0;
     }
+#elif defined(LIGHTS_RECORDS)
+    vec2 entry = lightRecordEntry(index);
+    int record = int(entry.x + 0.5);
+    vec4 positionType = lightRecordTexel(record, 0);
+    vec4 directionInner = lightRecordTexel(record, 1);
+    vec4 colorOuter = lightRecordTexel(record, 2);
+    vec4 recordSpotShadow = vec4(lightRecordTexel(record, 3).xyz, entry.y);
 #else
     vec4 positionType = objectLights.position_type[index];
     vec4 directionInner = objectLights.direction_inner[index];
     vec4 colorOuter = objectLights.color_outer[index];
 #endif
+#ifdef DIRECTIONAL_LIGHTS_ONLY
+    // every light of the scene is directional: a constant, so the point and spot paths fold away
+    int type = LightType_Directional;
+#else
     int type = (positionType.w < 0.5) ? LightType_Directional : ((colorOuter.w < -1.5) ? LightType_Point : LightType_Spot);
+#endif
     vec3 spotUp = vec3(0.0, 1.0, 0.0);
     float maskAspect = 0.0;
     int shadowMapIndex = -1;
     int cascades = 0;
     #ifdef LIGHTS_FS_DECLARED
-        #ifdef LIGHTS_TILED
+        #if defined(LIGHTS_TILED)
         vec4 spotShadow = tiledSpotShadow;
+        #elif defined(LIGHTS_RECORDS)
+        vec4 spotShadow = recordSpotShadow;
         #else
         vec4 spotShadow = objectLights.spot_shadow[index];
         #endif
@@ -329,12 +394,16 @@ float lightShadowMapD(int index, vec3 worldPosition, vec3 worldNormal, vec3 dpdx
     }
 
     vec3 towardsLight = normalize(getLightVector(light, worldPosition));
+#ifdef DIRECTIONAL_LIGHTS_ONLY
+    return shadowDirectional(light.shadowMapIndex, light.numShadowCascades, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
+#else
     if (light.type == LightType_Directional){
         return shadowDirectional(light.shadowMapIndex, light.numShadowCascades, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
     }else if (light.type == LightType_Spot){
         return shadowSpot(light.shadowMapIndex, light.position, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
     }
     return shadowPoint(light.shadowMapIndex, light.position, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
+#endif
 }
 
 // the light's shadow, with the capsule and contact shadows of the light

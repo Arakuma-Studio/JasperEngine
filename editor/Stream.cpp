@@ -4600,6 +4600,13 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["planarReflectionClipOffset"] = scene->getPlanarReflectionClipOffset();
     if (scene->getMaxPlanarReflections() != SceneSettings().maxPlanarReflections)
         sceneNode["maxPlanarReflections"] = scene->getMaxPlanarReflections();
+    // the Water Wakes' map: written only away from its defaults
+    if (scene->getWaterWakeResolution() != SceneSettings().waterWakeResolution)
+        sceneNode["waterWakeResolution"] = StreamSchema::waterWakeResolution().toString(scene->getWaterWakeResolution());
+    if (scene->getWaterWakeArea() != SceneSettings().waterWakeArea)
+        sceneNode["waterWakeArea"] = scene->getWaterWakeArea();
+    if (scene->getWaterWakeFade() != SceneSettings().waterWakeFade)
+        sceneNode["waterWakeFade"] = scene->getWaterWakeFade();
     sceneNode["lightState"] = lightStateToString(scene->getLightState());
     sceneNode["globalIlluminationIntensity"] = scene->getGlobalIlluminationIntensity();
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
@@ -4750,6 +4757,11 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setPlanarReflectionClipOffset(node["planarReflectionClipOffset"] ? decodeFinite(node["planarReflectionClipOffset"], planarDefaults.planarReflectionClipOffset)
                                                                             : planarDefaults.planarReflectionClipOffset);
     scene->setMaxPlanarReflections(node["maxPlanarReflections"] ? YamlNumbers::as<int>(node["maxPlanarReflections"]) : planarDefaults.maxPlanarReflections);
+    // the Water Wakes' map: absent = the defaults
+    scene->setWaterWakeResolution(node["waterWakeResolution"]
+        ? decodeEnum(node, "waterWakeResolution", StreamSchema::waterWakeResolution()) : planarDefaults.waterWakeResolution);
+    scene->setWaterWakeArea(node["waterWakeArea"] ? decodeFinite(node["waterWakeArea"], planarDefaults.waterWakeArea) : planarDefaults.waterWakeArea);
+    scene->setWaterWakeFade(node["waterWakeFade"] ? decodeFinite(node["waterWakeFade"], planarDefaults.waterWakeFade) : planarDefaults.waterWakeFade);
 
     if (node["lightState"]) {
         scene->setLightState(decodeEnum(node, "lightState", StreamSchema::lightState()));

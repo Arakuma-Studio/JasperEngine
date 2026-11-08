@@ -41,6 +41,9 @@
 #include "htmlui/compat/ImportManifest.h"
 #include "htmlui/widgets/ItemsViewElement.h"
 #include "render/RenderBackendTime.h"
+
+// (the timer exists only in the builds with the tests: one without it would measure 0)
+static_assert(JASPERENGINE_BACKEND_TIME, "these tests need RenderBackendTime (JASPERENGINE_BACKEND_TIME)");
 #include "render/SystemRender.h"
 
 #include "json.hpp"

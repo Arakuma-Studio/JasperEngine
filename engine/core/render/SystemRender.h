@@ -132,6 +132,9 @@ namespace jasperengine{
         static DrawBatchStats getDrawBatchStats();
 
         static uint64_t getPipelineCacheMisses();
+        // whether a draw skips the pipeline and bindings its pass applied last (on by default;
+        // off, every draw applies both: diagnostics and the tests comparing the two)
+        static void setRepeatedStateSkipped(bool skipped);
         static uint64_t getPipelineApplies();
         static size_t getPipelineCacheSize();
         // render passes begun while another was open, since start: an engine bug, logged as an

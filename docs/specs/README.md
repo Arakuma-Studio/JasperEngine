@@ -131,6 +131,9 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | S71 | Cheap Mesh update flags (measure first) | follow-ups |
 | S72 | Build hygiene: header fan-out, sanitizer builds install | follow-ups |
 | S73 | Code cleanups: generated AssetRefSchema, frozen parity data, dead code, shader counter | follow-ups |
+| S74 | Navigation fixes: upstream Recast/Detour patches, bake failure feedback, crowd path status without a synchronous search, link auto update, carving obstacle registry and count budget, Recast diagnostics, height range guard, editor/MCP defects | 5 (navigation) |
+| S75 | Navigation diagnostics: path failure reasons, islands and coverage, locate, walkability probe, one findings list (window, CLI, export, MCP), bake report, Path Tester, diagnostic overlays | 5 (navigation) |
+| S76 | Navigation gameplay API: random points, wall distance, move along surface, path cost and area crossings, per-query and per-agent area costs, runtime area overrides (doors, bridges), link activated/occupied, agent path/root-motion/stuck API, Lua handles for obstacles, links and modifiers | 5 (navigation) |
 | BF23 | Fixes from the authoring audit: sub-emitter drawing, silent agent failures in the graph and particle tools, Animator window bugs, doc drift; lands before S90 and S91 | Authoring (fixes first) |
 | S90 | Procedural Material: `.procmat` node graphs baked in the editor to 8-bit textures and a `.material`, evaluated on GPU, then software renderer, then a CPU SPIR-V interpreter; node library ported as data from Material Maker behind a licence deny-list | Authoring (spec-first) |
 | S91 | Effect authoring on S20: Particle Effect window, timing bars, `preview_particle_effect` filmstrip and checks, sub-emitter drawing, distortion, ring renderer, triggers, dynamic parameters, sprite-sheet bake; ideas only from Effekseer | Authoring (spec-first) |

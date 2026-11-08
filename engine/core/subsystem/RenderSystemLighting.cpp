@@ -380,6 +380,10 @@ void RenderSystem::loadLightingFeatureSlots(Submesh& submesh, ShaderData& shader
     submesh.sizeFSLightOcclusion = std::min(submesh.sizeFSLightOcclusion, (unsigned int)sizeof(light_occlusion_t));
     submesh.slotTiledLights = shaderData.getTextureIndexByName("u_tiledLights");
     submesh.slotContactShadows = shaderData.getTextureIndexByName("u_contactShadowTexture");
+    // the lights' records form (includes/lights.glsl): a float texture until the frame's is bound
+    submesh.slotLightRecords = shaderData.getTextureIndexByName("u_lightRecords");
+    if (submesh.slotLightRecords.first != -1 && ensureLightRecords(1))
+        submesh.render.addTexture(submesh.slotLightRecords, ShaderStageType::FRAGMENT, &lightRecords);
     // placeholders until a draw binds the pass's own
     if (submesh.slotTiledLights.first != -1)
         submesh.render.addTexture(submesh.slotTiledLights, ShaderStageType::FRAGMENT, &emptyBlack);
@@ -388,13 +392,24 @@ void RenderSystem::loadLightingFeatureSlots(Submesh& submesh, ShaderData& shader
 }
 
 void RenderSystem::applyObjectLights(ObjectRender& render, int slotVS, unsigned int sizeVS, int slotFS, unsigned int sizeFS,
-                                     const MeshComponent& mesh, uint64_t properties, uint32_t& builtLightBits){
+                                     std::pair<int, int> slotLightRecords, const MeshComponent& mesh, uint64_t properties,
+                                     uint32_t& builtLightBits){
     const bool tiled = (properties & lightingBit(ShaderPool::LightingFeature::TILED_LIGHTS)) != 0;
-    // bit 31 of the masked bits (the post colour's, never in them) tells the Tiled form
+    // the records form (includes/lights.glsl, LIGHTS_FS_RECORDS; the Tiled form takes precedence)
+    const bool records = !tiled && slotLightRecords.first != -1;
+    // bit 31 of the masked bits (the post colour's, never in them) tells the Tiled form, bit 1
+    // (UV1's, never in them) a 'Dlo' variant's list (orderObjectLights: directional only) and
+    // bit 0 (unlit's, never in a lit draw's) the records form
     const uint32_t lightBits = static_cast<uint32_t>(properties & (shaderPropertyBit(3) | shaderPropertyBit(28) | shaderPropertyBit(29) | shaderPropertyBit(30))) |
-                               (tiled ? 0x80000000u : 0u);
+                               (tiled ? 0x80000000u : 0u) | ((properties & ShaderPool::getDirectionalOnlyProperty()) ? 0x2u : 0u) |
+                               (records ? 0x1u : 0u);
     if (lightBits != builtLightBits){
-        if (tiled){
+        if (records){
+            // the vertex stage's block (mixed and vertex lighting) keeps the block form
+            if (slotVS != -1)
+                buildObjectLights(mesh, properties, objectLightsBlock);
+            buildObjectLightRecords(mesh, properties, lightRecordsBlock);
+        }else if (tiled){
             // the vertex stage's block holds the object's vertex lights alone (its pixel lights
             // are the tiles'); the fragment stage's the SH ambient and the pass's grid
             buildObjectLights(mesh, properties & ~shaderPropertyBit(3), objectLightsBlock);
@@ -423,7 +438,13 @@ void RenderSystem::applyObjectLights(ObjectRender& render, int slotVS, unsigned 
         builtLightBits = lightBits;
     }
     render.applyUniformBlock(slotVS, sizeVS, &objectLightsBlock);
-    render.applyUniformBlock(slotFS, sizeFS, tiled ? (void*)&tiledObjectLightsBlock : (void*)&objectLightsBlock);
+    if (records){
+        render.applyUniformBlock(slotFS, std::min(sizeFS, (unsigned int)sizeof(object_light_records_t)), &lightRecordsBlock);
+        if (lightRecords.isCreated())
+            render.addTexture(slotLightRecords, ShaderStageType::FRAGMENT, &lightRecords);
+    }else{
+        render.applyUniformBlock(slotFS, sizeFS, tiled ? (void*)&tiledObjectLightsBlock : (void*)&objectLightsBlock);
+    }
 }
 
 void RenderSystem::applyLightingFeatures(Submesh& submesh, ObjectRender& render, const MeshComponent& mesh){

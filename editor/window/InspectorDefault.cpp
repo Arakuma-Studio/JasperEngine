@@ -412,6 +412,8 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::CharacterController2DComponent: return &InspectorWindow::drawCharacterController2DComponent;
         case ComponentType::CharacterControllerComponent: return &InspectorWindow::drawCharacterControllerComponent;
         case ComponentType::WaterVolumeComponent: return &InspectorWindow::drawWaterVolumeComponent;
+        case ComponentType::WaterExcluderComponent: return &InspectorWindow::drawWaterExcluderComponent;
+        case ComponentType::WaterWakeComponent: return &InspectorWindow::drawWaterWakeComponent;
         case ComponentType::BuoyancyComponent: return &InspectorWindow::drawBuoyancyComponent;
         case ComponentType::Joint3DComponent: return &InspectorWindow::drawJoint3DComponent;
         case ComponentType::ActionComponent: return &InspectorWindow::drawActionComponent;

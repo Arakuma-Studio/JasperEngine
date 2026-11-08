@@ -46,7 +46,10 @@ namespace jasperengine::editor {
         UnknownEntityType,
         UnknownRootKey,
         NewerFormat,
-        Migrated
+        Migrated,
+        // a value the decoder read and resolved another way (a sheet sprite's frame name its sheet
+        // lacks: the saved index is shown, S44 R48)
+        Fallback
     };
 
     enum class LoadIssueFate {

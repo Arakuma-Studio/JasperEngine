@@ -765,6 +765,39 @@ CASES = [
                    "must_not_call": ["set_properties", "set_material", "create_material"], "reply_must": [r"(?i)lod|level"]},
         "max_turns": 10,
     },
+    {
+        "id": "bad_aseprite_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked to put an Aseprite character in the scene, agents exported PNG strips with a shell "
+                         "aseprite --sheet, sliced them with set_sprite_frames {texture, slice} and built the walk "
+                         "animation frame by frame; the editor imports .aseprite files itself (S44).",
+        "text_at_issue": "guide Other areas: 'sprites (set_sprite_frames sheet)'; set_sprite_frames "
+                         "description: 'sheet (.aseprite or texture, with its tag clips)'",
+        "source": "S44 design review (pixel-art trial sessions, paraphrased)",
+        "files": {"assets/sprites/hero.aseprite": "binary placeholder"},
+        "prompt": "Add assets/sprites/hero.aseprite to the scene as an animated character that plays its idle animation.",
+        "mocks": [
+            {"tool": "get_asset_info", "args": {"path": "re:hero\\.aseprite"}, "result": ok(
+                "assets/sprites/hero.aseprite (Aseprite, RGBA 32x32): 12 frames, 3 layers, tags idle (0-3), walk (4-11); "
+                "imported: 1 page 128x96, clips assets/sprites/hero.aseprite#idle, #walk.",
+                {"path": "assets/sprites/hero.aseprite", "type": "aseprite_sprite", "frames": 12,
+                 "tags": ["idle", "walk"], "outputs": {"clips": [
+                     {"name": "idle", "reference": "assets/sprites/hero.aseprite#idle"},
+                     {"name": "walk", "reference": "assets/sprites/hero.aseprite#walk"}]}})},
+            {"tool": "set_sprite_frames", "args": {"sheet": "re:hero\\.aseprite"}, "result": ok(
+                "Sprite \"Hero\" shows frame 0 (\"hero 0\") of assets/sprites/hero.aseprite (12 frames); its Animation Player "
+                "lists 2 tag clip(s), Default Clip idle.",
+                {"sprite": {"id": 40, "path": "Hero"}, "created": True, "sheet": "assets/sprites/hero.aseprite",
+                 "frame": 0, "frame_name": "hero 0", "frame_count": 12, "added_player": True, "default_clip": "idle",
+                 "clips": ["assets/sprites/hero.aseprite#idle", "assets/sprites/hero.aseprite#walk"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_sprite_frames", "args": {"sheet": "re:hero\\.aseprite"}}],
+                   "must_not_call": [{"tool": "set_sprite_frames", "args": {"slice": "*"}},
+                                     {"tool": "set_sprite_animation"}],
+                   "shell_must_not": [r"aseprite\s+(-b|--batch)", r"--sheet"]},
+        "max_turns": 10,
+    },
 
     # -- guards: good behaviour seen in the sessions ---------------------------------------------
     {
@@ -1165,6 +1198,262 @@ CASES = [
                               {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:softShadows"}]}}]},
                               {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"shadows_quality": "*"}}}]}],
                    "must_not_call": ["fork_shader"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_nav_carve_tiles_per_tick",
+        "kind": "guard",
+        "what_happened": "The carving budget (tile builds per surface and fixed tick) is a navigation setting with its own "
+                         "parameter; without it an agent hand-edits project.yaml or reports it cannot be changed.",
+        "text_at_issue": "set_navigation_settings carve_tiles_per_tick: '0: Auto.'",
+        "source": "S74 R14, R24 (new parameter); no failure on record",
+        "prompt": "Carving NavMesh Obstacles make my web build hitch when they move. Limit runtime carving to one tile "
+                  "rebuild per surface per fixed tick.",
+        "groups_enabled": ["navigation"],
+        "mocks": [
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main:\n  surface Ground: baked, 4 tiles, 212 polys\n  0 link(s), 2 agent(s)",
+                {"scene_id": 1, "playing": False, "settings": {"crowd_max_agents": 128, "max_grid_solves_per_tick": 64,
+                                                               "carve_tiles_per_tick": 0, "include_in_builds": True},
+                 "surfaces": [{"entity": {"id": 7, "path": "Ground"}, "state": "baked", "carving": True,
+                               "max_carving_obstacles": 128}]})},
+            {"tool": "set_navigation_settings", "args": {"carve_tiles_per_tick": 1}, "result": ok(
+                "Navigation settings changed (one undo step). Surfaces of a changed agent type need a bake.",
+                {"carve_tiles_per_tick": 1, "undo_name": "Change Navigation Settings"})},
+            {"tool": "set_project_settings", "args": {"values": {"navigation.carve_tiles_per_tick": 1}}, "result": ok(
+                "Set 1 project setting (one undo step).", {"changed": ["navigation.carve_tiles_per_tick"]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "set_navigation_settings", "args": {"carve_tiles_per_tick": 1}}]},
+                              {"calls": [{"tool": "set_project_settings",
+                                          "args": {"values": {"navigation.carve_tiles_per_tick": 1}}}]}],
+                   "edits_must_not": [r"project\.yaml$"], "shell_must_not": [YAML_WRITE]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_nav_visualize_agent_type",
+        "kind": "guard",
+        "what_happened": "visualize_navigation drew its query path for the first agent type only; asked for another type's "
+                         "path, an agent must pass that agent type to the drawn path, not only to query_navigation.",
+        "text_at_issue": "visualize_navigation path {from, to, agent_type, area_mask} (agent_type: 'Name or id. Default: "
+                         "the first.')",
+        "source": "S74 R24 (new parameters); no failure on record",
+        "prompt": "Show me in the Scene view the path a Giant (the agent type) takes from (-10, 0, 0) to (10, 0, 5).",
+        "groups_enabled": ["navigation"],
+        "mocks": [
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main:\n  surface Ground: baked, 4 tiles, 212 polys\n  surface Ground Giant: baked, 4 tiles, 96 polys",
+                {"scene_id": 1, "settings": {"agents": [{"id": 0, "name": "Humanoid"}, {"id": 1, "name": "Giant"}]},
+                 "surfaces": [{"entity": {"id": 7, "path": "Ground"}, "agent_type": 0},
+                              {"entity": {"id": 9, "path": "Ground Giant"}, "agent_type": 1}]})},
+            {"tool": "query_navigation", "result": ok(
+                "Path complete: 4 corners, 23.4 long", {"target": "navmesh", "op": "path", "agent_type": 1, "status": "complete"})},
+            *[{"tool": "visualize_navigation", "args": {"path": {"agent_type": giant}}, "result": ok(
+                "AI Navigation overlay on. Path complete, 23.4 long (drawn magenta).",
+                {"scene_id": 1, "path": {"status": "complete", "corners": 4, "length": 23.4, "agent_type": 1}})}
+              for giant in ("re:(?i)^giant$", 1)],
+            {"tool": "visualize_navigation", "result": ok(
+                "AI Navigation overlay on. Path complete, 21.0 long (drawn magenta).",
+                {"scene_id": 1, "path": {"status": "complete", "corners": 3, "length": 21.0, "agent_type": 0}})},
+            {"tool": "screenshot", "result": ok("Scene view 1024x576.", {"view": "scene", "width": 1024, "height": 576})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "visualize_navigation", "args": {"path": {"agent_type": "re:(?i)^giant$"}}}]},
+                              {"calls": [{"tool": "visualize_navigation", "args": {"path": {"agent_type": 1}}}]}]},
+        "max_turns": 10,
+    },
+
+    # -- S75 navigation diagnostics: the new tool text (no failure on record yet) ----------------
+    {
+        "id": "guard_navigation_path_reason",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "A failed query_navigation path names its reason and, in structuredContent, the next call (locate "
+                         "at the end off the navmesh); locate's why[] names the cause. Guards that agents follow the result "
+                         "instead of guessing from scripts.",
+        "text_at_issue": "query_navigation: 'locate (is a point on the navmesh; if not, why). A failed path says why and what "
+                         "to do. from/to: a point or a GameObject'; result next: 'query_navigation op locate at to says why it "
+                         "is off the navmesh.'",
+        "source": "S75 R30 (docs/specs/S75-navigation-diagnostics.md); no failure on record",
+        "prompt": "In scene Main the Enemy's NavMesh Agent never reaches the Player. Find out why; don't change anything.",
+        "mocks": [
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main:\n  surface Ground: baked, 4 tiles, 212 polys, 1 island(s), 380.2 m\u00b2 walkable\n  0 link(s), "
+                "1 agent(s), 0 obstacle(s), 0 modifier(s)\n0 finding(s).",
+                {"scene_id": 1, "playing": False, "surfaces": [{"entity": {"id": 11, "path": "Ground"}, "state": "baked", "tiles": 4,
+                 "dirty_tiles": 0, "polys": 212, "coverage": {"walkable_area_m2": 380.2, "island_count": 1}}],
+                 "agents": [{"entity": {"id": 14, "path": "Enemy"}, "agent_type": 0, "speed": 3.5}], "findings": []})},
+            {"tool": "query_navigation", "args": {"op": "locate"}, "result": ok(
+                "Not on the navmesh; its nearest point [1.2, 0, 4.1] is 1.9 away.\n  too_steep: The ground slopes 52\u00b0 here; "
+                "Humanoid's Max Slope is 45\u00b0.",
+                {"target": "navmesh", "op": "locate", "on_mesh": False, "found": True, "position": [1.2, 0, 4.1], "snap_distance": 1.9,
+                 "island": 0, "surface": {"id": 11, "path": "Ground"},
+                 "why": [{"code": "too_steep", "message": "The ground slopes 52\u00b0 here; Humanoid's Max Slope is 45\u00b0.",
+                          "entity": {"id": 15, "path": "Crate"}, "value": 52, "limit": 45}]})},
+            {"tool": "query_navigation", "result": ok(
+                "Path invalid: 0 corners, 0 long. [end_off_mesh] The end is not on the navmesh: no polygon is near it. Gap 6.3. "
+                "Next: query_navigation op locate at to says why it is off the navmesh.",
+                {"target": "navmesh", "op": "path", "agent_type": 0, "area_mask": 65535, "status": "invalid", "length": 0,
+                 "corners": [], "reason": "end_off_mesh", "surface": {"id": 11, "path": "Ground"}, "closest_point": [-4, 0, 2],
+                 "gap": 6.3, "start": {"position": [-4, 0, 2], "snap_distance": 0, "island": 0},
+                 "end": {"position": [0, 1.4, 3], "snap_distance": -1, "island": -1},
+                 "next": "query_navigation op locate at to says why it is off the navmesh."})},
+        ],
+        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "locate"}}], "reply_must": [r"(?i)steep|slope"],
+                   "must_not_call": ["bake_navigation", "set_navigation_settings", "set_properties"],
+                   "edits_must_not": [r"\.(lua|scene)$"]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_navigation_findings",
+        "kind": "guard",
+        "what_happened": "get_navigation_info's findings say what is wrong with a scene's navigation and how to fix it; guards "
+                         "that an agent finds the navigation group from the guide's index and reads the findings first when "
+                         "agents do not move, instead of playing and reading scripts.",
+        "text_at_issue": "Guide 'Other areas': 'navigation (get_navigation_info)'; get_navigation_info: '... and its "
+                         "findings: each problem with its fix. Start here when agents do not move.'",
+        "source": "S75 R13, R32 (docs/specs/S75-navigation-diagnostics.md); no failure on record",
+        "prompt": "My enemies in scene Main just stand still when I press Play. What is wrong? Tell me; don't fix it yet.",
+        "mocks": [
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main:\n  surface Ground: not_baked, 0 tiles, 0 polys\n  0 link(s), 1 agent(s), 0 obstacle(s), 0 "
+                "modifier(s)\n2 finding(s):\n  warning not_baked: NavMesh Surface 'Ground' is not baked: its agents find no "
+                "navmesh in the build (Bake, or bake_navigation)\n  warning agent_off_mesh: NavMesh Agent 'Enemy' is not on the "
+                "navmesh: it does not move (move it onto the surface, warp it, or bake the surface under it)",
+                {"scene_id": 1, "playing": False, "surfaces": [{"entity": {"id": 11, "path": "Ground"}, "state": "not_baked"}],
+                 "agents": [{"entity": {"id": 14, "path": "Enemy"}, "agent_type": 0}],
+                 "findings": [{"code": "not_baked", "severity": "warning", "entity": {"id": 11, "path": "Ground"},
+                               "message": "NavMesh Surface 'Ground' is not baked: its agents find no navmesh in the build (Bake, "
+                                          "or bake_navigation)", "details": {}},
+                              {"code": "agent_off_mesh", "severity": "warning", "entity": {"id": 14, "path": "Enemy"},
+                               "message": "NavMesh Agent 'Enemy' is not on the navmesh: it does not move (move it onto the "
+                                          "surface, warp it, or bake the surface under it)", "details": {"snap_distance": -1}}]})},
+        ],
+        "checks": {"calls": ["get_navigation_info"], "reply_must": [r"(?i)not baked|bake"],
+                   "must_not_call": ["bake_navigation", "play"], "max_calls": {"*": 8}},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_navigation_frame_islands",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "visualize_navigation colours the navmesh by island and frames the Scene camera on it before its "
+                         "screenshot; guards that agents use it instead of moving the camera by hand and guessing.",
+        "text_at_issue": "visualize_navigation: 'navmesh in area, island or tile colours ... frame first moves the Scene "
+                         "camera to the navmesh or a GameObject.'; show.islands, frame",
+        "source": "S75 R33 (docs/specs/S75-navigation-diagnostics.md); no failure on record",
+        "prompt": "Show me a picture of scene Main's whole navmesh with each disconnected part in its own colour.",
+        "mocks": [
+            {"tool": "visualize_navigation", "result": ok(
+                "AI Navigation overlay on. Framed the navmesh. Image: the Scene view.",
+                {"scene_id": 1, "framed": "navmesh", "camera": {"position": [0, 30, -25], "target": [0, 0, 0]},
+                 "overlay": {"navmesh": True, "color_by": "islands"}, "image": {"view": "scene", "width": 1024, "height": 576}})},
+        ],
+        "checks": {"calls": [{"tool": "visualize_navigation", "args": {"show": {"islands": True}, "frame": "navmesh"}}],
+                   "must_not_call": ["set_scene_camera"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_navigation_many_targets",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "query_navigation's to takes a list of up to 64 targets; guards that an agent checks several spawn "
+                         "points in one call instead of one call each.",
+        "text_at_issue": "query_navigation to: '[x, y, z] or a GameObject. Or a list of up to 64.'",
+        "source": "S75 R30 (docs/specs/S75-navigation-diagnostics.md); no failure on record",
+        "prompt": "Which of these spawn points can the Enemy in scene Main walk to: [4, 0, 4], [-6, 0, 8], [12, 0, -3], "
+                  "[0, 0, 15], [-9, 0, -9], [7, 0, 11]?",
+        "mocks": [
+            {"tool": "query_navigation", "args": {"op": "reachable"}, "result": ok(
+                "query_navigation reachable to 6 target(s): 1 not reachable, 5 reachable.",
+                {"target": "navmesh", "op": "reachable", "agent_type": 0, "area_mask": 65535, "results": [
+                    {"to": [4, 0, 4], "reachable": True}, {"to": [-6, 0, 8], "reachable": True},
+                    {"to": [12, 0, -3], "reachable": True},
+                    {"to": [0, 0, 15], "reachable": False, "reason": "disconnected", "surface": {"id": 11, "path": "Ground"},
+                     "closest_point": [0, 0, 9.5], "gap": 5.5},
+                    {"to": [-9, 0, -9], "reachable": True}, {"to": [7, 0, 11], "reachable": True}]})},
+        ],
+        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "reachable"}}], "max_calls": {"query_navigation": 2},
+                   "reply_must": [r"0,\s*0,\s*15"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_navigation_random_point",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "S76 R42 added query_navigation's random op (around `from` within max_distance, seeded); guards that "
+                         "agents use it instead of sampling guessed points or writing Lua.",
+        "text_at_issue": "query_navigation: '... locate (...), random, move_along'; from: 'Optional for random.'; max_distance: "
+                         "'Default: sample 2, locate 5. closest_edge, random.'; seed: 'random.'",
+        "source": "docs/specs/S76-navigation-gameplay-api.md R42 (new op; no failure on record)",
+        "prompt": "The level's navmesh is baked. Give me a random spawn point on the navmesh within 10 m of (4, 0, -2) that an "
+                  "agent standing there can walk to. Make it repeatable (seed 3).",
+        "mocks": [
+            {"tool": "query_navigation", "args": {"op": "random"}, "result": ok(
+                "Random point [6.12,0,-4.3]",
+                {"target": "navmesh", "op": "random", "agent_type": 0, "area_mask": 65535, "found": True, "seed": 3,
+                 "position": [6.12, 0, -4.3], "area": 0})},
+            {"tool": "query_navigation", "result": ok(
+                "Nearest navmesh point [4,0,-2], 0 away",
+                {"target": "navmesh", "op": "sample", "found": True, "position": [4, 0, -2], "distance": 0})},
+        ],
+        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "random", "from": "*", "max_distance": "*", "seed": 3}}],
+                   "must_not_call": [{"tool": "eval_lua"}], "reply_must": [r"6\.12"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_navigation_move_along",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "S76 R42 added query_navigation's move_along (a controller step along the surface, blocked by walls); "
+                         "guards that agents use it rather than a raycast or a path for a one-step move.",
+        "text_at_issue": "query_navigation: '... locate (...), random, move_along'",
+        "source": "docs/specs/S76-navigation-gameplay-api.md R42 (new op; no failure on record)",
+        "prompt": "A player controller clamped to the navmesh stands at (18, 0, 3) and moves 3 m towards +x this tick. Where "
+                  "does it end up on the navmesh surface, and does a wall stop it?",
+        "mocks": [
+            {"tool": "query_navigation", "args": {"op": "move_along"}, "result": ok(
+                "Stopped at [19.5,0,3] after 1.5",
+                {"target": "navmesh", "op": "move_along", "found": True, "position": [19.5, 0, 3], "blocked": True,
+                 "distance": 1.5, "area": 0})},
+            {"tool": "query_navigation", "result": ok(
+                "Blocked at [19.5,0,3]", {"target": "navmesh", "op": "raycast", "blocked": True, "position": [19.5, 0, 3]})},
+        ],
+        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "move_along", "from": "*", "to": "*"}}],
+                   "must_not_call": [{"tool": "eval_lua"}], "reply_must": [r"19\.5"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_navigation_door_in_play",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "S76 runtime areas: a door is a NavMesh Modifier with Apply At Runtime and a bridge a NavMesh Link "
+                         "with Activated; in play the agent toggles them with set_runtime_property and reads the path again, "
+                         "instead of rebaking (bake_navigation is refused in play) or editing the scene.",
+        "text_at_issue": "docs/mcp/guide/navigation.md 'Doors and bridges in play'; get_navigation_info area_overrides / "
+                         "links[].activated; visualize_navigation show.area_overrides",
+        "source": "docs/specs/S76-navigation-gameplay-api.md R45 (no failure on record)",
+        "prompt": "The game is running. Close the door (the Door GameObject's NavMesh Modifier is a runtime door volume), "
+                  "then tell me whether a path from (-10, 0, 0) to (14, 0, 0) still gets through.",
+        "groups_enabled": ["navigation"],
+        "mocks": [
+            {"tool": "get_entity", "args": {"entity": "re:Door|^21$"}, "result": ok(
+                "Door [21] components: navmeshmodifier transform; navmeshmodifier: enabled false, useVolume true, "
+                "applyAtRuntime true, area 1, volumeSize [2, 3, 3]", {"id": 21})},
+            {"tool": "set_runtime_property", "args": {"component": "navmeshmodifier", "property": "enabled", "value": True},
+             "result": ok("Set navmeshmodifier.enabled of Door [21] to true (live; Stop restores it).",
+                          {"entity": {"id": 21, "path": "Door"}, "value": True})},
+            {"tool": "query_navigation", "after": "set_runtime_property", "result": ok(
+                "path: partial, 2 corners, 9.6 m (blocked_by_area)",
+                {"op": "path", "status": "partial", "corners": [[-10, 0, 0], [-0.6, 0, 0]], "length": 9.6})},
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main (playing):\n  1 link(s), 0 agent(s), 1 area override(s) (1 applied)",
+                {"playing": True, "area_overrides": [{"source": {"entity": {"id": 21, "path": "Door"}}, "area": 1,
+                                                      "applied": True, "polygons": 6}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_runtime_property", "args": {"component": "navmeshmodifier", "property": "enabled",
+                                                                       "value": True}},
+                             {"tool": "query_navigation", "args": {"op": "path"}}],
+                   "order": [["set_runtime_property", "query_navigation"]],
+                   "must_not_call": ["bake_navigation"], "reply_must": [r"(?i)partial|block|no(t| longer)"]},
         "max_turns": 12,
     },
     {
@@ -1748,6 +2037,55 @@ CASES = [
         "checks": {"calls": [{"tool": "set_properties"}],
                    "must_not_call": ["fork_shader", {"tool": "add_component", "args": {"component": "re:(?i)mirror"}}]},
         "max_turns": 12,
+    },
+    {
+        "id": "bad_water_inside_boat",
+        "kind": "bad",
+        "what_happened": "An open boat floating on library:water showed the water's surface inside its hull; hiding it "
+                         "takes a Water Excluder on the boat (its mesh's convex hull by default), not a stencil mask, a "
+                         "forked water shader or a second mesh.",
+        "text_at_issue": "component Water Excluder 'Keeps water out of a boat or a dry space: no surface inside, no "
+                         "underwater fade, cargo stays dry'",
+        "source": "water-boats spec (Doriax 1ecdb8b41)",
+        "prompt": "The Rowboat floats on the Lake, but the lake's water shows inside the boat, above its floor. Make the "
+                  "inside of the boat dry.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("Rowboat [21] (mesh, rigidbody, buoyancy), Lake [12] (mesh, watervolume)",
+                                                   {"entities": [{"id": 21, "name": "Rowboat"}, {"id": 12, "name": "Lake"}]})},
+            {"tool": "get_entity", "result": ok("Rowboat [21] components: transform mesh rigidbody buoyancy", {"id": 21})},
+            {"tool": "list_component_types", "result": ok(
+                "... Water Volume (watervolume): A body of water: what has a Buoyancy floats in it; Water Excluder "
+                "(waterexcluder): Keeps water out of a boat or a dry space: no surface inside, no underwater fade, cargo "
+                "stays dry; Water Wake (waterwake): Foam and waves behind it while it moves through water ...",
+                {"components": [{"key": "waterexcluder", "name": "Water Excluder"}, {"key": "waterwake", "name": "Water Wake"}]})},
+            {"tool": "add_component", "args": {"component": "re:(?i)water.?excluder"}, "result": ok(
+                "Added Water Excluder to GameObject 21 \"Rowboat\" (shape convex_hull).", {"entity": {"id": 21}})},
+            {"tool": "sample_water", "result": ok("(0, -0.2, 0): dry (Water Excluder Rowboat), surface 0.01",
+                                                  {"samples": [{"in_water": False, "excluded_by": {"id": 21}}]})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)water.?excluder"}}],
+                   "must_not_call": ["fork_shader", {"tool": "write_file", "args": {"path": "re:\\.(frag|vert)$"}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_water_wake_check",
+        "kind": "guard",
+        "playing": True,
+        "what_happened": "Whether a moving boat leaves a wake (and whether its cargo is dry) is read from sample_water's "
+                         "per-point wake and excluded_by, not guessed from a screenshot.",
+        "text_at_issue": "sample_water description: 'the Water Excluder keeping it dry and the Water Wakes there. report: "
+                         "the excluders' hulls, the wakes and which waters draw them'",
+        "source": "water-boats spec (Doriax 755e7d723)",
+        "prompt": "The game is playing and the Speedboat is moving along +Z on the Lake. Is it leaving foam behind it? "
+                  "It is at about (0, 0, 10) now.",
+        "mocks": [
+            {"tool": "sample_water", "result": ok(
+                "(0, 0, 6): in water, surface 0.02\nwake Speedboat: emitting, 6.10 m/s\nwake map: active",
+                {"samples": [{"point": [0, 0, 6], "in_water": True, "wake": {"foam": 0.62, "height": 0.08}}],
+                 "wakes": [{"entity": {"id": 30}, "emitting": True, "speed": 6.1}], "wake_map": {"active": True}})},
+        ],
+        "checks": {"calls": [{"tool": "sample_water"}]},
+        "max_turns": 8,
     },
     {
         "id": "guard_ssr_reflection_source",
