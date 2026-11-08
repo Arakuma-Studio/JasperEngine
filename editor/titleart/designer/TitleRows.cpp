@@ -502,6 +502,54 @@ namespace {
     };
 }
 
+namespace {
+    // Collect passes again after an edit: an object whose content, place and page did not change
+    // gives the same index entries, so they are replayed rather than collected (R69: an edit to
+    // one rim re-collects that rim, not the layer's 14 other cards)
+    struct RecordedRows {
+        std::vector<jasperengine::editor::titledesigner::IndexEntry> entries;
+        std::vector<jasperengine::editor::titledesigner::RowAudit> audits;
+    };
+    std::unordered_map<std::string, RecordedRows>& recordedRows() {
+        static std::unordered_map<std::string, RecordedRows> map;
+        return map;
+    }
+
+    // the replay key of a group of rows: where they are (page, node, sections, prefixes), what
+    // they show (the kind, the targets' path) and every target's object as it is now
+    std::string rowsKey(const jasperengine::editor::titledesigner::RowContext& ctx, const std::vector<std::string>& layers,
+                        const std::string& basePath, const std::string& what) {
+        using namespace jasperengine::editor::titledesigner;
+        std::string key = what + "\x1f" + basePath + "\x1f" + ctx.nodeLabel + "\x1f" + ctx.nodeKind + "\x1f" + ctx.stepPrefix + "\x1f" +
+                          ctx.countNoun + "\x1f" + std::to_string((int)ctx.node.kind) + ctx.node.layer + "/" + ctx.node.part + "/" + ctx.node.item +
+                          (ctx.readOnly ? "\x1fro" : "");
+        for (const std::string& section : ctx.sectionChain) key += "\x1f" + section;
+        const auto& doc = ctx.state->shown();
+        for (const std::string& layer : layers) {
+            const ta::Json* object = fieldValue(doc, {layer, basePath});
+            key += "\x1f" + layer + "=" + std::to_string(object ? std::hash<ta::Json>{}(*object) : 0);
+        }
+        return key;
+    }
+
+    // replays the rows of `key` into the pass; false when they were not recorded
+    bool replayRows(jasperengine::editor::titledesigner::RowContext& ctx, const std::string& key) {
+        auto it = recordedRows().find(key);
+        if (it == recordedRows().end()) return false;
+        for (const auto& entry : it->second.entries) ctx.sink->add(entry);
+        for (const auto& a : it->second.audits) audit().push_back(a);
+        return true;
+    }
+
+    void recordRows(const jasperengine::editor::titledesigner::RowContext& ctx, const std::string& key, size_t entriesBefore, size_t auditsBefore) {
+        if (recordedRows().size() > 8192) recordedRows().clear();
+        RecordedRows recorded;
+        for (size_t i = entriesBefore; i < ctx.sink->size(); i++) recorded.entries.push_back(ctx.sink->entry(i));
+        recorded.audits.assign(audit().begin() + (long)auditsBefore, audit().end());
+        recordedRows()[key] = std::move(recorded);
+    }
+}
+
 const jasperengine::editor::titledesigner::CollectTimes& jasperengine::editor::titledesigner::lastCollectTimes() {
     return collectTimes;
 }
@@ -1137,6 +1185,18 @@ void jasperengine::editor::titledesigner::objectRows(RowContext& ctx, const std:
     const ta::TitleArtSchema& schema = ta::TitleArtSchema::get();
     const ta::SchemaKind* kind = schema.kind(kindName);
     if (!kind) return;
+    // collecting a nested object: replayed when it did not change (the layer's own members, at
+    // an empty base, always run: their key would hash the whole layer)
+    std::string replayKey;
+    size_t entriesBefore = 0, auditsBefore = 0;
+    if (ctx.collecting() && ctx.sink && !basePath.empty()) {
+        std::string skipped;
+        for (const std::string& k : skip) skipped += k + ",";
+        replayKey = rowsKey(ctx, layers, basePath, "object:" + kindName + ":" + skipped);
+        if (replayRows(ctx, replayKey)) return;
+        entriesBefore = ctx.sink->size();
+        auditsBefore = audit().size();
+    }
     for (const ta::SchemaMember* member : schema.membersOf(*kind)) {
         if (member->readOnly || member->type == ta::ValueType::Id) continue;
         if (std::find(skip.begin(), skip.end(), member->key) != skip.end()) continue;
@@ -1154,14 +1214,21 @@ void jasperengine::editor::titledesigner::objectRows(RowContext& ctx, const std:
         for (const std::string& layer : layers) targets.push_back({layer, basePath.empty() ? member->key : basePath + "." + member->key});
         fieldRow(ctx, targets);
     }
+    if (!replayKey.empty()) recordRows(ctx, replayKey, entriesBefore, auditsBefore);
 }
 
 void jasperengine::editor::titledesigner::paramRows(RowContext& ctx, const std::vector<std::string>& layers, const std::string& basePath,
                                                          const std::vector<ta::ParamDef>& params, const ta::EffectDef* effect,
                                                          const ta::GeneratorDef* generator) {
     JE_PROFILE_SCOPE("TD paramRows");
-    (void)effect;
-    (void)generator;
+    std::string replayKey;
+    size_t entriesBefore = 0, auditsBefore = 0;
+    if (ctx.collecting() && ctx.sink && !basePath.empty()) {
+        replayKey = rowsKey(ctx, layers, basePath, std::string("params:") + (effect ? effect->type : "") + ":" + (generator ? generator->type : ""));
+        if (replayRows(ctx, replayKey)) return;
+        entriesBefore = ctx.sink->size();
+        auditsBefore = audit().size();
+    }
     for (const ta::ParamDef& param : params) {
         if (std::string(param.key) == "use_global_light") continue;      // the source dot of its angle row
         std::vector<FieldRef> targets;
@@ -1206,4 +1273,5 @@ void jasperengine::editor::titledesigner::paramRows(RowContext& ctx, const std::
         }
         fieldRow(ctx, targets);
     }
+    if (!replayKey.empty()) recordRows(ctx, replayKey, entriesBefore, auditsBefore);
 }
