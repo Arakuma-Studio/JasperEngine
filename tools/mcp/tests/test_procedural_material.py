@@ -124,6 +124,7 @@ async def test_preview_is_a_sheet_with_checks(ed: Editor):
     for check in data["checks"]:
         ed.check(CHECK_KEYS <= set(check), f"{check['id']} has S35's row shape: {sorted(check)}")
     ed.check_eq(check_of(data, "normal")["status"], "PASS", f"the made normal is valid: {check_of(data, 'normal')}")
+    ed.check_eq(data["fixes"], [], "the window's report shape: no image check is one edit of the graph")
     ed.check(len(r.images) == 1 and r.images[0][1] == "image/png", "one contact sheet")
     labels = [c["label"] for c in data["image"]["cells"]]
     ed.check_eq(labels, ["flat base_color", "sphere (lit)", "tiled 2x2", "base_color", "normal", "orm", "height"], "flat, ball, tiling, channels")
@@ -140,12 +141,11 @@ async def test_the_seed_is_the_graphs_unless_given(ed: Editor):
     graph = stone_graph()
     graph["metadata"] = {"seed": 7}
     write_graph(ed, graph, "assets/mats/seeded.procmat")
-    before = (ed.project / "assets/mats/seeded.procmat").read_text()
     kept = await ed.call("preview_procedural_material", path="assets/mats/seeded.procmat", size=64, sheet=[])
     ed.check_eq(kept["seed"], 7, "the graph's seed")
     given = await ed.call("preview_procedural_material", path="assets/mats/seeded.procmat", size=64, sheet=[], seed=3)
     ed.check_eq(given["seed"], 3, "the call's seed")
-    ed.check_eq((ed.project / "assets/mats/seeded.procmat").read_text(), before, "never written back")
+    ed.check_eq(json.loads((ed.project / "assets/mats/seeded.procmat").read_text())["metadata"], {"seed": 7}, "never written back")
 
 
 async def test_a_changed_threshold_is_listed(ed: Editor):

@@ -669,6 +669,10 @@ preview pane and Problems strip are a later branch: they call `ProceduralChecks:
   power spectra at 64 x 64; `edges` the difference of the Sobel edge densities.
 - **R34, R35, the seed.** Both tools default to the graph's `metadata.seed` (the window's lock, reroll and
   Variations write it; 0 when absent), and a `seed` argument overrides it without writing it back.
+- **R27's rows.** `graphCheckReport(project, path, graph, images)` (`ProceduralBake.h`) is the window's
+  `Services::checks` shape and what `preview_procedural_material` returns for a graph. Its `fixes` list is empty:
+  the checks measure images and name no node, so none is a single edit of the graph. FAIL rounds are recorded by
+  the tools only, so a window redrawing does not use up an agent's rounds.
 - **R35, `fail_on`.** The bake runs the checks on the images it baked and writes nothing when the verdict
   reaches `fail_on`. Without it, nothing is checked.
 - **R38.** The wait bound is the call's `timeout_seconds`: a run past it fails with the stage it was in, and

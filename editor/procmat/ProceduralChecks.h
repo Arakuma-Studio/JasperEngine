@@ -54,7 +54,7 @@ namespace jasperengine::editor::procmat {
         // difference), of the base colour, else the first output, against the reference image
         static qa::Json reference(const MaterialImages& images, const OutputImage& reference);
 
-        // {metrics, checks, verdict, thresholds, stop, guidance}: what every caller shows
+        // {metrics, checks, fixes, verdict, thresholds, stop, guidance}: what every caller shows
         static qa::Json report(const MaterialImages& images, const CheckRequest& request);
 
         static constexpr const char* CLOSING =

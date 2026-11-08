@@ -61,12 +61,6 @@ std::vector<std::shared_ptr<ProceduralRun>>& liveRuns() {
     return runs;
 }
 
-// the consecutive FAILs of each check, by the material's path, this editor session
-qa::FailRounds& failRounds() {
-    static qa::FailRounds rounds;
-    return rounds;
-}
-
 std::string relativeTo(Project* project, const fs::path& absolute) {
     return FileUtils::pathToGenericUtf8(absolute.lexically_relative(project->getProjectPath()));
 }
@@ -201,16 +195,6 @@ bool resolveSource(const CallPtr& call, Source& source) {
             if (!readGraph(source.scope, file, source.graph, error)) {
                 call->fail(error);
                 return false;
-            }
-            // a shader of the bake's own .material that reads the bake's height (R36's height_8bit)
-            const fs::path baked = project->getProjectPath() / FileUtils::pathFromUtf8(defaultBakeFolder(source.scope)) / bakedMaterialName(bakeStem(source.scope));
-            Material bakedMaterial;
-            std::error_code ec;
-            std::string ignored;
-            if (fs::exists(baked, ec) && readMaterialFile(baked, bakedMaterial, ignored)) {
-                MaterialImages earlier;
-                materialImages(project, bakedMaterial, earlier);
-                source.images.heightReader = earlier.heightReader;
             }
             return true;
         }
@@ -538,12 +522,21 @@ void previewTool(const CallPtr& call) {
         MaterialImages images;
         images.heightReader = source->images.heightReader;
         for (const OutputImage& image : run.getOutputs()) images.outputs[image.name] = image;
-        CheckRequest checks;
-        checks.qa = project->getProcMatQaSettings();
-        checks.only = only;
-        checks.rounds = failRounds().previous(source->scope);
-        Json data = ProceduralChecks::report(images, checks);
-        failRounds().record(source->scope, data["checks"]);
+        Json data;
+        if (source->kind == "procmat") {
+            // the window's rows: the same function
+            EvaluationResult evaluated;
+            evaluated.ok = true;
+            evaluated.outputs = run.getOutputs();
+            data = graphCheckReport(project, source->scope, source->graph, evaluated, only);
+        } else {
+            CheckRequest checks;
+            checks.qa = project->getProcMatQaSettings();
+            checks.only = only;
+            checks.rounds = checkRounds().previous(source->scope);
+            data = ProceduralChecks::report(images, checks);
+        }
+        checkRounds().record(source->scope, data["checks"]);
         data["device"] = deviceJson(run);
         data["source"] = {{"kind", source->kind}, {"scope", source->scope}};
         Json outputs = Json::array();

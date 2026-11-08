@@ -20,6 +20,7 @@
 // - bakeStatus(): a baked PNG's recipe against the graph as it is now.
 
 #include "PassPlanner.h"
+#include "ProceduralChecks.h"
 
 #include "texsynth/SynthesisSession.h"
 #include "util/ProjectChecks.h"
@@ -153,6 +154,18 @@ namespace jasperengine::editor::procmat {
     // For the Project window and the Inspector: the status of a PNG, nullopt when it is no bake. Kept
     // until the PNG or its graph change on disk. Main thread.
     std::optional<BakeStatus> cachedBakeStatus(const std::filesystem::path& projectDir, const std::filesystem::path& png);
+
+    // preview_procedural_material's report on a graph's images, the rows the Procedural Material window's
+    // Problems strip shows (its Services::checks): ProceduralChecks::report with the project's thresholds,
+    // this editor session's FAIL rounds by path (read, not recorded: the tools record them), and height_8bit's
+    // reader from the bake's own .material. `only`: the check ids, empty for all.
+    qa::Json graphCheckReport(Project* project, const std::string& path, const graph::Graph& graph, const EvaluationResult& images,
+                              const std::vector<std::string>& only = {});
+    // the consecutive FAILs of each check, by the material's path, this editor session. Main thread.
+    qa::FailRounds& checkRounds();
+    // "the shader texture <uniform>" of the bake's .material beside the graph that samples a baked height;
+    // empty when none does
+    std::string bakedHeightReader(Project* project, const std::string& graphPath);
 
     // check --materials (R39), compiler style and without the engine: each graph's problems (its issues,
     // and a graph that does not plan) and each baked PNG that is stale or whose graph is gone. `files`:

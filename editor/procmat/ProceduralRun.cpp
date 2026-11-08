@@ -226,6 +226,9 @@ bool ProceduralRun::processFrame() {
         run->advance(std::max(left, 1.0));
     }
     const bool running = !liveRuns().empty();
+    // the passes drawn here are committed as a view's are: a read back waits for the commit of the frame
+    // that drew, and an editor whose scenes are idle commits nothing else
+    if (running && Engine::isViewLoaded()) SystemRender::commit();
     if (running && runFrameRequester()) runFrameRequester()();
     return running;
 }

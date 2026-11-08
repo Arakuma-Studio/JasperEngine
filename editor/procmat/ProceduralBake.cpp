@@ -655,3 +655,41 @@ MaterialsCheck jasperengine::editor::procmat::checkMaterials(const fs::path& pro
     }
     return check;
 }
+
+qa::FailRounds& jasperengine::editor::procmat::checkRounds() {
+    static qa::FailRounds rounds;
+    return rounds;
+}
+
+std::string jasperengine::editor::procmat::bakedHeightReader(Project* project, const std::string& graphPath) {
+    const fs::path materialFile = project->getProjectPath() / FileUtils::pathFromUtf8(defaultBakeFolder(graphPath)) / bakedMaterialName(bakeStem(graphPath));
+    std::error_code ec;
+    if (!fs::exists(materialFile, ec)) return std::string();
+    Material material;
+    try {
+        const YAML::Node node = DocumentFiles::read(materialFile, DocumentKind::Material).root;
+        if (!node || !node.IsMap()) return std::string();
+        material = Stream::decodeMaterial(node);
+    } catch (const std::exception&) {
+        return std::string();
+    }
+    for (const auto& [uniform, texture] : material.shaderTextures) {
+        if (texture.getPath().empty()) continue;
+        const std::optional<BakeRecipe> recipe = readBakeRecipe(project->getAssetsPath() / FileUtils::pathFromUtf8(texture.getPath()));
+        if (recipe && recipe->output == "height") return "the shader texture " + uniform;
+    }
+    return std::string();
+}
+
+qa::Json jasperengine::editor::procmat::graphCheckReport(Project* project, const std::string& path, const graph::Graph& graph,
+                                                          const EvaluationResult& images, const std::vector<std::string>& only) {
+    MaterialImages material;
+    for (const OutputImage& image : images.outputs) material.outputs[image.name] = image;
+    // the graph's own height output is what a shader of its bake would sample
+    if (!materialOutputRoots(graph).empty()) material.heightReader = bakedHeightReader(project, path);
+    CheckRequest request;
+    request.qa = project->getProcMatQaSettings();
+    request.only = only;
+    request.rounds = checkRounds().previous(path);
+    return ProceduralChecks::report(material, request);
+}
