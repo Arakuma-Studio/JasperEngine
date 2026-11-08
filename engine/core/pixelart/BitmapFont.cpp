@@ -212,6 +212,9 @@ namespace jasperengine::pixelart {
         if (scheme != std::string::npos){
             prefix = joined.substr(0, scheme + 3);
             joined = joined.substr(scheme + 3);
+        }else if (!joined.empty() && (joined[0] == '/' || joined[0] == '\\')){
+            // a font at an absolute path keeps its root
+            prefix = "/";
         }
         size_t start = 0;
         while (start <= joined.size()){
