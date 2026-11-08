@@ -122,7 +122,7 @@ main_menu, hud, settings...) writes the files; edit them yourself; inspect_ui / 
 layouts. Read jasper://docs/html-ui first.
 
 ## Other areas
-2D (points, y up; 64 per meter), cameras (useTarget ignores rotation), animation (edit_animation),
+2D (points, y up; 64 per m), cameras (useTarget ignores rotation), animation (edit_animation),
 post-processing (apply_post_processing_preset), atmosphere (apply_atmosphere_preset), shadows (a
 light's softShadows, the scene's shadows_quality), reflections (SSR replaces probe reflections;
 check with ssr_debug_mode 7), profiling (get_frame_times), navigation (get_navigation_info), sound
