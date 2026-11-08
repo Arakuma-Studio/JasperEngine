@@ -84,9 +84,13 @@ std::string TitleDesignerWindow::libraryTargetKey() const {
     const LibraryApplyOptions options = libraryOptions(LibraryTab::Looks);
     if (options.layers.empty()) return "sample";
     // (the committed document: a hover preview is not a new target)
-    const ta::TitleArtHashes hashes = ta::hashTitleArt(doc.committed());
-    auto it = hashes.layers.find(options.layers.back());
-    return it == hashes.layers.end() ? std::string("sample") : std::to_string(it->second.content);
+    const std::pair<const void*, uint64_t> key{doc.document().get(), doc.changeCount()};
+    if (key != committedHashesKey) {
+        committedHashesKey = key;
+        committedHashes = ta::hashTitleArt(doc.committed());
+    }
+    auto it = committedHashes.layers.find(options.layers.back());
+    return it == committedHashes.layers.end() ? std::string("sample") : std::to_string(it->second.content);
 }
 
 bool TitleDesignerWindow::applyLibraryItem(LibraryTab tab, const LibraryItem& item, bool preview) {

@@ -72,11 +72,38 @@ namespace {
 
 // ---- geometry of layers ----
 
+TitleDesignerWindow::DerivedKey TitleDesignerWindow::derivedKey() const {
+    DerivedKey key;
+    if (!doc.isOpen()) return key;
+    key.shown = &doc.shown();
+    key.change = doc.changeCount();
+    key.assets = transient.revision();
+    return key;
+}
+
 TitleRect TitleDesignerWindow::layerBounds(const std::string& layerId) const {
     if (!geometry || !doc.isOpen()) return {};
+    const DerivedKey key = derivedKey();
+    if (!(key == boundsKey)) {
+        boundsKey = key;
+        boundsCache.clear();
+    }
+    auto cached = boundsCache.find(layerId);
+    if (cached != boundsCache.end()) return cached->second;
     const ta::Json* layer = layerById(doc.shown(), layerId);
     if (!layer) return {};
-    return geometry->contentBounds(*layer, doc.shown());
+    const TitleRect bounds = geometry->contentBounds(*layer, doc.shown());
+    boundsCache.emplace(layerId, bounds);
+    return bounds;
+}
+
+const ta::TitleArtHashes& TitleDesignerWindow::shownHashes() {
+    const DerivedKey key = derivedKey();
+    if (!(key == hashesKey)) {
+        hashesKey = key;
+        hashesCache = doc.isOpen() ? ta::hashTitleArt(doc.shown()) : ta::TitleArtHashes();
+    }
+    return hashesCache;
 }
 
 TitleRect TitleDesignerWindow::stageRect() const {
@@ -395,7 +422,9 @@ void TitleDesignerWindow::handleCanvasInput() {
     snap.canvas = canvasRect(doc.shown().canvasWidth(), doc.shown().canvasHeight());
     for (const Guide& g : v.guides) (g.vertical ? snap.guidesX : snap.guidesY).push_back(g.position);
     const std::vector<std::string> selected = doc.selectedLayers();
-    ta::forEachLayer(doc.shown().root, [&](const ta::Json& l, const ta::Json*, int) {
+    // the other layers' edges matter to a drag only
+    const bool snapping = drag != Drag::None || doc.gestureActive() || ImGui::IsMouseDown(ImGuiMouseButton_Left);
+    if (snapping) ta::forEachLayer(doc.shown().root, [&](const ta::Json& l, const ta::Json*, int) {
         const std::string id = str(l, "id");
         if (std::find(selected.begin(), selected.end(), id) == selected.end() && l.value("visible", true) &&
             ta::layerTypeOf(l) != ta::LayerType::Group && ta::layerTypeOf(l) != ta::LayerType::Adjustment) {

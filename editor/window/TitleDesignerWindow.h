@@ -17,6 +17,7 @@
 // job, preview request, font listing or timer exists. Opening makes them; closing destroys them
 // within the frame.
 
+#include "titleart/TitleArtHash.h"
 #include "titleart/designer/TitleDesignerHooks.h"
 #include "titleart/designer/TitleDesignerPrefs.h"
 #include "titleart/designer/TitleDesignerState.h"
@@ -41,6 +42,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine::editor {
@@ -347,6 +349,22 @@ namespace jasperengine::editor {
         double queryMs = 0.0;               // the last search query
         void showContents();
 
+        // what the shown document's layers derive, made again when it changes, not per frame
+        // (R69: a text layer's bounds lay its text out)
+        struct DerivedKey {
+            const void* shown = nullptr;
+            uint64_t change = ~0ull;
+            uint64_t assets = ~0ull;
+            bool operator==(const DerivedKey& o) const { return shown == o.shown && change == o.change && assets == o.assets; }
+        };
+        DerivedKey derivedKey() const;
+        mutable DerivedKey boundsKey;
+        mutable std::map<std::string, titledesigner::TitleRect> boundsCache;
+        DerivedKey hashesKey;
+        jasperengine::titleart::TitleArtHashes hashesCache;
+        mutable std::pair<const void*, uint64_t> committedHashesKey{nullptr, ~0ull};
+        mutable jasperengine::titleart::TitleArtHashes committedHashes;
+
         // ---- keyboard regions (R76): Tab cycles toolbar, Layers, canvas, Properties, Library ----
         enum Region : int { RegionToolbar = 0, RegionLayers, RegionCanvas, RegionProperties, RegionLibrary, RegionCount };
         int pendingRegionFocus = -1;        // Tab asked for it; its region takes the focus when drawn
@@ -427,6 +445,8 @@ namespace jasperengine::editor {
         void handleCanvasInput();
         std::string pickLayer(ImVec2 screen, bool drill);
         titledesigner::TitleRect layerBounds(const std::string& layerId) const;
+        // the shown document's per-layer hashes, made once per change (Layers, Library keys)
+        const jasperengine::titleart::TitleArtHashes& shownHashes();
         void beginTextEdit(const std::string& layerId, bool selectAll);
         void endTextEdit(bool commit);
         bool textEditing() const;

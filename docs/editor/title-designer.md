@@ -43,7 +43,11 @@ See [Text and languages](text-and-languages.md#fonts-in-the-editor).
 - Inherited values (bevel and satin light, shadow angles) show a dot: hollow takes the Global Light,
   filled is set here. Editing an inherited value sets it here.
 - Text: double-click a text layer (or press Enter) to type on the canvas, Japanese input included.
-  Enter is a new line, Ctrl+Enter is done, Esc cancels.
+  Enter is a new line, Ctrl+Enter is done, Esc cancels. Selected characters get a small gizmo each:
+  drag the dot to move them, the knob above to turn them (Shift: 15 degree steps), the square to
+  scale them; every selected character changes together, as one undo step.
+- Tab moves the keyboard between the toolbar, Layers, the canvas, Properties and the Library
+  (Shift+Tab back); the panel it reaches is outlined.
 - Ctrl+D duplicates, F2 renames, Delete deletes, Ctrl+G groups, Ctrl+Alt+G clips, H hides, L locks,
   arrows nudge (Shift x10), F frames the selection, Home fits the canvas.
 

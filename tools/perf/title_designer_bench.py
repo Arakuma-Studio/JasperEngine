@@ -132,15 +132,19 @@ async def ui_numbers(ed: Editor, docs: dict[str, str]) -> dict:
     for word in ("glow", "shadow", "rim width", "outline", "fill color"):
         await state(ed, search="")
         await ed.call("edit_title", path=docs["rims"], ops=[{"op": "set", "layer": "Title", "values": {"size": 220 + len(index)}}], bake="never")
-        t = (await state(ed, search=word))["timings"]
-        for _ in range(3):
-            await ed.call("editor_status")
-        t = (await state(ed))["timings"]
+        t = (await state(ed, panel="properties", search=word))["timings"]
+        # the results draw (and the index builds) on the next frames
+        for _ in range(40):
+            await asyncio.sleep(0.25)
+            t = (await state(ed))["timings"]
+            if t["index_entries"] > 0 and t["query_ms"] > 0.0:
+                break
         index.append(t["index_ms"])
         query.append(t["query_ms"])
     out["index_ms"] = index
     out["query_ms"] = query
     out["index_entries"] = t["index_entries"]
+    out["window_rect"] = (await state(ed)).get("rect")
     return out
 
 

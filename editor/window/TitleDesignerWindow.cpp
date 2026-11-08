@@ -1057,6 +1057,8 @@ void TitleDesignerWindow::showContents() {
         geometry.reset();
         textLayout.reset();
         pickCache.clear();
+        boundsKey = DerivedKey();
+        hashesKey = DerivedKey();
         if (canvas) canvas->clear();
     }
     loadWorkspace();

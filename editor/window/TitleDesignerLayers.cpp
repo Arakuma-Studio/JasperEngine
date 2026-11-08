@@ -205,7 +205,7 @@ void TitleDesignerWindow::drawLayers() {
     const ta::TitleArtDoc& shown = doc.shown();
     DocumentView& v = view();
     const std::shared_ptr<const ta::TitleArtDoc> snapshot = doc.shownSnapshot();
-    const ta::TitleArtHashes hashes = ta::hashTitleArt(shown);
+    const ta::TitleArtHashes& hashes = shownHashes();
 
     // flatten the tree: top of the list = front (S80 stores bottom first: D17)
     std::vector<Row> rows;
