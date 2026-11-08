@@ -41,6 +41,17 @@ namespace jasperengine::editor{
         Settings    // T1 R59: Terrain Settings
     };
 
+    // T1 R63: what an armed eyedropper takes from the terrain
+    enum class TerrainPick{ None, Height, SlopeMin, SlopeMax, HeightMin, HeightMax, Layer };
+
+    // What the eyedroppers read at one terrain-local point: height 0-1 of maxHeight, slope in degrees,
+    // and the strongest layer (-1: the base shows most)
+    struct TerrainPickValues{
+        float height = 0.0f;
+        float slope = 0.0f;
+        int layer = -1;
+    };
+
     struct TerrainBrushCursor{
         bool visible = false;
         // World-space closed loops draped over the terrain surface: the brush
@@ -182,8 +193,8 @@ namespace jasperengine::editor{
         bool filterAllTools = false;
         bool filterInvert = false;
         bool heightFilterInvert = false;
-        // T1 R63: the next click picks the Set Height value instead of painting
-        bool pickHeightArmed = false;
+        // T1 R63: the next click picks this value from the terrain instead of painting
+        TerrainPick pickTarget = TerrainPick::None;
         // T1 R56: the armed tool's alternate (C)
         bool alternate = false;
         float paintMinSlope;
@@ -360,6 +371,8 @@ namespace jasperengine::editor{
         TerrainBrushMode effectiveModeFor(bool ctrl, bool shift) const;
         // T1 R55, Table 4: the decal's colour of an operation
         static Vector4 decalColor(TerrainBrushMode mode);
+        // T1 R63: the eyedroppers' values at a terrain-local point
+        static TerrainPickValues pickValues(Scene* scene, Entity entity, float localX, float localZ);
         // T1 R55: the decal's opacity this long after the pointer last moved: whole for 0.5 s, then gone over 0.25 s
         static float decalOpacity(double secondsSinceMoved);
 

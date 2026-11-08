@@ -36,6 +36,7 @@
 #include "command/type/TerrainTextureEditCmd.h"
 #include "external/IconsFontAwesome6.h"
 #include "subsystem/MeshSystem.h"
+#include "terrain/TerrainLayers.h"
 #include "util/Angle.h"
 #include "util/Color.h"
 #include "util/FileDialogs.h"
@@ -2737,9 +2738,20 @@ void editor::TerrainEditWindow::show(){
             ImGui::Checkbox("##filter_invert_height", &heightFilterInvert);
             terrainPropertyRow("All Tools", "The filter also limits sculpting and details.");
             ImGui::Checkbox("##filter_all_tools", &filterAllTools);
+            // R63: an eyedropper on each end takes it from the next click on the terrain
+            auto pickButton = [&](const char* id, const char* tooltip, TerrainPick target){
+                if (iconButton(ICON_FA_EYE_DROPPER, id, tooltip, pickTarget == target, commandSize)){
+                    pickTarget = pickTarget == target ? TerrainPick::None : target;
+                }
+                ImGui::SameLine();
+            };
             terrainPropertyRow("Slope range", "Allowed ground slope in degrees, from flat (0) to vertical (90).");
+            pickButton("pick_slope_min", "Pick the lowest slope from the terrain", TerrainPick::SlopeMin);
+            pickButton("pick_slope_max", "Pick the highest slope from the terrain", TerrainPick::SlopeMax);
             ImGui::DragFloatRange2("##paint_slope", &paintMinSlope, &paintMaxSlope, 0.5f, 0.0f, 90.0f, "%.0f deg", "%.0f deg", ImGuiSliderFlags_AlwaysClamp);
             terrainPropertyRow("Height range", "Allowed ground height, from the terrain base (0) to its max height (1).");
+            pickButton("pick_height_min", "Pick the lowest height from the terrain", TerrainPick::HeightMin);
+            pickButton("pick_height_max", "Pick the highest height from the terrain", TerrainPick::HeightMax);
             ImGui::DragFloatRange2("##paint_height", &paintMinHeight, &paintMaxHeight, 0.01f, 0.0f, 1.0f, "%.2f", "%.2f", ImGuiSliderFlags_AlwaysClamp);
             ImGui::EndDisabled();
         }
@@ -2762,8 +2774,8 @@ void editor::TerrainEditWindow::show(){
             terrainPropertyRow("Sample height", "Pick the flatten height from the terrain at the start of each stroke.");
             ImGui::Checkbox("##flatten_pick", &flattenPickOnStroke);
             terrainPropertyRow("Flatten height", "Normalized terrain height. The eyedropper takes it from the next click on the terrain.");
-            if (iconButton(ICON_FA_EYE_DROPPER, "pick_height", "Pick from Terrain", pickHeightArmed, commandSize)){
-                pickHeightArmed = !pickHeightArmed;
+            if (iconButton(ICON_FA_EYE_DROPPER, "pick_height", "Pick from Terrain (I)", pickTarget == TerrainPick::Height, commandSize)){
+                pickTarget = pickTarget == TerrainPick::Height ? TerrainPick::None : TerrainPick::Height;
             }
             ImGui::SameLine();
             ImGui::BeginDisabled(flattenPickOnStroke);
@@ -2945,14 +2957,34 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
 
     const ImGuiIO& io = ImGui::GetIO();
 
-    // T1 R63: an armed eyedropper takes the height under the click and edits nothing
-    if (pickHeightArmed){
-        const TerrainComponent& picked = scene->getComponent<TerrainComponent>(entity);
-        if (std::abs(picked.maxHeight) > std::numeric_limits<float>::epsilon()){
-            flattenHeight = std::clamp(localHeight / picked.maxHeight, 0.0f, 1.0f);
-            flattenPickOnStroke = false;
+    // T1 R63: an armed eyedropper takes its value under the click and edits nothing; Alt+click with no drag
+    // (Alt+drag orbits before this) picks without arming: the layer on Paint Texture, else the height
+    TerrainPick pick = pickTarget;
+    if (pick == TerrainPick::None && io.KeyAlt && !(isPlacementBrush() && foliagePanel->placesTrees())){
+        pick = toolCategory == TerrainToolCategory::Texture ? TerrainPick::Layer : TerrainPick::Height;
+    }
+    if (pick != TerrainPick::None){
+        const TerrainPickValues values = pickValues(scene, entity, localPoint.x, localPoint.z);
+        switch (pick){
+            case TerrainPick::Height:
+                flattenHeight = values.height;
+                flattenPickOnStroke = false;
+                break;
+            case TerrainPick::SlopeMin: paintMinSlope = std::min(values.slope, paintMaxSlope); break;
+            case TerrainPick::SlopeMax: paintMaxSlope = std::max(values.slope, paintMinSlope); break;
+            case TerrainPick::HeightMin: paintMinHeight = std::min(values.height, paintMaxHeight); break;
+            case TerrainPick::HeightMax: paintMaxHeight = std::max(values.height, paintMinHeight); break;
+            case TerrainPick::Layer:
+                if (values.layer >= 0){
+                    selectedTextureLayer = values.layer;
+                    brushMode = TerrainBrushMode::PaintLayer;
+                }else{
+                    brushMode = TerrainBrushMode::PaintBase;
+                }
+                break;
+            case TerrainPick::None: break;
         }
-        pickHeightArmed = false;
+        pickTarget = TerrainPick::None;
         return false;
     }
 
@@ -3275,7 +3307,7 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
     const ImGuiIO& io = ImGui::GetIO();
     const TerrainBrushMode shown = stroke.active ? stroke.effectiveMode : effectiveModeFor(io.KeyCtrl, io.KeyShift);
     const float texel = mapWidth > 1 ? terrainSize / static_cast<float>(mapWidth - 1) : 0.0f;
-    cursor.color = pickHeightArmed ? Vector4(1.0f, 1.0f, 1.0f, 1.0f)
+    cursor.color = pickTarget != TerrainPick::None ? Vector4(1.0f, 1.0f, 1.0f, 1.0f)
                                    : (!isPlacementBrush() && brushSize < texel ? Vector4(1.0f, 0.0f, 1.0f, 1.0f)
                                                                                 : decalColor(isAlternateOn() && shown != TerrainBrushMode::Smooth ? TerrainBrushMode::Flatten : shown));
     cursor.color.w *= opacity;
@@ -3306,12 +3338,12 @@ void editor::TerrainEditWindow::armBrush(TerrainBrushMode mode){
     brushMode = mode;
     toolCategory = toolCategoryFor(mode);
     brushActive = true;
-    pickHeightArmed = false;
+    pickTarget = TerrainPick::None;
 }
 
 void editor::TerrainEditWindow::armPickHeight(){
     armBrush(TerrainBrushMode::Flatten);
-    pickHeightArmed = true;
+    pickTarget = TerrainPick::Height;
 }
 
 bool editor::TerrainEditWindow::hasAlternate() const{
@@ -3319,8 +3351,8 @@ bool editor::TerrainEditWindow::hasAlternate() const{
 }
 
 bool editor::TerrainEditWindow::disarmBrush(){
-    if (pickHeightArmed){
-        pickHeightArmed = false;
+    if (pickTarget != TerrainPick::None){
+        pickTarget = TerrainPick::None;
         return true;
     }
     if (!brushActive){
@@ -3351,6 +3383,39 @@ TerrainBrushMode editor::TerrainEditWindow::effectiveModeFor(bool ctrl, bool shi
         return brushMode == TerrainBrushMode::PlaceObject ? TerrainBrushMode::EraseObject : TerrainBrushMode::PlaceObject;
     }
     return brushMode;
+}
+
+editor::TerrainPickValues editor::TerrainEditWindow::pickValues(Scene* scene, Entity entity, float localX, float localZ){
+    TerrainPickValues values;
+    TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
+    float height = 0.0f;
+    Vector3 normal(0.0f, 1.0f, 0.0f);
+    MeshSystem::sampleTerrainSurface(terrain, localX, localZ, height, normal);
+    values.height = std::abs(terrain.maxHeight) > std::numeric_limits<float>::epsilon() ? std::clamp(height / terrain.maxHeight, 0.0f, 1.0f) : 0.0f;
+    values.slope = Angle::radToDefault(std::acos(std::clamp(normal.y, -1.0f, 1.0f)));
+    // the strongest layer as the blend maps weigh it, the base where they leave most
+    TerrainComponentStore store(scene, entity, terrain);
+    float best = 0.0f, total = 0.0f;
+    std::vector<float> texel(4);
+    for (int l = 0; l < static_cast<int>(terrain.surfaceLayers.size()); l++){
+        const terrain::LayerChannel channel = terrain::terrainLayerChannel(l);
+        const terrain::MapId blend{terrain::MapKind::Blend, channel.map};
+        const terrain::MapFormat format = store.format(blend);
+        if (!format.exists) continue;
+        const Vector2 at = store.texelOfWorld(blend, localX, localZ);
+        const int x = std::clamp(static_cast<int>(std::lround(at.x)), 0, format.bounds.w - 1);
+        const int y = std::clamp(static_cast<int>(std::lround(at.y)), 0, format.bounds.h - 1);
+        texel.assign(static_cast<size_t>(format.channels), 0.0f);
+        if (!store.read(blend, terrain::TexelRect{x, y, 1, 1}, texel)) continue;
+        const float weight = channel.inverted ? 1.0f - texel[channel.channel] : texel[channel.channel];
+        total += weight;
+        if (weight > best){
+            best = weight;
+            values.layer = l;
+        }
+    }
+    if (1.0f - total > best) values.layer = -1;
+    return values;
 }
 
 float editor::TerrainEditWindow::decalOpacity(double secondsSinceMoved){
