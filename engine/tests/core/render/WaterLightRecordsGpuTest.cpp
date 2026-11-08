@@ -4,9 +4,10 @@
 // library:water reads its pixel lights' records from the frame's u_lightRecords (includes/lights.glsl,
 // LIGHTS_FS_RECORDS: docs/superpowers/specs/2026-11-04-water-reflections-design.md, Follow-ups), so
 // sixteen lights with shadows fit GLES3 / WebGL2's 224 fragment uniform vectors. It must draw what
-// the block form drew: the same water as a fork without the define (the per-object block form), lit
-// by a shadowed sun, a shadowed point and spot light and ten more points (the sixteen-light tier),
-// in the per-object Light Mode (the Tiled form has its own lists).
+// the block form drew: the same water as a fork without the define (the per-object block form, which
+// the fork keeps while it fits GLES3's budget: eight lights with shadows, sixteen without), lit by a
+// shadowed sun, a shadowed point and spot light and ten more points, in the per-object Light Mode
+// (the Tiled form has its own lists).
 
 #include "Engine.h"
 #include "Scene.h"
@@ -175,7 +176,9 @@ TEST_F(WaterLightRecordsGpu, RecordsDrawWhatTheBlockDrew){
     spot.setDirection(0.3f, -1.0f, 0.2f);
     spot.setConeAngle(20.0f, 35.0f);
     spot.setShadows(true);
-    // ten more small points over the surface: thirteen lights, the sixteen-light tier
+    // ten more small points over the surface: thirteen lights, eight of them per pixel (the fork's
+    // block form is over GLES3's budget with shadows at sixteen, and takes the records then too)
+    scene.setMaxLightsPerObject(8);
     for (int i = 0; i < 10; i++){
         const float x = -6.0f + 1.3f * (float)i;
         const float z = (i % 2 == 0) ? -3.0f : 3.0f;
@@ -196,7 +199,6 @@ TEST_F(WaterLightRecordsGpu, RecordsDrawWhatTheBlockDrew){
     shoot("library:water", records, width, height);
     const MeshComponent& mesh = scene.getComponent<MeshComponent>(water.getEntity());
     EXPECT_NE(mesh.submeshes[0].slotLightRecords.first, -1) << "library:water does not read the lights' records";
-    EXPECT_TRUE(mesh.submeshes[0].shaderProperties & shaderPropertyBit(30)) << "not the sixteen-light tier";
     shoot("shaders/BlockWater", block, width, height);
     EXPECT_EQ(mesh.submeshes[0].slotLightRecords.first, -1) << "the fork without the define reads the records";
 
