@@ -171,7 +171,7 @@ never build or run them.
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | spec done |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | in review |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
-| S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | spec done |
+| S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | implementing |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | spec done |
@@ -221,6 +221,9 @@ Every landing set also runs the shared-data suites: editor unit `ShaderNeutralAp
 
 ## Log
 
+- 2026-11-07: S45 Sprite Atlas implementation started (`.worktrees/s45`, from `main` `8abf785e1`
+  with S44). S41 was told to make its final merge of `main` (with S44). The Doriax lead was told
+  about `main`'s six failing shared-data tests.
 - 2026-11-07: **S44 Aseprite Import merged into `main` and pushed** (merge of `f403cce21`).
   - Verified on the merged tree (`main` `2875cf469` + S44): `WERROR` linux; filtered unit tests
     (core 52, editor 332) and the shared-data suites; 170 MCP tests plus `test_editor_modals`

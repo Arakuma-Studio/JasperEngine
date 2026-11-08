@@ -297,8 +297,9 @@ void GitProvider::parsePorcelainV2(std::string_view output, VcsSnapshot& out) {
                 change.index = stateOf(fields[1][0]);
                 change.worktree = stateOf(fields[1].size() > 1 ? fields[1][1] : '.');
                 change.baseOid = std::string(fields[6]);
-                // the path it came from is the next record
+                // the path it came from is the next record (a copy's source stays as it is)
                 if (i + 1 < records.size()) change.oldPath = std::string(records[++i]);
+                change.copied = fields[1][0] == 'C' || (fields[1].size() > 1 && fields[1][1] == 'C');
                 break;
             case 'u':
                 if (!splitFields(record, 10, fields, rest)) continue;
