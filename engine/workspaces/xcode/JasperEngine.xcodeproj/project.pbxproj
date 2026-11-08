@@ -4541,6 +4541,9 @@
 		4A534E47443C97748E29A567 /* SpriteSheetSources.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47995B2A4A9A2030A2 /* SpriteSheetSources.h */; };
 		4A534E47D87F5455BEE3D153 /* NavigationAreas.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477308C84C63C31D40 /* NavigationAreas.h */; };
 		4A534E47F70E7AE87350F4F9 /* NearestName.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474365841B0820D5A8 /* NearestName.h */; };
+		4A534E47A036AA4F954A2A01 /* ModelClipSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474E197FD9213D710B /* ModelClipSettings.cpp */; };
+		4A534E47D655F6EFD7B40EA7 /* ModelClipSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474E197FD9213D710B /* ModelClipSettings.cpp */; };
+		4A534E47223C0640EAFFC11F /* ModelClipSettings.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4770702AB38EE8F1C5 /* ModelClipSettings.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8859,6 +8862,8 @@
 		4A534E47995B2A4A9A2030A2 /* SpriteSheetSources.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteSheetSources.h; sourceTree = "<group>"; };
 		4A534E477308C84C63C31D40 /* NavigationAreas.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NavigationAreas.h; sourceTree = "<group>"; };
 		4A534E474365841B0820D5A8 /* NearestName.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NearestName.h; sourceTree = "<group>"; };
+		4A534E474E197FD9213D710B /* ModelClipSettings.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ModelClipSettings.cpp; sourceTree = "<group>"; };
+		4A534E4770702AB38EE8F1C5 /* ModelClipSettings.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ModelClipSettings.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10323,6 +10328,8 @@
 				4A534E474F5A325E3E0B7DBB /* PropertyBindings.h */,
 				4A534E47C6982B721B359B07 /* ClipAudio.cpp */,
 				4A534E47C3FC7FC23123CAB8 /* ClipAudio.h */,
+				4A534E474E197FD9213D710B /* ModelClipSettings.cpp */,
+				4A534E4770702AB38EE8F1C5 /* ModelClipSettings.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -15750,6 +15757,7 @@
 				4A534E47443C97748E29A567 /* SpriteSheetSources.h in Headers */,
 				4A534E47D87F5455BEE3D153 /* NavigationAreas.h in Headers */,
 				4A534E47F70E7AE87350F4F9 /* NearestName.h in Headers */,
+				4A534E47223C0640EAFFC11F /* ModelClipSettings.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18299,6 +18307,7 @@
 				4A534E4708701B0A20191854 /* SpriteFrameGeometry.cpp in Sources */,
 				4A534E47B61CE4D4BE2CB2FA /* AsepriteClips.cpp in Sources */,
 				4A534E47AF9123501EBADC96 /* SpriteSheetSources.cpp in Sources */,
+				4A534E47A036AA4F954A2A01 /* ModelClipSettings.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19139,6 +19148,7 @@
 				4A534E470EEAE37D2691B3F8 /* SpriteFrameGeometry.cpp in Sources */,
 				4A534E475671C5EB980CA830 /* AsepriteClips.cpp in Sources */,
 				4A534E47B9A475E7C5CD7CA3 /* SpriteSheetSources.cpp in Sources */,
+				4A534E47D655F6EFD7B40EA7 /* ModelClipSettings.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
