@@ -130,14 +130,16 @@ namespace {
         JE_FIELD(NavMeshSurfaceComponent, minRegionArea, .label = "Minimum Region Area", .tooltip = "Islands smaller than this (square metres) are dropped."),
         JE_FIELD(NavMeshSurfaceComponent, plane, .enumDesc = &enums::kNavPlane, .tooltip = "XZ for 3D scenes (Y up); XY for 2D scenes: Collider2D footprints on the scene's plane."),
         JE_FIELD(NavMeshSurfaceComponent, runtimeCarving, .tooltip = "Keep tile-cache layers so carving NavMesh Obstacles cut it at runtime (about 30% more memory)."),
+        JE_FIELD(NavMeshSurfaceComponent, followTerrainWorldFocus, .label = "Follow Terrain World Focus", .tooltip = "Bake the Terrain World's tiles round its focus (its Focus GameObject or camera) and rebake as the focus moves."),
+        JE_FIELD(NavMeshSurfaceComponent, followRadius, .unit = Unit::Meters, .tooltip = "How far round the focus the Terrain World's tiles are baked."),
         JE_FIELD(NavMeshSurfaceComponent, navMeshData, .asset = AssetKind::NavMesh, .label = "NavMesh Data", .tooltip = "The baked .navmesh asset."),
     };
 
     const ComponentCodec kNavMeshSurfaceCodec = JE_STREAM_CODEC(NavMeshSurfaceComponent, encodeNavMeshSurfaceComponent,
                                                                 decodeNavMeshSurfaceComponent);
 
-    constexpr const char* kNavMeshSurfaceKnownKeys[] = {"agentType", "cellSize", "collectObjects", "defaultArea", "enabled", "includeLayers",
-        "minRegionArea", "navMeshData", "navMeshDataGuid", "overrideCellSize", "overrideTileSize", "plane", "runtimeCarving", "tileSize",
+    constexpr const char* kNavMeshSurfaceKnownKeys[] = {"agentType", "cellSize", "collectObjects", "defaultArea", "enabled", "followRadius",
+        "followTerrainWorldFocus", "includeLayers", "minRegionArea", "navMeshData", "navMeshDataGuid", "overrideCellSize", "overrideTileSize", "plane", "runtimeCarving", "tileSize",
         "useGeometry", "volumeCenter", "volumeSize"};
 
     // ---------------------------------------------------------------- NavMesh Agent

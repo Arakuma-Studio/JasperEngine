@@ -37,6 +37,8 @@ YAML::Node editor::Stream::encodeNavMeshSurfaceComponent(const NavMeshSurfaceCom
     node["minRegionArea"] = surface.minRegionArea;
     node["plane"] = StreamSchema::navPlane().toString(surface.plane);
     node["runtimeCarving"] = surface.runtimeCarving;
+    node["followTerrainWorldFocus"] = surface.followTerrainWorldFocus;
+    node["followRadius"] = surface.followRadius;
     encodeAssetRef(node, "navMeshData", surface.navMeshData);
     return node;
 }
@@ -60,6 +62,8 @@ NavMeshSurfaceComponent editor::Stream::decodeNavMeshSurfaceComponent(const YAML
     if (node["minRegionArea"]) surface.minRegionArea = YamlNumbers::as<float>(node["minRegionArea"]);
     if (node["plane"]) surface.plane = decodeEnum(node, "plane", StreamSchema::navPlane());
     if (node["runtimeCarving"]) surface.runtimeCarving = YamlNumbers::as<bool>(node["runtimeCarving"]);
+    if (node["followTerrainWorldFocus"]) surface.followTerrainWorldFocus = YamlNumbers::as<bool>(node["followTerrainWorldFocus"]);
+    if (node["followRadius"]) surface.followRadius = YamlNumbers::as<float>(node["followRadius"]);
     if (node["navMeshData"]) surface.navMeshData = decodeAssetRef(node, "navMeshData");
     return surface;
 }

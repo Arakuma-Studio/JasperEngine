@@ -72,6 +72,7 @@ jasperengine_skip_unity_build(
     SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorBlendTreeTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/navigation/NavBakeFoliageTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/navigation/TerrainWorldNavTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/render/FoliageGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageCullTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageLuaTest.cpp

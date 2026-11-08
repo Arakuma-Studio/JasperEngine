@@ -53,6 +53,8 @@ std::string editor::Factory::createNavMeshSurfaceComponent(int indentSpaces, Ent
     code << ind << "navSurface.minRegionArea = " << formatFloat(surface.minRegionArea) << ";\n";
     code << ind << "navSurface.plane = " << enumCode(editor::reflect::enums::kNavPlane, surface.plane) << ";\n";
     code << ind << "navSurface.runtimeCarving = " << formatBool(surface.runtimeCarving) << ";\n";
+    code << ind << "navSurface.followTerrainWorldFocus = " << formatBool(surface.followTerrainWorldFocus) << ";\n";
+    code << ind << "navSurface.followRadius = " << formatFloat(surface.followRadius) << ";\n";
     code << ind << "navSurface.navMeshData = " << formatString(surface.navMeshData.path) << ";\n";
     if (!surface.enabled) code << ind << "navSurface.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "NavMeshSurfaceComponent", "navSurface", assignExisting);

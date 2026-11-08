@@ -56,6 +56,10 @@ namespace jasperengine{
         nav::NavPlane plane = nav::NavPlane::XZ;
         // keep tile-cache layers, so carving NavMeshObstacles cut the navmesh at runtime
         bool runtimeCarving = false;
+        // T4 R25: bake the Terrain World's tiles round its focus (its Focus GameObject or camera)
+        // and rebake as the focus moves; off on single-threaded web unless a script turns it on
+        bool followTerrainWorldFocus = false;
+        float followRadius = 128.0f;
         // the baked .navmesh
         AssetRef navMeshData;
 

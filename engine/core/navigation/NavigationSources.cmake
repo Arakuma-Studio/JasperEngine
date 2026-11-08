@@ -14,6 +14,7 @@ set(JASPERENGINE_NAVIGATION_SRCS
     core/navigation/NavCrowd.cpp
     core/navigation/NavGridMap.cpp
     core/navigation/GridPathfinder.cpp
+    core/navigation/NavTerrainWorld.cpp
     core/util/MeshTriangles.cpp
     core/subsystem/NavigationSystem.cpp
     core/object/navigation/NavMeshAgent.cpp

@@ -32,6 +32,8 @@ namespace jasperengine {
 
 namespace jasperengine::nav {
 
+    struct NavWorldContext;
+
     struct NavCollectStats {
         int meshes = 0;
         int instances = 0;
@@ -43,6 +45,9 @@ namespace jasperengine::nav {
         // left out by the policy (moving bodies, agents, obstacles, Exclude modifiers)
         int excluded = 0;
         size_t triangles = 0;
+        // T4 R25: Terrain World tiles not in memory yet; they are loading, and the collection is
+        // retried until every one is in (the collect fails meanwhile)
+        int pendingTiles = 0;
         std::vector<std::string> warnings;
     };
 
@@ -51,8 +56,11 @@ namespace jasperengine::nav {
 
     class JASPERENGINE_API NavBakeCollector {
     public:
-        // The input of the surface's bake, null (with *error) when the surface cannot be baked
-        static std::shared_ptr<NavBakeInput> collect(Scene* scene, Entity surface, std::string& error, NavCollectStats* stats = nullptr);
+        // The input of the surface's bake, null (with *error) when the surface cannot be baked.
+        // world: what the surface keeps of its Terrain Worlds between collections (tiles held while
+        // others load, its Follow region); null for a one-off collection.
+        static std::shared_ptr<NavBakeInput> collect(Scene* scene, Entity surface, std::string& error, NavCollectStats* stats = nullptr,
+                                                     NavWorldContext* world = nullptr);
 
         // The surface's nav space now (its world position and rotation, its plane)
         static NavFrame frameOf(Scene* scene, Entity surface);
