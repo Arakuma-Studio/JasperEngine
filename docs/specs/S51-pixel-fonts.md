@@ -708,3 +708,9 @@ Recorded by the implementation (branch `feature/s51-pixel-fonts`).
     `docs/mcp/guide/pixel-fonts.md` describes them), its `max_size` lost its description and bounds
     (the handler still clamps it to 16..2048), and `get_asset_info`, `write_file` and `sync_files`
     lost a few words (`get_asset_info` says "font metrics"; `pixel_report` is in its result).
+15. **R20's styled rebuild is over budget.** A styled Text draws a back quad and a face quad per
+    glyph, both with vertex colours, so its rebuild writes about three times the plain rebuild's
+    vertex data. On a 16-vCPU build box (release) a 200-character rebuild takes 0.051 ms; a styled
+    one with a cache hit takes 0.134 ms, against a budget of 0.05 ms. `BitmapFontBench` logs both
+    and gates them only under `JASPER_TEST_PERF_SLACK`. Closing the gap needs a quad writer that
+    fills the interleaved buffer directly, not through `Buffer::addVector*`.
