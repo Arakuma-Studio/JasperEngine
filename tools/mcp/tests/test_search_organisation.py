@@ -292,3 +292,24 @@ async def test_bookmarks(ed: Editor):
     ed.check_eq([b["path"] for b in back["bookmarks"]], ["assets/sprites", HERO[0]], "undo re-adds it in its place")
     went = await ed.call("edit_bookmarks", action="navigate", index=1)
     ed.check(went, "navigate")
+
+
+async def test_brush_contexts_list_their_keys(ed: Editor):
+    """T1 R57, T6 R60: an armed brush's keys are listed, and rebindable, by their own context."""
+    terrain = by_id(await ed.call("list_shortcuts", context="terrain_brush"))
+    table5 = {"terrain.tool.raise": ["R"], "terrain.tool.setHeight": ["H"], "terrain.tool.smooth": ["S"], "terrain.tool.ramp": ["A"],
+              "terrain.tool.noise": ["N"], "terrain.tool.terrace": ["T"], "terrain.tool.erode": ["E"], "terrain.tool.stamp": ["K"],
+              "terrain.tool.paintTexture": ["B"], "terrain.tool.paintDetails": ["D"], "terrain.tool.placeObjects": ["P"],
+              "terrain.tool.cutHoles": ["X"], "terrain.pick": ["I"], "terrain.invertSlopeFilter": ["Y"], "terrain.alternate": ["C"],
+              "terrain.overlay.height": ["1"], "terrain.overlay.slope": ["2"], "terrain.overlay.contours": ["3"],
+              "terrain.overlay.layerWeights": ["4"], "terrain.overlay.off": ["0"], "terrain.disarm": ["Escape"]}
+    for command, chords in table5.items():
+        ed.check(command in terrain, f"{command} is listed under terrain_brush: {sorted(terrain)}")
+        ed.check_eq(terrain[command]["chords"], chords, command)
+        ed.check_eq(terrain[command]["context"], "terrain_brush", command)
+    ed.check(all(item["context"] == "terrain_brush" for item in terrain.values()), "only the brush's own commands")
+    voxel = by_id(await ed.call("list_shortcuts", context="voxel_brush"))
+    ed.check_eq(voxel["voxel.tool.dig"]["chords"], ["D"], "the voxel brush's keys by their context too")
+    await ed.call("set_shortcut", id="terrain.alternate", chords=["G"])
+    ed.check_eq(by_id(await ed.call("list_shortcuts", context="terrain_brush"))["terrain.alternate"]["chords"], ["G"], "rebound")
+    await ed.call("set_shortcut", id="terrain.alternate", chords=None)

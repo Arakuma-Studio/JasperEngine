@@ -2616,6 +2616,22 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "terrain_brush_shortcuts",
+        "kind": "guard",
+        "what_happened": "Asked which keys the terrain brush has, agents listed every shortcut and guessed from the names, or "
+                         "filtered by scene_view, which holds none of them; the brush's keys have a context of their own.",
+        "text_at_issue": "list_shortcuts context enum: 'terrain_brush'",
+        "source": "docs/specs/T1-terrain-authoring.md R57, Table 5",
+        "prompt": "Which keys pick the terrain brush's tools while it is armed? Just list them.",
+        "mocks": [
+            {"tool": "list_shortcuts", "args": {"context": "terrain_brush"}, "result": ok("21 shortcuts.", {"shortcuts": [
+                {"id": "terrain.tool.raise", "name": "Raise", "context": "terrain_brush", "chords": ["R"]},
+                {"id": "terrain.tool.setHeight", "name": "Set Height", "context": "terrain_brush", "chords": ["H"]}]})},
+        ],
+        "checks": {"calls": [{"tool": "list_shortcuts", "args": {"context": "terrain_brush"}}], "max_calls": {"list_shortcuts": 2}},
+        "max_turns": 6,
+    },
+    {
         "id": "terrain_lua_crater",
         "kind": "guard",
         "what_happened": "Asked for a game that digs craters, agents wrote height loops over textures or called the editor's tools "
