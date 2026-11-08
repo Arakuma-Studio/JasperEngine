@@ -6,7 +6,9 @@
 
 #include "TitleImport.h"
 #include "titleart/localisation/TitleLanguageOps.h"
+#include "titleart/interchange/svg/SvgImport.h"
 
 void jasperengine::editor::registerTitleInterchange() {
     registerTitleLanguageOps();
+    registerSvgInterchange();
 }
