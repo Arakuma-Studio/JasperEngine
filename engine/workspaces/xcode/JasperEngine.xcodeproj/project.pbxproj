@@ -4520,6 +4520,56 @@
 		4A534E473C40ED72D5D87706 /* PixelPerfectLayout.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */; };
 		4A534E47182EAC07119845A8 /* PixelRotation.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D3B649BD59C300EB /* PixelRotation.h */; };
 		4A534E47B5C474A07FEAAB76 /* PixelSnap.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474815DCD00E6D3674 /* PixelSnap.h */; };
+		4A534E473A79D5D1AC205710 /* ImportedAssets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476130ECA207E12DC7 /* ImportedAssets.cpp */; };
+		4A534E472C51F51CC89A9659 /* ImportedAssets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476130ECA207E12DC7 /* ImportedAssets.cpp */; };
+		4A534E47328B4BA46394653E /* SpriteSheetIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47397D75D36BE3F85C /* SpriteSheetIO.cpp */; };
+		4A534E47FD9D769130AF3608 /* SpriteSheetIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47397D75D36BE3F85C /* SpriteSheetIO.cpp */; };
+		4A534E47CA35D3020595BD0B /* SpriteSheetPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FDDCBBC7F7DE4C53 /* SpriteSheetPool.cpp */; };
+		4A534E4796341A11F6B296A1 /* SpriteSheetPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FDDCBBC7F7DE4C53 /* SpriteSheetPool.cpp */; };
+		4A534E4708701B0A20191854 /* SpriteFrameGeometry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478EF2A23FF69A4654 /* SpriteFrameGeometry.cpp */; };
+		4A534E470EEAE37D2691B3F8 /* SpriteFrameGeometry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478EF2A23FF69A4654 /* SpriteFrameGeometry.cpp */; };
+		4A534E47613B6FBC1914B622 /* SpriteInstanceBatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CC52343921A764E6 /* SpriteInstanceBatch.cpp */; };
+		4A534E478469C2B2290A0F92 /* SpriteInstanceBatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CC52343921A764E6 /* SpriteInstanceBatch.cpp */; };
+		4A534E47B61CE4D4BE2CB2FA /* AsepriteClips.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476D1EF436C4248790 /* AsepriteClips.cpp */; };
+		4A534E475671C5EB980CA830 /* AsepriteClips.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476D1EF436C4248790 /* AsepriteClips.cpp */; };
+		4A534E47AF9123501EBADC96 /* SpriteSheetSources.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A7B23F192C5535B2 /* SpriteSheetSources.cpp */; };
+		4A534E47B9A475E7C5CD7CA3 /* SpriteSheetSources.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A7B23F192C5535B2 /* SpriteSheetSources.cpp */; };
+		4A534E47419E5281BBD108F4 /* SortingGroup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CD3535D6353C4AB6 /* SortingGroup.cpp */; };
+		4A534E47E82EB01FB9878310 /* SortingGroup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CD3535D6353C4AB6 /* SortingGroup.cpp */; };
+		4A534E4785A63F1892DE1972 /* SpriteBatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47616E7C0C1157E9CA /* SpriteBatch.cpp */; };
+		4A534E47F365D5FFDBDEBD4B /* SpriteBatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47616E7C0C1157E9CA /* SpriteBatch.cpp */; };
+		4A534E472A368CBE0FB86096 /* SortingLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47EEBFE9E0DFA9F23F /* SortingLayers.cpp */; };
+		4A534E47003F1A87FE7176A7 /* SortingLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47EEBFE9E0DFA9F23F /* SortingLayers.cpp */; };
+		4A534E475D156192E79D96FB /* PixelArtClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470E71C37C07087E7A /* PixelArtClassesLua.cpp */; };
+		4A534E47F24F029740063154 /* PixelArtClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470E71C37C07087E7A /* PixelArtClassesLua.cpp */; };
+		4A534E478D9AEB1447AEDC11 /* SortingClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47397D797409CB8274 /* SortingClassesLua.cpp */; };
+		4A534E477E14978EC49DF043 /* SortingClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47397D797409CB8274 /* SortingClassesLua.cpp */; };
+		4A534E476269EAEEA1FA6442 /* RenderSystemSorting.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475E2EA24ABB673BE1 /* RenderSystemSorting.cpp */; };
+		4A534E47A2603E1EBF617DB0 /* RenderSystemSorting.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E475E2EA24ABB673BE1 /* RenderSystemSorting.cpp */; };
+		4A534E47F4A6C261629BFE9C /* RenderSystemSpriteBatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47328D9BD280171760 /* RenderSystemSpriteBatch.cpp */; };
+		4A534E473E62704D0E3F3DF9 /* RenderSystemSpriteBatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47328D9BD280171760 /* RenderSystemSpriteBatch.cpp */; };
+		4A534E47F3DE7ADE7A0E6EC2 /* ImportedAssets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4746D0B86B789216FF /* ImportedAssets.h */; };
+		4A534E47FE62DE9335402481 /* SortingGroupComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4710D3FF1E2B42C53D /* SortingGroupComponent.h */; };
+		4A534E47A013903C2719D983 /* SpriteBatchComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F8EABA1E0264DEF5 /* SpriteBatchComponent.h */; };
+		4A534E478643359627857622 /* SortingGroup.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A745F6C74A33424B /* SortingGroup.h */; };
+		4A534E47EE4E2334C5B3525C /* SpriteBatch.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474325BCE316DDF010 /* SpriteBatch.h */; };
+		4A534E471BB6F3D7678C5B63 /* Palette.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4756FFEAE1F98FDCFE /* Palette.h */; };
+		4A534E4768B3312269AFC6EF /* PaletteBinding.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A7DF7234F41B0E73 /* PaletteBinding.h */; };
+		4A534E47F11EC913ED031CA6 /* PaletteMaterial.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477BB1478D302C8847 /* PaletteMaterial.h */; };
+		4A534E47595C33ED5BF0D36D /* PaletteQuantize.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F05F5EFE87DA79E0 /* PaletteQuantize.h */; };
+		4A534E47957E8BD25A7874AA /* PaletteRampTexture.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E087D29F372FD652 /* PaletteRampTexture.h */; };
+		4A534E474FE4CBC5B0B1914E /* PaletteSwap.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4764A7209406FFE2C8 /* PaletteSwap.h */; };
+		4A534E47698E5ED9FD04F1FD /* PixelColor.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A5FD34914CFC70C4 /* PixelColor.h */; };
+		4A534E473412B8ADD3BBAF47 /* Rgba8.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CF95F5E16366E329 /* Rgba8.h */; };
+		4A534E47B6404F1DB3C4684C /* SortingLayers.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4749B1EF42A107ABB4 /* SortingLayers.h */; };
+		4A534E474C667937CDE80F7C /* SpriteInstanceBatch.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AD8D240BCA4E4BB6 /* SpriteInstanceBatch.h */; };
+		4A534E4789BE4447B0BE862D /* AsepriteClips.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C385CFF60004F992 /* AsepriteClips.h */; };
+		4A534E47CA6751633AFFF568 /* SpriteFrameGeometry.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475F4C6ED983E6C5D1 /* SpriteFrameGeometry.h */; };
+		4A534E47F7C8985BD1DEAD06 /* SpriteSheet.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47097F5720C5B4B818 /* SpriteSheet.h */; };
+		4A534E47FE7E98B8E828924B /* SpriteSheetIO.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4717796360C2B35E36 /* SpriteSheetIO.h */; };
+		4A534E479E45969CDF15D15B /* SpriteSheetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F916164B86075842 /* SpriteSheetPool.h */; };
+		4A534E47443C97748E29A567 /* SpriteSheetSources.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47995B2A4A9A2030A2 /* SpriteSheetSources.h */; };
+		4A534E47D87F5455BEE3D153 /* NavigationAreas.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477308C84C63C31D40 /* NavigationAreas.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8823,6 +8873,42 @@
 		4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectLayout.h; sourceTree = "<group>"; };
 		4A534E47D3B649BD59C300EB /* PixelRotation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelRotation.h; sourceTree = "<group>"; };
 		4A534E474815DCD00E6D3674 /* PixelSnap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelSnap.h; sourceTree = "<group>"; };
+		4A534E476130ECA207E12DC7 /* ImportedAssets.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ImportedAssets.cpp; sourceTree = "<group>"; };
+		4A534E47397D75D36BE3F85C /* SpriteSheetIO.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteSheetIO.cpp; sourceTree = "<group>"; };
+		4A534E47FDDCBBC7F7DE4C53 /* SpriteSheetPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteSheetPool.cpp; sourceTree = "<group>"; };
+		4A534E478EF2A23FF69A4654 /* SpriteFrameGeometry.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteFrameGeometry.cpp; sourceTree = "<group>"; };
+		4A534E47CC52343921A764E6 /* SpriteInstanceBatch.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteInstanceBatch.cpp; sourceTree = "<group>"; };
+		4A534E476D1EF436C4248790 /* AsepriteClips.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AsepriteClips.cpp; sourceTree = "<group>"; };
+		4A534E47A7B23F192C5535B2 /* SpriteSheetSources.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteSheetSources.cpp; sourceTree = "<group>"; };
+		4A534E47CD3535D6353C4AB6 /* SortingGroup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SortingGroup.cpp; sourceTree = "<group>"; };
+		4A534E47616E7C0C1157E9CA /* SpriteBatch.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpriteBatch.cpp; sourceTree = "<group>"; };
+		4A534E47EEBFE9E0DFA9F23F /* SortingLayers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SortingLayers.cpp; sourceTree = "<group>"; };
+		4A534E470E71C37C07087E7A /* PixelArtClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelArtClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47397D797409CB8274 /* SortingClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SortingClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E475E2EA24ABB673BE1 /* RenderSystemSorting.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemSorting.cpp; sourceTree = "<group>"; };
+		4A534E47328D9BD280171760 /* RenderSystemSpriteBatch.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemSpriteBatch.cpp; sourceTree = "<group>"; };
+		4A534E4746D0B86B789216FF /* ImportedAssets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ImportedAssets.h; sourceTree = "<group>"; };
+		4A534E4710D3FF1E2B42C53D /* SortingGroupComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SortingGroupComponent.h; sourceTree = "<group>"; };
+		4A534E47F8EABA1E0264DEF5 /* SpriteBatchComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteBatchComponent.h; sourceTree = "<group>"; };
+		4A534E47A745F6C74A33424B /* SortingGroup.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SortingGroup.h; sourceTree = "<group>"; };
+		4A534E474325BCE316DDF010 /* SpriteBatch.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteBatch.h; sourceTree = "<group>"; };
+		4A534E4756FFEAE1F98FDCFE /* Palette.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Palette.h; sourceTree = "<group>"; };
+		4A534E47A7DF7234F41B0E73 /* PaletteBinding.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PaletteBinding.h; sourceTree = "<group>"; };
+		4A534E477BB1478D302C8847 /* PaletteMaterial.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PaletteMaterial.h; sourceTree = "<group>"; };
+		4A534E47F05F5EFE87DA79E0 /* PaletteQuantize.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PaletteQuantize.h; sourceTree = "<group>"; };
+		4A534E47E087D29F372FD652 /* PaletteRampTexture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PaletteRampTexture.h; sourceTree = "<group>"; };
+		4A534E4764A7209406FFE2C8 /* PaletteSwap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PaletteSwap.h; sourceTree = "<group>"; };
+		4A534E47A5FD34914CFC70C4 /* PixelColor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelColor.h; sourceTree = "<group>"; };
+		4A534E47CF95F5E16366E329 /* Rgba8.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Rgba8.h; sourceTree = "<group>"; };
+		4A534E4749B1EF42A107ABB4 /* SortingLayers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SortingLayers.h; sourceTree = "<group>"; };
+		4A534E47AD8D240BCA4E4BB6 /* SpriteInstanceBatch.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteInstanceBatch.h; sourceTree = "<group>"; };
+		4A534E47C385CFF60004F992 /* AsepriteClips.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AsepriteClips.h; sourceTree = "<group>"; };
+		4A534E475F4C6ED983E6C5D1 /* SpriteFrameGeometry.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteFrameGeometry.h; sourceTree = "<group>"; };
+		4A534E47097F5720C5B4B818 /* SpriteSheet.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteSheet.h; sourceTree = "<group>"; };
+		4A534E4717796360C2B35E36 /* SpriteSheetIO.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteSheetIO.h; sourceTree = "<group>"; };
+		4A534E47F916164B86075842 /* SpriteSheetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteSheetPool.h; sourceTree = "<group>"; };
+		4A534E47995B2A4A9A2030A2 /* SpriteSheetSources.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SpriteSheetSources.h; sourceTree = "<group>"; };
+		4A534E477308C84C63C31D40 /* NavigationAreas.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NavigationAreas.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -9280,6 +9366,8 @@
 				C5A54E00000005104A55E702 /* Guid.cpp */,
 				C5A54E00000005104A55E701 /* Guid.h */,
 				C5A54E00000005104A55E707 /* SubAssetKeys.h */,
+				4A534E476130ECA207E12DC7 /* ImportedAssets.cpp */,
+				4A534E4746D0B86B789216FF /* ImportedAssets.h */,
 			);
 			path = asset;
 			sourceTree = "<group>";
@@ -9377,6 +9465,8 @@
 				4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */,
 				4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */,
 				4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */,
+				4A534E470E71C37C07087E7A /* PixelArtClassesLua.cpp */,
+				4A534E47397D797409CB8274 /* SortingClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10006,6 +10096,8 @@
 				7AA5E0022F2A000000000001 /* TagManager.cpp */,
 				7AB1C0012F2A000000000001 /* PhysicsLayers.h */,
 				7AB1C0022F2A000000000001 /* PhysicsLayers.cpp */,
+				4A534E47EEBFE9E0DFA9F23F /* SortingLayers.cpp */,
+				4A534E4749B1EF42A107ABB4 /* SortingLayers.h */,
 			);
 			path = registry;
 			sourceTree = "<group>";
@@ -10668,8 +10760,34 @@
 				4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */,
 				4A534E47D3B649BD59C300EB /* PixelRotation.h */,
 				4A534E474815DCD00E6D3674 /* PixelSnap.h */,
+				4A534E4756FFEAE1F98FDCFE /* Palette.h */,
+				4A534E47A7DF7234F41B0E73 /* PaletteBinding.h */,
+				4A534E477BB1478D302C8847 /* PaletteMaterial.h */,
+				4A534E47F05F5EFE87DA79E0 /* PaletteQuantize.h */,
+				4A534E47E087D29F372FD652 /* PaletteRampTexture.h */,
+				4A534E4764A7209406FFE2C8 /* PaletteSwap.h */,
+				4A534E47A5FD34914CFC70C4 /* PixelColor.h */,
+				4A534E47CF95F5E16366E329 /* Rgba8.h */,
 			);
 			path = pixelart;
+			sourceTree = "<group>";
+		};
+		4A534E47575B4D95E57EA00F /* sprite */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47397D75D36BE3F85C /* SpriteSheetIO.cpp */,
+				4A534E47FDDCBBC7F7DE4C53 /* SpriteSheetPool.cpp */,
+				4A534E478EF2A23FF69A4654 /* SpriteFrameGeometry.cpp */,
+				4A534E476D1EF436C4248790 /* AsepriteClips.cpp */,
+				4A534E47A7B23F192C5535B2 /* SpriteSheetSources.cpp */,
+				4A534E47C385CFF60004F992 /* AsepriteClips.h */,
+				4A534E475F4C6ED983E6C5D1 /* SpriteFrameGeometry.h */,
+				4A534E47097F5720C5B4B818 /* SpriteSheet.h */,
+				4A534E4717796360C2B35E36 /* SpriteSheetIO.h */,
+				4A534E47F916164B86075842 /* SpriteSheetPool.h */,
+				4A534E47995B2A4A9A2030A2 /* SpriteSheetSources.h */,
+			);
+			path = sprite;
 			sourceTree = "<group>";
 		};
 		7162FC2A25962A0E0075B97D /* core */ = {
@@ -10753,6 +10871,7 @@
 				4A534E474D0727C81240C154 /* model */,
 				4A534E47FD9CD85331CEC557 /* memory */,
 				4A534E47F4CE7F7900B70B3C /* pixelart */,
+				4A534E47575B4D95E57EA00F /* sprite */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -10880,6 +10999,15 @@
 			path = io;
 			sourceTree = "<group>";
 		};
+		4A534E47E3EE06EED87CE187 /* sprite */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47CC52343921A764E6 /* SpriteInstanceBatch.cpp */,
+				4A534E47AD8D240BCA4E4BB6 /* SpriteInstanceBatch.h */,
+			);
+			path = sprite;
+			sourceTree = "<group>";
+		};
 		7162FC3825962A0E0075B97D /* render */ = {
 			isa = PBXGroup;
 			children = (
@@ -10945,6 +11073,7 @@
 				4A534E4796F6995CA27FA950 /* DrawBatcher.cpp */,
 				4A534E475065F0D282851FFA /* DrawBatcher.h */,
 				4A534E47E7BE6C143B079A81 /* FrustumCull.h */,
+				4A534E47E3EE06EED87CE187 /* sprite */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -11049,6 +11178,8 @@
 				4A534E47CE9FB71853CA5540 /* WaterExcluderComponent.h */,
 				4A534E47F9098224B2B02009 /* WaterWakeComponent.h */,
 				4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */,
+				4A534E4710D3FF1E2B42C53D /* SortingGroupComponent.h */,
+				4A534E47F8EABA1E0264DEF5 /* SpriteBatchComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -11162,6 +11293,10 @@
 				4A534E47BBCC2318C93E86D2 /* CapsuleShadowCaster.h */,
 				4A534E476E7497A030BB3E4B /* PixelPerfectCamera.cpp */,
 				4A534E479A02188939300830 /* PixelPerfectCamera.h */,
+				4A534E47CD3535D6353C4AB6 /* SortingGroup.cpp */,
+				4A534E47616E7C0C1157E9CA /* SpriteBatch.cpp */,
+				4A534E47A745F6C74A33424B /* SortingGroup.h */,
+				4A534E474325BCE316DDF010 /* SpriteBatch.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -11335,6 +11470,9 @@
 				4A534E47B7A94BBFE58710AB /* WaterInteractionSystem.cpp */,
 				4A534E47B790A1EA35BBD60C /* WaterInteractionSystem.h */,
 				4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */,
+				4A534E475E2EA24ABB673BE1 /* RenderSystemSorting.cpp */,
+				4A534E47328D9BD280171760 /* RenderSystemSpriteBatch.cpp */,
+				4A534E477308C84C63C31D40 /* NavigationAreas.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -15682,6 +15820,28 @@
 				4A534E473C40ED72D5D87706 /* PixelPerfectLayout.h in Headers */,
 				4A534E47182EAC07119845A8 /* PixelRotation.h in Headers */,
 				4A534E47B5C474A07FEAAB76 /* PixelSnap.h in Headers */,
+				4A534E47F3DE7ADE7A0E6EC2 /* ImportedAssets.h in Headers */,
+				4A534E47FE62DE9335402481 /* SortingGroupComponent.h in Headers */,
+				4A534E47A013903C2719D983 /* SpriteBatchComponent.h in Headers */,
+				4A534E478643359627857622 /* SortingGroup.h in Headers */,
+				4A534E47EE4E2334C5B3525C /* SpriteBatch.h in Headers */,
+				4A534E471BB6F3D7678C5B63 /* Palette.h in Headers */,
+				4A534E4768B3312269AFC6EF /* PaletteBinding.h in Headers */,
+				4A534E47F11EC913ED031CA6 /* PaletteMaterial.h in Headers */,
+				4A534E47595C33ED5BF0D36D /* PaletteQuantize.h in Headers */,
+				4A534E47957E8BD25A7874AA /* PaletteRampTexture.h in Headers */,
+				4A534E474FE4CBC5B0B1914E /* PaletteSwap.h in Headers */,
+				4A534E47698E5ED9FD04F1FD /* PixelColor.h in Headers */,
+				4A534E473412B8ADD3BBAF47 /* Rgba8.h in Headers */,
+				4A534E47B6404F1DB3C4684C /* SortingLayers.h in Headers */,
+				4A534E474C667937CDE80F7C /* SpriteInstanceBatch.h in Headers */,
+				4A534E4789BE4447B0BE862D /* AsepriteClips.h in Headers */,
+				4A534E47CA6751633AFFF568 /* SpriteFrameGeometry.h in Headers */,
+				4A534E47F7C8985BD1DEAD06 /* SpriteSheet.h in Headers */,
+				4A534E47FE7E98B8E828924B /* SpriteSheetIO.h in Headers */,
+				4A534E479E45969CDF15D15B /* SpriteSheetPool.h in Headers */,
+				4A534E47443C97748E29A567 /* SpriteSheetSources.h in Headers */,
+				4A534E47D87F5455BEE3D153 /* NavigationAreas.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18225,6 +18385,20 @@
 				4A534E47BF4EF1850A27F348 /* PixelSnap.cpp in Sources */,
 				4A534E47611B141644A354FB /* PixelPerfectCamera.cpp in Sources */,
 				4A534E47C7919DBFFB70D497 /* RenderSystemPixelArt.cpp in Sources */,
+				4A534E473A79D5D1AC205710 /* ImportedAssets.cpp in Sources */,
+				4A534E47328B4BA46394653E /* SpriteSheetIO.cpp in Sources */,
+				4A534E47CA35D3020595BD0B /* SpriteSheetPool.cpp in Sources */,
+				4A534E4708701B0A20191854 /* SpriteFrameGeometry.cpp in Sources */,
+				4A534E47613B6FBC1914B622 /* SpriteInstanceBatch.cpp in Sources */,
+				4A534E47B61CE4D4BE2CB2FA /* AsepriteClips.cpp in Sources */,
+				4A534E47AF9123501EBADC96 /* SpriteSheetSources.cpp in Sources */,
+				4A534E47419E5281BBD108F4 /* SortingGroup.cpp in Sources */,
+				4A534E4785A63F1892DE1972 /* SpriteBatch.cpp in Sources */,
+				4A534E472A368CBE0FB86096 /* SortingLayers.cpp in Sources */,
+				4A534E475D156192E79D96FB /* PixelArtClassesLua.cpp in Sources */,
+				4A534E478D9AEB1447AEDC11 /* SortingClassesLua.cpp in Sources */,
+				4A534E476269EAEEA1FA6442 /* RenderSystemSorting.cpp in Sources */,
+				4A534E47F4A6C261629BFE9C /* RenderSystemSpriteBatch.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19059,6 +19233,20 @@
 				4A534E47E018CE2E97B085F6 /* PixelSnap.cpp in Sources */,
 				4A534E476C92FA1FA0E80B1E /* PixelPerfectCamera.cpp in Sources */,
 				4A534E47B22CC36E554C21C2 /* RenderSystemPixelArt.cpp in Sources */,
+				4A534E472C51F51CC89A9659 /* ImportedAssets.cpp in Sources */,
+				4A534E47FD9D769130AF3608 /* SpriteSheetIO.cpp in Sources */,
+				4A534E4796341A11F6B296A1 /* SpriteSheetPool.cpp in Sources */,
+				4A534E470EEAE37D2691B3F8 /* SpriteFrameGeometry.cpp in Sources */,
+				4A534E478469C2B2290A0F92 /* SpriteInstanceBatch.cpp in Sources */,
+				4A534E475671C5EB980CA830 /* AsepriteClips.cpp in Sources */,
+				4A534E47B9A475E7C5CD7CA3 /* SpriteSheetSources.cpp in Sources */,
+				4A534E47E82EB01FB9878310 /* SortingGroup.cpp in Sources */,
+				4A534E47F365D5FFDBDEBD4B /* SpriteBatch.cpp in Sources */,
+				4A534E47003F1A87FE7176A7 /* SortingLayers.cpp in Sources */,
+				4A534E47F24F029740063154 /* PixelArtClassesLua.cpp in Sources */,
+				4A534E477E14978EC49DF043 /* SortingClassesLua.cpp in Sources */,
+				4A534E47A2603E1EBF617DB0 /* RenderSystemSorting.cpp in Sources */,
+				4A534E473E62704D0E3F3DF9 /* RenderSystemSpriteBatch.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

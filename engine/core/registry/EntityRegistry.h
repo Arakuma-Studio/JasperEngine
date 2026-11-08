@@ -53,6 +53,8 @@
 #include "component/CapsuleShadowCasterComponent.h"
 #include "component/AudioSnapshotComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
+#include "component/SortingGroupComponent.h"
+#include "component/SpriteBatchComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/Transform.h"

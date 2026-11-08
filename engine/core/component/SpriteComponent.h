@@ -35,6 +35,13 @@ namespace jasperengine{
         FRAME
     };
 
+    // the point a sprite sorts by along the Transparency Sort Axis (spec S52 R4, Unity's Sprite
+    // Sort Point): its world bounds' centre, or its pivot
+    enum class SpriteSortPoint : uint8_t{
+        CENTER,
+        PIVOT
+    };
+
     // How a frame fills the sprite (docs/specs/S45-sprite-atlas.md R6): Simple stretches the frame
     // over width x height; Sliced draws it as 9 quads from its border, corners unscaled, edges and
     // centre stretched. A frame without a border draws Simple.
@@ -113,6 +120,8 @@ namespace jasperengine{
         float pixelsPerUnit = 0.0f;
         // under a Pixel Perfect Camera: the camera's rotation policy, or one of its own
         PixelRotation pixelRotation = PixelRotation::CAMERA;
+        // S52 R2: what Custom Axis sorting measures (beside pixelRotation, in its padding)
+        SpriteSortPoint spriteSortPoint = SpriteSortPoint::CENTER;
 
         // Frame chosen before the texture size was known, in pixels
         Rect pendingFrameRect;

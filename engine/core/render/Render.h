@@ -262,7 +262,15 @@ namespace jasperengine{
         OBJECTMVP1,
         OBJECTMVP2,
         OBJECTMVP3,
-        OBJECTEXTRA
+        OBJECTEXTRA,
+        // pixel-art batching (spec S52 R21, R22): a sprite's per-vertex FX slots (a_spriteFx, zeros
+        // in its buffer, the batch's amounts in its baked copy), the frame rect its effects stay in
+        // (a_frameRect, the identity rect), its snap pivot (a_snapPivot, the model origin); and a
+        // Sprite Batch's per-instance FX slots (i_spriteFx)
+        SPRITEFX,
+        FRAMERECT,
+        SNAPPIVOT,
+        INSTANCESPRITEFX
     };
 
     enum class AttributeDataType{

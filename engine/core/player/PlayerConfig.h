@@ -13,6 +13,7 @@
 #include "Engine.h"
 #include "navigation/NavTypes.h"
 #include "registry/PhysicsLayers.h"
+#include "registry/SortingLayers.h"
 #include "render/AtmosphereQuality.h"
 #include "render/LightingTiers.h"
 #include "render/shadow/ShadowTiers.h"
@@ -102,6 +103,10 @@ namespace jasperengine::player {
         DeviceSettings device;
         std::vector<std::string> tags;
         std::vector<std::string> layerNames;
+        // Sorting Layers and Graphics > Transparency Sort (spec S52 R40); empty: Default alone
+        std::vector<SortingLayerInfo> sortingLayers;
+        TransparencySortMode transparencySortMode = TransparencySortMode::DEFAULT;
+        Vector3 transparencySortAxis = Vector3(0.0f, 1.0f, 0.0f);
         std::array<uint32_t, MAX_LAYERS> collision3D{};
         std::array<uint32_t, MAX_LAYERS> collision2D{};
 

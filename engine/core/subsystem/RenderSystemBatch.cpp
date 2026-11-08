@@ -61,7 +61,12 @@ namespace{
         30, // L16
         31, // Pcl
         33, // Shq
-        44  // Dlo (the lights' types a constant of the variant: nothing per object)
+        44, // Dlo (the lights' types a constant of the variant: nothing per object)
+        // pixel-art S52
+        45, // Pxs (the snap mode a key section; mode 2 with Spv only)
+        46, // Sfx (the instance= amounts baked into a_spriteFx)
+        47, // Sfr (the frame rect baked into a_frameRect)
+        48  // Spv (the snap pivot a POINT-role attribute)
     };
 
     uint64_t batchMeshPropertyMask(){
@@ -71,9 +76,33 @@ namespace{
         return mask;
     }
 
-    std::array<uint8_t, 64>& attributeRoles(){
-        static std::array<uint8_t, 64> roles = {};
+    std::array<uint8_t, 128>& attributeRoles(){
+        static std::array<uint8_t, 128> roles = [](){
+            std::array<uint8_t, 128> initial = {};
+            // S52 R22: a sprite's snap pivot is the model origin as a point (the baked origin)
+            initial[(size_t)AttributeType::SNAPPIVOT] = (uint8_t)RenderSystem::BatchAttributeRole::POINT;
+            return initial;
+        }();
         return roles;
+    }
+
+    // 64-bit FNV-1a: a custom block's bytes as a key section of fixed size (a block of a dozen
+    // vectors does not fit the key's 256 bytes)
+    uint64_t batchHashBytes(const uint8_t* data, size_t size){
+        uint64_t hash = 1469598103934665603ull;
+        for (size_t i = 0; i < size; i++)
+            hash = (hash ^ data[i]) * 1099511628211ull;
+        return hash;
+    }
+
+    // the byte range of a custom block member: from its offset to the next member's (or the end)
+    void batchMemberRange(const CustomUniformBlock& block, size_t member, size_t& begin, size_t& end){
+        begin = block.members[member].offset;
+        end = block.data.size();
+        for (const ShaderUniform& other : block.members){
+            if (other.offset > begin && other.offset < end)
+                end = other.offset;
+        }
     }
 
     // the float offset of an attribute of `elements` floats in an interleaved buffer, -1 without it
@@ -117,16 +146,30 @@ namespace{
 
     // the views and samplers of an object's own texture slots, as a key section (the pass's own
     // textures, shadow maps or SSAO, are bound to the run's draw)
-    bool addTextureSection(BatchKey& key, const ObjectRender& render, ShaderRender* shader, std::initializer_list<TextureShaderType> types){
-        uint32_t ids[16];
+    bool addTextureSection(BatchKey& key, const ObjectRender& render, ShaderRender* shader, std::initializer_list<TextureShaderType> types,
+                           const ShaderLibraryBindings* library = nullptr){
+        uint32_t ids[48];
         size_t count = 0;
+        auto add = [&](const std::pair<int, int>& slot){
+            if (slot.first < 0 || count + 2 > 48)
+                return false;
+            render.getTextureBinding(slot, ids[count], ids[count + 1]);
+            count += 2;
+            return true;
+        };
         if (shader){
-            for (TextureShaderType type : types){
-                const std::pair<int, int> slot = shader->shaderData.getTextureIndex(type);
-                if (slot.first < 0 || count + 2 > 16)
-                    continue;
-                render.getTextureBinding(slot, ids[count], ids[count + 1]);
-                count += 2;
+            for (TextureShaderType type : types)
+                add(shader->shaderData.getTextureIndex(type));
+        }
+        // a batchable library shader's own textures and palettes (S52 R20): the run draws with its head's
+        if (library){
+            for (const ShaderTextureSlot& texture : library->textures){
+                if (texture.slot.first >= 0 && !add(texture.slot))
+                    return false;
+            }
+            for (const ShaderPaletteSlot& palette : library->palettes){
+                if ((palette.cells.first >= 0 && !add(palette.cells)) || (palette.rows.first >= 0 && !add(palette.rows)))
+                    return false;
             }
         }
         return key.addSection(BatchBreak::TEXTURE, ids, count * sizeof(uint32_t));
@@ -239,7 +282,7 @@ BatchBreak RenderSystem::meshBatchForm(Entity entity, Signature signature, MeshC
     if ((rv().drawMode == ViewDrawMode::LOD_LEVEL || rv().drawMode == ViewDrawMode::OVERDRAW) && !isEditorOverlay(entity))
         return BatchBreak::DISABLED;
 #endif
-    if (signature.test(scene->getComponentId<InstancedMeshComponent>()))
+    if (signature.test(scene->getComponentId<InstancedMeshComponent>()) || mesh.spriteInstanced)
         return BatchBreak::INELIGIBLE_INSTANCED;
     if (signature.test(scene->getComponentId<TerrainComponent>()) || signature.test(scene->getComponentId<TilemapComponent>()))
         return BatchBreak::INELIGIBLE_GEOMETRY;
@@ -256,8 +299,15 @@ BatchBreak RenderSystem::meshBatchForm(Entity entity, Signature signature, MeshC
     static const uint32_t litQualityBit = MaterialPbr::getDefineBit(MaterialPbr::LIT_QUALITY_DEFINE);
     const bool builtinLit = submesh.customShaderId == 0 ||
         (submesh.litDefineBits == litQualityBit && submesh.material.shader.empty() && scene->getDefaultCustomShader(ShaderType::MESH).empty());
-    if (submesh.manifest || !builtinLit || submesh.customDepthShaderId != 0 ||
-            !mesh.customShader.empty() || !mesh.customDepthShader.empty())
+    // a @batchable library shader (S52 R20): its textures and custom values are in the key, its
+    // instance= amounts and frame rect per vertex; one reading per-object engine data is not
+    const ShaderManifest* manifest = submesh.manifest.get();
+    const ShaderLibraryBindings& library = submesh.libraryBindings;
+    const bool batchableLibrary = manifest && manifest->batchable && !manifest->depth && submesh.customDepthShaderId == 0 &&
+        mesh.customDepthShader.empty() && library.slotFSEnvironment == -1 && library.slotFSPlanarReflection == -1 &&
+        library.slotWaterExclusionMaps.first < 0 && library.slotWaterWake.first < 0;
+    if (!batchableLibrary && (submesh.manifest || !builtinLit || submesh.customDepthShaderId != 0 ||
+            !mesh.customShader.empty() || !mesh.customDepthShader.empty()))
         return BatchBreak::INELIGIBLE_CUSTOM_SHADER;
     if (submesh.extraPass)
         return BatchBreak::INELIGIBLE_EXTRA_PASS;
@@ -281,6 +331,15 @@ BatchBreak RenderSystem::meshBatchForm(Entity entity, Signature signature, MeshC
     // a normal map without tangents builds its frame from the object-space normal (surface_vs.glsl)
     if ((properties & shaderPropertyBit(7)) && !(properties & shaderPropertyBit(8)))
         return BatchBreak::INELIGIBLE_SHADER_PROPERTY;
+    // effects inside the frame rect need it per vertex: a mesh that is not a Sprite has none (S52 R22)
+    if (batchableLibrary && !(properties & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT)) &&
+            manifest->usesFrameRect(manifest->resolveFeatures(submesh.material.shaderFeatures)))
+        return BatchBreak::INELIGIBLE_FRAME_RECT;
+    // a pivot-snapped draw batches with the snap pivot per vertex only (S52 R18 mode 2)
+    if ((properties & ShaderPool::getPixelSnapProperty(ShaderType::MESH)) && passPixelSnap && batchPassActive &&
+            !(properties & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::SNAP_PIVOT)) &&
+            pixelSnapDrawMode(batchPass.viewProjection * batchModel(entity, objectModel(transform))) > 1.5f)
+        return BatchBreak::INELIGIBLE_PIXEL_SNAP_PIVOT;
 
     // indexed 16-bit triangles of the mesh's own interleaved buffer: the pipeline draws the
     // batch's indices as the object's
@@ -320,7 +379,7 @@ BatchBreak RenderSystem::meshBatchForm(Entity entity, Signature signature, MeshC
     return BatchBreak::NONE;
 }
 
-BatchBreak RenderSystem::uiBatchForm(UIComponent& ui, TextureRender* textureOverride){
+BatchBreak RenderSystem::uiBatchForm(UIComponent& ui, TextureRender* textureOverride, Transform* transform){
     if (!Engine::isDynamicBatching())
         return BatchBreak::DISABLED;
     if (!ui.loaded || ui.needReload || !ui.shader || ui.buffer.getSize() == 0)
@@ -329,9 +388,13 @@ BatchBreak RenderSystem::uiBatchForm(UIComponent& ui, TextureRender* textureOver
         return BatchBreak::INELIGIBLE_CUSTOM_SHADER;
     // the UI shader properties a batch reads as drawn alone (an allowlist, as the meshes': a
     // property added later draws alone until it is checked here)
-    static const uint64_t uiAllowed = ShaderPool::getUIProperties(true, true, true, true, true);
+    // (S52: with S41's Pixel Snap, its mode in the key; a pivot-snapped element has no pivot attribute)
+    static const uint64_t uiAllowed = ShaderPool::getUIProperties(true, true, true, true, true) | ShaderPool::getPixelSnapProperty(ShaderType::UI);
     if (ui.shaderProperties & ~uiAllowed)
         return BatchBreak::INELIGIBLE_SHADER_PROPERTY;
+    if ((ui.shaderProperties & ShaderPool::getPixelSnapProperty(ShaderType::UI)) && transform && passPixelSnap &&
+            pixelSnapDrawMode(objectMVP(*transform)) > 1.5f)
+        return BatchBreak::INELIGIBLE_PIXEL_SNAP_PIVOT;
     if (textureOverride || ui.texture.isFramebuffer())
         return BatchBreak::INELIGIBLE_RENDER_TARGET;
     if (ui.primitiveType != PrimitiveType::TRIANGLES || !ui.buffer.isRenderAttributes() || ui.buffer.getStride() == 0)
@@ -355,7 +418,7 @@ BatchBreak RenderSystem::getBatchEligibility(Entity entity){
     if (signature.test(scene->getComponentId<MeshComponent>()))
         return meshBatchForm(entity, signature, scene->getComponent<MeshComponent>(entity), *transform, PIP_DEFAULT, false);
     if (signature.test(scene->getComponentId<UIComponent>()))
-        return uiBatchForm(scene->getComponent<UIComponent>(entity), nullptr);
+        return uiBatchForm(scene->getComponent<UIComponent>(entity), nullptr, transform);
     return BatchBreak::INELIGIBLE_GEOMETRY;
 }
 
@@ -394,11 +457,28 @@ bool RenderSystem::bakeMeshRecord(BatchRecord& record, MeshComponent& mesh){
     // a variant reading vertex colour multiplies them by the colour factor (pbr.glsl getBaseColor)
     record.bakesColor = (properties & shaderPropertyBit(10)) && record.colorOffset >= 0;
     record.bakesNormals = (properties & shaderPropertyBit(6)) != 0;
+    // S52 R21, R22: the material's instance= amounts into a_spriteFx (zeros in the buffer), the
+    // texture rect into a_frameRect (the identity in the buffer): the run's uniforms are then 0
+    // and the whole texture, the sums and compositions the same floats as drawn alone
+    record.spriteFxOffset = (properties & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FX))
+        ? batchFloatAttribute(buffer, AttributeType::SPRITEFX, 4) : -1;
+    record.frameRectOffset = (properties & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT))
+        ? batchFloatAttribute(buffer, AttributeType::FRAMERECT, 4) : -1;
+    if (record.spriteFxOffset >= 0){
+        refreshCustomUniforms(mesh);
+        record.spriteFx = batchSpriteFx(submesh);
+    }
+    const float frameRect[4] = {record.hasRect ? record.rect.getX() : 0.0f, record.hasRect ? record.rect.getY() : 0.0f,
+                                record.hasRect ? record.rect.getWidth() : 1.0f, record.hasRect ? record.rect.getHeight() : 1.0f};
 
     const size_t bytes = (size_t)record.vertexCount * record.stride;
     record.local.assign(buffer.getData(), buffer.getData() + bytes);
     unsigned char* vertices = record.local.data();
     for (uint32_t v = 0; v < record.vertexCount; v++, vertices += record.stride){
+        if (record.spriteFxOffset >= 0)
+            std::memcpy(vertices + record.spriteFxOffset, &record.spriteFx, sizeof(float) * 4);
+        if (record.frameRectOffset >= 0)
+            std::memcpy(vertices + record.frameRectOffset, frameRect, sizeof(frameRect));
         if (record.hasRect){
             // (surface_vs.glsl surfaceUV1/2: uv * rect.zw + rect.xy, both sets)
             for (int offset : {record.uv1Offset, record.uv2Offset}){
@@ -440,6 +520,8 @@ bool RenderSystem::bakeMeshRecord(BatchRecord& record, MeshComponent& mesh){
 bool RenderSystem::bakeUIRecord(BatchRecord& record, UIComponent& ui, const Vector4& drawColor, bool bakesColor){
     Buffer& buffer = ui.buffer;
     record.ui = true;
+    record.spriteFxOffset = -1;
+    record.frameRectOffset = -1;
     record.stride = buffer.getStride();
     record.vertexCount = buffer.getCount();
     record.indexCount = ui.indices.getCount();
@@ -619,13 +701,27 @@ bool RenderSystem::fillMeshKey(BatchKey& key, Entity entity, MeshComponent& mesh
     bool fits = depth
         ? addTextureSection(key, render, submesh.depthShader.get(), {TextureShaderType::DEPTHTEXTURE})
         : addTextureSection(key, render, submesh.shader.get(), {TextureShaderType::BASECOLOR, TextureShaderType::METALLICROUGHNESS,
-                            TextureShaderType::OCCULSION, TextureShaderType::EMISSIVE, TextureShaderType::NORMAL});
+                            TextureShaderType::OCCULSION, TextureShaderType::EMISSIVE, TextureShaderType::NORMAL},
+                            submesh.manifest ? &submesh.libraryBindings : nullptr);
+    // S41's snap mode of the draw (S52 R18): a run holds one mode, its head's
+    const uint64_t pixelSnapBit = ShaderPool::getPixelSnapProperty(depth ? ShaderType::DEPTH : ShaderType::MESH);
+    if ((depth ? submesh.depthShaderProperties : properties) & pixelSnapBit){
+        const uint8_t mode = (uint8_t)pixelSnapDrawMode(batchPass.viewProjection * record.placedWith);
+        fits = fits && key.addSection(BatchBreak::PIXEL_SNAP, &mode, 1);
+    }
     if (depth){
         if (submesh.slotFSDepthMaterial != -1){
             const float depthMaterial[2] = {material.baseColorFactor.w, material.alphaCutoff};
-            fits = key.addSection(BatchBreak::DEPTH_MATERIAL, depthMaterial, sizeof(depthMaterial));
+            fits = fits && key.addSection(BatchBreak::DEPTH_MATERIAL, depthMaterial, sizeof(depthMaterial));
         }
         return fits;
+    }
+    // a batchable library shader's custom values (S52 R20), the instance= ones per vertex with 'Sfx'
+    if (submesh.manifest){
+        refreshCustomUniforms(mesh);
+        const uint64_t hash = batchCustomParamsHash(const_cast<Submesh&>(submesh),
+            (properties & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FX)) != 0);
+        fits = fits && key.addSection(BatchBreak::CUSTOM_PARAMS, &hash, sizeof(hash));
     }
 
     if (!record.bakesColor)
@@ -662,6 +758,68 @@ bool RenderSystem::fillMeshKey(BatchKey& key, Entity entity, MeshComponent& mesh
         fits = fits && key.addSection(BatchBreak::OBJECT_LIGHTS, block, size);
     }
     return fits;
+}
+
+//-----Pixel-art inputs (S52)-----
+
+Vector4 RenderSystem::batchSpriteFx(Submesh& submesh) const{
+    float fx[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    const ShaderManifest* manifest = submesh.manifest.get();
+    const CustomUniformBlock& block = submesh.customFSParams;
+    if (!manifest)
+        return Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    for (const ShaderManifestProperty& property : manifest->properties){
+        if (property.instanceSlot < 0)
+            continue;
+        // the member exists while its feature is on (the shader declares it then)
+        for (const ShaderUniform& member : block.members){
+            if (member.name == property.member && member.offset + sizeof(float) <= block.data.size()){
+                std::memcpy(&fx[property.instanceSlot], block.data.data() + member.offset, sizeof(float));
+                break;
+            }
+        }
+    }
+    return Vector4(fx[0], fx[1], fx[2], fx[3]);
+}
+
+bool RenderSystem::batchFxChanged(const BatchRecord& record, MeshComponent& mesh){
+    const bool hasFx = (mesh.submeshes[0].shaderProperties & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FX)) != 0;
+    const bool hasRect = (mesh.submeshes[0].shaderProperties & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT)) != 0;
+    if (hasFx != (record.spriteFxOffset >= 0) || hasRect != (record.frameRectOffset >= 0))
+        return true;
+    if (!hasFx)
+        return false;
+    // an amount animated by a script or a clip: re-baked on the CPU, the GPU buffer unchanged (D5)
+    refreshCustomUniforms(mesh);
+    return record.spriteFx != batchSpriteFx(mesh.submeshes[0]);
+}
+
+uint64_t RenderSystem::batchCustomParamsHash(Submesh& submesh, bool zeroInstanceSlots){
+    uint64_t hash = 1469598103934665603ull;
+    const ShaderManifest* manifest = submesh.manifest.get();
+    for (const CustomUniformBlock* block : {&submesh.customVSParams, &submesh.customFSParams}){
+        if (block->slot == -1 || block->data.empty())
+            continue;
+        std::vector<uint8_t>& bytes = batchParamScratch;
+        bytes.assign(block->data.begin(), block->data.end());
+        // what the engine writes every draw (clocks, the target's size) is not the object's
+        for (size_t m = 0; m < block->members.size(); m++){
+            const std::string& name = block->members[m].name;
+            bool zero = ShaderUniforms::isReserved(name);
+            if (!zero && zeroInstanceSlots && manifest && block == &submesh.customFSParams){
+                const ShaderManifestProperty* property = manifest->findProperty(name);
+                zero = property && property->instanceSlot >= 0;
+            }
+            if (zero){
+                size_t begin, end;
+                batchMemberRange(*block, m, begin, end);
+                if (begin < end && end <= bytes.size())
+                    std::memset(bytes.data() + begin, 0, end - begin);
+            }
+        }
+        hash = (hash ^ batchHashBytes(bytes.data(), bytes.size())) * 1099511628211ull;
+    }
+    return hash;
 }
 
 //-----Passes-----
@@ -746,7 +904,8 @@ bool RenderSystem::submitMesh(Entity entity, MeshComponent& mesh, Transform& tra
             record->sourceWrites != mesh.buffer.getWriteCount() || record->indexWrites != mesh.indices.getWriteCount() ||
             record->vertexCount != mesh.buffer.getCount() || record->indexCount != submesh.vertexCount ||
             record->hasRect != submesh.hasTextureRect || (record->hasRect && record->rect != currentRect) ||
-            (record->bakesColor && record->color != submesh.material.baseColorFactor) || record->bakesNormals != bakesNormals){
+            (record->bakesColor && record->color != submesh.material.baseColorFactor) || record->bakesNormals != bakesNormals ||
+            batchFxChanged(*record, mesh)){
         if (!bakeMeshRecord(*record, mesh)){
             dropBatchRecord(entity);
             batcher.noteAlone(BatchPass::COLOR, entity, BatchBreak::INELIGIBLE_GEOMETRY);
@@ -757,11 +916,14 @@ bool RenderSystem::submitMesh(Entity entity, MeshComponent& mesh, Transform& tra
 
     Matrix4 scratch[3];
     const Matrix4* block = objectMatrices(transform, scratch);
-    if (!record->placedValid || std::memcmp(&record->placedWith, &block[0], sizeof(Matrix4)) != 0){
+    // (S41's Steps90 rounds a pixel-art draw's model as its draw alone does)
+    const Matrix4 model = batchModel(entity, block[0]);
+    const bool rounded = std::memcmp(&model, &block[0], sizeof(Matrix4)) != 0;
+    if (!record->placedValid || std::memcmp(&record->placedWith, &model, sizeof(Matrix4)) != 0){
         Matrix4 normal;
         if (record->bakesNormals)
-            normal = hasLights ? block[1] : block[0].inverse().transpose();
-        placeBatchRecord(*record, block[0], record->bakesNormals ? &normal : nullptr);
+            normal = (hasLights && !rounded) ? block[1] : model.inverse().transpose();
+        placeBatchRecord(*record, model, record->bakesNormals ? &normal : nullptr);
         batcher.getStats().replaced++;
     }else{
         batcher.getStats().settled++;
@@ -774,13 +936,14 @@ bool RenderSystem::submitMesh(Entity entity, MeshComponent& mesh, Transform& tra
     refreshSubmeshTextures(submesh, mesh.receiveLights, checkPBRFrabebufferUpdate(submesh.material));
 
     BatchKey key;
-    if (!fillMeshKey(key, entity, mesh, *record, isMirroredDraw(mesh, block[0]))){
+    if (!fillMeshKey(key, entity, mesh, *record, isMirroredDraw(mesh, model))){
         batcher.noteAlone(BatchPass::COLOR, entity, BatchBreak::INELIGIBLE_NOT_READY);
         return drawMesh(entity, mesh, transform, camera, camTransform, pipType, instmesh, terrain, tilemap, terrainView, instanceView, lodView);
     }
 
     BatchItem item;
     item.entity = entity;
+    item.sortKey = passSortBucket;
     item.minX = record->lo[0];
     item.minY = record->lo[1];
     item.maxX = record->hi[0];
@@ -847,7 +1010,8 @@ bool RenderSystem::submitMeshDepth(Entity entity, MeshComponent& mesh, Transform
             record->sourceWrites != mesh.buffer.getWriteCount() || record->indexWrites != mesh.indices.getWriteCount() ||
             record->vertexCount != mesh.buffer.getCount() || record->indexCount != submesh.vertexCount ||
             record->hasRect != submesh.hasTextureRect || (record->hasRect && record->rect != currentRect) ||
-            (record->bakesColor && record->color != submesh.material.baseColorFactor) || record->bakesNormals != bakesNormals){
+            (record->bakesColor && record->color != submesh.material.baseColorFactor) || record->bakesNormals != bakesNormals ||
+            batchFxChanged(*record, mesh)){
         if (!bakeMeshRecord(*record, mesh)){
             dropBatchRecord(entity);
             return true;
@@ -856,11 +1020,14 @@ bool RenderSystem::submitMeshDepth(Entity entity, MeshComponent& mesh, Transform
     }
     Matrix4 scratch[3];
     const Matrix4* block = objectMatrices(transform, scratch);
-    if (!record->placedValid || std::memcmp(&record->placedWith, &block[0], sizeof(Matrix4)) != 0){
+    // (S41's Steps90 rounds a pixel-art draw's model as its draw alone does)
+    const Matrix4 model = batchModel(entity, block[0]);
+    const bool rounded = std::memcmp(&model, &block[0], sizeof(Matrix4)) != 0;
+    if (!record->placedValid || std::memcmp(&record->placedWith, &model, sizeof(Matrix4)) != 0){
         Matrix4 normal;
         if (record->bakesNormals)
-            normal = hasLights ? block[1] : block[0].inverse().transpose();
-        placeBatchRecord(*record, block[0], record->bakesNormals ? &normal : nullptr);
+            normal = (hasLights && !rounded) ? block[1] : model.inverse().transpose();
+        placeBatchRecord(*record, model, record->bakesNormals ? &normal : nullptr);
         batcher.getStats().replaced++;
     }else{
         batcher.getStats().settled++;
@@ -883,7 +1050,7 @@ bool RenderSystem::submitMeshDepth(Entity entity, MeshComponent& mesh, Transform
     refreshDepthTextures(submesh);
 
     BatchKey key;
-    if (!fillMeshKey(key, entity, mesh, *record, isMirroredDraw(mesh, block[0])))
+    if (!fillMeshKey(key, entity, mesh, *record, isMirroredDraw(mesh, model)))
         return true;
 
     BatchItem item;
@@ -903,7 +1070,7 @@ bool RenderSystem::submitUI(Entity entity, UIComponent& ui, Transform& transform
     if (!batchPassActive)
         return drawUI(ui, transform, pipType, textureOverride);
 
-    const BatchBreak form = uiBatchForm(ui, textureOverride);
+    const BatchBreak form = uiBatchForm(ui, textureOverride, &transform);
     if (form != BatchBreak::NONE){
         if (hasBatchRecord(entity))
             dropBatchRecord(entity);
@@ -950,6 +1117,10 @@ bool RenderSystem::submitUI(Entity entity, UIComponent& ui, Transform& transform
     std::memcpy(key.cell, record->cell, sizeof(key.cell));
     key.scissor = SokolSystem::getRequestedScissor();
     bool fits = key.pipeline != SG_INVALID_ID && addTextureSection(key, ui.render, ui.shader.get(), {TextureShaderType::UI});
+    if (ui.shaderProperties & ShaderPool::getPixelSnapProperty(ShaderType::UI)){
+        const uint8_t mode = (uint8_t)pixelSnapDrawMode(objectMVP(transform));
+        fits = fits && key.addSection(BatchBreak::PIXEL_SNAP, &mode, 1);
+    }
     if (!record->bakesColor)
         fits = fits && key.addSection(BatchBreak::UI_COLOR, &drawColor, sizeof(drawColor));
     if (ui.slotFSTextParams >= 0)
@@ -961,6 +1132,7 @@ bool RenderSystem::submitUI(Entity entity, UIComponent& ui, Transform& transform
 
     BatchItem item;
     item.entity = entity;
+    item.sortKey = passSortBucket;
     item.minX = record->lo[0];
     item.minY = record->lo[1];
     item.maxX = record->hi[0];
@@ -1031,6 +1203,12 @@ void RenderSystem::drawBatchRun(BatchRun& run){
     passLodFade = LodFadePass::ALL;
     passBatchGeometry = &geometry;
     const BatchHead& head = run.head;
+    // the run's snap mode is its head's (the key holds one mode a run), its MVP the cell's (S52 R18)
+    passSnapModeOverride = -1.0f;
+    if (passPixelSnap && head.transform){
+        passSnapModeOverride = head.ui ? pixelSnapDrawMode(objectMVP(*head.transform))
+                                       : pixelSnapDrawMode(batchPass.viewProjection * batchModel(head.entity, objectModel(*head.transform)));
+    }
     if (run.key.pass == BatchPass::UI && head.ui){
         const uint64_t vertexColorBit = ShaderPool::getUIProperties(false, false, false, true, false);
         geometry.neutralColor = (head.ui->shaderProperties & vertexColorBit) && batchFloatAttribute(head.ui->buffer, AttributeType::COLOR, 4) >= 0;
@@ -1046,10 +1224,31 @@ void RenderSystem::drawBatchRun(BatchRun& run){
                       batchPass.forSSAO, (PipelineType)run.key.pipType, batchPass.instanceView, batchPass.lodView);
     }
     passBatchGeometry = nullptr;
+    passSnapModeOverride = -1.0f;
     passSubmeshQueue = queue;
     passSubmeshMask = submeshMask;
     passPreCulled = preCulled;
     passLodFade = lodFade;
+}
+
+void RenderSystem::applyInstanceSlotsZeroed(ObjectRender& render, Submesh& submesh){
+    CustomUniformBlock& block = submesh.customFSParams;
+    const ShaderManifest* manifest = submesh.manifest.get();
+    if (block.slot == -1 || !manifest)
+        return;
+    std::vector<uint8_t>& bytes = batchParamScratch;
+    bytes.assign(block.data.begin(), block.data.end());
+    for (const ShaderManifestProperty& property : manifest->properties){
+        if (property.instanceSlot < 0)
+            continue;
+        for (const ShaderUniform& member : block.members){
+            if (member.name == property.member && member.offset + sizeof(float) <= bytes.size()){
+                std::memset(bytes.data() + member.offset, 0, sizeof(float));
+                break;
+            }
+        }
+    }
+    render.applyUniformBlock(block.slot, (unsigned int)bytes.size(), bytes.data());
 }
 
 void RenderSystem::drawBatchGeometry(ObjectRender& render, Buffer& vertices, const BatchGeometry& batch){

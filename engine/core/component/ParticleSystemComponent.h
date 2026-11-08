@@ -71,6 +71,9 @@ namespace jasperengine{
         // 0: a new random seed at every play (Unity's Auto Random Seed)
         uint32_t seed = 0;
         float playbackSpeed = 1.0f;
+        // the renderer's Sorting Layer (a SortingLayers id) and Order in Layer (spec S52 R2)
+        int32_t sortingLayer = 0;
+        int32_t sortingOrder = 0;   // Order in Layer, -32768..32767
         // this system ticks with the unscaled frame time (Engine.timeScale 0 does not stop it:
         // a pause menu, UI particles), as does the effect's own Unscaled Time; the GameObject's
         // own switch, so a prefab with a shared .particles asset plays unscaled without a copy

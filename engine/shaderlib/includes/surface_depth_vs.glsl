@@ -43,6 +43,10 @@
     #define FRAME_VS
     #include "includes/frame.glsl"
     #include "includes/pixel_snap.glsl"
+    // S52 'Spv': a batchable sprite's snap pivot (the model origin, baked as a point)
+    #if defined(HAS_SNAP_PIVOT) && !defined(HAS_INSTANCING)
+        in vec3 a_snapPivot;
+    #endif
 #endif
 
 invariant gl_Position;
@@ -272,10 +276,16 @@ void main() {
     #ifdef PIXEL_SNAP
         #ifdef HAS_INSTANCING
             vec4 snapPivot = depthParams.mvpMatrix * i_matrix_col4;
+            float snapMode = pixelSnapInstanceMode(depthParams.pixelSnapDraw.x, i_matrix_col1, i_matrix_col2);
+        #elif defined(HAS_SNAP_PIVOT)
+            // S52 'Spv', as the colour pass
+            vec4 snapPivot = depthParams.mvpMatrix * vec4(a_snapPivot, 1.0);
+            float snapMode = depthParams.pixelSnapDraw.x;
         #else
             vec4 snapPivot = depthParams.mvpMatrix[3];
+            float snapMode = depthParams.pixelSnapDraw.x;
         #endif
-        gl_Position = pixelSnapApply(gl_Position, depthParams.pixelSnapDraw.x, snapPivot);
+        gl_Position = pixelSnapApply(gl_Position, snapMode, snapPivot);
     #endif
 
     v_projZW = gl_Position.zw;

@@ -64,6 +64,8 @@
 #include "component/RotationTweenComponent.h"
 #include "component/SafeAreaComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
+#include "component/SortingGroupComponent.h"
+#include "component/SpriteBatchComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"
@@ -217,6 +219,9 @@ EntityRegistry::EntityRegistry() {
     registerComponent<WaterWakeComponent>(ComponentOrder::Insertion, "WaterWakeComponent");
     // pixel art (S41)
     registerComponent<PixelPerfectCameraComponent>(ComponentOrder::Insertion, "PixelPerfectCameraComponent");
+    // 2D sorting and Sprite Batch (S52)
+    registerComponent<SortingGroupComponent>(ComponentOrder::Insertion, "SortingGroupComponent");
+    registerComponent<SpriteBatchComponent>(ComponentOrder::Insertion, "SpriteBatchComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);

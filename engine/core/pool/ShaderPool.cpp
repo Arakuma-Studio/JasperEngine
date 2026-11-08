@@ -687,6 +687,21 @@ uint64_t ShaderPool::getPixelSnapProperty(ShaderType shaderType){
     }
 }
 
+// S52: appended after S41's 'Pxs' (MESH 46-48, DEPTH 20), each set only for a variant whose
+// mesh carries the input (RenderSystem::getSubmeshShaderVariant)
+uint64_t ShaderPool::getSpriteBatchProperty(ShaderType shaderType, SpriteBatchInput input){
+    if (shaderType == ShaderType::MESH){
+        switch (input){
+            case SpriteBatchInput::FX:         return shaderPropertyBit(46);
+            case SpriteBatchInput::FRAME_RECT: return shaderPropertyBit(47);
+            case SpriteBatchInput::SNAP_PIVOT: return shaderPropertyBit(48);
+        }
+    }
+    if (shaderType == ShaderType::DEPTH && input == SpriteBatchInput::SNAP_PIVOT)
+        return shaderPropertyBit(20);
+    return 0;
+}
+
 uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return shaderPropertyBit(31);
@@ -702,8 +717,8 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 46;
-        case ShaderType::DEPTH:  return 20;
+        case ShaderType::MESH:   return 49;
+        case ShaderType::DEPTH:  return 21;
         case ShaderType::GBUFFER: return 19;
         case ShaderType::UI:     return 6;
         case ShaderType::POINTS: return 5;
@@ -811,6 +826,11 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 44: return shortName ? "Dlo" : "Directional Lights Only";
             // the pixel-snap rule on the vertices (S41, PIXEL_SNAP: includes/pixel_snap.glsl)
             case 45: return shortName ? "Pxs" : "Pixel Snap";
+            // S52's pixel-art batching inputs (getSpriteBatchProperty): a batchable sprite's FX
+            // slots (HAS_SPRITE_FX), its frame rect (HAS_FRAME_RECT) and snap pivot (HAS_SNAP_PIVOT)
+            case 46: return shortName ? "Sfx" : "Sprite FX";
+            case 47: return shortName ? "Sfr" : "Sprite Frame Rect";
+            case 48: return shortName ? "Spv" : "Snap Pivot";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -841,6 +861,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 18: return shortName ? "Aui" : "Auto Instancing";
             // as MESH 42: the depth program snaps as its colour pass does (S41)
             case 19: return shortName ? "Pxs" : "Pixel Snap";
+            // as MESH 48 (S52)
+            case 20: return shortName ? "Spv" : "Snap Pivot";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {

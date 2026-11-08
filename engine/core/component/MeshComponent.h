@@ -506,6 +506,13 @@ namespace jasperengine{
         AABB boundsApplied;
     };
 
+    // MeshComponent::batchAttributes (S52 R21, R22)
+    enum MeshBatchAttribute : uint8_t{
+        MeshBatchAttribute_SpriteFx  = 1 << 0,
+        MeshBatchAttribute_FrameRect = 1 << 1,
+        MeshBatchAttribute_SnapPivot = 1 << 2
+    };
+
     struct MeshComponent{
         // component checkbox: its system skips a disabled component
         bool enabled = true;
@@ -666,6 +673,15 @@ namespace jasperengine{
         // material and pipeline when the project's GPU Instancing is on (Unity's per-material
         // switch, here per renderer); off draws it alone
         bool allowGpuInstancing = true;
+        // Sorting Layer (a SortingLayers id) and Order in Layer (spec S52 R2): the 2D draw order
+        // and the transparent queue's first keys; 0 and 0 draw as before
+        int32_t sortingLayer = 0;
+        int32_t sortingOrder = 0;   // Order in Layer, -32768..32767
+        // runtime (MeshSystem, S52): the pixel-art batching inputs a Sprite's buffer carries
+        // (MeshBatchAttribute bits: a_spriteFx, a_frameRect, a_snapPivot), and whether a Sprite
+        // Batch draws it instanced
+        uint8_t batchAttributes = 0;
+        bool spriteInstanced = false;
         float lodError[MAX_MESH_LODS] = {}; // largest error of any submesh at each level
         unsigned int numLods = 1;
         // how a level change shows (spec S54 R9, Unity's LOD Group): Fade Mode; Animate
