@@ -1448,12 +1448,29 @@ rest of S82 lands in 6B.
     `test_title_art_3d_parity.py`: S84's look converter is not in this tree, so the 40 looks are transcribed as JSON
     (`titleart/fixtures/pachislop3d/`, by hand from Pachislop's look helpers, no code run) and `title3DFromPachislop`
     (R67) converts their 3D part; their 2D effects map onto S80's (keyline -> outline, outerGlow -> outer_glow) and
-    S83's (deepGlow) are left out. **AC21 is not met: none of the 40 looks passes its per-pixel metric** (measured
-    2026-11-08 after deviation 30's fixes: means 4-55/255, 5-78 % of pixels over 24/255; sometsuke, matte-glow and
-    carbon-orange closest). Side-by-side sheets show most looks matching by eye; the residue is 1-2 px outline offsets at
-    0.25 on every look, S83's deepGlow on 34 looks, glint streaks starting at other highlights, crumple/flake/liquid cells
-    and gem refraction, and a taller, wider inflate field. The test lists each look's cause and fails when a look starts
-    passing (so the list shrinks); its Neutral-for-Punch red control fails all 40.
+    S83's (deepGlow) are left out. **AC21 is not met: none of the 40 looks passes its per-pixel metric** (re-measured
+    2026-11-08 after the alignment search and the iridescence fix: means 4.1-36.9/255, 4-63 % of pixels over 24/255; 20
+    looks under 10/255; matte-glow, carbon-orange, titanium and sometsuke closest, at 4-5/255 and 5-10 %).
+    - The 1-2 px outline offset was a comparison artefact: centring trimmed boxes of different sizes (a glint, a glow or
+      a missing deepGlow reaching further on one side) moves the letters; every look whose box matches the reference's
+      aligns best at 0, 0. The test therefore takes the best shift within +-2 px (as the generators stream did) and
+      reports it; the means fell from 4-54/255 to 4-37/255.
+    - The residue after alignment: sub-pixel antialiasing of the outlines (5-20 % of the pixels of a 131 x 50 px
+      render on looks that match by eye); **S83's deepGlow on 35 looks (re-measure them at integration)**; glint
+      streaks starting at other highlights; crumple, flake and liquid cells and gem refraction; Pachislop's taller,
+      wider inflate field; on the metal faces lit by the softbox the dark reflection band sits higher than the
+      reference's (seen on gold, box-plate and red; gold-plate, popout, fire and rose-chocolate share the setup; the
+      ramp's direction matches, rainbow-glass-gold is red on top in both; the cause is not found). The test lists each look's cause and fails when a look
+      starts passing; its Neutral-for-Punch red control fails all 40.
+    - **Tone guard:** the mean luminance of the pixels both images cover must be within 16/255 of the reference's.
+      Ranking the 40 looks and viewing the worst sheets found one broken path, the iridescence: Title Lit used the
+      engine's film (base reflectance against air, no phase jump) where three.js sees the base through the film, so
+      obsidian's black iridescent face came out green instead of purple (now `title_iridescence.glsl`, three.js's
+      `evalIridescence`; aurora, holo-silver, pearl-pink and sakura use it too). The tone guard would not have caught that
+      hue (obsidian's face is dark: its green channel was off by 14/255); the sheets did. Kin-gin's nearly black face in the first
+      sheets was deviation 30's colour-times-ramp (fixed before this round; its tone is now +5/255). Inflate is the one
+      look outside the band (+22/255: the smaller inflate field leaves more of the white band showing); diamond (+16)
+      and pearl-pink (-16, deepGlow) sit at its edge. Red control: half the exposure puts 33 of 40 out of the band.
 29. **Measured: benches on this host** (`docs/perf/title3d.md`): the figures are this host's (a container on a shared CPU,
     llvmpipe for the GPU), not build server A's; `tools/perf/bench-thresholds.json` keeps the spec's budgets.
 30. **Implementation: Pachislop's units, found by the parity goldens.** A material's gradient overrides its colour
