@@ -847,3 +847,8 @@ Recorded while implementing on `dc/project-window`; each keeps the spec's intent
    "Control+Cmd+F" in menus, tooltips, the hint and Edit > Shortcuts; the native menu maps "Control" to
    `NSEventModifierFlagControl`. Test `CommandCatalog.MaximizeOnPlayIsControlCmdFOnMac` (red before);
    docs/editor/keyboard-shortcuts.md regenerated.
+3. **Every printed chord reads back.** `Chord::parse(text, mac)` takes every name `format(mac)` writes:
+   Control is the Control key (ImGui's Super on macOS, Ctrl elsewhere), so an agent echoing
+   `list_shortcuts`' "Control+Cmd+F" to `set_shortcut` binds it (which parses with the catalog's
+   platform). Test `Chord.EveryPrintedChordParsesBack` round-trips every bound and default chord on
+   both platforms.

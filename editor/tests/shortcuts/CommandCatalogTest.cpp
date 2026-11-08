@@ -221,3 +221,27 @@ TEST(CommandCatalog, MaximizeOnPlayIsControlCmdFOnMac) {
     EXPECT_EQ(catalog.bindings("playmode.maximizeOnPlay")[0], chordOf("F11"));
     EXPECT_EQ(catalog.menuShortcutText("playmode.maximizeOnPlay"), "F11");
 }
+
+// every chord list_shortcuts and the menus print on a platform reads back as that chord there
+// (an agent echoes them to set_shortcut): "Control+Cmd+F" on macOS, "Ctrl+Super+F" elsewhere
+TEST(Chord, EveryPrintedChordParsesBack) {
+    RecordingCatalog recording;
+    CommandCatalog& catalog = recording.catalog;
+    EXPECT_EQ(Chord::parse("Control+Cmd+F", true), chordOf("Ctrl+Super+F"));
+    EXPECT_EQ(Chord::parse("Control+S", false), chordOf("Ctrl+S"));
+    size_t checked = 0;
+    for (bool mac : {false, true}) {
+        catalog.setMac(mac);
+        for (const CommandDef& def : catalog.commands()) {
+            std::vector<Chord> chords(catalog.bindings(def.id).begin(), catalog.bindings(def.id).end());
+            for (Chord chord : catalog.defaults(def.id)) chords.push_back(chord);
+            for (Chord chord : chords) {
+                const std::string text = chord.format(mac);
+                EXPECT_EQ(Chord::parse(text, mac), std::optional<Chord>(chord)) << def.id << ": " << text << (mac ? " (macOS)" : "");
+                checked++;
+            }
+        }
+    }
+    catalog.setMac(false);
+    EXPECT_GT(checked, 100u);
+}

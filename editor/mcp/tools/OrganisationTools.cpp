@@ -252,7 +252,8 @@ void setShortcutTool(const CallPtr& call) {
     std::vector<Chord> chords;
     for (const Json& value : args["chords"]) {
         const std::string text = value.is_string() ? value.get<std::string>() : std::string();
-        std::optional<Chord> chord = Chord::parse(text);
+        // the names list_shortcuts printed on this platform (Control+Cmd+F on macOS)
+        std::optional<Chord> chord = Chord::parse(text, catalog.isMac());
         if (!chord || !Chord::isBindableKey(chord->key())) {
             call->fail("\"" + text + "\" is not a chord: Ctrl, Shift, Alt then one key (\"Ctrl+Shift+S\", \"F2\", \"Numpad7\", \"Shift+[\").");
             return;
