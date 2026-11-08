@@ -106,6 +106,7 @@ void TitleDesignerWindow::stepIndexBuild(bool urgent) {
         indexBuild.ms = 0.0;
         indexBuild.frameMsMax = 0.0;
         indexBuild.unitMsMax = 0.0;
+        indexBuild.unitMs.clear();
         indexBuild.frames = 0;
         indexBuild.generation++;
         documentPasses++;
@@ -120,8 +121,11 @@ void TitleDesignerWindow::stepIndexBuild(bool urgent) {
         };
         while (indexBuild.next < indexBuild.units.size()) {
             const auto unitStart = std::chrono::steady_clock::now();
-            collectUnit(doc, this, indexBuild.pending, indexBuild.units[indexBuild.next++]);
-            indexBuild.unitMsMax = std::max(indexBuild.unitMsMax, since(unitStart));
+            const CollectUnit& unit = indexBuild.units[indexBuild.next++];
+            collectUnit(doc, this, indexBuild.pending, unit);
+            const double unitMs = since(unitStart);
+            indexBuild.unitMsMax = std::max(indexBuild.unitMsMax, unitMs);
+            indexBuild.unitMs.push_back({std::to_string((int)unit.kind) + ":" + unit.node.part + unit.node.item + ":" + std::to_string(unit.slice), unitMs});
             count++;
             // another page only when it fits: the costliest page so far is the estimate
             const double elapsed = since(start);
@@ -142,6 +146,7 @@ void TitleDesignerWindow::stepIndexBuild(bool urgent) {
     indexFrames = indexBuild.frames;
     indexFrameMsMax = indexBuild.frameMsMax;
     indexUnitMsMax = indexBuild.unitMsMax;
+    indexUnitCosts = indexBuild.unitMs;
     indexBuild.active = false;
     mergedKey = ~0ull;
 }

@@ -159,6 +159,7 @@ async def ui_numbers(ed: Editor, docs: dict[str, str], profile: bool) -> dict:
         out.setdefault("index_frame_ms_max", []).append(t.get("index_frame_ms_max"))
         out.setdefault("index_frames", []).append(t.get("index_frames"))
         out.setdefault("index_unit_ms_max", []).append(t.get("index_unit_ms_max"))
+        out.setdefault("index_units", []).append(t.get("index_units"))
         out.setdefault("index_parts", []).append({k: t.get(k) for k in ("index_rows_ms", "index_lookup_ms", "index_values_ms", "index_add_ms", "index_rows")})
     out["index_ms"] = index
     out["query_ms"] = query
