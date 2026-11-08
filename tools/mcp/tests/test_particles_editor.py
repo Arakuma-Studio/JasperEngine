@@ -124,6 +124,11 @@ async def test_pixel_analytic_scrub(ed: Editor):
     Streak, a Palette Ramp colour, then Analytic; one undo per edit; the preview's scrub lands at once on any time, and
     a capture at a time is the same image however the scrub got there."""
     s = await setup(ed)
+    # an Analytic-compatible start: the ember preset as the inline effect, its Pixel Art module removed and added back
+    made = await ed.call("create_particle_effect", path="assets/fx/ember.particles", preset="pixel_ember")
+    await ed.call("set_particle_effect", scene=s["scene"], entity=s["system"], effect=made["path"])
+    await ed.call("set_particle_effect", scene=s["scene"], entity=s["system"], effect="inline")
+    await ed.call("remove_particle_module", scene=s["scene"], entity=s["system"], module="pixelArt")
     await ed.call("add_particle_module", scene=s["scene"], entity=s["system"], module="pixelArt", fields={"fade": "dither"})
     await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch={
         "modules": {"renderer": {"renderMode": "pixel", "pixelShape": "streak"},

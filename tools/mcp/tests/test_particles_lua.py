@@ -159,21 +159,24 @@ async def test_pixel_particles_lua(ed: Editor):
     palette = ramp.split("#ramp:")[0]
     scene = (await ed.call("create_scene", name="PixelLua", type="2D", path="scenes/PixelLua"))["scene"]["id"]
     await ed.call("select_scene", scene=scene)
-    await ed.call("create_particles", scene=scene, name="Embers", preset="none", position=[0, 0, 0])
+    embers = (await ed.call("create_particles", scene=scene, name="Embers", preset="none", position=[0, 0, 0]))["particle_system"]["id"]
+    # the ember preset as the system's inline effect: Cutout dots on the hot ramp, Simulated
+    await ed.call("set_particle_effect", scene=scene, entity=embers, effect=made["path"])
+    await ed.call("set_particle_effect", scene=scene, entity=embers, effect="inline")
     await ed.call("play", action="start")
     await ed.call("wait", frames=5)
     got = await lua(ed, f"""
         local ps = object('Embers', 'ParticleSystem')
         ps.renderer.renderMode = ParticleSystemRenderMode.Pixel
-        ps.renderer.pixelShape = ParticlePixelShape.Dot
-        ps.pixelArt.enabled = true
+        ps.renderer.pixelShape = ParticlePixelShape.Disc
         ps.pixelArt.fade = ParticleFade.Dither
         ps.colorOverLifetime.enabled = true
         ps.colorOverLifetime.color:setRamp('{palette}', 'fire', 4)
         local color = ps.colorOverLifetime.color
-        return {{ps.renderer.renderMode, ps.pixelArt.fade, color.ramp, color.rampSteps, ps.simulationMode}}
+        return {{ps.renderer.renderMode, ps.pixelArt.fade, color.ramp, color.rampSteps, ps.simulationMode, ps.renderer.pixelShape}}
     """)
     ed.check_eq(got[0], "pixel")
+    ed.check_eq(got[5], "disc")
     ed.check_eq(got[1], "dither")
     ed.check_eq(got[2], palette + "#ramp:fire", "setRamp wrote the system's colour")
     ed.check_eq(got[3], 4)
