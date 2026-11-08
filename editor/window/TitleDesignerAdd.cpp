@@ -248,7 +248,7 @@ void TitleDesignerWindow::drawAddPalette() {
     // hovering with intent (150 ms after real movement, R42) or arrowing previews it on the canvas
     const AddEntry* previewing = arrowed ? highlighted : hoveredEntry;
     const ImVec2 mouse = ImGui::GetMousePos();
-    if (previewing && previewing->previewable && previewing->op.is_object() || (previewing && previewing->op.is_array())) {
+    if (previewing && ((previewing->previewable && previewing->op.is_object()) || previewing->op.is_array())) {
         if (addHovered != previewing->id) {
             addHovered = previewing->id;
             addHoverSince = arrowed ? now() - 1.0 : now();

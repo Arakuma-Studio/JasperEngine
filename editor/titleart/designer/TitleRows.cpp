@@ -37,15 +37,12 @@ namespace {
         return k != "solid" && k != "image" && k != "source";
     }
     bool fillSolid(const ta::Json& o) { return o.value("kind", std::string("solid")) == "solid"; }
-    bool fillImage(const ta::Json& o) { return o.value("kind", std::string("solid")) == "image"; }
     bool fillAngled(const ta::Json& o) {
         const std::string k = o.value("kind", std::string("solid"));
         return k == "linear" || k == "reflected" || k == "angle" || k == "diamond";
     }
     bool bevelFixed(const ta::Json& o) { return o.value("size_mode", std::string("fixed")) == "fixed"; }
     bool bevelFit(const ta::Json& o) { return o.value("size_mode", std::string("fixed")) == "fit"; }
-    bool bevelCustom(const ta::Json& o) { return o.value("profile", std::string("smooth")) == "custom"; }
-    bool glossCustom(const ta::Json& o) { return o.value("gloss", std::string("ring")) == "custom"; }
     bool patternOn(const ta::Json& o) { return o.value("kind", std::string("none")) != "none"; }
     bool patternImage(const ta::Json& o) { return o.value("kind", std::string("none")) == "custom"; }
     bool patternTwoColor(const ta::Json& o) {
@@ -73,7 +70,6 @@ namespace {
         return s == "rect" || s == "parallelogram" || s == "polygon" || s == "star" || s == "shield" || s == "speech" || s == "ribbon";
     }
     bool shapeSlant(const ta::Json& o) { return o.value("shape", std::string("rect")) == "parallelogram"; }
-    bool shapeTail(const ta::Json& o) { return o.value("shape", std::string("rect")) == "speech"; }
     bool vectorShape(const ta::Json& o) { return o.value("mode", std::string("shape")) == "shape"; }
     bool textVertical(const ta::Json& o) { return o.value("vertical", false); }
     bool canvasOpaque(const ta::Json& o) { return !o.value("transparent", true); }

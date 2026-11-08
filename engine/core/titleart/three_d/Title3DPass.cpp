@@ -45,19 +45,6 @@ namespace {
         }
     }
 
-    geometry::Affine inverseAffine(const geometry::Affine& a) {
-        const double det = a.a * a.d - a.b * a.c;
-        geometry::Affine r;
-        if (std::abs(det) < 1e-30) return r;
-        r.a = a.d / det;
-        r.b = -a.b / det;
-        r.c = -a.c / det;
-        r.d = a.a / det;
-        r.e = -(r.a * a.e + r.c * a.f);
-        r.f = -(r.b * a.e + r.d * a.f);
-        return r;
-    }
-
 #if defined(JASPERENGINE_TITLE_ART_MESHER) && JASPERENGINE_TITLE_ART_MESHER
     // the process's mesher: its shape, mesh and inflate caches are CPU data any renderer shares
     three_d::TitleMesher& mesher() {
