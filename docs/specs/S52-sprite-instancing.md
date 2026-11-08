@@ -708,4 +708,97 @@ GPU suites end in `Gpu` and run on glcore and Vulkan (lavapipe). "Red" is the ru
 
 ## Deviations
 
-None yet (implementers append here).
+Recorded by the implementer (2026-11-08).
+
+### Names and storage
+
+- **S43's names reconciled.** S43 (and the old S52) said `@instanceable` and "S52's `i_fx` stream".
+  The code has `// @batchable` and `instance=fx.<x|y|z|w>`, read in a fragment stage as
+  `customParams.<member> + spriteFx(<slot>)` (`includes/sprite_fx.glsl`), carried by the vertex
+  channel `a_spriteFx` (batched sprites) or the per-instance `i_spriteFx` (Sprite Batch). The slots
+  are the ledger's. S43's Deviations say the same.
+- **`@batchable framerect=A,B`.** Which features read the frame rect is declared in the manifest
+  (`library:sprite`: `framerect=OUTLINE,OVERLAY`) instead of a rule about OUTLINE and OVERLAY in the
+  engine, so another batchable shader can say it too.
+- **Order in Layer is stored as `int32_t`**, clamped to -32768..32767 when read and written: every
+  integer row of the reflection, the Inspector and MCP is an `int`. The key keeps its 16 bits (D2).
+- **Sorting Layer ids** are 0..2^20 (the id-to-value lookup is a flat table); a list of names keeps
+  the ids of the names already in the table and gives new names the next free id. Unity's
+  `GetLayerValueFromID` is relative to Default; `SortingLayer.getLayerValue` is the layer's place in
+  the list (Default may move), the "value" of R1.
+- **The suite of AC3/AC4 is `SpriteBatchComponentGpu`** (`SpriteBatchComponentGpuTest.cpp`):
+  `SpriteBatchGpu` is the landed Dynamic Batching's suite. AC4's "updated `InstancedMeshPixelSnapGpu`"
+  did not exist; `SpriteBatchComponentGpu.InstancedMeshRotatedInstancesSnapTheirPivot` checks the
+  D8 behaviour change instead.
+- **Typed errors in Lua** are the message's first word (`frame_range:`, `unknown_frame:`, `length:`,
+  `fx_slot:`, `unknown_sorting_layer:`): a Lua error is a string.
+
+### Sorting
+
+- **The batcher (D4, "nothing else changes").** A run holds one bucket: an object of an equal key
+  but another bucket opens a run and counts `sort_bucket` (R7, AC2 "runs never span layers"). Before,
+  a consecutive object joined across buckets and only REORDER's jump-back respected them. A scene
+  that does not sort is bucket 0 throughout, so nothing changes for it. `isIneligibleBreak` covers
+  the two ineligible reasons appended after `DISABLED`.
+- **Particle Systems in a sorted 2D pass draw in place** as sort items (R2, §6.7); a 2D pass of a
+  scene that does not sort still draws them after the hierarchy, as before. A Trail Renderer on a
+  GameObject with another renderer draws right after it, at that renderer's key; alone it sorts by
+  its own fields.
+- **3D transparent queue:** a member of a Sorting Group takes its outermost enabled group's layer,
+  order and distance, then its own layer and order; a nested group is not an item of its own there
+  (it is in 2D passes).
+- **Unknown layer ids** (R39) are one load-report line per scene, kind `fallback`, fate `info`
+  (nothing is dropped: the ids stay).
+- **AC1's "draw trace recorded from the base commit"** is replaced by what makes it hold: with
+  defaults nothing is gathered (the counter, `SpriteSortTest.DefaultsGatherNothing`,
+  `SpriteSortGpu.DefaultsDrawTheHierarchyAndGatherNothing`) and the 2D loop is the one of the base
+  commit; the batcher sees bucket 0 for every draw. No trace file was recorded.
+- **Unity import (R41):** `m_SortingLayerID` is found by name through the Unity project's
+  `ProjectSettings/TagManager.asset`; a layer the engine project lacks keeps Default with the note
+  `sorting-layer-missing`.
+
+### Sprite Batch
+
+- **The FX stream** exists whenever the Sprite's material reads an `instance=` amount (not "once
+  `setFx` was called"): the variant ('Sfx') is then known at load and a first `setFx` never reloads
+  the mesh. A material that reads none has no stream (R27's 96 bytes; 112 with it).
+- **Clear Each Frame** uploads into the batch's own stream buffer once per frame it draws (not the
+  frame's shared stream): the same cost, one buffer per batch.
+- **Capacity**: writing past it grows the GPU buffer (a mesh reload); the saved `capacity` is not
+  rewritten.
+- **`SpritePageRun` carries its page** (`{first, count, page}`; §6.5 had pairs), and
+  `SpriteInstanceBatch::setPages` gives the pages' textures.
+- **World space** packs the instance matrices through the inverse of the GameObject's matrix (the
+  draw keeps the GameObject's MVP); a World batch is packed again when its GameObject moves.
+- **Frames draw Simple**: an instance maps the Sprite's quad onto its frame's quad. A Sliced or
+  lattice-gridded Sprite's instances are its mesh stretched onto the frame.
+- **No `create_entity` type** for it (R34, no tool change): agents use `add_component spritebatch`;
+  GameObject > 2D Object > Sprite Batch makes a Sprite with one.
+- **Depth passes** draw a Sprite Batch instanced as the colour pass does; its pages bind as the depth
+  program's texture.
+
+### Pixel-art inputs
+
+- **'Sfx', 'Sfr', 'Spv' follow the mesh**: MeshSystem gives a Sprite the attributes its material and
+  scene read (`MeshComponent::batchAttributes`: an enabled `instance=` feature, a `framerect=`
+  feature, a snapping scene), the variant takes the bit only when the mesh carries the attribute.
+  MESH bits 46-48, DEPTH 20; shader cache v59.
+- **`custom_params` is a 64-bit FNV-1a hash** of the custom blocks (the engine-written members,
+  and with 'Sfx' the `instance=` members, zeroed): a block of a dozen vectors does not fit the key's
+  256 bytes. The library textures and palettes join the `texture` section.
+- **Steps90** rounds the bake's model through `pixelArtModel` (S41 rounds only the MVP, not
+  `objectMatrices`), so a batched Steps90 sprite is placed as its draw alone.
+- **The run's snap mode** is set from its head through `passSnapModeOverride` (colour, depth and UI
+  draws): the run's MVP is the origin cell's, always on the grid.
+- **InstancedMesh (D8)** writes exact zeros (`pixelart::exactGridZeros`, relative 1e-6) only in a
+  snapping scene; elsewhere its matrices are as before.
+
+### MCP, docs and evidence
+
+- **Guide index entry**: `rendering-2d (set_properties sortingLayer)` in the "Other areas" list, in
+  that list's form.
+- **AC14's eval cases** are in `tools/mcp/eval/cases.py` (`guard_sorting_layer_route`,
+  `bad_unknown_sorting_layer`, `bad_bullets_as_gameobjects`, `guard_sort_bucket_break`); the eval
+  itself runs on owner-approved Orquester accounts and was not run by the implementer.
+- **AC15's mobile and web numbers** need a device and were not measured; the desktop benches print
+  their `[bench]` lines.

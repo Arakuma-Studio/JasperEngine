@@ -13707,13 +13707,13 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
                 ui.needReload = true;
             return false;
         }
-        // a batch drawn with this element, its first (RenderSystemBatch.cpp; a 'Pxs' element never
-        // batches: its snap mode is per draw)
+        // a batch drawn with this element, its first (RenderSystemBatch.cpp; a 'Pxs' batch is one
+        // snap mode, its head's: S52 R18)
         const BatchGeometry* batch = passBatchGeometry;
         if (ui.shaderProperties & ShaderPool::getPixelSnapProperty(ShaderType::UI)){
             // the snap of the draw after its matrix (S41, includes/pixel_snap.glsl)
             float block[20];
-            const Matrix4& mvp = objectMVP(transform);
+            const Matrix4& mvp = batch ? batch->objectBlock[2] : objectMVP(transform);
             std::memcpy(block, &mvp, sizeof(float) * 16);
             block[16] = pixelSnapDrawMode(mvp);
             block[17] = 0.0f;

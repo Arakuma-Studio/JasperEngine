@@ -1,0 +1,1562 @@
+id: 4155373791
+name: 2D
+scene:
+  backgroundColor: [0.25, 0.45, 0.65, 1]
+  shadowQuality: low
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: on
+  globalIlluminationIntensity: 0.2
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_3d
+mainCamera: 1019
+maxValues:
+  maxSubmeshes: 1
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 128
+  maxColliders2D: 0
+  maxColliderPoints2D: 0
+  maxColliders3D: 0
+  maxColliderVertices3D: 0
+  maxColliderIndices3D: 0
+shaderKeys:
+  - type: points
+    properties: 4
+  - type: points
+    properties: 5
+  - type: points
+    properties: 13
+  - type: mesh
+    properties: 3075
+  - type: sky
+  - type: depth
+  - type: depth
+    properties: 129
+  - type: blit
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_PREMULTIPLIED
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_ALPHA,OUTLINE
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_ALPHA,HUE_SHIFT
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_ALPHA,FLASH
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_ALPHA,GRAYSCALE
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_ALPHA,OVERLAY
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_ALPHA,GLOW
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_ALPHA
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_ALPHA
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_ALPHA
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_NONE
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_NONE
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_NONE
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_PREMULTIPLIED
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_PREMULTIPLIED
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_PREMULTIPLIED
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_ADDITIVE
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_ADDITIVE
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_ADDITIVE
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_MULTIPLY
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_MULTIPLY
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_MULTIPLY
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_ALPHA,GLOW
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_ALPHA,GLOW
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_ALPHA,GLOW
+  - type: points
+    properties: 4
+    customShader: library:particle#BLEND_ALPHA,EROSION
+  - type: points
+    properties: 5
+    customShader: library:particle#BLEND_ALPHA,EROSION
+  - type: points
+    properties: 13
+    customShader: library:particle#BLEND_ALPHA,EROSION
+  - type: sky
+    customShader: library:gradient_sky#BLEND_ALPHA
+entities:
+  - type: Entity
+    entity: 1001
+    name: Directional Light
+    components:
+      transform:
+        position: [0, 10, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 10, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 10, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 10, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, -10], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      light:
+        enabled: true
+        type: directional
+        direction: [-0.4, -1, -0.6]
+        worldDirection: [-0.4, -1, -0.6]
+        color: [1, 1, 1]
+        range: 100
+        intensity: 3
+        innerConeCos: 0.76604444
+        outerConeCos: 0.64278764
+        spotMask: ~
+        cullingMask: 4294967295
+        shadows: false
+        automaticShadowCamera: true
+        shadowBias: 0.002
+        mapResolution: 2048
+        shadowCameraNearFar: [0.3, 100]
+        numShadowCascades: 3
+  - type: Entity
+    entity: 1002
+    name: Skybox
+    components:
+      skybox:
+        useDefaultTexture: true
+        texture:
+          textureType: CUBE
+          cubeMode: faces
+          source: paths
+          paths: ["", "", "", "", "", ""]
+          hasEmptyFaces: true
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: false
+        color: [1, 1, 1, 1]
+        rotation: 0
+        visible: true
+        customShader: library:gradient_sky
+        shaderUniforms:
+          bottomColor: [0.05, 0.1, 0.2, 1]
+          horizonColor: [1, 0.5, 0.25, 1]
+          horizonOffset: [0.05, 0, 0, 0]
+          intensity: [1.1, 0, 0, 0]
+          topColor: [0.3, 0.05, 0.4, 1]
+          topExponent: [0.45, 0, 0, 0]
+  - type: Entity
+    entity: 1003
+    name: sprite-plain
+    components:
+      transform:
+        position: [-5.95, 2.6, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [0.0234375, 0.0234375, 0.0234375]
+        worldPosition: [-5.95, 2.6, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [0.0234375, 0.0234375, 0.0234375]
+        localMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [-5.95, 2.6, 0, 1]]
+        modelMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [-5.95, 2.6, 0, 1]]
+        normalMatrix: [[42.666668, 0, 0, 253.86665], [0, 42.666668, 0, -110.933334], [0, 0, 42.666668, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: assets/textures/character.png
+                minFilter: linear
+                magFilter: linear
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:sprite
+              blendMode: PREMULTIPLIED
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: true
+            overrideFields: 1114240
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        verticesAABB:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        worldAABB:
+          min: [-6.7, 1.8499999, 0]
+          max: [-5.2, 3.35, 0]
+        receiveLights: false
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 64
+        height: 64
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: center
+  - type: Entity
+    entity: 1004
+    name: sprite-outline
+    components:
+      transform:
+        position: [-4.25, 2.6, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [0.0234375, 0.0234375, 0.0234375]
+        worldPosition: [-4.25, 2.6, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [0.0234375, 0.0234375, 0.0234375]
+        localMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [-4.25, 2.6, 0, 1]]
+        modelMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [-4.25, 2.6, 0, 1]]
+        normalMatrix: [[42.666668, 0, 0, 181.33333], [0, 42.666668, 0, -110.933334], [0, 0, 42.666668, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: assets/textures/character.png
+                minFilter: linear
+                magFilter: linear
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:sprite
+              shaderParams:
+                outlineColor: [1, 0.85, 0.1, 1]
+                outlineWidth: [2, 0, 0, 0]
+              shaderFeatures: [OUTLINE]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: true
+            overrideFields: 721024
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        verticesAABB:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        worldAABB:
+          min: [-5, 1.8499999, 0]
+          max: [-3.5, 3.35, 0]
+        receiveLights: false
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 64
+        height: 64
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: center
+  - type: Entity
+    entity: 1005
+    name: sprite-hue
+    components:
+      transform:
+        position: [-2.55, 2.6, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [0.0234375, 0.0234375, 0.0234375]
+        worldPosition: [-2.55, 2.6, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [0.0234375, 0.0234375, 0.0234375]
+        localMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [-2.55, 2.6, 0, 1]]
+        modelMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [-2.55, 2.6, 0, 1]]
+        normalMatrix: [[42.666668, 0, 0, 108.799995], [0, 42.666668, 0, -110.933334], [0, 0, 42.666668, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: assets/textures/character.png
+                minFilter: linear
+                magFilter: linear
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:sprite
+              shaderParams:
+                hueShift: [150, 0, 0, 0]
+                hueSpeed: [0, 0, 0, 0]
+              shaderFeatures: [HUE_SHIFT]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: true
+            overrideFields: 721024
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        verticesAABB:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        worldAABB:
+          min: [-3.3, 1.8499999, 0]
+          max: [-1.8, 3.35, 0]
+        receiveLights: false
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 64
+        height: 64
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: center
+  - type: Entity
+    entity: 1006
+    name: sprite-flash
+    components:
+      transform:
+        position: [-0.85, 2.6, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [0.0234375, 0.0234375, 0.0234375]
+        worldPosition: [-0.85, 2.6, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [0.0234375, 0.0234375, 0.0234375]
+        localMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [-0.85, 2.6, 0, 1]]
+        modelMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [-0.85, 2.6, 0, 1]]
+        normalMatrix: [[42.666668, 0, 0, 36.26667], [0, 42.666668, 0, -110.933334], [0, 0, 42.666668, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: assets/textures/character.png
+                minFilter: linear
+                magFilter: linear
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:sprite
+              shaderParams:
+                flashAmount: [0.6, 0, 0, 0]
+                flashColor: [1, 0.1, 0.1, 1]
+              shaderFeatures: [FLASH]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: true
+            overrideFields: 721024
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        verticesAABB:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        worldAABB:
+          min: [-1.6, 1.8499999, 0]
+          max: [-0.100000024, 3.35, 0]
+        receiveLights: false
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 64
+        height: 64
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: center
+  - type: Entity
+    entity: 1007
+    name: sprite-grayscale
+    components:
+      transform:
+        position: [0.85, 2.6, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [0.0234375, 0.0234375, 0.0234375]
+        worldPosition: [0.85, 2.6, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [0.0234375, 0.0234375, 0.0234375]
+        localMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [0.85, 2.6, 0, 1]]
+        modelMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [0.85, 2.6, 0, 1]]
+        normalMatrix: [[42.666668, 0, 0, -36.26667], [0, 42.666668, 0, -110.933334], [0, 0, 42.666668, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: assets/textures/character.png
+                minFilter: linear
+                magFilter: linear
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:sprite
+              shaderParams:
+                grayscaleAmount: [0.8, 0, 0, 0]
+              shaderFeatures: [GRAYSCALE]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: true
+            overrideFields: 721024
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        verticesAABB:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        worldAABB:
+          min: [0.100000024, 1.8499999, 0]
+          max: [1.6, 3.35, 0]
+        receiveLights: false
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 64
+        height: 64
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: center
+  - type: Entity
+    entity: 1008
+    name: sprite-replace
+    components:
+      transform:
+        position: [2.55, 2.6, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [0.0234375, 0.0234375, 0.0234375]
+        worldPosition: [2.55, 2.6, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [0.0234375, 0.0234375, 0.0234375]
+        localMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [2.55, 2.6, 0, 1]]
+        modelMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [2.55, 2.6, 0, 1]]
+        normalMatrix: [[42.666668, 0, 0, -108.799995], [0, 42.666668, 0, -110.933334], [0, 0, 42.666668, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: assets/textures/character.png
+                minFilter: linear
+                magFilter: linear
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:sprite
+              shaderParams:
+                replaceColorB: [1, 0.45, 0, 1]
+                replaceColorG: [0.1, 0.5, 1, 1]
+                replaceColorR: [0.6, 0.15, 0.9, 1]
+              shaderTextures:
+                u_replaceMaskTexture:
+                  textureType: 2D
+                  source: path
+                  path: assets/textures/character_mask.png
+                  minFilter: linear
+                  magFilter: linear
+                  wrapU: repeat
+                  wrapV: repeat
+                  releaseDataAfterLoad: true
+              shaderFeatures: [COLOR_REPLACE]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: true
+            overrideFields: 983168
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        verticesAABB:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        worldAABB:
+          min: [1.8, 1.8499999, 0]
+          max: [3.3, 3.35, 0]
+        receiveLights: false
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 64
+        height: 64
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: center
+  - type: Entity
+    entity: 1009
+    name: sprite-overlay
+    components:
+      transform:
+        position: [4.25, 2.6, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [0.0234375, 0.0234375, 0.0234375]
+        worldPosition: [4.25, 2.6, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [0.0234375, 0.0234375, 0.0234375]
+        localMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [4.25, 2.6, 0, 1]]
+        modelMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [4.25, 2.6, 0, 1]]
+        normalMatrix: [[42.666668, 0, 0, -181.33333], [0, 42.666668, 0, -110.933334], [0, 0, 42.666668, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: assets/textures/character.png
+                minFilter: linear
+                magFilter: linear
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:sprite
+              shaderParams:
+                overlayAmount: [0.7, 0, 0, 0]
+                overlayColor: [0.2, 0.9, 1, 1]
+                overlayTiling: [2, 2, 0, 0]
+              shaderTextures:
+                u_overlayTexture:
+                  textureType: 2D
+                  source: path
+                  path: assets/textures/stripes.png
+                  minFilter: linear
+                  magFilter: linear
+                  wrapU: repeat
+                  wrapV: repeat
+                  releaseDataAfterLoad: true
+              shaderFeatures: [OVERLAY]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: true
+            overrideFields: 983168
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        verticesAABB:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        worldAABB:
+          min: [3.5, 1.8499999, 0]
+          max: [5, 3.35, 0]
+        receiveLights: false
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 64
+        height: 64
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: center
+  - type: Entity
+    entity: 1010
+    name: sprite-glow
+    components:
+      transform:
+        position: [5.95, 2.6, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [0.0234375, 0.0234375, 0.0234375]
+        worldPosition: [5.95, 2.6, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [0.0234375, 0.0234375, 0.0234375]
+        localMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [5.95, 2.6, 0, 1]]
+        modelMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [5.95, 2.6, 0, 1]]
+        normalMatrix: [[42.666668, 0, 0, -253.86665], [0, 42.666668, 0, -110.933334], [0, 0, 42.666668, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: assets/textures/soft.png
+                minFilter: linear
+                magFilter: linear
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:sprite
+              shaderParams:
+                glowColor: [3, 1, 0.15, 1]
+                glowPower: [3, 0, 0, 0]
+                glowScale: [0.8, 0, 0, 0]
+              shaderFeatures: [GLOW]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: true
+            overrideFields: 721024
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        verticesAABB:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        worldAABB:
+          min: [5.2, 1.8499999, 0]
+          max: [6.7, 3.35, 0]
+        receiveLights: false
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 64
+        height: 64
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: center
+  - type: Entity
+    entity: 1011
+    name: particle-auto
+    components:
+      transform:
+        position: [-5.95, 0.8, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [-5.95, 0.8, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-5.95, 0.8, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-5.95, 0.8, 0, 1]]
+        normalMatrix: [[1, 0, 0, 5.95], [0, 1, 0, -0.8], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      points:
+        enabled: true
+        maxPoints: 100
+        transparent: false
+        autoTransparency: true
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/soft.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        points:
+          - position: [-0.3, -0.3, 0]
+            color: [1, 0.5, 0.2, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, -0.3, 0]
+            color: [0.3, 0.8, 1, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [-0.3, 0.3, 0]
+            color: [0.6, 1, 0.3, 0.8]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, 0.3, 0]
+            color: [1, 1, 1, 0.6]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+        customShader: library:particle
+  - type: Entity
+    entity: 1012
+    name: particle-opaque
+    components:
+      transform:
+        position: [-4.25, 0.8, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [-4.25, 0.8, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-4.25, 0.8, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-4.25, 0.8, 0, 1]]
+        normalMatrix: [[1, 0, 0, 4.25], [0, 1, 0, -0.8], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      points:
+        enabled: true
+        maxPoints: 100
+        transparent: false
+        autoTransparency: true
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/soft.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        points:
+          - position: [-0.3, -0.3, 0]
+            color: [1, 0.5, 0.2, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, -0.3, 0]
+            color: [0.3, 0.8, 1, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [-0.3, 0.3, 0]
+            color: [0.6, 1, 0.3, 0.8]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, 0.3, 0]
+            color: [1, 1, 1, 0.6]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+        customShader: library:particle
+        blendMode: NONE
+  - type: Entity
+    entity: 1013
+    name: particle-alpha
+    components:
+      transform:
+        position: [-2.55, 0.8, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [-2.55, 0.8, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-2.55, 0.8, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-2.55, 0.8, 0, 1]]
+        normalMatrix: [[1, 0, 0, 2.55], [0, 1, 0, -0.8], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      points:
+        enabled: true
+        maxPoints: 100
+        transparent: false
+        autoTransparency: true
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/soft.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        points:
+          - position: [-0.3, -0.3, 0]
+            color: [1, 0.5, 0.2, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, -0.3, 0]
+            color: [0.3, 0.8, 1, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [-0.3, 0.3, 0]
+            color: [0.6, 1, 0.3, 0.8]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, 0.3, 0]
+            color: [1, 1, 1, 0.6]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+        customShader: library:particle
+        blendMode: ALPHA
+  - type: Entity
+    entity: 1014
+    name: particle-premultiplied
+    components:
+      transform:
+        position: [-0.85, 0.8, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [-0.85, 0.8, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.85, 0.8, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.85, 0.8, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0.85], [0, 1, 0, -0.8], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      points:
+        enabled: true
+        maxPoints: 100
+        transparent: false
+        autoTransparency: true
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/soft.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        points:
+          - position: [-0.3, -0.3, 0]
+            color: [1, 0.5, 0.2, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, -0.3, 0]
+            color: [0.3, 0.8, 1, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [-0.3, 0.3, 0]
+            color: [0.6, 1, 0.3, 0.8]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, 0.3, 0]
+            color: [1, 1, 1, 0.6]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+        customShader: library:particle
+        blendMode: PREMULTIPLIED
+  - type: Entity
+    entity: 1015
+    name: particle-additive
+    components:
+      transform:
+        position: [0.85, 0.8, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0.85, 0.8, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.85, 0.8, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.85, 0.8, 0, 1]]
+        normalMatrix: [[1, 0, 0, -0.85], [0, 1, 0, -0.8], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      points:
+        enabled: true
+        maxPoints: 100
+        transparent: false
+        autoTransparency: true
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/soft.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        points:
+          - position: [-0.3, -0.3, 0]
+            color: [1, 0.5, 0.2, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, -0.3, 0]
+            color: [0.3, 0.8, 1, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [-0.3, 0.3, 0]
+            color: [0.6, 1, 0.3, 0.8]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, 0.3, 0]
+            color: [1, 1, 1, 0.6]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+        customShader: library:particle
+        blendMode: ADDITIVE
+  - type: Entity
+    entity: 1016
+    name: particle-multiply
+    components:
+      transform:
+        position: [2.55, 0.8, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [2.55, 0.8, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [2.55, 0.8, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [2.55, 0.8, 0, 1]]
+        normalMatrix: [[1, 0, 0, -2.55], [0, 1, 0, -0.8], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      points:
+        enabled: true
+        maxPoints: 100
+        transparent: false
+        autoTransparency: true
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/soft.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        points:
+          - position: [-0.3, -0.3, 0]
+            color: [1, 0.5, 0.2, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, -0.3, 0]
+            color: [0.3, 0.8, 1, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [-0.3, 0.3, 0]
+            color: [0.6, 1, 0.3, 0.8]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, 0.3, 0]
+            color: [1, 1, 1, 0.6]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+        customShader: library:particle
+        blendMode: MULTIPLY
+  - type: Entity
+    entity: 1017
+    name: particle-glow
+    components:
+      transform:
+        position: [4.25, 0.8, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [4.25, 0.8, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [4.25, 0.8, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [4.25, 0.8, 0, 1]]
+        normalMatrix: [[1, 0, 0, -4.25], [0, 1, 0, -0.8], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      points:
+        enabled: true
+        maxPoints: 100
+        transparent: false
+        autoTransparency: true
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/soft.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        points:
+          - position: [-0.3, -0.3, 0]
+            color: [1, 0.5, 0.2, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, -0.3, 0]
+            color: [0.3, 0.8, 1, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [-0.3, 0.3, 0]
+            color: [0.6, 1, 0.3, 0.8]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, 0.3, 0]
+            color: [1, 1, 1, 0.6]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+        customShader: library:particle
+        shaderUniforms:
+          glowColor: [3, 0.8, 2.5, 1]
+          glowPower: [2, 0, 0, 0]
+          glowScale: [0.8, 0, 0, 0]
+        shaderFeatures: [GLOW]
+  - type: Entity
+    entity: 1018
+    name: particle-erosion
+    components:
+      transform:
+        position: [5.95, 0.8, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [5.95, 0.8, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [5.95, 0.8, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [5.95, 0.8, 0, 1]]
+        normalMatrix: [[1, 0, 0, -5.95], [0, 1, 0, -0.8], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      points:
+        enabled: true
+        maxPoints: 100
+        transparent: false
+        autoTransparency: true
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/soft.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        points:
+          - position: [-0.3, -0.3, 0]
+            color: [1, 0.5, 0.2, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, -0.3, 0]
+            color: [0.3, 0.8, 1, 1]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [-0.3, 0.3, 0]
+            color: [0.6, 1, 0.3, 0.8]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+          - position: [0.3, 0.3, 0]
+            color: [1, 1, 1, 0.6]
+            size: 0.8
+            rotation: 0
+            textureRect: [0, 0, 1, 1]
+            visible: true
+        customShader: library:particle
+        shaderUniforms:
+          erosionSoftness: [0.15, 0, 0, 0]
+          erosionTiling: [1.5, 0, 0, 0]
+        shaderTextures:
+          u_erosionTexture:
+            textureType: 2D
+            source: path
+            path: assets/textures/fx_noise.png
+            minFilter: linear
+            magFilter: linear
+            wrapU: repeat
+            wrapV: repeat
+            releaseDataAfterLoad: true
+        shaderFeatures: [EROSION]
+  - type: Entity
+    entity: 1019
+    name: Camera
+    components:
+      transform:
+        position: [0, 1.4, 10.5]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 1.4, 10.5]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 1.4, 10.5, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 1.4, 10.5, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, -1.4], [0, 0, 1, -10.5], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      camera:
+        enabled: true
+        type: camera_perspective
+        cullingMask: 4294967295
+        target: [0, 1.4, 0]
+        up: [0, 1, 0]
+        leftClip: 0
+        rightClip: 10
+        bottomClip: 0
+        topClip: 10
+        yfov: 0.75
+        aspect: 1.8546169
+        nearClip: 0.2
+        farClip: 200
+        renderToTexture: false
+        transparentSort: true
+        depthTest: true
+        useTarget: true
+        autoResize: true
+        framebufferWidth: 512
+        framebufferHeight: 512
+        framebufferFilter: linear

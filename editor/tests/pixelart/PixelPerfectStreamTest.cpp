@@ -240,5 +240,8 @@ TEST(PixelPerfectStream, ShaderCacheVersionCoversThePixelSnap){
 // S43's palette sources (library:sprite's PALETTE_SWAP and PALETTE_CYCLE, the uber pass's 'Pal'
 // bit 19) are cached under v58: a cache of an older version holds programs without them
 TEST(PaletteShaders, ShaderCacheVersionCoversThePalettes){
-    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v58");
+    // (S52 took v59 after it: a later version covers them too)
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 58) << name;
 }

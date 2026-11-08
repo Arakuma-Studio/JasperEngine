@@ -65,8 +65,9 @@ namespace {
     // bits 34-35, the Vertex Animation ('Vat', 'Vab'), bits 36-39, S57's lighting ('Til',
     // 'Cap', 'Cts', 'Oit'), bit 40, S54's LOD cross-fade ('Lfd'), bit 41, S55's automatic GPU
     // instancing ('Aui'), bits 42-43, water-boats' excluders and wakes ('Wex', 'Wwk'), bit 44,
-    // draw-perf's directional-only Lit ('Dlo'), and bit 45, S41's Pixel Snap ('Pxs')
-    const uint64_t meshValidMask = 0x3FFFFFFFFFFFULL;
+    // draw-perf's directional-only Lit ('Dlo'), bit 45, S41's Pixel Snap ('Pxs'), and bits 46-48,
+    // S52's pixel-art batching inputs ('Sfx', 'Sfr', 'Spv')
+    const uint64_t meshValidMask = 0x1FFFFFFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
 
@@ -433,9 +434,14 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         // S55's automatic GPU instancing: MESH bit 41 (40 is S54's), DEPTH bit 18
         {ShaderType::MESH, 0x41 | shaderPropertyBit(41), "mesh_UltNorAui"},
         {ShaderType::DEPTH, shaderPropertyBit(18), "depth_Aui"},
+        // S52's pixel-art batching inputs after S41's 'Pxs': MESH 46-48, DEPTH 20
+        {ShaderType::MESH, 0x401 | shaderPropertyBit(45) | shaderPropertyBit(46), "mesh_UltVc4PxsSfx"},
+        {ShaderType::MESH, 0x401 | shaderPropertyBit(47), "mesh_UltVc4Sfr"},
+        {ShaderType::MESH, 0x401 | shaderPropertyBit(45) | shaderPropertyBit(48), "mesh_UltVc4PxsSpv"},
+        {ShaderType::DEPTH, shaderPropertyBit(19) | shaderPropertyBit(20), "depth_PxsSpv"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
-        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAuiWexWwkDloPxs"},
+        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAuiWexWwkDloPxsSfxSfrSpv"},
         {ShaderType::DEPTH, 0x3, "depth_TexSki"},
         {ShaderType::DEPTH, 0x3FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1Txr"},
         {ShaderType::DEPTH, 0x7FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1TxrSto"},

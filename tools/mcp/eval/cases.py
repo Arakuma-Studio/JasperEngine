@@ -3094,4 +3094,118 @@ CASES = [
                    "must_not_call": [{"tool": "configure_game_view", "args": {"resolution": "*"}}]},
         "max_turns": 12,
     },
+    # -- S52: 2D draw order (Sorting Layers through set_project_settings and set_properties), the unknown-layer
+    # error, Sprite Batch for bulk sprites, the profiling guide's new batch breaks --------
+    {
+        "id": "guard_sorting_layer_route",
+        "kind": "guard",
+        "what_happened": "New area (S52): putting a 2D renderer in front of others is a Sorting Layer (the setting "
+                         "tags_and_layers.sorting_layers, then the renderer's sortingLayer); without the guide entry agents "
+                         "moved GameObjects in the hierarchy or changed z, which 2D cameras ignore.",
+        "text_at_issue": "Guide 'Other areas': 'rendering-2d (set_properties sortingLayer)'; jasper://docs/rendering-2d; "
+                         "tags_and_layers.sorting_layers: 'Sorting Layer names in draw order, first drawn first; must include "
+                         "\"Default\"'",
+        "source": "S52 R34, R36 (new MCP text); no failure on record",
+        "prompt": "In our 2D scene the Tree GameObjects draw behind the Player sprite. Make every tree draw in front of the "
+                  "player, using a proper foreground layer.",
+        "mocks": [
+            {"tool": "read_file", "args": {"path": "re:rendering-2d"}, "result": ok(
+                "# 2D draw order and Sprite Batch\n\nA 2D camera draws renderers by Sorting Layer (its place in "
+                "tags_and_layers.sorting_layers, first drawn first), then Order in Layer, then the Hierarchy. Add layers with "
+                "set_project_settings; set a renderer's with set_properties {\"sortingLayer\": \"Foreground\"}.")},
+            {"tool": "find_entities", "result": ok("3 GameObjects: Tree (12), Tree (13), Tree (14).",
+                                                  {"entities": [{"id": 12, "name": "Tree"}, {"id": 13, "name": "Tree"},
+                                                                {"id": 14, "name": "Tree"}]})},
+            {"tool": "get_project_settings", "result": ok("tags_and_layers.sorting_layers: [\"Default\"]",
+                                                         {"values": {"tags_and_layers.sorting_layers": ["Default"]}})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["tags_and_layers.sorting_layers"]})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 3 GameObjects.", {"entities": [{"id": 12}, {"id": 13}, {"id": 14}]})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"tags_and_layers.sorting_layers": "*"}}},
+                             {"tool": "set_properties"}],
+                   "must_not_call": ["move_entity", {"tool": "set_transform"}]},
+        "max_turns": 14,
+    },
+    {
+        "id": "bad_unknown_sorting_layer",
+        "kind": "bad",
+        "what_happened": "Agents set sortingLayer: \"Foreground\" on a sprite before the project had that layer, then fell "
+                         "back to Order in Layer alone; the error names the fix (S52).",
+        "text_at_issue": "set_properties error: 'no Sorting Layer is named \"Foreground\"; add it with set_project_settings "
+                         "tags_and_layers.sorting_layers'",
+        "source": "S52 R34 (new error text); paraphrased from the design review",
+        "prompt": "Put the Clouds sprite (GameObject 21) on a Sorting Layer named Foreground.",
+        "mocks": [
+            {"tool": "set_properties", "after": "set_project_settings", "result": ok(
+                "Set 1 property on GameObject 21 \"Clouds\".", {"entity": {"id": 21}})},
+            {"tool": "set_properties", "result": err(
+                "Property sortingLayer: no Sorting Layer is named \"Foreground\"; add it with set_project_settings "
+                "tags_and_layers.sorting_layers")},
+            {"tool": "get_project_settings", "result": ok("tags_and_layers.sorting_layers: [\"Default\"]",
+                                                         {"values": {"tags_and_layers.sorting_layers": ["Default"]}})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["tags_and_layers.sorting_layers"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"tags_and_layers.sorting_layers": "re:Foreground"}}},
+                             {"tool": "set_properties"}],
+                   "must_not_call": [{"tool": "set_properties", "args": {"values": {"mesh": {"sortingOrder": "*"}}}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_bullets_as_gameobjects",
+        "kind": "bad",
+        "what_happened": "Asked for a bullet-hell pattern of 2,000 bullets, agents created one GameObject per bullet (create_entity "
+                         "in loops, Instantiate in Lua): 2,000 transforms updated every frame; a Sprite Batch draws them from one "
+                         "GameObject with flat streams (S52).",
+        "text_at_issue": "jasper://docs/rendering-2d 'Sprite Batch' (add_component spritebatch, SpriteBatch:setPositions); "
+                         "guide 'Other areas' rendering-2d",
+        "source": "S52 R10-R12, R36 (new MCP text); paraphrased from the design review",
+        "files": {"scripts/spawner.lua": "-- empty spawner script\n"},
+        "prompt": "Our boss (GameObject 30, which has a Bullet sprite child, GameObject 31) should fire a ring of 2000 bullets "
+                  "that move outwards every frame. Write it in scripts/spawner.lua.",
+        "mocks": [
+            {"tool": "read_file", "args": {"path": "re:rendering-2d"}, "result": ok(
+                "## Sprite Batch\nUse a Sprite Batch for many copies of one Sprite's frames (bullets, coins). 1. add_component "
+                "spritebatch on a GameObject with a Sprite. 2. Fill it from a script: SpriteBatch(scene, entity), "
+                "batch:setPositions({x1, y1, ...}).")},
+            {"tool": "add_component", "result": ok("Added Sprite Batch to GameObject 31 \"Bullet\".", {"entity": {"id": 31}})},
+            {"tool": "write_file", "result": ok("Wrote scripts/spawner.lua.", {"path": "scripts/spawner.lua"})},
+            {"tool": "check_script", "result": ok("scripts/spawner.lua: no errors.", {"ok": True})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)sprite.?batch"}}],
+                   "max_calls": {"create_entity": 2},
+                   "any_of": [{"file_must": {"scripts/spawner.lua": [r"SpriteBatch", r"setPositions"]}},
+                              {"calls": [{"tool": "write_file", "args": {"content": "re:(?s)SpriteBatch.*setPositions"}}]}]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_sort_bucket_break",
+        "kind": "guard",
+        "what_happened": "Reading get_render_stats batching.breaks, agents met sort_bucket (S52) and forked shaders or merged "
+                         "textures; the profiling guide says a Sorting Layer, Order in Layer or Sorting Group change breaks a "
+                         "batch by design and the fix is one layer and order for sprites that may batch.",
+        "text_at_issue": "jasper://docs/profiling Dynamic Batching table: 'sort_bucket: another Sorting Layer, Order in Layer or "
+                         "Sorting Group: put sprites that may batch in one'",
+        "source": "S52 R35 (new guide rows); no failure on record",
+        "prompt": "The coins in our 2D level draw in 40 draw calls even though they share one sprite sheet. Find out why and fix "
+                  "it so they batch.",
+        "mocks": [
+            {"tool": "get_render_stats", "result": ok(
+                "Game view: 46 draws, batching 3 batches (saved 2); breaks: sort_bucket 38, texture 1.",
+                {"draw_calls": 46, "batching": {"batches": 3, "saved_by_batching": 2,
+                                                "breaks": {"sort_bucket": 38, "texture": 1}}})},
+            {"tool": "read_file", "args": {"path": "re:profiling"}, "result": ok(
+                "| `sort_bucket` | another Sorting Layer, Order in Layer or Sorting Group: put sprites that may batch in one "
+                "(`jasper://docs/rendering-2d`) |")},
+            {"tool": "find_entities", "result": ok("40 GameObjects named Coin (50-89), each with Order in Layer 0-39.",
+                                                  {"entities": [{"id": 50 + i, "name": "Coin"} for i in range(40)]})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 40 GameObjects.", {"entities": [{"id": 50}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_properties", "args": {"values": {"mesh": {"sortingOrder": "*"}}}}],
+                   "must_not_call": ["fork_shader", {"tool": "edit_sprite_atlas"}]},
+        "max_turns": 14,
+    },
 ]

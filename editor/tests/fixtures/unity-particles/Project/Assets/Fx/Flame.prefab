@@ -177,6 +177,7 @@ ParticleSystemRenderer:
   m_Enabled: 1
   m_CastShadows: 0
   m_ReceiveShadows: 0
+  m_SortingLayerID: 1234567
   m_SortingOrder: 2
   m_RenderMode: 3
   m_SortMode: 1
@@ -304,6 +305,7 @@ ParticleSystemRenderer:
   m_Enabled: 1
   m_CastShadows: 0
   m_ReceiveShadows: 0
+  m_SortingLayerID: 7654321
   m_SortingOrder: 0
   m_RenderMode: 4
   m_SortMode: 0
