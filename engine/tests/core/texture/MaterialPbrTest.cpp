@@ -432,3 +432,10 @@ TEST(PbrVariant, UniformBlockLayout){
     EXPECT_EQ(block[23], 1.0f);
     EXPECT_EQ(block[3], 0.25f);
 }
+
+// the lit variants a project draws (get_material_variant's projectLitVariants): two submeshes with
+// the same lobes whose variants differ past bit 31 (the LOD cross-fade's 'Lfd', bit 40) are two
+TEST(MaterialPbr, CountLitVariantsSeesAll64Bits){
+    const uint64_t lit = (1ull << 1) | (1ull << 3);
+    EXPECT_EQ(MaterialPbr::countLitVariants({{1u, lit}, {1u, lit | (1ull << 40)}, {1u, lit}, {0u, lit}}), 2u);
+}

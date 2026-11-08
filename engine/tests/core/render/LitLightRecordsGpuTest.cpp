@@ -25,9 +25,12 @@
 #include "HeadlessContext.h"
 #include "ImageCompare.h"
 #include "LogCapture.h"
+#include "Readback.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -152,5 +155,36 @@ TEST_F(LitLightRecordsGpu, CapsulesContactAnd2DLightsDrawTheBlocksImage){
         const CompareResult result = compareTargetWithGolden(name, litRecordsOptions());
         EXPECT_TRUE(result.passed) << result.message;
     }
+
+    // the capsules' shadow, plain: the point lights off (the variant keeps them), the sun's shadow
+    // of the capsules against Intensity 0, which keeps the variant too
+    LightingTiers::setLightMode(LightMode::PER_OBJECT);
+    for (auto& light : points)
+        light->setEnabled(false);
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    std::vector<uint8_t> withCapsules, without;
+    int width = 0, height = 0;
+    {
+        Framebuffer& target = GpuEnvironment::target();
+        width = (int)target.getWidth();
+        height = (int)target.getHeight();
+        readTexture(target.getRender().getColorTexture(), width, height, withCapsules);
+    }
+    scene.setCapsuleShadowIntensity(0.0f);
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    readTexture(GpuEnvironment::target().getRender().getColorTexture(), width, height, without);
+    size_t darker = 0;
+    int largest = 0;
+    for (size_t i = 0; i + 3 < withCapsules.size() && i + 3 < without.size(); i += 4){
+        int most = 0;
+        for (int c = 0; c < 3; c++)
+            most = std::max(most, (int)without[i + c] - (int)withCapsules[i + c]);
+        largest = std::max(largest, most);
+        darker += most > 24 ? 1 : 0;
+    }
+    std::printf("[gpu] lit records capsule shadow on %s: %zu pixels darker by over 24 (largest %d)\n",
+                HeadlessContext::getBackendName(), darker, largest);
+    EXPECT_GT(darker, (size_t)(width * height) / 1000) << "the capsules cast no shadow worth the name";
+    EXPECT_GT(largest, 40);
     EXPECT_NO_ENGINE_ERRORS();
 }
