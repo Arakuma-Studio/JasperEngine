@@ -20,6 +20,8 @@
 #include "io/FileUtils.h"
 #include "io/ResourcePack.h"
 #include "jobs/JobSystem.h"
+#include "subsystem/TerrainRenderInfo.h"
+#include "terrain/TerrainQuality.h"
 #include "object/GameObject.h"
 #include "object/navigation/NavMeshSurface.h"
 #include "voxel/TransvoxelMesher.h"
@@ -333,6 +335,31 @@ VoxelTier VoxelSystem::resolveTier(const VoxelVolumeComponent& component) const{
         case VoxelQuality::Medium: return VoxelTier::Medium;
         case VoxelQuality::Low: return VoxelTier::Low;
         case VoxelQuality::Auto: break;
+    }
+    // R51: attached, the terrain's effective tier (T3 R2), so the ground around a cave mouth reads as
+    // the terrain beside it does
+    if (component.terrain != NULL_ENTITY && scene->isEntityCreated(component.terrain)){
+        if (const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(component.terrain)){
+            terrain::TerrainQualityRequest request;
+            terrain::TerrainQuality forced;
+            if (terrain::TerrainQualitySettings::getEditorPreview(forced)){
+                request.hasPreview = true;
+                request.preview = forced;
+            }else if (terrain::TerrainQualitySettings::getGlobalOverride(forced)){
+                request.hasOverride = true;
+                request.globalOverride = forced;
+            }
+            const terrain::TerrainVariantInputs variant = getTerrainVariantInputs(*terrain);
+            request.hasComponent = variant.hasComponentQuality;
+            request.component = variant.componentQuality;
+            request.project = terrain::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
+            request.shippedMask = terrain::TerrainQualitySettings::getShippedMask();
+            switch (terrain::resolveTerrainQuality(request).quality){
+                case terrain::TerrainQuality::HIGH: return VoxelTier::High;
+                case terrain::TerrainQuality::MEDIUM: return VoxelTier::Medium;
+                case terrain::TerrainQuality::LOW: return VoxelTier::Low;
+            }
+        }
     }
     return voxelActiveLimits().autoTier;
 }

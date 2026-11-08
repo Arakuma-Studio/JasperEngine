@@ -18,6 +18,7 @@
 #include "pool/TextureDataPool.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/VoxelSystem.h"
+#include "terrain/TerrainQuality.h"
 #include "../ecs/EcsTestUtil.h"
 
 #include "Jolt/Jolt.h"
@@ -186,6 +187,29 @@ TEST_F(VoxelTerrain, AttachDefaults) {
     Store* store = system->getStore(owner);
     ASSERT_NE(store, nullptr);
     EXPECT_NEAR(valueAt(*store, Vec3d{32.0, surfaceHeight(), 32.0}), 0.01, 0.005);
+}
+
+// R51: an attached volume on Auto takes the terrain's effective tier (T3 R2), its own quality first
+TEST_F(VoxelTerrain, AutoTierFollowsTerrain) {
+    const Entity owner = attached("mem://auto-tier");
+    VoxelVolumeComponent& volume = scene->getComponent<VoxelVolumeComponent>(owner);
+    ASSERT_EQ(volume.quality, VoxelQuality::Auto);
+    TerrainComponent& ground = scene->getComponent<TerrainComponent>(terrainEntity);
+    ground.quality = TerrainQualitySetting::LOW;
+    EXPECT_EQ(system->resolveTier(volume), VoxelTier::Low);
+    ground.quality = TerrainQualitySetting::MEDIUM;
+    EXPECT_EQ(system->resolveTier(volume), VoxelTier::Medium);
+    terrain::TerrainQualitySettings::setGlobalOverride(terrain::TerrainQuality::LOW);
+    EXPECT_EQ(system->resolveTier(volume), VoxelTier::Low);
+    terrain::TerrainQualitySettings::clearGlobalOverride();
+    ground.quality = TerrainQualitySetting::HIGH;
+    EXPECT_EQ(system->resolveTier(volume), VoxelTier::High);
+    volume.quality = VoxelQuality::Low;
+    EXPECT_EQ(system->resolveTier(volume), VoxelTier::Low);
+    // free-standing, R7's table
+    volume.quality = VoxelQuality::Auto;
+    volume.terrain = NULL_ENTITY;
+    EXPECT_EQ(system->resolveTier(volume), voxelActiveLimits().autoTier);
 }
 
 TEST_F(VoxelTerrain, CutsOnlyNonFlush) {
