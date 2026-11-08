@@ -1396,18 +1396,40 @@ rest of S82 lands in 6B.
     not `tools/fixtures/title-art-runtime`. Its document is a plate shape (no font, so the gate needs
     no font file); the gate checks two ready lines (the second after an Exposed colour changes from
     C++) and the centre pixel in the second colour.
-22. **Implementation: the Android render gate's `titleart` scene** draws a Realtime and a Glyph Atlas
-    title of a plate (Glyph Atlas renders through the Realtime path, Deviation 23) with
-    the sweep at a fixed position and the tint; no glints, as the gate's document has no bake sidecar
-    to take anchors from. `golden/titleart.png` is not in the tree: no emulator ran in this stream; the
+22. **Open: the Android render gate's golden and the device run (AC18).** The gate's `titleart`
+    scene draws a Realtime and a Glyph Atlas title of a plate (the Glyph Atlas document has no
+    exposed text layer, so it falls back to Realtime, R25) with the sweep at a fixed position and the
+    tint; no glints, as the gate's document has no bake sidecar to take anchors from. The render-gate
+    APK builds (`ANDROID_PROJECT=render-gate tools/build.sh android`), but `golden/titleart.png` is not
+    in the tree and AC18's device figures are not recorded: the build host has no KVM (no
+    `/dev/kvm`, no vmx or svm CPU flag), so the emulator cannot run, and no phone is attached. The
     first emulator run (`tools/android-emulator-test.sh --scene titleart`, default and with
-    `debug.jasperengine.titleart_rgba8=1`) makes it.
-23. **Not done: the Glyph Atlas compositor** (R26-R29, R32: the per-glyph atlas pages, the cell
-    pass and the compose pass). A Glyph Atlas title gets its plan (`planTitleGlyphAtlas`: the text
-    layer, the fallbacks, the unsafe and approximate effects), the `glyph_atlas` check, the Inspector
-    and `get_title` rows and the warnings, and renders through the Realtime path, so it shows the
-    same pixels at Realtime's cost. The compositor is renderer work (new passes in S80's graph) left
-    to a follow-up.
+    `debug.jasperengine.titleart_rgba8=1`) makes the golden; AC18 stays a manual device run.
+23. **Implementation: Glyph Atlas** (`titleart/runtime/TitleGlyphAtlas.*`, R25-R31). Cells are
+    S80's `glyphCell` renders (back: rims and the layer's effects; front: the face) of a cell
+    document (the text layer without `chars`/`lines`, unsafe members made safe), keyed by the
+    cluster's text and the style (document, instance values other than the text, resolution) rather
+    than by glyph index and face: a cluster renders as a glyph of the same chain, plus the
+    sub-pixel phase (1/32 px) the string puts it at: the cell renders with its character offset
+    moved by that fraction (moving the layer would resample it), so its quad moves by whole
+    pixels and is never resampled (a glyph shown at several phases has a cell per phase). S80
+    centres a text by its ink, so each value moves the string by a fraction of a pixel: Glyph
+    Atlas snaps the string (its first pen) to the pixel grid, under half a pixel from Realtime's
+    place, so a counter's glyphs keep their phases and cells from value to value. AC11's golden
+    therefore compares with the Realtime render of the same text at that snap (every character's
+    offset; mean <= 1/255, at most 1 % of pixels over 8/255); against Realtime's own place the
+    difference is the half-pixel shift's. Both parts of a glyph share one atlas rectangle (one page per
+    glyph); cells keep S80's 64-pixel ROI grid, so a page holds fewer glyphs than a tight packing
+    would. The front plate renders with a transparent canvas background (the background is the
+    back plate's). The compose is S80-style passes through a new
+    renderer program `GLYPH_COMPOSE` (42): up to 20 quads per pass from one page, so a text change is a
+    clear, the back plate copy, one pass per 20 quads, the front plate copy and the output pass. LRU
+    eviction frees whole pages (the least recently used page no shown or wanted string uses), not
+    single cells. What is left: per-character scale and rotation of `chars.<index>` apply to the
+    cell's offset only (offsets are exact, the quad is not scaled or rotated); a text layer with a
+    non-normal `blend` composes over its plate with normal blending (R28's extra blend pass); a
+    `CharAdjust.face` material is not part of the cell key; R32's prebaked atlas pages are not
+    written at export (a shipped Glyph Atlas title renders its cells at runtime, one glyph a step).
 24. **Implementation: the Digits preset has 24 code points** (the explicit list; the spec said 25),
     and the test asserts 24.
 25. **Implementation: the Reserved Font Name rename** (R57) also covers name IDs 3, 18, 21 and 25;
@@ -1425,3 +1447,17 @@ rest of S82 lands in 6B.
     (.ttc/.otc) ships whole (W-TITLEART-FONT-COLLECTION): its subset would be one face and the
     documents' face indices would change. An Exposed parameter of type `font` overridden on an
     instance is not followed: only the fonts the document names are subset.
+28. **Implementation: the AC17 bench** is the core test `TitleArtRuntimeBench.HostNumbers`
+    (5 warm-ups, then median and p90 of 30 text changes), not `tools/perf/title_art_bench.py` with
+    `bench-thresholds.json`; there is no WebGL2 timing through `browser_gate.py`. It prints
+    wall-clock frame times on whatever device runs it and checks only what holds on any device (a
+    cached Glyph Atlas change costs less than a Realtime render; a render is sliced over frames).
+    The "budget + 0.5 ms" frame bound is the scheduler's estimate, tested in
+    `TitleArtSchedulerTest`; on a software rasterizer the measured frames exceed it. Host run
+    (this build host: llvmpipe, no GPU, float path; a counter of 4 tabular digits at 96 px on a
+    640 x 160 canvas; 5 warm-ups, 30 samples): Realtime text change (one unsliced render) median
+    76.1 ms, p90 92.4 ms; Glyph Atlas change with every glyph cached (22 of 30 samples) median
+    5.0 ms, p90 5.3 ms; Glyph Atlas over all samples (new cells on first use) median 5.2 ms, p90
+    51.2 ms; a Realtime render sliced at a 4 ms budget took 4 frames, the largest multi-step frame
+    measuring 91.6 ms (the estimates are desktop-GPU figures; llvmpipe runs the passes on the CPU).
+    These are host measurements, not device figures (AC18 is open, Deviation 22).

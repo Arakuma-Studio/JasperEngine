@@ -17,7 +17,9 @@
 //   contour, masks dropped, unsafe effects disabled). A cell renders at the sub-pixel phase
 //   (1/32 px) the string puts its glyph at (its character offset moved by that fraction, part of
 //   the key), so its quad moves by whole pixels from the single glyph's place to the string's and
-//   is never resampled.
+//   is never resampled. The string itself snaps to the pixel grid (its first pen to a whole
+//   pixel, under half a pixel from Realtime's place), so a glyph keeps its phase from one value to
+//   the next and a counter's change reuses every cell.
 // - Atlas: pages of atlasPageSize, at most atlasMaxPages, packed by a skyline. A full atlas frees
 //   the least recently used page no shown or wanted string uses; when none can go, the job fails
 //   with R29's sentence. The string stays on its previous image until every glyph it needs is in.
@@ -62,6 +64,9 @@ namespace jasperengine::titleart {
             uint64_t composes = 0;          // composes run
             uint64_t composePasses = 0;     // GPU passes of the last compose (plates, cells, output)
             uint64_t evictions = 0;         // pages freed for new cells
+            // the last string's snap to the pixel grid: where its glyphs sit from their exact
+            // places (output pixels, under half a pixel)
+            double snapX = 0.0, snapY = 0.0;
         };
 
         TitleGlyphAtlas();

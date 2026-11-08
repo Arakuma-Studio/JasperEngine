@@ -16,7 +16,10 @@
 //   back renders as Realtime.
 // Tolerance of a glyph-safe look against the merged render (cells render at the string's
 // sub-pixel phase to 1/32 px and are stored in RGBA8, linear premultiplied): mean difference <= 1/255, at
-// most 1% of pixels over 8/255.
+// most 1% of pixels over 8/255. Glyph Atlas snaps the string to the pixel grid (under half a pixel
+// from Realtime's sub-pixel place, so a counter's glyphs keep their cells): the reference is the
+// Realtime render of the same text moved by that snap (every character's offset, which moves no
+// layer, so nothing is resampled); the difference against Realtime's own place is printed.
 
 #include "../render/TitleRenderTestSupport.h"
 #include "../support/TitleTestAssets.h"
@@ -134,6 +137,27 @@ namespace {
             return render(renderer, request);
         }
 
+        // the Realtime render of `text` placed where Glyph Atlas snapped it (`size` the layer's)
+        Pixels realtimeAt(const std::shared_ptr<const TitleArtDoc>& doc, const std::string& text, const TitleGlyphAtlas& atlas, double size,
+                          std::vector<FieldOverride> extra = {}) {
+            const double snapX = atlas.stats().snapX, snapY = atlas.stats().snapY;
+            EXPECT_LE(std::abs(snapX), 0.5);
+            EXPECT_LE(std::abs(snapY), 0.5);
+            std::vector<FieldOverride> overrides = textOverride(text);
+            for (size_t i = 0; i < text.size(); i++) {
+                overrides.push_back(FieldOverride{TEXT_LAYER, "chars." + std::to_string(i) + ".offset",
+                                                  Json::array({snapX / size * 100.0, -snapY / size * 100.0})});
+            }
+            for (FieldOverride& o : extra) overrides.push_back(std::move(o));
+            return realtime(doc, overrides);
+        }
+
+        // the difference against Realtime's own (unsnapped) place, for the record
+        void printUnsnapped(const Pixels& glyph, const std::shared_ptr<const TitleArtDoc>& doc, std::vector<FieldOverride> overrides, const char* what) {
+            const Difference d = compare(glyph, realtime(doc, std::move(overrides)));
+            std::printf("[glyph atlas] %s against Realtime's own place: mean %.3f max %.1f over8 %.4f\n", what, d.mean, d.max, d.overFraction);
+        }
+
         // a Glyph Atlas live of `doc` showing `text`
         std::unique_ptr<TitleArtLive> glyphLive(const std::shared_ptr<const TitleArtDoc>& doc) {
             auto live = std::make_unique<TitleArtLive>("assets/score.titleart", TitleArtRenderMode::GLYPH_ATLAS, doc, 1);
@@ -181,7 +205,8 @@ TEST_F(TitleGlyphAtlasGpu, CounterMatchesRealtimeAndAChangeComposesOnly) {
     const TitleGlyphAtlas& atlas = *live->glyphAtlas();
     EXPECT_GE(atlas.stats().cellRenders, 8u) << "1 to 7 and the comma";
     EXPECT_LE(atlas.stats().cellRenders, 9u) << "one cell per cluster and sub-pixel phase: the second comma at most one more";
-    expectWithin(frontPixels(*live), realtime(doc, textOverride("1,234,567")), "1,234,567");
+    expectWithin(frontPixels(*live), realtimeAt(doc, "1,234,567", atlas, 110), "1,234,567");
+    printUnsnapped(frontPixels(*live), doc, textOverride("1,234,567"), "1,234,567");
 
     // the next value: one new glyph, then a compose
     const uint64_t cellsBefore = atlas.stats().cellRenders;
@@ -189,7 +214,7 @@ TEST_F(TitleGlyphAtlasGpu, CounterMatchesRealtimeAndAChangeComposesOnly) {
     const int frames = runFrames(*live, factory());
     EXPECT_EQ(atlas.stats().cellRenders, cellsBefore + 1) << "only the 8 renders";
     EXPECT_LE(frames, 2);
-    expectWithin(frontPixels(*live), realtime(doc, textOverride("1,234,568")), "1,234,568");
+    expectWithin(frontPixels(*live), realtimeAt(doc, "1,234,568", atlas, 110), "1,234,568");
     const uint64_t cellsAfter = atlas.stats().cellRenders;
 
     // every glyph cached (the first value again, not kept as an image): the compose alone
@@ -202,18 +227,18 @@ TEST_F(TitleGlyphAtlasGpu, CounterMatchesRealtimeAndAChangeComposesOnly) {
     EXPECT_EQ(atlas.stats().cellRenders, cellsAfter) << "no cell renders";
     EXPECT_LE(atlas.stats().composePasses, 4u + 2u * (uint64_t)atlas.pageCount())
         << "clear, back plate, a cell pass per page run (back cells, then front cells), front plate, output";
-    expectWithin(frontPixels(*live), realtime(doc, textOverride("1,234,567")), "1,234,567 again");
+    expectWithin(frontPixels(*live), realtimeAt(doc, "1,234,567", atlas, 110), "1,234,567 again");
 }
 
 TEST_F(TitleGlyphAtlasGpu, RimsStayBehindEveryFace) {
     // tracking pulls the glyphs together: each rim reaches under the next glyph's face
     auto doc = counterDoc(110, -200, {{"style", {{"face", solidFace("#ffd040")}, {"rims", Json::array({rimOf("00000101", 16, "#802000")})}}}},
                           false);
-    const Pixels merged = realtime(doc, textOverride("88888"));
     auto live = glyphLive(doc);
     live->setState(state(), stateHash("88888"), textOverride("88888"));
     runFrames(*live, factory());
     ASSERT_TRUE(live->front().valid()) << live->status().error;
+    const Pixels merged = realtimeAt(doc, "88888", *live->glyphAtlas(), 110);
     expectWithin(frontPixels(*live), merged, "88888 back cells first");
 
     // red control: rim and face of each glyph together, in string order
@@ -267,9 +292,8 @@ TEST_F(TitleGlyphAtlasGpu, WarpIsSkippedAndFallbacksRenderAsRealtime) {
     runFrames(*live, factory());
     ASSERT_TRUE(live->front().valid()) << live->status().error;
     EXPECT_EQ(live->status().glyphUnsafe, std::vector<std::string>{"Warp"});
-    std::vector<FieldOverride> flat = textOverride("1,234");
-    flat.push_back(FieldOverride{TEXT_LAYER, "warp.style", Json("none")});
-    expectWithin(frontPixels(*live), realtime(warped, flat), "warp skipped");
+    expectWithin(frontPixels(*live), realtimeAt(warped, "1,234", *live->glyphAtlas(), 110, {FieldOverride{TEXT_LAYER, "warp.style", Json("none")}}),
+                 "warp skipped");
 
     // R30: a plan that falls back (3D text) renders as Realtime: no atlas
     auto doc = counterDoc(110);

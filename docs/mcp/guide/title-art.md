@@ -119,9 +119,11 @@ prefab variant may override one alone), the Live Effects (`sweepEnabled`, `sweep
 - **Realtime**: re-renders when its text or a parameter changes, spread over frames within the
   frame budget (2 ms mobile and web, 4 ms desktop, 8 ms in Edit mode; per S56 platform group);
   the old image stays until the new one is ready. Builds add the `titleart` module.
-- **Glyph Atlas**: for text that changes every frame (counters). Effects that read neighbours
-  (warp, distort, hull plates, masks) do not apply per glyph: `check_title {checks:
-  ["glyph_atlas"]}` lists them with fix ops; 3D text falls back to Realtime.
+- **Glyph Atlas**: for text that changes every frame (counters). Each glyph renders once with the
+  look into atlas pages (`get_title`'s `glyph_atlas.pages`); a change then costs a compose of the
+  plates and cells, no render. Effects that read neighbours (warp, distort, hull plates, masks)
+  do not apply per glyph: `check_title {checks: ["glyph_atlas"]}` lists them with fix ops; 3D
+  text, or no text layer exposed as `text`, falls back to Realtime.
 - Live Effects (any mode, one draw, no extra pass): Sweep (a band at `sweepPosition` 0..1, 0 and
   1 off the frame; key it in a clip), Glow Pulse (needs a glow output), Tint, Glints (stars at the
   bake's highlight anchors). Nothing reads engine time: `--fixed-fps` runs are identical.

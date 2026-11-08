@@ -619,6 +619,18 @@ namespace {
             TitleTextLayout& full = atlas->layout(0, assets);
             const LaidOutText& laid = full.layout(*layer, layerOverrides);
             TitleTextLayout& single = atlas->layout(1, assets);
+            // the string snaps to the pixel grid (its first pen to a whole pixel): S80 centres a
+            // text by its ink, so every value moves the string by a fraction of a pixel; snapped,
+            // a glyph keeps its phase on a fixed advance grid (a counter's tabular figures) and its
+            // cell serves every value. The string sits under half a pixel from Realtime's place.
+            double snapX = 0.0, snapY = 0.0;
+            if (!laid.clusters.empty()){
+                const TitleVec2 pen = toOutput(laid.clusters.front().pen);
+                snapX = std::round(pen.x) - pen.x;
+                snapY = std::round(pen.y) - pen.y;
+            }
+            atlas->mutableStats().snapX = snapX;
+            atlas->mutableStats().snapY = snapY;
             std::set<std::string> queued;
             for (const LaidOutCluster& cluster : laid.clusters){
                 if (cluster.glyphs.empty()) continue;
@@ -627,7 +639,8 @@ namespace {
                 if (!ink) continue;
                 const std::string text = utf8Of(cluster.codepoints);
                 const std::string base = hex(styleHash) + "|" + text;
-                const TitleVec2 at = toOutput(cluster.glyphs.front().position);
+                const TitleVec2 exact = toOutput(cluster.glyphs.front().position);
+                const TitleVec2 at{exact.x + snapX, exact.y + snapY};
                 // the single glyph's position: the same layer alone with this cluster as its text
                 double ax = 0.0, ay = 0.0;
                 if (!atlas->anchor(base, ax, ay)){
