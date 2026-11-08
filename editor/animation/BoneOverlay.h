@@ -12,6 +12,8 @@
 //   Animator that never ran draws its Transforms, which are its rest, and models with no overlay on
 //   never come here.
 // - Thread-safety: main thread. Editor only.
+// - Defined in render/SceneRender3D.cpp, which draws it and reads Transforms already: a unit of its own
+//   would rebuild on every Transform.h edit (tools/check_fanout.py).
 
 #pragma once
 

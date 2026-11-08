@@ -3153,4 +3153,42 @@ bool checkClipText(const std::string& text, std::vector<std::string>& warnings, 
     return true;
 }
 
+// A GameObject's hierarchy as a rig: its rest is what the Transforms hold now
+bool rigFromEntity(SceneProject* sceneProject, Entity root, anim::ClipRig& rig, std::string& error) {
+    Scene* scene = sceneProject->scene;
+    std::map<Entity, int> index;
+    std::vector<Entity> members;
+    for (Entity entity : sceneProject->entities) {
+        // on or under the root
+        for (const Transform* at = scene->findComponent<Transform>(entity); at != nullptr;
+             at = at->parent == NULL_ENTITY ? nullptr : scene->findComponent<Transform>(at->parent)) {
+            if (entity != root && at->parent != root) continue;
+            index[entity] = (int)members.size();
+            members.push_back(entity);
+            break;
+        }
+    }
+    if (index.find(root) == index.end()) {
+        error = "the GameObject has no Transform";
+        return false;
+    }
+    std::vector<anim::ModelNodeInfo> nodes;
+    for (Entity entity : members) {
+        const Transform* transform = scene->findComponent<Transform>(entity);
+        anim::ModelNodeInfo node;
+        node.name = scene->getEntityName(entity);
+        if (entity != root) {
+            const auto parent = index.find(transform->parent);
+            node.parent = parent == index.end() ? -1 : parent->second;
+        }
+        node.addressable = ClipConverters::clipPath(scene, root, entity, node.path);
+        node.position = transform->position;
+        node.rotation = transform->rotation;
+        node.scale = transform->scale;
+        nodes.push_back(std::move(node));
+    }
+    rig.assign(scene->getEntityName(root), nodes);
+    return true;
+}
+
 } // namespace jasperengine::editor::mcp::clip_tools

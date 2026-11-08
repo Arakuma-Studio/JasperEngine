@@ -6500,7 +6500,7 @@ void registerWorldTools(McpRegistry& registry) {
         "Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from its player's root; "
         "create {from?, humanoid {model?}}; one project undo step. No clip: an entity "
         "Animation under target (tweens, actions; a scene step). tracks: channel + keys {time, value|points, ease}; "
-        "property: component + property; humanoid: bone. audio: sound cues (no clip: audio actions).",
+        "audio: sound cues (no clip: audio actions).",
         object({
             {"scene", sceneRef()},
             {"clip", assetPath("")},

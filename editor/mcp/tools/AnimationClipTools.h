@@ -23,6 +23,9 @@ namespace jasperengine::editor {
     class Project;
     struct SceneProject;
 }
+namespace jasperengine::anim {
+    struct ClipRig;
+}
 
 namespace jasperengine::editor::mcp::clip_tools {
 
@@ -55,6 +58,11 @@ namespace jasperengine::editor::mcp::clip_tools {
     // get_asset_info of a model: each item of `animations` (by its "name") gains keys and
     // runtime_bytes, of what a player of that clip loads; both null when the clip cannot be built
     void addModelClipStats(const std::filesystem::path& model, Json& animations);
+
+    // A GameObject's hierarchy as a rig for check_animation and optimize_animation: its rest is what
+    // the Transforms hold now. Here, beside the other Transform readers, so the clip quality tools
+    // do not include Transform.h (tools/check_fanout.py)
+    bool rigFromEntity(SceneProject* sceneProject, Entity root, anim::ClipRig& rig, std::string& error);
 
     // get_asset_info's `avatar` of a model (anim-retarget 10): {animation_type, humanoid, mapped,
     // missing, extra_mapped, twist, human_scale, notes}; null for a model without bones

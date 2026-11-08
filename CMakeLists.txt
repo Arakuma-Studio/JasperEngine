@@ -1046,7 +1046,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/animation/ClipConverters.cpp
     ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
     ${EDITOR_DIR}/animation/ActionPreviewSnapshot.cpp
-    ${EDITOR_DIR}/animation/BoneOverlay.cpp
     ${EDITOR_DIR}/animation/ClipOptimize.cpp
     ${EDITOR_DIR}/animation/ClipReduction.cpp
     ${EDITOR_DIR}/animation/ClipReport.cpp

@@ -13,6 +13,7 @@
 //
 // check_animation's checks are one table, kChecks. A check another stream ships flips its row and
 // adds its runner, with no schema change: the schema lists every check, argument and limit now.
+#include "AnimationClipTools.h"
 #include "McpTools.h"
 
 #include "W4Shared.h"
@@ -40,7 +41,6 @@
 #include "command/type/ClipSceneActions.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/AnimatorComponent.h"
-#include "component/Transform.h"
 #include "io/FileData.h"
 #include "pool/AnimationClipPool.h"
 #include "util/FileUtils.h"
@@ -114,44 +114,6 @@ bool expandModel(const NamedClip& model, std::vector<NamedClip>& out, std::strin
     for (const anim::ModelClipInfo& clip : clips) {
         out.push_back({model.display + "#" + clip.name, anim::formatSubClipReference(model.reference, clip.name), false});
     }
-    return true;
-}
-
-// A GameObject's hierarchy as a rig: its rest is what the Transforms hold now
-bool rigFromEntity(SceneProject* sceneProject, Entity root, anim::ClipRig& rig, std::string& error) {
-    Scene* scene = sceneProject->scene;
-    std::map<Entity, int> index;
-    std::vector<Entity> members;
-    for (Entity entity : sceneProject->entities) {
-        // on or under the root
-        for (const Transform* at = scene->findComponent<Transform>(entity); at != nullptr;
-             at = at->parent == NULL_ENTITY ? nullptr : scene->findComponent<Transform>(at->parent)) {
-            if (entity != root && at->parent != root) continue;
-            index[entity] = (int)members.size();
-            members.push_back(entity);
-            break;
-        }
-    }
-    if (index.find(root) == index.end()) {
-        error = "the GameObject has no Transform";
-        return false;
-    }
-    std::vector<anim::ModelNodeInfo> nodes;
-    for (Entity entity : members) {
-        const Transform* transform = scene->findComponent<Transform>(entity);
-        anim::ModelNodeInfo node;
-        node.name = scene->getEntityName(entity);
-        if (entity != root) {
-            const auto parent = index.find(transform->parent);
-            node.parent = parent == index.end() ? -1 : parent->second;
-        }
-        node.addressable = ClipConverters::clipPath(scene, root, entity, node.path);
-        node.position = transform->position;
-        node.rotation = transform->rotation;
-        node.scale = transform->scale;
-        nodes.push_back(std::move(node));
-    }
-    rig.assign(scene->getEntityName(root), nodes);
     return true;
 }
 
@@ -588,7 +550,7 @@ void checkAnimationTool(const CallPtr& call) {
             return;
         }
         auto rig = std::make_shared<anim::ClipRig>();
-        if (!rigFromEntity(sceneProject, entity, *rig, error)) {
+        if (!clip_tools::rigFromEntity(sceneProject, entity, *rig, error)) {
             call->fail("entity: " + error);
             return;
         }
@@ -1033,7 +995,7 @@ void optimizeAnimationTool(const CallPtr& call) {
             return;
         }
         auto rig = std::make_shared<anim::ClipRig>();
-        if (!rigFromEntity(sceneProject, entity, *rig, error)) {
+        if (!clip_tools::rigFromEntity(sceneProject, entity, *rig, error)) {
             call->fail("on: " + error);
             return;
         }
