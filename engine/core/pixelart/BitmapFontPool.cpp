@@ -23,13 +23,16 @@ namespace jasperengine::pixelart {
             return pool;
         }
 
+        // a path as the file system sees it: engine paths (relative to the assets, asset://) and
+        // the watcher's absolute paths compare equal
         std::string normalized(const std::string& path){
-            return std::filesystem::path(path).lexically_normal().generic_string();
+            return std::filesystem::path(FileData::getSystemPath(path)).lexically_normal().generic_string();
         }
 
         bool reads(const BitmapFont& font, const std::string& wanted){
+            const std::string target = normalized(wanted);
             for (const std::string& dependency : font.getDependencies()){
-                if (dependency == wanted || normalized(FileData::getSystemPath(dependency)) == normalized(wanted) || normalized(dependency) == normalized(wanted))
+                if (dependency == wanted || normalized(dependency) == target)
                     return true;
             }
             return false;
@@ -106,7 +109,7 @@ namespace jasperengine::pixelart {
         PoolState& pool = state();
         std::vector<std::string> keys;
         for (auto it = pool.fonts.begin(); it != pool.fonts.end();){
-            if (reads(*it->second, file) || it->first == file){
+            if (reads(*it->second, file) || it->first == file || normalized(it->first) == normalized(file)){
                 keys.push_back(it->first);
                 it = pool.fonts.erase(it);
             }else{
@@ -129,12 +132,6 @@ namespace jasperengine::pixelart {
         if (!keys.empty())
             pool.revision++;
         return keys;
-    }
-
-    bool BitmapFontPool::isUsingFile(const std::string& file){
-        for (const auto& entry : state().fonts)
-            if (reads(*entry.second, file)) return true;
-        return false;
     }
 
     void BitmapFontPool::clear(){

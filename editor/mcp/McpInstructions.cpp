@@ -89,7 +89,7 @@ Getters are properties (go.position is a copy: assign it back; Engine.deltatime)
 string. No on_start, getComponent or setProperty. Static functions use a dot (GameObject.instantiate),
 methods a colon (go:setScale(2)). Never carry over Unity, Godot or Unreal API names: confirm them.
 
-## Unity names -> engine names
+## Unity names
 GameObject = entity (script class GameObject); Create Empty = type empty. Prefab = .prefab asset.
 Mesh Filter/Renderer = MeshComponent (box, sphere, plane...); Sprite Renderer = SpriteComponent;
 Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent (Box2D); a Collider is an

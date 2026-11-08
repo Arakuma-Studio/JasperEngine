@@ -1123,9 +1123,9 @@ void replyImage(const CallPtr& call, const fs::path& image, const std::string& l
 
 void viewAssetTool(const CallPtr& call) {
     const int maxSize = std::clamp(call->args().value("max_size", 512), 16, 2048);
-    // the built-in pixel font has no file (S51 R16)
+    // fonts are drawn by preview_font (S51 R26, §6.1: the core listing had no room)
     if (call->args().value("path", std::string()) == ::jasperengine::pixelart::kBuiltinPixelFont) {
-        replyFontView(call, ::jasperengine::pixelart::kBuiltinPixelFont, maxSize);
+        call->fail(std::string(kFontViewHint));
         return;
     }
     fs::path file;
@@ -1133,7 +1133,7 @@ void viewAssetTool(const CallPtr& call) {
     Project* project = call->ctx().project();
     const std::string rel = projectRelative(project, file);
     if (isFontViewPath(rel)) {
-        replyFontView(call, fontEnginePath(project, file), maxSize);
+        call->fail(rel + " is a font: " + kFontViewHint);
         return;
     }
     if (Util::isImageFile(rel) && extensionOf(file) != ".svg") {
@@ -4163,11 +4163,10 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Get Asset Info";
         tool.description =
             "One file's details by type: image size/channels, Sprite Mode, packed_in (synthesized PNG: recipe, changed sources, "
-            "regenerate arguments); model meshes, materials, animations, nodes (FBX: of its glTF conversion, fbx_import.state); "
+            "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "audio format/duration; .material fields, "
-            ".anim settings, tracks, events, users; .vat clips, staleness, users; .aseprite layers, tags, slices, outputs; "
-            "font metrics; "
-            "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code edits.";
+            ".anim clip settings, tracks, events, users; .vat clips, staleness, users; .aseprite layers, tags, slices, outputs; "
+            "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -4180,13 +4179,11 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "view_asset";
         tool.title = "View Asset";
         tool.description =
-            "An image asset as a PNG image; models, materials, prefabs as their Project window thumbnail (may take "
-            "seconds); .aseprite frames as a sheet; fonts: glyphs or `text`. SVGs are not rasterized.";
+            "See an image asset as PNG image content; models, materials and prefabs give their Project window "
+            "thumbnail (may take seconds); .aseprite frames as a sheet. SVGs are not rasterized.";
         tool.inputSchema = object({
             {"path", assetPath("")},
-            {"max_size", withDefault(integer(""), 512)},
-            {"text", string("")},
-            {"scale", integer("")}
+            {"max_size", withDefault(integer("Longest side, px.", 16, 2048), 512)}
         }, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -4217,9 +4214,9 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Write File";
         tool.description =
             "Create or change a project text file (undo scope project; for clients without file access) and "
-            "validate it: Lua syntax, forks using it recompiled (errors with lines), materials, .anim, .vat, .bitmapfont parsed. content = "
+            "validate it: Lua syntax, forks using it recompiled (errors with lines), materials, .anim and .vat parsed. content = "
             "whole file, or edits [{old_text, new_text}] (old_text must match once unless replace_all). Refuses "
-            "project.yaml, .scene, .prefab and files with unsaved code edits.";
+            "project.yaml, .scene, .prefab and files with unsaved code editor edits.";
         tool.inputSchema = object({
             {"path", assetPath("Parent folders are created.")},
             {"content", string("")},

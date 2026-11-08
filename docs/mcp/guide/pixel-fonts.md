@@ -61,12 +61,12 @@ Unknown keys are kept.
 1. Write the file with `write_file`. Its result has the import report (`font`: glyphs, native
    size, baseline, missing ASCII, `partial_alpha_share`, warnings), or typed `errors` with the
    `field` to fix. A bad file is still written.
-2. Look at it with `view_asset {path, text: "HP 99\nSCORE"}` (white on a dark checker, at the
-   largest whole scale that fits `max_size`, or `scale`). Without `text` it shows every glyph,
-   labelled. `font.missing` lists characters it lacks.
+2. Look at it with `preview_font {path, text: "HP 99\nSCORE"}` (tool group `pixel_art`; white on a
+   dark checker, at the largest whole scale that fits `max_size`, or `scale`). Without `text` it
+   shows every glyph, labelled. `font.missing` lists characters it lacks.
 3. Read the metrics with `get_asset_info` (`font`, `kerning_pairs`, `overrides`, `pixel_report`).
 
-For a vector font, `view_asset` shows smooth text and `get_asset_info` tells whether its outlines
+For a vector font, `preview_font` shows smooth text and `get_asset_info` tells whether its outlines
 sit on a pixel grid (`pixel_grid_detected`). If they do, wrap it in a `.bitmapfont` with source
 `truetype`.
 

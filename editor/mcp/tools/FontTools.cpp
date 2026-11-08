@@ -4,6 +4,10 @@
 #include "FontTools.h"
 
 #include "Project.h"
+#include "mcp/McpContext.h"
+#include "mcp/McpRefs.h"
+#include "mcp/McpRegistry.h"
+#include "mcp/McpSchema.h"
 #include "pixelart/BitmapFont.h"
 #include "pixelart/BitmapFontParsers.h"
 #include "pixelart/BitmapText.h"
@@ -108,6 +112,22 @@ namespace {
         return k;
     }
 
+    // false (and the failure naming the fix) when an image of `width` x `height` at scale k is
+    // larger than max_size: an explicit scale names the largest that fits
+    bool fontFits(const CallPtr& call, int width, int height, int k, int largestFitting, bool explicitScale, int maxSize){
+        if (width <= maxSize && height <= maxSize)
+            return true;
+        if (explicitScale && largestFitting > 0){
+            call->fail("At scale " + std::to_string(k) + " the preview is " + std::to_string(width) + "x" + std::to_string(height) +
+                       " px, over max_size " + std::to_string(maxSize) + ": the largest scale that fits is " + std::to_string(largestFitting) +
+                       " (or raise max_size, up to 2048).");
+        }else{
+            call->fail("The preview is " + std::to_string(width) + "x" + std::to_string(height) + " px at scale 1, over max_size " +
+                       std::to_string(maxSize) + ": raise max_size (up to 2048) or shorten the text.");
+        }
+        return false;
+    }
+
     // a dark checker, so white and transparent texels both show
     void fontBackdrop(fontpx::RasterImage& image){
         image.checker(fontpx::rgbaColor(30, 30, 34), fontpx::rgbaColor(44, 44, 50), 8);
@@ -202,9 +222,18 @@ void replyFontView(const CallPtr& call, const std::string& enginePath, int maxSi
             return;
         }
         const std::string sample = hasText ? text : std::string("The quick brown fox\n0123456789");
-        const int k = scale > 0 ? scale : 1;
+        int k = scale > 0 ? scale : 1;
         int w = 0, h = 0;
         fontRasterVector(*face, sample, 16.0f * (float)k, nullptr, w, h, 0, 0);
+        if (w + 2 * kFontPad > maxSize || h + 2 * kFontPad > maxSize){
+            int fitting = k - 1, fw = 0, fh = 0;
+            for (; fitting >= 1; fitting--){
+                fontRasterVector(*face, sample, 16.0f * (float)fitting, nullptr, fw, fh, 0, 0);
+                if (fw + 2 * kFontPad <= maxSize && fh + 2 * kFontPad <= maxSize) break;
+            }
+            fontFits(call, w + 2 * kFontPad, h + 2 * kFontPad, k, fitting, scale > 0, maxSize);
+            return;
+        }
         fontpx::RasterImage image(w + 2 * kFontPad, h + 2 * kFontPad);
         fontBackdrop(image);
         fontRasterVector(*face, sample, 16.0f * (float)k, &image, w, h, kFontPad, kFontPad);
@@ -231,7 +260,11 @@ void replyFontView(const CallPtr& call, const std::string& enginePath, int maxSi
     if (hasText){
         int w = 0, h = 0;
         fontpx::BitmapText::measure(*font, text, w, h);
-        const int k = scale > 0 ? scale : fontFittingScale(std::max(w, 1), std::max(h, 1), maxSize);
+        const int fitting = fontFittingScale(std::max(w, 1), std::max(h, 1), maxSize);
+        const int k = scale > 0 ? scale : fitting;
+        const bool oneFits = w + 2 * kFontPad <= maxSize && h + 2 * kFontPad <= maxSize;
+        if (!fontFits(call, w * k + 2 * kFontPad, h * k + 2 * kFontPad, k, oneFits ? fitting : 0, scale > 0, maxSize))
+            return;
         fontpx::RasterImage image(w * k + 2 * kFontPad, h * k + 2 * kFontPad);
         fontBackdrop(image);
         fontpx::rasterBitmapText(*font, text, k, kFontInk, image, kFontPad, kFontPad);
@@ -258,17 +291,29 @@ void replyFontView(const CallPtr& call, const std::string& enginePath, int maxSi
         const fontpx::BitmapGlyph* g = font->glyph(c);
         glyphW = std::max(glyphW, std::max((int)g->advance, g->offsetX + (int)g->w));
     }
-    const int cols = 16;
-    const int rows = (int)((shown.size() + cols - 1) / cols);
     const int labelW = 5 * (labels->getSpaceWidth() + 3), labelH = labels->getLineHeight() + 2;
     auto cellOf = [&](int k){ return std::make_pair(std::max(glyphW * k, labelW) + 4, font->getLineHeight() * k + labelH + 2); };
+    // up to 16 columns, as many cells as max_size holds at scale k
+    auto colsFor = [&](int k){ return std::min(16, (maxSize - 2 * kFontPad) / cellOf(k).first); };
+    auto capacity = [&](int k){ return std::max(0, colsFor(k)) * std::max(0, (maxSize - 2 * kFontPad) / cellOf(k).second); };
+    int largest = 16;
+    while (largest > 0 && capacity(largest) < 1) largest--;
     int k = scale;
     if (k == 0){
         k = 16;
-        while (k > 1 && (cellOf(k).first * cols + 2 * kFontPad > maxSize || cellOf(k).second * rows + 2 * kFontPad > maxSize)) k--;
+        while (k > 1 && capacity(k) < (int)shown.size()) k--;
     }
+    if (capacity(k) < 1){
+        const auto [cw, ch] = cellOf(k);
+        fontFits(call, cw + 2 * kFontPad, ch + 2 * kFontPad, k, largest, scale > 0, maxSize);
+        return;
+    }
+    // what does not fit is left out (the message says how many show)
+    if ((int)shown.size() > capacity(k)) shown.resize((size_t)capacity(k));
+    const int cols = std::min(colsFor(k), std::max((int)shown.size(), 1));
+    const int rows = (int)((shown.size() + (size_t)cols - 1) / (size_t)cols);
     const auto [cellW, cellH] = cellOf(k);
-    fontpx::RasterImage image(cellW * std::min(cols, (int)shown.size()) + 2 * kFontPad, cellH * std::max(rows, 1) + 2 * kFontPad);
+    fontpx::RasterImage image(cellW * cols + 2 * kFontPad, cellH * std::max(rows, 1) + 2 * kFontPad);
     fontBackdrop(image);
     for (size_t i = 0; i < shown.size(); i++){
         const int x = kFontPad + (int)(i % cols) * cellW + 2;
@@ -363,6 +408,65 @@ Json fontWriteReport(Project* project, const fs::path& file, const std::string& 
     if (!report.warnings.empty())
         text += " " + fontErrorsText(report.warnings);
     return out;
+}
+
+namespace {
+
+    void previewFontTool(const CallPtr& call){
+        const Json& args = call->args();
+        int maxSize = 512;
+        if (args.contains("max_size")){
+            if (!args["max_size"].is_number_integer() || args["max_size"].get<int>() < 16 || args["max_size"].get<int>() > 2048){
+                call->fail("max_size is the longest side in pixels, 16 to 2048.");
+                return;
+            }
+            maxSize = args["max_size"].get<int>();
+        }
+        const std::string path = args.value("path", std::string());
+        if (path == fontpx::kBuiltinPixelFont){
+            replyFontView(call, fontpx::kBuiltinPixelFont, maxSize);
+            return;
+        }
+        if (path.empty()){
+            call->fail("path is required: a project-relative font (.bitmapfont, .fnt, .ttf, .otf) or builtin:pixel.");
+            return;
+        }
+        Project* project = call->ctx().project();
+        fs::path file;
+        std::string error;
+        if (!McpRefs::resolveProjectPath(project, path, file, error, true)){
+            call->fail(error);
+            return;
+        }
+        file = file.lexically_normal();
+        if (!isFontViewPath(file.generic_string())){
+            call->fail(path + " is not a font (.bitmapfont, .fnt, .ttf, .otf, builtin:pixel); view_asset shows images.");
+            return;
+        }
+        replyFontView(call, fontEnginePath(project, file), maxSize);
+    }
+
+}
+
+void registerPixelFontTools(McpRegistry& registry){
+    using namespace schema;
+    ToolDef tool;
+    tool.name = "preview_font";
+    tool.title = "Preview Font";
+    tool.description = "Draw a font as PNG: a bitmap font (.bitmapfont, .fnt, builtin:pixel) as its labelled glyph grid, or `text` at a "
+                       "whole `scale` (default: the largest that fits max_size) with the missing characters listed; a TTF/OTF smooth. "
+                       "Metrics, kerning, pixel report: get_asset_info.";
+    tool.inputSchema = object({
+        {"path", assetPath("")},
+        {"text", string("At most 256 characters, \\n for lines.")},
+        {"scale", integer("Font pixels per side.", 1, 16)},
+        {"max_size", withDefault(integer("Longest side, px.", 16, 2048), 512)},
+    }, {"path"});
+    tool.annotations.readOnly = true;
+    tool.annotations.idempotent = true;
+    tool.group = "pixel_art";
+    tool.handler = previewFontTool;
+    registry.addTool(std::move(tool));
 }
 
 }

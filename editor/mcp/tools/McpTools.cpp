@@ -3,6 +3,7 @@
 
 // The registry every MCP front-end shares: the server at start, and the CLI offline
 #include "McpTools.h"
+#include "FontTools.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpRegistry.h"
@@ -76,6 +77,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerNavigationTools, "Navigation: navmeshes, agents, crowds and grids", "navigation"},   // S19
     {registerVcsTools, "Git/SVN status, diffs, commits, locks", "vcs"},   // S29
     {registerSpriteTools, "Sprites: Aseprite import, atlases, drawing", "sprites"},   // S44 (S45, S47)
+    {registerPixelFontTools, "Pixel art: font previews", "pixel_art"},   // S51
 };
 
 // JASPER_MCP_SELFTEST_GROUP: one tool in the test-only group "selftest", for the tests of

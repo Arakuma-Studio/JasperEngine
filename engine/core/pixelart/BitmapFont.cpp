@@ -1006,7 +1006,8 @@ namespace jasperengine::pixelart {
             return nullptr;
         }
         std::vector<DecodedPage> pages(file.pages.size());
-        std::vector<std::string> dependencies;
+        // the .fnt itself, then its pages: an edit of either reloads the font (R33)
+        std::vector<std::string> dependencies = {path};
         for (size_t i = 0; i < file.pages.size(); i++){
             if (file.pages[i].empty())
                 continue;

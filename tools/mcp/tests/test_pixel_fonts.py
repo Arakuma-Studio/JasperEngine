@@ -267,15 +267,17 @@ async def test_text_effect(ed: Editor):
         await label(ed, {"text": {"outlineWidth": 0, "fontSize": 9}})
 
 
-async def test_view_asset(ed: Editor):
+async def test_preview_font(ed: Editor):
+    """AC16 (R26, deviation 14: preview_font in pixel_art): the glyph grid, a string at a scale with
+    the missing characters, a TTF smooth, the size kept within max_size; view_asset names it"""
     await setup(ed)
     (ed.project / "assets/fonts/hud.bitmapfont").write_text(json.dumps({
         "format": "jasperengine.bitmapfont", "version": 1, "source": {"type": "grid", "image": "grid@6x9.png"}}))
-    grid = await ed.call_raw("view_asset", {"path": "assets/fonts/hud.bitmapfont"})
+    grid = await ed.call_raw("preview_font", {"path": "assets/fonts/hud.bitmapfont"})
     ed.check(not grid.is_error and grid.images, grid.text)
     ed.check_eq(grid.structured["font"]["kind"], "bitmap")
     ed.check_eq(grid.structured["font"]["glyphs"], 95)
-    text = await ed.call_raw("view_asset", {"path": "assets/fonts/hud.bitmapfont", "text": "ABé", "scale": 2})
+    text = await ed.call_raw("preview_font", {"path": "assets/fonts/hud.bitmapfont", "text": "ABé", "scale": 2})
     ed.check(not text.is_error and text.images, text.text)
     font = text.structured["font"]
     ed.check_eq(font["scale"], 2)
@@ -283,13 +285,28 @@ async def test_view_asset(ed: Editor):
     w, h, rows = pixels(text.images[0][0])
     ed.check((w, h) == (font["width"], font["height"]), f"the image is the reported size: {w}x{h}")
     ed.check(any(p == WHITE for row in rows for p in row), "white text")
-    builtin = await ed.call("view_asset", path="builtin:pixel", text="Hello")
+    builtin = await ed.call("preview_font", path="builtin:pixel", text="Hello")
     ed.check_eq(builtin["font"]["native_size"], 9)
-    vector = await ed.call_raw("view_asset", {"path": "assets/fonts/pixel8.ttf", "text": "Smooth"})
+    vector = await ed.call_raw("preview_font", {"path": "assets/fonts/pixel8.ttf", "text": "Smooth"})
     ed.check(not vector.is_error and vector.images, vector.text)
     ed.check_eq(vector.structured["font"]["kind"], "vector")
-    long = await ed.call_raw("view_asset", {"path": "assets/fonts/hud.bitmapfont", "text": "x" * 300})
+    long = await ed.call_raw("preview_font", {"path": "assets/fonts/hud.bitmapfont", "text": "x" * 300})
     ed.check(long.is_error and "256" in long.text, long.text)
+    # an explicit scale never makes an image past max_size: the error names the largest that fits
+    huge = await ed.call_raw("preview_font", {"path": "assets/fonts/hud.bitmapfont", "text": "x" * 256, "scale": 16})
+    ed.check(huge.is_error and "max_size" in huge.text and not huge.images, huge.text)
+    fitting = await ed.call_raw("preview_font", {"path": "assets/fonts/hud.bitmapfont", "text": "HP 99", "scale": 16, "max_size": 256})
+    ed.check(fitting.is_error and "largest scale that fits is" in fitting.text, fitting.text)
+    largest = int(fitting.text.split("largest scale that fits is ")[1].split(" ")[0])
+    ok = await ed.call_raw("preview_font", {"path": "assets/fonts/hud.bitmapfont", "text": "HP 99", "scale": largest, "max_size": 256})
+    ed.check(not ok.is_error and max(ok.structured["font"]["width"], ok.structured["font"]["height"]) <= 256, ok.text)
+    big_grid = await ed.call_raw("preview_font", {"path": "assets/fonts/hud.bitmapfont", "scale": 16})
+    ed.check(not big_grid.is_error and "shown" in big_grid.text, big_grid.text)
+    gw, gh, _ = pixels(big_grid.images[0][0])
+    ed.check(max(gw, gh) <= 512, f"the grid at x16 keeps to max_size: {gw}x{gh}")
+    # view_asset sends fonts to preview_font
+    viewed = await ed.call_raw("view_asset", {"path": "assets/fonts/hud.bitmapfont"})
+    ed.check(viewed.is_error and "preview_font" in viewed.text, viewed.text)
 
 
 async def test_asset_info(ed: Editor):
@@ -388,6 +405,23 @@ async def test_hot_reload(ed: Editor):
         ed.check(ink_box(blank) is None, "the edited sheet reached the Text")
     finally:
         sheet.write_bytes(original)
+        await ed.call("sync_files", full=False)
+    # a .fnt used directly (AC23): 'A' advancing 2 font pixels more reaches the Text
+    fnt = ed.project / "assets/fonts/bm.fnt"
+    fnt_original = fnt.read_text()
+    try:
+        await label(ed, {"text": {"font": "assets/fonts/bm.fnt", "fontSize": 18, "text": "AAAA"}})
+        _, _, before = await shot(ed)
+        box = ink_box(before)
+        fnt.write_text(fnt_original.replace("char id=65 x=7 y=19 width=2 height=6 xoffset=1 yoffset=1 xadvance=4",
+                                            "char id=65 x=7 y=19 width=2 height=6 xoffset=1 yoffset=1 xadvance=6"))
+        await ed.call("sync_files", full=False)
+        await ed.call("wait", frames=3)
+        _, _, after = await shot(ed)
+        wider = ink_box(after)
+        ed.check(wider[2] - wider[0] == box[2] - box[0] + 3 * 2 * 2, f"the edited .fnt reached the Text: {box} -> {wider}")
+    finally:
+        fnt.write_text(fnt_original)
         await ed.call("sync_files", full=False)
         await label(ed, {"text": {"font": "builtin:pixel", "fontSize": 9, "text": "Hp 99!"}})
 

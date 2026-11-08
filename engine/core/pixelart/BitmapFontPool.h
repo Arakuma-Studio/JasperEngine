@@ -33,7 +33,6 @@ namespace jasperengine::pixelart {
         static uint32_t revision();
         // drops every entry that read `file` (engine path or absolute path); returns their keys
         static std::vector<std::string> invalidate(const std::string& file);
-        static bool isUsingFile(const std::string& file);
 
         static void clear();
         static void clearUnused();
