@@ -67,6 +67,22 @@
     #include "includes/normal_map.glsl"
 #endif
 
+// the 2D shadows, unless the variant leaves them out (SHADOWS_2D_OFF: ShaderVariantCompiler::compile,
+// a lit variant its light records leave over the bind limits; its 2D lights light it unshadowed)
+#if defined(USE_SHADOWS_2D) && !defined(SHADOWS_2D_OFF)
+    #define LIGHT2D_SHADOWS
+#endif
+
+#ifdef LIGHT_DATA_2D
+    // the records form of a lit shader (includes/lights.glsl): ambient and atlasInfo at the end of
+    // the lights' block, the 2D lights rows of u_lightRecords from lightDataBases.y (three texels
+    // each: position_range, color_intensity, falloff_shadow)
+    #define LIGHTS2D_AMBIENT objectLights.lights2DAmbient
+    #define LIGHTS2D_ATLAS_INFO objectLights.lights2DAtlasInfo
+    #define LIGHTS2D_POSITION_RANGE(i) lightRecordTexel(int(objectLights.lightDataBases.y + 0.5) + (i), 0)
+    #define LIGHTS2D_COLOR_INTENSITY(i) lightRecordTexel(int(objectLights.lightDataBases.y + 0.5) + (i), 1)
+    #define LIGHTS2D_FALLOFF_SHADOW(i) lightRecordTexel(int(objectLights.lightDataBases.y + 0.5) + (i), 2)
+#else
 uniform u_fs_lighting2d {
     vec4 position_range[MAX_LIGHTS_2D];  //position.xy, height.z, range.w
     vec4 color_intensity[MAX_LIGHTS_2D]; //color.rgb (linear) and intensity.w
@@ -74,8 +90,14 @@ uniform u_fs_lighting2d {
     vec4 ambient;                        //ambient2D.rgb (linear, pre-multiplied by intensity) and numLights2D.w
     vec4 atlasInfo;                      //1/atlasWidth.x, 1/MAX_LIGHTS_2D.y, atlasWidth.z
 } lighting2d;
+    #define LIGHTS2D_AMBIENT lighting2d.ambient
+    #define LIGHTS2D_ATLAS_INFO lighting2d.atlasInfo
+    #define LIGHTS2D_POSITION_RANGE(i) lighting2d.position_range[i]
+    #define LIGHTS2D_COLOR_INTENSITY(i) lighting2d.color_intensity[i]
+    #define LIGHTS2D_FALLOFF_SHADOW(i) lighting2d.falloff_shadow[i]
+#endif
 
-#ifdef USE_SHADOWS_2D
+#ifdef LIGHT2D_SHADOWS
     uniform texture2D u_shadow2DAtlas;
     uniform sampler u_shadow2DAtlas_smp;
 
@@ -126,13 +148,12 @@ vec3 getNormal2D(){
 #endif
 }
 
-#ifdef USE_SHADOWS_2D
-// Bound clamped on every backend, constant on HLSL: see shadows.glsl
-#ifdef IS_HLSL
-const int MAX_SHADOW2D_RADIUS = 2;  // 5 taps; MEDIUM and HIGH render as LOW here
-#else
+#ifdef LIGHT2D_SHADOWS
+// Bound clamped on every backend, as the 3D shadows' (includes/shadows.glsl): every lookup takes
+// explicit LOD 0 (the atlas has one level), since the per-light loop that calls this has
+// per-fragment exits, where implicit derivatives are undefined (an Intel GL hang, Doriax
+// 1251c3139's pattern), and no backend has to unroll the loop
 const int MAX_SHADOW2D_RADIUS = 6;  // 13 taps, Shadow2DQuality::HIGH
-#endif
 
 // 1D polar shadow map lookup: the row stores, per angle around the light, the
 // normalized distance (dist/range) of the nearest occluder. PCF along the row
@@ -143,30 +164,26 @@ const int MAX_SHADOW2D_RADIUS = 6;  // 13 taps, Shadow2DQuality::HIGH
 float shadow2DCalculation(float row, vec2 lightToFrag, float dist01, float softness, float bias){
     float theta = atan(lightToFrag.y, lightToFrag.x); // [-pi, pi]
     float u = theta * 0.15915494309189535 + 0.5; // theta / (2 pi)
-    float v = (row + 0.5) * lighting2d.atlasInfo.y;
+    float v = (row + 0.5) * LIGHTS2D_ATLAS_INFO.y;
     #ifndef IS_GLSL
         // rows are placed with sokol's bottom-left viewport convention, same as
         // the 3D shadow atlas (see getShadowAtlasUV)
         v = 1.0 - v;
     #endif
 
-    int radius = clamp(int(lighting2d.atlasInfo.w), 0, MAX_SHADOW2D_RADIUS);
+    int radius = clamp(int(LIGHTS2D_ATLAS_INFO.w), 0, MAX_SHADOW2D_RADIUS);
     if (radius <= 0){
-        float occ = decodeDepth(texture(sampler2D(u_shadow2DAtlas, u_shadow2DAtlas_smp), vec2(u, v)));
+        float occ = decodeDepth(textureLod(sampler2D(u_shadow2DAtlas, u_shadow2DAtlas_smp), vec2(u, v), 0.0));
         return (dist01 - bias <= occ) ? 1.0 : 0.0;
     }
 
-    float halfWidth = lighting2d.atlasInfo.x * max(softness, 0.5); // in texels
+    float halfWidth = LIGHTS2D_ATLAS_INFO.x * max(softness, 0.5); // in texels
     float tapStep = halfWidth / float(radius);
     float lit = 0.0;
     // The clamp leaves radius at MAX_SHADOW2D_RADIUS
-    #ifdef IS_HLSL
-    for (int t = -MAX_SHADOW2D_RADIUS; t <= MAX_SHADOW2D_RADIUS; ++t){
-    #else
     for (int t = -radius; t <= radius; ++t){
-    #endif
         float su = fract(u + float(t) * tapStep);
-        float occ = decodeDepth(texture(sampler2D(u_shadow2DAtlas, u_shadow2DAtlas_smp), vec2(su, v)));
+        float occ = decodeDepth(textureLod(sampler2D(u_shadow2DAtlas, u_shadow2DAtlas_smp), vec2(su, v), 0.0));
         lit += (dist01 - bias <= occ) ? 1.0 : 0.0;
     }
     return lit / float(2 * radius + 1); // 1.0 = fully lit
@@ -177,15 +194,16 @@ float shadow2DCalculation(float row, vec2 lightToFrag, float dist01, float softn
 // contributions. Each light's shadow attenuates only that light's term. n and the lights'
 // heights count only with LIGHT2D_NORMAL_RESPONSE (see the top of this file).
 vec3 getLight2DIntensity(vec3 fragPos, vec3 n, bool includeAmbient){
-    vec3 acc = includeAmbient ? lighting2d.ambient.rgb : vec3(0.0);
-    int count = int(lighting2d.ambient.w);
+    vec3 acc = includeAmbient ? LIGHTS2D_AMBIENT.rgb : vec3(0.0);
+    int count = int(LIGHTS2D_AMBIENT.w);
     for (int i = 0; i < MAX_LIGHTS_2D; ++i){
         if (i >= count) break;
-        vec4 pr = lighting2d.position_range[i];
+        vec4 pr = LIGHTS2D_POSITION_RANGE(i);
+        vec4 falloffShadow = LIGHTS2D_FALLOFF_SHADOW(i);
         vec2 toLight = pr.xy - fragPos.xy;
         float d = length(toLight);
         if (d >= pr.w) continue;
-        float atten = pow(clamp(1.0 - d / pr.w, 0.0, 1.0), lighting2d.falloff_shadow[i].x);
+        float atten = pow(clamp(1.0 - d / pr.w, 0.0, 1.0), falloffShadow.x);
         float ndotl = 1.0;
         #ifdef LIGHT2D_NORMAL_RESPONSE
             if (pr.z > 0.0){
@@ -196,14 +214,15 @@ vec3 getLight2DIntensity(vec3 fragPos, vec3 n, bool includeAmbient){
             }
         #endif
         float lit = 1.0;
-        #ifdef USE_SHADOWS_2D
-            float rowIdx = lighting2d.falloff_shadow[i].y;
+        #ifdef LIGHT2D_SHADOWS
+            float rowIdx = falloffShadow.y;
             if (rowIdx >= 0.0){
                 lit = shadow2DCalculation(rowIdx, -toLight, d / pr.w,
-                        lighting2d.falloff_shadow[i].z, lighting2d.falloff_shadow[i].w);
+                        falloffShadow.z, falloffShadow.w);
             }
         #endif
-        acc += lighting2d.color_intensity[i].rgb * lighting2d.color_intensity[i].w * atten * ndotl * lit;
+        vec4 colorIntensity = LIGHTS2D_COLOR_INTENSITY(i);
+        acc += colorIntensity.rgb * colorIntensity.w * atten * ndotl * lit;
     }
     return acc;
 }

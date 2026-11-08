@@ -58,21 +58,23 @@ MIXER_LINE = "mixer groups: Master,Music exposed MusicVolume"
 ACTION_NAMES_LINE = "input actions: Horizontal,Vertical,Fire1,Fire2,Fire3,Jump,Mouse X,Mouse Y,Mouse ScrollWheel,Submit,Cancel,Dash"
 
 
+# the fixed component capacities exports passed before mesh-memory
+CAPACITY_MACROS = {"MAX_SUBMESHES", "MAX_TILEMAP_TILESRECT", "MAX_TILEMAP_TILES", "MAX_SPRITE_FRAMES",
+                   "MAX_EXTERNAL_BUFFERS", "MAX_BONES"}
+
 # what a game's clip measures, read back from the player's log
 CLIP_LENGTH_LUA = """local clipLength = {}
 
 function clipLength:init()
     RegisterEngineEvent(self, "onUpdate")
-    self.done = false
 end
 
 function clipLength:onUpdate()
-    if self.done then return end
     local source = AudioSource(self.scene, self.entity)
     local length = source:getLength()
     if length > 0 then
         print(string.format("CLIPLEN %.3f", length))
-        self.done = true
+        Engine.quit(0)
     end
 end
 
@@ -137,8 +139,9 @@ async def check_xcode_workspace(ed: Editor, out: Path) -> None:
             ed.check(re.fullmatch(r'"?gnu\+\+\d+"?', settings["CLANG_CXX_LANGUAGE_STANDARD"]) is not None,
                      f"{name}: {settings['CLANG_CXX_LANGUAGE_STANDARD']}")
     for settings in pbxproj.project_settings(root):
-        definitions = settings["GCC_PREPROCESSOR_DEFINITIONS"]
-        ed.check(any(d.startswith("MAX_SUBMESHES=") for d in definitions), f"scene capacities: {definitions}")
+        definitions = settings.get("GCC_PREPROCESSOR_DEFINITIONS", [])
+        # components grow their arrays: no capacity definitions (mesh-memory)
+        ed.check(not any(d.split("=")[0].strip('"') in CAPACITY_MACROS for d in definitions), f"no capacities: {definitions}")
         ed.check_eq(len(definitions), len(set(definitions)), f"no definition twice: {definitions}")
 
 
@@ -215,8 +218,10 @@ async def test_source_export(ed: Editor):
     ed.check(Path(result["log_file"]).exists(), "build log file")
     ed.check_eq(result["errors"], [])
     await check_xcode_workspace(ed, out)
-    # S67: the Android project builds from a shell: the installed editor's copy has no exec bit to pass on
-    ed.check(os.access(out / "workspaces" / "androidstudio" / "gradlew", os.X_OK), "gradlew is executable")
+    # built from a terminal as the docs say (./jasperengine.py, ./gradlew): the installed editor's
+    # engine copy and the export keep them executable
+    for script in ("jasperengine.py", "workspaces/androidstudio/gradlew"):
+        ed.check(os.access(out / script, os.X_OK), f"{script} is executable: {oct((out / script).stat().st_mode)}")
     # web saves are prefixed per game: the default identifier is shared, so the project name
     # (bytes other than letters, digits, . and - escaped for the define)
     ed.check_in('set(JASPERENGINE_STORAGE_ID "Build_20Test")', (out / "CMakeLists.txt").read_text())
@@ -250,84 +255,109 @@ async def test_source_export(ed: Editor):
     ed.check_eq(sorted(info["source"]["backends"]), ["opengl", "opengles"])
     ed.check_eq(info["last_build"]["status"], "succeeded")
 
+    # Android builds have OpenGL ES 3 only: its preset compiles no Vulkan shaders (the SPIR-V
+    # header stays the SDK's empty stub)
+    android = ed.scratch.root / "export-android"
+    r = await ed.call("build_project", mode="source", output_dir=str(android), platform="android", timeout_seconds=600)
+    ed.check_eq(r["status"], "succeeded", f"{r}")
+    shaders = android / "shaders"
+    ed.check((shaders / "glsl300es.h").stat().st_size > 4096, "the GLES3 shaders are compiled")
+    ed.check(not (shaders / "spirv10.h").exists() or (shaders / "spirv10.h").stat().st_size < 1024,
+             f"no Vulkan shaders for Android: spirv10.h has {(shaders / 'spirv10.h').stat().st_size} bytes")
 
-async def test_admob_export(ed: Editor):
-    """AdMob is opt-in: the Android and iOS projects of a source export carry Google Mobile Ads,
-    and the project's App ID (never Google's sample one), only when the project enables it."""
-    out = ed.scratch.root / "export-admob"
+
+async def test_no_admob(ed: Editor):
+    """Built-in AdMob is gone (owner decision 2026-11-04; ads go through the native bridge): a
+    source export carries no Google Mobile Ads SDK, wrapper, adapter, App ID or ad-network list,
+    the settings are unknown keys, and the Lua API has no AdMob calls."""
+    await ed.call("save_project", untitled_scene_dir="scenes")
+    out = ed.scratch.root / "export-no-admob"
+    r = await ed.call("build_project", mode="source", output_dir=str(out), overwrite=True, timeout_seconds=600)
+    ed.check_eq(r["status"], "succeeded", f"{r}")
     android_app = out / "workspaces" / "androidstudio" / "app"
-    gradle = android_app / "build.gradle"
-    manifest = android_app / "src" / "main" / "AndroidManifest.xml"
-    plist = out / "workspaces" / "xcode" / "ios" / "Info.plist"
-    pbxproj = out / "workspaces" / "xcode" / "JasperEngine.xcodeproj" / "project.pbxproj"
-    android_id = "ca-app-pub-1234567890123456~1111111111"
-    ios_id = "ca-app-pub-1234567890123456~2222222222"
+    texts = {
+        "build.gradle": (android_app / "build.gradle").read_text(),
+        "AndroidManifest.xml": (android_app / "src" / "main" / "AndroidManifest.xml").read_text(),
+        "Info.plist": (out / "workspaces" / "xcode" / "ios" / "Info.plist").read_text(),
+        "project.pbxproj": (out / "workspaces" / "xcode" / "JasperEngine.xcodeproj" / "project.pbxproj").read_text(),
+        "CMakeLists.txt": (out / "CMakeLists.txt").read_text(),
+        "MainActivity.java": (out / "platform" / "android" / "java" / "com" / "jaspergameengine" / "jasperengine" /
+                              "MainActivity.java").read_text(),
+    }
+    for name, text in texts.items():
+        for needle in ("play-services-ads", "java-admob", "com.google.android.gms.ads.APPLICATION_ID", "GADApplicationIdentifier",
+                       "SKAdNetworkItems", "JASPERENGINE_ADMOB", "AdMob", "GoogleMobileAds", "3940256099942544"):
+            ed.check(needle not in text, f"{name} has no {needle}")
+    ed.check(not (out / "platform" / "android" / "java-admob").exists(), "no AdMob wrapper source")
+    ed.check(not (out / "platform" / "apple" / "GoogleMobileAdsSdkiOS-10.14.0").exists(), "no Google Mobile Ads SDK copy")
+    for key in ("android.admob_enabled", "ios.admob_app_id"):
+        await ed.check_error("set_project_settings", values={key: True}, contains=key)
+    stubs = "\n".join(p.read_text() for p in (ed.project / ".jasperengine" / "engine-api" / "lua").rglob("*.lua"))
+    ed.check("System" in stubs, "the Lua stubs were written")
+    for name in ("initializeAdMob", "setMaxAdContentRating", "loadInterstitialAd", "isInterstitialAdLoaded", "showInterstitialAd",
+                 "AdMobRating"):
+        ed.check(name not in stubs, f"the Lua API has no {name}")
 
-    async def export() -> dict:
+
+async def test_privacy_manifest_export(ed: Editor):
+    """mobile-shipping: every Apple app of a source export ships PrivacyInfo.xcprivacy (before: none):
+    the engine's required-reason APIs, the project's apple.privacy_* additions (undoable) and the
+    static plugins' manifests of that platform. One call's apple.privacy_* keys are one undo step,
+    and the composition's warnings are the build's (before: the log's only)."""
+    import plistlib
+    await ed.call("save_project", untitled_scene_dir="scenes")
+    msg = await ed.call("set_project_settings", values={"apple.privacy_accessed_apis": [{"type": "FileTimestamp", "reasons": ["CA92.1"]}]},
+                        expect_error=True)
+    ed.check_in("C617.1", msg, "a wrong reason lists the valid ones")
+    await ed.call("set_project_settings", values={"apple.privacy_tracking_domains": ["ads.example.com"]})
+    await ed.call("set_project_settings", values={
+        "apple.privacy_tracking": True, "apple.privacy_accessed_apis": [{"type": "DiskSpace", "reasons": ["E174.1"]}],
+        "apple.privacy_collected_data": [{"type": "DeviceID", "linked": True, "tracking": True, "purposes": ["ThirdPartyAdvertising"]}]})
+    plugin = ed.project / "plugins" / "native" / "ios" / "Ads" / "PrivacyInfo.xcprivacy"
+    plugin.parent.mkdir(parents=True, exist_ok=True)
+    plugin.write_bytes(plistlib.dumps({"NSPrivacyAccessedAPITypes": [{"NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryActiveKeyboards",
+                                                                     "NSPrivacyAccessedAPITypeReasons": ["54BD.1"]}]}))
+    out = ed.scratch.root / "export-privacy"
+    try:
         r = await ed.call("build_project", mode="source", output_dir=str(out), overwrite=True, timeout_seconds=600)
         ed.check_eq(r["status"], "succeeded", f"{r}")
-        return r["result"]
-
-    def check_left_out(what: str):
-        g, m, pl, px = gradle.read_text(), manifest.read_text(), plist.read_text(), pbxproj.read_text()
-        ed.check("play-services-ads" not in g, f"{what}: no ads SDK in build.gradle")
-        ed.check("java-admob" not in g, f"{what}: no AdMob wrapper source in build.gradle")
-        ed.check("com.google.android.gms.ads.APPLICATION_ID" not in m, f"{what}: no App ID meta-data in the manifest")
-        ed.check("GADApplicationIdentifier" not in pl, f"{what}: no GADApplicationIdentifier in Info.plist")
-        ed.check("JASPERENGINE_ADMOB" not in px, f"{what}: the iOS target does not define JASPERENGINE_ADMOB")
-        ed.check("AdMobAdapter.m in Sources" not in px, f"{what}: AdMobAdapter.m not compiled")
-        ed.check("GoogleMobileAds.xcframework in Frameworks" not in px, f"{what}: GoogleMobileAds not linked")
-        ed.check("GoogleMobileAds.xcframework" in px, f"{what}: the file reference itself stays")
-        ed.check_in("set(JASPERENGINE_ADMOB OFF)", (out / "CMakeLists.txt").read_text())
-
-    # the default: no AdMob anywhere, and never the sample ids
-    await export()
-    check_left_out("default")
-    for f in (manifest, plist):
-        ed.check("3940256099942544" not in f.read_text(), f"{f.name}: no Google sample App ID")
-    activity = (out / "platform" / "android" / "java" / "com" / "jaspergameengine" / "jasperengine" / "MainActivity.java").read_text()
-    ed.check("new AdMobWrapper" not in activity, "MainActivity does not reference the AdMob wrapper class")
-
-    # an ad unit ID is not an App ID
-    msg = await ed.call("set_project_settings", values={"android.admob_app_id": "ca-app-pub-1234567890123456/1111111111"},
-                        expect_error=True)
-    ed.check_in("app ID", msg)
-
-    # enabled without an App ID: left out, with a warning
-    await ed.call("set_project_settings", values={"android.admob_enabled": True, "ios.admob_enabled": True})
-    result = await export()
-    check_left_out("no App ID")
-    log = Path(result["log_file"]).read_text()
-    ed.check_in("Android AdMob is enabled but has no App ID", log)
-    ed.check_in("iOS AdMob is enabled but has no App ID", log)
-
-    # enabled with App IDs: the SDKs, the wrapper/adapter and the project's ids
-    await ed.call("set_project_settings", values={"android.admob_app_id": android_id, "ios.admob_app_id": ios_id})
-    back = (await ed.call("get_project_settings", keys=["android.admob_enabled", "android.admob_app_id",
-                                                         "ios.admob_enabled", "ios.admob_app_id"]))["settings"]
-    ed.check_eq(back, {"android.admob_enabled": True, "android.admob_app_id": android_id,
-                       "ios.admob_enabled": True, "ios.admob_app_id": ios_id})
-    await export()
-    g, m, pl, px = gradle.read_text(), manifest.read_text(), plist.read_text(), pbxproj.read_text()
-    ed.check_in('"com.google.android.gms:play-services-ads:', g)
-    ed.check_in("/platform/android/java-admob'", g)
-    ed.check_in(f'android:value="{android_id}"', m)
-    ed.check_in(f"<key>GADApplicationIdentifier</key>\n\t<string>{ios_id}</string>", pl)
-    ed.check_eq(px.count("JASPERENGINE_ADMOB,"), 2, "Debug and Release of the iOS target")
-    ed.check_in("AdMobAdapter.m in Sources", px)
-    ed.check_in("GoogleMobileAds.xcframework in Frameworks", px)
-    ed.check_in("set(JASPERENGINE_ADMOB ON)", (out / "CMakeLists.txt").read_text())
-    ed.check((out / "platform" / "android" / "java-admob" / "com" / "jaspergameengine" / "jasperengine" /
-              "AdMobWrapper.java").exists(), "the wrapper source is exported")
-
-    # saved in project.yaml and back off for the tests that follow
-    await ed.call("save_project")
-    yaml = (ed.project / "project.yaml").read_text()
-    ed.check_in(android_id, yaml)
-    ed.check_in(ios_id, yaml)
-    await ed.call("set_project_settings", values={"android.admob_enabled": False, "ios.admob_enabled": False})
-    await export()
-    check_left_out("disabled again")
+        codes = [w["code"] for w in r["result"].get("warnings", []) if isinstance(w, dict) and "code" in w]
+        ed.check_in("W-PRIVACY-ATT", codes, "tracking without NSUserTrackingUsageDescription is a build warning")
+        manifests = {}
+        for platform in ("ios", "macos"):
+            data = plistlib.loads((out / "workspaces" / "xcode" / platform / "PrivacyInfo.xcprivacy").read_bytes())
+            manifests[platform] = {a["NSPrivacyAccessedAPIType"].removeprefix("NSPrivacyAccessedAPICategory"): a["NSPrivacyAccessedAPITypeReasons"]
+                                   for a in data["NSPrivacyAccessedAPITypes"]}
+            ed.check_eq(data["NSPrivacyTracking"], True, platform)
+            ed.check_eq(data["NSPrivacyTrackingDomains"], ["ads.example.com"], platform)
+            ed.check_eq(data["NSPrivacyCollectedDataTypes"][0]["NSPrivacyCollectedDataType"], "NSPrivacyCollectedDataTypeDeviceID")
+            for engine_api, reason in (("UserDefaults", "CA92.1"), ("FileTimestamp", "C617.1"), ("SystemBootTime", "35F9.1"), ("DiskSpace", "E174.1")):
+                ed.check_in(reason, manifests[platform].get(engine_api, []), f"{platform} {engine_api}")
+        ed.check_in("ActiveKeyboards", manifests["ios"], "the iOS plugin's manifest")
+        ed.check("ActiveKeyboards" not in manifests["macos"], "an iOS plugin's manifest is not macOS's")
+        root = pbxproj.parse((out / "workspaces" / "xcode" / "JasperEngine.xcodeproj" / "project.pbxproj").read_text())
+        objects = root["objects"]
+        for target_name, path in (("JasperEngine iOS", "ios/PrivacyInfo.xcprivacy"), ("JasperEngine macOS", "macos/PrivacyInfo.xcprivacy")):
+            resources = [objects[objects[b]["fileRef"]].get("path") for phase in pbxproj.target(root, target_name)["buildPhases"]
+                         if objects[phase]["isa"] == "PBXResourcesBuildPhase" for b in objects[phase]["files"]]
+            ed.check_in(path, resources, target_name)
+        # the usage description in the raw Info.plist XML counts too
+        await ed.call("set_project_settings", values={"ios.plist_xml": "<key>NSUserTrackingUsageDescription</key><string>Ads</string>"})
+        composed = await ed.call("native_plugins", action="privacy_manifest", platform="ios")
+        ed.check(not any("W-PRIVACY-ATT" in w for w in composed["warnings"]), f"{composed['warnings']}")
+        # one undo takes the whole call back (ios.plist_xml is no undo step)
+        await ed.call("undo", scope="project")
+        keys = ["apple.privacy_accessed_apis", "apple.privacy_collected_data", "apple.privacy_tracking", "apple.privacy_tracking_domains"]
+        back = (await ed.call("get_project_settings", keys=keys))["settings"]
+        ed.check_eq(back["apple.privacy_accessed_apis"], [], "undone")
+        ed.check_eq(back["apple.privacy_collected_data"], [], "undone with it")
+        ed.check_eq(back["apple.privacy_tracking"], False, "undone with it")
+        ed.check_eq(back["apple.privacy_tracking_domains"], ["ads.example.com"], "the earlier call stays")
+    finally:
+        await ed.call("set_project_settings", values={"apple.privacy_tracking": False, "apple.privacy_tracking_domains": [],
+                                                      "apple.privacy_collected_data": [], "apple.privacy_accessed_apis": [],
+                                                      "ios.plist_xml": ""})
+        shutil.rmtree(ed.project / "plugins", ignore_errors=True)
 
 
 async def test_platform_services_export(ed: Editor):
@@ -837,6 +867,13 @@ async def test_desktop_build_and_run(ed: Editor):
     ed.check_in("undefined_symbol_xyz", first["message"])
     ed.check_eq(first["line"], 2)
     ed.check_eq(first.get("project_file"), "cpp/Broken.cpp")
+    # the failure names its first error itself (export-pipeline 6.10), and the log ends with the list
+    ed.check(re.match(r"Compiling failed with \d+ error\(s\)\. First: \S*Broken\.cpp:2: ", job["message"]) is not None,
+             f"the failure's first error: {job['message']}")
+    listed = (await ed.call("read_console", contains="Build errors (", limit=5)).get("entries", [])
+    ed.check(listed, "the errors repeated at the end of the log")
+    # each compiler error counts once: the repeat and the failure line are not errors again
+    ed.check(all(e.get("level") != "error" for e in listed), f"the repeat is not an error: {listed}")
     (ed.project / "cpp" / "Broken.cpp").unlink()
     await ed.call("set_project_settings", values={"scripting.script_dirs": []})
 

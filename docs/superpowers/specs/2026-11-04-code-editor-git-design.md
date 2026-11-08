@@ -666,3 +666,78 @@ Changed (hot files marked *):
   involved), repository paths are UTF-8 `RepoPath`s already.
 - Follow-up for the lead (not in any feature): Subversion scene diff and `diff_scene`/`diff_file` defaults use
   `HEAD` where D5 says BASE (section 4); `VcsService::baselineRevision()` from this feature is the fix's helper.
+
+## Deviations
+
+Recorded during the implementation (branch `dc/code-editor-git`).
+
+1. **Subversion's HEAD reads BASE everywhere** (the follow-up of section 4, done here at the lead's request):
+   `VcsService::effectiveRevision` maps `"HEAD"` to `"BASE"` for svn in `VcsService::baseContent`/`textDiff` (the
+   text diff viewer, `diff_file`) and in `SceneDiffTracker`'s baseline reads (the Scene Diff, the Hierarchy and
+   Inspector markers, `diff_scene`, `revert_to_baseline`). A revision number still reads that revision. Red control:
+   `TextBaselines.SvnBaselineIsBase` (an unmodified file of a working copy behind the server diffs empty).
+2. **`SvnProvider::textDiff` never diffed**: it passed the peg-escaped path (`a.lua@`), which `svn diff` without `-r`
+   takes literally (1.14.1: "node 'a.lua@' was not found"), and its fallback then showed the whole file as added; it
+   also took svn's empty diff of an unchanged file for an unversioned one. svn 1.14.1's rule, checked in the build
+   image: `diff` against BASE (no `-r`) takes the path as it is, `diff -r N` reads a peg revision ("icon@2x.lua" is
+   "icon" at "2x.lua") and needs the escape. Fixed: the plain path against BASE, the escaped one with `-r`; an empty
+   diff of a versioned file is empty; an unversioned file (svn refuses to diff it) is still all added. Tests
+   `TextBaselines.SvnBaselineIsBase` and `SvnProvider.EndToEnd` (an `icon@2x.lua` diffed against BASE and r1).
+3. **Prebuilt players**: the spec missed the cooked scene format (`engine/core/serialization/SceneSettingsCodec.cpp`).
+   The five value sets end the scene settings record, after S57's (1.1) and S54's (1.2) fields: `FORMAT_MINOR` goes to
+   3 (content format 1.3). An older reader skips them (the record is length-prefixed), a 1.3 reader of an older file
+   stops at the record's end. Test
+   `SceneDefaultShaderUniforms.CookedRoundTrip`.
+4. **Keyboard shortcuts doc**: `docs/editor/keyboard-shortcuts.md` is generated from the editor's command catalog,
+   which does not list the code editor's own keys (Ctrl+F, Alt+F5 are the widget's). Alt+F5 / Shift+Alt+F5 are
+   documented in `docs/editor/version-control.md` and shown in the code editor's context menu instead.
+5. **Agent guide**: no line added (lead decision: only agent-authoring restructures the guide; lean MCP rules). The
+   detail is in `docs/mcp/guide/vcs.md` and `docs/mcp/guide/shaders.md`; two eval cases
+   (`guard_scene_default_shader_values`, `guard_code_editor_unsaved_diff`) cover the new tool text.
+6. **Tests grouped**: the head-label checks are in `editor/tests/vcs/GitProviderTest.cpp` (`GitProvider.HeadLabels`,
+   `GitProvider.DetachedAndOperations`) rather than a `VcsUiLabelTest`; the stream, factory, cook and undo tests of
+   the scene values share `editor/tests/stream/SceneDefaultShaderUniformsTest.cpp`; the scene flagging test is
+   `engine/tests/core/subsystem/SceneDefaultUniformsTest.cpp`.
+7. **`CodeEditor::isFileModified`** now reads the undo position instead of the flag `show()` refreshes, so an edit
+   between frames (an MCP `revert_change`) counts at once for `diff_file` and `close`.
+8. **Shared helpers**: `ProjectChecks::shaderTypeForComponent` maps components to shader types (no second mapping);
+   `Catalog::getShaderUniformChain` and `Catalog::getDefaultShaderUse` are the one place the Inspector and MCP build
+   the value chain and the default shader's users from.
+9. **A player of an older content minor** (1.2) reads a 1.3 scene and skips the scene's default shader values (the
+   record is length-prefixed), without a warning of its own. Not changed: a prebuilt export takes only a player of the
+   editor's own version (`PlayerRuntimes::find`), so its minor is the editor's; `--allow-player-mismatch` already
+   warns (W-PLAYER-MISMATCH) and publish verify refuses that build.
+
+## Follow-ups (2026-11-07)
+
+Branch `fu/code-editor-git` (docs/doriax-catchup/FOLLOWUPS.md), with the lead's review decisions.
+
+1. **Subversion scene diffs.** Deviation 1 already read BASE for "HEAD"; what still differed from git:
+   - A scheduled add (`svn add`) was not a new file: `VcsChange::newFile` looked at the index only, which svn
+     never sets, so the Scene Diff, `diff_scene` and the code editor asked svn for a BASE the file does not have
+     ("has no pristine version until it is committed"). `newFile` also takes a worktree add (git's intent-to-add
+     too): the diff lists every GameObject as added. Revert keeps svn's own behaviour: it unschedules the add and
+     keeps the file (`revertRefusal(..., unschedulesAdds)`); git still refuses a new file ("Delete it instead").
+   - Moves: svn's `moved-from` (on an added or a replaced path) makes the path Renamed with `oldPath`, so it
+     compares with its source, as a git rename does, and Revert takes the source along. A changed file inside a
+     moved folder has no `moved-from` of its own; the folder's names its source, so it is Renamed too.
+   - Copies (git `C` with `status.renames=copies`, `svn copy`): `VcsChange::copied`. A copy is a new file whose
+     diff base is its source (`hasBaseline`, `diffSource`: git reads `oldPath`, svn reads the copy's own BASE,
+     which is the source's text, as `svn diff` does). Revert never touches the source: it refuses a git copy as a
+     new file and unschedules an svn copy; the Commit window says "Copied".
+   - The scene diff read a rename's new path from the baseline: a git staged rename of a scene failed ("not a
+     valid object name HEAD:..."). `SceneDiffTracker` reads `diffSource`, as `TextBaselines` and `diff_file` do.
+   - svn's "HEAD" and "BASE" share one baseline memo (`contentMemoKey` keys the revision read).
+2. **Defaults.** The defaults stay `"HEAD"`, which is the baseline everywhere (svn reads BASE for it, deviation 1:
+   offline, never someone else's commit as yours); the guide already says so. `diff_scene` and `diff_file`
+   results now name the revision read (`rev: "BASE"`, "against BASE" with svn). No tool or guide text changed:
+   the review found the planned text needed by no eval case, so it was cut. The Scene Diff window shows the
+   provider's name (its button and "No changes against BASE" with svn) and still watches the baseline as
+   "HEAD", so it shares the Hierarchy's and Inspector's diff.
+3. **Content format of prebuilt players.** Minors are additive and length-prefixed (deviation 9), so a player
+   keeps reading a newer minor and now logs one warning per version ("content 1.6 was made by a newer editor;
+   features newer than 1.5 are skipped", `cook::playerReadsContentFormat`); it refuses another major only, as
+   before. The editor no longer pairs its content with a runtime of an older minor, which compared majors only
+   before: `PlayerRuntimes::find` refuses it ("reads content format 1.4, older than the 1.5 this editor writes:
+   update the player runtime") unless `--allow-player-mismatch` asks for it, which warns W-PLAYER-MISMATCH and
+   publish verify refuses. `test_build_method.py`'s fake runtimes declare the tree's format.

@@ -41,11 +41,13 @@ struct VersionControlSettings {
     int autoFetchMinutes = 0;       // 0 off
     bool commitAndPush = false;     // the Commit window's "Commit and Push", remembered
     bool showChanges = true;        // the Hierarchy's "Show VCS Changes"
+    bool codeEditorChanges = true;  // the code editor's change markers
 
     bool operator==(const VersionControlSettings& other) const {
         return gitPath == other.gitPath && svnPath == other.svnPath && lockOnEdit == other.lockOnEdit &&
                pollSeconds == other.pollSeconds && lockPollSeconds == other.lockPollSeconds &&
-               autoFetchMinutes == other.autoFetchMinutes && commitAndPush == other.commitAndPush && showChanges == other.showChanges;
+               autoFetchMinutes == other.autoFetchMinutes && commitAndPush == other.commitAndPush && showChanges == other.showChanges &&
+               codeEditorChanges == other.codeEditorChanges;
     }
     bool operator!=(const VersionControlSettings& other) const { return !(*this == other); }
 };
@@ -135,6 +137,8 @@ struct CustomDeviceSettings {
 struct GameViewSettings {
     int aspect = 0;              // index into the Game view's aspect list (0 = Free Aspect)
     float scale = 1.0f;          // zoom of the game image
+    // S41: a Pixel Perfect Camera's scale k this view forces (0 = Auto, the largest that fits; 1..8)
+    int pixelScale = 0;
     bool maximizeOnPlay = false;
     bool showStats = false;
     // Preview Atmosphere Quality: -1 the project's, else an AtmosphereQuality (Off..High)
@@ -164,7 +168,7 @@ struct GameViewSettings {
     CustomDeviceSettings custom{};
 
     bool operator==(const GameViewSettings& other) const {
-        return aspect == other.aspect && scale == other.scale
+        return aspect == other.aspect && scale == other.scale && pixelScale == other.pixelScale
             && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats
             && atmosphereQuality == other.atmosphereQuality
             && deviceTier == other.deviceTier && devicePlatform == other.devicePlatform && deviceThermal == other.deviceThermal
@@ -312,9 +316,14 @@ private:
 
     // Editor viewport settings
     static bool multiViewportEnabled;
+    // the Scene view draws the component UI's navigation arrows (a Button's Navigation > Visualize)
+    static bool uiNavigationVisualize;
     static bool editorVSyncEnabled;
     // Preferences > General > Show Project Hub at Startup (S27 R16): "when_no_project" or "always"
     static bool projectHubAlways;
+    // Preferences > General > Editor Font > CJK Font Language: auto, japanese, korean,
+    // simplified_chinese or traditional_chinese (SystemFonts)
+    static std::string cjkFontLanguage;
     static bool soundBrowserAutoplay;
     static bool soundBrowserMatchLoudness;
     static std::filesystem::path hubLastLocation;
@@ -451,6 +460,8 @@ public:
     // Multi-viewport: allow dockable windows to be dragged out into their own OS window
     static bool getMultiViewportEnabled();
     static void setMultiViewportEnabled(bool enabled);
+    static bool getUINavigationVisualize();
+    static void setUINavigationVisualize(bool visualize);
 
     // The Pose Animation window grew the bottom dock once on its first open (not again)
     static bool getPoseDockGrown();
@@ -459,6 +470,9 @@ public:
     // VSync for the editor's own frames; Play mode and builds use the project setting
     static bool getEditorVSyncEnabled();
     static void setEditorVSyncEnabled(bool enabled);
+    // Preferences > General > Editor Font > CJK Font Language (SystemFonts::isLanguageSetting)
+    static std::string getCjkFontLanguage();
+    static void setCjkFontLanguage(const std::string& language);
     // Show Project Hub at Startup: Always (true) or When No Project (false, the default)
     static bool getProjectHubAlways();
     static void setProjectHubAlways(bool always);

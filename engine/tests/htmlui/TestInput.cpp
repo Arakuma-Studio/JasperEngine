@@ -15,8 +15,10 @@
 #include "util/Utf16Combiner.h"
 #include "input/InputActions.h"
 #include "component/ButtonComponent.h"
+#include "component/UIComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "object/ui/Button.h"
+#include "object/ui/InputField.h"
 #include "object/ui/OnScreenControls.h"
 #include "subsystem/UISystem.h"
 
@@ -99,7 +101,7 @@ namespace {
             Engine::onMouseScroll.add(callbackTag, std::function<void(float, float, int)>([this](float, float, int){ scrolls++; }));
             Engine::onKeyDown.add(callbackTag, std::function<void(int, bool, int)>([this](int, bool, int){ keyDowns++; }));
             Engine::onKeyUp.add(callbackTag, std::function<void(int, bool, int)>([this](int, bool, int){ keyUps++; }));
-            Engine::onCharInput.add(callbackTag, std::function<void(wchar_t)>([this](wchar_t c){ chars.push_back((uint32_t)c); }));
+            Engine::onCharInput.add(callbackTag, std::function<void(char32_t)>([this](char32_t c){ chars.push_back((uint32_t)c); }));
             Engine::onTouchStart.add(callbackTag, std::function<void(int, float, float)>([this](int, float, float){ touchStarts++; }));
             Engine::onTouchEnd.add(callbackTag, std::function<void(int, float, float)>([this](int, float, float){ touchEnds++; }));
             Engine::onTouchCancel.add(callbackTag, std::function<void(int, float, float)>([this](int, float, float){ touchCancels++; }));
@@ -311,6 +313,75 @@ TEST_F(InputTest, SurrogatePairsReachDocumentsCombined){
 
     // the field had focus: the game saw none of it
     EXPECT_TRUE(chars.empty());
+}
+
+// The game's character event gets whole code points on every platform: a pair typed one unit
+// at a time (Windows WM_CHAR, Android) is one call, half of one is no call
+TEST_F(InputTest, OnCharInputGetsWholeCodePoints){
+    Engine::systemCharInput((wchar_t)0xD83D);
+    EXPECT_TRUE(chars.empty()) << "half a character goes nowhere yet";
+    Engine::systemCharInput((wchar_t)0xDE00);
+    EXPECT_EQ(chars, (std::vector<uint32_t>{0x1F600}));
+    // a whole code point passes as it is
+    Engine::systemCharInput(U'\U0001F601');
+    Engine::systemCharInput(L'a');
+    EXPECT_EQ(chars, (std::vector<uint32_t>{0x1F600, 0x1F601, 'a'}));
+}
+
+namespace {
+
+    // a component InputField where the document has nothing (x 500..620, y 180..300), focused
+    InputField& focusedInputField(SceneFixture& fixture){
+        InputField& field = fixture.add<InputField>();
+        // its Text child, where the typing goes
+        field.setText("");
+        field.setPosition(500, 200);
+        field.setSize(120, 40);
+        GpuEnvironment::drawFrames(2);
+        Engine::systemMouseMove(560, 220, 0);
+        Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, 560, 220, 0);
+        Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, 560, 220, 0);
+        return field;
+    }
+
+}
+
+// The component InputField gets the pair as one character, keeps it through later edits and
+// erases it with one backspace
+TEST_F(InputTest, ComponentInputFieldKeepsSurrogatePairs){
+    InputField& field = focusedInputField(*fixture);
+    ASSERT_TRUE(field.getComponent<UIComponent>().focused);
+
+    Engine::systemCharInput(L'a');
+    Engine::systemCharInput((wchar_t)0xD83D);
+    Engine::systemCharInput((wchar_t)0xDE00);
+    Engine::systemCharInput(L'b');
+    EXPECT_EQ(field.getText(), "a\xF0\x9F\x98\x80" "b");
+    EXPECT_EQ(field.getCursorIndex(), 3);
+
+    Engine::systemCharInput(L'\b');
+    EXPECT_EQ(field.getText(), "a\xF0\x9F\x98\x80");
+    Engine::systemCharInput(L'\b');
+    EXPECT_EQ(field.getText(), "a");
+}
+
+// A high surrogate whose low one never comes is U+FFFD, for the InputField and the game alike
+TEST_F(InputTest, LoneHighSurrogateFlushesEverywhere){
+    InputField& field = focusedInputField(*fixture);
+    ASSERT_TRUE(field.getComponent<UIComponent>().focused);
+    chars.clear();
+
+    Engine::systemCharInput((wchar_t)0xD83D);
+    EXPECT_EQ(field.getText(), "");
+    Engine::systemDraw();
+    EXPECT_EQ(field.getText(), "\xEF\xBF\xBD");
+    // the field typed in keeps its characters from the game (ui-components' typing guard)
+    EXPECT_TRUE(chars.empty());
+    Engine::setIgnoreEventsHandledByUI(false);
+    Engine::systemCharInput((wchar_t)0xD83D);
+    Engine::systemDraw();
+    Engine::setIgnoreEventsHandledByUI(true);
+    EXPECT_EQ(chars, (std::vector<uint32_t>{0xFFFD})) << "with ignoreEventsHandledByUI off the game gets it too";
 }
 
 // ---- pointer consume rules ----

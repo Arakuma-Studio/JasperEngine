@@ -33,8 +33,18 @@ namespace jasperengine {
         // Calls the handler; false when none is set
         static bool report(const std::string& tag, const std::string& errorInfo);
         // Runs function(context) under the crash guard. False when it faulted, with
-        // "NAME (description) [code=N]" in errorInfo.
+        // "NAME (description) [code=N]" in errorInfo, or threw a C++ exception, with
+        // describeCurrentException's text (the exception is caught inside the guard).
         static bool runGuarded(void (*function)(void*), void* context, std::string& errorInfo);
+        // Runs function(context) and catches any C++ exception: false with its description in
+        // errorInfo
+        static bool runCatching(void (*function)(void*), void* context, std::string& errorInfo);
+        // "C++ exception <type>: <what>" of the exception being handled (call it in a catch)
+        static std::string describeCurrentException();
+        // A callback that threw while no hook is set (an exported game): the exception being
+        // handled (call it in a catch) in the log, at most once a second per tag; a callback
+        // throwing every frame is not described (rethrown, demangled) each time. Any thread.
+        static void logFailure(const std::string& tag);
     };
 
 }

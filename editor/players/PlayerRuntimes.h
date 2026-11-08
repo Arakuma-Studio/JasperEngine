@@ -35,7 +35,9 @@ namespace jasperengine::editor {
         // the cooked model formats it decodes (CookedModels::kFormatVersion, S53 R30); empty in a
         // runtime built before model cooks
         std::vector<int> modelCookFormats;
-        std::map<std::string, unsigned int> capacities;   // MAX_SUBMESHES, ...
+        // the fixed array capacities of a player packaged before components grew their arrays
+        // (MAX_SUBMESHES, ...): such a player is never chosen (Exporter::chooseBuildMethod)
+        std::map<std::string, unsigned int> capacities;
         std::vector<std::string> features;                // the modules (htmlui video runtimeshaders physics3d ...), tracy
         std::string variant = "full";                     // the release variant it was built for
         std::vector<std::string> notices;                 // licenses/<lib>-LICENSE of each
@@ -90,8 +92,9 @@ namespace jasperengine::editor {
         static std::filesystem::path installRoot(const std::filesystem::path& override = {});
 
         static std::vector<PlayerInfo> list(const std::filesystem::path& override = {});
-        // the runtime of that id this editor may use (R10: its engineVersion, a content format of
-        // the same major), else nullopt with why; allowMismatch takes any engine version
+        // the runtime of that id this editor may use (R10: its engineVersion, and a content format
+        // of the same major that reads this editor's minor), else nullopt with why; allowMismatch
+        // takes any engine version and an older minor
         static std::optional<PlayerInfo> find(const std::string& id, const std::filesystem::path& override, bool allowMismatch,
                                               std::string& error);
         // every installed runtime this editor may use of a <platform>-<arch>-<backend>-<flavour>

@@ -13,6 +13,7 @@
 #include "input/InputActions.h"
 #include "component/CharacterCollision.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/WaterExcluderComponent.h"
 #include "component/BuoyancyComponent.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/SplineExtrudeComponent.h"
@@ -34,10 +35,12 @@
 #include "render/LightingTiers.h"
 #include "render/OrderIndependentTransparency.h"
 #include "component/CapsuleShadowCasterComponent.h"
+#include "component/UISelectable.h"
 #include "texture/MaterialPbr.h"
 #include "device/DeviceTypes.h"
 #include "debug/DebugOverlay.h"
 #include "Log.h"
+#include "util/StringUtils.h"
 #include "component/LineRendererComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "camera/CameraType.h"
@@ -117,6 +120,36 @@ namespace luabridge
     template<> struct Stack<AssetRef> : AssetPathStack<AssetRef>{};
     template<> struct Stack<ShaderRef> : AssetPathStack<ShaderRef>{};
 
+    // A character (Engine.onCharInput, UISystem:eventOnCharInput): a one-character UTF-8 string
+    // in Lua, as the event handlers get it; a code point number is taken too
+    template<> struct Stack<char32_t>
+    {
+        [[nodiscard]] static Result push(lua_State* L, char32_t value)
+        {
+            return Stack<std::string>::push(L, StringUtils::toUTF8(value));
+        }
+
+        [[nodiscard]] static TypeResult<char32_t> get(lua_State* L, int index)
+        {
+            if (lua_type(L, index) == LUA_TNUMBER)
+                return static_cast<char32_t>(lua_tointeger(L, index));
+            if (lua_type(L, index) != LUA_TSTRING)
+                return makeErrorCode(ErrorCode::InvalidTypeCast);
+            size_t length = 0;
+            const char* text = lua_tolstring(L, index, &length);
+            bool invalid = false;
+            const std::vector<uint32_t> codepoints = StringUtils::decodeUtf8ToCodepoints(std::string(text, length), invalid);
+            if (codepoints.size() != 1)
+                return makeErrorCode(ErrorCode::InvalidTypeCast);
+            return static_cast<char32_t>(codepoints[0]);
+        }
+
+        [[nodiscard]] static bool isInstance(lua_State* L, int index)
+        {
+            return lua_type(L, index) == LUA_TNUMBER || lua_type(L, index) == LUA_TSTRING;
+        }
+    };
+
     template<> struct Stack<Scaling> : EnumWrapper<Scaling>{};
     template<> struct Stack<jasperengine::Platform> : EnumWrapper<jasperengine::Platform>{};  // qualified: the editor has a Platform class too
     template<> struct Stack<GraphicBackend> : EnumWrapper<GraphicBackend>{};
@@ -131,7 +164,6 @@ namespace luabridge
     template<> struct Stack<MaterialLighting> : EnumWrapper<MaterialLighting>{};
     template<> struct Stack<TextureFilter> : EnumWrapper<TextureFilter>{};
     template<> struct Stack<TextureWrap> : EnumWrapper<TextureWrap>{};
-    template<> struct Stack<AdMobRating> : EnumWrapper<AdMobRating>{};
     template<> struct Stack<CursorType> : EnumWrapper<CursorType>{};
     template<> struct Stack<MouseMode> : EnumWrapper<MouseMode>{};
     template<> struct Stack<TouchPhase> : EnumWrapper<TouchPhase>{};
@@ -140,6 +172,8 @@ namespace luabridge
     template<> struct Stack<InputActionType> : EnumWrapper<InputActionType>{};
     template<> struct Stack<CharacterCollisionFlags> : EnumWrapper<CharacterCollisionFlags>{};
     template<> struct Stack<WaterVolumeWaves> : EnumWrapper<WaterVolumeWaves>{};
+    template<> struct Stack<WaterExcluderShape> : EnumWrapper<WaterExcluderShape>{};
+    template<> struct Stack<WaterWakeResolution> : EnumWrapper<WaterWakeResolution>{};
     template<> struct Stack<BuoyancyColumns> : EnumWrapper<BuoyancyColumns>{};
     template<> struct Stack<spline::SplineType> : EnumWrapper<spline::SplineType>{};
     template<> struct Stack<spline::TangentMode> : EnumWrapper<spline::TangentMode>{};
@@ -204,6 +238,7 @@ namespace luabridge
     template<> struct Stack<CascadeSplitMode> : EnumWrapper<CascadeSplitMode>{};
     template<> struct Stack<ShadowTier> : EnumWrapper<ShadowTier>{};
     template<> struct Stack<SceneColorScale> : EnumWrapper<SceneColorScale>{};
+    template<> struct Stack<PlanarReflectionResolution> : EnumWrapper<PlanarReflectionResolution>{};
     template<> struct Stack<LitQuality> : EnumWrapper<LitQuality>{};
     template<> struct Stack<LightUnit> : EnumWrapper<LightUnit>{};
     template<> struct Stack<TonemapMode> : EnumWrapper<TonemapMode>{};
@@ -236,8 +271,15 @@ namespace luabridge
     template<> struct Stack<TextEffectType> : EnumWrapper<TextEffectType>{};
     template<> struct Stack<TextEffectMix> : EnumWrapper<TextEffectMix>{};
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
+    template<> struct Stack<PixelUpscaleMode> : EnumWrapper<PixelUpscaleMode>{};
+    template<> struct Stack<PixelRotation> : EnumWrapper<PixelRotation>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
+    // ui-components: the Button's Selectable enums
+    template<> struct Stack<ButtonTransition> : EnumWrapper<ButtonTransition>{};
+    template<> struct Stack<NavigationMode> : EnumWrapper<NavigationMode>{};
+    template<> struct Stack<SelectionState> : EnumWrapper<SelectionState>{};
+    template<> struct Stack<MoveDirection> : EnumWrapper<MoveDirection>{};
     template<> struct Stack<ProgressbarType> : EnumWrapper<ProgressbarType>{};
 
     template<> struct Stack<Collider2DType> : EnumWrapper<Collider2DType>{};

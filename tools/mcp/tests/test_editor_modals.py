@@ -19,7 +19,7 @@ import shutil
 from pathlib import Path
 
 import ui_input
-from harness import Editor, skip
+from harness import Editor
 
 CI = True
 EDITOR = {"create": True, "name": "Modals", "xvfb": "harness"}
@@ -51,15 +51,13 @@ SITES = {
     ("window/ProjectWindowSound.cpp", "Placeholder Sound"): "not driven: Assets > Create > Placeholder Sound... (S36) draws its own widgets; generate_sound makes the same clips for agents",
     ("window/ImporterFields.cpp", "Unapplied Import Settings##importer_prompt"): "not driven: the Model Import inspector asks it on leaving unapplied settings; set_model_import_settings applies them for agents",
     ("window/ProjectWindow.cpp", "Delete Confirmation"): "test_em2_delete_confirmation_no, test_em3_delete_confirmation_yes",
-    ("window/ProjectWindow.cpp", "Create New Directory"): "test_create_folder_prompt",
-    ("window/ProjectWindow.cpp", "Directory Already Exists"): "test_create_folder_prompt",
-    ("window/ProjectWindow.cpp", "Creation Error"): "not driven: only a failing file system opens it",
-    ("window/ProjectWindow.cpp", "Invalid Name (directory)"): "test_create_folder_prompt",
+    ("window/ProjectWindow.cpp", "New Folder / Lua Script / C++ ... / HTML Document###ProjectNewItem"): "test_create_folder_prompt",
     ("window/ProjectWindow.cpp", "Rename File"): "test_rename_prompt",
     ("window/ProjectWindow.cpp", "File Already Exists"): "test_rename_prompt",
     ("window/ProjectWindow.cpp", "Rename Error"): "not driven: only a .vat pair's rename refusal or a failing file system opens it (the .vat rename is in test_vat_inspector)",
     ("window/ProjectWindow.cpp", "Invalid Name (file)"): "test_rename_prompt",
     ("window/ProjectWindow.cpp", "POPUP"): "not driven: Create Prefab or Variant? opens on dragging an instance into the Project window; create_prefab decides for agents",
+    ("window/dialog/ProjectSettingsWindow.cpp", "Change Asset Directories"): "not driven: opens from Project Settings' OK with another Assets or Lua Directory; set_project_settings (dry_run) gives agents the same plan (test_asset_roots)",
     ("window/dialog/RagdollWizardDialog.cpp", "popupName"): "not driven: needs a skeleton; create_ragdoll does the same for agents",
     ("window/HierarchyPrefabRows.cpp", "POPUP (replace)"): "not driven: from a prefab instance's context menu; replace_prefab does the same for agents",
     ("window/HierarchyPrefabRows.cpp", "POPUP (restructure)"): "not driven: opens on dragging a child of an instance in the Hierarchy; move_entity refuses with the same message",
@@ -91,6 +89,9 @@ SITES = {
     ("window/vcs/VcsUi.cpp", "popupId"): "not driven: needs a repository with a conflict; the vcs tools answer for agents",
     ("window/dialog/TextureSlicerToolDialog.cpp", "popupTitle"): "test_texture_slicer",
     ("window/dialog/ProjectSettingsWindow.cpp", "Project Settings##ProjectSettingsModal"): "test_project_settings_merges_edits",
+    ("window/dialog/ProjectSettingsWindow.cpp", "Privacy Manifest Preview"): "not driven: a read-only preview from Player > iOS/macOS > Privacy Manifest > Preview; native_plugins privacy_manifest gives agents the same manifest",
+    ("window/AsepriteImporterView.cpp", "Extract Clips##aseprite_extract"): "test_aseprite_extract_clips",
+    ("pixelart/aseprite/AsepriteEditorHooks.cpp", "Aseprite Not Found##aseprite_open"): "test_aseprite_not_found",
 }
 # InspectorWindow's error boxes share one shape: they open when a file picker's answer is refused
 INSPECTOR_BOXES = 11
@@ -109,9 +110,15 @@ async def wait_dialog(ed: Editor, title: str | None = None, seconds: float = 20.
     return None
 
 
+async def frame_dialog(ed: Editor, title: str | None = None):
+    await ui_input.frames(ed)
+    d = await dialog(ed)
+    return d if d and (title is None or d.get("title") == title) else None
+
+
 async def open_modal(ed: Editor, command: str, title: str):
     await ed.call("run_command", id=command)
-    d = await wait_dialog(ed, title)
+    d = await frame_dialog(ed, title)
     ed.check(d, f"{command} opens {title}: {await dialog(ed)}")
     return d
 
@@ -166,7 +173,11 @@ async def test_sites_table_is_complete(ed: Editor):
         listed[rel] = listed.get(rel, 0) + 1
     listed["window/InspectorWindow.cpp"] = INSPECTOR_BOXES
     ed.check_eq(dict(sorted(found.items())), dict(sorted(listed.items())), "every modal site is in the table, with its count")
-    ed.check_eq(sum(found.values()), 73, "the spec's 71 sites, S36's Placeholder Sound and the Model Import prompt")
+    # the spec's 71 sites, S36's Placeholder Sound and the Model Import prompt (73); the project
+    # window's folder prompt and its three nested boxes became one name dialog (errors inline), and
+    # Change Asset Directories came: 71; mobile-shipping's Privacy Manifest Preview: 72; S44's Extract
+    # Clips and Aseprite Not Found: 74
+    ed.check_eq(sum(found.values()), 74, "the 74 sites")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):
@@ -216,7 +227,7 @@ async def test_focus_window_drives_preferences_under_itself(ed: Editor):
     """focus_window's page and close act on Preferences, so its refusal of edits does not stop them; any
     other panel is refused meanwhile"""
     await ed.call("focus_window", window="preferences", page="Logging")
-    d = await wait_dialog(ed, "Preferences")
+    d = await frame_dialog(ed, "Preferences")
     ed.check(d, "open")
     r = await ed.call_raw("focus_window", {"window": "preferences", "page": "General"})
     ed.check(not r.is_error, f"another page: {r.text[:300]}")
@@ -242,41 +253,43 @@ async def test_project_settings_merges_edits(ed: Editor):
 @clean
 async def test_error_box_is_dismissed_by_the_next_edit(ed: Editor):
     """R4: a modal whose only choice is ok is dismissed by the next edit, like an info alert"""
-    await ed.call("write_file", path="scripts/Box.lua", content="return {}\n")
-    await ed.call("run_command", id="assets.createFolder")
-    d = await wait_dialog(ed, "Create New Directory")
+    helper = ui(ed)
+    await open_rename(ed, helper)
     # no name: Invalid Name on top
-    await ed.call_raw("respond_dialog", {"choice": "yes", "values": {"name": ""}})
-    box = await wait_dialog(ed, "Invalid Name")
+    await ed.call_raw("respond_dialog", {"choice": "ok", "values": {"name": ""}})
+    box = await frame_dialog(ed, "Invalid Name")
     ed.check_eq(box.get("choices"), ["ok"], "an error box")
-    await ed.call("respond_dialog", choice="ok")
+    made = await ed.call("create_entity", name="AfterError", type="cube")
+    got = await ed.call("get_entity", entity="AfterError", detail="summary")
+    ed.check_eq(got["id"], made["entity"]["id"], "the next edit ran")
+    await ui_input.frames(ed)
+    ed.check_eq((await dialog(ed))["title"], "Rename File", "the edit dismissed only the error box")
     await ed.call("respond_dialog", choice="cancel")
     ed.check_eq(await dialog(ed), None, "closed")
+    await ed.call("delete_entities", entity=made["entity"]["id"])
+    (ed.project / "RenameMe.lua").unlink()
+    (ed.project / "Taken.lua").unlink()
 
 
 @clean
 async def test_create_folder_prompt(ed: Editor):
-    """R3: a name prompt with its nested error boxes: the refusal comes back in the reply, the box is
-    the one answered, and the name then completes it"""
+    """R3: a name prompt whose refusal stays in it (EditorModal::error): the reply says why, the prompt
+    stays open, and the name then completes it"""
     await ed.call("write_file", path="scripts/Keep.lua", content="return {}\n")
     await ed.call("focus_window", window="project")
-    d = await open_modal(ed, "assets.createFolder", "Create New Directory")
+    d = await open_modal(ed, "assets.createFolder", "New Folder")
     ed.check_eq(fields(d)["name"]["type"], "text", f"its name field: {d}")
     ed.check_in("yes", d["choices"], "Create")
 
-    # a folder that exists: Directory Already Exists on top, reported as the refusal
+    # a folder that exists: the refusal comes back, the prompt stays
     existing = next(p.name for p in ed.project.iterdir() if p.is_dir() and not p.name.startswith("."))
     r = await ed.call_raw("respond_dialog", {"choice": "yes", "values": {"name": existing}})
-    ed.check(r.is_error and "Directory Already Exists" in r.text, f"the box comes back as the refusal: {r.text[:300]}")
-    box = await dialog(ed)
-    ed.check_eq(box["title"], "Directory Already Exists", "the top-most is reported")
-    ed.check_eq(box["choices"], ["ok"], "and answered")
-    await ed.call("respond_dialog", choice="ok")
+    ed.check(r.is_error and "already exists" in r.text, f"the refusal comes back: {r.text[:300]}")
+    ed.check_eq((await dialog(ed))["title"], "New Folder", "the prompt stays open")
 
-    # the empty name: Invalid Name
+    # the empty name
     r = await ed.call_raw("respond_dialog", {"choice": "yes", "values": {"name": ""}})
-    ed.check(r.is_error and "valid directory name" in r.text, f"{r.text[:300]}")
-    await ed.call("respond_dialog", choice="ok")
+    ed.check(r.is_error and "Enter a name" in r.text, f"{r.text[:300]}")
 
     # unknown field, wrong kind of value: refused before anything applies
     r = await ed.call_raw("respond_dialog", {"values": {"nope": "x"}})
@@ -442,7 +455,7 @@ async def test_add_shader_nested(ed: Editor):
         await helper.click_revealed("Shaders", "Build Settings")
     add = await helper.reveal("+ Add", "Build Settings")
     await helper.click(helper.centre(add["rect"]))
-    d = await wait_dialog(ed, "Add Shader")
+    d = await frame_dialog(ed, "Add Shader")
     ed.check(d, "Add Shader is reported")
     ed.check_in("type", fields(d), f"its type: {d}")
     await ed.call("respond_dialog", choice="cancel")
@@ -487,7 +500,7 @@ async def test_save_template_fields(ed: Editor):
     async with Editor(project=REPO / "tools/fixtures/stencil", xvfb="editor", env={"TMPDIR": str(other_temp)}) as saved:
         # right after the project opens, while its shaders build: asked once, as a person does
         await saved.call("run_command", id="file.saveProjectAsTemplate")
-        d = await wait_dialog(saved, "Save Project as Template")
+        d = await frame_dialog(saved, "Save Project as Template")
         ed.check(d, f"it opens: {await dialog(saved)}")
         ed.check_in("name", fields(d), f"{d}")
         ed.check_in("description", fields(d), f"{d}")
@@ -589,7 +602,7 @@ async def test_file_picker_from_a_click(ed: Editor):
     folder = ed.scratch.root / "picked"
     folder.mkdir(exist_ok=True)
     await ed.call("respond_dialog", values={"path": str(folder)})
-    d = await wait_dialog(ed, "Build Settings")
+    d = await frame_dialog(ed, "Build Settings")
     ed.check_eq(fields(d)["output_directory"]["value"], str(folder), "the Browse button took the answer")
     await ed.call("respond_dialog", choice="cancel")
 
@@ -619,7 +632,7 @@ async def test_add_game_resolution(ed: Editor):
     ed.check(combo, "the Game view's resolution menu")
     await helper.click(helper.centre(combo["rect"]))
     await helper.click_item("+ Add custom...")
-    d = await wait_dialog(ed, "Add Game View Resolution")
+    d = await frame_dialog(ed, "Add Game View Resolution")
     ed.check(d, "the dialog")
     ed.check_eq(fields(d)["width"]["type"], "int", f"{d}")
     ed.check_eq(fields(d)["dpi"]["type"], "float", f"{d}")
@@ -637,7 +650,7 @@ async def test_clear_undo_history(ed: Editor):
     clear = await helper.find("Clear History...", "Undo History")
     ed.check(clear, "the Clear button")
     await helper.click(helper.centre(clear["rect"]))
-    d = await wait_dialog(ed, "Clear Undo History")
+    d = await frame_dialog(ed, "Clear Undo History")
     ed.check(d, "the question")
     ed.check_eq(d["choices"], ["yes", "cancel"], f"{d}")
     ed.check_in("[yes = Clear, cancel = Cancel]", d["message"], "says what yes presses")
@@ -670,7 +683,7 @@ async def test_script_create(ed: Editor):
     await ed.call("focus_window", window="inspector")
     await helper.frames(4)
     await open_new_script(helper)
-    d = await wait_dialog(ed, "New Script")
+    d = await frame_dialog(ed, "New Script")
     ed.check(d, "the dialog")
     ed.check_eq(fields(d)["source"]["options"], ["New Script", "Existing Script"], f"{d}")
     ed.check_in("Lua Script", fields(d)["template"]["options"], f"{d}")
@@ -683,7 +696,7 @@ async def test_script_create(ed: Editor):
     # again: its files exist, which is asked
     await helper.frames(4)
     await open_new_script(helper)
-    await wait_dialog(ed, "New Script")
+    await frame_dialog(ed, "New Script")
     await ed.call("respond_dialog", values={"template": "Lua Script", "name": "AgentScript"})
     r = await ed.call("respond_dialog", choice="yes")
     ed.check_eq(r["dialog"]["title"], "Script Files Already Exist", f"{r}")
@@ -713,7 +726,7 @@ async def test_texture_slicer(ed: Editor):
     await helper.frames(4)
     button = await helper.reveal("\uf58d Slicer Tool", "Inspector")
     await helper.click(helper.centre(button["rect"]))
-    d = await wait_dialog(ed)
+    d = await frame_dialog(ed)
     ed.check(d and "Slice" in d["title"], f"the dialog: {d}")
     ed.check_in("columns", fields(d), f"{d}")
     r = await ed.call("respond_dialog", values={"columns": 4, "rows": 2})
@@ -733,7 +746,7 @@ async def test_shader_fork(ed: Editor):
     await helper.frames(4)
     fork = await helper.reveal("##fork_custom_shader", "Inspector")
     await helper.click(helper.centre(fork["rect"]))
-    d = await wait_dialog(ed)
+    d = await frame_dialog(ed)
     ed.check(d and "Fork" in d["title"], f"the dialog: {d}")
     ed.check_in("name", fields(d), f"{d}")
     ed.check_in("fork_includes", fields(d), f"{d}")
@@ -747,14 +760,14 @@ async def test_shader_fork(ed: Editor):
 async def test_alert_keeps_its_kind(ed: Editor):
     """The alert still reports first, as itself, and takes no values"""
     await ed.call("run_command", id="assets.prefabs")
-    await wait_dialog(ed, "Prefabs")
+    await frame_dialog(ed, "Prefabs")
     await ed.call("respond_dialog", choice="cancel")
-    # a cancelled empty script path: Cannot Play is what a busy editor alerts; Clear Trash is not for agents,
-    # so the alert comes from Remove Scene on the only open scene
+    # Remove Scene asks before discarding this case's own unsaved scene.
+    made = await ed.call("create_scene", name="ModalAlert", type="3D")
+    await ed.call("create_entity", scene=made["scene"]["id"], name="AlertDirty", type="empty")
     r = await ed.call_raw("run_command", {"id": "file.removeScene"})
     d = await dialog(ed)
-    if not d or d.get("kind") != "alert":
-        skip(f"no alert from Remove Scene here: {r.text[:200]}")
+    ed.check(d and d.get("kind") == "alert", f"Remove Scene asks about the unsaved scene: {r.text[:200]} {d}")
     ed.check_in(d["choices"][0], ("ok", "yes"), f"{d}")
     bad = await ed.call_raw("respond_dialog", {"choice": d["choices"][0], "values": {"name": "x"}})
     ed.check(bad.is_error and "no fields" in bad.text, f"{bad.text[:300]}")
@@ -776,3 +789,92 @@ async def test_headless_modal_is_answerable_after_idling(ed: Editor):
         r = await other.call("respond_dialog", choice="cancel")
         ed.check("dialog" not in r, f"answered after idling: {r}")
         ed.check((await other.call("editor_status")).get("dialog") is None, "closed")
+
+
+async def imported_aseprite(ed: Editor, name: str) -> None:
+    """S44's character (two tag clips) at the project's root, its import done"""
+    shutil.copy(REPO / "editor" / "tests" / "fixtures" / "aseprite" / "s44-mcp" / "hero_idle.aseprite", ed.project / name)
+    await ed.call("sync_files", paths=[name])
+    state = None
+    for _ in range(200):
+        info = await ed.call("get_asset_info", path=name)
+        state = info.get("aseprite", info).get("import_state")
+        if state in ("imported", "failed"):
+            break
+        await ed.call("wait", seconds=0.1)
+    ed.check_eq(state, "imported", f"{name} imports")
+
+
+async def aseprite_inspector_button(ed: Editor, helper: ui_input.Ui, name: str, label: str) -> None:
+    """the Project window's `name` selected, so the Inspector (in front) shows the Aseprite Importer:
+    `label` clicked"""
+    # (the tests before may have left GameObjects selected, which the Inspector would show instead)
+    await ed.call("select_entities", entities=[])
+    # its sections' headers: a click the Project window takes before it has laid out its entries
+    # selects nothing, so again
+    anchor = None
+    for _ in range(4):
+        await ed.call("focus_window", window="project")
+        await select_entry(ed, helper, name)
+        await ed.call("focus_window", window="inspector")
+        for header in ("Texture", "Layers", "General"):
+            anchor = await helper.find(header, "Inspector", frames=20)
+            if anchor:
+                break
+        if anchor:
+            break
+    ed.check(anchor, f"the Inspector shows the Aseprite Importer for {name}")
+    # the buttons end the importer, below the fold of a small Inspector: ImGui draws (and
+    # find_ui_item finds) only what is in view, so it scrolls down until they are
+    button = None
+    for _ in range(40):
+        button = await helper.find(label, "Inspector", frames=2)
+        if button:
+            break
+        await helper.wheel(helper.centre(anchor["window_rect"]), 3)
+    ed.check(button, f"{label} comes into view in the Inspector")
+    await helper.click(helper.centre(button["rect"]))
+
+
+@clean
+async def test_aseprite_extract_clips(ed: Editor):
+    """S44: the Aseprite Importer's Extract Clips... lists the .anim files it writes; cancel writes
+    nothing, ok writes one per tag clip"""
+    helper = ui(ed)
+    await imported_aseprite(ed, "HeroClips.aseprite")
+    clips = [ed.project / "HeroClips walk.anim", ed.project / "HeroClips Idle.anim"]
+    await aseprite_inspector_button(ed, helper, "HeroClips.aseprite", "Extract Clips...")
+    d = await wait_dialog(ed, "Extract Clips")
+    ed.check(d, f"Extract Clips is reported: {await dialog(ed)}")
+    ed.check(set(d.get("choices", [])) >= {"ok", "cancel"}, f"Extract (ok) and Cancel: {d}")
+    ed.check("HeroClips walk.anim" in d.get("message", "") and "HeroClips Idle.anim" in d["message"], f"says what it writes: {d}")
+    await ed.call("respond_dialog", choice="cancel")
+    ed.check_eq(await frame_dialog(ed), None, "cancel closes it")
+    ed.check(not any(c.exists() for c in clips), "and writes nothing")
+
+    await aseprite_inspector_button(ed, helper, "HeroClips.aseprite", "Extract Clips...")
+    ed.check(await wait_dialog(ed, "Extract Clips"), "reopened")
+    r = await ed.call("respond_dialog", choice="ok")
+    ed.check("dialog" not in r, f"completed: {r}")
+    for _ in range(40):
+        if all(c.exists() for c in clips):
+            break
+        await ed.call("wait", seconds=0.1)
+    ed.check(all(c.exists() for c in clips), f"ok writes the tag clips: {root_entries(ed)}")
+
+
+@clean
+async def test_aseprite_not_found(ed: Editor):
+    """S44: Open in Aseprite with no Aseprite installed asks to locate it; the reply says where to get
+    it, cancel closes it"""
+    helper = ui(ed)
+    await imported_aseprite(ed, "HeroOpen.aseprite")
+    await aseprite_inspector_button(ed, helper, "HeroOpen.aseprite", "Open in Aseprite")
+    d = await wait_dialog(ed, "Aseprite Not Found")
+    ed.check(d, f"Aseprite Not Found is reported: {await dialog(ed)}")
+    ed.check(set(d.get("choices", [])) >= {"locate", "cancel"}, f"Locate... and Close (cancel): {d}")
+    ed.check("aseprite.org" in d.get("message", ""), f"says where to get it: {d}")
+    r = await ed.call_raw("create_entity", {"name": "Refused", "type": "empty"})
+    ed.check(r.is_error and "Aseprite Not Found" in r.text, f"an edit is refused while it is open: {r.text[:300]}")
+    await ed.call("respond_dialog", choice="cancel")
+    ed.check_eq(await frame_dialog(ed), None, "cancel closes it")

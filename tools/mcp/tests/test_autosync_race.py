@@ -328,12 +328,9 @@ async def test_editor_closes_with_a_writing_call_waiting():
 
 
 async def open_dialog(ed: Editor) -> dict:
-    for _ in range(80):
-        found = (await ed.call("editor_status")).get("dialog")
-        if found:
-            return found
-        await asyncio.sleep(0.25)
-    ed.fail("the dialog never opened")
+    found = (await ed.call("editor_status")).get("dialog")
+    ed.check(found, "the dialog never opened")
+    return found
 
 
 async def test_a_call_a_dialog_refuses_settles_too(ed: Editor):

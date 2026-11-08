@@ -79,11 +79,11 @@ async def test_check_rules():
     cases = {
         "core chars": ok + [row("get_b", 200)],
         "core tools": ok + [row("get_b", 10), row("get_c", 10)],
-        "tool limit": [row("get_a", 301)],
+        "tool limit": [row("big_tool", 590), row("get_a", 301)],
         "exception limit": [row("big_tool", 601)],
         "group entry": ok + [row("get_q", 10, "profiling")],
-        "group default": [row("get_s", 260, "splines"), row("get_t", 260, "splines")],
-        "group default count": [row("get_s", 10, "splines"), row("get_t", 10, "splines"), row("get_u", 10, "splines")],
+        "group default": [row("big_tool", 590), row("get_s", 260, "splines"), row("get_t", 260, "splines")],
+        "group default count": [row("big_tool", 590), row("get_s", 10, "splines"), row("get_t", 10, "splines"), row("get_u", 10, "splines")],
     }
     for label, rows in cases.items():
         assert tool_budget.check(rows, budget, {"core", "profiling", "splines"}), f"{label} passed"
@@ -121,12 +121,31 @@ async def test_guide_rules():
     assert any("'Gone'" in p and "no such section" in p for p in problems) and any("no reason" in p for p in problems), problems
     # bytes, not characters: a multi-byte character counts as its UTF-8 length
     assert tool_budget.guide_sections("## A\n\u00e9\n") == [("A", 8)]
+    # client cut: the listed sections end within the first chars UTF-16 units, the intro carries the pointer
+    cut = {"guide": dict(budget["guide"], client_cut={"chars": 120, "sections": ["(intro)", "Short"],
+                                                      "pointer": "read_file x", "reason": "r"})}
+    pointed = ok.replace("x" * 40, "read_file x" + "x" * 29)
+    assert tool_budget.check_guide(pointed, cut) == [], tool_budget.check_guide(pointed, cut)
+    problems = tool_budget.check_guide(ok, cut)
+    assert len(problems) == 1 and "pointer" in problems[0], problems
+    late = pointed.replace("y" * 60, "y" * 70)
+    problems = tool_budget.check_guide(late, cut)
+    assert len(problems) == 1 and "'Short'" in problems[0] and "client cut" in problems[0], problems
+    # UTF-16 units: a character outside the BMP counts twice (JavaScript's length)
+    assert tool_budget.utf16_len("\U0001F600") == 2
+    gone = {"guide": dict(cut["guide"], client_cut=dict(cut["guide"]["client_cut"], sections=["Nope"]))}
+    assert any("'Nope'" in p and "no such section" in p for p in tool_budget.check_guide(pointed, gone))
+    partial = {"guide": dict(budget["guide"], client_cut={"chars": 120})}
+    assert any("lacks" in p for p in tool_budget.check_guide(pointed, partial))
 
 
 async def test_budget_file_shape():
     budget = tool_budget.load_budget()
     assert budget["guide"]["bytes"] == 8192 and budget["guide"]["section_bytes"] == 1500, budget["guide"]
     assert budget["guide"]["headroom_bytes"] == 1500, budget["guide"]
+    cut = budget["guide"]["client_cut"]
+    assert cut["chars"] == 4096 and "read_file jasper://guide" == cut["pointer"] and cut["reason"], cut
+    assert {"(intro)", "Addressing", "The loop", "Building scenes", "Tool groups"} <= set(cut["sections"]), cut
     for key in ("default_listing", "group_default", "tool_default", "groups", "exceptions", "core_trades"):
         assert key in budget, f"budget.json lacks {key}"
     assert budget["default_listing"] == {"chars": 99000, "tools": 150}, budget["default_listing"]

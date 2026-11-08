@@ -189,8 +189,9 @@ TEST(VideoDemuxer, FrameLookup){
     for (int k = 0; k < CARD_FRAMES; k++){
         EXPECT_EQ(demuxer.videoFrameAt(cardPtsNs(k)), k);
         EXPECT_EQ(demuxer.videoFrameAt(cardPtsNs(k) + 16000000), k);
-        if (k > 0)
+        if (k > 0){
             EXPECT_EQ(demuxer.videoFrameAt(cardPtsNs(k) - 1), k - 1);
+        }
     }
     EXPECT_EQ(demuxer.videoFrameAt(-5), 0);
     EXPECT_EQ(demuxer.videoFrameAt(10000000000LL), CARD_FRAMES - 1);

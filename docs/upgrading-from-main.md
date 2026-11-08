@@ -142,6 +142,10 @@ A C++ script written against origin/main's API (a `ScriptBase` with `DPROPERTY` 
 C++ fixture prints the same transcript. Prefer Lua still: C++ scripts compile against the engine's
 headers, which keep changing (C++20 is the standard now, the ECS and components moved to reflection
 tables), so a script that reaches into engine internals may need changes the Lua API spares you.
+For example the component capacities `MAX_SUBMESHES`, `MAX_EXTERNAL_BUFFERS`, `MAX_BONES`,
+`MAX_SPRITE_FRAMES`, `MAX_TILEMAP_TILES` and `MAX_TILEMAP_TILESRECT` are gone (the arrays grow with
+their content): use the counts (`numSubmeshes`, `numFramesRect`, `numTiles`...). A scene file keeps
+its `maxValues` block as it was; nothing reads it.
 
 ## Features that need a sync
 

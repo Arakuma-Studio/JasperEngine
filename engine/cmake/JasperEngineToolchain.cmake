@@ -131,3 +131,25 @@ function(jasperengine_check_cxx_standards)
     endif()
     message(STATUS "C++ standard check: ${count} C++ targets at C++${JASPERENGINE_CXX_STANDARD}")
 endfunction()
+
+# Visual Studio generators: MSBuild's /m builds projects in parallel, the files of one project one
+# at a time without cl's /MP. JASPERENGINE_PARALLEL_BUILD_JOBS (> 0: the editor's job cap) caps it;
+# empty or 0 lets cl use every CPU. The editor and jasperengine.py then build one project at a time
+# (cmake --build --parallel 1): /m:<n> with /MP<n> ran up to n x n compilers. Ninja and the other
+# generators parallelise files themselves. Applied once per configure, to the directory it is
+# called in and the ones added after (the editor build calls it before adding the engine).
+function(jasperengine_msvc_parallel_compile)
+    if(NOT MSVC OR NOT CMAKE_GENERATOR MATCHES "^Visual Studio")
+        return()
+    endif()
+    get_property(applied GLOBAL PROPERTY JASPERENGINE_MSVC_PARALLEL_COMPILE)
+    if(applied)
+        return()
+    endif()
+    set_property(GLOBAL PROPERTY JASPERENGINE_MSVC_PARALLEL_COMPILE ON)
+    set(jobs "")
+    if(JASPERENGINE_PARALLEL_BUILD_JOBS GREATER 0)
+        set(jobs "${JASPERENGINE_PARALLEL_BUILD_JOBS}")
+    endif()
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/MP${jobs}>)
+endfunction()

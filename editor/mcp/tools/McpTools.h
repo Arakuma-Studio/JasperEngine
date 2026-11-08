@@ -74,6 +74,8 @@ namespace jasperengine::editor::mcp {
     void registerPlacementTools(McpRegistry& registry);
     void registerVatTools(McpRegistry& registry);
     void registerSpriteNormalsTools(McpRegistry& registry);
+    // SpriteTools.cpp: the sprites group (S44's Aseprite import; S45 atlases, S47 drawing)
+    void registerSpriteTools(McpRegistry& registry);
 
     // PlacementTools.cpp: puts back the preview poses a place_with_physics screenshot shows for a
     // few frames (App::stopTransientPreviews: before a save or Play)

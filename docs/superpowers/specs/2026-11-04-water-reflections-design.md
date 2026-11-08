@@ -247,7 +247,7 @@ struct WaterWaveParams{
     float getHorizontalReach() const; // the most a point moves sideways: 0, or s / 4 * sum 1 / k_i
 };
 // WaterWaveSample gains: Vector3 normal; Vector3 velocity; (sines: (0, heightRate, 0))
-// The surface over a world XZ: for Gerstner, Newton on rest + offset.xz(rest) = xz (start at xz, at most 4 steps,
+// The surface over a world XZ: for Gerstner, Newton on rest + offset.xz(rest) = xz (start at xz, at most 6 steps: Deviations 12,
 // the 2x2 Jacobian from dPdx/dPdz, a plain fixed-point step if its determinant is under 1e-4, stop under
 // (1e-5 L)^2); height, slope (from the normal), normal and velocity of the point found.
 WaterWaveSample waterSurfaceAt(const WaterWaveParams& params, Vector2 xz, float time);
@@ -571,7 +571,7 @@ failing output in the PR). The others test new features (their red is the featur
 | core gtest (GPU) | `WaterLayeringGpu.TransparentUnderRefractingWaterStaysVisible` **red** | an alpha-blended red quad 0.5 under a refracting water over a grey floor: the quad's pixel has red above the floor-only reference by > 40/255 (today: equal) |
 | core gtest (GPU) | `WaterLayeringGpu.TransparentUnderWaterNearerThanItsCentre` **red** | the red quad under a 40 m lake, nearer the camera than the lake's transform: its pixel is tinted by the water (blue channel raised vs. the quad drawn alone over the floor; today the quad is drawn over the water untinted) |
 | core gtest (GPU) | `WaterLayeringGpu.OverlappingRefractingWatersSeeEachOther` **red** | a refracting pool 2 m above a refracting lake, camera above: a pixel inside the pool shows the lake's colour (differs from the pool over the bed alone by > 20/255); `colorRecopies == 1` |
-| core gtest | `WaterLayeringTest.Rank` | `waterRank` for eye above/below, beyond/eye side/straddling/outside, nested pool over lake (ranks lake 1, fish 0, pool -1), null box, self excluded |
+| core gtest | `WaterLayering.Rank` | `waterRank` for eye above/below, beyond/eye side/straddling/outside, nested pool over lake (ranks lake 1, fish 0, pool -1), null box, self excluded |
 | core gtest (GPU) | `WaterShadingGpu.ShadowEdgeFollowsSmoothSurface` **red** | per-pixel water (`normalStrength` 2, light normal bias 2) under a box's straight shadow edge, pinned time: the shadowed-pixel mask (ratio to the same scene with `receiveShadows` off < 0.8) differs from the `normalStrength` 0 mask in < 0.5% of the band's pixels (today: more) |
 | core gtest (GPU) | `WaterShadingGpu.CausticsDarkInSurfaceShadow` **red** | CAUSTICS with REFRACTION, a box shadowing part of the surface: bed brightness inside the surface shadow with CAUSTICS on / off within 2% (today: > 5% brighter) |
 | core gtest (GPU) | `WaterFeaturesGpu.FeaturesOffMatchesTheShaderBeforeThem` (existing) | still exact on glcore (no regression for default materials) |
@@ -582,7 +582,7 @@ failing output in the PR). The others test new features (their red is the featur
 | core gtest | `WaterWavesTest.GerstnerInversion` | `waterSurfaceAt` finds rest points with `|rest + offset.xz - xz| < 1e-4 L` for steepness 0..0.9, random points |
 | core gtest | `WaterWavesTest.GlslTwinPinned` (extended) | both GLSL functions' SHA-256 |
 | core gtest (GPU) | `WaterWavesGpuTest.GerstnerMatchesCpu` | GPU displaced positions of a 32x32 rest grid; CPU `waterSurfaceAt` at each displaced XZ gives the GPU height within 1e-3 A + 1e-4 |
-| core gtest | `SceneTimeTest.*` | advances by the scaled delta; holds while time-paused; pinned shader time overrides; `Water::getTime(scene)` follows it |
+| core gtest | `SceneTime.*` | advances by the scaled delta; holds while time-paused; pinned shader time overrides; `Water::getTime(scene)` follows it |
 | core gtest | `ShaderManifestTest.RoleDirective` | `@role water|underwater` parsed; unknown and duplicate are errors |
 | core gtest | `WaterTest.ForkWithRoleIsWater` | a fork manifest (in-memory fork reader) with `@role water` makes `getSurfaces`, `readWaves` and `updateUnderwater` treat it as water, with its own defaults |
 | editor gtest | `StreamSceneSettingsTest.PlanarReflections` | round trip of the six keys; defaults omitted; a scene without them loads with defaults |
@@ -671,4 +671,159 @@ Docs: `docs/mcp/guide/shaders.md`, `physics.md`, `lua-api.md`, `scene-view.md`, 
 
 ## 14. Deviations
 
-None yet (recorded here during implementation).
+Recorded during implementation (branch `dc/water-reflections`):
+
+1. **Primary-view reflection passes have no camera entity.** The spec planned system camera entities as
+   `createMirrorCamera` makes. They are `WaterReflectionPass` objects of the `RenderView` (as `MirrorView` is for the
+   editor's views) for every view, drawn from `drawCameras` right before the scene camera's pass, with the next free
+   terrain view; `update()` sets `hasMultipleCameras` while any can draw, so the shared MVPs are rewritten per pass as
+   for other cameras. Reason: no scene entities to create, serialize-proof and reuse across views; the same code serves
+   games and the editor.
+2. **fork_shader `material` has no `path` (.material file) form.** A `.material` write is a project-scope undo step,
+   which cannot join the scene's fork command in one step. Fork on a GameObject's submesh (its linked `.material`
+   follows the editor's usual linking rules) instead.
+3. **A water's PLANAR_REFLECTION draws inside REFLECTION** (as CAUSTICS inside REFRACTION): a water without REFLECTION
+   registers no reflection pass, and the Inspector row says to turn Reflection on.
+4. **`get_render_stats` keys:** `planar_reflections` {planes, passes, fallbacks, width, height} and
+   `scene_color_copies` {copies, recopies} (the spec named `scene_inputs.color_recopies`; the tool had no
+   `scene_inputs` object).
+5. **`planar_reflection_layers` in MCP** is `"everything"`, `"nothing"`, a list of layer names (or indices), or the
+   mask's number, as a camera's culling mask reads.
+6. **The scene colour is still copied after the opaque queue** (before the hierarchy loop's UI, points, lines and
+   screen fluids, as before), and the queue's first reader copies it again when the queue drew before it (what is
+   under a water); re-copies (that one and the overlapping waters') happen only while nothing but the queue drew
+   since the copy, so the HUD and the other overlays never refract. Counts toward the four copies.
+7. **Agent guide:** no line added. The lead's decision keeps guidance in `docs/mcp/guide/shaders.md` (Water, Planar
+   reflections, Layering, Forks); two eval cases (`bad_water_fork_role`, `guard_water_planar_reflection`) cover the
+   new tool text. The live eval needs Orquester accounts and was not run; `test_grade.py` passes.
+8. **Sorting with pixel-art S52, and only around the waters:** S52 orders the transparent queue by (Sorting Layer
+   rank, Order in Layer, `sortPriority`, distance, order). The water order goes right after `sortPriority`, so
+   S52's merge only puts its two keys in front (the comparator says so in a comment). It is (sort distance, rank,
+   distance): a draw the waters layer, and each water, sorts at the farthest distance of its group of waters (waters
+   whose areas overlap, `waterGroupDistances`), by rank inside it; every other draw at its own distance, so smoke
+   over a far lake no longer sorts against a near window. Only flat waters (bounds at most 1% of their size plus
+   5 cm tall, `isFlatWater`, as the `planar-reflection-not-flat` check) take part; a sloped river sorts by distance.
+9. **Animate water** is written to the workspace only when off (default on), so workspace files of untouched scenes
+   do not change.
+10. **`Matrix4::obliqueNearClip` handles orthographic projections.** It took the clip-space corner with the
+    perspective shortcut (w = -z), which puts an orthographic reflection camera's near plane in the wrong place (the
+    orthographic water reflected nothing). It now takes the corner from the inverse projection and the projection's
+    own w row (Lengyel's general form); perspective results are unchanged. Mirrors share the helper, so orthographic
+    mirrors are fixed too.
+11. **`fork_shader`'s text is shorter** so the core listing stays within its 99000 characters (`tools/mcp/budget.json`,
+    pinned by `test_tool_budget.py`): the description names the library `source` and no longer explains `material`
+    (a mesh source defaults to it; the result lists the submeshes), and some of the existing targets' wording is
+    tighter. `source` and `submesh` carry no description.
+12. **Newton's method stops at 6 steps, not 4** (`waterSurfaceAt`): it returns as soon as the residual is under
+    (1e-5 L)^2, so 6 is only the cap; near-singular Jacobians at steep crests (steepness up to 0.95) take the
+    slower fixed-point step, which the larger cap leaves room for. Not measured against 4. The C++ Gerstner twin
+    matches the GPU within tolerance (`WaterWavesGpu.GerstnerMatchesCpu`: worst 4.19e-05 on glcore).
+13. **Cooked scenes, format 1.4:** the six planar reflection settings are appended to the cooked scene settings
+    after code-editor-git's 1.3 default shader values (`SceneSettingsCodec.cpp`, `FORMAT_MINOR` 4), so prebuilt
+    exports keep them; a 1.3 record leaves them at their defaults.
+14. **Forks made before the scene clock keep the frame clock:** library `water.vert` and `water_depth.vert` define
+    `WATER_SCENE_CLOCK`, and `water_vs.glsl` runs the waves on the scene clock only with it; an older fork's copied
+    `.vert` (without it) runs them on `frame.time`, as its copied `.frag` does.
+15. **Each primary-view reflection pass has its own terrain cut** (the next free slots after the render-to-texture
+    cameras', else the viewer's), so no cut's node buffer is updated twice in a frame. The passes are sized from the
+    viewer's pass (fixed resolution, or the render scale with dynamic resolution), and the scene keeps its
+    render-to-texture pipelines whatever the resolution, so turning it Off and on reloads nothing; the shared MVPs are
+    rewritten per camera only while the camera sees a planar water from above.
+
+## Follow-ups (2026-11-07)
+
+Workstream `water-uniforms` (`docs/doriax-catchup/FOLLOWUPS.md`). Measured with the GLES3 reflection of every variant
+the library's compile matrix builds (`WaterUniformBudgetSlow`), a fragment stage's vectors being the sum of its blocks
+(sokol's GL backends upload each block as plain uniforms, against GL_MAX_FRAGMENT_UNIFORM_VECTORS: 224 guaranteed).
+
+1. **Before:** 11 of the 290 matrix variants were over 224 vectors, 5 of them (30 compiles over 6 backends) also over the
+   8 blocks a stage: lit per pixel with shadows at 16 lights 229 (no features) to 248 (every feature, Water Excluders
+   and Wakes), and at 8 lights with fog 227 to 231 in 9 blocks (`u_fs_heightFog` the ninth). The plain water was over at
+   16 lights before this program; PLANAR_REFLECTION added the ninth block. The built-in Lit in the same scenes: 199
+   vectors at 16 lights with shadows, 222 with fog and the post colour; it has no GLES3 cap or fallback of its own.
+2. **The lights' records form** (`includes/lights.glsl`, `LIGHTS_FS_RECORDS`, defined by `library/water.frag`): the
+   fragment block holds the counts, the SH and two floats a pixel light (its scene light, its pass-dependent
+   `spot_shadow.w`), 12 vectors at 16 lights instead of 68; the four vectors of each scene light are rows of
+   `u_lightRecords` (RGBA32F, 128 lights a row), uploaded once a frame before the passes while a mesh drawing the form
+   is loaded (`RenderSystem::syncLightRecords`). Rejected: capping the lights on GLES3 (changes what it draws there),
+   moving the shadow blocks (124 vectors, the Lit's too, per camera pass: one upload a frame per image), packing the
+   shadow blocks (12 vectors at most). Light Mode Tiled keeps its own form. A fork made before keeps the block form.
+3. **One block for the environment and the planar reflection:** with both requires, `u_fs_environment` holds the planar
+   reflection's matrix and parameters after its own (`includes/environment.glsl`, `planar_reflection.glsl`), resolved by
+   the block's reflected size, so existing forks get it from the includes.
+4. **After:** the matrix's most is 203 vectors (8 lights, fog, post colour, shadows, every feature) and 8 blocks; the
+   worst scene at any capacity (16 lights, High shadow filters, fog, post colour, 2D lights, Excluders and Wakes, on a
+   mesh, a lattice mesh or a terrain) 210; `shaders --library water --backend all`: 1740 compiled, 0 failed. No new
+   property bit; shader cache v55 (with pcss-gles).
+5. **Not covered:** S57's capsule and contact shadows. Their `u_fs_lightOcclusion` is a ninth block with fog, and with
+   capsules 67 vectors: the built-in Lit with capsule shadows, 2D lights and fog is at 9 blocks and 307 to 339 vectors
+   too, so that is the S57 feature's GLES3 budget, not the water's.
+6. **The built-in Lit's painted Terrain** ('Tpb', the lead's addition; measured by the pcss-gles workstream): its nine
+   layers' `u_fs_terrainLayers` takes 45 vectors, so at 8 lights with shadows, the sky's and a probe's reflections,
+   SSAO, the post colour and fog it took 235 (253 and 267 at 16 lights, without and with fog), in 8 blocks and 15 of
+   16 textures. `mesh.frag` gives it the records form (not with a 2D shadow atlas, which takes the 16th texture
+   then; it never takes the Tiled form): 211 at most (`TerrainUniformBudget`). Its golden
+   (`TerrainLightRecordsGpu`) was captured with the block form and matches the records form exactly.
+7. **Within the bind limits too** (with pcss-gles' rule: 16 samplers across the stages, 16 fragment textures, on
+   every backend): a normal-mapped painted terrain with IBL, SSAO, the post colour, shadows and point or spot lights is
+   at 16 textures and 16 samplers before its records. The records share PCSS's raw view's sampler where a variant has
+   one (both nearest and clamped; texelFetch reads neither), so the directional-only terrain keeps PCSS.
+   `ShaderVariantCompiler::compile` builds a variant still over
+   them after PCSS's fallback without the spot lights' masks (`SPOT_MASKS_OFF`, a `spot-masks-left-out` log line, the
+   editor's build log "no spot light masks"): a masked spot light lights that terrain with its plain cone. Chosen over
+   SSAO (contact darkening under every object on the ground) and over the block form (235 to 267 vectors): masks are
+   rare, and without one the terrain draws the same. Pinned by `TerrainUniformBudgetSlow` (normal-mapped, 8 and 16
+   lights, High and Medium tiers, directional only or not). The records are uploaded only when one changed, and a
+   scene past 128 lights reads the texture's second row (`WaterLightRecordsGpu`).
+8. **Capsule and contact shadows, 2D lights, the built-in Lit** (workstream `lit-uniforms`, branch `fu/lit-uniforms`):
+   the Lit compile matrix's heavy scenes (sixteen lights per object or tiled, eight at the Medium tier, directional
+   only; capsule and contact shadows, 2D lights and their shadows, fog, probes, SSAO, the post colour; the plain
+   mesh, every lobe, the painted terrain) were at up to 384 vectors and 10 blocks, water with capsules at 277 and 9.
+   - The records form now also carries the frame's capsules (two texels each) and 2D lights (three) as rows of
+     `u_lightRecords` after the scene lights, and a tail at the end of `u_fs_objectLights` (records or Tiled form):
+     `lightDataBases`, the contact and capsule values with the capsules that reach the object as a 32-bit mask, the
+     2D lights' ambient and atlas. `u_fs_lightOcclusion` (67 vectors) and `u_fs_lighting2d` (50) are gone there.
+   - `ShaderVariantCompiler::compile` gives the form to a lit variant whose blocks would be over its backend's
+     fragment uniforms (a `light-records` log line): GLES3 / WebGL2 224 vectors, desktop GL 256
+     (GL_MAX_FRAGMENT_UNIFORM_COMPONENTS 1024 in GL 3.3 and 4.1), D3D11, Metal and Vulkan no total (their
+     per-block sizes are 4096 vectors and up), and 8 blocks a stage everywhere (sokol's per-stage slots). So a
+     mobile limit costs desktop nothing: a heavy Lit within desktop GL keeps its blocks, PCSS's raw view and the
+     spot masks there (`LightRecordsForm.EachBackendDecidesByItsOwnLimits`); the painted terrain takes it the
+     same way (no longer always). A colour variant decides with its OIT twin's `u_fs_oit` (one vector, one block),
+     so both take the same form and the OIT draws keep the colour variant's slots. A fork reading the blocks
+     itself (`objectLights.*`, `lighting2d.*`) that does not build with the records keeps the blocks, with one
+     warning naming it (`light-records-failed`). The bind-limit fallbacks then run in order: PCSS's raw view, the
+     spot masks, the 2D lights' shadows (`shadows-2d-left-out`, the editor's build log and once at runtime in
+     players too: only the normal-mapped painted terrain lit by shadowed 2D lights reaches it).
+   - The records upload only the kinds a loaded variant reads (moving capsules upload nothing otherwise) and only
+     when a record changed; the texture is made again smaller once its rows take under half of it. sokol updates a
+     whole image (`sg_update_image` has no sub-rectangle), so a change uploads its rows in use, not one row.
+   - After: Lit matrix at most 217 vectors and 8 blocks on GLES3 (`LitUniformBudgetSlow`), water's worst scene 216,
+     the painted terrain 217; `shaders --library builtin_lit` and `water` compile on all six backends.
+     `LitLightRecordsGpu`'s goldens were drawn by the blocks and match exactly on glcore (records there: 316
+     vectors), and the capsules' shadow is checked against Intensity 0 on every backend.
+
+Branch `fu/water-tests` (docs/doriax-catchup/FOLLOWUPS.md, water-tests).
+
+1. **Particle systems' custom blocks get the scene clock.** `RenderSystemParticles` wrote only `time` and
+   `resolution` into a particle shader's custom blocks, so a particle fork's `sceneTime` read 0 while every other
+   custom block (meshes, UI, points, lines, sky, post passes) got the scene clock. It now writes `sceneTime` too, so
+   pause, time scale and the editor's clock act on particle shaders as on the rest.
+   `ParticlesGpu.CustomBlockReadsTheSceneClock` (fixture `particles/scene_clock.frag`) draws the clock as red, with
+   a fixed 0.1 s frame at time scale 0.5, paused and running, so the frame clock cannot pass for it. The built-in
+   `particles.frag` and `lines.frag` list the engine-written members, `sceneTime` included.
+2. **Regression tests for the review fixes of deviation 15 and 6**, each red with its fix reverted:
+   - per-pass terrain cut: `WaterReflectionGpu.EachPassDrawsTheTerrainOfItsOwnCamera` (two heights: each pass's
+     terrain view holds the cut selected from its own mirrored eye, and the pass draws that cut's nodes, read from
+     the pass list's instances). On glcore a shared view still draws right (GL uploads in order); the test pins the
+     per-pass views Vulkan, Metal and D3D11 need, not pixels. The pass's `shadows.terrainView` (the cut its depth
+     and shadow draws would read) is not observable: a reflection pass draws no depth or shadow pass of its own;
+   - HUD refraction: `WaterLayeringGpu.UIStaysOutOfTheRefraction` (a UI image under a refracting water, a glass
+     under it elsewhere asking for a re-copy: the water shows the floor, not the image); red both with the whole
+     fix reverted and with only the held-batch flush before the re-copy decision reverted;
+   - MVP rewrites: `WaterReflectionGpu.MVPsPerCameraOnlyWhileAReflectionDraws` (with the planar water out of
+     sight a batched card's MVP stays lazy across a camera move; with its pass drawing it is rewritten). The
+     no-reload half of the same fix (pipelines kept whatever the resolution) has no test: no public observable
+     tells a reload apart from a pipeline-cache hit;
+   - target sizing: `WaterReflectionGpu.TargetSizeIsThePassSize` (Half of the view, of a 400 x 225 fixed
+     resolution, of render scale 0.5).

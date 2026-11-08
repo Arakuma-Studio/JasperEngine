@@ -244,6 +244,13 @@ TEST(Freeze, NeverLosesCoverage){
     int kept = 0;
     for (int i = 0; i < 10000; i++){
         position += Vector3(step(random), step(random) * 0.2f, step(random));
+        if (i == 5000){
+            float largestRadius = 0.0f;
+            for (unsigned int c = 0; c < previous.cascades; c++)
+                largestRadius = std::max(largestRadius, previous.radius[c]);
+            const Vector3 lightX(previous.view[0][0], previous.view[1][0], previous.view[2][0]);
+            position += lightX * (4.0f * largestRadius);
+        }
         yaw += turn(random);
         pitch = std::clamp(pitch + turn(random) * 0.5f, -1.2f, 1.2f);
         const Vector3 forward(std::sin(yaw) * std::cos(pitch), std::sin(pitch), -std::cos(yaw) * std::cos(pitch));

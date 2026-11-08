@@ -287,7 +287,11 @@ namespace jasperengine{
 		// Rebuilds the dirty colliders of the body (all of them with `all`: a new body or a
 		// changed scale), then its mass once
 		bool syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body, bool all);
+		// the colliders following a sprite slice take its box on the shown frame (S44 R17)
+		void updateSliceColliders2D(Entity entity, Rigidbody2DComponent& body);
 		void createCollider2DShapes(Entity entity, Rigidbody2DComponent& body, size_t index, const Vector2& entityScale, int layer);
+		// the shapes of a collider's own type and points (a slice collider's box goes through it too)
+		void createCollider2DShapesOf(Entity entity, Rigidbody2DComponent& body, size_t index, const Vector2& entityScale, int layer);
 		// true when the pieces were made again (not from the cache); logs the problems when `log`
 		bool computeCollider2DPieces(Collider2D& collider, const Vector2& entityScale, bool log, size_t index, const std::string& entityName);
 		void resolveCollider2DSurface(const Rigidbody2DComponent& body, const Collider2D& collider, float& friction, float& restitution, int& userMaterial) const;
@@ -459,6 +463,20 @@ namespace jasperengine{
 		bool isInterpolation() const;
 		// Removes the event callbacks with the substring in their tag
 		void removeSubscriptionsByTag(const std::string& substring);
+
+		// every event, for the two clears above (tools/check_event_clears.py)
+		template<typename F> void forEachEvent(F&& f) {
+#ifdef JASPERENGINE_PHYSICS_2D
+			f(beginContact2D); f(endContact2D); f(beginSensorContact2D); f(endSensorContact2D); f(hitContact2D);
+			f(preSolve2D); f(shouldCollide2D); f(stayContact2D); f(staySensorContact2D);
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+			f(onBodyActivated3D); f(onRagdollBeforeAnimatedRestore3D); f(onBodyDeactivated3D); f(onContactAdded3D);
+			f(onContactPersisted3D); f(onContactRemoved3D); f(shouldCollide3D); f(onContactModify3D);
+			f(onControllerColliderHit);
+#endif
+			(void)f;
+		}
 
 #ifdef JASPERENGINE_PHYSICS_2D
 		float getPointsToMeterScale2D() const;

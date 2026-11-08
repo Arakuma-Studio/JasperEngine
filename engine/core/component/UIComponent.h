@@ -39,6 +39,8 @@ namespace jasperengine{
         ShaderRef customShader;
         uint16_t customShaderId = 0;
         int slotVSParams = -1;
+        // reflected: a pixel-snapped variant's block ends with pixelSnapDraw (S41), a fork's may not
+        unsigned int sizeVSParams = 0;
         int slotFSParams = -1;
         // a Text with outline or shadow: its SDF atlas and u_fs_textParams (UISystem fills
         // textParams: outline colour, shadow colour (linear), x outline, y shadow softness,
@@ -96,6 +98,13 @@ namespace jasperengine{
         FunctionSubscribe<void(float, float)> onDrag;
         FunctionSubscribe<void(float, float)> onDragEnd;
 
+        // every event, for the clears at Stop and on tag removal (tools/check_event_clears.py)
+        template<typename F> void forEachEvent(F&& f) {
+            f(onGetFocus); f(onLostFocus); f(onPointerEnter); f(onPointerLeave); f(onPointerMove);
+            f(onPointerDown); f(onPointerUp); f(onClick); f(onDoubleClick); f(onDragStart); f(onDrag);
+            f(onDragEnd);
+        }
+
         bool automaticFlipY = true;
         bool flipY = false;
 
@@ -126,6 +135,10 @@ namespace jasperengine{
         // the pipeline types it was loaded with (a FLATTEN Canvas Group layer draws it with
         // PIP_RTT*; one loaded before needs a reload)
         uint16_t loadedPipelines = 0;
+        // the bytes of the GPU vertex and index buffers made at load: a CPU buffer that outgrew
+        // them reloads instead of being uploaded past their end (RenderSystem)
+        size_t gpuBufferBytes = 0;
+        size_t gpuIndicesBytes = 0;
     };
 
 }

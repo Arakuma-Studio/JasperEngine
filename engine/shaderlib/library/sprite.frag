@@ -95,7 +95,7 @@ uniform u_fs_customParams {
     #endif
     #ifdef PALETTE_CYCLE
         float paletteCycleSpeed;
-        float gameTime; // engine-written game seconds: they hold while the game is paused
+        float sceneTime; // engine-written: the scene clock, which holds while the game is paused
     #endif
 } customParams;
 #endif
@@ -200,7 +200,7 @@ void main() {
         #endif
         #ifdef PALETTE_CYCLE
             float paletteCycleSpeed = customParams.paletteCycleSpeed;
-            float paletteTime = customParams.gameTime;
+            float paletteTime = customParams.sceneTime;
         #else
             float paletteCycleSpeed = 0.0;
             float paletteTime = 0.0;

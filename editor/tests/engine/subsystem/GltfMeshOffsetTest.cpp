@@ -3,10 +3,8 @@
 
 // A glTF whose only mesh node sits under transform nodes: MeshSystem::loadGLTF gives the entity
 // the scene root's transform and bakes the nodes between the root and the mesh into the
-// vertices (they were lost), and Project::countGltfExternalBuffers counts, from the file, the
-// external buffers that load gives the mesh (a command line export loads no model). The baked
-// instances, reloads and off-thread thumbnails preserve that geometry, while foliage chunks
-// bake the node's whole transform.
+// vertices (they were lost). The baked instances, reloads and off-thread thumbnails preserve that
+// geometry, while foliage chunks bake the node's whole transform.
 
 #include <gtest/gtest.h>
 
@@ -57,7 +55,7 @@ namespace {
 
     // a .gltf (+ .bin) with the triangle on the given nodes and scene roots
     // morph: the primitive also has a morph target (the normals' view as its POSITION
-    // displacements), which the bake rejects
+    // displacements), which a placed copy bakes in (an ordinary load rejects the bake)
     fs::path writeGltf(const std::string& name, const nlohmann::json& nodes, const nlohmann::json& roots, bool morph = false) {
         const fs::path dir = fs::temp_directory_path() / "jasperengine-editor-tests-gltf";
         fs::create_directories(dir);
@@ -97,7 +95,7 @@ namespace {
         EXPECT_NEAR(actual.z, expected.z, 1e-4f) << what;
     }
 
-    // the vertex positions the mesh's first submesh binds (the AABB also holds the origin)
+    // the vertex positions the mesh's first submesh binds
     void expectPositions(const MeshComponent& mesh, const std::vector<Vector3>& expected) {
         ASSERT_GE(mesh.numSubmeshes, 1u);
         auto attribute = mesh.submeshes[0].attributes.find(AttributeType::POSITION);
@@ -146,12 +144,12 @@ TEST_F(GltfMeshOffset, NestedMeshNodeKeepsItsTransforms) {
     const MeshComponent& mesh = scene.getComponent<MeshComponent>(model.getEntity());
     expectPositions(mesh, {Vector3(0, 2, 6), Vector3(2, 2, 6), Vector3(0, 4, 6)});
     expectVector(mesh.verticesAABB.getMaximum(), Vector3(2, 4, 6), "AABB maximum");
+    // the bounds hold the vertices only, not the mesh's origin
+    expectVector(mesh.verticesAABB.getMinimum(), Vector3(0, 2, 6), "AABB minimum");
     EXPECT_EQ(mesh.windingOrder, WindingOrder::CCW);
 
-    // the file count covers what the load gave the mesh (index view, baked position and normal)
+    // the index view, the baked position and normal
     EXPECT_EQ(mesh.numExternalBuffers, 3u);
-    EXPECT_GE(editor::Project::countGltfExternalBuffers(path, false), mesh.numExternalBuffers);
-    EXPECT_GE(editor::Project::countGltfExternalBuffers(path, true), mesh.numExternalBuffers);
 }
 
 TEST_F(GltfMeshOffset, MeshAtTheRootIsNotBaked) {
@@ -170,7 +168,6 @@ TEST_F(GltfMeshOffset, MeshAtTheRootIsNotBaked) {
 
     // the file's three views
     EXPECT_EQ(mesh.numExternalBuffers, 3u);
-    EXPECT_EQ(editor::Project::countGltfExternalBuffers(path, false), 3u);
 }
 
 TEST_F(GltfMeshOffset, MeshUnderAnotherSceneRoot) {
@@ -189,7 +186,7 @@ TEST_F(GltfMeshOffset, MeshUnderAnotherSceneRoot) {
     // Empty^-1 * Mesh: (-x - 5, y, z + 3), so the world places it where the file does
     const MeshComponent& mesh = scene.getComponent<MeshComponent>(model.getEntity());
     expectPositions(mesh, {Vector3(-5, 0, 3), Vector3(-6, 0, 3), Vector3(-5, 1, 3)});
-    expectVector(mesh.verticesAABB.getMinimum(), Vector3(-6, 0, 0), "AABB minimum");
+    expectVector(mesh.verticesAABB.getMinimum(), Vector3(-6, 0, 3), "AABB minimum");
     // the mirror flips the winding
     EXPECT_EQ(mesh.windingOrder, WindingOrder::CW);
     // it is in the vertices: the entity's transform does not mirror, nor does the draw
@@ -197,7 +194,6 @@ TEST_F(GltfMeshOffset, MeshUnderAnotherSceneRoot) {
     const Transform& transform = scene.getComponent<Transform>(model.getEntity());
     EXPECT_FALSE(RenderSystem::isMirroredDraw(mesh, Matrix4::translateMatrix(transform.position) *
         transform.rotation.getRotationMatrix() * Matrix4::scaleMatrix(transform.scale)));
-    EXPECT_GE(editor::Project::countGltfExternalBuffers(path, false), mesh.numExternalBuffers);
 }
 
 TEST_F(GltfMeshOffset, MirroredRootOnTheEntityIsCompensated) {
@@ -307,14 +303,13 @@ TEST_F(GltfMeshOffset, FoliageBakesTheWholeNodeTransform) {
     Scene scene;
     std::shared_ptr<MeshSystem> meshSystem = scene.getSystem<MeshSystem>();
 
-    // loadFoliageMesh's load. Nested: Root * Offset * Mesh, (2x + 1, 2y + 2, 2z + 6), as merged nodes bake
+    // loadPlacedModel's load. Nested: Root * Offset * Mesh, (2x + 1, 2y + 2, 2z + 6), as merged nodes bake
     const fs::path nested = writeGltf("foliage-nested", nestedNodes, {0});
     Model chunk(&scene);
-    ASSERT_TRUE(meshSystem->loadGLTF(chunk.getEntity(), nested.string(), false, true, false, true));
+    ASSERT_TRUE(meshSystem->loadPlacedModel(chunk.getEntity(), nested.string()));
     expectVector(scene.getComponent<Transform>(chunk.getEntity()).position, Vector3(0, 0, 0), "chunk position");
     const MeshComponent& nestedMesh = scene.getComponent<MeshComponent>(chunk.getEntity());
     expectPositions(nestedMesh, {Vector3(1, 2, 6), Vector3(3, 2, 6), Vector3(1, 4, 6)});
-    EXPECT_GE(editor::Project::countGltfExternalBuffers(nested, true), nestedMesh.numExternalBuffers);
 
     // the mesh at the root, mirrored: its own transform, and the winding it flips
     const nlohmann::json rootNodes = {
@@ -322,33 +317,28 @@ TEST_F(GltfMeshOffset, FoliageBakesTheWholeNodeTransform) {
     };
     const fs::path root = writeGltf("foliage-root", rootNodes, {0});
     Model rootChunk(&scene);
-    ASSERT_TRUE(meshSystem->loadGLTF(rootChunk.getEntity(), root.string(), false, true, false, true));
+    ASSERT_TRUE(meshSystem->loadPlacedModel(rootChunk.getEntity(), root.string()));
     const MeshComponent& rootMesh = scene.getComponent<MeshComponent>(rootChunk.getEntity());
     expectPositions(rootMesh, {Vector3(0, 0, 3), Vector3(-1, 0, 3), Vector3(0, 1, 3)});
     EXPECT_EQ(rootMesh.windingOrder, WindingOrder::CW);
     EXPECT_FALSE(rootMesh.mirroredWinding) << "the mirror is baked into the vertices";
 
-    // a mesh that cannot be baked (a morph target) under a mirrored root keeps its vertices,
-    // and the winding of what is applied to them: nothing
+    // a mesh with a blend shape bakes too: the copy draws it at rest, its default weights (none
+    // here) in the vertices with the node's transform and its winding
     const fs::path morph = writeGltf("foliage-morph", rootNodes, {0}, true);
     Model morphChunk(&scene);
-    ASSERT_TRUE(meshSystem->loadGLTF(morphChunk.getEntity(), morph.string(), false, true, false, true));
+    ASSERT_TRUE(meshSystem->loadPlacedModel(morphChunk.getEntity(), morph.string()));
     const MeshComponent& morphMesh = scene.getComponent<MeshComponent>(morphChunk.getEntity());
-    expectPositions(morphMesh, {Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(0, 1, 0)});
-    EXPECT_EQ(morphMesh.windingOrder, WindingOrder::CCW);
-    EXPECT_GE(editor::Project::countGltfExternalBuffers(root, true), rootMesh.numExternalBuffers);
+    expectPositions(morphMesh, {Vector3(0, 0, 3), Vector3(-1, 0, 3), Vector3(0, 1, 3)});
+    EXPECT_EQ(morphMesh.windingOrder, WindingOrder::CW);
 
     // a file without node transforms is not baked (and renders as before)
     const nlohmann::json plainNodes = {{{"name", "Mesh"}, {"mesh", 0}}};
     const fs::path plain = writeGltf("foliage-plain", plainNodes, {0});
     Model plainChunk(&scene);
-    ASSERT_TRUE(meshSystem->loadGLTF(plainChunk.getEntity(), plain.string(), false, true, false, true));
+    ASSERT_TRUE(meshSystem->loadPlacedModel(plainChunk.getEntity(), plain.string()));
     const MeshComponent& plainMesh = scene.getComponent<MeshComponent>(plainChunk.getEntity());
     expectPositions(plainMesh, {Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(0, 1, 0)});
     EXPECT_EQ(plainMesh.windingOrder, WindingOrder::CCW);
-}
-
-TEST(GltfExternalBuffers, UnreadableFileCountsNothing) {
-    EXPECT_EQ(editor::Project::countGltfExternalBuffers(fs::temp_directory_path() / "jasperengine-no-such-model.gltf", false), 0u);
 }
 

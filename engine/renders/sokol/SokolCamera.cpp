@@ -176,15 +176,20 @@ void SokolCamera::startSplitRenderPass(FramebufferRender* framebuffer){
     beginPass(split);
 }
 
-void SokolCamera::resumeRenderPass(FramebufferRender* framebuffer){
+void SokolCamera::resumeRenderPass(FramebufferRender* framebuffer, bool split, bool loadColor){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_pass resumed = pass;
     resumed.swapchain = {};
     resumed.attachments = attachmentsOf(framebuffer, 0);
-    if (multisample){
+    if (split){
+        // (DONTCARE invalidates them on GLES and tilers: the next resume would load nothing)
+        resumed.action.depth.store_action = SG_STOREACTION_STORE;
+        resumed.action.stencil.store_action = SG_STOREACTION_STORE;
+    }else if (multisample){
+        // the samples resolve into the framebuffer at the end and are dropped
         resumed.action.colors[0].store_action = SG_STOREACTION_DONTCARE;
     }
-    resumed.action.colors[0].load_action = SG_LOADACTION_LOAD;
+    resumed.action.colors[0].load_action = loadColor ? SG_LOADACTION_LOAD : SG_LOADACTION_DONTCARE;
     resumed.action.depth.load_action = SG_LOADACTION_LOAD;
     resumed.action.stencil.load_action = SG_LOADACTION_LOAD;
     beginPass(resumed);
@@ -200,7 +205,9 @@ void SokolCamera::applyViewport(Rect rect){
     // Add truncated fractional parts to width and height
     float adjustedWidth = rect.getWidth() + (x - flooredX);
     float adjustedHeight = rect.getHeight() + (y - flooredY);
-    SokolDrawBatch::flush(); // (held draws were for the rect before)
+    // the draws held for the rect before: the batcher's, then the instancing batch's
+    SokolSystem::flushDeferred();
+    SokolDrawBatch::flush();
     sg_apply_viewport(flooredX, flooredY, std::ceil(adjustedWidth), std::ceil(adjustedHeight), false);
 }
 
@@ -214,22 +221,22 @@ void SokolCamera::applyScissor(Rect rect){
     // Add truncated fractional parts to width and height
     float adjustedWidth = rect.getWidth() + (x - flooredX);
     float adjustedHeight = rect.getHeight() + (y - flooredY);
-    SokolDrawBatch::flush(); // (held draws were for the rect before)
-    sg_apply_scissor_rect(flooredX, flooredY, std::ceil(adjustedWidth), std::ceil(adjustedHeight), false);
+    SokolSystem::applyScissor((int)flooredX, (int)flooredY, (int)std::ceil(adjustedWidth), (int)std::ceil(adjustedHeight), false);
 }
 
 // top-left rects as they are on every backend: GL's offscreen targets are rendered Y-flipped
 // (RenderSystem::isRenderingFlipped), so its bottom-left origin is the image's top there
 void SokolCamera::applyViewportTopLeft(int x, int y, int width, int height){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
-    SokolDrawBatch::flush(); // (held draws were for the rect before)
+    // the draws held for the rect before: the batcher's, then the instancing batch's
+    SokolSystem::flushDeferred();
+    SokolDrawBatch::flush();
     sg_apply_viewport(x, y, width, height, SystemRender::getFeatures().originTopLeft);
 }
 
 void SokolCamera::applyScissorTopLeft(int x, int y, int width, int height){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
-    SokolDrawBatch::flush(); // (held draws were for the rect before)
-    sg_apply_scissor_rect(x, y, width, height, SystemRender::getFeatures().originTopLeft);
+    SokolSystem::applyScissor(x, y, width, height, SystemRender::getFeatures().originTopLeft);
 }
 
 void SokolCamera::endRenderPass(){

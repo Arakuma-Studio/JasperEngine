@@ -225,7 +225,7 @@ namespace {
             auto meshes = scene().getComponentArray<MeshComponent>();
             for (size_t i = 0; i < meshes->size(); i++){
                 MeshComponent& mesh = meshes->getComponentFromIndex(i);
-                if (mesh.loaded && mesh.bonesMatrix.size() > 0){
+                if (mesh.loaded && mesh.bonesMatrix.stored() > 0){
                     mesh.needUpdateBones = true;
                     skinned++;
                 }

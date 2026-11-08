@@ -37,14 +37,15 @@ namespace jasperengine {
         AvatarMask = 21,            // a .mask avatar mask (S21)
         AnimationMontage = 22,      // a .montage animation montage (S21)
         VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
-        // The pixel-art family's reserved values 24 to 27 (PIXEL-ART-LEDGER.md, docs/specs/S41-S52):
-        // each keeps its number whatever order the specs land in, so a value between two may still be unused
+        // 24 to 27 are the pixel art program's (docs/specs/S41-S52: Palette 24, AsepriteSprite 25,
+        // SpriteAtlas 26, Tileset 27), each written explicitly whatever order they land in
         Palette = 24,               // a .palette palette (S43)
+        AsepriteSprite = 25,        // an .aseprite / .ase file (S44): its sheet, frames, clips and slices are sub-assets
         SoundEvent = 28             // a .soundevent Sound Event (S37; its GUID in its .meta)
     };
 
-    // the highest value in use
-    constexpr uint8_t kLastAssetTypeValue = static_cast<uint8_t>(AssetType::SoundEvent);
+    // the highest value present (a sibling's reserved value below it may still be missing)
+    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::SoundEvent);
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
     inline const char* assetTypeName(AssetType type) {
@@ -73,6 +74,7 @@ namespace jasperengine {
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
             case AssetType::Palette: return "palette";
+            case AssetType::AsepriteSprite: return "aseprite_sprite";
             case AssetType::SoundEvent: return "sound_event";
             case AssetType::Unknown: break;
         }
@@ -80,11 +82,10 @@ namespace jasperengine {
     }
 
     inline AssetType assetTypeFromName(std::string_view name) {
-        for (uint8_t value = 1; value <= kLastAssetTypeValue; value++) {
+        // values without a name (a reserved one not added yet) read "unknown" and never match
+        for (uint8_t value = 1; value <= kLastAssetType; value++) {
             const AssetType type = static_cast<AssetType>(value);
-            const char* typeName = assetTypeName(type);
-            // a reserved value no spec has added yet has no name
-            if (std::string_view(typeName) != "unknown" && name == typeName) {
+            if (name != "unknown" && name == assetTypeName(type)) {
                 return type;
             }
         }

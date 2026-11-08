@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AndroidPackager.h"
+#include "util/NativePlugins.h"
 
 #include "Exporter.h"
 #include "Out.h"
@@ -10,6 +11,7 @@
 #include "platform/AndroidTools.h"
 #include "util/ZipArchive.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <fstream>
 
@@ -180,7 +182,7 @@ bool platform::writeAndroidManifest(const AndroidPackage& package, const std::st
     manifest = templateText;
     for (const char* marker : {"{{VERSION_CODE}}", "{{VERSION_NAME}}", "{{MIN_SDK}}", "{{TARGET_SDK}}", "{{LABEL}}", "{{PERMISSIONS}}",
                                "{{ALLOW_BACKUP}}", "{{ICON}}", "{{THEME}}", "{{ORIENTATION}}", "{{FULLSCREEN}}", "{{KEEP_SCREEN_ON}}",
-                               "{{TEXTURE_SUPPORT}}"}) {
+                               "{{TEXTURE_SUPPORT}}", "{{NATIVE_MANIFEST_XML}}", "{{NATIVE_APPLICATION_XML}}"}) {
         if (manifest.find(marker) == std::string::npos) {
             error = std::string("the player's AndroidManifest.template.xml has no ") + marker + " (a runtime of another version?)";
             return false;
@@ -191,6 +193,35 @@ bool platform::writeAndroidManifest(const AndroidPackage& package, const std::st
         const char* name = Exporter::androidPermissionName(permission);
         if (name) permissions += std::string("    <uses-permission android:name=\"android.permission.") + name + "\" />\n";
     }
+    // Project Settings > Native Plugins > Android: the permissions by full name, and the raw XML
+    // (code-free: a fragment with tools: merge rules makes the build compile, Exporter NativeNeeds)
+    for (const std::string& permission : package.settings.extraPermissions) {
+        if (permission.find_first_not_of(" \t") == std::string::npos) continue;
+        permissions += "    <uses-permission android:name=\"" + Exporter::escapeXml(permission) + "\" />\n";
+    }
+    const std::pair<const char*, const std::string*> fragments[] = {{"android.manifest_xml", &package.settings.manifestXml},
+                                                                    {"android.manifest_application_xml", &package.settings.manifestApplicationXml}};
+    for (const auto& [setting, xml] : fragments) {
+        const std::string why = NativePlugins::xmlFragmentError(*xml);
+        if (!why.empty()) {
+            error = std::string("Project Settings > Native Plugins > Android (") + setting + ") is " + why;
+            return false;
+        }
+    }
+    auto fragment = [](std::string xml, const char* indent) {
+        xml.erase(std::remove(xml.begin(), xml.end(), '\r'), xml.end());
+        if (xml.find_first_not_of(" \t\n") == std::string::npos) return std::string();
+        std::string out;
+        size_t start = 0;
+        while (start < xml.size()) {
+            const size_t end = xml.find('\n', start);
+            const std::string line = xml.substr(start, end == std::string::npos ? std::string::npos : end - start);
+            if (line.find_first_not_of(" \t") != std::string::npos) out += indent + line + "\n";
+            if (end == std::string::npos) break;
+            start = end + 1;
+        }
+        return out;
+    };
     const bool launcher = !package.settings.launcherIcon.empty();
     const bool adaptive = !package.settings.adaptiveIconForeground.empty() && !package.settings.adaptiveIconBackground.empty();
     // the default orientation, or auto-rotation within the allowed ones (the user's rotation lock kept)
@@ -215,6 +246,8 @@ bool platform::writeAndroidManifest(const AndroidPackage& package, const std::st
     replaceAll(manifest, "{{FULLSCREEN}}", package.settings.fullscreen ? "true" : "false");
     replaceAll(manifest, "{{KEEP_SCREEN_ON}}", package.presentation.keepScreenOn ? "true" : "false");
     replaceAll(manifest, "{{TEXTURE_SUPPORT}}", package.astc ? "    <supports-gl-texture android:name=\"GL_KHR_texture_compression_astc_ldr\" />\n" : "");
+    replaceAll(manifest, "{{NATIVE_MANIFEST_XML}}", fragment(package.settings.manifestXml, "    "));
+    replaceAll(manifest, "{{NATIVE_APPLICATION_XML}}", fragment(package.settings.manifestApplicationXml, "        "));
     // compressed libraries are extracted at install (the template says false: stored, loaded from
     // the APK)
     if (compressesNativeLibraries(package))

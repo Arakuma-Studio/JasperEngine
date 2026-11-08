@@ -15,6 +15,9 @@ def jasperengineRootAbs = file(jasperengineRoot).toString()
 def jasperPlayer = project.findProperty("jasperPlayer") == "true"
 // -PjasperBackend=gles3: the player's graphics backend (the engine's default otherwise)
 def jasperBackend = project.findProperty("jasperBackend")
+if (jasperBackend && jasperBackend != "gles3") {
+    throw new GradleException("jasperBackend: Android supports gles3 (got '" + jasperBackend + "')")
+}
 // -PjasperPlayerVariant=<name>: the release player variant (full when not given)
 def jasperPlayerVariant = project.findProperty("jasperPlayerVariant")
 
@@ -33,7 +36,7 @@ android {
     compileSdk 36
     // The NDK AGP 9.4.1 installs by default, pinned: its Clang (19) is above the C++20 floor
     // (engine/cmake/JasperEngineToolchain.cmake), and exports keep this line
-    ndkVersion "28.2.13676358"
+    ndkVersion = "28.2.13676358"
     // videos stay uncompressed in the APK: the decoders open them by file descriptor
     // (AAsset_openFileDescriptor64, docs/superpowers/specs/2026-10-31-video-mp4-design.md §6.8)
     androidResources {
@@ -45,7 +48,7 @@ android {
         targetSdkVersion 36
         versionCode 1
         versionName "1.0"
-        multiDexEnabled true // avoid error 'Cannot fit requested classes in a single dex file'
+        multiDexEnabled = true // avoid error 'Cannot fit requested classes in a single dex file'
         externalNativeBuild {
             cmake {
                 abiFilters "arm64-v8a"
@@ -90,7 +93,7 @@ android {
             // the libraries ship stripped; their symbols go into the App Bundle for Google Play's
             // symbolication (native-debug-symbols.zip), and stay in merged_native_libs for an APK
             ndk {
-                debugSymbolLevel 'FULL'
+                debugSymbolLevel = 'FULL'
             }
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -104,27 +107,24 @@ android {
     }
 
     buildFeatures {
-        prefab true
+        prefab = true
     }
 
     sourceSets {
         main {
             java.srcDirs = [jasperengineRootAbs+'/platform/android/java']
             if (jasperPlayer) {
-                // a player has no ads (a project with AdMob compiles) and no content of its own:
-                // the editor links the game's as assets/game
+                // a player has no content of its own: the editor links the game's as assets/game
                 res.srcDir jasperengineRootAbs+'/platform/android/player/res'
                 assets.srcDirs = []
             } else {
-                // the editor export drops this and the ads SDK below unless the project enables AdMob
-                java.srcDir jasperengineRootAbs+'/platform/android/java-admob'
                 // the project's assets without the cooked textures other platforms load (S14 R9)
                 assets.srcDirs = [jasperengineAssetsDir,projectSourceRootAbs+'/lua']
             }
         }
     }
 
-    namespace 'com.jaspergameengine.jasperengine'
+    namespace = 'com.jaspergameengine.jasperengine'
 }
 
 dependencies {
@@ -133,9 +133,6 @@ dependencies {
     implementation "androidx.appcompat:appcompat:1.6.1"
     implementation "androidx.games:games-activity:2.0.2"
     implementation "androidx.games:games-frame-pacing:2.0.0"
-    if (!jasperPlayer) {
-        implementation "com.google.android.gms:play-services-ads:22.6.0"
-    }
 }
 
 if (jasperPlayer) {

@@ -3,6 +3,7 @@
 
 #include "MeshSystem.h"
 #include "component/ActionComponent.h"
+#include "component/CameraComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/BoneComponent.h"
@@ -12,6 +13,8 @@
 #include "component/ScaleTracksComponent.h"
 #include "component/TranslateTracksComponent.h"
 #include "component/MeshPolygonComponent.h"
+#include "component/InstancedMeshComponent.h"
+#include "pixelart/PixelSnap.h"
 
 #include "Scene.h"
 #include "Engine.h"
@@ -19,6 +22,7 @@
 #include "animation/ModelSubClips.h"
 #include "animation/VertexAnimation.h"
 #include "buffer/InterleavedBuffer.h"
+#include "thread/MainThreadQueue.h"
 #include "io/FileData.h"
 #include "io/Data.h"
 #include "io/ResourcePack.h"
@@ -26,6 +30,8 @@
 #include "pool/ModelPool.h"
 #include "pool/TexturePool.h"
 #include "pool/TextureDataPool.h"
+#include "sprite/SpriteFrameGeometry.h"
+#include "sprite/SpriteSheetPool.h"
 #include "thread/ResourceProgress.h"
 #include "io/AssetIOService.h"
 #include "subsystem/RenderSystem.h"
@@ -694,7 +700,12 @@ void MeshSystem::prepareSpriteMesh(MeshComponent& mesh){
     mesh.buffer.addAttribute(AttributeType::TANGENT, 4);
     mesh.buffer.addAttribute(AttributeType::COLOR, 4);
 
-    mesh.buffer.setUsage(BufferUsage::DYNAMIC);
+    // shared by content (MeshBufferPool): sprites of one shape draw from one GPU buffer, a
+    // changed sprite takes the buffer of its new bytes (RenderSystem::refreshImmutableBuffer); one
+    // whose geometry kept changing has a dynamic buffer of its own, which it keeps
+    BufferRender* render = mesh.buffer.getRender();
+    if (!(mesh.buffer.getUsage() == BufferUsage::DYNAMIC && render->isCreated() && !render->isShared()))
+        mesh.buffer.setUsage(BufferUsage::IMMUTABLE);
 }
 
 void MeshSystem::prepareMeshPolygonMesh(MeshComponent& mesh){
@@ -801,7 +812,8 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
         pivotPos.y = sprite.height / 2.0;
     }else if (sprite.pivotPreset == PivotPreset::LEFT_CENTER){
         pivotPos.y = sprite.height / 2.0;
-    }else if (sprite.pivotPreset == PivotPreset::CENTER){
+    }else if (sprite.pivotPreset == PivotPreset::CENTER || sprite.pivotPreset == PivotPreset::FRAME){
+        // inline frames carry no pivot: From Frame is the centre on a legacy sprite
         pivotPos.x = sprite.width / 2.0;
         pivotPos.y = sprite.height / 2.0;
     }
@@ -809,6 +821,13 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
     if (camera.type == CameraType::CAMERA_UI){
         pivotPos.y = sprite.height - pivotPos.y;
     }
+
+    // the quad in world units: the pixel size over the Pixels Per Unit (S41 R6; 1 by default,
+    // exact: the vertices are the pixel sizes then)
+    const float ppu = resolvePixelsPerUnit(sprite.pixelsPerUnit);
+    pivotPos = Vector2(pivotPos.x / ppu, pivotPos.y / ppu);
+    const float quadWidth = (float)sprite.width / ppu;
+    const float quadHeight = (float)sprite.height / ppu;
 
     if (grid > 1){
         createSpriteGrid(sprite, mesh, texWidth, texHeight, pivotPos, grid);
@@ -818,16 +837,16 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
             if (previousGrid != 0 && previousGrid != grid){
                 mesh.needReload = true;
             }else{
-                mesh.needUpdateBuffer = true; // buffer is not immutable
+                mesh.needUpdateBuffer = true; // the bytes of the shared buffer changed
             }
         }
         return true;
     }
 
     mesh.buffer.addVector3(attVertex, Vector3(-pivotPos.x, -pivotPos.y, 0));
-    mesh.buffer.addVector3(attVertex, Vector3(sprite.width-pivotPos.x, -pivotPos.y, 0));
-    mesh.buffer.addVector3(attVertex, Vector3(sprite.width-pivotPos.x,  sprite.height-pivotPos.y, 0));
-    mesh.buffer.addVector3(attVertex, Vector3(-pivotPos.x,  sprite.height-pivotPos.y, 0));
+    mesh.buffer.addVector3(attVertex, Vector3(quadWidth-pivotPos.x, -pivotPos.y, 0));
+    mesh.buffer.addVector3(attVertex, Vector3(quadWidth-pivotPos.x,  quadHeight-pivotPos.y, 0));
+    mesh.buffer.addVector3(attVertex, Vector3(-pivotPos.x,  quadHeight-pivotPos.y, 0));
 
     Attribute* attTexcoord = mesh.buffer.getAttribute(AttributeType::TEXCOORD1);
 
@@ -899,7 +918,7 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
         if (previousGrid > 1){
             mesh.needReload = true;
         }else{
-            mesh.needUpdateBuffer = true; // buffer is not immutable
+            mesh.needUpdateBuffer = true; // the bytes of the shared buffer changed
         }
     }
 
@@ -911,11 +930,14 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
 // exactly, so the AABB is the quad's
 void MeshSystem::createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
                                   Vector2 pivotPos, int grid){
-    const float x0 = -pivotPos.x;
-    const float x1 = sprite.width - pivotPos.x;
-    const float y0 = -pivotPos.y;
-    const float y1 = sprite.height - pivotPos.y;
+    // world units, as createSprite's quad (pivotPos is in them already)
+    const float ppu = resolvePixelsPerUnit(sprite.pixelsPerUnit);
+    buildSpriteGrid(sprite, mesh, texWidth, texHeight, -pivotPos.x, -pivotPos.y,
+                    (float)sprite.width / ppu - pivotPos.x, (float)sprite.height / ppu - pivotPos.y, grid);
+}
 
+void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
+                                 float x0, float y0, float x1, float y1, int grid){
     float texCutRatioW = 0;
     float texCutRatioH = 0;
     if (texWidth != 0 && texHeight != 0){
@@ -998,11 +1020,12 @@ bool MeshSystem::createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent&
         mesh.buffer.addVector4(AttributeType::COLOR, polygon.points[i].color);
     }
 
-    // Generation texcoords
+    // Generation texcoords (lowest(), not min(): min() is the smallest positive float, so a
+    // polygon left of or below its origin measured to 0 instead of to its own edge)
     float min_X = std::numeric_limits<float>::max();
-    float max_X = std::numeric_limits<float>::min();
+    float max_X = std::numeric_limits<float>::lowest();
     float min_Y = std::numeric_limits<float>::max();
-    float max_Y = std::numeric_limits<float>::min();
+    float max_Y = std::numeric_limits<float>::lowest();
 
     Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
 
@@ -1100,6 +1123,14 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
     std::vector<TilemapAcceptedTile> acceptedTiles;
     acceptedTiles.reserve(tilemap.numTiles);
 
+    // the quads in world units: the tiles' pixels over the Pixels Per Unit (S41 R6); under a
+    // Pixel Perfect Camera each edge is rounded to the texel grid on its own (R13), so the
+    // edge two neighbours share is bit for bit the same value and the vertex snap moves both
+    const float ppu = resolvePixelsPerUnit(tilemap.pixelsPerUnit);
+    auto tileEdge = [&tilemap, ppu](float pixels){
+        return (tilemap.roundTileEdges ? pixelart::snap(pixels) : pixels) / ppu;
+    };
+
     unsigned int numTiles = 0;
     unsigned int reserveTiles = tilemap.reserveTiles;
 
@@ -1131,10 +1162,14 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
         if (tilemap.tiles[i].position.y < 0) tilemap.tiles[i].position.y = 0;
 
         Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
-        mesh.buffer.addVector3(attVertex, Vector3(tilemap.tiles[i].position.x, tilemap.tiles[i].position.y, 0));
-        mesh.buffer.addVector3(attVertex, Vector3(tilemap.tiles[i].position.x + tilemap.tiles[i].width, tilemap.tiles[i].position.y, 0));
-        mesh.buffer.addVector3(attVertex, Vector3(tilemap.tiles[i].position.x + tilemap.tiles[i].width, tilemap.tiles[i].position.y + tilemap.tiles[i].height, 0));
-        mesh.buffer.addVector3(attVertex, Vector3(tilemap.tiles[i].position.x, tilemap.tiles[i].position.y + tilemap.tiles[i].height, 0));
+        const float tileX0 = tileEdge(tilemap.tiles[i].position.x);
+        const float tileX1 = tileEdge(tilemap.tiles[i].position.x + tilemap.tiles[i].width);
+        const float tileY0 = tileEdge(tilemap.tiles[i].position.y);
+        const float tileY1 = tileEdge(tilemap.tiles[i].position.y + tilemap.tiles[i].height);
+        mesh.buffer.addVector3(attVertex, Vector3(tileX0, tileY0, 0));
+        mesh.buffer.addVector3(attVertex, Vector3(tileX1, tileY0, 0));
+        mesh.buffer.addVector3(attVertex, Vector3(tileX1, tileY1, 0));
+        mesh.buffer.addVector3(attVertex, Vector3(tileX0, tileY1, 0));
 
         if (tilemap.width < tilemap.tiles[i].position.x + tilemap.tiles[i].width)
             tilemap.width = static_cast<unsigned int>(tilemap.tiles[i].position.x + tilemap.tiles[i].width);
@@ -1210,10 +1245,8 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
         // only matches the loop counter while no tile is skipped — an invalidated
         // rectId or an empty tile past the reserve budget shifts every later tile.
         const unsigned int vertexBase = (numTiles - 1) * 4;
-        const float tileX = tilemap.tiles[i].position.x;
-        const float tileY = tilemap.tiles[i].position.y;
         acceptedTiles.push_back({vertexBase, (unsigned int)submeshId, 0,
-            AABB(Vector3(tileX, tileY, 0), Vector3(tileX + tilemap.tiles[i].width, tileY + tilemap.tiles[i].height, 0))});
+            AABB(Vector3(tileX0, tileY0, 0), Vector3(tileX1, tileY1, 0))});
 
     }
 
@@ -1546,6 +1579,18 @@ bool MeshSystem::isAsyncModelLoadPending(const Scene* scene, const std::string& 
 
 bool MeshSystem::isModelPreloading(const std::string& filename){
     return isAsyncModelLoadPending(nullptr, filename);
+}
+
+std::vector<Entity> MeshSystem::getModelParts(Entity model) const{
+    std::vector<Entity> parts;
+    const ModelComponent* modelcomp = scene->findComponent<ModelComponent>(model);
+    if (!modelcomp)
+        return parts;
+    for (const auto& node : modelcomp->meshNodesMapping){
+        if (node.second != model && scene->isEntityCreated(node.second) && scene->findComponent<MeshComponent>(node.second))
+            parts.push_back(node.second);
+    }
+    return parts;
 }
 
 bool MeshSystem::hasPendingAsyncModelLoads() const{
@@ -2233,7 +2278,7 @@ void MeshSystem::addSubmeshAttribute(Submesh& submesh, const std::string& buffer
     submesh.attributes[attribute] = attData;
 }
 
-bool MeshSystem::loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers, bool& capacityReached){
+bool MeshSystem::loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers){
     if (!model.gltfModel || !isValidGLTFIndex(bufferViewIndex, model.gltfModel->bufferViews)) {
         Log::error("Invalid GLTF buffer view index %i", bufferViewIndex);
         return false;
@@ -2254,11 +2299,6 @@ bool MeshSystem::loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelC
     const std::string name = getBufferName(bufferViewIndex, model);
 
     if (std::find(loadedBuffers.begin(), loadedBuffers.end(), name) == loadedBuffers.end() && bufferView.target != 0) {
-        if (!mesh.eBuffers.validIndex(static_cast<int>(mesh.numExternalBuffers))){
-            capacityReached = true;
-            return false;
-        }
-
         loadedBuffers.push_back(name);
 
         if (bufferView.target == 34962) { //GL_ARRAY_BUFFER
@@ -2462,7 +2502,8 @@ int MeshSystem::materializeGLTFSparseAccessor(tinygltf::Accessor& accessor, Mode
     return denseViewIndex;
 }
 
-int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model){
+int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model,
+                                             const std::vector<std::pair<int, float>>& morphs){
     // Bakes a node's world transform into a copy of a POSITION/NORMAL attribute, into a synthetic
     // tightly-packed FLOAT VEC3 buffer/view. Used by flattened previews and static merged models.
     // Caller must reserve buffers/bufferViews up-front.
@@ -2492,6 +2533,41 @@ int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor,
         return -1;
     }
 
+    // the displacements (float, or normalized bytes and shorts) of one vertex count each
+    struct Displacement {
+        const unsigned char* data;
+        size_t stride;
+        int componentType;
+        float weight;
+    };
+    std::vector<Displacement> displacements;
+    for (const auto& [index, weight] : morphs) {
+        if (!isValidGLTFIndex(index, model.gltfModel->accessors)) {
+            continue;
+        }
+        const tinygltf::Accessor& delta = model.gltfModel->accessors[index];
+        const bool readable = delta.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT ||
+            (delta.normalized && (delta.componentType == TINYGLTF_COMPONENT_TYPE_BYTE || delta.componentType == TINYGLTF_COMPONENT_TYPE_SHORT));
+        if (delta.type != TINYGLTF_TYPE_VEC3 || delta.count != count || !readable ||
+                !isValidGLTFIndex(delta.bufferView, model.gltfModel->bufferViews)) {
+            Log::warn("GLTF blend shape displacement %i cannot be baked; drawn without it", index);
+            continue;
+        }
+        const tinygltf::BufferView& view = model.gltfModel->bufferViews[delta.bufferView];
+        if (!isValidGLTFIndex(view.buffer, model.gltfModel->buffers)) {
+            continue;
+        }
+        const std::vector<unsigned char>& data = model.gltfModel->buffers[view.buffer].data;
+        const size_t deltaStride = static_cast<size_t>(delta.ByteStride(view));
+        const size_t deltaElement = 3 * static_cast<size_t>(tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(delta.componentType)));
+        const size_t deltaBase = view.byteOffset + delta.byteOffset;
+        if (deltaStride < deltaElement || deltaBase + (count - 1) * deltaStride + deltaElement > data.size()) {
+            Log::error("GLTF blend shape displacement range out of bounds");
+            continue;
+        }
+        displacements.push_back({data.data() + deltaBase, deltaStride, delta.componentType, weight});
+    }
+
     tinygltf::Buffer newBuffer;
     newBuffer.data.resize(count * 3 * sizeof(float));
     float* dst = reinterpret_cast<float*>(newBuffer.data.data());
@@ -2499,6 +2575,11 @@ int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor,
         float src[3];
         readGLTFComponents(srcData.data() + base + i * static_cast<size_t>(stride), accessor.componentType, 3, src);
         Vector3 v(src[0], src[1], src[2]);
+        for (const Displacement& displacement : displacements) {
+            float d[3];
+            readGLTFComponents(displacement.data + i * displacement.stride, displacement.componentType, 3, d);
+            v += Vector3(d[0], d[1], d[2]) * displacement.weight;
+        }
         Vector3 r = isNormal ? (normalMatrix * v).normalized() : (matrix * v);
         dst[i * 3 + 0] = r.x;
         dst[i * 3 + 1] = r.y;
@@ -2800,7 +2881,7 @@ bool MeshSystem::hasCustomMeshParenting(Entity modelEntity, const ModelComponent
     return false;
 }
 
-bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason) const {
+bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason, bool bakesMorphs) const {
     auto reject = [reason](const char* message) {
         if (reason) *reason = message;
         return false;
@@ -2811,7 +2892,7 @@ bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std
     }
 
     for (const tinygltf::Primitive& primitive : model.gltfModel->meshes[meshIndex].primitives) {
-        if (!primitive.targets.empty()) {
+        if (!primitive.targets.empty() && !bakesMorphs) {
             return reject("Models with morph targets cannot be merged as static geometry");
         }
         for (const auto& attribute : primitive.attributes) {
@@ -2834,8 +2915,7 @@ bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std
     return true;
 }
 
-bool MeshSystem::canMergeStaticModel(const ModelComponent& model, const MeshComponent& mesh,
-                                     std::string* reason) const {
+bool MeshSystem::canMergeStaticModel(const ModelComponent& model, std::string* reason) const {
     auto reject = [reason](const char* message) {
         if (reason) *reason = message;
         return false;
@@ -2866,9 +2946,6 @@ bool MeshSystem::canMergeStaticModel(const ModelComponent& model, const MeshComp
     }
     if (primitiveCount == 0) {
         return reject("The model has no mesh primitives to merge");
-    }
-    if (!mesh.submeshes.validIndex(static_cast<int>(primitiveCount - 1))) {
-        return reject("The merged model would exceed the root mesh submesh limit");
     }
     if (!model.gltfModel->animations.empty()) {
         return reject("Animated models cannot be merged as static geometry");
@@ -3370,6 +3447,38 @@ static bool readAttributeElement(Buffer* buffer, const Attribute& attribute, uns
     return true;
 }
 
+size_t MeshSystem::skinJointCount(MeshComponent& mesh){
+    size_t joints = 0;
+    const auto scan = [&joints](Buffer* buffer, const Attribute& ids){
+        for (unsigned int v = 0; v < ids.getCount(); v++){
+            for (unsigned int e = 0; e < ids.getElements(); e++){
+                float id = 0;
+                if (readAttributeElement(buffer, ids, v, e, id) && id >= 0.0f)
+                    joints = std::max(joints, static_cast<size_t>(id) + 1);
+            }
+        }
+    };
+    std::map<std::string, Buffer*> buffers;
+    if (mesh.buffer.getSize() > 0)
+        buffers["vertices"] = &mesh.buffer;
+    for (unsigned int i = 0; i < mesh.numExternalBuffers; i++)
+        buffers[mesh.eBuffers[i].getName()] = &mesh.eBuffers[i];
+    // the ids a buffer lays out itself, and those a submesh names in a buffer
+    for (const auto& buffer : buffers){
+        if (const Attribute* ids = buffer.second->getAttribute(AttributeType::BONEIDS))
+            scan(buffer.second, *ids);
+    }
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+        const auto attribute = mesh.submeshes[s].attributes.find(AttributeType::BONEIDS);
+        if (attribute == mesh.submeshes[s].attributes.end())
+            continue;
+        const auto buffer = buffers.find(attribute->second.getBufferName());
+        if (buffer != buffers.end())
+            scan(buffer->second, attribute->second);
+    }
+    return joints;
+}
+
 void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
     std::map<std::string, Buffer*> buffers;
 
@@ -3390,7 +3499,9 @@ void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
         }
     }
 
-    mesh.verticesAABB = AABB::ZERO;
+    // Seeded empty, not with AABB::ZERO: that is a finite box at the origin, so merging into it
+    // stretched every mesh back to its own origin
+    mesh.verticesAABB.setNull();
     mesh.bonesAABB.clear();
     mesh.skinnedAABB.setNull(); // reposed on the next RenderSystem update
 
@@ -3424,7 +3535,7 @@ void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
             influences = std::min(boneIdAttr.getElements(), boneWeightAttr.getElements());
         }
         if (influences > 0 && mesh.bonesAABB.empty())
-            mesh.bonesAABB.resize(mesh.bonesMatrix.size());
+            mesh.bonesAABB.resize(mesh.bonesMatrix.stored());
 
         int verticesize = int(vertexAttr.getCount());
         for (int v = 0; v < verticesize; v++){
@@ -3445,6 +3556,10 @@ void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
             }
         }
     }
+
+    // no float positions: AABB::ZERO, the "not computed" value its users test for
+    if (mesh.verticesAABB.isNull())
+        mesh.verticesAABB = AABB::ZERO;
 
     mesh.aabb = mesh.verticesAABB;
 
@@ -3525,6 +3640,22 @@ float MeshSystem::terrainTexelCoord(float local, float terrainSize, int size){
     return ((local + terrainSize * 0.5f) / terrainSize) * static_cast<float>(size) - 0.5f;
 }
 
+// channel 0 of a height or density map texel, 0-1: 8-bit, 16-bit (R16) or 32-bit float (a linear
+// .exr/.hdr map, raw or its CPU-readable cook)
+static float readMapTexel(const unsigned char* pixels, size_t index, int bytesPerChannel){
+    if (bytesPerChannel >= 4){
+        float value;
+        std::memcpy(&value, pixels + index, sizeof(value));
+        return std::isfinite(value) ? value : 0.0f;
+    }
+    if (bytesPerChannel >= 2){
+        // 16-bit little-endian (native unsigned short)
+        const unsigned int value = static_cast<unsigned int>(pixels[index]) | (static_cast<unsigned int>(pixels[index + 1]) << 8);
+        return static_cast<float>(value) / 65535.0f;
+    }
+    return pixels[index] / 255.0f;
+}
+
 float MeshSystem::sampleTerrainHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY){
     if (!pixels || width <= 0 || height <= 0 || channels <= 0){
         return 0.0f;
@@ -3543,13 +3674,7 @@ float MeshSystem::sampleTerrainHeightTexels(const unsigned char* pixels, int wid
     auto texel = [&](int x, int y){
         const size_t texelIndex = static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x);
         const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
-        if (bytesPerChannel >= 2){
-            // 16-bit little-endian (native unsigned short) heightmap sample
-            const unsigned int value = static_cast<unsigned int>(pixels[index]) |
-                                       (static_cast<unsigned int>(pixels[index + 1]) << 8);
-            return static_cast<float>(value) / 65535.0f;
-        }
-        return pixels[index] / 255.0f;
+        return readMapTexel(pixels, index, bytesPerChannel);
     };
 
     const float lower = texel(lowerX, lowerY) + (texel(upperX, lowerY) - texel(lowerX, lowerY)) * blendX;
@@ -3749,13 +3874,7 @@ void MeshSystem::getTerrainHeightRangeArea(TerrainComponent& terrain, float x, f
     auto sampleHeight = [&](int sampleX, int sampleZ){
         const size_t texelIndex = static_cast<size_t>(sampleZ) * static_cast<size_t>(width) + static_cast<size_t>(sampleX);
         const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
-        if (bytesPerChannel >= 2){
-            // 16-bit little-endian (native unsigned short) heightmap sample
-            const unsigned int value = static_cast<unsigned int>(pixels[index]) |
-                                       (static_cast<unsigned int>(pixels[index + 1]) << 8);
-            return terrain.maxHeight * static_cast<float>(value) / 65535.0f;
-        }
-        return terrain.maxHeight * pixels[index] / 255.0f;
+        return terrain.maxHeight * readMapTexel(pixels, index, bytesPerChannel);
     };
 
     // one texel of margin covers the bilinear filter of the vertices on the area border
@@ -3849,8 +3968,21 @@ void MeshSystem::resetTerrainToUnbuilt(TerrainComponent& terrain, MeshComponent&
     terrain.needUpdateTerrain = false;
 }
 
+// a cook in a GPU format only (block-compressed): levels, no CPU pixels for the terrain's readers
+static bool isGpuOnlyData(Texture& texture){
+    if (texture.empty() || texture.isFramebuffer() || !texture.hasData()){
+        return false;
+    }
+    TextureData& data = texture.getData();
+    return data.hasLevels() && !data.getData();
+}
+
 bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
     applyTerrainMapSettings(terrain);
+    // the heights are read on the CPU (collision, placement): a GPU-only cook is cooked again
+    if (isGpuOnlyData(terrain.heightMap)){
+        CookedTextures::requireCpuReadable(terrain.heightMap.getPath());
+    }
 
     // Check heightmap loading state BEFORE clearing buffers to avoid leaving
     // the mesh with empty data when the heightmap is still loading.
@@ -3907,8 +4039,8 @@ bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
     float rootNodeSize = terrain.terrainSize / terrain.rootGridSize;
 
     if (terrain.autoSetRanges){
-        CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
-        if (camera.farClip < (rootNodeSize * 2)){
+        const CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+        if (camera && camera->farClip < (rootNodeSize * 2)){
             Log::warn("Terrain quadtree root is not in camera field of view. Increase terrain root grid.");
         }
     }
@@ -3948,6 +4080,8 @@ static const float TERRAIN_FOLIAGE_CELL_SIZE = 8.0f;
 static const unsigned int TERRAIN_FOLIAGE_MAX_CHUNK_INSTANCES = 8192;
 // Share of the draw distance that stays full size; the rest shrinks out.
 static const float TERRAIN_FOLIAGE_FADE_START = 0.75f;
+// how long a layer waits for the CPU-readable cook of a map found cooked GPU-only
+static const int TERRAIN_FOLIAGE_CPU_READ_WAIT_SECONDS = 30;
 
 bool MeshSystem::setFoliagePreviewEntity(Entity entity){
     if (foliagePreviewEntity == entity){
@@ -3975,11 +4109,12 @@ static unsigned int foliageCellAttempts(const TerrainFoliageLayer& layer){
     return static_cast<unsigned int>(std::ceil(std::clamp(estimate, 0.0f, static_cast<float>(TERRAIN_FOLIAGE_MAX_CHUNK_INSTANCES))));
 }
 
-// Wraps coordinates onto the grid: a ring sliding by one column reassigns only the column that left it.
-static size_t foliageSlotIndex(int chunkX, int chunkZ, int columns, int rows){
-    const int slotX = ((chunkX % columns) + columns) % columns;
-    const int slotZ = ((chunkZ % rows) + rows) % rows;
-    return static_cast<size_t>(slotZ) * columns + slotX;
+// Wraps coordinates onto the ring, a square sized for the widest view span: a ring sliding by
+// one column reassigns only the column that left it, and walking never resizes it (Doriax de70fa31c)
+static size_t foliageSlotIndex(int chunkX, int chunkZ, int side){
+    const int slotX = ((chunkX % side) + side) % side;
+    const int slotZ = ((chunkZ % side) + side) % side;
+    return static_cast<size_t>(slotZ) * side + slotX;
 }
 
 static unsigned int hashFoliage(unsigned int seed, unsigned int chunkX, unsigned int chunkZ, unsigned int index){
@@ -4060,6 +4195,28 @@ std::vector<Entity> MeshSystem::getFoliageEntities(Entity terrainEntity) const{
     return entities;
 }
 
+size_t MeshSystem::getFoliageInstanceCount(Entity terrainEntity, size_t layer) const{
+    auto it = terrainFoliage.find(terrainEntity);
+    if (it == terrainFoliage.end() || layer >= it->second.size()){
+        return 0;
+    }
+    size_t count = 0;
+    for (const TerrainFoliageChunk& chunk : it->second[layer].chunks){
+        if (chunk.entity == NULL_ENTITY || !scene->isEntityCreated(chunk.entity)){
+            continue;
+        }
+        if (const InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(chunk.entity)){
+            count += instmesh->instances.size();
+        }
+    }
+    return count;
+}
+
+std::string MeshSystem::getFoliageError(Entity terrainEntity, size_t layer) const{
+    auto it = terrainFoliage.find(terrainEntity);
+    return (it == terrainFoliage.end() || layer >= it->second.size()) ? std::string() : it->second[layer].cpuReadError;
+}
+
 Entity MeshSystem::getFoliageOwner(Entity foliageEntity) const{
     if (foliageEntity == NULL_ENTITY){
         return NULL_ENTITY;
@@ -4111,13 +4268,13 @@ void MeshSystem::reloadFoliageMesh(const std::string& filename){
     }
 }
 
-bool MeshSystem::loadFoliageMesh(Entity entity, const std::string& path){
-    // changeRootTransform is off: the terrain places the field, not the file's root transform.
+bool MeshSystem::loadPlacedModel(Entity entity, const std::string& path){
     if (FileData::getFilePathExtension(path).compare("obj") == 0){
         return loadOBJ(entity, path);
     }
-    // Keep all geometry on the instanced root, with the file's node transforms baked in.
-    return loadGLTF(entity, path, false, true, false, true);
+    // All geometry on the instanced root, the file's node transforms baked in; the system
+    // places the copy, not the file's root transform
+    return loadGLTFModel(entity, path, false, true, false, true, true);
 }
 
 // Sample height and normal in terrain-local space.
@@ -4170,8 +4327,9 @@ float MeshSystem::sampleFoliageDensity(TerrainComponent& terrain, TerrainFoliage
     const float halfSize = terrain.terrainSize * 0.5f;
     const int texelX = std::clamp(static_cast<int>((localX + halfSize) / terrain.terrainSize * width), 0, width - 1);
     const int texelZ = std::clamp(static_cast<int>((localZ + halfSize) / terrain.terrainSize * height), 0, height - 1);
+    const int bytesPerChannel = TextureData::getBytesPerChannel(textureData.getColorFormat());
 
-    return pixels[(static_cast<size_t>(texelZ) * width + texelX) * channels] / 255.0f;
+    return std::clamp(readMapTexel(pixels, (static_cast<size_t>(texelZ) * width + texelX) * channels * bytesPerChannel, bytesPerChannel), 0.0f, 1.0f);
 }
 
 // Placement depends on the cell and seed, independent of the camera.
@@ -4248,7 +4406,17 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
     const int placementRadius = std::max(1, static_cast<int>(std::ceil(terrain.terrainSize * 0.5f / TERRAIN_FOLIAGE_CELL_SIZE)));
     const int maxBatchSide = static_cast<int>(std::sqrt(TERRAIN_FOLIAGE_MAX_CHUNK_INSTANCES / attempts));
     const int previewRadius = (placementRadius + maxBatchSide - 1) / maxBatchSide;
-    const float drawDistance = std::max(0.0f, layer.drawDistance);
+    // the quality scale (Engine::getFoliageDistanceScale) is a game's; the preview shows the layer
+    const float distanceScale = preview ? 1.0f : Engine::getFoliageDistanceScale();
+    const float drawDistance = std::max(0.0f, layer.drawDistance * distanceScale);
+    // nothing to draw (a scale of 0): an empty fade range would draw the camera's chunk at full size
+    if (!preview && !(drawDistance > 0.0f)){
+        destroyFoliageInstances(instances);
+        return;
+    }
+    // nearer instances grow in over the band a nearer layer whose Draw Distance equals it fades out over
+    const float nearFadeEnd = preview ? 0.0f : std::clamp(layer.minDrawDistance * distanceScale, 0.0f, drawDistance);
+    const float nearFadeStart = nearFadeEnd * TERRAIN_FOLIAGE_FADE_START;
     const int batchSide = preview ? (placementRadius + previewRadius - 1) / previewRadius :
         static_cast<int>(std::clamp(std::ceil(drawDistance / (TERRAIN_FOLIAGE_CELL_SIZE * TERRAIN_FOLIAGE_TARGET_BATCH_RADIUS)), 1.0f, static_cast<float>(maxBatchSide)));
     const float chunkSize = TERRAIN_FOLIAGE_CELL_SIZE * batchSide;
@@ -4267,18 +4435,25 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
     const int startZ = firstChunk(viewLocal.z);
     const int columns = std::max(0, lastChunk(viewLocal.x) - startX + 1);
     const int rows = std::max(0, lastChunk(viewLocal.z) - startZ + 1);
+    const int ringSide = preview ? 2 * terrainRadius :
+        std::max(1, std::min(static_cast<int>(std::ceil(2.0f * drawDistance / chunkSize)) + 1, 2 * terrainRadius));
     const unsigned int capacity = attempts * batchSide * batchSide;
     const float fadeEnd = preview ? 0.0f : drawDistance;
     const float fadeStart = fadeEnd * TERRAIN_FOLIAGE_FADE_START;
     instances.pending = false;
 
-    const size_t chunkCount = static_cast<size_t>(columns) * rows;
+    const size_t chunkCount = static_cast<size_t>(ringSide) * ringSide;
     if (instances.chunks.size() != chunkCount){
         while (instances.chunks.size() > chunkCount){
             destroyFoliageEntity(instances.chunks.back());
             instances.chunks.pop_back();
         }
         instances.chunks.resize(chunkCount);
+        instances.needUpdate = true;
+    }
+    if (instances.appliedDrawDistance != drawDistance || instances.appliedNearFadeEnd != nearFadeEnd){
+        instances.appliedDrawDistance = drawDistance;
+        instances.appliedNearFadeEnd = nearFadeEnd;
         instances.needUpdate = true;
     }
 
@@ -4308,6 +4483,48 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
         instances.pending = true;
         return;
     }
+    // A GPU-only cook of a map (made before anything read it on the CPU) is never sampled: the
+    // editor cooks it again CPU-readable, and new pixels (that swap, a repaint) refill the layer.
+    // The wait is bounded: a cook that fails or cannot happen leaves the layer empty with one error.
+    const bool densityGpuOnly = isGpuOnlyData(layer.densityMap);
+    if (densityGpuOnly || isGpuOnlyData(terrain.heightMap)){
+        const Texture& map = densityGpuOnly ? layer.densityMap : terrain.heightMap;
+        // (a texture made in memory has an id and no path)
+        const std::string name = map.getPath().empty() ? map.getId() : map.getPath();
+        const auto now = std::chrono::steady_clock::now();
+        if (instances.cpuReadMap != name){
+            instances.cpuReadMap = name;
+            instances.cpuReadSince = now;
+            instances.cpuReadError.clear();
+            CookedTextures::requireCpuReadable(instances.cpuReadMap);
+        }
+        if (instances.cpuReadError.empty()){
+            std::string why = CookedTextures::getCpuReadFailure(instances.cpuReadMap);
+            if (why.empty() && !CookedTextures::hasCpuReadHandler()){
+                why = "its cook is GPU-only; turn on its Read/Write in its import settings and export again";
+            }else if (why.empty() && now - instances.cpuReadSince > std::chrono::seconds(TERRAIN_FOLIAGE_CPU_READ_WAIT_SECONDS)){
+                why = "no CPU-readable cook of it arrived; reimport it (reimport_textures)";
+            }
+            if (!why.empty()){
+                instances.cpuReadError = (densityGpuOnly ? "its density map " : "its terrain's height map ") +
+                                         instances.cpuReadMap + " has no pixels the CPU can read: " + why;
+                Log::error("A detail layer of %s draws nothing: %s", layer.meshPath.c_str(), instances.cpuReadError.c_str());
+            }
+        }
+        // stopped (until the map's pixels change), or still waiting for the CPU-readable cook
+        instances.pending = instances.cpuReadError.empty();
+        instances.needUpdate = true;
+        return;
+    }
+    instances.cpuReadMap.clear();
+    instances.cpuReadError.clear();
+    const void* densityPixels = layer.densityMap.hasData() ? layer.densityMap.getData().getData() : nullptr;
+    const void* heightPixels = terrain.heightMap.hasData() ? terrain.heightMap.getData().getData() : nullptr;
+    if (instances.densityPixels != densityPixels || instances.heightPixels != heightPixels){
+        instances.densityPixels = densityPixels;
+        instances.heightPixels = heightPixels;
+        instances.needUpdate = true;
+    }
 
     // Layer-wide invalidation only: a single slot going stale clears its own assigned flag.
     const bool refillAll = instances.needUpdate || terrain.needUpdateFoliage;
@@ -4316,12 +4533,44 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
     // Each chunk entity parses the mesh for itself, so a new grid spreads its loads over frames.
     int meshLoadBudget = 2;
 
-    for (int offsetZ = 0; offsetZ < rows; offsetZ++){
-        for (int offsetX = 0; offsetX < columns; offsetX++){
+    // a chunk with nothing to draw keeps its entity and mesh for the next chunk the ring moves onto it
+    auto emptyChunk = [this](TerrainFoliageChunk& chunk){
+        if (chunk.entity != NULL_ENTITY){
+            InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(chunk.entity);
+            if (!instmesh.instances.empty()){
+                instmesh.instances.clear();
+                instmesh.needUpdateInstances = true;
+            }
+        }
+        chunk.assigned = false;
+    };
+
+    for (int offsetZ = 0; offsetZ < ringSide; offsetZ++){
+        for (int offsetX = 0; offsetX < ringSide; offsetX++){
             const int chunkX = startX + offsetX;
             const int chunkZ = startZ + offsetZ;
 
-            TerrainFoliageChunk& chunk = instances.chunks[foliageSlotIndex(chunkX, chunkZ, columns, rows)];
+            TerrainFoliageChunk& chunk = instances.chunks[foliageSlotIndex(chunkX, chunkZ, ringSide)];
+
+            // Past the span: every such slot holds a chunk beyond the draw distance, which the fade
+            // and the render's cut already hide, so it stays as it is (the edge column comes back
+            // without a refill when the span grows again), or empties when the layer changes
+            if (offsetX >= columns || offsetZ >= rows){
+                if (refillAll){
+                    emptyChunk(chunk);
+                }
+                continue;
+            }
+
+            // Inside the near fade: nothing of it shows (a far detail layer's inner hole)
+            if (nearFadeStart > 0.0f){
+                const float farX = std::max(std::abs(chunkX * chunkSize - viewLocal.x), std::abs((chunkX + 1) * chunkSize - viewLocal.x));
+                const float farZ = std::max(std::abs(chunkZ * chunkSize - viewLocal.z), std::abs((chunkZ + 1) * chunkSize - viewLocal.z));
+                if (farX * farX + farZ * farZ < nearFadeStart * nearFadeStart){
+                    emptyChunk(chunk);
+                    continue;
+                }
+            }
 
             if (chunk.entity == NULL_ENTITY){
                 if (instances.loadFailed || meshLoadBudget == 0){
@@ -4334,7 +4583,7 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
             bool justLoaded = false;
             if (!chunk.meshLoaded && !instances.loadFailed && meshLoadBudget > 0){
                 meshLoadBudget--;
-                instances.loadFailed = !loadFoliageMesh(chunk.entity, layer.meshPath);
+                instances.loadFailed = !loadPlacedModel(chunk.entity, layer.meshPath);
                 chunk.meshLoaded = !instances.loadFailed;
                 chunk.assigned = false;
                 justLoaded = true;
@@ -4370,6 +4619,8 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
             instmesh.distanceFade = true;
             instmesh.fadeStart = fadeStart;
             instmesh.fadeEnd = fadeEnd;
+            instmesh.nearFadeStart = nearFadeStart;
+            instmesh.nearFadeEnd = nearFadeEnd;
             mesh.castShadows = layer.castShadows;
 
             // Grows with headroom and never shrinks, so a draw distance drag rebuilds little.
@@ -4497,11 +4748,12 @@ void MeshSystem::updateTerrainAutoRanges(TerrainComponent& terrain){
         return;
     }
 
-    if (scene->getCamera() == NULL_ENTITY){
+    // a scene not loaded yet (an inline child scene) has no camera: the ranges wait for it
+    const CameraComponent* cameraPtr = scene->findComponent<CameraComponent>(scene->getCamera());
+    if (!cameraPtr){
         return;
     }
-
-    CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
+    const CameraComponent& camera = *cameraPtr;
 
     // Each level doubles the node size, so its range doubles too and every level keeps
     // the same detail on screen. Halving the far clip down instead leaves every range
@@ -5237,7 +5489,106 @@ void MeshSystem::createTorus(MeshComponent& mesh, float radius, float ringRadius
         mesh.needReload = true;
 }
 
+// A thumbnail: off the main thread, images capped (setImageDecodeMaxDimension), never a game's model
+static bool isPreviewLoad(){
+    return Engine::isAsyncThread() && g_imageDecodeMaxDimension > 0;
+}
+
+std::shared_ptr<tinygltf::Model> MeshSystem::parseGLTFModel(const std::string& filename){
+    std::shared_ptr<tinygltf::Model> model = std::make_shared<tinygltf::Model>();
+
+    std::string err;
+    std::string warn;
+    tinygltf::TinyGLTF loader;
+    loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes});
+    loader.SetImagesAsIs(true); // keep images encoded; decode in parallel below
+
+    const bool res = loadGLTFFile(loader, model.get(), &err, &warn, filename);
+
+    if (!warn.empty())
+        warn = withoutCookedImageWarnings(warn, *model, filename);
+    if (!warn.empty()) {
+        Log::warn("Loading GLTF model (%s): %s", filename.c_str(), warn.c_str());
+    }
+
+    if (!err.empty()) {
+        Log::error("Can't load GLTF model (%s): %s", filename.c_str(), err.c_str());
+        return nullptr;
+    }
+
+    if (!res) {
+        Log::verbose("Failed to load glTF: %s", filename.c_str());
+        return nullptr;
+    }
+
+    decodeGLTFImagesParallel(*model, g_imageDecodeMaxDimension);
+    return model;
+}
+
+std::shared_ptr<ObjModelData> MeshSystem::parseOBJModel(const std::string& filename){
+    std::shared_ptr<ObjModelData> model = std::make_shared<ObjModelData>();
+
+    std::string warn;
+    std::string err;
+    tinyobj::FileReader::externalFunc = readFileToString;
+    const std::string baseDir = FileData::getBaseDir(filename);
+    const bool ret = tinyobj::LoadObj(&model->attrib, &model->shapes, &model->materials, &warn, &err, filename.c_str(), baseDir.c_str());
+
+    if (!warn.empty()) {
+        Log::warn("Loading OBJ model (%s): %s", filename.c_str(), warn.c_str());
+    }
+
+    if (!err.empty()) {
+        Log::error("Can't load OBJ model (%s): %s", filename.c_str(), err.c_str());
+        return nullptr;
+    }
+
+    return ret ? model : nullptr;
+}
+
+bool MeshSystem::isLoadOnMainThread() const{
+    return Engine::isAsyncThread() && !isPreviewLoad() && !MainThreadQueue::isMainThread() && Engine::isSceneRunning(scene);
+}
+
+bool MeshSystem::prepareLoadOnMainThread(Entity entity, const std::string& filename, std::function<void()> commit){
+    const std::string poolKey = getModelFilenameKey(filename);
+    if (FileData::getFilePathExtension(filename) == "obj"){
+        if (!ModelPool::getObj(poolKey)){
+            std::shared_ptr<ObjModelData> parsed = parseOBJModel(filename);
+            if (!parsed){
+                return false;
+            }
+            ModelPool::addObj(poolKey, parsed);
+        }
+    }else if (!ModelPool::getGLTF(poolKey)){
+        std::shared_ptr<tinygltf::Model> parsed = parseGLTFModel(filename);
+        if (!parsed){
+            return false;
+        }
+        ModelPool::addGLTF(poolKey, parsed);
+    }
+
+    Scene* target = scene;
+    MainThreadQueue::post([lifetime = target->getLifetime(), target, entity, commit = std::move(commit)]() {
+        if (!lifetime.expired() && target->isEntityCreated(entity)) {
+            commit();
+        }
+    });
+    return true;
+}
+
 bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncLoad, bool skipEntities, bool changeRootTransform, bool bakeSceneRoot){
+    return loadGLTFModel(entity, filename, asyncLoad, skipEntities, changeRootTransform, bakeSceneRoot, false);
+}
+
+bool MeshSystem::loadGLTFModel(Entity entity, const std::string& filename, bool asyncLoad, bool skipEntities, bool changeRootTransform,
+                               bool bakeSceneRoot, bool placedCopy){
+    if (isLoadOnMainThread()) {
+        return prepareLoadOnMainThread(entity, filename, [this, entity, filename, asyncLoad, skipEntities, changeRootTransform, bakeSceneRoot, placedCopy]() {
+            loadGLTFModel(entity, filename, asyncLoad, skipEntities, changeRootTransform, bakeSceneRoot, placedCopy);
+        });
+    }
+
     const std::string poolKey = getModelFilenameKey(filename);
 
     failedModelLoads.erase(filename); // an explicit load is a new attempt
@@ -5267,7 +5618,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // A merged root owns all renderable geometry. Remove any generated mesh-node entities left
     // by the previously loaded hierarchy before taking MeshComponent references: destroying a
     // child mesh can compact its component array and invalidate an already captured root reference.
-    if (model.mergeStaticMeshes && !Engine::isAsyncThread() && !model.meshNodesMapping.empty()) {
+    const bool preview = isPreviewLoad();
+    if (model.mergeStaticMeshes && !preview && !model.meshNodesMapping.empty()) {
         clearMeshNodeMapping(model);
     }
 
@@ -5286,19 +5638,14 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     uint64_t buildId = asyncLoad ? std::hash<std::string>{}(getAsyncModelLoadKey(filename)) : 0;
 
-    std::string err;
-    std::string warn;
-
     std::vector<std::string> loadedBuffers;
 
     mesh.numExternalBuffers = 0;
     mesh.normAdjustJoint = 1.0f;
     mesh.normAdjustWeight = 1.0f;
-    mesh.bonesMatrix = HybridArray<Matrix4, MAX_BONES>();
+    mesh.bonesMatrix.clear();
     mesh.needUpdateBones = false;
     mesh.morphTargetNames.clear();
-
-    bool res = false;
 
     if (asyncLoad){
         if (!meshLoadHoldFile().empty()){
@@ -5320,7 +5667,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 }
             }
         }
-        res = true;
     }else{
         // Try cache before hitting disk. A preview load (a thumbnail, its images decoded
         // downscaled) parses its own copy: it neither takes nor publishes the pooled model.
@@ -5328,34 +5674,13 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         auto cached = sharePool ? ModelPool::getGLTF(poolKey) : nullptr;
         if (cached){
             model.gltfModel = cached;
-            res = true;
         }else{
-            model.gltfModel = std::make_shared<tinygltf::Model>();
-
-            tinygltf::TinyGLTF loader;
-            loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes});
-            loader.SetImagesAsIs(true); // keep images encoded; decode in parallel below
-
-            res = loadGLTFFile(loader, model.gltfModel.get(), &err, &warn, filename);
-
-            if (!warn.empty())
-                warn = withoutCookedImageWarnings(warn, *model.gltfModel, filename);
-            if (!warn.empty()) {
-                Log::warn("Loading GLTF model (%s): %s", filename.c_str(), warn.c_str());
-            }
-
-            if (!err.empty()) {
-                Log::error("Can't load GLTF model (%s): %s", filename.c_str(), err.c_str());
-                return false;
-            }
-
-            if (!res) {
-                Log::verbose("Failed to load glTF: %s", filename.c_str());
+            model.gltfModel = parseGLTFModel(filename);
+            if (!model.gltfModel) {
                 return false;
             }
 
             const int maxImageDim = g_imageDecodeMaxDimension;
-            decodeGLTFImagesParallel(*model.gltfModel, maxImageDim);
 
             // Only cache full-resolution parses. A downscaled preview decode must not be reused
             // as the full-resolution model in the user's scene.
@@ -5401,6 +5726,14 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         if (model.gltfModel->nodes[nodeIdx].skin >= 0) { meshNode = nodeIdx; break; }
     }
 
+    // GPU buffers are a real limit: over it, what finds the pool full does not draw (SokolSystem)
+    const size_t gpuBuffers = static_cast<size_t>(std::count_if(model.gltfModel->bufferViews.begin(), model.gltfModel->bufferViews.end(),
+        [](const tinygltf::BufferView& view) { return view.target != 0 && view.name.rfind(GLTF_SYNTH_PREFIX, 0) != 0; }));
+    if (!preview && gpuBuffers > static_cast<size_t>(Engine::getGpuResourceLimits().buffers)) {
+        Log::error("Model %s has %zu vertex and index buffers, more than the maximum allowed (%i): what does not fit does not draw",
+            filename.c_str(), gpuBuffers, Engine::getGpuResourceLimits().buffers);
+    }
+
     if (meshNodes.empty()) {
         Log::error("GLTF model has no mesh nodes: %s", filename.c_str());
         if (asyncLoad) {
@@ -5418,7 +5751,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     const bool mergeMeshNodes = model.mergeStaticMeshes && meshNodes.size() > 1;
     if (mergeMeshNodes) {
         std::string reason;
-        if (!canMergeStaticModel(model, mesh, &reason)) {
+        if (!canMergeStaticModel(model, &reason)) {
             Log::error("Cannot merge static GLTF model (%s): %s", filename.c_str(), reason.c_str());
             if (asyncLoad) {
                 ResourceProgress::failBuild(buildId);
@@ -5426,8 +5759,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             return false;
         }
     }
-    // Building child entities mutates the ECS, so off-thread previews keep the flat path.
-    const bool canUseChildEntities = !mergeMeshNodes && !Engine::isAsyncThread();
+    // A thumbnail shows the model baked into one mesh (no nodes to build, nothing to pose or play).
+    const bool canUseChildEntities = !mergeMeshNodes && !preview;
     // Under an Animation Player the sub-clip paths address one entity per glTF node (spec 9.R3).
     // A reload that keeps its entities keeps their layout: the editor reloads to switch it.
     const bool forceNodeHierarchy = canUseChildEntities && !skipEntities && isNodeHierarchyForced(entity);
@@ -5443,13 +5776,17 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     const bool useChildEntities = canUseChildEntities &&
         (meshNodes.size() > 1 || useNodeHierarchy || anyNodeInstanced);
 
-    // Off-thread previews cannot safely build child/skeleton entities, so bake glTF node globals into
-    // a flat static mesh instead. Skinned nodes are baked too, but a skinned mesh node's own transform
-    // is ignored (the skeleton drives it): they bake with the skin root's default-pose matrix instead
-    // (joint global * inverse bind, identity for a consistent export). Non-skinned nodes bake their own
-    // global transform. (Async is always the flatten path, so useChildEntities is already false here.)
-    bool bakingFlatten = (Engine::isAsyncThread() && (meshNodes.size() > 1 || anyNodeSkinned))
+    // A preview bakes glTF node globals into a flat static mesh. Skinned nodes are baked too, but a
+    // skinned mesh node's own transform is ignored (the skeleton drives it): they bake with the skin
+    // root's default-pose matrix instead (joint global * inverse bind, identity for a consistent
+    // export). Non-skinned nodes bake their own global transform.
+    bool bakingFlatten = (preview && (meshNodes.size() > 1 || anyNodeSkinned))
         || mergeMeshNodes;
+    // A copy a system places (loadPlacedModel) builds no skeleton and never animates its blend
+    // shapes: it stands at rest as static geometry, its bones the identity and the blend shapes'
+    // default weights baked into its positions and normals. Instanced, a textured mesh's blend
+    // shapes alone need 17 vertex inputs, past the 16 every backend has.
+    const bool restPose = placedCopy && !vatGltf;
 
     if (meshNode < 0) {
         meshNode = meshNodes[0];
@@ -5466,7 +5803,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // chunk) bakes the node's whole global transform, as the merged nodes of a model do.
     Matrix4 meshOffset;
     if (!useChildEntities && !bakingFlatten && !anyNodeSkinned &&
-            canBakeGLTFMesh(model, model.gltfModel->nodes[meshNodes[0]].mesh)) {
+            canBakeGLTFMesh(model, model.gltfModel->nodes[meshNodes[0]].mesh, nullptr, restPose)) {
         if (bakeSceneRoot) {
             meshOffset = getGLTFMeshGlobalMatrix(meshNodes[0], model, nodesParent);
         } else {
@@ -5534,23 +5871,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     model.morphNameMapping.clear();
 
-    // What a mesh has no room for (a build without the editor: MAX_SUBMESHES, MAX_EXTERNAL_BUFFERS) is
-    // left out, by whole primitives. Off the main thread that is the bake of a model's nodes into one
-    // mesh, which the model does not have on the main thread (a mesh a node): the model loads fine,
-    // this is its preview, and not an error. Reported once a load.
-    bool capacityReported = false;
-    const auto reportOverCapacity = [&](const char* what, size_t capacity) {
-        if (capacityReported) {
-            return;
-        }
-        capacityReported = true;
-        if (Engine::isAsyncThread() && !mergeMeshNodes) {
-            Log::warn("Model %s bakes into one mesh off the main thread, with more %s than the maximum allowed (%zu): the primitives over it are left out", filename.c_str(), what, capacity);
-        } else {
-            Log::error("Model %s has more %s than the maximum allowed (%zu): the primitives over it are left out", filename.c_str(), what, capacity);
-        }
-    };
-
     if (useChildEntities) {
         // Each node becomes its own child mesh; the root mesh stays an empty container (loadMesh
         // skips it). numExternalBuffers was already zeroed at the top of loadGLTF.
@@ -5559,10 +5879,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         // Flatten path: every node's primitives accumulate into the single root MeshComponent, so its
         // submesh array is sized for the total up-front and the buffer dedup/reserve happens once.
         mesh.numSubmeshes = totalSubmeshes;
-        if (!mesh.submeshes.validIndex(static_cast<int>(totalSubmeshes) - 1)) {
-            reportOverCapacity("submeshes", mesh.submeshes.size());
-            mesh.numSubmeshes = static_cast<unsigned int>(mesh.submeshes.size());
-        }
         loadedBuffers.clear();
         if (model.gltfModel) {
             // One synthetic view per primitive for byte-index expansion, one for a VEC3 COLOR_0, up to
@@ -5613,12 +5929,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         return false;
     }
 
+    std::set<int> morphLimitReported; // (the glTF meshes: once a load)
+
     unsigned int submeshIndex = 0; // continuous across nodes for the flatten path
-    bool flatMeshFull = false;     // the flatten path's one mesh has no room for what comes next
     for (int nodeIdx : meshNodes) {
-        if (flatMeshFull) {
-            break;
-        }
         int gltfMeshIndex = model.gltfModel->nodes[nodeIdx].mesh;
         if (!isValidGLTFIndex(gltfMeshIndex, model.gltfModel->meshes)) {
             continue;
@@ -5626,7 +5940,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
         tinygltf::Mesh& gltfmesh = model.gltfModel->meshes[gltfMeshIndex];
 
-        // For the baked-flatten preview, precompute this node's world matrix (for positions) and its
+        // For the baked flatten path, precompute this node's world matrix (for positions) and its
         // normal matrix (inverse-transpose of the linear part) to bake into the vertices below.
         Matrix4 nodeBakeMatrix;
         Matrix3 nodeBakeNormalMatrix;
@@ -5716,16 +6030,12 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             mesh.numExternalBuffers = 0;
             mesh.normAdjustJoint = 1.0f;
             mesh.normAdjustWeight = 1.0f;
-            mesh.bonesMatrix = HybridArray<Matrix4, MAX_BONES>();
+            mesh.bonesMatrix.clear();
             mesh.needUpdateBones = false;
             mesh.morphTargetNames.clear();
             mesh.vatMesh = vatGltf;
 
             mesh.numSubmeshes = static_cast<unsigned int>(gltfmesh.primitives.size());
-            if (mesh.numSubmeshes > 0 && !mesh.submeshes.validIndex(static_cast<int>(mesh.numSubmeshes) - 1)) {
-                reportOverCapacity("submeshes", mesh.submeshes.size());
-                mesh.numSubmeshes = static_cast<unsigned int>(mesh.submeshes.size());
-            }
 
             // Legacy skinned children stay at identity; hierarchy children use their node transform.
             double windingDet = nodeSkin && !useNodeHierarchy
@@ -5744,33 +6054,23 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             }
         }
 
-        if (!bakingFlatten && nodeSkin && !nodeSkin->joints.empty()){
-            const int lastBone = static_cast<int>(nodeSkin->joints.size()) - 1;
-            if (!mesh.bonesMatrix.validIndex(lastBone)){
-                Log::error("Model %s has more bones than the maximum allowed (%zu)",
-                    filename.c_str(), mesh.bonesMatrix.size());
-                if (asyncLoad) {
-                    ResourceProgress::failBuild(buildId);
-                }
-                return false;
+        if (nodeSkin && !nodeSkin->joints.empty() && mesh.bonesMatrix.validIndex(static_cast<int>(nodeSkin->joints.size()) - 1)){
+            // one matrix per joint, the identity until a pose (the palette is the skin's; the
+            // flatten path's one mesh takes its largest skin's)
+            if (mesh.bonesMatrix.stored() < nodeSkin->joints.size())
+                mesh.bonesMatrix.resize(nodeSkin->joints.size());
+        }else if (!bakingFlatten && !restPose && nodeSkin && !nodeSkin->joints.empty()){
+            Log::error("Model %s has a skin of %zu joints, more than %zu",
+                filename.c_str(), nodeSkin->joints.size(), ARRAY_INDEX_LIMIT);
+            if (asyncLoad) {
+                ResourceProgress::failBuild(buildId);
             }
-            mesh.bonesMatrix[lastBone].identity();
+            return false;
         }
 
         for (size_t p = 0; p < gltfmesh.primitives.size(); p++) {
-            if (submeshIndex >= mesh.numSubmeshes) {
-                flatMeshFull = !useChildEntities;
-                break;
-            }
-
             // Claim this slot now so any early-continue still advances the index correctly.
             const unsigned int i = submeshIndex++;
-
-            // what the primitive takes of the mesh's buffers, given back when not all of them fit
-            const unsigned int externalBuffersBefore = mesh.numExternalBuffers;
-            const size_t loadedBuffersBefore = loadedBuffers.size();
-            const auto vertexCountBefore = mesh.vertexCount;
-            bool bufferCapacityReached = false;
 
             if (asyncLoad) {
                 float submeshProgress = 0.4f + (0.4f * (float(i) / float(mesh.numSubmeshes)));
@@ -5916,7 +6216,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
             mesh.submeshes[i].faceCulling = mat ? !mat->doubleSided : true;
 
-            loadGLTFBuffer(indexBufferView, mesh, model, indexStride, loadedBuffers, bufferCapacityReached);
+            loadGLTFBuffer(indexBufferView, mesh, model, indexStride, loadedBuffers);
             addSubmeshAttribute(mesh.submeshes[i], getBufferName(indexBufferView, model),
                 AttributeType::INDEX, 1, indexType, indexAccessor.count, indexByteOffset, false);
             // the detail levels the model cook baked (JE_mesh_lods, spec S54 contract C1)
@@ -5943,15 +6243,36 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 int attrBufferView = accessor.bufferView;
                 size_t attrByteOffset = accessor.byteOffset;
                 int byteStride = accessor.ByteStride(model.gltfModel->bufferViews[accessor.bufferView]);
-                if (bakingFlatten && !vatGltf && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
-                    continue; // baked preview is static geometry; drop the skinning attributes
+                if ((bakingFlatten || restPose) && !vatGltf && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
+                    continue; // static geometry (a baked preview, a placed copy); drop the skinning attributes
                 }
                 // (the bakes write floats, also from a quantized normal or tangent)
                 bool bakedToFloat = false;
-                if ((bakingFlatten || bakeMeshOffset) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
+                // a copy at rest: the displacements of the blend shapes its file weighs in
+                std::vector<std::pair<int, float>> morphs;
+                std::string morphKey;
+                if (restPose && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
+                    for (size_t t = 0; t < primitive.targets.size() && t < gltfmesh.weights.size(); t++) {
+                        const float weight = static_cast<float>(gltfmesh.weights[t]);
+                        auto target = primitive.targets[t].find(attrib.first);
+                        if (weight == 0.0f || target == primitive.targets[t].end() ||
+                                !isValidGLTFIndex(target->second, model.gltfModel->accessors)) {
+                            continue;
+                        }
+                        tinygltf::Accessor& delta = model.gltfModel->accessors[target->second];
+                        if (delta.sparse.isSparse && materializeGLTFSparseAccessor(delta, model) < 0) {
+                            continue;
+                        }
+                        morphs.emplace_back(target->second, weight);
+                        uint32_t bits;
+                        std::memcpy(&bits, &weight, sizeof(bits));
+                        morphKey += "|" + std::to_string(target->second) + ":" + std::to_string(bits);
+                    }
+                }
+                if ((bakingFlatten || bakeMeshOffset || !morphs.empty()) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
                     const bool isNormal = attrib.first == "NORMAL";
-                    int baked = synthView(gltfSynthKey(isNormal ? "normal" : "position", accessor, &nodeBakeMatrix), [&]() {
-                        return bakeGLTFTransformedAttribute(accessor, nodeBakeMatrix, nodeBakeNormalMatrix, isNormal, model);
+                    int baked = synthView(gltfSynthKey(isNormal ? "normal" : "position", accessor, &nodeBakeMatrix) + morphKey, [&]() {
+                        return bakeGLTFTransformedAttribute(accessor, nodeBakeMatrix, nodeBakeNormalMatrix, isNormal, model, morphs);
                     });
                     if (baked >= 0) {
                         attrBufferView = baked;
@@ -5986,7 +6307,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 }
                 const std::string bufferName = getBufferName(attrBufferView, model);
 
-                loadGLTFBuffer(attrBufferView, mesh, model, byteStride, loadedBuffers, bufferCapacityReached);
+                loadGLTFBuffer(attrBufferView, mesh, model, byteStride, loadedBuffers);
 
                 int elements = (accessor.type != TINYGLTF_TYPE_SCALAR) ? accessor.type : 1;
 
@@ -6125,12 +6446,19 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             int  morphIndex    = 0;
 
             for (auto& morphs : primitive.targets) {
+                if (restPose) {
+                    break; // baked above
+                }
                 // Capacity must follow semantics in the prefix actually loaded. A later,
                 // truncated target must not reduce the shader's attribute capacity.
                 const int supportedMorphTargets = (morphNormals && morphTangents) ? 2
                                                 : (morphNormals || morphTangents) ? 4
                                                 : MAX_MORPHTARGETS;
                 if (morphIndex >= supportedMorphTargets) {
+                    if (!preview && morphLimitReported.insert(gltfMeshIndex).second) {
+                        Log::error("Model %s: mesh '%s' has %zu blend shapes, more than the maximum allowed (%i): the ones over it are left out",
+                            filename.c_str(), gltfmesh.name.c_str(), primitive.targets.size(), supportedMorphTargets);
+                    }
                     break;
                 }
                 for (auto& attribMorph : morphs) {
@@ -6153,7 +6481,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     int byteStride = accessor.ByteStride(model.gltfModel->bufferViews[accessor.bufferView]);
                     const std::string bufferName = getBufferName(accessor.bufferView, model);
 
-                    loadGLTFBuffer(accessor.bufferView, mesh, model, byteStride, loadedBuffers, bufferCapacityReached);
+                    loadGLTFBuffer(accessor.bufferView, mesh, model, byteStride, loadedBuffers);
 
                     int elements = (accessor.type != TINYGLTF_TYPE_SCALAR) ? accessor.type : 1;
 
@@ -6220,20 +6548,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 morphIndex++;
             }
 
-            // A primitive without all its buffers cannot draw (a hole in its pipeline's attributes):
-            // it goes whole, and what comes after it with it on the one mesh of the flatten path
-            if (bufferCapacityReached) {
-                reportOverCapacity("external buffers", mesh.eBuffers.size());
-                mesh.submeshes[i].attributes.clear();
-                mesh.submeshes[i].material = Material();
-                mesh.numExternalBuffers = externalBuffersBefore;
-                loadedBuffers.resize(loadedBuffersBefore);
-                mesh.vertexCount = vertexCountBefore;
-                submeshIndex = i;
-                flatMeshFull = !useChildEntities;
-                break;
-            }
-
             if (morphTargets) {
                 // the file's default weights only on a freshly loaded model, or when another model
                 // file is loaded: weights a scene or prefab saved (the editor's Blend Shapes rows, a
@@ -6276,7 +6590,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         // a continuous submeshIndex across nodes and finalizes the root mesh once after the loop.
         if (useChildEntities) {
             mesh.numSubmeshes = submeshIndex; // reserved-but-skipped slots (invalid data) dropped
-            std::reverse(mesh.submeshes.data(), mesh.submeshes.data() + mesh.numSubmeshes);
+            mesh.submeshes.reverse(0, mesh.numSubmeshes);
             calculateMeshAABB(mesh);
             mesh.needReload = true;
             // EXT_mesh_gpu_instancing (S53 R3): the node's copies are the child mesh's instances
@@ -6330,10 +6644,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
 
         if (skeletonRoot >= 0) {
-            // Creating the skeleton's bone entities mutates the ECS, which is only safe on the main
-            // thread, so the off-thread thumbnail worker skips it (building bones off-thread desyncs
-            // the BoneComponent ComponentArray maps and crashes when the preview scene is torn down).
-            if (!skipEntities && !Engine::isAsyncThread()) {
+            // A thumbnail is baked, it has no skeleton to pose
+            if (!skipEntities && !preview) {
                 model.bonesNameMapping.clear();
                 model.bonesIdMapping.clear();
 
@@ -6347,8 +6659,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             // The bones and mesh nodes added Transforms since `transform` was taken: the array may
             // have grown (moved), so the root's is read again
             Transform& rootTransform = scene->getComponent<Transform>(entity);
-            if (Engine::isAsyncThread()) {
-                // Off-thread skinned previews are baked into static geometry above (skinning attributes
+            if (preview) {
+                // Skinned previews are baked into static geometry above (skinning attributes
                 // dropped), so there is no skeleton to pose and bonesMatrix stays at the identity it was
                 // reset to at load start. Just refresh the transform so the preview gets framed.
                 rootTransform.needUpdate = true;
@@ -6370,13 +6682,12 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
     }
 
-    if (!Engine::isAsyncThread())
+    if (!preview)
         buildGLTFSkinBindings(entity, model);
 
-    // Animation tracks are also model-generated entities, so the off-thread thumbnail worker skips
-    // building them for the same reason as the skeleton above (a static preview never plays them).
+    // Animation tracks are also model-generated entities (a static preview never plays them).
     // Not either when an Animation Player plays the file's animations as sub-clips (spec 9.R15).
-    if (!skipEntities && !Engine::isAsyncThread()) {
+    if (!skipEntities && !preview) {
         model.animations.clear();
 
         const size_t animationCount = model.animationEntities ? model.gltfModel->animations.size() : 0;
@@ -6633,7 +6944,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // MeshComponents may have reallocated the component array — so the `mesh` reference captured
     // before the loop must not be dereferenced here.
     if (!useChildEntities) {
-        std::reverse(mesh.submeshes.data(), mesh.submeshes.data() + mesh.numSubmeshes);
+        mesh.submeshes.reverse(0, mesh.numSubmeshes);
 
         calculateMeshAABB(mesh);
 
@@ -6684,6 +6995,12 @@ static Vector3 objFaceNormal(const tinyobj::attrib_t& attrib, const std::vector<
 }
 
 bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLoad){
+    if (isLoadOnMainThread()) {
+        return prepareLoadOnMainThread(entity, filename, [this, entity, filename, asyncLoad]() {
+            loadOBJ(entity, filename, asyncLoad);
+        });
+    }
+
     const std::string poolKey = getModelFilenameKey(filename);
 
     failedModelLoads.erase(filename); // an explicit load is a new attempt
@@ -6722,14 +7039,7 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
     mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
     mesh.numSubmeshes = 1;
 
-    std::string warn;
-    std::string err;
-
-    tinyobj::FileReader::externalFunc = readFileToString;
-
     std::string baseDir = FileData::getBaseDir(filename);
-
-    bool ret = false;
 
     if (asyncLoad){
         auto cached = ModelPool::getObj(poolKey);
@@ -6739,26 +7049,13 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
             model.objModel = asyncResult->objModel;
             ModelPool::addObj(poolKey, model.objModel);
         }
-        ret = true;
     }else{
         auto cached = ModelPool::getObj(poolKey);
         if (cached){
             model.objModel = cached;
-            ret = true;
         }else{
-            model.objModel = std::make_shared<ObjModelData>();
-            ret = tinyobj::LoadObj(&model.objModel->attrib, &model.objModel->shapes, &model.objModel->materials, &warn, &err, filename.c_str(), baseDir.c_str());
-
-            if (!warn.empty()) {
-                Log::warn("Loading OBJ model (%s): %s", filename.c_str(), warn.c_str());
-            }
-
-            if (!err.empty()) {
-                Log::error("Can't load OBJ model (%s): %s", filename.c_str(), err.c_str());
-                return false;
-            }
-
-            if (!ret) {
+            model.objModel = parseOBJModel(filename);
+            if (!model.objModel) {
                 return false;
             }
 
@@ -6779,11 +7076,6 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
     if (materials.size() > 0){
         mesh.numSubmeshes = materials.size();
 
-    }
-
-    if (mesh.numSubmeshes > 0 && !mesh.submeshes.validIndex(static_cast<int>(mesh.numSubmeshes) - 1)){
-        Log::error("Model %s has more submeshes than the maximum allowed (%zu)", filename.c_str(), mesh.submeshes.size());
-        mesh.numSubmeshes = static_cast<unsigned int>(mesh.submeshes.size());
     }
 
     if (asyncLoad) {
@@ -6998,7 +7290,7 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
     mesh.buffer.setShareSource(objSource, OBJ_SHARE_VERTICES);
     mesh.indices.setShareSource(objSource, OBJ_SHARE_INDICES);
 
-    std::reverse(mesh.submeshes.data(), mesh.submeshes.data() + mesh.numSubmeshes);
+    mesh.submeshes.reverse(0, mesh.numSubmeshes);
 
     applySubmeshOverrides(submeshOverrides, entity, model);
 
@@ -7230,7 +7522,178 @@ void MeshSystem::resetModelToBindPose(Entity entity, ModelComponent& model){
     }
 }
 
+// Sprite:playTag (S44 R38): the tag's frames for the sheet's durations, at the tag's speed;
+// a zero-duration frame shows for one update
+void MeshSystem::stepSpriteTag(SpriteComponent& sprite, double dt){
+    if (!sprite.sheetData || sprite.tagFrames.empty()){
+        return;
+    }
+    const SpriteSheetData& sheet = *sprite.sheetData;
+    const double step = dt * 1000.0 * sprite.tagSpeed;
+    if (step <= 0.0){
+        return;
+    }
+    if (!std::isfinite(step)){
+        return;
+    }
+    if (sprite.tagStep >= sprite.tagFrames.size()){
+        sprite.tagStep = 0;
+    }
+    auto durationOf = [&](size_t i) -> double {
+        const int f = sprite.tagFrames[i];
+        return (f >= 0 && f < sheet.frameCount()) ? (double)sheet.frames[(size_t)f].durationMs : 0.0;
+    };
+    sprite.tagElapsedMs += step;
+    // a large step (a high speed, a long frame) goes round whole loops at once, or ends the
+    // tag, instead of stepping frame by frame: the loop below runs at most one pass
+    double loop = 0.0, rest = 0.0;
+    for (size_t i = 0; i < sprite.tagFrames.size(); i++){
+        loop += durationOf(i);
+        if (i >= sprite.tagStep) rest += durationOf(i);
+    }
+    if (sprite.tagLoop && loop > 0.0 && sprite.tagElapsedMs >= loop){
+        sprite.tagElapsedMs = std::fmod(sprite.tagElapsedMs, loop);
+    }else if (!sprite.tagLoop && sprite.tagElapsedMs >= rest){
+        sprite.tagStep = sprite.tagFrames.size() - 1;
+        sprite.tagPlaying = false;
+        sprite.tagElapsedMs = 0.0;
+        sprite.frame = sprite.tagFrames[sprite.tagStep];
+        return;
+    }
+    while (true){
+        const double duration = durationOf(sprite.tagStep);
+        if (sprite.tagElapsedMs < duration){
+            break;
+        }
+        if (sprite.tagStep + 1 >= sprite.tagFrames.size()){
+            if (!sprite.tagLoop){
+                // finished: the last frame stays
+                sprite.tagPlaying = false;
+                sprite.tagElapsedMs = 0.0;
+                break;
+            }
+            sprite.tagStep = 0;
+        }else{
+            sprite.tagStep++;
+        }
+        sprite.tagElapsedMs -= duration;
+        if (duration <= 0.0){
+            break;
+        }
+    }
+    sprite.frame = sprite.tagFrames[sprite.tagStep];
+}
+
+bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh){
+    // the sheet: loaded once, and again when the pool has a newer version (a reimport); the
+    // previous one stays drawn until the new one is there (no flicker)
+    // another sheet (the Inspector, a script, a drop): its frames from now on
+    if (sprite.sheetData && sprite.loadedSheet != sprite.sheet.path){
+        sprite.sheetData.reset();
+        sprite.builtFrame = -1;
+    }
+    const uint64_t revision = SpriteSheetPool::revision();
+    if (!sprite.sheetData || sprite.sheetRevision != revision){
+        sprite.sheetRevision = revision;
+        const uint64_t generation = SpriteSheetPool::generation(sprite.sheet.path);
+        if (!sprite.sheetData || generation != sprite.sheetGeneration){
+            std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite.sheet.path);
+            if (sheet){
+                sprite.sheetData = std::move(sheet);
+                sprite.loadedSheet = sprite.sheet.path;
+                sprite.sheetGeneration = SpriteSheetPool::generation(sprite.sheet.path);
+                sprite.resolveFrameName = true;
+                sprite.needUpdateSprite = true;
+            }
+        }
+    }
+    if (!sprite.sheetData || sprite.sheetData->frames.empty()){
+        return false;
+    }
+    const SpriteSheetData& sheet = *sprite.sheetData;
+    const int frameCount = (int)sheet.frames.size();
+    // the frame by its saved name (a renamed file or a reordered atlas keeps the frame), else by index
+    if (sprite.resolveFrameName){
+        sprite.resolveFrameName = false;
+        if (!sprite.frameName.empty()){
+            const int named = sheet.findFrame(sprite.frameName);
+            if (named >= 0){
+                sprite.frame = named;
+            }else if (sprite.frame < 0 || sprite.frame >= frameCount){
+                Log::warn("Sprite sheet %s has no frame '%s' and %d frames: showing frame %d",
+                          sprite.sheet.path.c_str(), sprite.frameName.c_str(), frameCount, std::clamp(sprite.frame, 0, frameCount - 1));
+            }
+        }
+    }
+    sprite.frame = std::clamp(sprite.frame, 0, frameCount - 1);
+
+    const int grid = requestedSpriteGrid(mesh);
+    const int previousGrid = builtSpriteGrid(mesh);
+    if (!sprite.needUpdateSprite && sprite.frame == sprite.builtFrame && previousGrid == grid){
+        return true;
+    }
+
+    const SpriteFrame& frame = sheet.frames[(size_t)sprite.frame];
+    if (frame.page >= sheet.pages.size()){
+        return false;
+    }
+    const SpritePage& page = sheet.pages[frame.page];
+    Texture& texture = mesh.submeshes[0].material.baseColorTexture;
+    if (texture.getPath() != page.texture){
+        // the page as the base colour texture; the texture keeps the sprite's sampler settings
+        texture.setAlphaBorderAuto(true);
+        texture.setPath(page.texture);
+        mesh.submeshes[0].needUpdateTexture = true;
+    }
+
+    CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
+    if (sprite.automaticFlipY){
+        changeFlipY(sprite.flipY, camera, mesh);
+    }
+    SpriteFrameGeometryInput input;
+    input.width = sprite.width;
+    input.height = sprite.height;
+    input.pivot = sprite.pivotPreset;
+    // the Sprite's own Pixels Per Unit (S41) over its sheet's (the import's, else the project's)
+    input.pixelsPerUnit = sprite.pixelsPerUnit > 0.0f ? sprite.pixelsPerUnit : sheet.pixelsPerUnit;
+    input.pixelRatio = sheet.pixelRatio;
+    input.uiCamera = camera.type == CameraType::CAMERA_UI;
+    input.flipY = sprite.flipY;
+    input.pageWidth = page.width;
+    input.pageHeight = page.height;
+    const SpriteFrameQuad quad = spriteFrameQuad(frame, input);
+
+    bool rebuild = sprite.needUpdateSprite || sprite.builtFrame < 0 || sprite.builtFrame >= frameCount || previousGrid != grid;
+    if (!rebuild){
+        // frames with the same trim geometry only swap the texture rect
+        rebuild = !spriteFrameQuad(sheet.frames[(size_t)sprite.builtFrame], input).sameGeometry(quad);
+    }
+    mesh.submeshes[0].textureRect = quad.textureRect;
+    mesh.submeshes[0].hasTextureRect = true;
+    sprite.frameName = frame.name;
+    sprite.needUpdateFrameRect = false;
+    if (rebuild){
+        prepareSpriteMesh(mesh);
+        buildSpriteGrid(sprite, mesh, (unsigned int)page.width, (unsigned int)page.height, quad.x0, quad.y0, quad.x1, quad.y1, grid);
+        if (mesh.loaded){
+            // a GPU buffer keeps the size it was created with: another grid reloads the mesh
+            if (previousGrid != 0 && previousGrid != grid){
+                mesh.needReload = true;
+            }else{
+                mesh.needUpdateBuffer = true;
+            }
+        }
+    }
+    sprite.builtFrame = sprite.frame;
+    sprite.needUpdateSprite = false;
+    return true;
+}
+
 bool MeshSystem::createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& mesh){
+    if (!sprite.sheet.empty()){
+        return updateSheetSprite(sprite, mesh);
+    }
+
     // a lattice started or stopped deforming it, or asks for another grid
     if (!sprite.needUpdateSprite){
         const int built = builtSpriteGrid(mesh);
@@ -7240,7 +7703,12 @@ bool MeshSystem::createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& me
     }
 
     if (sprite.needUpdateSprite){
-        CameraComponent& camera =  scene->getComponent<CameraComponent>(scene->getCamera());
+        // no camera yet (a scene drawn before it was loaded): built once it has one
+        CameraComponent* cameraPtr = scene->findComponent<CameraComponent>(scene->getCamera());
+        if (!cameraPtr){
+            return false;
+        }
+        CameraComponent& camera = *cameraPtr;
         if (sprite.automaticFlipY){
             changeFlipY(sprite.flipY, camera, mesh);
         }
@@ -7322,8 +7790,11 @@ bool MeshSystem::createOrUpdateTerrain(TerrainComponent& terrain, MeshComponent&
 bool MeshSystem::createOrUpdateMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh){
     if (polygon.needUpdatePolygon){
         if (polygon.automaticFlipY){
-            CameraComponent& camera =  scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(polygon.flipY, camera, mesh);
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(polygon.flipY, *camera, mesh);
         }
 
         if (createMeshPolygon(polygon, mesh)){
@@ -7339,8 +7810,11 @@ bool MeshSystem::createOrUpdateMeshPolygon(MeshPolygonComponent& polygon, MeshCo
 bool MeshSystem::createOrUpdateTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
     if (tilemap.needUpdateTilemap){
         if (tilemap.automaticFlipY){
-            CameraComponent& camera =  scene->getComponent<CameraComponent>(scene->getCamera());
-            changeFlipY(tilemap.flipY, camera, mesh);
+            CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera());
+            if (!camera){
+                return false;
+            }
+            changeFlipY(tilemap.flipY, *camera, mesh);
         }
 
         if (createTilemap(tilemap, mesh)){
@@ -7421,6 +7895,10 @@ void MeshSystem::update(double dt){
         return;
     }
 
+    // the project's Pixels Per Unit changed: what takes it builds again (S41)
+    const bool pixelsPerUnitChanged = Engine::getPixelsPerUnit() != builtPixelsPerUnit;
+    builtPixelsPerUnit = Engine::getPixelsPerUnit();
+
     auto sprites = scene->getComponentArray<SpriteComponent>();
     for (int i = 0; i < sprites->size(); i++){
         SpriteComponent& sprite = sprites->getComponentFromIndex(i);
@@ -7428,9 +7906,15 @@ void MeshSystem::update(double dt){
         Entity entity = sprites->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
+        if (pixelsPerUnitChanged && sprite.pixelsPerUnit <= 0.0f)
+            sprite.needUpdateSprite = true;
+
         if (signature.test(scene->getComponentId<MeshComponent>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
 
+            if (sprite.tagPlaying){
+                stepSpriteTag(sprite, dt);
+            }
             createOrUpdateSprite(sprite, mesh);
         }
     }
@@ -7450,12 +7934,20 @@ void MeshSystem::update(double dt){
         }
     }
 
+    // a Pixel Perfect Camera's tilemaps round their tile edges to the texel grid (S41 R13)
+    RenderSystem* renderSystem = scene->getSystem<RenderSystem>().get();
+    const bool roundTileEdges = renderSystem && renderSystem->hasPixelSnapVariants();
     auto tilemaps = scene->getComponentArray<TilemapComponent>();
     for (int i = 0; i < tilemaps->size(); i++){
         TilemapComponent& tilemap = tilemaps->getComponentFromIndex(i);
 
         Entity entity = tilemaps->getEntity(i);
         Signature signature = scene->getSignature(entity);
+
+        if (tilemap.roundTileEdges != roundTileEdges || (pixelsPerUnitChanged && tilemap.pixelsPerUnit <= 0.0f)){
+            tilemap.roundTileEdges = roundTileEdges;
+            tilemap.needUpdateTilemap = true;
+        }
 
         if (signature.test(scene->getComponentId<MeshComponent>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);

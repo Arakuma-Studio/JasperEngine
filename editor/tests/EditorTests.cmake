@@ -14,6 +14,8 @@ file(GLOB_RECURSE EDITOR_TEST_SOURCES CONFIGURE_DEPENDS
 # the reflection codec's benchmark against the frozen numbers of the codecs it replaced
 # (docs/specs/S08-reflection.md R17)
 list(APPEND EDITOR_TEST_SOURCES ${CMAKE_SOURCE_DIR}/tools/performance/reflect_codec.cpp)
+# the Aseprite codec's and importer's budgets (docs/specs/S44-aseprite-import.md AC15)
+list(APPEND EDITOR_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR}/pixelart/AsepriteBench.cpp)
 
 # the process LoggerCrashFlushTest crashes: the logger's queue, a file sink and the editor's
 # crash handler (editor/tests/util/LogCrashHelper.cpp)
@@ -42,7 +44,9 @@ if(WIN32 OR APPLE)
     list(FILTER EDITOR_TEST_SOURCES EXCLUDE REGEX "/VideoMp4Test\\.cpp$")
 endif()
 
-# the child ProcessExecTest runs (argument echo, environment, timeouts, a process tree, floods)
+# the child ProcessExecTest runs (argument echo, environment, timeouts, a process tree, floods).
+# Like je_log_crash_helper, it has no UTF-8 manifest: it stands for the programs the editor
+# runs, which write in the system's code page.
 add_executable(je_vcs_process_helper ${CMAKE_CURRENT_LIST_DIR}/vcs/ProcessHelper.cpp)
 set_target_properties(je_vcs_process_helper PROPERTIES
     CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}

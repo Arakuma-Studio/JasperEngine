@@ -658,7 +658,6 @@ TEST_F(Light2DNormalMapTest, MirroredSingleSidedBoxKeepsItsFront){
 // load), and destroying or reloading the sprites lets go of them
 TEST_F(Light2DNormalMapTest, MirroredVariantsAreShared){
     const size_t baseline = ObjectRender::getSharedVariantCount();
-    const uint64_t uiMisses = SystemRender::getPipelineCacheMisses();
     NormalScene s;
     s.addLight(LightSide::LEFT);
     std::vector<Sprite*> sprites;
@@ -668,7 +667,9 @@ TEST_F(Light2DNormalMapTest, MirroredVariantsAreShared){
     ASSERT_TRUE(s.settle());
     const size_t one = ObjectRender::getSharedVariantCount();
     ASSERT_GT(one, baseline) << "a mirrored draw uses a variant";
-    EXPECT_EQ(SystemRender::getPipelineCacheMisses(), uiMisses) << "variants are not the dynamic path's misses (HTML UI frame stats)";
+    // the first mirrored draw makes its variants: since S32 (4ea7516a5) variants are interned
+    // pipelines and count as cache misses like any new pipeline; sharing makes no more
+    const uint64_t misses = SystemRender::getPipelineCacheMisses();
 
     for (int i = 1; i < 8; i++){
         Sprite& sprite = s.addSprite();
@@ -678,6 +679,7 @@ TEST_F(Light2DNormalMapTest, MirroredVariantsAreShared){
     }
     ASSERT_TRUE(s.settle());
     EXPECT_EQ(ObjectRender::getSharedVariantCount(), one) << "8 mirrored sprites, one material: the same variants";
+    EXPECT_EQ(SystemRender::getPipelineCacheMisses(), misses) << "and no new pipeline";
 
     // a copy shares the variants (its component copy holds references until its own load)
     const std::vector<Entity> copies = EntityCloner::clone(&s.scene(), {first.getEntity()}, &s.scene());
@@ -685,12 +687,14 @@ TEST_F(Light2DNormalMapTest, MirroredVariantsAreShared){
     EXPECT_EQ(ObjectRender::getSharedVariantCount(), one) << "the copy right after cloning";
     ASSERT_TRUE(s.settle());
     EXPECT_EQ(ObjectRender::getSharedVariantCount(), one) << "the copy loaded and drawn";
+    EXPECT_EQ(SystemRender::getPipelineCacheMisses(), misses) << "the copy made no pipeline";
 
     // reloads release and take them again
     for (Sprite* sprite : sprites)
         sprite->getComponent<MeshComponent>().needReload = true;
     ASSERT_TRUE(s.settle());
     EXPECT_EQ(ObjectRender::getSharedVariantCount(), one) << "after reloading every sprite";
+    EXPECT_EQ(SystemRender::getPipelineCacheMisses(), misses) << "the reloads made no pipeline";
 
     // unmirrored, they draw with their own pipelines; the variants go with the last reference
     for (Sprite* sprite : sprites)
@@ -769,8 +773,9 @@ TEST_F(Light2DNormalMapTest, MissingNormalFallsBackFlat){
         sun.setIntensity(2.0f);
         ASSERT_TRUE(s.settle());
         ASSERT_TRUE((missingMap ? missing : none).read());
-        if (missingMap)
+        if (missingMap){
             EXPECT_NE(submesh.shaderProperties & (1u << 7), 0u) << "the variant samples a normal map ('Nmp')";
+        }
     }
     EXPECT_TRUE(sameImage(missing, none, 2)) << "a missing normal map vs none";
 }

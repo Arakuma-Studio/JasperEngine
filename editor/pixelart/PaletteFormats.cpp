@@ -8,6 +8,8 @@
 
 #include "PaletteFormats.h"
 
+#include "pixelart/aseprite/AsepriteDocument.h"
+
 #include "widget/SwatchLibrary.h"
 
 #include "stb_image.h"
@@ -663,6 +665,29 @@ namespace {
         return true;
     }
 
+    // An Aseprite file's frame 0 palette (chunk 0x2019 with names and alpha, or the old 0x0004 /
+    // 0x0011), through S44's codec; an indexed sprite's transparent index stays see-through
+    bool readAseprite(std::span<const uint8_t> bytes, Reading& r) {
+        jasperengine::editor::pixelart::aseprite::ReadOptions options;
+        options.pixels = false;
+        options.provenance = false;
+        const jasperengine::editor::pixelart::aseprite::ReadResult read = jasperengine::editor::pixelart::aseprite::read(bytes, options);
+        if (!read.ok()) {
+            return r.parseError("byte " + std::to_string(read.error.offset), read.error.message);
+        }
+        const jasperengine::editor::pixelart::aseprite::Document& document = *read.document;
+        for (const jasperengine::editor::pixelart::aseprite::PaletteEntry& entry : document.palette) {
+            r.addColor(px::Rgba8{entry.color[0], entry.color[1], entry.color[2], entry.color[3]}, entry.name ? *entry.name : std::string());
+        }
+        if (document.mode == jasperengine::editor::pixelart::aseprite::ColorMode::Indexed && document.transparentIndex < r.palette.colors.size()) {
+            r.palette.transparent = document.transparentIndex;
+        }
+        if (!document.paletteChanges.empty()) {
+            r.warn("palette_changes", "the sprite changes its palette on a later frame; the first frame's palette is imported");
+        }
+        return true;
+    }
+
     bool readSwatches(std::string_view text, Reading& r) {
         SwatchLibrary library;
         std::string error;
@@ -1057,13 +1082,7 @@ namespace {
             case PaletteFormat::Image: case PaletteFormat::PngStrip: ok = readImage(bytes, r); break;
             case PaletteFormat::SwatchLibrary: ok = readSwatches(textOf(bytes), r); break;
             case PaletteFormat::Aseprite:
-                if (!isAseprite(bytes)) {
-                    r.parseError(byteAt(4), "not an Aseprite file (no 0xA5E0 magic)");
-                } else {
-                    r.error = makeProblem("format_unsupported",
-                                          "'" + r.fileName + "' is an Aseprite file: Aseprite palettes are imported once the Aseprite importer (S44) is in",
-                                          "Export the palette from Aseprite as .gpl or .hex, then import that");
-                }
+                ok = isAseprite(bytes) ? readAseprite(bytes, r) : r.parseError(byteAt(4), "not an Aseprite file (no 0xA5E0 magic)");
                 break;
         }
         result.warnings = std::move(r.warnings);
@@ -1097,7 +1116,7 @@ namespace {
                                                   "", "colors"));
         }
         if (palette.name.empty()) palette.name = utf8(path.stem());
-        palette.source.kind = "file";
+        palette.source.kind = *format == PaletteFormat::Aseprite ? "aseprite" : "file";
         palette.source.file = r.fileName;
 
         std::vector<px::Diagnostic> diagnostics;

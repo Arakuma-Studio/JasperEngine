@@ -30,6 +30,46 @@ const char* lockStateName(LockState state) {
     return "unsupported";
 }
 
+const char* vcsOperationName(VcsOperation operation) {
+    switch (operation) {
+        case VcsOperation::None: return "";
+        case VcsOperation::Merge: return "merge";
+        case VcsOperation::Rebase: return "rebase";
+        case VcsOperation::CherryPick: return "cherry_pick";
+        case VcsOperation::Revert: return "revert";
+        case VcsOperation::Bisect: return "bisect";
+    }
+    return "";
+}
+
+std::string headLabel(const VcsBranchInfo& branch) {
+    std::string label;
+    if (branch.operation == VcsOperation::Rebase && !branch.operationBranch.empty()) {
+        // a rebase detaches HEAD: the branch it works on is the one to name
+        label = branch.operationBranch;
+    } else if (!branch.tag.empty()) {
+        label = "tag " + branch.tag;
+    } else if (branch.detached) {
+        label = branch.headOid.empty() ? std::string("(no commit)") : branch.headOid.substr(0, 7);
+    } else {
+        label = branch.name;
+    }
+    switch (branch.operation) {
+        case VcsOperation::None: break;
+        case VcsOperation::Merge: label += " | MERGING"; break;
+        case VcsOperation::Rebase:
+            label += " | REBASE";
+            if (branch.operationStep > 0 && branch.operationTotal > 0) {
+                label += " " + std::to_string(branch.operationStep) + "/" + std::to_string(branch.operationTotal);
+            }
+            break;
+        case VcsOperation::CherryPick: label += " | CHERRY-PICKING"; break;
+        case VcsOperation::Revert: label += " | REVERTING"; break;
+        case VcsOperation::Bisect: label += " | BISECTING"; break;
+    }
+    return label;
+}
+
 const char* dirStateName(DirState state) {
     switch (state) {
         case DirState::Clean: return "clean";
@@ -91,8 +131,13 @@ bool VcsChange::clean() const {
 }
 
 bool VcsChange::newFile() const {
+    // git stages an add (index), svn schedules one (worktree)
     return index == FileState::Untracked || worktree == FileState::Untracked ||
-           (index == FileState::Added && worktree != FileState::Deleted);
+           ((index == FileState::Added || worktree == FileState::Added) && worktree != FileState::Deleted);
+}
+
+bool VcsChange::renamed() const {
+    return index == FileState::Renamed || worktree == FileState::Renamed;
 }
 
 bool VcsChange::deleted() const {

@@ -126,10 +126,20 @@ async def test_copy_paste_go_to_the_curve_not_the_scene(ed: Editor):
     s = await fresh_scene(ed, "CopyHere")
     before = await entity_count(ed, s["scene"])
     area = (await ed.call("focus_window", window="scene", scene=s["scene"]))["rect"]
+    # A wrong scene Paste must have a live clipboard to act on.
+    await ed.call("run_command", id="edit.copy")
+    await ed.call("run_command", id="edit.paste")
+    ed.check_eq(await entity_count(ed, s["scene"]), before + 1, "the scene clipboard can paste the selected GameObject")
+    await ed.call("undo", scene=s["scene"])
+    ed.check_eq(await entity_count(ed, s["scene"]), before, "Undo restored the scene before the curve's keys")
+    await ed.call("select_entities", scene=s["scene"], entities=[s["cube"]])
     graph = await open_curve_window(ed, keys)
     await box_select_all(keys, graph)
     await over_the_scene_view(ed, keys, area, graph)
     await keys.key("ctrl+c")
+    # The original key count must require Paste to change its destination.
+    await keys.key("Delete")
+    ed.check_eq(len(await curve_keys(ed, s)), 1, "one destination key remains before Paste")
     await keys.key("ctrl+v")
     await keys.frames(10)
     ed.check_eq(await entity_count(ed, s["scene"]), before, "Ctrl+C / Ctrl+V left the GameObjects alone")

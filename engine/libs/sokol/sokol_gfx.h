@@ -5185,6 +5185,9 @@ SOKOL_GFX_API_DECL sg_buffer_info sg_query_buffer_info(sg_buffer buf);
 SOKOL_GFX_API_DECL sg_image_info sg_query_image_info(sg_image img);
 SOKOL_GFX_API_DECL sg_sampler_info sg_query_sampler_info(sg_sampler smp);
 SOKOL_GFX_API_DECL sg_shader_info sg_query_shader_info(sg_shader shd);
+// JasperEngine: the element count a GL backend uploads for a uniform of a block (the driver's
+// active size of a flattened array, PATCHES.md); -1 off GL or for no such uniform
+SOKOL_GFX_API_DECL int sgj_query_gl_uniform_count(sg_shader shd, int ub_slot, int u_index);
 SOKOL_GFX_API_DECL sg_pipeline_info sg_query_pipeline_info(sg_pipeline pip);
 SOKOL_GFX_API_DECL sg_view_info sg_query_view_info(sg_view view);
 // get desc structs matching a specific resource (NOTE that not all creation attributes may be provided)
@@ -6009,6 +6012,13 @@ inline int sg_append_buffer(sg_buffer buf_id, const sg_range& data) { return sg_
 
     #ifndef GL_UNSIGNED_INT_2_10_10_10_REV
     #define GL_UNSIGNED_INT_2_10_10_10_REV 0x8368
+    #endif
+    // JasperEngine: flattened uniform arrays sized as the driver reports them (PATCHES.md)
+    #ifndef GL_UNIFORM_SIZE
+    #define GL_UNIFORM_SIZE 0x8A38
+    #endif
+    #ifndef GL_INVALID_INDEX
+    #define GL_INVALID_INDEX 0xFFFFFFFFu
     #endif
     #ifndef GL_UNSIGNED_INT_24_8
     #define GL_UNSIGNED_INT_24_8 0x84FA
@@ -9225,6 +9235,8 @@ _SOKOL_PRIVATE void _sg_dummy_update_image(_sg_image_t* img, const sg_image_data
     _SG_XMACRO(glShaderSource,                    void, (GLuint shader, GLsizei count, const GLchar *const* string, const GLint * length)) \
     _SG_XMACRO(glLinkProgram,                     void, (GLuint program)) \
     _SG_XMACRO(glGetUniformLocation,              GLint, (GLuint program, const GLchar * name)) \
+    _SG_XMACRO(glGetUniformIndices,               void, (GLuint program, GLsizei uniformCount, const GLchar *const* uniformNames, GLuint * uniformIndices)) \
+    _SG_XMACRO(glGetActiveUniformsiv,             void, (GLuint program, GLsizei uniformCount, const GLuint * uniformIndices, GLenum pname, GLint * params)) \
     _SG_XMACRO(glGetShaderiv,                     void, (GLuint shader, GLenum pname, GLint * params)) \
     _SG_XMACRO(glGetProgramInfoLog,               void, (GLuint program, GLsizei bufSize, GLsizei * length, GLchar * infoLog)) \
     _SG_XMACRO(glGetAttribLocation,               GLint, (GLuint program, const GLchar * name)) \
@@ -11280,6 +11292,21 @@ _SOKOL_PRIVATE sg_resource_state _sg_gl_create_shader(_sg_shader_t* shd, const s
             if (u->gl_loc == -1) {
                 _SG_WARN(GL_UNIFORMBLOCK_NAME_NOT_FOUND_IN_SHADER);
                 _SG_LOGMSG(GL_UNIFORMBLOCK_NAME_NOT_FOUND_IN_SHADER, u_desc->glsl_name);
+            } else if (u->count > 1) {
+                // JasperEngine: a driver may size an array to the elements the program reads (a
+                // flattened block whose tail a variant leaves unused) or make it no array at all;
+                // glUniform*v with the declared count is then clamped or rejected, the whole
+                // block with it. Upload the count it reports active (PATCHES.md)
+                const GLchar* u_name = u_desc->glsl_name;
+                GLuint u_gl_index = GL_INVALID_INDEX;
+                glGetUniformIndices(gl_prog, 1, &u_name, &u_gl_index);
+                if (u_gl_index != GL_INVALID_INDEX) {
+                    GLint u_gl_size = 0;
+                    glGetActiveUniformsiv(gl_prog, 1, &u_gl_index, GL_UNIFORM_SIZE, &u_gl_size);
+                    if ((u_gl_size > 0) && (u_gl_size < (GLint)u->count)) {
+                        u->count = (uint16_t) u_gl_size;
+                    }
+                }
             }
             cur_uniform_offset += u_size;
             ub->num_uniforms++;
@@ -15810,11 +15837,26 @@ _SOKOL_PRIVATE void _sg_mtl_discard_sampler(_sg_sampler_t* smp) {
     _sg_mtl_release_resource(_sg.frame_index, smp->mtl.sampler_state);
 }
 
+// JasperEngine: invariant position (PATCHES.md): Metal ignores a vertex function's
+// [[position, invariant]] unless its library is compiled with preserveInvariance, and with fast
+// math on, a matrix read from a vertex buffer (an instanced batch) and the same matrix read from a
+// uniform block gave positions a few ULP apart: depth pre-pass and colour pass no longer met.
+// Created once and never released (ARC or not); macOS 11 and iOS 14 have it, below our targets.
+_SOKOL_PRIVATE MTLCompileOptions* _sg_mtl_compile_options(void) {
+    static MTLCompileOptions* options = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        options = [[MTLCompileOptions alloc] init];
+        options.preserveInvariance = YES;
+    });
+    return options;
+}
+
 _SOKOL_PRIVATE id<MTLLibrary> _sg_mtl_compile_library(const char* src) {
     NSError* err = NULL;
     id<MTLLibrary> lib = [_sg.mtl.device
         newLibraryWithSource:[NSString stringWithUTF8String:src]
-        options:nil
+        options:_sg_mtl_compile_options() // JasperEngine: invariant position
         error:&err
     ];
     if (err) {
@@ -26225,6 +26267,25 @@ SOKOL_API_IMPL sg_shader_info sg_query_shader_info(sg_shader shd_id) {
         info.slot.uninit_count = shd->slot.uninit_count;
     }
     return info;
+}
+
+// JasperEngine: flattened uniform arrays sized as the driver reports them (PATCHES.md)
+SOKOL_API_IMPL int sgj_query_gl_uniform_count(sg_shader shd_id, int ub_slot, int u_index) {
+    SOKOL_ASSERT(_sg.valid);
+    #if defined(_SOKOL_ANY_GL)
+    const _sg_shader_t* shd = _sg_lookup_shader(shd_id.id);
+    if (shd && (ub_slot >= 0) && (ub_slot < SG_MAX_UNIFORMBLOCK_BINDSLOTS)) {
+        const _sg_gl_uniform_block_t* ub = &shd->gl.uniform_blocks[ub_slot];
+        if ((u_index >= 0) && (u_index < ub->num_uniforms)) {
+            return (int) ub->uniforms[u_index].count;
+        }
+    }
+    #else
+    _SOKOL_UNUSED(shd_id);
+    _SOKOL_UNUSED(ub_slot);
+    _SOKOL_UNUSED(u_index);
+    #endif
+    return -1;
 }
 
 SOKOL_API_IMPL sg_pipeline_info sg_query_pipeline_info(sg_pipeline pip_id) {

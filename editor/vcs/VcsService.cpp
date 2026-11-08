@@ -366,6 +366,15 @@ void VcsService::pollOnce() {
         failedPoll = serial;
         return;
     }
+    // a detached HEAD's tag: asked once per HEAD (a process), carried over while HEAD stays
+    if (snapshot.branch.detached && !snapshot.branch.headOid.empty()) {
+        if (pollerPrevious && pollerPrevious->branch.detached && pollerPrevious->branch.headOid == snapshot.branch.headOid) {
+            snapshot.branch.tag = pollerPrevious->branch.tag;
+        } else {
+            std::string tag;
+            if (reader->headTag(tag).ok) snapshot.branch.tag = tag;
+        }
+    }
     snapshot.finalize(pollerPrevious.get());
     snapshot.version = serial;
     SnapshotPtr fresh = std::make_shared<const VcsSnapshot>(std::move(snapshot));
@@ -424,6 +433,29 @@ const std::string& VcsService::lockError() const {
 
 bool VcsService::locksPolled() const {
     return capabilities.locking && lockPollMs.load() > 0;
+}
+
+std::string VcsService::baselineRevision() const {
+    if (!active()) return std::string();
+    return capabilities.provider == "svn" ? std::string("BASE") : std::string("HEAD");
+}
+
+std::string VcsService::effectiveRevision(std::string_view rev) const {
+    if (rev == "HEAD" && capabilities.provider == "svn") return "BASE";
+    return std::string(rev);
+}
+
+std::string VcsService::contentMemoKey(const RepoPath& key, std::string_view rev) const {
+    // (svn's HEAD and BASE read the same: one memo)
+    std::string memo = key + "\n" + effectiveRevision(rev);
+    if (current) {
+        memo += "\n" + current->branch.headOid;
+        if (const VcsChange* change = current->find(key)) {
+            memo += "\n" + change->baseOid + (change->newFile() ? "\nnew" : "");
+            if (!change->oldPath.empty()) memo += "\nfrom " + change->oldPath;
+        }
+    }
+    return memo;
 }
 
 bool VcsService::toKey(const fs::path& absolute, RepoPath& out) const {
@@ -612,6 +644,7 @@ void VcsService::log(std::optional<RepoPath> path, int limit, int skip, std::fun
 
 void VcsService::baseContent(RepoPath path, std::string rev, std::function<void(const VcsResult&, std::string)> done) {
     auto content = std::make_shared<std::string>();
+    rev = effectiveRevision(rev);
     run("Reading " + path + "...", [path, rev = std::move(rev), content](IVcsProvider& provider, const jobs::CancelToken&) {
         return provider.baseContent(path, rev, *content);
     }, [content, done = std::move(done)](const VcsResult& result) {
@@ -621,6 +654,7 @@ void VcsService::baseContent(RepoPath path, std::string rev, std::function<void(
 
 void VcsService::textDiff(RepoPath path, std::string rev, std::function<void(const VcsResult&, std::string)> done) {
     auto diff = std::make_shared<std::string>();
+    rev = effectiveRevision(rev);
     run("Diffing " + path + "...", [path, rev = std::move(rev), diff](IVcsProvider& provider, const jobs::CancelToken&) {
         return provider.textDiff(path, rev, *diff);
     }, [diff, done = std::move(done)](const VcsResult& result) {

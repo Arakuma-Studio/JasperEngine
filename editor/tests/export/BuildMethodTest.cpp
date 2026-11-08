@@ -12,12 +12,15 @@
 #include "platform/AndroidPackager.h"
 #include "platform/IosProject.h"
 #include "players/PlayerRuntimes.h"
+#include "Scene.h"
+#include "component/MeshComponent.h"
 #include "util/ZipArchive.h"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cstdlib>
+#include <memory>
 #include <fstream>
 #include <iterator>
 
@@ -46,6 +49,29 @@ namespace build_method_test {
         config.mode = ExportMode::Player;
         config.platform = BuildPlatform::Linux;
         return config;
+    }
+
+    ExportConfig configFor(BuildPlatform platform) {
+        ExportConfig config = linuxConfig();
+        config.platform = platform;
+        return config;
+    }
+
+    bool hasCarried(const BuildMethodChoice& choice, const std::string& part) {
+        return std::any_of(choice.carried.begin(), choice.carried.end(),
+                           [&part](const std::string& item) { return item.find(part) != std::string::npos; });
+    }
+
+    // a project on disk (plugins/native is read from its folder), one scene
+    std::unique_ptr<Project> projectIn(const fs::path& root) {
+        fs::create_directories(root / "assets");
+        fs::create_directories(root / "lua");
+        std::ofstream(root / "project.yaml") << "name: native\nassetsDir: assets\nluaDir: lua\n";
+        auto project = std::make_unique<Project>();
+        project->setSkipProjectLock(true);
+        EXPECT_TRUE(project->loadProject(root, false));
+        addScene(*project, 1);
+        return project;
     }
 
 }
@@ -88,37 +114,192 @@ TEST(BuildMethod, CppScriptsOfTheScenesCompile) {
     EXPECT_TRUE(hasReason(choice, "Spawner.cpp")) << (choice.reasons.empty() ? "" : choice.reasons.front());
 }
 
-TEST(BuildMethod, CapacitiesAboveThePlayersCompile) {
+TEST(BuildMethod, ContentSizeNeverForcesCompile) {
+    // components hold what they are given (mesh-memory): no capacity of a player to pass
     Project project;
-    addScene(project, 1).maxValues.maxBones = 200;
-    BuildMethodChoice choice = Exporter::chooseBuildMethod(&project, linuxConfig(), nullptr);
-    EXPECT_EQ(choice.method, BuildMethod::Compile);
-    EXPECT_TRUE(hasReason(choice, "MAX_BONES 200 (the player holds 128)")) << (choice.reasons.empty() ? "" : choice.reasons.front());
-
-    // a player that holds more takes it
-    PlayerInfo bigger;
-    bigger.capacities["MAX_BONES"] = 256;
-    choice = Exporter::chooseBuildMethod(&project, linuxConfig(), &bigger);
-    EXPECT_EQ(choice.method, BuildMethod::Prebuilt);
+    SceneProject& scene = addScene(project, 1);
+    scene.scene = new Scene();
+    const Entity entity = scene.scene->createEntity();
+    MeshComponent mesh;
+    mesh.numSubmeshes = 24;
+    mesh.submeshes[23].material.name = "last";
+    mesh.bonesMatrix.resize(200);
+    scene.scene->addComponent<MeshComponent>(entity, mesh);
+    const BuildMethodChoice choice = Exporter::chooseBuildMethod(&project, linuxConfig(), nullptr);
+    EXPECT_EQ(choice.method, BuildMethod::Prebuilt) << (choice.reasons.empty() ? "" : choice.reasons.front());
+    delete scene.scene;
+    scene.scene = nullptr;
 }
 
-TEST(BuildMethod, AdMobAndForcedCompile) {
+TEST(BuildMethod, PlayerWithCapacitiesIsRefused) {
+    // a player packaged when components had fixed arrays would cut what the scenes hold
     Project project;
     addScene(project, 1);
-    project.getAndroidProjectSettings().admobEnabled = true;
-    ExportConfig android = linuxConfig();
-    android.platform = BuildPlatform::Android;
-    BuildMethodChoice choice = Exporter::chooseBuildMethod(&project, android, nullptr);
+    PlayerInfo old;
+    old.id = "linux-x64-glcore-release";
+    old.capacities["MAX_BONES"] = 128;
+    const BuildMethodChoice choice = Exporter::chooseBuildMethod(&project, linuxConfig(), &old);
     EXPECT_EQ(choice.method, BuildMethod::Compile);
-    EXPECT_TRUE(hasReason(choice, "AdMob")) << (choice.reasons.empty() ? "" : choice.reasons.front());
-    // AdMob is Android's: a Linux build does not need it
-    EXPECT_EQ(Exporter::chooseBuildMethod(&project, linuxConfig(), nullptr).method, BuildMethod::Prebuilt);
+    EXPECT_TRUE(hasReason(choice, "fixed array capacities")) << (choice.reasons.empty() ? "" : choice.reasons.front());
+}
 
+TEST(BuildMethod, ForcedCompile) {
+    Project project;
+    addScene(project, 1);
     ExportConfig forced = linuxConfig();
     forced.method = BuildMethod::Compile;
-    choice = Exporter::chooseBuildMethod(&project, forced, nullptr);
+    const BuildMethodChoice choice = Exporter::chooseBuildMethod(&project, forced, nullptr);
     EXPECT_EQ(choice.method, BuildMethod::Compile);
     EXPECT_TRUE(hasReason(choice, "Compile chosen"));
+}
+
+// mobile-shipping: a prebuilt build never drops plugins/native silently; each input is carried
+// or a reason to compile, named
+
+TEST(BuildMethod, NativeCppPluginsCompile) {
+    // red before mobile-shipping: plugins/native/cpp was outside the C++ scan, the build went prebuilt
+    TestTempDir dir("build-method-native");
+    TestTempDir::write(dir / "plugins/native/cpp/SteamPlugin.cpp", "int steam;\n");
+    auto project = projectIn(dir.path());
+    for (BuildPlatform platform : {BuildPlatform::Linux, BuildPlatform::Windows, BuildPlatform::Web, BuildPlatform::Android, BuildPlatform::IOS}) {
+        const BuildMethodChoice choice = Exporter::chooseBuildMethod(project.get(), configFor(platform), nullptr);
+        EXPECT_EQ(choice.method, BuildMethod::Compile) << buildPlatformName(platform);
+        EXPECT_TRUE(hasReason(choice, "C++ native plugins (plugins/native/cpp/SteamPlugin.cpp)")) << buildPlatformName(platform);
+    }
+}
+
+TEST(BuildMethod, AndroidCodePluginsCompile) {
+    // red before mobile-shipping: the prebuilt APK left the Java plugin and the Gradle dependency out
+    TestTempDir dir("build-method-native");
+    TestTempDir::write(dir / "plugins/native/android/java/com/me/Ads.java", "package com.me; public class Ads {}\n");
+    auto project = projectIn(dir.path());
+    BuildMethodChoice choice = Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::Android), nullptr);
+    EXPECT_EQ(choice.method, BuildMethod::Compile);
+    EXPECT_TRUE(hasReason(choice, "Java/Kotlin plugins (plugins/native/android/java/com/me/Ads.java)"));
+    // the other platforms have nothing of it to build
+    EXPECT_EQ(Exporter::chooseBuildMethod(project.get(), linuxConfig(), nullptr).method, BuildMethod::Prebuilt);
+
+    fs::remove_all(dir / "plugins");
+    project->getAndroidProjectSettings().gradleDependencies = {"com.example:sdk:1.0"};
+    choice = Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::Android), nullptr);
+    EXPECT_EQ(choice.method, BuildMethod::Compile);
+    EXPECT_TRUE(hasReason(choice, "Gradle dependencies (android.gradle_dependencies) (com.example:sdk:1.0)"));
+}
+
+// red before the review fix: any file of plugins/native/android forced a compile
+TEST(BuildMethod, AndroidNotesCompileNothing) {
+    TestTempDir dir("build-method-native");
+    TestTempDir::write(dir / "plugins/native/android/README.md", "How the ads plugin is set up.\n");
+    TestTempDir::write(dir / "plugins/native/android/notes/setup.txt", "keys\n");
+    auto project = projectIn(dir.path());
+    BuildMethodChoice choice = Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::Android), nullptr);
+    EXPECT_EQ(choice.method, BuildMethod::Prebuilt) << (choice.reasons.empty() ? "" : choice.reasons.front());
+    // what the export's Gradle module reads does
+    for (const char* file : {"res/values/strings.xml", "AndroidManifest.xml", "proguard-rules.pro"}) {
+        TestTempDir::write(dir / "plugins/native/android" / file, "<x/>\n");
+        choice = Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::Android), nullptr);
+        EXPECT_EQ(choice.method, BuildMethod::Compile) << file;
+        EXPECT_TRUE(hasReason(choice, std::string("plugins/native/android/") + file)) << file;
+        fs::remove(dir / "plugins/native/android" / file);
+    }
+}
+
+TEST(BuildMethod, AndroidManifestSettingsAreCarried) {
+    TestTempDir dir("build-method-native");
+    auto project = projectIn(dir.path());
+    AndroidProjectSettings& android = project->getAndroidProjectSettings();
+    android.extraPermissions = {"com.google.android.gms.permission.AD_ID"};
+    android.manifestApplicationXml = "<meta-data android:name=\"k\" android:value=\"v\"/>";
+    BuildMethodChoice choice = Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::Android), nullptr);
+    EXPECT_EQ(choice.method, BuildMethod::Prebuilt) << (choice.reasons.empty() ? "" : choice.reasons.front());
+    EXPECT_TRUE(hasCarried(choice, "com.google.android.gms.permission.AD_ID"));
+    EXPECT_TRUE(hasCarried(choice, "android.manifest_application_xml"));
+    // merge rules need Gradle's manifest merger
+    android.manifestXml = "<uses-permission android:name=\"android.permission.CAMERA\" tools:node=\"remove\"/>";
+    choice = Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::Android), nullptr);
+    EXPECT_EQ(choice.method, BuildMethod::Compile);
+    EXPECT_TRUE(hasReason(choice, "android.manifest_xml uses tools: merge rules"));
+}
+
+TEST(BuildMethod, MacObjectiveCPluginsCompile) {
+    // red before mobile-shipping: the prebuilt macOS bundle left the plugin out
+    TestTempDir dir("build-method-native");
+    TestTempDir::write(dir / "plugins/native/macos/Store.m", "@implementation Store\n@end\n");
+    auto project = projectIn(dir.path());
+    const BuildMethodChoice choice = Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::MacOS), nullptr);
+    EXPECT_EQ(choice.method, BuildMethod::Compile);
+    EXPECT_TRUE(hasReason(choice, "Objective-C/Swift plugins for macOS (plugins/native/macos/Store.m)"));
+    EXPECT_EQ(Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::IOS), nullptr).method, BuildMethod::Prebuilt)
+        << "a macOS plugin is not iOS's";
+}
+
+TEST(BuildMethod, IosPluginsAreCarried) {
+    TestTempDir dir("build-method-native");
+    TestTempDir::write(dir / "plugins/native/ios/Device.m", "@implementation Device\n@end\n");
+    auto project = projectIn(dir.path());
+    project->getIOSProjectSettings().swiftPackages.push_back({"https://github.com/example/sdk", "1.0.0", {"Sdk"}});
+    BuildMethodChoice choice = Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::IOS), nullptr);
+    EXPECT_EQ(choice.method, BuildMethod::Prebuilt) << (choice.reasons.empty() ? "" : choice.reasons.front());
+    EXPECT_TRUE(hasCarried(choice, "iOS plugins (plugins/native/ios/Device.m)"));
+    EXPECT_TRUE(hasCarried(choice, "Swift packages"));
+
+    // a runtime from before native plugins (no include/JasperNative.h in its template)
+    PlayerInfo old;
+    old.id = "ios-arm64-metal-release";
+    choice = Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::IOS), &old);
+    EXPECT_EQ(choice.method, BuildMethod::Compile);
+    EXPECT_TRUE(hasReason(choice, "ios-arm64-metal-release player runtime cannot take native plugins"));
+    old.features.push_back("nativeplugins");
+    EXPECT_EQ(Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::IOS), &old).method, BuildMethod::Prebuilt);
+
+    // CocoaPods need pod install and the workspace of the source export
+    project->getIOSProjectSettings().cocoapods.push_back({"Google-Mobile-Ads-SDK", "", ""});
+    choice = Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::IOS), nullptr);
+    EXPECT_EQ(choice.method, BuildMethod::Compile);
+    EXPECT_TRUE(hasReason(choice, "CocoaPods (ios.cocoapods)"));
+}
+
+// red before platform-build: the editor's .meta of a plugin file was listed as carried, and a
+// .meta left in a plugin folder made a build compile
+TEST(BuildMethod, EditorSidecarsAreNeitherCarriedNorAReason) {
+    TestTempDir dir("build-method-native");
+    TestTempDir::write(dir / "plugins/native/ios/Device.h", "@interface Device\n@end\n");
+    TestTempDir::write(dir / "plugins/native/ios/Device.h.meta", "guid: 1\n");
+    TestTempDir::write(dir / "plugins/native/ios/Device.m", "@implementation Device\n@end\n");
+    TestTempDir::write(dir / "plugins/native/macos/Removed.h.meta", "guid: 2\n");
+    TestTempDir::write(dir / "plugins/native/android/res/drawable/icon.png.meta", "guid: 3\n");
+    auto project = projectIn(dir.path());
+    BuildMethodChoice choice = Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::IOS), nullptr);
+    EXPECT_EQ(choice.method, BuildMethod::Prebuilt) << (choice.reasons.empty() ? "" : choice.reasons.front());
+    EXPECT_TRUE(hasCarried(choice, "iOS plugins (plugins/native/ios/Device.h, plugins/native/ios/Device.m)"))
+        << (choice.carried.empty() ? "" : choice.carried.front());
+    for (BuildPlatform platform : {BuildPlatform::MacOS, BuildPlatform::Android}) {
+        choice = Exporter::chooseBuildMethod(project.get(), configFor(platform), nullptr);
+        EXPECT_EQ(choice.method, BuildMethod::Prebuilt) << buildPlatformName(platform) << ": " << (choice.reasons.empty() ? "" : choice.reasons.front());
+    }
+}
+
+TEST(BuildMethod, WebPluginsAreCarried) {
+    TestTempDir dir("build-method-native");
+    TestTempDir::write(dir / "plugins/native/web/poki.js", "JasperNative.register('Poki', {});\n");
+    auto project = projectIn(dir.path());
+    project->getWebProjectSettings().scriptUrls = {"https://game-cdn.poki.com/scripts/v2/poki-sdk.js"};
+    const BuildMethodChoice choice = Exporter::chooseBuildMethod(project.get(), configFor(BuildPlatform::Web), nullptr);
+    EXPECT_EQ(choice.method, BuildMethod::Prebuilt);
+    EXPECT_TRUE(hasCarried(choice, "Web plugins (plugins/native/web/poki.js)"));
+    EXPECT_TRUE(hasCarried(choice, "web.script_urls"));
+}
+
+TEST(BuildMethod, MockOnlyPluginsWarn) {
+    TestTempDir dir("build-method-native");
+    TestTempDir::write(dir / "plugins/native/android/java/com/me/Ads.java", "package com.me; public class Ads {}\n");
+    auto project = projectIn(dir.path());
+    EXPECT_TRUE(Exporter::chooseBuildMethod(project.get(), linuxConfig(), nullptr).nativeWarnings.empty()) << "no mock: no warning";
+    TestTempDir::write(dir / "lua/native_mocks/Ads.lua", "return {}\n");
+    const BuildMethodChoice choice = Exporter::chooseBuildMethod(project.get(), linuxConfig(), nullptr);
+    ASSERT_EQ(choice.nativeWarnings.size(), 1u);
+    EXPECT_NE(choice.nativeWarnings[0].find("\"Ads\" has no code for linux"), std::string::npos) << choice.nativeWarnings[0];
+    EXPECT_NE(choice.nativeWarnings[0].find("native_mocks/Ads.lua"), std::string::npos);
 }
 
 TEST(BuildMethod, PlayerIds) {
@@ -170,6 +351,39 @@ TEST(AndroidPackage, SelectedAbisAndTheirLibrarySizes) {
     EXPECT_EQ(sizes[0], (std::pair<std::string, uint64_t>{"arm64-v8a", 120}));
     EXPECT_EQ(sizes[1], (std::pair<std::string, uint64_t>{"armeabi-v7a", 70}));
     EXPECT_EQ(sizes[2], (std::pair<std::string, uint64_t>{"x86_64", 0})) << "an ABI the runtime lacks weighs nothing";
+}
+
+// mobile-shipping: the code-free native settings reach a prebuilt package's manifest (red before:
+// the prebuilt package read only the Player permissions)
+TEST(AndroidPackage, CarriesNativeManifestSettings) {
+    std::ifstream in(fs::path(JASPER_TEST_REPO_DIR) / "engine/platform/android/player/AndroidManifest.template.xml");
+    ASSERT_TRUE(in);
+    const std::string templateText((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    platform::AndroidPackage package;
+    package.label = "Game";
+    package.applicationId = "com.example.game";
+    package.settings.extraPermissions = {"com.google.android.gms.permission.AD_ID"};
+    package.settings.manifestXml = "<queries>\n    <package android:name=\"com.example.other\"/>\n</queries>";
+    package.settings.manifestApplicationXml = "<meta-data android:name=\"com.example.APP_ID\" android:value=\"42\"/>";
+    std::string manifest, error;
+    ASSERT_TRUE(platform::writeAndroidManifest(package, templateText, manifest, error)) << error;
+    const size_t permission = manifest.find("<uses-permission android:name=\"com.google.android.gms.permission.AD_ID\" />");
+    const size_t queries = manifest.find("    <queries>\n        <package android:name=\"com.example.other\"/>\n    </queries>");
+    const size_t application = manifest.find("<application");
+    const size_t metaData = manifest.find("        <meta-data android:name=\"com.example.APP_ID\" android:value=\"42\"/>");
+    const size_t applicationEnd = manifest.find("</application>");
+    ASSERT_NE(permission, std::string::npos) << manifest;
+    ASSERT_NE(queries, std::string::npos) << manifest;
+    ASSERT_NE(metaData, std::string::npos) << manifest;
+    EXPECT_LT(permission, application);
+    EXPECT_LT(queries, application);
+    EXPECT_GT(metaData, application);
+    EXPECT_LT(metaData, applicationEnd);
+    EXPECT_EQ(manifest.find("{{NATIVE_"), std::string::npos) << "both native markers filled";
+
+    package.settings.manifestXml = "<queries>";
+    EXPECT_FALSE(platform::writeAndroidManifest(package, templateText, manifest, error));
+    EXPECT_NE(error.find("android.manifest_xml"), std::string::npos) << error;
 }
 
 // native libraries as the Android Gradle plugin packages them: compressed in an APK for devices
@@ -511,8 +725,9 @@ TEST(IosBuild, ThePlayerTemplateLinksWhatTheEngineNeeds) {
     }
     EXPECT_GE(checked, 4u) << "the engine's framework list moved: " << marker;
     EXPECT_EQ(template_.find("GoogleMobileAds"), std::string::npos);
-    EXPECT_NE(read("tools/players/ios_player.sh").find("-DJASPERENGINE_ADMOB=OFF"), std::string::npos)
-        << "the template links no ads SDK, so the player must not reference it";
+    EXPECT_EQ(cmake.find("JASPERENGINE_ADMOB"), std::string::npos) << "built-in AdMob is retired: no option, no SDK";
+    // App Store Connect refuses an app whose required-reason APIs no privacy manifest declares
+    EXPECT_NE(template_.find("PrivacyInfo.xcprivacy in Resources"), std::string::npos);
 }
 
 // no Xcode here: the Xcode project is the result, its settings filled in, and it says so
@@ -538,6 +753,8 @@ TEST(IosBuild, WithoutAMacTheXcodeProjectIsTheResult) {
     std::vector<std::string> notes;
     std::vector<BuildWarning> warnings;
     std::string error;
+    // staged first; the export adds the game's native plugins to the staged project, then builds it
+    ASSERT_TRUE(platform::stageIosProject(settings, error)) << error;
     ASSERT_TRUE(platform::buildIosProject(settings, runner, []() { return false; }, artifacts, notes, warnings, error)) << error;
     ASSERT_EQ(artifacts.size(), 1u);
     EXPECT_EQ(artifacts.front().string(), (settings.projectDir / "JasperEnginePlayer.xcodeproj").string());

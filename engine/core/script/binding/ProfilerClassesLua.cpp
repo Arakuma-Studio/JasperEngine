@@ -96,9 +96,11 @@ namespace {
     int luaFrameStats(lua_State* L){
         const Engine::FrameStats& stats = Engine::getFrameStats();
         const FrameTimeSample frame = FrameTimes::latest();
-        lua_createtable(L, 0, 6);
+        lua_createtable(L, 0, 7);
         lua_pushinteger(L, (lua_Integer)stats.drawCalls);
         lua_setfield(L, -2, "drawCalls");
+        lua_pushinteger(L, (lua_Integer)stats.setPassCalls);
+        lua_setfield(L, -2, "setPassCalls");
         lua_pushinteger(L, (lua_Integer)stats.instances);
         lua_setfield(L, -2, "instances");
         lua_pushinteger(L, (lua_Integer)stats.triangles);

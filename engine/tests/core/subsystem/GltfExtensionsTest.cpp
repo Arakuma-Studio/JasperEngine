@@ -20,10 +20,8 @@
 
 #include <gtest/gtest.h>
 
-#include <chrono>
 #include <cmath>
 #include <fstream>
-#include <thread>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -63,14 +61,9 @@ namespace {
         return true;
     }
 
-    // the pixels of a loaded texture (a decode on a job, polled as a draw would)
+    // The embedded image is decoded and adopted by loadGLTFTexture before model.loadModel returns.
     bool texturePixels(Texture texture, std::vector<uint8_t>& rgba, unsigned int& width, unsigned int& height){
         TextureLoadResult result = texture.load();
-        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(20);
-        while (result.state == ResourceLoadState::Loading && std::chrono::steady_clock::now() < until){
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-            result = texture.load();
-        }
         if (result.state != ResourceLoadState::Finished || !texture.hasData() || !texture.getData().getData())
             return false;
         width = texture.getWidth();

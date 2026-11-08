@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "ComponentAddDialog.h"
+#include "component/ScriptComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"
 #include "Theme.h"
 #include "search/SearchScorer.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include <cctype>
 #include <cstring>
 
@@ -67,6 +69,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::CameraComponent, "Renders the scene to the screen or a texture"},
             {ComponentType::CameraShakerComponent, "Shakes the camera (or this GameObject) from presets and trauma, never fighting what moves it"},
             {ComponentType::CameraFollowComponent, "Follows a target with damping, look-at, a 2D dead zone and bounds"},
+            {ComponentType::PixelPerfectCameraComponent, "Pixel art on this camera: whole-number scaling, one pixel size, every sprite on the pixel grid"},
             {ComponentType::LightComponent, "Directional, point or spot light"},
             {ComponentType::CapsuleShadowCasterComponent, "Soft capsule shadows of a character from its bones"},
             {ComponentType::SpriteComponent, "Draws a 2D sprite"},
@@ -93,6 +96,8 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::Joint3DComponent, "Connects two Rigidbodies"},
             {ComponentType::CharacterControllerComponent, "A capsule moved by script that climbs steps and slopes"},
             {ComponentType::WaterVolumeComponent, "A body of water: what has a Buoyancy floats in it"},
+            {ComponentType::WaterExcluderComponent, "Keeps water out of a boat or a dry space: no surface inside, no underwater fade, cargo stays dry"},
+            {ComponentType::WaterWakeComponent, "Foam and waves behind it while it moves through water"},
             {ComponentType::BuoyancyComponent, "Floats its dynamic Rigidbody in Water Volumes"},
             {ComponentType::RagdollComponent, "Switches a character's bone bodies between animated and simulated"},
         }},
@@ -228,8 +233,15 @@ void ComponentAddDialog::open(
     m_canAddComponent = canAddComponent;
     m_onCancel = onCancel;
     m_onNewScript = onNewScript;
+    m_scripts.clear();
+    m_onScript = nullptr;
     m_anchorMin = anchorMin;
     m_anchorMax = anchorMax;
+}
+
+void ComponentAddDialog::setScripts(std::vector<ScriptCandidate> scripts, std::function<void(const ScriptCandidate&)> onScript) {
+    m_scripts = std::move(scripts);
+    m_onScript = std::move(onScript);
 }
 
 void ComponentAddDialog::finish(bool cancelled) {
@@ -293,8 +305,8 @@ void ComponentAddDialog::show() {
 
     // Rows of the current page
     struct Row {
-        enum Kind { Category, Component, NewScript } kind;
-        int index;          // category index
+        enum Kind { Category, Component, Script, NewScript } kind;
+        int index;          // category index (a script row: its index in m_scripts)
         ComponentType type; // component rows
         const char* description;
         bool enabled;
@@ -315,6 +327,14 @@ void ComponentAddDialog::show() {
             }
             rows.push_back({Row::Component, match.category, match.type, description, true});
         }
+        if (m_onScript) {
+            const std::string query = search::normalize(m_searchBuffer);
+            for (int i = 0; i < (int)m_scripts.size(); i++) {
+                if (search::normalize(m_scripts[i].name).find(query) != std::string::npos) {
+                    rows.push_back({Row::Script, i, ComponentType::ScriptComponent, nullptr, true});
+                }
+            }
+        }
     } else if (m_category < 0) {
         for (int c = 0; c < (int)m_categories.size(); c++) {
             bool any = false;
@@ -326,6 +346,11 @@ void ComponentAddDialog::show() {
     } else {
         for (const ComponentEntry& entry : m_categories[m_category].entries) {
             rows.push_back({Row::Component, m_category, entry.type, entry.description, canAdd(entry.type)});
+        }
+        if (m_onScript && std::string(m_categories[m_category].name) == "Scripts") {
+            for (int i = 0; i < (int)m_scripts.size(); i++) {
+                rows.push_back({Row::Script, i, ComponentType::ScriptComponent, nullptr, true});
+            }
         }
     }
     if (m_onNewScript && (m_category < 0 || searching)) {
@@ -410,6 +435,9 @@ void ComponentAddDialog::show() {
         } else if (row.kind == Row::Component) {
             icon = Catalog::getComponentIcon(row.type);
             label = Catalog::getComponentDisplayName(row.type);
+        } else if (row.kind == Row::Script) {
+            icon = ICON_FA_FILE_CODE;
+            label = m_scripts[row.index].name + (m_scripts[row.index].type == ScriptType::LUA ? " (Lua script)" : " (C++ script)");
         } else {
             icon = ICON_FA_FILE_CIRCLE_PLUS;
             label = "New Script";
@@ -423,6 +451,8 @@ void ComponentAddDialog::show() {
             if (row.enabled && ImGui::GetIO().MouseDelta.x != 0.0f) m_highlighted = i;
             if (row.kind == Row::Component && !row.enabled) {
                 ImGui::SetTooltip("Already added, or not allowed on this selection");
+            } else if (row.kind == Row::Script) {
+                ImGui::SetTooltip("%s", m_scripts[row.index].file.filename().string().c_str());
             } else if (row.description) {
                 ImGui::SetTooltip("%s", row.description);
             }
@@ -462,6 +492,11 @@ void ComponentAddDialog::show() {
         } else if (row.kind == Row::Component) {
             if (m_onAdd) m_onAdd(row.type);
             finish(false);
+        } else if (row.kind == Row::Script) {
+            const ScriptCandidate script = m_scripts[row.index];
+            std::function<void(const ScriptCandidate&)> onScript = m_onScript;
+            finish(false);
+            if (onScript) onScript(script);
         } else {
             std::function<void()> onNewScript = m_onNewScript;
             finish(false);

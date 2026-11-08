@@ -99,6 +99,7 @@ namespace jasperengine::editor {
         void drawWebSettings();
         void drawVideoImportSettings();
         void drawShippingSettings();
+        void drawAsepriteSettings();
         void refreshPlayerRuntimes();
         void drawLoggingSettings();
         void drawDiagnosticsSettings();

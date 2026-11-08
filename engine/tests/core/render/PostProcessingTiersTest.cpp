@@ -40,9 +40,10 @@ TEST(PostProcessingTiers, S13Bits){
     EXPECT_EQ(UBER_FILM_DAMAGE, 1u << 15);
     EXPECT_EQ(UBER_GRAIN_LENS, 1u << 16);
     EXPECT_EQ(UBER_GRAIN_FILMIC, 1u << 17);
-    // (S43's Palette Quantize appended one more: PaletteQuantizeBit)
-    EXPECT_EQ(UBER_FEATURE_COUNT, 19);
-    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::BLIT), 19);
+    // (S41's Stretch Fill, 'Psb', is bit 18 after them; S43's Palette Quantize, 'Pal', 19:
+    // PaletteQuantizeBit)
+    EXPECT_EQ(UBER_FEATURE_COUNT, 20);
+    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::BLIT), 20);
     const char* const shortNames[] = {"Vhs", "Hal", "Fdm", "Gln", "Gfm"};
     for (int i = 0; i < 5; i++)
         EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 13 + i, true), shortNames[i]);
@@ -148,8 +149,11 @@ TEST(PostProcessingTiers, DynamicResolutionKeepsUber){
 // S43 R19, R21, R28, AC12 (e), AC13: Palette Quantize's bit, appended; off without a palette
 // (and said so); never with the anti-banding dither
 TEST(PostProcessingTiers, PaletteQuantizeBit){
-    EXPECT_EQ(UBER_PALETTE, 1u << 18);
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 18, true), "Pal");
+    // the next free bit after S41's Stretch Fill ('Psb', 18): saved shader keys hold it
+    EXPECT_EQ(UBER_PALETTE, 1u << 19);
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 19, true), "Pal");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 19, false), "Palette Quantize");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 18, true), "Psb");
 
     PostProcessingSettings s;
     EXPECT_FALSE(s.paletteEnabled);

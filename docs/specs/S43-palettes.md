@@ -1088,13 +1088,13 @@ Recorded while implementing (`feature/s43-palettes`).
   convention of every `int` property: a GL upload of mixed int and float members is wrong).
   `instance=fx.x` (S52 R22/R23) is not written: the directive is S52's, and S52 adds it to this
   line when it lands.
-- **Palette Cycling's clock** is a new engine-written member of a custom block, `gameTime`
-  (`Engine::getShaderGameTime`, written beside `time` and `resolution`): scaled game seconds that
-  advance only while the game's events run, so cycling holds at time scale 0, while the editor's Play
-  is paused and in edit mode; a fixed frame delta makes it reproducible, and `setPinnedShaderTime`
-  pins it with the shader clock. `customParams.time` (the wall clock) did not stop.
+- **Palette Cycling's clock** is the scene clock, the custom block's engine-written `sceneTime`
+  (`Scene::getSceneTime`, the water's): scaled game seconds that hold while the game, the editor's
+  Play or the scene is paused and at time scale 0; a fixed frame delta makes it reproducible and
+  `setPinnedShaderTime` pins it. `customParams.time` (the wall clock) did not stop.
   `PaletteSwapGpu.CyclingFollowsGameTime` checks the pause (red before the change: the cycle moved
-  with the shader clock at time scale 0).
+  with the shader clock at time scale 0, then with a clock of S43's own, replaced at the merge by
+  main's scene clock).
 - **Palette Quantize** draws nothing different until its first table is baked (`uber.palette.w`
   0: the pass leaves the colour as it is); later changes keep the previous table until the new one
   is done. Two palette colours in one cell of the grid keep only the first one's identity, with the
@@ -1125,10 +1125,11 @@ Recorded while implementing (`feature/s43-palettes`).
   within 0.06 OKLab of the group's mean; groups under 2 px are not listed), not "the same original
   colour", which gives no groups on a photo. ΔE and lost colours are measured per pixel also when
   dithering.
-- **Aseprite palette import** (`.ase`/`.aseprite`, magic 0xA5E0) is recognised and refused with
-  `format_unsupported` ("Export the palette from Aseprite as .gpl or .hex, then import that"): S44's
-  codec is not on `main` yet, and S43 does not write a second Aseprite parser. The R5 Aseprite row
-  and its test go to whichever of S43 and S44 lands second.
+- **Aseprite palette import** (`.ase`/`.aseprite`, magic 0xA5E0) reads the frame 0 palette with S44's
+  codec (`aseprite::read` without pixels), its alpha and, for an indexed sprite, its transparent
+  index; a later palette change is a warning. Palette entry names are kept when the file has them
+  (the fixtures, saved by Aseprite 1.3.18.6 from `make-aseprite-palettes.lua`, have none: its Lua API
+  does not name entries). The import's `source.kind` is `aseprite`.
 - **The guide.** Per the upstream MCP rules (ledger): no `## Pixel art` digest line; the palette
   guidance lives in `docs/mcp/guide/palettes.md`, and the area gets its "Other areas" entry.
 - **Shortcuts.** The Palette window's Delete, Ctrl+D, Alt+←/→ and the Apply dialog's Space are catalog

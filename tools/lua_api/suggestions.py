@@ -97,6 +97,20 @@ def symbols(api):
     return unique
 
 
+def lua_only(api):
+    """(parent, name, kind) of the symbols C++ has no Class::name for: static properties backed by an
+    accessor or a lambda (Engine.deltatime), methods bound to helpers. C++ completion leaves them out."""
+    out = set()
+    for c in api['classes']:
+        for prp in c['properties']:
+            if prp.get('luaOnly'):
+                out.add((c['name'], prp['name'], 'Event' if prp['event'] else 'Constant'))
+        for m in c['methods']:
+            if m.get('luaOnly'):
+                out.add((c['name'], m['name'], 'StaticMethod' if m['static'] else 'Method'))
+    return out
+
+
 _SUGGESTION_KIND = {'Class': 'Class', 'Constructor': 'Class', 'Enum': 'Enum', 'EnumMember': 'EnumMember', 'Method': 'Method',
                     'CppMethod': 'CppMethod', 'StaticMethod': 'Function', 'Property': 'Property', 'Constant': 'Constant',
                     'Event': 'Property'}
@@ -125,11 +139,14 @@ def header_text(api):
         L.append('}')
         L.append('')
     L += ['struct EngineAPISymbol {', '    const char* name;', '    const char* kind;   // maps to SuggestionKind',
-          '    const char* detail;', '    const char* parent; // owning class/enum', '};', '',
+          '    const char* detail;', '    const char* parent; // owning class/enum',
+          '    bool luaOnly = false; // no Class::name in C++ (a Lua accessor property, a helper-bound method)', '};', '',
           'inline const std::vector<EngineAPISymbol>& getEngineAPISymbols() {',
           '    static const std::vector<EngineAPISymbol> symbols = {']
+    only = lua_only(api)
     for n, k, d, parent in syms:
-        L.append(f'        {{"{_escape(n)}", "{_SUGGESTION_KIND.get(k, "Variable")}", "{_escape(d)}", "{_escape(parent)}"}},')
+        flag = ', true' if (parent, n, k) in only else ''
+        L.append(f'        {{"{_escape(n)}", "{_SUGGESTION_KIND.get(k, "Variable")}", "{_escape(d)}", "{_escape(parent)}"{flag}}},')
     L += ['    };', '    return symbols;', '}', '', '} // namespace jasperengine::editor', '']
     return '\n'.join(L)
 

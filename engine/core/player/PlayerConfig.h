@@ -22,6 +22,7 @@
 #include "json.hpp"
 
 #include <array>
+#include <map>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -60,6 +61,8 @@ namespace jasperengine::player {
         bool resizable = true;
         std::string title;
         bool vsync = true;
+        // Project Settings > Graphics > Dynamic Batching
+        bool dynamicBatching = true;
         std::string icon;                  // content-relative PNG ("icon.png"), the window icon
         std::string storageId;
 
@@ -68,6 +71,8 @@ namespace jasperengine::player {
         unsigned int canvasHeight = 480;
         Scaling scaling = Scaling::FITWIDTH;
         TextureStrategy textureStrategy = TextureStrategy::NONE;
+        // Project Settings > Graphics > Pixels Per Unit (S41)
+        int pixelsPerUnit = 1;
 
         // loading
         uint32_t loadingScene = 0;         // 0: none
@@ -77,6 +82,8 @@ namespace jasperengine::player {
 
         ThreadingSettings threading;
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::MEDIUM, AtmosphereQuality::LOW};
+        // Quality > Foliage Distance (desktop, mobile, web)
+        std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         float inputDeadzone = 0.15f;
         std::string inputActions;
         nav::NavigationSettings navigation;
@@ -120,6 +127,11 @@ namespace jasperengine::player {
         std::string audioIosSession = "default";
         // the group music plays through when nothing names one ("" = Master)
         std::string audioMusicGroup;
+
+        // the project's native plugins with code for other platforms only (the Compile build's
+        // NativeBridge::setPlatformOnlyPlugins): a call to one fails with "unavailable", and its
+        // Lua mock answering logs a warning
+        std::map<std::string, std::string> nativePlatformOnly;
 
         PlayerConfig();
 

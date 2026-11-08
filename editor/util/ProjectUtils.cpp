@@ -93,6 +93,7 @@
 #include "subsystem/SplineSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/RenderSystem.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "component/RigidbodyComponent.h"
 #include "component/Joint2DComponent.h"
@@ -291,7 +292,7 @@ std::string editor::ProjectUtils::makeUniqueShaderName(const std::filesystem::pa
 
 editor::ProjectUtils::ShaderForkPlan editor::ProjectUtils::prepareShaderFork(
         Project* project, ShaderType shaderType, const std::filesystem::path& targetDirRel,
-        const std::string& baseName, bool forkIncludes) {
+        const std::string& baseName, bool forkIncludes, const std::string& librarySource) {
     ShaderForkPlan plan;
     if (!project) {
         plan.error = "Project is unavailable.";
@@ -299,7 +300,7 @@ editor::ProjectUtils::ShaderForkPlan editor::ProjectUtils::prepareShaderFork(
     }
 
     std::string typeFile = shaderTypeFileName(shaderType);
-    if (typeFile.empty()) {
+    if (typeFile.empty() && librarySource.empty()) {
         plan.error = "This shader type cannot be forked.";
         return plan;
     }
@@ -325,9 +326,18 @@ editor::ProjectUtils::ShaderForkPlan editor::ProjectUtils::prepareShaderFork(
     std::filesystem::path projectRoot = project->getProjectPath();
 
     // fullscreen passes share one vertex entry point; the fork still gets its own copy
-    std::string vertFile = (shaderType == ShaderType::POSTPROCESS) ? "fullscreen" : typeFile;
-    auto vertIt = ShaderVariantCompiler::getLibrarySources().find(vertFile + ".vert");
-    auto fragIt = ShaderVariantCompiler::getLibrarySources().find(typeFile + ".frag");
+    std::string vertKey = ((shaderType == ShaderType::POSTPROCESS) ? std::string("fullscreen") : typeFile) + ".vert";
+    std::string fragKey = typeFile + ".frag";
+    if (!librarySource.empty()) {
+        // a library shader's entry files, as the variant compiler resolves them
+        std::string why;
+        if (!ShaderVariantCompiler::getLibraryShaderPaths(librarySource, shaderType, vertKey, fragKey, &why)) {
+            plan.error = why.empty() ? "Unknown library shader " + librarySource + "." : why;
+            return plan;
+        }
+    }
+    auto vertIt = ShaderVariantCompiler::getLibrarySources().find(vertKey);
+    auto fragIt = ShaderVariantCompiler::getLibrarySources().find(fragKey);
     if (vertIt == ShaderVariantCompiler::getLibrarySources().end() || fragIt == ShaderVariantCompiler::getLibrarySources().end()) {
         plan.error = "The built-in shader source is unavailable.";
         return plan;
@@ -1534,8 +1544,13 @@ void editor::ProjectUtils::loadLuaScriptProperties(ScriptEntry& entry, const std
 }
 
 void editor::ProjectUtils::loadLuaScriptPropertiesFromString(ScriptEntry& entry, const std::string& scriptContent, const std::string& chunkName) {
-    // errors are ignored: the code may be mid-edit
-    readLuaScriptProperties(entry, scriptContent, chunkName);
+    // errors are ignored: the code may be mid-edit. A table without `properties` keeps the
+    // fields until the file is saved: this refresh has no undo, and the table may be mid-cut
+    const std::vector<ScriptProperty> previous = entry.properties;
+    const LuaPropertiesResult result = readLuaScriptProperties(entry, scriptContent, chunkName);
+    if (result.noPropertiesField) {
+        entry.properties = previous;
+    }
 }
 
 // Never the engine's state (LuaBinding::getLuaState): Lua states are not thread-safe, and Play
@@ -1572,8 +1587,18 @@ editor::ProjectUtils::LuaPropertiesResult editor::ProjectUtils::runLuaScriptProp
         lua_settop(L, top);
         return result;
     }
-    if (lua_istable(L, -1) && !parseLuaPropertiesTableProtected(L, entry, &result.message)) {
-        result.status = LuaPropertiesResult::PropertyError;
+    if (lua_istable(L, -1)) {
+        result.returnedTable = true;
+        lua_getfield(L, -1, "properties");
+        result.noPropertiesField = lua_isnil(L, -1);
+        result.propertiesTable = lua_istable(L, -1);
+        lua_pop(L, 1);
+        if (result.noPropertiesField) {
+            // the script declares no properties (any it had are gone)
+            entry.properties.clear();
+        } else if (!parseLuaPropertiesTableProtected(L, entry, &result.message)) {
+            result.status = LuaPropertiesResult::PropertyError;
+        }
     }
     lua_settop(L, top);
     return result;
@@ -1732,15 +1757,17 @@ editor::Command* editor::ProjectUtils::buildDuplicateTileCmd(Project* project, u
         return nullptr;
     }
 
+    // a Tilemap draws at most MAX_TILEMAP_RENDERED_TILES
     unsigned int newSlot = tilemap->numTiles;
-    if (newSlot >= tilemap->tiles.size()) {
+    if (newSlot >= MAX_TILEMAP_RENDERED_TILES) {
         return nullptr;
     }
 
     ComponentType cpType = ComponentType::TilemapComponent;
     MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
 
-    const TileData& src = tilemap->tiles[tileIndex];
+    // a copy: the commands below grow the tiles (a write one past the end), which moves them
+    const TileData src = tilemap->tiles[tileIndex];
     std::string dstPrefix = "tiles[" + std::to_string(newSlot) + "]";
 
     // Copy tile data with a small position offset
@@ -1954,6 +1981,23 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     // generic engine type for entities with no recognized component: valid as a
     // C++ pointer type (jasperengine::EntityHandle*) and known to the Lua dispatcher
     return handleClass("EntityHandle");
+}
+
+void editor::ProjectUtils::releaseMeshResources(Scene* scene, Entity entity, MeshComponent& mesh) {
+    scene->getSystem<RenderSystem>()->prepareMeshForDataReload(entity, mesh);
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
+        Material& material = mesh.submeshes[s].material;
+        material.baseColorTexture.destroy();
+        material.metallicRoughnessTexture.destroy();
+        material.normalTexture.destroy();
+        material.occlusionTexture.destroy();
+        material.emissiveTexture.destroy();
+        for (auto& shaderTexture : material.shaderTextures)
+            shaderTexture.second.destroy();
+        if (MaterialPass* pass = material.extraPass.editIfSet())
+            for (auto& shaderTexture : pass->shaderTextures)
+                shaderTexture.second.destroy();
+    }
 }
 
 void editor::ProjectUtils::clearPreviewParticles(Scene* scene, Entity entity) {

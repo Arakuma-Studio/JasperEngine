@@ -6,6 +6,27 @@ jumping from a Console line to the source. The Lua API itself is in
 [mcp/guide/lua-api.md](mcp/guide/lua-api.md). C++ scripts are in
 [mcp/guide/cpp-scripting.md](mcp/guide/cpp-scripting.md).
 
+## Attaching scripts and their Inspector fields
+
+The Script component's **Add Script** lists the project's scripts: the Lua modules in the Lua
+directory and the C++ script classes of the script directories (a C++ subclass of an engine class,
+such as `Mesh`, only on GameObjects of that class). Type to filter, pick one, or use **New
+Script...** / **Browse...**. Add Component lists them in its Scripts category and its search, as
+Unity does, and a script file dragged from the Project window onto the Inspector or onto a
+GameObject in the Hierarchy is attached to it. Each is one undo step; a GameObject that already
+has the script keeps its entry. A Lua entry's name is its file name (the edit popup shows it as
+Module, read-only).
+
+The fields an entry shows are what its file declares:
+
+- a saved Lua file without a `properties` table has none (its old fields go);
+- while you edit the file in the code editor, the fields follow the buffer, but a buffer without
+  a `properties` table keeps them until you save (cutting the table to paste it elsewhere loses no
+  value); a buffer that does not load or run changes nothing;
+- a scene or a Prefab Mode stage you open shows the fields its scripts declare now, also when they
+  changed while it was closed; that refresh does not mark the scene modified (the next save writes
+  it). Each file runs once per refresh, however many GameObjects use it.
+
 ## Lua hot reload during Play
 
 Save a `.lua` file while the game plays and its new code runs in the objects that are already
@@ -233,6 +254,33 @@ inverses for undo. Graph kinds (a material graph, an animation graph) register t
 with `GraphRegistry`. MCP `list_graph_kinds`, `get_graph`, `validate_graph` and `edit_graph`
 work on any kind. This spec ships no graph editor and no visual scripting.
 
+## Navigation agents in scripts
+
+A `NavMeshAgent`'s path is planned by its crowd, over several fixed ticks, and its state is read
+from the crowd's corridor ([navigation.md](navigation.md#agents) has the details):
+
+- `pathPending` is true while the crowd plans; `pathStatus` is then `Complete` when the path
+  reaches the destination and `Partial` when none does. A path longer than the corridor's 256
+  polygons is `Complete`: the crowd extends the corridor as the agent walks, even with
+  `autoRepath` off.
+- `remainingDistance` follows the corridor; past a truncated corridor's end it adds the straight
+  line to the destination (a lower bound).
+- `onDestinationReached` fires once, within `stoppingDistance` of the destination, and never at the
+  end of a `Partial` path; `onPathFailed` fires once per destination when the path is `Partial`
+  or cannot be planned.
+
+```lua
+local Guard = {}
+function Guard:init()
+    self.agent = NavMeshAgent(self.scene, self.entity)
+    self.agent.onDestinationReached = function(agent) print("at the post") end
+    self.agent.onPathFailed = function(agent)
+        if agent.pathStatus == NavMeshPathStatus.Partial then
+            print("cannot reach it; " .. agent.remainingDistance .. " m to the nearest point")
+        end
+    end
+end
+return Guard
 ## Mesh detail levels from Lua
 
 A Mesh's detail level settings (docs/lod.md) are Lua properties, with the Inspector's names:

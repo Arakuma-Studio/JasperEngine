@@ -155,8 +155,8 @@ which leaves room for later screen effects. Samplers cannot be indexed dynamical
 branch.
 
 D4. **Slots go to the probes covering the most screen, with hysteresis.** Coverage = the sum, over the drawn
-probe-lit meshes of each probe, of their world bounds' projected screen fraction (1 when a corner is behind the
-camera). A probe that held a slot last frame competes with 1.25x its coverage. Ties: lower entity id. *Why:* Doriax
+probe-lit meshes of each probe, of their world bounds' projected screen fraction (the bounds clipped to the space in front of
+the camera). A probe that held a slot last frame competes with 1.25x its coverage. Ties: lower entity id. *Why:* Doriax
 gives slots in transform order, so a far vase can take a slot from the floor; ranking by coverage keeps SSR on what
 the player sees, and hysteresis stops SSR flickering on small objects when two probes trade places.
 
@@ -260,7 +260,8 @@ rule of `:34-43` kept (no texcoord attributes on terrain).
 
 `SokolObject.cpp:770-787` `PIP_GBUFFER`: `color_count = 4`, `colors[3].pixel_format = SG_PIXELFORMAT_R8`;
 comments and `Render.h:429` updated. `ensureGBufferFramebuffer` (`RenderSystem.cpp:9805-9831`): four attachments,
-`ColorFormat::RED` last. The clear colour (1,1,1,1) gives occlusion 1. R8 is colour-renderable on GL 3.3, GLES3,
+`ColorFormat::RED` last. The pass clears color[0] only to its own value (depth 1); the other attachments take
+sokol's default clear, and the composite never reads them where color[0] says background. R8 is colour-renderable on GL 3.3, GLES3,
 WebGL2, Metal, D3D11 and Vulkan; four draw buffers is the GLES3/WebGL2 minimum.
 
 ### 6.4 Probe slots: `engine/core/render/SSRProbeSlots.{h,cpp}` (new, pure, unit-tested)
@@ -277,7 +278,7 @@ namespace jasperengine {
     }
     static_assert(SSRCode::PROBE_BASE + SSR_PROBE_SLOTS * SSR_PROBE_WEIGHT_STEPS <= 256);
 
-    // the screen fraction (0..1) of a world box's projection; 1 when a corner is behind the eye
+    // the screen fraction (0..1) of a world box's projection, clipped to the space in front of the eye
     float screenCoverage(const AABB& box, const Matrix4& viewProjection);
 
     struct SSRProbeCandidate { Entity probe; float coverage; };
@@ -443,7 +444,12 @@ vertex normal: normal-map detail of the environment stays visible under a confid
 specular AA roughness, extended lobes (clearcoat's own environment lobe stays, which is right; anisotropy's bent
 reflection and specular/IOR f0 are approximated by the base lobe), probe weight quantisation (at most 1/124 of the
 probe-sky difference, only inside a probe's blend band), R8 occlusion quantisation (1/510 of the swap), the
-volumetric fog's marched segment, the post-processing colour tail.
+volumetric fog's marched segment, the post-processing colour tail, the G-buffer's 8-bit normal (Deviation 8), and
+saturated pixels: the RGBA8 scene colour is clipped at 1, so the swap fades out from 0.94 of the brightest channel
+to 1 (a clipped pixel keeps its colour pass's colour; a bright, not yet clipped one gets part of the swap). The
+light over the per-object cap that Lit folds into its ambient (`ambientLight(n) - ambient`, mesh.frag) stays under
+SSR, as it does in the IBL path: it stands for direct lights, which SSR does not replace (Unity's SSR replaces the
+indirect specular only).
 
 7.5 A mesh loaded before SSR was turned on has no G-buffer shader and is skipped (today's rule); it takes no slot.
 
@@ -632,3 +638,161 @@ are per backend (glcore, lavapipe).
 - `export-pipeline`: GBUFFER shader keys gain `Occ`/`Uv2`; the collector's path is unchanged.
 - Shader cache version (`editor/App.cpp`): every feature that edits shaders bumps it; merge by taking the next
   number with both comment lines.
+
+## Deviations
+
+Recorded during implementation (branch `dc/ssr-probes`).
+
+1. **G-buffer fallback order** (6.2): `{16, 17, 8, 0}` (Occ, Uv2, Mrt, Bct) instead of `{16, 8, 0}`. Dropping
+   `Uv2` keeps every uniform block prefix the draw uploads (the material block is uploaded at its reflected
+   size) and only reads the maps on UV1, so it is a valid, nearer fallback than dropping the base colour.
+2. **G-buffer Stochastic Tiling with two UV sets**: both lattices are set up whenever `Uv2` is on (Lit sets up
+   only the sets its maps use). The set-up is a pure function of the UV and the material, so the taps are the
+   same.
+3. **"SSR off" in the GPU tests** (10.3) is the same SSR path at Intensity 0 (every pixel returned as the colour
+   pass drew it), so a comparison measures the composite alone, not the offscreen-versus-direct colour pass.
+4. **GPU test files**: the composite tests (`SSRCompositeGpuTest.cpp`) use only engine API older than the change,
+   so the same file runs on the parent commit as the red control; the slot and stats tests are in
+   `SSRProbeSlotsGpuTest.cpp`. 10.3 #3 (occlusion on UV2) is part of #12 (`GBufferReadsTheMaterialsUVSets`, both
+   maps on UV2). #7's planar mirror is covered by `SSRSourceVariant.UnlitAndMirrorSkip` (the variant decides
+   Skip; a Mirror scene adds nothing the unlit case does not test). #9 checks the stats and the one log line,
+   not the far tile's pixels (the far tile reflects nothing to compare).
+5. **`getSSRStats()`** reports the frame's view (`primaryView`, the Game view in the editor); `get_render_stats`
+   reports it for the selected scene whatever `view` names.
+6. **Agent guide** (lean MCP rules, lead decision on the guide): one entry in "Other areas", `reflections (SSR
+   replaces probe reflections; check with ssr_debug_mode 7)`, instead of a line in the docs list; the eval case
+   `guard_ssr_reflection_source` (`tools/mcp/eval/cases.py`) covers it and the new `ssr_debug_mode` help.
+7. **Bits and cache version after the merges**: GBUFFER keeps bits 16 (`Occ`) and 17 (`Uv2`), free on `main`
+   (S55 left GBUFFER at 16 bits); render-correctness also claims 16 ("Instance Fade"), and the second branch
+   to land renumbers. The shader cache is v49, after S54, S55 and S57's v45-v48.
+8. **Residual found by the probe test**: the G-buffer's 8-bit octahedral normal turns the rebuilt reflection by a
+   fraction of a degree, enough to cross a sharp edge of a probe's capture (measured: the box-projected direction
+   0.2 degrees above the reflected box's top edge). Added to 7.4's residuals and the user doc; the GPU test's
+   capture is one colour, so it checks the swap and not that edge. A higher-precision normal is the follow-up
+   (with the shading-normal one of section 2).
+9. **Review fixes (2026-11-07)**: the swap fades out on clipped scene colour (7.4); the light over the per-object
+   cap stays under SSR, as in the IBL path (7.4: it stands for direct lights); probe coverage clips the bounds to
+   the space in front of the camera; `get_render_stats` reports the SSR stats of the frame the pass ran in only.
+   Measured residuals (core GPU tests on glcore, build box B): probe swap 2/255 (tolerance 3, AC1), material and
+   screen occlusion 0 (2), distance and height fog 0 (2), ambient swap 2 (3), Stochastic Tiling occlusion 0 (2),
+   saturated pixels 0 (2). The two-probe test (authored cubemaps of a smooth elevation field, two slots, capture
+   positions off the box centres) measured 3 and keeps 6/255: its field changes with the reflection's elevation,
+   which the 8-bit normal turns. Each test prints its measured value (`[measured]`).
+10. **AC2's terrain occlusion** has no GPU test: the painted-terrain setup is the terrain suites' own; the G-buffer
+   multiplies `terrainSurface.occlusion` into color[3] where it already evaluates the layers
+   (`gbuffer.frag`), and `SSRSourceVariant.TerrainNeverTakesUv2` checks a terrain takes 'Occ' and no 'Uv2'.
+   Stochastic Tiling occlusion has one (`StochasticTilingOcclusionOccludesTheSwap`).
+11. **AC13** is checked by `test_ssr_off_costs_no_pass`: with SSR off, `get_render_stats` has no `ssr` object and
+   at least three passes fewer (G-buffer, march, composite).
+
+## Follow-ups (2026-11-07)
+
+Branch `fu/ssr` (follow-ups program, `docs/doriax-catchup/FOLLOWUPS.md`): the three improvements
+this spec left (section 2, F11, F12, Deviation 8). All three were built, then reworked after the
+lead's review (second part of each item).
+
+1. **SSR before the transparents and the UI (F11, Unity's order).** A distance-sorted pass (the
+   camera's Depth Test and Transparent Sort on: every 3D game camera) ends its colour pass after the
+   opaque queue and the sky, runs the march and the blur, and resumes on `ssrPassTarget`: the
+   pass's own destination (the view's target, a camera texture, the fixed-resolution target, the
+   post-process chain's first buffer) with the scene colour's depth-stencil
+   (`RenderView::ssrSceneAlias`, `FramebufferDesc::shareColor`: a second set of attachments of the
+   destination's image), or, when the uber pass runs, `ssrSceneTarget`, which the uber pass reads
+   in place of its scene target. Only a destination that cannot take that depth, the swapchain of
+   an exported build without uber-pass effects or a camera texture of another size than the pass,
+   takes `ssrSceneTarget` and a blit at the end: 4 bytes a pixel (8.3 MB at 1920x1080) and one
+   full-screen copy (8.3 MB read, 8.3 MB written a frame), against the composite pass to the
+   swapchain the order replaces. sokol's swapchain pass takes the platform's depth-stencil
+   (the default framebuffer's on GL, the one the platform glue hands it on Metal, D3D11 and
+   Vulkan), so the scene colour's depth cannot join it through sokol's attachments; swapping the
+   native depth views in on Metal, D3D11 and Vulkan is a follow-up for a machine where those run.
+   Under MSAA the multisampled target resumes and resolves there.
+   The composite is the resumed pass's first draw, over every pixel (no blend, depth test off,
+   depth kept), so the resume does not load the colour (`DONTCARE`; the review estimated the load at about
+   66 MB a frame under MSAA 4 at 1080p). The atmosphere's composites, the scene colour copy, the
+   hierarchy loop (UI, opaque points and lines, screen fluids, near-plane videos), the OIT
+   accumulation, the transparent queue and the HTML UI follow. The debug views are drawn over the
+   pass's result after it (SSR alone, its Reflection view decoded from the linear store).
+   - Coordination with water-reflections' colour-pass order: the scene colour copy (and water's
+     re-copies) are taken after the composite, so refraction and glass see the reflections; the
+     queue's water layering is untouched. Every resumed pass that another split may follow (a
+     copy, a re-copy, the OIT accumulation) stores its depth, stencil and multisampled colour
+     (`CameraRender::resumeRenderPass(target, split, loadColor)`): with `DONTCARE` they are
+     invalidated on GLES, WebGL and tilers, so a second resume loaded nothing. That was latent in
+     water's re-copies and copy + OIT. `ResumedColourPassesKeepTheirDepth` checks the recorded
+     actions of every half (any backend; red on Vulkan and glcore without the store).
+   - The atmosphere's composites now run after SSR: the volumetric fog's replacement of the analytic
+     fog scales the swap too, and Screen clouds cover it.
+   - A hierarchy-ordered pass (Transparent Sort off) keeps the composite after the pass.
+   - A view that draws no SSR (SSR off, or a pass without its conditions) frees its SSR targets,
+     a layer scene's too.
+   - Exported builds with the uber pass and a render scale under 1 made the SSR targets at the
+     view's size in the swapchain-redirect setup and again at the scaled size in the camera pass,
+     every frame (older than this work); the setup now takes the pass's size
+     (`ScaledSwapchainBuildsKeepTheirSSRTargets`).
+2. **Display-encoded colour under a tone curve (F12).** The scene SSR composites was the tail's
+   display colour and the composite treated it as sRGB. Inverting the tail is not possible in
+   general (a grade, AgX, Khronos Neutral and scene LUTs are not per channel), and RGBA16F targets
+   are not colour-renderable on every GLES3/WebGL2 device. Instead, in a distance-sorted pass with
+   the post-processing colour, the colour pass up to the composite draws with its own
+   post-processing colour given an identity LUT (`ssrIdentityLut`, side 16, half floats: an 8-bit
+   LUT's filtering is rounded to 8 bits on llvmpipe, which put the code on the 8-bit grid before
+   the dither), no vignette and a 1/255 dither: it stores the tail's shaper code
+   `sqrt(x / (x + k))`, linear light in the tone curve's range, with no code added to the mesh
+   shaders (the zero-cost hash list is main's). The composite decodes it, swaps, and applies the
+   scene's post-processing colour (its own `u_fs_postColor` and LUT, vignette and dither, the
+   dither on another noise pattern than the store's) to every pixel, with no exception: the sky's,
+   those of surfaces the G-buffer pass left out (a mesh loaded before SSR was on, a terrain
+   refreshing its maps), and the clear colour's, which the pass clears to the shaper code the tail
+   turns back into it (`PostColorLut::invert`, per channel by bisection on the CPU, cached per clear
+   colour and tail LUT). So holes of clipped or displaced library meshes (solid in the G-buffer)
+   and multisampled edges against the clear colour are right too; with the vignette in the tail
+   (no uber pass) the clear colour now takes it, as it does under the uber pass. A clear colour the
+   tail cannot reach (a grade lifting the blacks above it) comes out as near as it can. A
+   far-plane video, display colour, keeps the old display-colour swap for its pass. The 8-bit store
+   is a step of about 2.2% of the light near linear 1 (sRGB: 0.9%): the store's 1/255 dither turns
+   it into noise of one step, which averages out; it is always on (measured below as an RMS
+   against the image without SSR), since without it a dim gradient under a strong exposure bands
+   by 2/255. The identity LUT is an immutable texture made once (freed with SSR; a failed creation
+   is logged once and leaves the store off).
+3. **A 16-bit normal in the G-buffer (Deviation 8).** `color[3]` is RGBA8 instead of R8: `.r` the
+   occlusion as before, `.gb` the normal's next 8 bits (`octEncode16`: color[1].rg keep the
+   octahedral code rounded to 8 bits, so user post-process passes reading `u_gbufferTexture` and
+   SSAO see what they saw). Measured through the shader's encoding (400,000 random directions):
+   8 bits up to 0.94 degrees off (mean 0.34), 12 bits 0.059 (0.021), 16 bits 0.0037 (0.0013).
+   - Mobile tile memory: the G-buffer is now 4 x RGBA8, 128 bits a pixel, the full-rate budget of
+     Mali's tile buffer and within Apple's and Adreno's; tilers usually give an R8 attachment a
+     32-bit slot anyway, so the cost is mostly the 3 bytes a pixel stored to memory (6.2 MB at
+     1080p). The alternative, RG8 for color[3] (occlusion + one byte: 12-bit normal, +1 byte a
+     pixel, 112 bits), needs a new colour format through every backend and keeps 16x more error;
+     not taken. Revisit if a target device shows the G-buffer pass tile-bound.
+   - Warm-up lists recorded with R8 (or three attachments) are upgraded on load.
+
+Measured (core GPU tests, glcore and Vulkan; red = the engine without the change):
+- transparent pane tinting the reflection 154/255 -> 0; a 90%-black transparent over the floor
+  leaves 221 -> 22 of the reflection (MSAA 4: 221 -> 21; with the uber pass: 21);
+- probe swap under ACES + exposure 1: 46 -> 9 (the same scene without a curve: 33 -> 10);
+- a surface left out of the G-buffer, under ACES: 66 -> 0 (`SurfacesOutsideTheGBufferTakeTheToneCurve`);
+- banding of a dim sky gradient under ACES + exposure 3 against the image without SSR, largest
+  8 x 8 block mean: 2.00 -> 0.70 (`AGradientSkyDoesNotBandUnderAToneCurve`); a plain sky under
+  ACES: pixels within 2/255, block means 0.91;
+- curved mirror, pixel-to-pixel error of the rebuilt environment: 33 -> 4 (99th percentile);
+- `ResumedColourPassesKeepTheirDepth`: red on Vulkan and glcore with the store removed (the resumed
+  half stored DONTCARE, its colour loaded), green after; `ThePassContinuesInItsDestination` (no
+  blit into the view's target, a blit into a 320 x 180 camera texture) and
+  `TurningSSROffFreesItsTargets` (40 -> 32 images: none freed before) red on the first version.
+- round two of the review: the clear colour through a clipped library mesh's pixels (solid in the
+  G-buffer), under ACES: red on the value-based exception, 0 after; a pass with SSR against one
+  without: RMS 0.76/255 on a plain sky, 1.33 on the dim exposed gradient (the store's dither, mean
+  0); the clear colour comes back as set (20, 20, 26 for 0.08, 0.08, 0.1); a swapchain build at
+  render scale 0.5 remade its scene colour target in 5 of 5 frames, 0 after;
+- multisampled outlines against the clear colour stay between their neighbours (0/255 outside);
+  against the image without SSR they differ by up to 29/255 on a bright box over a dark clear
+  colour, before and after this round: MSAA resolves the store's code, not display colour, so
+  the antialiasing weights a bright edge more (as a linear resolve would, less so). A residual of
+  the linear store, not of the clear colour.
+Not run: the swapchain blit itself (exported builds: renderBlit's existing swapchain branch).
+
+Registries: shader cache v54 (one bump); no new MESH or GBUFFER bit. Files shared with other
+follow-ups: `SokolCamera.cpp` (`resumeRenderPass`), `SokolFramebuffer.cpp` (`shareColor`),
+`AtmosphereRenderer.cpp` (the current post-colour LUT).

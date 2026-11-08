@@ -16,7 +16,7 @@
 #define TILEMAP_CHUNK_TARGET_TILES 64
 #define MAX_TILEMAP_CHUNKS_PER_AXIS 16
 
-#include "util/HybridArray.h"
+#include "util/GrowArray.h"
 #include "math/AABB.h"
 #include "Engine.h"
 #include <vector>
@@ -59,14 +59,23 @@ namespace jasperengine{
 
         float textureScaleFactor = 0.0;
 
+        // S41: texels per world unit; 0 = the project's Pixels Per Unit. Tile positions and sizes
+        // stay in pixels; the quads are divided by it
+        float pixelsPerUnit = 0.0f;
+        // the tile edges are rounded to the texel grid (a Pixel Perfect Camera in the scene, R13):
+        // neighbours share them bit for bit; MeshSystem rebuilds when it changes
+        bool roundTileEdges = false;
+
         unsigned int reserveTiles = 10;
         unsigned int renderedTiles = 0;
         
-        HybridArray<TileRectData, MAX_TILEMAP_TILESRECT> tilesRect;
+        GrowArray<TileRectData> tilesRect;
         unsigned int numTilesRect = 0;
 
-        HybridArray<TileData, MAX_TILEMAP_TILES> tiles;
+        GrowArray<TileData> tiles;
         unsigned int numTiles = 0;
+        // what its arrays hold outside the component (ComponentArray::arrayHeapBytes)
+        size_t arrayHeapBytes() const { return tilesRect.storageBytes() + tiles.storageBytes(); }
 
         // Chunks of every submesh, grouped by submesh: submesh s owns
         // [chunkStart[s], chunkStart[s+1]).

@@ -29,14 +29,19 @@
 // instanced batch (HAS_AUTO_INSTANCING); a fork keeping its own block is never batched
 #include "includes/object_params.glsl"
 
+// a pixel-perfect camera's sprites and tilemaps (S41): the snap on the final position, read from
+// the frame block's grid (the depth program snaps identically)
+#ifdef PIXEL_SNAP
+    #define FRAME_VS
+    #include "includes/frame.glsl"
+    #include "includes/pixel_snap.glsl"
+#endif
+
 // same expression as depth.vert, so a depth prepass and this pass agree bit for bit
 invariant gl_Position;
 
 #ifdef USE_INSTANCE_FADE
-    uniform u_vs_fade {
-        vec4 fadeRange; //start.x, end.y
-        vec4 fadeEye;   //camera in model space.xyz
-    } fadeParams;
+    #include "includes/instance_fade.glsl"
 #endif
 
 #if defined(HAS_TEXTURERECT) && (defined(HAS_UV_SET1) || defined(HAS_UV_SET2))
@@ -230,12 +235,7 @@ void main() {
         // Shrink toward the instance base, on XZ like the chunk selection so looking down does
         // not eat grass still inside the spawn square. An empty range keeps everything solid.
         vec3 fadeOrigin = i_matrix_col4.xyz;
-        float fadeVisible = 1.0;
-        if (fadeParams.fadeRange.y > fadeParams.fadeRange.x){
-            float fadeDistance = length(fadeParams.fadeEye.xz - fadeOrigin.xz);
-            fadeVisible = clamp((fadeParams.fadeRange.y - fadeDistance) /
-                (fadeParams.fadeRange.y - fadeParams.fadeRange.x), 0.0, 1.0);
-        }
+        float fadeVisible = instanceFadeVisible(fadeOrigin);
         pos.xyz = mix(fadeOrigin, pos.xyz, fadeVisible);
     #endif
 
@@ -343,6 +343,14 @@ void main() {
     #endif
 
     gl_Position = pbrParams.mvpMatrix * pos;
+    #ifdef PIXEL_SNAP
+        #ifdef HAS_INSTANCING
+            vec4 snapPivot = pbrParams.mvpMatrix * i_matrix_col4;
+        #else
+            vec4 snapPivot = pbrParams.mvpMatrix[3];
+        #endif
+        gl_Position = pixelSnapApply(gl_Position, pbrParams.pixelSnapDraw.x, snapPivot);
+    #endif
     #ifdef IS_VULKAN
         // GL [-1,1] to Vulkan [0,1] depth range (spirv-cross fixup_clipspace equivalent)
         gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;

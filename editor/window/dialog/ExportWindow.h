@@ -71,6 +71,9 @@ namespace jasperengine::editor {
 
         // UI state
         fs::path m_targetDir;
+        // Exporter::outputFolderRefusal of m_targetDir, computed when it changes
+        fs::path m_refusalCheckedDir;
+        std::string m_outputRefusal;
         bool m_targetDirFromDefault = false;
         bool m_projectSettingsDirty = false;
 
@@ -204,6 +207,8 @@ namespace jasperengine::editor {
         const char* localExportMode() const;
         void refreshShaderSelection();
         void includeShader(ShaderKey key);
+        void applyShaderOverrides(const std::set<ShaderKey>& additions, const std::set<ShaderKey>& exclusions);
+        void syncShaderOverrides(bool force);
         void populateBackendList();
         void refreshEmsdkStatus();
         void selectMode(ExportMode mode);
@@ -215,6 +220,8 @@ namespace jasperengine::editor {
         static const char* platformIcon(BuildPlatform platform);
         bool platformCanBuildPlayer(BuildPlatform platform) const;
         std::set<ShaderBackend> platformBackends(BuildPlatform platform) const;
+        // the union of the presets of the platforms ticked on the Source Code page
+        std::set<ShaderBackend> selectedSourcePlatformBackends() const;
         void selectPlatform(BuildPlatform platform, bool buildPlayer);
         void setStartScene(uint32_t sceneId);
         void drawScenesInBuild(float height);
@@ -234,6 +241,8 @@ namespace jasperengine::editor {
         void drawTextureSection();
         void drawBackendSection();
         void applySourcePlatformPresets();
+        // a failed build's errors, each with a location a link that opens the file at the line
+        void drawBuildErrors(const ExportProgress& progress);
         void drawProgress();
         void drawAddShaderDialog();
         void drawOverwriteConfirmDialog();

@@ -10,7 +10,9 @@
 #include "players/ModuleUsage.h"
 #include "shader/ShaderBuilder.h"
 #include "ShaderDataSerializer.h"
+#include "util/BuildDiagnostics.h"
 #include "util/CommandRunner.h"
+#include "export/ExportFiles.h"
 
 #include <filesystem>
 #include <map>
@@ -25,6 +27,10 @@
 #include "io/ScopedFileLock.h"
 
 #include <memory>
+
+namespace jasperengine::editor::pixelart::aseprite {
+    struct ImportRecord;
+}
 
 namespace jasperengine::editor {
 
@@ -107,12 +113,18 @@ namespace jasperengine::editor {
     struct BuildMethodChoice {
         BuildMethod method = BuildMethod::Prebuilt;
         std::vector<std::string> reasons;
+        // the native inputs a prebuilt build carries (NativeNeeds), so nothing is dropped silently
+        std::vector<std::string> carried;
+        // W-NATIVE-MOCK: plugins only a Lua mock answers on the platform
+        std::vector<std::string> nativeWarnings;
     };
 
     // What a Player build produced (the CLI's, MCP's and UI's report)
     struct ExportResult {
         BuildMethod methodUsed = BuildMethod::Auto;
         std::vector<std::string> compileReasons;
+        // what a prebuilt build carried of plugins/native and the native settings
+        std::vector<std::string> carried;
         std::string playerId;
         fs::path outputDir;
         fs::path contentManifest;
@@ -140,6 +152,9 @@ namespace jasperengine::editor {
         bool finished = false;
         bool failed = false;
         std::string errorMessage;
+        // a failed build's errors (the first BuildErrorLog::kMaxKept, unique) and how many there were
+        std::vector<BuildDiagnostic> errors;
+        size_t errorCount = 0;
     };
 
     // The Emscripten SDK a Web build uses. No emcmake wrapper (emcmake.bat would run through
@@ -158,7 +173,11 @@ namespace jasperengine::editor {
         std::string description;             // where it was found, for the UI
     };
 
+    struct ExporterTestAccess;
+
     class Exporter {
+        friend struct ExporterTestAccess;
+
     private:
         Project* project = nullptr;
         ExportConfig config;
@@ -198,6 +217,9 @@ namespace jasperengine::editor {
         // path -> its source asset and that source's bytes
         std::map<std::string, std::pair<std::string, uint64_t>> cookedModelSizes;
         BuildReport buildReport;
+        // S44: the imports of the project's .aseprite files (gatherImportedAssets), shipped as
+        // assets/je-imported/ with its index.json; the .aseprite files themselves never ship
+        std::vector<std::shared_ptr<const pixelart::aseprite::ImportRecord>> importedRecords;
 
         // S30: the Player build's report, the cooked scenes and prefabs loadAndSaveAllScenes()
         // made while every scene was loaded, and the player runtime it stages
@@ -246,10 +268,38 @@ namespace jasperengine::editor {
         // leaving the upper half for configure/build/collect.
         float progressScale = 1.0f;
 
+        // Every copy and write of an export: false (the export failed, naming the file and the
+        // reason) when it did not land
+        bool copyOrFail(const fs::path& from, const fs::path& to);
+        bool writeOrFail(const fs::path& path, const std::string& content);
+        // an earlier export's file this one no longer makes (false: it could not be removed)
+        bool removeStale(const fs::path& path);
+        // A tree the export copies file by file without entering linked folders (generated
+        // sources, C++ scripts, a build's artifacts; the linked-folder walk of the assets, Lua and
+        // shader sources is walkTree): folders that cannot be read are warned about
+        // (W-UNREADABLE-FOLDER), any other error fails the export. `filter` sees the folders that
+        // are not an earlier export's (isEarlierExport skips those)
+        bool walkFiles(const fs::path& root, const exportfiles::DirFilter& filter, const exportfiles::Visitor& visit);
+        // An export's folder met while walking the project (this export's own folders, or one an
+        // earlier export left): skipped, and warned about once (W-EXPORT-FOLDER-SKIPPED)
+        bool isEarlierExport(const fs::directory_entry& entry);
+        std::set<fs::path> warnedExportFolders;
+        // the build's compiler and linker errors (configureBuild, runBuild)
+        BuildErrorLog buildErrors;
+        // a failed configure or build: its errors at the end of the log, in the progress, and the
+        // first in the failure message ("Build failed with 2 error(s). First: ...")
+        void failBuild(const std::string& what);
+        // the web page's icon: Web > Favicon, else the Player icon (a PNG), else the JasperEngine logo
+        bool writeWebFavicon(const fs::path& target);
+        // a fresh report for this export (every mode: warnings and notes)
+        void resetResult();
+
         void setProgress(const std::string& step, float value);
         void setProgressRaw(const std::string& step, float value);
         void setDetail(const std::string& line);
-        void setError(const std::string& message);
+        // the build fails with `message`; `reported`: error lines of its own (a compiler's) are in
+        // the log already, so this line is not one more error in the Console
+        void setError(const std::string& message, bool reported = false);
         void runExport();
         // ExportMode::Player: the method, then the prebuilt steps or the Compile build (D1)
         void runPlayerBuild();
@@ -272,6 +322,10 @@ namespace jasperengine::editor {
         bool swapStagingIntoPlace();
         void discardStaging();
         void warn(const std::string& code, const std::string& message);
+        // ApplePrivacy::compose's warnings ("W-PRIVACY-...: message", else a plugin manifest's) as build warnings
+        void warnPrivacy(const std::string& platform, const std::vector<std::string>& warnings);
+        // NSUserTrackingUsageDescription in ios.plist_entries or ios.plist_xml
+        bool iosDeclaresTrackingUsage() const;
         // where the content steps' shaderlib notices come from (copyEngine's copy, else the editor's)
         fs::path shaderlibSourceDir() const;
         // the engine sources a build's notices come from (the export's engine copy, or the editor's)
@@ -305,6 +359,8 @@ namespace jasperengine::editor {
         bool checkTargetDir();
         bool prepareCacheTarget();
         bool configureBuild();
+        // the build's job count: ExportConfig::buildJobs (0: automatic), within the machine's cap
+        unsigned int effectiveBuildJobs() const;
         bool runBuild();
         bool collectDesktopArtifacts();
         bool collectWebArtifacts();
@@ -335,6 +391,9 @@ namespace jasperengine::editor {
         // S53: every model source cooked for the families of the export, into
         // assets/je-cooked/models; a cook error fails the export, naming the file
         bool cookModels();
+        // False, with the error set, when an asset sits where the engine loads an FBX's import
+        // from (<relPath>.glb, relative to the assets)
+        bool checkFbxImportPathFree(const fs::path& relPath);
         // S53 R21: the build's content (`contentRoot`'s assets and lua trees, before packing),
         // its engine files, and the report written next to the export
         void measureBuildContent(const fs::path& contentRoot);
@@ -348,10 +407,18 @@ namespace jasperengine::editor {
         // as a folder under its own name, so relPath (never canonicalized) is the path a scene or
         // script reads the file by; real is where the entry is on disk. A link to a folder that holds
         // it (it would hold itself) is left out with a warning. ec: the root could not be listed.
+        // A folder that cannot be read for permission is left out with W-UNREADABLE-FOLDER; any other
+        // listing error stops the walk, ec set and the folder in treeListFailure.
         void walkTree(const fs::path& root, const TreeVisitor& visit, std::error_code& ec);
+        fs::path treeListFailure;
         // False, with the error set, when a trusted root of the project leads elsewhere than when it
         // was pinned: the game would ship whatever is there now
         bool checkRootsPinned();
+        // S44: every .aseprite file imported (waited for on the main thread's importer); an import
+        // that fails fails the export, naming the file
+        bool gatherImportedAssets();
+        // S44: the imports' sheets, pages and clips into assets/je-imported/ and its index.json
+        bool copyImportedAssets(const fs::path& assetsDst);
         bool copyAssets();
         // a .cube LUT cooked to <destination's name>.jlut; false (warned) when it does not parse
         bool cookColorLut(const fs::path& source, const fs::path& destination);
@@ -369,6 +436,8 @@ namespace jasperengine::editor {
         // plugins/native/{android,apple,ios,macos,web} -> <export>/project/plugins/native/...
         // (mirrored: what the project no longer has goes); cpp/ ships as a script root
         bool copyNativePlugins();
+        // the given platform folders of plugins/native mirrored below `destination`
+        bool copyNativePluginFolders(const fs::path& destination, const std::vector<std::string>& platforms);
         bool copyEngine();
         bool writeExportSettingsScript(std::string& cmakeContent);
         bool writeAndroidProjectSettings();
@@ -378,11 +447,26 @@ namespace jasperengine::editor {
         bool addXcodeProjectSources(std::string& xcodeProject);
         // The project's C++ standard and the scene capacities, as the CMake build sets them
         bool writeXcodeBuildSettings(std::string& xcodeProject);
+        // Where the native plugins sit in an Xcode project: the source export's workspace (both
+        // app targets, the copy in ../../project) or the prebuilt iOS player's template (its one
+        // target, the copy next to it, JasperNative.h in include/)
+        struct XcodeNativeLayout {
+            fs::path nativeRoot;              // the copied plugins/native
+            std::string pluginsPath;          // the same as a build setting path
+            std::string engineHeaders;        // the folder of JasperNative.h
+            std::string entitlements;         // CODE_SIGN_ENTITLEMENTS, relative to the project
+            bool player = false;
+            bool engineFrameworks = true;     // link appleEngineFrameworks (the template links its own)
+        };
         // native plugins: plugins/native/{apple,ios,macos} sources and SDKs, system frameworks,
         // Swift packages, Swift settings, entitlements, deployment target
-        bool addNativePluginsToXcode(std::string& xcodeProject);
+        bool addNativePluginsToXcode(std::string& xcodeProject, const XcodeNativeLayout& layout);
         // workspaces/xcode: the entitlements file and the CocoaPods Podfile (removed when unset)
         bool writeNativeAppleFiles();
+        // ios.entitlements_xml as an entitlements plist at `path` (removed when unset)
+        bool writeEntitlements(const fs::path& path);
+        // The prebuilt iOS player's staged project: the game's Apple plugins, settings and privacy manifest
+        bool addNativeToIosPlayer(const fs::path& projectDir);
         bool writeWindowsResourceFile(bool includeIcon);
         bool writeAppIcon();
         bool buildAndSaveShaders();
@@ -413,12 +497,6 @@ namespace jasperengine::editor {
         // the first scene or prefab file with a Video Player playing an http(s) url ("" for none:
         // Android exports then need no INTERNET for videos)
         std::string videoUrlScene() const;
-        // Aggregates SceneMaxValues across all project scenes into the capacities that
-        // size the engine's fixed-capacity HybridArrays (MAX_SUBMESHES, MAX_SPRITE_FRAMES, ...).
-        std::vector<std::pair<std::string, unsigned int>> getSceneMaxValues() const;
-        static std::vector<std::pair<std::string, unsigned int>> sceneMaxValuesOf(const Project* project);
-        // add_definitions() block applying them to the export.
-        std::string buildSceneMaxValuesDefinitions() const;
         // Project-relative form of a script root, empty when it falls outside the project.
         fs::path scriptDirRelativePath(const fs::path& scriptDir) const;
         // Script roots inside the exported project, as copyCppScripts() lays them out.
@@ -426,10 +504,22 @@ namespace jasperengine::editor {
         // target_include_directories() call putting the script roots on the exported game target.
         std::string buildScriptDirIncludes() const;
 
-        static void copyTree(const fs::path& src, const fs::path& dst, std::error_code& ec);
-        static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec);
 
     public:
+        // Why `dir` can't take an export of `project` ("" when it can): it is, or is inside, the
+        // project, its assets or its Lua folder (the editor would import the exported files as
+        // project assets), unless it is below a hidden folder or the project's top-level build/
+        static std::string outputFolderRefusal(const Project* project, const fs::path& dir);
+        // Adds the execute bits (owner, group, others) to each file, as a terminal needs them for
+        // ./gradlew and ./jasperengine.py (an installed or unzipped editor may have lost them); a
+        // no-op on Windows. False with error naming the file when one can't be changed.
+        static bool ensureExecutable(const std::vector<fs::path>& files, std::string& error);
+        // A macOS CMake build's plugin SDKs (NativePlugins::macosSdks of projectRoot's
+        // plugins/native) beside its executable in `destination`: the dynamic frameworks in
+        // Frameworks/ (the executable's rpath), the resource bundles beside it, as the exported
+        // CMake's post-build step lays them out; frameworks an earlier build embedded go
+        static bool copyMacosNativeSdks(const fs::path& projectRoot, const fs::path& destination, std::string& error);
+
         // a scene or prefab file's text: a Video Player with an http(s) url
         static bool hasUrlVideoPlayer(const std::string& sceneText);
         // the first of `files` (relative to `root`: Lua, C++ scripts, HTML UI documents) that may
@@ -469,6 +559,12 @@ namespace jasperengine::editor {
         // Sets every CLANG_CXX_LANGUAGE_STANDARD of an Xcode project to gnu++<standard>;
         // false when the project has none
         static bool applyXcodeCxxStandard(std::string& pbxproj, int standard);
+        // The system frameworks the engine links on iOS (true) or macOS: every Apple build path
+        // links them (engine/CMakeLists.txt keeps the iOS list too, AppleTemplatesTest)
+        static const std::vector<std::string>& appleEngineFrameworks(bool ios);
+        // Native Plugins Info.plist entries (replacing keys), then raw <key>..</key> pairs
+        static void applyNativePlistEntries(std::string& plist, const std::map<std::string, NativePlistValue>& entries,
+                                            const std::string& rawXml);
         static std::string getShaderDisplayName(ShaderType type, uint64_t properties, uint16_t customId = 0);
         static std::string getCMakeGraphicBackend(::jasperengine::ShaderBackend backend);
         static EmsdkInfo detectEmsdk(const std::string& overridePath);
@@ -478,7 +574,15 @@ namespace jasperengine::editor {
         static std::string escapeXml(const std::string& value);
         // a prebuilt web page: the markers filled, the head additions of the Compile shell, the loader tag
         static std::string composeWebPage(std::string page, const std::string& title, const std::string& headInclude, bool resize,
-                                          bool hideUi, bool favicon, int canvasWidth, int canvasHeight, bool threads);
+                                          bool hideUi, bool favicon, int canvasWidth, int canvasHeight, bool threads,
+                                          const std::string& nativeScripts = "");
+        // Web native plugins, the same for both build methods: the JasperNative stub (first in
+        // <head>: scripts may register before the engine starts), the plugins/native/web/*.js
+        // file names in name order, and the <script> tags of web.script_urls then of those files
+        // (served from plugins/ next to the page)
+        static const char* webNativeStub();
+        static std::vector<std::string> webNativePluginFiles(const fs::path& webPluginsDir);
+        static std::string webNativeScripts(const std::vector<std::string>& scriptUrls, const std::vector<std::string>& files);
         // What emcmake.py adds to a CMake configure: the Emscripten toolchain file, node as the
         // cross-compiling emulator, and on Windows a generator (emscriptenWindowsGeneratorArgs).
         // `env` is the environment CMake runs in (emscriptenEnvironment). error set when it can't.
@@ -486,9 +590,11 @@ namespace jasperengine::editor {
                                                             const CommandRunner::Environment& env, std::string& error);
         // emcmake.py's Windows generator choice (platform-independent, for tests): nothing when a
         // generator is given or CMAKE_GENERATOR is set in `env`; else -G "MinGW Makefiles" when
-        // mingw32-make is on env's PATH (';'-separated), else -G Ninja when ninja is; else error.
+        // mingw32-make is on env's PATH (';'-separated), else -G Ninja when ninja is, else Ninja
+        // with CMAKE_MAKE_PROGRAM when visualStudioNinja (CommandRunner::findVisualStudioNinja)
+        // is given; else error.
         static std::vector<std::string> emscriptenWindowsGeneratorArgs(const CommandRunner::Environment& env, bool generatorGiven,
-                                                                       std::string& error);
+                                                                       std::string& error, const fs::path& visualStudioNinja = {});
         // Windows Web builds: the first file or folder below `roots` (what the build copies or
         // compiles: assets, Lua, C++ script folders) whose path holds '%' or '"' (emcc.bat runs
         // through cmd.exe), as a refusal; "" when none. At most maxEntries are looked at: more is

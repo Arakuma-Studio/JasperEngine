@@ -111,6 +111,19 @@ async def test_search_engine_api(ed: Editor):
     await ed.check_error("read_engine_source", path="core/NoSuchFile.h", contains="search_engine_source")
 
 
+async def test_search_engine_api_marks_lua_only(ed: Editor):
+    """A Lua property C++ reaches through an accessor (Engine.deltatime: Engine::getDeltatime()) is
+    marked cpp_callable false with the accessor (scripting catch-up, Doriax 755972f92)"""
+    r = await ed.call("search_engine_api", query="deltatime", parent="Engine")
+    hit = next((x for x in r["results"] if x.get("detail") == "Engine.deltatime"), None)
+    ed.check(hit, f"Engine.deltatime found: {r['results'][:4]!r}")
+    ed.check_eq(hit.get("cpp_callable"), False, f"{hit!r}")
+    ed.check("Engine::getDeltatime()" in hit.get("cpp_note", ""), f"{hit!r}")
+    zero = await ed.call("search_engine_api", query="ZERO", parent="Vector3")
+    hit = next((x for x in zero["results"] if x.get("detail", "").startswith("Vector3.ZERO")), None)
+    ed.check(hit and "cpp_callable" not in hit, f"Vector3::ZERO exists in C++: {hit!r}")
+
+
 async def test_search_names_unlisted_tools(ed: Editor):
     """A search for what a hidden group's tools do names them and the tool_groups call: agents look for
     frame times in the API search and the Game view size in the settings search, and a client offers

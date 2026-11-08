@@ -20,6 +20,8 @@
 #include "command/type/PropertyCmd.h"
 #include "Out.h"
 #include "external/IconsFontAwesome6.h"
+#include "window/vcs/VcsOverlay.h"
+#include "window/vcs/VcsUi.h"
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -717,8 +719,7 @@ void editor::CodeEditor::updateScriptProperties(const EditorInstance& instance, 
 }
 
 void editor::CodeEditor::updateScriptPropertiesForPath(const fs::path& relFilepath, const std::string& inMemoryContent){
-    const std::string relPathStr = relFilepath.string();
-    const fs::path fullPath = resolveFilepath(relFilepath);
+    const fs::path fullPath = resolveFilepath(relFilepath).lexically_normal();
 
     // Several entities can share the same script, so every one of them is refreshed (the
     // prefab stages' too)
@@ -733,8 +734,8 @@ void editor::CodeEditor::updateScriptPropertiesForPath(const fs::path& relFilepa
                 continue;
 
             for (const auto& scriptEntry : scriptComponent->scripts) {
-                bool matchesFile = (scriptEntry.type == ScriptType::CPP) ? (scriptEntry.headerPath == relPathStr)
-                                                                        : (scriptEntry.path == relPathStr);
+                // by resolved file: a Lua entry's path is relative to the Lua directory
+                const bool matchesFile = project->scriptPropertyFile(scriptEntry) == fullPath;
                 if (!matchesFile)
                     continue;
 
@@ -1009,10 +1010,8 @@ void editor::CodeEditor::offsetToLineCol(const std::string& text, size_t offset,
 }
 
 void editor::CodeEditor::insertLuaEntityProperty(EditorInstance& instance, Entity entity, uint32_t entitySceneId) {
-    SceneProject* sourceSceneProject = project->getScene(entitySceneId);
-    if (!sourceSceneProject || !sourceSceneProject->scene) {
-        sourceSceneProject = project->getSelectedScene();
-    }
+    // the scene the id belongs to (the drag always says), never another one's same number
+    SceneProject* sourceSceneProject = entitySceneId != 0 ? project->getScene(entitySceneId) : project->getSelectedScene();
     if (!sourceSceneProject || !sourceSceneProject->scene) return;
 
     Scene* scene = sourceSceneProject->scene;
@@ -1087,43 +1086,45 @@ void editor::CodeEditor::insertLuaEntityProperty(EditorInstance& instance, Entit
     instance.propertyInsertUndoIndex = instance.editor->GetUndoIndex();
     updateScriptProperties(instance, instance.editor->GetText());
 
-    SceneProject* selectedScene = project->getSelectedScene();
-    if (!selectedScene || !selectedScene->scene) return;
+    // every instance of the script in the scenes loaded with the GameObject's (its parents,
+    // children and siblings) links it: elsewhere the reference would find nothing at runtime
+    const uint32_t sourceSceneId = sourceSceneProject->id;
+    for (uint32_t sceneId : project->getRelatedScenes(sourceSceneId)) {
+        SceneProject* sceneProject = project->getScene(sceneId);
+        if (!sceneProject || !sceneProject->scene) continue;
+        const uint32_t storedSceneId = sceneId != sourceSceneId ? sourceSceneId : 0;
 
-    uint32_t storedSceneId = (entitySceneId != selectedScene->id) ? entitySceneId : 0;
+        for (Entity sceneEntity : sceneProject->entities) {
+            ScriptComponent* scriptComp = sceneProject->scene->findComponent<ScriptComponent>(sceneEntity);
+            if (!scriptComp) continue;
 
-    for (Entity sceneEntity : selectedScene->entities) {
-        ScriptComponent* scriptComp = selectedScene->scene->findComponent<ScriptComponent>(sceneEntity);
-        if (!scriptComp) continue;
+            for (size_t si = 0; si < scriptComp->scripts.size(); si++) {
+                const ScriptEntry& scriptEntry = scriptComp->scripts[si];
+                if (scriptEntry.type != ScriptType::LUA) continue;
+                if (project->resolveLuaPath(scriptEntry.path) != resolveFilepath(instance.filepath)) continue;
 
-        for (size_t si = 0; si < scriptComp->scripts.size(); si++) {
-            const ScriptEntry& scriptEntry = scriptComp->scripts[si];
-            if (scriptEntry.type != ScriptType::LUA) continue;
-            if (project->resolveLuaPath(scriptEntry.path) != resolveFilepath(instance.filepath)) continue;
+                // A same-named property of another type is not the one just inserted
+                for (size_t pi = 0; pi < scriptEntry.properties.size(); pi++) {
+                    if (scriptEntry.properties[pi].name != varName ||
+                        scriptEntry.properties[pi].type != ScriptPropertyType::EntityReference) continue;
 
-            // A same-named property of another type is not the one just inserted
-            for (size_t pi = 0; pi < scriptEntry.properties.size(); pi++) {
-                if (scriptEntry.properties[pi].name != varName ||
-                    scriptEntry.properties[pi].type != ScriptPropertyType::EntityReference) continue;
+                    std::vector<ScriptEntry> newScripts = scriptComp->scripts;
+                    newScripts[si].properties[pi].value = EntityReference{entity, storedSceneId};
 
-                std::vector<ScriptEntry> newScripts = scriptComp->scripts;
-                newScripts[si].properties[pi].value = EntityReference{entity, storedSceneId};
-
-                PropertyCmd<std::vector<ScriptEntry>> propCmd(
-                    project, selectedScene->id, sceneEntity,
-                    ComponentType::ScriptComponent, "scripts", newScripts);
-                propCmd.execute();
-                return;
+                    PropertyCmd<std::vector<ScriptEntry>> propCmd(
+                        project, sceneId, sceneEntity,
+                        ComponentType::ScriptComponent, "scripts", newScripts);
+                    propCmd.execute();
+                    break;
+                }
             }
         }
     }
 }
 
 void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entity entity, uint32_t entitySceneId) {
-    SceneProject* sourceSceneProject = project->getScene(entitySceneId);
-    if (!sourceSceneProject || !sourceSceneProject->scene) {
-        sourceSceneProject = project->getSelectedScene();
-    }
+    // the scene the id belongs to (the drag always says), never another one's same number
+    SceneProject* sourceSceneProject = entitySceneId != 0 ? project->getScene(entitySceneId) : project->getSelectedScene();
     if (!sourceSceneProject || !sourceSceneProject->scene) return;
 
     Scene* scene = sourceSceneProject->scene;
@@ -1283,16 +1284,17 @@ void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entit
         }
     }
 
-    SceneProject* selectedScene = project->getSelectedScene();
-    if (!selectedScene || !selectedScene->scene) return;
-
-    uint32_t storedSceneId = (entitySceneId != selectedScene->id) ? entitySceneId : 0;
+    const uint32_t sourceSceneId = sourceSceneProject->id;
+    const std::vector<uint32_t> relatedSceneIds = project->getRelatedScenes(sourceSceneId);
     std::string inMemoryContent = headerInstance ? headerInstance->editor->GetText() : "";
 
     // Refresh every entity referencing this header and link the dropped one
     for (SceneProject* sceneProjectPtr : project->getScenesAndPrefabStages()) {
         SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene) continue;
+        // linked only where the GameObject's scene is loaded too; the other instances still refresh
+        const bool related = std::find(relatedSceneIds.begin(), relatedSceneIds.end(), sceneProject.id) != relatedSceneIds.end();
+        const uint32_t storedSceneId = sceneProject.id != sourceSceneId ? sourceSceneId : 0;
 
         for (Entity sceneEntity : sceneProject.entities) {
             ScriptComponent* scriptComp = sceneProject.scene->findComponent<ScriptComponent>(sceneEntity);
@@ -1306,7 +1308,7 @@ void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entit
                 project->updateScriptProperties(&sceneProject, sceneEntity, newScripts, inMemoryContent, resolveFilepath(headerPath).string());
 
                 for (ScriptEntry& newScript : newScripts) {
-                    if (newScript.headerPath != headerPath.string()) continue;
+                    if (!related || newScript.headerPath != headerPath.string()) continue;
 
                     for (ScriptProperty& property : newScript.properties) {
                         if (property.name == varName && property.type == ScriptPropertyType::EntityReference) {
@@ -1446,6 +1448,8 @@ void editor::CodeEditor::openFile(const std::string& filepath, bool dockToCentra
     instance.editor->SetFontZoomCallback([](int delta) { applyFontZoom(delta); });
     // VSCode line height is 1.35x the em size, the pushed ImGui size is em * codeFontEmScale
     instance.editor->SetLineHeightFactor(1.35f / App::codeFontEmScale);
+    // the version control palette of the Project window and the Inspector
+    instance.editor->SetDiffColors({vcs::colorOf(vcs::Badge::Added), vcs::colorOf(vcs::Badge::Modified), vcs::colorOf(vcs::Badge::Deleted)});
 
     if (!loadFileContent(instance)) {
         if (lastFocused == &instance) {
@@ -1484,6 +1488,11 @@ std::vector<editor::CodeEditor::BufferState> editor::CodeEditor::getBufferStates
             int line = 0, col = 0;
             instance.editor->GetCursorPosition(line, col);
             state.cursorLine = line + 1;
+            state.lineCount = instance.editor->GetLineCount();
+            const vcs::TextBaseline& baseline = baselines.get(resolveFilepath(instance.filepath).lexically_normal());
+            state.baselineState = vcs::baselineStateName(baseline.state);
+            state.baselineRevision = baseline.revision;
+            if (instance.editor->HasDiffBase()) state.changes = instance.editor->GetDiffChanges();
         }
         states.push_back(state);
     }
@@ -1515,6 +1524,117 @@ bool editor::CodeEditor::reloadFile(const std::string& filepath) {
     return true;
 }
 
+bool editor::CodeEditor::revertChangeAt(const std::string& filepath, int line, std::string& error) {
+    auto it = editors.find(toRelativePath(filepath));
+    if (it == editors.end() || !it->second.editor) {
+        error = "not open in the code editor";
+        return false;
+    }
+    CustomTextEditor& editor = *it->second.editor;
+    if (!editor.HasDiffBase()) {
+        const vcs::TextBaseline& baseline = baselines.get(resolveFilepath(it->second.filepath).lexically_normal());
+        const char* label = vcs::baselineStateLabel(baseline.state);
+        error = std::string("no baseline to revert to") + (*label ? std::string(" (") + label + ")" : std::string());
+        return false;
+    }
+    const int change = editor.GetDiffChangeAt(line - 1);
+    if (change < 0) {
+        error = "no change at line " + std::to_string(line);
+        return false;
+    }
+    return editor.RevertDiffChange(change);
+}
+
+std::optional<std::string> editor::CodeEditor::bufferText(const std::string& filepath) const {
+    auto it = editors.find(toRelativePath(filepath));
+    if (it == editors.end() || !it->second.editor) return std::nullopt;
+    return it->second.editor->GetText();
+}
+
+void editor::CodeEditor::updateBaselines() {
+    vcs::VcsService& service = project->getVcs();
+    const bool on = service.active() && AppSettings::getVersionControlSettings().codeEditorChanges;
+    std::vector<fs::path> files;
+    if (on) {
+        for (const auto& [key, instance] : editors) files.push_back(resolveFilepath(instance.filepath).lexically_normal());
+        // a read finishing wakes an idle editor loop, so the markers show without input
+        baselines.update(service, files, []() { Backend::getApp().enqueueMainThreadTask([]() {}); });
+    } else {
+        baselines.clear();
+    }
+    for (auto& [key, instance] : editors) {
+        if (!instance.editor) continue;
+        const vcs::TextBaseline& baseline = baselines.get(resolveFilepath(instance.filepath).lexically_normal());
+        if (baseline.version == instance.baselineVersion) continue;
+        instance.baselineVersion = baseline.version;
+        if (baseline.state == vcs::BaselineState::Ready && baseline.lines) {
+            instance.editor->SetDiffBase(baseline.lines, baseline.revision);
+        } else if (baseline.state != vcs::BaselineState::Pending) {
+            instance.editor->ClearDiffBase();
+        }
+    }
+}
+
+void editor::CodeEditor::showVcsSegment(EditorInstance& instance) {
+    const vcs::TextBaseline& baseline = baselines.get(resolveFilepath(instance.filepath).lexically_normal());
+    if (baseline.state == vcs::BaselineState::None) return;
+    CustomTextEditor& editor = *instance.editor;
+
+    std::string label;
+    int added = 0, modified = 0, deleted = 0;
+    if (editor.HasDiffBase()) {
+        const std::vector<LineChange>& changes = editor.GetDrawnDiffChanges();
+        for (const LineChange& change : changes) {
+            switch (change.kind()) {
+                case LineChange::Kind::Added: added++; break;
+                case LineChange::Kind::Modified: modified++; break;
+                case LineChange::Kind::Deleted: deleted++; break;
+            }
+        }
+        label = changes.empty() ? std::string("No changes")
+                                : std::to_string(changes.size()) + (changes.size() == 1 ? " change" : " changes");
+    } else {
+        label = vcs::baselineStateLabel(baseline.state);
+    }
+    if (label.empty()) return;
+
+    ImGui::SameLine();
+    ImGui::TextDisabled("|");
+    ImGui::SameLine();
+    const std::string popup = "##vcs_segment_menu";
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
+    if (ImGui::SmallButton((std::string(ICON_FA_CODE_BRANCH " ") + label + "##vcs_segment").c_str())) ImGui::OpenPopup(popup.c_str());
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
+    if (ImGui::BeginItemTooltip()) {
+        if (editor.HasDiffBase()) {
+            ImGui::Text("%d modified, %d added, %d removed against %s", modified, added, deleted, baseline.revision.c_str());
+        } else if (baseline.state == vcs::BaselineState::Failed) {
+            ImGui::Text("No baseline: %s", baseline.error.c_str());
+        } else {
+            ImGui::TextUnformatted("No change markers for this file");
+        }
+        ImGui::EndTooltip();
+    }
+    if (ImGui::BeginPopup(popup.c_str())) {
+        const bool changes = editor.HasDiffBase() && !editor.GetDrawnDiffChanges().empty();
+        const fs::path file = resolveFilepath(instance.filepath).lexically_normal();
+        vcs::VcsUi* ui = Backend::getApp().getVcsUi();
+        // the text editor's own keys (CustomTextEditor binds them, as its Ctrl+F)
+        if (ImGui::MenuItem(ICON_FA_ARROW_DOWN " Next Change", "Alt+F5", false, changes)) editor.GoToNextChange();  // shortcut-lint: allow CustomTextEditor's key
+        if (ImGui::MenuItem(ICON_FA_ARROW_UP " Previous Change", "Shift+Alt+F5", false, changes)) editor.GoToPreviousChange();  // shortcut-lint: allow CustomTextEditor's key
+        ImGui::Separator();
+        if (ImGui::MenuItem("Show Diff", nullptr, false, ui && editor.HasDiffBase())) ui->openTextDiff(file, baseline.revision);
+        if (ImGui::MenuItem("Show History", nullptr, false, ui != nullptr)) ui->openHistory(file);
+        std::string why;
+        const bool canRevert = ui && ui->canRun(vcs::VcsAction::Revert, {file}, &why);
+        if (ImGui::MenuItem(ICON_FA_ROTATE_LEFT " Revert File...", nullptr, false, canRevert)) ui->run(vcs::VcsAction::Revert, {file});
+        if (!canRevert && !why.empty()) ImGui::SetItemTooltip("%s", why.c_str());
+        ImGui::EndPopup();
+    }
+}
+
 void editor::CodeEditor::closeFile(const std::string& filepath) {
     std::string key = toRelativePath(filepath);
     if (auto it = editors.find(key); it != editors.end()) {
@@ -1535,7 +1655,38 @@ bool editor::CodeEditor::isFileOpen(const std::string& filepath) const {
 
 bool editor::CodeEditor::isFileModified(const std::string& filepath) const {
     auto it = editors.find(toRelativePath(filepath));
-    return it != editors.end() && it->second.isModified;
+    // from the undo position, not the flag show() refreshes: an edit between frames (an MCP
+    // revert_change) counts at once
+    return it != editors.end() && it->second.editor && it->second.editor->GetUndoIndex() != it->second.savedUndoIndex;
+}
+
+void editor::CodeEditor::retargetProject(const fs::path& oldProjectPath) {
+    std::vector<std::pair<std::string, std::string>> rekeys;
+    for (auto& [key, instance] : editors) {
+        // a key inside the project is relative: it names the copy now; one written absolute under
+        // the old folder is made relative to the project
+        fs::path keyPath(key);
+        if (keyPath.is_absolute()) {
+            const fs::path relative = keyPath.lexically_normal().lexically_relative(oldProjectPath.lexically_normal());
+            if (!relative.empty() && *relative.begin() != "..") rekeys.emplace_back(key, relative.generic_string());
+        }
+    }
+    for (const auto& [oldKey, newKey] : rekeys) {
+        auto it = editors.find(oldKey);
+        const bool wasFocused = lastFocused == &it->second;
+        EditorInstance instance = std::move(it->second);
+        instance.filepath = newKey;
+        editors.erase(it);
+        EditorInstance& moved = editors[newKey];
+        moved = std::move(instance);
+        if (wasFocused) lastFocused = &moved;
+    }
+    // the copies were written now: their times, so they do not read as changed outside the editor
+    for (auto& [key, instance] : editors) {
+        std::error_code ec;
+        const fs::file_time_type written = fs::last_write_time(resolveFilepath(instance.filepath), ec);
+        if (!ec) instance.lastWriteTime = written;
+    }
 }
 
 bool editor::CodeEditor::handleFileRename(const fs::path& oldPath, const fs::path& newPath) {
@@ -1593,6 +1744,7 @@ bool editor::CodeEditor::handleFileRename(const fs::path& oldPath, const fs::pat
 
 void editor::CodeEditor::show() {
     applyParsedProjectSymbols();
+    updateBaselines();
 
     windowFocused = false;
 
@@ -1633,6 +1785,7 @@ void editor::CodeEditor::show() {
                 instance.editor->GetLineCount(),
                 instance.editor->GetLanguageName(),
                 instance.isModified ? "*" : " ");
+            showVcsSegment(instance);
 
             // Full-height buttons vertically centered on the status row, overlapping the
             // spacing above and below so the row keeps its text-only height

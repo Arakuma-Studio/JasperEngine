@@ -33,9 +33,9 @@ namespace jasperengine::editor {
     // context while that window has focus (SceneView: focused or under the mouse; Animation: the
     // Animation window editing a clip; PoseAnimation: the Pose Animation window, or a Scene view
     // posing its character; Curve, ColorPicker, SoundBrowser and AudioCaptures: those windows,
-    // focused; Palette: the Palette window or the Apply Palette dialog, S43). A new context goes at
-    // the end: parseShortcutContext walks up to the last one.
-    enum class ShortcutContext : uint8_t { Global, Editor, SceneView, Hierarchy, Project, Console, Animation, PoseAnimation, Curve, ColorPicker, SoundBrowser, AudioCaptures, Palette };
+    // focused; SpritePreview: the Sprite Preview window; Palette: the Palette window or the Apply
+    // Palette dialog, S43). A new context goes at the end: parseShortcutContext walks up to the last one.
+    enum class ShortcutContext : uint8_t { Global, Editor, SceneView, Hierarchy, Project, Console, Animation, PoseAnimation, Curve, ColorPicker, SoundBrowser, AudioCaptures, SpritePreview, Palette };
 
     const char* shortcutContextName(ShortcutContext context);       // "Global", "Scene View", ...
     const char* shortcutContextKey(ShortcutContext context);        // "global", "scene_view", ...

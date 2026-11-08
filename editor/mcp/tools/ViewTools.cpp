@@ -37,6 +37,7 @@
 #include "Project.h"
 #include "net/Http.h"
 #include "mcp/McpActivityWindow.h"
+#include "component/CameraComponent.h"
 #include "render/SceneRender.h"
 #include "render/SceneRender2D.h"
 #include "pool/ShaderPool.h"
@@ -796,6 +797,17 @@ void captureView(const CallPtr& call, const CaptureRequest& request, std::functi
         job->fail("view must be game, scene or editor.");
         return;
     }
+    // nothing is drawn: the capture would wait for a frame that never comes
+    if (!call->ctx().app().isWindowVisible()) {
+        job->fail("The editor window is minimized or hidden, so nothing is drawn (the game keeps updating). Restore the "
+                  "window, or run the editor with mcp --headless.");
+        return;
+    }
+    if (request.view == "game" && Platform::isGameHiddenSimulated() && call->ctx().project()->isPlaySessionActive()) {
+        job->fail("The game is hidden (send_input app hide): it updates without drawing. Send {type: \"app\", action: "
+                  "\"show\"} first.");
+        return;
+    }
     auto capture = [job]() {
         if (job->req.view == "game") captureGame(job);
         else if (job->req.view == "scene") captureScene(job);
@@ -901,6 +913,7 @@ Json sceneCameraJson(SceneProject* sp) {
     out["position"] = McpValues::toJson(camera->getPosition());
     out["target"] = McpValues::toJson(camera->getTarget());
     if (sp->sceneType == SceneType::SCENE_3D) {
+        out["up"] = McpValues::toJson(camera->getUp());
         out["distance"] = camera->getDistanceFromTarget();
         out["mode"] = "3d";
         // S26: projection, axis view and the Scene Camera settings
@@ -969,7 +982,13 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"disable_fog", &SceneDisplaySettings::disableFog},
         {"disable_clouds", &SceneDisplaySettings::disableClouds},
         {"show_post_processing", &SceneDisplaySettings::showPostProcessing},
+        {"animate_water", &SceneDisplaySettings::animateWater},
         {"show_stats", &SceneDisplaySettings::showStats},
+        // S41 (in a scene with a Pixel Perfect Camera)
+        {"pixel_zoom", &SceneDisplaySettings::pixelZoom},
+        {"pixel_grid", &SceneDisplaySettings::pixelGrid},
+        {"pixel_snap_preview", &SceneDisplaySettings::pixelSnapPreview},
+        {"pixel_move_snap", &SceneDisplaySettings::pixelMoveSnap},
     };
     return flags;
 }
@@ -1108,6 +1127,23 @@ void setSceneCameraTool(const CallPtr& call) {
         }
         Camera* camera = s->sceneRender->getCamera();
         std::vector<std::string> changed;
+        if (is3D && (a.contains("position") || a.contains("target"))) {
+            const Vector3 eye = a.contains("position") ? position : camera->getPosition();
+            const Vector3 look = a.contains("target") ? target : camera->getTarget();
+            if ((look - eye).length() < 1e-4f) {
+                call->fail("target must differ from position: it is the point the camera looks at (nothing was changed).");
+                return;
+            }
+        }
+        // a camera preview (the Inspector's Preview) shows another camera: a move leaves it, or it would not show
+        static const char* const moves[] = {"position", "target", "orbit", "distance", "view", "frame_all"};
+        const bool moving = is3D && std::any_of(std::begin(moves), std::end(moves), [&a](const char* key) {
+            return a.contains(key) && !(a[key].is_boolean() && !a[key].get<bool>());
+        });
+        if (moving && s->sceneRender->isPreviewCameraActive()) {
+            s->sceneRender->clearPreviewCamera();
+            changed.push_back("left_preview");
+        }
         if (is3D) {
             if (a.contains("position")) {
                 camera->setPosition(position);
@@ -1136,10 +1172,8 @@ void setSceneCameraTool(const CallPtr& call) {
                 camera->setTarget(t);
                 changed.push_back("distance");
             }
-            {
-                const Vector3 dir = (camera->getTarget() - camera->getPosition()).normalize();
-                if (std::abs(dir.y) < 0.99f) camera->setUp(0, 1, 0);
-            }
+            // straight up or down the world up is parallel to the view: the Top/Bottom views' up instead
+            camera->setUp(cameraUpFor(camera->getTarget() - camera->getPosition(), Vector3(0, 1, 0)));
             // S26 (R17, R18, R21): the Scene Camera settings, projection, axis view, framing;
             // an agent's camera moves land at once (Camera Easing is for the user's)
             SceneViewController& view = c.sceneWindow()->getViewController();
@@ -1234,6 +1268,9 @@ void setSceneCameraTool(const CallPtr& call) {
         data["display"] = displayJson;
         std::string text = (changed.empty() ? "Scene view camera of \"" : "Moved the Scene view camera of \"") + s->name +
                            "\": " + data["camera"].dump() + ".";
+        if (std::find(changed.begin(), changed.end(), "left_preview") != changed.end()) {
+            text += " Left the camera preview, which showed another camera.";
+        }
         replyMaybeWithScreenshot(call, sceneId, text, data);
     });
 }
@@ -1666,6 +1703,14 @@ void configureGameViewTool(const CallPtr& call) {
         settings.scale = std::clamp(args.value("scale", 1.0f), 1.0f, 5.0f);
         changed.push_back("scale");
     }
+    if (args.contains("pixel_scale")) {
+        if (!args["pixel_scale"].is_number_integer() || args["pixel_scale"].get<int>() < 0 || args["pixel_scale"].get<int>() > 8) {
+            call->fail("pixel_scale must be an integer 0 (Auto) to 8.");
+            return;
+        }
+        settings.pixelScale = args["pixel_scale"].get<int>();
+        changed.push_back("pixel_scale");
+    }
     if (args.contains("maximize_on_play")) {
         settings.maximizeOnPlay = args.value("maximize_on_play", false);
         changed.push_back("maximize_on_play");
@@ -1897,7 +1942,9 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
     Json data = {
         {"aspect", aspectNames()[std::clamp(settings.aspect, 0, (int)aspectNames().size() - 1)]},
         {"scale", settings.scale},
+        {"pixel_scale", settings.pixelScale},
         {"maximize_on_play", settings.maximizeOnPlay},
+        {"maximized", gw->isMaximizedNow()},
         {"show_stats", settings.showStats},
         {"simulate_touch", project->isSimulateTouch()},
         {"simulate_textures", textureFamilyName(TextureCookQueue::get().getViewFamily())},
@@ -2100,6 +2147,7 @@ void registerViewTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
             {"scale", number("", 1, 5)},
+            {"pixel_scale", integer("Pixel Perfect scale; 0 auto.", 0, 8)},
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
             {"simulate_touch", boolean("")},

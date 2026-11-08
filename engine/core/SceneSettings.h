@@ -58,6 +58,25 @@ namespace jasperengine{
         HIGH
     };
 
+    // Planar reflections (shaders requiring planarreflection: library:water's PLANAR_REFLECTION):
+    // the resolution of their reflection passes, per axis of the camera pass; OFF draws none
+    // (those shaders show their fallback, the environment). Stored as ints: append only.
+    enum class PlanarReflectionResolution {
+        OFF,
+        QUARTER,
+        HALF,
+        FULL
+    };
+
+    // The side of the scene's wake map (Water Wakes, WaterInteractionSystem): AUTO is MEDIUM on
+    // desktop and LOW on Android, iOS and the web. Stored as ints: append only.
+    enum class WaterWakeResolution {
+        AUTO,
+        LOW,        // 128 texels
+        MEDIUM,     // 256
+        HIGH        // 512
+    };
+
     // Resolution of the scene-colour copy sampled by shaders requiring scenecolor.
     enum class SceneColorScale {
         FULL,   // the camera pass's resolution
@@ -393,6 +412,24 @@ namespace jasperengine{
         // library phase 3): FULL = the camera pass's resolution, HALF = half of it (default; mobile)
         SceneColorScale sceneColorScale = SceneColorScale::HALF;
 
+        // Planar reflections (RenderSystem's water reflection passes, one per water height and
+        // viewing camera): their resolution, the layers they draw (with the viewer's culling
+        // mask), whether they sample the viewer's shadow maps, their far clip (0: the viewer's),
+        // how far above the water's rest level they start (Unity's Clip Plane Offset), and the
+        // most heights reflected per camera (the others show the environment)
+        PlanarReflectionResolution planarReflectionResolution = PlanarReflectionResolution::HALF;
+        uint32_t planarReflectionLayers = 0xFFFFFFFFu;
+        bool planarReflectionShadows = true;
+        float planarReflectionFarClip = 0.0f;
+        float planarReflectionClipOffset = 0.05f;
+        int maxPlanarReflections = 2;
+
+        // the wake map of Water Wakes (one per scene, around the main camera): its resolution, the
+        // metres it spans and the seconds a wake takes to fade (an eighth of its foam left)
+        WaterWakeResolution waterWakeResolution = WaterWakeResolution::AUTO;
+        float waterWakeArea = 64.0f;
+        float waterWakeFade = 8.0f;
+
         LightState lightState = LightState::AUTO;
         Vector3 globalIllumColor = Vector3(1.0, 1.0, 1.0);    // stored linear
         float globalIllumIntensity = 0.1f;
@@ -432,7 +469,7 @@ namespace jasperengine{
         int ssrMaxSteps = 48;          // linear march sample count
         float ssrIntensity = 1.0f;     // reflection strength multiplier
         float ssrBlur = 0.0f;          // glossy blur amount [0..1] (0 = sharp/mirror)
-        int ssrDebugMode = 0;          // 0=off,1=reflection,2=normal,3=roughness,4=metallic,5=albedo,6=IBL specular
+        int ssrDebugMode = 0;          // 0=off,1=reflection,2=normal,3=roughness,4=metallic,5=albedo,6=environment specular,7=reflection source,8=occlusion
 
         // Initial physics gravity. The live value is owned by PhysicsSystem (it must be pushed
         // to the Box2D/Jolt worlds on change); this is the default it initializes from.
@@ -463,6 +500,14 @@ namespace jasperengine{
         ShaderRef defaultSkyShader;
         ShaderRef defaultPointsShader;
         ShaderRef defaultLinesShader;
+
+        // property values of the default shaders, inherited by the components (and mesh
+        // materials) that use them, under their own values (ShaderUniforms::resolve)
+        ShaderUniformValues defaultMeshShaderUniforms;
+        ShaderUniformValues defaultUIShaderUniforms;
+        ShaderUniformValues defaultSkyShaderUniforms;
+        ShaderUniformValues defaultPointsShaderUniforms;
+        ShaderUniformValues defaultLinesShaderUniforms;
 
         // ordered user post-process chain (main camera only), applied after SSR
         std::vector<PostProcessPass> postProcess;

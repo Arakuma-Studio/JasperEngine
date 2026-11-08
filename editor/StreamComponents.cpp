@@ -34,14 +34,19 @@
 #include "component/ScriptComponent.h"
 #include "component/LineRendererComponent.h"
 #include "subsystem/MeshSystem.h"
+#include "sprite/SpriteSheetPool.h"
+#include "sprite/SpriteSheet.h"
 #include "reflect/Reflect.h"
 #include "log/Logger.h"
+#include "StreamPreserved.h"
 #include "StreamSchema.h"
 #include "Catalog.h"
 #include "util/ProjectUtils.h"
 #include "util/YamlNumbers.h"
+#include "util/TerrainDetailRules.h"
 #include "lattice/LatticeTypes.h"
 #include "Out.h"
+#include "LoadReport.h"
 #include "particles/ParticleEffectCodec.h"
 #include "stream/CurveCodec.h"
 #include "animation/AnimationClipIO.h"
@@ -84,16 +89,10 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
 
     // Model-backed meshes regenerate these matrices from their skeleton on load.
     if (encodeBones) {
-        // Trailing identity matrices are what a decoded mesh starts with, so they are left
-        // out: every mesh made in the editor (a box, a sphere) holds MAX_BONES of them,
-        // ~8 KB of YAML each. An array grown past MAX_BONES keeps its size (export reads it).
-        size_t count = mesh.bonesMatrix.size();
-        if (count <= MAX_BONES) {
-            const Matrix4 identity;
-            while (count > 0 && mesh.bonesMatrix[count - 1] == identity) {
-                count--;
-            }
-        }
+        // the whole palette (a mesh without a skin has none): its length is how many joints the
+        // skinned vertices may name. Files of older editors list it without its trailing
+        // identities, as they all had 128 of them
+        const size_t count = mesh.bonesMatrix.stored();
         YAML::Node bonesNode(YAML::NodeType::Sequence);
         for (size_t i = 0; i < count; i++)
             bonesNode.push_back(encodeMatrix4(mesh.bonesMatrix[i]));
@@ -193,30 +192,46 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     // Decode external buffers
     if (node["eBuffers"]) {
         auto eBuffersNode = node["eBuffers"];
-        for (unsigned int i = 0; i < eBuffersNode.size() && i < mesh.eBuffers.size(); i++) {
+        mesh.numExternalBuffers = 0;
+        for (unsigned int i = 0; i < eBuffersNode.size(); i++) {
+            if (!mesh.eBuffers.validIndex(static_cast<int>(i))) {
+                Out::error("A mesh's buffers past %zu are left out", ARRAY_INDEX_LIMIT);
+                break;
+            }
             decodeExternalBuffer(mesh.eBuffers[i], eBuffersNode[i]);
+            mesh.numExternalBuffers = i + 1;
         }
-        mesh.numExternalBuffers = eBuffersNode.size();
     }
 
     // Decode submeshes
     if (node["submeshes"]) {
         auto submeshesNode = node["submeshes"];
-        for(unsigned int i = 0; i < submeshesNode.size() && i < mesh.submeshes.size(); i++) {
-            mesh.submeshes[i] = decodeSubmesh(submeshesNode[i], &mesh.submeshes[i]);
+        mesh.numSubmeshes = 0;
+        for (unsigned int i = 0; i < submeshesNode.size(); i++) {
+            if (!mesh.submeshes.validIndex(static_cast<int>(i))) {
+                Out::error("A mesh's submeshes past %zu are left out", ARRAY_INDEX_LIMIT);
+                break;
+            }
+            Submesh& submesh = mesh.submeshes[i];
+            submesh = decodeSubmesh(submeshesNode[i], &submesh);
+            mesh.numSubmeshes = i + 1;
         }
-        mesh.numSubmeshes = submeshesNode.size();
     }
 
     // Decode bones matrix
     if (node["bonesMatrix"]) {
         auto bonesNode = node["bonesMatrix"];
-        mesh.bonesMatrix = HybridArray<Matrix4, MAX_BONES>();
+        mesh.bonesMatrix.clear();
         for (size_t i = 0; i < bonesNode.size() &&
                 mesh.bonesMatrix.validIndex(static_cast<int>(i)); i++)
             mesh.bonesMatrix[i] = decodeMatrix4(bonesNode[i]);
         // an empty list is a trimmed one (all identity), which still counts as written
         mesh.needUpdateBones = true;
+        // older editors left out the trailing identities of the 128 every mesh had (all of them
+        // for a bind pose): the palette reaches every joint the skinned vertices name
+        const size_t joints = std::min(MeshSystem::skinJointCount(mesh), ARRAY_INDEX_LIMIT);
+        if (mesh.bonesMatrix.stored() < joints)
+            mesh.bonesMatrix.resize(joints);
     }
 
     if (node["normAdjustJoint"]) mesh.normAdjustJoint = YamlNumbers::as<float>(node["normAdjustJoint"]);
@@ -401,6 +416,19 @@ YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) 
     node["flipY"] = YamlNumbers::text(sprite.flipY);
     node["textureScaleFactor"] = YamlNumbers::text(sprite.textureScaleFactor);
     node["pivotPreset"] = pivotPresetToString(sprite.pivotPreset);
+    // S41: written only away from their defaults (a scene of before is unchanged)
+    if (sprite.pixelsPerUnit != 0.0f)
+        node["pixelsPerUnit"] = YamlNumbers::text(sprite.pixelsPerUnit);
+    if (sprite.pixelRotation != PixelRotation::CAMERA)
+        node["pixelRotation"] = sprite.pixelRotation == PixelRotation::STEPS_90 ? "steps_90" : "on_grid";
+
+    // a sheet sprite (S44 R48): the sheet decides its frames; the inline ones are not saved
+    if (!sprite.sheet.empty()) {
+        encodeAssetRef(node, "sheet", sprite.sheet);
+        node["frame"] = YamlNumbers::integerText(sprite.frame);
+        node["frameName"] = sprite.frameName;
+        return node;
+    }
 
     YAML::Node framesNode;
     for (unsigned int i = 0; i < sprite.numFramesRect; i++) {
@@ -432,20 +460,52 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
     if (node["flipY"]) sprite.flipY = YamlNumbers::as<bool>(node["flipY"]);
     if (node["textureScaleFactor"]) sprite.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["pivotPreset"]) sprite.pivotPreset = decodeEnum(node, "pivotPreset", StreamSchema::pivotPreset());
+    if (node["sheet"]) {
+        const AssetRef sheet = decodeAssetRef(node, "sheet");
+        if (sheet.path != sprite.sheet.path) {
+            sprite.sheetData.reset();
+            sprite.builtFrame = -1;
+        }
+        sprite.sheet = sheet;
+        sprite.resolveFrameName = true;
+        sprite.needUpdateSprite = true;
+    }
+    if (node["frame"]) sprite.frame = YamlNumbers::as<int>(node["frame"]);
+    if (node["frameName"]) sprite.frameName = node["frameName"].as<std::string>();
+    // R48: a saved frame name the sheet no longer has falls back to the saved index, said in the
+    // load report (the sheet is the import the editor already has; none yet: nothing to check)
+    if (!sprite.sheet.empty() && !sprite.frameName.empty() && node["frameName"]) {
+        if (std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite.sheet.path)) {
+            if (sheet->findFrame(sprite.frameName) < 0 && sheet->frameCount() > 0) {
+                const int shown = std::clamp(sprite.frame, 0, sheet->frameCount() - 1);
+                StreamLoad::fallbackValue(node["frameName"], "the sheet " + sprite.sheet.path + " has no frame \"" + sprite.frameName +
+                                          "\": frame " + std::to_string(shown) + " (\"" + sheet->frames[static_cast<size_t>(shown)].name + "\") is shown");
+            }
+        }
+    }
+    if (node["pixelsPerUnit"]) sprite.pixelsPerUnit = std::max(0.0f, YamlNumbers::as<float>(node["pixelsPerUnit"]));
+    if (node["pixelRotation"]){
+        const std::string rotation = node["pixelRotation"].IsScalar() ? node["pixelRotation"].Scalar() : std::string();
+        sprite.pixelRotation = rotation == "steps_90" ? PixelRotation::STEPS_90 : (rotation == "on_grid" ? PixelRotation::ON_GRID : PixelRotation::CAMERA);
+    }
 
     if (node["framesRect"]) {
         const YAML::Node& framesNode = node["framesRect"];
 
         if (framesNode.IsSequence()) {
             sprite.numFramesRect = 0;
-            for (std::size_t i = 0; i < framesNode.size() && i < sprite.framesRect.size(); i++) {
+            for (std::size_t i = 0; i < framesNode.size(); i++) {
                 if (!framesNode[i] || framesNode[i].IsNull()) {
                     continue;
                 }
-
+                if (!sprite.framesRect.validIndex(static_cast<int>(sprite.numFramesRect))) {
+                    Out::error("A Sprite's frames past %zu are left out", ARRAY_INDEX_LIMIT);
+                    break;
+                }
                 sprite.framesRect[sprite.numFramesRect] = decodeSpriteFrameData(framesNode[i]);
                 sprite.numFramesRect++;
             }
+            sprite.framesRect.resize(sprite.numFramesRect);
         }
     }
 
@@ -462,6 +522,9 @@ YAML::Node editor::Stream::encodeTilemapComponent(const TilemapComponent& tilema
     node["automaticFlipY"] = tilemap.automaticFlipY;
     node["flipY"] = tilemap.flipY;
     node["textureScaleFactor"] = tilemap.textureScaleFactor;
+    // S41: written only away from its default
+    if (tilemap.pixelsPerUnit != 0.0f)
+        node["pixelsPerUnit"] = tilemap.pixelsPerUnit;
     node["reserveTiles"] = tilemap.reserveTiles;
 
     YAML::Node tilesRectNode;
@@ -496,18 +559,24 @@ TilemapComponent editor::Stream::decodeTilemapComponent(const YAML::Node& node, 
     if (node["flipY"]) tilemap.flipY = YamlNumbers::as<bool>(node["flipY"]);
     if (node["textureScaleFactor"]) tilemap.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["reserveTiles"]) tilemap.reserveTiles = YamlNumbers::as<unsigned int>(node["reserveTiles"]);
+    if (node["pixelsPerUnit"]) tilemap.pixelsPerUnit = std::max(0.0f, YamlNumbers::as<float>(node["pixelsPerUnit"]));
 
     if (node["tilesRect"]) {
         const YAML::Node& tilesRectNode = node["tilesRect"];
         if (tilesRectNode.IsSequence()) {
             tilemap.numTilesRect = 0;
-            for (std::size_t i = 0; i < tilesRectNode.size() && i < tilemap.tilesRect.size(); i++) {
+            for (std::size_t i = 0; i < tilesRectNode.size(); i++) {
                 if (!tilesRectNode[i] || tilesRectNode[i].IsNull()) {
                     continue;
+                }
+                if (!tilemap.tilesRect.validIndex(static_cast<int>(tilemap.numTilesRect))) {
+                    Out::error("A Tilemap's tile rects past %zu are left out", ARRAY_INDEX_LIMIT);
+                    break;
                 }
                 tilemap.tilesRect[tilemap.numTilesRect] = decodeTileRectData(tilesRectNode[i]);
                 tilemap.numTilesRect++;
             }
+            tilemap.tilesRect.resize(tilemap.numTilesRect);
         }
     }
 
@@ -515,13 +584,18 @@ TilemapComponent editor::Stream::decodeTilemapComponent(const YAML::Node& node, 
         const YAML::Node& tilesNode = node["tiles"];
         if (tilesNode.IsSequence()) {
             tilemap.numTiles = 0;
-            for (std::size_t i = 0; i < tilesNode.size() && i < tilemap.tiles.size(); i++) {
+            for (std::size_t i = 0; i < tilesNode.size(); i++) {
                 if (!tilesNode[i] || tilesNode[i].IsNull()) {
                     continue;
+                }
+                if (!tilemap.tiles.validIndex(static_cast<int>(tilemap.numTiles))) {
+                    Out::error("A Tilemap's tiles past %zu are left out", ARRAY_INDEX_LIMIT);
+                    break;
                 }
                 tilemap.tiles[tilemap.numTiles] = decodeTileData(tilesNode[i]);
                 tilemap.numTiles++;
             }
+            tilemap.tiles.resize(tilemap.numTiles);
         }
     }
 
@@ -604,12 +678,14 @@ YAML::Node editor::Stream::encodeTerrainFoliageLayer(const TerrainFoliageLayer& 
     node["minHeight"] = layer.minHeight;
     node["maxHeight"] = layer.maxHeight;
     node["drawDistance"] = layer.drawDistance;
+    if (layer.minDrawDistance != 0.0f)
+        node["minDrawDistance"] = layer.minDrawDistance;
     node["seed"] = layer.seed;
     node["castShadows"] = layer.castShadows;
     return node;
 }
 
-TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& node) {
+TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& node, bool clamp, int index) {
     TerrainFoliageLayer layer;
     if (node["meshPath"]) layer.meshPath = decodeAssetRef(node, "meshPath");
     if (node["densityMap"]) layer.densityMap = decodeTexture(node["densityMap"]);
@@ -625,6 +701,31 @@ TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& 
     layer.minHeight = decodeFinite(node["minHeight"], layer.minHeight);
     layer.maxHeight = decodeFinite(node["maxHeight"], layer.maxHeight);
     layer.drawDistance = decodeFinite(node["drawDistance"], layer.drawDistance);
+    layer.minDrawDistance = std::max(0.0f, decodeFinite(node["minDrawDistance"], layer.minDrawDistance));
+    // a hand-edited or older file: values the renderer cannot use are clamped, and said so
+    if (!clamp) return layer;
+    const std::vector<std::string> clamped = editor::terrain::clampDetailLayer(layer);
+    if (!clamped.empty()) {
+        std::string what;
+        for (const std::string& change : clamped) what += (what.empty() ? "" : ", ") + change;
+        // the load report names the file and line, so the terrain; the console line the layer too
+        LoadIssue issue;
+        issue.kind = LoadIssueKind::InvalidValue;
+        issue.fate = LoadIssueFate::Info;
+        issue.component = "Terrain";
+        issue.field = index >= 0 ? "foliageLayers[" + std::to_string(index) + "]" : "foliageLayers";
+        issue.message = "detail layer out of range, clamped: " + what;
+        const YAML::Mark mark = node.Mark();
+        if (mark.line >= 0) {
+            issue.line = mark.line + 1;
+            issue.column = mark.column + 1;
+        }
+        if (ScopedLoadReport::current()) {
+            recordLoadIssue(std::move(issue));
+        } else {
+            Out::warning("Terrain %s: detail layer out of range, clamped: %s.", issue.field.c_str(), what.c_str());
+        }
+    }
     return layer;
 }
 
@@ -759,7 +860,7 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
             if (!node["foliageLayers"][i] || node["foliageLayers"][i].IsNull()) {
                 continue;
             }
-            terrain.foliageLayers.push_back(decodeTerrainFoliageLayer(node["foliageLayers"][i]));
+            terrain.foliageLayers.push_back(decodeTerrainFoliageLayer(node["foliageLayers"][i], true, static_cast<int>(i)));
         }
     }
 
@@ -1192,6 +1293,10 @@ YAML::Node editor::Stream::encodeRigidbody2DComponent(const Rigidbody2DComponent
         if (collider.receiver != NULL_ENTITY) {
             shapeNode["receiver"] = collider.receiver;
         }
+        // S44: written only when set (an older editor keeps it as unknown data)
+        if (!collider.slice.empty()) {
+            shapeNode["slice"] = collider.slice;
+        }
 
         YAML::Node pointsNode;
         for (const Vector2& point : collider.points) {
@@ -1279,6 +1384,8 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
             if (shapeNode["maskBits"]) collider.maskBits = YamlNumbers::as<uint16_t>(shapeNode["maskBits"]);
             if (shapeNode["groupIndex"]) collider.groupIndex = YamlNumbers::as<int16_t>(shapeNode["groupIndex"]);
             collider.receiver = shapeNode["receiver"] ? YamlNumbers::as<Entity>(shapeNode["receiver"]) : NULL_ENTITY;
+            collider.slice = shapeNode["slice"] ? shapeNode["slice"].as<std::string>() : std::string();
+            collider.sliceVisible = false;
 
             // "vertices": files of before
             const YAML::Node pointsNode = shapeNode["points"] ? shapeNode["points"] : shapeNode["vertices"];
@@ -1617,7 +1724,10 @@ SpriteAnimationComponent editor::Stream::decodeSpriteAnimationComponent(const YA
     if (node["frames"]) {
         spriteanim.framesSize = 0;
         for (const YAML::Node& frameNode : node["frames"]) {
-            if (!spriteanim.frames.validIndex(spriteanim.framesSize)) break;
+            if (!spriteanim.frames.validIndex(spriteanim.framesSize)) {
+                Out::error("A Sprite Animation's frames past %zu are left out", ARRAY_INDEX_LIMIT);
+                break;
+            }
             spriteanim.frames[spriteanim.framesSize] = YamlNumbers::as<int>(frameNode);
             spriteanim.framesSize++;
         }
@@ -1626,7 +1736,10 @@ SpriteAnimationComponent editor::Stream::decodeSpriteAnimationComponent(const YA
     if (node["framesTime"]) {
         spriteanim.framesTimeSize = 0;
         for (const YAML::Node& timeNode : node["framesTime"]) {
-            if (!spriteanim.framesTime.validIndex(spriteanim.framesTimeSize)) break;
+            if (!spriteanim.framesTime.validIndex(spriteanim.framesTimeSize)) {
+                Out::error("A Sprite Animation's frame times past %zu are left out", ARRAY_INDEX_LIMIT);
+                break;
+            }
             spriteanim.framesTime[spriteanim.framesTimeSize] = YamlNumbers::as<int>(timeNode);
             spriteanim.framesTimeSize++;
         }
@@ -2175,6 +2288,11 @@ YAML::Node editor::Stream::encodeInstancedMeshComponent(const InstancedMeshCompo
     node["cullDistance"] = instmesh.cullDistance;
     node["fadeStart"] = instmesh.fadeStart;
     node["fadeEnd"] = instmesh.fadeEnd;
+    // written only when set, so files without a near fade stay as they were
+    if (instmesh.nearFadeStart != 0.0f || instmesh.nearFadeEnd != 0.0f) {
+        node["nearFadeStart"] = instmesh.nearFadeStart;
+        node["nearFadeEnd"] = instmesh.nearFadeEnd;
+    }
     node["instancedBillboard"] = instmesh.instancedBillboard;
     node["instancedCylindricalBillboard"] = instmesh.instancedCylindricalBillboard;
 
@@ -2204,6 +2322,8 @@ InstancedMeshComponent editor::Stream::decodeInstancedMeshComponent(const YAML::
     instmesh.cullDistance = std::max(0.0f, decodeFinite(node["cullDistance"], instmesh.cullDistance));
     instmesh.fadeStart = decodeFinite(node["fadeStart"], instmesh.fadeStart);
     instmesh.fadeEnd = decodeFinite(node["fadeEnd"], instmesh.fadeEnd);
+    instmesh.nearFadeStart = std::max(0.0f, decodeFinite(node["nearFadeStart"], instmesh.nearFadeStart));
+    instmesh.nearFadeEnd = std::max(0.0f, decodeFinite(node["nearFadeEnd"], instmesh.nearFadeEnd));
     if (node["instancedBillboard"]) instmesh.instancedBillboard = YamlNumbers::as<bool>(node["instancedBillboard"]);
     if (node["instancedCylindricalBillboard"]) instmesh.instancedCylindricalBillboard = YamlNumbers::as<bool>(node["instancedCylindricalBillboard"]);
 
@@ -2286,11 +2406,14 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
     if (node["framesRect"]) {
         points.numFramesRect = 0;
         for (const YAML::Node& frameNode : node["framesRect"]) {
-            if (points.numFramesRect < (unsigned int)points.framesRect.size()) {
-                points.framesRect[points.numFramesRect] = decodeSpriteFrameData(frameNode);
-                points.numFramesRect++;
+            if (!points.framesRect.validIndex(static_cast<int>(points.numFramesRect))) {
+                Out::error("A Points' frames past %zu are left out", ARRAY_INDEX_LIMIT);
+                break;
             }
+            points.framesRect[points.numFramesRect] = decodeSpriteFrameData(frameNode);
+            points.numFramesRect++;
         }
+        points.framesRect.resize(points.numFramesRect);
     }
 
     if (node["points"]) {

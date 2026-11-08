@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ClipValidation.h"
+#include "component/SpriteComponent.h"
 #include "util/FileUtils.h"
 
 #include "Project.h"
@@ -23,6 +24,7 @@
 #include "tiny_gltf.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <cctype>
 #include <cstdio>
 #include <fstream>
@@ -616,7 +618,7 @@ ClipValidationReport ClipValidation::validate(const ClipData& data, EntityRegist
             case ClipChannel::Morph: {
                 const MeshComponent* mesh = registry->findComponent<MeshComponent>(entity);
                 bool morphs = false;
-                for (unsigned int s = 0; mesh && s < mesh->numSubmeshes && s < mesh->submeshes.size(); s++){
+                for (unsigned int s = 0; mesh && s < mesh->numSubmeshes; s++){
                     morphs = morphs || mesh->submeshes[s].hasMorphTarget;
                 }
                 if (!morphs){
@@ -680,6 +682,21 @@ ClipValidationReport ClipValidation::validate(const ClipData& data, EntityRegist
                     warning.message = label + ": " + entityLabel(registry, entity) + " is a Button: it writes ui.color from its state "
                                       "colours every frame (animate button.colorNormal instead)";
                     report.warnings.push_back(warning);
+                }
+                // R50: a clip an .aseprite import made, on a sprite that shows another sheet
+                if (clipTrack.component == "sprite" && clipTrack.property == "frame" && data.source.kind == "aseprite" && !data.source.path.empty()){
+                    if (const SpriteComponent* sprite = registry->findComponent<SpriteComponent>(entity)){
+                        const std::string made = std::filesystem::path(data.source.path).filename().string();
+                        const std::string shows = sprite->sheet.empty() ? std::string("its inline frames")
+                                                                        : std::filesystem::path(sprite->sheet.path).filename().string();
+                        if (sprite->sheet.empty() || std::filesystem::path(sprite->sheet.path).lexically_normal() !=
+                                                         std::filesystem::path(data.source.path).lexically_normal()){
+                            ClipWarning warning;
+                            warning.path = "tracks[" + std::to_string(i) + "]";
+                            warning.message = label + ": clip made for " + made + ", sprite shows " + shows;
+                            report.warnings.push_back(warning);
+                        }
+                    }
                 }
                 if (clipTrack.component == "gameobject" && entity == root){
                     ClipWarning warning;

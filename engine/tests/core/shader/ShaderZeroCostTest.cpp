@@ -55,6 +55,9 @@ namespace {
             {[](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.mirror = true; i.baseColorTexture = true; }},
             {[](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.fog = true; }},
             {[](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.ssao = true; }},
+            // a scene with Water Excluders and Wakes: only shaders requiring them change (the water's;
+            // the built-in Lit requires neither, so its variants stay as they were)
+            {[](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.waterExclusion = true; e.waterWake = true; }},
             {[](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.postColor = true; }},
             {[](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ e.postColor = true; e.fog = true; i.baseColorTexture = true; i.normalTexture = true; }},
             {[](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ i.textureRect = true; i.baseColorTexture = true; e.lights2D = true; e.shadows2D = true; }},
@@ -100,9 +103,10 @@ namespace {
         return setups;
     }
 
-    // every built-in Lit (customId 0) mesh variant the cases reach, by property bits
-    std::set<uint32_t> enumerateVariants(){
-        std::set<uint32_t> variants;
+    // every built-in Lit (customId 0) mesh variant the cases reach, by property bits (all 64: a bit
+    // past 31 leaking into a variant is one the hash list does not have)
+    std::set<uint64_t> enumerateVariants(){
+        std::set<uint64_t> variants;
         for (const auto& setup : lightingSetups()){
             for (const Case& meshCase : meshCases()){
                 SubmeshShaderInputs inputs = setup.first;
@@ -133,11 +137,11 @@ namespace {
 TEST(ShaderZeroCost, DefaultVariantsUnchanged){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no embedded shader library";
 
-    const std::set<uint32_t> variants = enumerateVariants();
+    const std::set<uint64_t> variants = enumerateVariants();
     ASSERT_GT(variants.size(), 100u);
 
     std::map<std::string, std::string> current;
-    for (uint32_t properties : variants){
+    for (uint64_t properties : variants){
         const ShaderKey key = ShaderPool::getShaderKey(ShaderType::MESH, properties, 0);
         std::string vertex, fragment, error;
         ASSERT_TRUE(ShaderVariantCompiler::preprocess(key, ShaderBackend::GLCore, nullptr, vertex, fragment, &error))

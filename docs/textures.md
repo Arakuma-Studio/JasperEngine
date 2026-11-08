@@ -52,7 +52,10 @@ normal map should call it too.
 
 Textures the CPU reads are never block-compressed: terrain height and density maps, colour
 grading LUTs, spot light masks and anything marked Read/Write cook to R16 (16-bit sources), R8
-or RGBA8 with Zstandard. Cube maps that light the scene (IBL) also get a 256 px RGBA8 copy.
+or RGBA8 with Zstandard (a float source: RGBA16F, which the CPU reads as floats). In the editor,
+a texture an open scene's terrain reads on the CPU is cooked so while it does, as an export
+would, even if it was cooked as a colour texture before; its import settings do not change. Cube
+maps that light the scene (IBL) also get a 256 px RGBA8 copy.
 Files only read from their source by their references (HTML UI images, terrain surface layers)
 are not cooked; when some reference reads the source, the export ships it next to the cooks. A
 glTF's external images are cooked by the slots its materials sample them with (normal, occlusion,
@@ -180,7 +183,7 @@ TextureLoadBench*:TextureCookBench*:TextureEncodeSize*:TextureEncodeQuality*' to
 unit-tests`: the generated corpus of `editor/tests/support/TextureCorpus.cpp`, Normal quality,
 bits per mip-0 texel with the mips.
 
-Per texture and family (`TextureCookBench.CorpusBitsPerTexelAndQuality`):
+Per texture and family (recorded benchmark run):
 
 | texture | family | format | VRAM bpt | disk bpt | quality |
 |---|---|---|---|---|---|
@@ -259,8 +262,6 @@ without a verdict:
 BUILD_TYPE=Release WEB_PROJECT=texture-formats tools/build.sh web
 GATE=texture-formats GATE_ARGS='--query=transcode_bench=1 --expect=transcode_web_budgets=pass --seconds 15' tools/build.sh web-gate
 ```
-
-`TextureBasisTranscodeBench.Uastc2048Chain` prints the native figures of the same chain.
 
 Sizes (R21, `tools/textures/runtime_size.py`): a linked Release game carries 97.3 KB of Zstandard's
 decoder (73.5), bcdec (9.8) and the KTX2 reader (14.0), budget 120 KB, and 31.3 KB more of CPU

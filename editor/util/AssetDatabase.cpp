@@ -12,6 +12,7 @@
 #include "asset/ContentHash.h"
 #include "asset/ModelSubAssets.h"
 #include "io/watch/LinkedFolders.h"
+#include "pixelart/aseprite/AsepriteImport.h"
 #include "util/SafeWrite.h"
 #include "util/SHA1.h"
 #include "util/Util.h"
@@ -1257,8 +1258,13 @@ bool editor::AssetDatabase::refreshSubAssets(Entry& entry, const Entry* previous
     ModelContents contents;
     if (entry.type == AssetType::Palette) {
         scanPaletteFile(projectPath / entry.path, contents);
+    } else if (entry.type == AssetType::AsepriteSprite) {
+        // its named outputs (tag clips, slices, tilesets): the index-keyed ones (frames, pages,
+        // the palette) are always derived, never kept (S44 §6.5)
+        pixelart::aseprite::scanAsepriteSubAssets(projectPath / entry.path, contents.subAssets);
     } else {
         scanModelFile(projectPath / entry.path, contents);
+        reportModelLimits(entry.path, contents);
     }
 
     // §6.4: match by key, then an unmatched old entry to an unmatched new one of the same

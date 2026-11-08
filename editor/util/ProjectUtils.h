@@ -145,6 +145,8 @@ public:
     static ScriptPropertyValue luaValueToScriptPropertyValue(lua_State* L, int idx, ScriptPropertyType type);
     // The properties of a Lua script (its file, or its code being edited: errors ignored), read
     // in an isolated state (readLuaScriptProperties): any thread
+    // A saved file that returns a table without `properties` has none (entry.properties
+    // cleared); code being edited keeps them until it is saved (the table may be mid-cut-and-paste).
     static void loadLuaScriptProperties(ScriptEntry& entry, const std::string& luaPath);
     static void loadLuaScriptPropertiesFromString(ScriptEntry& entry, const std::string& scriptContent, const std::string& chunkName);
     // What reading a Lua script's properties did: the script failed to load (syntax) or to
@@ -153,6 +155,10 @@ public:
     struct LuaPropertiesResult {
         enum Status { Ok, LoadError, RunError, PropertyError } status = Ok;
         std::string message;
+        // Ok: the chunk returned a table, without a `properties` field (entry.properties cleared)
+        bool returnedTable = false;
+        bool noPropertiesField = false;
+        bool propertiesTable = false;   // `properties` is a table (another value declares nothing: kept)
     };
     // Reads a Lua script's properties as the editor does: runs its top level in L (this
     // executes the file) and reads the `properties` of the table it returns, all in protected
@@ -188,6 +194,12 @@ public:
     // An editor preview (an action's, an animation's) restored the GameObject: its particles go
     // with it (a re-decoded Particle System keeps its runtime)
     static void clearPreviewParticles(Scene* scene, Entity entity);
+
+    // Before a component is assigned over a mesh (a model cleared, an undo or redo restoring
+    // one): its GPU objects, shaders and textures go. Textures a mesh holds keep their pooled data
+    // and render until destroyed; the render system destroys them with a loaded mesh only, so
+    // this also covers one never drawn.
+    static void releaseMeshResources(Scene* scene, Entity entity, MeshComponent& mesh);
 
     // Fills a Texture with the editor built-in default skybox cubemap.
     static void setDefaultSkyTexture(Texture& outTexture);
@@ -227,10 +239,14 @@ public:
     // project-relative directory and baseName the exact filename stem. Without includes
     // the entry points stay loose in it; with them the fork takes <targetDirRel>/<base>/,
     // so its copies override the engine library for no other shader.
+    // librarySource ("library:water"): a fork of that library shader instead, its entry files
+    // as the library has them (its .vert, else the generic one of its type), with their
+    // manifest lines, so the fork keeps its Inspector rows and engine role (@role)
     static ShaderForkPlan prepareShaderFork(Project* project, ShaderType shaderType,
                                             const std::filesystem::path& targetDirRel,
                                             const std::string& baseName,
-                                            bool forkIncludes = false);
+                                            bool forkIncludes = false,
+                                            const std::string& librarySource = std::string());
 
     // Writes all planned files. It refuses collisions and removes partial output when a
     // later write fails, so a failed command never truncates or strands source files.

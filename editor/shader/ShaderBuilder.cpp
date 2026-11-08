@@ -20,6 +20,18 @@
 
 #include <cstring>
 #include <cstdint>
+#include <stdexcept>
+
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <d3dcompiler.h>
+#endif
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -373,6 +385,20 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
         "Shader %s (%s) generated successfully",
         getShaderDisplayName(shaderKey).c_str(),
         ShaderPool::getShaderLangStr(backend).c_str());
+    // the variants of a GLES3 build that render Ultra shadows without PCSS (docs/rendering/shadows.md)
+    if (compileLog.find(ShaderVariantCompiler::PCSS_LEFT_OUT) != std::string::npos){
+        Out::build("Shader %s (%s): no PCSS, its textures leave no texture unit for it; Ultra soft shadows use the High tier's filter",
+                   getShaderDisplayName(shaderKey).c_str(), ShaderPool::getShaderLangStr(backend).c_str());
+    }
+    // the painted terrain variants whose lights' records leave no unit for the spot lights' masks
+    if (compileLog.find(ShaderVariantCompiler::SPOT_MASKS_LEFT_OUT) != std::string::npos){
+        Out::build("Shader %s (%s): no spot light masks, its textures leave no texture unit for them; masked spot lights light it with their cones",
+                   getShaderDisplayName(shaderKey).c_str(), ShaderPool::getShaderLangStr(backend).c_str());
+    }
+    if (compileLog.find(ShaderVariantCompiler::SHADOWS_2D_LEFT_OUT) != std::string::npos){
+        Out::build("Shader %s (%s): no 2D light shadows, its textures leave no texture unit for them; 2D lights light it unshadowed",
+                   getShaderDisplayName(shaderKey).c_str(), ShaderPool::getShaderLangStr(backend).c_str());
+    }
     // what a fork reads of the global shader values that Project Settings does not declare as
     // such (once: for the editor's own backend)
     if (ShaderPool::getCustomIdFromKey(shaderKey) != 0 && backend == ShaderPool::getShaderBackend()) {
@@ -524,4 +550,58 @@ void editor::ShaderBuilder::invalidateCustomShaders(const std::function<bool(con
 
 ShaderData editor::ShaderBuilder::buildShaderForExport(ShaderKey shaderKey, Project* project, ShaderBackend backend) {
     return compileShader(shaderKey, project, backend, false, false);
+}
+
+bool editor::ShaderBuilder::compileHlslBytecode(ShaderData& shaderData) {
+#ifdef _WIN32
+    // loaded once; a Windows without it (none since 8.1) keeps shipping the source
+    static const pD3DCompile d3dCompile = []() -> pD3DCompile {
+        HMODULE dll = LoadLibraryW(L"d3dcompiler_47.dll");
+        return dll ? reinterpret_cast<pD3DCompile>(GetProcAddress(dll, "D3DCompile")) : nullptr;
+    }();
+    if (!d3dCompile) {
+        return false;
+    }
+
+    for (ShaderStage& stage : shaderData.stages) {
+        if (stage.bytecode.data || stage.source.empty()) continue;
+        // the target and flags of sokol_gfx compiling the source (_sg_d3d11_compile_shader)
+        const char* target = (stage.type == ShaderStageType::VERTEX) ? "vs_5_0" : "ps_5_0";
+        ID3DBlob* code = nullptr;
+        ID3DBlob* messages = nullptr;
+        const HRESULT hr = d3dCompile(stage.source.c_str(), stage.source.size(), nullptr, nullptr, nullptr, "main", target,
+                                      D3DCOMPILE_PACK_MATRIX_COLUMN_MAJOR | D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &code, &messages);
+        const std::string error = (FAILED(hr) && messages) ? static_cast<const char*>(messages->GetBufferPointer()) : "";
+        if (messages) messages->Release();
+        if (FAILED(hr)) {
+            if (code) code->Release();
+            throw std::runtime_error("Error compiling HLSL: " + error);
+        }
+
+        stage.bytecode.size = static_cast<uint32_t>(code->GetBufferSize());
+        stage.bytecode.data = new unsigned char[stage.bytecode.size];
+        std::memcpy(stage.bytecode.data, code->GetBufferPointer(), stage.bytecode.size);
+        stage.source.clear();
+        code->Release();
+    }
+    return true;
+#else
+    (void)shaderData;
+    return false;
+#endif
+}
+
+bool editor::ShaderBuilder::customShaderResolves(Project* project, ShaderKey key, std::string* error) {
+    const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
+    if (customId == 0 || ShaderPool::isLibraryCustomShader(customId)) return true;
+    const std::string customShader = ShaderPool::getCustomShaderName(customId);
+    if (customShader.empty()) {
+        if (error) *error = "unknown custom shader";
+        return false;
+    }
+    if (ShaderReference::isLibrary(customShader) || ShaderReference::isBuiltin(customShader)) return true;
+    const std::shared_ptr<const CustomSourceSnapshot> sources = resolveCustomSources(project, customShader, ShaderPool::getShaderTypeFromKey(key));
+    if (sources->sources.valid) return true;
+    if (error) *error = sources->sources.error.empty() ? "its sources do not resolve" : sources->sources.error;
+    return false;
 }

@@ -131,3 +131,6 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | S71 | Cheap Mesh update flags (measure first) | follow-ups |
 | S72 | Build hygiene: header fan-out, sanitizer builds install | follow-ups |
 | S73 | Code cleanups: generated AssetRefSchema, frozen parity data, dead code, shader counter | follow-ups |
+| S74 | Navigation fixes: upstream Recast/Detour patches, bake failure feedback, crowd path status without a synchronous search, link auto update, carving obstacle registry and count budget, Recast diagnostics, height range guard, editor/MCP defects | 5 (navigation) |
+| S75 | Navigation diagnostics: path failure reasons, islands and coverage, locate, walkability probe, one findings list (window, CLI, export, MCP), bake report, Path Tester, diagnostic overlays | 5 (navigation) |
+| S76 | Navigation gameplay API: random points, wall distance, move along surface, path cost and area crossings, per-query and per-agent area costs, runtime area overrides (doors, bridges), link activated/occupied, agent path/root-motion/stuck API, Lua handles for obstacles, links and modifiers | 5 (navigation) |

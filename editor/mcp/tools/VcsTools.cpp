@@ -32,7 +32,9 @@
 #include "command/UndoOrigin.h"
 #include "command/type/RevertToBaselineCmd.h"
 #include "util/FileUtils.h"
+#include "util/LineDiff.h"
 #include "vcs/SceneDiffTracker.h"
+#include "window/CodeEditor.h"
 #include "vcs/VcsEditorOps.h"
 #include "vcs/scene/SceneDiffJson.h"
 
@@ -154,10 +156,30 @@ Json summaryJson(const VcsService& service) {
     }
     const vcs::VcsBranchInfo& branch = snapshot->branch;
     out["branch"] = {{"name", branch.name}, {"head", branch.headOid}, {"upstream", branch.upstream},
-                     {"ahead", branch.ahead}, {"behind", branch.behind}, {"detached", branch.detached}};
+                     {"ahead", branch.ahead}, {"behind", branch.behind}, {"detached", branch.detached},
+                     {"label", vcs::headLabel(branch)}};
+    if (!branch.tag.empty()) out["branch"]["tag"] = branch.tag;
+    // a merge, rebase, cherry-pick, revert or bisect left unfinished
+    if (branch.operation != vcs::VcsOperation::None) {
+        out["branch"]["operation"] = vcs::vcsOperationName(branch.operation);
+        if (branch.operationTotal > 0) {
+            out["branch"]["operation_step"] = branch.operationStep;
+            out["branch"]["operation_total"] = branch.operationTotal;
+        }
+    }
     if (!snapshot->lockError.empty()) out["lock_error"] = snapshot->lockError;
     if (snapshot->mergeDriverMissing) out["smart_merge"] = "not set up";
     out["changed"] = snapshot->changedCount();
+    size_t staged = 0, modified = 0, untracked = 0, conflicted = 0;
+    for (const vcs::VcsChange& change : snapshot->entries) {
+        if (change.conflict) conflicted++;
+        else if (change.index == vcs::FileState::Untracked) untracked++;
+        else {
+            if (change.index != vcs::FileState::Unmodified) staged++;
+            if (change.worktree != vcs::FileState::Unmodified) modified++;
+        }
+    }
+    out["counts"] = {{"staged", staged}, {"modified", modified}, {"untracked", untracked}, {"conflicted", conflicted}};
     return out;
 }
 
@@ -198,7 +220,7 @@ void replyStatus(const CallPtr& call, const VcsService& service, const Json& pat
     out["entries"] = entries;
     out["total"] = total;
     out["truncated"] = total > entries.size();
-    const std::string branch = out.contains("branch") ? out["branch"]["name"].get<std::string>() : std::string();
+    const std::string branch = out.contains("branch") ? out["branch"]["label"].get<std::string>() : std::string();
     call->ok(service.caps().provider + (branch.empty() ? std::string() : " " + branch) + ": " + std::to_string(total) +
              (total == 1 ? " entry" : " entries") + (total > 20 ? " (first 20 shown)" : "") + text, out);
 }
@@ -253,20 +275,56 @@ void diffFileTool(const CallPtr& call) {
     std::vector<fs::path> absolute;
     std::vector<RepoPath> keys;
     if (!resolvePaths(call, *service, Json::array({args.value("path", std::string())}), absolute, keys, true)) return;
-    const std::string rev = args.value("rev", std::string("HEAD"));
+    std::string rev = args.value("rev", std::string("HEAD"));
     if (!validRevision(call, *service, rev)) return;
+    // the result names the revision read (svn's HEAD is its BASE)
+    rev = service->effectiveRevision(rev);
     const size_t maxBytes = static_cast<size_t>(std::clamp(args.value("max_bytes", 65536), 1024, 1 << 20));
     const std::string path = args.value("path", std::string());
+    const std::string source = args.value("source", std::string("editor"));
+    if (source != "editor" && source != "disk") {
+        call->fail("source is editor or disk.");
+        return;
+    }
+    auto reply = [call, path, rev, maxBytes](std::string diff, const std::string& answered, bool unsaved) {
+        const bool truncated = diff.size() > maxBytes;
+        if (truncated) diff.resize(maxBytes);
+        const std::string what = path + (unsaved ? " (the code editor's unsaved buffer)" : std::string());
+        const std::string summary = diff.empty() ? what + " has no changes against " + rev + "." : what + " against " + rev + ":\n" + diff;
+        call->ok(summary, Json{{"path", path}, {"rev", rev}, {"source", answered}, {"unsaved", unsaved}, {"diff", diff}, {"truncated", truncated}});
+    };
+    // the code editor's buffer with unsaved edits: diffed here, against the revision's text
+    CodeEditor* editor = call->ctx().codeEditor();
+    std::optional<std::string> buffer;
+    if (source == "editor" && editor && editor->isFileModified(absolute[0].string())) buffer = editor->bufferText(absolute[0].string());
     call->detach();
-    service->textDiff(keys[0], rev, [call, path, rev, maxBytes](const VcsResult& result, std::string diff) {
+    if (buffer) {
+        const RepoPath key = keys[0];
+        // what a save would write (the file's line endings), against the file the revision has:
+        // a staged rename's source, none for a file HEAD has not got
+        std::string text = FileUtils::withLineEndings(absolute[0], *buffer);
+        const vcs::SnapshotPtr& snapshot = service->snapshot();
+        const vcs::VcsChange* change = snapshot ? snapshot->find(key) : nullptr;
+        if (rev == service->baselineRevision() && change && !change->hasBaseline()) {
+            reply(LineDiff::unified({}, text, key, key), "editor", true);
+            return;
+        }
+        const RepoPath source = change ? change->diffSource() : key;
+        service->baseContent(source, rev, [call, path, rev, reply, source, key, text = std::move(text)](const VcsResult& result, std::string base) {
+            if (!result.ok) {
+                call->fail("diff_file " + path + ": " + source + " at " + rev + " did not read: " + result.message);
+                return;
+            }
+            reply(LineDiff::unified(base, text, source, key), "editor", true);
+        });
+        return;
+    }
+    service->textDiff(keys[0], rev, [call, path, reply](const VcsResult& result, std::string diff) {
         if (!result.ok) {
             call->fail("diff_file " + path + ": " + result.message);
             return;
         }
-        const bool truncated = diff.size() > maxBytes;
-        if (truncated) diff.resize(maxBytes);
-        const std::string summary = diff.empty() ? path + " has no changes against " + rev + "." : path + " against " + rev + ":\n" + diff;
-        call->ok(summary, Json{{"path", path}, {"rev", rev}, {"diff", diff}, {"truncated", truncated}});
+        reply(std::move(diff), "disk", false);
     });
 }
 
@@ -369,8 +427,9 @@ void diffSceneTool(const CallPtr& call) {
     const Json& args = call->args();
     SceneTarget target;
     if (!resolveSceneTarget(call, project, false, target)) return;
-    const std::string rev = args.value("rev", std::string("HEAD"));
+    std::string rev = args.value("rev", std::string("HEAD"));
     if (!validRevision(call, *service, rev)) return;
+    rev = service->effectiveRevision(rev);
     const std::string source = args.value("source", std::string("editor"));
     vcs::SceneDiffTracker::Request request;
     request.sceneId = source == "editor" ? target.sceneId : 0;
@@ -659,7 +718,7 @@ void registerVcsTools(McpRegistry& registry) {
         tool.title = "Get VCS Status";
         tool.group = GROUP;
         tool.description =
-            "Version control state: provider (git/svn), branch, ahead/behind, last error, and the project's changed files "
+            "Version control state: provider (git/svn), branch (tag, unfinished merge/rebase), ahead/behind, counts, last error, and the project's changed files "
             "{path, index, worktree, conflict?, lock?, lock_owner?, remote_changed?} (500 max). refresh polls now, with the "
             "locks (network). jasper://vcs/status holds the summary; jasper://docs/vcs the workflow.";
         tool.inputSchema = object({
@@ -676,10 +735,12 @@ void registerVcsTools(McpRegistry& registry) {
         tool.name = "diff_file";
         tool.title = "Diff File";
         tool.group = GROUP;
-        tool.description = "A unified text diff of a project file's working copy against a revision. Scenes and prefabs read better with diff_scene.";
+        tool.description = "A unified text diff of a project file against a revision: the code editor's unsaved buffer when it has one "
+                           "(source editor), else the file on disk. Scenes and prefabs read better with diff_scene.";
         tool.inputSchema = object({
             {"path", string("Project-relative.")},
-            {"rev", withDefault(string("git: hash, HEAD, HEAD~n; svn: number, BASE, HEAD."), "HEAD")},
+            {"rev", withDefault(string("git: hash, HEAD, HEAD~n; svn: number, BASE (HEAD = BASE)."), "HEAD")},
+            {"source", withDefault(stringEnum("", {"editor", "disk"}), "editor")},
             {"max_bytes", withDefault(integer("", 1024, 1048576), 65536)}
         }, {"path"});
         tool.annotations.readOnly = true;

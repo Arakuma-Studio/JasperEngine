@@ -125,7 +125,7 @@ namespace {
     std::string baseTextureOf(Project* project, Scene* scene, Entity entity, unsigned submesh) {
         if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) return std::string();
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-        if (!mesh || submesh >= MAX_SUBMESHES) return std::string();
+        if (!mesh || submesh >= std::max(mesh->numSubmeshes, 1u)) return std::string();
         const Texture& base = mesh->submeshes[submesh].material.baseColorTexture;
         if (base.getPath().empty() || base.isFramebuffer()) return std::string();
         const std::string rel = mcp::McpValues::assetPathToJson(project, base.getPath());
@@ -489,11 +489,11 @@ void SpriteNormalsWindow::refreshProblems(Item& item) {
         } else {
             Scene* s = const_cast<Scene*>(scene);
             if (MeshComponent* mesh = s->findComponent<MeshComponent>(spec.entity)) {
-                key += "|" + (spec.submesh < MAX_SUBMESHES ? mesh->submeshes[spec.submesh].material.baseColorTexture.getPath() : std::string());
+                key += "|" + (spec.submesh < std::max(mesh->numSubmeshes, 1u) ? mesh->submeshes[spec.submesh].material.baseColorTexture.getPath() : std::string());
             }
             if (SpriteComponent* sprite = s->findComponent<SpriteComponent>(spec.entity)) {
                 key += "|" + std::to_string(sprite->numFramesRect);
-                for (unsigned i = 0; i < sprite->numFramesRect && i < MAX_SPRITE_FRAMES; i++) {
+                for (unsigned i = 0; i < sprite->numFramesRect; i++) {
                     const Rect& r = sprite->framesRect[i].rect;
                     char rect[96];
                     std::snprintf(rect, sizeof(rect), ";%g,%g,%g,%g", r.getX(), r.getY(), r.getWidth(), r.getHeight());
@@ -610,7 +610,7 @@ void SpriteNormalsWindow::autoTargetFor(const std::string& imagePath) {
     MeshComponent* mesh = sp->scene->findComponent<MeshComponent>(selection[0]);
     if (!mesh) return;
     const unsigned count = std::max(mesh->numSubmeshes, sp->scene->findComponent<SpriteComponent>(selection[0]) ? 1u : 0u);
-    for (unsigned s = 0; s < count && s < MAX_SUBMESHES; s++) {
+    for (unsigned s = 0; s < count; s++) {
         if (baseTextureOf(project, sp->scene, selection[0], s) == imagePath) {
             setAssignTarget(sceneId, selection[0], s);
             assign = false;
@@ -696,7 +696,7 @@ bool SpriteNormalsWindow::openForEntity(uint32_t sceneId, Entity entity, unsigne
     std::vector<std::string> notes;
     fs::path recipePng;
     MeshComponent* mesh = sp->scene->findComponent<MeshComponent>(entity);
-    if (mesh && submesh < MAX_SUBMESHES) {
+    if (mesh && submesh < std::max(mesh->numSubmeshes, 1u)) {
         const std::string stored = mesh->submeshes[submesh].material.normalTexture.getPath();
         if (!stored.empty()) {
             const fs::path png = absoluteOf(project, mcp::McpValues::assetPathToJson(project, stored));
@@ -1947,8 +1947,10 @@ bool SpriteNormalsWindow::applyFix(const std::string& kind, const std::string& f
         float w = 64.0f, h = 64.0f;
         if (Transform* t = scene->findComponent<Transform>(target.entity)) position = t->worldPosition;
         if (SpriteComponent* sprite = scene->findComponent<SpriteComponent>(target.entity)) {
-            if (sprite->width > 0) w = static_cast<float>(sprite->width);
-            if (sprite->height > 0) h = static_cast<float>(sprite->height);
+            // world units: the pixel size over its Pixels Per Unit (S41)
+            const Vector2 worldSize = spriteWorldSize(*sprite);
+            if (sprite->width > 0) w = worldSize.x;
+            if (sprite->height > 0) h = worldSize.y;
         }
         auto* create = new CreateEntityCmd(project, sp->id, "Light 2D", EntityCreationType::POINT_LIGHT_2D);
         create->addProperty<Vector3>(ComponentType::Transform, "position", Vector3(position.x - 0.5f * w, position.y + 0.5f * h, position.z));
@@ -2576,7 +2578,7 @@ void SpriteNormalsWindow::drawSource() {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("entity")) {
             if (payload->DataSize >= static_cast<int>(sizeof(EntityPayload))) {
                 const EntityPayload* entityPayload = static_cast<const EntityPayload*>(payload->Data);
-                const uint32_t sceneId = entityPayload->entitySceneId != 0 ? entityPayload->entitySceneId : project->getSelectedSceneId();
+                const uint32_t sceneId = payloadSceneId(*entityPayload, project->getSelectedSceneId());
                 if (!setSourceEntity(sceneId, entityPayload->entity, error)) setStatus(error, true);
             }
         }

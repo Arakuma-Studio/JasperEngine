@@ -657,7 +657,7 @@ bool cpuskin::computeSkinMatrices(Scene* scene, Entity meshEntity, std::vector<M
     if (!mesh || !meshTransform)
         return fail(error, "'" + scene->getEntityName(meshEntity) + "' has no mesh and transform");
 
-    out.resize(mesh->bonesMatrix.size());
+    out.resize(mesh->bonesMatrix.stored());
     for (size_t b = 0; b < out.size(); b++)
         out[b] = mesh->bonesMatrix[b];
 

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "Tilemap.h"
+#include <algorithm>
 #include "subsystem/MeshSystem.h"
+#include "component/TilemapComponent.h"
 
 using namespace jasperengine;
 
@@ -63,6 +65,20 @@ void Tilemap::setTextureScaleFactor(float textureScaleFactor){
     }
 }
 
+void Tilemap::setPixelsPerUnit(float pixelsPerUnit){
+    TilemapComponent& tilemapcomp = getComponent<TilemapComponent>();
+    pixelsPerUnit = std::max(0.0f, pixelsPerUnit);
+    if (tilemapcomp.pixelsPerUnit != pixelsPerUnit){
+        tilemapcomp.pixelsPerUnit = pixelsPerUnit;
+        tilemapcomp.needUpdateTilemap = true;
+        markChanged<TilemapComponent>();
+    }
+}
+
+float Tilemap::getPixelsPerUnit() const{
+    return getComponent<TilemapComponent>().pixelsPerUnit;
+}
+
 float Tilemap::getTextureScaleFactor() const{
     TilemapComponent& tilemap = getComponent<TilemapComponent>();
     
@@ -81,12 +97,7 @@ void Tilemap::addRect(int id, const std::string& name, const std::string& textur
     }
 
     if (!tilemap.tilesRect.validIndex(id)){
-        Log::error("Cannot add rect with id %i, max valid id is %zu", id, tilemap.tilesRect.size() - 1);
-        return;
-    }
-
-    if (!mesh.submeshes.validIndex(static_cast<int>(mesh.numSubmeshes))){
-        Log::error("Cannot add submesh for rect id %i, max submeshes is %zu", id, mesh.submeshes.size());
+        Log::error("Cannot add rect with id %i: ids go from 0 to %zu", id, ARRAY_INDEX_LIMIT - 1);
         return;
     }
 
@@ -210,7 +221,7 @@ void Tilemap::addTile(int id, const std::string& name, int rectId, Vector2 posit
             tilemap.numTiles = id + 1;
         }
     }else{
-        Log::error("Error adding tile with id %i", id);
+        Log::error("Cannot add tile with id %i: ids go from 0 to %zu", id, ARRAY_INDEX_LIMIT - 1);
     }
 
     tilemap.needUpdateTilemap = true;

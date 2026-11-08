@@ -50,6 +50,7 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Play or Resume | F5 | Global |
 | Pause | F6 | Global |
 | Stop | F7 | Global |
+| Maximize On Play | F11 (macOS: Control+Cmd+F) | Global |
 
 ## Assets
 
@@ -115,6 +116,8 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Bottom View | Numpad9 / Ctrl+Numpad7 | Scene View |
 | Hide Selection | H | Scene View |
 | Show All | Alt+H | Scene View |
+| Pixel Zoom 1x | Alt+1 | Scene View |
+| Pixel Zoom Game | Alt+2 | Scene View |
 | Toggle Pick Lock | L | Scene View |
 | Measure | M | Scene View |
 | Delete Measure | Delete / Backspace | Scene View |
@@ -209,15 +212,17 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Add Pose | N | Pose Animation |
 | Global Edit | E | Pose Animation |
 
-## Palette
+## Sprite Preview
 
 | Command | Shortcut | Context |
 |---|---|---|
-| Delete Colours | Delete / Backspace | Palette |
-| Duplicate Colours | Ctrl+D | Palette |
-| Move Colours Left | Alt+Left | Palette |
-| Move Colours Right | Alt+Right | Palette |
-| Flicker Compare | Space | Palette |
+| Play / Pause | Space | Sprite Preview |
+| Previous Frame | , | Sprite Preview |
+| Next Frame | . | Sprite Preview |
+| First Frame | Home | Sprite Preview |
+| Last Frame | End | Sprite Preview |
+| Zoom In | = / NumpadAdd | Sprite Preview |
+| Zoom Out | - / NumpadSubtract | Sprite Preview |
 
 ## Project
 
@@ -226,6 +231,7 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Copy Assets | Ctrl+C | Project |
 | Cut Assets | Ctrl+X | Project |
 | Paste Assets | Ctrl+V | Project |
+| Duplicate Assets | Ctrl+D | Project |
 | Select All Assets | Ctrl+A | Project |
 | Delete Assets | Delete / Backspace | Project |
 | Rename Asset | F2 | Project |

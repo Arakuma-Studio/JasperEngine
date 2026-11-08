@@ -1,11 +1,10 @@
 """S08 reflection tables (docs/specs/S08-reflection.md), driven through a running editor.
 
-- test_golden_resave (AC5): each tools/fixtures project opens every scene, saves it and the
-  project; the scene files, project.yaml and the prefab files the generated prefab projects hold
-  (tools/prefab-fixtures.py, with the TappyPlane fixture) must equal the goldens in
+- test_golden_resave_<project> (AC5, AC6), a test for each tools/fixtures project and each prefab
+  project tools/prefab-fixtures.py writes from the TappyPlane fixture: it opens every scene, saves
+  it and the project; the scene files, project.yaml and prefab files, and the C++ the editor
+  generates when it saves those scenes (.jasperengine/generated), must equal the goldens in
   tools/fixtures/reflection-parity/golden/, captured with the editor before S08.
-- test_codegen_golden (AC6): the C++ the editor generates when it saves those scenes
-  (.jasperengine/generated) must equal the goldens captured before S08.
 - test_inspector_layout_parity (AC7): get_inspector_layout of a GameObject of each kind, in each
   state its conditional rows depend on, must equal the rows the hand-written drawers drew before
   S08 (golden/inspector_layouts.json).
@@ -24,7 +23,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -38,6 +36,7 @@ from harness import Editor
 CI = True
 EDITOR = {"create": True, "name": "Reflection CI"}
 TIMEOUT = 1800
+TESTS_INDEPENDENT = ("each project re-saves in an editor of its own", ["test_golden_resave_*"])
 
 PARITY = harness.REPO / "tools" / "fixtures" / "reflection-parity"
 GOLDEN = PARITY / "golden"
@@ -190,20 +189,15 @@ def code_golden_as_now(golden: str) -> str:
     return "".join(line for i, line in enumerate(lines) if i not in dropped)
 
 
-# what one Scene view icon (a Sprite: one submesh, a Mesh's MAX_BONES bone matrices) gives
-ICON_MAX_VALUES = {"maxSubmeshes": "1", "maxBones": "128"}
+MAX_VALUES_BLOCK = re.compile(r"(?m)^maxValues:\n(?:  .*\n)*")
 
 
 def max_values_as_now(golden: str, actual: str) -> str:
-    """A golden scene's maxValues as this editor counts them: the editor that captured the goldens
-    counted the Scene view's icons (a light's, a camera's: Sprites made when the view draws), this
-    one only the scene's own GameObjects, so a golden icon's value is an actual 0"""
-    for key, icon in ICON_MAX_VALUES.items():
-        line = re.compile(r"(?m)^(  " + key + r": )(\d+)$")
-        now, was = line.search(actual), line.search(golden)
-        if now and was and now.group(2) == "0" and was.group(2) == icon:
-            golden = line.sub(lambda m: m.group(1) + "0", golden, count=1)
-    return golden
+    """A golden scene's maxValues as this editor writes them: the goldens' editor computed the fixed
+    array capacities there; this one has none, and writes back the block a scene was read with
+    (none for a scene saved without it): the actual block, or none, stands for the golden's"""
+    now = MAX_VALUES_BLOCK.search(actual)
+    return MAX_VALUES_BLOCK.sub(lambda m: now.group(0) if now else "", golden, count=1)
 
 
 def normalized_scene(text: str) -> str:
@@ -328,48 +322,54 @@ async def resave(ed: Editor, project: Path, name: str, mismatches: list[str], so
         sources[f"{name}/{file}"] = text
 
 
-def prefab_projects(root: Path) -> list[tuple[str, Path]]:
-    """The projects tools/prefab-fixtures.py writes from the TappyPlane fixture (none without it)"""
-    fixture = os.environ.get("JASPER_FIXTURE") or os.environ.get("FIXTURE")
-    if not fixture or not Path(fixture).is_dir():
-        return []
-    made = []
-    for kind in ("legacy", "nested", "variant"):
-        out = root / f"prefab-{kind}"
-        run = subprocess.run([sys.executable, str(harness.REPO / "tools" / "prefab-fixtures.py"), kind, str(out)],
-                             env=dict(os.environ, FIXTURE=fixture), capture_output=True, text=True, timeout=300)
-        check(run.returncode == 0, f"prefab-fixtures.py {kind}: {run.stderr[-2000:]}")
-        made.append((f"prefab-{kind}", out))
-    return made
+PREFAB_KINDS = ("legacy", "nested", "variant")
 
 
-SOURCES: dict[str, str] = {}
+def prefab_project(kind: str, root: Path) -> Path:
+    """The project tools/prefab-fixtures.py writes from the TappyPlane fixture, found where the
+    harness looks for it; without one the test skips, as every test that needs the fixture does"""
+    candidates = [Path(p) for p in (os.environ.get("JASPER_FIXTURE"), os.environ.get("FIXTURE")) if p]
+    fixture = next((c for c in candidates + harness.fixture_candidates() if (c / "project.yaml").exists()), None)
+    if fixture is None:
+        raise harness.FixtureMissing("the prefab projects are written from the TappyPlane fixture, found nowhere: set "
+                                     "JASPER_FIXTURE, or put it at " + ", ".join(str(c) for c in harness.fixture_candidates()))
+    out = root / f"prefab-{kind}"
+    run = subprocess.run([sys.executable, str(harness.REPO / "tools" / "prefab-fixtures.py"), kind, str(out)],
+                         env=dict(os.environ, FIXTURE=str(fixture)), capture_output=True, text=True, timeout=300)
+    check(run.returncode == 0, f"prefab-fixtures.py {kind}: {run.stderr[-2000:]}")
+    return out
 
 
-async def test_golden_resave():
-    mismatches: list[str] = []
-    SOURCES.clear()
-    for project in fixture_projects():
-        name = project.name
-        async with Editor(project=project) as ed:
-            await resave(ed, ed.project, name, mismatches, SOURCES)
-    root = Path(tempfile.mkdtemp(prefix="jasper-reflection-prefabs-"))
-    try:
-        for name, project in prefab_projects(root):
-            async with Editor(project=project) as ed:
-                await resave(ed, ed.project, name, mismatches, SOURCES)
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
-    check(not mismatches, "re-saved files differ from the goldens:\n" + "\n".join(mismatches[:20]))
+def _make_resave_test(name: str, project_of) -> None:
+    """test_golden_resave_<project>: one project re-saved in an editor of its own (AC5), and the
+    scene sources that save generated (AC6), against the goldens of `name`. A test per project
+    (TESTS_INDEPENDENT): one function re-saving them all took longer than a test may on a loaded
+    server."""
+
+    async def golden_resave():
+        mismatches: list[str] = []
+        sources: dict[str, str] = {}
+        with tempfile.TemporaryDirectory(prefix="jasper-reflection-") as root:
+            async with Editor(project=project_of(Path(root))) as ed:
+                await resave(ed, ed.project, name, mismatches, sources)
+        generated: list[str] = [] if sources else [f"{name}: its save generated no scene sources"]
+        for key, text in sorted(sources.items()):
+            compare_or_update(GOLDEN / "codegen" / (key + ".golden"), text, f"generated {key}", generated,
+                              golden_filter=code_golden_as_now)
+        check(not mismatches and not generated,
+              "\n".join((["re-saved files differ from the goldens:"] + mismatches[:20] if mismatches else []) +
+                        (["generated C++ differs from the goldens:"] + generated[:20] if generated else [])))
+
+    golden_resave.__name__ = golden_resave.__qualname__ = \
+        "test_golden_resave_" + re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    golden_resave.__doc__ = f"{name} re-saved: its files and the scene sources it generated equal the goldens"
+    globals()[golden_resave.__name__] = golden_resave
 
 
-async def test_codegen_golden():
-    check(SOURCES, "test_golden_resave generated no scene sources")
-    mismatches: list[str] = []
-    for key, text in sorted(SOURCES.items()):
-        compare_or_update(GOLDEN / "codegen" / (key + ".golden"), text, f"generated {key}", mismatches,
-                          golden_filter=code_golden_as_now)
-    check(not mismatches, "generated C++ differs from the goldens:\n" + "\n".join(mismatches[:20]))
+for _project in fixture_projects():
+    _make_resave_test(_project.name, lambda root, project=_project: project)
+for _kind in PREFAB_KINDS:
+    _make_resave_test(f"prefab-{_kind}", lambda root, kind=_kind: prefab_project(kind, root))
 
 
 # GameObjects whose Inspector layout is compared: (case name, scene type, create_entity type, then

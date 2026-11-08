@@ -290,6 +290,10 @@ bool SystemRender::hasTextureFormatSupportOverride(){
     return textureSupportOverridden;
 }
 
+void SystemRender::setRepeatedStateSkipped(bool skipped){
+    SokolSystem::setRepeatedStateSkipped(skipped);
+}
+
 uint64_t SystemRender::getPipelineCacheMisses(){
     return SokolSystem::getPipelineCacheMisses();
 }
@@ -304,6 +308,10 @@ size_t SystemRender::getPipelineCacheSize(){
 
 uint64_t SystemRender::getNestedPassCount(){
     return SokolSystem::getNestedPassCount();
+}
+
+void SystemRender::waitGpuIdle(){
+    SokolSystem::waitGpuIdle();
 }
 
 void SystemRender::shutdown(){
@@ -512,6 +520,18 @@ TextureRender* SystemRender::getPassPreviewTexture(){
 
 void SystemRender::setVulkanHostQueryReset(bool enabled){
     SokolSystem::setVulkanHostQueryReset(enabled);
+}
+
+namespace {
+    int vulkanRobustBufferAccess = -1;
+}
+
+void SystemRender::setVulkanRobustBufferAccess(bool enabled){
+    vulkanRobustBufferAccess = enabled ? 1 : 0;
+}
+
+int SystemRender::getVulkanRobustBufferAccess(){
+    return vulkanRobustBufferAccess;
 }
 
 FramebufferRender* SystemRender::getPassPreviewTarget(){

@@ -259,6 +259,7 @@ if(API_BACKEND STREQUAL "linux")
     list(APPEND BACKEND_SOURCES
         ${EDITOR_DIR}/backend/BackendLinux.cpp
         ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
+        ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp
         ${JASPERENGINE_ROOT}/platform/linux/GamepadDB.cpp
         ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp
     )
@@ -315,7 +316,9 @@ elseif(API_BACKEND STREQUAL "mac")
 
     list(APPEND BACKEND_LIBS
         "-framework AppKit"
+        "-framework CoreFoundation"
         "-framework CoreGraphics"
+        "-framework CoreText"
         "-framework GameController"
         "-framework Metal"
         "-framework MetalKit"
@@ -355,6 +358,9 @@ add_definitions("-DJASPERENGINE_EDITOR")
 # ImGui reports the items it draws through its test-engine hooks (editor/util/UiItemLocator.cpp,
 # MCP find_ui_item); they run only while a lookup records
 add_definitions("-DIMGUI_ENABLE_TEST_ENGINE")
+# 32-bit characters: a character beyond U+FFFF (emoji, rare CJK) typed or pasted into an editor
+# field stays itself instead of becoming U+FFFD (docs/editor/text-and-languages.md)
+add_definitions("-DIMGUI_USE_WCHAR32")
 add_definitions("-DJASPERENGINE_CRASH_GUARD")
 
 add_definitions("-DNO_LUA_INIT")
@@ -589,6 +595,10 @@ elseif(API_BACKEND STREQUAL "mac")
 endif()
 include_directories (${JASPERENGINE_ROOT}/renders)
 
+# cl's /MP for the engine's and the editor's targets under Visual Studio generators
+set(JASPERENGINE_PARALLEL_BUILD_JOBS "" CACHE STRING "Parallel compile job limit of Visual Studio builds (/MP); empty or 0: every CPU")
+jasperengine_msvc_parallel_compile()
+
 add_subdirectory(${JASPERENGINE_ROOT})
 
 # Signed alongside the exes, so it needs the same metadata. MinGW prefixes the name.
@@ -726,6 +736,15 @@ else()
     set(JASPERENGINE_NO_FMA_FLAGS "-ffp-contract=off")
 endif()
 set_source_files_properties(${JASPERENGINE_SPRITENORMALS_NO_FMA_SOURCES} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
+# The model cook (S53): its normalised normals, their octahedral decode and the LODs they guide
+# are the same bytes on every CPU, so a cooked model and its cache key do not depend on the machine
+set_source_files_properties(${EDITOR_DIR}/model/ModelCooker.cpp ${EDITOR_DIR}/model/GltfDocument.cpp
+    PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
+# The audio analysis (S36, S39's tempo grid): the committed library analysis.json and every agent's
+# numbers are the same on every CPU (arm64 Clang fuses a multiply and an add by default); the
+# decoders and AudioMeter it reads get the same in engine/CMakeLists.txt
+set_source_files_properties(${EDITOR_DIR}/audio/AudioAnalysis.cpp ${EDITOR_DIR}/audio/AudioMusicGrid.cpp
+    PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
 
 set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/main.cpp
@@ -772,6 +791,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/project/ProjectPrefabOverrideModel.cpp
     ${EDITOR_DIR}/project/ProjectPrefabPaths.cpp
     ${EDITOR_DIR}/project/ProjectAssets.cpp
+    ${EDITOR_DIR}/project/SceneFileIdentity.cpp
     ${EDITOR_DIR}/project/ProjectShaderLists.cpp
     ${EDITOR_DIR}/project/ProjectDataSafety.cpp
     ${EDITOR_DIR}/project/ProjectPrefabVariant.cpp
@@ -802,6 +822,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
     ${EDITOR_DIR}/reflect/components/UpstreamReflect.cpp
     ${EDITOR_DIR}/reflect/components/UpstreamMediaReflect.cpp
+    ${EDITOR_DIR}/reflect/components/PixelArtReflect.cpp
+    # pixel art (S41: the editor's side of the Pixel Perfect Camera)
+    ${EDITOR_DIR}/pixelart/PixelPerfectEditor.cpp
     ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
     ${EDITOR_DIR}/reflect/components/UIReflect.cpp
     ${EDITOR_DIR}/reflect/components/LatticeFluidReflect.cpp
@@ -835,6 +858,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Exporter.cpp
     ${EDITOR_DIR}/ExporterPrebuilt.cpp
     ${EDITOR_DIR}/ShippingTypes.cpp
+    ${EDITOR_DIR}/export/ExportFiles.cpp
+    ${EDITOR_DIR}/util/BuildDiagnostics.cpp
 
     ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
     ${EDITOR_DIR}/window/JobsMemoryWindow.cpp
@@ -924,10 +949,15 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/UIProbe.cpp
     ${EDITOR_DIR}/util/Clipboard.cpp
     ${EDITOR_DIR}/util/EntityClipboard.cpp
+    ${EDITOR_DIR}/util/EntityPayload.cpp
     ${EDITOR_DIR}/util/EntityPath.cpp
     ${EDITOR_DIR}/util/ExportFeatureScan.cpp
     ${EDITOR_DIR}/util/NativeExportAndroid.cpp
+    ${EDITOR_DIR}/util/CMakeText.cpp
+    ${EDITOR_DIR}/util/VersionControlFiles.cpp
     ${EDITOR_DIR}/util/NativePlugins.cpp
+    ${EDITOR_DIR}/util/ApplePrivacy.cpp
+    ${EDITOR_DIR}/util/NativeNeeds.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
     ${EDITOR_DIR}/reload/HotReloadService.cpp
     ${EDITOR_DIR}/window/StatusBar.cpp
@@ -946,6 +976,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Textures.cpp
     ${EDITOR_DIR}/util/YamlFootprint.cpp
     ${EDITOR_DIR}/util/AssetDatabase.cpp
+    ${EDITOR_DIR}/asset/AssetClipboard.cpp
     ${EDITOR_DIR}/asset/AssetFileWrite.cpp
     ${EDITOR_DIR}/asset/AssetIndex.cpp
     ${EDITOR_DIR}/asset/AssetOps.cpp
@@ -962,6 +993,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ProjectUtils.cpp
     ${EDITOR_DIR}/util/WaterEditorUtils.cpp
     ${EDITOR_DIR}/util/TerrainSplineBake.cpp
+    ${EDITOR_DIR}/util/TerrainDetailRules.cpp
     ${EDITOR_DIR}/util/SplineBakeObjects.cpp
     ${EDITOR_DIR}/util/ParticleEffectEdit.cpp
     ${EDITOR_DIR}/util/ParticleMigrationReport.cpp
@@ -971,6 +1003,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ExternalCodeEditor.cpp
     ${EDITOR_DIR}/util/LuaApiData.cpp
     ${EDITOR_DIR}/util/NumericExpression.cpp
+    ${EDITOR_DIR}/util/LineDiff.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
     ${EDITOR_DIR}/util/ShaderGlobalsJson.cpp
     ${EDITOR_DIR}/util/ShaderGlobalsUsage.cpp
@@ -984,11 +1017,15 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/NormalMapTilt.cpp
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
+    ${EDITOR_DIR}/util/ScriptAttach.cpp
+    ${EDITOR_DIR}/util/ScriptPropertyCache.cpp
     ${EDITOR_DIR}/util/ScriptReloadService.cpp
     ${EDITOR_DIR}/util/ScriptStatus.cpp
     ${EDITOR_DIR}/util/SourceLocation.cpp
     ${EDITOR_DIR}/util/ScriptEvents.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
+    ${EDITOR_DIR}/util/ScriptTemplates.cpp
+    ${EDITOR_DIR}/util/TextureLabels.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
     ${EDITOR_DIR}/util/FloatImage.cpp
     ${EDITOR_DIR}/util/FbxImporter.cpp
@@ -1012,6 +1049,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/UIUtils.cpp
     ${EDITOR_DIR}/util/UiItemLocator.cpp
     ${EDITOR_DIR}/util/CommandRunner.cpp
+    ${EDITOR_DIR}/util/TextEncoding.cpp
+    ${EDITOR_DIR}/util/SystemFonts.cpp
     ${EDITOR_DIR}/util/ShellEnv.cpp
     ${EDITOR_DIR}/material/MaterialChange.cpp
     ${EDITOR_DIR}/pose/PoseAnimationDocument.cpp
@@ -1029,6 +1068,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/animation/PreviewParticles.cpp
     ${EDITOR_DIR}/animation/ClipConverters.cpp
     ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
+    ${EDITOR_DIR}/animation/ActionPreviewSnapshot.cpp
     ${EDITOR_DIR}/animation/ClipValidation.cpp
     ${EDITOR_DIR}/animation/ClipPropertyNames.cpp
     ${EDITOR_DIR}/animation/ClipTangents.cpp
@@ -1075,6 +1115,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/vcs/scene/SceneCli.cpp
     ${EDITOR_DIR}/vcs/VcsEditorOps.cpp
     ${EDITOR_DIR}/vcs/SceneDiffTracker.cpp
+    ${EDITOR_DIR}/vcs/TextBaselines.cpp
 
     ${EDITOR_DIR}/htmlui/ContentSniffer.cpp
     ${EDITOR_DIR}/htmlui/GoogleFontsImporter.cpp
@@ -1151,6 +1192,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorShadows.cpp
     ${EDITOR_DIR}/window/InspectorDefault.cpp
     ${EDITOR_DIR}/window/InspectorUpstream.cpp
+    ${EDITOR_DIR}/window/InspectorButton.cpp
     ${EDITOR_DIR}/window/InspectorPhysics.cpp
     ${EDITOR_DIR}/window/InspectorAnimation.cpp
     ${EDITOR_DIR}/window/InspectorRenderers.cpp
@@ -1160,6 +1202,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindowCamera.cpp
     ${EDITOR_DIR}/window/InspectorAudioClip.cpp
     ${EDITOR_DIR}/window/ProjectWindowSound.cpp
+    ${EDITOR_DIR}/window/InspectorPixelArt.cpp
     ${EDITOR_DIR}/window/InspectorVideo.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/InspectorVcs.cpp
@@ -1182,6 +1225,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/HierarchyWindow.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabMode.cpp
     ${EDITOR_DIR}/window/HierarchyVcs.cpp
+    ${EDITOR_DIR}/window/AssetCreateMenu.cpp
     ${EDITOR_DIR}/window/ProjectWindow.cpp
     ${EDITOR_DIR}/window/ProjectWindowSearch.cpp
     ${EDITOR_DIR}/window/ProjectWindowVcs.cpp
@@ -1267,6 +1311,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/EditorModal.cpp
     ${EDITOR_DIR}/window/dialog/ScenesWindow.cpp
     ${EDITOR_DIR}/window/widget/CustomTextEditor.cpp
+    ${EDITOR_DIR}/window/widget/CustomTextEditorDiff.cpp
     ${EDITOR_DIR}/window/widget/GraphCanvas.cpp
     ${EDITOR_DIR}/window/widget/HtmlCssLexer.cpp
     ${EDITOR_DIR}/window/widget/InputTextContextMenu.cpp
@@ -1276,6 +1321,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/render/ToolsLayer.cpp
     ${EDITOR_DIR}/render/UILayer.cpp
     ${EDITOR_DIR}/render/SceneRender.cpp
+    ${EDITOR_DIR}/render/ViewCameraMirror.cpp
     ${EDITOR_DIR}/render/SceneRender2D.cpp
     ${EDITOR_DIR}/render/SceneRender3D.cpp
     ${EDITOR_DIR}/render/gizmo/TranslateGizmo.cpp
@@ -1373,6 +1419,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ShaderGlobalsCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsCmd.cpp
     ${EDITOR_DIR}/command/type/DebugSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/ShaderOverridesCmd.cpp
+    ${EDITOR_DIR}/command/type/ApplePrivacySettingsCmd.cpp
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp
     ${EDITOR_DIR}/command/type/CreateDirCmd.cpp
@@ -1433,6 +1481,9 @@ include(${EDITOR_DIR}/EditorToolsSources.cmake)
 # the pixel-art family (S43...): palettes, Apply Palette, the Palette window, the pixel_art tools
 include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
 
+# the pixel-art family (S41-S52): PixelImage, the .aseprite codec, the importer and its windows
+include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
+
 # The engine build C++ script libraries must be made for (S23 toolchain fingerprint): the
 # editor version, on this one file (as on the engine's ToolchainFingerprint.cpp)
 set_source_files_properties(${EDITOR_DIR}/util/EditorFingerprint.cpp PROPERTIES
@@ -1456,6 +1507,9 @@ list(FILTER JASPERENGINE_EDITOR_SCENEVIEW_SOURCES INCLUDE REGEX "(^|/)editor/(pi
 jasperengine_skip_unity_build(
     REASON "the Scene view picking and tools (S26): per-file helpers (PI, now, project to view)"
     SOURCES ${JASPERENGINE_EDITOR_SCENEVIEW_SOURCES})
+jasperengine_skip_unity_build(
+    REASON "its own static copy of ImGui's stb_truetype, which another unit's stb_truetype.h would clash with"
+    SOURCES ${EDITOR_DIR}/util/SystemFonts.cpp)
 
 # Unity build: these sources keep file-local helpers or types (Registry, fail, lower, TempDir, ...)
 # whose names another editor or editor test source defines too (docs/specs/S33-build-speed.md M8)
@@ -1622,7 +1676,8 @@ function(configure_jasperengine_editor_target target_name)
         REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
         SOURCES ${EDITOR_DIR}/util/Clipboard.cpp ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
                 ${EDITOR_DIR}/backend/BackendLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
-                ${EDITOR_DIR}/platform/ScreenColorX11.cpp ${EDITOR_DIR}/platform/LaunchKeysX11.cpp ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp)
+                ${EDITOR_DIR}/platform/ScreenColorX11.cpp ${EDITOR_DIR}/platform/LaunchKeysX11.cpp ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp
+                ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp)
     jasperengine_target_warnings(${target_name})
     jasperengine_target_unity_build(${target_name})
     get_target_property(targetType ${target_name} TYPE)
@@ -1887,8 +1942,10 @@ else()
                       \"-DENGINE_DEST=\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/engine\" -DPRUNE_ONLY=ON -DINSTALL_EXCLUDES=ON
                       -P \"${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake\" COMMAND_ERROR_IS_FATAL ANY)"
             CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS})
+    # USE_SOURCE_PERMISSIONS: jasperengine.py and gradlew stay executable (install's default drops it)
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine
             DESTINATION bin
+            USE_SOURCE_PERMISSIONS
             CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
             PATTERN ".cxx" EXCLUDE
             PATTERN ".gradle" EXCLUDE

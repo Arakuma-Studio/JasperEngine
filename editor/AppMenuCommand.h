@@ -143,8 +143,17 @@ namespace jasperengine::editor {
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
         AddCameraShakerToMainCamera,  // GameObject > Add Camera Shaker to Main Camera
-        // S43: Window > 2D > Palette (payload: a .palette to open)
-        TogglePalette
+        // the Doriax catch-up's project-window: the one Create list, Duplicate, Maximize On Play
+        AssetsCreateCppSource,
+        AssetsCreateCppHeader,
+        AssetsCreatePhysicsMaterial,
+        AssetsCreatePhysicsMaterial2D,
+        AssetsDuplicate,
+        ToggleMaximizeOnPlay,
+        ToggleSpritePreview,          // Window > 2D > Sprite Preview (S44)
+        // S43: Window > 2D > Palette (payload: a .palette to open), Assets > Create > Palette
+        TogglePalette,
+        AssetsCreatePalette
     };
 
 }

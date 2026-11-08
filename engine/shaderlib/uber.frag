@@ -44,7 +44,8 @@ precision highp int;
 // engine binds a linear sampler when the fixed-resolution target is NEAREST, and the UV snaps
 // to the centre of its source texel (sampling.x 1), so that upscale stays nearest and every
 // effect works per source texel. UBER_UPSCALE (none of the effects) is the plain upscale of a
-// render scale below 1.
+// render scale below 1. UBER_SHARP_BILINEAR (the Pixel Perfect Camera's Stretch Fill, S41) maps
+// the UV so each source texel's interior is flat and only its seams blend, before that snap.
 // The bloom, halation and blur textures are the phase 4 bloom chain's (SRGB8A8: linear when
 // sampled, in the gamma-2 domain the chain's prefilter decoded the scene to; halation reads the
 // bloom chain's first two levels, or its own two-level chain without bloom); with none bound the
@@ -103,7 +104,8 @@ uniform u_fs_uberParams {
     vec4 vignetteColor;             // rgb display colour, a intensity
     vec4 vignetteLutScan;     // x, y vignette falloff, z LUT side, w scanline period (output pixels)
     vec4 bloomBlur;                 // rgb bloom tint * intensity (linear), a blur mix
-    vec4 sampling;            // x 1: snap the UV to source texel centres (a NEAREST upscale)
+    vec4 sampling;            // x 1: snap the UV to source texel centres (a NEAREST upscale); yz the
+                              // screen pixels per source pixel (UBER_SHARP_BILINEAR)
     // S13 (includes/post_vhs.glsl, includes/post_film.glsl)
     vec4 vhs0;                      // x intensity, y wobble, z tracking, w colour bleed
     vec4 vhs1;                      // x tape noise, y chroma streaks, z dropouts, w scanlines
@@ -228,6 +230,15 @@ void main(){
         // the image's position in output pixels from its top-left (the unwarped source UV is
         // the image's, y down on every backend): where the film damage and grain lie
         highp vec2 imagePixel = v_texcoord * uber.outputTexel.zw;
+    #endif
+    #ifdef UBER_SHARP_BILINEAR
+        // Stretch Fill (S41 R11): sharp bilinear in one pass. Each base pixel's interior is one
+        // flat colour; only the screen pixels on a seam blend its two neighbours (sampling.yz:
+        // screen pixels per base pixel; the source is read through a linear sampler)
+        highp vec2 basePixel = uv * uber.sourceTexel.zw;
+        highp vec2 seam = floor(basePixel + 0.5);
+        basePixel = seam + clamp((basePixel - seam) * uber.sampling.yz, -0.5, 0.5);
+        uv = basePixel * uber.sourceTexel.xy;
     #endif
     // a NEAREST upscale: the centre of the source texel (bilinear there is that texel)
     highp vec2 snapped = (floor(uv * uber.sourceTexel.zw) + 0.5) * uber.sourceTexel.xy;

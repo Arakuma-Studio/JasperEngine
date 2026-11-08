@@ -114,14 +114,11 @@ def placed(voice: dict) -> int:
     return voice["sample"] + voice.get("delay_samples", 0)
 
 
-async def test_setup(ed: Editor):
+async def test_footsteps_land_on_their_samples(ed: Editor):
     write_wav(ed.project / "sounds/step.wav", [[0.5] * 2400], RATE)
     write_wav(ed.project / "sounds/quarter.wav", [[0.5] * (RATE // 4)], RATE)
     write_wav(ed.project / "sounds/long.wav", [[0.25] * (RATE * 2)], RATE)
     await ed.call("sync_files")
-
-
-async def test_footsteps_land_on_their_samples(ed: Editor):
     scene = await animation_scene(ed, "Footsteps", [(t, None, "sounds/step.wav") for t in STEPS])
     lines = await capture(ed, scene, 70)
     s0 = mark(ed, lines, "start")["sample"]

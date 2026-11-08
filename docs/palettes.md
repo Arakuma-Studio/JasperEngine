@@ -67,8 +67,7 @@ Apply Palette, the colour picker's Snap to Palette and the pixel-art tools that 
   | Adobe `.ase` | RGB, grey, CMYK (converted naively, with a warning) and Lab colours; groups become ramps |
   | images (`.png`, `.gif`, ...) | the unique colours in reading order, or one per cell of a swatch strip; past 256 colours (a photo) the count stops: Reduce Colours, or import the first 256 |
   | `.colors` swatch libraries | HDR swatches clamped, with a warning |
-
-  Aseprite palettes (`.ase`/`.aseprite`) are not read yet: export the palette from Aseprite as `.gpl` or `.hex`.
+  | Aseprite `.aseprite`/`.ase` (told from Adobe `.ase` by its magic) | the first frame's palette, alpha kept; an indexed sprite's transparent index stays see-through |
 - **Import > From Lospec...**: a slug (`endesga-32`), the palette's page address
   (`https://lospec.com/palette-list/endesga-32`) or a `lospec-palette://endesga-32` link. The editor fetches it (10 s
   at most, with Cancel), shows the swatches, name and author, and **Create** writes `Assets/Palettes/<slug>.palette`.
@@ -166,8 +165,8 @@ Sprites sharing a material share its row; each Sprite's own material has its own
 Tick **Palette Cycling** to rotate every ramp of the source that has a cycle speed (DPaint-style water, fire and
 glows): an index at position p of a ramp of length L shows the ramp's colour `(p + floor(time x cycle x speed)) mod
 L`. **Cycling Speed** scales all of them: negative reverses, 0 freezes. Cycling works together with the active row.
-The time is game time: the colours hold while the game is paused (time scale 0, the editor's Pause) and in edit mode,
-and a fixed frame delta makes them reproducible.
+The time is the scene's clock (game time, as the water's waves): the colours hold while the game or the scene is
+paused and at time scale 0, and a fixed frame delta makes them reproducible.
 
 ## Palette Quantize
 

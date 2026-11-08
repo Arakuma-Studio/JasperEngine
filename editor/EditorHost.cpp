@@ -46,6 +46,10 @@ bool EditorHost::shouldSyncEngineApi() const {
     return false;
 }
 
+bool EditorHost::recordsRecentProjects() const {
+    return false;
+}
+
 void EditorHost::updateResourcesPath() {
 }
 
@@ -136,9 +140,10 @@ void EditorHost::openSpriteNormalsForEntity(uint32_t, jasperengine::Entity, unsi
     Out::warning("Sprite Normal Map needs the editor window: use the generate_sprite_normals MCP tool or the generate-sprite-normals command");
 }
 
-void EditorHost::registerSaveSceneDialog(uint32_t, std::function<void()> callback) {
+void EditorHost::registerSaveSceneDialog(uint32_t, std::function<void(bool)> callback) {
+    // nobody to ask where: nothing is saved
     if (callback) {
-        callback();
+        callback(false);
     }
 }
 
@@ -154,9 +159,9 @@ bool EditorHost::confirmOpenLockedProject(const ProjectLockInfo&) {
     return false;
 }
 
-void EditorHost::registerProjectSaveDialog(std::function<void()> callback) {
+void EditorHost::registerProjectSaveDialog(std::function<void(bool)> callback) {
     if (callback) {
-        callback();
+        callback(false);
     }
 }
 

@@ -383,9 +383,9 @@ TEST_F(PaletteSwapGpu, MatchesRemap){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// R16: Palette Cycling runs on game time: a fixed frame delta of 0.25 s at time scale 0 (a pause)
-// moves the shader clock a step a frame but holds the colours; at time scale 1 they rotate, and
-// show the rotation of the game time
+// R16: Palette Cycling runs on the scene clock (game time): a fixed frame delta of 0.25 s at time
+// scale 0 (a pause) moves the shader clock a step a frame but holds the colours; at time scale 1
+// they rotate, and show the rotation of the scene clock
 TEST_F(PaletteSwapGpu, CyclingFollowsGameTime){
     Sprite sprite(&scene);
     addSprite(sprite);
@@ -399,12 +399,12 @@ TEST_F(PaletteSwapGpu, CyclingFollowsGameTime){
         GpuEnvironment::drawFrames(1);
         EXPECT_TRUE(sameTexels(readTexels(), paused)) << "paused frame " << frame << ": the cycle holds";
     }
-    EXPECT_TRUE(sameTexels(paused, expected(0, (float)Engine::getGameTime(), 1.0f, true)));
+    EXPECT_TRUE(sameTexels(paused, expected(0, (float)scene.getSceneTime(), 1.0f, true)));
 
     Engine::setTimeScale(1.0f);
     for (int frame = 0; frame < 3; frame++){
         GpuEnvironment::drawFrames(1);
-        const float gameTime = (float)Engine::getGameTime();
+        const float gameTime = (float)scene.getSceneTime();
         EXPECT_TRUE(sameTexels(readTexels(), expected(0, gameTime, 1.0f, true))) << "running frame " << frame << " at " << gameTime << " s";
     }
     EXPECT_FALSE(sameTexels(readTexels(), paused)) << "the cycle moves again";

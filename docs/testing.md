@@ -21,7 +21,7 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | Crash diagnostics | the crash handler's report folders, sessions, hook and ring, the hang watchdog (`HangWatchdog.*`, `Crash*` in `jasperengine-core-tests`, which start `jasperengine-crash-test`, `engine/tests/crash/CrashTestMain.cpp`), the symbolication tool, the web crash hooks | `tools/build.sh unit-tests`; `python3 -I tools/crash/test_symbolicate.py <jasperengine-crash-test>`; `WEB_PROJECT=crash-diagnostics tools/build.sh web`, then `GATE=crash-diagnostics tools/build.sh web-gate` | as above |
 | Android packaging | what Build makes for Android, run for real: APK and App Bundle from the prebuilt player, the bundletool download (real URL), the debug and release keys, wrong passwords, `publish prepare`, then both installed on the emulator and their screens compared with the golden | `tools/ci/android_packaging.sh` (needs `tools/build.sh linux`, the Android player; KVM: server A) | `build/android-packaging/` |
 | iOS packaging | what Build makes for iOS on a Mac: the Xcode project through `xcodebuild`, installed and launched on a simulator device of its own (no window), a device build as far as signing, the IPA path without a developer account, `publish prepare` | `tools/ci/ios_packaging.sh` (needs the editor on a Mac with Xcode, `tools/players/ios_player.sh`; `IOS_PACKAGING_GOLDEN=1` compares the screen with `tools/fixtures/unified-lighting/golden/ios/screen.png`, from an iPhone 17 simulator) | `build/ios-packaging/` |
-| Tool checks | the CI scripts' own tests, the presets, the HTML UI golden ledger | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `python3 tools/check-editor-modals.py` (`--self-test`), `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
+| Tool checks | the shader lint, the CI scripts' own tests, the presets, the HTML UI golden ledger, the exported projects' `jasperengine.py`, C++ scripts linking Box2D and Jolt (run it on Windows and macOS by hand: nothing else checks those), the Android Gradle files | `python3 tools/ci/test_check_shader_lod.py` (with `python3 tools/check_shader_lod.py`: no implicit derivatives in a shader loop with a per-fragment exit or branch), `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_jasperengine_py.py`, `python3 tools/ci/check-script-physics-link.py <editor>`, `python3 tools/ci/test_check_gradle_warnings.py` (and `tools/build.sh android` runs `check_gradle_warnings.py` on its Gradle log: a deprecation in our Gradle files fails the build), `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `python3 tools/check-editor-modals.py` (`--self-test`), `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
 
 The only host requirement is Docker. Builds go to `build/<target>/`, a ccache shared by every
 worktree of a checkout makes rebuilds cheap.
@@ -47,6 +47,7 @@ tools/build.sh unit-tests                                   # both binaries
 UNIT_SUITE=core tools/build.sh unit-tests                   # one of them (core or editor)
 UNIT_TEST_ARGS='--gtest_filter=Matrix4.*' tools/build.sh unit-tests
 GRAPHIC_BACKEND=vulkan UNIT_SUITE=core tools/build.sh unit-tests   # GPU suites on lavapipe
+GRAPHIC_BACKEND=gles3 UNIT_SUITE=core tools/build.sh unit-tests    # GPU suites in an OpenGL ES 3.2 context (llvmpipe, linux-backends image)
 WERROR=1 tools/build.sh unit-tests
 RUN=0 tools/build.sh unit-tests                             # build only
 ```
@@ -134,9 +135,18 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   web`) checks the logger's browser console sink and a Lua `Timer` that way.
 - `GATE=mesh-raycast` (after `WEB_PROJECT=mesh-raycast tools/build.sh web`) times 10,000
   MeshRaycast rays against 1,000 meshes in WebAssembly and fails on a p99 over 4 ms (S26 AC17).
-- The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13) and `terrain`, a
+- The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13), `pcss` (PCSS's two views
+  of the shadow atlas in one WebGL2 draw, the Ultra tier's contact hardening) and `terrain`, a
   terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
   renderer uploads it as R32F or R16F there).
+- `GATE=web-keys-audio` (after `WEB_PROJECT=web-keys-audio tools/build.sh web`) runs Chrome with the
+  desktop autoplay policy (`chrome_flags` in the baseline): the page's audio is suspended until the
+  first key press (`keys`: trusted CDP key events, `eval_before_input` before them, `eval` after),
+  and Meta, ContextMenu and events without a code reach the game as their engine keys.
+- `GATE=pixel-perfect` (after
+  `WEB_PROJECT=pixel-perfect tools/build.sh web`) runs at a device scale factor of 2 and checks that
+  a Pixel Perfect Camera sizes the canvas backing store at its CSS size times `devicePixelRatio` and
+  draws it pixelated (S41 AC13).
 
 ### Compiled and prebuilt game builds (MCP, `JASPER_SLOW_BUILD=1`)
 
@@ -153,12 +163,16 @@ takes about a second. So an MCP test compiles only when the compile path is what
   | `test_build.py::test_desktop_build_and_run` | the compile path end to end (CMake, the engine, the link, a player that runs), and a broken C++ source's errors parsed as `file:line` (only a compiler produces them) |
   | `test_html_ui_effects_export.py::test_desktop_player_draws_the_effects` | `graphics.runtime_shaders: false`: a compiled game ships without the runtime shader compiler whatever its scripts do (a prebuilt variant leaves it out only when no script can need it, S34), so it shows the exported UI effect variants are all the game needs |
   | `test_build.py::test_cancel_desktop_build`, `test_busy.py::test_export_job_refusals` | a compile runs long enough to cancel, and to refuse other tools while it runs (a prebuilt build ends first); both are cancelled within seconds |
+  | `test_lifecycle_export.py::test_play_and_export_log_the_same_lifecycle` | a C++ script's lifecycle in an exported player: C++ scripts ship only in a compiled game |
 
 - **(b) Prebuilt** (`method="prebuilt"`, and it checks `method_used` and the `player_id` it
   used). The test needs a real game that runs, not the compile:
   `test_build.py::test_development_build_crash_report` (the Development runtime crashes on
   purpose and writes its report), `test_html_ui_export.py::test_desktop_build_runs_the_document`,
-  `test_html_ui_video_export.py::test_desktop_build_plays_the_video` and
+  `test_html_ui_video_export.py::test_desktop_build_plays_the_video`,
+  `test_navigation_export.py::test_desktop_export_ships_navmesh` (a baked `.navmesh` in the
+  build's `content.jpak`, an agent of the headless player reaching its destination from Lua, and
+  the preflight's stale-navmesh warning after static geometry moved; S19 AC27, S74 AC29) and
   `test_call_cli.py::test_wait_job_build` (the CLI's `--wait-job` on a build job). The runtime is
   the one `tools/build.sh players` builds, from the same engine sources as the editor under
   test.
@@ -221,7 +235,7 @@ The cache cannot hide a bug:
   game's first configure takes as the option's default) except `test_build.py`'s (`lto=True`).
 
 A new test that needs a game that runs builds it prebuilt. One that needs what only a compiled
-game has (C++ scripts, `ProjectBuild.cmake`, capacities above the player's, AdMob, no runtime
+game has (C++ scripts, `ProjectBuild.cmake`, capacities above the player's, native plugins a player cannot carry, no runtime
 shader compiler, compiler output) compiles, and joins the table above with its reason.
 
 ### Linked folders in a web game (S68 AC2)
@@ -370,6 +384,10 @@ continue to fail on any native crash.
   JASPER_SLOW_TESTS=1`), plus the WERROR Linux
   build (with the engine sample project's LTO link) and every unit test. check-changed is a
   selection and says so in every summary.
+- **Lints check-changed does not run**, by area (`AGENTS.md`, Test): `tools/check_raw_writes.py` and
+  `tools/check_stream_keys.py` (file writes, decoders), `tools/check_text_encoding.py` (code-page
+  conversions, Win32 `-A` calls, Apple string encodings, vswhere; `--self-test` is its red control),
+  `tools/ci/check-hardcoded-shortcuts.py`, `tools/ci/check-notices.py`.
 
 ### `tools/check-changed`
 
@@ -381,6 +399,12 @@ tools/check-changed --no-mcp                  # builds and unit tests only, said
 tools/build.sh exec linux tools/check-changed # inside the Linux image (no web or Android build there)
 ```
 
+- Lints with triggers: a changed MCP test file runs `tools/ci/check-mcp-ci-suite.py`; a changed
+  engine source (not `engine/libs`, `engine/tests`) runs `tools/check_event_clears.py` (every
+  `FunctionSubscribe` member is in its holder's `forEachEvent`, every component holder in
+  `ComponentEvents.h`, every other holder in the lint's `WALKS` or `TRANSIENT`, and every static
+  event in Engine's clears, so the clears at Stop reach it; `Ease` members count; `tools/build.sh
+  linux` runs it too).
 - The change: committed since the base, staged, unstaged and untracked files. A checkout without
   the stream's history reads its diff from `build/.rb-changes.json` (with every file's sha256: a
   diff that does not match the files is refused).
@@ -415,6 +439,11 @@ tools/build.sh exec linux tools/check-changed # inside the Linux image (no web o
 - Inside the Linux image `tools/build.sh` has no Docker to call and runs the image's own targets
   directly, with the same environment; a target of another image (web, Android) exits 3; check-changed there leaves those
   builds out, says so in its summary and caches no pass.
+- Navigation's runtime and the engine's CMake (`NAVIGATION_OFF_PATHS`: `engine/core/navigation/`,
+  `engine/libs/recastnavigation/`, `NavigationSystem.*`, `engine/core/object/navigation/`,
+  `engine/core/component/Nav*`, `engine/CMakeLists.txt`, the navigation tests and the script) also
+  plan `navigation-off`: `tools/check-navigation-off.sh` in the Linux image (below, "Navigation
+  OFF").
 - Its tests: `python3 -I tools/test_check_changed.py` (the diff and its fallbacks, the build plan,
   the suites from a synthetic `ninja -t deps`, the MCP selection from a synthetic map, the gcda
   reader, the cache and its invalidation, the exit codes).
@@ -554,7 +583,7 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   logger's drain thread or the workers may); `perfSlack()` is the factor wall-clock budgets are
   enforced with: `JASPER_TEST_PERF_SLACK`, unset (0) by default and under a sanitizer, where the
   budgets are only printed. `*Bench` suites (`LoggerBench`, `SchedulerBench`, `SignalBench`, S10's
-  `ShadowBench`), `SchedulerTest.Process10kUnder2ms` and S12's `AtmosphereNoise` bake budgets check
+  `ShadowBench`, S03's `AtomicFileBench` Document write), `SchedulerTest.Process10kUnder2ms` and S12's `AtmosphereNoise` bake budgets check
   their budgets that way and print `[bench]` lines (S34's `LuaBindingBench` prints the cost of a call
   through the Lua bindings, with no budget: builds are compared with it on the benchmark server); the
   editor suite's `editor::test::perfSlack()` does the same for `CommandHistoryBench` (S24),
@@ -718,6 +747,24 @@ the option errors.
 
 `engine/CMakeLists.txt` is also the top-level file of every exported game, so all of these default
 to off there, and the exporter never sets them: a game configures and builds exactly as before.
+
+### Navigation OFF: `tools/check-navigation-off.sh`
+
+A project with Project Settings > Navigation > Include In Builds off exports with
+`JASPERENGINE_NAVIGATION=OFF`: Recast/Detour is not compiled, every navmesh bake, query and agent
+fails and logs once, and Nav Grids keep working. `NavStubTest` checks that, and it is compiled only
+in such a build, which no other suite makes (S74 R28):
+
+```sh
+tools/build.sh exec linux tools/check-navigation-off.sh     # build/navigation-off, build/test-results/navigation-off.xml
+```
+
+It configures the standalone engine (`engine-linux-tests`, `-DJASPERENGINE_NAVIGATION=OFF`, warnings
+not errors), builds `jasperengine-core-tests`, runs `NavStubTest.*:NavGridTest.*` through the
+no-silent-green gate, and fails unless at least two `NavStubTest` tests passed (a tree that still
+compiles navigation in runs none). The first run builds the whole engine (the switch is a public
+define); later runs are incremental. `tools/check-changed` plans it for a navigation or engine CMake
+change; nothing else runs it (there is no CI).
 
 ### Sanitizers
 

@@ -4,6 +4,7 @@
 // Core: batch, get_job, cancel_job, undo / redo, editor_status, respond_dialog, tool_groups,
 // get_job_system_stats, set_job_system_config, get_memory_stats
 #include "McpTools.h"
+#include "pixelart/aseprite/AsepriteImporter.h"
 #include "window/StatusBar.h"
 
 #include "mcp/McpAutoSync.h"
@@ -35,6 +36,8 @@
 #include "memory/MemoryStats.h"
 #include "physics/PlacementSession.h"
 #include "util/FileUtils.h"
+#include "util/SystemFonts.h"
+#include "AppSettings.h"
 #include "window/CodeEditor.h"
 #include "window/ProjectWindow.h"
 #include "window/AssetPanels.h"
@@ -545,6 +548,8 @@ Json jobSystemStatsJson(int windowFrames) {
 void getJobSystemStatsTool(const CallPtr& call) {
     const int window = std::max(1, std::min(120, call->args().value("window_frames", 60)));
     Json data = jobSystemStatsJson(window);
+    // S44 R25: a project without .aseprite files starts no import job
+    data["aseprite"] = {{"imports_started", pixelart::aseprite::AsepriteImporter::get().jobsStarted()}};
     call->ok("Job system: " + std::to_string(data["workers"].get<int>()) + " worker(s), Background gate " +
              std::to_string(data["gate"]["taken"].get<int>()) + "/" + std::to_string(data["gate"]["max"].get<int>()) +
              ", " + std::to_string(data["asset_jobs"].get<uint32_t>()) + " asset job(s) queued or running.", data);
@@ -621,6 +626,19 @@ Json fileWatcherJson() {
     };
 }
 
+// The system fonts the editor's fonts fall back to for CJK and emoji (SystemFonts)
+Json editorFontsJson() {
+    static const char* const states[] = {"idle", "searching", "ready", "none"};
+    Json fallbacks = Json::array();
+    for (const SystemFonts::Font& font : SystemFonts::fonts()) {
+        fallbacks.push_back(Json{{"file", font.path}, {"face", font.faceIndex}, {"covers", font.covers}});
+    }
+    return Json{{"state", states[static_cast<int>(SystemFonts::state())]},
+                {"cjk_font_language", AppSettings::getCjkFontLanguage()},
+                {"effective_language", SystemFonts::languageTag(SystemFonts::effectiveLanguage())},
+                {"fallbacks", fallbacks}};
+}
+
 void reportEditorStatus(const CallPtr& call) {
     McpContext& ctx = call->ctx();
     Project* project = ctx.project();
@@ -630,6 +648,7 @@ void reportEditorStatus(const CallPtr& call) {
     Json scenes = Json::array();
     Json unsavedScenes = Json::array();
     bool playing = false;
+    bool saving = false;
     for (SceneProject* scene : project->getScenesAndPrefabStages()) {
         Json item = McpRefs::sceneJson(project, *scene);
         item["selected"] = scene->id == project->getSelectedSceneId();
@@ -638,7 +657,9 @@ void reportEditorStatus(const CallPtr& call) {
         item["entity_count"] = scene->entities.size();
         scenes.push_back(item);
         if (scene->isModified) unsavedScenes.push_back(scene->id);
-        if (scene->playState != ScenePlayState::STOPPED) playing = true;
+        // a scene the editor is saving is not playing: calls wait for the save (McpServer::execute)
+        if (scene->playState == ScenePlayState::SAVING) saving = true;
+        else if (scene->playState != ScenePlayState::STOPPED) playing = true;
     }
 
     Json jobs = Json::array();
@@ -676,7 +697,8 @@ void reportEditorStatus(const CallPtr& call) {
         }
         ui["project_window"] = {{"drawn", state.drawn}, {"directory", state.directory}, {"search", state.search},
                                 {"selected", state.selected}, {"search_box", rectJson(state.searchBox)},
-                                {"tree", tree}, {"entries", entries}, {"context_menu", menu}};
+                                {"tree", tree}, {"entries", entries}, {"context_menu", menu},
+                                {"clipboard", {{"files", state.clipboard}, {"cut", state.clipboardCut}}}};
     }
     if (AssetReferencesWindow* references = app.getAssetReferencesWindow()) {
         Json referrers = Json::array();
@@ -725,6 +747,7 @@ void reportEditorStatus(const CallPtr& call) {
         }},
         {"scenes", scenes},
         {"playing", playing},
+        {"saving", saving},
         {"unsaved", {
             {"scene_ids", unsavedScenes},
             {"code_editor", ctx.codeEditor() && ctx.codeEditor()->hasUnsavedChanges()},
@@ -734,10 +757,13 @@ void reportEditorStatus(const CallPtr& call) {
         {"waiting_calls", status.pendingCalls},
         {"auto_sync", McpAutoSync::get().stats()},
         {"file_watcher", fileWatcherJson()},
+        {"editor_fonts", editorFontsJson()},
         // the status bar's short message ("Preparing picking for Rock...", S26)
         {"status_message", StatusBar::getTransientMessage()},
         {"scripts", ScriptStatus::get().toJson()},
         {"frame_ms", app.takeFrameStats()},
+        // false: minimized or hidden, nothing is drawn (screenshots fail; a playing game updates)
+        {"window", {{"visible", app.isWindowVisible()}}},
         {"dialog", dialog},
         {"ui", ui},
         // S25: what the layouts and the palette change

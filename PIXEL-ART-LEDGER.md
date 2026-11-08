@@ -167,18 +167,18 @@ never build or run them.
 
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
-| S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | implementing |
+| S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | merged and pushed |
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | spec done |
-| S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | implementing |
-| S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | in review |
-| S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | spec done |
+| S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | in review |
+| S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
+| S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | in review |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | spec done |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | spec done |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
-| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | spec done |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | waits for `dc/sprite-batching` on origin/main; scope narrowed |
+| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | implementing |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | re-scoping onto the landed batcher |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -217,8 +217,124 @@ Per spec, the merged tree passes:
 `build/fixture-unity` (TappyPlane) isn't on this host, so tests that need it skip and the reports
 list them. There is no CI.
 
+Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*:CookedScene.*:ShaderNeutralApi.*:ReflectParity.*:ReflectRegistry.*:ReflectLocators.*:Stream.*:MeshMemory.*`; MCP `test_reflection.py`, `test_saved_output_determinism.py`, `test_editor_modals.py`, `test_tool_budget.py`, `test_docs.py`; lints `check-editor-modals.py`, `tools/mcp/eval/test_grade.py`.
+
 ## Log
 
+- 2026-11-08: **S41 Pixel Perfect Camera merged into `main` and pushed** (`e3a0d1ff9`, then
+  `be6b8baf9`).
+  - Merged twice more with `origin/main` (lit-uniforms took cache v56, so S41 is v57; S65 and
+    mesh-memory follow-ups). Bits: MESH `Pxs` 45, DEPTH 19, UI 5, PARTICLES 11, BLIT `Psb` 18.
+  - Verified on the merged tree: `WERROR` linux; editor 166 tests (S41 plus the shared-data and
+    `ShaderKey` suites); core 77 tests; 115 MCP tests (S41, Aseprite and the shared MCP files);
+    `test_grade`. The agent's own last full gate (Vulkan 86, editor 182, core 209, web gate,
+    Lua doctest) ran one merge earlier.
+  - Added `Pxs` to `test_shader_keys.py`'s WIDE_MESH set. A red control showed the set isn't
+    checked exhaustively, so this only keeps the list accurate.
+  - The Doriax lead was told; S52 owns the batcher wiring for snapped sprites.
+  - S43 was woken for its final merge (`Pal` off bit 18, cache v58, Aseprite palette import).
+    S51 Pixel Fonts started from `be6b8baf9`.
+- 2026-11-08: S45 implementation reported at `180f6354e` (main `b069dde54` merged).
+  - Passing: core 100 and editor 366 filtered tests, plus the shared-data suites; 162 MCP tests;
+    `WERROR` linux; the compile smoke test; Lua API tests.
+  - AssetType 26; `SpriteComponent` is 352 of 384 bytes.
+  - Gaps it reported: AC13's player screenshot (needs `JASPER_SLOW_BUILD`), AC14's device
+    number, and web/android not rebuilt after the last merge.
+  - An independent review is running.
+- 2026-11-08: Fixed and pushed `b069dde54`: the lite2d player didn't compile, because S44 put the
+  slice-geometry include under `JASPERENGINE_PHYSICS_3D`. The follow-ups program reported it;
+  verified with a `lite2d` player build (776/776).
+  - The disk was back at 98%. Android build output (~27 GB per worktree, git-ignored under
+    `engine/workspaces/androidstudio`) and S43's one-off trees were removed, leaving 104 GB free.
+  - S41 passed its final gate at `61b5d84b9`: `WERROR` build; editor 181 and core 207 filtered
+    unit tests; Vulkan 61; 152 MCP tests; the web gate; `SpriteComponent` at 328 of 384 bytes.
+    But `main` moved 38 commits (shader cache v54 and v55 taken by the follow-ups program), so it
+    is doing one more merge (taking v56) before landing.
+- 2026-11-08: The disk filled to 0 bytes while S41's final gate was running. The landed S44
+  worktree and its 42 GB build were removed, leaving 64 GB free. Each worktree build takes
+  35–70 GB, so builds are deleted after a spec lands, one-off trees (smoke, players-build,
+  variants) are cleaned after use, and about four specs run at once.
+  - S41 at `aeaa6b666` with the latest `main`: `Pxs` = MESH 45, shader cache v54; `WERROR` build
+    clean; 152 MCP tests pass. The S44 importer now uses the project's Pixels Per Unit. Its unit
+    tests and web gate are being re-run now that there's disk space.
+- 2026-11-08: `main` is green again on the shared-data suites, after the Doriax lead's
+  regeneration (`152131bed`).
+  - Added to the shared-data list: `Stream.*`, `MeshMemory.*` (component size ceilings;
+    `SpriteComponent` is at 320 of 384 bytes after S44), MCP `test_tool_budget.py` and
+    `test_docs.py`, and the `check-editor-modals.py` lint.
+  - S41 and S45 were told that any failure in those suites is now theirs.
+- 2026-11-07: S45 Sprite Atlas implementation started (`.worktrees/s45`, from `main` `8abf785e1`
+  with S44). S41 was told to make its final merge of `main` (with S44). The Doriax lead was told
+  about `main`'s six failing shared-data tests.
+- 2026-11-07: **S44 Aseprite Import merged into `main` and pushed** (merge of `f403cce21`).
+  - Verified on the merged tree (`main` `2875cf469` + S44): `WERROR` linux; filtered unit tests
+    (core 52, editor 332) and the shared-data suites; 170 MCP tests plus `test_editor_modals`
+    29/29; `test_grade` 20/20; lints; the real-Aseprite compatibility check 637/640.
+  - Six failures remain, all of them `main`'s, from the navigation (S74/S75) and water
+    programs' fields that weren't regenerated: `ReflectLocators.AllComponentsScene`,
+    `RuntimeFields.Generated`, 2× `ShaderNeutralApi`, `Stream.DerivedTransformWorldMatricesUnchanged`,
+    `test_golden_resave_reflection_parity`. Verified by grep: `main` has `maxCarvingObstacles` in
+    `NavigationReflect.cpp` but not in `RuntimeFields.gen.inc`.
+  - Scene/prefab format 8/9. Follow-ups: S43's Aseprite palette import (now possible), and the
+    codec time budgets on a quiet host.
+- 2026-11-07: S43's review fixes are done (`896a4e77d`; it waits for S41 before its final
+  merge).
+  - S44 landing attempt: the merged tree failed `test_editor_modals` because of two raw ImGui
+    modals in S44 (`AsepriteImporterView.cpp:756`, `AsepriteEditorHooks.cpp:90`, against `main`'s
+    S69 `EditorModal` rule). The unpushed local merge was dropped. S41 had merged that local
+    `main`, so its branch contains S44's commits, and the landing order is now S44, then S41,
+    then S43.
+  - Shared registries on `main` after the Doriax program landed: MESH bits to 44 (S41 `Pxs` moves
+    to 45), GBUFFER 16–18, shader cache v53 (S41 takes v54), cooked scene format 1.5.
+  - The shared-data suites (`ShaderNeutralApi`, `ReflectParity`, `ReflectRegistry`,
+    `RuntimeFields`, `CookedScene`, `ReflectLocators`; `test_reflection`,
+    `test_saved_output_determinism`, `test_editor_modals`; `eval/test_grade.py`) are now part of
+    every landing set.
+  - All three implementers then hit an API weekly limit. The session moved accounts, and S44 and
+    S41 were revived.
+- 2026-11-07: On plain `main` ac10792fb, four MCP tests fail. They are pre-existing, not ours:
+  `test_reflection` (`test_golden_resave`, `test_codegen_golden`,
+  `test_inspector_layout_parity`) and
+  `test_saved_output_determinism::test_fixture_scenes_save_the_same_drawn_or_not` (7 passed,
+  4 failed). Their goldens show mesh fields from other programs' work, and the Doriax lead was
+  told. S44 is approved to land after a final merge of `main` 81ffe9f3d (with the dynamic sprite
+  batching) and a sheet-sprite batching parity test.
+- 2026-11-07: `dc/sprite-batching` landed on origin/main (885cddc46, 81ffe9f3d). The batcher
+  draws pixel-snapped sprites one by one, unbatched, until S41's snap is wired into its batch key.
+  That wiring belongs to the narrowed S52, so S41 lands as is. The S52 worktree was recreated
+  from `main` 81ffe9f3d, and its spec is being re-scoped onto the landed batcher. Shader cache on
+  `main` is v50; S41 took v51 at its final merge.
+- 2026-11-07: S44 review fixes are done at `5e68ac54b` (main `cbc4ee7fb` merged).
+  - Passing: `WERROR` builds; filtered unit tests (core 15, editor 252); 183 MCP tests across 20
+    files; `aseprite_compat.py` against real Aseprite (637/640 pass, 3 skipped where Aseprite's
+    own exports disagree); lints.
+  - `check-changed` was skipped, since its plan would be every test (no-full-suites rule).
+  - `test_reflection` and `test_saved_output_determinism` failed on the merged tree, with
+    differences in non-S44 fields. They're being checked on `main` `ac10792fb` to show whether
+    they already fail there.
+  - Three codec time budgets are over on this loaded host and are recorded in the spec.
+  - Scene/prefab versions are 8/9; `AsepriteSprite = 25` (`main` has `SoundEvent = 28`).
+- 2026-11-06: S41 review: 1 blocker (shader cache not bumped, so stale library shaders read a
+  zero post colour) and 7 should-fix issues (shadow maps snapped, uniform size, input mapping in
+  Integer Expand, test gaps, Vulkan/GLES3 not run, HiDPI, UI toggles). They were sent back to the
+  implementer.
+  - Shader bit rule: S41 keeps BLIT/uber bit 18 (`Psb`), and S43 renumbers `UBER_PALETTE`
+    (`Pal`) to the next free bit at its final merge.
+  - The S43 review (1 blocker: palette bindings missing from the cooked-scene runtime fields, so
+    the prebuilt player loses Palette Swap; 5 should-fix) was also sent back to its implementer.
+- 2026-11-06: S41 implementation reported at `47fdcec4d`, with main `fa493bae4` merged.
+  - Passing: `WERROR` linux; 3,172 unit tests through `check-changed`; 8 `PixelPerfectGpu` tests
+    on glcore; the web gate at device pixel ratio 2; android; 62 named MCP tests; lints.
+  - Shader bits taken: `Pxs` = MESH 42 and DEPTH 19, UI 5, PARTICLES 11, BLIT `Psb` 18.
+  - Pixel-snapped draws are not auto-instanced, and batchers must keep `pixelSnapDraw` and use
+    `pixelSnapApply`. The Doriax lead was told, for `dc/sprite-batching`.
+  - An independent review is running.
+- 2026-11-06: S43 implementation reported at `b481a0454`, with main `fa493bae4` merged.
+  - Passing: `WERROR` linux; filtered unit tests (core 248, editor 377); 12 MCP files; web and
+    android builds; lints and generators; the smoke test.
+  - Gaps it reported: AC7/AC12 verified only on glcore; AC11 waits for S52; AC14's GPU budgets
+    need a GPU; AC19 has no goldens; Aseprite palettes wait for S44's codec. An independent review
+    is running.
 - 2026-11-06: The implementers stopped on a revoked auth token, after merging the S53–S73 `main`
   (S41 `5bb89cc5a`, S43 `872e0330e`, S44 `c17d9dd31`). `main` fast-forwarded again to `4f5899c00`
   (187 commits) and all three were revived. To avoid repeated large merges, each merges `main`

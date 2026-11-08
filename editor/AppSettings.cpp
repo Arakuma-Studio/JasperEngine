@@ -11,6 +11,7 @@
 #include "io/AtomicFile.h"
 #include "io/ScopedFileLock.h"
 #include "util/FileUtils.h"
+#include "util/SystemFonts.h"
 #include "util/SafeWrite.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/VideoImporter.h"
@@ -157,9 +158,11 @@ int AppSettings::resourcesItemViewStyle = 1;
 float AppSettings::resourcesLeftPanelWidth = 200.0f;
 float AppSettings::codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
 bool AppSettings::multiViewportEnabled = false;
+bool AppSettings::uiNavigationVisualize = false;
 bool AppSettings::poseDockGrown = false;
 bool AppSettings::editorVSyncEnabled = true;
 bool AppSettings::projectHubAlways = false;
+std::string AppSettings::cjkFontLanguage = "auto";
 bool AppSettings::soundBrowserAutoplay = false;
 bool AppSettings::soundBrowserMatchLoudness = true;
 std::filesystem::path AppSettings::hubLastLocation;
@@ -367,6 +370,9 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             externalToolPaths.clear();
             for (const auto& item : settingsData["externalTools"]) {
                 if (item.second.IsScalar()) externalToolPaths[item.first.as<std::string>()] = item.second.as<std::string>();
+                // a tool with its own section (externalTools.aseprite.path, S44 §6.8): "<tool>.path"
+                else if (item.second.IsMap() && item.second["path"] && item.second["path"].IsScalar())
+                    externalToolPaths[item.first.as<std::string>() + ".path"] = item.second["path"].as<std::string>();
             }
         }
         if (settingsData["emsdk"] && settingsData["emsdk"]["path"]) {
@@ -447,6 +453,9 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (editorNode["multi_viewport"]) {
                 multiViewportEnabled = editorNode["multi_viewport"].as<bool>();
             }
+            if (editorNode["ui_navigation_visualize"]) {
+                uiNavigationVisualize = editorNode["ui_navigation_visualize"].as<bool>();
+            }
             if (editorNode["pose_dock_grown"]) {
                 poseDockGrown = editorNode["pose_dock_grown"].as<bool>();
             }
@@ -455,6 +464,11 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             }
             if (editorNode["project_hub_at_startup"] && editorNode["project_hub_at_startup"].IsScalar()) {
                 projectHubAlways = editorNode["project_hub_at_startup"].as<std::string>() == "always";
+            }
+            if (editorNode["cjk_font_language"] && editorNode["cjk_font_language"].IsScalar()) {
+                // an unknown value (a newer editor's) reads as auto
+                cjkFontLanguage = SystemFonts::isLanguageSetting(editorNode["cjk_font_language"].as<std::string>())
+                    ? editorNode["cjk_font_language"].as<std::string>() : "auto";
             }
             if (editorNode["sound_browser_autoplay"]) soundBrowserAutoplay = editorNode["sound_browser_autoplay"].as<bool>();
             if (editorNode["sound_browser_match_loudness"]) soundBrowserMatchLoudness = editorNode["sound_browser_match_loudness"].as<bool>();
@@ -493,6 +507,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 auto gameNode = editorNode["game_view"];
                 if (gameNode["aspect"]) gameViewSettings.aspect = gameNode["aspect"].as<int>();
                 if (gameNode["scale"]) gameViewSettings.scale = gameNode["scale"].as<float>();
+                if (gameNode["pixelScale"]) gameViewSettings.pixelScale = std::clamp(gameNode["pixelScale"].as<int>(), 0, 8);
                 if (gameNode["maximize_on_play"]) gameViewSettings.maximizeOnPlay = gameNode["maximize_on_play"].as<bool>();
                 if (gameNode["stats"]) gameViewSettings.showStats = gameNode["stats"].as<bool>();
                 if (gameNode["atmosphere_quality"]) gameViewSettings.atmosphereQuality = std::clamp(gameNode["atmosphere_quality"].as<int>(), -1, 3);
@@ -664,6 +679,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (vcsNode["auto_fetch_minutes"]) vcs.autoFetchMinutes = vcsNode["auto_fetch_minutes"].as<int>();
             if (vcsNode["commit_and_push"]) vcs.commitAndPush = vcsNode["commit_and_push"].as<bool>();
             if (vcsNode["show_changes"]) vcs.showChanges = vcsNode["show_changes"].as<bool>();
+            if (vcsNode["code_editor_changes"]) vcs.codeEditorChanges = vcsNode["code_editor_changes"].as<bool>();
         }
         versionControlSettings = vcs;
         versionControlSettings = getVersionControlSettings();
@@ -702,7 +718,11 @@ bool AppSettings::saveSettings() {
         // Preferences > External Tools
         if (!externalToolPaths.empty()) {
             YAML::Node toolsNode;
-            for (const auto& [tool, path] : externalToolPaths) toolsNode[tool] = path;
+            for (const auto& [tool, path] : externalToolPaths) {
+                const size_t dot = tool.find('.');
+                if (dot == std::string::npos) toolsNode[tool] = path;
+                else toolsNode[tool.substr(0, dot)][tool.substr(dot + 1)] = path;
+            }
             settingsData["externalTools"] = toolsNode;
         } else {
             settingsData.remove("externalTools");
@@ -777,9 +797,11 @@ bool AppSettings::saveSettings() {
         // Editor viewport settings
         YAML::Node editorNode;
         editorNode["multi_viewport"] = multiViewportEnabled;
+        editorNode["ui_navigation_visualize"] = uiNavigationVisualize;
         editorNode["pose_dock_grown"] = poseDockGrown;
         editorNode["vsync"] = editorVSyncEnabled;
         editorNode["project_hub_at_startup"] = projectHubAlways ? "always" : "when_no_project";
+        editorNode["cjk_font_language"] = cjkFontLanguage;
         if (soundBrowserAutoplay) editorNode["sound_browser_autoplay"] = true;
         if (!soundBrowserMatchLoudness) editorNode["sound_browser_match_loudness"] = false;
         if (!hubLastLocation.empty()) editorNode["hub_last_location"] = FileUtils::pathToGenericUtf8(hubLastLocation);
@@ -810,6 +832,7 @@ bool AppSettings::saveSettings() {
         YAML::Node gameNode;
         gameNode["aspect"] = gameViewSettings.aspect;
         gameNode["scale"] = gameViewSettings.scale;
+        if (gameViewSettings.pixelScale != 0) gameNode["pixelScale"] = gameViewSettings.pixelScale;
         gameNode["maximize_on_play"] = gameViewSettings.maximizeOnPlay;
         gameNode["stats"] = gameViewSettings.showStats;
         gameNode["atmosphere_quality"] = gameViewSettings.atmosphereQuality;
@@ -950,6 +973,7 @@ bool AppSettings::saveSettings() {
             vcsNode["auto_fetch_minutes"] = vcs.autoFetchMinutes;
             vcsNode["commit_and_push"] = vcs.commitAndPush;
             vcsNode["show_changes"] = vcs.showChanges;
+            vcsNode["code_editor_changes"] = vcs.codeEditorChanges;
             settingsData["version_control"] = vcsNode;
         }
         if (settingsData["ai_assistant"]) settingsData.remove("ai_assistant");
@@ -1215,6 +1239,14 @@ void AppSettings::setMultiViewportEnabled(bool enabled) {
     multiViewportEnabled = enabled;
 }
 
+bool AppSettings::getUINavigationVisualize() {
+    return uiNavigationVisualize;
+}
+
+void AppSettings::setUINavigationVisualize(bool visualize) {
+    uiNavigationVisualize = visualize;
+}
+
 bool AppSettings::getAutoRefresh() {
     return assetAutoRefresh;
 }
@@ -1414,6 +1446,14 @@ bool AppSettings::getEditorVSyncEnabled() {
 
 void AppSettings::setEditorVSyncEnabled(bool enabled) {
     editorVSyncEnabled = enabled;
+}
+
+std::string AppSettings::getCjkFontLanguage() {
+    return cjkFontLanguage;
+}
+
+void AppSettings::setCjkFontLanguage(const std::string& language) {
+    cjkFontLanguage = SystemFonts::isLanguageSetting(language) ? language : "auto";
 }
 
 bool AppSettings::getSoundBrowserAutoplay() {

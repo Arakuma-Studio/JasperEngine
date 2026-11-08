@@ -109,6 +109,9 @@ namespace jasperengine::editor{
         // a Text Effect's selection or layers changed: its glyphs again from their base (upstream
         // ui-scaling-text: bit 53 there; oe-port's bits took 50-54)
         UpdateFlags_TextEffect          = (uint64_t)1 << 55,
+        // a Button field (ui-components): it redraws (needUpdateButton) from any edit path, the
+        // Inspector, MCP or undo
+        UpdateFlags_Button              = (uint64_t)1 << 56,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -225,12 +228,16 @@ namespace jasperengine::editor{
         // soft capsule shadows of a character from its bones (S57 R2)
         CapsuleShadowCasterComponent,
         // a Mixer Snapshot action of the legacy action timeline (S40 R18)
-        AudioSnapshotComponent
+        AudioSnapshotComponent,
+        WaterExcluderComponent,
+        WaterWakeComponent,
+        // pixel art (S41): integer scaling, Pixels Per Unit and the pixel-snap rule of a camera
+        PixelPerfectCameraComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::AudioSnapshotComponent;
+    constexpr ComponentType LastComponentType = ComponentType::PixelPerfectCameraComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;
@@ -329,8 +336,10 @@ namespace jasperengine::editor{
 
         static PropertyData getProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName);
 
-        // The same lookup without the not-found log, for callers a miss is expected on
-        static PropertyData findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName);
+        // The same lookup without the not-found log, for callers a miss is expected on. `append`:
+        // the caller writes the value, so one past the last element of a component array that
+        // grows by index ("tiles[N]") appends one (reflect::resolve); a read never grows it
+        static PropertyData findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName, bool append = false);
 
         // Submesh::overrideFields of a "submeshes[N].<field>" property, null for anything else,
         // with propertyFields set to the bits that property occupies. A command ORs them in after
@@ -345,6 +354,29 @@ namespace jasperengine::editor{
         static bool isCustomShaderBuildFailed(Scene* scene, Entity entity, ComponentType component);
         // same for a mesh's depth fork
         static bool isCustomDepthShaderBuildFailed(Scene* scene, Entity entity);
+
+        // ---- the scene's default shader property values (Scene > Default Shaders)
+        // "default_mesh_shader_uniforms", ... ("" for a type without a scene default)
+        static const char* getDefaultShaderUniformsProperty(ShaderType type);
+        // the type of such a property; false for any other name
+        static bool getDefaultShaderUniformsType(const std::string& propertyName, ShaderType& type);
+        // The layers a component's (submesh -1) or a submesh material's shader property values are
+        // looked up in, as the render system writes them (ShaderUniforms::resolve); it keeps the
+        // manifest alive. The pointers are the component's: valid until it changes.
+        struct UniformChainRefs {
+            UniformChain chain;
+            std::shared_ptr<const ShaderManifest> manifest;
+        };
+        static UniformChainRefs getShaderUniformChain(Scene* scene, Entity entity, ComponentType component, int submesh = -1);
+        // Who draws with the scene's default shader of a type: the objects without a shader of
+        // their own (a mesh with at least one submesh whose material has none), how many of them
+        // failed to build it, and their custom blocks (vertex first)
+        struct DefaultShaderUse {
+            int users = 0;
+            int failed = 0;
+            std::vector<const CustomUniformBlock*> blocks;
+        };
+        static DefaultShaderUse getDefaultShaderUse(Scene* scene, ShaderType type);
 
         // ---- shader library values (docs/superpowers/specs/2026-10-10-shader-library-phase1-design.md)
         // One entry of a shader-library collection property, addressed by its key:
@@ -489,6 +521,9 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
             if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
                 if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
+                if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return PlanarReflectionResolution::HALF;
+                if constexpr (std::is_same_v<T, WaterWakeResolution>) return WaterWakeResolution::AUTO;
+                if constexpr (std::is_same_v<T, uint32_t>) return 0xFFFFFFFFu;
                 if constexpr (std::is_same_v<T, LitQuality>) return LitQuality::HIGH;
                 if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
                 if constexpr (std::is_same_v<T, std::string>) return std::string();
@@ -648,6 +683,33 @@ namespace jasperengine::editor{
                     return scene->getSceneColorScale();
                 }
             }
+            else if (propertyName == "planar_reflection_resolution") {
+                if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return scene->getPlanarReflectionResolution();
+            }
+            else if (propertyName == "planar_reflection_layers") {
+                if constexpr (std::is_same_v<T, uint32_t>) return scene->getPlanarReflectionLayers();
+            }
+            else if (propertyName == "planar_reflection_shadows") {
+                if constexpr (std::is_same_v<T, bool>) return scene->getPlanarReflectionShadows();
+            }
+            else if (propertyName == "planar_reflection_far_clip") {
+                if constexpr (std::is_same_v<T, float>) return scene->getPlanarReflectionFarClip();
+            }
+            else if (propertyName == "planar_reflection_clip_offset") {
+                if constexpr (std::is_same_v<T, float>) return scene->getPlanarReflectionClipOffset();
+            }
+            else if (propertyName == "max_planar_reflections") {
+                if constexpr (std::is_same_v<T, int>) return scene->getMaxPlanarReflections();
+            }
+            else if (propertyName == "water_wake_resolution") {
+                if constexpr (std::is_same_v<T, WaterWakeResolution>) return scene->getWaterWakeResolution();
+            }
+            else if (propertyName == "water_wake_area") {
+                if constexpr (std::is_same_v<T, float>) return scene->getWaterWakeArea();
+            }
+            else if (propertyName == "water_wake_fade") {
+                if constexpr (std::is_same_v<T, float>) return scene->getWaterWakeFade();
+            }
             else if (propertyName == "ssao_enabled") {
                 if constexpr (std::is_same_v<T, bool>) {
                     return scene->isSSAOEnabled();
@@ -758,6 +820,11 @@ namespace jasperengine::editor{
                     return scene->getPostProcessPasses();
                 }
             }
+            else if (ShaderType uniformsType; getDefaultShaderUniformsType(propertyName, uniformsType)) {
+                if constexpr (std::is_same_v<T, ShaderUniformValues>) {
+                    return scene->getDefaultShaderUniforms(uniformsType);
+                }
+            }
             else if (propertyName == "canvas_scaler") {
                 if constexpr (std::is_same_v<T, SceneCanvasScaler>) {
                     return SceneCanvasScaler{scene->isCanvasScalerUseProjectDefault(), scene->getCanvasScaler()};
@@ -778,9 +845,13 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
             if constexpr (std::is_same_v<T, std::string>) return std::string();
             if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) return std::vector<PostProcessPass>();
+            if constexpr (std::is_same_v<T, ShaderUniformValues>) return ShaderUniformValues();
             if constexpr (std::is_same_v<T, ShadowDebugView>) return ShadowDebugView::NONE;
             if constexpr (std::is_same_v<T, PostProcessingSettings>) return PostProcessingSettings();
             if constexpr (std::is_same_v<T, SceneCanvasScaler>) return SceneCanvasScaler();
+            if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return PlanarReflectionResolution::HALF;
+            if constexpr (std::is_same_v<T, WaterWakeResolution>) return WaterWakeResolution::AUTO;
+            if constexpr (std::is_same_v<T, uint32_t>) return 0xFFFFFFFFu;
             // Add other types as needed
         }
 
@@ -888,6 +959,33 @@ namespace jasperengine::editor{
             else if (propertyName == "scene_color_scale") {
                 if constexpr (std::is_same_v<T, SceneColorScale>) return d.sceneColorScale;
             }
+            else if (propertyName == "planar_reflection_resolution") {
+                if constexpr (std::is_same_v<T, PlanarReflectionResolution>) return d.planarReflectionResolution;
+            }
+            else if (propertyName == "planar_reflection_layers") {
+                if constexpr (std::is_same_v<T, uint32_t>) return d.planarReflectionLayers;
+            }
+            else if (propertyName == "planar_reflection_shadows") {
+                if constexpr (std::is_same_v<T, bool>) return d.planarReflectionShadows;
+            }
+            else if (propertyName == "planar_reflection_far_clip") {
+                if constexpr (std::is_same_v<T, float>) return d.planarReflectionFarClip;
+            }
+            else if (propertyName == "planar_reflection_clip_offset") {
+                if constexpr (std::is_same_v<T, float>) return d.planarReflectionClipOffset;
+            }
+            else if (propertyName == "max_planar_reflections") {
+                if constexpr (std::is_same_v<T, int>) return d.maxPlanarReflections;
+            }
+            else if (propertyName == "water_wake_resolution") {
+                if constexpr (std::is_same_v<T, WaterWakeResolution>) return d.waterWakeResolution;
+            }
+            else if (propertyName == "water_wake_area") {
+                if constexpr (std::is_same_v<T, float>) return d.waterWakeArea;
+            }
+            else if (propertyName == "water_wake_fade") {
+                if constexpr (std::is_same_v<T, float>) return d.waterWakeFade;
+            }
             else if (propertyName == "ssao_enabled") {
                 if constexpr (std::is_same_v<T, bool>) return d.ssaoEnabled;
             }
@@ -953,6 +1051,10 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "post_process") {
                 if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) return d.postProcess;
+            }
+            else if (ShaderType uniformsType; getDefaultShaderUniformsType(propertyName, uniformsType)) {
+                // every default shader starts without values
+                if constexpr (std::is_same_v<T, ShaderUniformValues>) return ShaderUniformValues();
             }
             else if (propertyName == "canvas_scaler") {
                 if constexpr (std::is_same_v<T, SceneCanvasScaler>) return SceneCanvasScaler{d.canvasScalerUseProjectDefault, d.canvasScaler};
@@ -1121,6 +1223,33 @@ namespace jasperengine::editor{
                     scene->setSceneColorScale(value);
                 }
             }
+            else if (propertyName == "planar_reflection_resolution") {
+                if constexpr (std::is_same_v<T, PlanarReflectionResolution>) scene->setPlanarReflectionResolution(value);
+            }
+            else if (propertyName == "planar_reflection_layers") {
+                if constexpr (std::is_same_v<T, uint32_t>) scene->setPlanarReflectionLayers(value);
+            }
+            else if (propertyName == "planar_reflection_shadows") {
+                if constexpr (std::is_same_v<T, bool>) scene->setPlanarReflectionShadows(value);
+            }
+            else if (propertyName == "planar_reflection_far_clip") {
+                if constexpr (std::is_same_v<T, float>) scene->setPlanarReflectionFarClip(value);
+            }
+            else if (propertyName == "planar_reflection_clip_offset") {
+                if constexpr (std::is_same_v<T, float>) scene->setPlanarReflectionClipOffset(value);
+            }
+            else if (propertyName == "max_planar_reflections") {
+                if constexpr (std::is_same_v<T, int>) scene->setMaxPlanarReflections(value);
+            }
+            else if (propertyName == "water_wake_resolution") {
+                if constexpr (std::is_same_v<T, WaterWakeResolution>) scene->setWaterWakeResolution(value);
+            }
+            else if (propertyName == "water_wake_area") {
+                if constexpr (std::is_same_v<T, float>) scene->setWaterWakeArea(value);
+            }
+            else if (propertyName == "water_wake_fade") {
+                if constexpr (std::is_same_v<T, float>) scene->setWaterWakeFade(value);
+            }
             else if (propertyName == "ssao_enabled") {
                 if constexpr (std::is_same_v<T, bool>) {
                     scene->setSSAOEnabled(value);
@@ -1229,6 +1358,11 @@ namespace jasperengine::editor{
             else if (propertyName == "post_process") {
                 if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) {
                     scene->setPostProcessPasses(value);
+                }
+            }
+            else if (ShaderType uniformsType; getDefaultShaderUniformsType(propertyName, uniformsType)) {
+                if constexpr (std::is_same_v<T, ShaderUniformValues>) {
+                    scene->setDefaultShaderUniforms(uniformsType, value);
                 }
             }
             else if (propertyName == "canvas_scaler") {

@@ -37,16 +37,16 @@ namespace {
         return io::renameWithRetry(from, to, error);
     }
 
+    std::string majorOf(const std::string& version) {
+        return version.substr(0, version.find('.'));
+    }
+
     uint64_t directorySize(const fs::path& dir) {
         uint64_t total = 0;
         std::error_code ec;
         for (auto it = fs::recursive_directory_iterator(dir, ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec))
             if (it->is_regular_file(ec)) total += it->file_size(ec);
         return total;
-    }
-
-    std::string majorOf(const std::string& version) {
-        return version.substr(0, version.find('.'));
     }
 
 }
@@ -100,7 +100,7 @@ std::string PlayerInfo::toJson() const {
     out["gitSha"] = gitSha;
     out["contentFormatVersion"] = contentFormatVersion;
     out["modelCookFormats"] = modelCookFormats;
-    out["capacities"] = capacities;
+    if (!capacities.empty()) out["capacities"] = capacities;
     out["features"] = features;
     out["variant"] = variant;
     out["notices"] = notices;
@@ -244,8 +244,15 @@ std::optional<PlayerInfo> PlayerRuntimes::find(const std::string& id, const fs::
             rejected.push_back(info.dir.string() + " is for editor " + info.engineVersion);
             continue;
         }
-        if (majorOf(info.contentFormatVersion) != majorOf(jasperengine::cook::contentFormatVersion())) {
+        // another major never reads; an older minor would skip what this editor's content adds
+        const std::string writes = jasperengine::cook::contentFormatVersion();
+        if (majorOf(info.contentFormatVersion) != majorOf(writes)) {
             rejected.push_back(info.dir.string() + " reads content format " + info.contentFormatVersion);
+            continue;
+        }
+        if (!allowMismatch && !jasperengine::cook::readsContentFormat(info.contentFormatVersion, writes)) {
+            rejected.push_back(info.dir.string() + " reads content format " + info.contentFormatVersion + ", older than the " + writes +
+                               " this editor writes: update the player runtime");
             continue;
         }
         return info;

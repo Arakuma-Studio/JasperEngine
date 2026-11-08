@@ -192,19 +192,39 @@ namespace paletteformats_test {
         EXPECT_TRUE(hasWarning(result, "hdr_clamped"));
     }
 
+    // Aseprite files saved by Aseprite 1.3.18.6 (make-aseprite-palettes.lua): the frame 0 palette
+    // through S44's codec, alpha kept; an indexed sprite's transparent index stays see-through
+    TEST(PaletteFormats, AsepriteFilesImportTheirPalette) {
+        const ImportResult rgba = importFixture("aseprite-palette-rgba.aseprite");
+        ASSERT_TRUE(rgba.ok()) << rgba.error.message;
+        EXPECT_EQ(rgba.format, PaletteFormat::Aseprite);
+        EXPECT_EQ(hexesOf(*rgba.palette), (std::vector<std::string>{"#1a1c2c", "#5d275d", "#b13e53", "#ef7d57", "#ffcd7580", "#a7f070"}));
+        EXPECT_EQ(rgba.palette->transparent, -1);
+        EXPECT_EQ(rgba.palette->source.kind, "aseprite");
+
+        const ImportResult indexed = importFixture("aseprite-palette-indexed.aseprite");
+        ASSERT_TRUE(indexed.ok()) << indexed.error.message;
+        EXPECT_EQ(hexesOf(*indexed.palette), (std::vector<std::string>{"#000000", "#ffffff", "#ff00ff", "#29adff"}));
+        EXPECT_EQ(indexed.palette->transparent, 2);
+
+        // a file with the magic that does not read is a parse error naming the place
+        std::vector<uint8_t> broken = fixtureBytes("aseprite-palette-rgba.aseprite");
+        broken.resize(64);
+        const ImportResult truncated = importPalette("broken.aseprite", broken);
+        EXPECT_FALSE(truncated.ok());
+        EXPECT_EQ(truncated.error.kind, "parse_error");
+    }
+
     TEST(PaletteFormats, AdobeAseAndAsepriteAreToldApartByMagic) {
-        const ImportResult aseprite = importFixture("aseprite-sprite.ase");
-        EXPECT_FALSE(aseprite.ok());
+        const ImportResult aseprite = importFixture("aseprite-palette-rgba.aseprite");
+        ASSERT_TRUE(aseprite.ok()) << aseprite.error.message;
         EXPECT_EQ(aseprite.format, PaletteFormat::Aseprite);
-        EXPECT_EQ(aseprite.error.kind, "format_unsupported");
-        EXPECT_NE(aseprite.error.message.find("S44"), std::string::npos) << aseprite.error.message;
-        EXPECT_EQ(aseprite.error.fix, "Export the palette from Aseprite as .gpl or .hex, then import that");
 
         // the content decides, whatever the extension says
         const ImportResult adobe = importPalette("swatches.aseprite", fixtureBytes("lospec-endesga-32.ase"));
         ASSERT_TRUE(adobe.ok()) << adobe.error.message;
         EXPECT_EQ(adobe.format, PaletteFormat::AdobeAse);
-        EXPECT_EQ(importPalette("sprite.png", fixtureBytes("aseprite-sprite.ase")).format, PaletteFormat::Aseprite);
+        EXPECT_EQ(importPalette("sprite.png", fixtureBytes("aseprite-palette-rgba.aseprite")).format, PaletteFormat::Aseprite);
         EXPECT_EQ(importPalette("colours.txt", fixtureBytes("gimp-sweetie-16.gpl")).format, PaletteFormat::Gpl);
         EXPECT_EQ(importPalette("colours.pal", fixtureBytes("lospec-endesga-32.hex")).format, PaletteFormat::Hex);
     }

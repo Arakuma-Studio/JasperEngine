@@ -254,9 +254,9 @@ sees the key, and the game never gets Escape. A game's pause menu cannot be test
 static bool runCatching(void (*function)(void*), void* context, std::string& errorInfo);
 // "C++ exception <type>: <what>" of the exception being handled (call inside a catch)
 static std::string describeCurrentException();
-// A callback that failed with no hook set: Log::error("<tag> failed: <errorInfo>"), at most once
-// a second per tag (a static map, main thread)
-static void logFailure(const std::string& tag, const std::string& errorInfo);
+// A callback that threw with no hook set (call it in a catch): Log::error("<tag> failed: <the
+// exception>"), at most once a second per tag, checked before the exception is described
+static void logFailure(const std::string& tag);
 ```
 
 - `runGuarded` = `callWithCrashGuard` around `runCatching`: the catch is inside the guard, so a
@@ -266,7 +266,7 @@ static void logFailure(const std::string& tag, const std::string& errorInfo);
   ComponentManager.cpp:36-44; MSVC names are readable) and `what()`; anything else "C++ exception of
   unknown type".
 - `FunctionSubscribe::runSlot` (FunctionSubscribe.h:136-156), unguarded branch:
-  `try { call(slot.function); } catch (...) { CrashHook::logFailure(slot.tag, CrashHook::describeCurrentException()); return false; }`
+  `try { call(slot.function); } catch (...) { CrashHook::logFailure(slot.tag); return false; }`
   (the slot stays). Guarded branch unchanged (runGuarded now covers exceptions). `callRet` already
   asks the next subscriber when `runSlot` returns false.
 - `ScriptScheduler` C++ timers, unguarded path (ScriptScheduler.cpp:1063): the same try/catch with
@@ -720,4 +720,88 @@ InspectorWindow.cpp, budget.json, lua-api.md.
 
 ## Deviations
 
-None yet (recorded here during implementation).
+Recorded during implementation (branch `dc/runtime-core`).
+
+1. **Escape (lead decision, LEDGER "Lead decisions across specs").** A focused Game view delivers Escape to
+   the game and, when the game captured the cursor, the same press releases it. This branch does the
+   delivery (6.8); `scene-integrity` does the release. The claim (`SetKeyOwner`) takes no lock, so the
+   release, reading the key with the default owner test, still sees the press. Docs name the key
+   `Input.KEY_ESCAPE` (the Lua binding's name), not `KeyCode.ESCAPE`.
+2. **Zero-speed guard (6.3).** `animationUpdate` divides by a child's speed only when it is not 0
+   (`!= 0`, not `> 0`): a negative speed keeps today's behaviour; only the division by zero goes.
+3. **Scene view icons (6.4).** Instead of threading `active` into each `createOrUpdate*` call,
+   `SceneRender2D/3D::hideEntityGizmos(entity)` hides every per-entity icon and line of a GameObject
+   inactive in hierarchy after its update (2D views too: camera, sound and 2D light icons, layout,
+   body, joint and line overlays). Nothing is destroyed, so toggling Active creates nothing.
+4. **ActionPreviewSnapshot API (6.6).** `add(sceneId, scene, entity, excluded = readOnlyTypes())`
+   instead of one `capture(entities, excluded)`: the Animation window adds entities while a preview
+   runs (new track entities, nested Animations). Both previews leave out the same read-only types
+   (the Animation and the key data), so keys authored during a preview stay; the one part of the
+   key data a preview writes, a keyframe track's playhead (`index`, `interpolation`, saved fields),
+   is taken and put back on its own (the Inspector's old refresh restored those two keys too). A
+   path write keeps the value through its `TypeOps`
+   (copy); a whole-component write, or a path the reflection cannot copy, keeps the component's
+   authored YAML (encoded after the component was put back to its authored state, so it holds no
+   previewed value), instead of the spec's "first segment" fallback. Before a path write only that
+   value goes back (an Action's preview state and time stay); before a whole write the component does.
+5. **The lint's red control (test 21).** On `main` no holder has `forEachEvent`, so the tree pass
+   lists every event, not the six components. The red controls are the self-test's planted misses
+   and removing `f(onControllerColliderHit)` from PhysicsSystem's visitor (the lint then fails);
+   the behaviour's red controls are the gtests 6-8.
+6. **Nested guards (test 5).** Kept as the gtest only (no `guard_nested` mode in the crash test
+   harness): its red run is the core test binary dying on the fault, run alone.
+7. **Names.** Test 10's C++ case is `CppInstantiateOfADestroyedCopyIsEmpty`; `Action::setStartOffset`
+   warns on every bad value (not once).
+8. **Lean MCP rules (fe3e90b97).** No agent-guide text was added (lead decision: guidance in
+   `docs/mcp/guide/<area>.md`). The edit_animation parameters got the eval case
+   `guard_random_start_for_copies` (`tools/mcp/eval/cases.py`); the live eval needs Orquester-managed
+   accounts and was not run here (`test_grade.py` passes).
+9. **Command audit (6.6).** Besides PropertyCmd, ObjectTransformCmd, ComponentValuesCmd,
+   LatticePointsCmd and MorphWeightsCmd, `ReflectedValueCmd` (the Inspector's array rows: insert,
+   remove, move; Revert to prefab of a field) calls `ClipRecordHooks::before/afterComponentWrite` on
+   execute and undo.
+10. **Lint wiring (6.5).** There is no CI any more: `tools/check_event_clears.py` runs in
+    `tools/build.sh linux` and through `tools/check-changed` when a component header,
+    `PhysicsSystem.h` or `Engine.h`/`.cpp` changes (docs/testing.md, check-changed; AGENTS.md's lint
+    list). It reads several names and initialisers in one declaration; events outside components,
+    PhysicsSystem and Engine (`Log::onMessageReceived`) are outside its scope, as its docstring says.
+11. **`CrashHook::logFailure(tag)` (6.1)** describes the exception being handled itself, after its
+    once-a-second check (a callback throwing every frame is not rethrown and demangled each time).
+12. **edit_animation keeps only `random_start` (6.7).** The default (core) listing is pinned at 99,000
+    characters (`test_tool_budget.py`), and after main's merges it measured 98,995: both parameters
+    put it at 99,028. A fixed Start Offset goes through `set_properties {action: {startOffset}}` on the
+    Animation or a nested action; `get_animation` still reports `start_offset` and `random_start`.
+    `edit_animation` stays within its old 3,606 limit.
+
+## Follow-ups (2026-11-07)
+
+1. **The event-clear lint covers every engine event** (`tools/check_event_clears.py`). An event is a
+   member of type `FunctionSubscribe<...>`, of a class derived from it (`Ease`) or of an alias of one,
+   alone or in a container, anywhere in the engine's sources (not `engine/libs`, `engine/tests`,
+   `engine/workspaces`). Declarations are read as statements (type arguments across lines,
+   `jasperengine::` qualification, `JASPERENGINE_API static`, `alignas` and attributes); locals,
+   parameters, references, pointers, functions and static definitions are not events. A holder's events
+   are in its `forEachEvent` (a container by name); a component holder is in `ComponentsWithEvents`;
+   any other holder is in the lint's `WALKS` table, with the clears that call its visitor checked
+   (PhysicsSystem's two, InputAction's `InputActions::unload` and `resetSession`), or in `TRANSIENT`
+   (`LegacyParticleSystem.h`, a view sampled into curves within one call); a static event is in
+   `Engine::clearAllSubscriptions` and `Engine::removeSubscriptionsByTag` (Engine's own unqualified,
+   not satisfied by another class's same-named event; others as `Class::member`). An event at
+   namespace scope fails, and so does an event type the lint cannot read where a declaration could
+   be (a macro, an unparsable statement), so nothing is skipped silently.
+2. **Real hits fixed.**
+   - `Audio::onMusicBeat` and `Audio::onMusicSection` were cleared only in `MusicPlayer::reset`,
+     which the editor's Stop runs in `finalizeStop`, after `conector.disconnect()`: a C++ script's
+     callback there was destroyed after its library was unloaded, and a tag removal never reached
+     them. Both are now in Engine's two clears (test `EngineEventsTest.ClearsReachOtherClassesStaticEvents`,
+     red before the fix).
+   - `TweenComponent::function`, an `Ease` a C++ script can set to its own lambda, was destroyed with
+     the runtime scene after the unload. TweenComponent is now in `ComponentsWithEvents` with a
+     `forEachEvent`, and `Ease::clear` keeps only the built-in curve of its type (a custom function
+     goes, the ease is linear again), so `clearComponentSubscriptions` destroys the script's function
+     while its code is loaded (test `ComponentEventsTest.ClearDropsAScriptsTweenEase`, red before).
+   - `InputAction`'s three events were cleared by two hand lists (complete): they now go through
+     `InputAction::forEachEvent` (test `InputActionsTest.UnloadAndANewSessionClearEveryActionEvent`
+     pins it; no red run, nothing was missed).
+3. **check-changed** runs the lint for any changed engine source outside the skipped directories (it
+   used to take component headers, PhysicsSystem.h and Engine.h/.cpp only).

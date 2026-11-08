@@ -184,7 +184,8 @@ void editor::Project::bindMaterialAssetRefs(Material& material) {
         if (!ref.guid.isNull() || site.kind == DepEdgeKind::MeshMaterialFile) {
             return;
         }
-        const std::string hint = AssetIndex::toProjectRelative(roots, site.base, ref.path);
+        // a path picked on Windows holds '\': a separator, as on every platform (Stream::portablePath)
+        const std::string hint = AssetIndex::toProjectRelative(roots, site.base, Stream::portablePath(ref.path));
         AssetDatabase::Resolution found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
         std::error_code ec;
         if (!found.found() && !hint.empty() && fs::is_regular_file(projectPath / hint, ec)) {
@@ -195,7 +196,10 @@ void editor::Project::bindMaterialAssetRefs(Material& material) {
             found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
         }
         if (found.found()) {
+            // the GUID, and the path in the database's form, as the scene resolver writes it
+            // (resolveAssetRefs): the file opens anywhere, not only where it was picked
             ref.guid = found.guid;
+            ref.path = AssetIndex::fromProjectRelative(roots, site.base, found.path);
         }
     });
 }

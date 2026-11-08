@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <random>
 #include <vector>
 
@@ -48,6 +49,7 @@ TEST(VisibleList, JobsAndInlineGiveTheSameList){
     const size_t count = 5000;
     std::vector<VisibleCandidate> candidates(count);
     std::vector<AABB> submeshBounds(count * 3);
+    std::vector<const AABB*> submeshPointers(count * 3);
     std::vector<Matrix4> models(count);
     for (size_t i = 0; i < count; i++){
         const Vector3 centre(position(random), position(random), position(random));
@@ -56,10 +58,12 @@ TEST(VisibleList, JobsAndInlineGiveTheSameList){
         // three submeshes side by side along x, in the mesh's space
         for (int s = 0; s < 3; s++)
             submeshBounds[i * 3 + s] = box(Vector3((float)(s - 1) * half * 2.0f, 0, 0), half);
+        for (int s = 0; s < 3; s++)
+            submeshPointers[i * 3 + s] = &submeshBounds[i * 3 + s];
         VisibleCandidate& candidate = candidates[i];
         candidate.worldBounds = box(centre, half * 3.0f);
         candidate.model = &models[i];
-        candidate.submeshBounds = &submeshBounds[i * 3];
+        candidate.submeshBounds = &submeshPointers[i * 3];
         candidate.numSubmeshes = 3;
         candidate.cullBounds = (i % 7) != 0;
         candidate.maxDistance = (i % 5 == 0) ? 12.0f : std::numeric_limits<float>::infinity();
@@ -87,10 +91,11 @@ TEST(VisibleList, CullsSubmeshesByTheirOwnBounds){
     // a mesh across the right plane: its left submesh inside, its right one outside
     Matrix4 model = Matrix4::translateMatrix(Vector3(9.0f, 0.0f, 0.0f));
     AABB bounds[2] = {box(Vector3(-2.0f, 0, 0), 1.0f), box(Vector3(4.0f, 0, 0), 1.0f)};
+    const AABB* boundsOf[2] = {&bounds[0], &bounds[1]};
     VisibleCandidate candidate;
     candidate.worldBounds = AABB(Vector3(6.0f, -1.0f, -1.0f), Vector3(14.0f, 1.0f, 1.0f));
     candidate.model = &model;
-    candidate.submeshBounds = bounds;
+    candidate.submeshBounds = boundsOf;
     candidate.numSubmeshes = 2;
     EXPECT_EQ(VisibleList::cull(box3.frustum, candidate).submeshMask, 1u);
 
@@ -105,21 +110,24 @@ TEST(VisibleList, CullsSubmeshesByTheirOwnBounds){
 
     // a submesh of unknown (null) bounds is kept with its mesh
     AABB unknown[2] = {AABB(), box(Vector3(4.0f, 0, 0), 1.0f)};
-    candidate.submeshBounds = unknown;
+    const AABB* unknownOf[2] = {&unknown[0], &unknown[1]};
+    candidate.submeshBounds = unknownOf;
     EXPECT_EQ(VisibleList::cull(box3.frustum, candidate).submeshMask, 1u);
 }
 
-TEST(VisibleList, StridedSubmeshBounds){
-    // bounds read through a stride, as RenderSystem reads Submesh::localBounds
-    struct Holder { int before; AABB bounds; double after; };
-    Holder holders[3] = {{0, box(Vector3(-5, 0, 0), 1.0f), 0.0}, {0, box(Vector3(50, 0, 0), 1.0f), 0.0}, {0, box(Vector3(5, 0, 0), 1.0f), 0.0}};
+TEST(VisibleList, SubmeshBoundsApartInMemory){
+    // a mesh's submeshes are allocated one by one (StableArray): each submesh's own bounds, wherever they are
+    std::vector<std::unique_ptr<AABB>> held;
+    held.push_back(std::make_unique<AABB>(box(Vector3(-5, 0, 0), 1.0f)));
+    held.push_back(std::make_unique<AABB>(box(Vector3(50, 0, 0), 1.0f)));
+    held.push_back(std::make_unique<AABB>(box(Vector3(5, 0, 0), 1.0f)));
+    const AABB* bounds[3] = {held[2].get(), held[1].get(), held[0].get()};
     BoxFrustum box3;
     Matrix4 model;
     VisibleCandidate candidate;
     candidate.worldBounds = AABB(Vector3(-6, -1, -1), Vector3(51, 1, 1));
     candidate.model = &model;
-    candidate.submeshBounds = &holders[0].bounds;
-    candidate.submeshStride = sizeof(Holder);
+    candidate.submeshBounds = bounds;
     candidate.numSubmeshes = 3;
     EXPECT_EQ(VisibleList::cull(box3.frustum, candidate).submeshMask, 5u);
 }

@@ -22,17 +22,56 @@
 
 namespace jasperengine{
 
+    // A vertex bind slot: the buffer, its offset, and the layout the slot steps it with. Two
+    // attributes of the same GPU buffer at the same offset share a slot only when they also step it
+    // the same way: buffers shared by content (MeshBufferPool) give equal bytes of different
+    // attributes one GPU buffer, which must not fold an 8-byte stride into a 16-byte one.
     struct BufferInfo{
         uint32_t id;
         size_t offset;
+        unsigned int stride = 0;
+        bool perInstance = false;
 
         bool operator==(const BufferInfo &o) const {
-            return id == o.id && offset == o.offset;
+            return id == o.id && offset == o.offset && stride == o.stride && perInstance == o.perInstance;
         }
 
         bool operator<(const BufferInfo &o) const {
-            return id < o.id || (id == o.id && offset < o.offset);
+            if (id != o.id) return id < o.id;
+            if (offset != o.offset) return offset < o.offset;
+            if (stride != o.stride) return stride < o.stride;
+            return perInstance < o.perInstance;
         }
+    };
+
+    // A pointer whose pointee is copied with its owner: per-object state a SokolObject keeps off the
+    // object while nothing needs it (a load's working description, the GL warm-draw tables)
+    template <typename T>
+    class CopiedPtr {
+    public:
+        CopiedPtr() = default;
+        CopiedPtr(const CopiedPtr& other): value(other.value ? std::make_unique<T>(*other.value) : nullptr) {}
+        CopiedPtr& operator=(const CopiedPtr& other){
+            if (this != &other)
+                value = other.value ? std::make_unique<T>(*other.value) : nullptr;
+            return *this;
+        }
+        CopiedPtr(CopiedPtr&&) noexcept = default;
+        CopiedPtr& operator=(CopiedPtr&&) noexcept = default;
+
+        explicit operator bool() const { return value != nullptr; }
+        T* operator->() const { return value.get(); }
+        T& operator*() const { return *value; }
+        // the pointee, made (value-initialised) when there is none
+        T& make(){
+            if (!value)
+                value = std::make_unique<T>();
+            return *value;
+        }
+        void reset(){ value.reset(); }
+
+    private:
+        std::unique_ptr<T> value;
     };
 
     // References to SokolPipelineCache's shared pipeline variants (acquireVariant): a copy takes
@@ -155,11 +194,24 @@ namespace jasperengine{
         static constexpr int PIPELINE_TYPES = 16;
         sg_pipeline pipelines[PIPELINE_TYPES];
 
-        sg_pipeline_desc pipeline_desc;
-
-        // the dynamic path (endLoadDynamic): shader, vertex layout, index and primitive type;
-        // its pipelines belong to SokolPipelineCache
-        sg_pipeline_desc baseDesc;
+        // what setShader, setIndex and addAttribute write, from beginLoad to endLoad or
+        // endLoadDynamic only (a description is 808 bytes: every render object kept two for life)
+        struct LoadingDesc {
+            sg_pipeline_desc desc = {};
+            LoadingDesc();
+            LoadingDesc(const LoadingDesc& other);
+            LoadingDesc& operator=(const LoadingDesc& other) = default;
+            ~LoadingDesc();
+        };
+        CopiedPtr<LoadingDesc> loadDesc;
+        sg_pipeline_desc& loadingDesc();
+        // after a load: the base description (shader, vertex layout, index and primitive type)
+        // the pipelines and their variants are made from, shared by every object loaded with an
+        // equal one (SokolPipelineCache::internBase); null before a load and after destroy. The
+        // dynamic path (endLoadDynamic) holds its own here, its pipelines SokolPipelineCache's
+        std::shared_ptr<const sg_pipeline_desc> base;
+        // base->shader, read by every draw without following the pointer
+        sg_shader shader;
         bool dynamicLoaded;
         // the last pipeline of the dynamic path: consecutive draws with the same state skip the
         // cache's lookup (valid while SokolPipelineCache::generation() is the same)
@@ -183,14 +235,23 @@ namespace jasperengine{
             sg_pipeline pipeline;
         };
         std::vector<Prewarmed> prewarmed;
-        uint32_t warmedPipeline[PIPELINE_TYPES];
-        uint64_t warmKey[PIPELINE_TYPES];
+        // per pipeline type, the pipeline confirmed warm and the warm draw asked for, and the same
+        // for the LOD fade variants (apart from the base pipelines', which the same object keeps
+        // drawing): made on the first draw that needs a warm draw (never where none runs)
+        struct WarmTable {
+            uint32_t pipeline[PIPELINE_TYPES] = {};
+            uint64_t key[PIPELINE_TYPES] = {};
+            uint32_t lodFadePipeline[PIPELINE_TYPES] = {};
+            uint64_t lodFadeKey[PIPELINE_TYPES] = {};
+        };
+        CopiedPtr<WarmTable> warm;
         std::vector<std::pair<uint32_t, uint64_t>> dynamicWarm;
-        bool isWarm(sg_pipeline pipeline, uint32_t& warmed, uint64_t& key, sg_shader shader);
+        // lodFade: the LOD fade variant's table (beginDraw with its shader)
+        bool isWarm(sg_pipeline pipeline, int index, bool lodFade, sg_shader warmShader);
         bool isDynamicWarm(sg_pipeline pipeline);
         void resetWarm();
 
-        // the render state endLoad built the pipelines with, so a variant can be rebuilt from pipeline_desc
+        // the render state endLoad built the pipelines with, so a variant can be rebuilt from base
         RenderState loadState;
         // the sample count of the PIP_MSAA* pipelines (endLoad's)
         int msaaSamples;
@@ -216,11 +277,9 @@ namespace jasperengine{
         // the editor's Overdraw Draw Mode: additive, no depth test or write, no culling
         static constexpr uint8_t VARIANT_OVERDRAW = 9;
         SokolVariantRefs variants;
-        // the fade variant's shader the VARIANT_LOD_FADE kinds were made on, and their GL warm
-        // draws (apart from the base pipelines', which the same object keeps drawing)
+        // the fade variant's shader the VARIANT_LOD_FADE kinds were made on (their GL warm draws:
+        // the warm table's)
         uint32_t lodFadeShaderId = SG_INVALID_ID;
-        uint32_t lodFadeWarmed[PIPELINE_TYPES];
-        uint64_t lodFadeWarmKey[PIPELINE_TYPES];
         // the pipeline the last beginDraw applied (diagnostics, tests)
         uint32_t appliedPipeline = SG_INVALID_ID;
         // the pipeline of a type for a draw: a variant made on first use (mirrored, no cull,
@@ -293,6 +352,8 @@ namespace jasperengine{
         static size_t getSharedVariantCount();
         // loads that left a vertex input of their shader without a buffer (diagnostics)
         static int getUnfedVertexInputLoads();
+        // objects holding a load's working description (between beginLoad and endLoad; tests)
+        static int getLoadingDescCount();
 
         SokolObject();
         SokolObject(const SokolObject& rhs);
@@ -312,6 +373,15 @@ namespace jasperengine{
         void replaceVertexBuffer(uint32_t fromBufferId, sg_buffer toBuffer, size_t byteOffset);
         void setIndexBuffer(sg_buffer buffer, size_t byteOffset = 0);
         void resetIndexBuffer();
+        // for good (the buffer the load bound was replaced: a shared buffer of new bytes, a private
+        // one): every vertex bind slot of fromBufferId now binds toBuffer with the same layout and
+        // offsets, and replaceVertexBuffer finds it by toBuffer's id; the index buffer the same
+        void retargetVertexBuffer(uint32_t fromBufferId, sg_buffer toBuffer);
+        void retargetIndexBuffer(uint32_t fromBufferId, sg_buffer toBuffer);
+        // the vertex buffer bind slots the attributes added so far use (diagnostics, tests)
+        size_t getVertexBindSlotCount() const { return bindSlotIndex; }
+        // the view and sampler ids bound at a texture slot (0, 0 when the slot is -1)
+        void getTextureBinding(std::pair<int, int> slot, uint32_t& view, uint32_t& sampler) const;
         void addStorageBuffer(int slot, ShaderStageType stage, BufferRender* buffer);
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture, TextureRender* samplerOf);

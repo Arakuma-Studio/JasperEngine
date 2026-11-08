@@ -108,13 +108,7 @@ void SceneDiffTracker::clear() {
 }
 
 std::string SceneDiffTracker::baselineKeyOf(const VcsService& service, const RepoPath& key, const std::string& rev) const {
-    const SnapshotPtr& snapshot = service.snapshot();
-    std::string memo = key + "\n" + rev;
-    if (snapshot) {
-        memo += "\n" + snapshot->branch.headOid;
-        if (const VcsChange* change = snapshot->find(key)) memo += "\n" + change->baseOid + (change->newFile() ? "\nnew" : "");
-    }
-    return memo;
+    return service.contentMemoKey(key, rev);
 }
 
 std::shared_ptr<SceneDiffTracker::Baseline> SceneDiffTracker::baselineFor(VcsService& service, const RepoPath& key, const std::string& rev,
@@ -126,21 +120,24 @@ std::shared_ptr<SceneDiffTracker::Baseline> SceneDiffTracker::baselineFor(VcsSer
     const fs::path file = service.toAbsolute(key);
     // a file the baseline has not got: every GameObject of it is added
     const VcsChange* change = service.snapshot() ? service.snapshot()->find(key) : nullptr;
-    if (rev == "HEAD" && change && change->newFile()) {
+    const std::string readRev = service.effectiveRevision(rev);
+    if (readRev == service.baselineRevision() && change && !change->hasBaseline()) {
         baseline->model = emptyModel(file);
         baseline->ready = true;
         return baseline;
     }
     std::shared_ptr<IVcsProvider> provider = service.providerForReads();
-    if (!provider || !provider->validRevision(rev)) {
+    if (!provider || !provider->validRevision(readRev)) {
         baseline->error = provider ? "not a revision: " + rev : std::string("Version control is not active");
         baseline->ready = true;
         return baseline;
     }
+    // a rename, move or copy compares with the file it came from
+    const RepoPath source = change ? change->diffSource() : key;
     // a process: on a blocking channel, never the main thread (R24)
-    jobs::system().processChannel().submit([provider, key, rev, baseline]() {
+    jobs::system().processChannel().submit([provider, key, source, readRev, baseline]() {
         std::string text;
-        const VcsResult result = provider->baseContent(key, rev, text);
+        const VcsResult result = provider->baseContent(source, readRev, text);
         auto model = std::make_shared<scene::SceneYamlModel>();
         std::string error;
         if (!result.ok) {
