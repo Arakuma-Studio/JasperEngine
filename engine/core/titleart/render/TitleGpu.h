@@ -135,7 +135,8 @@ namespace jasperengine::titleart {
     };
 
     // The first draw of a program in a pipeline state makes the driver compile that variant on the
-    // render thread (llvmpipe's LLVM JIT: up to 1-2 s for a title art program; a GL worker context,
+    // render thread (llvmpipe's LLVM JIT: up to about 1 s for a title art program, 4-5 s for the
+    // whole ELEMENT program before its variants, TitleElementVariant.h; a GL worker context,
     // S32, takes it off the render thread on hardware, not on a software rasteriser). Title Art lets
     // one new (program, state) draw per frame: the others wait for a later frame (their steps run
     // again; a 3D layer's render stops at the draw and runs again), so a render that meets many new

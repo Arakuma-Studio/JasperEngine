@@ -1487,4 +1487,15 @@ rest of S82 lands in 6B.
     ramped look, the gold and silver faces most), in the renderer and the GLB (white factor under the ramp texture); and
     direct and ambient light use three.js's units (irradiance x BRDF with the Lambert term diffuse / pi), not the engine's
     pi-scaled lobes, which made the lights pi times brighter than the references.
-
+31. **Implementation: a 3D layer's programs draw one a frame too** (W4; it was one group of first draws, Deviation 23).
+    Every draw of `Title3DRenderer` (the AO prepass, each slot's Title Lit variant in its state, the wireframe, the post
+    passes, the behind copy, the glint chain and its sprites, the environment builder's tiles) asks
+    `TitleFirstDraws::allow` for its key (`titleDrawKey`: the program in its pipeline state); the second new one in a
+    frame stops the render (`lastRenderDeferred()`, `Title3DStats::deferredRenders`, the counters keep finished renders
+    only), the 3D step waits for the next frame and runs the render again from its start, and an environment build stops
+    at the tile and goes on in the next `ready()` call (a call cut short that way is not counted as a build step). A
+    synchronous render (`TitleFirstDraws::SynchronousScope`) still draws everything at once. With S80's ELEMENT variants
+    (S80 Deviation 58) no single program's compile on llvmpipe reaches the hang threshold:
+    `Title3DRendererGpu.NewProgramsDrawOneAFrame` (one new program a frame, the image the same; red control: unbounded,
+    several in one frame) and `tools/mcp/tests/test_title_art_compile_stalls.py` (render_title and the Title Designer on
+    cold compiles: no main-thread stall reaches 3 s).

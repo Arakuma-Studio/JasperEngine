@@ -18,6 +18,7 @@
 
 #include "pool/ShaderPool.h"
 #include "titleart/render/TitleElementVariant.h"
+#include "titleart/support/TitleStandardTitle.h"
 #include "titleart/support/TitleTestAssets.h"
 
 #include <algorithm>

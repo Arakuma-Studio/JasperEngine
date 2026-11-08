@@ -2168,9 +2168,10 @@ rest of S82 lands in 6B.
     (`render/TitleArtScenesParityGpuTest.cpp`), not `TitleArtParityGpu.<case>`: gtest needs one
     fixture class per suite, and `TitleArtParityGpu` belongs to the effect test (its EffectRig).
     The framing and the metric moved to `support/TitleParity.h`, shared by both. Nine of AC11's
-    scenes are compared; `mask-from-layer-luminance` is not, because its matte is Pachislop's
-    `sunburst` generator, which S83 registers (S83 §6.7.15); AC11's own golden of that scene
-    stays the gate until then. The red control is in the test: the metric fails the adjustment
+    scenes are compared, and since S83 registered Pachislop's `sunburst` generator (S83 §6.7.15)
+    the tenth, `mask-from-layer-luminance`, whose matte is the Sunburst at its first preset (Red &
+    Gold Rays with its Vignette Gradient Overlay), hidden (red control: the title without the mask
+    is outside the metric). The red control is in the test: the metric fails the adjustment
     outside its group against the in-group reference, and hidden groups drawn against
     `nested-hidden-groups`.
 53. **Finding (no change): the rim "spikes" at acute notches are Canvas2D's.** A rim is the face
@@ -2245,3 +2246,24 @@ rest of S82 lands in 6B.
 57. **Open: AC40's red control was not run.** The `make_title_logo` eval case exists and
     `tool_budget.py --check` passes with the guide's entry; running the case with and without the
     entry needs lent Claude accounts (`tools/mcp/eval/README.md`), which the program did not have.
+58. **Implementation: the ELEMENT program draws in variants of what an element's material shades**
+    (`render/TitleElementVariant.h`). One program with every pattern kind (27, five calls each with
+    relief), every texture kind (12, six calls), glass, reflection, satin and the span seam behind
+    uniforms was llvmpipe's 4.3-5.3 s first-draw compile (S86 Deviation 23: the editor hung on
+    every new title). An element pass now carries property bits above the program number
+    (`ShaderType::TITLE_ART` bits 16-20 the pattern kind, 21 its relief, 22-25 the texture kind, 26
+    glass, 27 reflection, 28 satin, 29 spans; bit 30 is the whole program, the tests' red control
+    `TITLE_ART_TEST_ELEMENT_WHOLE`), computed from the block values the shader branches on, and
+    `element.glsl` makes the members off in the variant constants (the code of every other kind
+    folds away). So every variant draws the whole program's pixels: byte for byte on both pixel paths
+    for every Material member (`TitleArtScenesGpu.ElementVariantsDrawTheWholeProgram`), and every
+    golden and parity test passes unchanged. Count: at most 1 + 27 x 2 pattern states x 13 texture
+    states x 2^4 = 11,440 variants; a document plans one per distinct material (a title with rims
+    2-6), S32's shader lists and an exported player hold the ones a project's titles plan
+    (`TitleRenderJob::shaderKeys`), and bits 12-15 stay free for other programs. Measured on
+    llvmpipe (first draw, cold): the whole program 4.3-4.5 s; a plain element 0.14 s; one feature
+    0.18-0.25 s; a pattern kind with relief 0.18-0.55 s; a texture kind 0.19-0.43 s; the heaviest
+    pattern and texture with relief, glass, reflection, satin and spans together 1.1 s (25 % of the
+    whole program). `TitleElementVariantGpu.CompileCostIsBounded` checks the largest variant a heavy
+    title plans against 40 % of the whole program's compile in the same process (red control: the
+    title planned with the whole program).

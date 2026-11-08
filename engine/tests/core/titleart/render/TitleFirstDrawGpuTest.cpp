@@ -116,7 +116,8 @@ TEST_F(TitleFirstDrawGpu, NewProgramsDrawOneAFrame) {
     EXPECT_GT(bounded.deferred, 0u) << "the others waited for later frames";
     // a frame holds at most one compile: the longest is the slowest pass and the frame's cheap
     // rest. On a GPU (milliseconds a compile) no frame reaches the editor's hang threshold; on a
-    // software rasteriser one compile alone can (ELEMENT's first draw: 5.3 s on llvmpipe here)
+    // software rasteriser one compile is up to about 1 s (an ELEMENT variant, TitleElementVariant.h;
+    // the whole program was 4.3-5.3 s), timed under the box's load, so not enforced there
     const auto describe = [](const TimedRender& r) {
         return std::string("longest frame ") + std::to_string(r.longestFrameMs) + " ms of " + std::to_string(r.frames) + "; the slowest pass " +
                titleRenderProgramName(r.gpu.slowestProgram) + " (" + (r.gpu.slowestWasFirstDraw ? "a first draw" : "drawn before") + ") " +
@@ -132,7 +133,7 @@ TEST_F(TitleFirstDrawGpu, NewProgramsDrawOneAFrame) {
     TitleFirstDraws::resetForTesting(true);
     const TimedRender together = renderWithEffects();
     EXPECT_GT(TitleFirstDraws::stats().maxPerFrame, 1u);
-    // (timed, recorded only: on llvmpipe ELEMENT's one compile is most of either longest frame)
+    // (timed, recorded only: on llvmpipe one compile is most of either longest frame)
     ::testing::Test::RecordProperty("unbounded", describe(together));
     // the same image either way
     const Difference d = compare(spread.image, together.image, 2.0);
