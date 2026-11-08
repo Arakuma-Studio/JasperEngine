@@ -49,11 +49,15 @@ namespace {
     // solid backdrops: white tinted by the sprite's colour
     const uint8_t WHITE[4] = {255, 255, 255, 255};
 
-    void setBlended(Scene* scene, Entity entity) {
+    // `order`: the transparent queue sorts by the distance from the camera to each sprite's
+    // origin (its bottom-left corner here), which a panned view or a title image a few pixels
+    // larger than the stage can turn around; the queue order puts the title over the backdrop
+    void setBlended(Scene* scene, Entity entity, int order) {
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         mesh.autoTransparency = false;
         mesh.transparent = true;
         mesh.submeshes[0].material.alphaMode = MaterialAlphaMode::BLEND;
+        mesh.submeshes[0].material.sortPriority = order;
     }
 
 }
@@ -93,8 +97,8 @@ void TitleCanvasView::createScene() {
     titleSprite->setReceiveLights(false);
     titleSprite->setCastShadows(false);
     titleSprite->setVisible(false);
-    setBlended(scene, titleSprite->getEntity());
-    setBlended(scene, backdropSprite->getEntity());
+    setBlended(scene, titleSprite->getEntity(), 1);
+    setBlended(scene, backdropSprite->getEntity(), 0);
     backdropTextureKey.clear();
     sceneLoaded = false;
     sceneDirty = true;
