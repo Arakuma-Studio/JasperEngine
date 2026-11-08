@@ -956,7 +956,8 @@ void registerTerrainTools(McpRegistry& registry) {
     visualize.name = "visualize_terrain";
     visualize.title = "Visualize Terrain";
     visualize.group = "terrain";
-    visualize.allowedWhilePlaying = false;
+    // T4 R42: the Scene view overlay shows a running World too (its tiles, its cut, its collider)
+    visualize.allowedWhilePlaying = true;
     visualize.annotations.readOnly = true;
     visualize.description =
         "Show a terrain overlay in the Scene view (none hides it), frame the terrain and return a Scene view PNG with the "

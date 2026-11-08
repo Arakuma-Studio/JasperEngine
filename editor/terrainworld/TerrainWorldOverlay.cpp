@@ -94,8 +94,9 @@ TerrainWorldOverlayState jasperengine::editor::captureTerrainWorldOverlay(const 
     if (!runtime.started()) return state;
     TileCoord low, high;
     if (!runtime.occupancy().bounds(low, high)) return state;
-    state.low = TileCoord(std::max<int>(low.x - 1, WORLD_TILE_MIN), std::max<int>(low.z - 1, WORLD_TILE_MIN));
-    state.high = TileCoord(std::min<int>(high.x + 1, WORLD_TILE_MAX), std::min<int>(high.z + 1, WORLD_TILE_MAX));
+    // the box of the tiles: a sheet past them would stand over nothing, in front of the Scene view's grid
+    state.low = low;
+    state.high = high;
     state.tileSize = runtime.lattice().tileSize();
     for (int z = state.low.z; z <= state.high.z; z++) {
         for (int x = state.low.x; x <= state.high.x; x++) {

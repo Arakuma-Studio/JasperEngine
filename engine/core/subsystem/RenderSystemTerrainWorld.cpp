@@ -262,8 +262,9 @@ void RenderSystem::selectTerrainWorld(TerrainComponent& terrain, const Transform
     stats.nodesVisited = selection.visited;
     stats.nodesSelected = selection.selectedNodes();
     runtime->noteLatePages(selection.missingPages);
-    // R42's LOD Level overlay: the main view's cut, kept only while the overlay asks for it (R37)
-    if (runtime->recordingDrawnNodes() && &view == &terrain.views[0]){
+    // R42's LOD Level overlay: the main camera's cut (the Scene view's in the editor, the game's in Play),
+    // kept only while the overlay asks for it (R37)
+    if (runtime->recordingDrawnNodes() && &camera == scene->findComponent<CameraComponent>(scene->getCamera())){
         std::vector<TerrainWorldDrawnNode> drawn;
         auto keep = [&](const WorldSelectNode& node, bool overview){
             drawn.push_back(TerrainWorldDrawnNode{node.x, node.z, node.size, node.level, overview});

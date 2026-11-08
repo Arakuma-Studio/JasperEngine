@@ -55,7 +55,7 @@ namespace jasperengine::editor {
         int rows() const { return high.z - low.z + 1; }
     };
 
-    // The runtime's state for a mode: the box of present tiles and a ring round it
+    // The runtime's state for a mode over the box of present tiles
     TerrainWorldOverlayState captureTerrainWorldOverlay(const TerrainWorldRuntime& runtime, TerrainWorldOverlayMode mode);
     // Changes when what the image shows changes
     uint64_t terrainWorldOverlaySignature(const TerrainWorldOverlayState& state);

@@ -167,13 +167,13 @@ TEST(TerrainWorldOverlay, CapturesTheRuntime) {
 
     TerrainWorldOverlayState state = captureTerrainWorldOverlay(*runtime, TerrainWorldOverlayMode::TileState);
     ASSERT_TRUE(state.valid);
-    // the tiles and a ring of one round them
-    EXPECT_EQ(state.low, TileCoord(-2, -2));
-    EXPECT_EQ(state.high, TileCoord(1, 1));
+    // the box of the tiles, each one's state
+    EXPECT_EQ(state.low, TileCoord(-1, -1));
+    EXPECT_EQ(state.high, TileCoord(0, 0));
     EXPECT_EQ(state.tileSize, 64.0f);
     auto at = [&](int x, int z) { return static_cast<size_t>(z - state.low.z) * static_cast<size_t>(state.columns()) + static_cast<size_t>(x - state.low.x); };
     EXPECT_EQ(static_cast<TileState>(state.states[at(0, 0)]), TileState::Cold);
-    EXPECT_EQ(static_cast<TileState>(state.states[at(1, 1)]), TileState::Absent);
+    EXPECT_EQ(static_cast<TileState>(state.states[at(-1, -1)]), TileState::Cold);
     const uint64_t before = terrainWorldOverlaySignature(state);
 
     // a tile read and pinned (the brush hovers it): the state shows both, the image changes
