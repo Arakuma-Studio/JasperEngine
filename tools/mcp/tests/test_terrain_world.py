@@ -230,7 +230,7 @@ async def test_visualize_world_overlays(ed: Editor):
     terrain = (await ed.call("create_entity", scene=sid, name="Plain", type="terrain"))["entity_id"]
     message = await ed.check_error("visualize_terrain", scene=sid, entity=terrain, overlay="tiles")
     ed.check("Terrain World" in message and "height" in message, f"a World's overlay on a Terrain names a Terrain's: {message}")
-    await ed.call("delete_entity", scene=sid, entity=terrain)
+    await ed.call("delete_entities", scene=sid, entities=[terrain])
 
     await ed.call("save_scene", scene=sid, path="scenes/Overlaid.scene")
     await ed.call("play", action="start", scene=sid)
