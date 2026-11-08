@@ -111,11 +111,30 @@ namespace jasperengine { namespace particles {
     // time crosses the next step of 1 / rate (the pack runs only then: the CPU saving)
     struct JASPERENGINE_API HeldPack {
         double step = -1.0;
+        // what the records were packed from: a reset, clear or seek of the emitter, or another
+        // effect, packs again whatever the step
+        uint64_t generation = 0;
+        const void* effect = nullptr;
         std::vector<ParticleInstance> instances;
         std::vector<ParticlePixelInstance> pixels;
         // the records to draw now (pointing into this struct)
         PackResult get(const EmitterRuntime& emitter, const RenderView& view, memory::Arena& arena, jobs::JobSystem* jobs, float rate);
-        void clear(){ step = -1.0; instances.clear(); pixels.clear(); }
+        void clear(){ step = -1.0; generation = 0; effect = nullptr; instances.clear(); pixels.clear(); }
+    };
+
+    // one HeldPack per view that draws the emitter (each camera packs its own sorting and facing)
+    struct JASPERENGINE_API HeldPacks {
+        static constexpr size_t kMaxViews = 8;
+        struct Entry {
+            uint64_t view = 0;
+            uint64_t lastUse = 0;
+            HeldPack pack;
+        };
+        std::vector<Entry> entries;
+        uint64_t uses = 0;
+        // the view's pack (made on first use; past kMaxViews the least recently used is reused)
+        HeldPack& of(uint64_t view);
+        void clear(){ entries.clear(); }
     };
 
     class JASPERENGINE_API ParticleRenderPrep {

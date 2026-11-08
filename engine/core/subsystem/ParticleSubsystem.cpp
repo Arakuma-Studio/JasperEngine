@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ParticleSubsystem.h"
+#include "particles/PixelParticles.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -36,6 +37,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <functional>
 
 using namespace jasperengine;
 using namespace jasperengine::particles;
@@ -95,6 +97,8 @@ void ParticleSubsystem::draw(){
 }
 
 void ParticleSubsystem::destroy(){
+    // the scene's ember emitters go with it: a later scene at the same address makes its own
+    PixelParticles::forget(scene);
     auto systems = scene->getComponentArray<ParticleSystemComponent>();
     for (size_t i = 0; i < systems->size(); i++){
         ParticleSystemComponent& particles = systems->getComponentFromIndex(i);
@@ -717,7 +721,6 @@ bool ParticleSubsystem::castWorldRay2D(const void* context, const float from[3],
 void ParticleSubsystem::updateBounds(ParticleSystemState& state){
     const ParticleEffectDocument& d = state.effect->document;
     float lo[3], hi[3];
-    const float* m = state.runtime.simToWorld();
     if (d.boundsMode == BoundsMode::Authored){
         // the authored box, in the emitter's space
         for (int k = 0; k < 3; k++){ lo[k] = 3.0e38f; hi[k] = -3.0e38f; }
@@ -737,20 +740,33 @@ void ParticleSubsystem::updateBounds(ParticleSystemState& state){
         state.hasBounds = true;
         return;
     }
-    if (!state.runtime.hasBounds()){
+    // the system's emitter and its sub-emitters' (each in its own simulation space): the
+    // renderer culls them all by this box
+    for (int k = 0; k < 3; k++){ lo[k] = 3.0e38f; hi[k] = -3.0e38f; }
+    bool any = false;
+    std::function<void(const EmitterRuntime&)> add = [&](const EmitterRuntime& emitter){
+        if (emitter.hasBounds()){
+            float simLo[3], simHi[3];
+            emitter.bounds(simLo, simHi);
+            const float* toWorld = emitter.simToWorld();
+            for (int corner = 0; corner < 8; corner++){
+                const float p[3] = {(corner & 1) ? simHi[0] : simLo[0], (corner & 2) ? simHi[1] : simLo[1], (corner & 4) ? simHi[2] : simLo[2]};
+                for (int k = 0; k < 3; k++){
+                    const float w = toWorld[k] * p[0] + toWorld[4 + k] * p[1] + toWorld[8 + k] * p[2] + toWorld[12 + k];
+                    lo[k] = std::min(lo[k], w);
+                    hi[k] = std::max(hi[k], w);
+                }
+            }
+            any = true;
+        }
+        for (size_t i = 0; i < emitter.childCount(); i++){
+            if (const EmitterRuntime* child = emitter.child(i)) add(*child);
+        }
+    };
+    add(state.runtime);
+    if (!any){
         state.hasBounds = false;
         return;
-    }
-    float simLo[3], simHi[3];
-    state.runtime.bounds(simLo, simHi);
-    for (int k = 0; k < 3; k++){ lo[k] = 3.0e38f; hi[k] = -3.0e38f; }
-    for (int corner = 0; corner < 8; corner++){
-        const float p[3] = {(corner & 1) ? simHi[0] : simLo[0], (corner & 2) ? simHi[1] : simLo[1], (corner & 4) ? simHi[2] : simLo[2]};
-        for (int k = 0; k < 3; k++){
-            const float w = m[k] * p[0] + m[4 + k] * p[1] + m[8 + k] * p[2] + m[12 + k];
-            lo[k] = std::min(lo[k], w);
-            hi[k] = std::max(hi[k], w);
-        }
     }
     std::memcpy(state.boundsMin, lo, sizeof(lo));
     std::memcpy(state.boundsMax, hi, sizeof(hi));

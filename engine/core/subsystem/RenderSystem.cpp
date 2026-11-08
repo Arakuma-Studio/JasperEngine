@@ -16381,7 +16381,7 @@ void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char
     for (size_t i = 0; i < particleArray->size(); i++) {
         const ParticleSystemComponent& particles = particleArray->getComponentFromIndex(i);
         if (particles.enabled && particles.state && particles.state->effect)
-            visit(particles.state->render.loaded, particleArray->getEntity(i), "particles");
+            visit(particles.state->render.loadedAll(), particleArray->getEntity(i), "particles");
     }
 
     // Check LineRendererComponents

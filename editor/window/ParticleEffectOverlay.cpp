@@ -92,8 +92,7 @@ void ParticleEffectOverlay::updateBake(Project* project) {
     std::filesystem::path png = project->getProjectPath() / FileUtils::pathFromUtf8(bake.path);
     std::filesystem::path json = png;
     json.replace_extension(".json");
-    const pixelart::PixelImage strip = pixelart::particleSpriteStrip(capture->frames(), capture->width(), capture->height(), bake.scale, bake.padding,
-                                                                     capture->settings().background);
+    const pixelart::PixelImage strip = pixelart::particleSpriteStrip(capture->frames(), capture->width(), capture->height(), bake.scale, bake.padding);
     std::vector<WriteFilesCmd::Item> items;
     items.push_back({png, strip.encodePng()});
     items.push_back({json, pixelart::particleSpriteStripJson(FileUtils::pathToUtf8(png.filename()), capture->frames(), capture->width(),

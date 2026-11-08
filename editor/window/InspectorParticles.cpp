@@ -460,6 +460,23 @@ namespace {
         labelCell(f.label, f.tooltip, indent);
         editor::ui::GradientFieldOptions options;
         options.label = f.label;
+        // Palette Ramp's palette field: the project's .palette assets (S49 R32)
+        editor::Project* project = ui.project;
+        options.palettes = [project](){
+            std::vector<std::string> found;
+            std::error_code ec;
+            const std::filesystem::path root = project->getAssetsPath();
+            for (std::filesystem::recursive_directory_iterator it(root, ec), end; !ec && it != end; it.increment(ec)){
+                if (it->is_regular_file(ec) && it->path().extension() == ".palette")
+                    found.push_back(project->normalizeToAssetsRelative(it->path().string()).generic_string());
+            }
+            std::sort(found.begin(), found.end());
+            return found;
+        };
+        options.paletteOf = [project](const std::string& absolute){
+            if (std::filesystem::path(absolute).extension() != ".palette" || !project->isInsideAssetsPath(absolute)) return std::string();
+            return project->normalizeToAssetsRelative(absolute).generic_string();
+        };
         ui.phase(editor::ui::minMaxGradientField(id.c_str(), value, options), f.label);
         if (value.usesGradient()) drawDriver(ui, value, indent + 1);
     }
@@ -570,11 +587,13 @@ namespace {
             case FieldType::Enum: {
                 labelCell(f.label, f.tooltip, indent);
                 uint8_t& v = *static_cast<uint8_t*>(p);
+                // its path as its id ("##effect.simulationMode"): what find_ui_item and the UI tests name
+                const std::string comboId = "##" + id;
                 if (std::strcmp(f.key, "pixelShape") == 0 && ui.document) {
-                    if (pixelShapeCombo("##v", ui.document->renderer, v)) ui.track(true, true);
+                    if (pixelShapeCombo(comboId.c_str(), ui.document->renderer, v)) ui.track(true, true);
                     break;
                 }
-                if (enumCombo("##v", f.options, f.optionCount, v)) ui.track(true, true);
+                if (enumCombo(comboId.c_str(), f.options, f.optionCount, v)) ui.track(true, true);
                 break;
             }
             case FieldType::Mask: {

@@ -50,6 +50,16 @@ bool PixelParticles::emitAt(Scene* scene, const std::string& effect, const std::
     if (!scene || positions.empty())
         return scene != nullptr;
     Entity entity = emitterOf(scene, effect);
+    const bool created = entity == NULL_ENTITY;
+    // a refused call leaves no emitter behind (it would hold the effect for nothing)
+    auto refuse = [&](const std::string& why){
+        if (error) *error = why;
+        if (created && entity != NULL_ENTITY){
+            emitters().erase({scene, effect});
+            scene->destroyEntity(entity);
+        }
+        return false;
+    };
     if (entity == NULL_ENTITY){
         ParticleSystemComponent component;
         component.playOnAwake = false;
@@ -69,15 +79,11 @@ bool PixelParticles::emitAt(Scene* scene, const std::string& effect, const std::
     }
     std::shared_ptr<ParticleSubsystem> subsystem = scene->getSystem<ParticleSubsystem>();
     ParticleSystemState* state = subsystem->getState(entity);
-    if (!state || !state->effect || !state->effect->valid){
-        if (error) *error = "the effect '" + effect + "' cannot be read";
-        return false;
-    }
-    if (state->effect->document.simulationMode == SimulationMode::Analytic){
-        // an Analytic effect has no particles to add (R21a)
-        if (error) *error = "analytic_no_events: an Analytic effect cannot emit on request; use a Simulated one";
-        return false;
-    }
+    if (!state || !state->effect || !state->effect->valid)
+        return refuse("the effect '" + effect + "' cannot be read");
+    // an Analytic effect has no particles to add (R21a)
+    if (state->effect->document.simulationMode == SimulationMode::Analytic)
+        return refuse("analytic_no_events: an Analytic effect cannot emit on request; use a Simulated one");
     for (size_t i = 0; i < positions.size(); i++){
         EmitOverrides overrides;
         overrides.hasPosition = true;

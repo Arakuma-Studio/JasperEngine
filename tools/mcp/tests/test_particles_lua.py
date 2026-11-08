@@ -199,4 +199,14 @@ async def test_pixel_particles_lua(ed: Editor):
     ed.check_eq(got[0], "analytic", f"Analytic: {got}")
     ed.check_eq(got[1], True, "the twin answers")
     ed.check(got[2] > 0 and got[3] > 0, f"live slots at 1 s: {got}")
+    # listening to an Analytic system's events warns once (they never come)
+    await lua(ed, """
+        local ps = object('Embers', 'ParticleSystem')
+        ps:onParticleDeath(function() end)
+        ps:onParticleDeath(function() end)
+        ps:onCollision(function() end)
+        return true
+    """)
+    console = await ed.call_raw("read_console", {"contains": "analytic_no_events"})
+    ed.check_eq(console.text.count("analytic_no_events: Embers"), 1, f"one warning: {console.text[:600]}")
     await ed.call("play", action="stop")

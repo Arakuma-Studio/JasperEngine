@@ -32,7 +32,7 @@ namespace jasperengine::editor::pixelart {
         std::vector<double> times;
         int pixelsPerUnit = 1;
         int margin = 24;                 // base pixels around the effect's reach (pixelfx's spill margin)
-        jasperengine::pixelart::Rgba8 background{255, 0, 255, 255};
+        jasperengine::pixelart::Rgba8 background{255, 0, 255, 255};   // the contact sheet's (frames draw on transparent black)
         int maxSide = 512;               // base pixels
     };
 
@@ -48,9 +48,17 @@ namespace jasperengine::editor::pixelart {
     struct CapturedFrame {
         double time = 0.0;
         uint32_t count = 0;
-        PixelImage image;                // the frame at 1x, rows top first
+        PixelImage image;                // the frame at 1x, rows top first, premultiplied on transparent black
+        // base pixels the GPU drew unevenly: each base pixel is drawn kProbeScale x kProbeScale
+        // times, and one whose screen pixels differ was drawn between base pixels (off_grid)
+        uint32_t offGrid = 0;
+        std::vector<std::pair<int, int>> offGridAt;   // the first few, (x, y) top first
         std::vector<CapturedParticle> particles;
     };
+
+    // the screen pixels a capture draws per base pixel, each way: what lets off_grid see a base
+    // pixel the GPU placed between grid lines (a whole base pixel covers whole blocks)
+    inline constexpr int kProbeScale = 4;
 
     class ParticleCapture {
     public:
@@ -94,9 +102,8 @@ namespace jasperengine::editor::pixelart {
     };
 
     // Bake to Sprite Sheet (S49 R21): the frames left to right at an integer scale with `padding`
-    // pixels between them, the key colour made transparent
-    PixelImage particleSpriteStrip(const std::vector<CapturedFrame>& frames, int frameWidth, int frameHeight, int scale, int padding,
-                                   jasperengine::pixelart::Rgba8 key);
+    // pixels between them, transparent where the effect drew nothing (keyed on alpha)
+    PixelImage particleSpriteStrip(const std::vector<CapturedFrame>& frames, int frameWidth, int frameHeight, int scale, int padding);
     // the strip's Aseprite json-hash (frame rects and durations, the layout `aseprite --data`
     // writes), which a texture's Sprite Mode imports (S45 R10)
     std::string particleSpriteStripJson(const std::string& imageName, const std::vector<CapturedFrame>& frames, int frameWidth,

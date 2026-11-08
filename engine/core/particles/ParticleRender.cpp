@@ -767,9 +767,11 @@ PackResult ParticleRenderPrep::pack(const EmitterRuntime& emitter, const RenderV
 
 PackResult HeldPack::get(const EmitterRuntime& emitter, const RenderView& view, memory::Arena& arena, jobs::JobSystem* jobs, float rate){
     const double now = std::floor(emitter.time() * (double)rate + 1.0e-9);
-    if (now != step){
+    if (now != step || emitter.generation() != generation || emitter.effect() != effect){
         const PackResult fresh = ParticleRenderPrep::pack(emitter, view, arena, jobs);
         step = now;
+        generation = emitter.generation();
+        effect = emitter.effect();
         instances.assign(fresh.instances, fresh.instances + fresh.count);
         if (fresh.pixel)
             pixels.assign(fresh.pixel, fresh.pixel + fresh.count);
@@ -782,6 +784,30 @@ PackResult HeldPack::get(const EmitterRuntime& emitter, const RenderView& view, 
     held.pixel = pixels.empty() ? nullptr : pixels.data();
     held.meshCount[0] = held.count;
     return held;
+}
+
+HeldPack& HeldPacks::of(uint64_t view){
+    uses++;
+    for (Entry& e : entries){
+        if (e.view == view){
+            e.lastUse = uses;
+            return e.pack;
+        }
+    }
+    if (entries.size() < kMaxViews){
+        entries.push_back(Entry());
+        entries.back().view = view;
+        entries.back().lastUse = uses;
+        return entries.back().pack;
+    }
+    Entry* oldest = &entries[0];
+    for (Entry& e : entries){
+        if (e.lastUse < oldest->lastUse) oldest = &e;
+    }
+    oldest->view = view;
+    oldest->lastUse = uses;
+    oldest->pack.clear();
+    return oldest->pack;
 }
 
 uint64_t ParticleRenderPrep::packCount(){

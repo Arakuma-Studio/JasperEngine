@@ -16,6 +16,7 @@
 #include "object/ParticleSystem.h"
 #include "particles/AnalyticParticles.h"
 #include "particles/ParticleEffectCodec.h"
+#include "particles/ParticleEffectLibrary.h"
 #include "particles/ParticlePixel.h"
 #include "pixelart/PixelColor.h"
 #include "pixelart/PixelSnap.h"
@@ -27,6 +28,7 @@
 #include "ImageCompare.h"
 #include "LogCapture.h"
 #include "Readback.h"
+#include "TestPaths.h"
 
 #include <gtest/gtest.h>
 
@@ -34,7 +36,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <fstream>
 #include <set>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -420,98 +424,202 @@ TEST_F(ParticlesPixelGpu, ExactColors){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// AC8 (R18, R19): 4,096 Analytic dots drawn at 10 times: every lit pixel is a particle the CPU twin
-// puts there (>= 99.9 % exactly, the rest one pixel off), and every particle the twin places is lit
+// AC8 (R18, R19): about 12,000 live Analytic dots drawn at 10 times, at a drag where the closed form
+// holds and at a small one (k t well under 1, where it cancels): the lit pixels are the CPU twin's
+// snapped particles, pixel for pixel. A difference is allowed on 0.1 % of them, and only one pixel off
 TEST_F(ParticlesPixelGpu, AnalyticMatchesCpu){
     JASPER_REQUIRE_GPU();
     GpuEnvironment::setView(256, 256, 256, 256, Scaling::LETTERBOX);
-    ParticleEffectDocument d;
-    d.simulationMode = SimulationMode::Analytic;
-    d.looping = true;
-    d.prewarm = true;
-    d.duration = 4.0f;
-    d.main.startLifetime = MinMaxCurve::twoConstants(1.0f, 3.0f);
-    d.main.startSpeed = MinMaxCurve::twoConstants(5.0f, 40.0f);
-    d.main.startSize = MinMaxCurve(1.0f);
-    d.emission.rateOverTime = MinMaxCurve(2048.0f);
-    d.shape.shape = ShapeType::Box;
-    d.shape.scale = Vector3(160.0f, 160.0f, 0.0f);
-    d.shape.randomizeDirection = 1.0f;
-    d.limitVelocity.present = true;
-    d.limitVelocity.dampen = 0.0f;
-    d.limitVelocity.multiplyBySize = false;
-    d.limitVelocity.drag = MinMaxCurve(0.7f);
-    d.forceOverLifetime.present = true;
-    d.forceOverLifetime.y = MinMaxCurve(-12.0f);
-    d.pixelArt.present = true;
-    d.pixelArt.fade = PixelFade::Cutout;
-    d.renderer.renderMode = RenderMode::Pixel;
-    d.renderer.pixelShape = PixelShape::Dot;
     // the random directions are 3D: depth wide enough for every particle the twin places
     camera.setNearClip(-1000.0f);
     camera.setFarClip(1000.0f);
-    ParticleSystem& ps = add(Vector3(128.0f, 128.0f, 0.0f), d, 21);
-    ASSERT_TRUE(render(0.05));
-    const ParticleSystemState* state = scene.getComponent<ParticleSystemComponent>(ps.getEntity()).state.get();
-    ASSERT_TRUE(state && state->runtime.isAnalytic());
+    for (float drag : {0.7f, 0.0006f}){
+        ParticleEffectDocument d;
+        d.simulationMode = SimulationMode::Analytic;
+        d.looping = true;
+        d.prewarm = true;
+        d.duration = 4.0f;
+        d.main.startLifetime = MinMaxCurve::twoConstants(1.0f, 3.0f);
+        d.main.startSpeed = MinMaxCurve::twoConstants(5.0f, 40.0f);
+        d.main.startSize = MinMaxCurve(1.0f);
+        d.emission.rateOverTime = MinMaxCurve(6000.0f);
+        d.shape.shape = ShapeType::Box;
+        d.shape.scale = Vector3(200.0f, 200.0f, 0.0f);
+        d.shape.randomizeDirection = 1.0f;
+        d.limitVelocity.present = true;
+        d.limitVelocity.dampen = 0.0f;
+        d.limitVelocity.multiplyBySize = false;
+        d.limitVelocity.drag = MinMaxCurve(drag);
+        d.forceOverLifetime.present = true;
+        d.forceOverLifetime.y = MinMaxCurve(-12.0f);
+        d.pixelArt.present = true;
+        d.pixelArt.fade = PixelFade::Cutout;
+        d.renderer.renderMode = RenderMode::Pixel;
+        d.renderer.pixelShape = PixelShape::Dot;
+        systems.clear();
+        ParticleSystem& ps = add(Vector3(128.0f, 128.0f, 0.0f), d, 21);
+        ASSERT_TRUE(render(0.05));
+        const ParticleSystemState* state = scene.getComponent<ParticleSystemComponent>(ps.getEntity()).state.get();
+        ASSERT_TRUE(state && state->runtime.isAnalytic());
 
-    size_t particles = 0, exact = 0, near = 0, missing = 0, extra = 0, litTotal = 0;
-    for (int i = 0; i < 10; i++){
-        const double t = 0.37 + 0.71 * i;
-        ASSERT_TRUE(render(t));
-        GpuEnvironment::drawFrames(2);
-        const Shot image = readImage();
-        std::set<std::pair<int, int>> expected;
-        const AnalyticProgram& program = *state->runtime.analytic();
-        for (uint32_t s = 0; s < program.slotCount; s++){
-            const AnalyticParticle p = AnalyticParticles::evaluate(program, s);
-            if (!p.alive) continue;
-            // the emitter's transform (a translation), then the corner snap of a 1-px box
-            const float cx = 128.0f + p.position.x, cy = 128.0f + p.position.y;
-            expected.insert({(int)pixelart::snap(cx - 0.5f), (int)pixelart::snap(cy - 0.5f)});
-            particles++;
-        }
-        std::set<std::pair<int, int>> lit;
-        for (int y = 0; y < image.height; y++)
-            for (int x = 0; x < image.width; x++)
-                if (image.at(x, y) != kBlack) lit.insert({x, y});
-        for (const auto& p : expected){
-            if (p.first < 0 || p.second < 0 || p.first >= image.width || p.second >= image.height) continue;
-            if (lit.count(p)){
-                exact++;
-                continue;
+        size_t particles = 0, pixels = 0, lit = 0, unlit = 0, stray = 0, far = 0;
+        for (int i = 0; i < 10; i++){
+            const double t = 0.37 + 0.71 * i;
+            ASSERT_TRUE(render(t));
+            GpuEnvironment::drawFrames(2);
+            const Shot image = readImage();
+            std::set<std::pair<int, int>> expected;
+            const AnalyticProgram& program = *state->runtime.analytic();
+            for (uint32_t s = 0; s < program.slotCount; s++){
+                const AnalyticParticle p = AnalyticParticles::evaluate(program, s);
+                if (!p.alive) continue;
+                // the emitter's transform (a translation), then the corner snap of a 1-px box
+                const int x = (int)pixelart::snap(128.0f + p.position.x - 0.5f), y = (int)pixelart::snap(128.0f + p.position.y - 0.5f);
+                if (x < 0 || y < 0 || x >= image.width || y >= image.height) continue;
+                expected.insert({x, y});
+                particles++;
             }
-            bool found = false;
-            for (int dy = -1; dy <= 1 && !found; dy++)
-                for (int dx = -1; dx <= 1 && !found; dx++) found = lit.count({p.first + dx, p.second + dy}) > 0;
-            (found ? near : missing)++;
-        }
-        litTotal += lit.size();
-        if (i == 0 && std::getenv("JASPER_TEST_WRITE_ACTUAL")){
-            // the read-back and the twin's pixels side by side, for a failure's evidence
-            std::vector<uint8_t> both((size_t)image.width * 2 * image.height * 4, 0);
-            for (int y = 0; y < image.height; y++){
-                for (int x = 0; x < image.width; x++){
-                    uint8_t* left = &both[((size_t)(image.height - 1 - y) * image.width * 2 + x) * 4];
-                    uint8_t* right = left + (size_t)image.width * 4;
-                    const uint8_t v = lit.count({x, y}) ? 255 : 0, w = expected.count({x, y}) ? 255 : 0;
-                    left[0] = left[1] = left[2] = v;
-                    right[0] = right[1] = right[2] = w;
-                    left[3] = right[3] = 255;
+            std::set<std::pair<int, int>> drawn;
+            for (int y = 0; y < image.height; y++)
+                for (int x = 0; x < image.width; x++)
+                    if (image.at(x, y) != kBlack) drawn.insert({x, y});
+            auto near = [](const std::set<std::pair<int, int>>& set, const std::pair<int, int>& p){
+                for (int dy = -1; dy <= 1; dy++)
+                    for (int dx = -1; dx <= 1; dx++)
+                        if (set.count({p.first + dx, p.second + dy})) return true;
+                return false;
+            };
+            pixels += expected.size();
+            lit += drawn.size();
+            for (const auto& p : expected){
+                if (drawn.count(p)) continue;
+                unlit++;
+                far += near(drawn, p) ? 0 : 1;
+            }
+            for (const auto& p : drawn){
+                if (expected.count(p)) continue;
+                stray++;
+                far += near(expected, p) ? 0 : 1;
+            }
+            if (i == 0 && std::getenv("JASPER_TEST_WRITE_ACTUAL")){
+                // the read-back and the twin's pixels side by side, for a failure's evidence
+                std::vector<uint8_t> both((size_t)image.width * 2 * image.height * 4, 0);
+                for (int y = 0; y < image.height; y++){
+                    for (int x = 0; x < image.width; x++){
+                        uint8_t* left = &both[((size_t)(image.height - 1 - y) * image.width * 2 + x) * 4];
+                        uint8_t* right = left + (size_t)image.width * 4;
+                        left[0] = left[1] = left[2] = drawn.count({x, y}) ? 255 : 0;
+                        right[0] = right[1] = right[2] = expected.count({x, y}) ? 255 : 0;
+                        left[3] = right[3] = 255;
+                    }
                 }
+                writePng(getOutputDirectory() + "/particles_analytic_vs_cpu_" + std::to_string(drag) + ".png", both, image.width * 2, image.height);
             }
-            writePng(getOutputDirectory() + "/particles_analytic_vs_cpu.png", both, image.width * 2, image.height);
         }
-        for (const auto& p : lit){
-            bool found = false;
-            for (int dy = -1; dy <= 1 && !found; dy++)
-                for (int dx = -1; dx <= 1 && !found; dx++) found = expected.count({p.first + dx, p.second + dy}) > 0;
-            extra += found ? 0 : 1;
-        }
+        const std::string counts = "drag " + std::to_string(drag) + ": " + std::to_string(particles) + " particles on " + std::to_string(pixels) +
+                                   " pixels, " + std::to_string(lit) + " lit, " + std::to_string(unlit) + " unlit, " + std::to_string(stray) + " stray, " +
+                                   std::to_string(far) + " more than a pixel off";
+        EXPECT_GT(particles, 100000u) << counts;
+        EXPECT_GT((double)pixels, 0.2 * 10 * 200 * 200) << counts;
+        EXPECT_LE((double)(unlit + stray), 0.001 * (double)pixels) << counts;
+        EXPECT_EQ(far, 0u) << counts;
     }
-    EXPECT_GT(particles, 30000u);
-    EXPECT_GE((double)exact, 0.999 * (double)(exact + near)) << exact << " exact, " << near << " a pixel off";
-    EXPECT_EQ(missing, 0u) << particles << " particles, " << litTotal << " lit pixels, " << exact << " exact, " << near << " near";
-    EXPECT_EQ(extra, 0u);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+namespace {
+
+    // a pixel preset as the editor ships it (editor/pixelart/particles; S49 R20)
+    ParticleEffectDocument presetDocument(const std::string& name){
+        ParticleEffectDocument d;
+        std::ifstream file(testPaths().sourceDir + "/../../../editor/pixelart/particles/" + name + ".particles");
+        std::stringstream text;
+        text << file.rdbuf();
+        std::vector<Diagnostic> diagnostics;
+        EXPECT_TRUE(ParticleEffectCodec::read(text.str(), d, diagnostics)) << name << ": " << ParticleEffectCodec::format(diagnostics);
+        return d;
+    }
+
+    // the drawn pixels in columns [x0, x1)
+    size_t litBetween(const Shot& image, int x0, int x1){
+        size_t n = 0;
+        for (int y = 0; y < image.height; y++)
+            for (int x = x0; x < x1; x++)
+                n += image.at(x, y) != kBlack ? 1 : 0;
+        return n;
+    }
+
+    ParticleEffectDocument withoutSubEmitters(ParticleEffectDocument d){
+        d.subEmittersModule.enabled = false;
+        return d;
+    }
+
+}
+
+// S20 R10 through the renderer (S49 review): a sub-emitter's particles draw, with their own effect's
+// renderer. A user effect whose emitter draws nothing (Render Mode None) and spawns Pixel dots at
+// birth: drawn beside the same effect without its sub-emitter, which draws nothing at all
+TEST_F(ParticlesPixelGpu, SubEmittersDraw){
+    JASPER_REQUIRE_GPU();
+    GpuEnvironment::setView(256, 256, 256, 256, Scaling::LETTERBOX);
+    ParticleEffectDocument child = still(3.0f, 0.0f);
+    child.emission.bursts.clear();
+    child.main.startSpeed = MinMaxCurve::twoConstants(10.0f, 30.0f);
+    child.shape.enabled = true;
+    child.shape.shape = ShapeType::Sphere;
+    child.maxParticles = 64;
+    ParticleEffectLibrary::set("tests/s49_child.particles", child);
+    ParticleEffectDocument parent;
+    parent.looping = false;
+    parent.duration = 1.0f;
+    parent.main.startLifetime = MinMaxCurve(10.0f);
+    parent.main.startSpeed = MinMaxCurve(0.0f);
+    parent.emission.rateOverTime = MinMaxCurve(0.0f);
+    Burst b;
+    b.count = MinMaxCurve(6.0f);
+    parent.emission.bursts = {b};
+    parent.shape.enabled = false;
+    parent.renderer.renderMode = RenderMode::None;
+    parent.subEmittersModule.present = true;
+    parent.subEmittersModule.enabled = true;
+    SubEmitterEntry entry;
+    entry.trigger = SubEmitterTrigger::Birth;
+    entry.effect = "tests/s49_child.particles";
+    entry.emitCount = 4;
+    parent.subEmitters = {entry};
+    add(Vector3(64.0f, 128.0f, 0.0f), parent, 3);
+    add(Vector3(192.0f, 128.0f, 0.0f), withoutSubEmitters(parent), 3);
+    ASSERT_TRUE(render(0.5));
+    const Shot image = readImage();
+    EXPECT_GT(litBetween(image, 0, 128), 20u) << "the sub-emitter's dots draw";
+    EXPECT_EQ(litBetween(image, 128, 256), 0u) << "without it nothing draws";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// The presets that draw through their sub-emitters (S49 R20): Fire's smoke, Debris's shards and
+// chunks; each beside the same preset without its sub-emitters
+TEST_F(ParticlesPixelGpu, PresetSubEmittersDraw){
+    JASPER_REQUIRE_GPU();
+    GpuEnvironment::setView(256, 256, 256, 256, Scaling::LETTERBOX);
+    for (const char* name : {"pixel_smoke", "pixel_debris_shard", "pixel_debris_chunk"})
+        ParticleEffectLibrary::set(std::string("preset:") + name, presetDocument(name));
+
+    // Debris draws nothing of its own
+    add(Vector3(64.0f, 128.0f, 0.0f), presetDocument("pixel_debris"), 5);
+    add(Vector3(192.0f, 128.0f, 0.0f), withoutSubEmitters(presetDocument("pixel_debris")), 5);
+    ASSERT_TRUE(render(0.08));
+    Shot image = readImage();
+    EXPECT_GT(litBetween(image, 0, 128), 10u) << "Debris's shards and chunks draw";
+    EXPECT_EQ(litBetween(image, 128, 256), 0u) << "Debris without its pieces draws nothing";
+
+    // Fire's smoke adds to the fire (the same seed: the same flames)
+    systems.clear();
+    add(Vector3(64.0f, 60.0f, 0.0f), presetDocument("pixel_fire"), 7);
+    add(Vector3(192.0f, 60.0f, 0.0f), withoutSubEmitters(presetDocument("pixel_fire")), 7);
+    ASSERT_TRUE(render(2.0));
+    image = readImage();
+    const size_t withSmoke = litBetween(image, 0, 128), flames = litBetween(image, 128, 256);
+    EXPECT_GT(flames, 0u);
+    EXPECT_GT(withSmoke, flames + 10) << "the smoke draws: " << withSmoke << " pixels against the flames' " << flames;
     EXPECT_NO_ENGINE_ERRORS();
 }

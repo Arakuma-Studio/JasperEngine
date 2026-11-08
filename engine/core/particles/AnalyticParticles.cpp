@@ -61,21 +61,60 @@ namespace {
         return Vector3(r * std::cos(a), cy, r * std::sin(a));
     }
 
-    // 32 samples, linearly interpolated (the size and fade curves)
-    float curve32(const float table[][4], float t){
+    // the size (0) and fade (1) curves: 32 samples, 12 bits over the curve's range, two to a float
+    float curveSample(const AnalyticBlock& b, int curve, int i){
+        const int j = i >> 1;
+        const uint32_t word = (uint32_t)b.curves[curve * 4 + (j >> 2)][j & 3];
+        const uint32_t q = (i & 1) ? (word >> 12) : (word & 4095u);
+        return b.curveRange[curve * 2] + b.curveRange[curve * 2 + 1] * (float)q;
+    }
+
+    // linearly interpolated over normalized age
+    float curve32(const AnalyticBlock& b, int curve, float t){
         const float x = std::clamp(t, 0.0f, 1.0f) * 31.0f;
         const int i = std::min((int)x, 30);
         const float f = x - (float)i;
-        const float a = table[i >> 2][i & 3];
-        const float b = table[(i + 1) >> 2][(i + 1) & 3];
-        return a + (b - a) * f;
+        const float a = curveSample(b, curve, i);
+        const float c = curveSample(b, curve, i + 1);
+        return a + (c - a) * f;
     }
 
-    void bake32(const MinMaxCurve& c, float table[][4]){
+    void bake32(const MinMaxCurve& c, AnalyticBlock& b, int curve){
+        float v[kAnalyticCurveSamples];
+        float lo = 3.0e38f, hi = -3.0e38f;
         for (int i = 0; i < kAnalyticCurveSamples; i++){
             const float t = (float)i / 31.0f;
-            table[i >> 2][i & 3] = c.mode == CurveMode::Constant ? c.constant : c.curve.evaluate(t) * c.multiplier;
+            v[i] = c.mode == CurveMode::Constant ? c.constant : c.curve.evaluate(t) * c.multiplier;
+            lo = std::min(lo, v[i]);
+            hi = std::max(hi, v[i]);
         }
+        const float step = hi > lo ? (hi - lo) / 4095.0f : 0.0f;
+        b.curveRange[curve * 2] = lo;
+        b.curveRange[curve * 2 + 1] = step;
+        for (int j = 0; j < kAnalyticCurveSamples / 2; j++){
+            auto quantise = [&](float x){ return step > 0.0f ? (uint32_t)std::clamp(std::lround((x - lo) / step), 0l, 4095l) : 0u; };
+            b.curves[curve * 4 + (j >> 2)][j & 3] = (float)(quantise(v[2 * j]) | (quantise(v[2 * j + 1]) << 12));
+        }
+    }
+
+    // the colour table's entry e, RGBA8 as two floats
+    void putColor(AnalyticBlock& b, int e, pixelart::Rgba8 c){
+        float* f = &b.colorTable[0][0];
+        f[2 * e] = (float)(c.r + 256 * c.g);
+        f[2 * e + 1] = (float)(c.b + 256 * c.a);
+    }
+
+    void getColor(const AnalyticBlock& b, int e, float out[4]){
+        const float* f = &b.colorTable[0][0];
+        const uint32_t rg = (uint32_t)f[2 * e], ba = (uint32_t)f[2 * e + 1];
+        out[0] = (float)(rg & 255u) / 255.0f;
+        out[1] = (float)(rg >> 8) / 255.0f;
+        out[2] = (float)(ba & 255u) / 255.0f;
+        out[3] = (float)(ba >> 8) / 255.0f;
+    }
+
+    uint8_t toByte(float v){
+        return (uint8_t)std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f);
     }
 
     // The shape's start position and direction (Kernels::spawnShape for the shapes Analytic
@@ -272,7 +311,8 @@ namespace {
             if (cycle < 0)
                 return false;
             const float fired = time + (float)cycle * interval;
-            if (!looping && fired >= duration)
+            // a firing belongs to its loop (a looping effect repeats its bursts each loop)
+            if (fired >= duration)
                 return false;
             const float absolute = looping ? (loops - (float)lc) * duration + fired : fired;
             if (absolute >= emitEnd)
@@ -282,7 +322,9 @@ namespace {
             if (probability < 1.0f && hash01(probabilityKey, firing) >= probability)
                 return false;
             const float countMin = info[0];
-            const float count = countMin == (float)countMax ? countMin : std::floor(countMin + ((float)countMax - countMin) * hash01(countKey, firing) + 0.5f);
+            // uniform over min..max, as Simulated draws it (EmitterRuntime's bursts)
+            const float count = countMin == (float)countMax ? countMin
+                                                            : std::min(std::floor(countMin + ((float)countMax - countMin + 1.0f) * hash01(countKey, firing)), (float)countMax);
             if ((float)j >= count)
                 return false;
             index = 0x40000000u + (uint32_t)bi * 0x01000000u + (((uint32_t)cycle * countMax + j) & 0x00ffffffu);
@@ -298,18 +340,23 @@ namespace {
 
 namespace {
 
-    // f = (1 - e^-kt) / k and h = (t - f) / k in double (the twin's reference precision: AC9's
-    // 1e-4 px against pixelfx's fly), their series below k t = 1e-3 where the subtraction cancels
-    void flyTerms(double k, double t, double& f, double& h, double& e){
-        const double kt = k * t;
-        if (kt < 1.0e-3){
-            f = t * (1.0 - kt * 0.5 + kt * kt / 6.0 - kt * kt * kt / 24.0);
-            h = t * t * (0.5 - kt / 6.0 + kt * kt / 24.0 - kt * kt * kt / 120.0);
-            e = 1.0 - kt + kt * kt * 0.5 - kt * kt * kt / 6.0;
+    // f = (1 - e^-kt) / k and h = (t - f) / k: below k t = 1 their Taylor series (ten terms, by
+    // Horner: the next term is under 2e-9 of the sum), where the closed form cancels; above, the
+    // closed form. The float32 twin (the GPU's formulas, operation for operation) and a double one
+    // (the reference of the bounds and of AC9)
+    template<typename T>
+    void flyTerms(T k, T t, T& f, T& h, T& e){
+        const T kt = k * t;
+        e = std::exp(-kt);
+        if (kt < T(1)){
+            const T a = -kt;
+            f = t * (T(1) + a * (T(1.0 / 2) + a * (T(1.0 / 6) + a * (T(1.0 / 24) + a * (T(1.0 / 120) + a * (T(1.0 / 720) + a * (T(1.0 / 5040) +
+                    a * (T(1.0 / 40320) + a * (T(1.0 / 362880) + a * T(1.0 / 3628800))))))))));
+            h = t * t * (T(1.0 / 2) + a * (T(1.0 / 6) + a * (T(1.0 / 24) + a * (T(1.0 / 120) + a * (T(1.0 / 720) + a * (T(1.0 / 5040) + a * (T(1.0 / 40320) +
+                    a * (T(1.0 / 362880) + a * (T(1.0 / 3628800) + a * T(1.0 / 39916800))))))))));
         }else{
-            f = -std::expm1(-kt) / k;
+            f = (T(1) - e) / k;
             h = (t - f) / k;
-            e = std::exp(-kt);
         }
     }
 
@@ -317,14 +364,22 @@ namespace {
 
 Vector3 AnalyticParticles::flyPosition(const Vector3& p0, const Vector3& v0, const Vector3& g, float k, float t){
     double f, h, e;
-    flyTerms(k, t, f, h, e);
+    flyTerms<double>(k, t, f, h, e);
     return Vector3((float)(p0.x + v0.x * f + g.x * h), (float)(p0.y + v0.y * f + g.y * h), (float)(p0.z + v0.z * f + g.z * h));
 }
 
 Vector3 AnalyticParticles::flyVelocity(const Vector3& v0, const Vector3& g, float k, float t){
     double f, h, e;
-    flyTerms(k, t, f, h, e);
+    flyTerms<double>(k, t, f, h, e);
     return Vector3((float)(v0.x * e + g.x * f), (float)(v0.y * e + g.y * f), (float)(v0.z * e + g.z * f));
+}
+
+void AnalyticParticles::flyTwin(const Vector3& p0, const Vector3& v0, const Vector3& g, float k, float t, Vector3& position, Vector3& velocity){
+    float f, h, e;
+    flyTerms<float>(k, t, f, h, e);
+    // the GPU's order: p0 + v0 * f + g * h, v0 * e + g * f
+    position = Vector3(p0.x + v0.x * f + g.x * h, p0.y + v0.y * f + g.y * h, p0.z + v0.z * f + g.z * h);
+    velocity = Vector3(v0.x * e + g.x * f, v0.y * e + g.y * f, v0.z * e + g.z * f);
 }
 
 float AnalyticParticles::loopRate(float rate, float duration){
@@ -496,6 +551,9 @@ bool AnalyticParticles::compile(const ParticleEffectDocument& d, const ParticleP
             info[1] = 0.0f;
             continue;
         }
+        // in a loop, only the firings inside one loop: the next loop's are its own
+        if (out.looping)
+            burst[2] = (float)firings;
         info[2] = (float)loopCopies;
         info[3] = (float)copies;
         burstSlots += (uint64_t)countMax * copies * loopCopies;
@@ -575,12 +633,8 @@ bool AnalyticParticles::compile(const ParticleEffectDocument& d, const ParticleP
     auto putRamp = [&](const MinMaxGradient& g){
         const std::vector<pixelart::Rgba8> colors = g.resolveRamp();
         const int n = std::min((int)colors.size(), kAnalyticColorEntries);
-        for (int i = 0; i < n; i++){
-            b.colorTable[i][0] = colors[i].r / 255.0f;
-            b.colorTable[i][1] = colors[i].g / 255.0f;
-            b.colorTable[i][2] = colors[i].b / 255.0f;
-            b.colorTable[i][3] = colors[i].a / 255.0f;
-        }
+        for (int i = 0; i < n; i++)
+            putColor(b, i, colors[(size_t)i]);
         b.ramp[0] = (float)n;
         b.ramp[1] = std::clamp(g.rampBias, 0.1f, 10.0f);
         b.ramp[2] = g.rampReverse ? 1.0f : 0.0f;
@@ -607,12 +661,18 @@ bool AnalyticParticles::compile(const ParticleEffectDocument& d, const ParticleP
                 b.lifetimeRemap[3] = 2.0f;
             }
         }else if (col.color.mode == GradientValueMode::Gradient){
+            // the gradient's samples, sRGB-encoded bytes; a Fixed gradient is stepped (each
+            // sample at the middle of its 1/32 of the life), a Blend one interpolated in linear
+            const bool fixed = col.color.gradient.mode == GradientMode::Fixed;
             lifetimeKind = 1.0f;
             b.ramp[0] = (float)kAnalyticColorEntries;
-            b.lifetimeRemap[2] = 0.0f;
+            b.ramp[1] = 1.0f;
+            b.ramp[2] = 0.0f;
+            b.lifetimeRemap[2] = fixed ? 1.0f : 0.0f;
             for (int i = 0; i < kAnalyticColorEntries; i++){
-                const Vector4 c = col.color.gradient.evaluate((float)i / (float)(kAnalyticColorEntries - 1));
-                b.colorTable[i][0] = c.x; b.colorTable[i][1] = c.y; b.colorTable[i][2] = c.z; b.colorTable[i][3] = c.w;
+                const float t = fixed ? ((float)i + 0.5f) / (float)kAnalyticColorEntries : (float)i / (float)(kAnalyticColorEntries - 1);
+                const Vector4 c = col.color.gradient.evaluate(t);
+                putColor(b, i, pixelart::Rgba8{toByte(encodeChannel(c.x)), toByte(encodeChannel(c.y)), toByte(encodeChannel(c.z)), toByte(c.w)});
             }
         }else if (!(col.color.color == Vector4(1.0f, 1.0f, 1.0f, 1.0f))){
             // a constant: a one-entry stepped table
@@ -620,7 +680,8 @@ bool AnalyticParticles::compile(const ParticleEffectDocument& d, const ParticleP
             b.ramp[0] = 1.0f;
             b.ramp[1] = 1.0f;
             b.lifetimeRemap[2] = 1.0f;
-            std::memcpy(b.colorTable[0], &col.color.color.x, sizeof(b.colorTable[0]));
+            const Vector4& c = col.color.color;
+            putColor(b, 0, pixelart::Rgba8{toByte(c.x), toByte(c.y), toByte(c.z), toByte(c.w)});
         }
     }
     b.velocity[3] = startKind + 4.0f * lifetimeKind;
@@ -659,7 +720,7 @@ bool AnalyticParticles::compile(const ParticleEffectDocument& d, const ParticleP
     const SizeOverLifetimeModule& sol = d.sizeOverLifetime;
     if (sol.present && sol.enabled){
         b.ramp[3] = 1.0f;
-        bake32(sol.size, b.sizeCurve);
+        bake32(sol.size, b, 0);
     }
     const PixelArtModule& pa = d.pixelArt;
     if (pa.present && pa.enabled){
@@ -672,7 +733,7 @@ bool AnalyticParticles::compile(const ParticleEffectDocument& d, const ParticleP
         b.pixel[2] = pa.wobbleRandomPhase ? 1.0f : 0.0f;
         if (!(pa.fadeOverLifetime.isConstant() && pa.fadeOverLifetime.constant == 1.0f)){
             b.pixel[3] = 1.0f;
-            bake32(pa.fadeOverLifetime, b.fadeCurve);
+            bake32(pa.fadeOverLifetime, b, 1);
         }
         out.holdFrameRate = std::max(pa.holdFrameRate, 0.0f);
     }
@@ -691,17 +752,15 @@ bool AnalyticParticles::compile(const ParticleEffectDocument& d, const ParticleP
         scale = std::max(scale, std::sqrt(shape->transform[c * 3] * shape->transform[c * 3] + shape->transform[c * 3 + 1] * shape->transform[c * 3 + 1] +
                                           shape->transform[c * 3 + 2] * shape->transform[c * 3 + 2]));
     reach = reach * scale + shape->randomizePosition;
-    const float speed = std::max(std::fabs(b.start[0]), std::fabs(b.start[1])) + Vector3(b.velocity[0], b.velocity[1], b.velocity[2]).length();
-    // |g| is not known before the runtime's gravity: the document's own forces and 9.81 times the modifier
+    out.boundsSpeed = std::max(std::fabs(b.start[0]), std::fabs(b.start[1])) + Vector3(b.velocity[0], b.velocity[1], b.velocity[2]).length();
+    out.boundsPad = reach + out.maxSize + std::max(std::fabs(b.wobble[0]), std::fabs(b.wobble[1]));
+    out.longest = longest;
+    for (int c = 0; c < 3; c++) out.boundsCentre[c] = shape->transform[9 + c];
+    // until setMotion has the scene's gravity: the document's forces and Earth's times the modifier
     float g = std::fabs(d.main.gravityModifier.constant) * 9.81f;
     if (d.forceOverLifetime.present && d.forceOverLifetime.enabled)
         g += Vector3(d.forceOverLifetime.x.constant, d.forceOverLifetime.y.constant, d.forceOverLifetime.z.constant).length();
-    const Vector3 far = flyPosition(Vector3(0.0f, 0.0f, 0.0f), Vector3(speed, 0.0f, 0.0f), Vector3(g, 0.0f, 0.0f), b.motion[3], longest);
-    const float pad = reach + far.x + out.maxSize + std::max(std::fabs(b.wobble[0]), std::fabs(b.wobble[1]));
-    for (int c = 0; c < 3; c++){
-        out.boundsMin[c] = shape->transform[9 + c] - pad;
-        out.boundsMax[c] = shape->transform[9 + c] + pad;
-    }
+    updateBounds(out, g);
     out.valid = true;
     return true;
 }
@@ -719,6 +778,35 @@ void AnalyticParticles::setMotion(AnalyticProgram& p, const float worldGravity[3
     for (int c = 0; c < 3; c++){
         p.block.motion[c] = g[c] * p.gravityModifier + force[c];
         p.block.velocity[c] = velocity[c];
+    }
+    // the bounds under the acceleration it now has (the project's gravity, not Earth's)
+    updateBounds(p, Vector3(p.block.motion[0], p.block.motion[1], p.block.motion[2]).length());
+}
+
+bool AnalyticParticles::liveBounds(const AnalyticProgram& p, float outMin[3], float outMax[3]){
+    bool any = false;
+    for (int k = 0; k < 3; k++){ outMin[k] = 3.0e38f; outMax[k] = -3.0e38f; }
+    for (uint32_t s = 0; s < p.slotCount; s++){
+        const AnalyticParticle a = evaluate(p, s);
+        if (!a.alive) continue;
+        const float pad = 0.5f * std::max(a.size.x, a.size.y);
+        const float c[3] = {a.position.x, a.position.y, a.position.z};
+        for (int k = 0; k < 3; k++){
+            outMin[k] = std::min(outMin[k], c[k] - pad);
+            outMax[k] = std::max(outMax[k], c[k] + pad);
+        }
+        any = true;
+    }
+    return any;
+}
+
+void AnalyticParticles::updateBounds(AnalyticProgram& p, float gravity){
+    // the farthest flight within the longest life, every push along one axis (conservative)
+    const Vector3 far = flyPosition(Vector3(0.0f, 0.0f, 0.0f), Vector3(p.boundsSpeed, 0.0f, 0.0f), Vector3(gravity, 0.0f, 0.0f), p.block.motion[3], p.longest);
+    const float pad = p.boundsPad + far.x;
+    for (int c = 0; c < 3; c++){
+        p.boundsMin[c] = p.boundsCentre[c] - pad;
+        p.boundsMax[c] = p.boundsCentre[c] + pad;
     }
 }
 
@@ -785,12 +873,11 @@ AnalyticParticle AnalyticParticles::evaluate(const AnalyticProgram& p, uint32_t 
     shapeSample(b, analyticKey(b, 1, 1), index, p0, dir);
     const Vector3 v0 = dir * speed + Vector3(b.velocity[0], b.velocity[1], b.velocity[2]);
     const Vector3 g(b.motion[0], b.motion[1], b.motion[2]);
-    out.position = flyPosition(p0, v0, g, b.motion[3], age);
-    out.velocity = flyVelocity(v0, g, b.motion[3], age);
+    flyTwin(p0, v0, g, b.motion[3], age, out.position, out.velocity);
 
     // size over lifetime
     if (b.ramp[3] > 0.5f)
-        size *= curve32(b.sizeCurve, normAge);
+        size *= curve32(b, 0, normAge);
     out.size = Vector2(size, size);
 
     // colour (sRGB rgb, as the record holds it)
@@ -810,7 +897,7 @@ AnalyticParticle AnalyticParticles::evaluate(const AnalyticProgram& p, uint32_t 
         c[3] = b.color0[3] + (b.color1[3] - b.color0[3]) * r;
     }else if (startKind == 2){
         const int step = rampIndex(hash01(analyticKey(b, 1, 0) ^ 0x68e31da4u, index));
-        for (int k = 0; k < 4; k++) c[k] = b.colorTable[step][k];
+        getColor(b, step, c);
         out.rampStep = (uint8_t)step;
     }
     if (lifetimeKind > 0){
@@ -819,13 +906,18 @@ AnalyticParticle AnalyticParticles::evaluate(const AnalyticProgram& p, uint32_t 
         bool srgb = true;
         if (b.lifetimeRemap[2] > 0.5f){
             const int step = rampIndex(t);
-            for (int k = 0; k < 4; k++) e[k] = b.colorTable[step][k];
+            getColor(b, step, e);
             if (b.lifetimeRemap[3] > 1.5f) out.rampStep = (uint8_t)step;
         }else{
             const float x = t * (float)(entries - 1);
             const int i = std::min((int)x, entries - 2);
             const float f = x - (float)i;
-            for (int k = 0; k < 4; k++) e[k] = b.colorTable[i][k] + (b.colorTable[i + 1][k] - b.colorTable[i][k]) * f;
+            // interpolated in linear between the encoded samples
+            float e0[4], e1[4];
+            getColor(b, i, e0);
+            getColor(b, i + 1, e1);
+            for (int k = 0; k < 3; k++) e[k] = decodeChannel(e0[k]) + (decodeChannel(e1[k]) - decodeChannel(e0[k])) * f;
+            e[3] = e0[3] + (e1[3] - e0[3]) * f;
             srgb = false;
         }
         const bool white = c[0] == 1.0f && c[1] == 1.0f && c[2] == 1.0f;
@@ -838,7 +930,7 @@ AnalyticParticle AnalyticParticles::evaluate(const AnalyticProgram& p, uint32_t 
         c[3] *= e[3];
     }
     if (b.pixel[3] > 0.5f)
-        c[3] *= std::clamp(curve32(b.fadeCurve, normAge), 0.0f, 1.0f);
+        c[3] *= std::clamp(curve32(b, 1, normAge), 0.0f, 1.0f);
     out.color = packRgba(c);
 
     // the sheet's frame

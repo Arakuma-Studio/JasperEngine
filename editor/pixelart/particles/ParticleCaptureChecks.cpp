@@ -35,25 +35,23 @@ lint::LintReport editor::pixelart::particleCaptureChecks(const ParticleCapture& 
         grid.status = lint::LintStatus::Skip;
         grid.message = "not a pixel effect (no Pixel Art module, Render Mode not Pixel)";
     }else{
-        int total = 0;
+        // measured on what the GPU drew: base pixels whose screen pixels are not one colour
+        // (ParticleCapture draws every base pixel kProbeScale times each way)
+        uint32_t uneven = 0, drawn = 0;
         for (size_t f = 0; f < capture.frames().size(); f++){
-            for (const CapturedParticle& p : capture.frames()[f].particles){
-                if (!p.pixel)
-                    continue;
-                total++;
-                const float n = p.streak ? 1.0f : particles::ParticlePixel::drawnSize(Vector2(p.size, p.size), p.integerSize).x;
-                const float cx = p.x - n * 0.5f, cy = p.y - n * 0.5f;
-                const float x = p.snap ? jasperengine::pixelart::snap(cx) : cx;
-                const float y = p.snap ? jasperengine::pixelart::snap(cy) : cy;
-                if (std::fabs(x - std::round(x)) > 1.0e-3f || std::fabs(y - std::round(y)) > 1.0e-3f)
-                    grid.addSpot({(int)f + 1, (int)std::floor(p.x), capture.height() - 1 - (int)std::floor(p.y)});
-            }
+            const CapturedFrame& frame = capture.frames()[f];
+            uneven += frame.offGrid;
+            for (const auto& at : frame.offGridAt) grid.addSpot({(int)f + 1, at.first, at.second});
+            for (int y = 0; y < frame.image.height(); y++)
+                for (int x = 0; x < frame.image.width(); x++)
+                    drawn += frame.image.at(x, y)[3] > 0 ? 1 : 0;
         }
-        grid.measured = grid.count;
+        grid.count = (int)uneven;
+        grid.measured = uneven;
         grid.threshold = 0;
-        grid.status = grid.count > 0 ? lint::LintStatus::Fail : lint::LintStatus::Pass;
-        if (grid.count > 0){
-            grid.message = std::to_string(grid.count) + " of " + std::to_string(total) + " particles drawn between base pixels";
+        grid.status = uneven > 0 ? lint::LintStatus::Fail : lint::LintStatus::Pass;
+        if (uneven > 0){
+            grid.message = std::to_string(uneven) + " of " + std::to_string(drawn + uneven) + " drawn base pixels sit between grid lines";
             grid.fix = "turn on the Pixel Art module's Snap to Pixel Grid";
         }
     }

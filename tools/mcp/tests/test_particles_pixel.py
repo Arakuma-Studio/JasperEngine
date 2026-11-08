@@ -75,8 +75,13 @@ async def test_presets_sheets_and_checks(ed: Editor):
                                                     "checks": True})
         ed.check(not r.is_error and len(r.images) == 1, f"{name}: {r.text[:300]}")
         value = r.value
-        width, height, _ = pngdiff.decode(r.images[0][0])
+        width, height, rgba = pngdiff.decode(r.images[0][0])
         ed.check_eq((width, height), (value["width"], value["height"]), f"{name}: the sheet's size")
+        # what the GPU drew (its sub-emitters' particles too: Debris draws nothing of its own), not
+        # what the simulation counts: pixels other than the key, the separators and the labels
+        frame = {(255, 0, 255), (32, 32, 32), (230, 230, 230)}
+        drawn = sum(1 for i in range(0, len(rgba), 4) if (rgba[i], rgba[i + 1], rgba[i + 2]) not in frame)
+        ed.check(drawn > 0, f"{name}: the sheet shows the effect")
         cell_w, cell_h = value["cell"]
         # 8 frames in 3 columns and 3 rows, 1 px between cells, a label band under each
         ed.check(value["width"] == 3 * cell_w * 4 + 2, f"{name}: width {value['width']} for cells of {cell_w}")
@@ -168,3 +173,16 @@ async def test_patch_paths(ed: Editor):
     ed.check(stats["analytic_slots"] > 0 and stats["pixel"] is True, f"stats: {stats}")
     sought = await ed.call("control_particles", scene=s["scene"], entity=s["system"], action="seek", time=3600.0)
     ed.check(abs(sought["stats"]["time"] - 3600.0) < 1e-3, f"an Analytic seek lands at once: {sought['stats']}")
+
+
+async def test_preset_is_one_undo_step(ed: Editor):
+    """A pixel preset with a sub-emitter writes the effect and its child as ONE project undo step."""
+    await setup(ed)
+    made = await ed.call("create_particle_effect", path="assets/fx/undo/fire.particles", preset="pixel_fire")
+    fire = ed.project / "assets" / "fx" / "undo" / "fire.particles"
+    smoke = ed.project / "assets" / "fx" / "undo" / "pixel_smoke.particles"
+    ed.check(fire.is_file() and smoke.is_file(), f"the fire and its smoke: {made.get('children')}")
+    await ed.call("undo", scope="project")
+    ed.check(not fire.exists() and not smoke.exists(), "one undo removes the effect and its child")
+    await ed.call("redo", scope="project")
+    ed.check(fire.is_file() and smoke.is_file(), "one redo writes both again")

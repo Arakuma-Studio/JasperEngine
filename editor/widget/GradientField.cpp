@@ -17,6 +17,7 @@
 #include "pixelart/PixelColor.h"
 
 #include <algorithm>
+#include <cstring>
 #include <cmath>
 #include <cstdio>
 #include <memory>
@@ -165,37 +166,79 @@ EditPhase ui::minMaxGradientField(const char* id, particles::MinMaxGradient& val
             if (n == 0) drawList->AddText(ImVec2(min.x + 4.0f, min.y), IM_COL32(255, 120, 120, 255), "drop a ramp");
             drawList->AddRect(min, max, IM_COL32(0, 0, 0, 200));
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", value.ramp.empty() ? "inline colours" : value.ramp.c_str());
+            // a palette set: its ramp kept when it has one of that name, else its first
+            auto setPalette = [&](const std::string& palette){
+                std::string current;
+                pixelart::parsePaletteRampPath(value.ramp, nullptr, &current);
+                std::shared_ptr<const pixelart::Palette> read = palette.empty() ? nullptr : pixelart::PaletteLibrary::get(palette);
+                if (read && !read->ramps.empty() && read->findRamp(current) == nullptr) current = read->ramps.front().name;
+                value.ramp = palette.empty() ? std::string() : palette + "#ramp:" + current;
+                value.rampColors.clear();
+                phase = EditPhase::Applied;
+            };
+            // a .palette dropped from the Project window
+            auto acceptPaletteFile = [&](){
+                if (!options.paletteOf) return;
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
+                    const std::string first(static_cast<const char*>(payload->Data), strnlen(static_cast<const char*>(payload->Data), (size_t)payload->DataSize));
+                    const std::string palette = options.paletteOf(first);
+                    if (!palette.empty()) setPalette(palette);
+                }
+            };
             if (ImGui::BeginDragDropTarget()){
                 if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("PALETTE_RAMP")){
                     value.ramp.assign(static_cast<const char*>(payload->Data), (size_t)payload->DataSize);
                     value.rampColors.clear();
                     phase = EditPhase::Applied;
                 }
+                acceptPaletteFile();
                 ImGui::EndDragDropTarget();
             }
             if (clicked) ImGui::OpenPopup("##rampEdit");
             if (ImGui::BeginPopup("##rampEdit")){
                 std::string palette, rampName;
                 pixelart::parsePaletteRampPath(value.ramp, &palette, &rampName);
-                char buffer[512];
-                std::snprintf(buffer, sizeof(buffer), "%s", palette.c_str());
+                // the palette: an asset field (the project's palettes, or one dropped on it)
                 ImGui::SetNextItemWidth(Theme::dpi(240.0f));
-                if (ImGui::InputText("Palette", buffer, sizeof(buffer), ImGuiInputTextFlags_EnterReturnsTrue)){
-                    palette = buffer;
-                    std::shared_ptr<const pixelart::Palette> read = pixelart::PaletteLibrary::get(palette);
-                    if (read && !read->ramps.empty() && read->findRamp(rampName) == nullptr) rampName = read->ramps.front().name;
-                    value.ramp = palette.empty() ? std::string() : palette + "#ramp:" + rampName;
-                    phase = EditPhase::Applied;
+                if (ImGui::BeginCombo("Palette", palette.empty() ? "None (inline colours)" : palette.c_str())){
+                    const std::vector<std::string> palettes = options.palettes ? options.palettes() : std::vector<std::string>();
+                    for (const std::string& candidate : palettes){
+                        if (ImGui::Selectable(candidate.c_str(), candidate == palette)) setPalette(candidate);
+                    }
+                    if (palettes.empty()) ImGui::TextDisabled("No .palette in the project");
+                    ImGui::EndCombo();
                 }
+                if (ImGui::BeginDragDropTarget()){
+                    acceptPaletteFile();
+                    ImGui::EndDragDropTarget();
+                }
+                ImGui::SetItemTooltip("A .palette asset: pick one, or drop one from the Project window");
                 if (std::shared_ptr<const pixelart::Palette> read = palette.empty() ? nullptr : pixelart::PaletteLibrary::get(palette)){
+                    // the ramps, each with its strip
+                    const float strip = Theme::dpi(96.0f), height = ImGui::GetTextLineHeight();
+                    auto drawStrip = [&](ImVec2 at, const pixelart::PaletteRamp& ramp){
+                        const int n = (int)ramp.colors.size();
+                        for (int i = 0; i < n; i++){
+                            const int index = ramp.colors[(size_t)i];
+                            const pixelart::Rgba8 c = read->validIndex(index) ? read->colors[(size_t)index] : pixelart::Rgba8{0, 0, 0, 255};
+                            const float x0 = at.x + strip * (float)i / (float)n, x1 = at.x + strip * (float)(i + 1) / (float)n;
+                            ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(x0, at.y), ImVec2(x1, at.y + height), IM_COL32(c.r, c.g, c.b, 255));
+                        }
+                    };
                     ImGui::SetNextItemWidth(Theme::dpi(240.0f));
-                    if (ImGui::BeginCombo("Ramp", rampName.c_str())){
-                        for (const pixelart::PaletteRamp& ramp : read->ramps){
-                            if (ImGui::Selectable(ramp.name.c_str(), ramp.name == rampName)){
+                    if (ImGui::BeginCombo("Ramp", rampName.c_str(), ImGuiComboFlags_HeightLarge)){
+                        for (size_t r = 0; r < read->ramps.size(); r++){
+                            const pixelart::PaletteRamp& ramp = read->ramps[r];
+                            ImGui::PushID((int)r);
+                            const ImVec2 at = ImGui::GetCursorScreenPos();
+                            if (ImGui::Selectable("##ramp", ramp.name == rampName, 0, ImVec2(0.0f, height))){
                                 value.ramp = palette + "#ramp:" + ramp.name;
                                 value.rampColors.clear();
                                 phase = EditPhase::Applied;
                             }
+                            drawStrip(at, ramp);
+                            ImGui::GetWindowDrawList()->AddText(ImVec2(at.x + strip + Theme::dpi(6.0f), at.y), ImGui::GetColorU32(ImGuiCol_Text), ramp.name.c_str());
+                            ImGui::PopID();
                         }
                         ImGui::EndCombo();
                     }

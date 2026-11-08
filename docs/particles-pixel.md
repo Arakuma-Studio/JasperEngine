@@ -130,11 +130,26 @@ every step to the nearest colour of the closest ramp of the project's Default Pa
 | Smoke | puffs rising from a 6 px band at 10 a second, dithered, cap lit | rate and band ours |
 | Fire | discs with a darker rim cooling down the fire ramp (bias 0.62), smoke at 35 % of their deaths | the smoke is the Smoke preset, written beside it; rate ours |
 | Ember | single pixels drifting up, blinking near their end | rate ours |
-| Grit | 16 dust dots, shaded, that settle on a floor 8 px down | Settle Speed 130 |
+| Grit | 16 dust dots, shaded, that bounce once at a quarter of their speed and settle on a floor 8 px down | Settle Speed 32.5 (pixelfx rests a landing slower than 130 px/s: a quarter of it out) |
 | Debris | 10 pieces, half shards half stone chunks, tumbling and settling | the shards and chunks are effects of their own, written beside it |
-| Light Flash | one additive glow, three bands, fading `(1 - t)²` | |
+| Light Flash | one additive glow, three bands, cooling down the `hot` ramp as it fades `(1 - t)²` | |
 | Smoke Loop | Analytic smoke, a seamless 4 s loop of 24 puffs | |
 | Ember Loop | Analytic embers, a seamless 3 s loop of 24 | |
+
+Each preset's contact sheet (`capture_particles {frames: 6, scale: 2}`, made for PPU 1, the key
+colour behind):
+
+| Preset | Sheet |
+|---|---|
+| Spark | ![Spark](img/particles-pixel/pixel_spark.png) |
+| Smoke | ![Smoke](img/particles-pixel/pixel_smoke.png) |
+| Fire | ![Fire](img/particles-pixel/pixel_fire.png) |
+| Ember | ![Ember](img/particles-pixel/pixel_ember.png) |
+| Grit | ![Grit](img/particles-pixel/pixel_grit.png) |
+| Debris | ![Debris](img/particles-pixel/pixel_debris.png) |
+| Light Flash | ![Light Flash](img/particles-pixel/pixel_light_flash.png) |
+| Smoke Loop | ![Smoke Loop](img/particles-pixel/pixel_smoke_loop.png) |
+| Ember Loop | ![Ember Loop](img/particles-pixel/pixel_ember_loop.png) |
 
 The Debris recipe extends to burning chunks: give the Chunk effect a Sub Emitter **Collision ->
 Fire** (pixelfx's brands and blazes are not presets).

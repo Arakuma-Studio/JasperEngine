@@ -22,6 +22,7 @@
 #include <cmath>
 #include <functional>
 #include <cstdio>
+#include <cstring>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -112,8 +113,10 @@ bool ParticleCapture::begin(const ParticleCaptureSettings& settings, std::string
     scene->setDefaultEntityPool(EntityPool::System);
     camera = new Camera(scene);
     scene->setDefaultEntityPool(EntityPool::User);
-    const auto& bg = config.background;
-    scene->setBackgroundColor(bg.r / 255.0f, bg.g / 255.0f, bg.b / 255.0f, 1.0f);
+    // drawn on transparent black: a baked strip keeps exactly what the effect drew (an additive or
+    // Alpha-faded pixel is never blended with a key colour); the contact sheet composites the
+    // frames over the background colour
+    scene->setBackgroundColor(0.0f, 0.0f, 0.0f, 0.0f);
     scene->setCamera(camera);
 
     system = std::make_unique<ParticleSystem>(scene);
@@ -182,7 +185,7 @@ bool ParticleCapture::begin(const ParticleCaptureSettings& settings, std::string
                      (float)frameHeight * 0.5f / ppu, 0.1f, 1000.0f);
     camera->setPosition(cx, cy, 100.0f);
     camera->setTarget(cx, cy, 0.0f);
-    camera->setFramebufferSize(frameWidth, frameHeight);
+    camera->setFramebufferSize(frameWidth * kProbeScale, frameHeight * kProbeScale);
     camera->setFramebufferFilter(TextureFilter::NEAREST);
     camera->setRenderToTexture(true);
 
@@ -258,13 +261,31 @@ bool ParticleCapture::step(){
     CapturedFrame frame;
     frame.time = config.times[next];
     std::vector<uint8_t> rgba;
-    if (!GraphicUtils::readFramebufferRGBA(camera->getFramebuffer(), rgba) || rgba.size() < (size_t)frameWidth * frameHeight * 4){
+    const int probeWidth = frameWidth * kProbeScale;
+    if (!GraphicUtils::readFramebufferRGBA(camera->getFramebuffer(), rgba) || rgba.size() < (size_t)probeWidth * frameHeight * kProbeScale * 4){
         failure = "the capture could not be read back";
         return true;
     }
+    // each base pixel from its block's first screen pixel; a block that is not one colour is a base
+    // pixel drawn between grid lines
     frame.image = PixelImage(frameWidth, frameHeight);
-    std::span<uint8_t> pixels = frame.image.editPixels();
-    std::copy(rgba.begin(), rgba.begin() + (std::ptrdiff_t)pixels.size(), pixels.begin());
+    for (int y = 0; y < frameHeight; y++){
+        for (int x = 0; x < frameWidth; x++){
+            const uint8_t* first = &rgba[((size_t)(y * kProbeScale) * probeWidth + (size_t)(x * kProbeScale)) * 4];
+            bool even = true;
+            for (int sy = 0; sy < kProbeScale && even; sy++){
+                for (int sx = 0; sx < kProbeScale && even; sx++){
+                    const uint8_t* q = &rgba[((size_t)(y * kProbeScale + sy) * probeWidth + (size_t)(x * kProbeScale + sx)) * 4];
+                    even = std::memcmp(q, first, 4) == 0;
+                }
+            }
+            frame.image.set(x, y, PixelRgba{first[0], first[1], first[2], first[3]});
+            if (!even){
+                frame.offGrid++;
+                if (frame.offGridAt.size() < 16) frame.offGridAt.push_back({x, y});
+            }
+        }
+    }
     collectParticles(frame);
     captured.push_back(std::move(frame));
     next++;
@@ -298,8 +319,16 @@ PixelImage editor::pixelart::particleContactSheet(const std::vector<CapturedFram
         const PixelImage& image = frames[(size_t)f].image;
         for (int y = 0; y < frameHeight * scale; y++){
             for (int x = 0; x < frameWidth * scale; x++){
-                PixelRgba c = image.at(x / scale, y / scale);
-                if (image.empty()) c = PixelRgba{background.r, background.g, background.b, 255};
+                PixelRgba c = PixelRgba{background.r, background.g, background.b, 255};
+                if (!image.empty()){
+                    // the frame's premultiplied colour over the background
+                    const PixelRgba f = image.at(x / scale, y / scale);
+                    const int keep = 255 - f[3];
+                    for (int k = 0; k < 3; k++){
+                        const int bg = k == 0 ? background.r : (k == 1 ? background.g : background.b);
+                        c[k] = (uint8_t)std::min(255, f[k] + (bg * keep + 127) / 255);
+                    }
+                }
                 sheet.set(ox + x, oy + y, c);
             }
         }
@@ -312,8 +341,7 @@ PixelImage editor::pixelart::particleContactSheet(const std::vector<CapturedFram
     return sheet;
 }
 
-PixelImage editor::pixelart::particleSpriteStrip(const std::vector<CapturedFrame>& frames, int frameWidth, int frameHeight, int scale, int padding,
-                                                 jasperengine::pixelart::Rgba8 key){
+PixelImage editor::pixelart::particleSpriteStrip(const std::vector<CapturedFrame>& frames, int frameWidth, int frameHeight, int scale, int padding){
     const int n = (int)frames.size();
     if (n == 0 || frameWidth <= 0 || frameHeight <= 0)
         return PixelImage();
@@ -325,9 +353,17 @@ PixelImage editor::pixelart::particleSpriteStrip(const std::vector<CapturedFrame
         const PixelImage& image = frames[(size_t)f].image;
         for (int y = 0; y < cellH; y++){
             for (int x = 0; x < cellW; x++){
+                // keyed on alpha (the frames are drawn on transparent black): the colour back from
+                // premultiplied; an additive pixel that wrote no alpha has its brightest channel's
                 const PixelRgba c = image.at(x / scale, y / scale);
-                const bool background = c[0] == key.r && c[1] == key.g && c[2] == key.b;
-                strip.set(f * (cellW + padding) + x, y, background ? PixelRgba{0, 0, 0, 0} : PixelRgba{c[0], c[1], c[2], 255});
+                const int brightest = std::max<int>({c[0], c[1], c[2]});
+                const int alpha = c[3] > 0 ? c[3] : brightest;
+                PixelRgba out{0, 0, 0, 0};
+                if (alpha > 0){
+                    for (int k = 0; k < 3; k++) out[k] = (uint8_t)std::min(255, (c[k] * 255 + alpha / 2) / alpha);
+                    out[3] = (uint8_t)alpha;
+                }
+                strip.set(f * (cellW + padding) + x, y, out);
             }
         }
     }

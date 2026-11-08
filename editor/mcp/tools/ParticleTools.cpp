@@ -265,6 +265,10 @@ void createEffectTool(const CallPtr& call) {
     ParticleEffectDocument document;
     std::vector<Diagnostic> diagnostics;
     std::vector<std::string> children;
+    // a pixel preset writes its palette copy and children too: one undo step with the effect
+    CommandHistory* history = project->getProjectCommandHistory();
+    std::unique_ptr<UndoGroupScope> holdGroup;
+    size_t groupMark = 0;
     if (args.contains("effect") && !args["effect"].is_null()) {
         auto effect = toOrdered(args["effect"]);
         // an agent's effect may leave the schema version out: this editor's
@@ -283,6 +287,10 @@ void createEffectTool(const CallPtr& call) {
             if (!pixelart::prepareProjectPixelPreset(*project, preset, directory, made, error)) {
                 call->fail(error);
                 return;
+            }
+            if (!made.writes.empty() && history) {
+                holdGroup = std::make_unique<UndoGroupScope>(history);
+                groupMark = history->mark();
             }
             if (!made.writes.empty() && !ProjectFileWrites::writeUndoable(project, made.writes, error)) {
                 call->fail(error);
@@ -310,6 +318,8 @@ void createEffectTool(const CallPtr& call) {
         call->fail(error);
         return;
     }
+    if (holdGroup)
+        history->groupSince(groupMark, "Create Particle Effect " + fs::path(path).filename().generic_string());
     diagnostics.clear();
     ParticleEffectCodec::validate(document, diagnostics);
     addAnalyticDiagnostics(document, diagnostics);
@@ -663,7 +673,7 @@ void captureSheetTool(const CallPtr& call, const EffectTarget& target) {
                     std::to_string(report.fail) + " fail, " + std::to_string(report.skip) + " skip";
         }
         if (!savePath.empty()) {
-            const pixelart::PixelImage strip = pixelart::particleSpriteStrip(capture->frames(), capture->width(), capture->height(), scale, 0, background);
+            const pixelart::PixelImage strip = pixelart::particleSpriteStrip(capture->frames(), capture->width(), capture->height(), scale, 0);
             fs::path jsonPath = savePath;
             jsonPath.replace_extension(".json");
             std::vector<WriteFilesCmd::Item> items;

@@ -11,6 +11,8 @@
 // gradient section. At most 8 colour and 8 alpha keys. Keys are sRGB (S20's Gradient).
 // Undo as the Curve window: each gesture one step (a colour key's Color window session one).
 
+#include <vector>
+#include <functional>
 #include "widget/FieldEdit.h"
 #include "widget/SwatchLibrary.h"
 
@@ -26,6 +28,10 @@ namespace jasperengine::editor::ui {
         const char* label = nullptr;
         bool mixed = false;
         float height = 0.0f;
+        // Palette Ramp (S49 R32): the project's .palette assets (assets-relative), and the
+        // reference form of a file dropped from the Project window ("" when it is not a palette)
+        std::function<std::vector<std::string>()> palettes;
+        std::function<std::string(const std::string& absolute)> paletteOf;
     };
 
     EditPhase gradientField(const char* id, Gradient& gradient, const GradientFieldOptions& options = {});

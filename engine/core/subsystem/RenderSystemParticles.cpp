@@ -277,10 +277,10 @@ RenderSystem::ParticleVariantSet RenderSystem::getParticleVariants(const Compile
     return set;
 }
 
-uint64_t RenderSystem::particleRenderKey(const ParticleSystemState& state) const{
+uint64_t RenderSystem::particleEmitterKey(const CompiledEffect& effect, const EmitterRuntime& runtime) const{
     // what the load reads: the effect's render settings (not its simulation), the scene's fog
     // and post colour, the pipelines
-    const ParticleEffectDocument& d = state.effect->document;
+    const ParticleEffectDocument& d = effect.document;
     const RendererModule& r = d.renderer;
     uint64_t h = 1469598103934665603ull;
     h = mix(h, (uint64_t)r.renderMode);
@@ -311,12 +311,12 @@ uint64_t RenderSystem::particleRenderKey(const ParticleSystemState& state) const
         h = mixString(h, m.model);
         h = mix(h, (uint64_t)m.submesh);
     }
-    const RenderParams& rp = state.effect->program.render;
+    const RenderParams& rp = effect.program.render;
     h = mix(h, (uint64_t)rp.frameBlending);
     h = mix(h, (uint64_t)rp.customData);
-    h = mix(h, (uint64_t)rp.pixel.active | ((uint64_t)rp.pixel.shapes << 1) | ((uint64_t)state.effect->program.analytic << 2));
-    h = mix(h, (uint64_t)state.runtime.isAnalytic() | ((uint64_t)particleSlotCapacity << 1));
-    h = mix(h, (uint64_t)state.effect->program.trails.enabled);
+    h = mix(h, (uint64_t)rp.pixel.active | ((uint64_t)rp.pixel.shapes << 1) | ((uint64_t)effect.program.analytic << 2));
+    h = mix(h, (uint64_t)runtime.isAnalytic() | ((uint64_t)particleSlotCapacity << 1));
+    h = mix(h, (uint64_t)effect.program.trails.enabled);
     h = mix(h, (uint64_t)hasFog);
     h = mix(h, (uint64_t)postColorProperty(ShaderType::PARTICLES));
     h = mix(h, (uint64_t)pixelSnapVariants);
@@ -325,10 +325,26 @@ uint64_t RenderSystem::particleRenderKey(const ParticleSystemState& state) const
     return h;
 }
 
-void RenderSystem::destroyParticles(ParticleSystemComponent& particles){
-    if (!particles.state)
-        return;
-    ParticleRenderData& rd = particles.state->render;
+uint64_t RenderSystem::particleChildrenKey(const EmitterRuntime& runtime, uint64_t h) const{
+    h = mix(h, (uint64_t)runtime.childCount());
+    for (size_t i = 0; i < runtime.childCount(); i++){
+        const EmitterRuntime* child = runtime.child(i);
+        if (!child || !child->effect()){
+            h = mix(h, 0u);
+            continue;
+        }
+        h = mix(h, particleEmitterKey(*child->effect(), *child));
+        h = particleChildrenKey(*child, h);
+    }
+    return h;
+}
+
+uint64_t RenderSystem::particleRenderKey(const ParticleSystemState& state) const{
+    // the system's emitter and its sub-emitters (each loads objects of its own)
+    return particleChildrenKey(state.runtime, particleEmitterKey(*state.effect, state.runtime));
+}
+
+void RenderSystem::destroyParticleEmitter(ParticleRenderData& rd){
     if (rd.loaded){
         rd.quads.destroy();
         for (ObjectRender& m : rd.meshes) m.destroy();
@@ -346,20 +362,25 @@ void RenderSystem::destroyParticles(ParticleSystemComponent& particles){
         rd.trailIndexCapacity = 0;
         rd.trailIndexPoints = 0;
     }
+    for (std::unique_ptr<ParticleRenderData>& child : rd.children){
+        if (child) destroyParticleEmitter(*child);
+    }
+    rd.children.clear();
+    rd.held.clear();
     rd.loaded = false;
     rd.needReload = true;
 }
 
-bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particles, uint16_t pipelines){
-    if (!Engine::isViewLoaded() || !particles.state || !particles.state->effect)
-        return false;
-    if (!ensureParticleBuffers())
-        return false;
-    ParticleSystemState& state = *particles.state;
-    ParticleRenderData& rd = state.render;
-    const ParticleEffectDocument& d = state.effect->document;
+void RenderSystem::destroyParticles(ParticleSystemComponent& particles){
+    if (!particles.state)
+        return;
+    destroyParticleEmitter(particles.state->render);
+}
+
+bool RenderSystem::loadParticleEmitter(Entity entity, const CompiledEffect& effect, const EmitterRuntime& runtime, ParticleRenderData& rd, uint16_t pipelines){
+    const ParticleEffectDocument& d = effect.document;
     const RendererModule& r = d.renderer;
-    const ParticleProgram& prog = state.effect->program;
+    const ParticleProgram& prog = effect.program;
     const RenderParams& rp = prog.render;
 
     // the textures: none still loading (an empty path is no texture, not a file to load)
@@ -397,7 +418,7 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
     // variant bits of the effect's modules and the BLEND_* define of its blend
     const std::string base = r.shader;
     const MaterialBlendMode blend = materialBlend(r.blend);
-    const ParticleVariantSet variants = getParticleVariants(*state.effect, hasFog);
+    const ParticleVariantSet variants = getParticleVariants(effect, hasFog);
     const std::string& reference = variants.reference;
     const uint16_t customId = reference.empty() ? 0 : ShaderPool::registerCustomShader(reference);
     std::shared_ptr<const ShaderManifest> manifest = manifestOf(base);
@@ -467,8 +488,8 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
         return true;
     };
 
-    const bool analytic = prog.analytic && state.runtime.isAnalytic();
-    if (analytic && !ensureParticleSlots(state.runtime.analytic()->slotCount))
+    const bool analytic = prog.analytic && runtime.isAnalytic();
+    if (analytic && !ensureParticleSlots(runtime.analytic()->slotCount))
         return false;
     // per-instance attributes of the 32-byte record, from the stream's placeholder; Analytic
     // reads only its slot (S49)
@@ -576,7 +597,7 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
         // at their fixed stride)
         const bool ribbons = prog.trails.mode == TrailMode::Ribbon;
         const uint32_t points = ribbons ? ParticleRenderPrep::ribbonStripPoints(prog) : prog.trails.maxPoints + 1;
-        const uint32_t strips = ribbons ? std::max(prog.trails.ribbonCount, 1u) : std::max<uint32_t>(state.runtime.trails().ringCount(), 1u);
+        const uint32_t strips = ribbons ? std::max(prog.trails.ribbonCount, 1u) : std::max<uint32_t>(runtime.trails().ringCount(), 1u);
         if (rd.trailIndexCapacity < strips || rd.trailIndexPoints != points){
             if (rd.trailIndexCapacity > 0)
                 rd.trailIndices.destroyBuffer();
@@ -614,8 +635,55 @@ bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particl
 
     rd.loaded = true;
     rd.needReload = false;
+    // the records held for Hold Frames were packed for the objects this replaces
+    rd.held.clear();
+    return true;
+}
+
+bool RenderSystem::loadParticleChildren(Entity entity, const EmitterRuntime& runtime, ParticleRenderData& rd, uint16_t pipelines, uint32_t& sceneInputs){
+    // one render data per sub-emitter of the runtime (its children bound when the effect was)
+    const size_t count = runtime.childCount();
+    for (size_t i = count; i < rd.children.size(); i++){
+        if (rd.children[i]) destroyParticleEmitter(*rd.children[i]);
+    }
+    rd.children.resize(count);
+    bool ok = true;
+    for (size_t i = 0; i < count; i++){
+        const EmitterRuntime* child = runtime.child(i);
+        if (!child || !child->effect()){
+            if (rd.children[i]) destroyParticleEmitter(*rd.children[i]);
+            rd.children[i].reset();
+            continue;
+        }
+        if (!rd.children[i])
+            rd.children[i] = std::make_unique<ParticleRenderData>();
+        ParticleRenderData& childData = *rd.children[i];
+        if (!loadParticleEmitter(entity, *child->effect(), *child, childData, pipelines)){
+            ok = false;
+            continue;
+        }
+        sceneInputs |= childData.sceneInputs;
+        ok = loadParticleChildren(entity, *child, childData, pipelines, sceneInputs) && ok;
+    }
+    return ok;
+}
+
+bool RenderSystem::loadParticles(Entity entity, ParticleSystemComponent& particles, uint16_t pipelines){
+    if (!Engine::isViewLoaded() || !particles.state || !particles.state->effect)
+        return false;
+    if (!ensureParticleBuffers())
+        return false;
+    ParticleSystemState& state = *particles.state;
+    ParticleRenderData& rd = state.render;
+    if (!loadParticleEmitter(entity, *state.effect, state.runtime, rd, pipelines))
+        return false;
+    uint32_t sceneInputs = rd.sceneInputs;
+    if (!loadParticleChildren(entity, state.runtime, rd, pipelines, sceneInputs))
+        return false;
+    // the system reads what any of its emitters reads
+    rd.sceneInputs = sceneInputs;
     rd.loadedKey = particleRenderKey(state);
-    setParticleSceneInputUser(entity, rd.sceneInputs);
+    setParticleSceneInputUser(entity, sceneInputs);
     return true;
 }
 
@@ -652,7 +720,7 @@ void RenderSystem::updateParticleRenders(uint16_t pipelines){
         if (!particles.state || !particles.state->effect)
             continue;
         ParticleRenderData& rd = particles.state->render;
-        if (rd.loaded && !rd.needReload && rd.loadedKey == particleRenderKey(*particles.state))
+        if (rd.ready() && rd.loadedKey == particleRenderKey(*particles.state))
             continue;
         loadParticles(entity, particles, pipelines);
     }
@@ -679,33 +747,27 @@ bool RenderSystem::particleBoundsVisible(const ParticleSystemState& state, Camer
     return isInsideCamera(camera, box);
 }
 
-void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particles, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType){
-    if (!particles.state || !particles.state->effect)
-        return;
-    ParticleSystemState& state = *particles.state;
-    ParticleRenderData& rd = state.render;
-    if (!rd.loaded || state.runtime.isPrewarming())
-        return;
-#if JASPERENGINE_PROFILER
-    // (the editor's and the profiler's statistic: a release game reads no clock here)
-    const auto start = std::chrono::steady_clock::now();
-#endif
-    const ParticleEffectDocument& d = state.effect->document;
-    const ParticleProgram& prog = state.effect->program;
+bool RenderSystem::drawParticleEmitter(ParticleSystemState& state, const CompiledEffect& effect, const EmitterRuntime& runtime, ParticleRenderData& rd,
+                                       Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType, uint32_t& drawn){
+    if (!rd.loaded)
+        return false;
+    const ParticleEffectDocument& d = effect.document;
+    const ParticleProgram& prog = effect.program;
     const RenderParams& rp = prog.render;
     const RendererModule& r = d.renderer;
-    const bool analytic = prog.analytic && state.runtime.isAnalytic();
-    const bool hasParticles = (analytic ? state.runtime.isAlive() : state.runtime.count() > 0) && r.renderMode != RenderMode::None;
+    const bool analytic = prog.analytic && runtime.isAnalytic();
+    const bool hasParticles = (analytic ? runtime.isAlive() : runtime.count() > 0) && r.renderMode != RenderMode::None;
     const bool hasTrails = prog.trails.enabled;
     if (!hasParticles && !hasTrails)
-        return;
-    // culling by last frame's bounds (a system the cameras miss pauses, ParticleSubsystem)
+        return false;
+    // culling by last frame's bounds, the system's (its sub-emitters' too): a system the
+    // cameras miss pauses (ParticleSubsystem)
     if (!particleBoundsVisible(state, camera) && !hasTrails)
-        return;
-    scene->getSystem<ParticleSubsystem>()->markVisible(entity);
+        return false;
+    const uint32_t drawnBefore = drawn;
 
     memory::Arena& arena = memory::frameArena().current();
-    const Matrix4 simToWorld = matrixOf(state.runtime.simToWorld());
+    const Matrix4 simToWorld = matrixOf(runtime.simToWorld());
     const Matrix4 worldToSim = simToWorld.inverse();
 
     // the view in simulation space
@@ -880,7 +942,7 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
             size += sizeof(vsPixel);
         }
         if (properties & (1u << 13)){                     // 'Ana': this frame's time and forces
-            std::memcpy(vsBlock + size, &state.runtime.analytic()->block, sizeof(AnalyticBlock));
+            std::memcpy(vsBlock + size, &runtime.analytic()->block, sizeof(AnalyticBlock));
             size += sizeof(AnalyticBlock);
         }
         render.applyUniformBlock(slots.vsParams, (unsigned int)size, vsBlock);
@@ -898,13 +960,12 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
         applySceneInputs(render, slots.bindings);
     };
 
-    uint32_t drawn = 0;
     if (hasParticles && analytic && particleBoundsVisible(state, camera)){
         // one draw of every slot: the vertex stage computes each particle (S49 R15, R28)
         ObjectRender& render = rd.quads;
         if (render.beginDraw(pipType)){
             applyBlocks(render, rd.quadSlots, rd.properties);
-            render.draw(0, 6, state.runtime.analytic()->slotCount);
+            render.draw(0, 6, runtime.analytic()->slotCount);
             drawn++;
         }
     }else if (hasParticles && particleBoundsVisible(state, camera)){
@@ -912,9 +973,9 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
         if (pix.holdFrameRate > 0.0f && !rp.customData){
             // Hold Frames (S49 R5): packed only when the emitter's time crosses a step; between
             // steps the step's records are drawn again
-            pack = rd.held.get(state.runtime, view, arena, &jobs::system(), pix.holdFrameRate);
+            pack = rd.held.of((uint64_t)(uintptr_t)&camera).get(runtime, view, arena, &jobs::system(), pix.holdFrameRate);
         }else{
-            pack = ParticleRenderPrep::pack(state.runtime, view, arena, &jobs::system());
+            pack = ParticleRenderPrep::pack(runtime, view, arena, &jobs::system());
         }
         if (pack.count > 0){
             BufferRender* instanceBuffer = nullptr;
@@ -964,7 +1025,7 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
     }
 
     if (hasTrails){
-        const TrailPack trails = ParticleRenderPrep::packTrails(state.runtime, arena);
+        const TrailPack trails = ParticleRenderPrep::packTrails(runtime, arena);
         // the triangles cover one strip of up to their points, or strips of exactly that many
         const bool fits = trails.strips <= rd.trailIndexCapacity &&
                           (trails.strips == 1 ? trails.pointsPerStrip <= rd.trailIndexPoints : trails.pointsPerStrip == rd.trailIndexPoints);
@@ -986,9 +1047,42 @@ void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particl
         }
     }
 
-    state.drawnViews += drawn;
-    if (view.sort && drawn > 0)
+    if (view.sort && drawn > drawnBefore)
         state.sortedViews++;
+    return true;
+}
+
+bool RenderSystem::drawParticleChildren(ParticleSystemState& state, const EmitterRuntime& runtime, ParticleRenderData& rd, Transform& transform,
+                                        CameraComponent& camera, Transform& camTransform, PipelineType pipType, uint32_t& drawn){
+    bool seen = false;
+    for (size_t i = 0; i < runtime.childCount() && i < rd.children.size(); i++){
+        const EmitterRuntime* child = runtime.child(i);
+        ParticleRenderData* childData = rd.children[i].get();
+        if (!child || !child->effect() || !childData)
+            continue;
+        seen = drawParticleEmitter(state, *child->effect(), *child, *childData, transform, camera, camTransform, pipType, drawn) || seen;
+        seen = drawParticleChildren(state, *child, *childData, transform, camera, camTransform, pipType, drawn) || seen;
+    }
+    return seen;
+}
+
+void RenderSystem::drawParticles(Entity entity, ParticleSystemComponent& particles, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType){
+    if (!particles.state || !particles.state->effect)
+        return;
+    ParticleSystemState& state = *particles.state;
+    if (!state.render.loaded || state.runtime.isPrewarming())
+        return;
+#if JASPERENGINE_PROFILER
+    // (the editor's and the profiler's statistic: a release game reads no clock here)
+    const auto start = std::chrono::steady_clock::now();
+#endif
+    // the system's emitter, then its sub-emitters (S20 R10): each with its own objects
+    uint32_t drawn = 0;
+    bool seen = drawParticleEmitter(state, *state.effect, state.runtime, state.render, transform, camera, camTransform, pipType, drawn);
+    seen = drawParticleChildren(state, state.runtime, state.render, transform, camera, camTransform, pipType, drawn) || seen;
+    if (seen)
+        scene->getSystem<ParticleSubsystem>()->markVisible(entity);
+    state.drawnViews += drawn;
 #if JASPERENGINE_PROFILER
     state.renderMicros += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
 #endif

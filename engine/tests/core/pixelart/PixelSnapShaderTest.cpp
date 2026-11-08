@@ -127,11 +127,9 @@ TEST(PixelSnapShaderTest, VariantBitsArePinned){
         int index = 0;
         while (index < 64 && shaderPropertyBit(index) != bit) index++;
         EXPECT_EQ(ShaderPool::getShaderPropertyName(type, index, true), "Pxs");
-        // S49's 'Pxl' and 'Ana' took PARTICLES 12 and 13 after it (ParticlePixelShaderTest.VariantBitsArePinned)
-        if (type == ShaderType::PARTICLES)
-            EXPECT_GE(ShaderPool::getShaderPropertyCount(type), index + 1);
-        else
-            EXPECT_EQ(ShaderPool::getShaderPropertyCount(type), index + 1) << "'Pxs' is the last bit of its type";
+        // S49's 'Pxl' and 'Ana' took PARTICLES 12 and 13 after it (ParticlePixelShader.VariantBitsArePinned)
+        const int after = type == ShaderType::PARTICLES ? 2 : 0;
+        EXPECT_EQ(ShaderPool::getShaderPropertyCount(type), index + 1 + after) << "'Pxs' is the last bit of its type but S49's";
     }
     EXPECT_EQ(UBER_SHARP_BILINEAR, 1u << 18);
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 18, true), "Psb");

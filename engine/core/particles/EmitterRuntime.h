@@ -237,6 +237,8 @@ namespace jasperengine { namespace particles {
         // the hash of every live channel, and of the children (determinism)
         uint64_t stateHash() const;
         uint32_t seedValue() const { return seed; }
+        // counts its resets, clears and seeks: what was drawn of it before is not its state now
+        uint64_t generation() const { return resetGeneration; }
         uint32_t raysLastTick() const { return lastRays; }
 
         // a copy of the state (seek checkpoints)
@@ -300,6 +302,7 @@ namespace jasperengine { namespace particles {
 
         PlayState playState = PlayState::Stopped;
         bool emitting = false;
+        uint64_t resetGeneration = 0;
         uint32_t seed = 1;
         uint32_t spawnCounter = 0;
         uint64_t ticks = 0;

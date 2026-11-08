@@ -4,9 +4,10 @@
   "looping": false,
   "maxParticles": 1,
   "modules": [
-    {"type": "main", "startLifetime": 0.25, "startSpeed": 0, "startSize": 24, "startColor": [1, 0.941176, 0.541176, 1]},
+    {"type": "main", "startLifetime": 0.25, "startSpeed": 0, "startSize": 24, "startColor": [1, 1, 1, 1]},
     {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 1}]},
     {"type": "shape", "enabled": false},
+    {"type": "colorOverLifetime", "color": {"mode": "ramp", "ramp": "builtin:pixelfx-effects#ramp:hot"}},
     {"type": "sizeOverLifetime", "size": {"mode": "curve", "curve": [[0, 1, -0.45, -0.45], [1, 0.55, -0.45, -0.45]]}},
     {"type": "pixelArt", "fade": "dither", "ditherSize": 2,
      "fadeOverLifetime": {"mode": "curve", "curve": [[0, 1, -2, -2], [0.5, 0.25, -1, -1], [1, 0, 0, 0]]}},

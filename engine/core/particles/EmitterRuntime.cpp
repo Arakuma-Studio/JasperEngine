@@ -279,6 +279,7 @@ uint32_t EmitterRuntime::childSeed(uint32_t parent, uint32_t index){
 
 void EmitterRuntime::reset(uint32_t newSeed){
     seed = newSeed;
+    resetGeneration++;
     channels.count = 0;
     if (trailStore.ringCount() > 0) trailStore.clear();
     spawnCounter = 0;
@@ -406,6 +407,7 @@ void EmitterRuntime::stop(bool clear){
 }
 
 void EmitterRuntime::clear(){
+    resetGeneration++;
     channels.count = 0;
     if (trailStore.ringCount() > 0) trailStore.clear();
     boundsValid = false;
@@ -1743,6 +1745,7 @@ void EmitterRuntime::saveCheckpoint(Checkpoint& out) const{
 }
 
 void EmitterRuntime::restoreCheckpoint(const Checkpoint& in){
+    resetGeneration++;
     if (!prog)
         return;
     growTo(in.channels.count);

@@ -146,6 +146,47 @@ TEST(PixelPresets, SparkBouncesAtPixelfxsShare){
     EXPECT_TRUE(bounced);
 }
 
+// pixelfx's floor response of each preset that lands (sim.js GRIT 79; Bits 315 with the bounce
+// of its debris): the first hit leaves at pixelfx's vertical share of the speed in (S20 keeps
+// (1 - dampen) of the reflected velocity, so the presets' bounce is pixelfx's over it), and the
+// pieces come to rest once a landing is slow
+TEST(PixelPresets, GritAndDebrisBounceAsPixelfx){
+    struct Case { const char* name; double share; float vy0; };
+    for (const Case& c : {Case{"pixel_grit", 0.25, -300.0f}, Case{"pixel_debris_shard", 0.35, 0.0f}, Case{"pixel_debris_chunk", 0.30, 0.0f}}){
+        ParticleEffectDocument d = preset(c.name);
+        d.emission.bursts = {Burst()};
+        d.emission.bursts[0].count = MinMaxCurve(1.0f);
+        d.main.startSpeed = MinMaxCurve(0.0f);
+        d.main.startLifetime = MinMaxCurve(10.0f);
+        d.shape.enabled = false;
+        d.startVelocity.present = true;
+        d.startVelocity.min = d.startVelocity.max = Vector3(0.0f, c.vy0, 0.0f);
+        d.collision.lifetimeLoss = MinMaxCurve(0.0f);
+        d.interpolate = false;
+        const double dt = 1.0 / (double)d.tickRate;
+        const double g = d.forceOverLifetime.y.constant;
+        const double k = d.limitVelocity.present ? d.limitVelocity.drag.constant : 0.0;
+        PresetRun run(compiled(d));
+        run.runtime.step(run.input);
+        ASSERT_EQ(run.runtime.count(), 1u) << c.name;
+        float previousVy = run.ch(ChVelY, 0);
+        bool bounced = false, settled = false;
+        for (int tick = 0; tick < 6 * d.tickRate && !settled; tick++){
+            run.runtime.step(run.input);
+            const float vy = run.ch(ChVelY, 0);
+            if (!bounced && vy > 0.0f && previousVy < 0.0f){
+                const double incoming = (previousVy + g * dt) * std::exp(-k * dt);
+                EXPECT_NEAR(vy / -incoming, c.share, c.share * 0.02) << c.name << ": the first bounce's vertical share";
+                bounced = true;
+            }
+            settled = run.ch(ChSettled, 0) > 0.0f;
+            previousVy = vy;
+        }
+        EXPECT_TRUE(bounced) << c.name << " bounces";
+        EXPECT_TRUE(settled) << c.name << " comes to rest";
+    }
+}
+
 TEST(PixelPresets, GritAndDebrisSettleUntilTheyDie){
     for (const std::string& name : {std::string("pixel_grit"), std::string("pixel_debris_shard")}){
         ParticleEffectDocument d = preset(name);

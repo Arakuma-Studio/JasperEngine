@@ -95,8 +95,31 @@ namespace jasperengine{
             uint32_t sceneInputs = 0;
             int sortPriority = 0;
 
-            // Hold Frames (S49 R5): the step last packed and its records
-            HeldPack held;
+            // Hold Frames (S49 R5): per view, the step last packed and its records
+            HeldPacks held;
+
+            // the sub-emitters' objects, one per child of the runtime (runtime.child(i)), and
+            // theirs below (S20 R10: depth at most 3)
+            std::vector<std::unique_ptr<ParticleRenderData>> children;
+
+            // loaded, and so every child
+            bool loadedAll() const{
+                if (!loaded)
+                    return false;
+                for (const auto& child : children){
+                    if (child && !child->loadedAll()) return false;
+                }
+                return true;
+            }
+            // loaded with nothing waiting, and so every child
+            bool ready() const{
+                if (!loaded || needReload)
+                    return false;
+                for (const auto& child : children){
+                    if (child && !child->ready()) return false;
+                }
+                return true;
+            }
         };
 
         struct ParticleSystemState {

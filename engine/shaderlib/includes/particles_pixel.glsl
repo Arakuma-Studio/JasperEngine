@@ -13,8 +13,11 @@
 //
 // Local pixel coordinates: (0, 0) is the box's lower-left pixel, x right, y up. Tones: 0 the
 // particle's colour, 1 the secondary colour, 2 + k step k of the ramp (particlesFsParams.pixelRamp).
-// Only integer maths, floor and multiplications reach a comparison, so the CPU and every
-// backend agree to the pixel (no texture fetches, no derivatives).
+// Each rule is evaluated at a whole pixel's centre with floor, products and sums (no texture
+// fetches, no derivatives); Disc, Ring, Puff and Glow compare squared distances, Streak and Shard
+// walk their line in integers, and Shard's and Chunk's rotation (quantised to Rotation Steps)
+// comes from one cos and sin per particle, so a pixel exactly on a rule's edge may differ by
+// float rounding between the CPU twin and a backend (the GPU tests compare on pixel centres).
 
 #ifndef PARTICLES_PIXEL_GLSL
 #define PARTICLES_PIXEL_GLSL

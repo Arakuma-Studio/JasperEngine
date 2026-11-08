@@ -60,28 +60,50 @@ float analyticCbrt(float x){
     return x <= 0.0 ? 0.0 : pow(x, 1.0 / 3.0);
 }
 
-// 32 samples over normalized age, linearly interpolated (fade: 1)
+// the size (0) and fade (1) curves: 32 samples, 12 bits over the curve's range, two to a float
+// (AnalyticParticles.cpp's curveSample)
+float analyticCurveSample(int curve, int i){
+    int j = i / 2;
+    vec4 row = particlesParams.analyticCurves[curve * 4 + j / 4];
+    uint word = uint(row[j - (j / 4) * 4]);
+    uint q = (i - (i / 2) * 2) == 1 ? (word >> 12u) : (word & 4095u);
+    vec4 range = particlesParams.analyticCurveRange;
+    return (curve == 0 ? range.x : range.z) + (curve == 0 ? range.y : range.w) * float(q);
+}
+
+// linearly interpolated over normalized age (fade: 1)
 float analyticCurve(float t, bool fade){
+    int curve = fade ? 1 : 0;
     float x = clamp(t, 0.0, 1.0) * 31.0;
     int i = min(int(x), 30);
     float f = x - float(i);
-    vec4 qa = fade ? particlesParams.analyticFadeCurve[i / 4] : particlesParams.analyticSizeCurve[i / 4];
-    vec4 qb = fade ? particlesParams.analyticFadeCurve[(i + 1) / 4] : particlesParams.analyticSizeCurve[(i + 1) / 4];
-    float a = qa[i - (i / 4) * 4];
-    float b = qb[(i + 1) - ((i + 1) / 4) * 4];
+    float a = analyticCurveSample(curve, i);
+    float b = analyticCurveSample(curve, i + 1);
     return a + (b - a) * f;
 }
 
-// pixelfx fly / flyV: after t under g with drag k (the series below k t = 1e-3)
+// the colour table's entry e: RGBA8 as two floats (r + 256 g, b + 256 a)
+vec4 analyticColor(int e){
+    vec4 row = particlesParams.analyticColorTable[e / 2];
+    vec2 pair = (e - (e / 2) * 2) == 1 ? row.zw : row.xy;
+    uint rg = uint(pair.x);
+    uint ba = uint(pair.y);
+    return vec4(float(rg & 255u), float(rg >> 8u), float(ba & 255u), float(ba >> 8u)) * (1.0 / 255.0);
+}
+
+// pixelfx fly / flyV: after t under g with drag k. Below k t = 1 the Taylor series of f and h (ten
+// terms by Horner, as AnalyticParticles.cpp's flyTerms), where the closed form cancels
 void analyticFly(vec3 p0, vec3 v0, vec3 g, float k, float t, out vec3 position, out vec3 velocity){
-    float f, h, e;
+    float f, h;
     float kt = k * t;
-    if (kt < 1.0e-3){
-        f = t - k * t * t * 0.5 + k * k * t * t * t * (1.0 / 6.0);
-        h = t * t * 0.5 - k * t * t * t * (1.0 / 6.0) + k * k * t * t * t * t * (1.0 / 24.0);
-        e = 1.0 - kt + kt * kt * 0.5;
+    float e = exp(-kt);
+    if (kt < 1.0){
+        float a = -kt;
+        f = t * (1.0 + a * ((1.0 / 2.0) + a * ((1.0 / 6.0) + a * ((1.0 / 24.0) + a * ((1.0 / 120.0) + a * ((1.0 / 720.0) + a * ((1.0 / 5040.0) +
+                a * ((1.0 / 40320.0) + a * ((1.0 / 362880.0) + a * (1.0 / 3628800.0))))))))));
+        h = t * t * ((1.0 / 2.0) + a * ((1.0 / 6.0) + a * ((1.0 / 24.0) + a * ((1.0 / 120.0) + a * ((1.0 / 720.0) + a * ((1.0 / 5040.0) + a * ((1.0 / 40320.0) +
+                a * ((1.0 / 362880.0) + a * ((1.0 / 3628800.0) + a * (1.0 / 39916800.0))))))))));
     }else{
-        e = exp(-kt);
         f = (1.0 - e) / k;
         h = (t - f) / k;
     }
@@ -291,7 +313,7 @@ bool analyticSlotParticle(uint slot, out uint index, out float age){
         if (cycle < 0)
             return false;
         float fired = time + float(cycle) * interval;
-        if (!looping && fired >= duration)
+        if (fired >= duration)
             return false;
         float absolute = looping ? (loops - float(lc)) * duration + fired : fired;
         if (absolute >= emitEnd)
@@ -301,7 +323,7 @@ bool analyticSlotParticle(uint slot, out uint index, out float age){
             return false;
         float countMin = info.x;
         float count = countMin == float(countMax) ? countMin
-                    : floor(countMin + (float(countMax) - countMin) * analyticRandom(analyticKey(2, 3), firing) + 0.5);
+                    : min(floor(countMin + (float(countMax) - countMin + 1.0) * analyticRandom(analyticKey(2, 3), firing)), float(countMax));
         if (float(j) >= count)
             return false;
         index = 0x40000000u + uint(bi) * 0x01000000u + ((uint(cycle) * countMax + j) & 0x00ffffffu);
@@ -376,7 +398,7 @@ bool analyticParticle(float slotValue){
         c.a = c0.a + (c1.a - c0.a) * r;
     }else if (startKind == 2){
         int s = analyticRampIndex(analyticRandom(analyticKey(1, 0) ^ 0x68e31da4u, index));
-        c = particlesParams.analyticColorTable[s];
+        c = analyticColor(s);
         rampStep = float(s);
     }
     if (lifetimeKind > 0){
@@ -385,13 +407,18 @@ bool analyticParticle(float slotValue){
         bool srgb = true;
         if (particlesParams.analyticRemap.z > 0.5){
             int s = analyticRampIndex(t);
-            e = particlesParams.analyticColorTable[s];
+            e = analyticColor(s);
             if (particlesParams.analyticRemap.w > 1.5) rampStep = float(s);
         }else{
             float x = t * float(entries - 1);
             int i = min(int(x), entries - 2);
             float f = x - float(i);
-            e = particlesParams.analyticColorTable[i] + (particlesParams.analyticColorTable[i + 1] - particlesParams.analyticColorTable[i]) * f;
+            // interpolated in linear between the encoded samples
+            vec4 e0 = analyticColor(i);
+            vec4 e1 = analyticColor(i + 1);
+            for (int k = 0; k < 3; k++)
+                e[k] = analyticDecode(e0[k]) + (analyticDecode(e1[k]) - analyticDecode(e0[k])) * f;
+            e.a = e0.a + (e1.a - e0.a) * f;
             srgb = false;
         }
         bool white = c.r == 1.0 && c.g == 1.0 && c.b == 1.0;

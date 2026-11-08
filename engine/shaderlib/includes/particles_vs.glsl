@@ -82,9 +82,9 @@ uniform u_vs_particlesParams {
         vec4 analyticExtra;
         vec4 analyticBursts[4];
         vec4 analyticBurstSlots[4];
-        vec4 analyticSizeCurve[8];
-        vec4 analyticFadeCurve[8];
-        vec4 analyticColorTable[32];
+        vec4 analyticCurveRange;
+        vec4 analyticCurves[8];
+        vec4 analyticColorTable[16];
     #endif
 } particlesParams;
 

@@ -7,12 +7,15 @@
 // and the closed-form flight against a direct transcription of pixelfx's fly (particles.js:10-20).
 
 #include "ParticleTestUtil.h"
+#include "AllocationCounter.h"
 
 #include "particles/AnalyticParticles.h"
 #include "particles/ParticleKernels.h"
 #include "particles/ParticleModules.h"
 
 #include <cmath>
+#include <cstdio>
+#include <chrono>
 #include <cstring>
 #include <random>
 
@@ -168,10 +171,48 @@ TEST(AnalyticParticles, AliveCountMatchesEveryBirth){
             if (t < fired) continue;
             const uint32_t firing = (uint32_t)c;
             if (random01(probKey, firing) >= 0.8f) continue;
-            const int count = (int)std::floor(3.0f + 2.0f * random01(countKey, firing) + 0.5f);
+            // uniform over 3..5, as Simulated draws a burst's count
+            const int count = std::min((int)std::floor(3.0f + 3.0f * random01(countKey, firing)), 5);
             for (int j = 0; j < count; j++){
                 const uint32_t index = 0x40000000u + (uint32_t)(c * 5 + j);
                 if ((float)(t - fired) < lifeOf(index)) expected++;
+            }
+        }
+        EXPECT_EQ(AnalyticParticles::aliveCount(p), expected) << "at " << t;
+    }
+}
+
+// A looping effect repeats its bursts each loop: a burst that fires for ever fires only inside one
+// loop (no firing at or past the duration), each loop's the same; brute force over the loops
+TEST(AnalyticParticles, LoopingBurstsMatchEveryFiring){
+    ParticleEffectDocument d = analyticEffect(true);
+    d.duration = 2.0f;
+    d.emission.rateOverTime = MinMaxCurve(0.0f);
+    d.emission.bursts[0].time = 0.25f;
+    d.emission.bursts[0].interval = 0.5f;
+    d.emission.bursts[0].cycles = 0;   // for ever
+    AnalyticProgram p = programOf(d, 9);
+    const uint32_t lifeKey = analyticKey(p.block, 0, 0), probKey = analyticKey(p.block, 2, 2), countKey = analyticKey(p.block, 2, 3);
+    auto lifeOf = [&](uint32_t index){
+        return std::max(0.8f + (1.4f - 0.8f) * random01(lifeKey, index), 1.0e-4f);
+    };
+    for (double t : {0.1, 0.3, 1.0, 1.9, 2.05, 2.3, 3.74, 3.99, 10.6, 101.27}){
+        AnalyticParticles::setTime(p, t, 1.0e30);
+        uint32_t expected = 0;
+        const int loop = (int)std::floor(t / d.duration);
+        // prewarmed: the loops before the first one count too
+        for (int l = loop - 2; l <= loop; l++){
+            for (int c = 0; c < 4; c++){   // 0.25, 0.75, 1.25, 1.75 in each 2 s loop
+                const double fired = l * (double)d.duration + 0.25 + 0.5 * c;
+                const double age = t - fired;
+                if (age < 0.0) continue;
+                const uint32_t firing = (uint32_t)c;
+                if (random01(probKey, firing) >= 0.8f) continue;
+                const int count = std::min((int)std::floor(3.0f + 3.0f * random01(countKey, firing)), 5);
+                for (int j = 0; j < count; j++){
+                    const uint32_t index = 0x40000000u + (uint32_t)(c * 5 + j);
+                    if ((float)age < lifeOf(index)) expected++;
+                }
             }
         }
         EXPECT_EQ(AnalyticParticles::aliveCount(p), expected) << "at " << t;
@@ -214,4 +255,124 @@ TEST(AnalyticParticles, MatchesPixelfxFly){
         EXPECT_NEAR(p.y, fly(p0.y, v0.y, g.y, k, t), 1.0e-4) << "k " << k << " t " << t;
         EXPECT_NEAR(p.z, fly(p0.z, v0.z, g.z, k, t), 1.0e-4) << "k " << k << " t " << t;
     }
+}
+
+// R19: the twin computes in float32 what the vertex stage computes (the same formulas in the same
+// order) and stays within 1e-3 base px of the exact flight over a pixel-art effect's range, the
+// small drags included (k t just above the old 1e-3 cut, where the closed form cancelled: k = 0.0006
+// at t = 2 s was 65 px off)
+TEST(AnalyticParticles, Float32TwinWithinAMilliPixel){
+    auto exact = [](double p, double v, double g, double k, double t){
+        if (k <= 0.0) return p + v * t + 0.5 * g * t * t;
+        // the series to many terms (kt < 1 here or closed form well conditioned above)
+        double f = 0.0, h = 0.0, term = 1.0;
+        if (k * t < 1.0){
+            for (int n = 0; n < 30; n++){
+                f += term * t / (double)(n + 1);
+                h += term * t * t / ((double)(n + 1) * (double)(n + 2));
+                term *= -k * t / (double)(n + 1);
+            }
+        }else{
+            f = -std::expm1(-k * t) / k;
+            h = (t - f) / k;
+        }
+        return p + v * f + g * h;
+    };
+    std::mt19937 rng(23);
+    std::uniform_real_distribution<float> velocity(-300.0f, 300.0f), gravity(-500.0f, 500.0f), time(0.0f, 2.0f), drag(0.0f, 4.0f), small(0.0f, 0.01f);
+    double worst = 0.0;
+    for (int i = 0; i < 2000; i++){
+        const Vector3 v0(velocity(rng), velocity(rng), 0.0f);
+        const Vector3 g(gravity(rng), gravity(rng), 0.0f);
+        const float k = i % 2 == 0 ? small(rng) : drag(rng);
+        const float t = time(rng);
+        const Vector3 p0(3.25f, -1.5f, 0.0f);
+        Vector3 p, v;
+        AnalyticParticles::flyTwin(p0, v0, g, k, t, p, v);
+        worst = std::max(worst, std::fabs(p.x - exact(p0.x, v0.x, g.x, k, t)));
+        worst = std::max(worst, std::fabs(p.y - exact(p0.y, v0.y, g.y, k, t)));
+    }
+    EXPECT_LT(worst, 1.0e-3) << "the float32 twin's flight is " << worst << " px from the exact one";
+    // the reported case
+    Vector3 p, v;
+    AnalyticParticles::flyTwin(Vector3(0.0f, 0.0f, 0.0f), Vector3(0.0f, 0.0f, 0.0f), Vector3(0.0f, -500.0f, 0.0f), 0.0006f, 2.0f, p, v);
+    EXPECT_NEAR(p.y, exact(0.0, 0.0, -500.0, 0.0006, 2.0), 1.0e-3);
+}
+
+// The bounds the renderer culls by hold every particle the twin places under the scene's own
+// gravity (a pixel-art project's is hundreds of px/s², not 9.81): setMotion works them out again
+TEST(AnalyticParticles, BoundsFollowTheScenesGravity){
+    ParticleEffectDocument d = analyticEffect(true);
+    d.main.gravityModifier = MinMaxCurve(1.0f);
+    AnalyticProgram p = programOf(d, 4);
+    const float gravity[3] = {0.0f, -950.0f, 0.0f};
+    const float identity[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    AnalyticParticles::setMotion(p, gravity, identity);
+    size_t inside = 0, outside = 0;
+    for (double t : {0.2, 0.9, 1.7, 2.6, 3.3}){
+        AnalyticParticles::setTime(p, t, 1.0e30);
+        for (uint32_t s = 0; s < p.slotCount; s++){
+            const AnalyticParticle a = AnalyticParticles::evaluate(p, s);
+            if (!a.alive) continue;
+            bool in = true;
+            const float c[3] = {a.position.x, a.position.y, a.position.z};
+            for (int k = 0; k < 3; k++) in = in && c[k] >= p.boundsMin[k] && c[k] <= p.boundsMax[k];
+            (in ? inside : outside)++;
+        }
+    }
+    EXPECT_GT(inside, 50u);
+    EXPECT_EQ(outside, 0u) << "particles outside the bounds under 950 px/s²";
+}
+
+// R28, measured: an Analytic emitter's CPU per frame (its motion and time for the uniform block)
+// and a seek at any time, whatever the particle count (65,536 slots here); its uniform block <= 1 KB.
+// Budgets enforced with the benchmark server's perfSlack(), printed always
+TEST(AnalyticParticles, CostIsPerEmitterNotPerParticle){
+    EXPECT_LE(sizeof(AnalyticBlock), 1024u);
+    ParticleEffectDocument d = analyticEffect(true);
+    d.emission.bursts.clear();
+    d.main.startLifetime = MinMaxCurve(4.0f);
+    d.emission.rateOverTime = MinMaxCurve(16384.0f);   // 4 s x 16384: 65,536 slots
+    auto effect = compileOrFail(d);
+    EmitterRuntime runtime;
+    runtime.bind(effect);
+    runtime.reset(3);
+    runtime.play();
+    ASSERT_TRUE(runtime.isAnalytic());
+    EXPECT_EQ(runtime.analytic()->slotCount, 65536u);
+    EmitterInput input;
+    const int frames = 2000;
+    auto start = std::chrono::steady_clock::now();
+    for (int f = 0; f < frames; f++) runtime.advance(input, 1.0 / 60.0);
+    const double frameMicros = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count() / frames;
+    start = std::chrono::steady_clock::now();
+    const int seeks = 200;
+    for (int s = 0; s < seeks; s++) runtime.seek(input, 37.0 + 911.0 * s);
+    const double seekMillis = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / seeks;
+    std::printf("[bench] Analytic, 65536 slots: %.2f us per frame (budget 5 us desktop), seek %.4f ms (budget 0.1 ms), block %zu B\n",
+                frameMicros, seekMillis, sizeof(AnalyticBlock));
+    if (testsupport::perfSlack() > 0.0){
+        EXPECT_LT(frameMicros, 5.0 * testsupport::perfSlack());
+        EXPECT_LT(seekMillis, 0.1 * testsupport::perfSlack());
+    }
+}
+
+// R19: Scene-view picking takes the twin's live particles (liveBounds), not the culling bounds that
+// hold every particle the effect may ever draw: it holds each live particle, inside the culling box
+TEST(AnalyticParticles, PickingBoundsAreTheLiveParticles){
+    AnalyticProgram p = programOf(analyticEffect(true), 6);
+    AnalyticParticles::setTime(p, 2.3, 1.0e30);
+    float lo[3], hi[3];
+    ASSERT_TRUE(AnalyticParticles::liveBounds(p, lo, hi));
+    for (uint32_t s = 0; s < p.slotCount; s++){
+        const AnalyticParticle a = AnalyticParticles::evaluate(p, s);
+        if (!a.alive) continue;
+        EXPECT_GE(a.position.x, lo[0]); EXPECT_LE(a.position.x, hi[0]);
+        EXPECT_GE(a.position.y, lo[1]); EXPECT_LE(a.position.y, hi[1]);
+    }
+    for (int k = 0; k < 3; k++){
+        EXPECT_GE(lo[k], p.boundsMin[k]);
+        EXPECT_LE(hi[k], p.boundsMax[k]);
+    }
+    EXPECT_LT(hi[0] - lo[0], p.boundsMax[0] - p.boundsMin[0]) << "tighter than the culling box";
 }

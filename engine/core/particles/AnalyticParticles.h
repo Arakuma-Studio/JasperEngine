@@ -66,11 +66,17 @@ namespace jasperengine { namespace particles {
         float extra[4];          // analyticExtra: x the Renderer's emission intensity
         float bursts[kAnalyticMaxBursts][4];      // analyticBursts: time, interval, cycles (0: for ever), probability
         float burstSlots[kAnalyticMaxBursts][4];  // analyticBurstSlots: count min, max, first slot, copies x loop copies (copies in w)
-        float sizeCurve[kAnalyticCurveSamples / 4][4];   // analyticSizeCurve: 32 samples over normalized age
-        float fadeCurve[kAnalyticCurveSamples / 4][4];   // analyticFadeCurve: the Pixel Art module's Fade over Lifetime
-        float colorTable[kAnalyticColorEntries][4];      // analyticColorTable: sRGB + alpha (a ramp's exact bytes / 255, or a gradient's samples)
+        // packed so the block holds 1 KB (R28): the size and fade curves, 32 samples each of 12
+        // bits over their range, two to a float (rows 0-3 the size, 4-7 the fade); the colour
+        // table's 32 RGBA8 entries, two floats each (r + 256 g, b + 256 a): every value an
+        // integer a float holds exactly
+        float curveRange[4];   // analyticCurveRange: size min, step, fade min, step
+        float curves[8][4];    // analyticCurves
+        float colorTable[kAnalyticColorEntries / 2][4];  // analyticColorTable: sRGB bytes (a ramp's exact ones, a gradient's samples encoded)
     };
     static_assert(sizeof(AnalyticBlock) % 16 == 0, "std140");
+
+    static_assert(sizeof(AnalyticBlock) <= 1024, "R28: one uniform block of at most 1 KB an emitter");
 
     inline uint32_t analyticKey(const AnalyticBlock& b, int group, int i){
         return (uint32_t)b.keys[group * 2][i] | ((uint32_t)b.keys[group * 2 + 1][i] << 16);
@@ -100,9 +106,14 @@ namespace jasperengine { namespace particles {
         bool forceWorld = false;
         Vector3 velocity = Vector3(0.0f, 0.0f, 0.0f);
         bool velocityWorld = false;
-        // the bounds of every particle it can draw, simulation space (min, max)
+        // the bounds of every particle it can draw, simulation space (min, max), and what they are
+        // worked out from (setMotion works them out again under the scene's gravity)
         float boundsMin[3] = {0, 0, 0};
         float boundsMax[3] = {0, 0, 0};
+        float boundsCentre[3] = {0, 0, 0};
+        float boundsSpeed = 0.0f;       // the fastest start, plus Velocity over Lifetime
+        float boundsPad = 0.0f;         // the shape's reach, the largest size and the wobble
+        float longest = 0.0f;           // the longest lifetime
         AnalyticBlock block{};
     };
 
@@ -145,6 +156,13 @@ namespace jasperengine { namespace particles {
         // pixelfx's fly / flyV in float32: the position and velocity after t under g and drag k
         static Vector3 flyPosition(const Vector3& p0, const Vector3& v0, const Vector3& g, float k, float t);
         static Vector3 flyVelocity(const Vector3& v0, const Vector3& g, float k, float t);
+        // the box of the particles alive now (the twin at the program's time, padded by their
+        // size), simulation space: Scene-view picking's (R19); false when none is alive. O(slots)
+        static bool liveBounds(const AnalyticProgram& p, float outMin[3], float outMax[3]);
+        // the bounds again under an acceleration of `gravity` (its length)
+        static void updateBounds(AnalyticProgram& p, float gravity);
+        // the same in float32, as the vertex stage works it (the twin's)
+        static void flyTwin(const Vector3& p0, const Vector3& v0, const Vector3& g, float k, float t, Vector3& position, Vector3& velocity);
         // the rate an exact loop of `duration` takes (N_loop = rate x duration, a whole number)
         static float loopRate(float rate, float duration);
     };
