@@ -41,7 +41,7 @@ Linux build image (GCC 11.4, RelWithDebInfo core tests, Release editor) capped a
 (`docker --cpus 4`, `slot`), Mesa 23.2.1 llvmpipe (LLVM 15, `GL_RENDERER` "llvmpipe (LLVM 15.0.7,
 256 bits)"). The process sees 8 hardware threads, so the CPU tier ran on 7 workers within the 4-CPU
 quota. Host load average 9 to 15 during the runs (other builds); 2026-11-08, `56e317217` plus the
-M6 change. Two runs of the suite; the second is quoted, the first within 10 %.
+M6 change. Two runs of the suite; the second is quoted, the first within 12 % of it.
 
 | Budget | Tier 1 (GPU) | Tier 2 (llvmpipe), measured | Tier 3 (CPU), measured |
 |---|---|---|---|
