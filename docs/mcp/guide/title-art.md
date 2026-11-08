@@ -255,3 +255,11 @@ value by value in `3d.lighting`, a material's environment in `3d.face.environmen
   `3d_environment_missing`, `3d_light_limit`, `3d_mesh_fallback`).
 - Bake a 3D title for anything static (an image costs nothing at run time); `export_title {format: "glb"}` writes the solids
   with their materials (`KHR_materials_*`) beside the title for use as a model.
+- Realtime 3D in a game renders at a tier: the component's `qualityTier` (`auto`, `high`, `medium`, `low`; Lua
+  `t.qualityTier`), else the device's S56 tier where one applies, else `title_art.realtime_3d_quality` (`{windows, linux,
+  macos, ios, android, web}`, default high, high, high, medium, low, low); GLES3/WebGL2 draw high as medium. The export cooks
+  what a player needs (`assets/je-titleart/`): each 3D layer's mesh at every Realtime tier when no Exposed parameter changes its
+  geometry (text, font, size, depth, bevel, band shapes; a material, lighting, transform or skew parameter is fine), and the
+  cube of every environment its titles light with plus the component's `runtimeEnvironments` (photo and softbox presets need
+  it: a player has no HDRI). When every shipped 3D title's geometry is fixed, a Compile build leaves the mesher out. Lua
+  `t:getMeshStats("Logo")` gives `{triangles, vertices, solids, buildMs, tier, overBudget, cooked}` after a render (nil before).

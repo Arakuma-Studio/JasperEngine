@@ -6,10 +6,9 @@
 // needs the mesher); a game reads je-titleart/index.json and hands the renderer the cooked meshes
 // and environment cubes. On the headless device, a plate lit by the softbox (an HDRI the game does
 // not have) drawn from the cooked files without the mesher equals the editor's render of the same
-// tier with the mesher and the HDRI-built cube (High and Low); red controls: without the index
-// the layer has no mesh and says so, and without the cube the studio stands in. The tier's own
-// render against the editor's Bake is measured and printed (k, segments and the glint chain differ
-// by design).
+// tier with the mesher and the HDRI-built cube (High and Low), and the editor's Bake within AC9's
+// mean (k and segments differ by tier); red controls: without the index the layer has no mesh and
+// says so, and without the cube the studio stands in.
 
 #include "titleart/render/TitleRenderTestSupport.h"
 #include "titleart/support/TitleTestAssets.h"
@@ -221,8 +220,12 @@ TEST_F(TitleCooked3DGpu, APlayerDrawsTheExportsDataAsTheEditorDoes) {
         std::printf("[cooked3d] tier %d: player vs editor mean %.2f/255, %.2f %% over 24/255\n", tier, d.mean, d.overFraction * 100.0);
         EXPECT_LE(d.mean, 3.0);
         EXPECT_LE(d.overFraction, 0.02);
+        // against the editor's bake: the tier's k (2 and 1 against 3) and its segments (bevel <= 8 and <= 3 against
+        // 24) move the edges' antialiasing; AC9's mean holds, its 1 % of pixels does not at High (S86 deviation 31)
         const Difference bake = compare(editor[0], player, 24.0);
         std::printf("[cooked3d] tier %d: player vs editor Bake mean %.2f/255, %.2f %% over 24/255\n", tier, bake.mean, bake.overFraction * 100.0);
+        EXPECT_LE(bake.mean, 2.0);
+        EXPECT_LE(bake.overFraction, 0.03);
     }
 
     // red controls: no cooked mesh in a build without the mesher draws nothing and says why; no

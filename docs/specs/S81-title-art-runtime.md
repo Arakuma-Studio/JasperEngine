@@ -1477,3 +1477,13 @@ rest of S82 lands in 6B.
     51.7 ms; a Realtime render sliced at a 4 ms budget took 3 frames, the largest multi-step frame
     measuring 81.3 ms (the estimates are desktop-GPU figures; llvmpipe runs the passes on the CPU).
     These are host measurements, not device figures (AC18 is open, Deviation 22).
+29. **Implementation (S86 wiring, `ta/w3-3d-runtime`): Realtime 3D through the runtime.** The component's `qualityTier`
+    resolves through `TitleArtRuntime::tierFor` into `TitleArtLiveState::tier` (job, state hash and prebake key; 0 and no
+    hash change for 2D documents); Lua `qualityTier` (read/write, refused values raise) and `getMeshStats(layerPath)`;
+    the project setting `title_art.realtime_3d_quality` (S86 deviation 31); the `_3D` / `_MESHER` sub-options follow
+    ModuleUsage's fixed-geometry rule with evidence naming the title and the parameter; the export ships the cooked 3D
+    data (`assets/je-titleart/`) and the player loads it. `Engine::areScenesLoaded` (the "Engine ready" line, the Recorder)
+    now also waits for enabled Realtime and Glyph Atlas titles that render to show their state's image or fail
+    (`TitleArtSystem::areTitlesReady`; `describeNotLoaded` names the title and its `pending`). Found while wiring: no Title
+    Art project setting reaches an exported player (`TitleArtScheduler::configure` runs only in the editor), so builds use
+    the defaults of Frame Budget, Release Delay and Cache Budget; only Realtime 3D Quality travels (in the 3D index).

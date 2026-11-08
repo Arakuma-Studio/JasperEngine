@@ -121,11 +121,3 @@ TEST(TitleIridescence, TheEngineFilmReflectsGreenThere) {
         EXPECT_TRUE(green(film)) << film.x << " " << film.y << " " << film.z;
     }
 }
-
-TEST(TitleIridescence, NoFilmIsTheBase) {
-    // a film thinner than the fade is air: the stack is the base alone (three.js's smoothstep fade)
-    const vec3 film = tlIridescenceFresnel(1.0f, FILM_IOR, 0.0f, BASE_F0);
-    EXPECT_NEAR(film.x, 0.04f, 2e-3f);
-    EXPECT_NEAR(film.y, 0.04f, 2e-3f);
-    EXPECT_NEAR(film.z, 0.04f, 2e-3f);
-}

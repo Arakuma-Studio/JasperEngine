@@ -27,6 +27,10 @@
 # A smoke-expect.txt in the project lists lines (one per line, '#' comments) the game's log must
 # hold after its run (tools/fixtures/tween-curve: the tween's curve checked in the exported game);
 # such a project runs 120 frames unless SMOKE_QUIT_AFTER says otherwise.
+# A smoke-export-expect.txt lists lines the exported project's CMake files must hold (compile only),
+# and a smoke-golden.json ({"image", "tolerance", "max_fraction"}) an image the game's own frame
+# (SMOKE_PLAY=1) must match (tools/ci/smoke_golden.py; tools/fixtures/title3d-fixed: a Realtime 3D
+# title drawn from its cooked mesh in a build without the mesher, against the editor's frame).
 #
 # SMOKE_GAME_ENV="NAME=value ..." is passed to the game's environment.
 # SMOKE_EXPORT_ARGS="..." is added to the export command (e.g. --development-build).
@@ -79,7 +83,7 @@ METHOD="${SMOKE_METHOD:-prebuilt}"
 PLAYERS="${SMOKE_PLAYERS_DIR:-build/players}"
 [[ "$PLAYERS" =~ ^build/[A-Za-z0-9_./-]+$ ]] || { echo "SMOKE_PLAYERS_DIR must be build/<dir> (got $PLAYERS)" >&2; exit 1; }
 
-[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,58p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,62p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 [[ -z "${SMOKE_QUIT_AFTER:-}" && -f "$PROJECT/smoke-expect.txt" ]] && SMOKE_QUIT_AFTER=120
 [[ -x "$ROOT/$EDITOR" ]] || { echo "No editor at $EDITOR; run tools/build.sh linux" >&2; exit 1; }
@@ -178,6 +182,14 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         "$EDITOR" export --project project --out export --backend "$EXPORT_BACKEND" $SMOKE_EXPORT_ARGS > export.log 2>&1 \
             || { echo "FAIL: export"; tail -30 export.log; exit 1; }
         check_log export export.log
+        # smoke-export-expect.txt: lines the exported project's CMake files must hold (module switches)
+        if [[ -f project/smoke-export-expect.txt ]]; then
+            while IFS= read -r line; do
+                [[ -z "$line" || "$line" == "#"* ]] && continue
+                grep -rqF --include="*.cmake" --include="CMakeLists.txt" -- "$line" export || { echo "FAIL: the export does not hold: $line"; exit 1; }
+            done < project/smoke-export-expect.txt
+            echo "ok: the export holds project/smoke-export-expect.txt"
+        fi
 
         echo "== build exported project"
         cmake -S export -B export-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGRAPHIC_BACKEND="$GRAPHIC_BACKEND" \
@@ -275,6 +287,12 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
                 grep -aqF -- "$line" game.log || { echo "FAIL: the game did not log: $line"; tail -20 game.log; exit 1; }
             done < project/smoke-expect.txt
             echo "ok: the game logged project/smoke-expect.txt"
+        fi
+        # smoke-golden.json: the game's own frame against an image (tools/ci/smoke_golden.py)
+        if [[ -f project/smoke-golden.json ]]; then
+            [[ "$SMOKE_PLAY" == 1 ]] || { echo "FAIL: project/smoke-golden.json compares the game's own frame: run with SMOKE_PLAY=1"; exit 1; }
+            python3 /src/tools/ci/smoke_golden.py project/smoke-golden.json game.png game-golden-diff.png \
+                || { echo "FAIL: the game's frame is not its golden ($OUT/game-golden-diff.png)"; exit 1; }
         fi
 
         # the extra runs: "<name> NAME=value ..." entries separated by ";"

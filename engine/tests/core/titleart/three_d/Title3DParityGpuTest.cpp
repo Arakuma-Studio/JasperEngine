@@ -422,7 +422,16 @@ TEST_F(Title3DParityGpu, SoftboxLooksLightWithTheirHdri) {
     EXPECT_TRUE(standIn) << "red control: without the HDRI the studio stands in and says so";
     ASSERT_EQ(lit.width, studio.width);
     ASSERT_EQ(lit.height, studio.height);
+    // over the pixels the title covers
     double sum = 0;
-    for (size_t i = 0; i < lit.rgba.size(); i++) sum += std::abs((int)lit.rgba[i] - (int)studio.rgba[i]);
-    EXPECT_GT(sum / (double)lit.rgba.size(), 4.0) << "the HDRI and the studio stand-in reflect differently";
+    size_t covered = 0;
+    for (size_t i = 0; i + 3 < lit.rgba.size(); i += 4) {
+        if (lit.rgba[i + 3] < 8 && studio.rgba[i + 3] < 8) continue;
+        covered++;
+        for (int c = 0; c < 3; c++) sum += std::abs((int)lit.rgba[i + c] - (int)studio.rgba[i + c]);
+    }
+    ASSERT_GT(covered, 0u);
+    const double mean = sum / (double)(covered * 3);
+    std::printf("[parity3d] f-3d-red: the HDRI against the studio stand-in, mean %.2f/255 over the title\n", mean);
+    EXPECT_GT(mean, 6.0) << "the HDRI and the studio stand-in reflect differently";
 }

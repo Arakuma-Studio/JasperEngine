@@ -1383,7 +1383,8 @@ rest of S82 lands in 6B.
     component is not in this tree), the exporter's calls (S81's export scan decides which titles ship cooked meshes and
     which environments ship cubes: `cookTitleMeshes` and `cookTitleEnvironment` are what it calls), the `title3d-fixed`
     smoke case and the Compile builds with the sub-options OFF (S81), custom `.hdr`/`.exr` project environments, and the
-    device runs (AC23: no phone and no KVM on this host). The cap seam count of AC12 is not measured (the rebuild is in).
+    device runs (AC23: no phone and no KVM on this host). The cap seam count of AC12 is not measured (the rebuild is in). Lua, the
+    exporter's calls, the player's loading and the smoke case have since been wired (deviation 31).
 17. **Implementation: `fit_to_tier` applies the tier's reductions** (curve segments, bevel segments, bands past the tier's solid
     count) without measuring the mesh; `3d_tier_budget` measures it per Realtime tier and offers `fit_to_tier` as the fix.
 18. **Implementation: inflate slopes are analytic.** The smooth inflate normals take the profile curve's derivative instead of
@@ -1431,7 +1432,8 @@ rest of S82 lands in 6B.
     without the glint; wireframe draws the mesh's unique edges (coloured by their normals) over the solids' depth.
 25. **Implementation: cooked meshes.** `RenderRequest::cookedMeshes3D` (by layer id) hands a player's `.titlemesh` meshes to
     the renderer, which draws a cooked mesh of the request's tier and skips the mesher (`TITLE_ART_TEST_NO_MESHER` stands
-    for a build without it); the editor's `cookTitleMeshes` writes them per tier. S81's exporter wiring is open.
+    for a build without it); the editor's `cookTitleMeshes` writes them per tier. The exporter
+    and the player use them (deviation 31).
 26. **Implementation: cooked environments.** `buildTitleEnvironmentCpu` is the builder's CPU twin (the procedural scene or
     the panorama, every level, the GGX prefilter as `title_env.frag`); the editor's `cookTitleEnvironment` encodes it
     through the texture cook's HDR row (BC6H desktop, RGB9E5 mobile and android_etc2, UASTC HDR web) into a KTX2 cube
@@ -1487,4 +1489,43 @@ rest of S82 lands in 6B.
     ramped look, the gold and silver faces most), in the renderer and the GLB (white factor under the ramp texture); and
     direct and ambient light use three.js's units (irradiance x BRDF with the Lambert term diffuse / pi), not the engine's
     pi-scaled lobes, which made the lights pi times brighter than the references.
-
+31. **Implementation (wiring, `ta/w3-3d-runtime`): Realtime 3D in games.**
+    - **Tier.** `TitleArtRuntime::tierFor` resolves R37 for a title: the component's `qualityTier`, else S56's device tier
+      (`QualityResolver::getTier`) where one applies, else Realtime 3D Quality for `Engine::getPlatform()`; GLES3 clamps High
+      to Medium. `TitleArtSystem` puts it into `TitleArtLiveState::tier`, so the job, the state hash and the prebake key carry
+      it, but only for a document with a 3D layer (every 2D title's keys stay as they were). The setting is
+      `title_art.realtime_3d_quality`, an object `{windows, linux, macos, ios, android, web}` (Project Settings > Title Art >
+      Realtime 3D Quality, project.yaml `titleArt.realtime3DQuality`, non-defaults only). An export prebakes a 3D title once
+      per tier it renders at on the export's platforms.
+    - **What ships** (`editor/titleart/three_d/Title3DExport`, `engine/core/titleart/three_d/TitleCooked3D`): the export writes
+      `assets/je-titleart/index.json` (version 1: the Realtime 3D Quality per platform, per title its meshes and environments,
+      per texture family the cubes), `meshes/*.titlemesh` and `environments/<family>/<preset>.ktx2`; a game reads the index at
+      its first 3D title and hands the renderer `cookedMeshes3D` / `cookedEnvironments3D` per job. Meshes are written for
+      **every Realtime tier** (High, Medium, Low), not "the tier's" (R38): the tier resolves on the device (S56 detection,
+      `Device.setTier`, Lua `qualityTier`, the backend), and a build without the mesher has no other way to draw another tier
+      (the §6.7 mesh limits keep the three under 8 MB a layer). They are built at the largest resolution the title's
+      instances show it (bevel segments and inflate steps follow the output scale). Environment cubes are written per
+      texture family at the best tier any shipped title asks of that family; a cube serves every tier (the roughness-to-level
+      mapping does not depend on the face). The Realtime 3D Quality reaches players through the index: before this, no
+      Title Art project setting reached a player (S81's frame budget, release delay and cache budget still do not; their
+      defaults apply there).
+    - **Fixed geometry** (`titleArt3DFixedGeometry`, shared by ModuleUsage's `_MESHER` switch and the cook): R38 says "no
+      exposed text parameter, no Lua text write". Lua and clip events change text only through Exposed parameters, so the
+      Exposed targets decide; and not only text: any target that changes geometry (text, font, size, `style_3d.depth`,
+      the bevel, mode, inflate, band shapes, the 2D style while `style_3d` derives from it, an unrigged letter's transforms)
+      needs the mesher, while materials, lighting, transforms, skew, glint, AO, opacity and rigged letters' transforms do
+      not. ModuleUsage's evidence names the title, the layer and the parameter.
+    - **AC26's "no Clipper2 symbols in the player"** cannot hold: S80's 2D offsets (`geometry/Offset.cpp`) link Clipper2
+      whenever `titleart` is in, as R38 itself says ("Clipper2 stays while S80's 2D plates use it"). The smoke case
+      (`tools/fixtures/title3d-fixed`, made by `tools/fixtures/make_title3d_fixed_fixture.py`, run with `SMOKE_METHOD=compile
+      SMOKE_PLAY=1`) checks instead: the export's `set(JASPERENGINE_TITLE_ART_MESHER OFF)` (`smoke-export-expect.txt`), the
+      player's log line that its 3D layers draw the cooked meshes (printed only by a build without the mesher), the Lua gate
+      (`getMeshStats` with `cooked=true` at the Low tier), and the game's own frame against the editor's frame of the same
+      scene (`smoke-golden.json`, `tools/ci/smoke_golden.py`). The fixture is lit by the softbox, an HDRI no player has.
+    - **Engine ready** (S81's file): `Engine::areScenesLoaded` waits for every enabled Realtime or Glyph Atlas title that
+      renders now to show its state's image or fail (`TitleArtSystem::areTitlesReady`), so the player's ready line, the
+      Recorder and smoke screenshots show finished titles.
+    - **Lua** (R63): `qualityTier` refuses another value with a sentence; `getMeshStats` returns nil before the layer's first
+      render and adds `cooked`.
+    - **HDRIs in tests**: the bundled-HDRI reader moved into the engine (`loadTitleHdriFromDirectory`; the editor's loader calls
+      it), so the core tests light the softbox and photo looks with their HDRIs (deviation 28).
