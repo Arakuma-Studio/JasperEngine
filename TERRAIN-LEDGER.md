@@ -90,6 +90,11 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 
 ## How the work runs
 
+- **Build boxes (owner, 2026-11-08):** three rented Hetzner shared-vCPU `cpx62` boxes (16 vCPU, 30 GB, about $0.24/h each,
+  48 h deadline): `db9262097667` for T1 (s41), `e704f0707dc6` for T4, `22b24a0ef193` for the upstream merge and the final
+  gates. `rb.sh L` runs a mapped worktree's job on its box (je-remote/boxes.conf, rb-remote.sh), 2 jobs of 7 per box, syncing
+  tracked and unignored files and copying back what the run wrote. Destroy them when the programme lands.
+- **Fewer verification rounds (owner, 2026-11-08):** verify once per batch, with red controls in the same pass.
 - **Everything builds on this host**, at the owner's instruction (this replaces the brief's rule against
   building here; no rented boxes). Docker was installed for this. 8 cores, 15 GB RAM, 32 GB swap, no GPU, no KVM.
 - **Build queue:** `/var/lib/orquester/workspaces/jaspersito/je-remote/rb.sh L ...`, a local stand-in for
@@ -184,6 +189,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
   T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- Owner allowed rented build boxes and asked for fewer verification rounds. Three Hetzner boxes seeded with the repo, the build
+  images and the ccache; the build queue sends mapped worktrees' jobs there. Freed 25 GB of leftover Android build output.
 - T1 batch 1 landed (d822fb140), identical to T1's tested tree.
 - Sun 18:51: only two streams still building (T1's last batches, T4), leaving a build slot idle. Started the origin/main merge
   (622 commits) in parallel on `terrain/upstream-merge` (.worktrees/upstream), so the final landing doesn't wait on it.
