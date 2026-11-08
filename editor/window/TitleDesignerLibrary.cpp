@@ -255,7 +255,7 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
     ImGui::SameLine();
     for (LibraryTab t : {LibraryTab::Looks, LibraryTab::ColorSchemes, LibraryTab::Templates}) {
         const char* label = t == LibraryTab::Looks ? "Looks" : t == LibraryTab::ColorSchemes ? "Color Schemes" : "Templates";
-        if (t != LibraryTab::Looks) ImGui::SameLine(0, 2);
+        if (t != LibraryTab::Looks) ImGui::SameLine(0, 10.0f * ImGui::GetFontSize() / 16.0f);
         if (ImGui::Selectable(label, tab == t, 0, ImVec2(ImGui::CalcTextSize(label).x, 0))) {
             v.libraryTab = libraryTabName(t);
             tab = t;
@@ -267,32 +267,45 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
         ImGui::EndChild();
         return;
     }
-    // search, families, dimension, tile size, Apply Font, Keep Color Scheme, Random Look
+    // search, families, dimension, tile size, Apply Font, Keep Color Scheme, Random Look; a control
+    // that does not fit the line starts the next one
+    const float rightEdge = ImGui::GetWindowContentRegionMax().x;
+    auto wrap = [rightEdge](float w) {
+        if (ImGui::GetCursorPosX() + w > rightEdge) ImGui::NewLine();
+    };
+    auto checkWidth = [](const char* label) { return ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x + ImGui::CalcTextSize(label).x; };
     ImGui::SameLine();
+    wrap(160.0f);
     char buffer[128];
     std::snprintf(buffer, sizeof(buffer), "%s", v.libraryQuery.c_str());
     ImGui::SetNextItemWidth(160.0f);
     if (ImGui::InputTextWithHint("##libsearch", ICON_FA_MAGNIFYING_GLASS " Search", buffer, sizeof(buffer))) v.libraryQuery = buffer;
     ImGui::SameLine();
+    wrap(70.0f);
     ImGui::SetNextItemWidth(70.0f);
     const char* dims[] = {"All", "2D", "3D"};
     int dim = v.libraryDimension == "2d" ? 1 : v.libraryDimension == "3d" ? 2 : 0;
     if (ImGui::Combo("##libdim", &dim, dims, 3)) v.libraryDimension = dim == 1 ? "2d" : dim == 2 ? "3d" : "all";
     ImGui::SameLine();
+    wrap(checkWidth("S") + checkWidth("M") + checkWidth("L") + 2.0f * ImGui::GetStyle().ItemSpacing.x);
     for (const char* size : {"s", "m", "l"}) {
         if (ImGui::RadioButton(size == std::string("s") ? "S" : size == std::string("m") ? "M" : "L", v.tileSize == size)) v.tileSize = size;
         ImGui::SameLine();
     }
     if (tab == LibraryTab::Looks) {
+        wrap(checkWidth("Apply Font"));
         ImGui::Checkbox("Apply Font", &v.applyFont);
         ImGui::SameLine();
+        wrap(checkWidth("Keep Color Scheme"));
         ImGui::Checkbox("Keep Color Scheme", &v.keepColorScheme);
         ImGui::SameLine();
     }
     if (tab == LibraryTab::ColorSchemes) {
         const bool whole = options.wholeTitle;
+        wrap(checkWidth("Selected Layers"));
         if (ImGui::RadioButton("Selected Layers", !whole)) v.colorSchemeScope = "selected";
         ImGui::SameLine();
+        wrap(checkWidth("Whole Title"));
         if (ImGui::RadioButton("Whole Title", whole)) v.colorSchemeScope = "whole";
         ImGui::SameLine();
     }
@@ -305,6 +318,7 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
         if (v.libraryDimension != "all" && !item.dimension.empty() && item.dimension != v.libraryDimension) continue;
         filtered.push_back(item);
     }
+    if (tab == LibraryTab::Looks) wrap(ImGui::CalcTextSize(ICON_FA_DICE " Random Look").x + ImGui::GetStyle().FramePadding.x * 2.0f);
     if (tab == LibraryTab::Looks && ImGui::Button(ICON_FA_DICE " Random Look") && !filtered.empty() && doc.editable()) {
         static std::mt19937 random(std::random_device{}());
         const LibraryItem& pick = filtered[random() % filtered.size()];
@@ -330,13 +344,17 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
     if (saveAsOpen && library->drawSaveAs(saveAsTab, doc)) saveAsOpen = false;
     std::map<std::string, int> familyCounts;
     for (const LibraryItem& item : filtered) familyCounts[item.family]++;
-    if (ImGui::SmallButton(("All##fam (" + std::to_string(filtered.size()) + ")").c_str())) v.libraryFamily.clear();
+    const std::string allChip = "All (" + std::to_string(filtered.size()) + ")";
+    wrap(ImGui::CalcTextSize(allChip.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f);
+    if (ImGui::SmallButton((allChip + "###famall").c_str())) v.libraryFamily.clear();
     for (const std::string& family : library->families()) {
         if (!familyCounts.count(family)) continue;
+        const std::string chip = family + " (" + std::to_string(familyCounts[family]) + ")";
         ImGui::SameLine(0, 2);
+        wrap(ImGui::CalcTextSize(chip.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f);
         const bool on = v.libraryFamily == family;
         if (on) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-        if (ImGui::SmallButton((family + " (" + std::to_string(familyCounts[family]) + ")").c_str())) v.libraryFamily = on ? std::string() : family;
+        if (ImGui::SmallButton(chip.c_str())) v.libraryFamily = on ? std::string() : family;
         if (on) ImGui::PopStyleColor();
     }
     if (!v.libraryFamily.empty()) {

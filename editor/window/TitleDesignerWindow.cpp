@@ -1062,7 +1062,9 @@ void TitleDesignerWindow::show() {
     // R3: narrow, the Library is its header bar until a click opens it
     const bool libraryFolded = settings.libraryCollapsed || (narrow && !libraryNarrowOpen);
     const float libraryHeight = !hasLibrary ? 0.0f : libraryFolded ? ImGui::GetFrameHeightWithSpacing() * 1.2f : settings.libraryHeight * scale;
-    const float mainHeight = std::max(120.0f, avail.y - libraryHeight - statusHeight);
+    // an open Library adds its splitter and one more item gap above it
+    const float librarySplitter = hasLibrary && !libraryFolded ? 2.0f * ImGui::GetStyle().ItemSpacing.y : 0.0f;
+    const float mainHeight = std::max(120.0f, avail.y - libraryHeight - statusHeight - librarySplitter);
 
     if (tiny) {
         if (narrowPanelsOpen) {
