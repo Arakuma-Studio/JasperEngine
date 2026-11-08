@@ -1578,7 +1578,8 @@ rest of S82 lands in 6B.
    `ShaderType::TITLE_ART` programs with property bit 9 (`Efx`, `TITLE_VARIANT_CATALOGUE_EFFECT`)
    in `engine/shaderlib/titleart_fx.frag`, numbered by `tfx::Program` (`effects/TfxPrograms.h`), so
    they never take numbers from titleart.frag (1-17) or the renderer (18-63); bit 10 (`Liv`,
-   `TITLE_VARIANT_LIVE`) is `TFX_LIVE`. `TitleGpu::ensureProgram` accepts numbers up to 0x7FF (0xFFF since the generators' bit 11, Deviation 36).
+   `TITLE_VARIANT_LIVE`) is `TFX_LIVE`. `TitleGpu::ensureProgram` accepts numbers up to 0x7FF
+   (0xFFF since the generators' bit 11, Deviation 36).
    Includes are `engine/shaderlib/titleart/fx/*.glsl` per family (not `fx/<id>.glsl` per type).
 10. **Implementation: no QuadBatch, readback or CPU analysis on the effects side.** Drips, Stitch
     and Shatter are fragment passes on the GPU, so they need no readback, work identically at
@@ -1680,8 +1681,8 @@ rest of S82 lands in 6B.
     again. `EffectDef::analyse` stays unused by the generators.
 24. **Implementation: preset files are YAML in its JSON-compatible form.** The engine's golden
     tests read them with the JSON parser (the engine has no YAML parser); the editor embeds them
-    (`editor/titleart/fx/FxPresets.cmake`) and parses them with yaml-cpp, so block-style YAML would
-    load there too. Each preset carries `source` (the Pachislop preset it ports, the parity
+    (`editor/titleart/TitleArtEditorSources.cmake`, the effects stream's embedding, Deviation 14)
+    and parses them with yaml-cpp, so block-style YAML would load there too. Each preset carries `source` (the Pachislop preset it ports, the parity
     tests' reference name) and optionally `class`.
 25. **Implementation: generators declare no `bounds`.** S80's planner maps `bounds` to the frame
     without the generator layer's transform, so a box would cut a moved layer; every S83 generator
