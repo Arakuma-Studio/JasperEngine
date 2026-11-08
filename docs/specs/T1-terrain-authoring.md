@@ -1578,9 +1578,6 @@ the sketch's names, which all still exist unless a line below says otherwise.
 - **D-4 The frame's flush is guarded by a process-wide flag, not `terrain.editState`.** DC10 names
   `editState`, which arrives with node refit and the rest of T1 (R23). The guard costs one load per
   scene update. The rest of T1 may fold it into `editState`.
-- **D-5 `TerrainEdit.ZeroCostWhenUnused` covers what exists.** Today it counts the frame's guard and a
-  query. R53's 1000-frame count over an unedited terrain and the `sizeof` assertion land with
-  `editState`, which is what they would measure.
 - **D-6 Erosion belongs to its block.** R87 says both routes give the same bytes. They do for every
   kernel but `erode`, whose droplets are drawn per block, so its bytes depend on `preferredBlock`.
   `TerrainGolden` compares `erode` across stores only with the map as one block. Full-map erosion is
@@ -1658,11 +1655,33 @@ the sketch's names, which all still exist unless a line below says otherwise.
   commands, not map writes); `instanced` plants a tree prototype through T5's `place_trees` and `remove_trees`.
 - **D-32 Window work not done yet:** R39's stroke log, R56's alternates (the `C` key and Alt Alternates While Painting),
   R57's `TerrainBrush` shortcut context with Table 5's keys and the Cut Holes brush they name, R63's Pick beyond Set Height's
-  eyedropper, R55's fade and hide during camera moves, R59's Resize..., R61's hillshade preview, R67's Preview, R37's pen
-  readers, and R47-R54's benches. They are open, not given up: none of them is impossible on this host.
+  eyedropper, R55's fade and hide during camera moves, R59's Resize..., R61's hillshade preview and R67's Preview. They are
+  open, not given up: none of them is impossible on this host.
 - **D-35 `visualize_terrain` without T3's and T5's keys and with one sheet.** `quality` and `foliage_quality` are theirs to add. The sheet is
   one mesh of at most 255 x 255 cells; DC8's second copy at 25 % in the tools layer is not done.
 - **D-36 The Lua terrain functions that take tables are raw functions** with their stubs in `tools/lua_api/parser.py`'s `OVERRIDES`;
   `docs/scripting/*.md` joined the Lua doc test so `docs/scripting/terrain.md` is checked.
 - **D-37 `navmesh_stale` comes from the tool.** `TerrainIssues` sees one component, so `sample_terrain` adds the issue from
   `NavigationSystem::countDirtyTiles` of the scene's NavMesh Surfaces.
+- **D-38 R37's readers feed the runtime's `Input` too, and live in each platform layer.** `Backend::penPressure()` reads the
+  editor backend's last pointer event; every reading also goes to `Input::setPenPressure`, so a game reads `Input.getPenPressure()`
+  (0..1, -1 for a mouse or a finger) on all six targets: XInput 2 on X11 (`engine/platform/linux/X11Pen`, shared by the editor
+  and the Linux player; libXi is loaded when there and its declarations are local, so neither a build nor a start needs libXi;
+  XWayland gives a Wayland desktop's tablets the same devices), WM_POINTER pen info on Windows (`WinPen.h`), tablet events on
+  macOS, PointerEvent on the web, the stylus tool types on Android, Apple Pencil force on iOS. The engine has no SDL or sokol_app
+  layer to read from. A pen's zero counts as a click within 100 ms of the stroke's start (`StrokeResampler::samplePressure`), the
+  pen-down being the stroke's start. Only the Linux code is built here; the others follow their files' patterns, by reading.
+- **D-39 R49's delta times are an editor suite.** The delta step is `TerrainMapDeltaCmd`, editor code the core bench cannot link, so
+  `TerrainDeltaBench` times it and enforces R49 under `JASPER_TEST_PERF_SLACK` (the 4096² map only then; 1024² otherwise). R47's
+  "with slope filter" is measured on Smooth, the budget between Smooth's and the next. R50's "today" is a copy of the pre-T1
+  `MeshSystem` code kept in the bench and timed in the same run. R52's upload size is AC36's test, not a bench line. AC38's run
+  is on the rented build box (16 shared vCPUs, other jobs on it), not an idle 8-core desktop: the numbers in `docs/perf/terrain.md`
+  are that machine's, and the budgets are confirmed only on reference hardware (`docs/specs/checklists/T1.md`). On the box 9 of
+  `je-bench-terrain`'s 18 budgets miss, the whole-map ops and the overlay commit by 2x to 4x.
+- **D-40 AC39's overlay check is a unit test,** `TerrainOverlay.OffHasNoEntities`, which counts the scene's meshes with the overlay off,
+  on, then off; `sizeof` is asserted per member (`editState`, `surfaceRevision`), which is what R53 states. "Terrain window closed: no
+  query per frame" is by reading: `TerrainEditWindow::show` returns before any query when the window is closed.
+- **D-41 R54's base is the merge base with `origin/main`,** so the growth measured is the whole terrain programme's that is in the head
+  (T1, T2, T3, T5, T6): an upper bound for T1's. T1's own share is counted from the head's symbols by source file. Measured
+  (`docs/perf/terrain.md`): about 312 KiB on Linux glcore against the 96 KiB budget, so AC40's gate fails; the operation engine
+  (`TerrainOps*`) is half of it. Not fixed here: cutting it is a change to the engine's code shape, for the integrator to decide.
