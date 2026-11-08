@@ -828,7 +828,8 @@ std::vector<CollectUnit> jasperengine::editor::titledesigner::planCollect(const 
     for (const std::string& id : layers) {
         const ta::Json* layer = layerById(doc, id);
         if (!layer) continue;
-        units.push_back({CollectUnit::Kind::Layer, {NodeKind::Layer, id, {}, {}}});
+        // the layer page, the costliest, a top-level section per unit
+        for (int slice = 0; slice < LAYER_PAGE_SLICES; slice++) units.push_back({CollectUnit::Kind::Layer, {NodeKind::Layer, id, {}, {}}, slice});
         if (ta::layerTypeHasStyle(ta::layerTypeOf(*layer))) {
             units.push_back({CollectUnit::Kind::Part, {NodeKind::Part, id, "face", {}}});
             auto style = layer->find("style");
@@ -883,6 +884,8 @@ void jasperengine::editor::titledesigner::collectUnit(TitleDesignerState& state,
     ctx.nodeLabel = str(*layer, "name");
     switch (unit.kind) {
         case CollectUnit::Kind::Layer:
+            ctx.onlySection = unit.slice;
+            ctx.sliceTakesRest = unit.slice == LAYER_PAGE_SLICES - 1;
             layerPage(ctx, {unit.node.layer});
             break;
         case CollectUnit::Kind::Part:

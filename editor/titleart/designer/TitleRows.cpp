@@ -653,6 +653,10 @@ bool jasperengine::editor::titledesigner::beginSection(RowContext& ctx, const st
                                                             bool defaultOpen) {
     JE_PROFILE_SCOPE("TD beginSection");
     if (ctx.collecting()) {
+        if (ctx.onlySection >= 0 && ctx.sectionChain.empty()) {
+            const int index = ctx.topSections++;
+            if (index != ctx.onlySection && !(ctx.sliceTakesRest && index > ctx.onlySection)) return false;
+        }
         ctx.sectionChain.push_back(title);
         return true;
     }
@@ -708,6 +712,8 @@ jasperengine::editor::titledesigner::CollectLayerLookup::~CollectLayerLookup() {
 
 void jasperengine::editor::titledesigner::fieldRow(RowContext& ctx, const std::vector<FieldRef>& targets, const RowExtras& extras) {
     JE_PROFILE_SCOPE("TD fieldRow");
+    // a page slice past the first leaves the rows outside sections to the first
+    if (ctx.collecting() && ctx.onlySection > 0 && ctx.sectionChain.empty()) return;
     const CollectTimer rowTimer(ctx.collecting(), collectTimes.rows);
     if (ctx.collecting()) collectTimes.rowCount++;
     if (targets.empty() || !ctx.state) return;

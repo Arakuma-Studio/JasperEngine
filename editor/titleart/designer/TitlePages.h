@@ -56,7 +56,9 @@ namespace jasperengine::editor::titledesigner {
         enum class Kind : uint8_t { Layer, Part, Effect, Mask, Document, Offers };
         Kind kind = Kind::Layer;
         NodeRef node;
+        int slice = -1;     // a layer page in slices: its top-level section of this index (-1: whole)
     };
+    constexpr int LAYER_PAGE_SLICES = 16;     // the last also takes any section past it
     std::vector<CollectUnit> planCollect(const TitleDesignerState& state, bool everyLayer);
     // collects one unit into `index` (a unit whose node is gone adds nothing); the caller keeps a
     // CollectLayerLookup of the shown document alive around a batch of units

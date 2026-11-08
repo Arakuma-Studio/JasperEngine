@@ -81,6 +81,11 @@ namespace jasperengine::editor::titledesigner {
         bool allOpen = false;                       // Collect: every section open
         std::vector<std::string> forceOpen;         // section titles a search landing opens (R26)
         bool legendShown = false;                   // the source-dot legend is drawn once per page (R23)
+        // Collect, one slice of a page (R69's per-frame build): only its top-level section of this
+        // index (0 also takes the rows outside sections); -1: the whole page
+        int onlySection = -1;
+        bool sliceTakesRest = false;                // the last slice: its section and every later one
+        int topSections = 0;                        // the top-level sections met so far
         bool collecting() const { return mode == RowMode::Collect; }
     };
 
