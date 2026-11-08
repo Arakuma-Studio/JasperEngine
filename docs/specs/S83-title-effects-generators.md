@@ -1735,7 +1735,7 @@ rest of S82 lands in 6B.
       Lens Flare's "shape" centres come from the 4 px grid's ink box (within ~2 canvas px of
       Pachislop's per-pixel box). Glints' `point` is measured from the canvas centre (Pachislop).
 33. **Implementation: parity exceptions (AC4).** Diagnosed on the renders (scripts and diff maps
-    kept with the evidence); two causes were defects and are fixed, three exceptions remain:
+    kept with the evidence); two causes were defects and are fixed, two exceptions remain:
     - Fixed, test: Backlight god_rays and jackpot and the three Aura presets missed by 8-27 % of
       blocks only because the trimmed render was one pixel taller or narrower than the reference
       (a fringe pixel exactly at the trim's alpha 8) and centring cropped it on the wrong side;
@@ -1746,9 +1746,10 @@ rest of S82 lands in 6B.
       seeding; Pachislop's glints.ts imports effects/b/common.ts `rng` (the 7919 seeding), so
       every star landed elsewhere (10 of 10 reference stars match the EffectsB stream, 3 of 10
       the other).
-    - `speedLines-beta` (17.6 % / 8.2): the preset's Halftone dissolve is the effects stream's
-      `halftone`, absent on this branch; applying Pachislop's dissolve to our render on the CPU
-      gives 0.00 % / 0.06, so it is the whole difference and the exception ends at the merge.
+    - `speedLines-beta` (17.6 % / 8.2 on the generators' branch): the preset's Halftone dissolve
+      is the effects stream's `halftone`; with both streams merged it measures 0.00 % of blocks,
+      histogram 0.02 %, and is no longer an exception (its own golden `gen/speed_lines_beta` was
+      rewritten with the dissolve). The parity test now fails when a listed exception passes.
     - `glints-highlights` (6.2 %) and `glints-rainbow` (6.4 %): about 9 of 11 stars coincide; the
       reference's base title has spots 25-50 levels brighter at the same seven places in all
       three glints references (S80's title differs there; its own effect parity passes), and the

@@ -129,7 +129,6 @@ TEST_F(TitleGenGpu, PresetGoldens) {
 
 // AC4's parity exceptions (at most 10, S83 §7), each with what makes it differ; the rest match
 const std::map<std::string, const char*> PARITY_EXCEPTIONS = {
-    {"speedLines-beta", "the Beta Flash preset's Halftone dissolve is a layer effect of the effects stream (S83 §6.6.9)"},
     {"glints-highlights", "S80's base title has darker spots where Pachislop's face is 25-50 levels brighter; two lower-ranked picks move (S83 Deviation 33)"},
     {"glints-rainbow", "as glints-highlights"},
 };
@@ -159,8 +158,10 @@ TEST_F(TitleGenParityGpu, PachislopPresets) {
         std::printf("[parity] %s: %s\n", refName.c_str(), stats.text().c_str());
         const auto exception = PARITY_EXCEPTIONS.find(refName);
         if (exception != PARITY_EXCEPTIONS.end()) {
-            // an exception still has the reference's structure, within twice AC12's histogram limit
+            // an exception still has the reference's structure, within twice AC12's histogram limit,
+            // and leaves the list once it passes (speedLines-beta did when Halftone landed)
             EXPECT_LE(stats.histogramDistance, 12.0) << refName << " (" << exception->second << "): " << stats.text();
+            EXPECT_FALSE(ok) << refName << " passes now: take it off the exceptions (" << exception->second << ")";
         } else {
             EXPECT_TRUE(ok) << refName << ": " << stats.text();
         }

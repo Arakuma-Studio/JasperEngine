@@ -293,7 +293,7 @@ comparison of the old golden against the new image (before) and after the update
 | `gen/smoke_black` | Smoke's Black Smoke preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
 | `gen/smoke_grey` | Smoke's Grey Smoke preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
 | `gen/smoke_steam` | Smoke's White Steam preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
-| `gen/speed_lines_beta` | Speed Lines's Beta Flash (ベタフラ) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
+| `gen/speed_lines_beta` | Speed Lines's Beta Flash (ベタフラ) preset with its Halftone dissolve (S83 §6.8, `TitleGenGpu.PresetGoldens`; written after the effects stream's `halftone` was merged) |
 | `gen/speed_lines_flash` | Speed Lines's Flash (フラッシュ) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
 | `gen/speed_lines_flow_diag` | Speed Lines's Flow Lines Diagonal preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
 | `gen/speed_lines_flow_h` | Speed Lines's Flow Lines Horizontal (流線) preset (S83 §6.8, `TitleGenGpu.PresetGoldens`) |
