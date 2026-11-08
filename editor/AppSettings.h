@@ -184,10 +184,12 @@ struct SceneViewSettings {
     bool alignToSurface = false;  // drops turn their up axis onto the surface normal
     bool rulers = false;          // top and left rulers in 2D, UI and orthographic axis views
     bool previewParticles = true; // animation edit previews (Animator, Animation windows) seek the Particle Systems under them
+    // T1 R56: Alt+LMB paints the armed terrain or voxel brush's alternate instead of orbiting (Terrain3D's grammar)
+    bool altAlternates = false;
 
     bool operator==(const SceneViewSettings& other) const {
         return exactPick == other.exactPick && alignToSurface == other.alignToSurface && rulers == other.rulers &&
-               previewParticles == other.previewParticles;
+               previewParticles == other.previewParticles && altAlternates == other.altAlternates;
     }
     bool operator!=(const SceneViewSettings& other) const { return !(*this == other); }
 };

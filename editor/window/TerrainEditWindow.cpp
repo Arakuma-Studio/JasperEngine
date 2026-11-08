@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "object/TerrainEdit.h"
+#include "AppSettings.h"
 #include "terrain/TerrainHoles.h"
 #include "terrain/TerrainQuality.h"
 #include "TerrainQualityPanel.h"
@@ -36,6 +37,7 @@
 #include "command/type/TerrainTextureEditCmd.h"
 #include "external/IconsFontAwesome6.h"
 #include "subsystem/MeshSystem.h"
+#include "terrain/TerrainLayers.h"
 #include "util/Angle.h"
 #include "util/Color.h"
 #include "util/FileDialogs.h"
@@ -978,6 +980,12 @@ bool editor::TerrainEditWindow::findTerrainHit(Scene* scene, const Ray& ray, Ent
 static constexpr double STROKE_FRAME_BUDGET_SECONDS = 0.006;
 // Longest interval a single event may deposit, so hitches don't cause spikes.
 static constexpr float BRUSH_MAX_STAMP_SECONDS = 0.05f;
+// T1 R39: a test-only log of mouse strokes as the edit_terrain calls that replay them
+static const char* terrainStrokeLogPath(){
+    const char* path = std::getenv("JASPER_TERRAIN_STROKE_LOG");
+    return path && path[0] ? path : nullptr;
+}
+
 // Objects any closer than this would stack on top of each other
 static constexpr float MIN_PLACE_SPACING = 0.05f;
 
@@ -1277,7 +1285,10 @@ TerrainStrokeBrush editor::TerrainEditWindow::makeStrokeBrush(TerrainBrushMode m
     brush.size = brushSize;
     brush.strength = brushStrength;
     brush.rotation = brushRotation;
-    brush.flattenTarget = std::clamp(flattenPickOnStroke ? pickedHeight : flattenHeight, 0.0f, 1.0f);
+    // R56: an alternate takes its height from under the stroke's first point, as Pick and Flatten does
+    const bool alternateOn = !scripted && isAlternateOn();
+    brush.flattenTarget = std::clamp(flattenPickOnStroke || alternateOn ? pickedHeight : flattenHeight, 0.0f, 1.0f);
+    brush.alternate = alternateOn && (mode == TerrainBrushMode::Raise || mode == TerrainBrushMode::Lower || mode == TerrainBrushMode::PaintLayer);
     brush.terraceSteps = std::clamp(terraceSteps, MIN_TERRACE_STEPS, MAX_TERRACE_STEPS);
     brush.noiseSize = noiseSize;
     brush.textureLayer = selectedTextureLayer;
@@ -1357,7 +1368,11 @@ bool editor::TerrainEditWindow::paintMapStroke(SceneProject* sceneProject, const
         stroke.startTime = now;
     }
     const float time = std::chrono::duration<float>(now - stroke.startTime).count();
-    stroke.session->addSample(time, localPoint.x, localPoint.z, Backend::penPressure());
+    const float pressure = Backend::penPressure();
+    stroke.session->addSample(time, localPoint.x, localPoint.z, pressure);
+    if (terrainStrokeLogPath()){
+        stroke.logSamples.push_back(terrain::StrokeSample{time, localPoint.x, localPoint.z, pressure});
+    }
     stroke.session->run(STROKE_FRAME_BUDGET_SECONDS);
     return stroke.session->flush();
 }
@@ -1771,6 +1786,11 @@ void editor::TerrainEditWindow::drawTextureLayers(TerrainComponent& terrain){
 
     terrainPropertyRow("Layers", "Up to nine, three per blend map.");
     const ImVec2 commandSize = commandButtonSize();
+    // T1 R63: the next click selects the layer that weighs most there
+    if (iconButton(ICON_FA_EYE_DROPPER, "pick_layer", "Pick the layer from the terrain", pickTarget == TerrainPick::Layer, commandSize)){
+        pickTarget = pickTarget == TerrainPick::Layer ? TerrainPick::None : TerrainPick::Layer;
+    }
+    ImGui::SameLine();
     ImGui::BeginDisabled(layerCount >= MAX_TERRAIN_LAYERS);
     if (iconButton(ICON_FA_PLUS, "add_texture_layer", "Add texture layer", false, commandSize)){
         endStroke();
@@ -2467,6 +2487,16 @@ void editor::TerrainEditWindow::show(){
         brushButton(TerrainBrushMode::Smooth, ICON_FA_WATER, "terrain_smooth", "Smooth Height");
         ImGui::SameLine();
         brushButton(TerrainBrushMode::Flatten, ICON_FA_GRIP_LINES, "terrain_flatten", "Set Height (Shift smooths)");
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!hasAlternate());
+        // R56: Lift Floors (Ctrl: Flatten Peaks) for Raise and Lower, Pick and Flatten for Set Height
+        if (iconButton(ICON_FA_ARROWS_UP_TO_LINE, "terrain_alternate",
+                       brushMode == TerrainBrushMode::Flatten ? "Alternate (C): Pick and Flatten, from the height under the click"
+                                                              : "Alternate (C): Lift Floors up to the height under the click (Ctrl: Flatten Peaks)",
+                       isAlternateOn(), commandButtonSize())){
+            toggleAlternate();
+        }
+        ImGui::EndDisabled();
 
         brushButton(TerrainBrushMode::Sharpen, ICON_FA_CHART_LINE, "terrain_sharpen", "Sharpen terrain, pulling ridges back out of a smoothed surface");
         ImGui::SameLine();
@@ -2495,6 +2525,13 @@ void editor::TerrainEditWindow::show(){
                                    !terrain.blendMaps[blendMapIndex].empty();
         ImGui::BeginDisabled(!blendMapReady);
         drawTextureLayers(terrain);
+        // R56: Paint Texture's alternate (C) smooths the layer's blend map by a true average
+        terrainPropertyRow("Alternate", "Smooth the blend map by a true average instead of painting (C).");
+        ImGui::BeginDisabled(brushMode != TerrainBrushMode::PaintLayer);
+        if (iconButton(ICON_FA_WATER, "terrain_paint_alternate", "Alternate (C): smooth the blend by a true average", isAlternateOn(), commandButtonSize())){
+            toggleAlternate();
+        }
+        ImGui::EndDisabled();
         terrainPropertyRow("Normalize", "Fade the other layers sharing this blend map. Layers on the other maps keep their weight.");
         ImGui::BeginDisabled(brushMode == TerrainBrushMode::PaintBase);
         ImGui::Checkbox("##normalize_blend", &normalizeBlendPaint);
@@ -2727,9 +2764,20 @@ void editor::TerrainEditWindow::show(){
             ImGui::Checkbox("##filter_invert_height", &heightFilterInvert);
             terrainPropertyRow("All Tools", "The filter also limits sculpting and details.");
             ImGui::Checkbox("##filter_all_tools", &filterAllTools);
+            // R63: an eyedropper on each end takes it from the next click on the terrain
+            auto pickButton = [&](const char* id, const char* tooltip, TerrainPick target){
+                if (iconButton(ICON_FA_EYE_DROPPER, id, tooltip, pickTarget == target, commandSize)){
+                    pickTarget = pickTarget == target ? TerrainPick::None : target;
+                }
+                ImGui::SameLine();
+            };
             terrainPropertyRow("Slope range", "Allowed ground slope in degrees, from flat (0) to vertical (90).");
+            pickButton("pick_slope_min", "Pick the lowest slope from the terrain", TerrainPick::SlopeMin);
+            pickButton("pick_slope_max", "Pick the highest slope from the terrain", TerrainPick::SlopeMax);
             ImGui::DragFloatRange2("##paint_slope", &paintMinSlope, &paintMaxSlope, 0.5f, 0.0f, 90.0f, "%.0f deg", "%.0f deg", ImGuiSliderFlags_AlwaysClamp);
             terrainPropertyRow("Height range", "Allowed ground height, from the terrain base (0) to its max height (1).");
+            pickButton("pick_height_min", "Pick the lowest height from the terrain", TerrainPick::HeightMin);
+            pickButton("pick_height_max", "Pick the highest height from the terrain", TerrainPick::HeightMax);
             ImGui::DragFloatRange2("##paint_height", &paintMinHeight, &paintMaxHeight, 0.01f, 0.0f, 1.0f, "%.2f", "%.2f", ImGuiSliderFlags_AlwaysClamp);
             ImGui::EndDisabled();
         }
@@ -2748,7 +2796,13 @@ void editor::TerrainEditWindow::show(){
             ImGui::EndDisabled();
         }
         if (brushMode == TerrainBrushMode::Noise){
-            terrainPropertyRow("Noise size", "Width of one noise feature in world units.");
+            terrainPropertyRow("Noise size", "Width of one noise feature in world units. The eyedropper measures it on the terrain: click both sides of a feature.");
+            if (iconButton(ICON_FA_EYE_DROPPER, "pick_noise_size", "Measure from Terrain: click one side of a feature, then the other",
+                           pickTarget == TerrainPick::NoiseSize, commandSize)){
+                pickTarget = pickTarget == TerrainPick::NoiseSize ? TerrainPick::None : TerrainPick::NoiseSize;
+                noisePickStart.reset();
+            }
+            ImGui::SameLine();
             UIUtils::sliderFloatInput("##noise_size", &noiseSize, 0.1f, 50.0f, "%.2f");
         }
         if (brushMode == TerrainBrushMode::Terrace){
@@ -2759,8 +2813,8 @@ void editor::TerrainEditWindow::show(){
             terrainPropertyRow("Sample height", "Pick the flatten height from the terrain at the start of each stroke.");
             ImGui::Checkbox("##flatten_pick", &flattenPickOnStroke);
             terrainPropertyRow("Flatten height", "Normalized terrain height. The eyedropper takes it from the next click on the terrain.");
-            if (iconButton(ICON_FA_EYE_DROPPER, "pick_height", "Pick from Terrain", pickHeightArmed, commandSize)){
-                pickHeightArmed = !pickHeightArmed;
+            if (iconButton(ICON_FA_EYE_DROPPER, "pick_height", "Pick from Terrain (I)", pickTarget == TerrainPick::Height, commandSize)){
+                pickTarget = pickTarget == TerrainPick::Height ? TerrainPick::None : TerrainPick::Height;
             }
             ImGui::SameLine();
             ImGui::BeginDisabled(flattenPickOnStroke);
@@ -2946,23 +3000,44 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
 
     const ImGuiIO& io = ImGui::GetIO();
 
-    // T1 R63: an armed eyedropper takes the height under the click and edits nothing
-    if (pickHeightArmed){
-        const TerrainComponent& picked = scene->getComponent<TerrainComponent>(entity);
-        if (std::abs(picked.maxHeight) > std::numeric_limits<float>::epsilon()){
-            flattenHeight = std::clamp(localHeight / picked.maxHeight, 0.0f, 1.0f);
-            flattenPickOnStroke = false;
+    // T1 R63: an armed eyedropper takes its value under the click and edits nothing (Alt+click picks on its
+    // release, altPick)
+    const TerrainPick pick = pickTarget;
+    if (pick != TerrainPick::None){
+        const TerrainPickValues values = pickValues(scene, entity, localPoint.x, localPoint.z);
+        switch (pick){
+            case TerrainPick::Height:
+                flattenHeight = values.height;
+                flattenPickOnStroke = false;
+                break;
+            case TerrainPick::SlopeMin: paintMinSlope = std::min(values.slope, paintMaxSlope); break;
+            case TerrainPick::SlopeMax: paintMaxSlope = std::max(values.slope, paintMinSlope); break;
+            case TerrainPick::HeightMin: paintMinHeight = std::min(values.height, paintMaxHeight); break;
+            case TerrainPick::HeightMax: paintMaxHeight = std::max(values.height, paintMinHeight); break;
+            case TerrainPick::Layer:
+                if (values.layer >= 0){
+                    selectedTextureLayer = values.layer;
+                    brushMode = TerrainBrushMode::PaintLayer;
+                }else{
+                    brushMode = TerrainBrushMode::PaintBase;
+                }
+                break;
+            case TerrainPick::NoiseSize:
+                if (!noisePickStart){
+                    noisePickStart = localPoint;
+                    return false;
+                }
+                noiseSize = std::clamp((localPoint - *noisePickStart).length(), 0.1f, 50.0f);
+                noisePickStart.reset();
+                break;
+            case TerrainPick::None: break;
         }
-        pickHeightArmed = false;
+        pickTarget = TerrainPick::None;
         return false;
     }
 
-    // T5 R46: Alt+click with no drag picks the prototype under the cursor (Alt+drag orbits before this)
+    // T5 R46: Alt+click picks the prototype under the cursor on its release (altPick)
     if (isPlacementBrush() && foliagePanel->placesTrees()){
-        if (io.KeyAlt){
-            foliagePanel->pickPrototype(sceneProject, entity, localPoint, std::max(brushSize, 1.0f));
-            return false;
-        }
         clearStroke();
         stroke.active = true;
         stroke.placement = true;
@@ -3085,6 +3160,14 @@ void editor::TerrainEditWindow::endStroke(){
         // what the frame budget left waiting lands before the step is cut
         stroke.session->run(0.0);
         stroke.session->flush();
+        // R39: the stroke as the edit_terrain call that replays it, one line each
+        if (const char* log = terrainStrokeLogPath()){
+            const std::string line = stroke.session->replayCall(stroke.logSamples);
+            if (!line.empty()){
+                std::ofstream out(std::filesystem::u8path(log), std::ios::app);
+                out << line << '\n';
+            }
+        }
         CommandHistory* history = CommandHandle::get(stroke.sceneId);
         if (removeFilledHoleMap(sceneProject)){
             clearStroke();
@@ -3158,6 +3241,21 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
         return false;
     }
     infoValid = false;
+    // R55: no decal while the camera moves (right or middle drag, Alt+left orbit), and a fade once the pointer rests
+    const ImGuiIO& pointer = ImGui::GetIO();
+    if (!stroke.active && (pointer.MouseDown[ImGuiMouseButton_Right] || pointer.MouseDown[ImGuiMouseButton_Middle] ||
+                           (pointer.KeyAlt && pointer.MouseDown[ImGuiMouseButton_Left]))){
+        return false;
+    }
+    if (pointer.MousePos.x != decalPointerX || pointer.MousePos.y != decalPointerY || stroke.active){
+        decalPointerX = pointer.MousePos.x;
+        decalPointerY = pointer.MousePos.y;
+        decalMovedAt = ImGui::GetTime();
+    }
+    const float opacity = decalOpacity(ImGui::GetTime() - decalMovedAt);
+    if (opacity <= 0.0f){
+        return false;
+    }
 
     Entity entity = NULL_ENTITY;
     Vector3 localPoint;
@@ -3261,8 +3359,11 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
     const ImGuiIO& io = ImGui::GetIO();
     const TerrainBrushMode shown = stroke.active ? stroke.effectiveMode : effectiveModeFor(io.KeyCtrl, io.KeyShift);
     const float texel = mapWidth > 1 ? terrainSize / static_cast<float>(mapWidth - 1) : 0.0f;
-    cursor.color = pickHeightArmed ? Vector4(1.0f, 1.0f, 1.0f, 1.0f)
-                                   : (!isPlacementBrush() && brushSize < texel ? Vector4(1.0f, 0.0f, 1.0f, 1.0f) : decalColor(shown));
+    cursor.color = pickTarget != TerrainPick::None ? Vector4(1.0f, 1.0f, 1.0f, 1.0f)
+                                   : (!isPlacementBrush() && brushSize < texel ? Vector4(1.0f, 0.0f, 1.0f, 1.0f)
+                                                                                : decalColor(!isAlternateOn() || shown == TerrainBrushMode::Smooth ? shown
+                                                                                           : (brushMode == TerrainBrushMode::PaintLayer ? TerrainBrushMode::Smooth : TerrainBrushMode::Flatten)));
+    cursor.color.w *= opacity;
     buildLoop(brushSize, 16, cursor.outerPoints);
     // Placement has no falloff — the ring is the area objects can scatter into.
     if (brushFalloff != TerrainBrushFalloff::Constant && !isPlacementBrush()){
@@ -3282,6 +3383,47 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
             TerrainFoliagePanel::appendCapsuleLines(base, prototype.collisionRadius, prototype.collisionHeight, cursor.capsuleLines);
         }
     }
+    return true;
+}
+
+void editor::TerrainEditWindow::armBrush(TerrainBrushMode mode){
+    endStroke();
+    brushMode = mode;
+    toolCategory = toolCategoryFor(mode);
+    brushActive = true;
+    pickTarget = TerrainPick::None;
+}
+
+void editor::TerrainEditWindow::armPickHeight(){
+    armBrush(TerrainBrushMode::Flatten);
+    pickTarget = TerrainPick::Height;
+}
+
+bool editor::TerrainEditWindow::hasAlternate() const{
+    return brushMode == TerrainBrushMode::Raise || brushMode == TerrainBrushMode::Lower || brushMode == TerrainBrushMode::Flatten ||
+           brushMode == TerrainBrushMode::PaintLayer;
+}
+
+bool editor::TerrainEditWindow::isAlternateOn() const{
+    // R56: Alt held is the alternate too with Alt Alternates While Painting
+    return hasAlternate() && (alternate || (AppSettings::getSceneViewSettings().altAlternates && ImGui::GetIO().KeyAlt));
+}
+
+bool editor::TerrainEditWindow::altPaints() const{
+    return isBrushArmed() && hasAlternate() && AppSettings::getSceneViewSettings().altAlternates;
+}
+
+bool editor::TerrainEditWindow::disarmBrush(){
+    if (pickTarget != TerrainPick::None){
+        pickTarget = TerrainPick::None;
+        noisePickStart.reset();
+        return true;
+    }
+    if (!brushActive){
+        return false;
+    }
+    endStroke();
+    brushActive = false;
     return true;
 }
 
@@ -3305,6 +3447,75 @@ TerrainBrushMode editor::TerrainEditWindow::effectiveModeFor(bool ctrl, bool shi
         return brushMode == TerrainBrushMode::PlaceObject ? TerrainBrushMode::EraseObject : TerrainBrushMode::PlaceObject;
     }
     return brushMode;
+}
+
+bool editor::TerrainEditWindow::altPick(Scene* scene, const Ray& ray){
+    SceneProject* sceneProject = findSceneProject(scene);
+    Entity entity = NULL_ENTITY;
+    Vector3 localPoint;
+    Vector3 worldPoint;
+    float localHeight = 0.0f;
+    if (!sceneProject || !isEditingScene(scene) || !findTerrainHit(scene, ray, entity, localPoint, worldPoint, localHeight)){
+        return false;
+    }
+    // T5 R46: the tree brush picks the prototype under the cursor
+    if (isPlacementBrush() && foliagePanel->placesTrees()){
+        foliagePanel->pickPrototype(sceneProject, entity, localPoint, std::max(brushSize, 1.0f));
+        return true;
+    }
+    const TerrainPickValues values = pickValues(scene, entity, localPoint.x, localPoint.z);
+    if (toolCategory == TerrainToolCategory::Texture){
+        if (values.layer >= 0){
+            selectedTextureLayer = values.layer;
+            brushMode = TerrainBrushMode::PaintLayer;
+        }else{
+            brushMode = TerrainBrushMode::PaintBase;
+        }
+    }else{
+        flattenHeight = values.height;
+        flattenPickOnStroke = false;
+    }
+    return true;
+}
+
+editor::TerrainPickValues editor::TerrainEditWindow::pickValues(Scene* scene, Entity entity, float localX, float localZ){
+    TerrainPickValues values;
+    TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
+    float height = 0.0f;
+    Vector3 normal(0.0f, 1.0f, 0.0f);
+    MeshSystem::sampleTerrainSurface(terrain, localX, localZ, height, normal);
+    values.height = std::abs(terrain.maxHeight) > std::numeric_limits<float>::epsilon() ? std::clamp(height / terrain.maxHeight, 0.0f, 1.0f) : 0.0f;
+    values.slope = Angle::radToDefault(std::acos(std::clamp(normal.y, -1.0f, 1.0f)));
+    // the strongest layer as the blend maps weigh it, the base where they leave most
+    TerrainComponentStore store(scene, entity, terrain);
+    float best = 0.0f, total = 0.0f;
+    std::vector<float> texel(4);
+    for (int l = 0; l < static_cast<int>(terrain.surfaceLayers.size()); l++){
+        const terrain::LayerChannel channel = terrain::terrainLayerChannel(l);
+        const terrain::MapId blend{terrain::MapKind::Blend, channel.map};
+        const terrain::MapFormat format = store.format(blend);
+        if (!format.exists) continue;
+        const Vector2 at = store.texelOfWorld(blend, localX, localZ);
+        const int x = std::clamp(static_cast<int>(std::lround(at.x)), 0, format.bounds.w - 1);
+        const int y = std::clamp(static_cast<int>(std::lround(at.y)), 0, format.bounds.h - 1);
+        texel.assign(static_cast<size_t>(format.channels), 0.0f);
+        if (!store.read(blend, terrain::TexelRect{x, y, 1, 1}, texel)) continue;
+        const float weight = channel.inverted ? 1.0f - texel[channel.channel] : texel[channel.channel];
+        total += weight;
+        if (weight > best){
+            best = weight;
+            values.layer = l;
+        }
+    }
+    if (1.0f - total > best) values.layer = -1;
+    return values;
+}
+
+float editor::TerrainEditWindow::decalOpacity(double secondsSinceMoved){
+    constexpr double HOLD = 0.5;
+    constexpr double FADE = 0.25;
+    if (secondsSinceMoved <= HOLD) return 1.0f;
+    return static_cast<float>(std::max(0.0, 1.0 - (secondsSinceMoved - HOLD) / FADE));
 }
 
 Vector4 editor::TerrainEditWindow::decalColor(TerrainBrushMode mode){

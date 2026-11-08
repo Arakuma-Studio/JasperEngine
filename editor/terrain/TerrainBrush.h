@@ -75,6 +75,9 @@ namespace jasperengine::editor{
         // T1 R36, R18: a person's ramp is a re-application from its start to where the pointer is now;
         // sculpt_terrain's accumulates a stamp at a time, as it always did
         bool accumulateRamp = false;
+        // T1 R56: the tool's alternate: Raise lifts floors and Lower flattens peaks to flattenTarget; Paint
+        // Texture smooths the layer's blend map by a true average
+        bool alternate = false;
 
         // T1 R37: what a pen's pressure scales; a mouse's pressure is 1
         bool pressureStrength = true;

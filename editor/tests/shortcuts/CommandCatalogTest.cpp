@@ -7,6 +7,7 @@
 #include "shortcuts/ShortcutTestSupport.h"
 #include "shortcuts/Chord.h"
 #include "shortcuts/CommandCatalog.h"
+#include "shortcuts/ShortcutDispatcher.h"
 
 #include "support/EditorTestSupport.h"
 
@@ -198,4 +199,48 @@ TEST(CommandCatalog, ProjectDuplicateAndMaximizeOnPlayAreBound) {
                            "assets.createPhysicsMaterial2D"}) {
         EXPECT_NE(catalog.find(id), nullptr) << id;
     }
+}
+
+// T1 R57 (AC43): the terrain brush's keys win over the panels only while a brush is armed, and stay rebindable
+TEST(CommandCatalogTest, TerrainBrushContextOutranksPanels) {
+    EXPECT_STREQ(shortcutContextName(ShortcutContext::TerrainBrush), "Terrain Brush");
+    EXPECT_EQ(parseShortcutContext("terrain_brush"), ShortcutContext::TerrainBrush);
+    RecordingCatalog recording;
+    CommandCatalog& catalog = recording.catalog;
+    ShortcutDispatcher dispatcher(catalog);
+    struct Row {
+        const char* id;
+        const char* chord;
+    };
+    const Row rows[] = {{"terrain.tool.raise", "R"}, {"terrain.tool.setHeight", "H"}, {"terrain.tool.smooth", "S"},
+                        {"terrain.tool.ramp", "A"}, {"terrain.tool.noise", "N"}, {"terrain.tool.terrace", "T"},
+                        {"terrain.tool.erode", "E"}, {"terrain.tool.stamp", "K"}, {"terrain.tool.paintTexture", "B"},
+                        {"terrain.tool.paintDetails", "D"}, {"terrain.tool.placeObjects", "P"}, {"terrain.tool.cutHoles", "X"},
+                        {"terrain.pick", "I"}, {"terrain.invertSlopeFilter", "Y"}, {"terrain.alternate", "C"},
+                        {"terrain.overlay.height", "1"}, {"terrain.overlay.slope", "2"}, {"terrain.overlay.contours", "3"},
+                        {"terrain.overlay.layerWeights", "4"}, {"terrain.overlay.off", "0"}};
+    ShortcutState armed;
+    armed.panels = {ShortcutContext::SceneView, ShortcutContext::TerrainBrush};
+    ShortcutState unarmed;
+    unarmed.panels = {ShortcutContext::SceneView};
+    for (const Row& row : rows) {
+        const CommandDef* def = catalog.find(row.id);
+        ASSERT_NE(def, nullptr) << row.id;
+        EXPECT_EQ(def->context, ShortcutContext::TerrainBrush);
+        const CommandDef* armedTarget = dispatcher.resolve(chordOf(row.chord), armed);
+        ASSERT_NE(armedTarget, nullptr) << row.chord;
+        EXPECT_EQ(armedTarget->id, row.id) << "the armed brush outranks the Scene view and the editor";
+        const CommandDef* unarmedTarget = dispatcher.resolve(chordOf(row.chord), unarmed);
+        if (unarmedTarget) {
+            EXPECT_NE(unarmedTarget->id, row.id) << "an unarmed brush leaves the key to the rest";
+        }
+    }
+    // R, T, E, X and H keep their editor meanings while no brush is armed
+    ASSERT_NE(dispatcher.resolve(chordOf("R"), unarmed), nullptr);
+    EXPECT_EQ(dispatcher.resolve(chordOf("R"), unarmed)->id, "tools.scale");
+    EXPECT_TRUE(catalog.resolveConflicts().empty());
+    EXPECT_NE(catalog.markdownReference().find("Terrain Brush"), std::string::npos);
+    std::string reason;
+    ASSERT_TRUE(catalog.setBindings("terrain.alternate", {chordOf("G")}, &reason)) << reason;
+    EXPECT_EQ(dispatcher.resolve(chordOf("G"), armed)->id, "terrain.alternate");
 }

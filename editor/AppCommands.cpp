@@ -367,6 +367,40 @@ void editor::App::registerCommands(){
     brush("terrain.brushWeaker", false, 1.0f / 1.15f);
     brush("terrain.brushStronger", false, 1.15f);
 
+    // ---- A terrain brush's keys (T1 R57, Table 5); its context says when: armed, pointer over the Scene view
+    auto terrainTool = [this, &bind](const char* id, TerrainBrushMode mode) {
+        bind(id, [this, mode](const CommandArgs&) { terrainEditWindow->armBrush(mode); });
+    };
+    terrainTool("terrain.tool.raise", TerrainBrushMode::Raise);
+    terrainTool("terrain.tool.setHeight", TerrainBrushMode::Flatten);
+    terrainTool("terrain.tool.smooth", TerrainBrushMode::Smooth);
+    terrainTool("terrain.tool.ramp", TerrainBrushMode::Ramp);
+    terrainTool("terrain.tool.noise", TerrainBrushMode::Noise);
+    terrainTool("terrain.tool.terrace", TerrainBrushMode::Terrace);
+    terrainTool("terrain.tool.erode", TerrainBrushMode::Erode);
+    terrainTool("terrain.tool.stamp", TerrainBrushMode::Stamp);
+    terrainTool("terrain.tool.paintTexture", TerrainBrushMode::PaintLayer);
+    terrainTool("terrain.tool.paintDetails", TerrainBrushMode::PaintDensity);
+    terrainTool("terrain.tool.placeObjects", TerrainBrushMode::PlaceObject);
+    terrainTool("terrain.tool.cutHoles", TerrainBrushMode::CutHole);
+    bind("terrain.pick", [this](const CommandArgs&) { terrainEditWindow->armPickHeight(); });
+    bind("terrain.invertSlopeFilter", [this](const CommandArgs&) { terrainEditWindow->toggleSlopeFilterInvert(); });
+    bind("terrain.alternate", [this](const CommandArgs&) { terrainEditWindow->toggleAlternate(); });
+    auto terrainOverlay = [this, &bind](const char* id, const char* source) {
+        bind(id, [this, source](const CommandArgs&) {
+            if (SceneProject* scene = project.getSelectedScene()) scene->displaySettings.terrainOverlay.source = source;
+        });
+    };
+    terrainOverlay("terrain.overlay.height", "height");
+    terrainOverlay("terrain.overlay.slope", "slope");
+    terrainOverlay("terrain.overlay.contours", "contours");
+    terrainOverlay("terrain.overlay.layerWeights", "layer_weights");
+    terrainOverlay("terrain.overlay.off", "");
+    // Esc in a stroke is the history's cancel (App::handleInteractiveEdits), and the brush stays armed: while the
+    // button is held too, so the release after a cancel does not land as a selection click
+    bind("terrain.disarm", [this](const CommandArgs&) { terrainEditWindow->disarmBrush(); }, nullptr,
+         []() { return !CommandHistory::anyInteractiveOpen() && !ImGui::IsMouseDown(ImGuiMouseButton_Left); });
+
     // ---- A Voxel Volume's brush (T6 R60); its context says when: armed, pointer over the Scene view
     auto voxelTool = [&bind](const char* id, VoxelTool tool) {
         bind(id, [tool](const CommandArgs&) { VoxelBrushTool::get().arm(tool); });
@@ -570,6 +604,10 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (sceneWindow->isFocused() || sceneWindow->isHovered()) state.panels.push_back(ShortcutContext::SceneView);
     if (sceneWindow->isHovered() && project.getSelectedScene() && VoxelBrushTool::get().isEditingScene(project.getSelectedScene()->scene)) {
         state.panels.push_back(ShortcutContext::VoxelBrush);
+    }
+    if (sceneWindow->isHovered() && project.getSelectedScene() && project.getSelectedScene()->scene &&
+        terrainEditWindow->isEditingScene(project.getSelectedScene()->scene)) {
+        state.panels.push_back(ShortcutContext::TerrainBrush);
     }
     if (projectWindow->isFocused()) state.panels.push_back(ShortcutContext::Project);
     if (consoleWindow->isListFocused()) state.panels.push_back(ShortcutContext::Console);
