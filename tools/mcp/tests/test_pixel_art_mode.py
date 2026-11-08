@@ -29,12 +29,18 @@ async def meta_text(ed: Editor, path: str) -> str:
 
 
 async def summaries(ed: Editor, since: int) -> list[str]:
-    got = await ed.call("read_console", since=since, limit=500)
+    got = await ed.call("read_console", since=since, limit=0, contains="Pixel Art Check:")
     return [e["message"] for e in got.get("entries", []) if e["message"].startswith("Pixel Art Check:")]
 
 
 async def cursor(ed: Editor) -> int:
-    return (await ed.call("read_console", tail=True, limit=1)).get("next_cursor", 0)
+    """the console's newest entry: read on until nothing more"""
+    since = 0
+    while True:
+        got = await ed.call("read_console", since=since, limit=1000)
+        since = got.get("next_cursor", since)
+        if not got.get("more"):
+            return since
 
 
 async def import_png(ed: Editor, path: str) -> None:

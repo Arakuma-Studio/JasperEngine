@@ -108,7 +108,9 @@ TEST(PixelArtPreset, PlanMatchesFixes){
     options.baseHeight = 216;
     options.windowScale = 3;
     const std::vector<FixChange> small = planPixelArtPreset(before, options);
-    for (const FixChange& change : small) EXPECT_EQ(change.target, "project");
+    for (const FixChange& change : small) {
+        EXPECT_EQ(change.target, "project");
+    }
     std::map<std::string, nlohmann::json> to;
     for (const FixChange& change : small) to[change.field] = change.to;
     EXPECT_EQ(to["graphics.canvas_width"], 384);

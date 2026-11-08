@@ -147,7 +147,7 @@ async def build_bad(ed: Editor) -> None:
     await ed.call("create_entity", scene=main, type="text", name="Label", position=[2, 8, 0],
                   values={"text": {"text": "HELLO", "fontSize": 16}})
     await ed.call("create_particles", scene=main, name="Sparks", preset="sparks", position=[8, 8, 0],
-                  modules={"renderer": {"renderMode": "stretched_billboard"}})
+                  modules={"renderer": {"renderMode": "stretchedBillboard"}})
     await ed.call("set_scene_settings", scene=main, settings={"post_processing.fxaa_enabled": True})
     # the textures the scene draws cook, and the first cook writes the others' import settings
     await wait_imports(ed, [hero, lossy, swap, offpalette])

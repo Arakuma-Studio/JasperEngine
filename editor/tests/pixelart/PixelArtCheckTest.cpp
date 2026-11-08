@@ -101,7 +101,9 @@ TEST(PixelArtCheck, CleanDataPassesEveryRule){
         EXPECT_EQ(rule.status, RuleStatus::Pass) << rule.id;
     // a rule with nothing in scope is PASS with checked 0
     for (const RuleResult& rule : result.rules)
-        if (rule.id == "palette") EXPECT_EQ(rule.checked, 0);
+        if (rule.id == "palette") {
+            EXPECT_EQ(rule.checked, 0);
+        }
 }
 
 TEST(PixelArtCheck, PixelArtMode){

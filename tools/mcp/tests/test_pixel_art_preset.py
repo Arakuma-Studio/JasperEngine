@@ -27,8 +27,8 @@ async def settings(ed: Editor) -> dict:
     keys = ["graphics.canvas_width", "graphics.canvas_height", "graphics.scaling_mode", "graphics.pixels_per_unit",
             "graphics.default_filter_mode", "player.window_width", "player.window_height", "pixel_art.enabled"]
     got = await ed.call("get_project_settings", keys=keys)
-    values = got.get("values", got)
-    return {k: (values[k]["value"] if isinstance(values.get(k), dict) and "value" in values[k] else values.get(k)) for k in keys}
+    values = got["settings"]
+    return {k: values.get(k) for k in keys}
 
 
 async def test_preset_through_fixes(ed: Editor):

@@ -125,10 +125,12 @@ TEST(PixelArtMode, FixturesResaveWithoutS42Keys){
             Project project;
             Stream::decodeProject(&project, node, Workspace());
             const std::string saved = YAML::Dump(Stream::encodeProject(&project));
-            if (source.find("pixelArt") == std::string::npos)
+            if (source.find("pixelArt") == std::string::npos) {
                 EXPECT_EQ(saved.find("pixelArt"), std::string::npos) << "pixelArt written into a project that had none";
-            if (source.find("defaultFilterMode") == std::string::npos)
+            }
+            if (source.find("defaultFilterMode") == std::string::npos) {
                 EXPECT_EQ(saved.find("defaultFilterMode"), std::string::npos);
+            }
             Project reloaded;
             Stream::decodeProject(&reloaded, YAML::Load(saved), Workspace());
             EXPECT_EQ(YAML::Dump(Stream::encodeProject(&reloaded)), saved) << "a second save differs";

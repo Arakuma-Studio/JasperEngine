@@ -62,7 +62,9 @@ async def test_assignment_copies_import_defaults(ed: Editor):
                            values={"mesh": {M + "baseColorTexture": {"path": "sprites/hero.png", "min_filter": "linear",
                                                                     "mag_filter": "linear"}}}))["entity_id"]
     texture = (await texture_of(ed, scene, named))["texture"]
-    ed.check(isinstance(texture, dict) and texture.get("min_filter") == "linear", f"named filters are kept: {texture}")
+    # (a reference with the default sampler reads back as its path)
+    ed.check(texture == "sprites/hero.png" or (isinstance(texture, dict) and texture.get("min_filter") == "linear"),
+             f"named filters are kept: {texture}")
 
     # set_properties assigns the same way
     await ed.call("set_properties", scene=scene, entity=soft, values={"mesh": {M + "baseColorTexture": "sprites/hero.png"}})
