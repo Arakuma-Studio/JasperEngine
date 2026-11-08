@@ -230,12 +230,14 @@ namespace jasperengine::editor{
         // a Mixer Snapshot action of the legacy action timeline (S40 R18)
         AudioSnapshotComponent,
         WaterExcluderComponent,
-        WaterWakeComponent
+        WaterWakeComponent,
+        // pixel art (S41): integer scaling, Pixels Per Unit and the pixel-snap rule of a camera
+        PixelPerfectCameraComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::WaterWakeComponent;
+    constexpr ComponentType LastComponentType = ComponentType::PixelPerfectCameraComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

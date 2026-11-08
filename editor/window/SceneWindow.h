@@ -115,6 +115,22 @@ namespace jasperengine::editor {
         void requestOpenParentScene(uint32_t childSceneId, uint32_t parentSceneId);
         void drawParentSceneButton(const SceneProject& sceneProject);
         void drawGizmosMenu(SceneProject& sceneProject);
+        // S41 R21: a 2D scene whose main camera has a Pixel Perfect Camera, with Pixel Zoom on
+        bool pixelZoomActive(const SceneProject* sceneProject) const;
+        // the toolbar's Pixel Zoom toggle, its readout and list, 1x and Game
+        void drawPixelZoomToolbar(SceneProject& sceneProject);
+    public:
+        // the Scene view at k view pixels per base pixel, anchored at the view's centre (the
+        // 1x and Game buttons, sceneView.pixelZoom1x / pixelZoomGame)
+        void setPixelZoom(SceneProject& sceneProject, float scale);
+        // the Game view's current k (its Pixel Perfect Camera's layout), 1 without one
+        float gamePixelZoom(SceneProject& sceneProject) const;
+    private:
+        // the Pixel Grid overlay (from 6x): 1-pixel lines on art-pixel edges
+        void drawPixelGrid(SceneProject& sceneProject, const ImVec2& canvasMin, const ImVec2& canvasAvail);
+        // R22: the main camera's Pixel Perfect Camera frames: its reference resolution, and in
+        // Integer (Expand) the frame the Game view's size shows (dashed)
+        void drawPixelPerfectFrames(SceneProject& sceneProject, const ImVec2& canvasMin);
         // the right-click menu of the selected lattice (LatticeSceneTools draws its items)
         void drawLatticeContextMenu(SceneProject& sceneProject);
         // the Path Tester's press, drag and release in the view (engine canvas x, y): true when it

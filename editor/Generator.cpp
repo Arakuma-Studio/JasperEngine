@@ -2553,7 +2553,11 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         case Scaling::CROP:      mainContent += "    Engine::setScalingMode(Scaling::CROP);\n"; break;
         case Scaling::STRETCH:   mainContent += "    Engine::setScalingMode(Scaling::STRETCH);\n"; break;
         case Scaling::NATIVE:    mainContent += "    Engine::setScalingMode(Scaling::NATIVE);\n"; break;
+        case Scaling::INTEGER:   mainContent += "    Engine::setScalingMode(Scaling::INTEGER);\n"; break;
+        case Scaling::INTEGER_EXPAND: mainContent += "    Engine::setScalingMode(Scaling::INTEGER_EXPAND);\n"; break;
     }
+    if (pixelsPerUnit != 1)
+        mainContent += "    Engine::setPixelsPerUnit(" + std::to_string(pixelsPerUnit) + ");\n";
 
     // the Canvas Scaler's project default (absent: Follow Game Canvas, the engine default)
     if (uiScale != CanvasScalerSettings())

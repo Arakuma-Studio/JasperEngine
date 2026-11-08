@@ -39,6 +39,12 @@
 // depthParams: per draw, or per instance in an automatically instanced batch
 #include "includes/object_depth_params.glsl"
 
+#ifdef PIXEL_SNAP
+    #define FRAME_VS
+    #include "includes/frame.glsl"
+    #include "includes/pixel_snap.glsl"
+#endif
+
 invariant gl_Position;
 
 #ifdef USE_INSTANCE_FADE
@@ -263,6 +269,14 @@ void main() {
     #endif
 
     gl_Position = depthParams.mvpMatrix * pos;
+    #ifdef PIXEL_SNAP
+        #ifdef HAS_INSTANCING
+            vec4 snapPivot = depthParams.mvpMatrix * i_matrix_col4;
+        #else
+            vec4 snapPivot = depthParams.mvpMatrix[3];
+        #endif
+        gl_Position = pixelSnapApply(gl_Position, depthParams.pixelSnapDraw.x, snapPivot);
+    #endif
 
     v_projZW = gl_Position.zw;
     #ifdef IS_VULKAN

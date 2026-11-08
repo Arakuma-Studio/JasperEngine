@@ -137,6 +137,8 @@ struct CustomDeviceSettings {
 struct GameViewSettings {
     int aspect = 0;              // index into the Game view's aspect list (0 = Free Aspect)
     float scale = 1.0f;          // zoom of the game image
+    // S41: a Pixel Perfect Camera's scale k this view forces (0 = Auto, the largest that fits; 1..8)
+    int pixelScale = 0;
     bool maximizeOnPlay = false;
     bool showStats = false;
     // Preview Atmosphere Quality: -1 the project's, else an AtmosphereQuality (Off..High)
@@ -166,7 +168,7 @@ struct GameViewSettings {
     CustomDeviceSettings custom{};
 
     bool operator==(const GameViewSettings& other) const {
-        return aspect == other.aspect && scale == other.scale
+        return aspect == other.aspect && scale == other.scale && pixelScale == other.pixelScale
             && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats
             && atmosphereQuality == other.atmosphereQuality
             && deviceTier == other.deviceTier && devicePlatform == other.devicePlatform && deviceThermal == other.deviceThermal

@@ -14,6 +14,7 @@
 #include "component/TranslateTracksComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/InstancedMeshComponent.h"
+#include "pixelart/PixelSnap.h"
 
 #include "Scene.h"
 #include "Engine.h"
@@ -820,6 +821,13 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
         pivotPos.y = sprite.height - pivotPos.y;
     }
 
+    // the quad in world units: the pixel size over the Pixels Per Unit (S41 R6; 1 by default,
+    // exact: the vertices are the pixel sizes then)
+    const float ppu = resolvePixelsPerUnit(sprite.pixelsPerUnit);
+    pivotPos = Vector2(pivotPos.x / ppu, pivotPos.y / ppu);
+    const float quadWidth = (float)sprite.width / ppu;
+    const float quadHeight = (float)sprite.height / ppu;
+
     if (grid > 1){
         createSpriteGrid(sprite, mesh, texWidth, texHeight, pivotPos, grid);
 
@@ -835,9 +843,9 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
     }
 
     mesh.buffer.addVector3(attVertex, Vector3(-pivotPos.x, -pivotPos.y, 0));
-    mesh.buffer.addVector3(attVertex, Vector3(sprite.width-pivotPos.x, -pivotPos.y, 0));
-    mesh.buffer.addVector3(attVertex, Vector3(sprite.width-pivotPos.x,  sprite.height-pivotPos.y, 0));
-    mesh.buffer.addVector3(attVertex, Vector3(-pivotPos.x,  sprite.height-pivotPos.y, 0));
+    mesh.buffer.addVector3(attVertex, Vector3(quadWidth-pivotPos.x, -pivotPos.y, 0));
+    mesh.buffer.addVector3(attVertex, Vector3(quadWidth-pivotPos.x,  quadHeight-pivotPos.y, 0));
+    mesh.buffer.addVector3(attVertex, Vector3(-pivotPos.x,  quadHeight-pivotPos.y, 0));
 
     Attribute* attTexcoord = mesh.buffer.getAttribute(AttributeType::TEXCOORD1);
 
@@ -921,7 +929,10 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
 // exactly, so the AABB is the quad's
 void MeshSystem::createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
                                   Vector2 pivotPos, int grid){
-    buildSpriteGrid(sprite, mesh, texWidth, texHeight, -pivotPos.x, -pivotPos.y, sprite.width - pivotPos.x, sprite.height - pivotPos.y, grid);
+    // world units, as createSprite's quad (pivotPos is in them already)
+    const float ppu = resolvePixelsPerUnit(sprite.pixelsPerUnit);
+    buildSpriteGrid(sprite, mesh, texWidth, texHeight, -pivotPos.x, -pivotPos.y,
+                    (float)sprite.width / ppu - pivotPos.x, (float)sprite.height / ppu - pivotPos.y, grid);
 }
 
 void MeshSystem::buildSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
@@ -1111,6 +1122,14 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
     std::vector<TilemapAcceptedTile> acceptedTiles;
     acceptedTiles.reserve(tilemap.numTiles);
 
+    // the quads in world units: the tiles' pixels over the Pixels Per Unit (S41 R6); under a
+    // Pixel Perfect Camera each edge is rounded to the texel grid on its own (R13), so the
+    // edge two neighbours share is bit for bit the same value and the vertex snap moves both
+    const float ppu = resolvePixelsPerUnit(tilemap.pixelsPerUnit);
+    auto tileEdge = [&tilemap, ppu](float pixels){
+        return (tilemap.roundTileEdges ? pixelart::snap(pixels) : pixels) / ppu;
+    };
+
     unsigned int numTiles = 0;
     unsigned int reserveTiles = tilemap.reserveTiles;
 
@@ -1142,10 +1161,14 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
         if (tilemap.tiles[i].position.y < 0) tilemap.tiles[i].position.y = 0;
 
         Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
-        mesh.buffer.addVector3(attVertex, Vector3(tilemap.tiles[i].position.x, tilemap.tiles[i].position.y, 0));
-        mesh.buffer.addVector3(attVertex, Vector3(tilemap.tiles[i].position.x + tilemap.tiles[i].width, tilemap.tiles[i].position.y, 0));
-        mesh.buffer.addVector3(attVertex, Vector3(tilemap.tiles[i].position.x + tilemap.tiles[i].width, tilemap.tiles[i].position.y + tilemap.tiles[i].height, 0));
-        mesh.buffer.addVector3(attVertex, Vector3(tilemap.tiles[i].position.x, tilemap.tiles[i].position.y + tilemap.tiles[i].height, 0));
+        const float tileX0 = tileEdge(tilemap.tiles[i].position.x);
+        const float tileX1 = tileEdge(tilemap.tiles[i].position.x + tilemap.tiles[i].width);
+        const float tileY0 = tileEdge(tilemap.tiles[i].position.y);
+        const float tileY1 = tileEdge(tilemap.tiles[i].position.y + tilemap.tiles[i].height);
+        mesh.buffer.addVector3(attVertex, Vector3(tileX0, tileY0, 0));
+        mesh.buffer.addVector3(attVertex, Vector3(tileX1, tileY0, 0));
+        mesh.buffer.addVector3(attVertex, Vector3(tileX1, tileY1, 0));
+        mesh.buffer.addVector3(attVertex, Vector3(tileX0, tileY1, 0));
 
         if (tilemap.width < tilemap.tiles[i].position.x + tilemap.tiles[i].width)
             tilemap.width = static_cast<unsigned int>(tilemap.tiles[i].position.x + tilemap.tiles[i].width);
@@ -1221,10 +1244,8 @@ bool MeshSystem::createTilemap(TilemapComponent& tilemap, MeshComponent& mesh){
         // only matches the loop counter while no tile is skipped — an invalidated
         // rectId or an empty tile past the reserve budget shifts every later tile.
         const unsigned int vertexBase = (numTiles - 1) * 4;
-        const float tileX = tilemap.tiles[i].position.x;
-        const float tileY = tilemap.tiles[i].position.y;
         acceptedTiles.push_back({vertexBase, (unsigned int)submeshId, 0,
-            AABB(Vector3(tileX, tileY, 0), Vector3(tileX + tilemap.tiles[i].width, tileY + tilemap.tiles[i].height, 0))});
+            AABB(Vector3(tileX0, tileY0, 0), Vector3(tileX1, tileY1, 0))});
 
     }
 
@@ -7490,7 +7511,8 @@ bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh)
     input.width = sprite.width;
     input.height = sprite.height;
     input.pivot = sprite.pivotPreset;
-    input.pixelsPerUnit = sheet.pixelsPerUnit;
+    // the Sprite's own Pixels Per Unit (S41) over its sheet's (the import's, else the project's)
+    input.pixelsPerUnit = sprite.pixelsPerUnit > 0.0f ? sprite.pixelsPerUnit : sheet.pixelsPerUnit;
     input.pixelRatio = sheet.pixelRatio;
     input.uiCamera = camera.type == CameraType::CAMERA_UI;
     input.flipY = sprite.flipY;
@@ -7730,12 +7752,19 @@ void MeshSystem::update(double dt){
         return;
     }
 
+    // the project's Pixels Per Unit changed: what takes it builds again (S41)
+    const bool pixelsPerUnitChanged = Engine::getPixelsPerUnit() != builtPixelsPerUnit;
+    builtPixelsPerUnit = Engine::getPixelsPerUnit();
+
     auto sprites = scene->getComponentArray<SpriteComponent>();
     for (int i = 0; i < sprites->size(); i++){
         SpriteComponent& sprite = sprites->getComponentFromIndex(i);
 
         Entity entity = sprites->getEntity(i);
         Signature signature = scene->getSignature(entity);
+
+        if (pixelsPerUnitChanged && sprite.pixelsPerUnit <= 0.0f)
+            sprite.needUpdateSprite = true;
 
         if (signature.test(scene->getComponentId<MeshComponent>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
@@ -7762,12 +7791,20 @@ void MeshSystem::update(double dt){
         }
     }
 
+    // a Pixel Perfect Camera's tilemaps round their tile edges to the texel grid (S41 R13)
+    RenderSystem* renderSystem = scene->getSystem<RenderSystem>().get();
+    const bool roundTileEdges = renderSystem && renderSystem->hasPixelSnapVariants();
     auto tilemaps = scene->getComponentArray<TilemapComponent>();
     for (int i = 0; i < tilemaps->size(); i++){
         TilemapComponent& tilemap = tilemaps->getComponentFromIndex(i);
 
         Entity entity = tilemaps->getEntity(i);
         Signature signature = scene->getSignature(entity);
+
+        if (tilemap.roundTileEdges != roundTileEdges || (pixelsPerUnitChanged && tilemap.pixelsPerUnit <= 0.0f)){
+            tilemap.roundTileEdges = roundTileEdges;
+            tilemap.needUpdateTilemap = true;
+        }
 
         if (signature.test(scene->getComponentId<MeshComponent>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);

@@ -56,6 +56,9 @@ namespace jasperengine{
         static std::mutex& getAsyncModelMutex();
         static async_model_loads_t& getPendingModelLoads();
 
+        // the project Pixels Per Unit the sprites and tilemaps that take it were built with (S41)
+        int builtPixelsPerUnit = 1;
+
         // Files that already failed to load, so createOrUpdateModel stops retrying them.
         std::set<std::string> failedModelLoads;
 

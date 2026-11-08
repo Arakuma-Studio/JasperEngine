@@ -1947,8 +1947,10 @@ bool SpriteNormalsWindow::applyFix(const std::string& kind, const std::string& f
         float w = 64.0f, h = 64.0f;
         if (Transform* t = scene->findComponent<Transform>(target.entity)) position = t->worldPosition;
         if (SpriteComponent* sprite = scene->findComponent<SpriteComponent>(target.entity)) {
-            if (sprite->width > 0) w = static_cast<float>(sprite->width);
-            if (sprite->height > 0) h = static_cast<float>(sprite->height);
+            // world units: the pixel size over its Pixels Per Unit (S41)
+            const Vector2 worldSize = spriteWorldSize(*sprite);
+            if (sprite->width > 0) w = worldSize.x;
+            if (sprite->height > 0) h = worldSize.y;
         }
         auto* create = new CreateEntityCmd(project, sp->id, "Light 2D", EntityCreationType::POINT_LIGHT_2D);
         create->addProperty<Vector3>(ComponentType::Transform, "position", Vector3(position.x - 0.5f * w, position.y + 0.5f * h, position.z));

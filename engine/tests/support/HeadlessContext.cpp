@@ -83,12 +83,25 @@ bool createGraphicsContext(){
         return false;
     }
 
+#if defined(SOKOL_GLES3)
+    // the mobile and web backend in an OpenGL ES 3.2 context, as JasperEngineLinux.cpp makes it
+    // (Mesa's llvmpipe; the linux-backends image)
+    static const int attributes[] = {
+        GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
+        GLX_CONTEXT_MINOR_VERSION_ARB, 2,
+        GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_ES2_PROFILE_BIT_EXT,
+        None
+    };
+    const char* contextName = "OpenGL ES 3.2";
+#else
     static const int attributes[] = {
         GLX_CONTEXT_MAJOR_VERSION_ARB, 4,
         GLX_CONTEXT_MINOR_VERSION_ARB, 1,
         GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
         None
     };
+    const char* contextName = "OpenGL 4.1 core";
+#endif
 
     XSync(display, False);
     glxContextError = false;
@@ -100,7 +113,7 @@ bool createGraphicsContext(){
     if (glxContextError || !glContext){
         if (glContext) glXDestroyContext(display, glContext);
         glContext = nullptr;
-        std::fprintf(stderr, "HeadlessContext: could not create an OpenGL 4.1 core context\n");
+        std::fprintf(stderr, "HeadlessContext: could not create an %s context\n", contextName);
         return false;
     }
     if (!glXMakeCurrent(display, WindowLinux::handle(), glContext)){
@@ -230,6 +243,8 @@ bool HeadlessContext::isCreated(){
 const char* HeadlessContext::getBackendName(){
 #if defined(SOKOL_VULKAN)
     return "vulkan";
+#elif defined(SOKOL_GLES3)
+    return "gles3";
 #else
     return "glcore";
 #endif

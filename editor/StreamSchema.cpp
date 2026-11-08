@@ -575,6 +575,8 @@ const EnumTable<Scaling>& StreamSchema::scalingMode() {
         {Scaling::CROP, "crop"},
         {Scaling::STRETCH, "stretch"},
         {Scaling::NATIVE, "native"},
+        {Scaling::INTEGER, "integer"},
+        {Scaling::INTEGER_EXPAND, "integer_expand"},
     }, Scaling::FITWIDTH);
     return table;
 }

@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "pixelart/PixelPerfectEditor.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "pool/ShaderPool.h"
@@ -9225,14 +9226,23 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
 
     RowSettings settingsSheet;
     settingsSheet.help = "An .aseprite file or a texture: the Sprite's frames come from its import (0 width and height: the frame's size)";
+    // S41: texels per world unit (0: the project's) and the rotation policy under a Pixel Perfect Camera
+    RowSettings settingsPpu;
+    settingsPpu.secondColSize = 6 * ImGui::GetFontSize();
+    settingsPpu.help = "Texels per world unit. 0 = the Sprite Sheet's, else Project (" + std::to_string(project->getPixelsPerUnit()) + ").";
+    RowSettings settingsPixelRotation;
+    settingsPixelRotation.enumEntries = enumEntries(reflect::enums::kPixelRotation);
+    settingsPixelRotation.help = "Under a Pixel Perfect Camera: the camera's rotation policy, 90 Degree Steps or Rotate On Grid.";
 
-    beginTable(cpType, getLabelSize("Texture Scale"));
+    beginTable(cpType, getLabelSize("Pixels Per Unit"));
     propertyRow(RowPropertyType::Asset, cpType, "sheet", "Sprite Sheet", sceneProject, entities, settingsSheet);
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Enum, cpType, "pivotPreset", "Pivot", sceneProject, entities, settingsPivot);
     propertyRow(RowPropertyType::Float, cpType, "textureScaleFactor", "Texture Scale", sceneProject, entities, settingsTexScale);
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, settingsPpu);
+    propertyRow(RowPropertyType::Enum, cpType, "pixelRotation", "Pixel Rotation", sceneProject, entities, settingsPixelRotation);
 
     endTable();
 
@@ -10118,11 +10128,16 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
     settingsTexScale.secondColSize = 6 * ImGui::GetFontSize();
     settingsTexScale.help = "Increase or decrease texture area by a factor";
 
-    beginTable(cpType, getLabelSize("Reserve Tiles"));
+    RowSettings settingsPpu;
+    settingsPpu.secondColSize = 6 * ImGui::GetFontSize();
+    settingsPpu.help = "Texels per world unit. 0 = Project (" + std::to_string(project->getPixelsPerUnit()) + ").";
+
+    beginTable(cpType, getLabelSize("Pixels Per Unit"));
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Float, cpType, "textureScaleFactor", "Texture Scale", sceneProject, entities, settingsTexScale);
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, settingsPpu);
     propertyRow(RowPropertyType::UInt, cpType, "reserveTiles", "Reserve Tiles", sceneProject, entities, settingsInt);
     endTable();
 
@@ -13859,6 +13874,9 @@ void editor::InspectorWindow::show(){
             }
 
             ImGui::SeparatorText("Fixed Resolution");
+            // R4: a Pixel Perfect Camera on the main camera drives the target instead
+            if (const std::string note = pixelart::fixedResolutionNote(sceneProject); !note.empty())
+                ImGui::TextDisabled("%s", note.c_str());
 
             if (ImGui::BeginTable("scene_fixed_resolution_table", 2, tableFlags)) {
                 ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Enabled"));
