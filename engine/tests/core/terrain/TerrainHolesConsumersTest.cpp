@@ -9,6 +9,7 @@
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
 #include "object/TerrainEdit.h"
+#include "object/TerrainOpsJson.h"
 #include "pool/TextureDataPool.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/ParticleSubsystem.h"
@@ -168,4 +169,10 @@ TEST_F(TerrainHolesConsumers, CollisionSamplesOpenAndWarning){
     ASSERT_TRUE(second.ok);
     EXPECT_GT(second.ops[0].collisionSamplesOpen, 0);
     EXPECT_FALSE(second.hasWarning("hole_no_collision"));
+
+    // edit_terrain and Lua read the count from the result JSON
+    const terrain::OpSpace space = terrain::OpSpace::of(Matrix4(), Vector3(0.0f), Vector3(1.0f), false, false);
+    const nlohmann::json out = terrain::opResultJson(second, space, std::vector<terrain::Op>{large});
+    ASSERT_TRUE(out["ops"][0].contains("collision_samples_open")) << out.dump();
+    EXPECT_EQ(out["ops"][0]["collision_samples_open"].get<int>(), second.ops[0].collisionSamplesOpen);
 }
