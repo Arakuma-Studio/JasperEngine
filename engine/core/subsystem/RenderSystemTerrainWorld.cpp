@@ -60,7 +60,6 @@ struct TerrainWorldRender::Impl {
     uint32_t overviewRev = UINT32_MAX;
     bool overviewMade = false;
     std::map<const TerrainView*, View> views;
-    bool reselect = false;
 
     ~Impl() {
         for (auto& [key, page] : pages) destroyPage(*page);
@@ -80,12 +79,6 @@ TerrainWorldRender::TerrainWorldRender(TerrainWorldRuntime& runtime): impl(std::
 }
 
 TerrainWorldRender::~TerrainWorldRender() = default;
-
-bool TerrainWorldRender::takeReselect() {
-    const bool reselect = impl->reselect;
-    impl->reselect = false;
-    return reselect;
-}
 
 bool jasperengine::terrainWorldHasHoles(const TerrainComponent& terrain) {
     return terrain.world && terrain.world->manifest().maps.hasHoles;
@@ -124,11 +117,11 @@ void RenderSystem::updateTerrainWorldPages(Entity entity, TerrainComponent& terr
     TerrainWorldRuntime* runtime = terrain.world;
     if (!runtime || !runtime->started())
         return;
-    (void)entity;
     if (!runtime->render)
         runtime->render = std::make_unique<TerrainWorldRender>(*runtime);
     TerrainWorldRender::Impl& state = *runtime->render->impl;
     JE_PROFILE_SCOPE(TerrainWorldSystem::PROFILE_SCOPE);
+    bool changed = false;
 
     // the overview, made again whole when it changes (R52: sg_update_image cannot patch part of it)
     const WorldOverview& overview = runtime->getOverview();
@@ -145,7 +138,7 @@ void RenderSystem::updateTerrainWorldPages(Entity entity, TerrainComponent& terr
                                  makeTexture(state.overviewColour, "terrain-world-macro", GpuTextureFormat::RGBA8, overview.width(), overview.height(),
                                              overview.colour.data(), overview.colour.size(), TextureFilter::LINEAR);
         }
-        state.reselect = true;
+        changed = true;
     }
 
     // pages of tiles that lost theirs (evicted, removed) go
@@ -155,7 +148,7 @@ void RenderSystem::updateTerrainWorldPages(Entity entity, TerrainComponent& terr
         if (tileState != TileState::Resident && tileState != TileState::Uploading){
             TerrainWorldRender::Impl::destroyPage(*it->second);
             it = state.pages.erase(it);
-            state.reselect = true;
+            changed = true;
         }else{
             ++it;
         }
@@ -203,9 +196,15 @@ void RenderSystem::updateTerrainWorldPages(Entity entity, TerrainComponent& terr
         const uint64_t bytes = page->bytes;
         slot = std::move(page);
         streamer.uploaded(tile, bytes);
-        state.reselect = true;
+        changed = true;
     }
     (void)lattice;
+    // D9: what draws changed, so the next update selects again. Flagged here rather than by the pump,
+    // which skips frames closer than its dedupe: those would draw the old selection, or none
+    if (changed){
+        if (Transform* transform = scene->findComponent<Transform>(entity))
+            transform->needUpdate = true;
+    }
 }
 
 void RenderSystem::selectTerrainWorld(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainView& view){

@@ -32,10 +32,6 @@ namespace jasperengine {
         TerrainWorldRender(const TerrainWorldRender&) = delete;
         TerrainWorldRender& operator=(const TerrainWorldRender&) = delete;
 
-        // a page came or went since the pump last asked: select again (D9). It holds until taken, as
-        // frames closer than the pump's dedupe draw without a pump between them
-        bool takeReselect();
-
         struct Impl;
         std::unique_ptr<Impl> impl;
     };

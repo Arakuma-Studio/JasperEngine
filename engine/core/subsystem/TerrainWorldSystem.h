@@ -52,6 +52,8 @@ namespace jasperengine {
 
         // D9: every scene's worlds, once a frame (later calls in the same frame do nothing)
         static void pumpAll();
+        // tests: pumpAll does nothing while held, as for frames closer than its dedupe; pump still runs
+        static void setPumpHeldForTesting(bool held);
         // Every live runtime of every scene (the editor's flush, its panel); main thread
         static void forEachRuntime(const std::function<void(TerrainWorldRuntime& runtime)>& fn);
         void pump(double now);

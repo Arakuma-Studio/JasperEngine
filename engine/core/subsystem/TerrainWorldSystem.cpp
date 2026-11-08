@@ -12,7 +12,6 @@
 #include "physics/TerrainWorldCollision.h"
 #include "profiler/Profile.h"
 #include "subsystem/FoliageSystem.h"
-#include "subsystem/TerrainWorldRender.h"
 #include "terrain/TreeStore.h"
 #include "Log.h"
 
@@ -41,6 +40,11 @@ namespace {
     double& lastPumpAll() {
         static double last = -1.0;
         return last;
+    }
+
+    bool& pumpHeld() {
+        static bool held = false;
+        return held;
     }
 
     // R15: the camera's velocity, from its last two positions
@@ -525,7 +529,12 @@ void TerrainWorldSystem::forEachRuntime(const std::function<void(TerrainWorldRun
     }
 }
 
+void TerrainWorldSystem::setPumpHeldForTesting(bool held) {
+    pumpHeld() = held;
+}
+
 void TerrainWorldSystem::pumpAll() {
+    if (pumpHeld()) return;
     // editor views draw a frame several times: the pump runs once (D9)
     const double now = Engine::getRealtimeSinceStartup();
     if (lastPumpAll() >= 0.0 && now - lastPumpAll() < 0.001) return;
@@ -567,9 +576,9 @@ void TerrainWorldSystem::pump(double now) {
             runtime->collision->pump(radius, component->collisionChunkQuads);
         }
         syncFoliage(entity, *runtime);
-        // D9: what draws changed, so the selection runs again this frame
-        const bool pagesChanged = runtime->render && runtime->render->takeReselect();
-        if (pagesChanged || runtime->overviewRevision() != overviewBefore || runtime->tiles().stats().residentPages != residentBefore) {
+        // D9: a page this pump evicted, or a new overview, changes what draws: selected again this frame
+        // (the render side flags what its own uploads change)
+        if (runtime->overviewRevision() != overviewBefore || runtime->tiles().stats().residentPages != residentBefore) {
             if (Transform* transform = scene->findComponent<Transform>(entity)) transform->needUpdate = true;
         }
     }

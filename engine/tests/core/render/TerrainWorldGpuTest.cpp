@@ -12,8 +12,11 @@
 #include "object/Light.h"
 #include "object/Terrain.h"
 #include "subsystem/FoliageSystem.h"
+#include "component/MeshComponent.h"
+#include "render/SystemRender.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/TerrainWorldRuntime.h"
+#include "subsystem/TerrainWorldSystem.h"
 #include "terrain/world/TerrainTileFormat.h"
 #include "terrain/world/TerrainWorldData.h"
 
@@ -24,6 +27,8 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -52,8 +57,12 @@ namespace {
         file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }
 
-    // A cooked world (world.bin, overview.jtile, tiles), as an export writes it; raw sections
-    void writeWorld(const std::filesystem::path& folder, int low, int high, bool density = false) {
+    using WorldColour = std::array<float, 4>;
+    constexpr WorldColour WORLD_TILE_GREEN = {0.35f, 0.6f, 0.3f, 1.0f};
+
+    // A cooked world (world.bin, overview.jtile, tiles), as an export writes it; raw sections. colour is
+    // the tiles' macro colour, which the overview draws with
+    void writeWorld(const std::filesystem::path& folder, int low, int high, bool density = false, const WorldColour& colour = WORLD_TILE_GREEN) {
         WorldManifest manifest;
         manifest.guid = "7d3a1b2c4e5f60718293a4b5c6d7e8f9";
         manifest.lattice.tileQuads = TILE_QUADS;
@@ -74,8 +83,7 @@ namespace {
                     tile.density.resize(1);
                     tile.density[0].allocate(manifest.lattice.densitySide(), 1, 8, 255);
                 }
-                const float colours[] = {0.35f, 0.6f, 0.3f, 1.0f};
-                buildDerived(tile, manifest.lattice, colours, 0);
+                buildDerived(tile, manifest.lattice, colour, 0);
                 std::vector<uint8_t> bytes;
                 ASSERT_TRUE(encodeTile(tile, TileCodec{}, TileEncodeOptions{}, bytes));
                 writeBytes(folder / ("tiles/" + std::to_string(x) + "_" + std::to_string(z) + ".jtile"), bytes);
@@ -117,8 +125,8 @@ namespace {
             Engine::removeScene(&scene);
         }
 
-        void makeWorld(int low, int high, int poolSize, bool density = false) {
-            writeWorld(files.path() / "Island.terrainworld", low, high, density);
+        void makeWorld(int low, int high, int poolSize, bool density = false, const WorldColour& colour = WORLD_TILE_GREEN) {
+            writeWorld(files.path() / "Island.terrainworld", low, high, density, colour);
             terrain = std::make_unique<Terrain>(&scene);
             terrain->setColor(0.35f, 0.6f, 0.3f);
             TerrainWorldComponent world;
@@ -265,5 +273,69 @@ TEST_F(TerrainWorldGpu, FoliageDrawsOnResidentTiles) {
         }
     }
     EXPECT_GT(changed, 200) << "the details show over the ground";
+    EXPECT_EQ(magentaPixels(), 0);
+}
+
+TEST_F(TerrainWorldGpu, DrawsPagesUploadedWithNoPumpBetweenFrames) {
+    // D9: frames closer than the pump's 1 ms dedupe run no pump. Pages uploaded in one of them draw from
+    // the next frame all the same. The pump is held, and each frame here pumps or not as told
+    struct Release {
+        ~Release() { TerrainWorldSystem::setPumpHeldForTesting(false); }
+    } release;
+    TerrainWorldSystem::setPumpHeldForTesting(true);
+    // one page, and a red overview so that the tiles it draws show apart from the pages
+    makeWorld(-1, 0, 1, false, WorldColour{0.9f, 0.1f, 0.1f, 1.0f});
+    lookDown(0.0f, 0.0f, 70.0f);
+    jasperengine::test::GpuEnvironment::setView(FRAME_WIDTH, FRAME_HEIGHT, FRAME_WIDTH, FRAME_HEIGHT, Scaling::STRETCH);
+    TerrainWorldSystem* worlds = scene.getSystem<TerrainWorldSystem>().get();
+    const auto frame = [worlds](bool pumped) {
+        if (pumped) worlds->pump(Engine::getRealtimeSinceStartup());
+        Engine::systemDraw();
+    };
+    const auto onePage = [this]() {
+        TerrainWorldRuntime* world = runtime();
+        if (!world || !world->isReady() || !scene.getSystem<RenderSystem>()->isAllLoaded() || !SystemRender::isGpuCreationIdle()) return false;
+        const MeshComponent& mesh = scene.getComponent<MeshComponent>(terrain->getEntity());
+        if (mesh.needReload || mesh.needVariantReload) return false;
+        const TerrainWorldStats stats = world->stats();
+        return stats.queue == 0 && stats.inFlight == 0 && stats.states[static_cast<int>(TileState::Resident)] == 1 &&
+               stats.states[static_cast<int>(TileState::CpuReady)] > 0;
+    };
+    // a pump before every frame until the page is up and the other tiles wait in memory (variants
+    // compiled off the render thread get a minute)
+    const auto start = std::chrono::steady_clock::now();
+    bool settled = false;
+    for (int i = 0; !settled && (i < 900 || std::chrono::steady_clock::now() - start < std::chrono::seconds(60)); i++) {
+        frame(true);
+        settled = onePage();
+    }
+    ASSERT_TRUE(settled) << "one page never came up with the rest in memory";
+    for (int i = 0; i < 3; i++) frame(true);
+    const std::vector<uint8_t> before = pixels();
+
+    // room for every page, set as the pump would, then frames with no pump: they upload the pages
+    TerrainWorldComponent& component = scene.getComponent<TerrainWorldComponent>(terrain->getEntity());
+    component.poolSize = 4;
+    runtime()->applySettings(component.poolSize, component.lodDistance, component.uploadBudget, terrainWorldPlatformBudget().nearTiles);
+    for (int i = 0; i < 4; i++) frame(false);
+    EXPECT_GT(runtime()->stats().states[static_cast<int>(TileState::Resident)], 1) << "the frames with no pump uploaded pages";
+    const std::vector<uint8_t> held = pixels();
+
+    // the same view once pumps run again
+    for (int i = 0; i < 4; i++) frame(true);
+    const std::vector<uint8_t> pumped = pixels();
+    ASSERT_EQ(before.size(), pumped.size());
+    ASSERT_EQ(held.size(), pumped.size());
+    ASSERT_FALSE(pumped.empty());
+    const auto differing = [](const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
+        int count = 0;
+        for (size_t i = 0; i + 3 < a.size(); i += 4) {
+            const int diff = std::abs(a[i] - b[i]) + std::abs(a[i + 1] - b[i + 1]) + std::abs(a[i + 2] - b[i + 2]);
+            if (diff > 24) count++;
+        }
+        return count;
+    };
+    EXPECT_GT(differing(before, pumped), 200) << "the pages draw apart from the overview";
+    EXPECT_EQ(differing(held, pumped), 0) << "the frames after the uploads drew the pages with no pump";
     EXPECT_EQ(magentaPixels(), 0);
 }
