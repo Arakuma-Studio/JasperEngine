@@ -72,8 +72,10 @@ TEST(ShaderVariantCollectorTerrain, TiersReachable){
     Terrain terrain(&scene);
     TerrainComponent& component = scene.getComponent<TerrainComponent>(terrain.getEntity());
     component.heightMap.setPath("height.png");
-    // only High defines the layer limit, so its key has a name of its own
+    // only High defines the layer limit, so its key has a name of its own; it needs more layers than the
+    // cap keeps, and a terrain with no layer would draw its base material alone at every tier
     component.limitLayersPerPixel = true;
+    component.surfaceLayers.resize(5);
     // a project at Low on Android: Low's keys, and no High's
     const TierKeys low = collect(scene, terrain::terrainQualityBit(terrain::TerrainQuality::LOW));
     EXPECT_TRUE(low.low);

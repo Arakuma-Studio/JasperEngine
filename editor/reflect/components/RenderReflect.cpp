@@ -140,7 +140,6 @@ namespace {
         JE_FIELD(TerrainFoliageLayer, minDrawDistance, .flags = OmitIfDefault, .updateFlags = kFoliage, .unit = Unit::Meters, .min = 0.0f),
         JE_FIELD(TerrainFoliageLayer, seed, .updateFlags = kFoliage),
         JE_FIELD(TerrainFoliageLayer, castShadows, .updateFlags = kFoliage),
-        JE_FIELD(TerrainFoliageLayer, minDrawDistance, .updateFlags = kFoliage, .unit = Unit::Meters, .min = 0.0f),
         JE_FIELD(TerrainFoliageLayer, minHeightRatio, .updateFlags = kFoliage, .min = 0.01f, .max = 1.99f),
         JE_FIELD(TerrainFoliageLayer, maxHeightRatio, .updateFlags = kFoliage, .min = 0.01f, .max = 1.99f),
         JE_FIELD(TerrainFoliageLayer, healthyColor, .updateFlags = kFoliage),
