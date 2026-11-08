@@ -321,9 +321,9 @@ Effort in person-weeks, estimates at ±50%.
   `SANITIZE=undefined` the test fails without the guard ("reference binding to null pointer") and
   passes with it.
 - **AC16, in part:** the before and after figures of `ref_100k` and `trails_10k` are in
-  `docs/perf/particles.md` (a loaded shared host, not server E). `check_web_particles.py` needs the
-  web gate's browser runs, and the player's size growth needs a base player build to compare with:
-  neither was run.
+  `docs/perf/particles.md` (a loaded shared host, not server E). The player's size growth is
+  recorded below (M6). `check_web_particles.py` needs the web gate's two browser runs (simd128 and
+  scalar): not run, so R24's web rows are unverified after this spec's kernel changes.
 
 The Particle Effect window (R17 to R23, R25, D3, D4, AC14; branch `feature/s91-window`):
 
@@ -403,3 +403,20 @@ The Particle Effect window (R17 to R23, R25, D3, D4, AC14; branch `feature/s91-w
   sub-emitter only through its parents.
 - **M3, CLI (R33).** `check --particles` is opt-in (and part of `--all`), not in the default set: it
   starts the engine for every effect. `--fail-on warn` reports WARN rows as errors too.
+
+### M6: the player size check (AC16)
+
+- **Measured** with S34's check (`docs/perf/procedural-material.md`, "Player size and frame cost"):
+  the full Linux glcore release player built from the merge base with `origin/main` (`43a475707`)
+  and from the integration tree (`56e317217`), `player_sizes.py --modules --baseline` and
+  `lib_size.py --baseline` on their symbols. The player grows by 103,488 bytes (+0.24 %, 40.97 to
+  41.07 MiB), all in S34's always-on core; the symbols named for particles grow by 69,621 bytes
+  (709,219 to 778,840, +9.8 %), the rest of the growth being the range's other runtime changes.
+  R15's "new runtime code must stay small" holds by that measure; particles stay outside S34's
+  strippable modules.
+- **Frame cost:** the same built content run by both players, 600 frames headless at a fixed 60 fps
+  on llvmpipe, alternated: `tools/fixtures/particles-export` takes 6.54 s against 6.47 s (+1.0 %,
+  inside one binary's 5.7 to 6.9 s spread), so no cost is measurable this way. `ref_100k` and
+  `trails_10k` (R16) were not rerun here.
+- **Not measured:** web and Android players (only Linux glcore was built), and
+  `check_web_particles.py` (above).
