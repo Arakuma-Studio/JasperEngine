@@ -171,7 +171,7 @@ never build or run them.
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | spec done |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | in review |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
-| S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | spec done |
+| S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | implementing |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | spec done |
@@ -217,10 +217,26 @@ Per spec, the merged tree passes:
 `build/fixture-unity` (TappyPlane) isn't on this host, so tests that need it skip and the reports
 list them. There is no CI.
 
-Every landing set also runs the shared-data suites: editor unit `ShaderNeutralApi*:ReflectParity*:ReflectRegistry*:RuntimeFields*:CookedScene*:ReflectLocators*`; MCP `test_reflection.py`, `test_saved_output_determinism.py`, `test_editor_modals.py`; `python3 tools/mcp/eval/test_grade.py`.
+Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*:CookedScene.*:ShaderNeutralApi.*:ReflectParity.*:ReflectRegistry.*:ReflectLocators.*:Stream.*:MeshMemory.*`; MCP `test_reflection.py`, `test_saved_output_determinism.py`, `test_editor_modals.py`, `test_tool_budget.py`, `test_docs.py`; lints `check-editor-modals.py`, `tools/mcp/eval/test_grade.py`.
 
 ## Log
 
+- 2026-11-08: The disk filled to 0 bytes while S41's final gate was running. The landed S44
+  worktree and its 42 GB build were removed, leaving 64 GB free. Each worktree build takes
+  35–70 GB, so builds are deleted after a spec lands, one-off trees (smoke, players-build,
+  variants) are cleaned after use, and about four specs run at once.
+  - S41 at `aeaa6b666` with the latest `main`: `Pxs` = MESH 45, shader cache v54; `WERROR` build
+    clean; 152 MCP tests pass. The S44 importer now uses the project's Pixels Per Unit. Its unit
+    tests and web gate are being re-run now that there's disk space.
+- 2026-11-08: `main` is green again on the shared-data suites, after the Doriax lead's
+  regeneration (`152131bed`).
+  - Added to the shared-data list: `Stream.*`, `MeshMemory.*` (component size ceilings;
+    `SpriteComponent` is at 320 of 384 bytes after S44), MCP `test_tool_budget.py` and
+    `test_docs.py`, and the `check-editor-modals.py` lint.
+  - S41 and S45 were told that any failure in those suites is now theirs.
+- 2026-11-07: S45 Sprite Atlas implementation started (`.worktrees/s45`, from `main` `8abf785e1`
+  with S44). S41 was told to make its final merge of `main` (with S44). The Doriax lead was told
+  about `main`'s six failing shared-data tests.
 - 2026-11-07: **S44 Aseprite Import merged into `main` and pushed** (merge of `f403cce21`).
   - Verified on the merged tree (`main` `2875cf469` + S44): `WERROR` linux; filtered unit tests
     (core 52, editor 332) and the shared-data suites; 170 MCP tests plus `test_editor_modals`

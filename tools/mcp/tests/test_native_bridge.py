@@ -279,6 +279,21 @@ def write_stub_xcframework(root: Path, name: str, static: bool) -> None:
         '\t\t</dict>\n\t</array>\n</dict>\n</plist>\n')
 
 
+def write_mixed_xcframework(root: Path, name: str) -> None:
+    """An .xcframework whose first library is a static iOS one and whose macOS one is dynamic."""
+    bundle = root / f"{name}.xcframework"
+    libraries = ""
+    for identifier, platform, binary in (("ios-arm64", "ios", b"!<arch>\n"), ("macos-arm64_x86_64", "macos", b"\xcf\xfa\xed\xfe")):
+        lib = bundle / identifier / f"{name}.framework"
+        lib.mkdir(parents=True, exist_ok=True)
+        (lib / name).write_bytes(binary + b"\0" * 64)
+        libraries += (f"\t\t<dict>\n\t\t\t<key>LibraryIdentifier</key>\n\t\t\t<string>{identifier}</string>\n"
+                      f"\t\t\t<key>LibraryPath</key>\n\t\t\t<string>{name}.framework</string>\n"
+                      f"\t\t\t<key>SupportedPlatform</key>\n\t\t\t<string>{platform}</string>\n\t\t</dict>\n")
+    (bundle / "Info.plist").write_text('<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n'
+                                       f'\t<key>AvailableLibraries</key>\n\t<array>\n{libraries}\t</array>\n</dict>\n</plist>\n')
+
+
 def digest(paths: list[Path]) -> dict[str, str]:
     return {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths if p.is_file()}
 
@@ -309,6 +324,8 @@ async def test_source_export(ed: Editor):
                                                 "    @objc public static func price(_ args: [Any]) -> Any? { return 0.99 }\n}\n")
     write_stub_xcframework(native / "ios" / "sdk", "StaticSdk", static=True)
     write_stub_xcframework(native / "ios" / "sdk", "DynamicSdk", static=False)
+    # platform-build review: each target embeds by its own platform's library, as the CMake build does
+    write_mixed_xcframework(native / "apple", "MixedSdk")
     # a static SDK's resource bundle, its privacy manifest inside (mobile-shipping review)
     privacy_bundle = native / "ios" / "sdk" / "StaticSdk_Privacy.bundle"
     privacy_bundle.mkdir(parents=True, exist_ok=True)
@@ -323,6 +340,7 @@ async def test_source_export(ed: Editor):
     (linked / "Versions" / "A" / "Linked").write_bytes(b"\xcf\xfa\xed\xfe" + b"\0" * 64)
     os.symlink("A", linked / "Versions" / "Current")
     os.symlink("Versions/Current/Linked", linked / "Linked")
+    (linked / "Versions" / "A" / ".DS_Store").write_bytes(b"\0\0\0\1Bud1")
     os.symlink("/etc/hostname", native / "ios" / "outside.txt")
     (native / "ios" / "helper.cpp").write_text("int nativeHelper() { return 1; }\n")
     (native / "web").mkdir(parents=True, exist_ok=True)
@@ -412,6 +430,10 @@ async def test_source_export(ed: Editor):
     embedded = [objects[objects[b]["fileRef"]]["path"] for b in embed[0]["files"]]
     ed.check_eq(sorted(embedded), ["DynamicSdk.xcframework", "Linked.framework"], "only the dynamic SDKs are embedded")
     ed.check_eq(embed[0]["dstSubfolderSpec"], "10")
+    mac_target = pbxproj.target(root, "JasperEngine macOS")
+    mac_embedded = [objects[objects[b]["fileRef"]]["path"] for p in mac_target["buildPhases"]
+                    if objects[p]["isa"] == "PBXCopyFilesBuildPhase" for b in objects[p]["files"]]
+    ed.check_eq(mac_embedded, ["MixedSdk.xcframework"], "macOS embeds the xcframework by its dynamic macOS library")
     # the resource bundle is copied into the iOS app, and its manifest is the app's
     def resources(target: str) -> list:
         return [objects[objects[b]["fileRef"]].get("path") for p in pbxproj.target(root, target)["buildPhases"]
@@ -434,6 +456,7 @@ async def test_source_export(ed: Editor):
     ed.check_eq(header_refs, [], "plugin headers are no file references (they would shadow engine headers)")
     exported_link = out / "project" / "plugins" / "native" / "ios" / "sdk" / "Linked.framework"
     ed.check((exported_link / "Versions" / "Current").is_symlink(), "a framework's Versions/Current stays a link")
+    ed.check(not (exported_link / "Versions" / "A" / ".DS_Store").exists(), "a .DS_Store would break the framework's seal")
     ed.check(not (out / "project" / "plugins" / "native" / "ios" / "outside.txt").exists(), "a link out of the project is not exported")
     ed.check_in("Linked.framework", embedded, "the dynamic framework behind its links is embedded")
     ed.check_eq(len(objects[root["rootObject"]]["packageReferences"]), 1)

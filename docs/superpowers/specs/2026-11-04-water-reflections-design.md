@@ -754,7 +754,7 @@ the library's compile matrix builds (`WaterUniformBudgetSlow`), a fragment stage
 4. **After:** the matrix's most is 203 vectors (8 lights, fog, post colour, shadows, every feature) and 8 blocks; the
    worst scene at any capacity (16 lights, High shadow filters, fog, post colour, 2D lights, Excluders and Wakes, on a
    mesh, a lattice mesh or a terrain) 210; `shaders --library water --backend all`: 1740 compiled, 0 failed. No new
-   property bit; shader cache v54.
+   property bit; shader cache v55 (with pcss-gles).
 5. **Not covered:** S57's capsule and contact shadows. Their `u_fs_lightOcclusion` is a ninth block with fog, and with
    capsules 67 vectors: the built-in Lit with capsule shadows, 2D lights and fog is at 9 blocks and 307 to 339 vectors
    too, so that is the S57 feature's GLES3 budget, not the water's.
@@ -791,3 +791,28 @@ the library's compile matrix builds (`WaterUniformBudgetSlow`), a fragment stage
    - After: Lit matrix at most 217 vectors and 8 blocks (`LitUniformBudgetSlow`), water's worst scene 216, the painted
      terrain 217; `shaders --library builtin_lit` and `water` compile on all six backends. `LitLightRecordsGpu`'s
      goldens were drawn by the blocks and match exactly on glcore.
+
+Branch `fu/water-tests` (docs/doriax-catchup/FOLLOWUPS.md, water-tests).
+
+1. **Particle systems' custom blocks get the scene clock.** `RenderSystemParticles` wrote only `time` and
+   `resolution` into a particle shader's custom blocks, so a particle fork's `sceneTime` read 0 while every other
+   custom block (meshes, UI, points, lines, sky, post passes) got the scene clock. It now writes `sceneTime` too, so
+   pause, time scale and the editor's clock act on particle shaders as on the rest.
+   `ParticlesGpu.CustomBlockReadsTheSceneClock` (fixture `particles/scene_clock.frag`) draws the clock as red, with
+   a fixed 0.1 s frame at time scale 0.5, paused and running, so the frame clock cannot pass for it. The built-in
+   `particles.frag` and `lines.frag` list the engine-written members, `sceneTime` included.
+2. **Regression tests for the review fixes of deviation 15 and 6**, each red with its fix reverted:
+   - per-pass terrain cut: `WaterReflectionGpu.EachPassDrawsTheTerrainOfItsOwnCamera` (two heights: each pass's
+     terrain view holds the cut selected from its own mirrored eye, and the pass draws that cut's nodes, read from
+     the pass list's instances). On glcore a shared view still draws right (GL uploads in order); the test pins the
+     per-pass views Vulkan, Metal and D3D11 need, not pixels. The pass's `shadows.terrainView` (the cut its depth
+     and shadow draws would read) is not observable: a reflection pass draws no depth or shadow pass of its own;
+   - HUD refraction: `WaterLayeringGpu.UIStaysOutOfTheRefraction` (a UI image under a refracting water, a glass
+     under it elsewhere asking for a re-copy: the water shows the floor, not the image); red both with the whole
+     fix reverted and with only the held-batch flush before the re-copy decision reverted;
+   - MVP rewrites: `WaterReflectionGpu.MVPsPerCameraOnlyWhileAReflectionDraws` (with the planar water out of
+     sight a batched card's MVP stays lazy across a camera move; with its pass drawing it is rewritten). The
+     no-reload half of the same fix (pipelines kept whatever the resolution) has no test: no public observable
+     tells a reload apart from a pipeline-cache hit;
+   - target sizing: `WaterReflectionGpu.TargetSizeIsThePassSize` (Half of the view, of a 400 x 225 fixed
+     resolution, of render scale 0.5).

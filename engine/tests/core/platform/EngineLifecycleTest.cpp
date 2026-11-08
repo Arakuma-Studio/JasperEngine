@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // The platform lifecycle the engine owns (platform-lifecycle spec D4, D9): the window's
-// visibility, and a view destroyed that was never loaded.
+// visibility, a view destroyed that was never loaded, and a loading-thread scope opened on the
+// main thread before the view exists.
 
 #include "Engine.h"
 #include "LogCapture.h"
 #include "log/Logger.h"
+#include "support/JobsTestUtil.h"
 
 #include <gtest/gtest.h>
 
@@ -63,5 +65,26 @@ TEST(EngineLifecycle, ViewDestroyedWithoutViewIsIgnored){
         Engine::onViewDestroyed.add(callbackTag, [&calls]() { calls++; });
         Engine::systemViewDestroyed();
         std::exit(calls == 0 && !Engine::isViewLoaded() ? 0 : 1);
+    }, ::testing::ExitedWithCode(0), "");
+}
+
+// A script's init runs on the main thread before the view loads, and a prebuilt player's script
+// may call Engine.startAsyncThread there: the main thread is the one that runs the render queue,
+// so the scope must not wait for it (the players hung there on every backend). In a child process:
+// the view is not loaded there, and a hang is ended by the watchdog.
+TEST(EngineLifecycle, LoadingThreadScopeOnTheMainThreadNeverWaits){
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
+    EXPECT_EXIT({
+        bool mainThreadAllAlong = true;
+        testsupport::runWithWatchdog(30.0, "loading-thread scopes on the main thread", [&mainThreadAllAlong]() {
+            // twice: a second commit before a frame ran the first waits too
+            for (int scope = 0; scope < 2; scope++){
+                Engine::startAsyncThread();
+                mainThreadAllAlong = mainThreadAllAlong && !Engine::isAsyncThread();
+                Engine::commitThreadQueue();
+                Engine::endAsyncThread();
+            }
+        });
+        std::_Exit(mainThreadAllAlong && !Engine::isViewLoaded() ? 0 : 1);
     }, ::testing::ExitedWithCode(0), "");
 }

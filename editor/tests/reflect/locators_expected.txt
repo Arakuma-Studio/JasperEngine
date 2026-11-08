@@ -16,6 +16,7 @@
 1021 button/textureHovered texture
 1021 button/texturePressed texture
 1021 button/textureDisabled texture
+1021 button/textureSelected texture
 1033 particlesystem/effect particle_effect
 1043 sprite/sheet any
 1044 text/font[0] font
