@@ -230,8 +230,8 @@ TEST(PixelPerfectStream, FixturesResaveWithoutS41Keys){
 }
 
 // S41's shader sources ('Pxs', pixel_snap.glsl, the frame block's last members) are cached under
-// v57 and later (v58: the terrain programme's bits re-appended after them): a cache of an older
-// version holds programs without them
+// v57 and later (v58: the terrain programme's bits re-appended after them; v59: T3's packed
+// terrain layer block): a cache of an older version holds programs without them
 TEST(PixelPerfectStream, ShaderCacheVersionCoversThePixelSnap){
-    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v58");
+    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v59");
 }
