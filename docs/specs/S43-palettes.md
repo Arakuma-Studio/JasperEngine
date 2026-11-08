@@ -1219,5 +1219,6 @@ Recorded while implementing (`feature/s43-palettes`).
   fixtures (three 2D scenes with library:sprite's COLOR_REPLACE and the library:gameboy and
   library:posterize post passes, their textures, and their Game views at 640 x 360) were made by the
   build before S43 (fa493bae4, from a worktree of that commit); on this branch each draws as its
-  golden (no channel over 2 apart) and re-saves byte for byte. The `shaderPalettes` round trip and the
+  golden (no channel over 2 apart) and re-saves byte for byte but for its `formatVersion` line, which
+  main has bumped since (7 to 8, its migration on save). The `shaderPalettes` round trip and the
   rename redirect are `test_palettes_lua.py::test_scene_keeps_the_binding`.

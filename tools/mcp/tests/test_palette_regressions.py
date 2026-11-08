@@ -2,11 +2,13 @@
 made (fa493bae4, tools/mcp/tests/fixtures/palette-regressions): three 2D scenes using
 library:sprite's COLOR_REPLACE and the library:gameboy and library:posterize post passes, with
 their textures. Each opens, draws its Game view at 640 x 360 as the golden, and re-saves byte for
-byte."""
+byte but for the format version line (main's to stamp: its later versions migrate on save)."""
 
 from __future__ import annotations
 
 import asyncio
+import difflib
+import re
 import shutil
 
 import pngdiff
@@ -44,4 +46,15 @@ async def test_old_scenes_render_and_resave_unchanged(ed: Editor):
         await asyncio.sleep(0.05)
         await ed.call("save_scene", scene=sid, path=path)
         ed.check((ed.project / path).stat().st_mtime_ns != before, f"{name}.scene was written again")
-        ed.check((ed.project / path).read_bytes() == original, f"{name}.scene re-saves byte for byte")
+        resaved = (ed.project / path).read_bytes()
+        # the format version is main's to stamp (7 when the fixtures were made, later versions
+        # migrate on save): the rest is what S43 must leave alone
+        version = re.compile(rb"^formatVersion: (\d+)\n")
+        before, after = version.match(original), version.match(resaved)
+        ed.check(before is not None and after is not None and int(after.group(1)) >= int(before.group(1)),
+                 f"{name}.scene keeps its format version line")
+        original, resaved = original[before.end():], resaved[after.end():]
+        if resaved != original:
+            diff = "".join(difflib.unified_diff(original.decode().splitlines(True), resaved.decode().splitlines(True),
+                                                f"{name}.scene (before S43)", f"{name}.scene (re-saved)", n=1))
+            ed.fail(f"{name}.scene re-saves byte for byte:\n{diff[:3000]}")
