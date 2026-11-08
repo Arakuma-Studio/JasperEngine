@@ -124,9 +124,10 @@ bool TitleArtPreviewJob::step(uint32_t budgetUs) {
     longestMs = 0.0;
     ranNothing = true;
     bool first = true;
-    // the next piece starts while it fits what is left of the budget (the first always does)
+    // the next piece starts while it fits what is left of the budget, with the queue's margin for
+    // a piece dearer than its average (the first always starts)
     const auto fits = [&](uint32_t predictedUs) {
-        return first || costs.nowUs() - start + predictedUs <= static_cast<double>(budgetUs);
+        return first || costs.nowUs() - start + predictedUs * TitlePreviewQueue::VARIANCE_MARGIN <= static_cast<double>(budgetUs);
     };
     if (!job) {
         std::string error;
@@ -148,7 +149,8 @@ bool TitleArtPreviewJob::step(uint32_t budgetUs) {
         job->splitOversizedSteps(SPLIT_US);
         if (!fits(job->nextStepCostUs())) return false;
         titleart::StepBudget budget;
-        const double left = static_cast<double>(budgetUs) - (costs.nowUs() - start);
+        // the job measures what it spends and predicts each step: the margin scales what is left
+        const double left = (static_cast<double>(budgetUs) - (costs.nowUs() - start)) / TitlePreviewQueue::VARIANCE_MARGIN;
         budget.budgetUs = static_cast<uint32_t>(std::max(1.0, left));
         titleart::StepReport report;
         job->step(budget, &report);

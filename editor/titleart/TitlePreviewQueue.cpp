@@ -205,7 +205,7 @@ void TitlePreviewQueue::runFrame(double budgetMs) {
             // a step that does not fit what is left runs only as the frame's first work; one
             // predicted over the whole budget then runs alone
             const double cost = item->job->nextStepCostUs() / 1000.0;
-            if (cost > budget - spent && (ran || side > 0)) break;
+            if (cost * VARIANCE_MARGIN > budget - spent && (ran || side > 0)) break;
             ranAlone = cost > budgetMs;
             item->state = TitlePreviewState::Running;
             const double left = std::max(0.0, budget - spent);

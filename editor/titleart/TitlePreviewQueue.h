@@ -11,7 +11,10 @@
 //   App::engineRender). It steps jobs by priority (Hover, Layers, Tiles, Thumbnails, Prefetch, in
 //   that order), visible items before hidden ones within a priority, oldest request first; each
 //   step is asked to fit what is left of the budget (a TitleRenderJob step runs whole steps, at
-//   least one). A step predicted to exceed the whole budget runs alone in a frame. Predictions are
+//   least one). A step predicted to exceed the whole budget runs alone in a frame; after the
+//   frame's first work, a step starts only when VARIANCE_MARGIN times its prediction fits what is
+//   left (predictions are averages: a step that takes twice its average must not push the frame
+//   over). Predictions are
 //   measured ones (TitleArtPreviewJob teaches a TitleStepCosts model what each kind of step took),
 //   and the queue checks its own clock after every step: once the frame's time is spent nothing
 //   more starts. A frame that went over (an alone step, a step dearer than predicted) is followed
@@ -129,6 +132,7 @@ namespace jasperengine::editor {
         const TitlePreviewStats& stats() const { return counters; }
         // the p95 of the last WINDOW working frames' times (0 before the first)
         static constexpr size_t WINDOW = 200;
+        static constexpr double VARIANCE_MARGIN = 1.5;
         static constexpr size_t OVERRUNS = 8;
         double p95FrameMs() const;
         size_t windowFrames() const { return recent.size(); }

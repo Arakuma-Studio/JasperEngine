@@ -90,8 +90,9 @@ bool TitleRenderJob::step(const StepBudget& budget, StepReport* report) {
         }
         std::string error;
         const bool ok = !s.run || s.run(s.scissor, error);
-        const double measuredUs = std::max(0.0, nowUs() - start);
+        // the fence's flush may wait for the software GPU's queue: part of what the step costs
         if (costModel && s.kind == StepKind::Gpu) costModel->fenceGpu();
+        const double measuredUs = std::max(0.0, nowUs() - start);
         const uint32_t measured = (uint32_t)std::min(measuredUs, 4.0e9);
         local.steps++;
         local.estimatedUs += predicted;
