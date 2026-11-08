@@ -7,7 +7,7 @@ precision highp int;
 // used with the author's permission). Metallic-roughness with the engine's GGX lobes
 // (includes/brdf.glsl) and split-sum IBL (includes/ibl.glsl) on the linear float title
 // environment, the layer-space banded ramp with its bend (title_ramp.glsl), clearcoat,
-// iridescence (includes/iridescence.glsl), glass depth, gems' environment refraction
+// iridescence (three.js's thin film: title_iridescence.glsl), glass depth, gems' environment refraction
 // (title_gem.glsl), surface relief and flakes (title_surface.glsl), env lock, blur, repeat and
 // the grade as uniforms (title_env.glsl). The output is premultiplied: opaque writes alpha 1;
 // with opacity < 1, rgb = diffuse x a + added light and alpha = a + (1 - a) max(added light).
@@ -36,7 +36,7 @@ const float M_PI = 3.141592653589793;
 
 #include "includes/brdf.glsl"
 #include "includes/ibl.glsl"
-#include "includes/iridescence.glsl"
+#include "titleart/title_iridescence.glsl"
 #include "includes/specular_aa.glsl"
 #include "titleart/hdr_compress.glsl"
 
@@ -268,7 +268,8 @@ void main() {
     float iorF0 = pow((m3.z - 1.0) / (m3.z + 1.0), 2.0);
     vec3 F0 = mix(vec3(iorF0), baseColor, metallic);
 #ifdef TL_IRIDESCENCE
-    F0 = mix(F0, iridescenceFresnel(NdotV, m2.w, m3.x, F0), m2.z);
+    // three.js: the film's reflectance at the view angle, as the F0 both lobes take
+    F0 = mix(F0, tlSchlickToF0(tlIridescenceFresnel(NdotV, m2.w, m3.x, F0), 1.0, NdotV), m2.z);
 #endif
 #ifdef TL_GLASS_DEPTH
     // fake absorption: deeper and darker where the surface turns away (a longer path)
