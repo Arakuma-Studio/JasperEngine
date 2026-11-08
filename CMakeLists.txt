@@ -902,6 +902,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/PublishTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
+    ${EDITOR_DIR}/mcp/TerrainMaterialInfo.cpp
     ${EDITOR_DIR}/mcp/tools/AnimationClipTools.cpp
     ${EDITOR_DIR}/mcp/tools/AnimatorTools.cpp
     ${EDITOR_DIR}/mcp/tools/LatticeTools.cpp
@@ -1237,6 +1238,14 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
     ${EDITOR_DIR}/window/TerrainGenerateSection.cpp
     ${EDITOR_DIR}/window/NoiseGraphWindow.cpp
+    ${EDITOR_DIR}/window/TerrainQualityPanel.cpp
+    ${EDITOR_DIR}/texture/TerrainSliceCook.cpp
+    ${EDITOR_DIR}/window/TerrainFoliagePanel.cpp
+    ${EDITOR_DIR}/foliage/TreeDataFile.cpp
+    ${EDITOR_DIR}/foliage/FoliageOpRunner.cpp
+    ${EDITOR_DIR}/command/type/TreeEditCmd.cpp
+    ${EDITOR_DIR}/util/ImpostorBaker.cpp
+    ${EDITOR_DIR}/mcp/tools/FoliageTools.cpp
     ${EDITOR_DIR}/window/TerrainSettingsPanel.cpp
     ${EDITOR_DIR}/lattice/LatticeEditorOps.cpp
     ${EDITOR_DIR}/lattice/LatticeBake.cpp

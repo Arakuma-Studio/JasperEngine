@@ -3,6 +3,7 @@
 
 #include "manager/ObjectManager.h"
 #include "component/ButtonComponent.h"
+#include "component/Transform.h"
 #include "component/InputFieldComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "component/PanelComponent.h"
@@ -19,6 +20,7 @@
 
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/FoliageSystem.h"
 #include "subsystem/LatticeSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
 #include "subsystem/TrailSystem.h"
@@ -65,6 +67,8 @@ void Scene::init(){
     // drawn in the frame they change (docs/specs/S18-splines.md D3)
     registerSystem<SplineSystem>();
     registerSystem<MeshSystem>();
+    // after the meshes' model loads, before the lattices and Render read what it places (T5 F1)
+    registerSystem<FoliageSystem>();
     registerSystem<LatticeSystem>();
     // after the lattices, before Render reads the GPU state it writes (vertex animation spec 3.4)
     registerSystem<VertexAnimatorSystem>();

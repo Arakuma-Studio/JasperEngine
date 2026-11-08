@@ -234,7 +234,7 @@ namespace jasperengine{
         // the built-in Lit's defines its colour variant was loaded with (the "builtin:lit#..."
         // reference, SubmeshShaderVariant::litDefines, as MaterialPbr::getDefineBits) and the
         // extension maps that variant binds, in slot order (u_pbrExtTexture0..2; COUNT: none)
-        uint32_t litDefineBits = 0;
+        uint64_t litDefineBits = 0;
         PbrMap pbrMaps[MaterialPbr::MAX_EXTENSION_MAPS] = {PbrMap::COUNT, PbrMap::COUNT, PbrMap::COUNT};
 
         int slotVSParams = -1;
@@ -243,6 +243,7 @@ namespace jasperengine{
         // its stochastic vec4 (16 floats), or less from a fork made before it
         unsigned int sizeFSParams = 0;
         int slotFSTexCoordSets = -1;
+        int slotVSFoliage = -1;
         int slotVSFade = -1;
         int slotFSLighting = -1;        // legacy u_fs_lighting of an older fork
         int slotVSObjectLights = -1;    // includes/lights.glsl
@@ -271,6 +272,7 @@ namespace jasperengine{
         std::pair<int, int> slotVSVatTexture = {-1, -1};
         int slotVSTerrain = -1;
         int slotFSTerrainLayers = -1;
+        int slotVSTerrainMacro = -1;    // u_vs_terrainMacro: Low's Macro Variation (T3 R9)
         // u_fs_pbrParams of a built-in Lit lobe variant ends with the lobes' values (and the UV
         // sets with a second set): its size, their offsets (bytes; size 0: no lobes)
         uint16_t pbrParamsSize = 0;
@@ -290,6 +292,7 @@ namespace jasperengine{
         int slotFSDepthMaterial = -1;
         unsigned int sizeFSDepthMaterial = 0; // reflected: 2 vec4 with Stochastic Tiling, else 1
         int slotVSDepthFade = -1;
+        int slotVSDepthFoliage = -1;
         int slotVSDepthSkinning = -1;
         int slotVSDepthMorphTarget = -1;
         int slotVSDepthLattice = -1;
@@ -300,6 +303,7 @@ namespace jasperengine{
         int slotVSDepthSprite = -1;
 
         int slotVSGBufferParams = -1;
+        int slotVSGBufferFoliage = -1;
         int slotVSGBufferFade = -1;
         int slotFSGBufferMaterial = -1;
         unsigned int sizeFSGBufferMaterial = 0; // reflected: 3 vec4 with Stochastic Tiling, else 2

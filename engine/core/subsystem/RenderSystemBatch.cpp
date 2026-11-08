@@ -16,6 +16,7 @@
 #include "Engine.h"
 #include "Log.h"
 #include "component/ImageComponent.h"
+#include "component/Transform.h"
 #include "pool/ShaderPool.h"
 #include "profiler/Profile.h"
 #include "render/UIDrawColor.h"

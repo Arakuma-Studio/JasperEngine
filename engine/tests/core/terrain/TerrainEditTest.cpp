@@ -562,6 +562,8 @@ TEST(TerrainEdit, NewTerrainDefaultsHaveOneHome) {
     EXPECT_EQ(made.maxHeight, plain.maxHeight);
     EXPECT_EQ(made.levels, plain.levels);
     EXPECT_TRUE(made.holeMap.empty());
+    EXPECT_TRUE(made.limitLayersPerPixel) << "T3 R53";
+    EXPECT_FALSE(plain.limitLayersPerPixel) << "an old terrain is untouched";
 
     // Every route that makes a terrain for a person or an agent comes through it
     const std::filesystem::path repository = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path().parent_path();

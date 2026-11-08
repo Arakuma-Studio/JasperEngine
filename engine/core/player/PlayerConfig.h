@@ -80,6 +80,8 @@ namespace jasperengine::player {
 
         ThreadingSettings threading;
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::MEDIUM, AtmosphereQuality::LOW};
+        std::array<FoliageQuality, 3> foliageQuality = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
+        bool foliageQualityUncapped = true;
         // Quality > Foliage Distance (desktop, mobile, web)
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         float inputDeadzone = 0.15f;
@@ -98,6 +100,10 @@ namespace jasperengine::player {
         // Project Settings > Quality > Device Tiers, the LOD biases, Thermal Response and the
         // upload budget (spec S56): "device", what differs from the defaults
         DeviceSettings device;
+        // T3 R2, R34: terrain::TerrainQuality by Engine::Platform (absent: High), and the tiers the
+        // build ships, which the tier a terrain asks for clamps to
+        std::array<int, 6> terrainQualityTiers{};
+        uint32_t terrainShippedTiers = 7;
         std::vector<std::string> tags;
         std::vector<std::string> layerNames;
         std::array<uint32_t, MAX_LAYERS> collision3D{};

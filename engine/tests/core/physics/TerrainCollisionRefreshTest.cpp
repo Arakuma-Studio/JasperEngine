@@ -210,6 +210,35 @@ TEST_F(TerrainCollisionRefresh, SetHeightsMatchesRebuild){
     EXPECT_NEAR(before[centre], 5.0f, quantum) << "and the ground before it";
 }
 
+// T3 R22: a refreshed block opens the samples a build opens, so a hole cut in play drops a body as a
+// hole loaded with the scene does
+TEST_F(TerrainCollisionRefresh, AHoleCutRefreshesAsTheBuildOpensIt){
+    TerrainComponent& terrain = makeTerrain(true, false);
+    std::string error;
+    JPH::ShapeRefC shape = JoltShapeBuilder::buildHeightFieldShape(scene.get(), terrain, Vector3(1, 1, 1), MAP, &error);
+    ASSERT_TRUE(shape) << error;
+
+    ASSERT_TRUE(edit(terrain::OpType::CutHoles, 4.0f, 0.0f).ok);
+    ASSERT_TRUE(terrain.editState && terrain.editState->collisionDirty);
+    const TerrainEditState& state = *terrain.editState;
+    const HeightFieldBlock block = JoltTerrainRefresh::blockOver(SIZE, MAP, field(shape).GetSampleCount(), field(shape).GetBlockSize(),
+                                                                 state.collisionMinX, state.collisionMinZ, state.collisionMaxX, state.collisionMaxZ, 1.0f, 1.0f);
+    ASSERT_TRUE(JoltTerrainRefresh::refreshShape(scene.get(), terrain, Vector3(1, 1, 1), MAP, field(shape), block,
+                                                 JoltShapeBuilder::sharedPhysicsTempAllocator()));
+
+    JPH::ShapeRefC fresh = JoltShapeBuilder::buildHeightFieldShape(scene.get(), terrain, Vector3(1, 1, 1), MAP, &error);
+    ASSERT_TRUE(fresh) << error;
+    int gaps = 0;
+    for (unsigned int y = 0; y < static_cast<unsigned int>(MAP); y++){
+        for (unsigned int x = 0; x < static_cast<unsigned int>(MAP); x++){
+            EXPECT_EQ(field(shape).IsNoCollision(x, y), field(fresh).IsNoCollision(x, y)) << x << ", " << y;
+            gaps += field(fresh).IsNoCollision(x, y) ? 1 : 0;
+        }
+    }
+    EXPECT_GT(gaps, 0) << "the hole opens samples";
+    EXPECT_TRUE(field(shape).IsNoCollision(16, 16)) << "the refreshed centre";
+}
+
 TEST_F(TerrainCollisionRefresh, AHeightPastTheRangeOrMostOfTheShapeIsBuiltAgain){
     // without Allow Runtime Edits the shape holds only the heights it was built with
     TerrainComponent& terrain = makeTerrain(false, false);

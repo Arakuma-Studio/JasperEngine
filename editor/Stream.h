@@ -58,6 +58,7 @@ namespace jasperengine{
     struct Submesh;
     struct TerrainFoliageLayer;
     struct TerrainSurfaceLayer;
+    struct TerrainTreePrototype;
     struct TileData;
     struct TileRectData;
 }
@@ -597,6 +598,8 @@ namespace jasperengine::editor {
         // stay as written so a caller can refuse them (set_properties)
         // index: the layer's place in foliageLayers, named in the load report's issue
         static TerrainFoliageLayer decodeTerrainFoliageLayer(const YAML::Node& node, bool clamp = true, int index = -1);
+        static YAML::Node encodeTerrainTreePrototype(const TerrainTreePrototype& prototype);
+        static TerrainTreePrototype decodeTerrainTreePrototype(const YAML::Node& node);
         static YAML::Node encodeTerrainComponent(const TerrainComponent& terrain);
         static TerrainComponent decodeTerrainComponent(const YAML::Node& node, const TerrainComponent* oldTerrain = nullptr);
 

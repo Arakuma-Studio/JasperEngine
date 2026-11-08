@@ -43,11 +43,11 @@
 #include "component/TextComponent.h"
 #include "io/watch/FileIdentity.h"
 #include "render/ShaderRender.h"
-#include "subsystem/MeshSystem.h"
 
 namespace jasperengine{
     struct ImageComponent;
     struct MeshComponent;
+    class MeshSystem;
 }
 
 namespace jasperengine::particles {
@@ -891,6 +891,7 @@ namespace jasperengine::editor{
         void drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTerrainQualitySection(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLightComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the light's Shadows section (InspectorShadows.cpp), and its pieces

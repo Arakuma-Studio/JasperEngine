@@ -12,6 +12,7 @@
 #include "Input.h"
 #include "input/InputActions.h"
 #include "component/CharacterCollision.h"
+#include "component/TerrainComponent.h"
 #include "component/WaterVolumeComponent.h"
 #include "component/BuoyancyComponent.h"
 #include "component/SplineAnimateComponent.h"
@@ -161,6 +162,10 @@ namespace luabridge
     template<> struct Stack<LodFadeMode> : EnumWrapper<LodFadeMode>{};
     template<> struct Stack<MaterialAlphaMode> : EnumWrapper<MaterialAlphaMode>{};
     template<> struct Stack<MaterialLighting> : EnumWrapper<MaterialLighting>{};
+    template<> struct Stack<TerrainQualitySetting> : EnumWrapper<TerrainQualitySetting>{};
+    template<> struct Stack<TerrainOffscreenShadows> : EnumWrapper<TerrainOffscreenShadows>{};
+    template<> struct Stack<TerrainMacroMode> : EnumWrapper<TerrainMacroMode>{};
+    template<> struct Stack<TerrainCliffProjection> : EnumWrapper<TerrainCliffProjection>{};
     template<> struct Stack<TextureFilter> : EnumWrapper<TextureFilter>{};
     template<> struct Stack<TextureWrap> : EnumWrapper<TextureWrap>{};
     template<> struct Stack<CursorType> : EnumWrapper<CursorType>{};

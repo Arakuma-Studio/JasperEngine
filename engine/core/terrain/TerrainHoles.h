@@ -4,10 +4,9 @@
 #ifndef TERRAIN_HOLES_H
 #define TERRAIN_HOLES_H
 
-// T3 R18, R19, R27 (the owner of what a hole means, programme D7): one optional R8 map, 0 = hole,
-// 255 = solid, read with no filtering. T1 R92 creates this minimal part; T3 extends it with the
-// lattice rules of its consumers. A plain view over texels, so a job's copied texels use the same
-// isHole, and a tiled store supplies one per tile.
+// T3 R18, R19, R22, R23, R27 (the owner of what a hole means, programme D7): one optional R8 map,
+// 0 = hole, 255 = solid, read with no filtering. A plain view over texels, so a job's copied texels
+// use the same isHole, and a tiled store supplies one per tile.
 
 #include "Export.h"
 #include "terrain/TerrainMapStore.h"
@@ -15,6 +14,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <vector>
 
 namespace jasperengine::terrain {
 
@@ -38,6 +38,30 @@ namespace jasperengine::terrain {
         const int texelY = y < map.height - 1 ? y : map.height - 1;
         return map.texels[static_cast<size_t>(texelY) * map.width + texelX] < 128;
     }
+
+    // T3 R22: lattice square (i, j) of a samples x samples lattice over the terrain is open when every
+    // hole texel its local rectangle overlaps is a hole. open holds (samples - 1)^2 flags, row by row.
+    // A negative mirror is the collider's mirrored axis, where sample i sits at -(-half + spacing * i).
+    JASPERENGINE_API void openSquares(const HoleMapView& map, int samples, float mirrorX, float mirrorZ, std::vector<uint8_t>& open);
+    // T3 R22: sample (x, y) has no collision when all its existing adjacent squares (4, 2 at an edge,
+    // 1 at a corner) are open. out holds samples^2 flags, row by row, and the return is how many are set.
+    JASPERENGINE_API int noCollisionSamples(const std::vector<uint8_t>& open, int samples, std::vector<uint8_t>& out);
+    // The same rule for one sample (x, y) of a samples x samples lattice, read from the map: what a
+    // collider block that a refresh samples asks, with no whole-lattice pass
+    JASPERENGINE_API bool noCollisionSample(const HoleMapView& map, int samples, float mirrorX, float mirrorZ, int x, int y);
+    // T3 R23: lattice cell (i, j) overlaps any hole texel. cells holds (samples - 1)^2 flags, row by
+    // row; the return is how many are set.
+    JASPERENGINE_API int navHoleCells(const HoleMapView& map, int samples, std::vector<uint8_t>& cells);
+    // T3 R43: how many hole texels of the map lie in texels [x0, x1) x [y0, y1), clipped to the map
+    JASPERENGINE_API int64_t countHoleTexels(const HoleMapView& map, int x0, int y0, int x1, int y1);
+
+    // T3 R30: what the Holes overlay draws, per texel of the map: HOLE_OVERLAY_DEEP where the collider is
+    // open, HOLE_OVERLAY_RIM where it stays under the drawn hole, HOLE_OVERLAY_NAV on ground the navmesh
+    // leaves out, SOLID_VALUE elsewhere. Read as a hole map (under one half is a hole).
+    inline constexpr uint8_t HOLE_OVERLAY_DEEP = 0;
+    inline constexpr uint8_t HOLE_OVERLAY_RIM = 64;
+    inline constexpr uint8_t HOLE_OVERLAY_NAV = 200;
+    JASPERENGINE_API void holeOverlayClasses(const HoleMapView& map, int collisionSamples, int navSamples, std::vector<uint8_t>& out);
 
     struct HoleRegionResult {
         int changed = 0;             // texels that took the value

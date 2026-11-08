@@ -1981,6 +1981,64 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "terrain_foliage_add_details",
+        "kind": "guard",
+        "what_happened": "Asked for grass, an agent has to fill an existing layer's density by rules, not place objects one by one.",
+        "text_at_issue": "edit_terrain's description and jasper://docs/terrain: scatter_by_rules with target detail_layer; sample_terrain foliage reads drawn.",
+        "source": "T5 R65, AC41",
+        "prompt": "Terrain [12] has a grass detail layer 0. Fill it on the flat ground, under 15 degrees, at 2 per square unit.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"ops": "re:scatter_by_rules"}, "result": ok(
+                "Scatter Foliage (Terrain): 0 trees.",
+                {"dry_run": False, "undo_name": "Scatter Foliage (Terrain)", "ops": [{"op": "scatter_by_rules", "changed_texels": 40960, "instances_added": 0, "instances_removed": 0,
+                 "rejected": {"slope": 2024, "height": 0, "layer": 0, "noise": 0, "hole": 0, "spline": 0, "spacing": 0}}], "changed": [], "warnings": [], "trees": 0})},
+            {"tool": "sample_terrain", "args": {"foliage": True}, "result": ok(
+                "Sampled terrain \"Terrain\".",
+                {"foliage": {"details": [{"layer": 0, "instances": 81344, "mean_density": 1.6, "drawn": 12033}], "trees": [], "totals": {"resident": 12033}}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:detail_layer"}}],
+                   "must_not_call": ["sculpt_terrain", "create_entity"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_foliage_mass_trees",
+        "kind": "bad",
+        "what_happened": "Asked for a forest, an agent placed thousands of GameObjects with create_entity or sculpt_terrain place_object, which the scene YAML then carried.",
+        "text_at_issue": "edit_terrain's op scatter_by_rules in its listing and guide: dry_run first, then the real run.",
+        "source": "T5 R24, AC41",
+        "prompt": "Plant a pine forest over the whole of Terrain [12]; the prototype Pine exists.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"dry_run": True}, "result": ok(
+                "Dry run of Scatter Foliage (Terrain): 18422 trees.",
+                {"dry_run": True, "undo_name": "Scatter Foliage (Terrain)", "ops": [{"op": "scatter_by_rules", "changed_texels": 0, "instances_added": 18422, "instances_removed": 0,
+                 "rejected": {"slope": 311, "height": 0, "layer": 0, "noise": 0, "hole": 0, "spline": 0, "spacing": 90}, "hash": "5c6872872df93554"}], "changed": [], "warnings": [], "trees": 18422})},
+            {"tool": "edit_terrain", "result": ok(
+                "Scatter Foliage (Terrain): 18422 trees.",
+                {"dry_run": False, "undo_name": "Scatter Foliage (Terrain)", "ops": [{"op": "scatter_by_rules", "changed_texels": 0, "instances_added": 18422, "instances_removed": 0,
+                 "rejected": {"slope": 311, "height": 0, "layer": 0, "noise": 0, "hole": 0, "spline": 0, "spacing": 90}, "hash": "5c6872872df93554"}], "changed": [], "warnings": [], "trees": 18422,
+                 "next": ["The Terrain has 18422 trees, past the Mobile budget of 8000 visible: bake_impostors, and check sample_terrain foliage on a Low tier."]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:scatter_by_rules", "dry_run": True}}],
+                   "must_not_call": ["create_entity", "sculpt_terrain"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_foliage_impostors",
+        "kind": "guard",
+        "what_happened": "Asked why far trees cost so much, an agent has to bake impostors through edit_terrain, not look for a tool of its own.",
+        "text_at_issue": "edit_terrain's op bake_impostors, and the next hint on a tree count past the Mobile budget.",
+        "source": "T5 R56, AC41",
+        "prompt": "The far trees on Terrain [12] cost too much. Fix that with impostors.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"ops": "re:bake_impostors"}, "result": ok(
+                "Baked 2 impostor(s).",
+                {"dry_run": False, "undo_name": "Bake Impostors", "ops": [{"op": "bake_impostors", "entries": [
+                    {"prototype": 0, "albedo": "terrain_maps/a.png", "normal": "terrain_maps/n.png", "views": 8, "ms": 900}]}], "job_id": "7", "status": "succeeded"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:bake_impostors"}}]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_footsteps_built_in_lua",
         "kind": "bad",
         "what_happened": "Asked for varied footsteps, an agent wrote a Lua table of clips with math.random and its own pitch "
@@ -2238,6 +2296,79 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "undo", "args": {"scope": "timeline"}}], "must_not_call": ["edit_graph"]},
         "max_turns": 8,
+    },
+    # -- T3: holes and tiers (docs/mcp/guide/terrain-materials.md) ---------------------------------------------
+    {
+        "id": "terrain_cut_hole_check",
+        "kind": "guard",
+        "what_happened": "A hole that draws can still stop a ball: the agent checks the collider, not only the picture.",
+        "text_at_issue": "docs/mcp/guide/terrain-materials.md: Holes end to end; sample_terrain collision_gap",
+        "source": "T3 AC51",
+        "prompt": "Cut a cave mouth in the terrain at local (0, 0), 6 m across, and check a ball falls in.",
+        "results": [
+            {"tool": "edit_terrain", "result": ok("Applied 1 op.", {"ops": [{"op": "cut_holes", "changed_texels": 113, "hole_texels": 113,
+                "map_created": True, "collision_samples_open": 64}]})},
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"samples": [{"hole": True, "collision_gap": True, "nav_excluded": True}]})},
+        ],
+        "checks": {"calls": ["edit_terrain", "sample_terrain"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_mobile_budget",
+        "kind": "bad",
+        "what_happened": "Asked why a terrain is slow on phones, an agent listed materials instead of reading what the pixels cost.",
+        "text_at_issue": "docs/mcp/guide/terrain-materials.md: Material budget and tiers; sample_terrain info.material",
+        "source": "T3 AC51",
+        "prompt": "Why is this terrain slow on phones?",
+        "results": [
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"info": {"material": {"quality": "high", "quality_source": "project",
+                "fetches": {"flat": 9, "slope": 27, "worst": 111, "by_tier": {"high": {"worst": 111}, "medium": {"worst": 21}, "low": {"worst": 6}}}}}})},
+        ],
+        "checks": {"calls": ["sample_terrain"], "must_not_call": ["list_materials"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_set_quality_tier",
+        "kind": "guard",
+        "what_happened": "A tier per platform is a project setting, not a file edit.",
+        "text_at_issue": "docs/mcp/guide/terrain-materials.md: Material budget and tiers; graphics.terrainQuality.<platform>",
+        "source": "T3 AC51",
+        "prompt": "Use the Low terrain quality on Android.",
+        "results": [
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.", {"changed": ["graphics.terrainQuality.android"]})},
+        ],
+        "checks": {"calls": ["set_project_settings"], "edits_must_not": [r"project\.yaml$"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_point_material_cap",
+        "kind": "guard",
+        "what_happened": "A dense sample_terrain grid says only hole per point; the agent asks again at the few points it cares about.",
+        "text_at_issue": "sample_terrain's result note: over 64 points each says only hole",
+        "source": "T3 R43",
+        "prompt": "Sample the terrain on a 16 x 16 grid of local points over its whole area, then tell me which layers draw at local (0, 0).",
+        "results": [
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"samples": [{"hole": False}] * 256,
+                "note": "Over 64 points each says only hole: ask for collision_gap, nav_excluded, layers_painted, layers_drawn and fetches at fewer points."})},
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"samples": [{"hole": False, "layers_drawn": [{"layer": 0, "weight": 1.0}], "fetches": 3}]})},
+        ],
+        "checks": {"calls": ["sample_terrain", {"tool": "sample_terrain", "args": {"points": [[0, 0]]}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_macro_without_layers",
+        "kind": "guard",
+        "what_happened": "Macro Variation on a terrain with no layer draws nothing; sample_terrain's issue says why, and the agent adds a layer instead of retuning the macro.",
+        "text_at_issue": "sample_terrain issues: macro_without_layers",
+        "source": "T3 (spec Deviations: a terrain with no layer draws its base material alone)",
+        "prompt": "I turned on Macro Variation on the terrain but I see no change. Fix it so it shows.",
+        "results": [
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"issues": [{"code": "macro_without_layers", "severity": "warning",
+                "message": "Macro Variation applies once the terrain has a layer: set_terrain_maps layers adds one."}]})},
+            {"tool": "set_terrain_maps", "result": ok("Set terrain maps (one undo step).", {"layers": [{"index": 0}]})},
+        ],
+        "checks": {"calls": ["sample_terrain", "set_terrain_maps"]},
+        "max_turns": 10,
     },
     # -- T1 terrain (docs/specs/T1-terrain-authoring.md AC74) -----------------------------------
     {

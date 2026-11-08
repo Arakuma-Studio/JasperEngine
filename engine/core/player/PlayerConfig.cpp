@@ -26,6 +26,7 @@ namespace {
         {TextureStrategy::NONE, "none"}};
     const EnumNames<AtmosphereQuality> kAtmosphere[] = {{AtmosphereQuality::OFF, "off"}, {AtmosphereQuality::LOW, "low"},
         {AtmosphereQuality::MEDIUM, "medium"}, {AtmosphereQuality::HIGH, "high"}};
+    const EnumNames<FoliageQuality> kFoliage[] = {{FoliageQuality::LOW, "low"}, {FoliageQuality::MEDIUM, "medium"}, {FoliageQuality::HIGH, "high"}};
     const EnumNames<PbrTier> kPbrTier[] = {{PbrTier::FULL, "full"}, {PbrTier::REDUCED, "reduced"}};
     const EnumNames<ShadowTier> kShadowTier[] = {{ShadowTier::LOW, "low"}, {ShadowTier::MEDIUM, "medium"}, {ShadowTier::HIGH, "high"},
         {ShadowTier::ULTRA, "ultra"}};
@@ -80,6 +81,9 @@ json PlayerConfig::toJson() const {
                         {"ioThreads", threading.ioThreads}, {"webPumpBudgetMs", threading.webPumpBudgetMs}};
     out["atmosphereQuality"] = {nameOf(kAtmosphere, atmosphereQuality[0]), nameOf(kAtmosphere, atmosphereQuality[1]),
                                 nameOf(kAtmosphere, atmosphereQuality[2])};
+    if (!foliageQualityUncapped) {
+        out["foliageQuality"] = {nameOf(kFoliage, foliageQuality[0]), nameOf(kFoliage, foliageQuality[1]), nameOf(kFoliage, foliageQuality[2])};
+    }
     out["foliageDistanceScale"] = {foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]};
     out["input"] = {{"deadzone", inputDeadzone}, {"actions", inputActions}};
     json areas = json::array();
@@ -104,6 +108,8 @@ json PlayerConfig::toJson() const {
     for (ShadowTier tier : shadowTiers) tiers.push_back(nameOf(kShadowTier, tier));
     out["shadowTiers"] = tiers;
     out["device"] = json::parse(device.toJson());
+    out["terrainQualityTiers"] = terrainQualityTiers;
+    out["terrainShippedTiers"] = terrainShippedTiers;
     out["tags"] = tags;
     out["layers"] = layerNames;
     out["collision3D"] = collision3D;
@@ -185,6 +191,10 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.threading.ioThreads = threading->value("ioThreads", config.threading.ioThreads);
             config.threading.webPumpBudgetMs = threading->value("webPumpBudgetMs", config.threading.webPumpBudgetMs);
         }
+        if (const auto foliage = in.find("foliageQuality"); foliage != in.end() && foliage->is_array()) {
+            config.foliageQualityUncapped = false;
+            for (size_t i = 0; i < 3 && i < foliage->size(); i++) valueOf(kFoliage, (*foliage)[i].get<std::string>(), config.foliageQuality[i]);
+        }
         if (const auto atmosphere = in.find("atmosphereQuality"); atmosphere != in.end() && atmosphere->is_array()) {
             for (size_t i = 0; i < 3 && i < atmosphere->size(); i++) valueOf(kAtmosphere, (*atmosphere)[i].get<std::string>(), config.atmosphereQuality[i]);
         }
@@ -253,6 +263,11 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
                 return false;
             }
         }
+        if (const auto terrainTiers = in.find("terrainQualityTiers"); terrainTiers != in.end() && terrainTiers->is_array()) {
+            for (size_t i = 0; i < config.terrainQualityTiers.size() && i < terrainTiers->size(); i++)
+                config.terrainQualityTiers[i] = (*terrainTiers)[i].get<int>();
+        }
+        config.terrainShippedTiers = in.value("terrainShippedTiers", config.terrainShippedTiers);
         config.tags = in.value("tags", std::vector<std::string>{});
         config.layerNames = in.value("layers", std::vector<std::string>{});
         const std::vector<uint32_t> collision3D = in.value("collision3D", std::vector<uint32_t>{});

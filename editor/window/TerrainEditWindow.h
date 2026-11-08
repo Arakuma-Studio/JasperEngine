@@ -49,6 +49,10 @@ namespace jasperengine::editor{
         std::vector<Vector3> innerPoints;
         // T1 R55: the effective operation's colour (Table 4), the texel-size warning colour under one texel
         Vector4 color = Vector4(1.0f, 0.78f, 0.22f, 1.0f);
+        // T5 R46: pairs of points, the selected prototype's collision capsule at the cursor
+        std::vector<Vector3> capsuleLines;
+        // T3 R41: when close, the texels a hole brush will change, one loop each
+        std::vector<std::vector<Vector3>> texelLoops;
     };
 
     // A brush stroke run without the mouse (MCP tools): the settings the stroke uses. The
@@ -81,6 +85,7 @@ namespace jasperengine::editor{
 
     struct ActiveStroke{
         bool active = false;
+        bool treeStroke = false; // T5: the panel's brush
         // The stroke as one undo step: Esc (or Ctrl+Z) before the mouse is released puts the
         // map back and drops what a placement stroke made (S24 R12)
         InteractiveEdit edit;
@@ -111,6 +116,8 @@ namespace jasperengine::editor{
         // The drag's spaced stamps (T1 R21)
         std::optional<terrain::StrokeResampler> placementPath;
     };
+
+    class TerrainFoliagePanel;
 
     class TerrainEditWindow{
     private:
@@ -165,6 +172,7 @@ namespace jasperengine::editor{
         std::string placeAssetPath;
         bool placeInstanced;
         float placeSpacing;
+        std::unique_ptr<TerrainFoliagePanel> foliagePanel;
         float placeMinScale;
         float placeMaxScale;
         float placeRotationJitter;
@@ -250,6 +258,9 @@ namespace jasperengine::editor{
         int mapResolutionFor(TerrainMapTarget target) const;
         TerrainMapRef getBrushMapRef() const;
         bool isHeightBrush() const;
+        // the point under the brush's cursor, for the hole brush's info (T3 R41)
+        mutable bool hoverValid = false;
+        mutable Vector3 hoverLocal;
         bool isBlendBrush() const;
         bool isDensityBrush() const;
         bool isPlacementBrush() const;
@@ -263,6 +274,11 @@ namespace jasperengine::editor{
         bool strokeTerrainIsThere(SceneProject* sceneProject);
         bool paintMapStroke(SceneProject* sceneProject, const Vector3& localPoint);
         bool placeAlongStroke(SceneProject* sceneProject, Entity entity, const Vector3& localPoint);
+        bool isHoleBrush() const;
+        // T3 R29: a stroke that filled the last hole takes the map away, as one step with the fill
+        bool removeFilledHoleMap(SceneProject* sceneProject);
+        // T3 R41: hole or solid under the cursor, the texel and collision cell, and the small hole's warning
+        void drawHoleBrushInfo(TerrainComponent& terrain);
         std::vector<Vector2> collectPlacedPoints(SceneProject* sceneProject, Entity terrainEntity) const;
         // Instanced placement keeps one host entity per asset under the terrain
         static Entity findInstanceHost(SceneProject* sceneProject, Entity terrainEntity, const std::string& assetPath);
@@ -283,6 +299,8 @@ namespace jasperengine::editor{
         template<typename T> bool setFoliageLayerProperty(const char* field, const T& value);
 
     public:
+        // A layer with no density map gets an empty one, in memory until something paints it (T5: edit_terrain)
+        bool ensureDensityMap(Project* project, SceneProject* sceneProject, Entity entity, int layer);
         static constexpr const char* WINDOW_NAME = "Terrain";
 
         // T1 R60: the size a brush may have anywhere; each terrain narrows it (brushSizeLimits)

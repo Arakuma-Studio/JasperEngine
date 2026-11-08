@@ -206,6 +206,14 @@ async def terrain(ed, sid, hex_tiling: bool):
     return tid
 
 
+async def terrain_nine(ed, sid):
+    tid = await terrain(ed, sid, False)
+    colors = ["floor_tiles.png", "bricks.png", "checker.png", "ceiling_planks.png"]
+    await ed.call("set_terrain_maps", scene=sid, entity=tid,
+                  layers=[{"index": i, "color": T + colors[i % 4], "normal": T + colors[(i + 1) % 4], "roughness": T + colors[(i + 2) % 4]} for i in range(9)])
+    return tid
+
+
 async def build_benchmarks(out: Path) -> None:
     async with Editor(create=True, name="PbrExtended") as ed:
         textures = ed.project / "assets" / "textures"
@@ -238,6 +246,12 @@ async def build_benchmarks(out: Path) -> None:
             await terrain(ed, sid, hexed)
             await ed.call("save_scene", scene=sid)
             names.append(name)
+
+        # T3 R35: nine overlapping PBR layers, what the tiers are measured on
+        sid = scene_id(await ed.call("create_scene", name="Terrain Nine", path="Terrain Nine.scene"))
+        await terrain_nine(ed, sid)
+        await ed.call("save_scene", scene=sid)
+        names.append("Terrain Nine")
 
         await ed.call("save_project")
         copy_project(ed.project, out, [f"{n}.scene" for n in names])

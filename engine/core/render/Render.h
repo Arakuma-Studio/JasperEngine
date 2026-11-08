@@ -262,7 +262,12 @@ namespace jasperengine{
         OBJECTMVP1,
         OBJECTMVP2,
         OBJECTMVP3,
-        OBJECTEXTRA
+        OBJECTEXTRA,
+        // foliage's compact instance (includes/foliage_instance.glsl, T5 F3)
+        INSTANCEPACKED0,
+        INSTANCEPACKED1,
+        INSTANCEPACKED2,
+        INSTANCEPACKED3
     };
 
     enum class AttributeDataType{
@@ -282,6 +287,7 @@ namespace jasperengine{
         PBR_FS_PARAMS,
         PBR_FS_TEXCOORDSETS,
         PBR_VS_FADE,
+        PBR_VS_FOLIAGE,
         FS_LIGHTING,
         FS_REFLECTION_PROBE,
         FS_FOG,
@@ -370,7 +376,8 @@ namespace jasperengine{
         PARTICLESIXWAYA,     // six-way lighting: the two response maps
         PARTICLESIXWAYB,
         PARTICLEEMISSION,    // the emission map
-        VAT                  // a Vertex Animation payload (RGBA16F/32F, includes/vat.glsl)
+        VAT,                 // a Vertex Animation payload (RGBA16F/32F, includes/vat.glsl)
+        TERRAINHOLES         // a terrain's hole map (R8, texelFetch: T3 R18, includes/terrain_holes_fs.glsl)
     };
 
     enum class TextureType {

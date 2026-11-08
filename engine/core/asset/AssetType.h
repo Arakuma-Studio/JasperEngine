@@ -39,8 +39,9 @@ namespace jasperengine {
         VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
         // 24 to 27 are the pixel art program's (docs/specs/S41-S52)
         SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
-        // 29-31 are the terrain programme's other streams (T4-T6); NoiseGraph took 32 when upstream took 28. Stored in
+        // 30 Terrain World, 31 Voxel Volume (programme D19, D22); NoiseGraph took 32 when upstream took 28. Stored in
         // assetmap.bin: these never move.
+        TreeData = 29,              // a .jetrees file of a Terrain's trees (T5 R22)
         NoiseGraph = 32             // a .noisegraph Noise Graph (T2)
     };
 
@@ -68,6 +69,7 @@ namespace jasperengine {
             case AssetType::NavGrid: return "navgrid";
             case AssetType::AnimatorController: return "animator_controller";
             case AssetType::AvatarMask: return "avatar_mask";
+            case AssetType::TreeData: return "tree_data";
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
             case AssetType::SoundEvent: return "sound_event";

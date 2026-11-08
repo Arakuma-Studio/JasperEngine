@@ -6,6 +6,7 @@
 #if JASPERENGINE_NOISE_ENABLED
 
 #include "noise/NoiseNodes.h"
+#include "terrain/TerrainLayers.h"
 
 #include <cstdint>
 #include <set>
@@ -349,7 +350,7 @@ namespace jasperengine { namespace noise {
 
         t.push_back(nodeType("output_height", "Output", "Height Output", {inPort("in", "field", "In")}, {enumParam("unit", "normalized", {"normalized", "metres"})}));
         t.push_back(nodeType("output_layer", "Output", "Layer Output", {inPort("weight", "field", "Weight")},
-                             {intParam("layer", 0, 0.0, 8.0), boolParam("optional", false)}));
+                             {intParam("layer", 0, 0.0, static_cast<double>(terrain::TERRAIN_MAX_LAYERS - 1)), boolParam("optional", false)}));
         t.push_back(nodeType("output_density", "Output", "Foliage Density Output", {inPort("density", "field", "Density")},
                              {intParam("foliage_layer", 0, 0.0), boolParam("optional", false)}));
         t.push_back(nodeType("output_value", "Output", "Value Output", {inPort("in", "field", "In")}, {stringParam("name", "value")}));

@@ -50,14 +50,17 @@ namespace {
                 terrain.heightMapLoaded = false;
                 terrain.needUpdateTerrain = true;
                 terrain.needUpdateTexture = true;
-                terrain.needUpdateFoliage = true;
                 break;
             case MapKind::Blend:
             case MapKind::Hole:
                 terrain.needUpdateTexture = true;
+                // T3 R26: a hole takes its foliage with it, and a filled one gives it back
+                if (map.kind == MapKind::Hole) {
+                    terrain.needUpdateFoliage = true;
+                    terrain.holeMapRevision++;
+                }
                 break;
             case MapKind::Density:
-                terrain.needUpdateFoliage = true;
                 break;
         }
         if (Texture* texture = terrainMapTexture(terrain, map)) {
@@ -108,6 +111,17 @@ SurfaceView jasperengine::terrainSurfaceView(TerrainComponent& terrain) {
     return view;
 }
 
+ResourceLoadState jasperengine::prepareTerrainHoleMap(TerrainComponent& terrain) {
+    Texture& map = terrain.holeMap;
+    if (map.empty()) return ResourceLoadState::Finished;
+    map.setReleaseDataAfterLoad(false);
+    if (map.getMinFilter() != TextureFilter::NEAREST) map.setMinFilter(TextureFilter::NEAREST);
+    if (map.getMagFilter() != TextureFilter::NEAREST) map.setMagFilter(TextureFilter::NEAREST);
+    if (map.getWrapU() != TextureWrap::CLAMP_TO_EDGE) map.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    if (map.getWrapV() != TextureWrap::CLAMP_TO_EDGE) map.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    return map.load().state;
+}
+
 SurfaceSample jasperengine::querySurface(TerrainComponent& terrain, float localX, float localZ) {
     return sampleSurface(terrainSurfaceView(terrain), localX, localZ);
 }
@@ -118,6 +132,7 @@ bool jasperengine::raycastTerrain(TerrainComponent& terrain, const Transform& tr
         terrain.heightMap.setReleaseDataAfterLoad(false);
         terrain.heightMap.load();
     }
+    prepareTerrainHoleMap(terrain);
     const SurfaceView view = terrainSurfaceView(terrain);
 
     const Matrix4 inverseModel = transform.modelMatrix.inverse();
@@ -162,8 +177,11 @@ void jasperengine::snapshotTerrainSurface(TerrainComponent& terrain, TerrainSurf
 }
 
 void jasperengine::applyNewTerrainDefaults(TerrainComponent& terrain) {
-    // T1 sets nothing a struct default does not: T3 R53 and T5 F12 add theirs here
-    (void)terrain;
+    // T3 R53: a new terrain keeps the strongest layers of a pixel; the struct default stays off, so an
+    // old terrain draws what it drew
+    terrain.limitLayersPerPixel = true;
+    // T5 F12: an old scene's 0 means no Terrain-wide limit
+    terrain.detailDistance = 80.0f;
 }
 
 void jasperengine::applyLayerOrder(TerrainComponent& terrain, std::span<const int> order) {
@@ -291,6 +309,9 @@ void jasperengine::noteTerrainMapEdited(const Scene* scene, Entity entity, Terra
         }
         case MapKind::Hole:
             terrain.needUpdateTexture = true;
+            // T3 R26: a hole takes its foliage with it, and a filled one gives it back
+            terrain.needUpdateFoliage = true;
+            terrain.holeMapRevision++;
             markCollision(terrain, map, rect);
             break;
         case MapKind::Blend:
@@ -317,6 +338,18 @@ void jasperengine::noteTerrainMapEdited(const Scene* scene, Entity entity, Terra
 uint64_t jasperengine::terrainUploadInterval(size_t mapBytes, size_t budget) {
     if (budget == 0 || mapBytes <= budget) return 1;
     return static_cast<uint64_t>((mapBytes + budget - 1) / budget);
+}
+
+TerrainWorldPlacement jasperengine::terrainWorldPlacement(Scene* scene, Entity entity) {
+    TerrainWorldPlacement placement;
+    const Transform* transform = scene ? scene->findComponent<Transform>(entity) : nullptr;
+    if (!transform) return placement;
+    placement.valid = true;
+    placement.model = transform->modelMatrix;
+    placement.position = transform->worldPosition;
+    placement.scale = transform->worldScale;
+    placement.rotated = transform->worldRotation != Quaternion::IDENTITY;
+    return placement;
 }
 
 bool jasperengine::detachTerrainMapsForRuntime(TerrainComponent& terrain, Entity entity) {
@@ -500,7 +533,8 @@ WriteResult TerrainComponentStore::createMap(MapId map, MapFormat newFormat, flo
 }
 
 bool TerrainComponentStore::canRemoveMap(MapId map) const {
-    return map.kind == MapKind::Hole && !terrainPtr->holeMap.empty();
+    // T3 R29: while a volume holds it, a last fill keeps the map, all solid
+    return map.kind == MapKind::Hole && !terrainPtr->holeMap.empty() && terrainPtr->holeMapHolds == 0;
 }
 
 WriteResult TerrainComponentStore::removeMap(MapId map) {

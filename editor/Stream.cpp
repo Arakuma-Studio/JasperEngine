@@ -1895,6 +1895,7 @@ YAML::Node editor::Stream::encodeTerrainEditorSettings(const TerrainEditorSettin
     encodeFinite(terrainNode, "paintMaxHeight", ts.paintMaxHeight);
     terrainNode["placeAssetPath"] = ts.placeAssetPath;
     terrainNode["placeInstanced"] = ts.placeInstanced;
+    terrainNode["placeAs"] = ts.placeAsTree ? "tree" : "gameobject";
     encodePositiveFinite(terrainNode, "placeSpacing", ts.placeSpacing);
     encodePositiveFinite(terrainNode, "placeMinScale", ts.placeMinScale);
     encodePositiveFinite(terrainNode, "placeMaxScale", ts.placeMaxScale);
@@ -1960,6 +1961,7 @@ editor::TerrainEditorSettings editor::Stream::decodeTerrainEditorSettings(const 
     if (tn["paintMaxHeight"].IsDefined())     ts.paintMaxHeight     = decodeFinite(tn["paintMaxHeight"], ts.paintMaxHeight);
     if (tn["placeAssetPath"].IsDefined())     ts.placeAssetPath     = tn["placeAssetPath"].as<std::string>();
     if (tn["placeInstanced"].IsDefined())     ts.placeInstanced     = YamlNumbers::as<bool>(tn["placeInstanced"]);
+    if (tn["placeAs"].IsDefined())            ts.placeAsTree = tn["placeAs"].as<std::string>() != "gameobject";
     if (tn["placeSpacing"].IsDefined())       ts.placeSpacing       = decodePositiveFinite(tn["placeSpacing"], ts.placeSpacing);
     if (tn["placeMinScale"].IsDefined())      ts.placeMinScale      = decodePositiveFinite(tn["placeMinScale"], ts.placeMinScale);
     if (tn["placeMaxScale"].IsDefined())      ts.placeMaxScale      = decodePositiveFinite(tn["placeMaxScale"], ts.placeMaxScale);
@@ -2631,6 +2633,14 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         quality["web"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[2]);
         root["atmosphereQuality"] = quality;
     }
+    // T5 R21: the key is what tells a project from one made before it (F12)
+    if (project->isFoliageQualityDeclared()) {
+        YAML::Node quality;
+        quality["desktop"] = StreamSchema::foliageQuality().toString(project->getFoliageQuality()[0]);
+        quality["mobile"] = StreamSchema::foliageQuality().toString(project->getFoliageQuality()[1]);
+        quality["web"] = StreamSchema::foliageQuality().toString(project->getFoliageQuality()[2]);
+        root["foliageQuality"] = quality;
+    }
     // Project Settings > Quality > Foliage Distance, omitted at its defaults
     if (project->getFoliageDistanceScale() != Project::defaultFoliageDistanceScale) {
         YAML::Node scale;
@@ -2704,6 +2714,16 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             graphics["gpuInstancing"] = drawSubmission.gpuInstancing;
         if (project->getLightMode() != Project::defaultLightMode)
             graphics["lightMode"] = LightingTiers::getModeName(project->getLightMode());
+        // T3 R51: only a project that says; an old one writes no key and stays High everywhere
+        if (project->isTerrainQualityWritten()){
+            YAML::Node terrainTiers;
+            for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++){
+                terrainTiers[Project::getShadowTierPlatformName(platform)] = terrain::terrainQualityName(project->getTerrainQualityTier(platform));
+            }
+            graphics["terrainQuality"] = terrainTiers;
+        }
+        if (project->isShipAllTerrainTiers()) graphics["shipAllTerrainTiers"] = true;
+        if (project->isCompressTerrainLayers()) graphics["compressTerrainLayers"] = true;
         if (graphics.size() > 0)
             root["graphics"] = graphics;
     }
@@ -3281,6 +3301,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     {
+        // T5 R21, F12: no key is High everywhere, with no caps
+        std::array<FoliageQuality, 3> quality = Project::defaultFoliageQuality;
+        const YAML::Node qualityNode = node["foliageQuality"];
+        const bool declared = qualityNode.IsDefined() && qualityNode.IsMap();
+        if (declared) {
+            const char* keys[3] = {"desktop", "mobile", "web"};
+            for (int i = 0; i < 3; i++) {
+                if (qualityNode[keys[i]].IsDefined())
+                    quality[i] = decodeEnum(qualityNode, keys[i], StreamSchema::foliageQuality());
+            }
+        }
+        project->setFoliageQuality(quality, declared);
+
         std::array<float, 3> scale = Project::defaultFoliageDistanceScale;
         const YAML::Node scaleNode = node["foliageDistanceScale"];
         if (scaleNode.IsDefined() && scaleNode.IsMap()) {
@@ -3411,6 +3444,23 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setLightMode(lightMode);
+    }
+    // T3 R51: graphics.terrainQuality.<platform>: absent means High on every platform
+    {
+        const YAML::Node graphics = node["graphics"];
+        const bool written = graphics && graphics.IsMap() && graphics["terrainQuality"] && graphics["terrainQuality"].IsMap();
+        project->setTerrainQualityWritten(written);
+        for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++){
+            terrain::TerrainQuality tier = terrain::TerrainQuality::HIGH;
+            if (written){
+                const YAML::Node value = graphics["terrainQuality"][Project::getShadowTierPlatformName(platform)];
+                if (value && value.IsScalar())
+                    terrain::terrainQualityFromName(value.Scalar().c_str(), tier);
+            }
+            project->setTerrainQualityTier(platform, tier);
+        }
+        project->setShipAllTerrainTiers(graphics && graphics.IsMap() && graphics["shipAllTerrainTiers"] && YamlNumbers::as<bool>(graphics["shipAllTerrainTiers"]));
+        project->setCompressTerrainLayers(graphics && graphics.IsMap() && graphics["compressTerrainLayers"] && YamlNumbers::as<bool>(graphics["compressTerrainLayers"]));
     }
 
     if (node["windowMode"]) {
