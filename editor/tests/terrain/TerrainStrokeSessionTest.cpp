@@ -524,6 +524,46 @@ TEST(TerrainStrokeSession, TheStrokeLogReplaysToTheSameBytes) {
     }
 }
 
+// R37, R39: a pen's stroke logs its pressure with each point and replays to the same bytes; one whose brush
+// scales size by pressure, which an op's stroke cannot say, is not logged
+TEST(TerrainStroke, PenStrokeLogCarriesItsPressure) {
+    constexpr int N = 65;
+    terrain::RawMapStore dragged(static_cast<float>(N), 10.0f);
+    terrain::RawMapStore replayed(static_cast<float>(N), 10.0f);
+    addHeight(dragged, N, 9000);
+    addHeight(replayed, N, 9000);
+    TerrainStrokeSession session(dragged, HEIGHT_MAP, static_cast<float>(N), raiseBrush(5.0f, 0.6f));
+    std::vector<terrain::StrokeSample> samples;
+    for (int i = 0; i < 24; i++) {
+        const float t = static_cast<float>(i) / 23.0f;
+        // the tap's first reading is the sensor's zero, then the pen presses harder along the drag
+        samples.push_back(terrain::StrokeSample{t * 0.4f, -20.0f + 40.0f * t, 12.0f * std::sin(t * 3.0f), i == 0 ? 0.0f : 0.2f + 0.7f * t});
+        session.addSample(samples.back().time, samples.back().x, samples.back().z, samples.back().pressure);
+    }
+    ASSERT_TRUE(session.run(0.0));
+    ASSERT_TRUE(session.flush());
+
+    const std::string line = session.replayCall(samples);
+    ASSERT_FALSE(line.empty());
+    const nlohmann::json call = nlohmann::json::parse(line);
+    const nlohmann::json& points = call["ops"][0]["shape"]["points"];
+    ASSERT_EQ(points.size(), samples.size());
+    EXPECT_EQ(points[0].size(), 3u) << "[x, z, pressure]";
+    EXPECT_EQ(points[0][2].get<float>(), 1.0f) << "the tap's zero pressed as a click";
+    terrain::OpSpace space;
+    space.world = false;
+    terrain::OpJsonParser parser(space, terrain::OpJsonHooks{});
+    std::vector<terrain::Op> ops;
+    ASSERT_TRUE(parser.parseList(call["ops"], ops)) << parser.error;
+    ASSERT_TRUE(terrain::applyOps(replayed, ops, terrain::OpOptions()).ok);
+    EXPECT_EQ(std::memcmp(dragged.mapBytes(HEIGHT_MAP), replayed.mapBytes(HEIGHT_MAP), static_cast<size_t>(N) * N * 2), 0) << "byte for byte";
+
+    TerrainStrokeBrush sized = raiseBrush(5.0f, 0.6f);
+    sized.pressureSize = true;
+    TerrainStrokeSession sizedSession(replayed, HEIGHT_MAP, static_cast<float>(N), sized);
+    EXPECT_TRUE(sizedSession.replayCall(samples).empty());
+}
+
 // R56: Paint Texture's alternate moves the weights toward their true 3 x 3 average, so a hard edge softens
 TEST(TerrainStrokeSession, PaintTextureAlternateAveragesTheBlend) {
     constexpr int N = 33;

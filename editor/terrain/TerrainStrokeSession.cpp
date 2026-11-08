@@ -339,10 +339,20 @@ std::string editor::TerrainStrokeSession::replayCall(const std::vector<StrokeSam
         case TerrainBrushMode::PaintBase: op = {{"op", "paint_base"}}; break;
         default: return std::string();
     }
+    // R37, R39: a pen's samples replay as [x, z, pressure], what the session pressed with; an op's stroke scales
+    // strength by pressure and never size, so a stroke the brush scaled otherwise has no replay
+    bool pressed = false;
+    for (const StrokeSample& sample : samples){
+        pressed = pressed || StrokeResampler::samplePressure(sample.pressure, sample.time) != 1.0f;
+    }
+    if (pressed && (brush.pressureSize || !brush.pressureStrength)){
+        return std::string();
+    }
     nlohmann::json points = nlohmann::json::array();
     nlohmann::json times = nlohmann::json::array();
     for (const StrokeSample& sample : samples){
-        points.push_back({sample.x, sample.z});
+        if (pressed) points.push_back({sample.x, sample.z, StrokeResampler::samplePressure(sample.pressure, sample.time)});
+        else points.push_back({sample.x, sample.z});
         times.push_back(sample.time);
     }
     const char* falloff = brush.falloff == TerrainBrushFalloff::Smooth ? "smooth" : (brush.falloff == TerrainBrushFalloff::Linear ? "linear" : "constant");
