@@ -69,3 +69,17 @@ worktree `/var/lib/orquester/workspaces/jaspersito/dc-wt/fu-<name>` and branch `
   loadGLTFModel with the placed-copy flag): WERROR linux, core foliage/spline/instancing/mesh-memory/texture suites, editor
   shared-data and placed-model suites, 12 MCP files, lints, test_grade, tool budget, TOOLS.md check, web, Android: green.
   Open: one unreproduced editor crash in test_saved_output_determinism (TableCrate screenshot), recorded in its spec.
+
+## Not compiled or run (owner, 2026-11-08: skip the Windows and Mac check)
+
+Nothing here ran on Windows, macOS or iOS. What each workstream left for those machines (commands in its spec's
+Follow-ups section):
+
+- mesh-memory: `MeshMemory.*` in MSVC Debug and Release builds (the ceilings rest on computed MSVC layouts).
+- platform-build: a Visual Studio export build timed with `--parallel 1` + `/MP<n>` against the old flags; a Mac export
+  with a team-signed dynamic framework, an `.xcframework`, an `.a` and a `.bundle` through CMake (`otool -l`, `codesign -dv`,
+  launch) and through `jasperengine.py --platform macos-xcode`.
+- lints-keys: Maximize On Play's Control+Cmd+F in the native macOS menu (`BackendMac.mm`).
+- ssr, pcss-gles, water-uniforms, lit-uniforms: D3D11 and Metal only through the editor's shader matrix (all six backends
+  compile), not through GPU tests; ssr's exported-swapchain blit path only runs in exported builds.
+- code-editor-git, agent-authoring: portable C++ only, not compiled on Windows or macOS.
