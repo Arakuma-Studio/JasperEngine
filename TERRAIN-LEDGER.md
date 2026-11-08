@@ -124,7 +124,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | Merge of `origin/main` (pixel art, Doriax specs, lean MCP, no CI) | done | Specs renumbered from S41-S46 to T1-T6 |
 | Spec revision for the upstream changes | done | `terrain` 10 tools, `voxels` 4, no format bump, no new budget exceptions |
 | T1 foundation | done, verification continuing | On integration; writer migration has since moved to `terrain/s53-authoring` |
-| T1 implementation | checkpoint and batch 1 landed, final batch in progress | Batch 1 merged (d822fb140) at dd65d3b16: runtime-edit targets, stream uploads, edit_terrain job path, per-range invert; core 248/248, editor 153/153, terrain MCP files, WERROR. Left: Create Terrain's Import Raw start shape and Base Layer, place_objects/erase_objects on T5's tree store, the window items (stroke log, alternates, shortcut context, Pick, decal fade, Resize, hillshade and Paint by Rules previews), pen readers, benches |
+| T1 implementation | most landed, two parallel batches left | Part 1 of the final batch merged (b6312c623): Create Terrain's Import Raw start shape and Base Layer (a real Layer 0 filled at full weight), edit_terrain place_objects/erase_objects on T5's tree store; core 235/235, editor 156/156, MCP 61/61. Left: window items on terrain/s53-authoring (stroke log, alternates, shortcut context, Pick, decal fade, Resize, hillshade and Paint by Rules previews); pen readers and benches on terrain/t1-benches (.worktrees/t1b, second agent) |
 | T2 implementation | landed | Merged into integration (6af5f3b9d) at 2b280b147: core 133/133, editor 70/70 and 9/9, T2 and T1 MCP files pass, fan-out worst 129, lints. Not run: the test_noise_export player run, je-bench-noise, eval, web, Android, size checks, NDK armv7. Build tree deleted |
 | T3 implementation | landed | Merged into integration (9f3ffd6ba) at 8376cd9c4: core 560/560 (all 207 variants), editor 182/182, terrain MCP 35/35, fan-out worst 127. Driver workarounds recorded (llvmpipe GL path). Not run: web, Android, full Vulkan suite, perf checks |
 | T4 implementation | in progress | `terrain/t4-worlds` at 02f215f48 (integration with T2 merged). Built: tiles, tiled store, streaming, compound-shape collision paging, `Twd` variant, .terrainworld asset and cook, panel, inspector, undo, Lua, module, edit_terrain_world, sample_terrain {world}. Core 565/565, GPU (lavapipe) 418/418, editor 108/108, world MCP 11/11. Sent back to build: foliage on worlds, Convert to Terrain World, navigation, panel import and cancellable import job, streaming overlay, spline water fill, Physics Placement |
@@ -189,6 +189,9 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
   T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- T1 final batch part 1 landed (b6312c623). The rest of T1 split in two: window items stay with T1; pen readers and benches go
+  to a second agent (terrain/t1-benches), since they live in their own files. The remote queue's false exit 1 came from editing
+  rb-remote.sh while a job ran it; jobs now run a private copy.
 - Owner allowed rented build boxes and asked for fewer verification rounds. Three Hetzner boxes seeded with the repo, the build
   images and the ccache; the build queue sends mapped worktrees' jobs there. Freed 25 GB of leftover Android build output.
 - T1 batch 1 landed (d822fb140), identical to T1's tested tree.
