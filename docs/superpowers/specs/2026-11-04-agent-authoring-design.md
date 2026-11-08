@@ -804,17 +804,28 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
 
 ## Follow-ups (2026-11-07)
 
-1. **An FBX detail layer drew 0 instances: a skinned mesh with a blend shape, not FBX and not headless.** The
-   test's `rigged_cube.fbx` has a two-bone skin and a blend shape. Its import loads fine (a static FBX layer draws),
-   but every foliage chunk asked for the Lit variant with skinning, morph targets and instancing, which needs 17
-   vertex inputs (`a_morphTarget7` at location 16; 16 is the limit of GL 3.3, GLES3/WebGL2 and the others). The
-   variant never compiled, so the chunk meshes never finished loading. A chunk builds no skeleton (`skipEntities`),
-   so its bones stay at the identity and a skinned mesh already drew at rest. `MeshSystem::loadGLTF` now loads a
-   copy a system places (`bakeSceneRoot` with `skipEntities`: foliage and spline chunks) without its skinning
-   attributes: the same image, two fewer inputs, no bone palette. Blend shapes keep their default weights.
-   `test_terrain_details.py::test_fbx_layer` checks that the layer draws again. Its draw checks (and
-   `test_add_update_remove`'s) wait for the state with a hang guard instead of 100 frames: on a box's first run,
-   with 8 editors and cold shader variants, the OBJ layer of the older test drew 0 within that budget too.
+1. **An FBX detail layer drew 0 instances: blend shapes plus instancing, not FBX and not headless.** The
+   test's `rigged_cube.fbx` is textured, skinned and has a blend shape. Every foliage chunk asked for the Lit
+   variant with instancing and morph targets: position, normal, UV, the instance's six vectors and eight morph
+   slots make 17 vertex inputs (skinning adds two), past the 16 of GL 3.3, GLES3/WebGL2 and the other backends.
+   The variant never compiled, so the chunks never finished loading. A copy a system places never animates:
+   it builds no skeleton (its bones stay at the identity) and nothing sets its blend shape weights.
+   - `MeshSystem::loadPlacedModel` (foliage chunks, spline chunks and their probe) loads it at rest as static
+     geometry. The skin goes, and the blend shapes' default weights (the file's mesh weights) are baked into
+     positions and normals. Its node transform now bakes too, as for a mesh without blend shapes
+     (`GltfMeshOffset.FoliageBakesTheWholeNodeTransform` changed with it). The decision lives in a private
+     loader parameter that only `loadPlacedModel` passes; `loadGLTF` (and its Lua binding) keeps skins and
+     blend shapes whatever its flags.
+   - The export's shader variant collector probes foliage through `loadPlacedModel`, so it ships the variant
+     the chunk asks for (it shipped the skinned one).
+   - An Instanced Mesh a person adds to a textured model with a blend shape still cannot draw (its weights
+     can change at runtime, so nothing is baked). The Console says so once, naming the GameObject and the fix,
+     in place of only the shader compiler's lines.
+   - Tests: `test_terrain_details.py::test_fbx_layer` (the FBX, textured), `PlacedModel.*` (the bake, the Lua
+     flags, the collected variant), `test_render_correctness.py::test_instanced_blend_shapes_say_why_they_do_not_draw`.
+     The draw checks wait for the state with a hang guard and report their time (`over_budget`): on a box's
+     first run (8 editors, cold shader variants) the OBJ layer of the older test drew 0 within the old
+     100-frame budget too.
 2. **The generated `AGENTS.md` has headroom under its 5,000-byte cap** (`test_generators.py`, not raised). The text
    is the same for every template (2D, 3D, Empty, UI): `writeAgentsFile` takes only the project paths, which are
    always `.jasperengine/...`. Only the editor version string changes its size. Before: 4,929 bytes (version
