@@ -117,3 +117,36 @@ async def test_param_edit_keeps_particles(ed: Editor):
     restarted = await stats(ed)
     ed.check(restarted["time"] < before["time"] or restarted["particle_count"] != before["particle_count"],
              f"a structural edit restarts: {before} -> {restarted}")
+
+
+async def test_pixel_analytic_scrub(ed: Editor):
+    """S49 (R30-R34, AC15 through the Inspector's command path): the Pixel Art module added, Render Mode Pixel with
+    Streak, a Palette Ramp colour, then Analytic; one undo per edit; the preview's scrub lands at once on any time, and
+    a capture at a time is the same image however the scrub got there."""
+    s = await setup(ed)
+    await ed.call("add_particle_module", scene=s["scene"], entity=s["system"], module="pixelArt", fields={"fade": "dither"})
+    await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch={
+        "modules": {"renderer": {"renderMode": "pixel", "pixelShape": "streak"},
+                    "colorOverLifetime": {"color": {"mode": "ramp", "rampColors": ["#fff3a6", "#ff8a2a", "#5a1e12"]}}}})
+    pixel = await effect(ed)
+    ed.check_eq(pixel["modules"]["pixelArt"].get("fade", "dither"), "dither")
+    unsupported = [m for m in ("collision", "trails", "subEmitters", "noise", "externalForces", "customData", "lights")
+                   if m in pixel["modules"]]
+    patch = {"simulationMode": "analytic", "modules": {m: {"enabled": False} for m in unsupported}}
+    await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch=patch)
+    ed.check_eq((await effect(ed))["simulationMode"], "analytic")
+    ed.check_eq((await stats(ed))["simulation_mode"], "analytic")
+    await ed.call("undo", scene=s["scene"])
+    ed.check_eq(await effect(ed), pixel, "one undo step back to Simulated, modules as they were")
+    await ed.call("redo", scene=s["scene"])
+    times = [7.31, 0.42, 63.5, 2.0, 12.9, 0.05, 3600.0, 4.75, 1.33, 29.1]
+    images = {}
+    for t in times:
+        got = await ed.call("control_particles", scene=s["scene"], entity=s["system"], action="seek", time=t)
+        ed.check(abs(got["stats"]["time"] - t) < 1e-3, f"an Analytic scrub lands at once on {t}: {got['stats']}")
+        r = await ed.call_raw("capture_particles", {"scene": s["scene"], "entity": s["system"], "time": t, "frames": 1})
+        ed.check(not r.is_error and len(r.images) == 1, r.text[:200])
+        images[t] = r.images[0][0]
+    for t in reversed(times):
+        r = await ed.call_raw("capture_particles", {"scene": s["scene"], "entity": s["system"], "time": t, "frames": 1})
+        ed.check(r.images[0][0] == images[t], f"the capture at {t} does not depend on the scrub's path")

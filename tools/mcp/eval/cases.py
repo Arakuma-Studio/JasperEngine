@@ -1375,6 +1375,40 @@ CASES = [
                    "reply_must": [r"(?i)\bno\b|not only|37|off.palette|fixable"]},
         "max_turns": 10,
     },
+    {   # -- S49 pixel particles: the pixel presets and capture_particles' contact sheet with checks ---------------
+        "id": "guard_pixel_particles_sheet",
+        "kind": "guard",
+        "what_happened": "New text (S49): a pixel-art effect is a pixel_* preset of create_particle_effect, and checking it "
+                         "is capture_particles with frames and checks (a contact sheet and pixel-art lint results); without "
+                         "them an agent writes a soft-alpha effect JSON by hand and judges one screenshot.",
+        "text_at_issue": "create_particle_effect's preset enum (pixel_spark ...); capture_particles: 'frames, scale, background "
+                         "or checks draw the effect alone instead: a labelled contact sheet ... with pixel-art lint results'",
+        "source": "S49 R20, R21, R38 (new tool text); no failure on record",
+        "prompt": "Our game is pixel art. Make a hit-spark particle effect at assets/fx/hit_spark.particles that fits the "
+                  "pixel look, put it on the Particle System 'Sparks' (entity 12) and check it for pixel-art problems over "
+                  "its life.",
+        "mocks": [
+            {"tool": "create_particle_effect", "result": ok(
+                "Created assets/fx/hit_spark.particles (pixel_spark) as one undo step (undo with scope project).",
+                {"path": "assets/fx/hit_spark.particles", "diagnostics": [], "undo": {"id": 3, "name": "Create File hit_spark.particles"},
+                 "next": "set_particle_effect {entity, effect: \"assets/fx/hit_spark.particles\"} plays it on a Particle System."})},
+            {"tool": "set_particle_effect", "result": ok(
+                "Particle System 12 'Sparks' plays assets/fx/hit_spark.particles.",
+                {"entity": 12, "effect": "assets/fx/hit_spark.particles", "undo": {"id": 4, "name": "Set Particle Effect"}})},
+            {"tool": "capture_particles", "args": {"checks": True}, "result": ok(
+                "Contact sheet of 'Sparks': 8 frames 0.00-0.90 s at 4x. Checks: off_grid PASS, over_budget PASS; off_palette, "
+                "partial_alpha, spill, one_shot_end, loop_seam, determinism SKIP (needs S48 (Pixel FX)).",
+                {"width": 386, "height": 410, "cell": [32, 32], "scale": 4,
+                 "frames": [{"time": 0.1 * i, "particle_count": 24 - i} for i in range(8)],
+                 "checks": {"results": [{"id": "off_grid", "status": "PASS"}, {"id": "over_budget", "status": "PASS"}]}})},
+            {"tool": "capture_particles", "result": ok(
+                "Captured 'Sparks' at 0.20 s (scene view).", {"width": 768, "height": 432})},
+        ],
+        "checks": {"calls": [{"tool": "create_particle_effect", "args": {"preset": "pixel_spark"}},
+                             {"tool": "capture_particles", "args": {"checks": True}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.particles$"]},
+        "max_turns": 14,
+    },
     {
         "id": "guard_nav_carve_tiles_per_tick",
         "kind": "guard",
