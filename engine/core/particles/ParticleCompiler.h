@@ -45,8 +45,8 @@ namespace jasperengine { namespace particles {
         // validates and compiles; on errors `effect.valid` is false and the program is empty
         static std::shared_ptr<CompiledEffect> compile(const ParticleEffectDocument& document, const CompileEnvironment& environment = {});
         static void compile(const ParticleEffectDocument& document, const CompileEnvironment& environment, CompiledEffect& effect);
-        // the compiles since the process started (any thread)
-        static uint64_t compileCount();
+        // the compiles since the process started (any thread; wraps at 2^32)
+        static uint32_t compileCount();
 
         // Exposed parameter `parameter` (its index in the document's list) to `value` (as
         // ParticleModules::setExposed takes it) in the effect's document and program, without

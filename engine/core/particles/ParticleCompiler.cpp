@@ -801,11 +801,13 @@ std::shared_ptr<CompiledEffect> ParticleCompiler::compile(const ParticleEffectDo
 
 namespace {
 
-    std::atomic<uint64_t> compiles{0};
+    // compiles run on loading threads too; 32 bits: a lock-free atomic on every target (wasm32
+    // and armv7 included), and the count is only ever compared before and after a change
+    std::atomic<uint32_t> compiles{0};
 
 }
 
-uint64_t ParticleCompiler::compileCount(){
+uint32_t ParticleCompiler::compileCount(){
     return compiles.load(std::memory_order_relaxed);
 }
 

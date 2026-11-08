@@ -401,7 +401,7 @@ TEST(ParticleExposed, ChangingAValueEachFrameCompilesNothing){
     subsystem.update(1.0 / 30.0);
     const ParticleSystemState* state = subsystem.getState(system.getEntity());
     ASSERT_NE(state, nullptr);
-    const uint64_t compiles = ParticleCompiler::compileCount();
+    const uint32_t compiles = ParticleCompiler::compileCount();
     for (int frame = 0; frame < 30; frame++){
         ASSERT_TRUE(system.setFloat("Rate", 20.0f + (float)frame));
         ASSERT_TRUE(system.setColor("Tint", Vector4(1.0f, 0.5f, 0.25f + 0.01f * (float)frame, 1.0f)));
