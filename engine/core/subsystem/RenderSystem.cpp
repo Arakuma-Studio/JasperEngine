@@ -4,6 +4,7 @@
 #include "RenderSystem.h"
 #include "FoliageSystem.h"
 #include "component/CameraComponent.h"
+#include "component/Transform.h"
 #include "model/ModelCpuData.h"
 #include "device/QualityResolver.h"
 #include "component/UIDocumentComponent.h"
@@ -14648,7 +14649,7 @@ void RenderSystem::driveReflectionCamera(CameraComponent& refCam, Transform& ref
     updateCameraFrustumPlanes(refCam.viewProjectionMatrix, refCam.frustumPlanes);
 }
 
-RenderSystem::WaterReflectionPass::WaterReflectionPass(){
+RenderSystem::WaterReflectionPass::WaterReflectionPass() : transform(std::make_unique<Transform>()){
     // the reflection renders into the pass's own framebuffer
     delete camera.framebuffer;
     camera.framebuffer = &framebuffer;
@@ -14828,7 +14829,7 @@ void RenderSystem::renderWaterReflections(RenderView& view, CameraComponent& vie
         pass.camera.framebufferHeight = height;
 
         const ReflectionPlane& plane = planes[p];
-        driveReflectionCamera(pass.camera, pass.transform, reflectionViewer, Vector3(0.0f, 1.0f, 0.0f), Vector3(0.0f, plane.level, 0.0f), clipOffset);
+        driveReflectionCamera(pass.camera, *pass.transform, reflectionViewer, Vector3(0.0f, 1.0f, 0.0f), Vector3(0.0f, plane.level, 0.0f), clipOffset);
 
         // the viewer's lighting and maps (shadows are world-space): none of its own to draw
         shareCameraShadows(pass.shadows, viewerShadows, pass.camera, reflectionShadows);
@@ -14839,13 +14840,13 @@ void RenderSystem::renderWaterReflections(RenderView& view, CameraComponent& vie
 #ifdef JASPERENGINE_EDITOR
         if (view.secondary){
             passObjects = &pass.objects;
-            buildPassObjects(pass.objects, pass.camera, pass.transform);
-            selectPassTerrain(pass.objects, pass.camera, pass.transform);
+            buildPassObjects(pass.objects, pass.camera, *pass.transform);
+            selectPassTerrain(pass.objects, pass.camera, *pass.transform);
             passTerrainView = TERRAIN_PASS_VIEW;
         }else
 #endif
         if (passTerrainView != 0){
-            selectCameraTerrain(pass.camera, pass.transform, passTerrainView);
+            selectCameraTerrain(pass.camera, *pass.transform, passTerrainView);
         }
 
         // (the cut mainTerrainView gives the pass's draws)
@@ -14853,7 +14854,7 @@ void RenderSystem::renderWaterReflections(RenderView& view, CameraComponent& vie
 
         CameraPass cameraPass;
         cameraPass.camera = &pass.camera;
-        cameraPass.cameraTransform = &pass.transform;
+        cameraPass.cameraTransform = pass.transform.get();
         cameraPass.isMain = false;
         cameraPass.renderToTexture = true;
         cameraPass.reflection = true;
@@ -19674,7 +19675,7 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 
 //-----Editor overlays and secondary views-----
 
-RenderSystem::MirrorView::MirrorView(){
+RenderSystem::MirrorView::MirrorView() : transform(std::make_unique<Transform>()){
     // the reflection renders into the view's own framebuffer
     delete camera.framebuffer;
     camera.framebuffer = &framebuffer;
@@ -20373,7 +20374,7 @@ void RenderSystem::renderViewMirrors(RenderView& view, CameraComponent& camera){
             continue;
 
         CameraComponent& refCam = mirrorView.camera;
-        Transform& refCamTransform = mirrorView.transform;
+        Transform& refCamTransform = *mirrorView.transform;
 
         Vector3 worldNormal = (mirrorTransform->worldRotation * mirror.normal).normalize();
         driveReflectionCamera(refCam, refCamTransform, viewer, worldNormal, mirrorTransform->worldPosition, 0.0f);

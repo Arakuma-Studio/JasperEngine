@@ -7,7 +7,6 @@
 
 #include "TerrainEditWindow.h"
 #include "component/TerrainComponent.h"
-#include "component/Transform.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -167,12 +166,12 @@ bool editor::TerrainEditWindow::setTerrainHeight(SceneProject* sceneProject, flo
 void editor::TerrainEditWindow::frameTerrain(SceneProject* sceneProject){
     SceneWindow* window = Backend::getApp().getSceneWindow();
     TerrainComponent* terrain = sceneProject->scene->findComponent<TerrainComponent>(selectedEntity);
-    Transform* transform = sceneProject->scene->findComponent<Transform>(selectedEntity);
-    if (!window || !terrain || !transform) return;
+    const TerrainWorldPlacement placement = terrainWorldPlacement(sceneProject->scene, selectedEntity);
+    if (!window || !terrain || !placement.valid) return;
     AABB box;
     const float half = terrain->terrainSize * 0.5f;
     for (int corner = 0; corner < 8; corner++){
-        box.merge(transform->modelMatrix * Vector3((corner & 1) ? half : -half, (corner & 2) ? terrain->maxHeight : 0.0f, (corner & 4) ? half : -half));
+        box.merge(placement.model * Vector3((corner & 1) ? half : -half, (corner & 2) ? terrain->maxHeight : 0.0f, (corner & 4) ? half : -half));
     }
     SceneViewController& view = window->getViewController();
     const SceneCameraPose pose = view.currentPose(*sceneProject);
@@ -538,9 +537,8 @@ void editor::TerrainEditWindow::drawInfoPanel(SceneProject* sceneProject, Terrai
         ImGui::TextDisabled("Point at the terrain in the Scene view.");
         return;
     }
-    const Transform& transform = sceneProject->scene->getComponent<Transform>(selectedEntity);
     const terrain::SurfaceSample sample = querySurface(terrain, infoLocal.x, infoLocal.z);
-    const Vector3 world = transform.modelMatrix * Vector3(infoLocal.x, sample.height, infoLocal.z);
+    const Vector3 world = terrainWorldPlacement(sceneProject->scene, selectedEntity).model * Vector3(infoLocal.x, sample.height, infoLocal.z);
     if (!settingsTableBegin("terrain_info")) return;
     settingsRow("Position");
     ImGui::Text("%.2f, %.2f, %.2f", world.x, world.y, world.z);

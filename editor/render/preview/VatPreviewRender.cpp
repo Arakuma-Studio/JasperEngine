@@ -8,7 +8,6 @@
 #include "animation/ClipConverters.h"
 #include "Scene.h"
 #include "component/AnimationPlayerComponent.h"
-#include "component/Transform.h"
 #include "component/VertexAnimatorComponent.h"
 #include "object/Camera.h"
 #include "object/Light.h"

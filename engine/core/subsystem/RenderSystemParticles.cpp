@@ -8,6 +8,7 @@
 // trails) with only per-instance vertex attributes: no storage buffers, no compute.
 
 #include "RenderSystem.h"
+#include "component/Transform.h"
 
 #include "Engine.h"
 #include "Log.h"

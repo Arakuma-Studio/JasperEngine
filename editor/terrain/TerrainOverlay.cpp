@@ -6,7 +6,6 @@
 #include "Project.h"
 #include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
-#include "component/Transform.h"
 #include "object/Mesh.h"
 #include "object/TerrainEdit.h"
 #include "subsystem/MeshSystem.h"
@@ -260,9 +259,10 @@ namespace {
         context.settings = &settings;
         context.width = width;
         context.height = height;
-        if (const Transform* transform = scene->findComponent<Transform>(entity)) {
-            context.scaleY = transform->worldScale.y;
-            context.originY = transform->worldPosition.y;
+        const TerrainWorldPlacement placement = terrainWorldPlacement(scene, entity);
+        if (placement.valid) {
+            context.scaleY = placement.scale.y;
+            context.originY = placement.position.y;
         }
         return context;
     }
@@ -398,8 +398,8 @@ void TerrainOverlay::update(SceneProject& sceneProject, const TerrainOverlaySett
 
 void TerrainOverlay::refresh(Entity entity, Sheet& sheet, const TerrainOverlaySettings& settings) {
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
-    const Transform* transform = scene->findComponent<Transform>(entity);
-    if (!transform || terrain.terrainSize <= 0.0f) return;
+    const TerrainWorldPlacement placement = terrainWorldPlacement(scene, entity);
+    if (!placement.valid || terrain.terrainSize <= 0.0f) return;
 
     std::vector<uint8_t> rgba;
     std::string error;
@@ -451,7 +451,7 @@ void TerrainOverlay::refresh(Entity entity, Sheet& sheet, const TerrainOverlaySe
                     top = std::max(top, terrain::sampleHeight(view, lx + static_cast<float>(dx) * texel, lz + static_cast<float>(dz) * texel));
                 }
             }
-            mesh.buffer.addVector3(position, transform->modelMatrix * Vector3(lx, top + lift, lz));
+            mesh.buffer.addVector3(position, placement.model * Vector3(lx, top + lift, lz));
             mesh.buffer.addVector2(texcoord, Vector2(static_cast<float>(x) / static_cast<float>(cells), static_cast<float>(z) / static_cast<float>(cells)));
             mesh.buffer.addVector3(normal, Vector3(0.0f, 1.0f, 0.0f));
             mesh.buffer.addVector4(color, tint);

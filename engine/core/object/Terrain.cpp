@@ -6,6 +6,7 @@
 
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

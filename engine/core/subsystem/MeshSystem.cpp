@@ -4,6 +4,7 @@
 #include "MeshSystem.h"
 #include "subsystem/FoliageSystem.h"
 #include "component/ActionComponent.h"
+#include "component/Transform.h"
 #include "component/CameraComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"

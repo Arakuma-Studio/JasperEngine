@@ -57,6 +57,7 @@
 #endif
 
 #include "subsystem/ActionSystem.h"
+#include "component/Transform.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"

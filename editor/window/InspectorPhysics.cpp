@@ -57,6 +57,7 @@
 #include "Widgets.h"
 #include "Factory.h"
 #include "component/ActionComponent.h"
+#include "component/Transform.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/BoneComponent.h"

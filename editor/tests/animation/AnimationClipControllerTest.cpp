@@ -41,6 +41,7 @@
 #include "command/type/RemoveComponentCmd.h"
 #include "lattice/LatticeEditorOps.h"
 #include "component/ActionComponent.h"
+#include "component/Transform.h"
 #include "component/AnimationComponent.h"
 #include "component/KeyframeTracksComponent.h"
 #include "component/LatticeComponent.h"

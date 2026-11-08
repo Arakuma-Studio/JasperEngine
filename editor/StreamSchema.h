@@ -19,7 +19,7 @@
 #include "reflect/Reflect.h"
 #include "Project.h"
 #include "Generator.h"
-#include "window/TerrainEditWindow.h"
+#include "terrain/TerrainBrush.h"
 #include "render/shadow/ShadowTiers.h"
 #include "render/shadow/ShadowTypes.h"
 

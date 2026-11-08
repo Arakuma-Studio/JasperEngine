@@ -43,11 +43,11 @@
 #include "component/TextComponent.h"
 #include "io/watch/FileIdentity.h"
 #include "render/ShaderRender.h"
-#include "subsystem/MeshSystem.h"
 
 namespace jasperengine{
     struct ImageComponent;
     struct MeshComponent;
+    class MeshSystem;
 }
 
 namespace jasperengine::particles {

@@ -8,6 +8,7 @@
 #include "util/Angle.h"
 #include "util/Color.h"
 #include "subsystem/RenderSystem.h"
+#include "component/Transform.h"
 #include "util/LightPhotometry.h"
 #include <algorithm>
 #include <cmath>

@@ -10,7 +10,6 @@
 #include "TerrainToolsSupport.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/TerrainComponent.h"
-#include "component/Transform.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpRefs.h"
@@ -111,16 +110,15 @@ bool resolveTerrainTarget(const CallPtr& call, TerrainCallTarget& target) {
             return false;
         }
     }
-    if (!scene->findComponent<TerrainComponent>(target.entity) || !scene->findComponent<Transform>(target.entity)) {
+    if (!scene->findComponent<TerrainComponent>(target.entity) || !terrainWorldPlacement(scene, target.entity).valid) {
         call->fail("\"" + scene->getEntityName(target.entity) + "\" has no Terrain component.");
         return false;
     }
     return true;
 }
 
-terrain::OpSpace spaceOf(const Transform& transform, bool world) {
-    return terrain::OpSpace::of(transform.modelMatrix, transform.worldPosition, transform.worldScale,
-                                transform.worldRotation != Quaternion::IDENTITY, world);
+terrain::OpSpace spaceOf(const TerrainWorldPlacement& placement, bool world) {
+    return terrain::OpSpace::of(placement.model, placement.position, placement.scale, placement.rotated, world);
 }
 
 // Image files a mask or an import reads, through the project
@@ -279,7 +277,7 @@ bool sampleTerrainExtras(const CallPtr& call, Project* project, SceneProject* sc
     const Json& args = call->args();
     Scene* scene = sceneProject->scene;
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
-    Transform& transform = scene->getComponent<Transform>(entity);
+    const TerrainWorldPlacement transform = terrainWorldPlacement(scene, entity);
     TerrainComponentStore store(scene, entity, terrain);
     const MapId heightMap{MapKind::Height, 0};
 
@@ -466,7 +464,7 @@ void editTerrainTool(const CallPtr& call) {
         return;
     }
 
-    Transform& transform = scene->getComponent<Transform>(target.entity);
+    const TerrainWorldPlacement transform = terrainWorldPlacement(scene, target.entity);
     const terrain::OpSpace space = spaceOf(transform, !(hasKey(args, "space") && args["space"] == "local"));
     const bool dryRun = hasKey(args, "dry_run") && args["dry_run"].get<bool>();
 
@@ -744,7 +742,7 @@ void visualizeTerrainTool(const CallPtr& call) {
     // the box to frame: the terrain, or region in the call's space
     Scene* scene = target.scene->scene;
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(target.entity);
-    const Transform& transform = scene->getComponent<Transform>(target.entity);
+    const TerrainWorldPlacement transform = terrainWorldPlacement(scene, target.entity);
     const terrain::OpSpace space = spaceOf(transform, !(hasKey(args, "space") && args["space"] == "local"));
     const float half = terrain.terrainSize * 0.5f;
     float minX = -half, minZ = -half, maxX = half, maxZ = half;
@@ -764,7 +762,7 @@ void visualizeTerrainTool(const CallPtr& call) {
     }
     AABB box;
     for (int corner = 0; corner < 8; corner++) {
-        box.merge(transform.modelMatrix * Vector3((corner & 1) ? maxX : minX, (corner & 2) ? terrain.maxHeight : 0.0f, (corner & 4) ? maxZ : minZ));
+        box.merge(transform.model * Vector3((corner & 1) ? maxX : minX, (corner & 2) ? terrain.maxHeight : 0.0f, (corner & 4) ? maxZ : minZ));
     }
     const std::string framing = hasKey(args, "framing") && args["framing"].is_string() ? args["framing"].get<std::string>() : "fit";
     if (framing != "keep" && framing != "fit" && framing != "top" && framing != "orbit") {
