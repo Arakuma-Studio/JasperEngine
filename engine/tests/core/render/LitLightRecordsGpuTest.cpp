@@ -1,0 +1,156 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// The built-in Lit past GLES3 / WebGL2's 224 fragment uniform vectors or 8 blocks reads its lights,
+// capsules and 2D lights from the frame's u_lightRecords (ShaderVariantCompiler::compile,
+// includes/lights.glsl LIGHTS_FS_RECORDS: docs/superpowers/specs/2026-11-04-water-reflections-design.md,
+// Follow-ups). Its goldens were captured with the blocks (the capsules' 67 vectors, the 2D lights'
+// 50): a ground lit by a shadowed sun with S57's capsule and contact shadows, twelve point lights
+// (the sixteen-light tier) and a 2D light, per object and from screen tiles.
+
+#include "Engine.h"
+#include "Scene.h"
+#include "component/CapsuleShadowCasterComponent.h"
+#include "component/LightComponent.h"
+#include "component/MeshComponent.h"
+#include "object/Camera.h"
+#include "object/CapsuleShadowCaster.h"
+#include "object/Light.h"
+#include "object/Light2D.h"
+#include "object/Primitive.h"
+#include "render/LightingTiers.h"
+#include "subsystem/RenderSystem.h"
+
+#include "GpuEnvironment.h"
+#include "HeadlessContext.h"
+#include "ImageCompare.h"
+#include "LogCapture.h"
+
+#include <gtest/gtest.h>
+
+#include <cstring>
+#include <memory>
+#include <string>
+#include <vector>
+
+using namespace jasperengine;
+using namespace jasperengine::test;
+
+namespace lit_light_records_gpu_test {
+
+    // glcore against its own goldens: exact; another backend: the cross-backend bound
+    CompareOptions litRecordsOptions(){
+        CompareOptions options;
+        if (std::strcmp(HeadlessContext::getBackendName(), "glcore") == 0){
+            options.pixelThreshold = 0;
+            options.maxBadFraction = 0.0;
+            options.maxMeanDiff = 0.0;
+        }else{
+            options.pixelThreshold = 16;
+            options.maxBadFraction = 0.03;
+            options.maxMeanDiff = 3.0;
+        }
+        return options;
+    }
+
+    class LitLightRecordsGpu : public ::testing::Test {
+    protected:
+        Scene scene;
+        Camera camera{&scene};
+
+        void SetUp() override{
+            GpuEnvironment::resetView();
+            Engine::setPinnedShaderTime(1.5);
+            LightingTiers::setTier(LightingTier::HIGH);
+            scene.setBackgroundColor(0.12f, 0.12f, 0.16f, 1.0f);
+            scene.setMaxLightsPerObject(16);
+            camera.setType(CameraType::CAMERA_PERSPECTIVE);
+            camera.setPosition(0.0f, 6.0f, 8.0f);
+            camera.setTarget(0.0f, 0.0f, 0.0f);
+            camera.activate();
+            Engine::setScene(&scene);
+        }
+
+        void TearDown() override{
+            Engine::removeScene(&scene);
+            LightingTiers::setLightMode(LightMode::AUTOMATIC);
+            LightingTiers::resetTier();
+            Engine::setPinnedShaderTime(-1.0);
+        }
+
+        bool render(){
+            Scene* current = &scene;
+            return GpuEnvironment::runFrames([current](){
+                return current->getSystem<RenderSystem>()->isAllLoaded();
+            });
+        }
+    };
+
+}
+
+using namespace lit_light_records_gpu_test;
+
+TEST_F(LitLightRecordsGpu, CapsulesContactAnd2DLightsDrawTheBlocksImage){
+    JASPER_REQUIRE_GPU();
+    Primitive ground(&scene);
+    ground.createPlane(12.0f, 12.0f);
+    ground.setColor(0.85f, 0.85f, 0.85f);
+    Primitive body(&scene);
+    body.createBox(0.6f, 1.8f, 0.4f);
+    body.setPosition(0.0f, 0.9f, 0.0f);
+    body.setColor(0.8f, 0.4f, 0.2f);
+
+    Light sun(&scene);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(-0.5f, -1.0f, -0.3f);
+    sun.setIntensity(2.0f);
+    sun.setShadows(true);
+    LightComponent& sunLight = scene.getComponent<LightComponent>(sun.getEntity());
+    sunLight.contactShadows = true;
+    sunLight.contactShadowLength = 0.4f;
+    sunLight.contactShadowThickness = 0.1f;
+    sunLight.contactShadowSampleCount = 16;
+
+    scene.addComponent<CapsuleShadowCasterComponent>(body.getEntity(), CapsuleShadowCasterComponent());
+    CapsuleShadowCaster caster(&scene, body.getEntity());
+    caster.setCastShadows(CapsuleCastShadows::CAPSULES_ONLY);
+    const int torso = caster.addCapsule("", 0.3f, 0.6f);
+    caster.setCapsuleOffset(torso, Vector3(0.0f, 0.35f, 0.0f));
+    for (float side : {-0.15f, 0.15f}){
+        const int leg = caster.addCapsule("", 0.12f, 0.7f);
+        caster.setCapsuleOffset(leg, Vector3(side, -0.45f, 0.0f));
+    }
+    scene.setCapsuleShadowsEnabled(true);
+    scene.setCapsuleShadowSoftness(0.25f);
+
+    std::vector<std::unique_ptr<Light>> points;
+    for (int i = 0; i < 12; i++){
+        points.push_back(std::make_unique<Light>(&scene));
+        Light& light = *points.back();
+        light.setType(LightType::POINT);
+        light.setPosition(-5.0f + 0.9f * (float)i, 0.5f, (i % 2 == 0) ? -2.5f : 2.5f);
+        light.setRange(2.5f);
+        light.setIntensity(2.5f);
+        light.setColor(0.3f + 0.05f * (float)i, 1.0f - 0.06f * (float)i, 0.6f);
+        light.setShadows(false);
+    }
+    Light2D light2d(&scene);
+    light2d.setPosition(1.5f, 0.0f, 0.0f);
+    light2d.setRange(4.0f);
+    light2d.setIntensity(1.5f);
+    light2d.setColor(1.0f, 0.5f, 0.2f);
+
+    for (LightMode mode : {LightMode::PER_OBJECT, LightMode::TILED}){
+        LightingTiers::setLightMode(mode);
+        ASSERT_TRUE(render()) << "the scene never finished loading";
+        const RenderSystem::LightingStats stats = scene.getSystem<RenderSystem>()->getLightingStats();
+        EXPECT_TRUE(stats.capsuleShadows);
+        EXPECT_TRUE(stats.contactShadows);
+        const MeshComponent& mesh = scene.getComponent<MeshComponent>(ground.getEntity());
+        EXPECT_NE(mesh.submeshes[0].slotLightRecords.first, -1) << "the ground's Lit does not read the light records";
+        const std::string name = mode == LightMode::TILED ? "lit_records_tiled" : "lit_records_per_object";
+        const CompareResult result = compareTargetWithGolden(name, litRecordsOptions());
+        EXPECT_TRUE(result.passed) << result.message;
+    }
+    EXPECT_NO_ENGINE_ERRORS();
+}
