@@ -382,6 +382,7 @@ void RenderSystem::loadLightingFeatureSlots(Submesh& submesh, ShaderData& shader
     submesh.slotContactShadows = shaderData.getTextureIndexByName("u_contactShadowTexture");
     // the lights' records form (includes/lights.glsl): a float texture until the frame's is bound
     submesh.slotLightRecords = shaderData.getTextureIndexByName("u_lightRecords");
+    submesh.lightDataTail = resolveLightDataTail(shaderData);
     if (submesh.slotLightRecords.first != -1 && ensureLightRecords(1))
         submesh.render.addTexture(submesh.slotLightRecords, ShaderStageType::FRAGMENT, &lightRecords);
     // placeholders until a draw binds the pass's own
@@ -391,9 +392,59 @@ void RenderSystem::loadLightingFeatureSlots(Submesh& submesh, ShaderData& shader
         submesh.render.addTexture(submesh.slotContactShadows, ShaderStageType::FRAGMENT, &emptyWhite);
 }
 
+LightDataTail RenderSystem::resolveLightDataTail(ShaderData& shaderData){
+    LightDataTail tail;
+    unsigned int size = 0;
+    const std::vector<ShaderUniform>* members = shaderData.getUniformBlockMembers("u_fs_objectLights", size);
+    if (!members)
+        return tail;
+    for (const ShaderUniform& member : *members){
+        if (member.name == "lightDataBases")
+            tail.bases = (int16_t)member.offset;
+        else if (member.name == "contactViewport")
+            tail.occlusion = (int16_t)member.offset;
+        else if (member.name == "lights2DAmbient")
+            tail.lights2D = (int16_t)member.offset;
+    }
+    return tail;
+}
+
+void RenderSystem::writeLightDataTail(const LightDataTail& tail, const MeshComponent& mesh, uint64_t properties, unsigned char* block, size_t size) const{
+    auto put = [&](int offset, const Vector4* values, size_t count){
+        if (offset >= 0 && (size_t)offset + count * sizeof(Vector4) <= size)
+            std::memcpy(block + offset, values, count * sizeof(Vector4));
+    };
+    if (tail.bases >= 0){
+        const Vector4 bases((float)lightDataCapsuleBase, (float)lightData2DBase, 0.0f, 0.0f);
+        put(tail.bases, &bases, 1);
+    }
+    if (tail.occlusion >= 0){
+        // the capsules that can shadow this object, from its bounds along the light, a bit each
+        // in the frame's order (the block form lists the same ones in that order)
+        uint32_t reach = 0;
+        if (properties & lightingBit(ShaderPool::LightingFeature::CAPSULE_SHADOWS)){
+            const float softness = lightOcclusionBlock.capsuleParams.z;
+            for (size_t c = 0; c < lighting.capsules.size() && c < 32; c++){
+                if (CapsuleShadows::reaches(lighting.capsules[c], lighting.capsuleTowardsLight, softness, mesh.worldAABB))
+                    reach |= 1u << c;
+            }
+        }
+        const Vector4 occlusion[3] = {
+            lightOcclusionBlock.contactViewport,
+            lightOcclusionBlock.contactParams,
+            Vector4((float)(reach & 0xFFFFu), lightOcclusionBlock.capsuleParams.y, lightOcclusionBlock.capsuleParams.z, (float)(reach >> 16))
+        };
+        put(tail.occlusion, occlusion, 3);
+    }
+    if (tail.lights2D >= 0){
+        const Vector4 lights2D[2] = {fs_lighting2d.ambient, fs_lighting2d.atlasInfo};
+        put(tail.lights2D, lights2D, 2);
+    }
+}
+
 void RenderSystem::applyObjectLights(ObjectRender& render, int slotVS, unsigned int sizeVS, int slotFS, unsigned int sizeFS,
-                                     std::pair<int, int> slotLightRecords, const MeshComponent& mesh, uint64_t properties,
-                                     uint32_t& builtLightBits){
+                                     std::pair<int, int> slotLightRecords, const LightDataTail& tail, const MeshComponent& mesh,
+                                     uint64_t properties, uint32_t& builtLightBits){
     const bool tiled = (properties & lightingBit(ShaderPool::LightingFeature::TILED_LIGHTS)) != 0;
     // the records form (includes/lights.glsl, LIGHTS_FS_RECORDS; the Tiled form takes precedence)
     const bool records = !tiled && slotLightRecords.first != -1;
@@ -438,13 +489,21 @@ void RenderSystem::applyObjectLights(ObjectRender& render, int slotVS, unsigned 
         builtLightBits = lightBits;
     }
     render.applyUniformBlock(slotVS, sizeVS, &objectLightsBlock);
-    if (records){
+    if (tail.bases >= 0 || tail.occlusion >= 0 || tail.lights2D >= 0){
+        // the records or Tiled form with the frame's capsules and 2D lights after it
+        unsigned char* block = reinterpret_cast<unsigned char*>(lightBlockScratch);
+        const size_t size = std::min((size_t)sizeFS, sizeof(lightBlockScratch));
+        std::memcpy(block, records ? (const void*)&lightRecordsBlock : (const void*)&tiledObjectLightsBlock,
+                    std::min(size, records ? sizeof(object_light_records_t) : sizeof(tiled_object_lights_t)));
+        writeLightDataTail(tail, mesh, properties, block, size);
+        render.applyUniformBlock(slotFS, (unsigned int)size, block);
+    }else if (records){
         render.applyUniformBlock(slotFS, std::min(sizeFS, (unsigned int)sizeof(object_light_records_t)), &lightRecordsBlock);
-        if (lightRecords.isCreated())
-            render.addTexture(slotLightRecords, ShaderStageType::FRAGMENT, &lightRecords);
     }else{
         render.applyUniformBlock(slotFS, sizeFS, tiled ? (void*)&tiledObjectLightsBlock : (void*)&objectLightsBlock);
     }
+    if (slotLightRecords.first != -1 && lightRecords.isCreated())
+        render.addTexture(slotLightRecords, ShaderStageType::FRAGMENT, &lightRecords);
 }
 
 void RenderSystem::applyLightingFeatures(Submesh& submesh, ObjectRender& render, const MeshComponent& mesh){

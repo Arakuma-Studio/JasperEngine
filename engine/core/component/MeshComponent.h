@@ -142,6 +142,14 @@ namespace jasperengine{
         bool failed = false;
     };
 
+    // the records form's tail in u_fs_objectLights (includes/lights.glsl LIGHT_DATA_TAIL): the
+    // byte offsets of its members, -1 where the variant has none
+    struct LightDataTail{
+        int16_t bases = -1;       // lightDataBases
+        int16_t occlusion = -1;   // contactViewport, contactParams, capsuleParams
+        int16_t lights2D = -1;    // lights2DAmbient, lights2DAtlasInfo
+    };
+
     struct JASPERENGINE_API SubmeshExtraPass{
         ObjectRender render;
         std::shared_ptr<ShaderRender> shader;
@@ -171,6 +179,7 @@ namespace jasperengine{
         unsigned int sizeVSObjectLights = 0;
         unsigned int sizeFSObjectLights = 0;
         std::pair<int, int> slotLightRecords = {-1, -1};
+        LightDataTail lightDataTail;
         int slotFSLitFrame = -1;
         unsigned int sizeFSLitFrame = 0;
         int slotFSLighting2D = -1;
@@ -287,8 +296,10 @@ namespace jasperengine{
         unsigned int sizeFSLightOcclusion = 0;
         std::pair<int, int> slotTiledLights = {-1, -1};
         std::pair<int, int> slotContactShadows = {-1, -1};
-        // u_lightRecords of a shader with the lights' records form (includes/lights.glsl)
+        // u_lightRecords of a shader with the lights' records form (includes/lights.glsl), and
+        // the records form's tail in its lights' block
         std::pair<int, int> slotLightRecords = {-1, -1};
+        LightDataTail lightDataTail;
 
         int slotVSDepthParams = -1;
         unsigned int sizeVSDepthParams = 0; // reflected: an older fork declares the block without mvpMatrix
