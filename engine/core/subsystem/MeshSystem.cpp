@@ -3617,6 +3617,22 @@ float MeshSystem::terrainTexelCoord(float local, float terrainSize, int size){
     return ((local + terrainSize * 0.5f) / terrainSize) * static_cast<float>(size) - 0.5f;
 }
 
+// channel 0 of a height or density map texel, 0-1: 8-bit, 16-bit (R16) or 32-bit float (a linear
+// .exr/.hdr map, raw or its CPU-readable cook)
+static float readMapTexel(const unsigned char* pixels, size_t index, int bytesPerChannel){
+    if (bytesPerChannel >= 4){
+        float value;
+        std::memcpy(&value, pixels + index, sizeof(value));
+        return std::isfinite(value) ? value : 0.0f;
+    }
+    if (bytesPerChannel >= 2){
+        // 16-bit little-endian (native unsigned short)
+        const unsigned int value = static_cast<unsigned int>(pixels[index]) | (static_cast<unsigned int>(pixels[index + 1]) << 8);
+        return static_cast<float>(value) / 65535.0f;
+    }
+    return pixels[index] / 255.0f;
+}
+
 float MeshSystem::sampleTerrainHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY){
     if (!pixels || width <= 0 || height <= 0 || channels <= 0){
         return 0.0f;
@@ -3635,13 +3651,7 @@ float MeshSystem::sampleTerrainHeightTexels(const unsigned char* pixels, int wid
     auto texel = [&](int x, int y){
         const size_t texelIndex = static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x);
         const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
-        if (bytesPerChannel >= 2){
-            // 16-bit little-endian (native unsigned short) heightmap sample
-            const unsigned int value = static_cast<unsigned int>(pixels[index]) |
-                                       (static_cast<unsigned int>(pixels[index + 1]) << 8);
-            return static_cast<float>(value) / 65535.0f;
-        }
-        return pixels[index] / 255.0f;
+        return readMapTexel(pixels, index, bytesPerChannel);
     };
 
     const float lower = texel(lowerX, lowerY) + (texel(upperX, lowerY) - texel(lowerX, lowerY)) * blendX;
@@ -3841,13 +3851,7 @@ void MeshSystem::getTerrainHeightRangeArea(TerrainComponent& terrain, float x, f
     auto sampleHeight = [&](int sampleX, int sampleZ){
         const size_t texelIndex = static_cast<size_t>(sampleZ) * static_cast<size_t>(width) + static_cast<size_t>(sampleX);
         const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
-        if (bytesPerChannel >= 2){
-            // 16-bit little-endian (native unsigned short) heightmap sample
-            const unsigned int value = static_cast<unsigned int>(pixels[index]) |
-                                       (static_cast<unsigned int>(pixels[index + 1]) << 8);
-            return terrain.maxHeight * static_cast<float>(value) / 65535.0f;
-        }
-        return terrain.maxHeight * pixels[index] / 255.0f;
+        return terrain.maxHeight * readMapTexel(pixels, index, bytesPerChannel);
     };
 
     // one texel of margin covers the bilinear filter of the vertices on the area border
@@ -3941,8 +3945,21 @@ void MeshSystem::resetTerrainToUnbuilt(TerrainComponent& terrain, MeshComponent&
     terrain.needUpdateTerrain = false;
 }
 
+// a cook in a GPU format only (block-compressed): levels, no CPU pixels for the terrain's readers
+static bool isGpuOnlyData(Texture& texture){
+    if (texture.empty() || texture.isFramebuffer() || !texture.hasData()){
+        return false;
+    }
+    TextureData& data = texture.getData();
+    return data.hasLevels() && !data.getData();
+}
+
 bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
     applyTerrainMapSettings(terrain);
+    // the heights are read on the CPU (collision, placement): a GPU-only cook is cooked again
+    if (isGpuOnlyData(terrain.heightMap)){
+        CookedTextures::requireCpuReadable(terrain.heightMap.getPath());
+    }
 
     // Check heightmap loading state BEFORE clearing buffers to avoid leaving
     // the mesh with empty data when the heightmap is still loading.
@@ -4040,6 +4057,8 @@ static const float TERRAIN_FOLIAGE_CELL_SIZE = 8.0f;
 static const unsigned int TERRAIN_FOLIAGE_MAX_CHUNK_INSTANCES = 8192;
 // Share of the draw distance that stays full size; the rest shrinks out.
 static const float TERRAIN_FOLIAGE_FADE_START = 0.75f;
+// how long a layer waits for the CPU-readable cook of a map found cooked GPU-only
+static const int TERRAIN_FOLIAGE_CPU_READ_WAIT_SECONDS = 30;
 
 bool MeshSystem::setFoliagePreviewEntity(Entity entity){
     if (foliagePreviewEntity == entity){
@@ -4062,15 +4081,6 @@ bool MeshSystem::hasPendingFoliageUpdates() const{
 }
 
 // A zero-density cell must attempt no placements.
-// a cook in a GPU format only (block-compressed, half floats): levels, no CPU pixels to sample
-static bool isGpuOnlyData(Texture& texture){
-    if (texture.empty() || texture.isFramebuffer() || !texture.hasData()){
-        return false;
-    }
-    TextureData& data = texture.getData();
-    return data.hasLevels() && !data.getData();
-}
-
 static unsigned int foliageCellAttempts(const TerrainFoliageLayer& layer){
     const float estimate = layer.density * TERRAIN_FOLIAGE_CELL_SIZE * TERRAIN_FOLIAGE_CELL_SIZE;
     return static_cast<unsigned int>(std::ceil(std::clamp(estimate, 0.0f, static_cast<float>(TERRAIN_FOLIAGE_MAX_CHUNK_INSTANCES))));
@@ -4177,6 +4187,11 @@ size_t MeshSystem::getFoliageInstanceCount(Entity terrainEntity, size_t layer) c
         }
     }
     return count;
+}
+
+std::string MeshSystem::getFoliageError(Entity terrainEntity, size_t layer) const{
+    auto it = terrainFoliage.find(terrainEntity);
+    return (it == terrainFoliage.end() || layer >= it->second.size()) ? std::string() : it->second[layer].cpuReadError;
 }
 
 Entity MeshSystem::getFoliageOwner(Entity foliageEntity) const{
@@ -4289,8 +4304,9 @@ float MeshSystem::sampleFoliageDensity(TerrainComponent& terrain, TerrainFoliage
     const float halfSize = terrain.terrainSize * 0.5f;
     const int texelX = std::clamp(static_cast<int>((localX + halfSize) / terrain.terrainSize * width), 0, width - 1);
     const int texelZ = std::clamp(static_cast<int>((localZ + halfSize) / terrain.terrainSize * height), 0, height - 1);
+    const int bytesPerChannel = TextureData::getBytesPerChannel(textureData.getColorFormat());
 
-    return pixels[(static_cast<size_t>(texelZ) * width + texelX) * channels] / 255.0f;
+    return std::clamp(readMapTexel(pixels, (static_cast<size_t>(texelZ) * width + texelX) * channels * bytesPerChannel, bytesPerChannel), 0.0f, 1.0f);
 }
 
 // Placement depends on the cell and seed, independent of the camera.
@@ -4437,25 +4453,48 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
         }
     }
 
-    // A density map restored from a scene holds only a path, and the resolve reads it on the CPU,
-    // so the editor cooks it CPU-readable (asked once per map)
+    // A density map restored from a scene holds only a path, and the resolve reads it on the CPU.
     layer.densityMap.setReleaseDataAfterLoad(false);
-    if (instances.cpuReadMap != layer.densityMap.getPath()){
-        instances.cpuReadMap = layer.densityMap.getPath();
-        CookedTextures::requireCpuReadable(instances.cpuReadMap);
-    }
     if (layer.densityMap.load().state == ResourceLoadState::Loading){
         instances.needUpdate = true;
         instances.pending = true;
         return;
     }
     // A GPU-only cook of a map (made before anything read it on the CPU) is never sampled: the
-    // CPU-readable cook swaps in, and new pixels (that swap, a repaint) refill the layer
-    if (isGpuOnlyData(layer.densityMap) || isGpuOnlyData(terrain.heightMap)){
+    // editor cooks it again CPU-readable, and new pixels (that swap, a repaint) refill the layer.
+    // The wait is bounded: a cook that fails or cannot happen leaves the layer empty with one error.
+    const bool densityGpuOnly = isGpuOnlyData(layer.densityMap);
+    if (densityGpuOnly || isGpuOnlyData(terrain.heightMap)){
+        const Texture& map = densityGpuOnly ? layer.densityMap : terrain.heightMap;
+        // (a texture made in memory has an id and no path)
+        const std::string name = map.getPath().empty() ? map.getId() : map.getPath();
+        const auto now = std::chrono::steady_clock::now();
+        if (instances.cpuReadMap != name){
+            instances.cpuReadMap = name;
+            instances.cpuReadSince = now;
+            instances.cpuReadError.clear();
+            CookedTextures::requireCpuReadable(instances.cpuReadMap);
+        }
+        if (instances.cpuReadError.empty()){
+            std::string why = CookedTextures::getCpuReadFailure(instances.cpuReadMap);
+            if (why.empty() && !CookedTextures::hasCpuReadHandler()){
+                why = "its cook is GPU-only; turn on its Read/Write in its import settings and export again";
+            }else if (why.empty() && now - instances.cpuReadSince > std::chrono::seconds(TERRAIN_FOLIAGE_CPU_READ_WAIT_SECONDS)){
+                why = "no CPU-readable cook of it arrived; reimport it (reimport_textures)";
+            }
+            if (!why.empty()){
+                instances.cpuReadError = (densityGpuOnly ? "its density map " : "its terrain's height map ") +
+                                         instances.cpuReadMap + " has no pixels the CPU can read: " + why;
+                Log::error("A detail layer of %s draws nothing: %s", layer.meshPath.c_str(), instances.cpuReadError.c_str());
+            }
+        }
+        // stopped (until the map's pixels change), or still waiting for the CPU-readable cook
+        instances.pending = instances.cpuReadError.empty();
         instances.needUpdate = true;
-        instances.pending = true;
         return;
     }
+    instances.cpuReadMap.clear();
+    instances.cpuReadError.clear();
     const void* densityPixels = layer.densityMap.hasData() ? layer.densityMap.getData().getData() : nullptr;
     const void* heightPixels = terrain.heightMap.hasData() ? terrain.heightMap.getData().getData() : nullptr;
     if (instances.densityPixels != densityPixels || instances.heightPixels != heightPixels){
@@ -4677,11 +4716,8 @@ void MeshSystem::applyTerrainMapSettings(TerrainComponent& terrain){
         blendMap.setWrapU(TextureWrap::CLAMP_TO_EDGE);
         blendMap.setWrapV(TextureWrap::CLAMP_TO_EDGE);
     }
-    // the terrain's heights are read back from its pixels, so the editor cooks them CPU-readable
+    // the terrain's heights are read back from its pixels
     terrain.heightMap.setReleaseDataAfterLoad(false);
-    if (!terrain.heightMap.empty() && !terrain.heightMap.isFramebuffer()){
-        CookedTextures::requireCpuReadable(terrain.heightMap.getPath());
-    }
 }
 
 void MeshSystem::updateTerrainAutoRanges(TerrainComponent& terrain){

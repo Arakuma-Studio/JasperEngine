@@ -827,17 +827,22 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
      first run (8 editors, cold shader variants) the OBJ layer of the older test drew 0 within the old
      100-frame budget too.
    - A second cause of the same symptom: a CPU-read map cooked GPU-only. On a loaded box a layer sometimes
-     drew 0 instances with its shader built: its density map had been cooked to BC1 before the layer pointed
-     at it (the file is written first), and a BC cook has levels but no CPU pixels, so
-     `sampleFoliageDensity` read nothing. The CPU-read requirement is now part of the cook decision, whatever
-     the order. `CookedTextures::requireCpuReadable` is called by whatever reads a texture on the CPU: a foliage
-     layer for its density map, `applyTerrainMapSettings` for the heights, and the terrain map writers (MCP,
-     Terrain window) before the file lands. In the editor, `TextureCookQueue` then cooks it CPU-readable
-     (uncompressed R8/R16/RGBA8) from then on. It also turns on the texture's Read/Write (`readable: true` in
-     its import settings, as Unity's tools set it, not an undo step), which recooks it. Foliage never samples a
-     GPU-only form: it waits, and new pixels (the swap, a repaint) refill the layer. A game is unaffected (its
-     export cooks these maps CPU-readable already). Test: `test_density_map_cooked_before_its_layer` cooks an
-     image with `reimport_textures`, then makes it a layer's density map.
+     drew 0 instances with its shader built. Its density map had been cooked to BC1 before the layer pointed
+     at it (the file is written first), and a BC cook has GPU levels but no CPU pixels, so
+     `sampleFoliageDensity` read nothing. The editor's cook decision now uses the inference an export uses,
+     live: `TextureCookQueue::isReadOnCpu` (an open scene's terrain height or density map) makes a cook
+     CPU-readable while something reads it, and a later cook may compress again once nothing does. A layer
+     that finds its map cooked GPU-only calls `CookedTextures::requireCpuReadable`; the queue recooks that
+     texture in memory and logs one line. No `.meta` is written: a first design turned on the maps' Read/Write
+     (`readable: true`), which wrote tracked files of old projects on load, could not be undone, bypassed the
+     VCS lock-on-edit and waited forever on a read-only sidecar. The user's own Read/Write still forces
+     CPU-readable. The wait is bounded: a failed CPU-readable cook (the queue's `setCpuReadFailure`), no
+     handler (a game) or 30 s without a cook stops the layer with one error, in `sample_terrain`'s
+     `details[i].error`, until the map's pixels change. Float maps (.exr, .hdr) cook to RGBA16F; a
+     CPU-readable float cook now gets a linear RGBA32F CPU view, and the height and density samplers read
+     32-bit floats (the raw source was read as bytes). Tests: `test_density_map_cooked_before_its_layer`,
+     `test_float_density_map`, `test_reopening_a_project_writes_no_file`, and
+     `TerrainFoliageGpu.AGpuOnlyDensityMapStopsWithOneError` / `AFailedCpuReadableCookStopsTheWaitWithOneError`.
 2. **The generated `AGENTS.md` has headroom under its 5,000-byte cap** (`test_generators.py`, not raised). The text
    is the same for every template (2D, 3D, Empty, UI): `writeAgentsFile` takes only the project paths, which are
    always `.jasperengine/...`. Only the editor version string changes its size. Before: 4,929 bytes (version

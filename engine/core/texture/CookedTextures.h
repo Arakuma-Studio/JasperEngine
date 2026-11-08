@@ -47,12 +47,17 @@ namespace jasperengine {
         static void setProvider(Provider provider, const std::string& family);
         static bool hasProvider();
 
-        // A texture the engine reads on the CPU (a terrain's heights, a foliage layer's density):
-        // the editor's handler cooks it CPU-readable (its Read/Write setting) and swaps that in;
-        // an export already cooks it so. Any thread; without a handler (a game) nothing happens.
+        // A texture the engine reads on the CPU (a terrain's heights, a foliage layer's density)
+        // whose cook is GPU-only: the editor's handler cooks it again CPU-readable and swaps that
+        // in (an export cooks such maps CPU-readable already). Any thread; a game has no handler.
         using CpuReadHandler = std::function<void(const std::string& assetPath)>;
         static void setCpuReadHandler(CpuReadHandler handler);
+        static bool hasCpuReadHandler();
         static void requireCpuReadable(const std::string& sourcePath);
+        // why a CPU-readable cook of it cannot be had (the editor's word: a failed cook), or
+        // empty; an empty message clears it
+        static void setCpuReadFailure(const std::string& assetPath, const std::string& message);
+        static std::string getCpuReadFailure(const std::string& sourcePath);
 
         // "asset://a/../b.png", "/project/assets/b.png" -> "b.png" ('/' separated)
         static std::string normalize(const std::string& path);

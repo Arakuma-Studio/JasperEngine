@@ -6,10 +6,13 @@
 
 #include "Out.h"
 #include "Project.h"
+#include "Scene.h"
+#include "component/TerrainComponent.h"
 #include "command/type/SetAssetMetaCmd.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "pool/TextureDataPool.h"
 #include "pool/TexturePool.h"
+#include "texture/CookedTextures.h"
 #include "util/AssetDatabase.h"
 
 #include <algorithm>
@@ -152,7 +155,7 @@ struct TextureCookQueue::Job {
     TextureCookResult result;
     bool sourceOnly = false;
     bool inferred = false;              // settings were inferred: written by the main thread
-    bool cpuRead = false;               // the engine reads it on the CPU (requireCpuReadable)
+    bool cpuRead = false;               // read on the CPU (isReadOnCpu, requireCpuReadable)
 };
 
 struct TextureCookQueue::SwapIn {
@@ -187,8 +190,8 @@ void TextureCookQueue::attach(Project* newProject){
         settingsMemo.clear();
         loaderInbox.clear();
         metaWrites.clear();
-        cpuRequired.clear();
         cpuRequests.clear();
+        cpuRecooks.clear();
         progressDone = progressTotal = 0;
         memoryInUse = 0;
         scanned = false;
@@ -656,6 +659,7 @@ void TextureCookQueue::startJobs(){
         job->inputs.projectRelative = project->normalizeToProjectRelative(job->inputs.absolute).generic_string();
         job->inputs.hasSettings = settingsOf(key.first, job->inputs.settings);
         job->edges = TextureTypeInference::referenceEdges(*project, job->inputs.projectRelative);
+        const bool readOnCpu = isReadOnCpu(key.first);
         {
             std::lock_guard<std::mutex> lock(mutex);
             job->project = projectSettings;
@@ -666,7 +670,7 @@ void TextureCookQueue::startJobs(){
             entry.queued = false;
             entry.job = job;
             job->epoch = entry.epoch;
-            job->cpuRead = cpuRequired.count(key.first) > 0;
+            job->cpuRead = readOnCpu || cpuRecooks.erase(key.first) > 0;
             running.push_back(job);
         }
         jobs::SubmitOptions options;
@@ -679,7 +683,7 @@ void TextureCookQueue::startJobs(){
                 return;
             TextureCookInputs& inputs = job->inputs;
             inputs.inference = TextureTypeInference::fromEdges(*owner, inputs.projectRelative, job->edges);
-            // read on the CPU by an open scene its saved references may not show yet
+            // read on the CPU by an open scene, which its saved references may not show yet
             if (job->cpuRead && !inputs.inference.cpuReadable){
                 inputs.inference.cpuReadable = true;
                 inputs.inference.cpuReason = "read on the CPU";
@@ -819,6 +823,11 @@ void TextureCookQueue::collectJobs(){
         else if (!job->result.ok && !job->result.cancelled && !job->cancel && !gone)
             Out::error("Texture cook of %s for %s failed: %s", job->assetPath.c_str(), textureFamilyName(job->family),
                        job->result.error.c_str());
+        // what a CPU reader waiting for it is told (CookedTextures::getCpuReadFailure)
+        if (job->cpuRead && job->family == getViewFamily() && !job->result.cancelled && !job->cancel && !gone){
+            CookedTextures::setCpuReadFailure(job->assetPath, job->result.ok ? std::string() :
+                "its CPU-readable cook failed (" + job->result.error + "); fix the file, then reimport it (reimport_textures)");
+        }
         if (swap)
             startSwap(job->assetPath);
     }
@@ -852,11 +861,6 @@ void TextureCookQueue::writeInferredSettings(){
         if (!TextureImportSettings::parse(YAML::Load(yaml), settings))
             continue;
         {
-            std::lock_guard<std::mutex> lock(mutex);
-            if (cpuRequired.count(assetPath))
-                settings.readable = true;
-        }
-        {
             // the write's own listener call sees nothing new
             std::lock_guard<std::mutex> lock(mutex);
             settingsMemo[assetPath] = {true, settings};
@@ -870,8 +874,29 @@ void TextureCookQueue::writeInferredSettings(){
 
 void TextureCookQueue::requireCpuReadable(const std::string& assetPath){
     std::lock_guard<std::mutex> lock(mutex);
-    if (cpuRequired.insert(assetPath).second)
-        cpuRequests.push_back(assetPath);
+    cpuRequests.push_back(assetPath);
+}
+
+bool TextureCookQueue::isReadOnCpu(const std::string& assetPath) const{
+    if (!project)
+        return false;
+    auto reads = [&assetPath](const Texture& texture){
+        return !texture.empty() && CookedTextures::normalize(texture.getPath()) == assetPath;
+    };
+    for (const SceneProject& sceneProject : project->getScenes()){
+        if (!sceneProject.scene)
+            continue;
+        auto terrains = sceneProject.scene->getComponentArray<TerrainComponent>();
+        for (size_t i = 0; i < terrains->size(); i++){
+            const TerrainComponent& terrain = terrains->getComponentFromIndex(i);
+            if (reads(terrain.heightMap))
+                return true;
+            for (const TerrainFoliageLayer& layer : terrain.foliageLayers)
+                if (reads(layer.densityMap))
+                    return true;
+        }
+    }
+    return false;
 }
 
 void TextureCookQueue::applyCpuRequests(){
@@ -880,32 +905,25 @@ void TextureCookQueue::applyCpuRequests(){
         std::lock_guard<std::mutex> lock(mutex);
         requests.swap(cpuRequests);
     }
+    std::set<std::string> done;
     for (const std::string& assetPath : requests){
-        if (!isCookableTexture(assetPath) || isEditorDerived(assetPath))
+        if (!done.insert(assetPath).second)
             continue;
-        const fs::path absolute = absoluteOf(assetPath);
-        TextureImportSettings settings;
-        std::string error;
-        const bool has = TextureImportSettings::load(absolute.string(), settings, &error);
-        // Read/Write already on: every cook of it is CPU-readable
-        if (has && settings.readable.value_or(false))
-            continue;
-        std::error_code ec;
-        if (!error.empty() || !fs::exists(SetAssetMetaCmd::metaPathOf(absolute), ec)){
-            // no sidecar yet: the cooks still go CPU-readable (job->cpuRead), and the inferred
-            // settings written with the sidecar carry Read/Write
-            invalidate(assetPath);
+        if (!isCookableTexture(assetPath) || isEditorDerived(assetPath)){
+            CookedTextures::setCpuReadFailure(assetPath, "the editor does not cook it (it is made from another file); "
+                                                         "use an 8-bit, 16-bit or float image of its own");
             continue;
         }
-        const fs::path projectRelative = project->normalizeToProjectRelative(absolute);
-        if (!has)
-            settings = cookInferredSettings(TextureTypeInference::infer(*project, projectRelative.generic_string()));
-        // Unity's Read/Write, set for the tool that reads it; not a step of the history (the
-        // texture is read on the CPU whatever is undone); its write listener recooks it
-        settings.readable = true;
-        SetAssetMetaCmd command(project, projectRelative, TextureImportSettings::metaKey, settings.serialize());
-        command.execute();
-        Out::info("Read/Write turned on for %s: the engine reads it on the CPU (a terrain or detail layer map)", assetPath.c_str());
+        const TextureFamily view = getViewFamily();
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            cpuRecooks.insert(assetPath);
+        }
+        // in memory (a cook on its way is cancelled): what renders it reloads raw now, then the
+        // CPU-readable cook swaps in
+        invalidate(assetPath);
+        request(assetPath, view, Loaded);
+        Out::info("Cooking %s again CPU-readable: a terrain or a detail layer reads its pixels", assetPath.c_str());
     }
 }
 

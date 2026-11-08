@@ -18,6 +18,7 @@
 
 #include "jobs/JobSystem.h"
 
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -79,7 +80,11 @@ namespace jasperengine{
             float appliedNearFadeEnd = -1.0f;
             bool needUpdate = true;
             bool pending = false;
-            std::string cpuReadMap;             // the density map asked to be cooked CPU-readable
+            // a map found cooked GPU-only: asked to be cooked again CPU-readable, since when, and
+            // the error the layer stopped with (it draws nothing until the map's pixels change)
+            std::string cpuReadMap;
+            std::chrono::steady_clock::time_point cpuReadSince;
+            std::string cpuReadError;
             const void* densityPixels = nullptr; // the pixels the slots were filled from
             const void* heightPixels = nullptr;
         };
@@ -252,6 +257,8 @@ namespace jasperengine{
         std::vector<Entity> getFoliageEntities(Entity terrainEntity) const;
         // The instances the chunks of one detail layer (foliageLayers[layer]) hold now (MCP readback)
         size_t getFoliageInstanceCount(Entity terrainEntity, size_t layer) const;
+        // why the layer draws nothing (a map without CPU-readable pixels), or empty
+        std::string getFoliageError(Entity terrainEntity, size_t layer) const;
         Entity getFoliageOwner(Entity foliageEntity) const;
         // Reloads the foliage chunks drawn from a model file that changed on disk
         void reloadFoliageMesh(const std::string& filename);

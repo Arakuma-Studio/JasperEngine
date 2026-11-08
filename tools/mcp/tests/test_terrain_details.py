@@ -135,10 +135,20 @@ async def test_fbx_layer(ed: Editor):
     ed.check(not density.exists(), "undo removes the density map the call wrote")
 
 
+async def cooked(ed: Editor, path: str) -> dict:
+    """the desktop cook of `path` once it is cooked (not stale, queued or cooking)"""
+    start = time.monotonic()
+    while True:
+        report = (await ed.call("get_texture_cook_report", paths=[path], platforms=["desktop"]))["textures"][0]["platforms"]["desktop"]
+        if report.get("status") == "cooked" or time.monotonic() - start > 60:
+            return report
+        await ed.call("wait", frames=5)
+
+
 async def test_density_map_cooked_before_its_layer(ed: Editor):
     """an image cooked as a colour texture, then made a detail layer's density map, is cooked again
-    CPU-readable with Read/Write on (Unity's flag, set for the layer). Red before the fix: the layer
-    sampled the GPU-only BC cook, which has no CPU pixels, and drew 0 instances"""
+    CPU-readable in memory (its .meta untouched). Red before the fix: the layer sampled the
+    GPU-only BC cook, which has no CPU pixels, and drew 0 instances"""
     sid, eid = await terrain(ed, "CookedFirst")
     mesh = grass(ed)
     image = ed.project / "assets" / "terrain" / "painted_density.png"
@@ -152,20 +162,102 @@ async def test_density_map_cooked_before_its_layer(ed: Editor):
             break
         await ed.call("wait", frames=5)
     ed.check(not first.is_error, f"the image is cooked first: {first.text[:300]}")
-    cooked = first.structured["textures"][0]["platforms"]["desktop"]
-    ed.check(cooked.get("cpu_readable") is False, f"first a colour texture, GPU-only: {cooked}")
+    gpu = first.structured["textures"][0]["platforms"]["desktop"]
+    ed.check(gpu.get("cpu_readable") is False, f"first a colour texture, GPU-only: {gpu}")
+    meta = (image.parent / (image.name + ".meta")).read_text()
+    cursor = (await ed.call("read_console", limit=1))["next_cursor"]
 
     await ed.call("edit_terrain_details", scene=sid, entity=eid, add=[{"mesh": mesh, "density_map": path}])
     drawn = await drawn_instances(ed, sid, eid, "a detail layer on an image cooked before it")
     ed.check(drawn > 0, f"the layer draws instances: {drawn}")
-    ed.check("readable: true" in (image.parent / (image.name + ".meta")).read_text(), "its Read/Write is on")
+    again = await cooked(ed, path)
+    ed.check(again.get("cpu_readable") is True, f"cooked again CPU-readable: {again}")
+    said = (await ed.call("read_console", since=cursor, contains="again CPU-readable", limit=10))["entries"]
+    ed.check(len(said) == 1 and path in said[0]["message"], f"one line says so: {said}")
+    ed.check_eq((image.parent / (image.name + ".meta")).read_text(), meta, "its .meta is not written")
+
+
+def write_hdr(path: Path, size: int, value: float) -> None:
+    """a flat (not run-length) Radiance .hdr of one grey value"""
+    exponent = 0
+    mantissa = value
+    while mantissa >= 1.0:
+        mantissa /= 2.0
+        exponent += 1
+    byte = int(mantissa * 256.0)
+    texel = bytes([byte, byte, byte, exponent + 128])
+    header = f"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y {size} +X {size}\n".encode()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(header + texel * (size * size))
+
+
+async def test_float_density_map(ed: Editor):
+    """an .hdr density map draws, from its source and from its CPU-readable float cook. Red before
+    the fix: the float pixels were read as bytes (0) and the float cook had no CPU pixels"""
+    sid, eid = await terrain(ed, "FloatDensity")
+    mesh = grass(ed)
+    write_hdr(ed.project / "assets" / "terrain" / "density.hdr", 16, 1.0)
+    await ed.call("sync_files")
+    path = "assets/terrain/density.hdr"
+    await ed.call("edit_terrain_details", scene=sid, entity=eid, add=[{"mesh": mesh, "density_map": path}])
+    drawn = await drawn_instances(ed, sid, eid, "an .hdr density map")
+    ed.check(drawn > 0, f"the float map draws: {drawn}")
+    report = await cooked(ed, path)
+    ed.check(report.get("cpu_readable") is True and report.get("format") == "RGBA16F", f"its cook: {report}")
+    await ed.call("wait", frames=10)
+    drawn = await drawn_instances(ed, sid, eid, "an .hdr density map's float cook")
+    ed.check(drawn > 0, f"its float cook draws: {drawn}\n{(await details(ed, sid, eid))[0]}")
+
+
+def project_files(root: Path) -> dict:
+    """every file of the project but the editor's own folder, by content"""
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob("*")
+            if p.is_file() and ".jasperengine" not in p.relative_to(root).parts}
+
+
+async def cooks_settled(ed: Editor) -> None:
+    """every texture cook of the project done (each first cook also writes its inferred settings)"""
     start = time.monotonic()
-    while True:
-        report = (await ed.call("get_texture_cook_report", paths=[path], platforms=["desktop"]))["textures"][0]["platforms"]["desktop"]
-        if report.get("status") == "cooked" or time.monotonic() - start > 60:
-            break
-        await ed.call("wait", frames=5)
-    ed.check(report.get("status") == "cooked" and report.get("cpu_readable") is True, f"cooked again CPU-readable: {report}")
+    while time.monotonic() - start < 120:
+        report = await ed.call("get_texture_cook_report", platforms=["desktop"])
+        busy = [t["path"] for t in report["textures"]
+                if t["platforms"]["desktop"].get("status") in ("queued", "cooking", "stale")]
+        if not busy:
+            return
+        await ed.call("wait", frames=10)
+    ed.fail("the texture cooks never settled")
+
+
+async def test_reopening_a_project_writes_no_file(ed: Editor):
+    """a settled project whose terrain reads its maps on the CPU opens without writing a file. Red
+    before the fix: the editor turned on the maps' Read/Write, rewriting their tracked .meta files"""
+    sid, eid = await terrain(ed, "Reopened")
+    mesh = grass(ed)
+    await ed.call("edit_terrain_details", scene=sid, entity=eid,
+                  add=[{"mesh": mesh, "density_map": {"fill": 1, "resolution": 16}}])
+    await drawn_instances(ed, sid, eid, "a layer before the project is reopened")
+    await ed.call("save_scene", scene=sid, path="scenes/Reopened.scene")
+    # an older project has been cooked with its saved references: each texture's inferred
+    # settings are written down once (R30), not by the opening under test
+    await ed.call("reimport_textures", platforms=["desktop"], timeout_s=120)
+    await cooks_settled(ed)
+    # an older project's .meta files: no Read/Write on the maps
+    for meta in (ed.project / "assets").rglob("*.meta"):
+        text = meta.read_text()
+        if "readable: true" in text:
+            meta.write_text("".join(line for line in text.splitlines(True) if "readable: true" not in line))
+    original = ed.project
+    other = ed.scratch.root / "another-project"
+    await ed.call("create_project", path=str(other), name="Another", unsaved="discard")
+    before = project_files(original)
+    await ed.call("open_project", path=str(original), unsaved="discard")
+    await ed.call("open_scene", scene="scenes/Reopened.scene")
+    drawn = await drawn_instances(ed, "scenes/Reopened.scene", "Ground", "the reopened project's layer")
+    ed.check(drawn > 0, f"the reopened layer draws: {drawn}")
+    await cooks_settled(ed)
+    after = project_files(original)
+    changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+    ed.check_eq(changed, [], "no project file was written by opening it")
 
 
 async def test_refusals(ed: Editor):
