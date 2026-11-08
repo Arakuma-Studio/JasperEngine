@@ -267,7 +267,10 @@ namespace jasperengine{
         INSTANCEPACKED0,
         INSTANCEPACKED1,
         INSTANCEPACKED2,
-        INSTANCEPACKED3
+        INSTANCEPACKED3,
+        // a Voxel Volume's vertex (T6 R49): four 4-bit slots in x (ushort2n), the weights over them (ubyte4n)
+        VOXELSLOTS,
+        VOXELWEIGHTS
     };
 
     enum class AttributeDataType{
@@ -332,7 +335,8 @@ namespace jasperengine{
         BLIT_FS_PARAMS,
         PROBE_FILTER_FS_PARAMS,
         PARTICLES_VS_PARAMS,
-        PARTICLES_FS_PARAMS
+        PARTICLES_FS_PARAMS,
+        FS_VOXEL_LAYERS
     };
 
     enum class StorageBufferType{
@@ -377,7 +381,8 @@ namespace jasperengine{
         PARTICLESIXWAYB,
         PARTICLEEMISSION,    // the emission map
         VAT,                 // a Vertex Animation payload (RGBA16F/32F, includes/vat.glsl)
-        TERRAINHOLES         // a terrain's hole map (R8, texelFetch: T3 R18, includes/terrain_holes_fs.glsl)
+        TERRAINHOLES,        // a terrain's hole map (R8, texelFetch: T3 R18, includes/terrain_holes_fs.glsl)
+        VOXELDETAIL          // a Voxel Volume's texture array (T6 R50, includes/voxel_fs.glsl)
     };
 
     enum class TextureType {

@@ -9,9 +9,13 @@
 #include "LogCapture.h"
 #include "component/MeshComponent.h"
 #include "object/Primitive.h"
+#include "object/TerrainEdit.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/MeshSystem.h"
 #include "terrain/TerrainHoles.h"
+#include "terrain/TerrainOps.h"
+
+#include <span>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -188,6 +192,46 @@ TEST_F(TerrainHolesGpu, EveryPassCuts){
         differ += std::abs(cut[i] - uncut[i]) > 8 ? 1 : 0;
     }
     EXPECT_GT(differ, 100) << "SSAO drew the same with and without the hole";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// A hole cut once the terrain draws (a brush in Play, a Voxel Volume's cave mouth) swaps it to its holed
+// variant while the solid one draws, and the hole shows once that is built, on every backend: on
+// Vulkan its pipelines are made on a worker (spec S32), frames after the cut
+TEST_F(TerrainHolesGpu, ACutAfterTheFirstFrameDraws){
+    JASPER_REQUIRE_GPU();
+    flatTerrain(0.0f);
+    Primitive floor(&scene);
+    floorBelow(0.8f, 0.1f, 0.7f, floor);
+    const PixelColor solid{26, 204, 51};
+    const PixelColor through{204, 26, 179};
+    const auto pixel = [](const std::vector<uint8_t>& frame, float x, float z){
+        const int px = static_cast<int>((x + VIEW_WIDTH * 0.5f) / VIEW_WIDTH * FRAME_WIDTH);
+        const int py = static_cast<int>((z + VIEW_HEIGHT * 0.5f) / VIEW_HEIGHT * FRAME_HEIGHT);
+        return &frame[(static_cast<size_t>(py) * FRAME_WIDTH + px) * 4];
+    };
+    ASSERT_TRUE(render());
+    std::vector<uint8_t> frame;
+    ASSERT_TRUE(readFrame(frame));
+    EXPECT_TRUE(sameColor(pixel(frame, 0.0f, 0.0f), solid, 16)) << "no hole yet";
+    const uint64_t holesBit = ShaderPool::getTerrainHolesProperty(ShaderType::MESH);
+    const MeshComponent& mesh = scene.getComponent<MeshComponent>(terrain->getEntity());
+    EXPECT_EQ(mesh.submeshes[0].shaderProperties & holesBit, 0u);
+
+    TerrainComponentStore store(&scene, terrain->getEntity(), component());
+    terrain::Op cut;
+    cut.type = terrain::OpType::CutHoles;
+    cut.shape.type = terrain::ShapeType::Circle;
+    cut.shape.center = Vector2(0.0f, 0.0f);
+    cut.shape.radius = 10.0f;
+    ASSERT_TRUE(terrain::applyOps(store, std::span<const terrain::Op>(&cut, 1)).ok);
+
+    ASSERT_TRUE(render()) << "the holed variant never came in";
+    ASSERT_TRUE(readFrame(frame));
+    EXPECT_NE(mesh.submeshes[0].shaderProperties & holesBit, 0u) << "still the solid variant";
+    const uint8_t* centre = pixel(frame, 0.0f, 0.0f);
+    EXPECT_TRUE(sameColor(centre, through, 16)) << "the hole's centre draws (" << int(centre[0]) << ", " << int(centre[1]) << ", " << int(centre[2]) << ")";
+    EXPECT_TRUE(sameColor(pixel(frame, 40.0f, 0.0f), solid, 16)) << "the ground beside it stays";
     EXPECT_NO_ENGINE_ERRORS();
 }
 

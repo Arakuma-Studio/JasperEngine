@@ -10,6 +10,7 @@
 
 #include "Engine.h"
 #include "Scene.h"
+#include "component/Transform.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/FoliageSystem.h"
 

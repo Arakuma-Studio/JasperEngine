@@ -5,6 +5,9 @@
 #include "TerrainRenderInfo.h"
 #include "FoliageSystem.h"
 #include "component/CameraComponent.h"
+#if JASPERENGINE_VOXEL
+#include "subsystem/VoxelSystem.h"
+#endif
 #include "component/Transform.h"
 #include "model/ModelCpuData.h"
 #include "device/QualityResolver.h"
@@ -1189,6 +1192,9 @@ void RenderSystem::destroy(){
     }
 
     // Cached GPU arrays cannot survive renderer shutdown, even when CPU assets are retained.
+#if JASPERENGINE_VOXEL
+    destroyVoxelDetailArrays();
+#endif
     while (!terrainMacroNormals.empty()){
         destroyTerrainMacroNormal(terrainMacroNormals.begin()->first);
     }
@@ -3810,6 +3816,7 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     // Painted layers that bring their own surface need the wider terrain path; a
     // terrain of plain color layers keeps the cheaper one it always had.
     inputs.terrainSurface = terrain && hasTerrainSurfaceLayers(*terrain);
+    inputs.voxelTier = mesh.voxelTier;
     inputs.terrainHoles = terrain && !terrain->holeMap.empty();
     if (terrain){
         inputs.terrainVariant = getTerrainVariantInputs(*terrain);
@@ -4135,6 +4142,11 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         }
         if (environment.litQualityHigh && !p_unlit)
             variant.litDefines.push_back(MaterialPbr::LIT_QUALITY_DEFINE);
+        if (inputs.voxelTier != 0){
+            variant.litDefines.push_back(MaterialPbr::VOXEL_DEFINE);
+            variant.litDefines.push_back(inputs.voxelTier == 1 ? MaterialPbr::VOXEL_TIER_HIGH_DEFINE
+                                         : inputs.voxelTier == 2 ? MaterialPbr::VOXEL_TIER_MEDIUM_DEFINE : MaterialPbr::VOXEL_TIER_LOW_DEFINE);
+        }
         std::sort(variant.litDefines.begin(), variant.litDefines.end());
     }
 
@@ -4218,6 +4230,8 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             // the wind mask may read the vertex colour (T5 R19)
             variant.gbufferProperties |= ShaderPool::getGBufferMeshProperties(false, false, false, false, false, false, false, false, false, false, false, false, inputs.vertexColor3, inputs.vertexColor4);
         }
+        if (inputs.voxelTier != 0)
+            variant.gbufferProperties |= ShaderPool::getGBufferVoxelProperty();
     }
 
     // T3 R20: every pass cuts the same holes, on every shader of the terrain
@@ -6660,6 +6674,15 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             render.addTexture(shaderData.getTextureIndex(TextureShaderType::REFLECTIONPROBE), ShaderStageType::FRAGMENT, &emptyCubeBlack);
         }
 
+#if JASPERENGINE_VOXEL
+        if (mesh.voxelTier != 0){
+            mesh.submeshes[i].slotFSVoxelLayers = shaderData.getUniformBlockIndex(UniformBlockType::FS_VOXEL_LAYERS);
+            if (!loadVoxelTextures(mesh.voxelOwner, mesh.submeshes[i].render, shaderData)){
+                return false;
+            }
+        }
+#endif
+
         if (terrain){
             mesh.submeshes[i].slotVSTerrain = shaderData.getUniformBlockIndex(UniformBlockType::TERRAIN_VS_PARAMS);
             mesh.submeshes[i].slotVSTerrainMacro = shaderData.getUniformBlockIndexByName("u_vs_terrainMacro");
@@ -7022,6 +7045,14 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 mesh.submeshes[i].slotVSGBufferLattice = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_VS_LATTICE);
                 mesh.submeshes[i].slotVSGBufferLatticeTexture = gbufferShaderData.getTextureIndex(TextureShaderType::LATTICE);
             }
+#if JASPERENGINE_VOXEL
+            if (mesh.voxelTier != 0){
+                mesh.submeshes[i].slotFSGBufferVoxelLayers = gbufferShaderData.getUniformBlockIndex(UniformBlockType::FS_VOXEL_LAYERS);
+                if (!loadVoxelTextures(mesh.voxelOwner, gbufferRender, gbufferShaderData)){
+                    return false;
+                }
+            }
+#endif
             if (variant.gbufferProperties & (shaderPropertyBit(14) | shaderPropertyBit(15))){ // 'Vat', 'Vab'
                 mesh.submeshes[i].slotVSGBufferVat = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_VS_VAT);
                 mesh.submeshes[i].slotVSGBufferVatTexture = gbufferShaderData.getTextureIndex(TextureShaderType::VAT);
@@ -10196,6 +10227,11 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                                           (mesh.submeshes[i].litDefineBits & MaterialPbr::getDefineBit("TERRAIN_EXTENDED_LAYERS")) != 0);
                 applyTerrainMacroVertexUniform(render, mesh.submeshes[i].slotVSTerrainMacro, *terrain);
             }
+#if JASPERENGINE_VOXEL
+            if (mesh.voxelTier != 0){
+                applyVoxelLayersUniform(render, mesh.submeshes[i].slotFSVoxelLayers, mesh.voxelOwner, camTransform.worldPosition);
+            }
+#endif
 
             //model, normal and mvp matrix
             render.applyUniformBlock(mesh.submeshes[i].slotVSParams, sizeof(float) * 48, (void*)objectBlock);
@@ -11324,7 +11360,7 @@ bool RenderSystem::collectGBufferDraw(Entity entity, MeshComponent& mesh, Transf
     return true;
 }
 
-void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams){
+void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, const Vector3& eye){
     Entity entity = record.entity;
     MeshComponent& mesh = *record.mesh;
     Transform& transform = *record.transform;
@@ -11432,6 +11468,11 @@ void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, c
             continue;
         }
 
+#if JASPERENGINE_VOXEL
+        if (mesh.voxelTier != 0){
+            applyVoxelLayersUniform(gbufferRender, mesh.submeshes[i].slotFSGBufferVoxelLayers, mesh.voxelOwner, eye);
+        }
+#endif
         if (terrain){
             terrain->eyePos = terrainNodes->nodesEyePos;
             gbufferRender.applyUniformBlock(mesh.submeshes[i].slotVSGBufferTerrain, sizeof(float) * 8, &(terrain->eyePos));
@@ -11461,6 +11502,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
     // view-space normal (octahedral) + roughness + metallic at the same texel layout.
     Matrix4 renderVP = camera.viewProjectionMatrix;
     Matrix4 viewMatrix = camera.viewMatrix;
+    const Vector3 eye = viewMatrix.inverse() * Vector3(0.0f, 0.0f, 0.0f);
     SSRView& ssr = rv().ssr;
 
     // 1. the meshes that draw, and the screen the probes they are under cover
@@ -11547,7 +11589,7 @@ void RenderSystem::renderGBufferPass(CameraComponent& camera){
     gbufferPassRender.startRenderPass(&rv().gbufferFramebuffer.getRender());
     for (GBufferDraw& record : ssr.draws){
         vs_gbuffer_t params = {objectModel(*record.transform), renderVP, record.normalMatrix};
-        drawMeshGBuffer(record, camera.farClip, camera.frustumPlanes, params);
+        drawMeshGBuffer(record, camera.farClip, camera.frustumPlanes, params, eye);
     }
     gbufferPassRender.endRenderPass();
 }
@@ -12489,6 +12531,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSVatTexture = {-1, -1};
         submesh.slotVSTerrain = -1;
         submesh.slotFSTerrainLayers = -1;
+        submesh.slotFSVoxelLayers = -1;
         submesh.slotVSTerrainMacro = -1;
 
         submesh.slotVSDepthParams = -1;
@@ -12516,6 +12559,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSGBufferVatTexture = {-1, -1};
         submesh.slotVSGBufferTerrain = -1;
         submesh.slotFSGBufferTerrainLayers = -1;
+        submesh.slotFSGBufferVoxelLayers = -1;
 
         submesh.customVSParams.clear();
         submesh.customFSParams.clear();
@@ -15213,6 +15257,12 @@ std::vector<std::string> RenderSystem::describeNotLoaded() const{
 }
 
 void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char*)>& visit) const{
+#if JASPERENGINE_VOXEL
+    // R20: a volume is not loaded until its first LOD set is on screen
+    if (std::shared_ptr<VoxelSystem> voxels = scene->findSystem<VoxelSystem>()){
+        voxels->forEachLoading([&visit](Entity owner){ visit(false, owner, "voxel volume"); });
+    }
+#endif
 
     // Check MeshComponents
     auto meshes = scene->getComponentArray<MeshComponent>();

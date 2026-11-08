@@ -48,6 +48,7 @@
 #include "window/InputActionsWindow.h"
 #include "window/JobsMemoryWindow.h"
 #include "window/vcs/VcsUi.h"
+#include "voxel/VoxelBrushTool.h"
 
 #include "imgui_internal.h"
 
@@ -366,6 +367,20 @@ void editor::App::registerCommands(){
     brush("terrain.brushWeaker", false, 1.0f / 1.15f);
     brush("terrain.brushStronger", false, 1.15f);
 
+    // ---- A Voxel Volume's brush (T6 R60); its context says when: armed, pointer over the Scene view
+    auto voxelTool = [&bind](const char* id, VoxelTool tool) {
+        bind(id, [tool](const CommandArgs&) { VoxelBrushTool::get().arm(tool); });
+    };
+    voxelTool("voxel.tool.dig", VoxelTool::Dig);
+    voxelTool("voxel.tool.add", VoxelTool::Add);
+    voxelTool("voxel.tool.smooth", VoxelTool::Smooth);
+    voxelTool("voxel.tool.paint", VoxelTool::Paint);
+    voxelTool("voxel.tool.pick", VoxelTool::Pick);
+    bind("voxel.brushSmaller", [](const CommandArgs&) { VoxelBrushTool::get().adjustSize(1.0f / 1.15f); }, nullptr, noDrag);
+    bind("voxel.brushLarger", [](const CommandArgs&) { VoxelBrushTool::get().adjustSize(1.15f); }, nullptr, noDrag);
+    // Esc in a stroke is the history's cancel (App::handleInteractiveEdits), and the brush stays armed
+    bind("voxel.disarm", [](const CommandArgs&) { VoxelBrushTool::get().disarm(); }, nullptr, []() { return !CommandHistory::anyInteractiveOpen(); });
+
     // ---- Lattice points, while the selected scene edits a lattice's points
     auto points = [this, &bind, noDrag](const char* id, LatticeSceneTools::PointAction action) {
         bind(id, [this, action](const CommandArgs&) { LatticeSceneTools::runPointAction(&project, project.getSelectedSceneId(), action); },
@@ -553,6 +568,9 @@ editor::ShortcutState editor::App::shortcutState() const{
     state.nativeMenuOwnsKeys = Backend::nativeMenuHandlesKeyEquivalents();
     if (hierarchyWindow->isFocused()) state.panels.push_back(ShortcutContext::Hierarchy);
     if (sceneWindow->isFocused() || sceneWindow->isHovered()) state.panels.push_back(ShortcutContext::SceneView);
+    if (sceneWindow->isHovered() && project.getSelectedScene() && VoxelBrushTool::get().isEditingScene(project.getSelectedScene()->scene)) {
+        state.panels.push_back(ShortcutContext::VoxelBrush);
+    }
     if (projectWindow->isFocused()) state.panels.push_back(ShortcutContext::Project);
     if (consoleWindow->isListFocused()) state.panels.push_back(ShortcutContext::Console);
     // the entity mode has the Animation context's keys too while it has focus (S40 R22: Align on an

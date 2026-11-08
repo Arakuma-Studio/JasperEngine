@@ -7,6 +7,7 @@
 // tables give their properties, schemas, Inspector metadata and asset locators.
 
 #include "reflect/components/MaterialReflect.h"
+#include "reflect/components/TerrainLayerReflect.h"
 
 #include "Factory.h"
 #include "Stream.h"
@@ -200,7 +201,6 @@ JE_REFLECT_STRUCT_TRAITS(LineData, kLineStruct);
 const StructDesc kLineStruct = JE_STRUCT_DESC(LineData, "LineData", kLineFields);
 JE_REFLECT_STRUCT_TRAITS(InstanceData, kInstanceStruct);
 const StructDesc kInstanceStruct = JE_STRUCT_DESC(InstanceData, "InstanceData", kInstanceFields);
-JE_REFLECT_STRUCT_TRAITS(TerrainSurfaceLayer, kTerrainSurfaceLayerStruct);
 const StructDesc kTerrainSurfaceLayerStruct = JE_STRUCT_DESC(TerrainSurfaceLayer, "TerrainSurfaceLayer", kTerrainSurfaceLayerFields);
 JE_REFLECT_STRUCT_TRAITS(TerrainFoliageLayer, kTerrainFoliageLayerStruct);
 const StructDesc kTerrainFoliageLayerStruct = JE_STRUCT_DESC(TerrainFoliageLayer, "TerrainFoliageLayer", kTerrainFoliageLayerFields);

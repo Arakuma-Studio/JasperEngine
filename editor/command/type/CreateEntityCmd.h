@@ -118,7 +118,9 @@ namespace jasperengine::editor{
         // a clip or a Sound Event, and a Mixer Snapshot action
         AUDIO_ACTION,
         SOUND_EVENT_ACTION,
-        MIXER_SNAPSHOT_ACTION
+        MIXER_SNAPSHOT_ACTION,
+        // a Voxel Volume; the Hierarchy's row opens its dialog (T6 R59), which makes it with its file
+        VOXEL_VOLUME
     };
 
     class CreateEntityCmd: public Command{

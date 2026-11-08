@@ -107,6 +107,9 @@ class LuaApiJson(unittest.TestCase):
         self.assertEqual(classes['anime']['modules'], ['htmlui'])
         self.assertEqual(classes['Rigidbody']['modules'], ['physics3d'])
         self.assertEqual(classes['Rigidbody2D']['modules'], ['physics2d'])
+        # T6 R73: the Voxel Volume's Lua needs the voxel module
+        for name in ('VoxelVolume', 'VoxelShape', 'VoxelEditReport', 'VoxelRayHit', 'VoxelMaterialHit', 'VoxelVolumeStats'):
+            self.assertEqual(classes[name]['modules'], ['voxel'], name)
         self.assertEqual(classes['Vector3']['modules'], [])
         self.assertEqual(classes['GameObject']['modules'], [])
         # members under a module's condition on classes outside it
@@ -134,7 +137,7 @@ class LuaApiJson(unittest.TestCase):
             for key in ('modules',):
                 self.assertIsInstance(c[key], list)
                 for m in c['methods'] + c['properties']:
-                    self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d', 'soundlayer', 'noise'}, m['name'])
+                    self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d', 'soundlayer', 'noise', 'voxel'}, m['name'])
 
 
 class Emitters(unittest.TestCase):

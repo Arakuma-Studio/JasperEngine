@@ -3102,6 +3102,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     }
 
     {
+        // Project Settings > Voxels (T6 R7): only what differs from the defaults
+        const YAML::Node voxelNode = encodeVoxelProjectSettings(project->getVoxelSettings());
+        if (voxelNode.size() > 0) root["voxel"] = voxelNode;
+    }
+
+    {
         // Project Settings > Texture (S14 R24): only what differs from the defaults
         const YAML::Node textureNode = encodeTextureProjectSettings(project->getTextureSettings());
         if (textureNode.size() > 0) root["texture"] = textureNode;
@@ -3943,6 +3949,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     project->setNavigationSettings(decodeNavigationProjectSettings(node["navigation"]));
+    project->setVoxelSettings(decodeVoxelProjectSettings(node["voxel"]));
 
     {
         TextureProjectSettings textureSettings;

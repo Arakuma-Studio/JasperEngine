@@ -52,6 +52,9 @@ option(JASPERENGINE_NOISE_ALL_BACKENDS "Build the noise kernels' Scalar back end
 # (docs/specs/S34-player-size.md); the editor, the tests and the full player have both.
 option(JASPERENGINE_HTMLUI "Compile the HTML UI" ON)
 option(JASPERENGINE_VIDEO "Compile the HTML UI's <video> (needs JASPERENGINE_HTMLUI)" ON)
+# Voxel Volumes (docs/specs/T6-voxel-volumes.md): bounded smooth voxel terrain, Transvoxel LOD, destruction.
+# A player variant or a Compile build leaves it out when its project cannot reach it.
+option(JASPERENGINE_VOXEL "Compile Voxel Volumes (needs JASPERENGINE_NOISE)" ON)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -1127,6 +1130,10 @@ add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
 # The optional modules (docs/specs/S34-player-size.md R1): the video of an HTML UI, and the
 # editor's shared engine has every module (its windows and the Play of any project use them)
+# R47: generation goes through T2's runtime, so a volume without it could not read its own base
+if(JASPERENGINE_VOXEL AND NOT JASPERENGINE_NOISE)
+    message(FATAL_ERROR "JASPERENGINE_VOXEL needs JASPERENGINE_NOISE: turn both on, or JASPERENGINE_VOXEL off")
+endif()
 if(JASPERENGINE_VIDEO AND NOT JASPERENGINE_HTMLUI)
     message(STATUS "JASPERENGINE_VIDEO needs JASPERENGINE_HTMLUI: the build has no video")
     set(JASPERENGINE_VIDEO OFF)
@@ -1973,6 +1980,19 @@ include(core/terrain/TerrainSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_TERRAIN_SRCS})
 include(core/noise/NoiseSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NOISE_SRCS} ${JASPERENGINE_NOISE_COMPAT_SRCS})
+if(JASPERENGINE_VOXEL)
+    # Voxel Volumes (T6): the pure module, then what ties it to the scene
+    include(core/voxel/VoxelSources.cmake)
+    list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_VOXEL_SRCS}
+        core/subsystem/VoxelSystem.cpp
+        core/subsystem/VoxelSystemPhysics.cpp
+        core/subsystem/VoxelSystemTerrain.cpp
+        core/subsystem/RenderSystemVoxel.cpp
+        core/object/voxel/VoxelVolume.cpp
+        core/script/binding/VoxelClassesLua.cpp)
+endif()
+# always there: with the module off it is the plain terrain query (T6 R45)
+list(APPEND JASPERENGINE_SRCS core/object/voxel/GroundQuery.cpp)
 # Navigation (S19): navmeshes, crowds, grids, the NavigationSystem and its Lua objects
 include(core/navigation/NavigationSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NAVIGATION_SRCS})
@@ -2092,6 +2112,11 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "the navigation sources: file-local Detour helpers and constants with the same names"
     SOURCES ${JASPERENGINE_NAVIGATION_SRCS})
+if(JASPERENGINE_VOXEL)
+    jasperengine_skip_unity_build(
+        REASON "the voxel sources build with their own floating-point flags, and include the Transvoxel tables"
+        SOURCES ${JASPERENGINE_VOXEL_SRCS} core/subsystem/RenderSystemVoxel.cpp core/subsystem/VoxelSystem.cpp core/subsystem/VoxelSystemPhysics.cpp core/subsystem/VoxelSystemTerrain.cpp)
+endif()
 if(JASPERENGINE_SPLINE_SRCS)
     jasperengine_skip_unity_build(
         REASON "the spline sources build with their own floating-point flags"
@@ -2170,6 +2195,7 @@ target_compile_definitions(jasperengine
         JASPERENGINE_SOUND_LAYER=$<BOOL:${JASPERENGINE_SOUND_LAYER}>
         JASPERENGINE_NOISE=$<BOOL:${JASPERENGINE_NOISE}>
         JASPERENGINE_HTMLUI=$<BOOL:${JASPERENGINE_HTMLUI}>
+        JASPERENGINE_VOXEL=$<BOOL:${JASPERENGINE_VOXEL}>
         JASPERENGINE_VIDEO=$<BOOL:${JASPERENGINE_VIDEO}>
     PRIVATE
         $<$<BOOL:${JE_JOLT_OWN_POOL}>:JE_JOLT_OWN_POOL>

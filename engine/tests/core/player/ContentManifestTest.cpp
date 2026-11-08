@@ -116,11 +116,38 @@ TEST(ContentManifest, RefusesContentNeedingAModuleThePlayerLacks) {
     ASSERT_TRUE(ContentManifest::fromJson(json, old, error)) << error;
     EXPECT_FALSE(old.hasModules);
     EXPECT_EQ(missingModules(old, allModules()), std::vector<std::string>{});
-    // T2 added noise, which lite variants leave out (N11)
-    EXPECT_EQ(missingModules(old, lite), (std::vector<std::string>{"htmlui", "video", "runtimeshaders", "noise"}));
+    // T2 added noise and T6 voxel, which lite variants leave out (N11)
+    EXPECT_EQ(missingModules(old, lite), (std::vector<std::string>{"htmlui", "video", "runtimeshaders", "noise", "voxel"}));
     // and a Compile build (no player id) is not asked
     problems.clear();
     EXPECT_TRUE(checkContent(m, "", access, false, problems, &lite));
+}
+
+// T6 R47, AC38: lite3d leaves Voxel Volumes out, so content with one does not start on it (S34 R3)
+TEST(ContentManifest, ContentNeedingVoxelRefusesLite3D) {
+    ContentManifest m = sample();
+    m.modules = {"physics3d", "navigation", "voxel"};
+    present() = {"scenes/3.jscn", "scenes/4.jscn", "prefabs/2.jpfb", "assets/shaders/MESH_x_glsl410.sdat", "content.jpak"};
+    const ContentAccess access{&exists, &noSha};
+    const std::vector<std::string> lite3d = {"physics3d", "navigation"};
+    std::vector<std::string> problems;
+    EXPECT_FALSE(checkContent(m, "linux-x64-glcore-release-lite3d", access, false, problems, &lite3d));
+    ASSERT_FALSE(problems.empty());
+    bool named = false;
+    for (const std::string& problem : problems) named = named || problem.find("Voxel Volumes (voxel)") != std::string::npos;
+    EXPECT_TRUE(named);
+    EXPECT_EQ(missingModules(m, lite3d), std::vector<std::string>{"voxel"});
+}
+
+TEST(PlayerModules, KnowsVoxelLast) {
+    ASSERT_FALSE(allModules().empty());
+    EXPECT_EQ(allModules().back(), "voxel");
+    EXPECT_EQ(moduleDisplayName("voxel"), "Voxel Volumes");
+#if JASPERENGINE_VOXEL
+    EXPECT_TRUE(isModuleBuilt("voxel"));
+#else
+    EXPECT_FALSE(isModuleBuilt("voxel"));
+#endif
 }
 
 TEST(PlayerModules, BuiltModulesFollowTheBuildDefinitions) {

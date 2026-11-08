@@ -99,6 +99,10 @@
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/FluidSystem.h"
+#include "subsystem/VoxelSystem.h"
+#include "voxel/VoxelWorkQueue.h"
+#include "voxel/VoxelAssetFile.h"
+#include "voxel/VoxelGeneration.h"
 #include "fluid/FluidSimulator.h"
 #include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
@@ -146,6 +150,7 @@
 #include "model/ModelCookQueue.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "Engine.h"
 #include "project/SceneFileIdentity.h"
 #include "component/CameraComponent.h"
@@ -345,6 +350,10 @@ bool editor::Project::recordSelectionInUndo = true;
 editor::Project::Project(): vcsService(std::make_unique<vcs::VcsService>()), sceneDiffs(std::make_unique<vcs::SceneDiffTracker>()){
     resetConfigs();
     installUndoHooks();
+    // a volume's file holds its base's description: presets and Noise Graphs are rebuilt from it (T6 R33)
+    VoxelAssets::setBaseResolver(&resolveVoxelBase);
+    // a mesh job's result waits for the system's next update, which an idle editor would not run
+    voxel::WorkQueue::setFinishedNotifier([]() { getEditorHost().enqueueMainThreadTask([]() {}); });
 }
 
 editor::Project::~Project(){
@@ -3853,6 +3862,16 @@ const editor::NavigationProjectSettings& editor::Project::getNavigationSettings(
     return navigationSettings;
 }
 
+void editor::Project::setVoxelSettings(const VoxelProjectSettings& settings){
+    const bool changed = settings != voxelSettings;
+    voxelSettings = settings;
+    applyVoxelProjectSettings(voxelSettings);
+    // the standalone build's main.cpp carries them
+    if (modelLoaded && changed){
+        markGeneratedSourcesDirty();
+    }
+}
+
 void editor::Project::setNavigationSettings(const NavigationProjectSettings& settings){
     const bool changed = settings != navigationSettings;
     navigationSettings = settings;
@@ -4775,6 +4794,8 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
             targetScene->id = knownId;
         }
         giveSceneFileItsOwnId(*targetScene, fullPath);
+        targetScene->restoredVoxelAssets = std::move(restoredVoxelAssets);
+        restoredVoxelAssets.clear();
         // the build's prefab list of a closed scene follows the prefabs' GUIDs too
         resolveScenePrefabInfos(*targetScene);
 
@@ -6312,6 +6333,7 @@ void editor::Project::resetConfigs() {
     setTerrainEditorSettings({});
     physicsPlacementSettings = {};
     setNavigationSettings(NavigationProjectSettings());
+    setVoxelSettings(VoxelProjectSettings());
     spriteNormalsSettings = {};
     simulateTouch = false;
     // nothing reloads into a project that is going (S05), nothing cooks for it (S14)
@@ -6405,6 +6427,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<LatticeSystem>()->setPaused(pause);
     // Spline Animate followers hold still; roads and pieces keep regenerating
     if (auto splines = scene->findSystem<SplineSystem>()) splines->setPaused(pause);
+    // edit mode edits the Voxel Volume's asset; Play works on a copy of it (T6 R6)
+    if (auto voxels = scene->findSystem<VoxelSystem>()) voxels->setPaused(pause);
     // Vertex Animators hold still in edit mode unless their Preview is on
     scene->getSystem<VertexAnimatorSystem>()->setPaused(pause);
     // and Text Effects unless the Inspector previews them
@@ -6608,6 +6632,14 @@ static std::set<Entity> getPlayKeptEntities(const editor::SceneProject* scenePro
         for (size_t i = 0; i < splineArray->size(); i++) {
             const std::vector<Entity> generated = splines->getGeneratedEntities(splineArray->getEntity(i));
             keep.insert(generated.begin(), generated.end());
+        }
+    }
+    // and a Voxel Volume's chunks are VoxelSystem's, which keeps them across Play (T6 R6)
+    if (std::shared_ptr<VoxelSystem> voxels = scene->findSystem<VoxelSystem>()) {
+        auto volumes = scene->getComponentArray<VoxelVolumeComponent>();
+        for (size_t i = 0; i < volumes->size(); i++) {
+            const std::vector<Entity> chunks = voxels->getGeneratedEntities(volumes->getEntity(i));
+            keep.insert(chunks.begin(), chunks.end());
         }
     }
 
@@ -7902,6 +7934,8 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
     if (sceneProject->playState != ScenePlayState::SAVING) {
         // the grids' changed cells go to their .navgrid files first (S19 R35)
         NavigationEditor::get().saveSceneAssets(this, *sceneProject);
+        // its dirty Voxel Volumes (T6 R77)
+        saveSceneVoxelAssets(*this, *sceneProject);
         resolveSceneAssetRefs(*sceneProject, false);
     }
 
@@ -8197,6 +8231,7 @@ void editor::Project::configureGenerator() {
     generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
+    generator.setVoxelSettingsCode(generateVoxelSettingsCode(voxelSettings, "    "));
     generator.setDeviceSettingsJson(deviceSettings.toJson());
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
@@ -8284,6 +8319,8 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     editor::getEditorHost().stopTransientPreviews();
     stopVertexAnimatorPreviews();
     NavigationEditor::get().saveSceneAssets(this, *sceneProject);
+    // its dirty Voxel Volumes (T6 R77): the store's tables belong to this thread
+    saveSceneVoxelAssets(*this, *sceneProject);
     resolveSceneAssetRefs(*sceneProject, false);
     for (auto& [prefabPath, prefab] : prefabAssets) {
         if (prefab.registry && prefab.instances.count(sceneId) && (prefab.isModified || prefab.needsUpgrade)) {
@@ -10389,6 +10426,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
+    generator.setVoxelSettingsCode(generateVoxelSettingsCode(voxelSettings, "    "));
     generator.setDeviceSettingsJson(deviceSettings.toJson());
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);

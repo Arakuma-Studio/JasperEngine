@@ -212,8 +212,12 @@ TEST_F(TerrainFoliageGpu, MinDrawDistanceAndTheScaleSetTheChunksFades){
         nearest = std::min(nearest, distance);
         farthest = std::max(farthest, distance);
         // the scale: full between the fades, shrinking within them
-        if (distance < 10.0f * 0.75f || distance > 25.0f) ADD_FAILURE() << "an instance at " << distance << " m draws";
-        if (distance > 10.0f && distance < 25.0f * 0.75f) EXPECT_GT(instance.scale, 0.0f);
+        if (distance < 10.0f * 0.75f || distance > 25.0f) {
+            ADD_FAILURE() << "an instance at " << distance << " m draws";
+        }
+        if (distance > 10.0f && distance < 25.0f * 0.75f) {
+            EXPECT_GT(instance.scale, 0.0f);
+        }
     }
     EXPECT_LE(farthest, 25.0f) << "Draw Distance is not scaled";
     EXPECT_GE(nearest, 10.0f * 0.75f) << "Min Draw Distance is not scaled";

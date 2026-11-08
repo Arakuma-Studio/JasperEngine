@@ -577,6 +577,8 @@ namespace jasperengine{
 		bool terrain = false;
 		bool terrainBlendMaps = false;
 		bool terrainSurface = false;
+		// a Voxel Volume's chunk: the tier (MeshComponent::voxelTier), 0 for anything else
+		uint8_t voxelTier = 0;
 		bool instanced = false;
 		bool instanceFade = false;
 		// a foliage prototype (T5): 'Cin', 'Wnd', 'Dth'
@@ -2475,6 +2477,24 @@ namespace jasperengine{
 		// T3 R20, R21 (RenderSystemTerrain.cpp): a variant with holes reads this map in every pass
 		bool loadTerrainHoleTexture(TerrainComponent& terrain, ObjectRender& render, ShaderData& shaderData);
 		bool updateTerrainRenderTextures(Entity entity, TerrainComponent& terrain, MeshComponent& mesh);
+#if JASPERENGINE_VOXEL
+		// A volume's array (T6 R50; RenderSystemVoxel.cpp): every slot's maps as slices of one texture.
+		// One whose slots are all linked uses its terrain's array itself.
+		struct VoxelDetailArray{
+			TextureRender render;
+			std::vector<std::string> sliceKeys;
+			std::array<int, 16> colorSlice;
+			std::array<int, 16> normalSlice;
+			std::array<int, 16> surfaceSlice;
+			bool failed = false;
+			bool sharesTerrain = false;
+		};
+		std::unordered_map<Entity, VoxelDetailArray> voxelDetailArrays;
+		VoxelDetailArray* getVoxelDetailArray(Entity owner, TextureRender*& bound);
+		void destroyVoxelDetailArrays();
+		bool loadVoxelTextures(Entity owner, ObjectRender& render, ShaderData& shaderData);
+		void applyVoxelLayersUniform(ObjectRender& render, int slot, Entity owner, const Vector3& eye);
+#endif
 		void updateAllTerrainRenderTextures();
 		void updateInstanceBuffers();
 		// foliage (RenderSystemFoliage.cpp, T5 F1)
@@ -3079,7 +3099,7 @@ namespace jasperengine{
 		void renderGBufferPass(CameraComponent& camera);
 		// the SSR G-buffer: a mesh's draw record, when it draws (visible, loaded, a submesh to draw)
 		bool collectGBufferDraw(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, GBufferDraw& record);
-		void drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams);
+		void drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, const Vector3& eye);
 		// destination == nullptr renders the composite to the swapchain (backbuffer)
 		void renderSSR(CameraComponent& camera, FramebufferRender* destination);
 
@@ -3528,6 +3548,10 @@ namespace jasperengine{
 		// an image of a terrain's painted layers changed on disk (the editor's file pick-up): the
 		// array read from the files is built again
 		void invalidateTerrainDetailArray(Entity entity);
+#if JASPERENGINE_VOXEL
+		// A slot changed: the array is built again when the chunks bind (R50: a slot change rebuilds it whole)
+		void invalidateVoxelDetailArray(Entity owner);
+#endif
 		// the images post-processing reads changed on disk (the editor's file pick-up): the LUT
 		// strip (read by path, cached while the path stays) is read again and the user chain
 		// reloads, taking its pass textures again from the scene

@@ -78,6 +78,10 @@ namespace jasperengine{
     enum class ProgressbarType;
     enum class ScrollbarType;
     enum class ShadowCaster2DShape;
+    enum class TerrainCliffProjection;
+    enum class TerrainMacroMode;
+    enum class TerrainOffscreenShadows;
+    enum class TerrainQualitySetting;
     enum class UIDocumentRenderMode;
     enum class WaterVolumeWaves;
 }

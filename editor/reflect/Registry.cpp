@@ -110,6 +110,7 @@ namespace {
         &kSafeAreaDesc,
         &kCapsuleShadowCasterDesc,
         &kAudioSnapshotDesc,
+        &kVoxelVolumeDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -208,6 +209,7 @@ namespace {
         &kVideoPlayerDesc,
         &kSafeAreaDesc,
         &kAudioSnapshotDesc,
+        &kVoxelVolumeDesc,
     };
 
     // the order a GameObject lists its components in (Catalog::findComponents: the exported code)
@@ -304,6 +306,7 @@ namespace {
         &kVideoPlayerDesc,
         &kSafeAreaDesc,
         &kAudioSnapshotDesc,
+        &kVoxelVolumeDesc,
     };
 
     constexpr const EnumDesc* kEnums[] = {
@@ -333,6 +336,7 @@ namespace {
         &enums::kOnScreenStickAxes, &enums::kOnScreenVisibility, &enums::kJointAnchorSpace, &enums::kCollisionDetection2D, &enums::kSleepMode2D, &enums::kRigidbodyInterpolation, &enums::kJointBreakAction,
         &enums::kJointMotion, &enums::kJointSwingType, &enums::kAlphaTweenTarget, &enums::kTransparencyMode, &enums::kCapsuleCastShadows,
         &enums::kCapsuleDirection,
+        &enums::kVoxelQuality, &enums::kVoxelNavigationUpdate, &enums::kVoxelTerrainCut,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {

@@ -6,6 +6,9 @@
 // Limited and contributors, MIT License, as a reference; the code is our own. See NOTICE.md.
 
 #include "NavBakeCollector.h"
+#if JASPERENGINE_VOXEL
+#include "subsystem/VoxelSystem.h"
+#endif
 #include "subsystem/RenderSystem.h"
 
 #include "Scene.h"
@@ -33,6 +36,7 @@
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/CharacterControllerComponent.h"
 #include "component/RigidbodyComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #endif
 
 #include <algorithm>
@@ -586,6 +590,11 @@ namespace {
         std::sort(entities.begin(), entities.end());
         for (Entity entity : entities) {
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+#if JASPERENGINE_VOXEL
+            // a volume's drawn chunks depend on the focus: it adds its level-0 geometry below (T6 R25)
+            if (mesh.voxelOwner != NULL_ENTITY)
+                continue;
+#endif
             // skinned meshes move; terrains and instanced meshes have their own paths
             if (!mesh.enabled || mesh.numSubmeshes == 0 || !mesh.bonesAABB.empty() || scene->findComponent<TerrainComponent>(entity))
                 continue;
@@ -613,6 +622,25 @@ namespace {
             addMeshComponent(entity, transform->modelMatrix, policy.area);
             stats.meshes++;
         }
+#if JASPERENGINE_VOXEL
+        if (std::shared_ptr<VoxelSystem> voxels = scene->findSystem<VoxelSystem>()) {
+            auto volumes = scene->getComponentArray<VoxelVolumeComponent>();
+            for (size_t i = 0; i < volumes->size(); i++) {
+                Policy policy;
+                if (!volumes->getComponentFromIndex(i).enabled || !collectable(volumes->getEntity(i), policy))
+                    continue;
+                Mesh local;
+                std::vector<Vector3> vertices;
+                std::vector<uint32_t> indices;
+                voxels->appendNavTriangles(AABB(-1e7f, -1e7f, -1e7f, 1e7f, 1e7f, 1e7f), vertices, indices);
+                local.vertices = std::move(vertices);
+                local.indices = std::move(indices);
+                addTriangles(local, navFromWorld, policy.area);
+                stats.meshes++;
+                break;
+            }
+        }
+#endif
     }
 
     void Collector::addTerrainLattice(TerrainComponent& terrain, const Matrix4& world, uint8_t area, int samplesOverride) {

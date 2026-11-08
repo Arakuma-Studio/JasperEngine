@@ -272,6 +272,7 @@ namespace jasperengine{
         std::pair<int, int> slotVSVatTexture = {-1, -1};
         int slotVSTerrain = -1;
         int slotFSTerrainLayers = -1;
+        int slotFSVoxelLayers = -1;
         int slotVSTerrainMacro = -1;    // u_vs_terrainMacro: Low's Macro Variation (T3 R9)
         // u_fs_pbrParams of a built-in Lit lobe variant ends with the lobes' values (and the UV
         // sets with a second set): its size, their offsets (bytes; size 0: no lobes)
@@ -315,6 +316,7 @@ namespace jasperengine{
         std::pair<int, int> slotVSGBufferVatTexture = {-1, -1};
         int slotVSGBufferTerrain = -1;
         int slotFSGBufferTerrainLayers = -1;
+        int slotFSGBufferVoxelLayers = -1;
 
         // custom uniform blocks of the forked shaders, filled from MeshComponent::shaderUniforms
         CustomUniformBlock customVSParams;
@@ -466,6 +468,11 @@ namespace jasperengine{
     struct MeshComponent{
         // component checkbox: its system skips a disabled component
         bool enabled = true;
+
+        // a Voxel Volume's chunk (T6 R19): its owner and tier (0: not a chunk; 1 High, 2 Medium, 3 Low),
+        // which pick the Lit defines and the volume's texture array. Never saved.
+        Entity voxelOwner = NULL_ENTITY;
+        uint8_t voxelTier = 0;
 
         bool loaded = false;
         bool loadCalled = false;

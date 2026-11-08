@@ -60,7 +60,9 @@ namespace jasperengine::editor::vcsfiles {
         // and meta files never are LFS objects (docs/specs/S29-version-control.md R21).
         const char* const binaryPatterns[] = {
             "*.png", "*.jpg", "*.jpeg", "*.tga", "*.ktx", "*.dds", "*.glb", "*.gltf", "*.fbx", "*.obj", "*.jetrees",
-            "*.ogg", "*.wav", "*.mp3", "*.ttf", "*.otf"
+            "*.ogg", "*.wav", "*.mp3", "*.ttf", "*.otf",
+            // T6 R77: a volume is a binary, and big
+            "*.voxelvolume"
         };
         // binaries LFS adds (art sources, HDR images, cooked textures, video)
         const char* const lfsOnlyPatterns[] = {

@@ -133,6 +133,9 @@ in vec3 a_position;
 #ifdef HAS_TERRAIN
     #include "includes/terrain_vs.glsl"
 #endif
+#ifdef HAS_VOXEL
+    #include "includes/voxel_vs.glsl"
+#endif
 // the lattices deforming the mesh (HAS_LATTICE): latticeDeform, after a_color is declared
 #include "includes/lattice.glsl"
 // the baked vertex animation (HAS_VAT): vatEvaluate, vatPosition, vatNormal, vatTangent
@@ -294,6 +297,9 @@ void main() {
 
     #if defined(HAS_TERRAIN_PBR) && defined(HAS_NORMALS)
         setTerrainShadingAxes(pbrParams.normalMatrix);
+    #endif
+    #ifdef HAS_VOXEL
+        setVoxelVaryings(a_position, a_normal, pbrParams.normalMatrix);
     #endif
 
     #ifdef HAS_UV_SET1

@@ -14,7 +14,7 @@
 
 namespace jasperengine::player {
 
-    // every optional module, in a fixed order: htmlui video runtimeshaders physics3d physics2d navigation soundlayer noise
+    // every optional module, in a fixed order: htmlui video runtimeshaders physics3d physics2d navigation soundlayer noise voxel
     JASPERENGINE_API const std::vector<std::string>& allModules();
     // those this build was compiled with (its JASPERENGINE_* definitions)
     JASPERENGINE_API std::vector<std::string> builtModules();

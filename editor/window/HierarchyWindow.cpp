@@ -66,6 +66,7 @@
 #include "util/PhysicsMaterialAssets.h"
 #include "window/dialog/CreateTerrainDialog.h"
 #include "window/dialog/RagdollWizardDialog.h"
+#include "window/VoxelCreateDialog.h"
 #include "pose/PoseEditSession.h"
 
 #include "App.h"
@@ -555,6 +556,8 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"3D Object", "Torus", ICON_FA_RING, T::TORUS, "Torus", CREATE_IN_3D},
         {"3D Object", "Model", ICON_FA_PERSON_RUNNING, T::MODEL, "Model", CREATE_IN_3D, true},
         {"3D Object", "Terrain", ICON_FA_MOUNTAIN, T::TERRAIN, "Terrain", CREATE_IN_3D},
+        // the dialog of T6 R59: size, base and a memory estimate first
+        {"3D Object", "Voxel Volume", ICON_FA_CUBES, T::VOXEL_VOLUME, "Voxel Volume", CREATE_IN_3D},
         {"3D Object", "Mirror", ICON_FA_CLONE, T::MIRROR, "Mirror", CREATE_IN_3D},
         {"3D Object", "Water", ICON_FA_WATER, T::WATER, "Water", CREATE_IN_3D},
         // Unity's Ragdoll Wizard on the selected character (or the row's GameObject)
@@ -662,6 +665,10 @@ bool editor::HierarchyWindow::isCreateEntryAvailable(const CreateMenuEntry& entr
 void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Entity parent, bool addToPrefab){
     SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->scene) {
+        return;
+    }
+    if (entry.type == EntityCreationType::VOXEL_VOLUME) {
+        VoxelCreateDialog::instance().open(project, sceneProject->id, parent);
         return;
     }
     if (entry.type == EntityCreationType::RAGDOLL_WIZARD) {

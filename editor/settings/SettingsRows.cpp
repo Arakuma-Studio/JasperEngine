@@ -2434,6 +2434,44 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
 
+        // ---- voxels (T6 R7): each lowers its target's limit, never raises it
+        add(boolSetting("voxel.ignore_dimension_limits", "Voxel Volumes: an export goes on with a volume over its target's maximum dimension.",
+                        [](Project& p) { return p.getVoxelSettings().ignoreDimensionLimits; },
+                        [](Project& p, bool v) { VoxelProjectSettings n = p.getVoxelSettings(); n.ignoreDimensionLimits = v; p.setVoxelSettings(n); }));
+        {
+            struct VoxelLimitRow {
+                const char* key;
+                const char* description;
+                int maximum;
+                int VoxelProjectSettings::*field;
+            };
+            const VoxelLimitRow voxelLimitRows[] = {
+                {"voxel.max_dimension", "Voxel Volumes: voxels per axis at most, below the target's 1024, 512 or 256 (0: the target's).", 1024, &VoxelProjectSettings::maxDimension},
+                {"voxel.cpu_budget_mb", "Voxel Volumes: CPU memory of all volumes in MiB, below the target's 256, 64 or 32 (0: the target's).", 256, &VoxelProjectSettings::cpuBudgetMB},
+                {"voxel.mesh_budget_mb", "Voxel Volumes: mesh memory of all volumes in MiB, below the target's 128, 32 or 24 (0: the target's).", 128, &VoxelProjectSettings::meshBudgetMB},
+            };
+            for (const VoxelLimitRow& limitRow : voxelLimitRows) {
+                Setting s;
+                s.key = limitRow.key;
+                s.type = "int";
+                s.description = limitRow.description;
+                const auto field = limitRow.field;
+                const int maximum = limitRow.maximum;
+                s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getVoxelSettings().*field); };
+                s.set = [field, maximum](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    long long v;
+                    if (!readInt(value, 0, maximum, v, error)) return false;
+                    if (apply) {
+                        VoxelProjectSettings n = ctx.project()->getVoxelSettings();
+                        n.*field = static_cast<int>(v);
+                        ctx.project()->setVoxelSettings(n);
+                    }
+                    return true;
+                };
+                add(s);
+            }
+        }
+
         // ---- input (S22, and Unity's Input Manager absorbed from the older Project Settings > Input)
         {
             // the asset path; an older editor's list of Input Manager actions (or "defaults") set
@@ -3594,6 +3632,10 @@ const Placement placements[] = {
     {"navigation.crowd_max_agents", "Navigation", "", "Crowd Max Agents", "navmesh agents crowd"},
     {"navigation.max_grid_solves_per_tick", "Navigation", "", "Grid Solves per Tick", "nav grid a* pathfinding"},
     {"navigation.web_bake_budget_ms", "Navigation", "", "Web Bake Budget", "navmesh bake web single thread"},
+    {"voxel.max_dimension", "Voxels", "", "Max Dimension", "voxel volume limit size"},
+    {"voxel.cpu_budget_mb", "Voxels", "", "CPU Memory Budget", "voxel volume memory limit"},
+    {"voxel.mesh_budget_mb", "Voxels", "", "Mesh Memory Budget", "voxel volume memory limit"},
+    {"voxel.ignore_dimension_limits", "Voxels", "", "Ignore Dimension Limits", "voxel volume export oversize"},
     {"input.actions", "Input", "", "Default Actions Asset", "input actions bindings controls keyboard gamepad touch inputactions"},
     {"input.deadzone", "Input", "", "Default Deadzone", "input stick axis analog gamepad dead zone"},
     {"input.manager_actions", "Input", "Input Manager", "Input Manager", "input manager virtual axes buttons horizontal vertical jump fire gravity sensitivity unity"},
@@ -3879,6 +3921,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Editor", SettingsScope::Project, 12, "version control assets labels"},
         {"Navigation", SettingsScope::Project, 13, "navigation navmesh agents areas crowd grid pathfinding ai"},
         {"Mesh", SettingsScope::Project, 14, "mesh model import cook optimize compression lod meshopt read write cache audit"},
+        {"Voxels", SettingsScope::Project, 15, "voxel volumes caves destruction dimension limits memory budget"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},

@@ -95,6 +95,9 @@ json PlayerConfig::toJson() const {
                           {"stepHeight", agent.stepHeight}, {"maxSlope", agent.maxSlope}});
     out["navigation"] = {{"areas", areas}, {"agentTypes", agents}, {"crowdMaxAgents", navigation.crowdMaxAgents},
                          {"webBakeBudgetMs", navigation.webBakeBudgetMs}, {"maxGridSolvesPerTick", navigation.maxGridSolvesPerTick}};
+    // (only when set: a game without them keeps its file)
+    if (voxelMaxDimension > 0 || voxelCpuBudgetMB > 0 || voxelMeshBudgetMB > 0)
+        out["voxel"] = {{"maxDimension", voxelMaxDimension}, {"cpuBudgetMB", voxelCpuBudgetMB}, {"meshBudgetMB", voxelMeshBudgetMB}};
     json textures = json::array();
     for (const Engine::TexturePlatformDefaults& group : textureDefaults)
         textures.push_back({{"quality", group.quality}, {"memoryBudgetMB", group.memoryBudgetMB}, {"lowMemoryFallback", group.lowMemoryFallback}});
@@ -206,6 +209,11 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         if (const auto input = in.find("input"); input != in.end()) {
             config.inputDeadzone = input->value("deadzone", config.inputDeadzone);
             config.inputActions = input->value("actions", "");
+        }
+        if (const auto voxel = in.find("voxel"); voxel != in.end()) {
+            config.voxelMaxDimension = voxel->value("maxDimension", 0);
+            config.voxelCpuBudgetMB = voxel->value("cpuBudgetMB", 0);
+            config.voxelMeshBudgetMB = voxel->value("meshBudgetMB", 0);
         }
         if (const auto navigation = in.find("navigation"); navigation != in.end()) {
             nav::NavigationSettings settings = nav::NavigationSettings::defaults();

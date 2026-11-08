@@ -245,6 +245,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
     b.menu("window.soundBrowser", "Sound Browser", AppMenuCommand::ToggleSoundBrowser);
     b.menu("window.audioCaptures", "Audio Captures", AppMenuCommand::ToggleAudioCaptures);
+    b.menu("window.voxelVolume", "Voxel Volume", AppMenuCommand::ToggleVoxelVolume).description = "Brushes, materials, overlays and stats of a Voxel Volume";
+    b.menu("window.voxelSlice", "Voxel Slice", AppMenuCommand::ToggleVoxelSlice).description = "One plane of a Voxel Volume, drawn on the CPU";
     b.menu("window.noiseGraph", "Noise Graph", AppMenuCommand::ToggleNoiseGraph).description = "Edit a Noise Graph: the node graphs that generate Terrains";
     b.menu("window.audioMixer", "Audio Mixer", AppMenuCommand::ToggleAudioMixer);
     b.menu("audioMixer.resetLoudness", "Reset Integrated Loudness", AppMenuCommand::ResetLoudness).description =
@@ -354,6 +356,19 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("lattice.expand", "Expand Point Selection", C::SceneView, "Ctrl+=", "Ctrl+NumpadAdd");
     b.add("lattice.shrink", "Shrink Point Selection", C::SceneView, "Ctrl+-", "Ctrl+NumpadSubtract");
     b.add("lattice.toggleFalloff", "Toggle Falloff", C::SceneView, "O").description = "Proportional editing of the lattice points";
+
+    // T6 R60: a Voxel Volume's brush, while it is armed and the pointer is over the Scene view
+    b.group = "Voxel Brush";
+    b.add("voxel.tool.dig", "Dig", C::VoxelBrush, "D").description = "Removes solid; Ctrl adds instead, Shift smooths";
+    b.add("voxel.tool.add", "Add", C::VoxelBrush, "A").description = "Adds solid; Ctrl digs instead, Shift smooths";
+    b.add("voxel.tool.smooth", "Smooth", C::VoxelBrush, "S");
+    b.add("voxel.tool.paint", "Paint", C::VoxelBrush, "P");
+    b.add("voxel.tool.pick", "Pick", C::VoxelBrush, "K").description = "The next click takes the material under the cursor";
+    b.add("voxel.brushSmaller", "Brush Smaller", C::VoxelBrush, "[").repeat = true;
+    b.add("voxel.brushLarger", "Brush Larger", C::VoxelBrush, "]").repeat = true;
+    b.add("voxel.disarm", "Put the Brush Down", C::VoxelBrush, "Escape").description = "Esc during a stroke cancels the stroke instead";
+    b.gesture("voxel.altClick", "Pick Material", C::VoxelBrush, "Alt+Left Click", "Takes the material under the cursor, with no stroke");
+    b.gesture("voxel.altDrag", "Orbit", C::VoxelBrush, "Alt+Left Drag", "Orbits the Scene view, as with every tool");
 
     b.group = "Terrain";
     b.add("terrain.brushSmaller", "Brush Smaller", C::SceneView, "[").repeat = true;   // also Paint Dye's radius

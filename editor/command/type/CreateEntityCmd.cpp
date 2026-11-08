@@ -71,6 +71,7 @@
 #include "object/environment/Water.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "particles/LegacyParticleConverter.h"
 
 #include <algorithm>
@@ -952,6 +953,11 @@ bool editor::CreateEntityCmd::execute(){
         polygonComp.points.push_back({Vector3(0, 100, 0), Vector4(1.0f, 1.0f, 1.0f, 1.0f)});
         polygonComp.points.push_back({Vector3(100, 100, 0), Vector4(1.0f, 1.0f, 1.0f, 1.0f)});
         polygonComp.needUpdatePolygon = true;
+
+    }else if (type == EntityCreationType::VOXEL_VOLUME){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<VoxelVolumeComponent>(entity, {});
 
     }else if (type == EntityCreationType::TERRAIN){
 
