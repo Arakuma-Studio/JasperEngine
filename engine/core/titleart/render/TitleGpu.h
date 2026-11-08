@@ -120,6 +120,10 @@ namespace jasperengine::titleart {
     struct TitleGpuStats {
         uint64_t passes = 0;            // draw passes run
         uint64_t clears = 0;            // clear-only passes
+        // the longest pass (its draw holds the driver's compile of a new variant) and its program
+        double slowestPassMs = 0.0;
+        uint32_t slowestProgram = 0;
+        bool slowestWasFirstDraw = false;   // its (program, state) key drew for the first time
     };
 
     // The first draw of a program in a pipeline state makes the driver compile that variant on the
@@ -137,6 +141,8 @@ namespace jasperengine::titleart {
     public:
         // true when `key` drew before, or no new key went this frame (then this one goes now)
         static bool allow(uint64_t key);
+        // `key` drew before
+        static bool drew(uint64_t key);
         // the keys of one step that draws them all at once (a 3D layer's render): as one new key
         static bool allowGroup(const std::vector<uint64_t>& keys);
         // no new key went this frame

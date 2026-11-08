@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleGpu.h"
+#include "diag/HangWatchdog.h"
 
 #include "pool/ShaderPool.h"
 #include "render/PipelineState.h"
@@ -9,6 +10,7 @@
 #include "render/SystemRender.h"
 
 #include <algorithm>
+#include <chrono>
 #include <unordered_set>
 #include <cstring>
 
@@ -267,6 +269,7 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
     // the first draw in this state compiles the driver's variant: one a frame
     const uint64_t drawKey = ((uint64_t)number << 32) ^ ((uint64_t)key.format << 24) ^ ((uint64_t)key.samples << 16) ^ ((uint64_t)key.depth << 8) ^
                              (uint64_t)desc.blend;
+    const bool firstDraw = !TitleFirstDraws::drew(drawKey);
     if (!TitleFirstDraws::allow(drawKey)) {
         deferredRun = true;
         return true;
@@ -303,6 +306,7 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
     state.target.sampleCount = std::max(1, key.samples);
     state.blend = desc.blend;
     bool drawn = false;
+    const auto drawStart = std::chrono::steady_clock::now();
     if (p.object.beginDraw(state)) {
         for (int i = 0; i < TITLE_TEXTURE_SLOTS; i++) {
             if (p.tex[i].first >= 0) p.object.addTexture(p.tex[i], ShaderStageType::FRAGMENT, desc.tex[i] ? desc.tex[i] : &placeholder);
@@ -316,6 +320,12 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
     }
     pass.endRenderPass();
     counters.passes++;
+    const double drawMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - drawStart).count();
+    if (drawMs > counters.slowestPassMs) {
+        counters.slowestPassMs = drawMs;
+        counters.slowestProgram = number;
+        counters.slowestWasFirstDraw = firstDraw;
+    }
     if (!drawn) {
         error = std::string("the title art program ") + titleRenderProgramName(number) + " could not draw";
         return false;
@@ -329,16 +339,18 @@ namespace {
 
     struct FirstDraws {
         std::unordered_set<uint64_t> drawn;
-        uint64_t frame = UINT64_MAX;
+        uint64_t beats = UINT64_MAX, commits = UINT64_MAX;
         uint64_t grants = 0;
         bool unbounded = false;
         TitleFirstDrawStats stats;
 
-        // the grants of the frame now
+        // the grants of the frame now: a frame ends at a main-loop heartbeat or at a commit (the
+        // editor commits only when a view redraws, so commits alone could hold a render forever)
         uint64_t& frameGrants() {
-            const uint64_t now = SystemRender::getFrameCount();
-            if (now != frame) {
-                frame = now;
+            const uint64_t nowBeats = diag::heartbeats(), nowCommits = SystemRender::getFrameCount();
+            if (nowBeats != beats || nowCommits != commits) {
+                beats = nowBeats;
+                commits = nowCommits;
                 grants = 0;
             }
             return grants;
@@ -350,6 +362,10 @@ namespace {
         return f;
     }
 
+}
+
+bool TitleFirstDraws::drew(uint64_t key) {
+    return firstDraws().drawn.count(key) > 0;
 }
 
 bool TitleFirstDraws::allow(uint64_t key) {
@@ -386,7 +402,7 @@ void TitleFirstDraws::resetForTesting(bool unbounded) {
     FirstDraws& f = firstDraws();
     f.drawn.clear();
     f.grants = 0;
-    f.frame = UINT64_MAX;
+    f.beats = f.commits = UINT64_MAX;
     f.unbounded = unbounded;
     f.stats = TitleFirstDrawStats();
 }

@@ -42,6 +42,7 @@ namespace jasperengine::titleart {
 
     class AssetResolver;
     class TitleContentProvider;
+    struct TitleGpuStats;
 
     // one glyph of a text layer rendered alone in a cell padded by the style's reach (S81's
     // Glyph Atlas, S85's cells): its back part (rims, glows) or front part (the face)
@@ -134,6 +135,8 @@ namespace jasperengine::titleart {
         // the cache's entries and bytes, the pool's targets (tests, the editor's stats)
         size_t cacheEntries() const;
         const TitleTargetPoolStats& poolStats() const;
+        // the GPU passes' counters (the longest pass: a new variant's driver compile)
+        const TitleGpuStats& gpuStats() const;
 
     private:
         struct Impl;
