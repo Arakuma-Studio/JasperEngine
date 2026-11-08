@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The pass order and the post follow Pachislop src/engine/three/Layer3DRenderer.ts, tonemap.ts,
-// hdrResolve.ts and resample.ts by SafEight, used with the author's permission.
+// The pass order and the post follow Pachislop src/engine/three/Layer3DRenderer.ts, ao.ts,
+// tonemap.ts, hdrResolve.ts and resample.ts by SafEight, used with the author's permission.
 
 #include "Title3DRenderer.h"
 
@@ -19,8 +19,10 @@
 #include "titleart/render/TitleRenderServices.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
+#include <set>
 
 using namespace jasperengine;
 using namespace jasperengine::titleart;
@@ -34,8 +36,14 @@ namespace {
     constexpr int RAMP_ROWS = 16;
     // procedural cubes kept per face size (a 1024 face is about 50 MB of half floats with mips)
     constexpr size_t CUBES_1024 = 3, CUBES_2048 = 1;
+    // an environment build's tile passes: at most this many px a side
+    constexpr int ENV_TILE = 128;
+    // a ready() call shorter than this grows the build share, a longer one than the second shrinks it
+    constexpr double ENV_FAST_MS = 4.0, ENV_SLOW_MS = 16.0;
+    // the gem's refraction thickness, a fraction of the source size (Pachislop GEM_THICKNESS)
+    constexpr double GEM_THICKNESS = 0.3;
 
-    enum PostProgram : uint32_t { TONEMAP = 1, MITCHELL_H = 2, MITCHELL_V = 3 };
+    enum PostProgram : uint32_t { TONEMAP = 1, MITCHELL_H = 2, MITCHELL_V = 3, AO = 4, AO_BLUR = 5, BEHIND = 6, BOX_DOWN = 7 };
     enum EnvProgram : uint32_t { PROCEDURAL = 1, PREFILTER = 2, EQUIRECT = 3, DOWNSAMPLE = 4 };
 
     struct alignas(16) VsBlock {
@@ -50,13 +58,16 @@ namespace {
         float camera[4], frame[4], env[4], grade[4], grade2[4];
         float lock0[4], lock1[4], lock2[4], view0[4], view1[4];
         float ambient[4], axisX[4], axisY[4];
+        float view2[4], aoDepth[4], behind[4];
+        float viewProj[16];
         float lights[LIGHTS_MAX * 2][4];
         float slots[16][4];
         float materials[MATERIALS_MAX * MATERIAL_VEC4S][4];
     };
 
     struct alignas(16) PostBlock {
-        float p0[4], p1[4];
+        float p0[4], p1[4], p2[4], p3[4];
+        float projInv[16];
     };
 
     struct alignas(16) EnvBlock {
@@ -80,28 +91,32 @@ namespace {
         ObjectRender object;
         bool loaded = false, failed = false;
         int block = -1;
-        std::pair<int, int> source{-1, -1};
+        std::pair<int, int> source{-1, -1}, aux{-1, -1}, aux2{-1, -1};
     };
 
-    // one Title Lit variant drawing one mesh
+    // one Title Lit variant drawing one mesh (triangles, or the wireframe's edges)
     struct LitObject {
         ObjectRender object;
         int vsBlock = -1, fsBlock = -1;
-        std::pair<int, int> env{-1, -1}, ramps{-1, -1}, spans{-1, -1}, base{-1, -1}, matcap{-1, -1};
+        std::pair<int, int> env{-1, -1}, ramps{-1, -1}, spans{-1, -1}, base{-1, -1}, matcap{-1, -1}, behind{-1, -1};
     };
 
     struct GpuMesh {
         uint64_t key = 0;
         std::shared_ptr<const TitleMesh> mesh;
-        BufferRender vertices, indices, wrap;
+        BufferRender vertices, indices, wrap, edges;
+        uint32_t edgeIndexCount = 0;
         std::map<uint32_t, std::unique_ptr<LitObject>> objects;
+        std::map<uint32_t, std::unique_ptr<LitObject>> lines;
         uint64_t lastUse = 0;
 
         ~GpuMesh() {
             for (auto& [bits, o] : objects) o->object.destroy();
+            for (auto& [bits, o] : lines) o->object.destroy();
             vertices.destroyBuffer();
             indices.destroyBuffer();
             wrap.destroyBuffer();
+            edges.destroyBuffer();
         }
     };
 
@@ -113,7 +128,42 @@ namespace {
         ~Cube() { texture.destroyTexture(); }
     };
 
+    // one tile pass of an environment build
+    enum class EnvTexture : uint8_t { None, Panorama, Source, Reduce, Made };
+    struct EnvItem {
+        EnvProgram program = PROCEDURAL;
+        EnvTexture target = EnvTexture::Source, from = EnvTexture::None;
+        int face = 0, level = 0, size = 0;
+        int x = 0, y = 0, w = 0, h = 0;
+        float roughness = 0, downsampleMode = 0;
+        int sourceLevel = 0;
+        uint64_t units = 0;
+    };
+
+    // an environment cube being built, a share of its passes per ready() call
+    struct EnvBuild {
+        uint64_t key = 0;
+        std::unique_ptr<Cube> made;
+        TextureRender source, reduce;
+        TitleUpload panorama;
+        bool hasReduce = false;
+        EnvBlock block;
+        int stops = 0, elements = 0;
+        float yaw = 0;
+        std::vector<EnvItem> items;
+        size_t next = 0;
+
+        ~EnvBuild() {
+            source.destroyTexture();
+            if (hasReduce) reduce.destroyTexture();
+        }
+    };
+
     const float CLEAR[4] = {0, 0, 0, 0};
+
+    double millisSince(std::chrono::steady_clock::time_point start) {
+        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    }
 
 }
 
@@ -121,8 +171,13 @@ struct Title3DRenderer::Impl {
     std::map<uint64_t, std::unique_ptr<Fullscreen>> fullscreen;     // by (type << 32 | properties)
     std::map<uint64_t, std::unique_ptr<GpuMesh>> meshes;
     std::map<uint64_t, std::unique_ptr<Cube>> cubes;
+    std::map<uint64_t, std::unique_ptr<EnvBuild>> builds;
+    uint64_t envShare = TITLE_ENV_STEP_UNITS;
     TextureRender placeholder2D, placeholderCube;
     bool placeholders = false;
+    // the gem behind copy and its scratch twin (box mips through two textures)
+    TextureRender behindCopy, behindScratch;
+    int behindWidth = 0, behindHeight = 0, behindLevels = 0;
     CameraRender pass;
     uint64_t clock = 0;
 
@@ -131,11 +186,21 @@ struct Title3DRenderer::Impl {
             if (p->loaded) p->object.destroy();
         }
         meshes.clear();
+        builds.clear();
         cubes.clear();
+        releaseBehind();
         if (placeholders) {
             placeholder2D.destroyTexture();
             placeholderCube.destroyTexture();
         }
+    }
+
+    void releaseBehind() {
+        if (behindWidth > 0) {
+            behindCopy.destroyTexture();
+            behindScratch.destroyTexture();
+        }
+        behindWidth = behindHeight = behindLevels = 0;
     }
 
     bool ensurePlaceholders() {
@@ -179,11 +244,18 @@ struct Title3DRenderer::Impl {
         ShaderData& data = p.shader->shaderData;
         p.block = data.getUniformBlockIndexByName(block);
         if (source) p.source = data.getTextureIndexByName(source);
+        if (type == ShaderType::TITLE_3D_POST) {
+            p.aux = data.getTextureIndexByName("u_tpAux");
+            p.aux2 = data.getTextureIndexByName("u_tpAux2");
+        }
         p.object.beginLoad(PrimitiveType::TRIANGLES);
         p.object.setShader(p.shader.get());
         if (p.source.first >= 0) {
             const bool cubeSource = type == ShaderType::TITLE_ENV && properties != EQUIRECT;
             p.object.addTexture(p.source, ShaderStageType::FRAGMENT, cubeSource ? &placeholderCube : &placeholder2D);
+        }
+        for (auto slot2 : {p.aux, p.aux2}) {
+            if (slot2.first >= 0) p.object.addTexture(slot2, ShaderStageType::FRAGMENT, &placeholder2D);
         }
         p.object.setImmediatePipelines(true);
         if (p.block < 0 || !p.object.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE)) {
@@ -198,144 +270,241 @@ struct Title3DRenderer::Impl {
 
     // ---- environments ----
 
-    Cube* cube(const Title3DPlan& plan, std::string& error, Title3DStats& stats) {
-        auto it = cubes.find(plan.environmentKey);
-        if (it != cubes.end()) {
-            it->second->lastUse = ++clock;
-            return it->second.get();
+    // the cube texture of a build's stage
+    TextureRender* envTexture(EnvBuild& b, EnvTexture t) {
+        switch (t) {
+            case EnvTexture::Panorama: return &b.panorama.texture();
+            case EnvTexture::Source: return &b.source;
+            case EnvTexture::Reduce: return &b.reduce;
+            case EnvTexture::Made: return &b.made->texture;
+            default: return nullptr;
         }
-        const bool panorama = plan.hdri != nullptr;
-        Fullscreen* procedural = panorama ? nullptr : program(ShaderType::TITLE_ENV, PROCEDURAL, "u_fs_titleEnv", nullptr, &error);
-        Fullscreen* equirect = panorama ? program(ShaderType::TITLE_ENV, EQUIRECT, "u_fs_titleEnv", "u_teEquirect", &error) : nullptr;
-        Fullscreen* downsample = panorama ? program(ShaderType::TITLE_ENV, DOWNSAMPLE, "u_fs_titleEnv", "u_teSource", &error) : nullptr;
-        Fullscreen* prefilter = program(ShaderType::TITLE_ENV, PREFILTER, "u_fs_titleEnv", "u_teSource", &error);
-        if ((!procedural && !panorama) || (panorama && (!equirect || !downsample)) || !prefilter) {
-            if (error.empty()) error = "the title environment programs are not ready";
-            return nullptr;
+    }
+
+    // the tiles of one face of one level, appended as items
+    static void addTiles(std::vector<EnvItem>& items, EnvItem item, uint64_t unitsPerTexel) {
+        const int size = item.size;
+        for (int y = 0; y < size; y += ENV_TILE) {
+            for (int x = 0; x < size; x += ENV_TILE) {
+                EnvItem t = item;
+                t.x = x;
+                t.y = y;
+                t.w = std::min(ENV_TILE, size - x);
+                t.h = std::min(ENV_TILE, size - y);
+                t.units = (uint64_t)t.w * (uint64_t)t.h * unitsPerTexel;
+                items.push_back(t);
+            }
         }
-        const int face = plan.environmentFace;
+    }
+
+    // a build's textures and its pass list (the programs are ready)
+    std::unique_ptr<EnvBuild> startBuild(const Title3DEnvPlan& env, std::string& error) {
+        auto b = std::make_unique<EnvBuild>();
+        b->key = env.key;
+        const int face = env.face;
         const int levels = titleEnvironmentLevels(face);
-        // the source chain: the scene box-filtered at every level (each level evaluated on its own
-        // 4 x 4 grid, so no level reads another)
-        TextureRender source;
+        const bool panorama = env.hdri != nullptr;
         auto createCube = [&](TextureRender& t) {
             return t.createFramebufferTexture(TextureType::TEXTURE_CUBE, false, false, face, face, TextureFilter::LINEAR_MIPMAP_LINEAR,
                                               TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE, ColorFormat::RGBA16F,
                                               1, false, false, levels);
         };
-        auto made = std::make_unique<Cube>();
-        if (!createCube(source) || !createCube(made->texture)) {
-            source.destroyTexture();
+        b->made = std::make_unique<Cube>();
+        b->made->key = env.key;
+        b->made->face = face;
+        b->made->levels = levels;
+        if (!createCube(b->source) || !createCube(b->made->texture)) {
             error = "the title environment cube (" + std::to_string(face) + " px) could not be made";
             return nullptr;
         }
-        EnvBlock block;
-        std::memset(&block, 0, sizeof(block));
-        const TitleEnvScene& scene = *plan.scene;
-        const size_t stops = std::min<size_t>(scene.sky.size(), TITLE_ENV_MAX_STOPS);
-        for (size_t i = 0; i < stops; i++) std::memcpy(block.stops[i], scene.sky[i].data(), sizeof(float) * 4);
-        const size_t elements = std::min<size_t>(scene.elements.size(), TITLE_ENV_MAX_ELEMENTS);
-        for (size_t i = 0; i < elements; i++) {
-            const TitleEnvElement& e = scene.elements[i];
-            const float extra = e.kind == TitleEnvElementKind::Disc || e.kind == TitleEnvElementKind::Tube ? e.radius : 0.0f;
-            set4(block.elements[i * 3], (float)e.kind, e.a[0], e.a[1], e.a[2]);
-            if (e.kind == TitleEnvElementKind::Tube) {
-                set4(block.elements[i * 3 + 1], e.b[0], e.b[1], e.b[2], extra);
-            } else {
-                set4(block.elements[i * 3 + 1], e.width, e.height, 0, extra);
-            }
-            set4(block.elements[i * 3 + 2], e.radiance[0], e.radiance[1], e.radiance[2], e.edge);
-        }
-        auto run = [&](Fullscreen& p, TextureRender& target, TextureRender* from, int level, int faceIndex) {
-            pass.setColorActions(LoadAction::DONTCARE, StoreAction::STORE);
-            pass.setDepthStencilActions(LoadAction::DONTCARE, StoreAction::DONTCARE);
-            pass.setLabel("title environment");
-            pass.startRenderPass(&target, (size_t)faceIndex, level);
-            PipelineState state;
-            state.target.color = ColorFormat::RGBA16F;
-            state.target.depth = DepthStencilFormat::NONE;
-            state.blend = BlendMode::NONE;
-            if (p.object.beginDraw(state)) {
-                if (from && p.source.first >= 0) p.object.addTexture(p.source, ShaderStageType::FRAGMENT, from);
-                p.object.applyUniformBlock(p.block, sizeof(EnvBlock), &block);
-                p.object.draw(0, 3, 1);
-            }
-            pass.endRenderPass();
-        };
         if (panorama) {
-            // the panorama into the top level, then each level a box of the one above through a
-            // second cube (a pass never samples the texture it renders to)
-            TitleUpload pano;
-            TextureRender reduce;
-            if (!pano.create("title environment panorama", plan.hdri->width, plan.hdri->height, ColorFormat::RGBA16F, plan.hdri->rgba.data(),
-                             plan.hdri->rgba.size() * 2, TextureFilter::LINEAR, TextureWrap::REPEAT, TextureWrap::CLAMP_TO_EDGE) ||
-                !createCube(reduce)) {
-                source.destroyTexture();
-                reduce.destroyTexture();
+            b->hasReduce = createCube(b->reduce);
+            if (!b->hasReduce ||
+                !b->panorama.create("title environment panorama", env.hdri->width, env.hdri->height, ColorFormat::RGBA16F, env.hdri->rgba.data(),
+                                    env.hdri->rgba.size() * 2, TextureFilter::LINEAR, TextureWrap::REPEAT, TextureWrap::CLAMP_TO_EDGE)) {
                 error = "the title environment's panorama could not be uploaded";
                 return nullptr;
             }
+        }
+        std::memset(&b->block, 0, sizeof(b->block));
+        const TitleEnvScene& scene = *env.scene;
+        b->stops = (int)std::min<size_t>(scene.sky.size(), TITLE_ENV_MAX_STOPS);
+        for (int i = 0; i < b->stops; i++) std::memcpy(b->block.stops[i], scene.sky[(size_t)i].data(), sizeof(float) * 4);
+        b->elements = (int)std::min<size_t>(scene.elements.size(), TITLE_ENV_MAX_ELEMENTS);
+        for (int i = 0; i < b->elements; i++) {
+            const TitleEnvElement& e = scene.elements[(size_t)i];
+            const float extra = e.kind == TitleEnvElementKind::Disc || e.kind == TitleEnvElementKind::Tube ? e.radius : 0.0f;
+            set4(b->block.elements[i * 3], (float)e.kind, e.a[0], e.a[1], e.a[2]);
+            if (e.kind == TitleEnvElementKind::Tube) {
+                set4(b->block.elements[i * 3 + 1], e.b[0], e.b[1], e.b[2], extra);
+            } else {
+                set4(b->block.elements[i * 3 + 1], e.width, e.height, 0, extra);
+            }
+            set4(b->block.elements[i * 3 + 2], e.radiance[0], e.radiance[1], e.radiance[2], e.edge);
+        }
+        b->yaw = env.hdriYaw;
+        // the source chain: a procedural scene box-filtered at every level (each level evaluated on
+        // its own 4 x 4 grid, so no level reads another); a panorama into the top level, then each
+        // level a box of the one above through the reduce cube (a pass never samples the texture it
+        // renders to); then the GGX prefilter of every level
+        std::vector<EnvItem>& items = b->items;
+        if (panorama) {
             for (int f = 0; f < 6; f++) {
-                set4(block.params, (float)f, 0, 0, (float)face);
-                set4(block.source, (float)face, (float)levels, 0, (float)stops);
-                set4(block.counts, (float)elements, plan.hdriYaw);
-                run(*equirect, source, &pano.texture(), 0, f);
+                EnvItem item;
+                item.program = EQUIRECT;
+                item.target = EnvTexture::Source;
+                item.from = EnvTexture::Panorama;
+                item.face = f;
+                item.size = face;
+                addTiles(items, item, 4);
             }
             for (int level = 1; level < levels; level++) {
                 const int size = std::max(1, face >> level);
                 for (int f = 0; f < 6; f++) {
-                    set4(block.params, (float)f, 0, 2, (float)size);
-                    set4(block.source, (float)face, (float)levels, (float)(level - 1), (float)stops);
-                    run(*downsample, reduce, &source, level, f);
+                    EnvItem item;
+                    item.program = DOWNSAMPLE;
+                    item.target = EnvTexture::Reduce;
+                    item.from = EnvTexture::Source;
+                    item.face = f;
+                    item.level = level;
+                    item.size = size;
+                    item.downsampleMode = 2;
+                    item.sourceLevel = level - 1;
+                    addTiles(items, item, 4);
                 }
                 for (int f = 0; f < 6; f++) {
-                    set4(block.params, (float)f, 0, 1, (float)size);
-                    set4(block.source, (float)face, (float)levels, (float)level, (float)stops);
-                    run(*downsample, source, &reduce, level, f);
+                    EnvItem item;
+                    item.program = DOWNSAMPLE;
+                    item.target = EnvTexture::Source;
+                    item.from = EnvTexture::Reduce;
+                    item.face = f;
+                    item.level = level;
+                    item.size = size;
+                    item.downsampleMode = 1;
+                    item.sourceLevel = level;
+                    addTiles(items, item, 1);
                 }
             }
-            reduce.destroyTexture();
         } else {
             for (int level = 0; level < levels; level++) {
-                const int size = std::max(1, face >> level);
                 for (int f = 0; f < 6; f++) {
-                    set4(block.params, (float)f, 0, 0, (float)size);
-                    set4(block.source, (float)face, (float)levels, 0, (float)stops);
-                    set4(block.counts, (float)elements);
-                    run(*procedural, source, nullptr, level, f);
+                    EnvItem item;
+                    item.program = PROCEDURAL;
+                    item.target = EnvTexture::Source;
+                    item.face = f;
+                    item.level = level;
+                    item.size = std::max(1, face >> level);
+                    addTiles(items, item, 16u * (uint64_t)(1 + b->elements));
                 }
             }
         }
         for (int level = 0; level < levels; level++) {
-            const int size = std::max(1, face >> level);
             const float roughness = titleEnvironmentRoughness(level, face);
             for (int f = 0; f < 6; f++) {
-                set4(block.params, (float)f, roughness, 128, (float)size);
-                set4(block.source, (float)face, (float)levels, 0, (float)stops);
-                run(*prefilter, made->texture, &source, level, f);
+                EnvItem item;
+                item.program = PREFILTER;
+                item.target = EnvTexture::Made;
+                item.from = EnvTexture::Source;
+                item.face = f;
+                item.level = level;
+                item.size = std::max(1, face >> level);
+                item.roughness = roughness;
+                addTiles(items, item, roughness <= 0 ? 1 : 128);
             }
         }
-        source.destroyTexture();
-        stats.environmentBuilds++;
-        made->key = plan.environmentKey;
-        made->face = face;
-        made->levels = levels;
+        return b;
+    }
+
+    // one tile pass
+    bool runItem(EnvBuild& b, const EnvItem& item, int face, int levels, std::string& error) {
+        Fullscreen* p = nullptr;
+        switch (item.program) {
+            case PROCEDURAL: p = program(ShaderType::TITLE_ENV, PROCEDURAL, "u_fs_titleEnv", nullptr, &error); break;
+            case EQUIRECT: p = program(ShaderType::TITLE_ENV, EQUIRECT, "u_fs_titleEnv", "u_teEquirect", &error); break;
+            case DOWNSAMPLE: p = program(ShaderType::TITLE_ENV, DOWNSAMPLE, "u_fs_titleEnv", "u_teSource", &error); break;
+            case PREFILTER: p = program(ShaderType::TITLE_ENV, PREFILTER, "u_fs_titleEnv", "u_teSource", &error); break;
+        }
+        if (!p) {
+            if (error.empty()) error = "the title environment programs are not ready";
+            return false;
+        }
+        EnvBlock& block = b.block;
+        switch (item.program) {
+            case PROCEDURAL:
+                set4(block.params, (float)item.face, 0, 0, (float)item.size);
+                set4(block.source, (float)face, (float)levels, 0, (float)b.stops);
+                set4(block.counts, (float)b.elements);
+                break;
+            case EQUIRECT:
+                set4(block.params, (float)item.face, 0, 0, (float)face);
+                set4(block.source, (float)face, (float)levels, 0, (float)b.stops);
+                set4(block.counts, (float)b.elements, b.yaw);
+                break;
+            case DOWNSAMPLE:
+                set4(block.params, (float)item.face, 0, item.downsampleMode, (float)item.size);
+                set4(block.source, (float)face, (float)levels, (float)item.sourceLevel, (float)b.stops);
+                break;
+            case PREFILTER:
+                set4(block.params, (float)item.face, item.roughness, 128, (float)item.size);
+                set4(block.source, (float)face, (float)levels, 0, (float)b.stops);
+                break;
+        }
+        const bool whole = item.w == item.size && item.h == item.size;
+        pass.setColorActions(whole ? LoadAction::DONTCARE : LoadAction::LOAD, StoreAction::STORE);
+        pass.setDepthStencilActions(LoadAction::DONTCARE, StoreAction::DONTCARE);
+        pass.setLabel("title environment");
+        pass.startRenderPass(envTexture(b, item.target), (size_t)item.face, item.level);
+        if (!whole) pass.applyScissorTopLeft(item.x, item.y, item.w, item.h);
+        PipelineState state;
+        state.target.color = ColorFormat::RGBA16F;
+        state.target.depth = DepthStencilFormat::NONE;
+        state.blend = BlendMode::NONE;
+        if (p->object.beginDraw(state)) {
+            TextureRender* from = envTexture(b, item.from);
+            if (from && p->source.first >= 0) p->object.addTexture(p->source, ShaderStageType::FRAGMENT, from);
+            p->object.applyUniformBlock(p->block, sizeof(EnvBlock), &block);
+            p->object.draw(0, 3, 1);
+        }
+        pass.endRenderPass();
+        return true;
+    }
+
+    // runs a build's passes until `budget` units are spent (at least one); true when complete
+    bool advance(EnvBuild& b, uint64_t budget, uint64_t& used, std::string& error) {
+        const int face = b.made->face, levels = b.made->levels;
+        used = 0;
+        while (b.next < b.items.size()) {
+            const EnvItem& item = b.items[b.next];
+            if (used > 0 && used + item.units > budget) break;
+            if (!runItem(b, item, face, levels, error)) return false;
+            used += item.units;
+            b.next++;
+        }
+        return b.next >= b.items.size();
+    }
+
+    // a completed build's cube into the cache (keeps 3 cubes at 1024 and 1 at 2048, least
+    // recently used go first)
+    Cube* finish(std::unique_ptr<EnvBuild> b, Title3DStats& stats) {
+        std::unique_ptr<Cube> made = std::move(b->made);
         made->lastUse = ++clock;
         Cube* out = made.get();
-        cubes[plan.environmentKey] = std::move(made);
-        // keep 3 cubes at 1024 and 1 at 2048 (least recently used go first)
+        const uint64_t key = made->key;
+        b.reset();
+        cubes[key] = std::move(made);
+        stats.environmentBuilds++;
         for (int faceSize : {1024, 2048}) {
             const size_t keep = faceSize == 2048 ? CUBES_2048 : CUBES_1024;
             while (true) {
                 size_t count = 0;
                 uint64_t oldest = UINT64_MAX;
                 uint64_t victim = 0;
-                for (auto& [key, c] : cubes) {
+                for (auto& [k, c] : cubes) {
                     if (c->face != faceSize) continue;
                     count++;
                     if (c->lastUse < oldest && c.get() != out) {
                         oldest = c->lastUse;
-                        victim = key;
+                        victim = k;
                     }
                 }
                 if (count <= keep || oldest == UINT64_MAX) break;
@@ -343,6 +512,41 @@ struct Title3DRenderer::Impl {
             }
         }
         return out;
+    }
+
+    bool envProgramsReady(const Title3DEnvPlan& env, std::string& error) {
+        const std::vector<uint32_t> programs = env.hdri ? std::vector<uint32_t>{EQUIRECT, DOWNSAMPLE, PREFILTER}
+                                                        : std::vector<uint32_t>{PROCEDURAL, PREFILTER};
+        for (uint32_t p : programs) {
+            if (!shaderOf(ShaderType::TITLE_ENV, p, &error)) return false;
+        }
+        return true;
+    }
+
+    // the cube of an environment: cached, else built to the end now (a render that did not wait
+    // for ready())
+    Cube* cube(const Title3DEnvPlan& env, std::string& error, Title3DStats& stats) {
+        auto it = cubes.find(env.key);
+        if (it != cubes.end()) {
+            it->second->lastUse = ++clock;
+            return it->second.get();
+        }
+        std::unique_ptr<EnvBuild>& slot = builds[env.key];
+        if (!slot) slot = startBuild(env, error);
+        if (!slot) {
+            builds.erase(env.key);
+            return nullptr;
+        }
+        uint64_t used = 0;
+        if (!advance(*slot, UINT64_MAX, used, error)) {
+            if (error.empty()) error = "the title environment could not be built";
+            builds.erase(env.key);
+            return nullptr;
+        }
+        stats.environmentMaxStepUnits = std::max(stats.environmentMaxStepUnits, used);
+        std::unique_ptr<EnvBuild> done = std::move(slot);
+        builds.erase(env.key);
+        return finish(std::move(done), stats);
     }
 
     // ---- meshes ----
@@ -384,9 +588,40 @@ struct Title3DRenderer::Impl {
         return out;
     }
 
-    LitObject* lit(GpuMesh& g, uint32_t bits, std::string* error) {
-        auto it = g.objects.find(bits);
-        if (it != g.objects.end()) return it->second.get();
+    // the mesh's unique edges (the wireframe debug view), made on first use
+    bool ensureEdges(GpuMesh& g) {
+        if (g.edgeIndexCount > 0) return true;
+        const TitleMesh& m = *g.mesh;
+        std::set<std::pair<uint32_t, uint32_t>> unique;
+        const size_t count = m.indexCount();
+        for (size_t t = 0; t + 2 < count; t += 3) {
+            for (int e = 0; e < 3; e++) {
+                const uint32_t a = m.index(t + (size_t)e), b = m.index(t + (size_t)((e + 1) % 3));
+                if (a != b) unique.insert({std::min(a, b), std::max(a, b)});
+            }
+        }
+        std::vector<uint32_t> lines;
+        lines.reserve(unique.size() * 2);
+        for (const auto& [a, b] : unique) {
+            lines.push_back(a);
+            lines.push_back(b);
+        }
+        if (lines.empty() ||
+            !g.edges.createBuffer((unsigned)(lines.size() * 4), lines.data(), BufferType::INDEX_BUFFER, BufferUsage::IMMUTABLE)) {
+            return false;
+        }
+        g.edgeIndexCount = (uint32_t)lines.size();
+        return true;
+    }
+
+    LitObject* lit(GpuMesh& g, uint32_t bits, bool edges, std::string* error) {
+        auto& objects = edges ? g.lines : g.objects;
+        auto it = objects.find(bits);
+        if (it != objects.end()) return it->second.get();
+        if (edges && !ensureEdges(g)) {
+            if (error) *error = "the 3D title's wireframe could not be made";
+            return nullptr;
+        }
         std::shared_ptr<ShaderRender> shader = shaderOf(ShaderType::TITLE_LIT, bits, error);
         if (!shader || !ensurePlaceholders()) return nullptr;
         auto o = std::make_unique<LitObject>();
@@ -398,8 +633,10 @@ struct Title3DRenderer::Impl {
         o->ramps = data.getTextureIndexByName("u_tlRamps");
         o->spans = data.getTextureIndexByName("u_tlSpans");
         o->base = data.getTextureIndexByName("u_tlBase");
+        o->behind = data.getTextureIndexByName("u_tlBehind");
+        const PrimitiveType primitive = edges ? PrimitiveType::LINES : PrimitiveType::TRIANGLES;
         ObjectRender& r = o->object;
-        r.beginLoad(PrimitiveType::TRIANGLES);
+        r.beginLoad(primitive);
         r.setShader(shader.get());
         const unsigned stride = sizeof(TitleMeshVertex);
         r.addAttribute(data.getAttrIndexByName("a_position"), &g.vertices, 3, AttributeDataType::FLOAT, stride, 0, false, false);
@@ -408,43 +645,48 @@ struct Title3DRenderer::Impl {
         if (bits & TitleLitBits::WRAP_UV) {
             r.addAttribute(data.getAttrIndexByName("a_wrap"), &g.wrap, 2, AttributeDataType::HALF, 4, 0, false, false);
         }
-        r.setIndex(&g.indices, g.mesh->wideIndices ? AttributeDataType::UNSIGNED_INT : AttributeDataType::UNSIGNED_SHORT, 0);
+        const bool wide = edges || g.mesh->wideIndices;
+        r.setIndex(edges ? &g.edges : &g.indices, wide ? AttributeDataType::UNSIGNED_INT : AttributeDataType::UNSIGNED_SHORT, 0);
         for (auto slot : {o->env, o->matcap}) {
             if (slot.first >= 0) r.addTexture(slot, ShaderStageType::FRAGMENT, slot == o->env ? &placeholderCube : &placeholder2D);
         }
-        for (auto slot : {o->ramps, o->spans, o->base}) {
+        for (auto slot : {o->ramps, o->spans, o->base, o->behind}) {
             if (slot.first >= 0) r.addTexture(slot, ShaderStageType::FRAGMENT, &placeholder2D);
         }
         r.setImmediatePipelines(true);
-        if (o->vsBlock < 0 || o->fsBlock < 0 ||
-            !r.endLoadDynamic(PrimitiveType::TRIANGLES, g.mesh->wideIndices ? IndexType::UINT32 : IndexType::UINT16)) {
+        if (o->vsBlock < 0 || o->fsBlock < 0 || !r.endLoadDynamic(primitive, wide ? IndexType::UINT32 : IndexType::UINT16)) {
             r.destroy();
             if (error) *error = "the Title Lit variant " + ShaderPool::getShaderStr(ShaderType::TITLE_LIT, bits) + " could not be loaded";
             return nullptr;
         }
         LitObject* out = o.get();
-        g.objects[bits] = std::move(o);
+        objects[bits] = std::move(o);
         return out;
     }
 
-    bool fullscreenPass(Fullscreen& p, TitleTarget* target, TextureRender* source, const PostBlock& block, std::string& error) {
-        auto* t = static_cast<SokolTitleTarget*>(target);
-        if (!t) {
-            error = "device_lost: a 3D title target is gone";
-            return false;
-        }
+    // a fullscreen post pass into a texture level (or a pool target's framebuffer)
+    bool post(Fullscreen& p, TitleTarget* target, TextureRender* level, int mip, ColorFormat format, TextureRender* source,
+              TextureRender* aux, TextureRender* aux2, const PostBlock& block, std::string& error) {
         pass.setColorActions(LoadAction::DONTCARE, StoreAction::STORE);
         pass.setDepthStencilActions(LoadAction::DONTCARE, StoreAction::DONTCARE);
         pass.setLabel("title 3d post");
-        pass.startRenderPass(&t->framebuffer());
+        if (target) {
+            auto* t = static_cast<SokolTitleTarget*>(target);
+            pass.startRenderPass(&t->framebuffer());
+            format = t->key().format;
+        } else {
+            pass.startRenderPass(level, 0, mip);
+        }
         PipelineState state;
-        state.target.color = t->key().format;
+        state.target.color = format;
         state.target.depth = DepthStencilFormat::NONE;
         state.target.sampleCount = 1;
         state.blend = BlendMode::NONE;
         bool drawn = false;
         if (p.object.beginDraw(state)) {
-            if (p.source.first >= 0) p.object.addTexture(p.source, ShaderStageType::FRAGMENT, source);
+            if (p.source.first >= 0) p.object.addTexture(p.source, ShaderStageType::FRAGMENT, source ? source : &placeholder2D);
+            if (p.aux.first >= 0) p.object.addTexture(p.aux, ShaderStageType::FRAGMENT, aux ? aux : &placeholder2D);
+            if (p.aux2.first >= 0) p.object.addTexture(p.aux2, ShaderStageType::FRAGMENT, aux2 ? aux2 : &placeholder2D);
             p.object.applyUniformBlock(p.block, sizeof(PostBlock), (void*)&block);
             p.object.draw(0, 3, 1);
             drawn = true;
@@ -452,6 +694,37 @@ struct Title3DRenderer::Impl {
         pass.endRenderPass();
         if (!drawn) error = "a 3D title post pass could not draw";
         return drawn;
+    }
+
+    bool fullscreenPass(Fullscreen& p, TitleTarget* target, TextureRender* source, const PostBlock& block, std::string& error,
+                        TextureRender* aux = nullptr, TextureRender* aux2 = nullptr) {
+        if (!target) {
+            error = "device_lost: a 3D title target is gone";
+            return false;
+        }
+        return post(p, target, nullptr, 0, ColorFormat::RGBA, source, aux, aux2, block, error);
+    }
+
+    // the gem behind copy at `width` x `height` with every level (kept between renders of that size)
+    bool ensureBehind(int width, int height) {
+        if (behindWidth == width && behindHeight == height) return true;
+        releaseBehind();
+        int levels = 1;
+        while ((std::max(width, height) >> levels) > 0) levels++;
+        auto make = [&](TextureRender& t) {
+            return t.createFramebufferTexture(TextureType::TEXTURE_2D, false, false, width, height, TextureFilter::LINEAR_MIPMAP_LINEAR,
+                                              TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE, ColorFormat::RGBA16F,
+                                              1, false, false, levels);
+        };
+        if (!make(behindCopy)) return false;
+        if (!make(behindScratch)) {
+            behindCopy.destroyTexture();
+            return false;
+        }
+        behindWidth = width;
+        behindHeight = height;
+        behindLevels = levels;
+        return true;
     }
 };
 
@@ -467,27 +740,99 @@ bool Title3DRenderer::compressedLight(const Title3DPlan& plan, uint32_t testFlag
     return !(f.renderRGBA16F && f.blendRGBA16F && f.filterRGBA16F && msaa);
 }
 
+namespace {
+
+    bool wantsAO(const Title3DPlan& plan) {
+        return plan.ao || plan.debugView == Title3DDebugView::AO;
+    }
+
+    bool floatPasses() {
+        const RenderFeatures& f = SystemRender::getFeatures();
+        return f.renderRGBA16F && f.filterRGBA16F;
+    }
+
+    bool debugGeometry(const Title3DPlan& plan) {
+        return plan.debugView == Title3DDebugView::Normals || plan.debugView == Title3DDebugView::Environment ||
+               plan.debugView == Title3DDebugView::Wireframe;
+    }
+
+    // whether the render makes the gem behind copy (float passes, not a geometry view)
+    bool behindActive(const Title3DPlan& plan, uint32_t testFlags) {
+        return plan.behind && floatPasses() && !debugGeometry(plan) && !(testFlags & TITLE_ART_TEST_NO_BEHIND);
+    }
+
+    // a slot's Title Lit variant in this render
+    uint32_t slotBits(const Title3DSlotMaterial& slot, bool compressed, bool behind) {
+        uint32_t bits = slot.bits | (compressed ? TitleLitBits::HDR_COMPRESS : 0u);
+        if (!behind) bits &= ~TitleLitBits::GEM_BEHIND;
+        return bits;
+    }
+
+    // the Title Lit bits of the AO prepass and the wireframe (geometry only)
+    uint32_t geometryBits(const Title3DPlan& plan, uint32_t output) {
+        return (plan.mesh && !plan.mesh->rigs.empty() ? TitleLitBits::RIGS : 0u) | (output << TitleLitBits::OUTPUT_SHIFT);
+    }
+
+}
+
 uint32_t Title3DRenderer::passCount(const Title3DPlan& plan) {
-    // main, tone map, and the two Mitchell passes when supersampled
-    return 2u + (plan.k > 1 ? 2u : 0u);
+    // main, tone map, and the two Mitchell passes when supersampled; the AO prepass, SAO and its
+    // two blurs; the behind copy, its levels and the main pass's second half
+    uint32_t passes = 2u + (plan.k > 1 ? 2u : 0u);
+    if (wantsAO(plan)) passes += 4u;
+    if (plan.behind) passes += 2u + 2u * 8u;
+    return passes;
 }
 
 bool Title3DRenderer::ready(const Title3DPlan& plan, uint32_t testFlags) {
     const bool compressed = compressedLight(plan, testFlags);
+    const bool behind = behindActive(plan, testFlags);
     std::string error;
     for (const Title3DSlotMaterial& s : plan.slots) {
-        const uint32_t bits = s.bits | (compressed ? TitleLitBits::HDR_COMPRESS : 0u);
-        if (!impl->shaderOf(ShaderType::TITLE_LIT, bits, &error) && error.empty()) return false;
+        if (!impl->shaderOf(ShaderType::TITLE_LIT, slotBits(s, compressed, behind), &error) && error.empty()) return false;
     }
-    for (uint32_t p : {TONEMAP, MITCHELL_H, MITCHELL_V}) {
+    std::vector<uint32_t> posts = {TONEMAP, MITCHELL_H, MITCHELL_V};
+    if (wantsAO(plan)) {
+        posts.insert(posts.end(), {AO, AO_BLUR});
+        if (!impl->shaderOf(ShaderType::TITLE_LIT, geometryBits(plan, 3), &error) && error.empty()) return false;
+    }
+    if (behind) posts.insert(posts.end(), {BEHIND, BOX_DOWN});
+    if (plan.debugView == Title3DDebugView::Wireframe) {
+        if (!impl->shaderOf(ShaderType::TITLE_LIT, geometryBits(plan, 1), &error) && error.empty()) return false;
+    }
+    for (uint32_t p : posts) {
         if (!impl->shaderOf(ShaderType::TITLE_3D_POST, p, &error) && error.empty()) return false;
     }
-    if (!impl->cubes.count(plan.environmentKey)) {
-        const std::vector<uint32_t> programs = plan.hdri ? std::vector<uint32_t>{EQUIRECT, DOWNSAMPLE, PREFILTER}
-                                                         : std::vector<uint32_t>{PROCEDURAL, PREFILTER};
-        for (uint32_t p : programs) {
-            if (!impl->shaderOf(ShaderType::TITLE_ENV, p, &error) && error.empty()) return false;
+    // the environments: a share of a build per call, so a cube never stalls a frame
+    for (const Title3DEnvPlan& env : plan.environments) {
+        if (env.matcap || impl->cubes.count(env.key)) continue;
+        if (!impl->envProgramsReady(env, error)) return !error.empty();
+        std::unique_ptr<EnvBuild>& slot = impl->builds[env.key];
+        if (!slot) slot = impl->startBuild(env, error);
+        if (!slot) {
+            impl->builds.erase(env.key);
+            return true;    // the render reports the error
         }
+        const auto start = std::chrono::steady_clock::now();
+        const uint64_t share = (testFlags & TITLE_ART_TEST_ENV_ONE_SHOT) ? UINT64_MAX : impl->envShare;
+        uint64_t used = 0;
+        const bool complete = impl->advance(*slot, share, used, error);
+        const double ms = millisSince(start);
+        counters.environmentSteps++;
+        counters.environmentMaxStepUnits = std::max(counters.environmentMaxStepUnits, used);
+        if (!(testFlags & TITLE_ART_TEST_ENV_ONE_SHOT)) {
+            if (ms < ENV_FAST_MS) impl->envShare = std::min(TITLE_ENV_STEP_UNITS_MAX, impl->envShare * 2);
+            else if (ms > ENV_SLOW_MS) impl->envShare = std::max(TITLE_ENV_STEP_UNITS / 4, impl->envShare / 2);
+        }
+        if (!error.empty()) {
+            impl->builds.erase(env.key);
+            return true;
+        }
+        if (!complete) return false;
+        std::unique_ptr<EnvBuild> done = std::move(slot);
+        impl->builds.erase(env.key);
+        impl->finish(std::move(done), counters);
+        return false;   // the next call goes on with the next build, or renders
     }
     return true;
 }
@@ -504,10 +849,12 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
     if (plan.tier == TitleTier::High) samples = 2;
     if (compressed ? !features.msaaRGBA8 : (testFlags & TITLE_ART_TEST_NO_FLOAT_MSAA) != 0) samples = 1;
 
-    Cube* env = nullptr;
-    if (!plan.matcap) {
-        env = im.cube(plan, error, counters);
-        if (!env) return false;
+    // the environments of the layer and its parts
+    std::vector<Cube*> envCubes(plan.environments.size(), nullptr);
+    for (size_t i = 0; i < plan.environments.size(); i++) {
+        if (plan.environments[i].matcap) continue;
+        envCubes[i] = im.cube(plan.environments[i], error, counters);
+        if (!envCubes[i]) return false;
     }
     GpuMesh* gpuMesh = im.mesh(plan, error, counters);
     if (!gpuMesh) return false;
@@ -557,15 +904,23 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
     FsBlock fs;
     std::memset(&fs, 0, sizeof(fs));
     const double exposure = plan.lighting.exposure;
-    const Environment3D& e = plan.lighting.environment;
     set4(fs.camera, camera.position[0], camera.position[1], camera.position[2], (float)exposure);
-    const bool shoulder = !compressed && samples > 1 && k == 1 && plan.debugView == 0;
-    set4(fs.frame, (float)e.intensity, (float)(e.rotation * 3.14159265358979323846 / 180.0), shoulder ? 1.0f : 0.0f, (float)(plan.size / 100.0));
-    const int face = env ? env->face : 512;
-    set4(fs.env, (float)std::log2(face / 512.0), (float)((env ? env->levels : 1) - 1), (float)e.blur,
-         (e.repeatX != 1 || e.repeatY != 1) ? 1.0f : 0.0f);
-    const auto tint = linear(e.tint);
-    set4(fs.grade, tint[0], tint[1], tint[2], (float)e.saturation);
+    const bool shoulder = !compressed && samples > 1 && k == 1 && plan.debugView == Title3DDebugView::None;
+    // an environment's lookup uniforms (the layer's, or a part's own before its draws)
+    auto setEnvironment = [&](size_t index) {
+        const Title3DEnvPlan& envPlan = plan.environments[std::min(index, plan.environments.size() - 1)];
+        const Environment3D& e = envPlan.environment;
+        const Cube* c = index < envCubes.size() ? envCubes[index] : nullptr;
+        set4(fs.frame, (float)e.intensity, (float)(e.rotation * 3.14159265358979323846 / 180.0), shoulder ? 1.0f : 0.0f, (float)(plan.size / 100.0));
+        const int face = c ? c->face : 512;
+        set4(fs.env, (float)std::log2(face / 512.0), (float)((c ? c->levels : 1) - 1), (float)e.blur,
+             (e.repeatX != 1 || e.repeatY != 1) ? 1.0f : 0.0f);
+        const auto tint = linear(e.tint);
+        set4(fs.grade, tint[0], tint[1], tint[2], (float)e.saturation);
+        fs.grade2[0] = (float)e.contrast;
+        fs.grade2[1] = (float)e.repeatX;
+        fs.grade2[2] = (float)e.repeatY;
+    };
     // env lock: lookups with the layer's own rotation removed
     Mat4 lock;
     if (plan.style.envLock) {
@@ -583,8 +938,14 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
     set4(fs.lock0, lock.at(0, 0), lock.at(0, 1), lock.at(0, 2));
     set4(fs.lock1, lock.at(1, 0), lock.at(1, 1), lock.at(1, 2));
     set4(fs.lock2, lock.at(2, 0), lock.at(2, 1), lock.at(2, 2));
-    set4(fs.view0, camera.view.at(0, 0), camera.view.at(0, 1), camera.view.at(0, 2));
-    set4(fs.view1, camera.view.at(1, 0), camera.view.at(1, 1), camera.view.at(1, 2));
+    auto setView = [&](const TitleCamera3D& c) {
+        set4(fs.view0, c.view.at(0, 0), c.view.at(0, 1), c.view.at(0, 2), c.view.at(0, 3));
+        set4(fs.view1, c.view.at(1, 0), c.view.at(1, 1), c.view.at(1, 2), c.view.at(1, 3));
+        set4(fs.view2, c.view.at(2, 0), c.view.at(2, 1), c.view.at(2, 2), c.view.at(2, 3));
+        const Mat4 vp = c.projection * c.view;
+        std::memcpy(fs.viewProj, vp.m.data(), sizeof(fs.viewProj));
+    };
+    setView(camera);
     // the layer's axes in world space (surface relief and flakes tilt along them)
     {
         float ax[3] = {plan.model.at(0, 0), plan.model.at(1, 0), plan.model.at(2, 0)};
@@ -608,7 +969,8 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
         lights++;
     }
     set4(fs.ambient, ambient[0], ambient[1], ambient[2]);
-    set4(fs.grade2, (float)e.contrast, (float)e.repeatX, (float)e.repeatY, (float)lights);
+    fs.grade2[3] = (float)lights;
+    setEnvironment(0);
     for (size_t s = 0; s < plan.slots.size() && s < 64; s++) fs.slots[s / 4][s % 4] = (float)plan.slots[s].material;
     for (size_t i = 0; i < plan.materials.size() && i < (size_t)MATERIALS_MAX; i++) {
         const TitleMaterial3D& m = plan.materials[i];
@@ -627,26 +989,21 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
         set4(v[8], (float)m.surfaceAmount, (float)(m.surfaceScale / 100.0 * plan.size), (float)m.surfaceSeed, m.baseWrap ? 0.0f : 1.0f);
         set4(v[9], (float)m.baseTiling[0], (float)m.baseTiling[1], (float)m.baseOffset[0], (float)m.baseOffset[1]);
     }
-
-    // ---- the main pass ----
-    TargetKey mainKey;
-    mainKey.width = region.width * k;
-    mainKey.height = region.height * k;
-    mainKey.format = compressed ? ColorFormat::SRGB8A8 : ColorFormat::RGBA16F;
-    mainKey.filter = TextureFilter::NEAREST;
-    mainKey.depth = TitleDepthFormat::Depth;
-    mainKey.samples = samples;
-    std::string poolError;
-    TargetRef main = services.pool.acquire(mainKey, &poolError);
-    if (!main) {
-        error = poolError.empty() ? "out_of_target_memory: the 3D main pass" : poolError;
-        return false;
+    // the title's bounding sphere (world): the AO prepass's depth encoding
+    std::array<float, 3> centreWorld{0, 0, 0};
+    float radiusWorld = 1;
+    {
+        const std::array<float, 4> c = plan.model.apply({(mesh.boundsMin[0] + mesh.boundsMax[0]) * 0.5f, (mesh.boundsMin[1] + mesh.boundsMax[1]) * 0.5f,
+                                                         (mesh.boundsMin[2] + mesh.boundsMax[2]) * 0.5f, 1});
+        centreWorld = {c[0], c[1], c[2]};
+        float d2 = 0;
+        for (int i = 0; i < 3; i++) d2 += (mesh.boundsMax[i] - mesh.boundsMin[i]) * (mesh.boundsMax[i] - mesh.boundsMin[i]);
+        radiusWorld = std::max(1e-3f, 0.5f * std::sqrt(d2) * (float)plan.layerScale);
     }
-    auto* mt = main.as<SokolTitleTarget>();
-    im.pass.setColorActions(LoadAction::CLEAR, StoreAction::STORE, Vector4(0, 0, 0, 0));
-    im.pass.setDepthStencilActions(LoadAction::CLEAR, StoreAction::DONTCARE, 1.0f);
-    im.pass.setLabel("title 3d main");
-    im.pass.startRenderPass(&mt->framebuffer());
+    auto viewDepth = [&](const TitleCamera3D& c) {
+        return -(c.view.at(2, 0) * centreWorld[0] + c.view.at(2, 1) * centreWorld[1] + c.view.at(2, 2) * centreWorld[2] + c.view.at(2, 3));
+    };
+
     // the parts to colour (per-part effects render their slots alone over the whole title's depth)
     auto partOf = [&](const TitleMeshSlot& slot) -> std::string {
         switch (slot.role) {
@@ -659,17 +1016,115 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
             }
         }
     };
-    auto drawSlots = [&](bool transparent, bool depthOnly) {
+
+    // ---- the AO prepass, SAO and its blurs at output resolution (R31) ----
+    std::string poolError;
+    TargetRef aoTarget;
+    if (wantsAO(plan) && floatPasses()) {
+        const TitleCamera3D aoCamera = title3DCamera(plan.camera, plan.canvasWidth, plan.canvasHeight, pxScale, region, !features.originTopLeft);
+        TargetKey ndKey;
+        ndKey.width = region.width;
+        ndKey.height = region.height;
+        ndKey.format = ColorFormat::RGBA16F;
+        ndKey.filter = TextureFilter::NEAREST;
+        ndKey.depth = TitleDepthFormat::Depth;
+        TargetRef nd = services.pool.acquire(ndKey, &poolError);
+        TargetKey aoKey = ndKey;
+        aoKey.depth = TitleDepthFormat::None;
+        TargetRef aoA = nd ? services.pool.acquire(aoKey, &poolError) : TargetRef();
+        TargetRef aoB = aoA ? services.pool.acquire(aoKey, &poolError) : TargetRef();
+        LitObject* prepass = im.lit(*gpuMesh, geometryBits(plan, 3), false, &error);
+        Fullscreen* sao = im.program(ShaderType::TITLE_3D_POST, AO, "u_fs_title3dPost", "u_tpSrc", &error);
+        Fullscreen* blur = im.program(ShaderType::TITLE_3D_POST, AO_BLUR, "u_fs_title3dPost", "u_tpSrc", &error);
+        if (!nd || !aoA || !aoB || !prepass || !sao || !blur) {
+            if (error.empty()) error = poolError.empty() ? "the 3D title's AO passes could not be set up" : poolError;
+            return false;
+        }
+        VsBlock aoVs = vs;
+        const Mat4 aoViewProj = aoCamera.projection * aoCamera.view;
+        std::memcpy(aoVs.viewProj, aoViewProj.m.data(), sizeof(aoVs.viewProj));
+        FsBlock aoFs = fs;
+        {
+            FsBlock saved = fs;
+            setView(aoCamera);
+            aoFs = fs;
+            fs = saved;
+        }
+        const float zCentre = viewDepth(aoCamera);
+        set4(aoFs.aoDepth, zCentre, radiusWorld);
+        auto* ndt = nd.as<SokolTitleTarget>();
+        im.pass.setColorActions(LoadAction::CLEAR, StoreAction::STORE, Vector4(0, 0, 0, 0));
+        im.pass.setDepthStencilActions(LoadAction::CLEAR, StoreAction::DONTCARE, 1.0f);
+        im.pass.setLabel("title 3d ao prepass");
+        im.pass.startRenderPass(&ndt->framebuffer());
+        PipelineState state;
+        state.target.color = ColorFormat::RGBA16F;
+        state.target.depth = DepthStencilFormat::DEPTH;
+        state.target.sampleCount = 1;
+        state.blend = BlendMode::NONE;
+        state.depthCompare = CompareFunc::LESS_EQUAL;
+        state.depthWrite = true;
+        if (prepass->object.beginDraw(state)) {
+            if (prepass->env.first >= 0) prepass->object.addTexture(prepass->env, ShaderStageType::FRAGMENT, &im.placeholderCube);
+            for (auto slot : {prepass->ramps, prepass->spans, prepass->base, prepass->matcap, prepass->behind}) {
+                if (slot.first >= 0) prepass->object.addTexture(slot, ShaderStageType::FRAGMENT, &im.placeholder2D);
+            }
+            prepass->object.applyUniformBlock(prepass->vsBlock, sizeof(VsBlock), &aoVs);
+            prepass->object.applyUniformBlock(prepass->fsBlock, sizeof(FsBlock), &aoFs);
+            prepass->object.draw(0, (unsigned)mesh.indexCount(), 1);
+        }
+        im.pass.endRenderPass();
+        PostBlock block;
+        std::memset(&block, 0, sizeof(block));
+        const double radiusView = std::max(1e-3, plan.aoParams.radius / 100.0 * plan.size * plan.layerScale);
+        const double projScale = region.height * 0.5 * std::abs(aoCamera.projection.at(1, 1));
+        set4(block.p1, (float)radiusView, (float)projScale, (float)std::max(0.0, plan.aoParams.intensity), features.originTopLeft ? 1.0f : 0.0f);
+        set4(block.p2, (float)region.x, (float)region.y, zCentre, radiusWorld);
+        const Mat4 projInv = inverse(aoCamera.projection);
+        std::memcpy(block.projInv, projInv.m.data(), sizeof(block.projInv));
+        if (!im.fullscreenPass(*sao, aoA.get(), &ndt->texture(), block, error)) return false;
+        set4(block.p1, 1, 0);
+        if (!im.fullscreenPass(*blur, aoB.get(), &ndt->texture(), block, error, &aoA.as<SokolTitleTarget>()->texture())) return false;
+        set4(block.p1, 0, 1);
+        if (!im.fullscreenPass(*blur, aoA.get(), &ndt->texture(), block, error, &aoB.as<SokolTitleTarget>()->texture())) return false;
+        counters.aoPasses += 4;
+        aoTarget = std::move(aoA);
+    }
+
+    // ---- the main pass ----
+    TargetKey mainKey;
+    mainKey.width = region.width * k;
+    mainKey.height = region.height * k;
+    mainKey.format = compressed ? ColorFormat::SRGB8A8 : ColorFormat::RGBA16F;
+    mainKey.filter = TextureFilter::NEAREST;
+    mainKey.depth = TitleDepthFormat::Depth;
+    mainKey.samples = samples;
+    TargetRef main = services.pool.acquire(mainKey, &poolError);
+    if (!main) {
+        error = poolError.empty() ? "out_of_target_memory: the 3D main pass" : poolError;
+        return false;
+    }
+    auto* mt = main.as<SokolTitleTarget>();
+    // the gem behind copy: the opaque parts resolved, box-mipped (needs float passes)
+    const bool behind = behindActive(plan, testFlags);
+    set4(fs.behind, 0, (float)(GEM_THICKNESS * plan.size * plan.layerScale), 0, features.originTopLeft ? 1.0f : 0.0f);
+    auto startMain = [&](bool clearColor) {
+        im.pass.setColorActions(clearColor ? LoadAction::CLEAR : LoadAction::LOAD, StoreAction::STORE, Vector4(0, 0, 0, 0));
+        im.pass.setDepthStencilActions(LoadAction::CLEAR, StoreAction::DONTCARE, 1.0f);
+        im.pass.setLabel("title 3d main");
+        im.pass.startRenderPass(&mt->framebuffer());
+    };
+    startMain(true);
+    auto drawSlots = [&](bool transparent, bool depthOnly, bool everyPart) {
         for (size_t s = 0; s < mesh.slots.size() && s < plan.slots.size(); s++) {
             const TitleMeshSlot& slot = mesh.slots[s];
             if (!slot.indexCount) continue;
             const Title3DSlotMaterial& sm = plan.slots[s];
             const bool isTransparent = (sm.bits & TitleLitBits::TRANSPARENT) != 0;
             if (isTransparent != transparent) continue;
-            const bool listed = parts.empty() || std::find(parts.begin(), parts.end(), partOf(slot)) != parts.end();
+            const bool listed = everyPart || parts.empty() || std::find(parts.begin(), parts.end(), partOf(slot)) != parts.end();
             if (!depthOnly && !listed) continue;
-            const uint32_t bits = sm.bits | (compressed ? TitleLitBits::HDR_COMPRESS : 0u);
-            LitObject* o = im.lit(*gpuMesh, bits, &error);
+            LitObject* o = im.lit(*gpuMesh, slotBits(sm, compressed, behind), false, &error);
             if (!o) continue;
             PipelineState state;
             state.target.color = mainKey.format;
@@ -680,9 +1135,15 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
             state.depthWrite = !transparent;
             state.writeMask = depthOnly ? ColorWriteMask::NONE : ColorWriteMask::RGBA;
             if (!o->object.beginDraw(state)) continue;
-            if (o->env.first >= 0) o->object.addTexture(o->env, ShaderStageType::FRAGMENT, env ? &env->texture : &im.placeholderCube);
+            const size_t envIndex = std::min<size_t>(sm.environment, plan.environments.size() - 1);
+            setEnvironment(envIndex);
+            const Title3DEnvPlan& envPlan = plan.environments[envIndex];
+            if (o->env.first >= 0) {
+                Cube* c = envCubes[envIndex];
+                o->object.addTexture(o->env, ShaderStageType::FRAGMENT, c ? &c->texture : &im.placeholderCube);
+            }
             if (o->matcap.first >= 0) {
-                TextureRender* t = plan.matcap ? plan.matcap->texture() : nullptr;
+                TextureRender* t = envPlan.matcap ? envPlan.matcap->texture() : nullptr;
                 o->object.addTexture(o->matcap, ShaderStageType::FRAGMENT, t ? t : &im.placeholder2D);
             }
             if (o->ramps.first >= 0) o->object.addTexture(o->ramps, ShaderStageType::FRAGMENT, &rampTex.texture());
@@ -692,19 +1153,75 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
                                                                                                          : nullptr;
                 o->object.addTexture(o->base, ShaderStageType::FRAGMENT, t ? t : &im.placeholder2D);
             }
+            if (o->behind.first >= 0) o->object.addTexture(o->behind, ShaderStageType::FRAGMENT, behind ? &im.behindCopy : &im.placeholder2D);
             o->object.applyUniformBlock(o->vsBlock, sizeof(VsBlock), &vs);
             o->object.applyUniformBlock(o->fsBlock, sizeof(FsBlock), &fs);
             o->object.draw(slot.firstIndex, slot.indexCount, 1);
         }
     };
-    if (!parts.empty()) drawSlots(false, true);     // the whole title's depth first
-    drawSlots(false, false);
-    drawSlots(true, false);
+    if (plan.debugView == Title3DDebugView::Wireframe) {
+        // the mesh's edges coloured by their normals, depth tested against the solid title
+        drawSlots(false, true, true);
+        drawSlots(true, true, true);
+        LitObject* wire = im.lit(*gpuMesh, geometryBits(plan, 1) | (compressed ? TitleLitBits::HDR_COMPRESS : 0u), true, &error);
+        if (wire) {
+            PipelineState state;
+            state.target.color = mainKey.format;
+            state.target.depth = DepthStencilFormat::DEPTH;
+            state.target.sampleCount = samples;
+            state.blend = BlendMode::NONE;
+            state.depthCompare = CompareFunc::LESS_EQUAL;
+            state.depthWrite = false;
+            if (wire->object.beginDraw(state)) {
+                if (wire->env.first >= 0) wire->object.addTexture(wire->env, ShaderStageType::FRAGMENT, &im.placeholderCube);
+                for (auto slot : {wire->ramps, wire->spans, wire->base, wire->matcap, wire->behind}) {
+                    if (slot.first >= 0) wire->object.addTexture(slot, ShaderStageType::FRAGMENT, &im.placeholder2D);
+                }
+                wire->object.applyUniformBlock(wire->vsBlock, sizeof(VsBlock), &vs);
+                wire->object.applyUniformBlock(wire->fsBlock, sizeof(FsBlock), &fs);
+                wire->object.draw(0, gpuMesh->edgeIndexCount, 1);
+            }
+        }
+    } else {
+        if (!parts.empty()) drawSlots(false, true, false);     // the whole title's depth first
+        drawSlots(false, false, false);
+        if (behind) {
+            // the opaque parts resolved into the behind copy and its levels, then the pass again
+            // for the gems (the opaque depth drawn anew)
+            im.pass.endRenderPass();
+            counters.mainPasses++;
+            Fullscreen* copy = im.program(ShaderType::TITLE_3D_POST, BEHIND, "u_fs_title3dPost", "u_tpSrc", &error);
+            Fullscreen* down = im.program(ShaderType::TITLE_3D_POST, BOX_DOWN, "u_fs_title3dPost", "u_tpSrc", &error);
+            if (!copy || !down || !im.ensureBehind(mainKey.width, mainKey.height)) {
+                if (error.empty()) error = "the gem behind copy could not be set up";
+                return false;
+            }
+            PostBlock block;
+            std::memset(&block, 0, sizeof(block));
+            const bool behindShoulder = !compressed && samples > 1 && k == 1;
+            set4(block.p0, 0, (float)exposure, behindShoulder ? 1.0f : 0.0f, compressed ? 1.0f : 0.0f);
+            if (!im.post(*copy, nullptr, &im.behindCopy, 0, ColorFormat::RGBA16F, &mt->texture(), nullptr, nullptr, block, error)) return false;
+            for (int level = 1; level < im.behindLevels; level++) {
+                set4(block.p1, (float)(level - 1), 0);
+                if (!im.post(*down, nullptr, &im.behindScratch, level, ColorFormat::RGBA16F, nullptr, &im.behindCopy, nullptr, block, error)) return false;
+                set4(block.p1, (float)level, 1);
+                if (!im.post(*down, nullptr, &im.behindCopy, level, ColorFormat::RGBA16F, nullptr, &im.behindScratch, nullptr, block, error)) return false;
+            }
+            counters.behindCopies++;
+            // the whole render's width: a region's preview mips as the whole render would
+            const double frameSpan = (double)plan.canvasWidth * pxScale / std::max(1, region.width);
+            set4(fs.behind, (float)std::log2(std::max(1.0, mainKey.width * frameSpan)), (float)(GEM_THICKNESS * plan.size * plan.layerScale), 1,
+                 features.originTopLeft ? 1.0f : 0.0f);
+            startMain(false);
+            drawSlots(false, true, true);
+        }
+        drawSlots(true, false, false);
+    }
     im.pass.endRenderPass();
     counters.mainPasses++;
     if (!error.empty()) return false;
 
-    // ---- tone map (decode, expand), then Mitchell down ----
+    // ---- tone map (decode, expand, AO), then Mitchell down ----
     Fullscreen* tonemap = im.program(ShaderType::TITLE_3D_POST, TONEMAP, "u_fs_title3dPost", "u_tpSrc", &error);
     Fullscreen* mitchellH = k > 1 ? im.program(ShaderType::TITLE_3D_POST, MITCHELL_H, "u_fs_title3dPost", "u_tpSrc", &error) : nullptr;
     Fullscreen* mitchellV = k > 1 ? im.program(ShaderType::TITLE_3D_POST, MITCHELL_V, "u_fs_title3dPost", "u_tpSrc", &error) : nullptr;
@@ -715,6 +1232,12 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
     PostBlock post;
     std::memset(&post, 0, sizeof(post));
     set4(post.p0, (float)plan.lighting.toneMapping, (float)exposure, shoulder ? 1.0f : 0.0f, compressed ? 1.0f : 0.0f);
+    float debug = 0;
+    if (plan.debugView == Title3DDebugView::AO) debug = 1;
+    else if (plan.debugView == Title3DDebugView::Glint) debug = 2;
+    else if (plan.debugView == Title3DDebugView::Ink) debug = 3;
+    set4(post.p2, aoTarget ? 1.0f : 0.0f, 0, debug);
+    set4(post.p3, 1, 1, 0, 0);
     const TargetKey outKey = static_cast<SokolTitleTarget*>(out)->key();
     TargetRef toned;
     TitleTarget* tonedTarget = out;
@@ -731,9 +1254,11 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
         }
         tonedTarget = toned.get();
     }
-    if (!im.fullscreenPass(*tonemap, tonedTarget, &mt->texture(), post, error)) return false;
+    TextureRender* aoTexture = aoTarget ? &aoTarget.as<SokolTitleTarget>()->texture() : nullptr;
+    if (!im.fullscreenPass(*tonemap, tonedTarget, &mt->texture(), post, error, aoTexture, nullptr)) return false;
     counters.postPasses++;
     main.reset();
+    aoTarget.reset();
     if (k > 1) {
         TargetKey key;
         key.width = region.width;

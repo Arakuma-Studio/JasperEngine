@@ -4,8 +4,11 @@
 // S86 AC9, AC10 (partly), AC13 (CPU twin), AC15, AC27 (zero cost): a Dimension 3D layer through
 // the S80 renderer on the headless device. A gold 3D plate draws lit pixels where its 2D twin
 // does and nothing outside its region; the ramp's bend changes the image (red control: bend 0);
-// the compressed-light path agrees with the float path; the normals and environment debug views;
-// a 2D document makes no 3D renderer; the environment's level map and CPU scene evaluation.
+// the compressed-light path agrees with the float path; the debug views; AO (AC16) darkens the
+// crevices and keeps open faces; gems refract the layer's own opaque parts (AC11); a part's own
+// environment lights that part only; an environment build is spread over frames (the 21 s
+// software-rasteriser stall of one-shot builds; red control: one shot); a 2D document makes no
+// 3D renderer; the environment's level map and CPU scene evaluation.
 
 #include "titleart/render/TitleRenderTestSupport.h"
 
@@ -48,6 +51,16 @@ namespace {
         r.pxScale = 1.0f;
         r.testFlags = flags;
         return r;
+    }
+
+    // the 3D renderer of a TitleArtRenderer (its counters)
+    const Title3DStats* stats3D(const TitleArtRenderer& renderer) {
+        const std::shared_ptr<void> r = renderer.title3DRendererForTesting();
+        return r ? &static_cast<const Title3DRenderer*>(r.get())->stats() : nullptr;
+    }
+
+    double luminance(const float* p) {
+        return 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
     }
 
     class Title3DRendererGpu : public ::testing::Test {
@@ -133,6 +146,134 @@ TEST_F(Title3DRendererGpu, DebugViewsShowNormalsAndTheEnvironment) {
     const Pixels lit = render(*renderer, requestOf(doc3D(plate3D())));
     EXPECT_GT(e.at(256, 128)[3], 0.99f);
     EXPECT_GT(compare(e, lit, 8.0).overFraction, 0.05) << "the environment view is not the render";
+}
+
+TEST_F(Title3DRendererGpu, AODarkensTheCrevicesAndKeepsOpenFaces) {
+    // AC16: where the face meets the band behind it the AO darkens by 15 % or more; the flat
+    // middle of the face (open) keeps its value; intensity 0 changes nothing
+    auto renderer = geometryRenderer();
+    auto withAO = [](double intensity) {
+        Json layer = plate3D();
+        layer["style_3d"]["ao"] = Json{{"enabled", true}, {"radius", 6}, {"intensity", intensity}};
+        return doc3D(layer);
+    };
+    const Pixels off = render(*renderer, requestOf(doc3D(plate3D())));
+    const Pixels on = render(*renderer, requestOf(withAO(1.5)));
+    const Pixels zero = render(*renderer, requestOf(withAO(0)));
+    ASSERT_EQ(off.rgba.size(), on.rgba.size());
+    size_t covered = 0, darkened = 0;
+    for (size_t i = 0; i + 3 < off.rgba.size(); i += 4) {
+        if (off.rgba[i + 3] < 0.99f) continue;
+        covered++;
+        const double a = luminance(&off.rgba[i]), b = luminance(&on.rgba[i]);
+        if (a > 0.05 && b < a * 0.85) darkened++;
+    }
+    ASSERT_GT(covered, 0u);
+    EXPECT_GT(darkened, covered / 200) << darkened << " of " << covered << " pixels darkened by 15 %";
+    const float* c0 = off.at(256, 128);
+    const float* c1 = on.at(256, 128);
+    EXPECT_NEAR(luminance(c1), luminance(c0), 0.01 * std::max(0.05, luminance(c0))) << "the open face keeps its value";
+    EXPECT_LE(compare(off, zero, 1.0).overFraction, 0.0) << "intensity 0 is no AO";
+    const Title3DStats* st = stats3D(*renderer);
+    ASSERT_TRUE(st);
+    EXPECT_GE(st->aoPasses, 4u);
+}
+
+TEST_F(Title3DRendererGpu, GemsRefractTheLayersOwnOpaqueParts) {
+    // AC11: a sapphire face over its dark band: with the behind copy the face shows the band
+    // refracted, without it (red control) the environment only
+    if (!SystemRender::getFeatures().renderRGBA16F || !SystemRender::getFeatures().filterRGBA16F) GTEST_SKIP() << "no float passes here";
+    auto renderer = geometryRenderer();
+    const Pixels seen = render(*renderer, requestOf(doc3D(plate3D(0.0, "sapphire"))));
+    const Pixels envOnly = render(*renderer, requestOf(doc3D(plate3D(0.0, "sapphire")), TITLE_ART_TEST_NO_BEHIND));
+    ASSERT_EQ(seen.rgba.size(), envOnly.rgba.size());
+    size_t covered = 0, changed = 0;
+    for (size_t i = 0; i + 3 < seen.rgba.size(); i += 4) {
+        if (seen.rgba[i + 3] <= 0 && envOnly.rgba[i + 3] <= 0) continue;
+        covered++;
+        float worst = 0;
+        for (int c = 0; c < 4; c++) worst = std::max(worst, std::abs(seen.rgba[i + c] - envOnly.rgba[i + c]));
+        if (worst > 8.0f / 255.0f) changed++;
+    }
+    ASSERT_GT(covered, 0u);
+    EXPECT_GT((double)changed / covered, 0.10) << "the band behind the gem shows through it";
+    const Title3DStats* st = stats3D(*renderer);
+    ASSERT_TRUE(st);
+    EXPECT_GE(st->behindCopies, 1u);
+}
+
+TEST_F(Title3DRendererGpu, APartsOwnEnvironmentLightsThatPartOnly) {
+    // a face material tinting its environment red: the face reddens, the band keeps its colour
+    auto renderer = geometryRenderer();
+    Json tinted = plate3D(0.0, "chrome");
+    tinted["style_3d"]["face"]["environment"] = Json{{"tint", "#ff2020"}};
+    const Pixels plain = render(*renderer, requestOf(doc3D(plate3D(0.0, "chrome"))));
+    const Pixels red = render(*renderer, requestOf(doc3D(tinted)));
+    const float* a = plain.at(256, 128);
+    const float* b = red.at(256, 128);
+    EXPECT_GT(b[0] - b[2], a[0] - a[2] + 0.05f) << "the face lights with its own tinted environment";
+    // the band's rim, left of the face (the plate is 300 x 120 px centred)
+    int bandX = -1;
+    for (int x = 40; x < 256; x++) {
+        if (plain.at(x, 128)[3] > 0.99f) {
+            bandX = x + 1;
+            break;
+        }
+    }
+    ASSERT_GE(bandX, 0);
+    for (int c = 0; c < 3; c++) EXPECT_NEAR(red.at(bandX, 128)[c], plain.at(bandX, 128)[c], 2.0f / 255.0f) << "the band keeps the layer's environment";
+}
+
+TEST_F(Title3DRendererGpu, DebugViewsAoInkAndWireframe) {
+    auto renderer = geometryRenderer();
+    Json layer = plate3D();
+    layer["style_3d"]["ao"] = Json{{"enabled", true}, {"radius", 6}, {"intensity", 1.5}};
+    RenderRequest ao = requestOf(doc3D(layer));
+    ao.debugView3D = (int)Title3DDebugView::AO;
+    const Pixels aoView = render(*renderer, ao);
+    EXPECT_GT(aoView.at(256, 128)[0], 0.95f) << "the open face is unoccluded";
+    size_t dark = 0;
+    for (size_t i = 0; i + 3 < aoView.rgba.size(); i += 4) dark += aoView.rgba[i + 3] > 0.99f && aoView.rgba[i] < 0.85f;
+    EXPECT_GT(dark, 0u) << "the crevices show";
+    // ink: the render without glint (no glint here: the render itself)
+    RenderRequest ink = requestOf(doc3D(plate3D()));
+    ink.debugView3D = (int)Title3DDebugView::Ink;
+    EXPECT_LE(compare(render(*renderer, ink), render(*renderer, requestOf(doc3D(plate3D()))), 2.0).overFraction, 0.0);
+    // wireframe: lines over nothing, fewer covered pixels than the solid render
+    RenderRequest wire = requestOf(doc3D(plate3D()));
+    wire.debugView3D = (int)Title3DDebugView::Wireframe;
+    const Pixels w = render(*renderer, wire);
+    const Pixels solid = render(*renderer, requestOf(doc3D(plate3D())));
+    size_t wireCovered = 0, solidCovered = 0;
+    for (size_t i = 0; i + 3 < w.rgba.size(); i += 4) {
+        wireCovered += w.rgba[i + 3] > 0.5f;
+        solidCovered += solid.rgba[i + 3] > 0.5f;
+    }
+    EXPECT_GT(wireCovered, 0u);
+    EXPECT_LT(wireCovered, solidCovered / 2);
+}
+
+TEST_F(Title3DRendererGpu, AnEnvironmentBuildIsSpreadOverFrames) {
+    // a cube is built a share per ready() call (the job steps again next frame) instead of in one
+    // call; red control: TITLE_ART_TEST_ENV_ONE_SHOT builds it in one
+    auto runOnce = [](uint32_t flags, uint64_t& steps, uint64_t& maxUnits) {
+        auto renderer = geometryRenderer();
+        RenderRequest r = requestOf(doc3D(plate3D(0.6, "chrome")), flags);
+        r.tier = 3;
+        const Pixels p = render(*renderer, r);
+        EXPECT_GT(p.at(256, 128)[3], 0.99f);
+        const Title3DStats* st = stats3D(*renderer);
+        ASSERT_TRUE(st);
+        EXPECT_EQ(st->environmentBuilds, 1u);
+        steps = st->environmentSteps;
+        maxUnits = st->environmentMaxStepUnits;
+    };
+    uint64_t spreadSteps = 0, spreadMax = 0, oneSteps = 0, oneMax = 0;
+    runOnce(0, spreadSteps, spreadMax);
+    runOnce(TITLE_ART_TEST_ENV_ONE_SHOT, oneSteps, oneMax);
+    EXPECT_GE(spreadSteps, 2u) << "the build took several calls";
+    EXPECT_EQ(oneSteps, 1u);
+    EXPECT_LT(spreadMax, oneMax) << "no call ran the whole build";
 }
 
 TEST(Title3DEnvironmentTest, LevelMapAndSceneTwin) {

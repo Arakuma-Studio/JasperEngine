@@ -15,7 +15,14 @@ precision highp int;
 // `frame.z` asks for the tone-map-aware shoulder on MSAA samples. Variants: the TL_* bits of
 // TitleTierFeatures.h. A slot's material comes from the slot table, so one draw can cover the
 // opaque slots of a variant (v_ids.w low 12 bits). TL_OUTPUT 1 and 2 are render_title's
-// debug views: the shading normal (world, 0..1) and the reflected environment, unweighted.
+// debug views: the shading normal (world, 0..1) and the reflected environment, unweighted;
+// TL_OUTPUT 3 is the AO prepass (R31): the view normal and the title-relative depth
+// (z_view - z_centre) / radius into RGBA16F (a zero normal marks no surface).
+// TL_GEM_BEHIND (Bake, High; R21): a gem refracts the layer's own opaque parts from the behind
+// copy (premultiplied, box-mipped): the view ray refracted through the gem's thickness and
+// projected, at lod log2(behind width x frame span) x roughness x clamp(2 ior - 2, 0, 1) (three.js
+// transmission, as Pachislop); where nothing is behind, the environment path, and the alpha
+// lets the uncovered rest show through.
 
 const float M_PI = 3.141592653589793;
 
@@ -58,6 +65,10 @@ uniform sampler u_tlSpans_smp;
 uniform texture2D u_tlBase;
 uniform sampler u_tlBase_smp;
 #endif
+#ifdef TL_GEM_BEHIND
+uniform texture2D u_tlBehind;
+uniform sampler u_tlBehind_smp;
+#endif
 
 uniform u_fs_titleLit {
     vec4 camera;        // xyz: camera position (world), w: the tone map's exposure (shoulder)
@@ -68,11 +79,15 @@ uniform u_fs_titleLit {
     vec4 lock0;         // env lock: the rows of world -> head-on (identity when off)
     vec4 lock1;
     vec4 lock2;
-    vec4 view0;         // matcap: the rows of world -> view
+    vec4 view0;         // the rows of world -> view (w: translation)
     vec4 view1;
     vec4 ambient;       // rgb: ambient light
     vec4 axisX;         // xyz: the layer's +x in world space (surface relief, flakes)
     vec4 axisY;         // xyz: the layer's +y
+    vec4 view2;
+    vec4 aoDepth;       // the AO prepass: x the title centre's view depth, y the title's radius
+    vec4 behind;        // x: log2(behind width x frame span), y: gem thickness (world), z: 1 = behind bound, w: 1 = origin top left
+    mat4 viewProj;      // the main pass's projection x view (the gem's exit point)
     vec4 lights[TL_MAX_LIGHTS * 2];     // per light: (direction or position, type 0 dir / 1 point), (colour x intensity, 0)
     vec4 slots[16];     // the material index of slot 4i + c
     vec4 materials[TL_MAX_MATERIALS * TL_MATERIAL_VEC4S];
@@ -104,6 +119,12 @@ void main() {
     // no face culling (closed solids are depth tested): the normal faces the viewer
     if (dot(N, V) < 0.0) N = -N;
     vec3 Ng = N;
+#if TL_OUTPUT == 3
+    vec3 viewN = vec3(dot(tl.view0.xyz, N), dot(tl.view1.xyz, N), dot(tl.view2.xyz, N));
+    float viewZ = -(dot(tl.view2.xyz, v_world) + tl.view2.w);
+    frag_color = vec4(normalize(viewN), (viewZ - tl.aoDepth.x) / max(tl.aoDepth.y, 1e-4));
+    return;
+#endif
 
     // ---- base colour: the ramp in layer space ----
     vec3 baseColor = m0.rgb;
@@ -190,10 +211,20 @@ void main() {
     vec3 diffuse = directDiff + iblDiff;
     vec3 specular = directSpec + iblSpec;
 
-    // ---- gems: the environment refracted in and reflected back ----
+    // ---- gems: what is behind refracted through, else the environment refracted in and back ----
 #ifdef TL_GEM
     vec3 F = F_Schlick(F0, vec3(1.0), NdotV);
-    diffuse = tlGemLight(N, V, m3.z, m3.w, roughness) * (vec3(1.0) - F) * baseColor * m3.y * m1.z + diffuse * (1.0 - m3.y);
+    vec3 gemEnv = tlGemLight(N, V, m3.z, m3.w, roughness) * (vec3(1.0) - F) * baseColor * m1.z;
+    float gemAlpha = 1.0;
+    #ifdef TL_GEM_BEHIND
+    if (tl.behind.z > 0.5) {
+        vec4 seen = tlBehind(N, V, m3.z, m3.w, roughness);
+        float transmittance = (baseColor.r + baseColor.g + baseColor.b) / 3.0;
+        gemEnv = (vec3(1.0) - F) * baseColor * seen.rgb + gemEnv * (1.0 - seen.a);
+        gemAlpha = mix(1.0, 1.0 - (1.0 - seen.a) * transmittance, m3.y);
+    }
+    #endif
+    diffuse = gemEnv * m3.y + diffuse * (1.0 - m3.y);
 #endif
 
     // ---- clearcoat (the KHR layering) ----
@@ -228,6 +259,9 @@ void main() {
     vec4 color;
 #ifdef TL_TRANSPARENT
     float a = clamp(m0.a, 0.0, 1.0);
+    #ifdef TL_GEM
+    a *= gemAlpha;
+    #endif
     color = vec4(diffuse * a + added, a + (1.0 - a) * clamp(max(added.r, max(added.g, added.b)), 0.0, 1.0));
 #else
     color = vec4(diffuse + added, 1.0);

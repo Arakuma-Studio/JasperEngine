@@ -391,6 +391,10 @@ void TitleArtRenderer::setContentProvider(std::shared_ptr<TitleContentProvider> 
     impl->services.cache.clear();
 }
 
+std::shared_ptr<void> TitleArtRenderer::title3DRendererForTesting() const {
+    return impl->services.title3D;
+}
+
 void TitleArtRenderer::simulateDeviceLossForTesting() {
     impl->services.simulatedLoss = true;
     impl->services.checkDevice();

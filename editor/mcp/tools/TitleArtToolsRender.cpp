@@ -617,6 +617,15 @@ namespace {
 
 }
 
+// render_title's debug_view as RenderRequest::debugView3D (Title3DDebugView), -1 when unknown
+static int titleDebugView(const std::string& view) {
+    static const char* const VIEWS[] = {"none", "normals", "environment", "ao", "glint", "ink", "wireframe"};
+    for (int i = 0; i < 7; i++) {
+        if (view == VIEWS[i]) return i;
+    }
+    return -1;
+}
+
 bool checkRenderOptions(const Json& options, std::string& error) {
     if (options.is_null()) return true;
     if (!options.is_object()) {
@@ -635,13 +644,8 @@ bool checkRenderOptions(const Json& options, std::string& error) {
         }
         if (it.key() == "debug_view") {
             const std::string view = it.value().is_string() ? it.value().get<std::string>() : std::string();
-            if (view == "none" || view == "normals" || view == "environment") continue;
-            static const char* const VIEWS[] = {"ao", "glint", "ink", "wireframe"};
-            if (std::find(std::begin(VIEWS), std::end(VIEWS), view) != std::end(VIEWS)) {
-                error = "not_available: render_title debug_view '" + view + "' is not in this build; it serves none, normals and environment.";
-            } else {
-                error = "bad_option: `options.debug_view` is none, normals, ao, glint, environment, ink or wireframe.";
-            }
+            if (titleDebugView(view) >= 0) continue;
+            error = "bad_option: `options.debug_view` is none, normals, environment, ao, glint, ink or wireframe.";
             return false;
         }
         bool known = false;
@@ -768,8 +772,7 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
     }
     int debugView = 0;
     if (args.contains("options") && args["options"].is_object()) {
-        const std::string view = args["options"].value("debug_view", std::string("none"));
-        debugView = view == "normals" ? 1 : view == "environment" ? 2 : 0;
+        debugView = std::max(0, titleDebugView(args["options"].value("debug_view", std::string("none"))));
     }
     for (size_t v = 0; v < s->variants.size(); v++) {
         PendingRender r;

@@ -71,6 +71,15 @@ namespace {
         return it != object.end() ? *it : none;
     }
 
+    // the Title Lit output of a debug view (TitleLitBits::OUTPUT_SHIFT)
+    uint32_t debugOutput(Title3DDebugView view) {
+        switch (view) {
+            case Title3DDebugView::Normals: return 1;
+            case Title3DDebugView::Environment: return 2;
+            default: return 0;
+        }
+    }
+
 }
 
 bool TitlePlanner::is3D(const DrawNode& node) const {
@@ -100,15 +109,15 @@ namespace jasperengine::titleart {
         plan->layerId = node.layerId;
         plan->style = decodeStyle3D(layer);
         plan->tier = tierOf(req.tier);
-        plan->debugView = std::clamp(req.debugView3D, 0, 2);
+        plan->debugView = (Title3DDebugView)std::clamp(req.debugView3D, 0, (int)Title3DDebugView::Wireframe);
         plan->canvasWidth = doc.canvasWidth();
         plan->canvasHeight = doc.canvasHeight();
         plan->size = layerSourceSize(layer);
         const Scene3D scene = decodeScene3D(doc.root);
         plan->supersample = scene.supersample;
         plan->lighting = resolveLighting(scene, plan->style);
-        if (plan->debugView != 0) {
-            // a debug view shows its values as they are
+        if (debugOutput(plan->debugView) != 0 || plan->debugView == Title3DDebugView::Wireframe) {
+            // the geometry views show their values as they are
             plan->lighting.toneMapping = ToneMapping3D::None;
             plan->lighting.exposure = 1;
         }
@@ -123,6 +132,8 @@ namespace jasperengine::titleart {
             planner.problem(p);
         }
         plan->model = title3DLayerMatrix(memberOf(layer, "transform"), parent);
+        plan->layerScale = std::max(1e-6, std::sqrt((double)plan->model.at(0, 0) * plan->model.at(0, 0) + (double)plan->model.at(1, 0) * plan->model.at(1, 0) +
+                                                    (double)plan->model.at(2, 0) * plan->model.at(2, 0)));
 
         // the mesh
 #if defined(JASPERENGINE_TITLE_ART_MESHER) && JASPERENGINE_TITLE_ART_MESHER
@@ -163,22 +174,89 @@ namespace jasperengine::titleart {
 #endif
         const TitleMesh& mesh = *plan->mesh;
 
+        // the environments: the layer's, then each part's own (a material with environment overrides)
+        auto environmentOf = [&](const Environment3D& env, const std::string& path) {
+            Title3DEnvPlan e;
+            e.environment = env;
+            if (env.preset == "matcap") {
+                e.matcap = planner.title3DAsset(encodeAssetRef(env.matcap), node.layerId, path + ".matcap");
+            }
+            const TitleEnvScene* scene3d = titleEnvironmentPreset(env.preset);
+            if (scene3d && !scene3d->procedural) {
+                e.hdri = loadTitleHdri(scene3d->hdri);
+                e.hdriYaw = titleHdriYaw(env.preset);
+            }
+            // a photo, softbox or custom HDRI not built into this renderer lights with the studio
+            // and reports it
+            if (!scene3d || (!scene3d->procedural && !e.hdri)) {
+                if (env.preset != "matcap") {
+                    TitleProblem p;
+                    p.code = "environment_missing";
+                    p.layer = node.layerId;
+                    p.path = path + ".preset";
+                    p.message = "the environment '" + env.preset + "' has no HDRI here: the studio lights the layer";
+                    planner.problem(p);
+                    e.missing = true;
+                }
+                scene3d = titleEnvironmentPreset("studio");
+                e.hdri.reset();
+            }
+            e.scene = scene3d;
+            e.face = titleEnvironmentFace(env, planner.pxScale(), plan->tier);
+            if (e.missing) e.face = std::min(e.face, 1024);
+            e.key = hashCombine(hashCombine(fnv1a64(scene3d->id + (e.hdri ? ":" + scene3d->hdri : std::string())), (uint64_t)e.face),
+                                TITLE_ENV_BUILDER_VERSION);
+            return e;
+        };
+        plan->environments.push_back(environmentOf(plan->lighting.environment, "scene_3d.environment"));
+
         // the materials and the slot table
         const three_d::TitleSlotMaterials materials = three_d::resolveSlotMaterials(layer, plan->style, mesh);
         plan->materials = materials.materials;
+        std::vector<uint8_t> materialEnvironment(plan->materials.size(), 0);
+        for (size_t i = 0; i < plan->materials.size(); i++) {
+            const TitleMaterial3D& m = plan->materials[i];
+            if (!m.environment.is_object() || m.environment.empty()) continue;
+            const Lighting3D partLighting = resolveLighting(scene, plan->style, &m);
+            Title3DEnvPlan e = environmentOf(partLighting.environment, "style_3d.environment");
+            size_t index = plan->environments.size();
+            for (size_t j = 0; j < plan->environments.size(); j++) {
+                const Environment3D& a = plan->environments[j].environment;
+                const Environment3D& b = e.environment;
+                if (plan->environments[j].key == e.key && a.intensity == b.intensity && a.rotation == b.rotation && a.tint.r == b.tint.r &&
+                    a.tint.g == b.tint.g && a.tint.b == b.tint.b && a.contrast == b.contrast && a.saturation == b.saturation && a.blur == b.blur &&
+                    a.repeatX == b.repeatX && a.repeatY == b.repeatY && a.matcap.path == b.matcap.path && a.matcap.guid == b.matcap.guid) {
+                    index = j;
+                    break;
+                }
+            }
+            if (index == plan->environments.size()) {
+                if (plan->environments.size() >= 255) continue;
+                plan->environments.push_back(std::move(e));
+            }
+            materialEnvironment[i] = (uint8_t)index;
+        }
         const bool lights = countNonAmbientLights(plan->lighting.lights) > 0;
         const Json& chars = memberOf(layer, "chars");
         plan->slots.resize(mesh.slots.size());
         for (size_t s = 0; s < mesh.slots.size(); s++) {
-            plan->slots[s].material = materials.slotMaterial[s];
-            uint32_t bits = titleTierFeatures(plan->materials[materials.slotMaterial[s]], plan->style, plan->tier).litBits;
+            const uint8_t materialIndex = materials.slotMaterial[s];
+            plan->slots[s].material = materialIndex;
+            plan->slots[s].environment = materialIndex < materialEnvironment.size() ? materialEnvironment[materialIndex] : 0;
+            const TitleTierFeatures features = titleTierFeatures(plan->materials[materialIndex], plan->style, plan->tier);
+            uint32_t bits = features.litBits;
             if (lights) bits |= TitleLitBits::LIGHTS;
             if (!mesh.rigs.empty()) bits |= TitleLitBits::RIGS;
-            if (plan->lighting.environment.preset == "matcap") bits |= TitleLitBits::MATCAP;
+            if (plan->environments[plan->slots[s].environment].environment.preset == "matcap") bits |= TitleLitBits::MATCAP;
             if (bits & TitleLitBits::WRAP_UV && mesh.wrap.empty()) bits &= ~TitleLitBits::WRAP_UV;
-            bits |= (uint32_t)plan->debugView << TitleLitBits::OUTPUT_SHIFT;
+            bits |= debugOutput(plan->debugView) << TitleLitBits::OUTPUT_SHIFT;
             plan->slots[s].bits = bits;
+            plan->behind = plan->behind || features.behind;
+            plan->ao = features.ao;
+            plan->glint = features.glint;
         }
+        plan->aoParams = plan->style.ao;
+        plan->glintParams = plan->style.glint;
         // base textures per material
         plan->baseTextures.resize(plan->materials.size());
         for (size_t i = 0; i < plan->materials.size(); i++) {
@@ -196,35 +274,6 @@ namespace jasperengine::titleart {
             plan->partRigs[p] = title3DRigMatrix(decodeCharRig(rig.charIndex, adjust), {rig.pivot[0], rig.pivot[1], rig.pivot[2]}, plan->size);
         }
 
-        // the environment: a procedural preset's scene; a photo, softbox or custom HDRI not built
-        // into this renderer lights with the studio and reports it
-        const Environment3D& env = plan->lighting.environment;
-        if (env.preset == "matcap") {
-            plan->matcap = planner.title3DAsset(encodeAssetRef(env.matcap), node.layerId, "scene_3d.environment.matcap");
-        }
-        const TitleEnvScene* scene3d = titleEnvironmentPreset(env.preset);
-        if (scene3d && !scene3d->procedural) {
-            plan->hdri = loadTitleHdri(scene3d->hdri);
-            plan->hdriYaw = titleHdriYaw(env.preset);
-        }
-        if (!scene3d || (!scene3d->procedural && !plan->hdri)) {
-            if (env.preset != "matcap") {
-                TitleProblem p;
-                p.code = "environment_missing";
-                p.layer = node.layerId;
-                p.path = "scene_3d.environment.preset";
-                p.message = "the environment '" + env.preset + "' has no HDRI here: the studio lights the layer";
-                planner.problem(p);
-                plan->environmentMissing = true;
-            }
-            scene3d = titleEnvironmentPreset("studio");
-        }
-        plan->scene = scene3d;
-        plan->environmentFace = titleEnvironmentFace(env, planner.pxScale(), plan->tier);
-        if (plan->environmentMissing) plan->environmentFace = std::min(plan->environmentFace, 1024);
-        plan->environmentKey = hashCombine(hashCombine(fnv1a64(scene3d->id + (plan->hdri ? ":" + scene3d->hdri : std::string())),
-                                                       (uint64_t)plan->environmentFace),
-                                           TITLE_ENV_BUILDER_VERSION);
         plan->valid = !mesh.vertices.empty();
         return plan;
     }

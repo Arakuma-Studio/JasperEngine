@@ -70,7 +70,8 @@ namespace jasperengine::titleart {
         std::vector<std::string> keepSplits;        // layer ids whose own composite is kept as a split
         std::optional<GlyphCellRequest> glyphCell;
         int tier = 0;                               // 0 = bake quality; S86's TitleTier for Realtime 3D
-        int debugView3D = 0;                        // S86 render_title debug_view: 0 none, 1 normals, 2 environment
+        int debugView3D = 0;                        // S86 render_title debug_view (Title3DDebugView): 0 none, 1 normals,
+                                                    // 2 environment, 3 ao, 4 glint, 5 ink, 6 wireframe
         bool includeGuides = false;                 // the editor's views draw guides; outputs never do
         // the output pass (§6.9): 8 writes straight-alpha sRGB with dither into RGBA8; 16 writes
         // straight sRGB-encoded half floats into RGBA16F (16-bit bakes, read back with 8 bytes
@@ -118,6 +119,9 @@ namespace jasperengine::titleart {
         void setContentProvider(std::shared_ptr<TitleContentProvider> provider);
         // tests: the next job sees a lost device (R19)
         void simulateDeviceLossForTesting();
+        // tests: the S86 3D renderer of this renderer's services (a Title3DRenderer), null until a
+        // 3D layer made it
+        std::shared_ptr<void> title3DRendererForTesting() const;
         // the cache's entries and bytes, the pool's targets (tests, the editor's stats)
         size_t cacheEntries() const;
         const TitleTargetPoolStats& poolStats() const;
