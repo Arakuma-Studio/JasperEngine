@@ -61,3 +61,7 @@ worktree `/var/lib/orquester/workspaces/jaspersito/dc-wt/fu-<name>` and branch `
   `test_ssr_reflections`. Main's `test_post_fx_golden::test_defaults_unchanged` still fails (fix/postfx-golden).
 - New workstream **lit-uniforms** (found by water-uniforms): the built-in Lit with capsule or contact shadows, 2D lights
   and fog is over GLES3's limits (307-339 vectors, 9 blocks); branch fu/lit-uniforms.
+- Train 5 (2026-11-08): lit-uniforms, on box D: WERROR linux, core GPU/golden/budget/records suites, editor shared-data and
+  shader suites, 11 MCP files (post-fx golden green after fix/postfx-golden: Dynamic Batching's world-space vertices moved
+  89 pixels by 1/255), lints, test_grade, tool budget, TOOLS.md check, the water shader matrix (1740 compiles, 0 failed),
+  web, the PCSS web gate, Android (rerun after box D's disk filled). tools/build.sh now forwards the MCP golden update modes.
