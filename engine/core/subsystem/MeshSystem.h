@@ -146,10 +146,15 @@ namespace jasperengine{
         bool loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelComponent& model, const int stride, std::vector<std::string>& loadedBuffers);
         int convertGLTFByteIndicesToShort(const tinygltf::Accessor& indexAccessor, ModelComponent& model);
         int materializeGLTFSparseAccessor(tinygltf::Accessor& accessor, ModelComponent& model);
-        int bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model);
+        // morphs: (target accessor, weight) displacements added before the transform
+        int bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model,
+                                         const std::vector<std::pair<int, float>>& morphs = {});
         int bakeGLTFTransformedTangent(const tinygltf::Accessor& accessor, const Matrix3& tangentMatrix, ModelComponent& model);
         // The bake helpers need float positions, normals and tangents, and no morph targets
-        bool canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason = nullptr) const;
+        // unless the load bakes them too (a placed copy)
+        bool canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason = nullptr, bool bakesMorphs = false) const;
+        bool loadGLTFModel(Entity entity, const std::string& filename, bool asyncLoad, bool skipEntities, bool changeRootTransform,
+                           bool bakeSceneRoot, bool placedCopy);
         int convertGLTFColorToVec4(const tinygltf::Accessor& accessor, ModelComponent& model);
         bool loadGLTFTexture(int textureIndex, ModelComponent& model, Texture& texture, const std::string& textureName);
         // glTF material extensions (MeshSystemGltfPbr.cpp): the KHR_materials_* lobes into
@@ -192,7 +197,6 @@ namespace jasperengine{
         void destroyFoliageEntity(TerrainFoliageChunk& chunk);
         void destroyFoliageInstances(TerrainFoliageInstances& instances);
         void destroyTerrainFoliage(Entity entity);
-        bool loadFoliageMesh(Entity entity, const std::string& path);
         float sampleFoliageDensity(TerrainComponent& terrain, TerrainFoliageLayer& layer, float localX, float localZ);
         void appendFoliageCell(TerrainComponent& terrain, TerrainFoliageLayer& layer, int cellX, int cellZ, std::vector<InstanceData>& instances);
         void updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLayer& layer, TerrainFoliageInstances& instances, const Vector3& viewLocal, bool preview);
@@ -307,6 +311,12 @@ namespace jasperengine{
         // chunk), so a lone mesh node bakes its whole global transform into the vertices
         bool loadGLTF(Entity entity, const std::string filename, bool asyncLoad=false, bool skipEntities=false, bool changeRootTransform=true, bool bakeSceneRoot=false);
         bool loadOBJ(Entity entity, const std::string filename, bool asyncLoad=false);
+        // A copy a system places and draws instanced (a foliage or spline chunk; the editor's
+        // shader variant collector probes one the same way): an .obj, or a glTF/FBX with its node
+        // transforms baked and no skeleton, at rest as static geometry (no skin, the blend shapes'
+        // default weights baked), since instancing with blend shapes needs more vertex inputs than
+        // a GPU has
+        bool loadPlacedModel(Entity entity, const std::string& path);
 
         // Parses a model file into ModelPool without a scene, for SceneManager::preloadScene().
         // False while it loads; data then holds the model, or stays empty when it failed.

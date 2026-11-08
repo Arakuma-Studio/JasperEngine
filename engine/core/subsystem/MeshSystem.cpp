@@ -2479,7 +2479,8 @@ int MeshSystem::materializeGLTFSparseAccessor(tinygltf::Accessor& accessor, Mode
     return denseViewIndex;
 }
 
-int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model){
+int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model,
+                                             const std::vector<std::pair<int, float>>& morphs){
     // Bakes a node's world transform into a copy of a POSITION/NORMAL attribute, into a synthetic
     // tightly-packed FLOAT VEC3 buffer/view. Used by flattened previews and static merged models.
     // Caller must reserve buffers/bufferViews up-front.
@@ -2509,6 +2510,41 @@ int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor,
         return -1;
     }
 
+    // the displacements (float, or normalized bytes and shorts) of one vertex count each
+    struct Displacement {
+        const unsigned char* data;
+        size_t stride;
+        int componentType;
+        float weight;
+    };
+    std::vector<Displacement> displacements;
+    for (const auto& [index, weight] : morphs) {
+        if (!isValidGLTFIndex(index, model.gltfModel->accessors)) {
+            continue;
+        }
+        const tinygltf::Accessor& delta = model.gltfModel->accessors[index];
+        const bool readable = delta.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT ||
+            (delta.normalized && (delta.componentType == TINYGLTF_COMPONENT_TYPE_BYTE || delta.componentType == TINYGLTF_COMPONENT_TYPE_SHORT));
+        if (delta.type != TINYGLTF_TYPE_VEC3 || delta.count != count || !readable ||
+                !isValidGLTFIndex(delta.bufferView, model.gltfModel->bufferViews)) {
+            Log::warn("GLTF blend shape displacement %i cannot be baked; drawn without it", index);
+            continue;
+        }
+        const tinygltf::BufferView& view = model.gltfModel->bufferViews[delta.bufferView];
+        if (!isValidGLTFIndex(view.buffer, model.gltfModel->buffers)) {
+            continue;
+        }
+        const std::vector<unsigned char>& data = model.gltfModel->buffers[view.buffer].data;
+        const size_t deltaStride = static_cast<size_t>(delta.ByteStride(view));
+        const size_t deltaElement = 3 * static_cast<size_t>(tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(delta.componentType)));
+        const size_t deltaBase = view.byteOffset + delta.byteOffset;
+        if (deltaStride < deltaElement || deltaBase + (count - 1) * deltaStride + deltaElement > data.size()) {
+            Log::error("GLTF blend shape displacement range out of bounds");
+            continue;
+        }
+        displacements.push_back({data.data() + deltaBase, deltaStride, delta.componentType, weight});
+    }
+
     tinygltf::Buffer newBuffer;
     newBuffer.data.resize(count * 3 * sizeof(float));
     float* dst = reinterpret_cast<float*>(newBuffer.data.data());
@@ -2516,6 +2552,11 @@ int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor,
         float src[3];
         readGLTFComponents(srcData.data() + base + i * static_cast<size_t>(stride), accessor.componentType, 3, src);
         Vector3 v(src[0], src[1], src[2]);
+        for (const Displacement& displacement : displacements) {
+            float d[3];
+            readGLTFComponents(displacement.data + i * displacement.stride, displacement.componentType, 3, d);
+            v += Vector3(d[0], d[1], d[2]) * displacement.weight;
+        }
         Vector3 r = isNormal ? (normalMatrix * v).normalized() : (matrix * v);
         dst[i * 3 + 0] = r.x;
         dst[i * 3 + 1] = r.y;
@@ -2817,7 +2858,7 @@ bool MeshSystem::hasCustomMeshParenting(Entity modelEntity, const ModelComponent
     return false;
 }
 
-bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason) const {
+bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason, bool bakesMorphs) const {
     auto reject = [reason](const char* message) {
         if (reason) *reason = message;
         return false;
@@ -2828,7 +2869,7 @@ bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std
     }
 
     for (const tinygltf::Primitive& primitive : model.gltfModel->meshes[meshIndex].primitives) {
-        if (!primitive.targets.empty()) {
+        if (!primitive.targets.empty() && !bakesMorphs) {
             return reject("Models with morph targets cannot be merged as static geometry");
         }
         for (const auto& attribute : primitive.attributes) {
@@ -4180,13 +4221,13 @@ void MeshSystem::reloadFoliageMesh(const std::string& filename){
     }
 }
 
-bool MeshSystem::loadFoliageMesh(Entity entity, const std::string& path){
-    // changeRootTransform is off: the terrain places the field, not the file's root transform.
+bool MeshSystem::loadPlacedModel(Entity entity, const std::string& path){
     if (FileData::getFilePathExtension(path).compare("obj") == 0){
         return loadOBJ(entity, path);
     }
-    // Keep all geometry on the instanced root, with the file's node transforms baked in.
-    return loadGLTF(entity, path, false, true, false, true);
+    // All geometry on the instanced root, the file's node transforms baked in; the system
+    // places the copy, not the file's root transform
+    return loadGLTFModel(entity, path, false, true, false, true, true);
 }
 
 // Sample height and normal in terrain-local space.
@@ -4452,7 +4493,7 @@ void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLay
             bool justLoaded = false;
             if (!chunk.meshLoaded && !instances.loadFailed && meshLoadBudget > 0){
                 meshLoadBudget--;
-                instances.loadFailed = !loadFoliageMesh(chunk.entity, layer.meshPath);
+                instances.loadFailed = !loadPlacedModel(chunk.entity, layer.meshPath);
                 chunk.meshLoaded = !instances.loadFailed;
                 chunk.assigned = false;
                 justLoaded = true;
@@ -5359,6 +5400,11 @@ void MeshSystem::createTorus(MeshComponent& mesh, float radius, float ringRadius
 }
 
 bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncLoad, bool skipEntities, bool changeRootTransform, bool bakeSceneRoot){
+    return loadGLTFModel(entity, filename, asyncLoad, skipEntities, changeRootTransform, bakeSceneRoot, false);
+}
+
+bool MeshSystem::loadGLTFModel(Entity entity, const std::string& filename, bool asyncLoad, bool skipEntities, bool changeRootTransform,
+                               bool bakeSceneRoot, bool placedCopy){
     const std::string poolKey = getModelFilenameKey(filename);
 
     failedModelLoads.erase(filename); // an explicit load is a new attempt
@@ -5571,11 +5617,11 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // global transform. (Async is always the flatten path, so useChildEntities is already false here.)
     bool bakingFlatten = (Engine::isAsyncThread() && (meshNodes.size() > 1 || anyNodeSkinned))
         || mergeMeshNodes;
-    // A copy a system places (a foliage or spline chunk) builds no skeleton, so its bones stay at
-    // the identity and a skinned mesh stands at rest: it loads as static geometry. Skinning,
-    // blend shapes and instancing together would need 17 vertex inputs, past the 16 every
-    // backend has, and the chunk would never draw.
-    const bool restPoseSkin = bakeSceneRoot && skipEntities && !vatGltf;
+    // A copy a system places (loadPlacedModel) builds no skeleton and never animates its blend
+    // shapes: it stands at rest as static geometry, its bones the identity and the blend shapes'
+    // default weights baked into its positions and normals. Instanced, a textured mesh's blend
+    // shapes alone need 17 vertex inputs, past the 16 every backend has.
+    const bool restPose = placedCopy && !vatGltf;
 
     if (meshNode < 0) {
         meshNode = meshNodes[0];
@@ -5592,7 +5638,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     // chunk) bakes the node's whole global transform, as the merged nodes of a model do.
     Matrix4 meshOffset;
     if (!useChildEntities && !bakingFlatten && !anyNodeSkinned &&
-            canBakeGLTFMesh(model, model.gltfModel->nodes[meshNodes[0]].mesh)) {
+            canBakeGLTFMesh(model, model.gltfModel->nodes[meshNodes[0]].mesh, nullptr, restPose)) {
         if (bakeSceneRoot) {
             meshOffset = getGLTFMeshGlobalMatrix(meshNodes[0], model, nodesParent);
         } else {
@@ -5846,7 +5892,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             // flatten path's one mesh takes its largest skin's)
             if (mesh.bonesMatrix.stored() < nodeSkin->joints.size())
                 mesh.bonesMatrix.resize(nodeSkin->joints.size());
-        }else if (!bakingFlatten && !restPoseSkin && nodeSkin && !nodeSkin->joints.empty()){
+        }else if (!bakingFlatten && !restPose && nodeSkin && !nodeSkin->joints.empty()){
             Log::error("Model %s has a skin of %zu joints, more than %zu",
                 filename.c_str(), nodeSkin->joints.size(), ARRAY_INDEX_LIMIT);
             if (asyncLoad) {
@@ -6030,15 +6076,36 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 int attrBufferView = accessor.bufferView;
                 size_t attrByteOffset = accessor.byteOffset;
                 int byteStride = accessor.ByteStride(model.gltfModel->bufferViews[accessor.bufferView]);
-                if ((bakingFlatten || restPoseSkin) && !vatGltf && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
+                if ((bakingFlatten || restPose) && !vatGltf && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
                     continue; // static geometry (a baked preview, a placed copy); drop the skinning attributes
                 }
                 // (the bakes write floats, also from a quantized normal or tangent)
                 bool bakedToFloat = false;
-                if ((bakingFlatten || bakeMeshOffset) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
+                // a copy at rest: the displacements of the blend shapes its file weighs in
+                std::vector<std::pair<int, float>> morphs;
+                std::string morphKey;
+                if (restPose && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
+                    for (size_t t = 0; t < primitive.targets.size() && t < gltfmesh.weights.size(); t++) {
+                        const float weight = static_cast<float>(gltfmesh.weights[t]);
+                        auto target = primitive.targets[t].find(attrib.first);
+                        if (weight == 0.0f || target == primitive.targets[t].end() ||
+                                !isValidGLTFIndex(target->second, model.gltfModel->accessors)) {
+                            continue;
+                        }
+                        tinygltf::Accessor& delta = model.gltfModel->accessors[target->second];
+                        if (delta.sparse.isSparse && materializeGLTFSparseAccessor(delta, model) < 0) {
+                            continue;
+                        }
+                        morphs.emplace_back(target->second, weight);
+                        uint32_t bits;
+                        std::memcpy(&bits, &weight, sizeof(bits));
+                        morphKey += "|" + std::to_string(target->second) + ":" + std::to_string(bits);
+                    }
+                }
+                if ((bakingFlatten || bakeMeshOffset || !morphs.empty()) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
                     const bool isNormal = attrib.first == "NORMAL";
-                    int baked = synthView(gltfSynthKey(isNormal ? "normal" : "position", accessor, &nodeBakeMatrix), [&]() {
-                        return bakeGLTFTransformedAttribute(accessor, nodeBakeMatrix, nodeBakeNormalMatrix, isNormal, model);
+                    int baked = synthView(gltfSynthKey(isNormal ? "normal" : "position", accessor, &nodeBakeMatrix) + morphKey, [&]() {
+                        return bakeGLTFTransformedAttribute(accessor, nodeBakeMatrix, nodeBakeNormalMatrix, isNormal, model, morphs);
                     });
                     if (baked >= 0) {
                         attrBufferView = baked;
@@ -6212,6 +6279,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             int  morphIndex    = 0;
 
             for (auto& morphs : primitive.targets) {
+                if (restPose) {
+                    break; // baked above
+                }
                 // Capacity must follow semantics in the prefix actually loaded. A later,
                 // truncated target must not reduce the shader's attribute capacity.
                 const int supportedMorphTargets = (morphNormals && morphTangents) ? 2

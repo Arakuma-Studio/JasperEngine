@@ -6,10 +6,12 @@ set_properties refusing invalid foliageLayers, and set_terrain_maps' blend map s
 Layer factors."""
 
 import shutil
+import struct
 import time
+import zlib
 from pathlib import Path
 
-from harness import Editor
+from harness import Editor, over_budget
 
 EDITOR = {"create": True, "name": "Terrain Details"}
 CI = True
@@ -38,15 +40,29 @@ async def details(ed: Editor, sid, eid) -> list:
     return (await ed.call("sample_terrain", scene=sid, entity=eid, grid=0))["info"]["details"]
 
 
-async def drawn_instances(ed: Editor, sid, eid) -> int:
+def write_png(path: Path, size: int = 4) -> None:
+    """a small grey checker, written without any image library"""
+    rows = b"".join(b"\x00" + b"".join(b"\xc0\xc0\xc0" if (x + y) % 2 else b"\x40\x40\x40" for x in range(size))
+                    for y in range(size))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(png + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
+async def drawn_instances(ed: Editor, sid, eid, what: str) -> int:
     """the first layer's drawn instances once there are any: the chunks wait for their mesh and
     its shader variant, which a cold cache on a loaded machine builds for longer than any frame
-    budget (the deadline is only a hang guard)"""
-    deadline = time.monotonic() + 60
+    budget (the deadline is only a hang guard; the time is reported)"""
+    start = time.monotonic()
     while True:
         await ed.call("wait", frames=5)
         drawn = (await details(ed, sid, eid))[0]["drawn"]
-        if drawn > 0 or time.monotonic() > deadline:
+        if drawn > 0 or time.monotonic() - start > 60:
+            over_budget(f"{what} first drawn", {"seconds": time.monotonic() - start}, 10)
             return drawn
 
 
@@ -77,7 +93,7 @@ async def test_add_update_remove(ed: Editor):
     ed.check("undo" in added, "one undo step")
 
     # the editor scatters instances around its camera
-    drawn = await drawn_instances(ed, sid, eid)
+    drawn = await drawn_instances(ed, sid, eid, "an OBJ detail layer")
     ed.check(drawn > 0, f"the layer draws instances: {drawn}")
 
     updated = await ed.call("edit_terrain_details", scene=sid, entity=eid, update=[{"index": 0, "density": 4, "min_scale": 0.5}])
@@ -96,17 +112,19 @@ async def test_add_update_remove(ed: Editor):
 
 async def test_fbx_layer(ed: Editor):
     """an FBX is a detail mesh as in the Terrain window (it draws from its import); red before the fix:
-    refused as not .obj, .gltf or .glb. This one is skinned with a blend shape: a chunk draws it at
-    rest (red before the fix: its instanced variant needed 17 vertex inputs, so 0 instances drew)"""
+    refused as not .obj, .gltf or .glb. This one is textured, skinned and has a blend shape: a chunk
+    draws it at rest (red before the fix: its instanced variant needed 17 vertex inputs, a textured
+    mesh's blend shapes alone too, so 0 instances drew)"""
     sid, eid = await terrain(ed, "Fbx")
     target = ed.project / "assets" / "models" / "rigged_cube.fbx"
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(Path(__file__).resolve().parents[3] / "editor" / "tests" / "fixtures" / "rigged_cube.fbx", target)
+    write_png(target.parent / "textures" / "checker.png")
     await ed.call("sync_files")
     added = await ed.call("edit_terrain_details", scene=sid, entity=eid,
                           add=[{"mesh": "assets/models/rigged_cube.fbx", "density": 1, "density_map": {"fill": 1, "resolution": 8}}])
     ed.check_eq(added["layers"][0]["mesh"], "assets/models/rigged_cube.fbx", "the FBX layer")
-    drawn = await drawn_instances(ed, sid, eid)
+    drawn = await drawn_instances(ed, sid, eid, "a textured, skinned, blend-shaped FBX detail layer")
     ed.check(drawn > 0, f"the FBX layer draws instances: {drawn}\n"
              f"{await ed.call('read_console', levels=['error'], include_shader_builds=True, limit=10)}")
     # undo removes the layer and the density map the call wrote
