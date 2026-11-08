@@ -101,7 +101,9 @@ TEST(LightRecordsForm, EachBackendDecidesByItsOwnLimits){
     EXPECT_TRUE(readsRecords(gles)) << gles.name << " is over GLES3's 224 fragment vectors in its blocks";
     EXPECT_LE(formFragmentVectors(gles.data), 224u) << gles.name;
 
-    for (ShaderBackend backend : {ShaderBackend::GLCore, ShaderBackend::D3D11, ShaderBackend::MetalMacOS, ShaderBackend::Vulkan}){
+    // (D3D11 and Metal decide as Vulkan does: no total of vectors; the core tests' compiler has GLSL
+    // and SPIR-V only)
+    for (ShaderBackend backend : {ShaderBackend::GLCore, ShaderBackend::Vulkan}){
         FormCompiled desktop = compileForm(properties, backend, clearcoat);
         ASSERT_TRUE(desktop.ok) << desktop.name << ": " << desktop.log;
         EXPECT_FALSE(readsRecords(desktop)) << desktop.name << " fits its backend in its blocks: GLES3's limit cost it the records";

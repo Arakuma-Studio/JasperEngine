@@ -150,8 +150,9 @@ TEST_F(LitLightRecordsGpu, CapsulesContactAnd2DLightsDrawTheBlocksImage){
         EXPECT_TRUE(stats.capsuleShadows);
         EXPECT_TRUE(stats.contactShadows);
         const MeshComponent& mesh = scene.getComponent<MeshComponent>(ground.getEntity());
-        // (over desktop GL's 256 fragment vectors in its blocks; Vulkan has no such total and keeps them)
-        if (std::strcmp(HeadlessContext::getBackendName(), "glcore") == 0){
+        // (per object over desktop GL's 256 fragment vectors in its blocks; from screen tiles, and on
+        // Vulkan, which has no such total, it keeps them)
+        if (mode == LightMode::PER_OBJECT && std::strcmp(HeadlessContext::getBackendName(), "glcore") == 0){
             EXPECT_NE(mesh.submeshes[0].slotLightRecords.first, -1) << "the ground's Lit does not read the light records";
         }
         const std::string name = mode == LightMode::TILED ? "lit_records_tiled" : "lit_records_per_object";
