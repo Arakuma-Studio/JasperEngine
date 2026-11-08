@@ -1043,15 +1043,12 @@ void NavigationSystem::processBakes(double budgetMs) {
         if (state.collectPending && !state.bake) {
             // T4 R25: collect again; it waits on while tiles are still loading
             std::string error;
-            NavBakeError code = NavBakeError::None;
-            const bool started = state.pendingUpdate ? updateTiles(entry.first, state.pendingBounds, error, &code)
-                                                     : bake(entry.first, state.pendingMode, error, &code);
+            const bool started = state.pendingUpdate ? updateTiles(entry.first, state.pendingBounds, error)
+                                                     : bake(entry.first, state.pendingMode, error);
             if (!started) {
                 state.world.hasTarget = false;
                 state.lastResult = std::make_unique<NavBakeResult>();
                 state.lastResult->error = error;
-                state.lastResult->errorCode = code;
-                state.lastResult->hint = bakeErrorHint(code);
                 Log::error("NavMeshSurface '%s' bake failed: %s", scene->getEntityName(entry.first).c_str(), error.c_str());
                 continue;
             }

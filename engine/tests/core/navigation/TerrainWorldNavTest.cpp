@@ -181,14 +181,18 @@ TEST_F(TerrainWorldNav, CollectsTiles) {
     EXPECT_EQ(stats.pendingTiles, 4) << error;
     EXPECT_EQ(worldRuntime->resident(tw::TileCoord(0, 0)), nullptr);
     std::shared_ptr<nav::NavBakeInput> input;
+    // with the editor probe's sources recorded (S75): each tile's lattice is the World's
+    nav::NavCollectOptions options;
+    options.recordSources = true;
     ASSERT_TRUE(pumpUntil([&] {
-        input = nav::NavBakeCollector::collect(scene.get(), surface, error, &stats, {}, nullptr, &context);
+        input = nav::NavBakeCollector::collect(scene.get(), surface, error, &stats, options, nullptr, &context);
         return input != nullptr || stats.pendingTiles == 0;
     })) << error;
     ASSERT_TRUE(input) << error;
     EXPECT_TRUE(context.held.empty());
     ASSERT_EQ(input->terrains.size(), 4u);
     EXPECT_EQ(stats.terrains, 4);
+    EXPECT_EQ(input->terrainSources, std::vector<Entity>(4, world));
 
     // one lattice a tile at its sample spacing, its heights the world query's
     for (const nav::NavTerrainInput& lattice : input->terrains) {
