@@ -2074,8 +2074,8 @@ namespace{
 
 }
 
-std::vector<BoneOverlaySegment> editor::boneOverlaySegments(Scene* scene, const ModelComponent& model){
-    std::vector<BoneOverlaySegment> segments;
+std::vector<editor::BoneOverlaySegment> editor::boneOverlaySegments(Scene* scene, const ModelComponent& model){
+    std::vector<editor::BoneOverlaySegment> segments;
     segments.reserve(model.bonesIdMapping.size());
     // a bone's position once: each bone is usually some other's parent
     std::unordered_map<Entity, Vector3> positions;
@@ -2095,7 +2095,7 @@ std::vector<BoneOverlaySegment> editor::boneOverlaySegments(Scene* scene, const 
     for (const auto& [boneId, boneEntity] : model.bonesIdMapping){
         const Transform* transform = scene->findComponent<Transform>(boneEntity);
         if (!transform || !transform->visible) continue;
-        BoneOverlaySegment segment;
+        editor::BoneOverlaySegment segment;
         segment.bone = positionOf(boneEntity, *transform);
         if (transform->parent != NULL_ENTITY && scene->findComponent<BoneComponent>(transform->parent)){
             if (const Transform* parent = scene->findComponent<Transform>(transform->parent)){
