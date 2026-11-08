@@ -797,6 +797,9 @@ namespace jasperengine{
 		// passes like the queues
 		std::vector<VisibleCandidate> visibleCandidates;
 		std::vector<VisibleResult> visibleResults;
+		// the candidates' submesh bounds, one pointer a submesh (a mesh's submeshes are allocated
+		// one by one, not side by side)
+		std::vector<const AABB*> visibleSubmeshBounds;
 		std::vector<OpaqueRenderData> visibleEntries;
 		std::vector<int> visiblePriorities;
 		std::vector<uint64_t> visibleKeys;
@@ -1834,13 +1837,24 @@ namespace jasperengine{
 		// texels holds 128 scene lights) and the meshes drawing with them (none: no texture)
 		static constexpr int LIGHT_RECORDS_WIDTH = 512;
 		object_light_records_t lightRecordsBlock;
+		// a lights' block with the records form's tail, and where the frame's capsules and 2D
+		// lights start among the records (after the scene lights)
+		Vector4 lightBlockScratch[24];
+		int lightDataCapsuleBase = 0;
+		int lightData2DBase = 0;
 		TextureRender lightRecords;
 		// what the texture holds (uploaded only when a record changed) and the next frame's
 		std::vector<Vector4> lightRecordTexels;
 		std::vector<Vector4> lightRecordScratch;
 		uint64_t lightRecordsFrame = UINT64_MAX;
 		bool lightRecordsUploaded = false;
-		std::unordered_set<Entity> lightRecordMeshes;
+		// what each mesh's variants read of the records (LIGHT_RECORDS_* bits)
+		std::unordered_map<Entity, uint8_t> lightRecordMeshes;
+		// the variants whose left-out lighting was said (describeLeftOutLighting)
+		std::unordered_set<std::string> reportedLeftOutLighting;
+		static constexpr uint8_t LIGHT_RECORDS_LIGHTS = 1;
+		static constexpr uint8_t LIGHT_RECORDS_CAPSULES = 2;
+		static constexpr uint8_t LIGHT_RECORDS_2D = 4;
 		light_occlusion_t lightOcclusionBlock;
 		LightingFeatureState lighting;
 		// the camera pass being drawn: its contact mask (null: white), whether it draws OIT
@@ -2275,8 +2289,17 @@ namespace jasperengine{
 		int lightOcclusionBits(int sceneLight) const;
 		// the object's lights of a variant into its blocks (the Tiled form for 'Til')
 		void applyObjectLights(ObjectRender& render, int slotVS, unsigned int sizeVS, int slotFS, unsigned int sizeFS,
-		                       std::pair<int, int> slotLightRecords, const MeshComponent& mesh, uint64_t properties,
-		                       uint32_t& builtLightBits);
+		                       std::pair<int, int> slotLightRecords, const LightDataTail& tail, const MeshComponent& mesh,
+		                       uint64_t properties, uint32_t& builtLightBits);
+		// the records form's tail of a variant's lights' block (includes/lights.glsl LIGHT_DATA_TAIL)
+		static LightDataTail resolveLightDataTail(ShaderData& shaderData);
+	public:
+		// what a lit variant's build left out to stay within the bind limits, as the runtime warns
+		// it once a variant ("" when nothing: ShaderVariantCompiler::compile's SHADOWS_2D_OFF)
+		static std::string describeLeftOutLighting(uint64_t properties, ShaderData& shaderData);
+	private:
+		// its values for a draw of the mesh in the pass being drawn, into the block's bytes
+		void writeLightDataTail(const LightDataTail& tail, const MeshComponent& mesh, uint64_t properties, unsigned char* block, size_t size) const;
 		// the records form's block (includes/lights.glsl, LIGHTS_FS_RECORDS): the object's pixel
 		// lights as rows of u_lightRecords
 		void buildObjectLightRecords(const MeshComponent& mesh, uint64_t properties, object_light_records_t& block) const;
@@ -2284,10 +2307,10 @@ namespace jasperengine{
 		// tile and occlusions (vertex lights: none)
 		float packObjectLightShadow(int sceneLight, bool perPixel) const;
 		// the frame's light records, once a frame while a mesh draws with them; a float texture
-		// of at least the rows given (false: none)
+		// of at least the rows given, made again smaller with shrink once they take under half (false: none)
 		void syncLightRecords();
-		bool ensureLightRecords(int rows);
-		void setLightRecordsMesh(Entity entity, bool records);
+		bool ensureLightRecords(int rows, bool shrink = false);
+		void setLightRecordsMesh(Entity entity, uint8_t reads);
 	public:
 		// the light records' uploads so far (tests: none while no light changes)
 		uint64_t lightRecordUploads = 0;

@@ -33,6 +33,10 @@ uniform u_fs_objectLights {
     vec4 shB;
     vec4 tileGrid;    // xy the grid's origin in gl_FragCoord pixels, zw a tile's size in pixels
     vec4 tileCount;   // x columns, y rows
+    // (the records form's tail: includes/lights.glsl, LIGHTS_FS_RECORDS)
+    #ifdef LIGHT_DATA_TAIL
+        LIGHT_DATA_TAIL
+    #endif
 } objectLights;
 
 uniform texture2D u_tiledLights;
