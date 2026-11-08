@@ -108,7 +108,7 @@ TEST(BoltBuilder, MidpointDisplacement) {
     const double bound = jag * 200.0 * 0.35 * (1.0 - std::pow(0.55, 6)) / (1.0 - 0.55) + 1e-9;
     for (size_t i = 0; i < segs.size(); i++) {
         EXPECT_LE(std::abs(segs[i].ay - ay), bound);
-        if (i) EXPECT_EQ(segs[i].ax, segs[i - 1].bx) << "the bolt is continuous";
+        if (i) { EXPECT_EQ(segs[i].ax, segs[i - 1].bx) << "the bolt is continuous"; }
         EXPECT_DOUBLE_EQ(segs[i].width, 1.0 - 0.5 * (double)i / 65.0);
         EXPECT_EQ(segs[i].intensity, 1.0);
     }

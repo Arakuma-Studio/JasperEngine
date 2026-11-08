@@ -89,7 +89,7 @@ TEST(TitleGenCatalog, EveryGeneratorComplete) {
         EXPECT_EQ(std::string(def->presetFile), "editor/resources/titleart/fx-presets/" + type + ".yaml");
         EXPECT_TRUE(def->render);
         EXPECT_TRUE(def->estimate) << "every generator states its cost model";
-        if (def->follow != FollowMode::None) EXPECT_EQ(def->glyphSafety, GlyphSafety::Unsafe) << "§6.13: a following generator needs the whole text";
+        if (def->follow != FollowMode::None) { EXPECT_EQ(def->glyphSafety, GlyphSafety::Unsafe) << "§6.13: a following generator needs the whole text"; }
         for (const char* live : def->live.params) {
             const ParamDef* p = findParam(def->params, live);
             ASSERT_TRUE(p) << "live param " << live << " does not exist";
@@ -104,7 +104,7 @@ TEST(TitleGenCatalog, EveryGeneratorComplete) {
             if (p.kind == ParamKind::Number && p.unit == ParamUnit::Percent) ADD_FAILURE() << p.key << ": a generator percent is not of the layer's size (unit None)";
             if (light && (p.kind == ParamKind::Color || p.kind == ParamKind::Gradient)) {
                 const std::string key = p.key;
-                if (key.find("shadow") == std::string::npos) EXPECT_TRUE(p.light) << key << " is a colour of light (R55)";
+                if (key.find("shadow") == std::string::npos) { EXPECT_TRUE(p.light) << key << " is a colour of light (R55)"; }
             }
         }
         const Json presets = loadGeneratorPresets(type);
@@ -166,12 +166,12 @@ TEST(TitleFxBudget, GeneratorStaticModel) {
             const ParamValues p(values);
             CostClass allowed = def->costClass;
             if (name != "defaults") allowed = stated.count(name) ? stated[name] : heavier(def->costClass);
-            if (name != "defaults" && stated.count(name)) EXPECT_LE((int)stated[name], (int)heavier(def->costClass)) << "a preset is at most one class heavier";
+            if (name != "defaults" && stated.count(name)) { EXPECT_LE((int)stated[name], (int)heavier(def->costClass)) << "a preset is at most one class heavier"; }
             const FxCost d = def->estimate(p, desktop, FxTier::Desktop);
             EXPECT_TRUE(withinClass(d, allowed)) << "desktop: " << d.fre << " FRE, " << d.maxTapsPerPixel << " taps over " << costClassName(allowed);
             const FxCost m = def->estimate(p, mobile, FxTier::Mobile);
             // the mobile tier's reductions keep a definition inside its class (C4 is baked there)
-            if (def->costClass != CostClass::C4) EXPECT_TRUE(withinClass(m, allowed)) << "mobile: " << m.fre << " FRE, " << m.maxTapsPerPixel << " taps";
+            if (def->costClass != CostClass::C4) { EXPECT_TRUE(withinClass(m, allowed)) << "mobile: " << m.fre << " FRE, " << m.maxTapsPerPixel << " taps"; }
             EXPECT_GE(d.passes, 1);
             EXPECT_LE(d.instances, gen::QUAD_BATCH_MAX);
         }

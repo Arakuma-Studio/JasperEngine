@@ -124,7 +124,7 @@ TEST_F(TitleArtRuntimeGpu, DoubleBuffer) {
         RuntimeShaderCompiler::beginFrame();
         TitleArtScheduler::schedule({&live}, factory, 200, 1.0);
         SystemRender::commit();
-        if (live.front().hash == 1u) EXPECT_TRUE(identical(frontPixels(live), first)) << "R17: never a half-made image, frame " << frames;
+        if (live.front().hash == 1u) { EXPECT_TRUE(identical(frontPixels(live), first)) << "R17: never a half-made image, frame " << frames; }
         size_t cache = 0;
         clock += 1.0 / 60.0;
         live.endFrame(clock, 1.0 / 60.0, limits, cache);

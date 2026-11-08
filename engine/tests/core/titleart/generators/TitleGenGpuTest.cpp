@@ -123,7 +123,7 @@ TEST_F(TitleGenGpu, PresetGoldens) {
     }
     // every S83 generator has presets (R7)
     for (const GeneratorDef* d : TitleEffectRegistry::get().generators()) {
-        if (d->presetFile && std::string(d->type) != "pattern_fill") EXPECT_TRUE(types.count(d->type)) << d->type << " has no preset";
+        if (d->presetFile && std::string(d->type) != "pattern_fill") { EXPECT_TRUE(types.count(d->type)) << d->type << " has no preset"; }
     }
 }
 
@@ -234,7 +234,7 @@ TEST_F(TitleGenGpu, FallbackWithinClass) {
             // Backlight's shape centre) may flip a borderline cell between the paths: a few
             // pixels then differ by more than the class's max, the mean and the share hold
             const bool gridLayout = c.type == "lightning" || c.type == "backlight";
-            if (!gridLayout) EXPECT_LE(stats.max, maxDiff) << fallbackClassName(cls) << ": " << stats.text();
+            if (!gridLayout) { EXPECT_LE(stats.max, maxDiff) << fallbackClassName(cls) << ": " << stats.text(); }
             EXPECT_LE(stats.fractionOver8, maxOver) << fallbackClassName(cls) << ": " << stats.text();
             if (stats.mean > maxMean || (!gridLayout && stats.max > maxDiff) || stats.fractionOver8 > maxOver) {
                 // both paths beside each other for the evidence

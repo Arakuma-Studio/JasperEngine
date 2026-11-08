@@ -121,9 +121,9 @@ TEST(Title3DDocumentTest, LightingInheritsValueByValue) {
     const Lighting3D part = resolveLighting(scene, style, &style.face);
     EXPECT_EQ(part.environment.preset, "city");
     for (const auto& [key, level] : part.sources) {
-        if (key == "preset") EXPECT_EQ(level, LightingLevel::Part);
-        if (key == "rotation") EXPECT_EQ(level, LightingLevel::Layer);
-        if (key == "intensity") EXPECT_EQ(level, LightingLevel::Document);
+        if (key == "preset") { EXPECT_EQ(level, LightingLevel::Part); }
+        if (key == "rotation") { EXPECT_EQ(level, LightingLevel::Layer); }
+        if (key == "intensity") { EXPECT_EQ(level, LightingLevel::Document); }
     }
     // the default rig: one directional light and an ambient one
     EXPECT_EQ(scene.lights.size(), 2u);

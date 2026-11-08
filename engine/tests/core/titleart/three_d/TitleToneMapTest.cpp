@@ -142,6 +142,6 @@ TEST(TitleToneMapTest, ShoulderAndCompressedLightInvert) {
         if (m <= 20) EXPECT_NEAR(d.x / 0.5f, c.x, c.x * (m >= 20 ? 0.25f : 0.03f) + 0.01f) << m;
         else EXPECT_GT(d.x / 0.5f, 20.0f) << m;
         // red control: reading the encoding as plain colour loses the highlight
-        if (m >= 2) EXPECT_LT(e.x / 0.5f, 1.0f);
+        if (m >= 2) { EXPECT_LT(e.x / 0.5f, 1.0f); }
     }
 }

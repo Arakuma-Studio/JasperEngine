@@ -286,7 +286,7 @@ TEST_F(TitleFxFallbackGpu, AgreesWithinItsClass) {
         // hard-edged procedural cuts (chalk grain, frost crystals, brush gaps, stitch ends) flip
         // single pixels where the RGBA8 distance's 1/64 px steps cross their threshold: their
         // mean and share stay within the class, a lone pixel may differ fully (Deviations)
-        if (!hardEdged.count(def->type)) EXPECT_LE(stats.max, l.max) << fallbackClassName(def->fallback) << ": " << stats.text();
+        if (!hardEdged.count(def->type)) { EXPECT_LE(stats.max, l.max) << fallbackClassName(def->fallback) << ": " << stats.text(); }
         EXPECT_LE(stats.fractionOver8, l.over) << fallbackClassName(def->fallback) << ": " << stats.text();
     }
 }

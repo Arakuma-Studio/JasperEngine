@@ -56,19 +56,19 @@ TEST(TitleFxCatalogTest, EveryDefinitionComplete) {
         EXPECT_NE(d->apply, nullptr);
         EXPECT_NE(d->estimate, nullptr) << "every S83 definition states its cost model";
         EXPECT_NE(d->presetFile, nullptr);
-        if (d->presetFile) EXPECT_EQ(std::string(d->presetFile), "editor/resources/titleart/fx-presets/" + type + ".yaml");
+        if (d->presetFile) { EXPECT_EQ(std::string(d->presetFile), "editor/resources/titleart/fx-presets/" + type + ".yaml"); }
         const Json defaults = defaultParams(d->params);
         const ParamValues values(defaults);
         const bool light = d->addsLight && d->addsLight(values);
         for (const ParamDef& p : d->params) {
             SCOPED_TRACE(p.key);
             EXPECT_NE(p.anim, FxAnim::None) << "every param has an animation class";
-            if (stepped(p.kind) && p.anim != FxAnim::Relayout) EXPECT_EQ(p.interp, ParamInterp::Stepped);
+            if (stepped(p.kind) && p.anim != FxAnim::Relayout) { EXPECT_EQ(p.interp, ParamInterp::Stepped); }
             // §6.3: the colours of an adds_light definition are light, but shadow colours
-            if (light && (p.kind == ParamKind::Color || p.kind == ParamKind::Gradient)) EXPECT_TRUE(p.light) << "a colour of light is marked";
+            if (light && (p.kind == ParamKind::Color || p.kind == ParamKind::Gradient)) { EXPECT_TRUE(p.light) << "a colour of light is marked"; }
             // §6.12: the intensities of light combine by multiplying
             const std::string key = p.key;
-            if (light && (key == "intensity" || key == "glow" || key == "brightness")) EXPECT_EQ(p.combine, ParamCombine::Multiply);
+            if (light && (key == "intensity" || key == "glow" || key == "brightness")) { EXPECT_EQ(p.combine, ParamCombine::Multiply); }
         }
         if (d->live.kind != LiveKind::None) {
             EXPECT_FALSE(d->live.params.empty()) << "a live variant names the params it animates";

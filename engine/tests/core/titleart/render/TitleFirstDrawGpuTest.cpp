@@ -110,7 +110,7 @@ TEST_F(TitleFirstDrawGpu, NewProgramsDrawOneAFrame) {
     const std::string device = SystemRender::getDeviceName();
     const bool software = device.find("llvmpipe") != std::string::npos || device.find("softpipe") != std::string::npos ||
                           device.find("SwiftShader") != std::string::npos || device.find("Software Rasterizer") != std::string::npos;
-    if (!software) EXPECT_LT(spread.longestFrameMs, (double)diag::WatchdogConfig().thresholdMs) << describe(spread);
+    if (!software) { EXPECT_LT(spread.longestFrameMs, (double)diag::WatchdogConfig().thresholdMs) << describe(spread); }
     // red control: unbounded, the first frame draws every new program
     TitleFirstDraws::resetForTesting(true);
     const TimedRender together = renderWithEffects();
