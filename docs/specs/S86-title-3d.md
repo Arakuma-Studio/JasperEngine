@@ -1467,7 +1467,7 @@ rest of S82 lands in 6B.
       streaks starting at other highlights; crumple, flake and liquid cells and gem refraction; Pachislop's taller,
       wider inflate field; on the metal faces lit by the softbox the dark reflection band sits higher than the
       reference's (seen on gold, box-plate and red; gold-plate, popout, fire and rose-chocolate share the setup; the
-      ramp's direction matches, rainbow-glass-gold is red on top in both; the cause is not found). The test lists each look's cause and fails when a look
+      ramp's direction matches, rainbow-glass-gold is red on top in both; cause found in the wiring round, below). The test lists each look's cause and fails when a look
       starts passing; its Neutral-for-Punch red control fails all 40.
     - **Tone guard:** the mean luminance of the pixels both images cover must be within 16/255 of the reference's.
       Ranking the 40 looks and viewing the worst sheets found one broken path, the iridescence: Title Lit used the
@@ -1482,6 +1482,30 @@ rest of S82 lands in 6B.
       holo-silver +17.4 (+10.4): their gems, flakes and iridescence are already brighter than the references', and the
       glow over its 0.5 threshold adds light in proportion (the Light Glow itself matches Pachislop's deepGlow on the
       2D title, `TitleFxParityGpu`: 0 % of blocks). Red control: half the exposure puts 33 of 40 out of the band.
+    - **Re-measured in the wiring round (`ta/w3-3d-runtime`, 2026-11-08), with the cause of the dark band.** The core test
+      binary registered no HDRI loader (only the editor's MCP tools did), so every softbox and photo look (gold, box-plate,
+      gold-plate, red, fire, popout, rose-chocolate, inflate, jade, sakura, sometsuke; rainbow-glass-gold's highway) rendered
+      the procedural studio as `environment_missing`, which the test did not look at. The studio's sky jumps from 0.45 to 2.4
+      just above the horizon, where a flat face reflects (a face at y of +-73 px seen from 2,015 px reflects elevations of
+      +-2 degrees): its bright band sat on the top third of the letters and the rest read dark, while Studio Small 09 is nearly
+      flat there (1.26-1.32), so the reference's dark band is gold's ramp alone. The bundled-HDRI reader is now the engine's
+      (`loadTitleHdriFromDirectory`), the test lights the looks with `editor/resources/titleart/hdri` and fails on any
+      `environment_missing`; `Title3DParityGpu.SoftboxLooksLightWithTheirHdri` is the red control (without the loader the
+      studio stands in, says so, and red differs by 30.6/255 over the title). With it, on llvmpipe: gold 18.45 -> 3.09/255
+      (48.8 -> 4.2 % of pixels), box-plate 19.12 -> 3.96, red 21.18 -> 4.18, gold-plate 19.69 -> 4.71, popout 18.32 -> 4.34,
+      fire 11.04 -> 3.79, rose-chocolate 11.63 -> 4.86, rainbow-glass-gold 14.73 -> 10.65, inflate 37.83 -> 25.02 (now inside
+      the tone band); worse: sakura 7.09 -> 7.37 (10 -> 35 % of pixels: its pink face is paler under the HDRI, cause not
+      found), sometsuke 5.04 -> 7.19 (a greyer foot), jade 21.6 -> 23.5 (tone -15.9: its patterned face is darker). **AC21
+      is still not met**: llvmpipe 0 of 40 pass (means 3.1-40.5/255, 4.2-66.7 % of pixels, 29 looks under 10/255; two looks
+      outside the tone band, diamond and holo-silver); on the RTX 3080 Ti (`rb.sh H`) 2 of 40 pass, gold (2.45/255, 2.55 %)
+      and box-plate (2.78/255, 2.36 %), means 2.45-44.85/255, 30 looks under 10/255, three outside the tone band (jade at
+      -18.1 joins). Gold and box-plate are therefore accepted either way (`deviceDependent`), and jade's tone too. The two
+      devices also differ in the glint chain: aurora 6.58 (llvmpipe) against 25.67/255 (RTX, size +9 px), rose-chocolate
+      4.86 against 24.43 and holo-silver 10.38 against 20.23, the RTX run's streaks reaching further; that is open.
+    - **Iridescence red control** (automated): `TitleIridescence` compiles `title_iridescence.glsl` and the engine's
+      `includes/iridescence.glsl` as C++: obsidian's film (F0 0.04 under the 1.6 film at 520 nm) reflects purple (green the
+      weakest channel at cos 1, 0.9 and 0.7, also as Title Lit's F0), and the engine film Title Lit used before reflects
+      green there (the red control runs in the same suite).
 29. **Measured: benches on this host** (`docs/perf/title3d.md`): the figures are this host's (a container on a shared CPU,
     llvmpipe for the GPU), not build server A's; `tools/perf/bench-thresholds.json` keeps the spec's budgets.
 30. **Implementation: Pachislop's units, found by the parity goldens.** A material's gradient overrides its colour
@@ -1517,8 +1541,10 @@ rest of S82 lands in 6B.
       not. ModuleUsage's evidence names the title, the layer and the parameter.
     - **AC26's "no Clipper2 symbols in the player"** cannot hold: S80's 2D offsets (`geometry/Offset.cpp`) link Clipper2
       whenever `titleart` is in, as R38 itself says ("Clipper2 stays while S80's 2D plates use it"). The smoke case
-      (`tools/fixtures/title3d-fixed`, made by `tools/fixtures/make_title3d_fixed_fixture.py`, run with `SMOKE_METHOD=compile
-      SMOKE_PLAY=1`) checks instead: the export's `set(JASPERENGINE_TITLE_ART_MESHER OFF)` (`smoke-export-expect.txt`), the
+      (`tools/fixtures/title3d-fixed`, made by `tools/fixtures/make_title3d_fixed_fixture.py`, run with `SMOKE_METHOD=build
+      SMOKE_PLAY=1`: the smoke's new method, the editor's Compile build `jasperengine-editor build --method compile`; its
+      `compile` method is a source export, which keeps every module by design) checks instead: the build's
+      `set(JASPERENGINE_TITLE_ART_MESHER OFF)` (`smoke-export-expect.txt`), the
       player's log line that its 3D layers draw the cooked meshes (printed only by a build without the mesher), the Lua gate
       (`getMeshStats` with `cooked=true` at the Low tier), and the game's own frame against the editor's frame of the same
       scene (`smoke-golden.json`, `tools/ci/smoke_golden.py`). The fixture is lit by the softbox, an HDRI no player has.
@@ -1527,5 +1553,16 @@ rest of S82 lands in 6B.
       Recorder and smoke screenshots show finished titles.
     - **Lua** (R63): `qualityTier` refuses another value with a sentence; `getMeshStats` returns nil before the layer's first
       render and adds `cooked`.
-    - **HDRIs in tests**: the bundled-HDRI reader moved into the engine (`loadTitleHdriFromDirectory`; the editor's loader calls
-      it), so the core tests light the softbox and photo looks with their HDRIs (deviation 28).
+    - **HDRIs in tests and builds**: the bundled-HDRI reader moved into the engine (`loadTitleHdriFromDirectory`; the editor's
+      loader calls it), so the core tests light the softbox and photo looks with their HDRIs (deviation 28); the export registers
+      the loader itself (a command-line build registers no MCP tools, which did, and could not cook a softbox cube).
+    - **Player against editor** (`TitleCooked3DGpu`): the cooked meshes and cube without the mesher draw what the editor draws
+      at the same tier (High: mean 0.01/255, 0 % of pixels over 24/255; Low: 0.42/255, 0.61 %, llvmpipe and RTX 3080 Ti
+      alike), and against the editor's Bake mean 0.65-0.74/255 with 1.8-2.0 % of pixels over 24/255 at High (1.0 % at Low):
+      the tier's k (2 against 3) and bevel segments (<= 8 against 24) move the edges' antialiasing, so AC9's mean holds and
+      its 1 % does not at High; the test bounds it at 2/255 and 3 %.
+    - **Realtime tier bench** (`Title3DBakeBench.RealtimeTiers`, "BIG BONUS" Gold 3D at 280 px, about 30 % of 1080p, one
+      re-render with its readback, median of 5): RTX 3080 Ti (GL) High 35.7 ms (70 passes), Medium 34.9 ms (41), Low 35.0 ms
+      (7); llvmpipe High 598.7 ms, Medium 200.0 ms, Low 505.4 ms (MSAA 4 on the compressed target is expensive on a CPU
+      rasteriser). The RTX figures are wall clock with a synchronous readback (about 35 ms whatever the tier), not GPU time:
+      §6.7's 4 ms needs S15's GPU timings, which this test does not read. The pass counts are within §6.7 (<= 80, 48, 7).
