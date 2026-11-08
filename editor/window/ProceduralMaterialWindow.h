@@ -167,6 +167,9 @@ namespace jasperengine::editor{
         void setBakeSize(int size) { bakeSizeValue = size; }
         bool canBake(std::string* why = nullptr) const;
         bool bake();
+        // the bake's state (its outcome once it ends), and why the last Bake did not start
+        BakeState bakeState() const { return services.bakeState ? services.bakeState() : BakeState(); }
+        const std::string& getBakeError() const { return bakeError; }
 
         // the report rows as Problems strip rows: a FAIL is an error, a WARN a warning; a fix of
         // one op on the row's node is its Fix

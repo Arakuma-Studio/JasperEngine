@@ -831,6 +831,7 @@ std::vector<GraphEditorWindow::Problem> GraphEditorWindow::problems() const{
         out.push_back(std::move(problem));
     }
     collectProblems(out);
+    for (Problem& problem : out) problem.revision = document->revision();
     return out;
 }
 
@@ -843,6 +844,11 @@ bool GraphEditorWindow::inspectProblem(const Problem& problem){
 
 bool GraphEditorWindow::fixProblem(const Problem& problem){
     if (problem.fix.empty()) return false;
+    // its op names the graph it was found on: an edit since (even this frame's) may have made it wrong
+    if (!document || problem.revision != document->revision()){
+        status = "the graph changed since that problem was found: look at the strip again";
+        return false;
+    }
     return apply(problem.fix, problem.fixLabel);
 }
 

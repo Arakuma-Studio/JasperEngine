@@ -140,6 +140,19 @@ ProceduralMaterialWindow::Services ProceduralMaterialWindow::defaultServices(){
         if (!procmat::prepareGraphBake(project, file, request.path, graph, procmat::defaultBakeFolder(request.path), options, true, false, prepared, error)){
             return false;
         }
+        // a file at an output's path that is not a bake of this graph (another graph's, a hand-made image) is
+        // refused before the run, never replaced: the window has no overwrite
+        for (const std::string& output : prepared.outputs){
+            const std::string rel = prepared.write.folder + "/" + procmat::bakedImageName(prepared.stem, output);
+            const std::filesystem::path png = project->getProjectPath() / rel;
+            std::error_code ec;
+            if (!std::filesystem::exists(png, ec)) continue;
+            const std::optional<procmat::BakeRecipe> earlier = procmat::readBakeRecipe(png);
+            if (!earlier || earlier->graphGuid != prepared.write.recipe.graphGuid){
+                error = rel + " is not a bake of this graph: move or rename it, then Bake again.";
+                return false;
+            }
+        }
         procmat::ProceduralRunRequest runRequest;
         runRequest.plan = prepared.plan;
         // a CPU tier's 2048² bake takes minutes (R25): the user cancels, no bound does

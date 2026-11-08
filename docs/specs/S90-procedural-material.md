@@ -740,7 +740,10 @@ preview pane and Problems strip are a later branch: they call `ProceduralChecks:
   Problems strip has `graphCheckReport`'s rows, `preview_procedural_material`'s, and a check with exactly one fix
   (`{check, node, op}`) gets Fix. Bake goes through the bake tool's own steps (`prepareGraphBake`, a `ProceduralRun`,
   `writeGraphBake`) into the default folder at the graph's seed, one undo step, with no time bound (Cancel stops it);
-  its row is at the top of the pane. A check FAIL does not refuse a bake; the graph's own errors do.
+  its row is at the top of the pane. A check FAIL does not refuse a bake; the graph's own errors do. Bake reads the
+  file, which is the window's graph: every window edit is written as its undo step before the call returns. A file at an
+  output's path that is not a bake of this graph is refused before the run (the window has no overwrite), and a
+  Problems row's Fix holds the revision it was found on and is refused after any edit.
 - **M6's preset finding.** A gradient preset saved from a 32-key ramp reloads with its 32 keys on this base
   (`SwatchLibrary.AGradientPresetKeepsAGraphRampsKeys` passes without a change): the swatch library's native format
   is read without `normalize()`, which only the upstream dialect calls. Dropped.

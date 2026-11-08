@@ -73,6 +73,7 @@ namespace jasperengine::editor{
             std::string nodeId;                 // selected by a click; "" for the graph
             std::vector<graph::GraphOp> fix;    // a single edit Fix applies (empty: no Fix)
             std::string fixLabel;               // its undo name
+            uint64_t revision = 0;              // the document's revision it was found on: Fix refuses another
         };
         // An entry of the node search: a node type, or one value of one of its enum parameters
         struct SearchEntry{

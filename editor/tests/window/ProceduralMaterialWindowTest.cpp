@@ -25,6 +25,9 @@
 #include "graph/GraphDocument.h"
 #include "graph/GraphRegistry.h"
 #include "procmat/ImageEvaluator.h"
+#include "procmat/NodeLibrary.h"
+#include "procmat/ProceduralBake.h"
+#include "procmat/ProceduralRun.h"
 #include "procmat/ProceduralDevice.h"
 #include "procmat/ProceduralMaterialKind.h"
 #include "window/ProceduralMaterialWindow.h"
@@ -32,6 +35,9 @@
 #include "imgui.h"
 
 #include <unistd.h>
+
+#include <chrono>
+#include <thread>
 
 #include <algorithm>
 #include <cmath>
@@ -102,6 +108,11 @@ namespace {
         fs::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         file << content;
+    }
+
+    std::string readAll(const fs::path& path) {
+        std::ifstream file(path, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }
 
     // Perlin (n1) -> Blend (n2) -> Material Output (n3): base colour; Perlin -> roughness too
@@ -695,4 +706,121 @@ TEST(ProceduralMaterialWindowReport, TwoFixesOfOneCheckAreNoFix) {
     const std::vector<GraphEditorWindow::Problem> rows = ProceduralMaterialWindow::problemsFromReport(report);
     ASSERT_EQ(rows.size(), 1u);
     EXPECT_TRUE(rows[0].fix.empty());
+}
+
+namespace {
+
+    // the window's own bake (bake_procedural_material's steps) on the tests' evaluators for the preview:
+    // with no context the bake runs on the CPU tier
+    ProceduralMaterialWindow::Services withTheBake(Fake& fake) {
+        ProceduralMaterialWindow::Services services = fake.services();
+        ProceduralMaterialWindow::Services defaults = ProceduralMaterialWindow::defaultServices();
+        services.startBake = defaults.startBake;
+        services.bakeState = defaults.bakeState;
+        services.cancelBake = defaults.cancelBake;
+        return services;
+    }
+
+    // Bake, and the editor's frames until it ends; its outcome
+    std::string bakeAndWait(ProceduralMaterialWindow& window) {
+        if (!window.bake()) return "refused: " + window.getBakeError();
+        for (int i = 0; i < 6000 && window.bakeState().running; i++) {
+            procmat::ProceduralRun::processFrame();
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        return window.bakeState().message;
+    }
+
+    // a graph the editor's scan has seen (its GUID written then, as a project's files have theirs), so a bake
+    // writes nothing into it
+    std::string indexed(const std::string& path) {
+        project()->onAssetFilesChanged(project()->getAssetDatabase().importAssets(project()->getProjectPath() / path));
+        return path;
+    }
+
+    std::string bakedHash(const fs::path& png) {
+        const std::optional<procmat::BakeRecipe> recipe = procmat::readBakeRecipe(png);
+        return recipe ? recipe->inputHash : std::string();
+    }
+
+    std::string planHash(const graph::Graph& graph, int size, uint32_t seed) {
+        procmat::BakeOptions options;
+        options.size = size;
+        options.seed = seed;
+        procmat::PassPlan plan;
+        std::vector<std::string> outputs;
+        std::string error;
+        if (!procmat::planBake(graph, procmat::NodeLibrary::shipped(), options, plan, outputs, error)) return "no plan: " + error;
+        return procmat::bakeInputHash(plan);
+    }
+
+}
+
+// Wiring round 2: an edit made just before Bake is baked (every window edit is written as its step, before Bake
+// reads the file)
+TEST_F(ProceduralMaterialWindowTest, AnEditMadeJustBeforeBakeIsBaked) {
+    Fake fake;
+    ProceduralMaterialWindow window(project(), withTheBake(fake));
+    window.setOpen(true);
+    ASSERT_TRUE(window.openGraph(indexed(writeMaterial("edit_bake"))));
+    window.setBakeSize(64);
+    const std::string before = planHash(window.getDocument()->graph(), 64, 0);
+    ASSERT_TRUE(window.setParam("n2", "amount", 0.9));
+    const std::string message = bakeAndWait(window);
+    ASSERT_NE(message.find("Baked"), std::string::npos) << message;
+    const std::string baked = bakedHash(assets() / "materials" / "edit_bake" / "edit_bake_base_color.png");
+    EXPECT_EQ(baked, planHash(window.getDocument()->graph(), 64, 0)) << "the bake is of the graph as edited";
+    EXPECT_NE(baked, before);
+}
+
+// Wiring round 2: Bake again re-bakes its own files; files of another graph at those paths are refused, never replaced
+TEST_F(ProceduralMaterialWindowTest, BakeTwiceRebakesAndAnotherGraphsFilesAreRefused) {
+    Fake fake;
+    ProceduralMaterialWindow window(project(), withTheBake(fake));
+    window.setOpen(true);
+    ASSERT_TRUE(window.openGraph(indexed(writeMaterial("twice"))));
+    window.setBakeSize(64);
+    std::string message = bakeAndWait(window);
+    ASSERT_NE(message.find("Baked"), std::string::npos) << message;
+    ASSERT_TRUE(window.setParam("n2", "amount", 0.2));
+    message = bakeAndWait(window);
+    ASSERT_NE(message.find("Baked"), std::string::npos) << "a second Bake re-bakes its own files: " << message;
+    const fs::path first = assets() / "materials" / "twice" / "twice_base_color.png";
+    EXPECT_EQ(bakedHash(first), planHash(window.getDocument()->graph(), 64, 0));
+
+    // another graph whose output path holds this one's bake
+    const std::string other = indexed(writeMaterial("other_graph"));
+    fs::create_directories(assets() / "materials" / "other_graph");
+    const fs::path foreign = assets() / "materials" / "other_graph" / "other_graph_base_color.png";
+    fs::copy_file(first, foreign, fs::copy_options::overwrite_existing);
+    const std::string foreignBytes = readAll(foreign);
+    ASSERT_TRUE(window.openGraph(other));
+    message = bakeAndWait(window);
+    EXPECT_EQ(message.rfind("refused: ", 0), 0u) << "refused before it runs: " << message;
+    EXPECT_NE(window.getBakeError().find("other_graph_base_color.png"), std::string::npos) << window.getBakeError();
+    EXPECT_NE(window.getBakeError().find("not a bake of this graph"), std::string::npos) << window.getBakeError();
+    EXPECT_EQ(readAll(foreign), foreignBytes) << "nothing replaced";
+}
+
+// Wiring round 2: a row's Fix is for the revision it was found on: after an edit, even in the same frame, it is refused
+TEST_F(ProceduralMaterialWindowTest, AFixFoundBeforeAnEditIsRefused) {
+    Fake fake;
+    fake.report = {{"checks", nlohmann::json::array({{{"id", "tileability"}, {"kind", "metric"}, {"status", "FAIL"}, {"measured", 3.2}}})},
+                   {"fixes", nlohmann::json::array({{{"check", "tileability"}, {"node", "n2"},
+                                                     {"op", {{"op", "setParam"}, {"node", "n2"}, {"name", "amount"}, {"value", 0.3}}}}})}};
+    ProceduralMaterialWindow window(project(), fake.services());
+    window.setOpen(true);
+    ASSERT_TRUE(window.openGraph(writeMaterial("revision")));
+    Frames frames;
+    settle(window, frames);
+    GraphEditorWindow::Problem tile;
+    for (const auto& row : window.problems()) {
+        if (row.code == "tileability") tile = row;
+    }
+    ASSERT_EQ(tile.fix.size(), 1u);
+    ASSERT_TRUE(window.setParam("n2", "amount", 0.7));
+    const size_t start = history()->position();
+    EXPECT_FALSE(window.fixProblem(tile)) << "found on the revision before the edit";
+    EXPECT_EQ(history()->position(), start);
+    EXPECT_DOUBLE_EQ(window.getDocument()->graph().findNode("n2")->params["amount"].get<double>(), 0.7);
 }
