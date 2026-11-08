@@ -82,6 +82,10 @@ namespace jasperengine{
     // R11: the image a build prebakes for one initial state of a Realtime title, beside the
     // document ("assets/titles/logo.titleart.prebake-0123456789abcdef.png")
     JASPERENGINE_API std::string titleArtPrebakePath(const std::string& titlePath, uint64_t stateHash);
+    // a Glyph Atlas title's prebaked atlas (R32) of one style: "<title>.glyphs-<16 hex>.json", its
+    // pages "<title>.glyphs-<16 hex>-p<n>.png" and plates "<title>.glyphs-<16 hex>-plate<n>.png"
+    JASPERENGINE_API std::string titleArtGlyphPrebakePath(const std::string& titlePath, uint64_t styleHash);
+    JASPERENGINE_API std::string titleArtGlyphPrebakeFile(const std::string& manifestPath, const char* kind, int index);
     // the main bake's default file name when the sidecar is missing ("logo.titleart.png")
     JASPERENGINE_API std::string titleArtDefaultBakeFile(const std::string& titlePath);
 

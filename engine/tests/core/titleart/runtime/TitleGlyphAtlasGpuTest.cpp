@@ -13,7 +13,12 @@
 // - the atlas grows to a second page, frees the least recently used page no shown string uses,
 //   and fails with R29's sentence when a string does not fit;
 // - warp is skipped per glyph (the cells match a Realtime render with warp off); a plan that falls
-//   back renders as Realtime.
+//   back renders as Realtime;
+// - per-character scale, rotation and face materials, and a text layer's opacity and multiply
+//   blend, match the merged render;
+// - cells keep only their reach (ten 150 px digits fit one 1,024 page);
+// - a prebaked atlas (R32: snapshot, files, restore) serves a new title's first value with no
+//   cell render, where the same title without it renders its cells.
 // Tolerance of a glyph-safe look against the merged render (cells render at the string's
 // sub-pixel phase to 1/32 px and are stored in RGBA8, linear premultiplied): mean difference <= 1/255, at
 // most 1% of pixels over 8/255. Glyph Atlas snaps the string to the pixel grid (under half a pixel
@@ -30,12 +35,16 @@
 #include "titleart/runtime/TitleArtScheduler.h"
 #include "titleart/runtime/TitleGlyphAtlas.h"
 #include "titleart/runtime/TitleGlyphAtlasPlan.h"
+#include "util/TitleArtBakeInfo.h"
 
 #include "ImageCompare.h"
 
+#include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
+#include <unistd.h>
 
 using namespace jasperengine;
 using namespace jasperengine::titleart;
@@ -253,19 +262,19 @@ TEST_F(TitleGlyphAtlasGpu, RimsStayBehindEveryFace) {
 
 TEST_F(TitleGlyphAtlasGpu, AtlasGrowsEvictsAndSaysWhenFull) {
     auto doc = counterDoc(150, 0, {}, false);
-    // growth: ten digits of 150 px do not fit one 1024 page (cells keep S80's 64-pixel ROI grid)
+    // growth: ten digits of 150 px do not fit one 512 page
     auto live = glyphLive(doc);
-    live->setState(state(1024, 8), stateHash("0123456789"), textOverride("0123456789"));
+    live->setState(state(512, 8), stateHash("0123456789"), textOverride("0123456789"));
     runFrames(*live, factory());
     ASSERT_TRUE(live->front().valid()) << live->status().error;
     EXPECT_GE(live->glyphAtlas()->pageCount(), 2);
     EXPECT_EQ(live->status().atlasPages, (uint32_t)live->glyphAtlas()->pageCount());
 
-    // eviction: two pages, strings of new letters; a page no shown string uses is freed
+    // eviction: two pages, a new letter each time; the page the shown letter is not on is freed
     auto small = glyphLive(doc);
-    const char* strings[] = {"ABCD", "EFGH", "JKLM", "NPQR", "STUV", "WXYZ", "abcd", "efgh"};
-    for (const char* s : strings) {
-        small->setState(state(1024, 2), stateHash(s), textOverride(s));
+    for (char letter = 'A'; letter <= 'Z'; letter++) {
+        const std::string s(1, letter);
+        small->setState(state(512, 2), stateHash(s), textOverride(s));
         runFrames(*small, factory());
         ASSERT_FALSE(small->status().failed) << s << ": " << small->status().error;
         ASSERT_LE(small->glyphAtlas()->pageCount(), 2);
@@ -307,4 +316,98 @@ TEST_F(TitleGlyphAtlasGpu, WarpIsSkippedAndFallbacksRenderAsRealtime) {
     ASSERT_TRUE(fallback->front().valid()) << fallback->status().error;
     EXPECT_FALSE(fallback->glyphAtlas());
     EXPECT_EQ(fallback->status().glyphFallback, "3D text");
+}
+
+TEST_F(TitleGlyphAtlasGpu, CellsKeepOnlyTheirReach) {
+    // S80's 64-pixel ROI grid would need two 1,024 pages for these (the red control)
+    auto doc = counterDoc(150, 0, {}, false);
+    auto live = glyphLive(doc);
+    live->setState(state(1024, 8), stateHash("0123456789"), textOverride("0123456789"));
+    runFrames(*live, factory());
+    ASSERT_TRUE(live->front().valid()) << live->status().error;
+    EXPECT_EQ(live->glyphAtlas()->pageCount(), 1);
+    expectWithin(frontPixels(*live), realtimeAt(doc, "0123456789", *live->glyphAtlas(), 150), "0123456789 tight cells");
+
+    // a look that reaches far (a drop shadow) keeps its reach
+    Json shadow = Json::array({Json{{"id", "00000201"}, {"type", "drop_shadow"}, {"params", {{"distance", 14}, {"size", 10}}}}});
+    auto shadowed = counterDoc(110, 300, {{"effects", shadow}}, false);
+    auto withShadow = glyphLive(shadowed);
+    withShadow->setState(state(), stateHash("123"), textOverride("123"));
+    runFrames(*withShadow, factory());
+    ASSERT_TRUE(withShadow->front().valid()) << withShadow->status().error;
+    expectWithin(frontPixels(*withShadow), realtimeAt(shadowed, "123", *withShadow->glyphAtlas(), 110), "123 drop shadow");
+}
+
+TEST_F(TitleGlyphAtlasGpu, PerCharacterLooks) {
+    // the third character larger, turned and green; the line a little larger
+    Json chars{{"2", {{"scale", 1.4}, {"rotation", 20}, {"face", solidFace("#40ff80")}}}};
+    auto adjusted = counterDoc(100, 0, {{"chars", chars}, {"lines", {{"0", {{"scale", 1.1}}}}}}, false);
+    auto live = glyphLive(adjusted);
+    live->setState(state(), stateHash("12345"), textOverride("12345"));
+    runFrames(*live, factory());
+    ASSERT_TRUE(live->front().valid()) << live->status().error;
+    const Pixels glyph = frontPixels(*live);
+    expectWithin(glyph, realtimeAt(adjusted, "12345", *live->glyphAtlas(), 100), "12345 per-character looks");
+    // the adjustments show: without them the render differs
+    auto plain = counterDoc(100, 0, {}, false);
+    const Difference without = compare(glyph, realtime(plain, textOverride("12345")));
+    EXPECT_GT(without.overFraction, TOLERANCE_OVER * 4) << "the looks are visible";
+}
+
+TEST_F(TitleGlyphAtlasGpu, TheTextLayersOpacityAndBlend) {
+    // the text layer at 70 % opacity, multiplied over its plate
+    auto blended = counterDoc(110, 0, {{"blend", "multiply"}, {"opacity", 0.7}});
+    auto blend = glyphLive(blended);
+    blend->setState(state(), stateHash("1,234"), textOverride("1,234"));
+    runFrames(*blend, factory());
+    ASSERT_TRUE(blend->front().valid()) << blend->status().error;
+    expectWithin(frontPixels(*blend), realtimeAt(blended, "1,234", *blend->glyphAtlas(), 110), "1,234 multiply 70 %");
+}
+
+TEST(TitleGlyphAtlasPrebake, StringsCoverEveryDigitPlace) {
+    const std::vector<std::string> strings = titleGlyphPrebakeStrings("x10");
+    EXPECT_EQ(strings.size(), 1u + 9u + 9u) << "the text, then nine other digits at each of its two digit places";
+    EXPECT_EQ(strings.front(), "x10");
+    EXPECT_NE(std::find(strings.begin(), strings.end(), "x90"), strings.end());
+    EXPECT_NE(std::find(strings.begin(), strings.end(), "x17"), strings.end());
+    EXPECT_EQ(std::find(strings.begin(), strings.end(), "y10"), strings.end()) << "letters stay";
+}
+
+TEST_F(TitleGlyphAtlasGpu, APrebakedAtlasServesTheFirstValue) {
+    auto doc = counterDoc(110, 0, {{"features", {{"tnum", 1}}}, {"kerning", false}});
+    // the export's side (R32): the initial value and every digit at its digit places, read back and
+    // written as files
+    auto exported = glyphLive(doc);
+    std::string error;
+    ASSERT_TRUE(prebakeTitleGlyphAtlas(*exported, factory(), state(), {}, TEXT_LAYER, titleGlyphPrebakeStrings("1,234,567"), 1024, error))
+        << error;
+    TitleGlyphAtlasSnapshot snapshot;
+    ASSERT_TRUE(exported->glyphAtlas()->snapshot(snapshot, error)) << error;
+    ASSERT_FALSE(snapshot.pages.empty());
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / ("jasper-glyph-prebake-" + std::to_string(::getpid()));
+    const std::string title = (dir / "score.titleart").string();
+    const std::string manifest = titleArtGlyphPrebakePath(title, exported->glyphAtlas()->stats().styleHash);
+    size_t bytes = 0;
+    ASSERT_TRUE(TitleGlyphAtlas::writePrebaked(manifest, snapshot, bytes, error)) << error;
+    EXPECT_GT(bytes, 0u);
+
+    // the player's side: a new title beside the files shows a value it never rendered (two digits
+    // changed) without rendering a glyph
+    TitleArtLive player(title, TitleArtRenderMode::GLYPH_ATLAS, doc, 1);
+    player.setGlyphPlan(planTitleGlyphAtlas(*doc));
+    player.setState(state(), stateHash("9,234,507"), textOverride("9,234,507"));
+    runFrames(player, factory());
+    ASSERT_TRUE(player.front().valid()) << player.status().error;
+    const TitleGlyphAtlas& atlas = *player.glyphAtlas();
+    EXPECT_EQ(atlas.stats().restoredCells, exported->glyphAtlas()->cellCount());
+    EXPECT_EQ(atlas.stats().cellRenders, 0u) << "every glyph came from the prebaked atlas";
+    expectWithin(frontPixels(player), realtimeAt(doc, "9,234,507", atlas, 110), "9,234,507 from the prebaked atlas");
+
+    // without the files the same title renders its cells
+    TitleArtLive bare((dir / "other.titleart").string(), TitleArtRenderMode::GLYPH_ATLAS, doc, 1);
+    bare.setGlyphPlan(planTitleGlyphAtlas(*doc));
+    bare.setState(state(), stateHash("9,234,507"), textOverride("9,234,507"));
+    runFrames(bare, factory());
+    EXPECT_GT(bare.glyphAtlas()->stats().cellRenders, 0u);
+    std::filesystem::remove_all(dir);
 }

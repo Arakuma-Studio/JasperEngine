@@ -146,6 +146,9 @@ TitlePx TitlePlanner::planGlyphCell() {
     }
     const TitleRectI rect = nodeRect(*node);
     if (rect.empty()) return {};
+    // S81's atlas keeps only the pixels the glyph's content and reach can cover
+    auto reach = reachRects.find(node);
+    glyphReach = reach != reachRects.end() ? intersectRect(reach->second, rect) : rect;
     // back: the rims with the layer's effects; front: the face alone, drawn over the back
     std::vector<std::string> rims = titleParts(*node->layer);
     rims.pop_back();
@@ -212,7 +215,8 @@ void TitlePlanner::finishOutput(TitlePx acc) {
         const int x1 = (int)std::ceil((r.x + r.width) / s), y1 = (int)std::ceil((r.y + r.height) / s);
         return TitleRectI{x0, y0, x1 - x0, y1 - y0};
     };
-    cpu("finish", "", 5, [outSlot, rect, format, premultiplied, kept, problems, canvasRect](TitleJobState& state, std::string& error) {
+    const TitleRectI glyphReachRect = glyphReach;
+    cpu("finish", "", 5, [outSlot, rect, format, premultiplied, kept, problems, canvasRect, glyphReachRect](TitleJobState& state, std::string& error) {
         if (!state.alive(error)) return false;
         TitleJobState::Slot& slot = state.slots[(size_t)outSlot];
         TitleImage& image = state.job->resultImage();
@@ -234,6 +238,7 @@ void TitlePlanner::finishOutput(TitlePx acc) {
             split.format = from.key.format;
             split.frame = canvasRect(px.rect);
             split.pixels = px.rect;
+            if (name.rfind("glyph:", 0) == 0) split.reach = glyphReachRect;
             split.alphaBounds = {0, 0, px.rect.width, px.rect.height};
             split.premultiplied = true;
             if (name == "glyph:back") state.job->resultSplits().glyphBack = std::move(split);

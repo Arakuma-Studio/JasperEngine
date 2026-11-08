@@ -3,19 +3,31 @@
 
 #include "TitleGlyphAtlas.h"
 
+#include "io/AtomicFile.h"
+#include "io/Data.h"
+#include "render/FrameReadback.h"
 #include "render/SystemRender.h"
+#include "shader/RuntimeShaderCompiler.h"
+#include "texture/TexturePrepare.h"
+#include "texture/TextureData.h"
 #include "titleart/TitleArtHash.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/render/TitleArtRenderer.h"
 #include "titleart/render/TitleFrame.h"
 #include "titleart/text/TitleTextLayout.h"
+#include "util/TitleArtBakeInfo.h"
+#include "titleart/runtime/TitleArtScheduler.h"
+
+#include "stb_image_write.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <filesystem>
 
 using namespace jasperengine;
 using namespace jasperengine::titleart;
@@ -301,7 +313,7 @@ bool TitleGlyphAtlas::allocate(int width, int height, const std::set<std::string
     return true;
 }
 
-bool TitleGlyphAtlas::copyCell(int page, const TitleImage& from, const TitleRectI& into, std::string& error){
+bool TitleGlyphAtlas::copyCell(int page, const TitleImage& from, const TitleRectI& region, const TitleRectI& into, std::string& error){
     TitleTarget* target = pageTarget(page);
     TitleTarget* source = from.target.get();
     if (!target || !source || !source->colorTexture()){
@@ -314,8 +326,22 @@ bool TitleGlyphAtlas::copyCell(int page, const TitleImage& from, const TitleRect
     pass.scissor = into;
     pass.blend = BlendMode::NONE;
     pass.tex[0] = source->colorTexture();
+    // `region` (output pixels inside from.pixels) lands at `into` (page pixels)
     const float w = (float)std::max(1, from.width), h = (float)std::max(1, from.height);
-    setMap(pass, 2, 1.0f / w, 1.0f / h, -(float)into.x / w, -(float)into.y / h);
+    const float sx = (float)(region.x - from.pixels.x), sy = (float)(region.y - from.pixels.y);
+    setMap(pass, 2, 1.0f / w, 1.0f / h, (sx - (float)into.x) / w, (sy - (float)into.y) / h);
+    pass.params.set(3, 1.0f, 0.0f, 1.0f, 0.0f);
+    return gpuLayer.run(pass, error);
+}
+
+bool TitleGlyphAtlas::copyUpload(TitleTarget* target, TextureRender& from, int width, int height, std::string& error){
+    TitleGpuPass pass;
+    pass.program = TitleRenderProgram::Copy;
+    pass.target = target;
+    pass.scissor = {0, 0, width, height};
+    pass.blend = BlendMode::NONE;
+    pass.tex[0] = &from;
+    setMap(pass, 2, 1.0f / (float)width, 1.0f / (float)height, 0.0f, 0.0f);
     pass.params.set(3, 1.0f, 0.0f, 1.0f, 0.0f);
     return gpuLayer.run(pass, error);
 }
@@ -326,28 +352,32 @@ bool TitleGlyphAtlas::insert(const std::string& key, const TitleImage& back, con
     Cell cell;
     cell.anchorX = anchorX;
     cell.anchorY = anchorY;
-    cell.backPixels = back.pixels;
-    cell.frontPixels = front.pixels;
-    const bool hasBack = back.target && back.width > 0 && back.height > 0;
-    const bool hasFront = front.target && front.width > 0 && front.height > 0;
+    // the pixels the glyph's content and reach can cover, not the ROI grid's padding
+    auto cropOf = [](const TitleImage& image){
+        return image.reach.empty() ? image.pixels : intersectRect(image.reach, image.pixels);
+    };
+    cell.backPixels = cropOf(back);
+    cell.frontPixels = cropOf(front);
+    const bool hasBack = back.target && !cell.backPixels.empty();
+    const bool hasFront = front.target && !cell.frontPixels.empty();
     if (!hasBack && !hasFront){
         insertBlank(key);
         return true;
     }
     // both parts on one page (one texture per compose run of the glyph)
-    const int width = (hasBack ? back.width + CELL_GUTTER : 0) + (hasFront ? front.width : 0);
-    const int height = std::max(hasBack ? back.height : 0, hasFront ? front.height : 0);
+    const int width = (hasBack ? cell.backPixels.width + CELL_GUTTER : 0) + (hasFront ? cell.frontPixels.width : 0);
+    const int height = std::max(hasBack ? cell.backPixels.height : 0, hasFront ? cell.frontPixels.height : 0);
     int page = -1;
     TitleRectI rect;
     if (!allocate(width, height, inUse, page, rect, full, error)) return false;
     cell.page = page;
     if (hasBack){
-        cell.back = {rect.x, rect.y, back.width, back.height};
-        if (!copyCell(page, back, cell.back, error)) return false;
+        cell.back = {rect.x, rect.y, cell.backPixels.width, cell.backPixels.height};
+        if (!copyCell(page, back, cell.backPixels, cell.back, error)) return false;
     }
     if (hasFront){
-        cell.front = {rect.x + (hasBack ? back.width + CELL_GUTTER : 0), rect.y, front.width, front.height};
-        if (!copyCell(page, front, cell.front, error)) return false;
+        cell.front = {rect.x + (hasBack ? cell.backPixels.width + CELL_GUTTER : 0), rect.y, cell.frontPixels.width, cell.frontPixels.height};
+        if (!copyCell(page, front, cell.frontPixels, cell.front, error)) return false;
     }
     cell.lastUse = ++clock;
     pages[(size_t)page].lastUse = clock;
@@ -393,7 +423,7 @@ std::shared_ptr<const TitleArtDoc> TitleGlyphAtlas::cellDocument(uint64_t styleH
 }
 
 void TitleGlyphAtlas::storeCellDocument(uint64_t styleHash, std::shared_ptr<const TitleArtDoc> doc){
-    if (cellDocs.size() >= 4) cellDocs.clear();
+    if (cellDocs.size() >= 64) cellDocs.clear();
     cellDocs[styleHash] = std::move(doc);
 }
 
@@ -411,11 +441,313 @@ TitleTextLayout& TitleGlyphAtlas::layout(int which, const AssetResolver* assets)
 void TitleGlyphAtlas::clear(){
     cells.clear();
     anchors.clear();
+    uploads.clear();
+    triedPrebakes.clear();
     plates.clear();
     pages.clear();
     shownKeys.clear();
     targetPool.clear();
     gpuLayer.release();
+}
+
+// ---- prebaked atlases (R32) ----
+
+namespace {
+
+    Json rectJson(const TitleRectI& r){
+        return Json::array({r.x, r.y, r.width, r.height});
+    }
+
+    TitleRectI rectOf(const Json& value){
+        if (!value.is_array() || value.size() != 4) return {};
+        return {value[0].get<int>(), value[1].get<int>(), value[2].get<int>(), value[3].get<int>()};
+    }
+
+    // a target's RGBA8 pixels (a float target's clamped to 8 bits; the values are linear premultiplied)
+    bool readPixels(TitleTarget* target, int width, int height, ColorFormat format, std::vector<uint8_t>& out, std::string& error){
+        TextureRender* texture = target ? target->colorTexture() : nullptr;
+        if (!texture){
+            error = "a glyph atlas target is gone";
+            return false;
+        }
+        const bool half = format == ColorFormat::RGBA16F;
+        std::vector<uint8_t> raw;
+        if (!FrameReadback::readTexture(*texture, width, height, half ? 8 : 4, raw, &error)) return false;
+        if (!half){
+            out = std::move(raw);
+            return true;
+        }
+        out.resize((size_t)width * height * 4);
+        for (size_t i = 0; i < out.size(); i++){
+            uint16_t h;
+            std::memcpy(&h, &raw[i * 2], 2);
+            out[i] = (uint8_t)std::lround(std::min(1.0f, std::max(0.0f, halfToFloat(h))) * 255.0f);
+        }
+        return true;
+    }
+
+}
+
+uint64_t jasperengine::titleart::titleGlyphStyleHash(uint64_t documentHash, const std::vector<FieldOverride>& overrides, const std::string& textLayer,
+                                                      float pxScale){
+    uint64_t hash = hashCombine(documentHash, (uint64_t)std::llround(pxScale * 64.0f));
+    for (const FieldOverride& o : overrides){
+        if (o.layerId == textLayer && o.path == "text") continue;
+        hash = hashCombine(hash, fnv1a64(o.layerId + "\x1f" + o.path + "\x1f" + o.value.dump()));
+    }
+    return hash;
+}
+
+bool TitleGlyphAtlas::snapshot(TitleGlyphAtlasSnapshot& out, std::string& error){
+    out = TitleGlyphAtlasSnapshot();
+    Json manifest{{"format", "jasperengine.titleart.glyphs"}, {"version", 1}, {"page_size", pageSide}};
+    Json skylines = Json::array();
+    for (Page& page : pages){
+        std::vector<uint8_t> pixels;
+        if (!readPixels(page.target.get(), pageSide, pageSide, ColorFormat::RGBA, pixels, error)) return false;
+        out.pages.push_back(std::move(pixels));
+        skylines.push_back(page.skyline);
+    }
+    manifest["skylines"] = skylines;
+    Json list = Json::array();
+    for (const auto& [key, cell] : cells){
+        list.push_back(Json{{"key", key}, {"page", cell.page}, {"back", rectJson(cell.back)}, {"front", rectJson(cell.front)},
+                            {"back_pixels", rectJson(cell.backPixels)}, {"front_pixels", rectJson(cell.frontPixels)},
+                            {"anchor", Json::array({cell.anchorX, cell.anchorY})}, {"blank", cell.blank}});
+    }
+    manifest["cells"] = list;
+    Json anchorList = Json::array();
+    for (const auto& [key, at] : anchors) anchorList.push_back(Json{{"key", key}, {"at", Json::array({at.first, at.second})}});
+    manifest["anchors"] = anchorList;
+    Json plateList = Json::array();
+    for (auto& [hash, image] : plates){
+        std::vector<uint8_t> pixels;
+        if (!readPixels(image.target.get(), image.width, image.height, image.format, pixels, error)) return false;
+        char hex[17];
+        std::snprintf(hex, sizeof(hex), "%016llx", (unsigned long long)hash);
+        plateList.push_back(Json{{"hash", hex}, {"pixels", rectJson(image.pixels)}, {"width", image.width}, {"height", image.height}});
+        out.plates.push_back(std::move(pixels));
+    }
+    manifest["plates"] = plateList;
+    out.manifest = std::move(manifest);
+    return true;
+}
+
+bool TitleGlyphAtlas::restore(const TitleGlyphAtlasSnapshot& in, std::string& error){
+    std::string programError;
+    if (!gpuLayer.ensureProgram(TitleRenderProgram::Copy, &programError)){
+        error = programError;
+        return false;
+    }
+    const Json& m = in.manifest;
+    const int side = m.value("page_size", 0);
+    const Json skylines = m.value("skylines", Json::array());
+    if (side <= 0 || in.pages.size() != skylines.size()){
+        error = "the prebaked glyph atlas does not match its pages";
+        return false;
+    }
+    setLimits(side, std::max(pageLimit, (int)in.pages.size()));
+    pages.clear();
+    cells.clear();
+    for (size_t i = 0; i < in.pages.size(); i++){
+        if (in.pages[i].size() != (size_t)side * side * 4){
+            error = "a prebaked glyph atlas page has the wrong size";
+            return false;
+        }
+        if (!newPage(error)) return false;
+        auto upload = std::make_unique<TitleUpload>();
+        if (!upload->create("TitleArt/GlyphPage", side, side, ColorFormat::RGBA, in.pages[i].data(), in.pages[i].size(), TextureFilter::LINEAR)){
+            error = "a prebaked glyph atlas page could not be uploaded";
+            return false;
+        }
+        if (!copyUpload(pages.back().target.get(), upload->texture(), side, side, error)) return false;
+        uploads.push_back(std::move(upload));
+        pages.back().skyline = skylines[i].get<std::vector<int>>();
+        if ((int)pages.back().skyline.size() != side) pages.back().skyline.assign((size_t)side, side);
+    }
+    for (const Json& c : m.value("cells", Json::array())){
+        Cell cell;
+        cell.page = c.value("page", -1);
+        cell.back = rectOf(c.value("back", Json()));
+        cell.front = rectOf(c.value("front", Json()));
+        cell.backPixels = rectOf(c.value("back_pixels", Json()));
+        cell.frontPixels = rectOf(c.value("front_pixels", Json()));
+        const Json at = c.value("anchor", Json::array({0, 0}));
+        cell.anchorX = at[0].get<double>();
+        cell.anchorY = at[1].get<double>();
+        cell.blank = c.value("blank", false);
+        cell.lastUse = ++clock;
+        if (!cell.blank && (cell.page < 0 || cell.page >= (int)pages.size())) continue;
+        cells[c.value("key", std::string())] = cell;
+        counters.restoredCells++;
+    }
+    for (const Json& a : m.value("anchors", Json::array())){
+        const Json at = a.value("at", Json::array({0, 0}));
+        anchors[a.value("key", std::string())] = {at[0].get<double>(), at[1].get<double>()};
+    }
+    const Json plateList = m.value("plates", Json::array());
+    for (size_t i = 0; i < plateList.size() && i < in.plates.size(); i++){
+        const Json& p = plateList[i];
+        TitleImage image;
+        image.width = p.value("width", 0);
+        image.height = p.value("height", 0);
+        image.pixels = rectOf(p.value("pixels", Json()));
+        if (image.width <= 0 || image.height <= 0 || in.plates[i].size() != (size_t)image.width * image.height * 4) continue;
+        TargetKey key;
+        key.width = image.width;
+        key.height = image.height;
+        key.format = ColorFormat::RGBA;
+        key.filter = TextureFilter::LINEAR;
+        image.target = targetPool.acquire(key, &error);
+        if (!image.target) return false;
+        auto upload = std::make_unique<TitleUpload>();
+        if (!upload->create("TitleArt/GlyphPlate", image.width, image.height, ColorFormat::RGBA, in.plates[i].data(), in.plates[i].size(),
+                            TextureFilter::LINEAR)){
+            error = "a prebaked plate could not be uploaded";
+            return false;
+        }
+        if (!copyUpload(image.target.get(), upload->texture(), image.width, image.height, error)) return false;
+        uploads.push_back(std::move(upload));
+        image.format = ColorFormat::RGBA;
+        image.premultiplied = true;
+        image.frame = image.pixels;
+        plates[std::stoull(p.value("hash", std::string("0")), nullptr, 16)] = std::move(image);
+    }
+    return true;
+}
+
+bool TitleGlyphAtlas::readPrebaked(const std::string& manifestPath, TitleGlyphAtlasSnapshot& out, std::string& error){
+    Data data;
+    if (data.open(manifestPath.c_str()) != FILEDATA_OK) return false;
+    const std::string text(reinterpret_cast<const char*>(data.getMemPtr()), data.length());
+    out = TitleGlyphAtlasSnapshot();
+    out.manifest = Json::parse(text, nullptr, false);
+    if (!out.manifest.is_object() || out.manifest.value("format", std::string()) != "jasperengine.titleart.glyphs"){
+        error = manifestPath + " is not a prebaked glyph atlas";
+        return false;
+    }
+    auto readPng = [&](const std::string& path, int width, int height, std::vector<uint8_t>& pixels){
+        TextureData image;
+        if (!image.loadTextureFromFile(path.c_str()) || image.getWidth() != width || image.getHeight() != height ||
+            image.getSize() != (unsigned int)(width * height * 4)){
+            error = "cannot read " + path;
+            return false;
+        }
+        const uint8_t* bytes = static_cast<const uint8_t*>(image.getData());
+        pixels.assign(bytes, bytes + (size_t)width * height * 4);
+        return true;
+    };
+    const int side = out.manifest.value("page_size", 0);
+    const size_t pageCount = out.manifest.value("skylines", Json::array()).size();
+    for (size_t i = 0; i < pageCount; i++){
+        std::vector<uint8_t> pixels;
+        if (!readPng(titleArtGlyphPrebakeFile(manifestPath, "p", (int)i), side, side, pixels)) return false;
+        out.pages.push_back(std::move(pixels));
+    }
+    const Json plateList = out.manifest.value("plates", Json::array());
+    for (size_t i = 0; i < plateList.size(); i++){
+        std::vector<uint8_t> pixels;
+        if (!readPng(titleArtGlyphPrebakeFile(manifestPath, "plate", (int)i), plateList[i].value("width", 0), plateList[i].value("height", 0), pixels))
+            return false;
+        out.plates.push_back(std::move(pixels));
+    }
+    return true;
+}
+
+namespace {
+
+    void appendPngBytes(void* context, void* data, int size){
+        static_cast<std::string*>(context)->append(static_cast<const char*>(data), (size_t)size);
+    }
+
+    bool writeFileBytes(const std::string& path, const std::string& bytes, std::string& error){
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Cache;
+        options.createDirectories = true;
+        const io::WriteResult written = io::writeFileAtomic(std::filesystem::path(path), bytes, options);
+        if (!written.ok()){
+            error = written.message;
+            return false;
+        }
+        return true;
+    }
+
+    bool writePngFile(const std::string& path, const std::vector<uint8_t>& rgba, int width, int height, size_t& bytes, std::string& error){
+        if (width <= 0 || height <= 0 || rgba.size() != (size_t)width * height * 4){
+            error = "a glyph atlas image has the wrong size";
+            return false;
+        }
+        std::string png;
+        if (!stbi_write_png_to_func(&appendPngBytes, &png, width, height, 4, rgba.data(), width * 4)){
+            error = "cannot encode " + path;
+            return false;
+        }
+        bytes += png.size();
+        return writeFileBytes(path, png, error);
+    }
+
+}
+
+bool TitleGlyphAtlas::writePrebaked(const std::string& manifestPath, const TitleGlyphAtlasSnapshot& snapshot, size_t& bytes, std::string& error){
+    const int side = snapshot.manifest.value("page_size", 0);
+    for (size_t i = 0; i < snapshot.pages.size(); i++)
+        if (!writePngFile(titleArtGlyphPrebakeFile(manifestPath, "p", (int)i), snapshot.pages[i], side, side, bytes, error)) return false;
+    const Json plates = snapshot.manifest.value("plates", Json::array());
+    for (size_t i = 0; i < snapshot.plates.size() && i < plates.size(); i++){
+        if (!writePngFile(titleArtGlyphPrebakeFile(manifestPath, "plate", (int)i), snapshot.plates[i], plates[i].value("width", 0),
+                          plates[i].value("height", 0), bytes, error))
+            return false;
+    }
+    const std::string text = snapshot.manifest.dump(1);
+    bytes += text.size();
+    return writeFileBytes(manifestPath, text, error);
+}
+
+std::vector<std::string> jasperengine::titleart::titleGlyphPrebakeStrings(const std::string& initial){
+    std::vector<std::string> out{initial};
+    for (size_t i = 0; i < initial.size(); i++){
+        if (initial[i] < '0' || initial[i] > '9') continue;
+        for (char d = '0'; d <= '9'; d++){
+            if (d == initial[i]) continue;
+            std::string variant = initial;
+            variant[i] = d;
+            out.push_back(variant);
+        }
+    }
+    return out;
+}
+
+bool jasperengine::titleart::prebakeTitleGlyphAtlas(TitleArtLive& live, const TitleJobFactory& factory, const TitleArtLiveState& state,
+                                                    const std::vector<FieldOverride>& overrides, const std::string& textLayer,
+                                                    const std::vector<std::string>& strings, size_t maxCells, std::string& error){
+    TitleLiveLimits limits;
+    double clock = 0.0;
+    for (const std::string& text : strings){
+        if (live.glyphAtlas() && live.glyphAtlas()->cellCount() >= maxCells) break;
+        std::vector<FieldOverride> values;
+        for (const FieldOverride& o : overrides)
+            if (!(o.layerId == textLayer && o.path == "text")) values.push_back(o);
+        values.push_back(FieldOverride{textLayer, "text", Json(text)});
+        live.setState(state, fnv1a64(text) + 1, values);
+        const auto start = std::chrono::steady_clock::now();
+        while (live.hasWork() && !live.status().failed && std::chrono::steady_clock::now() - start < std::chrono::seconds(60)){
+            // the GPU objects and programs it waits for are made between its steps
+            SystemRender::updateGpuCreation();
+            RuntimeShaderCompiler::beginFrame();
+            TitleArtScheduler::schedule({&live}, factory, 1000000000u, 1.0);
+            size_t cache = 0;
+            clock += 1.0 / 60.0;
+            live.endFrame(clock, 1.0 / 60.0, limits, cache);
+            // R14's cache would keep every string's image: none is needed here
+            while (live.evictOldest()){
+            }
+        }
+        if (live.status().failed || live.hasWork()){
+            error = "\"" + text + "\": " + (live.status().failed ? live.status().error : std::string("did not finish within 60 s"));
+            return false;
+        }
+    }
+    return true;
 }
 
 // ==================================================================== the job
@@ -435,14 +767,36 @@ namespace {
                 fail("out_of_target_memory: no title art target could be allocated (TITLE_ART_TEST_FAIL_TARGETS)");
                 return;
             }
-            prepare();
+            atlas->releaseUploads();
+            setUpStyle();
+            // R32: a style's prebaked atlas, once (its restore is the first step)
+            if (!spec.titlePath.empty() && !atlas->prebakeTried(styleHash)){
+                atlas->markPrebakeTried(styleHash);
+                std::string error;
+                if (TitleGlyphAtlas::readPrebaked(titleArtGlyphPrebakePath(spec.titlePath, styleHash), prebaked, error)) hasPrebaked = true;
+            }
+            if (!hasPrebaked) prepare();
         }
 
         bool step(const StepBudget&, StepReport* report) override{
             if (!failure.empty() || finished) return finished;
             StepReport local;
             const auto start = std::chrono::steady_clock::now();
-            if (sub){
+            if (!prepared){
+                // the prebaked pages and plates, then the state's layout
+                std::string error;
+                if (atlas->restore(prebaked, error)){
+                    prebaked = TitleGlyphAtlasSnapshot();
+                    blocked = false;
+                    prepare();
+                }else if (!error.empty()){
+                    // a damaged prebake: the cells render as they would without one
+                    prebaked = TitleGlyphAtlasSnapshot();
+                    prepare();
+                }else{
+                    blocked = true;
+                }
+            }else if (sub){
                 sub->step(StepBudget{1, 0}, &local);
                 if (sub->failed()){
                     fail(sub->error());
@@ -494,7 +848,7 @@ namespace {
 
         std::vector<ShaderKey> shaderKeys() const override{
             std::vector<ShaderKey> keys = subKeys;
-            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::Output}){
+            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::Output, TitleRenderProgram::Blend}){
                 const ShaderKey k = titleRenderProgramKey((uint32_t)p);
                 if (std::find(keys.begin(), keys.end(), k) == keys.end()) keys.push_back(k);
             }
@@ -505,6 +859,8 @@ namespace {
         struct Needed {
             std::string key;
             std::string text;           // the cluster
+            std::shared_ptr<const TitleArtDoc> doc;     // the cell document with its character's and line's adjustments
+            Json offset;                // the character's own offset (percent), or null
             double anchorX = 0, anchorY = 0;    // the glyph's position in the cell's render, output pixels
             double phaseX = 0, phaseY = 0;      // the sub-pixel offset the cell renders at (1/32 px)
         };
@@ -521,6 +877,9 @@ namespace {
         bool allocation = false;
         bool finished = false;
         bool blocked = false;
+        bool prepared = false;
+        bool hasPrebaked = false;
+        TitleGlyphAtlasSnapshot prebaked;
         uint32_t splitLimit = 0;
         uint32_t passesRun = 0;
         size_t work = 0, workDone = 0;
@@ -536,6 +895,9 @@ namespace {
         TitleRectI frameRect;       // canvas pixels
         geometry::Affine toDocument;
         double layerSize = 0.0;             // the text layer's size (its character offsets' 100 %)
+        double opacity = 1.0;               // the text layer's and its groups'
+        int blendMode = 0;                  // TitleBlend of the text layer
+        bool textVisible = true;
         std::vector<std::string> belowLayers, aboveLayers;
         uint64_t backPlateHash = 0, frontPlateHash = 0;
         bool needBackPlate = false, needFrontPlate = false;
@@ -566,23 +928,61 @@ namespace {
             return canvasFrame.toFrame(toDocument.apply(layerPoint));
         }
 
-        // the state's layout, plates and cells
-        void prepare(){
-            const TitleArtDoc& doc = *spec.doc;
+        // the style: overrides, its hash (R32's file key), the cell document
+        void setUpStyle(){
             const std::string& textLayer = spec.glyphPlan.textLayer;
             for (const FieldOverride& o : spec.overrides){
                 const bool text = o.layerId == textLayer && o.path == "text";
                 if (!text) styleOverrides.push_back(o);
                 if (o.layerId == textLayer) layerOverrides.push_back(o);
             }
-            uint64_t hash = hashCombine((uint64_t)(uintptr_t)spec.doc.get(), (uint64_t)std::llround(spec.pxScale * 64.0f));
-            for (const FieldOverride& o : styleOverrides) hash = hashCombine(hash, fnv1a64(o.layerId + "\x1f" + o.path + "\x1f" + o.value.dump()));
-            styleHash = hash;
+            styleHash = titleGlyphStyleHash(spec.docHash, spec.overrides, textLayer, spec.pxScale);
+            atlas->mutableStats().styleHash = styleHash;
             cellDoc = atlas->cellDocument(styleHash);
             if (!cellDoc){
-                cellDoc = makeCellDocument(doc, spec.glyphPlan);
+                cellDoc = makeCellDocument(*spec.doc, spec.glyphPlan);
                 atlas->storeCellDocument(styleHash, cellDoc);
             }
+        }
+
+        // a layer member's value with the instance's override of it
+        Json valueOf(const Json& layer, const std::string& id, const char* member, Json fallback) const{
+            for (const FieldOverride& o : styleOverrides)
+                if (o.layerId == id && o.path == member) return o.value;
+            auto it = layer.find(member);
+            return it != layer.end() ? *it : fallback;
+        }
+
+        // the adjustment entry of a character or a line (null when it has none)
+        static Json entryOf(const Json& layer, const char* map, uint32_t index){
+            auto list = layer.find(map);
+            if (list == layer.end() || !list->is_object()) return Json();
+            auto entry = list->find(std::to_string(index));
+            return entry != list->end() && entry->is_object() ? *entry : Json();
+        }
+
+        // the cell document with a character's and its line's adjustments as the single glyph's
+        // (chars."0", lines."0"; the character's offset moves the glyph through the cell's
+        // offset instead), one per distinct adjustment
+        std::shared_ptr<const TitleArtDoc> adjustedDocument(const Json& chars, const Json& line, const std::string& adjustKey){
+            if (adjustKey.empty()) return cellDoc;
+            const uint64_t key = hashCombine(styleHash, fnv1a64(adjustKey));
+            if (auto known = atlas->cellDocument(key)) return known;
+            auto doc = std::make_shared<TitleArtDoc>(*cellDoc);
+            if (Json* layer = findLayer(doc->root, spec.glyphPlan.textLayer)){
+                if (chars.is_object()) (*layer)["chars"] = Json{{"0", chars}};
+                if (line.is_object()) (*layer)["lines"] = Json{{"0", line}};
+            }
+            normalizeTitleArt(*doc);
+            atlas->storeCellDocument(key, doc);
+            return doc;
+        }
+
+        // the state's layout, plates and cells
+        void prepare(){
+            prepared = true;
+            const TitleArtDoc& doc = *spec.doc;
+            const std::string& textLayer = spec.glyphPlan.textLayer;
 
             const int cw = doc.canvasWidth(), ch = doc.canvasHeight();
             canvasFrame = TitleFrame::canvas(cw, ch, std::max(1e-3, (double)spec.pxScale));
@@ -598,6 +998,17 @@ namespace {
             std::vector<const Json*> chain;
             chainTo(layersOf(doc.root), textLayer, chain);
             toDocument = toDocumentOf(chain);
+            // R25, R28: the opacity of the text layer and its groups, its blend, its visibility
+            for (const Json* step : chain){
+                const std::string id = step->value("id", std::string());
+                opacity *= valueOf(*step, id, "opacity", Json(1.0)).get<double>();
+                textVisible = textVisible && valueOf(*step, id, "visible", Json(true)).get<bool>();
+            }
+            if (!chain.empty()){
+                const std::string blend = valueOf(*chain.back(), textLayer, "blend", Json("normal")).get<std::string>();
+                for (int b = 0; b < TITLE_BLEND_COUNT; b++)
+                    if (blend == titleBlendName((TitleBlend)b)) blendMode = b;
+            }
             if (const Json* cellText = findLayer(cellDoc->root, textLayer)) layerSize = cellText->value("size", 0.0);
             for (const FieldOverride& o : styleOverrides)
                 if (o.layerId == textLayer && o.path == "size" && o.value.is_number()) layerSize = o.value.get<double>();
@@ -638,7 +1049,23 @@ namespace {
                 for (const LaidOutGlyph& g : cluster.glyphs) ink = ink || !g.outline.empty();
                 if (!ink) continue;
                 const std::string text = utf8Of(cluster.codepoints);
-                const std::string base = hex(styleHash) + "|" + text;
+                // its character's and line's adjustments render with the glyph (scale, rotation,
+                // face material; offsets move it like the string does)
+                Json chars = entryOf(*layer, "chars", cluster.index);
+                const Json line = entryOf(*layer, "lines", cluster.line);
+                Json offset;
+                if (chars.is_object() && chars.contains("offset")){
+                    offset = chars["offset"];
+                    chars.erase("offset");
+                    if (chars.empty()) chars = Json();
+                }
+                std::string adjustKey;
+                if (chars.is_object()) adjustKey += "chars" + chars.dump();
+                if (line.is_object()) adjustKey += "lines" + line.dump();
+                const std::shared_ptr<const TitleArtDoc> adjusted = adjustedDocument(chars, line, adjustKey);
+                const Json* adjustedLayer = findLayer(adjusted->root, textLayer);
+                if (!offset.is_null()) adjustKey += "offset" + offset.dump();
+                const std::string base = hex(styleHash) + "|" + text + (adjustKey.empty() ? std::string() : "|" + hex(fnv1a64(adjustKey)));
                 const TitleVec2 exact = toOutput(cluster.glyphs.front().position);
                 const TitleVec2 at{exact.x + snapX, exact.y + snapY};
                 // the single glyph's position: the same layer alone with this cluster as its text
@@ -647,7 +1074,8 @@ namespace {
                     std::vector<FieldOverride> one = layerOverrides;
                     one.erase(std::remove_if(one.begin(), one.end(), [](const FieldOverride& o){ return o.path == "text"; }), one.end());
                     one.push_back(FieldOverride{textLayer, "text", Json(text)});
-                    const LaidOutText& alone = single.layout(*cellLayer, one);
+                    if (!offset.is_null()) one.push_back(FieldOverride{textLayer, "chars.0.offset", offset});
+                    const LaidOutText& alone = single.layout(adjustedLayer ? *adjustedLayer : *cellLayer, one);
                     if (alone.clusters.empty() || alone.clusters.front().glyphs.empty()) continue;
                     const TitleVec2 a = toOutput(alone.clusters.front().glyphs.front().position);
                     ax = a.x;
@@ -661,7 +1089,8 @@ namespace {
                 placed.push_back({key, at.x, at.y});
                 stringKeys.insert(key);
                 if (atlas->find(key) || queued.count(key)) continue;
-                needed.push_back({key, text, ax + qx / (double)PHASES, ay + qy / (double)PHASES, qx / (double)PHASES, qy / (double)PHASES});
+                needed.push_back({key, text, adjusted, offset, ax + qx / (double)PHASES, ay + qy / (double)PHASES, qx / (double)PHASES,
+                                  qy / (double)PHASES});
                 queued.insert(key);
             }
             work = needed.size() + (needBackPlate ? 1 : 0) + (needFrontPlate ? 1 : 0);
@@ -716,23 +1145,26 @@ namespace {
             if (nextCell < needed.size()){
                 // R26: the glyph alone, with the look, in a cell padded by its reach (one per step)
                 subCell = nextCell++;
+                const Needed& n = needed[subCell];
                 RenderRequest r;
-                r.doc = cellDoc;
+                r.doc = n.doc;
                 r.overrides = styleOverrides;
-                r.overrides.push_back(FieldOverride{spec.glyphPlan.textLayer, "text", Json(needed[subCell].text)});
-                if ((needed[subCell].phaseX != 0.0 || needed[subCell].phaseY != 0.0) && layerSize > 0.0){
-                    // the glyph moved by the phase inside its layer (its character offset, percent of
-                    // the size): the layer stays where it is, so the renderer draws the glyph at that
-                    // phase as the string's render does, without resampling the layer
+                r.overrides.push_back(FieldOverride{spec.glyphPlan.textLayer, "text", Json(n.text)});
+                // the glyph moved by its own offset and the phase inside its layer (its character
+                // offset, percent of the size): the layer stays where it is, so the renderer draws
+                // the glyph at that phase as the string's render does, without resampling the layer
+                double ox = n.offset.is_array() && n.offset.size() == 2 ? n.offset[0].get<double>() : 0.0;
+                double oy = n.offset.is_array() && n.offset.size() == 2 ? n.offset[1].get<double>() : 0.0;
+                if ((n.phaseX != 0.0 || n.phaseY != 0.0) && layerSize > 0.0){
                     const double s = canvasFrame.pxScale;
-                    const double dx = needed[subCell].phaseX / s, dy = -needed[subCell].phaseY / s;
+                    const double dx = n.phaseX / s, dy = -n.phaseY / s;
                     const double det = toDocument.a * toDocument.d - toDocument.c * toDocument.b;
                     if (std::abs(det) > 1e-12){
-                        const double lx = (toDocument.d * dx - toDocument.c * dy) / det, ly = (-toDocument.b * dx + toDocument.a * dy) / det;
-                        r.overrides.push_back(FieldOverride{spec.glyphPlan.textLayer, "chars.0.offset",
-                                                            Json::array({lx / layerSize * 100.0, ly / layerSize * 100.0})});
+                        ox += (toDocument.d * dx - toDocument.c * dy) / det / layerSize * 100.0;
+                        oy += (-toDocument.b * dx + toDocument.a * dy) / det / layerSize * 100.0;
                     }
                 }
+                if (ox != 0.0 || oy != 0.0) r.overrides.push_back(FieldOverride{spec.glyphPlan.textLayer, "chars.0.offset", Json::array({ox, oy})});
                 r.glyphCell = GlyphCellRequest{spec.glyphPlan.textLayer, 0, GlyphCellRequest::Back};
                 return begin(r, SubKind::Cell);
             }
@@ -771,53 +1203,36 @@ namespace {
             return false;
         }
 
-        bool copyPlate(TitleTarget* into, const TitleImage& plate, uint32_t& passes, std::string& error){
-            TitleTarget* source = plate.target.get();
+        bool copyInto(TitleTarget* into, TitleTarget* source, const TitleRectI& sourcePixels, float alpha, BlendMode blend, uint32_t& passes,
+                      std::string& error){
             if (!source || !source->colorTexture()) return true;
             TitleGpuPass pass;
             pass.program = TitleRenderProgram::Copy;
             pass.target = into;
             pass.scissor = {0, 0, composeRect.width, composeRect.height};
-            pass.blend = BlendMode::PREMULTIPLIED;
+            pass.blend = blend;
             pass.tex[0] = source->colorTexture();
-            const float w = (float)std::max(1, plate.pixels.width), h = (float)std::max(1, plate.pixels.height);
-            setMap(pass, 2, 1.0f / w, 1.0f / h, (float)(composeRect.x - plate.pixels.x) / w, (float)(composeRect.y - plate.pixels.y) / h);
-            pass.params.set(3, 1.0f, 0.0f, 1.0f, 0.0f);
+            const float w = (float)std::max(1, sourcePixels.width), h = (float)std::max(1, sourcePixels.height);
+            setMap(pass, 2, 1.0f / w, 1.0f / h, (float)(composeRect.x - sourcePixels.x) / w, (float)(composeRect.y - sourcePixels.y) / h);
+            pass.params.set(3, alpha, 0.0f, 1.0f, 0.0f);
             passes++;
             return atlas->gpu().run(pass, error);
         }
 
-        // R28: back plate, back cells, front cells, front plate, then the output pass
-        bool compose(StepReport& report){
-            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::Output})
-                if (!ensure(p)) return false;
-            blocked = false;
-            std::string error;
-            TargetKey accKey;
-            accKey.width = composeRect.width;
-            accKey.height = composeRect.height;
-            accKey.format = caps.format(TitleBuffer::Accumulator).format;
-            accKey.filter = TextureFilter::LINEAR;
-            accumulator = atlas->pool().acquire(accKey, &error);
-            TargetKey outKey = accKey;
-            outKey.format = ColorFormat::RGBA;
-            if (accumulator) display = atlas->pool().acquire(outKey, &error);
-            if (!accumulator || !display){
-                fail(error.empty() ? std::string("out_of_target_memory: the Glyph Atlas compose target") : error);
-                return false;
-            }
-            TitleTarget* acc = accumulator.get();
-            uint32_t passes = 0;
-            const float transparent[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-            if (!atlas->gpu().clear(acc, transparent, error)) return failWith(error);
-            if (const TitleImage* back = atlas->plate(backPlateHash))
-                if (!copyPlate(acc, *back, passes, error)) return failWith(error);
+        TargetRef target(ColorFormat format, std::string& error){
+            TargetKey key;
+            key.width = composeRect.width;
+            key.height = composeRect.height;
+            key.format = format;
+            key.filter = TextureFilter::LINEAR;
+            return atlas->pool().acquire(key, &error);
+        }
 
-            // the quads: every back cell, then every front cell (rims behind every face)
+        // the cell quads into `into`: every back cell, then every front cell (rims behind every face)
+        bool drawCells(TitleTarget* into, std::set<std::string>& shown, uint32_t& passes, std::string& error){
             std::vector<Quad> quads;
             std::vector<Quad> fronts;
             const bool stringOrder = (spec.testFlags & TITLE_ART_TEST_GLYPH_STRING_ORDER) != 0;
-            std::set<std::string> shown;
             for (const Placed& p : placed){
                 const TitleGlyphAtlas::Cell* cell = atlas->find(p.key);
                 if (!cell || cell->blank) continue;
@@ -837,7 +1252,7 @@ namespace {
                 while (end < quads.size() && quads[end].page == page && end - i < (size_t)QUADS_PER_PASS) end++;
                 TitleGpuPass pass;
                 pass.program = TitleRenderProgram::GlyphCompose;
-                pass.target = acc;
+                pass.target = into;
                 pass.scissor = {0, 0, composeRect.width, composeRect.height};
                 pass.blend = BlendMode::PREMULTIPLIED;
                 pass.tex[0] = atlas->pageTarget(page) ? atlas->pageTarget(page)->colorTexture() : nullptr;
@@ -850,11 +1265,72 @@ namespace {
                                     (quad.cell.y + quad.cell.height) / side);
                 }
                 passes++;
-                if (!pass.tex[0] || !atlas->gpu().run(pass, error)) return failWith(error.empty() ? std::string("a glyph atlas page is gone") : error);
+                if (!pass.tex[0]){
+                    error = "a glyph atlas page is gone";
+                    return false;
+                }
+                if (!atlas->gpu().run(pass, error)) return false;
                 i = end;
             }
+            return true;
+        }
+
+        // R28: back plate, back cells, front cells, front plate, then the output pass; a text layer
+        // with an opacity or a blend composes its glyphs apart, then over the back plate
+        bool compose(StepReport& report){
+            const bool apart = blendMode != (int)TitleBlend::Normal || opacity < 1.0;
+            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::Output})
+                if (!ensure(p)) return false;
+            if (blendMode != (int)TitleBlend::Normal && !ensure(TitleRenderProgram::Blend)) return false;
+            blocked = false;
+            std::string error;
+            const ColorFormat accFormat = caps.format(TitleBuffer::Accumulator).format;
+            accumulator = target(accFormat, error);
+            if (accumulator) display = target(ColorFormat::RGBA, error);
+            if (!accumulator || !display){
+                fail(error.empty() ? std::string("out_of_target_memory: the Glyph Atlas compose target") : error);
+                return false;
+            }
+            TitleTarget* acc = accumulator.get();
+            uint32_t passes = 0;
+            const float transparent[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+            if (!atlas->gpu().clear(acc, transparent, error)) return failWith(error);
+            if (const TitleImage* back = atlas->plate(backPlateHash))
+                if (!copyInto(acc, back->target.get(), back->pixels, 1.0f, BlendMode::PREMULTIPLIED, passes, error)) return failWith(error);
+
+            std::set<std::string> shown;
+            if (textVisible && !apart){
+                if (!drawCells(acc, shown, passes, error)) return failWith(error);
+            }else if (textVisible){
+                TargetRef glyphs = target(accFormat, error);
+                if (!glyphs) return failWith(error);
+                if (!atlas->gpu().clear(glyphs.get(), transparent, error)) return failWith(error);
+                if (!drawCells(glyphs.get(), shown, passes, error)) return failWith(error);
+                const TitleRectI whole = composeRect;
+                if (blendMode == (int)TitleBlend::Normal){
+                    if (!copyInto(acc, glyphs.get(), whole, (float)opacity, BlendMode::PREMULTIPLIED, passes, error)) return failWith(error);
+                }else{
+                    // S80's blend pass over a copy of the backdrop (blending off)
+                    TargetRef backdrop = target(accFormat, error);
+                    if (!backdrop) return failWith(error);
+                    if (!copyInto(backdrop.get(), acc, whole, 1.0f, BlendMode::NONE, passes, error)) return failWith(error);
+                    TitleGpuPass blend;
+                    blend.program = TitleRenderProgram::Blend;
+                    blend.target = acc;
+                    blend.scissor = {0, 0, composeRect.width, composeRect.height};
+                    blend.blend = BlendMode::NONE;
+                    blend.tex[0] = backdrop.get()->colorTexture();
+                    blend.tex[1] = glyphs.get()->colorTexture();
+                    const float w = 1.0f / (float)composeRect.width, h = 1.0f / (float)composeRect.height;
+                    setMap(blend, 2, w, h, 0.0f, 0.0f);
+                    setMap(blend, 3, w, h, 0.0f, 0.0f);
+                    blend.params.set(5, (float)blendMode, (float)opacity, 0.0f);
+                    passes++;
+                    if (!atlas->gpu().run(blend, error)) return failWith(error);
+                }
+            }
             if (const TitleImage* front = atlas->plate(frontPlateHash))
-                if (!copyPlate(acc, *front, passes, error)) return failWith(error);
+                if (!copyInto(acc, front->target.get(), front->pixels, 1.0f, BlendMode::PREMULTIPLIED, passes, error)) return failWith(error);
 
             // S80's output pass: straight-alpha sRGB with dither, the display encoding
             TitleGpuPass out;

@@ -1405,31 +1405,47 @@ rest of S82 lands in 6B.
     `/dev/kvm`, no vmx or svm CPU flag), so the emulator cannot run, and no phone is attached. The
     first emulator run (`tools/android-emulator-test.sh --scene titleart`, default and with
     `debug.jasperengine.titleart_rgba8=1`) makes the golden; AC18 stays a manual device run.
-23. **Implementation: Glyph Atlas** (`titleart/runtime/TitleGlyphAtlas.*`, R25-R31). Cells are
-    S80's `glyphCell` renders (back: rims and the layer's effects; front: the face) of a cell
-    document (the text layer without `chars`/`lines`, unsafe members made safe), keyed by the
-    cluster's text and the style (document, instance values other than the text, resolution) rather
-    than by glyph index and face: a cluster renders as a glyph of the same chain, plus the
-    sub-pixel phase (1/32 px) the string puts it at: the cell renders with its character offset
-    moved by that fraction (moving the layer would resample it), so its quad moves by whole
-    pixels and is never resampled (a glyph shown at several phases has a cell per phase). S80
-    centres a text by its ink, so each value moves the string by a fraction of a pixel: Glyph
-    Atlas snaps the string (its first pen) to the pixel grid, under half a pixel from Realtime's
-    place, so a counter's glyphs keep their phases and cells from value to value. AC11's golden
-    therefore compares with the Realtime render of the same text at that snap (every character's
-    offset; mean <= 1/255, at most 1 % of pixels over 8/255); against Realtime's own place the
-    difference is the half-pixel shift's. Both parts of a glyph share one atlas rectangle (one page per
-    glyph); cells keep S80's 64-pixel ROI grid, so a page holds fewer glyphs than a tight packing
-    would. The front plate renders with a transparent canvas background (the background is the
-    back plate's). The compose is S80-style passes through a new
-    renderer program `GLYPH_COMPOSE` (42): up to 20 quads per pass from one page, so a text change is a
-    clear, the back plate copy, one pass per 20 quads, the front plate copy and the output pass. LRU
-    eviction frees whole pages (the least recently used page no shown or wanted string uses), not
-    single cells. What is left: per-character scale and rotation of `chars.<index>` apply to the
-    cell's offset only (offsets are exact, the quad is not scaled or rotated); a text layer with a
-    non-normal `blend` composes over its plate with normal blending (R28's extra blend pass); a
-    `CharAdjust.face` material is not part of the cell key; R32's prebaked atlas pages are not
-    written at export (a shipped Glyph Atlas title renders its cells at runtime, one glyph a step).
+23. **Implementation: Glyph Atlas** (`titleart/runtime/TitleGlyphAtlas.*`, R25-R32), complete
+    with these choices:
+    - Cells are S80's `glyphCell` renders (back: rims and the layer's effects; front: the face) of
+      a cell document (unsafe members made safe), keyed by the cluster's text (a cluster renders
+      as a glyph of the same chain, rather than by glyph index and face), the style (the
+      document's content hash, the instance's values other than the text, the resolution), the
+      character's and its line's adjustments, and the sub-pixel phase.
+    - Per-character looks (`chars.<index>`: scale, h/v scale, rotation, `face` material) and the
+      line's (`lines.<index>`) render in the cell: the cell document carries them as the single
+      glyph's (`chars."0"`, `lines."0"`), one cell document per distinct adjustment; offsets move
+      the glyph like the string does.
+    - Phase: a cell renders at the 1/32-pixel phase the string puts its glyph at (its character
+      offset moved by that fraction; moving the layer would resample it), so its quad moves by
+      whole pixels. S80 centres a text by its ink, so each value moves the string by a fraction of
+      a pixel: Glyph Atlas snaps the string (its first pen) to the pixel grid, under half a pixel
+      from Realtime's place, so a counter's glyphs keep their phases and cells from value to
+      value. AC11's golden compares with the Realtime render of the same text at that snap (every
+      character's offset; mean <= 1/255, at most 1 % of pixels over 8/255).
+    - A cell keeps only the pixels its content and reach can cover (S80's planner now records
+      that rectangle, `TitleImage::reach`, beside its 64-pixel ROI grid). Both parts of a glyph
+      share one atlas rectangle (one page per glyph). LRU eviction frees whole pages (the least
+      recently used page no shown or wanted string uses), not single cells.
+    - The compose uses S80's passes and a new renderer program `GLYPH_COMPOSE` (42): up to 20
+      quads per pass from one page. A text change is a clear, the back plate copy, one pass per 20
+      quads, the front plate copy and the output pass. A text layer with an opacity (its own and
+      its groups') or a non-normal blend composes its glyphs into their own target, then onto the
+      back plate (a copy with the opacity, or S80's blend pass over a backdrop copy: +2 passes).
+      The front plate renders with a transparent canvas background.
+    - R32: the export renders each Glyph Atlas instance's initial text and every digit at every
+      digit place of it (a counter's every value of that length; at most 1,024 cells), reads the
+      pages and plates back and ships them beside the title (`<title>.glyphs-<style>.json`,
+      `-p<n>.png`, `-plate<n>.png`; RGBA8 linear premultiplied, not cooked). A player's first job
+      of that style restores them and renders no cell they hold. Because cells are per phase and
+      place, "every glyph of the Characters" is not prebaked: characters outside the initial text's
+      digit places render on the device on first use, one per step. Prebaked plates are 8-bit
+      linear (a few codes in the darkest colours against the float plates). The export now keys
+      every prebake (R11 and R32) by the build's copy of the document, after the fonts' relink,
+      as the player hashes it. The prebake's driver, files and restore are tested in the core
+      tests on the headless GPU; the export's glue (`writeTitleArtPrebakes`: the shipped
+      document's hash, the paths) builds but is not run by a unit test (the editor test binary
+      has no GPU context).
 24. **Implementation: the Digits preset has 24 code points** (the explicit list; the spec said 25),
     and the test asserts 24.
 25. **Implementation: the Reserved Font Name rename** (R57) also covers name IDs 3, 18, 21 and 25;
@@ -1456,8 +1472,8 @@ rest of S82 lands in 6B.
     `TitleArtSchedulerTest`; on a software rasterizer the measured frames exceed it. Host run
     (this build host: llvmpipe, no GPU, float path; a counter of 4 tabular digits at 96 px on a
     640 x 160 canvas; 5 warm-ups, 30 samples): Realtime text change (one unsliced render) median
-    76.1 ms, p90 92.4 ms; Glyph Atlas change with every glyph cached (22 of 30 samples) median
-    5.0 ms, p90 5.3 ms; Glyph Atlas over all samples (new cells on first use) median 5.2 ms, p90
-    51.2 ms; a Realtime render sliced at a 4 ms budget took 4 frames, the largest multi-step frame
-    measuring 91.6 ms (the estimates are desktop-GPU figures; llvmpipe runs the passes on the CPU).
+    72.7 ms, p90 79.5 ms; Glyph Atlas change with every glyph cached (22 of 30 samples) median
+    5.3 ms, p90 6.1 ms; Glyph Atlas over all samples (new cells on first use) median 5.5 ms, p90
+    51.7 ms; a Realtime render sliced at a 4 ms budget took 3 frames, the largest multi-step frame
+    measuring 81.3 ms (the estimates are desktop-GPU figures; llvmpipe runs the passes on the CPU).
     These are host measurements, not device figures (AC18 is open, Deviation 22).

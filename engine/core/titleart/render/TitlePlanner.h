@@ -194,6 +194,8 @@ namespace jasperengine::titleart {
         // the content of a Text, Shape, Vector or Image layer (parts: the parts drawn, empty = all)
         TitlePx title2D(const DrawNode& node, const std::vector<std::string>& parts, const TitleRectI* fixedRect = nullptr);
         TitleRectI title2DRect(const DrawNode& node);
+        // the same without the 64-pixel frame grid and margin: the elements' bounds and pads (S81's glyph cells)
+        TitleRectI title2DInkRect(const DrawNode& node);
         // the parts of a 2D title in back-to-front order (rim:<id> outermost first, then face)
         std::vector<std::string> titleParts(const Json& layer);
 
@@ -226,6 +228,8 @@ namespace jasperengine::titleart {
         std::map<std::string, TitlePx> sources;         // layer sources of this job
         std::set<std::string> activeSources;
         std::map<const DrawNode*, TitleRectI> rects;    // node rects (the trees below keep the nodes alive)
+        std::map<const DrawNode*, TitleRectI> reachRects;   // the same before the ROI grid: content and reach
+        TitleRectI glyphReach;                          // a glyph cell's content and reach (RenderRequest::glyphCell)
         std::map<std::string, TitleContentPlan> contentPlans;
         TitleElementFilter elementFilter;               // the glyph cell's, for its layer only
         std::string filteredLayer;

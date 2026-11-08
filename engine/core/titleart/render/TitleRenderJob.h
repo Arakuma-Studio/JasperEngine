@@ -106,6 +106,7 @@ namespace jasperengine::titleart {
         ColorFormat format = ColorFormat::RGBA;
         TitleRectI frame;
         TitleRectI pixels;              // the output pixels it covers (the scaled canvas's, exact where frame rounds)
+        TitleRectI reach;               // a glyph cell's: the output pixels its content and reach can cover (within pixels)
         TitleRectI alphaBounds;
         bool premultiplied = true;      // intermediates are; the output pass writes straight sRGB
     };

@@ -16,6 +16,8 @@
 #pragma once
 
 #include "component/TitleArtRendererComponent.h"
+#include "subsystem/TitleArtRuntime.h"
+#include "titleart/TitleArtDoc.h"
 #include "util/TitleArtBakeInfo.h"
 
 #include <cstdint>
@@ -37,6 +39,8 @@ namespace jasperengine::editor {
         std::string additionalCharacters;
         bool prebake = true;
         bool glow = false;
+        int atlasPageSize = 1024;           // Glyph Atlas
+        int atlasMaxPages = 4;
         float resolution = 1.0f;            // as TitleArtSystem::displayResolution gives it
         TitleArtRectI region;               // the bake frame
     };
@@ -56,9 +60,18 @@ namespace jasperengine::editor {
         std::vector<std::string> written;       // project-relative files written into the build's assets
         std::vector<std::string> warnings;      // W-TITLEART-PREBAKE-COUNT
         size_t bytes = 0;
+        size_t glyphCells = 0;                  // cells of the prebaked glyph atlases (R32)
     };
-    // renders and writes the prebaked initial states of the plan's Realtime instances into
-    // `assetsDst` (the build's assets root, mirroring the project's paths below `assetsPrefix`)
+    // renders and writes the prebaked initial states of the plan's Realtime and Glyph Atlas
+    // instances into `assetsDst` (the build's assets root, mirroring the project's paths below
+    // `assetsPrefix`), and the Glyph Atlas instances' atlases (R32). The keys come from the build's
+    // copies of the documents (the player hashes those: run it after the fonts' relink)
     TitleArtPrebakeResult writeTitleArtPrebakes(Project* project, const TitleArtExportPlan& plan, const std::filesystem::path& assetsDst);
+    // R32 for one Glyph Atlas instance: its initial text and each digit at every digit place in it
+    // render in the editor (at most 1,024 cells); the atlas's pages, plates and manifest ship as
+    // <title>.glyphs-<style>.json beside the title
+    void writeGlyphPrebake(Project* project, const TitleArtShippedInstance& instance, std::shared_ptr<const titleart::TitleArtDoc> doc,
+                           uint64_t shippedHash, const titleart::TitleArtLiveState& state, const std::filesystem::path& assetsDst,
+                           const std::string& assetsPrefix, TitleArtPrebakeResult& result);
 
 }

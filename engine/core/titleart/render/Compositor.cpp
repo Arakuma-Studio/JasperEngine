@@ -513,6 +513,14 @@ TitleRectI TitlePlanner::nodeRect(const DrawNode& node) {
             ay = (int)std::floor(anchor.y);
         }
         out = alignToAnchor(grown, ax, ay);
+        // the content's own bounds grown by the reach (no frame grid): what a glyph cell keeps
+        TitleRectI tight = grown;
+        if (node.kind == DrawNodeKind::Leaf && layerTypeHasStyle(node.type) && !canvas) {
+            const TitleRectI ink = title2DInkRect(node);
+            const int r = (int)std::ceil(reach);
+            if (!ink.empty()) tight = {ink.x - r, ink.y - r, ink.width + 2 * r, ink.height + 2 * r};
+        }
+        reachRects[&node] = intersectRect(tight, outRegion);
     }
     rects[&node] = out;
     return out;

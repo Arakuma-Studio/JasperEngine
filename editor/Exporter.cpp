@@ -2768,21 +2768,22 @@ bool editor::Exporter::writeTitleArtRuntime() {
     const fs::path assetsDst = getExportProjectRoot() / "assets";
     editor::getEditorHost().enqueueMainThreadTask([this, &prebaked, &fonts, &done, assetsDst]() {
         const TitleArtExportPlan plan = planTitleArtExport(project);
-        prebaked = writeTitleArtPrebakes(project, plan, assetsDst);
-        if (prebaked.ok) fonts = shipTitleArtFonts(project, plan, assetsDst);
+        // the fonts first: the prebakes are keyed by the documents the player reads (relinked to the subsets)
+        fonts = shipTitleArtFonts(project, plan, assetsDst);
+        if (fonts.ok) prebaked = writeTitleArtPrebakes(project, plan, assetsDst);
         done.set_value();
     });
     doneFuture.get();
-    for (const std::string& file : prebaked.written) Out::info("Prebaked Title Art %s", file.c_str());
-    for (const std::string& line : prebaked.warnings) Out::warning("%s", line.c_str());
-    if (!prebaked.ok) {
-        setError(prebaked.error);
-        return false;
-    }
     for (const std::string& line : fonts.shipped) Out::info("Title Art font %s", line.c_str());
     for (const std::string& line : fonts.warnings) Out::warning("%s", line.c_str());
     if (!fonts.ok) {
         setError(fonts.error);
+        return false;
+    }
+    for (const std::string& file : prebaked.written) Out::info("Prebaked Title Art %s", file.c_str());
+    for (const std::string& line : prebaked.warnings) Out::warning("%s", line.c_str());
+    if (!prebaked.ok) {
+        setError(prebaked.error);
         return false;
     }
     // R54: the shipped fonts' credits (copyLicenses carries the file to the build)

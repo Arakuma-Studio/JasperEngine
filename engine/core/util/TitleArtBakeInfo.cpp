@@ -157,6 +157,17 @@ std::string jasperengine::titleArtPrebakePath(const std::string& titlePath, uint
     return titlePath + ".prebake-" + hex + ".png";
 }
 
+std::string jasperengine::titleArtGlyphPrebakePath(const std::string& titlePath, uint64_t styleHash){
+    char hex[17];
+    std::snprintf(hex, sizeof(hex), "%016llx", (unsigned long long)styleHash);
+    return titlePath + ".glyphs-" + hex + ".json";
+}
+
+std::string jasperengine::titleArtGlyphPrebakeFile(const std::string& manifestPath, const char* kind, int index){
+    const std::string base = manifestPath.size() > 5 ? manifestPath.substr(0, manifestPath.size() - 5) : manifestPath;
+    return base + "-" + kind + std::to_string(index) + ".png";
+}
+
 std::string jasperengine::titleArtDefaultBakeFile(const std::string& titlePath){
     const size_t slash = titlePath.find_last_of('/');
     const std::string name = slash == std::string::npos ? titlePath : titlePath.substr(slash + 1);

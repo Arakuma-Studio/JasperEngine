@@ -86,6 +86,8 @@ namespace jasperengine::titleart {
         // Glyph Atlas (R25-R29): the title's atlas and plan; null renders as Realtime
         std::shared_ptr<TitleGlyphAtlas> atlas;
         TitleGlyphAtlasPlan glyphPlan;
+        uint64_t docHash = 0;           // the document's content hash (the atlas style's)
+        std::string titlePath;          // the title's path (its prebaked atlas sits beside it)
     };
 
     // The scheduler's view of one render (S80's TitleRenderJob in a game; a fake in tests)

@@ -43,7 +43,7 @@ namespace {
     Headless& headless() {
         static Headless h = []() {
             Headless out;
-            test::ensureEngine();
+            jasperengine::editor::test::ensureEngine();
             const fs::path root = fs::temp_directory_path() / ("jasper-titleart-fonts-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -63,13 +63,13 @@ namespace {
             std::ofstream(out.dir / DOC) << titleart::writeTitleArt(doc);
             AppSettings::initialize();
             out.project.reset(new Project());
-            test::useProjectPaths(out.project.get());
+            jasperengine::editor::test::useProjectPaths(out.project.get());
             out.ready = out.project->loadProject(out.dir, false);
-            test::releaseAtExit(out.project.get());
+            jasperengine::editor::test::releaseAtExit(out.project.get());
             return out;
         }();
         // the test System drops the project's paths at the end of every test
-        if (h.project) test::useProjectPaths(h.project.get());
+        if (h.project) jasperengine::editor::test::useProjectPaths(h.project.get());
         return h;
     }
 

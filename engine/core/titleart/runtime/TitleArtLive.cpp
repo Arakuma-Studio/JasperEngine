@@ -349,6 +349,8 @@ void TitleArtLive::startJob(const TitleJobFactory& factory, uint32_t budgetUs, d
         atlas->setLimits(wanted.atlasPageSize, wanted.atlasMaxPages);
         spec.atlas = atlas;
         spec.glyphPlan = glyphPlan;
+        spec.docHash = docHash;
+        spec.titlePath = path;
     }
     running.job = factory(spec);
     queued = false;
