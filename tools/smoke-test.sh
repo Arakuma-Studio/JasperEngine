@@ -27,7 +27,9 @@
 # A smoke-expect.txt in the project lists lines (one per line, '#' comments) the game's log must
 # hold after its run (tools/fixtures/tween-curve: the tween's curve checked in the exported game);
 # such a project runs 120 frames unless SMOKE_QUIT_AFTER says otherwise.
-# A smoke-export-expect.txt lists lines the exported project's CMake files must hold (compile only),
+# SMOKE_METHOD=build builds as the editor's Build does with Method Compile (jasperengine-editor build
+# --method compile): only the engine modules the project needs (S34), unlike compile's source export.
+# A smoke-export-expect.txt lists lines that build's generated CMakeLists.txt must hold (build only),
 # and a smoke-golden.json ({"image", "tolerance", "max_fraction"}) an image the game's own frame
 # (SMOKE_PLAY=1) must match (tools/ci/smoke_golden.py; tools/fixtures/title3d-fixed: a Realtime 3D
 # title drawn from its cooked mesh in a build without the mesher, against the editor's frame).
@@ -79,11 +81,11 @@ esac
 MAIN="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 
 METHOD="${SMOKE_METHOD:-prebuilt}"
-[[ "$METHOD" == prebuilt || "$METHOD" == compile ]] || { echo "SMOKE_METHOD must be prebuilt or compile (got $METHOD)" >&2; exit 1; }
+[[ "$METHOD" == prebuilt || "$METHOD" == compile || "$METHOD" == build ]] || { echo "SMOKE_METHOD must be prebuilt, compile or build (got $METHOD)" >&2; exit 1; }
 PLAYERS="${SMOKE_PLAYERS_DIR:-build/players}"
 [[ "$PLAYERS" =~ ^build/[A-Za-z0-9_./-]+$ ]] || { echo "SMOKE_PLAYERS_DIR must be build/<dir> (got $PLAYERS)" >&2; exit 1; }
 
-[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,62p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,64p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 [[ -z "${SMOKE_QUIT_AFTER:-}" && -f "$PROJECT/smoke-expect.txt" ]] && SMOKE_QUIT_AFTER=120
 [[ -x "$ROOT/$EDITOR" ]] || { echo "No editor at $EDITOR; run tools/build.sh linux" >&2; exit 1; }
@@ -166,7 +168,23 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
             fi
         }
 
-        if [[ "$SMOKE_METHOD" == prebuilt ]]; then
+        if [[ "$SMOKE_METHOD" == build ]]; then
+        echo "== build (Compile: the modules the project needs)"
+        # shellcheck disable=SC2086
+        "$EDITOR" build --project project --platform linux --backend "$EXPORT_BACKEND" --out game-out --method compile \
+            $SMOKE_EXPORT_ARGS > build.log 2>&1 || { echo "FAIL: build"; tail -30 build.log; exit 1; }
+        check_log build build.log
+        GAME="$(sed -n "s/^executable: //p" build.log | head -1)"
+        [[ -x "$GAME" ]] || { echo "FAIL: no executable ($GAME)"; exit 1; }
+        # smoke-export-expect.txt: lines the generated CMakeLists of the build must hold (module switches)
+        if [[ -f project/smoke-export-expect.txt ]]; then
+            while IFS= read -r line; do
+                [[ -z "$line" || "$line" == "#"* ]] && continue
+                grep -qF -- "$line" project/.jasperengine/export/player-linux/CMakeLists.txt || { echo "FAIL: the build does not hold: $line"; exit 1; }
+            done < project/smoke-export-expect.txt
+            echo "ok: the build holds project/smoke-export-expect.txt"
+        fi
+        elif [[ "$SMOKE_METHOD" == prebuilt ]]; then
         echo "== build (prebuilt player)"
         # shellcheck disable=SC2086
         "$EDITOR" build --project project --platform linux --backend "$EXPORT_BACKEND" --out game-out --method prebuilt \
@@ -182,14 +200,6 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         "$EDITOR" export --project project --out export --backend "$EXPORT_BACKEND" $SMOKE_EXPORT_ARGS > export.log 2>&1 \
             || { echo "FAIL: export"; tail -30 export.log; exit 1; }
         check_log export export.log
-        # smoke-export-expect.txt: lines the CMake files of the exported project must hold (module switches)
-        if [[ -f project/smoke-export-expect.txt ]]; then
-            while IFS= read -r line; do
-                [[ -z "$line" || "$line" == "#"* ]] && continue
-                grep -rqF --include="*.cmake" --include="CMakeLists.txt" -- "$line" export || { echo "FAIL: the export does not hold: $line"; exit 1; }
-            done < project/smoke-export-expect.txt
-            echo "ok: the export holds project/smoke-export-expect.txt"
-        fi
 
         echo "== build exported project"
         cmake -S export -B export-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGRAPHIC_BACKEND="$GRAPHIC_BACKEND" \

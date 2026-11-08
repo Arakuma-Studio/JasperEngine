@@ -111,6 +111,8 @@ std::vector<std::string> editor::titleArt3DEnvironments(const titleart::TitleArt
 Title3DCookResult editor::cookTitleArt3D(Project* project, const TitleArtExportPlan& plan, const fs::path& assetsDst,
                                          const std::vector<std::string>& platforms, const std::vector<TextureFamily>& families) {
     Title3DCookResult result;
+    // the bundled HDRIs' loader (a command-line build registers no MCP tools, which register it)
+    registerTitle3DEditor();
     const fs::path cookedDir = assetsDst / titleart::TITLE_COOKED_DIR;
     std::error_code ec;
     fs::remove_all(cookedDir, ec);

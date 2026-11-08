@@ -5,7 +5,7 @@
 project of a fixed-text Realtime 3D title: an editor-made project (driven over MCP,
 tools/mcp/harness.py) whose UI scene shows "3D" in gold with a bright ring, lit by the softbox (an HDRI
 only the editor has), as a Realtime Title Art Renderer without a prebaked first image, at the Low tier
-(Realtime 3D Quality: Linux low). No Exposed parameter changes its geometry, so a Compile export turns
+(Realtime 3D Quality: Linux low). No Exposed parameter changes its geometry, so a Compile build turns
 JASPERENGINE_TITLE_ART_MESHER off and ships the title's cooked meshes and environment cube; the game
 draws the title itself from them. A Lua script logs its mesh once it is ready.
 
@@ -15,7 +15,7 @@ same scene (record_game, which waits for the Realtime title like the game's "Eng
 drawn with the mesher and the HDRI-built cube:
 
     uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/fixtures/make_title3d_fixed_fixture.py
-    SMOKE_METHOD=compile SMOKE_PLAY=1 tools/smoke-test.sh tools/fixtures/title3d-fixed
+    SMOKE_METHOD=build SMOKE_PLAY=1 tools/smoke-test.sh tools/fixtures/title3d-fixed
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ its 3D layers draw the meshes the export cooked (this build has no 3D mesher)
 [gate] title3d ready: tier=low cooked=true
 """
 
-EXPORT_EXPECT = """# tools/smoke-test.sh (SMOKE_METHOD=compile): lines of the exported project (S81 R51, S86 R38)
+EXPORT_EXPECT = """# tools/smoke-test.sh (SMOKE_METHOD=build): lines of the Compile build's CMakeLists (S81 R51, S86 R38)
 set(JASPERENGINE_TITLE_ART ON)
 set(JASPERENGINE_TITLE_ART_3D ON)
 set(JASPERENGINE_TITLE_ART_MESHER OFF)
