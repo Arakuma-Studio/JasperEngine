@@ -150,7 +150,7 @@ TEST(AnalyticParticles, AliveCountMatchesEveryBirth){
     const uint32_t seed = 5;
     AnalyticProgram p = programOf(d, seed);
     auto effect = compileOrFail(d);
-    const uint32_t lifeKey = (uint32_t)p.block.keys0[0];
+    const uint32_t lifeKey = analyticKey(p.block, 0, 0);
     auto lifeOf = [&](uint32_t index){
         return std::max(0.8f + (1.4f - 0.8f) * random01(lifeKey, index), 1.0e-4f);
     };
@@ -162,7 +162,7 @@ TEST(AnalyticParticles, AliveCountMatchesEveryBirth){
             const double age = t - (double)n / 6.0;
             if (age >= 0.0 && (float)age < lifeOf((uint32_t)n)) expected++;
         }
-        const uint32_t probKey = (uint32_t)p.block.keys2[2], countKey = (uint32_t)p.block.keys2[3];
+        const uint32_t probKey = analyticKey(p.block, 2, 2), countKey = analyticKey(p.block, 2, 3);
         for (int c = 0; c < 3; c++){
             const double fired = 0.5 + 0.25 * c;
             if (t < fired) continue;

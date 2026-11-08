@@ -24,6 +24,7 @@
 #include "command/type/ParticleEffectAssetCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "component/ParticleSystemComponent.h"
+#include "particles/AnalyticParticles.h"
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleEffectLibrary.h"
 #include "particles/ParticleModules.h"
@@ -168,11 +169,17 @@ bool resolveEffectTarget(const CallPtr& call, EffectTarget& target, bool editing
     return true;
 }
 
+// Analytic's rules (S49 R15) beside the codec's: the modules an Analytic effect cannot run are errors
+void addAnalyticDiagnostics(const ParticleEffectDocument& document, std::vector<Diagnostic>& diagnostics) {
+    if (document.simulationMode == particles::SimulationMode::Analytic) particles::AnalyticParticles::validate(document, diagnostics);
+}
+
 bool readTarget(const EffectTarget& target, ParticleEffectDocument& document, std::vector<Diagnostic>& diagnostics) {
-    if (target.entity != NULL_ENTITY) {
-        return ParticleEffectEdit::read(target.scene->scene->getComponent<ParticleSystemComponent>(target.entity), document, &diagnostics);
-    }
-    return ParticleEffectEdit::readAsset(target.asset, document, &diagnostics);
+    const bool read = target.entity != NULL_ENTITY
+                          ? ParticleEffectEdit::read(target.scene->scene->getComponent<ParticleSystemComponent>(target.entity), document, &diagnostics)
+                          : ParticleEffectEdit::readAsset(target.asset, document, &diagnostics);
+    if (read) addAnalyticDiagnostics(document, diagnostics);
+    return read;
 }
 
 Json targetJson(const EffectTarget& target) {
@@ -202,7 +209,12 @@ bool editTarget(const CallPtr& call, const EffectTarget& target, const Ordered& 
             refused = true;
             return false;
         }
-        return true;
+        const size_t first = diagnostics.size();
+        addAnalyticDiagnostics(document, diagnostics);
+        for (size_t i = first; i < diagnostics.size(); i++) {
+            if (diagnostics[i].severity == Diagnostic::Severity::Error) refused = true;
+        }
+        return !refused;
     };
     Command* command = target.entity != NULL_ENTITY ? ParticleEffectEdit::build(target.project, target.scene->id, {target.entity}, edit)
                                                     : ParticleEffectEdit::buildAsset(target.project, target.asset, edit);
@@ -300,6 +312,7 @@ void createEffectTool(const CallPtr& call) {
     }
     diagnostics.clear();
     ParticleEffectCodec::validate(document, diagnostics);
+    addAnalyticDiagnostics(document, diagnostics);
     const Guid guid = project->getAssetDatabase().getAssetGuid(absolute);
     Json data = Json{{"path", path}, {"guid", guid.str()}, {"modules", moduleKeys(document)}, {"diagnostics", diagnosticsJson(diagnostics)}};
     if (!children.empty()) data["children"] = children;

@@ -317,9 +317,6 @@ void EmitterRuntime::reset(uint32_t newSeed){
         std::vector<Diagnostic> diagnostics;
         AnalyticParticles::compile(compiled->document, *prog, newSeed, *analyticProgram, diagnostics);
         AnalyticParticles::setTime(*analyticProgram, cycleTime, analyticEnd);
-        boundsValid = analyticProgram->valid;
-        std::memcpy(boundsLo, analyticProgram->boundsMin, sizeof(boundsLo));
-        std::memcpy(boundsHi, analyticProgram->boundsMax, sizeof(boundsHi));
     }
 }
 
@@ -1689,8 +1686,13 @@ void EmitterRuntime::seek(const EmitterInput& input, double time){
 // ---------------------------------------------------------------- queries
 
 void EmitterRuntime::bounds(float outMin[3], float outMax[3]) const{
-    // (an Analytic program's bounds are padded already)
-    const float pad = (prog && !prog->analytic) ? 0.5f * prog->maxStartSize * prog->maxSizeFactor * 1.7320508f : 0.0f;
+    if (isAnalytic()){
+        // every particle it can draw, padded already
+        std::memcpy(outMin, analyticProgram->boundsMin, 3 * sizeof(float));
+        std::memcpy(outMax, analyticProgram->boundsMax, 3 * sizeof(float));
+        return;
+    }
+    const float pad = prog ? 0.5f * prog->maxStartSize * prog->maxSizeFactor * 1.7320508f : 0.0f;
     for (int k = 0; k < 3; k++){
         outMin[k] = boundsLo[k] - pad;
         outMax[k] = boundsHi[k] + pad;

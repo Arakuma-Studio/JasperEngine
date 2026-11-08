@@ -228,7 +228,8 @@ namespace jasperengine { namespace particles {
         std::span<const SubEmitEvent> subEmitEvents() const { return {subEmits.data(), subEmits.size()}; }
         // computed bounds of the live particles in simulation space (min, max), padded by size
         void bounds(float outMin[3], float outMax[3]) const;
-        bool hasBounds() const { return boundsValid; }
+        // (an Analytic program's are its compiled bounds: a clear or a seek keeps them)
+        bool hasBounds() const { return boundsValid || isAnalytic(); }
         // simulation space to world space of the last tick (the emitter transform in Local)
         const float* simToWorld() const { return simWorld; }
         // a particle's colour (linear), size and rotation as the renderer shows it, at its age

@@ -40,9 +40,12 @@ namespace jasperengine { namespace particles {
         float slots[4];        // analyticSlots: x rate slots, y burst slots, z N_loop (0: not looping), w copies (looping)
         float timing[4];       // analyticTiming: x rate (per second), y duration, z lifetime min, w max
         float frame[4];        // analyticFrame: x the time (the loop's phase when looping), y the loop count, z the emission's end, w flags (1 born-check off)
-        int32_t keys0[4];      // analyticKeys0: lifetime, speed, size, rotation
-        int32_t keys1[4];      // analyticKeys1: colour, shape, flip, phase
-        int32_t keys2[4];      // analyticKeys2: wobble x, wobble y, burst probability, burst count
+        // analyticKeys: 12 random keys of 32 bits in 16-bit halves (group g: row 2g the low halves,
+        // 2g + 1 the high), exact as floats: the GL backends flatten a block only when every
+        // member is of one type, and an unflattened block is limited to 16 members. Groups:
+        // 0 lifetime, speed, size, rotation; 1 colour, shape, flip, phase; 2 wobble x, wobble y,
+        // burst probability, burst count
+        float keys[6][4];
         float start[4];        // analyticStart: speed min, max, size min, max
         float start2[4];       // analyticStart2: rotation min, max (radians), flip share, angular velocity (radians/s)
         float color0[4];       // analyticColor0: Start Color (sRGB, alpha) or the range's first
@@ -68,6 +71,15 @@ namespace jasperengine { namespace particles {
         float colorTable[kAnalyticColorEntries][4];      // analyticColorTable: sRGB + alpha (a ramp's exact bytes / 255, or a gradient's samples)
     };
     static_assert(sizeof(AnalyticBlock) % 16 == 0, "std140");
+
+    inline uint32_t analyticKey(const AnalyticBlock& b, int group, int i){
+        return (uint32_t)b.keys[group * 2][i] | ((uint32_t)b.keys[group * 2 + 1][i] << 16);
+    }
+
+    inline void setAnalyticKey(AnalyticBlock& b, int group, int i, uint32_t key){
+        b.keys[group * 2][i] = (float)(key & 0xffffu);
+        b.keys[group * 2 + 1][i] = (float)(key >> 16);
+    }
 
     struct AnalyticProgram {
         bool valid = false;

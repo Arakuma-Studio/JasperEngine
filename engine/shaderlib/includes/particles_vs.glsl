@@ -61,9 +61,7 @@ uniform u_vs_particlesParams {
         vec4 analyticSlots;
         vec4 analyticTiming;
         vec4 analyticFrame;
-        ivec4 analyticKeys0;
-        ivec4 analyticKeys1;
-        ivec4 analyticKeys2;
+        vec4 analyticKeys[6];   // 16-bit halves (a block of one type flattens on GL): analyticKey()
         vec4 analyticStart;
         vec4 analyticStart2;
         vec4 analyticColor0;

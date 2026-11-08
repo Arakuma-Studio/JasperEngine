@@ -29,6 +29,11 @@ uint analyticHash(uint key, uint particle){
     return x;
 }
 
+// a random key of AnalyticBlock (analyticKey in AnalyticParticles.h)
+uint analyticKey(int group, int i){
+    return uint(particlesParams.analyticKeys[group * 2][i]) | (uint(particlesParams.analyticKeys[group * 2 + 1][i]) << 16u);
+}
+
 float analyticRandom(uint key, uint particle){
     return float(analyticHash(key, particle) & 0xffffffu) * (1.0 / 16777216.0);
 }
@@ -289,11 +294,11 @@ bool analyticSlotParticle(uint slot, out uint index, out float age){
         if (absolute >= emitEnd)
             return false;
         uint firing = uint(bi) * 65536u + uint(cycle);
-        if (probability < 1.0 && analyticRandom(uint(particlesParams.analyticKeys2.z), firing) >= probability)
+        if (probability < 1.0 && analyticRandom(analyticKey(2, 2), firing) >= probability)
             return false;
         float countMin = info.x;
         float count = countMin == float(countMax) ? countMin
-                    : floor(countMin + (float(countMax) - countMin) * analyticRandom(uint(particlesParams.analyticKeys2.w), firing) + 0.5);
+                    : floor(countMin + (float(countMax) - countMin) * analyticRandom(analyticKey(2, 3), firing) + 0.5);
         if (float(j) >= count)
             return false;
         index = 0x40000000u + uint(bi) * 0x01000000u + ((uint(cycle) * countMax + j) & 0x00ffffffu);
@@ -320,13 +325,13 @@ bool analyticParticle(float slotValue){
         return false;
     float lifeMin = particlesParams.analyticTiming.z;
     float lifeMax = particlesParams.analyticTiming.w;
-    float life = max(lifeMin == lifeMax ? lifeMin : lifeMin + (lifeMax - lifeMin) * analyticRandom(uint(particlesParams.analyticKeys0.x), index), 1.0e-4);
+    float life = max(lifeMin == lifeMax ? lifeMin : lifeMin + (lifeMax - lifeMin) * analyticRandom(analyticKey(0, 0), index), 1.0e-4);
     if (age >= life)
         return false;
     float normAge = age / life;
     // Flicker (pixelfx EMBER): hidden on alternate half periods near the end of life
     if (particlesParams.analyticPixel.x > 0.0 && 1.0 - normAge < particlesParams.analyticPixel.x){
-        float cycle = particlesParams.analyticFrame.x * particlesParams.analyticPixel.y + analyticRandom(uint(particlesParams.analyticKeys1.w), index);
+        float cycle = particlesParams.analyticFrame.x * particlesParams.analyticPixel.y + analyticRandom(analyticKey(1, 3), index);
         if (sin((cycle - floor(cycle)) * ANALYTIC_TWO_PI) < 0.0)
             return false;
     }
@@ -334,17 +339,17 @@ bool analyticParticle(float slotValue){
     // start values
     vec4 start = particlesParams.analyticStart;
     vec4 start2 = particlesParams.analyticStart2;
-    float speed = start.x == start.y ? start.x : start.x + (start.y - start.x) * analyticRandom(uint(particlesParams.analyticKeys0.y), index);
-    float size = start.z == start.w ? start.z : start.z + (start.w - start.z) * analyticRandom(uint(particlesParams.analyticKeys0.z), index);
+    float speed = start.x == start.y ? start.x : start.x + (start.y - start.x) * analyticRandom(analyticKey(0, 1), index);
+    float size = start.z == start.w ? start.z : start.z + (start.w - start.z) * analyticRandom(analyticKey(0, 2), index);
     size = max(size, 0.0);
-    float rotation = start2.x == start2.y ? start2.x : start2.x + (start2.y - start2.x) * analyticRandom(uint(particlesParams.analyticKeys0.w), index);
-    if (start2.z > 0.0 && analyticRandom(uint(particlesParams.analyticKeys1.z), index) < start2.z)
+    float rotation = start2.x == start2.y ? start2.x : start2.x + (start2.y - start2.x) * analyticRandom(analyticKey(0, 3), index);
+    if (start2.z > 0.0 && analyticRandom(analyticKey(1, 2), index) < start2.z)
         rotation = -rotation;
     rotation += start2.w * age;
 
     // the flight
     vec3 p0, dir;
-    analyticShape(uint(particlesParams.analyticKeys1.y), index, p0, dir);
+    analyticShape(analyticKey(1, 1), index, p0, dir);
     vec3 v0 = dir * speed + particlesParams.analyticVelocity.xyz;
     vec3 position, velocity;
     analyticFly(p0, v0, particlesParams.analyticMotion.xyz, particlesParams.analyticMotion.w, age, position, velocity);
@@ -360,14 +365,14 @@ bool analyticParticle(float slotValue){
     float rampStep = 255.0;
     vec4 c = particlesParams.analyticColor0;
     if (startKind == 1){
-        float r = analyticRandom(uint(particlesParams.analyticKeys1.x), index);
+        float r = analyticRandom(analyticKey(1, 0), index);
         vec4 c0 = particlesParams.analyticColor0;
         vec4 c1 = particlesParams.analyticColor1;
         for (int k = 0; k < 3; k++)
             c[k] = analyticEncode(analyticDecode(c0[k]) + (analyticDecode(c1[k]) - analyticDecode(c0[k])) * r);
         c.a = c0.a + (c1.a - c0.a) * r;
     }else if (startKind == 2){
-        int s = analyticRampIndex(analyticRandom(uint(particlesParams.analyticKeys1.x) ^ 0x68e31da4u, index));
+        int s = analyticRampIndex(analyticRandom(analyticKey(1, 0) ^ 0x68e31da4u, index));
         c = particlesParams.analyticColorTable[s];
         rampStep = float(s);
     }
@@ -420,8 +425,8 @@ bool analyticParticle(float slotValue){
     vec4 wobble = particlesParams.analyticWobble;
     if (wobble.x != 0.0 || wobble.y != 0.0){
         bool randomPhase = particlesParams.analyticPixel.z > 0.5;
-        float phx = randomPhase ? analyticRandom(uint(particlesParams.analyticKeys2.x), index) * ANALYTIC_TWO_PI : 0.0;
-        float phy = randomPhase ? analyticRandom(uint(particlesParams.analyticKeys2.y), index) * ANALYTIC_TWO_PI : 0.0;
+        float phx = randomPhase ? analyticRandom(analyticKey(2, 0), index) * ANALYTIC_TWO_PI : 0.0;
+        float phy = randomPhase ? analyticRandom(analyticKey(2, 1), index) * ANALYTIC_TWO_PI : 0.0;
         analyticWobblePx = vec2(sin(age * wobble.z * ANALYTIC_TWO_PI + phx) * wobble.x, sin(age * wobble.w * ANALYTIC_TWO_PI + phy) * wobble.y);
     }
 
@@ -431,7 +436,7 @@ bool analyticParticle(float slotValue){
     i_particleSize = vec2(size);
     i_particleRotFrame = vec2(turns - floor(turns), frame01);
     i_particleVelocity = vec4(velocity, particlesParams.analyticExtra.x);
-    float phase = floor(analyticRandom(uint(particlesParams.analyticKeys1.w), index) * 256.0);
+    float phase = floor(analyticRandom(analyticKey(1, 3), index) * 256.0);
     i_particlePixel = vec4(rampStep / 255.0, normAge, phase / 255.0, 0.0);
     return true;
 }

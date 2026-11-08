@@ -964,7 +964,9 @@ bool ParticleEffectCodec::validate(const ParticleEffectDocument& d, std::vector<
             error(out, "renderer.minScreenSize", "Min Particle Size is not above Max Particle Size");
         if (r.shader.empty())
             error(out, "renderer.shader", "a shader (library:particles, or a fork of it)");
-        if (r.renderMode == RenderMode::None && !(d.trails.present && d.trails.enabled))
+        // (a spawner of sub-emitters draws nothing itself: Debris, S49)
+        const bool spawner = d.subEmittersModule.present && d.subEmittersModule.enabled && !d.subEmitters.empty();
+        if (r.renderMode == RenderMode::None && !(d.trails.present && d.trails.enabled) && !spawner)
             warn(out, "renderer.renderMode", "None draws only trails, and Trails is off");
     }
     if (d.setOverAge.present && d.setOverAge.enabled){

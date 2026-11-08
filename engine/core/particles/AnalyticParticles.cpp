@@ -277,7 +277,7 @@ namespace {
             const float absolute = looping ? (loops - (float)lc) * duration + fired : fired;
             if (absolute >= emitEnd)
                 return false;
-            const uint32_t probabilityKey = (uint32_t)b.keys2[2], countKey = (uint32_t)b.keys2[3];
+            const uint32_t probabilityKey = analyticKey(b, 2, 2), countKey = analyticKey(b, 2, 3);
             const uint32_t firing = (uint32_t)bi * 65536u + (uint32_t)cycle;
             if (probability < 1.0f && hash01(probabilityKey, firing) >= probability)
                 return false;
@@ -522,18 +522,18 @@ bool AnalyticParticles::compile(const ParticleEffectDocument& d, const ParticleP
     b.frame[3] = out.prewarm ? 1.0f : 0.0f;
 
     // keys: the compiled streams' (S20's salts)
-    b.keys0[0] = key(start->lifetime.stream);
-    b.keys0[1] = key(velocity->startSpeed.stream);
-    b.keys0[2] = key(start->size.stream);
-    b.keys0[3] = key(start->rotation.stream);
-    b.keys1[0] = key(start->color.stream);
-    b.keys1[1] = key(randomSalt((uint32_t)ModuleId::Shape, 0));
-    b.keys1[2] = key(randomSalt((uint32_t)ModuleId::Main, 60));
-    b.keys1[3] = key(randomSalt((uint32_t)ModuleId::PixelArt, 1));
-    b.keys2[0] = key(randomSalt((uint32_t)ModuleId::PixelArt, 2));
-    b.keys2[1] = key(randomSalt((uint32_t)ModuleId::PixelArt, 3));
-    b.keys2[2] = key(randomSalt((uint32_t)ModuleId::Emission, 120));
-    b.keys2[3] = key(randomSalt((uint32_t)ModuleId::Emission, 121));
+    setAnalyticKey(b, 0, 0, (uint32_t)key(start->lifetime.stream));
+    setAnalyticKey(b, 0, 1, (uint32_t)key(velocity->startSpeed.stream));
+    setAnalyticKey(b, 0, 2, (uint32_t)key(start->size.stream));
+    setAnalyticKey(b, 0, 3, (uint32_t)key(start->rotation.stream));
+    setAnalyticKey(b, 1, 0, (uint32_t)key(start->color.stream));
+    setAnalyticKey(b, 1, 1, (uint32_t)key(randomSalt((uint32_t)ModuleId::Shape, 0)));
+    setAnalyticKey(b, 1, 2, (uint32_t)key(randomSalt((uint32_t)ModuleId::Main, 60)));
+    setAnalyticKey(b, 1, 3, (uint32_t)key(randomSalt((uint32_t)ModuleId::PixelArt, 1)));
+    setAnalyticKey(b, 2, 0, (uint32_t)key(randomSalt((uint32_t)ModuleId::PixelArt, 2)));
+    setAnalyticKey(b, 2, 1, (uint32_t)key(randomSalt((uint32_t)ModuleId::PixelArt, 3)));
+    setAnalyticKey(b, 2, 2, (uint32_t)key(randomSalt((uint32_t)ModuleId::Emission, 120)));
+    setAnalyticKey(b, 2, 3, (uint32_t)key(randomSalt((uint32_t)ModuleId::Emission, 121)));
 
     // start values
     range(velocity->startSpeed, b.start[0], b.start[1]);
@@ -749,7 +749,7 @@ AnalyticParticle AnalyticParticles::evaluate(const AnalyticProgram& p, uint32_t 
     float age = 0.0f;
     if (!slotParticle(b, slot, index, age))
         return out;
-    const uint32_t lifeKey = (uint32_t)b.keys0[0];
+    const uint32_t lifeKey = analyticKey(b, 0, 0);
     const float lifeMin = b.timing[2], lifeMax = b.timing[3];
     const float life = std::max(lifeMin == lifeMax ? lifeMin : lifeMin + (lifeMax - lifeMin) * hash01(lifeKey, index), 1.0e-4f);
     if (age >= life)
@@ -758,7 +758,7 @@ AnalyticParticle AnalyticParticles::evaluate(const AnalyticProgram& p, uint32_t 
     // Flicker: hidden on alternate half periods near the end of life (pixelfx EMBER)
     // (a loop's phase: periodic with it)
     if (b.pixel[0] > 0.0f && 1.0f - normAge < b.pixel[0]){
-        const float cycle = b.frame[0] * b.pixel[1] + hash01((uint32_t)b.keys1[3], index);
+        const float cycle = b.frame[0] * b.pixel[1] + hash01(analyticKey(b, 1, 3), index);
         if (std::sin((cycle - std::floor(cycle)) * kTwoPi) < 0.0f)
             return out;
     }
@@ -769,20 +769,20 @@ AnalyticParticle AnalyticParticles::evaluate(const AnalyticProgram& p, uint32_t 
 
     // start values
     const float speedMin = b.start[0], speedMax = b.start[1];
-    const float speed = speedMin == speedMax ? speedMin : speedMin + (speedMax - speedMin) * hash01((uint32_t)b.keys0[1], index);
+    const float speed = speedMin == speedMax ? speedMin : speedMin + (speedMax - speedMin) * hash01(analyticKey(b, 0, 1), index);
     const float sizeMin = b.start[2], sizeMax = b.start[3];
-    float size = sizeMin == sizeMax ? sizeMin : sizeMin + (sizeMax - sizeMin) * hash01((uint32_t)b.keys0[2], index);
+    float size = sizeMin == sizeMax ? sizeMin : sizeMin + (sizeMax - sizeMin) * hash01(analyticKey(b, 0, 2), index);
     size = std::max(size, 0.0f);
     const float rotMin = b.start2[0], rotMax = b.start2[1];
-    float rotation = rotMin == rotMax ? rotMin : rotMin + (rotMax - rotMin) * hash01((uint32_t)b.keys0[3], index);
-    if (b.start2[2] > 0.0f && hash01((uint32_t)b.keys1[2], index) < b.start2[2])
+    float rotation = rotMin == rotMax ? rotMin : rotMin + (rotMax - rotMin) * hash01(analyticKey(b, 0, 3), index);
+    if (b.start2[2] > 0.0f && hash01(analyticKey(b, 1, 2), index) < b.start2[2])
         rotation = -rotation;
     rotation += b.start2[3] * age;
     out.rotation = rotation;
 
     // the flight (pixelfx fly / flyV)
     Vector3 p0, dir;
-    shapeSample(b, (uint32_t)b.keys1[1], index, p0, dir);
+    shapeSample(b, analyticKey(b, 1, 1), index, p0, dir);
     const Vector3 v0 = dir * speed + Vector3(b.velocity[0], b.velocity[1], b.velocity[2]);
     const Vector3 g(b.motion[0], b.motion[1], b.motion[2]);
     out.position = flyPosition(p0, v0, g, b.motion[3], age);
@@ -804,12 +804,12 @@ AnalyticParticle AnalyticParticles::evaluate(const AnalyticProgram& p, uint32_t 
     };
     float c[4] = {b.color0[0], b.color0[1], b.color0[2], b.color0[3]};
     if (startKind == 1){
-        const float r = hash01((uint32_t)b.keys1[0], index);
+        const float r = hash01(analyticKey(b, 1, 0), index);
         for (int k = 0; k < 3; k++)
             c[k] = encodeChannel(decodeChannel(b.color0[k]) + (decodeChannel(b.color1[k]) - decodeChannel(b.color0[k])) * r);
         c[3] = b.color0[3] + (b.color1[3] - b.color0[3]) * r;
     }else if (startKind == 2){
-        const int step = rampIndex(hash01((uint32_t)b.keys1[0] ^ 0x68e31da4u, index));
+        const int step = rampIndex(hash01(analyticKey(b, 1, 0) ^ 0x68e31da4u, index));
         for (int k = 0; k < 4; k++) c[k] = b.colorTable[step][k];
         out.rampStep = (uint8_t)step;
     }
@@ -859,8 +859,8 @@ AnalyticParticle AnalyticParticles::evaluate(const AnalyticProgram& p, uint32_t 
 
     // Wobble: the drawn sway, base pixels (R7)
     if (b.wobble[0] != 0.0f || b.wobble[1] != 0.0f){
-        const float phx = b.pixel[2] > 0.5f ? hash01((uint32_t)b.keys2[0], index) * kTwoPi : 0.0f;
-        const float phy = b.pixel[2] > 0.5f ? hash01((uint32_t)b.keys2[1], index) * kTwoPi : 0.0f;
+        const float phx = b.pixel[2] > 0.5f ? hash01(analyticKey(b, 2, 0), index) * kTwoPi : 0.0f;
+        const float phy = b.pixel[2] > 0.5f ? hash01(analyticKey(b, 2, 1), index) * kTwoPi : 0.0f;
         out.wobble = Vector2(std::sin(age * b.wobble[2] * kTwoPi + phx) * b.wobble[0], std::sin(age * b.wobble[3] * kTwoPi + phy) * b.wobble[1]);
     }
     return out;
