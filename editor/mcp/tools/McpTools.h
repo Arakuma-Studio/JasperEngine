@@ -100,6 +100,7 @@ namespace jasperengine::editor::mcp {
     void registerTerrainGenerationTools(McpRegistry& registry);
     void registerGameplayTools(McpRegistry& registry);
     void registerSplineTools(McpRegistry& registry);
+    void registerVoxelTools(McpRegistry& registry);
     void registerTerrainTools(McpRegistry& registry);
     // T4: edit_terrain_world, registered by registerTerrainTools (its module and group)
     void registerTerrainWorldTools(McpRegistry& registry);

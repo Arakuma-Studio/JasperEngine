@@ -229,6 +229,8 @@ namespace jasperengine::editor{
         CapsuleShadowCasterComponent,
         // a Mixer Snapshot action of the legacy action timeline (S40 R18)
         AudioSnapshotComponent,
+        // T6: a bounded box of smooth voxel terrain
+        VoxelVolumeComponent,
         // T4: a Terrain's tiles past one map, streamed round its focuses
         TerrainWorldComponent
     };

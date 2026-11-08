@@ -283,6 +283,13 @@ template<> struct Codec<CapsuleShadowShape> {
 template<> struct TextureVisit<CapsuleShadowShape> {
     static void visit(CapsuleShadowShape& value, const TextureVisitor& f);
 };
+template<> struct Codec<VoxelMaterialSlot> {
+    static void write(Writer& w, const VoxelMaterialSlot& value);
+    static void read(Reader& r, VoxelMaterialSlot& value);
+};
+template<> struct TextureVisit<VoxelMaterialSlot> {
+    static void visit(VoxelMaterialSlot& value, const TextureVisitor& f);
+};
 
 }
 
@@ -908,6 +915,16 @@ const StructTable kStruct_CapsuleShadowShape{"CapsuleShadowShape", kStruct_Capsu
 void Codec<CapsuleShadowShape>::write(Writer& w, const CapsuleShadowShape& value) { writeStruct(w, kStruct_CapsuleShadowShape, &value); }
 void Codec<CapsuleShadowShape>::read(Reader& r, CapsuleShadowShape& value) { readStruct(r, kStruct_CapsuleShadowShape, &value); }
 void TextureVisit<CapsuleShadowShape>::visit(CapsuleShadowShape& value, const TextureVisitor& f) { visitStructTextures(kStruct_CapsuleShadowShape, &value, f); }
+
+const FieldEntry kStruct_VoxelMaterialSlot_fields[] = {
+    JE_RF(VoxelMaterialSlot, name, 0x0440a6c7u, String),
+    JE_RF(VoxelMaterialSlot, layer, 0xbf50a6a9u, Struct),
+    JE_RF(VoxelMaterialSlot, linkedTerrainLayer, 0xc201d34bu, Int),
+};
+const StructTable kStruct_VoxelMaterialSlot{"VoxelMaterialSlot", kStruct_VoxelMaterialSlot_fields, std::size(kStruct_VoxelMaterialSlot_fields)};
+void Codec<VoxelMaterialSlot>::write(Writer& w, const VoxelMaterialSlot& value) { writeStruct(w, kStruct_VoxelMaterialSlot, &value); }
+void Codec<VoxelMaterialSlot>::read(Reader& r, VoxelMaterialSlot& value) { readStruct(r, kStruct_VoxelMaterialSlot, &value); }
+void TextureVisit<VoxelMaterialSlot>::visit(VoxelMaterialSlot& value, const TextureVisitor& f) { visitStructTextures(kStruct_VoxelMaterialSlot, &value, f); }
 
 const FieldEntry kBody_Transform_fields[] = {
     JE_RF(Transform, position, 0x89d4084cu, Vector3),
@@ -2462,6 +2479,28 @@ const FieldEntry kBody_AudioSnapshotComponent_fields[] = {
 };
 const StructTable kBody_AudioSnapshotComponent{"audiosnapshot", kBody_AudioSnapshotComponent_fields, std::size(kBody_AudioSnapshotComponent_fields)};
 
+const FieldEntry kBody_VoxelVolumeComponent_fields[] = {
+    JE_RF(VoxelVolumeComponent, enabled, 0xe0232cc6u, Bool),
+    JE_RF(VoxelVolumeComponent, volumeData, 0xcf672fffu, AssetPath),
+    JE_RF(VoxelVolumeComponent, materialSlots, 0xde4b30a5u, Array),
+    JE_RF(VoxelVolumeComponent, quality, 0xf808d0deu, Enum),
+    JE_RF(VoxelVolumeComponent, lodLevels, 0x9c4b2ecfu, Int),
+    JE_RF(VoxelVolumeComponent, lodRadius, 0x7874fdc6u, Int),
+    JE_RF(VoxelVolumeComponent, maxDrawDistance, 0x06e6e148u, Float),
+    JE_RF(VoxelVolumeComponent, castShadows, 0xe81287cfu, Bool),
+    JE_RF(VoxelVolumeComponent, collision, 0xf8a1ea07u, Bool),
+    JE_RF(VoxelVolumeComponent, collisionRadius, 0xc01bc195u, Int),
+    JE_RF(VoxelVolumeComponent, rescueBodies, 0x13fd2294u, Bool),
+    JE_RF(VoxelVolumeComponent, navigationUpdate, 0xb28f416au, Enum),
+    JE_RF_ENTITY(VoxelVolumeComponent, terrain, 0x654b7896u, Entity),
+    JE_RF(VoxelVolumeComponent, terrainCut, 0x65c32b4eu, Enum),
+    JE_RF(VoxelVolumeComponent, overlapDepth, 0x74198275u, Float),
+    JE_RF(VoxelVolumeComponent, cutTolerance, 0x15ecc682u, Float),
+    JE_RF_ENTITY(VoxelVolumeComponent, focus, 0x0c65104bu, Entity),
+    JE_RF(VoxelVolumeComponent, runtimeGeneration, 0x92551f21u, Bool),
+};
+const StructTable kBody_VoxelVolumeComponent{"voxelvolume", kBody_VoxelVolumeComponent_fields, std::size(kBody_VoxelVolumeComponent_fields)};
+
 const FieldEntry kBody_TerrainWorldComponent_fields[] = {
     JE_RF(TerrainWorldComponent, enabled, 0x063283c5u, Bool),
     JE_RF(TerrainWorldComponent, worldData, 0x83f3b4e8u, AssetPath),
@@ -2584,6 +2623,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(SafeAreaComponent, "safearea", 0x17cac771u),
     JE_RF_COMPONENT(CapsuleShadowCasterComponent, "capsuleshadowcaster", 0xcab0c6acu),
     JE_RF_COMPONENT(AudioSnapshotComponent, "audiosnapshot", 0x57737429u),
+    JE_RF_COMPONENT(VoxelVolumeComponent, "voxelvolume", 0x973a2f61u),
     JE_RF_COMPONENT(TerrainWorldComponent, "terrainworld", 0x98e87442u),
     JE_RF_COMPONENTS_END
 };

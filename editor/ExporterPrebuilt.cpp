@@ -633,6 +633,9 @@ bool editor::Exporter::writeGameConfig() {
     game.inputDeadzone = project->getInputDeadzone();
     game.inputActions = project->getInputActionsEnginePath();
     game.navigation = project->getNavigationSettings().settings;
+    game.voxelMaxDimension = project->getVoxelSettings().maxDimension;
+    game.voxelCpuBudgetMB = project->getVoxelSettings().cpuBudgetMB;
+    game.voxelMeshBudgetMB = project->getVoxelSettings().meshBudgetMB;
     const TextureProjectSettings& textures = project->getTextureSettings();
     for (size_t g = 0; g < 3; g++)
         game.textureDefaults[g] = {textures.textureQuality[g], textures.memoryBudgetMB[g], textures.lowMemoryFallback[g]};

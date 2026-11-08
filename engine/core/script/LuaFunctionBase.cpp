@@ -1,6 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "component/VoxelVolumeComponent.h"
+#include "math/AABB.h"
+#include "object/GameObject.h"
 #include "LuaFunction.h"
 #include "object/navigation/NavMeshAgent.h"
 #include "object/navigation/NavMeshSurface.h"
@@ -236,6 +239,40 @@ void LuaFunctionBase::push_value(lua_State *vm, const std::vector<ParticleSubEmi
         lua_setfield(vm, -2, "trigger");
         lua_rawseti(vm, -2, (lua_Integer)i + 1);
     }
+}
+
+void LuaFunctionBase::push_value(lua_State *vm, const VoxelEditEvent& o){
+    lua_createtable(vm, 0, 6);
+    push_value(vm, o.bounds);
+    lua_setfield(vm, -2, "bounds");
+    push_value(vm, o.center);
+    lua_setfield(vm, -2, "center");
+    lua_pushnumber(vm, o.removedVolume);
+    lua_setfield(vm, -2, "removedVolume");
+    lua_pushnumber(vm, o.addedVolume);
+    lua_setfield(vm, -2, "addedVolume");
+    lua_createtable(vm, (int)o.removedByMaterial.size(), 0);
+    for (size_t i = 0; i < o.removedByMaterial.size(); i++){
+        lua_pushnumber(vm, o.removedByMaterial[i]);
+        lua_rawseti(vm, -2, (lua_Integer)i + 1);
+    }
+    lua_setfield(vm, -2, "removedByMaterial");
+    lua_createtable(vm, (int)o.debrisPoints.size(), 0);
+    for (size_t i = 0; i < o.debrisPoints.size(); i++){
+        push_value(vm, o.debrisPoints[i]);
+        lua_rawseti(vm, -2, (lua_Integer)i + 1);
+    }
+    lua_setfield(vm, -2, "debrisPoints");
+}
+
+void LuaFunctionBase::push_value(lua_State *vm, const AABB& o){
+    if (!luabridge::push<AABB>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
+}
+
+void LuaFunctionBase::push_value(lua_State *vm, const GameObject& o){
+    if (!luabridge::push<GameObject>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 
 void LuaFunctionBase::push_value(lua_State *vm, NavMeshAgent o){

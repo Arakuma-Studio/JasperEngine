@@ -5,6 +5,7 @@
 #include "model/ModelCpuData.h"
 #include "component/ActionComponent.h"
 #include "component/TerrainWorldComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
@@ -1187,6 +1188,15 @@ void prepare<NavMeshSurfaceComponent>(NavMeshSurfaceComponent& surface, Entity, 
 }
 
 template<>
+void prepare<VoxelVolumeComponent>(VoxelVolumeComponent& volume, Entity, CloneContext& ctx) {
+    volume.terrain = ctx.remap(volume.terrain);
+    volume.focus = ctx.remap(volume.focus);
+    volume.onEdited.clear();
+    volume.onCollisionUpdated.clear();
+    volume.onBodyRescued.clear();
+}
+
+template<>
 void prepare<NavGridComponent>(NavGridComponent& grid, Entity, CloneContext& ctx) {
     grid.sourceEntity = ctx.remap(grid.sourceEntity);
     if (grid.map)
@@ -1363,6 +1373,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<NavGridComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SplineComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SplineExtrudeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<VoxelVolumeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SplineInstantiateComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SplineAnimateComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<InstancedMeshComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

@@ -3,6 +3,7 @@
 
 #include "EntityRegistry.h"
 #include "component/ActionComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AudioSnapshotComponent.h"
@@ -193,6 +194,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<NavGridComponent>(ComponentOrder::Insertion, "NavGridComponent");
     registerComponent<SplineComponent>(ComponentOrder::Insertion, "SplineComponent");
     registerComponent<SplineExtrudeComponent>(ComponentOrder::Insertion, "SplineExtrudeComponent");
+    registerComponent<VoxelVolumeComponent>(ComponentOrder::Insertion, "VoxelVolumeComponent");
     registerComponent<SplineInstantiateComponent>(ComponentOrder::Insertion, "SplineInstantiateComponent");
     registerComponent<SplineAnimateComponent>(ComponentOrder::Insertion, "SplineAnimateComponent");
     registerComponent<AnimatorComponent>(ComponentOrder::Insertion, "AnimatorComponent");

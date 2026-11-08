@@ -289,6 +289,11 @@ namespace jasperengine{
 
         // the High Lit Quality's define (SceneSettings::litQuality)
         static const char* const LIT_QUALITY_DEFINE;   // USE_LIT_QUALITY
+        // a Voxel Volume chunk (T6 R49) and its tier
+        static const char* const VOXEL_DEFINE;
+        static const char* const VOXEL_TIER_HIGH_DEFINE;
+        static const char* const VOXEL_TIER_MEDIUM_DEFINE;
+        static const char* const VOXEL_TIER_LOW_DEFINE;
         // a Terrain with a hex tiled layer (TerrainSurfaceLayer::hexTiling)
         static const char* const TERRAIN_HEX_DEFINE;   // TERRAIN_HEX_TILING
         // and a layer of it (or another) takes Stochastic Tiling: without it, the hex variant

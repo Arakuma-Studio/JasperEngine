@@ -113,6 +113,7 @@ namespace {
         {"TERRAIN_MACRO", "Mv"}, {"TERRAIN_MACRO_NORMAL", "Mn"},
         {"TERRAIN_RESAMPLE", "Rs"}, {"TERRAIN_CLIFF", "Cl"}, {"TERRAIN_HEIGHT_BLEND", "Hb"},
         {"TERRAIN_DEBUG_VIEW", "Dv"},
+        {"HAS_VOXEL", "Vx"}, {"VOXEL_TIER_HIGH", "Vh"}, {"VOXEL_TIER_MEDIUM", "Vm"}, {"VOXEL_TIER_LOW", "Vl"},
     };
     // T3 R54: a bit per entry of a 64-bit mask, so the table may grow past 32 and no further
     static_assert(sizeof(defineCodes) / sizeof(defineCodes[0]) <= 64, "MaterialPbr's define bits are 64 wide");
@@ -120,6 +121,10 @@ namespace {
 }
 
 const char* const MaterialPbr::LIT_QUALITY_DEFINE = "USE_LIT_QUALITY";
+const char* const MaterialPbr::VOXEL_DEFINE = "HAS_VOXEL";
+const char* const MaterialPbr::VOXEL_TIER_HIGH_DEFINE = "VOXEL_TIER_HIGH";
+const char* const MaterialPbr::VOXEL_TIER_MEDIUM_DEFINE = "VOXEL_TIER_MEDIUM";
+const char* const MaterialPbr::VOXEL_TIER_LOW_DEFINE = "VOXEL_TIER_LOW";
 const char* const MaterialPbr::TERRAIN_HEX_DEFINE = "TERRAIN_HEX_TILING";
 const char* const MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE = "TERRAIN_HEX_STOCHASTIC";
 

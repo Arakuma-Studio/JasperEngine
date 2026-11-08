@@ -276,6 +276,7 @@ namespace jasperengine::editor {
         float inputDeadzone = 0.15f;
         // Project Settings > Navigation: the statements main.cpp runs (nav::setSettings), "" defaults
         std::string navigationSettingsCode;
+        std::string voxelSettingsCode;
         // Project Settings > Quality > Device Tiers and the rest (DeviceSettings::toJson)
         std::string deviceSettingsJson = "{}";
         // Project Settings > Texture per platform group (desktop, mobile, web; S14 R12)
@@ -428,6 +429,8 @@ namespace jasperengine::editor {
         void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }
         // the navigation settings the game starts with (generateNavigationSettingsCode); set before configure()
         void setNavigationSettingsCode(const std::string& code) { navigationSettingsCode = code; }
+        // what Project Settings > Voxels lowers (generateVoxelSettingsCode); set before configure()
+        void setVoxelSettingsCode(const std::string& code) { voxelSettingsCode = code; }
         // the device settings the game applies its Device Tier with (DeviceSettings::toJson); set
         // before configure()
         void setDeviceSettingsJson(const std::string& json) { deviceSettingsJson = json; }

@@ -52,6 +52,11 @@
             "tools": 7,
             "spec": "S15 (its 7 tools within 7,000 characters)"
         },
+        "voxels": {
+            "chars": 4500,
+            "tools": 4,
+            "spec": "T6 R66 (its 4 tools within 4,500 characters)"
+        },
         "device": {
             "chars": 1500,
             "tools": 2,

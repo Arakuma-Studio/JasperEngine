@@ -10,6 +10,7 @@
 #include "serialization/RuntimeFields.h"
 #include "model/ModelCpuData.h"
 #include "serialization/codecs/CookTypes.h"
+#include "serialization/codecs/VoxelVolumeCodec.h"
 
 #include "util/Fnv.h"
 
@@ -183,6 +184,14 @@ namespace {
         data.markDirty();
     }
 
+    // ---------------------------------------------------------------- Voxel Volume
+
+    // T6 R78: the slots and values come through the generated tables, the blocks from the baked
+    // asset (VoxelSystem loads it by path on its first update, so nothing else is set up here)
+    void afterVoxelVolume(void* component, const LoadContext&) {
+        sanitizeVoxelVolume(*static_cast<VoxelVolumeComponent*>(component));
+    }
+
     // ---------------------------------------------------------------- Rigidbodies
 
     // the exported code carries the editor's body flags over
@@ -261,6 +270,7 @@ namespace {
         {fnv1a32("action"), nullptr, nullptr, &afterAction},
         {fnv1a32("terrain"), nullptr, nullptr, &afterTerrain},
         {fnv1a32("spline"), nullptr, nullptr, &afterSpline},
+        {fnv1a32("voxelvolume"), nullptr, nullptr, &afterVoxelVolume},
 #ifdef JASPERENGINE_PHYSICS_2D
         {fnv1a32("rigidbody2d"), &writeBody2D, &readBody2D, nullptr},
 #endif

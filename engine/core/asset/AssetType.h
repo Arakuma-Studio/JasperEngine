@@ -39,10 +39,10 @@ namespace jasperengine {
         VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
         // 24 to 27 are the pixel art program's (docs/specs/S41-S52)
         SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
-        // 31 Voxel Volume (programme D19, D22); NoiseGraph took 32 when upstream took 28. Stored in
-        // assetmap.bin: these never move.
+        // NoiseGraph took 32 when upstream took 28. Stored in assetmap.bin: these never move.
         TreeData = 29,              // a .jetrees file of a Terrain's trees (T5 R22)
         TerrainWorld = 30,          // a Name.terrainworld folder, its GUID in its manifest.yaml (T4 R48)
+        VoxelVolume = 31,           // a .voxelvolume (T6 R77, its GUID in a sidecar)
         NoiseGraph = 32             // a .noisegraph Noise Graph (T2)
     };
 
@@ -76,12 +76,14 @@ namespace jasperengine {
             case AssetType::SoundEvent: return "sound_event";
             case AssetType::TerrainWorld: return "terrain_world";
             case AssetType::NoiseGraph: return "noise_graph";
+            case AssetType::VoxelVolume: return "voxel_volume";
             case AssetType::Unknown: break;
         }
         return "unknown";
     }
 
     inline AssetType assetTypeFromName(std::string_view name) {
+        // (a reserved number has no name: it never matches)
         for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::NoiseGraph); value++) {
             const AssetType type = static_cast<AssetType>(value);
             if (name == assetTypeName(type)) {

@@ -663,11 +663,15 @@ uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
     return getVatProperty(shaderType, false) | getVatProperty(shaderType, true);
 }
 
+uint64_t ShaderPool::getGBufferVoxelProperty(){
+    return shaderPropertyBit(26);
+}
+
 uint64_t ShaderPool::getTerrainWorldProperty(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:    return shaderPropertyBit(46);
         case ShaderType::DEPTH:   return shaderPropertyBit(23);
-        case ShaderType::GBUFFER: return shaderPropertyBit(26);
+        case ShaderType::GBUFFER: return shaderPropertyBit(27);
         default:                  return 0;
     }
 }
@@ -710,7 +714,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return 47;
         case ShaderType::DEPTH:  return 24;
-        case ShaderType::GBUFFER: return 27;
+        case ShaderType::GBUFFER: return 28;
         case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
         // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
@@ -885,7 +889,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 23: return shortName ? "Tqm" : "Terrain Quality Medium"; // T3 D2
             case 24: return shortName ? "Tql" : "Terrain Quality Low";
             case 25: return shortName ? "Txl" : "Terrain Extended Layers"; // T3 R15
-            case 26: return shortName ? "Twd" : "Terrain World"; // T4 R58
+            // a Voxel Volume's chunk (T6 R49; the colour pass takes it through Lit defines)
+            case 26: return shortName ? "Vox" : "Voxel Volume";
+            case 27: return shortName ? "Twd" : "Terrain World"; // T4 R58
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {

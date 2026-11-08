@@ -34,6 +34,7 @@
 #include "util/Util.h"
 #include "physics/PlacementSettings.h"
 #include "navigation/NavigationProjectSettings.h"
+#include "voxel/VoxelProjectSettings.h"
 #include "render/shadow/ShadowTiers.h"
 #include "render/LightingTiers.h"
 #include "device/DeviceSettings.h"
@@ -71,6 +72,10 @@
 namespace jasperengine{
     struct AnimationPlayerClip;
     struct ScriptEntry;
+}
+
+namespace jasperengine {
+    struct VoxelAsset;
 }
 
 namespace jasperengine::editor{
@@ -237,6 +242,8 @@ namespace jasperengine::editor{
         // CommandHistory::stampSave of its last write (Project::markSceneSaved), 0 = none since it
         // loaded: a capture that restores isModified compares it with the one it saw
         uint64_t savedAt = 0;
+        // Voxel Volumes recovery brought back (T6 R77): dirty, and in nothing else yet
+        std::vector<std::shared_ptr<VoxelAsset>> restoredVoxelAssets;
         // True while the id has never reached disk, so a scene replacing this one
         // can take it over instead of drawing a new one
         bool transientId = false;
@@ -1027,6 +1034,7 @@ namespace jasperengine::editor{
         std::vector<std::filesystem::path> inspectedAssets;
         PhysicsPlacementSettings physicsPlacementSettings;
         NavigationProjectSettings navigationSettings;
+        VoxelProjectSettings voxelSettings;
         SpriteNormalsWindowSettings spriteNormalsSettings;
         bool simulateTouch;
         std::vector<GameResolution> customResolutions;
@@ -1059,6 +1067,8 @@ namespace jasperengine::editor{
                 bool writing = false;
             };
             std::shared_ptr<Written> written = std::make_shared<Written>();
+            // the store version of each Voxel Volume's last copy (T6 R77)
+            std::map<std::string, uint64_t> voxelVersions;
         };
         std::unordered_map<uint32_t, AutosaveScene> autosaveScenes;
         float autosaveClock = 0.0f;
@@ -1069,6 +1079,8 @@ namespace jasperengine::editor{
         std::shared_ptr<std::atomic<int>> autosaveWritesInFlight = std::make_shared<std::atomic<int>>(0);
         std::optional<RecoveryChoice> nextRecoveryChoice;
         RecoveryOutcome lastRecovery;
+        // what resolveSceneRecovery restored, until the scene it belongs to holds it (T6 R77)
+        std::vector<std::shared_ptr<VoxelAsset>> restoredVoxelAssets;
 
         // loadProject: false when another live editor holds the project and the host says no
         bool takeProjectLock(const std::filesystem::path& path);
@@ -2173,6 +2185,9 @@ namespace jasperengine::editor{
         // navigation settings too (every scene's systems refresh their filters)
         const NavigationProjectSettings& getNavigationSettings() const;
         void setNavigationSettings(const NavigationProjectSettings& settings);
+        // Project Settings > Voxels (T6 R7)
+        const VoxelProjectSettings& getVoxelSettings() const { return voxelSettings; }
+        void setVoxelSettings(const VoxelProjectSettings& settings);
 
         // The Sprite Normal Map window's last settings, view and light, and the auto-regenerate
         // opt-in, per user (workspace.yaml)

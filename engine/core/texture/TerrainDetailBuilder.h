@@ -15,10 +15,14 @@
 
 #include <array>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
 namespace jasperengine::terrain {
+
+    // A Terrain has up to TERRAIN_MAX_LAYERS layers; a Voxel Volume's array has one per slot (T6 R50)
+    inline constexpr int DETAIL_MAX_LAYERS = 16;
 
     struct DetailPlan {
         // what each slice is built from, in array order: the colours first (rounded up to whole blend
@@ -26,8 +30,8 @@ namespace jasperengine::terrain {
         std::vector<std::string> sliceKeys;
         int colorSlices = 0;
         // where a layer's normal and packed surface slices landed, -1 when it has none
-        std::array<int, TERRAIN_MAX_LAYERS> normalSlice;
-        std::array<int, TERRAIN_MAX_LAYERS> surfaceSlice;
+        std::array<int, DETAIL_MAX_LAYERS> normalSlice;
+        std::array<int, DETAIL_MAX_LAYERS> surfaceSlice;
         bool anySource = false;
     };
 
@@ -35,6 +39,14 @@ namespace jasperengine::terrain {
     JASPERENGINE_API std::string detailSourceKey(const Texture& texture);
     // A layer's colour slice with the height it carries in alpha (R6) has a key of its own
     JASPERENGINE_API DetailPlan planDetailArray(const TerrainComponent& terrain);
+    struct DetailPlanOptions {
+        // false: no surface slices (a Voxel Volume's Low tier), the height still in its colour's alpha
+        bool surfaceSlices = true;
+        // a terrain's shader reaches all three layers of a blend map; a volume's reads only its slots
+        bool wholeBlendMaps = true;
+    };
+    // The same over any layers, up to DETAIL_MAX_LAYERS (a Voxel Volume's slots, T6 R50)
+    JASPERENGINE_API DetailPlan planDetailArray(std::span<const TerrainSurfaceLayer> layers, const DetailPlanOptions& options);
 
     struct DetailPixels {
         int width = 0, height = 0;
@@ -55,10 +67,12 @@ namespace jasperengine::terrain {
     // and takes the height map in its alpha, with mips of their own (R6); High ignores that alpha. False
     // when no source could be read.
     JASPERENGINE_API bool buildDetailPixels(const TerrainComponent& terrain, const DetailPlan& plan, const DetailBuildOptions& options, DetailPixels& out);
+    JASPERENGINE_API bool buildDetailPixels(std::span<const TerrainSurfaceLayer> layers, const DetailPlan& plan, const DetailBuildOptions& options, DetailPixels& out);
 
     // One slice's top level, RGBA8, as the exporter hands it to an encoder: the same rule per kind.
     // false when the slice has no source at all
     JASPERENGINE_API bool buildDetailSliceTop(const TerrainComponent& terrain, const DetailPlan& plan, int slice, int maxSize, std::vector<uint8_t>& rgba, int& width, int& height);
+    JASPERENGINE_API bool buildDetailSliceTop(std::span<const TerrainSurfaceLayer> layers, const DetailPlan& plan, int slice, int maxSize, std::vector<uint8_t>& rgba, int& width, int& height);
 
     // What kind a slice is, which decides its mips and its cook: colour, normal or packed surface
     enum class DetailSliceKind : int { COLOR, NORMAL, SURFACE };

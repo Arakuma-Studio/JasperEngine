@@ -257,6 +257,10 @@ const float M_PI = 3.141592653589793;
     #define TERRAIN_MATERIAL_INFO
     #include "includes/terrain_fs.glsl"
 #endif
+#ifdef HAS_VOXEL
+    #define VOXEL_MATERIAL_INFO
+    #include "includes/voxel_fs.glsl"
+#endif
 #ifdef HAS_FOG
     #include "includes/fog.glsl"
 #endif
@@ -349,6 +353,8 @@ void main() {
     #elif defined(HAS_TERRAIN_PBR) && defined(MATERIAL_UNLIT)
         // unlit shows the one thing a painted layer still means here
         baseColor = getTerrainSurface(baseColor, vec3(0.0, 1.0, 0.0), 1.0, 0.0).color;
+    #elif defined(HAS_VOXEL) && defined(MATERIAL_UNLIT)
+        baseColor = getVoxelSurface(baseColor, vec3(0.0, 1.0, 0.0), 1.0, 0.0).color;
     #endif
 
     #ifdef ALPHA_MASK
@@ -405,6 +411,13 @@ void main() {
             materialInfo.baseColor = baseColor.rgb;
             materialInfo = applyTerrainSurface(materialInfo, terrainSurface, f0_ior);
             n = terrainSurface.normal;
+        #endif
+        #ifdef HAS_VOXEL
+            VoxelSurface voxelSurface = getVoxelSurface(baseColor, n, materialInfo.perceptualRoughness, materialInfo.metallic);
+            baseColor = voxelSurface.color;
+            materialInfo.baseColor = baseColor.rgb;
+            materialInfo = applyVoxelSurface(materialInfo, voxelSurface, f0_ior);
+            n = voxelSurface.normal;
         #endif
 
         materialInfo.perceptualRoughness = clamp(materialInfo.perceptualRoughness, 0.0, 1.0);
@@ -498,6 +511,10 @@ void main() {
         #ifdef HAS_TERRAIN_PBR
             f_diffuse *= terrainSurface.occlusion;
             f_specular *= terrainSurface.occlusion;
+        #endif
+        #ifdef HAS_VOXEL
+            f_diffuse *= voxelSurface.occlusion;
+            f_specular *= voxelSurface.occlusion;
         #endif
 
         #ifdef USE_SSAO

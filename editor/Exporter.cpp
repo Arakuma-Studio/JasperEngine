@@ -9,6 +9,7 @@
 #include "component/Rigidbody2DComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "Exporter.h"
+#include "cook/VoxelVolumeCook.h"
 #include "io/watch/LinkedFolders.h"
 
 #include "audio/SoundEventDocument.h"
@@ -1455,7 +1456,7 @@ fs::path editor::Exporter::getBuildCacheDir() const {
 std::vector<std::string> editor::Exporter::compiledModules() const {
     // what Project Settings allow (the HTML UI, its video, the sound layer and Terrain Worlds have no
     // switch of their own)
-    std::vector<std::string> modules = {"htmlui", "video", "soundlayer", "terrainworld"};
+    std::vector<std::string> modules = {"htmlui", "video", "soundlayer", "voxel", "terrainworld"};
     if (project->isRuntimeShadersEnabled()) modules.push_back("runtimeshaders");
     if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
     if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
@@ -2570,9 +2571,23 @@ bool editor::Exporter::loadAndSaveAllScenes() {
             // loaded (a source export keeps every module its settings allow: its user's code may
             // use any)
             moduleUsageKnown = false;
-            if (imported && config.mode != ExportMode::SourceCode) {
-                moduleUsage = ModuleUsageDetector::analyze(ModuleUsageDetector::collect(project));
-                moduleUsageKnown = true;
+            voxelKeptGenerators.clear();
+            voxelTerrainBases.clear();
+            if (imported) {
+                const ModuleScan shipped = ModuleUsageDetector::collect(project);
+                // T6 R78: which volumes the asset cook leaves a generator in, and the ground a volume
+                // attached to a Terrain is cooked over, taken while its scene is loaded
+                voxelKeptGenerators = cook::voxelVolumesGeneratedAtRuntime(shipped);
+                std::vector<std::string> voxelProblems;
+                voxelTerrainBases = cook::voxelTerrainBases(shipped, project->getAssetsPath(), voxelProblems);
+                if (!voxelProblems.empty()) {
+                    importError = voxelProblems.front();
+                    imported = false;
+                }
+                if (config.mode != ExportMode::SourceCode) {
+                    moduleUsage = ModuleUsageDetector::analyze(shipped);
+                    moduleUsageKnown = true;
+                }
             }
 
             // Unload all scenes that were not loaded before export
@@ -3350,6 +3365,24 @@ bool editor::Exporter::copyAssets() {
         fs::path destPath = assetsDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);
 
+        // A Voxel Volume ships baked, or the export stops naming it and the target (T6 R7, R78)
+        if (cook::isVoxelVolumeFile(entry.path())) {
+            cook::VoxelCookOptions voxelOptions;
+            voxelOptions.keepGenerator = voxelKeptGenerators.count(relPath.generic_string()) > 0;
+            const auto terrainBase = voxelTerrainBases.find(relPath.generic_string());
+            if (terrainBase != voxelTerrainBases.end()) voxelOptions.terrainBase = terrainBase->second;
+            voxelOptions.settings = project->getVoxelSettings();
+            voxelOptions.hasTarget = config.mode != ExportMode::SourceCode;
+            voxelOptions.target = config.mode == ExportMode::Player ? config.platform
+                                : config.mode == ExportMode::Web ? BuildPlatform::Web : hostBuildPlatform();
+            std::string voxelError;
+            if (!cook::cookVoxelVolumeFile(entry.path(), destPath, relPath.generic_string(), voxelOptions, voxelError)) {
+                setError(voxelError);
+                return stop();
+            }
+            return TreeStep::Skip;
+        }
+
         // A .cube colour LUT ships cooked (S13 R25): <name>.jlut, float16 with the 3D table at most
         // 33^3, which the game loads in place of the .cube. One that does not parse ships as it
         // is, so the game logs the same error the editor does
@@ -3998,6 +4031,7 @@ bool editor::Exporter::copyEngine() {
         moduleSwitch("JASPERENGINE_HTMLUI", "htmlui");
         moduleSwitch("JASPERENGINE_VIDEO", "video");
         moduleSwitch("JASPERENGINE_SOUND_LAYER", "soundlayer");
+        moduleSwitch("JASPERENGINE_VOXEL", "voxel");
         moduleSwitch("JASPERENGINE_TERRAIN_WORLD", "terrainworld");
         // Development Build: the profiler in a Release game (a source export builds it as one)
         if (config.developmentBuild) {
@@ -4924,6 +4958,16 @@ bool editor::Exporter::writeAppleProjectSettings() {
             "DetourNavMeshQuery.cpp", "DetourNode.cpp", "DetourCrowd.cpp", "DetourLocalBoundary.cpp", "DetourObstacleAvoidance.cpp",
             "DetourPathCorridor.cpp", "DetourPathQueue.cpp", "DetourProximityGrid.cpp", "DetourTileCache.cpp", "DetourTileCacheBuilder.cpp"
         });
+    }
+
+    // Voxel Volumes not reached (T6 R47): the module stays out, Transvoxel's tables with it. Only
+    // the component's header and the ground query stay.
+    {
+        const std::vector<std::string> modules = compiledModules();
+        if (std::find(modules.begin(), modules.end(), "voxel") == modules.end()) {
+            replaceAll(xcodeProject, "\"JASPERENGINE_VOXEL=1\",", "\"JASPERENGINE_VOXEL=0\",");
+            excludedPhysicsSources.insert(excludedPhysicsSources.end(), {"Voxel*.cpp", "Transvoxel*.cpp", "RenderSystemVoxel.cpp"});
+        }
     }
 
     // Terrain Worlds not reached (T4 R55): the module's sources stay out. The template does not

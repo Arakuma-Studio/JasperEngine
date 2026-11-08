@@ -98,6 +98,9 @@ namespace jasperengine {
         static void registerSplineClasses(lua_State *L);
         static void registerNoiseClasses(lua_State *L);
         static void registerTerrainClasses(lua_State *L);
+#if JASPERENGINE_VOXEL
+        static void registerVoxelClasses(lua_State *L);
+#endif
 #if JASPERENGINE_TERRAIN_WORLD
         static void registerTerrainWorldClasses(lua_State *L);
 #endif

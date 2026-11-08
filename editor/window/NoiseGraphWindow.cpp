@@ -50,14 +50,6 @@ namespace {
         return std::uniform_int_distribution<uint32_t>(1, 1000000)(device);
     }
 
-    const graph::ParamDesc* paramOf(const graph::NodeTypeDesc* type, const std::string& name) {
-        if (!type) return nullptr;
-        for (const graph::ParamDesc& param : type->params) {
-            if (param.name == name) return &param;
-        }
-        return nullptr;
-    }
-
 }
 
 NoiseGraphWindow::NoiseGraphWindow(Project* project) : project(project), document(project) {

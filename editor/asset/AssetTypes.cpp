@@ -48,6 +48,7 @@ namespace {
             {{AssetType::VertexAnimation, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".vat"}},
             {{AssetType::NavMesh, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".navmesh"}},
             {{AssetType::NavGrid, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".navgrid"}},
+            {{AssetType::VoxelVolume, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".voxelvolume"}},
             // the Animator's assets (S21) keep their GUID in their JSON like clips
             {{AssetType::AnimatorController, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".controller"}},
             {{AssetType::AvatarMask, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".mask"}},

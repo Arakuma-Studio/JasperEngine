@@ -93,6 +93,10 @@
 #include "window/vcs/VcsUi.h"
 #include "window/InputActionsWindow.h"
 #include "navigation/NavigationWindow.h"
+#include "voxel/VoxelBrushTool.h"
+#include "window/VoxelCreateDialog.h"
+#include "window/VoxelEditWindow.h"
+#include "window/VoxelSliceView.h"
 #include "command/PlayChangeReview.h"
 #include "pose/PoseEditSession.h"
 #include "widget/ColorPickerWindow.h"
@@ -269,6 +273,8 @@ editor::App::App(){
     StatusBar::setVersionControlSegment([this]() { vcsUi->drawStatusBarSegment(); });
     inputActionsWindow = new InputActionsWindow(&project);
     navigationWindow = new NavigationWindow(&project);
+    voxelEditWindow = new VoxelEditWindow(&project);
+    voxelSliceView = new VoxelSliceView(&project);
     playModeChangesWindow = new PlayModeChangesWindow(&project);
     searchPalette = new SearchPalette(this);
     shortcutsWindow = new ShortcutsWindow(CommandCatalog::editor(), shortcutDispatcher);
@@ -747,7 +753,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         }),
         menuSubmenu("Terrain", {
             catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
-            catalogItem("window.noiseGraph", windowMenuLabel(NoiseGraphWindow::WINDOW_NAME))
+            catalogItem("window.noiseGraph", windowMenuLabel(NoiseGraphWindow::WINDOW_NAME)),
+            catalogItem("window.voxelVolume", windowMenuLabel(VoxelEditWindow::WINDOW_NAME)),
+            catalogItem("window.voxelSlice", windowMenuLabel(VoxelSliceView::WINDOW_NAME))
         }),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
         menuSubmenu("AI", {
@@ -1008,6 +1016,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateNoiseGraph:
             projectWindow->createAsset(AssetCreateKind::NoiseGraph, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::ToggleVoxelVolume:
+            showEditorWindow(voxelEditWindow);
+            break;
+        case AppMenuCommand::ToggleVoxelSlice:
+            showEditorWindow(voxelSliceView);
             break;
         case AppMenuCommand::ToggleProfiler:
             showEditorWindow(profilerWindow);
@@ -2165,6 +2179,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(InspectorWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(mcp::McpActivityWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(TerrainEditWindow::WINDOW_NAME, dock_id_right);
+    ImGui::DockBuilderDockWindow(VoxelEditWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(PhysicsPlacementWindow::WINDOW_NAME, dock_id_right);
 
     // Project, Console and Animation across the bottom, under Hierarchy + Scene.
@@ -2952,6 +2967,9 @@ void editor::App::show(){
     PoseViewport::frame(&project);
     terrainEditWindow->show();
     noiseGraphWindow->show();
+    voxelEditWindow->show();
+    voxelSliceView->show();
+    VoxelCreateDialog::instance().draw();
 #if JASPERENGINE_TERRAIN_WORLD
     // T4 R40, R41: drawn here, so they show whichever tab opened them
     CreateTerrainWorldDialog::instance().show();
@@ -5343,6 +5361,7 @@ void editor::App::stopTransientPreviews() {
     if (animationClipAppHooks().stopTransientPreviews) {
         animationClipAppHooks().stopTransientPreviews();
     }
+    VoxelBrushTool::get().disarm();
     if (terrainEditWindow) {
         terrainEditWindow->endStroke();
         terrainEditWindow->updateFoliagePreview();
@@ -5712,8 +5731,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and GBUFFER at 19-21, in mesh.vert and its siblings), library:impostor.
     // v53: terrain holes and tiers (T3): TERRAIN_HOLES ('Thl': MESH 45, DEPTH 22, GBUFFER 22), the terrain's
     //      Lit defines (TERRAIN_QUALITY_*, TERRAIN_MACRO*, TERRAIN_RESAMPLE, ...), GBUFFER 'Tqm' 'Tql' 'Txl' at 23-25.
-    // v54: T4 Terrain Worlds (HAS_TERRAIN_WORLD in includes/terrain_vs.glsl, terrain_world_vs.glsl).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v54";
+    // v58: T4 Terrain Worlds after T6 (HAS_TERRAIN_WORLD in includes/terrain_vs.glsl, terrain_world_vs.glsl; the G-buffer's
+    //      'Twd' bit moves from 26 to 27, Vox's): caches from v54 to v57 held other bit numbers.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v58";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -5917,7 +5937,7 @@ namespace {
                       editor::PlayModeChangesWindow* playChanges, editor::GameWindow* game, editor::BookmarksWindow* bookmarks,
                       editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement,
                       editor::PoseAnimationWindow* poseAnimation, editor::VertexAnimationBakerWindow* vertexAnimationBaker, editor::AnimatorWindow* animator,
-                      editor::NoiseGraphWindow* noiseGraph) {
+                      editor::NoiseGraphWindow* noiseGraph, editor::VoxelEditWindow* voxelVolume, editor::VoxelSliceView* voxelSlice) {
         visit(editor::GameWindow::WINDOW_NAME, game);
         visit(editor::InspectorWindow::WINDOW_NAME, inspector);
         visit(editor::HierarchyWindow::WINDOW_NAME, hierarchy);
@@ -5941,6 +5961,8 @@ namespace {
         visit(editor::AnimatorWindow::WINDOW_NAME, animator);
         visit(editor::VertexAnimationBakerWindow::WINDOW_NAME, vertexAnimationBaker);
         visit(editor::NoiseGraphWindow::WINDOW_NAME, noiseGraph);
+        visit(editor::VoxelEditWindow::WINDOW_NAME, voxelVolume);
+        visit(editor::VoxelSliceView::WINDOW_NAME, voxelSlice);
     }
 
 }
@@ -5958,7 +5980,7 @@ std::map<std::string, bool> editor::App::panelStates() const{
                  hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
                  mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
                  frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow, noiseGraphWindow);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow, noiseGraphWindow, voxelEditWindow, voxelSliceView);
     return panels;
 }
 
@@ -5970,7 +5992,7 @@ void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
     }, hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
        mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
        frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow, noiseGraphWindow);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow, noiseGraphWindow, voxelEditWindow, voxelSliceView);
 }
 
 void editor::App::applyDefaultLayout(){
@@ -5982,6 +6004,8 @@ void editor::App::applyDefaultLayout(){
     poseAnimationWindow->setOpen(false);
     animatorWindow->setOpen(false);
     terrainEditWindow->setOpen(false);
+    voxelEditWindow->setOpen(false);
+    voxelSliceView->setOpen(false);
     textureSynthesisWindow->setOpen(false);
     vertexAnimationBakerWindow->setOpen(false);
     physicsPlacementWindow->setOpen(false);

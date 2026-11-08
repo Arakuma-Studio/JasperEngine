@@ -122,9 +122,9 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | T1 implementation | checkpoint landed, rest in progress | Checkpoint 32b44659f merged into integration (e695a1bf3): core 162/162 and editor 129/129 with WERROR, MCP 41/41, collider red control. Remaining: UI items D-28 to D-37, the eval run |
 | T2 implementation | landed | Merged into integration (6af5f3b9d) at 2b280b147: core 133/133, editor 70/70 and 9/9, T2 and T1 MCP files pass, fan-out worst 129, lints. Not run: the test_noise_export player run, je-bench-noise, eval, web, Android, size checks, NDK armv7. Build tree deleted |
 | T3 implementation | landed | Merged into integration (9f3ffd6ba) at 8376cd9c4: core 560/560 (all 207 variants), editor 182/182, terrain MCP 35/35, fan-out worst 127. Driver workarounds recorded (llvmpipe GL path). Not run: web, Android, full Vulkan suite, perf checks |
-| T4 implementation | in progress | `.worktrees/t4` (reuses T3's worktree and build tree), branch terrain/t4-worlds from integration 9f3ffd6ba |
+| T4 implementation | in progress | `terrain/t4-worlds` at 02f215f48 (integration with T2 merged). Built: tiles, tiled store, streaming, compound-shape collision paging, `Twd` variant, .terrainworld asset and cook, panel, inspector, undo, Lua, module, edit_terrain_world, sample_terrain {world}. Core 565/565, GPU (lavapipe) 418/418, editor 108/108, world MCP 11/11. Sent back to build: foliage on worlds, Convert to Terrain World, navigation, panel import and cancellable import job, streaming overlay, spline water fill, Physics Placement |
 | T5 implementation | landed | Merged into integration (caf5a42a0) at 34b6bf7a3: core 221/221, GPU 22/22 cold cache, editor 137/137, foliage/terrain/navigation MCP files, lints. Not run here: test_foliage_export (player), the eval case for `wait`, web, Android, other platforms. Build tree deleted for disk |
-| T6 implementation | nearly done | `terrain/t6-voxels` at ed15f5a58, integration (T1, T5, T3, T2) merged. Cave-mouth seam and AC35 step rule pass; tunnelling 0/1000 lost. Core 452/452 (incl. 207 terrain variants), editor 265/265 with WERROR, test_voxels 12/12, fan-out worst 144 of 150. Left: R50 (texture array via T3's builder), R78 (cook gap), Vulkan check, tunnelling root-cause write-up, fixing T5's WERROR break, a fresh screenshot |
+| T6 implementation | landed | Merged into integration (e1021e82c) at 10bc59d4c: core 461/461 WERROR, editor 267/267 WERROR, test_voxels 12/12, voxel and hole GPU tests on Vulkan 48/48 and glcore 49/49. The Vulkan 'hang' was T6's own test giving up after 4 frames while Vulkan creates pipelines on a worker; no render bug (general runtime variant switch on Vulkan verified). Not run: web, Android, sanitizers, full suites, eval. Build tree deleted |
 | Merge `terrain/integration` to `main`, merge `origin/main`, push | not started | |
 
 ## Log
@@ -184,6 +184,12 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
   T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- T6 landed (e1021e82c). The suspected Vulkan bug was not one: T6's test gave up 4 frames after the volume opened its holes,
+  while Vulkan creates pipelines on a worker thread. A new runtime hole-cut test passes on glcore and Vulkan. All five original
+  streams' work is now in integration except T1's remaining requirements; T4 is building.
+- (superseded) Vulkan bug found by T6: a runtime switch to a new shader variant (a terrain gaining holes after the first frame) never
+  completes on Vulkan; the new pipelines stay in sokol's ALLOC state. T3's hole tests pass on Vulkan only because they set
+  holes before the first frame. Decision: fix before landing, scope first (general async-pipeline bug or terrain-specific).
 - Integration issues found by T6's merge: T2's unused function in NoiseGraphWindow.cpp breaks WERROR (fixed in T6's branch);
   T5's TerrainFoliageGpuTest.cpp:216 breaks a WERROR core-test build (T6 fixing); locators_expected.txt lacked T5's treeData;
   T3's TerrainDetailBuilder and TerrainRenderInfo.h were missing from the Xcode project. Fan-out worst is now 144 of 150

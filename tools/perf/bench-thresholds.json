@@ -78,6 +78,19 @@
     "empty_tick_us": {"max": 1.1, "spec": "R25 empty scene fixedUpdate < 1 us"},
     "empty_tick_allocations": {"max": 0, "spec": "R25 no allocation"}
   },
+  "je-bench-voxel": {
+    "mesh_block_regular_ms": {"max": 1.5, "spec": "T6 R55 meshBlock regular, terrain-like block"},
+    "mesh_block_worst_ms": {"max": 8, "spec": "T6 R55 meshBlock, worst block (adversarial sign noise)"},
+    "mesh_block_masked_side_ms": {"max": 0.3, "spec": "T6 R55 each masked side, added"},
+    "mesh_block_collision_ratio": {"max": 0.7, "spec": "T6 R55 CollisionOnly over regular"},
+    "mesh_shape_typical_ms": {"max": 3, "spec": "T6 R55 Jolt MeshShape of a typical block"},
+    "dig_sphere_4_ms": {"max": 0.5, "spec": "T6 R55 dig sphere radius 4 voxels"},
+    "dig_sphere_16_ms": {"max": 8, "spec": "T6 R55 dig sphere radius 16 voxels"},
+    "system_update_idle_ms": {"max": 0.1, "spec": "T6 R55 VoxelSystem::update, idle volume"},
+    "decode_block_ms": {"max": 0.1, "spec": "T6 R55 decode one block"},
+    "evaluate_base_flat_ms": {"max": 1, "spec": "T6 R55 evaluate one flat base block"},
+    "dig_to_collision_frames": {"max": 3, "spec": "T6 R56 with 7 workers; 2 workers 5, 0 workers 10"}
+  },
   "je-bench-foliage": {
     "scatter_attempt_ns": {"max": 250, "spec": "T5 R41 one placement attempt"},
     "placement_cell_full_density_ms": {"max": 0.35, "spec": "T5 R41 a full-density cell (1,280 attempts), desktop"},

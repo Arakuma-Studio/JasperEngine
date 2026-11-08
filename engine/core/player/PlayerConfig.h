@@ -87,6 +87,10 @@ namespace jasperengine::player {
         float inputDeadzone = 0.15f;
         std::string inputActions;
         nav::NavigationSettings navigation;
+        // Project Settings > Voxels (T6 R7): what the project lowers of the platform's limits, 0: nothing
+        int voxelMaxDimension = 0;
+        int voxelCpuBudgetMB = 0;
+        int voxelMeshBudgetMB = 0;
         std::array<Engine::TexturePlatformDefaults, 3> textureDefaults;
         int htmlUiMsaa = 4;
         int glyphAtlasMiB = 0;

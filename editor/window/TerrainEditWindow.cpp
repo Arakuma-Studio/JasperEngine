@@ -45,6 +45,7 @@
 #include "terrain/TerrainPlacement.h"
 #include "terrain/TerrainSurface.h"
 #include "util/NormalMapTilt.h"
+#include "noise/NoiseCompat.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"

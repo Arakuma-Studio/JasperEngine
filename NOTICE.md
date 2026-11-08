@@ -21,6 +21,7 @@ Libraries of the engine, the editor and the tools:
 | [SoLoud](https://github.com/jarikomppa/soloud) | 202002 (`SOLOUD_VERSION`) | `engine/libs/soloud/` (`LICENSE`) | zlib/libpng (its bundled parts as listed in `LICENSE`) | audio (Ogg Vorbis through its bundled stb_vorbis 1.22, public domain or MIT as in the file) |
 | [tinyobjloader](https://github.com/tinyobjloader/tinyobjloader) | 2.0 | `engine/libs/tinyobjloader/` (`LICENSE`, from `tiny_obj_loader.h`) | MIT | OBJ model loading |
 | [tinygltf](https://github.com/syoyo/tinygltf) | 2.x, with the buffer changes of docs/specs/S53-model-import-cook.md R1 (marked "JasperEngine patch") | `engine/libs/tinygltf/` (`LICENSE`, from `tiny_gltf.h`: MIT, plus the bundled base64 (zlib-style) and dlib URI decoding (Boost) code) | MIT | glTF model loading |
+| [Transvoxel](https://github.com/EricLengyel/Transvoxel) | `51a494f03c5b` | `engine/libs/transvoxel/` (`LICENSE`; `Transvoxel.cpp` verbatim, included by `engine/core/voxel/TransvoxelTables.cpp`) | MIT | the regular and transition cell tables of the Voxel Volume mesher (left out of a player without the `voxel` module) |
 | [TinyXML-2](https://github.com/leethomason/tinyxml2) | 10.0.0 | `engine/libs/tinyxml2/` (`LICENSE.txt`) | zlib | XML (tilemaps, sprite sheets) |
 | [Box2D](https://github.com/erincatto/box2d) | 3.1.0 | `engine/libs/box2d/` (`LICENSE`) | MIT | 2D physics |
 | [Jolt Physics](https://github.com/jrouwe/JoltPhysics) | 5.2.0 | `engine/libs/joltphysics/` (`LICENSE`) | MIT | 3D physics |

@@ -91,6 +91,9 @@
 #include "component/MeshPolygonComponent.h"
 #include "component/Rigidbody2DComponent.h"
 #include "subsystem/SplineSystem.h"
+#if JASPERENGINE_VOXEL
+#include "subsystem/VoxelSystem.h"
+#endif
 #include "subsystem/UISystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/ParticleSubsystem.h"
@@ -576,6 +579,15 @@ Entity editor::ProjectUtils::getLockedEntityParent(Scene* scene, Entity entity){
     if (foliageOwner != NULL_ENTITY) {
         return foliageOwner;
     }
+#if JASPERENGINE_VOXEL
+    // a Voxel Volume's chunks and bodies select the volume (T6 R53)
+    if (std::shared_ptr<VoxelSystem> voxels = scene->findSystem<VoxelSystem>()) {
+        const Entity voxelOwner = voxels->getGeneratedOwner(entity);
+        if (voxelOwner != NULL_ENTITY) {
+            return voxelOwner;
+        }
+    }
+#endif
     // so are a spline's generated chunks and pieces: clicking the road selects the Road
     if (std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>()) {
         const Entity splineOwner = splines->getGeneratedOwner(entity);

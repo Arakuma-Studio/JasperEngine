@@ -40,6 +40,8 @@ namespace jasperengine::editor {
         ToggleConsole,
         ToggleAnimation,
         ToggleTerrain,
+        ToggleVoxelVolume,
+        ToggleVoxelSlice,
         ToggleTextureSynthesis,
         ToggleSpriteNormals,
         TogglePhysicsPlacement,

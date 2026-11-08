@@ -522,15 +522,15 @@ TEST(ShaderKey, TerrainTierBitsArePinned) {
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 25, true), "Txl");
 }
 
-// T4 R58: 'Twd' came after T3's 'Thl' on each type, pinned here; a stream landing before it moves these
-// and bumps the shader cache
+// T4 R58: 'Twd' came after T3's 'Thl' on MESH and DEPTH and after T6's 'Vox' on GBUFFER, pinned here; a
+// stream landing before it moves these and bumps the shader cache
 TEST(ShaderKey, TerrainWorldBitIsPinned) {
     EXPECT_EQ(ShaderPool::getTerrainWorldProperty(ShaderType::MESH), shaderPropertyBit(46));
     EXPECT_EQ(ShaderPool::getTerrainWorldProperty(ShaderType::DEPTH), shaderPropertyBit(23));
-    EXPECT_EQ(ShaderPool::getTerrainWorldProperty(ShaderType::GBUFFER), shaderPropertyBit(26));
+    EXPECT_EQ(ShaderPool::getTerrainWorldProperty(ShaderType::GBUFFER), shaderPropertyBit(27));
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 46, true), "Twd");
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::DEPTH, 23, true), "Twd");
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 26, true), "Twd");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 27, true), "Twd");
     EXPECT_EQ(ShaderPool::getTerrainWorldProperty(ShaderType::UI), 0u);
     // it widens u_vs_terrainParams: no fallback may drop it
     const uint64_t withFeatures = shaderPropertyBit(46) | ShaderPool::getShadowsHQProperty() | shaderPropertyBit(4);

@@ -122,6 +122,10 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kNavGridLayout;
     extern const EnumDesc kNavGridMovement;
     extern const EnumDesc kNavGridSource;
+    // the Voxel Volume's (editor/reflect/components/VoxelReflect.cpp)
+    extern const EnumDesc kVoxelQuality;
+    extern const EnumDesc kVoxelNavigationUpdate;
+    extern const EnumDesc kVoxelTerrainCut;
     // the spline components' (editor/reflect/components/SplinesReflect.cpp)
     extern const EnumDesc kSplineType;
     extern const EnumDesc kSplineTangentMode;

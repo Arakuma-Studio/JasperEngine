@@ -77,11 +77,17 @@ namespace {
         }
     };
 
-    std::vector<SliceSources> gatherSources(const TerrainComponent& terrain, const DetailPlan& plan, SourceFiles& files) {
+    // a terrain's layers, as many as its block holds
+    std::span<const TerrainSurfaceLayer> terrainLayers(const TerrainComponent& terrain) {
+        return std::span<const TerrainSurfaceLayer>(terrain.surfaceLayers.data(), std::min(terrain.surfaceLayers.size(), static_cast<size_t>(TERRAIN_MAX_LAYERS)));
+    }
+
+    std::vector<SliceSources> gatherSources(std::span<const TerrainSurfaceLayer> layers, const DetailPlan& plan, SourceFiles& files) {
         std::vector<SliceSources> sources(plan.sliceKeys.size());
-        const size_t layerCount = std::min(terrain.surfaceLayers.size(), static_cast<size_t>(TERRAIN_MAX_LAYERS));
+        // no more layers than the plan has colour slices for
+        const size_t layerCount = std::min({layers.size(), static_cast<size_t>(DETAIL_MAX_LAYERS), static_cast<size_t>(plan.colorSlices)});
         for (size_t i = 0; i < layerCount; i++) {
-            const TerrainSurfaceLayer& layer = terrain.surfaceLayers[i];
+            const TerrainSurfaceLayer& layer = layers[i];
             sources[i].color = files.get(layer.colorTexture);
             if (layer.pbr && !layer.heightTexture.empty()) {
                 sources[i].height = files.get(layer.heightTexture);
@@ -150,15 +156,19 @@ std::string jasperengine::terrain::detailSourceKey(const Texture& texture) {
 }
 
 DetailPlan jasperengine::terrain::planDetailArray(const TerrainComponent& terrain) {
+    return planDetailArray(terrainLayers(terrain), DetailPlanOptions());
+}
+
+DetailPlan jasperengine::terrain::planDetailArray(std::span<const TerrainSurfaceLayer> layers, const DetailPlanOptions& options) {
     DetailPlan plan;
-    // The shader reaches all three layers of any bound blend map, so colors come in threes
-    const size_t layerCount = std::min(terrain.surfaceLayers.size(), static_cast<size_t>(TERRAIN_MAX_LAYERS));
-    plan.colorSlices = static_cast<int>(((layerCount + 2) / 3) * 3);
+    // The terrain's shader reaches all three layers of any bound blend map, so its colors come in threes
+    const size_t layerCount = std::min(layers.size(), static_cast<size_t>(DETAIL_MAX_LAYERS));
+    plan.colorSlices = static_cast<int>(options.wholeBlendMaps ? ((layerCount + 2) / 3) * 3 : layerCount);
     plan.sliceKeys.resize(static_cast<size_t>(plan.colorSlices));
     plan.normalSlice.fill(-1);
     plan.surfaceSlice.fill(-1);
     for (size_t i = 0; i < layerCount; i++) {
-        const TerrainSurfaceLayer& layer = terrain.surfaceLayers[i];
+        const TerrainSurfaceLayer& layer = layers[i];
         plan.sliceKeys[i] = detailSourceKey(layer.colorTexture);
         // the height in its alpha is part of what this slice was built from
         if (layer.pbr && !layer.heightTexture.empty()) {
@@ -174,7 +184,7 @@ DetailPlan jasperengine::terrain::planDetailArray(const TerrainComponent& terrai
             plan.sliceKeys.push_back("normal|" + detailSourceKey(layer.normalTexture));
             plan.anySource = true;
         }
-        if (hasSurfaceMaps(layer)) {
+        if (options.surfaceSlices && hasSurfaceMaps(layer)) {
             plan.surfaceSlice[i] = static_cast<int>(plan.sliceKeys.size());
             plan.sliceKeys.push_back("surface|" + detailSourceKey(layer.occlusionTexture) + "|" + detailSourceKey(layer.roughnessTexture) +
                                      "|" + detailSourceKey(layer.metallicTexture) + "|" + detailSourceKey(layer.heightTexture));
@@ -186,15 +196,19 @@ DetailPlan jasperengine::terrain::planDetailArray(const TerrainComponent& terrai
 
 DetailSliceKind jasperengine::terrain::detailSliceKind(const DetailPlan& plan, int slice) {
     if (slice < plan.colorSlices) return DetailSliceKind::COLOR;
-    for (int layer = 0; layer < TERRAIN_MAX_LAYERS; layer++) {
+    for (int layer = 0; layer < DETAIL_MAX_LAYERS; layer++) {
         if (plan.normalSlice[layer] == slice) return DetailSliceKind::NORMAL;
     }
     return DetailSliceKind::SURFACE;
 }
 
 bool jasperengine::terrain::buildDetailPixels(const TerrainComponent& terrain, const DetailPlan& plan, const DetailBuildOptions& options, DetailPixels& out) {
+    return buildDetailPixels(terrainLayers(terrain), plan, options, out);
+}
+
+bool jasperengine::terrain::buildDetailPixels(std::span<const TerrainSurfaceLayer> layers, const DetailPlan& plan, const DetailBuildOptions& options, DetailPixels& out) {
     SourceFiles files;
-    const std::vector<SliceSources> sliceSources = gatherSources(terrain, plan, files);
+    const std::vector<SliceSources> sliceSources = gatherSources(layers, plan, files);
     int width = files.width;
     int height = files.height;
     if (width == 0) {
@@ -276,7 +290,7 @@ bool jasperengine::terrain::buildDetailPixels(const TerrainComponent& terrain, c
                     sliceLevels[s][level].pixels[t * 4 + 3] = heightLevels[level].pixels[t];
                 }
             }
-        } else if (src.kind == DetailSliceKind::COLOR && static_cast<int>(s) < static_cast<int>(terrain.surfaceLayers.size()) && terrain.surfaceLayers[s].pbr) {
+        } else if (src.kind == DetailSliceKind::COLOR && s < layers.size() && layers[s].pbr) {
             // a PBR layer with no height map has none to bias its blend at Low: full height
             for (MipLevel& level : sliceLevels[s]) {
                 const size_t n = static_cast<size_t>(level.width) * level.height;
@@ -306,9 +320,13 @@ bool jasperengine::terrain::buildDetailPixels(const TerrainComponent& terrain, c
 }
 
 bool jasperengine::terrain::buildDetailSliceTop(const TerrainComponent& terrain, const DetailPlan& plan, int slice, int maxSize, std::vector<uint8_t>& rgba, int& width, int& height) {
+    return buildDetailSliceTop(terrainLayers(terrain), plan, slice, maxSize, rgba, width, height);
+}
+
+bool jasperengine::terrain::buildDetailSliceTop(std::span<const TerrainSurfaceLayer> layers, const DetailPlan& plan, int slice, int maxSize, std::vector<uint8_t>& rgba, int& width, int& height) {
     if (slice < 0 || slice >= static_cast<int>(plan.sliceKeys.size())) return false;
     SourceFiles files;
-    const std::vector<SliceSources> sliceSources = gatherSources(terrain, plan, files);
+    const std::vector<SliceSources> sliceSources = gatherSources(layers, plan, files);
     width = files.width;
     height = files.height;
     if (width == 0) return false;
@@ -318,7 +336,7 @@ bool jasperengine::terrain::buildDetailSliceTop(const TerrainComponent& terrain,
     const size_t texels = static_cast<size_t>(width) * height;
     fillSliceTop(sliceSources[static_cast<size_t>(slice)], texels, rgba);
     const SliceSources& src = sliceSources[static_cast<size_t>(slice)];
-    if (src.kind == DetailSliceKind::COLOR && (src.packHeight || (slice < static_cast<int>(terrain.surfaceLayers.size()) && terrain.surfaceLayers[static_cast<size_t>(slice)].pbr))) {
+    if (src.kind == DetailSliceKind::COLOR && (src.packHeight || (static_cast<size_t>(slice) < layers.size() && layers[static_cast<size_t>(slice)].pbr))) {
         for (size_t t = 0; t < texels; t++) {
             rgba[t * 4 + 3] = src.packHeight ? sourceChannel(src.height, t, 0, 0xFF) : 0xFF;
         }

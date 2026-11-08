@@ -39,6 +39,13 @@ NOT_OPEN = ("Scene 3 \"Level2\" is not open (its contents are not loaded). Open 
             "{\"scene\": \"scenes/Level2.scene\", \"close_previous\": false} (then select_scene to switch back).")
 
 
+# edit_voxels and sample_voxels, in their real shapes
+VOXEL_CREATED = {"entity": {"id": 21, "name": "Cave", "path": "Cave"}, "asset": "voxels/Cave.voxelvolume", "dimensions": [64, 64, 64],
+                 "voxel_size": 1.0, "estimated_memory": 1048576, "over_budget_targets": []}
+VOXEL_CONNECTED = {"connected": True, "open_to_sky": True, "component_count": 1, "from_in_air": True, "to_in_air": True, "from_component": 0, "to_component": 0,
+                   "air_components": [{"index": 0, "voxels": 180000, "volume": 180000.0, "open_to_sky": True,
+                                       "voxel_bounds": {"min": [0, 0, 0], "max": [63, 63, 63]}, "bounds": {"min": [0, 0, 0], "max": [64, 64, 64]}}]}
+
 # import_project's structuredContent with a leftover beside the new project
 LEFTOVER_IMPORT = {
     "path": "/home/me/Games/Game", "opened": True, "log": [],
@@ -1979,6 +1986,100 @@ CASES = [
         "checks": {"calls": [{"tool": "clear_project_leftovers", "args": {"remove": ["re:Old\\.importing"]}}],
                    "shell_must_not": [r"\brm\b.*importing"]},
         "max_turns": 10,
+    },
+    # -- T6 AC54: the Voxel Volume tools. Each fails against a surface from before the tool. --------
+    {
+        "id": "voxel_find_docs",
+        "kind": "guard",
+        "what_happened": "A destructible cave is voxel work, and no voxel tool is listed until the group is enabled: the agent "
+                         "must find the group or the doc rather than fake it with terrain and meshes.",
+        "text_at_issue": "Guide 'Other areas': voxels (edit_voxels); the voxels row of tool_groups",
+        "source": "docs/specs/T6-voxel-volumes.md R72, AC54",
+        "prompt": "Add a destructible cave to this level, one the player can blast open while playing.",
+        "mocks": [
+            {"tool": "edit_voxels", "result": ok("Created Cave (voxels/Cave.voxelvolume).", VOXEL_CREATED)},
+            {"tool": "sample_voxels", "result": ok("2 air components.", VOXEL_CONNECTED)},
+        ],
+        "checks": {"calls": [{"tool": "tool_groups", "args": {"enable": ["voxels"]}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "voxel_create_and_dig",
+        "kind": "bad",
+        "groups_enabled": ["voxels"],
+        "what_happened": "An agent made the volume in one call and each dig in others, and never checked that the tunnel joined "
+                         "anything: create takes ops in the same call, and connectivity is the proof.",
+        "text_at_issue": "edit_voxels description and jasper://docs/voxels, 'The loop'",
+        "source": "docs/specs/T6-voxel-volumes.md R67, R72, AC54",
+        "prompt": "Make a voxel volume of ground and dig a tunnel through it, then check that the tunnel really goes through.",
+        "mocks": [
+            {"tool": "edit_voxels", "args": {"ops": "*"}, "result": ok("Created Cave (voxels/Cave.voxelvolume). Dig Capsule: 2120 voxels changed, 8 blocks touched.",
+                                                                      dict(VOXEL_CREATED, voxels_changed=2120))},
+            {"tool": "sample_voxels", "args": {"mode": "connectivity"}, "result": ok("1 air components; from and to are connected.", VOXEL_CONNECTED)},
+        ],
+        "checks": {"calls": [{"tool": "edit_voxels", "args": {"create": "*", "ops": "*"}}, {"tool": "sample_voxels", "args": {"mode": "connectivity"}}],
+                   "order": [["edit_voxels", "sample_voxels"]], "max_calls": {"edit_voxels": 2}},
+        "max_turns": 10,
+    },
+    {
+        "id": "voxel_generate_from_graph",
+        "kind": "guard",
+        "groups_enabled": ["voxels"],
+        "what_happened": "Given a Noise Graph for a whole volume, the agent must give it as a base, a job, not rebuild the shape by "
+                         "hand with ops.",
+        "text_at_issue": "generate_voxels description",
+        "source": "docs/specs/T6-voxel-volumes.md R71, R82, AC54",
+        "prompt": "The Voxel Volume called Caves should take its shape from the noise graph graphs/caves.noisegraph. Set it up.",
+        "mocks": [
+            {"tool": "generate_voxels", "args": {"source": "noise_graph"}, "result": ok(
+                "Generating as job j1.", {"job_id": "j1", "status": "running", "next": "get_job {job_id: \"j1\"} until it ends; cancel_job stops it"})},
+            {"tool": "get_job", "result": ok("Generated: 212 non-uniform blocks, 3473408 bytes.", {"id": "j1", "status": "succeeded", "result": {
+                "blocks_non_uniform": 212, "memory": 3473408, "triangles_estimate": 91000, "content_hash": "1f0c9a7e5d3b2a10",
+                "base_changed": True, "non_watertight": False}})},
+            {"tool": "sample_voxels", "result": ok("Content hash 1f0c9a7e5d3b2a10.", {"content_hash": "1f0c9a7e5d3b2a10"})},
+        ],
+        "checks": {"calls": [{"tool": "generate_voxels", "args": {"source": "noise_graph", "graph": "re:caves\\.noisegraph"}}],
+                   "must_not_call": [{"tool": "edit_voxels", "args": {"ops": "*"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "voxel_control_hill_is_terrain",
+        "kind": "control",
+        "groups_enabled": ["voxels", "terrain"],
+        "what_happened": "A hill is what a heightmap holds: the voxel tools, listed, must not pull it in.",
+        "text_at_issue": "edit_voxels description: a plain hill belongs on a Terrain",
+        "source": "docs/specs/T6-voxel-volumes.md AC54",
+        "prompt": "Raise a gentle hill in the middle of the Terrain.",
+        "mocks": [
+            {"tool": "sculpt_terrain", "result": ok("Sculpted 1 stroke.", {"changed": True})},
+            {"tool": "edit_terrain", "result": ok("Sculpted 1 stroke.", {"changed": True})},
+            {"tool": "sample_terrain", "result": ok("1 sample.", {"samples": [{"height": 3.2}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "sculpt_terrain"}]}, {"calls": [{"tool": "edit_terrain"}]}],
+                   "must_not_call": ["edit_voxels", "generate_voxels"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "voxel_cave_mouth_not_holes_only",
+        "kind": "guard",
+        "groups_enabled": ["voxels", "terrain"],
+        "what_happened": "A hole in a Terrain shows the void under it. A cave entrance needs a volume attached to the Terrain, "
+                         "whose dig cuts the holes.",
+        "text_at_issue": "jasper://docs/voxels, opening and 'Terrain attachment'",
+        "source": "docs/specs/T6-voxel-volumes.md R38, R39, AC54",
+        "prompt": "Add a cave entrance to the hillside of the Terrain called Ground: the player should be able to walk in.",
+        "mocks": [
+            {"tool": "edit_voxels", "result": ok("Created Cave (voxels/Cave.voxelvolume).", VOXEL_CREATED)},
+            {"tool": "generate_voxels", "result": ok(
+                "Generating as job j1.", {"job_id": "j1", "status": "running", "next": "get_job {job_id: \"j1\"} until it ends; cancel_job stops it"})},
+            {"tool": "get_job", "result": ok("Generated: 90 non-uniform blocks, 1474560 bytes.", {"id": "j1", "status": "succeeded", "result": {
+                "blocks_non_uniform": 90, "memory": 1474560, "triangles_estimate": 41000, "content_hash": "77ac01b2c3d4e5f6",
+                "base_changed": True, "non_watertight": False}})},
+            {"tool": "sample_voxels", "result": ok("1 air components; from and to are connected.", VOXEL_CONNECTED)},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "edit_voxels", "args": {"create": {"terrain": "*"}}}]},
+                              {"calls": [{"tool": "generate_voxels", "args": {"preset": "cave_entrance"}}]}]},
+        "max_turns": 12,
     },
     {
         "id": "terrain_foliage_add_details",

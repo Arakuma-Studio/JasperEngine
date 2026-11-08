@@ -99,6 +99,7 @@ namespace jasperengine{
     struct VertexAnimatorComponent;
     struct VideoPlayerComponent;
     struct VolumetricCloudsComponent;
+    struct VoxelVolumeComponent;
     struct WaterVolumeComponent;
 
 }

@@ -69,6 +69,9 @@ uniform u_fs_gbufferMaterial {
 #ifdef HAS_TERRAIN_PBR
     #include "includes/terrain_fs.glsl"
 #endif
+#ifdef HAS_VOXEL
+    #include "includes/voxel_fs.glsl"
+#endif
 #ifdef GBUFFER_STOCHASTIC
     #include "includes/stochastic.glsl"
 #endif
@@ -197,6 +200,13 @@ void main() {
         metallic = terrainSurface.metallic;
         n = terrainSurface.normal;
         occlusion *= terrainSurface.occlusion;
+    #endif
+    #ifdef HAS_VOXEL
+        VoxelSurface voxelSurface = getVoxelSurface(baseColor, n, roughness, metallic);
+        baseColor = voxelSurface.color;
+        roughness = voxelSurface.roughness;
+        metallic = voxelSurface.metallic;
+        n = voxelSurface.normal;
     #endif
 
     frag_gbuffer = vec4(octEncode(n), clamp(roughness, 0.0, 1.0), clamp(metallic, 0.0, 1.0));

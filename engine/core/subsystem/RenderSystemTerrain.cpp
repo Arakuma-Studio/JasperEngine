@@ -218,8 +218,8 @@ RenderSystem::TerrainDetailArray* RenderSystem::getTerrainDetailArray(Entity ent
         TerrainDetailArray& entry = terrainDetailArrays[entity];
         entry.sliceKeys = plan.sliceKeys;
         entry.colorSlices = plan.colorSlices;
-        entry.normalSlice = plan.normalSlice;
-        entry.surfaceSlice = plan.surfaceSlice;
+        std::copy_n(plan.normalSlice.begin(), entry.normalSlice.size(), entry.normalSlice.begin());
+        std::copy_n(plan.surfaceSlice.begin(), entry.surfaceSlice.size(), entry.surfaceSlice.begin());
         entry.minFilter = minFilter;
         entry.magFilter = sampled->getMagFilter();
         entry.wrapU = sampled->getWrapU();

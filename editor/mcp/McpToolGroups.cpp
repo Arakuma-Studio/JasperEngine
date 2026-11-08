@@ -26,6 +26,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"meshes", "Model import and cook settings, detail levels (LOD) and their captures, render budgets."},
         {"splines", "Roads, walls, rivers, placement, terrain on splines (jasper://docs/splines)."},
         {"terrain", "Terrain edits (edit_terrain: heights, paint, holes, import, foliage and trees), details (grass, rocks), stats, heightmap export, brush strokes (jasper://docs/terrain)."},
+        {"voxels", "Voxel Volumes: caves, overhangs, ground that digs (jasper://docs/voxels)."},
         {"navigation", "Navigation meshes, agents, crowds and grid paths."},
         {"particles", "Particle processors, forces, trails, sub-emitters and render modes."},
         {"animation", "Blend spaces, state machines, layers, IK, retargeting and curves."},
