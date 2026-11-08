@@ -633,7 +633,11 @@ void jasperengine::editor::titledesigner::fieldRow(RowContext& ctx, const std::v
     JE_PROFILE_SCOPE("TD fieldRow");
     if (targets.empty() || !ctx.state) return;
     const ta::TitleArtDoc& doc = ctx.state->shown();
-    const ta::FieldLookup found = lookup(doc, targets[0]);
+    ta::FieldLookup found;
+    {
+        JE_PROFILE_SCOPE("TD row lookup");
+        found = lookup(doc, targets[0]);
+    }
     if (!found.ok || (!found.member && !found.param)) return;
     const ta::SchemaMember* member = found.member;
     const ta::ParamDef* param = found.param;
@@ -642,7 +646,11 @@ void jasperengine::editor::titledesigner::fieldRow(RowContext& ctx, const std::v
     splitLast(targets[0].path, parentPath, key);
     const ta::Json* rootObject = objectOf(doc, targets[0].layer);
     static const ta::Json emptyObject = ta::Json::object();
-    const ta::Json* parent = parentPath.empty() ? rootObject : ta::getTitleArtField(*rootObject, kindOfTarget(targets[0].layer), parentPath);
+    const ta::Json* parent = nullptr;
+    {
+        JE_PROFILE_SCOPE("TD row parent");
+        parent = parentPath.empty() ? rootObject : ta::getTitleArtField(*rootObject, kindOfTarget(targets[0].layer), parentPath);
+    }
     if (!parent) parent = &emptyObject;
 
     const ta::EffectDef* effect = nullptr;
@@ -690,6 +698,7 @@ void jasperengine::editor::titledesigner::fieldRow(RowContext& ctx, const std::v
     const std::string rowId = rowIdOf(ctx, targets[0]);
 
     // values over the targets
+    JE_PROFILE_SCOPE("TD row values");
     std::vector<ta::Json> values;
     values.reserve(targets.size());
     for (const FieldRef& target : targets) {
@@ -762,6 +771,7 @@ void jasperengine::editor::titledesigner::fieldRow(RowContext& ctx, const std::v
     if (inherited) options.isDefault = true;
 
     if (ctx.collecting()) {
+        JE_PROFILE_SCOPE("TD row index");
         if (ctx.sink) {
             IndexEntry entry;
             entry.rowId = rowId;

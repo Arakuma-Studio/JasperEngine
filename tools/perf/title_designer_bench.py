@@ -158,6 +158,13 @@ async def ui_numbers(ed: Editor, docs: dict[str, str], profile: bool) -> dict:
         query.append(t["query_ms"])
     out["index_ms"] = index
     out["query_ms"] = query
+    if profile:
+        # a capture through an edit: the index is made ahead 300 ms later, inside it
+        await state(ed, search="")
+        await ed.call("edit_title", path=docs["rims"], ops=[{"op": "set", "layer": "Title", "values": {"size": 300}}], bake="never")
+        capture = await ed.call("capture_profile", frames=90, gpu=False)
+        rows = await ed.call("get_cpu_profile", capture_id=capture.get("capture_id"), view="flat", filter="TD ", frame="worst", max_rows=120)
+        out["scopes_index_build"] = rows.get("rows", rows)
     out["index_entries"] = t["index_entries"]
     out["window_rect"] = (await state(ed)).get("rect")
     return out
