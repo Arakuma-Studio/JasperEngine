@@ -303,9 +303,9 @@ void startTerrainJob(const CallPtr& call, const TerrainCallTarget& target, const
     auto opList = std::make_shared<std::vector<Op>>(ops);
     auto importedCopy = std::make_shared<HeightImport>(imported);
     jobs::submit([snapshot, opList, options, job, project, sceneId, entity, space, importedCopy, name]() {
-        terrain::OpOptions inPlace = options;
-        inPlace.inPlace = true;
-        auto result = std::make_shared<terrain::TerrainOpResult>(terrain::applyOps(*snapshot->overlay, *opList, inPlace));
+        // not in place: the ops' own overlay reports what changed (an in-place run leaves changed
+        // empty), then commits into the snapshot's overlay, which the hand-back turns into undo
+        auto result = std::make_shared<terrain::TerrainOpResult>(terrain::applyOps(*snapshot->overlay, *opList, options));
         // the editor's own queue: it runs every frame and wakes an idle editor (jobs::postToMain drains
         // only in frames that draw a scene)
         editor::getEditorHost().enqueueMainThreadTask([snapshot, opList, result, job, project, sceneId, entity, space, importedCopy, name]() {
