@@ -25,6 +25,7 @@
 #include "graph/GraphDocument.h"
 #include "graph/GraphRegistry.h"
 #include "procmat/ImageEvaluator.h"
+#include "procmat/ProceduralDevice.h"
 #include "procmat/ProceduralMaterialKind.h"
 #include "window/ProceduralMaterialWindow.h"
 
@@ -33,6 +34,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -120,6 +122,8 @@ namespace {
         EvaluatorTier tier = EvaluatorTier::Gpu;
         bool tierKnown = true;
         int slices = 1;
+        bool ramp = false;
+        std::vector<std::string> warnings;
         nlohmann::json report;
         std::vector<ProceduralMaterialWindow::BakeRequest> bakes;
 
@@ -128,7 +132,10 @@ namespace {
             out.tierKnown = tierKnown;
             out.makeEvaluator = [this]() {
                 made.push_back(std::make_shared<ImageEvaluator::Counts>());
-                return std::unique_ptr<procmat::ProceduralEvaluator>(new ImageEvaluator(made.back(), tier, slices));
+                auto evaluator = std::make_unique<ImageEvaluator>(made.back(), tier, slices);
+                evaluator->ramp = ramp;
+                evaluator->warnings = warnings;
+                return std::unique_ptr<procmat::ProceduralEvaluator>(std::move(evaluator));
             };
             out.checks = [this](Project*, const std::string&, const graph::Graph&, const procmat::EvaluationResult&) { return report; };
             out.startBake = [this](Project*, const ProceduralMaterialWindow::BakeRequest& request, std::string&) {
@@ -600,4 +607,92 @@ TEST_F(ProceduralMaterialWindowTest, ClosedPinsRowsAndBake) {
     ASSERT_TRUE(window.materialSession());
     settle(window, frames);
     EXPECT_TRUE(window.materialSession()->hasImage());
+}
+
+// Wiring: the window's own services are the tiers' evaluator in R8's order (the device the editor has, its
+// tier claimed), preview_procedural_material's checks and the bake
+TEST_F(ProceduralMaterialWindowTest, TheDefaultsAreTheTiersTheChecksAndTheBake) {
+    ProceduralMaterialWindow::Services defaults = ProceduralMaterialWindow::defaultServices();
+    EXPECT_TRUE(defaults.tierKnown);
+    EXPECT_TRUE(defaults.checks);
+    EXPECT_TRUE(defaults.startBake);
+    EXPECT_TRUE(defaults.bakeState);
+    EXPECT_TRUE(defaults.cancelBake);
+    ASSERT_TRUE(defaults.makeEvaluator);
+    std::unique_ptr<procmat::ProceduralEvaluator> evaluator = defaults.makeEvaluator();
+    ASSERT_TRUE(evaluator);
+    const procmat::EvaluatorDevice device = procmat::editorDevice();
+    EXPECT_EQ(evaluator->tier(), device.tier) << "the unit tests have no context: the CPU tier";
+    EXPECT_EQ(evaluator->deviceName(), device.name);
+}
+
+// Wiring (R27): preview_procedural_material's rows in the Problems strip; a tileability FAIL fed through a
+// fractional repeat count gets its single setParam as Fix, one undo step
+TEST_F(ProceduralMaterialWindowTest, TheCheckRowsFixIsOneUndoStep) {
+    Fake fake;
+    fake.ramp = true;
+    ProceduralMaterialWindow::Services services = fake.services();
+    services.checks = ProceduralMaterialWindow::defaultServices().checks;
+    ASSERT_TRUE(services.checks);
+    const std::string path = writeMaterial("tiles");
+    ProceduralMaterialWindow window(project(), services);
+    window.setOpen(true);
+    ASSERT_TRUE(window.openGraph(path));
+    ASSERT_TRUE(window.setParam("n1", "scale_x", 4.5));
+    Frames frames;
+    settle(window, frames);
+    const GraphEditorWindow::Problem* tile = nullptr;
+    const std::vector<GraphEditorWindow::Problem> rows = window.problems();
+    for (const auto& row : rows) {
+        if (row.code == "tileability" && !row.fix.empty()) tile = &row;
+    }
+    ASSERT_TRUE(tile) << "a tileability row with its Fix";
+    EXPECT_EQ(tile->nodeId, "n1");
+    const size_t start = history()->position();
+    ASSERT_TRUE(window.fixProblem(*tile)) << window.getStatus();
+    EXPECT_EQ(history()->position(), start + 1);
+    const double scale = window.getDocument()->graph().findNode("n1")->params["scale_x"].get<double>();
+    EXPECT_EQ(scale, std::round(scale)) << "a whole number of repeats";
+}
+
+// Wiring (R9): a device failure the evaluation continued past on the CPU is a Problems row
+TEST_F(ProceduralMaterialWindowTest, ADeviceFailureTheCpuTierContinuedPastIsAProblem) {
+    Fake fake;
+    fake.warnings = {"Pass 1 (normal) failed on test device: no. Continuing on the CPU tier, which is slower."};
+    ProceduralMaterialWindow window(project(), fake.services());
+    window.setOpen(true);
+    ASSERT_TRUE(window.openGraph(writeMaterial("fallback")));
+    Frames frames;
+    settle(window, frames);
+    bool found = false;
+    for (const auto& row : window.problems()) {
+        found = found || (row.severity == graph::Severity::Warning && row.message.find("Pass 1 (normal) failed") != std::string::npos);
+    }
+    EXPECT_TRUE(found);
+}
+
+// re-review N1: between an edit and the next frame, no Variations cell counts as current
+TEST_F(ProceduralMaterialWindowTest, AVariationCellIsNotCurrentRightAfterAnEdit) {
+    Fake fake;
+    ProceduralMaterialWindow window(project(), fake.services());
+    window.setOpen(true);
+    ASSERT_TRUE(window.openGraph(writeMaterial("cells_now")));
+    window.setVariationsOpen(true);
+    Frames frames;
+    settle(window, frames);
+    ASSERT_TRUE(window.isVariationCurrent(0));
+    ASSERT_TRUE(window.setSeed(5));
+    EXPECT_FALSE(window.isVariationCurrent(0)) << "no frame since the edit";
+    EXPECT_FALSE(window.adoptVariation(0));
+}
+
+// R27: a check with two fixes (two nodes named) is not a single edit: no Fix
+TEST(ProceduralMaterialWindowReport, TwoFixesOfOneCheckAreNoFix) {
+    const nlohmann::json report = {{"checks", nlohmann::json::array({{{"id", "tileability"}, {"status", "FAIL"}}})},
+                                   {"fixes", nlohmann::json::array({
+                                        {{"check", "tileability"}, {"node", "n1"}, {"op", {{"op", "setParam"}, {"node", "n1"}, {"name", "scale_x"}, {"value", 4}}}},
+                                        {{"check", "tileability"}, {"node", "n2"}, {"op", {{"op", "setParam"}, {"node", "n2"}, {"name", "rows"}, {"value", 6}}}}})}};
+    const std::vector<GraphEditorWindow::Problem> rows = ProceduralMaterialWindow::problemsFromReport(report);
+    ASSERT_EQ(rows.size(), 1u);
+    EXPECT_TRUE(rows[0].fix.empty());
 }

@@ -6,11 +6,13 @@
 
 // An evaluator of the tests' own, on no device: it counts what it is asked and, `slices` advance()
 // calls after a prepare or a uniform edit, gives every output of the plan as pixels whose red is the
-// number of the evaluation (so a new image is told from the one before). Its tier is the test's.
+// number of the evaluation (so a new image is told from the one before), or a ramp left to right
+// (`ramp`: an image that does not tile). Its tier is the test's; `warnings` go with every result.
 
 #include "../../procmat/PassPlanner.h"
 #include "../../procmat/ProceduralEvaluator.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -62,15 +64,25 @@ namespace jasperengine::editor::procmat::test {
                 image.width = size;
                 image.height = size;
                 image.rgba.assign((size_t)size * (size_t)size * 4, 255);
+                for (int y = 0; ramp && y < size; y++) {
+                    for (int x = 0; x < size; x++) {
+                        uint8_t* p = &image.rgba[((size_t)y * (size_t)size + (size_t)x) * 4];
+                        p[0] = p[1] = p[2] = (uint8_t)(x * 255 / std::max(1, size - 1));
+                    }
+                }
                 image.rgba[0] = (uint8_t)counts->evaluations;
                 result.outputs.push_back(std::move(image));
             }
+            result.warnings = warnings;
             return true;
         }
         void cancel() override {
             if (running) counts->cancels++;
             running = false;
         }
+
+        bool ramp = false;
+        std::vector<std::string> warnings;
 
     private:
         std::shared_ptr<Counts> counts;

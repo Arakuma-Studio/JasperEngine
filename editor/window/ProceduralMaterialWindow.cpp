@@ -9,7 +9,12 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "procmat/NodeLibrary.h"
+#include "procmat/ProceduralBake.h"
+#include "procmat/ProceduralDevice.h"
 #include "procmat/ProceduralGpuEvaluator.h"
+#include "procmat/ProceduralRun.h"
+#include "procmat/ProceduralTieredEvaluator.h"
+#include "texsynth/SynthesisSession.h"
 #include "procmat/ProceduralMaterialKind.h"
 #include "render/SystemRender.h"
 #include "render/TextureRender.h"
@@ -95,17 +100,88 @@ std::vector<ProceduralMaterialWindow*>& ProceduralMaterialWindow::windows(){
 
 ProceduralMaterialWindow::Services ProceduralMaterialWindow::defaultServices(){
     Services out;
-    out.makeEvaluator = [](){
-        return std::unique_ptr<procmat::ProceduralEvaluator>(new procmat::ProceduralGpuEvaluator(procmat::EvaluatorTier::Gpu));
-    };
+    // R8's order: the editor's device as detected, the CPU tier after a pass fails there (R9)
+    out.tierKnown = true;
+    out.makeEvaluator = [](){ return procmat::makeEditorEvaluator(); };
     out.takeImage = [](procmat::ProceduralEvaluator& evaluator, const std::string& output) -> std::shared_ptr<TextureRender> {
-        auto* gpu = dynamic_cast<procmat::ProceduralGpuEvaluator*>(&evaluator);
+        // the device's image while it draws; after a fallback the CPU tier's result holds the pixels
+        auto* tiered = dynamic_cast<procmat::ProceduralTieredEvaluator*>(&evaluator);
+        procmat::ProceduralEvaluator* device = tiered ? tiered->deviceEvaluator() : &evaluator;
+        auto* gpu = dynamic_cast<procmat::ProceduralGpuEvaluator*>(device);
         std::unique_ptr<TextureRender> taken = gpu ? gpu->takeOutputTexture(output) : nullptr;
         if (!taken) return nullptr;
         return std::shared_ptr<TextureRender>(taken.release(), [](TextureRender* texture){
             texture->destroyTexture();
             delete texture;
         });
+    };
+    // preview_procedural_material's rows, fixes included
+    out.checks = [](Project* project, const std::string& path, const graph::Graph& graph, const procmat::EvaluationResult& images){
+        return procmat::graphCheckReport(project, path, graph, images);
+    };
+    // bake_procedural_material's bake: one run at a time per window, written as one undo step when it ends
+    struct Bake{
+        std::shared_ptr<procmat::ProceduralRun> run;
+        BakeState state;
+    };
+    auto bake = std::make_shared<Bake>();
+    out.startBake = [bake](Project* project, const BakeRequest& request, std::string& error){
+        if (bake->run && !bake->run->isFinished()){
+            error = "A bake is running.";
+            return false;
+        }
+        const std::filesystem::path file = project->getProjectPath() / request.path;
+        graph::Graph graph;
+        if (!procmat::readGraphForBake(file, request.path, graph, error)) return false;
+        procmat::BakeOptions options;
+        options.size = request.size;
+        options.seed = (uint32_t)request.seed;
+        procmat::GraphBake prepared;
+        if (!procmat::prepareGraphBake(project, file, request.path, graph, procmat::defaultBakeFolder(request.path), options, true, false, prepared, error)){
+            return false;
+        }
+        procmat::ProceduralRunRequest runRequest;
+        runRequest.plan = prepared.plan;
+        // a CPU tier's 2048² bake takes minutes (R25): the user cancels, no bound does
+        runRequest.timeoutSeconds = 3600.0;
+        auto run = std::make_shared<procmat::ProceduralRun>(std::move(runRequest));
+        std::weak_ptr<procmat::ProceduralRun> weak = run;
+        // the project it was asked in: a bake ending after a switch writes nothing (the tool's rule)
+        const uint64_t generation = texsynth::projectGeneration();
+        const std::filesystem::path root = project->getProjectPath();
+        run->setOnStage([bake](const std::string& stage){ bake->state.message = stage; });
+        run->setOnFinished([bake, weak, project, prepared, generation, root]() mutable {
+            auto finished = weak.lock();
+            if (!finished) return;
+            bake->state.running = false;
+            if (finished->isFailed()){
+                bake->state.message = "Nothing was written: " + finished->getError();
+                return;
+            }
+            if (generation != texsynth::projectGeneration() || project->getProjectPath() != root){
+                bake->state.message = "Another project was opened while it baked; nothing was written.";
+                return;
+            }
+            procmat::BakeFiles files;
+            std::string why;
+            if (!procmat::writeGraphBake(project, prepared, finished->getOutputs(), finished->tier(), finished->deviceName(), files, why)){
+                bake->state.message = "Nothing was written: " + why;
+                return;
+            }
+            bake->state.message = "Baked " + files.material + " and " + std::to_string(files.images.size()) + " PNG(s) on " +
+                                  procmat::evaluatorTierName(finished->tier()) + " (" + finished->deviceName() + "), one undo step.";
+            for (const std::string& warning : finished->getWarnings()) bake->state.message += " " + warning;
+        });
+        bake->run = run;
+        bake->state = BakeState();
+        bake->state.running = true;
+        bake->state.progress = -1.0f;
+        run->start();
+        return true;
+    };
+    out.bakeState = [bake](){ return bake->state; };
+    out.cancelBake = [bake](){
+        if (bake->run && !bake->run->isFinished()) bake->run->cancel();
     };
     return out;
 }
@@ -413,8 +489,8 @@ std::vector<int> ProceduralMaterialWindow::variationSeeds() const{
 }
 
 bool ProceduralMaterialWindow::isVariationCurrent(size_t index) const{
-    const std::string id = VARIATION_PREFIX + std::to_string(index);
-    return thumbs->image(id) && !thumbs->isOutOfDate(id);
+    // asked for at its seed's key and drawn at it: between an edit and the frame that asks again, no cell is
+    return thumbs->isCurrent(VARIATION_PREFIX + std::to_string(index));
 }
 
 bool ProceduralMaterialWindow::adoptVariation(size_t index){
@@ -640,8 +716,11 @@ std::vector<GraphEditorWindow::Problem> ProceduralMaterialWindow::problemsFromRe
         problem.code = row.value("id", std::string());
         problem.message = qa::rowLine(row);
         if (row.contains("node") && row["node"].is_string()) problem.nodeId = row["node"].get<std::string>();
+        // a check with more than one fix (two nodes named) is not a single edit: the agent's, through its fix_hint
+        const auto same = [&](const nlohmann::json& fix){ return fix.is_object() && fix.value("check", std::string()) == problem.code; };
+        const bool single = std::count_if(fixes.begin(), fixes.end(), same) == 1;
         for (const nlohmann::json& fix : fixes){
-            if (!fix.is_object() || fix.value("check", std::string()) != problem.code) continue;
+            if (!single || !same(fix)) continue;
             if (fix.contains("node") && fix["node"].is_string()) problem.nodeId = fix["node"].get<std::string>();
             // a fix of one edit only: more is the agent's to decide, through its fix_hint
             nlohmann::json op;
@@ -663,6 +742,10 @@ std::vector<GraphEditorWindow::Problem> ProceduralMaterialWindow::problemsFromRe
 void ProceduralMaterialWindow::collectProblems(std::vector<Problem>& out) const{
     // why the material has no image (nothing on the Material Output, a value the planner refuses, the device)
     if (material && !material->error().empty()) out.push_back({graph::Severity::Warning, "preview", material->error(), "", {}, ""});
+    // R9: a device failure the evaluation continued past on the CPU, with the pass, the device and the log
+    if (material && material->hasImage()){
+        for (const std::string& warning : material->latest().warnings) out.push_back({graph::Severity::Warning, "device", warning, "", {}, ""});
+    }
     const Target target = shownTarget();
     if (focus && !target.node.empty() && !focus->error().empty()){
         out.push_back({graph::Severity::Warning, "preview", "The preview of " + target.node + ": " + focus->error(), target.node, {}, ""});
@@ -1051,8 +1134,63 @@ void ProceduralMaterialWindow::drawPresets(){
     ImGui::SetItemTooltip("Keep the exposed properties' values under this name");
 }
 
+void ProceduralMaterialWindow::drawBake(){
+    // the bake: its size, and the estimate on the slower tiers (the device line above says why)
+    static const int SIZES[] = {64, 128, 256, 512, 1024, 2048, 4096, 8192};
+    ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+    if (ImGui::BeginCombo("##procmat_bake_size", (std::to_string(bakeSizeValue) + "\xC2\xB2").c_str())){
+        for (int size : SIZES){
+            if (ImGui::Selectable(std::to_string(size).c_str(), size == bakeSizeValue)) bakeSizeValue = size;
+        }
+        ImGui::EndCombo();
+    }
+    UIProbe::item("procmat.bake.size");
+    ImGui::SameLine();
+    std::string label = ICON_FA_FILE_EXPORT " Bake";
+    bool estimated = false;
+    const double estimate = bakeEstimateSeconds(bakeSizeValue);
+    if (budgetTier() != procmat::EvaluatorTier::Gpu && estimate >= 0.0){
+        char text[48];
+        if (estimate < 60.0) std::snprintf(text, sizeof(text), " (about %.0f s)", std::max(1.0, std::ceil(estimate)));
+        else std::snprintf(text, sizeof(text), " (about %.0f min)", std::ceil(estimate / 60.0));
+        label += text;
+        estimated = true;
+    }
+    std::string why;
+    const bool ready = canBake(&why);
+    ImGui::BeginDisabled(!ready);
+    if (ImGui::Button((label + "##procmat_bake").c_str())) bake();
+    ImGui::EndDisabled();
+    UIProbe::item("procmat.bake");
+    if (estimated) UIProbe::item("procmat.bake.estimate");
+    ImGui::SetItemTooltip("%s", ready ? "Write the outputs as PNGs and a .material beside the graph (one undo step)" : why.c_str());
+    if (services.bakeState){
+        const BakeState state = services.bakeState();
+        if (state.running){
+            // a run tells its stage, not a fraction: an indeterminate bar
+            ImGui::ProgressBar(state.progress >= 0.0f ? state.progress : -1.0f * (float)ImGui::GetTime(), ImVec2(-Theme::dpi(64.0f), 0.0f),
+                               state.message.c_str());
+            UIProbe::item("procmat.bake.running");
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel##procmat_bake_cancel") && services.cancelBake) services.cancelBake();
+        }else if (!state.message.empty()){
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextDisabled("%s", state.message.c_str());
+            ImGui::PopTextWrapPos();
+            UIProbe::item("procmat.bake.message");
+        }
+    }
+    if (!bakeError.empty()){
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(Theme::Colors::WarningText, "%s", bakeError.c_str());
+        ImGui::PopTextWrapPos();
+    }
+}
+
 void ProceduralMaterialWindow::drawPreviewPane(){
     drawDevice();
+    drawBake();
+    ImGui::Separator();
     // what is shown: the selection's output, or a pinned slot's
     const Target target = shownTarget();
     std::string title = "Material";
@@ -1137,51 +1275,6 @@ void ProceduralMaterialWindow::drawPreviewPane(){
 
     drawExposed();
     drawPresets();
-
-    // the bake: its size, the estimate on the slower tiers, and why they are slower
-    ImGui::SeparatorText("Bake");
-    static const int SIZES[] = {64, 128, 256, 512, 1024, 2048, 4096, 8192};
-    ImGui::SetNextItemWidth(Theme::dpi(90.0f));
-    if (ImGui::BeginCombo("##procmat_bake_size", (std::to_string(bakeSizeValue) + "\xC2\xB2").c_str())){
-        for (int size : SIZES){
-            if (ImGui::Selectable(std::to_string(size).c_str(), size == bakeSizeValue)) bakeSizeValue = size;
-        }
-        ImGui::EndCombo();
-    }
-    UIProbe::item("procmat.bake.size");
-    ImGui::SameLine();
-    std::string label = ICON_FA_FILE_EXPORT " Bake";
-    const double estimate = bakeEstimateSeconds(bakeSizeValue);
-    if (budgetTier() != procmat::EvaluatorTier::Gpu && estimate >= 0.0){
-        char text[48];
-        if (estimate < 60.0) std::snprintf(text, sizeof(text), " (about %.0f s)", std::max(1.0, std::ceil(estimate)));
-        else std::snprintf(text, sizeof(text), " (about %.0f min)", std::ceil(estimate / 60.0));
-        label += text;
-    }
-    std::string why;
-    const bool ready = canBake(&why);
-    ImGui::BeginDisabled(!ready);
-    if (ImGui::Button((label + "##procmat_bake").c_str())) bake();
-    ImGui::EndDisabled();
-    UIProbe::item("procmat.bake");
-    ImGui::SetItemTooltip("%s", ready ? "Write the outputs as PNGs and a .material beside the graph (one undo step)" : why.c_str());
-    if (services.bakeState){
-        const BakeState state = services.bakeState();
-        if (state.running){
-            ImGui::ProgressBar(state.progress, ImVec2(-Theme::dpi(64.0f), 0.0f));
-            ImGui::SameLine();
-            if (ImGui::Button("Cancel##procmat_bake_cancel") && services.cancelBake) services.cancelBake();
-        }else if (!state.message.empty()){
-            ImGui::PushTextWrapPos(0.0f);
-            ImGui::TextDisabled("%s", state.message.c_str());
-            ImGui::PopTextWrapPos();
-        }
-    }
-    if (!bakeError.empty()){
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextColored(Theme::Colors::WarningText, "%s", bakeError.c_str());
-        ImGui::PopTextWrapPos();
-    }
 }
 
 void ProceduralMaterialWindow::drawParamMenuExtras(const graph::Node& node, const std::string& param){

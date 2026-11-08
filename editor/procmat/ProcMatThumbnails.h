@@ -80,6 +80,8 @@ namespace jasperengine::editor::procmat {
         // `id`'s image is not of its latest key, its plan failed (the picture is of the graph before), or
         // there is none yet
         bool isOutOfDate(const std::string& id) const;
+        // asked for this frame and drawn at the key it was asked at, with no failure: what a click on it may trust
+        bool isCurrent(const std::string& id) const;
         // the request being drawn, "" for none
         const std::string& inFlight() const { return drawing; }
         size_t size() const { return images.size(); }

@@ -615,37 +615,18 @@ void bakeTool(const CallPtr& call) {
     }
     std::string failOn;
     if (!failOnArg(call, failOn)) return;
-    PassPlan plan;
-    std::vector<std::string> outputs;
-    if (!planBake(graphFile, NodeLibrary::shipped(), options, plan, outputs, error)) {
-        refuse(call, rel + " does not bake: " + error + ".");
+    GraphBake bake;
+    if (!prepareGraphBake(project, file, rel, graphFile, FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(folderPath.parent_path())),
+                          options, !args.contains("seed"), args.value("overwrite", false), bake, error)) {
+        refuse(call, error);
         return;
     }
-    // the graph's identity: the database writes it into the file; one written a moment ago gets it now
-    AssetDatabase::AssetInfo info;
-    const std::string projectRel = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(file));
-    if (!project->getAssetDatabase().getInfo(projectRel, info)) {
-        project->onAssetFilesChanged(project->getAssetDatabase().importAssets(file));
-        project->getAssetDatabase().getInfo(projectRel, info);
-    }
-    BakeWrite bake;
-    bake.graphPath = rel;
-    bake.folder = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(folderPath.parent_path()));
-    bake.recipe.graphGuid = info.guid.str();
-    bake.recipe.graphPath = rel;
-    bake.recipe.inputHash = bakeInputHash(plan);
-    bake.recipe.seed = options.seed;
-    bake.recipe.size = options.size;
-    bake.overwrite = args.value("overwrite", false);
-    bake.graphOutputs = graphBakeOutputs(graphFile);
-    bake.recipe.graphOutputs = bake.graphOutputs;
-    bake.recipe.seedFromGraph = !args.contains("seed");
+    const std::vector<std::string> outputs = bake.outputs;
     // the project it was asked in: a bake finishing after a switch writes nothing (synthesize_texture's rule)
     const uint64_t generation = texsynth::projectGeneration();
     const fs::path root = project->getProjectPath();
-    const std::string stem = bakeStem(rel);
     ProceduralRunRequest request;
-    request.plan = std::move(plan);
+    request.plan = bake.plan;
     request.timeoutSeconds = args.value("timeout_seconds", 120.0);
     runJob(call, std::move(request), "bake_procedural_material", "Bake Procedural Material " + rel, [=](ProceduralRun& run) mutable {
         Json data = {{"device", deviceJson(run)}, {"size", options.size}, {"seed", options.seed}, {"outputs", outputs}};
@@ -665,12 +646,9 @@ void bakeTool(const CallPtr& call) {
         if (generation != texsynth::projectGeneration() || project->getProjectPath() != root) {
             return ToolResult::error("Another project was opened while " + rel + " baked; nothing was written.", data);
         }
-        bake.recipe.tier = evaluatorTierName(run.tier());
-        bake.recipe.device = run.deviceName();
-        bake.images = run.getOutputs();
         BakeFiles files;
         std::string why;
-        if (!encodeBake(project, bake, files, why) || !writeBakeUndoable(project, files, stem, why, project->getProjectPath())) {
+        if (!writeGraphBake(project, bake, run.getOutputs(), run.tier(), run.deviceName(), files, why)) {
             return ToolResult::error("Nothing was written: " + why, data);
         }
         Json undo = {{"scope", "project"}};
@@ -685,7 +663,7 @@ void bakeTool(const CallPtr& call) {
                        files.material + "\"} checks the baked files.";
         std::string text = "Baked " + rel + " at " + std::to_string(options.size) + " (seed " + std::to_string(options.seed) + ") on " +
                            evaluatorTierName(run.tier()) + " (" + run.deviceName() + "): " + std::to_string(files.images.size()) + " PNG(s) and " +
-                           files.material + ", one undo step \"" + undo.value("name", std::string("Bake Procedural Material ") + stem) + "\"" +
+                           files.material + ", one undo step \"" + undo.value("name", std::string("Bake Procedural Material ") + bake.stem) + "\"" +
                            (undo.contains("id") ? " (id " + undo["id"].dump() + ")" : std::string()) + ".";
         addWarnings(run, data, text);
         return ToolResult::success(text, data);

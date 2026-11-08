@@ -151,6 +151,25 @@ namespace jasperengine::editor::procmat {
     bool writeBakeUndoable(Project* project, const BakeFiles& files, const std::string& stem, std::string& error,
                            const std::filesystem::path& beneath = {});
 
+    // A graph's bake as bake_procedural_material and the Procedural Material window make it, before and
+    // after its evaluation (ProceduralRun): the plan, and the write of what the evaluation gave
+    struct GraphBake {
+        PassPlan plan;
+        BakeWrite write;
+        std::vector<std::string> outputs;   // in plan order
+        BakeOptions options;
+        std::string stem;
+    };
+    // `graph` read with readGraphForBake from `file` (`rel`, project-relative); `folder` project-relative,
+    // under the assets directory. `seedFromGraph`: options.seed is the graph's (a reroll makes it stale).
+    // False with why when it does not plan. Makes sure the database gave the graph its GUID.
+    bool prepareGraphBake(Project* project, const std::filesystem::path& file, const std::string& rel, const graph::Graph& graph,
+                          const std::string& folder, const BakeOptions& options, bool seedFromGraph, bool overwrite, GraphBake& bake,
+                          std::string& error);
+    // the PNGs and the .material from the evaluation's images, one undo step
+    bool writeGraphBake(Project* project, GraphBake& bake, const std::vector<OutputImage>& images, EvaluatorTier tier,
+                        const std::string& device, BakeFiles& files, std::string& error);
+
     enum class BakeState { Fresh, Stale, GraphMissing, GraphInvalid };
     const char* bakeStateName(BakeState state);   // fresh, stale, graph_missing, graph_invalid
 

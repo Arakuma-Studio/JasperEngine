@@ -883,3 +883,43 @@ qa::Json jasperengine::editor::procmat::graphCheckReport(Project* project, const
     attachGraphFixes(report, graph, NodeLibrary::shipped());
     return report;
 }
+
+bool jasperengine::editor::procmat::prepareGraphBake(Project* project, const std::filesystem::path& file, const std::string& rel,
+                                                     const graph::Graph& graph, const std::string& folder, const BakeOptions& options,
+                                                     bool seedFromGraph, bool overwrite, GraphBake& bake, std::string& error) {
+    bake = GraphBake();
+    bake.options = options;
+    if (!planBake(graph, NodeLibrary::shipped(), options, bake.plan, bake.outputs, error)) {
+        error = rel + " does not bake: " + error + ".";
+        return false;
+    }
+    // the graph's identity: the database writes it into the file; one written a moment ago gets it now
+    AssetDatabase::AssetInfo info;
+    const std::string projectRel = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(file));
+    if (!project->getAssetDatabase().getInfo(projectRel, info)) {
+        project->onAssetFilesChanged(project->getAssetDatabase().importAssets(file));
+        project->getAssetDatabase().getInfo(projectRel, info);
+    }
+    BakeWrite& write = bake.write;
+    write.graphPath = rel;
+    write.folder = folder;
+    write.recipe.graphGuid = info.guid.str();
+    write.recipe.graphPath = rel;
+    write.recipe.inputHash = bakeInputHash(bake.plan);
+    write.recipe.seed = options.seed;
+    write.recipe.size = options.size;
+    write.overwrite = overwrite;
+    write.graphOutputs = graphBakeOutputs(graph);
+    write.recipe.graphOutputs = write.graphOutputs;
+    write.recipe.seedFromGraph = seedFromGraph;
+    bake.stem = bakeStem(rel);
+    return true;
+}
+
+bool jasperengine::editor::procmat::writeGraphBake(Project* project, GraphBake& bake, const std::vector<OutputImage>& images, EvaluatorTier tier,
+                                                   const std::string& device, BakeFiles& files, std::string& error) {
+    bake.write.recipe.tier = evaluatorTierName(tier);
+    bake.write.recipe.device = device;
+    bake.write.images = images;
+    return encodeBake(project, bake.write, files, error) && writeBakeUndoable(project, files, bake.stem, error, project->getProjectPath());
+}

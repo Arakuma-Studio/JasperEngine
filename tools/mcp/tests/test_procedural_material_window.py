@@ -170,9 +170,9 @@ async def test_double_click_opens_the_material_with_its_images_and_device(ed: Ed
     await rect_of(ed, "procmat.preview.output.base_color", "the Base Color image")
     await rect_of(ed, "procmat.preview.ball.current", "the lit ball of the material, drawn", 60)
     tiers = [name for name in ed.ui_items() if name.startswith("procmat.tier.") and name != "procmat.tier.reason"]
-    # the harness' editor draws on llvmpipe: never "gpu"; "unknown" until the tiers are detected, then "software"
-    ed.check("procmat.tier.gpu" not in tiers and tiers and tiers[0] in ("procmat.tier.unknown", "procmat.tier.software"),
-             f"the tier line on llvmpipe: {tiers}")
+    # the harness' editor draws on llvmpipe: tier 2, said with why (S90 R8, R27), never "gpu"
+    ed.check_eq(tiers, ["procmat.tier.software"], "the tier line on llvmpipe")
+    await rect_of(ed, "procmat.tier.reason", "why it is slower")
     await shot(ed, "opened")
 
 
@@ -250,14 +250,51 @@ async def test_a_variation_click_adopts_its_seed(ed: Editor):
     ed.check_eq(await undo_name(ed), "Use Variation Seed", "one undo step")
 
 
+async def open_problems(ed: Editor):
+    """the Problems strip's rows shown (its header toggles them)"""
+    header = await rect_of(ed, "graph.problems", "the Problems strip")
+    if not any(name.startswith("graph.problem.") for name in ed.ui_items()):
+        await click(ed, (header[0] + 40, center(header)[1]))
+
+
+async def fix_rows(ed: Editor, seconds: float = 60.0):
+    """the Fix buttons of the strip's rows, waiting for one"""
+    for _ in range(int(seconds * 2)):
+        fixes = [name for name in ed.ui_items() if name.startswith("graph.problem.") and name.endswith(".fix")]
+        if fixes:
+            return fixes
+        await asyncio.sleep(0.5)
+        await frames(ed, 2)
+        await open_problems(ed)
+    return []
+
+
+async def test_a_check_rows_fix_makes_the_repeat_count_whole(ed: Editor):
+    """R27 through preview_procedural_material's rows: perlin's Scale X at 4.5 does not tile; the row's Fix is its setParam"""
+    got = graph_file(ed)
+    for node in got["nodes"]:
+        if node["id"] == "n1":
+            node.setdefault("params", {})["scale_x"] = 4.5
+    (ed.project / PATH).write_text(json.dumps(got, indent=2) + "\n")
+    await ed.call("sync_files")
+    await focus_x(ed)
+    await open_problems(ed)
+    fixes = await fix_rows(ed)
+    ed.check(fixes, f"a Fix on the tileability row: {sorted(n for n in ed.ui_items() if n.startswith('graph.problem'))}")
+    await shot(ed, "check-fix")
+    await click(ed, center(ed.ui_items()[fixes[0]]))
+    scale = next(n for n in graph_file(ed)["nodes"] if n["id"] == "n1")["params"]["scale_x"]
+    ed.check(float(scale) == round(float(scale)) and float(scale) != 4.5, f"a whole number of repeats: {scale}")
+    ed.check_eq(await undo_name(ed), "Fix tileability", "one undo step")
+
+
 async def test_fix_removes_a_wire_to_a_node_that_is_gone(ed: Editor):
     got = graph_file(ed)
     got["edges"].append({"id": "e99", "from": {"node": "n404", "port": "output"}, "to": {"node": "n2", "port": "s2"}})
     (ed.project / PATH).write_text(json.dumps(got, indent=2) + "\n")
     await ed.call("sync_files")
     await focus_x(ed)
-    header = await rect_of(ed, "graph.problems", "the Problems strip")
-    await click(ed, (header[0] + 40, center(header)[1]))
+    await open_problems(ed)
     fix = None
     for i in range(6):
         fix = ed.ui_items().get(f"graph.problem.{i}.fix")
@@ -269,3 +306,21 @@ async def test_fix_removes_a_wire_to_a_node_that_is_gone(ed: Editor):
     edges = [e["id"] for e in graph_file(ed)["edges"]]
     ed.check("e99" not in edges, f"Fix removed the wire: {edges}")
     ed.check_eq(await undo_name(ed), "Remove Dangling Wire", "one undo step")
+
+
+async def test_bake_writes_the_material_as_one_undo_step(ed: Editor):
+    """Bake through bake_procedural_material's bake, with its estimate on tier 2"""
+    await focus_x(ed)
+    await rect_of(ed, "procmat.bake.estimate", "the Bake button's estimated time on tier 2", 60)
+    await click(ed, center(await rect_of(ed, "procmat.bake", "the Bake button")))
+    material = ed.project / "assets" / "Stone" / "Stone.material"
+    for _ in range(360):
+        if material.exists():
+            break
+        await asyncio.sleep(0.5)
+        await frames(ed, 2)
+    ed.check(material.exists(), f"the .material is written: {sorted(str(p) for p in (ed.project / 'assets').rglob('*'))[:40]}")
+    ed.check((ed.project / "assets" / "Stone" / "Stone_base_color.png").exists(), "and its Base Color PNG")
+    await rect_of(ed, "procmat.bake.message", "the bake's outcome", 30)
+    ed.check((await undo_name(ed)).startswith("Bake Procedural Material"), "one undo step")
+    await shot(ed, "baked")

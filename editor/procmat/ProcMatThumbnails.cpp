@@ -187,3 +187,10 @@ bool ProcMatThumbnails::isOutOfDate(const std::string& id) const {
     if (want == wanted.end()) return false;
     return it->second.image.key != want->key;
 }
+
+bool ProcMatThumbnails::isCurrent(const std::string& id) const {
+    auto want = std::find_if(wanted.begin(), wanted.end(), [&](const Request& r) { return r.id == id; });
+    auto it = images.find(id);
+    return want != wanted.end() && it != images.end() && it->second.image.serial != 0 && it->second.image.error.empty() &&
+           it->second.image.key == want->key;
+}

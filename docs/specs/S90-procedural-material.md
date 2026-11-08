@@ -734,11 +734,13 @@ preview pane and Problems strip are a later branch: they call `ProceduralChecks:
   in it) scaled by pixels, `t · (size / 256)²`, shown on tiers 2 and 3 as "about N s" (R25: both tiers scale with
   pixels). A value edit's redraw is not timed.
 - **Variations** cells take a click only once their image is of their seed (a clock marks the others).
-- **Seams to the bake and the tiers** (`ProceduralMaterialWindow::Services`): the evaluator factory, the device image,
-  the check report (`{checks, fixes: [{check, node, op}]}`: a fix of one op is the row's Fix) and the bake. Until
-  s90-bake and s90-tiers land, the defaults are the GPU evaluator with its tier not claimed (the pane names the
-  device, "tier unknown", and R24's tier 2 budget applies, since the device may be a software renderer), no check rows
-  and no bake (the button says why). A check FAIL does not refuse a bake; the graph's own errors do.
+- **Wired to the bake and the tiers** (`ProceduralMaterialWindow::Services`, whose defaults are these; the tests give
+  their own): every session and the thumbnails run on `makeEditorEvaluator()`, so the tier shown and R24's budget are
+  the detected one, and a device failure continues on the CPU tier with its warning as a Problems row (R9). The
+  Problems strip has `graphCheckReport`'s rows, `preview_procedural_material`'s, and a check with exactly one fix
+  (`{check, node, op}`) gets Fix. Bake goes through the bake tool's own steps (`prepareGraphBake`, a `ProceduralRun`,
+  `writeGraphBake`) into the default folder at the graph's seed, one undo step, with no time bound (Cancel stops it);
+  its row is at the top of the pane. A check FAIL does not refuse a bake; the graph's own errors do.
 - **M6's preset finding.** A gradient preset saved from a 32-key ramp reloads with its 32 keys on this base
   (`SwatchLibrary.AGradientPresetKeepsAGraphRampsKeys` passes without a change): the swatch library's native format
   is read without `normalize()`, which only the upstream dialect calls. Dropped.

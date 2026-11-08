@@ -73,7 +73,7 @@ namespace jasperengine::editor{
         };
         struct BakeState{
             bool running = false;
-            float progress = 0.0f;  // 0..1
+            float progress = 0.0f;  // 0..1, below 0 while unknown
             std::string message;    // the last bake's outcome ("" none yet)
         };
 
@@ -265,6 +265,7 @@ namespace jasperengine::editor{
         void drawExposed();
         void drawPresets();
         void drawDevice();
+        void drawBake();
 
         static std::vector<ProceduralMaterialWindow*>& windows();
     };
