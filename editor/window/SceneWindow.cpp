@@ -4,12 +4,16 @@
 #include "SceneWindow.h"
 #include "audio/SoundDrop.h"
 #include "component/TextComponent.h"
+#include "component/Transform.h"
 #include "component/TranslateTracksComponent.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "component/MeshPolygonComponent.h"
 #include "pixelart/aseprite/AsepriteSpriteSetup.h"
 #include "sprite/SpriteSheetPool.h"
 #include "widget/ColorField.h"
+#include "pixelart/PixelPerfectEditor.h"
+#include "pixelart/PixelSnap.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "util/EditorScripts.h"
 #include "DocumentFile.h"
 #include "util/PhysicsMaterialAssets.h"
@@ -2184,6 +2188,12 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
             camera->slide(slideX);
             camera->slideUp(slideY);
+            // Pixel Zoom: the world's pixel grid stays on whole view pixels (S41 R21)
+            if (pixelZoomActive(sceneProject)){
+                const Vector3 position = camera->getPosition();
+                camera->setPosition(pixelart::snapToViewPixels(position.x, currentZoom),
+                                    pixelart::snapToViewPixels(position.y, currentZoom), position.z);
+            }
         }
 
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Right) && isMouseInWindow && mouseWheel != 0.0f &&
@@ -2194,6 +2204,15 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }else if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)){
             if (isMouseInWindow && mouseWheel != 0.0f){
                 float zoomFactor = 1.0f - (0.1f * mouseWheel);
+                // Pixel Zoom: 1/8x .. 32x in whole steps, one step per notch (S41 R21)
+                const bool pixelZoom = pixelZoomActive(sceneProject);
+                if (pixelZoom){
+                    SceneRender2D* sceneRender2D = static_cast<SceneRender2D*>(sceneProject->sceneRender);
+                    const int ppu = project->getPixelsPerUnit();
+                    const float current = pixelart::pixelZoomScale(sceneRender2D->getZoom(), ppu);
+                    const float next = pixelart::stepPixelZoom(current, mouseWheel > 0.0f ? 1 : -1);
+                    zoomFactor = pixelart::zoomForPixelScale(next, ppu) / sceneRender2D->getZoom();
+                }
 
                 float mouseX = mousePos.x - windowPos.x;
                 float mouseY = mousePos.y - windowPos.y;
@@ -2205,6 +2224,11 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
                 SceneRender2D* sceneRender2D = static_cast<SceneRender2D*>(sceneProject->sceneRender);
                 sceneRender2D->zoomAtPosition(getWidth(sceneProject->id), getHeight(sceneProject->id), Vector2(mouseX, mouseY), zoomFactor);
+                if (pixelZoom){
+                    const float zoom = sceneRender2D->getZoom();
+                    const Vector3 position = camera->getPosition();
+                    camera->setPosition(pixelart::snapToViewPixels(position.x, zoom), pixelart::snapToViewPixels(position.y, zoom), position.z);
+                }
             }
         }
 
@@ -2994,6 +3018,8 @@ void editor::SceneWindow::show() {
                 if (!isCameraPreview) {
                     viewController->drawToolbar(sceneProject, rightX);
                 }
+                // S41 R21: Pixel Zoom (2D scenes drawn through a Pixel Perfect Camera)
+                drawPixelZoomToolbar(sceneProject);
                 ImGui::SameLine();
                 if (rightX > ImGui::GetCursorPosX()) {
                     ImGui::SetCursorPosX(rightX);
@@ -3140,6 +3166,11 @@ void editor::SceneWindow::show() {
                     // narrows the view and moves the view gizmo off the view's corner)
                     ImGui::SetCursorScreenPos(canvasMin);
                     ImGui::Dummy(canvasAvail);
+
+                    // S41: the Pixel Grid over the image (Pixel Zoom from 6x)
+                    drawPixelGrid(sceneProject, canvasMin, canvasAvail);
+                    if (!sceneProject.displaySettings.hideCameraView)
+                        drawPixelPerfectFrames(sceneProject, canvasMin);
 
                     // Camera Follow: the selected followers' Bounds and Dead Zone
                     {
@@ -3412,4 +3443,196 @@ int editor::SceneWindow::getHeight(uint32_t sceneId) const{
 
 float editor::SceneWindow::getOverlayScale(uint32_t sceneId) const {
     return canvasDpi(sceneId) * canvasEngineScale(sceneId).x;
+}
+
+// ---- S41 R21: Pixel Zoom
+
+bool editor::SceneWindow::pixelZoomActive(const SceneProject* sceneProject) const{
+    return sceneProject && sceneProject->sceneType == SceneType::SCENE_2D && sceneProject->displaySettings.pixelZoom &&
+           pixelart::scenePixelPerfect(sceneProject);
+}
+
+float editor::SceneWindow::gamePixelZoom(SceneProject& sceneProject) const{
+    jasperengine::pixelart::PixelPerfectLayout layout;
+    if (pixelart::computeEditLayout(*project, sceneProject.scene, sceneProject.mainCamera, layout))
+        return (float)layout.scale;
+    return 1.0f;
+}
+
+void editor::SceneWindow::setPixelZoom(SceneProject& sceneProject, float scale){
+    if (sceneProject.sceneType != SceneType::SCENE_2D || !sceneProject.sceneRender)
+        return;
+    SceneRender2D* sceneRender2D = static_cast<SceneRender2D*>(sceneProject.sceneRender);
+    const float width = getWidth(sceneProject.id);
+    const float height = getHeight(sceneProject.id);
+    const float zoom = pixelart::zoomForPixelScale(scale, project->getPixelsPerUnit());
+    sceneRender2D->zoomAtPosition(width, height, Vector2(width * 0.5f, height * 0.5f), zoom / sceneRender2D->getZoom());
+    Camera* camera = sceneProject.sceneRender->getCamera();
+    const Vector3 position = camera->getPosition();
+    const float applied = sceneRender2D->getZoom();
+    camera->setPosition(pixelart::snapToViewPixels(position.x, applied), pixelart::snapToViewPixels(position.y, applied), position.z);
+    sceneProject.needUpdateRender = true;
+}
+
+void editor::SceneWindow::drawPixelZoomToolbar(SceneProject& sceneProject){
+    if (sceneProject.sceneType != SceneType::SCENE_2D || !pixelart::scenePixelPerfect(&sceneProject))
+        return;
+    const std::string id = std::to_string(sceneProject.id);
+    bool& on = sceneProject.displaySettings.pixelZoom;
+    ImGui::SameLine(0, Theme::dpi(8.0f));
+    ImGui::PushStyleColor(ImGuiCol_Button, on ? Theme::Colors::ButtonActivated : ImGui::GetStyle().Colors[ImGuiCol_Button]);
+    if (ImGui::Button(("Pixel Zoom##PixelZoom" + id).c_str())){
+        on = !on;
+        project->saveWorkspaceFile();
+    }
+    ImGui::PopStyleColor();
+    ImGui::SetItemTooltip("Zoom in whole pixel steps (1/8x to 32x), the pixel grid on whole screen pixels");
+    UIProbe::item("sceneview.pixel_zoom");
+    // the other R21 display flags of this view (display_settings pixel_grid, pixel_snap_preview,
+    // pixel_move_snap), with or without the zoom
+    const std::string optionsId = "PixelArtOptions" + id;
+    ImGui::SameLine(0, Theme::dpi(2.0f));
+    if (ImGui::Button((std::string(ICON_FA_CARET_DOWN) + "##PixelArtOptionsButton" + id).c_str()))
+        ImGui::OpenPopup(optionsId.c_str());
+    ImGui::SetItemTooltip("Pixel Grid, Snap Preview, Pixel Move Snap");
+    UIProbe::item("sceneview.pixel_options");
+    if (ImGui::BeginPopup(optionsId.c_str())){
+        SceneDisplaySettings& display = sceneProject.displaySettings;
+        if (ImGui::MenuItem("Pixel Grid", nullptr, &display.pixelGrid))
+            project->saveWorkspaceFile();
+        ImGui::SetItemTooltip("Art-pixel edges from 6x");
+        UIProbe::item("sceneview.pixel_grid");
+        if (ImGui::MenuItem("Snap Preview", nullptr, &display.pixelSnapPreview)){
+            sceneProject.needUpdateRender = true;
+            project->saveWorkspaceFile();
+        }
+        ImGui::SetItemTooltip("Draw the snapped sprites on this view's own pixel grid");
+        UIProbe::item("sceneview.pixel_snap_preview");
+        if (ImGui::MenuItem("Pixel Move Snap", nullptr, &display.pixelMoveSnap))
+            project->saveWorkspaceFile();
+        ImGui::SetItemTooltip("Move and size on whole art pixels (Ctrl drags freely)");
+        UIProbe::item("sceneview.pixel_move_snap");
+        ImGui::EndPopup();
+    }
+    if (!on || !sceneProject.sceneRender)
+        return;
+
+    SceneRender2D* sceneRender2D = static_cast<SceneRender2D*>(sceneProject.sceneRender);
+    const float current = pixelart::nearestPixelZoom(pixelart::pixelZoomScale(sceneRender2D->getZoom(), project->getPixelsPerUnit()));
+    const std::string popupId = "PixelZoomList" + id;
+    ImGui::SameLine();
+    if (ImGui::Button((pixelart::pixelZoomLabel(current) + "##PixelZoomReadout" + id).c_str()))
+        ImGui::OpenPopup(popupId.c_str());
+    ImGui::SetItemTooltip("Screen pixels per art pixel (click for the list)");
+    UIProbe::item("sceneview.pixel_zoom_readout");
+    if (ImGui::BeginPopup(popupId.c_str())){
+        for (float step : pixelart::pixelZoomSteps()){
+            if (ImGui::Selectable(pixelart::pixelZoomLabel(step).c_str(), step == current))
+                setPixelZoom(sceneProject, step);
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(("1x##PixelZoom1x" + id).c_str()))
+        setPixelZoom(sceneProject, 1.0f);
+    ImGui::SetItemTooltip("%s", ("One art pixel per screen pixel (" + sceneViewShortcut("sceneView.pixelZoom1x") + ")").c_str());
+    ImGui::SameLine();
+    if (ImGui::Button(("Game##PixelZoomGame" + id).c_str()))
+        setPixelZoom(sceneProject, gamePixelZoom(sceneProject));
+    ImGui::SetItemTooltip("%s", ("The Game view's pixel scale (" + sceneViewShortcut("sceneView.pixelZoomGame") + ")").c_str());
+}
+
+void editor::SceneWindow::drawPixelGrid(SceneProject& sceneProject, const ImVec2& canvasMin, const ImVec2& canvasAvail){
+    if (!pixelZoomActive(&sceneProject) || !sceneProject.displaySettings.pixelGrid || !sceneProject.sceneRender)
+        return;
+    SceneRender2D* sceneRender2D = static_cast<SceneRender2D*>(sceneProject.sceneRender);
+    const float zoom = sceneRender2D->getZoom();
+    const int ppu = project->getPixelsPerUnit();
+    const float scale = pixelart::pixelZoomScale(zoom, ppu);
+    if (scale < 6.0f - 1e-3f)
+        return;
+    // the camera is the view's bottom-left corner, zoom world units per view pixel
+    const ImVec2 engineScale = canvasEngineScale(sceneProject.id);
+    const Vector3 origin = sceneProject.sceneRender->getCamera()->getPosition();
+    const float pixel = 1.0f / (float)std::max(1, ppu);
+    const float viewWidth = canvasAvail.x * engineScale.x;
+    const float viewHeight = canvasAvail.y * engineScale.y;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImU32 color = IM_COL32(255, 255, 255, 31);   // 12 %
+    drawList->PushClipRect(canvasMin, ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y), true);
+    // whole art pixels counted in integers: a float stepped by 1/PPU far from the origin stops
+    // advancing (and the loop would never end)
+    const long long firstX = (long long)std::ceil(origin.x * (float)std::max(1, ppu));
+    const long long countX = (long long)std::ceil(viewWidth * zoom / pixel) + 1;
+    for (long long i = 0; i <= countX; i++){
+        const double x = (double)(firstX + i) * (double)pixel;
+        const float screenX = canvasMin.x + std::round((float)((x - (double)origin.x) / (double)zoom)) / engineScale.x;
+        drawList->AddLine(ImVec2(screenX, canvasMin.y), ImVec2(screenX, canvasMin.y + canvasAvail.y), color, 1.0f);
+    }
+    const long long firstY = (long long)std::ceil(origin.y * (float)std::max(1, ppu));
+    const long long countY = (long long)std::ceil(viewHeight * zoom / pixel) + 1;
+    for (long long i = 0; i <= countY; i++){
+        const double y = (double)(firstY + i) * (double)pixel;
+        // a 2D scene's view is y up from its bottom
+        const float screenY = canvasMin.y + canvasAvail.y - std::round((float)((y - (double)origin.y) / (double)zoom)) / engineScale.y;
+        drawList->AddLine(ImVec2(canvasMin.x, screenY), ImVec2(canvasMin.x + canvasAvail.x, screenY), color, 1.0f);
+    }
+    drawList->PopClipRect();
+}
+
+void editor::SceneWindow::drawPixelPerfectFrames(SceneProject& sceneProject, const ImVec2& canvasMin){
+    if (sceneProject.sceneType != SceneType::SCENE_2D || !sceneProject.sceneRender || !pixelart::scenePixelPerfect(&sceneProject))
+        return;
+    Scene* scene = sceneProject.scene;
+    const Entity cameraEntity = sceneProject.mainCamera;
+    const Transform* transform = scene->findComponent<Transform>(cameraEntity);
+    const PixelPerfectCameraComponent* component = scene->findComponent<PixelPerfectCameraComponent>(cameraEntity);
+    if (!transform || !component)
+        return;
+    const float ppu = (float)project->getPixelsPerUnit();
+    const float referenceWidth = (float)(component->referenceWidth > 0 ? component->referenceWidth : project->getCanvasWidth());
+    const float referenceHeight = (float)(component->referenceHeight > 0 ? component->referenceHeight : project->getCanvasHeight());
+    // the camera draws from its snapped position (R8), its image spanning the base resolution
+    const Vector3 origin = jasperengine::pixelart::snapWorld(transform->worldPosition, project->getPixelsPerUnit());
+    const ImVec2 engineScale = canvasEngineScale(sceneProject.id);
+    SceneRender* sceneRender = sceneProject.sceneRender;
+    auto toScreen = [&](float x, float y, ImVec2& screen){
+        Vector2 engine;
+        if (!sceneRender->worldToScreen(Vector3(x, y, origin.z), engine)) return false;
+        screen = ImVec2(canvasMin.x + engine.x / engineScale.x, canvasMin.y + engine.y / engineScale.y);
+        return true;
+    };
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImU32 color = IM_COL32(128, 255, 128, 220);
+    ImVec2 a, b;
+    if (toScreen(origin.x, origin.y, a) && toScreen(origin.x + referenceWidth / ppu, origin.y + referenceHeight / ppu, b)){
+        drawList->AddRect(ImVec2(std::min(a.x, b.x), std::min(a.y, b.y)), ImVec2(std::max(a.x, b.x), std::max(a.y, b.y)), color, 0.0f, 0,
+                          Theme::dpi(1.0f));
+    }
+    if (component->upscaleMode != PixelUpscaleMode::INTEGER_EXPAND)
+        return;
+    jasperengine::pixelart::PixelPerfectLayout layout;
+    if (!pixelart::computeEditLayout(*project, scene, cameraEntity, layout))
+        return;
+    ImVec2 c, d;
+    if (!toScreen(origin.x, origin.y, c) || !toScreen(origin.x + (float)layout.baseWidth / ppu, origin.y + (float)layout.baseHeight / ppu, d))
+        return;
+    const ImVec2 lo(std::min(c.x, d.x), std::min(c.y, d.y));
+    const ImVec2 hi(std::max(c.x, d.x), std::max(c.y, d.y));
+    // dashed: segments of 6 px with gaps of 4
+    const float dash = Theme::dpi(6.0f), gap = Theme::dpi(4.0f);
+    auto dashed = [&](ImVec2 from, ImVec2 to){
+        const float length = std::sqrt((to.x - from.x) * (to.x - from.x) + (to.y - from.y) * (to.y - from.y));
+        if (length <= 0.0f) return;
+        const ImVec2 dir((to.x - from.x) / length, (to.y - from.y) / length);
+        for (float t = 0.0f; t < length; t += dash + gap){
+            const float end = std::min(length, t + dash);
+            drawList->AddLine(ImVec2(from.x + dir.x * t, from.y + dir.y * t), ImVec2(from.x + dir.x * end, from.y + dir.y * end), color,
+                              Theme::dpi(1.0f));
+        }
+    };
+    dashed(lo, ImVec2(hi.x, lo.y));
+    dashed(ImVec2(hi.x, lo.y), hi);
+    dashed(hi, ImVec2(lo.x, hi.y));
+    dashed(ImVec2(lo.x, hi.y), lo);
 }

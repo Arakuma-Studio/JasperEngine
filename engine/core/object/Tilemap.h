@@ -33,6 +33,10 @@ namespace jasperengine{
         void setTextureScaleFactor(float textureScaleFactor);
         float getTextureScaleFactor() const;
 
+        // S41: texels per world unit (0: the project's Pixels Per Unit)
+        void setPixelsPerUnit(float pixelsPerUnit);
+        float getPixelsPerUnit() const;
+
         void addRect(int id, const std::string& name, const std::string& texture, TextureFilter texFilter, Rect rect);
         void addRect(int id, const std::string& name, const std::string& texture, Rect rect);
         void addRect(int id, const std::string& name, Rect rect);

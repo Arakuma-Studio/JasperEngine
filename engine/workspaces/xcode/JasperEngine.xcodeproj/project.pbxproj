@@ -4503,6 +4503,23 @@
 		4A534E47C677145CCB1C3CAA /* WaterInteractionSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B790A1EA35BBD60C /* WaterInteractionSystem.h */; };
 		4A534E479912D77D7BDDF538 /* WaterExclusion.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4770610EDBE3BF2F84 /* WaterExclusion.h */; };
 		4A534E47DCF10E9F1AEB8966 /* WaterWakeMap.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4774FB09A9615E4FA5 /* WaterWakeMap.h */; };
+		4A534E47F2CD91899A5516E7 /* PixelPerfectLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */; };
+		4A534E47F6F783BAE5B25B2E /* PixelPerfectLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */; };
+		4A534E47FC51F1B3A7B60422 /* PixelRotation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4729B77C264D072B9E /* PixelRotation.cpp */; };
+		4A534E478CE6807E3A08DEE2 /* PixelRotation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4729B77C264D072B9E /* PixelRotation.cpp */; };
+		4A534E47BAE152DFB7C3B8C0 /* PixelsPerUnit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472B25A401BD02EB09 /* PixelsPerUnit.cpp */; };
+		4A534E47D9601CF893F61A9F /* PixelsPerUnit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472B25A401BD02EB09 /* PixelsPerUnit.cpp */; };
+		4A534E47BF4EF1850A27F348 /* PixelSnap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F2BFD84A29C801DF /* PixelSnap.cpp */; };
+		4A534E47E018CE2E97B085F6 /* PixelSnap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F2BFD84A29C801DF /* PixelSnap.cpp */; };
+		4A534E47611B141644A354FB /* PixelPerfectCamera.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476E7497A030BB3E4B /* PixelPerfectCamera.cpp */; };
+		4A534E476C92FA1FA0E80B1E /* PixelPerfectCamera.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476E7497A030BB3E4B /* PixelPerfectCamera.cpp */; };
+		4A534E47C7919DBFFB70D497 /* RenderSystemPixelArt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */; };
+		4A534E47B22CC36E554C21C2 /* RenderSystemPixelArt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */; };
+		4A534E47121FD6387E508980 /* PixelPerfectCameraComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */; };
+		4A534E4796FEBF33733E2DFB /* PixelPerfectCamera.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479A02188939300830 /* PixelPerfectCamera.h */; };
+		4A534E473C40ED72D5D87706 /* PixelPerfectLayout.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */; };
+		4A534E47182EAC07119845A8 /* PixelRotation.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D3B649BD59C300EB /* PixelRotation.h */; };
+		4A534E47B5C474A07FEAAB76 /* PixelSnap.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474815DCD00E6D3674 /* PixelSnap.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8795,6 +8812,17 @@
 		4A534E47B790A1EA35BBD60C /* WaterInteractionSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterInteractionSystem.h; sourceTree = "<group>"; };
 		4A534E4770610EDBE3BF2F84 /* WaterExclusion.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterExclusion.h; sourceTree = "<group>"; };
 		4A534E4774FB09A9615E4FA5 /* WaterWakeMap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterWakeMap.h; sourceTree = "<group>"; };
+		4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelPerfectLayout.cpp; sourceTree = "<group>"; };
+		4A534E4729B77C264D072B9E /* PixelRotation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelRotation.cpp; sourceTree = "<group>"; };
+		4A534E472B25A401BD02EB09 /* PixelsPerUnit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelsPerUnit.cpp; sourceTree = "<group>"; };
+		4A534E47F2BFD84A29C801DF /* PixelSnap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelSnap.cpp; sourceTree = "<group>"; };
+		4A534E476E7497A030BB3E4B /* PixelPerfectCamera.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelPerfectCamera.cpp; sourceTree = "<group>"; };
+		4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemPixelArt.cpp; sourceTree = "<group>"; };
+		4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectCameraComponent.h; sourceTree = "<group>"; };
+		4A534E479A02188939300830 /* PixelPerfectCamera.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectCamera.h; sourceTree = "<group>"; };
+		4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectLayout.h; sourceTree = "<group>"; };
+		4A534E47D3B649BD59C300EB /* PixelRotation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelRotation.h; sourceTree = "<group>"; };
+		4A534E474815DCD00E6D3674 /* PixelSnap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelSnap.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10630,6 +10658,20 @@
 			path = memory;
 			sourceTree = "<group>";
 		};
+		4A534E47F4CE7F7900B70B3C /* pixelart */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */,
+				4A534E4729B77C264D072B9E /* PixelRotation.cpp */,
+				4A534E472B25A401BD02EB09 /* PixelsPerUnit.cpp */,
+				4A534E47F2BFD84A29C801DF /* PixelSnap.cpp */,
+				4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */,
+				4A534E47D3B649BD59C300EB /* PixelRotation.h */,
+				4A534E474815DCD00E6D3674 /* PixelSnap.h */,
+			);
+			path = pixelart;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -10710,6 +10752,7 @@
 				4A534E473659413B6A589E09 /* device */,
 				4A534E474D0727C81240C154 /* model */,
 				4A534E47FD9CD85331CEC557 /* memory */,
+				4A534E47F4CE7F7900B70B3C /* pixelart */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -11005,6 +11048,7 @@
 				4A534E47B4E493A883DC863A /* UISelectable.h */,
 				4A534E47CE9FB71853CA5540 /* WaterExcluderComponent.h */,
 				4A534E47F9098224B2B02009 /* WaterWakeComponent.h */,
+				4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -11116,6 +11160,8 @@
 				4A534E477741740820D741F9 /* VideoPlayer.h */,
 				4A534E47566C2DC1D064EB2A /* CapsuleShadowCaster.cpp */,
 				4A534E47BBCC2318C93E86D2 /* CapsuleShadowCaster.h */,
+				4A534E476E7497A030BB3E4B /* PixelPerfectCamera.cpp */,
+				4A534E479A02188939300830 /* PixelPerfectCamera.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -11288,6 +11334,7 @@
 				4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */,
 				4A534E47B7A94BBFE58710AB /* WaterInteractionSystem.cpp */,
 				4A534E47B790A1EA35BBD60C /* WaterInteractionSystem.h */,
+				4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -15630,6 +15677,11 @@
 				4A534E47C677145CCB1C3CAA /* WaterInteractionSystem.h in Headers */,
 				4A534E479912D77D7BDDF538 /* WaterExclusion.h in Headers */,
 				4A534E47DCF10E9F1AEB8966 /* WaterWakeMap.h in Headers */,
+				4A534E47121FD6387E508980 /* PixelPerfectCameraComponent.h in Headers */,
+				4A534E4796FEBF33733E2DFB /* PixelPerfectCamera.h in Headers */,
+				4A534E473C40ED72D5D87706 /* PixelPerfectLayout.h in Headers */,
+				4A534E47182EAC07119845A8 /* PixelRotation.h in Headers */,
+				4A534E47B5C474A07FEAAB76 /* PixelSnap.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18167,6 +18219,12 @@
 				4A534E472BC25BFFE464BDF9 /* WaterInteractionSystem.cpp in Sources */,
 				4A534E4703A766F23392A387 /* WaterExclusion.cpp in Sources */,
 				4A534E471120211E6C5BC051 /* WaterWakeMap.cpp in Sources */,
+				4A534E47F2CD91899A5516E7 /* PixelPerfectLayout.cpp in Sources */,
+				4A534E47FC51F1B3A7B60422 /* PixelRotation.cpp in Sources */,
+				4A534E47BAE152DFB7C3B8C0 /* PixelsPerUnit.cpp in Sources */,
+				4A534E47BF4EF1850A27F348 /* PixelSnap.cpp in Sources */,
+				4A534E47611B141644A354FB /* PixelPerfectCamera.cpp in Sources */,
+				4A534E47C7919DBFFB70D497 /* RenderSystemPixelArt.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18995,6 +19053,12 @@
 				4A534E474B569D512A444926 /* WaterInteractionSystem.cpp in Sources */,
 				4A534E476AE031A9A9F54C53 /* WaterExclusion.cpp in Sources */,
 				4A534E47D453076BA16956C1 /* WaterWakeMap.cpp in Sources */,
+				4A534E47F6F783BAE5B25B2E /* PixelPerfectLayout.cpp in Sources */,
+				4A534E478CE6807E3A08DEE2 /* PixelRotation.cpp in Sources */,
+				4A534E47D9601CF893F61A9F /* PixelsPerUnit.cpp in Sources */,
+				4A534E47E018CE2E97B085F6 /* PixelSnap.cpp in Sources */,
+				4A534E476C92FA1FA0E80B1E /* PixelPerfectCamera.cpp in Sources */,
+				4A534E47B22CC36E554C21C2 /* RenderSystemPixelArt.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

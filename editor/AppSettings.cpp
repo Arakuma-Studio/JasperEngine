@@ -501,6 +501,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 auto gameNode = editorNode["game_view"];
                 if (gameNode["aspect"]) gameViewSettings.aspect = gameNode["aspect"].as<int>();
                 if (gameNode["scale"]) gameViewSettings.scale = gameNode["scale"].as<float>();
+                if (gameNode["pixelScale"]) gameViewSettings.pixelScale = std::clamp(gameNode["pixelScale"].as<int>(), 0, 8);
                 if (gameNode["maximize_on_play"]) gameViewSettings.maximizeOnPlay = gameNode["maximize_on_play"].as<bool>();
                 if (gameNode["stats"]) gameViewSettings.showStats = gameNode["stats"].as<bool>();
                 if (gameNode["atmosphere_quality"]) gameViewSettings.atmosphereQuality = std::clamp(gameNode["atmosphere_quality"].as<int>(), -1, 3);
@@ -821,6 +822,7 @@ bool AppSettings::saveSettings() {
         YAML::Node gameNode;
         gameNode["aspect"] = gameViewSettings.aspect;
         gameNode["scale"] = gameViewSettings.scale;
+        if (gameViewSettings.pixelScale != 0) gameNode["pixelScale"] = gameViewSettings.pixelScale;
         gameNode["maximize_on_play"] = gameViewSettings.maximizeOnPlay;
         gameNode["stats"] = gameViewSettings.showStats;
         gameNode["atmosphere_quality"] = gameViewSettings.atmosphereQuality;

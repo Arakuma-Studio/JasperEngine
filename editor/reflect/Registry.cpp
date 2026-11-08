@@ -112,6 +112,7 @@ namespace {
         &kAudioSnapshotDesc,
         &kWaterExcluderDesc,
         &kWaterWakeDesc,
+        &kPixelPerfectCameraDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -212,6 +213,7 @@ namespace {
         &kAudioSnapshotDesc,
         &kWaterExcluderDesc,
         &kWaterWakeDesc,
+        &kPixelPerfectCameraDesc,
     };
 
     // the order a GameObject lists its components in (Catalog::findComponents: the exported code)
@@ -310,6 +312,7 @@ namespace {
         &kAudioSnapshotDesc,
         &kWaterExcluderDesc,
         &kWaterWakeDesc,
+        &kPixelPerfectCameraDesc,
     };
 
     constexpr const EnumDesc* kEnums[] = {
@@ -338,6 +341,8 @@ namespace {
         &enums::kOnScreenStickAxes, &enums::kOnScreenVisibility, &enums::kJointAnchorSpace, &enums::kCollisionDetection2D, &enums::kSleepMode2D, &enums::kRigidbodyInterpolation, &enums::kJointBreakAction,
         &enums::kJointMotion, &enums::kJointSwingType, &enums::kAlphaTweenTarget, &enums::kTransparencyMode, &enums::kCapsuleCastShadows,
         &enums::kCapsuleDirection,
+        // pixel art (S41)
+        &enums::kPixelUpscaleMode, &enums::kPixelRotation,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {

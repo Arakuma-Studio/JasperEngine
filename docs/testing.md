@@ -47,6 +47,7 @@ tools/build.sh unit-tests                                   # both binaries
 UNIT_SUITE=core tools/build.sh unit-tests                   # one of them (core or editor)
 UNIT_TEST_ARGS='--gtest_filter=Matrix4.*' tools/build.sh unit-tests
 GRAPHIC_BACKEND=vulkan UNIT_SUITE=core tools/build.sh unit-tests   # GPU suites on lavapipe
+GRAPHIC_BACKEND=gles3 UNIT_SUITE=core tools/build.sh unit-tests    # GPU suites in an OpenGL ES 3.2 context (llvmpipe, linux-backends image)
 WERROR=1 tools/build.sh unit-tests
 RUN=0 tools/build.sh unit-tests                             # build only
 ```
@@ -142,6 +143,10 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   desktop autoplay policy (`chrome_flags` in the baseline): the page's audio is suspended until the
   first key press (`keys`: trusted CDP key events, `eval_before_input` before them, `eval` after),
   and Meta, ContextMenu and events without a code reach the game as their engine keys.
+- `GATE=pixel-perfect` (after
+  `WEB_PROJECT=pixel-perfect tools/build.sh web`) runs at a device scale factor of 2 and checks that
+  a Pixel Perfect Camera sizes the canvas backing store at its CSS size times `devicePixelRatio` and
+  draws it pixelated (S41 AC13).
 
 ### Compiled and prebuilt game builds (MCP, `JASPER_SLOW_BUILD=1`)
 

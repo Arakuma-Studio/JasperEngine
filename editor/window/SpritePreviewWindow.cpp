@@ -81,7 +81,7 @@ namespace {
         if (io.DrawCallback_SetSamplerLinear) draw->AddCallback(io.DrawCallback_SetSamplerLinear, nullptr);
     }
 
-    bool spritePreviewUpload(Texture& texture, int& width, int& height, const pixelart::PixelImage& image) {
+    bool spritePreviewUpload(Texture& texture, int& width, int& height, const editor::pixelart::PixelImage& image) {
         if (image.empty()) return false;
         static uint64_t counter = 0;
         // TextureData frees what it is given (stbi_image_free = free)

@@ -1635,6 +1635,11 @@ std::string editor::Factory::createSpriteComponent(int indentSpaces, EntityRegis
     code << ind << "sprite.flipY = " << formatBool(sprite.flipY) << ";\n";
     code << ind << "sprite.pivotPreset = " << formatPivotPreset(sprite.pivotPreset) << ";\n";
     code << ind << "sprite.textureScaleFactor = " << formatFloat(sprite.textureScaleFactor) << ";\n";
+    // S41: exported only away from their defaults
+    if (sprite.pixelsPerUnit != 0.0f)
+        code << ind << "sprite.pixelsPerUnit = " << formatFloat(sprite.pixelsPerUnit) << ";\n";
+    if (sprite.pixelRotation != PixelRotation::CAMERA)
+        code << ind << "sprite.pixelRotation = " << (sprite.pixelRotation == PixelRotation::STEPS_90 ? "PixelRotation::STEPS_90" : "PixelRotation::ON_GRID") << ";\n";
     // as authored, in pixels or normalised: the game normalises a frame when it shows it
     // (MeshSystem::setSpriteFrameRect), once its texture's size is known
     for (unsigned int i = 0; i < sprite.numFramesRect; i++) {
@@ -1668,6 +1673,8 @@ std::string editor::Factory::createTilemapComponent(int indentSpaces, EntityRegi
     code << ind << "tilemap.automaticFlipY = " << formatBool(tilemap.automaticFlipY) << ";\n";
     code << ind << "tilemap.flipY = " << formatBool(tilemap.flipY) << ";\n";
     code << ind << "tilemap.textureScaleFactor = " << formatFloat(tilemap.textureScaleFactor) << ";\n";
+    if (tilemap.pixelsPerUnit != 0.0f)
+        code << ind << "tilemap.pixelsPerUnit = " << formatFloat(tilemap.pixelsPerUnit) << ";\n";
     code << ind << "tilemap.reserveTiles = " << formatUInt(tilemap.reserveTiles) << ";\n";
     for (unsigned int i = 0; i < tilemap.numTilesRect; i++) {
         if (!tilemap.tilesRect[i].name.empty()) {

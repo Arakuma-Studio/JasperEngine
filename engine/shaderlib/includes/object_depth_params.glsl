@@ -43,6 +43,10 @@
         mat4 modelMatrix;
         mat4 lightVPMatrix;
         mat4 mvpMatrix;
+        // as includes/object_params.glsl's (S41; 0 in shadow maps)
+        #ifdef PIXEL_SNAP
+            vec4 pixelSnapDraw;
+        #endif
     } depthParams;
 
     float objectLodFade(){

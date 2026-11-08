@@ -116,6 +116,8 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Bottom View | Numpad9 / Ctrl+Numpad7 | Scene View |
 | Hide Selection | H | Scene View |
 | Show All | Alt+H | Scene View |
+| Pixel Zoom 1x | Alt+1 | Scene View |
+| Pixel Zoom Game | Alt+2 | Scene View |
 | Toggle Pick Lock | L | Scene View |
 | Measure | M | Scene View |
 | Delete Measure | Delete / Backspace | Scene View |

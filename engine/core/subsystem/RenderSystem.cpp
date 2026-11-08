@@ -10,8 +10,10 @@
 #include "component/AudioSourceComponent.h"
 #include "component/BoneComponent.h"
 #include "component/MirrorComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "component/SplineExtrudeComponent.h"
+#include "component/SpriteComponent.h"
 #include "component/TextComponent.h"
 #include "component/TextEffectComponent.h"
 #include "component/MeshPolygonComponent.h"
@@ -53,6 +55,8 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "lattice/LatticeRender.h"
 #include "animation/VertexAnimation.h"
+#include "component/TilemapComponent.h"
+#include "component/Transform.h"
 #include "component/VertexAnimatorComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "texture/Texture.h"
@@ -1702,8 +1706,8 @@ Vector4 RenderSystem::lightingViewportInfo(const CameraComponent& camera) const{
     float vpH = targetViewRect().getHeight();
     if (isFixedResolutionActive() && !camera.renderToTexture){
         // the main color pass renders into the fixed-resolution target
-        vpW = (float)scene->getFixedResolutionWidth();
-        vpH = (float)scene->getFixedResolutionHeight();
+        vpW = (float)fixedResolutionWidth();
+        vpH = (float)fixedResolutionHeight();
     }
     return Vector4(
         (vpW > 0.0f) ? 1.0f / vpW : 0.0f,
@@ -3453,7 +3457,15 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.oit = lighting.oit;
     environment.waterExclusion = hasWaterExcluders;
     environment.waterWake = hasWaterWakes;
+    environment.pixelSnap = pixelSnapVariants;
     return environment;
+}
+
+bool RenderSystem::isPixelArtDrawable(Entity entity) const{
+    if (!pixelSnapVariants)
+        return false;
+    const Signature signature = scene->getSignature(entity);
+    return signature.test(scene->getComponentId<SpriteComponent>()) || signature.test(scene->getComponentId<TilemapComponent>());
 }
 
 const std::string& RenderSystem::getSubmeshShader(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader){
@@ -3728,7 +3740,8 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
                     submesh.hasTextureRect = true;
                 scanSubmeshAttributes(submesh, buffers);
 
-                const SubmeshShaderInputs inputs = getSubmeshShaderInputs(*mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
+                SubmeshShaderInputs inputs = getSubmeshShaderInputs(*mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
+                inputs.pixelArt = isPixelArtDrawable(entity);
                 const SubmeshShaderVariant variant = getSubmeshShaderVariant(environment, inputs);
                 // the shader of each submesh (its material's, the mesh's, the scene's), see loadMesh
                 const uint16_t meshShaderId = ShaderPool::registerCustomShader(getSubmeshShaderReference(*mesh, submesh, sceneMeshShader, variant.litDefines));
@@ -4276,6 +4289,10 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         variant.properties |= ShaderPool::getWaterExclusionProperty();
     if ((manifestRequire & ShaderRequire_WaterWake) && environment.waterWake)
         variant.properties |= ShaderPool::getWaterWakeProperty();
+    // a Pixel Perfect Camera's sprites and tilemaps snap their vertices (S41; not a terrain)
+    const bool p_pixelSnap = environment.pixelSnap && inputs.pixelArt && !inputs.terrain;
+    if (p_pixelSnap)
+        variant.properties |= ShaderPool::getPixelSnapProperty(ShaderType::MESH);
 
     // the built-in Lit's defines beyond the property bits (and a fork's of it, which has no
     // manifest): the material's lobes and hex tiling, the Terrain's hex tiled layers, the High
@@ -4323,6 +4340,9 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             inputs.morphNormal, inputs.morphTangent, inputs.terrain, inputs.instanced,
             p_depthAlphaMask, p_instanceFade, d_normals, d_vertexColorVec3, d_vertexColorVec4, d_uv1, d_textureRect,
             d_stochastic, p_lattice, inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES);
+        // the depth program snaps as its colour pass does (invariant gl_Position)
+        if (p_pixelSnap)
+            variant.depthProperties |= ShaderPool::getPixelSnapProperty(ShaderType::DEPTH);
     }
 
     // the environment specular the colour pass adds, which the SSR composite swaps for its
@@ -4611,7 +4631,7 @@ Vector2 RenderSystem::passFrameResolution(const CameraComponent& camera) const{
     if (camera.renderToTexture && camera.framebuffer)
         return Vector2((float)camera.framebuffer->getWidth(), (float)camera.framebuffer->getHeight());
     if (isFixedResolutionActive())
-        return Vector2((float)scene->getFixedResolutionWidth(), (float)scene->getFixedResolutionHeight());
+        return Vector2((float)fixedResolutionWidth(), (float)fixedResolutionHeight());
     return Vector2(targetViewRect().getWidth(), targetViewRect().getHeight());
 }
 
@@ -4623,6 +4643,8 @@ void RenderSystem::updatePassFrame(const CameraComponent& camera, const Transfor
     fillFrameBlock(passFrame, camera, cameraTransform, resolution);
     // the engine-internal members appended after ambient, and Lit's camera block
     fillFrameLighting(passFrame, passLitFrameBlocks[POST_BLEND_OWN].lit, camera);
+    // the pixel-snap grid of a Pixel Perfect Camera's pass (S41)
+    fillPassPixelSnap(passFrame, camera);
     // no post-processing colour unless the pass is the post-processed camera's colour pass
     // (renderCameraPass sets it then)
     fillPassPostColor(false, Rect(), 0.0f);
@@ -5092,8 +5114,9 @@ void RenderSystem::fillUberFilm(const PostProcessingSettings& settings, double t
 
 void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight,
                               FramebufferRender* destination, const Rect& viewport, bool nearestSource){
-    // the background around the viewport, as the blit (CLEAR: a tiler loads nothing)
-    uberPassRender.setClearColor(scene->getBackgroundColor());
+    // the background around the viewport, as the blit (CLEAR: a tiler loads nothing), or a
+    // Pixel Perfect Camera's letterbox colour
+    uberPassRender.setClearColor(uberClearColor ? *uberClearColor : scene->getBackgroundColor());
     uberPassRender.setLabel("uber");
 
     PipelineType pip = PIP_RTT;
@@ -5138,7 +5161,10 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
         if (uberSlotHalationWide.first != -1)
             uberRender.addTexture(uberSlotHalationWide, ShaderStageType::FRAGMENT, uberHalationWideTexture ? uberHalationWideTexture : &emptyBlack);
 
-        const Vector4 uvScaleOffset = flipGL ? Vector4(1.0f, 0.0f, -1.0f, 1.0f) : Vector4(1.0f, 0.0f, 1.0f, 0.0f);
+        const Vector4 flipScaleOffset = flipGL ? Vector4(1.0f, 0.0f, -1.0f, 1.0f) : Vector4(1.0f, 0.0f, 1.0f, 0.0f);
+        // the part of the source it reads (a Pixel Perfect Camera's inner image, S41)
+        const Vector4 uvScaleOffset(flipScaleOffset.x * uberInnerUV.x, flipScaleOffset.y * uberInnerUV.x + uberInnerUV.y,
+                                    flipScaleOffset.z * uberInnerUV.z, flipScaleOffset.w * uberInnerUV.z + uberInnerUV.w);
         const float sw = (float)std::max(sourceWidth, 1u);
         const float sh = (float)std::max(sourceHeight, 1u);
         const float vw = std::max(viewport.getWidth(), 1.0f);
@@ -5167,7 +5193,7 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
         // (the blur mixes in nothing until its chain made a texture: the source is bound instead)
         fs_uber.bloomBlur = Vector4(tint.x * settings.bloomIntensity, tint.y * settings.bloomIntensity, tint.z * settings.bloomIntensity,
                                     uberBlurTexture ? settings.blurIntensity : 0.0f);
-        fs_uber.sampling = Vector4(nearestSource ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
+        fs_uber.sampling = Vector4(nearestSource ? 1.0f : 0.0f, uberSharpBilinear.x, uberSharpBilinear.y, 0.0f);
         fillUberFilm(settings, time, vw, vh);
 
         uberRender.applyUniformBlock(uberSlotVSParams, sizeof(vs_uber_t), &vs_uber);
@@ -6807,6 +6833,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         scanSubmeshAttributes(mesh.submeshes[i], attributeBuffers);
 
         submeshLoads[i].shaderInputs = getSubmeshShaderInputs(mesh, mesh.submeshes[i], terrain, instmesh, hasMirror, sceneMeshShader);
+        submeshLoads[i].shaderInputs.pixelArt = isPixelArtDrawable(entity);
         // a FluidSimulation's output lent to submesh 0 (drawMesh) needs its texture coordinates
         if (i == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
             submeshLoads[i].shaderInputs.baseColorTexture = true;
@@ -7069,6 +7096,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         ShaderData& shaderData = mesh.submeshes[i].shader.get()->shaderData;
 
         mesh.submeshes[i].slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_PARAMS);
+        shaderData.getUniformBlockMembers("u_vs_pbrParams", mesh.submeshes[i].sizeVSParams);
         mesh.submeshes[i].slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_PARAMS);
         shaderData.getUniformBlockMembers("u_fs_pbrParams", mesh.submeshes[i].sizeFSParams);
         // a built-in Lit lobe variant: the lobes (and UV sets) end u_fs_pbrParams
@@ -8618,7 +8646,8 @@ SubmeshBatchVariant RenderSystem::getSubmeshBatchVariant(const MeshComponent& me
     SubmeshBatchVariant batch;
     if (!Engine::isGpuInstancingEnabled() || !mesh.allowGpuInstancing)
         return batch;
-    if (inputs.terrain || inputs.instanced || inputs.mirror || inputs.textureRect || inputs.skinning || inputs.morphTarget ||
+    // (a pixel-snapped drawable's snap mode is per draw: S41)
+    if (inputs.terrain || inputs.instanced || inputs.mirror || inputs.textureRect || inputs.pixelArt || inputs.skinning || inputs.morphTarget ||
             inputs.lattice || inputs.vat != VatVariant::NONE || hasExtraPass(submesh, inputs.terrain) ||
             submesh.primitiveType != PrimitiveType::TRIANGLES)
         return batch;
@@ -9297,6 +9326,7 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     const uint64_t properties = extra.shaderProperties;
     const bool p_lit = !(properties & (1u << 0));
     extra.slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_PARAMS);
+    shaderData.getUniformBlockMembers("u_vs_pbrParams", extra.sizeVSParams);
     extra.slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_PARAMS);
     shaderData.getUniformBlockMembers("u_fs_pbrParams", extra.sizeFSParams);
     extra.slotFSTexCoordSets = (properties & (1u << 2)) ? shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_TEXCOORDSETS) : -1;
@@ -9489,7 +9519,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
         render.applyUniformBlock(extra.slotFSTexCoordSets, sizeof(texCoordSets), &texCoordSets);
     }
 
-    render.applyUniformBlock(extra.slotVSParams, sizeof(float) * 48, (void*)objectBlock);
+    applyObjectBlock(render, extra.slotVSParams, extra.sizeVSParams, extra.shaderProperties, objectBlock);
 
     applyCustomUniforms(render, extra.customVSParams, frameTime, frameSceneTime, passResolution);
     applyCustomUniforms(render, extra.customFSParams, frameTime, frameSceneTime, passResolution);
@@ -9552,7 +9582,7 @@ RenderSystem::LodView RenderSystem::computeLodView(const CameraComponent& camera
     if (viewHeight <= 0.0f){
         viewHeight = targetViewRect().getHeight();
         if (isFixedResolutionActive())
-            viewHeight = (float)scene->getFixedResolutionHeight();
+            viewHeight = (float)fixedResolutionHeight();
     }
     viewHeight = std::max(viewHeight, 1.0f);
 
@@ -10826,8 +10856,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 applyTerrainLayersUniform(render, mesh.submeshes[i].slotFSTerrainLayers, entity, *terrain);
             }
 
-            //model, normal and mvp matrix
-            render.applyUniformBlock(mesh.submeshes[i].slotVSParams, sizeof(float) * 48, (void*)objectBlock);
+            //model, normal and mvp matrix (and a pixel-snapped variant's snap of the draw)
+            applyObjectBlock(render, mesh.submeshes[i].slotVSParams, mesh.submeshes[i].sizeVSParams, mesh.submeshes[i].shaderProperties, objectBlock);
 
             applyCustomUniforms(render, mesh.submeshes[i].customVSParams, frameTime, frameSceneTime, passResolution);
             applyCustomUniforms(render, mesh.submeshes[i].customFSParams, frameTime, frameSceneTime, passResolution);
@@ -10985,6 +11015,9 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             }
 
             //model, mvp matrix
+            // a pixel-snapped depth program snaps as the camera's colour pass (S41); a shadow map
+            // is the light's view, never on the camera's grid
+            vsDepthParams.pixelSnapDraw = Vector4(depthSnapMode(pipelineType, pixelSnapDrawMode(vsDepthParams.mvpMatrix)), 0.0f, 0.0f, 0.0f);
             depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthParams, std::min((unsigned int)sizeof(vs_depth_t), mesh.submeshes[i].sizeVSDepthParams), &vsDepthParams);
 
             applyCustomUniforms(depthRender, mesh.submeshes[i].customVSDepthParams, frameTime, frameSceneTime, passResolution);
@@ -11229,8 +11262,8 @@ TextureRender* RenderSystem::renderSSAO(CameraComponent& camera, bool fixedResol
     if (fixedResolution){
         // the main color pass renders into the fixed-resolution target, so the
         // AO buffer must match it (meshes convert gl_FragCoord with these sizes)
-        w = scene->getFixedResolutionWidth();
-        h = scene->getFixedResolutionHeight();
+        w = fixedResolutionWidth();
+        h = fixedResolutionHeight();
     }
     if (!ensureSSAOFramebuffers(w, h))
         return nullptr;
@@ -12627,6 +12660,10 @@ void RenderSystem::destroyBlit(){
     }
 
     rv().fixedResFramebuffer.destroy();
+    if (pixelPerfectFillCreated){
+        pixelPerfectFill.destroyTexture();
+        pixelPerfectFillCreated = false;
+    }
 
     rv().fixedResWidth = 0;
     rv().fixedResHeight = 0;
@@ -12661,10 +12698,12 @@ bool RenderSystem::ensureFixedResFramebuffer(unsigned int width, unsigned int he
     return rv().fixedResFramebuffer.isCreated();
 }
 
-void RenderSystem::renderBlit(TextureRender* source, Rect viewport, FramebufferRender* destination, const char* label){
+void RenderSystem::renderBlit(TextureRender* source, Rect viewport, const Vector4* clearColor, const Vector4& innerUV,
+                              FramebufferRender* destination, const char* label){
     // bars outside the viewport keep the background color (same as the direct
-    // path, which clears the whole destination before applying the viewport)
-    fixedResPassRender.setClearColor(scene->getBackgroundColor());
+    // path, which clears the whole destination before applying the viewport), or a Pixel
+    // Perfect Camera's letterbox colour
+    fixedResPassRender.setClearColor(clearColor ? *clearColor : scene->getBackgroundColor());
     fixedResPassRender.setLabel(label);
 
     PipelineType blitPip;
@@ -12693,6 +12732,9 @@ void RenderSystem::renderBlit(TextureRender* source, Rect viewport, FramebufferR
         ShaderData& bd = blitShader.get()->shaderData;
         blitRender.addTexture(bd.getTextureIndex(TextureShaderType::SCENECOLORTEXTURE), ShaderStageType::FRAGMENT, source);
         fs_blit.params = flipGL ? Vector4(1.0f, 0.0f, -1.0f, 1.0f) : Vector4(1.0f, 0.0f, 1.0f, 0.0f);
+        // the part of the source it reads (a Pixel Perfect Camera's inner image): uv * inner
+        fs_blit.params = Vector4(fs_blit.params.x * innerUV.x, fs_blit.params.y * innerUV.x + innerUV.y,
+                                 fs_blit.params.z * innerUV.z, fs_blit.params.w * innerUV.z + innerUV.w);
         blitRender.applyUniformBlock(blitSlotParams, sizeof(fs_blit_t), &fs_blit);
         blitRender.draw(0, 3, 1);
     }
@@ -13353,6 +13395,9 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     }
 
     ui.shaderProperties = ShaderPool::getUIProperties(p_hasTexture, p_hasFontAtlasTexture, false, p_vertexColorVec4, p_fontAtlasSdf);
+    // images, nine-slices and text on a Pixel Perfect Camera's grid (S41)
+    if (pixelSnapVariants)
+        ui.shaderProperties |= ShaderPool::getPixelSnapProperty(ShaderType::UI);
     const std::string& uiShaderBase = ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path;
     const std::string uiShaderSrc = getComponentShaderReference(uiShaderBase, ui.shaderFeatures, ui.blendMode);
     ui.customShaderId = ShaderPool::registerCustomShader(uiShaderSrc);
@@ -13372,6 +13417,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     ShaderData& shaderData = ui.shader.get()->shaderData;
 
     ui.slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::UI_VS_PARAMS);
+    shaderData.getUniformBlockMembers("u_vs_uiParams", ui.sizeVSParams);
     ui.slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::UI_FS_PARAMS);
     ui.slotFSTextParams = p_fontAtlasSdf ? shaderData.getUniformBlockIndex(UniformBlockType::UI_FS_TEXT_PARAMS) : -1;
     // the manifest of the shader it draws with (none for the built-in fallback)
@@ -13487,9 +13533,22 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
                 ui.needReload = true;
             return false;
         }
-        // a batch drawn with this element, its first (RenderSystemBatch.cpp)
+        // a batch drawn with this element, its first (RenderSystemBatch.cpp; a 'Pxs' element never
+        // batches: its snap mode is per draw)
         const BatchGeometry* batch = passBatchGeometry;
-        render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)(batch ? &batch->objectBlock[2] : &objectMVP(transform)));
+        if (ui.shaderProperties & ShaderPool::getPixelSnapProperty(ShaderType::UI)){
+            // the snap of the draw after its matrix (S41, includes/pixel_snap.glsl)
+            float block[20];
+            const Matrix4& mvp = objectMVP(transform);
+            std::memcpy(block, &mvp, sizeof(float) * 16);
+            block[16] = pixelSnapDrawMode(mvp);
+            block[17] = 0.0f;
+            block[18] = 0.0f;
+            block[19] = 0.0f;
+            render.applyUniformBlock(ui.slotVSParams, uniformUploadSize(sizeof(block), ui.sizeVSParams), block);
+        }else{
+            render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)(batch ? &batch->objectBlock[2] : &objectMVP(transform)));
+        }
         //Color, faded by the element's Canvas Groups (a Text Effect writes each glyph's colour in its
         // vertices: then only the alpha here); a batch's vertex colours carry each element's
         Vector4 drawColor = (batch && batch->neutralColor) ? Vector4(1.0f, 1.0f, 1.0f, 1.0f) : uiElementColor(ui, inCanvasLayer);
@@ -14324,7 +14383,7 @@ float RenderSystem::getPointsViewportHeight(const CameraComponent& camera) const
     }
     if (isFixedResolutionActive()){
         // the main color pass renders into the fixed-resolution target
-        return (float)scene->getFixedResolutionHeight();
+        return (float)fixedResolutionHeight();
     }
     if (Framebuffer* target = targetFramebuffer()){
         if (target->isCreated()){
@@ -15892,7 +15951,8 @@ void RenderSystem::updateCameraSizeForCanvas(Entity entity, float canvasWidth, f
             rect = Rect(0, 0, canvasWidth, canvasHeight);
         }
 
-        if (camera.autoResize){
+        // a Pixel Perfect Camera sets its camera's span itself (S41 R3)
+        if (camera.autoResize && !findPixelPerfectDrive(entity)){
             float newLeft = rect.getX();
             float newBottom = rect.getY();
             float newRight = rect.getWidth();
@@ -16035,6 +16095,7 @@ void RenderSystem::needReloadMeshVariants() {
 SubmeshShaderInputs RenderSystem::getCurrentSubmeshInputs(Entity entity, const MeshComponent& mesh, unsigned int index, const TerrainComponent* terrain,
                                                           const InstancedMeshComponent* instmesh, bool hasMirror, const std::string& sceneMeshShader) const{
     SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, mesh.submeshes[index], terrain, instmesh, hasMirror, sceneMeshShader);
+    inputs.pixelArt = isPixelArtDrawable(entity);
     if (index == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
         inputs.baseColorTexture = true;
     return inputs;
@@ -16961,6 +17022,10 @@ bool RenderSystem::isRenderingFlipped(const CameraComponent& camera) const{
 }
 
 bool RenderSystem::isFixedResolutionActive() const{
+    // a Pixel Perfect Camera drawing through its target drives it (S41 R4); the scene's own
+    // settings are kept and ignored meanwhile
+    if (const PixelPerfectDrive* drive = viewPixelPerfect())
+        return drive->renderTexture;
     if (!scene->isFixedResolutionEnabled() || scene->getFixedResolutionWidth() == 0 || scene->getFixedResolutionHeight() == 0)
         return false;
 #ifdef JASPERENGINE_EDITOR
@@ -17201,6 +17266,13 @@ void RenderSystem::updateMVP(size_t index, Transform& transform, CameraComponent
         modelViewMatrix.set(2, 2, transform.worldScale.z);
 
         transform.modelViewProjectionMatrix = camera.projectionMatrix * modelViewMatrix;
+
+    }else if (!pixelPerfectDrives.empty()){
+
+        // a Pixel Perfect Camera's 90-degree steps (S41 R10), drawn only
+        const Matrix4 model = pixelArtModel(scene->getComponentArray<Transform>()->getEntity(index), transform.modelMatrix,
+                                            findPixelPerfectDrive(camera));
+        transform.modelViewProjectionMatrix = camera.viewProjectionMatrix * model;
 
     }else{
 
@@ -17457,6 +17529,9 @@ void RenderSystem::update(double dt){
         }
     }
 
+    // the Pixel Perfect Cameras' layouts and clips, before the cameras make their matrices (S41)
+    updatePixelPerfect(mainCameraEntity);
+
     hasMultipleCameras = false;
     for (int i = 0; i < cameras->size(); i++){
         CameraComponent& camera = cameras->getComponentFromIndex(i);
@@ -17515,6 +17590,11 @@ void RenderSystem::update(double dt){
         
         if (camera.needUpdate){
             updateCamera(camera, cameraTransform);
+            // R8: a Pixel Perfect Camera draws from its snapped position
+            if (!pixelPerfectDrives.empty()){
+                if (PixelPerfectDrive* drive = findPixelPerfectDrive(cameraEntity))
+                    snapPixelPerfectView(camera, cameraTransform, *drive);
+            }
         }
     }
 
@@ -17567,6 +17647,9 @@ void RenderSystem::update(double dt){
     CameraComponent& mainCamera = *mainCameraPtr;
     Transform& mainCameraTransform = *mainCameraTransformPtr;
     fadeEyePosition = mainCameraTransform.worldPosition;
+    // the mirrors may have moved the camera components
+    if (!pixelPerfectDrives.empty())
+        refreshPixelPerfectCameras();
 
     // with its view up to date, whether it draws offscreen for a scene-colour reader
     updateSceneColorRedirect(mainCamera);
@@ -18681,8 +18764,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     bool useFixedRes = false;
     if (isMainCamera && !pass.renderToTexture && isFixedResolutionActive()){
         loadBlit();
-        if (blitLoaded && ensureFixedResFramebuffer(scene->getFixedResolutionWidth(),
-                scene->getFixedResolutionHeight(), scene->getFixedResolutionFilter())){
+        if (blitLoaded && ensureFixedResFramebuffer(fixedResolutionWidth(),
+                fixedResolutionHeight(), fixedResolutionFilter())){
             useFixedRes = true;
         }
     }
@@ -18695,11 +18778,17 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // view lets it) draws its scene offscreen, at the render scale, and the uber pass draws that
     // to the destination with its effects. With fixed resolution it is the blit: it reads the
     // fixed-resolution target (no extra pass).
+    // the Pixel Perfect Camera the view's main camera draws through (S41): Stretch Fill is the
+    // uber pass's sharp bilinear, with or without post-processing
+    const PixelPerfectDrive* mainPixelDrive = (isMainCamera && !pass.renderToTexture && isBaseLayer()) ? viewPixelPerfect() : nullptr;
+    const bool sharpBilinear = useFixedRes && mainPixelDrive && mainPixelDrive->mode == PixelUpscaleMode::STRETCH_FILL;
+    const bool postUber = postTiers.uber && rv().postProcessing;
     bool useUber = false;
     unsigned int uberSceneWidth = 0;
     unsigned int uberSceneHeight = 0;
-    if (postTiers.uber && isMainCamera && (isBaseLayer() || pass.renderToTexture) && rv().postProcessing
-            && (target || pass.renderToTexture || useFixedRes || swapchainRedirect) && loadUber(postTiers.uberFeatures)){
+    if ((postUber || sharpBilinear) && isMainCamera && (isBaseLayer() || pass.renderToTexture)
+            && (target || pass.renderToTexture || useFixedRes || swapchainRedirect)
+            && loadUber((postUber ? postTiers.uberFeatures : 0u) | (sharpBilinear ? (uint32_t)UBER_SHARP_BILINEAR : 0u))){
         if (useFixedRes){
             uberSceneWidth = rv().fixedResWidth;
             uberSceneHeight = rv().fixedResHeight;
@@ -18745,7 +18834,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             rv().msaaSamples = 1;
         }
         if (postLinearSampler.isCreated() && !(postTiers.uber && isFixedResolutionActive()
-                && scene->getFixedResolutionFilter() == TextureFilter::NEAREST))
+                && fixedResolutionFilter() == TextureFilter::NEAREST))
             postLinearSampler.destroyTexture();
     }
     bool useSSR = false;
@@ -19045,7 +19134,17 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     const bool ssrStore = ssrInPass && postTiers.tailColor && isMainCamera && (isBaseLayer() || pass.renderToTexture) &&
         rv().postProcessing && postTailLut.isCreated() && !videoFarPlanes && ensureSSRIdentityLut();
 
-    if (isBaseLayer() || pass.renderToTexture){
+    // a Pixel Perfect Camera drawing straight into the destination: its bars in the letterbox
+    // colour (S41 R3), then the colour pass loads what that pass left
+    bool pixelPerfectBars = false;
+    if (mainPixelDrive && !mainPixelDrive->renderTexture && !useSSR && !usePostProcess && !useFixedRes && !useUber
+            && !useSceneColorRedirect && !useMsaaRedirect){
+        pixelPerfectBars = renderPixelPerfectBars(*mainPixelDrive, viewRect);
+    }
+
+    if (pixelPerfectBars){
+        camera.render.setLoadActionLoad();
+    }else if (isBaseLayer() || pass.renderToTexture){
         Vector4 clear = scene->getBackgroundColor();
 #ifdef JASPERENGINE_EDITOR
         // the Overdraw Draw Mode's layers add up from black
@@ -19869,7 +19968,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         if (ssrPassTarget == &rv().ssrSceneTarget && ssrDestination != ssrPassTarget){
             const Rect whole = ssrDestination ? Rect(0, 0, (float)ssrDestination->getColorTexture().getWidth(), (float)ssrDestination->getColorTexture().getHeight())
                                               : targetViewRect();
-            renderBlit(&rv().ssrSceneTarget.getColorTexture(), whole, ssrDestination, "ssr scene blit");
+            renderBlit(&rv().ssrSceneTarget.getColorTexture(), whole, nullptr, Vector4(1.0f, 0.0f, 1.0f, 0.0f), ssrDestination, "ssr scene blit");
         }
         ssrLinearStore = false;
         passPostColorLut = nullptr;
@@ -19911,6 +20010,17 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 renderHalationChain(sourceTexture, sourceWidth, sourceHeight, nearestSource);
             }
         }
+        // a Pixel Perfect Camera's target: its inner base image, its bars and its Stretch Fill
+        if (mainPixelDrive){
+            if (useFixedRes && !chainResult)
+                uberInnerUV = pixelPerfectInnerUV(*mainPixelDrive);
+            uberClearColor = &mainPixelDrive->letterboxColor;
+            if (sharpBilinear){
+                const Rect viewport = targetViewRect();
+                uberSharpBilinear = Vector2(viewport.getWidth() / (float)mainPixelDrive->layout.baseWidth,
+                                            viewport.getHeight() / (float)mainPixelDrive->layout.baseHeight);
+            }
+        }
         if (pass.renderToTexture){
             renderUber(sourceTexture, sourceWidth, sourceHeight, &camera.framebuffer->getRender(),
                        Rect(0, 0, (float)camera.framebuffer->getWidth(), (float)camera.framebuffer->getHeight()), nearestSource);
@@ -19924,20 +20034,30 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         uberBlurTexture = nullptr;
         uberHalationTexture = nullptr;
         uberHalationWideTexture = nullptr;
+        uberInnerUV = Vector4(1.0f, 0.0f, 1.0f, 0.0f);
+        uberClearColor = nullptr;
+        uberSharpBilinear = Vector2(0.0f, 0.0f);
     // Fixed game resolution: upscale the offscreen scene color to the view
     // rect of the real destination. Layer scenes draw after this (load
     // action), so overlaid UI scenes stay at native resolution.
     }else if (useFixedRes){
-        renderFixedResolutionBlit();
+        if (mainPixelDrive){
+            // the Pixel Perfect Camera's base image at k, its bars in the letterbox colour (S41)
+            renderBlit(&rv().fixedResFramebuffer.getRender().getColorTexture(), targetViewRect(), &mainPixelDrive->letterboxColor,
+                       pixelPerfectInnerUV(*mainPixelDrive));
+        }else{
+            renderFixedResolutionBlit();
+        }
     }
 
+    const Vector4* barsColor = mainPixelDrive ? &mainPixelDrive->letterboxColor : nullptr;
     // the scene drawn offscreen for its scene-colour copy, onto the swapchain
     if (useSceneColorRedirect){
-        renderBlit(&rv().sceneColorRedirect.getRender().getColorTexture(), targetViewRect());
+        renderBlit(&rv().sceneColorRedirect.getRender().getColorTexture(), targetViewRect(), barsColor);
     }
     // the resolved multisampled scene, onto the swapchain
     if (useMsaaRedirect){
-        renderBlit(&rv().msaaResolveFramebuffer.getRender().getColorTexture(), targetViewRect());
+        renderBlit(&rv().msaaResolveFramebuffer.getRender().getColorTexture(), targetViewRect(), barsColor);
     }
     passHidesEditorHidden = false;
 }
@@ -20754,6 +20874,7 @@ void RenderSystem::buildPassObjects(PassObjects& objects, CameraComponent& camer
     const bool flipped = isRenderingFlipped(camera);
     static const Matrix4 flipYMatrix = Matrix4::scaleMatrix(Vector3(1, -1, 1));
     const float EPSILON = 1e-6f;
+    const PixelPerfectDrive* viewPixelDrive = findPixelPerfectDrive(camera);
 
     for (size_t i = 0; i < count; i++){
         Transform& transform = transforms->getComponentFromIndex(i);
@@ -20847,7 +20968,8 @@ void RenderSystem::buildPassObjects(PassObjects& objects, CameraComponent& camer
 
             mvp = camera.projectionMatrix * modelViewMatrix;
         }else{
-            mvp = camera.viewProjectionMatrix * (*model);
+            // a Pixel Perfect Camera's 90-degree steps (S41 R10)
+            mvp = camera.viewProjectionMatrix * pixelArtModel(entity, *model, viewPixelDrive);
         }
         if (flipped){
             mvp = flipYMatrix * mvp;
@@ -21255,6 +21377,29 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     view.disableClouds = desc.disableClouds;
     view.atmosphereQuality = desc.atmosphereQuality;
 
+    // S41: a Pixel Perfect Camera lays the image out on the view's own target (the Game view),
+    // its viewport the view rect; the Scene view's Snap Preview draws on a grid of its own
+    view.pixelPerfectActive = false;
+    view.snapPreview = false;
+    if (desc.pixelPerfect && scene->isComponentRegistered<PixelPerfectCameraComponent>()){
+        if (PixelPerfectCameraComponent* component = scene->findComponent<PixelPerfectCameraComponent>(desc.camera)){
+            if (makePixelPerfectDrive(desc.camera, *sceneCamera, *component, desc.baseLayer, (int)desc.target->getWidth(),
+                                      (int)desc.target->getHeight(), view.pixelPerfect)){
+                view.pixelPerfectActive = true;
+                view.viewRect = view.pixelPerfect.layout.viewport;
+                // the Game view's layout is what the component reports outside Play
+                if (!desc.editorOverlays && !Engine::isSceneRunning(scene))
+                    component->layout = view.pixelPerfect.layout;
+            }
+        }
+    }
+    if (!view.pixelPerfectActive && desc.snapPreviewScale > 0.0f && pixelSnapVariants){
+        view.snapPreview = true;
+        view.snapPreviewGrid = pixelart::SnapGrid();
+        view.snapPreviewGrid.width = view.viewRect.getWidth() / desc.snapPreviewScale;
+        view.snapPreviewGrid.height = view.viewRect.getHeight() / desc.snapPreviewScale;
+    }
+
     activeView = &view;
 
     // the view's fixed-resolution target goes with the setting, like the frame's
@@ -21267,7 +21412,10 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     // the view's own copy of the camera, sized for the view's canvas
     view.camera = *sceneCamera;
     CameraComponent& camera = view.camera;
-    if (desc.canvasWidth > 0.0f && desc.canvasHeight > 0.0f && camera.autoResize && !camera.renderToTexture){
+    if (view.pixelPerfectActive){
+        view.pixelPerfect.camera = &camera;
+        applyPixelPerfectClips(camera, view.pixelPerfect);
+    }else if (desc.canvasWidth > 0.0f && desc.canvasHeight > 0.0f && camera.autoResize && !camera.renderToTexture){
         camera.leftClip = 0.0f;
         camera.bottomClip = 0.0f;
         camera.rightClip = desc.canvasWidth;
@@ -21275,6 +21423,8 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
         camera.aspect = desc.canvasWidth / desc.canvasHeight;
     }
     updateCamera(camera, cameraTransform);
+    if (view.pixelPerfectActive)
+        snapPixelPerfectView(camera, cameraTransform, view.pixelPerfect);
 
     // through the frame's own camera, everything that depends only on the camera is the
     // frame's: culled instances, terrain cut, shadow cascades and maps, mirrors

@@ -2873,4 +2873,50 @@ CASES = [
         "checks": {"calls": ["get_build_info"], "reply_must": [r"(?i)(compiler|toolchain|build tools)"]},
         "max_turns": 16,
     },
+    {
+        "id": "guard_pixel_perfect_camera",
+        "kind": "guard",
+        "what_happened": "Pixel art drawn at a fractional scale (columns 2 and 3 px wide, blur): the fix is the camera's Pixel "
+                         "Perfect Camera component (S41), not a post-processing pixelate, a shader fork or the scene's Fixed "
+                         "Resolution.",
+        "text_at_issue": "None since the guide's 'pixel art' line was cut (it passed without it): the component's name in list_component_types",
+        "source": "S41 (docs/specs/S41-pixel-perfect-camera.md R3, the @asynkimo failure); no failure on record",
+        "prompt": "My pixel-art game looks wrong at 1366x768: some pixel columns are wider than others and sprites shimmer "
+                  "when the camera moves. Make the Main Camera pixel perfect at 320x180.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nMain Camera [3] camera transform",
+                                                   {"entities": [{"id": 3, "path": "Main Camera"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:Main Camera|^3$"}, "result": ok(
+                "Main Camera [3] components: camera transform; camera: type ortho", {"id": 3, "path": "Main Camera"})},
+            {"tool": "add_component", "result": ok("Added pixelperfectcamera to GameObject 3 \"Main Camera\" (one undo step).",
+                                                   {"entity": {"id": 3, "path": "Main Camera"}, "component": "pixelperfectcamera"})},
+            {"tool": "set_properties", "result": ok("Set 2 properties on GameObject 3 \"Main Camera\".", {"entity": {"id": 3}})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)pixel.?perfect"}}],
+                   "must_not_call": ["fork_shader", "apply_post_processing_preset",
+                                     {"tool": "set_scene_settings", "args": {"settings": {"fixed_resolution_enabled": True}}}]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_game_view_pixel_scale",
+        "kind": "guard",
+        "what_happened": "Checking pixel art at 1x (one physical pixel per art pixel) is the Game view's Pixel Scale, not its "
+                         "zoom Scale (1 to 5, the image fitted first) or a resolution change.",
+        "text_at_issue": "configure_game_view pixel_scale: 'Pixel Perfect scale; 0 auto.'",
+        "source": "S41 (R20, AC15); no failure on record",
+        "prompt": "The main camera has a Pixel Perfect Camera. Show the Game view at 1x pixel scale so I can check the art pixel "
+                  "for pixel, then take a Game view screenshot.",
+        "mocks": [
+            {"tool": "configure_game_view", "args": {"pixel_scale": 1}, "result": ok(
+                "Game view: aspect free, scale 1, pixel scale 1.", {"aspect": "free", "scale": 1, "pixel_scale": 1})},
+            {"tool": "configure_game_view", "result": ok("Game view: aspect free, scale 1, pixel scale 0.",
+                                                         {"aspect": "free", "scale": 1, "pixel_scale": 0})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).",
+                                               {"view": "game", "width": 1280, "height": 720})},
+        ],
+        "checks": {"calls": [{"tool": "configure_game_view", "args": {"pixel_scale": 1}}],
+                   "must_not_call": [{"tool": "configure_game_view", "args": {"resolution": "*"}}]},
+        "max_turns": 12,
+    },
 ]
