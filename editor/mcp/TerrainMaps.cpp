@@ -224,6 +224,25 @@ TerrainBlendmapResult encodeConstantMap(Project* project, uint32_t sceneId, Enti
     return result;
 }
 
+// The new map's pixels in the texture pool under its path, so whatever binds the path finds them at once: a
+// load from the file would still be running when a write right after it asks the store whether the map
+// exists, and the store would answer no
+void seedTerrainMapPool(const std::string& relativePath, int resolution, int channels, ColorFormat format, const std::vector<unsigned char>& pixels) {
+    unsigned char* raw = static_cast<unsigned char*>(std::malloc(pixels.size()));
+    if (!raw) return;
+    std::memcpy(raw, pixels.data(), pixels.size());
+    TextureData seed(resolution, resolution, static_cast<unsigned int>(pixels.size()), format, channels, raw);
+    seed.setDataOwned(false);
+    std::array<TextureData, 6> faces;
+    faces[0] = seed;
+    auto entry = TextureDataPool::get(relativePath, faces);
+    if (entry && entry->at(0).getData() == raw) {
+        entry->at(0).setDataOwned(true);
+    } else {
+        std::free(raw);
+    }
+}
+
 TerrainBlendmapResult writeConstantMap(Project* project, uint32_t sceneId, Entity entity, const std::string& kind, int requested,
                                        const unsigned char rgba[4], const char* what) {
     TerrainBlendmapResult result = encodeConstantMap(project, sceneId, entity, kind, requested, rgba, what);
@@ -239,7 +258,12 @@ TerrainBlendmapResult writeConstantMap(Project* project, uint32_t sceneId, Entit
     if (!FileUtils::writeFileReplacing(result.fullPath, result.encoded)) {
         result.success = false;
         result.error = std::string("Failed to write generated terrain ") + what + ".";
+        return result;
     }
+    const int resolution = std::max(2, requested);
+    std::vector<unsigned char> pixels(static_cast<size_t>(resolution) * static_cast<size_t>(resolution) * 4);
+    for (size_t i = 0; i < pixels.size(); i += 4) std::memcpy(&pixels[i], rgba, 4);
+    seedTerrainMapPool(result.relativePath, resolution, 4, ColorFormat::RGBA, pixels);
     return result;
 }
 

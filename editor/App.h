@@ -73,6 +73,7 @@ namespace jasperengine::editor{
     class PoseAnimationWindow;
     class AnimatorWindow;
     class AvatarWindow;
+    class NoiseGraphWindow;
     class TerrainEditWindow;
     class TextureSynthesisWindow;
     class AudioMixerWindow;
@@ -250,6 +251,7 @@ namespace jasperengine::editor{
         AnimatorWindow* animatorWindow;
         AvatarWindow* avatarWindow = nullptr;
         TerrainEditWindow* terrainEditWindow;
+        NoiseGraphWindow* noiseGraphWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
         AudioMixerWindow* audioMixerWindow;
         SoundBrowserWindow* soundBrowserWindow;
@@ -696,6 +698,7 @@ namespace jasperengine::editor{
         void openAvatarWindow(uint32_t sceneId, Entity entity);
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
+        NoiseGraphWindow* getNoiseGraphWindow() const { return noiseGraphWindow; }
         SystemsWindow* getSystemsWindow() const;
         JobsMemoryWindow* getJobsMemoryWindow() const;
         ProfilerWindow* getProfilerWindow() const { return profilerWindow; }

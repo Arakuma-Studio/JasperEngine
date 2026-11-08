@@ -208,7 +208,7 @@ TEST(ModuleUsage, LuaNamesNeedTheirModules) {
 }
 
 TEST(ModuleUsage, DynamicAccessNeedsEveryModule) {
-    const std::string every = "htmlui video runtimeshaders physics3d physics2d";
+    const std::string every = "htmlui video runtimeshaders physics3d physics2d noise";
     for (const char* code : {"local f = _G[name]", "local f = _ENV[name]", "local chunk = load(text)", "local s = loadstring(text)",
                              "dofile(path)", "local r = debug.getregistry()", "local g = package.loaded", "local m = require(name)",
                              "local g = require('_G')"}) {
@@ -224,7 +224,7 @@ TEST(ModuleUsage, CppScriptsNeedEveryModule) {
     ModuleScan scan = empty();
     scan.cppScripts.push_back("scripts/Player.cpp");
     const ModuleUsage usage = ModuleUsageDetector::analyze(scan);
-    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d");
+    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d noise");
     EXPECT_NE(usage.firstEvidence("htmlui").find("scripts/Player.cpp"), std::string::npos);
 }
 
@@ -452,6 +452,23 @@ TEST(PlayerVariants, TheSmallestVariantHoldingTheModules) {
     EXPECT_EQ(PlayerRuntimes::smallestWith({lite}, {"htmlui"}), nullptr);
     EXPECT_EQ(PlayerRuntimes::runtimeId("linux", "x64", "glcore", false, "lite3d"), "linux-x64-glcore-release-lite3d");
     EXPECT_EQ(PlayerRuntimes::runtimeId("linux", "x64", "glcore", false), "linux-x64-glcore-release");
+}
+
+// T2 R43, AC34: each kind of evidence for noise, and what is not evidence
+TEST(ModuleUsage, NoiseEvidence) {
+    EXPECT_TRUE(withLua("local v = Noise.perlin(1, 2)").needs("noise"));
+    EXPECT_TRUE(withLua("local g = NoiseGraph.load('a.noisegraph')").needs("noise"));
+    // dynamic access and C++ code reach anything, which detectedModules covers
+    EXPECT_TRUE(withLua("local t = _G[name]").needs("noise"));
+    ModuleScan cpp = empty();
+    cpp.cppScripts.push_back("scripts/Player.cpp");
+    EXPECT_TRUE(ModuleUsageDetector::analyze(cpp).needs("noise"));
+}
+
+TEST(ModuleUsage, ABakedProjectDoesNotNeedNoise) {
+    EXPECT_FALSE(ModuleUsageDetector::analyze(empty()).needs("noise"));
+    // a script that never names it; a .noisegraph on disk is not part of the scan at all
+    EXPECT_FALSE(withLua("local noise = 1; print(noise)").needs("noise"));
 }
 
 // docs/specs/S37-sound-events.md 6.6: what needs the soundlayer module, and every variant has it

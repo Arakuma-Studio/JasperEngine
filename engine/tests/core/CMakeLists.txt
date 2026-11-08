@@ -130,14 +130,33 @@ jasperengine_skip_unity_build(
     REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/platform/X11VisibilityTest.cpp)
 
+# The noise suites compile kernels' arithmetic in their own units and compare it with the library's, so
+# they take the same flag. The golden cases are shared with tools/noise/golden, and the presets are
+# embedded as the tool embeds them (T2 R41).
+set(CORE_TEST_NOISE_SOURCES "")
+if(JASPERENGINE_NOISE)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/noise/golden/EmbedPresets.cmake)
+    jasperengine_embed_noise_presets("${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/resources/noisegraphs" "${CMAKE_CURRENT_BINARY_DIR}/noise_presets.gen.h")
+    set(CORE_TEST_NOISE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/noise/NoiseGoldenCases.cpp)
+    file(GLOB CORE_TEST_NOISE_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/noise/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/terrain/HeightfieldErosion*Test.cpp)
+    if(MSVC)
+        set_source_files_properties(${CORE_TEST_NOISE_FILES} PROPERTIES COMPILE_OPTIONS "/fp:precise")
+    else()
+        set_source_files_properties(${CORE_TEST_NOISE_FILES} PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+    endif()
+    set_property(SOURCE ${CORE_TEST_NOISE_FILES} PROPERTY SKIP_UNITY_BUILD_INCLUSION ON)
+else()
+    list(FILTER CORE_TEST_SOURCES EXCLUDE REGEX "/noise/|/terrain/HeightfieldErosion")
+endif()
+
 jasperengine_add_test_target(jasperengine-core-tests
-    SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}
+    SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER} ${CORE_TEST_NOISE_SOURCES}
         # the animation clip tests' asset root (a temporary directory around each of them)
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimTestEnvironment.cpp
         # the vertex animation tests' asset root, and their asset and GLB fixtures
         ${CMAKE_CURRENT_SOURCE_DIR}/vat/VatTestEnvironment.cpp
     # (platform/android: the soft keyboard's text conversions, plain C++, AndroidTextInputTest)
-    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support
+    INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support ${CMAKE_CURRENT_SOURCE_DIR}/noise ${CMAKE_CURRENT_BINARY_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/android
         # WebKeyMap.h, the web platform's key map (plain C++)
         ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/emscripten
@@ -234,7 +253,14 @@ add_executable(je-bench-anim ${CMAKE_CURRENT_SOURCE_DIR}/bench/AnimBench.cpp ${C
 add_executable(je-bench-audio ${CMAKE_CURRENT_SOURCE_DIR}/bench/AudioMeterBench.cpp)
 # je-bench-foliage: foliage's budgets (T5 R41, R42, R45, docs/perf/foliage.md)
 add_executable(je-bench-foliage ${CMAKE_CURRENT_SOURCE_DIR}/bench/FoliageBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
-foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-audio je-bench-foliage)
+set(CORE_BENCH_TARGETS je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-audio je-bench-foliage)
+# je-bench-noise: the noise budgets (T2 R46-R49, docs/perf/noise.md)
+if(JASPERENGINE_NOISE)
+    add_executable(je-bench-noise ${CMAKE_CURRENT_SOURCE_DIR}/bench/NoiseBench.cpp)
+    target_compile_definitions(je-bench-noise PRIVATE JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+    list(APPEND CORE_BENCH_TARGETS je-bench-noise)
+endif()
+foreach(target ${CORE_BENCH_TARGETS})
     target_link_libraries(${target} PRIVATE jasperengine Threads::Threads)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support)
     jasperengine_apply_cxx_standard(${target})

@@ -49,6 +49,7 @@
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
 #include "window/dialog/CreateTerrainDialog.h"
+#include "window/TerrainGenerateSection.h"
 #include "window/Widgets.h"
 #include "util/FileUtils.h"
 
@@ -2739,6 +2740,7 @@ void editor::TerrainEditWindow::show(){
     }
     // R62: what the pointer is over
     drawInfoPanel(sceneProject, terrain);
+    drawTerrainGenerateSection(project, selectedSceneId, selectedEntity);
     ImGui::End();
 
     // only over the settings this window read: never constructor defaults or another project's

@@ -108,6 +108,9 @@ ENGINE_AREAS = [(re.compile(p, re.I), g) for p, g in [
     (r"fluid", "engine: fluid simulation"),
     (r"nav(igation|mesh|grid|agent)?|crowd", "engine: navigation"),
     (r"AudioClipSource|AudioImportTable|ClipImportSettings|clipFadeWeight", "engine: sound layer"),
+    # Curl noise shares jasperengine::noise and stays with the particles: only what the module holds counts (T2 R42)
+    (r"curl", "engine: particles"),
+    (r"noise::|NoiseGraph|CompiledGraph|HeightfieldErosion|NoiseClassesLua", "engine: noise"),
     (r"spline", "engine: splines"),
     (r"lattice", "engine: lattice deformer"),
     (r"particle", "engine: particles"),
@@ -313,6 +316,7 @@ MODULES = [(re.compile(p), m) for p, m in [
     (r"2D physics", "physics2d"),
     (r"navigation", "navigation"),
     (r"sound layer", "soundlayer"),
+    (r"engine: noise", "noise"),
     (r"luabridge3", "Lua bindings"),
     (r"^lib: lua$", "Lua"),
     (r"C\+\+ standard library", "C++ standard library"),

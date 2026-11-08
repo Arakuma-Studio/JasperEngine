@@ -59,7 +59,8 @@ namespace jasperengine::editor {
         ANIMATION_CLIP,     // .anim (the Animation window; an icon, no thumbnail)
         ANIMATOR_ASSET,     // .controller (the Animator window), .mask, .montage (the Inspector)
         VERTEX_ANIMATION,   // .vat (the Inspector's asset view / the baker; an icon, no thumbnail)
-        PHYSICS_MATERIAL    // .physicsmaterial (the Inspector's asset view; an icon)
+        PHYSICS_MATERIAL,   // .physicsmaterial (the Inspector's asset view; an icon)
+        NOISE_GRAPH         // .noisegraph (the Noise Graph window)
     };
 
     struct FileEntry {
@@ -585,6 +586,11 @@ namespace jasperengine::editor {
         // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
         // one project undo step, then renamed in place
         void assetsCreateAudioMixer(const fs::path& directory);
+        // Create > Noise Graph (T2 R62): a preset's copy, or with an empty id the Blank graph (a single
+        // output_height on a Constant), in directory, one project undo step, then renamed in place
+        void assetsCreateNoiseGraph(const std::string& presetId, const fs::path& directory);
+        // the Create list's Noise Graph entry: a submenu of Blank and the presets
+        void renderNoiseGraphCreateMenu(const std::string& label, const fs::path& directory);
         void assetsCreateSoundEvent(const fs::path& directory);
         // a shuffle event of the selected audio files
         void assetsCreateSoundEventFromClips();

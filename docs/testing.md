@@ -232,6 +232,18 @@ A new test that needs a game that runs builds it prebuilt. One that needs what o
 game has (C++ scripts, `ProjectBuild.cmake`, capacities above the player's, native plugins a player cannot carry, no runtime
 shader compiler, compiler output) compiles, and joins the table above with its reason.
 
+### The noise golden tool
+
+`jasperengine-noise-golden` (`tools/noise/golden`: noise, graph and the table, no engine) is the self-check of
+T2's one golden table: `cmake -S tools/noise/golden -B build/noise-golden -G Ninja -DCMAKE_BUILD_TYPE=Release`,
+then `build/noise-golden/jasperengine-noise-golden --all-backends --report -`. It prints
+`noise-golden <target> <backend> <cases> pass|FAIL table=<hash>`, exits 1 on any mismatch, and `--self-test` must
+exit 1. `tools/build.sh exec android tools/noise/cross_check.sh` runs it on the four Android ABIs (ARM under
+qemu-user); `--red-contract` must fail. `WEB_PROJECT=noise tools/build.sh web`, then `GATE=noise tools/build.sh web-gate`,
+runs the same table on the web, also with `WASM_SIMD=0`. `python3 tools/noise/check_kernels.py [--self-test]` is
+the lint for this area, which `tools/check-changed` does not run. A difference is a kernel bug, never a new
+table; record each platform's report in `docs/perf/noise.md`.
+
 ### Linked folders in a web game (S68 AC2)
 
 `tools/mcp/tests/test_linked_folders_export.py` builds and runs a Desktop game with

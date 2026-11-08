@@ -116,7 +116,8 @@ TEST(ContentManifest, RefusesContentNeedingAModuleThePlayerLacks) {
     ASSERT_TRUE(ContentManifest::fromJson(json, old, error)) << error;
     EXPECT_FALSE(old.hasModules);
     EXPECT_EQ(missingModules(old, allModules()), std::vector<std::string>{});
-    EXPECT_EQ(missingModules(old, lite), (std::vector<std::string>{"htmlui", "video", "runtimeshaders"}));
+    // T2 added noise, which lite variants leave out (N11)
+    EXPECT_EQ(missingModules(old, lite), (std::vector<std::string>{"htmlui", "video", "runtimeshaders", "noise"}));
     // and a Compile build (no player id) is not asked
     problems.clear();
     EXPECT_TRUE(checkContent(m, "", access, false, problems, &lite));

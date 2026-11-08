@@ -494,6 +494,10 @@ namespace jasperengine::editor {
 
 
     public:
+        // T2 R45: whether an asset of the project ships, as far as the noise module decides it. Noise Graphs
+        // are recipes: they ship only when the game can load one at run time, and then all of them, since a
+        // Lua string can name any. usage null: not known (a source export), which keeps everything.
+        static bool shipsForNoise(const fs::path& relPath, const ModuleUsage* usage);
         // Why `dir` can't take an export of `project` ("" when it can): it is, or is inside, the
         // project, its assets or its Lua folder (the editor would import the exported files as
         // project assets), unless it is below a hidden folder or the project's top-level build/

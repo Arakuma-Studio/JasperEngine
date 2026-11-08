@@ -39,8 +39,10 @@ namespace jasperengine {
         VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
         // 24 to 27 are the pixel art program's (docs/specs/S41-S52)
         SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
-        // 30 Terrain World, 31 Voxel Volume (programme D19, D22)
-        TreeData = 29               // a .jetrees file of a Terrain's trees (T5 R22)
+        // 30 Terrain World, 31 Voxel Volume (programme D19, D22); NoiseGraph took 32 when upstream took 28. Stored in
+        // assetmap.bin: these never move.
+        TreeData = 29,              // a .jetrees file of a Terrain's trees (T5 R22)
+        NoiseGraph = 32             // a .noisegraph Noise Graph (T2)
     };
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
@@ -71,13 +73,14 @@ namespace jasperengine {
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
             case AssetType::SoundEvent: return "sound_event";
+            case AssetType::NoiseGraph: return "noise_graph";
             case AssetType::Unknown: break;
         }
         return "unknown";
     }
 
     inline AssetType assetTypeFromName(std::string_view name) {
-        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::SoundEvent); value++) {
+        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::NoiseGraph); value++) {
             const AssetType type = static_cast<AssetType>(value);
             if (name == assetTypeName(type)) {
                 return type;

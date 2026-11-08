@@ -120,6 +120,10 @@ class LuaApiJson(unittest.TestCase):
         self.assertEqual(classes['Audio']['modules'], ['soundlayer'])
         self.assertEqual(classes['SoundHandle']['modules'], ['soundlayer'])
         self.assertEqual(enums['AudioPlayOn']['modules'], ['soundlayer'])
+        # T2 R43, AC34: the noise API, which ModuleUsage reads the same way
+        for name in ('Noise', 'NoiseGraph', 'NoiseGrid', 'NoiseGridTask'):
+            self.assertEqual(classes[name]['modules'], ['noise'], name)
+        self.assertEqual(member('Noise', 'perlin')['modules'], ['noise'])
         # the music (S39 R19): every name on the soundlayer class
         audio = {m['name'] for m in classes['Audio']['methods'] + classes['Audio']['properties']}
         for name in ('playMusic', 'stopMusic', 'advanceMusic', 'playStinger', 'getMusic', 'getMusicTime', 'getMusicPosition',
@@ -130,7 +134,7 @@ class LuaApiJson(unittest.TestCase):
             for key in ('modules',):
                 self.assertIsInstance(c[key], list)
                 for m in c['methods'] + c['properties']:
-                    self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d', 'soundlayer'}, m['name'])
+                    self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d', 'soundlayer', 'noise'}, m['name'])
 
 
 class Emitters(unittest.TestCase):

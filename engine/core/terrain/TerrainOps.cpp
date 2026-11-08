@@ -8,7 +8,7 @@
 #include "terrain/TerrainErosion.h"
 #include "terrain/TerrainHoles.h"
 #include "terrain/TerrainLayers.h"
-#include "terrain/TerrainNoise.h"
+#include "noise/NoiseCompat.h"
 #include "terrain/TerrainStroke.h"
 #include "util/Fnv.h"
 
@@ -894,7 +894,7 @@ namespace {
                     // One noise cell every noise size, so the field stays put as a brush moves
                     const float fieldX = static_cast<float>(x - block.format.bounds.x) * std::fabs(block.lattice.stepX) / noiseSize;
                     const float fieldZ = static_cast<float>(y - block.format.bounds.y) * std::fabs(block.lattice.stepZ) / noiseSize;
-                    store(cur[0] + TerrainNoise::fractal(fieldX, fieldZ, seed, octaves) * amplitude * w, next, c);
+                    store(cur[0] + noise::compat::fractal(fieldX, fieldZ, seed, octaves) * amplitude * w, next, c);
                 });
                 break;
             }
@@ -1119,7 +1119,7 @@ namespace {
                     for (int o = 0; o < octaves; o++) {
                         const float nx = (static_cast<float>(texelX) / spanX) * f;
                         const float ny = (static_cast<float>(texelY) / spanY) * f;
-                        sum += (TerrainNoise::value(nx, ny, seed + static_cast<uint32_t>(o * 1013)) * 2.0f - 1.0f) * weight;
+                        sum += (noise::compat::value(nx, ny, seed + static_cast<uint32_t>(o * 1013)) * 2.0f - 1.0f) * weight;
                         weightSum += weight;
                         weight *= 0.5f;
                         f *= 2.0f;
@@ -1254,7 +1254,7 @@ namespace {
                         if (rule.noise > 0.0f && share > 0.0f) {
                             const float fieldX = static_cast<float>(x - block.format.bounds.x) * std::fabs(block.lattice.stepX) / noiseSize;
                             const float fieldZ = static_cast<float>(y - block.format.bounds.y) * std::fabs(block.lattice.stepZ) / noiseSize;
-                            const float grain = TerrainNoise::fractal(fieldX, fieldZ, seed, octaves) * 0.5f + 0.5f;
+                            const float grain = noise::compat::fractal(fieldX, fieldZ, seed, octaves) * 0.5f + 0.5f;
                             share *= 1.0f - rule.noise * (1.0f - grain);
                         }
                         for (size_t l = 0; l < layerSlots; l++) {
