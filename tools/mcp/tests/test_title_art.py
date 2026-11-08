@@ -541,7 +541,10 @@ async def test_rim_spikes(ed: Editor):
 async def test_preview_budget(ed: Editor):
     """AC30 (R45): while the Project window thumbnails 20 unbaked documents, the preview queue keeps
     the previews' main-thread time within 4 ms a frame (p95 of its last 200 working frames, from
-    get_title's `previews`, the queue's own clock); every thumbnail is written. The 4 ms is a
+    get_title's `previews`, the queue's own clock); every thumbnail is written. What the scheduler
+    controls is checked in every run: no work started after a frame's first when the clock said
+    the budget left could not hold its prediction (`late_starts`, what trusting the static
+    estimates does), and the predictions converge on the measurements. The 4 ms itself is a
     wall-clock budget: the benchmark run enforces it (harness.over_budget)."""
     await setup(ed)
     await ed.call("tool_groups", enable=["editor_ux"])
@@ -567,6 +570,12 @@ async def test_preview_budget(ed: Editor):
         previews = (await ed.call("get_title", path=paths[0]))["previews"]
         if count() - thumbs_before >= len(paths) and previews["queued"] == 0:
             break
+    frames = await ed.call("get_frame_times", window=600, frames=0)
+    print(f"     [budget] {previews['working_frames'] - before['working_frames']} working frames, {previews['over_budget_frames'] - before['over_budget_frames']} over 4 ms, "
+          f"p95 {previews['p95_ms']} ms over {previews['p95_frames']} frames, "
+          f"worst frame {previews['worst_frame_ms']} ms, worst step {previews['worst_step']}, side work {previews['side_work_ms']} ms, "
+          f"late starts {previews['late_starts']}, prediction error {previews['prediction_error']}; "
+          f"editor frame cpu_ms {frames['summary']['cpu_ms']}; recent overruns {previews['recent_overruns']}", flush=True)
     ed.check(count() - thumbs_before >= len(paths), f"the 20 thumbnails are written: {count() - thumbs_before} new, previews {previews}")
     worked = previews["working_frames"] - before["working_frames"]
     ed.check(worked > 0, f"the queue worked: {previews}")
@@ -574,10 +583,9 @@ async def test_preview_budget(ed: Editor):
     ed.check_eq(previews["p95_frames"], min(200, previews["working_frames"]), "the p95 is over the last 200 working frames")
     ed.check(0 < previews["p95_ms"] <= previews["worst_frame_ms"], f"p95 within the worst frame: {previews}")
     ed.check(previews["worst_step"]["label"] and previews["worst_step"]["ms"] > 0, f"the worst step is named: {previews}")
-    frames = await ed.call("get_frame_times", window=600, frames=0)
-    print(f"     [budget] {worked} working frames, {previews['over_budget_frames'] - before['over_budget_frames']} over 4 ms, "
-          f"p95 {previews['p95_ms']} ms over {previews['p95_frames']} frames, "
-          f"worst frame {previews['worst_frame_ms']} ms, worst step {previews['worst_step']}, side work {previews['side_work_ms']} ms; "
-          f"editor frame cpu_ms {frames['summary']['cpu_ms']}; recent overruns {previews['recent_overruns']}", flush=True)
+    ed.check_eq(previews["late_starts"] - before["late_starts"], 0, f"no work started over the budget left: {previews}")
+    error = previews["prediction_error"]
+    ed.check(error["observations"] > 100 and error["recent"] < error["first"],
+             f"the predictions converge on the measured costs: {error}")
     slow = harness.over_budget("AC30 previews' main-thread time per frame", {"p95": previews["p95_ms"]}, 4.0, "ms")
     ed.check(not slow, f"R45: the previews' p95 is over 4 ms: {previews}")

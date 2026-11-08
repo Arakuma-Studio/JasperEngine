@@ -61,7 +61,36 @@ uint32_t TitleStepCosts::predictUs(const TitleRenderStep& step) const {
     return predictUs(kindOf(step), TitleRenderJob::estimateUs(step));
 }
 
+namespace {
+
+    double mean(const std::vector<double>& values) {
+        if (values.empty()) return 0.0;
+        double sum = 0.0;
+        for (double v : values) sum += v;
+        return sum / (double)values.size();
+    }
+
+}
+
+double TitleStepCosts::firstError() const {
+    return mean(firstErrors);
+}
+
+double TitleStepCosts::recentError() const {
+    return mean(recentErrors);
+}
+
 void TitleStepCosts::observe(const std::string& kind, uint32_t estimateUs, double measuredUs) {
+    const double predicted = predictUs(kind, estimateUs);
+    const double measured = std::max(0.0, measuredUs);
+    const double error = std::abs(measured - predicted) / std::max({measured, predicted, 1.0});
+    if (firstErrors.size() < ERROR_WINDOW) firstErrors.push_back(error);
+    if (recentErrors.size() < ERROR_WINDOW) {
+        recentErrors.push_back(error);
+    } else {
+        recentErrors[recentNext] = error;
+        recentNext = (recentNext + 1) % ERROR_WINDOW;
+    }
     const double observed = std::max(0.0, measuredUs) / (double)std::max<uint32_t>(1, estimateUs);
     machine.learn(observed);
     auto it = byKind.find(kind);

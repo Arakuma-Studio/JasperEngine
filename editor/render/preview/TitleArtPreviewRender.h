@@ -48,6 +48,7 @@ namespace jasperengine::editor {
         std::string longestStepLabel() const override { return longestLabel; }
         double longestStepMs() const override { return longestMs; }
         bool idle() const override { return ranNothing; }
+        uint32_t lateStarts() const override { return late; }
 
         const std::string& error() const { return failure; }
         // the finished render (straight RGBA8)
@@ -63,6 +64,7 @@ namespace jasperengine::editor {
         std::string longestLabel;
         double longestMs = 0.0;
         bool ranNothing = false;
+        uint32_t late = 0;
 
         uint32_t readbackEstimateUs() const;
         void noteLongest(const std::string& label, double ms);

@@ -123,6 +123,7 @@ bool TitleArtPreviewJob::step(uint32_t budgetUs) {
     longestLabel.clear();
     longestMs = 0.0;
     ranNothing = true;
+    late = 0;
     bool first = true;
     // the next piece starts while it fits what is left of the budget, with the queue's margin for
     // a piece dearer than its average (the first always starts)
@@ -154,6 +155,7 @@ bool TitleArtPreviewJob::step(uint32_t budgetUs) {
         budget.budgetUs = static_cast<uint32_t>(std::max(1.0, left));
         titleart::StepReport report;
         job->step(budget, &report);
+        late += report.lateStarts;
         if (report.steps > 0) {
             noteLongest(report.longestLabel, report.longestUs / 1000.0);
             ranNothing = false;

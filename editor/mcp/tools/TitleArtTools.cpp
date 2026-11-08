@@ -28,6 +28,7 @@
 #include "titleart/TitleEffectCatalog.h"
 #include "titleart/TitleEffectRegistry.h"
 #include "titleart/TitlePreviewQueue.h"
+#include "render/preview/TitleArtPreviewRender.h"
 #include "util/FontFace.h"
 #include "util/Util.h"
 
@@ -412,6 +413,7 @@ Json outputsOf(Project* project, const fs::path& file, const titleart::TitleArtD
 Json previewQueueJson() {
     const TitlePreviewQueue& queue = TitlePreviewQueue::editor();
     const TitlePreviewStats& stats = queue.stats();
+    const titleart::TitleStepCosts& costs = titleArtPreviewCosts();
     const auto ms = [](double v) { return std::round(v * 1000.0) / 1000.0; };
     Json overruns = Json::array();
     for (const TitlePreviewOverrun& o : stats.overruns) {
@@ -428,6 +430,9 @@ Json previewQueueJson() {
                 {"worst_frame_ms", ms(stats.maxFrameMs)},
                 {"worst_step", Json{{"label", stats.worstStepLabel}, {"ms", ms(stats.worstStepMs)}}},
                 {"side_work_ms", ms(stats.sideWorkMs)},
+                {"late_starts", stats.lateStarts},
+                {"prediction_error", Json{{"first", ms(costs.firstError())}, {"recent", ms(costs.recentError())},
+                                          {"observations", costs.observations()}}},
                 {"recent_overruns", overruns}};
 }
 

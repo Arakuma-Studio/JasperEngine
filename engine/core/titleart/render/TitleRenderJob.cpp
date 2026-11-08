@@ -73,9 +73,11 @@ bool TitleRenderJob::step(const StepBudget& budget, StepReport* report) {
         if (local.steps > 0) {
             // what the call took so far, readiness checks included, or what its steps were
             // predicted to take when that is more (a clock too coarse for tiny steps)
-            const double spent = std::max(nowUs() - callStart, (double)local.estimatedUs);
+            const double elapsed = nowUs() - callStart;
+            const double spent = std::max(elapsed, (double)local.estimatedUs);
             if (budget.budgetUs > 0 && spent + predicted > budget.budgetUs) break;
             if (budget.maxPasses > 0 && isPass && local.passes >= budget.maxPasses) break;
+            if (budget.budgetUs > 0 && elapsed + predicted > budget.budgetUs) local.lateStarts++;
         }
         // a software GPU still drawing what this step may sample: a later call runs it
         if (costModel && s.kind == StepKind::Gpu && costModel->gpuBusy()) {

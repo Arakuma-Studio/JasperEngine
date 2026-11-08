@@ -97,6 +97,9 @@ namespace jasperengine::titleart {
         uint32_t measuredUs = 0;
         uint32_t longestUs = 0;         // the longest step it ran, measured
         std::string longestLabel;
+        // steps after the call's first that started although the clock said the time spent plus
+        // their prediction was over the budget (what trusting estimates does; 0 when measured)
+        uint32_t lateStarts = 0;
     };
 
     // per layer, for S82's cost readout (R71)

@@ -32,6 +32,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace jasperengine::titleart {
 
@@ -63,6 +64,12 @@ namespace jasperengine::titleart {
         // the learned ratio of a kind (the machine's when it has none), and the machine's
         double ratio(const std::string& kind) const;
         double machineRatio() const { return machine.ratio; }
+        // how far predictions were from what was measured, |measured - predicted| / the larger,
+        // averaged over the first ERROR_WINDOW observations and the last ones (0..1): learning
+        // brings the second below the first
+        static constexpr size_t ERROR_WINDOW = 100;
+        double firstError() const;
+        double recentError() const;
         uint64_t observations() const { return machine.count; }
         size_t kinds() const { return byKind.size(); }
 
@@ -73,6 +80,9 @@ namespace jasperengine::titleart {
             void learn(double observed);
         };
         std::function<double()> clock;
+        std::vector<double> firstErrors;
+        std::vector<double> recentErrors;      // a ring of ERROR_WINDOW
+        size_t recentNext = 0;
         std::function<bool()> busy;
         std::function<void()> fence;
         Ratio machine;

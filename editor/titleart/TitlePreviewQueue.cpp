@@ -207,6 +207,7 @@ void TitlePreviewQueue::runFrame(double budgetMs) {
             const double cost = item->job->nextStepCostUs() / 1000.0;
             if (cost * VARIANCE_MARGIN > budget - spent && (ran || side > 0)) break;
             ranAlone = cost > budgetMs;
+            const bool late = (ran || side > 0) && cost > budget - spent;
             item->state = TitlePreviewState::Running;
             const double left = std::max(0.0, budget - spent);
             const double stepStart = clock();
@@ -220,6 +221,7 @@ void TitlePreviewQueue::runFrame(double budgetMs) {
             }
             ran = true;
             counters.steps++;
+            counters.lateStarts += (late ? 1 : 0) + item->job->lateStarts();
             // the job's own longest piece, else the whole call (an upper bound)
             std::string label = item->job->longestStepLabel();
             double longest = item->job->longestStepMs();

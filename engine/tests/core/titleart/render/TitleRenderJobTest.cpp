@@ -176,6 +176,7 @@ TEST_F(TitleRenderJobTest, MeasuredCostsHoldTheBudget) {
     EXPECT_EQ(report.measuredUs, 4000u);
     EXPECT_EQ(report.longestUs, 2000u);
     EXPECT_EQ(report.longestLabel, "flood");
+    EXPECT_EQ(report.lateStarts, 0u) << "no step started over the budget the clock had left";
     EXPECT_EQ(job.nextStepCostUs(), 2000u) << "the next prediction is what the kind took";
     // a new job of the same kinds starts from what the model learned
     TitleRenderJob again(slowPasses(4, 100, 2000, &now));
@@ -212,6 +213,11 @@ TEST_F(TitleRenderJobTest, CostModelLearnsPerKind) {
     EXPECT_EQ(costs.kinds(), 1u);
     for (size_t i = 0; i < TitleStepCosts::MAX_KINDS + 10; i++) costs.observe("kind " + std::to_string(i), 10, 10.0);
     EXPECT_EQ(costs.kinds(), TitleStepCosts::MAX_KINDS) << "kinds are capped";
+    // the first prediction (the static estimate) was 20 x off; the learned ones are exact
+    TitleStepCosts learning([] { return 0.0; });
+    for (size_t i = 0; i < 2 * TitleStepCosts::ERROR_WINDOW; i++) learning.observe("gpu:flood", 100, 2000.0);
+    EXPECT_NEAR(learning.firstError(), 0.95 / TitleStepCosts::ERROR_WINDOW, 1e-9);
+    EXPECT_EQ(learning.recentError(), 0.0) << "the predictions converge on the measurements";
 }
 
 TEST_F(TitleRenderJobTest, GatedStepsAndPredictedSplits) {

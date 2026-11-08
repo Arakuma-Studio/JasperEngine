@@ -76,6 +76,7 @@ TEST_F(TitlePreviewQueueTest, ThreeSubmittersStayWithinTheBudget) {
     EXPECT_EQ(queue.stats().done, 15u);
     EXPECT_LE(queue.stats().maxFrameMs, 4.0 + 1e-9);
     EXPECT_EQ(queue.stats().aloneFrames, 0u);
+    EXPECT_EQ(queue.stats().lateStarts, 0u);
 }
 
 TEST_F(TitlePreviewQueueTest, PriorityThenVisibilityThenAge) {

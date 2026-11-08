@@ -62,6 +62,8 @@ namespace jasperengine::editor {
         // the last step() ran nothing (its next piece waits: a program building, a busy software
         // GPU): the queue passes it over for the rest of the frame
         virtual bool idle() const { return false; }
+        // pieces after the last step()'s first that started over its budget by the clock (stats)
+        virtual uint32_t lateStarts() const { return 0; }
     };
 
     enum class TitlePreviewPriority : uint8_t { Hover, Layers, Tiles, Thumbnails, Prefetch };
@@ -94,6 +96,9 @@ namespace jasperengine::editor {
         uint64_t aloneFrames = 0;   // frames that ran one step predicted over the budget alone
         uint64_t restFrames = 0;    // idle frames after a frame that went over
         uint64_t restarts = 0;      // jobs made again after a device loss
+        uint64_t lateStarts = 0;    // work started after a frame's first although the clock said the
+                                    // budget left could not hold its prediction (0 unless estimates
+                                    // are trusted over measurements)
         double sideWorkMs = 0;      // charge()d in total
         double worstStepMs = 0;     // the longest single piece of work, measured
         std::string worstStepLabel;
