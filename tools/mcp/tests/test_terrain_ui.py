@@ -19,7 +19,7 @@ from harness import Editor, skip
 import ui_input
 
 LOG = Path(tempfile.gettempdir()) / f"jasper-terrain-strokes-{os.getpid()}.jsonl"
-EDITOR = {"env": {"JASPER_TERRAIN_STROKE_LOG": str(LOG)},
+EDITOR = {"xvfb": "harness", "create": True, "name": "Terrain UI", "env": {"JASPER_TERRAIN_STROKE_LOG": str(LOG)},
           "settings": {"editor": {"scene_view": {"alt_alternates": True}}}}
 CI = True
 TIMEOUT = 900
