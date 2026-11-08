@@ -372,6 +372,7 @@ namespace jasperengine::editor {
         int focusedRegion = -1;             // last frame's region with the keyboard focus
         int focusedRegionNow = -1;
         bool regionAvailable[RegionCount] = {true, true, true, true, false};
+        std::string narrowTabRequest;       // the side column's tab to select (narrow windows)
 
         // ---- the Library strip (R3, R40) ----
         bool libraryNarrowOpen = false;     // narrow: opened from its header bar

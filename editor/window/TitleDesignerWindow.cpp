@@ -391,8 +391,10 @@ bool TitleDesignerWindow::setPanel(const std::string& panel, std::string* error)
     if (panel == "layers" || panel == "history") {
         sideTab = panel;
         settings.layersCollapsed = false;
+        narrowTabRequest = panel;
     } else if (panel == "properties") {
         settings.propertiesCollapsed = false;
+        narrowTabRequest = panel;
     } else if (panel == "library") {
         // shown, also on a narrow window where it folds to its header (R3)
         settings.libraryCollapsed = false;
@@ -1227,12 +1229,13 @@ void TitleDesignerWindow::drawSideColumn(float width, float height) {
     regionFocus(pendingRegionFocus == RegionProperties || (pendingRegionFocus < 0 && keyboardRegion == RegionProperties) ? RegionProperties : RegionLayers);
     if (ImGui::BeginTabBar("##narrowtabs")) {
         const bool hasSelection = !doc.selection().empty();
+        // a tab asked for (setPanel, Tab's keyboard regions) is selected once
         auto tab = [&](const char* label, const char* id, auto draw) {
-            if (ImGui::BeginTabItem(label)) {
+            const bool asked = narrowTabRequest == id;
+            if (ImGui::BeginTabItem(label, nullptr, asked ? ImGuiTabItemFlags_SetSelected : 0)) {
                 draw();
                 ImGui::EndTabItem();
             }
-            (void)id;
         };
         if (hasSelection) tab("Properties###n_props", "properties", [&] { drawProperties(); });
         tab("Layers###n_layers", "layers", [&] { drawLayers(); });
@@ -1240,6 +1243,7 @@ void TitleDesignerWindow::drawSideColumn(float width, float height) {
         if (!hasSelection) tab("Properties###n_props", "properties", [&] { drawProperties(); });
         if (narrowPanelsOpen && ImGui::TabItemButton(ICON_FA_XMARK "##closepanels", ImGuiTabItemFlags_Trailing)) narrowPanelsOpen = false;
         ImGui::EndTabBar();
+        narrowTabRequest.clear();
     }
     ImGui::EndChild();
 }
