@@ -572,7 +572,6 @@ const FieldEntry kStruct_TerrainFoliageLayer_fields[] = {
     JE_RF(TerrainFoliageLayer, minDrawDistance, 0x7a0a24b1u, Float),
     JE_RF(TerrainFoliageLayer, seed, 0x4cccda81u, UInt),
     JE_RF(TerrainFoliageLayer, castShadows, 0x0656f2b8u, Bool),
-    JE_RF(TerrainFoliageLayer, minDrawDistance, 0x7a0a24b1u, Float),
     JE_RF(TerrainFoliageLayer, minHeightRatio, 0xc76e0bb6u, Float),
     JE_RF(TerrainFoliageLayer, maxHeightRatio, 0x85e81a78u, Float),
     JE_RF(TerrainFoliageLayer, healthyColor, 0xd4e515a4u, Vector4),
