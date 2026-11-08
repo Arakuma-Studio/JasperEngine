@@ -1,0 +1,363 @@
+{
+ "connections": [
+  {
+   "from": "switch",
+   "from_port": 2,
+   "to": "warp_dilation",
+   "to_port": 0
+  },
+  {
+   "from": "switch",
+   "from_port": 3,
+   "to": "warp_dilation",
+   "to_port": 1
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "switch",
+   "to_port": 4
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 1,
+   "to": "switch",
+   "to_port": 5
+  },
+  {
+   "from": "uniform_greyscale",
+   "from_port": 0,
+   "to": "switch",
+   "to_port": 0
+  },
+  {
+   "from": "uniform_greyscale",
+   "from_port": 0,
+   "to": "switch",
+   "to_port": 1
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "switch",
+   "to_port": 2
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 1,
+   "to": "switch",
+   "to_port": 3
+  },
+  {
+   "from": "uniform_greyscale",
+   "from_port": 0,
+   "to": "switch_2",
+   "to_port": 0
+  },
+  {
+   "from": "warp_dilation",
+   "from_port": 0,
+   "to": "switch_2",
+   "to_port": 1
+  },
+  {
+   "from": "switch_2",
+   "from_port": 1,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "warp_dilation",
+   "from_port": 0,
+   "to": "switch_2",
+   "to_port": 2
+  },
+  {
+   "from": "switch",
+   "from_port": 0,
+   "to": "buffer",
+   "to_port": 0
+  },
+  {
+   "from": "buffer",
+   "from_port": 0,
+   "to": "switch",
+   "to_port": 6
+  },
+  {
+   "from": "switch",
+   "from_port": 1,
+   "to": "buffer_2",
+   "to_port": 0
+  },
+  {
+   "from": "buffer_2",
+   "from_port": 0,
+   "to": "switch",
+   "to_port": 7
+  },
+  {
+   "from": "buffer_3",
+   "from_port": 0,
+   "to": "switch_2",
+   "to_port": 3
+  },
+  {
+   "from": "switch_2",
+   "from_port": 0,
+   "to": "buffer_3",
+   "to_port": 0
+  }
+ ],
+ "description": "Warp its input following a heightmap, pointing a given angle from the slope.",
+ "format": 1,
+ "id": "warp_dilation3",
+ "inputs": [
+  {
+   "description": "",
+   "group_size": 0.0,
+   "label": "port1",
+   "name": "port1",
+   "type": "f"
+  },
+  {
+   "description": "",
+   "group_size": 0.0,
+   "label": "port0",
+   "name": "port0",
+   "type": "f"
+  }
+ ],
+ "kind": "graph",
+ "name": "Warp Dilation",
+ "nodes": [
+  {
+   "id": "warp_dilation",
+   "parameters": {
+    "a": 0.0,
+    "angle": 0.0,
+    "d": 0.5,
+    "s": 10
+   },
+   "seed": 7232.0,
+   "type": "warp_dilation2_nobuf"
+  },
+  {
+   "id": "switch",
+   "parameters": {
+    "choices": 2.0,
+    "outputs": 4.0,
+    "source": 1.0
+   },
+   "seed": 0.0,
+   "type": "switch"
+  },
+  {
+   "id": "uniform_greyscale",
+   "parameters": {
+    "color": 0.0
+   },
+   "seed": 0.0,
+   "type": "uniform_greyscale"
+  },
+  {
+   "id": "switch_2",
+   "parameters": {
+    "choices": 2.0,
+    "outputs": 2.0,
+    "source": 1.0
+   },
+   "seed": 0.0,
+   "type": "switch"
+  },
+  {
+   "id": "buffer",
+   "parameters": {
+    "f32": false,
+    "filter": true,
+    "mipmap": true,
+    "size": 10
+   },
+   "seed": 0.0,
+   "type": "buffer",
+   "version": 2
+  },
+  {
+   "id": "buffer_2",
+   "parameters": {
+    "f32": false,
+    "filter": true,
+    "mipmap": true,
+    "size": 10
+   },
+   "seed": 0.0,
+   "type": "buffer",
+   "version": 2
+  },
+  {
+   "id": "buffer_3",
+   "parameters": {
+    "f32": false,
+    "filter": true,
+    "mipmap": true,
+    "size": 10
+   },
+   "seed": 0.0,
+   "type": "buffer",
+   "version": 2
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "",
+   "group_size": 0.0,
+   "label": "port0",
+   "name": "port0",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.0,
+   "description": "The angle from the slope to be followed",
+   "label": "Angle",
+   "links": [
+    {
+     "node": "warp_dilation",
+     "param": "angle"
+    }
+   ],
+   "max": 180,
+   "min": -180,
+   "name": "angle",
+   "short_description": "Angle",
+   "step": 0.1,
+   "type": "float"
+  },
+  {
+   "default": 10,
+   "description": "The resolution of the output",
+   "first": 7,
+   "label": "Resolution",
+   "last": 12,
+   "links": [
+    {
+     "node": "warp_dilation",
+     "param": "s"
+    },
+    {
+     "node": "buffer_3",
+     "param": "size"
+    },
+    {
+     "node": "buffer",
+     "param": "size"
+    },
+    {
+     "node": "buffer_2",
+     "param": "size"
+    }
+   ],
+   "name": "s",
+   "short_description": "Resolution",
+   "type": "size"
+  },
+  {
+   "default": 0.5,
+   "description": "The dilation distance",
+   "label": "Distance",
+   "links": [
+    {
+     "node": "warp_dilation",
+     "param": "d"
+    }
+   ],
+   "max": 0.5,
+   "min": 0,
+   "name": "d",
+   "short_description": "Distance",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.0,
+   "description": "the attenuation along the dilation",
+   "label": "Attenuation",
+   "links": [
+    {
+     "node": "warp_dilation",
+     "param": "a"
+    }
+   ],
+   "max": 1,
+   "min": 0,
+   "name": "a",
+   "short_description": "Attenuation",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "configurations": {
+    "False": [
+     {
+      "node": "switch",
+      "param": "source",
+      "value": 0.0
+     },
+     {
+      "node": "switch_2",
+      "param": "source",
+      "value": 0.0
+     }
+    ],
+    "True": [
+     {
+      "node": "switch",
+      "param": "source",
+      "value": 1.0
+     },
+     {
+      "node": "switch_2",
+      "param": "source",
+      "value": 1.0
+     }
+    ]
+   },
+   "default": 1.0,
+   "description": "Use buffers to store inputs/outputs",
+   "label": "Buffer",
+   "name": "param0",
+   "short_description": "Buffer",
+   "type": "boolean"
+  },
+  {
+   "default": null,
+   "description": "Use 32-bit buffer(s) when storing input/outputs. Reduces banding artifacts but could result in higher video memory usage. This option is only effective if 'Buffer' is enabled.",
+   "label": "32 Bits",
+   "links": [
+    {
+     "node": "buffer_3",
+     "param": "f32"
+    },
+    {
+     "node": "buffer_2",
+     "param": "f32"
+    },
+    {
+     "node": "buffer",
+     "param": "f32"
+    }
+   ],
+   "name": "param1",
+   "short_description": "32 Bit",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "Warp Dilation",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/warp_dilation3.mmg"
+ },
+ "type_version": 1
+}

@@ -1,0 +1,26 @@
+formatVersion: 1
+name: ProcmatBaked
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+versionControl:
+  lfs: true
+startSceneId: 4185827735
+audio:
+  mixer: audio/Main.mixer
+  outputStage: linear
+  iosSessionCategory: ambient
+scenes:
+  - filepath: Main.scene
+    filepathGuid: 6563876c72b9aa8e80b2c3b167f0a665

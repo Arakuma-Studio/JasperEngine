@@ -1,0 +1,172 @@
+{
+ "connections": [
+  {
+   "from": "pattern",
+   "from_port": 0.0,
+   "to": "blend",
+   "to_port": 0.0
+  },
+  {
+   "from": "transform",
+   "from_port": 0.0,
+   "to": "blend",
+   "to_port": 1.0
+  },
+  {
+   "from": "pattern_2",
+   "from_port": 0.0,
+   "to": "colorize",
+   "to_port": 0.0
+  },
+  {
+   "from": "colorize",
+   "from_port": 0.0,
+   "to": "transform",
+   "to_port": 0.0
+  },
+  {
+   "from": "bricks",
+   "from_port": 1.0,
+   "to": "transform",
+   "to_port": 1.0
+  },
+  {
+   "from": "blend",
+   "from_port": 0.0,
+   "to": "gen_outputs",
+   "to_port": 0.0
+  }
+ ],
+ "description": "",
+ "format": 1,
+ "id": "graph_pattern_fibers",
+ "inputs": [],
+ "kind": "graph",
+ "name": "Fibers",
+ "nodes": [
+  {
+   "id": "transform",
+   "parameters": {
+    "repeat": true,
+    "rotate": 30.125,
+    "scale_x": 0.5,
+    "scale_y": 1.0,
+    "translate_x": 0.975,
+    "translate_y": 0.0
+   },
+   "type": "transform"
+  },
+  {
+   "id": "colorize",
+   "parameters": {
+    "gradient": {
+     "interpolation": 1.0,
+     "points": [
+      {
+       "a": 1.0,
+       "b": 0.4375,
+       "g": 0.4375,
+       "pos": 0.0,
+       "r": 0.4375
+      },
+      {
+       "a": 1.0,
+       "b": 1.0,
+       "g": 1.0,
+       "pos": 1.0,
+       "r": 1.0
+      }
+     ],
+     "type": "Gradient"
+    }
+   },
+   "type": "colorize"
+  },
+  {
+   "id": "bricks",
+   "parameters": {
+    "bevel": 0.1,
+    "columns": 4.0,
+    "corner": 0.0,
+    "mortar": 0.1,
+    "pattern": 0.0,
+    "repeat": 1.0,
+    "round": 0.0,
+    "row_offset": 0.5,
+    "rows": 1.0
+   },
+   "type": "bricks"
+  },
+  {
+   "id": "pattern_2",
+   "parameters": {
+    "mix": 0.0,
+    "x_scale": 4.0,
+    "x_wave": 0.0,
+    "y_scale": 4.0,
+    "y_wave": 4.0
+   },
+   "type": "pattern"
+  },
+  {
+   "id": "blend",
+   "parameters": {
+    "amount": 1.0,
+    "blend_type": 2.0
+   },
+   "type": "blend"
+  },
+  {
+   "id": "pattern",
+   "parameters": {
+    "mix": 0.0,
+    "x_scale": 4.0,
+    "x_wave": 0.0,
+    "y_scale": 4.0,
+    "y_wave": 4.0
+   },
+   "type": "pattern"
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "port0",
+   "name": "port0",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 4.0,
+   "label": "Repeat",
+   "links": [
+    {
+     "node": "pattern",
+     "param": "x_scale"
+    },
+    {
+     "node": "bricks",
+     "param": "columns"
+    },
+    {
+     "node": "pattern_2",
+     "param": "x_scale"
+    }
+   ],
+   "max": 32,
+   "min": 0,
+   "name": "param0",
+   "step": 1,
+   "type": "float"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "material_maker/library/base.json"
+ },
+ "type_version": 1
+}

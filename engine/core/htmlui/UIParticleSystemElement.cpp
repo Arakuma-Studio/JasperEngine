@@ -101,6 +101,86 @@ namespace {
 
 }
 
+namespace {
+
+    // an emitter's billboards, in the GameObject's local space
+    void readEmitterQuads(Scene* scene, Entity entity, const particles::EmitterRuntime& runtime, std::vector<UIParticleQuad>& out){
+        // a runtime the view's loss unbound, whose effect cannot be read again, has nothing to draw
+        if (!runtime.effect())
+            return;
+        const particles::CompiledEffect& effect = *runtime.effect();
+        const particles::ParticleProgram& program = effect.program;
+        const particles::RendererModule& renderer = effect.document.renderer;
+        if (runtime.count() == 0 || !renderer.enabled || renderer.renderMode == particles::RenderMode::None || runtime.isPrewarming())
+            return;
+
+        // the records the billboards draw (one view: nothing sorts, nothing thins)
+        memory::Arena& arena = packArena();
+        arena.reset();
+        particles::RenderView view;
+        const particles::PackResult packed = particles::ParticleRenderPrep::pack(runtime, view, arena);
+
+        // simulation space -> the GameObject's local space (the element's)
+        Matrix4 toLocal = matrixOf(runtime.simToWorld());
+        if (Transform* transform = scene->findComponent<Transform>(entity))
+            toLocal = transform->modelMatrix.inverse() * toLocal;
+        const Vector4& tiling = renderer.textureTiling;
+
+        out.reserve(packed.count);
+        for (uint32_t i = 0; i < packed.count; i++){
+            const particles::ParticleInstance& record = packed.instances[i];
+            float width = particles::ParticleRenderPrep::fromHalf((uint16_t)(record.size & 0xffffu));
+            float height = particles::ParticleRenderPrep::fromHalf((uint16_t)(record.size >> 16));
+            if (!(std::fabs(width) > 0.0f) || !(std::fabs(height) > 0.0f))
+                continue;
+            UIParticleQuad quad;
+            quad.position = toLocal * Vector3(record.position[0], record.position[1], record.position[2]);
+            quad.size = std::fabs(width);
+            quad.height = std::fabs(height);
+            // the shader turns a billboard clockwise as seen; the quads turn counter-clockwise
+            const float turns = (float)(record.rotationFrame & 0xffffu) / 65535.0f;
+            quad.rotation = -turns * 6.28318530718f;
+            // UBYTE4N, the rgb encoded with gamma 2.2 (the shader's linearisation)
+            auto channel = [&](int shift){ return std::pow((float)((record.color >> shift) & 255u) / 255.0f, 2.2f); };
+            quad.color = Vector4(channel(0), channel(8), channel(16), (float)(record.color >> 24) / 255.0f);
+            // the frame, then the Renderer's tiling and offset; a negative size mirrors the texture
+            const Rect frame = frameRect(program, (float)(record.rotationFrame >> 16) / 65535.0f);
+            float u0 = frame.getX() * tiling.x + tiling.z, v0 = frame.getY() * tiling.y + tiling.w;
+            float u1 = u0 + frame.getWidth() * tiling.x, v1 = v0 + frame.getHeight() * tiling.y;
+            if (width < 0.0f) std::swap(u0, u1);
+            if (height < 0.0f) std::swap(v0, v1);
+            quad.textureRect = Rect(u0, v0, u1 - u0, v1 - v0);
+            out.push_back(quad);
+        }
+    }
+
+    void materialOfDocument(const particles::ParticleEffectDocument& document, UIParticleMaterial& out){
+        const particles::RendererModule& renderer = document.renderer;
+        out.texturePath = renderer.texture;
+        out.additive = renderer.blend == particles::ParticleBlend::Additive;
+        // the particle shader's untextured billboard: a soft disc (Unity's default), else a square;
+        // a sheet without a texture draws its frames' squares
+        const bool sheet = document.textureSheetAnimation.present && document.textureSheetAnimation.enabled;
+        out.softDisc = renderer.texture.empty() && renderer.untexturedShape == particles::UntexturedShape::Disc && !sheet;
+    }
+
+    void readChildBatches(Scene* scene, Entity entity, const particles::EmitterRuntime& parent, std::vector<UIParticleBatch>& out, size_t& used){
+        for (size_t c = 0; c < parent.childCount(); c++){
+            const particles::EmitterRuntime* child = parent.child(c);
+            if (!child || !child->effect())
+                continue;
+            if (used == out.size())
+                out.emplace_back();
+            UIParticleBatch& batch = out[used++];
+            batch.quads.clear();
+            materialOfDocument(child->effect()->document, batch.material);
+            readEmitterQuads(scene, entity, *child, batch.quads);
+            readChildBatches(scene, entity, *child, out, used);
+        }
+    }
+
+}
+
 bool UIParticleSource::read(Scene* scene, Entity emitter, std::vector<UIParticleQuad>& out){
     out.clear();
     if (!scene || emitter == NULL_ENTITY || !scene->findComponent<ParticleSystemComponent>(emitter))
@@ -109,51 +189,19 @@ bool UIParticleSource::read(Scene* scene, Entity emitter, std::vector<UIParticle
     particles::ParticleSystemState* state = subsystem ? subsystem->getState(emitter) : nullptr;
     if (!state || !state->effect)
         return false;
-    const particles::EmitterRuntime& runtime = state->runtime;
-    const particles::ParticleProgram& program = state->effect->program;
-    const particles::RendererModule& renderer = state->effect->document.renderer;
-    if (runtime.count() == 0 || !renderer.enabled || renderer.renderMode == particles::RenderMode::None || runtime.isPrewarming())
-        return true;
-
-    // the records the billboards draw (one view: nothing sorts, nothing thins)
-    memory::Arena& arena = packArena();
-    arena.reset();
-    particles::RenderView view;
-    const particles::PackResult packed = particles::ParticleRenderPrep::pack(runtime, view, arena);
-
-    // simulation space -> the GameObject's local space (the element's)
-    Matrix4 toLocal = matrixOf(runtime.simToWorld());
-    if (Transform* transform = scene->findComponent<Transform>(emitter))
-        toLocal = transform->modelMatrix.inverse() * toLocal;
-    const Vector4& tiling = renderer.textureTiling;
-
-    out.reserve(packed.count);
-    for (uint32_t i = 0; i < packed.count; i++){
-        const particles::ParticleInstance& record = packed.instances[i];
-        float width = particles::ParticleRenderPrep::fromHalf((uint16_t)(record.size & 0xffffu));
-        float height = particles::ParticleRenderPrep::fromHalf((uint16_t)(record.size >> 16));
-        if (!(std::fabs(width) > 0.0f) || !(std::fabs(height) > 0.0f))
-            continue;
-        UIParticleQuad quad;
-        quad.position = toLocal * Vector3(record.position[0], record.position[1], record.position[2]);
-        quad.size = std::fabs(width);
-        quad.height = std::fabs(height);
-        // the shader turns a billboard clockwise as seen; the quads turn counter-clockwise
-        const float turns = (float)(record.rotationFrame & 0xffffu) / 65535.0f;
-        quad.rotation = -turns * 6.28318530718f;
-        // UBYTE4N, the rgb encoded with gamma 2.2 (the shader's linearisation)
-        auto channel = [&](int shift){ return std::pow((float)((record.color >> shift) & 255u) / 255.0f, 2.2f); };
-        quad.color = Vector4(channel(0), channel(8), channel(16), (float)(record.color >> 24) / 255.0f);
-        // the frame, then the Renderer's tiling and offset; a negative size mirrors the texture
-        const Rect frame = frameRect(program, (float)(record.rotationFrame >> 16) / 65535.0f);
-        float u0 = frame.getX() * tiling.x + tiling.z, v0 = frame.getY() * tiling.y + tiling.w;
-        float u1 = u0 + frame.getWidth() * tiling.x, v1 = v0 + frame.getHeight() * tiling.y;
-        if (width < 0.0f) std::swap(u0, u1);
-        if (height < 0.0f) std::swap(v0, v1);
-        quad.textureRect = Rect(u0, v0, u1 - u0, v1 - v0);
-        out.push_back(quad);
-    }
+    readEmitterQuads(scene, emitter, state->runtime, out);
     return true;
+}
+
+void UIParticleSource::readChildren(Scene* scene, Entity emitter, std::vector<UIParticleBatch>& out){
+    size_t used = 0;
+    if (scene && emitter != NULL_ENTITY && scene->findComponent<ParticleSystemComponent>(emitter)){
+        std::shared_ptr<ParticleSubsystem> subsystem = scene->getSystem<ParticleSubsystem>();
+        particles::ParticleSystemState* state = subsystem ? subsystem->getState(emitter) : nullptr;
+        if (state && state->effect && state->runtime.childCount() > 0)
+            readChildBatches(scene, emitter, state->runtime, out, used);
+    }
+    out.resize(used);
 }
 
 bool UIParticleSource::material(Scene* scene, Entity emitter, UIParticleMaterial& out){
@@ -166,13 +214,7 @@ bool UIParticleSource::material(Scene* scene, Entity emitter, UIParticleMaterial
     const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(*component);
     if (!document)
         return true;
-    const particles::RendererModule& renderer = document->renderer;
-    out.texturePath = renderer.texture;
-    out.additive = renderer.blend == particles::ParticleBlend::Additive;
-    // the particle shader's untextured billboard: a soft disc (Unity's default), else a square;
-    // a sheet without a texture draws its frames' squares
-    const bool sheet = document->textureSheetAnimation.present && document->textureSheetAnimation.enabled;
-    out.softDisc = renderer.texture.empty() && renderer.untexturedShape == particles::UntexturedShape::Disc && !sheet;
+    materialOfDocument(*document, out);
     return true;
 }
 
@@ -243,6 +285,7 @@ void UIParticleSystemElement::destroyEntity(){
     }
     root = system = NULL_ENTITY;
     quads.clear();
+    childBatches.clear();
     drawn = 0;
 }
 
@@ -391,6 +434,7 @@ void UIParticleSystemElement::clear(){
         return;
     ParticleSystem(scene, system).clear(false);
     quads.clear();
+    childBatches.clear();
 }
 
 bool UIParticleSystemElement::isPlaying() const{
@@ -433,6 +477,7 @@ void UIParticleSystemElement::OnUpdate(){
         return;
 
     UIParticleSource::read(scene, system, quads);
+    UIParticleSource::readChildren(scene, system, childBatches);
     // a script may have given it another effect or texture
     UIParticleSource::material(scene, system, material);
     // drawn here, so seen: its culling never pauses it (none of its renderers draws in a camera)
@@ -457,15 +502,22 @@ void UIParticleSystemElement::OnRender(){
     if (!renderManager)
         return;
     drawn = 0;
-    if (quads.empty())
+    renderQuads(renderManager, material, quads, rootDraw);
+    childDraws.resize(childBatches.size());
+    for (size_t b = 0; b < childBatches.size(); b++)
+        renderQuads(renderManager, childBatches[b].material, childBatches[b].quads, childDraws[b]);
+}
+
+void UIParticleSystemElement::renderQuads(Rml::RenderManager* renderManager, const UIParticleMaterial& quadMaterial, const std::vector<UIParticleQuad>& quadList, DrawState& state){
+    if (quadList.empty())
         return;
 
-    if (material.texturePath != loadedTexture || material.softDisc != loadedDisc){
-        loadedTexture = material.texturePath;
-        loadedDisc = material.softDisc;
-        if (!material.texturePath.empty()){
-            texture = renderManager->LoadTexture(material.texturePath);
-        }else if (material.softDisc){
+    if (quadMaterial.texturePath != state.loadedTexture || quadMaterial.softDisc != state.loadedDisc){
+        state.loadedTexture = quadMaterial.texturePath;
+        state.loadedDisc = quadMaterial.softDisc;
+        if (!quadMaterial.texturePath.empty()){
+            state.texture = renderManager->LoadTexture(quadMaterial.texturePath);
+        }else if (quadMaterial.softDisc){
             // the particle shader's untextured billboard: a white disc whose alpha falls off as
             // (1 - r^2)^2 (RenderSystem's "particle" default), premultiplied
             constexpr int size = 64;
@@ -481,12 +533,12 @@ void UIParticleSystemElement::OnRender(){
                 }
             }
             const Rml::Vector2i dimensions(size, size);
-            discTexture = renderManager->MakeCallbackTexture([pixels, dimensions](const Rml::CallbackTextureInterface& textureInterface) -> bool {
+            state.discTexture = renderManager->MakeCallbackTexture([pixels, dimensions](const Rml::CallbackTextureInterface& textureInterface) -> bool {
                 return textureInterface.GenerateTexture({pixels->data(), pixels->size()}, dimensions);
             });
-            texture = discTexture;
+            state.texture = state.discTexture;
         }else{
-            texture = Rml::Texture();
+            state.texture = Rml::Texture();
         }
     }
 
@@ -497,9 +549,9 @@ void UIParticleSystemElement::OnRender(){
     const float opacity = GetComputedValues().opacity();
 
     Rml::Mesh mesh;
-    mesh.vertices.reserve(quads.size() * 4);
-    mesh.indices.reserve(quads.size() * 6);
-    for (const UIParticleQuad& quad : quads){
+    mesh.vertices.reserve(quadList.size() * 4);
+    mesh.indices.reserve(quadList.size() * 6);
+    for (const UIParticleQuad& quad : quadList){
         const float half = quad.size * scale * 0.5f;
         const float halfHeight = (quad.height < 0.0f ? quad.size : quad.height) * scale * 0.5f;
         if (!(half > 0.0f) || !(halfHeight > 0.0f))
@@ -513,7 +565,7 @@ void UIParticleSystemElement::OnRender(){
         const float alpha = std::clamp(quad.color.w * opacity, 0.0f, 1.0f);
         // premultiplied; additive particles add their colour (alpha 0 in a premultiplied blend)
         const Rml::ColourbPremultiplied colour(toByte(srgb.x * alpha), toByte(srgb.y * alpha), toByte(srgb.z * alpha),
-                                               material.additive ? (Rml::byte)0 : toByte(alpha));
+                                               quadMaterial.additive ? (Rml::byte)0 : toByte(alpha));
         const float u0 = quad.textureRect.getX(), v0 = quad.textureRect.getY();
         const float u1 = u0 + quad.textureRect.getWidth(), v1 = v0 + quad.textureRect.getHeight();
         const Rml::Vector2f uvs[4] = {{u0, v0}, {u1, v0}, {u1, v1}, {u0, v1}};
@@ -533,6 +585,6 @@ void UIParticleSystemElement::OnRender(){
     if (mesh.indices.empty())
         return;
 
-    geometry = renderManager->MakeGeometry(std::move(mesh));
-    geometry.Render(GetAbsoluteOffset(Rml::BoxArea::Content), texture);
+    state.geometry = renderManager->MakeGeometry(std::move(mesh));
+    state.geometry.Render(GetAbsoluteOffset(Rml::BoxArea::Content), state.texture);
 }

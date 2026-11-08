@@ -48,6 +48,7 @@ namespace jasperengine{
         uint32_t drawnViews = 0;
         uint32_t raysLastTick = 0;
         uint32_t bytesPerParticle = 0;
+        uint32_t seed = 0;       // the seed in use: the component's, the effect's or the one this play drew
     };
 
     class JASPERENGINE_API ParticleSubsystem : public SubSystem {
@@ -101,6 +102,9 @@ namespace jasperengine{
         // the system's runtime (bound to its effect), null when it has none or cannot load it
         particles::ParticleSystemState* getState(Entity entity);
         ParticleSystemStats getStats(Entity entity);
+        // A hash of the run: its seed, tick and particles, children included. Equal is the same state
+        // of the same run. Reads every particle, so it is not part of getStats.
+        uint64_t getStateHash(Entity entity);
         const particles::WorldStats& getWorldStats() const { return world.stats(); }
         particles::ParticleWorld& getWorld() { return world; }
 
@@ -115,12 +119,20 @@ namespace jasperengine{
     private:
         // binds (or rebinds) the component's effect; false when there is none to run
         bool ensureEffect(Entity entity, ParticleSystemComponent& particles);
+        // the exposed values that changed, written into the running effect (its own copy of it);
+        // false when one needs a compile
+        bool applyExposedValues(ParticleSystemComponent& particles, particles::ParticleSystemState& state);
+        particles::CompileEnvironment compileEnvironment(Entity entity);
+        // the library moved on since its sub-emitter files were last compared
+        bool subEmittersOutOfDate(const ParticleSystemComponent& particles) const;
         particles::ParticleSystemState* stateOf(Entity entity, bool load);
         void prepareInput(Entity entity, ParticleSystemComponent& particles, Transform& transform, particles::EmitterInput& input);
         bool bodyVelocity(Entity entity, Vector3& velocity);
         void gatherFields();
         void gatherTerrains();
         void dispatchEvents(ParticleSystemComponent& particles);
+        // the Sound Events its bursts, sub-emitters and triggers asked for (S91 R13)
+        void playSounds(particles::EmitterRuntime& runtime, const Vector3& emitterPosition);
         void updateBounds(particles::ParticleSystemState& state);
         float significanceOf(const particles::ParticleSystemState& state, float& cameraDistance) const;
 

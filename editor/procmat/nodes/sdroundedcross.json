@@ -1,0 +1,72 @@
+{
+ "code": [],
+ "description": "A rounded cross described as a signed distance function",
+ "format": 1,
+ "functions": [
+  "sdRoundedCross"
+ ],
+ "id": "sdroundedcross",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "sdRoundedCross",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The rounded cross as a signed distance function",
+   "expr": "sdRoundedCross(($uv - 0.5 - vec2($cx, $cy)) / $width, $height / $width) * $width",
+   "label": "Output",
+   "type": "sdf2d"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.45,
+   "description": "Width of the rounded cross",
+   "label": "Width",
+   "max": 1,
+   "min": 0,
+   "name": "width",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.25,
+   "description": "Height of the rounded cross",
+   "label": "Height",
+   "max": 1,
+   "min": 0,
+   "name": "height",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The position of the center on the X axis",
+   "label": "Center X",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "cx",
+   "short_description": "Center.x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The position of the center on the Y axis",
+   "label": "Center Y",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "cy",
+   "short_description": "Center.y",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "sdRoundedCross",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sdroundedcross.mmg"
+ },
+ "type_version": 1
+}

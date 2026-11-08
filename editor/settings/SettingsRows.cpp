@@ -2327,6 +2327,73 @@ std::vector<Setting> mcpSettingsTable() {
             add(std::move(s));
         }
 
+        // ---- particles (S20 R15; Project Settings > Graphics)
+        {
+            Setting s;
+            s.key = "particles.world_budget";
+            s.type = "int";
+            s.description = "Particles alive at once in a scene, sub-emitter children included (0: the platform's default); over it, lower priorities emit less. Applies at once.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getParticleWorldBudget()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, 0, Project::maxParticleWorldBudget, v, error)) return false;
+                if (apply) ctx.project()->setParticleWorldBudget(static_cast<uint32_t>(v));
+                return true;
+            };
+            add(s);
+        }
+        // the thresholds of the particle checks (S91 R28)
+        for (const ParticleQaField& field : particleQaFields()) {
+            Setting s;
+            s.key = field.key;
+            s.type = field.real ? "number" : "int";
+            s.description = field.help;
+            s.get = [&field](SettingsContext& ctx) {
+                const ParticleQaSettings& qa = ctx.project()->getParticleQaSettings();
+                return field.real ? Json(qa.*field.real) : Json(qa.*field.whole);
+            };
+            s.set = [&field](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_number() || value.get<double>() < field.minimum || value.get<double>() > field.maximum ||
+                    (field.whole && !value.is_number_integer())) {
+                    error = "must be a number from " + std::to_string(field.minimum) + " to " + std::to_string(field.maximum);
+                    return false;
+                }
+                if (apply) {
+                    ParticleQaSettings settings = ctx.project()->getParticleQaSettings();
+                    if (field.real) settings.*field.real = value.get<float>();
+                    else settings.*field.whole = value.get<int>();
+                    ctx.project()->setParticleQaSettings(settings);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
+        // the thresholds of the material checks (S90 R36)
+        for (const procmat::ProcMatQaField& field : procmat::procMatQaFields()) {
+            Setting s;
+            s.key = field.key;
+            s.type = field.real ? "number" : "int";
+            s.description = field.help;
+            s.get = [&field](SettingsContext& ctx) {
+                const procmat::ProcMatQaSettings& qa = ctx.project()->getProcMatQaSettings();
+                return field.real ? Json(qa.*field.real) : Json(qa.*field.whole);
+            };
+            s.set = [&field](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_number() || value.get<double>() < field.minimum || value.get<double>() > field.maximum ||
+                    (field.whole && !value.is_number_integer())) {
+                    error = "must be a number from " + std::to_string(field.minimum) + " to " + std::to_string(field.maximum);
+                    return false;
+                }
+                if (apply) {
+                    procmat::ProcMatQaSettings settings = ctx.project()->getProcMatQaSettings();
+                    if (field.real) settings.*field.real = value.get<float>();
+                    else settings.*field.whole = value.get<int>();
+                    ctx.project()->setProcMatQaSettings(settings);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
         // ---- physics
         add(boolSetting("physics.enabled", "3D physics (Jolt). Off leaves Rigidbodies and joints out of builds.",
                         [](Project& p) { return p.isPhysics3DEnabled(); }, [](Project& p, bool v) { p.setPhysics3DEnabled(v); }));
@@ -3574,6 +3641,25 @@ const Placement placements[] = {
     {"graphics.html_ui_glyph_atlas_mib", "Graphics", "", "HTML UI Glyph Atlas", "font text memory budget mib"},
     {"graphics.html_ui_sdf_primitives", "Graphics", "", "HTML UI SDF Primitives", "batching shapes borders box shadows"},
     {"graphics.html_ui_transform_aware_text", "Graphics", "", "HTML UI Transform-Aware Text", "sharp text scale msdf distance field"},
+    {"particles.world_budget", "Graphics", "", "World Particle Budget", "particles limit max effects sub-emitters"},
+    {"particles.qa.overdraw_mobile", "Graphics", "Particle Checks", "Overdraw Layers Mobile", "particles check overdraw fill rate"},
+    {"particles.qa.overdraw_web", "Graphics", "Particle Checks", "Overdraw Layers Web", "particles check overdraw fill rate"},
+    {"particles.qa.overdraw_desktop", "Graphics", "Particle Checks", "Overdraw Layers Desktop", "particles check overdraw fill rate"},
+    {"particles.qa.cpu_ms_mobile", "Graphics", "Particle Checks", "CPU Budget Mobile (ms)", "particles check platform budget cost"},
+    {"particles.qa.cpu_ms_web", "Graphics", "Particle Checks", "CPU Budget Web (ms)", "particles check platform budget cost"},
+    {"particles.qa.cpu_ms_desktop", "Graphics", "Particle Checks", "CPU Budget Desktop (ms)", "particles check platform budget cost"},
+    {"particles.qa.blown_out_percent", "Graphics", "Particle Checks", "Blown Out (%)", "particles check additive saturated white"},
+    {"particles.qa.invisible_percent", "Graphics", "Particle Checks", "Invisible Below (%)", "particles check blank empty"},
+    {"particles.qa.pop_percent", "Graphics", "Particle Checks", "Pop (%)", "particles check death fade"},
+    {"particles.qa.fix_rounds", "Graphics", "Particle Checks", "Fix Rounds", "particles check agent"},
+    {"materials.qa.seam_fail", "Graphics", "Material Checks", "Seam Fail", "procedural material check tile seam"},
+    {"materials.qa.repetition_warn", "Graphics", "Material Checks", "Repetition Warn", "procedural material check tiling repeat"},
+    {"materials.qa.clipped_percent", "Graphics", "Material Checks", "Clipped (%)", "procedural material check histogram clipping"},
+    {"materials.qa.dielectric_outside_percent", "Graphics", "Material Checks", "Dielectric Outside (%)", "procedural material check albedo base colour"},
+    {"materials.qa.normal_length_error", "Graphics", "Material Checks", "Normal Length Error", "procedural material check normal map"},
+    {"materials.qa.roughness_min_range", "Graphics", "Material Checks", "Roughness Min Range", "procedural material check roughness flat"},
+    {"materials.qa.metallic_mid_percent", "Graphics", "Material Checks", "Metallic Mid (%)", "procedural material check metal"},
+    {"materials.qa.fix_rounds", "Graphics", "Material Checks", "Fix Rounds", "procedural material check agent"},
     {"graphics.shadow_tier.windows", "Graphics", "Shadows", "Windows Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.linux", "Graphics", "Shadows", "Linux Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.macos", "Graphics", "Shadows", "macOS Shadow Tier", "shadow quality"},

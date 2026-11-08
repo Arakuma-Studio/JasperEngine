@@ -143,6 +143,7 @@ namespace jasperengine::editor {
         AssetsReanalyzeAudio,          // S36: the Project selection's cached measurements dropped
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
+        AssetsCreateProceduralMaterial,
         AddCameraShakerToMainCamera,  // GameObject > Add Camera Shaker to Main Camera
         // the Doriax catch-up's project-window: the one Create list, Duplicate, Maximize On Play
         AssetsCreateCppSource,
@@ -151,6 +152,8 @@ namespace jasperengine::editor {
         AssetsCreatePhysicsMaterial2D,
         AssetsDuplicate,
         ToggleMaximizeOnPlay,
+        ToggleParticleEffect,         // Window > Visual Effects > Particle Effect (S91)
+        ToggleGraphEditor,            // Window > Assets > Graph Editor (S90)
         ToggleSpritePreview,          // Window > 2D > Sprite Preview (S44)
         // S43: Window > 2D > Palette (payload: a .palette to open), Assets > Create > Palette
         TogglePalette,

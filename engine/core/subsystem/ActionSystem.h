@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "component/Transform.h"
+#include "ecs/ComponentFwd.h"
 #include "component/SpriteComponent.h"
 #include "component/MeshComponent.h"
 #include "component/RectTransformComponent.h"

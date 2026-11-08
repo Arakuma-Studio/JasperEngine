@@ -1,0 +1,318 @@
+{
+ "connections": [
+  {
+   "from": "gen_inputs",
+   "from_port": 3.0,
+   "to": "gen_outputs",
+   "to_port": 3.0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 4.0,
+   "to": "gen_outputs",
+   "to_port": 4.0
+  },
+  {
+   "from": "blend",
+   "from_port": 0.0,
+   "to": "gen_outputs",
+   "to_port": 1.0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 1.0,
+   "to": "blend",
+   "to_port": 1.0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 5.0,
+   "to": "blend",
+   "to_port": 2.0
+  },
+  {
+   "from": "uniform",
+   "from_port": 0.0,
+   "to": "blend",
+   "to_port": 0.0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 2.0,
+   "to": "decompose",
+   "to_port": 0.0
+  },
+  {
+   "from": "decompose",
+   "from_port": 0.0,
+   "to": "combine",
+   "to_port": 0.0
+  },
+  {
+   "from": "combine",
+   "from_port": 0.0,
+   "to": "gen_outputs",
+   "to_port": 2.0
+  },
+  {
+   "from": "blend_2",
+   "from_port": 0.0,
+   "to": "combine",
+   "to_port": 1.0
+  },
+  {
+   "from": "decompose",
+   "from_port": 1.0,
+   "to": "blend_2",
+   "to_port": 1.0
+  },
+  {
+   "from": "blend_2_2",
+   "from_port": 0.0,
+   "to": "combine",
+   "to_port": 2.0
+  },
+  {
+   "from": "decompose",
+   "from_port": 2.0,
+   "to": "blend_2_2",
+   "to_port": 1.0
+  },
+  {
+   "from": "uniform_greyscale",
+   "from_port": 0.0,
+   "to": "blend_2",
+   "to_port": 0.0
+  },
+  {
+   "from": "uniform_greyscale_2",
+   "from_port": 0.0,
+   "to": "blend_2_2",
+   "to_port": 0.0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 5.0,
+   "to": "blend_2",
+   "to_port": 2.0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 5.0,
+   "to": "blend_2_2",
+   "to_port": 2.0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0.0,
+   "to": "gen_outputs",
+   "to_port": 0.0
+  }
+ ],
+ "description": "",
+ "format": 1,
+ "id": "graph_workflow_effects_paint_1",
+ "inputs": [
+  {
+   "description": "",
+   "group_size": 5.0,
+   "label": "Height",
+   "name": "Height",
+   "type": "f"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Albedo",
+   "name": "Albedo",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "ORM",
+   "name": "ORM",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Emission",
+   "name": "Emission",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Normal",
+   "name": "Normal",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Mask",
+   "name": "Mask",
+   "type": "f"
+  }
+ ],
+ "kind": "graph",
+ "name": "Paint 1",
+ "nodes": [
+  {
+   "id": "blend",
+   "parameters": {
+    "amount": 1.0,
+    "blend_type": 0.0
+   },
+   "type": "blend"
+  },
+  {
+   "id": "uniform",
+   "parameters": {
+    "color": {
+     "a": 1.0,
+     "b": 1.0,
+     "g": 0.0,
+     "r": 0.03125,
+     "type": "Color"
+    }
+   },
+   "type": "uniform"
+  },
+  {
+   "id": "decompose",
+   "parameters": {},
+   "type": "decompose"
+  },
+  {
+   "id": "combine",
+   "parameters": {},
+   "type": "combine"
+  },
+  {
+   "id": "blend_2",
+   "parameters": {
+    "amount": 1.0,
+    "blend_type": 0.0
+   },
+   "type": "blend"
+  },
+  {
+   "id": "blend_2_2",
+   "parameters": {
+    "amount": 1.0,
+    "blend_type": 0.0
+   },
+   "type": "blend"
+  },
+  {
+   "id": "uniform_greyscale",
+   "parameters": {
+    "color": 1.0
+   },
+   "type": "uniform_greyscale"
+  },
+  {
+   "id": "uniform_greyscale_2",
+   "parameters": {
+    "color": 0.0
+   },
+   "type": "uniform_greyscale"
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "",
+   "group_size": 5.0,
+   "label": "Height",
+   "name": "Height",
+   "type": "f"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Albedo",
+   "name": "Albedo",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "ORM",
+   "name": "ORM",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Emission",
+   "name": "Emission",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Normal",
+   "name": "Normal",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [
+  {
+   "default": {
+    "a": 1.0,
+    "b": 1.0,
+    "g": 0.0,
+    "r": 0.03125,
+    "type": "Color"
+   },
+   "label": "Color",
+   "links": [
+    {
+     "node": "uniform",
+     "param": "color"
+    }
+   ],
+   "name": "param0",
+   "type": "color"
+  },
+  {
+   "default": 1.0,
+   "label": "Roughness",
+   "links": [
+    {
+     "node": "uniform_greyscale",
+     "param": "color"
+    }
+   ],
+   "max": 1,
+   "min": 0,
+   "name": "param1",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.0,
+   "label": "Metallic",
+   "links": [
+    {
+     "node": "uniform_greyscale_2",
+     "param": "color"
+    }
+   ],
+   "max": 1,
+   "min": 0,
+   "name": "param2",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "material_maker/library/base.json"
+ },
+ "type_version": 1
+}

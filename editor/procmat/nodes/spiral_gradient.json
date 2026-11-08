@@ -1,0 +1,93 @@
+{
+ "code": [
+  "vec2 position_$(name_uv) = $uv - 0.5;",
+  "float length_$(name_uv) = length(position_$(name_uv));",
+  "float spiral_$(name_uv) = (1.0 + sin(($use_perspective ? (($perspective * 6.0) / length_$(name_uv)) : (length_$(name_uv) / ($perspective / 6.0))) + (circular_gradient(position_$(name_uv)) * 6.28318530718 * $amount))) / 2.0;"
+ ],
+ "description": "",
+ "format": 1,
+ "functions": [
+  "circular_gradient"
+ ],
+ "id": "spiral_gradient",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Spiral Gradient",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Number of repetitions of the gradient",
+   "expr": "$gradient($mirror ? 2.0*(0.5-abs(spiral_$(name_uv)-0.5)) : spiral_$(name_uv))",
+   "label": "Gradient",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 1.0,
+   "label": "Repeat",
+   "max": 20.0,
+   "min": 0.0,
+   "name": "amount",
+   "step": 1.0,
+   "type": "float"
+  },
+  {
+   "default": 0.3,
+   "label": "Zoom",
+   "max": 10.0,
+   "min": 0.0,
+   "name": "perspective",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": false,
+   "label": "Perspective",
+   "name": "use_perspective",
+   "type": "boolean"
+  },
+  {
+   "default": false,
+   "description": "Mirrors the gradient",
+   "label": "Mirror",
+   "name": "mirror",
+   "short_description": "Mirror",
+   "type": "boolean"
+  },
+  {
+   "default": {
+    "interpolation": 1,
+    "points": [
+     {
+      "a": 1.0,
+      "b": 0.0,
+      "g": 0.0,
+      "pos": 0.0,
+      "r": 0.0
+     },
+     {
+      "a": 1.0,
+      "b": 1.0,
+      "g": 1.0,
+      "pos": 1.0,
+      "r": 1.0
+     }
+    ],
+    "type": "Gradient"
+   },
+   "description": "Gradient to be spread on the image",
+   "label": "",
+   "name": "gradient",
+   "short_description": "Gradient",
+   "type": "gradient"
+  }
+ ],
+ "short_description": "Spiral Gradient",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/spiral_gradient.mmg"
+ },
+ "type_version": 1
+}

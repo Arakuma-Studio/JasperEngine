@@ -40,6 +40,9 @@ TYPES = {
 MAIN_EFFECT_FIELDS = ["duration", "looping", "prewarm", "startDelay", "maxParticles", "simulationSpace", "simulationSpeed",
                       "scalingMode", "useUnscaledTime", "stopAction", "emitterVelocityMode"]
 
+# fields kept only so old files load, which nothing reads: not offered to scripts' authors
+NOT_LISTED = {("trails", "generateLightingData")}
+
 # Unity's names a field also answers to: (proxy, alias, field)
 ALIASES = [
     ("main", "startSizeX", "startSize"), ("main", "startRotationZ", "startRotation"), ("noise", "strengthX", "strength"),
@@ -101,7 +104,7 @@ def main() -> int:
         if proxy == "inheritVelocity":
             fields = [("curve", "MinMaxCurve"), ("mode", "Enum")]
         else:
-            fields = [f for f in modules.get(key, []) if f[1] != "Array"]
+            fields = [f for f in modules.get(key, []) if f[1] != "Array" and (key, f[0]) not in NOT_LISTED]
             if key != "main" and key != "renderer":
                 lines.append("---@field enabled boolean")
         if proxy == "main":

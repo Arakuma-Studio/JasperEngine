@@ -1,0 +1,77 @@
+{
+ "code": [
+  "vec4 $(name_uv)_c = vec4(0.0, 0.0, 0.0, 1.0);",
+  "bool $(name_uv)_f = false;",
+  "float $(name_uv)_$d = 0.0;",
+  "#for",
+  "$(name_uv)_$d += $size#;",
+  "if (! $(name_uv)_f && $(name_uv)_$d > uv.$d) {",
+  "\t$(name_uv)_c = $in#($uv);",
+  "\t$(name_uv)_f = true;",
+  "}",
+  "#end"
+ ],
+ "description": "Create a trimsheet from its inputs",
+ "format": 1,
+ "functions": [],
+ "id": "trimsheet",
+ "inputs": [
+  {
+   "default": "vec4($uv, 0.0, 1.0)",
+   "description": "An input image",
+   "label": "",
+   "name": "in#",
+   "short_description": "Input#",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Trimsheet",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the trimsheet",
+   "expr": "$(name_uv)_c",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.25,
+   "description": "The size of the section of the trim sheet",
+   "label": "Size",
+   "max": 1.0,
+   "min": 0.0,
+   "name": "size#",
+   "short_description": "Size",
+   "step": 0.001,
+   "type": "float"
+  },
+  {
+   "default": 1.0,
+   "description": "The trimsheet direction",
+   "label": "Direction",
+   "name": "d",
+   "short_description": "Direction",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Horizontal",
+     "value": "x"
+    },
+    {
+     "name": "Vertical",
+     "value": "y"
+    }
+   ]
+  }
+ ],
+ "short_description": "Trimsheet",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/trimsheet.mmg"
+ },
+ "type_version": 1
+}

@@ -752,6 +752,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/SchemaArgs.cpp
     ${EDITOR_DIR}/cli/McpClient.cpp
     ${EDITOR_DIR}/cli/CallCommand.cpp
+    ${EDITOR_DIR}/cli/ProceduralMaterialCommand.cpp
     ${EDITOR_DIR}/cli/ShippingCommands.cpp
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
     ${EDITOR_DIR}/cook/SceneCooker.cpp
@@ -912,6 +913,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/ScriptingTools.cpp
     ${EDITOR_DIR}/mcp/tools/GraphTools.cpp
     ${EDITOR_DIR}/mcp/tools/ParticleTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ProceduralMaterialTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
     ${EDITOR_DIR}/mcp/tools/MeshTools.cpp
     ${EDITOR_DIR}/mcp/tools/MaterialsLightingTools.cpp
@@ -971,6 +973,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Palettes.cpp
     ${EDITOR_DIR}/reload/handlers/Common.cpp
     ${EDITOR_DIR}/reload/handlers/Fonts.cpp
+    ${EDITOR_DIR}/reload/handlers/Graphs.cpp
     ${EDITOR_DIR}/reload/handlers/HtmlUi.cpp
     ${EDITOR_DIR}/reload/handlers/Materials.cpp
     ${EDITOR_DIR}/reload/handlers/Models.cpp
@@ -999,6 +1002,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/TerrainDetailRules.cpp
     ${EDITOR_DIR}/util/SplineBakeObjects.cpp
     ${EDITOR_DIR}/util/ParticleEffectEdit.cpp
+    ${EDITOR_DIR}/util/ParticleEffectTiming.cpp
     ${EDITOR_DIR}/util/ParticleMigrationReport.cpp
     ${EDITOR_DIR}/util/LatticeTrackKeys.cpp
     ${EDITOR_DIR}/util/EditorFingerprint.cpp
@@ -1224,6 +1228,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/BookmarksWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
     ${EDITOR_DIR}/window/ParticleEffectOverlay.cpp
+    ${EDITOR_DIR}/window/ParticleEffectWindow.cpp
+    ${EDITOR_DIR}/window/ParticleModuleRows.cpp
     ${EDITOR_DIR}/window/PrefabStageBar.cpp
     ${EDITOR_DIR}/window/ExternalChangeBar.cpp
     ${EDITOR_DIR}/window/DeviceProfiles.cpp
@@ -1323,10 +1329,15 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/widget/CustomTextEditor.cpp
     ${EDITOR_DIR}/window/widget/CustomTextEditorDiff.cpp
     ${EDITOR_DIR}/window/widget/GraphCanvas.cpp
+    ${EDITOR_DIR}/window/GraphEditorWindow.cpp
+    ${EDITOR_DIR}/window/ProceduralMaterialWindow.cpp
+    ${EDITOR_DIR}/graph/GraphDocument.cpp
+    ${EDITOR_DIR}/graph/GraphParamValues.cpp
     ${EDITOR_DIR}/window/widget/HtmlCssLexer.cpp
     ${EDITOR_DIR}/window/widget/InputTextContextMenu.cpp
     ${EDITOR_DIR}/window/widget/SemanticSuggestions.cpp
     ${EDITOR_DIR}/window/widget/SelectableTextView.cpp
+    ${EDITOR_DIR}/window/widget/ParticleChecksPanel.cpp
 
     ${EDITOR_DIR}/render/ToolsLayer.cpp
     ${EDITOR_DIR}/render/UILayer.cpp
@@ -1414,6 +1425,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundSearch.cpp
     ${EDITOR_DIR}/audio/AudioBaseline.cpp
     ${EDITOR_DIR}/audio/AudioQa.cpp
+    ${EDITOR_DIR}/util/QaChecks.cpp
+    ${EDITOR_DIR}/particles/ParticleQaSettings.cpp
+    ${EDITOR_DIR}/particles/ParticleEffectChecks.cpp
+    ${EDITOR_DIR}/particles/ParticleEffectPreview.cpp
+    ${EDITOR_DIR}/particles/ParticlePreviewSource.cpp
+    ${EDITOR_DIR}/particles/ParticleSheetBake.cpp
     ${EDITOR_DIR}/audio/AudioQaSettings.cpp
     ${EDITOR_DIR}/audio/AudioSessionReader.cpp
     ${EDITOR_DIR}/audio/AudioTimelineImage.cpp
@@ -1488,6 +1505,7 @@ endif()
 include(${EDITOR_DIR}/navigation/NavigationEditorSources.cmake)
 # the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
+include(${EDITOR_DIR}/procmat/ProcMatSources.cmake)
 # the pixel-art family (S43...): palettes, Apply Palette, the Palette window, the pixel_art tools
 include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
 

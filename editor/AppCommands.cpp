@@ -9,6 +9,7 @@
 #include "App.h"
 #include "window/AudioCapturesWindow.h"
 #include "window/SoundBrowserWindow.h"
+#include "window/GraphEditorWindow.h"
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/MainToolbar.h"
@@ -485,6 +486,20 @@ void editor::App::registerPanelClaims(){
     // its selected state, sub-state machine, transition or layer
     claims.add({"Animator", [this]() { return animatorWindow->isFocused(); },
                 {{Verb::Delete, {{}, [this]() { return animatorWindow->canDelete(); }, [this]() { animatorWindow->removeSelection(); }}}}});
+    // its selected nodes or wire; Copy and Paste carry nodes as JSON text
+    // (any graph window: the Graph Editor or a graph kind's own)
+    // the graph window that held the keys when the claim was found may have lost them by the time the
+    // menu asks (a click in its pane moves the focus mid-frame): each verb asks again, a no-op without one
+    claims.add({"Graph Editor", []() { return GraphEditorWindow::focused() != nullptr; },
+                {{Verb::Delete, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && w->canDelete(); },
+                                 []() { if (auto* w = GraphEditorWindow::focused()) w->removeSelection(); }}},
+                 {Verb::Copy, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && !w->selectedNodes().empty(); },
+                               []() { if (auto* w = GraphEditorWindow::focused()) w->copySelection(); }}},
+                 {Verb::Paste, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && w->canPaste(); },
+                                []() { if (auto* w = GraphEditorWindow::focused()) w->paste(); }}},
+                 {Verb::Duplicate, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && !w->selectedNodes().empty(); },
+                                    []() { if (auto* w = GraphEditorWindow::focused()) w->duplicateSelection(); }}},
+                 {Verb::Frame, {{}, nullptr, []() { if (auto* w = GraphEditorWindow::focused()) w->frameSelected(); }}}}});
     claims.add({"Jobs & Memory", [this]() { return jobsMemoryWindow->isFocused(); }, {}});
     claims.add({"Animation Statistics", [this]() { return animationStatisticsWindow->isFocused(); }, {}});
     claims.add({"Project", [this]() { return projectWindow->isFocused(); },

@@ -6,6 +6,7 @@
 
 #include "ActionSystem.h"
 #include "component/ModelComponent.h"
+#include "component/Transform.h"
 #include "ActionSystemPlayersDetail.h"
 #include "audio/AudioMarkers.h"
 #include "audio/TimelineAudio.h"

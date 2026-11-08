@@ -109,6 +109,9 @@ namespace jasperengine::editor {
         std::string m_defaultPalette;
         std::vector<std::pair<std::string, std::string>> m_paletteFiles;
         Physics3DWorldSettings m_physics3DWorld;
+        int m_particleWorldBudget = 0;
+        ParticleQaSettings m_particleQa;
+        procmat::ProcMatQaSettings m_procMatQa;
         bool m_runtimeShadersEnabled = true;
         bool m_dynamicBatching = true;
         int m_mobilePbrTierIndex = 1;

@@ -1,0 +1,142 @@
+{
+ "code": [],
+ "description": "Translates, rotates and scales its input",
+ "format": 1,
+ "functions": [
+  "transform"
+ ],
+ "id": "transform",
+ "inputs": [
+  {
+   "default": "vec4($uv, 0.0, 1.0)",
+   "description": "The input image to be transformed",
+   "label": "",
+   "name": "i",
+   "short_description": "Input",
+   "type": "rgba"
+  },
+  {
+   "default": "1.0",
+   "description": "An optional map for translation along the X axis",
+   "label": "",
+   "name": "tx",
+   "short_description": "TranslateMap.x",
+   "type": "f"
+  },
+  {
+   "default": "1.0",
+   "description": "An optional map for translation along the Y axis",
+   "label": "",
+   "name": "ty",
+   "short_description": "TranslateMap.y",
+   "type": "f"
+  },
+  {
+   "default": "1.0",
+   "description": "An optional map for rotation",
+   "label": "",
+   "name": "r",
+   "short_description": "RotateMap",
+   "type": "f"
+  },
+  {
+   "default": "1.0",
+   "description": "An optional map for scaling along the X axis",
+   "label": "",
+   "name": "sx",
+   "short_description": "ScaleMap.x",
+   "type": "f"
+  },
+  {
+   "default": "1.0",
+   "description": "An optional map for scaling along the Y axis",
+   "label": "",
+   "name": "sy",
+   "short_description": "ScaleMap.y",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Transform",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the transformed image",
+   "expr": "$i(transform($uv, vec2($translate_x*(2.0*$tx($uv)-1.0), $translate_y*(2.0*$ty($uv)-1.0)), $rotate*0.01745329251*(2.0*$r($uv)-1.0), vec2($scale_x*(2.0*$sx($uv)-1.0), $scale_y*(2.0*$sy($uv)-1.0)), $repeat))",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The translation along the X axis",
+   "label": "2:Translate X",
+   "max": 1,
+   "min": -1,
+   "name": "translate_x",
+   "short_description": "Translate.x",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The translation along the Y axis",
+   "label": "Translate Y",
+   "max": 1,
+   "min": -1,
+   "name": "translate_y",
+   "short_description": "Translate.y",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The rotation angle",
+   "label": "Rotate",
+   "max": 720,
+   "min": -720,
+   "name": "rotate",
+   "short_description": "Rotate",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The scaling factor along the X axis",
+   "label": "Scale X",
+   "max": 50,
+   "min": 0,
+   "name": "scale_x",
+   "short_description": "Scale.x",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The scaling factor along the Y axis",
+   "label": "Scale Y",
+   "max": 50,
+   "min": 0,
+   "name": "scale_y",
+   "short_description": "Scale.y",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": false,
+   "description": "Repeat the input if checked, clamps otherwise",
+   "label": "Repeat",
+   "name": "repeat",
+   "short_description": "Repeat",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/transform.mmg"
+ },
+ "type_version": 1
+}

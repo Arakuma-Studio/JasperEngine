@@ -48,8 +48,10 @@ a controller, load the same way (the player's controller moved to an Animator).
   blending (Override, Additive), Avatar Mask and montage slot in the Inspector.
 - **Parameters** tab: add (Float, Int, Bool, Trigger), rename (Enter; conditions and blend trees
   follow), default values; in Play and Preview the live values (triggers as buttons).
-- **Graph**: pan with the middle mouse (or Alt + drag), zoom with the wheel, box select, drag to
-  move (grid snap). Entry is green, Any State cyan, Exit red, the default state orange,
+- **Graph**: pan with the middle mouse (or Alt + drag), zoom with the wheel, box select or Shift /
+  Ctrl click to select several, drag to move (grid snap; several move and Delete removes them as
+  one undo step; the Inspector shows the one clicked last, or after a box select the first state;
+  Esc while dragging puts them back). Entry is green, Any State cyan, Exit red, the default state orange,
   sub-state machines blue (double-click to enter, the breadcrumb or (Up) to go back).
   Right-click: Create State (Empty, From Clip, From New Blend Tree), Create Sub-State Machine,
   Make Transition, Make Transition from Any State, Set as Layer Default State, Delete (Del).

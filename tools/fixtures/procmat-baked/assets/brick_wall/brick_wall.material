@@ -1,0 +1,55 @@
+formatVersion: 1
+guid: c89e6ffcc35ca8e01755862283b86bc9
+baseColorFactor: [1, 1, 1, 1]
+metallicFactor: 1
+roughnessFactor: 1
+alphaCutoff: 0.5
+foliageTransmission: 0
+alphaMode: AUTO
+emissiveFactor: [0, 0, 0]
+baseColorTexture:
+  textureType: 2D
+  source: path
+  path: assets/brick_wall/brick_wall_base_color.png
+  guid: c628bdd113f3fc53529c07d8dbc37afb
+  minFilter: linear
+  magFilter: linear
+  wrapU: repeat
+  wrapV: repeat
+  releaseDataAfterLoad: true
+metallicRoughnessTexture:
+  textureType: 2D
+  source: path
+  path: assets/brick_wall/brick_wall_orm.png
+  guid: 67859aeb4b174549894e21d1e684481b
+  minFilter: linear
+  magFilter: linear
+  wrapU: repeat
+  wrapV: repeat
+  releaseDataAfterLoad: true
+occlusionTexture:
+  textureType: 2D
+  source: path
+  path: assets/brick_wall/brick_wall_orm.png
+  guid: 67859aeb4b174549894e21d1e684481b
+  minFilter: linear
+  magFilter: linear
+  wrapU: repeat
+  wrapV: repeat
+  releaseDataAfterLoad: true
+normalTexture:
+  textureType: 2D
+  source: path
+  path: assets/brick_wall/brick_wall_normal.png
+  guid: db0a5324838fe57d291eca6c97a430b1
+  minFilter: linear
+  magFilter: linear
+  wrapU: repeat
+  wrapV: repeat
+  releaseDataAfterLoad: true
+baseColorTexCoord: 0
+metallicRoughnessTexCoord: 0
+occlusionTexCoord: 0
+emissiveTexCoord: 0
+normalTexCoord: 0
+name: assets/brick_wall/brick_wall.material

@@ -4,6 +4,7 @@
 #include "ReloadHandlers.h"
 
 #include "Project.h"
+#include "graph/GraphRegistry.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -46,6 +47,8 @@ std::string reload::kindOf(const fs::path& path) {
     }
     if (Util::isSceneFile(text)) return "scene";
     if (Util::isPrefabFile(text)) return "prefab";
+    // any registered kind's files
+    if (graph::GraphRegistry::get().kindForFile(text)) return "graph";
     if (ext == ".txt" || ext == ".md" || ext == ".yaml" || ext == ".yml" || ext == ".xml" || ext == ".csv" || ext == ".ini" || ext == ".cfg" ||
         ext == ".cmake" || ext == ".hlsl") {
         return "text";

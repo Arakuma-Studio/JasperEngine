@@ -358,7 +358,7 @@ void editor::SceneRender3D::createOrUpdateParticleLines(Entity entity, const Tra
     }
 
     // the bounds the culling and the budget use (the particles' last frame)
-    if (ParticleEffectOverlay::gizmos().bounds && particles.state && particles.state->runtime.count() > 0){
+    if (ParticleEffectOverlay::gizmos().bounds && particles.state && particles.state->runtime.totalCount() > 0){
         const particles::ParticleSystemState& state = *particles.state;
         addBoxLines(lines, Vector3(state.boundsMin[0], state.boundsMin[1], state.boundsMin[2]),
                     Vector3(state.boundsMax[0], state.boundsMax[1], state.boundsMax[2]), Vector4(1.0f, 0.85f, 0.2f, 1.0f));

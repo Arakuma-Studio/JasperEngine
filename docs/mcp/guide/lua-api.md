@@ -2906,7 +2906,7 @@ t seconds), `step(ticks)`, `sendTrigger(name)` (the effect's Trigger sub-emitter
 at every play), `effect` (a .particles path; "" plays the inline effect), `useUnscaledTime` (the
 GameObject's own: it ticks with the unscaled frame time and plays at `Engine.timeScale` 0, a pause
 menu or UI particles; the effect's `ps.main.useUnscaledTime` does the same for every system playing
-it). ro: `isPlaying`, `isPaused`, `isEmitting`, `particleCount`, `time`.
+it). ro: `isPlaying`, `isPaused`, `isEmitting`, `particleCount` (with its sub-emitter children), `time`.
 
 Events, one batch per frame on the main thread after the simulation (plain tables, 1-based):
 `onCollision(fn)` (position, normal, velocity, particleId, killed; at most the Collision

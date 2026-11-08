@@ -9,6 +9,7 @@
 
 #include "math/CurveJson.h"
 #include "particles/ParticleModules.h"
+#include "util/NearestName.h"
 
 #include <cmath>
 #include <cstdio>
@@ -30,6 +31,12 @@ namespace {
 
     void warn(std::vector<Diagnostic>& out, const std::string& path, const std::string& message){
         out.push_back({Diagnostic::Severity::Warning, path.empty() ? "$" : path, message});
+    }
+
+    // A key the format does not have: a warning here (old files must load), and applyMergePatch
+    // refuses it. `known` holds what it may have meant.
+    void warnUnknownKey(std::vector<Diagnostic>& out, const std::string& path, const std::string& key, const std::string& message, const std::vector<std::string>& known){
+        out.push_back({Diagnostic::Severity::Warning, path, message + NearestNameSuffix(key, known), true});
     }
 
     std::string join(const std::string& path, const std::string& key){
@@ -112,6 +119,7 @@ namespace {
                 ok = false;
             }else{
                 warn(out, path + issue.path, issue.message);
+                out.back().unknownKey = issue.unknownKey;
             }
         }
         return ok;
@@ -150,7 +158,10 @@ namespace {
             return jf(v.constant);
         const MinMaxCurve d;
         Json j = Json::object();
-        j["mode"] = optionName(ParticleModules::curveModes(), (uint8_t)v.mode);
+        // an ease is stored as the curve it made, plus its preset: a reader without Ease reads the
+        // curve (and reads past the preset)
+        j["mode"] = optionName(ParticleModules::curveModes(), (uint8_t)(v.mode == CurveMode::Ease ? CurveMode::Curve : v.mode));
+        if (v.mode == CurveMode::Ease) j["ease"] = optionName(ParticleModules::easeTypes(), (uint8_t)v.ease);
         if (v.constant != d.constant) j["constant"] = jf(v.constant);
         if (v.constantMax != d.constantMax) j["constantMax"] = jf(v.constantMax);
         if (!v.curve.empty()) j["curve"] = curveToJson(v.curve);
@@ -177,6 +188,7 @@ namespace {
         v = MinMaxCurve();
         bool ok = true;
         bool hasMode = false;
+        bool hasEase = false;
         for (auto it = j.begin(); it != j.end(); ++it){
             const std::string& key = it.key();
             const std::string at = join(path, key);
@@ -185,6 +197,11 @@ namespace {
                 hasMode = true;
                 if (!optionValue(ParticleModules::curveModes(), *it, mode)){ error(out, at, "mode is one of " + optionList(ParticleModules::curveModes())); ok = false; }
                 v.mode = (CurveMode)mode;
+            }else if (key == "ease"){
+                uint8_t ease = 0;
+                hasEase = true;
+                if (!optionValue(ParticleModules::easeTypes(), *it, ease)){ error(out, at, "ease is one of " + optionList(ParticleModules::easeTypes())); ok = false; }
+                v.ease = (EaseType)ease;
             }else if (key == "constant" || key == "constantMax" || key == "multiplier" || key == "driverMin" || key == "driverMax"){
                 float f = 0.0f;
                 if (!readFloat(*it, f)){ error(out, at, "not a finite number"); ok = false; continue; }
@@ -206,8 +223,21 @@ namespace {
                 if (!optionValue(ParticleModules::curveWraps(), *it, wrap)){ error(out, at, "wrap is one of " + optionList(ParticleModules::curveWraps())); ok = false; }
                 v.wrap = (CurveWrap)wrap;
             }else{
-                warn(out, at, "unknown value key");
+                warnUnknownKey(out, at, key, "unknown value key",
+                               {"mode", "constant", "constantMax", "curve", "curveMax", "multiplier", "driver", "driverMin", "driverMax", "wrap", "ease"});
             }
+        }
+        if (hasEase || v.mode == CurveMode::Ease){
+            // {mode: curve, ease} as written, or {mode: ease, ease, constant, constantMax} as an
+            // edit asks for it: the stored curve is what evaluates; without one it is made here
+            if (hasMode && v.mode != CurveMode::Curve && v.mode != CurveMode::Ease){
+                error(out, join(path, "ease"), "an ease goes with mode ease (or curve, as stored)");
+                return false;
+            }
+            v.mode = CurveMode::Ease;
+            if (!j.contains("curve"))
+                v.rebuildEase();
+            return ok;
         }
         if (!hasMode){
             // {constant: x} alone, or {constant, constantMax} for a range
@@ -298,7 +328,8 @@ namespace {
                 if (!optionValue(ParticleModules::curveWraps(), *it, wrap)){ error(out, at, "wrap is one of " + optionList(ParticleModules::curveWraps())); ok = false; }
                 v.wrap = (CurveWrap)wrap;
             }else{
-                warn(out, at, "unknown colour value key");
+                warnUnknownKey(out, at, key, "unknown colour value key",
+                               {"mode", "color", "colorMax", "gradient", "gradientMax", "driver", "driverMin", "driverMax", "wrap"});
             }
         }
         if (!hasMode){
@@ -499,7 +530,10 @@ namespace {
                 continue;
             const FieldDesc* f = desc.find(it.key());
             if (!f){
-                warn(out, join(path, it.key()), std::string("unknown field of ") + desc.name);
+                std::vector<std::string> known;
+                for (const FieldDesc& field : desc.fields) known.push_back(field.key);
+                if (skip) known.insert(known.end(), skip->begin(), skip->end());
+                warnUnknownKey(out, join(path, it.key()), it.key(), std::string("unknown field of ") + desc.name, known);
                 continue;
             }
             ok = fieldFromJson(*f, *it, f->field(owner), join(path, it.key()), out) && ok;
@@ -700,6 +734,12 @@ Json ParticleEffectCodec::toJson(const ParticleEffectDocument& document){
             list.push_back(structToJson(ParticleModules::exposedFields(), &e, false));
         j["exposed"] = list;
     }
+    if (!document.triggers.empty()){
+        Json list = Json::array();
+        for (const EffectTrigger& t : document.triggers)
+            list.push_back(structToJson(ParticleModules::triggerFields(), &t, true));
+        j["triggers"] = list;
+    }
     return j;
 }
 
@@ -732,7 +772,7 @@ bool ParticleEffectCodec::fromJson(const Json& json, ParticleEffectDocument& doc
         }
     }
 
-    static const std::set<std::string> reserved = {"version", "modules", "subEmitters", "exposed"};
+    static const std::set<std::string> reserved = {"version", "modules", "subEmitters", "exposed", "triggers"};
     ok = structFromJson(ParticleModules::documentFields(), json, &document, "", diagnostics, &reserved) && ok;
 
     // modules: hidden unless listed (Main and Renderer always present)
@@ -826,6 +866,7 @@ bool ParticleEffectCodec::fromJson(const Json& json, ParticleEffectDocument& doc
     };
     readList("subEmitters", ParticleModules::subEmitterFields(), document.subEmitters);
     readList("exposed", ParticleModules::exposedFields(), document.exposed);
+    readList("triggers", ParticleModules::triggerFields(), document.triggers);
 
     ok = validate(document, diagnostics) && ok;
     for (size_t i = firstDiagnostic; i < diagnostics.size(); i++){
@@ -861,6 +902,8 @@ bool ParticleEffectCodec::validate(const ParticleEffectDocument& d, std::vector<
     }
     for (size_t i = 0; i < d.subEmitters.size(); i++)
         validateStruct(ParticleModules::subEmitterFields(), &d.subEmitters[i], indexed("subEmitters", i), out);
+    for (size_t i = 0; i < d.triggers.size(); i++)
+        validateStruct(ParticleModules::triggerFields(), &d.triggers[i], indexed("triggers", i), out);
 
     // what the field ranges do not say
     if (d.startDelay.usesCurve())
@@ -914,6 +957,8 @@ bool ParticleEffectCodec::validate(const ParticleEffectDocument& d, std::vector<
             error(out, "renderer.shader", "a shader (library:particles, or a fork of it)");
         if (r.renderMode == RenderMode::None && !(d.trails.present && d.trails.enabled))
             warn(out, "renderer.renderMode", "None draws only trails, and Trails is off");
+        if (r.renderMode == RenderMode::Ring && r.ringInnerRadius > r.ringOuterRadius)
+            error(out, "renderer.ringInnerRadius", "the Inner Radius is not above the Outer Radius");
     }
     if (d.setOverAge.present && d.setOverAge.enabled){
         for (size_t i = 0; i < d.setOverAge.entries.size(); i++){
@@ -935,6 +980,13 @@ bool ParticleEffectCodec::validate(const ParticleEffectDocument& d, std::vector<
     }
     if (!d.subEmitters.empty() && !(d.subEmittersModule.present && d.subEmittersModule.enabled))
         warn(out, "subEmitters", "the Sub Emitters module is off: the list does nothing");
+
+    if (d.triggers.size() > kMaxTriggers)
+        error(out, "triggers", "at most 16 triggers");
+    for (size_t i = 0; i < d.triggers.size(); i++){
+        if (d.triggers[i].name.empty())
+            error(out, indexed("triggers", i) + ".name", "a trigger has the name sendTrigger() raises");
+    }
 
     if (d.exposed.size() > kMaxExposed)
         error(out, "exposed", "at most 32 exposed parameters");
@@ -983,6 +1035,26 @@ namespace {
         }
         if (!target.is_object())
             target = Json::object();
+        // a gradient has two object forms and the keyed form holds {colorKeys, alphaKeys}: a patch
+        // in the other form replaces them, or the reader would meet them as unknown keys
+        if ((patch.contains("colors") || patch.contains("alphas")) && (target.contains("colorKeys") || target.contains("alphaKeys"))){
+            target.erase("colorKeys");
+            target.erase("alphaKeys");
+            target.erase("linear");
+        }
+        // an Ease value (stored as its curve and preset): a patch of its preset, start or end makes
+        // the curve again; a patch to another mode, or of its curve alone, leaves Ease. A patch
+        // that makes a value Ease makes its curve too, whatever curve it had.
+        const bool toEase = (patch.contains("mode") && patch["mode"] == "ease") || (patch.contains("ease") && !patch["ease"].is_null());
+        if (toEase && !patch.contains("curve")){
+            target.erase("curve");
+            target.erase("curveMax");
+        }else if (target.contains("ease")){
+            if (!patch.contains("curve") && (patch.contains("constant") || patch.contains("constantMax")))
+                target.erase("curve");
+            if ((patch.contains("mode") && patch["mode"] != "ease") || patch.contains("curve"))
+                target.erase("ease");
+        }
         for (auto it = patch.begin(); it != patch.end(); ++it){
             if (it->is_null()){
                 target.erase(it.key());
@@ -1011,7 +1083,9 @@ bool ParticleEffectCodec::applyMergePatch(ParticleEffectDocument& document, cons
     const Json& keyedModules = keyed.contains("modules") && keyed["modules"].is_object() ? keyed["modules"] : Json::object();
     for (auto it = keyedModules.begin(); it != keyedModules.end(); ++it){
         if (!ParticleModules::find(it.key())){
-            error(diagnostics, "modules." + it.key(), "unknown module \"" + it.key() + "\"");
+            std::vector<std::string> known;
+            for (const ModuleDesc& m : ParticleModules::all()) known.push_back(m.key);
+            error(diagnostics, "modules." + it.key(), "unknown module \"" + it.key() + "\"" + NearestNameSuffix(it.key(), known));
             return false;
         }
         if (!it->is_object()){
@@ -1038,8 +1112,18 @@ bool ParticleEffectCodec::applyMergePatch(ParticleEffectDocument& document, cons
     }
     keyed["modules"] = modules;
 
+    // The keyed form holds only what the format has, so an unknown key can only be the patch's: a
+    // misspelled field would be dropped without a trace, so it is an error here, not a warning
     ParticleEffectDocument patched;
-    if (!fromJson(keyed, patched, diagnostics))
+    const size_t firstDiagnostic = diagnostics.size();
+    bool ok = fromJson(keyed, patched, diagnostics);
+    for (size_t i = firstDiagnostic; i < diagnostics.size(); i++){
+        if (!diagnostics[i].unknownKey)
+            continue;
+        diagnostics[i].severity = Diagnostic::Severity::Error;
+        ok = false;
+    }
+    if (!ok)
         return false;
     document = std::move(patched);
     return true;

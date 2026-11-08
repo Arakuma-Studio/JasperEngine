@@ -68,7 +68,7 @@ namespace jasperengine::pixelart{
 
 namespace jasperengine{
 
-	namespace particles { struct CompiledEffect; }
+	namespace particles { struct CompiledEffect; struct ParticleRenderData; struct ParticleSystemState; class EmitterRuntime; }
 	// Legacy u_fs_lighting, declared by forks written before per-object lights: filled per
 	// draw with the object's first MAX_LIGHTS pixel lights (the camera part per camera)
 	typedef struct fs_lighting_t {
@@ -740,6 +740,10 @@ namespace jasperengine{
 			// own, or its waters' group's: waterPlace)
 			int8_t waterRank = 0;
 			float waterSortDistance = 0.0f;
+			// a system with sub-emitters queues each emitter by its own priority and distance:
+			// the one this is (null: the system has one emitter)
+			const particles::EmitterRuntime* emitter = nullptr;
+			particles::ParticleRenderData* emitterRender = nullptr;
 		};
 
 		// which of the LOD cross-fade's draws a pass makes (spec S54 R6-R8)
@@ -3374,7 +3378,15 @@ namespace jasperengine{
 		void destroyParticleBuffers();
 		bool appendParticleStream(ParticleStream& stream, const void* data, size_t bytes, BufferRender*& buffer, size_t& offset);
 		bool loadParticles(Entity entity, ParticleSystemComponent& particles, uint16_t pipelines);
+		// one emitter's objects, the root's or a sub-emitter child's
+		bool loadParticleEmitter(Entity entity, const particles::EmitterRuntime& runtime, const particles::CompiledEffect& effect, particles::ParticleRenderData& rd, uint16_t pipelines);
+		// loads (again) what the children need; true when one loaded
+		bool updateParticleChildren(Entity entity, const particles::EmitterRuntime& emitter, particles::ParticleRenderData& rd, uint16_t pipelines);
 		void destroyParticles(ParticleSystemComponent& particles);
+		void destroyParticleRender(particles::ParticleRenderData& rd);
+		// the scene inputs of a system's tree, and whether all of it has loaded
+		static uint32_t particleSceneInputs(const particles::ParticleRenderData& rd);
+		static bool isParticleTreeLoaded(const particles::EmitterRuntime& emitter, const particles::ParticleRenderData& rd);
 		// load, reload and the scene inputs of every particle system (update)
 		void updateParticleRenders(uint16_t pipelines);
 		// what the draw tests besides the component's checkbox: the GameObject active, the
@@ -3382,8 +3394,19 @@ namespace jasperengine{
 		bool isParticleRenderActive(Entity entity, uint32_t cullingMask) const;
 		bool particleBoundsVisible(const particles::ParticleSystemState& state, CameraComponent& camera);
 		void setParticleSceneInputUser(Entity entity, uint32_t inputs);
-		uint64_t particleRenderKey(const particles::ParticleSystemState& state) const;
-		void drawParticles(Entity entity, ParticleSystemComponent& particles, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType);
+		uint64_t particleRenderKey(const particles::CompiledEffect& effect) const;
+		// only: the one emitter to draw (a queued item of a system with sub-emitters), else its whole tree
+		void drawParticles(Entity entity, ParticleSystemComponent& particles, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType,
+		                   const particles::EmitterRuntime* only = nullptr, particles::ParticleRenderData* onlyRender = nullptr);
+		// an emitter and its children as items of the transparent queue
+		void queueParticleTree(Entity entity, ParticleSystemComponent& particles, const particles::EmitterRuntime& emitter, particles::ParticleRenderData& rd,
+		                       Transform& transform, const Transform& cameraTransform, bool root, uint32_t& order);
+		// an emitter, then its children in the effect's order
+		void drawParticleTree(const particles::ParticleSystemState& state, const particles::EmitterRuntime& runtime, particles::ParticleRenderData& rd, Transform& transform,
+		                      CameraComponent& camera, Transform& camTransform, PipelineType pipType, bool boundsVisible, uint32_t& drawn, bool& sorted);
+		// its draws (sorted: this view sorted its particles)
+		uint32_t drawParticleEmitter(const particles::ParticleSystemState& state, const particles::EmitterRuntime& runtime, particles::ParticleRenderData& rd, Transform& transform,
+		                             CameraComponent& camera, Transform& camTransform, PipelineType pipType, bool boundsVisible, bool& sorted);
 		float getPointsViewportHeight(const CameraComponent& camera) const;
 		float computePointsScale(const CameraComponent& camera, float viewportHeight) const;
 		void destroyPoints(Entity entity, PointsComponent& points);

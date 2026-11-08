@@ -1042,6 +1042,16 @@ std::vector<std::string> editor::Project::getLinkedMaterialFiles() const {
     return std::vector<std::string>(files.begin(), files.end());
 }
 
+void editor::Project::reapplyLinkedMaterialFiles() {
+    for (const std::string& linked : getLinkedMaterialFiles()) {
+        try {
+            applyLinkedMaterialFile(linked, Stream::decodeMaterial(DocumentFiles::read(projectPath / linked, DocumentKind::Material).root));
+        } catch (const std::exception& e) {
+            Out::warning("Could not read material %s: %s", linked.c_str(), e.what());
+        }
+    }
+}
+
 void editor::Project::applyLinkedMaterialFile(const std::string& relativePath, const Material& fileMaterial) {
     const std::string filePath = fs::path(relativePath).lexically_normal().generic_string();
     Material updatedMaterial = fileMaterial;
@@ -3640,6 +3650,15 @@ const editor::LoadingSettings& editor::Project::getLoadingSettings() const{
     return loadingSettings;
 }
 
+uint32_t editor::Project::getParticleWorldBudget() const{
+    return particleWorldBudget;
+}
+
+void editor::Project::setParticleWorldBudget(uint32_t budget){
+    particleWorldBudget = budget;
+    particles::ParticleWorld::setProjectBudget(budget);
+}
+
 const editor::ThreadingProjectSettings& editor::Project::getThreadingSettings() const{
     return threadingSettings;
 }
@@ -6202,6 +6221,9 @@ void editor::Project::resetConfigs() {
     }
     setLightMode(defaultLightMode);
     setThreadingSettings(ThreadingProjectSettings());
+    setParticleWorldBudget(0);
+    setParticleQaSettings(ParticleQaSettings());
+    setProcMatQaSettings(procmat::ProcMatQaSettings());
     setShaderCreationSettings(ShaderCreationProjectSettings());
     windowMode = defaultWindowMode;
     windowWidth = defaultWindowWidth;
@@ -6822,6 +6844,7 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
 
         // Restore snapshot if present
         const bool restoredFromSnapshot = restorePlaySnapshot(sceneProject);
+        reapplyLinkedMaterialFiles();
         // the restored scene's own Canvas Scaler (a script may have changed it while playing)
         applyEditCanvasScale(sceneProject->scene, sceneProject->sceneType, sceneProject->sceneRender);
         // the fluids too: back to the edit-mode start, not the game's last frame
@@ -8153,7 +8176,7 @@ void editor::Project::configureGenerator() {
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
     generator.setPixelsPerUnit(pixelsPerUnit);
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings);
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings, particleWorldBudget);
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -8931,6 +8954,9 @@ editor::SceneProject* editor::Project::getScene(uint32_t sceneId) {
     if (SceneProject* stageScene = findPrefabStageScene(sceneId)) {
         return stageScene;
     }
+    if (materialAssetScene && materialAssetScene->id == sceneId) {
+        return materialAssetScene;
+    }
     return findPlayRuntimeScene(sceneId);
 }
 
@@ -8941,6 +8967,9 @@ const editor::SceneProject* editor::Project::getScene(uint32_t sceneId) const {
     }
     if (const SceneProject* stageScene = findPrefabStageScene(sceneId)) {
         return stageScene;
+    }
+    if (materialAssetScene && materialAssetScene->id == sceneId) {
+        return materialAssetScene;
     }
     return findPlayRuntimeScene(sceneId);
 }
@@ -10345,7 +10374,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
     generator.setPixelsPerUnit(pixelsPerUnit);
-    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings);
+    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings, particleWorldBudget);
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
     }
