@@ -978,6 +978,12 @@ bool editor::TerrainEditWindow::findTerrainHit(Scene* scene, const Ray& ray, Ent
 static constexpr double STROKE_FRAME_BUDGET_SECONDS = 0.006;
 // Longest interval a single event may deposit, so hitches don't cause spikes.
 static constexpr float BRUSH_MAX_STAMP_SECONDS = 0.05f;
+// T1 R39: a test-only log of mouse strokes as the edit_terrain calls that replay them
+static const char* terrainStrokeLogPath(){
+    const char* path = std::getenv("JASPER_TERRAIN_STROKE_LOG");
+    return path && path[0] ? path : nullptr;
+}
+
 // Objects any closer than this would stack on top of each other
 static constexpr float MIN_PLACE_SPACING = 0.05f;
 
@@ -1359,6 +1365,9 @@ bool editor::TerrainEditWindow::paintMapStroke(SceneProject* sceneProject, const
     }
     const float time = std::chrono::duration<float>(now - stroke.startTime).count();
     stroke.session->addSample(time, localPoint.x, localPoint.z, 1.0f);
+    if (terrainStrokeLogPath()){
+        stroke.logSamples.push_back(terrain::StrokeSample{time, localPoint.x, localPoint.z, 1.0f});
+    }
     stroke.session->run(STROKE_FRAME_BUDGET_SECONDS);
     return stroke.session->flush();
 }
@@ -3116,6 +3125,14 @@ void editor::TerrainEditWindow::endStroke(){
         // what the frame budget left waiting lands before the step is cut
         stroke.session->run(0.0);
         stroke.session->flush();
+        // R39: the stroke as the edit_terrain call that replays it, one line each
+        if (const char* log = terrainStrokeLogPath()){
+            const std::string line = stroke.session->replayCall(stroke.logSamples);
+            if (!line.empty()){
+                std::ofstream out(std::filesystem::u8path(log), std::ios::app);
+                out << line << '\n';
+            }
+        }
         CommandHistory* history = CommandHandle::get(stroke.sceneId);
         if (removeFilledHoleMap(sceneProject)){
             clearStroke();

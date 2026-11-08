@@ -117,6 +117,8 @@ namespace jasperengine::editor{
         // the samples' clock (T1 R33, R35: only holding still deposits by time)
         bool started = false;
         std::chrono::steady_clock::time_point startTime;
+        // T1 R39: the drag's samples, kept when JASPER_TERRAIN_STROKE_LOG names a log
+        std::vector<terrain::StrokeSample> logSamples;
         // Placement strokes write entities instead of a map, so none of the map state applies
         bool placement = false;
         // Fixed at stroke start, cleared if the asset turns out not to be instanceable

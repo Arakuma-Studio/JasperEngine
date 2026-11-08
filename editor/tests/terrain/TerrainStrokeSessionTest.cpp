@@ -5,6 +5,8 @@
 // for the routes that have to reach a Project (AC15, AC64).
 
 #include "TerrainProjectFixture.h"
+#include "object/TerrainOpsJson.h"
+#include "json.hpp"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
 
@@ -420,5 +422,41 @@ TEST(TerrainStrokeSession, AlternatesLiftFloorsAndFlattenPeaks) {
             EXPECT_EQ(left, LOW) << "what is below it stays";
             EXPECT_NEAR(static_cast<double>(right), TARGET, 300.0) << "the peak came down to the picked height";
         }
+    }
+}
+
+// R39: a mouse stroke written as its edit_terrain call replays to the very same bytes
+TEST(TerrainStrokeSession, TheStrokeLogReplaysToTheSameBytes) {
+    constexpr int N = 65;
+    for (const TerrainBrushMode mode : {TerrainBrushMode::Raise, TerrainBrushMode::Flatten}) {
+        terrain::RawMapStore dragged(static_cast<float>(N), 10.0f);
+        terrain::RawMapStore replayed(static_cast<float>(N), 10.0f);
+        addHeight(dragged, N, 9000);
+        addHeight(replayed, N, 9000);
+        TerrainStrokeBrush brush = raiseBrush(5.0f, 0.6f);
+        brush.mode = mode;
+        brush.flattenTarget = 0.4f;
+        TerrainStrokeSession session(dragged, HEIGHT_MAP, static_cast<float>(N), brush);
+        std::vector<terrain::StrokeSample> samples;
+        for (int i = 0; i < 24; i++) {
+            const float t = static_cast<float>(i) / 23.0f;
+            samples.push_back(terrain::StrokeSample{t * 0.4f, -20.0f + 40.0f * t, 12.0f * std::sin(t * 3.0f), 1.0f});
+            session.addSample(samples.back().time, samples.back().x, samples.back().z, 1.0f);
+        }
+        ASSERT_TRUE(session.run(0.0));
+        ASSERT_TRUE(session.flush());
+
+        const std::string line = session.replayCall(samples);
+        ASSERT_FALSE(line.empty()) << "a round brush with no mask is logged";
+        const nlohmann::json call = nlohmann::json::parse(line);
+        EXPECT_EQ(call["space"], "local");
+        terrain::OpSpace space;
+        space.world = false;
+        terrain::OpJsonParser parser(space, terrain::OpJsonHooks{});
+        std::vector<terrain::Op> ops;
+        ASSERT_TRUE(parser.parseList(call["ops"], ops)) << parser.error;
+        ASSERT_TRUE(terrain::applyOps(replayed, ops, terrain::OpOptions()).ok);
+        const size_t bytes = static_cast<size_t>(N) * N * 2;
+        EXPECT_EQ(std::memcmp(dragged.mapBytes(HEIGHT_MAP), replayed.mapBytes(HEIGHT_MAP), bytes), 0) << "byte for byte, mode " << static_cast<int>(mode);
     }
 }
