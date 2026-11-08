@@ -51,6 +51,11 @@ namespace jasperengine::editor::ui {
         EditPhase consume(ImGuiID id, Gradient& gradient);
         void close();
 
+        // a preset (a swatch library's gradient) as the edited gradient, one undo step; false
+        // with the reason in getWarning() when it has more keys than the field holds
+        bool applyPreset(const Gradient& preset);
+        const std::string& getWarning() const { return warning; }
+
         // the window has the keyboard focus (App: its claim on the edit commands: it has no keys)
         bool isFocused() const { return target != 0 && windowFocused; }
 
