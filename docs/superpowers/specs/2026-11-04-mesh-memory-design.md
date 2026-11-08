@@ -868,10 +868,20 @@ Branch `fu/mesh-memory` (docs/doriax-catchup/FOLLOWUPS.md).
    the live mesh made new ones: `InstancingGoldenGpu.BatchVariantsFreedByTheirLastHolder`, red without the
    destructor). `destroyMesh` with the assets kept releases the variants whole for a submesh past
    `numSubmeshes` (left from a larger load: it draws nothing). Undo and redo of `MeshChangeCmd` and the restore
-   paths of `ModelLoadCmd` assign a decoded component over a loaded one: the variants now free themselves there
-   (the old `batch` is the last holder), but the rest of that component's GPU objects (its render, depth and
-   G-buffer pipelines, buffers, shader pool entries and textures) are still not released, as before this program.
-   Not fixed here: the right fix is `ModelClearCmd`'s `releaseMeshResources` (`prepareMeshForDataReload` and the
-   material textures) before each assignment, moved where the three commands share it, with an editor test per
-   command counting live pipelines across undo and redo; it is a change to editor command behaviour beyond the
-   variants.
+   paths of `ModelLoadCmd` assign a decoded component over a loaded one, which left all of that component's GPU
+   objects alive (render, depth and G-buffer pipelines, buffers, shader pool entries, textures) on every undo and
+   redo, as before this program. `ModelClearCmd`'s `releaseMeshResources` (`prepareMeshForDataReload` and the
+   material textures) is now `ProjectUtils::releaseMeshResources`, called before each of those assignments
+   (`MeshChangeCmd` execute and undo, `ModelLoadCmd` undo and its synchronous-failure restore); the commands do
+   nothing else differently. The editor unit tests have no renderer (a mesh never loads there), so the test is an
+   MCP one: `test_mesh_undo_resources.py` counts the device's alive pipelines, buffers, images and shaders
+   (`get_render_stats`) across three undo/redo rounds of `set_mesh_geometry` and of `set_model`, each landing on
+   the counts of its state. Measured with the changes reverted: `set_mesh_geometry` kept one shader pool entry of
+   the replaced mesh alive and one buffer more every round; `set_model` showed no growth (a model's buffers and
+   pipelines are shared through the model's pool and the pipeline cache, and its first load of a file keeps one
+   image that does not grow), so that case is a pin. The per-round buffer was not the command's: S55's
+   position-only shadow indices (R5) made a GPU index buffer that nothing destroyed (a `BufferRender` handle
+   frees nothing), so every reload or destroy of a mesh whose shadow indices paid off leaked one. `ShadowIndexBuffer`
+   now owns it like `SubmeshBatchVariants` (non-copyable, destroyed by its last holder, posted to the main thread
+   from another): `InstancingGoldenGpu.ShadowIndicesFreedWithTheirMesh` reloads a shadow-casting box three times
+   and the alive buffers stay put (red without it).

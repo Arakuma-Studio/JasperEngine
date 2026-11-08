@@ -8934,6 +8934,15 @@ void RenderSystem::updateSubmeshBounds(MeshComponent& mesh){
     }
 }
 
+ShadowIndexBuffer::~ShadowIndexBuffer(){
+    if (MainThreadQueue::isMainThread()){
+        buffer.getRender()->destroyBuffer();
+        return;
+    }
+    std::shared_ptr<BufferRender> render = std::make_shared<BufferRender>(*buffer.getRender());
+    MainThreadQueue::post([render](){ render->destroyBuffer(); });
+}
+
 std::shared_ptr<ShadowIndexBuffer> RenderSystem::shadowIndexBuffer(MeshComponent& mesh, Submesh& submesh){
     static std::unordered_map<SubmeshGeometryKey, std::weak_ptr<ShadowIndexBuffer>, SubmeshGeometryHash> shared;
     static uint64_t sharedContext = 0;

@@ -217,10 +217,18 @@ namespace jasperengine{
     // (meshopt_generateShadowIndexBuffer): a depth program reading positions only draws the same
     // triangles fetching and shading fewer vertices where the mesh splits its vertices for
     // normals or UVs. Made when they reference more than 10% fewer vertices; count 0 otherwise.
+    // It owns its GPU buffer: the last submesh holding it destroys it (a BufferRender handle
+    // frees nothing on its own).
     struct JASPERENGINE_API ShadowIndexBuffer{
         std::vector<unsigned char> bytes;
         ExternalBuffer buffer;
         unsigned int count = 0;
+
+        ShadowIndexBuffer() = default;
+        ShadowIndexBuffer(const ShadowIndexBuffer&) = delete;
+        ShadowIndexBuffer& operator=(const ShadowIndexBuffer&) = delete;
+        // off the main thread the destroy is posted there (MainThreadQueue)
+        ~ShadowIndexBuffer();
     };
 
     // Automatic GPU instancing (spec S55): the HAS_AUTO_INSTANCING variants of a submesh's render

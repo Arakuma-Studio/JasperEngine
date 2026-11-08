@@ -379,6 +379,37 @@ TEST_F(InstancingGoldenGpu, BatchVariantsFreedByTheirLastHolder){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// A box's position-only shadow indices (spec S55 R5: its 24 vertices are 8 positions) are a GPU
+// buffer of their own: each reload of the box makes them again, and the ones it let go of are
+// destroyed (the device's alive buffers stay where they were)
+TEST_F(InstancingGoldenGpu, ShadowIndicesFreedWithTheirMesh){
+    JASPER_REQUIRE_GPU();
+    struct DynamicBatchingOff{
+        bool was = Engine::isDynamicBatching();
+        DynamicBatchingOff(){ Engine::setDynamicBatching(false); }
+        ~DynamicBatchingOff(){ Engine::setDynamicBatching(was); }
+    } dynamicBatchingOff;
+    sun.setShadowUpdateMode(ShadowUpdateMode::EVERY_FRAME);
+    Primitive& box = add();
+    box.createBox(1.0f, 1.0f, 1.0f);
+    box.setPosition(0.0f, 0.5f, 0.0f);
+    Primitive& floor = add();
+    floor.createPlane(8.0f, 8.0f);
+    ASSERT_TRUE(render()) << "the box never finished loading";
+    const MeshComponent& mesh = box.getComponent<MeshComponent>();
+    ASSERT_TRUE(mesh.submeshes[0].shadowIndices) << "no shadow pass drew the box";
+    ASSERT_GT(mesh.submeshes[0].shadowIndices->count, 0u) << "the box's shadow indices did not pay off";
+    const uint32_t buffers = SystemRender::getRenderStats(SystemRender::FRAME_STATS_FRAME).aliveBuffers;
+    for (int reload = 1; reload <= 3; reload++){
+        box.getComponent<MeshComponent>().needReload = true;
+        ASSERT_TRUE(render()) << "the box never loaded again";
+        ASSERT_TRUE(mesh.submeshes[0].shadowIndices);
+        EXPECT_EQ(SystemRender::getRenderStats(SystemRender::FRAME_STATS_FRAME).aliveBuffers, buffers)
+            << "alive buffers after reload " << reload;
+    }
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 // a Mesh that does not allow it draws alone, and the image is the same
 TEST_F(InstancingGoldenGpu, MeshOptOutDrawsAlone){
     JASPER_REQUIRE_GPU();
