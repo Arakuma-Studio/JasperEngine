@@ -9776,6 +9776,18 @@
   {
    "display_name": "Sprite Renderer",
    "enum_options": {
+    "drawMode": [
+     [
+      0,
+      "simple",
+      "Simple"
+     ],
+     [
+      1,
+      "sliced",
+      "Sliced"
+     ]
+    ],
     "pivotPreset": [
      [
       0,
@@ -9834,6 +9846,7 @@
    "key": "sprite",
    "known_keys": [
     "automaticFlipY",
+    "drawMode",
     "enabled",
     "flipY",
     "frame",
@@ -9850,6 +9863,11 @@
    "properties_of_default": {
     "automaticFlipY": [
      0,
+     1024,
+     true
+    ],
+    "drawMode": [
+     13,
      1024,
      true
     ],
@@ -9907,6 +9925,11 @@
    "properties_without_component": {
     "automaticFlipY": [
      0,
+     1024,
+     true
+    ],
+    "drawMode": [
+     13,
      1024,
      true
     ],
@@ -27754,6 +27777,11 @@
   "SpriteComponent": {
    "automaticFlipY": [
     0,
+    1024,
+    true
+   ],
+   "drawMode": [
+    13,
     1024,
     true
    ],
