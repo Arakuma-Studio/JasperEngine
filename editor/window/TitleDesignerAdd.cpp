@@ -10,6 +10,7 @@
 
 #include "Project.h"
 #include "external/IconsFontAwesome6.h"
+#include "profiler/Profile.h"
 #include "titleart/designer/TitleSearchFold.h"
 #include "titleart/designer/TitleSearchTerms.h"
 #include "search/SearchScorer.h"
@@ -70,6 +71,7 @@ namespace {
 }
 
 void TitleDesignerWindow::drawAddPalette() {
+    JE_PROFILE_SCOPE("TD drawAddPalette");
     if (addOpenRequested) {
         ImGui::OpenPopup("Add###addpalette");
         addOpenRequested = false;

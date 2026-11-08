@@ -11,6 +11,7 @@
 
 #include "Project.h"
 #include "external/IconsFontAwesome6.h"
+#include "profiler/Profile.h"
 #include "titleart/TitleArtBuiltinChecks.h"
 #include "titleart/TitleArtChecks.h"
 #include "titleart/TitleArtRenderHost.h"
@@ -68,6 +69,7 @@ namespace {
 }
 
 void TitleDesignerWindow::rebuildIndexIfNeeded() {
+    JE_PROFILE_SCOPE("TD rebuildIndexIfNeeded");
     std::string selectionKey = searchEveryLayer ? std::string("*") : std::string();
     for (const NodeRef& node : doc.selection()) selectionKey += node.layer + ";";
     const double t = now();
@@ -98,6 +100,7 @@ void TitleDesignerWindow::jumpToHit(size_t i) {
 }
 
 void TitleDesignerWindow::drawSearch() {
+    JE_PROFILE_SCOPE("TD drawSearch");
     if (searchFocus) {
         ImGui::SetKeyboardFocusHere();
         searchFocus = false;
@@ -134,6 +137,7 @@ void TitleDesignerWindow::drawSearch() {
 }
 
 void TitleDesignerWindow::drawSearchResults() {
+    JE_PROFILE_SCOPE("TD drawSearchResults");
     rebuildIndexIfNeeded();
     const auto start = std::chrono::steady_clock::now();
     std::vector<SearchHit> hits = index.query(searchText, 0);
@@ -268,6 +272,7 @@ void TitleDesignerWindow::drawSearchResults() {
 }
 
 void TitleDesignerWindow::drawPropertiesHeader() {
+    JE_PROFILE_SCOPE("TD drawPropertiesHeader");
     const NodeRef primary = doc.primary();
     const ta::TitleArtDoc& shown = doc.shown();
     // breadcrumb: Title > Logo > Rim 2 > Outer Glow, each crumb a button (R18)
@@ -329,6 +334,7 @@ void TitleDesignerWindow::drawPropertiesHeader() {
 }
 
 void TitleDesignerWindow::drawProperties() {
+    JE_PROFILE_SCOPE("TD drawProperties");
     if (newerVersion()) {
         ImGui::TextDisabled("Written by a newer JasperEngine: nothing to show here");
         return;
@@ -344,6 +350,7 @@ void TitleDesignerWindow::drawProperties() {
     if (!searchText.empty()) {
         drawSearchResults();
     } else {
+        JE_PROFILE_SCOPE("TD drawProperties page");
         RowContext ctx;
         ctx.host = this;
         ctx.state = &doc;
@@ -359,6 +366,7 @@ void TitleDesignerWindow::drawProperties() {
 // ---- lint (R53) ----
 
 void TitleDesignerWindow::refreshLint(bool pixels) {
+    JE_PROFILE_SCOPE("TD refreshLint");
     findings.clear();
     checksRun = 0;
     if (!doc.isOpen() || newerVersion()) return;
@@ -418,6 +426,7 @@ void TitleDesignerWindow::refreshLint(bool pixels) {
 }
 
 void TitleDesignerWindow::drawLintPopup() {
+    JE_PROFILE_SCOPE("TD drawLintPopup");
     if (!ImGui::BeginPopup("##lintpopup")) return;
     if (findings.empty()) ImGui::Text(ICON_FA_CHECK " No issues found by %zu checks", checksRun);
     else ImGui::Text(ICON_FA_TRIANGLE_EXCLAMATION " %zu finding%s", findings.size(), findings.size() == 1 ? "" : "s");
@@ -470,6 +479,7 @@ void TitleDesignerWindow::drawLintPopup() {
 // ---- Expose as Parameter... ----
 
 void TitleDesignerWindow::drawExposeDialog() {
+    JE_PROFILE_SCOPE("TD drawExposeDialog");
     if (exposeOpen) {
         ImGui::OpenPopup("Expose as Parameter###exposedialog");
         exposeOpen = false;

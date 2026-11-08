@@ -12,6 +12,7 @@
 
 #include "Project.h"
 #include "external/IconsFontAwesome6.h"
+#include "profiler/Profile.h"
 #include "titleart/TitleArtHash.h"
 #include "titleart/TitleArtOps.h"
 #include "titleart/TitlePreviewQueue.h"
@@ -80,6 +81,7 @@ LibraryApplyOptions TitleDesignerWindow::libraryOptions(LibraryTab tab) const {
 }
 
 std::string TitleDesignerWindow::libraryTargetKey() const {
+    JE_PROFILE_SCOPE("TD libraryTargetKey");
     // the target layer's content key: moving it or editing another layer invalidates no tile (R46)
     const LibraryApplyOptions options = libraryOptions(LibraryTab::Looks);
     if (options.layers.empty()) return "sample";
@@ -165,6 +167,7 @@ TitleLibraryProvider* TitleDesignerWindow::library() const {
 }
 
 LibraryTile TitleDesignerWindow::starterTile(LibraryTab tab, const LibraryItem& item, float width, float height, bool visible) {
+    JE_PROFILE_SCOPE("TD starterTile");
     LibraryTile out;
     if (!libraryTiles || !starterLibrary || !geometry || !doc.isOpen()) return out;
     const LibraryApplyOptions options = libraryOptions(tab);
@@ -222,6 +225,7 @@ LibraryTile TitleDesignerWindow::starterTile(LibraryTab tab, const LibraryItem& 
 }
 
 void TitleDesignerWindow::drawLibrary(float width, float height) {
+    JE_PROFILE_SCOPE("TD drawLibrary");
     TitleLibraryProvider* library = this->library();
     if (!library || !doc.isOpen() || newerVersion()) return;
     DocumentView& v = view();

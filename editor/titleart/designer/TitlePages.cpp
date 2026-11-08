@@ -7,6 +7,7 @@
 
 #include "TitlePages.h"
 
+#include "profiler/Profile.h"
 #include "titleart/TitleArtIO.h"
 #include "widget/ColorField.h"
 
@@ -231,6 +232,7 @@ void jasperengine::editor::titledesigner::layerHeaderRows(RowContext& ctx, const
 }
 
 void jasperengine::editor::titledesigner::documentPage(RowContext& ctx) {
+    JE_PROFILE_SCOPE("TD documentPage");
     const ta::TitleArtDoc& doc = ctx.state->shown();
     const std::vector<std::string> documentTarget = {std::string()};
     ctx.nodeKind = "document";
@@ -301,6 +303,7 @@ void jasperengine::editor::titledesigner::documentPage(RowContext& ctx) {
 }
 
 void jasperengine::editor::titledesigner::layerPage(RowContext& ctx, const std::vector<std::string>& layers) {
+    JE_PROFILE_SCOPE("TD layerPage");
     const ta::TitleArtDoc& doc = ctx.state->shown();
     if (layers.empty()) return;
     const ta::Json* first = layerById(doc, layers[0]);
@@ -645,6 +648,7 @@ void jasperengine::editor::titledesigner::layerPage(RowContext& ctx, const std::
 }
 
 void jasperengine::editor::titledesigner::partPage(RowContext& ctx, const std::string& layer, const std::vector<std::string>& parts) {
+    JE_PROFILE_SCOPE("TD partPage");
     const ta::TitleArtDoc& doc = ctx.state->shown();
     const ta::Json* object = layerById(doc, layer);
     if (!object || parts.empty()) return;
@@ -696,6 +700,7 @@ void jasperengine::editor::titledesigner::partPage(RowContext& ctx, const std::s
 }
 
 void jasperengine::editor::titledesigner::effectPage(RowContext& ctx, const NodeRef& node) {
+    JE_PROFILE_SCOPE("TD effectPage");
     const ta::TitleArtDoc& doc = ctx.state->shown();
     const ta::Json* object = layerById(doc, node.layer);
     if (!object) return;
@@ -746,6 +751,7 @@ void jasperengine::editor::titledesigner::maskPage(RowContext& ctx, const NodeRe
 }
 
 void jasperengine::editor::titledesigner::drawSelectionPage(RowContext& ctx) {
+    JE_PROFILE_SCOPE("TD drawSelectionPage");
     const NodeRef primary = ctx.state->primary();
     const ta::TitleArtDoc& doc = ctx.state->shown();
     ctx.node = primary;
@@ -796,6 +802,7 @@ void jasperengine::editor::titledesigner::collectAddOffers(PropertyIndex& index)
 }
 
 void jasperengine::editor::titledesigner::collectIndex(TitleDesignerState& state, PropertyHost* host, PropertyIndex& index, bool everyLayer) {
+    JE_PROFILE_SCOPE("TD collectIndex");
     index.clear();
     clearCollectAudit();
     const ta::TitleArtDoc& doc = state.shown();

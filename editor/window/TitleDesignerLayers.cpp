@@ -10,6 +10,7 @@
 
 #include "Project.h"
 #include "external/IconsFontAwesome6.h"
+#include "profiler/Profile.h"
 #include "titleart/TitleArtHash.h"
 #include "titleart/TitleArtRenderHost.h"
 #include "titleart/designer/TitleLayerThumbnails.h"
@@ -66,6 +67,7 @@ namespace {
 }
 
 void TitleDesignerWindow::drawLayerHeader() {
+    JE_PROFILE_SCOPE("TD drawLayerHeader");
     const std::vector<std::string> layers = doc.selectedLayers();
     if (layers.empty()) {
         ImGui::TextDisabled("No layer selected");
@@ -192,6 +194,7 @@ void TitleDesignerWindow::layerContextMenu(const std::string& layerId) {
 }
 
 void TitleDesignerWindow::drawLayers() {
+    JE_PROFILE_SCOPE("TD drawLayers");
     if (newerVersion()) {
         ImGui::TextDisabled("Written by a newer JasperEngine: nothing to show here");
         return;
@@ -304,7 +307,11 @@ void TitleDesignerWindow::drawLayers() {
             }
         }
     };
-    walk(shown.layers(), 0, std::string());
+    {
+        JE_PROFILE_SCOPE("TD drawLayers rows");
+        walk(shown.layers(), 0, std::string());
+    }
+    JE_PROFILE_SCOPE("TD drawLayers tree");
 
     shownRows.clear();
     for (const Row& row : rows) {

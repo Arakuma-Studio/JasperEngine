@@ -10,6 +10,7 @@
 
 #include "Project.h"
 #include "external/IconsFontAwesome6.h"
+#include "profiler/Profile.h"
 #include "titleart/TitleArtRenderHost.h"
 #include "titleart/designer/TitleRows.h"
 #include "titleart/designer/TitleTextEdit.h"
@@ -234,6 +235,7 @@ void TitleDesignerWindow::drawFontRow(const std::vector<std::string>& layers, bo
 }
 
 void TitleDesignerWindow::drawFontPicker() {
+    JE_PROFILE_SCOPE("TD drawFontPicker");
     if (fontPickerOpen) {
         ImGui::OpenPopup("Font###fontpicker");
         fontPickerOpen = false;

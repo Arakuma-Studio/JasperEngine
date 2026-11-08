@@ -3,6 +3,7 @@
 
 #include "TitleRows.h"
 
+#include "profiler/Profile.h"
 #include "titleart/TitleArtIO.h"
 #include "widget/ColorField.h"
 #include "widget/CurveField.h"
@@ -555,6 +556,7 @@ ta::Json jasperengine::editor::titledesigner::curveJsonFromKeys(const std::vecto
 
 bool jasperengine::editor::titledesigner::beginSection(RowContext& ctx, const std::string& id, const std::string& title, const std::string& summary,
                                                             bool defaultOpen) {
+    JE_PROFILE_SCOPE("TD beginSection");
     if (ctx.collecting()) {
         ctx.sectionChain.push_back(title);
         return true;
@@ -593,6 +595,7 @@ const ta::Json* jasperengine::editor::titledesigner::fieldValue(const ta::TitleA
 // ---- rows ----
 
 void jasperengine::editor::titledesigner::fieldRow(RowContext& ctx, const std::vector<FieldRef>& targets, const RowExtras& extras) {
+    JE_PROFILE_SCOPE("TD fieldRow");
     if (targets.empty() || !ctx.state) return;
     const ta::TitleArtDoc& doc = ctx.state->shown();
     const ta::FieldLookup found = lookup(doc, targets[0]);
@@ -1054,6 +1057,7 @@ void jasperengine::editor::titledesigner::fieldRow(RowContext& ctx, const std::v
 
 void jasperengine::editor::titledesigner::objectRows(RowContext& ctx, const std::vector<std::string>& layers, const std::string& basePath,
                                                           const std::string& kindName, const std::vector<std::string>& skip) {
+    JE_PROFILE_SCOPE("TD objectRows");
     const ta::TitleArtSchema& schema = ta::TitleArtSchema::get();
     const ta::SchemaKind* kind = schema.kind(kindName);
     if (!kind) return;
@@ -1079,6 +1083,7 @@ void jasperengine::editor::titledesigner::objectRows(RowContext& ctx, const std:
 void jasperengine::editor::titledesigner::paramRows(RowContext& ctx, const std::vector<std::string>& layers, const std::string& basePath,
                                                          const std::vector<ta::ParamDef>& params, const ta::EffectDef* effect,
                                                          const ta::GeneratorDef* generator) {
+    JE_PROFILE_SCOPE("TD paramRows");
     (void)effect;
     (void)generator;
     for (const ta::ParamDef& param : params) {

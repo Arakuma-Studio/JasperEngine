@@ -12,6 +12,7 @@
 #include "Backend.h"
 #include "Project.h"
 #include "external/IconsFontAwesome6.h"
+#include "profiler/Profile.h"
 #include "texsynth/SynthImage.h"
 #include "titleart/TitleArtBake.h"
 #include "titleart/TitleArtBaker.h"
@@ -177,6 +178,7 @@ static void devicePlacement(const DocumentView& v, const TitleRect& stage, const
 }
 
 void TitleDesignerWindow::requestCanvasRender() {
+    JE_PROFILE_SCOPE("TD requestCanvasRender");
     if (!canvas || !doc.isOpen()) return;
     const DocumentView& v = view();
     const bool baked = v.previewAs == "baked";
@@ -384,6 +386,7 @@ void TitleDesignerWindow::commitLetters(const ta::Json& values, const std::strin
 }
 
 void TitleDesignerWindow::handleCanvasInput() {
+    JE_PROFILE_SCOPE("TD handleCanvasInput");
     ImGuiIO& io = ImGui::GetIO();
     const ImVec2 mouse = io.MousePos;
     const bool hovered = ImGui::IsItemHovered();
@@ -635,6 +638,7 @@ void TitleDesignerWindow::handleCanvasInput() {
 // ---- drawing ----
 
 void TitleDesignerWindow::drawRulers(ImDrawList* dl) {
+    JE_PROFILE_SCOPE("TD drawRulers");
     const DocumentView& v = view();
     if (!v.rulers) return;
     const ImVec2 top0(canvasMin.x, canvasMin.y - RULER), left0(canvasMin.x - RULER, canvasMin.y);
@@ -677,6 +681,7 @@ void TitleDesignerWindow::drawRulers(ImDrawList* dl) {
 }
 
 void TitleDesignerWindow::drawEmptyState(ImDrawList* dl) {
+    JE_PROFILE_SCOPE("TD drawEmptyState");
     // R5: the card, with the template cards when the Library exists
     const ImVec2 centre((canvasMin.x + canvasMax.x) * 0.5f, (canvasMin.y + canvasMax.y) * 0.5f);
     TitleLibraryProvider* library = libraryProvider();
@@ -841,6 +846,7 @@ void TitleDesignerWindow::drawCanvasOverlays(ImDrawList* dl) {
 }
 
 void TitleDesignerWindow::drawCanvas(float width, float height) {
+    JE_PROFILE_SCOPE("TD drawCanvas");
     ImGui::BeginChild("##canvas", ImVec2(width, height), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     regionFocus(RegionCanvas);
     if (newerVersion()) {
@@ -872,6 +878,7 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
     requestCanvasRender();
 
     // the composited view (backdrop + title) from the private scene
+    JE_PROFILE_SCOPE("TD drawCanvas view");
     const ta::TitleArtDoc& shown = doc.shown();
     const TitleRect stage = stageRect();
     CanvasViewSetup setup;
@@ -1148,6 +1155,7 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
     }
 
     // text editing overlay: caret, selection, preedit (R36, R37)
+    JE_PROFILE_SCOPE("TD drawCanvas text");
     if (textEditing()) {
         const ta::Json* layer = layerById(doc.committed(), textEdit->layerId());
         if (!layer) {
@@ -1217,6 +1225,7 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
     }
 
     // progress: a 2 px bar and "Rendering 3/7 passes" after 250 ms of a Full render (R71)
+    JE_PROFILE_SCOPE("TD drawCanvas tail");
     const CanvasRenderInfo& info = canvas->info();
     if (info.busy && info.runningMs > 250.0 && !info.draft) {
         dl->AddRectFilled(canvasMin, ImVec2(canvasMin.x + (canvasMax.x - canvasMin.x) * info.progress, canvasMin.y + 2.0f), IM_COL32(90, 160, 255, 255));

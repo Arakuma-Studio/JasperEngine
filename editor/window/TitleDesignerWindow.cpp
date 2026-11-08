@@ -10,6 +10,7 @@
 #include "command/UndoTimeline.h"
 #include "external/IconsFontAwesome6.h"
 #include "io/AtomicFile.h"
+#include "profiler/Profile.h"
 #include "render/SceneRender2D.h"
 #include "render/SystemRender.h"
 #include "texsynth/SynthImage.h"
@@ -1002,6 +1003,7 @@ void TitleDesignerWindow::handleExternalChange() {
 }
 
 void TitleDesignerWindow::tick() {
+    JE_PROFILE_SCOPE("TD tick");
     handleExternalChange();
     if (thumbnails) thumbnails->process();
     if (libraryTiles) libraryTiles->process();
@@ -1046,6 +1048,7 @@ void TitleDesignerWindow::show() {
 }
 
 void TitleDesignerWindow::showContents() {
+    JE_PROFILE_SCOPE("TD showContents");
     if (!canvas) {
         createLive();
         openFirstTime();
@@ -1223,6 +1226,7 @@ void TitleDesignerWindow::showContents() {
 }
 
 void TitleDesignerWindow::drawSideColumn(float width, float height) {
+    JE_PROFILE_SCOPE("TD drawSideColumn");
     // R3: Layers, History and Properties as tabs of one column (Properties first with a selection)
     ImGui::BeginChild("##sidecolumn", ImVec2(width, height), true);
     // Layers and Properties share the column: the one Tab asked for (its tab is selected)
@@ -1249,6 +1253,7 @@ void TitleDesignerWindow::drawSideColumn(float width, float height) {
 }
 
 void TitleDesignerWindow::drawReadOnlyBanner() {
+    JE_PROFILE_SCOPE("TD drawReadOnlyBanner");
     if (!doc.isOpen() || doc.editable()) return;
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.45f, 0.30f, 0.05f, 0.6f));
     ImGui::BeginChild("##readonly", ImVec2(0, ImGui::GetFrameHeightWithSpacing()), false);
@@ -1288,6 +1293,7 @@ namespace {
 // A title in Chinese, Japanese or Korean on a system the editor found no CJK font on: the
 // editor's fields (Text, layer names, search) would show boxes. Said once, until dismissed.
 void TitleDesignerWindow::drawCjkFontNotice() {
+    JE_PROFILE_SCOPE("TD drawCjkFontNotice");
     cjkNoticeShown = false;
     if (cjkFontNoticeDismissed || !doc.isOpen()) return;
     if (cjkScanDocument != doc.document().get() || cjkScanChange != doc.changeCount()) {
@@ -1374,6 +1380,7 @@ void TitleDesignerWindow::regionFocus(int region) {
 }
 
 void TitleDesignerWindow::drawNotices() {
+    JE_PROFILE_SCOPE("TD drawNotices");
     const double t = now();
     if (!toasts.empty() && t > toastUntil) toasts.clear();
     if (t > errorUntil) errorText.clear();
@@ -1413,6 +1420,7 @@ void TitleDesignerWindow::frameSelection() {
 }
 
 bool TitleDesignerWindow::contentEmpty() const {
+    JE_PROFILE_SCOPE("TD contentEmpty");
     // R5: no visible, non-guide content layer (hidden ancestors count)
     if (!doc.isOpen()) return true;
     bool any = false;

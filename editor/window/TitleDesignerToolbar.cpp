@@ -7,6 +7,7 @@
 
 #include "Project.h"
 #include "external/IconsFontAwesome6.h"
+#include "profiler/Profile.h"
 #include "render/RenderUtil.h"
 #include "render/SystemRender.h"
 #include "titleart/TitleArtBaker.h"
@@ -57,6 +58,7 @@ namespace {
 }
 
 void TitleDesignerWindow::drawToolbar() {
+    JE_PROFILE_SCOPE("TD drawToolbar");
     const bool open = doc.isOpen();
     const bool editable = doc.editable();
     // document chip: name, recent list, Show in Project, Duplicate As...; dragging it into a scene
@@ -343,6 +345,7 @@ void TitleDesignerWindow::drawToolbar() {
 }
 
 void TitleDesignerWindow::drawStatusBar() {
+    JE_PROFILE_SCOPE("TD drawStatusBar");
     ImGui::Separator();
     if (!doc.isOpen() || newerVersion()) {
         ImGui::TextDisabled("Open a Title Art: double-click one in the Project window, or Assets > Create > Title Art");

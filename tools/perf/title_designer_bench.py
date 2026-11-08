@@ -49,7 +49,7 @@ EFFECTS = ["outer_glow", "drop_shadow", "inner_glow", "inner_shadow", "gradient_
 async def make_documents(ed: Editor) -> dict[str, str]:
     docs = {"rims": "assets/bench/bench_2d_rims.titleart", "forty": "assets/bench/bench_40_layers.titleart",
             "many": "assets/bench/bench_256_layers.titleart"}
-    await ed.call("tool_groups", enable=["title_art", "editor_ux"])
+    await ed.call("tool_groups", enable=["title_art", "editor_ux", "profiling"])
     await ed.call("set_project_settings", values={"title_art.auto_bake": False})
 
     await ed.call("edit_title", path=docs["rims"], create={"text": "BENCH"}, bake="never")
@@ -113,18 +113,33 @@ async def frame_ms(ed: Editor, frames: int = 150) -> dict:
     return {"avg": t["frame_ms_avg"], "max": t["frame_ms_max"], "frames": t["frames"]}
 
 
-async def ui_numbers(ed: Editor, docs: dict[str, str]) -> dict:
+async def scopes(ed: Editor) -> list:
+    """The window's profiler scopes ("TD ...") of the median frame of a short capture."""
+    capture = await ed.call("capture_profile", frames=60, gpu=False)
+    rows = await ed.call("get_cpu_profile", capture_id=capture.get("capture_id"), view="flat", filter="TD ", frame="median", max_rows=120)
+    return rows.get("rows", rows)
+
+
+async def ui_numbers(ed: Editor, docs: dict[str, str], profile: bool) -> dict:
     out: dict = {}
     # ImGui work with the 40-layer document, Layers then Properties shown
     await state(ed, path=docs["forty"], select="Text 1", panel="layers", search="", zoom="fit")
     await settled(ed)
     out["frame_layers_40"] = await frame_ms(ed)
+    if profile:
+        out["scopes_layers_40"] = await scopes(ed)
     await state(ed, panel="properties")
     out["frame_properties_40"] = await frame_ms(ed)
+    if profile:
+        out["scopes_properties_40"] = await scopes(ed)
     # the 256-layer tree against the 40-layer one, Layers shown
     await state(ed, path=docs["many"], select="Text 1", panel="layers", search="", zoom="fit")
     await settled(ed)
     out["frame_layers_256"] = await frame_ms(ed)
+    if profile:
+        out["scopes_layers_256"] = await scopes(ed)
+        await state(ed, panel="properties")
+        out["scopes_properties_256"] = await scopes(ed)
     # the search index of the 6-rim, 8-effect text layer, then a query
     await state(ed, path=docs["rims"], select="Title", panel="properties", search="", zoom="fit")
     await settled(ed)
@@ -148,15 +163,15 @@ async def ui_numbers(ed: Editor, docs: dict[str, str]) -> dict:
     return out
 
 
-async def run_quality(quality: str, ui: bool) -> dict:
+async def run_quality(quality: str, ui: bool, profile: bool = False, renders: bool = True) -> dict:
     settings = {"title_designer": {"open": True, "quality": quality}}
     async with Editor(create=True, name=f"TitleBench{quality.title()}", settings=settings, call_timeout=1200.0) as ed:
         docs = await make_documents(ed)
         result = {"quality": quality, "render_ms": {}}
-        for key in ("rims", "forty"):
+        for key in ("rims", "forty") if renders else ():
             result["render_ms"][key] = await render_times(ed, docs[key])
         if ui:
-            result["ui"] = await ui_numbers(ed, docs)
+            result["ui"] = await ui_numbers(ed, docs, profile)
         return result
 
 
@@ -187,8 +202,17 @@ async def main() -> int:
     parser.add_argument("--json", help="write the result here")
     parser.add_argument("--check", action="store_true", help="exit 1 when a budget is missed")
     parser.add_argument("--label", default="host", help="the machine the numbers are of")
+    parser.add_argument("--profile", action="store_true", help="also record the window's profiler scopes (TD ...) per scenario")
+    parser.add_argument("--ui-only", action="store_true", help="skip the Draft vs Full renders")
     args = parser.parse_args()
-    full = await run_quality("full", ui=True)
+    if args.ui_only:
+        ui = await run_quality("draft", ui=True, profile=args.profile, renders=False)
+        text = json.dumps(ui, indent=2)
+        if args.json:
+            Path(args.json).write_text(text + "\n")
+        print(text[:20000])
+        return 0
+    full = await run_quality("full", ui=True, profile=args.profile)
     draft = await run_quality("draft", ui=False)
     result = summarise(full, draft, args.label)
     text = json.dumps(result, indent=2)

@@ -14,6 +14,7 @@
 #include "command/UndoTimeline.h"
 #include "command/type/WriteFilesCmd.h"
 #include "external/IconsFontAwesome6.h"
+#include "profiler/Profile.h"
 
 #include "imgui.h"
 
@@ -38,6 +39,7 @@ namespace {
 }
 
 void TitleDesignerWindow::drawHistory() {
+    JE_PROFILE_SCOPE("TD drawHistory");
     if (newerVersion()) {
         ImGui::TextDisabled("Written by a newer JasperEngine: nothing to show here");
         return;
