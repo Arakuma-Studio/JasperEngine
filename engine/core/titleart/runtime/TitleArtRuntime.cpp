@@ -344,7 +344,7 @@ bool TitleArtRuntime::meshStats(const TitleArtLive& live, const std::string& lay
     found = false;
     const Json* layer = live.document() ? layerAtPath(live.document()->root, layerPath) : nullptr;
     if (!layer || layer->value("dimension", std::string()) != "3d"){
-        if (error){
+        if (error && live.document()){
             std::string names;
             forEachLayer(live.document()->root, [&names](const Json& l, const Json*, int){
                 if (l.value("dimension", std::string()) == "3d") names += (names.empty() ? "" : ", ") + l.value("name", std::string());

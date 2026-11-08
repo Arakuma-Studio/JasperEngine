@@ -354,3 +354,24 @@ TEST(TitleArtSettingsTest, DefaultsAreNotWrittenAndOldProjectsLoad) {
     EXPECT_TRUE(bad == defaults) << "values that do not read keep their defaults";
     EXPECT_EQ(warnings.size(), 2u);
 }
+
+TEST(TitleArtSettingsTest, Realtime3DQualityPerPlatform) {
+    // S86 R37: high on desktop, medium on iOS, low on Android and HTML5; only a changed platform is written
+    const TitleArtProjectSettings defaults;
+    EXPECT_EQ(defaults.realtime3DQuality.of("windows"), "high");
+    EXPECT_EQ(defaults.realtime3DQuality.of("ios"), "medium");
+    EXPECT_EQ(defaults.realtime3DQuality.of("android"), "low");
+    EXPECT_EQ(defaults.realtime3DQuality.of("web"), "low");
+    EXPECT_EQ(defaults.realtime3DQuality.of("playstation"), "");
+    TitleArtProjectSettings changed;
+    *changed.realtime3DQuality.find("android") = "medium";
+    const YAML::Node node = changed.encode();
+    ASSERT_TRUE(node["realtime3DQuality"]);
+    EXPECT_EQ(node["realtime3DQuality"].size(), 1u);
+    EXPECT_EQ(node["realtime3DQuality"]["android"].as<std::string>(), "medium");
+    EXPECT_TRUE(TitleArtProjectSettings::decode(YAML::Load(YAML::Dump(node))) == changed);
+    std::vector<std::string> warnings;
+    const TitleArtProjectSettings bad = TitleArtProjectSettings::decode(YAML::Load("{realtime3DQuality: {web: ultra}}"), &warnings);
+    EXPECT_EQ(bad.realtime3DQuality.of("web"), "low");
+    EXPECT_EQ(warnings.size(), 1u);
+}
