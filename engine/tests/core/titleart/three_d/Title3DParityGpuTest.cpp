@@ -172,10 +172,13 @@ namespace {
         return out;
     }
 
-    // a look's effects as this program's: the types it has, params snake_cased; the others named
+    // a look's effects as this program's: the types it has, params snake_cased (the id map's rows
+    // of these types, editor/resources/titleart/pachislop-fx-map.yaml, rename nothing else); the
+    // others named
     Json effectsOf(const Json& effects, std::vector<std::string>& missing) {
         static const std::map<std::string, std::string> TYPES = {{"keyline", "outline"}, {"outerGlow", "outer_glow"}, {"innerGlow", "inner_glow"},
-                                                                 {"dropShadow", "drop_shadow"}, {"innerShadow", "inner_shadow"}};
+                                                                 {"dropShadow", "drop_shadow"}, {"innerShadow", "inner_shadow"},
+                                                                 {"deepGlow", "light_glow"}};
         Json out = Json::array();
         int n = 0;
         for (const Json& e : effects) {
@@ -194,57 +197,56 @@ namespace {
         return out;
     }
 
-    // the cause of each look that does not pass in this branch, from the measured run of 2026-11-08
-    // and the side-by-side sheets (reference | ours | difference): none passes AC21's per-pixel
-    // metric. After the best alignment, outlines still differ by sub-pixel antialiasing, which at
-    // 0.25 puts 5-20 % of the pixels over 24/255 on looks that match by eye (sometsuke,
-    // carbon-orange, matte-glow, lacquer-gold); S83's deepGlow is not in this branch (35 looks:
-    // re-measure them at integration); glint streaks start at other highlights; crumple, flake and
-    // liquid cells and gems' refraction differ; Pachislop's inflate field is taller and wider; on
-    // the metal faces lit by the softbox the dark reflection band sits higher (the ramp's
-    // direction matches: rainbow-glass-gold is red on top in both).
+    // the cause of each look that does not pass, from the run of 2026-11-08 with S83's Light Glow
+    // (Pachislop's deepGlow, on 35 looks) merged, and the side-by-side sheets (reference | ours |
+    // difference): none passes AC21's per-pixel metric. After the best alignment, outlines still
+    // differ by sub-pixel antialiasing, which at 0.25 puts 5-20 % of the pixels over 24/255 on looks
+    // that match by eye (sometsuke, carbon-orange, matte-glow, lacquer-gold); glint streaks start
+    // at other highlights; crumple, flake and liquid cells and gems' refraction differ; Pachislop's
+    // inflate field is taller and wider; on the metal faces lit by the softbox the dark reflection
+    // band sits higher (the ramp's direction matches: rainbow-glass-gold is red on top in both).
     const std::map<std::string, std::string>& exceptions() {
         static const std::map<std::string, std::string> list = {
-            {"f-3d-amethyst", "35.76/255 mean, 63.12 % of px over, shift +1 -2: S83's deepGlow left out (re-measure at integration); glint streaks at other points; surface cells and flakes differ; gem refraction; size -1 x +8 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-aurora", "7.33/255 mean, 11.32 % of px over, shift +0 +1: S83's deepGlow left out (re-measure at integration); glint streaks at other points; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-black-chrome", "7.24/255 mean, 13.65 % of px over, shift +0 +1: S83's deepGlow left out (re-measure at integration); glint streaks at other points; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-box-plate", "19.26/255 mean, 52.40 % of px over, shift +0 +0: S83's deepGlow left out (re-measure at integration); the softbox reflection's dark band sits higher on the metal face; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-candy", "6.61/255 mean, 3.98 % of px over, shift +0 +1: S83's deepGlow left out (re-measure at integration); glint streaks at other points; surface cells and flakes differ; size +0 x -4 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-amethyst", "40.48/255 mean, 66.67 % of px over, shift +0 -2: glint streaks at other points; surface cells and flakes differ; gem refraction; size +0 x +10 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-aurora", "6.58/255 mean, 11.33 % of px over, shift +0 +1: glint streaks at other points; size +0 x +1 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-black-chrome", "6.42/255 mean, 14.20 % of px over, shift +0 +1: glint streaks at other points; size +0 x -1 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-box-plate", "19.12/255 mean, 53.33 % of px over, shift +0 +0: the softbox reflection's dark band sits higher on the metal face; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-candy", "4.88/255 mean, 4.87 % of px over, shift +0 +1: glint streaks at other points; surface cells and flakes differ; size +0 x -2 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
             {"f-3d-carbon-orange", "4.43/255 mean, 8.77 % of px over, shift +0 +0: glint streaks at other points; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-chrome", "9.09/255 mean, 8.23 % of px over, shift +0 +1: S83's deepGlow left out (re-measure at integration); sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-chrome-blue", "7.63/255 mean, 6.11 % of px over, shift +1 +1: S83's deepGlow left out (re-measure at integration); glint streaks at other points; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-copper-bronze", "8.23/255 mean, 9.18 % of px over, shift +1 -2: S83's deepGlow left out (re-measure at integration); glint streaks at other points; size -1 x +3 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-diamond", "26.59/255 mean, 44.13 % of px over, shift +2 -2: S83's deepGlow left out (re-measure at integration); glint streaks at other points; surface cells and flakes differ; gem refraction; size -9 x -19 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-emerald", "8.74/255 mean, 20.51 % of px over, shift +1 +1: S83's deepGlow left out (re-measure at integration); size -1 x -3 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-fire", "11.04/255 mean, 26.12 % of px over, shift -1 +2: S83's deepGlow left out (re-measure at integration); glint streaks at other points; the softbox reflection's dark band sits higher on the metal face; size -2 x -4 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-galaxy", "10.36/255 mean, 30.96 % of px over, shift +0 -2: S83's deepGlow left out (re-measure at integration); glint streaks at other points; surface cells and flakes differ; size +0 x +5 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-gold", "19.06/255 mean, 47.57 % of px over, shift +0 +0: S83's deepGlow left out (re-measure at integration); the softbox reflection's dark band sits higher on the metal face; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-gold-plate", "19.71/255 mean, 52.97 % of px over, shift +0 +0: S83's deepGlow left out (re-measure at integration); the softbox reflection's dark band sits higher on the metal face; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-holo-silver", "10.34/255 mean, 22.31 % of px over, shift +0 -2: S83's deepGlow left out (re-measure at integration); glint streaks at other points; surface cells and flakes differ; size -3 x +2 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-ice-crystal", "8.13/255 mean, 9.16 % of px over, shift +0 -1: S83's deepGlow left out (re-measure at integration); glint streaks at other points; surface cells and flakes differ; gem refraction; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-inflate", "36.85/255 mean, 55.10 % of px over, shift -2 +2: S83's deepGlow left out (re-measure at integration); glint streaks at other points; surface cells and flakes differ; inflate field; the softbox reflection's dark band sits higher on the metal face; size -15 x -11 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-jade", "22.09/255 mean, 51.94 % of px over, shift +0 -2: S83's deepGlow left out (re-measure at integration); glint streaks at other points; size +0 x +7 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-kin-gin", "10.94/255 mean, 22.61 % of px over, shift +1 +1: S83's deepGlow left out (re-measure at integration); glint streaks at other points; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-chrome", "6.35/255 mean, 8.44 % of px over, shift +0 +0: sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-chrome-blue", "5.72/255 mean, 6.67 % of px over, shift +0 +0: glint streaks at other points; size +0 x +1 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-copper-bronze", "6.90/255 mean, 9.37 % of px over, shift +0 -2: glint streaks at other points; size +0 x +3 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-diamond", "28.69/255 mean, 50.75 % of px over, shift +2 -2: glint streaks at other points; surface cells and flakes differ; gem refraction; size -5 x -13 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-emerald", "6.30/255 mean, 18.11 % of px over, shift +0 +0: sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-fire", "11.04/255 mean, 28.32 % of px over, shift -1 +2: glint streaks at other points; the softbox reflection's dark band sits higher on the metal face; size +0 x -3 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-galaxy", "10.42/255 mean, 31.05 % of px over, shift +0 -2: glint streaks at other points; surface cells and flakes differ; size +0 x +5 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-gold", "18.45/255 mean, 48.79 % of px over, shift +0 +0: the softbox reflection's dark band sits higher on the metal face; size +0 x +1 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-gold-plate", "19.69/255 mean, 54.24 % of px over, shift +0 +0: the softbox reflection's dark band sits higher on the metal face; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-holo-silver", "10.38/255 mean, 26.16 % of px over, shift +0 -1: glint streaks at other points; surface cells and flakes differ; size -1 x +5 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-ice-crystal", "9.50/255 mean, 12.23 % of px over, shift +0 -1: glint streaks at other points; surface cells and flakes differ; gem refraction; size +1 x +3 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-inflate", "37.83/255 mean, 55.82 % of px over, shift -2 +2: glint streaks at other points; surface cells and flakes differ; inflate field; the softbox reflection's dark band sits higher on the metal face; size -14 x -11 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-jade", "21.60/255 mean, 52.37 % of px over, shift +0 -2: glint streaks at other points; size +0 x +7 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-kin-gin", "8.65/255 mean, 25.34 % of px over, shift +0 +0: glint streaks at other points; sub-pixel edge antialiasing at 0.25 after the best alignment"},
             {"f-3d-lacquer-gold", "6.45/255 mean, 18.52 % of px over, shift +0 +0: sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-lava", "14.57/255 mean, 42.77 % of px over, shift +0 +0: S83's deepGlow left out (re-measure at integration); surface cells and flakes differ; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-lava", "14.50/255 mean, 42.91 % of px over, shift +0 +0: surface cells and flakes differ; sub-pixel edge antialiasing at 0.25 after the best alignment"},
             {"f-3d-matte-glow", "4.06/255 mean, 8.68 % of px over, shift +0 +0: glint streaks at other points; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-neon-glass", "8.36/255 mean, 13.78 % of px over, shift +0 +0: S83's deepGlow left out (re-measure at integration); sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-obsidian", "12.35/255 mean, 24.27 % of px over, shift +0 -2: S83's deepGlow left out (re-measure at integration); glint streaks at other points; surface cells and flakes differ; size +0 x +4 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-pearl-pink", "24.35/255 mean, 58.76 % of px over, shift +1 -2: S83's deepGlow left out (re-measure at integration); glint streaks at other points; size -2 x +4 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-popout", "18.65/255 mean, 51.64 % of px over, shift +0 +1: S83's deepGlow left out (re-measure at integration); glint streaks at other points; the softbox reflection's dark band sits higher on the metal face; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-rainbow", "9.32/255 mean, 32.41 % of px over, shift +0 +0: S83's deepGlow left out (re-measure at integration); surface cells and flakes differ; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-neon-glass", "4.48/255 mean, 11.43 % of px over, shift +0 +0: sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-obsidian", "12.38/255 mean, 24.35 % of px over, shift +0 -2: glint streaks at other points; surface cells and flakes differ; size +0 x +4 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-pearl-pink", "20.16/255 mean, 49.72 % of px over, shift +1 -2: glint streaks at other points; size +1 x +7 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-popout", "18.32/255 mean, 52.04 % of px over, shift +0 -1: glint streaks at other points; the softbox reflection's dark band sits higher on the metal face; size +0 x +4 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-rainbow", "9.12/255 mean, 31.88 % of px over, shift +0 +0: surface cells and flakes differ; sub-pixel edge antialiasing at 0.25 after the best alignment"},
             {"f-3d-rainbow-glass-gold", "14.73/255 mean, 46.07 % of px over, shift +0 +0: surface cells and flakes differ; inflate field; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-red", "20.85/255 mean, 60.47 % of px over, shift +0 +0: S83's deepGlow left out (re-measure at integration); glint streaks at other points; the softbox reflection's dark band sits higher on the metal face; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-rose-chocolate", "12.84/255 mean, 28.64 % of px over, shift +1 +1: S83's deepGlow left out (re-measure at integration); glint streaks at other points; the softbox reflection's dark band sits higher on the metal face; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-sakura", "8.03/255 mean, 16.82 % of px over, shift +0 +0: S83's deepGlow left out (re-measure at integration); glint streaks at other points; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-sapphire", "12.25/255 mean, 32.86 % of px over, shift +2 -2: S83's deepGlow left out (re-measure at integration); glint streaks at other points; surface cells and flakes differ; gem refraction; size -4 x +0 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-shu-lacquer", "6.81/255 mean, 16.09 % of px over, shift +0 +2: S83's deepGlow left out (re-measure at integration); glint streaks at other points; surface cells and flakes differ; size +0 x -3 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-silver", "8.08/255 mean, 6.80 % of px over, shift +1 +0: S83's deepGlow left out (re-measure at integration); sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-red", "21.18/255 mean, 60.98 % of px over, shift -1 +0: glint streaks at other points; the softbox reflection's dark band sits higher on the metal face; size +3 x +0 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-rose-chocolate", "11.63/255 mean, 26.27 % of px over, shift +1 +1: glint streaks at other points; the softbox reflection's dark band sits higher on the metal face; size +3 x +3 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-sakura", "7.09/255 mean, 10.08 % of px over, shift +0 +0: glint streaks at other points; size +0 x +1 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-sapphire", "12.36/255 mean, 33.21 % of px over, shift +2 -2: glint streaks at other points; surface cells and flakes differ; gem refraction; size -4 x +0 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-shu-lacquer", "6.87/255 mean, 16.72 % of px over, shift +0 +2: glint streaks at other points; surface cells and flakes differ; size +0 x -3 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-silver", "3.80/255 mean, 6.85 % of px over, shift +0 +0: sub-pixel edge antialiasing at 0.25 after the best alignment"},
             {"f-3d-sometsuke", "5.04/255 mean, 5.48 % of px over, shift +0 +0: glint streaks at other points; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-titanium", "4.80/255 mean, 10.28 % of px over, shift +0 +1: S83's deepGlow left out (re-measure at integration); glint streaks at other points; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-toxic", "10.36/255 mean, 36.24 % of px over, shift +1 +1: S83's deepGlow left out (re-measure at integration); size -3 x -3 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-two-tone", "7.99/255 mean, 6.53 % of px over, shift +1 +1: S83's deepGlow left out (re-measure at integration); glint streaks at other points; sub-pixel edge antialiasing at 0.25 after the best alignment"},
-            {"f-3d-violet-neon", "6.18/255 mean, 17.16 % of px over, shift +0 +1: S83's deepGlow left out (re-measure at integration); glint streaks at other points; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-titanium", "4.74/255 mean, 10.28 % of px over, shift +0 +0: glint streaks at other points; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-toxic", "5.41/255 mean, 22.10 % of px over, shift +1 +0: size -1 x +0 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-two-tone", "6.88/255 mean, 9.32 % of px over, shift +0 +1: glint streaks at other points; size +0 x -1 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
+            {"f-3d-violet-neon", "5.83/255 mean, 16.40 % of px over, shift +0 +1: glint streaks at other points; size +0 x -1 px; sub-pixel edge antialiasing at 0.25 after the best alignment"},
         };
         return list;
     }
@@ -252,8 +254,12 @@ namespace {
     // the looks whose overall tone is off by more than TONE_BAND, with the cause
     const std::map<std::string, std::string>& toneExceptions() {
         static const std::map<std::string, std::string> list = {
-            {"f-3d-inflate", "lighter (+22/255): Pachislop's inflate field is taller and wider (ours 15 x 11 px smaller), so the white band covers more of "
-                             "the title than the red face"},
+            {"f-3d-diamond", "lighter (+25.6/255; +15.8 without Light Glow): the gem's refraction and cells are already brighter than the reference's "
+                             "(size -5 x -13 px), and the Light Glow over its 0.5 threshold adds light in proportion to them"},
+            {"f-3d-holo-silver", "lighter (+17.4/255; +10.4 without Light Glow): its flakes and iridescence are brighter than the reference's, and the "
+                                 "Light Glow over its 0.5 threshold adds light in proportion to them"},
+            {"f-3d-inflate", "lighter (+25.7/255; +21.9 without Light Glow): Pachislop's inflate field is taller and wider (ours 14 x 11 px smaller), so "
+                             "the white band covers more of the title than the red face"},
         };
         return list;
     }

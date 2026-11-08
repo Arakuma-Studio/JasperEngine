@@ -1447,16 +1447,21 @@ rest of S82 lands in 6B.
 28. **Implementation: the parity goldens are a core GPU test** (`Title3DParityGpu.PachislopLooks`), not
     `test_title_art_3d_parity.py`: S84's look converter is not in this tree, so the 40 looks are transcribed as JSON
     (`titleart/fixtures/pachislop3d/`, by hand from Pachislop's look helpers, no code run) and `title3DFromPachislop`
-    (R67) converts their 3D part; their 2D effects map onto S80's (keyline -> outline, outerGlow -> outer_glow) and
-    S83's (deepGlow) are left out. **AC21 is not met: none of the 40 looks passes its per-pixel metric** (re-measured
-    2026-11-08 after the alignment search and the iridescence fix: means 4.1-36.9/255, 4-63 % of pixels over 24/255; 20
-    looks under 10/255; matte-glow, carbon-orange, titanium and sometsuke closest, at 4-5/255 and 5-10 %).
+    (R67) converts their 3D part; their 2D effects map onto S80's (keyline -> outline, outerGlow -> outer_glow) and,
+    since the wave-2 merge, S83's (deepGlow -> light_glow, by the id map's keys). **AC21 is not met: none of the 40
+    looks passes its per-pixel metric** (re-measured 2026-11-08 after the alignment search and the iridescence fix:
+    means 4.1-36.9/255, 4-63 % of pixels over 24/255, 20 looks under 10/255; re-measured on `feature/title-art` with
+    S83's Light Glow on the 35 looks that have it: means 3.8-40.5/255, 4.9-66.7 %, 22 looks under 10/255; silver,
+    matte-glow, carbon-orange and neon-glass closest, at 3.8-4.5/255 and 7-11 %).
     - The 1-2 px outline offset was a comparison artefact: centring trimmed boxes of different sizes (a glint, a glow or
       a missing deepGlow reaching further on one side) moves the letters; every look whose box matches the reference's
       aligns best at 0, 0. The test therefore takes the best shift within +-2 px (as the generators stream did) and
       reports it; the means fell from 4-54/255 to 4-37/255.
     - The residue after alignment: sub-pixel antialiasing of the outlines (5-20 % of the pixels of a 131 x 50 px
-      render on looks that match by eye); **S83's deepGlow on 35 looks (re-measure them at integration)**; glint
+      render on looks that match by eye); S83's Light Glow (measured with and without it on `feature/title-art`: it
+      lowers the mean of 24 of the 35 looks, most on silver 8.1 -> 3.8, neon-glass 8.4 -> 4.5 and toxic 10.4 -> 5.4,
+      and raises it on 10, most on amethyst 35.8 -> 40.5, diamond 26.6 -> 28.7 and ice-crystal 8.1 -> 9.5, whose gems
+      are already brighter); glint
       streaks starting at other highlights; crumple, flake and liquid cells and gem refraction; Pachislop's taller,
       wider inflate field; on the metal faces lit by the softbox the dark reflection band sits higher than the
       reference's (seen on gold, box-plate and red; gold-plate, popout, fire and rose-chocolate share the setup; the
@@ -1470,7 +1475,11 @@ rest of S82 lands in 6B.
       hue (obsidian's face is dark: its green channel was off by 14/255); the sheets did. Kin-gin's nearly black face in the first
       sheets was deviation 30's colour-times-ramp (fixed before this round; its tone is now +5/255). Inflate is the one
       look outside the band (+22/255: the smaller inflate field leaves more of the white band showing); diamond (+16)
-      and pearl-pink (-16, deepGlow) sit at its edge. Red control: half the exposure puts 33 of 40 out of the band.
+      and pearl-pink (-16, deepGlow) sit at its edge. With S83's Light Glow merged pearl-pink comes to -7.9, and three
+      looks are outside the band, each listed with its cause: inflate +25.7, diamond +25.6 (+15.8 without the glow) and
+      holo-silver +17.4 (+10.4): their gems, flakes and iridescence are already brighter than the references', and the
+      glow over its 0.5 threshold adds light in proportion (the Light Glow itself matches Pachislop's deepGlow on the
+      2D title, `TitleFxParityGpu`: 0 % of blocks). Red control: half the exposure puts 33 of 40 out of the band.
 29. **Measured: benches on this host** (`docs/perf/title3d.md`): the figures are this host's (a container on a shared CPU,
     llvmpipe for the GPU), not build server A's; `tools/perf/bench-thresholds.json` keeps the spec's budgets.
 30. **Implementation: Pachislop's units, found by the parity goldens.** A material's gradient overrides its colour
