@@ -750,14 +750,14 @@ void recordTick(const RecordCallPtr& state) {
         if (snapshot.valid) {
             if (state->startClock < 0.0f) {
                 state->startClock = instance->clock;
-                state->startPosition = transform->worldPosition;
+                state->startPosition = root.position;
                 state->names.resize(snapshot.ik.size());
                 state->feet.resize(snapshot.ik.size());
                 for (size_t i = 0; i < snapshot.ik.size(); i++) state->names[i] = snapshot.ik[i].name;
             }
             state->contactSource = snapshot.contactSource;
             state->lastClock = instance->clock;
-            state->lastPosition = transform->worldPosition;
+            state->lastPosition = root.position;
             state->frames++;
             for (size_t i = 0; i < snapshot.ik.size() && i < state->feet.size(); i++) {
                 if (snapshot.ik[i].leg) state->feet[i].push_back({instance->clock, snapshot.ik[i].foot, snapshot.ik[i].contact});
