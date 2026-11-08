@@ -8,6 +8,7 @@ the benchmark server measured. The benchmark is `je-bench-anim` (built next to t
 cmake --build build/linux/core-tests --target je-bench-anim
 build/linux/core-tests/tests/core/je-bench-anim --workers 3 --count-allocs --json anim.json
 python3 tools/perf/check_bench.py anim.json
+tools/perf/bench-anim-wasm.sh                  # the same program as WebAssembly, with and without -msimd128
 ```
 
 ## What it measures
@@ -24,14 +25,15 @@ python3 tools/perf/check_bench.py anim.json
   frames after 120 warm-up frames) with the workers and serially (`setParallel(false)`: the S06
   0-worker path), the main thread's part (prepare: loads, bindings, IK raycasts; finalize: root
   motion, events, callbacks) and, with `--count-allocs`, the heap allocations of 600 steady-state
-  frames. Then, as information, where the serial time goes: the same run without the IK, without
-  the two upper layers, without the crossfades and without root motion.
+  frames. Then, as information, where the serial time goes: the same run without the Look At,
+  without the IK, without the two upper layers, without the crossfades and without root motion.
 - **Micro** (R20, median of 15 runs): a two-pose blend of 128 bones with the native kernels
   (SSE2 / NEON / simd128) and the scalar ones; one sample of a 65-bone clip into a bound rig; a
   state-machine update of 20 states and 60 transitions (no pose); an Animator's runtime state
   (`AnimatorInstance::runtimeStateBytes`: the instance, parameters, layer / montage / IK runs and
   output buffers; the rig, poses and clip bindings scale with bones and clips and are part of
-  the crowd's cost instead, spec deviation 8).
+  the crowd's cost instead, spec deviation 8); one Look At solve over 3 bones of a chain leaning 30
+  degrees, from its animated pose each call (S77 R33, information).
 
 ## Results
 
@@ -83,6 +85,130 @@ cache (a rig is in parents-first depth-first order, so a subtree is a contiguous
 root-motion lap of a looping clip (its root at 0 and at its length) is sampled once at bind
 instead of every frame. A handled clip event builds no string (the "no handler" warning's key is
 hashed in place): before, each event cost two allocations.
+
+## S77: clip rows, the hot paths, WebAssembly
+
+The rows of [S77](../specs/S77-clip-quality.md) (R10) are information in `check_bench.py`, except the
+owner's two budgets of R44 (`web30_serial_p95_ms`, `web30_clip_heap_bytes`). `--clip <file.anim>` adds
+`real_<name>_*` rows for clips kept out of the repository; `clip_dense` and `clip_reduced` are
+generated shapes (201 tracks, 8,241 keys; 132 tracks, 911 keys).
+
+**The machine of everything in this section:** an AMD EPYC-Genoa VM, 8 vCPUs, 15 GB, Linux x64, shared
+with other agents' jobs (one heavy job at a time, so mostly idle while these ran), through the build
+images. **It is not server E:** it measures about 2 x slower on the crowd, so these numbers compare with
+each other, never with the budgets of the sections above (Crowd200 p95 is over 2.5 ms here both before and
+after). **ARM is unmeasured (the owner's decision): no number here says anything about a phone.**
+
+### Native, before and after the hot paths
+
+`je-bench-anim --workers 3 --count-allocs`, core-tests build (RelWithDebInfo, GCC 11, SSE2), five runs of
+each binary interleaved, medians with the range. Both binaries are the same bench on the tree of `66322d571`
+(origin/main `f2fa788c7` and S77 step 1 merged); "before" has the engine sources step 2 changed put back to
+that base's.
+
+| Metric | Before | After | Change |
+|---|---|---|---|
+| One 65-bone clip sample (R43: at least 1.5 x) | 3.96 µs (3.94-3.99) | 2.13 µs (2.05-2.19) | **1.86 x** |
+| The same on 8 key groups | 4.11 µs | 2.14 µs | 1.92 x |
+| `sampleQuaternion`, keys 4 degrees apart | 53.8 ns | 23.6 ns | -56 % |
+| `sampleQuaternion`, keys 20 degrees apart | 53.7 ns | 31.6 ns | -41 % |
+| `sampleQuaternion`, keys 60 degrees apart (exact slerp) | 53.7 ns | 67.3 ns | **+25 %** |
+| Crowd200, 3 workers + main, p95 | 4.64 ms (4.51-4.88) | 4.11 ms (3.93-4.22) | -11 % |
+| Crowd200, serial, p50 | 10.96 ms (10.83-11.29) | 9.16 ms (8.52-9.50) | -16 % |
+| Crowd200, serial, p95 | 12.03 ms (11.87-12.81) | 11.06 ms (9.07-11.87) | -8 % |
+| Crowd200, main thread, p95 | 0.68 ms | 0.69 ms | none |
+| Crowd200, heap allocations, 600 frames | 0 | 0 | |
+| Runtime state of an Animator | 5,048 B | 5,192 B | +144 B (3 layers: the skipped state of R14) |
+| Web30, one thread, p95 (native) | 1.53 ms (1.52-1.57) | 1.41 ms (1.27-1.63) | -8 % |
+| Web30, one thread, p50 (native) | 1.47 ms | 1.20 ms | -19 % |
+| Animation Player crowd of 200, p50 | 2.55 ms (2.46-2.59) | 1.93 ms (1.92-2.06) | -24 % |
+| The same, allocations of 200 frames | 44,836 | 4,836 | -89 % |
+| 200 idle Animation Players, allocations of 200 frames | 40,000 | 0 | |
+| Retargeted crowd of 50, serial, p50 | 0.571 ms | 0.567 ms | none |
+
+**Full clips gain far less than the 65-bone micro.** That micro's keys are 30 a second with small swings,
+so every segment takes the fastest tier and rotations are all it samples. A real clip also samples
+translations and scales, searches keys, and has wider segments:
+
+| Clip (sample, then sample + hierarchy) | Keys | Memory | Sample | Sample + hierarchy |
+|---|---|---|---|---|
+| `real_walk_1mm` (reduced) | 911 | 66 KB | 5.82 -> 4.83 µs, -17 % | 8.89 -> 7.87 µs, -11 % |
+| `real_atlas_1mm` (reduced) | 7,407 | 195 KB | 7.00 -> 5.83 µs, -17 % | 10.14 -> 8.90 µs, -12 % |
+| `real_pab_atlas` (dense) | 90,651 | 1.29 MB | 8.25 -> 7.56 µs, -8 % | 11.32 -> 10.72 µs, -5 % |
+| `real_q_Rig_Walk_Loop` (dense) | 6,519 | 148 KB | 6.41 -> 6.06 µs, -6 % | 8.93 -> 8.57 µs, -4 % |
+| `real_pab_walk` (dense) | 8,241 | 185 KB | 7.85 -> 7.69 µs, -2 % | 10.96 -> 10.72 µs, -2 % |
+| `clip_dense` (generated) | 8,241 | 170 KB | 8.41 -> 7.78 µs, -8 % | 11.49 -> 10.85 µs, -6 % |
+| `clip_reduced` (generated, wide segments) | 911 | 54 KB | 7.26 -> 7.12 µs, -2 % | 9.33 -> 9.23 µs, -1 % |
+
+Memory is `AnimationClip::memoryBytes()`, after step 1's lossless storage.
+
+Single-run noise on these rows is several percent. A clip whose segments are mostly over 30 degrees pays
+the extra dot product (the 60 degree row above) and gains nothing; a clip of nothing else would get slower.
+The real clips are ozz samples, a Quaternius clip and an earlier Python reduction of them at 1 mm (not `ClipReduction`), kept out of the repository.
+Parse + build of a `.anim` costs about 50 ms per MB here (`real_pab_atlas`: 4.3 MB, 219 ms), unchanged by
+S77; with async loading a file of 64 KB or more now does this on a worker where there are threads.
+
+### WebAssembly
+
+`tools/perf/bench-anim-wasm.sh`: the same program, Emscripten Release in the web image, under the image's
+node 24 (V8, not a browser), one thread (`--workers 0`, the single-thread web path), on the machine named above;
+three runs, medians with the range, at `66322d571` (the merged tree). The kernels column is `JASPERENGINE_WASM_SIMD`:
+`-msimd128` applies to the pose kernels only (`AnimatorPose.cpp`), as in a shipped web build, so the sampler is
+scalar wasm in both.
+
+| Metric | With `-msimd128` | Without | Budget |
+|---|---|---|---|
+| **Web30, one thread, p95** | **1.30 ms (1.24-1.41)** | **1.44 ms (1.39-1.46)** | under 4 ms (R44): holds |
+| Web30, one thread, p50 | 1.15 ms (1.15-1.16) | 1.36 ms (1.34-1.36) | |
+| **Web30's clips, memory** | **308 KB** | **308 KB** | under 16 MB (R44): holds |
+| Crowd200, one thread, p50 | 8.18 ms (8.09-8.34) | 10.53 ms (10.03-10.55) | |
+| Two-pose blend, 128 bones | 1.36 µs | 3.15 µs | |
+| One 65-bone clip sample | 2.13 µs | 2.15 µs | |
+| Rig space, 65 bones | 2.27 µs | 2.26 µs | |
+| Skin matrices, 65 bones | 4.74 µs | 4.94 µs | |
+| `real_pab_walk` (dense), sample + hierarchy | 8.18 µs | 8.29 µs | |
+| `real_walk_1mm` (reduced), sample + hierarchy | 5.91 µs | 6.04 µs | |
+| `real_pab_atlas` (4.3 MB), parse + build | 643 ms | 649 ms | |
+| `real_pab_atlas`, memory | 1.26 MB | 1.26 MB | |
+| Animation Player crowd of 200, p50 | 2.22 ms | 2.22 ms | |
+
+Against `Quaternion::slerp` in the same process, with `-msimd128`: `sampleQuaternion` is 32 against 54 ns with
+keys 4 degrees apart, 46 against 53 ns at 20 degrees, and **78 against 54 ns at 60 degrees**, where it calls slerp.
+There is no run of the old sampler on wasm, so R43's 1.79 x is a native number; the wasm gain is what these rows show.
+
+What these numbers do not say:
+
+- **The budgets hold on this x64 VM under node. No phone or browser was measured.** The owner's budgets are for
+  the web; a low-end device can be several times slower, and ARM is unmeasured.
+- The 308 KB is the bench character's seven clips, not a game: a project's own figure is its clip memory
+  (R7's monitor). One dense 90,000-key clip alone is 1.26 MB.
+- These are not comparable with the native table, which is a RelWithDebInfo build with its allocator and
+  libm: wasm beating it on a row does not mean wasm is faster than a native Release build.
+- A `.anim` parses about 2.8 x slower here than natively, about 150 ms per MB. Without threads that happens in
+  the call (R16).
+
+### S77's IK solvers: an A/B on this repository's host
+
+The chain-walk Look At, the slope-corrected Foot IK and the `reached` measurement against the same
+tree without them (`feat/s74-clip-quality`'s `engine/core`), in one build, on the S77 host (AMD
+EPYC-Genoa, 8 vCPUs, shared, the linux image's RelWithDebInfo core-tests build, `--workers 3
+--count-allocs`; three runs each, the median with the range). This host is about twice as slow as
+E: the same five budgets miss with and without the change, so only the difference counts here.
+
+| Metric | Before | After |
+|---|---|---|
+| Look At solve, 3 bones | 1.33 µs (1.31-1.34) | 2.86 µs (2.85-2.88) |
+| Crowd200, wall time p50, 3 workers + main | 4.08 ms (3.96-4.12) | 4.13 ms (4.04-4.15) |
+| Crowd200, wall time p95 | 4.48 ms (4.46-4.82) | 4.70 ms (4.51-4.75) |
+| Crowd200, main thread p95 | 0.67 ms (0.65-0.71) | 0.63 ms (0.56-0.68) |
+| Crowd200, serial p50 | 10.63 ms (10.48-10.70) | 11.28 ms (10.80-11.34) |
+| Crowd200, serial p95 | 11.46 ms (11.09-11.56) | 11.87 ms (11.75-12.01) |
+| Crowd200, heap allocations, 600 frames | 0 | 0 |
+| Runtime state of an Animator | 5 080 B | 5 120 B |
+
+The parallel times stay within their ranges; the serial ones do not: about 0.4 to 0.65 ms over 200
+characters, 2 to 3 µs a character, of which the Look At's 1.5 µs. Without the IK the serial p50 is
+the same (8.70 and 8.77 ms). ARM and web are unmeasured.
 
 ## GPU skinning on a GPU (GPU campaign)
 

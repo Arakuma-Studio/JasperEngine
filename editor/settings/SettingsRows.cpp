@@ -2067,6 +2067,23 @@ std::vector<Setting> mcpSettingsTable() {
                             e = "\"" + name + "\" is not one of automatic, keep, release";
                             return false;
                         }, {"automatic", "keep", "release"});
+            // Project Settings > Animation (S77 R38); stored with the model settings
+            meshSetting("animation.animation_entities", "enum",
+                        "Models placed in a scene: always make an Animation entity per clip, or auto: none for a model of 5+ clips "
+                        "(new projects; play its clips with an Animation Player or Animator).",
+                        [](const ModelProjectSettings& m) { return Json(animationEntitiesModeName(m.animationEntities)); },
+                        [](ModelProjectSettings& m, const Json& v, std::string& e) {
+                            std::string name;
+                            if (!readString(v, name, e)) return false;
+                            for (AnimationEntitiesMode mode : {AnimationEntitiesMode::Always, AnimationEntitiesMode::Auto}) {
+                                if (name == animationEntitiesModeName(mode)) {
+                                    m.animationEntities = mode;
+                                    return true;
+                                }
+                            }
+                            e = "\"" + name + "\" is not one of always, auto";
+                            return false;
+                        }, {"always", "auto"});
         }
         {
             Setting s;
@@ -3582,6 +3599,7 @@ const Placement placements[] = {
     {"physics.max_contact_constraints", "Physics", "3D World Capacity", "Max Contact Constraints", "jolt capacity limit contacts"},
     {"physics2d.enabled", "Physics 2D", "", "2D Physics", "box2d rigidbody 2d"},
     {"physics2d.layer_collision_matrix", "Physics 2D", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
+    {"animation.animation_entities", "Animation", "", "Animation Entities", "model clips animation player animator entities auto"},
     {"navigation.include_in_builds", "Navigation", "", "Include in Builds", "navmesh recast detour strip export"},
     {"navigation.crowd_max_agents", "Navigation", "", "Crowd Max Agents", "navmesh agents crowd"},
     {"navigation.max_grid_solves_per_tick", "Navigation", "", "Grid Solves per Tick", "nav grid a* pathfinding"},
@@ -3877,7 +3895,8 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Navigation", SettingsScope::Project, 13, "navigation navmesh agents areas crowd grid pathfinding ai"},
         {"Mesh", SettingsScope::Project, 14, "mesh model import cook optimize compression lod meshopt read write cache audit"},
         {"2D", SettingsScope::Project, 15, "2d sprite atlas packer pages pixel art"},
-        {"Pixel Art", SettingsScope::Project, 16, "pixel art 2d palette palettes colours colors swatches"},
+        {"Animation", SettingsScope::Project, 16, "animation clips model animator animation player entities"},
+        {"Pixel Art", SettingsScope::Project, 17, "pixel art 2d palette palettes colours colors swatches"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},

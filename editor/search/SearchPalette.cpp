@@ -84,6 +84,7 @@ namespace {
         {"Undo History", "window.undoHistory"}, {"Play Mode Changes", "window.playModeChanges"},
         {"Missing Assets", "window.missingAssets"}, {"References", "window.assetReferences"}, {"Profiler", "window.profiler"},
         {"Frame Debugger", "window.frameDebugger"}, {"Systems", "window.systems"}, {"Jobs & Memory", "window.jobsMemory"},
+        {"Animation Statistics", "window.animationStatistics"},
     };
 
     // A label drawn with the matched ranges highlighted

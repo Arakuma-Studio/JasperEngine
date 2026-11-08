@@ -2557,6 +2557,32 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "bad_model_clip_loop_by_extract",
+        "kind": "bad",
+        "what_happened": "Asked to make a model's Walk loop, an agent extracted it to a .anim and pointed the player at the copy: "
+                         "a second clip to keep in sync with the model. A model clip's wrap and root_motion are its import "
+                         "settings, which edit_animation writes to the model's .clips file.",
+        "text_at_issue": "get_asset_info's animations[i].wrap; animation.md Model clips: 'A model clip's wrap and root_motion are its import settings'",
+        "source": "docs/specs/S77-clip-quality.md R53",
+        "prompt": "The Hero's Animation Player plays assets/models/hero.gltf#Walk, and it stops after one step. Make the Walk "
+                  "clip of that model loop wherever it plays.",
+        "mocks": [
+            {"tool": "get_asset_info", "args": {"path": "re:hero\\.gltf"}, "result": ok(
+                "assets/models/hero.gltf: 2 meshes, 1 material, 2 animation(s).",
+                {"path": "assets/models/hero.gltf", "type": "model", "model": {"animations": [
+                    {"name": "Walk", "duration_seconds": 1.0, "keys": 40, "runtime_bytes": 2048, "wrap": "once", "root_motion": None},
+                    {"name": "Idle", "duration_seconds": 2.0, "keys": 12, "runtime_bytes": 1024, "wrap": "once", "root_motion": None}]}})},
+            {"tool": "edit_animation", "args": {"clip": "re:hero\\.gltf#Walk", "wrap": "loop"}, "result": ok(
+                "assets/models/hero.gltf#Walk: wrap loop (wrote assets/models/hero.gltf.clips: one project undo step, undo scope "
+                "project; its players reload)",
+                {"clip": "assets/models/hero.gltf#Walk", "settings_file": "assets/models/hero.gltf.clips", "wrap": "loop",
+                 "root_motion": None, "changed": True})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:hero\\.gltf#Walk", "wrap": "loop"}}],
+                   "must_not_call": [{"tool": "edit_animation", "args": {"create": "*"}}]},
+        "max_turns": 8,
+    },
+    {
         "id": "bad_music_manager_by_hand",
         "groups_enabled": ["audio"],
         "files": {"assets/music/menu.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000,

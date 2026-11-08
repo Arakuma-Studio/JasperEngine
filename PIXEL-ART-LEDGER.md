@@ -168,17 +168,17 @@ never build or run them.
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
 | S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | merged and pushed |
-| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | spec done |
+| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | implementing |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | in review |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | spec done |
-| S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | spec done |
+| S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | implementing |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | implementing |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | re-scoping onto the landed batcher |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | implementing |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -200,6 +200,26 @@ exist on this host, and the owner declined renting a box. Builds therefore run o
 - `build/fixture-unity` (the MCP fixture project) is not available. MCP tests that need it are
   skipped, and reports must say so.
 
+### Rented build boxes (owner, 2026-11-08)
+
+Three Hetzner cpx51 machines (shared vCPU: 16 vCPU / 30 GB / 338 GB each, $0.44/h each), with a
+deadline of 2026-11-11 19:0x UTC:
+
+| Box | IP | box_id | Assigned |
+|---|---|---|---|
+| A | 5.161.240.186 | 205d9b263da5 | S51, S52 |
+| B | 5.161.235.8 | 32dda2ca7cd1 | S42, batch-landing verification |
+| C | 5.161.197.83 | 961a152cfd81 | S49 |
+
+- `/var/lib/orquester/workspaces/jaspersito/je-remote/rbox <box> '<cmd>' | --img '<cmd>' |
+  --fetch <path> <dst>`.
+  - It syncs the worktree (uncommitted edits too, git-ignored outputs stay on the box), runs the
+    command with `JOBS=14`, and runs one job at a time per box.
+  - Each box keeps a warm ccache.
+- SSH uses a dedicated key in `je-remote/ssh/`.
+- The local `rb.sh` (2 slots) is the fallback.
+- Destroy the boxes when the program ends, or when they're no longer needed.
+
 ### Landing gate
 
 **Owner's order (2026-11-05): no full suites at all, not even at the end.** Verification uses the
@@ -219,8 +239,22 @@ list them. There is no CI.
 
 Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*:CookedScene.*:ShaderNeutralApi.*:ReflectParity.*:ReflectRegistry.*:ReflectLocators.*:Stream.*:MeshMemory.*`; MCP `test_reflection.py`, `test_saved_output_determinism.py`, `test_editor_modals.py`, `test_tool_budget.py`, `test_docs.py`; lints `check-editor-modals.py`, `tools/mcp/eval/test_grade.py`.
 
+**Batch landings (owner, 2026-11-08):** finished features are merged together with `origin/main` on one tree. That tree is verified once (each feature's filtered gate plus web, android, the Vulkan/GLES3 GPU sets and a smoke test) and pushed.
+
 ## Log
 
+- 2026-11-08: Owner decisions:
+  1. Rent several Hetzner shared-vCPU build boxes. Three cpx51 are up (A, B, C), warmed with a
+     `main` build and reached through `rbox`.
+  2. Start the next wave now: S42, S49 and S52 started on top of S43's finished branch
+     (`a7b3be014`, which has S41, S44 and S45). S51 moved to box A.
+  3. Lighter checks per feature: `WERROR` linux, filtered unit tests plus the shared-data suites,
+     the feature's MCP files plus the shared MCP files, lints and generators. Web, android,
+     Vulkan/GLES3, smoke tests and players run once per batch.
+  4. Batch landings: the coordinator collects finished features, merges `main` once, verifies
+     the batch and pushes.
+
+  The brief's "Owner decisions of 2026-11-08" section records all four.
 - 2026-11-08: **S45 Sprite Atlas merged into `main` and pushed** (`32ebd1379`, branch
   `0e31b42be`).
   - Review round: 4 blockers, 9 should-fix issues and the nits, all fixed with red controls.

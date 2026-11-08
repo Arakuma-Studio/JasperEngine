@@ -81,6 +81,8 @@
 #include "window/MeshAuditWindow.h"
 #include "window/BuildReportWindow.h"
 #include "window/ImporterFields.h"
+#include "window/AnimationStatisticsWindow.h"
+#include "window/ReduceKeysDialog.h"
 #include "window/profiler/FrameDebuggerWindow.h"
 #include "window/profiler/ProfilerWindow.h"
 #include "profiler/FrameTimes.h"
@@ -264,6 +266,7 @@ editor::App::App(){
     jobsMemoryWindow = new JobsMemoryWindow();
     meshAuditWindow = new MeshAuditWindow(&project);
     buildReportWindow = new BuildReportWindow(&project);
+    animationStatisticsWindow = new AnimationStatisticsWindow(&project);
     profilerWindow = new ProfilerWindow(this);
     frameDebuggerWindow = new FrameDebuggerWindow(this);
     undoHistoryWindow = new UndoHistoryWindow(&project);
@@ -770,7 +773,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.systems", windowMenuLabel(SystemsWindow::WINDOW_NAME)),
             catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME)),
             catalogItem("window.meshAudit", windowMenuLabel(MeshAuditWindow::WINDOW_NAME)),
-            catalogItem("window.buildReport", windowMenuLabel(BuildReportWindow::WINDOW_NAME))
+            catalogItem("window.buildReport", windowMenuLabel(BuildReportWindow::WINDOW_NAME)),
+            catalogItem("window.animationStatistics", windowMenuLabel(AnimationStatisticsWindow::WINDOW_NAME))
         }),
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
@@ -1030,6 +1034,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleBuildReport:
             showEditorWindow(buildReportWindow);
+            break;
+        case AppMenuCommand::ToggleAnimationStatistics:
+            showEditorWindow(animationStatisticsWindow);
             break;
         case AppMenuCommand::ToggleUndoHistory:
             showEditorWindow(undoHistoryWindow);
@@ -2866,7 +2873,8 @@ void editor::App::show(){
         const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
         // the Animator window edits project assets (its selection in the Inspector too)
         // the Sprite Preview's Exclude from Import is a project step (the file's .meta)
-        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() || spritePreviewWindow->isFocused() ||
+        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animationStatisticsWindow->isFocused() || animatorWindow->isFocused() ||
+                spritePreviewWindow->isFocused() ||
                 (focusedWindowName() == InspectorWindow::WINDOW_NAME && animatorWindow->inspectorShowsSelection())) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (animatorWindow->isFocused()) {
@@ -2972,6 +2980,7 @@ void editor::App::show(){
     animatorWindow->show();
     avatarWindow->show();
     HumanoidConvertDialog::draw(&project);
+    ReduceKeysDialog::draw(&project);
     poseAnimationWindow->show();
     animatorWindow->show();
     // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
@@ -2999,6 +3008,7 @@ void editor::App::show(){
     jobsMemoryWindow->show();
     meshAuditWindow->show();
     buildReportWindow->show();
+    animationStatisticsWindow->show();
     profilerWindow->show();
     frameDebuggerWindow->show();
     undoHistoryWindow->show();
@@ -3632,6 +3642,10 @@ void editor::App::updateHubCreation() {
             VcsProjectSettings vcs = project.getVcsProjectSettings();
             vcs.lfs = true;   // S29 R21: a new project's binaries are LFS objects
             project.setVcsProjectSettings(vcs, false);
+            // S77 R38: a new project places a model of many clips without an Animation entity per clip
+            ModelProjectSettings models = project.getModelSettings();
+            models.animationEntities = AnimationEntitiesMode::Auto;
+            project.setModelSettings(models);
             project.saveProject();
             project.writeVersionControlMetadata();
             const std::filesystem::path start = done.dir / (done.info.startScene + ".scene");
@@ -5978,7 +5992,7 @@ namespace {
                       editor::ProjectWindow* projectWindow, editor::ConsoleWindow* console, editor::AnimationWindow* animation,
                       editor::TerrainEditWindow* terrain, editor::mcp::McpActivityWindow* mcpActivity, editor::SystemsWindow* systems,
                       editor::MissingAssetsWindow* missing, editor::AssetReferencesWindow* references, editor::JobsMemoryWindow* jobs,
-                      editor::ProfilerWindow* profiler, editor::FrameDebuggerWindow* frameDebugger, editor::UndoHistoryWindow* undo,
+                      editor::AnimationStatisticsWindow* animationStatistics, editor::ProfilerWindow* profiler, editor::FrameDebuggerWindow* frameDebugger, editor::UndoHistoryWindow* undo,
                       editor::PlayModeChangesWindow* playChanges, editor::GameWindow* game, editor::BookmarksWindow* bookmarks,
                       editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement,
                       editor::PoseAnimationWindow* poseAnimation, editor::VertexAnimationBakerWindow* vertexAnimationBaker, editor::AnimatorWindow* animator) {
@@ -5994,6 +6008,7 @@ namespace {
         visit(editor::MissingAssetsWindow::WINDOW_NAME, missing);
         visit(editor::AssetReferencesWindow::WINDOW_NAME, references);
         visit(editor::JobsMemoryWindow::WINDOW_NAME, jobs);
+        visit(editor::AnimationStatisticsWindow::WINDOW_NAME, animationStatistics);
         visit(editor::ProfilerWindow::WINDOW_NAME, profiler);
         visit(editor::FrameDebuggerWindow::WINDOW_NAME, frameDebugger);
         visit(editor::UndoHistoryWindow::WINDOW_NAME, undo);
@@ -6019,7 +6034,7 @@ std::map<std::string, bool> editor::App::panelStates() const{
     std::map<std::string, bool> panels;
     forEachPanel([&panels](const char* name, auto* window) { panels[name] = window->isOpen(); },
                  hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
-                 mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
+                 mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, animationStatisticsWindow, profilerWindow,
                  frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
                  textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow);
     return panels;
@@ -6031,7 +6046,7 @@ void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
         auto it = panels.find(name);
         if (it != panels.end()) window->setOpen(it->second);
     }, hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
-       mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
+       mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, animationStatisticsWindow, profilerWindow,
        frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
                  textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow);
 }

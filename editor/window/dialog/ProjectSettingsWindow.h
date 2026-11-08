@@ -277,6 +277,7 @@ namespace jasperengine::editor {
         void drawNavigationSettings();
         void drawMeshSettings();
         void draw2DSettings();
+        void drawAnimationSettings();
         void drawPixelArtSettings();
         // Unity's triangular Layer Collision Matrix over the named layers (as typed in
         // Tags and Layers, not yet applied)

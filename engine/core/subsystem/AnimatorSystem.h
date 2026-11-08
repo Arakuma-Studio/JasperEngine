@@ -12,17 +12,22 @@
 //      raycasts from last frame's feet).
 //   2. Wave (jobs::parallelFor, 4 Animators per job; serial with 0 workers): each Animator's
 //      AnimatorInstance::update and the writes of its own entities (bone local TRS, morph
-//      weights, lattice offsets, skin matrices of its animator-driven ModelSkinBindings).
-//   3. Finalize (main thread, entity order): root motion (Transform, S22 setRootMotion, or
-//      onAnimatorMove), state enter/exit, montage ends, events (C++/Lua subscribers, then the
-//      scripts' methods named like the events).
+//      weights, lattice offsets, skin matrices of its animator-driven ModelSkinBindings, the
+//      workerSafe property rows of entities no other Animator writes). The other property rows
+//      only copy their values to the instance's buffer: no Lua runs on a worker (S77 R8).
+//   3. Finalize (main thread, entity order): the waiting property rows of every Animator, values
+//      first, then the rows that run callbacks (GameObject active, a script's enabled). Then,
+//      Animator by Animator: root motion (Transform, S22 setRootMotion, or onAnimatorMove), state
+//      enter/exit, montage ends, events (C++/Lua subscribers, then the scripts' methods named like
+//      the events). So every callback of a frame sees every Animator's values of that frame.
 //   AnimatePhysics Animators run in fixedUpdate, the others in update (UnscaledTime: the frame
 //   delta before Engine's time scale).
 // - The editor pauses it in edit mode (Project::pauseEngineScene); the Animator window's edit
 //   preview drives one Animator through preview()/restorePreview().
 // - Thread-safety: main thread, except the wave's per-Animator work (it touches only that
-//   Animator's runtime and entities; two Animators binding one entity: the later reports a bind
-//   error and drives nothing).
+//   Animator's runtime and entities; two Animators binding one bone: the later reports a bind
+//   error and drives nothing; two Animators keying a property of one entity both play, on the
+//   main thread, the later one's value staying).
 
 #ifndef ANIMATORSYSTEM_H
 #define ANIMATORSYSTEM_H
@@ -49,6 +54,18 @@ namespace jasperengine{
             size_t animators = 0;       // updated this frame
             size_t sampled = 0;         // evaluated and written
             size_t culled = 0;
+            size_t footRaycasts = 0;    // Foot IK's ground rays
+
+            Stats& operator+=(const Stats& other){
+                prepareMs += other.prepareMs;
+                waveMs += other.waveMs;
+                finalizeMs += other.finalizeMs;
+                animators += other.animators;
+                sampled += other.sampled;
+                culled += other.culled;
+                footRaycasts += other.footRaycasts;
+                return *this;
+            }
         };
 
         AnimatorSystem(Scene* scene);
@@ -77,7 +94,11 @@ namespace jasperengine{
 
         // 0 workers or not: the wave's jobs (ParallelEqualsSerial, benchmarks)
         void setParallel(bool parallel);
+        // the last run (the update or a fixed step)
         const Stats& getStats() const { return stats; }
+        // what ran since the last call, both phases: time adds up, and the counts are one frame's,
+        // however many fixed steps it took (the profiler's monitors take them once per frame)
+        Stats takeFrameStats();
 
     private:
         struct Job{
@@ -89,10 +110,14 @@ namespace jasperengine{
 
         std::vector<Job> jobs;
         Stats stats;
+        Stats updateStats;
+        Stats fixedStats;
         bool parallel = true;
         uint64_t clipRevision = 0;
         uint64_t assetRevision = 0;
         bool revisionChanged = false;
+        // a bind changed: which property rows stay in the wave is decided again
+        bool propertyRowsChanged = false;
         // entities an Animator binds (the first one owns them)
         std::unordered_map<Entity, Entity> owners;
         // reused for every dispatch (no allocation once the strings have grown)
@@ -106,11 +131,14 @@ namespace jasperengine{
         bool prepare(Entity entity, AnimatorComponent& component, float dt, Job& job);
         bool loadController(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance);
         // (re)binds when needed; false while waiting (models loading, clips loading)
-        bool ensureBound(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance);
-        void pollClips(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool& rebind);
+        bool ensureBound(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool animInCall = false);
+        void pollClips(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool animInCall, bool& rebind, bool& loading);
         bool visible(const anim::AnimatorInstance& instance) const;
         void ikInputs(AnimatorComponent& component, anim::AnimatorInstance& instance, const anim::AnimatorUpdateContext& context);
         void writePose(const AnimatorComponent& component, anim::AnimatorInstance& instance);
+        void classifyPropertyRows();
+        // the waiting rows of one Animator: `callbackRows` the ones that run user callbacks
+        void applyWaitingProperties(anim::AnimatorInstance& instance, bool callbackRows);
         void finalize(Job& job, float dt);
         // the update's audio cues, then the state_exit stops of the states and montages that ended (S40 R4-R7)
         void fireCues(Entity entity, anim::AnimatorInstance& instance);

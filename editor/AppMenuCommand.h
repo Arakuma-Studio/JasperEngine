@@ -51,6 +51,7 @@ namespace jasperengine::editor {
         ToggleJobsMemory,
         ToggleMeshAudit,
         ToggleBuildReport,
+        ToggleAnimationStatistics,
         ToggleProfiler,
         ToggleFrameDebugger,
         ToggleUndoHistory,
