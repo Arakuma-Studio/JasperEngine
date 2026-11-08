@@ -621,6 +621,7 @@ const FieldEntry kStruct_Collider2D_fields[] = {
     JE_RF(Collider2D, sensorEvents, 0x45592808u, Bool),
     JE_RF(Collider2D, material, 0x23926496u, String),
     JE_RF_ENTITY(Collider2D, receiver, 0xdc436802u, Entity),
+    JE_RF(Collider2D, slice, 0xd4adaecfu, String),
 };
 const StructTable kStruct_Collider2D{"Collider2D", kStruct_Collider2D_fields, std::size(kStruct_Collider2D_fields)};
 void Codec<Collider2D>::write(Writer& w, const Collider2D& value) { writeStruct(w, kStruct_Collider2D, &value); }
@@ -1609,6 +1610,9 @@ const FieldEntry kBody_SpriteComponent_fields[] = {
     JE_RF(SpriteComponent, flipY, 0xbacad8a4u, Bool),
     JE_RF(SpriteComponent, textureScaleFactor, 0x1909ab5eu, Float),
     JE_RF(SpriteComponent, pivotPreset, 0xc80217ddu, Enum),
+    JE_RF(SpriteComponent, sheet, 0xff7f8fc1u, AssetPath),
+    JE_RF(SpriteComponent, frame, 0x6548e6a7u, Int),
+    JE_RF(SpriteComponent, frameName, 0x10ccd084u, String),
     JE_RF(SpriteComponent, numFramesRect, 0x533d2142u, UInt),
     JE_RF(SpriteComponent, framesRect, 0x64888c2au, Array),
 };

@@ -50,7 +50,7 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Play or Resume | F5 | Global |
 | Pause | F6 | Global |
 | Stop | F7 | Global |
-| Maximize On Play | F11 | Global |
+| Maximize On Play | F11 (macOS: Control+Cmd+F) | Global |
 
 ## Assets
 
@@ -209,6 +209,18 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Paste Pose | Ctrl+V | Pose Animation |
 | Add Pose | N | Pose Animation |
 | Global Edit | E | Pose Animation |
+
+## Sprite Preview
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Play / Pause | Space | Sprite Preview |
+| Previous Frame | , | Sprite Preview |
+| Next Frame | . | Sprite Preview |
+| First Frame | Home | Sprite Preview |
+| Last Frame | End | Sprite Preview |
+| Zoom In | = / NumpadAdd | Sprite Preview |
+| Zoom Out | - / NumpadSubtract | Sprite Preview |
 
 ## Project
 

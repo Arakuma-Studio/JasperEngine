@@ -167,6 +167,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         mesh.morphWeights[2] = 0.250000f;
         mesh.morphWeightsSet = true;
         mesh.morphTargetCount = 4;
+        mesh.vertexCount = 0;
         mesh.numSubmeshes = 0;
         mesh.enabled = false;
         scene->addComponent<MeshComponent>(1003, std::move(*meshStorage));
@@ -604,6 +605,9 @@ void create_scene_AllComponents_2026080800(Scene* scene){
 #ifdef JASPERENGINE_PHYSICS_2D
         Rigidbody2DComponent rigidbody2d;
         rigidbody2d.type = BodyType::DYNAMIC;
+        rigidbody2d.needReloadBody = false;
+        rigidbody2d.needUpdateColliders = false;
+        rigidbody2d.newBody = true;
         rigidbody2d.enabled = false;
         scene->addComponent<Rigidbody2DComponent>(1017, rigidbody2d);
 #endif // JASPERENGINE_PHYSICS_2D
@@ -639,6 +643,9 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         rigidbody.waterDrag = 8.300000f;
         rigidbody.waterAngularDrag = 3.100000f;
         rigidbody.allowedDOFs = 63;
+        rigidbody.needReloadBody = true;
+        rigidbody.needUpdateColliders = true;
+        rigidbody.newBody = true;
         rigidbody.overrideMassProperties = false;
         rigidbody.solidBoxSize = Vector3(0.000000f, 0.000000f, 0.000000f);
         rigidbody.solidBoxDensity = 1000.000000f;
@@ -3160,7 +3167,12 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     camera.type = CameraType::CAMERA_PERSPECTIVE;
     camera.target = Vector3(0.000000f, 0.000000f, 0.000000f);
     camera.up = Vector3(0.000000f, 1.000000f, 0.000000f);
+    camera.leftClip = <view>;
+    camera.rightClip = <view>;
+    camera.bottomClip = <view>;
+    camera.topClip = <view>;
     camera.yfov = 1.047198f;
+    camera.aspect = <view>;
     camera.nearClip = 0.300000f;
     camera.farClip = 4000.000000f;
     camera.renderToTexture = false;

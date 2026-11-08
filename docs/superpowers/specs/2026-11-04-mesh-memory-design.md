@@ -794,3 +794,69 @@ Recorded during the implementation (branch `dc/mesh-memory`).
     (`InstancingGoldenGpu.CloneOfAnInstancedMeshLeavesTheOriginalsBatches`). `HeapTrim.ReturnsFreedPagesOnGlibc`
     checks the resident bytes only without a sanitizer, and Android has its own case. The `MeshMemory` ceilings grow
     by half under MSVC's checked iterators.
+
+## Follow-ups (2026-11-07)
+
+Branch `fu/mesh-memory` (docs/doriax-catchup/FOLLOWUPS.md).
+
+1. **Android heap trim compiled.** `tools/build.sh android` (every ABI, `minSdkVersion 21`, NDK 28.2.13676358)
+   builds with the Android branch of `HeapTrim.cpp`; nothing needed fixing. The NDK's clang also compiled
+   `HeapTrim.cpp` and `HeapTrimTest.cpp` (`-Wall -Wextra -Werror`, `-fsyntax-only`) for arm64-v8a, armeabi-v7a,
+   x86_64 and x86 at API 21, and `M_PURGE` is defined in the NDK's `<malloc.h>` (-101), so the branch is not the
+   no-op fallback. The built libraries import `dlsym` and not `mallopt`, so they still load on Android 5 to 7
+   (no `mallopt` in libc before API 26). Unit tests are not built for Android, so `HeapTrim.PurgesFromAndroid9`
+   was compiled, not run; nothing in the branch can run on Linux (it is `__ANDROID__` only and its effect is the
+   device allocator's), so no Linux test was added.
+2. **MSVC size ceilings.** The `MeshMemory` ceilings were checked against MSVC's x64 layouts without MSVC: libclang
+   read the real headers for x86-64 Linux and wrote a header-free copy of every record the six asserted types
+   hold (59 records: bases, vptrs, bitfields, arrays, alignment), with each `std::` type an opaque block of the
+   MSVC STL's size from microsoft/STL's `stl/inc` (`_Container_base12` adds a proxy pointer under checked
+   iterators; `std::deque` always has one). Compiled for x86-64 Linux with libstdc++'s sizes, every copy came out
+   at its real size; then for `x86_64-pc-windows-msvc` (`-fms-compatibility`, Microsoft layout rules) and for
+   MinGW (`x86_64-w64-windows-gnu`):
+
+   | type | ceiling | Linux | MSVC Release | MSVC Debug | MinGW |
+   |---|---|---|---|---|---|
+   | SokolObject | 896 | 816 | 760 | 792 | 792 |
+   | ObjectRender | 896 | 832 | 776 | 808 | 808 |
+   | Submesh | 9,472 | 8,632 | 7,944 | 8,560 | 8,168 |
+   | MeshComponent | 2,048 | 1,760 | 1,584 | 1,696 | 1,648 |
+   | SpriteComponent | 384 | 320 | 296 | 344 | 296 |
+   | TilemapComponent | 384 | 152 | 152 | 184 | 152 |
+
+   SpriteComponent was 72 B (80 MSVC Debug) under a 256 ceiling until pixel-art's S44 gave it its tag playback
+   (`playingTag`, `tagFrames` and five scalars, `c3c73e186`): its ceiling is now 384, the Linux 320 with room as the
+   others have, MSVC Debug's 344 under it. A sprite's mesh with its arrays is 10,264 B under MSVC Debug (ceiling 11,264). MSVC's `std::map` (16 B, 24
+   checked) is much smaller than libstdc++'s (48), which outweighs the checked iterators' proxies, so every
+   configuration fits the Linux ceilings: the "half again under MSVC's checked iterators" of deviation 16 is
+   gone (its premise was wrong) and the ceilings are the same everywhere. `test_jobs_memory.py`'s
+   `element_bytes <= 2048` holds on Windows for the same reason. Still to run on Windows: `MeshMemory.*` in a
+   Debug and a Release MSVC build of the core unit tests (the layouts above are computed, not measured).
+3. **The 421 pixels of the first clone test: not reproduced.** That test (never committed) compared the frame
+   before a clone of an instanced box with the frame after the clone was destroyed, and 421 pixels differed with
+   and without the cloner's batch reset, so the comparison was dropped. It was rerun in every form found: the
+   frame each of 6 frames after the clone, after the clone loaded, each of 6 frames after the destroy, settled
+   after it, a clone and destroy in the same frame, and GPU Instancing off and on again, all against the
+   settled frame. On this branch and on the review-fix tree itself (`f05176f82`), with the cloner fix and with it
+   reverted, alone and after the whole `InstancingGoldenGpu` suite twice (`--gtest_repeat=2`), every comparison
+   showed 0 differing pixels. The image is the same with or without the fix because a clone sharing the
+   original's batch variants only takes the original's draws out of their batch, and single draws match batched
+   ones pixel for pixel (`BatchedFrameMatchesUnbatched`). The early test's code is lost, so what made its 421
+   pixels cannot be named; none of the frames it could have compared differs. `CloneOfAnInstancedMeshLeavesTheOriginalsBatches`
+   now also asserts that the frame after the clone is gone is the frame before it, writing both images when not,
+   so a difference of that kind shows again if it ever returns. That assertion is a pin, not a regression test:
+   it passes with the cloner fix reverted (the test's batch-variant checks fail there).
+4. **S55's batch render objects out of line: blocked.** `fix/submesh-drop` had not landed on `origin/main` at the
+   start or the end of this work, and the change touches the per-submesh split in `RenderSystem.cpp` (the
+   `isBatchVariant` reads beside the `localBounds` culling) that it rewrites, so it was not started. The design:
+   a `SubmeshBatchVariants` struct in `MeshComponent.h` holding what `Submesh` now holds inline for S55
+   (`batchRender`, `batchDepthRender`, both shaders, both property words, both shader ids), and `Submesh::batch`
+   a `std::shared_ptr<SubmeshBatchVariants>` like `extraPass` and `oit`: made by `loadSubmeshBatchVariants` only
+   when GPU Instancing is on and the submesh can batch, released where the variants are let go of today (the
+   unload path, `destroyMesh`) and when GPU Instancing turns off; the cloner resets the pointer instead of the
+   eight fields; readers test `batch && batch->render.isBatchVariant()`; `offerDrawBatch` takes the batch render
+   by pointer. A submesh drawn without instancing then holds 16 bytes instead of 1,720 (Linux; 2 x 832 for the
+   render objects plus the shader handles and keys): a sprite's mesh with its arrays goes from 10,400 to about
+   8,700 bytes. Its tests: `MeshMemory` measuring a sprite's and a model's mesh with GPU Instancing off (no batch
+   variants allocated, the bytes above) and the `InstancingGoldenGpu` suite unchanged (on: allocated and linked;
+   off then on: freed and made again, same image).

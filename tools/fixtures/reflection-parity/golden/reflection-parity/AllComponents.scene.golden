@@ -1,4 +1,4 @@
-formatVersion: 7
+formatVersion: 8
 guid: 32bfd2ae1a9d56a8dc83ae0fc8537f39
 id: 2026080800
 name: AllComponents
@@ -34,12 +34,12 @@ scene:
 sceneType: scene_3d
 mainCamera: 0
 maxValues:
-  maxSubmeshes: 0
+  maxSubmeshes: 1
   maxTilemapTilesRect: 0
   maxTilemapTiles: 0
   maxExternalBuffers: 0
   maxSpriteFrames: 0
-  maxBones: 0
+  maxBones: 128
   maxColliders2D: 0
   maxColliderPoints2D: 0
   maxColliders3D: 0
@@ -196,6 +196,9 @@ entities:
         verticesAABB:
           min: [0, 0, 0]
           max: [0, 0, 0]
+        worldAABB:
+          min: [2, 0, 0]
+          max: [2, 0, 0]
         receiveLights: false
         receiveIBL: true
         castShadows: false
@@ -245,6 +248,7 @@ entities:
         enabled: false
         type: spot
         direction: [1, 0.3, 8.3]
+        worldDirection: [1, 0.3, 8.3]
         color: [4.9, 6.8, 6.2]
         range: 3.7
         intensity: 4.8
@@ -441,6 +445,9 @@ entities:
         aabb:
           min: [0, 0, 0]
           max: [0, 0, 0]
+        worldAABB:
+          min: [9, 0, 0]
+          max: [9, 0, 0]
         texture:
           textureType: 2D
           source: path

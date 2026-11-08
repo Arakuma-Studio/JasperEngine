@@ -301,7 +301,7 @@ async def test_mcp_degraded_save(ed: Editor):
     saved = await ed.call("save_scene", scene="dropped.scene", allow_data_loss=True)
     check(saved["degraded"]["dropped"] == 0, f"after Save Anyway: {saved['degraded']}")
     text = (ed.project / "dropped.scene").read_text()
-    check("Hologram" not in text and "glint" not in text and text.startswith("formatVersion: 7"), "written without them")
+    check("Hologram" not in text and "glint" not in text and text.startswith("formatVersion: 8"), "written without them")
 
     # Save All: the clean scenes are written (unknown data kept), the degraded one refused
     await ed.call("open_scene", scene="future.scene")

@@ -64,8 +64,8 @@ namespace {
     // bits 0-31, bit 32, the lattice deformer ('Ltc'), bit 33, S10's high shadow filters ('Shq'),
     // bits 34-35, the Vertex Animation ('Vat', 'Vab'), bits 36-39, S57's lighting ('Til',
     // 'Cap', 'Cts', 'Oit'), bit 40, S54's LOD cross-fade ('Lfd'), bit 41, S55's automatic GPU
-    // instancing ('Aui'), bits 42-43, the Water Excluders and Wakes ('Wex', 'Wwk', b2beef162), and
-    // bit 44, draw-perf's directional-only Lit ('Dlo', c79ccabb8)
+    // instancing ('Aui'), bits 42-43, water-boats' excluders and wakes ('Wex', 'Wwk'), and bit 44,
+    // draw-perf's directional-only Lit ('Dlo')
     const uint64_t meshValidMask = 0x1FFFFFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
@@ -409,7 +409,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::MESH, (1u << 3) | (1u << 30), "mesh_PucL16"},
         {ShaderType::MESH, meshMaskWithoutBit5, "mesh_UltUv1Uv2PucShwNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16Pcl"},
         // bits past the count add nothing
-        {ShaderType::MESH, 0x41 | shaderPropertyBit(45) | shaderPropertyBit(63), "mesh_UltNor"},
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(62) | shaderPropertyBit(63), "mesh_UltNor"},
         // bits 36-39, S57's lighting: Tiled lights, capsule and contact shadows, Order Independent
         {ShaderType::MESH, 0x41 | shaderPropertyBit(36), "mesh_UltNorTil"},
         {ShaderType::MESH, 0x51 | shaderPropertyBit(37), "mesh_UltShwNorCap"},
@@ -433,10 +433,6 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         // S55's automatic GPU instancing: MESH bit 41 (40 is S54's), DEPTH bit 18
         {ShaderType::MESH, 0x41 | shaderPropertyBit(41), "mesh_UltNorAui"},
         {ShaderType::DEPTH, shaderPropertyBit(18), "depth_Aui"},
-        // bits 42-43, the Water Excluders and Wakes, and bit 44, the directional-only Lit
-        {ShaderType::MESH, 0x41 | shaderPropertyBit(42), "mesh_UltNorWex"},
-        {ShaderType::MESH, 0x41 | shaderPropertyBit(43), "mesh_UltNorWwk"},
-        {ShaderType::MESH, 0x41 | shaderPropertyBit(44), "mesh_UltNorDlo"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
         {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAuiWexWwkDlo"},

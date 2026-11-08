@@ -53,8 +53,7 @@ void SceneDiffWindow::open(uint32_t id, const std::string& revision) {
     windowOpen = true;
     ImGui::SetWindowFocus(VcsUi::SCENE_DIFF_WINDOW);
     sceneId = id;
-    rev = revision;
-    std::snprintf(revInput, sizeof(revInput), "%s", rev.c_str());
+    setRev(revision);
     file.clear();
     fileDiff.reset();
     status.clear();
@@ -64,8 +63,7 @@ void SceneDiffWindow::openFile(const fs::path& path) {
     windowOpen = true;
     ImGui::SetWindowFocus(VcsUi::SCENE_DIFF_WINDOW);
     sceneId = 0;
-    rev = "HEAD";
-    std::snprintf(revInput, sizeof(revInput), "HEAD");
+    setRev("HEAD");
     file = path;
     fileDiff.reset();
     fileError.clear();
@@ -82,6 +80,15 @@ void SceneDiffWindow::openFile(const fs::path& path) {
             fileError = error;
             fileDiff = diff;
         });
+}
+
+void SceneDiffWindow::setRev(const std::string& revision) {
+    const VcsService& service = ui->getProject()->getVcs();
+    const std::string baseline = service.baselineRevision();
+    // the baseline is watched as "HEAD", as the Hierarchy and Inspector watch it (one diff), and
+    // shown by its provider's name (svn: BASE)
+    rev = !baseline.empty() && service.effectiveRevision(revision) == baseline ? std::string("HEAD") : revision;
+    std::snprintf(revInput, sizeof(revInput), "%s", service.effectiveRevision(rev).c_str());
 }
 
 void SceneDiffWindow::watch() {
@@ -203,18 +210,18 @@ void SceneDiffWindow::show() {
     if (ImGui::InputText("##rev", revInput, sizeof(revInput), ImGuiInputTextFlags_EnterReturnsTrue)) {
         std::shared_ptr<IVcsProvider> provider = service.providerForReads();
         if (provider && provider->validRevision(revInput)) {
-            rev = revInput;
+            setRev(revInput);
             status.clear();
         } else {
             status = std::string("Not a revision: ") + revInput;
         }
     }
-    ImGui::SetItemTooltip("The baseline: HEAD, or a revision (History's Diff with Working Copy sets it). Enter applies it.");
+    const std::string baselineName = service.baselineRevision();
+    // (a window opened before version control was active shows the provider's name once it is)
+    if (rev == "HEAD" && baselineName != "HEAD" && std::strcmp(revInput, "HEAD") == 0 && !ImGui::IsItemActive()) setRev(rev);
+    ImGui::SetItemTooltip("The baseline (%s), or a revision (History's Diff with Working Copy sets it). Enter applies it.", baselineName.c_str());
     ImGui::SameLine();
-    if (ImGui::SmallButton("HEAD")) {
-        rev = "HEAD";
-        std::snprintf(revInput, sizeof(revInput), "HEAD");
-    }
+    if (ImGui::SmallButton(baselineName.c_str())) setRev("HEAD");
     ImGui::SameLine();
     ImGui::Checkbox("Changed only", &changedOnly);
 
@@ -257,7 +264,7 @@ void SceneDiffWindow::show() {
                 }
             }
         }
-        if (diff->objects.empty()) ImGui::TextDisabled("No changes against %s.", rev.c_str());
+        if (diff->objects.empty()) ImGui::TextDisabled("No changes against %s.", service.effectiveRevision(rev).c_str());
         ImGui::EndChild();
     }
     ImGui::End();

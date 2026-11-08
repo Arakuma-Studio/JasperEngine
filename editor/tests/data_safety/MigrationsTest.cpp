@@ -53,20 +53,22 @@ TEST(Migrations, NewerFormatGated) {
     DecodedScene decoded = decodeSceneFile(fixture("migrations/scene-v99.scene"));
     ASSERT_EQ(decoded.report.dropped(), 1u);
     EXPECT_TRUE(decoded.report.newerFormat());
-    EXPECT_EQ(decoded.report.issues[0].message, "Written by a newer JasperEngine (scene format 99; this editor writes 7).");
+    EXPECT_EQ(decoded.report.issues[0].message, "Written by a newer JasperEngine (scene format 99; this editor writes " +
+                                                    std::to_string(StreamMigrations::currentVersion(DocumentKind::Scene)) + ").");
     // loaded best-effort
     EXPECT_EQ(decoded.scene->name, "FromTheFuture");
     EXPECT_EQ(decoded.scene->entities.size(), 1u);
 
-    // a prefab one version ahead is gated the same way
+    // a prefab from a newer editor is gated the same way
     LoadReport prefabReport;
     {
         ScopedLoadReport scope(prefabReport);
-        DocumentFile prefab = DocumentFiles::read(fixture("migrations/prefab-v9.prefab"), DocumentKind::Prefab);
-        EXPECT_EQ(prefab.migration.versionRead, 9);
-        EXPECT_EQ(prefab.root["version"].as<int>(), 9);
+        DocumentFile prefab = DocumentFiles::read(fixture("migrations/prefab-v99.prefab"), DocumentKind::Prefab);
+        EXPECT_EQ(prefab.migration.versionRead, 99);
+        EXPECT_EQ(prefab.root["version"].as<int>(), 99);
     }
     ASSERT_EQ(prefabReport.dropped(), 1u);
-    EXPECT_EQ(prefabReport.issues[0].message, "Written by a newer JasperEngine (prefab format 9; this editor writes 8).");
+    EXPECT_EQ(prefabReport.issues[0].message, "Written by a newer JasperEngine (prefab format 99; this editor writes " +
+                                                  std::to_string(Prefab::FILE_VERSION) + ").");
     EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Prefab), Prefab::FILE_VERSION);
 }
