@@ -1093,6 +1093,9 @@ async def test_guide_names_exist(ed: Editor):
               # results of calls this test does not repeat: create {from}, an extract, a missing path with a fix, > 50 users
               "added_player", "removed_tracks", "model_clip_users", "fix_with", "users_total", "fix_path", "fix_conflict",
               "rest_mismatch", "rig_mismatch",
+              # upstream guide lines on results these calls do not produce: an Animation with a start offset
+              # (get_animation reports it only when set) and a Button's transition (button.transition)
+              "start_offset", "sprite_swap",
               # layers, masks and controllers (test_animation_layers / test_animator_controller): their results, the
               # mask's humanoid parts and the clip / controller file keys
               "humanoid_rig", "coverage_total", "mask_coverage", "live_weight", "normalized_time", "additive_reference",
