@@ -211,8 +211,15 @@ bool TitleDesignerWindow::previewAddEntry(const AddEntry& entry) {
 bool TitleDesignerWindow::addEntry(const AddEntry& entry, std::string* error) {
     const std::vector<std::string> layers = doc.selectedLayers();
     const NodeRef primary = doc.primary();
-    doc.clearPreview();
-    if (!doc.commit(entry.ops, entry.stepName, error)) return false;
+    // the previewed entry commits with the preview's id seed: the result is the document the
+    // canvas showed (R44)
+    const bool previewed = doc.preview() && doc.preview()->id == entry.id && doc.preview()->ops == entry.ops;
+    if (previewed) {
+        if (!doc.commitPreview(error)) return false;
+    } else {
+        doc.clearPreview();
+        if (!doc.commit(entry.ops, entry.stepName, error)) return false;
+    }
     // a new layer is selected (a new text starts editing, R36); an effect is; a style setting
     // selects its layer and opens its section
     if (entry.addsLayer) {

@@ -85,8 +85,8 @@ async def test_gizmo_ring_drag_is_one_step(ed: Editor):
     cx, cy = gizmo["centre"]
     ring = gizmo["ring"]
     before = await top_steps(ed, 1)
-    start = (int(cx + ring), int(cy))
-    await ui.drag(start, (int(cx + ring), int(cy - 50)), steps=10)
+    # window coords to screen points: the ring's right end, dragged up along it
+    await ui.drag(ui.centre([cx + ring, cy, 0, 0]), ui.centre([cx + ring, cy - 50, 0, 0]), steps=10)
     await ui.frames(4)
     steps = await top_steps(ed, 2)
     ed.check_eq(steps[0], "Rotate 3D Layer", f"one step: {steps} (before {before})")

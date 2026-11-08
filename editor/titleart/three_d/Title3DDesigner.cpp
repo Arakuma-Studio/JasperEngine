@@ -101,23 +101,13 @@ namespace {
         if (ctx.state->preview() && ctx.state->preview()->id.rfind(prefix, 0) == 0) ctx.state->clearPreview();
     }
 
-    const ta::Json* primaryLayer(const TitleDesignerState& state) {
-        const NodeRef node = state.primary();
-        return node.layer.empty() ? nullptr : layerById(state.shown(), node.layer);
+    // the page's node (the collect pass visits every node, not only the selection)
+    bool layer3D(const TitleDesignerState& state, const NodeRef& node) {
+        return node.kind == NodeKind::Layer && is3D(layerById(state.shown(), node.layer));
     }
 
-    bool selection3D(const TitleDesignerState& state) {
-        const std::vector<std::string> layers = state.selectedLayers();
-        if (layers.empty() || state.primary().kind != NodeKind::Layer) return false;
-        for (const std::string& id : layers) {
-            if (!is3D(layerById(state.shown(), id))) return false;
-        }
-        return true;
-    }
-
-    bool part3D(const TitleDesignerState& state) {
-        const NodeRef node = state.primary();
-        if (node.kind != NodeKind::Part || !is3D(primaryLayer(state))) return false;
+    bool part3D(const TitleDesignerState& state, const NodeRef& node) {
+        if (node.kind != NodeKind::Part || !is3D(layerById(state.shown(), node.layer))) return false;
         return node.part == "face" || node.part == "bevel" || node.part == "side" || node.part.rfind("band:", 0) == 0;
     }
 
@@ -1156,7 +1146,7 @@ void jasperengine::editor::registerTitle3DDesigner() {
         def.id = id;
         def.title = title;
         def.parent = "dimension";
-        def.applies = selection3D;
+        def.appliesTo = layer3D;
         def.draw = std::move(draw);
         addSection(std::move(def));
     };
@@ -1184,7 +1174,7 @@ void jasperengine::editor::registerTitle3DDesigner() {
     appearance.id = "3d_appearance";
     appearance.title = "Appearance";
     appearance.replaces = "appearance";
-    appearance.applies = selection3D;
+    appearance.appliesTo = layer3D;
     appearance.draw = appearanceSection;
     addSection(std::move(appearance));
 
@@ -1193,7 +1183,7 @@ void jasperengine::editor::registerTitle3DDesigner() {
     part.id = "3d_part";
     part.title = "Material";
     part.replaces = "material";
-    part.applies = part3D;
+    part.appliesTo = part3D;
     part.draw = partSection;
     addSection(std::move(part));
 

@@ -3,11 +3,14 @@
 
 #include "TitleDesignerHooks.h"
 
+#include "titleart/fx/FxRecipes.h"
 #include "titleart/runtime/TitleArtRuntimeDesigner.h"
 #include "titleart/three_d/Title3DDesigner.h"
 
 void jasperengine::editor::titledesigner::registerTitleDesignerExtensions() {
     // each registers once; a spec left out of the build has no line here and no UI
     registerTitleArtRuntimeDesigner();
+    // S83's apply_recipe, which the Add palette's recipes commit (MCP registers it too)
+    registerTitleFxOps();
     registerTitle3DDesigner();
 }

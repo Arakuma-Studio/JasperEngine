@@ -37,6 +37,9 @@ namespace jasperengine::editor::titledesigner {
         std::function<void(RowContext& ctx, const std::vector<std::string>& layers, const std::vector<std::string>& parts)> draw;
         // shown for this selection (null: always)
         std::function<bool(const TitleDesignerState& state)> applies;
+        // shown on the page of this node (the collect pass visits every node's page, not only the
+        // selection's): used instead of `applies` when set
+        std::function<bool(const TitleDesignerState& state, const NodeRef& node)> appliesTo;
         std::function<std::string(const TitleDesignerState& state)> summary;
     };
     void addSection(SectionDef section);

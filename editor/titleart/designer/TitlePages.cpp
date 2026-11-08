@@ -84,6 +84,11 @@ namespace {
         return member ? member->kind : std::string();
     }
 
+    bool sectionApplies(const RowContext& ctx, const SectionDef& def) {
+        if (def.appliesTo) return def.appliesTo(*ctx.state, ctx.node);
+        return !def.applies || def.applies(*ctx.state);
+    }
+
     void drawRegistered(RowContext& ctx, const SectionDef& def, const std::vector<std::string>& layers, const std::vector<std::string>& parts,
                         bool defaultOpen) {
         const std::string summary = def.summary && !ctx.collecting() ? def.summary(*ctx.state) : std::string();
@@ -96,7 +101,7 @@ namespace {
     void registeredSections(RowContext& ctx, SectionDef::Page page, const std::vector<std::string>& layers, const std::vector<std::string>& parts) {
         for (const SectionDef& def : sections()) {
             if (def.page != page || !def.draw || !def.parent.empty() || !def.replaces.empty()) continue;
-            if (def.applies && !def.applies(*ctx.state)) continue;
+            if (!sectionApplies(ctx, def)) continue;
             drawRegistered(ctx, def, layers, parts, def.defaultOpen);
         }
     }
@@ -106,7 +111,7 @@ namespace {
                        const std::vector<std::string>& parts) {
         for (const SectionDef& def : sections()) {
             if (def.page != page || !def.draw || def.parent != parent) continue;
-            if (def.applies && !def.applies(*ctx.state)) continue;
+            if (!sectionApplies(ctx, def)) continue;
             drawRegistered(ctx, def, layers, parts, def.defaultOpen);
         }
     }
@@ -115,7 +120,7 @@ namespace {
     const SectionDef* replacingSection(RowContext& ctx, SectionDef::Page page, const std::string& id) {
         for (const SectionDef& def : sections()) {
             if (def.page != page || !def.draw || def.replaces != id) continue;
-            if (def.applies && !def.applies(*ctx.state)) continue;
+            if (!sectionApplies(ctx, def)) continue;
             return &def;
         }
         return nullptr;
@@ -1076,7 +1081,16 @@ std::vector<CollectUnit> jasperengine::editor::titledesigner::planCollect(const 
         if (!layer) continue;
         // the layer page, the costliest, a top-level section per unit
         for (int slice = 0; slice < LAYER_PAGE_SLICES; slice++) units.push_back({CollectUnit::Kind::Layer, {NodeKind::Layer, id, {}, {}}, slice});
-        if (ta::layerTypeHasStyle(ta::layerTypeOf(*layer))) {
+        if (ta::layerTypeHasStyle(ta::layerTypeOf(*layer)) && layer->value("dimension", std::string("2d")) == "3d") {
+            // a Dimension 3D layer's parts (S86): Face, Bevel, Side, Band N
+            for (const char* part : {"face", "bevel", "side"}) units.push_back({CollectUnit::Kind::Part, {NodeKind::Part, id, part, {}}});
+            auto style3d = layer->find("style_3d");
+            if (style3d != layer->end() && style3d->is_object()) {
+                if (const ta::Json* bands = array(*style3d, "bands")) {
+                    for (const ta::Json& band : *bands) units.push_back({CollectUnit::Kind::Part, {NodeKind::Part, id, "band:" + str(band, "id"), {}}});
+                }
+            }
+        } else if (ta::layerTypeHasStyle(ta::layerTypeOf(*layer))) {
             units.push_back({CollectUnit::Kind::Part, {NodeKind::Part, id, "face", {}}});
             auto style = layer->find("style");
             if (style != layer->end() && style->is_object()) {

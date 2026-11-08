@@ -570,6 +570,12 @@ ta::Json TitleDesignerWindow::state() const {
         for (const auto& [category, count] : addRail) rail.push_back({{"category", category}, {"count", count}});
         out["add"] = {{"query", addQuery}, {"filter", addFilter}, {"rail", rail}, {"entries", addVisible}};
     }
+    if (inContext) {
+        // In Context (R30): the instance's screen rectangle once found, on its screen
+        out["in_context"] = {{"located", inContext->located}, {"snapshot", !inContext->snapshotRgba.empty()},
+                             {"rect", ta::Json::array({inContext->x, inContext->y, inContext->width, inContext->height})},
+                             {"screen", ta::Json::array({inContext->screenWidth, inContext->screenHeight})}};
+    }
     if (gizmo3d && gizmo3d->visible()) {
         // S82 R35's schematic where it is drawn (window coords, as `rect`): its centre and the
         // free-rotate ring's radius
