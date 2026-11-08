@@ -38,7 +38,6 @@
 #include "ecs/ComponentFwd.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "pixelart/PixelSnap.h"
-#include "component/Transform.h"
 #include "render/WaterLayering.h"
 #include "render/ObjectRender.h"
 #include "render/VisibleList.h"

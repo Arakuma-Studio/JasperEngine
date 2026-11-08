@@ -2527,6 +2527,7 @@ const FieldEntry kBody_PixelPerfectCameraComponent_fields[] = {
     JE_RF(PixelPerfectCameraComponent, letterboxColor, 0x7cab54bfu, Vector4),
 };
 const StructTable kBody_PixelPerfectCameraComponent{"pixelperfectcamera", kBody_PixelPerfectCameraComponent_fields, std::size(kBody_PixelPerfectCameraComponent_fields)};
+
 const FieldEntry kBody_VoxelVolumeComponent_fields[] = {
     JE_RF(VoxelVolumeComponent, enabled, 0xe0232cc6u, Bool),
     JE_RF(VoxelVolumeComponent, volumeData, 0xcf672fffu, AssetPath),

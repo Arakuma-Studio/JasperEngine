@@ -11,6 +11,7 @@
 // (lavapipe).
 
 #include "Engine.h"
+#include "component/Transform.h"
 #include "Scene.h"
 #include "component/MeshComponent.h"
 #include "object/Camera.h"

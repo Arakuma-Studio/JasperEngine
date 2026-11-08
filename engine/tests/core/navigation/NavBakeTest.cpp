@@ -6,6 +6,7 @@
 // and tile order, the 32-bit reference limit and runtime tile updates.
 
 #include "NavTestUtil.h"
+#include "component/Transform.h"
 
 #include "AllocationCounter.h"
 #include "TestPaths.h"
