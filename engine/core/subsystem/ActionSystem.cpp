@@ -11,6 +11,8 @@
 #include "util/Angle.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/KeyframeSampling.h"
+#include "component/AnimationPlayerComponent.h"
+#include "profiler/Profile.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "lattice/LatticeSolver.h"
@@ -1081,27 +1083,36 @@ void ActionSystem::flushPoseBlend(){
             accum.rotationWeight = 1.0f;
         }
 
+        // a value that did not change (a held pose, an idle state) marks nothing dirty
         bool changed = false;
         if (accum.positionWeight > 0.0f){
             Vector3 position = accum.positionSum * (1.0f / accum.positionWeight);
-            // the layout places an anchored element from its offset every frame, so the
-            // move goes to the offset too or the next layout snaps it back
-            RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(target);
-            if (layout && layout->usingAnchors){
-                UISystem* uisystem = scene->getSystem<UISystem>().get();
-                layout->positionOffset += uisystem->parentToLayoutSpace(target, Vector2(position.x, position.y)) -
-                                          uisystem->parentToLayoutSpace(target, Vector2(transform->position.x, transform->position.y));
+            if (position != transform->position){
+                // the layout places an anchored element from its offset every frame, so the
+                // move goes to the offset too or the next layout snaps it back
+                RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(target);
+                if (layout && layout->usingAnchors){
+                    UISystem* uisystem = scene->getSystem<UISystem>().get();
+                    layout->positionOffset += uisystem->parentToLayoutSpace(target, Vector2(position.x, position.y)) -
+                                              uisystem->parentToLayoutSpace(target, Vector2(transform->position.x, transform->position.y));
+                }
+                transform->position = position;
+                changed = true;
             }
-            transform->position = position;
-            changed = true;
         }
         if (accum.scaleWeight > 0.0f){
-            transform->scale = accum.scaleSum * (1.0f / accum.scaleWeight);
-            changed = true;
+            const Vector3 scale = accum.scaleSum * (1.0f / accum.scaleWeight);
+            if (scale != transform->scale){
+                transform->scale = scale;
+                changed = true;
+            }
         }
         if (accum.rotationWeight > 0.0f){
-            transform->rotation = accum.rotationSum.normalized();
-            changed = true;
+            const Quaternion rotation = accum.rotationSum.normalized();
+            if (rotation != transform->rotation){
+                transform->rotation = rotation;
+                changed = true;
+            }
         }
         if (changed){
             transform->needUpdate = true;
@@ -1863,11 +1874,16 @@ void ActionSystem::update(double dt){
 
 	}
 
-    // Animation Players add their states to the same blend
-    updatePlayers(dt);
-
-    // Write the blended (weighted-average) pose to each animated target.
-    flushPoseBlend();
+    // Animation Players add their states to the same blend; then write the blended
+    // (weighted-average) pose to each animated target
+    if (scene->getComponentArray<AnimationPlayerComponent>()->size() > 0){
+        // the profiler's Animation band: this time is not the Scripts of Update
+        JE_PROFILE_SCOPE("Animation");
+        updatePlayers(dt);
+        flushPoseBlend();
+    }else{
+        flushPoseBlend();
+    }
     poseBlendScope = false;
     // the writes that run onEnable / onDisable, now that a callback may sample a player
     applyDeferredPropertyWrites();

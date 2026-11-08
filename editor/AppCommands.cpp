@@ -49,6 +49,7 @@
 #include "widget/CurveField.h"
 #include "widget/GradientField.h"
 #include "window/InputActionsWindow.h"
+#include "window/AnimationStatisticsWindow.h"
 #include "window/JobsMemoryWindow.h"
 #include "window/vcs/VcsUi.h"
 
@@ -498,6 +499,7 @@ void editor::App::registerPanelClaims(){
                                     []() { if (auto* w = GraphEditorWindow::focused()) w->duplicateSelection(); }}},
                  {Verb::Frame, {{}, nullptr, []() { if (auto* w = GraphEditorWindow::focused()) w->frameSelected(); }}}}});
     claims.add({"Jobs & Memory", [this]() { return jobsMemoryWindow->isFocused(); }, {}});
+    claims.add({"Animation Statistics", [this]() { return animationStatisticsWindow->isFocused(); }, {}});
     claims.add({"Project", [this]() { return projectWindow->isFocused(); },
                 {{Verb::Delete, own("project.delete")}, {Verb::Copy, own("project.copy")}, {Verb::Cut, own("project.cut")},
                  {Verb::Paste, own("project.paste")}, {Verb::SelectAll, own("project.selectAll")}, {Verb::Rename, own("project.rename")},

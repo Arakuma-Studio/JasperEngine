@@ -83,6 +83,16 @@ namespace jasperengine::editor{
         static bool addClipsToPlayer(Project* project, uint32_t sceneId, Entity target, const std::vector<std::string>& clips,
                                      ClipActionResult& result, std::string& error);
 
+        // optimize_animation with `root` (S77): the reduced clips written and `player`'s Animation Player
+        // entries of their sources switched to them (the states keep their names), one scene step
+        struct OptimizedClip{
+            std::string source;             // what an entry plays now, in any form findClipUsers takes
+            std::filesystem::path file;     // absolute
+            std::string text;
+        };
+        static bool writeOptimizedClips(Project* project, uint32_t sceneId, Entity player, const std::vector<OptimizedClip>& clips,
+                                        ClipActionResult& result, std::string& error);
+
         // ClipValidation's legacy-layout fix: the models on or under `root` that its player needs
         // in the node hierarchy reloaded, one scene step
         static bool reloadModelsForPlayer(Project* project, uint32_t sceneId, Entity root, ClipActionResult& result, std::string& error);

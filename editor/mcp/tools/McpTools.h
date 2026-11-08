@@ -73,6 +73,7 @@ namespace jasperengine::editor::mcp {
     void registerSynthesisTools(McpRegistry& registry);
     void registerPlacementTools(McpRegistry& registry);
     void registerVatTools(McpRegistry& registry);
+    void registerAnimationQualityTools(McpRegistry& registry);   // S77: check_animation, optimize_animation
     void registerSpriteNormalsTools(McpRegistry& registry);
     // SpriteTools.cpp: the sprites group (S44's Aseprite import; S45 atlases, S47 drawing)
     void registerSpriteTools(McpRegistry& registry);

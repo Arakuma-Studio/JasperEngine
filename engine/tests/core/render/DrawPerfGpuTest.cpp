@@ -192,6 +192,24 @@ TEST_F(DrawPerfGpu, OpaqueQueueIsCulledBeforeTheSort){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// The visible list culls a mesh's submeshes by their own bounds. MeshComponent keeps each Submesh in
+// its own allocation (StableArray), so the bounds are gathered for it rather than walked by a stride
+// from the first submesh, which read past it into other memory (AddressSanitizer: heap-buffer-overflow
+// in AABB::isNull from VisibleList::cull). One mesh, three triangles: the middle one 1000 m to the side
+TEST_F(DrawPerfGpu, SubmeshesAreCulledByTheirOwnBounds){
+    JASPER_REQUIRE_GPU();
+    sun(false);
+    models.push_back(std::make_unique<Model>(&scene));
+    ASSERT_TRUE(models.back()->loadModel(JASPER_TEST_REPO_DIR "/engine/tests/core/fixtures/gltf/three_primitives_apart.gltf"));
+    settle();
+    const Engine::FrameStats& frame = Engine::getFrameStats();
+    std::printf("[draw-perf] one mesh, three submeshes, one 1000 m away: %u visible, %u culled\n", frame.visible, frame.culled);
+    // per pass that draws the mesh: the two in view kept, the one 1000 m to the side culled
+    EXPECT_GT(frame.culled, 0u) << "the submesh 1000 m to the side";
+    EXPECT_EQ(frame.visible, 2u * frame.culled) << "two kept for each one culled";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 TEST_F(DrawPerfGpu, RigidMeshIgnoresABonePalette){
     JASPER_REQUIRE_GPU();
     Primitive& rigid = box(0.0f, 0.0f, 0.0f, true);

@@ -994,6 +994,9 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"show_post_processing", &SceneDisplaySettings::showPostProcessing},
         {"animate_water", &SceneDisplaySettings::animateWater},
         {"show_stats", &SceneDisplaySettings::showStats},
+        {"show_ik", &SceneDisplaySettings::showIK},
+        {"show_root_motion", &SceneDisplaySettings::showRootMotion},
+        {"show_foot_trails", &SceneDisplaySettings::showFootTrails},
         // S41 (in a scene with a Pixel Perfect Camera)
         {"pixel_zoom", &SceneDisplaySettings::pixelZoom},
         {"pixel_grid", &SceneDisplaySettings::pixelGrid},

@@ -2157,6 +2157,18 @@ static anim::ClipParseResult parseClipText(const std::string& text){
         warn(&warnings, "", "unknown keys kept as they are (written back on save): " + unknownNames);
     }
 
+    for (const ClipTrackData& track : data.tracks){
+        if (!isRotationChannel(track.channel)) continue;
+        for (size_t k = 1; k < track.keys.size(); k++){
+            const ClipKey& previous = track.keys[k - 1];
+            const ClipKey& key = track.keys[k];
+            if (previous.hasTangents() || key.hasTangents() || previous.value.size() != 4 || key.value.size() != 4) continue;
+            if (quaternionDot(previous.value, key.value) < 0.0f){
+                result.rotationSignFlips.push_back({track.path, key.time});
+                break;
+            }
+        }
+    }
     normalizeClip(data, &warnings, &origins);
     checkEulerSegments(data, origins, eulerKeys, warnings);
     if (version->get<double>() < 2.0 && data.isHumanoid()){

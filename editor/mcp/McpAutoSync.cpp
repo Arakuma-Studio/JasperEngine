@@ -218,9 +218,10 @@ bool McpAutoSync::isTrackedFile(const std::string& path) {
     if (Util::isScriptFile(path) || Util::isShaderFile(path) || Util::isMaterialFile(path) || Util::isColorLutFile(path)) return true;
     if (isUiCodeFile(path) || isAssetFile(path)) return true;
     const std::string ext = lowerExtension(path);
-    // pose animations and humanoid sidecars: their open documents reload (editor/pose); clips:
-    // their documents reload, AnimationClipPool drops them and their players reload
-    if (ext == ".c" || ext == ".inl" || ext == ".poseanim" || ext == ".humanoid" || Util::isAnimationClipFile(path)) return true;
+    // pose animations and humanoid sidecars: their open documents reload (editor/pose); clips and
+    // a model's .clips sidecar: their documents reload, AnimationClipPool drops them and their
+    // players reload
+    if (ext == ".c" || ext == ".inl" || ext == ".poseanim" || ext == ".humanoid" || ext == ".clips" || Util::isAnimationClipFile(path)) return true;
     // Avatar Masks and Animator Controllers: their documents reload, their pools drop them and
     // their players reload (AnimationClipDocument::filesChanged reaches them)
     if (Util::isAvatarMaskFile(path) || Util::isAnimatorControllerFile(path)) return true;

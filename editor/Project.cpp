@@ -7049,6 +7049,8 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
             modelLoaded = true;
             // a project this version creates keeps its binaries in Git LFS (R21)
             vcsProjectSettings.lfs = true;
+            // ... and places a model of many clips without an Animation entity per clip (S77 R38)
+            modelSettings.animationEntities = AnimationEntitiesMode::Auto;
             // ... and ships at a sane level (S38 R8): a Master true-peak limiter, the linear output
             // stage that lets its ceiling hold at the device, the ambient iOS session
             {

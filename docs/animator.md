@@ -99,13 +99,44 @@ layer (**Event Mode** Leader Only, the default) or for every playing clip (All),
 They call the Animator's `onEvent` subscribers and, with **Send Events To Scripts**, the method of
 the same name on the GameObject's scripts. State changes call `onStateEnter` / `onStateExit`.
 
+## Order of a frame
+
+Each update does these steps, every list in the order of the scene's Animator components:
+
+1. **Prepare**, on the main thread: controllers and clips load and bind, culling is decided, IK reads
+   its targets.
+2. **The wave**, on worker threads: each Animator advances its states and evaluates its pose, then
+   writes its bones, morph weights, lattice points and skin matrices, and the
+   [property tracks](animation-clips.md#property-tracks) that can run there: a component value on a
+   GameObject no other Animator writes. No Lua runs, and no callback.
+3. **Property tracks that wait for the main thread**, with this frame's values:
+   1. the values of every Animator: Lua fields, and the component values that could not run in the
+      wave (a GameObject two Animators write, sprite frames, shader parameters and uniforms, a 2D
+      rigidbody's `enabled`);
+   2. then **GameObject Active** and a script's `enabled` of every Animator, where
+      `onEnable` / `onDisable` run.
+4. **Callbacks**, Animator by Animator, on the main thread: root motion (`onAnimatorMove`),
+   `onStateEnter` / `onStateExit`, `onMontageEnded`, events (`onEvent`, then the scripts' methods of
+   that name), the clips' audio cues, then the state callbacks of an Animation Player on the same
+   GameObject.
+
+So any callback reads this frame's value of any Animator's property, and an `onEnable` that a track
+caused never interrupts another Animator's values. A callback that removes an Animator stops what
+that Animator had left to do this frame.
+
+Two Animators may key a property of one GameObject: both play on the main thread, and the later
+Animator's value stays. (Bones are different: the later Animator reports a bind error and drives
+nothing.) The result never depends on the worker threads.
+
 ## Root motion
 
 With **Apply Root Motion** the clips' movement of their root bone (the clip's `root_motion.bone`,
 else the Animator's **Root Motion Bone**, the humanoid hips, or the shallowest moving bone) moves
 the GameObject instead of the bone: through its Character Controller when it has one, else its
 Transform. The pose keeps the vertical motion (a jump stays in the pose) unless the clip bakes it.
-A script setting `onAnimatorMove` takes the motion over.
+A script setting `onAnimatorMove` takes the motion over. A `.anim` keeps its Root Motion settings
+in the file; a model's clips keep theirs in the model's Inspector Animation tab (saved as
+`<model>.clips`, see `docs/animation-clips.md`), where each clip's Wrap Mode is set too.
 
 ## IK
 
@@ -115,6 +146,65 @@ to 4 bones turn toward a target within a clamp angle), **Foot IK** (a raycast be
 the pelvis drops, the ankle meets the ground and turns to its slope) and **Foot Lock** (a planted
 foot stays put). Bones are paths or humanoid slots (`left_hand`); targets are GameObjects, or set
 from scripts (`setIKTarget`). Each constraint has a weight and an optional weight parameter.
+
+- **Soften** (Two Bone, Foot IK, Foot Lock; 0 to 1, default 0): the part of the reach over which the
+  end eases toward full extension. At 0 the leg has a hard limit at 0.999 of its reach: just before
+  it the knee turns 2 to 3 degrees per mm of target, then it stops dead. Softened, the knee keeps
+  moving, and the end stops short of the target from that part of the reach on. Try 0.03. It is off
+  by default because it changes where feet land.
+- **Hinge Axis** (the same; default zero, auto): the middle bone's local axis it only bends about.
+  A positive turn straightens the joint, so the sign picks the side. A straight limb has no bend
+  plane of its own, and the axis gives it one; the bone's twist survives. Auto bends toward the
+  pole, else the current bend. An axis along a bone counts as auto. Under non-uniform scale on the
+  chain only the side is kept, and like auto the solve can stop short of the target (it is then
+  not reached).
+- **Twist** (the same; degrees): turns the chain about the line from its first bone to the target.
+- **Aim Offset** (Look At; default none): the eyes or the muzzle, from the last bone in its local
+  space: their forward ray is what ends on the target.
+
+**Look At** walks its bones from the first: each measures the turn again from where the ones before
+it left the head and takes its share of it (its weight over what the remaining bones weigh), and
+the last with a weight takes the rest. With the clamp out of the way and weight 1 the aim ends
+within 0.1 degree of the target, also on a chain that leans. The clamp applies to the last bone's
+turn from the animated pose.
+
+**Foot IK** puts the centre of the sole on the ground: on a slope the ankle stands higher than **Foot
+Height** (Foot Height / cos(slope)) because the foot turns to the slope, up to **Max Foot Angle**;
+on a steeper slope the foot stops turning and the centre of the sole stays on the plane. The foot
+keeps its animated rotation turned to the ground, whatever the knee's bend does to the shin. The
+height stops growing past the steeper of 60 degrees and Max Foot Angle. **Foot Lock** holds the
+ankle the same way: the foot keeps the rotation it came with, the animation's or Foot IK's.
+
+A script reads the outcome of the last solve with `isIKReached(name)`: the end within 1 mm of its
+target (a Look At: its aim within 0.1 degree, a Foot IK: on ground it found), measured on the final
+pose in world space, so a partial weight, a soft limit, a clamp or a target out of reach is not
+reached. It is false while a constraint does not solve: weight 0, disabled, culled.
+
+## Seeing IK and root motion
+
+While the game plays, or an Animator previews in edit mode, the Animator's Inspector shows
+**IK (live)**: per constraint its **Weight** (the one the last solve ran with), **Reach Error** (mm
+from the end to the target; a Look At: from the target to its aim ray), its **State** (Reached or
+Out of Reach, On Target or Clamped, Grounded or No Ground, Locked or Free, Off) and, for Foot IK, the
+**Pelvis Offset** of the stack, for a locked Foot Lock its **Lock Drift** (mm from where the foot
+locked to where the clip has the foot now: the slide the lock hides). Under it, with root motion,
+**Root Motion (live)**: **Speed**, **Yaw** (deg/s), and when the Animator has a Foot IK or Foot Lock,
+**Foot Speed** (how fast the planted foot moves against the root: the speed to move at for no slide)
+and **Slide** (the planted foot's speed in the world), in orange over 100 mm/s. Contact comes only
+from those constraints (Foot Lock's contact, Foot IK's ground with the animated ankle within 2 cm of
+its planted height): without them there is no slide reading, never a guess. These are the numbers
+`get_animator` reports; the same code makes both.
+
+The Scene view's **Gizmos > Animation** draws them for every Animator (all off, saved with the
+workspace; nothing is computed while they are off):
+
+- **IK**: the target as a cross, green when reached and red when not, with a line to the end; the
+  chain in cyan; a pole as a diamond with a dashed line to the middle bone; Foot IK's ray in yellow,
+  its hit green with the ground normal, a miss white; a locked foot as an orange pin, with a line to
+  where the clip has the foot when it drifts.
+- **Root Motion**: the root's last 2 seconds in red, and in green where its speed and turn lead in 1 s.
+- **Foot Trails**: each Foot IK and Foot Lock foot's last 2 seconds: green planted, yellow to red as
+  a planted foot slides faster, dim white in the air.
 
 ## Humanoids and retargeting
 
@@ -140,11 +230,29 @@ feet on colliders after every layer.)
 ## Performance
 
 The Animator evaluates its characters in parallel (the job system), keeps poses in SIMD-friendly
-arrays and writes skin matrices directly. **Culling Mode** Cull Update Transforms skips writing
-the pose of characters no camera sees (time, states, events and root motion go on); Cull
-Completely stops them. **Write Bones: Exposed** writes only the bones listed (and bones with
-attachments) to their GameObjects: the skins still follow every bone. The budget: 200 humanoids
-per frame (see `docs/perf/animator.md`).
+arrays and writes skin matrices directly. Lua-field and active tracks run on the main thread
+([Order of a frame](#order-of-a-frame)): a clip that keys them on many characters costs main-thread
+time, a plain component value does not. **Culling Mode** Cull Update Transforms skips writing
+the pose of characters no camera sees (time, states, events and root motion go on) and casts no
+Foot IK rays for them; Cull Completely stops them. A layer of weight 0 is not sampled: its states'
+time and events go on, and raising the weight shows the right pose in that frame (a running
+transition or montage on the layer is still sampled, so interrupting it blends from the right
+pose). **Write Bones: Exposed** writes only the bones listed (and bones with attachments) to their
+GameObjects: the skins still follow every bone. With `Engine.asyncLoading` on, `.anim` files of 64 KB
+and up parse on the thread pool where the platform has threads (smaller ones, and every one on the web
+without threads, in the call); an Animator's first bind waits for all its clips, so its time starts as
+it does without async loading, some frames later for a large clip. The
+budget: 200 humanoids per frame (see `docs/perf/animator.md`).
+
+Under Exposed, the Scene view's skeleton overlay draws the evaluated pose, so bones follow the mesh even though
+their Transforms stay at rest; the Inspector says `Not written to this GameObject (Write Bones: Exposed)` on such a
+bone. A bone whose parent is no bone draws as a root marker.
+
+What it costs right now: Window > Analysis > Profiler shows the Animator under the **Animation**
+band of CPU Usage, and its monitors `Animators`, `Animators sampled`, `Animators culled`,
+`Anim Prepare ms`, `Anim Wave ms`, `Anim Finalize ms` and `Clip memory` (`get_frame_times {monitors}`
+for agents). Prepare and Finalize are main thread time; Wave is the wall time of the parallel update.
+`Animation.Clips` in Jobs & Memory counts the clips loaded now.
 
 ## Files
 
