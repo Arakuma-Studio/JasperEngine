@@ -488,6 +488,7 @@ bool TextureData::loadKtx2Image(Ktx2Image& image, bool decodeToPixels, const Tex
     setLevels(format, isSrgb, faces, levelWidth, levelHeight, std::move(out));
     setLogicalSize(logicalWidth, logicalHeight);
     flags = flagsFromKeyValues(info);
+    addFloatCpuView();
     droppedLevels = firstLevel;
     fullLevelCount = fullLevels;
     transparent = content == TextureContent::ColorAlpha;
@@ -1176,7 +1177,9 @@ void TextureData::detachLevels(){
         data = NULL;
         return;
     }
-    const size_t bytes = gpuFormatLevelBytes(gpuFormat, levels[0].width, levels[0].height) * (size_t)faceCount;
+    // (a float cook's CPU view is its own pixels, not level 0: addFloatCpuView)
+    const bool view = (const uint8_t*)data != levels[0].data;
+    const size_t bytes = view ? (size_t)size : gpuFormatLevelBytes(gpuFormat, levels[0].width, levels[0].height) * (size_t)faceCount;
     void* copy = malloc(bytes);
     if (copy)
         memcpy(copy, data, bytes);
@@ -1232,6 +1235,36 @@ void TextureData::setLevels(GpuTextureFormat format, bool srgb, int faces, int w
         color_format = ColorFormat::RGBA;
     }
     dataOwned = false;
+}
+
+// A CPU-readable float cook (a terrain's .exr or .hdr height or density map): level 0 as linear
+// RGBA32F for the CPU readers, kept in the levels' storage so copies share and free it with them
+void TextureData::addFloatCpuView(){
+    if (gpuFormat != GpuTextureFormat::RGBA16F || !(flags & TEXTURE_FLAG_CPU_READABLE) || levels.empty() || faceCount != 1 || !levelStorage)
+        return;
+    const size_t texels = (size_t)levels[0].width * (size_t)levels[0].height;
+    if (levels[0].size < texels * 4 * sizeof(uint16_t))
+        return;
+    auto storage = std::make_shared<std::vector<uint8_t>>(*levelStorage);
+    const size_t viewOffset = storage->size();
+    storage->resize(viewOffset + texels * 4 * sizeof(float));
+    const uint8_t* half = storage->data() + (levels[0].data - levelStorage->data());
+    float* view = reinterpret_cast<float*>(storage->data() + viewOffset);
+    const bool encoded = (flags & TEXTURE_FLAG_DISPLAY_ENCODED) != 0;
+    for (size_t i = 0; i < texels * 4; i++){
+        uint16_t bits;
+        std::memcpy(&bits, half + i * sizeof(uint16_t), sizeof(bits));
+        const float value = halfToFloat(bits);
+        // the colour channels are stored pow(1/2.2), as the shaders decode them
+        view[i] = (encoded && i % 4 != 3) ? std::pow(std::max(value, 0.0f), 2.2f) : value;
+    }
+    for (TextureLevel& level : levels)
+        level.data = storage->data() + (level.data - levelStorage->data());
+    levelStorage = std::move(storage);
+    data = view;
+    size = (unsigned int)(texels * 4 * sizeof(float));
+    channels = 4;
+    color_format = ColorFormat::RGBA32F;
 }
 
 bool TextureData::hasLevels() const{

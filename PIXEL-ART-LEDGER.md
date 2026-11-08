@@ -171,7 +171,7 @@ never build or run them.
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | spec done |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | in review |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
-| S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | implementing |
+| S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | in review |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | spec done |
@@ -221,6 +221,13 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-08: S45 implementation reported at `180f6354e` (main `b069dde54` merged).
+  - Passing: core 100 and editor 366 filtered tests, plus the shared-data suites; 162 MCP tests;
+    `WERROR` linux; the compile smoke test; Lua API tests.
+  - AssetType 26; `SpriteComponent` is 352 of 384 bytes.
+  - Gaps it reported: AC13's player screenshot (needs `JASPER_SLOW_BUILD`), AC14's device
+    number, and web/android not rebuilt after the last merge.
+  - An independent review is running.
 - 2026-11-08: Fixed and pushed `b069dde54`: the lite2d player didn't compile, because S44 put the
   slice-geometry include under `JASPERENGINE_PHYSICS_3D`. The follow-ups program reported it;
   verified with a `lite2d` player build (776/776).
