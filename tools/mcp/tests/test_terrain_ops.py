@@ -4,6 +4,7 @@ One terrain per test, made with edit_terrain's smallest preset so each call stay
 """
 
 import asyncio
+import re
 
 from harness import Editor
 
@@ -163,6 +164,10 @@ async def test_guide_is_served(ed: Editor):
     ed.check("jasper://docs/terrain" in ed.tool("edit_terrain").description, "the description points to the guide")
     got = await ed.session.read_resource("jasper://docs/terrain")
     guide = "".join(getattr(c, "text", "") or "" for c in got.contents)
+    # a guide past the split size serves its intro and an index of sections to read one by one
+    for uri in re.findall(r"`(jasper://docs/terrain/[^`]+)`", guide):
+        part = await ed.session.read_resource(uri)
+        guide += "".join(getattr(c, "text", "") or "" for c in part.contents)
     ed.check("import_heightmap" in guide and "paint_by_rules" in guide, f"the guide has the ops: {guide[:400]}")
 
 
