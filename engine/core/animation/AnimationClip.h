@@ -8,7 +8,8 @@
 //     converters (value semantics: copy, change, commit).
 //   * AnimationClip: the immutable runtime form built once from a ClipData (AnimationClip::build),
 //     shared through AnimationClipPool by every player and preview: per-track typed arrays in
-//     contiguous storage that KeyframeSampling reads with key cursors held by the caller.
+//     contiguous storage that KeyframeSampling reads with key cursors held by the caller. Tracks
+//     with identical key times share one range of it, and an all-linear track has no easings.
 // - Thread-safety: ClipData is a plain value. An AnimationClip never changes after build, so any
 //   thread may read it (the pool hands out shared_ptr<const AnimationClip>).
 // - Invariants of a ClipData that came out of the loader (parseClip / buildSubClip):
@@ -195,10 +196,16 @@ namespace jasperengine{
             bool loop = false;
             int humanBone = -1;                 // humanoid tracks (ClipTrackData::humanBone)
             float duration = 0.0f;              // its last key's time
+            // the last key's ease: no segment starts there, so sampling never reads it, but a file
+            // can hold it and toData gives it back
+            EaseType trailingEase = EaseType::LINEAR;
 
             size_t keyCount = 0;
-            const float* times = nullptr;       // keyCount
-            const EaseType* easings = nullptr;  // keyCount: the segment starting at each key
+            // keyCount; null without keys. Tracks with identical times (bit for bit) point at one
+            // range, so equal pointers mean equal times; different pointers say nothing
+            const float* times = nullptr;
+            // keyCount: the segment starting at each key; null when every segment is linear
+            const EaseType* easings = nullptr;
 
             // values per key: 1 for position/rotation/scale, the morph target count for morph,
             // the point count for lattice, the key width for property; key k's row starts at
@@ -273,6 +280,9 @@ namespace jasperengine{
         const std::vector<ClipEventData>& getEvents() const { return events; }
         // sorted by time (S40)
         const std::vector<ClipAudioCue>& getAudioCues() const { return audio; }
+        // the heap this clip owns, from the real capacities of its arrays and strings and with the
+        // object itself, measured once at build. The only source of a clip's memory number
+        size_t memoryBytes() const { return heapBytes; }
 
         // index into getTracks(), -1 when none (humanoid channels: `path` is the bone name)
         int findTrack(const std::string& path, ClipChannel channel) const;
@@ -283,6 +293,7 @@ namespace jasperengine{
 
         // `data` must satisfy the invariants above (normalized)
         static std::shared_ptr<const AnimationClip> buildNormalized(const ClipData& data, std::vector<ClipWarning> clipWarnings);
+        size_t measureHeap() const;
 
         float frameRate = 30.0f;
         ClipWrapMode wrap = ClipWrapMode::Once;
@@ -300,6 +311,7 @@ namespace jasperengine{
         std::vector<ClipEventData> events;
         std::vector<ClipAudioCue> audio;
         bool propertyTracks = false;
+        size_t heapBytes = 0;
 
         // contiguous storage the Track pointers point into
         std::vector<float> timeStorage;

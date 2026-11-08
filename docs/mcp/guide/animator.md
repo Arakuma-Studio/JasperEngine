@@ -116,7 +116,8 @@ fadeSeconds])`, upstream's names (`getCurrentStateName([layer])`, `getCurrentSta
 `getNextStateInfo` (a `ControllerStateInfo`: `isValid`, `name`, `fullName`, ...), `playInLayer`,
 `crossFadeInLayer`, `hasController`, `hasParameter`), `playMontage`, `stopMontage`,
 `montageJumpToSection`, `montageSetNextSection`, `setIKTarget(name, position)`, `setIKWeight`,
-`setLookAt`, `getBonePosition(slotOrPath)`, `getBoneRotation`, `hasBone`, `isHumanoid`,
+`setLookAt`, `isIKReached(name)`, `setIKSoften`, `setIKHingeAxis`, `setIKTwist`, `setIKAimOffset`,
+`getBonePosition(slotOrPath)`, `getBoneRotation`, `hasBone`, `isHumanoid`,
 `applyRootMotion`, `getDeltaPosition` / `getDeltaRotation`, and the callbacks `onEvent(event)`,
 `onStateEnter(layer, state)`, `onStateExit(layer, state)` (the state's full path), `onMontageEnded(path, interrupted)`,
 `onAnimatorMove(deltaPosition, deltaRotation)` (set it to take over root motion). Clip and montage
@@ -131,4 +132,24 @@ exposed + `exposedBones`), `eventMode` (leader_only, all), `retarget` (auto, off
 ([{original, replacement}]: the same controller with other clips) and `ik` (two_bone, fabrik,
 look_at, foot_ik, foot_lock constraints: bones as paths or humanoid slots, a target GameObject or
 Lua target, weight and an optional weight parameter; foot_ik raycasts the ground below each foot
-and lowers the pelvis, foot_lock keeps a planted foot in place below a speed).
+and lowers the pelvis, foot_lock keeps a planted foot in place below a speed). Set a constraint's
+fields with `set_properties` (`{"animator": {"ik[0].soften": 0.03}}`, one undo step). two_bone,
+foot_ik and foot_lock take `soften` (0..1, the part of the reach that eases; 0: a hard limit),
+`hingeAxis` (the middle bone's local axis, a positive turn straightens the joint; zero: auto) and
+`twist` (degrees about the line to the target); look_at takes `aimOffset` (the eyes, from the last
+bone). `get_animator`'s `live.ik[i].reached` is true when the last solve left the end within 1 mm
+of its target (look_at: the aim within 0.1 degree, foot_ik: on ground it found), and false for a
+partial weight, a soft limit, a clamp or a target out of reach. `control_animator`'s `ik` sets
+`target` and `weight` on a running Animator, and in play mode also `soften`, `twist`, `hinge_axis`
+and `aim_offset`. A controller holds no constraints, so `edit_animator_controller` does not take
+them.
+
+`live` also says how well IK and root motion work, from the last update. `ik[i]`: `weight` (the
+solve's), `reach_error_mm`, foot_ik's `hit_point`, `hit_normal` (world) and `pelvis_offset_mm`, a
+locked foot_lock's `lock_drift_mm` (from where it locked to where the clip has the foot: the slide
+the lock hides). `root_motion`: `speed_mps`, `yaw_deg_s`, `accumulated_position` (metres since the
+bind, in the rig frame of then) and `accumulated_yaw` (degrees), and `contact_source`: `foot_goals`
+when the Animator has a foot_ik or foot_lock, with `slide_mm_s` (the planted foot's world speed)
+and `foot_speed_mps` (its speed against the root: move at it for no slide), else `none` and no
+slide. `set_scene_camera {display: {show_ik, show_root_motion, show_foot_trails}}` draws them in the
+Scene view (the Inspector's Gizmos > Animation).

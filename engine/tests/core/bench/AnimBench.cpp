@@ -3,7 +3,8 @@
 
 // je-bench-anim: the Animator's budgets (docs/specs/S21-animation.md R19-R20, AC12).
 //
-//   je-bench-anim [--json <file>] [--workers <n>] [--count-allocs] [--frames <n>]
+//   je-bench-anim [--json <file>] [--workers <n>] [--count-allocs] [--frames <n>] [--clip <file.anim>]...
+//                 [--fixtures <dir of hero_animated.gltf, hero_tpose.gltf>]
 //
 // AnimBench.Crowd200: 200 skinned 65-bone humanoids (Mixamo names), all animating: per character
 // a Freeform Cartesian blend tree of 5 clips (a quarter of them crossfading between two such
@@ -14,9 +15,17 @@
 // thread's share (prepare + finalize), and with --count-allocs the heap allocations of the
 // steady-state frames.
 // AnimBench.Micro*: a two-pose blend at 128 bones (Native and Scalar), one 65-bone clip sample,
-// a state-machine update (20 states, 60 transitions, no pose), an Animator's runtime state.
+// a state-machine update (20 states, 60 transitions, no pose), an Animator's runtime state, a
+// Look At solve over 3 bones of a leaning chain (S77 R33, information).
 // Each is the median of N runs. tools/perf/check_bench.py gates the JSON with
 // tools/perf/bench-thresholds.json.
+// S77 R10, information unless the thresholds name them (docs/perf/animator.md): Web30 (30 of the
+// same characters, one thread), an Animation Player crowd, a retargeted crowd, rig space and skin
+// matrices alone, key groups with different times, sampleQuaternion against Quaternion::slerp per
+// tier, and for the dense and reduced clip shapes (generated here) and each --clip file (real
+// clips, kept out of the repository) the sample, sample + hierarchy, parse + build and
+// AnimationClip::memoryBytes().
+// On WebAssembly (tools/perf/bench-anim-wasm.sh) the same program, under another bench name.
 
 #include "BenchUtil.h"
 #include "AllocationCounter.h"
@@ -27,19 +36,25 @@
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimatorAssetIO.h"
+#include "animation/AnimatorIK.h"
 #include "animation/AnimatorInstance.h"
 #include "animation/AnimatorPose.h"
 #include "animation/AnimatorRig.h"
 #include "animation/CompiledController.h"
+#include "animation/KeyframeSampling.h"
 #include "component/AnimatorComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "component/Transform.h"
 #include "jobs/JobSystem.h"
+#include "object/AnimationPlayer.h"
+#include "object/Model.h"
 #include "pool/AnimationClipPool.h"
 #include "pool/AnimatorAssetPool.h"
+#include "subsystem/ActionSystem.h"
 #include "subsystem/AnimatorSystem.h"
+#include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 
 #include <algorithm>
@@ -50,6 +65,7 @@
 #include <fstream>
 #include <memory>
 #include <random>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -302,7 +318,7 @@ namespace {
         return entity;
     }
 
-    std::unique_ptr<Crowd> buildCrowd(const Assets& assets, const std::vector<BoneSpec>& bones){
+    std::unique_ptr<Crowd> buildCrowd(const Assets& assets, const std::vector<BoneSpec>& bones, int characters = kCharacters){
         auto crowd = std::make_unique<Crowd>();
         crowd->scene = std::make_unique<Scene>();
         Scene& scene = *crowd->scene;
@@ -319,7 +335,7 @@ namespace {
             scene.addComponent<RigidbodyComponent>(ground, body);
         }
         crowd->lookTarget = node(scene, NULL_ENTITY, "LookTarget", Vector3(0, 1.6f, 50.0f));
-        for (int c = 0; c < kCharacters; c++){
+        for (int c = 0; c < characters; c++){
             const Entity root = node(scene, NULL_ENTITY, "Hero" + std::to_string(c), Vector3((float)(c % 20) * 1.5f - 15.0f, 0, (float)(c / 20) * 1.5f));
             std::vector<Entity> entities(bones.size());
             for (size_t b = 0; b < bones.size(); b++){
@@ -377,7 +393,7 @@ namespace {
         // parameters: each its own place in the tree; a quarter crossfading for good
         std::mt19937 rng(7);
         std::uniform_real_distribution<float> unit(-1.0f, 1.0f);
-        for (int c = 0; c < kCharacters; c++){
+        for (int c = 0; c < characters; c++){
             AnimatorInstance* instance = scene.getComponent<AnimatorComponent>(crowd->roots[(size_t)c]).runtime.get();
             if (!instance || !instance->bound){
                 std::fprintf(stderr, "character %d is not bound: %s %s\n", c, instance ? instance->bindError.c_str() : "no runtime",
@@ -494,15 +510,324 @@ namespace {
         return def;
     }
 
+
+    // ---- S77 R10: clips, as bytes and as sampling cost
+
+    // A rig made from a clip's own paths ("A/B/C" under a root), the clip bound to it
+    struct ClipRig{
+        std::unique_ptr<Scene> scene = std::make_unique<Scene>();
+        std::shared_ptr<const AnimationClip> clip;
+        AnimatorRig rig;
+        AnimatorRestMap rest;
+        RigClipBinding binding;
+        RigClipCursors cursors;
+        Pose pose;
+        std::vector<Affine> world;
+        std::vector<Vector3> positions, scales;
+        std::vector<Quaternion> rotations;
+
+        explicit ClipRig(const std::shared_ptr<const AnimationClip>& loaded): clip(loaded){
+            const Entity root = node(*scene, NULL_ENTITY, "Root", Vector3(0, 0, 0));
+            std::vector<std::pair<std::string, Entity>> made;
+            std::vector<std::string> paths;
+            for (const AnimationClip::Track& track : clip->getTracks()){
+                if (track.channel > ClipChannel::Scale || track.path.empty()) continue;
+                paths.push_back(track.path);
+                std::string path;
+                Entity parent = root;
+                std::stringstream parts(track.path);
+                std::string part;
+                while (std::getline(parts, part, '/')){
+                    path += (path.empty() ? "" : "/") + part;
+                    auto found = std::find_if(made.begin(), made.end(), [&](const auto& entry){ return entry.first == path; });
+                    if (found == made.end()){
+                        made.push_back({path, node(*scene, parent, part, Vector3(0, 0, 0))});
+                        parent = made.back().second;
+                    }else{
+                        parent = found->second;
+                    }
+                }
+            }
+            rig.build(scene.get(), root, paths, {}, rest);
+            binding.bind(clip, rig);
+            cursors.resize(binding.groups.size());
+            pose.resize(rig.bones.size(), rig.channels.size());
+            pose.copyFrom(rig.rest);
+            world.resize(rig.bones.size());
+            positions.resize(rig.bones.size());
+            scales.resize(rig.bones.size());
+            rotations.resize(rig.bones.size());
+        }
+    };
+
+    size_t keyCount(const AnimationClip& clip){
+        size_t keys = 0;
+        for (const AnimationClip::Track& track : clip.getTracks()) keys += track.keyCount;
+        return keys;
+    }
+
+    // the rows of one clip, from its text: <name>_{tracks,keys,parse_build_ms,heap_bytes,sample_us,sample_hierarchy_us}
+    void clipRows(bench::Results& results, const std::string& name, const std::string& text){
+        std::vector<double> parseBuild;
+        for (int r = 0; r < 5; r++){
+            const auto start = bench::Clock::now();
+            anim::ClipParseResult parsed = anim::parseClip(text);
+            std::shared_ptr<const AnimationClip> built = parsed.ok() ? AnimationClip::build(parsed) : nullptr;
+            parseBuild.push_back(bench::secondsSince(start) * 1000.0);
+            if (!built){
+                std::fprintf(stderr, "%s: %s\n", name.c_str(), parsed.error.toString().c_str());
+                return;
+            }
+        }
+        anim::ClipParseResult parsed = anim::parseClip(text);
+        std::shared_ptr<const AnimationClip> clip = AnimationClip::build(parsed);
+        results.add(name + "_tracks", (double)clip->getTracks().size(), "tracks");
+        results.add(name + "_keys", (double)keyCount(*clip), "keys");
+        results.add(name + "_parse_build_ms", bench::percentile(parseBuild, 0.5), "ms");
+        results.add(name + "_text_bytes", (double)text.size(), "B");
+        results.add(name + "_heap_bytes", (double)clip->memoryBytes(), "B");
+        ClipRig bound(clip);
+        const float length = std::max(clip->getLength(), 1e-3f);
+        const int iterations = std::max(50, std::min(4000, 2000000 / std::max(1, (int)bound.binding.targets.size() * 8)));
+        results.add(name + "_sample_us", microUs([&](int i){
+            sampleClip(bound.binding, bound.rig, length * (float)(i % 997) * (1.0f / 997.0f), bound.cursors, bound.pose);
+            sink = bound.pose.raw()[i & 63];
+        }, iterations), "us");
+        RigSpace space{bound.world.data(), bound.positions.data(), bound.rotations.data(), bound.scales.data()};
+        results.add(name + "_sample_hierarchy_us", microUs([&](int i){
+            sampleClip(bound.binding, bound.rig, length * (float)(i % 997) * (1.0f / 997.0f), bound.cursors, bound.pose);
+            poseToRigSpace(bound.pose, bound.rig.parents.data(), space);
+            sink = bound.positions[(size_t)i % bound.positions.size()].x;
+        }, iterations), "us");
+    }
+
+    // A clip of R42's shapes (test shapes, not assets): `bones` bones in a tree, translation,
+    // rotation and scale tracks, `totalKeys` keys over 2 s. `sharedTimes`: every track on the same
+    // keys (a dense bake); otherwise each track's keys have their own times (key reduction's output)
+    ClipData shapedClip(size_t bones, size_t totalKeys, bool sharedTimes){
+        std::vector<std::string> paths(bones);
+        for (size_t b = 0; b < bones; b++){
+            const std::string name = "b" + std::to_string(b);
+            paths[b] = b == 0 ? name : paths[(b - 1) / 2] + "/" + name;
+        }
+        ClipData data;
+        data.wrap = ClipWrapMode::Loop;
+        data.frameRate = 30.0f;
+        const size_t tracks = bones * 3;
+        std::mt19937 rng(11);
+        std::uniform_real_distribution<float> unit(0.0f, 1.0f);
+        for (size_t t = 0; t < tracks; t++){
+            const size_t bone = t / 3;
+            const size_t keys = totalKeys / tracks + (t < totalKeys % tracks ? 1 : 0);
+            ClipTrackData track;
+            track.path = paths[bone];
+            track.channel = t % 3 == 0 ? ClipChannel::Rotation : (t % 3 == 1 ? ClipChannel::Position : ClipChannel::Scale);
+            std::vector<float> times;
+            for (size_t k = 0; k < keys; k++){
+                const float even = keys > 1 ? 2.0f * (float)k / (float)(keys - 1) : 0.0f;
+                const float jitter = sharedTimes || k == 0 || k + 1 == keys ? 0.0f : (unit(rng) - 0.5f) * 1.5f / (float)(keys - 1);
+                times.push_back(even + jitter);
+            }
+            for (size_t k = 0; k < keys; k++){
+                ClipKey key;
+                key.time = times[k];
+                const float phase = 3.14159265f * times[k] + 0.37f * (float)bone;
+                if (track.channel == ClipChannel::Rotation){
+                    const float half = 0.5f * 0.4f * std::sin(phase);
+                    key.value = {std::sin(half), 0.0f, 0.0f, std::cos(half)};
+                }else if (track.channel == ClipChannel::Position){
+                    key.value = {0.02f * std::sin(phase), 0.1f, 0.02f * std::cos(phase)};
+                }else{
+                    key.value = {1.0f, 1.0f + 0.01f * std::sin(phase), 1.0f};
+                }
+                track.keys.push_back(key);
+            }
+            data.tracks.push_back(track);
+        }
+        return data;
+    }
+
+    // motionClip with the bones' keys on `groups` different time grids: no key search is shared
+    // between groups (RigClipBinding::groups)
+    ClipData groupedClip(const std::vector<std::string>& paths, int groups){
+        ClipData data = motionClip(paths, 18, 0.5f, 0.0f, false);
+        for (size_t t = 0; t < data.tracks.size(); t++){
+            const int group = (int)(t % (size_t)groups);
+            std::vector<ClipKey>& keys = data.tracks[t].keys;
+            for (size_t k = 1; k + 1 < keys.size(); k++) keys[k].time += 0.01f * (float)group / (float)groups;
+        }
+        return data;
+    }
+
+    Matrix4 affineMatrix(const Affine& a){
+        Matrix4 m;
+        m[0][0] = a.m[0]; m[0][1] = a.m[1]; m[0][2] = a.m[2]; m[0][3] = 0.0f;
+        m[1][0] = a.m[3]; m[1][1] = a.m[4]; m[1][2] = a.m[5]; m[1][3] = 0.0f;
+        m[2][0] = a.m[6]; m[2][1] = a.m[7]; m[2][2] = a.m[8]; m[2][3] = 0.0f;
+        m[3][0] = a.m[9]; m[3][1] = a.m[10]; m[3][2] = a.m[11]; m[3][3] = 1.0f;
+        return m;
+    }
+
+    // pairs of keys `degrees` apart (random axes): one tier of S77 R12 each
+    std::vector<std::pair<Quaternion, Quaternion>> keyPairs(float degrees){
+        std::mt19937 rng(5);
+        std::uniform_real_distribution<float> unit(-1.0f, 1.0f);
+        std::vector<std::pair<Quaternion, Quaternion>> pairs;
+        for (int i = 0; i < 256; i++){
+            Quaternion a(unit(rng), unit(rng), unit(rng), unit(rng));
+            a.normalize();
+            Vector3 axis(unit(rng), unit(rng), unit(rng));
+            axis.normalize();
+            const float half = 0.5f * degrees * 0.0174532925f;
+            const Quaternion turn(std::cos(half), axis.x * std::sin(half), axis.y * std::sin(half), axis.z * std::sin(half));
+            pairs.push_back({a, (a * turn).normalized()});
+        }
+        return pairs;
+    }
+
+    double sampleQuaternionNs(const std::vector<std::pair<Quaternion, Quaternion>>& pairs){
+        return 1000.0 * microUs([&](int i){
+            const std::pair<Quaternion, Quaternion>& pair = pairs[(size_t)i & 255];
+            const Quaternion values[2] = {pair.first, pair.second};
+            KeyLocation at;
+            at.index = 1;
+            at.interpolation = (float)(i & 63) * (1.0f / 64.0f) + 0.0078125f;
+            sink = sampleQuaternion(at, values, nullptr, nullptr).w;
+        }, 200000);
+    }
+
+    double slerpNs(const std::vector<std::pair<Quaternion, Quaternion>>& pairs){
+        return 1000.0 * microUs([&](int i){
+            const std::pair<Quaternion, Quaternion>& pair = pairs[(size_t)i & 255];
+            sink = Quaternion::slerp((float)(i & 63) * (1.0f / 64.0f) + 0.0078125f, pair.first, pair.second).w;
+        }, 200000);
+    }
+
+    // ---- S77 R10: the crowds no Animator row covers
+
+    // characters with the humanoid hierarchy and an Animation Player (playing `clip`, or idle)
+    struct PlayerCrowd{
+        std::unique_ptr<Scene> scene = std::make_unique<Scene>();
+
+        double step(){
+            const auto start = bench::Clock::now();
+            scene->getSystem<ActionSystem>()->update(kDt);
+            const double ms = bench::secondsSince(start) * 1000.0;
+            auto transforms = scene->getComponentArray<Transform>();
+            RenderSystem* render = scene->getSystem<RenderSystem>().get();
+            for (size_t i = 0; i < transforms->size(); i++){
+                render->updateTransform(transforms->getComponentFromIndex(i), transforms->getEntity(i));
+            }
+            return ms;
+        }
+    };
+
+    std::unique_ptr<PlayerCrowd> buildPlayerCrowd(const std::vector<BoneSpec>& bones, const std::string& clip, int characters, bool playing){
+        auto crowd = std::make_unique<PlayerCrowd>();
+        Scene& scene = *crowd->scene;
+        for (int c = 0; c < characters; c++){
+            const Entity root = node(scene, NULL_ENTITY, "Hero" + std::to_string(c), Vector3((float)(c % 20), 0, (float)(c / 20)));
+            std::vector<Entity> entities(bones.size());
+            for (size_t b = 0; b < bones.size(); b++){
+                entities[b] = node(scene, bones[b].parent < 0 ? root : entities[(size_t)bones[b].parent], bones[b].name, bones[b].position);
+            }
+            AnimationPlayer player(&scene, root);
+            player.addClip(clip, "Move");
+            player.setPlayAutomatically(playing);
+        }
+        return crowd;
+    }
+
+    void playerCrowdRows(bench::Results& results, const std::string& name, PlayerCrowd& crowd, int frames, bool countAllocs){
+        for (int i = 0; i < 120; i++) crowd.step();
+        std::vector<double> times;
+        times.reserve((size_t)frames);
+        for (int i = 0; i < frames; i++) times.push_back(crowd.step());
+        results.add(name + "_p50_ms", bench::percentile(times, 0.5), "ms");
+        results.add(name + "_p95_ms", bench::percentile(times, 0.95), "ms");
+        if (countAllocs){
+            uint64_t allocations = 0;
+            for (int i = 0; i < frames; i++){
+                testsupport::AllocationCountScope scope;
+                crowd.scene->getSystem<ActionSystem>()->update(kDt);
+                allocations += scope.count();
+            }
+            results.add(name + "_steady_state_allocations", (double)allocations, "allocations");
+        }
+    }
+
+    // `characters` hero_tpose models playing hero_animated's Walk through the one retarget path
+    void retargetCrowdRows(bench::Results& results, const std::string& fixtures, int characters, int frames){
+        const std::string model = fixtures + "/hero_tpose.gltf";
+        if (!fs::exists(model)){
+            std::fprintf(stderr, "no retargeted crowd: %s is missing (--fixtures)\n", model.c_str());
+            return;
+        }
+        ControllerDef def;
+        LayerDef layer;
+        layer.name = "Base Layer";
+        StateDef walk;
+        walk.name = "Walk";
+        walk.motion.clip.path = fixtures + "/hero_animated.gltf#Walk";
+        layer.machine.states = {walk};
+        def.layers.push_back(layer);
+        normalizeController(def);
+        const std::string controller = writeFile("retarget.controller", writeController(def));
+
+        Scene scene;
+        std::vector<std::unique_ptr<Model>> models;
+        for (int c = 0; c < characters; c++){
+            models.push_back(std::make_unique<Model>(&scene));
+            const Entity entity = models.back()->getEntity();
+            if (!scene.getSystem<MeshSystem>()->loadGLTF(entity, model, false, false, false)){
+                std::fprintf(stderr, "no retargeted crowd: cannot load %s\n", model.c_str());
+                return;
+            }
+            scene.getComponent<ModelComponent>(entity).needUpdateModel = false;
+            scene.getComponent<Transform>(entity).position = Vector3((float)(c % 10), 0, (float)(c / 10));
+            AnimatorComponent animator;
+            animator.controller = controller;
+            animator.needsLoad = true;
+            scene.addComponent<AnimatorComponent>(entity, animator);
+        }
+        AnimatorSystem* system = scene.getSystem<AnimatorSystem>().get();
+        system->setParallel(false);
+        system->update(0.0);
+        int retargeted = 0;
+        for (const std::unique_ptr<Model>& entry : models){
+            const AnimatorInstance* instance = scene.getComponent<AnimatorComponent>(entry->getEntity()).runtime.get();
+            retargeted += instance && instance->bound && !instance->clips.empty() && instance->clips[0].retargeted ? 1 : 0;
+        }
+        results.add("retarget_crowd_retargeted", (double)retargeted, "animators");
+        for (int i = 0; i < 120; i++) system->update(kDt);
+        std::vector<double> times;
+        times.reserve((size_t)frames);
+        for (int i = 0; i < frames; i++){
+            const auto start = bench::Clock::now();
+            system->update(kDt);
+            times.push_back(bench::secondsSince(start) * 1000.0);
+        }
+        results.add("retarget_crowd_serial_p50_ms", bench::percentile(times, 0.5), "ms");
+        results.add("retarget_crowd_serial_p95_ms", bench::percentile(times, 0.95), "ms");
+    }
+
 }
 
 int main(int argc, char** argv){
     bool countAllocs = false;
+    std::vector<std::string> clipFiles;
+#ifdef JASPER_TEST_REPO_DIR
+    std::string fixtures = JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models";
+#else
+    std::string fixtures;
+#endif
     for (int i = 1; i < argc; i++){
         const std::string arg = argv[i];
         if (arg == "--workers" && i + 1 < argc) kWorkers = std::max(0, std::atoi(argv[++i]));
         else if (arg == "--frames" && i + 1 < argc) kFrames = std::max(60, std::atoi(argv[++i]));
         else if (arg == "--count-allocs") countAllocs = true;
+        else if (arg == "--clip" && i + 1 < argc) clipFiles.push_back(argv[++i]);
+        else if (arg == "--fixtures" && i + 1 < argc) fixtures = argv[++i];
     }
     if (countAllocs && !testsupport::countsAllocations()){
         std::fprintf(stderr, "--count-allocs: this build cannot count allocations\n");
@@ -516,7 +841,11 @@ int main(int argc, char** argv){
     Engine::systemInit(argc, argv, new testsupport::JobsTestSystem());
     std::printf("je-bench-anim: %d workers + main, %u hardware threads, pose ops %s\n", jobs::system().getWorkerCount(),
                 std::thread::hardware_concurrency(), poseNativeBackendName());
+#ifdef __EMSCRIPTEN__
+    bench::Results results("je-bench-anim-wasm");
+#else
     bench::Results results("je-bench-anim");
+#endif
 
     assetDir = fs::temp_directory_path() / ("je-bench-anim-" + std::to_string((long long)std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directories(assetDir);
@@ -542,11 +871,35 @@ int main(int argc, char** argv){
         }
         const AnimatorInstance* instance = crowd->scene->getComponent<AnimatorComponent>(crowd->roots[0]).runtime.get();
         results.add("micro_instance_state_bytes", (double)instance->runtimeStateBytes(), "B");
+        // rig space and skin matrices alone, of a pose the crowd evaluated (S77 R10)
+        {
+            const AnimatorRig& rig = instance->rig;
+            std::vector<Affine> world(rig.bones.size());
+            std::vector<Vector3> positions(rig.bones.size()), scales(rig.bones.size());
+            std::vector<Quaternion> rotations(rig.bones.size());
+            RigSpace space{world.data(), positions.data(), rotations.data(), scales.data()};
+            results.add("micro_rig_space65_us", microUs([&](int i){
+                poseToRigSpace(instance->pose(), rig.parents.data(), space);
+                sink = positions[(size_t)i % positions.size()].x;
+            }, 4000), "us");
+            const RigSkin& skin = rig.skins[0];
+            const size_t skinned = std::min(skin.joints.size(), skin.inverseBindMatrices.size());
+            std::vector<Matrix4> matrices(skinned);
+            const Matrix4 inverseMesh;
+            results.add("micro_skin_matrices65_us", microUs([&](int i){
+                for (size_t j = 0; j < skinned; j++){
+                    matrices[j] = inverseMesh * affineMatrix(world[(size_t)skin.joints[j]]) * skin.inverseBindMatrices[j];
+                }
+                sink = matrices[(size_t)i % skinned][3][1];
+            }, 4000), "us");
+        }
         // where the serial time goes (information): without the IK, then without the two upper
         // layers too, then without the crossfades too
         auto each = [&](auto&& change){
             for (Entity root : crowd->roots) change(crowd->scene->getComponent<AnimatorComponent>(root));
         };
+        each([](AnimatorComponent& c){ for (AnimatorIKConstraint& k : c.ik) k.enabled = k.type != AnimatorIKType::LookAt; });
+        results.add("crowd200_serial_no_look_at_p50_ms", runCrowd(*crowd, false, 120, false).p50, "ms");
         each([](AnimatorComponent& c){ for (AnimatorIKConstraint& k : c.ik) k.enabled = false; });
         results.add("crowd200_serial_no_ik_p50_ms", runCrowd(*crowd, false, 120, false).p50, "ms");
         each([](AnimatorComponent& c){ c.runtime->setLayerWeight(1, 0.0f); c.runtime->setLayerWeight(2, 0.0f); });
@@ -613,6 +966,71 @@ int main(int argc, char** argv){
         results.add("micro_sample65_us", sample, "us");
     }
 
+    // ---- S77 R10: Web30, 30 of the crowd's characters on one thread (the owner's web budget, R44)
+    {
+        std::unique_ptr<Crowd> crowd = buildCrowd(assets, bones, 30);
+        const CrowdTimes serial = runCrowd(*crowd, false, kFrames, countAllocs);
+        results.add("web30_serial_p50_ms", serial.p50, "ms");
+        results.add("web30_serial_p95_ms", serial.p95, "ms");
+        results.add("web30_main_thread_p95_ms", serial.mainP95, "ms");
+        if (countAllocs) results.add("web30_steady_state_allocations", (double)serial.allocations, "allocations");
+    }
+    // what the character's clips hold (R44's clip memory: a game's whole clip set stays under it)
+    {
+        size_t total = 0;
+        for (const char* name : {"idle", "fwd", "back", "left", "right", "wave", "breath"}){
+            std::ifstream file(assetDir / (std::string(name) + ".anim"), std::ios::binary);
+            std::stringstream text;
+            text << file.rdbuf();
+            anim::ClipParseResult parsed = anim::parseClip(text.str());
+            total += AnimationClip::build(parsed)->memoryBytes();
+        }
+        results.add("web30_clip_heap_bytes", (double)total, "B");
+    }
+
+    // ---- S77 R10: key groups with different times (one key search per group), then each tier of
+    // the rotation sampler against the exact slerp it replaces
+    {
+        const std::vector<std::string> paths = bonePaths(bones);
+        std::shared_ptr<const AnimationClip> clip = AnimationClip::build(groupedClip(paths, 8));
+        ClipRig bound(clip);
+        results.add("micro_sample65_key_groups", (double)bound.binding.groups.size(), "groups");
+        results.add("micro_sample65_key_groups_us", microUs([&](int i){
+            sampleClip(bound.binding, bound.rig, (float)(i % 997) * (1.0f / 997.0f), bound.cursors, bound.pose);
+            sink = bound.pose.raw()[i & 63];
+        }, 4000), "us");
+        const std::pair<const char*, float> tiers[] = {{"nlerp_4deg", 4.0f}, {"corrected_20deg", 20.0f}, {"exact_60deg", 60.0f}};
+        for (const std::pair<const char*, float>& tier : tiers){
+            const std::vector<std::pair<Quaternion, Quaternion>> pairs = keyPairs(tier.second);
+            results.add(std::string("micro_sample_quaternion_") + tier.first + "_ns", sampleQuaternionNs(pairs), "ns");
+            results.add(std::string("micro_slerp_") + tier.first + "_ns", slerpNs(pairs), "ns");
+        }
+    }
+
+    // ---- S77 R10: the dense and reduced shapes of R42, generated, and real clips from --clip
+    clipRows(results, "clip_dense", anim::writeClip(shapedClip(67, 8241, true)));
+    clipRows(results, "clip_reduced", anim::writeClip(shapedClip(44, 911, false)));
+    for (const std::string& file : clipFiles){
+        std::ifstream in(file, std::ios::binary);
+        if (!in){
+            std::fprintf(stderr, "--clip %s: cannot read\n", file.c_str());
+            return 2;
+        }
+        std::stringstream text;
+        text << in.rdbuf();
+        std::string stem = fs::path(file).stem().generic_string();
+        std::replace(stem.begin(), stem.end(), '.', '_');
+        clipRows(results, "real_" + stem, text.str());
+    }
+
+    // ---- S77 R10: an Animation Player crowd, playing and idle, and a retargeted Animator crowd
+    {
+        const std::string fwd = (assetDir / "fwd.anim").generic_string();
+        playerCrowdRows(results, "player_crowd200", *buildPlayerCrowd(bones, fwd, kCharacters, true), std::max(120, kFrames / 3), countAllocs);
+        playerCrowdRows(results, "player_idle200", *buildPlayerCrowd(bones, fwd, kCharacters, false), std::max(120, kFrames / 3), countAllocs);
+    }
+    retargetCrowdRows(results, fixtures, 50, std::max(120, kFrames / 3));
+
     // ---- a state-machine update: 20 states, 60 transitions, no pose
     {
         std::shared_ptr<const CompiledController> compiled = compileController(stateMachine());
@@ -628,6 +1046,34 @@ int main(int argc, char** argv){
         for (int i = 0; i < 10; i++) instance.update(component, context);
         const double update = microUs([&](int){ instance.update(component, context); }, 20000);
         results.add("micro_state_machine_update_us", update, "us");
+    }
+
+    // ---- a Look At solve: upper chest, neck and head of a chain leaning 30 degrees, the target
+    // going round it; each call starts from the animated pose, as in an Animator
+    {
+        constexpr int kBones = 3;
+        Pose animated, local;
+        animated.resize(kBones, 0);
+        const float half = 15.0f * 0.0174532925f;
+        animated.setRotation(0, Quaternion(std::cos(half), std::sin(half), 0, 0));
+        animated.setPosition(1, Vector3(0, 0.18f, 0));
+        animated.setPosition(2, Vector3(0, 0.08f, 0));
+        local.resize(kBones, 0);
+        const int parents[kBones] = {-1, 0, 1};
+        Affine world[kBones];
+        Vector3 positions[kBones], scales[kBones];
+        Quaternion rotations[kBones];
+        IKContext context{&local, parents, RigSpace{world, positions, rotations, scales}};
+        const int chain[kBones] = {0, 1, 2};
+        const float weights[kBones] = {0.2f, 0.3f, 0.5f};
+        const double lookAt = microUs([&](int i){
+            local.copyFrom(animated);
+            refreshRigSpace(context, 0);
+            const float angle = (float)(i % 360) * 0.0174532925f;
+            solveLookAt(context, chain, weights, kBones, Vector3(0, 0, 1), Vector3(std::sin(angle), 0.6f, std::cos(angle)), 60.0f, 1.0f);
+            sink = rotations[2].w;
+        }, 20000);
+        results.add("micro_look_at3_us", lookAt, "us");
     }
 
     const char* path = bench::jsonPath(argc, argv, "anim.json");

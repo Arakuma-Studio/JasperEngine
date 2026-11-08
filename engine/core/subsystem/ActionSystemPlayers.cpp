@@ -255,6 +255,7 @@ namespace {
         }
         bindings.targets.assign(count, NULL_ENTITY);
         bindings.cursors.assign(count, anim::KeyCursor());
+        bindings.rests.assign(rest ? count : 0, nullptr);
         bindings.byName.clear();
         bindings.resolvedCount = 0;
         bindings.unboundProperties = 0;
@@ -298,12 +299,18 @@ namespace {
                 bindings.targets[i] = target;
                 bindings.resolvedCount++;
                 if (binding.scriptIndex >= 0) bindings.scriptProperties++;
-                if (rest) playerdetail::completePropertyRest(scene, target, (*rest)[target], binding);
+                if (rest){
+                    bindings.rests[i] = &(*rest)[target];
+                    playerdetail::completePropertyRest(scene, target, *bindings.rests[i], binding);
+                }
                 continue;
             }
             bindings.targets[i] = target;
             bindings.resolvedCount++;
-            if (rest) completeRest(scene, target, (*rest)[target], tracks[i].channel);
+            if (rest){
+                bindings.rests[i] = &(*rest)[target];
+                completeRest(scene, target, *bindings.rests[i], tracks[i].channel);
+            }
         }
         bindings.humanoid = humanoidBinding;
         if (humanoidBinding && rest){
@@ -668,7 +675,7 @@ void ActionSystem::accumulateClip(const AnimationClip& clip, anim::ClipBindings&
             current = target;
             // bound entities are alive: destroying one under a parent bumps the hierarchy
             // revision, and bindings are validated (or resolved again) before sampling
-            currentRest = &rest[target];
+            currentRest = i < bindings.rests.size() && bindings.rests[i] ? bindings.rests[i] : &rest[target];
             currentAccum = nullptr;
         }
         anim::ChannelRest& channelRest = *currentRest;
@@ -873,7 +880,7 @@ void ActionSystem::accumulateClip(const AnimationClip& clip, anim::ClipBindings&
     }
 }
 
-bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player, float dt, bool poolChanged){
+bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player, float dt, bool poolChanged, bool animInCall){
     anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(player);
     const uint64_t revision = scene->hierarchyRevision();
 
@@ -940,7 +947,7 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
         if (fetch){
             std::string error;
             bool loading = false;
-            std::shared_ptr<const AnimationClip> clip = state.clip.empty() ? nullptr : AnimationClipPool::pollOrLoad(state.poolKey, loading, &error);
+            std::shared_ptr<const AnimationClip> clip = state.clip.empty() ? nullptr : AnimationClipPool::pollOrLoad(state.poolKey, loading, &error, animInCall);
             if (loading){
                 // a model sub-clip building on the thread pool (async loading): the player waits
                 // for it as for its models (time stops, calls are kept); a bound clip plays on meanwhile
@@ -1158,7 +1165,8 @@ void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player
 
     // each layer's queue head waits for the states playing now on that layer (R17 per layer):
     // they stop at their next end
-    std::vector<float> offsets(states.size(), 0.0f);
+    std::vector<float>& offsets = playerStateOffsets;
+    offsets.assign(states.size(), 0.0f);
     for (size_t l = 0; l < runtime.layers.size(); l++){
         if (runtime.layers[l].queue.empty()) continue;
         const anim::QueuedState head = runtime.layers[l].queue.front();
@@ -1422,7 +1430,8 @@ void ActionSystem::samplePlayer(Entity entity){
     if (!player) return;
     anim::playerRuntime(*player);
     playerMaskPoolChanged = true;   // generations decide
-    if (!preparePlayer(entity, *player, 0.0f, true)) return;
+    // the caller reads the pose when this returns
+    if (!preparePlayer(entity, *player, 0.0f, true, true)) return;
 
     clearPoseBlend();
     anim::AnimationPlayerRuntime& runtime = *player->runtime;

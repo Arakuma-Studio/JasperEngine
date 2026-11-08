@@ -328,6 +328,11 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             }
             // a removed HTML document is reported missing by its scene's documents
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) external["ui"].push_back(change.path);
+            // a removed .clips sidecar (an undo, a delete): the model's clips play the importer's
+            // settings again, so its clip documents and players reload (S77 R29)
+            if (change.path.extension() == ".clips") {
+                (change.origin == ChangeOrigin::Editor ? editorWritten : external)["animation"].push_back(change.path);
+            }
             continue;
         }
         // S45: a renamed atlas is forgotten under its old name (built again under the new one

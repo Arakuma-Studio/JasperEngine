@@ -61,10 +61,13 @@ jasperengine_skip_unity_build(
     SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorBlendTreeTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorHumanoidTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorPropertyThreadTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorRetargetTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorStateMachineTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorSystemTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/ClipIOTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/ClipMemoryTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/ProfilerAnimationTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/HumanoidModelTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/KeyframeSamplingTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/SubClipPoolTest.cpp
@@ -205,6 +208,7 @@ add_executable(je-bench-nav ${CMAKE_CURRENT_SOURCE_DIR}/bench/NavBench.cpp ${COR
 # je-bench-splines: the spline budgets (S18 R18-R21, docs/perf/splines.md)
 add_executable(je-bench-splines ${CMAKE_CURRENT_SOURCE_DIR}/bench/SplineBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 add_executable(je-bench-anim ${CMAKE_CURRENT_SOURCE_DIR}/bench/AnimBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
+target_compile_definitions(je-bench-anim PRIVATE JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 # je-bench-audio: the loudness budgets (S38 R16-R17)
 add_executable(je-bench-audio ${CMAKE_CURRENT_SOURCE_DIR}/bench/AudioMeterBench.cpp)
 foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-audio)

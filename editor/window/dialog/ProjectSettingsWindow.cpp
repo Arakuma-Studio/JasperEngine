@@ -208,6 +208,7 @@ enum class ProjectCategory {
     Navigation,
     Mesh,
     TwoD,   // "2D" (S45: Sprite Atlas)
+    Animation,
     Count
 };
 
@@ -1238,6 +1239,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Navigation: drawNavigationSettings(); break;
         case ProjectCategory::Mesh: drawMeshSettings(); break;
         case ProjectCategory::TwoD: draw2DSettings(); break;
+        case ProjectCategory::Animation: drawAnimationSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -3078,6 +3080,21 @@ void ProjectSettingsWindow::drawInputSettings() {
         drawInputManagerSection();
     }
     endSettingsPanel();
+}
+
+// Project Settings > Animation (S77 R38): stored with the model settings, one undo step on Apply
+void ProjectSettingsWindow::drawAnimationSettings() {
+    projectDrawSettingsPanel("##AnimationSettingsPanel", [this]() {
+        if (settingsui::beginRow("animation.animation_entities")) {
+            static const char* const labels[] = {"Always", "Auto"};
+            int value = (int)m_modelSettings.animationEntities;
+            drawComboSetting("Animation Entities", "##AnimationEntities", labels, 2, value, 0,
+                             "When a model is placed in a scene. Always: an Animation entity per clip. Auto: none for a model "
+                             "of 5 or more clips, whose clips play through an Animation Player or an Animator. New projects "
+                             "start with Auto; a model already placed keeps its setting.");
+            m_modelSettings.animationEntities = (AnimationEntitiesMode)value;
+        }
+    });
 }
 
 void ProjectSettingsWindow::drawNavigationSettings() {
