@@ -1,7 +1,7 @@
 # The Procedural Material (docs/specs/S90-procedural-material.md): the node library's descriptors embedded
 # in the editor (editor/procmat/ProceduralMaterialRegistration.cpp, the only includer), the generator,
-# the planner and the evaluator on the editor's context. SpirvInterpreter.cpp joins when the CPU tier does:
-# until then only the tests and tools/procmat/sweep link it.
+# the planner, the evaluator on the editor's context and the CPU tier's (SpirvInterpreter.cpp, which
+# tools/procmat/sweep also builds on its own), and the tier selection between them.
 
 set(PROCMAT_SOURCES
     ${EDITOR_DIR}/procmat/NodeLibrary.cpp
@@ -16,11 +16,18 @@ set(PROCMAT_SOURCES
     ${EDITOR_DIR}/procmat/ProceduralBake.cpp
     ${EDITOR_DIR}/procmat/ProceduralRun.cpp
     ${EDITOR_DIR}/procmat/ProcMatThumbnails.cpp
+    ${EDITOR_DIR}/procmat/ProceduralCpuEvaluator.cpp
+    ${EDITOR_DIR}/procmat/ProceduralTieredEvaluator.cpp
+    ${EDITOR_DIR}/procmat/ProceduralDevice.cpp
+    ${EDITOR_DIR}/procmat/SpirvInterpreter.cpp
 )
 list(APPEND JASPERENGINE_EDITOR_SOURCES ${PROCMAT_SOURCES})
 jasperengine_skip_unity_build(
     REASON "the Procedural Material: file-local helpers named as in other editor sources, and the embedded library"
     SOURCES ${PROCMAT_SOURCES})
+# glslang's SPIR-V headers name the opcodes the interpreter translates
+set_source_files_properties(${EDITOR_DIR}/procmat/SpirvInterpreter.cpp PROPERTIES
+    INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/engine/libs/shadercompiler/libs/glslang)
 
 set(PROCMAT_NODES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/procmat/nodes")
 file(GLOB PROCMAT_NODE_FILES CONFIGURE_DEPENDS "${PROCMAT_NODES_DIR}/*.json")

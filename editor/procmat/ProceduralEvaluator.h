@@ -21,6 +21,8 @@
 // - advance() does some work and returns false while more remains. A slice stops once budgetMs is used,
 //   after the unit of work in hand: a compile or a draw is not split. On true, `result` holds the outcome
 //   and the evaluator is idle until the next prepare() or setUniforms().
+// - A device tier's failure to compile or read back is the caller's to recover from on the CPU tier
+//   (ProceduralTieredEvaluator, R9): an evaluator never retries on another device itself.
 // - cancel() drops the evaluation in progress: nothing more is drawn, and advance() returns true with an
 //   empty result. The prepared plan stays, so setUniforms() can restart it.
 // - All calls come from one thread. A GPU implementation needs that to be the render thread, outside any
@@ -67,8 +69,16 @@ namespace jasperengine::editor::procmat {
         std::string error;
         int failedPass = -1;
         std::string log;
-        // In plan order; empty when the plan does not read back (PassPlan::readBack) or on failure
+        // the CPU tier refused an instruction of the failed pass at load (R11), and the node it is in
+        // when that is known
+        bool unsupported = false;
+        std::string failedNode;
+        // In plan order; empty on failure, and on a device tier when the plan does not read back
+        // (PassPlan::readBack). The CPU tier always fills it: it has no device image to show instead.
         std::vector<OutputImage> outputs;
+        // what the user must know about an image that was made anyway: a device failure that moved the
+        // evaluation to the CPU tier names its pass, device and log (R9)
+        std::vector<std::string> warnings;
     };
 
     class ProceduralEvaluator {

@@ -4,11 +4,16 @@
 // The CPU tier's interpreter (editor/procmat) on glslang's real output for
 // tools/procmat/interpreter_fixtures.glsl. Each expected value is computed here in C++ with the
 // GLSL definition of the operation, so a wrong instruction shows as a wrong number. The whole
-// node library is compared against a GPU tier by `procmat-sweep crosstier` (S90 M0).
+// node library is compared against a GPU tier by `procmat-sweep crosstier` (S90 M0), and by
+// ProcMatNodeImageGpuSlow. MatchesThePythonOracle holds it to tools/procmat/spirv_oracle.py (AC7),
+// which computes its numbers with no code in common with these.
 
 #include "procmat/SpirvInterpreter.h"
 
 #include "SpirvInterpreterFixtures.h"
+#include "SpirvOracleCases.h"
+
+#include "shader/ShaderVariantCompiler.h"
 
 #include <gtest/gtest.h>
 
@@ -568,4 +573,46 @@ TEST(SpirvInterpreter, APixelIsIndependentOfThePreviousOne){
         for (int k = 0; k < 4; k++)
             EXPECT_EQ(a[k], b[k]);
     }
+}
+
+TEST(SpirvInterpreter, MatchesThePythonOracle){
+    using namespace jasperengine::editor::procmat::test;
+    std::vector<float> texels(std::size(oracleImage));
+    std::memcpy(texels.data(), oracleImage, sizeof(oracleImage));
+    const SpirvImage image(oracleImageSize, oracleImageSize, texels);
+    int sets = 0;
+    for (const SpirvOracleCase& oracle : oracleCases){
+        std::vector<uint32_t> words;
+        std::string error, log;
+        ASSERT_TRUE(jasperengine::ShaderVariantCompiler::compileFragmentToSpirv(oracle.fragment, words, &error, &log))
+            << oracle.name << ": " << error << "\n" << log;
+        std::unique_ptr<SpirvProgram> program = SpirvProgram::load(words.data(), words.size(), error);
+        ASSERT_TRUE(program != nullptr) << oracle.name << ": " << error;
+        for (int set = 0; set < oracle.setCount; set++){
+            float inputs[12];
+            std::memcpy(inputs, oracle.sets[set].inputs, sizeof(inputs));
+            SpirvMachine machine(*program);
+            machine.setUniforms(inputs, 12);
+            if (program->textureSlot("t_img") >= 0)
+                machine.setTexture(program->textureSlot("t_img"), &image);
+            float out[4];
+            ASSERT_EQ(machine.shade(0.5f, 0.5f, out), SpirvMachine::Result::Ok) << oracle.name;
+            for (int k = 0; k < 4; k++){
+                float expected;
+                std::memcpy(&expected, &oracle.sets[set].expected[k], sizeof(expected));
+                uint32_t got;
+                std::memcpy(&got, &out[k], sizeof(got));
+                if (std::isnan(expected)){
+                    EXPECT_TRUE(std::isnan(out[k])) << oracle.name << " set " << set << " component " << k << ": " << out[k] << ", expected NaN";
+                } else if (oracle.tolerance == 0.0f){
+                    EXPECT_EQ(got, oracle.sets[set].expected[k]) << oracle.name << " set " << set << " component " << k << ": " << out[k] << ", expected " << expected;
+                } else {
+                    EXPECT_NEAR(out[k], expected, oracle.tolerance * std::max(1.0f, std::fabs(expected)))
+                        << oracle.name << " set " << set << " component " << k;
+                }
+            }
+            sets++;
+        }
+    }
+    EXPECT_GT(sets, 0);
 }

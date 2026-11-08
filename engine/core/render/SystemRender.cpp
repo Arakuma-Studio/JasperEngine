@@ -498,6 +498,10 @@ std::string SystemRender::getDeviceName(){
     return SokolSystem::getDeviceName();
 }
 
+bool SystemRender::isCpuDevice(){
+    return SokolSystem::isCpuDevice();
+}
+
 void SystemRender::requestPassPreview(const PassPreviewRequest& request){
     SokolPassPreview::request(request);
 }

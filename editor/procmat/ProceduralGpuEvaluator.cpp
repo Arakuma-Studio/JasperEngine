@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 
 using namespace jasperengine;
@@ -147,6 +148,13 @@ bool ProceduralGpuEvaluator::prepare(const PassPlan& newPlan, std::string& error
         error = "this build has no shader compiler";
         return false;
     }
+    injectedCompileFailure.clear();
+    injectedReadBackFailure = false;
+    if (const char* injected = std::getenv("JASPER_TEST_PROCMAT_DEVICE_FAIL")) {
+        const std::string what = injected;
+        if (what.rfind("compile:", 0) == 0) injectedCompileFailure = what.substr(8);
+        injectedReadBackFailure = what == "readback";
+    }
     plan = newPlan;
     // programs still used stay; the others go now, since the sokol pools hold 2048 of everything (R24)
     std::map<std::string, std::unique_ptr<Program>> kept;
@@ -235,6 +243,10 @@ bool ProceduralGpuEvaluator::createProgram(Program& program, const std::string& 
 
 bool ProceduralGpuEvaluator::compilePass(size_t index, EvaluationResult& result) {
     const PlannedPass& pass = plan.passes[index];
+    if (!injectedCompileFailure.empty() && pass.label == injectedCompileFailure) {
+        fail(result, pass.label + ": Error compiling the shader", (int)index, "ERROR: 0:1: injected by JASPER_TEST_PROCMAT_DEVICE_FAIL");
+        return false;
+    }
     std::unique_ptr<Program>& program = programs[pass.fragment];
     if (!program) {
         program = std::make_unique<Program>();
@@ -539,8 +551,8 @@ bool ProceduralGpuEvaluator::advance(double budgetMs, EvaluationResult& result) 
                     image.name = output.name;
                     image.width = plan.size;
                     image.height = plan.size;
-                    std::string error;
-                    if (!FrameReadback::readTexture(*outputs[output.name], plan.size, plan.size, 4, image.rgba, &error)) {
+                    std::string error = injectedReadBackFailure ? "injected by JASPER_TEST_PROCMAT_DEVICE_FAIL" : "";
+                    if (injectedReadBackFailure || !FrameReadback::readTexture(*outputs[output.name], plan.size, plan.size, 4, image.rgba, &error)) {
                         fail(result, "cannot read " + output.name + " back: " + error, -1, {});
                         return true;
                     }

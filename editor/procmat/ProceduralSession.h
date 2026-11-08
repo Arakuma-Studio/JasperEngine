@@ -46,7 +46,8 @@ namespace jasperengine::editor::procmat {
         bool hasImage() const { return image.ok; }
         // the graph has changed since latest() was drawn, or its evaluation failed
         bool isStale() const { return stale; }
-        // why the latest edit has no image: a graph that cannot be planned, a device failure
+        // why the latest edit has no image: a graph that cannot be planned, a device failure, a node the
+        // CPU tier cannot run (named)
         const std::string& error() const { return problem; }
         // the plan the evaluator holds, null before the first one
         const PassPlan* activePlan() const { return active ? &*active : nullptr; }

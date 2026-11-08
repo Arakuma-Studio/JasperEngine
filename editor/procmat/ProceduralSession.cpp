@@ -3,6 +3,8 @@
 
 #include "ProceduralSession.h"
 
+#include "ProceduralCpuEvaluator.h"
+
 #include <algorithm>
 
 using namespace jasperengine::editor::procmat;
@@ -83,6 +85,14 @@ void ProceduralSession::update(double now, double budgetMs) {
     running = false;
     if (!result.ok) {
         problem = result.error;
+        // the CPU tier failed after the device did: both are what went wrong (R9)
+        for (const std::string& warning : result.warnings) problem = warning + " " + problem;
+        // a pass inlines many nodes; the session has the graph to say which one the CPU tier refused (R11)
+        if (result.unsupported && result.failedNode.empty() && active && current && result.failedPass >= 0 &&
+            (size_t)result.failedPass < active->passes.size()) {
+            const std::string node = refusedNode(*current, library, active->passes[(size_t)result.failedPass], options);
+            if (!node.empty()) problem += " The node is " + node + ".";
+        }
         return;
     }
     image = std::move(result);

@@ -599,8 +599,8 @@ greyscale.mode=0.o0.out a47cfc63d79cf057 4d25767f9dce13f5
 greyscale.mode=1.o0.out 790b9751aa869567 4d25767f9dce13f5
 greyscale.mode=2.o0.out 5715a33cd96044d3 4d25767f9dce13f5
 greyscale.mode=3.o0.out 357859dce60228c0 4d25767f9dce13f5
-height_to_angle.default.o0.out 1956e9fbfcb96459 a8c7f832281a39c5
-height_to_angle.wired.o0.out 0db2cd7a8adc9575 a8c7f832281a39c5
+height_to_angle.default.o0.out d84742d01586c4e5 a8c7f832281a39c5
+height_to_angle.wired.o0.out f580862c6c9b0229 a8c7f832281a39c5
 height_to_offset.default.o0.out 4268e3020a992ea1 a8c7e932281a2048
 height_to_offset.default.o1.out 65830fc4cdda2466 a8c7e932281a2048
 height_to_offset.wired.o0.out 95acac76423a69fd a8c7e932281a2048

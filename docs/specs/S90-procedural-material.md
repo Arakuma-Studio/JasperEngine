@@ -739,3 +739,76 @@ preview pane and Problems strip are a later branch: they call `ProceduralChecks:
 - **M6's preset finding.** A gradient preset saved from a 32-key ramp reloads with its 32 keys on this base
   (`SwatchLibrary.AGradientPresetKeepsAGraphRampsKeys` passes without a change): the swatch library's native format
   is read without `normalize()`, which only the upstream dialect calls. Dropped.
+
+### M5 (s90-tiers)
+
+What M5 decided and where it differs from the text above. The CPU tier's tests are in
+`editor/tests/procmat/` (this binary has no device, so they run anywhere, D3); the GPU tiers against it
+are in `engine/tests/core/procmat/`.
+
+- **R8, detection.** `procmat::editorDevice()` (`ProceduralDevice.h`) gives `{tier, name}`: no context is
+  `cpu`; Vulkan's `VK_PHYSICAL_DEVICE_TYPE_CPU` is `software`, read through a new
+  `SystemRender::isCpuDevice()` (an `sgj_device_is_cpu()` beside `sgj_device_name()`, false on every other
+  API); otherwise `GL_RENDERER` or the device name is matched against llvmpipe, softpipe, swrast, lavapipe,
+  SwiftShader, Microsoft Basic Render and Apple Software Renderer, and anything else is `gpu`. The CPU
+  tier's name is "SPIR-V interpreter on the CPU". `makeEditorEvaluator()` is the one way to get an
+  evaluator in the editor.
+- **R21.** The device type is a second engine change for S90: three accessor lines in
+  `SystemRender`/`SokolSystem` and one in `sokol_gpu_timer_impl.h` (our own extension, not vendored sokol).
+  Nothing in a game calls it.
+- **R9, D4.** `ProceduralTieredEvaluator` wraps the device's evaluator. A failure to prepare, compile or
+  read back moves that evaluator to the CPU tier for good: the evaluation starts over there from the plan
+  as it is now (uniform edits included), so neither the device's partial work nor an earlier image reaches
+  the result. The result, and every later one, carries `warnings` naming the pass (index and label), the
+  device and the compiler log. It never tries a software tier. Which evaluator a new graph gets is the
+  caller's: `makeEditorEvaluator()` starts on the device again, since a failed pass is a property of a graph
+  more often than of the device (cost if wrong: one failed compile per graph before the fallback).
+- **R11.** `ProceduralCpuEvaluator` compiles and loads each pass inside `advance()`, one pass a unit. Each
+  step is one Background job (`GateClass::Heavy`) whose rows a `parallelFor` shares, so `advance()` only
+  polls; a cancel, a new plan or an edit that affects the running step stops it at its next row, and the job
+  keeps what it reads alive. A row past the interpreter's loop limit fails the evaluation naming the pass and
+  the pixel. Unlike a device tier, a result holds the outputs' pixels even when the plan does not read back.
+- **R11, naming the node.** A pass the interpreter refuses names its node when it inlines one, and "one of
+  nodes a, b" otherwise; `ProceduralSession`, which has the graph, then plans each of those nodes alone and
+  names the smallest one that is refused (`refusedNode`). The bake path names the pass's nodes only, unless it
+  calls `refusedNode` too.
+- **Not done (review minors).** D3D11 tells software adapters by name only, not by `DXGI_ADAPTER_FLAG_SOFTWARE`
+  (Windows is not built here); `refusedNode` compiles each node of a refused pass on the main thread, which only an
+  R11 refusal reaches and the shipped library has none.
+- **R12.** A Buffer is stored as RGBA16F stores it, every mip level included (`SpirvImage` with
+  `halfPrecision`), and only a Buffer the plan gives mips has a chain: one level samples level 0 at any level of
+  detail, as on the device. `roundedToHalf` moved from the test harness into `SpirvInterpreter`.
+- **R39, no window.** `procmat::evaluateOnCpu(plan, result, cancelled, progress)` is the entry point for a bake
+  that runs in-process with no context: it needs the shader compiler and the job system only, both of which
+  work before any backend starts. `ProceduralRun` (s90-bake) should take its evaluator from
+  `makeEditorEvaluator()` and its `device` from the evaluator after the run, not from the context, so that a
+  fallback shows as `cpu`.
+- **AC7.** `tools/procmat/spirv_oracle.py` computes 21 cases (83 input sets) in Python from the GLSL
+  definitions, in 32-bit floats and integers: arithmetic, rounding, comparisons with NaN, logic and selects,
+  integers and their bits, an unsigned hash, conversions, swizzles and dynamic indexing, matrices, loops with
+  `break`/`continue` and an `inout` call, the `GLSL.std.450` set the interpreter covers, and a sampler
+  (bilinear, repeat outside [0, 1], box mips blended by the lod's fraction and clamped at both ends, from the GL
+  specification's definitions). Exact results are
+  compared bit for bit, transcendentals and unordered sums within 4e-6 and 1e-6 relative.
+  `SpirvInterpreterTest.MatchesThePythonOracle` reads `SpirvOracleCases.h`, which
+  `test_import_mm_nodes.py` checks is current.
+- **R20 on lavapipe.** The per-node image test's first run on Vulkan put one output over AC8:
+  `height_to_angle` wired, 3.98 mean, 255 at p99. Its probe is a sawtooth in x, so on the 1.4% of pixels at
+  its drops the slope points down -x with a zero `dh.y`, and `atan` gives pi or -pi by the sign of that zero,
+  which lavapipe leaves otherwise than the interpreter (inferred from the share of pixels; the fix confirms
+  it). The importer's fix now makes that cut pi: 0.25 mean, 1 at p99 on both backends. Another deviation from
+  Material Maker, whose GPU picks its own sign there.
+- **AC8.** `ProcMatCrossTierTest` is `ProcMatNodeImageGpuSlow`: the per-node image test compares the device
+  with the product's CPU tier now, not with a test harness, and its red control
+  `TheOldFloatHashIsOverTheLimit` puts Material Maker's float `rand` back and requires the limit to catch it.
+- **AC4, not all of it.** `gpu` is shown by names only (`ProceduralDevice.ATierComesFromTheDeviceType...`): no
+  hardware GPU and no RTX lane exist on this host. `software` is shown on llvmpipe and lavapipe by
+  `ProceduralTiersGpu.TheHeadlessDeviceIsSoftware`, and the injected compile and read-back failures by the same
+  suite (`JASPER_TEST_PROCMAT_DEVICE_FAIL`, read by `ProceduralGpuEvaluator`). The MCP half (`device` in a
+  `--headless` preview) needs `preview_procedural_material`, which s90-bake writes; its test should run a preview
+  with `JASPER_TEST_PROCMAT_DEVICE_FAIL=compile:<pass>` in the editor's environment.
+- **AC5** is s90-bake's: the CLI's in-process path is `evaluateOnCpu`, and the editor test
+  `ProceduralDevice.WithNoContextTheEditorIsOnTheCpuTier` runs it in a process with no graphics device.
+- **AC6** runs each graph on job systems of 0, 1 and 5 workers (the evaluator takes a `jobs::JobSystem`, the
+  process's by default), at two slicings and through `evaluateOnCpu`. Its red run put rows where they were
+  claimed rather than at their own `y`.

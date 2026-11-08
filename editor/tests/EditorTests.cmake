@@ -14,13 +14,6 @@ file(GLOB_RECURSE EDITOR_TEST_SOURCES CONFIGURE_DEPENDS
 # the reflection codec's benchmark against the frozen numbers of the codecs it replaced
 # (docs/specs/S08-reflection.md R17)
 list(APPEND EDITOR_TEST_SOURCES ${CMAKE_SOURCE_DIR}/tools/performance/reflect_codec.cpp)
-# the CPU tier's interpreter (S90 R11): only the tests and procmat-sweep run it until the evaluator
-# of S90 M5 joins it to the editor. Its opcode names are short, so it keeps its own unity unit.
-set(JASPERENGINE_SPIRV_INTERPRETER ${CMAKE_SOURCE_DIR}/${EDITOR_DIR}/procmat/SpirvInterpreter.cpp)
-list(APPEND EDITOR_TEST_SOURCES ${JASPERENGINE_SPIRV_INTERPRETER})
-set_source_files_properties(${JASPERENGINE_SPIRV_INTERPRETER} PROPERTIES
-    SKIP_UNITY_BUILD_INCLUSION ON
-    INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/engine/libs/shadercompiler/libs/glslang)
 
 # the process LoggerCrashFlushTest crashes: the logger's queue, a file sink and the editor's
 # crash handler (editor/tests/util/LogCrashHelper.cpp)

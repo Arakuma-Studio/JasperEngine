@@ -66,6 +66,11 @@ namespace jasperengine::editor::procmat {
         void fail(EvaluationResult& result, const std::string& error, int pass, const std::string& log);
 
         EvaluatorTier tierName;
+        // JASPER_TEST_PROCMAT_DEVICE_FAIL, read at prepare(): "compile:<pass label>" fails that pass's
+        // compile, "readback" every read back, as a driver would; the tests of R9's fallback need a device
+        // that fails on demand
+        std::string injectedCompileFailure;
+        bool injectedReadBackFailure = false;
         PassPlan plan;
         Phase phase = Phase::Idle;
         size_t nextPass = 0;
