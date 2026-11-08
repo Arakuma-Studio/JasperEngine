@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "pixelart/BitmapFont.h"
 #include "CreateEntityCmd.h"
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
@@ -219,6 +220,19 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<TextComponent>(entity, {});
 
         TextComponent& textComp = scene->getComponent<TextComponent>(entity);
+        textComp.text = "Text";
+        textComp.needUpdateText = true;
+
+    }else if (type == EntityCreationType::TEXT_PIXEL){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
+        scene->addComponent<UIComponent>(entity, {});
+        scene->addComponent<TextComponent>(entity, {});
+
+        TextComponent& textComp = scene->getComponent<TextComponent>(entity);
+        textComp.font[0] = ::jasperengine::pixelart::kBuiltinPixelFont;
+        textComp.fontSize = 9;
         textComp.text = "Text";
         textComp.needUpdateText = true;
 

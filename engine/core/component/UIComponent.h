@@ -51,6 +51,12 @@ namespace jasperengine{
         // the vertices carry each glyph's colour (a Text Effect): the draw takes only the alpha
         // of `color`, whose rgb the effect already composed in
         bool vertexColorAbsolute = false;
+        // a Text whose texture is RGBA art (a coloured bitmap font, the styled glyph cache, S51):
+        // sampled as a texture ('Tex'), not as font coverage ('Ftx')
+        bool textRgba = false;
+        // a bitmap Text: drawn without a Pixel Perfect Camera's snap, its origin is rounded to
+        // the target's pixels on the CPU (S51 R8), so it draws alone
+        bool pixelOriginSnap = false;
         // values of the fork's custom uniform blocks, by member name
         ShaderUniformValues shaderUniforms;
         bool needUpdateShaderUniforms = false;

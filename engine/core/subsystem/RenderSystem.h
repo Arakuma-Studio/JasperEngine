@@ -2346,6 +2346,9 @@ namespace jasperengine{
 		void fillPassPixelSnap(frame_t& frame, const CameraComponent& camera);
 		// a draw's mode for pixelSnapDraw.x: 0 none, 1 every vertex, 2 the pivot
 		float pixelSnapDrawMode(const Matrix4& mvp) const;
+		// a bitmap Text drawn without a Pixel Perfect Camera's snap: its MVP with the origin moved
+		// onto the pass target's nearest pixel (S51 R8, the CPU twin's snapCenterDelta)
+		Matrix4 pixelOriginSnapMVP(const Matrix4& mvp) const;
 		// u_vs_pbrParams of a draw (model, normal, mvp; and the snap mode of a 'Pxs' variant)
 		void applyObjectBlock(ObjectRender& render, int slot, unsigned int reflectedSize, uint64_t meshProperties, const Matrix4* objectBlock);
 		// the blit's source rect within a pixel-perfect target (its smoothing margin and shift)

@@ -209,6 +209,10 @@ namespace {
         {codes::UnknownFontFamily, I, false, "unknown-font-family", "Unknown font family",
          "No @font-face declares the family and the engine does not know it; the text uses the next family of the list or the "
          "engine's fallback font."},
+        {codes::BitmapFontEffect, W, false, "bitmap-font-effect", "Blurred effect on a bitmap font",
+         "A rule with a bitmap font family (.bitmapfont or .fnt @font-face) has a glow, a blur or a blurred text-shadow: a pixel "
+         "font draws only pixel outlines and sharp shadows, so the effect is dropped. Use font-effect: outline(1px <colour>) or a "
+         "text-shadow without blur."},
 
         // ---- SEL
         {codes::UnsupportedSelector, W, false, "unsupported-selector", "Unsupported selector",

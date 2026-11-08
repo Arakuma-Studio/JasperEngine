@@ -863,8 +863,12 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
                 HtmlUI::getFontEngine().reloadFontFile(font);
         }
         for (const std::string& image : action.images){
-            if (imagesReleased.insert(image).second)
+            if (imagesReleased.insert(image).second){
                 reloadTexture(image);
+                // a bitmap face's sheet or page (S51): the face loads again
+                if (RmlFontEngine::isBitmapDependency(image))
+                    HtmlUI::getFontEngine().reloadFontFile(image);
+            }
         }
 
         if (action.full){

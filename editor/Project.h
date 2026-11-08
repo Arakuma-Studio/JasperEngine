@@ -902,6 +902,8 @@ namespace jasperengine::editor{
         int htmlUiMsaaSamples;
         // graphics.pixelsPerUnit (S41): texels per world unit of the sprites and tilemaps that take it
         int pixelsPerUnit = 1;
+        // graphics.bitmapTextCacheMiB (S51 R12): the styled glyph cache's budget, 0 = the platform's
+        int bitmapTextCacheMiB = 0;
         HtmlUiRenderSettings htmlUiRender;
         // graphics.gpu_instancing, quality.shadow_lod_bias (spec S55)
         DrawSubmissionSettings drawSubmission;
@@ -1565,6 +1567,7 @@ namespace jasperengine::editor{
         static constexpr int defaultPixelsPerUnit = 1;
         static constexpr int minPixelsPerUnit = 1;
         static constexpr int maxPixelsPerUnit = 256;
+        static constexpr int maxBitmapTextCacheMiB = 64;
         // htmlUiGlyphAtlasMiB: 0 (the platform's default) or this range
         static constexpr int minHtmlUiGlyphAtlasMiB = 4;
         static constexpr int maxHtmlUiGlyphAtlasMiB = 256;
@@ -1725,6 +1728,10 @@ namespace jasperengine::editor{
         // Pixels Per Unit (S41, 1-256, clamped): applied to the editor's scenes at once and written into exports
         void setPixelsPerUnit(int pixelsPerUnit);
         int getPixelsPerUnit() const;
+        // Bitmap Text Cache (S51 R12): MiB of styled bitmap glyphs, 0 = 2 MiB on Android, iOS and
+        // HTML5 and 8 MiB on desktop; applied at once and written into exports
+        void setBitmapTextCacheMiB(int mib);
+        int getBitmapTextCacheMiB() const;
         static bool isValidHtmlUiMsaaSamples(int samples);
         // HTML UI rendering (S16): htmlUiGlyphAtlasMiB (clamped into its range, 0 = the
         // platform's default), htmlUiSdfPrimitives, htmlUiTransformAwareText; applied to the

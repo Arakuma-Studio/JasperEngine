@@ -91,6 +91,13 @@ namespace jasperengine{
         float getShadowSoftness() const;
         void setShadowDilate(float dilate);
         float getShadowDilate() const;
+
+        // Bitmap fonts (S51): the pixel outline's neighbours (4 or 8); the pixel scale k the
+        // text draws at (0 for a vector font) and the font size that is (k x native size)
+        void setOutlineNeighbors(int neighbors);
+        int getOutlineNeighbors() const;
+        int getPixelScale() const;
+        unsigned int getEffectiveFontSize() const;
         // TMP maxVisibleCharacters: characters past it are not drawn (-1 all)
         void setVisibleCharacters(int visibleCharacters);
         int getVisibleCharacters() const;

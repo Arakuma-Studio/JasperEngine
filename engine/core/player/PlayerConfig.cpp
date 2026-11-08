@@ -75,7 +75,8 @@ json PlayerConfig::toJson() const {
     out["window"] = {{"mode", kWindowModes[std::clamp(windowMode, 0, 2)]}, {"width", windowWidth}, {"height", windowHeight},
                      {"resizable", resizable}, {"title", title}, {"vsync", vsync}, {"icon", icon}, {"storageId", storageId}};
     out["canvas"] = {{"width", canvasWidth}, {"height", canvasHeight}, {"scaling", nameOf(kScaling, scaling)},
-                     {"textureStrategy", nameOf(kTextureStrategy, textureStrategy)}, {"pixelsPerUnit", pixelsPerUnit}};
+                     {"textureStrategy", nameOf(kTextureStrategy, textureStrategy)}, {"pixelsPerUnit", pixelsPerUnit},
+                     {"bitmapTextCacheMiB", bitmapTextCacheMiB}};
     out["loading"] = {{"scene", loadingScene}, {"delay", loadingDelay}, {"timeout", loadingTimeout}, {"async", asyncLoading}};
     out["threading"] = {{"workers", threading.workers}, {"reservedFrameWorkers", threading.reservedFrameWorkers},
                         {"ioThreads", threading.ioThreads}, {"webPumpBudgetMs", threading.webPumpBudgetMs}};
@@ -174,6 +175,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             valueOf(kScaling, canvas->value("scaling", "fitwidth"), config.scaling);
             valueOf(kTextureStrategy, canvas->value("textureStrategy", "none"), config.textureStrategy);
             config.pixelsPerUnit = canvas->value("pixelsPerUnit", 1);
+            config.bitmapTextCacheMiB = canvas->value("bitmapTextCacheMiB", 0);
         }
         if (const auto loading = in.find("loading"); loading != in.end()) {
             config.loadingScene = loading->value("scene", 0u);

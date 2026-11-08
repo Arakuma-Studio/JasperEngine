@@ -73,6 +73,8 @@ namespace jasperengine::player {
         TextureStrategy textureStrategy = TextureStrategy::NONE;
         // Project Settings > Graphics > Pixels Per Unit (S41)
         int pixelsPerUnit = 1;
+        // Project Settings > Graphics > Bitmap Text Cache (S51), 0 = the platform's default
+        int bitmapTextCacheMiB = 0;
 
         // loading
         uint32_t loadingScene = 0;         // 0: none

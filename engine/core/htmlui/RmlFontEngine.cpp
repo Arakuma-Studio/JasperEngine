@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RmlFontEngine.h"
+#include "pixelart/BitmapFont.h"
 #include "htmlui/HtmlTextEffects.h"
 
 #include "HtmlUIDependencies.h"
@@ -186,6 +187,8 @@ static std::string fontFileKey(const Rml::String& file_name){
 
 bool RmlFontEngine::LoadFontFace(const Rml::String& file_name, int face_index, bool fallback_face, Rml::Style::FontWeight weight){
     HtmlUIFileLog::recordFile(file_name);
+    if (pixelart::isBitmapFontPath(file_name))
+        return loadBitmapFace(file_name, "");
     std::string error;
     std::shared_ptr<FontFace> face = FontRegistry::getOrLoadFile(fontFileKey(file_name), face_index, &error);
     return registerLoaded(face, error, "", toWeight(weight), -1, fallback_face);
@@ -194,6 +197,8 @@ bool RmlFontEngine::LoadFontFace(const Rml::String& file_name, int face_index, b
 bool RmlFontEngine::LoadFontFace(const Rml::String& file_name, int face_index, const Rml::String& family,
                                  Rml::Style::FontStyle style, Rml::Style::FontWeight weight, bool fallback_face){
     HtmlUIFileLog::recordFile(file_name);
+    if (pixelart::isBitmapFontPath(file_name))
+        return loadBitmapFace(file_name, family);
     std::string error;
     std::shared_ptr<FontFace> face = FontRegistry::getOrLoadFile(fontFileKey(file_name), face_index, &error);
     // the style is only meaningful with a family; without one everything comes from the file
@@ -262,6 +267,16 @@ Rml::FontFaceHandle RmlFontEngine::GetFontFaceHandle(const Rml::String& family, 
     auto it = handles.find(key);
     if (it != handles.end())
         return reinterpret_cast<Rml::FontFaceHandle>(it->second.get());
+
+    // a bitmap family leads: a bitmap face, never mixed with vector fallbacks (S51 R14, R15)
+    if (!names.empty()){
+        if (std::shared_ptr<pixelart::BitmapFont> bitmap = bitmapFamilyFont(names[0])){
+            std::unique_ptr<FaceHandle> made = makeBitmapHandle(bitmap, size);
+            FaceHandle* raw = made.get();
+            handles[key] = std::move(made);
+            return reinterpret_cast<Rml::FontFaceHandle>(raw);
+        }
+    }
 
     std::unique_ptr<FaceHandle> handle(new FaceHandle());
 
@@ -569,6 +584,8 @@ int RmlFontEngine::GetStringWidth(Rml::FontFaceHandle handle, Rml::StringView st
     FaceHandle* face = toHandle(handle);
     if (!face || string.size() == 0)
         return 0;
+    if (face->bitmap)
+        return bitmapStringWidth(*face, string, context);
 
     ShapeOptions options = toShapeOptions(context);
     // (a control character before the string kerns with nothing)
@@ -831,7 +848,7 @@ bool RmlFontEngine::evictPage(PageKind kind){
 }
 
 bool RmlFontEngine::place(PageKind kind, const unsigned char* pixels, int width, int height, int& pageIndex, int& x, int& y,
-                          const FontFace& face, int size){
+                          const std::string& label, int size){
     PageList& list = pagesOf(kind);
     auto packInto = [&](size_t i) -> bool {
         Page& page = *list[i];
@@ -920,7 +937,7 @@ bool RmlFontEngine::place(PageKind kind, const unsigned char* pixels, int width,
     if (!warnedOverflow){
         warnedOverflow = true;
         Log::error("[HTML UI] a glyph of '%s' at %d px does not fit in the font atlas (%u MiB, pages of %dx%d): it is not drawn",
-                   face.getLabel().c_str(), size, (unsigned int)(budgetBytes(kind) / MiB), pageSize, pageSize);
+                   label.c_str(), size, (unsigned int)(budgetBytes(kind) / MiB), pageSize, pageSize);
     }
     return false;
 }
@@ -990,7 +1007,7 @@ const RmlFontEngine::GlyphEntry& RmlFontEngine::getGlyph(const FaceHandle& handl
     entry.yoff = yoff;
 
     int page = -1, x = 0, y = 0;
-    if (place(PageKind::BASE, bitmap.data(), width, height, page, x, y, *fontFace, handle.size)){
+    if (place(PageKind::BASE, bitmap.data(), width, height, page, x, y, fontFace->getLabel(), handle.size)){
         entry.page = page;
         entry.x = x;
         entry.y = y;
@@ -1039,7 +1056,7 @@ const RmlFontEngine::GlyphEntry& RmlFontEngine::getEffectGlyph(const FaceHandle&
     entry.yoff = bitmap.yoff;
 
     int page = -1, x = 0, y = 0;
-    if (place(PageKind::EFFECT, bitmap.rgba.data(), bitmap.width, bitmap.height, page, x, y, *fontFace, handle.size)){
+    if (place(PageKind::EFFECT, bitmap.rgba.data(), bitmap.width, bitmap.height, page, x, y, fontFace->getLabel(), handle.size)){
         entry.page = page;
         entry.x = x;
         entry.y = y;
@@ -1138,7 +1155,7 @@ void RmlFontEngine::collectDistanceGlyphs(bool wait){
             const RmlDistanceGlyph& glyph = job.task.get();
             if (glyph.width > 0 && glyph.height > 0){
                 int page = -1, x = 0, y = 0;
-                if (place(PageKind::DISTANCE, glyph.rgba.data(), glyph.width, glyph.height, page, x, y, *job.face,
+                if (place(PageKind::DISTANCE, glyph.rgba.data(), glyph.width, glyph.height, page, x, y, job.face->getLabel(),
                           (int)RmlFontMsdf::emTexels)){
                     // (place may have cleared a page and its entries: looked up again)
                     DistanceEntry& placed = distanceGlyphs[job.key];
@@ -1226,9 +1243,11 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
     if (!handle || string.size() == 0)
         return 0;
     currentManager = &render_manager;
+    const RmlFontEffects::Set* effects = reinterpret_cast<const RmlFontEffects::Set*>(font_effects_handle);
+    if (handle->bitmap)
+        return generateBitmapString(render_manager, *handle, effects, string, position, colour, opacity, text_shaping_context, mesh_list);
     collectDistanceGlyphs(false);
 
-    const RmlFontEffects::Set* effects = reinterpret_cast<const RmlFontEffects::Set*>(font_effects_handle);
     int rasterKey = 0;
     const float scale = rasterScaleOf(&render_manager, *handle, text_shaping_context, rasterKey);
     // the bitmap maps 1:1 onto device pixels at the element's own scale: quads are sized and
@@ -1532,7 +1551,7 @@ float RmlFontEngine::GetBaseRasterScale(Rml::RenderManager& render_manager){
 
 bool RmlFontEngine::PrepareGlyphs(Rml::FontFaceHandle face_handle, Rml::StringView string, const Rml::TextShapingContext& context){
     FaceHandle* handle = toHandle(face_handle);
-    if (!handle || string.size() == 0 || !renderText)
+    if (!handle || string.size() == 0 || !renderText || handle->bitmap)
         return true;
     // the frame's budget (R15, R22): 256 glyphs, 2 ms; the rest wait for the next frame
     const uint64_t frame = SystemRender::getFrameCount();
@@ -1568,7 +1587,8 @@ bool RmlFontEngine::PrepareDistanceGlyphs(Rml::FontFaceHandle face_handle, Rml::
     FaceHandle* handle = toHandle(face_handle);
     if (!handle || !currentManager || !RmlRenderer::forRenderManager(currentManager))
         return false;
-    if (string.size() == 0 || !renderText)
+    // a bitmap face has no distance glyphs: magnified nearest, never re-rasterised smooth (S51 R15)
+    if (string.size() == 0 || !renderText || handle->bitmap)
         return true;
     collectDistanceGlyphs(false);
     std::vector<uint32_t> codepoints;
@@ -1591,7 +1611,7 @@ bool RmlFontEngine::PrepareDistanceGlyphs(Rml::FontFaceHandle face_handle, Rml::
 
 bool RmlFontEngine::SupportsGpuTextShadow(Rml::FontFaceHandle face_handle, float blur_radius){
     const FaceHandle* handle = toHandle(face_handle);
-    if (!handle || !gpuEffects() || !currentManager || !RmlRenderer::forRenderManager(currentManager))
+    if (!handle || handle->bitmap || !gpuEffects() || !currentManager || !RmlRenderer::forRenderManager(currentManager))
         return false;
     // 3 sigma of the blur (sigma = radius / 2) within the distance range
     return 1.5f * std::max(blur_radius, 0.0f) <= RmlFontMsdf::reachEm * (float)handle->size;
@@ -1698,7 +1718,7 @@ bool RmlFontEngine::isGpuTextEffects(){
 }
 
 bool RmlFontEngine::hasFamily(const std::string& name){
-    return FontRegistry::hasFamily(name);
+    return FontRegistry::hasFamily(name) || isBitmapFamily(name);
 }
 
 void RmlFontEngine::setRenderTextForTesting(bool render){
@@ -1766,6 +1786,8 @@ void RmlFontEngine::retireHandles(){
 }
 
 bool RmlFontEngine::reloadFontFile(const std::string& path){
+    if (pixelart::isBitmapFontPath(path) || isBitmapDependency(path))
+        return reloadBitmapFontFile(path);
     std::string error;
     std::vector<std::shared_ptr<FontFace>> replaced;
     if (FontRegistry::reloadFile(normalizeHtmlUIPath(path), &error, &replaced) == 0){

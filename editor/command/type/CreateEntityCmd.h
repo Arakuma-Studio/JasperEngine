@@ -118,7 +118,9 @@ namespace jasperengine::editor{
         // a clip or a Sound Event, and a Mixer Snapshot action
         AUDIO_ACTION,
         SOUND_EVENT_ACTION,
-        MIXER_SNAPSHOT_ACTION
+        MIXER_SNAPSHOT_ACTION,
+        // a Text in the built-in pixel font at x1 (S51 R25)
+        TEXT_PIXEL
     };
 
     class CreateEntityCmd: public Command{

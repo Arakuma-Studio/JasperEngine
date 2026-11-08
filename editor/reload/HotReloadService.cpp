@@ -361,7 +361,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             // (an agent's write_file of a clip or a pose animation: their documents reload too,
             // and its load problems are the call's)
             // (an .aseprite an editor tool wrote: imported again like another program's save, S44 R23)
-            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "aseprite") editorWritten[kind].push_back(change.path);
+            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "aseprite" || kind == "font") editorWritten[kind].push_back(change.path);
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) editorWritten["ui"].push_back(change.path);
             continue;
         }
@@ -433,6 +433,11 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     }
     reload::reloadParticleEffects(ctx, files(external, "particles"));
     reload::reloadFonts(ctx, files(external, "font"));
+    {
+        std::vector<fs::path> bitmapFonts = both("font");
+        for (const fs::path& path : both("texture")) bitmapFonts.push_back(path);
+        reload::reloadBitmapFonts(ctx, bitmapFonts);
+    }
     reload::reloadAnimations(ctx, both("animation"), files(external, "model"), options.full);
     // another program's changes not reloaded yet (the dedupe above): the documents' own stamps
     // cannot tell a save in the same timestamp tick from the one they read

@@ -45,3 +45,13 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/window/AsepriteImporterView.cpp
         ${EDITOR_DIR}/sprite/SpritePacker.cpp
 )
+
+# S51 (Pixel Fonts): the font parts of view_asset, get_asset_info and write_file, the Bitmap Font
+# Inspector, Create > Bitmap Font, the Text Inspector's pixel rows, hot reload and cooking
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/mcp/tools/FontTools.cpp
+    ${EDITOR_DIR}/reload/handlers/BitmapFonts.cpp
+    ${EDITOR_DIR}/pixelart/BitmapFontCreate.cpp
+    ${EDITOR_DIR}/window/BitmapFontInspector.cpp
+    ${EDITOR_DIR}/window/InspectorPixelFont.cpp
+)

@@ -3,6 +3,8 @@
 
 // W4: assets, import, materials, shaders, text files, placeholder art
 #include "SpriteTools.h"
+#include "FontTools.h"
+#include "pixelart/BitmapFont.h"
 #include "sprite/SpriteSheetPool.h"
 #include "asset/AssetOps.h"
 #include "io/watch/LinkedFolders.h"
@@ -877,6 +879,10 @@ void getAssetInfoTool(const CallPtr& call) {
         Json sprite = asepriteAssetInfo(project, file, text);
         for (auto it = sprite.begin(); it != sprite.end(); ++it) data[it.key()] = it.value();
     }
+    if (kind == "font") {
+        Json font = fontAssetInfo(project, file, text);
+        for (auto it = font.begin(); it != font.end(); ++it) data[it.key()] = it.value();
+    }
     if (kind == "texture") {
         int w = 0, h = 0, c = 0;
         if (extensionOf(file) != ".svg" && stbi_info(file.string().c_str(), &w, &h, &c)) {
@@ -1111,11 +1117,20 @@ void replyImage(const CallPtr& call, const fs::path& image, const std::string& l
 }
 
 void viewAssetTool(const CallPtr& call) {
+    const int maxSize = std::clamp(call->args().value("max_size", 512), 16, 2048);
+    // the built-in pixel font has no file (S51 R16)
+    if (call->args().value("path", std::string()) == ::jasperengine::pixelart::kBuiltinPixelFont) {
+        replyFontView(call, ::jasperengine::pixelart::kBuiltinPixelFont, maxSize);
+        return;
+    }
     fs::path file;
     if (!resolveExisting(call, "path", file)) return;
     Project* project = call->ctx().project();
     const std::string rel = projectRelative(project, file);
-    const int maxSize = std::clamp(call->args().value("max_size", 512), 16, 2048);
+    if (isFontViewPath(rel)) {
+        replyFontView(call, fontEnginePath(project, file), maxSize);
+        return;
+    }
     if (Util::isImageFile(rel) && extensionOf(file) != ".svg") {
         replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json(),
                    spriteNormalsAssetInfo(project, file, false));
@@ -1422,6 +1437,9 @@ void writeFileTool(const CallPtr& call) {
         text += shakeWarnings.empty() ? std::string(" Valid shake preset.") : " Shake preset loads with " + std::to_string(shakeWarnings.size()) +
                                                                             " warning(s) (bad values repaired):";
         for (size_t i = 0; i < shakeWarnings.size() && i < 8; i++) text += "\n" + shakeWarnings[i];
+    } else if (extensionOf(file) == ".bitmapfont") {
+        Json font = fontWriteReport(project, file, content, text);
+        for (auto it = font.begin(); it != font.end(); ++it) data[it.key()] = it.value();
     } else if (Util::isAnimationClipFile(rel)) {
         data["warnings"] = clipWarnings;
         text += clipWarnings.empty() ? std::string(" Valid clip.") : " Clip loads with " + std::to_string(clipWarnings.size()) + " warning(s) (the bad parts are dropped):";
@@ -4143,6 +4161,7 @@ void registerAssetTools(McpRegistry& registry) {
             "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "audio format/duration; .material fields, "
             ".anim clip settings, tracks, events, users; .vat clips, staleness, users; .aseprite layers, tags, slices, outputs; "
+            "font metrics, glyphs, pixel report; "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
@@ -4157,10 +4176,13 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "View Asset";
         tool.description =
             "See an image asset as PNG image content; models, materials and prefabs give their Project window "
-            "thumbnail (may take seconds); .aseprite frames as a sheet. SVGs are not rasterized.";
+            "thumbnail (may take seconds); .aseprite frames as a sheet; fonts: the glyph grid, or `text` drawn at whole `scale`. "
+            "SVGs are not rasterized.";
         tool.inputSchema = object({
             {"path", assetPath("")},
-            {"max_size", withDefault(integer("Longest side, px.", 16, 2048), 512)}
+            {"max_size", withDefault(integer("Longest side, px.", 16, 2048), 512)},
+            {"text", string("Fonts: \\n for lines, at most 256.")},
+            {"scale", integer("Fonts: default the largest fitting.", 1, 16)}
         }, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -4191,7 +4213,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Write File";
         tool.description =
             "Create or change a project text file (undo scope project; for clients without file access) and "
-            "validate it: Lua syntax, forks using it recompiled (errors with lines), materials, .anim and .vat parsed. content = "
+            "validate it: Lua syntax, forks using it recompiled (errors with lines), materials, .anim, .vat, .bitmapfont parsed. content = "
             "whole file, or edits [{old_text, new_text}] (old_text must match once unless replace_all). Refuses "
             "project.yaml, .scene, .prefab and files with unsaved code editor edits.";
         tool.inputSchema = object({

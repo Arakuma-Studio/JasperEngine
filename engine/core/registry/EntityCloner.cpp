@@ -466,6 +466,7 @@ template<>
 void prepare<TextComponent>(TextComponent& text, Entity, CloneContext&) {
     text.loaded = false;
     text.stbtext.reset();
+    text.bitmapText.reset();
     text.atlasVersion = 0;
     text.needReloadAtlas = false;
     text.needUpdateText = true;

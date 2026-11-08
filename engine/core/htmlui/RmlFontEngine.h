@@ -24,6 +24,10 @@
 #include <unordered_set>
 #include <vector>
 
+namespace jasperengine::pixelart {
+    class BitmapFont;
+}
+
 namespace jasperengine {
 
     class FontFace;
@@ -195,6 +199,9 @@ namespace jasperengine {
             Rml::FontMetrics metrics = {};
             int version = 1;
             int epoch = 0;                 // the engine epoch version last saw
+            // a bitmap face (S51 R15): its font and pixel scale k; then chain and faces are empty
+            std::shared_ptr<pixelart::BitmapFont> bitmap;
+            int pixelScale = 0;
         };
 
         struct GlyphKey {
@@ -308,7 +315,7 @@ namespace jasperengine {
         // packs a bitmap into a page of the kind with room (a new page within the budget, else
         // the least recently used page cleared); false (logged once) when it fits no page
         bool place(PageKind kind, const unsigned char* pixels, int width, int height, int& page, int& x, int& y,
-                   const FontFace& face, int size);
+                   const std::string& label, int size);
         PageList& pagesOf(PageKind kind);
         size_t budgetBytes(PageKind kind) const;
         size_t usedBytes(PageKind kind) const;
@@ -369,6 +376,26 @@ namespace jasperengine {
         void retryDeferredGlyphs();
 
         Rml::FontMetrics emptyMetrics = {};
+
+        // bitmap faces (S51 R15, RmlFontEngineBitmap.cpp): registered by family, drawn from the
+        // same pages at d = max(1, round(k * raster scale)) device pixels per font pixel, never as
+        // distance glyphs or re-rasterised under a transform
+        bool loadBitmapFace(const std::string& file, const std::string& family);
+        std::unique_ptr<FaceHandle> makeBitmapHandle(const std::shared_ptr<pixelart::BitmapFont>& font, int size);
+        int bitmapStringWidth(const FaceHandle& handle, Rml::StringView string, const Rml::TextShapingContext& context) const;
+        int generateBitmapString(Rml::RenderManager& renderManager, FaceHandle& handle, const RmlFontEffects::Set* effects, Rml::StringView string,
+                                 Rml::Vector2f position, Rml::ColourbPremultiplied colour, float opacity, const Rml::TextShapingContext& context,
+                                 Rml::TexturedMeshList& meshList);
+        // a bitmap glyph at d device px per font px: style 0 the glyph, 1 its mask (white), 16 * w + n a
+        // pixel outline of w font px through n neighbours
+        const GlyphEntry& bitmapGlyph(const FaceHandle& handle, uint32_t codepoint, int d, int style);
+        bool reloadBitmapFontFile(const std::string& path);
+    public:
+        // a family @font-face registered with a .bitmapfont or .fnt source, and its font
+        static bool isBitmapFamily(const std::string& family);
+        static std::shared_ptr<pixelart::BitmapFont> bitmapFamilyFont(const std::string& family);
+        // a file a registered bitmap face read (its sheet, pages): a change reloads the face
+        static bool isBitmapDependency(const std::string& path);
     };
 
 }

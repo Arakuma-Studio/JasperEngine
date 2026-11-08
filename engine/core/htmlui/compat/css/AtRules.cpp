@@ -172,7 +172,9 @@ namespace {
 
     bool usableFormat(const std::string& format){
         return format == "truetype" || format == "opentype" || format == "ttf" || format == "otf" || format == "ttc" ||
-               format == "collection" || format == "truetype-variations" || format == "opentype-variations";
+               format == "collection" || format == "truetype-variations" || format == "opentype-variations" ||
+               // a bitmap font (S51 R15): the engine's own .bitmapfont and AngelCode BMFont
+               format == "bitmapfont" || format == "fnt";
     }
 
     std::string extensionOf(const std::string& url){
@@ -330,6 +332,8 @@ namespace {
         while (!assetPath.empty() && assetPath[0] == '/')
             assetPath.erase(0, 1);
         session.result->declaredFontFamilies.push_back(family);
+        if (chosen->format == "bitmapfont" || chosen->format == "fnt")
+            session.result->bitmapFontFamilies.push_back(family);
         writer.atRule("@font-face {", rule.ref);
         writer.atRule("font-family: " + family + ";", familyRef);
         writer.atRule("src: " + assetPath + ";", srcRef);

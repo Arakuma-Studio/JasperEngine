@@ -674,6 +674,8 @@ namespace {
                 case RefStep::Font: {
                     FontArray& fonts = *static_cast<FontArray*>(value);
                     for (size_t i = 0; i < fonts.size(); i++) {
+                        // an engine font ("builtin:pixel", S51 R16) is no file
+                        if (fonts[i].path.compare(0, 8, "builtin:") == 0) continue;
                         pathChanged |= visit.asset(fonts[i], rows[node.row], path + "[" + std::to_string(i) + "]");
                     }
                     break;
@@ -864,6 +866,8 @@ namespace {
             if (paths && paths.IsSequence()) {
                 const YAML::Node guids = node["guids"];
                 for (size_t face = 0; face < paths.size(); face++) {
+                    // an engine font ("builtin:pixel", S51 R16) is no file
+                    if (scalar(paths[face]).compare(0, 8, "builtin:") == 0) continue;
                     const Guid guid = guids && guids.IsSequence() && face < guids.size() ? Guid::parse(scalar(guids[face])) : Guid();
                     found(row, AssetRef(scalar(paths[face]), guid), field, static_cast<uint32_t>(face));
                 }
