@@ -318,7 +318,6 @@ namespace jasperengine{
 		// how the colour pass stored what the composite reads: x 1 = linear light (the shaper's code,
 		// under the post-processing colour), 0 = display-encoded, as drawn
 		Vector4 sceneEncoding;
-		Vector4 clearColor; // rgb = the clear colour as stored, w 1 = the composite passes it through
 	} fs_composite_t;
 
 	// What the SSR G-buffer pass of a view last drew (RenderSystem::getSSRStats): the reflection
@@ -1899,12 +1898,21 @@ namespace jasperengine{
 		// composite (post_color.glsl), and the composite's own (the scene's), else neutral
 		post_color_t ssrCompositePostColor;
 		bool ssrLinearStore = false;
-		bool ssrClearColorShown = false;  // no sky: the clear colour shows where nothing is drawn
+		// the shaper code the linear store clears to, which the tail turns back into the clear colour,
+		// for the clear colour and tail LUT (postTailLutVersion) it was found for
+		struct SSRStoredClear{
+			Vector3 display;
+			Vector3 code;
+			uint32_t version = 0;
+			bool valid = false;
+		} ssrStoredClear;
+		uint32_t postTailLutVersion = 0;
+		Vector3 ssrStoredClearColor(const Vector3& clear);
 		// the linear store's LUT (its texels their coordinates), bound in place of the scene's while
 		// the colour pass stores linear light (passPostColorLut; null: the scene's)
 		static constexpr int SSR_IDENTITY_LUT_SIDE = 16;
 		TextureRender ssrIdentityLut;
-		bool ssrIdentityLutReady = false;
+		bool ssrIdentityLutFailed = false;
 		TextureRender* passPostColorLut = nullptr;
 		bool ensureSSRIdentityLut();
 		std::pair<int, int> compositeProbeSlots[SSR_PROBE_SLOTS]; // u_probeTexture0..3

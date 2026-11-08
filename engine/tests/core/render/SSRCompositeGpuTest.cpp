@@ -21,6 +21,7 @@
 #include "object/environment/ReflectionProbe.h"
 #include "object/environment/Skybox.h"
 #include "shader/ShaderUniforms.h"
+#include "profiler/GpuMemory.h"
 #include "render/SystemRender.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -785,6 +786,20 @@ namespace {
         return TextureData(SIZE, SIZE, (unsigned int)pixels.size(), ColorFormat::RGBA, 4, pixels.data());
     }
 
+    // the root mean square of the channel differences
+    double ssrRms(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
+        double sum = 0.0;
+        size_t count = 0;
+        for (size_t i = 0; i + 3 < a.size() && i + 3 < b.size(); i += 4){
+            for (int c = 0; c < 3; c++){
+                const double d = (int)a[i + c] - (int)b[i + c];
+                sum += d * d;
+                count++;
+            }
+        }
+        return count ? std::sqrt(sum / (double)count) : 0.0;
+    }
+
     // the passes of the last frame
     PassList ssrPasses(){
         SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
@@ -945,6 +960,7 @@ TEST_F(SSRCompositeGpu, ToneCurveKeepsPixelsWithoutReflection){
     ssrWriteImage("tone-curve-no-reflection-diff-x16", ssrDiffImage(on, off, 16));
     // the linear store's dither: a step of noise per pixel, nothing on average
     EXPECT_LE(ssrMeasured("tone curve, SSR on against off", ssrMaxDiff(on, off)), 3);
+    std::printf("[measured] tone curve, SSR on against off, RMS: %.2f/255\n", ssrRms(on, off));
     const double blocks = ssrBlockMeanDiff(on, off, [](size_t){ return true; });
     std::printf("[measured] tone curve, SSR on against off, 8 x 8 means: %.2f/255\n", blocks);
     EXPECT_LE(blocks, 1.5);
@@ -1070,7 +1086,8 @@ TEST_F(SSRCompositeGpu, AGradientSkyDoesNotBandUnderAToneCurve){
     // the sky above the box
     const size_t skyEnd = (size_t)pixelOf(Vector3(0.0f, 2.2f, -4.0f)) / GpuEnvironment::target().getWidth() * GpuEnvironment::target().getWidth();
     const double blocks = ssrBlockMeanDiff(on, off, [skyEnd](size_t p){ return p < skyEnd; });
-    std::printf("[measured] gradient sky, SSR on against off: 8 x 8 means %.2f/255, pixels %d/255\n", blocks, ssrMaxDiff(on, off));
+    std::printf("[measured] gradient sky, SSR on against off: 8 x 8 means %.2f/255, pixels %d/255, RMS %.2f/255\n", blocks, ssrMaxDiff(on, off),
+                ssrRms(on, off));
     EXPECT_LE(blocks, 1.0);
     EXPECT_NO_ENGINE_ERRORS();
 }
@@ -1103,9 +1120,13 @@ TEST_F(SSRCompositeGpu, SurfacesOutsideTheGBufferTakeTheToneCurve){
             pixels.push_back(boxPixel + (size_t)((long)dy * width + dx));
     ssrWriteImage("outside-gbuffer", outside);
     EXPECT_LE(ssrMeasured("a surface outside the G-buffer, under ACES", ssrMaxDiff(inGBuffer, outside, pixels)), 3);
-    // and the clear colour is as it was cleared
+    // and the clear colour comes back as it was set (stored as the code the curve turns into it)
     const size_t backgroundPixel = (size_t)width * 4 + 4;
-    EXPECT_NEAR((int)outside[backgroundPixel * 4], (int)std::lround(0.08f * 255.0f), 1);
+    std::printf("[measured] the clear colour under ACES: %d, %d, %d (set: %ld)\n", (int)outside[backgroundPixel * 4],
+                (int)outside[backgroundPixel * 4 + 1], (int)outside[backgroundPixel * 4 + 2], std::lround(0.08f * 255.0f));
+    for (int c = 0; c < 2; c++)
+        EXPECT_NEAR((int)outside[backgroundPixel * 4 + c], (int)std::lround(0.08f * 255.0f), 2);
+    EXPECT_NEAR((int)outside[backgroundPixel * 4 + 2], (int)std::lround(0.1f * 255.0f), 2);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -1230,5 +1251,136 @@ TEST_F(SSRCompositeGpu, TurningSSROffFreesItsTargets){
     const RenderStats off = SystemRender::getRenderStats(SystemRender::FRAME_STATS_FRAME);
     // the G-buffer (four targets and its depth), the scene colour and its depth, the march, the blur
     EXPECT_LE(off.aliveImages + 8, on.aliveImages) << on.aliveImages << " images with SSR, " << off.aliveImages << " without";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// No sky, under the tone curve: the clear colour is stored as the code the curve turns back into
+// it, so what shows of it through a library mesh's clipped pixels (solid in the G-buffer) comes out
+// as it was set, as without SSR
+TEST_F(SSRCompositeGpu, TheClearColourShowsThroughClippedHoles){
+    JASPER_REQUIRE_GPU();
+    PostProcessingSettings post = scene.getPostProcessing();
+    post.tonemap = TonemapMode::ACES;
+    post.exposure = 1.0f;
+    scene.setPostProcessing(post);
+    build(0.9f);
+    // a quad in the background, every pixel clipped (its alpha under the cutoff)
+    Primitive cutout(&scene);
+    cutout.createPlane(4.0f, 2.0f);
+    cutout.setRotation(90.0f, 0.0f, 0.0f);
+    cutout.setPosition(0.0f, 3.0f, -8.0f);
+    Material material;
+    material.name = "Cut out";
+    material.shader = "library:unlit";
+    material.shaderFeatures = {"ALPHA_CLIP"};
+    material.cullMode = MaterialCullMode::OFF;
+    ShaderUniforms::set(material.shaderParams, "baseColor", Vector4(1.0f, 0.0f, 0.0f, 0.2f));
+    ShaderUniforms::set(material.shaderParams, "alphaCutoff", Vector4(0.5f, 0.0f, 0.0f, 0.0f));
+    cutout.setMaterial(material);
+    ASSERT_TRUE(render());
+    const std::vector<uint8_t> on = shot(VIEW_OFF);
+    scene.setSSREnabled(false);
+    ASSERT_TRUE(render(5));
+    const std::vector<uint8_t> off = ssrReadTarget();
+    const size_t hole = pixelOf(Vector3(0.0f, 3.0f, -8.0f));
+    std::vector<size_t> pixels;
+    const int width = (int)GpuEnvironment::target().getWidth();
+    for (int dy = -6; dy <= 6; dy++)
+        for (int dx = -6; dx <= 6; dx++)
+            pixels.push_back(hole + (size_t)((long)dy * width + dx));
+    ssrWriteImage("clipped-holes", on);
+    EXPECT_LE(ssrMeasured("the clear colour through clipped pixels, under ACES", ssrMaxDiff(on, off, pixels)), 2);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// ... and on a multisampled edge against it: the resolve mixes stored codes only (the clear
+// colour's too), so an outline pixel lies between the box and the clear colour on either side,
+// no halo. (Its weighting differs from the image without SSR, whose resolve mixes display colour:
+// the store's space is not the display's; printed, not a halo)
+TEST_F(SSRCompositeGpu, MultisampledEdgesAgainstTheClearColourHaveNoHalo){
+    JASPER_REQUIRE_GPU();
+    PostProcessingSettings post = scene.getPostProcessing();
+    post.tonemap = TonemapMode::ACES;
+    post.exposure = 1.0f;
+    post.msaaSamples = 4;
+    scene.setPostProcessing(post);
+    build(0.9f);
+    // a lit box floating against the clear colour, turned so its sides slant across the pixels
+    Primitive floating(&scene);
+    floating.createBox(2.0f, 1.5f, 1.5f);
+    floating.setPosition(0.0f, 3.0f, -8.0f);
+    floating.setRotation(0.0f, 0.0f, 20.0f);
+    Material material = floating.getMaterial();
+    material.baseColorFactor = Vector4(0.9f, 0.8f, 0.3f, 1.0f);
+    floating.setMaterial(material);
+    ASSERT_TRUE(render());
+    const std::vector<uint8_t> on = shot(VIEW_OFF);
+    scene.setSSREnabled(false);
+    ASSERT_TRUE(render(5));
+    const std::vector<uint8_t> off = ssrReadTarget();
+    // the pixels on its outline (some of their samples on it, some on the clear colour)
+    const int width = (int)GpuEnvironment::target().getWidth();
+    const int height = (int)GpuEnvironment::target().getHeight();
+    std::vector<size_t> edges;
+    const int clearRed = (int)std::lround(0.08f * 255.0f);
+    for (int y = 1; y < height - 1; y++){
+        for (int x = 1; x < width - 1; x++){
+            const size_t p = (size_t)y * width + x;
+            const int r = off[p * 4];
+            if (r > clearRed + 6 && r < (int)off[(p + 1) * 4] - 6 && off[(p - 1) * 4] <= clearRed + 1)
+                edges.push_back(p);
+            if (r > clearRed + 6 && r < (int)off[(p - 1) * 4] - 6 && off[(p + 1) * 4] <= clearRed + 1)
+                edges.push_back(p);
+        }
+    }
+    ASSERT_GE(edges.size(), 20u) << "the box's sides against the clear colour";
+    ssrWriteImage("msaa-edges-with-ssr", on);
+    ssrWriteImage("msaa-edges-without-ssr", off);
+    ssrMeasured("multisampled edges against the clear colour, against the image without SSR", ssrMaxDiff(on, off, edges));
+    // how far an outline pixel strays outside its two neighbours' range (a halo), in the image with SSR
+    int halo = 0;
+    for (size_t p : edges){
+        for (int c = 0; c < 3; c++){
+            const int left = on[(p - 1) * 4 + c];
+            const int right = on[(p + 1) * 4 + c];
+            const int own = on[p * 4 + c];
+            halo = std::max(halo, std::max(std::min(left, right) - own, own - std::max(left, right)));
+        }
+    }
+    EXPECT_LE(ssrMeasured("multisampled edges against the clear colour, outside their neighbours", halo), 3);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// An exported build (no engine target: the swapchain) with the uber pass at a render scale under
+// 1: the SSR targets are made once at the scaled size, not remade every frame
+TEST_F(SSRCompositeGpu, ScaledSwapchainBuildsKeepTheirSSRTargets){
+    JASPER_REQUIRE_GPU();
+    PostProcessingSettings post = scene.getPostProcessing();
+    post.renderScale = 0.5f;
+    scene.setPostProcessing(post);
+    build();
+    ASSERT_TRUE(render());
+    Engine::setFramebuffer(nullptr);
+    GpuEnvironment::drawFrames(3);
+    auto sceneColourImages = [](){
+        std::vector<uint32_t> ids;
+        for (const gpumem::Allocation& allocation : gpumem::report(true, false).allocations){
+            if (allocation.image && (allocation.label.find("Scene colour") != std::string::npos ||
+                    allocation.owner.find("Scene colour") != std::string::npos))
+                ids.push_back(allocation.id);
+        }
+        std::sort(ids.begin(), ids.end());
+        return ids;
+    };
+    const std::vector<uint32_t> first = sceneColourImages();
+    size_t remade = 0;
+    for (int frame = 0; frame < 5; frame++){
+        GpuEnvironment::drawFrames(1);
+        remade += sceneColourImages() != first ? 1u : 0u;
+    }
+    Engine::setFramebuffer(&GpuEnvironment::target());
+    ASSERT_TRUE(render(3));
+    EXPECT_FALSE(first.empty()) << "SSR draws into a scene colour target";
+    EXPECT_EQ(remade, 0u) << "frames whose scene colour target was made again";
     EXPECT_NO_ENGINE_ERRORS();
 }

@@ -1061,7 +1061,7 @@ void RenderSystem::destroy(){
     postTailLut.destroyTexture();
     postTailLutSize = 0;
     ssrIdentityLut.destroyTexture();
-    ssrIdentityLutReady = false;
+    ssrIdentityLutFailed = false;
     passPostColorLut = nullptr;
     postGradeLut.destroyTexture();
     postGradeLutSize = 0;
@@ -4597,6 +4597,9 @@ void RenderSystem::bakePostColorLut(TextureRender& texture, int& textureSize, Po
             return;
         textureSize = n;
     }
+    // (the colour the linear store clears to follows the tail: ssrStoredClearColor)
+    if (stage != PostColorLut::Stage::GRADE)
+        postTailLutVersion++;
     // the shaper domain's k (the display domain has none)
     float shaper = 1.0f;
     if (stage != PostColorLut::Stage::GRADE){
@@ -5392,19 +5395,28 @@ TextureRender* RenderSystem::currentPostColorLut(){
     return postTailLut.isCreated() ? &postTailLut : &emptyWhite;
 }
 
+Vector3 RenderSystem::ssrStoredClearColor(const Vector3& clear){
+    if (ssrStoredClear.valid && ssrStoredClear.version == postTailLutVersion && ssrStoredClear.display == clear)
+        return ssrStoredClear.code;
+    const PostColorLut::Stage stage = postTiers.tailGrade ? PostColorLut::Stage::ALL : PostColorLut::Stage::CURVE;
+    ssrStoredClear.code = PostColorLut::invert(scene->getPostProcessing(), postLut.get(), stage, clear, postTailShaper);
+    ssrStoredClear.display = clear;
+    ssrStoredClear.version = postTailLutVersion;
+    ssrStoredClear.valid = true;
+    return ssrStoredClear.code;
+}
+
 bool RenderSystem::ensureSSRIdentityLut(){
-    if (ssrIdentityLutReady)
+    if (ssrIdentityLut.isCreated())
         return true;
+    // made once (and logged once when it cannot be: the store is then not used)
+    if (ssrIdentityLutFailed)
+        return false;
     // a strip LUT (post_color.glsl samplePostColorLut) of side N whose texels are their own
     // coordinates, and linear filtering between them reproduces any input. Half floats: an
     // 8-bit texture's filtering may round its result to 8 bits (llvmpipe does), which would
     // quantise the code before the dither
     constexpr int n = SSR_IDENTITY_LUT_SIDE;
-    if (!ssrIdentityLut.isCreated()){
-        JE_GPU_ALLOC_SCOPE(PostFX, "SSR identity LUT");
-        if (!ssrIdentityLut.createDynamicTexture("SSR identity LUT", n * n, n, ColorFormat::RGBA16F, TextureFilter::LINEAR))
-            return false;
-    }
     std::vector<uint16_t> pixels((size_t)n * n * n * 4);
     for (int g = 0; g < n; g++){
         for (int x = 0; x < n * n; x++){
@@ -5415,8 +5427,16 @@ bool RenderSystem::ensureSSRIdentityLut(){
             p[3] = floatToHalf(1.0f);
         }
     }
-    ssrIdentityLutReady = ssrIdentityLut.updateTexture(pixels.data(), pixels.size() * sizeof(uint16_t));
-    return ssrIdentityLutReady;
+    void* data[1] = {pixels.data()};
+    size_t size[1] = {pixels.size() * sizeof(uint16_t)};
+    JE_GPU_ALLOC_SCOPE(PostFX, "SSR identity LUT");
+    if (!ssrIdentityLut.createTexture("SSR identity LUT", n * n, n, ColorFormat::RGBA16F, TextureType::TEXTURE_2D, 1, data, size,
+                                      TextureFilter::LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE)){
+        ssrIdentityLutFailed = true;
+        Log::warn("SSR: no identity LUT for the linear store; SSR under the post-processing colour swaps in display colour");
+        return false;
+    }
+    return true;
 }
 
 void RenderSystem::applySceneInputs(ObjectRender& render, const ShaderLibraryBindings& bindings){
@@ -12007,6 +12027,8 @@ void RenderSystem::destroySSR(){
         ssrBlurRender.destroy();
         compositeRender.destroy();
     }
+    ssrIdentityLut.destroyTexture();
+    ssrIdentityLutFailed = false;
     if (ssrShader){
         ssrShader.reset();
         ShaderPool::remove(ShaderType::SSR, 0);
@@ -12179,6 +12201,9 @@ void RenderSystem::releaseSSRTargets(){
         rv().ssrBlurFramebuffer.destroy();
     rv().ssrWidth = 0;
     rv().ssrHeight = 0;
+    // (the linear store's LUT is the scene's, kept while SSR is on in some view)
+    if (!scene->isSSREnabled())
+        ssrIdentityLut.destroyTexture();
 }
 
 TextureRender* RenderSystem::renderSSRReflections(CameraComponent& camera){
@@ -12294,10 +12319,6 @@ void RenderSystem::fillSSRComposite(CameraComponent& camera, bool flipDestinatio
     // how the colour pass stored the scene: linear light under the post-processing colour, which
     // the composite then applies (its own block), else display-encoded and passed through
     fs_composite.sceneEncoding = Vector4(ssrLinearStore ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
-    // the clear colour as an RGBA8 target holds it
-    const Vector4 clear = scene->getBackgroundColor();
-    auto stored = [](float c){ return std::round(std::clamp(c, 0.0f, 1.0f) * 255.0f) / 255.0f; };
-    fs_composite.clearColor = Vector4(stored(clear.x), stored(clear.y), stored(clear.z), (ssrLinearStore && ssrClearColorShown) ? 1.0f : 0.0f);
 }
 
 void RenderSystem::drawSSRComposite(const RenderTargetFormat& target, TextureRender* reflection, TextureRender* prefiltered){
@@ -16725,6 +16746,12 @@ void RenderSystem::updateSwapchainRedirect(){
             && Engine::getBaseScene() == scene && Engine::isViewLoaded()){
         unsigned int w = (unsigned int)Engine::getViewRect().getWidth();
         unsigned int h = (unsigned int)Engine::getViewRect().getHeight();
+        // the size the camera pass makes them at: with the uber pass, its scene's (the render scale)
+        if (postTiers.uber){
+            const float renderScale = getAppliedRenderScale();
+            w = (unsigned int)std::max(1L, std::lround(Engine::getViewRect().getWidth() * renderScale));
+            h = (unsigned int)std::max(1L, std::lround(Engine::getViewRect().getHeight() * renderScale));
+        }
 
         // the meshes render with PIP_RTT (flipped on GL) while it is on, so the
         // redirect only starts once everything it needs exists
@@ -18514,8 +18541,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     bool ssrInPass = useSSR && sortsByDistance(camera);
     FramebufferRender* ssrPassTarget = nullptr;
     TextureRender* ssrReflection = nullptr;
-    // the SSR targets of a view that draws no SSR go (SSR off; a pass without SSR's conditions)
-    if (isMainCamera && (isBaseLayer() || pass.renderToTexture) && !useSSR)
+    // the SSR targets of a view that draws no SSR go (SSR off; a pass without SSR's conditions),
+    // a layer scene's too
+    if (isMainCamera && !useSSR)
         releaseSSRTargets();
 
     // the packed opaque depth of this pass another effect draws (the G-buffer, the SSAO or
@@ -18751,6 +18779,31 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // that pass keeps it (a split pass)
     const bool oitPlanned = offscreenTarget && distanceSort && usesOit(camera, passMsaa);
 
+    // the Video Players on this camera's planes (Unity's CameraFarPlane / CameraNearPlane), drawn
+    // below: the far plane replaces the background (after the clear and the sky, under the opaque
+    // queue: no depth test or write); the near one goes over the scene, under the UI. Game
+    // cameras only (not the editor's Scene view)
+    VideoPlayerSystem* videoPlanes = scene->findSystem<VideoPlayerSystem>().get();
+    const Entity videoCamera = pass.entity != NULL_ENTITY ? pass.entity : (isMainCamera ? scene->getCamera() : NULL_ENTITY);
+    bool videoPlanesAllowed = videoPlanes && videoCamera != NULL_ENTITY;
+#ifdef JASPERENGINE_EDITOR
+    videoPlanesAllowed = videoPlanesAllowed && !passDrawsOverlays;
+#endif
+    // the picture's first row at the top: GL's destinations stored bottom row first take it flipped
+    const bool videoFlipY = Engine::isOpenGL() && !isRenderingFlipped(camera);
+    const bool videoFarPlanes = videoPlanesAllowed && videoPlanes->hasCameraPlanes(true);
+
+    // The SSR composite inside this pass, under the post-processing colour: the colour pass up to
+    // the composite stores linear light, its own post-processing colour with an identity LUT and
+    // no vignette (the shaper's code: the range the tone curve takes, in 8 bits, dithered against
+    // banding), so the composite swaps in linear light and applies the scene's post-processing
+    // colour to every pixel, as the colour pass would have. The clear colour is stored too, as the
+    // code the post-processing colour turns back into it, so the composite needs no exception for
+    // it (holes in clipped meshes, multisampled edges). A far-plane video (display colour) keeps
+    // the display colour and its swap.
+    const bool ssrStore = ssrInPass && postTiers.tailColor && isMainCamera && (isBaseLayer() || pass.renderToTexture) &&
+        rv().postProcessing && postTailLut.isCreated() && !videoFarPlanes && ensureSSRIdentityLut();
+
     if (isBaseLayer() || pass.renderToTexture){
         Vector4 clear = scene->getBackgroundColor();
 #ifdef JASPERENGINE_EDITOR
@@ -18758,6 +18811,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         if (isMainCamera && rv().drawMode == ViewDrawMode::OVERDRAW)
             clear = Vector4(0.0f, 0.0f, 0.0f, 1.0f);
 #endif
+        if (ssrStore){
+            const Vector3 code = ssrStoredClearColor(Vector3(clear.x, clear.y, clear.z));
+            clear = Vector4(code.x, code.y, code.z, clear.w);
+        }
         camera.render.setClearColor(clear);
     } else {
         // When drawing a scene as an Engine layer, don't clear the color buffer.
@@ -19090,42 +19147,19 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         passLodFade = LodFadePass::ALL;
     }
 
-    // the Video Players on this camera's planes (Unity's CameraFarPlane / CameraNearPlane), drawn
-    // below: the far plane replaces the background (after the clear and the sky, under the opaque
-    // queue: no depth test or write); the near one goes over the scene, under the UI. Game
-    // cameras only (not the editor's Scene view)
-    VideoPlayerSystem* videoPlanes = scene->findSystem<VideoPlayerSystem>().get();
-    const Entity videoCamera = pass.entity != NULL_ENTITY ? pass.entity : (isMainCamera ? scene->getCamera() : NULL_ENTITY);
-    bool videoPlanesAllowed = videoPlanes && videoCamera != NULL_ENTITY;
-#ifdef JASPERENGINE_EDITOR
-    videoPlanesAllowed = videoPlanesAllowed && !passDrawsOverlays;
-#endif
-    // the picture's first row at the top: GL's destinations stored bottom row first take it flipped
-    const bool videoFlipY = Engine::isOpenGL() && !isRenderingFlipped(camera);
-    const bool videoFarPlanes = videoPlanesAllowed && videoPlanes->hasCameraPlanes(true);
-
     auto skys = scene->getComponentArray<SkyboxComponent>();
     bool skyDrawn = skys->size() > 0;
 #ifdef JASPERENGINE_EDITOR
     // (the Overdraw Draw Mode shows the meshes' layers alone)
     skyDrawn = skyDrawn && rv().drawMode != ViewDrawMode::OVERDRAW;
 #endif
-    const bool skyVisible = skyDrawn && skys->getComponentFromIndex(0).visible;
 
-    // The SSR composite inside this pass, under the post-processing colour: the colour pass up to
-    // the composite stores linear light, its own post-processing colour with an identity LUT and
-    // no vignette (the shaper's code: the range the tone curve takes, in 8 bits, dithered against
-    // banding), so the composite swaps in linear light and applies the scene's post-processing
-    // colour to every pixel, as the colour pass would have, the sky's included. The clear colour,
-    // display colour, is told by its value where the G-buffer has no surface and passed through.
-    // A far-plane video (display colour too) keeps the display colour and its swap.
+    // the linear store's post-processing colour (ssrStore, above): the scene's kept for the composite
     ssrLinearStore = false;
-    ssrClearColorShown = false;
     passPostColorLut = nullptr;
     ssrCompositePostColor = ssrNeutralPostColor();
-    if (ssrInPass && passPostColorActive && !videoFarPlanes && ensureSSRIdentityLut()){
+    if (ssrStore && passPostColorActive){
         ssrLinearStore = true;
-        ssrClearColorShown = !skyVisible;
         ssrCompositePostColor = passPostColors[POST_BLEND_OWN];
         post_color_t stored = ssrCompositePostColor;
         stored.params.w = (float)SSR_IDENTITY_LUT_SIDE;

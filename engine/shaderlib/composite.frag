@@ -16,10 +16,10 @@
 // in linear light: the scene is decoded as the colour pass stored it (comp.sceneEncoding). Under
 // the post-processing colour the colour pass stores linear light: its post-processing colour
 // with an identity LUT, the shaper's code sqrt(x / (x + k)) of includes/post_color.glsl,
-// dithered; this pass decodes it and applies the tone curve, the grade, the vignette and the
-// dither to every pixel (its own u_fs_postColor and LUT, the scene's), as the colour pass would
-// have, but the clear colour's (no sky), passed through. Else the colour pass's sRGB-encoded
-// colour is swapped in linear light and passed through elsewhere.
+// dithered, the clear colour included (as the code that comes back to it); this pass decodes
+// every pixel and applies the tone curve, the grade, the vignette and the dither (its own
+// u_fs_postColor and LUT, the scene's), as the colour pass would have. Else the colour pass's
+// sRGB-encoded colour is swapped in linear light and passed through elsewhere.
 //
 // A fullscreen pass fragment at v_texcoord t writes destination texel t and samples
 // scene/SSR (composite space) at t, flipped by params.w when the destination is the
@@ -67,7 +67,6 @@ uniform u_fs_compositeParams {
     vec4 probeBoxMin[SSR_PROBE_SLOTS];   // xyz = influence AABB min, w = intensity
     vec4 probeBoxMax[SSR_PROBE_SLOTS];   // xyz = influence AABB max, w = max mip LOD (0 = unfiltered)
     vec4 sceneEncoding; // x 1 = the colour pass stored linear light
-    vec4 clearColor;    // rgb = the clear colour as stored, w 1 = it is display colour, passed through
 } comp;
 
 #include "includes/depth_util.glsl"
@@ -181,34 +180,37 @@ vec3 storedToLinearLight(vec3 stored){
     return POST_COLOR_BLOCK.postColor_shaper.x * s2 / (1.0 - s2);
 }
 
-// a background pixel the clear colour holds as it was cleared (display colour)
-bool isClearColor(vec3 stored, bool background){
-    return background && comp.clearColor.w > 0.5 && all(lessThan(abs(stored - comp.clearColor.rgb), vec3(1.5 / 255.0)));
-}
-
 // the colour pass's stored colour in linear light
 vec3 storedToLinear(vec3 stored){
     return linearStore() ? storedToLinearLight(stored) : sRGBToLinear(stored);
 }
 
+// the scene's post-processing colour (post_color.glsl's postColorEncode), its dither on another
+// pattern than the linear store's, so the two do not add up on the same pixels
+vec3 encodeTail(vec3 linearColor){
+    vec3 color = postColorLut(linearColor);
+    color = mix(color, POST_COLOR_BLOCK.postColor_vignetteColor.rgb, postColorVignette());
+    return color + vec3((postColorNoise(gl_FragCoord.yx + vec2(37.0, 11.0)) - 0.5) * POST_COLOR_BLOCK.postColor_params.z);
+}
+
 // a linear colour encoded for the target: the post-processing colour after a linear store
 vec3 linearToTarget(vec3 linearColor){
     if (linearStore())
-        return postColorEncode(linearColor);
+        return encodeTail(linearColor);
     return linearTosRGB(max(linearColor, vec3(0.0)));
 }
 
 // a pixel as the colour pass drew it: as stored, or the stored linear light encoded
-vec4 asDrawn(vec3 stored, bool background){
-    if (linearStore() && !isClearColor(stored, background))
-        return vec4(postColorEncode(storedToLinearLight(stored)), 1.0);
+vec4 asDrawn(vec3 stored){
+    if (linearStore())
+        return vec4(encodeTail(storedToLinearLight(stored)), 1.0);
     return vec4(stored, 1.0);
 }
 
 // the reflection as the Reflection debug view shows it (premultiplied by its confidence)
 vec3 reflectionView(vec4 refl){
     if (linearStore())
-        return postColorEncode(storedToLinearLight(refl.rgb / max(refl.a, 1e-4))) * refl.a;
+        return encodeTail(storedToLinearLight(refl.rgb / max(refl.a, 1e-4))) * refl.a;
     return refl.rgb * refl.a;
 }
 
@@ -240,14 +242,7 @@ void main(){
     // nothing reflected here, as on most pixels: the scene is final
     float w = refl.a * intensity;
     if (mode == 0 && w < 1.0 / 1024.0){
-        // (a surface or the background: the G-buffer's depth tells them apart when it matters)
-        if (linearStore() && comp.clearColor.w > 0.5){
-            vec2 g = c;
-            if (comp.params.y > 0.5) g.y = 1.0 - g.y;
-            frag_color = asDrawn(scene, decodeDepth(texture(sampler2D(u_depthTexture, u_depth_smp), g)) >= 1.0);
-        }else{
-            frag_color = asDrawn(scene, false);
-        }
+        frag_color = asDrawn(scene);
         return;
     }
 
@@ -259,7 +254,7 @@ void main(){
 
     // background (no geometry): nothing to reflect, the SSR mask is 0 anyway
     if (depth01 >= 1.0){
-        if (mode == 0)      frag_color = asDrawn(scene, true);
+        if (mode == 0)      frag_color = asDrawn(scene);
         else if (mode == 1) frag_color = vec4(reflectionView(refl), 1.0);
         else                frag_color = vec4(0.0, 0.0, 0.0, 1.0);
         return;
@@ -270,7 +265,7 @@ void main(){
 
     // left as drawn (the glossy blur can spread the mask onto these pixels)
     if (mode == 0 && ssrSourceSkips(code)){
-        frag_color = asDrawn(scene, false);
+        frag_color = asDrawn(scene);
         return;
     }
 

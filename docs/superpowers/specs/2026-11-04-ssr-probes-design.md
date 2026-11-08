@@ -702,7 +702,11 @@ lead's review (second part of each item).
    an exported build without uber-pass effects or a camera texture of another size than the pass,
    takes `ssrSceneTarget` and a blit at the end: 4 bytes a pixel (8.3 MB at 1920x1080) and one
    full-screen copy (8.3 MB read, 8.3 MB written a frame), against the composite pass to the
-   swapchain the order replaces. Under MSAA the multisampled target resumes and resolves there.
+   swapchain the order replaces. sokol's swapchain pass takes the platform's depth-stencil
+   (the default framebuffer's on GL, the one the platform glue hands it on Metal, D3D11 and
+   Vulkan), so the scene colour's depth cannot join it through sokol's attachments; swapping the
+   native depth views in on Metal, D3D11 and Vulkan is a follow-up for a machine where those run.
+   Under MSAA the multisampled target resumes and resolves there.
    The composite is the resumed pass's first draw, over every pixel (no blend, depth test off,
    depth kept), so the resume does not load the colour (`DONTCARE`; the review estimated the load at about
    66 MB a frame under MSAA 4 at 1080p). The atmosphere's composites, the scene colour copy, the
@@ -720,7 +724,12 @@ lead's review (second part of each item).
    - The atmosphere's composites now run after SSR: the volumetric fog's replacement of the analytic
      fog scales the swap too, and Screen clouds cover it.
    - A hierarchy-ordered pass (Transparent Sort off) keeps the composite after the pass.
-   - A view that draws no SSR (SSR off, or a pass without its conditions) frees its SSR targets.
+   - A view that draws no SSR (SSR off, or a pass without its conditions) frees its SSR targets,
+     a layer scene's too.
+   - Exported builds with the uber pass and a render scale under 1 made the SSR targets at the
+     view's size in the swapchain-redirect setup and again at the scaled size in the camera pass,
+     every frame (older than this work); the setup now takes the pass's size
+     (`ScaledSwapchainBuildsKeepTheirSSRTargets`).
 2. **Display-encoded colour under a tone curve (F12).** The scene SSR composites was the tail's
    display colour and the composite treated it as sRGB. Inverting the tail is not possible in
    general (a grade, AgX, Khronos Neutral and scene LUTs are not per channel), and RGBA16F targets
@@ -731,12 +740,21 @@ lead's review (second part of each item).
    the dither), no vignette and a 1/255 dither: it stores the tail's shaper code
    `sqrt(x / (x + k))`, linear light in the tone curve's range, with no code added to the mesh
    shaders (the zero-cost hash list is main's). The composite decodes it, swaps, and applies the
-   scene's post-processing colour (its own `u_fs_postColor` and LUT, vignette and dither) to every
-   pixel, the sky's and those of surfaces the G-buffer pass left out (a mesh loaded before SSR was
-   on, a terrain refreshing its maps); only the clear colour is passed through, told by its stored
-   value where the G-buffer has no surface. A far-plane video, display colour, keeps the old
-   display-colour swap for its pass. The 8-bit store is a step of about 2.2% of the light near
-   linear 1 (sRGB: 0.9%): the dither turns it into noise of one step, which averages out.
+   scene's post-processing colour (its own `u_fs_postColor` and LUT, vignette and dither, the
+   dither on another noise pattern than the store's) to every pixel, with no exception: the sky's,
+   those of surfaces the G-buffer pass left out (a mesh loaded before SSR was on, a terrain
+   refreshing its maps), and the clear colour's, which the pass clears to the shaper code the tail
+   turns back into it (`PostColorLut::invert`, per channel by bisection on the CPU, cached per clear
+   colour and tail LUT). So holes of clipped or displaced library meshes (solid in the G-buffer)
+   and multisampled edges against the clear colour are right too; with the vignette in the tail
+   (no uber pass) the clear colour now takes it, as it does under the uber pass. A clear colour the
+   tail cannot reach (a grade lifting the blacks above it) comes out as near as it can. A
+   far-plane video, display colour, keeps the old display-colour swap for its pass. The 8-bit store
+   is a step of about 2.2% of the light near linear 1 (sRGB: 0.9%): the store's 1/255 dither turns
+   it into noise of one step, which averages out; it is always on (measured below as an RMS
+   against the image without SSR), since without it a dim gradient under a strong exposure bands
+   by 2/255. The identity LUT is an immutable texture made once (freed with SSR; a failed creation
+   is logged once and leaves the store off).
 3. **A 16-bit normal in the G-buffer (Deviation 8).** `color[3]` is RGBA8 instead of R8: `.r` the
    occlusion as before, `.gb` the normal's next 8 bits (`octEncode16`: color[1].rg keep the
    octahedral code rounded to 8 bits, so user post-process passes reading `u_gbufferTexture` and
@@ -763,6 +781,16 @@ Measured (core GPU tests, glcore and Vulkan; red = the engine without the change
   half stored DONTCARE, its colour loaded), green after; `ThePassContinuesInItsDestination` (no
   blit into the view's target, a blit into a 320 x 180 camera texture) and
   `TurningSSROffFreesItsTargets` (40 -> 32 images: none freed before) red on the first version.
+- round two of the review: the clear colour through a clipped library mesh's pixels (solid in the
+  G-buffer), under ACES: red on the value-based exception, 0 after; a pass with SSR against one
+  without: RMS 0.76/255 on a plain sky, 1.33 on the dim exposed gradient (the store's dither, mean
+  0); the clear colour comes back as set (20, 20, 26 for 0.08, 0.08, 0.1); a swapchain build at
+  render scale 0.5 remade its scene colour target in 5 of 5 frames, 0 after;
+- multisampled outlines against the clear colour stay between their neighbours (0/255 outside);
+  against the image without SSR they differ by up to 29/255 on a bright box over a dark clear
+  colour, before and after this round: MSAA resolves the store's code, not display colour, so
+  the antialiasing weights a bright edge more (as a linear resolve would, less so). A residual of
+  the linear store, not of the clear colour.
 Not run: the swapchain blit itself (exported builds: renderBlit's existing swapchain branch).
 
 Registries: shader cache v54 (one bump); no new MESH or GBUFFER bit. Files shared with other

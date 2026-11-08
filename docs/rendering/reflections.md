@@ -105,10 +105,11 @@ leave a small difference where SSR is confident:
 - with post-processing's exposure, tone curve or colour grade on, the opaque objects and the sky are
   kept in linear light until SSR composites them (8 bits a channel in the tone curve's range,
   dithered so gradients do not band), and the composite applies the post-processing colour to
-  every pixel but the clear colour: next to the same frame without SSR a pixel differs by a step
-  of dither noise, nothing on average. A far-plane video keeps the display colour and the swap is
-  made in it (the reflection's brightness then follows the curve only roughly). Without a sky and
-  with MSAA, the pixels on an object's outline against the clear colour are a little off.
+  every pixel: next to the same frame without SSR a pixel differs by a step of dither noise,
+  nothing on average. The clear colour is kept as the value the post-processing colour turns back
+  into it, so it shows as set (a grade that cannot reach it gives the nearest), with the vignette
+  over it as under the uber pass. A far-plane video keeps the display colour and the swap is made
+  in it (the reflection's brightness then follows the curve only roughly).
 
 ### What SSR reflects and what it covers
 
