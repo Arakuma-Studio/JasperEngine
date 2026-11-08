@@ -34,6 +34,11 @@ namespace jasperengine {
         static bool readFramebuffer(Framebuffer& framebuffer, std::vector<uint8_t>& rgba, std::string* error = nullptr);
         // waits until the GPU has done everything submitted (glFinish, vkQueueWaitIdle)
         static bool finishGpu();
+        // a fence after everything submitted so far, and whether the GPU has passed the last one,
+        // without waiting (main thread). The GL family (glFenceSync, flushed so it starts; not
+        // Windows' GL 1.1 headers); elsewhere, and with no fence, it has always passed
+        static void fenceGpu();
+        static bool gpuFencePassed();
 
         // Metal's reader (Objective-C, platform/apple/MetalReadback.h installs it)
         using PlatformReader = bool (*)(TextureRender& texture, int width, int height, int bytesPerPixel,

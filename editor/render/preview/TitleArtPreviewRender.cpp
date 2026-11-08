@@ -84,9 +84,9 @@ namespace {
 titleart::TitleStepCosts& editor::titleArtPreviewCosts() {
     static titleart::TitleStepCosts* costs = [] {
         auto* made = new titleart::TitleStepCosts();
-        // a software rasterizer draws on the CPU when a later pass, the readback or the present
-        // waits for it: finished after each step, each step's measurement is its own drawing
-        if (SystemRender::isSoftwareGpu()) made->setSettle([] { FrameReadback::finishGpu(); });
+        // a software rasterizer draws on its own threads, but a pass that samples what it has not
+        // drawn yet (or the readback) makes the main thread wait for it: previews wait for the fence
+        if (SystemRender::isSoftwareGpu()) made->setGpuGate([] { return !FrameReadback::gpuFencePassed(); }, [] { FrameReadback::fenceGpu(); });
         return made;
     }();
     return *costs;
@@ -122,6 +122,7 @@ bool TitleArtPreviewJob::step(uint32_t budgetUs) {
     const double start = costs.nowUs();
     longestLabel.clear();
     longestMs = 0.0;
+    ranNothing = true;
     bool first = true;
     // the next piece starts while it fits what is left of the budget (the first always does)
     const auto fits = [&](uint32_t predictedUs) {
@@ -139,6 +140,7 @@ bool TitleArtPreviewJob::step(uint32_t budgetUs) {
         job->useCosts(&costs);
         costs.observe(BUILD_KIND, BUILD_ESTIMATE_US, us);
         noteLongest(BUILD_KIND, us / 1000.0);
+        ranNothing = false;
         first = false;
     }
     if (!job->done()) {
@@ -150,8 +152,11 @@ bool TitleArtPreviewJob::step(uint32_t budgetUs) {
         budget.budgetUs = static_cast<uint32_t>(std::max(1.0, left));
         titleart::StepReport report;
         job->step(budget, &report);
-        if (report.steps > 0) noteLongest(report.longestLabel, report.longestUs / 1000.0);
-        first = false;
+        if (report.steps > 0) {
+            noteLongest(report.longestLabel, report.longestUs / 1000.0);
+            ranNothing = false;
+            first = false;
+        }
         if (job->failed()) {
             failure = job->error();
             return true;
@@ -159,13 +164,15 @@ bool TitleArtPreviewJob::step(uint32_t budgetUs) {
         if (!job->done()) return false;
     }
     const uint32_t estimate = readbackEstimateUs();
-    if (!fits(costs.predictUs(READBACK_KIND, estimate))) return false;
+    // the readback waits for the software GPU's drawing: a later frame reads it
+    if (costs.gpuBusy() || !fits(costs.predictUs(READBACK_KIND, estimate))) return false;
     std::string error;
     const double t0 = costs.nowUs();
     const bool read = TitleArtRenderHost::readBack(*job, 8, result, error);
     const double us = costs.nowUs() - t0;
     costs.observe(READBACK_KIND, estimate, us);
     noteLongest(READBACK_KIND, us / 1000.0);
+    ranNothing = false;
     if (!read) {
         failure = error;
         return true;

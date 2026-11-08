@@ -214,23 +214,40 @@ TEST_F(TitleRenderJobTest, CostModelLearnsPerKind) {
     EXPECT_EQ(costs.kinds(), TitleStepCosts::MAX_KINDS) << "kinds are capped";
 }
 
-TEST_F(TitleRenderJobTest, SettledStepsAndPredictedSplits) {
-    // a software rasterizer: recording a pass takes 100 us, the drawing it settles 1900 more; the
-    // settle belongs to the step that drew
+TEST_F(TitleRenderJobTest, GatedStepsAndPredictedSplits) {
+    // a software GPU: a GPU step fences, and no GPU step starts until the GPU passed the fence (a
+    // later call), so the main thread never waits for its drawing; CPU steps are not gated
     double now = 0;
-    int settles = 0;
+    bool drawing = false;
+    int fences = 0;
     TitleStepCosts costs([&now] { return now; });
-    costs.setSettle([&] {
-        now += 1900;
-        settles++;
+    costs.setGpuGate([&] { return drawing; }, [&] {
+        drawing = true;
+        fences++;
     });
-    TitleRenderJob job(slowPasses(3, 100, 100, &now));
+    TitleStepList list = slowPasses(2, 100, 100, &now);
+    TitleRenderStep stage;
+    stage.kind = StepKind::Cpu;
+    stage.label = "outlines";
+    stage.cpuUs = 10;
+    list.add(stage);
+    list.add(slowPasses(1, 100, 100, &now).steps().front());
+    TitleRenderJob job(std::move(list));
     job.useCosts(&costs);
     StepReport report;
-    job.step(StepBudget{1, 0}, &report);
-    EXPECT_EQ(settles, 1);
-    EXPECT_EQ(report.measuredUs, 2000u) << "the settle is measured with its step";
-    EXPECT_EQ(job.nextStepCostUs(), 2000u);
+    EXPECT_FALSE(job.step(StepBudget{100000, 0}, &report));
+    EXPECT_EQ(report.steps, 1u) << "the second pass waits for the first one's drawing";
+    EXPECT_TRUE(job.waiting());
+    EXPECT_EQ(fences, 1);
+    EXPECT_FALSE(job.step(StepBudget{100000, 0}, &report));
+    EXPECT_EQ(report.steps, 0u) << "still drawing";
+    drawing = false;
+    EXPECT_FALSE(job.step(StepBudget{100000, 0}, &report));
+    EXPECT_EQ(report.steps, 2u) << "the pass, then the CPU stage while the GPU draws";
+    drawing = false;
+    EXPECT_TRUE(job.step(StepBudget{100000, 0}, &report));
+    EXPECT_EQ(fences, 3);
+    costs.setGpuGate({}, {});
     // a 2048 x 1000 px pass estimated at 2048 us, predicted at 20 x that: cut by the prediction
     std::vector<TitleRectI> ran;
     TitleRenderJob big(passes(1, 2048, 1000, &ran));

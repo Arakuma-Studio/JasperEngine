@@ -16,10 +16,12 @@
 //   the pass, not the document: "flood", "outer_glow blur x"). Callers may also measure work of
 //   their own under a name of their own (the preview's "preview build", "preview readback").
 // - Clock: nowUs() is the clock jobs measure with (steady_clock; tests pass a fake one).
-// - Settle: where the GPU's work is the main thread's (a software rasterizer runs a pass when a
-//   later one samples it, or at the readback or the present), a settle function (the GPU finish)
-//   runs after every GPU step, so each step's measurement holds its own drawing and the budget
-//   can slice it; null elsewhere, where waiting would only stall the CPU.
+// - GPU gate: a software rasterizer draws a pass on its own threads, but the main thread waits for
+//   it when a later pass samples its target (or at the readback): a 128 px thumbnail's stack passes
+//   cost 150-230 ms there. With a gate (busy: the GPU has not passed the fence; fence: one after
+//   what was submitted) a job fences after each GPU step and does not start one, nor the
+//   readback, while the GPU is busy: it waits for a later frame instead of blocking this one.
+//   No gate elsewhere (a hardware GPU orders its own work without the CPU waiting).
 // - Thread-safety: main thread (the jobs that use it run there).
 
 #pragma once
@@ -42,8 +44,12 @@ namespace jasperengine::titleart {
         explicit TitleStepCosts(std::function<double()> clockUs = {});
 
         double nowUs() const { return clock(); }
-        void setSettle(std::function<void()> settleFn) { settler = std::move(settleFn); }
-        void settle() const { if (settler) settler(); }
+        void setGpuGate(std::function<bool()> busyFn, std::function<void()> fenceFn) {
+            busy = std::move(busyFn);
+            fence = std::move(fenceFn);
+        }
+        bool gpuBusy() const { return busy && busy(); }
+        void fenceGpu() const { if (fence) fence(); }
 
         // the predicted main-thread cost in us of `estimateUs` of static estimate (at least 1)
         uint32_t predictUs(const std::string& kind, uint32_t estimateUs) const;
@@ -67,7 +73,8 @@ namespace jasperengine::titleart {
             void learn(double observed);
         };
         std::function<double()> clock;
-        std::function<void()> settler;
+        std::function<bool()> busy;
+        std::function<void()> fence;
         Ratio machine;
         std::map<std::string, Ratio> byKind;
     };

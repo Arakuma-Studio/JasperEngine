@@ -77,6 +77,11 @@ bool TitleRenderJob::step(const StepBudget& budget, StepReport* report) {
             if (budget.budgetUs > 0 && spent + predicted > budget.budgetUs) break;
             if (budget.maxPasses > 0 && isPass && local.passes >= budget.maxPasses) break;
         }
+        // a software GPU still drawing what this step may sample: a later call runs it
+        if (costModel && s.kind == StepKind::Gpu && costModel->gpuBusy()) {
+            blocked = true;
+            break;
+        }
         // the readiness check may build the step's program: part of what the step costs
         const double start = nowUs();
         if (s.ready && !s.ready()) {
@@ -85,8 +90,8 @@ bool TitleRenderJob::step(const StepBudget& budget, StepReport* report) {
         }
         std::string error;
         const bool ok = !s.run || s.run(s.scissor, error);
-        if (costModel && s.kind == StepKind::Gpu) costModel->settle();
         const double measuredUs = std::max(0.0, nowUs() - start);
+        if (costModel && s.kind == StepKind::Gpu) costModel->fenceGpu();
         const uint32_t measured = (uint32_t)std::min(measuredUs, 4.0e9);
         local.steps++;
         local.estimatedUs += predicted;

@@ -3,7 +3,6 @@
 
 #include "TitlePreviewQueue.h"
 
-#include "render/FrameReadback.h"
 #include "render/SystemRender.h"
 
 #include <algorithm>
@@ -43,13 +42,7 @@ TitlePreviewQueue::TitlePreviewQueue(std::function<double()> clockMs, std::funct
 TitlePreviewQueue::~TitlePreviewQueue() = default;
 
 TitlePreviewQueue& TitlePreviewQueue::editor() {
-    static TitlePreviewQueue* queue = [] {
-        auto* made = new TitlePreviewQueue({}, [] { return SystemRender::getContextId(); });
-        made->setSettle([] {
-            if (SystemRender::isSoftwareGpu()) FrameReadback::finishGpu();
-        });
-        return made;
-    }();
+    static TitlePreviewQueue* queue = new TitlePreviewQueue({}, [] { return SystemRender::getContextId(); });
     return *queue;
 }
 
@@ -145,10 +138,11 @@ void TitlePreviewQueue::refreshCounts() {
     }
 }
 
-TitlePreviewQueue::Item* TitlePreviewQueue::pick() const {
+TitlePreviewQueue::Item* TitlePreviewQueue::pick(const std::vector<Item*>& passed) const {
     Item* best = nullptr;
     for (const auto& item : items) {
         if (item->state != TitlePreviewState::Queued && item->state != TitlePreviewState::Running) continue;
+        if (std::find(passed.begin(), passed.end(), item.get()) != passed.end()) continue;
         if (!best) {
             best = item.get();
             continue;
@@ -196,10 +190,10 @@ void TitlePreviewQueue::runFrame(double budgetMs) {
         counters.restFrames++;
     } else {
         const double budget = budgetMs - side;
-        if (settle && budget > 0 && pick()) settle();
         const double start = clock();
+        std::vector<Item*> passed;      // waiting this frame
         while (budget > 0) {
-            Item* item = pick();
+            Item* item = pick(passed);
             if (!item) break;
             if (!item->job) {
                 item->job = item->factory ? item->factory() : nullptr;
@@ -218,6 +212,12 @@ void TitlePreviewQueue::runFrame(double budgetMs) {
             const double stepStart = clock();
             const bool finished = item->job->step((uint32_t)std::max(1.0, std::floor(left * 1000.0)));
             const double stepMs = clock() - stepStart;
+            if (item->job->idle() && !finished && !item->job->failed()) {
+                passed.push_back(item);
+                ranAlone = false;
+                spent = clock() - start;
+                continue;
+            }
             ran = true;
             counters.steps++;
             // the job's own longest piece, else the whole call (an upper bound)

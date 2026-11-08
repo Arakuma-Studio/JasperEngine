@@ -140,7 +140,8 @@ namespace jasperengine::titleart {
         void useCosts(TitleStepCosts* model) { costModel = model; }
         bool done() const;
         bool failed() const { return !failure.empty(); }
-        // the next step is not ready (TitleRenderStep::ready): step() ran nothing for it
+        // the next step is not ready (TitleRenderStep::ready, or the cost model's GPU gate): step()
+        // ran nothing for it
         bool waiting() const { return blocked; }
         // estimated cost done / total, 0..1 (rises monotonically to 1)
         float progress() const;

@@ -15,7 +15,8 @@
 //   measured ones (TitleArtPreviewJob teaches a TitleStepCosts model what each kind of step took),
 //   and the queue checks its own clock after every step: once the frame's time is spent nothing
 //   more starts. A frame that went over (an alone step, a step dearer than predicted) is followed
-//   by ceil(spent / budget) - 1 idle frames, so previews average within the budget.
+//   by ceil(spent / budget) - 1 idle frames, so previews average within the budget. A job whose
+//   step ran nothing (it waits) is passed over for the rest of the frame.
 // - Side work: what a submitter does on the main thread for its previews outside the jobs
 //   (loading the document a request keys by, encoding a finished thumbnail) is charge()d to the
 //   frame; runFrame spends only what is left, and frameLeftMs() tells a submitter whether to start
@@ -55,6 +56,9 @@ namespace jasperengine::editor {
         // the longest piece of work the last step() ran, measured: its label and ms (stats)
         virtual std::string longestStepLabel() const { return {}; }
         virtual double longestStepMs() const { return 0.0; }
+        // the last step() ran nothing (its next piece waits: a program building, a busy software
+        // GPU): the queue passes it over for the rest of the frame
+        virtual bool idle() const { return false; }
     };
 
     enum class TitlePreviewPriority : uint8_t { Hover, Layers, Tiles, Thumbnails, Prefetch };
@@ -82,7 +86,7 @@ namespace jasperengine::editor {
         double budgetMs = 0;        // the last runFrame's budget
         double lastFrameMs = 0;     // the last frame's time: its steps and the side work charged to it
         double maxFrameMs = 0;      // the most a frame spent since resetStats()
-        uint64_t workingFrames = 0; // frames that ran a step or were charged side work
+        uint64_t workingFrames = 0; // frames that ran a piece of work or were charged side work
         uint64_t overBudgetFrames = 0;  // working frames over the budget
         uint64_t aloneFrames = 0;   // frames that ran one step predicted over the budget alone
         uint64_t restFrames = 0;    // idle frames after a frame that went over
@@ -110,9 +114,6 @@ namespace jasperengine::editor {
         void cancelAll(TitlePreviewOwner owner);
 
         void runFrame(double budgetMs = 4.0);
-        // run before a frame's first step and left out of its time: on a software rasterizer the
-        // GPU finish, so the views the editor drew before do not count as the previews' (null: none)
-        void setSettle(std::function<void()> settleFn) { settle = std::move(settleFn); }
         // main-thread work done for previews outside their jobs, counted in this frame's budget
         void charge(double ms);
         // what is left of this frame's budget after the side work charged so far
@@ -147,7 +148,6 @@ namespace jasperengine::editor {
         };
         std::function<double()> clock;
         std::function<uint64_t()> context;
-        std::function<void()> settle;
         uint64_t lastContext = 0;
         std::vector<std::unique_ptr<Item>> items;
         std::map<uint64_t, Item*> byRequest;
@@ -159,7 +159,7 @@ namespace jasperengine::editor {
         std::vector<double> recent;     // working frames' times, a ring of WINDOW
         size_t recentNext = 0;
 
-        Item* pick() const;
+        Item* pick(const std::vector<Item*>& passed) const;
         void drop(Item* item);
         void refreshCounts();
     };

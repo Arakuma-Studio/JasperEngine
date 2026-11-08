@@ -181,3 +181,44 @@ TEST_F(TitlePreviewQueueTest, AnOverrunIsCountedAndRested) {
     EXPECT_EQ(queue.windowFrames(), 0u);
     EXPECT_DOUBLE_EQ(queue.p95FrameMs(), 0.0);
 }
+
+namespace {
+
+    // a job that waits (runs nothing) for `waits` calls, then runs one step
+    struct WaitingJob : TitlePreviewJob {
+        int waits;
+        int* calls;
+        bool ranNothing = false;
+        WaitingJob(int w, int* c) : waits(w), calls(c) {}
+        uint32_t nextStepCostUs() const override { return 100; }
+        bool step(uint32_t) override {
+            (*calls)++;
+            ranNothing = waits > 0;
+            if (waits > 0) {
+                waits--;
+                return false;
+            }
+            return true;
+        }
+        bool idle() const override { return ranNothing; }
+    };
+
+}
+
+TEST_F(TitlePreviewQueueTest, AWaitingJobIsPassedOver) {
+    // a job waiting for a busy software GPU is asked once a frame, the others run meanwhile, and a
+    // frame in which nothing ran is no working frame
+    int calls = 0;
+    queue.request(TitlePreviewPriority::Hover, "waiting", [&calls] { return std::make_unique<WaitingJob>(2, &calls); });
+    frame();
+    EXPECT_EQ(calls, 1) << "not asked again in the same frame";
+    EXPECT_EQ(queue.stats().workingFrames, 0u);
+    submit(TitlePreviewPriority::Thumbnails, "thumb", 1, 100);
+    frame();
+    EXPECT_EQ(calls, 2);
+    EXPECT_EQ(log, (std::vector<std::string>{"thumb"})) << "a lower priority runs while the first waits";
+    EXPECT_EQ(queue.stats().workingFrames, 1u);
+    frame();
+    EXPECT_EQ(calls, 3);
+    EXPECT_EQ(queue.stats().done, 2u);
+}

@@ -13,7 +13,9 @@
 // - Budget (R45): a preview's work is three kinds of pieces: building the job, its render steps
 //   and the readback. Each is measured on the main thread and teaches one model
 //   (titleArtPreviewCosts) that predicts the next piece, and a step() starts a piece only while it
-//   fits what is left of its budget (the first piece of a call always runs). The thumbnailer parses
+//   fits what is left of its budget (the first piece of a call always runs). On a software GPU the
+//   model's gate (TitleStepCosts) keeps a step that may sample undrawn targets, and the readback,
+//   for a later frame instead of waiting for the GPU's threads. The thumbnailer parses
 //   documents, hashes their keys and encodes and writes the PNGs on workers (std::async); what
 //   stays on the main thread outside the jobs (a request's own document load, a baked document's
 //   status and PNG) is charged to the queue's frame, the thumbnailer's only while it has budget left.
@@ -45,6 +47,7 @@ namespace jasperengine::editor {
         bool failed() const override { return !failure.empty(); }
         std::string longestStepLabel() const override { return longestLabel; }
         double longestStepMs() const override { return longestMs; }
+        bool idle() const override { return ranNothing; }
 
         const std::string& error() const { return failure; }
         // the finished render (straight RGBA8)
@@ -59,6 +62,7 @@ namespace jasperengine::editor {
         bool finished = false;
         std::string longestLabel;
         double longestMs = 0.0;
+        bool ranNothing = false;
 
         uint32_t readbackEstimateUs() const;
         void noteLongest(const std::string& label, double ms);
