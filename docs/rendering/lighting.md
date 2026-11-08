@@ -42,6 +42,11 @@ the tile's cap, 32. A library shader written against those functions needs no ch
 start on even pixels, so a 2x2 quad never straddles two tiles and the loop's trip count is uniform
 per quad (the derivatives `lightShadow` takes stay defined).
 
+A shader near GLES3 and WebGL2's 224 fragment uniform vectors can `#define LIGHTS_FS_RECORDS` with
+`LIGHTS_FS` (Per Object only; `library:water` and the built-in Lit's painted Terrain do): the block then holds two floats a pixel light
+instead of four vectors, and the lights' data comes from the frame's `u_lightRecords` (four texel
+fetches a light, one upload a frame while such a mesh is loaded). It draws the same lights the same.
+
 ## Capsule shadows
 
 A **Capsule Shadow Caster** holds up to 8 capsules on a character's bones (Bone, Radius, Length,
