@@ -300,7 +300,11 @@ namespace jasperengine::pixelart {
             errors.push_back(fontError("font_bad_value", "source.type must be grid, bmfont or truetype", "set source.type", "source.type"));
             return false;
         }
-        pairAt(*source, "cell", "source.cell", s.cellWidth, s.cellHeight, 1);
+        if (pairAt(*source, "cell", "source.cell", s.cellWidth, s.cellHeight, 1) && (s.cellWidth > kMaxAtlasPage - 2 || s.cellHeight > kMaxAtlasPage - 2)){
+            errors.push_back(fontError("font_glyph_too_large", "source.cell is larger than a glyph page (" + std::to_string(kMaxAtlasPage - 2) + " px)",
+                                       "use a smaller cell", "source.cell"));
+            s.cellWidth = s.cellHeight = 0;
+        }
         pairAt(*source, "margin", "source.margin", s.marginX, s.marginY, 0);
         pairAt(*source, "gap", "source.gap", s.gapX, s.gapY, 0);
         if (source->contains("chars")){
@@ -551,7 +555,8 @@ namespace jasperengine::pixelart {
     class BitmapFontBuilder {
     public:
         // packs the glyphs into R8 or RGBA8 pages of at most 2048, 1 px gutter all around (R11)
-        static void pack(BitmapFont& font, std::vector<PackGlyph>& glyphs){
+        // false when a glyph is larger than a page (build refuses those first)
+        static bool pack(BitmapFont& font, std::vector<PackGlyph>& glyphs){
             const int channels = font.colored ? 4 : 1;
             std::vector<size_t> order(glyphs.size());
             for (size_t i = 0; i < order.size(); i++) order[i] = i;
@@ -598,8 +603,8 @@ namespace jasperengine::pixelart {
                 if (!packed)
                     size *= 2;
             }
-            if (!packed)
-                tryPack(kMaxAtlasPage, kMaxAtlasPage, true);
+            if (!packed && !tryPack(kMaxAtlasPage, kMaxAtlasPage, true))
+                return false;
 
             std::vector<uint8_t> pixels;
             for (size_t i = 0; i < glyphs.size(); i++){
@@ -640,7 +645,9 @@ namespace jasperengine::pixelart {
             font.codepoints.clear();
             for (const auto& entry : font.glyphs) font.codepoints.push_back(entry.first);
             std::sort(font.codepoints.begin(), font.codepoints.end());
+            font.indexGlyphs();
             font.makeTextures();
+            return true;
         }
 
         // every glyph of `font` back as an image to pack again
@@ -825,7 +832,25 @@ namespace jasperengine::pixelart {
                 report.overridesApplied++;
             }
 
-            pack(*font, glyphs);
+            // a glyph (and its 1 px gutter) must fit one page (R11)
+            for (const PackGlyph& g : glyphs){
+                if (g.width + 2 > kMaxAtlasPage || g.height + 2 > kMaxAtlasPage){
+                    BitmapFontReport failed;
+                    failed.errors.push_back(fontError("font_glyph_too_large", "a glyph is " + std::to_string(g.width) + "x" + std::to_string(g.height) +
+                                                      " px; a glyph fits a page of " + std::to_string(kMaxAtlasPage - 2) + " px",
+                                                      "use a smaller cell or glyph", g.codepoint == kFallbackBoxKey ? std::string("fallback")
+                                                      : "glyphs." + codepointToUtf8(g.codepoint)));
+                    if (reportOut) *reportOut = failed;
+                    return nullptr;
+                }
+            }
+            if (!pack(*font, glyphs)){
+                BitmapFontReport failed;
+                failed.errors.push_back(fontError("font_glyph_too_large", "the glyphs do not fit pages of " + std::to_string(kMaxAtlasPage) + " px",
+                                                  "use smaller glyphs", "source"));
+                if (reportOut) *reportOut = failed;
+                return nullptr;
+            }
 
             report.glyphs = (int)font->glyphs.size();
             report.cellsUsed = cellsUsed;
@@ -889,7 +914,15 @@ namespace jasperengine::pixelart {
 
     // ---- queries
 
+    void BitmapFont::indexGlyphs(){
+        asciiGlyphs.fill(nullptr);
+        for (const auto& entry : glyphs)
+            if (entry.first < asciiGlyphs.size()) asciiGlyphs[entry.first] = &entry.second;
+    }
+
     const BitmapGlyph* BitmapFont::findGlyph(uint32_t codepoint) const{
+        if (codepoint < asciiGlyphs.size())
+            return asciiGlyphs[codepoint];
         auto it = glyphs.find(codepoint);
         return it == glyphs.end() ? nullptr : &it->second;
     }
@@ -900,7 +933,7 @@ namespace jasperengine::pixelart {
     }
 
     bool BitmapFont::hasGlyph(uint32_t codepoint) const{
-        return glyphs.count(codepoint) != 0;
+        return findGlyph(codepoint) != nullptr;
     }
 
     int BitmapFont::kerning(uint32_t left, uint32_t right) const{
@@ -975,7 +1008,8 @@ namespace jasperengine::pixelart {
             for (const auto& [key, amount] : other->kerningTable)
                 font->kerningTable.emplace(key, amount);
         }
-        BitmapFontBuilder::pack(*font, glyphs);
+        if (!BitmapFontBuilder::pack(*font, glyphs))
+            return primary;
         font->report.glyphs = (int)font->glyphs.size();
         font->report.colored = font->colored;
         return font;
@@ -1031,6 +1065,8 @@ namespace jasperengine::pixelart {
         raw.detections.push_back(std::string("BMFont ") + encodings[(int)file.encoding] + " file, " + std::to_string(file.chars.size()) + " chars");
         BitmapFontSettings defaults;
         std::shared_ptr<BitmapFont> font = build(std::move(raw), settings ? *settings : defaults, reportOut);
+        if (!font)
+            return nullptr;
         font->path = path;
         font->dependencies = dependencies;
         return font;
@@ -1109,6 +1145,8 @@ namespace jasperengine::pixelart {
             }
             font = build(std::move(raw), settings, reportOut);
         }
+        if (!font)
+            return nullptr;
         font->path = path;
         font->dependencies = dependencies;
 
@@ -1317,7 +1355,22 @@ namespace jasperengine::pixelart {
         font->report.partialAlphaShare = (float)r.u(4) / 1000000.0f;
         if (!r.ok)
             return fail("is truncated");
+        // every glyph inside its page: a damaged file never makes a read past the pixels
+        auto inPage = [&font](const BitmapGlyph& g){
+            if (g.w == 0 || g.h == 0)
+                return true;
+            if ((size_t)g.page >= font->pages.size())
+                return false;
+            const BitmapFontPage& page = font->pages[(size_t)g.page];
+            return (int)g.x + (int)g.w <= page.width && (int)g.y + (int)g.h <= page.height;
+        };
+        if (!inPage(font->fallbackGlyph))
+            return fail("has a damaged glyph table");
+        for (const auto& entry : font->glyphs)
+            if (!inPage(entry.second))
+                return fail("has a damaged glyph table");
         std::sort(font->codepoints.begin(), font->codepoints.end());
+        font->indexGlyphs();
         font->makeTextures();
         BitmapFontReport& report = font->report;
         report.glyphs = (int)font->glyphs.size();

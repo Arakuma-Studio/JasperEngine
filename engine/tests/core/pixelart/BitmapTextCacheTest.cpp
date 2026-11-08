@@ -194,3 +194,38 @@ TEST(BitmapTextCache, StyledTextDrawsBackLayersFirst){
     }
     EXPECT_TRUE(text.isColoredTexture());
 }
+
+TEST(BitmapTextCache, ASmallerBudgetGivesIdlePagesBack){
+    // R12: lowering the budget (Project Settings, a scene) frees the idle pages over it at once;
+    // a page drawn in this frame or the last stays until it is idle
+    BtcCacheReset reset;
+    std::shared_ptr<BitmapFont> font = btcFont();
+    ASSERT_TRUE(font);
+    BitmapTextCache& cache = BitmapTextCache::get();
+    std::vector<uint32_t> ascii;
+    for (uint32_t c = 33; c < 127; c++) ascii.push_back(c);
+    std::vector<int> made;
+    for (int s = 0; s < 6; s++){
+        BitmapTextStyle style;
+        style.outlineWidth = 2;
+        style.outlineColor = 0xFF000000u | (uint32_t)(s * 30);
+        const int page = cache.acquire(*font, style, ascii);
+        ASSERT_GE(page, 0);
+        made.push_back(page);
+    }
+    const size_t before = cache.getUsedBytes();
+    ASSERT_GT(before, 0u);
+    const int drawn = made.back();
+    const uint32_t drawnGeneration = cache.getGeneration(drawn);
+    cache.setFrameOverride(10);
+    cache.touch(drawn);
+    cache.setBudgetBytes(1);
+    // only the page drawn this frame is left
+    EXPECT_EQ(cache.getUsedBytes(), (size_t)cache.getPageWidth(drawn) * (size_t)cache.getPageHeight(drawn) * 4u);
+    EXPECT_EQ(cache.getGeneration(drawn), drawnGeneration);
+    cache.setFrameOverride(12);
+    cache.setBudgetBytes(1);
+    EXPECT_EQ(cache.getUsedBytes(), 0u);
+    EXPECT_NE(cache.getGeneration(drawn), drawnGeneration) << "a Text on it builds again";
+    EXPECT_EQ(cache.getTexture(drawn), nullptr);
+}

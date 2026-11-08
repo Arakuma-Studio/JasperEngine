@@ -98,15 +98,18 @@ TEST(BitmapFontBench, RebuildAndCacheBudgets){
     BitmapText text(font, "bench", 0);
     std::string line;
     for (int i = 0; i < 200; i++) line += (char)(33 + (i * 7) % 94);
+    // as a Text rebuilds: its buffer and lists are kept and cleared (UISystem::createBitmapText)
+    InterleavedBuffer buffer;
+    buffer.addAttribute(AttributeType::POSITION, 3);
+    buffer.addAttribute(AttributeType::TEXCOORD1, 2);
+    buffer.addAttribute(AttributeType::COLOR, 4);
+    std::vector<uint16_t> indices;
+    std::vector<Vector2> positions;
+    std::vector<CharExtent> extents;
+    std::vector<TextGlyphInfo> info;
     auto rebuild = [&](const BitmapTextOptions& options){
-        InterleavedBuffer buffer;
-        buffer.addAttribute(AttributeType::POSITION, 3);
-        buffer.addAttribute(AttributeType::TEXCOORD1, 2);
-        buffer.addAttribute(AttributeType::COLOR, 4);
-        std::vector<uint16_t> indices;
-        std::vector<Vector2> positions;
-        std::vector<CharExtent> extents;
-        std::vector<TextGlyphInfo> info;
+        buffer.clear();
+        indices.clear();
         unsigned int w = 0, h = 0;
         text.createText(line, &buffer, indices, positions, extents, w, h, options, &info);
     };

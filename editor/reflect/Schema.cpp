@@ -80,6 +80,10 @@ Json reflect::detail::intSchema(const FieldDesc& field) {
     return schema;
 }
 
+Json reflect::detail::outlineNeighborsSchema(const FieldDesc&) {
+    return Json{{"type", "integer"}, {"enum", Json::array({4, 8})}};
+}
+
 Json reflect::detail::colorWriteSchema(const FieldDesc& field) {
     Json schema = intSchema(field);
     schema["type"] = Json::array({"integer", "string"});

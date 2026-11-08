@@ -46,16 +46,31 @@ def pixels(png: bytes):
     return w, h, [[tuple(row[x * channels:x * channels + 3]) for x in range(w)] for row in rows]
 
 
-def ink_box(rows, background=BLACK):
+def ink_box(rows, background=BLACK, only=None):
+    """the box of the pixels other than `background`, or (only) of that colour"""
     xs, ys = [], []
     for y, row in enumerate(rows):
         for x, p in enumerate(row):
-            if p != background:
+            if (p == only) if only is not None else (p != background):
                 xs.append(x)
                 ys.append(y)
     if not xs:
         return None
     return min(xs), min(ys), max(xs) + 1, max(ys) + 1
+
+
+def outline_detached(rows, reach):
+    """outline (red) pixels with no face (white) pixel within `reach` pixels"""
+    h, w = len(rows), len(rows[0]) if rows else 0
+    count = 0
+    for y in range(h):
+        for x in range(w):
+            if rows[y][x] != (255, 0, 0):
+                continue
+            near = any(rows[yy][xx] == WHITE for yy in range(max(0, y - reach), min(h, y + reach + 1))
+                       for xx in range(max(0, x - reach), min(w, x + reach + 1)))
+            count += not near
+    return count
 
 
 def crop(rows, box):
@@ -224,6 +239,29 @@ async def test_world_snap(ed: Editor):
             ed.check_eq(shape, shapes, f"step {step}: the glyphs keep their shapes")
             lefts.append(box[0] // 3)
         ed.check(lefts[-1] - lefts[0] in (2, 3), f"it moved 2.7 art px in whole steps: {lefts}")
+        # R8 rotation: the camera's S41 policy. Steps90 (the default) draws 30 degrees as 0 and 80 as
+        # 90, on whole art pixels; Rotate On Grid keeps the angle
+        await ed.call("set_properties", scene=scene, entity="Sign", values={"transform": {"position": [10, 10, 0]}})
+
+        def turned(shape):
+            return [list(row) for row in zip(*shape[::-1])]
+
+        for angle, wanted in ((30, shapes), (80, None)):
+            await ed.call("set_properties", scene=scene, entity="Sign", values={"transform": {"rotation": {"euler": [0, 0, angle]}}})
+            _, _, rows = await shot(ed)
+            box = ink_box(rows)
+            ed.check(box is not None and blocks_of(rows, box, 3), f"{angle} degrees: whole 3 x 3 art pixels {box}")
+            shape = downsample(rows, box, 3)
+            if wanted is not None:
+                ed.check_eq(shape, wanted, f"{angle} degrees draws as 0 (Steps90)")
+            else:
+                quarter = turned(shapes)
+                ed.check(shape in (quarter, turned(turned(quarter))), f"{angle} degrees draws as a quarter turn (Steps90)")
+        await ed.call("set_properties", scene=scene, entity="Main Camera", values={"pixelperfectcamera": {"rotationMode": "on_grid"}})
+        await ed.call("set_properties", scene=scene, entity="Sign", values={"transform": {"rotation": {"euler": [0, 0, 30]}}})
+        _, _, rows = await shot(ed)
+        box = ink_box(rows)
+        ed.check(box is not None and (box[3] - box[1]) > len(shapes) * 3, f"Rotate On Grid keeps 30 degrees: {box}")
     finally:
         await ed.call("configure_game_view", resolution="320x180")
 
@@ -261,10 +299,26 @@ async def test_text_effect(ed: Editor):
         for rows in (a, b):
             colours = {p for row in rows for p in row}
             ed.check(WHITE in colours and (255, 0, 0) in colours, "faces and outlines both draw while the effect plays")
+            # both layers of a glyph move together: every outline pixel stays within its 1 font px
+            # (2 screen px at x2) of a face pixel, however far the wave moved the glyph
+            detached = outline_detached(rows, 2)
+            ed.check(detached == 0, f"{detached} outline pixels left their faces behind")
     finally:
         await ed.call("play", action="stop")
         await ed.call("remove_component", scene=s["scene"], entity=s["label"], component="texteffect")
-        await label(ed, {"text": {"outlineWidth": 0, "fontSize": 9}})
+    # visibleCharacters hides both layers of the hidden glyphs
+    try:
+        _, _, full = await shot(ed)
+        await label(ed, {"text": {"visibleCharacters": 2}})
+        _, _, two = await shot(ed)
+        whole, part = ink_box(full), ink_box(two)
+        ed.check(part is not None and part[2] < whole[2], f"2 visible characters draw less: {whole} -> {part}")
+        faces = ink_box(two, background=None, only=WHITE)
+        outlines = ink_box(two, background=None, only=(255, 0, 0))
+        ed.check(faces and outlines and outlines[2] <= faces[2] + 2, f"no outline past the visible faces: {faces} {outlines}")
+        ed.check(outline_detached(two, 2) == 0, "the visible glyphs keep their outlines")
+    finally:
+        await label(ed, {"text": {"outlineWidth": 0, "fontSize": 9, "visibleCharacters": -1}})
 
 
 async def test_preview_font(ed: Editor):
@@ -460,11 +514,24 @@ async def test_vector_text_unchanged(ed: Editor):
         shutil.rmtree(copy)
     shutil.copytree(src, copy)
     opened = await ed.call("open_scene", scene="parity/AllComponents.scene")
-    await ed.call("save_scene", scene=opened["scene"]["id"], path="parity/AllComponents.resaved.scene")
+    parity = opened["scene"]["id"]
+    # and it draws as the pre-S51 editor drew it (its Text is a TTF): two shots agree, then the reference
+    await ed.call("select_scene", scene=parity)
+    await ed.call("wait", frames=20)
+    first = await ed.screenshot(view="game", max_width=0)
+    await ed.call("wait", frames=5)
+    drawn = await ed.screenshot(view="game", max_width=0)
+    ed.check(pixels(first)[2] == pixels(drawn)[2], "AllComponents draws the same frame twice (a stable reference)")
+    await ed.call("save_scene", scene=parity, path="parity/AllComponents.resaved.scene")
     after = (copy / "AllComponents.resaved.scene").read_bytes()
     if capture:
         (GOLDEN / "AllComponents.resaved.scene").write_bytes(after)
+        (GOLDEN / "AllComponents.png").write_bytes(drawn)
         return
+    want_rows = pixels((GOLDEN / "AllComponents.png").read_bytes())[2]
+    got_rows = pixels(drawn)[2]
+    differing = sum(1 for a, b in zip(got_rows, want_rows) for p, q in zip(a, b) if p != q)
+    ed.check(len(got_rows) == len(want_rows) and differing == 0, f"AllComponents pixel-identical to the reference: {differing} differ")
     SHOTS.mkdir(parents=True, exist_ok=True)
     (SHOTS / "AllComponents.resaved.scene").write_bytes(after)
     # (a save to a new path is a new scene file: its own guid line)

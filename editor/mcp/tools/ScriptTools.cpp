@@ -149,7 +149,7 @@ std::string assetType(const fs::path& path) {
 bool isTextFile(const fs::path& path) {
     static const std::set<std::string> text = {
         ".lua", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".hxx", ".inl",
-        ".material", ".scene", ".prefab", ".yaml", ".yml", ".json", ".txt", ".md", ".csv", ".ini", ".cfg", ".bitmapfont", ".fnt",
+        ".material", ".scene", ".prefab", ".yaml", ".yml", ".json", ".txt", ".md", ".csv", ".ini", ".cfg", ".bitmapfont",
         ".glsl", ".vert", ".frag", ".hlsl", ".cmake", ".xml", ".gltf", ".obj", ".mtl", ".svg", ".tsx", ".tmx",
         ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller", ".shake", ".soundevent"
     };

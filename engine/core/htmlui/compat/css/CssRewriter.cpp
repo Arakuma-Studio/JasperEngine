@@ -2355,14 +2355,28 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
                 if (d.name == "font-effect")
                     blurred = value.find("glow") != std::string::npos || value.find("blur") != std::string::npos;
                 if (d.name == "text-shadow" && value != "none"){
-                    // a third length that is not zero is a blur radius
-                    for (const std::string& shadow : split(value, ',')){
-                        int lengths = 0;
-                        for (const std::string& part : split(trimmed(shadow), ' ')){
-                            if (part.empty() || !(std::isdigit((unsigned char)part[0]) || part[0] == '-' || part[0] == '.'))
-                                continue;
-                            if (++lengths == 3 && std::atof(part.c_str()) != 0.0)
-                                blurred = true;
+                    // per shadow (commas outside a colour function's parentheses), a third length
+                    // that is not zero is a blur radius; a colour function's numbers are not lengths
+                    int depth = 0, lengths = 0;
+                    std::string token;
+                    auto endToken = [&](){
+                        if (!token.empty() && (std::isdigit((unsigned char)token[0]) || token[0] == '-' || token[0] == '.') &&
+                                ++lengths == 3 && std::atof(token.c_str()) != 0.0)
+                            blurred = true;
+                        token.clear();
+                    };
+                    for (const char c : value + ","){
+                        if (c == '(') depth++;
+                        if (depth > 0){
+                            if (c == ')') depth--;
+                            token.clear();
+                            continue;
+                        }
+                        if (c == ',' || c == ' '){
+                            endToken();
+                            if (c == ',') lengths = 0;
+                        }else{
+                            token += c;
                         }
                     }
                 }

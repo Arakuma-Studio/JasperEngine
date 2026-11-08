@@ -15,6 +15,7 @@ engine/tests/core/fixtures/fonts/, from glyphs defined here (no external font):
 - colored@6x9.png: the glyphs in two colours (a red top row over a white body).
 - bm.fnt (text), bm_xml.fnt (XML), bm_bin.fnt (binary v3) + bm_0.png: the same glyphs cut to
   their ink as an AngelCode BMFont (size 9, lineHeight 10, base 7, two kerning pairs).
+- bm_hiero.fnt: bm.fnt as libGDX Hiero writes it (chnl=0 on every char).
 - pixel8.ttf + pixel8_bitmaps.txt: a TrueType font of 256 glyphs, unitsPerEm 800, whose outlines
   are rectangles on a 100-unit grid (8 px), drawn from the bitmaps in the .txt; U+00A4 holds a 25 %
   and a 75 % covered pixel (the threshold test) and stays off the ASCII the detection reads.
@@ -123,6 +124,17 @@ def write_bmfont(out):
         lines.append("kerning first=%d second=%d amount=%d" % k)
     with open(os.path.join(out, "bm.fnt"), "w", newline="\n") as f:
         f.write("\n".join(lines) + "\n")
+    # libGDX Hiero's text form: chnl=0 on every char (all channels), its own info line
+    hiero = ['info face="S51 Fixture" size=9 bold=0 italic=0 charset="" unicode=0 stretchH=100 smooth=1 aa=1 padding=0,0,0,0 spacing=1,1',
+             "common lineHeight=10 base=7 scaleW=%d scaleH=%d pages=1 packed=0" % (width, height),
+             'page id=0 file="bm_0.png"', "chars count=%d" % len(chars)]
+    for c in chars:
+        hiero.append("char id=%d x=%d y=%d width=%d height=%d xoffset=%d yoffset=%d xadvance=%d page=0 chnl=0" % c)
+    hiero.append("kernings count=%d" % len(KERNING))
+    for k in KERNING:
+        hiero.append("kerning first=%d second=%d amount=%d" % k)
+    with open(os.path.join(out, "bm_hiero.fnt"), "w", newline="\n") as f:
+        f.write("\n".join(hiero) + "\n")
     # XML
     xml = ['<?xml version="1.0"?>', "<font>",
            '  <info face="S51 Fixture" size="9" bold="0" italic="0" charset="" unicode="1" stretchH="100" smooth="0" aa="1" padding="0,0,0,0" spacing="1,1"/>',

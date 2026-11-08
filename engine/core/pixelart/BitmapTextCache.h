@@ -122,6 +122,10 @@ namespace jasperengine::pixelart {
         uint64_t frame() const;
         int openPage(int width, int height);
         void recycle(int page);
+        // a page given back (no pixels, no texture: its index stays, Texts on it build again)
+        void park(int page);
+        // idle pages parked while the cache is over a smaller budget
+        void trimToBudget();
         // makes the glyphs on the page; false when one does not fit (those made stay)
         bool fill(int page, const Key& key, const BitmapFont& font, const BitmapTextStyle& style, const std::vector<uint32_t>& codepoints);
         size_t pageBytes(const Page& page) const;

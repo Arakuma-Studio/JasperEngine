@@ -502,6 +502,7 @@ namespace jasperengine::pixelart {
                 out.spaceAdvance = c.xadvance;
             int channel = -1;   // the byte of RGBA read as the mask; -1 all channels
             switch (c.chnl){
+                case 0:     // libGDX Hiero writes 0 for a glyph in all channels
                 case 15: channel = -1; break;
                 case 1: channel = 2; break;   // blue
                 case 2: channel = 1; break;   // green
@@ -509,7 +510,7 @@ namespace jasperengine::pixelart {
                 case 8: channel = 3; break;   // alpha
                 default:
                     errors.push_back(makeError("font_bmfont_channel", "char " + std::to_string(c.id) + " has chnl=" + std::to_string(c.chnl) +
-                                               ": only 15 (all channels) or one channel (1, 2, 4, 8) is read",
+                                               ": only 0 or 15 (all channels) or one channel (1, 2, 4, 8) is read",
                                                "export the BMFont with the glyph in all channels (32-bit, not packed)", "chars"));
                     return false;
             }

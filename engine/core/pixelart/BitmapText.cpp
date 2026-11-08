@@ -20,40 +20,39 @@ namespace jasperengine::pixelart {
     }
 
     std::vector<BitmapLine> BitmapText::layoutLines(const BitmapFont& font, const std::vector<uint32_t>& cp, bool wrap, int widthPx){
+        // one pass over each line: its width is kept as it is measured (at a break, the width
+        // before the break's character)
         std::vector<BitmapLine> lines;
-        auto lineWidth = [&font, &cp](size_t first, size_t count){
-            int width = 0;
-            for (size_t i = first; i < first + count; i++){
-                if (i > first) width += font.getSpacing() + font.kerning(cp[i - 1], cp[i]);
-                width += font.advanceOf(cp[i]);
-            }
-            return width;
-        };
+        const int spacing = font.getSpacing();
         size_t start = 0;
         while (true){
             size_t end = start;
             while (end < cp.size() && cp[end] != 10) end++;
-            if (wrap && end > start){
-                size_t lineStart = start;
-                while (lineStart < end){
-                    size_t breakAt = end, lastSpace = end;
-                    int width = 0;
-                    for (size_t i = lineStart; i < end; i++){
-                        if (cp[i] == 32) lastSpace = i;
-                        if (i > lineStart) width += font.getSpacing() + font.kerning(cp[i - 1], cp[i]);
-                        width += font.advanceOf(cp[i]);
-                        if (width > widthPx && i > lineStart){
-                            breakAt = (lastSpace > lineStart && lastSpace < i) ? lastSpace : i;
-                            break;
-                        }
+            size_t lineStart = start;
+            do {
+                size_t breakAt = end, lastSpace = end;
+                int width = 0, widthAtBreak = 0, widthBeforeSpace = 0;
+                bool broke = false;
+                for (size_t i = lineStart; i < end; i++){
+                    const int before = width;
+                    if (cp[i] == 32){
+                        lastSpace = i;
+                        widthBeforeSpace = before;
                     }
-                    lines.push_back({lineStart, breakAt - lineStart, lineWidth(lineStart, breakAt - lineStart)});
-                    // a break on a space swallows it, as a newline would
-                    lineStart = (breakAt < end && cp[breakAt] == 32) ? breakAt + 1 : breakAt;
+                    if (i > lineStart) width += spacing + font.kerning(cp[i - 1], cp[i]);
+                    width += font.advanceOf(cp[i]);
+                    if (wrap && width > widthPx && i > lineStart){
+                        const bool atSpace = lastSpace > lineStart && lastSpace < i;
+                        breakAt = atSpace ? lastSpace : i;
+                        widthAtBreak = atSpace ? widthBeforeSpace : before;
+                        broke = true;
+                        break;
+                    }
                 }
-            }else{
-                lines.push_back({start, end - start, lineWidth(start, end - start)});
-            }
+                lines.push_back({lineStart, breakAt - lineStart, broke ? widthAtBreak : width});
+                // a break on a space swallows it, as a newline would
+                lineStart = (breakAt < end && cp[breakAt] == 32) ? breakAt + 1 : breakAt;
+            } while (wrap && lineStart < end);
             if (end >= cp.size())
                 break;
             start = end + 1;
@@ -116,13 +115,23 @@ namespace jasperengine::pixelart {
         const int widthPx = (int)std::floor((float)width / unit + 1e-4f);
         const std::vector<BitmapLine> lines = layoutLines(f, cp, wrap, widthPx);
 
-        lastStyle = options.style;
         // the cache when a style or several pages need one texture
+        const int previousPage = cachePage;
+        const bool sameRequest = previousPage >= 0 && options.style == lastStyle && cp == acquiredText;
+        lastStyle = options.style;
         cachePage = -1;
         backQuads = 0;
         page = 0;
         const bool styled = options.style.hasBack();
-        if (styled || f.getPages().size() > 1){
+        if ((styled || f.getPages().size() > 1) && sameRequest && BitmapTextCache::get().getGeneration(previousPage) == cacheGeneration){
+            // the same text and style on a page that still holds its glyphs (a colour change, a
+            // move): no glyph list, no acquire
+            BitmapTextCache& cache = BitmapTextCache::get();
+            cachePage = previousPage;
+            cache.touch(cachePage);
+            cacheVersion = cache.getVersion(cachePage);
+        }else if (styled || f.getPages().size() > 1){
+            acquiredText = cp;
             std::vector<uint32_t> list;
             list.reserve(cp.size());
             for (uint32_t c : cp){
@@ -269,8 +278,12 @@ namespace jasperengine::pixelart {
                     addQuad(x0, y0, c->faceW, c->faceH, c->faceX, c->faceY, face, p, false);
                 else
                     addQuad(x0, y0, 0, 0, 0, 0, face, p, false);
-            }else{
+            }else if (g->page == 0){
                 addQuad(x0, y0, g->w, g->h, g->x, g->y, face, p, false);
+            }else{
+                // a multi-page font whose glyphs found no cache page: the Text binds page 0 only,
+                // so a glyph of another page draws nothing rather than page 0's texels there
+                addQuad(x0, y0, 0, 0, 0, 0, face, p, false);
             }
         }
 

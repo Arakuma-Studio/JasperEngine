@@ -229,6 +229,17 @@ TEST(BitmapFontParsers, BMFontEncodingsGiveTheSameFont){
     (void)page;
 }
 
+TEST(BitmapFontParsers, BMFontFromHieroReadsChannelZeroAsAllChannels){
+    // libGDX Hiero writes chnl=0 for glyphs in every channel: the same font as chnl=15
+    BitmapFontReport report;
+    std::shared_ptr<BitmapFont> hiero = BitmapFont::load(bfpFixture("bm_hiero.fnt"), &report);
+    ASSERT_TRUE(hiero) << bfpFirstErrorKind(report.errors);
+    std::shared_ptr<BitmapFont> plain = BitmapFont::load(bfpFixture("bm.fnt"));
+    ASSERT_TRUE(plain);
+    EXPECT_EQ(hiero->getCodepoints(), plain->getCodepoints());
+    EXPECT_EQ(hiero->toCooked(), plain->toCooked());
+}
+
 TEST(BitmapFontParsers, BMFontErrorsAreTyped){
     const std::string base = "info face=\"x\" size=9\ncommon lineHeight=10 base=7 scaleW=96 scaleH=54 pages=1 packed=0\n";
     auto load = [](const std::string& text, const std::string& path){

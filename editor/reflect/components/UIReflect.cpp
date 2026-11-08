@@ -284,8 +284,7 @@ namespace {
                  .visibleIf = &textIsVector),
         JE_FIELD(TextComponent, outlineColor, .flags = OmitIfDefault | ColorLinear, .updateFlags = kText, .group = "Outline"),
         // S51 R10: drawn by the Text drawer's Pixel Font rows (a 4 / 8 choice)
-        JE_FIELD(TextComponent, outlineNeighbors, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | Hidden, .updateFlags = kText, .min = 4.0f,
-                 .max = 8.0f, .label = "Neighbors", .tooltip = "A bitmap font's pixel outline: 4 (plus) or 8 (square) neighbours.", .group = "Outline"),
+        JE_FIELD(TextComponent, outlineNeighbors, .ops = &ops::OutlineNeighbors, .flags = OmitIfDefault | Hidden, .updateFlags = kText, .label = "Neighbors", .tooltip = "A bitmap font's pixel outline: 4 (plus) or 8 (square) neighbours.", .group = "Outline"),
         JE_FIELD(TextComponent, shadowEnabled, .flags = OmitIfDefault, .updateFlags = kText, .label = "Shadow", .group = "Shadow"),
         JE_FIELD(TextComponent, shadowColor, .flags = OmitIfDefault | ColorLinear, .updateFlags = kText, .group = "Shadow"),
         JE_FIELD(TextComponent, shadowOffset, .flags = OmitIfDefault, .updateFlags = kText, .group = "Shadow", .visibleIf = &textIsVector),

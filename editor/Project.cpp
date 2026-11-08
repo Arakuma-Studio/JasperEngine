@@ -14,6 +14,8 @@
 #include "subsystem/AudioSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "component/ButtonComponent.h"
+#include "component/TextComponent.h"
+#include "pixelart/BitmapFont.h"
 #include "component/MeshPolygonComponent.h"
 #include "io/watch/LinkedFolders.h"
 #include "diag/HangWatchdog.h"
@@ -752,6 +754,14 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
 
     // Animator Controllers (AnimatorAssetPool): the controller, its clips and its layers' masks
     // (read through the engine's file API, as the build will: the pool caches it)
+    // bitmap fonts a Text draws (S51 R19): its font and the bitmap fonts among its fallbacks
+    visitComponents(registry->getComponentArray<TextComponent>(), [&](TextComponent& text) {
+        for (const AssetRef& ref : text.font) {
+            const std::string& font = ref.path;
+            if (!font.empty() && font != ::jasperengine::pixelart::kBuiltinPixelFont && ::jasperengine::pixelart::isBitmapFontPath(font))
+                addFile(resources.bitmapFonts, font);
+        }
+    });
     visitComponents(registry->getComponentArray<AnimatorComponent>(), [&](AnimatorComponent& animator) {
         if (animator.controller.path.empty()) return;
         addFile(resources.controllers, animator.controller.path);

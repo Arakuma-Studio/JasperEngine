@@ -429,3 +429,29 @@ TEST(BitmapFont, PoolReloadsAnEditedFnt){
     EXPECT_EQ(after->advanceOf('A'), 6);
     BitmapFontPool::clear();
 }
+
+TEST(BitmapFont, AGlyphLargerThanAPageIsATypedError){
+    // R11: a glyph and its gutter fit one 2048 page; a larger one is refused with its field, never
+    // packed over its neighbours
+    RawFont raw;
+    raw.nativeSize = 9;
+    RawGlyph big;
+    big.codepoint = 'A';
+    big.width = 2100;
+    big.height = 4;
+    big.rgba.assign((size_t)big.width * (size_t)big.height * 4, 255);
+    raw.glyphs.push_back(big);
+    BitmapFontReport report;
+    EXPECT_FALSE(BitmapFont::build(raw, BitmapFontSettings(), &report));
+    ASSERT_FALSE(report.errors.empty());
+    EXPECT_EQ(report.errors[0].kind, "font_glyph_too_large");
+    EXPECT_EQ(report.errors[0].field, "glyphs.A");
+    // a cell past a page, from the file
+    BitmapFontSettings settings;
+    std::vector<FontError> errors;
+    parseBitmapFontSettings("{\"format\": \"jasperengine.bitmapfont\", \"source\": {\"type\": \"grid\", \"image\": \"a.png\", \"cell\": [3000, 10]}}",
+                            settings, errors);
+    ASSERT_FALSE(errors.empty());
+    EXPECT_EQ(errors[0].kind, "font_glyph_too_large");
+    EXPECT_EQ(errors[0].field, "source.cell");
+}

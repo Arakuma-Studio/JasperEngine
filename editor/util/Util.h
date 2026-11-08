@@ -38,13 +38,13 @@ namespace jasperengine::editor{
             return imageExtensions.find(ext) != imageExtensions.end();
         }
 
-        // vector fonts and the bitmap fonts of the same Font type (S51 D1)
         // a bitmap font's settings or an AngelCode BMFont file (S51 R1)
         inline static bool isBitmapFontFile(const std::string& path) {
             const std::string ext = fileExtension(path);
             return ext == ".bitmapfont" || ext == ".fnt";
         }
 
+        // vector fonts and the bitmap fonts of the same Font type (S51 D1)
         inline static bool isFontFile(const std::string& path) {
              static const std::unordered_set<std::string> fontExtensions = {
                 ".ttf", ".otf", ".bitmapfont", ".fnt"

@@ -31,7 +31,6 @@
 #include <cmath>
 #include <cstring>
 #include <map>
-#include <mutex>
 
 using namespace jasperengine;
 
@@ -107,9 +106,28 @@ bool RmlFontEngine::loadBitmapFace(const std::string& file, const std::string& f
     }
     for (const std::string& dependency : font->getDependencies())
         HtmlUIFileLog::recordFile(dependency);
-    rmlBitmapFamilies()[FontRegistry::normalizeFamily(name)] = BitmapFamily{path, font};
+    BitmapFamily& entry = rmlBitmapFamilies()[FontRegistry::normalizeFamily(name)];
+    // a family registered again with another font: the old font's glyphs go
+    if (entry.font && entry.font != font){
+        purgeBitmapGlyphs(entry.font->getSerial());
+        widths.clear();
+        widthsEpoch = -1;
+    }
+    entry = BitmapFamily{path, font};
     retireHandles();
     return true;
+}
+
+size_t RmlFontEngine::getBitmapGlyphCount(uint64_t serial) const{
+    size_t count = 0;
+    for (const auto& entry : glyphs)
+        count += entry.first.bitmap == serial;
+    return count;
+}
+
+void RmlFontEngine::purgeBitmapGlyphs(uint64_t serial){
+    for (auto it = glyphs.begin(); it != glyphs.end();)
+        it = (it->first.bitmap == serial) ? glyphs.erase(it) : std::next(it);
 }
 
 std::unique_ptr<RmlFontEngine::FaceHandle> RmlFontEngine::makeBitmapHandle(const std::shared_ptr<pixelart::BitmapFont>& font, int size){
@@ -143,10 +161,10 @@ int RmlFontEngine::bitmapStringWidth(const FaceHandle& handle, Rml::StringView s
 
 const RmlFontEngine::GlyphEntry& RmlFontEngine::bitmapGlyph(const FaceHandle& handle, uint32_t codepoint, int d, int style){
     const pixelart::BitmapFont& font = *handle.bitmap;
-    // a bitmap face's glyphs share the vector glyphs' map: keyed by the font (never a FontFace,
-    // never dereferenced through the key) and the codepoint
-    const FontFace* identity = reinterpret_cast<const FontFace*>(handle.bitmap.get());
-    GlyphKey key{identity, codepoint, d, 0, (size_t)style};
+    // a bitmap face's glyphs share the vector glyphs' map, keyed by the font's serial (an address
+    // a later font may reuse never finds the old glyphs) and the codepoint
+    GlyphKey key{nullptr, codepoint, d, 0, (size_t)style};
+    key.bitmap = font.getSerial();
     auto it = glyphs.find(key);
     if (it != glyphs.end())
         return it->second;
@@ -211,7 +229,7 @@ const RmlFontEngine::GlyphEntry& RmlFontEngine::bitmapGlyph(const FaceHandle& ha
                 }
             }
         }
-        const PageKind kind = (colored || outline || style == 1) ? PageKind::EFFECT : PageKind::BASE;
+        const PageKind kind = (colored || outline || style == 1) ? PageKind::PIXEL_EFFECT : PageKind::PIXEL;
         int page = -1, x = 0, y = 0;
         if (place(kind, pixels.data(), rw, rh, page, x, y, font.getPath(), handle.size)){
             entry.page = page;
@@ -351,9 +369,7 @@ bool RmlFontEngine::reloadBitmapFontFile(const std::string& path){
             Log::error("[HTML UI] bitmap font %s does not load after its change: the old one stays", entry.path.c_str());
             continue;
         }
-        const FontFace* old = reinterpret_cast<const FontFace*>(entry.font.get());
-        for (auto it = glyphs.begin(); it != glyphs.end();)
-            it = (it->first.face == old) ? glyphs.erase(it) : std::next(it);
+        purgeBitmapGlyphs(entry.font->getSerial());
         entry.font = font;
         any = true;
     }

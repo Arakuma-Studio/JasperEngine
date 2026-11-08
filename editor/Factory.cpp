@@ -3275,6 +3275,9 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     for (const std::string& controller : resources.controllers) {
         out << ind2 << "resources.controllers.push_back(" << formatString(controller) << ");\n";
     }
+    for (const std::string& font : resources.bitmapFonts) {
+        out << ind2 << "resources.bitmapFonts.push_back(" << formatString(font) << ");\n";
+    }
     out << ind2 << "return resources;\n";
     out << ind << "}\n";
 

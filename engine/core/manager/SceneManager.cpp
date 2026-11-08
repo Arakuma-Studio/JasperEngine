@@ -9,6 +9,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/MeshSystem.h"
+#include "pixelart/BitmapFontPool.h"
 #include "pool/TexturePool.h"
 #include "pool/TextureDataPool.h"
 #include "pool/SoundPool.h"
@@ -482,7 +483,7 @@ float SceneManager::getPreloadProgress(uint32_t id) {
 
     const SceneResources& pending = preload->pending;
     size_t remaining = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size() + pending.vats.size() +
-                       pending.masks.size() + pending.controllers.size();
+                       pending.masks.size() + pending.controllers.size() + pending.bitmapFonts.size();
     return (float)(preload->total - remaining) / (float)preload->total;
 }
 
@@ -504,6 +505,7 @@ void SceneManager::cancelPreload(uint32_t id) {
         preload->pending.vats.clear();
         preload->pending.masks.clear();
         preload->pending.controllers.clear();
+        preload->pending.bitmapFonts.clear();
     }
 }
 
@@ -555,6 +557,9 @@ void SceneManager::startPreload(uint32_t id) {
         for (const std::string& controller : resources.controllers) {
             addFile(pending.controllers, controller);
         }
+        for (const std::string& font : resources.bitmapFonts) {
+            addFile(pending.bitmapFonts, font);
+        }
     }
 
     preload = findPreload(id);
@@ -562,7 +567,7 @@ void SceneManager::startPreload(uint32_t id) {
 
     preload->started = true;
     preload->total = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size() + pending.vats.size() +
-                       pending.masks.size() + pending.controllers.size();
+                       pending.masks.size() + pending.controllers.size() + pending.bitmapFonts.size();
     preload->pending = std::move(pending);
 }
 
@@ -710,8 +715,22 @@ void SceneManager::updatePreloads() {
             if (oneFile) return;
         }
 
+        // bitmap fonts: a cooked .jfont reads in well under a millisecond, on this thread
+        for (auto it = pending.bitmapFonts.begin(); it != pending.bitmapFonts.end();) {
+            const std::string font = *it;
+            pixelart::BitmapFontReport report;
+            std::shared_ptr<pixelart::BitmapFont> loaded = pixelart::BitmapFontPool::get(font, &report);
+            if (!loaded) {
+                Log::warn("Preload of bitmap font %s failed: %s", font.c_str(),
+                          report.errors.empty() ? "unreadable" : report.errors[0].message.c_str());
+            }
+            keep(loaded, []() { pixelart::BitmapFontPool::clearUnused(); });
+            it = pending.bitmapFonts.erase(it);
+            if (oneFile) return;
+        }
+
         const bool inFlight = !pending.textures.empty() || !pending.sounds.empty() || !pending.models.empty() || !pending.clips.empty() ||
-                              !pending.vats.empty() || !pending.masks.empty() || !pending.controllers.empty();
+                              !pending.vats.empty() || !pending.masks.empty() || !pending.controllers.empty() || !pending.bitmapFonts.empty();
         if (preload.cancelled && !inFlight) {
             releasePreload(preload);
             preloads.erase(preloads.begin() + i);

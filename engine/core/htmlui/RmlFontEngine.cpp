@@ -109,13 +109,13 @@ struct RmlFontEngine::DistanceJob {
 
 RmlFontEngine::Page::Page(RmlFontEngine& owner, PageKind pageKind):
     engine(owner), kind(pageKind),
-    atlas(std::make_shared<GlyphAtlas>(RmlFontEngine::pageSize, RmlFontEngine::pageSize, 1, pageKind == PageKind::BASE ? 1 : 4)){
+    atlas(std::make_shared<GlyphAtlas>(RmlFontEngine::pageSize, RmlFontEngine::pageSize, 1, RmlFontEngine::isCoverageKind(pageKind) ? 1 : 4)){
 }
 
 size_t RmlFontEngine::Page::bytes() const{
     if (atlas->getWidth() == 0)
         return 0;
-    return (size_t)pageSize * (size_t)pageSize * (kind == PageKind::BASE ? 1u : 4u);
+    return (size_t)pageSize * (size_t)pageSize * (isCoverageKind(kind) ? 1u : 4u);
 }
 
 uint64_t RmlFontEngine::Page::lastUsed() const{
@@ -135,6 +135,7 @@ size_t RmlFontEngine::GlyphKeyHash::operator()(const GlyphKey& key) const{
     h ^= std::hash<int>()(key.rasterPixelSize) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<int>()(key.bold) + 0x9e3779b9 + (h << 6) + (h >> 2);
     h ^= std::hash<size_t>()(key.effect) + 0x9e3779b9 + (h << 6) + (h >> 2);
+    h ^= std::hash<uint64_t>()(key.bitmap) + 0x9e3779b9 + (h << 6) + (h >> 2);
     return h;
 }
 
@@ -145,7 +146,7 @@ RmlFontEngine::~RmlFontEngine(){
     // Only reached at process exit. Rml::Shutdown already released everything; if it did
     // not run, the render managers the texture sources point to may be gone: leak them
     // instead of releasing through freed objects
-    for (PageList* list : {&pages, &effectPages, &distancePages}){
+    for (PageList* list : {&pages, &effectPages, &distancePages, &pixelPages, &pixelEffectPages}){
         for (std::unique_ptr<Page>& page : *list){
             (void)page->source.release();
             for (auto& variant : page->variants)
@@ -681,6 +682,14 @@ void RmlFontEngine::makeSource(Page& page){
                 desc.sample = HtmlUITexture::Sample::MSDF;
                 desc.distanceRange = RmlFontMsdf::distanceRange;
                 break;
+            case PageKind::PIXEL:
+                desc.sample = HtmlUITexture::Sample::COVERAGE;
+                desc.nearest = true;
+                break;
+            case PageKind::PIXEL_EFFECT:
+                desc.sample = HtmlUITexture::Sample::RGBA;
+                desc.nearest = true;
+                break;
             }
             const Rml::TextureHandle handle = renderer->createAtlasTexture(pageSize, pageSize, desc);
             if (!handle)
@@ -727,6 +736,8 @@ RmlFontEngine::PageList& RmlFontEngine::pagesOf(PageKind kind){
     case PageKind::BASE: return pages;
     case PageKind::EFFECT: return effectPages;
     case PageKind::DISTANCE: return distancePages;
+    case PageKind::PIXEL: return pixelPages;
+    case PageKind::PIXEL_EFFECT: return pixelEffectPages;
     }
     return pages;
 }
@@ -734,14 +745,14 @@ RmlFontEngine::PageList& RmlFontEngine::pagesOf(PageKind kind){
 size_t RmlFontEngine::budgetBytes(PageKind kind) const{
     // base and CPU effect pages share the base budget; at least one page of the kind fits
     const size_t budget = (kind == PageKind::DISTANCE) ? getDistanceBudgetBytes() : getBaseBudgetBytes();
-    const size_t page = (size_t)pageSize * (size_t)pageSize * (kind == PageKind::BASE ? 1u : 4u);
+    const size_t page = (size_t)pageSize * (size_t)pageSize * (isCoverageKind(kind) ? 1u : 4u);
     return std::max(budget, page);
 }
 
 size_t RmlFontEngine::usedBytes(PageKind kind) const{
     size_t used = 0;
     const bool distance = kind == PageKind::DISTANCE;
-    for (const PageList* list : {&pages, &effectPages, &distancePages}){
+    for (const PageList* list : {&pages, &effectPages, &distancePages, &pixelPages, &pixelEffectPages}){
         for (const std::unique_ptr<Page>& page : *list){
             if ((page->kind == PageKind::DISTANCE) == distance)
                 used += page->bytes();
@@ -830,7 +841,7 @@ bool RmlFontEngine::evictPage(PageKind kind){
     const uint64_t frame = SystemRender::getFrameCount();
     const bool distance = kind == PageKind::DISTANCE;
     Page* oldest = nullptr;
-    for (PageList* list : {&pages, &effectPages, &distancePages}){
+    for (PageList* list : {&pages, &effectPages, &distancePages, &pixelPages, &pixelEffectPages}){
         for (std::unique_ptr<Page>& page : *list){
             if ((page->kind == PageKind::DISTANCE) != distance || page->bytes() == 0)
                 continue;
@@ -868,7 +879,7 @@ bool RmlFontEngine::place(PageKind kind, const unsigned char* pixels, int width,
     // Filling the newest page keeps a document's glyphs on few pages, so the pages of what is no
     // longer drawn become free to clear, instead of every page holding a little of everything.
     const uint64_t frame = SystemRender::getFrameCount();
-    const size_t pageBytes = (size_t)pageSize * (size_t)pageSize * (kind == PageKind::BASE ? 1u : 4u);
+    const size_t pageBytes = (size_t)pageSize * (size_t)pageSize * (isCoverageKind(kind) ? 1u : 4u);
     const bool fitsAPage = width + 2 <= pageSize && height + 2 <= pageSize;
     placeDeferred = false;
     size_t newest = list.size();
@@ -1070,7 +1081,7 @@ const RmlFontEngine::GlyphEntry& RmlFontEngine::getEffectGlyph(const FaceHandle&
 }
 
 void RmlFontEngine::refreshDirtyPages(){
-    for (PageList* list : {&pages, &effectPages, &distancePages}){
+    for (PageList* list : {&pages, &effectPages, &distancePages, &pixelPages, &pixelEffectPages}){
         for (std::unique_ptr<Page>& page : *list){
             if (!page->dirty)
                 continue;
@@ -1757,6 +1768,8 @@ void RmlFontEngine::clearGlyphs(){
     pages.clear();
     effectPages.clear();
     distancePages.clear();
+    pixelPages.clear();
+    pixelEffectPages.clear();
     warnedOverflow = false;
 }
 
@@ -1874,6 +1887,14 @@ size_t RmlFontEngine::getEffectPageCount() const{
     size_t count = 0;
     for (const std::unique_ptr<Page>& page : effectPages)
         count += page->bytes() > 0;
+    return count;
+}
+
+size_t RmlFontEngine::getPixelPageCount() const{
+    size_t count = 0;
+    for (const PageList* list : {&pixelPages, &pixelEffectPages})
+        for (const std::unique_ptr<Page>& page : *list)
+            count += page->bytes() > 0;
     return count;
 }
 

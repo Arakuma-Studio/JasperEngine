@@ -85,10 +85,43 @@ namespace jasperengine::pixelart {
     void BitmapTextCache::setBudgetMiB(int mib){
         budgetMiB = std::max(0, mib);
         budget = 0;
+        trimToBudget();
     }
 
     void BitmapTextCache::setBudgetBytes(size_t bytes){
         budget = bytes;
+        trimToBudget();
+    }
+
+    void BitmapTextCache::park(int index){
+        Page& page = pages[(size_t)index];
+        for (const auto& entry : page.entries){
+            auto it = home.find(entry.first);
+            if (it != home.end() && it->second == index)
+                home.erase(it);
+        }
+        page.entries.clear();
+        page.atlas->reset(0, 0);
+        page.texture.reset();
+        page.generation++;
+        page.version++;
+    }
+
+    void BitmapTextCache::trimToBudget(){
+        // the least recently used pages no Text drew from this frame or the last; a drawn page
+        // stays (a later acquire finds the budget full and recycles)
+        const uint64_t now = frame();
+        while (getUsedBytes() > getBudgetBytes()){
+            int idle = -1;
+            for (int i = 0; i < (int)pages.size(); i++){
+                const Page& page = pages[(size_t)i];
+                if (pageBytes(page) > 0 && page.lastUse + 1 < now && (idle < 0 || page.lastUse < pages[(size_t)idle].lastUse))
+                    idle = i;
+            }
+            if (idle < 0)
+                break;
+            park(idle);
+        }
     }
 
     size_t BitmapTextCache::getBudgetBytes() const{

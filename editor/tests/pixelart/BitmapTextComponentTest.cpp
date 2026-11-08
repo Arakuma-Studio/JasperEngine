@@ -23,6 +23,8 @@
 #include "reflect/Reflect.h"
 #include "util/TextEffects.h"
 #include "Catalog.h"
+#include "Project.h"
+#include "manager/SceneManager.h"
 
 #include <cmath>
 #include <vector>
@@ -240,4 +242,21 @@ TEST(BitmapText, OutlineNeighborsStreamOmittedWhenDefault){
     editor::reflect::DecodeReport report;
     editor::reflect::decode(desc, YAML::Load(YAML::Dump(node)), &back, editor::reflect::DecodeContext{}, report);
     EXPECT_EQ(back.outlineNeighbors, 4);
+}
+
+TEST(BitmapText, ScenesPreloadTheirBitmapFonts){
+    // R19: a scene's resources list the bitmap fonts its Texts draw (the main font and bitmap
+    // fallbacks; not builtin:pixel, which has no file, nor vector fonts), so preloadScene loads them
+    BitmapTextScene s("Hp 99");
+    TextComponent& text = s.text();
+    text.font[0] = std::string("fonts/hud.bitmapfont");
+    text.font[1] = std::string("fonts/vector.ttf");
+    text.font[2] = std::string("fonts/extra.fnt");
+    Entity other = s.scene.createEntity();
+    s.scene.addComponent<Transform>(other, Transform());
+    TextComponent builtin;
+    builtin.font[0] = ::jasperengine::pixelart::kBuiltinPixelFont;
+    s.scene.addComponent<TextComponent>(other, builtin);
+    const SceneResources resources = editor::Project::collectResourcesInRegistry(&s.scene);
+    EXPECT_EQ(resources.bitmapFonts, (std::vector<std::string>{"fonts/hud.bitmapfont", "fonts/extra.fnt"}));
 }

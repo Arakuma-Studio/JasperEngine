@@ -186,6 +186,7 @@ namespace jasperengine::editor::reflect {
         // ---- JSON Schema
         Json boolSchema(const FieldDesc&);
         Json intSchema(const FieldDesc&);
+        Json outlineNeighborsSchema(const FieldDesc&);
         Json colorWriteSchema(const FieldDesc&);
         Json uintSchema(const FieldDesc&);
         Json numberSchema(const FieldDesc&);
@@ -225,6 +226,7 @@ namespace jasperengine::editor::reflect {
         std::string charLiteral(const FieldDesc&, const void*, const CodegenContext&);
         bool uintFromIntYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
         bool intClampedFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
+        bool outlineNeighborsFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
         bool nonNegativeFiniteFloatFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
         YAML::Node kelvinToYaml(const FieldDesc&, const void*, const EncodeContext&);
         bool kelvinFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
@@ -382,6 +384,11 @@ namespace jasperengine::editor::reflect {
             &detail::construct<int>, &detail::destroy<int>, &detail::copy<int>, &detail::equalByOperator<int>,
             &detail::intToYaml, &detail::intClampedFromYaml, nullptr, nullptr, nullptr, false, &detail::intLiteral, &detail::intSchema},
             &detail::intScalar);
+        // a pixel outline's neighbourhood (S51 R10): 4 (plus) or 8 (square), nothing between
+        inline constexpr TypeOps OutlineNeighbors = detail::withScalar(TypeOps{"int", Kind::Int, PropertyType::Int, sizeof(int),
+            &detail::construct<int>, &detail::destroy<int>, &detail::copy<int>, &detail::equalByOperator<int>,
+            &detail::intToYaml, &detail::outlineNeighborsFromYaml, nullptr, nullptr, nullptr, false, &detail::intLiteral,
+            &detail::outlineNeighborsSchema}, &detail::intScalar);
         // a float written when finite; read finite and not below 0 (anything else reads as 0)
         inline constexpr TypeOps NonNegativeFiniteFloat = detail::withScalar(TypeOps{"float", Kind::Float, PropertyType::Float, sizeof(float),
             &detail::construct<float>, &detail::destroy<float>, &detail::copy<float>, &detail::equalFloat,

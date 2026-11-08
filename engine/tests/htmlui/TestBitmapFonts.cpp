@@ -11,8 +11,13 @@
 #include "HtmlUI.h"
 #include "HtmlUIClock.h"
 #include "RmlFontEngine.h"
+#include "RmlRenderer.h"
+#include "FixtureRunner.h"
+#include "harness/GpuEnvironment.h"
+#include "pixelart/BitmapFont.h"
 
 #include <cstring>
+#include <cstdio>
 #include <set>
 
 using namespace jasperengine;
@@ -124,4 +129,98 @@ TEST_F(TestBitmapFonts, PixelRatioOneAndAHalf){
     ASSERT_EQ(screen.width, 768);
     tbfCheckScales(screen, 1.5f);
     EXPECT_SCREEN_GOLDEN(screen, "s51/bitmap_fonts_1_5x");
+}
+
+namespace {
+
+    // the distinct colours of a capture (straight RGB of opaque pixels), as 0xRRGGBB
+    std::set<uint32_t> tbfImageColours(const compat::Image& image){
+        std::set<uint32_t> out;
+        for (size_t i = 0; i + 3 < image.rgba.size(); i += 4)
+            out.insert((uint32_t(image.rgba[i]) << 16) | (uint32_t(image.rgba[i + 1]) << 8) | image.rgba[i + 2]);
+        return out;
+    }
+
+    // the image's rows [y0, y1)
+    compat::Image tbfRows(const compat::Image& image, int y0, int y1){
+        compat::Image out;
+        out.width = image.width;
+        out.height = std::max(0, std::min(y1, image.height) - y0);
+        out.rgba.assign(image.rgba.begin() + (size_t)y0 * (size_t)image.width * 4,
+                        image.rgba.begin() + (size_t)(y0 + out.height) * (size_t)image.width * 4);
+        return out;
+    }
+
+    bool tbfLoad(FixtureRunner& runner, const std::string& file){
+        std::string error;
+        if (!runner.load("fixtures/s51/" + file, &error)){
+            ADD_FAILURE() << file << ": " << error;
+            return false;
+        }
+        runner.frameAt(0.1, true);
+        runner.frameAt(0.2, true);
+        return true;
+    }
+
+}
+
+TEST(TestBitmapFontsRunner, TransformMagnifiesNearestAndTextShadowIsSharp){
+    // R15: a scale(2.5) transform magnifies the face's pixels as blocks, no filtered colours (one
+    // sample per pixel: the edges are not blended); a sharp CSS text-shadow draws only its colour
+    JASPER_REQUIRE_GPU();
+    FixtureRunner runner(256, 160, 1);
+    ASSERT_TRUE(runner.valid());
+    ASSERT_TRUE(tbfLoad(runner, "bitmap_transform.html"));
+    FixtureRunner::Capture capture;
+    ASSERT_TRUE(runner.capture(capture));
+    const std::set<uint32_t> scaled = tbfImageColours(tbfRows(capture.image, 0, 70));
+    EXPECT_TRUE(scaled.count(0xffffffu));
+    EXPECT_EQ(scaled, (std::set<uint32_t>{0x000000u, 0xffffffu})) << "filtered texels under the transform";
+    const std::set<uint32_t> shadow = tbfImageColours(tbfRows(capture.image, 75, 110));
+    EXPECT_TRUE(shadow.count(0x0000ffu)) << "the text-shadow draws";
+    EXPECT_EQ(shadow, (std::set<uint32_t>{0x000000u, 0xffffffu, 0x0000ffu}));
+    EXPECT_GE(HtmlUI::getFontEngine().getPixelPageCount(), 1u);
+}
+
+TEST(TestBitmapFontsRunner, ThreeSizesUseNoMorePagesOrDrawsThanVectorText){
+    // R21: bitmap text at 3 sizes adds no draws over the same text in a vector font, its glyphs
+    // (each size one block-replicated copy) fit one glyph page, and it stays within S16's
+    // per-frame glyph budget
+    JASPER_REQUIRE_GPU();
+    FixtureRunner runner(320, 120, 1);
+    ASSERT_TRUE(runner.valid());
+    RmlFontEngine& engine = HtmlUI::getFontEngine();
+    ASSERT_TRUE(tbfLoad(runner, "r21_vector.html"));
+    const uint32_t vectorDraws = runner.renderer()->getStats().drawCalls;
+    ASSERT_TRUE(runner.load("fixtures/s51/r21_bitmap.html"));
+    runner.frameAt(0.1, true);
+    EXPECT_LE(runner.renderer()->getStats().glyphsRasterized, (uint32_t)RmlFontEngine::settleGlyphBudget);
+    runner.frameAt(0.2, true);
+    const uint32_t bitmapDraws = runner.renderer()->getStats().drawCalls;
+    EXPECT_GT(bitmapDraws, 0u);
+    EXPECT_LE(bitmapDraws, vectorDraws);
+    EXPECT_EQ(engine.getPixelPageCount(), 1u);
+    EXPECT_EQ(engine.getDistancePageCount(), 0u);
+    std::printf("[ ui-bench ] S51 R21: bitmap %u draws over %zu glyph page(s), vector %u draws\n", bitmapDraws,
+                engine.getPixelPageCount(), vectorDraws);
+}
+
+TEST(TestBitmapFontsRunner, AFamilyRegisteredAgainDropsTheOldGlyphs){
+    // a family registered with another font draws the new font's glyphs: the old font's go
+    // (keyed by its serial, not its address, which a later font may reuse)
+    JASPER_REQUIRE_GPU();
+    FixtureRunner runner(160, 60, 1);
+    ASSERT_TRUE(runner.valid());
+    RmlFontEngine& engine = HtmlUI::getFontEngine();
+    ASSERT_TRUE(tbfLoad(runner, "swap_a.html"));
+    std::shared_ptr<pixelart::BitmapFont> first = RmlFontEngine::bitmapFamilyFont("Swap");
+    ASSERT_TRUE(first);
+    const uint64_t firstSerial = first->getSerial();
+    EXPECT_GT(engine.getBitmapGlyphCount(firstSerial), 0u);
+    ASSERT_TRUE(tbfLoad(runner, "swap_b.html"));
+    std::shared_ptr<pixelart::BitmapFont> second = RmlFontEngine::bitmapFamilyFont("Swap");
+    ASSERT_TRUE(second);
+    EXPECT_NE(second->getSerial(), firstSerial);
+    EXPECT_EQ(engine.getBitmapGlyphCount(firstSerial), 0u);
+    EXPECT_GT(engine.getBitmapGlyphCount(second->getSerial()), 0u);
 }

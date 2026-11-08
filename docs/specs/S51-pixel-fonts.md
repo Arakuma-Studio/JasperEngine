@@ -660,11 +660,15 @@ Recorded by the implementation (branch `feature/s51-pixel-fonts`).
    cooked font replaces its source in the build: the `.bitmapfont` / `.fnt`, its sheet, pages and
    TrueType file are not shipped unless an asset references them (a sheet also drawn as a sprite
    ships as that texture). The runtime's `BitmapFont::load(path)` reads `path + ".jfont"` first.
-2. **The built-in font's Latin-1 letters (R16).** The accented letters are composed from the base
-   letter and five marks (grave, acute, circumflex, tilde, diaeresis): a capital keeps rows 0, 2, 3,
-   4 and 6 of its 7 and stands under the mark; a lowercase letter loses what it has above row 2 (the
-   dot of i). The 15 letters no mark makes (Å å Æ æ Ç ç Ð ð × ÷ Ø ø Þ þ ß) are drawn as glyphs of
-   their own. The glyph source is `engine/core/pixelart/BuiltinPixelFont.cpp`.
+2. **The built-in font (R16).** Its design is the engine's own: square corners and bowls with
+   one-pixel strokes, 5x7 glyphs in 6x9 cells (the glyph source is
+   `engine/core/pixelart/BuiltinPixelFont.cpp`). `BitmapFont.BuiltInIsOriginal` holds the classic
+   5x7 character-LCD table as the reference it must not copy and requires three quarters of the 94
+   printable ASCII glyphs to differ from it by 3 pixels or more (82 % do; the old rounded design,
+   30 %, fails it). The accented letters are composed from the base letter and five marks (grave,
+   acute, circumflex, tilde, diaeresis): a capital keeps rows 0, 2, 3, 4 and 6 of its 7 and stands
+   under the mark; a lowercase letter loses what it has above row 2 (the dot of i). The 15 letters no
+   mark makes (Å å Æ æ Ç ç Ð ð × ÷ Ø ø Þ þ ß) are drawn as glyphs of their own.
 3. **The agent guide line (R30).** The guide has no `## Pixel art` section and no byte left (S41
    deviation 26 cut its "Other areas" line): S51 adds the page `docs/mcp/guide/pixel-fonts.md`
    (`jasper://docs/pixel-fonts`, listed in the guide README) and its tools' text, and no guide line.
@@ -694,23 +698,41 @@ Recorded by the implementation (branch `feature/s51-pixel-fonts`).
     (`HtmlTextEffects`) do not move bitmap faces. `check --ui` reports
     `HTMLUI-CSS-0024 bitmap-font-effect` for a rule that sets a bitmap family and a glow, a blur or
     a blurred `text-shadow` in the same block (compat reads no cascade).
-11. **S42's command (R31).** `check --pixel-art` belongs to S42, which is not implemented: S51 gives
-    S42 its input (`pixelart::analyzeFontForPixelArt`, `analyzeTextForPixelArt`, and
-    `get_asset_info`'s `pixel_report`); the FAIL findings of a font that does not load are S42's
-    to report.
+11. **S42's command (R31).** `check --pixel-art` and its rule registry belong to S42, which is
+    not merged: S42's `editor/pixelart/PixelArtCheck.h` (its worktree) reads fonts through
+    `setFontAnalyzer(FontAnalyzer)`, returning its `PixelArtFontInfo`. S51 provides the data
+    (`pixelart::analyzeFontForPixelArt`, `analyzeTextForPixelArt`, `get_asset_info`'s
+    `pixel_report`); when both land, the editor registers an analyzer mapping `FontPixelReport` to
+    `PixelArtFontInfo` field for field (kind, nativeSize, antialiased, partialAlphaShare,
+    pixelGridDetected, loads = !loadError with its first error; `TextPixelReport` gives
+    pixelScale and vectorFallbacks).
 12. **TrueType metrics (R4, R6).** The native size of a TrueType source is its ascender plus
     descender at the detected size (8 for an 8 px font of ascender 7, descender 1), its baseline the
     ascender and its line height the native size + 1 (as a grid's) unless the font has a line gap.
 13. **World text and Pixels Per Unit (R8).** A Text drawn by a non-UI camera with a project Pixels
     Per Unit above 1 takes k / PPU units per font pixel: its `fontSize` stays in pixels.
-14. **MCP text and the core budget (R26-R28, R30).** The core listing had no room for R26's two
-    parameters: `view_asset` lists `text` and `scale` without descriptions (the page
-    `docs/mcp/guide/pixel-fonts.md` describes them), its `max_size` lost its description and bounds
-    (the handler still clamps it to 16..2048), and `get_asset_info`, `write_file` and `sync_files`
-    lost a few words (`get_asset_info` says "font metrics"; `pixel_report` is in its result).
+14. **`preview_font` (R26-R28, §6.1's fallback).** The core listing had one character of room, so
+    font previews are the `preview_font` tool in the `pixel_art` group (its row added here; S42 and
+    S43 add their tools to it), with R26's parameters (`text`, `scale`, `max_size`), and
+    `view_asset`, `get_asset_info` and `write_file` keep main's text: `view_asset` on a font answers
+    with an error naming `preview_font`, `get_asset_info` and `write_file` return the font report
+    with no description change. A preview never exceeds `max_size`: an explicit `scale` that does
+    fails naming the largest that fits, and the glyph grid shows the glyphs that fit (it says how
+    many). The guide's "Unity names -> engine names" heading is "Unity names" (the guide's headroom
+    for the group's name).
 15. **R20's styled rebuild is over budget.** A styled Text draws a back quad and a face quad per
     glyph, both with vertex colours, so its rebuild writes about three times the plain rebuild's
     vertex data. On a 16-vCPU build box (release) a 200-character rebuild takes 0.051 ms; a styled
     one with a cache hit takes 0.134 ms, against a budget of 0.05 ms. `BitmapFontBench` logs both
     and gates them only under `JASPER_TEST_PERF_SLACK`. Closing the gap needs a quad writer that
     fills the interleaved buffer directly, not through `Buffer::addVector*`.
+16. **BMFont channels (R3).** `chnl=0` reads as all channels, as `chnl=15`: libGDX Hiero writes 0
+    (fixture `engine/tests/core/fixtures/fonts/bm_hiero.fnt`).
+17. **Scene preload (R19).** A compiled game's scene resources list its Texts' bitmap fonts
+    (`SceneResources::bitmapFonts`), and `preloadScene` loads them into `BitmapFontPool` on its
+    main-thread step, one per frame when loading is synchronous (a cooked `.jfont` reads in about
+    0.01 ms; a font has no I/O-lane loader). The cooked scene's resource list (the prebuilt player)
+    is a shared format S51 does not bump: there a font loads at its first use.
+18. **HTML UI pages (R15).** A bitmap face's glyphs go to their own glyph pages (`PageKind::PIXEL`
+    and `PIXEL_EFFECT`, in the base budget), sampled NEAREST, so a CSS transform magnifies their
+    pixels as blocks; vector glyphs keep S16's filtered pages.

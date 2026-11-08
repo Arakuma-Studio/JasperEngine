@@ -96,6 +96,7 @@ namespace jasperengine::pixelart {
         uint32_t cacheVersion = 0;
         int backQuads = 0;
         BitmapTextStyle lastStyle;
+        std::vector<uint32_t> acquiredText;     // the codepoints of the last cache acquire
     };
 
 }

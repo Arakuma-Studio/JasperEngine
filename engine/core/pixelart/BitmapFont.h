@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <map>
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -214,8 +215,11 @@ namespace jasperengine::pixelart {
         std::unordered_map<uint64_t, int> kerningTable;     // (left << 32) | right
         BitmapGlyph fallbackGlyph;
         std::vector<BitmapFontPage> pages;
+        // ASCII's glyphs by codepoint (null: missing): a Text's layout looks them up per character
+        std::array<const BitmapGlyph*, 128> asciiGlyphs{};
 
         void makeTextures();
+        void indexGlyphs();
     };
 
     // R5 file keys: parse a .bitmapfont document (lenient: unknown keys are the caller's to keep)
