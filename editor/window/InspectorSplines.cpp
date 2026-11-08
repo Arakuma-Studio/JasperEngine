@@ -9,6 +9,7 @@
 #include "InspectorWindow.h"
 #include "object/spline/Spline.h"
 #include "component/Transform.h"
+#include "component/MeshComponent.h"
 
 #include "App.h"
 #include "Backend.h"

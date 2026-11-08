@@ -5,6 +5,7 @@
 // never enters, and a tree with navObstacle does, under every Use Geometry.
 
 #include "../terrain/FoliageTestSupport.h"
+#include "component/Transform.h"
 
 #include "component/NavMeshModifierComponent.h"
 #include "component/NavMeshSurfaceComponent.h"

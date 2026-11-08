@@ -6,6 +6,7 @@
 #include "SceneWindow.h"
 #include "audio/SoundDrop.h"
 #include "component/TextComponent.h"
+#include "component/Transform.h"
 #include "component/TranslateTracksComponent.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "component/MeshPolygonComponent.h"

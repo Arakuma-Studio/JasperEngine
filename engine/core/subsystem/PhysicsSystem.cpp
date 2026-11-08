@@ -4,6 +4,7 @@
 #include "PhysicsSystem.h"
 #include "physics/JoltTerrainRefresh.h"
 #include "component/Joint3DComponent.h"
+#include "component/Transform.h"
 #include "Scene.h"
 #include "physics/JoltShapeBuilder.h"
 #include "subsystem/MeshSystem.h"

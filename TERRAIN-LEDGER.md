@@ -184,6 +184,10 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
   T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- T1's fan-out cut landed (a6a3c6538): worst header 123 of 150 (Transform.h was 153, TerrainComponent.h 143, now 113), with
+  TerrainSurfaceLayer in its own header. T5's 7 library and editor sources that rely on implicit includes pass a one-file syntax
+  check after the merge; its 4 test sources are covered by T3's next build. T5's 11 foliage files were missing from the Xcode
+  project since T5 landed; regenerated in the merge.
 - T5 landed (caf5a42a0); merged code identical to T5's tested tree. It absorbs Doriax's foliage work and builds on T1's
   `edit_terrain`, `visualize_terrain` and delta undo. Next: T1's fan-out branch, then T3, then T2 and T6.
 - T1 checkpoint landed in integration (e695a1bf3); the merged code is byte-identical to the tree T1 tested. T2, T3, T5 and

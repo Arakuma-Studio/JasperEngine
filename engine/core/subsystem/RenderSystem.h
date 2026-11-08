@@ -35,7 +35,7 @@
 #include "component/TerrainComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/SpriteComponent.h"
-#include "component/Transform.h"
+#include "ecs/ComponentFwd.h"
 #include "render/WaterLayering.h"
 #include "render/ObjectRender.h"
 #include "render/VisibleList.h"
@@ -1194,7 +1194,8 @@ namespace jasperengine{
 		struct MirrorView{
 			Framebuffer framebuffer;
 			CameraComponent camera;
-			Transform transform;
+			// behind a pointer so this header only names Transform (T1: Transform.h fan-out)
+			std::unique_ptr<Transform> transform;
 			PassObjects objects;
 			Matrix4 viewProjection; // oblique, for the mirror surface's projective lookup
 			// lighting and shadow maps of the reflection camera
@@ -1238,7 +1239,7 @@ namespace jasperengine{
 			uint64_t lastUsed = 0;
 			Framebuffer framebuffer;
 			CameraComponent camera;
-			Transform transform;
+			std::unique_ptr<Transform> transform;
 			// the viewer's lighting and shadow maps (strengths 0 without the scene's shadows)
 			CameraShadows shadows;
 #ifdef JASPERENGINE_EDITOR

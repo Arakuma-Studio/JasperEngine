@@ -9,6 +9,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/TerrainRenderInfo.h"
 #include "object/TerrainEdit.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

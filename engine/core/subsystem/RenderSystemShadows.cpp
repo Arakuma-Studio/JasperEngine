@@ -8,6 +8,7 @@
 
 #include "RenderSystem.h"
 #include "FoliageSystem.h"
+#include "component/Transform.h"
 #include "RenderSystemShared.h"
 #include "render/SystemRender.h"
 #include "device/QualityResolver.h"

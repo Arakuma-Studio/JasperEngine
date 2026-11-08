@@ -6,6 +6,7 @@
 #include "mcp/TerrainMaterialInfo.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "component/ShadowCaster2DComponent.h"
+#include "component/Transform.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
 #include "component/CanvasGroupComponent.h"
@@ -14,6 +15,7 @@
 #include "component/TextEffectComponent.h"
 #include "EditorModal.h"
 #include "window/dialog/CreateTerrainDialog.h"
+#include "window/TerrainEditWindow.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
 

@@ -11,6 +11,7 @@
 #include "Engine.h"
 #include "Export.h"
 #include "ecs/Entity.h"
+#include "math/Matrix4.h"
 #include "math/Ray.h"
 #include "math/Vector3.h"
 #include "terrain/RawMapStore.h"
@@ -40,6 +41,17 @@ namespace jasperengine {
     // T3 R52: makes the hole map what its readers need (kept CPU texels, NEAREST, clamped, no mips) and
     // asks for its pixels. No map is Finished, for one test of a string; main thread.
     JASPERENGINE_API ResourceLoadState prepareTerrainHoleMap(TerrainComponent& terrain);
+
+    // Where a terrain is in the world, for code that reads nothing else of its Transform (so that
+    // code need not include it: tools/check_fanout.py). valid is false without a Transform.
+    struct TerrainWorldPlacement {
+        bool valid = false;
+        Matrix4 model;
+        Vector3 position;
+        Vector3 scale = Vector3(1.0f, 1.0f, 1.0f);
+        bool rotated = false;
+    };
+    JASPERENGINE_API TerrainWorldPlacement terrainWorldPlacement(Scene* scene, Entity entity);
 
     // R14: the one function callers use. Terrain-local; no map loaded gives height 0, up and present
     // false. Read-only: particle collisions call it from workers.

@@ -4,6 +4,7 @@
 #include "SceneRender.h"
 #include "LayerViewCamera.h"
 #include "component/AudioSourceComponent.h"
+#include "component/Transform.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/NavGridComponent.h"
 #include "component/NavMeshAgentComponent.h"
