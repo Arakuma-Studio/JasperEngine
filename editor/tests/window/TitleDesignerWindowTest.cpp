@@ -36,6 +36,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -90,6 +91,9 @@ namespace jasperengine::editor {
         static TitleDesignerSettings& settings(W& w) { return w.settings; }
         static void exposeField(W& w, const FieldRef& target, const std::string& label) { w.exposeField(target, label); }
         static TitleLibraryProvider* library(W& w) { return w.library(); }
+        static TitleLetterGizmo& letters(W& w) { return w.letterGizmo; }
+        static void commitLetters(W& w, const ta::Json& values, const std::string& name) { w.commitLetters(values, name); }
+        static void requestFocus(W& w) { w.focusRequested = true; }
         static void setSystemCjk(W& w, std::function<int()> found) { w.systemCjkOverride = std::move(found); }
     };
 
@@ -427,6 +431,76 @@ TEST(TitleDesignerWindowDeathTest, StarterLibraryInViewByDefault) {
         layer = layerById(window->designer().committed(), titleLayer(*window));
         EXPECT_EQ((*layer)["style"]["rims"].size(), 3u);
         EXPECT_EQ((*layer)["effects"].size(), 2u);
+    });
+}
+
+// AC18 (R38): selecting characters 2-3 while editing gives each its gizmo; a quarter turn of one
+// knob writes chars.1.rotation and chars.2.rotation in one step and the edit goes on. Red control:
+// the gizmo given no characters (the selection ignored) fails the first check.
+TEST(TitleDesignerWindowDeathTest, LettersGizmo) {
+    IN_EDITOR("letters", {
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        const fs::path file = newTitle(w, "letters");
+        ASSERT_TRUE(window->open(file, nullptr));
+        const std::string layer = titleLayer(*window);
+        ASSERT_FALSE(layer.empty());
+        Access::beginTextEdit(*window, layer, false);
+        ASSERT_NE(Access::textEdit(*window), nullptr);
+        Access::textEdit(*window)->select(1, 3);
+        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        TitleLetterGizmo& gizmo = Access::letters(*window);
+        ASSERT_EQ(gizmo.selected().size(), 2u) << "one gizmo per selected character";
+        EXPECT_EQ(gizmo.selected()[0].index, 1);
+        EXPECT_EQ(gizmo.selected()[1].index, 2);
+        const ImVec2 c = gizmo.centreOf(0), k = gizmo.knobOf(0);
+        const float r = std::sqrt((k.x - c.x) * (k.x - c.x) + (k.y - c.y) * (k.y - c.y));
+        gizmo.begin(gizmo.hitTest(k), k);
+        ASSERT_TRUE(gizmo.dragging());
+        const ta::Json values = gizmo.values(ImVec2(c.x + r, c.y), false);
+        CommandHistory* history = w.p->getProjectCommandHistory();
+        const size_t position = history->position();
+        Access::commitLetters(*window, values, gizmo.stepName());
+        gizmo.end();
+        EXPECT_EQ(history->position(), position + 1) << "one step";
+        EXPECT_EQ(history->top()->name(), "Rotate Letters");
+        const ta::Json* committed = layerById(window->designer().committed(), layer);
+        ASSERT_NE(committed, nullptr);
+        const ta::Json chars = committed->value("chars", ta::Json::object());
+        ASSERT_TRUE(chars.contains("1") && chars.contains("2")) << chars.dump();
+        EXPECT_NEAR(chars["1"].value("rotation", 0.0), 90.0, 1e-3);
+        EXPECT_NEAR(chars["2"].value("rotation", 0.0), 90.0, 1e-3);
+        EXPECT_FALSE(chars.contains("0") && chars["0"].value("rotation", 0.0) != 0.0) << "unselected characters keep theirs";
+        EXPECT_TRUE(window->state().value("text_editing", false)) << "the edit goes on";
+    });
+}
+
+// R76: Tab moves the keyboard through toolbar, Layers, canvas, Properties and Library, Shift+Tab
+// back. Red control: the window not taking Tab leaves the focus on the toolbar.
+TEST(TitleDesignerWindowDeathTest, TabCyclesRegions) {
+    IN_EDITOR("tab", {
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        const fs::path file = newTitle(w, "tab");
+        ASSERT_TRUE(window->open(file, nullptr));
+        Access::requestFocus(*window);
+        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        auto focus = [&]() { return window->state().value("keyboard_focus", std::string()); };
+        auto tab = [&](bool back) {
+            ImGuiIO& io = ImGui::GetIO();
+            io.AddKeyEvent(ImGuiMod_Shift, back);
+            io.AddKeyEvent(ImGuiKey_Tab, true);
+            Access::drawFrame(*window);
+            io.AddKeyEvent(ImGuiKey_Tab, false);
+            io.AddKeyEvent(ImGuiMod_Shift, false);
+            Access::drawFrame(*window);
+            return focus();
+        };
+        EXPECT_EQ(focus(), "toolbar");
+        EXPECT_EQ(tab(false), "layers");
+        EXPECT_EQ(tab(false), "canvas");
+        EXPECT_EQ(tab(false), "properties");
+        EXPECT_EQ(tab(false), "library");
+        EXPECT_EQ(tab(false), "toolbar");
+        EXPECT_EQ(tab(true), "library");
     });
 }
 

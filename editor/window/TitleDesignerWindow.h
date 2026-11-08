@@ -20,6 +20,7 @@
 #include "titleart/designer/TitleDesignerHooks.h"
 #include "titleart/designer/TitleDesignerPrefs.h"
 #include "titleart/designer/TitleDesignerState.h"
+#include "titleart/designer/TitleLetterGizmo.h"
 #include "titleart/designer/TitlePropertyIndex.h"
 #include "titleart/designer/TitleRows.h"
 #include "titleart/designer/TransientAssetResolver.h"
@@ -179,6 +180,7 @@ namespace jasperengine::editor {
         std::unique_ptr<titledesigner::TitleLayerThumbnails> libraryTiles;     // the starter Library's tiles
         std::unique_ptr<titledesigner::TitleStarterLibrary> starterLibrary;    // while no provider is registered
         std::unique_ptr<titledesigner::TitleTextEdit> textEdit;
+        titledesigner::TitleLetterGizmo letterGizmo;       // the selected characters' gizmos (R38)
         std::unique_ptr<titledesigner::TitleGizmo2D> gizmo2d;
         std::unique_ptr<titledesigner::TitleGizmo3D> gizmo3d;
         std::unique_ptr<titledesigner::TitleHandles> handles;
@@ -254,7 +256,7 @@ namespace jasperengine::editor {
         std::vector<std::string> forceOpenSections;   // a landing opens the hit's sections
 
         // ---- canvas interaction ----
-        enum class Drag : uint8_t { None, Gizmo, Gizmo3D, Handle, Marquee, Guide, NewGuide, Pan, TextSelect };
+        enum class Drag : uint8_t { None, Gizmo, Gizmo3D, Handle, Marquee, Guide, NewGuide, Pan, TextSelect, Letters };
         Drag drag = Drag::None;
         ImVec2 dragStart = ImVec2(0, 0);
         int guideIndex = -1;
@@ -334,6 +336,24 @@ namespace jasperengine::editor {
 
         // ---- stats (R72) ----
         bool gpuTimingHeld = false;
+
+        // ---- what the window's own work costs (R69; Stats, state().timings, the AC31 bench) ----
+        double frameMs = 0.0;               // show()'s CPU time, last frame
+        double frameMsSum = 0.0;            // over the last FRAME_SAMPLES frames
+        double frameMsMax = 0.0;
+        std::vector<double> frameSamples;
+        size_t frameSampleNext = 0;
+        double indexMs = 0.0;               // the last search index build
+        double queryMs = 0.0;               // the last search query
+        void showContents();
+
+        // ---- keyboard regions (R76): Tab cycles toolbar, Layers, canvas, Properties, Library ----
+        enum Region : int { RegionToolbar = 0, RegionLayers, RegionCanvas, RegionProperties, RegionLibrary, RegionCount };
+        int pendingRegionFocus = -1;        // Tab asked for it; its region takes the focus when drawn
+        int keyboardRegion = -1;            // the region Tab reached (outlined while it has the focus)
+        int focusedRegion = -1;             // last frame's region with the keyboard focus
+        int focusedRegionNow = -1;
+        bool regionAvailable[RegionCount] = {true, true, true, true, false};
 
         // ---- the Library strip (R3, R40) ----
         bool libraryNarrowOpen = false;     // narrow: opened from its header bar
@@ -439,6 +459,13 @@ namespace jasperengine::editor {
         titledesigner::LibraryTile starterTile(titledesigner::LibraryTab tab, const titledesigner::LibraryItem& item, float width, float height,
                                                bool visible);
         void drawCjkFontNotice();
+        void cycleRegion(int direction);
+        // at the top of a region's window: takes a focus Tab asked for, notes a focus, outlines it
+        void regionFocus(int region);
+        static const char* regionName(int region);
+        // the Letters gizmo's drag: staged in the text edit, committed as one step on release (R38)
+        void stageLetters(const titledesigner::Json& values);
+        void commitLetters(const titledesigner::Json& values, const std::string& stepName);
         std::vector<std::string> fontTextOfSelection() const;
     };
 

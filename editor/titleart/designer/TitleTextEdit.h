@@ -155,6 +155,11 @@ namespace jasperengine::editor::titledesigner {
         // the selected code points of text(), [first, end) (empty: the caret); for Selected Characters (R38)
         void selection(int& first, int& end) const;
         int caret() const;
+        // selects code points [first, end) of text() (the Letters gizmo's test; Shift+arrows do it by hand)
+        void select(int first, int end);
+        // text() becomes the edit's original: a step committed mid-edit (the Letters gizmo) is not
+        // undone by Esc
+        void rebase() { original = current; }
 
         // Once per frame inside the canvas window while active(), after the canvas's own items:
         // submits the invisible field, resolves clicks, draws the selection, the caret and the

@@ -524,6 +524,10 @@ ta::Json TitleDesignerWindow::state() const {
     if (!doc.editable()) out["read_only"] = doc.readOnlyReason();
     out["search"] = searchText;
     out["text_editing"] = textEditing();
+    out["keyboard_focus"] = focusedRegion >= 0 ? ta::Json(regionName(focusedRegion)) : ta::Json();
+    out["timings"] = {{"frame_ms", frameMs}, {"frame_ms_avg", frameSamples.empty() ? 0.0 : frameMsSum / (double)frameSamples.size()},
+                      {"frame_ms_max", frameMsMax}, {"frames", frameSamples.size()}, {"index_ms", indexMs}, {"query_ms", queryMs},
+                      {"index_entries", index.size()}};
     out["library"] = {{"provider", libraryProvider() ? "registered" : "starter"}, {"shown", libraryShown}};
     ta::Json notices = ta::Json::array();
     if (cjkNoticeShown) notices.push_back("cjk_font_missing");
@@ -1020,6 +1024,26 @@ void TitleDesignerWindow::tick() {
 
 void TitleDesignerWindow::show() {
     if (!windowOpen) return;
+    // the window's own CPU work per frame (the canvas renders and draws elsewhere: processFrame)
+    constexpr size_t FRAME_SAMPLES = 120;
+    const auto start = std::chrono::steady_clock::now();
+    showContents();
+    frameMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    if (frameSamples.size() < FRAME_SAMPLES) {
+        frameSamples.push_back(frameMs);
+    } else {
+        frameSamples[frameSampleNext] = frameMs;
+        frameSampleNext = (frameSampleNext + 1) % FRAME_SAMPLES;
+    }
+    frameMsSum = 0.0;
+    frameMsMax = 0.0;
+    for (double ms : frameSamples) {
+        frameMsSum += ms;
+        frameMsMax = std::max(frameMsMax, ms);
+    }
+}
+
+void TitleDesignerWindow::showContents() {
     if (!canvas) {
         createLive();
         openFirstTime();
@@ -1058,6 +1082,14 @@ void TitleDesignerWindow::show() {
     tick();
 
     libraryShown = false;
+    // R76: Tab (Shift+Tab back) moves between the regions while no field takes the text; the key
+    // is the window's, so ImGui's own tabbing between widgets does not run too
+    if (focused && !ImGui::GetIO().WantTextInput && !textEditing()) {
+        const ImGuiID owner = ImGui::GetCurrentWindow()->ID;
+        ImGui::SetKeyOwner(ImGuiKey_Tab, owner);
+        if (ImGui::IsKeyPressed(ImGuiKey_Tab, ImGuiInputFlags_None, owner) && !ImGui::GetIO().KeyCtrl) cycleRegion(ImGui::GetIO().KeyShift ? -1 : 1);
+    }
+    regionFocus(RegionToolbar);
     drawToolbar();
     drawReadOnlyBanner();
     drawCjkFontNotice();
@@ -1075,6 +1107,10 @@ void TitleDesignerWindow::show() {
     // an open Library adds its splitter and one more item gap above it
     const float librarySplitter = hasLibrary && !libraryFolded ? 2.0f * ImGui::GetStyle().ItemSpacing.y : 0.0f;
     const float mainHeight = std::max(120.0f, avail.y - libraryHeight - statusHeight - librarySplitter);
+    regionAvailable[RegionLayers] = !tiny && (narrow || !settings.layersCollapsed);
+    regionAvailable[RegionProperties] = !tiny && (narrow || !settings.propertiesCollapsed);
+    regionAvailable[RegionCanvas] = true;
+    regionAvailable[RegionLibrary] = hasLibrary && !tiny;
 
     if (tiny) {
         if (narrowPanelsOpen) {
@@ -1093,6 +1129,7 @@ void TitleDesignerWindow::show() {
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
         // Layers | History
         ImGui::BeginChild("##left", ImVec2(left, mainHeight), true);
+        regionFocus(RegionLayers);
         if (settings.layersCollapsed) {
             if (ImGui::Button(ICON_FA_CHEVRON_RIGHT "##expandleft")) {
                 settings.layersCollapsed = false;
@@ -1139,6 +1176,7 @@ void TitleDesignerWindow::show() {
         if (ImGui::IsItemDeactivated()) settings.save();
         ImGui::SameLine(0.0f, 0.0f);
         ImGui::BeginChild("##right", ImVec2(right, mainHeight), true);
+        regionFocus(RegionProperties);
         if (settings.propertiesCollapsed) {
             if (ImGui::Button(ICON_FA_CHEVRON_LEFT "##expandright")) {
                 settings.propertiesCollapsed = false;
@@ -1160,6 +1198,10 @@ void TitleDesignerWindow::show() {
         }
         drawLibrary(width, libraryHeight);
     }
+    // the region with the keyboard focus this frame (the window itself: the toolbar)
+    focusedRegion = focusedRegionNow >= 0 ? focusedRegionNow : (focused ? (int)RegionToolbar : -1);
+    focusedRegionNow = -1;
+    if (keyboardRegion >= 0 && focusedRegion != keyboardRegion) keyboardRegion = -1;
     drawStatusBar();
     drawAddPalette();
     drawFontPicker();
@@ -1179,6 +1221,8 @@ void TitleDesignerWindow::show() {
 void TitleDesignerWindow::drawSideColumn(float width, float height) {
     // R3: Layers, History and Properties as tabs of one column (Properties first with a selection)
     ImGui::BeginChild("##sidecolumn", ImVec2(width, height), true);
+    // Layers and Properties share the column: the one Tab asked for (its tab is selected)
+    regionFocus(pendingRegionFocus == RegionProperties || (pendingRegionFocus < 0 && keyboardRegion == RegionProperties) ? RegionProperties : RegionLayers);
     if (ImGui::BeginTabBar("##narrowtabs")) {
         const bool hasSelection = !doc.selection().empty();
         auto tab = [&](const char* label, const char* id, auto draw) {
@@ -1281,6 +1325,46 @@ void TitleDesignerWindow::drawCjkFontNotice() {
     ImGui::SameLine();
     if (ImGui::SmallButton(ICON_FA_XMARK "###cjkdismiss")) cjkFontNoticeDismissed = true;
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Do not say this again this session");
+}
+
+const char* TitleDesignerWindow::regionName(int region) {
+    switch (region) {
+        case RegionToolbar: return "toolbar";
+        case RegionLayers: return "layers";
+        case RegionCanvas: return "canvas";
+        case RegionProperties: return "properties";
+        case RegionLibrary: return "library";
+        default: return "";
+    }
+}
+
+void TitleDesignerWindow::cycleRegion(int direction) {
+    const int from = keyboardRegion >= 0 ? keyboardRegion : (focusedRegion >= 0 ? focusedRegion : (int)RegionToolbar);
+    int next = from;
+    for (int i = 0; i < RegionCount; i++) {
+        next = (next + direction + RegionCount) % RegionCount;
+        if (regionAvailable[next]) break;
+    }
+    if (next == RegionLayers) setPanel(sideTab == "history" ? "history" : "layers");
+    else if (next == RegionProperties) setPanel("properties");
+    pendingRegionFocus = next;
+    keyboardRegion = next;
+}
+
+void TitleDesignerWindow::regionFocus(int region) {
+    if (pendingRegionFocus == region) {
+        ImGui::SetWindowFocus();
+        // the toolbar: its first control has the keyboard
+        if (region == RegionToolbar) ImGui::SetKeyboardFocusHere();
+        pendingRegionFocus = -1;
+    }
+    if (region != RegionToolbar && ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) focusedRegionNow = region;
+    // the region Tab reached is outlined while it keeps the focus
+    if (keyboardRegion == region && region != RegionToolbar && focusedRegion == region) {
+        const ImVec2 min = ImGui::GetWindowPos();
+        const ImVec2 max(min.x + ImGui::GetWindowWidth(), min.y + ImGui::GetWindowHeight());
+        ImGui::GetWindowDrawList()->AddRect(ImVec2(min.x + 1.0f, min.y + 1.0f), ImVec2(max.x - 1.0f, max.y - 1.0f), ImGui::GetColorU32(ImGuiCol_NavCursor), 3.0f, 0, 2.0f);
+    }
 }
 
 void TitleDesignerWindow::drawNotices() {

@@ -360,6 +360,13 @@ void TitleTextEdit::selection(int& first, int& end) const {
     sorted(first, end);
 }
 
+void TitleTextEdit::select(int first, int end) {
+    if (!editing || composing()) return;
+    anchorByte = codepointToByte(current, first);
+    cursorByte = codepointToByte(current, end);
+    pushSelection = true;
+}
+
 int TitleTextEdit::caret() const {
     return byteToCodepoint(current, cursorByte);
 }

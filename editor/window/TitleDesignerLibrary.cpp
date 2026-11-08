@@ -224,6 +224,7 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
     LibraryTab tab = LibraryTab::Looks;
     libraryTabFromName(v.libraryTab, tab);
     ImGui::BeginChild("##library", ImVec2(width, height), true, ImGuiWindowFlags_NoScrollbar);
+    regionFocus(RegionLibrary);
     // the header names what a click does (R40)
     const LibraryApplyOptions options = libraryOptions(tab);
     std::string applies;

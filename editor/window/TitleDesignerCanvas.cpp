@@ -331,6 +331,31 @@ void TitleDesignerWindow::endTextEdit(bool commit) {
     }
 }
 
+void TitleDesignerWindow::stageLetters(const ta::Json& values) {
+    if (!textEditing() || values.empty()) return;
+    // the edit's text stays staged with the characters' new values
+    ta::Json ops = ta::Json::array();
+    const std::string text = textEdit->previewText();
+    if (text != textEdit->originalText()) ops.push_back({{"op", "set_text"}, {"layer", "id:" + textEdit->layerId()}, {"text", text}});
+    ops.push_back({{"op", "set"}, {"layer", "id:" + textEdit->layerId()}, {"values", values}});
+    std::string error;
+    if (!doc.stage(ops, &error)) reportError(error);
+}
+
+void TitleDesignerWindow::commitLetters(const ta::Json& values, const std::string& stepName) {
+    if (!textEditing() || values.empty()) return;
+    // one step, with the text typed so far (the indexes are of that text); the edit goes on
+    // from it, so Esc no longer reverts what this step kept
+    ta::Json ops = ta::Json::array();
+    const std::string text = textEdit->text();
+    if (text != textEdit->originalText()) ops.push_back({{"op", "set_text"}, {"layer", "id:" + textEdit->layerId()}, {"text", text}});
+    ops.push_back({{"op", "set"}, {"layer", "id:" + textEdit->layerId()}, {"values", values}});
+    std::string error;
+    if (!doc.commit(ops, stepName, &error)) reportError(error);
+    textEdit->rebase();
+    doc.beginGesture("Edit Text");
+}
+
 void TitleDesignerWindow::handleCanvasInput() {
     ImGuiIO& io = ImGui::GetIO();
     const ImVec2 mouse = io.MousePos;
@@ -380,10 +405,27 @@ void TitleDesignerWindow::handleCanvasInput() {
         return true;
     });
 
-    // text editing: clicks inside the edited layer place the caret, outside commit (R36, R39)
+    // text editing: clicks inside the edited layer place the caret, outside commit (R36, R39); a
+    // selected character's gizmo moves, turns or scales the selected characters (R38)
     if (textEditing()) {
+        if (drag == Drag::Letters) {
+            const bool moved = std::fabs(mouse.x - dragStart.x) + std::fabs(mouse.y - dragStart.y) >= 1.0f;
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                if (moved) stageLetters(letterGizmo.values(mouse, io.KeyShift));
+            } else {
+                if (moved) commitLetters(letterGizmo.values(mouse, io.KeyShift), letterGizmo.stepName());
+                letterGizmo.end();
+                drag = Drag::None;
+            }
+            return;
+        }
         if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-            if (rectContains(layerBounds(textEdit->layerId()), titleXform.toDoc(mouse))) {
+            const TitleLetterGizmo::Hit hit = editable && io.MouseClickedCount[0] == 1 ? letterGizmo.hitTest(mouse) : TitleLetterGizmo::Hit();
+            if (hit.part != TitleLetterGizmo::Part::None) {
+                letterGizmo.begin(hit, mouse);
+                dragStart = mouse;
+                drag = Drag::Letters;
+            } else if (rectContains(layerBounds(textEdit->layerId()), titleXform.toDoc(mouse))) {
                 textEdit->clickAt(mouse, io.KeyShift, io.MouseClickedCount[0] == 2);
                 drag = Drag::TextSelect;
             } else {
@@ -771,6 +813,7 @@ void TitleDesignerWindow::drawCanvasOverlays(ImDrawList* dl) {
 
 void TitleDesignerWindow::drawCanvas(float width, float height) {
     ImGui::BeginChild("##canvas", ImVec2(width, height), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    regionFocus(RegionCanvas);
     if (newerVersion()) {
         ImGui::TextDisabled("%s", doc.readOnlyReason().c_str());
         ImGui::EndChild();
@@ -1081,9 +1124,12 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
         if (!layer) {
             textEdit->end();
             doc.cancelGesture();
+            letterGizmo.setGlyphs({}, Affine2(), titleXform, 1.0);
         } else {
             if (!textLayout) textLayout = std::make_unique<ta::TitleTextLayout>(&transient);
-            ta::Json staged = *layer;
+            // the working layer: a Letters drag in progress moves its cells too
+            const ta::Json* working = layerById(doc.shown(), textEdit->layerId());
+            ta::Json staged = working ? *working : *layer;
             staged["text"] = textEdit->previewText();
             const ta::LaidOutText& laid = textLayout->layout(staged);
             Affine2 parentToDoc;
@@ -1106,6 +1152,30 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
             dl->AddRectFilled(ImVec2(canvasMin.x, emin.y), ImVec2(emin.x, emax.y), dim);
             dl->AddRectFilled(ImVec2(emax.x, emin.y), ImVec2(canvasMax.x, emax.y), dim);
             const TitleTextEdit::Result result = textEdit->frame(frame, dl);
+            // the selected characters' gizmos (R38)
+            {
+                int first = 0, end = 0;
+                textEdit->selection(first, end);
+                std::vector<LetterGlyph> glyphs;
+                const ta::Json chars = staged.value("chars", ta::Json::object());
+                for (const ta::LaidOutCluster& cluster : laid.clusters) {
+                    if ((int)cluster.index < first || (int)cluster.index >= end || cluster.emCell.width <= 0.0 || cluster.emCell.height <= 0.0) continue;
+                    LetterGlyph g;
+                    g.index = (int)cluster.index;
+                    g.centre = {cluster.emCell.x + cluster.emCell.width * 0.5, cluster.emCell.y + cluster.emCell.height * 0.5};
+                    g.width = cluster.emCell.width;
+                    g.height = cluster.emCell.height;
+                    const ta::Json adjust = chars.value(std::to_string(cluster.index), ta::Json::object());
+                    g.rotation = adjust.value("rotation", 0.0);
+                    g.scale = adjust.value("scale", 1.0);
+                    if (adjust.contains("offset")) g.offset = ta::decodeVec2(adjust["offset"]);
+                    glyphs.push_back(g);
+                }
+                if (!doc.editable()) glyphs.clear();
+                letterGizmo.setGlyphs(std::move(glyphs), frame.layerToDoc, titleXform, staged.value("size", 100.0));
+                const TitleLetterGizmo::Hit hot = drag == Drag::None && cursorInCanvas ? letterGizmo.hitTest(ImGui::GetIO().MousePos) : TitleLetterGizmo::Hit();
+                letterGizmo.draw(dl, hot);
+            }
             if (result == TitleTextEdit::Result::Changed) {
                 std::string error;
                 doc.stage(ta::Json::array({ta::Json{{"op", "set_text"}, {"layer", "id:" + textEdit->layerId()}, {"text", textEdit->previewText()}}}), &error);

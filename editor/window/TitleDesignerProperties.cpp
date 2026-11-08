@@ -22,6 +22,7 @@
 #include "imgui_internal.h"
 
 #include <algorithm>
+#include <chrono>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -74,7 +75,9 @@ void TitleDesignerWindow::rebuildIndexIfNeeded() {
     if (!stale) return;
     // while a result is edited the list keeps its order and re-indexes 250 ms after the last change
     if (!editingHit.empty() && t - editingHitAt < 0.25 && indexSelectionKey == selectionKey) return;
+    const auto start = std::chrono::steady_clock::now();
     collectIndex(doc, this, index, searchEveryLayer);
+    indexMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     indexChange = doc.changeCount();
     indexSelectionKey = selectionKey;
 }
@@ -132,7 +135,9 @@ void TitleDesignerWindow::drawSearch() {
 
 void TitleDesignerWindow::drawSearchResults() {
     rebuildIndexIfNeeded();
+    const auto start = std::chrono::steady_clock::now();
     std::vector<SearchHit> hits = index.query(searchText, 0);
+    queryMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     // stable keys while a result is being edited (R26)
     if (!editingHit.empty() && !stableOrder.empty()) {
         std::vector<SearchHit> ordered;
