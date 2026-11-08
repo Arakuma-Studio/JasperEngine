@@ -35,6 +35,7 @@
 #include "particles/ParticleEffectLibrary.h"
 #include "particles/ParticleModules.h"
 #include "subsystem/ParticleSubsystem.h"
+#include "texsynth/SynthesisSession.h"
 #include "util/AssetDatabase.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
@@ -1030,8 +1031,14 @@ void previewEffectTool(const CallPtr& call) {
         return;
     }
     Project* project = call->ctx().project();
+    // the project it was asked in: a run finishing after a switch records and writes nothing
+    const uint64_t generation = texsynth::projectGeneration();
+    const fs::path root = project->getProjectPath();
     runPreviewJob(call, std::move(request), "preview_particle_effect", "Preview Particle Effect " + scope,
-                  [scope, saveTarget, failOn, project](ParticleEffectPreview& run) {
+                  [scope, saveTarget, failOn, project, generation, root](ParticleEffectPreview& run) {
+        if (generation != texsynth::projectGeneration() || project->getProjectPath() != root) {
+            return ToolResult::error("Another project was opened during the preview of " + scope + "; nothing was written.");
+        }
         Json data = run.getReport();
         ParticlePreviewSource::rounds().record(scope, data["checks"]);
         std::string text = previewText(scope, data);
@@ -1098,8 +1105,14 @@ void bakeSheetTool(const CallPtr& call) {
     }
     Project* project = call->ctx().project();
     McpContext* ctx = &call->ctx();
+    // the project it was asked in: a bake finishing after a switch writes nothing (bake_procedural_material's rule)
+    const uint64_t generation = texsynth::projectGeneration();
+    const fs::path root = project->getProjectPath();
     runPreviewJob(call, std::move(request), "bake_particle_sheet", (write ? "Bake Sprite Sheet " : "Preview Sprite Sheet ") + scope,
                   [=](ParticleEffectPreview& run) {
+        if (generation != texsynth::projectGeneration() || project->getProjectPath() != root) {
+            return ToolResult::error("Another project was opened while " + scope + " baked; nothing was written.");
+        }
         const PoseImage sheet = ParticleSheetBake::composeSheet(run.getCells(), columns, rows);
         const Json& report = run.getReport();
         const double seconds = report.value("seconds", 0.0);

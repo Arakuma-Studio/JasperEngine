@@ -383,3 +383,27 @@ async def test_focus_window_refuses_path_before_opening_anything(ed: Editor):
     await ed.call("wait", frames=3)
     ed.check(not (await ed.call("editor_status"))["ui"]["particle_effect"]["open"], "the failed call opened nothing")
 
+
+async def test_a_bake_finishing_in_another_project_writes_nothing(ed: Editor):
+    """F1: open another project while a sheet bakes: nothing lands in it (runs last, it switches the project)"""
+    import shutil
+    # long enough to outlive the switch: a dense looping effect over 20 s, 24 cells
+    dense = {"duration": 2, "looping": True, "seed": 4, "maxParticles": 4000,
+             "modules": {"main": {"startLifetime": 2, "startSpeed": 1, "startSize": 0.1},
+                         "emission": {"rateOverTime": 2000}, "shape": {"shape": "sphere", "radius": 1}}}
+    await make_effect(ed, "assets/fx/dense.particles", dense)
+    # (in the harness's scratch, which outlives the editor that will hold it open)
+    other = ed.scratch.root / "other"
+    shutil.copytree(ed.project, other, ignore=shutil.ignore_patterns(".jasperengine"))
+    started = await ed.call("bake_particle_sheet", path="assets/fx/dense.particles", columns=4, rows=6, cell_size=128, seconds=20,
+                            output="assets/fx/dense_sheet", wait=False)
+    ed.check_eq((await ed.call("get_job", job_id=started["job_id"]))["status"], "running", "the bake outlives the call")
+    await ed.call("open_project", path=str(other), unsaved="discard")
+    for _ in range(600):
+        job = await ed.call("get_job", job_id=started["job_id"])
+        if job["status"] != "running":
+            break
+        await ed.call("wait", frames=10)
+    ed.check(job["status"] in ("failed", "cancelled"), f"the bake did not finish into the other project: {job}")
+    leaked = sorted(p.name for p in (other / "assets" / "fx").iterdir() if p.name.startswith("dense_sheet"))
+    ed.check_eq(leaked, [], f"nothing written into {other / 'assets/fx'}")
