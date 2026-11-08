@@ -1845,7 +1845,13 @@ namespace jasperengine{
 		std::vector<Vector4> lightRecordScratch;
 		uint64_t lightRecordsFrame = UINT64_MAX;
 		bool lightRecordsUploaded = false;
-		std::unordered_set<Entity> lightRecordMeshes;
+		// what each mesh's variants read of the records (LIGHT_RECORDS_* bits)
+		std::unordered_map<Entity, uint8_t> lightRecordMeshes;
+		// the variants whose left-out lighting was said (describeLeftOutLighting)
+		std::unordered_set<std::string> reportedLeftOutLighting;
+		static constexpr uint8_t LIGHT_RECORDS_LIGHTS = 1;
+		static constexpr uint8_t LIGHT_RECORDS_CAPSULES = 2;
+		static constexpr uint8_t LIGHT_RECORDS_2D = 4;
 		light_occlusion_t lightOcclusionBlock;
 		LightingFeatureState lighting;
 		// the camera pass being drawn: its contact mask (null: white), whether it draws OIT
@@ -2284,6 +2290,11 @@ namespace jasperengine{
 		                       uint64_t properties, uint32_t& builtLightBits);
 		// the records form's tail of a variant's lights' block (includes/lights.glsl LIGHT_DATA_TAIL)
 		static LightDataTail resolveLightDataTail(ShaderData& shaderData);
+	public:
+		// what a lit variant's build left out to stay within the bind limits, as the runtime warns
+		// it once a variant ("" when nothing: ShaderVariantCompiler::compile's SHADOWS_2D_OFF)
+		static std::string describeLeftOutLighting(uint64_t properties, ShaderData& shaderData);
+	private:
 		// its values for a draw of the mesh in the pass being drawn, into the block's bytes
 		void writeLightDataTail(const LightDataTail& tail, const MeshComponent& mesh, uint64_t properties, unsigned char* block, size_t size) const;
 		// the records form's block (includes/lights.glsl, LIGHTS_FS_RECORDS): the object's pixel
@@ -2293,10 +2304,10 @@ namespace jasperengine{
 		// tile and occlusions (vertex lights: none)
 		float packObjectLightShadow(int sceneLight, bool perPixel) const;
 		// the frame's light records, once a frame while a mesh draws with them; a float texture
-		// of at least the rows given (false: none)
+		// of at least the rows given, made again smaller with shrink once they take under half (false: none)
 		void syncLightRecords();
-		bool ensureLightRecords(int rows);
-		void setLightRecordsMesh(Entity entity, bool records);
+		bool ensureLightRecords(int rows, bool shrink = false);
+		void setLightRecordsMesh(Entity entity, uint8_t reads);
 	public:
 		// the light records' uploads so far (tests: none while no light changes)
 		uint64_t lightRecordUploads = 0;

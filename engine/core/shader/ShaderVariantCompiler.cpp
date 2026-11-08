@@ -5,6 +5,7 @@
 #include "ShaderGlobals.h"
 
 #include "Engine.h"
+#include "Log.h"
 #include "pool/ShaderPool.h"
 #include "component/TerrainComponent.h"
 #include "lattice/LatticeTypes.h"
@@ -14,11 +15,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <exception>
 #include <filesystem>
 #include <string_view>
+#include <set>
+#include <mutex>
 #include <unordered_set>
 
 #ifdef JASPERENGINE_RUNTIME_SHADERS
@@ -1107,16 +1111,25 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
 #ifdef JASPERENGINE_RUNTIME_SHADERS
 namespace {
 
-// past GLES3 / WebGL2's guaranteed fragment uniforms: 224 vectors (sokol's GL backends upload each
-// block as plain uniforms) or the 8 blocks a stage every backend takes
-bool isOverGles3Uniforms(const ShaderData& data){
+// past the fragment uniforms the backend guarantees: on GLES3 / WebGL2 224 vectors and on desktop GL
+// 256 (GL_MAX_FRAGMENT_UNIFORM_VECTORS, 1024 components in GL 3.3 and 4.1: sokol's GL backends upload
+// each block as plain uniforms), and on every backend 8 blocks a stage (sokol's
+// _SG_MAX_UNIFORMBLOCK_BINDINGS_PER_STAGE; D3D11, Metal and Vulkan have no total of vectors, and
+// their per-block sizes, 4096 vectors and up, are far from the engine's). extraVectors and
+// extraBlocks are what a sibling variant adds (a colour variant's OIT twin: u_fs_oit)
+bool isOverUniformLimits(const ShaderData& data, ShaderBackend backend, size_t extraVectors, size_t extraBlocks){
+    size_t vectorLimit = SIZE_MAX;
+    if (backend == ShaderBackend::GLES3)
+        vectorLimit = 224;
+    else if (backend == ShaderBackend::GLCore)
+        vectorLimit = 256;
     for (const ShaderStage& stage : data.stages){
         if (stage.type != ShaderStageType::FRAGMENT)
             continue;
-        size_t vectors = 0;
+        size_t vectors = extraVectors;
         for (const ShaderUniformBlock& block : stage.uniformblocks)
             vectors += (block.sizeBytes + 15) / 16;
-        return vectors > 224 || stage.uniformblocks.size() > 8;
+        return vectors > vectorLimit || stage.uniformblocks.size() + extraBlocks > 8;
     }
     return false;
 }
@@ -1409,15 +1422,42 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
     };
 
     std::string failure = build(taken);
-    // a lit variant whose lights' blocks would take it past GLES3 / WebGL2's 224 fragment uniform
-    // vectors or 8 blocks reads its lights, capsules and 2D lights from u_lightRecords
-    // (includes/lights.glsl, LIGHTS_FS_RECORDS), on every backend: it draws the same
-    if (failure.empty() && isOverGles3Uniforms(out) && out.getUniformBlockIndexByName("u_fs_objectLights") >= 0 &&
-            out.getTextureIndexByName("u_lightRecords").first < 0) {
-        compileLog += std::string(LIGHT_RECORDS_TAKEN) + ": the lights' blocks would take the variant past 224 fragment uniform "
-                      "vectors or 8 blocks; it reads its lights from the frame's light records\n";
+    // a lit variant whose lights' blocks would take it past this backend's fragment uniforms (GLES3
+    // and WebGL2 224 vectors, desktop GL 256, 8 blocks everywhere) reads its lights, capsules and 2D
+    // lights from u_lightRecords (includes/lights.glsl, LIGHTS_FS_RECORDS): it draws the same. A
+    // backend it fits keeps the blocks, and the textures they leave for PCSS and the masks. A colour
+    // variant decides with its OIT twin's block (u_fs_oit, one vector), so both take the same form
+    // (the OIT draws apply the colour variant's slots)
+    const uint64_t oitBit = ShaderPool::getLightingProperty(ShaderPool::LightingFeature::OIT);
+    const bool oitTwin = shaderType == ShaderType::MESH && !(properties & oitBit);
+    if (failure.empty() && isOverUniformLimits(out, backend, oitTwin ? 1 : 0, oitTwin ? 1 : 0) &&
+            out.getUniformBlockIndexByName("u_fs_objectLights") >= 0 && out.getTextureIndexByName("u_lightRecords").first < 0) {
+        const std::string blockForm = compileLog;
+        compileLog += std::string(LIGHT_RECORDS_TAKEN) + ": the lights' blocks would take the variant past this backend's fragment "
+                      "uniforms; it reads its lights from the frame's light records\n";
         taken.lightRecords = true;
         failure = build(taken);
+        // a fork reading the lights' blocks itself (objectLights.*, lighting2d.*) builds in them
+        if (!failure.empty() && failure != "Cancelled") {
+            const std::string name = ShaderPool::getShaderStr(shaderType, properties, customId) +
+                                     (customId ? " (" + ShaderPool::getCustomShaderName(customId) + ")" : std::string());
+            // (once a variant, whatever the backends it builds for)
+            static std::mutex warnedMutex;
+            static std::set<std::string> warned;
+            bool first = false;
+            {
+                std::lock_guard<std::mutex> lock(warnedMutex);
+                first = warned.insert(name).second;
+            }
+            if (first)
+                Log::warn("Shader %s reads the lights' blocks itself: it keeps them, past the guaranteed fragment uniforms "
+                          "(GLES3 and WebGL2: 224 vectors and 8 blocks); read the lights through includes/lights.glsl's functions",
+                          name.c_str());
+            compileLog = blockForm + std::string(LIGHT_RECORDS_FAILED) + ": " + name + " does not build with the light records; "
+                         "it keeps the lights' blocks\n";
+            taken.lightRecords = false;
+            failure = build(taken);
+        }
     }
     // a variant the raw-depth view of the shadow atlas (PCSS) takes past the bind limits is built
     // without it (on every backend: the same program everywhere), and filters the Ultra tier's

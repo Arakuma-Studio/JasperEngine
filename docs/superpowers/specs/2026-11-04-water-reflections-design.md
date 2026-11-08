@@ -783,14 +783,25 @@ the library's compile matrix builds (`WaterUniformBudgetSlow`), a fragment stage
      `u_lightRecords` after the scene lights, and a tail at the end of `u_fs_objectLights` (records or Tiled form):
      `lightDataBases`, the contact and capsule values with the capsules that reach the object as a 32-bit mask, the
      2D lights' ambient and atlas. `u_fs_lightOcclusion` (67 vectors) and `u_fs_lighting2d` (50) are gone there.
-   - `ShaderVariantCompiler::compile` gives the form to any lit variant whose blocks would be over 224 fragment
-     vectors or 8 blocks (a `light-records` log line), on every backend; the rest keep the blocks, so they draw
-     the same programs. Every painted terrain takes it. The bind-limit fallbacks then run in order: PCSS's raw view,
-     the spot masks, the 2D lights' shadows (`shadows-2d-left-out`: only the normal-mapped painted terrain lit by
-     shadowed 2D lights reaches it).
-   - After: Lit matrix at most 217 vectors and 8 blocks (`LitUniformBudgetSlow`), water's worst scene 216, the painted
-     terrain 217; `shaders --library builtin_lit` and `water` compile on all six backends. `LitLightRecordsGpu`'s
-     goldens were drawn by the blocks and match exactly on glcore.
+   - `ShaderVariantCompiler::compile` gives the form to a lit variant whose blocks would be over its backend's
+     fragment uniforms (a `light-records` log line): GLES3 / WebGL2 224 vectors, desktop GL 256
+     (GL_MAX_FRAGMENT_UNIFORM_COMPONENTS 1024 in GL 3.3 and 4.1), D3D11, Metal and Vulkan no total (their
+     per-block sizes are 4096 vectors and up), and 8 blocks a stage everywhere (sokol's per-stage slots). So a
+     mobile limit costs desktop nothing: a heavy Lit within desktop GL keeps its blocks, PCSS's raw view and the
+     spot masks there (`LightRecordsForm.EachBackendDecidesByItsOwnLimits`); the painted terrain takes it the
+     same way (no longer always). A colour variant decides with its OIT twin's `u_fs_oit` (one vector, one block),
+     so both take the same form and the OIT draws keep the colour variant's slots. A fork reading the blocks
+     itself (`objectLights.*`, `lighting2d.*`) that does not build with the records keeps the blocks, with one
+     warning naming it (`light-records-failed`). The bind-limit fallbacks then run in order: PCSS's raw view, the
+     spot masks, the 2D lights' shadows (`shadows-2d-left-out`, the editor's build log and once at runtime in
+     players too: only the normal-mapped painted terrain lit by shadowed 2D lights reaches it).
+   - The records upload only the kinds a loaded variant reads (moving capsules upload nothing otherwise) and only
+     when a record changed; the texture is made again smaller once its rows take under half of it. sokol updates a
+     whole image (`sg_update_image` has no sub-rectangle), so a change uploads its rows in use, not one row.
+   - After: Lit matrix at most 217 vectors and 8 blocks on GLES3 (`LitUniformBudgetSlow`), water's worst scene 216,
+     the painted terrain 217; `shaders --library builtin_lit` and `water` compile on all six backends.
+     `LitLightRecordsGpu`'s goldens were drawn by the blocks and match exactly on glcore (records there: 316
+     vectors), and the capsules' shadow is checked against Intensity 0 on every backend.
 
 Branch `fu/water-tests` (docs/doriax-catchup/FOLLOWUPS.md, water-tests).
 

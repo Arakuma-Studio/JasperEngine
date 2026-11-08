@@ -163,14 +163,8 @@ uniform u_fs_pbrParams {
 
 #ifdef USE_PUNCTUAL
     #define LIGHTS_FS
-    #if defined(HAS_TERRAIN_PBR) && !defined(LIGHTS_FS_RECORDS)
-        // a painted terrain's layers take 45 fragment uniform vectors: its lights' records come
-        // from u_lightRecords (two floats a light in the block), so with shadows and fog it stays
-        // within GLES3 / WebGL2's 224. The texture is one more: a variant then over 16 textures or
-        // samplers leaves out what ShaderVariantCompiler::compile's fallbacks name. (Other Lit
-        // variants take the form only where the block form is over GLES3's budget: compile)
-        #define LIGHTS_FS_RECORDS
-    #endif
+    // (a variant past the backend's fragment uniforms, a painted terrain's layers taking 45 vectors,
+    // reads its lights from the light records: ShaderVariantCompiler::compile, LIGHTS_FS_RECORDS)
     #include "includes/lights.glsl"
 #endif
 

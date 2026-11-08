@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // The built-in Lit's painted Terrain ('Tpb') reads its pixel lights' records from u_lightRecords
-// (mesh.frag, includes/lights.glsl LIGHTS_FS_RECORDS: docs/superpowers/specs/
-// 2026-11-04-water-reflections-design.md, Follow-ups), so its nine layers' block, sixteen lights,
-// shadows and fog fit GLES3 / WebGL2's 224 fragment uniform vectors. Its golden was captured with
-// the per-object block form: a painted terrain lit by a shadowed sun, a shadowed point and spot
-// light and ten more points (the sixteen-light tier), in the per-object Light Mode.
+// where its blocks are over the backend's fragment uniforms (ShaderVariantCompiler::compile,
+// includes/lights.glsl LIGHTS_FS_RECORDS: docs/superpowers/specs/2026-11-04-water-reflections-design.md,
+// Follow-ups): GLES3 / WebGL2's 224 vectors take it with its nine layers' block and sixteen
+// lights; desktop GL's 256 do not, and it keeps its blocks there. Its golden was captured with the
+// per-object block form: a painted terrain lit by a shadowed sun, a shadowed point and spot light
+// and ten more points (the sixteen-light tier), in the per-object Light Mode.
 
 #include "Engine.h"
 #include "Scene.h"
@@ -189,7 +190,9 @@ TEST_F(TerrainLightRecordsGpu, PaintedTerrainDrawsTheBlockFormsImage){
     ASSERT_GT(mesh.numSubmeshes, 0u);
     EXPECT_TRUE(mesh.submeshes[0].shaderProperties & shaderPropertyBit(27)) << "not the painted terrain";
     EXPECT_TRUE(mesh.submeshes[0].shaderProperties & shaderPropertyBit(30)) << "not the sixteen-light tier";
-    EXPECT_NE(mesh.submeshes[0].slotLightRecords.first, -1) << "the painted terrain does not read the lights' records";
+    if (std::strcmp(HeadlessContext::getBackendName(), "glcore") == 0){
+        EXPECT_EQ(mesh.submeshes[0].slotLightRecords.first, -1) << "within desktop GL's 256 fragment vectors the terrain keeps its blocks";
+    }
     const CompareResult result = compareTargetWithGolden("terrain_painted_lights", terrainRecordsOptions());
     EXPECT_TRUE(result.passed) << result.message;
     EXPECT_NO_ENGINE_ERRORS();

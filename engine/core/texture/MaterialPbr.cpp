@@ -566,10 +566,10 @@ void MaterialPbr::getHairUniformBlock(const MaterialPbrExtensions& pbr, float ou
 }
 
 size_t MaterialPbr::countLitVariants(const std::vector<std::pair<uint32_t, uint64_t>>& drawn){
-    std::set<std::pair<uint32_t, uint32_t>> variants;
+    std::set<std::pair<uint32_t, uint64_t>> variants;
     for (const auto& submesh : drawn){
         if (submesh.first != 0)
-            variants.insert({submesh.first, (uint32_t)submesh.second});
+            variants.insert(submesh);
     }
     return variants.size();
 }

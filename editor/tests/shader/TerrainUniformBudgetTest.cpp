@@ -121,6 +121,7 @@ TEST(TerrainUniformBudgetSlow, PaintedTerrainFitsAtEveryLightCapacity){
 
     size_t worst = 0;
     std::string worstName;
+    size_t shadows2DLeftOut = 0;
     for (const ShaderLibraryMatrix::Variant& variant : variants){
         const bool custom = !variant.reference.empty();
         const uint16_t customId = custom ? ShaderPool::registerCustomShader(variant.reference) : 0;
@@ -137,10 +138,15 @@ TEST(TerrainUniformBudgetSlow, PaintedTerrainFitsAtEveryLightCapacity){
         const size_t vertex = terrainStageVectors(data, ShaderStageType::VERTEX, vertexBlocks);
         // (16 samplers across the stages, 16 fragment textures: checkResourceBudget)
         EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), "") << name;
-        // the lights' records on every lit one; the spot lights' masks left out only where
-        // the records would not fit otherwise, and the log says so
-        if (variant.properties & shaderPropertyBit(3)){
-            EXPECT_NE(data.getTextureIndexByName("u_lightRecords").first, -1) << name;
+        // the spot lights' masks left out only where the records would not fit otherwise, and the
+        // log says so
+        // the 2D lights' shadows left out (the last fallback), said by the build and at runtime
+        if (log.find(ShaderVariantCompiler::SHADOWS_2D_LEFT_OUT) != std::string::npos){
+            shadows2DLeftOut++;
+            EXPECT_EQ(data.getTextureIndexByName("u_shadow2DAtlas").first, -1) << name;
+            EXPECT_NE(RenderSystem::describeLeftOutLighting(variant.properties, data), "") << name;
+        }else{
+            EXPECT_EQ(RenderSystem::describeLeftOutLighting(variant.properties, data), "") << name;
         }
         if ((variant.properties & shaderPropertyBit(3)) && data.getTextureIndex(TextureShaderType::SPOTMASKATLAS).first == -1 &&
                 !(variant.properties & ShaderPool::getDirectionalOnlyProperty())){
@@ -153,6 +159,8 @@ TEST(TerrainUniformBudgetSlow, PaintedTerrainFitsAtEveryLightCapacity){
             worstName = name;
         }
     }
+    // the normal-mapped painted terrain lit by shadowed 2D lights reaches the 2D shadows' fallback
+    EXPECT_GT(shadows2DLeftOut, 0u) << "no variant left the 2D shadows out: the fallback has no case";
     std::printf("[terrain] %zu painted terrain variants; the most fragment uniform vectors: %zu of 224, %s\n",
                 variants.size(), worst, worstName.c_str());
 }

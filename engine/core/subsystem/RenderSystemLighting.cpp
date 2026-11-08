@@ -383,6 +383,10 @@ void RenderSystem::loadLightingFeatureSlots(Submesh& submesh, ShaderData& shader
     // the lights' records form (includes/lights.glsl): a float texture until the frame's is bound
     submesh.slotLightRecords = shaderData.getTextureIndexByName("u_lightRecords");
     submesh.lightDataTail = resolveLightDataTail(shaderData);
+    // what its build left out to stay within the bind limits, said once a variant (in players too)
+    const std::string leftOut = describeLeftOutLighting(submesh.shaderProperties, shaderData);
+    if (!leftOut.empty() && reportedLeftOutLighting.insert(ShaderPool::getShaderStr(ShaderType::MESH, submesh.shaderProperties, submesh.customShaderId)).second)
+        Log::warn("Shader %s: %s", ShaderPool::getShaderStr(ShaderType::MESH, submesh.shaderProperties, submesh.customShaderId).c_str(), leftOut.c_str());
     if (submesh.slotLightRecords.first != -1 && ensureLightRecords(1))
         submesh.render.addTexture(submesh.slotLightRecords, ShaderStageType::FRAGMENT, &lightRecords);
     // placeholders until a draw binds the pass's own
@@ -390,6 +394,14 @@ void RenderSystem::loadLightingFeatureSlots(Submesh& submesh, ShaderData& shader
         submesh.render.addTexture(submesh.slotTiledLights, ShaderStageType::FRAGMENT, &emptyBlack);
     if (submesh.slotContactShadows.first != -1)
         submesh.render.addTexture(submesh.slotContactShadows, ShaderStageType::FRAGMENT, &emptyWhite);
+}
+
+std::string RenderSystem::describeLeftOutLighting(uint64_t properties, ShaderData& shaderData){
+    // (the 'S2d' variant without the 2D lights' shadow atlas: ShaderVariantCompiler's SHADOWS_2D_OFF)
+    if ((properties & shaderPropertyBit(23)) && shaderData.getTextureIndexByName("u_shadow2DAtlas").first == -1 &&
+            shaderData.getTextureIndexByName("u_lightRecords").first != -1)
+        return "no 2D light shadows: its lights' records leave no texture unit for them, so 2D lights light it unshadowed";
+    return "";
 }
 
 LightDataTail RenderSystem::resolveLightDataTail(ShaderData& shaderData){
