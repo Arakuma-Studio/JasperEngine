@@ -42,7 +42,7 @@ namespace jasperengine::editor{
     };
 
     // T1 R63: what an armed eyedropper takes from the terrain
-    enum class TerrainPick{ None, Height, SlopeMin, SlopeMax, HeightMin, HeightMax, Layer };
+    enum class TerrainPick{ None, Height, SlopeMin, SlopeMax, HeightMin, HeightMax, Layer, NoiseSize };
 
     // What the eyedroppers read at one terrain-local point: height 0-1 of maxHeight, slope in degrees,
     // and the strongest layer (-1: the base shows most)
@@ -197,6 +197,8 @@ namespace jasperengine::editor{
         bool heightFilterInvert = false;
         // T1 R63: the next click picks this value from the terrain instead of painting
         TerrainPick pickTarget = TerrainPick::None;
+        // Noise Size's eyedropper measures a feature: the first click marks one side, the second the other
+        std::optional<Vector3> noisePickStart;
         // T1 R56: the armed tool's alternate (C)
         bool alternate = false;
         float paintMinSlope;
@@ -408,7 +410,12 @@ namespace jasperengine::editor{
         // T1 R56: Raise and Lower: Lift Floors and Flatten Peaks; Set Height: Pick and Flatten
         void toggleAlternate() { alternate = !alternate; }
         bool hasAlternate() const;
-        bool isAlternateOn() const { return alternate && hasAlternate(); }
+        bool isAlternateOn() const;
+        // Alt Alternates While Painting on, a brush armed with an alternate: Alt+LMB paints instead of orbiting
+        bool altPaints() const;
+        // T1 R63 (DC12): an Alt+click released before the drag threshold picks with no stroke: T5's tree prototype
+        // on Paint Trees, the strongest layer on Paint Texture, the height otherwise
+        bool altPick(Scene* scene, const Ray& ray);
         // Esc: the eyedropper first, then the brush; false when neither was armed
         bool disarmBrush();
 

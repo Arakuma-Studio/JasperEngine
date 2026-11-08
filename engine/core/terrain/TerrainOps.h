@@ -99,6 +99,7 @@ namespace jasperengine::terrain {
 
         std::optional<int> layer;               // paint_layer, paint_base (optional), paint_density, erase_density
         bool normalize = true;                  // paint_layer
+        bool smoothBlend = false;               // paint_layer: the weights toward their 3 x 3 average (T1 R56's alternate)
         std::vector<PaintRule> rules;           // paint_by_rules
         std::vector<int> order;                 // remap_layers: new index per layer
 
