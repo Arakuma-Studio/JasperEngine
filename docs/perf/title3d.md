@@ -65,5 +65,5 @@ readback of the result).
 The Realtime figures on the RTX are flat across tiers: they are dominated by the readback and the job's
 CPU side, not by GPU time, so they do not show §6.7's GPU budgets (which need S15's GPU timings); the pass
 counts do meet §6.7. The cold environment build at 1024 still takes 1.8 s on the RTX: the build is spread
-over the render's calls by a time-adapted budget (spec deviation 22), so most of it is the share schedule,
+over the render's calls by a time-adapted budget (spec deviation 22), so most of it is likely the share schedule (inferred, not profiled),
 not the GPU; it stays over its 400 ms budget.
