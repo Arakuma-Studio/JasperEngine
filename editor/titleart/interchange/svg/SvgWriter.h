@@ -67,6 +67,11 @@ namespace jasperengine::editor {
         size_t layers = 0;                      // layer groups written
     };
 
+    // the layers `embedRaster` asks the raster callback for (visible, drawn, without an SVG form:
+    // image, artwork vector, generator and 3D layers), in document order: an export renders them
+    // before writing
+    std::vector<std::string> titleSvgRasterLayers(const titleart::TitleArtDoc& doc);
+
     // `frame`: canvas pixels (image space) the SVG covers; `assets` resolves fonts and SVGs
     TitleSvgResult writeTitleSvg(const titleart::TitleArtDoc& doc, const titleart::TitleRectI& frame, const TitleSvgOptions& options,
                                  const titleart::AssetResolver* assets, const TitleSvgRasterFn& raster = {});

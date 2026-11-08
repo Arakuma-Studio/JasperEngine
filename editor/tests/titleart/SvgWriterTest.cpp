@@ -230,6 +230,7 @@ TEST(SvgWriter, LeftOutStrictAndEmbedded) {
     });
     ASSERT_TRUE(r.ok);
     EXPECT_EQ(asked, std::vector<std::string>({"Photo", "Rays"}));
+    EXPECT_EQ(titleSvgRasterLayers(doc), std::vector<std::string>({"000000c1", "000000d1"})) << "what an export renders first";
     EXPECT_NE(r.text.find("<image x=\"10\" y=\"20\" width=\"30\" height=\"40\" preserveAspectRatio=\"none\" href=\"data:image/png;base64,iVBORw==\"/>"),
               std::string::npos);
 }

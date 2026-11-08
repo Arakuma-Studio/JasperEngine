@@ -10,6 +10,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <map>
 #include <set>
 
@@ -213,7 +214,7 @@ namespace {
         const AssetResolver* assets;
         const TitleSvgRasterFn& raster;
         TitleRectI frame;
-        geometry::TitleGeometry geometry;
+        geometry::TitleGeometry geo;
         Affine toCanvas;                 // document -> canvas pixels (y down)
         std::string defs;
         int nextDef = 0;
@@ -222,7 +223,7 @@ namespace {
 
         Writer(const TitleArtDoc& d, const TitleSvgOptions& o, const AssetResolver* a, const TitleSvgRasterFn& r, const TitleRectI& f,
                TitleSvgResult& out)
-            : doc(d), options(o), assets(a), raster(r), frame(f), geometry(a), result(out) {
+            : doc(d), options(o), assets(a), raster(r), frame(f), geo(a), result(out) {
             toCanvas.a = 1;
             toCanvas.d = -1;
             toCanvas.e = doc.canvasWidth() * 0.5;
@@ -496,7 +497,7 @@ namespace {
                 warn(layerPath, "clipping to a non-vector layer left out", true);
                 return {};
             }
-            const geometry::LayerElements els = geometry.elements(base, doc);
+            const geometry::LayerElements els = geo.elements(base, doc);
             bool facesOnly = true;
             for (const geometry::TitleElement& e : els.elements) {
                 if (e.kind == geometry::ElementKind::Rim || !e.strokes.empty()) facesOnly = false;
@@ -551,7 +552,7 @@ namespace {
                     content = list(member(layer, "children"), world, path + "/");
                     effectWarnings(layer, path);
                 } else if (vectorKind(layer)) {
-                    const geometry::LayerElements els = geometry.elements(layer, doc);
+                    const geometry::LayerElements els = geo.elements(layer, doc);
                     for (const TitleProblem& p : els.problems) warn(path, p.code + ": " + p.message, false);
                     content = elementsXml(layer, els, world, path, false);
                     effectWarnings(layer, path);
@@ -602,6 +603,21 @@ namespace {
         }
     };
 
+}
+
+std::vector<std::string> editor::titleSvgRasterLayers(const TitleArtDoc& doc) {
+    std::vector<std::string> out;
+    std::function<void(const Json&)> walk = [&](const Json& layers) {
+        if (!layers.is_array()) return;
+        for (const Json& layer : layers) {
+            if (!Writer::draws(layer)) continue;
+            const LayerType type = layerTypeOf(layer);
+            if (type == LayerType::Group) walk(member(layer, "children"));
+            else if (type != LayerType::Adjustment && !Writer::vectorKind(layer)) out.push_back(str(layer, "id"));
+        }
+    };
+    walk(doc.layers());
+    return out;
 }
 
 TitleSvgResult editor::writeTitleSvg(const TitleArtDoc& doc, const TitleRectI& frame, const TitleSvgOptions& options, const AssetResolver* assets,
