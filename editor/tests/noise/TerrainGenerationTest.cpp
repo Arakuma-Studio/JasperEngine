@@ -246,6 +246,9 @@ TEST(TerrainGeneration, FeatherBlendsFromAnAlphaLayersWeight) {
     first.layerCount = 12;
     GenerationResult firstResult;
     ASSERT_TRUE(runAll(store, first, firstResult)) << firstResult.error;
+    for (const GenerationIssue& warning : firstResult.warnings) {
+        EXPECT_NE(warning.code, "param-range") << "layer 10 is in output_layer's range: " << warning.message;
+    }
     std::vector<float> before;
     layer10(before);
     EXPECT_NEAR(before[8 * 17 + 8], 0.2f, 2.0f / 255.0f) << "layer 10's weight, in blend map 1's alpha";
