@@ -826,13 +826,18 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
      The draw checks wait for the state with a hang guard and report their time (`over_budget`): on a box's
      first run (8 editors, cold shader variants) the OBJ layer of the older test drew 0 within the old
      100-frame budget too.
-   - Open, not fixed here (another cause of the same symptom): on a loaded box a detail layer sometimes draws
-     0 instances with its shader built. In the runs that showed it (1 in 3 of the 8-editor set, OBJ or FBX layer
-     alike), its density map had just been hot-reloaded and cooked to BC1 + Zstd. A density map is CPU-read
-     (`TextureTypeInference` makes it R8, uncompressed), but the file is written before the layer points at it,
-     so the cook can miss that use; `sampleFoliageDensity` then reads the cooked GPU data (inferred, not
-     instrumented). Follow-up for the texture cook owners: a texture kept on the CPU never loads a
-     block-compressed cook without its CPU copy, or the cook learns the use from the open scene.
+   - A second cause of the same symptom: a CPU-read map cooked GPU-only. On a loaded box a layer sometimes
+     drew 0 instances with its shader built: its density map had been cooked to BC1 before the layer pointed
+     at it (the file is written first), and a BC cook has levels but no CPU pixels, so
+     `sampleFoliageDensity` read nothing. The CPU-read requirement is now part of the cook decision, whatever
+     the order. `CookedTextures::requireCpuReadable` is called by whatever reads a texture on the CPU: a foliage
+     layer for its density map, `applyTerrainMapSettings` for the heights, and the terrain map writers (MCP,
+     Terrain window) before the file lands. In the editor, `TextureCookQueue` then cooks it CPU-readable
+     (uncompressed R8/R16/RGBA8) from then on. It also turns on the texture's Read/Write (`readable: true` in
+     its import settings, as Unity's tools set it, not an undo step), which recooks it. Foliage never samples a
+     GPU-only form: it waits, and new pixels (the swap, a repaint) refill the layer. A game is unaffected (its
+     export cooks these maps CPU-readable already). Test: `test_density_map_cooked_before_its_layer` cooks an
+     image with `reimport_textures`, then makes it a layer's density map.
 2. **The generated `AGENTS.md` has headroom under its 5,000-byte cap** (`test_generators.py`, not raised). The text
    is the same for every template (2D, 3D, Empty, UI): `writeAgentsFile` takes only the project paths, which are
    always `.jasperengine/...`. Only the editor version string changes its size. Before: 4,929 bytes (version

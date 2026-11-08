@@ -79,6 +79,9 @@ namespace jasperengine{
             float appliedNearFadeEnd = -1.0f;
             bool needUpdate = true;
             bool pending = false;
+            std::string cpuReadMap;             // the density map asked to be cooked CPU-readable
+            const void* densityPixels = nullptr; // the pixels the slots were filled from
+            const void* heightPixels = nullptr;
         };
 
         Entity foliagePreviewEntity = NULL_ENTITY;

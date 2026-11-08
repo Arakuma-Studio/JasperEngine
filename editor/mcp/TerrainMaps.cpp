@@ -6,6 +6,7 @@
 #include "Project.h"
 #include "mcp/McpRefs.h"
 #include "pool/TextureDataPool.h"
+#include "texture/CookedTextures.h"
 #include "texture/TextureData.h"
 #include "util/FileUtils.h"
 #include "util/PngWriter.h"
@@ -185,6 +186,8 @@ TerrainHeightmapResult TerrainMaps::createHeightmap(Project* project,
     const int resolution = std::max(2, request.resolution);
     std::vector<unsigned char> pixels = makeHeightPixels(request);
     result.relativePath = makeTerrainHeightmapPath(project, sceneId, entity, request.seed);
+    // read back on the CPU: cooked CPU-readable from its first cook (CookedTextures::requireCpuReadable)
+    CookedTextures::requireCpuReadable(result.relativePath);
 
     if (!setFileBackedHeightTexture(project, result.texture, result.relativePath, resolution, pixels)) {
         result.error = "Failed to write generated terrain heightmap.";
@@ -277,7 +280,11 @@ TerrainBlendmapResult TerrainMaps::encodeDensityMap(Project* project,
     // MeshSystem::sampleFoliageDensity reads the first channel
     const unsigned char grey = blendChannel(request.fill);
     const unsigned char rgba[4] = {grey, grey, grey, 255};
-    return encodeConstantMap(project, sceneId, entity, "density" + std::to_string(layer), request.resolution, rgba, "density map");
+    TerrainBlendmapResult result = encodeConstantMap(project, sceneId, entity, "density" + std::to_string(layer), request.resolution, rgba, "density map");
+    // read on the CPU: cooked CPU-readable from its first cook, before the write lands
+    if (result.success)
+        CookedTextures::requireCpuReadable(result.relativePath);
+    return result;
 }
 
 } // namespace jasperengine::editor::mcp

@@ -26,6 +26,7 @@ namespace {
         std::mutex mutex;
         CookedTextures::Provider provider;
         std::string providerFamily;
+        CookedTextures::CpuReadHandler cpuReadHandler;
         bool loaded = false;
         std::string family;
         std::unordered_map<std::string, CookedTextureEntry> entries;
@@ -158,6 +159,27 @@ void CookedTextures::setProvider(Provider provider, const std::string& family){
     std::lock_guard<std::mutex> lock(s.mutex);
     s.provider = std::move(provider);
     s.providerFamily = family;
+}
+
+void CookedTextures::setCpuReadHandler(CpuReadHandler handler){
+    CookedState& s = cookedState();
+    std::lock_guard<std::mutex> lock(s.mutex);
+    s.cpuReadHandler = std::move(handler);
+}
+
+void CookedTextures::requireCpuReadable(const std::string& sourcePath){
+    const std::string key = normalize(sourcePath);
+    if (key.empty())
+        return;
+    CpuReadHandler handler;
+    {
+        CookedState& s = cookedState();
+        std::lock_guard<std::mutex> lock(s.mutex);
+        handler = s.cpuReadHandler;
+    }
+    // outside the lock, as find() calls the provider
+    if (handler)
+        handler(key);
 }
 
 bool CookedTextures::hasProvider(){

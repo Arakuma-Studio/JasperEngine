@@ -40,10 +40,11 @@ async def details(ed: Editor, sid, eid) -> list:
     return (await ed.call("sample_terrain", scene=sid, entity=eid, grid=0))["info"]["details"]
 
 
-def write_png(path: Path, size: int = 4) -> None:
-    """a small grey checker, written without any image library"""
-    rows = b"".join(b"\x00" + b"".join(b"\xc0\xc0\xc0" if (x + y) % 2 else b"\x40\x40\x40" for x in range(size))
-                    for y in range(size))
+def write_png(path: Path, size: int = 4, shade: int | None = None) -> None:
+    """a small grey checker (or one shade), written without any image library"""
+    def texel(x: int, y: int) -> bytes:
+        return bytes([shade if shade is not None else (0xc0 if (x + y) % 2 else 0x40)] * 3)
+    rows = b"".join(b"\x00" + b"".join(texel(x, y) for x in range(size)) for y in range(size))
 
     def chunk(kind: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
@@ -132,6 +133,39 @@ async def test_fbx_layer(ed: Editor):
     ed.check(density.exists(), f"the density map: {density}")
     await ed.call("undo", scene=sid)
     ed.check(not density.exists(), "undo removes the density map the call wrote")
+
+
+async def test_density_map_cooked_before_its_layer(ed: Editor):
+    """an image cooked as a colour texture, then made a detail layer's density map, is cooked again
+    CPU-readable with Read/Write on (Unity's flag, set for the layer). Red before the fix: the layer
+    sampled the GPU-only BC cook, which has no CPU pixels, and drew 0 instances"""
+    sid, eid = await terrain(ed, "CookedFirst")
+    mesh = grass(ed)
+    image = ed.project / "assets" / "terrain" / "painted_density.png"
+    write_png(image, 16, shade=255)
+    await ed.call("sync_files")
+    path = "assets/terrain/painted_density.png"
+    start = time.monotonic()
+    while True:
+        first = await ed.call_raw("reimport_textures", {"paths": [path], "platforms": ["desktop"]})
+        if not first.is_error or time.monotonic() - start > 60:
+            break
+        await ed.call("wait", frames=5)
+    ed.check(not first.is_error, f"the image is cooked first: {first.text[:300]}")
+    cooked = first.structured["textures"][0]["platforms"]["desktop"]
+    ed.check(cooked.get("cpu_readable") is False, f"first a colour texture, GPU-only: {cooked}")
+
+    await ed.call("edit_terrain_details", scene=sid, entity=eid, add=[{"mesh": mesh, "density_map": path}])
+    drawn = await drawn_instances(ed, sid, eid, "a detail layer on an image cooked before it")
+    ed.check(drawn > 0, f"the layer draws instances: {drawn}")
+    ed.check("readable: true" in (image.parent / (image.name + ".meta")).read_text(), "its Read/Write is on")
+    start = time.monotonic()
+    while True:
+        report = (await ed.call("get_texture_cook_report", paths=[path], platforms=["desktop"]))["textures"][0]["platforms"]["desktop"]
+        if report.get("status") == "cooked" or time.monotonic() - start > 60:
+            break
+        await ed.call("wait", frames=5)
+    ed.check(report.get("status") == "cooked" and report.get("cpu_readable") is True, f"cooked again CPU-readable: {report}")
 
 
 async def test_refusals(ed: Editor):

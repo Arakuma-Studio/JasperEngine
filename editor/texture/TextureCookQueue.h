@@ -122,6 +122,10 @@ namespace jasperengine::editor {
         void sourceChanged(const std::string& assetPath);
         // A sidecar write (SetAssetMetaCmd): reloads the texture's settings, invalidates on change
         void settingsChanged(const std::string& assetPath);
+        // The engine reads the texture on the CPU (CookedTextures::requireCpuReadable: a terrain's
+        // heights, a foliage layer's density): from now on its cooks are CPU-readable, and its
+        // Read/Write setting is turned on (a recook). Any thread; applied by update().
+        void requireCpuReadable(const std::string& assetPath);
         // stops every queued and running cook (the status bar's cancel)
         void cancelAll();
 
@@ -191,6 +195,8 @@ namespace jasperengine::editor {
         std::vector<std::shared_ptr<Job>> running;
         std::vector<std::shared_ptr<SwapIn>> swaps;
         std::deque<std::pair<std::string, std::string>> metaWrites;   // assetPath, YAML of inferred settings
+        std::set<std::string> cpuRequired;      // read on the CPU this session: cooked CPU-readable
+        std::vector<std::string> cpuRequests;   // newly required, for update() to apply
         uint64_t sequence = 0;              // request order among equal priorities
         int progressDone = 0;
         int progressTotal = 0;
@@ -203,6 +209,7 @@ namespace jasperengine::editor {
         void startSwap(const std::string& assetPath);
         void collectSwaps();
         void writeInferredSettings();
+        void applyCpuRequests();
         void scanProject();
         std::filesystem::path absoluteOf(const std::string& assetPath) const;
         std::string assetPathOf(const std::filesystem::path& absolute) const;

@@ -10,6 +10,7 @@
 #include "DocumentFile.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
+#include "texture/CookedTextures.h"
 
 #include "Backend.h"
 #include "Catalog.h"
@@ -126,6 +127,15 @@ std::string editor::TerrainEditWindow::makeEditableTextureId(uint32_t sceneId, E
 }
 
 std::string editor::TerrainEditWindow::makeEditableTexturePath(Project* project, uint32_t sceneId, Entity entity, const TerrainMapRef& ref){
+    const std::string path = makeEditableTextureFile(project, sceneId, entity, ref);
+    // heights and density are read on the CPU: cooked CPU-readable from the first cook
+    if (ref.target != TerrainMapTarget::BlendMap){
+        CookedTextures::requireCpuReadable(path);
+    }
+    return path;
+}
+
+std::string editor::TerrainEditWindow::makeEditableTextureFile(Project* project, uint32_t sceneId, Entity entity, const TerrainMapRef& ref){
     fs::path baseDir = project ? project->getTerrainMapsDir() : fs::path("terrain_maps");
 
     const std::string suffix = makeMapSuffix(ref);

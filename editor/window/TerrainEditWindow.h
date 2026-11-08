@@ -258,6 +258,7 @@ namespace jasperengine::editor{
         void drawPlacementAsset();
         std::string makeEditableTextureId(uint32_t sceneId, Entity entity, const TerrainMapRef& ref);
         std::string makeEditableTexturePath(Project* project, uint32_t sceneId, Entity entity, const TerrainMapRef& ref);
+        std::string makeEditableTextureFile(Project* project, uint32_t sceneId, Entity entity, const TerrainMapRef& ref);
         int expectedChannels(TerrainMapTarget target);
         ColorFormat expectedFormat(TerrainMapTarget target);
         static float decodeHeightTexel(const unsigned char* pixels, size_t texelIndex, int channels, int bytesPerChannel);
