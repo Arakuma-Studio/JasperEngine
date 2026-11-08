@@ -820,3 +820,14 @@ are in `engine/tests/core/procmat/`.
 - **AC6** runs each graph on job systems of 0, 1 and 5 workers (the evaluator takes a `jobs::JobSystem`, the
   process's by default), at two slicings and through `evaluateOnCpu`. Its red run put rows where they were
   claimed rather than at their own `y`.
+
+### Merge of origin/main (the agent guide's room)
+- **No "Other areas" line.** Origin's `navigation` and `sprites` entries left the guide at about 6,690 of its
+  6,692-byte ceiling (8,192 less the 1,500 headroom), and this spec's two group names (`graphs`, `materials`, in
+  the generated Tool groups line) alone take 19 bytes. So the planned `procedural materials
+  (preview_procedural_material)` entry is not in the guide. The route is the Tool groups line and the `materials`
+  group's `tool_groups` entry, which names `jasper://docs/procedural-materials`. The case
+  `guard_procedural_material_group_route` (no group enabled) guards it; the eval was not run.
+- **Two words cut from base text** to make room for the group names, both stated elsewhere in the guide: the 2D
+  entry's "Box2D" (the Unity names section gives `Rigidbody2DComponent (Box2D)`) and the heading
+  "Unity names -> engine names", now "Unity names".

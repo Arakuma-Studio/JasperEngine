@@ -2444,6 +2444,29 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_procedural_material_group_route",
+        "kind": "guard",
+        "what_happened": "The guide has no Other-areas entry for procedural materials (it has no room left); an agent asked to "
+                         "check a .procmat must find the materials group from the guide's Tool groups list and its tool_groups "
+                         "line, enable it and preview the graph, instead of baking it or judging a screenshot.",
+        "text_at_issue": "Guide 'Tool groups': '... graphs, ..., materials, ...'; tool_groups' materials entry: 'Procedural "
+                         "Materials: preview any material with checks, bake a graph to PNGs and a .material'",
+        "source": "merge of origin/main into mats-fx (the guide's headroom); no failure on record",
+        "prompt": "Does assets/mats/stone.procmat tile seamlessly? Check it and tell me; don't change or bake anything.",
+        "mocks": [
+            {"tool": "preview_procedural_material", "args": {"path": "assets/mats/stone.procmat"}, "result": ok(
+                "assets/mats/stone.procmat: 4 output(s) at 512 (seed 0) on gpu (NVIDIA RTX 4070). Verdict FAIL.\n"
+                "FAIL tileability: {\"base_color\":2.41,\"height\":2.38}. seam 2.41 on base_color across its left and right edges. "
+                "A node feeding it does not tile: give its scale a whole number of repeats, or turn its tiling on.",
+                {"verdict": "FAIL", "device": {"tier": "gpu", "name": "NVIDIA RTX 4070"},
+                 "next": "Fix what fix_hint says, preview again and check again. Never loosen a threshold."})},
+        ],
+        "checks": {"calls": ["preview_procedural_material"],
+                   "must_not_call": ["bake_procedural_material", "screenshot", "edit_graph"],
+                   "reply_must": [r"(?i)seam|not tile|does not tile|doesn.?t tile"]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_procedural_material_catalog",
         "kind": "guard",
         "what_happened": "Listing a large kind's node types returned every node's ports and parameters (tens of thousands of "

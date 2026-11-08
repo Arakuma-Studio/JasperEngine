@@ -11,9 +11,6 @@ Served as `jasper://docs/camera`. Two components, both run by the scene's `Camer
 
 User guide: `docs/camera.md`. Lua reference: `jasper://docs/lua-api`, section 4.9.1.
 
-A Camera with `useTarget` on (the default; `setTarget` turns it on again) builds its view from its
-position and `target` and ignores its Transform's rotation: turn it off to aim the camera by rotation.
-
 ## Frame order
 
 Each frame, `Scene::update` runs the systems in order. Animations and physics interpolation come
