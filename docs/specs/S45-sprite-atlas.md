@@ -534,7 +534,24 @@ Recorded by the implementation (`feature/s45-sprite-atlas`):
   cases `bad_atlas_by_hand` and `bad_inline_frames_retyped`.
 - **AC2/AC3 suites** are `SpriteAtlasRenderGpu.AtlasEqualsSources` and
   `SpriteAtlasRenderGpu.SlicedKeepsItsCorners` (the naming rule wants `*Gpu` suites); both compare
-  two renders (or exact pixels) instead of a committed golden image.
+  two renders (or exact pixels) instead of a committed golden image; both run on glcore and on
+  Vulkan (`GRAPHIC_BACKEND=vulkan`, lavapipe).
+- **AC13's player screenshot** was not compared: the implementers' runs build no prebuilt players
+  (`JASPER_SLOW_BUILD` is not allowed). `test_export` checks the exported files; a compiled game
+  (`SMOKE_METHOD=compile`) of a project with a 300-frame legacy sprite whose texture an atlas packs
+  and a Sliced sheet sprite builds (the generated code sizes `framesRect` first and sets
+  `drawMode`), ships the atlas page and remap under `je-imported/`, and runs without an error (AC8).
+- **AC14** is `engine/tests/core/sprite/SpriteFrameBenchTest.cpp` (the core tests compile
+  `*Test.cpp`). A frame change of another trim rewrites only the quad's vertices (the buffer keeps
+  its layout and indices) and takes its bounds from the quad's corners: `calculateMeshAABB`'s
+  buffer map was one allocation per swap. The 0.5 ms budget is enforced by the benchmark run
+  (`JASPER_TEST_PERF_SLACK`, a quiet machine); no Android device was available to record the
+  device number.
+- **AC17** reads the script's values from `eval_lua`'s results: its `print` does not reach
+  `read_console`.
+- **SpriteComponent size.** S45 adds `drawMode`, `builtSliced`, the shared `inlineAtlas` pointer
+  and its checked revision (352 of `MeshMemory`'s 384 bytes); a legacy sprite's page data lives
+  outside the component.
 - **AC15** saves `screenshot view: editor` images of the harness' display instead of running
   `tools/editor-shot.sh`.
 
