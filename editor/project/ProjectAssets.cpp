@@ -188,14 +188,8 @@ void editor::Project::bindMaterialAssetRefs(Material& material) {
         // a path picked on Windows holds '\': a separator, as on every platform (Stream::portablePath)
         const std::string hint = AssetIndex::toProjectRelative(roots, site.base, Stream::portablePath(ref.path));
         AssetDatabase::Resolution found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
-        std::error_code ec;
-        if (!found.found() && !hint.empty() && fs::is_regular_file(projectPath / hint, ec)) {
-            // written a moment ago (a fork_shader, a tool's file) and not seen by a refresh yet;
-            // what else the database learns waits for the next refresh, as resolvePrefabPath does
-            std::vector<AssetDatabase::Change> changes = assetDatabase.importAssets(hint);
-            pendingAssetChanges.insert(pendingAssetChanges.end(), changes.begin(), changes.end());
-            found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
-        }
+        // written a moment ago (a fork_shader, a tool's file) and not seen by a refresh yet
+        if (!found.found() && importUnseenAsset(hint)) found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
         if (found.found()) {
             // the GUID, and the path in the database's form, as the scene resolver writes it
             // (resolveAssetRefs): the file opens anywhere, not only where it was picked
@@ -203,6 +197,33 @@ void editor::Project::bindMaterialAssetRefs(Material& material) {
             ref.path = AssetIndex::fromProjectRelative(roots, site.base, found.path);
         }
     });
+}
+
+bool editor::Project::importUnseenAsset(const std::string& relative) {
+    std::error_code ec;
+    if (relative.empty() || !assetDatabase.isOpen() || assetDatabase.lookupPath(relative).found() || !fs::is_regular_file(projectPath / relative, ec)) {
+        return false;
+    }
+    // what else the database learns waits for the next refresh, as resolvePrefabPath does
+    std::vector<AssetDatabase::Change> changes = assetDatabase.importAssets(relative);
+    pendingAssetChanges.insert(pendingAssetChanges.end(), changes.begin(), changes.end());
+    return assetDatabase.lookupPath(relative).found();
+}
+
+editor::AssetDatabase::Resolution editor::Project::resolveAsset(const std::string& asset, const std::string& hint, AssetType expected) {
+    const auto lookup = [&]() {
+        if (Guid::isValidText(asset)) return assetDatabase.resolve(Guid::parse(asset), hint, expected, expected != AssetType::Prefab);
+        const std::string path = normalizeToProjectRelative(asset).generic_string();
+        AssetDatabase::Resolution found = assetDatabase.lookupPath(path);
+        if (!found.found()) found = assetDatabase.resolve(Guid(), path, expected, false);
+        return found;
+    };
+    AssetDatabase::Resolution found = lookup();
+    if (found.found()) return found;
+    // a GUID names no path: only a walk can find a file the database has not seen
+    if (Guid::isValidText(asset)) refreshAssetDatabase(true);
+    else if (!importUnseenAsset(normalizeToProjectRelative(asset).generic_string())) return found;
+    return lookup();
 }
 
 void editor::Project::refreshAssetHints() {

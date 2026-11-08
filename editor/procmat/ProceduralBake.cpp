@@ -805,7 +805,11 @@ void jasperengine::editor::procmat::attachGraphFixes(qa::Json& report, const gra
                     if (!descriptor || !descriptor->contains("parameters")) continue;
                     for (const Json& parameter : (*descriptor)["parameters"]) {
                         const std::string name = parameter.value("name", std::string());
-                        if (parameter.value("type", std::string()) != "float" || name.find("scale") == std::string::npos) continue;
+                        // a repeat count: a scale the library steps by whole numbers from 1 (perlin's Scale X);
+                        // a Tiler's Rnd Scale or a Transform's scale steps by fractions, which are their meaning
+                        const bool wholeSteps = parameter.contains("step") && parameter["step"].is_number() && parameter["step"].get<double>() == 1.0 &&
+                                                parameter.contains("min") && parameter["min"].is_number() && parameter["min"].get<double>() >= 1.0;
+                        if (parameter.value("type", std::string()) != "float" || name.find("scale") == std::string::npos || !wholeSteps) continue;
                         const auto stored = node->params.find(name);
                         const Json& value = stored != node->params.end() ? *stored : parameter.value("default", Json());
                         if (!value.is_number() || std::floor(value.get<double>()) == value.get<double>()) continue;

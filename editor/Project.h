@@ -2634,6 +2634,12 @@ namespace jasperengine::editor{
         // asset only by path (a tool's or a paste's new values) get the asset's GUID, so the
         // file follows the asset when it moves (R13 rewrites no referrer)
         void bindMaterialAssetRefs(Material& material);
+        // What resolve_asset answers: an asset by GUID or project-relative path, as the database has it. A miss
+        // only looks at the disk again: a path the database has not seen (written a moment ago) is imported
+        // alone, a GUID it does not know takes a refresh. A hit touches nothing.
+        AssetDatabase::Resolution resolveAsset(const std::string& asset, const std::string& hint, AssetType expected);
+        // A file on disk at `projectRelative` the database has not seen yet is imported now, alone; true when it was
+        bool importUnseenAsset(const std::string& projectRelative);
         // The identity keys (guid, formerGuids) a scene, prefab or material file is written
         // with, put at the top of its root; returns the GUID (a new one for a new file)
         Guid prepareDocumentIdentity(YAML::Node& root, const std::filesystem::path& relativePath);

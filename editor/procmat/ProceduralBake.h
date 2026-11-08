@@ -176,8 +176,8 @@ namespace jasperengine::editor::procmat {
     qa::Json graphCheckReport(Project* project, const std::string& path, const graph::Graph& graph, const EvaluationResult& images,
                               const std::vector<std::string>& only = {});
     // The single edits of the graph the rows point at (R27's Fix: `fixes` [{check, node, op}], and the row's
-    // limited_by and fix_hint name the node): a tileability FAIL on an output fed through a scale that is no
-    // whole number of repeats (setParam to the nearest whole one); a normal row that fails or warns while
+    // limited_by and fix_hint name the node): a tileability FAIL on an output fed through a repeat count with a
+    // fraction (a scale the descriptor steps by 1 from 1, as perlin's Scale X; setParam to the nearest whole one); a normal row that fails or warns while
     // Normal is connected and Height is too (disconnect: the bake then makes the normal from the height)
     void attachGraphFixes(qa::Json& report, const graph::Graph& graph, const std::shared_ptr<const NodeLibrary>& library);
     // the consecutive FAILs of each check, by the material's path, this editor session. Main thread.

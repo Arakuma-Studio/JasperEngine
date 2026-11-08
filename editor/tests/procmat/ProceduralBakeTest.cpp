@@ -499,3 +499,16 @@ TEST(ProceduralBake, ANormalRowOffersToLetTheBakeMakeTheNormal) {
     EXPECT_EQ(report["fixes"][0]["op"], (qa::Json{{"op", "disconnect"}, {"id", "e2"}}));
     EXPECT_NE(report["checks"][0]["limited_by"].get<std::string>().find("Node n2 feeds Normal"), std::string::npos);
 }
+
+TEST(ProceduralBake, AScaleThatIsNoRepeatCountGetsNoFix) {
+    // a Tiler's Rnd Scale and instance sizes are fractions by design (the descriptor steps them by 0.01)
+    graph::Graph file = graphOf({{"t1", "tiler"}, {"out", MATERIAL_OUTPUT_NODE}}, {{"t1", "output", "out", "roughness"}});
+    file.findNode("t1")->params["scale"] = 0.35;
+    file.findNode("t1")->params["scale_x"] = 0.8;
+    qa::Json report = {{"checks", qa::Json::array({{{"id", "tileability"}, {"status", "FAIL"}, {"threshold", 1.5},
+                                                    {"measured", {{"orm", 3.0}}}, {"limited_by", "seam 3.0 on orm."}}})},
+                       {"fixes", qa::Json::array()}};
+    attachGraphFixes(report, file, NodeLibrary::shipped());
+    EXPECT_TRUE(report["fixes"].empty()) << report.dump();
+    EXPECT_EQ(report["checks"][0]["limited_by"], "seam 3.0 on orm.") << "nor is a node named for it";
+}

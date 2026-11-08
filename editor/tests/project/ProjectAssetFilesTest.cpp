@@ -95,3 +95,22 @@ TEST(ProjectTextureSources, LeavesExrOutOfExport) {
     EXPECT_NE(std::find(sources.begin(), sources.end(), "listed.png"), sources.end());
     EXPECT_EQ(std::find(sources.begin(), sources.end(), "source.exr"), sources.end());
 }
+
+TEST(ProjectResolveAsset, AHitTouchesNothingAndAMissImportsOnlyThatPath) {
+    AssetFilesProject& h = assetFilesProject();
+    ASSERT_TRUE(h.ready);
+    const fs::path assets = h.project->getAssetsPath();
+    std::ofstream(assets / "known.txt") << "known\n";
+    h.project->refreshAssetDatabase(true);
+    ASSERT_TRUE(h.project->getAssetDatabase().lookupPath("assets/known.txt").found());
+
+    // written since, by another program: no frame has looked
+    std::ofstream(assets / "other.txt") << "other\n";
+    std::ofstream(assets / "asked.txt") << "asked\n";
+    EXPECT_TRUE(h.project->resolveAsset("assets/known.txt", "", AssetType::Unknown).found());
+    EXPECT_FALSE(h.project->getAssetDatabase().lookupPath("assets/other.txt").found()) << "a hit walks no disk";
+
+    EXPECT_TRUE(h.project->resolveAsset("assets/asked.txt", "", AssetType::Unknown).found()) << "a file on disk is not missing";
+    EXPECT_FALSE(h.project->getAssetDatabase().lookupPath("assets/other.txt").found()) << "a miss imports the path asked for, alone";
+    EXPECT_FALSE(h.project->resolveAsset("assets/absent.txt", "", AssetType::Unknown).found());
+}
