@@ -5,6 +5,7 @@
 // the draws by vertex-buffer offset. What a view keeps is FoliageSystem's; this file owns the GPU.
 
 #include "profiler/Profile.h"
+#include "component/Transform.h"
 #include "RenderSystem.h"
 
 #include "Engine.h"

@@ -5,6 +5,7 @@
 #include "Engine.h"
 
 #include "component/LightComponent.h"
+#include "component/MeshComponent.h"
 #include "object/TerrainEdit.h"
 #include "physics/JoltShapeBuilder.h"
 #include "subsystem/TerrainRenderInfo.h"
