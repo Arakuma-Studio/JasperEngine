@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "2d-pixel-art",
+  "name": "2D Pixel Art",
+  "description": "Pixel Art Mode: a 320x180 base at whole-number scales, a Pixel Perfect Camera, point-filtered lossless art and a sprite moved by the arrow keys or WASD.",
+  "category": "Core",
+  "order": 3,
+  "accentColor": "#3D8FB0",
+  "pixelArt": true,
+  "thumbnail": "thumbnail.png",
+  "startScene": "Main"
+}

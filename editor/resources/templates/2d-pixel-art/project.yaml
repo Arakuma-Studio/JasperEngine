@@ -1,0 +1,30 @@
+formatVersion: 1
+name: 2D Pixel Art
+canvasWidth: 320
+canvasHeight: 180
+scalingMode: integer
+textureStrategy: none
+vsync: true
+pixelArt:
+  enabled: true
+htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+graphics:
+  defaultFilterMode: point
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+versionControl:
+  lfs: true
+startSceneId: 2363777547
+audio:
+  mixer: audio/Main.mixer
+  outputStage: linear
+  iosSessionCategory: ambient
+scenes:
+  - filepath: Main.scene
+    filepathGuid: 1b62f51404a01b85b7727a18638e3288

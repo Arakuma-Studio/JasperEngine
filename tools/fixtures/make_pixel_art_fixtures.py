@@ -60,8 +60,12 @@ def copy_project(src: Path, dst: Path) -> None:
             shutil.copy2(entry, dst / entry.name)
 
 
-async def scene(ed: Editor, name: str) -> int:
-    made = await ed.call("create_scene", name=name, type="2D", path=f"scenes/{name}")
+async def scene(ed: Editor, name: str, first: bool = False) -> int:
+    """a 2D scene saved as scenes/<name>.scene; the first replaces the new project's untitled scene"""
+    if first:
+        made = await ed.call("create_scene", name=name, type="2D", path=f"scenes/{name}", close_previous=True, unsaved="discard")
+    else:
+        made = await ed.call("create_scene", name=name, type="2D", path=f"scenes/{name}")
     return made["scene"]["id"]
 
 
@@ -93,7 +97,7 @@ async def build_clean(ed: Editor) -> None:
                                                    "graphics.scaling_mode": "integer", "graphics.pixels_per_unit": 1,
                                                    "graphics.default_filter_mode": "point", "player.window_width": 1280,
                                                    "player.window_height": 720})
-    sid = await scene(ed, "Main")
+    sid = await scene(ed, "Main", first=True)
     await ed.call("edit_build_scenes", action="set_start", scene=sid)
     hero = await art(ed, "sprites/hero.png", "#ff0000")
     tile = await art(ed, "sprites/tile.png", "#3d8fb0", "#ffffff")
@@ -114,13 +118,12 @@ async def build_bad(ed: Editor) -> None:
                                                    "player.window_height": 720})
     made = await ed.call("edit_palette", {"path": "palettes/game.palette", "from": {"colors": PALETTE}, "output": True})
     await ed.call("set_project_settings", values={"palettes.default": made.get("path", "palettes/game.palette")})
-    main = await scene(ed, "Main")
+    main = await scene(ed, "Main", first=True)
     await ed.call("edit_build_scenes", action="set_start", scene=main)
     hero = await art(ed, "sprites/hero.png", "#ff0000")
     lossy = await art(ed, "sprites/lossy.png", "#3d8fb0", size=64)
     swap = await art(ed, "sprites/swap.png", "#ffffff", size=64)
     offpalette = await art(ed, "sprites/offpalette.png", "#fe0202", "#010101")
-    await wait_imports(ed, [hero, lossy, swap, offpalette])
     # BC7 with mipmaps: an explicit default type and quality win over Pixel Art
     for path in (lossy, swap):
         await ed.call("set_texture_import_settings", paths=[path],
@@ -146,6 +149,8 @@ async def build_bad(ed: Editor) -> None:
     await ed.call("create_particles", scene=main, name="Sparks", preset="sparks", position=[8, 8, 0],
                   modules={"renderer": {"renderMode": "stretched_billboard"}})
     await ed.call("set_scene_settings", scene=main, settings={"post_processing.fxaa_enabled": True})
+    # the textures the scene draws cook, and the first cook writes the others' import settings
+    await wait_imports(ed, [hero, lossy, swap, offpalette])
     await ed.call("save_scene", scene=main)
 
     # the fixed resolution scene: its camera without a Pixel Perfect Camera
@@ -178,8 +183,11 @@ async def make(name: str, builder) -> None:
 
 
 async def main() -> int:
-    await make("pixel-art", build_clean)
-    await make("pixel-art-bad", build_bad)
+    wanted = sys.argv[1:] or ["pixel-art", "pixel-art-bad"]
+    if "pixel-art" in wanted:
+        await make("pixel-art", build_clean)
+    if "pixel-art-bad" in wanted:
+        await make("pixel-art-bad", build_bad)
     return 0
 
 
