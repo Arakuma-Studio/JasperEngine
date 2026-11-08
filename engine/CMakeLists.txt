@@ -1571,6 +1571,8 @@ set(JASPERENGINE_SRCS
     core/sprite/SpriteSheetPool.cpp
     core/sprite/SpriteFrameGeometry.cpp
     core/sprite/AsepriteClips.cpp
+    # S45: texture sheets, name@WxH, .spriteatlas and the atlas remap
+    core/sprite/SpriteSheetSources.cpp
     core/graph/Graph.cpp
     core/graph/GraphRegistry.cpp
     core/io/AssetIOService.cpp

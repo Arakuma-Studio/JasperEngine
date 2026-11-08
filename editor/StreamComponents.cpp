@@ -416,6 +416,8 @@ YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) 
     node["flipY"] = YamlNumbers::text(sprite.flipY);
     node["textureScaleFactor"] = YamlNumbers::text(sprite.textureScaleFactor);
     node["pivotPreset"] = pivotPresetToString(sprite.pivotPreset);
+    // S45 R6: optional, written only when not Simple (an older editor keeps it as unknown data)
+    if (sprite.drawMode != SpriteDrawMode::SIMPLE) node["drawMode"] = StreamSchema::spriteDrawMode().toString(sprite.drawMode);
     // S41: written only away from their defaults (a scene of before is unchanged)
     if (sprite.pixelsPerUnit != 0.0f)
         node["pixelsPerUnit"] = YamlNumbers::text(sprite.pixelsPerUnit);
@@ -460,6 +462,7 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
     if (node["flipY"]) sprite.flipY = YamlNumbers::as<bool>(node["flipY"]);
     if (node["textureScaleFactor"]) sprite.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["pivotPreset"]) sprite.pivotPreset = decodeEnum(node, "pivotPreset", StreamSchema::pivotPreset());
+    if (node["drawMode"]) sprite.drawMode = decodeEnum(node, "drawMode", StreamSchema::spriteDrawMode());
     if (node["sheet"]) {
         const AssetRef sheet = decodeAssetRef(node, "sheet");
         if (sheet.path != sprite.sheet.path) {

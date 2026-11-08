@@ -268,6 +268,7 @@ namespace luabridge
     template<> struct Stack<TextEffectType> : EnumWrapper<TextEffectType>{};
     template<> struct Stack<TextEffectMix> : EnumWrapper<TextEffectMix>{};
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
+    template<> struct Stack<SpriteDrawMode> : EnumWrapper<SpriteDrawMode>{};
     template<> struct Stack<PixelUpscaleMode> : EnumWrapper<PixelUpscaleMode>{};
     template<> struct Stack<PixelRotation> : EnumWrapper<PixelRotation>{};
 

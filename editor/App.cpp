@@ -34,6 +34,7 @@
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
+#include "sprite/SpriteAtlasBuilder.h"
 #include "component/TilemapComponent.h"
 #include "spline/SplineSceneTools.h"
 #include "spline/SplineEditor.h"
@@ -656,15 +657,20 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     for (const AssetCreateItem& item : assetCreateItems()) {
         // Animation Clip: once the clip asset task set its hook
         if (item.kind == AssetCreateKind::AnimationClip && !animationClipAppHooks().createClipAsset) continue;
+        // Sprite Atlas: in Create > 2D below
+        if (item.kind == AssetCreateKind::SpriteAtlas) continue;
         if (item.separatorBefore) assetsCreateItems.push_back(menuSeparator());
         assetsCreateItems.push_back(catalogItem(item.commandId, item.label));
     }
     assetsCreateItems.push_back(menuSeparator());
+    assetsCreateItems.push_back(menuSubmenu("2D", {catalogItem("assets.createSpriteAtlas", "Sprite Atlas"),
+                                                   catalogItem("assets.createSpriteAtlasFromSelection", "Sprite Atlas from Selection")}));
     assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
     assetsCreateItems.push_back(catalogItem("assets.createNativePlugin", "Native Plugin..."));
 
     menu.menus.push_back(menuSubmenu("Assets", {
         menuSubmenu("Create", assetsCreateItems),
+        catalogItem("assets.convertInlineSpriteFrames", "Convert Inline Sprite Frames..."),
         catalogItem("assets.showInFileManager"),
         catalogItem("assets.open"),
         catalogItem("assets.rename", "Rename"),
@@ -1232,6 +1238,15 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateShakePreset:
             projectWindow->createAsset(AssetCreateKind::ShakePreset, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateSpriteAtlas:
+            projectWindow->createAsset(AssetCreateKind::SpriteAtlas, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateSpriteAtlasFromSelection:
+            projectWindow->assetsCreateSpriteAtlasFromSelection();
+            break;
+        case AppMenuCommand::AssetsConvertInlineSpriteFrames:
+            spriteConversionDialog.open(&project);
             break;
         case AppMenuCommand::AssetsCreatePhysicsMaterial:
             projectWindow->createAsset(AssetCreateKind::PhysicsMaterial, projectWindow->createTargetDirectory());
@@ -2908,6 +2923,7 @@ void editor::App::show(){
     sceneSaveDialog.show();
     // the importers' edits not applied, asked about before a selection change, Play or the close
     ImporterPrompt::draw();
+    spriteConversionDialog.show();
     projectSaveDialog.show();
     dataSafetyDialogs.show(project);
     exportWindow.show();
@@ -3867,6 +3883,10 @@ void editor::App::pollExternalChanges(){
         pixelart::aseprite::AsepriteImporter& imports = pixelart::aseprite::AsepriteImporter::get();
         if (imports.getProject() != &project) imports.attach(&project);
         wake = imports.update() || wake;
+        // Sprite Atlas builds (S45): packed on the Background lane, swapped in here
+        sprite::SpriteAtlasBuilder& atlases = sprite::SpriteAtlasBuilder::get();
+        if (atlases.getProject() != &project) atlases.attach(&project);
+        wake = atlases.update() || wake;
     }
 
     const auto now = std::chrono::steady_clock::now();

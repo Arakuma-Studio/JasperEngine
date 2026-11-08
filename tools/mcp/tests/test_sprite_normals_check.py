@@ -314,7 +314,7 @@ async def test_normalized_frames_on_a_wide_sheet(ed: Editor):
         return (200, 90 + (x // 32), 60, 255) if inside else (0, 0, 0, 0)
     art = ed.project / ART
     (art / "wide.png").write_bytes(png_rgba(2048, 32, blobs))
-    await ed.call("set_sprite_frames", create={"name": "Wide"}, texture=f"{ART}/wide.png", slice={"tile_size": [32, 32]})
+    await ed.call("set_sprite_frames", create={"name": "Wide"}, texture=f"{ART}/wide.png", slice={"tile_size": [32, 32]}, inline=True)
     await ed.call("set_texture_settings", entity="Wide", component="mesh", property="submeshes[0].material.baseColorTexture",
                   min_filter="nearest", mag_filter="nearest")
     await gen(ed, source="Wide", output=True, apply=True)

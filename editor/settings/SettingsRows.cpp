@@ -1788,6 +1788,25 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
         {
+            // S45 R18
+            Setting s;
+            s.key = "sprite_atlas.mode";
+            s.type = "enum";
+            s.values = {"enabled", "enabled_for_builds", "disabled"};
+            s.description = "Sprite Atlases: enabled (editor, Play and builds draw from them), enabled_for_builds (only builds), disabled.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getSpriteAtlasMode()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                const std::string mode = value.is_string() ? value.get<std::string>() : std::string();
+                if (mode != "enabled" && mode != "enabled_for_builds" && mode != "disabled") {
+                    error = "sprite_atlas.mode is enabled, enabled_for_builds or disabled";
+                    return false;
+                }
+                if (apply) ctx.project()->setSpriteAtlasMode(mode);
+                return true;
+            };
+            add(s);
+        }
+        {
             Setting s;
             s.key = "graphics.texture_strategy";
             s.type = "enum";
@@ -3516,6 +3535,7 @@ const Placement placements[] = {
     {"android.permissions", "Player", "Android", "Permissions", "android"},
     {"android.allow_backup", "Player", "Android", "Application Options", "android allow backup"},
     {"android.fullscreen", "Player", "Android", "Screen Options", "android fullscreen"},
+    {"sprite_atlas.mode", "2D", "Sprite Atlas", "Mode", "sprite atlas packer pages enabled for builds"},
     {"graphics.canvas_width", "Graphics", "", "Canvas Width", "reference resolution"},
     {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution"},
     {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch integer pixel perfect"},
@@ -3844,6 +3864,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Editor", SettingsScope::Project, 12, "version control assets labels"},
         {"Navigation", SettingsScope::Project, 13, "navigation navmesh agents areas crowd grid pathfinding ai"},
         {"Mesh", SettingsScope::Project, 14, "mesh model import cook optimize compression lod meshopt read write cache audit"},
+        {"2D", SettingsScope::Project, 15, "2d sprite atlas packer pages pixel art"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},

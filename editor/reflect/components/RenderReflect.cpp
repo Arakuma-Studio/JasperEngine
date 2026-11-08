@@ -20,6 +20,7 @@
 #include "component/PrefabComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/SpriteComponent.h"
+#include "subsystem/MeshSystem.h"
 #include "component/TerrainComponent.h"
 #include "component/TilemapComponent.h"
 
@@ -238,6 +239,19 @@ namespace {
                 material["baseColorTexture"] = kept;
             }
         }
+        // a legacy sprite drawn from an atlas page (S45 R8): its source texture and frame rect are
+        // what it saves, the page is the runtime's
+        if (sprite && sprite->sheet.empty() && sprite->inlineAtlas && node["submeshes"] && node["submeshes"].IsSequence() &&
+            node["submeshes"].size() > 0) {
+            const std::string source = MeshSystem::spriteSourceTexture(*sprite, mesh);
+            if (source != mesh.submeshes[0].material.baseColorTexture.getPath()) {
+                YAML::Node submesh = node["submeshes"][0];
+                Texture original = mesh.submeshes[0].material.baseColorTexture;
+                original.setPath(source);
+                if (submesh["material"] && submesh["material"].IsMap()) submesh["material"]["baseColorTexture"] = Stream::encodeTexture(original, false);
+                submesh["textureRect"] = Stream::encodeRect(MeshSystem::spriteSourceRect(*sprite, mesh));
+            }
+        }
         return node;
     }
 
@@ -401,6 +415,8 @@ namespace {
         JE_FIELD(SpriteComponent, sheet, .updateFlags = kSprite, .asset = AssetKind::Any, .label = "Sprite Sheet"),
         JE_FIELD(SpriteComponent, frame, .updateFlags = kSprite, .min = 0.0f),
         JE_FIELD(SpriteComponent, frameName, .flags = ReadOnly | NoMcpWrite, .label = "Frame Name"),
+        // S45 R6: Simple or Sliced (9-slice from the frame's border)
+        JE_FIELD(SpriteComponent, drawMode, .enumDesc = &enums::kSpriteDrawMode, .updateFlags = kSprite, .label = "Draw Mode"),
         // S41: texels per world unit (0: the project's) and the rotation policy under a Pixel Perfect Camera
         JE_FIELD(SpriteComponent, pixelsPerUnit, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kSprite, .min = 0.0f, .max = 4096.0f,
                  .label = "Pixels Per Unit", .tooltip = "Texels per world unit. 0: the Sprite Sheet's, else the project's Pixels Per Unit."),
@@ -670,8 +686,8 @@ const ComponentDesc kTerrainDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kSpriteKnownKeys[] = {"automaticFlipY", "enabled", "flipY", "frame", "frameName", "framesRect", "height", "pivotPreset",
-                                                "pixelRotation", "pixelsPerUnit", "sheet", "sheetGuid", "textureScaleFactor", "width"};
+    constexpr const char* kSpriteKnownKeys[] = {"automaticFlipY", "drawMode", "enabled", "flipY", "frame", "frameName", "framesRect", "height",
+                                                "pivotPreset", "pixelRotation", "pixelsPerUnit", "sheet", "sheetGuid", "textureScaleFactor", "width"};
 
 }
 
