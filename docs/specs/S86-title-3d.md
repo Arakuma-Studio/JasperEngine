@@ -1440,7 +1440,12 @@ rest of S82 lands in 6B.
     `test_title_art_3d_parity.py`: S84's look converter is not in this tree, so the 40 looks are transcribed as JSON
     (`titleart/fixtures/pachislop3d/`, by hand from Pachislop's look helpers, no code run) and `title3DFromPachislop`
     (R67) converts their 3D part; their 2D effects map onto S80's (keyline -> outline, outerGlow -> outer_glow) and
-    S83's (deepGlow) are left out. The looks that do not pass are listed in the test with their causes.
+    S83's (deepGlow) are left out. **AC21 is not met: none of the 40 looks passes its per-pixel metric** (measured
+    2026-11-08 after deviation 30's fixes: means 4-55/255, 5-78 % of pixels over 24/255; sometsuke, matte-glow and
+    carbon-orange closest). Side-by-side sheets show most looks matching by eye; the residue is 1-2 px outline offsets at
+    0.25 on every look, S83's deepGlow on 34 looks, glint streaks starting at other highlights, crumple/flake/liquid cells
+    and gem refraction, and a taller, wider inflate field. The test lists each look's cause and fails when a look starts
+    passing (so the list shrinks); its Neutral-for-Punch red control fails all 40.
 29. **Measured: benches on this host** (`docs/perf/title3d.md`): the figures are this host's (a container on a shared CPU,
     llvmpipe for the GPU), not build server A's; `tools/perf/bench-thresholds.json` keeps the spec's budgets.
 30. **Implementation: Pachislop's units, found by the parity goldens.** A material's gradient overrides its colour
