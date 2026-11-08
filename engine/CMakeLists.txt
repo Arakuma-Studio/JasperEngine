@@ -1902,6 +1902,7 @@ set(JASPERENGINE_SRCS
     core/util/SubscriptionOwnerIndex.cpp
     core/util/TextShaper.cpp
     core/util/TitleArtBakeInfo.cpp
+    core/util/TitleArtLanguage.cpp
     core/util/ThorVGRuntime.cpp
     core/util/UniqueToken.cpp
     core/util/WaterExclusion.cpp

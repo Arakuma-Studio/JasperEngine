@@ -11,6 +11,7 @@
 #include "fx/FxPresets.h"
 
 #include <algorithm>
+#include <fstream>
 #include <cmath>
 #include <filesystem>
 #include <map>
@@ -31,7 +32,12 @@ namespace {
 
     struct OpRegistry {
         std::map<std::string, TitleOpHandler> handlers;
-        std::map<std::string, TitleCreateImporter> importers;
+        struct Importer {
+            std::string kind;
+            TitleCreateSniffer sniff;
+            TitleCreateImporter import;
+        };
+        std::vector<Importer> importers;
     };
 
     OpRegistry& registry() {
@@ -1367,8 +1373,8 @@ TitleJson TitleOpsResult::toJson() const {
 
 // ---- TitleOpContext ----
 
-TitleOpContext::TitleOpContext(TitleArtDoc& doc, titleart::TitleIdGenerator& ids, TitleOpsResult& result)
-    : doc(doc), ids(ids), result(result) {
+TitleOpContext::TitleOpContext(TitleArtDoc& doc, titleart::TitleIdGenerator& ids, TitleOpsResult& result, const TitleOpsOptions* options)
+    : doc(doc), ids(ids), result(result), options(options) {
 }
 
 bool TitleOpContext::fail(const std::string& code, const std::string& message, const std::string& path,
@@ -1589,27 +1595,51 @@ bool TitleArtOps::unregisterOp(const std::string& name) {
     return registry().handlers.erase(name) > 0;
 }
 
-bool TitleArtOps::registerCreateImporter(const std::string& extension, TitleCreateImporter importer) {
-    if (extension.empty() || !importer) return false;
-    return registry().importers.emplace(extension, std::move(importer)).second;
-}
-
-bool TitleArtOps::unregisterCreateImporter(const std::string& extension) {
-    return registry().importers.erase(extension) > 0;
-}
-
-bool TitleArtOps::createFrom(const std::string& sourcePath, TitleArtDoc& out, std::string& code, std::string& error) {
-    auto it = registry().importers.find(lowerExtension(sourcePath));
-    if (it == registry().importers.end()) {
-        code = "not_available";
-        error = "creating a Title Art from '" + sourcePath + "' (a Pachislop, PSD or SVG import) arrives with S87";
-        return false;
+bool TitleArtOps::registerCreateImporter(const std::string& kind, TitleCreateSniffer sniff, TitleCreateImporter importer) {
+    if (kind.empty() || !sniff || !importer) return false;
+    for (const auto& i : registry().importers) {
+        if (i.kind == kind) return false;
     }
-    if (!it->second(sourcePath, out, error)) {
-        code = "import_failed";
-        return false;
-    }
+    registry().importers.push_back({kind, std::move(sniff), std::move(importer)});
     return true;
+}
+
+bool TitleArtOps::unregisterCreateImporter(const std::string& kind) {
+    auto& list = registry().importers;
+    const size_t before = list.size();
+    list.erase(std::remove_if(list.begin(), list.end(), [&](const auto& i) { return i.kind == kind; }), list.end());
+    return list.size() != before;
+}
+
+bool TitleArtOps::createFrom(const TitleCreateRequest& request, TitleCreateResult& out, std::string& code, std::string& error) {
+    std::string head;
+    {
+        std::ifstream in(std::filesystem::path(request.sourcePath), std::ios::binary);
+        if (!in) {
+            code = "file_not_found";
+            error = "cannot read '" + request.sourcePath + "'";
+            return false;
+        }
+        head.resize(4096);
+        in.read(head.data(), static_cast<std::streamsize>(head.size()));
+        head.resize(static_cast<size_t>(in.gcount()));
+    }
+    const std::string extension = lowerExtension(request.sourcePath);
+    for (const auto& importer : registry().importers) {
+        if (!importer.sniff(head, extension)) continue;
+        out = TitleCreateResult();
+        out.kind = importer.kind;
+        if (!importer.import(request, out, code, error)) {
+            if (code.empty()) code = "import_failed";
+            return false;
+        }
+        return true;
+    }
+    code = registry().importers.empty() ? "not_available" : "import_unknown_kind";
+    error = registry().importers.empty()
+                ? "creating a Title Art from '" + request.sourcePath + "' (a Pachislop, PSD or SVG import) arrives with S87"
+                : "'" + request.sourcePath + "' is not a file Title Art imports (a Pachislop .pslot.json, a .psd or .psb, an .svg)";
+    return false;
 }
 
 void TitleArtOps::applyCommitInvariants(const TitleArtDoc* before, TitleArtDoc& after, titleart::TitleIdGenerator& ids, TitleOpsResult& result) {
@@ -1725,7 +1755,7 @@ TitleOpsResult TitleArtOps::apply(const TitleArtDoc& doc, const TitleJson& ops, 
     result.doc = doc;
     titleart::TitleIdGenerator ids = options.idSeed ? titleart::TitleIdGenerator(options.idSeed) : titleart::TitleIdGenerator();
     ids.reserveFrom(doc.root);
-    TitleOpContext ctx(result.doc, ids, result);
+    TitleOpContext ctx(result.doc, ids, result, &options);
     const TitleJson list = ops.is_array() ? ops : TitleJson::array({ops});
     if (list.empty()) {
         ctx.fail("bad_op", "no ops");

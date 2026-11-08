@@ -25,6 +25,7 @@
 #include "titleart/TitleArtDocument.h"
 #include "titleart/fx/FxPresets.h"
 #include "titleart/fx/FxRecipes.h"
+#include "titleart/interchange/TitleImport.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
 #include "titleart/TitleArtSchema.h"
@@ -666,12 +667,28 @@ void editTitleTool(const CallPtr& call) {
             return;
         }
         titleart::TitleArtDoc initial;
+        TitleCreateResult imported;
         if (create.contains("from")) {
+            // S87 §6.2: an import into the new document; canvas, text and template are its file's
+            for (const char* key : {"canvas", "text", "template"}) {
+                if (create.contains(key)) {
+                    call->fail(std::string("bad_option: create.from takes no create.") + key + " (the imported file gives it). Nothing was applied.",
+                               Json{{"code", "bad_option"}, {"valid", Json::array({"from", "overwrite"})}});
+                    return;
+                }
+            }
+            TitleCreateRequest request;
+            const fs::path from = FileUtils::pathFromUtf8(create.value("from", std::string()));
+            request.sourcePath = (from.is_absolute() ? from : project->getProjectPath() / from).lexically_normal().string();
+            request.documentPath = file.string();
+            request.projectPath = project->getProjectPath().string();
+            request.assetsPath = project->getAssetsPath().string();
             std::string code;
-            if (!TitleArtOps::createFrom(create.value("from", std::string()), initial, code, error)) {
-                call->fail(error + " Nothing was applied.", Json{{"code", code}});
+            if (!TitleArtOps::createFrom(request, imported, code, error)) {
+                call->fail(code + ": " + error + ". Nothing was applied.", Json{{"code", code}});
                 return;
             }
+            initial = imported.doc;
         } else {
             titleart::NewTitleArtOptions options;
             if (create.contains("text") && create["text"].is_string()) options.text = create["text"].get<std::string>();
@@ -697,7 +714,7 @@ void editTitleTool(const CallPtr& call) {
                 call->fail(error + " Nothing was applied.");
                 return;
             }
-            if (!document->commit(initial, "Replace Title Art " + file.filename().string(), {}, &error, TitleArtChangeOrigin::Agent)) {
+            if (!document->commit(initial, "Replace Title Art " + file.filename().string(), {}, &error, TitleArtChangeOrigin::Agent, imported.files)) {
                 call->fail(error + " Nothing was applied.");
                 return;
             }
@@ -707,7 +724,10 @@ void editTitleTool(const CallPtr& call) {
                 call->fail(escape + " Nothing was applied.");
                 return;
             }
-            document = TitleArtDocument::create(project, file.string(), &initial, "Create Title Art " + file.filename().string(), &error);
+            const std::string undoName = create.contains("from")
+                                             ? titleImportUndoName(imported.kind, FileUtils::pathFromUtf8(create.value("from", std::string())).filename().string())
+                                             : "Create Title Art " + file.filename().string();
+            document = TitleArtDocument::create(project, file.string(), &initial, undoName, &error, imported.files);
             if (!document) {
                 call->fail(error + " Nothing was applied.");
                 return;
@@ -715,6 +735,11 @@ void editTitleTool(const CallPtr& call) {
         }
         structured["created"] = true;
         text = (exists ? "Replaced " : "Created ") + relative;
+        if (create.contains("from")) {
+            structured["import"] = fromOrdered(titleImportJson(imported, project->getProjectPath()));
+            text += " from a " + titleImportKindLabel(imported.kind) + " (" + std::to_string(imported.files.size()) + " file(s), " +
+                    std::to_string(imported.notes.size()) + " note(s))";
+        }
     } else {
         if (!fs::is_regular_file(file, ec)) {
             call->fail("'" + relative + "' does not exist: create it with {create: {}} (and ops in the same call). Nothing was applied.");
@@ -1058,6 +1083,7 @@ void registerTitleArtTools(McpRegistry& registry) {
     registerBuiltinTitleChecks();
     registerTitleFxOps();
     registerTitle3DEditor();
+    registerTitleInterchange();
     {
         ToolDef tool;
         tool.name = "list_title_library";

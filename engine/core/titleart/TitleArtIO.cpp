@@ -5,6 +5,7 @@
 #include "TitleArtMigrations.h"
 #include "TitleArtSchema.h"
 #include "TitleEffectRegistry.h"
+#include "TitleTranslations.h"
 
 #include <algorithm>
 #include <cmath>
@@ -776,6 +777,8 @@ namespace {
                 exposed[i]["name"] = unique;
             }
         }
+        // S87's language rules (codes, keys, output ids)
+        normalizeTitleLanguages(root, context);
     }
 
     // byte offset -> 1-based line and column

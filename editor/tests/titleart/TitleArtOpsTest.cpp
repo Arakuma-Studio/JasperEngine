@@ -3,6 +3,9 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
+#include <fstream>
+
 #include "titleart/TitleArtOps.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtSchema.h"
@@ -371,11 +374,49 @@ TEST_F(TitleArtOpsTest, ReservedOpsNameTheirOwner) {
         EXPECT_NE(failure(r)->message.find(reserved.owner), std::string::npos) << reserved.name;
     }
     EXPECT_EQ(TitleArtOps::pendingOwner("apply_look"), "S84");
+}
+
+// S87's create.from importers register by kind and are chosen by the file's content
+TEST_F(TitleArtOpsTest, CreateFromPicksTheImporterByContent) {
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "je_title_create_from";
+    std::filesystem::create_directories(dir);
+    const std::filesystem::path file = dir / "logo.bin";
+    {
+        std::ofstream out(file, std::ios::binary);
+        out << "TEST-FORMAT body";
+    }
+    TitleCreateRequest request;
+    request.sourcePath = file.string();
+    request.documentPath = (dir / "logo.titleart").string();
+    std::string seen;
+    ASSERT_TRUE(TitleArtOps::registerCreateImporter(
+        "test_kind", [](const std::string& head, const std::string&) { return head.rfind("TEST-FORMAT", 0) == 0; },
+        [&](const TitleCreateRequest& r, TitleCreateResult& out, std::string&, std::string&) {
+            seen = r.documentPath;
+            out.doc = titleart::makeNewTitleArt();
+            out.files.push_back({(dir / "logo_assets" / "a.png").string(), "png"});
+            return true;
+        }));
+    EXPECT_FALSE(TitleArtOps::registerCreateImporter("test_kind", [](const std::string&, const std::string&) { return true; },
+                                                     [](const TitleCreateRequest&, TitleCreateResult&, std::string&, std::string&) { return true; }))
+        << "one importer per kind";
+    TitleCreateResult result;
     std::string code, error;
-    TitleArtDoc out;
-    EXPECT_FALSE(TitleArtOps::createFrom("logo.psd", out, code, error));
-    EXPECT_EQ(code, "not_available");
-    EXPECT_NE(error.find("S87"), std::string::npos);
+    ASSERT_TRUE(TitleArtOps::createFrom(request, result, code, error)) << error;
+    EXPECT_EQ(result.kind, "test_kind");
+    EXPECT_EQ(seen, request.documentPath);
+    EXPECT_EQ(result.files.size(), 1u);
+    {
+        std::ofstream out(file, std::ios::binary);
+        out << "something else";
+    }
+    EXPECT_FALSE(TitleArtOps::createFrom(request, result, code, error));
+    EXPECT_EQ(code, "import_unknown_kind");
+    request.sourcePath = (dir / "missing.psd").string();
+    EXPECT_FALSE(TitleArtOps::createFrom(request, result, code, error));
+    EXPECT_EQ(code, "file_not_found");
+    EXPECT_TRUE(TitleArtOps::unregisterCreateImporter("test_kind"));
+    std::filesystem::remove_all(dir);
 }
 
 TEST_F(TitleArtOpsTest, ARegisteredOpRunsInTheBatch) {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleArtDocument.h"
+#include "TitleArtRenderHost.h"
 
 #include "Project.h"
 #include "command/CommandHistory.h"
@@ -135,7 +136,7 @@ std::shared_ptr<TitleArtDocument> TitleArtDocument::open(Project* project, const
 }
 
 std::shared_ptr<TitleArtDocument> TitleArtDocument::create(Project* project, const std::string& path, const titleart::TitleArtDoc* doc,
-                                                           const std::string& undoName, std::string* error) {
+                                                           const std::string& undoName, std::string* error, const std::vector<TitleOpFile>& files) {
     if (!project || project->getProjectPath().empty()) {
         fail(error, "no project is open");
         return nullptr;
@@ -158,7 +159,10 @@ std::shared_ptr<TitleArtDocument> TitleArtDocument::create(Project* project, con
     titleart::TitleArtDoc initial = doc ? *doc : titleart::makeNewTitleArt();
     if (!titleart::isTitleArtGuid(initial.guid())) initial.root["guid"] = titleart::generateTitleArtGuid();
     titleart::normalizeTitleArt(initial, nullptr);
-    auto* command = new WriteFilesCmd({{absolute, titleart::writeTitleArt(initial)}}, &afterWrite);
+    std::vector<WriteFilesCmd::Item> items;
+    for (const TitleOpFile& f : files) items.push_back({fs::path(f.path), f.content});
+    items.push_back({absolute, titleart::writeTitleArt(initial)});
+    auto* command = new WriteFilesCmd(std::move(items), &afterWrite);
     command->setName(undoName.empty() ? "Create Title Art " + CommandNames::file(absolute) : undoName);
     command->setNoMerge();
     auto failure = std::make_shared<std::string>();
@@ -380,14 +384,17 @@ void TitleArtDocument::reload(TitleArtChangeOrigin origin) {
 }
 
 bool TitleArtDocument::write(const std::string& newText, const std::string& undoName, const std::string& mergeKey, std::string* writeError,
-                             TitleArtChangeOrigin origin) {
-    if (newText == fileText) return true;
+                             TitleArtChangeOrigin origin, const std::vector<TitleOpFile>& files) {
+    if (newText == fileText && files.empty()) return true;
     std::string onDisk;
     if (ProjectChecks::readFile(filePath, onDisk) && onDisk != fileText) {
         reload(TitleArtChangeOrigin::Disk);
         return fail(writeError, "'" + relativePath + "' changed on disk since it was read: it was reloaded, make the edit again");
     }
-    auto* command = new WriteFilesCmd({{filePath, newText}}, &afterWrite);
+    std::vector<WriteFilesCmd::Item> items;
+    for (const TitleOpFile& f : files) items.push_back({fs::path(f.path), f.content});
+    items.push_back({filePath, newText});
+    auto* command = new WriteFilesCmd(std::move(items), &afterWrite);
     writing = newText;
     writingOrigin = origin;
     command->setName(undoName.empty() ? "Edit Title Art " + CommandNames::file(filePath) : undoName);
@@ -404,12 +411,12 @@ bool TitleArtDocument::write(const std::string& newText, const std::string& undo
 }
 
 bool TitleArtDocument::commit(const titleart::TitleArtDoc& doc, const std::string& undoName, const std::string& mergeKey, std::string* commitError,
-                              TitleArtChangeOrigin origin) {
+                              TitleArtChangeOrigin origin, const std::vector<TitleOpFile>& files) {
     if (!editable()) return fail(commitError, "'" + relativePath + "' is read-only: " + versionMessage);
     titleart::TitleArtDoc copy = doc;
     copy.root["guid"] = titleart::isTitleArtGuid(value.guid()) ? value.guid() : titleart::generateTitleArtGuid();
     titleart::normalizeTitleArt(copy, nullptr);
-    return write(titleart::writeTitleArt(copy), undoName, mergeKey, commitError, origin);
+    return write(titleart::writeTitleArt(copy), undoName, mergeKey, commitError, origin, files);
 }
 
 bool TitleArtDocument::commitText(const std::string& text, const std::string& undoName, std::string* commitError, TitleArtChangeOrigin origin) {
@@ -424,11 +431,17 @@ TitleOpsResult TitleArtDocument::edit(const TitleJson& ops, const TitleArtEditOp
         return refused(value, "rev_mismatch", "'" + relativePath + "' is at rev " + std::to_string(documentRevision) + ", not " +
                                                   std::to_string(options.expectRev) + ": read it again. Nothing was applied.");
     }
-    TitleOpsResult result = TitleArtOps::apply(value, ops, options.ops);
+    TitleOpsOptions opsOptions = options.ops;
+    // ops that write files beside the document (S87's imports) need its paths
+    if (opsOptions.documentPath.empty()) opsOptions.documentPath = filePath.string();
+    if (opsOptions.projectPath.empty() && project) opsOptions.projectPath = project->getProjectPath().string();
+    if (opsOptions.assetsPath.empty() && project) opsOptions.assetsPath = project->getAssetsPath().string();
+    if (!opsOptions.assets && project) opsOptions.assets = TitleArtRenderHost::editor().resolver(project);
+    TitleOpsResult result = TitleArtOps::apply(value, ops, opsOptions);
     if (!result.ok || options.dryRun) return result;
     if (!options.undoName.empty()) result.undoName = options.undoName;
     std::string writeError;
-    if (!commit(result.doc, result.undoName, options.mergeKey, &writeError, options.origin)) {
+    if (!commit(result.doc, result.undoName, options.mergeKey, &writeError, options.origin, result.files)) {
         TitleOpsResult failed = refused(value, "write_failed", writeError + ". Nothing was applied.");
         return failed;
     }

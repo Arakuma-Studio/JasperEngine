@@ -7,6 +7,7 @@
 #include "TitleArtSchema.h"
 #include "TitleArtIO.h"
 #include "TitleEffectRegistry.h"
+#include "TitleTranslations.h"
 #if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
 #include "three_d/Title3DSchema.h"
 #endif
@@ -1120,6 +1121,7 @@ namespace {
 void jasperengine::titleart::registerProgramMembers(TitleArtSchema& schema) {
     // each later title spec adds one call here (S81, S84-S87), after S80's table
     registerS81Members(schema);
+    registerTitleLanguageMembers(schema);
 #if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
     registerTitle3DMembers(schema);
 #endif
